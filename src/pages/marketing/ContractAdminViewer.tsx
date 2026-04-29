@@ -1,10 +1,9 @@
 import React, { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useAppStore } from "../../store";
+import { ContractStatus, useAppStore } from "../../store";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import { PenTool, Check, X, ArrowLeft, Copy } from "lucide-react";
+import { ArrowLeft, Copy } from "lucide-react";
 import { format } from "date-fns";
 
 export function ContractAdminViewer() {
@@ -12,6 +11,7 @@ export function ContractAdminViewer() {
   const navigate = useNavigate();
   const getContract = useAppStore((state) => state.getContract);
   const updateClauseStatus = useAppStore((state) => state.updateClauseStatus);
+  const updateContract = useAppStore((state) => state.updateContract);
   const contract = getContract(id || "");
 
   const [replyContent, setReplyContent] = useState<{
@@ -41,11 +41,80 @@ export function ContractAdminViewer() {
   };
 
   const copyLink = () => {
+    if (contract.evidence?.share_token_status !== "active") {
+      alert("공유 링크 생성 후 복사할 수 있습니다.");
+      return;
+    }
+
     navigator.clipboard.writeText(
       `${window.location.origin}/contract/${contract.id}`,
     );
     alert("인플루언서용 링크가 복사되었습니다.");
   };
+
+  const saveDraft = () => {
+    const now = new Date().toISOString();
+    updateContract(contract.id, {
+      status: "DRAFT",
+      workflow: {
+        next_actor: "advertiser",
+        next_action: "발송 전 확인 후 공유 링크를 생성하세요.",
+        due_at: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+        risk_level: "low",
+        last_message: "계약 초안이 저장되었습니다.",
+      },
+      evidence: {
+        share_token_status: "not_issued",
+        audit_ready: false,
+        pdf_status: "not_ready",
+      },
+      audit_events: [
+        ...(contract.audit_events ?? []),
+        {
+          id: `audit_${Date.now()}`,
+          actor: "advertiser",
+          action: "draft_saved",
+          description: "광고주가 계약을 초안으로 저장했습니다.",
+          created_at: now,
+        },
+      ],
+    });
+  };
+
+  const requestSignatures = () => {
+    const now = new Date().toISOString();
+    updateContract(contract.id, {
+      status: "REVIEWING",
+      workflow: {
+        next_actor: "influencer",
+        next_action: "인플루언서 검토 응답을 기다리는 중입니다.",
+        due_at: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
+        risk_level: "medium",
+        last_message: "서명 요청용 공유 링크가 생성되었습니다.",
+      },
+      evidence: {
+        share_token_status: "active",
+        share_token_expires_at: new Date(
+          Date.now() + 7 * 24 * 60 * 60 * 1000,
+        ).toISOString(),
+        audit_ready: true,
+        pdf_status: "draft_ready",
+      },
+      audit_events: [
+        ...(contract.audit_events ?? []),
+        {
+          id: `audit_${Date.now()}`,
+          actor: "advertiser",
+          action: "signature_requested",
+          description: "광고주가 인플루언서 검토 및 서명 요청 링크를 발급했습니다.",
+          created_at: now,
+        },
+      ],
+    });
+  };
+
+  const allApproved = contract.clauses.every((clause) => clause.status === "APPROVED");
+  const statusLabel = getStatusLabel(contract.status);
 
   return (
     <div className="flex flex-col h-screen bg-[#FAFAFA] text-neutral-900 overflow-hidden font-sans">
@@ -123,7 +192,7 @@ export function ContractAdminViewer() {
                 className={`w-1.5 h-1.5 rounded-full ${contract.status === "NEGOTIATING" ? "bg-amber-500 animate-pulse" : contract.status === "SIGNED" ? "bg-emerald-500" : "bg-neutral-500"}`}
               ></span>
               <span className="text-[12px] font-medium tracking-wide uppercase text-neutral-900">
-                {contract.status === "NEGOTIATING" ? "Action Required" : contract.status}
+                {statusLabel}
               </span>
             </div>
           </div>
@@ -136,8 +205,12 @@ export function ContractAdminViewer() {
               <h2 className="text-3xl font-heading font-light tracking-tight text-neutral-900">{contract.title}</h2>
             </div>
             <div className="flex gap-4">
-              <button className="px-6 h-[44px] text-neutral-600 bg-transparent border border-neutral-200 rounded-none text-[12px] uppercase tracking-wider font-medium hover:bg-neutral-50 transition-colors">
-                Save Draft
+              <button
+                type="button"
+                onClick={saveDraft}
+                className="px-6 h-[44px] text-neutral-600 bg-transparent border border-neutral-200 rounded-none text-[12px] uppercase tracking-wider font-medium hover:bg-neutral-50 transition-colors"
+              >
+                초안 저장
               </button>
             </div>
           </div>
@@ -236,44 +309,62 @@ export function ContractAdminViewer() {
             <h3 className="text-[10px] font-medium text-neutral-400 uppercase tracking-[0.2em] mb-12">Audit Log</h3>
             <div className="space-y-10 relative">
               <div className="absolute left-[3px] top-4 bottom-4 w-[1px] bg-neutral-100 z-0"></div>
-              {contract.clauses
-                .map((clause) =>
-                  clause.history.map((h) => (
-                    <div key={h.id} className="flex gap-6 relative z-10">
+              {(contract.audit_events ?? []).length === 0 ? (
+                <p className="text-[13px] leading-6 text-neutral-400">
+                  아직 기록된 감사 이벤트가 없습니다.
+                </p>
+              ) : (
+                [...(contract.audit_events ?? [])]
+                  .sort(
+                    (a, b) =>
+                      new Date(b.created_at).getTime() -
+                      new Date(a.created_at).getTime(),
+                  )
+                  .map((event) => (
+                    <div key={event.id} className="flex gap-6 relative z-10">
                       <div
-                        className={`w-[7px] h-[7px] rounded-full shrink-0 shadow-sm mt-1.5 flex items-center justify-center ${h.role === "influencer" ? "bg-amber-500" : "bg-neutral-900"}`}
+                        className={`w-[7px] h-[7px] rounded-full shrink-0 shadow-sm mt-1.5 flex items-center justify-center ${event.actor === "influencer" ? "bg-amber-500" : "bg-neutral-900"}`}
                       >
                       </div>
                       <div className="flex-1">
                         <div className="flex flex-col gap-1 mb-2">
                           <span className="text-[11px] text-neutral-400 font-mono">
-                            {format(new Date(h.timestamp), "MMM dd, HH:mm")}
+                            {format(new Date(event.created_at), "MMM dd, HH:mm")}
                           </span>
-                          <p className={`text-[12px] font-medium uppercase tracking-wider ${h.role === "influencer" ? "text-amber-600" : "text-neutral-900"}`}>
-                            {h.role === "influencer"
+                          <p className={`text-[12px] font-medium uppercase tracking-wider ${event.actor === "influencer" ? "text-amber-600" : "text-neutral-900"}`}>
+                            {event.actor === "influencer"
                               ? "Counterparty"
-                              : "You"}{" "}
-                            {h.action}
+                              : event.actor === "system"
+                                ? "System"
+                                : "You"}{" "}
+                            {event.action}
                           </p>
                         </div>
                         <p className="text-[13px] text-neutral-700 leading-relaxed font-serif italic border-l border-neutral-200 pl-4 py-1 mt-3">
-                          {h.comment}
+                          {event.description}
                         </p>
                       </div>
                     </div>
-                  )),
-                )
-                .flat()
-                .sort((a, b) => -1)}
+                  ))
+              )}
             </div>
           </div>
 
           <div className="p-12 bg-[#FAFAFA] border-t border-neutral-100 mt-auto shrink-0 space-y-4">
-            <button className="w-full h-[52px] bg-neutral-900 hover:bg-neutral-800 text-white rounded-none text-[12px] uppercase tracking-wider font-medium shadow-none transition-colors">
-              Request Signatures
+            <button
+              type="button"
+              onClick={requestSignatures}
+              disabled={!allApproved || contract.status === "SIGNED"}
+              className="w-full h-[52px] bg-neutral-900 hover:bg-neutral-800 text-white rounded-none text-[12px] uppercase tracking-wider font-medium shadow-none transition-colors disabled:bg-neutral-100 disabled:text-neutral-400"
+            >
+              서명 요청 보내기
             </button>
             <p className="text-[11px] text-neutral-500 text-center uppercase tracking-widest font-mono">
-              All clauses <span className="text-emerald-600">approved</span>
+              {allApproved ? (
+                <>All clauses <span className="text-emerald-600">approved</span></>
+              ) : (
+                <span className="text-amber-600">Pending clause review</span>
+              )}
             </p>
           </div>
         </aside>
@@ -281,3 +372,13 @@ export function ContractAdminViewer() {
     </div>
   );
 }
+
+const STATUS_LABELS: Record<ContractStatus, string> = {
+  DRAFT: "작성 중",
+  REVIEWING: "검토 중",
+  NEGOTIATING: "수정 요청",
+  APPROVED: "서명 대기",
+  SIGNED: "완료",
+};
+
+const getStatusLabel = (status: ContractStatus) => STATUS_LABELS[status] ?? status;

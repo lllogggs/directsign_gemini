@@ -1,11 +1,17 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAppStore, ContractType, Clause } from "../../store";
+import {
+  useAppStore,
+  Contract,
+  ContractPlatform,
+  ContractStatus,
+  ContractType,
+  Clause,
+} from "../../store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Card } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -13,169 +19,418 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Check, Plus, Copy, CheckCircle2 } from "lucide-react";
+import {
+  ArrowLeft,
+  Check,
+  CheckCircle2,
+  Copy,
+  Plus,
+  ShieldCheck,
+  Trash2,
+} from "lucide-react";
+
+type StepId = 1 | 2 | 3 | 4 | 5;
+type ResultMode = "draft" | "share";
+
+interface ContractDraft {
+  advertiserName: string;
+  advertiserManager: string;
+  title: string;
+  type: ContractType;
+  influencerName: string;
+  influencerUrl: string;
+  influencerContact: string;
+  channels: string[];
+  channelDetails: Record<string, { postCount: string; duration: string }>;
+  hasOtherChannel: boolean;
+  otherChannel: string;
+  otherChannelDetails: {
+    postCount: string;
+    duration: string;
+  };
+  campaignStart: string;
+  campaignEnd: string;
+  uploadDueDate: string;
+  reviewDueDate: string;
+  revisionLimit: string;
+  disclosureText: string;
+  trackingLink: string;
+  exclusivity: string;
+  payment: string;
+  customClauses: { id: string; category: string; content: string }[];
+  newClauseCategory: string;
+  newClauseContent: string;
+}
+
+interface ValidationError {
+  field: string;
+  message: string;
+  step: StepId;
+}
+
+const STEPS: Array<{ s: StepId; label: string }> = [
+  { s: 1, label: "기본 정보" },
+  { s: 2, label: "채널 조건" },
+  { s: 3, label: "일정 및 지급" },
+  { s: 4, label: "특약 사항" },
+  { s: 5, label: "발송 전 확인" },
+];
+
+const CHANNEL_OPTIONS = [
+  "인스타그램 피드",
+  "인스타그램 릴스",
+  "인스타그램 스토리",
+  "유튜브 숏츠",
+  "유튜브 일반영상",
+  "네이버 블로그",
+  "틱톡",
+  "기타 커뮤니티",
+];
+
+const INITIAL_DRAFT: ContractDraft = {
+  advertiserName: "",
+  advertiserManager: "",
+  title: "",
+  type: "협찬",
+  influencerName: "",
+  influencerUrl: "",
+  influencerContact: "",
+  channels: [],
+  channelDetails: {},
+  hasOtherChannel: false,
+  otherChannel: "",
+  otherChannelDetails: {
+    postCount: "",
+    duration: "",
+  },
+  campaignStart: "",
+  campaignEnd: "",
+  uploadDueDate: "",
+  reviewDueDate: "",
+  revisionLimit: "",
+  disclosureText: "",
+  trackingLink: "",
+  exclusivity: "",
+  payment: "",
+  customClauses: [],
+  newClauseCategory: "",
+  newClauseContent: "",
+};
+
+const isBlank = (value?: string) => !value || value.trim().length === 0;
+
+const addDays = (days: number) => {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toISOString();
+};
+
+const getDeliverableRows = (draft: ContractDraft) => {
+  const selectedRows = draft.channels.map((channel) => ({
+    channel,
+    postCount: draft.channelDetails[channel]?.postCount ?? "",
+    duration: draft.channelDetails[channel]?.duration ?? "",
+  }));
+
+  if (draft.hasOtherChannel) {
+    selectedRows.push({
+      channel: draft.otherChannel.trim(),
+      postCount: draft.otherChannelDetails.postCount,
+      duration: draft.otherChannelDetails.duration,
+    });
+  }
+
+  return selectedRows;
+};
+
+const getSelectedPlatforms = (draft: ContractDraft): ContractPlatform[] => {
+  const platforms = new Set<ContractPlatform>();
+  const allChannels = [
+    ...draft.channels,
+    draft.hasOtherChannel ? draft.otherChannel : "",
+    draft.influencerUrl,
+  ].map((channel) => channel.toLowerCase());
+
+  allChannels.forEach((channel) => {
+    if (channel.includes("인스타") || channel.includes("instagram")) {
+      platforms.add("INSTAGRAM");
+    } else if (channel.includes("유튜브") || channel.includes("youtube")) {
+      platforms.add("YOUTUBE");
+    } else if (channel.includes("틱톡") || channel.includes("tiktok")) {
+      platforms.add("TIKTOK");
+    } else if (
+      channel.includes("블로그") ||
+      channel.includes("blog") ||
+      channel.includes("naver")
+    ) {
+      platforms.add("NAVER_BLOG");
+    } else if (channel.trim()) {
+      platforms.add("OTHER");
+    }
+  });
+
+  return Array.from(platforms);
+};
+
+const buildContractClauses = (draft: ContractDraft): Clause[] => {
+  const clauses: Clause[] = [];
+  const deliverables = getDeliverableRows(draft)
+    .filter((row) => row.channel)
+    .map(
+      (row) =>
+        `- ${row.channel}: 업로드 ${row.postCount || "입력 필요"}, 유지기간 ${
+          row.duration || "입력 필요"
+        }`,
+    );
+
+  if (deliverables.length > 0) {
+    clauses.push({
+      clause_id: "draft_deliverables",
+      category: "제공 매체 및 업로드 조건",
+      content: `본 계약에 따라 인플루언서는 다음 매체에 정해진 건수의 콘텐츠를 업로드하고 지정된 기간 동안 유지해야 한다:\n${deliverables.join(
+        "\n",
+      )}`,
+      status: "APPROVED",
+      history: [],
+    });
+  }
+
+  if (
+    draft.campaignStart ||
+    draft.campaignEnd ||
+    draft.uploadDueDate ||
+    draft.reviewDueDate ||
+    draft.revisionLimit
+  ) {
+    clauses.push({
+      clause_id: "draft_schedule",
+      category: "캠페인 일정 및 검수",
+      content: [
+        `캠페인 기간: ${draft.campaignStart || "입력 필요"} ~ ${
+          draft.campaignEnd || "입력 필요"
+        }`,
+        `콘텐츠 업로드 마감: ${draft.uploadDueDate || "입력 필요"}`,
+        `광고주 검수 회신 기한: ${draft.reviewDueDate || "입력 필요"}`,
+        `수정 가능 횟수: ${draft.revisionLimit || "입력 필요"}`,
+      ].join("\n"),
+      status: "APPROVED",
+      history: [],
+    });
+  }
+
+  if (draft.disclosureText || draft.trackingLink) {
+    clauses.push({
+      clause_id: "draft_disclosure",
+      category: "광고 표시 및 추적 조건",
+      content: [
+        `광고 표시 문구: ${draft.disclosureText || "입력 필요"}`,
+        draft.trackingLink ? `필수 링크/쿠폰/해시태그: ${draft.trackingLink}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      status: "APPROVED",
+      history: [],
+    });
+  }
+
+  if (draft.exclusivity) {
+    clauses.push({
+      clause_id: "draft_exclusivity",
+      category: "경쟁사 배제",
+      content: `업로드 후 다음 조건에 따라 동종 업계의 타 브랜드 광고를 진행하지 아니한다: ${draft.exclusivity}`,
+      status: "APPROVED",
+      history: [],
+    });
+  }
+
+  if (draft.payment) {
+    clauses.push({
+      clause_id: "draft_payment",
+      category: "대가 지급",
+      content: `본 계약의 대가로 광고주는 인플루언서에게 다음과 같이 지급한다: ${draft.payment}`,
+      status: "APPROVED",
+      history: [],
+    });
+  }
+
+  draft.customClauses.forEach((clause) => {
+    clauses.push({
+      clause_id: clause.id,
+      category: clause.category || "기타 특약",
+      content: clause.content,
+      status: "APPROVED",
+      history: [],
+    });
+  });
+
+  return clauses;
+};
+
+const validateContractDraft = (draft: ContractDraft): ValidationError[] => {
+  const errors: ValidationError[] = [];
+
+  const requireField = (step: StepId, field: string, value: string, message: string) => {
+    if (isBlank(value)) errors.push({ step, field, message });
+  };
+
+  requireField(1, "advertiserName", draft.advertiserName, "광고주/브랜드명을 입력하세요.");
+  requireField(1, "title", draft.title, "계약 건명을 입력하세요.");
+  requireField(1, "influencerName", draft.influencerName, "인플루언서명 또는 채널명을 입력하세요.");
+  requireField(1, "influencerUrl", draft.influencerUrl, "메인 채널 URL을 입력하세요.");
+  requireField(1, "influencerContact", draft.influencerContact, "연락처를 입력하세요.");
+
+  const deliverables = getDeliverableRows(draft);
+  if (deliverables.length === 0) {
+    errors.push({
+      step: 2,
+      field: "channels",
+      message: "계약에 포함할 플랫폼을 최소 1개 선택하세요.",
+    });
+  }
+
+  draft.channels.forEach((channel) => {
+    const details = draft.channelDetails[channel];
+    requireField(2, `${channel}.postCount`, details?.postCount ?? "", `${channel} 업로드 건수를 입력하세요.`);
+    requireField(2, `${channel}.duration`, details?.duration ?? "", `${channel} 게시물 유지 기간을 입력하세요.`);
+  });
+
+  if (draft.hasOtherChannel) {
+    requireField(2, "otherChannel", draft.otherChannel, "기타 매체명을 입력하세요.");
+    requireField(2, "otherChannel.postCount", draft.otherChannelDetails.postCount, "기타 매체 업로드 건수를 입력하세요.");
+    requireField(2, "otherChannel.duration", draft.otherChannelDetails.duration, "기타 매체 게시물 유지 기간을 입력하세요.");
+  }
+
+  requireField(3, "campaignStart", draft.campaignStart, "캠페인 시작일을 입력하세요.");
+  requireField(3, "campaignEnd", draft.campaignEnd, "캠페인 종료일을 입력하세요.");
+  requireField(3, "uploadDueDate", draft.uploadDueDate, "콘텐츠 업로드 마감일을 입력하세요.");
+  requireField(3, "reviewDueDate", draft.reviewDueDate, "광고주 검수 회신 기한을 입력하세요.");
+  requireField(3, "revisionLimit", draft.revisionLimit, "수정 가능 횟수를 입력하세요.");
+  requireField(3, "payment", draft.payment, "지급 조건을 입력하세요.");
+  requireField(3, "disclosureText", draft.disclosureText, "광고 표시 조건을 입력하세요.");
+
+  if (draft.campaignStart && draft.campaignEnd && draft.campaignEnd < draft.campaignStart) {
+    errors.push({
+      step: 3,
+      field: "campaignEnd",
+      message: "캠페인 종료일은 시작일 이후여야 합니다.",
+    });
+  }
+
+  if (buildContractClauses(draft).length === 0) {
+    errors.push({
+      step: 5,
+      field: "clauses",
+      message: "계약서에 들어갈 조항이 없습니다.",
+    });
+  }
+
+  return errors;
+};
+
+const buildWorkflow = (status: ContractStatus): Contract["workflow"] => {
+  if (status === "DRAFT") {
+    return {
+      next_actor: "advertiser",
+      next_action: "발송 전 확인에서 누락 조건을 점검하고 공유 링크를 생성하세요.",
+      due_at: addDays(3),
+      risk_level: "low",
+      last_message: "계약 초안이 저장되었습니다.",
+    };
+  }
+
+  return {
+    next_actor: "influencer",
+    next_action: "인플루언서 검토 응답을 기다리는 중입니다.",
+    due_at: addDays(2),
+    risk_level: "medium",
+    last_message: "공유 링크가 발급되어 상대방 검토를 기다리고 있습니다.",
+  };
+};
 
 export function ContractBuilder() {
   const navigate = useNavigate();
   const addContract = useAppStore((state) => state.addContract);
+  const updateContract = useAppStore((state) => state.updateContract);
+  const getContract = useAppStore((state) => state.getContract);
 
-  const [step, setStep] = useState(1);
-  const [formData, setFormData] = useState({
-    title: "",
-    type: "협찬" as ContractType,
-    influencerName: "",
-    influencerUrl: "",
-    influencerContact: "",
-    channels: [] as string[],
-    channelDetails: {} as Record<string, { postCount: string; duration: string }>,
-    hasOtherChannel: false,
-    otherChannel: "",
-    otherChannelDetails: {
-      postCount: "",
-      duration: ""
-    },
-    duration: "",
-    exclusivity: "",
-    postCount: "",
-    payment: "",
-    customClauses: [] as { id: string; category: string; content: string }[],
-    newClauseCategory: "",
-    newClauseContent: "",
-  });
-
-  const [generatedLink, setGeneratedLink] = useState("");
+  const [step, setStep] = useState<StepId>(1);
+  const [draft, setDraft] = useState<ContractDraft>(INITIAL_DRAFT);
+  const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
+  const [savedContractId, setSavedContractId] = useState("");
+  const [result, setResult] = useState<{
+    mode: ResultMode;
+    link?: string;
+    stale?: boolean;
+  } | null>(null);
   const [copied, setCopied] = useState(false);
 
+  const clauses = useMemo(() => buildContractClauses(draft), [draft]);
+  const allErrors = useMemo(() => validateContractDraft(draft), [draft]);
+  const stepErrors = validationErrors.filter((error) => error.step === step);
+  const currentStepHasBlockingError = allErrors.some((error) => error.step === step);
+
+  const updateDraft = (
+    updater: Partial<ContractDraft> | ((current: ContractDraft) => ContractDraft),
+  ) => {
+    setDraft((current) =>
+      typeof updater === "function" ? updater(current) : { ...current, ...updater },
+    );
+    setValidationErrors([]);
+    setResult((current) => (current?.mode === "share" ? { ...current, stale: true } : current));
+  };
+
   const handleChannelToggle = (channel: string) => {
-    setFormData((prev) => {
-      if (prev.channels.includes(channel)) {
-        const newChannels = prev.channels.filter((c) => c !== channel);
-        const newDetails = { ...prev.channelDetails };
-        delete newDetails[channel];
-        return { ...prev, channels: newChannels, channelDetails: newDetails };
-      } else {
-        return { ...prev, channels: [...prev.channels, channel] };
+    updateDraft((current) => {
+      if (current.channels.includes(channel)) {
+        const nextChannels = current.channels.filter((item) => item !== channel);
+        const nextDetails = { ...current.channelDetails };
+        delete nextDetails[channel];
+        return { ...current, channels: nextChannels, channelDetails: nextDetails };
       }
+
+      return { ...current, channels: [...current.channels, channel] };
     });
   };
 
-  const handleChannelDetailChange = (channel: string, field: 'postCount' | 'duration', value: string) => {
-    setFormData((prev) => ({
-      ...prev,
+  const handleChannelDetailChange = (
+    channel: string,
+    field: "postCount" | "duration",
+    value: string,
+  ) => {
+    updateDraft((current) => ({
+      ...current,
       channelDetails: {
-        ...prev.channelDetails,
+        ...current.channelDetails,
         [channel]: {
-          ...prev.channelDetails[channel],
-          [field]: value
-        }
-      }
+          ...current.channelDetails[channel],
+          [field]: value,
+        },
+      },
     }));
   };
 
-  const generateClauses = (): Clause[] => {
-    const clauses: Clause[] = [];
-
-    // 채널 및 노출 건수
-    if (formData.channels.length > 0 || formData.hasOtherChannel) {
-      const detailsContent = formData.channels.map(ch => {
-        const details = formData.channelDetails[ch];
-        const count = details?.postCount ? `${details.postCount}` : '1회';
-        const duration = details?.duration ? `${details.duration}` : '무기한 유지';
-        return `- ${ch}: 업로드 ${count}, 유지기간: ${duration}`;
-      });
-      
-      if (formData.hasOtherChannel && formData.otherChannel) {
-        const count = formData.otherChannelDetails.postCount ? `${formData.otherChannelDetails.postCount}` : '1회';
-        const duration = formData.otherChannelDetails.duration ? `${formData.otherChannelDetails.duration}` : '무기한 유지';
-        detailsContent.push(`- 기타 매체(${formData.otherChannel}): 업로드 ${count}, 유지기간: ${duration}`);
-      }
-
-      const contentString = detailsContent.join('\n');
-
-      clauses.push({
-        clause_id: "c_" + Date.now() + "_1",
-        category: "제공 매체 및 업로드 조건",
-        content: `본 계약에 따라 인플루언서는 다음 매체에 정해진 건수의 콘텐츠를 업로드하고 지정된 기간 동안 유지해야 한다:\n${contentString}`,
-        status: "APPROVED",
-        history: [],
-      });
-    }
-
-    // 유지 및 배제
-    if (formData.exclusivity || formData.duration) {
-      // Compatibility with old global duration
-      const durationText = formData.duration ? `콘텐츠는 업로드 후 최소 ${formData.duration} 동안 유지되어야 하며, ` : '';
-      const exclusivityText = formData.exclusivity ? `업로드 후 해당 기간 동안 동종 업계의 타 브랜드 광고를 진행하지 아니한다(${formData.exclusivity}).` : '동종 업계의 광고 진행에 대한 제한은 없다.';
-      
-      clauses.push({
-        clause_id: "c_" + Date.now() + "_2",
-        category: "유지 및 경쟁사 배제",
-        content: `${durationText}${exclusivityText}`,
-        status: "APPROVED",
-        history: [],
-      });
-    }
-
-    // 지급 조건
-    if (formData.payment) {
-      clauses.push({
-        clause_id: "c_" + Date.now() + "_3",
-        category: "대가 지급",
-        content: `본 계약의 대가로 마케팅사는 인플루언서에게 다음과 같이 지급한다: ${formData.payment}`,
-        status: "APPROVED",
-        history: [],
-      });
-    }
-
-    // 사용자 추가 특약
-    formData.customClauses.forEach((cc) => {
-      clauses.push({
-        clause_id: cc.id,
-        category: cc.category || "기타 특약",
-        content: cc.content,
-        status: "APPROVED",
-        history: [],
-      });
-    });
-
-    return clauses;
-  };
-
-  const handleSaveAndShare = () => {
-    const contract = addContract({
-      advertiser_id: "adv_1",
-      title:
-        formData.title || `${formData.influencerName}님 ${formData.type} 계약`,
-      type: formData.type,
-      status: "REVIEWING",
-      influencer_info: {
-        name: formData.influencerName,
-        channel_url: formData.influencerUrl,
-        contact: formData.influencerContact,
-      },
-      clauses: generateClauses(),
-    });
-
-    const link = `${window.location.origin}/contract/${contract.id}`;
-    setGeneratedLink(link);
-  };
-
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(generatedLink);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const handleOtherChannelToggle = (checked: boolean) => {
+    updateDraft((current) => ({
+      ...current,
+      hasOtherChannel: checked,
+      otherChannel: checked ? current.otherChannel : "",
+      otherChannelDetails: checked
+        ? current.otherChannelDetails
+        : { postCount: "", duration: "" },
+    }));
   };
 
   const addCustomClause = () => {
-    if (!formData.newClauseContent) return;
-    setFormData((prev) => ({
-      ...prev,
+    if (!draft.newClauseContent.trim()) return;
+
+    updateDraft((current) => ({
+      ...current,
       customClauses: [
-        ...prev.customClauses,
+        ...current.customClauses,
         {
-          id: "c_" + Date.now() + "_" + Math.random(),
-          category: prev.newClauseCategory,
-          content: prev.newClauseContent,
+          id: `custom_${Date.now()}`,
+          category: current.newClauseCategory.trim() || "기타 특약",
+          content: current.newClauseContent.trim(),
         },
       ],
       newClauseCategory: "",
@@ -188,65 +443,201 @@ export function ContractBuilder() {
       type === "delivery" ? "배송 및 파손 책임" : "고객 CS 및 교환/환불";
     const content =
       type === "delivery"
-        ? "제품의 배송, 설치 및 회수 과정에서 발생하는 파손의 책임은 전적으로 공급사(본사)에 있다."
-        : "제품의 AS 및 불량 문제로 인한 교환/환불 응대는 공급사(본사)에서 전담하여 처리한다.";
-    setFormData((prev) => ({
-      ...prev,
-      customClauses: [
-        ...prev.customClauses,
-        { id: "c_" + Date.now() + "_" + Math.random(), category, content },
-      ],
+        ? "제품의 배송, 설치 및 회수 과정에서 발생하는 파손의 책임은 공급사 또는 광고주가 부담한다."
+        : "제품의 AS 및 불량 문제로 인한 교환/환불 응대는 광고주가 정한 담당 창구에서 처리한다.";
+
+    updateDraft((current) => {
+      const exists = current.customClauses.some(
+        (clause) => clause.category === category && clause.content === content,
+      );
+      if (exists) return current;
+
+      return {
+        ...current,
+        customClauses: [
+          ...current.customClauses,
+          { id: `template_${type}`, category, content },
+        ],
+      };
+    });
+  };
+
+  const removeCustomClause = (id: string) => {
+    updateDraft((current) => ({
+      ...current,
+      customClauses: current.customClauses.filter((clause) => clause.id !== id),
     }));
   };
 
+  const goNext = () => {
+    const nextErrors = validateContractDraft(draft).filter(
+      (error) => error.step === step,
+    );
+
+    if (nextErrors.length > 0) {
+      setValidationErrors(nextErrors);
+      return;
+    }
+
+    setValidationErrors([]);
+    setStep((current) => Math.min(current + 1, 5) as StepId);
+  };
+
+  const goBack = () => {
+    setValidationErrors([]);
+    setStep((current) => Math.max(current - 1, 1) as StepId);
+  };
+
+  const buildContractPayload = (status: ContractStatus): Omit<Contract, "id" | "created_at" | "updated_at"> => ({
+    advertiser_id: "adv_1",
+    advertiser_info: {
+      name: draft.advertiserName.trim(),
+      manager: draft.advertiserManager.trim() || undefined,
+    },
+    title: draft.title.trim(),
+    type: draft.type,
+    status,
+    influencer_info: {
+      name: draft.influencerName.trim(),
+      channel_url: draft.influencerUrl.trim(),
+      contact: draft.influencerContact.trim(),
+    },
+    campaign: {
+      budget: draft.payment.trim(),
+      start_date: draft.campaignStart,
+      end_date: draft.campaignEnd,
+      upload_due_at: draft.uploadDueDate,
+      review_due_at: draft.reviewDueDate,
+      revision_limit: draft.revisionLimit.trim(),
+      disclosure_text: draft.disclosureText.trim(),
+      tracking_link: draft.trackingLink.trim() || undefined,
+      period:
+        draft.campaignStart && draft.campaignEnd
+          ? `${draft.campaignStart} - ${draft.campaignEnd}`
+          : undefined,
+      platforms: getSelectedPlatforms(draft),
+      deliverables: getDeliverableRows(draft)
+        .filter((row) => row.channel)
+        .map((row) => `${row.channel} ${row.postCount} / ${row.duration}`),
+    },
+    workflow: buildWorkflow(status),
+    evidence: {
+      share_token_status: status === "DRAFT" ? "not_issued" : "active",
+      share_token_expires_at: status === "DRAFT" ? undefined : addDays(7),
+      audit_ready: status !== "DRAFT",
+      pdf_status: status === "DRAFT" ? "not_ready" : "draft_ready",
+    },
+    audit_events: [],
+    clauses,
+  });
+
+  const saveContract = (mode: ResultMode) => {
+    const errors = validateContractDraft(draft);
+
+    if (errors.length > 0) {
+      setValidationErrors(errors);
+      setStep(errors[0].step);
+      return;
+    }
+
+    const status: ContractStatus = mode === "draft" ? "DRAFT" : "REVIEWING";
+    const payload = buildContractPayload(status);
+    const existing = savedContractId ? getContract(savedContractId) : undefined;
+    const now = new Date().toISOString();
+    const event = {
+      id: `audit_${Date.now()}`,
+      actor: "advertiser" as const,
+      action: mode === "draft" ? "draft_saved" : "share_link_issued",
+      description:
+        mode === "draft"
+          ? "광고주가 계약 초안을 저장했습니다."
+          : "광고주가 발송 전 확인을 마치고 공유 링크를 생성했습니다.",
+      created_at: now,
+    };
+
+    let contractId = existing?.id;
+    if (existing) {
+      updateContract(existing.id, {
+        ...payload,
+        audit_events: [...(existing.audit_events ?? []), event],
+      });
+    } else {
+      const created = addContract({
+        ...payload,
+        audit_events: [event],
+      });
+      contractId = created.id;
+      setSavedContractId(created.id);
+    }
+
+    const link =
+      mode === "share" && contractId
+        ? `${window.location.origin}/contract/${contractId}`
+        : undefined;
+    setResult({ mode, link, stale: false });
+  };
+
+  const copyToClipboard = () => {
+    if (!result?.link || result.stale) return;
+    navigator.clipboard.writeText(result.link);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
-    <div className="h-screen flex flex-col bg-[#FAFAFA] font-sans text-neutral-900 overflow-hidden">
-      <header className="h-[80px] px-12 bg-white flex items-center justify-between z-10 shrink-0 border-b border-neutral-100">
+    <div className="flex h-screen flex-col overflow-hidden bg-[#FAFAFA] font-sans text-neutral-900">
+      <header className="h-[80px] shrink-0 border-b border-neutral-100 bg-white px-6 md:px-12 flex items-center justify-between z-10">
         <div className="flex items-center gap-4">
           <button
+            type="button"
             onClick={() => navigate("/marketing/dashboard")}
-            className="p-2 hover:bg-neutral-50 rounded-full transition-colors -ml-2 text-neutral-400 hover:text-neutral-900"
+            className="-ml-2 rounded-full p-2 text-neutral-400 transition-colors hover:bg-neutral-50 hover:text-neutral-900"
+            aria-label="대시보드로 돌아가기"
           >
-            <ArrowLeft strokeWidth={1.5} className="w-5 h-5" />
+            <ArrowLeft strokeWidth={1.5} className="h-5 w-5" />
           </button>
           <div className="flex items-center gap-3 border-l border-neutral-100 pl-4">
-            <div className="w-8 h-8 bg-neutral-900 rounded-sm flex items-center justify-center text-white">
+            <div className="flex h-8 w-8 items-center justify-center rounded-sm bg-neutral-900 text-white">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square" strokeLinejoin="miter"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
             </div>
-            <span className="text-lg font-heading tracking-widest uppercase text-neutral-900">
+            <span className="text-lg font-heading uppercase tracking-widest text-neutral-900">
               DirectSign
             </span>
           </div>
         </div>
       </header>
 
-      <main className="flex-1 flex overflow-hidden">
-        {/* Sidebar: Steps Wizard */}
-        <aside className="w-[300px] bg-white p-12 pr-8 flex flex-col gap-12 shrink-0 hidden md:flex border-r border-neutral-100 shadow-[24px_0_40px_rgba(0,0,0,0.01)] relative z-10">
+      <main className="flex flex-1 overflow-hidden">
+        <aside className="relative z-10 hidden w-[300px] shrink-0 flex-col gap-12 border-r border-neutral-100 bg-white p-12 pr-8 shadow-[24px_0_40px_rgba(0,0,0,0.01)] md:flex">
           <div>
-            <h3 className="text-[10px] font-medium text-neutral-400 uppercase tracking-[0.2em] mb-10">
+            <h3 className="mb-10 text-[10px] font-medium uppercase tracking-[0.2em] text-neutral-400">
               Contract Builder
             </h3>
-            <nav className="space-y-8 relative">
-              <div className="absolute left-[11px] top-6 bottom-6 w-px bg-neutral-100 z-0"></div>
-              {[
-                { s: 1, label: "기본 정보 입력" },
-                { s: 2, label: "채널 & 노출 조건" },
-                { s: 3, label: "의무 및 대가 지급" },
-                { s: 4, label: "맞춤형 특약 사항" },
-              ].map((item) => (
+            <nav className="relative space-y-8">
+              <div className="absolute bottom-6 left-[11px] top-6 z-0 w-px bg-neutral-100" />
+              {STEPS.map((item) => (
                 <div
                   key={item.s}
-                  className={`flex items-center gap-6 relative z-10 transition-all duration-500 ${step === item.s ? "text-neutral-900 translate-x-2" : step > item.s ? "text-neutral-900" : "text-neutral-400"}`}
+                  className={`relative z-10 flex items-center gap-6 transition-all duration-300 ${
+                    step === item.s
+                      ? "translate-x-2 text-neutral-900"
+                      : step > item.s
+                        ? "text-neutral-900"
+                        : "text-neutral-400"
+                  }`}
                 >
                   <div
-                    className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] transition-all duration-500 ease-out ${step === item.s ? "border border-neutral-900 bg-white text-neutral-900 ring-4 ring-neutral-100" : step > item.s ? "bg-neutral-900 text-white" : "border border-neutral-200 bg-white text-neutral-300"}`}
+                    className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] transition-all duration-300 ${
+                      step === item.s
+                        ? "border border-neutral-900 bg-white text-neutral-900 ring-4 ring-neutral-100"
+                        : step > item.s
+                          ? "bg-neutral-900 text-white"
+                          : "border border-neutral-200 bg-white text-neutral-300"
+                    }`}
                   >
-                    {step > item.s ? <Check strokeWidth={3} className="w-3 h-3" /> : item.s}
+                    {step > item.s ? <Check strokeWidth={3} className="h-3 w-3" /> : item.s}
                   </div>
-                  <span
-                    className={`font-medium text-[13px] tracking-wide ${step === item.s ? "font-semibold" : ""}`}
-                  >
+                  <span className={`text-[13px] font-medium tracking-wide ${step === item.s ? "font-semibold" : ""}`}>
                     {item.label}
                   </span>
                 </div>
@@ -255,69 +646,87 @@ export function ContractBuilder() {
           </div>
         </aside>
 
-        {/* Left Pane - Form */}
-        <section className="w-full md:w-[600px] bg-[#FAFAFA] overflow-y-auto shrink-0 custom-scrollbar relative z-0">
-          <div className="p-16 max-w-[500px]">
-            <p className="text-[10px] font-medium text-neutral-400 uppercase tracking-[0.2em] mb-4">Step {step} of 4</p>
-            <h1 className="text-3xl font-heading font-light mb-4 text-neutral-900 tracking-tight">
+        <section className="relative z-0 w-full shrink-0 overflow-y-auto bg-[#FAFAFA] md:w-[620px] custom-scrollbar">
+          <div className="max-w-[520px] p-8 md:p-14">
+            <p className="mb-4 text-[10px] font-medium uppercase tracking-[0.2em] text-neutral-400">
+              Step {step} of 5
+            </p>
+            <h1 className="mb-4 text-3xl font-heading font-light tracking-tight text-neutral-900">
               새 전자계약서 작성
             </h1>
-            <p className="text-neutral-500 text-[13px] leading-relaxed mb-12">
-              필수 항목들을 채워주시면 스마트 컨트랙트가 자동 생성됩니다.
+            <p className="mb-10 text-[13px] leading-relaxed text-neutral-500">
+              누락 조건을 막고, 발송 전 확인을 거친 뒤 공유 링크를 생성합니다.
             </p>
+
+            {stepErrors.length > 0 && <ValidationSummary errors={stepErrors} />}
 
             <div className="space-y-6">
               {step === 1 && (
-                <div className="animate-in fade-in slide-in-from-right-4 space-y-6">
+                <section className="animate-in fade-in slide-in-from-right-4 space-y-6">
                   <div>
                     <Label>계약 유형</Label>
                     <Select
-                      value={formData.type}
-                      onValueChange={(val: any) =>
-                        setFormData({ ...formData, type: val })
+                      value={draft.type}
+                      onValueChange={(value) =>
+                        updateDraft({ type: value as ContractType })
                       }
                     >
                       <SelectTrigger className="mt-1.5">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="협찬">
-                          제품 협찬 (단순 리뷰)
-                        </SelectItem>
+                        <SelectItem value="협찬">제품 협찬</SelectItem>
                         <SelectItem value="PPL">유료 광고 (PPL)</SelectItem>
-                        <SelectItem value="공동구매">
-                          공동구매 (수익 분배형)
-                        </SelectItem>
+                        <SelectItem value="공동구매">공동구매</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
+
                   <div>
-                    <Label>계약 건명 (내부 관리용)</Label>
+                    <Label>광고주/브랜드명</Label>
                     <Input
                       className="mt-1.5"
-                      placeholder="ex) 봄맞이 립 틴트 인스타그램 협찬"
-                      value={formData.title}
-                      onChange={(e) =>
-                        setFormData({ ...formData, title: e.target.value })
+                      placeholder="ex) 다이렉트뷰티"
+                      value={draft.advertiserName}
+                      onChange={(event) =>
+                        updateDraft({ advertiserName: event.target.value })
                       }
                     />
                   </div>
-                  <div className="pt-4 border-t border-gray-100">
-                    <h3 className="font-medium text-sm mb-4">
-                      인플루언서 정보
-                    </h3>
+
+                  <div>
+                    <Label>담당자명</Label>
+                    <Input
+                      className="mt-1.5"
+                      placeholder="ex) 김마케팅 매니저"
+                      value={draft.advertiserManager}
+                      onChange={(event) =>
+                        updateDraft({ advertiserManager: event.target.value })
+                      }
+                    />
+                  </div>
+
+                  <div>
+                    <Label>계약 건명</Label>
+                    <Input
+                      className="mt-1.5"
+                      placeholder="ex) 5월 선크림 숏폼 PPL 계약"
+                      value={draft.title}
+                      onChange={(event) => updateDraft({ title: event.target.value })}
+                    />
+                  </div>
+
+                  <div className="border-t border-neutral-100 pt-4">
+                    <h3 className="mb-4 text-sm font-medium">인플루언서 정보</h3>
                     <div className="space-y-4">
                       <div>
                         <Label>성명 또는 채널명</Label>
                         <Input
                           className="mt-1.5"
-                          placeholder="홍길동"
-                          value={formData.influencerName}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              influencerName: e.target.value,
-                            })
+                          placeholder="ex) 뷰티온에어"
+                          value={draft.influencerName}
+                          onChange={(event) =>
+                            updateDraft({ influencerName: event.target.value })
                           }
                         />
                       </div>
@@ -326,325 +735,551 @@ export function ContractBuilder() {
                         <Input
                           className="mt-1.5"
                           placeholder="https://instagram.com/..."
-                          value={formData.influencerUrl}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              influencerUrl: e.target.value,
-                            })
+                          value={draft.influencerUrl}
+                          onChange={(event) =>
+                            updateDraft({ influencerUrl: event.target.value })
                           }
                         />
                       </div>
                       <div>
-                        <Label>연락처 (이메일/번호)</Label>
+                        <Label>연락처</Label>
                         <Input
                           className="mt-1.5"
                           placeholder="test@example.com"
-                          value={formData.influencerContact}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              influencerContact: e.target.value,
-                            })
+                          value={draft.influencerContact}
+                          onChange={(event) =>
+                            updateDraft({ influencerContact: event.target.value })
                           }
                         />
                       </div>
                     </div>
                   </div>
-                </div>
+                </section>
               )}
 
               {step === 2 && (
-                <div className="animate-in fade-in slide-in-from-right-4 space-y-6">
+                <section className="animate-in fade-in slide-in-from-right-4 space-y-6">
                   <div>
-                    <Label className="mb-3 block">
-                      대상 플랫폼 및 콘텐츠 포맷
-                    </Label>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {[
-                        "인스타그램 피드",
-                        "인스타그램 릴스",
-                        "인스타그램 스토리",
-                        "유튜브 숏츠",
-                        "유튜브 일반영상",
-                        "블라인드",
-                        "틱톡",
-                        "블로그",
-                      ].map((ch) => (
-                        <div key={ch} className={`border rounded-lg transition-colors ${formData.channels.includes(ch) ? "border-black bg-gray-50" : "border-gray-200"}`}>
-                          <label className="flex items-start p-3 cursor-pointer">
-                            <div className="flex items-center h-5">
-                              <input
-                                type="checkbox"
-                                className="form-checkbox h-4 w-4 text-black rounded border-gray-300"
-                                checked={formData.channels.includes(ch)}
-                                onChange={() => handleChannelToggle(ch)}
-                              />
-                            </div>
-                            <div className="ml-3 text-sm">{ch}</div>
+                    <Label className="mb-3 block">대상 플랫폼 및 콘텐츠 포맷</Label>
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                      {CHANNEL_OPTIONS.map((channel) => (
+                        <div
+                          key={channel}
+                          className={`border transition-colors ${
+                            draft.channels.includes(channel)
+                              ? "border-neutral-900 bg-white"
+                              : "border-neutral-200 bg-white/70"
+                          }`}
+                        >
+                          <label className="flex cursor-pointer items-start p-3">
+                            <input
+                              type="checkbox"
+                              className="mt-0.5 h-4 w-4 rounded border-neutral-300 text-neutral-900"
+                              checked={draft.channels.includes(channel)}
+                              onChange={() => handleChannelToggle(channel)}
+                            />
+                            <span className="ml-3 text-sm font-medium">{channel}</span>
                           </label>
-                          {formData.channels.includes(ch) && (
-                            <div className="px-3 pb-3 ml-7 grid grid-cols-1 gap-2 animate-in fade-in zoom-in-95 duration-200">
+                          {draft.channels.includes(channel) && (
+                            <div className="ml-7 grid grid-cols-1 gap-2 px-3 pb-3">
                               <div>
-                                <Label className="text-xs text-slate-500">업로드 건수</Label>
-                                <Input className="mt-1 h-8 text-xs bg-white" placeholder="ex) 1회" value={formData.channelDetails[ch]?.postCount || ''} onChange={(e) => handleChannelDetailChange(ch, 'postCount', e.target.value)} />
+                                <Label className="text-xs text-neutral-500">
+                                  업로드 건수
+                                </Label>
+                                <Input
+                                  className="mt-1 h-8 bg-white text-xs"
+                                  placeholder="ex) 2회"
+                                  value={draft.channelDetails[channel]?.postCount || ""}
+                                  onChange={(event) =>
+                                    handleChannelDetailChange(
+                                      channel,
+                                      "postCount",
+                                      event.target.value,
+                                    )
+                                  }
+                                />
                               </div>
                               <div>
-                                <Label className="text-xs text-slate-500">게시물 유지 기간</Label>
-                                <Input className="mt-1 h-8 text-xs bg-white" placeholder="ex) 6개월, 무기한" value={formData.channelDetails[ch]?.duration || ''} onChange={(e) => handleChannelDetailChange(ch, 'duration', e.target.value)} />
+                                <Label className="text-xs text-neutral-500">
+                                  게시물 유지 기간
+                                </Label>
+                                <Input
+                                  className="mt-1 h-8 bg-white text-xs"
+                                  placeholder="ex) 3개월"
+                                  value={draft.channelDetails[channel]?.duration || ""}
+                                  onChange={(event) =>
+                                    handleChannelDetailChange(
+                                      channel,
+                                      "duration",
+                                      event.target.value,
+                                    )
+                                  }
+                                />
                               </div>
                             </div>
                           )}
                         </div>
                       ))}
                     </div>
-                    <div className="mt-3">
-                      <div className={`border rounded-lg transition-colors ${formData.hasOtherChannel ? "border-black bg-gray-50" : "border-gray-200"}`}>
-                        <label className="flex items-start p-3 cursor-pointer">
-                          <div className="flex items-center h-5">
-                            <input
-                              type="checkbox"
-                              className="form-checkbox h-4 w-4 text-black rounded border-gray-300"
-                              checked={formData.hasOtherChannel}
-                              onChange={(e) => setFormData({ ...formData, hasOtherChannel: e.target.checked })}
+                  </div>
+
+                  <div
+                    className={`border bg-white transition-colors ${
+                      draft.hasOtherChannel ? "border-neutral-900" : "border-neutral-200"
+                    }`}
+                  >
+                    <label className="flex cursor-pointer items-start p-3">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 h-4 w-4 rounded border-neutral-300 text-neutral-900"
+                        checked={draft.hasOtherChannel}
+                        onChange={(event) => handleOtherChannelToggle(event.target.checked)}
+                      />
+                      <span className="ml-3 text-sm font-medium">기타 매체 직접 입력</span>
+                    </label>
+                    {draft.hasOtherChannel && (
+                      <div className="ml-7 grid grid-cols-1 gap-3 px-3 pb-3">
+                        <div>
+                          <Label className="text-xs text-neutral-500">매체명</Label>
+                          <Input
+                            className="mt-1 h-8 bg-white text-xs"
+                            placeholder="ex) 네이버 카페, 커뮤니티"
+                            value={draft.otherChannel}
+                            onChange={(event) =>
+                              updateDraft({ otherChannel: event.target.value })
+                            }
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <Label className="text-xs text-neutral-500">
+                              업로드 건수
+                            </Label>
+                            <Input
+                              className="mt-1 h-8 bg-white text-xs"
+                              placeholder="ex) 1회"
+                              value={draft.otherChannelDetails.postCount}
+                              onChange={(event) =>
+                                updateDraft((current) => ({
+                                  ...current,
+                                  otherChannelDetails: {
+                                    ...current.otherChannelDetails,
+                                    postCount: event.target.value,
+                                  },
+                                }))
+                              }
                             />
                           </div>
-                          <div className="ml-3 text-sm">기타 매체 (직접 입력)</div>
-                        </label>
-                        {formData.hasOtherChannel && (
-                          <div className="px-3 pb-3 ml-7 grid grid-cols-1 gap-3 animate-in fade-in zoom-in-95 duration-200">
-                            <div>
-                              <Label className="text-xs text-slate-500">매체명</Label>
-                              <Input
-                                className="mt-1 h-8 text-xs bg-white"
-                                placeholder="기타 플랫폼 명"
-                                value={formData.otherChannel}
-                                onChange={(e) =>
-                                  setFormData({
-                                    ...formData,
-                                    otherChannel: e.target.value,
-                                  })
-                                }
-                              />
-                            </div>
-                            <div className="grid grid-cols-2 gap-2">
-                              <div>
-                                <Label className="text-xs text-slate-500">업로드 건수</Label>
-                                <Input 
-                                  className="mt-1 h-8 text-xs bg-white" 
-                                  placeholder="ex) 1회" 
-                                  value={formData.otherChannelDetails.postCount} 
-                                  onChange={(e) => setFormData(prev => ({ ...prev, otherChannelDetails: { ...prev.otherChannelDetails, postCount: e.target.value } }))}
-                                />
-                              </div>
-                              <div>
-                                <Label className="text-xs text-slate-500">게시물 유지 기간</Label>
-                                <Input 
-                                  className="mt-1 h-8 text-xs bg-white" 
-                                  placeholder="ex) 6개월, 무기한" 
-                                  value={formData.otherChannelDetails.duration} 
-                                  onChange={(e) => setFormData(prev => ({ ...prev, otherChannelDetails: { ...prev.otherChannelDetails, duration: e.target.value } }))}
-                                />
-                              </div>
-                            </div>
+                          <div>
+                            <Label className="text-xs text-neutral-500">
+                              게시물 유지 기간
+                            </Label>
+                            <Input
+                              className="mt-1 h-8 bg-white text-xs"
+                              placeholder="ex) 6개월"
+                              value={draft.otherChannelDetails.duration}
+                              onChange={(event) =>
+                                updateDraft((current) => ({
+                                  ...current,
+                                  otherChannelDetails: {
+                                    ...current.otherChannelDetails,
+                                    duration: event.target.value,
+                                  },
+                                }))
+                              }
+                            />
                           </div>
-                        )}
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
-                </div>
+                </section>
               )}
 
               {step === 3 && (
-                <div className="animate-in fade-in slide-in-from-right-4 space-y-6">
+                <section className="animate-in fade-in slide-in-from-right-4 space-y-6">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label>캠페인 시작일</Label>
+                      <Input
+                        type="date"
+                        className="mt-1.5"
+                        value={draft.campaignStart}
+                        onChange={(event) =>
+                          updateDraft({ campaignStart: event.target.value })
+                        }
+                      />
+                    </div>
+                    <div>
+                      <Label>캠페인 종료일</Label>
+                      <Input
+                        type="date"
+                        className="mt-1.5"
+                        value={draft.campaignEnd}
+                        onChange={(event) =>
+                          updateDraft({ campaignEnd: event.target.value })
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label>업로드 마감일</Label>
+                      <Input
+                        type="date"
+                        className="mt-1.5"
+                        value={draft.uploadDueDate}
+                        onChange={(event) =>
+                          updateDraft({ uploadDueDate: event.target.value })
+                        }
+                      />
+                    </div>
+                    <div>
+                      <Label>검수 회신 기한</Label>
+                      <Input
+                        type="date"
+                        className="mt-1.5"
+                        value={draft.reviewDueDate}
+                        onChange={(event) =>
+                          updateDraft({ reviewDueDate: event.target.value })
+                        }
+                      />
+                    </div>
+                  </div>
+
                   <div>
-                    <Label>경쟁사 배제 (Exclusivity) 조건</Label>
+                    <Label>수정 가능 횟수</Label>
                     <Input
                       className="mt-1.5"
-                      placeholder="업로드 후 3개월간 동종업계 진행 불가"
-                      value={formData.exclusivity}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          exclusivity: e.target.value,
-                        })
+                      placeholder="ex) 최대 2회"
+                      value={draft.revisionLimit}
+                      onChange={(event) =>
+                        updateDraft({ revisionLimit: event.target.value })
                       }
                     />
                   </div>
+
                   <div>
-                    <Label>고정비 또는 수수료율</Label>
-                    <Textarea
+                    <Label>광고 표시 조건</Label>
+                    <Input
                       className="mt-1.5"
-                      placeholder="건당 100만원 지급 (세금 포함) / 판매 수익의 15% 지급"
-                      value={formData.payment}
-                      onChange={(e) =>
-                        setFormData({ ...formData, payment: e.target.value })
+                      placeholder="ex) 본문 첫 줄에 광고/협찬 표기"
+                      value={draft.disclosureText}
+                      onChange={(event) =>
+                        updateDraft({ disclosureText: event.target.value })
                       }
                     />
                   </div>
-                </div>
+
+                  <div>
+                    <Label>쿠폰/링크/해시태그</Label>
+                    <Input
+                      className="mt-1.5"
+                      placeholder="ex) #브랜드명 #AD / coupon: SUN20"
+                      value={draft.trackingLink}
+                      onChange={(event) => updateDraft({ trackingLink: event.target.value })}
+                    />
+                  </div>
+
+                  <div>
+                    <Label>경쟁사 배제 조건</Label>
+                    <Input
+                      className="mt-1.5"
+                      placeholder="ex) 업로드 후 2개월간 동종 선케어 브랜드 광고 불가"
+                      value={draft.exclusivity}
+                      onChange={(event) => updateDraft({ exclusivity: event.target.value })}
+                    />
+                  </div>
+
+                  <div>
+                    <Label>지급 조건</Label>
+                    <Textarea
+                      className="mt-1.5 min-h-[110px]"
+                      placeholder="ex) 총 1,200,000원, 세금계산서 수령 후 7영업일 내 지급"
+                      value={draft.payment}
+                      onChange={(event) => updateDraft({ payment: event.target.value })}
+                    />
+                  </div>
+                </section>
               )}
 
               {step === 4 && (
-                <div className="animate-in fade-in slide-in-from-right-4 space-y-6">
+                <section className="animate-in fade-in slide-in-from-right-4 space-y-6">
                   <div>
-                    <Label className="mb-2 block">
-                      즐겨찾는 기본 특약 추가
-                    </Label>
-                    <div className="flex gap-2">
+                    <Label className="mb-2 block">즐겨찾는 기본 특약 추가</Label>
+                    <div className="flex flex-wrap gap-2">
                       <Button
+                        type="button"
                         variant="outline"
                         size="sm"
                         onClick={() => addTemplateClause("delivery")}
-                        className="text-xs"
+                        className="rounded-none text-xs"
                       >
-                        + 파손 책임 (공급사)
+                        <Plus className="mr-1 h-3 w-3" /> 파손 책임
                       </Button>
                       <Button
+                        type="button"
                         variant="outline"
                         size="sm"
                         onClick={() => addTemplateClause("cs")}
-                        className="text-xs"
+                        className="rounded-none text-xs"
                       >
-                        + 고객 CS 전담 (공급사)
+                        <Plus className="mr-1 h-3 w-3" /> 고객 CS 전담
                       </Button>
                     </div>
                   </div>
 
-                  <div className="bg-gray-50 border border-gray-200 p-4 rounded-xl">
-                    <h3 className="text-sm font-semibold mb-3">
-                      직접 특약 추가
-                    </h3>
+                  <div className="border border-neutral-200 bg-white p-4">
+                    <h3 className="mb-3 text-sm font-semibold">직접 특약 추가</h3>
                     <div className="space-y-3">
                       <Input
                         placeholder="조항 카테고리 (ex: 비밀유지)"
-                        value={formData.newClauseCategory}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            newClauseCategory: e.target.value,
-                          })
+                        value={draft.newClauseCategory}
+                        onChange={(event) =>
+                          updateDraft({ newClauseCategory: event.target.value })
                         }
                       />
                       <Textarea
                         placeholder="세부 내용을 입력하세요"
-                        value={formData.newClauseContent}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            newClauseContent: e.target.value,
-                          })
+                        value={draft.newClauseContent}
+                        onChange={(event) =>
+                          updateDraft({ newClauseContent: event.target.value })
                         }
                       />
                       <Button
+                        type="button"
                         variant="secondary"
-                        className="w-full"
+                        className="w-full rounded-none"
                         onClick={addCustomClause}
-                        disabled={!formData.newClauseContent}
+                        disabled={!draft.newClauseContent.trim()}
                       >
                         조항 추가하기
                       </Button>
                     </div>
                   </div>
-                </div>
+
+                  {draft.customClauses.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-neutral-400">
+                        추가된 특약
+                      </p>
+                      {draft.customClauses.map((clause) => (
+                        <div
+                          key={clause.id}
+                          className="flex items-start justify-between gap-3 border border-neutral-200 bg-white p-3"
+                        >
+                          <div className="min-w-0">
+                            <p className="text-[13px] font-semibold text-neutral-900">
+                              {clause.category}
+                            </p>
+                            <p className="mt-1 line-clamp-2 text-[12px] leading-5 text-neutral-500">
+                              {clause.content}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeCustomClause(clause.id)}
+                            className="shrink-0 p-1 text-neutral-400 hover:text-neutral-900"
+                            aria-label="특약 삭제"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              )}
+
+              {step === 5 && (
+                <section className="animate-in fade-in slide-in-from-right-4 space-y-5">
+                  {allErrors.length > 0 ? (
+                    <ValidationSummary errors={allErrors} />
+                  ) : (
+                    <div className="border border-emerald-200 bg-emerald-50 p-4 text-[13px] text-emerald-800">
+                      필수 조건이 모두 채워졌습니다. 초안 저장 또는 공유 링크 생성을 선택하세요.
+                    </div>
+                  )}
+
+                  {result?.stale && (
+                    <div className="border border-amber-200 bg-amber-50 p-4 text-[13px] leading-6 text-amber-800">
+                      계약 내용을 수정했습니다. 기존 공유 링크에 반영하려면 다시 공유 링크를 생성하세요.
+                    </div>
+                  )}
+
+                  <ReviewBlock title="계약 당사자">
+                    <SummaryRow label="광고주" value={draft.advertiserName || "미입력"} />
+                    <SummaryRow label="담당자" value={draft.advertiserManager || "-"} />
+                    <SummaryRow label="인플루언서" value={draft.influencerName || "미입력"} />
+                  </ReviewBlock>
+
+                  <ReviewBlock title="캠페인 조건">
+                    <SummaryRow
+                      label="기간"
+                      value={
+                        draft.campaignStart && draft.campaignEnd
+                          ? `${draft.campaignStart} - ${draft.campaignEnd}`
+                          : "미입력"
+                      }
+                    />
+                    <SummaryRow label="업로드 마감" value={draft.uploadDueDate || "미입력"} />
+                    <SummaryRow label="검수 기한" value={draft.reviewDueDate || "미입력"} />
+                    <SummaryRow label="수정 횟수" value={draft.revisionLimit || "미입력"} />
+                  </ReviewBlock>
+
+                  <ReviewBlock title="발송 상태">
+                    <div className="flex items-start gap-3">
+                      <ShieldCheck className="mt-0.5 h-4 w-4 text-neutral-500" />
+                      <p className="text-[13px] leading-6 text-neutral-600">
+                        공유 링크 생성 전에는 대시보드에 <b>초안</b>으로 저장됩니다. 링크 생성 후에만
+                        <b> 검토 중</b> 상태로 전환됩니다.
+                      </p>
+                    </div>
+                  </ReviewBlock>
+                </section>
               )}
             </div>
 
-            <div className="flex gap-4 mt-16 pt-8 border-t border-neutral-200">
+            <div className="mt-12 flex gap-3 border-t border-neutral-200 pt-7">
               {step > 1 && (
-                <Button variant="outline" className="h-[52px] px-8 rounded-none font-medium text-neutral-600 border-neutral-200 hover:bg-neutral-100 hover:text-neutral-900 transition-colors uppercase tracking-wider text-[12px]" onClick={() => setStep(step - 1)}>
-                  Back
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-[52px] rounded-none border-neutral-200 px-7 text-[12px] font-medium uppercase tracking-wider text-neutral-600 shadow-none hover:bg-neutral-100 hover:text-neutral-900"
+                  onClick={goBack}
+                >
+                  이전
                 </Button>
               )}
 
-              {step < 4 ? (
-                <Button className="flex-1 h-[52px] rounded-none bg-neutral-900 hover:bg-neutral-800 text-white text-[12px] font-medium uppercase tracking-wider transition-colors" onClick={() => setStep(step + 1)}>Continue</Button>
-              ) : generatedLink ? (
-                <div />
-              ) : (
+              {step < 5 ? (
                 <Button
-                  className="flex-1 h-[52px] rounded-none bg-neutral-900 hover:bg-neutral-800 text-white text-[12px] font-medium uppercase tracking-wider transition-colors"
-                  onClick={handleSaveAndShare}
+                  type="button"
+                  className="h-[52px] flex-1 rounded-none bg-neutral-900 text-[12px] font-medium uppercase tracking-wider text-white shadow-none hover:bg-neutral-800"
+                  onClick={goNext}
                 >
-                  Generate Contract
+                  다음
                 </Button>
+              ) : (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-[52px] flex-1 rounded-none border-neutral-200 text-[12px] font-medium uppercase tracking-wider text-neutral-700 shadow-none hover:bg-neutral-100"
+                    onClick={() => saveContract("draft")}
+                  >
+                    초안 저장
+                  </Button>
+                  <Button
+                    type="button"
+                    className="h-[52px] flex-1 rounded-none bg-neutral-900 text-[12px] font-medium uppercase tracking-wider text-white shadow-none hover:bg-neutral-800"
+                    onClick={() => saveContract("share")}
+                    disabled={currentStepHasBlockingError}
+                  >
+                    공유 링크 생성
+                  </Button>
+                </>
               )}
             </div>
 
-            {generatedLink && (
-              <div className="mt-12 p-8 bg-white border border-neutral-200 flex flex-col items-center text-center shadow-[0_4px_24px_rgba(0,0,0,0.02)]">
-                <div className="w-12 h-12 bg-neutral-50 rounded-full flex items-center justify-center mb-6">
-                  <CheckCircle2 strokeWidth={1.5} className="w-6 h-6 text-neutral-900" />
+            {result && (
+              <div className="mt-10 border border-neutral-200 bg-white p-7 text-center shadow-[0_4px_24px_rgba(0,0,0,0.02)]">
+                <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-neutral-50">
+                  <CheckCircle2 strokeWidth={1.5} className="h-6 w-6 text-neutral-900" />
                 </div>
-                <h3 className="text-xl font-heading text-neutral-900 mb-3 tracking-tight">
-                  Contract Generated
+                <h3 className="mb-3 text-xl font-heading tracking-tight text-neutral-900">
+                  {result.mode === "draft" ? "초안 저장 완료" : "공유 링크 생성 완료"}
                 </h3>
-                <p className="text-[13px] text-neutral-500 mb-8 max-w-[280px]">
-                  Your contract is ready. Copy the link below to share with the counterparty.
+                <p className="mx-auto mb-6 max-w-[320px] text-[13px] leading-6 text-neutral-500">
+                  {result.mode === "draft"
+                    ? "계약이 초안 상태로 저장되었습니다. 아직 상대방에게 공유되지 않았습니다."
+                    : "이 링크를 전달하면 상대방이 계약서를 검토할 수 있습니다."}
                 </p>
-                <div className="flex w-full items-center gap-3">
-                  <Input
-                    readOnly
-                    value={generatedLink}
-                    className="flex-1 h-[44px] border-neutral-200 bg-neutral-50 text-neutral-600 font-mono text-[12px] focus-visible:ring-0 rounded-none px-4"
-                  />
+                {result.mode === "share" && result.link && (
+                  <div className="flex w-full items-center gap-3">
+                    <Input
+                      readOnly
+                      value={result.link}
+                      className="h-[44px] flex-1 rounded-none border-neutral-200 bg-neutral-50 px-4 font-mono text-[12px] text-neutral-600 focus-visible:ring-0"
+                    />
+                    <Button
+                      type="button"
+                      onClick={copyToClipboard}
+                      disabled={result.stale}
+                      className="h-[44px] shrink-0 rounded-none bg-neutral-900 px-5 text-[12px] font-medium uppercase tracking-wider text-white hover:bg-neutral-800 disabled:bg-neutral-100 disabled:text-neutral-400"
+                    >
+                      <Copy className="mr-2 h-3.5 w-3.5" />
+                      {copied ? "복사됨" : "복사"}
+                    </Button>
+                  </div>
+                )}
+                {savedContractId && (
                   <Button
-                    onClick={copyToClipboard}
-                    className={`shrink-0 h-[44px] px-6 rounded-none font-medium text-[12px] uppercase tracking-wider transition-colors ${copied ? "bg-neutral-100 text-neutral-900" : "bg-neutral-900 text-white hover:bg-neutral-800"}`}
+                    type="button"
+                    variant="outline"
+                    className="mt-4 h-10 rounded-none border-neutral-200 px-5 text-[12px] font-medium text-neutral-700"
+                    onClick={() => navigate(`/marketing/contract/${savedContractId}`)}
                   >
-                    {copied ? (
-                      "Copied"
-                    ) : (
-                      "Copy Link"
-                    )}
+                    관리 화면 열기
                   </Button>
-                </div>
+                )}
               </div>
             )}
           </div>
         </section>
 
-        {/* Right Pane - Preview */}
-        <section className="flex-1 bg-[#FAFAFA] flex flex-col overflow-hidden hidden lg:flex p-12 pl-0">
-          <div className="flex-1 bg-white border border-neutral-100 shadow-[0_8px_40px_rgba(0,0,0,0.04)] flex flex-col relative">
-            <div className="h-[80px] bg-white border-b border-neutral-100 flex items-center px-12 text-neutral-400 text-[10px] uppercase font-medium tracking-[0.2em] shrink-0 justify-between">
+        <section className="hidden flex-1 flex-col overflow-hidden bg-[#FAFAFA] p-12 pl-0 lg:flex">
+          <div className="relative flex flex-1 flex-col border border-neutral-100 bg-white shadow-[0_8px_40px_rgba(0,0,0,0.04)]">
+            <div className="flex h-[80px] shrink-0 items-center justify-between border-b border-neutral-100 bg-white px-12 text-[10px] font-medium uppercase tracking-[0.2em] text-neutral-400">
               <span>Preview</span>
-              <span className="font-mono">{new Date().toISOString().split('T')[0]}</span>
+              <span className="font-mono">{new Date().toISOString().split("T")[0]}</span>
             </div>
 
-            <div className="flex-1 p-16 text-neutral-800 leading-relaxed overflow-y-auto space-y-12 custom-scrollbar">
-              <div className="text-4xl font-heading font-light text-neutral-900 mb-16 tracking-tight text-center">
-                {formData.title || `${formData.type} 계약서`}
+            <div className="flex-1 space-y-12 overflow-y-auto p-16 leading-relaxed text-neutral-800 custom-scrollbar">
+              <div className="mb-16 text-center text-4xl font-heading font-light tracking-tight text-neutral-900">
+                {draft.title || `${draft.type} 계약서`}
               </div>
 
-              <div className="text-[14px] space-y-12">
+              <div className="space-y-12 text-[14px]">
                 <div>
-                  <h4 className="font-medium text-neutral-900 mb-4 text-[13px] uppercase tracking-[0.1em]">
+                  <h4 className="mb-4 text-[13px] font-medium uppercase tracking-[0.1em] text-neutral-900">
                     Contracting Parties
                   </h4>
-                  <div className="pl-6 border-l border-neutral-200 space-y-2 text-neutral-600">
-                    <p><span className="text-neutral-400 mr-2">甲方</span> (Advertiser) 당근 마케팅랩</p>
-                    <p><span className="text-neutral-400 mr-2">乙方</span> (Influencer) {formData.influencerName || "[Name]"}</p>
-                    <p className="text-[12px] text-neutral-400 font-mono mt-2">
-                      {formData.influencerUrl}
+                  <div className="space-y-2 border-l border-neutral-200 pl-6 text-neutral-600">
+                    <p>
+                      <span className="mr-2 text-neutral-400">甲方</span>
+                      (Advertiser) {draft.advertiserName || "[광고주명]"}
+                    </p>
+                    <p>
+                      <span className="mr-2 text-neutral-400">乙方</span>
+                      (Influencer) {draft.influencerName || "[인플루언서명]"}
+                    </p>
+                    <p className="mt-2 font-mono text-[12px] text-neutral-400">
+                      {draft.influencerUrl || "채널 URL 미입력"}
                     </p>
                   </div>
                 </div>
 
-                {generateClauses().map((clause, i) => (
-                  <div
-                    key={clause.clause_id}
-                    className="pt-10 border-t border-neutral-100"
-                  >
-                    <h4 className="font-medium text-neutral-900 mb-4 text-[13px] uppercase tracking-[0.1em] flex gap-4">
-                      <span className="text-neutral-400 font-mono">{(i + 1).toString().padStart(2, '0')}</span> 
-                      {clause.category}
-                    </h4>
-                    <p className="text-neutral-600 leading-[1.8] whitespace-pre-wrap pl-8">
-                      {clause.content}
-                    </p>
+                {clauses.length === 0 ? (
+                  <div className="border border-dashed border-neutral-200 p-8 text-center text-[13px] text-neutral-400">
+                    입력된 조건을 바탕으로 계약 조항 미리보기가 생성됩니다.
                   </div>
-                ))}
+                ) : (
+                  clauses.map((clause, index) => (
+                    <div key={clause.clause_id} className="border-t border-neutral-100 pt-10">
+                      <h4 className="mb-4 flex gap-4 text-[13px] font-medium uppercase tracking-[0.1em] text-neutral-900">
+                        <span className="font-mono text-neutral-400">
+                          {(index + 1).toString().padStart(2, "0")}
+                        </span>
+                        {clause.category}
+                      </h4>
+                      <p className="whitespace-pre-wrap pl-8 leading-[1.8] text-neutral-600">
+                        {clause.content}
+                      </p>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>
@@ -653,3 +1288,38 @@ export function ContractBuilder() {
     </div>
   );
 }
+
+const ValidationSummary: React.FC<{ errors: ValidationError[] }> = ({ errors }) => (
+  <div className="mb-6 border border-amber-200 bg-amber-50 p-4 text-[13px] text-amber-800">
+    <p className="mb-2 font-semibold">확인이 필요한 항목</p>
+    <ul className="space-y-1">
+      {errors.map((error) => (
+        <li key={`${error.step}-${error.field}`}>- {error.message}</li>
+      ))}
+    </ul>
+  </div>
+);
+
+const ReviewBlock: React.FC<{ title: string; children: React.ReactNode }> = ({
+  title,
+  children,
+}) => (
+  <div className="border border-neutral-200 bg-white p-4">
+    <h3 className="mb-3 text-[12px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
+      {title}
+    </h3>
+    <div className="space-y-2">{children}</div>
+  </div>
+);
+
+const SummaryRow: React.FC<{ label: string; value: string }> = ({
+  label,
+  value,
+}) => (
+  <div className="flex items-start justify-between gap-4 text-[13px]">
+    <span className="text-neutral-400">{label}</span>
+    <span className="max-w-[260px] text-right font-medium text-neutral-800">
+      {value}
+    </span>
+  </div>
+);

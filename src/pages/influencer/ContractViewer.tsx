@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useAppStore, Clause } from "../../store";
+import { ContractStatus, useAppStore, Clause } from "../../store";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -31,6 +31,7 @@ export function ContractViewer() {
   const navigate = useNavigate();
   const getContract = useAppStore((state) => state.getContract);
   const updateClauseStatus = useAppStore((state) => state.updateClauseStatus);
+  const updateContract = useAppStore((state) => state.updateContract);
   const contract = getContract(id || "");
 
   // Selection state
@@ -117,9 +118,24 @@ export function ContractViewer() {
     setIsSignLoading(true);
     const dataUrl = canvas.toDataURL("image/png");
 
-    // Simulate updating contract status
-    useAppStore.getState().updateContract(contract.id, {
+    updateContract(contract.id, {
       status: "SIGNED",
+      evidence: {
+        share_token_status: "active",
+        share_token_expires_at: contract.evidence?.share_token_expires_at,
+        audit_ready: true,
+        pdf_status: "signed_ready",
+      },
+      audit_events: [
+        ...(contract.audit_events ?? []),
+        {
+          id: `audit_${Date.now()}`,
+          actor: "influencer",
+          action: "contract_signed",
+          description: "인플루언서가 전자서명을 완료했습니다.",
+          created_at: new Date().toISOString(),
+        },
+      ],
       signature_data: {
         adv_sign: "...",
         inf_sign: dataUrl,
@@ -216,6 +232,17 @@ export function ContractViewer() {
     return (
       <div className="p-8 text-center text-gray-500">
         계약서를 찾을 수 없습니다.
+      </div>
+    );
+  }
+
+  if (
+    contract.status === "DRAFT" ||
+    contract.evidence?.share_token_status === "not_issued"
+  ) {
+    return (
+      <div className="p-8 text-center text-gray-500">
+        아직 공유 링크가 발급되지 않은 계약입니다.
       </div>
     );
   }
@@ -332,7 +359,9 @@ export function ContractViewer() {
                     <p className="text-[10px] uppercase tracking-widest text-neutral-400 mb-4">
                       甲方 (Advertiser)
                     </p>
-                    <p className="text-neutral-900 font-serif text-2xl italic">당근 마케팅랩</p>
+                    <p className="text-neutral-900 font-serif text-2xl italic">
+                      {contract.advertiser_info?.name || "광고주"}
+                    </p>
                     {contract.status === "SIGNED" &&
                       contract.signature_data && (
                         <p className="mt-4 text-[10px] tracking-widest uppercase font-medium text-emerald-600 border border-emerald-200 bg-emerald-50 px-4 py-2">
@@ -465,7 +494,9 @@ export function ContractViewer() {
                 Status
               </p>
               <p className="text-lg font-heading tracking-tight text-neutral-900">
-                {contract.status === "NEGOTIATING" ? "Action Required" : contract.status}
+                {contract.status === "NEGOTIATING"
+                  ? "Action Required"
+                  : getStatusLabel(contract.status)}
               </p>
               {!allApproved && (
                 <p className="text-[11px] text-amber-600 mt-1 uppercase tracking-widest font-mono">
@@ -581,3 +612,13 @@ export function ContractViewer() {
     </div>
   );
 }
+
+const STATUS_LABELS: Record<ContractStatus, string> = {
+  DRAFT: "작성 중",
+  REVIEWING: "검토 중",
+  NEGOTIATING: "수정 요청",
+  APPROVED: "서명 대기",
+  SIGNED: "완료",
+};
+
+const getStatusLabel = (status: ContractStatus) => STATUS_LABELS[status] ?? status;
