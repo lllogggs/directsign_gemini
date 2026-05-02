@@ -1,40 +1,52 @@
-import React, { useState, useEffect, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { ContractStatus, useAppStore, Clause } from "../../store";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import React, { useEffect, useRef, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useAppStore, type Contract, type ContractStatus } from "../../store";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
-  DialogDescription,
 } from "@/components/ui/dialog";
 import {
-  PenTool,
-  Trash2,
-  Check,
-  MessageSquare,
-  AlertCircle,
-  FileSignature,
+  AlertTriangle,
+  CheckCircle2,
+  Clock3,
   Eraser,
+  FileSignature,
+  FileText,
+  MessageSquare,
+  PenTool,
+  ShieldCheck,
+  Trash2,
 } from "lucide-react";
 import { format } from "date-fns";
-import { ko } from "date-fns/locale";
-import html2canvas from "html2canvas";
-import { jsPDF } from "jspdf";
+
+type CanvasPoint = {
+  x: number;
+  y: number;
+};
+
+const STATUS_LABELS: Record<ContractStatus, string> = {
+  DRAFT: "초안",
+  REVIEWING: "검토 중",
+  NEGOTIATING: "수정 요청",
+  APPROVED: "서명 가능",
+  SIGNED: "서명 완료",
+};
+
+const getStatusLabel = (status: ContractStatus) => STATUS_LABELS[status] ?? status;
 
 export function ContractViewer() {
   const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const getContract = useAppStore((state) => state.getContract);
   const updateClauseStatus = useAppStore((state) => state.updateClauseStatus);
-  const updateContract = useAppStore((state) => state.updateContract);
+  const replaceContract = useAppStore((state) => state.replaceContract);
   const contract = getContract(id || "");
 
-  // Selection state
   const [selection, setSelection] = useState<{
     text: string;
     clauseId: string;
@@ -52,55 +64,81 @@ export function ContractViewer() {
   const [feedbackComment, setFeedbackComment] = useState("");
 
   const [showSignModal, setShowSignModal] = useState(false);
-  const [signatureData, setSignatureData] = useState<string | null>(null);
-
-  // Signature Canvas Ref
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const contractDocRef = useRef<HTMLElement>(null);
-  const [isDrawing, setIsDrawing] = useState(false);
+  const isDrawingRef = useRef(false);
+  const lastPointRef = useRef<CanvasPoint | null>(null);
+  const [hasSignatureStroke, setHasSignatureStroke] = useState(false);
   const [isSignLoading, setIsSignLoading] = useState(false);
+  const [signerName, setSignerName] = useState("");
+  const [consentAccepted, setConsentAccepted] = useState(false);
+
+  const shareToken = searchParams.get("token") ?? "";
+  const [isFetchingSharedContract, setIsFetchingSharedContract] = useState(false);
+  const [sharedContractError, setSharedContractError] = useState("");
+
+  const getCanvasPoint = (e: React.MouseEvent | React.TouchEvent): CanvasPoint | null => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+
+    const rect = canvas.getBoundingClientRect();
+
+    if ("touches" in e) {
+      const touch = e.touches[0] ?? e.changedTouches[0];
+      if (!touch) return null;
+      e.preventDefault();
+      return {
+        x: touch.clientX - rect.left,
+        y: touch.clientY - rect.top,
+      };
+    }
+
+    return {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    };
+  };
 
   const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
-    setIsDrawing(true);
-    draw(e);
+    const point = getCanvasPoint(e);
+    if (!point) return;
+
+    isDrawingRef.current = true;
+    lastPointRef.current = point;
   };
 
   const stopDrawing = () => {
-    setIsDrawing(false);
+    isDrawingRef.current = false;
+    lastPointRef.current = null;
     const canvas = canvasRef.current;
     if (canvas) {
       const ctx = canvas.getContext("2d");
-      if (ctx) ctx.beginPath(); // reset path
+      if (ctx) ctx.beginPath();
     }
   };
 
   const draw = (e: React.MouseEvent | React.TouchEvent) => {
-    if (!isDrawing) return;
+    if (!isDrawingRef.current) return;
+    const point = getCanvasPoint(e);
+    const previousPoint = lastPointRef.current;
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!point || !previousPoint || !canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
     ctx.lineWidth = 2;
     ctx.lineCap = "round";
     ctx.strokeStyle = "#000";
+    ctx.beginPath();
+    ctx.moveTo(previousPoint.x, previousPoint.y);
+    ctx.lineTo(point.x, point.y);
+    ctx.stroke();
 
-    const rect = canvas.getBoundingClientRect();
-    let x, y;
-
-    if ("touches" in e) {
-      x = e.touches[0].clientX - rect.left;
-      y = e.touches[0].clientY - rect.top;
-      e.preventDefault(); // prevent scrolling while signing
-    } else {
-      x = (e as React.MouseEvent).clientX - rect.left;
-      y = (e as React.MouseEvent).clientY - rect.top;
+    if (Math.hypot(point.x - previousPoint.x, point.y - previousPoint.y) > 1) {
+      setHasSignatureStroke(true);
     }
 
-    ctx.lineTo(x, y);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(x, y);
+    lastPointRef.current = point;
   };
 
   const clearSignature = () => {
@@ -109,49 +147,72 @@ export function ContractViewer() {
       const ctx = canvas.getContext("2d");
       if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
     }
+    setHasSignatureStroke(false);
   };
 
   const handleSignComplete = async () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
+    if (!hasSignatureStroke) {
+      alert("서명을 완료하려면 먼저 서명란에 직접 서명해 주세요.");
+      return;
+    }
+    if (!signerName.trim()) {
+      alert("서명자 이름을 입력해 주세요.");
+      return;
+    }
+    if (!consentAccepted) {
+      alert("전자서명 동의 확인이 필요합니다.");
+      return;
+    }
+
     setIsSignLoading(true);
     const dataUrl = canvas.toDataURL("image/png");
+    const consentText = "계약 조항을 확인했고 전자서명에 동의합니다.";
 
-    updateContract(contract.id, {
-      status: "SIGNED",
-      evidence: {
-        share_token_status: "active",
-        share_token_expires_at: contract.evidence?.share_token_expires_at,
-        audit_ready: true,
-        pdf_status: "signed_ready",
-      },
-      audit_events: [
-        ...(contract.audit_events ?? []),
-        {
-          id: `audit_${Date.now()}`,
-          actor: "influencer",
-          action: "contract_signed",
-          description: "인플루언서가 전자서명을 완료했습니다.",
-          created_at: new Date().toISOString(),
+    try {
+      const response = await fetch(`/api/contracts/${contract.id}/signatures/influencer`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          "X-DirectSign-Share-Token": shareToken,
         },
-      ],
-      signature_data: {
-        adv_sign: "...",
-        inf_sign: dataUrl,
-        signed_at: new Date().toISOString(),
-        ip: "127.0.0.1",
-      },
-    });
+        body: JSON.stringify({
+          signature_data: dataUrl,
+          signer_name: signerName.trim(),
+          consent_accepted: consentAccepted,
+          consent_text: consentText,
+        }),
+      });
 
-    setSignatureData(dataUrl);
+      const result = (await response.json()) as {
+        contract?: typeof contract;
+        error?: string;
+      };
+
+      if (!response.ok || !result.contract) {
+        throw new Error(result.error ?? "서명 저장에 실패했습니다.");
+      }
+
+      replaceContract(result.contract);
+    } catch (error) {
+      setIsSignLoading(false);
+      alert(error instanceof Error ? error.message : "서명 저장에 실패했습니다.");
+      return;
+    }
+
     setShowSignModal(false);
 
-    // Wait for react to render the signature image
-    await new Promise((r) => setTimeout(r, 500));
+    await new Promise((resolve) => setTimeout(resolve, 500));
 
     if (contractDocRef.current) {
       try {
+        const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+          import("html2canvas"),
+          import("jspdf"),
+        ]);
         const docCanvas = await html2canvas(contractDocRef.current, {
           scale: 2,
         });
@@ -166,21 +227,22 @@ export function ContractViewer() {
         const pdfHeight = (docCanvas.height * pdfWidth) / docCanvas.width;
 
         pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
-        pdf.save(`${contract.title.replace(/\s+/g, "_")}_전자계약.pdf`);
+        pdf.save(`${contract.title.replace(/\s+/g, "_")}_signed_contract.pdf`);
       } catch (err) {
-        console.error("PDF 생성 에러:", err);
+        console.error("PDF generation error:", err);
       }
     }
 
     setIsSignLoading(false);
-    alert("계약이 성공적으로 체결되었으며, 사본(PDF)이 다운로드 되었습니다!");
+    alert("계약 서명이 완료되었습니다. 서명본 PDF가 다운로드되었습니다.");
   };
 
-  // Setup canvas size
   useEffect(() => {
     if (showSignModal && canvasRef.current) {
       const canvas = canvasRef.current;
-      // Fixed size for modal
+      isDrawingRef.current = false;
+      lastPointRef.current = null;
+      setHasSignatureStroke(false);
       canvas.width = canvas.offsetWidth;
       canvas.height = canvas.offsetHeight;
       const ctx = canvas.getContext("2d");
@@ -188,21 +250,21 @@ export function ContractViewer() {
         ctx.fillStyle = "#fff";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
       }
+      setSignerName(contract?.influencer_info.name ?? "");
+      setConsentAccepted(false);
     }
-  }, [showSignModal]);
+  }, [contract?.influencer_info.name, showSignModal]);
 
   useEffect(() => {
-    const handleMouseUp = (e: MouseEvent) => {
+    const handleMouseUp = () => {
       const sel = window.getSelection();
       if (!sel || sel.isCollapsed) {
         if (selection?.showTooltip) {
-          // Close after a slight delay to allow button clicks inside tooltip
           setTimeout(() => setSelection(null), 150);
         }
         return;
       }
 
-      // Check if selection is within a clause element
       const anchorNode = sel.anchorNode;
       if (!anchorNode) return;
 
@@ -228,30 +290,156 @@ export function ContractViewer() {
     return () => document.removeEventListener("mouseup", handleMouseUp);
   }, [selection]);
 
-  if (!contract) {
+  useEffect(() => {
+    if (!id || contract || !shareToken) return;
+
+    let cancelled = false;
+
+    const fetchSharedContract = async () => {
+      setIsFetchingSharedContract(true);
+      setSharedContractError("");
+
+      try {
+        const response = await fetch(
+          `/api/contracts/${encodeURIComponent(id)}?token=${encodeURIComponent(shareToken)}`,
+          {
+            headers: { Accept: "application/json" },
+            credentials: "include",
+          },
+        );
+        const data = (await response.json()) as {
+          contract?: Contract;
+          error?: string;
+        };
+
+        if (!response.ok || !data.contract) {
+          throw new Error(data.error ?? "계약을 불러올 수 없습니다.");
+        }
+
+        if (!cancelled) {
+          replaceContract(data.contract);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setSharedContractError(
+            error instanceof Error
+              ? error.message
+              : "계약을 불러올 수 없습니다.",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setIsFetchingSharedContract(false);
+        }
+      }
+    };
+
+    void fetchSharedContract();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [contract, id, replaceContract, shareToken]);
+
+  if (!contract && isFetchingSharedContract) {
     return (
-      <div className="p-8 text-center text-gray-500">
-        계약서를 찾을 수 없습니다.
-      </div>
+      <AccessMessage
+        title="계약을 확인하는 중입니다"
+        description="공유 링크 권한을 확인하고 계약 내용을 불러오고 있습니다."
+      />
     );
   }
+
+  if (!contract && sharedContractError) {
+    return (
+      <AccessMessage
+        title="계약을 불러올 수 없습니다"
+        description={sharedContractError}
+      />
+    );
+  }
+
+  if (!contract) {
+    return (
+      <AccessMessage
+        title="계약서를 찾을 수 없습니다"
+        description="계약서가 삭제되었거나 링크가 올바르지 않을 수 있습니다."
+      />
+    );
+  }
+
+  const expectedShareToken = contract.evidence?.share_token;
+  const shareTokenExpired =
+    Boolean(contract.evidence?.share_token_expires_at) &&
+    new Date(contract.evidence!.share_token_expires_at!).getTime() < Date.now();
+  const shareTokenRequired =
+    contract.evidence?.share_token_status === "active" &&
+    Boolean(expectedShareToken);
+  const hasValidShareToken = !shareTokenRequired || shareToken === expectedShareToken;
 
   if (
     contract.status === "DRAFT" ||
-    contract.evidence?.share_token_status === "not_issued"
+    contract.evidence?.share_token_status === "not_issued" ||
+    contract.evidence?.share_token_status === "revoked"
   ) {
     return (
-      <div className="p-8 text-center text-gray-500">
-        아직 공유 링크가 발급되지 않은 계약입니다.
-      </div>
+      <AccessMessage
+        title="아직 활성화되지 않은 검토 링크입니다"
+        description="광고주에게 새 계약 검토 링크 발급을 요청해 주세요."
+      />
     );
   }
 
-  const allApproved = contract.clauses.every((c) => c.status === "APPROVED");
-  const isInfluencer = true; // Simulating influencer view
+  if (shareTokenExpired || !hasValidShareToken) {
+    return (
+      <AccessMessage
+        title="보안 링크가 만료되었습니다"
+        description="계속 진행하려면 광고주에게 새 검토 링크를 요청해 주세요."
+      />
+    );
+  }
+
+  const allApproved = contract.clauses.every((clause) => clause.status === "APPROVED");
+  const pendingClauses = contract.clauses.filter(
+    (clause) => clause.status !== "APPROVED",
+  ).length;
+  const approvedClauses = contract.clauses.length - pendingClauses;
+  const lastUpdated = format(new Date(contract.updated_at), "yyyy.MM.dd");
+  const deadline = contract.campaign?.deadline
+    ? format(new Date(contract.campaign.deadline), "yyyy.MM.dd")
+    : contract.campaign?.end_date || contract.campaign?.period || "미지정";
+  const reviewTone = allApproved ? "text-emerald-700" : "text-amber-700";
+
+  const plainSummary = [
+    {
+      label: "캠페인",
+      value: contract.title,
+    },
+    {
+      label: "보상",
+      value: contract.campaign?.budget || "미지정",
+    },
+    {
+      label: "마감일",
+      value: deadline,
+    },
+    {
+      label: "산출물",
+      value:
+        contract.campaign?.deliverables?.join(", ") ||
+        contract.campaign?.platforms?.join(", ") ||
+        "조항에서 확인",
+    },
+  ];
 
   const handleFeedbackSubmit = () => {
     if (!feedbackModal) return;
+    const trimmedComment = feedbackComment.trim();
+
+    if (!trimmedComment) {
+      alert("광고주가 요청 의도를 이해할 수 있도록 사유를 입력해 주세요.");
+      return;
+    }
 
     updateClauseStatus(
       contract.id,
@@ -263,9 +451,10 @@ export function ContractViewer() {
           feedbackModal.type === "MODIFICATION_REQUESTED"
             ? "수정 요청"
             : "삭제 요청",
-        comment: `[선택: "${feedbackModal.selectedText}"]\n${feedbackComment}`,
+        comment: `[선택 문구: "${feedbackModal.selectedText}"]\n${trimmedComment}`,
         timestamp: new Date().toISOString(),
       },
+      { actor: "influencer", shareToken },
     );
 
     setFeedbackModal(null);
@@ -275,16 +464,15 @@ export function ContractViewer() {
   };
 
   return (
-    <div className="flex flex-col h-[100dvh] bg-[#FAFAFA] text-neutral-900 overflow-hidden font-sans">
-      {/* Selection Tooltip */}
+    <div className="flex min-h-[100dvh] flex-col bg-[#f7f8fa] text-neutral-950">
       {selection?.showTooltip && (
         <div
-          className="fixed z-50 transform -translate-x-1/2 -translate-y-full pb-3 animate-in fade-in zoom-in slide-in-from-bottom-2 duration-200"
+          className="fixed z-50 -translate-x-1/2 -translate-y-full pb-3 animate-in fade-in zoom-in-95 slide-in-from-bottom-1 duration-150"
           style={{ top: selection.y, left: selection.x }}
         >
-          <div className="bg-neutral-900 text-white rounded-none px-2 py-1.5 flex gap-1 items-center shadow-xl border border-neutral-800">
+          <div className="flex items-center gap-1 rounded-lg border border-neutral-800 bg-neutral-950 p-1 text-white shadow-2xl">
             <button
-              className="flex items-center gap-2 px-4 py-2 text-[12px] font-medium tracking-wider uppercase hover:bg-neutral-800 transition-colors"
+              className="flex h-10 items-center gap-2 rounded-md px-3 text-xs font-semibold hover:bg-white/10"
               onMouseDown={(e) => {
                 e.preventDefault();
                 setFeedbackModal({
@@ -295,11 +483,11 @@ export function ContractViewer() {
                 });
               }}
             >
-              <PenTool strokeWidth={1.5} className="w-3.5 h-3.5" /> Modify
+              <PenTool className="h-3.5 w-3.5" strokeWidth={1.8} />
+              수정 요청
             </button>
-            <div className="w-px h-4 bg-neutral-700 mx-2" />
             <button
-              className="flex items-center gap-2 px-4 py-2 text-[12px] font-medium tracking-wider uppercase hover:bg-neutral-800 transition-colors text-rose-400"
+              className="flex h-10 items-center gap-2 rounded-md px-3 text-xs font-semibold text-rose-200 hover:bg-white/10"
               onMouseDown={(e) => {
                 e.preventDefault();
                 setFeedbackModal({
@@ -310,301 +498,447 @@ export function ContractViewer() {
                 });
               }}
             >
-              <Trash2 strokeWidth={1.5} className="w-3.5 h-3.5" /> Delete
+              <Trash2 className="h-3.5 w-3.5" strokeWidth={1.8} />
+              삭제 요청
             </button>
           </div>
-          {/* Tooltip triangle */}
-          <div className="absolute left-1/2 bottom-2 transform -translate-x-1/2 w-3 h-3 bg-neutral-900 rotate-45 border-r border-b border-neutral-800" />
+          <div className="absolute bottom-2 left-1/2 h-3 w-3 -translate-x-1/2 rotate-45 bg-neutral-950" />
         </div>
       )}
 
-      {/* Header */}
-      <header className="h-[80px] px-6 md:px-12 border-b border-neutral-100 bg-white flex items-center justify-between z-10 shrink-0 relative">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-neutral-900 rounded-sm flex items-center justify-center text-white font-bold">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square" strokeLinejoin="miter"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      <header className="sticky top-0 z-30 border-b border-neutral-200 bg-white/95 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-neutral-950 text-white">
+              <ShieldCheck className="h-5 w-5" strokeWidth={1.8} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-500">
+                보안 계약 검토
+              </p>
+              <h1 className="truncate text-base font-semibold text-neutral-950 sm:text-lg">
+                {contract.title}
+              </h1>
+            </div>
           </div>
-          <span className="text-lg font-heading tracking-widest uppercase text-neutral-900">
-            DirectSign
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          {contract.status === "NEGOTIATING" && (
-            <span className="px-4 py-2 border border-amber-200 bg-amber-50 text-amber-700 rounded-none text-[11px] font-medium tracking-[0.1em] uppercase">
-              Action Required
-            </span>
-          )}
+          <div className="hidden items-center gap-2 sm:flex">
+            <StatusPill status={contract.status} allApproved={allApproved} />
+          </div>
         </div>
       </header>
 
-      {/* Document */}
-      <main className="flex-1 flex overflow-hidden relative pb-[80px]">
-        <section className="flex-1 bg-[#FAFAFA] flex flex-col pt-12 pb-20 px-4 md:px-8 overflow-y-auto relative custom-scrollbar">
-          <div
-            className="w-full max-w-[800px] flex flex-col bg-white shadow-[0_8px_40px_rgba(0,0,0,0.04)] border border-neutral-100 mx-auto relative mb-20 shrink-0 overflow-hidden"
-            ref={contractDocRef}
-          >
-            <div className="h-[80px] bg-white border-b border-neutral-100 flex items-center justify-between px-12 text-neutral-400 text-[10px] uppercase font-medium tracking-[0.2em] w-full z-10">
-              <span>{contract.type} Agreement</span>
-              <span className="font-mono">{contract.id}</span>
-            </div>
-            <div className="p-12 md:p-16">
-              <div className="text-center mb-16">
-                <h2 className="text-4xl font-heading font-light text-neutral-900 tracking-tight mb-12">
-                  {contract.title}
+      <main className="mx-auto grid w-full max-w-6xl flex-1 gap-4 px-4 pb-36 pt-4 sm:px-6 sm:pb-32 lg:grid-cols-[minmax(0,1fr)_340px] lg:px-8">
+        <section className="space-y-4">
+          <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm sm:p-6">
+            <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+              <div className="min-w-0">
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-medium text-neutral-700">
+                    {contract.type} 계약
+                  </span>
+                  <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+                    보안 링크 확인됨
+                  </span>
+                  <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-medium text-neutral-700 sm:hidden">
+                    {getStatusLabel(contract.status)}
+                  </span>
+                </div>
+                <h2 className="text-2xl font-semibold tracking-tight text-neutral-950 sm:text-3xl">
+                  서명 전 계약 내용을 확인하세요
                 </h2>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-neutral-600">
+                  핵심 조건을 먼저 확인하고, 수정이 필요한 조항은 해당 문구를 선택해
+                  요청을 남긴 뒤 모든 조항이 승인되면 서명할 수 있습니다.
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-2 md:w-64">
+                <MetricCard label="승인" value={`${approvedClauses}/${contract.clauses.length}`} />
+                <MetricCard label="대기" value={String(pendingClauses)} tone={pendingClauses ? "amber" : "green"} />
+              </div>
+            </div>
+          </div>
 
-                <div className="flex justify-center gap-16 text-[14px] text-neutral-600 font-medium py-10 border-y border-neutral-100">
-                  <div className="flex flex-col items-center">
-                    <p className="text-[10px] uppercase tracking-widest text-neutral-400 mb-4">
-                      甲方 (Advertiser)
-                    </p>
-                    <p className="text-neutral-900 font-serif text-2xl italic">
-                      {contract.advertiser_info?.name || "광고주"}
-                    </p>
-                    {contract.status === "SIGNED" &&
-                      contract.signature_data && (
-                        <p className="mt-4 text-[10px] tracking-widest uppercase font-medium text-emerald-600 border border-emerald-200 bg-emerald-50 px-4 py-2">
-                          Signed
-                        </p>
-                      )}
-                  </div>
-                  <div className="w-px bg-neutral-200"></div>
-                  <div className="flex flex-col items-center">
-                    <p className="text-[10px] uppercase tracking-widest text-neutral-400 mb-4">
-                      乙方 (Influencer)
-                    </p>
-                    <p className="text-neutral-900 font-serif text-2xl italic">
-                      {contract.influencer_info.name}
-                    </p>
-                    {contract.status === "SIGNED" &&
-                      contract.signature_data?.inf_sign && (
-                        <img
-                          src={contract.signature_data.inf_sign}
-                          alt="Signature"
-                          className="h-12 mt-4 mx-auto mix-blend-multiply opacity-80"
-                        />
-                      )}
-                  </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {plainSummary.map((item) => (
+              <div
+                key={item.label}
+                className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm"
+              >
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-500">
+                  {item.label}
+                </p>
+                <p className="mt-2 text-sm font-medium leading-6 text-neutral-950">
+                  {item.value}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          <section
+            ref={contractDocRef}
+            className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm"
+          >
+            <div className="border-b border-neutral-200 bg-neutral-50 px-5 py-4 sm:px-6">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-neutral-500">
+                    계약 조항
+                  </p>
+                  <h2 className="mt-1 text-lg font-semibold text-neutral-950">
+                    조항별 검토
+                  </h2>
+                </div>
+                <div className={`flex items-center gap-2 text-sm font-medium ${reviewTone}`}>
+                  {allApproved ? (
+                    <CheckCircle2 className="h-4 w-4" />
+                  ) : (
+                    <AlertTriangle className="h-4 w-4" />
+                  )}
+                  {allApproved ? "서명 준비 완료" : `${pendingClauses}개 조항 확인 필요`}
                 </div>
               </div>
+            </div>
 
-              <div className="space-y-12 text-neutral-800">
-                {contract.clauses.map((clause, i) => {
-                  const isDisputed = clause.status !== "APPROVED";
+            <div className="divide-y divide-neutral-200">
+              {contract.clauses.map((clause, index) => {
+                const isApproved = clause.status === "APPROVED";
 
-                  return (
-                    <div
-                      key={clause.clause_id}
-                      data-clause-id={clause.clause_id}
-                      className={`relative p-8 -mx-8 transition-all duration-300 
-                      ${isDisputed ? "bg-[#FAFAFA] border-y border-amber-100" : "bg-white hover:bg-neutral-50"}`}
-                    >
-                      <h3 className="font-medium text-neutral-900 mb-6 flex items-center justify-between text-[13px] uppercase tracking-[0.1em]">
-                        <span className="flex gap-4 items-center">
-                          <span className="text-neutral-400 font-mono">{(i + 1).toString().padStart(2, '0')}</span>
-                          {clause.category}
-                        </span>
-                        {isDisputed && (
-                          <span className="text-[10px] tracking-widest uppercase text-amber-600 border border-amber-200 bg-amber-50 px-3 py-1">
-                            Action
-                          </span>
+                return (
+                  <article
+                    key={clause.clause_id}
+                    data-clause-id={clause.clause_id}
+                    className={`p-5 transition-colors sm:p-6 ${
+                      isApproved ? "bg-white" : "bg-amber-50/55"
+                    }`}
+                  >
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="flex min-w-0 items-start gap-3">
+                        <div
+                          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${
+                            isApproved
+                              ? "bg-emerald-50 text-emerald-700"
+                              : "bg-amber-100 text-amber-800"
+                          }`}
+                        >
+                          {index + 1}
+                        </div>
+                        <div className="min-w-0">
+                          <h3 className="text-base font-semibold text-neutral-950">
+                            {clause.category}
+                          </h3>
+                          <p className="mt-1 text-xs text-neutral-500">
+                            아래 문구를 정확히 선택하면 수정이나 삭제 요청을 보낼 수 있습니다.
+                          </p>
+                        </div>
+                      </div>
+                      <span
+                        className={`inline-flex w-fit items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${
+                          isApproved
+                            ? "bg-emerald-50 text-emerald-700"
+                            : "bg-amber-100 text-amber-800"
+                        }`}
+                      >
+                        {isApproved ? (
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                        ) : (
+                          <Clock3 className="h-3.5 w-3.5" />
                         )}
-                      </h3>
+                        {isApproved ? "승인 완료" : "수정 요청 중"}
+                      </span>
+                    </div>
 
-                      <p className="text-neutral-600 leading-[1.8] font-normal selection:bg-neutral-200 selection:text-black text-[14px] whitespace-pre-wrap pl-8">
-                        {clause.content}
-                      </p>
+                    <div className="mt-5 rounded-lg border border-neutral-200 bg-white p-4 text-[15px] leading-7 text-neutral-800 selection:bg-blue-100 selection:text-blue-950 sm:p-5">
+                      <p className="whitespace-pre-wrap">{clause.content}</p>
+                    </div>
 
-                      {/* Thread History */}
-                      {clause.history.length > 0 && (
-                        <div className="mt-8 ml-8 space-y-6 bg-white p-8 border border-neutral-100 shadow-[0_4px_24px_rgba(0,0,0,0.02)]">
-                          <div className="flex items-center gap-3 mb-6">
-                             <div className="w-1.5 h-1.5 rounded-full bg-neutral-900" />
-                             <span className="text-[10px] uppercase tracking-widest font-medium text-neutral-500">Negotiation Thread</span>
-                          </div>
-                          {clause.history.map((h, idx) => (
-                            <div key={h.id} className="flex gap-6 text-sm mt-6 pt-6 border-t border-neutral-100 first:mt-0 first:pt-0 first:border-0">
-                              <div
-                                className={`w-8 h-8 flex items-center justify-center shrink-0 uppercase text-[10px] tracking-widest font-medium ${h.role === "influencer" ? "bg-neutral-900 text-white" : "bg-neutral-100 text-neutral-600"}`}
-                              >
-                                {h.role === "influencer" ? "You" : "Adv"}
+                    {clause.history.length > 0 && (
+                      <div className="mt-4 rounded-lg border border-neutral-200 bg-white p-4">
+                        <div className="mb-4 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-neutral-500">
+                          <MessageSquare className="h-4 w-4" />
+                          협의 이력
+                        </div>
+                        <div className="space-y-4">
+                          {clause.history.map((historyItem) => (
+                            <div
+                              key={historyItem.id}
+                              className="border-l-2 border-neutral-200 pl-4"
+                            >
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-sm font-semibold text-neutral-950">
+                                  {historyItem.role === "influencer" ? "나" : "광고주"}
+                                </span>
+                                <span className="text-xs text-neutral-500">
+                                  {format(new Date(historyItem.timestamp), "yyyy.MM.dd HH:mm")}
+                                </span>
+                                <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-600">
+                                  {historyItem.action}
+                                </span>
                               </div>
-                              <div className="flex-1">
-                                <div className="flex flex-col gap-1 mb-3">
-                                  <div className="flex items-center gap-3">
-                                    <span
-                                      className={`font-medium text-[12px] uppercase tracking-wider ${h.role === "influencer" ? "text-neutral-900" : "text-neutral-600"}`}
-                                    >
-                                      {h.role === "influencer"
-                                        ? "You"
-                                        : "Advertiser"}
-                                    </span>
-                                    <span className="text-[11px] text-neutral-400 font-mono">
-                                      {format(
-                                        new Date(h.timestamp),
-                                        "MMM dd, HH:mm",
-                                      )}
-                                    </span>
-                                  </div>
-                                  <span className={`text-[10px] w-fit font-medium uppercase tracking-widest ${h.role === "influencer" ? "text-amber-600" : "text-neutral-500"}`}>
-                                    {h.action}
-                                  </span>
-                                </div>
-                                <p className="text-neutral-700 whitespace-pre-wrap font-serif italic text-lg border-l border-neutral-200 pl-4 py-1">
-                                  {h.comment}
-                                </p>
-                              </div>
+                              <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-neutral-700">
+                                {historyItem.comment}
+                              </p>
                             </div>
                           ))}
                         </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+                      </div>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+        </section>
 
-              {/* Info Banner for Redlining */}
-              {allApproved && contract.status === "REVIEWING" && (
-                <div className="mt-16 border border-neutral-200 bg-[#FAFAFA] p-8 flex flex-col sm:flex-row gap-6 items-start sm:items-center mx-auto">
-                  <div className="p-4 bg-white border border-neutral-200 shrink-0">
-                    <MessageSquare strokeWidth={1} className="w-6 h-6 text-neutral-400" />
-                  </div>
-                  <div>
-                    <h4 className="font-heading text-xl tracking-tight mb-2 text-neutral-900">
-                      Need to negotiate terms?
-                    </h4>
-                    <p className="text-neutral-500 text-[13px] leading-relaxed">
-                      Highlight any text in the contract above to request modifications or deletions directly with the advertiser.
-                    </p>
-                  </div>
-                </div>
-              )}
+        <aside className="space-y-4 lg:sticky lg:top-20 lg:h-fit">
+          <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
+                <FileText className="h-5 w-5" strokeWidth={1.8} />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-neutral-950">
+                  검토 체크리스트
+                </p>
+                <p className="text-xs text-neutral-500">최근 수정 {lastUpdated}</p>
+              </div>
+            </div>
+            <div className="space-y-3 text-sm">
+              <ChecklistRow checked label="보안 링크 확인됨" />
+              <ChecklistRow checked={allApproved} label="모든 조항 승인 완료" />
+              <ChecklistRow checked={contract.status === "SIGNED"} label="서명 완료" />
             </div>
           </div>
-        </section>
-      </main>
 
-      {/* Floating Action Bar */}
-      {contract.status !== "SIGNED" && (
-        <div className="fixed bottom-0 left-0 right-0 border-t border-neutral-200 bg-white p-6 flex justify-center z-40 shadow-[0_-8px_32px_rgba(0,0,0,0.02)]">
-          <div className="max-w-[750px] w-full flex items-center justify-between px-4">
-            <div>
-              <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-neutral-400 mb-2">
-                Status
-              </p>
-              <p className="text-lg font-heading tracking-tight text-neutral-900">
-                {contract.status === "NEGOTIATING"
-                  ? "Action Required"
-                  : getStatusLabel(contract.status)}
-              </p>
-              {!allApproved && (
-                <p className="text-[11px] text-amber-600 mt-1 uppercase tracking-widest font-mono">
-                  Pending resolution
+          <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-neutral-950 text-white">
+                <ShieldCheck className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-neutral-950">
+                  인플루언서 계정 확인
                 </p>
-              )}
+                <p className="mt-1 text-xs leading-5 text-neutral-500">
+                  계약 검토와 서명은 계속 가능하며, 반복 거래나 정산 전 계정 확인을 요청할 수 있습니다.
+                </p>
+              </div>
             </div>
             <button
-              className={`w-48 sm:w-[280px] h-[52px] text-[12px] uppercase tracking-wider font-medium rounded-none transition-all flex items-center justify-center ${
-                allApproved 
-                ? "bg-neutral-900 text-white hover:bg-neutral-800" 
-                : "bg-neutral-100 text-neutral-400 cursor-not-allowed"
+              type="button"
+              onClick={() =>
+                navigate(
+                  `/influencer/verification?contractId=${contract.id}${
+                    shareToken ? `&token=${shareToken}` : ""
+                  }`,
+                )
+              }
+              className="mt-4 h-10 w-full rounded-lg border border-neutral-200 bg-neutral-50 text-sm font-semibold text-neutral-700 transition hover:border-neutral-400 hover:bg-white"
+            >
+              계정 확인 요청
+            </button>
+          </div>
+
+          <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-500">
+              계약 당사자
+            </p>
+            <div className="mt-4 space-y-4">
+              <PartyRow label="광고주" value={contract.advertiser_info?.name || "광고주"} />
+              <PartyRow label="인플루언서" value={contract.influencer_info.name} />
+            </div>
+            {contract.status === "SIGNED" && contract.signature_data?.inf_sign && (
+              <div className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-700">
+                  인플루언서 서명 완료
+                </p>
+                <img
+                  src={contract.signature_data.inf_sign}
+                  alt="인플루언서 서명"
+                  className="mt-3 h-12 max-w-full mix-blend-multiply"
+                />
+              </div>
+            )}
+          </div>
+        </aside>
+      </main>
+
+      {contract.status !== "SIGNED" && (
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-neutral-200 bg-white/95 shadow-[0_-16px_40px_rgba(15,23,42,0.08)] backdrop-blur">
+          <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
+            <div className="flex items-start gap-3">
+              <div
+                className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
+                  allApproved ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
+                }`}
+              >
+                {allApproved ? (
+                  <CheckCircle2 className="h-5 w-5" />
+                ) : (
+                  <AlertTriangle className="h-5 w-5" />
+                )}
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-neutral-950">
+                  {allApproved
+                    ? "모든 조항을 확인했고 서명할 준비가 되었습니다."
+                    : "서명 전에 남은 조항 요청을 먼저 정리해야 합니다."}
+                </p>
+                <p className="mt-1 text-xs leading-5 text-neutral-500">
+                  서명하면 감사 이력이 기록되고 서명본 PDF가 다운로드됩니다.
+                </p>
+              </div>
+            </div>
+            <button
+              className={`flex h-12 w-full items-center justify-center gap-2 rounded-lg px-5 text-sm font-semibold transition sm:w-auto sm:min-w-56 ${
+                allApproved
+                  ? "bg-neutral-950 text-white hover:bg-neutral-800"
+                  : "cursor-not-allowed bg-neutral-200 text-neutral-500"
               }`}
               disabled={!allApproved}
               onClick={() => setShowSignModal(true)}
             >
-              {allApproved ? "Sign Contract" : "Complete Review First"}
+              <FileSignature className="h-4 w-4" />
+              {allApproved ? "동의 후 서명하기" : "서명 잠김"}
             </button>
           </div>
         </div>
       )}
 
-      {/* Feedback Dialog */}
       <Dialog
         open={feedbackModal?.isOpen}
         onOpenChange={(open) => !open && setFeedbackModal(null)}
       >
-        <DialogContent className="sm:max-w-md rounded-none p-8 border-neutral-200 shadow-2xl">
-          <DialogHeader className="mb-6">
-            <DialogTitle className="text-2xl font-heading text-neutral-900 tracking-tight">
-              Request {feedbackModal?.type === "MODIFICATION_REQUESTED" ? "Modification" : "Deletion"}
-            </DialogTitle>
-            <DialogDescription className="text-[13px] text-neutral-500 mt-2">
-              Explain your counter-proposal to the advertiser.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="bg-[#FAFAFA] p-6 border-l-2 border-neutral-900 text-[13px] text-neutral-600 mb-6 font-serif italic">
-            "{feedbackModal?.selectedText}"
+        <DialogContent className="rounded-xl border-neutral-200 p-0 shadow-2xl sm:max-w-lg">
+          <div className="border-b border-neutral-200 p-6">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-semibold text-neutral-950">
+                {feedbackModal?.type === "MODIFICATION_REQUESTED"
+                  ? "조항 수정 요청"
+                  : "조항 삭제 요청"}
+              </DialogTitle>
+              <DialogDescription className="pt-2 text-sm leading-6 text-neutral-600">
+                광고주가 빠르게 판단할 수 있도록 요청 사유와 맥락을 남겨주세요.
+              </DialogDescription>
+            </DialogHeader>
           </div>
-          <Textarea
-            className="text-[14px] bg-white border-neutral-200 p-4 min-h-[120px] text-neutral-900 placeholder:text-neutral-400 focus-visible:ring-1 focus-visible:ring-neutral-900 rounded-none resize-none mb-4"
-            placeholder={
-              feedbackModal?.type === "MODIFICATION_REQUESTED"
-                ? "e.g., Please amend this clause to state..."
-                : "This clause is not applicable..."
-             }
-            value={feedbackComment}
-            onChange={(e) => setFeedbackComment(e.target.value)}
-          />
-          <div className="flex gap-4 mt-6 pt-6 border-t border-neutral-100">
-            <button 
-              className="flex-1 h-[48px] bg-white border border-neutral-200 hover:bg-neutral-50 text-neutral-600 text-[12px] uppercase tracking-wider font-medium transition-colors"
-              onClick={() => setFeedbackModal(null)}>
-              Cancel
+          <div className="space-y-4 p-6">
+            <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-sm leading-6 text-neutral-700">
+              "{feedbackModal?.selectedText}"
+            </div>
+            <Textarea
+              className="min-h-[132px] resize-none rounded-lg border-neutral-200 bg-white p-4 text-sm text-neutral-950 placeholder:text-neutral-400 focus-visible:ring-2 focus-visible:ring-neutral-950"
+              placeholder={
+                feedbackModal?.type === "MODIFICATION_REQUESTED"
+                  ? "예: 게시 유지 기간을 3개월로 조정해 주세요."
+                  : "예: 이 조항은 합의한 캠페인 범위에 해당하지 않습니다."
+              }
+              value={feedbackComment}
+              onChange={(e) => setFeedbackComment(e.target.value)}
+            />
+          </div>
+          <div className="flex gap-3 border-t border-neutral-200 bg-neutral-50 p-4">
+            <button
+              className="h-11 flex-1 rounded-lg border border-neutral-200 bg-white text-sm font-semibold text-neutral-700 hover:bg-neutral-100"
+              onClick={() => setFeedbackModal(null)}
+            >
+              취소
             </button>
-            <button 
-              className="flex-[2] h-[48px] bg-neutral-900 hover:bg-neutral-800 text-white text-[12px] uppercase tracking-wider font-medium transition-colors shadow-none"
-              onClick={handleFeedbackSubmit}>
-              Submit Request
+            <button
+              className="h-11 flex-[2] rounded-lg bg-neutral-950 text-sm font-semibold text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-500"
+              onClick={handleFeedbackSubmit}
+              disabled={!feedbackComment.trim()}
+            >
+              요청 보내기
             </button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Signature Dialog */}
       <Dialog open={showSignModal} onOpenChange={setShowSignModal}>
-        <DialogContent className="sm:max-w-md rounded-none p-8 border-neutral-200 shadow-[0_20px_60px_rgba(0,0,0,0.1)]">
-          <DialogHeader className="mb-6">
-            <DialogTitle className="flex items-center gap-3 text-2xl font-heading text-neutral-900 tracking-tight">
-              <FileSignature strokeWidth={1.5} className="w-6 h-6 text-neutral-900" /> Signature
-            </DialogTitle>
-            <DialogDescription className="text-[13px] text-neutral-500 mt-2 leading-relaxed">
-              By signing below, you agree to all terms. A verified PDF will be generated immediately.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="bg-[#FAFAFA] border border-neutral-200 h-48 relative overflow-hidden flex flex-col mt-6">
-            <canvas
-              ref={canvasRef}
-              className="w-full h-full cursor-crosshair touch-none mix-blend-multiply"
-              onMouseDown={startDrawing}
-              onMouseMove={draw}
-              onMouseUp={stopDrawing}
-              onMouseOut={stopDrawing}
-              onTouchStart={startDrawing}
-              onTouchMove={draw}
-              onTouchEnd={stopDrawing}
-            />
-            <button
-              onClick={clearSignature}
-              className="absolute top-4 right-4 bg-white hover:bg-neutral-50 text-neutral-500 p-2 border border-neutral-200 flex items-center gap-2 text-[10px] uppercase tracking-wider font-medium shadow-sm transition-colors"
-            >
-              <Eraser strokeWidth={1.5} className="w-3.5 h-3.5" /> Clear
-            </button>
+        <DialogContent className="rounded-xl border-neutral-200 p-0 shadow-2xl sm:max-w-lg">
+          <div className="border-b border-neutral-200 p-6">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-3 text-xl font-semibold text-neutral-950">
+                <FileSignature className="h-5 w-5" strokeWidth={1.8} />
+                동의 후 서명
+              </DialogTitle>
+              <DialogDescription className="pt-2 text-sm leading-6 text-neutral-600">
+                서명은 승인된 모든 조항을 확인하고 동의했다는 증빙으로 남습니다.
+                완료 후 서명본 PDF가 생성됩니다.
+              </DialogDescription>
+            </DialogHeader>
           </div>
 
-          <div className="flex gap-4 mt-8 pt-6 border-t border-neutral-100">
-            <button 
-              className="flex-1 h-[48px] bg-white border border-neutral-200 hover:bg-neutral-50 text-neutral-600 text-[12px] uppercase tracking-wider font-medium transition-colors"
-              onClick={() => setShowSignModal(false)}>
-              Cancel
+          <div className="space-y-4 p-6">
+            <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-sm leading-6 text-neutral-700">
+              모든 조항이 승인되었습니다. 서명자 이름과 동의 여부는 감사 기록에 함께 저장됩니다.
+            </div>
+            <label className="block">
+              <span className="text-[13px] font-semibold text-neutral-800">
+                서명자 이름
+              </span>
+              <input
+                value={signerName}
+                onChange={(event) => setSignerName(event.target.value)}
+                className="mt-2 h-11 w-full rounded-lg border border-neutral-200 bg-white px-3 text-sm font-medium text-neutral-950 outline-none transition focus:border-neutral-950"
+                placeholder="이름 또는 활동명"
+              />
+            </label>
+            <div className="relative h-48 overflow-hidden rounded-lg border border-neutral-300 bg-white">
+              <canvas
+                ref={canvasRef}
+                className="h-full w-full cursor-crosshair touch-none"
+                onMouseDown={startDrawing}
+                onMouseMove={draw}
+                onMouseUp={stopDrawing}
+                onMouseOut={stopDrawing}
+                onTouchStart={startDrawing}
+                onTouchMove={draw}
+                onTouchEnd={stopDrawing}
+              />
+              <button
+                onClick={clearSignature}
+                className="absolute right-3 top-3 flex h-9 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-600 shadow-sm hover:bg-neutral-50"
+              >
+                <Eraser className="h-3.5 w-3.5" strokeWidth={1.8} />
+                지우기
+              </button>
+            </div>
+            <p
+              className={`text-sm font-medium ${
+                hasSignatureStroke ? "text-neutral-800" : "text-amber-700"
+              }`}
+            >
+              {hasSignatureStroke
+                ? "서명이 입력되었습니다."
+                : "서명란에 직접 서명해 주세요."}
+            </p>
+            <label className="flex items-start gap-3 rounded-lg border border-neutral-200 bg-white p-3 text-sm leading-5 text-neutral-700">
+              <input
+                type="checkbox"
+                checked={consentAccepted}
+                onChange={(event) => setConsentAccepted(event.target.checked)}
+                className="mt-1 h-4 w-4 accent-neutral-950"
+              />
+              <span>
+                계약 조항을 확인했고 전자서명에 동의합니다.
+              </span>
+            </label>
+          </div>
+
+          <div className="flex gap-3 border-t border-neutral-200 bg-neutral-50 p-4">
+            <button
+              className="h-11 flex-1 rounded-lg border border-neutral-200 bg-white text-sm font-semibold text-neutral-700 hover:bg-neutral-100"
+              onClick={() => setShowSignModal(false)}
+            >
+              취소
             </button>
             <button
-              className="flex-[2] h-[48px] bg-neutral-900 hover:bg-neutral-800 text-white text-[12px] uppercase tracking-wider font-medium transition-colors shadow-none disabled:opacity-50 disabled:cursor-not-allowed"
+              className="h-11 flex-[2] rounded-lg bg-neutral-950 text-sm font-semibold text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-500"
               onClick={handleSignComplete}
-              disabled={isSignLoading}
+              disabled={isSignLoading || !hasSignatureStroke || !consentAccepted || !signerName.trim()}
             >
-              {isSignLoading ? "Processing..." : "Complete Signature"}
+              {isSignLoading ? "완료 중..." : "서명 완료"}
             </button>
           </div>
         </DialogContent>
@@ -613,12 +947,106 @@ export function ContractViewer() {
   );
 }
 
-const STATUS_LABELS: Record<ContractStatus, string> = {
-  DRAFT: "작성 중",
-  REVIEWING: "검토 중",
-  NEGOTIATING: "수정 요청",
-  APPROVED: "서명 대기",
-  SIGNED: "완료",
-};
+function AccessMessage({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="flex min-h-[100dvh] items-center justify-center bg-[#f7f8fa] px-4">
+      <div className="w-full max-w-md rounded-xl border border-neutral-200 bg-white p-6 text-center shadow-sm">
+        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-amber-50 text-amber-700">
+          <AlertTriangle className="h-6 w-6" strokeWidth={1.8} />
+        </div>
+        <h1 className="mt-4 text-xl font-semibold text-neutral-950">{title}</h1>
+        <p className="mt-2 text-sm leading-6 text-neutral-600">{description}</p>
+      </div>
+    </div>
+  );
+}
 
-const getStatusLabel = (status: ContractStatus) => STATUS_LABELS[status] ?? status;
+function StatusPill({
+  status,
+  allApproved,
+}: {
+  status: ContractStatus;
+  allApproved: boolean;
+}) {
+  const isSigned = status === "SIGNED";
+  const isReady = allApproved || status === "APPROVED";
+
+  return (
+    <span
+      className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold ${
+        isSigned
+          ? "bg-emerald-50 text-emerald-700"
+          : isReady
+            ? "bg-blue-50 text-blue-700"
+            : "bg-amber-50 text-amber-700"
+      }`}
+    >
+      {isSigned ? (
+        <CheckCircle2 className="h-3.5 w-3.5" />
+      ) : isReady ? (
+        <FileSignature className="h-3.5 w-3.5" />
+      ) : (
+        <Clock3 className="h-3.5 w-3.5" />
+      )}
+      {getStatusLabel(status)}
+    </span>
+  );
+}
+
+function MetricCard({
+  label,
+  value,
+  tone = "neutral",
+}: {
+  label: string;
+  value: string;
+  tone?: "neutral" | "green" | "amber";
+}) {
+  const toneClass =
+    tone === "green"
+      ? "bg-emerald-50 text-emerald-700"
+      : tone === "amber"
+        ? "bg-amber-50 text-amber-700"
+        : "bg-neutral-100 text-neutral-800";
+
+  return (
+    <div className={`rounded-lg p-3 ${toneClass}`}>
+      <p className="text-xs font-semibold uppercase tracking-[0.12em] opacity-80">
+        {label}
+      </p>
+      <p className="mt-1 text-2xl font-semibold">{value}</p>
+    </div>
+  );
+}
+
+function ChecklistRow({ checked, label }: { checked: boolean; label: string }) {
+  return (
+    <div className="flex items-center gap-3">
+      <div
+        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
+          checked ? "bg-emerald-50 text-emerald-700" : "bg-neutral-100 text-neutral-400"
+        }`}
+      >
+        <CheckCircle2 className="h-4 w-4" strokeWidth={1.8} />
+      </div>
+      <span className={checked ? "text-neutral-800" : "text-neutral-500"}>{label}</span>
+    </div>
+  );
+}
+
+function PartyRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-500">
+        {label}
+      </p>
+      <p className="mt-1 text-sm font-medium text-neutral-950">{value}</p>
+    </div>
+  );
+}

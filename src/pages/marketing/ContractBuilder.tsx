@@ -8,6 +8,12 @@ import {
   ContractType,
   Clause,
 } from "../../store";
+import { createShareToken } from "../../domain/contracts";
+import {
+  verificationStatusLabel,
+  verificationStatusTone,
+} from "../../domain/verification";
+import { useVerificationSummary } from "../../hooks/useVerificationSummary";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -124,6 +130,11 @@ const addDays = (days: number) => {
   date.setDate(date.getDate() + days);
   return date.toISOString();
 };
+
+const buildShareUrl = (contractId: string, shareToken?: string) =>
+  `${window.location.origin}/contract/${contractId}${
+    shareToken ? `?token=${encodeURIComponent(shareToken)}` : ""
+  }`;
 
 const getDeliverableRows = (draft: ContractDraft) => {
   const selectedRows = draft.channels.map((channel) => ({
@@ -352,6 +363,13 @@ export function ContractBuilder() {
   const addContract = useAppStore((state) => state.addContract);
   const updateContract = useAppStore((state) => state.updateContract);
   const getContract = useAppStore((state) => state.getContract);
+  const isSyncing = useAppStore((state) => state.isSyncing);
+  const syncError = useAppStore((state) => state.syncError);
+  const { summary: verificationSummary, isLoading: isVerificationLoading } =
+    useVerificationSummary();
+  const advertiserVerificationStatus =
+    verificationSummary?.advertiser.status ?? "not_submitted";
+  const canSendContract = advertiserVerificationStatus === "approved";
 
   const [step, setStep] = useState<StepId>(1);
   const [draft, setDraft] = useState<ContractDraft>(INITIAL_DRAFT);
@@ -488,7 +506,10 @@ export function ContractBuilder() {
     setStep((current) => Math.max(current - 1, 1) as StepId);
   };
 
-  const buildContractPayload = (status: ContractStatus): Omit<Contract, "id" | "created_at" | "updated_at"> => ({
+  const buildContractPayload = (
+    status: ContractStatus,
+    shareToken?: string,
+  ): Omit<Contract, "id" | "created_at" | "updated_at"> => ({
     advertiser_id: "adv_1",
     advertiser_info: {
       name: draft.advertiserName.trim(),
@@ -523,6 +544,7 @@ export function ContractBuilder() {
     workflow: buildWorkflow(status),
     evidence: {
       share_token_status: status === "DRAFT" ? "not_issued" : "active",
+      share_token: status === "DRAFT" ? undefined : shareToken,
       share_token_expires_at: status === "DRAFT" ? undefined : addDays(7),
       audit_ready: status !== "DRAFT",
       pdf_status: status === "DRAFT" ? "not_ready" : "draft_ready",
@@ -532,6 +554,18 @@ export function ContractBuilder() {
   });
 
   const saveContract = (mode: ResultMode) => {
+    if (mode === "share" && !canSendContract) {
+      setStep(5);
+      setValidationErrors([
+        {
+          field: "advertiser_verification",
+          message: "광고주 사업자 인증 승인 후 계약을 발송할 수 있습니다.",
+          step: 5,
+        },
+      ]);
+      return;
+    }
+
     const errors = validateContractDraft(draft);
 
     if (errors.length > 0) {
@@ -541,8 +575,12 @@ export function ContractBuilder() {
     }
 
     const status: ContractStatus = mode === "draft" ? "DRAFT" : "REVIEWING";
-    const payload = buildContractPayload(status);
     const existing = savedContractId ? getContract(savedContractId) : undefined;
+    const shareToken =
+      status === "DRAFT"
+        ? undefined
+        : (existing?.evidence?.share_token ?? createShareToken());
+    const payload = buildContractPayload(status, shareToken);
     const now = new Date().toISOString();
     const event = {
       id: `audit_${Date.now()}`,
@@ -572,7 +610,7 @@ export function ContractBuilder() {
 
     const link =
       mode === "share" && contractId
-        ? `${window.location.origin}/contract/${contractId}`
+        ? buildShareUrl(contractId, payload.evidence?.share_token)
         : undefined;
     setResult({ mode, link, stale: false });
   };
@@ -585,33 +623,33 @@ export function ContractBuilder() {
   };
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-[#FAFAFA] font-sans text-neutral-900">
-      <header className="h-[80px] shrink-0 border-b border-neutral-100 bg-white px-6 md:px-12 flex items-center justify-between z-10">
+    <div className="flex min-h-[100dvh] flex-col bg-[#f6f7f9] font-sans text-neutral-900 md:h-screen md:overflow-hidden">
+      <header className="z-10 flex h-[72px] shrink-0 items-center justify-between border-b border-neutral-200 bg-white/95 px-5 backdrop-blur md:px-10">
         <div className="flex items-center gap-4">
           <button
             type="button"
-            onClick={() => navigate("/marketing/dashboard")}
-            className="-ml-2 rounded-full p-2 text-neutral-400 transition-colors hover:bg-neutral-50 hover:text-neutral-900"
+            onClick={() => navigate("/advertiser/dashboard")}
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-500 transition-colors hover:text-neutral-950"
             aria-label="대시보드로 돌아가기"
           >
             <ArrowLeft strokeWidth={1.5} className="h-5 w-5" />
           </button>
-          <div className="flex items-center gap-3 border-l border-neutral-100 pl-4">
-            <div className="flex h-8 w-8 items-center justify-center rounded-sm bg-neutral-900 text-white">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square" strokeLinejoin="miter"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-neutral-950 text-white shadow-sm">
+              <ShieldCheck className="h-4 w-4" strokeWidth={2} />
             </div>
-            <span className="text-lg font-heading uppercase tracking-widest text-neutral-900">
+            <span className="text-[18px] font-semibold tracking-tight text-neutral-950">
               DirectSign
             </span>
           </div>
         </div>
       </header>
 
-      <main className="flex flex-1 overflow-hidden">
-        <aside className="relative z-10 hidden w-[300px] shrink-0 flex-col gap-12 border-r border-neutral-100 bg-white p-12 pr-8 shadow-[24px_0_40px_rgba(0,0,0,0.01)] md:flex">
+      <main className="flex flex-1 flex-col md:flex-row md:overflow-hidden">
+        <aside className="relative z-10 hidden w-[300px] shrink-0 flex-col gap-12 border-r border-neutral-200 bg-white p-10 pr-8 shadow-sm md:flex">
           <div>
             <h3 className="mb-10 text-[10px] font-medium uppercase tracking-[0.2em] text-neutral-400">
-              Contract Builder
+              계약 작성
             </h3>
             <nav className="relative space-y-8">
               <div className="absolute bottom-6 left-[11px] top-6 z-0 w-px bg-neutral-100" />
@@ -646,17 +684,48 @@ export function ContractBuilder() {
           </div>
         </aside>
 
-        <section className="relative z-0 w-full shrink-0 overflow-y-auto bg-[#FAFAFA] md:w-[620px] custom-scrollbar">
+        <section className="custom-scrollbar relative z-0 w-full shrink-0 bg-[#f6f7f9] md:w-[620px] md:overflow-y-auto">
           <div className="max-w-[520px] p-8 md:p-14">
-            <p className="mb-4 text-[10px] font-medium uppercase tracking-[0.2em] text-neutral-400">
-              Step {step} of 5
+            <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
+              {step} / 5 단계
             </p>
-            <h1 className="mb-4 text-3xl font-heading font-light tracking-tight text-neutral-900">
+            <h1 className="mb-4 text-[32px] font-semibold tracking-[-0.03em] text-neutral-950">
               새 전자계약서 작성
             </h1>
             <p className="mb-10 text-[13px] leading-relaxed text-neutral-500">
-              누락 조건을 막고, 발송 전 확인을 거친 뒤 공유 링크를 생성합니다.
+              핵심 조건을 구조화하고 발송 전 체크리스트를 통과한 뒤 공유 링크를 생성합니다.
             </p>
+
+            <div className="mb-6 rounded-lg border border-neutral-200 bg-white p-4 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-neutral-950">
+                    광고주 인증 상태
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-neutral-500">
+                    승인 전에는 초안 저장만 가능하고 공유 링크 발송은 차단됩니다.
+                  </p>
+                </div>
+                <span
+                  className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold ${verificationStatusTone(
+                    advertiserVerificationStatus,
+                  )}`}
+                >
+                  {isVerificationLoading
+                    ? "확인중"
+                    : verificationStatusLabel(advertiserVerificationStatus)}
+                </span>
+              </div>
+              {!canSendContract && !isVerificationLoading && (
+                <button
+                  type="button"
+                  onClick={() => navigate("/advertiser/verification")}
+                  className="mt-4 h-10 w-full rounded-lg border border-neutral-200 bg-neutral-50 text-sm font-semibold text-neutral-700 transition hover:border-neutral-400 hover:bg-white"
+                >
+                  사업자 인증 요청하기
+                </button>
+              )}
+            </div>
 
             {stepErrors.length > 0 && <ValidationSummary errors={stepErrors} />}
 
@@ -745,7 +814,7 @@ export function ContractBuilder() {
                         <Label>연락처</Label>
                         <Input
                           className="mt-1.5"
-                          placeholder="test@example.com"
+                          placeholder="creator@brand.co.kr"
                           value={draft.influencerContact}
                           onChange={(event) =>
                             updateDraft({ influencerContact: event.target.value })
@@ -1175,7 +1244,11 @@ export function ContractBuilder() {
                     type="button"
                     className="h-[52px] flex-1 rounded-none bg-neutral-900 text-[12px] font-medium uppercase tracking-wider text-white shadow-none hover:bg-neutral-800"
                     onClick={() => saveContract("share")}
-                    disabled={currentStepHasBlockingError}
+                    disabled={
+                      currentStepHasBlockingError ||
+                      isVerificationLoading ||
+                      !canSendContract
+                    }
                   >
                     공유 링크 생성
                   </Button>
@@ -1196,6 +1269,21 @@ export function ContractBuilder() {
                     ? "계약이 초안 상태로 저장되었습니다. 아직 상대방에게 공유되지 않았습니다."
                     : "이 링크를 전달하면 상대방이 계약서를 검토할 수 있습니다."}
                 </p>
+                {result.mode === "share" && (
+                  <div
+                    className={`mb-5 border px-4 py-3 text-left text-[12px] leading-5 ${
+                      syncError
+                        ? "border-amber-200 bg-amber-50 text-amber-800"
+                        : "border-emerald-200 bg-emerald-50 text-emerald-800"
+                    }`}
+                  >
+                    {syncError
+                      ? "서버 저장에 실패했습니다. 현재 브라우저에는 저장되지만 다른 기기 공유 전에 네트워크를 확인하세요."
+                      : isSyncing
+                        ? "서버 저장소에 계약을 반영하고 있습니다."
+                        : "서버 저장소에 반영되어 다른 브라우저에서도 링크를 열 수 있습니다."}
+                  </div>
+                )}
                 {result.mode === "share" && result.link && (
                   <div className="flex w-full items-center gap-3">
                     <Input
@@ -1219,7 +1307,7 @@ export function ContractBuilder() {
                     type="button"
                     variant="outline"
                     className="mt-4 h-10 rounded-none border-neutral-200 px-5 text-[12px] font-medium text-neutral-700"
-                    onClick={() => navigate(`/marketing/contract/${savedContractId}`)}
+                    onClick={() => navigate(`/advertiser/contract/${savedContractId}`)}
                   >
                     관리 화면 열기
                   </Button>
@@ -1229,65 +1317,164 @@ export function ContractBuilder() {
           </div>
         </section>
 
-        <section className="hidden flex-1 flex-col overflow-hidden bg-[#FAFAFA] p-12 pl-0 lg:flex">
-          <div className="relative flex flex-1 flex-col border border-neutral-100 bg-white shadow-[0_8px_40px_rgba(0,0,0,0.04)]">
-            <div className="flex h-[80px] shrink-0 items-center justify-between border-b border-neutral-100 bg-white px-12 text-[10px] font-medium uppercase tracking-[0.2em] text-neutral-400">
-              <span>Preview</span>
-              <span className="font-mono">{new Date().toISOString().split("T")[0]}</span>
-            </div>
-
-            <div className="flex-1 space-y-12 overflow-y-auto p-16 leading-relaxed text-neutral-800 custom-scrollbar">
-              <div className="mb-16 text-center text-4xl font-heading font-light tracking-tight text-neutral-900">
-                {draft.title || `${draft.type} 계약서`}
-              </div>
-
-              <div className="space-y-12 text-[14px]">
-                <div>
-                  <h4 className="mb-4 text-[13px] font-medium uppercase tracking-[0.1em] text-neutral-900">
-                    Contracting Parties
-                  </h4>
-                  <div className="space-y-2 border-l border-neutral-200 pl-6 text-neutral-600">
-                    <p>
-                      <span className="mr-2 text-neutral-400">甲方</span>
-                      (Advertiser) {draft.advertiserName || "[광고주명]"}
-                    </p>
-                    <p>
-                      <span className="mr-2 text-neutral-400">乙方</span>
-                      (Influencer) {draft.influencerName || "[인플루언서명]"}
-                    </p>
-                    <p className="mt-2 font-mono text-[12px] text-neutral-400">
-                      {draft.influencerUrl || "채널 URL 미입력"}
-                    </p>
-                  </div>
-                </div>
-
-                {clauses.length === 0 ? (
-                  <div className="border border-dashed border-neutral-200 p-8 text-center text-[13px] text-neutral-400">
-                    입력된 조건을 바탕으로 계약 조항 미리보기가 생성됩니다.
-                  </div>
-                ) : (
-                  clauses.map((clause, index) => (
-                    <div key={clause.clause_id} className="border-t border-neutral-100 pt-10">
-                      <h4 className="mb-4 flex gap-4 text-[13px] font-medium uppercase tracking-[0.1em] text-neutral-900">
-                        <span className="font-mono text-neutral-400">
-                          {(index + 1).toString().padStart(2, "0")}
-                        </span>
-                        {clause.category}
-                      </h4>
-                      <p className="whitespace-pre-wrap pl-8 leading-[1.8] text-neutral-600">
-                        {clause.content}
-                      </p>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
+        <section className="hidden flex-1 flex-col overflow-hidden bg-[#f6f7f9] p-10 pl-0 lg:flex">
+          <BuilderReviewPanel draft={draft} clauses={clauses} />
         </section>
       </main>
     </div>
   );
 }
+
+const BuilderReviewPanel: React.FC<{
+  draft: ContractDraft;
+  clauses: Clause[];
+}> = ({ draft, clauses }) => {
+  const hasDeliverables = getDeliverableRows(draft).some((row) => row.channel);
+
+  return (
+    <div className="custom-scrollbar flex flex-1 flex-col gap-4 overflow-y-auto">
+      <div className="rounded-xl border border-neutral-200 bg-neutral-950 p-6 text-white shadow-sm">
+        <div className="mb-6 flex items-center justify-between gap-4">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
+              발송 전 체크리스트
+            </p>
+            <h2 className="mt-1 text-[22px] font-semibold tracking-[-0.02em]">
+              발송 전 점검
+            </h2>
+          </div>
+          <span className="rounded-full bg-white/10 px-3 py-1 text-[12px] font-semibold text-neutral-200">
+            {new Date().toISOString().split("T")[0]}
+          </span>
+        </div>
+        <div className="grid gap-2">
+          <ChecklistLine checked={!isBlank(draft.title)} label="계약명이 입력되었습니다" />
+          <ChecklistLine
+            checked={!isBlank(draft.influencerName)}
+            label="인플루언서 정보가 입력되었습니다"
+          />
+          <ChecklistLine checked={hasDeliverables} label="플랫폼과 업로드 조건이 있습니다" />
+          <ChecklistLine checked={!isBlank(draft.payment)} label="지급 조건이 입력되었습니다" />
+          <ChecklistLine checked={clauses.length > 0} label="계약 조항 미리보기가 준비되었습니다" />
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
+        <div className="mb-5 flex items-start justify-between gap-4">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
+              실시간 계약 요약
+            </p>
+            <h2 className="mt-1 text-[24px] font-semibold tracking-[-0.03em] text-neutral-950">
+              {draft.title || `${draft.type} 계약`}
+            </h2>
+          </div>
+          <span className="rounded-md border border-neutral-200 bg-[#fafafa] px-2.5 py-1 text-[12px] font-semibold text-neutral-600">
+            {draft.type}
+          </span>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <SummaryCard label="광고주" value={draft.advertiserName || "미입력"} />
+          <SummaryCard label="인플루언서" value={draft.influencerName || "미입력"} />
+          <SummaryCard label="채널" value={draft.influencerUrl || "미입력"} mono />
+          <SummaryCard label="지급" value={draft.payment || "미입력"} />
+          <SummaryCard
+            label="캠페인 기간"
+            value={
+              draft.campaignStart || draft.campaignEnd
+                ? `${draft.campaignStart || "시작일 미입력"} - ${
+                    draft.campaignEnd || "종료일 미입력"
+                  }`
+                : "미입력"
+            }
+          />
+          <SummaryCard label="업로드 마감" value={draft.uploadDueDate || "미입력"} />
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
+        <div className="mb-5 flex items-center justify-between">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
+              조항
+            </p>
+            <h2 className="mt-1 text-[20px] font-semibold tracking-[-0.02em] text-neutral-950">
+              생성될 조항
+            </h2>
+          </div>
+          <span className="rounded-full bg-neutral-100 px-2.5 py-1 text-[12px] font-semibold text-neutral-500">
+            {clauses.length}개
+          </span>
+        </div>
+
+        {clauses.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-neutral-200 bg-[#fafafa] p-6 text-center text-[13px] leading-6 text-neutral-500">
+            왼쪽 조건을 입력하면 공유 전 검토할 조항이 이곳에 생성됩니다.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {clauses.map((clause, index) => (
+              <div
+                key={clause.clause_id}
+                className="rounded-lg border border-neutral-200 bg-[#fafafa] p-4"
+              >
+                <div className="mb-2 flex items-center gap-3">
+                  <span className="font-mono text-[12px] font-semibold text-neutral-400">
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+                  <h3 className="text-[14px] font-semibold text-neutral-950">
+                    {clause.category}
+                  </h3>
+                </div>
+                <p className="line-clamp-3 whitespace-pre-wrap pl-7 text-[13px] leading-6 text-neutral-600">
+                  {clause.content}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const ChecklistLine: React.FC<{ checked: boolean; label: string }> = ({
+  checked,
+  label,
+}) => (
+  <div className="flex items-center gap-3 rounded-lg bg-white/[0.06] px-3 py-2">
+    <span
+      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${
+        checked ? "bg-emerald-400 text-neutral-950" : "bg-white/10 text-neutral-500"
+      }`}
+    >
+      <Check className="h-3 w-3" strokeWidth={3} />
+    </span>
+    <span className={checked ? "text-[13px] font-semibold text-white" : "text-[13px] text-neutral-400"}>
+      {label}
+    </span>
+  </div>
+);
+
+const SummaryCard: React.FC<{ label: string; value: string; mono?: boolean }> = ({
+  label,
+  value,
+  mono,
+}) => (
+  <div className="rounded-lg border border-neutral-200 bg-[#fafafa] px-4 py-3">
+    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-neutral-400">
+      {label}
+    </p>
+    <p
+      className={`mt-1 truncate text-[14px] font-semibold text-neutral-900 ${
+        mono ? "font-mono" : ""
+      }`}
+    >
+      {value}
+    </p>
+  </div>
+);
 
 const ValidationSummary: React.FC<{ errors: ValidationError[] }> = ({ errors }) => (
   <div className="mb-6 border border-amber-200 bg-amber-50 p-4 text-[13px] text-amber-800">

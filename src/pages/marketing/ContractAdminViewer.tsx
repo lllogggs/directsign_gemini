@@ -1,10 +1,72 @@
-import React, { useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { ContractStatus, useAppStore } from "../../store";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, Copy } from "lucide-react";
+import React, { useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import {
+  AlertCircle,
+  ArrowLeft,
+  ArrowUpRight,
+  CalendarClock,
+  CheckCircle2,
+  Clock3,
+  Copy,
+  ExternalLink,
+  FileText,
+  Link2,
+  MessageSquareText,
+  PenLine,
+  Save,
+  Send,
+  ShieldCheck,
+} from "lucide-react";
 import { format } from "date-fns";
+import { Textarea } from "@/components/ui/textarea";
+import { ClauseHistory, Contract, ContractStatus, useAppStore } from "../../store";
+import { createShareToken } from "../../domain/contracts";
+
+const buildShareUrl = (contractId: string, shareToken?: string) =>
+  `${window.location.origin}/contract/${contractId}${
+    shareToken ? `?token=${encodeURIComponent(shareToken)}` : ""
+  }`;
+
+const STATUS_META: Record<
+  ContractStatus,
+  {
+    label: string;
+    helper: string;
+    badge: string;
+    icon: React.ReactNode;
+  }
+> = {
+  DRAFT: {
+    label: "초안",
+    helper: "공유 전 작성 중",
+    badge: "border-neutral-200 bg-white text-neutral-700",
+    icon: <FileText className="h-4 w-4" />,
+  },
+  REVIEWING: {
+    label: "검토 중",
+    helper: "인플루언서 응답 대기",
+    badge: "border-sky-200 bg-sky-50 text-sky-700",
+    icon: <Clock3 className="h-4 w-4" />,
+  },
+  NEGOTIATING: {
+    label: "수정 요청",
+    helper: "광고주 검토 필요",
+    badge: "border-amber-200 bg-amber-50 text-amber-700",
+    icon: <AlertCircle className="h-4 w-4" />,
+  },
+  APPROVED: {
+    label: "서명 대기",
+    helper: "최종본 승인 완료",
+    badge: "border-violet-200 bg-violet-50 text-violet-700",
+    icon: <PenLine className="h-4 w-4" />,
+  },
+  SIGNED: {
+    label: "완료",
+    helper: "서명본 보관 완료",
+    badge: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    icon: <CheckCircle2 className="h-4 w-4" />,
+  },
+};
 
 export function ContractAdminViewer() {
   const { id } = useParams<{ id: string }>();
@@ -12,17 +74,57 @@ export function ContractAdminViewer() {
   const getContract = useAppStore((state) => state.getContract);
   const updateClauseStatus = useAppStore((state) => state.updateClauseStatus);
   const updateContract = useAppStore((state) => state.updateContract);
+  const isSyncing = useAppStore((state) => state.isSyncing);
+  const syncError = useAppStore((state) => state.syncError);
   const contract = getContract(id || "");
+  const [replyContent, setReplyContent] = useState<Record<string, string>>({});
+  const [notice, setNotice] = useState<string>();
 
-  const [replyContent, setReplyContent] = useState<{
-    [clauseId: string]: string;
-  }>({});
+  const summary = useMemo(() => {
+    if (!contract) return undefined;
+    const pendingClauses = contract.clauses.filter((clause) => clause.status !== "APPROVED");
+    const activeShare = contract.evidence?.share_token_status === "active";
+    const allApproved = pendingClauses.length === 0;
 
-  if (!contract) return <div>계약서를 찾을 수 없습니다.</div>;
+    return {
+      pendingClauses,
+      activeShare,
+      allApproved,
+      shareUrl: buildShareUrl(contract.id, contract.evidence?.share_token),
+    };
+  }, [contract]);
+
+  if (!contract || !summary) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#f6f7f9] px-6 text-center">
+        <div className="rounded-lg border border-neutral-200 bg-white p-8 shadow-sm">
+          <FileText className="mx-auto h-8 w-8 text-neutral-300" />
+          <p className="mt-4 text-[16px] font-semibold text-neutral-900">
+            계약서를 찾을 수 없습니다
+          </p>
+          <button
+            type="button"
+            onClick={() => navigate("/advertiser/dashboard")}
+            className="mt-5 rounded-md bg-neutral-950 px-4 py-2 text-[13px] font-semibold text-white"
+          >
+            대시보드로 돌아가기
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const primaryActionLabel =
+    contract.status === "SIGNED"
+      ? "서명 완료"
+      : summary.allApproved
+        ? "서명 요청 보내기"
+        : "수정 요청 검토";
+  const canRequestSignatures = summary.allApproved && contract.status !== "SIGNED";
 
   const handleAction = (
     clauseId: string,
-    action: "수락" | "거절" | "대안 제시",
+    action: ClauseHistory["action"],
     newStatus: "APPROVED" | "MODIFICATION_REQUESTED",
   ) => {
     updateClauseStatus(contract.id, clauseId, newStatus, {
@@ -30,35 +132,39 @@ export function ContractAdminViewer() {
       action,
       comment:
         replyContent[clauseId] ||
-        (action === "수락"
-          ? "요청하신 내용을 수락합니다."
-          : action === "거절"
-            ? "요청하신 내용을 수락하기 어렵습니다."
-            : ""),
+        (newStatus === "APPROVED"
+          ? "요청하신 수정 내용을 승인합니다."
+          : "대안 조건을 제안합니다."),
       timestamp: new Date().toISOString(),
     });
     setReplyContent((prev) => ({ ...prev, [clauseId]: "" }));
+    setNotice(newStatus === "APPROVED" ? "조항을 승인했습니다." : "대안 의견을 남겼습니다.");
   };
 
-  const copyLink = () => {
-    if (contract.evidence?.share_token_status !== "active") {
-      alert("공유 링크 생성 후 복사할 수 있습니다.");
+  const copyLink = async () => {
+    if (!summary.activeShare) {
+      setNotice("공유 링크가 아직 활성화되지 않았습니다.");
       return;
     }
 
-    navigator.clipboard.writeText(
-      `${window.location.origin}/contract/${contract.id}`,
-    );
-    alert("인플루언서용 링크가 복사되었습니다.");
+    await navigator.clipboard.writeText(summary.shareUrl);
+    setNotice("인플루언서 공유 링크를 복사했습니다.");
   };
 
   const saveDraft = () => {
+    if (
+      summary.activeShare &&
+      !window.confirm("초안으로 되돌리면 현재 공유 링크가 비활성화됩니다. 계속할까요?")
+    ) {
+      return;
+    }
+
     const now = new Date().toISOString();
     updateContract(contract.id, {
       status: "DRAFT",
       workflow: {
         next_actor: "advertiser",
-        next_action: "발송 전 확인 후 공유 링크를 생성하세요.",
+        next_action: "발송 전 확인을 마치고 공유 링크를 생성하세요.",
         due_at: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
         risk_level: "low",
         last_message: "계약 초안이 저장되었습니다.",
@@ -74,29 +180,33 @@ export function ContractAdminViewer() {
           id: `audit_${Date.now()}`,
           actor: "advertiser",
           action: "draft_saved",
-          description: "광고주가 계약을 초안으로 저장했습니다.",
+          description: summary.activeShare
+            ? "광고주가 활성 공유 링크를 비활성화하고 계약을 초안으로 저장했습니다."
+            : "광고주가 계약을 초안으로 저장했습니다.",
           created_at: now,
         },
       ],
     });
+    setNotice("초안으로 저장했습니다.");
   };
 
   const requestSignatures = () => {
     const now = new Date().toISOString();
+    const shareToken = contract.evidence?.share_token ?? createShareToken();
+
     updateContract(contract.id, {
-      status: "REVIEWING",
+      status: "APPROVED",
       workflow: {
         next_actor: "influencer",
-        next_action: "인플루언서 검토 응답을 기다리는 중입니다.",
+        next_action: "인플루언서의 최종 서명을 기다리는 중입니다.",
         due_at: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
         risk_level: "medium",
-        last_message: "서명 요청용 공유 링크가 생성되었습니다.",
+        last_message: "최종본 서명 요청을 발송했습니다.",
       },
       evidence: {
         share_token_status: "active",
-        share_token_expires_at: new Date(
-          Date.now() + 7 * 24 * 60 * 60 * 1000,
-        ).toISOString(),
+        share_token: shareToken,
+        share_token_expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
         audit_ready: true,
         pdf_status: "draft_ready",
       },
@@ -106,279 +216,504 @@ export function ContractAdminViewer() {
           id: `audit_${Date.now()}`,
           actor: "advertiser",
           action: "signature_requested",
-          description: "광고주가 인플루언서 검토 및 서명 요청 링크를 발급했습니다.",
+          description: "광고주가 최종본 서명 요청 링크를 발급했습니다.",
           created_at: now,
         },
       ],
     });
+    setNotice("서명 요청 링크를 활성화했습니다.");
   };
 
-  const allApproved = contract.clauses.every((clause) => clause.status === "APPROVED");
-  const statusLabel = getStatusLabel(contract.status);
+  const handlePrimaryAction = () => {
+    if (canRequestSignatures) {
+      requestSignatures();
+      return;
+    }
+
+    document
+      .getElementById("clause-review")
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   return (
-    <div className="flex flex-col h-screen bg-[#FAFAFA] text-neutral-900 overflow-hidden font-sans">
-      <header className="h-[80px] px-12 border-b border-neutral-100 bg-white flex items-center justify-between z-10 shrink-0">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => navigate("/marketing/dashboard")}
-            className="p-2 hover:bg-neutral-50 rounded-full transition-colors -ml-2 text-neutral-400 hover:text-neutral-900"
-          >
-            <ArrowLeft strokeWidth={1.5} className="w-5 h-5" />
-          </button>
-          <div className="flex items-center gap-3 border-l border-neutral-100 pl-4">
-            <div className="w-8 h-8 bg-neutral-900 rounded-sm flex items-center justify-center text-white">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square" strokeLinejoin="miter"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+    <div className="min-h-screen bg-[#f6f7f9] font-sans text-neutral-950">
+      <header className="sticky top-0 z-30 border-b border-neutral-200 bg-white/95 backdrop-blur">
+        <div className="mx-auto flex h-[72px] max-w-[1480px] items-center justify-between px-5 sm:px-8 lg:px-10">
+          <div className="flex min-w-0 items-center gap-3">
+            <button
+              type="button"
+              onClick={() => navigate("/advertiser/dashboard")}
+              className="flex h-9 w-9 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-500 transition-colors hover:text-neutral-950"
+              aria-label="대시보드로 돌아가기"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </button>
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-neutral-950 text-white shadow-sm">
+                <ShieldCheck className="h-4 w-4" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
+                  계약 워크스페이스
+                </p>
+                <p className="truncate text-[16px] font-semibold">DirectSign</p>
+              </div>
             </div>
-            <span className="text-lg font-heading tracking-widest uppercase text-neutral-900">
-              DirectSign
-            </span>
           </div>
-        </div>
-        <div className="flex items-center gap-6">
-          <Button
-            variant="outline"
-            onClick={copyLink}
-            className="text-neutral-900 border-neutral-200 font-medium gap-2 rounded-none px-6 shadow-none hover:bg-neutral-50 text-[12px] uppercase tracking-wider h-[44px]"
-          >
-            <Copy strokeWidth={1.5} className="w-4 h-4" /> Copy Link
-          </Button>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={copyLink}
+              disabled={!summary.activeShare}
+              className="inline-flex h-10 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-[12px] font-semibold text-neutral-700 transition-colors hover:border-neutral-300 disabled:text-neutral-300"
+            >
+              <Copy className="h-4 w-4" />
+              링크 복사
+            </button>
+            <button
+              type="button"
+              onClick={handlePrimaryAction}
+              disabled={contract.status === "SIGNED"}
+              className="hidden h-10 items-center gap-2 rounded-lg bg-neutral-950 px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-neutral-800 disabled:bg-neutral-200 disabled:text-neutral-400 sm:inline-flex"
+            >
+              <Send className="h-4 w-4" />
+              {primaryActionLabel}
+            </button>
+          </div>
         </div>
       </header>
 
-      <main className="flex-1 flex overflow-hidden">
-        {/* Sidebar */}
-        <aside className="w-[300px] border-r border-neutral-100 bg-[#FAFAFA] p-12 flex flex-col gap-12 shrink-0 relative z-10">
-          <div>
-            <h3 className="text-[10px] font-medium text-neutral-400 uppercase tracking-[0.2em] mb-8">
-              Contract Info
-            </h3>
-            <div className="space-y-8 text-[13px]">
-              <div>
-                <p className="text-neutral-400 font-medium mb-3 uppercase text-[10px] tracking-[0.1em]">Influencer</p>
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-white border border-neutral-200 flex items-center justify-center text-xs font-medium text-neutral-600 uppercase rounded-sm">{contract.influencer_info.name.charAt(0)}</div>
-                  <p className="font-medium text-neutral-900">
-                    {contract.influencer_info.name}
-                  </p>
-                </div>
+      <main className="mx-auto max-w-[1480px] px-5 py-8 sm:px-8 lg:px-10">
+        <section className="mb-5 rounded-lg border border-neutral-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+            <div className="min-w-0">
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <StatusBadge status={contract.status} />
+                <span className="rounded-md border border-neutral-200 bg-[#fafafa] px-2.5 py-1 text-[12px] font-semibold text-neutral-500">
+                  {contract.type}
+                </span>
               </div>
-              <div>
-                <p className="text-neutral-400 font-medium mb-3 uppercase text-[10px] tracking-[0.1em]">Contact</p>
-                <p className="font-mono text-neutral-600">
-                  {contract.influencer_info.contact || "-"}
-                </p>
-              </div>
-              <div>
-                <p className="text-neutral-400 font-medium mb-3 uppercase text-[10px] tracking-[0.1em]">Channel</p>
-                <a
-                  href={contract.influencer_info.channel_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-neutral-900 font-mono underline decoration-neutral-300 underline-offset-4 hover:decoration-neutral-900 transition-colors truncate block"
-                >
-                  {contract.influencer_info.channel_url || "-"}
-                </a>
-              </div>
+              <h1 className="max-w-4xl text-[30px] font-semibold leading-tight tracking-[-0.03em] text-neutral-950 sm:text-[38px]">
+                {contract.title}
+              </h1>
+              <p className="mt-3 max-w-3xl text-[14px] leading-6 text-neutral-500">
+                {contract.workflow?.next_action ?? STATUS_META[contract.status].helper}
+              </p>
             </div>
-          </div>
 
-          <div className="mt-auto border-t border-neutral-200 pt-8 flex flex-col gap-3">
-            <p className="text-[10px] text-neutral-400 font-medium tracking-[0.2em] uppercase">
-              Status
-            </p>
-            <div className="flex items-center gap-3">
-              <span
-                className={`w-1.5 h-1.5 rounded-full ${contract.status === "NEGOTIATING" ? "bg-amber-500 animate-pulse" : contract.status === "SIGNED" ? "bg-emerald-500" : "bg-neutral-500"}`}
-              ></span>
-              <span className="text-[12px] font-medium tracking-wide uppercase text-neutral-900">
-                {statusLabel}
-              </span>
-            </div>
-          </div>
-        </aside>
-
-        {/* Main Editor */}
-        <section className="flex-1 bg-[#FAFAFA] flex flex-col pt-12 overflow-hidden relative items-center">
-          <div className="w-full max-w-[800px] flex items-center justify-between mb-8 shrink-0 px-8">
-            <div className="flex items-center gap-4">
-              <h2 className="text-3xl font-heading font-light tracking-tight text-neutral-900">{contract.title}</h2>
-            </div>
-            <div className="flex gap-4">
-              <button
-                type="button"
-                onClick={saveDraft}
-                className="px-6 h-[44px] text-neutral-600 bg-transparent border border-neutral-200 rounded-none text-[12px] uppercase tracking-wider font-medium hover:bg-neutral-50 transition-colors"
-              >
-                초안 저장
-              </button>
-            </div>
-          </div>
-
-          {/* Document Container */}
-          <div className="flex-1 bg-white border border-neutral-100 shadow-[0_8px_40px_rgba(0,0,0,0.04)] overflow-y-auto flex flex-col w-full max-w-[800px] relative custom-scrollbar pb-16">
-            <div className="h-[80px] bg-white border-b border-neutral-100 flex items-center px-12 text-neutral-400 text-[10px] uppercase font-medium tracking-[0.2em] shrink-0 sticky top-0 z-10 justify-between">
-              <span>{contract.type} Agreement</span>
-              <span className="font-mono">{new Date().toISOString().split('T')[0]}</span>
-            </div>
-            
-            <div className="flex-1 p-16 text-neutral-800 leading-[1.8] space-y-12 relative">
-              {contract.clauses.map((clause, i) => {
-                const isPending = clause.status !== "APPROVED";
-
-                return (
-                  <div key={clause.clause_id} className="relative">
-                    <p className="font-medium text-[13px] uppercase tracking-[0.1em] mb-4 text-neutral-900 flex gap-4">
-                      <span className="text-neutral-400 font-mono">{(i + 1).toString().padStart(2, '0')}</span> 
-                      {clause.category}
-                    </p>
-
-                    {isPending ? (
-                      <div className="relative bg-[#FAFAFA] p-8 mt-6 border-l-2 border-amber-500 group">
-                        <p className="text-[14px] text-neutral-700 leading-relaxed whitespace-pre-wrap">{clause.content}</p>
-
-                        {clause.history.length > 0 &&
-                          clause.history[clause.history.length - 1].role ===
-                            "influencer" && (
-                            <div className="mt-8 bg-white p-6 border border-neutral-100 shadow-[0_4px_24px_rgba(0,0,0,0.02)]">
-                              <div className="flex items-center gap-3 mb-4">
-                                <span className="text-[10px] uppercase tracking-widest font-medium text-amber-600">
-                                  Counterparty Message
-                                </span>
-                              </div>
-                              <p className="text-[14px] text-neutral-900 leading-relaxed mb-6 whitespace-pre-wrap font-serif italic text-lg px-4 border-l border-neutral-200">
-                                {clause.history[clause.history.length - 1].comment}
-                              </p>
-
-                              <Textarea
-                                className="mb-6 text-[13px] bg-[#FAFAFA] border-neutral-200 min-h-[100px] text-neutral-900 placeholder:text-neutral-400 focus-visible:ring-1 focus-visible:ring-neutral-900 rounded-none p-4"
-                                placeholder="Write your response..."
-                                value={replyContent[clause.clause_id] || ""}
-                                onChange={(e) =>
-                                  setReplyContent((prev) => ({
-                                    ...prev,
-                                    [clause.clause_id]: e.target.value,
-                                  }))
-                                }
-                              />
-
-                              <div className="flex gap-3">
-                                <button
-                                  onClick={() =>
-                                    handleAction(
-                                      clause.clause_id,
-                                      "수락",
-                                      "APPROVED",
-                                    )
-                                  }
-                                  className="flex-1 h-[48px] bg-neutral-900 text-white text-[12px] uppercase tracking-wider font-medium transition-colors hover:bg-neutral-800"
-                                >
-                                  Accept
-                                </button>
-                                <button
-                                  onClick={() =>
-                                    handleAction(
-                                      clause.clause_id,
-                                      "대안 제시",
-                                      "MODIFICATION_REQUESTED",
-                                    )
-                                  }
-                                  className="flex-1 h-[48px] bg-white border border-neutral-200 text-neutral-900 text-[12px] uppercase tracking-wider font-medium transition-colors hover:bg-neutral-50"
-                                >
-                                  Counter Offer
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                      </div>
-                    ) : (
-                      <p className="text-[14px] font-normal pl-8 leading-relaxed text-neutral-600 whitespace-pre-wrap">
-                        {clause.content}
-                      </p>
-                    )}
-                  </div>
-                );
-              })}
+            <div className="grid min-w-0 gap-2 sm:grid-cols-2 xl:w-[520px]">
+              <InfoTile label="인플루언서" value={contract.influencer_info.name} />
+              <InfoTile label="금액" value={contract.campaign?.budget ?? "미정"} />
+              <InfoTile label="기간" value={formatPeriod(contract)} />
+              <InfoTile label="다음 기한" value={formatDue(contract.workflow?.due_at)} />
             </div>
           </div>
         </section>
 
-        {/* Right Rail: Audit Log */}
-        <aside className="w-[400px] border-l border-neutral-100 bg-white shrink-0 flex flex-col z-20 shadow-[-24px_0_40px_rgba(0,0,0,0.01)]">
-          <div className="p-12 overflow-y-auto flex-1 custom-scrollbar">
-            <h3 className="text-[10px] font-medium text-neutral-400 uppercase tracking-[0.2em] mb-12">Audit Log</h3>
-            <div className="space-y-10 relative">
-              <div className="absolute left-[3px] top-4 bottom-4 w-[1px] bg-neutral-100 z-0"></div>
-              {(contract.audit_events ?? []).length === 0 ? (
-                <p className="text-[13px] leading-6 text-neutral-400">
-                  아직 기록된 감사 이벤트가 없습니다.
-                </p>
-              ) : (
-                [...(contract.audit_events ?? [])]
-                  .sort(
-                    (a, b) =>
-                      new Date(b.created_at).getTime() -
-                      new Date(a.created_at).getTime(),
-                  )
-                  .map((event) => (
-                    <div key={event.id} className="flex gap-6 relative z-10">
-                      <div
-                        className={`w-[7px] h-[7px] rounded-full shrink-0 shadow-sm mt-1.5 flex items-center justify-center ${event.actor === "influencer" ? "bg-amber-500" : "bg-neutral-900"}`}
-                      >
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex flex-col gap-1 mb-2">
-                          <span className="text-[11px] text-neutral-400 font-mono">
-                            {format(new Date(event.created_at), "MMM dd, HH:mm")}
+        <section className="mb-6 grid gap-4 lg:grid-cols-4">
+          <WorkflowCard
+            icon={<AlertCircle className="h-4 w-4" />}
+            label="검토 필요 조항"
+            value={`${summary.pendingClauses.length}건`}
+            helper={summary.pendingClauses.length > 0 ? "광고주 답변 필요" : "모든 조항 승인됨"}
+            tone={summary.pendingClauses.length > 0 ? "amber" : "emerald"}
+          />
+          <WorkflowCard
+            icon={<Link2 className="h-4 w-4" />}
+            label="공유 링크"
+            value={summary.activeShare ? "활성" : "비활성"}
+            helper={summary.activeShare ? "외부 검토 가능" : "아직 공유 불가"}
+            tone={summary.activeShare ? "sky" : "neutral"}
+          />
+          <WorkflowCard
+            icon={<ShieldCheck className="h-4 w-4" />}
+            label="감사 준비"
+            value={contract.evidence?.audit_ready ? "준비됨" : "미완료"}
+            helper={contract.evidence?.pdf_status === "signed_ready" ? "서명 PDF 준비" : "초안 PDF 기준"}
+            tone={contract.evidence?.audit_ready ? "emerald" : "neutral"}
+          />
+          <WorkflowCard
+            icon={<CalendarClock className="h-4 w-4" />}
+            label="저장 상태"
+            value={syncError ? "확인 필요" : isSyncing ? "저장 중" : "저장 완료"}
+            helper={syncError ? "동기화 실패 가능성" : "서버 저장소와 동기화"}
+            tone={syncError ? "amber" : "emerald"}
+          />
+        </section>
+
+        {notice && (
+          <div className="mb-5 flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-[13px] font-semibold text-emerald-800">
+            <span className="flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4" />
+              {notice}
+            </span>
+            <button type="button" onClick={() => setNotice(undefined)} className="text-emerald-700">
+              닫기
+            </button>
+          </div>
+        )}
+
+        <section className="grid gap-5 xl:grid-cols-[300px_minmax(0,1fr)_360px]">
+          <aside className="space-y-4">
+            <Panel title="상대방 정보">
+              <div className="space-y-4">
+                <PersonLine
+                  label="인플루언서"
+                  value={contract.influencer_info.name}
+                  helper={contract.influencer_info.contact || "연락처 미입력"}
+                />
+                <a
+                  href={contract.influencer_info.channel_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center justify-between rounded-lg border border-neutral-200 bg-[#fafafa] px-3 py-3 text-[13px] font-semibold text-neutral-700 transition-colors hover:bg-white"
+                >
+                  채널 열기
+                  <ExternalLink className="h-4 w-4 text-neutral-400" />
+                </a>
+              </div>
+            </Panel>
+
+            <Panel title="계약 메타">
+              <div className="space-y-3 text-[13px]">
+                <MetaLine label="생성일" value={formatDateTime(contract.created_at)} />
+                <MetaLine label="최근 수정" value={formatDateTime(contract.updated_at)} />
+                <MetaLine label="공유 만료" value={formatDateTime(contract.evidence?.share_token_expires_at)} />
+              </div>
+            </Panel>
+
+            <button
+              type="button"
+              onClick={saveDraft}
+              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white text-[13px] font-semibold text-neutral-700 transition-colors hover:bg-neutral-50"
+            >
+              <Save className="h-4 w-4" />
+              초안으로 저장
+            </button>
+          </aside>
+
+          <section
+            id="clause-review"
+            className="scroll-mt-24 rounded-lg border border-neutral-200 bg-white shadow-sm"
+          >
+            <div className="border-b border-neutral-200 px-5 py-4">
+              <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
+                계약 조항
+              </p>
+              <h2 className="mt-1 text-[20px] font-semibold tracking-[-0.02em]">
+                조항 검토
+              </h2>
+            </div>
+            <div className="divide-y divide-neutral-100">
+              {contract.clauses.map((clause, index) => {
+                const latestHistory = clause.history.at(-1);
+                const needsReview =
+                  clause.status !== "APPROVED" && latestHistory?.role === "influencer";
+
+                return (
+                  <article key={clause.clause_id} className="p-5">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0">
+                        <div className="mb-2 flex items-center gap-3">
+                          <span className="font-mono text-[12px] font-semibold text-neutral-400">
+                            {String(index + 1).padStart(2, "0")}
                           </span>
-                          <p className={`text-[12px] font-medium uppercase tracking-wider ${event.actor === "influencer" ? "text-amber-600" : "text-neutral-900"}`}>
-                            {event.actor === "influencer"
-                              ? "Counterparty"
-                              : event.actor === "system"
-                                ? "System"
-                                : "You"}{" "}
-                            {event.action}
-                          </p>
+                          <h3 className="text-[16px] font-semibold text-neutral-950">
+                            {clause.category}
+                          </h3>
+                          <ClauseBadge status={clause.status} />
                         </div>
-                        <p className="text-[13px] text-neutral-700 leading-relaxed font-serif italic border-l border-neutral-200 pl-4 py-1 mt-3">
-                          {event.description}
+                        <p className="max-w-3xl whitespace-pre-wrap text-[14px] leading-7 text-neutral-700">
+                          {clause.content}
                         </p>
                       </div>
                     </div>
-                  ))
-              )}
-            </div>
-          </div>
 
-          <div className="p-12 bg-[#FAFAFA] border-t border-neutral-100 mt-auto shrink-0 space-y-4">
-            <button
-              type="button"
-              onClick={requestSignatures}
-              disabled={!allApproved || contract.status === "SIGNED"}
-              className="w-full h-[52px] bg-neutral-900 hover:bg-neutral-800 text-white rounded-none text-[12px] uppercase tracking-wider font-medium shadow-none transition-colors disabled:bg-neutral-100 disabled:text-neutral-400"
-            >
-              서명 요청 보내기
-            </button>
-            <p className="text-[11px] text-neutral-500 text-center uppercase tracking-widest font-mono">
-              {allApproved ? (
-                <>All clauses <span className="text-emerald-600">approved</span></>
-              ) : (
-                <span className="text-amber-600">Pending clause review</span>
-              )}
-            </p>
-          </div>
-        </aside>
+                    {latestHistory && (
+                      <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
+                        <div className="mb-2 flex items-center gap-2 text-[12px] font-semibold text-amber-700">
+                          <MessageSquareText className="h-4 w-4" />
+                          인플루언서 의견
+                        </div>
+                        <p className="whitespace-pre-wrap text-[14px] leading-6 text-neutral-800">
+                          {latestHistory.comment}
+                        </p>
+                      </div>
+                    )}
+
+                    {needsReview && (
+                      <div className="mt-4 rounded-lg border border-neutral-200 bg-[#fafafa] p-4">
+                        <Textarea
+                          className="min-h-[96px] rounded-md border-neutral-200 bg-white text-[14px] shadow-none focus-visible:ring-1 focus-visible:ring-neutral-900"
+                          placeholder="답변 또는 대안 조건을 남기세요."
+                          value={replyContent[clause.clause_id] || ""}
+                          onChange={(event) =>
+                            setReplyContent((prev) => ({
+                              ...prev,
+                              [clause.clause_id]: event.target.value,
+                            }))
+                          }
+                        />
+                        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleAction(
+                                clause.clause_id,
+                                "수락" as ClauseHistory["action"],
+                                "APPROVED",
+                              )
+                            }
+                            className="inline-flex h-10 flex-1 items-center justify-center rounded-md bg-neutral-950 text-[13px] font-semibold text-white transition-colors hover:bg-neutral-800"
+                          >
+                            요청 승인
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleAction(
+                                clause.clause_id,
+                                "대안 제시" as ClauseHistory["action"],
+                                "MODIFICATION_REQUESTED",
+                              )
+                            }
+                            className="inline-flex h-10 flex-1 items-center justify-center rounded-md border border-neutral-200 bg-white text-[13px] font-semibold text-neutral-800 transition-colors hover:bg-neutral-50"
+                          >
+                            대안 제시
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+
+          <aside className="space-y-4">
+            <Panel title="공유와 서명">
+              <div className="space-y-4">
+                <div className="rounded-lg border border-neutral-200 bg-[#fafafa] p-4">
+                  <p className="text-[13px] font-semibold text-neutral-900">
+                    {summary.activeShare ? "공유 링크 활성화" : "공유 링크 비활성"}
+                  </p>
+                  <p className="mt-2 truncate font-mono text-[12px] text-neutral-500">
+                    {summary.activeShare ? summary.shareUrl : "서명 요청 시 링크가 활성화됩니다."}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={copyLink}
+                    disabled={!summary.activeShare}
+                    className="mt-3 inline-flex h-9 items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 text-[12px] font-semibold text-neutral-700 transition-colors hover:bg-neutral-50 disabled:text-neutral-300"
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                    복사
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={requestSignatures}
+                  disabled={!canRequestSignatures}
+                  className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-neutral-950 text-[13px] font-semibold text-white transition-colors hover:bg-neutral-800 disabled:bg-neutral-200 disabled:text-neutral-400"
+                >
+                  <Send className="h-4 w-4" />
+                  {primaryActionLabel}
+                </button>
+                {!summary.allApproved && (
+                  <p className="text-center text-[12px] font-semibold text-amber-700">
+                    조항 검토가 끝나면 서명 요청을 보낼 수 있습니다.
+                  </p>
+                )}
+              </div>
+            </Panel>
+
+            <Panel title="감사 기록">
+              <div className="space-y-4">
+                {(contract.audit_events ?? []).length === 0 ? (
+                  <p className="text-[13px] leading-6 text-neutral-500">
+                    아직 저장된 감사 이벤트가 없습니다.
+                  </p>
+                ) : (
+                  [...(contract.audit_events ?? [])]
+                    .sort(
+                      (a, b) =>
+                        new Date(b.created_at).getTime() -
+                        new Date(a.created_at).getTime(),
+                    )
+                    .slice(0, 6)
+                    .map((event) => (
+                      <div key={event.id} className="border-l-2 border-neutral-200 pl-3">
+                        <p className="text-[12px] font-semibold text-neutral-900">
+                          {actorLabel(event.actor)} · {event.action}
+                        </p>
+                        <p className="mt-1 text-[12px] text-neutral-400">
+                          {formatDateTime(event.created_at)}
+                        </p>
+                        <p className="mt-2 text-[13px] leading-6 text-neutral-600">
+                          {event.description}
+                        </p>
+                      </div>
+                    ))
+                )}
+              </div>
+            </Panel>
+          </aside>
+        </section>
       </main>
     </div>
   );
 }
 
-const STATUS_LABELS: Record<ContractStatus, string> = {
-  DRAFT: "작성 중",
-  REVIEWING: "검토 중",
-  NEGOTIATING: "수정 요청",
-  APPROVED: "서명 대기",
-  SIGNED: "완료",
-};
+function StatusBadge({ status }: { status: ContractStatus }) {
+  const meta = STATUS_META[status];
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[12px] font-semibold ${meta.badge}`}
+    >
+      {meta.icon}
+      {meta.label}
+    </span>
+  );
+}
 
-const getStatusLabel = (status: ContractStatus) => STATUS_LABELS[status] ?? status;
+function InfoTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-neutral-200 bg-[#fafafa] px-4 py-3">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-neutral-400">
+        {label}
+      </p>
+      <p className="mt-1 truncate text-[14px] font-semibold text-neutral-900">{value}</p>
+    </div>
+  );
+}
+
+function WorkflowCard({
+  icon,
+  label,
+  value,
+  helper,
+  tone,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  helper: string;
+  tone: "neutral" | "amber" | "emerald" | "sky";
+}) {
+  const className = {
+    neutral: "border-neutral-200 bg-white text-neutral-700",
+    amber: "border-amber-200 bg-amber-50 text-amber-700",
+    emerald: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    sky: "border-sky-200 bg-sky-50 text-sky-700",
+  }[tone];
+
+  return (
+    <div className={`rounded-lg border p-4 shadow-sm ${className}`}>
+      <div className="mb-4 flex items-center justify-between">
+        <p className="text-[12px] font-semibold">{label}</p>
+        {icon}
+      </div>
+      <p className="text-[24px] font-semibold tracking-[-0.03em]">{value}</p>
+      <p className="mt-2 text-[12px] opacity-75">{helper}</p>
+    </div>
+  );
+}
+
+function Panel({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="rounded-lg border border-neutral-200 bg-white p-5 shadow-sm">
+      <h2 className="mb-4 text-[12px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
+        {title}
+      </h2>
+      {children}
+    </section>
+  );
+}
+
+function PersonLine({
+  label,
+  value,
+  helper,
+}: {
+  label: string;
+  value: string;
+  helper?: string;
+}) {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-950 text-[13px] font-semibold text-white">
+        {value.charAt(0)}
+      </span>
+      <div className="min-w-0">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-neutral-400">
+          {label}
+        </p>
+        <p className="truncate text-[14px] font-semibold text-neutral-900">{value}</p>
+        {helper && <p className="truncate text-[12px] text-neutral-500">{helper}</p>}
+      </div>
+    </div>
+  );
+}
+
+function MetaLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <span className="text-neutral-400">{label}</span>
+      <span className="truncate text-right font-semibold text-neutral-800">{value}</span>
+    </div>
+  );
+}
+
+function ClauseBadge({ status }: { status: "APPROVED" | "MODIFICATION_REQUESTED" | "DELETION_REQUESTED" }) {
+  if (status === "APPROVED") {
+    return (
+      <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+        승인
+      </span>
+    );
+  }
+
+  return (
+    <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+      검토 필요
+    </span>
+  );
+}
+
+function formatPeriod(contract: Contract) {
+  if (contract.campaign?.period) return contract.campaign.period;
+  if (contract.campaign?.start_date && contract.campaign?.end_date) {
+    return `${formatDate(contract.campaign.start_date)} - ${formatDate(contract.campaign.end_date)}`;
+  }
+  if (contract.campaign?.deadline) return `${formatDate(contract.campaign.deadline)}까지`;
+  return "미정";
+}
+
+function formatDue(value?: string) {
+  if (!value) return "기한 미정";
+  const due = new Date(value);
+  const days = Math.ceil((due.getTime() - Date.now()) / (24 * 60 * 60 * 1000));
+  if (Number.isNaN(due.getTime())) return value;
+  if (days < 0) return `${Math.abs(days)}일 지연`;
+  if (days === 0) return "오늘 마감";
+  if (days === 1) return "내일 마감";
+  return `${format(due, "MM.dd")} 마감`;
+}
+
+function formatDate(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : format(date, "yyyy.MM.dd");
+}
+
+function formatDateTime(value?: string) {
+  if (!value) return "미정";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : format(date, "yyyy.MM.dd HH:mm");
+}
+
+function actorLabel(actor: string) {
+  if (actor === "advertiser") return "광고주";
+  if (actor === "influencer") return "인플루언서";
+  return "시스템";
+}
