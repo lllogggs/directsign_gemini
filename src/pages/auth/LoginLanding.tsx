@@ -25,14 +25,16 @@ export function LoginLanding() {
   const requestedNext = new URLSearchParams(location.search).get("next");
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#f6f7f9] px-5 py-8 font-sans text-neutral-950">
-      <section className="w-full max-w-[460px] rounded-lg border border-neutral-200 bg-white p-6 shadow-[0_18px_55px_rgba(15,23,42,0.08)] sm:p-7">
+    <main className="flex min-h-screen items-center justify-center bg-[linear-gradient(180deg,#fafafa_0%,#f3f4f6_100%)] px-5 py-8 font-sans text-neutral-950">
+      <section className="w-full max-w-[460px] overflow-hidden rounded-lg border border-neutral-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04),0_24px_70px_rgba(15,23,42,0.10)]">
+        <div className="h-1 bg-neutral-950" />
+        <div className="p-6 sm:p-7">
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-neutral-950 text-white">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-950 text-white shadow-[0_8px_24px_rgba(15,23,42,0.16)]">
             <ShieldCheck className="h-4 w-4" />
           </div>
           <div>
-            <p className="text-[17px] font-semibold leading-5 text-neutral-950">
+            <p className="text-[18px] font-semibold leading-5 tracking-[-0.01em] text-neutral-950">
               {PRODUCT_NAME}
             </p>
           </div>
@@ -58,10 +60,10 @@ export function LoginLanding() {
               <Link
                 key={option.href}
                 to={href}
-                className="group flex h-16 items-center justify-between gap-4 rounded-lg border border-neutral-200 bg-white px-4 transition hover:border-neutral-950 hover:bg-neutral-950 hover:text-white"
+                className="group flex h-16 items-center justify-between gap-4 rounded-lg border border-neutral-200 bg-[#fbfbfc] px-4 transition hover:-translate-y-0.5 hover:border-neutral-950 hover:bg-neutral-950 hover:text-white hover:shadow-[0_16px_34px_rgba(15,23,42,0.14)]"
               >
                 <span className="flex min-w-0 items-center gap-3">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-neutral-700 transition group-hover:bg-white/10 group-hover:text-white">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-neutral-700 ring-1 ring-neutral-200 transition group-hover:bg-white/10 group-hover:text-white group-hover:ring-white/10">
                     <Icon className="h-4 w-4" />
                   </span>
                   <span className="truncate text-[16px] font-semibold">
@@ -72,6 +74,7 @@ export function LoginLanding() {
               </Link>
             );
           })}
+        </div>
         </div>
       </section>
     </main>

@@ -101,8 +101,8 @@ export function ContractAdminViewer() {
 
   if (!contract || !summary) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#f6f7f9] px-6 text-center">
-        <div className="rounded-lg border border-neutral-200 bg-white p-8 shadow-sm">
+      <div className="flex min-h-screen items-center justify-center bg-[#f4f5f7] px-6 text-center">
+        <div className="rounded-lg border border-neutral-200/80 bg-white p-8 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_22px_60px_rgba(15,23,42,0.08)]">
           <FileText className="mx-auto h-8 w-8 text-neutral-300" />
           <p className="mt-4 text-[16px] font-semibold text-neutral-900">
             계약서를 찾을 수 없습니다
@@ -289,20 +289,20 @@ export function ContractAdminViewer() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f6f7f9] font-sans text-neutral-950">
-      <header className="sticky top-0 z-30 border-b border-neutral-200 bg-white/95 backdrop-blur">
+    <div className="min-h-screen bg-[#f4f5f7] font-sans text-neutral-950">
+      <header className="sticky top-0 z-30 border-b border-neutral-200/80 bg-white/95 shadow-[0_1px_0_rgba(15,23,42,0.04)] backdrop-blur">
         <div className="mx-auto flex h-[72px] max-w-[1480px] items-center justify-between px-5 sm:px-8 lg:px-10">
           <div className="flex min-w-0 items-center gap-3">
             <button
               type="button"
               onClick={() => navigate("/advertiser/dashboard")}
-              className="flex h-9 w-9 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-500 transition-colors hover:text-neutral-950"
+              className="flex h-9 w-9 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-500 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-neutral-300 hover:text-neutral-950"
               aria-label="대시보드로 돌아가기"
             >
               <ArrowLeft className="h-4 w-4" />
             </button>
             <div className="flex min-w-0 items-center gap-3">
-              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-neutral-950 text-white shadow-sm">
+              <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-950 text-white shadow-[0_8px_24px_rgba(15,23,42,0.16)]">
                 <ShieldCheck className="h-4 w-4" />
               </span>
               <div className="min-w-0">
@@ -319,7 +319,7 @@ export function ContractAdminViewer() {
               type="button"
               onClick={copyLink}
               disabled={!summary.activeShare}
-              className="inline-flex h-10 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-[12px] font-semibold text-neutral-700 transition-colors hover:border-neutral-300 disabled:text-neutral-300"
+              className="inline-flex h-10 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-[12px] font-semibold text-neutral-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-neutral-300 disabled:text-neutral-300 disabled:shadow-none"
             >
               <Copy className="h-4 w-4" />
               링크 복사
@@ -328,7 +328,7 @@ export function ContractAdminViewer() {
               type="button"
               onClick={handlePrimaryAction}
               disabled={contract.status === "SIGNED"}
-              className="hidden h-10 items-center gap-2 rounded-lg bg-neutral-950 px-4 text-[12px] font-semibold text-white shadow-sm transition-colors hover:bg-neutral-800 disabled:bg-neutral-200 disabled:text-neutral-400 sm:inline-flex"
+              className="hidden h-10 items-center gap-2 rounded-lg bg-neutral-950 px-4 text-[12px] font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition hover:bg-neutral-800 hover:shadow-[0_14px_30px_rgba(15,23,42,0.18)] disabled:bg-neutral-200 disabled:text-neutral-400 disabled:shadow-none sm:inline-flex"
             >
               <Send className="h-4 w-4" />
               {primaryActionLabel}
@@ -338,7 +338,7 @@ export function ContractAdminViewer() {
       </header>
 
       <main className="mx-auto max-w-[1480px] px-5 py-8 sm:px-8 lg:px-10">
-        <section className="mb-5 rounded-lg border border-neutral-200 bg-white p-6 shadow-sm">
+        <section className="mb-5 rounded-lg border border-neutral-200/80 bg-white p-6 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)]">
           <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
             <div className="min-w-0">
               <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -396,7 +396,7 @@ export function ContractAdminViewer() {
         </section>
 
         {notice && (
-          <div className="mb-5 flex items-center justify-between rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 text-[13px] font-semibold text-neutral-800">
+          <div className="mb-5 flex items-center justify-between rounded-lg border border-neutral-200 bg-[#fcfcfd] px-4 py-3 text-[13px] font-semibold text-neutral-800 shadow-[inset_3px_0_0_rgba(23,23,23,0.12)]">
             <span className="flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4" />
               {notice}
@@ -420,7 +420,7 @@ export function ContractAdminViewer() {
                   href={contract.influencer_info.channel_url}
                   target="_blank"
                   rel="noreferrer"
-                  className="flex items-center justify-between rounded-lg border border-neutral-200 bg-[#fafafa] px-3 py-3 text-[13px] font-semibold text-neutral-700 transition-colors hover:bg-white"
+                  className="flex items-center justify-between rounded-lg border border-neutral-200 bg-[#fbfbfc] px-3 py-3 text-[13px] font-semibold text-neutral-700 transition hover:-translate-y-0.5 hover:border-neutral-300 hover:bg-white hover:shadow-[0_12px_26px_rgba(15,23,42,0.08)]"
                 >
                   채널 열기
                   <ExternalLink className="h-4 w-4 text-neutral-400" />
@@ -439,7 +439,7 @@ export function ContractAdminViewer() {
             <button
               type="button"
               onClick={saveDraft}
-              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white text-[13px] font-semibold text-neutral-700 transition-colors hover:bg-neutral-50"
+              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white text-[13px] font-semibold text-neutral-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-neutral-300 hover:bg-neutral-50"
             >
               <Save className="h-4 w-4" />
               초안으로 저장
@@ -473,9 +473,9 @@ export function ContractAdminViewer() {
 
           <section
             id="clause-review"
-            className="scroll-mt-24 rounded-lg border border-neutral-200 bg-white shadow-sm"
+            className="scroll-mt-24 overflow-hidden rounded-lg border border-neutral-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)]"
           >
-            <div className="border-b border-neutral-200 px-5 py-4">
+            <div className="border-b border-neutral-200 bg-[#fbfbfc] px-5 py-4">
               <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
                 계약 조항
               </p>
@@ -509,7 +509,7 @@ export function ContractAdminViewer() {
                     </div>
 
                     {latestHistory && (
-                      <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
+                      <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50/85 p-4 shadow-[inset_3px_0_0_rgba(217,119,6,0.22)]">
                         <div className="mb-2 flex items-center gap-2 text-[12px] font-semibold text-amber-700">
                           <MessageSquareText className="h-4 w-4" />
                           인플루언서 의견
@@ -521,7 +521,7 @@ export function ContractAdminViewer() {
                     )}
 
                     {needsReview && (
-                      <div className="mt-4 rounded-lg border border-neutral-200 bg-[#fafafa] p-4">
+                      <div className="mt-4 rounded-lg border border-neutral-200 bg-[#fbfbfc] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
                         <Textarea
                           className="min-h-[96px] rounded-md border-neutral-200 bg-white text-[14px] shadow-none focus-visible:ring-1 focus-visible:ring-neutral-900"
                           placeholder="답변 또는 대안 조건을 남기세요."
@@ -572,7 +572,7 @@ export function ContractAdminViewer() {
           <aside className="space-y-4">
             <Panel title="공유와 서명">
               <div className="space-y-4">
-                <div className="rounded-lg border border-neutral-200 bg-[#fafafa] p-4">
+                  <div className="rounded-lg border border-neutral-200 bg-[#fbfbfc] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
                   <p className="text-[13px] font-semibold text-neutral-900">
                     {summary.activeShare ? "공유 링크 활성화" : "공유 링크 비활성"}
                   </p>
@@ -583,7 +583,7 @@ export function ContractAdminViewer() {
                     type="button"
                     onClick={copyLink}
                     disabled={!summary.activeShare}
-                    className="mt-3 inline-flex h-9 items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 text-[12px] font-semibold text-neutral-700 transition-colors hover:bg-neutral-50 disabled:text-neutral-300"
+                    className="mt-3 inline-flex h-9 items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 text-[12px] font-semibold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 disabled:text-neutral-300"
                   >
                     <Copy className="h-3.5 w-3.5" />
                     복사
@@ -593,7 +593,7 @@ export function ContractAdminViewer() {
                   type="button"
                   onClick={requestSignatures}
                   disabled={!canRequestSignatures}
-                  className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-neutral-950 text-[13px] font-semibold text-white transition-colors hover:bg-neutral-800 disabled:bg-neutral-200 disabled:text-neutral-400"
+                  className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-neutral-950 text-[13px] font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition hover:bg-neutral-800 hover:shadow-[0_14px_30px_rgba(15,23,42,0.18)] disabled:bg-neutral-200 disabled:text-neutral-400 disabled:shadow-none"
                 >
                   <Send className="h-4 w-4" />
                   {primaryActionLabel}
@@ -608,7 +608,7 @@ export function ContractAdminViewer() {
 
             <Panel title="운영자 확인">
               <div className="space-y-3">
-                <div className="flex items-start gap-3 rounded-lg border border-neutral-200 bg-[#fafafa] p-4">
+                <div className="flex items-start gap-3 rounded-lg border border-neutral-200 bg-[#fbfbfc] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
                   <LifeBuoy className="mt-0.5 h-4 w-4 shrink-0 text-neutral-500" />
                   <p className="text-[13px] leading-6 text-neutral-600">
                     로그인한 계약 당사자가 요청할 때만 24시간 열람권이 열립니다. 운영자 열람 기록은 별도로 남습니다.
@@ -683,7 +683,7 @@ function StatusBadge({ status }: { status: ContractStatus }) {
 
 function InfoTile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-neutral-200 bg-[#fafafa] px-4 py-3">
+    <div className="rounded-lg border border-neutral-200/80 bg-[#fcfcfd] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
       <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-neutral-400">
         {label}
       </p>
@@ -712,7 +712,7 @@ function WorkflowCard({
   }[tone];
 
   return (
-    <div className={`rounded-lg border p-4 shadow-sm ${className}`}>
+    <div className={`rounded-lg border p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${className}`}>
       <div className="mb-4 flex items-center justify-between">
         <p className="text-[12px] font-semibold">{label}</p>
         {icon}
@@ -725,7 +725,7 @@ function WorkflowCard({
 
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-lg border border-neutral-200 bg-white p-5 shadow-sm">
+    <section className="rounded-lg border border-neutral-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_14px_36px_rgba(15,23,42,0.05)]">
       <h2 className="mb-4 text-[14px] font-semibold text-neutral-950">
         {title}
       </h2>
@@ -745,7 +745,7 @@ function PersonLine({
 }) {
   return (
     <div className="flex items-center gap-3">
-      <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-950 text-[13px] font-semibold text-white">
+      <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-950 text-[13px] font-semibold text-white shadow-[0_8px_20px_rgba(15,23,42,0.14)]">
         {value.charAt(0)}
       </span>
       <div className="min-w-0">

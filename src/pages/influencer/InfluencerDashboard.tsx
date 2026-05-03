@@ -276,17 +276,17 @@ export function InfluencerDashboard() {
 
   return (
     <DashboardShell>
-      <header className="sticky top-0 z-30 border-b border-neutral-200 bg-white/95 backdrop-blur">
+      <header className="sticky top-0 z-30 border-b border-neutral-200/80 bg-white/95 shadow-[0_1px_0_rgba(15,23,42,0.04)] backdrop-blur">
         <div className="mx-auto flex h-[72px] max-w-[1320px] items-center justify-between px-4 sm:px-6 lg:px-8">
           <button
             type="button"
             onClick={() => navigate("/influencer/dashboard")}
             className="flex min-w-0 items-center gap-3"
           >
-            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-neutral-950 text-white">
+            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-950 text-white shadow-[0_8px_24px_rgba(15,23,42,0.16)]">
               <ShieldCheck className="h-4 w-4" />
             </span>
-            <span className="truncate text-[18px] font-semibold">{PRODUCT_NAME}</span>
+            <span className="truncate text-[19px] font-semibold tracking-[-0.02em]">{PRODUCT_NAME}</span>
           </button>
 
           <div className="flex items-center gap-2">
@@ -312,7 +312,7 @@ export function InfluencerDashboard() {
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-[1320px] px-4 py-3 sm:px-6 lg:px-8">
+      <main className="mx-auto w-full max-w-[1320px] px-4 py-4 sm:px-6 lg:px-8">
         <section
           className={`mb-3 grid min-w-0 items-start gap-3 ${
             dashboard.tasks.length > 0
@@ -320,13 +320,13 @@ export function InfluencerDashboard() {
               : "lg:grid-cols-1"
           }`}
         >
-          <div className="min-w-0 overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm">
+          <div className="min-w-0 overflow-hidden rounded-lg border border-neutral-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)]">
             <InfluencerAccountBanner
               dashboard={dashboard}
               verification={verification}
               onVerify={() => navigate("/influencer/verification")}
             />
-            <div className="grid gap-3 p-4 lg:grid-cols-[180px_minmax(0,1fr)] lg:items-center">
+            <div className="grid gap-4 p-4 lg:grid-cols-[190px_minmax(0,1fr)] lg:items-center">
               <div className="min-w-0">
                 <h1 className="text-[22px] font-semibold leading-7 tracking-normal text-neutral-950">
                   계약 처리 현황
@@ -375,7 +375,7 @@ export function InfluencerDashboard() {
           />
         </section>
 
-        <section className="rounded-t-lg border border-b-0 border-neutral-200 bg-white p-2.5 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+        <section className="rounded-t-lg border border-b-0 border-neutral-200/80 bg-white p-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
           <div className="relative min-w-0 flex-1">
             <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
@@ -384,7 +384,7 @@ export function InfluencerDashboard() {
               onChange={(event) => setQuery(event.target.value)}
               aria-label="계약 검색"
               placeholder="계약명, 광고주, 플랫폼 검색"
-              className="h-9 w-full rounded-md border border-neutral-200 bg-[#fafafa] pl-9 pr-3 text-[13px] outline-none transition placeholder:text-neutral-400 focus:border-neutral-950 focus:bg-white"
+              className="h-10 w-full rounded-md border border-neutral-200 bg-[#fbfbfc] pl-9 pr-3 text-[13px] outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950 focus:bg-white focus:shadow-[0_0_0_3px_rgba(23,23,23,0.05)]"
             />
           </div>
           <div className="flex gap-2 overflow-x-auto pb-1 lg:pb-0">
@@ -420,14 +420,14 @@ export function InfluencerDashboard() {
 }
 
 function DashboardShell({ children }: { children: React.ReactNode }) {
-  return <div className="min-h-screen bg-[#f6f7f9] font-sans text-neutral-950">{children}</div>;
+  return <div className="min-h-screen bg-[#f4f5f7] font-sans text-neutral-950">{children}</div>;
 }
 
 function LoadingView() {
   return (
     <div className="flex min-h-screen items-center justify-center px-5">
-      <div className="w-full max-w-sm rounded-lg border border-neutral-200 bg-white p-6 text-center shadow-sm">
-        <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-lg bg-neutral-950 text-white">
+      <div className="w-full max-w-sm rounded-lg border border-neutral-200/80 bg-white p-6 text-center shadow-[0_1px_2px_rgba(15,23,42,0.04),0_22px_60px_rgba(15,23,42,0.08)]">
+        <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-lg bg-neutral-950 text-white shadow-[0_8px_24px_rgba(15,23,42,0.16)]">
           <RefreshCw className="h-5 w-5 animate-spin" />
         </div>
         <p className="mt-4 text-sm font-semibold text-neutral-950">
@@ -441,7 +441,7 @@ function LoadingView() {
 function ErrorView({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <div className="flex min-h-screen items-center justify-center px-5">
-      <div className="w-full max-w-md rounded-lg border border-neutral-200 bg-white p-6 text-center shadow-sm">
+      <div className="w-full max-w-md rounded-lg border border-neutral-200/80 bg-white p-6 text-center shadow-[0_1px_2px_rgba(15,23,42,0.04),0_22px_60px_rgba(15,23,42,0.08)]">
         <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-lg bg-rose-50 text-rose-700">
           <AlertCircle className="h-5 w-5" />
         </div>
@@ -449,7 +449,7 @@ function ErrorView({ message, onRetry }: { message: string; onRetry: () => void 
         <button
           type="button"
           onClick={onRetry}
-          className="mt-5 h-10 rounded-lg bg-neutral-950 px-4 text-sm font-semibold text-white"
+          className="mt-5 h-10 rounded-lg bg-neutral-950 px-4 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition hover:bg-neutral-800"
         >
           다시 시도
         </button>
@@ -470,10 +470,10 @@ function InfluencerAccountBanner({
   const verificationApproved = dashboard.verification.status === "approved";
 
   return (
-    <section className="border-b border-neutral-200 bg-white px-4 py-3">
+    <section className="border-b border-neutral-200/80 bg-[#fcfcfd] px-4 py-3">
       <div className="flex flex-row items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-neutral-700">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-neutral-800 ring-1 ring-neutral-200">
             <UserCheck className="h-4 w-4" />
           </div>
           <div className="min-w-0">
@@ -537,7 +537,7 @@ function PriorityPanel({
   if (tasks.length === 0) return null;
 
   return (
-    <aside className="rounded-lg border border-neutral-200 bg-white p-4 text-neutral-950 shadow-sm">
+    <aside className="rounded-lg border border-neutral-200/80 bg-white p-4 text-neutral-950 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_42px_rgba(15,23,42,0.06)]">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="text-[18px] font-semibold leading-6">
@@ -555,7 +555,7 @@ function PriorityPanel({
             key={task.id}
             type="button"
             onClick={() => onOpen(task.href)}
-            className="group w-full rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-left transition hover:border-neutral-300 hover:bg-white"
+            className="group w-full rounded-md border border-neutral-200 bg-[#fbfbfc] px-3 py-2.5 text-left transition hover:-translate-y-0.5 hover:border-neutral-300 hover:bg-white hover:shadow-[0_12px_26px_rgba(15,23,42,0.08)]"
           >
             <div className="flex items-center justify-between gap-3">
               <p className="min-w-0 truncate text-[13px] font-semibold">
@@ -577,7 +577,7 @@ function AccountPanel({ dashboard }: { dashboard: InfluencerDashboardResponse })
   const verification = VERIFICATION_META[dashboard.verification.status];
 
   return (
-    <aside className="rounded-lg border border-neutral-200 bg-white p-3 shadow-sm">
+    <aside className="rounded-lg border border-neutral-200/80 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_12px_28px_rgba(15,23,42,0.05)]">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate text-[14px] font-semibold text-neutral-950">
@@ -664,7 +664,7 @@ function SummaryTile({
   const spanClass = compact ? "col-span-2 sm:col-span-1" : "";
 
   return (
-    <div className={`rounded-md border border-neutral-200 bg-white px-3 py-2.5 ${spanClass}`}>
+    <div className={`rounded-md border border-neutral-200/80 bg-[#fcfcfd] px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] ${spanClass}`}>
       <div className="flex items-center gap-2">
         <span className={`h-1.5 w-1.5 rounded-full ${accentClass}`} />
         <p className="text-[11px] font-semibold leading-4 text-neutral-500">{label}</p>
@@ -706,7 +706,7 @@ function TaskCard({
     <button
       type="button"
       onClick={onOpen}
-      className={`group min-h-[96px] rounded-lg border p-3 text-left shadow-sm transition hover:-translate-y-0.5 ${TASK_TONE[task.tone]}`}
+      className={`group min-h-[96px] rounded-lg border p-3 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:shadow-[0_12px_26px_rgba(15,23,42,0.08)] ${TASK_TONE[task.tone]}`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -759,8 +759,8 @@ function FilterChip({
 
 function EmptyContracts({ hasQuery }: { hasQuery: boolean }) {
   return (
-    <section className="flex min-h-[150px] flex-col items-center justify-center rounded-b-lg border-x border-b border-neutral-200 bg-white px-6 text-center">
-      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-50 text-neutral-300 ring-1 ring-neutral-200">
+    <section className="flex min-h-[190px] flex-col items-center justify-center rounded-b-lg border-x border-b border-neutral-200/80 bg-white px-6 text-center shadow-[0_18px_48px_rgba(15,23,42,0.04)]">
+      <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#fbfbfc] text-neutral-300 ring-1 ring-neutral-200">
         <FileText className="h-5 w-5" strokeWidth={1.7} />
       </div>
       <h2 className="mt-3 text-[15px] font-semibold text-neutral-950">
@@ -783,8 +783,8 @@ function ContractTable({
   onOpen: (contract: InfluencerDashboardContract) => void;
 }) {
   return (
-    <section className="overflow-hidden rounded-b-lg border-x border-b border-neutral-200 bg-white shadow-sm">
-      <div className="hidden grid-cols-[minmax(260px,1.35fr)_190px_180px_140px_170px_160px_48px] border-b border-neutral-200 bg-[#fafafa] px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-neutral-400 lg:grid">
+    <section className="overflow-hidden rounded-b-lg border-x border-b border-neutral-200/80 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.04)]">
+      <div className="hidden grid-cols-[minmax(260px,1.35fr)_190px_180px_140px_170px_160px_48px] border-b border-neutral-200 bg-[#fbfbfc] px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-neutral-400 lg:grid">
         <span>계약명</span>
         <span>광고주</span>
         <span>플랫폼</span>
@@ -882,7 +882,7 @@ function ContractCard({
   const stage = STAGE_META[contract.stage];
 
   return (
-    <article className="rounded-lg border border-neutral-200 bg-white p-4 shadow-sm">
+    <article className="rounded-lg border border-neutral-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_14px_36px_rgba(15,23,42,0.05)]">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="mb-3 flex flex-wrap items-center gap-2">

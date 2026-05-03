@@ -309,18 +309,18 @@ export function InfluencerVerification() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f6f7f9] font-sans text-neutral-950">
-      <header className="border-b border-neutral-200 bg-white">
+    <div className="min-h-screen bg-[#f4f5f7] font-sans text-neutral-950">
+      <header className="border-b border-neutral-200/80 bg-white shadow-[0_1px_0_rgba(15,23,42,0.04)]">
         <div className="mx-auto flex h-[72px] max-w-6xl items-center justify-between px-5 sm:px-8">
           <button
             type="button"
             onClick={() => navigate(returnPath)}
-            className="flex items-center gap-3 text-sm font-semibold text-neutral-700"
+            className="flex items-center gap-3 text-sm font-semibold text-neutral-700 transition hover:text-neutral-950"
           >
             <ArrowLeft className="h-4 w-4" />
             {returnLabel}
           </button>
-          <div className="flex items-center gap-2 rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs font-semibold text-neutral-600">
+          <div className="flex items-center gap-2 rounded-full border border-neutral-200 bg-[#fbfbfc] px-3 py-1.5 text-xs font-semibold text-neutral-600">
             <ShieldCheck className="h-4 w-4" />
             계정 소유 확인
           </div>
@@ -328,8 +328,8 @@ export function InfluencerVerification() {
       </header>
 
       <main className="mx-auto grid max-w-6xl gap-4 px-5 py-4 sm:px-8 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <section className="rounded-lg border border-neutral-200 bg-white p-5 shadow-sm sm:p-6">
-          <div className="mb-5 rounded-lg border border-neutral-200 bg-neutral-50 p-4">
+        <section className="rounded-lg border border-neutral-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)] sm:p-6">
+          <div className="mb-5 rounded-lg border border-neutral-200 bg-[#fbfbfc] p-4 shadow-[inset_3px_0_0_rgba(23,23,23,0.12)]">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-start gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-neutral-950 text-white">
@@ -389,8 +389,8 @@ export function InfluencerVerification() {
                       onClick={() => updatePlatform(item)}
                       className={`flex min-h-[64px] flex-col items-start justify-between rounded-lg border p-3 text-left transition ${
                         active
-                          ? `${meta.className} ring-2 ring-neutral-950/10`
-                          : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-400"
+                          ? `${meta.className} shadow-[0_10px_24px_rgba(15,23,42,0.08)] ring-2 ring-neutral-950/10`
+                          : "border-neutral-200 bg-white text-neutral-600 hover:-translate-y-0.5 hover:border-neutral-400 hover:shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
                       }`}
                     >
                       <span className="flex h-8 w-8 items-center justify-center rounded-md bg-white/70 text-current">
@@ -442,7 +442,7 @@ export function InfluencerVerification() {
               />
             </div>
 
-            <section className="rounded-lg border border-neutral-200 bg-neutral-50 p-4">
+            <section className="rounded-lg border border-neutral-200 bg-[#fbfbfc] p-4">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-sm font-semibold text-neutral-950">
@@ -493,9 +493,9 @@ export function InfluencerVerification() {
                     type="button"
                     onClick={() => setMethod(item)}
                     className={`rounded-lg border p-3 text-left transition ${
-                      method === item
-                        ? "border-neutral-950 bg-neutral-950 text-white"
-                        : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-400"
+                    method === item
+                        ? "border-neutral-950 bg-neutral-950 text-white shadow-[0_12px_26px_rgba(15,23,42,0.14)]"
+                        : "border-neutral-200 bg-white text-neutral-700 hover:-translate-y-0.5 hover:border-neutral-400 hover:shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
                     }`}
                   >
                     <span className="text-sm font-semibold">
@@ -529,7 +529,7 @@ export function InfluencerVerification() {
                 증빙 스크린샷
                 {method === "screenshot_review" ? " (필수)" : " (선택)"}
               </label>
-              <label className="mt-2 flex min-h-28 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-neutral-300 bg-neutral-50 px-4 py-5 text-center transition hover:border-neutral-500 hover:bg-white">
+              <label className="mt-2 flex min-h-28 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-neutral-300 bg-[#fbfbfc] px-4 py-5 text-center transition hover:border-neutral-500 hover:bg-white hover:shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
                 <FileImage className="mb-2 h-5 w-5 text-neutral-500" />
                 <span className="text-sm font-semibold text-neutral-900">
                   {file ? file.name : "PNG, JPG, WebP, PDF 업로드"}
@@ -553,7 +553,7 @@ export function InfluencerVerification() {
               <textarea
                 value={form.note}
                 onChange={(event) => updateForm({ note: event.target.value })}
-                className="mt-2 min-h-20 w-full rounded-lg border border-neutral-200 bg-white p-4 text-sm outline-none transition placeholder:text-neutral-400 focus:border-neutral-950"
+                className="mt-2 min-h-20 w-full rounded-lg border border-neutral-200 bg-[#fbfbfc] p-4 text-sm outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950 focus:bg-white focus:shadow-[0_0_0_3px_rgba(23,23,23,0.05)]"
                 placeholder="코드를 넣은 위치, 임시 게시글 여부, 검수 후 삭제 예정 등 참고 내용을 적어주세요."
               />
             </label>
@@ -572,7 +572,7 @@ export function InfluencerVerification() {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="h-11 w-full rounded-lg bg-neutral-950 px-5 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-500"
+              className="h-11 w-full rounded-lg bg-neutral-950 px-5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-500 disabled:shadow-none"
             >
               {isSubmitting
                 ? "접수 중"
@@ -584,7 +584,7 @@ export function InfluencerVerification() {
         </section>
 
         <aside className="space-y-4">
-          <section className="rounded-lg border border-neutral-200 bg-white p-5 shadow-sm">
+          <section className="rounded-lg border border-neutral-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_14px_34px_rgba(15,23,42,0.05)]">
             <div className="mb-4 flex items-center gap-3">
               <div
                 className={`flex h-10 w-10 items-center justify-center rounded-lg ${selectedPlatform.className}`}
@@ -619,7 +619,7 @@ export function InfluencerVerification() {
             href={proofUrl || form.platform_url || selectedPlatform.urlPlaceholder}
             target="_blank"
             rel="noreferrer"
-            className="flex h-11 items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white text-sm font-semibold text-neutral-700 shadow-sm transition hover:border-neutral-400"
+            className="flex h-11 items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white text-sm font-semibold text-neutral-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-neutral-400 hover:shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
           >
             <ExternalLink className="h-4 w-4" />
             증빙 URL 열기
@@ -654,7 +654,7 @@ function TextField({
         required={required}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-2 h-11 w-full rounded-lg border border-neutral-200 bg-white px-3 text-sm outline-none transition placeholder:text-neutral-400 focus:border-neutral-950"
+        className="mt-2 h-11 w-full rounded-lg border border-neutral-200 bg-[#fbfbfc] px-3 text-sm outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950 focus:bg-white focus:shadow-[0_0_0_3px_rgba(23,23,23,0.05)]"
       />
     </label>
   );
@@ -692,7 +692,7 @@ function TrustNote({
   body: string;
 }) {
   return (
-    <section className="rounded-lg border border-neutral-200 bg-white p-4 shadow-sm">
+    <section className="rounded-lg border border-neutral-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_14px_34px_rgba(15,23,42,0.05)]">
       <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-lg bg-neutral-100 text-neutral-700">
         {icon}
       </div>

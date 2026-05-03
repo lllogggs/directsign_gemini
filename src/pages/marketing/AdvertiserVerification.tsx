@@ -13,6 +13,7 @@ import {
 } from "../../domain/verification";
 import { useVerificationSummary } from "../../hooks/useVerificationSummary";
 import { PRODUCT_NAME } from "../../domain/brand";
+import { removeInternalTestLabel } from "../../domain/display";
 
 const API_BASE =
   typeof import.meta !== "undefined"
@@ -57,9 +58,14 @@ export function AdvertiserVerification() {
   const latest = advertiser?.latest_request;
   const account = advertiser?.account;
   const approved = status === "approved";
-  const displayCompany =
-    latest?.subject_name || account?.company_name || "광고주 계정";
-  const displayManager = latest?.submitted_by_name || account?.name || "-";
+  const displayCompany = removeInternalTestLabel(
+    latest?.subject_name || account?.company_name,
+    "브랜드",
+  );
+  const displayManager = removeInternalTestLabel(
+    latest?.submitted_by_name || account?.name,
+    "광고주",
+  );
   const displayEmail = latest?.submitted_by_email || account?.email || "-";
   const displayBusinessNumber =
     latest?.business_registration_number ||
@@ -125,13 +131,13 @@ export function AdvertiserVerification() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f6f7f9] font-sans text-neutral-950">
-      <header className="border-b border-neutral-200 bg-white">
+    <div className="min-h-screen bg-[#f4f5f7] font-sans text-neutral-950">
+      <header className="border-b border-neutral-200/80 bg-white shadow-[0_1px_0_rgba(15,23,42,0.04)]">
         <div className="mx-auto flex h-[72px] max-w-5xl items-center justify-between px-5 sm:px-8">
           <button
             type="button"
             onClick={() => navigate("/advertiser/dashboard")}
-            className="flex items-center gap-3 text-sm font-semibold text-neutral-700"
+            className="flex items-center gap-3 text-sm font-semibold text-neutral-700 transition hover:text-neutral-950"
           >
             <ArrowLeft className="h-4 w-4" />
             대시보드
@@ -140,7 +146,7 @@ export function AdvertiserVerification() {
             <span className="hidden text-sm font-semibold text-neutral-950 sm:inline">
               {PRODUCT_NAME}
             </span>
-            <span className="flex items-center gap-2 rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs font-semibold text-neutral-600">
+            <span className="flex items-center gap-2 rounded-full border border-neutral-200 bg-[#fbfbfc] px-3 py-1.5 text-xs font-semibold text-neutral-600">
               <ShieldCheck className="h-4 w-4" />
               수기 심사
             </span>
@@ -149,9 +155,9 @@ export function AdvertiserVerification() {
       </header>
 
       <main className="mx-auto grid max-w-6xl gap-4 px-5 py-4 sm:px-8 lg:grid-cols-[minmax(0,1fr)_300px]">
-        <section className="rounded-lg border border-neutral-200 bg-white p-5 shadow-sm sm:p-6">
+        <section className="rounded-lg border border-neutral-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)] sm:p-6">
           {approved && (
-            <div className="mb-5 rounded-lg border border-neutral-200 bg-neutral-50 p-4">
+            <div className="mb-5 rounded-lg border border-neutral-200 bg-[#fbfbfc] p-4 shadow-[inset_3px_0_0_rgba(23,23,23,0.12)]">
               <div className="flex items-start gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-neutral-950 text-white">
                   <ShieldCheck className="h-5 w-5" />
@@ -242,7 +248,7 @@ export function AdvertiserVerification() {
               <label className="text-sm font-semibold text-neutral-900">
                 사업자등록증명원 파일
               </label>
-              <label className="mt-2 flex min-h-28 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-neutral-300 bg-neutral-50 px-4 py-5 text-center transition hover:border-neutral-500 hover:bg-white">
+              <label className="mt-2 flex min-h-28 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-neutral-300 bg-[#fbfbfc] px-4 py-5 text-center transition hover:border-neutral-500 hover:bg-white hover:shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
                 <FileUp className="mb-3 h-6 w-6 text-neutral-500" />
                 <span className="text-sm font-semibold text-neutral-900">
                   {file ? file.name : "PDF 또는 이미지 업로드"}
@@ -266,7 +272,7 @@ export function AdvertiserVerification() {
               <textarea
                 value={form.note}
                 onChange={(event) => updateForm({ note: event.target.value })}
-                className="mt-2 min-h-20 w-full rounded-lg border border-neutral-200 bg-white p-4 text-sm outline-none transition focus:border-neutral-950"
+                className="mt-2 min-h-20 w-full rounded-lg border border-neutral-200 bg-[#fbfbfc] p-4 text-sm outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950 focus:bg-white focus:shadow-[0_0_0_3px_rgba(23,23,23,0.05)]"
                 placeholder="상호가 브랜드명과 다르거나 대행사가 대신 계약하는 경우 적어주세요."
               />
             </div>
@@ -285,7 +291,7 @@ export function AdvertiserVerification() {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="h-11 w-full rounded-lg bg-neutral-950 px-5 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-500"
+              className="h-11 w-full rounded-lg bg-neutral-950 px-5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-500 disabled:shadow-none"
             >
               {isSubmitting
                 ? "접수 중"
@@ -297,7 +303,7 @@ export function AdvertiserVerification() {
         </section>
 
         <aside className="space-y-4">
-          <section className="rounded-lg border border-neutral-200 bg-white p-4 shadow-sm">
+          <section className="rounded-lg border border-neutral-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_14px_34px_rgba(15,23,42,0.05)]">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-950 text-white">
@@ -339,7 +345,7 @@ export function AdvertiserVerification() {
             )}
           </section>
 
-          <section className="rounded-lg border border-neutral-200 bg-white p-4 shadow-sm">
+          <section className="rounded-lg border border-neutral-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_14px_34px_rgba(15,23,42,0.05)]">
             <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-neutral-950">
               <CheckCircle2 className="h-4 w-4" />
               승인 기준
@@ -385,7 +391,7 @@ function TextField({
         required={required}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-2 h-11 w-full rounded-lg border border-neutral-200 bg-white px-3 text-sm outline-none transition placeholder:text-neutral-400 focus:border-neutral-950"
+        className="mt-2 h-11 w-full rounded-lg border border-neutral-200 bg-[#fbfbfc] px-3 text-sm outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950 focus:bg-white focus:shadow-[0_0_0_3px_rgba(23,23,23,0.05)]"
       />
     </label>
   );

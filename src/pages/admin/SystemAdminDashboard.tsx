@@ -367,7 +367,7 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
   if (isCheckingSession) {
     return (
       <div className="flex h-screen items-center justify-center bg-[#f6f7f9] font-sans">
-        <div className="rounded-xl border border-neutral-200 bg-white px-6 py-5 text-center shadow-sm">
+        <div className="rounded-lg border border-neutral-200/80 bg-white px-6 py-5 text-center shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)]">
           <p className="text-sm font-semibold text-neutral-950">
             운영자 세션 확인 중
           </p>
@@ -430,11 +430,11 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
   }
 
   return (
-    <div className="min-h-screen bg-[#f6f7f9] font-sans text-neutral-950">
-      <header className="sticky top-0 z-20 border-b border-neutral-200 bg-white/95 backdrop-blur">
+    <div className="min-h-screen bg-[#f4f5f7] font-sans text-neutral-950">
+      <header className="sticky top-0 z-20 border-b border-neutral-200/80 bg-white/95 shadow-[0_1px_0_rgba(15,23,42,0.04)] backdrop-blur">
         <div className="mx-auto flex h-[72px] max-w-[1480px] items-center justify-between px-5 sm:px-8 lg:px-10">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-neutral-950 text-white shadow-sm">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-950 text-white shadow-[0_8px_24px_rgba(15,23,42,0.16)]">
               <ShieldCheck className="h-5 w-5" />
             </div>
             <div>
@@ -469,7 +469,7 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
 
       <main className="mx-auto max-w-[1480px] px-5 py-5 sm:px-8 lg:px-10">
         {dataError && (
-          <div className="mb-4 flex items-center justify-between rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
+          <div className="mb-4 flex items-center justify-between rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700 shadow-[inset_3px_0_0_rgba(225,29,72,0.3)]">
             <span className="flex items-center gap-2">
               <AlertTriangle className="h-4 w-4" />
               {dataError}
@@ -509,7 +509,7 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
 
         <section className="grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(420px,1.05fr)]">
           <div className="space-y-4">
-            <section className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
+            <section className="rounded-lg border border-neutral-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)]">
               <div className="mb-4 flex items-center justify-between gap-4">
                 <h2 className="text-[18px] font-semibold tracking-[-0.02em]">
                   상태별 계약 수
@@ -534,7 +534,7 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
               </div>
             </section>
 
-            <section className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
+            <section className="rounded-lg border border-neutral-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)]">
               <div className="mb-4 flex items-center justify-between gap-4">
                 <h2 className="text-[18px] font-semibold tracking-[-0.02em]">
                   접근 정책
@@ -600,7 +600,7 @@ function MetricCard({
   icon: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
+    <div className="rounded-lg border border-neutral-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_14px_34px_rgba(15,23,42,0.05)]">
       <div className="mb-4 flex items-center justify-between gap-3">
         <p className="text-[13px] font-semibold text-neutral-500">{label}</p>
         <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-neutral-100 text-neutral-600">
@@ -668,7 +668,7 @@ function SupportAccessPanel({
   onClose: (id: string) => void;
 }) {
   return (
-    <section className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
+    <section className="rounded-lg border border-neutral-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)]">
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-[18px] font-semibold tracking-[-0.02em]">
           지원 열람 요청
@@ -758,7 +758,7 @@ function VerificationReviewPanel({
   onReject: (id: string) => void;
 }) {
   return (
-    <section className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
+    <section className="rounded-lg border border-neutral-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)]">
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-[18px] font-semibold tracking-[-0.02em]">
           수기 인증
@@ -869,7 +869,7 @@ function VerificationReviewPanel({
 
 function EmptyState({ text }: { text: string }) {
   return (
-    <div className="rounded-lg border border-dashed border-neutral-200 px-4 py-8 text-center text-sm font-medium text-neutral-400">
+    <div className="rounded-lg border border-dashed border-neutral-200 bg-[#fbfbfc] px-4 py-8 text-center text-sm font-medium text-neutral-400">
       {text}
     </div>
   );

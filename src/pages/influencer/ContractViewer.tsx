@@ -598,7 +598,7 @@ export function ContractViewer() {
   };
 
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-[#f7f8fa] text-neutral-950">
+    <div className="flex min-h-[100dvh] flex-col bg-[#f4f5f7] text-neutral-950">
       {!isOperatorSupportView && selection?.showTooltip && (
         <div
           className="fixed z-50 -translate-x-1/2 -translate-y-full pb-3 animate-in fade-in zoom-in-95 slide-in-from-bottom-1 duration-150"
@@ -640,10 +640,10 @@ export function ContractViewer() {
         </div>
       )}
 
-      <header className="sticky top-0 z-30 border-b border-neutral-200 bg-white/95 backdrop-blur">
+      <header className="sticky top-0 z-30 border-b border-neutral-200/80 bg-white/95 shadow-[0_1px_0_rgba(15,23,42,0.04)] backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-neutral-950 text-white">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-neutral-950 text-white shadow-[0_8px_24px_rgba(15,23,42,0.16)]">
               <ShieldCheck className="h-5 w-5" strokeWidth={1.8} />
             </div>
             <div className="min-w-0">
@@ -663,17 +663,17 @@ export function ContractViewer() {
 
       <main className="mx-auto grid w-full max-w-6xl flex-1 gap-4 px-4 pb-36 pt-4 sm:px-6 sm:pb-32 lg:grid-cols-[minmax(0,1fr)_340px] lg:px-8">
         <section className="space-y-4">
-          <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm sm:p-6">
+          <div className="rounded-lg border border-neutral-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)] sm:p-6">
             <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
               <div className="min-w-0">
                 <div className="mb-3 flex flex-wrap items-center gap-2">
-                  <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-medium text-neutral-700">
+                  <span className="rounded-md border border-neutral-200 bg-[#fbfbfc] px-2.5 py-1 text-xs font-semibold text-neutral-700">
                     {contract.type} 계약
                   </span>
-                  <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-medium text-neutral-700">
+                  <span className="rounded-md border border-neutral-200 bg-[#fbfbfc] px-2.5 py-1 text-xs font-semibold text-neutral-700">
                     보안 링크 확인됨
                   </span>
-                  <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-medium text-neutral-700 sm:hidden">
+                  <span className="rounded-md border border-neutral-200 bg-[#fbfbfc] px-2.5 py-1 text-xs font-semibold text-neutral-700 sm:hidden">
                     {getStatusLabel(contract.status)}
                   </span>
                 </div>
@@ -693,7 +693,7 @@ export function ContractViewer() {
           </div>
 
           {signNotice && (
-            <div className="flex items-center justify-between gap-3 rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm font-semibold text-neutral-800 shadow-sm">
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-neutral-200 bg-[#fcfcfd] px-4 py-3 text-sm font-semibold text-neutral-800 shadow-[inset_3px_0_0_rgba(23,23,23,0.12)]">
               <span className="flex items-center gap-2">
                 <CheckCircle2 className="h-4 w-4 text-neutral-700" />
                 {signNotice}
@@ -712,7 +712,7 @@ export function ContractViewer() {
             {plainSummary.map((item) => (
               <div
                 key={item.label}
-                className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm"
+                className="rounded-lg border border-neutral-200/80 bg-[#fcfcfd] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]"
               >
                 <p className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-500">
                   {item.label}
@@ -726,9 +726,9 @@ export function ContractViewer() {
 
           <section
             ref={contractDocRef}
-            className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm"
+            className="overflow-hidden rounded-lg border border-neutral-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)]"
           >
-            <div className="border-b border-neutral-200 bg-neutral-50 px-5 py-4 sm:px-6">
+            <div className="border-b border-neutral-200 bg-[#fbfbfc] px-5 py-4 sm:px-6">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.14em] text-neutral-500">
@@ -820,7 +820,7 @@ export function ContractViewer() {
                                 <span className="text-xs text-neutral-500">
                                   {format(new Date(historyItem.timestamp), "yyyy.MM.dd HH:mm")}
                                 </span>
-                                <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs font-medium text-neutral-600">
+                          <span className="rounded-md border border-neutral-200 bg-[#fbfbfc] px-2 py-0.5 text-xs font-semibold text-neutral-600">
                                   {historyItem.action}
                                 </span>
                               </div>
@@ -840,7 +840,7 @@ export function ContractViewer() {
         </section>
 
         <aside className="space-y-4 lg:sticky lg:top-20 lg:h-fit">
-          <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
+          <div className="rounded-lg border border-neutral-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_14px_36px_rgba(15,23,42,0.05)]">
             <div className="mb-4 flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-100 text-neutral-700">
                 <FileText className="h-5 w-5" strokeWidth={1.8} />
@@ -860,7 +860,7 @@ export function ContractViewer() {
           </div>
 
           {!isOperatorSupportView && (
-            <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
+            <div className="rounded-lg border border-neutral-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_14px_36px_rgba(15,23,42,0.05)]">
               <div className="flex items-start gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-neutral-950 text-white">
                   <ShieldCheck className="h-5 w-5" />
@@ -883,14 +883,14 @@ export function ContractViewer() {
                     }`,
                   )
                 }
-                className="mt-4 h-10 w-full rounded-lg border border-neutral-200 bg-neutral-50 text-sm font-semibold text-neutral-700 transition hover:border-neutral-400 hover:bg-white"
+                  className="mt-4 h-10 w-full rounded-lg border border-neutral-200 bg-[#fbfbfc] text-sm font-semibold text-neutral-700 transition hover:border-neutral-400 hover:bg-white hover:shadow-[0_10px_22px_rgba(15,23,42,0.08)]"
               >
                 계정 확인 요청
               </button>
             </div>
           )}
 
-          <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
+          <div className="rounded-lg border border-neutral-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_14px_36px_rgba(15,23,42,0.05)]">
             {isOperatorSupportView ? (
               <div className="flex items-start gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-neutral-700">
@@ -943,7 +943,7 @@ export function ContractViewer() {
             )}
           </div>
 
-          <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
+          <div className="rounded-lg border border-neutral-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_14px_36px_rgba(15,23,42,0.05)]">
             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-500">
               계약 당사자
             </p>
@@ -952,7 +952,7 @@ export function ContractViewer() {
               <PartyRow label="인플루언서" value={contract.influencer_info.name} />
             </div>
             {contract.status === "SIGNED" && signatureData && (
-              <div className="mt-5 rounded-lg border border-neutral-200 bg-neutral-50 p-4">
+              <div className="mt-5 rounded-lg border border-neutral-200 bg-[#fbfbfc] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-700">
                     서명 증빙
@@ -1032,7 +1032,7 @@ export function ContractViewer() {
           }
         }}
       >
-        <DialogContent className="rounded-xl border-neutral-200 p-0 shadow-2xl sm:max-w-lg">
+        <DialogContent className="rounded-lg border-neutral-200 p-0 shadow-[0_24px_70px_rgba(15,23,42,0.16)] sm:max-w-lg">
           <div className="border-b border-neutral-200 p-6">
             <DialogHeader>
               <DialogTitle className="text-xl font-semibold text-neutral-950">
@@ -1046,7 +1046,7 @@ export function ContractViewer() {
             </DialogHeader>
           </div>
           <div className="space-y-4 p-6">
-            <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-sm leading-6 text-neutral-700">
+            <div className="rounded-lg border border-neutral-200 bg-[#fbfbfc] p-4 text-sm leading-6 text-neutral-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
               "{feedbackModal?.selectedText}"
             </div>
             <Textarea
@@ -1068,7 +1068,7 @@ export function ContractViewer() {
               </p>
             )}
           </div>
-          <div className="flex gap-3 border-t border-neutral-200 bg-neutral-50 p-4">
+          <div className="flex gap-3 border-t border-neutral-200 bg-[#fbfbfc] p-4">
             <button
               className="h-11 flex-1 rounded-lg border border-neutral-200 bg-white text-sm font-semibold text-neutral-700 hover:bg-neutral-100"
               onClick={() => {
@@ -1096,7 +1096,7 @@ export function ContractViewer() {
           if (!open) setSignError("");
         }}
       >
-        <DialogContent className="rounded-xl border-neutral-200 p-0 shadow-2xl sm:max-w-lg">
+        <DialogContent className="rounded-lg border-neutral-200 p-0 shadow-[0_24px_70px_rgba(15,23,42,0.16)] sm:max-w-lg">
           <div className="border-b border-neutral-200 p-6">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-3 text-xl font-semibold text-neutral-950">
@@ -1111,7 +1111,7 @@ export function ContractViewer() {
           </div>
 
           <div className="space-y-4 p-6">
-            <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-sm leading-6 text-neutral-700">
+            <div className="rounded-lg border border-neutral-200 bg-[#fbfbfc] p-4 text-sm leading-6 text-neutral-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
               모든 조항이 승인되었습니다. 서명자 이름과 동의 여부는 감사 기록에 함께 저장됩니다.
             </div>
             <label className="block">
@@ -1142,7 +1142,7 @@ export function ContractViewer() {
               />
               <button
                 onClick={clearSignature}
-                className="absolute right-3 top-3 flex h-9 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-600 shadow-sm hover:bg-neutral-50"
+                className="absolute right-3 top-3 flex h-9 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-600 shadow-[0_1px_2px_rgba(15,23,42,0.04)] hover:bg-neutral-50"
               >
                 <Eraser className="h-3.5 w-3.5" strokeWidth={1.8} />
                 지우기
@@ -1178,7 +1178,7 @@ export function ContractViewer() {
             )}
           </div>
 
-          <div className="flex gap-3 border-t border-neutral-200 bg-neutral-50 p-4">
+          <div className="flex gap-3 border-t border-neutral-200 bg-[#fbfbfc] p-4">
             <button
               className="h-11 flex-1 rounded-lg border border-neutral-200 bg-white text-sm font-semibold text-neutral-700 hover:bg-neutral-100"
               onClick={() => setShowSignModal(false)}
@@ -1207,8 +1207,8 @@ function AccessMessage({
   description: string;
 }) {
   return (
-    <div className="flex min-h-[100dvh] items-center justify-center bg-[#f7f8fa] px-4">
-      <div className="w-full max-w-md rounded-xl border border-neutral-200 bg-white p-6 text-center shadow-sm">
+    <div className="flex min-h-[100dvh] items-center justify-center bg-[#f4f5f7] px-4">
+      <div className="w-full max-w-md rounded-lg border border-neutral-200/80 bg-white p-6 text-center shadow-[0_1px_2px_rgba(15,23,42,0.04),0_22px_60px_rgba(15,23,42,0.08)]">
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-amber-50 text-amber-700">
           <AlertTriangle className="h-6 w-6" strokeWidth={1.8} />
         </div>
@@ -1262,11 +1262,11 @@ function MetricCard({
 }) {
   const toneClass =
     tone === "amber"
-        ? "bg-amber-50 text-amber-700"
-        : "bg-neutral-100 text-neutral-800";
+        ? "border border-amber-200 bg-amber-50 text-amber-700"
+        : "border border-neutral-200 bg-[#fcfcfd] text-neutral-800";
 
   return (
-    <div className={`rounded-lg p-3 ${toneClass}`}>
+    <div className={`rounded-lg p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] ${toneClass}`}>
       <p className="text-xs font-semibold uppercase tracking-[0.12em] opacity-80">
         {label}
       </p>

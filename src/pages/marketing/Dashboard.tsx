@@ -269,18 +269,18 @@ export function Dashboard() {
   const hasPriorityContracts = priorityContracts.length > 0;
 
   return (
-    <div className="min-h-screen bg-[#f6f7f9] font-sans text-neutral-950">
-      <header className="sticky top-0 z-30 border-b border-neutral-200 bg-white/95 backdrop-blur">
+    <div className="min-h-screen bg-[#f4f5f7] font-sans text-neutral-950">
+      <header className="sticky top-0 z-30 border-b border-neutral-200/80 bg-white/95 shadow-[0_1px_0_rgba(15,23,42,0.04)] backdrop-blur">
         <div className="mx-auto flex h-[72px] max-w-[1480px] items-center justify-between px-5 sm:px-8 lg:px-10">
           <button
             type="button"
             onClick={() => navigate("/advertiser/dashboard")}
             className="flex items-center gap-3"
           >
-            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-neutral-950 text-white shadow-sm">
+            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-950 text-white shadow-[0_8px_24px_rgba(15,23,42,0.16)]">
               <ShieldCheck className="h-4 w-4" strokeWidth={2} />
             </span>
-            <span className="text-[18px] font-semibold tracking-tight">{PRODUCT_NAME}</span>
+            <span className="text-[19px] font-semibold tracking-[-0.02em]">{PRODUCT_NAME}</span>
           </button>
 
           <div className="flex items-center gap-2">
@@ -288,7 +288,7 @@ export function Dashboard() {
             <button
               type="button"
               onClick={() => navigate("/advertiser/builder")}
-              className="inline-flex h-11 items-center gap-2 rounded-lg bg-neutral-950 px-4 text-[13px] font-semibold text-white shadow-sm transition-colors hover:bg-neutral-800"
+              className="inline-flex h-11 items-center gap-2 rounded-lg bg-neutral-950 px-4 text-[13px] font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition hover:bg-neutral-800 hover:shadow-[0_14px_30px_rgba(15,23,42,0.18)]"
             >
               <Plus className="h-4 w-4" strokeWidth={2} />
               새 계약
@@ -297,7 +297,7 @@ export function Dashboard() {
         </div>
       </header>
 
-      <main className="mx-auto w-full min-w-0 max-w-[1320px] px-4 py-3 sm:px-6 lg:px-8">
+      <main className="mx-auto w-full min-w-0 max-w-[1320px] px-4 py-4 sm:px-6 lg:px-8">
         <section
           className={`mb-3 grid min-w-0 items-start gap-3 ${
             hasPriorityContracts
@@ -305,7 +305,7 @@ export function Dashboard() {
               : "lg:grid-cols-1"
           }`}
         >
-          <div className="min-w-0 overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm">
+          <div className="min-w-0 overflow-hidden rounded-lg border border-neutral-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)]">
             <VerificationBanner
               status={advertiserVerificationStatus}
               account={advertiserAccount}
@@ -313,7 +313,7 @@ export function Dashboard() {
               onOpen={() => navigate("/advertiser/verification")}
               embedded
             />
-            <div className="grid gap-3 p-4 lg:grid-cols-[180px_minmax(0,1fr)] lg:items-center">
+            <div className="grid gap-4 p-4 lg:grid-cols-[190px_minmax(0,1fr)] lg:items-center">
               <div className="min-w-0">
                 <p className="hidden">
                   광고주 워크스페이스
@@ -341,7 +341,7 @@ export function Dashboard() {
           />
         </section>
 
-        <section className="rounded-t-lg border border-b-0 border-neutral-200 bg-white p-2.5 shadow-sm">
+        <section className="rounded-t-lg border border-b-0 border-neutral-200/80 bg-white p-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
           <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
             <div className="relative min-w-0 flex-1">
               <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
@@ -350,7 +350,7 @@ export function Dashboard() {
                 onChange={(event) => setQuery(event.target.value)}
                 aria-label="계약 검색"
                 placeholder="계약명, 인플루언서, 플랫폼, 금액으로 검색"
-                className="h-9 w-full rounded-md border border-neutral-200 bg-[#fafafa] pl-9 pr-4 text-[13px] outline-none transition-colors placeholder:text-neutral-400 focus:border-neutral-900 focus:bg-white"
+                className="h-10 w-full rounded-md border border-neutral-200 bg-[#fbfbfc] pl-9 pr-4 text-[13px] outline-none transition-colors placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-900 focus:bg-white focus:shadow-[0_0_0_3px_rgba(23,23,23,0.05)]"
               />
             </div>
 
@@ -443,13 +443,13 @@ function VerificationBanner({
         embedded
           ? `border-b px-4 py-3 ${
               approved
-                ? "border-neutral-200 bg-white"
-                : "border-amber-200 bg-amber-50"
+                ? "border-neutral-200/80 bg-[#fcfcfd]"
+                : "border-amber-200 bg-amber-50/85"
             }`
-          : `mb-3 rounded-lg border px-3 py-2.5 shadow-sm ${
+          : `mb-3 rounded-lg border px-3 py-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${
               approved
                 ? "border-neutral-200 bg-white"
-                : "border-amber-200 bg-amber-50"
+                : "border-amber-200 bg-amber-50/85"
             }`
       }
     >
@@ -458,7 +458,7 @@ function VerificationBanner({
           <div
             className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
               approved
-                ? "bg-neutral-100 text-neutral-700"
+                ? "bg-white text-neutral-800 ring-1 ring-neutral-200"
                 : "bg-amber-100 text-amber-700"
             }`}
           >
@@ -537,7 +537,7 @@ function MetricTile({
   }[tone];
 
   return (
-    <div className="rounded-md border border-neutral-200 bg-white px-3 py-2.5">
+    <div className="rounded-md border border-neutral-200/80 bg-[#fcfcfd] px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
       <div className="flex items-center gap-2">
         <span className={`h-1.5 w-1.5 rounded-full ${accentClass}`} />
         <p className="text-[11px] font-semibold leading-4 text-neutral-500">{label}</p>
@@ -587,7 +587,7 @@ function ActionQueue({
   if (contracts.length === 0) return null;
 
   return (
-    <aside className="min-w-0 rounded-lg border border-neutral-200 bg-white p-3 text-neutral-950 shadow-sm">
+    <aside className="min-w-0 rounded-lg border border-neutral-200/80 bg-white p-3 text-neutral-950 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_42px_rgba(15,23,42,0.06)]">
       <div className="mb-2 flex min-w-0 items-center justify-between">
         <div className="min-w-0">
           <p className="hidden">
@@ -611,7 +611,7 @@ function ActionQueue({
               key={contract.id}
               type="button"
               onClick={() => onOpen(contract)}
-              className="group w-full rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-left transition-colors hover:border-neutral-300 hover:bg-white"
+              className="group w-full rounded-lg border border-neutral-200 bg-[#fbfbfc] p-3 text-left transition hover:-translate-y-0.5 hover:border-neutral-300 hover:bg-white hover:shadow-[0_12px_26px_rgba(15,23,42,0.08)]"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -711,9 +711,9 @@ function ContractTable({
   if (contracts.length === 0) return <EmptyState isInitialEmpty={totalContracts === 0} />;
 
   return (
-    <section className="overflow-hidden rounded-b-lg border-x border-b border-neutral-200 bg-white shadow-sm">
+    <section className="overflow-hidden rounded-b-lg border-x border-b border-neutral-200/80 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.04)]">
       <div
-        className={`hidden border-b border-neutral-200 bg-[#fafafa] px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-neutral-400 lg:grid ${
+        className={`hidden border-b border-neutral-200 bg-[#fbfbfc] px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-neutral-400 lg:grid ${
           compact
             ? "grid-cols-[minmax(260px,1fr)_220px_150px_48px]"
             : "grid-cols-[minmax(260px,1.35fr)_190px_180px_140px_170px_160px_48px]"
@@ -901,7 +901,7 @@ function ContractBoard({
                     key={contract.id}
                     type="button"
                     onClick={() => onOpen(contract)}
-                    className="group w-full rounded-lg border border-neutral-200 bg-white p-3 text-left shadow-sm transition-colors hover:border-neutral-300 hover:bg-neutral-50"
+                    className="group w-full rounded-lg border border-neutral-200/80 bg-white p-3 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:border-neutral-300 hover:bg-neutral-50 hover:shadow-[0_12px_26px_rgba(15,23,42,0.08)]"
                   >
                     <p className="line-clamp-2 text-[14px] font-semibold leading-5 text-neutral-950">
                       {contract.title}
@@ -930,8 +930,8 @@ function ContractBoard({
 
 function EmptyState({ isInitialEmpty }: { isInitialEmpty: boolean }) {
   return (
-    <section className="flex min-h-[150px] flex-col items-center justify-center rounded-b-lg border-x border-b border-neutral-200 bg-white px-6 text-center">
-      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-50 text-neutral-300 ring-1 ring-neutral-200">
+    <section className="flex min-h-[190px] flex-col items-center justify-center rounded-b-lg border-x border-b border-neutral-200/80 bg-white px-6 text-center shadow-[0_18px_48px_rgba(15,23,42,0.04)]">
+      <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#fbfbfc] text-neutral-300 ring-1 ring-neutral-200">
         <FileText className="h-5 w-5" strokeWidth={1.7} />
       </div>
       <p className="mt-3 text-[15px] font-semibold text-neutral-900">
@@ -945,7 +945,7 @@ function EmptyState({ isInitialEmpty }: { isInitialEmpty: boolean }) {
       <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
         <a
           href="/advertiser/builder"
-          className="inline-flex h-9 items-center justify-center rounded-lg bg-neutral-950 px-3 text-[13px] font-semibold text-white transition hover:bg-neutral-800"
+          className="inline-flex h-10 items-center justify-center rounded-lg bg-neutral-950 px-4 text-[13px] font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition hover:bg-neutral-800"
         >
           새 계약 만들기
         </a>
