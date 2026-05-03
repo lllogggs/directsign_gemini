@@ -1,6 +1,7 @@
 import { ArrowRight, Building2, ShieldCheck, UserRound } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { getSafeRedirectPath } from "../../domain/navigation";
+import { PRODUCT_NAME } from "../../domain/brand";
 
 const roleOptions = [
   {
@@ -32,7 +33,7 @@ export function LoginLanding() {
           </div>
           <div>
             <p className="text-[17px] font-semibold leading-5 text-neutral-950">
-              DirectSign
+              {PRODUCT_NAME}
             </p>
           </div>
         </div>

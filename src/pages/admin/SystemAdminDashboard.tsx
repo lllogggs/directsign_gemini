@@ -20,6 +20,7 @@ import {
 } from "../../domain/verification";
 import { AuthLoginScreen } from "../../components/AuthLoginScreen";
 import { buildLoginRedirect, getNextPath } from "../../domain/navigation";
+import { PRODUCT_NAME } from "../../domain/brand";
 
 type AdminMetrics = {
   contract_count: number;
@@ -158,8 +159,8 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
     setDataError("");
 
     try {
-      const [metricsResponse, supportResponse, verificationResponse] =
-        await Promise.all([
+      const [metricsResult, supportResult, verificationResult] =
+        await Promise.allSettled([
           fetch("/api/admin/metrics", { headers: { Accept: "application/json" } }),
           fetch("/api/admin/support-access-requests", {
             headers: { Accept: "application/json" },
@@ -169,34 +170,55 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
           }),
         ]);
 
-      const metricsData = (await metricsResponse.json()) as {
-        metrics?: AdminMetrics;
-        error?: string;
-      };
-      const supportData = (await supportResponse.json()) as {
-        support_access_requests?: SupportAccessRequest[];
-        error?: string;
-      };
-      const verificationData = (await verificationResponse.json()) as {
-        verification_requests?: VerificationRequest[];
-        error?: string;
-      };
+      const failedSections: string[] = [];
 
-      if (!metricsResponse.ok || !metricsData.metrics) {
-        throw new Error(metricsData.error ?? "운영 지표를 불러오지 못했습니다.");
+      if (metricsResult.status === "fulfilled") {
+        const metricsData = (await metricsResult.value.json()) as {
+          metrics?: AdminMetrics;
+          error?: string;
+        };
+        if (metricsResult.value.ok && metricsData.metrics) {
+          setMetrics(metricsData.metrics);
+        } else {
+          failedSections.push(metricsData.error ?? "운영 지표");
+        }
+      } else {
+        failedSections.push("운영 지표");
       }
-      if (!supportResponse.ok) {
-        throw new Error(supportData.error ?? "지원 열람 요청을 불러오지 못했습니다.");
+
+      if (supportResult.status === "fulfilled") {
+        const supportData = (await supportResult.value.json()) as {
+          support_access_requests?: SupportAccessRequest[];
+          error?: string;
+        };
+        if (supportResult.value.ok) {
+          setSupportRequests(supportData.support_access_requests ?? []);
+        } else {
+          failedSections.push(supportData.error ?? "지원 열람 요청");
+        }
+      } else {
+        failedSections.push("지원 열람 요청");
       }
-      if (!verificationResponse.ok) {
-        throw new Error(
-          verificationData.error ?? "인증 대기열을 불러오지 못했습니다.",
+
+      if (verificationResult.status === "fulfilled") {
+        const verificationData = (await verificationResult.value.json()) as {
+          verification_requests?: VerificationRequest[];
+          error?: string;
+        };
+        if (verificationResult.value.ok) {
+          setVerificationRequests(verificationData.verification_requests ?? []);
+        } else {
+          failedSections.push(verificationData.error ?? "인증 대기열");
+        }
+      } else {
+        failedSections.push("인증 대기열");
+      }
+
+      if (failedSections.length > 0) {
+        setDataError(
+          `${failedSections.join(", ")} 데이터를 불러오지 못했습니다. 나머지 영역은 최신 상태로 표시합니다.`,
         );
       }
-
-      setMetrics(metricsData.metrics);
-      setSupportRequests(supportData.support_access_requests ?? []);
-      setVerificationRequests(verificationData.verification_requests ?? []);
     } catch (requestError) {
       setDataError(
         requestError instanceof Error
@@ -280,7 +302,7 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
         },
         body: JSON.stringify({
           status,
-          reviewed_by_name: "DirectSign 운영자",
+          reviewed_by_name: `${PRODUCT_NAME} 운영자`,
           reviewer_note:
             status === "approved"
               ? "수기 확인 후 승인했습니다."
@@ -417,7 +439,7 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
             </div>
             <div>
               <h1 className="text-[18px] font-semibold tracking-[-0.02em]">
-                DirectSign 운영
+                {PRODUCT_NAME} 운영
               </h1>
               <p className="text-xs font-medium text-neutral-500">
                 계약 본문은 당사자 지원 요청이 있을 때만 열립니다.
@@ -690,6 +712,9 @@ function SupportAccessPanel({
               <span>·</span>
               <span>{formatRemaining(request.expires_at)}</span>
             </div>
+            <div className="mt-3 rounded-md border border-neutral-200 bg-white px-3 py-2 text-xs leading-5 text-neutral-500">
+              {formatSupportAuditSummary(request)}
+            </div>
 
             <div className="mt-4 flex gap-2">
               <button
@@ -874,6 +899,31 @@ function formatRemaining(value: string) {
   if (minutes < 60) return `${minutes}분 남음`;
   const hours = Math.ceil(minutes / 60);
   return `${hours}시간 남음`;
+}
+
+function formatSupportAuditSummary(request: SupportAccessRequest) {
+  const events = request.audit_events ?? [];
+  const viewCount = events.filter((event) =>
+    event.action === "viewed_contract" || event.action === "viewed_pdf",
+  ).length;
+  const latest = [...events].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+  )[0];
+
+  if (!latest) return "아직 열람 기록이 없습니다.";
+
+  return `열람 ${viewCount}회 · 마지막 기록 ${formatDateTime(latest.created_at)} · ${latest.description}`;
+}
+
+function formatDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("ko-KR", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
 }
 
 function verificationTypeLabel(request: VerificationRequest) {

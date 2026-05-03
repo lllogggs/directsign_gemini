@@ -92,6 +92,7 @@ export function ContractViewer() {
   const [consentAccepted, setConsentAccepted] = useState(false);
 
   const shareToken = searchParams.get("token") ?? "";
+  const supportAccessRequestId = searchParams.get("support") ?? "";
   const [isFetchingSharedContract, setIsFetchingSharedContract] = useState(false);
   const [sharedContractError, setSharedContractError] = useState("");
   const [serverAccessVerified, setServerAccessVerified] = useState(false);
@@ -317,11 +318,11 @@ export function ContractViewer() {
     setServerAccessVerified(false);
     setServerAccessRole(undefined);
     setSharedContractError("");
-  }, [id, shareToken]);
+  }, [id, shareToken, supportAccessRequestId]);
 
   useEffect(() => {
     if (!id || serverAccessVerified) return;
-    const needsServerCheck = !contract || !shareToken;
+    const needsServerCheck = true;
     if (!needsServerCheck) return;
 
     let cancelled = false;
@@ -331,9 +332,17 @@ export function ContractViewer() {
       setSharedContractError("");
 
       try {
-        const suffix = shareToken ? `?token=${encodeURIComponent(shareToken)}` : "";
+        const query = new URLSearchParams();
+        if (shareToken) query.set("token", shareToken);
+        if (supportAccessRequestId) query.set("support", supportAccessRequestId);
+        const suffix = query.size > 0 ? `?${query.toString()}` : "";
         const response = await fetch(`/api/contracts/${encodeURIComponent(id)}${suffix}`, {
-          headers: { Accept: "application/json" },
+          headers: {
+            Accept: "application/json",
+            ...(supportAccessRequestId
+              ? { "X-DirectSign-Support-Access-Request": supportAccessRequestId }
+              : {}),
+          },
           credentials: "include",
         });
         const data = (await response.json()) as {
@@ -371,9 +380,19 @@ export function ContractViewer() {
     return () => {
       cancelled = true;
     };
-  }, [contract, id, replaceContract, serverAccessVerified, shareToken]);
+  }, [
+    contract,
+    id,
+    replaceContract,
+    serverAccessVerified,
+    shareToken,
+    supportAccessRequestId,
+  ]);
 
-  if ((!contract || !shareToken) && isFetchingSharedContract) {
+  const shouldWaitForServerAccess =
+    !serverAccessVerified;
+
+  if (shouldWaitForServerAccess && isFetchingSharedContract) {
     return (
       <AccessMessage
         title="계약을 확인하는 중입니다"
@@ -382,7 +401,7 @@ export function ContractViewer() {
     );
   }
 
-  if ((!contract || !shareToken) && sharedContractError) {
+  if (shouldWaitForServerAccess && sharedContractError) {
     return (
       <AccessMessage
         title="계약을 불러올 수 없습니다"
@@ -466,6 +485,25 @@ export function ContractViewer() {
         "조항에서 확인",
     },
   ];
+  const signatureData = contract.signature_data;
+  const signatureEvidenceRows = signatureData
+    ? [
+        { label: "서명자", value: signatureData.signer_name || contract.influencer_info.name },
+        { label: "서명 완료", value: formatDateTime(signatureData.signed_at) },
+        {
+          label: "계약 해시",
+          value: signatureData.contract_hash
+            ? `${signatureData.contract_hash.slice(0, 12)}...`
+            : "-",
+        },
+        {
+          label: "서명 해시",
+          value: signatureData.signature_hash
+            ? `${signatureData.signature_hash.slice(0, 12)}...`
+            : "-",
+        },
+      ]
+    : [];
 
   const handleFeedbackSubmit = () => {
     if (!feedbackModal) return;
@@ -845,7 +883,7 @@ export function ContractViewer() {
                       운영자 확인 요청
                     </p>
                     <p className="mt-1 text-xs leading-5 text-neutral-500">
-                      문제가 생겼을 때만 24시간 열람권이 열립니다.
+                      로그인한 계약 당사자가 요청할 때만 24시간 열람권이 열립니다.
                     </p>
                   </div>
                 </div>
@@ -880,16 +918,30 @@ export function ContractViewer() {
               <PartyRow label="광고주" value={contract.advertiser_info?.name || "광고주"} />
               <PartyRow label="인플루언서" value={contract.influencer_info.name} />
             </div>
-            {contract.status === "SIGNED" && contract.signature_data?.inf_sign && (
+            {contract.status === "SIGNED" && signatureData && (
               <div className="mt-5 rounded-lg border border-neutral-200 bg-neutral-50 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-700">
-                  인플루언서 서명 완료
-                </p>
-                <img
-                  src={contract.signature_data.inf_sign}
-                  alt="인플루언서 서명"
-                  className="mt-3 h-12 max-w-full mix-blend-multiply"
-                />
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-700">
+                    서명 증빙
+                  </p>
+                  <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-neutral-700 ring-1 ring-neutral-200">
+                    감사 기록 저장
+                  </span>
+                </div>
+                {signatureData.inf_sign && (
+                  <img
+                    src={signatureData.inf_sign}
+                    alt="인플루언서 서명"
+                    className="mt-3 h-12 max-w-full mix-blend-multiply"
+                  />
+                )}
+                <div className="mt-4 grid gap-2">
+                  {signatureEvidenceRows.map((row) => (
+                    <div key={row.label}>
+                      <PartyRow label={row.label} value={row.value} />
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
@@ -1181,4 +1233,13 @@ function PartyRow({ label, value }: { label: string; value: string }) {
       <p className="mt-1 text-sm font-medium text-neutral-950">{value}</p>
     </div>
   );
+}
+
+function formatDateTime(value?: string) {
+  if (!value) return "-";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+
+  return format(date, "yyyy.MM.dd HH:mm");
 }

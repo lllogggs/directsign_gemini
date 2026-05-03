@@ -31,6 +31,7 @@ import {
 } from "../../domain/verification";
 import { removeInternalTestLabel } from "../../domain/display";
 import { useVerificationSummary } from "../../hooks/useVerificationSummary";
+import { PRODUCT_NAME } from "../../domain/brand";
 
 type StatusFilter = ContractStatus | "ALL";
 type ViewMode = "list" | "board";
@@ -276,7 +277,7 @@ export function Dashboard() {
             <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-neutral-950 text-white shadow-sm">
               <ShieldCheck className="h-4 w-4" strokeWidth={2} />
             </span>
-            <span className="text-[18px] font-semibold tracking-tight">DirectSign</span>
+            <span className="text-[18px] font-semibold tracking-tight">{PRODUCT_NAME}</span>
           </button>
 
           <div className="flex items-center gap-2">
@@ -344,6 +345,7 @@ export function Dashboard() {
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
+                aria-label="계약 검색"
                 placeholder="계약명, 인플루언서, 플랫폼, 금액으로 검색"
                 className="h-9 w-full rounded-md border border-neutral-200 bg-[#fafafa] pl-9 pr-4 text-[13px] outline-none transition-colors placeholder:text-neutral-400 focus:border-neutral-900 focus:bg-white"
               />
@@ -393,6 +395,10 @@ export function Dashboard() {
             </div>
           </div>
         </section>
+
+        {syncError && (
+          <SyncErrorPanel message={syncError} />
+        )}
 
         {viewMode === "list" ? (
           <ContractTable
@@ -517,13 +523,13 @@ function MetricTile({
   const accentClass = {
     amber: "bg-amber-500",
     rose: "bg-rose-500",
-    sky: "bg-sky-500",
+    sky: "bg-neutral-500",
     neutral: "bg-neutral-500",
   }[tone];
   const valueClass = {
     amber: "text-amber-700",
     rose: "text-rose-700",
-    sky: "text-sky-700",
+    sky: "text-neutral-950",
     neutral: "text-neutral-950",
   }[tone];
 
@@ -639,6 +645,7 @@ function StatusChip({
   return (
     <button
       type="button"
+      aria-pressed={active}
       onClick={onClick}
       className={`inline-flex h-9 items-center gap-2 rounded-md border px-3 text-[12px] font-semibold transition-colors ${
         active
@@ -673,6 +680,7 @@ function IconToggle({
     <button
       type="button"
       aria-label={label}
+      aria-pressed={active}
       title={label}
       onClick={onClick}
       className={`inline-flex h-9 w-9 items-center justify-center rounded-md border transition-colors ${
@@ -919,18 +927,18 @@ function ContractBoard({
 
 function EmptyState({ isInitialEmpty }: { isInitialEmpty: boolean }) {
   return (
-    <section className="flex min-h-[210px] flex-col items-center justify-center rounded-b-lg border-x border-b border-neutral-200 bg-white px-6 text-center">
+    <section className="flex min-h-[150px] flex-col items-center justify-center rounded-b-lg border-x border-b border-neutral-200 bg-white px-6 text-center">
       <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-50 text-neutral-300 ring-1 ring-neutral-200">
         <FileText className="h-5 w-5" strokeWidth={1.7} />
       </div>
       <p className="mt-3 text-[15px] font-semibold text-neutral-900">
         {isInitialEmpty ? "아직 계약이 없습니다" : "조건에 맞는 계약이 없습니다"}
       </p>
-      <p className="mt-1 text-[13px] text-neutral-500">
-        {isInitialEmpty
-          ? "첫 계약을 만들면 계약명, 인플루언서, 플랫폼, 금액, 기간, 현 단계가 이곳에 정리됩니다."
-          : "검색어를 줄이거나 상태 필터를 전체로 바꿔보세요."}
-      </p>
+      {!isInitialEmpty && (
+        <p className="mt-1 text-[13px] text-neutral-500">
+          검색어를 줄이거나 상태 필터를 전체로 바꿔보세요.
+        </p>
+      )}
       <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
         <a
           href="/advertiser/builder"
@@ -938,10 +946,19 @@ function EmptyState({ isInitialEmpty }: { isInitialEmpty: boolean }) {
         >
           새 계약 만들기
         </a>
-        <span className="text-[12px] text-neutral-400">
-          계약이 생기면 이 영역에 바로 표시됩니다.
-        </span>
       </div>
+    </section>
+  );
+}
+
+function SyncErrorPanel({ message }: { message: string }) {
+  return (
+    <section className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] leading-5 text-amber-800">
+      <p className="font-semibold">계약 목록을 최신 상태로 불러오지 못했습니다.</p>
+      <p className="mt-1 text-amber-700">
+        서버 연결이나 권한을 확인해야 합니다. 현재 화면은 비어 있는 데이터가 아니라 실패 상태일 수 있습니다.
+      </p>
+      <p className="mt-2 font-mono text-[11px] text-amber-700">{message}</p>
     </section>
   );
 }

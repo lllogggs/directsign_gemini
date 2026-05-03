@@ -17,6 +17,7 @@ import {
   Youtube,
 } from "lucide-react";
 import { useAppStore } from "../../store";
+import { PRODUCT_NAME } from "../../domain/brand";
 import type {
   InfluencerPlatform,
   InfluencerVerificationMethod,
@@ -271,7 +272,7 @@ export function InfluencerVerification() {
             : undefined,
           note:
             form.note ||
-            `${selectedPlatform.label} 계정에 DirectSign 인증 코드 ${challengeCode}를 게시했습니다.`,
+            `${selectedPlatform.label} 계정에 ${PRODUCT_NAME} 인증 코드 ${challengeCode}를 게시했습니다.`,
         }),
       });
 
@@ -315,19 +316,19 @@ export function InfluencerVerification() {
         </div>
       </header>
 
-      <main className="mx-auto grid max-w-6xl gap-6 px-5 py-8 sm:px-8 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <section className="rounded-lg border border-neutral-200 bg-white p-6 shadow-sm sm:p-8">
-          <div className="mb-8">
-            <h1 className="text-3xl font-semibold tracking-tight">
+      <main className="mx-auto grid max-w-6xl gap-4 px-5 py-4 sm:px-8 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <section className="rounded-lg border border-neutral-200 bg-white p-5 shadow-sm sm:p-6">
+          <div className="mb-5">
+            <h1 className="text-[24px] font-semibold tracking-tight">
               플랫폼 계정 소유 인증
             </h1>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-neutral-500">
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-neutral-500">
               블로그, 인스타그램, 유튜브 등 계약에 쓰는 채널이 본인 계정인지
               인증 코드와 증빙 URL로 확인합니다.
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-7">
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <div className="mb-3 flex items-center justify-between gap-3">
                 <p className="text-sm font-semibold text-neutral-900">플랫폼</p>
@@ -345,7 +346,7 @@ export function InfluencerVerification() {
                       key={item}
                       type="button"
                       onClick={() => updatePlatform(item)}
-                      className={`flex min-h-[76px] flex-col items-start justify-between rounded-lg border p-3 text-left transition ${
+                      className={`flex min-h-[64px] flex-col items-start justify-between rounded-lg border p-3 text-left transition ${
                         active
                           ? `${meta.className} ring-2 ring-neutral-950/10`
                           : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-400"
@@ -404,7 +405,7 @@ export function InfluencerVerification() {
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-sm font-semibold text-neutral-950">
-                    DirectSign 인증 코드
+                    {PRODUCT_NAME} 인증 코드
                   </p>
                   <p className="mt-1 text-xs leading-5 text-neutral-500">
                     선택한 플랫폼의 공개 영역에 아래 코드를 그대로 넣으세요.
@@ -427,7 +428,7 @@ export function InfluencerVerification() {
                 </div>
               </div>
 
-              <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 {selectedPlatform.instructions.map((instruction) => (
                   <div
                     key={instruction}
@@ -450,7 +451,7 @@ export function InfluencerVerification() {
                     key={item}
                     type="button"
                     onClick={() => setMethod(item)}
-                    className={`rounded-lg border p-4 text-left transition ${
+                    className={`rounded-lg border p-3 text-left transition ${
                       method === item
                         ? "border-neutral-950 bg-neutral-950 text-white"
                         : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-400"
@@ -511,7 +512,7 @@ export function InfluencerVerification() {
               <textarea
                 value={form.note}
                 onChange={(event) => updateForm({ note: event.target.value })}
-                className="mt-2 min-h-28 w-full rounded-lg border border-neutral-200 bg-white p-4 text-sm outline-none transition placeholder:text-neutral-400 focus:border-neutral-950"
+                className="mt-2 min-h-20 w-full rounded-lg border border-neutral-200 bg-white p-4 text-sm outline-none transition placeholder:text-neutral-400 focus:border-neutral-950"
                 placeholder="코드를 넣은 위치, 임시 게시글 여부, 검수 후 삭제 예정 등 참고 내용을 적어주세요."
               />
             </label>
@@ -530,7 +531,7 @@ export function InfluencerVerification() {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="h-12 w-full rounded-lg bg-neutral-950 px-5 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-500"
+              className="h-11 w-full rounded-lg bg-neutral-950 px-5 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-500"
             >
               {isSubmitting ? "접수 중" : "계정 소유 인증 요청"}
             </button>

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   AlertCircle,
   ArrowRight,
@@ -23,14 +23,14 @@ import {
   UserCheck,
   Youtube,
 } from "lucide-react";
-import { AuthLoginScreen } from "../../components/AuthLoginScreen";
+import { PRODUCT_NAME } from "../../domain/brand";
 import type {
   InfluencerDashboardContract,
   InfluencerDashboardContractStage,
   InfluencerDashboardResponse,
   InfluencerDashboardTask,
 } from "../../domain/influencerDashboard";
-import { buildLoginRedirect, getNextPath } from "../../domain/navigation";
+import { buildLoginRedirect } from "../../domain/navigation";
 import { removeInternalTestLabel } from "../../domain/display";
 import type { InfluencerPlatform, VerificationStatus } from "../../domain/verification";
 
@@ -41,7 +41,6 @@ const API_BASE =
 
 type DashboardState =
   | { status: "loading" }
-  | { status: "login"; message?: string }
   | { status: "ready"; dashboard: InfluencerDashboardResponse }
   | { status: "error"; message: string };
 
@@ -200,7 +199,19 @@ export function InfluencerDashboard() {
 
       const data = (await response.json()) as
         | InfluencerDashboardResponse
-        | { error?: string };
+        | { authenticated?: false; error?: string };
+
+      if ("authenticated" in data && data.authenticated === false) {
+        const currentPath = `${location.pathname}${location.search}`;
+        navigate(
+          buildLoginRedirect("/login/influencer", currentPath, "/influencer/dashboard", [
+            "/influencer",
+            "/contract",
+          ]),
+          { replace: true },
+        );
+        return;
+      }
 
       if (!response.ok || !("authenticated" in data)) {
         const errorMessage = "error" in data ? data.error : undefined;
@@ -225,17 +236,6 @@ export function InfluencerDashboard() {
 
   if (state.status === "loading") {
     return <DashboardShell><LoadingView /></DashboardShell>;
-  }
-
-  if (state.status === "login") {
-    return (
-      <DashboardShell>
-        <LoginView
-          message={state.message}
-          onSuccess={(dashboard) => setState({ status: "ready", dashboard })}
-        />
-      </DashboardShell>
-    );
   }
 
   if (state.status === "error") {
@@ -286,7 +286,7 @@ export function InfluencerDashboard() {
             <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-neutral-950 text-white">
               <ShieldCheck className="h-4 w-4" />
             </span>
-            <span className="truncate text-[18px] font-semibold">DirectSign</span>
+            <span className="truncate text-[18px] font-semibold">{PRODUCT_NAME}</span>
           </button>
 
           <div className="flex items-center gap-2">
@@ -382,6 +382,7 @@ export function InfluencerDashboard() {
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
+              aria-label="계약 검색"
               placeholder="계약명, 광고주, 플랫폼 검색"
               className="h-9 w-full rounded-md border border-neutral-200 bg-[#fafafa] pl-9 pr-3 text-[13px] outline-none transition placeholder:text-neutral-400 focus:border-neutral-950 focus:bg-white"
             />
@@ -418,23 +419,6 @@ export function InfluencerDashboard() {
   );
 }
 
-export function InfluencerLoginPage() {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const nextPath = getNextPath(location.search, "/influencer/dashboard", [
-    "/influencer",
-    "/contract",
-  ]);
-
-  return (
-    <LoginView
-      onSuccess={() => {
-        navigate(nextPath, { replace: true });
-      }}
-    />
-  );
-}
-
 function DashboardShell({ children }: { children: React.ReactNode }) {
   return <div className="min-h-screen bg-[#f6f7f9] font-sans text-neutral-950">{children}</div>;
 }
@@ -452,114 +436,6 @@ function LoadingView() {
       </div>
     </div>
   );
-}
-
-function LoginView({
-  message,
-  onSuccess,
-}: {
-  message?: string;
-  onSuccess: (dashboard: InfluencerDashboardResponse) => void;
-}) {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState(message ?? "");
-
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setIsSubmitting(true);
-    setError("");
-
-    try {
-      const response = await fetch(`${API_BASE}/api/influencer/login`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        credentials: "include",
-        body: JSON.stringify({ email, password }),
-      });
-      const data = (await response.json()) as
-        | { authenticated: true }
-        | { error?: string };
-
-      if (!response.ok || !("authenticated" in data)) {
-        const errorMessage = "error" in data ? data.error : undefined;
-        throw new Error(errorMessage ?? "로그인에 실패했습니다.");
-      }
-
-      const dashboardResponse = await fetch(`${API_BASE}/api/influencer/dashboard`, {
-        headers: { Accept: "application/json" },
-        credentials: "include",
-      });
-      const dashboard = (await dashboardResponse.json()) as InfluencerDashboardResponse;
-
-      if (!dashboardResponse.ok || dashboard.authenticated !== true) {
-        throw new Error("대시보드를 불러오지 못했습니다.");
-      }
-
-      onSuccess(dashboard);
-    } catch (loginError) {
-      setError(
-        loginError instanceof Error
-          ? loginError.message
-          : "로그인에 실패했습니다.",
-      );
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  return (
-    <AuthLoginScreen
-      title="인플루언서 로그인"
-      fields={[
-        {
-          id: "email",
-          label: "이메일",
-          value: email,
-          type: "email",
-          autoComplete: "email",
-          required: true,
-          onChange: setEmail,
-        },
-        {
-          id: "password",
-          label: "비밀번호",
-          value: password,
-          type: "password",
-          autoComplete: "current-password",
-          placeholder: "비밀번호 입력",
-          required: true,
-          onChange: setPassword,
-        },
-      ]}
-      submitLabel="대시보드 열기"
-      isSubmitting={isSubmitting}
-      error={error}
-      footer={
-        <div className="flex items-center justify-center gap-3">
-          <Link
-            to="/signup/influencer"
-            className="text-[13px] font-semibold text-neutral-950 transition hover:text-neutral-600"
-          >
-            계정 만들기
-          </Link>
-          <span className="h-3 w-px bg-neutral-200" />
-          <Link
-            to="/login"
-            className="text-[13px] font-semibold text-neutral-500 transition hover:text-neutral-950"
-          >
-            돌아가기
-          </Link>
-        </div>
-      }
-      onSubmit={handleSubmit}
-    />
-  );
-
 }
 
 function ErrorView({ message, onRetry }: { message: string; onRetry: () => void }) {
@@ -661,19 +537,16 @@ function PriorityPanel({
   if (tasks.length === 0) return null;
 
   return (
-    <aside className="rounded-lg border border-neutral-950 bg-neutral-950 p-4 text-white shadow-sm">
+    <aside className="rounded-lg border border-neutral-200 bg-white p-4 text-neutral-950 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-[12px] font-semibold text-neutral-400">
-            우선 확인 항목
-          </p>
-          <h2 className="mt-2 text-[20px] font-semibold leading-6">
+          <h2 className="text-[18px] font-semibold leading-6">
             먼저 처리할 계약
           </h2>
         </div>
-        <Sparkles className="h-5 w-5 text-amber-300" />
+        <Sparkles className="h-4 w-4 text-amber-500" />
       </div>
-      <p className="mt-3 text-[12px] font-semibold text-neutral-500">
+      <p className="mt-2 text-[12px] font-semibold text-neutral-500">
         {nextDeadline ? formatDeadline(nextDeadline) : "마감 없음"}
       </p>
       <div className="mt-4 space-y-2">
@@ -682,13 +555,13 @@ function PriorityPanel({
             key={task.id}
             type="button"
             onClick={() => onOpen(task.href)}
-            className="group w-full rounded-md border border-white/10 bg-white/[0.06] px-3 py-2.5 text-left transition hover:bg-white/[0.1]"
+            className="group w-full rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-left transition hover:border-neutral-300 hover:bg-white"
           >
             <div className="flex items-center justify-between gap-3">
               <p className="min-w-0 truncate text-[13px] font-semibold">
                 {task.title}
               </p>
-              <ArrowRight className="h-4 w-4 shrink-0 text-neutral-500 transition group-hover:translate-x-0.5 group-hover:text-white" />
+              <ArrowRight className="h-4 w-4 shrink-0 text-neutral-400 transition group-hover:translate-x-0.5 group-hover:text-neutral-950" />
             </div>
             <p className="mt-1 truncate text-[12px] text-neutral-500">
               {task.action_label}
@@ -870,6 +743,7 @@ function FilterChip({
   return (
     <button
       type="button"
+      aria-pressed={active}
       onClick={onClick}
       className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border px-3 text-[12px] font-semibold transition ${
         active
@@ -885,18 +759,18 @@ function FilterChip({
 
 function EmptyContracts({ hasQuery }: { hasQuery: boolean }) {
   return (
-    <section className="flex min-h-[210px] flex-col items-center justify-center rounded-b-lg border-x border-b border-neutral-200 bg-white px-6 text-center">
+    <section className="flex min-h-[150px] flex-col items-center justify-center rounded-b-lg border-x border-b border-neutral-200 bg-white px-6 text-center">
       <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-50 text-neutral-300 ring-1 ring-neutral-200">
         <FileText className="h-5 w-5" strokeWidth={1.7} />
       </div>
       <h2 className="mt-3 text-[15px] font-semibold text-neutral-950">
         {hasQuery ? "조건에 맞는 계약이 없습니다" : "아직 받은 계약이 없습니다"}
       </h2>
-      <p className="mt-1 max-w-md text-[13px] leading-6 text-neutral-500">
-        {hasQuery
-          ? "검색어를 줄이거나 상태 필터를 전체로 바꿔보세요."
-          : "광고주가 계약을 발송하면 이곳에 검토와 서명 작업이 표시됩니다."}
-      </p>
+      {hasQuery && (
+        <p className="mt-1 max-w-md text-[13px] leading-6 text-neutral-500">
+          검색어를 줄이거나 상태 필터를 전체로 바꿔보세요.
+        </p>
+      )}
     </section>
   );
 }

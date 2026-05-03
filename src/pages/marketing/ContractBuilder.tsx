@@ -14,6 +14,7 @@ import {
   verificationStatusTone,
 } from "../../domain/verification";
 import { useVerificationSummary } from "../../hooks/useVerificationSummary";
+import { PRODUCT_NAME } from "../../domain/brand";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -639,7 +640,7 @@ export function ContractBuilder() {
               <ShieldCheck className="h-4 w-4" strokeWidth={2} />
             </div>
             <span className="text-[18px] font-semibold tracking-tight text-neutral-950">
-              DirectSign
+              {PRODUCT_NAME}
             </span>
           </div>
         </div>

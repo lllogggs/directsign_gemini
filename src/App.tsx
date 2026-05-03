@@ -9,6 +9,7 @@ import {
 import { lazy, Suspense } from "react";
 import { AdvertiserAuthGate } from "./pages/marketing/AdvertiserAuthGate";
 import { getNextPath } from "./domain/navigation";
+import { PRODUCT_NAME } from "./domain/brand";
 
 const Dashboard = lazy(() =>
   import("./pages/marketing/Dashboard").then((module) => ({
@@ -56,7 +57,7 @@ const InfluencerDashboard = lazy(() =>
   })),
 );
 const InfluencerLoginPage = lazy(() =>
-  import("./pages/influencer/InfluencerDashboard").then((module) => ({
+  import("./pages/influencer/InfluencerLoginPage").then((module) => ({
     default: module.InfluencerLoginPage,
   })),
 );
@@ -71,7 +72,7 @@ function AppLoading({ label = "계약 데이터를 불러오는 중입니다" }:
     <div className="flex min-h-screen items-center justify-center bg-[#FAFAFA] font-sans text-neutral-500">
       <div className="border border-neutral-200 bg-white px-6 py-5 text-center shadow-[0_8px_32px_rgba(0,0,0,0.04)]">
         <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-neutral-400">
-          DirectSign
+          {PRODUCT_NAME}
         </p>
         <p className="mt-2 text-sm font-medium text-neutral-900">{label}</p>
       </div>

@@ -1,5 +1,6 @@
 import React from "react";
 import { ArrowRight, ShieldCheck } from "lucide-react";
+import { PRODUCT_NAME } from "../domain/brand";
 
 export interface AuthLoginField {
   id: string;
@@ -46,7 +47,7 @@ export function AuthLoginScreen({
             </div>
             <div className="min-w-0">
               <p className="truncate text-[17px] font-semibold leading-5 text-neutral-950">
-                DirectSign
+                {PRODUCT_NAME}
               </p>
             </div>
           </div>

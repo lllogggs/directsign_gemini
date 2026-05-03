@@ -159,7 +159,7 @@ const useSupabaseV2 = useSupabase && supabaseSchemaVersion !== "legacy";
 const demoMode = process.env.DIRECTSIGN_DEMO_MODE === "true";
 const adminAccessCode = process.env.ADMIN_ACCESS_CODE;
 const adminSessionSecret =
-  process.env.ADMIN_SESSION_SECRET ?? supabaseServiceRoleKey;
+  process.env.ADMIN_SESSION_SECRET ?? (demoMode ? supabaseServiceRoleKey : undefined);
 const adminSessionCookie = "directsign_admin_session";
 const adminSessionMaxAgeSeconds = 60 * 60 * 8;
 const advertiserAccessCookie = "directsign_advertiser_access";
@@ -175,7 +175,12 @@ const defaultInfluencerTargetId =
 const privateStorageBucket =
   process.env.DIRECTSIGN_PRIVATE_STORAGE_BUCKET ?? "directsign-private";
 const privateFilesDir = path.join(dataDir, "private-files");
+const allowLocalPrivateFileFallback =
+  !useSupabase ||
+  demoMode ||
+  process.env.DIRECTSIGN_ALLOW_LOCAL_PRIVATE_FILE_FALLBACK === "true";
 const signatureConsentVersion = "directsign-signature-consent-v1";
+const productName = process.env.PRODUCT_NAME ?? "DMOffer";
 
 const app = express();
 app.set("trust proxy", true);
@@ -267,17 +272,22 @@ interface SupabaseAuthUser {
   confirmed_at?: string | null;
 }
 
-interface SupabaseAdminUserResponse {
-  id: string;
-  email?: string;
-}
-
 interface SupabaseAuthSession {
   access_token: string;
   refresh_token?: string;
   expires_in?: number;
   user: SupabaseAuthUser;
 }
+
+type SupabaseSignupPayload =
+  | (SupabaseAuthUser & Partial<SupabaseAuthSession>)
+  | {
+      user?: SupabaseAuthUser | null;
+      session?: SupabaseAuthSession | null;
+      access_token?: string;
+      refresh_token?: string;
+      expires_in?: number;
+    };
 
 interface SupabaseProfileRow {
   id: string;
@@ -440,16 +450,6 @@ const supabaseAuthHeaders = (accessToken?: string) => {
   };
 };
 
-const supabaseAdminAuthHeaders = () => {
-  const { key } = requireSupabaseConfig();
-
-  return {
-    apikey: key,
-    Authorization: `Bearer ${key}`,
-    "Content-Type": "application/json",
-  };
-};
-
 const supabaseStorageHeaders = (contentType?: string) => {
   const { key } = requireSupabaseConfig();
 
@@ -555,6 +555,24 @@ const readProfileByUserId = async (userId: string) => {
   );
 
   return rows[0];
+};
+
+const syncProfileEmailVerifiedAt = async (authUser: SupabaseAuthUser) => {
+  const verifiedAt = authUser.email_confirmed_at ?? authUser.confirmed_at;
+  if (!useSupabase || !authUser.id || !verifiedAt) return;
+
+  const response = await fetchSupabase(
+    "profiles",
+    `?id=eq.${encodeURIComponent(authUser.id)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        email_verified_at: verifiedAt,
+        updated_at: new Date().toISOString(),
+      }),
+    },
+  );
+  await assertSupabaseOk(response, "Supabase profile email verification update");
 };
 
 const readDefaultOrganizationForProfile = async (profileId: string) => {
@@ -664,6 +682,12 @@ const canInfluencerAccessLegacyContract = (
 const supportAccessTable = "support_access_requests";
 let supportAccessReadFallbackWarned = false;
 let supportAccessWriteFallbackWarned = false;
+const allowLocalSupportAccessStore = !useSupabase || demoMode;
+
+const createMissingSupportAccessStoreError = () =>
+  new Error(
+    "Supabase support_access_requests table is required when Supabase storage is enabled.",
+  );
 
 const isMissingSupabaseSupportAccessTableError = (error: unknown) =>
   error instanceof Error &&
@@ -743,6 +767,9 @@ const readSupportAccessRequests = async () => {
       if (!isMissingSupabaseSupportAccessTableError(error)) {
         throw error;
       }
+      if (!allowLocalSupportAccessStore) {
+        throw createMissingSupportAccessStoreError();
+      }
       if (!supportAccessReadFallbackWarned) {
         console.warn(
           "[DirectSign] support_access_requests table is not available; using local support access store.",
@@ -769,6 +796,9 @@ const insertSupportAccessRequest = async (
     } catch (error) {
       if (!isMissingSupabaseSupportAccessTableError(error)) {
         throw error;
+      }
+      if (!allowLocalSupportAccessStore) {
+        throw createMissingSupportAccessStoreError();
       }
       if (!supportAccessWriteFallbackWarned) {
         console.warn(
@@ -811,6 +841,9 @@ const updateSupportAccessRequest = async (
       if (!isMissingSupabaseSupportAccessTableError(error)) {
         throw error;
       }
+      if (!allowLocalSupportAccessStore) {
+        throw createMissingSupportAccessStoreError();
+      }
     }
   }
 
@@ -826,10 +859,18 @@ const isSupportAccessActive = (record: SupportAccessRequestRecord) =>
   record.status === "active" &&
   new Date(record.expires_at).getTime() > Date.now();
 
-const getActiveSupportAccessForContract = async (contractId: string) => {
+const getActiveSupportAccessForContract = async (
+  contractId: string,
+  requestId?: string,
+) => {
   const requests = await readSupportAccessRequests();
   return requests
-    .filter((record) => record.contract_id === contractId && isSupportAccessActive(record))
+    .filter(
+      (record) =>
+        record.contract_id === contractId &&
+        (!requestId || record.id === requestId) &&
+        isSupportAccessActive(record),
+    )
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
 };
 
@@ -882,6 +923,11 @@ const bindContractToAdvertiser = async (
   });
 };
 
+const getSupportAccessRequestIdFromRequest = (request: express.Request) =>
+  normalizeOptionalText(request.header("X-DirectSign-Support-Access-Request")) ??
+  normalizeOptionalText(request.query.support) ??
+  normalizeOptionalText(request.query.support_access_request_id);
+
 const resolveLegacyContractAccess = async (
   request: express.Request,
   response: express.Response,
@@ -910,10 +956,29 @@ const resolveLegacyContractAccess = async (
   }
 
   if (allowAdmin && verifyAdminSessionToken(getAdminSessionFromRequest(request))) {
-    const supportAccess = await getActiveSupportAccessForContract(contract.id);
+    const supportAccessRequestId = getSupportAccessRequestIdFromRequest(request);
+
+    if (!supportAccessRequestId) {
+      if (sendError) {
+        response
+          .status(403)
+          .json({ error: "Active support access request id is required" });
+      }
+      return undefined;
+    }
+
+    const supportAccess = await getActiveSupportAccessForContract(
+      contract.id,
+      supportAccessRequestId,
+    );
     if (supportAccess) {
       return { role: "admin" as const, supportAccess };
     }
+
+    if (sendError) {
+      response.status(403).json({ error: "Active support access request is required" });
+    }
+    return undefined;
   }
 
   if (allowAdvertiser) {
@@ -1131,6 +1196,26 @@ const getClientIp = (request: express.Request) => {
   return forwardedFor || request.ip || request.socket.remoteAddress || "unknown";
 };
 
+const getAppBaseUrl = (request: express.Request) => {
+  const configuredUrl = process.env.APP_URL?.trim().replace(/\/$/, "");
+  if (configuredUrl) return configuredUrl;
+
+  const forwardedProto = request.header("x-forwarded-proto")?.split(",")[0]?.trim();
+  const protocol = forwardedProto || request.protocol || "http";
+  const host = request.get("host") || `localhost:${port}`;
+  return `${protocol}://${host}`;
+};
+
+const buildEmailConfirmationRedirect = (
+  request: express.Request,
+  loginPath: string,
+  nextPath: string,
+) => {
+  const url = new URL(loginPath, `${getAppBaseUrl(request)}/`);
+  url.searchParams.set("next", nextPath);
+  return url.toString();
+};
+
 const getAdminSessionFromRequest = (request: express.Request) =>
   parseCookies(request.header("cookie")).get(adminSessionCookie);
 
@@ -1172,28 +1257,65 @@ const createSupabasePasswordSession = async (
   return (await response.json()) as SupabaseAuthSession;
 };
 
-const createSupabaseAdminUser = async ({
+const isSupabaseAuthUser = (value: unknown): value is SupabaseAuthUser =>
+  typeof value === "object" &&
+  value !== null &&
+  hasText((value as { id?: unknown }).id);
+
+const extractSupabaseSignupUser = (payload: SupabaseSignupPayload) => {
+  const wrappedUser = (payload as { user?: unknown }).user;
+  if (isSupabaseAuthUser(wrappedUser)) return wrappedUser;
+
+  const sessionUser = (payload as { session?: { user?: unknown } | null }).session
+    ?.user;
+  if (isSupabaseAuthUser(sessionUser)) return sessionUser;
+
+  if (isSupabaseAuthUser(payload)) return payload;
+  return undefined;
+};
+
+const extractSupabaseSignupSession = (payload: SupabaseSignupPayload) => {
+  const wrappedSession = (payload as { session?: SupabaseAuthSession | null })
+    .session;
+  if (wrappedSession?.access_token) return wrappedSession;
+
+  const accessToken = (payload as { access_token?: string }).access_token;
+  if (!hasText(accessToken)) return undefined;
+
+  const user = extractSupabaseSignupUser(payload);
+  if (!user) return undefined;
+
+  return {
+    access_token: accessToken,
+    refresh_token: (payload as { refresh_token?: string }).refresh_token,
+    expires_in: (payload as { expires_in?: number }).expires_in,
+    user,
+  } satisfies SupabaseAuthSession;
+};
+
+const createSupabaseSignupUser = async ({
   email,
   password,
-  role,
   name,
   companyName,
+  redirectTo,
 }: {
   email: string;
   password: string;
-  role: SupabaseProfileRow["role"];
   name: string;
   companyName?: string;
+  redirectTo: string;
 }) => {
-  const response = await fetch(supabaseAuthUrl("/admin/users"), {
+  const url = new URL(supabaseAuthUrl("/signup"));
+  url.searchParams.set("redirect_to", redirectTo);
+
+  const response = await fetch(url.toString(), {
     method: "POST",
-    headers: supabaseAdminAuthHeaders(),
+    headers: supabaseAuthHeaders(),
     body: JSON.stringify({
       email,
       password,
-      email_confirm: true,
-      app_metadata: { role },
-      user_metadata: {
+      data: {
         name,
         ...(companyName ? { company_name: companyName } : {}),
       },
@@ -1204,7 +1326,50 @@ const createSupabaseAdminUser = async ({
     throw new Error(await parseSupabaseError(response));
   }
 
-  return (await response.json()) as SupabaseAdminUserResponse;
+  const payload = (await response.json()) as SupabaseSignupPayload;
+  const session = extractSupabaseSignupSession(payload);
+
+  if (session?.access_token) {
+    throw new Error(
+      "Supabase 이메일 확인 설정이 꺼져 있습니다. Authentication > Sign In / Providers > Email에서 Confirm email을 켠 뒤 다시 가입해 주세요.",
+    );
+  }
+
+  const authUser = extractSupabaseSignupUser(payload);
+  if (!authUser?.id) {
+    throw new Error("Supabase 가입 응답에서 사용자 정보를 확인할 수 없습니다.");
+  }
+
+  return authUser;
+};
+
+const getLoginFailureMessage = (error: unknown, fallback: string) => {
+  const message = error instanceof Error ? error.message : "";
+  const normalized = message.toLowerCase();
+
+  if (
+    normalized.includes("email not confirmed") ||
+    normalized.includes("email not verified")
+  ) {
+    return `이메일 인증 후 로그인할 수 있습니다. 받은 편지함의 ${productName} 확인 메일을 열어주세요.`;
+  }
+
+  return hasText(message) ? message : fallback;
+};
+
+const getSignupFailureMessage = (error: unknown, fallback: string) => {
+  const message = error instanceof Error ? error.message : "";
+  const normalized = message.toLowerCase();
+
+  if (
+    normalized.includes("user already registered") ||
+    normalized.includes("duplicate key") ||
+    normalized.includes("foreign key")
+  ) {
+    return "이미 가입된 이메일이면 로그인해 주세요. 새 가입이라면 받은 편지함의 인증 메일을 확인해 주세요.";
+  }
+
+  return hasText(message) ? message : fallback;
 };
 
 const refreshSupabaseSession = async (refreshToken: string) => {
@@ -1407,7 +1572,7 @@ const checkOwnershipChallenge = async (
       signal: controller.signal,
       headers: {
         Accept: "text/html,text/plain,*/*",
-        "User-Agent": "DirectSign ownership verifier",
+        "User-Agent": `${productName} ownership verifier`,
       },
     });
     const body = await response.text();
@@ -1643,8 +1808,11 @@ const storePrivateBuffer = async ({
         stored_at: storedAt,
       };
     } catch (error) {
+      if (!allowLocalPrivateFileFallback) {
+        throw error;
+      }
       console.warn(
-        `[DirectSign] Supabase Storage unavailable, storing private file locally: ${
+        `[${productName}] Supabase Storage unavailable, storing private file locally: ${
           error instanceof Error ? error.message : "unknown error"
         }`,
       );
@@ -1779,7 +1947,7 @@ const buildSignedContractPdf = async ({
   const { jsPDF } = await import("jspdf");
   const pdf = new jsPDF({ unit: "pt", format: "a4" });
   const lines = [
-    "DirectSign Signed Contract Record",
+    `${productName} Signed Contract Record`,
     `Contract ID: ${contract.id}`,
     `Title: ${contract.title}`,
     `Advertiser: ${contract.advertiser_info?.name ?? contract.advertiser_id}`,
@@ -2061,7 +2229,7 @@ const actorDisplayName = (contract: Contract, actor: AuditActor) => {
     return contract.influencer_info.name;
   }
 
-  return "DirectSign";
+  return productName;
 };
 
 const syncSupabaseV2Contract = async (contract: Contract) => {
@@ -3086,16 +3254,18 @@ const inferLegacyDashboardStage = (
 };
 
 const buildContractActionHref = (contractId: string, legacyContract?: Contract) => {
+  const viewerContractId = legacyContract?.id ?? contractId;
   const token = legacyContract?.evidence?.share_token;
   const tokenActive = legacyContract?.evidence?.share_token_status === "active";
   const suffix = token && tokenActive ? `?token=${encodeURIComponent(token)}` : "";
-  return `/contract/${contractId}${suffix}`;
+  return `/contract/${viewerContractId}${suffix}`;
 };
 
 const buildVerificationHref = (contractId: string, legacyContract?: Contract) => {
+  const viewerContractId = legacyContract?.id ?? contractId;
   const token = legacyContract?.evidence?.share_token;
   const suffix = token ? `&token=${encodeURIComponent(token)}` : "";
-  return `/influencer/verification?contractId=${encodeURIComponent(contractId)}${suffix}`;
+  return `/influencer/verification?contractId=${encodeURIComponent(viewerContractId)}${suffix}`;
 };
 
 const buildV2DashboardContract = ({
@@ -3442,7 +3612,9 @@ const buildInfluencerDashboard = async (
     dashboardContracts = contracts.map((contract) =>
       buildV2DashboardContract({
         contract,
-        legacyContract: legacyContractsById.get(contract.id),
+        legacyContract:
+          legacyContractsById.get(contract.legacy_contract_id ?? "") ??
+          legacyContractsById.get(contract.id),
         parties: partiesByContract.get(contract.id) ?? [],
         platforms: platformsByContract.get(contract.id) ?? [],
         pricingTerm: pricingByContract.get(contract.id),
@@ -3704,7 +3876,7 @@ app.patch("/api/admin/support-access-requests/:id", async (request, response, ne
     const updated = await updateSupportAccessRequest({
       ...record,
       status,
-      reviewed_by_name: "DirectSign 운영자",
+      reviewed_by_name: `${productName} 운영자`,
       reviewed_at: new Date().toISOString(),
       audit_events: [
         ...(record.audit_events ?? []),
@@ -3712,7 +3884,7 @@ app.patch("/api/admin/support-access-requests/:id", async (request, response, ne
           id: randomUUID(),
           action: status === "closed" ? "closed" : "expired",
           actor_role: "admin",
-          actor_name: "DirectSign 운영자",
+          actor_name: `${productName} 운영자`,
           description:
             status === "closed"
               ? "운영자가 지원 열람을 종료했습니다."
@@ -3735,7 +3907,7 @@ app.get("/api/advertiser/session", async (request, response, next) => {
     const auth = await authenticateAdvertiserRequest(request, response);
 
     if (!auth) {
-      response.status(401).json({ authenticated: false });
+      response.json({ authenticated: false });
       return;
     }
 
@@ -3780,6 +3952,7 @@ app.post("/api/advertiser/login", async (request, response) => {
       return;
     }
 
+    await syncProfileEmailVerifiedAt(session.user);
     setAdvertiserSessionCookies(response, session);
     response.json({
       authenticated: true,
@@ -3794,10 +3967,7 @@ app.post("/api/advertiser/login", async (request, response) => {
     });
   } catch (error) {
     response.status(401).json({
-      error:
-        error instanceof Error && hasText(error.message)
-          ? error.message
-          : "Advertiser login failed",
+      error: getLoginFailureMessage(error, "Advertiser login failed"),
     });
   }
 });
@@ -3828,12 +3998,16 @@ app.post("/api/advertiser/signup", async (request, response) => {
       return;
     }
 
-    const authUser = await createSupabaseAdminUser({
+    const authUser = await createSupabaseSignupUser({
       email,
       password,
-      role: "marketer",
       name: managerName,
       companyName,
+      redirectTo: buildEmailConfirmationRedirect(
+        request,
+        "/login/advertiser",
+        "/advertiser/verification",
+      ),
     });
 
     await upsertSupabaseV2Rows("profiles", [
@@ -3844,6 +4018,7 @@ app.post("/api/advertiser/signup", async (request, response) => {
         email,
         company_name: companyName,
         verification_status: "not_submitted",
+        email_verified_at: null,
         updated_at: new Date().toISOString(),
       },
     ]);
@@ -3876,10 +4051,11 @@ app.post("/api/advertiser/signup", async (request, response) => {
       );
     }
 
-    const session = await createSupabasePasswordSession(email, password);
-    setAdvertiserSessionCookies(response, session);
-    response.status(201).json({
-      authenticated: true,
+    response.status(202).json({
+      authenticated: false,
+      confirmation_required: true,
+      message:
+        "인증 메일을 보냈습니다. 메일 링크를 누른 뒤 광고주 계정으로 로그인해 주세요.",
       user: {
         id: authUser.id,
         email,
@@ -3891,10 +4067,10 @@ app.post("/api/advertiser/signup", async (request, response) => {
     });
   } catch (error) {
     response.status(400).json({
-      error:
-        error instanceof Error && hasText(error.message)
-          ? error.message
-          : "광고주 계정을 만들 수 없습니다.",
+      error: getSignupFailureMessage(
+        error,
+        "광고주 계정을 만들 수 없습니다.",
+      ),
     });
   }
 });
@@ -3942,6 +4118,7 @@ app.post("/api/influencer/login", async (request, response, next) => {
       return;
     }
 
+    await syncProfileEmailVerifiedAt(session.user);
     setInfluencerSessionCookies(response, session);
     response.json({
       authenticated: true,
@@ -3950,10 +4127,7 @@ app.post("/api/influencer/login", async (request, response, next) => {
     });
   } catch (error) {
     response.status(401).json({
-      error:
-        error instanceof Error && hasText(error.message)
-          ? error.message
-          : "Influencer login failed",
+      error: getLoginFailureMessage(error, "Influencer login failed"),
     });
   }
 });
@@ -3983,11 +4157,15 @@ app.post("/api/influencer/signup", async (request, response) => {
       return;
     }
 
-    const authUser = await createSupabaseAdminUser({
+    const authUser = await createSupabaseSignupUser({
       email,
       password,
-      role: "influencer",
       name,
+      redirectTo: buildEmailConfirmationRedirect(
+        request,
+        "/login/influencer",
+        "/influencer/verification",
+      ),
     });
 
     await upsertSupabaseV2Rows("profiles", [
@@ -3997,14 +4175,16 @@ app.post("/api/influencer/signup", async (request, response) => {
         name,
         email,
         verification_status: "not_submitted",
+        email_verified_at: null,
         updated_at: new Date().toISOString(),
       },
     ]);
 
-    const session = await createSupabasePasswordSession(email, password);
-    setInfluencerSessionCookies(response, session);
-    response.status(201).json({
-      authenticated: true,
+    response.status(202).json({
+      authenticated: false,
+      confirmation_required: true,
+      message:
+        "인증 메일을 보냈습니다. 메일 링크를 누른 뒤 인플루언서 계정으로 로그인해 주세요.",
       user: {
         id: authUser.id,
         email,
@@ -4015,10 +4195,10 @@ app.post("/api/influencer/signup", async (request, response) => {
     });
   } catch (error) {
     response.status(400).json({
-      error:
-        error instanceof Error && hasText(error.message)
-          ? error.message
-          : "인플루언서 계정을 만들 수 없습니다.",
+      error: getSignupFailureMessage(
+        error,
+        "인플루언서 계정을 만들 수 없습니다.",
+      ),
     });
   }
 });
@@ -4033,7 +4213,7 @@ app.get("/api/influencer/dashboard", async (request, response, next) => {
     const auth = await authenticateInfluencerRequest(request, response);
 
     if (!auth) {
-      response.status(401).json({ error: "Influencer session is required" });
+      response.json({ authenticated: false });
       return;
     }
 
@@ -4260,7 +4440,7 @@ app.post("/api/verification/influencer", async (request, response, next) => {
       return;
     }
     if (!ownershipChallengePattern.test(ownershipChallengeCode)) {
-      response.status(422).json({ error: "Valid DirectSign challenge code is required" });
+      response.status(422).json({ error: `Valid ${productName} challenge code is required` });
       return;
     }
     if (evidenceError) {
@@ -4402,7 +4582,7 @@ app.patch("/api/admin/verification-requests/:id", async (request, response, next
     const status = normalizeRequiredText(request.body?.status);
     const reviewerNote = normalizeOptionalText(request.body?.reviewer_note);
     const reviewedByName =
-      normalizeOptionalText(request.body?.reviewed_by_name) ?? "DirectSign 운영자";
+      normalizeOptionalText(request.body?.reviewed_by_name) ?? `${productName} 운영자`;
 
     if (!verificationStatuses.has(status)) {
       response.status(422).json({ error: "Valid verification status is required" });
@@ -4479,12 +4659,15 @@ app.post("/api/contracts/:id/support-access-requests", async (request, response,
       allowAdmin: false,
       allowAdvertiser: true,
       allowInfluencer: true,
-      allowShareToken: true,
+      allowShareToken: false,
       sendError: false,
     });
 
-    if (!access || access.role === "admin") {
-      response.status(403).json({ error: "Contract party access is required" });
+    if (!access || access.role === "admin" || access.role === "share") {
+      response.status(403).json({
+        error:
+          "로그인한 계약 당사자만 운영자 확인 요청을 보낼 수 있습니다.",
+      });
       return;
     }
 
@@ -4495,6 +4678,10 @@ app.post("/api/contracts/:id/support-access-requests", async (request, response,
       });
       return;
     }
+
+    const requestedScope = normalizeOptionalText(request.body?.scope);
+    const scope: SupportAccessScope =
+      requestedScope === "contract" ? "contract" : "contract_and_pdf";
 
     const now = new Date().toISOString();
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
@@ -4521,7 +4708,7 @@ app.post("/api/contracts/:id/support-access-requests", async (request, response,
       requester_name: requesterName,
       requester_email: requesterEmail,
       reason,
-      scope: "contract_and_pdf",
+      scope,
       status: "active",
       expires_at: expiresAt,
       audit_events: [
@@ -4569,7 +4756,7 @@ app.get("/api/contracts/:id", async (request, response, next) => {
       await appendSupportAccessAuditEvent(access.supportAccess.id, {
         action: "viewed_contract",
         actor_role: "admin",
-        actor_name: "DirectSign 운영자",
+        actor_name: `${productName} 운영자`,
         description: "운영자가 당사자 요청에 따라 계약 본문을 열람했습니다.",
         ip: getClientIp(request),
         user_agent: request.header("user-agent") ?? "unknown",
@@ -4598,10 +4785,17 @@ app.get("/api/contracts/:id/final-pdf", async (request, response, next) => {
     }
 
     if (access.role === "admin") {
+      if (access.supportAccess.scope !== "contract_and_pdf") {
+        response.status(403).json({
+          error: "This support access request does not include PDF access",
+        });
+        return;
+      }
+
       await appendSupportAccessAuditEvent(access.supportAccess.id, {
         action: "viewed_pdf",
         actor_role: "admin",
-        actor_name: "DirectSign 운영자",
+        actor_name: `${productName} 운영자`,
         description: "운영자가 당사자 요청에 따라 서명본 PDF를 열람했습니다.",
         ip: getClientIp(request),
         user_agent: request.header("user-agent") ?? "unknown",
@@ -4924,7 +5118,7 @@ app.use(
     response: express.Response,
     _next: express.NextFunction,
   ) => {
-    console.error("[DirectSign API]", error);
+    console.error(`[${productName} API]`, error);
     response.status(500).json({ error: "Internal server error" });
   },
 );
@@ -4946,6 +5140,6 @@ if (isPreview) {
 
 app.listen(port, "0.0.0.0", () => {
   console.log(
-    `[DirectSign] ${isPreview ? "preview" : "dev"} server running on http://localhost:${port}`,
+    `[${productName}] ${isPreview ? "preview" : "dev"} server running on http://localhost:${port}`,
   );
 });

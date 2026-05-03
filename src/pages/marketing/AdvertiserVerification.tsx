@@ -12,6 +12,7 @@ import {
   verificationStatusTone,
 } from "../../domain/verification";
 import { useVerificationSummary } from "../../hooks/useVerificationSummary";
+import { PRODUCT_NAME } from "../../domain/brand";
 
 const API_BASE =
   typeof import.meta !== "undefined"
@@ -125,30 +126,32 @@ export function AdvertiserVerification() {
             <ArrowLeft className="h-4 w-4" />
             대시보드
           </button>
-          <div className="flex items-center gap-2 rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs font-semibold text-neutral-600">
-            <ShieldCheck className="h-4 w-4" />
-            Manual KYB
+          <div className="flex items-center gap-2">
+            <span className="hidden text-sm font-semibold text-neutral-950 sm:inline">
+              {PRODUCT_NAME}
+            </span>
+            <span className="flex items-center gap-2 rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs font-semibold text-neutral-600">
+              <ShieldCheck className="h-4 w-4" />
+              수기 심사
+            </span>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto grid max-w-5xl gap-6 px-5 py-8 sm:px-8 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <section className="rounded-lg border border-neutral-200 bg-white p-6 shadow-sm sm:p-8">
-          <div className="mb-8">
-            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
-              Advertiser Verification
-            </p>
-            <h1 className="text-3xl font-semibold tracking-tight">
+      <main className="mx-auto grid max-w-6xl gap-4 px-5 py-4 sm:px-8 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <section className="rounded-lg border border-neutral-200 bg-white p-5 shadow-sm sm:p-6">
+          <div className="mb-5">
+            <h1 className="text-[24px] font-semibold tracking-tight">
               광고주 사업자 인증
             </h1>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-neutral-500">
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-neutral-500">
               계약 초안 작성은 바로 가능하지만, 인플루언서에게 계약을 발송하려면
               운영자 수기 승인이 필요합니다.
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="grid gap-4 sm:grid-cols-2">
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
               <TextField
                 label="회사/브랜드명"
                 value={form.subject_name}
@@ -209,7 +212,7 @@ export function AdvertiserVerification() {
               <label className="text-sm font-semibold text-neutral-900">
                 사업자등록증명원 파일
               </label>
-              <label className="mt-2 flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-neutral-300 bg-neutral-50 px-4 py-6 text-center transition hover:border-neutral-500 hover:bg-white">
+              <label className="mt-2 flex min-h-28 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-neutral-300 bg-neutral-50 px-4 py-5 text-center transition hover:border-neutral-500 hover:bg-white">
                 <FileUp className="mb-3 h-6 w-6 text-neutral-500" />
                 <span className="text-sm font-semibold text-neutral-900">
                   {file ? file.name : "PDF 또는 이미지 업로드"}
@@ -233,7 +236,7 @@ export function AdvertiserVerification() {
               <textarea
                 value={form.note}
                 onChange={(event) => updateForm({ note: event.target.value })}
-                className="mt-2 min-h-28 w-full rounded-lg border border-neutral-200 bg-white p-4 text-sm outline-none transition focus:border-neutral-950"
+                className="mt-2 min-h-20 w-full rounded-lg border border-neutral-200 bg-white p-4 text-sm outline-none transition focus:border-neutral-950"
                 placeholder="상호가 브랜드명과 다르거나 대행사가 대신 계약하는 경우 적어주세요."
               />
             </div>
@@ -252,7 +255,7 @@ export function AdvertiserVerification() {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="h-12 w-full rounded-lg bg-neutral-950 px-5 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-500"
+              className="h-11 w-full rounded-lg bg-neutral-950 px-5 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-500"
             >
               {isSubmitting ? "접수 중" : "수기 심사 요청"}
             </button>
@@ -260,16 +263,13 @@ export function AdvertiserVerification() {
         </section>
 
         <aside className="space-y-4">
-          <section className="rounded-lg border border-neutral-200 bg-white p-5 shadow-sm">
+          <section className="rounded-lg border border-neutral-200 bg-white p-4 shadow-sm">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-950 text-white">
                   <Building2 className="h-5 w-5" />
                 </div>
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-neutral-400">
-                    Status
-                  </p>
                   <p className="text-sm font-semibold text-neutral-950">
                     광고주 인증 상태
                   </p>
@@ -304,7 +304,7 @@ export function AdvertiserVerification() {
             )}
           </section>
 
-          <section className="rounded-lg border border-neutral-200 bg-white p-5 shadow-sm">
+          <section className="rounded-lg border border-neutral-200 bg-white p-4 shadow-sm">
             <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-neutral-950">
               <CheckCircle2 className="h-4 w-4" />
               승인 기준

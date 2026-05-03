@@ -22,6 +22,7 @@ import { format } from "date-fns";
 import { Textarea } from "@/components/ui/textarea";
 import { ClauseHistory, Contract, ContractStatus, useAppStore } from "../../store";
 import { createShareToken } from "../../domain/contracts";
+import { PRODUCT_NAME } from "../../domain/brand";
 
 const buildShareUrl = (contractId: string, shareToken?: string) =>
   `${window.location.origin}/contract/${contractId}${
@@ -46,7 +47,7 @@ const STATUS_META: Record<
   REVIEWING: {
     label: "검토 중",
     helper: "인플루언서 응답 대기",
-    badge: "border-sky-200 bg-sky-50 text-sky-700",
+    badge: "border-neutral-200 bg-white text-neutral-700",
     icon: <Clock3 className="h-4 w-4" />,
   },
   NEGOTIATING: {
@@ -58,7 +59,7 @@ const STATUS_META: Record<
   APPROVED: {
     label: "서명 대기",
     helper: "최종본 승인 완료",
-    badge: "border-violet-200 bg-violet-50 text-violet-700",
+    badge: "border-neutral-200 bg-white text-neutral-700",
     icon: <PenLine className="h-4 w-4" />,
   },
   SIGNED: {
@@ -303,7 +304,7 @@ export function ContractAdminViewer() {
                 <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
                   계약 워크스페이스
                 </p>
-                <p className="truncate text-[16px] font-semibold">DirectSign</p>
+                <p className="truncate text-[16px] font-semibold">{PRODUCT_NAME}</p>
               </div>
             </div>
           </div>
@@ -371,7 +372,7 @@ export function ContractAdminViewer() {
             label="공유 링크"
             value={summary.activeShare ? "활성" : "비활성"}
             helper={summary.activeShare ? "외부 검토 가능" : "아직 공유 불가"}
-            tone={summary.activeShare ? "sky" : "neutral"}
+            tone="neutral"
           />
           <WorkflowCard
             icon={<ShieldCheck className="h-4 w-4" />}
@@ -580,7 +581,7 @@ export function ContractAdminViewer() {
                 <div className="flex items-start gap-3 rounded-lg border border-neutral-200 bg-[#fafafa] p-4">
                   <LifeBuoy className="mt-0.5 h-4 w-4 shrink-0 text-neutral-500" />
                   <p className="text-[13px] leading-6 text-neutral-600">
-                    문제가 생겼을 때만 24시간 열람권이 열립니다. 운영자 열람 기록은 별도로 남습니다.
+                    로그인한 계약 당사자가 요청할 때만 24시간 열람권이 열립니다. 운영자 열람 기록은 별도로 남습니다.
                   </p>
                 </div>
                 <Textarea
@@ -677,7 +678,7 @@ function WorkflowCard({
   const className = {
     neutral: "border-neutral-200 bg-white text-neutral-700",
     amber: "border-amber-200 bg-amber-50 text-amber-700",
-    sky: "border-sky-200 bg-sky-50 text-sky-700",
+    sky: "border-neutral-200 bg-white text-neutral-700",
   }[tone];
 
   return (
@@ -695,7 +696,7 @@ function WorkflowCard({
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="rounded-lg border border-neutral-200 bg-white p-5 shadow-sm">
-      <h2 className="mb-4 text-[12px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
+      <h2 className="mb-4 text-[14px] font-semibold text-neutral-950">
         {title}
       </h2>
       {children}
