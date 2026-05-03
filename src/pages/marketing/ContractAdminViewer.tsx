@@ -10,6 +10,7 @@ import {
   Copy,
   ExternalLink,
   FileText,
+  LifeBuoy,
   Link2,
   MessageSquareText,
   PenLine,
@@ -63,7 +64,7 @@ const STATUS_META: Record<
   SIGNED: {
     label: "완료",
     helper: "서명본 보관 완료",
-    badge: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    badge: "border-neutral-200 bg-white text-neutral-700",
     icon: <CheckCircle2 className="h-4 w-4" />,
   },
 };
@@ -79,6 +80,8 @@ export function ContractAdminViewer() {
   const contract = getContract(id || "");
   const [replyContent, setReplyContent] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState<string>();
+  const [supportReason, setSupportReason] = useState("");
+  const [isRequestingSupport, setIsRequestingSupport] = useState(false);
 
   const summary = useMemo(() => {
     if (!contract) return undefined;
@@ -235,6 +238,50 @@ export function ContractAdminViewer() {
       ?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
+  const requestOperatorSupport = async () => {
+    const reason = supportReason.trim();
+
+    if (reason.length < 5) {
+      setNotice("운영자가 확인할 내용을 5자 이상 남겨주세요.");
+      return;
+    }
+
+    setIsRequestingSupport(true);
+
+    try {
+      const response = await fetch(
+        `/api/contracts/${encodeURIComponent(contract.id)}/support-access-requests`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({ reason, scope: "contract_and_pdf" }),
+        },
+      );
+      const data = (await response.json()) as {
+        error?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "운영자 확인 요청을 보내지 못했습니다.");
+      }
+
+      setSupportReason("");
+      setNotice("운영자가 24시간 동안 이 계약을 확인할 수 있습니다.");
+    } catch (error) {
+      setNotice(
+        error instanceof Error
+          ? error.message
+          : "운영자 확인 요청을 보내지 못했습니다.",
+      );
+    } finally {
+      setIsRequestingSupport(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#f6f7f9] font-sans text-neutral-950">
       <header className="sticky top-0 z-30 border-b border-neutral-200 bg-white/95 backdrop-blur">
@@ -317,7 +364,7 @@ export function ContractAdminViewer() {
             label="검토 필요 조항"
             value={`${summary.pendingClauses.length}건`}
             helper={summary.pendingClauses.length > 0 ? "광고주 답변 필요" : "모든 조항 승인됨"}
-            tone={summary.pendingClauses.length > 0 ? "amber" : "emerald"}
+            tone={summary.pendingClauses.length > 0 ? "amber" : "neutral"}
           />
           <WorkflowCard
             icon={<Link2 className="h-4 w-4" />}
@@ -331,24 +378,24 @@ export function ContractAdminViewer() {
             label="감사 준비"
             value={contract.evidence?.audit_ready ? "준비됨" : "미완료"}
             helper={contract.evidence?.pdf_status === "signed_ready" ? "서명 PDF 준비" : "초안 PDF 기준"}
-            tone={contract.evidence?.audit_ready ? "emerald" : "neutral"}
+            tone="neutral"
           />
           <WorkflowCard
             icon={<CalendarClock className="h-4 w-4" />}
             label="저장 상태"
             value={syncError ? "확인 필요" : isSyncing ? "저장 중" : "저장 완료"}
             helper={syncError ? "동기화 실패 가능성" : "서버 저장소와 동기화"}
-            tone={syncError ? "amber" : "emerald"}
+            tone={syncError ? "amber" : "neutral"}
           />
         </section>
 
         {notice && (
-          <div className="mb-5 flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-[13px] font-semibold text-emerald-800">
+          <div className="mb-5 flex items-center justify-between rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 text-[13px] font-semibold text-neutral-800">
             <span className="flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4" />
               {notice}
             </span>
-            <button type="button" onClick={() => setNotice(undefined)} className="text-emerald-700">
+            <button type="button" onClick={() => setNotice(undefined)} className="text-neutral-700">
               닫기
             </button>
           </div>
@@ -528,6 +575,32 @@ export function ContractAdminViewer() {
               </div>
             </Panel>
 
+            <Panel title="운영자 확인">
+              <div className="space-y-3">
+                <div className="flex items-start gap-3 rounded-lg border border-neutral-200 bg-[#fafafa] p-4">
+                  <LifeBuoy className="mt-0.5 h-4 w-4 shrink-0 text-neutral-500" />
+                  <p className="text-[13px] leading-6 text-neutral-600">
+                    문제가 생겼을 때만 24시간 열람권이 열립니다. 운영자 열람 기록은 별도로 남습니다.
+                  </p>
+                </div>
+                <Textarea
+                  className="min-h-[96px] rounded-md border-neutral-200 bg-white text-[14px] shadow-none focus-visible:ring-1 focus-visible:ring-neutral-900"
+                  placeholder="예: 인플루언서가 수정 요청한 조항 판단을 도와주세요."
+                  value={supportReason}
+                  onChange={(event) => setSupportReason(event.target.value)}
+                />
+                <button
+                  type="button"
+                  onClick={requestOperatorSupport}
+                  disabled={isRequestingSupport || supportReason.trim().length < 5}
+                  className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-neutral-950 bg-neutral-950 text-[13px] font-semibold text-white transition-colors hover:bg-neutral-800 disabled:border-neutral-200 disabled:bg-neutral-200 disabled:text-neutral-500"
+                >
+                  <LifeBuoy className="h-4 w-4" />
+                  운영자 확인 요청
+                </button>
+              </div>
+            </Panel>
+
             <Panel title="감사 기록">
               <div className="space-y-4">
                 {(contract.audit_events ?? []).length === 0 ? (
@@ -599,12 +672,11 @@ function WorkflowCard({
   label: string;
   value: string;
   helper: string;
-  tone: "neutral" | "amber" | "emerald" | "sky";
+  tone: "neutral" | "amber" | "sky";
 }) {
   const className = {
     neutral: "border-neutral-200 bg-white text-neutral-700",
     amber: "border-amber-200 bg-amber-50 text-amber-700",
-    emerald: "border-emerald-200 bg-emerald-50 text-emerald-700",
     sky: "border-sky-200 bg-sky-50 text-sky-700",
   }[tone];
 
@@ -668,7 +740,7 @@ function MetaLine({ label, value }: { label: string; value: string }) {
 function ClauseBadge({ status }: { status: "APPROVED" | "MODIFICATION_REQUESTED" | "DELETION_REQUESTED" }) {
   if (status === "APPROVED") {
     return (
-      <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+      <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-semibold text-neutral-700">
         승인
       </span>
     );

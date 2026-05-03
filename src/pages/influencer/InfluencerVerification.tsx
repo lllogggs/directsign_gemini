@@ -85,7 +85,7 @@ const PLATFORM_META: Record<
   }
 > = {
   instagram: {
-    label: "Instagram",
+    label: "인스타그램",
     hostHint: "instagram.com",
     handlePlaceholder: "@creator",
     urlPlaceholder: "https://instagram.com/creator",
@@ -100,7 +100,7 @@ const PLATFORM_META: Record<
     ],
   },
   youtube: {
-    label: "YouTube",
+    label: "유튜브",
     hostHint: "youtube.com 또는 youtu.be",
     handlePlaceholder: "@channel",
     urlPlaceholder: "https://youtube.com/@channel",
@@ -115,12 +115,12 @@ const PLATFORM_META: Record<
     ],
   },
   naver_blog: {
-    label: "Naver Blog",
+    label: "네이버 블로그",
     hostHint: "blog.naver.com",
     handlePlaceholder: "blog-id",
     urlPlaceholder: "https://blog.naver.com/blog-id",
     proofPlaceholder: "블로그 프로필 또는 인증 글 URL",
-    className: "border-[#03c75a]/30 bg-[#03c75a]/10 text-[#087a3a]",
+    className: "border-neutral-200 bg-white text-neutral-700",
     icon: <BookOpen className="h-4 w-4" />,
     methods: ["profile_bio_code", "public_post_code", "screenshot_review"],
     instructions: [
@@ -130,7 +130,7 @@ const PLATFORM_META: Record<
     ],
   },
   tiktok: {
-    label: "TikTok",
+    label: "틱톡",
     hostHint: "tiktok.com",
     handlePlaceholder: "@creator",
     urlPlaceholder: "https://tiktok.com/@creator",
@@ -145,7 +145,7 @@ const PLATFORM_META: Record<
     ],
   },
   other: {
-    label: "Other",
+    label: "기타",
     hostHint: "공개 확인 가능한 URL",
     handlePlaceholder: "account-id",
     urlPlaceholder: "https://example.com/creator",
@@ -167,7 +167,9 @@ export function InfluencerVerification() {
   const contractId = searchParams.get("contractId");
   const token = searchParams.get("token");
   const returnPath = contractId
-    ? `/contract/${contractId}${token ? `?token=${token}` : ""}`
+    ? `/contract/${encodeURIComponent(contractId)}${
+        token ? `?token=${encodeURIComponent(token)}` : ""
+      }`
     : "/influencer/dashboard";
   const returnLabel = contractId ? "계약으로 돌아가기" : "대시보드로 돌아가기";
   const contract = useAppStore((state) =>
@@ -308,7 +310,7 @@ export function InfluencerVerification() {
           </button>
           <div className="flex items-center gap-2 rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-xs font-semibold text-neutral-600">
             <ShieldCheck className="h-4 w-4" />
-            Creator Ownership
+            계정 소유 확인
           </div>
         </div>
       </header>
@@ -316,9 +318,6 @@ export function InfluencerVerification() {
       <main className="mx-auto grid max-w-6xl gap-6 px-5 py-8 sm:px-8 lg:grid-cols-[minmax(0,1fr)_340px]">
         <section className="rounded-lg border border-neutral-200 bg-white p-6 shadow-sm sm:p-8">
           <div className="mb-8">
-            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-400">
-              Influencer Verification
-            </p>
             <h1 className="text-3xl font-semibold tracking-tight">
               플랫폼 계정 소유 인증
             </h1>
@@ -434,7 +433,7 @@ export function InfluencerVerification() {
                     key={instruction}
                     className="flex items-start gap-2 rounded-md bg-white px-3 py-2 text-xs leading-5 text-neutral-600"
                   >
-                    <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                    <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-600" />
                     <span>{instruction}</span>
                   </div>
                 ))}
@@ -523,7 +522,7 @@ export function InfluencerVerification() {
               </div>
             )}
             {submitted && (
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
+              <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm font-semibold text-neutral-800">
                 계정 소유 인증 요청을 접수했습니다. 운영자 검수 후 승인됩니다.
               </div>
             )}
@@ -547,9 +546,6 @@ export function InfluencerVerification() {
                 {selectedPlatform.icon}
               </div>
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-neutral-400">
-                  Selected Platform
-                </p>
                 <p className="text-sm font-semibold text-neutral-950">
                   {selectedPlatform.label}
                 </p>

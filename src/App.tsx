@@ -6,8 +6,7 @@ import {
   useLocation,
   useParams,
 } from "react-router-dom";
-import { lazy, Suspense, useEffect } from "react";
-import { useAppStore } from "./store";
+import { lazy, Suspense } from "react";
 import { AdvertiserAuthGate } from "./pages/marketing/AdvertiserAuthGate";
 import { getNextPath } from "./domain/navigation";
 
@@ -103,17 +102,6 @@ function LegacyMarketingRedirect() {
 }
 
 function App() {
-  const hydrateContracts = useAppStore((state) => state.hydrateContracts);
-  const isHydrated = useAppStore((state) => state.isHydrated);
-
-  useEffect(() => {
-    void hydrateContracts();
-  }, [hydrateContracts]);
-
-  if (!isHydrated) {
-    return <AppLoading />;
-  }
-
   return (
     <BrowserRouter>
       <Suspense fallback={<AppLoading label="화면을 불러오는 중입니다" />}>

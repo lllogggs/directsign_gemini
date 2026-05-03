@@ -105,27 +105,27 @@ const PLATFORM_META: Record<
   }
 > = {
   instagram: {
-    label: "Instagram",
+    label: "인스타그램",
     className: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
     icon: <Instagram className="h-3.5 w-3.5" />,
   },
   youtube: {
-    label: "YouTube",
+    label: "유튜브",
     className: "border-red-200 bg-red-50 text-red-700",
     icon: <Youtube className="h-3.5 w-3.5" />,
   },
   tiktok: {
-    label: "TikTok",
+    label: "틱톡",
     className: "border-neutral-800 bg-neutral-950 text-white",
     icon: <Music2 className="h-3.5 w-3.5" />,
   },
   naver_blog: {
-    label: "Naver Blog",
+    label: "네이버 블로그",
     className: "border-neutral-200 bg-white text-neutral-700",
     icon: <BookOpen className="h-3.5 w-3.5" />,
   },
   other: {
-    label: "Other",
+    label: "기타",
     className: "border-neutral-200 bg-white text-neutral-600",
     icon: <Globe2 className="h-3.5 w-3.5" />,
   },

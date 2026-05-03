@@ -14,7 +14,6 @@ export interface AuthLoginField {
 }
 
 interface AuthLoginScreenProps {
-  eyebrow?: string;
   title: string;
   description?: string;
   fields: AuthLoginField[];
@@ -40,7 +39,7 @@ export function AuthLoginScreen({
   return (
     <main className="flex min-h-screen items-center justify-center bg-[#f6f7f9] px-5 py-8 font-sans text-neutral-950">
       <section className="w-full max-w-[420px] rounded-lg border border-neutral-200 bg-white p-6 shadow-[0_18px_55px_rgba(15,23,42,0.08)] sm:p-7">
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-neutral-950 text-white">
               <ShieldCheck className="h-4 w-4" strokeWidth={2} />
@@ -51,9 +50,6 @@ export function AuthLoginScreen({
               </p>
             </div>
           </div>
-          <span className="rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1 text-[12px] font-semibold text-neutral-600">
-            보안 접속
-          </span>
         </div>
 
         <div className="mt-7">

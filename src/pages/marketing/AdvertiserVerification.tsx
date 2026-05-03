@@ -244,7 +244,7 @@ export function AdvertiserVerification() {
               </div>
             )}
             {submitted && (
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
+              <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm font-semibold text-neutral-800">
                 인증 요청이 접수되었습니다. 승인 전까지 계약 발송은 제한됩니다.
               </div>
             )}

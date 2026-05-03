@@ -94,6 +94,49 @@ interface VerificationStoreFile {
   verification_requests: VerificationRequestRecord[];
 }
 
+type SupportAccessStatus = "active" | "closed" | "revoked" | "expired";
+type SupportAccessScope = "contract" | "contract_and_pdf";
+type SupportAccessActorRole = "advertiser" | "influencer" | "admin" | "system";
+
+interface SupportAccessAuditEvent {
+  id: string;
+  action:
+    | "created"
+    | "viewed_contract"
+    | "viewed_pdf"
+    | "closed"
+    | "expired";
+  actor_role: SupportAccessActorRole;
+  actor_name?: string;
+  description: string;
+  ip?: string;
+  user_agent?: string;
+  created_at: string;
+}
+
+interface SupportAccessRequestRecord {
+  id: string;
+  contract_id: string;
+  legacy_contract_id?: string;
+  requester_profile_id?: string;
+  requester_role: "advertiser" | "influencer";
+  requester_name?: string;
+  requester_email?: string;
+  reason: string;
+  scope: SupportAccessScope;
+  status: SupportAccessStatus;
+  expires_at: string;
+  reviewed_by_name?: string;
+  reviewed_at?: string;
+  audit_events: SupportAccessAuditEvent[];
+  created_at: string;
+  updated_at: string;
+}
+
+interface SupportAccessStoreFile {
+  support_access_requests: SupportAccessRequestRecord[];
+}
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..");
 const dataDir = process.env.DATA_DIR
@@ -101,6 +144,7 @@ const dataDir = process.env.DATA_DIR
   : path.join(root, "data");
 const dataFile = path.join(dataDir, "contracts.json");
 const verificationDataFile = path.join(dataDir, "verification-requests.json");
+const supportAccessDataFile = path.join(dataDir, "support-access-requests.json");
 const port = Number(process.env.PORT ?? 3000);
 const isPreview = process.argv.includes("--preview") || process.env.NODE_ENV === "production";
 const supabaseUrl = process.env.SUPABASE_URL?.replace(/\/$/, "");
@@ -342,6 +386,25 @@ interface SupabasePayoutRow {
   status?: "pending" | "scheduled" | "paid" | "failed" | "cancelled" | null;
 }
 
+interface SupabaseSupportAccessRequestRow {
+  id: string;
+  contract_id: string;
+  legacy_contract_id?: string | null;
+  requester_profile_id?: string | null;
+  requester_role: "advertiser" | "influencer";
+  requester_name?: string | null;
+  requester_email?: string | null;
+  reason: string;
+  scope: SupportAccessScope;
+  status: SupportAccessStatus;
+  expires_at: string;
+  reviewed_by_name?: string | null;
+  reviewed_at?: string | null;
+  audit_events?: SupportAccessAuditEvent[] | null;
+  created_at: string;
+  updated_at: string;
+}
+
 const requireSupabaseConfig = () => {
   if (!supabaseUrl || !supabaseServiceRoleKey) {
     throw new Error("Supabase is not configured");
@@ -576,14 +639,320 @@ const canAdvertiserAccessLegacyContract = (
   auth: AdvertiserSession,
   contract: Contract,
 ) => {
-  if (auth.profile.role === "admin") return true;
+  const profileEmail = normalizeEmail(auth.profile.email ?? auth.user.email ?? "");
+  const contractManagerEmail = normalizeEmail(contract.advertiser_info?.manager ?? "");
+  const profileCompany = normalizeRequiredText(auth.profile.company_name).toLowerCase();
+  const contractCompany = normalizeRequiredText(contract.advertiser_info?.name).toLowerCase();
 
   return (
-    contract.advertiser_id === defaultAdvertiserTargetId ||
     contract.advertiser_id === auth.profile.id ||
-    contract.advertiser_info?.manager === auth.profile.email ||
-    contract.advertiser_info?.name === auth.profile.company_name
+    (hasText(profileEmail) && profileEmail === contractManagerEmail) ||
+    (hasText(profileCompany) && profileCompany === contractCompany)
   );
+};
+
+const canInfluencerAccessLegacyContract = (
+  auth: InfluencerSession,
+  contract: Contract,
+) => {
+  const profileEmail = normalizeEmail(auth.profile.email ?? auth.user.email ?? "");
+  const contractEmail = normalizeEmail(contract.influencer_info.contact ?? "");
+
+  return hasText(profileEmail) && profileEmail === contractEmail;
+};
+
+const supportAccessTable = "support_access_requests";
+let supportAccessReadFallbackWarned = false;
+let supportAccessWriteFallbackWarned = false;
+
+const isMissingSupabaseSupportAccessTableError = (error: unknown) =>
+  error instanceof Error &&
+  (error.message.includes("support_access_requests") ||
+    error.message.includes("schema cache") ||
+    error.message.includes("Could not find the table") ||
+    error.message.includes("relation")) &&
+  (error.message.includes("404") ||
+    error.message.includes("400") ||
+    error.message.includes("PGRST205") ||
+    error.message.includes("does not exist") ||
+    error.message.includes("schema cache"));
+
+const normalizeSupportAccessRequest = (
+  row: SupportAccessRequestRecord | SupabaseSupportAccessRequestRow,
+): SupportAccessRequestRecord => ({
+  id: row.id,
+  contract_id: row.contract_id,
+  legacy_contract_id: row.legacy_contract_id ?? undefined,
+  requester_profile_id: row.requester_profile_id ?? undefined,
+  requester_role: row.requester_role,
+  requester_name: row.requester_name ?? undefined,
+  requester_email: row.requester_email ?? undefined,
+  reason: row.reason,
+  scope: row.scope ?? "contract",
+  status: row.status,
+  expires_at: row.expires_at,
+  reviewed_by_name: row.reviewed_by_name ?? undefined,
+  reviewed_at: row.reviewed_at ?? undefined,
+  audit_events: Array.isArray(row.audit_events) ? row.audit_events : [],
+  created_at: row.created_at,
+  updated_at: row.updated_at,
+});
+
+const readSupportAccessRequestsFromFile = async () => {
+  try {
+    const contents = await fs.readFile(supportAccessDataFile, "utf8");
+    const parsed = JSON.parse(contents) as SupportAccessStoreFile;
+
+    if (!Array.isArray(parsed.support_access_requests)) {
+      throw new Error("Invalid support access store");
+    }
+
+    return parsed.support_access_requests.map(normalizeSupportAccessRequest);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code && code !== "ENOENT") {
+      console.warn(`[DirectSign] resetting invalid support access store: ${code}`);
+    }
+    return [];
+  }
+};
+
+const writeSupportAccessRequestsToFile = async (
+  records: SupportAccessRequestRecord[],
+) => {
+  await fs.mkdir(dataDir, { recursive: true });
+  const tempFile = `${supportAccessDataFile}.tmp`;
+  await fs.writeFile(
+    tempFile,
+    JSON.stringify({ support_access_requests: records }, null, 2),
+    "utf8",
+  );
+  await fs.rename(tempFile, supportAccessDataFile);
+};
+
+const readSupportAccessRequests = async () => {
+  if (useSupabase) {
+    try {
+      const rows = await readSupabaseRows<SupabaseSupportAccessRequestRow>(
+        supportAccessTable,
+        "?select=*&order=created_at.desc",
+        "support access requests",
+      );
+      return rows.map(normalizeSupportAccessRequest);
+    } catch (error) {
+      if (!isMissingSupabaseSupportAccessTableError(error)) {
+        throw error;
+      }
+      if (!supportAccessReadFallbackWarned) {
+        console.warn(
+          "[DirectSign] support_access_requests table is not available; using local support access store.",
+        );
+        supportAccessReadFallbackWarned = true;
+      }
+    }
+  }
+
+  return readSupportAccessRequestsFromFile();
+};
+
+const insertSupportAccessRequest = async (
+  record: SupportAccessRequestRecord,
+) => {
+  if (useSupabase) {
+    try {
+      const [inserted] = await insertSupabaseRowsReturning<SupabaseSupportAccessRequestRow>(
+        supportAccessTable,
+        [record as unknown as Record<string, unknown>],
+        "support access request",
+      );
+      if (inserted) return normalizeSupportAccessRequest(inserted);
+    } catch (error) {
+      if (!isMissingSupabaseSupportAccessTableError(error)) {
+        throw error;
+      }
+      if (!supportAccessWriteFallbackWarned) {
+        console.warn(
+          "[DirectSign] support_access_requests table is not available; writing support access locally.",
+        );
+        supportAccessWriteFallbackWarned = true;
+      }
+    }
+  }
+
+  const current = await readSupportAccessRequestsFromFile();
+  const next = [record, ...current.filter((item) => item.id !== record.id)];
+  await writeSupportAccessRequestsToFile(next);
+  return record;
+};
+
+const updateSupportAccessRequest = async (
+  record: SupportAccessRequestRecord,
+) => {
+  const updatedRecord = {
+    ...record,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (useSupabase) {
+    try {
+      const response = await fetchSupabase(
+        supportAccessTable,
+        `?id=eq.${encodeURIComponent(record.id)}`,
+        {
+          method: "PATCH",
+          headers: { Prefer: "return=representation" },
+          body: JSON.stringify(updatedRecord),
+        },
+      );
+      await assertSupabaseOk(response, "Supabase support access update");
+      const [updated] = (await response.json()) as SupabaseSupportAccessRequestRow[];
+      if (updated) return normalizeSupportAccessRequest(updated);
+    } catch (error) {
+      if (!isMissingSupabaseSupportAccessTableError(error)) {
+        throw error;
+      }
+    }
+  }
+
+  const current = await readSupportAccessRequestsFromFile();
+  const next = current.map((item) =>
+    item.id === updatedRecord.id ? updatedRecord : item,
+  );
+  await writeSupportAccessRequestsToFile(next);
+  return updatedRecord;
+};
+
+const isSupportAccessActive = (record: SupportAccessRequestRecord) =>
+  record.status === "active" &&
+  new Date(record.expires_at).getTime() > Date.now();
+
+const getActiveSupportAccessForContract = async (contractId: string) => {
+  const requests = await readSupportAccessRequests();
+  return requests
+    .filter((record) => record.contract_id === contractId && isSupportAccessActive(record))
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+};
+
+const appendSupportAccessAuditEvent = async (
+  requestId: string,
+  event: Omit<SupportAccessAuditEvent, "id" | "created_at">,
+) => {
+  const requests = await readSupportAccessRequests();
+  const current = requests.find((item) => item.id === requestId);
+  if (!current) return undefined;
+
+  return updateSupportAccessRequest({
+    ...current,
+    audit_events: [
+      ...(current.audit_events ?? []),
+      {
+        ...event,
+        id: randomUUID(),
+        created_at: new Date().toISOString(),
+      },
+    ],
+  });
+};
+
+const bindContractToAdvertiser = async (
+  auth: AdvertiserSession,
+  contract: Contract,
+) => {
+  const organization = await readDefaultOrganizationForProfile(auth.profile.id);
+  const companyName = normalizeRequiredText(
+    contract.advertiser_info?.name ??
+      organization?.name ??
+      auth.profile.company_name ??
+      auth.profile.name,
+  );
+  const manager = normalizeRequiredText(
+    contract.advertiser_info?.manager ??
+      auth.profile.name ??
+      auth.profile.email ??
+      auth.user.email,
+  );
+
+  return normalizeContract({
+    ...contract,
+    advertiser_id: auth.profile.id,
+    advertiser_info: {
+      name: companyName || auth.profile.name || "광고주",
+      manager: manager || auth.profile.email || auth.user.email,
+    },
+  });
+};
+
+const resolveLegacyContractAccess = async (
+  request: express.Request,
+  response: express.Response,
+  contract: Contract,
+  options: {
+    allowAdmin?: boolean;
+    allowAdvertiser?: boolean;
+    allowInfluencer?: boolean;
+    allowShareToken?: boolean;
+    sendError?: boolean;
+  } = {},
+) => {
+  const {
+    allowAdmin = true,
+    allowAdvertiser = true,
+    allowInfluencer = true,
+    allowShareToken = true,
+    sendError = true,
+  } = options;
+
+  if (allowShareToken) {
+    const shareAccessError = verifyInfluencerShareAccess(request, contract);
+    if (!shareAccessError) {
+      return { role: "share" as const };
+    }
+  }
+
+  if (allowAdmin && verifyAdminSessionToken(getAdminSessionFromRequest(request))) {
+    const supportAccess = await getActiveSupportAccessForContract(contract.id);
+    if (supportAccess) {
+      return { role: "admin" as const, supportAccess };
+    }
+  }
+
+  if (allowAdvertiser) {
+    try {
+      const auth = await authenticateAdvertiserRequest(request, response);
+      const profile = auth ? await readProfileByUserId(auth.user.id) : undefined;
+
+      if (auth && isAdvertiserRole(profile?.role)) {
+        const advertiserSession = { ...auth, profile: profile! };
+        if (canAdvertiserAccessLegacyContract(advertiserSession, contract)) {
+          return { role: "advertiser" as const, auth: advertiserSession };
+        }
+      }
+    } catch {
+      // Ignore this branch and let the remaining access strategies decide.
+    }
+  }
+
+  if (allowInfluencer) {
+    try {
+      const auth = await authenticateInfluencerRequest(request, response);
+      const profile = auth ? await readProfileByUserId(auth.user.id) : undefined;
+
+      if (auth && isInfluencerRole(profile?.role)) {
+        const influencerSession = { ...auth, profile: profile! };
+        if (canInfluencerAccessLegacyContract(influencerSession, contract)) {
+          return { role: "influencer" as const, auth: influencerSession };
+        }
+      }
+    } catch {
+      // Ignore this branch and let the final response stay generic.
+    }
+  }
+
+  if (sendError) {
+    response.status(403).json({ error: "Contract access is not allowed" });
+  }
+
+  return undefined;
 };
 
 const sha256Hex = (value: string) =>
@@ -1171,9 +1540,16 @@ const ensurePrivateStorageBucket = async () => {
   );
 
   if (checkResponse.ok) return;
-  if (checkResponse.status !== 404) {
+  const checkBody = await checkResponse.text();
+  const bucketMissing =
+    checkResponse.status === 404 ||
+    (checkResponse.status === 400 &&
+      (checkBody.includes('"statusCode":"404"') ||
+        checkBody.toLowerCase().includes("bucket not found")));
+
+  if (!bucketMissing) {
     throw new Error(
-      `Supabase storage bucket check failed (${checkResponse.status}): ${await checkResponse.text()}`,
+      `Supabase storage bucket check failed (${checkResponse.status}): ${checkBody}`,
     );
   }
 
@@ -1465,6 +1841,60 @@ const parseMoneyAmount = (value: string | undefined) => {
   return Number.isFinite(parsed) ? parsed : undefined;
 };
 
+const legacyContractStatusLabels: Record<Contract["status"], string> = {
+  DRAFT: "초안",
+  REVIEWING: "검토",
+  NEGOTIATING: "수정",
+  APPROVED: "서명",
+  SIGNED: "완료",
+};
+
+const formatWonCompact = (amount: number) => {
+  if (!amount || amount <= 0) return "-";
+  if (amount >= 100000000) {
+    const value = amount / 100000000;
+    return `${Number.isInteger(value) ? value : value.toFixed(1)}억원`;
+  }
+  if (amount >= 10000) {
+    return `${Math.round(amount / 10000).toLocaleString("ko-KR")}만원`;
+  }
+  return `${amount.toLocaleString("ko-KR")}원`;
+};
+
+const buildAdminMetrics = async (
+  contracts: Contract[],
+  supportAccessRequests: SupportAccessRequestRecord[],
+) => {
+  const statusCounts = Array.from(contractStatuses).map((status) => ({
+    status,
+    label: legacyContractStatusLabels[status as Contract["status"]] ?? status,
+    count: contracts.filter((contract) => contract.status === status).length,
+  }));
+  const totalFixedFeeAmount = contracts.reduce((total, contract) => {
+    const amount = parseMoneyAmount(contract.campaign?.budget);
+    return total + (amount ?? 0);
+  }, 0);
+  const activeSupportAccessRequests = supportAccessRequests.filter(isSupportAccessActive);
+
+  return {
+    contract_count: contracts.length,
+    active_contract_count: contracts.filter((contract) => contract.status !== "SIGNED").length,
+    completed_contract_count: contracts.filter((contract) => contract.status === "SIGNED").length,
+    active_share_link_count: contracts.filter(
+      (contract) => contract.evidence?.share_token_status === "active",
+    ).length,
+    total_fixed_fee_amount: totalFixedFeeAmount,
+    total_fixed_fee_label: formatWonCompact(totalFixedFeeAmount),
+    status_counts: statusCounts,
+    support_access: {
+      active_count: activeSupportAccessRequests.length,
+      total_count: supportAccessRequests.length,
+    },
+    source: useSupabase ? "supabase" : "file",
+    demo_mode: demoMode,
+  };
+};
+
 const parseCommissionBps = (value: string | undefined) => {
   if (!hasText(value)) return undefined;
   const match = value.match(/(\d+(?:\.\d+)?)\s*%/);
@@ -1667,6 +2097,9 @@ const syncSupabaseV2Contract = async (contract: Contract) => {
       total_fee_amount: fixedAmount,
       total_fee_currency: "KRW",
       pricing_type: pricingType,
+      created_by_profile_id: isUuid(contract.advertiser_id)
+        ? contract.advertiser_id
+        : undefined,
       next_actor_role: mapActorToPartyRole(contract.workflow?.next_actor),
       next_action: contract.workflow?.next_action,
       next_due_at: toIsoDateTime(contract.workflow?.due_at),
@@ -1701,6 +2134,7 @@ const syncSupabaseV2Contract = async (contract: Contract) => {
     {
       id: advertiserPartyId,
       contract_id: contract.id,
+      profile_id: isUuid(contract.advertiser_id) ? contract.advertiser_id : undefined,
       party_role: "advertiser",
       display_name:
         contract.advertiser_info?.name ?? contract.advertiser_info?.manager ?? "광고주",
@@ -1980,22 +2414,31 @@ const validateContractPayload = (contract: Contract) => {
   return undefined;
 };
 
+const stableJsonValue = (value: unknown): unknown => {
+  if (Array.isArray(value)) {
+    return value.map(stableJsonValue);
+  }
+
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey))
+        .map(([key, nestedValue]) => [key, stableJsonValue(nestedValue)]),
+    );
+  }
+
+  return value ?? null;
+};
+
 const jsonEqual = (left: unknown, right: unknown) =>
-  JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
+  JSON.stringify(stableJsonValue(left)) === JSON.stringify(stableJsonValue(right));
 
 const verifyInfluencerContractWriteAccess = (
-  request: express.Request,
   existing: Contract | undefined,
   incoming: Contract,
 ) => {
   if (!existing) {
     return "Influencer cannot create contracts";
-  }
-
-  const shareAccessError = verifyInfluencerShareAccess(request, existing);
-
-  if (shareAccessError) {
-    return shareAccessError;
   }
 
   if (incoming.status === "DRAFT") {
@@ -2368,9 +2811,7 @@ const buildAdvertiserVerificationContext = async (auth: AdvertiserSession) => {
   const organization = await readDefaultOrganizationForProfile(auth.profile.id);
 
   return {
-    // Legacy contracts still use adv_1. Keep the public target stable while
-    // binding submissions to the authenticated profile/org columns.
-    targetId: defaultAdvertiserTargetId,
+    targetId: organization?.id ?? auth.profile.id,
     profileId: auth.profile.id,
     organizationId: organization?.id,
     subjectName:
@@ -2443,15 +2884,35 @@ const buildInfluencerScopedVerificationSummary = async (
   };
 };
 
-const isAdvertiserTargetApproved = async (advertiserTargetId: string) => {
-  const requests = await readVerificationRequests();
-  const latest = latestVerificationForTarget(
-    requests,
-    "advertiser_organization",
-    advertiserTargetId,
+const isAdvertiserApprovedForContractSend = async (
+  auth: AdvertiserSession,
+  contract: Contract,
+) => {
+  if (auth.profile.role === "admin") return true;
+  if (auth.profile.verification_status === "approved") return true;
+
+  const organization = await readDefaultOrganizationForProfile(auth.profile.id);
+  if (organization?.business_verification_status === "approved") return true;
+
+  const targetIds = Array.from(
+    new Set(
+      [
+        auth.profile.id,
+        organization?.id,
+        contract.advertiser_id,
+      ].filter((value): value is string => hasText(value)),
+    ),
   );
 
-  return latest?.status === "approved";
+  const requests = await readVerificationRequests();
+  return targetIds.some(
+    (targetId) =>
+      latestVerificationForTarget(
+        requests,
+        "advertiser_organization",
+        targetId,
+      )?.status === "approved",
+  );
 };
 
 const isContractSendAttempt = (
@@ -2482,11 +2943,11 @@ const groupByContractId = <T extends { contract_id: string }>(rows: T[]) => {
 };
 
 const dashboardPlatformLabels: Record<InfluencerPlatform, string> = {
-  instagram: "Instagram",
-  youtube: "YouTube",
-  tiktok: "TikTok",
-  naver_blog: "Naver Blog",
-  other: "Other",
+  instagram: "인스타그램",
+  youtube: "유튜브",
+  tiktok: "틱톡",
+  naver_blog: "네이버 블로그",
+  other: "기타",
 };
 
 const normalizeInfluencerPlatform = (value: string | undefined | null): InfluencerPlatform =>
@@ -3169,6 +3630,104 @@ app.post("/api/admin/logout", (_request, response) => {
     `${adminSessionCookie}=; ${clearAdminCookieOptions()}`,
   );
   response.json({ authenticated: false });
+});
+
+app.get("/api/admin/metrics", async (request, response, next) => {
+  try {
+    if (!requireAdminSession(request, response)) return;
+
+    const [store, supportAccessRequests, verificationRequests] = await Promise.all([
+      readStore(),
+      readSupportAccessRequests(),
+      readVerificationRequests(),
+    ]);
+    const metrics = await buildAdminMetrics(
+      store.contracts,
+      supportAccessRequests,
+    );
+
+    response.json({
+      metrics: {
+        ...metrics,
+        verification: {
+          pending_count: verificationRequests.filter(
+            (record) => record.status === "pending",
+          ).length,
+          total_count: verificationRequests.length,
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/admin/support-access-requests", async (request, response, next) => {
+  try {
+    if (!requireAdminSession(request, response)) return;
+
+    const supportAccessRequests = await readSupportAccessRequests();
+    response.json({
+      support_access_requests: supportAccessRequests
+        .map((record) => ({
+          ...record,
+          is_active: isSupportAccessActive(record),
+        }))
+        .sort(
+          (a, b) =>
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+        ),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch("/api/admin/support-access-requests/:id", async (request, response, next) => {
+  try {
+    if (!requireAdminSession(request, response)) return;
+
+    const status = String(request.body?.status ?? "");
+    if (status !== "closed" && status !== "revoked") {
+      response.status(422).json({ error: "Valid support access status is required" });
+      return;
+    }
+
+    const supportAccessRequests = await readSupportAccessRequests();
+    const record = supportAccessRequests.find((item) => item.id === request.params.id);
+
+    if (!record) {
+      response.status(404).json({ error: "Support access request not found" });
+      return;
+    }
+
+    const updated = await updateSupportAccessRequest({
+      ...record,
+      status,
+      reviewed_by_name: "DirectSign 운영자",
+      reviewed_at: new Date().toISOString(),
+      audit_events: [
+        ...(record.audit_events ?? []),
+        {
+          id: randomUUID(),
+          action: status === "closed" ? "closed" : "expired",
+          actor_role: "admin",
+          actor_name: "DirectSign 운영자",
+          description:
+            status === "closed"
+              ? "운영자가 지원 열람을 종료했습니다."
+              : "운영자가 지원 열람을 회수했습니다.",
+          ip: getClientIp(request),
+          user_agent: request.header("user-agent") ?? "unknown",
+          created_at: new Date().toISOString(),
+        },
+      ],
+    });
+
+    response.json({ request: updated, is_active: isSupportAccessActive(updated) });
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.get("/api/advertiser/session", async (request, response, next) => {
@@ -3873,26 +4432,118 @@ app.get("/api/contracts", async (request, response, next) => {
     const adminAuthenticated = verifyAdminSessionToken(
       getAdminSessionFromRequest(request),
     );
+
+    if (adminAuthenticated) {
+      response.status(403).json({
+        error:
+          "Admin contract list access is restricted. Use aggregate admin metrics instead.",
+      });
+      return;
+    }
+
     const advertiserAuth = adminAuthenticated
       ? undefined
       : await requireAdvertiserSession(request, response);
 
-    if (!adminAuthenticated && !advertiserAuth) {
+    if (!advertiserAuth) {
       return;
     }
 
     const store = await readStore();
-    const contracts = adminAuthenticated
-      ? store.contracts
-      : store.contracts.filter((contract) =>
-          canAdvertiserAccessLegacyContract(advertiserAuth!, contract),
-        );
+    const contracts = store.contracts.filter((contract) =>
+      canAdvertiserAccessLegacyContract(advertiserAuth, contract),
+    );
 
     response.json({
       contracts,
       source: useSupabase ? "supabase" : "file",
       allow_local_merge: !useSupabase,
       demo_mode: demoMode,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/contracts/:id/support-access-requests", async (request, response, next) => {
+  try {
+    const store = await readStore();
+    const contract = store.contracts.find((item) => item.id === request.params.id);
+
+    if (!contract) {
+      response.status(404).json({ error: "Contract not found" });
+      return;
+    }
+
+    const access = await resolveLegacyContractAccess(request, response, contract, {
+      allowAdmin: false,
+      allowAdvertiser: true,
+      allowInfluencer: true,
+      allowShareToken: true,
+      sendError: false,
+    });
+
+    if (!access || access.role === "admin") {
+      response.status(403).json({ error: "Contract party access is required" });
+      return;
+    }
+
+    const reason = normalizeRequiredText(request.body?.reason);
+    if (reason.length < 5 || reason.length > 1000) {
+      response.status(422).json({
+        error: "Support request reason must be between 5 and 1000 characters",
+      });
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    const requesterRole =
+      access.role === "advertiser" ? "advertiser" : "influencer";
+    const requesterProfile = "auth" in access ? access.auth.profile : undefined;
+    const requesterName =
+      requesterProfile?.name ??
+      (requesterRole === "advertiser"
+        ? contract.advertiser_info?.manager ?? contract.advertiser_info?.name
+        : contract.influencer_info.name);
+    const requesterEmail =
+      requesterProfile?.email ??
+      (requesterRole === "influencer"
+        ? contract.influencer_info.contact
+        : contract.advertiser_info?.manager);
+
+    const record = await insertSupportAccessRequest({
+      id: randomUUID(),
+      contract_id: contract.id,
+      legacy_contract_id: contract.id,
+      requester_profile_id: requesterProfile?.id,
+      requester_role: requesterRole,
+      requester_name: requesterName,
+      requester_email: requesterEmail,
+      reason,
+      scope: "contract_and_pdf",
+      status: "active",
+      expires_at: expiresAt,
+      audit_events: [
+        {
+          id: randomUUID(),
+          action: "created",
+          actor_role: requesterRole,
+          actor_name: requesterName,
+          description:
+            "계약 당사자가 운영자 확인 요청을 열어 24시간 지원 열람을 허용했습니다.",
+          ip: getClientIp(request),
+          user_agent: request.header("user-agent") ?? "unknown",
+          created_at: now,
+        },
+      ],
+      created_at: now,
+      updated_at: now,
+    });
+
+    response.status(201).json({
+      request: record,
+      message: "Support access is active for 24 hours",
     });
   } catch (error) {
     next(error);
@@ -3909,30 +4560,23 @@ app.get("/api/contracts/:id", async (request, response, next) => {
       return;
     }
 
-    const shareAccessError = verifyInfluencerShareAccess(request, contract);
-
-    if (shareAccessError) {
-      const adminAuthenticated = verifyAdminSessionToken(
-        getAdminSessionFromRequest(request),
-      );
-      const advertiserAuth = adminAuthenticated
-        ? undefined
-        : await requireAdvertiserSession(request, response);
-
-      if (!adminAuthenticated && !advertiserAuth) {
-        return;
-      }
-
-      if (
-        !adminAuthenticated &&
-        !canAdvertiserAccessLegacyContract(advertiserAuth!, contract)
-      ) {
-        response.status(403).json({ error: "Contract access is not allowed" });
-        return;
-      }
+    const access = await resolveLegacyContractAccess(request, response, contract);
+    if (!access) {
+      return;
     }
 
-    response.json({ contract });
+    if (access.role === "admin") {
+      await appendSupportAccessAuditEvent(access.supportAccess.id, {
+        action: "viewed_contract",
+        actor_role: "admin",
+        actor_name: "DirectSign 운영자",
+        description: "운영자가 당사자 요청에 따라 계약 본문을 열람했습니다.",
+        ip: getClientIp(request),
+        user_agent: request.header("user-agent") ?? "unknown",
+      });
+    }
+
+    response.json({ contract, access_role: access.role });
   } catch (error) {
     next(error);
   }
@@ -3948,26 +4592,20 @@ app.get("/api/contracts/:id/final-pdf", async (request, response, next) => {
       return;
     }
 
-    const shareAccessError = verifyInfluencerShareAccess(request, contract);
-    if (shareAccessError) {
-      const adminAuthenticated = verifyAdminSessionToken(
-        getAdminSessionFromRequest(request),
-      );
-      const advertiserAuth = adminAuthenticated
-        ? undefined
-        : await requireAdvertiserSession(request, response);
+    const access = await resolveLegacyContractAccess(request, response, contract);
+    if (!access) {
+      return;
+    }
 
-      if (!adminAuthenticated && !advertiserAuth) {
-        return;
-      }
-
-      if (
-        !adminAuthenticated &&
-        !canAdvertiserAccessLegacyContract(advertiserAuth!, contract)
-      ) {
-        response.status(403).json({ error: "Contract access is not allowed" });
-        return;
-      }
+    if (access.role === "admin") {
+      await appendSupportAccessAuditEvent(access.supportAccess.id, {
+        action: "viewed_pdf",
+        actor_role: "admin",
+        actor_name: "DirectSign 운영자",
+        description: "운영자가 당사자 요청에 따라 서명본 PDF를 열람했습니다.",
+        ip: getClientIp(request),
+        user_agent: request.header("user-agent") ?? "unknown",
+      });
     }
 
     const signatureData = contract.signature_data;
@@ -4037,10 +4675,18 @@ app.post("/api/contracts/:id/signatures/influencer", async (request, response, n
     }
 
     const existing = store.contracts[existingIndex];
-    const accessError = verifyInfluencerShareAccess(request, existing);
+    const access = await resolveLegacyContractAccess(request, response, existing, {
+      allowAdmin: false,
+      allowAdvertiser: false,
+      allowInfluencer: true,
+      allowShareToken: true,
+      sendError: false,
+    });
 
-    if (accessError) {
-      response.status(403).json({ error: accessError });
+    if (!access) {
+      response.status(403).json({
+        error: "Valid share token or influencer session is required",
+      });
       return;
     }
 
@@ -4171,40 +4817,21 @@ app.put("/api/contracts/:id", async (request, response, next) => {
     }
 
     const store = await readStore();
-    const normalizedContract = normalizeContract(contract);
-    const validationError = validateContractPayload(normalizedContract);
-
-    if (validationError) {
-      response.status(422).json({ error: validationError });
-      return;
-    }
-
     const existingIndex = store.contracts.findIndex((item) => item.id === contract.id);
     const existingContract =
       existingIndex >= 0 ? store.contracts[existingIndex] : undefined;
     const actor = request.header("X-DirectSign-Actor") ?? "advertiser";
+    let normalizedContract = normalizeContract(contract);
 
     if (actor !== "advertiser" && actor !== "influencer") {
       response.status(403).json({ error: "Invalid actor" });
       return;
     }
 
-    const accessError =
-      actor === "influencer"
-        ? verifyInfluencerContractWriteAccess(
-            request,
-            existingContract,
-            normalizedContract,
-          )
-        : undefined;
-
-    if (accessError) {
-      response.status(403).json({ error: accessError });
-      return;
-    }
+    let advertiserAuth: AdvertiserSession | undefined;
 
     if (actor === "advertiser") {
-      const advertiserAuth = await requireAdvertiserSession(request, response);
+      advertiserAuth = await requireAdvertiserSession(request, response);
 
       if (!advertiserAuth) {
         return;
@@ -4218,16 +4845,55 @@ app.put("/api/contracts/:id", async (request, response, next) => {
         return;
       }
 
-      if (!canAdvertiserAccessLegacyContract(advertiserAuth, normalizedContract)) {
-        response.status(403).json({ error: "Contract ownership is not allowed" });
+      normalizedContract = await bindContractToAdvertiser(
+        advertiserAuth,
+        normalizedContract,
+      );
+    }
+
+    const validationError = validateContractPayload(normalizedContract);
+
+    if (validationError) {
+      response.status(422).json({ error: validationError });
+      return;
+    }
+
+    if (actor === "influencer") {
+      const access = existingContract
+        ? await resolveLegacyContractAccess(request, response, existingContract, {
+            allowAdmin: false,
+            allowAdvertiser: false,
+            allowInfluencer: true,
+            allowShareToken: true,
+            sendError: false,
+          })
+        : undefined;
+
+      if (!access) {
+        response.status(403).json({
+          error: "Valid share token or influencer session is required",
+        });
         return;
       }
+    }
+
+    const accessError =
+      actor === "influencer"
+        ? verifyInfluencerContractWriteAccess(existingContract, normalizedContract)
+        : undefined;
+
+    if (accessError) {
+      response.status(403).json({ error: accessError });
+      return;
     }
 
     if (
       actor === "advertiser" &&
       isContractSendAttempt(existingContract, normalizedContract) &&
-      !(await isAdvertiserTargetApproved(normalizedContract.advertiser_id))
+      !(await isAdvertiserApprovedForContractSend(
+        advertiserAuth!,
+        normalizedContract,
+      ))
     ) {
       response.status(403).json({
         error:

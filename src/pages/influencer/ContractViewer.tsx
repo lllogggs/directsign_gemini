@@ -16,6 +16,7 @@ import {
   Eraser,
   FileSignature,
   FileText,
+  LifeBuoy,
   MessageSquare,
   PenTool,
   ShieldCheck,
@@ -37,6 +38,23 @@ const STATUS_LABELS: Record<ContractStatus, string> = {
 };
 
 const getStatusLabel = (status: ContractStatus) => STATUS_LABELS[status] ?? status;
+
+const getContractLoadErrorMessage = (message?: string) => {
+  if (!message) return "계약을 불러올 수 없습니다.";
+  if (message === "Contract not found") {
+    return "계약서가 삭제되었거나 링크가 올바르지 않습니다.";
+  }
+  if (message === "Contract access is not allowed") {
+    return "이 계약을 열 수 있는 권한이 없습니다.";
+  }
+  if (message === "Valid share token is required") {
+    return "공유 링크가 만료되었거나 올바르지 않습니다.";
+  }
+  if (message === "Share token has expired") {
+    return "공유 링크 유효기간이 만료되었습니다.";
+  }
+  return message;
+};
 
 export function ContractViewer() {
   const { id } = useParams<{ id: string }>();
@@ -76,6 +94,11 @@ export function ContractViewer() {
   const shareToken = searchParams.get("token") ?? "";
   const [isFetchingSharedContract, setIsFetchingSharedContract] = useState(false);
   const [sharedContractError, setSharedContractError] = useState("");
+  const [serverAccessVerified, setServerAccessVerified] = useState(false);
+  const [serverAccessRole, setServerAccessRole] = useState<string>();
+  const [supportReason, setSupportReason] = useState("");
+  const [isRequestingSupport, setIsRequestingSupport] = useState(false);
+  const [supportNotice, setSupportNotice] = useState("");
 
   const getCanvasPoint = (e: React.MouseEvent | React.TouchEvent): CanvasPoint | null => {
     const canvas = canvasRef.current;
@@ -291,7 +314,15 @@ export function ContractViewer() {
   }, [selection]);
 
   useEffect(() => {
-    if (!id || contract || !shareToken) return;
+    setServerAccessVerified(false);
+    setServerAccessRole(undefined);
+    setSharedContractError("");
+  }, [id, shareToken]);
+
+  useEffect(() => {
+    if (!id || serverAccessVerified) return;
+    const needsServerCheck = !contract || !shareToken;
+    if (!needsServerCheck) return;
 
     let cancelled = false;
 
@@ -300,24 +331,25 @@ export function ContractViewer() {
       setSharedContractError("");
 
       try {
-        const response = await fetch(
-          `/api/contracts/${encodeURIComponent(id)}?token=${encodeURIComponent(shareToken)}`,
-          {
-            headers: { Accept: "application/json" },
-            credentials: "include",
-          },
-        );
+        const suffix = shareToken ? `?token=${encodeURIComponent(shareToken)}` : "";
+        const response = await fetch(`/api/contracts/${encodeURIComponent(id)}${suffix}`, {
+          headers: { Accept: "application/json" },
+          credentials: "include",
+        });
         const data = (await response.json()) as {
           contract?: Contract;
+          access_role?: string;
           error?: string;
         };
 
         if (!response.ok || !data.contract) {
-          throw new Error(data.error ?? "계약을 불러올 수 없습니다.");
+          throw new Error(getContractLoadErrorMessage(data.error));
         }
 
         if (!cancelled) {
           replaceContract(data.contract);
+          setServerAccessVerified(true);
+          setServerAccessRole(data.access_role);
         }
       } catch (error) {
         if (!cancelled) {
@@ -339,9 +371,9 @@ export function ContractViewer() {
     return () => {
       cancelled = true;
     };
-  }, [contract, id, replaceContract, shareToken]);
+  }, [contract, id, replaceContract, serverAccessVerified, shareToken]);
 
-  if (!contract && isFetchingSharedContract) {
+  if ((!contract || !shareToken) && isFetchingSharedContract) {
     return (
       <AccessMessage
         title="계약을 확인하는 중입니다"
@@ -350,7 +382,7 @@ export function ContractViewer() {
     );
   }
 
-  if (!contract && sharedContractError) {
+  if ((!contract || !shareToken) && sharedContractError) {
     return (
       <AccessMessage
         title="계약을 불러올 수 없습니다"
@@ -375,12 +407,15 @@ export function ContractViewer() {
   const shareTokenRequired =
     contract.evidence?.share_token_status === "active" &&
     Boolean(expectedShareToken);
-  const hasValidShareToken = !shareTokenRequired || shareToken === expectedShareToken;
+  const hasValidShareToken =
+    serverAccessVerified || !shareTokenRequired || shareToken === expectedShareToken;
+  const isOperatorSupportView = serverAccessRole === "admin" && !shareToken;
 
   if (
-    contract.status === "DRAFT" ||
-    contract.evidence?.share_token_status === "not_issued" ||
-    contract.evidence?.share_token_status === "revoked"
+    !isOperatorSupportView &&
+    (contract.status === "DRAFT" ||
+      contract.evidence?.share_token_status === "not_issued" ||
+      contract.evidence?.share_token_status === "revoked")
   ) {
     return (
       <AccessMessage
@@ -390,7 +425,7 @@ export function ContractViewer() {
     );
   }
 
-  if (shareTokenExpired || !hasValidShareToken) {
+  if (!isOperatorSupportView && (shareTokenExpired || !hasValidShareToken)) {
     return (
       <AccessMessage
         title="보안 링크가 만료되었습니다"
@@ -408,7 +443,7 @@ export function ContractViewer() {
   const deadline = contract.campaign?.deadline
     ? format(new Date(contract.campaign.deadline), "yyyy.MM.dd")
     : contract.campaign?.end_date || contract.campaign?.period || "미지정";
-  const reviewTone = allApproved ? "text-emerald-700" : "text-amber-700";
+  const reviewTone = allApproved ? "text-neutral-700" : "text-amber-700";
 
   const plainSummary = [
     {
@@ -461,6 +496,52 @@ export function ContractViewer() {
     setFeedbackComment("");
     setSelection(null);
     window.getSelection()?.removeAllRanges();
+  };
+
+  const requestOperatorSupport = async () => {
+    const reason = supportReason.trim();
+
+    if (reason.length < 5) {
+      setSupportNotice("운영자가 확인할 내용을 5자 이상 남겨주세요.");
+      return;
+    }
+
+    setIsRequestingSupport(true);
+    setSupportNotice("");
+
+    try {
+      const response = await fetch(
+        `/api/contracts/${encodeURIComponent(contract.id)}/support-access-requests`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            ...(shareToken ? { "X-DirectSign-Share-Token": shareToken } : {}),
+          },
+          body: JSON.stringify({ reason, scope: "contract_and_pdf" }),
+        },
+      );
+      const data = (await response.json()) as {
+        error?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "운영자 확인 요청을 보내지 못했습니다.");
+      }
+
+      setSupportReason("");
+      setSupportNotice("운영자가 24시간 동안 이 계약을 확인할 수 있습니다.");
+    } catch (error) {
+      setSupportNotice(
+        error instanceof Error
+          ? error.message
+          : "운영자 확인 요청을 보내지 못했습니다.",
+      );
+    } finally {
+      setIsRequestingSupport(false);
+    }
   };
 
   return (
@@ -536,7 +617,7 @@ export function ContractViewer() {
                   <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-medium text-neutral-700">
                     {contract.type} 계약
                   </span>
-                  <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+                  <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-medium text-neutral-700">
                     보안 링크 확인됨
                   </span>
                   <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-medium text-neutral-700 sm:hidden">
@@ -553,7 +634,7 @@ export function ContractViewer() {
               </div>
               <div className="grid grid-cols-2 gap-2 md:w-64">
                 <MetricCard label="승인" value={`${approvedClauses}/${contract.clauses.length}`} />
-                <MetricCard label="대기" value={String(pendingClauses)} tone={pendingClauses ? "amber" : "green"} />
+                <MetricCard label="대기" value={String(pendingClauses)} tone={pendingClauses ? "amber" : "neutral"} />
               </div>
             </div>
           </div>
@@ -616,7 +697,7 @@ export function ContractViewer() {
                         <div
                           className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${
                             isApproved
-                              ? "bg-emerald-50 text-emerald-700"
+                              ? "bg-neutral-100 text-neutral-700"
                               : "bg-amber-100 text-amber-800"
                           }`}
                         >
@@ -634,7 +715,7 @@ export function ContractViewer() {
                       <span
                         className={`inline-flex w-fit items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${
                           isApproved
-                            ? "bg-emerald-50 text-emerald-700"
+                            ? "bg-neutral-100 text-neutral-700"
                             : "bg-amber-100 text-amber-800"
                         }`}
                       >
@@ -647,7 +728,7 @@ export function ContractViewer() {
                       </span>
                     </div>
 
-                    <div className="mt-5 rounded-lg border border-neutral-200 bg-white p-4 text-[15px] leading-7 text-neutral-800 selection:bg-blue-100 selection:text-blue-950 sm:p-5">
+                    <div className="mt-5 rounded-lg border border-neutral-200 bg-white p-4 text-[15px] leading-7 text-neutral-800 selection:bg-neutral-200 selection:text-neutral-950 sm:p-5">
                       <p className="whitespace-pre-wrap">{clause.content}</p>
                     </div>
 
@@ -692,7 +773,7 @@ export function ContractViewer() {
         <aside className="space-y-4 lg:sticky lg:top-20 lg:h-fit">
           <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
             <div className="mb-4 flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-100 text-neutral-700">
                 <FileText className="h-5 w-5" strokeWidth={1.8} />
               </div>
               <div>
@@ -739,6 +820,59 @@ export function ContractViewer() {
           </div>
 
           <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
+            {isOperatorSupportView ? (
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-neutral-700">
+                  <LifeBuoy className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-neutral-950">
+                    운영자 지원 열람 중
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-neutral-500">
+                    당사자 요청으로 열린 화면입니다. 본문과 PDF 열람은 감사 기록에 남습니다.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-neutral-700">
+                    <LifeBuoy className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-neutral-950">
+                      운영자 확인 요청
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-neutral-500">
+                      문제가 생겼을 때만 24시간 열람권이 열립니다.
+                    </p>
+                  </div>
+                </div>
+                <Textarea
+                  className="min-h-[88px] rounded-lg border-neutral-200 bg-white p-3 text-sm text-neutral-950 placeholder:text-neutral-400 focus-visible:ring-2 focus-visible:ring-neutral-950"
+                  placeholder="예: 정산 조항 해석을 확인해 주세요."
+                  value={supportReason}
+                  onChange={(event) => setSupportReason(event.target.value)}
+                />
+                {supportNotice && (
+                  <p className="text-xs font-semibold text-neutral-600">
+                    {supportNotice}
+                  </p>
+                )}
+                <button
+                  type="button"
+                  onClick={requestOperatorSupport}
+                  disabled={isRequestingSupport || supportReason.trim().length < 5}
+                  className="h-10 w-full rounded-lg bg-neutral-950 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:bg-neutral-200 disabled:text-neutral-500"
+                >
+                  요청 보내기
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-500">
               계약 당사자
             </p>
@@ -747,8 +881,8 @@ export function ContractViewer() {
               <PartyRow label="인플루언서" value={contract.influencer_info.name} />
             </div>
             {contract.status === "SIGNED" && contract.signature_data?.inf_sign && (
-              <div className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-700">
+              <div className="mt-5 rounded-lg border border-neutral-200 bg-neutral-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-neutral-700">
                   인플루언서 서명 완료
                 </p>
                 <img
@@ -768,7 +902,7 @@ export function ContractViewer() {
             <div className="flex items-start gap-3">
               <div
                 className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
-                  allApproved ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
+                  allApproved ? "bg-neutral-100 text-neutral-700" : "bg-amber-50 text-amber-700"
                 }`}
               >
                 {allApproved ? (
@@ -981,9 +1115,9 @@ function StatusPill({
     <span
       className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold ${
         isSigned
-          ? "bg-emerald-50 text-emerald-700"
+          ? "bg-neutral-100 text-neutral-700"
           : isReady
-            ? "bg-blue-50 text-blue-700"
+            ? "bg-neutral-100 text-neutral-700"
             : "bg-amber-50 text-amber-700"
       }`}
     >
@@ -1006,12 +1140,10 @@ function MetricCard({
 }: {
   label: string;
   value: string;
-  tone?: "neutral" | "green" | "amber";
+  tone?: "neutral" | "amber";
 }) {
   const toneClass =
-    tone === "green"
-      ? "bg-emerald-50 text-emerald-700"
-      : tone === "amber"
+    tone === "amber"
         ? "bg-amber-50 text-amber-700"
         : "bg-neutral-100 text-neutral-800";
 
@@ -1030,7 +1162,7 @@ function ChecklistRow({ checked, label }: { checked: boolean; label: string }) {
     <div className="flex items-center gap-3">
       <div
         className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
-          checked ? "bg-emerald-50 text-emerald-700" : "bg-neutral-100 text-neutral-400"
+          checked ? "bg-neutral-100 text-neutral-700" : "bg-neutral-100 text-neutral-400"
         }`}
       >
         <CheckCircle2 className="h-4 w-4" strokeWidth={1.8} />

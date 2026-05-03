@@ -1166,7 +1166,7 @@ export function ContractBuilder() {
                   {allErrors.length > 0 ? (
                     <ValidationSummary errors={allErrors} />
                   ) : (
-                    <div className="border border-emerald-200 bg-emerald-50 p-4 text-[13px] text-emerald-800">
+                    <div className="border border-neutral-200 bg-neutral-50 p-4 text-[13px] text-neutral-800">
                       필수 조건이 모두 채워졌습니다. 초안 저장 또는 공유 링크 생성을 선택하세요.
                     </div>
                   )}
@@ -1274,7 +1274,7 @@ export function ContractBuilder() {
                     className={`mb-5 border px-4 py-3 text-left text-[12px] leading-5 ${
                       syncError
                         ? "border-amber-200 bg-amber-50 text-amber-800"
-                        : "border-emerald-200 bg-emerald-50 text-emerald-800"
+                        : "border-neutral-200 bg-neutral-50 text-neutral-800"
                     }`}
                   >
                     {syncError
@@ -1446,7 +1446,7 @@ const ChecklistLine: React.FC<{ checked: boolean; label: string }> = ({
   <div className="flex items-center gap-3 rounded-lg bg-white/[0.06] px-3 py-2">
     <span
       className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${
-        checked ? "bg-emerald-400 text-neutral-950" : "bg-white/10 text-neutral-500"
+        checked ? "bg-white text-neutral-950" : "bg-white/10 text-neutral-500"
       }`}
     >
       <Check className="h-3 w-3" strokeWidth={3} />

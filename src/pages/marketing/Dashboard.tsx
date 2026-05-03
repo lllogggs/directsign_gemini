@@ -112,13 +112,13 @@ const PLATFORM_META: Record<
 > = {
   NAVER_BLOG: {
     label: "네이버 블로그",
-    shortLabel: "Blog",
+    shortLabel: "블로그",
     className: "border-neutral-200 bg-white text-neutral-700",
     mark: <span className="text-[10px] font-black">B</span>,
   },
   YOUTUBE: {
     label: "유튜브",
-    shortLabel: "YouTube",
+    shortLabel: "유튜브",
     className: "border-[#ff0033]/20 bg-[#ff0033]/10 text-[#d70022]",
     mark: (
       <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-current">
@@ -128,7 +128,7 @@ const PLATFORM_META: Record<
   },
   INSTAGRAM: {
     label: "인스타그램",
-    shortLabel: "Instagram",
+    shortLabel: "인스타",
     className: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
     mark: (
       <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-none stroke-current">
@@ -140,13 +140,13 @@ const PLATFORM_META: Record<
   },
   TIKTOK: {
     label: "틱톡",
-    shortLabel: "TikTok",
+    shortLabel: "틱톡",
     className: "border-neutral-200 bg-neutral-950 text-white",
     mark: <span className="text-[12px] font-black">♪</span>,
   },
   OTHER: {
     label: "기타",
-    shortLabel: "Other",
+    shortLabel: "기타",
     className: "border-neutral-200 bg-white text-neutral-600",
     mark: <MoreHorizontal className="h-3.5 w-3.5" strokeWidth={2} />,
   },
