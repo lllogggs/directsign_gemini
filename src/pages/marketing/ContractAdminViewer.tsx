@@ -83,6 +83,7 @@ export function ContractAdminViewer() {
   const [notice, setNotice] = useState<string>();
   const [supportReason, setSupportReason] = useState("");
   const [isRequestingSupport, setIsRequestingSupport] = useState(false);
+  const [draftConfirmationOpen, setDraftConfirmationOpen] = useState(false);
 
   const summary = useMemo(() => {
     if (!contract) return undefined;
@@ -156,13 +157,16 @@ export function ContractAdminViewer() {
   };
 
   const saveDraft = () => {
-    if (
-      summary.activeShare &&
-      !window.confirm("초안으로 되돌리면 현재 공유 링크가 비활성화됩니다. 계속할까요?")
-    ) {
+    if (summary.activeShare) {
+      setDraftConfirmationOpen(true);
+      setNotice("초안 저장을 계속하면 현재 공유 링크가 비활성화됩니다.");
       return;
     }
 
+    commitDraftSave();
+  };
+
+  const commitDraftSave = () => {
     const now = new Date().toISOString();
     updateContract(contract.id, {
       status: "DRAFT",
@@ -191,6 +195,7 @@ export function ContractAdminViewer() {
         },
       ],
     });
+    setDraftConfirmationOpen(false);
     setNotice("초안으로 저장했습니다.");
   };
 
@@ -439,6 +444,31 @@ export function ContractAdminViewer() {
               <Save className="h-4 w-4" />
               초안으로 저장
             </button>
+
+            {draftConfirmationOpen && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-[13px] text-amber-900">
+                <p className="font-semibold">공유 링크가 비활성화됩니다</p>
+                <p className="mt-1 leading-5 text-amber-800">
+                  인플루언서가 기존 링크로 더 이상 계약을 열 수 없습니다.
+                </p>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDraftConfirmationOpen(false)}
+                    className="h-9 rounded-md border border-amber-200 bg-white text-xs font-semibold text-amber-900"
+                  >
+                    취소
+                  </button>
+                  <button
+                    type="button"
+                    onClick={commitDraftSave}
+                    className="h-9 rounded-md bg-neutral-950 text-xs font-semibold text-white"
+                  >
+                    계속 저장
+                  </button>
+                </div>
+              </div>
+            )}
           </aside>
 
           <section

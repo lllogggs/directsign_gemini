@@ -80,6 +80,7 @@ export function ContractViewer() {
     selectedText: string;
   } | null>(null);
   const [feedbackComment, setFeedbackComment] = useState("");
+  const [feedbackError, setFeedbackError] = useState("");
 
   const [showSignModal, setShowSignModal] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -90,6 +91,8 @@ export function ContractViewer() {
   const [isSignLoading, setIsSignLoading] = useState(false);
   const [signerName, setSignerName] = useState("");
   const [consentAccepted, setConsentAccepted] = useState(false);
+  const [signError, setSignError] = useState("");
+  const [signNotice, setSignNotice] = useState("");
 
   const shareToken = searchParams.get("token") ?? "";
   const supportAccessRequestId = searchParams.get("support") ?? "";
@@ -172,6 +175,7 @@ export function ContractViewer() {
       if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
     }
     setHasSignatureStroke(false);
+    setSignError("");
   };
 
   const handleSignComplete = async () => {
@@ -179,18 +183,20 @@ export function ContractViewer() {
     if (!canvas) return;
 
     if (!hasSignatureStroke) {
-      alert("서명을 완료하려면 먼저 서명란에 직접 서명해 주세요.");
+      setSignError("서명을 완료하려면 먼저 서명란에 직접 서명해 주세요.");
       return;
     }
     if (!signerName.trim()) {
-      alert("서명자 이름을 입력해 주세요.");
+      setSignError("서명자 이름을 입력해 주세요.");
       return;
     }
     if (!consentAccepted) {
-      alert("전자서명 동의 확인이 필요합니다.");
+      setSignError("전자서명 동의 확인이 필요합니다.");
       return;
     }
 
+    setSignError("");
+    setSignNotice("");
     setIsSignLoading(true);
     const dataUrl = canvas.toDataURL("image/png");
     const consentText = "계약 조항을 확인했고 전자서명에 동의합니다.";
@@ -223,7 +229,7 @@ export function ContractViewer() {
       replaceContract(result.contract);
     } catch (error) {
       setIsSignLoading(false);
-      alert(error instanceof Error ? error.message : "서명 저장에 실패했습니다.");
+      setSignError(error instanceof Error ? error.message : "서명 저장에 실패했습니다.");
       return;
     }
 
@@ -231,6 +237,7 @@ export function ContractViewer() {
 
     await new Promise((resolve) => setTimeout(resolve, 500));
 
+    let pdfDownloaded = false;
     if (contractDocRef.current) {
       try {
         const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
@@ -252,13 +259,18 @@ export function ContractViewer() {
 
         pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
         pdf.save(`${contract.title.replace(/\s+/g, "_")}_signed_contract.pdf`);
+        pdfDownloaded = true;
       } catch (err) {
         console.error("PDF generation error:", err);
       }
     }
 
     setIsSignLoading(false);
-    alert("계약 서명이 완료되었습니다. 서명본 PDF가 다운로드되었습니다.");
+    setSignNotice(
+      pdfDownloaded
+        ? "계약 서명이 완료되었습니다. 서명본 PDF가 다운로드되었습니다."
+        : "계약 서명이 완료되었습니다. PDF 자동 다운로드는 실패했지만 서버 증빙은 저장되었습니다.",
+    );
   };
 
   useEffect(() => {
@@ -276,6 +288,7 @@ export function ContractViewer() {
       }
       setSignerName(contract?.influencer_info.name ?? "");
       setConsentAccepted(false);
+      setSignError("");
     }
   }, [contract?.influencer_info.name, showSignModal]);
 
@@ -510,10 +523,11 @@ export function ContractViewer() {
     const trimmedComment = feedbackComment.trim();
 
     if (!trimmedComment) {
-      alert("광고주가 요청 의도를 이해할 수 있도록 사유를 입력해 주세요.");
+      setFeedbackError("광고주가 요청 의도를 이해할 수 있도록 사유를 입력해 주세요.");
       return;
     }
 
+    setFeedbackError("");
     updateClauseStatus(
       contract.id,
       feedbackModal.clauseId,
@@ -532,6 +546,7 @@ export function ContractViewer() {
 
     setFeedbackModal(null);
     setFeedbackComment("");
+    setFeedbackError("");
     setSelection(null);
     window.getSelection()?.removeAllRanges();
   };
@@ -676,6 +691,22 @@ export function ContractViewer() {
               </div>
             </div>
           </div>
+
+          {signNotice && (
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm font-semibold text-neutral-800 shadow-sm">
+              <span className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-neutral-700" />
+                {signNotice}
+              </span>
+              <button
+                type="button"
+                onClick={() => setSignNotice("")}
+                className="shrink-0 text-xs font-semibold text-neutral-500 hover:text-neutral-900"
+              >
+                닫기
+              </button>
+            </div>
+          )}
 
           <div className="grid gap-3 sm:grid-cols-2">
             {plainSummary.map((item) => (
@@ -994,7 +1025,12 @@ export function ContractViewer() {
 
       <Dialog
         open={feedbackModal?.isOpen}
-        onOpenChange={(open) => !open && setFeedbackModal(null)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setFeedbackModal(null);
+            setFeedbackError("");
+          }
+        }}
       >
         <DialogContent className="rounded-xl border-neutral-200 p-0 shadow-2xl sm:max-w-lg">
           <div className="border-b border-neutral-200 p-6">
@@ -1021,13 +1057,24 @@ export function ContractViewer() {
                   : "예: 이 조항은 합의한 캠페인 범위에 해당하지 않습니다."
               }
               value={feedbackComment}
-              onChange={(e) => setFeedbackComment(e.target.value)}
+              onChange={(e) => {
+                setFeedbackComment(e.target.value);
+                if (feedbackError) setFeedbackError("");
+              }}
             />
+            {feedbackError && (
+              <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                {feedbackError}
+              </p>
+            )}
           </div>
           <div className="flex gap-3 border-t border-neutral-200 bg-neutral-50 p-4">
             <button
               className="h-11 flex-1 rounded-lg border border-neutral-200 bg-white text-sm font-semibold text-neutral-700 hover:bg-neutral-100"
-              onClick={() => setFeedbackModal(null)}
+              onClick={() => {
+                setFeedbackModal(null);
+                setFeedbackError("");
+              }}
             >
               취소
             </button>
@@ -1042,7 +1089,13 @@ export function ContractViewer() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showSignModal} onOpenChange={setShowSignModal}>
+      <Dialog
+        open={showSignModal}
+        onOpenChange={(open) => {
+          setShowSignModal(open);
+          if (!open) setSignError("");
+        }}
+      >
         <DialogContent className="rounded-xl border-neutral-200 p-0 shadow-2xl sm:max-w-lg">
           <div className="border-b border-neutral-200 p-6">
             <DialogHeader>
@@ -1067,7 +1120,10 @@ export function ContractViewer() {
               </span>
               <input
                 value={signerName}
-                onChange={(event) => setSignerName(event.target.value)}
+                onChange={(event) => {
+                  setSignerName(event.target.value);
+                  if (signError) setSignError("");
+                }}
                 className="mt-2 h-11 w-full rounded-lg border border-neutral-200 bg-white px-3 text-sm font-medium text-neutral-950 outline-none transition focus:border-neutral-950"
                 placeholder="이름 또는 활동명"
               />
@@ -1105,13 +1161,21 @@ export function ContractViewer() {
               <input
                 type="checkbox"
                 checked={consentAccepted}
-                onChange={(event) => setConsentAccepted(event.target.checked)}
+                onChange={(event) => {
+                  setConsentAccepted(event.target.checked);
+                  if (signError) setSignError("");
+                }}
                 className="mt-1 h-4 w-4 accent-neutral-950"
               />
               <span>
                 계약 조항을 확인했고 전자서명에 동의합니다.
               </span>
             </label>
+            {signError && (
+              <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                {signError}
+              </p>
+            )}
           </div>
 
           <div className="flex gap-3 border-t border-neutral-200 bg-neutral-50 p-4">
