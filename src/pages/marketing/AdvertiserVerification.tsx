@@ -55,6 +55,16 @@ export function AdvertiserVerification() {
   const advertiser = summary?.advertiser;
   const status = advertiser?.status ?? "not_submitted";
   const latest = advertiser?.latest_request;
+  const account = advertiser?.account;
+  const approved = status === "approved";
+  const displayCompany =
+    latest?.subject_name || account?.company_name || "광고주 계정";
+  const displayManager = latest?.submitted_by_name || account?.name || "-";
+  const displayEmail = latest?.submitted_by_email || account?.email || "-";
+  const displayBusinessNumber =
+    latest?.business_registration_number ||
+    account?.business_registration_number ||
+    "-";
 
   const updateForm = (updates: Partial<AdvertiserVerificationForm>) => {
     setForm((current) => ({ ...current, ...updates }));
@@ -140,13 +150,33 @@ export function AdvertiserVerification() {
 
       <main className="mx-auto grid max-w-6xl gap-4 px-5 py-4 sm:px-8 lg:grid-cols-[minmax(0,1fr)_300px]">
         <section className="rounded-lg border border-neutral-200 bg-white p-5 shadow-sm sm:p-6">
+          {approved && (
+            <div className="mb-5 rounded-lg border border-neutral-200 bg-neutral-50 p-4">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-neutral-950 text-white">
+                  <ShieldCheck className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-neutral-950">
+                    사업자 인증이 완료되었습니다
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-neutral-500">
+                    {displayCompany} 계정은 계약 공유 링크를 발송할 수 있습니다.
+                    정보가 바뀐 경우에만 아래에서 갱신 심사를 요청하세요.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="mb-5">
             <h1 className="text-[24px] font-semibold tracking-tight">
-              광고주 사업자 인증
+              {approved ? "사업자 인증 정보" : "광고주 사업자 인증"}
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-neutral-500">
-              계약 초안 작성은 바로 가능하지만, 인플루언서에게 계약을 발송하려면
-              운영자 수기 승인이 필요합니다.
+              {approved
+                ? "현재 승인 상태를 유지합니다. 상호, 담당자, 사업자 정보가 바뀌면 새 증빙으로 갱신 요청을 남겨주세요."
+                : "계약 초안 작성은 바로 가능하지만, 인플루언서에게 계약을 발송하려면 운영자 수기 승인이 필요합니다."}
             </p>
           </div>
 
@@ -257,7 +287,11 @@ export function AdvertiserVerification() {
               disabled={isSubmitting}
               className="h-11 w-full rounded-lg bg-neutral-950 px-5 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-500"
             >
-              {isSubmitting ? "접수 중" : "수기 심사 요청"}
+              {isSubmitting
+                ? "접수 중"
+                : approved
+                  ? "인증 정보 갱신 요청"
+                  : "수기 심사 요청"}
             </button>
           </form>
         </section>
@@ -284,20 +318,21 @@ export function AdvertiserVerification() {
               </span>
             </div>
 
-            {latest && (
+            {(latest || account) && (
               <div className="mt-5 space-y-3 border-t border-neutral-100 pt-5 text-sm">
-                <InfoRow label="회사명" value={latest.subject_name} />
-                <InfoRow
-                  label="사업자번호"
-                  value={latest.business_registration_number ?? "-"}
-                />
-                <InfoRow
-                  label="제출일"
-                  value={new Intl.DateTimeFormat("ko-KR").format(
-                    new Date(latest.created_at),
-                  )}
-                />
-                {latest.reviewer_note && (
+                <InfoRow label="회사명" value={displayCompany} />
+                <InfoRow label="담당자" value={displayManager} />
+                <InfoRow label="이메일" value={displayEmail} />
+                <InfoRow label="사업자번호" value={displayBusinessNumber} />
+                {latest && (
+                  <InfoRow
+                    label="제출일"
+                    value={new Intl.DateTimeFormat("ko-KR").format(
+                      new Date(latest.created_at),
+                    )}
+                  />
+                )}
+                {latest?.reviewer_note && (
                   <InfoRow label="검토 메모" value={latest.reviewer_note} />
                 )}
               </div>
@@ -313,7 +348,11 @@ export function AdvertiserVerification() {
               <li>사업자등록번호 형식과 체크섬이 유효해야 합니다.</li>
               <li>사업자등록증명원 발급일과 문서번호를 확인합니다.</li>
               <li>회사명, 대표자명, 가입 정보가 합리적으로 일치해야 합니다.</li>
-              <li>승인 전에는 공유 링크 발송이 서버에서 차단됩니다.</li>
+              <li>
+                {approved
+                  ? "승인 후에도 정보 변경 시 새 증빙으로 갱신 심사를 남깁니다."
+                  : "승인 전에는 공유 링크 발송이 서버에서 차단됩니다."}
+              </li>
             </ul>
           </section>
         </aside>

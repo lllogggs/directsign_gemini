@@ -167,25 +167,28 @@ export function Dashboard() {
   const advertiserVerificationStatus =
     verificationSummary?.advertiser.status ?? "not_submitted";
   const advertiserAccount = useMemo<AdvertiserAccountSummary>(() => {
-    const latest = verificationSummary?.advertiser.latest_request;
+    const advertiser = verificationSummary?.advertiser;
+    const latest = advertiser?.latest_request;
+    const account = advertiser?.account;
     const contractAdvertiser = contracts.find(
       (contract) =>
         contract.advertiser_info?.name || contract.advertiser_info?.manager,
     )?.advertiser_info;
     const name = removeInternalTestLabel(
-      latest?.subject_name || contractAdvertiser?.name,
+      latest?.subject_name || account?.company_name || contractAdvertiser?.name,
       "광고주 계정",
     );
     const manager = removeInternalTestLabel(
-      latest?.submitted_by_name || contractAdvertiser?.manager,
+      latest?.submitted_by_name || account?.name || contractAdvertiser?.manager,
     );
-    const email = latest?.submitted_by_email;
+    const email = latest?.submitted_by_email || account?.email;
     const meta = [manager, email].filter(Boolean).join(" · ");
 
     return {
       name,
       meta: meta || "계정 정보 확인 필요",
-      businessNumber: latest?.business_registration_number,
+      businessNumber:
+        latest?.business_registration_number || account?.business_registration_number,
     };
   }, [contracts, verificationSummary]);
 

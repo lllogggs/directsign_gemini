@@ -80,11 +80,22 @@ export interface VerificationRequest {
   updated_at: string;
 }
 
+export interface VerificationAccountInfo {
+  name?: string;
+  company_name?: string;
+  email?: string;
+  business_registration_number?: string;
+  representative_name?: string;
+  platform_handle?: string;
+  platform_url?: string;
+}
+
 export interface VerificationProfile {
   target_type: VerificationTargetType;
   target_id: string;
   status: VerificationStatus;
   latest_request?: VerificationRequest;
+  account?: VerificationAccountInfo;
 }
 
 export interface VerificationSummary {

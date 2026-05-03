@@ -18,10 +18,13 @@ import {
 } from "lucide-react";
 import { useAppStore } from "../../store";
 import { PRODUCT_NAME } from "../../domain/brand";
-import type {
-  InfluencerPlatform,
-  InfluencerVerificationMethod,
+import {
+  type InfluencerPlatform,
+  type InfluencerVerificationMethod,
+  verificationStatusLabel,
+  verificationStatusTone,
 } from "../../domain/verification";
+import { useVerificationSummary } from "../../hooks/useVerificationSummary";
 
 const API_BASE =
   typeof import.meta !== "undefined"
@@ -176,6 +179,7 @@ export function InfluencerVerification() {
   const contract = useAppStore((state) =>
     contractId ? state.getContract(contractId) : undefined,
   );
+  const { summary, isLoading: isVerificationLoading } = useVerificationSummary();
   const [prefilledContractId, setPrefilledContractId] = useState("");
   const [platform, setPlatform] = useState<InfluencerPlatform>("instagram");
   const [method, setMethod] =
@@ -189,6 +193,13 @@ export function InfluencerVerification() {
   const selectedPlatform = PLATFORM_META[platform];
   const selectedMethod = METHOD_META[method];
   const proofUrl = form.ownership_challenge_url || form.platform_url;
+  const verification = summary?.influencer;
+  const verificationStatus = verification?.status ?? "not_submitted";
+  const latest = verification?.latest_request;
+  const approved = verificationStatus === "approved";
+  const verifiedHandle =
+    latest?.platform_handle || verification?.account?.platform_handle;
+  const verifiedUrl = latest?.platform_url || verification?.account?.platform_url;
 
   useEffect(() => {
     if (!contract || prefilledContractId === contract.id) return;
@@ -318,13 +329,43 @@ export function InfluencerVerification() {
 
       <main className="mx-auto grid max-w-6xl gap-4 px-5 py-4 sm:px-8 lg:grid-cols-[minmax(0,1fr)_320px]">
         <section className="rounded-lg border border-neutral-200 bg-white p-5 shadow-sm sm:p-6">
+          <div className="mb-5 rounded-lg border border-neutral-200 bg-neutral-50 p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-neutral-950 text-white">
+                  <BadgeCheck className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-neutral-950">
+                    {approved ? "플랫폼 인증이 완료되었습니다" : "플랫폼 인증 상태"}
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-neutral-500">
+                    {approved
+                      ? `${verifiedHandle || "등록된 계정"} 기준으로 인증되어 있습니다. 다른 플랫폼을 추가하거나 계정 정보가 바뀐 경우에만 새 요청을 남기세요.`
+                      : "계정 소유 확인은 계약 검토와 서명을 막지 않지만, 반복 거래와 정산 신뢰도를 높입니다."}
+                  </p>
+                </div>
+              </div>
+              <span
+                className={`w-fit rounded-full border px-3 py-1 text-xs font-semibold ${verificationStatusTone(
+                  verificationStatus,
+                )}`}
+              >
+                {isVerificationLoading
+                  ? "확인중"
+                  : verificationStatusLabel(verificationStatus)}
+              </span>
+            </div>
+          </div>
+
           <div className="mb-5">
             <h1 className="text-[24px] font-semibold tracking-tight">
-              플랫폼 계정 소유 인증
+              {approved ? "플랫폼 인증 관리" : "플랫폼 계정 소유 인증"}
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-neutral-500">
-              블로그, 인스타그램, 유튜브 등 계약에 쓰는 채널이 본인 계정인지
-              인증 코드와 증빙 URL로 확인합니다.
+              {approved
+                ? "인증된 계정을 유지하면서 새 플랫폼이나 변경된 계정만 추가 검수로 관리합니다."
+                : "블로그, 인스타그램, 유튜브 등 계약에 쓰는 채널이 본인 계정인지 인증 코드와 증빙 URL로 확인합니다."}
             </p>
           </div>
 
@@ -533,7 +574,11 @@ export function InfluencerVerification() {
               disabled={isSubmitting}
               className="h-11 w-full rounded-lg bg-neutral-950 px-5 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-500"
             >
-              {isSubmitting ? "접수 중" : "계정 소유 인증 요청"}
+              {isSubmitting
+                ? "접수 중"
+                : approved
+                  ? "플랫폼 인증 추가 요청"
+                  : "계정 소유 인증 요청"}
             </button>
           </form>
         </section>
@@ -554,7 +599,10 @@ export function InfluencerVerification() {
             </div>
             <InfoRow label="인증 방식" value={selectedMethod.label} />
             <InfoRow label="인증 코드" value={challengeCode} mono />
-            <InfoRow label="증빙 URL" value={proofUrl || "미입력"} />
+            <InfoRow label="증빙 URL" value={proofUrl || verifiedUrl || "미입력"} />
+            {approved && verifiedHandle && (
+              <InfoRow label="승인 계정" value={verifiedHandle} />
+            )}
           </section>
 
           <TrustNote

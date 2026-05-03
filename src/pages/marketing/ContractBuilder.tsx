@@ -704,7 +704,9 @@ export function ContractBuilder() {
                     광고주 인증 상태
                   </p>
                   <p className="mt-1 text-xs leading-5 text-neutral-500">
-                    승인 전에는 초안 저장만 가능하고 공유 링크 발송은 차단됩니다.
+                    {canSendContract
+                      ? "계약 공유 링크를 생성하고 인플루언서에게 발송할 수 있습니다."
+                      : "승인 전에는 초안 저장만 가능하고 공유 링크 발송은 차단됩니다."}
                   </p>
                 </div>
                 <span

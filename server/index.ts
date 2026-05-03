@@ -497,8 +497,13 @@ const toSupabaseRow = (contract: Contract): SupabaseContractRow => ({
 const parseSupabaseError = async (response: Response) => {
   const body = await response.text();
   try {
-    const parsed = JSON.parse(body) as { message?: string; error?: string };
-    return parsed.message ?? parsed.error ?? body;
+    const parsed = JSON.parse(body) as {
+      message?: string;
+      error?: string;
+      msg?: string;
+      error_code?: string;
+    };
+    return parsed.message ?? parsed.msg ?? parsed.error ?? parsed.error_code ?? body;
   } catch {
     return body;
   }
@@ -1346,6 +1351,13 @@ const createSupabaseSignupUser = async ({
 const getLoginFailureMessage = (error: unknown, fallback: string) => {
   const message = error instanceof Error ? error.message : "";
   const normalized = message.toLowerCase();
+
+  if (
+    normalized.includes("invalid login credentials") ||
+    normalized.includes("invalid_credentials")
+  ) {
+    return "이메일 또는 비밀번호를 확인해 주세요.";
+  }
 
   if (
     normalized.includes("email not confirmed") ||
@@ -2996,6 +3008,7 @@ const buildAdvertiserScopedVerificationSummary = async (
   auth: AdvertiserSession,
 ) => {
   const context = await buildAdvertiserVerificationContext(auth);
+  const organization = await readDefaultOrganizationForProfile(auth.profile.id);
   const requests = await readVerificationRequests();
   const advertiserLatest = latestVerificationForTarget(
     requests,
@@ -3012,6 +3025,15 @@ const buildAdvertiserScopedVerificationSummary = async (
         auth.profile.verification_status ??
         "not_submitted",
       latest_request: advertiserLatest,
+      account: {
+        name: auth.profile.name,
+        company_name:
+          organization?.name ?? auth.profile.company_name ?? context.subjectName,
+        email: auth.profile.email ?? auth.user.email,
+        business_registration_number:
+          organization?.business_registration_number ?? undefined,
+        representative_name: organization?.representative_name ?? undefined,
+      },
     },
     influencer: emptyVerificationProfile(
       "influencer_account",
@@ -3048,6 +3070,12 @@ const buildInfluencerScopedVerificationSummary = async (
         auth.profile.verification_status ??
         "not_submitted",
       latest_request: influencerLatest,
+      account: {
+        name: auth.profile.name,
+        email: auth.profile.email ?? auth.user.email,
+        platform_handle: influencerLatest?.platform_handle,
+        platform_url: influencerLatest?.platform_url,
+      },
     },
   };
 };
