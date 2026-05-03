@@ -584,7 +584,7 @@ export function ContractViewer() {
 
   return (
     <div className="flex min-h-[100dvh] flex-col bg-[#f7f8fa] text-neutral-950">
-      {selection?.showTooltip && (
+      {!isOperatorSupportView && selection?.showTooltip && (
         <div
           className="fixed z-50 -translate-x-1/2 -translate-y-full pb-3 animate-in fade-in zoom-in-95 slide-in-from-bottom-1 duration-150"
           style={{ top: selection.y, left: selection.x }}
@@ -828,34 +828,36 @@ export function ContractViewer() {
             </div>
           </div>
 
-          <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
-            <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-neutral-950 text-white">
-                <ShieldCheck className="h-5 w-5" />
+          {!isOperatorSupportView && (
+            <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-neutral-950 text-white">
+                  <ShieldCheck className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-neutral-950">
+                    인플루언서 계정 확인
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-neutral-500">
+                    계약 검토와 서명은 계속 가능하며, 반복 거래나 정산 전 계정 확인을 요청할 수 있습니다.
+                  </p>
+                </div>
               </div>
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-neutral-950">
-                  인플루언서 계정 확인
-                </p>
-                <p className="mt-1 text-xs leading-5 text-neutral-500">
-                  계약 검토와 서명은 계속 가능하며, 반복 거래나 정산 전 계정 확인을 요청할 수 있습니다.
-                </p>
-              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  navigate(
+                    `/influencer/verification?contractId=${contract.id}${
+                      shareToken ? `&token=${shareToken}` : ""
+                    }`,
+                  )
+                }
+                className="mt-4 h-10 w-full rounded-lg border border-neutral-200 bg-neutral-50 text-sm font-semibold text-neutral-700 transition hover:border-neutral-400 hover:bg-white"
+              >
+                계정 확인 요청
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() =>
-                navigate(
-                  `/influencer/verification?contractId=${contract.id}${
-                    shareToken ? `&token=${shareToken}` : ""
-                  }`,
-                )
-              }
-              className="mt-4 h-10 w-full rounded-lg border border-neutral-200 bg-neutral-50 text-sm font-semibold text-neutral-700 transition hover:border-neutral-400 hover:bg-white"
-            >
-              계정 확인 요청
-            </button>
-          </div>
+          )}
 
           <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
             {isOperatorSupportView ? (
@@ -948,7 +950,7 @@ export function ContractViewer() {
         </aside>
       </main>
 
-      {contract.status !== "SIGNED" && (
+      {!isOperatorSupportView && contract.status !== "SIGNED" && (
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-neutral-200 bg-white/95 shadow-[0_-16px_40px_rgba(15,23,42,0.08)] backdrop-blur">
           <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
             <div className="flex items-start gap-3">

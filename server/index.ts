@@ -955,32 +955,6 @@ const resolveLegacyContractAccess = async (
     }
   }
 
-  if (allowAdmin && verifyAdminSessionToken(getAdminSessionFromRequest(request))) {
-    const supportAccessRequestId = getSupportAccessRequestIdFromRequest(request);
-
-    if (!supportAccessRequestId) {
-      if (sendError) {
-        response
-          .status(403)
-          .json({ error: "Active support access request id is required" });
-      }
-      return undefined;
-    }
-
-    const supportAccess = await getActiveSupportAccessForContract(
-      contract.id,
-      supportAccessRequestId,
-    );
-    if (supportAccess) {
-      return { role: "admin" as const, supportAccess };
-    }
-
-    if (sendError) {
-      response.status(403).json({ error: "Active support access request is required" });
-    }
-    return undefined;
-  }
-
   if (allowAdvertiser) {
     try {
       const auth = await authenticateAdvertiserRequest(request, response);
@@ -1011,6 +985,32 @@ const resolveLegacyContractAccess = async (
     } catch {
       // Ignore this branch and let the final response stay generic.
     }
+  }
+
+  if (allowAdmin && verifyAdminSessionToken(getAdminSessionFromRequest(request))) {
+    const supportAccessRequestId = getSupportAccessRequestIdFromRequest(request);
+
+    if (!supportAccessRequestId) {
+      if (sendError) {
+        response
+          .status(403)
+          .json({ error: "Active support access request id is required" });
+      }
+      return undefined;
+    }
+
+    const supportAccess = await getActiveSupportAccessForContract(
+      contract.id,
+      supportAccessRequestId,
+    );
+    if (supportAccess) {
+      return { role: "admin" as const, supportAccess };
+    }
+
+    if (sendError) {
+      response.status(403).json({ error: "Active support access request is required" });
+    }
+    return undefined;
   }
 
   if (sendError) {
