@@ -1,5 +1,6 @@
 import React from "react";
 import { ArrowRight, ShieldCheck } from "lucide-react";
+import { Link } from "react-router-dom";
 import { PRODUCT_NAME } from "../domain/brand";
 
 export interface AuthLoginField {
@@ -106,6 +107,21 @@ export function AuthLoginScreen({
             {footer}
           </div>
         ) : null}
+
+        <nav
+          aria-label="법무 문서"
+          className="mt-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-2 border-t border-neutral-100 pt-4 text-[12px] font-medium text-neutral-400"
+        >
+          <Link className="transition hover:text-neutral-950" to="/privacy">
+            개인정보처리방침
+          </Link>
+          <Link className="transition hover:text-neutral-950" to="/terms">
+            이용약관
+          </Link>
+          <Link className="transition hover:text-neutral-950" to="/legal/e-sign-consent">
+            전자서명 안내
+          </Link>
+        </nav>
         </div>
       </section>
     </main>

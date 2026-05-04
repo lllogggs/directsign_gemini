@@ -115,7 +115,7 @@ const INITIAL_DRAFT: ContractDraft = {
   uploadDueDate: "",
   reviewDueDate: "",
   revisionLimit: "",
-  disclosureText: "",
+  disclosureText: "콘텐츠 제목 또는 본문 첫 부분에 '유료광고' 또는 '#광고'를 명확히 표시",
   trackingLink: "",
   exclusivity: "",
   payment: "",
@@ -125,6 +125,7 @@ const INITIAL_DRAFT: ContractDraft = {
 };
 
 const isBlank = (value?: string) => !value || value.trim().length === 0;
+const REQUIRED_DISCLOSURE_PATTERN = /광고|유료|협찬|대가|sponsored|ad/i;
 
 const addDays = (days: number) => {
   const date = new Date();
@@ -236,6 +237,8 @@ const buildContractClauses = (draft: ContractDraft): Clause[] => {
       category: "광고 표시 및 추적 조건",
       content: [
         `광고 표시 문구: ${draft.disclosureText || "입력 필요"}`,
+        "광고주와 인플루언서는 경제적 이해관계가 소비자에게 명확히 인식되도록 콘텐츠의 제목, 본문 첫 부분, 영상 설명 또는 플랫폼상 쉽게 확인 가능한 위치에 광고 표시를 유지해야 한다.",
+        "플랫폼 정책이나 관계 법령상 더 엄격한 표시가 필요한 경우 그 기준을 우선 적용한다.",
         draft.trackingLink ? `필수 링크/쿠폰/해시태그: ${draft.trackingLink}` : "",
       ]
         .filter(Boolean)
@@ -319,6 +322,17 @@ const validateContractDraft = (draft: ContractDraft): ValidationError[] => {
   requireField(3, "revisionLimit", draft.revisionLimit, "수정 가능 횟수를 입력하세요.");
   requireField(3, "payment", draft.payment, "지급 조건을 입력하세요.");
   requireField(3, "disclosureText", draft.disclosureText, "광고 표시 조건을 입력하세요.");
+
+  if (
+    !isBlank(draft.disclosureText) &&
+    !REQUIRED_DISCLOSURE_PATTERN.test(draft.disclosureText)
+  ) {
+    errors.push({
+      step: 3,
+      field: "disclosureText",
+      message: "광고 표시 조건에는 #광고, 유료광고, 협찬 등 대가 표시 문구가 포함되어야 합니다.",
+    });
+  }
 
   if (draft.campaignStart && draft.campaignEnd && draft.campaignEnd < draft.campaignStart) {
     errors.push({
@@ -1036,12 +1050,16 @@ export function ContractBuilder() {
                     <Label>광고 표시 조건</Label>
                     <Input
                       className="mt-1.5"
-                      placeholder="ex) 본문 첫 줄에 광고/협찬 표기"
+                      placeholder="ex) 본문 첫 줄에 유료광고 또는 #광고 표기"
                       value={draft.disclosureText}
                       onChange={(event) =>
                         updateDraft({ disclosureText: event.target.value })
                       }
                     />
+                    <p className="mt-2 text-[12px] leading-5 text-neutral-500">
+                      소비자가 쉽게 볼 수 있는 위치에 경제적 이해관계가 드러나는 문구를
+                      포함해야 합니다.
+                    </p>
                   </div>
 
                   <div>

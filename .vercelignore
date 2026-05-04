@@ -1,0 +1,6 @@
+data
+logs
+qa-artifacts
+*.log
+.env*
+.codex-*

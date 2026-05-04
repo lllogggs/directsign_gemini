@@ -3,12 +3,22 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import {defineConfig, loadEnv} from 'vite';
 
+const productNameHtmlPlugin = (productName: string) => ({
+  name: 'product-name-html',
+  transformIndexHtml(html: string) {
+    return html.replaceAll('%PRODUCT_NAME%', productName);
+  },
+});
+
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
+  const productName = env.VITE_PRODUCT_NAME || env.PRODUCT_NAME || '연락미';
+
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [productNameHtmlPlugin(productName), react(), tailwindcss()],
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+      'import.meta.env.VITE_PRODUCT_NAME': JSON.stringify(productName),
     },
     resolve: {
       alias: {

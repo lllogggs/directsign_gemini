@@ -66,6 +66,11 @@ const SystemAdminDashboard = lazy(() =>
     default: module.SystemAdminDashboard,
   })),
 );
+const LegalDocumentPage = lazy(() =>
+  import("./pages/legal/LegalDocumentPage").then((module) => ({
+    default: module.LegalDocumentPage,
+  })),
+);
 
 function AppLoading({ label = "계약 데이터를 불러오는 중입니다" }: { label?: string }) {
   return (
@@ -116,6 +121,12 @@ function App() {
           <Route path="/login/influencer" element={<InfluencerLoginPage />} />
           <Route path="/signup/advertiser" element={<SignupPage role="advertiser" />} />
           <Route path="/signup/influencer" element={<SignupPage role="influencer" />} />
+          <Route path="/privacy" element={<LegalDocumentPage documentType="privacy" />} />
+          <Route path="/terms" element={<LegalDocumentPage documentType="terms" />} />
+          <Route
+            path="/legal/e-sign-consent"
+            element={<LegalDocumentPage documentType="eSignConsent" />}
+          />
           <Route path="/admin/login" element={<SystemAdminDashboard loginOnly />} />
           <Route path="/admin" element={<SystemAdminDashboard />} />
           <Route path="/marketing/*" element={<LegacyMarketingRedirect />} />

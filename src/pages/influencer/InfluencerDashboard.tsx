@@ -150,7 +150,7 @@ const VERIFICATION_META: Record<
   },
   approved: {
     label: "인증 완료",
-    helper: "정산 준비 가능",
+    helper: "계약 신뢰 확인됨",
     className: "border-neutral-300 bg-white text-neutral-800",
   },
   rejected: {
@@ -926,7 +926,7 @@ function ContractCard({
         <Fact label="금액" value={contract.fee_label} />
         <Fact label="기간" value={contract.period_label} />
         <Fact label="마감" value={contract.deadline_label} />
-        <Fact label="정산" value={contract.settlement_summary.label} />
+        <Fact label="서명본" value={contract.record_summary.label} />
       </div>
 
       <div className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">

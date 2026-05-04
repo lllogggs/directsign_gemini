@@ -342,7 +342,7 @@ export function InfluencerVerification() {
                   <p className="mt-1 text-sm leading-6 text-neutral-500">
                     {approved
                       ? `${verifiedHandle || "등록된 계정"} 기준으로 인증되어 있습니다. 다른 플랫폼을 추가하거나 계정 정보가 바뀐 경우에만 새 요청을 남기세요.`
-                      : "계정 소유 확인은 계약 검토와 서명을 막지 않지만, 반복 거래와 정산 신뢰도를 높입니다."}
+                      : "계정 소유 확인은 계약 검토와 서명을 막지 않지만, 당사자 확인과 분쟁 대응 신뢰도를 높입니다."}
                   </p>
                 </div>
               </div>
@@ -608,7 +608,7 @@ export function InfluencerVerification() {
           <TrustNote
             icon={<Link2 className="h-4 w-4" />}
             title="계약 진행과 분리"
-            body="계정 인증 요청은 계약 검토와 서명을 막지 않습니다. 반복 거래, 정산, 분쟁 대응을 위한 신뢰 정보로 관리됩니다."
+            body="계정 인증 요청은 계약 검토와 서명을 막지 않습니다. 당사자 확인, 반복 거래, 분쟁 대응을 위한 신뢰 정보로 관리됩니다."
           />
           <TrustNote
             icon={<BadgeCheck className="h-4 w-4" />}

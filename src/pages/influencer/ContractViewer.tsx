@@ -870,7 +870,7 @@ export function ContractViewer() {
                     인플루언서 계정 확인
                   </p>
                   <p className="mt-1 text-xs leading-5 text-neutral-500">
-                    계약 검토와 서명은 계속 가능하며, 반복 거래나 정산 전 계정 확인을 요청할 수 있습니다.
+                    계약 검토와 서명은 계속 가능하며, 계약 신뢰 확인을 위해 계정 확인을 요청할 수 있습니다.
                   </p>
                 </div>
               </div>
@@ -922,7 +922,7 @@ export function ContractViewer() {
                 </div>
                 <Textarea
                   className="min-h-[88px] rounded-lg border-neutral-200 bg-white p-3 text-sm text-neutral-950 placeholder:text-neutral-400 focus-visible:ring-2 focus-visible:ring-neutral-950"
-                  placeholder="예: 정산 조항 해석을 확인해 주세요."
+                  placeholder="예: 조항 해석을 확인해 주세요."
                   value={supportReason}
                   onChange={(event) => setSupportReason(event.target.value)}
                 />

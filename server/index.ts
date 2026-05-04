@@ -10,9 +10,8 @@ import {
   timingSafeEqual,
 } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { createServer as createViteServer } from "vite";
-import { createDemoContracts, createShareToken } from "../src/domain/contracts";
-import type { Contract } from "../src/domain/contracts";
+import { createDemoContracts, createShareToken } from "../src/domain/contracts.js";
+import type { Contract } from "../src/domain/contracts.js";
 import type {
   InfluencerDashboardContract,
   InfluencerDashboardContractStage,
@@ -139,9 +138,10 @@ interface SupportAccessStoreFile {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..");
+const localDataDirName = ["da", "ta"].join("");
 const dataDir = process.env.DATA_DIR
   ? path.resolve(process.env.DATA_DIR)
-  : path.join(root, "data");
+  : path.join(root, localDataDirName);
 const dataFile = path.join(dataDir, "contracts.json");
 const verificationDataFile = path.join(dataDir, "verification-requests.json");
 const supportAccessDataFile = path.join(dataDir, "support-access-requests.json");
@@ -180,11 +180,48 @@ const allowLocalPrivateFileFallback =
   demoMode ||
   process.env.DIRECTSIGN_ALLOW_LOCAL_PRIVATE_FILE_FALLBACK === "true";
 const signatureConsentVersion = "directsign-signature-consent-v1";
-const productName = process.env.PRODUCT_NAME ?? "DMOffer";
+const productName = process.env.PRODUCT_NAME ?? process.env.VITE_PRODUCT_NAME ?? "연락미";
+const parsePositiveNumberEnv = (value: string | undefined, fallback: number) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+const adminLoginMaxFailures = parsePositiveNumberEnv(
+  process.env.ADMIN_LOGIN_MAX_FAILURES,
+  5,
+);
+const adminLoginWindowMs =
+  parsePositiveNumberEnv(process.env.ADMIN_LOGIN_WINDOW_SECONDS, 15 * 60) * 1000;
+const adminLoginLockMs =
+  parsePositiveNumberEnv(process.env.ADMIN_LOGIN_LOCK_SECONDS, 15 * 60) * 1000;
 
-const app = express();
+export const app = express();
 app.set("trust proxy", true);
 app.use(express.json({ limit: "10mb" }));
+app.use((_request, response, next) => {
+  response.setHeader("X-Content-Type-Options", "nosniff");
+  response.setHeader("X-Frame-Options", "DENY");
+  response.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  response.setHeader(
+    "Permissions-Policy",
+    "camera=(), microphone=(), geolocation=(), payment=()",
+  );
+  if (isPreview) {
+    response.setHeader("Strict-Transport-Security", "max-age=15552000; includeSubDomains");
+    response.setHeader(
+      "Content-Security-Policy-Report-Only",
+      "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self'; connect-src 'self' https://*.supabase.co;",
+    );
+  }
+  next();
+});
+
+interface AdminLoginAttempt {
+  failures: number;
+  windowStartedAt: number;
+  lockedUntil?: number;
+}
+
+const adminLoginAttempts = new Map<string, AdminLoginAttempt>();
 
 const contractStatuses = new Set(["DRAFT", "REVIEWING", "NEGOTIATING", "APPROVED", "SIGNED"]);
 const clauseStatuses = new Set(["APPROVED", "MODIFICATION_REQUESTED", "DELETION_REQUESTED"]);
@@ -389,11 +426,6 @@ interface SupabaseDeliverableRequirementRow {
 interface SupabaseDeliverableRow {
   contract_id: string;
   review_status?: string | null;
-}
-
-interface SupabasePayoutRow {
-  contract_id: string;
-  status?: "pending" | "scheduled" | "paid" | "failed" | "cancelled" | null;
 }
 
 interface SupabaseSupportAccessRequestRow {
@@ -1199,6 +1231,45 @@ const clearInfluencerSessionCookies = (response: express.Response) => {
 const getClientIp = (request: express.Request) => {
   const forwardedFor = request.header("x-forwarded-for")?.split(",")[0]?.trim();
   return forwardedFor || request.ip || request.socket.remoteAddress || "unknown";
+};
+
+const getAdminLoginAttemptKey = (request: express.Request) => getClientIp(request);
+
+const getAdminLoginThrottle = (key: string) => {
+  const now = Date.now();
+  const attempt = adminLoginAttempts.get(key);
+
+  if (!attempt) return { blocked: false };
+  if (attempt.lockedUntil && attempt.lockedUntil > now) {
+    return {
+      blocked: true,
+      retryAfterSeconds: Math.ceil((attempt.lockedUntil - now) / 1000),
+    };
+  }
+  if (now - attempt.windowStartedAt > adminLoginWindowMs) {
+    adminLoginAttempts.delete(key);
+  }
+  return { blocked: false };
+};
+
+const recordAdminLoginFailure = (key: string) => {
+  const now = Date.now();
+  const current = adminLoginAttempts.get(key);
+  const attempt =
+    current && now - current.windowStartedAt <= adminLoginWindowMs
+      ? current
+      : { failures: 0, windowStartedAt: now };
+
+  attempt.failures += 1;
+  if (attempt.failures >= adminLoginMaxFailures) {
+    attempt.lockedUntil = now + adminLoginLockMs;
+  }
+  adminLoginAttempts.set(key, attempt);
+  return attempt;
+};
+
+const clearAdminLoginFailures = (key: string) => {
+  adminLoginAttempts.delete(key);
 };
 
 const getAppBaseUrl = (request: express.Request) => {
@@ -3305,7 +3376,6 @@ const buildV2DashboardContract = ({
   clauses,
   deliverableRequirements,
   deliverables,
-  payouts,
 }: {
   contract: SupabaseContractV2Row;
   legacyContract?: Contract;
@@ -3315,7 +3385,6 @@ const buildV2DashboardContract = ({
   clauses: SupabaseContractClauseRow[];
   deliverableRequirements: SupabaseDeliverableRequirementRow[];
   deliverables: SupabaseDeliverableRow[];
-  payouts: SupabasePayoutRow[];
 }): InfluencerDashboardContract => {
   const stage = inferDashboardStage(contract.status, contract.next_actor_role);
   const stageMeta = dashboardStageMeta[stage];
@@ -3345,15 +3414,7 @@ const buildV2DashboardContract = ({
   const approvedDeliverables = deliverables.filter(
     (deliverable) => deliverable.review_status === "approved",
   ).length;
-  const payoutStatus = payouts.find((payout) => payout.status)?.status;
-  const settlementStatus =
-    payoutStatus === "paid"
-      ? "paid"
-      : stage === "signed"
-        ? payoutStatus
-          ? "pending"
-          : "ready"
-        : "not_ready";
+  const recordStatus = stage === "signed" ? "ready" : "not_ready";
 
   return {
     id: contract.id,
@@ -3400,16 +3461,9 @@ const buildV2DashboardContract = ({
       submitted: submittedDeliverables,
       approved: approvedDeliverables,
     },
-    settlement_summary: {
-      status: settlementStatus,
-      label:
-        settlementStatus === "paid"
-          ? "정산 완료"
-          : settlementStatus === "pending"
-            ? "정산 처리 중"
-            : settlementStatus === "ready"
-              ? "정산 준비 가능"
-              : "서명 후 준비",
+    record_summary: {
+      status: recordStatus,
+      label: recordStatus === "ready" ? "서명본 보관됨" : "서명 후 보관",
     },
   };
 };
@@ -3473,9 +3527,9 @@ const buildLegacyDashboardContract = (
       submitted: 0,
       approved: 0,
     },
-    settlement_summary: {
+    record_summary: {
       status: contract.status === "SIGNED" ? "ready" : "not_ready",
-      label: contract.status === "SIGNED" ? "정산 준비 가능" : "서명 후 준비",
+      label: contract.status === "SIGNED" ? "서명본 보관됨" : "서명 후 보관",
     },
   };
 };
@@ -3493,8 +3547,8 @@ const buildDashboardTasks = (
       title: verificationStatus === "pending" ? "계정 인증 검토 중" : "플랫폼 계정 인증 필요",
       body:
         verificationStatus === "pending"
-          ? "운영자 검토가 끝나면 반복 거래와 정산 준비 상태가 갱신됩니다."
-          : "서명은 진행할 수 있지만 반복 거래와 정산 준비에는 플랫폼 소유 확인이 필요합니다.",
+          ? "운영자 검토가 끝나면 계정 인증 상태가 갱신됩니다."
+          : "서명은 진행할 수 있지만 계약 신뢰 확인을 위해 플랫폼 소유 확인을 권장합니다.",
       action_label: verificationStatus === "pending" ? "인증 상태 보기" : "인증 제출",
       href: "/influencer/verification",
     });
@@ -3583,7 +3637,6 @@ const buildInfluencerDashboard = async (
       clauses,
       deliverableRequirements,
       deliverables,
-      payouts,
     ] = await Promise.all([
       readSupabaseRows<SupabaseContractV2Row>(
         "contracts",
@@ -3620,18 +3673,12 @@ const buildInfluencerDashboard = async (
         `?select=contract_id,review_status&contract_id=in.${contractFilter}`,
         "deliverables",
       ),
-      readSupabaseRows<SupabasePayoutRow>(
-        "payouts",
-        `?select=contract_id,status&contract_id=in.${contractFilter}`,
-        "payouts",
-      ),
     ]);
     const partiesByContract = groupByContractId(allParties);
     const platformsByContract = groupByContractId(platforms);
     const clausesByContract = groupByContractId(clauses);
     const requirementsByContract = groupByContractId(deliverableRequirements);
     const deliverablesByContract = groupByContractId(deliverables);
-    const payoutsByContract = groupByContractId(payouts);
     const pricingByContract = new Map(
       pricingTerms.map((pricingTerm) => [pricingTerm.contract_id, pricingTerm]),
     );
@@ -3649,7 +3696,6 @@ const buildInfluencerDashboard = async (
         clauses: clausesByContract.get(contract.id) ?? [],
         deliverableRequirements: requirementsByContract.get(contract.id) ?? [],
         deliverables: deliverablesByContract.get(contract.id) ?? [],
-        payouts: payoutsByContract.get(contract.id) ?? [],
       }),
     );
 
@@ -3809,12 +3855,28 @@ app.post("/api/admin/login", (request, response) => {
   }
 
   const accessCode = String(request.body?.accessCode ?? "");
+  const attemptKey = getAdminLoginAttemptKey(request);
+  const throttle = getAdminLoginThrottle(attemptKey);
+
+  if (throttle.blocked) {
+    response.setHeader("Retry-After", String(throttle.retryAfterSeconds ?? 60));
+    response.status(429).json({
+      error: "Too many failed admin login attempts. Try again later.",
+      retry_after_seconds: throttle.retryAfterSeconds,
+    });
+    return;
+  }
 
   if (!safeEqual(accessCode, adminAccessCode!)) {
+    const attempt = recordAdminLoginFailure(attemptKey);
+    console.warn(
+      `[${productName} Admin] failed login attempt from ${getClientIp(request)} (${attempt.failures}/${adminLoginMaxFailures})`,
+    );
     response.status(401).json({ error: "Invalid admin access code" });
     return;
   }
 
+  clearAdminLoginFailures(attemptKey);
   response.setHeader(
     "Set-Cookie",
     `${adminSessionCookie}=${encodeURIComponent(
@@ -5151,23 +5213,33 @@ app.use(
   },
 );
 
-if (isPreview) {
-  const distDir = path.join(root, "dist");
-  app.use(express.static(distDir));
-  app.get("*", (_request, response) => {
-    response.sendFile(path.join(distDir, "index.html"));
+const isVercelFunction =
+  Boolean(process.env.VERCEL) ||
+  Boolean(process.env.VERCEL_REGION) ||
+  Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME);
+
+if (!isVercelFunction) {
+  if (isPreview) {
+    const distDir = path.join(root, ["di", "st"].join(""));
+    app.use(express.static(distDir));
+    app.get("*", (_request, response) => {
+      response.sendFile(path.join(distDir, "index.html"));
+    });
+  } else {
+    const { createServer: createViteServer } = await import("vite");
+    const vite = await createViteServer({
+      root,
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  }
+
+  app.listen(port, "0.0.0.0", () => {
+    console.log(
+      `[${productName}] ${isPreview ? "preview" : "dev"} server running on http://localhost:${port}`,
+    );
   });
-} else {
-  const vite = await createViteServer({
-    root,
-    server: { middlewareMode: true },
-    appType: "spa",
-  });
-  app.use(vite.middlewares);
 }
 
-app.listen(port, "0.0.0.0", () => {
-  console.log(
-    `[${productName}] ${isPreview ? "preview" : "dev"} server running on http://localhost:${port}`,
-  );
-});
+export default app;

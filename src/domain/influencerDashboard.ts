@@ -78,9 +78,9 @@ export interface InfluencerDashboardContract {
     submitted: number;
     approved: number;
   };
-  settlement_summary: {
+  record_summary: {
     label: string;
-    status: "not_ready" | "ready" | "pending" | "paid";
+    status: "not_ready" | "ready";
   };
 }
 
