@@ -39,6 +39,17 @@ type InfluencerPlatform =
   | "tiktok"
   | "naver_blog"
   | "other";
+type InfluencerActivityCategory =
+  | "mukbang"
+  | "travel"
+  | "beauty"
+  | "fashion"
+  | "fitness"
+  | "tech"
+  | "game"
+  | "education"
+  | "lifestyle"
+  | "finance";
 type InfluencerVerificationMethod =
   | "profile_bio_code"
   | "public_post_code"
@@ -236,12 +247,24 @@ const verificationTypes = new Set([
   "business_registration_certificate",
   "platform_account",
 ]);
-const influencerPlatforms = new Set([
+const influencerPlatforms = new Set<InfluencerPlatform>([
   "instagram",
   "youtube",
   "tiktok",
   "naver_blog",
   "other",
+]);
+const influencerActivityCategories = new Set<InfluencerActivityCategory>([
+  "mukbang",
+  "travel",
+  "beauty",
+  "fashion",
+  "fitness",
+  "tech",
+  "game",
+  "education",
+  "lifestyle",
+  "finance",
 ]);
 const influencerVerificationMethods = new Set([
   "profile_bio_code",
@@ -332,6 +355,8 @@ interface SupabaseProfileRow {
   name: string;
   email: string;
   company_name?: string | null;
+  activity_categories?: InfluencerActivityCategory[] | null;
+  activity_platforms?: InfluencerPlatform[] | null;
   verification_status?: VerificationStatus | "not_submitted";
   email_verified_at?: string | null;
 }
@@ -1584,6 +1609,23 @@ const normalizeRequiredText = (value: unknown) =>
 
 const normalizeEmail = (value: unknown) =>
   normalizeRequiredText(value).toLowerCase();
+
+const normalizeSelectedValues = <T extends string>(
+  value: unknown,
+  allowedValues: ReadonlySet<T>,
+) => {
+  const normalized = Array.isArray(value)
+    ? value.map(normalizeRequiredText).filter(hasText)
+    : [];
+  const invalid = normalized.filter((item) => !allowedValues.has(item as T));
+  const selected = [
+    ...new Set(
+      normalized.filter((item): item is T => allowedValues.has(item as T)),
+    ),
+  ];
+
+  return { selected, invalid };
+};
 
 const isValidEmail = (value: string) =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
@@ -3217,8 +3259,14 @@ const dashboardPlatformLabels: Record<InfluencerPlatform, string> = {
   other: "기타",
 };
 
-const normalizeInfluencerPlatform = (value: string | undefined | null): InfluencerPlatform =>
-  influencerPlatforms.has(value ?? "") ? (value as InfluencerPlatform) : "other";
+const normalizeInfluencerPlatform = (
+  value: string | undefined | null,
+): InfluencerPlatform => {
+  const normalized = value ?? "";
+  return influencerPlatforms.has(normalized as InfluencerPlatform)
+    ? (normalized as InfluencerPlatform)
+    : "other";
+};
 
 const formatKoreanDate = (value: string | undefined | null) => {
   if (!hasText(value ?? undefined)) return "미정";
@@ -3539,8 +3587,9 @@ const buildDashboardTasks = (
   verificationStatus: VerificationStatus,
 ) => {
   const tasks: InfluencerDashboardTask[] = [];
+  const hasActiveContract = contracts.some((contract) => contract.stage !== "signed");
 
-  if (verificationStatus !== "approved") {
+  if (hasActiveContract && verificationStatus !== "approved") {
     tasks.push({
       id: "verification",
       tone: verificationStatus === "rejected" ? "rose" : "amber",
@@ -3742,13 +3791,14 @@ const buildInfluencerDashboard = async (
     const amount = parseMoneyAmount(contract.fee_label);
     return total + (amount ?? 0);
   }, 0);
+  const hasActiveContract = dashboardContracts.some((contract) => contract.stage !== "signed");
   const summary = {
     total_contracts: dashboardContracts.length,
     review_needed: dashboardContracts.filter((contract) => contract.stage === "review_needed").length,
     change_pending: dashboardContracts.filter((contract) => contract.stage === "change_pending").length,
     ready_to_sign: dashboardContracts.filter((contract) => contract.stage === "ready_to_sign").length,
     signed: dashboardContracts.filter((contract) => contract.stage === "signed").length,
-    verification_needed: verificationStatus !== "approved",
+    verification_needed: hasActiveContract && verificationStatus !== "approved",
     next_deadline: nextDeadline,
     total_fixed_fee_label: formatWonAmount(fixedFeeTotal),
   };
@@ -3760,6 +3810,8 @@ const buildInfluencerDashboard = async (
       email: profile?.email ?? authUser.email ?? "",
       name: profile?.name ?? authUser.email ?? "인플루언서",
       role: profile?.role ?? "influencer",
+      activity_categories: profile?.activity_categories ?? [],
+      activity_platforms: profile?.activity_platforms ?? [],
       verification_status: verificationStatus,
       email_verified: Boolean(authUser.email_confirmed_at ?? authUser.confirmed_at ?? profile?.email_verified_at),
     },
@@ -4232,6 +4284,14 @@ app.post("/api/influencer/signup", async (request, response) => {
     const email = normalizeEmail(request.body?.email);
     const password = normalizeRequiredText(request.body?.password);
     const name = normalizeRequiredText(request.body?.name);
+    const activityCategories = normalizeSelectedValues<InfluencerActivityCategory>(
+      request.body?.activity_categories,
+      influencerActivityCategories,
+    );
+    const activityPlatforms = normalizeSelectedValues<InfluencerPlatform>(
+      request.body?.activity_platforms,
+      influencerPlatforms,
+    );
     const passwordError = validateSignupPassword(password);
 
     if (!isValidEmail(email)) {
@@ -4246,6 +4306,20 @@ app.post("/api/influencer/signup", async (request, response) => {
       response.status(422).json({ error: "이름 또는 활동명을 입력해 주세요." });
       return;
     }
+    if (
+      activityCategories.invalid.length > 0 ||
+      activityPlatforms.invalid.length > 0
+    ) {
+      response.status(422).json({ error: "선택할 수 없는 활동 정보가 포함되어 있습니다." });
+      return;
+    }
+    if (
+      activityCategories.selected.length === 0 ||
+      activityPlatforms.selected.length === 0
+    ) {
+      response.status(422).json({ error: "활동 영역과 플랫폼을 각각 하나 이상 선택해 주세요." });
+      return;
+    }
 
     const authUser = await createSupabaseSignupUser({
       email,
@@ -4254,7 +4328,7 @@ app.post("/api/influencer/signup", async (request, response) => {
       redirectTo: buildEmailConfirmationRedirect(
         request,
         "/login/influencer",
-        "/influencer/verification",
+        "/influencer/dashboard",
       ),
     });
 
@@ -4264,6 +4338,8 @@ app.post("/api/influencer/signup", async (request, response) => {
         role: "influencer",
         name,
         email,
+        activity_categories: activityCategories.selected,
+        activity_platforms: activityPlatforms.selected,
         verification_status: "not_submitted",
         email_verified_at: null,
         updated_at: new Date().toISOString(),
@@ -4280,6 +4356,8 @@ app.post("/api/influencer/signup", async (request, response) => {
         email,
         name,
         role: "influencer",
+        activity_categories: activityCategories.selected,
+        activity_platforms: activityPlatforms.selected,
         verification_status: "not_submitted",
       },
     });

@@ -19,6 +19,7 @@ interface AuthLoginScreenProps {
   title: string;
   description?: string;
   fields: AuthLoginField[];
+  children?: React.ReactNode;
   submitLabel: string;
   submittingLabel?: string;
   isSubmitting: boolean;
@@ -31,6 +32,7 @@ export function AuthLoginScreen({
   title,
   description,
   fields,
+  children,
   submitLabel,
   submittingLabel = "확인 중",
   isSubmitting,
@@ -85,6 +87,8 @@ export function AuthLoginScreen({
               />
             </label>
           ))}
+
+          {children}
 
           {error ? (
             <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-[13px] font-semibold leading-5 text-rose-700 shadow-[inset_3px_0_0_rgba(225,29,72,0.35)]">

@@ -1,5 +1,17 @@
 import type { InfluencerPlatform, VerificationRequest, VerificationStatus } from "./verification";
 
+export type InfluencerActivityCategory =
+  | "mukbang"
+  | "travel"
+  | "beauty"
+  | "fashion"
+  | "fitness"
+  | "tech"
+  | "game"
+  | "education"
+  | "lifestyle"
+  | "finance";
+
 export type InfluencerDashboardContractStage =
   | "review_needed"
   | "change_pending"
@@ -12,6 +24,8 @@ export interface InfluencerDashboardUser {
   email: string;
   name: string;
   role: "marketer" | "influencer" | "admin";
+  activity_categories: InfluencerActivityCategory[];
+  activity_platforms: InfluencerPlatform[];
   verification_status: VerificationStatus;
   email_verified: boolean;
 }

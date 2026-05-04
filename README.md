@@ -92,5 +92,6 @@ Advertiser verification is intentionally manual in the first production path:
 - Advertisers can draft contracts immediately.
 - Sending a share link is blocked until a business verification request is approved in `/admin`.
 - Influencers can still open contract links and sign.
-- Influencer platform account verification now asks the creator to place a product challenge code in a platform-specific public location, such as an Instagram bio, YouTube channel description, or Naver Blog profile/post.
+- Public influencer signup only stores checked activity categories and platform selections, then sends the creator to the dashboard after email confirmation and login.
+- Influencer platform account ownership verification is deferred until a contract context exists. It asks the creator to place a product challenge code in a platform-specific public location, such as an Instagram bio, YouTube channel description, or Naver Blog profile/post.
 - `/admin` shows the challenge code, proof URL, screenshot evidence, and automated check status. Operator approval remains authoritative because some platforms block unauthenticated crawls.

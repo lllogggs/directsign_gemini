@@ -265,6 +265,9 @@ export function InfluencerDashboard() {
       .includes(normalizedQuery);
   });
   const verification = VERIFICATION_META[dashboard.verification.status];
+  const showVerificationAction =
+    dashboard.summary.verification_needed ||
+    dashboard.verification.status !== "not_submitted";
 
   const handleLogout = async () => {
     await fetch(`${API_BASE}/api/influencer/logout`, {
@@ -324,6 +327,7 @@ export function InfluencerDashboard() {
             <InfluencerAccountBanner
               dashboard={dashboard}
               verification={verification}
+              showVerificationAction={showVerificationAction}
               onVerify={() => navigate("/influencer/verification")}
             />
             <div className="grid gap-4 p-4 lg:grid-cols-[190px_minmax(0,1fr)] lg:items-center">
@@ -461,13 +465,17 @@ function ErrorView({ message, onRetry }: { message: string; onRetry: () => void 
 function InfluencerAccountBanner({
   dashboard,
   verification,
+  showVerificationAction,
   onVerify,
 }: {
   dashboard: InfluencerDashboardResponse;
   verification: (typeof VERIFICATION_META)[VerificationStatus];
+  showVerificationAction: boolean;
   onVerify: () => void;
 }) {
   const verificationApproved = dashboard.verification.status === "approved";
+  const activityPlatforms = dashboard.user.activity_platforms.slice(0, 3);
+  const approvedPlatforms = dashboard.verification.approved_platforms.slice(0, 2);
 
   return (
     <section className="border-b border-neutral-200/80 bg-[#fcfcfd] px-4 py-3">
@@ -479,12 +487,16 @@ function InfluencerAccountBanner({
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <p className="text-sm font-semibold text-neutral-950">
-                플랫폼 계정 인증
+                {showVerificationAction ? "플랫폼 계정 인증" : "활동 정보"}
               </p>
               <span
-                className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${verification.className}`}
+                className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
+                  showVerificationAction
+                    ? verification.className
+                    : "border-neutral-200 bg-white text-neutral-700"
+                }`}
               >
-                {verification.label}
+                {showVerificationAction ? verification.label : "체크 완료"}
               </span>
             </div>
             <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[12px] leading-4 text-neutral-500">
@@ -496,7 +508,7 @@ function InfluencerAccountBanner({
               <span className="rounded-full bg-neutral-100 px-2 py-0.5 font-semibold text-neutral-600">
                 이메일 {dashboard.user.email_verified ? "확인됨" : "확인 필요"}
               </span>
-              {dashboard.verification.approved_platforms.slice(0, 2).map((platform) => (
+              {approvedPlatforms.map((platform) => (
                 <span
                   key={`${platform.platform}:${platform.handle}`}
                   className="inline-flex max-w-[170px] items-center gap-1.5 truncate rounded-full bg-neutral-100 px-2 py-0.5 font-semibold text-neutral-600"
@@ -505,21 +517,33 @@ function InfluencerAccountBanner({
                   <span className="truncate">{platform.handle}</span>
                 </span>
               ))}
+              {approvedPlatforms.length === 0 &&
+                activityPlatforms.map((platform) => (
+                  <span
+                    key={platform}
+                    className="inline-flex max-w-[170px] items-center gap-1.5 truncate rounded-full bg-neutral-100 px-2 py-0.5 font-semibold text-neutral-600"
+                  >
+                    {PLATFORM_META[platform].icon}
+                    <span className="truncate">{PLATFORM_META[platform].label}</span>
+                  </span>
+                ))}
             </div>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={onVerify}
-          className={`inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-3 text-[13px] font-semibold transition ${
-            verificationApproved
-              ? "border border-neutral-200 bg-white text-neutral-800 hover:border-neutral-300 hover:bg-neutral-50"
-              : "bg-neutral-950 text-white hover:bg-neutral-800"
-          }`}
-        >
-          <BadgeCheck className="h-3.5 w-3.5" />
-          {verificationApproved ? "플랫폼 인증 관리" : "플랫폼 계정 인증"}
-        </button>
+        {showVerificationAction ? (
+          <button
+            type="button"
+            onClick={onVerify}
+            className={`inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-3 text-[13px] font-semibold transition ${
+              verificationApproved
+                ? "border border-neutral-200 bg-white text-neutral-800 hover:border-neutral-300 hover:bg-neutral-50"
+                : "bg-neutral-950 text-white hover:bg-neutral-800"
+            }`}
+          >
+            <BadgeCheck className="h-3.5 w-3.5" />
+            {verificationApproved ? "플랫폼 인증 관리" : "플랫폼 계정 인증"}
+          </button>
+        ) : null}
       </div>
     </section>
   );

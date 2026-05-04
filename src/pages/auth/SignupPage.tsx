@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ArrowRight, MailCheck, ShieldCheck } from "lucide-react";
+import { ArrowRight, Check, MailCheck, ShieldCheck } from "lucide-react";
 import { AuthLoginScreen } from "../../components/AuthLoginScreen";
 import { PRODUCT_NAME } from "../../domain/brand";
 
@@ -18,6 +18,32 @@ type SignupResponse = {
   error?: string;
 };
 
+const INFLUENCER_CATEGORY_OPTIONS = [
+  { value: "mukbang", label: "먹방" },
+  { value: "travel", label: "여행" },
+  { value: "beauty", label: "뷰티" },
+  { value: "fashion", label: "패션" },
+  { value: "fitness", label: "운동/건강" },
+  { value: "tech", label: "IT/테크" },
+  { value: "game", label: "게임" },
+  { value: "education", label: "교육" },
+  { value: "lifestyle", label: "라이프스타일" },
+  { value: "finance", label: "경제/재테크" },
+] as const;
+
+const INFLUENCER_PLATFORM_OPTIONS = [
+  { value: "instagram", label: "인스타그램" },
+  { value: "youtube", label: "유튜브" },
+  { value: "tiktok", label: "틱톡" },
+  { value: "naver_blog", label: "네이버 블로그" },
+  { value: "other", label: "기타" },
+] as const;
+
+type InfluencerActivityCategory =
+  (typeof INFLUENCER_CATEGORY_OPTIONS)[number]["value"];
+type InfluencerSignupPlatform =
+  (typeof INFLUENCER_PLATFORM_OPTIONS)[number]["value"];
+
 const roleConfig = {
   advertiser: {
     title: "광고주 계정 만들기",
@@ -28,7 +54,7 @@ const roleConfig = {
   influencer: {
     title: "인플루언서 계정 만들기",
     endpoint: "/api/influencer/signup",
-    nextPath: "/influencer/verification",
+    nextPath: "/influencer/dashboard",
     loginPath: "/login/influencer",
   },
 } satisfies Record<SignupRole, {
@@ -46,6 +72,12 @@ export function SignupPage({ role }: { role: SignupRole }) {
   const [companyName, setCompanyName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [activityCategories, setActivityCategories] = useState<
+    InfluencerActivityCategory[]
+  >([]);
+  const [activityPlatforms, setActivityPlatforms] = useState<
+    InfluencerSignupPlatform[]
+  >([]);
   const [error, setError] = useState("");
   const [confirmationEmail, setConfirmationEmail] = useState("");
   const [confirmationMessage, setConfirmationMessage] = useState("");
@@ -60,6 +92,14 @@ export function SignupPage({ role }: { role: SignupRole }) {
 
     try {
       const normalizedEmail = email.trim().toLowerCase();
+
+      if (
+        role === "influencer" &&
+        (activityCategories.length === 0 || activityPlatforms.length === 0)
+      ) {
+        throw new Error("활동 영역과 플랫폼을 각각 하나 이상 선택해 주세요.");
+      }
+
       const response = await fetch(`${API_BASE}${config.endpoint}`, {
         method: "POST",
         headers: {
@@ -72,6 +112,12 @@ export function SignupPage({ role }: { role: SignupRole }) {
           email: normalizedEmail,
           password,
           ...(role === "advertiser" ? { company_name: companyName.trim() } : {}),
+          ...(role === "influencer"
+            ? {
+                activity_categories: activityCategories,
+                activity_platforms: activityPlatforms,
+              }
+            : {}),
         }),
       });
       const data = (await response.json()) as SignupResponse;
@@ -222,6 +268,80 @@ export function SignupPage({ role }: { role: SignupRole }) {
         </Link>
       }
       onSubmit={handleSubmit}
-    />
+    >
+      {role === "influencer" ? (
+        <>
+          <MultiSelectGroup
+            label="활동 영역"
+            options={INFLUENCER_CATEGORY_OPTIONS}
+            selectedValues={activityCategories}
+            disabled={isSubmitting}
+            onToggle={(value) =>
+              setActivityCategories((current) => toggleValue(current, value))
+            }
+          />
+          <MultiSelectGroup
+            label="활동 플랫폼"
+            options={INFLUENCER_PLATFORM_OPTIONS}
+            selectedValues={activityPlatforms}
+            disabled={isSubmitting}
+            onToggle={(value) =>
+              setActivityPlatforms((current) => toggleValue(current, value))
+            }
+          />
+        </>
+      ) : null}
+    </AuthLoginScreen>
+  );
+}
+
+function toggleValue<T extends string>(values: T[], value: T) {
+  return values.includes(value)
+    ? values.filter((current) => current !== value)
+    : [...values, value];
+}
+
+function MultiSelectGroup<T extends string>({
+  label,
+  options,
+  selectedValues,
+  disabled,
+  onToggle,
+}: {
+  label: string;
+  options: readonly { value: T; label: string }[];
+  selectedValues: T[];
+  disabled: boolean;
+  onToggle: (value: T) => void;
+}) {
+  return (
+    <fieldset className="space-y-2">
+      <legend className="text-[13px] font-semibold text-neutral-800">
+        {label}
+      </legend>
+      <div className="flex flex-wrap gap-2">
+        {options.map((option) => {
+          const selected = selectedValues.includes(option.value);
+
+          return (
+            <button
+              key={option.value}
+              type="button"
+              aria-pressed={selected}
+              disabled={disabled}
+              onClick={() => onToggle(option.value)}
+              className={`inline-flex h-10 items-center gap-1.5 rounded-lg border px-3 text-[13px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                selected
+                  ? "border-neutral-950 bg-neutral-950 text-white"
+                  : "border-neutral-200 bg-[#fbfbfc] text-neutral-700 hover:border-neutral-400 hover:bg-white"
+              }`}
+            >
+              {selected ? <Check className="h-3.5 w-3.5" /> : null}
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+    </fieldset>
   );
 }
