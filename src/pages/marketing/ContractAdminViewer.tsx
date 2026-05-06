@@ -3,7 +3,6 @@ import { useNavigate, useParams } from "react-router-dom";
 import {
   AlertCircle,
   ArrowLeft,
-  ArrowUpRight,
   CalendarClock,
   CheckCircle2,
   Clock3,
@@ -30,6 +29,19 @@ const buildShareUrl = (contractId: string, shareToken?: string) =>
   `${window.location.origin}/contract/${contractId}${
     shareToken ? `?token=${encodeURIComponent(shareToken)}` : ""
   }`;
+
+const getSafeExternalHref = (value?: string) => {
+  if (!value) return undefined;
+
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:"
+      ? url.toString()
+      : undefined;
+  } catch {
+    return undefined;
+  }
+};
 
 const STATUS_META: Record<
   ContractStatus,
@@ -109,6 +121,9 @@ export function ContractAdminViewer() {
       shareUrl: buildShareUrl(contract.id, contract.evidence?.share_token),
     };
   }, [contract]);
+  const safeInfluencerHref = getSafeExternalHref(
+    contract?.influencer_info.channel_url,
+  );
 
   if (!contract || !summary) {
     return (
@@ -463,15 +478,25 @@ export function ContractAdminViewer() {
                   value={contract.influencer_info.name}
                   helper={contract.influencer_info.contact || "연락처 미입력"}
                 />
-                <a
-                  href={contract.influencer_info.channel_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center justify-between rounded-lg border border-neutral-200 bg-[#fbfbfc] px-3 py-3 text-[13px] font-semibold text-neutral-700 transition hover:-translate-y-0.5 hover:border-neutral-300 hover:bg-white hover:shadow-[0_12px_26px_rgba(15,23,42,0.08)]"
-                >
-                  채널 열기
-                  <ExternalLink className="h-4 w-4 text-neutral-400" />
-                </a>
+                {safeInfluencerHref ? (
+                  <a
+                    href={safeInfluencerHref}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="flex items-center justify-between rounded-lg border border-neutral-200 bg-[#fbfbfc] px-3 py-3 text-[13px] font-semibold text-neutral-700 transition hover:-translate-y-0.5 hover:border-neutral-300 hover:bg-white hover:shadow-[0_12px_26px_rgba(15,23,42,0.08)]"
+                  >
+                    채널 열기
+                    <ExternalLink className="h-4 w-4 text-neutral-400" />
+                  </a>
+                ) : (
+                  <div
+                    aria-disabled="true"
+                    className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-[13px] font-semibold text-amber-800"
+                  >
+                    채널 주소 확인 필요
+                    <ExternalLink className="h-4 w-4 text-amber-500" />
+                  </div>
+                )}
               </div>
             </Panel>
 

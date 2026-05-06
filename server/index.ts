@@ -180,6 +180,21 @@ const supabaseSchemaVersion = process.env.SUPABASE_SCHEMA_VERSION ?? "v2";
 const useSupabase = Boolean(supabaseUrl && supabaseServiceRoleKey);
 const useSupabaseV2 = useSupabase && supabaseSchemaVersion !== "legacy";
 const demoMode = process.env.DIRECTSIGN_DEMO_MODE === "true";
+
+if (isProductionRuntime && !demoMode) {
+  if (!useSupabase) {
+    throw new Error(
+      "Production requires Supabase. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.",
+    );
+  }
+
+  if (!supabasePublishableKey) {
+    throw new Error(
+      "Production requires SUPABASE_PUBLISHABLE_KEY for public Auth calls.",
+    );
+  }
+}
+
 const runtimeSecretsFile = path.join(dataDir, "runtime-secrets.json");
 const readConfiguredServerSecret = (name: string) => {
   const value = process.env[name]?.trim();
@@ -306,8 +321,10 @@ const advertiserAccessCookie = "directsign_advertiser_access";
 const advertiserRefreshCookie = "directsign_advertiser_refresh";
 const influencerAccessCookie = "directsign_influencer_access";
 const influencerRefreshCookie = "directsign_influencer_refresh";
+const signedPdfAccessCookie = "yeollock_signed_pdf_access";
 const influencerAccessMaxAgeSeconds = 60 * 60;
 const influencerRefreshMaxAgeSeconds = 60 * 60 * 24 * 14;
+const signedPdfAccessMaxAgeSeconds = 60 * 10;
 const defaultAdvertiserTargetId =
   process.env.DIRECTSIGN_DEFAULT_ADVERTISER_ID ?? "adv_1";
 const defaultInfluencerTargetId =
@@ -321,6 +338,8 @@ const allowLocalPrivateFileFallback =
   (!isProductionRuntime &&
     process.env.DIRECTSIGN_ALLOW_LOCAL_PRIVATE_FILE_FALLBACK === "true");
 const signatureConsentVersion = "directsign-signature-consent-v1";
+const signatureConsentText =
+  "계약 최종본, 모든 조항, 서명 증빙 보관 기준, 전자서명 안내 문서를 확인했고 전자서명에 동의합니다.";
 const productName = process.env.PRODUCT_NAME ?? process.env.VITE_PRODUCT_NAME ?? "yeollock.me";
 const signupTermsVersion = "2026-05-06";
 const signupPrivacyPolicyVersion = "2026-05-06";
@@ -382,7 +401,7 @@ const shareTokenEncryptionSecret = resolveServerSecret({
 });
 
 export const app = express();
-app.set("trust proxy", true);
+app.set("trust proxy", isHostedRuntime ? 1 : false);
 app.use(express.json({ limit: "10mb" }));
 
 const stateChangingMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -824,7 +843,7 @@ const supabaseHeaders = () => {
 };
 
 const supabaseAuthHeaders = (accessToken?: string) => {
-  const key = supabasePublishableKey ?? supabaseServiceRoleKey;
+  const key = supabasePublishableKey;
 
   if (!supabaseUrl || !key) {
     throw new Error("Supabase Auth is not configured");
@@ -1590,6 +1609,91 @@ const parseCookies = (cookieHeader: string | undefined) => {
       if (!rawKey || rawValue.length === 0) return [];
       return [[rawKey, decodeURIComponent(rawValue.join("="))]];
     }),
+  );
+};
+
+const signedPdfCookieOptions = (maxAgeSeconds = signedPdfAccessMaxAgeSeconds) =>
+  [
+    "HttpOnly",
+    "SameSite=Lax",
+    "Path=/",
+    `Max-Age=${maxAgeSeconds}`,
+    isPreview ? "Secure" : "",
+  ].filter(Boolean).join("; ");
+
+const createSignedPdfAccessToken = (contract: Contract) => {
+  const signatureHash = contract.signature_data?.signature_hash;
+  if (!shareTokenEncryptionSecret || !hasText(signatureHash)) return undefined;
+
+  const payload = Buffer.from(
+    JSON.stringify({
+      contract_id: contract.id,
+      signature_hash: signatureHash,
+      expires_at: Date.now() + signedPdfAccessMaxAgeSeconds * 1000,
+      nonce: randomBytes(16).toString("hex"),
+    }),
+    "utf8",
+  ).toString("base64url");
+  const signature = createHmac("sha256", shareTokenEncryptionSecret)
+    .update(payload)
+    .digest("hex");
+
+  return `${payload}.${signature}`;
+};
+
+const verifySignedPdfAccessToken = (
+  token: string | undefined,
+  contract: Contract,
+) => {
+  if (!shareTokenEncryptionSecret || !token) return false;
+
+  const [payload, signature] = token.split(".");
+  if (!payload || !signature) return false;
+
+  const expectedSignature = createHmac("sha256", shareTokenEncryptionSecret)
+    .update(payload)
+    .digest("hex");
+  if (!safeEqual(signature, expectedSignature)) return false;
+
+  try {
+    const parsed = JSON.parse(
+      Buffer.from(payload, "base64url").toString("utf8"),
+    ) as {
+      contract_id?: string;
+      signature_hash?: string;
+      expires_at?: number;
+    };
+
+    return (
+      parsed.contract_id === contract.id &&
+      parsed.signature_hash === contract.signature_data?.signature_hash &&
+      typeof parsed.expires_at === "number" &&
+      parsed.expires_at >= Date.now()
+    );
+  } catch {
+    return false;
+  }
+};
+
+const hasSignedPdfCookieAccess = (
+  request: express.Request,
+  contract: Contract,
+) =>
+  verifySignedPdfAccessToken(
+    parseCookies(request.header("cookie")).get(signedPdfAccessCookie),
+    contract,
+  );
+
+const setSignedPdfAccessCookie = (
+  response: express.Response,
+  contract: Contract,
+) => {
+  const token = createSignedPdfAccessToken(contract);
+  if (!token) return;
+
+  response.append(
+    "Set-Cookie",
+    `${signedPdfAccessCookie}=${encodeURIComponent(token)}; ${signedPdfCookieOptions()}`,
   );
 };
 
@@ -2366,6 +2470,17 @@ const normalizeUrlValue = (value: unknown) => {
     return url.toString();
   } catch {
     return undefined;
+  }
+};
+
+const isSafeHttpUrl = (value: string | undefined) => {
+  if (!hasText(value)) return false;
+
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
   }
 };
 
@@ -3725,6 +3840,15 @@ const validateContractPayload = (contract: Contract) => {
   if (!hasText(contract.influencer_info?.name)) {
     return "Influencer name is required";
   }
+  if (!isSafeHttpUrl(contract.influencer_info?.channel_url)) {
+    return "Influencer channel URL must be an http(s) URL";
+  }
+  if (
+    hasText(contract.campaign?.tracking_link) &&
+    !isSafeHttpUrl(contract.campaign?.tracking_link)
+  ) {
+    return "Tracking link must be an http(s) URL";
+  }
   if (!Array.isArray(contract.clauses) || contract.clauses.length === 0) {
     return "At least one clause is required";
   }
@@ -4226,6 +4350,7 @@ const normalizeComparableUrl = (value: string | undefined) => {
   if (!hasText(value)) return undefined;
   try {
     const url = new URL(value);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return undefined;
     return `${url.protocol}//${url.hostname.toLowerCase()}${url.pathname.replace(/\/+$/, "")}`;
   } catch {
     return undefined;
@@ -4238,19 +4363,18 @@ const verificationMatchesPlatformAccount = (
   platformUrl?: string,
 ) => {
   if (request.status !== "approved" || request.platform !== platform) return false;
+  if (!hasText(platformUrl)) return false;
 
   const inferredPlatform = normalizeInfluencerPlatform(
     mapPlatformToV2(inferPlatformFromUrl(platformUrl) ?? "OTHER"),
   );
 
-  if (platformUrl && inferredPlatform === platform) {
-    const contractUrl = normalizeComparableUrl(platformUrl);
-    const verifiedUrl = normalizeComparableUrl(request.platform_url);
-    if (!contractUrl || !verifiedUrl) return false;
-    return contractUrl === verifiedUrl;
-  }
+  if (inferredPlatform !== platform) return false;
 
-  return true;
+  const contractUrl = normalizeComparableUrl(platformUrl);
+  const verifiedUrl = normalizeComparableUrl(request.platform_url);
+  if (!contractUrl || !verifiedUrl) return false;
+  return contractUrl === verifiedUrl;
 };
 
 const verificationMatchesContractPlatform = (
@@ -4495,6 +4619,71 @@ const isContractSendAttempt = (
     incoming.status !== "DRAFT" && (!existing || existing.status === "DRAFT");
 
   return newShareLinkIssued || movingOutOfDraft;
+};
+
+const buildServerAuthoredContract = (
+  actor: Exclude<AuditActor, "system">,
+  existing: Contract | undefined,
+  incoming: Contract,
+) => {
+  const preservedAuditEvents = existing?.audit_events ?? [];
+  const incomingAuditEvents = incoming.audit_events ?? [];
+  const hadClientAppendedAudit =
+    incomingAuditEvents.length > preservedAuditEvents.length;
+
+  let action = "";
+  let description = "";
+
+  if (!existing) {
+    action = incoming.status === "DRAFT" ? "draft_saved" : "contract_created";
+    description =
+      incoming.status === "DRAFT"
+        ? "광고주가 계약 초안을 저장했습니다."
+        : "광고주가 계약을 생성했습니다.";
+  } else if (actor === "advertiser" && isContractSendAttempt(existing, incoming)) {
+    action = "share_link_issued";
+    description = "광고주 인증 확인 후 계약 공유 링크를 발급했습니다.";
+  } else if (existing.status !== incoming.status) {
+    action = "contract_status_changed";
+    description = `${actorDisplayName(incoming, actor) ?? actor}가 계약 상태를 ${incoming.status}(으)로 변경했습니다.`;
+  } else if (hadClientAppendedAudit) {
+    action =
+      actor === "influencer"
+        ? "contract_review_updated"
+        : "contract_updated";
+    description =
+      actor === "influencer"
+        ? "인플루언서가 계약 조항 검토 결과를 제출했습니다."
+        : "광고주가 계약 내용을 저장했습니다.";
+  }
+
+  if (!action) {
+    return {
+      ...incoming,
+      audit_events: preservedAuditEvents,
+    };
+  }
+
+  const serverEvent: NonNullable<Contract["audit_events"]>[number] = {
+    id: randomUUID(),
+    actor,
+    action,
+    description,
+    created_at: new Date().toISOString(),
+  };
+
+  const relatedClauseId = incomingAuditEvents
+    .slice(preservedAuditEvents.length)
+    .find((event) => hasText(event.related_clause_id))?.related_clause_id;
+
+  if (relatedClauseId) {
+    serverEvent.related_clause_id = relatedClauseId;
+  }
+
+  return {
+    ...incoming,
+    audit_events: [...preservedAuditEvents, serverEvent],
+  };
 };
 
 const postgrestInFilter = (values: string[]) =>
@@ -6811,12 +7000,18 @@ app.get("/api/contracts/:id/final-pdf", async (request, response, next) => {
       return;
     }
 
-    const access = await resolveLegacyContractAccess(request, response, contract);
-    if (!access) {
+    const access = await resolveLegacyContractAccess(request, response, contract, {
+      allowShareToken: false,
+      sendError: false,
+    });
+    const signedPdfCookieAccess = !access && hasSignedPdfCookieAccess(request, contract);
+
+    if (!access && !signedPdfCookieAccess) {
+      response.status(403).json({ error: "Signed PDF access is not allowed" });
       return;
     }
 
-    if (access.role === "admin") {
+    if (access?.role === "admin") {
       if (access.supportAccess.scope !== "contract_and_pdf") {
         response.status(403).json({
           error: "This support access request does not include PDF access",
@@ -6886,7 +7081,6 @@ app.post("/api/contracts/:id/signatures/influencer", async (request, response, n
     const signatureData = String(request.body?.signature_data ?? "");
     const signerName = normalizeRequiredText(request.body?.signer_name);
     const consentAccepted = request.body?.consent_accepted === true;
-    const consentText = normalizeRequiredText(request.body?.consent_text);
 
     if (!hasText(signatureData) || !signatureData.startsWith("data:image/")) {
       response.status(400).json({ error: "Valid signature image data is required" });
@@ -7001,7 +7195,7 @@ app.post("/api/contracts/:id/signatures/influencer", async (request, response, n
       signerName,
       signerEmail: existing.influencer_info.contact,
       clientIp,
-      consentText,
+      consentText: signatureConsentText,
     });
     const signedPdfFile = await storePrivateBuffer({
       area: "signed-contracts",
@@ -7045,7 +7239,7 @@ app.post("/api/contracts/:id/signatures/influencer", async (request, response, n
         user_agent: userAgent,
         signer_name: signerName,
         signer_email: existing.influencer_info.contact,
-        consent_text: consentText || "계약 조항을 확인했고 전자서명에 동의합니다.",
+        consent_text: signatureConsentText,
         consent_text_version: signatureConsentVersion,
         contract_hash: contractHash,
         signature_hash: signatureHash,
@@ -7067,6 +7261,7 @@ app.post("/api/contracts/:id/signatures/influencer", async (request, response, n
     const nextStore = mergeContractIntoStore(store, existingIndex, updatedContract);
 
     await writeStore(nextStore);
+    setSignedPdfAccessCookie(response, updatedContract);
     response.json({ contract: updatedContract });
   } catch (error) {
     next(error);
@@ -7192,13 +7387,19 @@ app.put("/api/contracts/:id", async (request, response, next) => {
       return;
     }
 
+    const updatedContract = buildServerAuthoredContract(
+      actor as Exclude<AuditActor, "system">,
+      existingContract,
+      normalizedContract,
+    );
+
     const nextStore = mergeContractIntoStore(
       store,
       existingIndex,
-      normalizedContract,
+      updatedContract,
     );
     await writeStore(nextStore);
-    response.json({ contract: normalizedContract });
+    response.json({ contract: updatedContract });
   } catch (error) {
     next(error);
   }

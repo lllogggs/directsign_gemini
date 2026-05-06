@@ -331,8 +331,6 @@ export function ContractViewer() {
       signatureMode === "typed"
         ? createTypedSignatureDataUrl(signerName)
         : canvas.toDataURL("image/png");
-    const consentText = "계약 조항을 확인했고 전자서명에 동의합니다.";
-
     if (!dataUrl) {
       setIsSignLoading(false);
       setSignError("Signature image could not be generated.");
@@ -353,7 +351,6 @@ export function ContractViewer() {
           signature_data: dataUrl,
           signer_name: signerName.trim(),
           consent_accepted: consentAccepted,
-          consent_text: consentText,
         }),
       });
 
@@ -388,7 +385,6 @@ export function ContractViewer() {
           credentials: "include",
           headers: {
             Accept: "application/pdf",
-            "X-Yeollock-Share-Token": shareToken,
           },
         },
       );
@@ -727,15 +723,11 @@ export function ContractViewer() {
       ? `/api/contracts/${encodeURIComponent(contract.id)}/final-pdf`
       : undefined);
   const finalPdfHref =
-    rawFinalPdfHref && shareToken
+    rawFinalPdfHref && supportAccessRequestId
       ? `${rawFinalPdfHref}${
           rawFinalPdfHref.includes("?") ? "&" : "?"
-        }token=${encodeURIComponent(shareToken)}`
-      : rawFinalPdfHref && supportAccessRequestId
-        ? `${rawFinalPdfHref}${
-            rawFinalPdfHref.includes("?") ? "&" : "?"
-          }support=${encodeURIComponent(supportAccessRequestId)}`
-        : rawFinalPdfHref;
+        }support=${encodeURIComponent(supportAccessRequestId)}`
+      : rawFinalPdfHref;
   const signatureEvidenceRows = signatureData
     ? [
         { label: "서명자", value: signatureData.signer_name || contract.influencer_info.name },

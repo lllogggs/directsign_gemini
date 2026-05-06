@@ -363,11 +363,11 @@ export function LegalDocumentPage({
               <span
                 className={`w-fit rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
                   hasConfiguredLegalOperator
-                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    ? "border-neutral-200 bg-white text-neutral-700"
                     : "border-amber-200 bg-amber-50 text-amber-700"
                 }`}
               >
-                {hasConfiguredLegalOperator ? "운영 정보 설정됨" : "출시 전 입력 필요"}
+                {hasConfiguredLegalOperator ? "운영 정보 설정됨" : "운영 정보 확인 필요"}
               </span>
             </div>
             <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
@@ -377,7 +377,7 @@ export function LegalDocumentPage({
                     {field.label}
                   </dt>
                   <dd className="mt-1 font-medium text-neutral-800">
-                    {field.value ?? "미설정"}
+                    {field.value ?? "운영자에게 문의"}
                   </dd>
                 </div>
               ))}

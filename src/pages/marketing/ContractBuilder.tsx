@@ -127,6 +127,15 @@ const INITIAL_DRAFT: ContractDraft = {
 const isBlank = (value?: string) => !value || value.trim().length === 0;
 const REQUIRED_DISCLOSURE_PATTERN = /광고|유료|협찬|대가|sponsored|ad/i;
 
+const isHttpUrl = (value: string) => {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+
 const addDays = (days: number) => {
   const date = new Date();
   date.setDate(date.getDate() + days);
@@ -293,6 +302,22 @@ const validateContractDraft = (draft: ContractDraft): ValidationError[] => {
   requireField(1, "influencerName", draft.influencerName, "인플루언서명 또는 채널명을 입력하세요.");
   requireField(1, "influencerUrl", draft.influencerUrl, "메인 채널 URL을 입력하세요.");
   requireField(1, "influencerContact", draft.influencerContact, "연락처를 입력하세요.");
+
+  if (!isBlank(draft.influencerUrl) && !isHttpUrl(draft.influencerUrl)) {
+    errors.push({
+      step: 1,
+      field: "influencerUrl",
+      message: "메인 채널 URL은 http 또는 https 주소여야 합니다.",
+    });
+  }
+
+  if (!isBlank(draft.trackingLink) && !isHttpUrl(draft.trackingLink)) {
+    errors.push({
+      step: 3,
+      field: "trackingLink",
+      message: "추적 링크는 http 또는 https 주소만 입력할 수 있습니다.",
+    });
+  }
 
   const deliverables = getDeliverableRows(draft);
   if (deliverables.length === 0) {
@@ -1323,7 +1348,10 @@ export function ContractBuilder() {
                         : "서버 저장소에 반영되어 다른 브라우저에서도 링크를 열 수 있습니다."}
                   </div>
                 )}
-                {result.mode === "share" && result.link && (
+                {result.mode === "share" &&
+                  result.link &&
+                  shareResultState === "ready" &&
+                  !result.stale && (
                   <div className="flex w-full items-center gap-3">
                     <Input
                       readOnly

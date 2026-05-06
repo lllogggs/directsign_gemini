@@ -31,6 +31,19 @@ const API_BASE =
     ? (import.meta.env.VITE_API_BASE_URL ?? "")
     : "";
 
+const clearLegacyPersistedContracts = () => {
+  if (typeof window === "undefined") return;
+
+  for (const key of [
+    "directsign-contract-store",
+    "yeollock-contract-store",
+  ]) {
+    window.localStorage.removeItem(key);
+  }
+};
+
+clearLegacyPersistedContracts();
+
 const getErrorMessage = (error: unknown) =>
   error instanceof Error ? error.message : "서버 동기화에 실패했습니다.";
 
@@ -434,9 +447,9 @@ export const useAppStore = create<AppState>()(
       getContract: (id) => get().contracts.find((contract) => contract.id === id),
     }),
     {
-      name: "directsign-contract-store",
-      storage: createJSONStorage(() => localStorage),
-      partialize: (state) => ({ contracts: state.contracts }),
+      name: "yeollock-contract-ui-state",
+      storage: createJSONStorage(() => sessionStorage),
+      partialize: () => ({ contracts: [] }),
       onRehydrateStorage: () => (state) => {
         if (state) {
           state.isHydrated = false;
