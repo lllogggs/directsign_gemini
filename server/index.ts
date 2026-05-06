@@ -1,14 +1,21 @@
 import express from "express";
 import dotenv from "dotenv";
+import fsSync from "node:fs";
 import fs from "node:fs/promises";
+import { request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
 import path from "node:path";
 import {
+  createCipheriv,
+  createDecipheriv,
   createHash,
   createHmac,
   randomBytes,
   randomUUID,
   timingSafeEqual,
 } from "node:crypto";
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
 import { fileURLToPath } from "node:url";
 import { createDemoContracts, createShareToken } from "../src/domain/contracts.js";
 import type { Contract } from "../src/domain/contracts.js";
@@ -157,7 +164,12 @@ const dataFile = path.join(dataDir, "contracts.json");
 const verificationDataFile = path.join(dataDir, "verification-requests.json");
 const supportAccessDataFile = path.join(dataDir, "support-access-requests.json");
 const port = Number(process.env.PORT ?? 3000);
-const isPreview = process.argv.includes("--preview") || process.env.NODE_ENV === "production";
+const isHostedRuntime =
+  Boolean(process.env.VERCEL) ||
+  Boolean(process.env.VERCEL_REGION) ||
+  Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME);
+const isProductionRuntime = process.env.NODE_ENV === "production" || isHostedRuntime;
+const isPreview = process.argv.includes("--preview") || isProductionRuntime;
 const supabaseUrl = process.env.SUPABASE_URL?.replace(/\/$/, "");
 const supabasePublishableKey =
   process.env.SUPABASE_PUBLISHABLE_KEY ?? process.env.SUPABASE_ANON_KEY;
@@ -168,9 +180,126 @@ const supabaseSchemaVersion = process.env.SUPABASE_SCHEMA_VERSION ?? "v2";
 const useSupabase = Boolean(supabaseUrl && supabaseServiceRoleKey);
 const useSupabaseV2 = useSupabase && supabaseSchemaVersion !== "legacy";
 const demoMode = process.env.DIRECTSIGN_DEMO_MODE === "true";
-const adminAccessCode = process.env.ADMIN_ACCESS_CODE;
-const adminSessionSecret =
-  process.env.ADMIN_SESSION_SECRET ?? (demoMode ? supabaseServiceRoleKey : undefined);
+const runtimeSecretsFile = path.join(dataDir, "runtime-secrets.json");
+const readConfiguredServerSecret = (name: string) => {
+  const value = process.env[name]?.trim();
+  return value && value.length > 0 ? value : undefined;
+};
+
+interface RuntimeSecretsFile {
+  secrets?: Record<string, string>;
+}
+
+const readLocalRuntimeSecrets = () => {
+  if (isProductionRuntime && !demoMode) return new Map<string, string>();
+
+  try {
+    const parsed = JSON.parse(
+      fsSync.readFileSync(runtimeSecretsFile, "utf8"),
+    ) as RuntimeSecretsFile;
+    return new Map(
+      Object.entries(parsed.secrets ?? {}).filter(
+        (entry): entry is [string, string] =>
+          typeof entry[0] === "string" &&
+          typeof entry[1] === "string" &&
+          entry[1].trim().length > 0,
+      ),
+    );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      console.warn("[yeollock.me] failed to read local runtime secrets; generating fresh local secrets");
+    }
+    return new Map<string, string>();
+  }
+};
+
+const localRuntimeSecrets = readLocalRuntimeSecrets();
+
+const writeLocalRuntimeSecrets = () => {
+  fsSync.mkdirSync(dataDir, { recursive: true });
+  fsSync.writeFileSync(
+    runtimeSecretsFile,
+    `${JSON.stringify(
+      { secrets: Object.fromEntries(localRuntimeSecrets) },
+      null,
+      2,
+    )}\n`,
+    { encoding: "utf8", mode: 0o600 },
+  );
+
+  try {
+    fsSync.chmodSync(runtimeSecretsFile, 0o600);
+  } catch {
+    // Best effort on platforms that support POSIX file modes.
+  }
+};
+
+const getLocalRuntimeSecret = (name: string, purpose: string) => {
+  const existing = localRuntimeSecrets.get(name);
+  if (existing && existing.trim().length >= 32) return existing;
+
+  const value = randomBytes(48).toString("base64url");
+  localRuntimeSecrets.set(name, value);
+  writeLocalRuntimeSecrets();
+  console.warn(
+    `[yeollock.me] ${name} is not set; generated a local runtime secret in ${path.relative(
+      root,
+      runtimeSecretsFile,
+    )} for ${purpose}. Set ${name} in production and keep it stable across deployments.`,
+  );
+  return value;
+};
+
+const obviousSecretPlaceholderPattern =
+  /^(YOUR_|MY_|CHANGE_ME|REPLACE_ME|TODO|EXAMPLE|TEST_SECRET)/i;
+
+const resolveServerSecret = ({
+  name,
+  purpose,
+  requiredInProduction = false,
+  generateLocal = false,
+  minLength = 32,
+}: {
+  name: string;
+  purpose: string;
+  requiredInProduction?: boolean;
+  generateLocal?: boolean;
+  minLength?: number;
+}) => {
+  const configured = readConfiguredServerSecret(name);
+
+  if (configured) {
+    const looksUnsafe =
+      configured.length < minLength || obviousSecretPlaceholderPattern.test(configured);
+    if (looksUnsafe && isProductionRuntime && !demoMode) {
+      throw new Error(
+        `${name} must be a long random server-side value before production. Run npm run secrets:generate and store the generated value in the deployment environment.`,
+      );
+    }
+    if (looksUnsafe) {
+      console.warn(
+        `[yeollock.me] ${name} looks short or placeholder-like; replace it with a long random value before production.`,
+      );
+    }
+    return configured;
+  }
+
+  if (requiredInProduction && isProductionRuntime && !demoMode) {
+    throw new Error(
+      `${name} is required in production for ${purpose}. Run npm run secrets:generate and store the generated value in the deployment environment.`,
+    );
+  }
+
+  return generateLocal ? getLocalRuntimeSecret(name, purpose) : undefined;
+};
+
+const adminAccessCode = readConfiguredServerSecret("ADMIN_ACCESS_CODE");
+const adminSessionSecret = resolveServerSecret({
+  name: "ADMIN_SESSION_SECRET",
+  purpose: "signing admin session cookies",
+  requiredInProduction: Boolean(adminAccessCode),
+  generateLocal: Boolean(adminAccessCode),
+});
 const adminSessionCookie = "directsign_admin_session";
 const adminSessionMaxAgeSeconds = 60 * 60 * 8;
 const advertiserAccessCookie = "directsign_advertiser_access";
@@ -187,11 +316,25 @@ const privateStorageBucket =
   process.env.DIRECTSIGN_PRIVATE_STORAGE_BUCKET ?? "directsign-private";
 const privateFilesDir = path.join(dataDir, "private-files");
 const allowLocalPrivateFileFallback =
-  !useSupabase ||
+  (!isProductionRuntime && !useSupabase) ||
   demoMode ||
-  process.env.DIRECTSIGN_ALLOW_LOCAL_PRIVATE_FILE_FALLBACK === "true";
+  (!isProductionRuntime &&
+    process.env.DIRECTSIGN_ALLOW_LOCAL_PRIVATE_FILE_FALLBACK === "true");
 const signatureConsentVersion = "directsign-signature-consent-v1";
-const productName = process.env.PRODUCT_NAME ?? process.env.VITE_PRODUCT_NAME ?? "연락미";
+const productName = process.env.PRODUCT_NAME ?? process.env.VITE_PRODUCT_NAME ?? "yeollock.me";
+const signupTermsVersion = "2026-05-06";
+const signupPrivacyPolicyVersion = "2026-05-06";
+const signedPdfFontCandidates = [
+  process.env.SIGNED_PDF_FONT_PATH,
+  path.join(root, "assets", "fonts", "NotoSansKR-Regular.ttf"),
+  path.join(root, "public", "fonts", "NotoSansKR-Regular.ttf"),
+  "C:\\Windows\\Fonts\\malgun.ttf",
+  "/usr/share/fonts/truetype/noto/NotoSansKR-Regular.ttf",
+  "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
+].filter((candidate): candidate is string => Boolean(candidate));
+let signedPdfFontCache:
+  | { fileName: string; familyName: string; base64: string }
+  | undefined;
 const parsePositiveNumberEnv = (value: string | undefined, fallback: number) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
@@ -204,14 +347,97 @@ const adminLoginWindowMs =
   parsePositiveNumberEnv(process.env.ADMIN_LOGIN_WINDOW_SECONDS, 15 * 60) * 1000;
 const adminLoginLockMs =
   parsePositiveNumberEnv(process.env.ADMIN_LOGIN_LOCK_SECONDS, 15 * 60) * 1000;
+const publicAuthIpMaxAttempts = parsePositiveNumberEnv(
+  process.env.PUBLIC_AUTH_IP_MAX_ATTEMPTS,
+  40,
+);
+const publicAuthEmailMaxAttempts = parsePositiveNumberEnv(
+  process.env.PUBLIC_AUTH_EMAIL_MAX_ATTEMPTS,
+  8,
+);
+const publicAuthWindowMs =
+  parsePositiveNumberEnv(process.env.PUBLIC_AUTH_WINDOW_SECONDS, 15 * 60) * 1000;
+const sensitiveEndpointIpMaxAttempts = parsePositiveNumberEnv(
+  process.env.SENSITIVE_ENDPOINT_IP_MAX_ATTEMPTS,
+  60,
+);
+const sensitiveEndpointSubjectMaxAttempts = parsePositiveNumberEnv(
+  process.env.SENSITIVE_ENDPOINT_SUBJECT_MAX_ATTEMPTS,
+  20,
+);
+const sensitiveEndpointWindowMs =
+  parsePositiveNumberEnv(
+    process.env.SENSITIVE_ENDPOINT_WINDOW_SECONDS,
+    15 * 60,
+  ) * 1000;
+const cspReportOnly =
+  process.env.CONTENT_SECURITY_POLICY_REPORT_ONLY === "true" ||
+  process.env.DIRECTSIGN_CSP_REPORT_ONLY === "true";
+const shareTokenCipherPrefix = "enc:v1:";
+const shareTokenEncryptionSecret = resolveServerSecret({
+  name: "DIRECTSIGN_TOKEN_ENCRYPTION_SECRET",
+  purpose: "encrypting legacy compatibility share tokens at rest",
+  requiredInProduction: true,
+  generateLocal: true,
+});
 
 export const app = express();
 app.set("trust proxy", true);
 app.use(express.json({ limit: "10mb" }));
+
+const stateChangingMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+const allowedConfiguredOrigins = [
+  process.env.PUBLIC_SITE_URL,
+  process.env.SITE_URL,
+  process.env.VITE_SITE_URL,
+  process.env.VITE_API_BASE_URL,
+]
+  .map((value) => {
+    if (typeof value !== "string" || value.trim().length === 0) return undefined;
+    try {
+      return new URL(value).origin;
+    } catch {
+      return undefined;
+    }
+  })
+  .filter((value): value is string => typeof value === "string" && value.length > 0);
+
+const isAllowedRequestOrigin = (request: express.Request) => {
+  const origin = request.header("origin");
+  if (typeof origin !== "string" || origin.trim().length === 0) return true;
+
+  let originUrl: URL;
+  try {
+    originUrl = new URL(origin);
+  } catch {
+    return false;
+  }
+
+  if (allowedConfiguredOrigins.includes(originUrl.origin)) return true;
+
+  const requestHost =
+    request.header("x-forwarded-host") ?? request.header("host") ?? "";
+  const requestProto =
+    request.header("x-forwarded-proto") ?? request.protocol ?? "http";
+  return `${requestProto}://${requestHost}` === originUrl.origin;
+};
+
+app.use((request, response, next) => {
+  if (
+    stateChangingMethods.has(request.method.toUpperCase()) &&
+    !isAllowedRequestOrigin(request)
+  ) {
+    response.status(403).json({ error: "Cross-site request origin is not allowed" });
+    return;
+  }
+
+  next();
+});
+
 app.use((_request, response, next) => {
   response.setHeader("X-Content-Type-Options", "nosniff");
   response.setHeader("X-Frame-Options", "DENY");
-  response.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  response.setHeader("Referrer-Policy", "no-referrer");
   response.setHeader(
     "Permissions-Policy",
     "camera=(), microphone=(), geolocation=(), payment=()",
@@ -219,8 +445,19 @@ app.use((_request, response, next) => {
   if (isPreview) {
     response.setHeader("Strict-Transport-Security", "max-age=15552000; includeSubDomains");
     response.setHeader(
-      "Content-Security-Policy-Report-Only",
-      "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self'; connect-src 'self' https://*.supabase.co;",
+      cspReportOnly ? "Content-Security-Policy-Report-Only" : "Content-Security-Policy",
+      [
+        "default-src 'self'",
+        "base-uri 'self'",
+        "object-src 'none'",
+        "frame-ancestors 'none'",
+        "form-action 'self'",
+        "img-src 'self' data: blob:",
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+        "font-src 'self' https://fonts.gstatic.com",
+        "script-src 'self'",
+        "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
+      ].join("; "),
     );
   }
   next();
@@ -233,6 +470,13 @@ interface AdminLoginAttempt {
 }
 
 const adminLoginAttempts = new Map<string, AdminLoginAttempt>();
+
+interface RateLimitBucket {
+  count: number;
+  resetAt: number;
+}
+
+const publicAuthRateLimitBuckets = new Map<string, RateLimitBucket>();
 
 const contractStatuses = new Set(["DRAFT", "REVIEWING", "NEGOTIATING", "APPROVED", "SIGNED"]);
 const clauseStatuses = new Set(["APPROVED", "MODIFICATION_REQUESTED", "DELETION_REQUESTED"]);
@@ -279,6 +523,7 @@ const platformUrlHostPatterns: Record<InfluencerPlatform, RegExp[]> = {
   naver_blog: [/(^|\.)blog\.naver\.com$/, /(^|\.)m\.blog\.naver\.com$/],
   other: [],
 };
+const standardHttpPorts = new Set(["", "80", "443"]);
 const ownershipChallengePattern = /^DS-[A-Z0-9]{4}-[A-Z0-9]{4}$/;
 const evidenceFileMimeTypes = new Set([
   "application/pdf",
@@ -287,9 +532,62 @@ const evidenceFileMimeTypes = new Set([
   "image/webp",
 ]);
 const maxVerificationFileSize = 4 * 1024 * 1024;
+const signatureImageMimeTypes = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+]);
+const maxSignatureImageSize = 1 * 1024 * 1024;
+const maxOwnershipCheckBytes = 256 * 1024;
 
 const hasText = (value: unknown): value is string =>
   typeof value === "string" && value.trim().length > 0;
+
+const getShareTokenCipherKey = () => {
+  if (!shareTokenEncryptionSecret) return undefined;
+  return createHash("sha256").update(shareTokenEncryptionSecret).digest();
+};
+
+const encryptShareTokenForLegacyStore = (value: string | undefined | null) => {
+  if (!hasText(value)) return undefined;
+  if (value.startsWith(shareTokenCipherPrefix)) return value;
+
+  const key = getShareTokenCipherKey();
+  if (!key) return value;
+
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  const ciphertext = Buffer.concat([
+    cipher.update(value, "utf8"),
+    cipher.final(),
+  ]);
+  const payload = Buffer.concat([iv, cipher.getAuthTag(), ciphertext]);
+  return `${shareTokenCipherPrefix}${payload.toString("base64url")}`;
+};
+
+const decryptShareTokenFromLegacyStore = (value: string | undefined | null) => {
+  if (!hasText(value)) return undefined;
+  if (!value.startsWith(shareTokenCipherPrefix)) return value;
+
+  const key = getShareTokenCipherKey();
+  if (!key) return undefined;
+
+  try {
+    const payload = Buffer.from(value.slice(shareTokenCipherPrefix.length), "base64url");
+    const iv = payload.subarray(0, 12);
+    const authTag = payload.subarray(12, 28);
+    const ciphertext = payload.subarray(28);
+    const decipher = createDecipheriv("aes-256-gcm", key, iv);
+    decipher.setAuthTag(authTag);
+    return Buffer.concat([
+      decipher.update(ciphertext),
+      decipher.final(),
+    ]).toString("utf8");
+  } catch {
+    console.warn("[yeollock.me] failed to decrypt legacy share token");
+    return undefined;
+  }
+};
 
 const normalizeContract = (contract: Contract): Contract => {
   if (!contract.evidence) return contract;
@@ -359,6 +657,10 @@ interface SupabaseProfileRow {
   activity_platforms?: InfluencerPlatform[] | null;
   verification_status?: VerificationStatus | "not_submitted";
   email_verified_at?: string | null;
+  terms_accepted_at?: string | null;
+  privacy_policy_accepted_at?: string | null;
+  terms_version?: string | null;
+  privacy_policy_version?: string | null;
 }
 
 interface SupabaseOrganizationRow {
@@ -367,6 +669,7 @@ interface SupabaseOrganizationRow {
   organization_type: string;
   business_registration_number?: string | null;
   business_verification_status?: VerificationStatus | "not_submitted";
+  business_verification_request_id?: string | null;
   representative_name?: string | null;
 }
 
@@ -406,6 +709,8 @@ interface SupabaseContractV2Row {
   signed_at?: string | null;
   completed_at?: string | null;
   legacy_contract_id?: string | null;
+  created_by_profile_id?: string | null;
+  created_at?: string | null;
   updated_at: string;
 }
 
@@ -440,8 +745,18 @@ interface SupabaseContractPricingTermRow {
 }
 
 interface SupabaseContractClauseRow {
+  id?: string;
   contract_id: string;
+  order_no?: number | null;
+  title?: string | null;
+  body?: string | null;
   status: "pending" | "accepted" | "requested_change" | "rejected" | "countered" | "removed";
+}
+
+interface SupabaseShareLinkRow {
+  contract_id: string;
+  status: "active" | "expired" | "revoked";
+  expires_at?: string | null;
 }
 
 interface SupabaseDeliverableRequirementRow {
@@ -470,6 +785,21 @@ interface SupabaseSupportAccessRequestRow {
   audit_events?: SupportAccessAuditEvent[] | null;
   created_at: string;
   updated_at: string;
+}
+
+interface SupabaseSupportAccessEventRow {
+  id: string;
+  support_access_request_id: string;
+  contract_id: string;
+  action: SupportAccessAuditEvent["action"];
+  actor_role: SupportAccessActorRole;
+  actor_name?: string | null;
+  description: string;
+  ip?: string | null;
+  user_agent?: string | null;
+  event_hash: string;
+  previous_event_hash?: string | null;
+  created_at: string;
 }
 
 const requireSupabaseConfig = () => {
@@ -538,18 +868,58 @@ const supabaseStorageUrl = (pathName: string) => {
   return `${supabaseUrl}/storage/v1${pathName}`;
 };
 
-const toSupabaseRow = (contract: Contract): SupabaseContractRow => ({
-  id: contract.id,
-  advertiser_id: contract.advertiser_id,
-  title: contract.title,
-  status: contract.status,
-  influencer_name: contract.influencer_info?.name,
-  share_token: contract.evidence?.share_token ?? null,
-  share_token_status: contract.evidence?.share_token_status ?? "not_issued",
-  contract,
-  created_at: contract.created_at,
-  updated_at: contract.updated_at,
-});
+const protectLegacyContractForSupabase = (contract: Contract): Contract => {
+  if (!contract.evidence?.share_token) return contract;
+
+  return {
+    ...contract,
+    evidence: {
+      ...contract.evidence,
+      share_token: encryptShareTokenForLegacyStore(contract.evidence.share_token),
+    },
+  };
+};
+
+const restoreLegacyContractFromSupabase = (
+  row: Pick<SupabaseContractRow, "contract" | "share_token">,
+) => {
+  const fallbackToken = decryptShareTokenFromLegacyStore(row.share_token);
+  const contractToken = decryptShareTokenFromLegacyStore(
+    row.contract?.evidence?.share_token,
+  );
+  const shareToken = contractToken ?? fallbackToken;
+
+  if (!row.contract?.evidence || !shareToken) return row.contract;
+
+  return {
+    ...row.contract,
+    evidence: {
+      ...row.contract.evidence,
+      share_token: shareToken,
+    },
+  };
+};
+
+const toSupabaseRow = (contract: Contract): SupabaseContractRow => {
+  const normalizedContract = normalizeContract(contract);
+  const protectedContract = protectLegacyContractForSupabase(normalizedContract);
+
+  return {
+    id: normalizedContract.id,
+    advertiser_id: normalizedContract.advertiser_id,
+    title: normalizedContract.title,
+    status: normalizedContract.status,
+    influencer_name: normalizedContract.influencer_info?.name,
+    share_token:
+      encryptShareTokenForLegacyStore(normalizedContract.evidence?.share_token) ??
+      null,
+    share_token_status:
+      normalizedContract.evidence?.share_token_status ?? "not_issued",
+    contract: protectedContract,
+    created_at: normalizedContract.created_at,
+    updated_at: normalizedContract.updated_at,
+  };
+};
 
 const parseSupabaseError = async (response: Response) => {
   const body = await response.text();
@@ -721,14 +1091,16 @@ const canAdvertiserAccessLegacyContract = (
 ) => {
   const profileEmail = normalizeEmail(auth.profile.email ?? auth.user.email ?? "");
   const contractManagerEmail = normalizeEmail(contract.advertiser_info?.manager ?? "");
-  const profileCompany = normalizeRequiredText(auth.profile.company_name).toLowerCase();
-  const contractCompany = normalizeRequiredText(contract.advertiser_info?.name).toLowerCase();
+  const contractAdvertiserId = normalizeRequiredText(contract.advertiser_id);
+  const isBoundToProfile =
+    isUuid(contractAdvertiserId) && contractAdvertiserId === auth.profile.id;
+  const isLegacyManagerEmailMatch =
+    hasText(profileEmail) &&
+    hasText(contractManagerEmail) &&
+    contractManagerEmail.includes("@") &&
+    profileEmail === contractManagerEmail;
 
-  return (
-    contract.advertiser_id === auth.profile.id ||
-    (hasText(profileEmail) && profileEmail === contractManagerEmail) ||
-    (hasText(profileCompany) && profileCompany === contractCompany)
-  );
+  return isBoundToProfile || isLegacyManagerEmailMatch;
 };
 
 const canInfluencerAccessLegacyContract = (
@@ -744,6 +1116,7 @@ const canInfluencerAccessLegacyContract = (
 const supportAccessTable = "support_access_requests";
 let supportAccessReadFallbackWarned = false;
 let supportAccessWriteFallbackWarned = false;
+let supportAccessEventWriteFallbackWarned = false;
 const allowLocalSupportAccessStore = !useSupabase || demoMode;
 
 const createMissingSupportAccessStoreError = () =>
@@ -751,9 +1124,26 @@ const createMissingSupportAccessStoreError = () =>
     "Supabase support_access_requests table is required when Supabase storage is enabled.",
   );
 
+const createMissingSupportAccessEventStoreError = () =>
+  new Error(
+    "Supabase support_access_events table is required when Supabase storage is enabled.",
+  );
+
 const isMissingSupabaseSupportAccessTableError = (error: unknown) =>
   error instanceof Error &&
   (error.message.includes("support_access_requests") ||
+    error.message.includes("schema cache") ||
+    error.message.includes("Could not find the table") ||
+    error.message.includes("relation")) &&
+  (error.message.includes("404") ||
+    error.message.includes("400") ||
+    error.message.includes("PGRST205") ||
+    error.message.includes("does not exist") ||
+    error.message.includes("schema cache"));
+
+const isMissingSupabaseSupportAccessEventTableError = (error: unknown) =>
+  error instanceof Error &&
+  (error.message.includes("support_access_events") ||
     error.message.includes("schema cache") ||
     error.message.includes("Could not find the table") ||
     error.message.includes("relation")) &&
@@ -797,7 +1187,7 @@ const readSupportAccessRequestsFromFile = async () => {
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     if (code && code !== "ENOENT") {
-      console.warn(`[DirectSign] resetting invalid support access store: ${code}`);
+      console.warn(`[yeollock.me] resetting invalid support access store: ${code}`);
     }
     return [];
   }
@@ -834,7 +1224,7 @@ const readSupportAccessRequests = async () => {
       }
       if (!supportAccessReadFallbackWarned) {
         console.warn(
-          "[DirectSign] support_access_requests table is not available; using local support access store.",
+          "[yeollock.me] support_access_requests table is not available; using local support access store.",
         );
         supportAccessReadFallbackWarned = true;
       }
@@ -864,7 +1254,7 @@ const insertSupportAccessRequest = async (
       }
       if (!supportAccessWriteFallbackWarned) {
         console.warn(
-          "[DirectSign] support_access_requests table is not available; writing support access locally.",
+          "[yeollock.me] support_access_requests table is not available; writing support access locally.",
         );
         supportAccessWriteFallbackWarned = true;
       }
@@ -936,6 +1326,87 @@ const getActiveSupportAccessForContract = async (
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
 };
 
+const ensureSupportAccessEventStoreAvailable = async () => {
+  if (!useSupabase || allowLocalSupportAccessStore) return;
+
+  try {
+    await readSupabaseRows<Pick<SupabaseSupportAccessEventRow, "id">>(
+      "support_access_events",
+      "?select=id&limit=1",
+      "support access events",
+    );
+  } catch (error) {
+    if (!isMissingSupabaseSupportAccessEventTableError(error)) {
+      throw error;
+    }
+    throw createMissingSupportAccessEventStoreError();
+  }
+};
+
+const appendSupportAccessEventRow = async (
+  requestRecord: Pick<SupportAccessRequestRecord, "id" | "contract_id">,
+  event: SupportAccessAuditEvent,
+) => {
+  if (!useSupabase) return;
+
+  try {
+    const previousRows = await readSupabaseRows<Pick<SupabaseSupportAccessEventRow, "event_hash">>(
+      "support_access_events",
+      `?select=event_hash&support_access_request_id=eq.${encodeURIComponent(
+        requestRecord.id,
+      )}&order=created_at.desc&limit=1`,
+      "support access events",
+    );
+    const previousEventHash = previousRows[0]?.event_hash;
+    const hashPayload = {
+      support_access_request_id: requestRecord.id,
+      contract_id: requestRecord.contract_id,
+      action: event.action,
+      actor_role: event.actor_role,
+      actor_name: event.actor_name ?? null,
+      description: event.description,
+      ip: event.ip ?? null,
+      user_agent: event.user_agent ?? null,
+      previous_event_hash: previousEventHash ?? null,
+      created_at: event.created_at,
+    };
+
+    await insertSupabaseRowsReturning<SupabaseSupportAccessEventRow>(
+      "support_access_events",
+      [
+        {
+          id: event.id,
+          support_access_request_id: requestRecord.id,
+          contract_id: requestRecord.contract_id,
+          action: event.action,
+          actor_role: event.actor_role,
+          actor_name: event.actor_name,
+          description: event.description,
+          ip: event.ip,
+          user_agent: event.user_agent,
+          event_hash: sha256Hex(JSON.stringify(hashPayload)),
+          previous_event_hash: previousEventHash,
+          created_at: event.created_at,
+        },
+      ],
+      "support access event",
+    );
+  } catch (error) {
+    if (!isMissingSupabaseSupportAccessEventTableError(error)) {
+      throw error;
+    }
+    if (!allowLocalSupportAccessStore) {
+      throw createMissingSupportAccessEventStoreError();
+    }
+    if (!supportAccessEventWriteFallbackWarned) {
+      console.warn(
+        "[yeollock.me] support_access_events table is not available; support access event rows will be skipped.",
+      );
+      supportAccessEventWriteFallbackWarned = true;
+    }
+  }
+};
+
 const appendSupportAccessAuditEvent = async (
   requestId: string,
   event: Omit<SupportAccessAuditEvent, "id" | "created_at">,
@@ -943,18 +1414,27 @@ const appendSupportAccessAuditEvent = async (
   const requests = await readSupportAccessRequests();
   const current = requests.find((item) => item.id === requestId);
   if (!current) return undefined;
+  const auditEvent: SupportAccessAuditEvent = {
+    ...event,
+    id: randomUUID(),
+    created_at: new Date().toISOString(),
+  };
 
-  return updateSupportAccessRequest({
+  if (useSupabase) {
+    await appendSupportAccessEventRow(current, auditEvent);
+    return current;
+  }
+
+  const updated = await updateSupportAccessRequest({
     ...current,
     audit_events: [
       ...(current.audit_events ?? []),
-      {
-        ...event,
-        id: randomUUID(),
-        created_at: new Date().toISOString(),
-      },
+      auditEvent,
     ],
   });
+
+  await appendSupportAccessEventRow(updated, auditEvent);
+  return updated;
 };
 
 const bindContractToAdvertiser = async (
@@ -975,17 +1455,18 @@ const bindContractToAdvertiser = async (
       auth.user.email,
   );
 
-  return normalizeContract({
+  return {
     ...contract,
     advertiser_id: auth.profile.id,
     advertiser_info: {
       name: companyName || auth.profile.name || "광고주",
       manager: manager || auth.profile.email || auth.user.email,
     },
-  });
+  };
 };
 
 const getSupportAccessRequestIdFromRequest = (request: express.Request) =>
+  normalizeOptionalText(request.header("X-Yeollock-Support-Access-Request")) ??
   normalizeOptionalText(request.header("X-DirectSign-Support-Access-Request")) ??
   normalizeOptionalText(request.query.support) ??
   normalizeOptionalText(request.query.support_access_request_id);
@@ -1009,13 +1490,6 @@ const resolveLegacyContractAccess = async (
     allowShareToken = true,
     sendError = true,
   } = options;
-
-  if (allowShareToken) {
-    const shareAccessError = verifyInfluencerShareAccess(request, contract);
-    if (!shareAccessError) {
-      return { role: "share" as const };
-    }
-  }
 
   if (allowAdvertiser) {
     try {
@@ -1073,6 +1547,13 @@ const resolveLegacyContractAccess = async (
       response.status(403).json({ error: "Active support access request is required" });
     }
     return undefined;
+  }
+
+  if (allowShareToken) {
+    const shareAccessError = verifyInfluencerShareAccess(request, contract);
+    if (!shareAccessError) {
+      return { role: "share" as const };
+    }
   }
 
   if (sendError) {
@@ -1254,11 +1735,11 @@ const clearInfluencerSessionCookies = (response: express.Response) => {
 };
 
 const getClientIp = (request: express.Request) => {
-  const forwardedFor = request.header("x-forwarded-for")?.split(",")[0]?.trim();
-  return forwardedFor || request.ip || request.socket.remoteAddress || "unknown";
+  return request.ip || request.socket.remoteAddress || "unknown";
 };
 
-const getAdminLoginAttemptKey = (request: express.Request) => getClientIp(request);
+const getAdminLoginAttemptKey = (request: express.Request) =>
+  request.socket.remoteAddress || getClientIp(request);
 
 const getAdminLoginThrottle = (key: string) => {
   const now = Date.now();
@@ -1297,9 +1778,156 @@ const clearAdminLoginFailures = (key: string) => {
   adminLoginAttempts.delete(key);
 };
 
+const normalizeRateLimitEmail = (value: unknown) =>
+  String(value ?? "").trim().toLowerCase();
+
+const consumeRateLimitBucket = (
+  key: string,
+  maxAttempts: number,
+  windowMs: number,
+) => {
+  const now = Date.now();
+  const bucket = publicAuthRateLimitBuckets.get(key);
+
+  if (!bucket || bucket.resetAt <= now) {
+    publicAuthRateLimitBuckets.set(key, {
+      count: 1,
+      resetAt: now + windowMs,
+    });
+    return { blocked: false };
+  }
+
+  if (bucket.count >= maxAttempts) {
+    return {
+      blocked: true,
+      retryAfterSeconds: Math.ceil((bucket.resetAt - now) / 1000),
+    };
+  }
+
+  bucket.count += 1;
+  publicAuthRateLimitBuckets.set(key, bucket);
+  return { blocked: false };
+};
+
+const getPublicAuthRateLimitKeys = (
+  request: express.Request,
+  action: string,
+  email: unknown,
+) => {
+  const clientIp = getClientIp(request);
+  const normalizedEmail = normalizeRateLimitEmail(email);
+  const keys = [
+    {
+      key: `public-auth:${action}:ip:${clientIp}`,
+      maxAttempts: publicAuthIpMaxAttempts,
+    },
+  ];
+
+  if (hasText(normalizedEmail)) {
+    keys.push({
+      key: `public-auth:${action}:ip-email:${clientIp}:${normalizedEmail}`,
+      maxAttempts: publicAuthEmailMaxAttempts,
+    });
+  }
+
+  return keys;
+};
+
+const consumePublicAuthRateLimit = (
+  request: express.Request,
+  action: string,
+  email: unknown,
+) => {
+  for (const limit of getPublicAuthRateLimitKeys(request, action, email)) {
+    const result = consumeRateLimitBucket(
+      limit.key,
+      limit.maxAttempts,
+      publicAuthWindowMs,
+    );
+    if (result.blocked) return result;
+  }
+
+  return { blocked: false };
+};
+
+const clearPublicAuthRateLimit = (
+  request: express.Request,
+  action: string,
+  email: unknown,
+) => {
+  for (const limit of getPublicAuthRateLimitKeys(request, action, email)) {
+    publicAuthRateLimitBuckets.delete(limit.key);
+  }
+};
+
+const sendPublicAuthRateLimitResponse = (
+  response: express.Response,
+  throttle: { retryAfterSeconds?: number },
+) => {
+  response.setHeader("Retry-After", String(throttle.retryAfterSeconds ?? 60));
+  response.status(429).json({
+    error: "Too many authentication attempts. Try again later.",
+    retry_after_seconds: throttle.retryAfterSeconds,
+  });
+};
+
+const normalizeRateLimitSubject = (value: unknown) =>
+  String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._:@-]+/g, "-")
+    .slice(0, 160);
+
+const consumeSensitiveEndpointRateLimit = (
+  request: express.Request,
+  action: string,
+  subject?: unknown,
+) => {
+  const clientIp = getClientIp(request);
+  const limits = [
+    {
+      key: `sensitive:${action}:ip:${clientIp}`,
+      maxAttempts: sensitiveEndpointIpMaxAttempts,
+    },
+  ];
+  const normalizedSubject = normalizeRateLimitSubject(subject);
+
+  if (hasText(normalizedSubject)) {
+    limits.push({
+      key: `sensitive:${action}:subject:${normalizedSubject}`,
+      maxAttempts: sensitiveEndpointSubjectMaxAttempts,
+    });
+  }
+
+  for (const limit of limits) {
+    const result = consumeRateLimitBucket(
+      limit.key,
+      limit.maxAttempts,
+      sensitiveEndpointWindowMs,
+    );
+    if (result.blocked) return result;
+  }
+
+  return { blocked: false };
+};
+
+const sendSensitiveRateLimitResponse = (
+  response: express.Response,
+  throttle: { retryAfterSeconds?: number },
+) => {
+  response.setHeader("Retry-After", String(throttle.retryAfterSeconds ?? 60));
+  response.status(429).json({
+    error: "Too many sensitive requests. Try again later.",
+    retry_after_seconds: throttle.retryAfterSeconds,
+  });
+};
+
 const getAppBaseUrl = (request: express.Request) => {
   const configuredUrl = process.env.APP_URL?.trim().replace(/\/$/, "");
   if (configuredUrl) return configuredUrl;
+  if (isPreview) {
+    throw new Error("APP_URL is required for production email redirects");
+  }
 
   const forwardedProto = request.header("x-forwarded-proto")?.split(",")[0]?.trim();
   const protocol = forwardedProto || request.protocol || "http";
@@ -1497,6 +2125,43 @@ const refreshSupabaseSession = async (refreshToken: string) => {
   return (await response.json()) as SupabaseAuthSession;
 };
 
+const revokeSupabaseSession = async (accessToken: string | undefined) => {
+  if (!useSupabase || !hasText(accessToken)) return;
+
+  const response = await fetch(supabaseAuthUrl("/logout?scope=local"), {
+    method: "POST",
+    headers: supabaseAuthHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Supabase logout failed (${response.status}): ${await parseSupabaseError(response)}`,
+    );
+  }
+};
+
+const revokeSessionFromRequest = async (
+  request: express.Request,
+  accessCookieName: string,
+  refreshCookieName: string,
+) => {
+  const cookies = parseCookies(request.header("cookie"));
+  const bearerToken = getBearerToken(request);
+  const cookieAccessToken = cookies.get(accessCookieName);
+  const refreshToken = cookies.get(refreshCookieName);
+  const accessToken = bearerToken ?? cookieAccessToken;
+
+  if (hasText(accessToken)) {
+    await revokeSupabaseSession(accessToken);
+    return;
+  }
+
+  if (hasText(refreshToken)) {
+    const session = await refreshSupabaseSession(refreshToken);
+    await revokeSupabaseSession(session.access_token);
+  }
+};
+
 const authenticateInfluencerRequest = async (
   request: express.Request,
   response?: express.Response,
@@ -1519,14 +2184,20 @@ const authenticateInfluencerRequest = async (
   }
 
   if (refreshToken) {
-    const session = await refreshSupabaseSession(refreshToken);
-    if (response) {
-      setInfluencerSessionCookies(response, session);
+    try {
+      const session = await refreshSupabaseSession(refreshToken);
+      if (response) {
+        setInfluencerSessionCookies(response, session);
+      }
+      return {
+        user: session.user,
+        accessToken: session.access_token,
+      };
+    } catch {
+      if (response) {
+        clearInfluencerSessionCookies(response);
+      }
     }
-    return {
-      user: session.user,
-      accessToken: session.access_token,
-    };
   }
 
   return undefined;
@@ -1554,14 +2225,20 @@ const authenticateAdvertiserRequest = async (
   }
 
   if (refreshToken) {
-    const session = await refreshSupabaseSession(refreshToken);
-    if (response) {
-      setAdvertiserSessionCookies(response, session);
+    try {
+      const session = await refreshSupabaseSession(refreshToken);
+      if (response) {
+        setAdvertiserSessionCookies(response, session);
+      }
+      return {
+        user: session.user,
+        accessToken: session.access_token,
+      };
+    } catch {
+      if (response) {
+        clearAdvertiserSessionCookies(response);
+      }
     }
-    return {
-      user: session.user,
-      accessToken: session.access_token,
-    };
   }
 
   return undefined;
@@ -1638,6 +2315,36 @@ const validateSignupPassword = (password: string) => {
   return undefined;
 };
 
+const hasAcceptedRequiredSignupConsents = (body: unknown) => {
+  const payload = body as Record<string, unknown> | undefined;
+  return payload?.terms_accepted === true && payload?.privacy_accepted === true;
+};
+
+const buildSignupLegalConsent = (
+  request: express.Request,
+  role: "advertiser" | "influencer",
+) => {
+  const acceptedAt = new Date().toISOString();
+
+  return {
+    terms_accepted_at: acceptedAt,
+    privacy_policy_accepted_at: acceptedAt,
+    terms_version: signupTermsVersion,
+    privacy_policy_version: signupPrivacyPolicyVersion,
+    signup_consent_snapshot: {
+      role,
+      terms_accepted: true,
+      privacy_accepted: true,
+      terms_version: signupTermsVersion,
+      privacy_policy_version: signupPrivacyPolicyVersion,
+      accepted_at: acceptedAt,
+      ip: getClientIp(request),
+      user_agent: request.header("user-agent") ?? "unknown",
+      source: "signup",
+    },
+  };
+};
+
 const normalizeDateOnlyValue = (value: unknown) => {
   const normalized = normalizeOptionalText(value);
   if (!normalized) return undefined;
@@ -1665,11 +2372,193 @@ const normalizeUrlValue = (value: unknown) => {
 const normalizeChallengeCode = (value: unknown) =>
   normalizeRequiredText(value).toUpperCase();
 
+const normalizeHostname = (hostname: string) =>
+  hostname.toLowerCase().replace(/^\[/, "").replace(/\]$/, "").replace(/\.$/, "");
+
+const isPrivateIpAddress = (address: string) => {
+  const normalized = normalizeHostname(address);
+  const mappedIpv4 = normalized.startsWith("::ffff:")
+    ? normalized.slice("::ffff:".length)
+    : normalized;
+  const version = isIP(mappedIpv4);
+
+  if (version === 4) {
+    const parts = mappedIpv4.split(".").map((part) => Number(part));
+    if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part))) {
+      return true;
+    }
+
+    const [first, second, third, fourth] = parts;
+    const privateOrReserved =
+      first === 0 ||
+      first === 10 ||
+      first === 127 ||
+      (first === 100 && second >= 64 && second <= 127) ||
+      (first === 169 && second === 254) ||
+      (first === 172 && second >= 16 && second <= 31) ||
+      (first === 192 && second === 168) ||
+      (first === 192 && second === 0 && third === 0) ||
+      (first === 192 && second === 0 && third === 2) ||
+      (first === 198 && (second === 18 || second === 19)) ||
+      (first === 198 && second === 51 && third === 100) ||
+      (first === 203 && second === 0 && third === 113) ||
+      first >= 224 ||
+      (first === 255 && second === 255 && third === 255 && fourth === 255);
+
+    return privateOrReserved;
+  }
+
+  if (version === 6) {
+    const firstSegment = Number.parseInt(normalized.split(":")[0] || "0", 16);
+    return (
+      normalized === "::" ||
+      normalized === "::1" ||
+      normalized.startsWith("fc") ||
+      normalized.startsWith("fd") ||
+      (firstSegment & 0xffc0) === 0xfe80 ||
+      (firstSegment & 0xff00) === 0xff00 ||
+      normalized.startsWith("2001:db8:")
+    );
+  }
+
+  return false;
+};
+
+const isBlockedExternalHostname = (hostname: string) => {
+  const normalized = normalizeHostname(hostname);
+  return (
+    normalized === "localhost" ||
+    normalized.endsWith(".localhost") ||
+    isPrivateIpAddress(normalized)
+  );
+};
+
+const validateExternalHttpUrl = async (urlValue: string) => {
+  let url: URL;
+
+  try {
+    url = new URL(urlValue);
+  } catch {
+    return "Valid public URL is required";
+  }
+
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    return "Only HTTP(S) URLs are allowed";
+  }
+
+  if (url.username || url.password) {
+    return "URL credentials are not allowed";
+  }
+
+  if (!standardHttpPorts.has(url.port)) {
+    return "Only standard HTTP(S) ports are allowed";
+  }
+
+  if (isBlockedExternalHostname(url.hostname)) {
+    return "Private or local URLs are not allowed";
+  }
+
+  try {
+    await resolvePublicHttpTarget(url);
+  } catch (error) {
+    return error instanceof Error
+      ? error.message
+      : "URL host could not be verified";
+  }
+
+  return undefined;
+};
+
+const resolvePublicHttpTarget = async (url: URL) => {
+  const hostname = normalizeHostname(url.hostname);
+  const addresses = isIP(hostname)
+    ? [{ address: hostname, family: isIP(hostname) }]
+    : await lookup(hostname, { all: true });
+
+  if (addresses.length === 0) {
+    throw new Error("URL host could not be resolved");
+  }
+
+  if (addresses.some((address) => isPrivateIpAddress(address.address))) {
+    throw new Error("URLs resolving to private networks are not allowed");
+  }
+
+  return addresses;
+};
+
+const fetchPublicHttpText = async (urlValue: string) => {
+  const url = new URL(urlValue);
+  const addresses = await resolvePublicHttpTarget(url);
+  const address = addresses[0];
+  const isHttps = url.protocol === "https:";
+  const requestFn = isHttps ? httpsRequest : httpRequest;
+  const port = url.port ? Number(url.port) : isHttps ? 443 : 80;
+
+  return new Promise<{ status: number; body: string }>((resolve, reject) => {
+    const request = requestFn(
+      {
+        hostname: address.address,
+        port,
+        method: "GET",
+        path: `${url.pathname}${url.search}`,
+        servername: url.hostname,
+        timeout: 4500,
+        headers: {
+          Accept: "text/html,text/plain,*/*",
+          Host: url.host,
+          "User-Agent": `${productName} ownership verifier`,
+        },
+      },
+      (incoming) => {
+        const chunks: Buffer[] = [];
+        let totalBytes = 0;
+
+        incoming.on("data", (chunk: Buffer) => {
+          totalBytes += chunk.byteLength;
+          if (totalBytes > maxOwnershipCheckBytes) {
+            request.destroy(new Error("Ownership proof page is too large"));
+            return;
+          }
+          chunks.push(chunk);
+        });
+
+        incoming.on("end", () => {
+          resolve({
+            status: incoming.statusCode ?? 0,
+            body: Buffer.concat(chunks).toString("utf8"),
+          });
+        });
+      },
+    );
+
+    request.on("timeout", () => {
+      request.destroy(new Error("Ownership check timed out"));
+    });
+    request.on("error", reject);
+    request.end();
+  });
+};
+
+const hasPublicHttpUrlHost = (urlValue: string) => {
+  try {
+    const url = new URL(urlValue);
+    return (
+      (url.protocol === "http:" || url.protocol === "https:") &&
+      !url.username &&
+      !url.password &&
+      standardHttpPorts.has(url.port) &&
+      !isBlockedExternalHostname(url.hostname)
+    );
+  } catch {
+    return false;
+  }
+};
+
 const isExpectedPlatformUrl = (
   platform: InfluencerPlatform,
   urlValue: string,
 ) => {
-  if (platform === "other") return true;
+  if (platform === "other") return hasPublicHttpUrlHost(urlValue);
 
   try {
     const host = new URL(urlValue).hostname.toLowerCase();
@@ -1689,18 +2578,18 @@ const checkOwnershipChallenge = async (
   error?: string;
 }> => {
   const checkedAt = new Date().toISOString();
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 4500);
 
   try {
-    const response = await fetch(urlValue, {
-      signal: controller.signal,
-      headers: {
-        Accept: "text/html,text/plain,*/*",
-        "User-Agent": `${productName} ownership verifier`,
-      },
-    });
-    const body = await response.text();
+    const unsafeUrlError = await validateExternalHttpUrl(urlValue);
+    if (unsafeUrlError) {
+      return {
+        status: "blocked",
+        checked_at: checkedAt,
+        error: unsafeUrlError,
+      };
+    }
+
+    const response = await fetchPublicHttpText(urlValue);
 
     if ([401, 403, 429].includes(response.status)) {
       return {
@@ -1711,7 +2600,7 @@ const checkOwnershipChallenge = async (
     }
 
     return {
-      status: body.includes(challengeCode) ? "matched" : "not_found",
+      status: response.body.includes(challengeCode) ? "matched" : "not_found",
       checked_at: checkedAt,
       http_status: response.status,
     };
@@ -1721,8 +2610,6 @@ const checkOwnershipChallenge = async (
       checked_at: checkedAt,
       error: error instanceof Error ? error.message : "Challenge check failed",
     };
-  } finally {
-    clearTimeout(timeout);
   }
 };
 
@@ -1783,6 +2670,48 @@ const dataUrlToBuffer = (dataUrl: string) => {
     : Buffer.from(decodeURIComponent(payload), "utf8");
 
   return { contentType, buffer };
+};
+
+const detectAllowedFileMimeType = (buffer: Buffer) => {
+  if (buffer.length >= 4 && buffer.subarray(0, 4).toString("ascii") === "%PDF") {
+    return "application/pdf";
+  }
+  if (
+    buffer.length >= 8 &&
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47 &&
+    buffer[4] === 0x0d &&
+    buffer[5] === 0x0a &&
+    buffer[6] === 0x1a &&
+    buffer[7] === 0x0a
+  ) {
+    return "image/png";
+  }
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return "image/jpeg";
+  }
+  if (
+    buffer.length >= 12 &&
+    buffer.subarray(0, 4).toString("ascii") === "RIFF" &&
+    buffer.subarray(8, 12).toString("ascii") === "WEBP"
+  ) {
+    return "image/webp";
+  }
+  return undefined;
+};
+
+const assertDeclaredMimeMatchesContent = (
+  declaredType: string,
+  buffer: Buffer,
+  allowedTypes: ReadonlySet<string>,
+) => {
+  const detectedType = detectAllowedFileMimeType(buffer);
+  return (
+    allowedTypes.has(declaredType) &&
+    detectedType === declaredType
+  );
 };
 
 const sanitizeStorageSegment = (value: string) =>
@@ -1944,6 +2873,12 @@ const storePrivateBuffer = async ({
     }
   }
 
+  if (!allowLocalPrivateFileFallback) {
+    throw new Error(
+      "Private file storage requires Supabase Storage in production. Set Supabase storage env vars or enable demo mode for non-production testing.",
+    );
+  }
+
   const absolutePath = path.resolve(privateFilesDir, objectPath);
   if (!absolutePath.startsWith(path.resolve(privateFilesDir))) {
     throw new Error("Private file path is invalid");
@@ -1977,7 +2912,10 @@ const storeEvidenceFile = async ({
 }) => {
   const { contentType, buffer } = dataUrlToBuffer(file.data_url);
 
-  if (contentType !== file.type || !evidenceFileMimeTypes.has(contentType)) {
+  if (
+    contentType !== file.type ||
+    !assertDeclaredMimeMatchesContent(contentType, buffer, evidenceFileMimeTypes)
+  ) {
     throw new Error("Evidence file content type is invalid");
   }
   if (buffer.byteLength <= 0 || buffer.byteLength > maxVerificationFileSize) {
@@ -2052,48 +2990,146 @@ const buildVerificationEvidenceSnapshot = (
     : undefined,
 });
 
+const loadSignedPdfFont = async () => {
+  if (signedPdfFontCache) return signedPdfFontCache;
+
+  for (const candidate of signedPdfFontCandidates) {
+    try {
+      const fontBuffer = await fs.readFile(candidate);
+      signedPdfFontCache = {
+        fileName: path.basename(candidate),
+        familyName: "SignedPdfKR",
+        base64: fontBuffer.toString("base64"),
+      };
+      return signedPdfFontCache;
+    } catch {
+      // Try the next configured/system font candidate.
+    }
+  }
+
+  return undefined;
+};
+
 const buildSignedContractPdf = async ({
   contract,
   signedAt,
   contractHash,
   signatureHash,
+  signatureDataUrl,
+  signatureContentType,
   signerName,
   signerEmail,
   clientIp,
+  consentText,
 }: {
   contract: Contract;
   signedAt: string;
   contractHash: string;
   signatureHash: string;
+  signatureDataUrl?: string;
+  signatureContentType?: string;
   signerName: string;
   signerEmail: string;
   clientIp: string;
+  consentText?: string;
 }) => {
   const { jsPDF } = await import("jspdf");
   const pdf = new jsPDF({ unit: "pt", format: "a4" });
-  const lines = [
-    `${productName} Signed Contract Record`,
+  const signedPdfFont = await loadSignedPdfFont();
+  const fontFamily = signedPdfFont?.familyName ?? "helvetica";
+  if (signedPdfFont) {
+    pdf.addFileToVFS(signedPdfFont.fileName, signedPdfFont.base64);
+    pdf.addFont(signedPdfFont.fileName, signedPdfFont.familyName, "normal");
+  }
+  const margin = 40;
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  let y = 48;
+
+  const ensureSpace = (height: number) => {
+    if (y + height <= pageHeight - margin) return;
+    pdf.addPage();
+    y = margin;
+  };
+  const addHeading = (text: string) => {
+    ensureSpace(30);
+    pdf.setFont(fontFamily, signedPdfFont ? "normal" : "bold");
+    pdf.setFontSize(14);
+    pdf.text(text, margin, y);
+    y += 22;
+  };
+  const addLine = (text: string, indent = 0) => {
+    const chunks = pdf.splitTextToSize(text, pageWidth - margin * 2 - indent) as string[];
+    chunks.forEach((chunk) => {
+      ensureSpace(16);
+      pdf.setFont(fontFamily, "normal");
+      pdf.setFontSize(9);
+      pdf.text(chunk, margin + indent, y);
+      y += 14;
+    });
+  };
+
+  const campaign = contract.campaign ?? {};
+  pdf.setFont(fontFamily, signedPdfFont ? "normal" : "bold");
+  pdf.setFontSize(16);
+  pdf.text(`${productName} Signed Contract`, margin, y);
+  y += 28;
+
+  addHeading("Parties and campaign");
+  [
     `Contract ID: ${contract.id}`,
     `Title: ${contract.title}`,
+    `Status at signing: ${contract.status}`,
     `Advertiser: ${contract.advertiser_info?.name ?? contract.advertiser_id}`,
+    `Advertiser manager: ${contract.advertiser_info?.manager ?? "-"}`,
     `Influencer: ${contract.influencer_info.name}`,
-    `Signer: ${signerName}`,
-    `Signer Email: ${signerEmail}`,
-    `Signed At: ${signedAt}`,
-    `Signed IP: ${clientIp}`,
-    `Contract Hash: ${contractHash}`,
-    `Signature Hash: ${signatureHash}`,
-    `Consent Version: ${signatureConsentVersion}`,
-  ];
+    `Influencer contact: ${contract.influencer_info.contact}`,
+    `Influencer channel: ${contract.influencer_info.channel_url}`,
+    `Compensation: ${campaign.budget ?? "-"}`,
+    `Period: ${campaign.period ?? ([campaign.start_date, campaign.end_date].filter(Boolean).join(" - ") || "-")}`,
+    `Upload deadline: ${campaign.upload_due_at ?? campaign.deadline ?? "-"}`,
+    `Review deadline: ${campaign.review_due_at ?? "-"}`,
+    `Revision limit: ${campaign.revision_limit ?? "-"}`,
+    `Disclosure text: ${campaign.disclosure_text ?? "-"}`,
+    `Platforms: ${(campaign.platforms ?? []).join(", ") || "-"}`,
+    `Deliverables: ${(campaign.deliverables ?? []).join(", ") || "-"}`,
+  ].forEach((line) => addLine(line));
 
-  pdf.setFont("helvetica", "bold");
-  pdf.setFontSize(16);
-  pdf.text(lines[0], 40, 48);
-  pdf.setFont("helvetica", "normal");
-  pdf.setFontSize(10);
-  lines.slice(1).forEach((line, index) => {
-    pdf.text(line.slice(0, 110), 40, 84 + index * 18);
+  addHeading("Clauses");
+  contract.clauses.forEach((clause, index) => {
+    addLine(`${index + 1}. [${clause.status}] ${clause.category}`, 0);
+    addLine(clause.content, 12);
   });
+
+  addHeading("Consent and signature evidence");
+  [
+    `Signer: ${signerName}`,
+    `Signer email: ${signerEmail}`,
+    `Signed at: ${signedAt}`,
+    `Signed IP: ${clientIp}`,
+    `Contract hash: ${contractHash}`,
+    `Signature image hash: ${signatureHash}`,
+    `Consent version: ${signatureConsentVersion}`,
+    `Consent text: ${consentText || "The signer confirmed the contract terms and agreed to electronic signature."}`,
+  ].forEach((line) => addLine(line));
+
+  if (signatureDataUrl && signatureContentType) {
+    try {
+      const imageType =
+        signatureContentType === "image/png"
+          ? "PNG"
+          : signatureContentType === "image/jpeg"
+            ? "JPEG"
+            : undefined;
+      if (imageType) {
+        ensureSpace(70);
+        pdf.addImage(signatureDataUrl, imageType, margin, y, 160, 48);
+        y += 60;
+      }
+    } catch {
+      addLine("Signature image was stored separately and verified by hash.");
+    }
+  }
 
   return Buffer.from(pdf.output("arraybuffer"));
 };
@@ -2305,16 +3341,18 @@ const insertSupabaseV2RowsIgnoringDuplicates = async (
 const readSupabaseStore = async (): Promise<ContractStoreFile> => {
   const response = await fetchSupabase(
     supabaseLegacyTable,
-    "?select=contract&order=updated_at.desc",
+    "?select=contract,share_token&order=updated_at.desc",
   );
 
   await assertSupabaseOk(response, "Supabase legacy read");
 
-  const rows = (await response.json()) as Array<{ contract: Contract }>;
+  const rows = (await response.json()) as Array<
+    Pick<SupabaseContractRow, "contract" | "share_token">
+  >;
 
   return normalizeStore({
     contracts: rows
-      .map((row) => row.contract)
+      .map(restoreLegacyContractFromSupabase)
       .filter((contract): contract is Contract => Boolean(contract?.id)),
   });
 };
@@ -2360,7 +3398,7 @@ const actorDisplayName = (contract: Contract, actor: AuditActor) => {
 const syncSupabaseV2Contract = async (contract: Contract) => {
   if (!isUuid(contract.id)) {
     console.warn(
-      `[DirectSign] skipped Supabase v2 sync for non-UUID contract id: ${contract.id}`,
+      `[yeollock.me] skipped Supabase v2 sync for non-UUID contract id: ${contract.id}`,
     );
     return;
   }
@@ -2600,7 +3638,16 @@ const syncSupabaseV2Contract = async (contract: Contract) => {
       },
     ]);
 
-    if (hasText(contract.signature_data.adv_sign)) {
+    const advertiserSignatureHash = hasText(contract.signature_data.adv_sign)
+      ? sha256Hex(contract.signature_data.adv_sign)
+      : undefined;
+    const influencerSignatureHash =
+      contract.signature_data.signature_hash ??
+      (hasText(contract.signature_data.inf_sign)
+        ? sha256Hex(contract.signature_data.inf_sign)
+        : undefined);
+
+    if (advertiserSignatureHash) {
       signatureRows.push({
         id: stableUuid(`${contract.id}:signature:advertiser`),
         contract_id: contract.id,
@@ -2609,7 +3656,7 @@ const syncSupabaseV2Contract = async (contract: Contract) => {
         signer_role: "advertiser",
         signer_name:
           contract.advertiser_info?.manager ?? contract.advertiser_info?.name ?? "광고주",
-        signature_hash: sha256Hex(contract.signature_data.adv_sign),
+        signature_hash: advertiserSignatureHash,
         signature_storage_path: contract.signature_data.signature_storage_path,
         signed_ip: hasText(contract.signature_data.ip)
           ? contract.signature_data.ip
@@ -2620,7 +3667,7 @@ const syncSupabaseV2Contract = async (contract: Contract) => {
       });
     }
 
-    if (hasText(contract.signature_data.inf_sign)) {
+    if (influencerSignatureHash) {
       signatureRows.push({
         id: stableUuid(`${contract.id}:signature:influencer`),
         contract_id: contract.id,
@@ -2629,9 +3676,7 @@ const syncSupabaseV2Contract = async (contract: Contract) => {
         signer_role: "influencer",
         signer_name: contract.influencer_info.name,
         signer_email: contract.influencer_info.contact,
-        signature_hash:
-          contract.signature_data.signature_hash ??
-          sha256Hex(contract.signature_data.inf_sign),
+        signature_hash: influencerSignatureHash,
         signature_storage_path: contract.signature_data.signature_storage_path,
         signed_ip: hasText(contract.signature_data.ip)
           ? contract.signature_data.ip
@@ -2823,12 +3868,73 @@ const verifyInfluencerContractWriteAccess = (
   return undefined;
 };
 
+const verifyAdvertiserContractWriteAccess = (
+  existing: Contract | undefined,
+  incoming: Contract,
+) => {
+  if (!existing) {
+    if (incoming.status === "SIGNED" || incoming.signature_data || incoming.pdf_url) {
+      return "Signatures and signed PDFs must be created through the signing endpoint";
+    }
+
+    return undefined;
+  }
+
+  if (incoming.status === "SIGNED" && existing.status !== "SIGNED") {
+    return "Signed status must be created through the signing endpoint";
+  }
+
+  if (!jsonEqual(incoming.signature_data, existing.signature_data)) {
+    return "Signature data must be created through the signing endpoint";
+  }
+
+  if (incoming.pdf_url !== existing.pdf_url) {
+    return "Signed PDF URL must be created through the signing endpoint";
+  }
+
+  const existingAuditEvents = existing.audit_events ?? [];
+  const incomingAuditEvents = incoming.audit_events ?? [];
+
+  if (incomingAuditEvents.length < existingAuditEvents.length) {
+    return "Audit events cannot be removed";
+  }
+
+  for (let index = 0; index < existingAuditEvents.length; index += 1) {
+    if (!jsonEqual(incomingAuditEvents[index], existingAuditEvents[index])) {
+      return "Audit history cannot be rewritten";
+    }
+  }
+
+  if (incomingAuditEvents
+    .slice(existingAuditEvents.length)
+    .some((event) => event.actor !== "advertiser")) {
+    return "Advertiser writes can only append advertiser audit events";
+  }
+
+  if (existing.status === "SIGNED") {
+    if (incoming.status !== existing.status) {
+      return "Signed contracts cannot be reopened";
+    }
+
+    if (!jsonEqual(incomingAuditEvents, existingAuditEvents)) {
+      return "Signed contract audit history is locked";
+    }
+
+    if (!jsonEqual(incoming, existing)) {
+      return "Signed contracts cannot be modified";
+    }
+  }
+
+  return undefined;
+};
+
 const verifyInfluencerShareAccess = (
   request: express.Request,
   existing: Contract,
 ) => {
   const expectedToken = existing.evidence?.share_token;
   const providedToken =
+    request.header("X-Yeollock-Share-Token") ??
     request.header("X-DirectSign-Share-Token") ??
     normalizeOptionalText(request.query.token);
 
@@ -2903,7 +4009,7 @@ const readVerificationRequests = async (): Promise<VerificationRequestRecord[]> 
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     if (code && code !== "ENOENT") {
-      console.warn(`[DirectSign] resetting invalid verification store: ${code}`);
+      console.warn(`[yeollock.me] resetting invalid verification store: ${code}`);
     }
 
     await fs.mkdir(dataDir, { recursive: true });
@@ -2940,11 +4046,27 @@ const applyVerificationStatusSideEffects = async (
       : undefined;
 
   if (record.profile_id) {
+    const profileVerificationStatus =
+      record.target_type === "influencer_account"
+        ? deriveVerificationStatus(
+            (await readVerificationRequests()).filter(
+              (request) =>
+                request.target_type === "influencer_account" &&
+                (request.profile_id === record.profile_id ||
+                  request.target_id === record.profile_id ||
+                  (hasText(record.submitted_by_email) &&
+                    normalizeEmail(request.submitted_by_email ?? "") ===
+                      normalizeEmail(record.submitted_by_email))),
+            ),
+            record.status,
+          )
+        : record.status;
+
     await patchSupabaseRecord(
       "profiles",
       `?id=eq.${encodeURIComponent(record.profile_id)}`,
       {
-        verification_status: record.status,
+        verification_status: profileVerificationStatus,
         updated_at: record.updated_at,
       },
       "Supabase profile verification status update",
@@ -3059,6 +4181,111 @@ const parseDateDescending = (a: string, b: string) => {
   return (Number.isFinite(right) ? right : 0) - (Number.isFinite(left) ? left : 0);
 };
 
+const getInfluencerVerificationRequestsForAuth = async (
+  auth: InfluencerSession,
+) => {
+  const userEmail = normalizeEmail(auth.profile.email ?? auth.user.email ?? "");
+  return (await readVerificationRequests()).filter(
+    (request) =>
+      request.target_type === "influencer_account" &&
+      (request.profile_id === auth.profile.id ||
+        request.target_id === auth.profile.id ||
+        (hasText(userEmail) &&
+          normalizeEmail(request.submitted_by_email ?? "") === userEmail)),
+  );
+};
+
+const deriveVerificationStatus = (
+  requests: VerificationRequestRecord[],
+  fallback?: VerificationStatus | "not_submitted",
+): VerificationStatus => {
+  if (requests.some((request) => request.status === "approved")) {
+    return "approved";
+  }
+
+  const latest = [...requests].sort((a, b) =>
+    parseDateDescending(a.created_at, b.created_at),
+  )[0];
+
+  return latest?.status ?? fallback ?? "not_submitted";
+};
+
+const getContractRequiredInfluencerPlatforms = (contract: Contract) => {
+  const platforms =
+    contract.campaign?.platforms?.map((platform) =>
+      normalizeInfluencerPlatform(mapPlatformToV2(platform)),
+    ) ?? [];
+  const inferred = normalizeInfluencerPlatform(
+    mapPlatformToV2(inferPlatformFromUrl(contract.influencer_info.channel_url) ?? "OTHER"),
+  );
+
+  return Array.from(new Set(platforms.length > 0 ? platforms : [inferred]));
+};
+
+const normalizeComparableUrl = (value: string | undefined) => {
+  if (!hasText(value)) return undefined;
+  try {
+    const url = new URL(value);
+    return `${url.protocol}//${url.hostname.toLowerCase()}${url.pathname.replace(/\/+$/, "")}`;
+  } catch {
+    return undefined;
+  }
+};
+
+const verificationMatchesPlatformAccount = (
+  request: VerificationRequestRecord,
+  platform: InfluencerPlatform,
+  platformUrl?: string,
+) => {
+  if (request.status !== "approved" || request.platform !== platform) return false;
+
+  const inferredPlatform = normalizeInfluencerPlatform(
+    mapPlatformToV2(inferPlatformFromUrl(platformUrl) ?? "OTHER"),
+  );
+
+  if (platformUrl && inferredPlatform === platform) {
+    const contractUrl = normalizeComparableUrl(platformUrl);
+    const verifiedUrl = normalizeComparableUrl(request.platform_url);
+    if (!contractUrl || !verifiedUrl) return false;
+    return contractUrl === verifiedUrl;
+  }
+
+  return true;
+};
+
+const verificationMatchesContractPlatform = (
+  request: VerificationRequestRecord,
+  platform: InfluencerPlatform,
+  contract: Contract,
+) => {
+  return verificationMatchesPlatformAccount(
+    request,
+    platform,
+    contract.influencer_info.channel_url,
+  );
+};
+
+const resolveInfluencerContractVerification = async (
+  auth: InfluencerSession,
+  contract: Contract,
+) => {
+  const requests = await getInfluencerVerificationRequestsForAuth(auth);
+  const requiredPlatforms = getContractRequiredInfluencerPlatforms(contract);
+  const missingPlatforms = requiredPlatforms.filter(
+    (platform) =>
+      !requests.some((request) =>
+        verificationMatchesContractPlatform(request, platform, contract),
+      ),
+  );
+
+  return {
+    ok: missingPlatforms.length === 0,
+    requiredPlatforms,
+    missingPlatforms,
+    approvedRequests: requests.filter((request) => request.status === "approved"),
+  };
+};
+
 const buildVerificationSummary = async (
   advertiserTargetId = defaultAdvertiserTargetId,
   influencerTargetId = defaultInfluencerTargetId,
@@ -3123,20 +4350,41 @@ const buildAdvertiserScopedVerificationSummary = async (
   const context = await buildAdvertiserVerificationContext(auth);
   const organization = await readDefaultOrganizationForProfile(auth.profile.id);
   const requests = await readVerificationRequests();
-  const advertiserLatest = latestVerificationForTarget(
-    requests,
-    "advertiser_organization",
-    context.targetId,
+  const targetIds = Array.from(
+    new Set(
+      [
+        context.targetId,
+        auth.profile.id,
+        organization?.id,
+      ].filter((value): value is string => hasText(value)),
+    ),
   );
+  const advertiserLatest = requests
+    .filter(
+      (request) =>
+        request.target_type === "advertiser_organization" &&
+        request.verification_type === "business_registration_certificate" &&
+        (
+          targetIds.includes(request.target_id) ||
+          request.profile_id === auth.profile.id ||
+          (hasText(organization?.id) && request.organization_id === organization?.id) ||
+          (
+            hasText(organization?.business_verification_request_id) &&
+            request.id === organization?.business_verification_request_id
+          )
+        ),
+    )
+    .sort((a, b) => parseDateDescending(a.created_at, b.created_at))[0];
+  const advertiserStatus =
+    advertiserLatest?.status === "approved" && !hasText(advertiserLatest.reviewed_at)
+      ? "pending"
+      : (advertiserLatest?.status ?? "not_submitted");
 
   return {
     advertiser: {
       target_type: "advertiser_organization" as const,
       target_id: context.targetId,
-      status:
-        advertiserLatest?.status ??
-        auth.profile.verification_status ??
-        "not_submitted",
+      status: advertiserStatus,
       latest_request: advertiserLatest,
       account: {
         name: auth.profile.name,
@@ -3158,17 +4406,22 @@ const buildAdvertiserScopedVerificationSummary = async (
 const buildInfluencerScopedVerificationSummary = async (
   auth: InfluencerSession,
 ) => {
-  const userEmail = (auth.profile.email ?? auth.user.email ?? "").trim().toLowerCase();
-  const requests = (await readVerificationRequests()).filter(
-    (request) =>
-      request.target_type === "influencer_account" &&
-      (request.profile_id === auth.profile.id ||
-        request.target_id === auth.profile.id ||
-        request.submitted_by_email?.trim().toLowerCase() === userEmail),
-  );
+  const requests = await getInfluencerVerificationRequestsForAuth(auth);
   const influencerLatest = requests.sort((a, b) =>
     parseDateDescending(a.created_at, b.created_at),
   )[0];
+  const status = deriveVerificationStatus(
+    requests,
+    auth.profile.verification_status ?? "not_submitted",
+  );
+  const approvedPlatforms = requests
+    .filter((request) => request.status === "approved" && request.platform && request.platform_handle)
+    .map((request) => ({
+      platform: request.platform!,
+      handle: request.platform_handle!,
+      url: request.platform_url,
+      approved_at: request.reviewed_at,
+    }));
 
   return {
     advertiser: emptyVerificationProfile(
@@ -3178,11 +4431,9 @@ const buildInfluencerScopedVerificationSummary = async (
     influencer: {
       target_type: "influencer_account" as const,
       target_id: auth.profile.id,
-      status:
-        influencerLatest?.status ??
-        auth.profile.verification_status ??
-        "not_submitted",
+      status,
       latest_request: influencerLatest,
+      approved_platforms: approvedPlatforms,
       account: {
         name: auth.profile.name,
         email: auth.profile.email ?? auth.user.email,
@@ -3198,10 +4449,8 @@ const isAdvertiserApprovedForContractSend = async (
   contract: Contract,
 ) => {
   if (auth.profile.role === "admin") return true;
-  if (auth.profile.verification_status === "approved") return true;
 
   const organization = await readDefaultOrganizationForProfile(auth.profile.id);
-  if (organization?.business_verification_status === "approved") return true;
 
   const targetIds = Array.from(
     new Set(
@@ -3214,14 +4463,25 @@ const isAdvertiserApprovedForContractSend = async (
   );
 
   const requests = await readVerificationRequests();
-  return targetIds.some(
-    (targetId) =>
-      latestVerificationForTarget(
-        requests,
-        "advertiser_organization",
-        targetId,
-      )?.status === "approved",
-  );
+  const relevantRequests = requests
+    .filter(
+      (request) =>
+        request.target_type === "advertiser_organization" &&
+        request.verification_type === "business_registration_certificate" &&
+        (
+          targetIds.includes(request.target_id) ||
+          request.profile_id === auth.profile.id ||
+          (hasText(organization?.id) && request.organization_id === organization?.id) ||
+          (
+            hasText(organization?.business_verification_request_id) &&
+            request.id === organization?.business_verification_request_id
+          )
+        ),
+    )
+    .sort((a, b) => parseDateDescending(a.created_at, b.created_at));
+  const latest = relevantRequests[0];
+
+  return latest?.status === "approved" && hasText(latest.reviewed_at);
 };
 
 const isContractSendAttempt = (
@@ -3354,10 +4614,10 @@ const dashboardStageMeta: Record<
     nextAction: "광고주 답변과 조항 변경 이력을 확인하세요.",
   },
   ready_to_sign: {
-    label: "서명 가능",
+    label: "서명 준비",
     statusLabel: "서명 대기",
-    actionLabel: "서명하기",
-    nextAction: "최종본 확인 후 전자서명을 완료할 수 있습니다.",
+    actionLabel: "인증 후 서명",
+    nextAction: "최종본 확인과 플랫폼 계정 인증 승인이 끝나면 전자서명을 완료할 수 있습니다.",
   },
   signed: {
     label: "완료",
@@ -3415,6 +4675,50 @@ const buildVerificationHref = (contractId: string, legacyContract?: Contract) =>
   return `/influencer/verification?contractId=${encodeURIComponent(viewerContractId)}${suffix}`;
 };
 
+const getLegacyPlatformAccounts = (
+  contract: Contract,
+): InfluencerDashboardContract["platform_accounts"] => {
+  const platforms =
+    contract.campaign?.platforms?.map((platform) =>
+      normalizeInfluencerPlatform(mapPlatformToV2(platform)),
+    ) ?? [
+      normalizeInfluencerPlatform(
+        mapPlatformToV2(
+          inferPlatformFromUrl(contract.influencer_info.channel_url) ?? "OTHER",
+        ),
+      ),
+    ];
+  const channelPlatform = normalizeInfluencerPlatform(
+    mapPlatformToV2(inferPlatformFromUrl(contract.influencer_info.channel_url) ?? "OTHER"),
+  );
+
+  return [...new Set(platforms)].map((platform) => ({
+    platform,
+    url:
+      platform === channelPlatform && hasText(contract.influencer_info.channel_url)
+        ? contract.influencer_info.channel_url
+        : undefined,
+  }));
+};
+
+const getV2PlatformAccounts = (
+  platforms: SupabaseContractPlatformRow[],
+  legacyContract?: Contract,
+): InfluencerDashboardContract["platform_accounts"] => {
+  if (platforms.length === 0 && legacyContract) {
+    return getLegacyPlatformAccounts(legacyContract);
+  }
+
+  if (platforms.length === 0) {
+    return [{ platform: "other" }];
+  }
+
+  return platforms.map((platform) => ({
+    platform: normalizeInfluencerPlatform(platform.platform),
+    url: platform.url ?? undefined,
+  }));
+};
+
 const buildV2DashboardContract = ({
   contract,
   legacyContract,
@@ -3445,6 +4749,7 @@ const buildV2DashboardContract = ({
     : (legacyContract?.campaign?.platforms?.map((platform) =>
         normalizeInfluencerPlatform(mapPlatformToV2(platform)),
       ) ?? ["other"]);
+  const platformAccounts = getV2PlatformAccounts(platforms, legacyContract);
   const totalClauses = clauses.length || legacyContract?.clauses.length || 0;
   const approvedClauses =
     clauses.filter((clause) => clause.status === "accepted").length ||
@@ -3485,6 +4790,7 @@ const buildV2DashboardContract = ({
       (platform) => dashboardPlatformLabels[platform],
     ),
     platforms: [...new Set(normalizedPlatforms)],
+    platform_accounts: platformAccounts,
     fee_label: formatPricingTerm(pricingTerm, legacyContract),
     period_label:
       legacyContract?.campaign?.period ??
@@ -3525,6 +4831,7 @@ const buildLegacyDashboardContract = (
     contract.campaign?.platforms?.map((platform) =>
       normalizeInfluencerPlatform(mapPlatformToV2(platform)),
     ) ?? [normalizeInfluencerPlatform(mapPlatformToV2(inferPlatformFromUrl(contract.influencer_info.channel_url) ?? "OTHER"))];
+  const platformAccounts = getLegacyPlatformAccounts(contract);
   const totalClauses = contract.clauses.length;
   const approvedClauses = contract.clauses.filter(
     (clause) => clause.status === "APPROVED",
@@ -3546,6 +4853,7 @@ const buildLegacyDashboardContract = (
       (platform) => dashboardPlatformLabels[platform],
     ),
     platforms: [...new Set(platforms)],
+    platform_accounts: platformAccounts,
     fee_label: contract.campaign?.budget ?? "금액 미정",
     period_label:
       contract.campaign?.period ??
@@ -3582,24 +4890,263 @@ const buildLegacyDashboardContract = (
   };
 };
 
+const mapV2StatusToLegacyStatus = (
+  status: SupabaseContractV2Row["status"],
+  nextActorRole?: string | null,
+): Contract["status"] => {
+  if (status === "completed" || status === "active") return "SIGNED";
+  if (status === "signing") return "APPROVED";
+  if (status === "negotiating") {
+    return nextActorRole === "advertiser" ? "NEGOTIATING" : "REVIEWING";
+  }
+  return "DRAFT";
+};
+
+const mapV2PlatformToLegacy = (platform: InfluencerPlatform): ContractPlatformValue => {
+  const platforms: Record<InfluencerPlatform, ContractPlatformValue> = {
+    instagram: "INSTAGRAM",
+    youtube: "YOUTUBE",
+    tiktok: "TIKTOK",
+    naver_blog: "NAVER_BLOG",
+    other: "OTHER",
+  };
+  return platforms[platform] ?? "OTHER";
+};
+
+const mapV2ClauseStatusToLegacy = (
+  status: SupabaseContractClauseRow["status"],
+): Contract["clauses"][number]["status"] => {
+  if (status === "accepted") return "APPROVED";
+  if (status === "rejected" || status === "removed") return "DELETION_REQUESTED";
+  return "MODIFICATION_REQUESTED";
+};
+
+const buildLegacyContractFromV2Rows = ({
+  contract,
+  parties,
+  platforms,
+  pricingTerm,
+  clauses,
+  shareLink,
+}: {
+  contract: SupabaseContractV2Row;
+  parties: SupabaseContractPartyRow[];
+  platforms: SupabaseContractPlatformRow[];
+  pricingTerm?: SupabaseContractPricingTermRow;
+  clauses: SupabaseContractClauseRow[];
+  shareLink?: SupabaseShareLinkRow;
+}): Contract => {
+  const advertiserParty =
+    parties.find((party) => ["advertiser", "agency", "marketer"].includes(party.party_role)) ??
+    parties.find((party) => party.party_role !== "influencer");
+  const influencerParty = parties.find((party) => party.party_role === "influencer");
+  const legacyPlatforms = platforms.length
+    ? platforms.map((platform) =>
+        mapV2PlatformToLegacy(normalizeInfluencerPlatform(platform.platform)),
+      )
+    : ["OTHER" as ContractPlatformValue];
+  const status = mapV2StatusToLegacyStatus(contract.status, contract.next_actor_role);
+  const shareLinkActive = shareLink?.status === "active";
+  const createdAt = contract.created_at ?? contract.updated_at ?? new Date().toISOString();
+  const updatedAt = contract.updated_at ?? createdAt;
+  const periodLabel =
+    [
+      contract.campaign_start_date ? formatKoreanDate(contract.campaign_start_date) : undefined,
+      contract.campaign_end_date ? formatKoreanDate(contract.campaign_end_date) : undefined,
+    ]
+      .filter(Boolean)
+      .join(" - ") || undefined;
+
+  return normalizeContract({
+    id: contract.id,
+    advertiser_id:
+      advertiserParty?.profile_id ??
+      contract.created_by_profile_id ??
+      advertiserParty?.email ??
+      "advertiser",
+    advertiser_info: {
+      name:
+        advertiserParty?.company_name ??
+        advertiserParty?.display_name ??
+        "광고주",
+      manager: advertiserParty?.email ?? undefined,
+    },
+    type:
+      contract.pricing_type === "commission" ||
+      contract.pricing_type === "fixed_plus_commission"
+        ? "공동구매"
+        : "협찬",
+    status,
+    title: contract.campaign_title,
+    influencer_info: {
+      name: influencerParty?.display_name ?? "인플루언서",
+      channel_url: influencerParty?.channel_url ?? platforms[0]?.url ?? "",
+      contact: influencerParty?.email ?? "",
+    },
+    campaign: {
+      budget: formatPricingTerm(pricingTerm),
+      start_date: contract.campaign_start_date ?? undefined,
+      end_date: contract.campaign_end_date ?? undefined,
+      deadline: contract.upload_deadline ?? contract.review_deadline ?? undefined,
+      upload_due_at: contract.upload_deadline ?? undefined,
+      review_due_at: contract.review_deadline ?? undefined,
+      period: periodLabel,
+      platforms: [...new Set(legacyPlatforms)],
+      deliverables: platforms.map((platform) => dashboardPlatformLabels[platform.platform]),
+    },
+    workflow: {
+      next_actor:
+        contract.next_actor_role === "advertiser"
+          ? "advertiser"
+          : contract.next_actor_role === "influencer"
+            ? "influencer"
+            : status === "SIGNED"
+              ? "system"
+              : "advertiser",
+      next_action:
+        contract.next_action ??
+        dashboardStageMeta[inferDashboardStage(contract.status, contract.next_actor_role)]
+          .nextAction,
+      due_at: contract.next_due_at ?? contract.upload_deadline ?? contract.review_deadline ?? undefined,
+      risk_level:
+        contract.next_actor_role === "advertiser" || status === "NEGOTIATING"
+          ? "high"
+          : "medium",
+      last_message: contract.campaign_summary ?? undefined,
+    },
+    evidence: {
+      share_token_status:
+        shareLinkActive ? "active" : shareLink?.status === "revoked" ? "revoked" : "not_issued",
+      share_token_expires_at: shareLink?.expires_at ?? undefined,
+      audit_ready: status === "APPROVED" || status === "SIGNED",
+      pdf_status: status === "SIGNED" ? "signed_ready" : status === "DRAFT" ? "not_ready" : "draft_ready",
+    },
+    clauses: clauses.length
+      ? clauses
+          .slice()
+          .sort((left, right) => (left.order_no ?? 0) - (right.order_no ?? 0))
+          .map((clause, index) => ({
+            clause_id: clause.id ?? `${contract.id}:clause:${index + 1}`,
+            category: clause.title ?? `조항 ${index + 1}`,
+            content: clause.body ?? "조항 본문을 불러오지 못했습니다.",
+            status: mapV2ClauseStatusToLegacy(clause.status),
+            history: [],
+          }))
+      : [
+          {
+            clause_id: `${contract.id}:clause:summary`,
+            category: "계약 요약",
+            content: contract.campaign_summary ?? "계약 세부 조항을 확인하세요.",
+            status: status === "APPROVED" || status === "SIGNED" ? "APPROVED" : "MODIFICATION_REQUESTED",
+            history: [],
+          },
+        ],
+    audit_events: [],
+    created_at: createdAt,
+    updated_at: updatedAt,
+  });
+};
+
+const readSupabaseV2ContractAsLegacy = async (
+  contractId: string,
+): Promise<Contract | undefined> => {
+  if (!useSupabase || !isUuid(contractId)) return undefined;
+
+  const contracts = await readSupabaseRows<SupabaseContractV2Row>(
+    "contracts",
+    `?select=*&id=eq.${encodeURIComponent(contractId)}&deleted_at=is.null&limit=1`,
+    "contract v2 detail",
+  );
+  const contract = contracts[0];
+  if (!contract) return undefined;
+
+  const [
+    parties,
+    platforms,
+    pricingTerms,
+    clauses,
+    shareLinks,
+  ] = await Promise.all([
+    readSupabaseRows<SupabaseContractPartyRow>(
+      "contract_parties",
+      `?select=*&contract_id=eq.${encodeURIComponent(contract.id)}`,
+      "contract v2 parties",
+    ),
+    readSupabaseRows<SupabaseContractPlatformRow>(
+      "contract_platforms",
+      `?select=*&contract_id=eq.${encodeURIComponent(contract.id)}`,
+      "contract v2 platforms",
+    ),
+    readSupabaseRows<SupabaseContractPricingTermRow>(
+      "contract_pricing_terms",
+      `?select=*&contract_id=eq.${encodeURIComponent(contract.id)}&limit=1`,
+      "contract v2 pricing",
+    ),
+    readSupabaseRows<SupabaseContractClauseRow>(
+      "contract_clauses",
+      `?select=id,contract_id,order_no,title,body,status&contract_id=eq.${encodeURIComponent(
+        contract.id,
+      )}&order=order_no.asc`,
+      "contract v2 clauses",
+    ),
+    readSupabaseRows<SupabaseShareLinkRow>(
+      "share_links",
+      `?select=contract_id,status,expires_at&contract_id=eq.${encodeURIComponent(
+        contract.id,
+      )}&order=created_at.desc&limit=1`,
+      "contract v2 share link",
+    ),
+  ]);
+
+  return buildLegacyContractFromV2Rows({
+    contract,
+    parties,
+    platforms,
+    pricingTerm: pricingTerms[0],
+    clauses,
+    shareLink: shareLinks[0],
+  });
+};
+
 const buildDashboardTasks = (
   contracts: InfluencerDashboardContract[],
   verificationStatus: VerificationStatus,
+  verificationRequests: VerificationRequestRecord[] = [],
 ) => {
   const tasks: InfluencerDashboardTask[] = [];
-  const hasActiveContract = contracts.some((contract) => contract.stage !== "signed");
+  const activeContract = contracts.find((contract) => contract.stage !== "signed");
+  const contractNeedsVerification = (contract: InfluencerDashboardContract) =>
+    contract.stage !== "signed" &&
+    (contract.platform_accounts.length > 0
+      ? contract.platform_accounts
+      : contract.platforms.map((platform) => ({ platform, url: undefined }))).some(
+        (account) =>
+          !verificationRequests.some((request) =>
+            verificationMatchesPlatformAccount(
+              request,
+              account.platform,
+              account.url,
+            ),
+          ),
+      );
+  const activeContractNeedingVerification = contracts.find(contractNeedsVerification);
 
-  if (hasActiveContract && verificationStatus !== "approved") {
+  if (
+    activeContract &&
+    (verificationStatus !== "approved" || activeContractNeedingVerification)
+  ) {
+    const taskContract = activeContractNeedingVerification ?? activeContract;
     tasks.push({
       id: "verification",
+      contract_id: taskContract.id,
       tone: verificationStatus === "rejected" ? "rose" : "amber",
       title: verificationStatus === "pending" ? "계정 인증 검토 중" : "플랫폼 계정 인증 필요",
       body:
         verificationStatus === "pending"
           ? "운영자 검토가 끝나면 계정 인증 상태가 갱신됩니다."
-          : "서명은 진행할 수 있지만 계약 신뢰 확인을 위해 플랫폼 소유 확인을 권장합니다.",
+          : "계약 검토는 가능하지만, 서명하려면 플랫폼 계정 인증 승인이 먼저 필요합니다.",
       action_label: verificationStatus === "pending" ? "인증 상태 보기" : "인증 제출",
-      href: "/influencer/verification",
+      href: taskContract.verification_href,
     });
   }
 
@@ -3771,10 +5318,11 @@ const buildInfluencerDashboard = async (
     latestVerification?.status === "not_submitted"
       ? undefined
       : (latestVerification as InfluencerDashboardResponse["verification"]["latest_request"]);
-  const verificationStatus =
+  const verificationStatus = deriveVerificationStatus(
+    verificationRequests,
     (profile?.verification_status as VerificationStatus | undefined) ??
-    latestVerification?.status ??
-    "not_submitted";
+      "not_submitted",
+  );
   const approvedPlatforms = verificationRequests
     .filter((request) => request.status === "approved" && request.platform && request.platform_handle)
     .map((request) => ({
@@ -3792,13 +5340,32 @@ const buildInfluencerDashboard = async (
     return total + (amount ?? 0);
   }, 0);
   const hasActiveContract = dashboardContracts.some((contract) => contract.stage !== "signed");
+  const hasActiveContractRequiringVerification = dashboardContracts.some(
+    (contract) =>
+      contract.stage !== "signed" &&
+      (contract.platform_accounts.length > 0
+        ? contract.platform_accounts
+        : contract.platforms.map((platform) => ({ platform, url: undefined }))).some(
+        (account) =>
+          !verificationRequests.some(
+            (request) =>
+              verificationMatchesPlatformAccount(
+                request,
+                account.platform,
+                account.url,
+              ),
+          ),
+      ),
+  );
   const summary = {
     total_contracts: dashboardContracts.length,
     review_needed: dashboardContracts.filter((contract) => contract.stage === "review_needed").length,
     change_pending: dashboardContracts.filter((contract) => contract.stage === "change_pending").length,
     ready_to_sign: dashboardContracts.filter((contract) => contract.stage === "ready_to_sign").length,
     signed: dashboardContracts.filter((contract) => contract.stage === "signed").length,
-    verification_needed: hasActiveContract && verificationStatus !== "approved",
+    verification_needed:
+      hasActiveContract &&
+      (verificationStatus !== "approved" || hasActiveContractRequiringVerification),
     next_deadline: nextDeadline,
     total_fixed_fee_label: formatWonAmount(fixedFeeTotal),
   };
@@ -3821,7 +5388,11 @@ const buildInfluencerDashboard = async (
       approved_platforms: approvedPlatforms,
     },
     summary,
-    tasks: buildDashboardTasks(dashboardContracts, verificationStatus),
+    tasks: buildDashboardTasks(
+      dashboardContracts,
+      verificationStatus,
+      verificationRequests,
+    ),
     contracts: dashboardContracts,
   };
 };
@@ -3864,13 +5435,120 @@ const readStore = async (): Promise<ContractStoreFile> => {
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     if (code && code !== "ENOENT") {
-      console.warn(`[DirectSign] resetting invalid data store: ${code}`);
+      console.warn(`[yeollock.me] resetting invalid data store: ${code}`);
     }
 
     const initialStore = { contracts: demoMode ? createDemoContracts() : [] };
     await writeStore(initialStore);
     return initialStore;
   }
+};
+
+const readContractWriteContext = async (contractId: string) => {
+  const store = await readStore();
+  const existingIndex = store.contracts.findIndex((item) => item.id === contractId);
+  const legacyContract =
+    existingIndex >= 0 ? store.contracts[existingIndex] : undefined;
+  const v2Contract =
+    !legacyContract && useSupabase && isUuid(contractId)
+      ? await readSupabaseV2ContractAsLegacy(contractId)
+      : undefined;
+
+  return {
+    store,
+    existingIndex,
+    existingContract: legacyContract ?? v2Contract,
+    isV2Only: !legacyContract && Boolean(v2Contract),
+  };
+};
+
+const mergeContractIntoStore = (
+  store: ContractStoreFile,
+  existingIndex: number,
+  contract: Contract,
+) => ({
+  contracts:
+    existingIndex >= 0
+      ? store.contracts.map((item, index) =>
+          index === existingIndex ? contract : item,
+        )
+      : [...store.contracts, contract],
+});
+
+const resolveInfluencerVerificationContractAccess = async (
+  auth: InfluencerSession,
+  contractIdValue: unknown,
+): Promise<
+  | { ok: true; contractId: string }
+  | { ok: false; status: number; error: string }
+> => {
+  const contractId = normalizeOptionalText(contractIdValue);
+
+  if (!contractId) {
+    return {
+      ok: false,
+      status: 422,
+      error: "Active contract is required for account verification",
+    };
+  }
+
+  const store = await readStore();
+  const legacyContract = store.contracts.find((contract) => contract.id === contractId);
+
+  if (legacyContract) {
+    if (!canInfluencerAccessLegacyContract(auth, legacyContract)) {
+      return { ok: false, status: 403, error: "Contract access is not allowed" };
+    }
+
+    if (legacyContract.status === "SIGNED") {
+      return {
+        ok: false,
+        status: 409,
+        error: "Account verification requires an active unsigned contract",
+      };
+    }
+
+    return { ok: true, contractId: legacyContract.id };
+  }
+
+  if (useSupabase) {
+    const contracts = await readSupabaseRows<SupabaseContractV2Row>(
+      "contracts",
+      `?select=*&id=eq.${encodeURIComponent(contractId)}&deleted_at=is.null&limit=1`,
+      "verification contract",
+    );
+    const contract = contracts[0];
+
+    if (contract) {
+      const parties = await readSupabaseRows<SupabaseContractPartyRow>(
+        "contract_parties",
+        `?select=*&contract_id=eq.${encodeURIComponent(contract.id)}&party_role=eq.influencer`,
+        "verification contract parties",
+      );
+      const profileEmail = normalizeEmail(auth.profile.email ?? auth.user.email ?? "");
+      const hasPartyAccess = parties.some(
+        (party) =>
+          party.profile_id === auth.profile.id ||
+          (hasText(profileEmail) && normalizeEmail(party.email ?? "") === profileEmail),
+      );
+
+      if (!hasPartyAccess) {
+        return { ok: false, status: 403, error: "Contract access is not allowed" };
+      }
+
+      if (inferDashboardStage(contract.status, contract.next_actor_role) === "signed") {
+        return {
+          ok: false,
+          status: 409,
+          error: "Account verification requires an active unsigned contract",
+        };
+      }
+
+      return { ok: true, contractId: contract.id };
+    }
+  }
+
+  return { ok: false, status: 404, error: "Contract not found" };
 };
 
 app.get("/api/health", (_request, response) => {
@@ -3999,6 +5677,16 @@ app.get("/api/admin/support-access-requests", async (request, response, next) =>
 
 app.patch("/api/admin/support-access-requests/:id", async (request, response, next) => {
   try {
+    const throttle = consumeSensitiveEndpointRateLimit(
+      request,
+      "admin_support_access_review",
+      request.params.id,
+    );
+    if (throttle.blocked) {
+      sendSensitiveRateLimitResponse(response, throttle);
+      return;
+    }
+
     if (!requireAdminSession(request, response)) return;
 
     const status = String(request.body?.status ?? "");
@@ -4015,28 +5703,31 @@ app.patch("/api/admin/support-access-requests/:id", async (request, response, ne
       return;
     }
 
+    const statusAuditEvent: SupportAccessAuditEvent = {
+      id: randomUUID(),
+      action: status === "closed" ? "closed" : "expired",
+      actor_role: "admin",
+      actor_name: `${productName} 운영자`,
+      description:
+        status === "closed"
+          ? "운영자가 지원 열람을 종료했습니다."
+          : "운영자가 지원 열람을 회수했습니다.",
+      ip: getClientIp(request),
+      user_agent: request.header("user-agent") ?? "unknown",
+      created_at: new Date().toISOString(),
+    };
+
     const updated = await updateSupportAccessRequest({
       ...record,
       status,
       reviewed_by_name: `${productName} 운영자`,
       reviewed_at: new Date().toISOString(),
-      audit_events: [
-        ...(record.audit_events ?? []),
-        {
-          id: randomUUID(),
-          action: status === "closed" ? "closed" : "expired",
-          actor_role: "admin",
-          actor_name: `${productName} 운영자`,
-          description:
-            status === "closed"
-              ? "운영자가 지원 열람을 종료했습니다."
-              : "운영자가 지원 열람을 회수했습니다.",
-          ip: getClientIp(request),
-          user_agent: request.header("user-agent") ?? "unknown",
-          created_at: new Date().toISOString(),
-        },
-      ],
+      audit_events: useSupabase
+        ? record.audit_events
+        : [...(record.audit_events ?? []), statusAuditEvent],
     });
+
+    await appendSupportAccessEventRow(updated, statusAuditEvent);
 
     response.json({ request: updated, is_active: isSupportAccessActive(updated) });
   } catch (error) {
@@ -4086,6 +5777,12 @@ app.post("/api/advertiser/login", async (request, response) => {
       return;
     }
 
+    const throttle = consumePublicAuthRateLimit(request, "advertiser_login", email);
+    if (throttle.blocked) {
+      sendPublicAuthRateLimitResponse(response, throttle);
+      return;
+    }
+
     const session = await createSupabasePasswordSession(email, password);
     const profile = await readProfileByUserId(session.user.id);
 
@@ -4096,6 +5793,7 @@ app.post("/api/advertiser/login", async (request, response) => {
 
     await syncProfileEmailVerifiedAt(session.user);
     setAdvertiserSessionCookies(response, session);
+    clearPublicAuthRateLimit(request, "advertiser_login", email);
     response.json({
       authenticated: true,
       user: {
@@ -4139,6 +5837,18 @@ app.post("/api/advertiser/signup", async (request, response) => {
       response.status(422).json({ error: "담당자명과 회사명을 입력해 주세요." });
       return;
     }
+    if (!hasAcceptedRequiredSignupConsents(request.body)) {
+      response.status(422).json({
+        error: "회원가입에는 이용약관과 개인정보 처리방침 필수 동의가 필요합니다.",
+      });
+      return;
+    }
+
+    const throttle = consumePublicAuthRateLimit(request, "advertiser_signup", email);
+    if (throttle.blocked) {
+      sendPublicAuthRateLimitResponse(response, throttle);
+      return;
+    }
 
     const authUser = await createSupabaseSignupUser({
       email,
@@ -4161,6 +5871,7 @@ app.post("/api/advertiser/signup", async (request, response) => {
         company_name: companyName,
         verification_status: "not_submitted",
         email_verified_at: null,
+        ...buildSignupLegalConsent(request, "advertiser"),
         updated_at: new Date().toISOString(),
       },
     ]);
@@ -4217,7 +5928,20 @@ app.post("/api/advertiser/signup", async (request, response) => {
   }
 });
 
-app.post("/api/advertiser/logout", (_request, response) => {
+app.post("/api/advertiser/logout", async (request, response) => {
+  try {
+    await revokeSessionFromRequest(
+      request,
+      advertiserAccessCookie,
+      advertiserRefreshCookie,
+    );
+  } catch (error) {
+    console.warn(
+      `[${productName}] advertiser Supabase logout revoke failed: ${
+        error instanceof Error ? error.message : "unknown error"
+      }`,
+    );
+  }
   clearAdvertiserSessionCookies(response);
   response.json({ authenticated: false });
 });
@@ -4252,6 +5976,12 @@ app.post("/api/influencer/login", async (request, response, next) => {
       return;
     }
 
+    const throttle = consumePublicAuthRateLimit(request, "influencer_login", email);
+    if (throttle.blocked) {
+      sendPublicAuthRateLimitResponse(response, throttle);
+      return;
+    }
+
     const session = await createSupabasePasswordSession(email, password);
     const dashboard = await buildInfluencerDashboard(session.user);
 
@@ -4262,6 +5992,7 @@ app.post("/api/influencer/login", async (request, response, next) => {
 
     await syncProfileEmailVerifiedAt(session.user);
     setInfluencerSessionCookies(response, session);
+    clearPublicAuthRateLimit(request, "influencer_login", email);
     response.json({
       authenticated: true,
       user: dashboard.user,
@@ -4320,6 +6051,18 @@ app.post("/api/influencer/signup", async (request, response) => {
       response.status(422).json({ error: "활동 영역과 플랫폼을 각각 하나 이상 선택해 주세요." });
       return;
     }
+    if (!hasAcceptedRequiredSignupConsents(request.body)) {
+      response.status(422).json({
+        error: "회원가입에는 이용약관과 개인정보 처리방침 필수 동의가 필요합니다.",
+      });
+      return;
+    }
+
+    const throttle = consumePublicAuthRateLimit(request, "influencer_signup", email);
+    if (throttle.blocked) {
+      sendPublicAuthRateLimitResponse(response, throttle);
+      return;
+    }
 
     const authUser = await createSupabaseSignupUser({
       email,
@@ -4342,6 +6085,7 @@ app.post("/api/influencer/signup", async (request, response) => {
         activity_platforms: activityPlatforms.selected,
         verification_status: "not_submitted",
         email_verified_at: null,
+        ...buildSignupLegalConsent(request, "influencer"),
         updated_at: new Date().toISOString(),
       },
     ]);
@@ -4371,7 +6115,20 @@ app.post("/api/influencer/signup", async (request, response) => {
   }
 });
 
-app.post("/api/influencer/logout", (_request, response) => {
+app.post("/api/influencer/logout", async (request, response) => {
+  try {
+    await revokeSessionFromRequest(
+      request,
+      influencerAccessCookie,
+      influencerRefreshCookie,
+    );
+  } catch (error) {
+    console.warn(
+      `[${productName}] influencer Supabase logout revoke failed: ${
+        error instanceof Error ? error.message : "unknown error"
+      }`,
+    );
+  }
   clearInfluencerSessionCookies(response);
   response.json({ authenticated: false });
 });
@@ -4381,7 +6138,7 @@ app.get("/api/influencer/dashboard", async (request, response, next) => {
     const auth = await authenticateInfluencerRequest(request, response);
 
     if (!auth) {
-      response.json({ authenticated: false });
+      response.status(401).json({ authenticated: false });
       return;
     }
 
@@ -4398,6 +6155,8 @@ app.get("/api/influencer/dashboard", async (request, response, next) => {
 
 app.get("/api/verification/status", async (request, response, next) => {
   try {
+    const requestedRole = normalizeOptionalText(request.query.role);
+
     if (verifyAdminSessionToken(getAdminSessionFromRequest(request))) {
       const advertiserId =
         normalizeOptionalText(request.query.advertiser_id) ??
@@ -4410,35 +6169,39 @@ app.get("/api/verification/status", async (request, response, next) => {
       return;
     }
 
-    const advertiserAuth = await authenticateAdvertiserRequest(request, response);
+    if (requestedRole !== "advertiser") {
+      const influencerAuth = await authenticateInfluencerRequest(request, response);
 
-    if (advertiserAuth) {
-      const profile = await readProfileByUserId(advertiserAuth.user.id);
+      if (influencerAuth) {
+        const profile = await readProfileByUserId(influencerAuth.user.id);
 
-      if (isAdvertiserRole(profile?.role)) {
-        response.json(
-          await buildAdvertiserScopedVerificationSummary({
-            ...advertiserAuth,
-            profile: profile!,
-          }),
-        );
-        return;
+        if (isInfluencerRole(profile?.role)) {
+          response.json(
+            await buildInfluencerScopedVerificationSummary({
+              ...influencerAuth,
+              profile: profile!,
+            }),
+          );
+          return;
+        }
       }
     }
 
-    const influencerAuth = await authenticateInfluencerRequest(request, response);
+    if (requestedRole !== "influencer") {
+      const advertiserAuth = await authenticateAdvertiserRequest(request, response);
 
-    if (influencerAuth) {
-      const profile = await readProfileByUserId(influencerAuth.user.id);
+      if (advertiserAuth) {
+        const profile = await readProfileByUserId(advertiserAuth.user.id);
 
-      if (isInfluencerRole(profile?.role)) {
-        response.json(
-          await buildInfluencerScopedVerificationSummary({
-            ...influencerAuth,
-            profile: profile!,
-          }),
-        );
-        return;
+        if (isAdvertiserRole(profile?.role)) {
+          response.json(
+            await buildAdvertiserScopedVerificationSummary({
+              ...advertiserAuth,
+              profile: profile!,
+            }),
+          );
+          return;
+        }
       }
     }
 
@@ -4450,6 +6213,16 @@ app.get("/api/verification/status", async (request, response, next) => {
 
 app.post("/api/verification/advertiser", async (request, response, next) => {
   try {
+    const throttle = consumeSensitiveEndpointRateLimit(
+      request,
+      "verification_advertiser",
+      request.body?.business_registration_number,
+    );
+    if (throttle.blocked) {
+      sendSensitiveRateLimitResponse(response, throttle);
+      return;
+    }
+
     const advertiserAuth = await requireAdvertiserSession(request, response);
 
     if (!advertiserAuth) return;
@@ -4553,9 +6326,32 @@ app.post("/api/verification/advertiser", async (request, response, next) => {
 
 app.post("/api/verification/influencer", async (request, response, next) => {
   try {
+    const throttle = consumeSensitiveEndpointRateLimit(
+      request,
+      "verification_influencer",
+      request.body?.platform_url ?? request.body?.platform_handle,
+    );
+    if (throttle.blocked) {
+      sendSensitiveRateLimitResponse(response, throttle);
+      return;
+    }
+
     const influencerAuth = await requireInfluencerSession(request, response);
 
     if (!influencerAuth) return;
+
+    const requestedContractId = normalizeOptionalText(request.body?.contract_id);
+    const contractAccess = requestedContractId
+      ? await resolveInfluencerVerificationContractAccess(
+          influencerAuth,
+          requestedContractId,
+        )
+      : ({ ok: true, contractId: undefined } as const);
+
+    if (contractAccess.ok === false) {
+      response.status(contractAccess.status).json({ error: contractAccess.error });
+      return;
+    }
 
     const subjectName =
       normalizeRequiredText(request.body?.subject_name) ||
@@ -4625,7 +6421,8 @@ app.post("/api/verification/influencer", async (request, response, next) => {
       ownershipMethod !== "screenshot_review" &&
       Boolean(ownershipChallengeUrl) &&
       platform !== "instagram" &&
-      platform !== "tiktok";
+      platform !== "tiktok" &&
+      platform !== "other";
     const ownershipCheck = shouldRunOwnershipCheck
       ? await checkOwnershipChallenge(ownershipChallengeUrl!, ownershipChallengeCode)
       : { status: "not_run" as OwnershipCheckStatus, checked_at: now };
@@ -4660,6 +6457,7 @@ app.post("/api/verification/influencer", async (request, response, next) => {
       evidence_file_size: evidenceFile?.size,
       evidence_snapshot_json: buildVerificationEvidenceSnapshot(requestId, storedEvidenceFile, {
         ownership_verification: {
+          contract_id: contractAccess.contractId,
           platform,
           platform_handle: platformHandle,
           platform_url: platformUrl,
@@ -4723,7 +6521,7 @@ app.get("/api/admin/verification-requests/:id/evidence", async (request, respons
       response.setHeader("Content-Type", storedFile.content_type);
       response.setHeader(
         "Content-Disposition",
-        `inline; filename="${sanitizeStorageSegment(storedFile.file_name)}"`,
+        `attachment; filename="${sanitizeStorageSegment(storedFile.file_name)}"`,
       );
       response.send(fileBuffer);
       return;
@@ -4732,7 +6530,12 @@ app.get("/api/admin/verification-requests/:id/evidence", async (request, respons
     const legacyDataUrl = record.evidence_snapshot_json?.file_data_url;
     if (typeof legacyDataUrl === "string") {
       const { contentType, buffer } = dataUrlToBuffer(legacyDataUrl);
+      if (!assertDeclaredMimeMatchesContent(contentType, buffer, evidenceFileMimeTypes)) {
+        response.status(415).json({ error: "Legacy evidence file type is not allowed" });
+        return;
+      }
       response.setHeader("Content-Type", contentType);
+      response.setHeader("Content-Disposition", `attachment; filename="${record.id}-evidence.${extensionForMimeType(contentType)}"`);
       response.send(buffer);
       return;
     }
@@ -4745,6 +6548,16 @@ app.get("/api/admin/verification-requests/:id/evidence", async (request, respons
 
 app.patch("/api/admin/verification-requests/:id", async (request, response, next) => {
   try {
+    const throttle = consumeSensitiveEndpointRateLimit(
+      request,
+      "admin_verification_review",
+      request.params.id,
+    );
+    if (throttle.blocked) {
+      sendSensitiveRateLimitResponse(response, throttle);
+      return;
+    }
+
     if (!requireAdminSession(request, response)) return;
 
     const status = normalizeRequiredText(request.body?.status);
@@ -4815,8 +6628,20 @@ app.get("/api/contracts", async (request, response, next) => {
 
 app.post("/api/contracts/:id/support-access-requests", async (request, response, next) => {
   try {
+    const throttle = consumeSensitiveEndpointRateLimit(
+      request,
+      "support_access_request",
+      request.params.id,
+    );
+    if (throttle.blocked) {
+      sendSensitiveRateLimitResponse(response, throttle);
+      return;
+    }
+
     const store = await readStore();
-    const contract = store.contracts.find((item) => item.id === request.params.id);
+    const contract =
+      store.contracts.find((item) => item.id === request.params.id) ??
+      (await readSupabaseV2ContractAsLegacy(request.params.id));
 
     if (!contract) {
       response.status(404).json({ error: "Contract not found" });
@@ -4849,7 +6674,7 @@ app.post("/api/contracts/:id/support-access-requests", async (request, response,
 
     const requestedScope = normalizeOptionalText(request.body?.scope);
     const scope: SupportAccessScope =
-      requestedScope === "contract" ? "contract" : "contract_and_pdf";
+      requestedScope === "contract_and_pdf" ? "contract_and_pdf" : "contract";
 
     const now = new Date().toISOString();
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
@@ -4866,6 +6691,27 @@ app.post("/api/contracts/:id/support-access-requests", async (request, response,
       (requesterRole === "influencer"
         ? contract.influencer_info.contact
         : contract.advertiser_info?.manager);
+
+    const activeDuplicate = (await readSupportAccessRequests()).find(
+      (requestRecord) =>
+        requestRecord.contract_id === contract.id &&
+        requestRecord.requester_role === requesterRole &&
+        (requesterProfile?.id
+          ? requestRecord.requester_profile_id === requesterProfile.id
+          : normalizeEmail(requestRecord.requester_email ?? "") ===
+            normalizeEmail(requesterEmail ?? "")) &&
+        isSupportAccessActive(requestRecord),
+    );
+
+    if (activeDuplicate) {
+      response.status(409).json({
+        error: "An active support access request already exists for this contract",
+        request: activeDuplicate,
+      });
+      return;
+    }
+
+    await ensureSupportAccessEventStoreAvailable();
 
     const record = await insertSupportAccessRequest({
       id: randomUUID(),
@@ -4895,6 +6741,10 @@ app.post("/api/contracts/:id/support-access-requests", async (request, response,
       created_at: now,
       updated_at: now,
     });
+    const createdAuditEvent = record.audit_events[0];
+    if (createdAuditEvent) {
+      await appendSupportAccessEventRow(record, createdAuditEvent);
+    }
 
     response.status(201).json({
       request: record,
@@ -4908,7 +6758,9 @@ app.post("/api/contracts/:id/support-access-requests", async (request, response,
 app.get("/api/contracts/:id", async (request, response, next) => {
   try {
     const store = await readStore();
-    const contract = store.contracts.find((item) => item.id === request.params.id);
+    const contract =
+      store.contracts.find((item) => item.id === request.params.id) ??
+      (await readSupabaseV2ContractAsLegacy(request.params.id));
 
     if (!contract) {
       response.status(404).json({ error: "Contract not found" });
@@ -4931,6 +6783,7 @@ app.get("/api/contracts/:id", async (request, response, next) => {
       });
     }
 
+    response.setHeader("Cache-Control", "no-store");
     response.json({ contract, access_role: access.role });
   } catch (error) {
     next(error);
@@ -4939,8 +6792,19 @@ app.get("/api/contracts/:id", async (request, response, next) => {
 
 app.get("/api/contracts/:id/final-pdf", async (request, response, next) => {
   try {
-    const store = await readStore();
-    const contract = store.contracts.find((item) => item.id === request.params.id);
+    const throttle = consumeSensitiveEndpointRateLimit(
+      request,
+      "final_pdf",
+      request.params.id,
+    );
+    if (throttle.blocked) {
+      sendSensitiveRateLimitResponse(response, throttle);
+      return;
+    }
+
+    const { existingContract: contract } = await readContractWriteContext(
+      request.params.id,
+    );
 
     if (!contract) {
       response.status(404).json({ error: "Contract not found" });
@@ -4996,9 +6860,10 @@ app.get("/api/contracts/:id/final-pdf", async (request, response, next) => {
     }
 
     response.setHeader("Content-Type", "application/pdf");
+    response.setHeader("Cache-Control", "no-store");
     response.setHeader(
       "Content-Disposition",
-      `inline; filename="${contract.id}-signed-record.pdf"`,
+      `attachment; filename="${contract.id}-signed-record.pdf"`,
     );
     response.send(fileBuffer);
   } catch (error) {
@@ -5008,6 +6873,16 @@ app.get("/api/contracts/:id/final-pdf", async (request, response, next) => {
 
 app.post("/api/contracts/:id/signatures/influencer", async (request, response, next) => {
   try {
+    const throttle = consumeSensitiveEndpointRateLimit(
+      request,
+      "influencer_signature",
+      request.params.id,
+    );
+    if (throttle.blocked) {
+      sendSensitiveRateLimitResponse(response, throttle);
+      return;
+    }
+
     const signatureData = String(request.body?.signature_data ?? "");
     const signerName = normalizeRequiredText(request.body?.signer_name);
     const consentAccepted = request.body?.consent_accepted === true;
@@ -5026,28 +6901,49 @@ app.post("/api/contracts/:id/signatures/influencer", async (request, response, n
       return;
     }
 
-    const store = await readStore();
-    const existingIndex = store.contracts.findIndex(
-      (item) => item.id === request.params.id,
-    );
+    const {
+      store,
+      existingIndex,
+      existingContract: existing,
+    } = await readContractWriteContext(request.params.id);
 
-    if (existingIndex < 0) {
+    if (!existing) {
       response.status(404).json({ error: "Contract not found" });
       return;
     }
+    const influencerAuth = await requireInfluencerSession(request, response);
 
-    const existing = store.contracts[existingIndex];
-    const access = await resolveLegacyContractAccess(request, response, existing, {
-      allowAdmin: false,
-      allowAdvertiser: false,
-      allowInfluencer: true,
-      allowShareToken: true,
-      sendError: false,
-    });
+    if (!influencerAuth) return;
 
-    if (!access) {
-      response.status(403).json({
-        error: "Valid share token or influencer session is required",
+    if (!canInfluencerAccessLegacyContract(influencerAuth, existing)) {
+      response.status(403).json({ error: "Contract access is not allowed" });
+      return;
+    }
+
+    const shareExpiresAt = existing.evidence?.share_token_expires_at
+      ? new Date(existing.evidence.share_token_expires_at).getTime()
+      : undefined;
+    if (
+      existing.status !== "APPROVED" ||
+      existing.evidence?.share_token_status !== "active" ||
+      (typeof shareExpiresAt === "number" && shareExpiresAt < Date.now())
+    ) {
+      response.status(409).json({
+        error: "Contract must be approved and actively shared before signing",
+      });
+      return;
+    }
+
+    const contractVerification = await resolveInfluencerContractVerification(
+      influencerAuth,
+      existing,
+    );
+
+    if (!contractVerification.ok) {
+      response.status(409).json({
+        error: "Contract platform verification must be approved before signing",
+        required_platforms: contractVerification.requiredPlatforms,
+        missing_platforms: contractVerification.missingPlatforms,
       });
       return;
     }
@@ -5065,7 +6961,16 @@ app.post("/api/contracts/:id/signatures/influencer", async (request, response, n
     const { contentType: signatureContentType, buffer: signatureBuffer } =
       dataUrlToBuffer(signatureData);
 
-    if (!signatureContentType.startsWith("image/") || signatureBuffer.byteLength <= 0) {
+    if (
+      !signatureImageMimeTypes.has(signatureContentType) ||
+      !assertDeclaredMimeMatchesContent(
+        signatureContentType,
+        signatureBuffer,
+        signatureImageMimeTypes,
+      ) ||
+      signatureBuffer.byteLength <= 0 ||
+      signatureBuffer.byteLength > maxSignatureImageSize
+    ) {
       response.status(400).json({ error: "Signature image data is invalid" });
       return;
     }
@@ -5091,9 +6996,12 @@ app.post("/api/contracts/:id/signatures/influencer", async (request, response, n
       signedAt,
       contractHash,
       signatureHash,
+      signatureDataUrl: signatureData,
+      signatureContentType,
       signerName,
       signerEmail: existing.influencer_info.contact,
       clientIp,
+      consentText,
     });
     const signedPdfFile = await storePrivateBuffer({
       area: "signed-contracts",
@@ -5130,8 +7038,8 @@ app.post("/api/contracts/:id/signatures/influencer", async (request, response, n
         },
       ],
       signature_data: {
-        adv_sign: existing.signature_data?.adv_sign ?? "",
-        inf_sign: signatureData,
+        adv_sign: "",
+        inf_sign: "",
         signed_at: signedAt,
         ip: clientIp,
         user_agent: userAgent,
@@ -5156,11 +7064,7 @@ app.post("/api/contracts/:id/signatures/influencer", async (request, response, n
       updated_at: signedAt,
     });
 
-    const nextStore = {
-      contracts: store.contracts.map((item, index) =>
-        index === existingIndex ? updatedContract : item,
-      ),
-    };
+    const nextStore = mergeContractIntoStore(store, existingIndex, updatedContract);
 
     await writeStore(nextStore);
     response.json({ contract: updatedContract });
@@ -5171,6 +7075,16 @@ app.post("/api/contracts/:id/signatures/influencer", async (request, response, n
 
 app.put("/api/contracts/:id", async (request, response, next) => {
   try {
+    const throttle = consumeSensitiveEndpointRateLimit(
+      request,
+      "contract_write",
+      request.params.id,
+    );
+    if (throttle.blocked) {
+      sendSensitiveRateLimitResponse(response, throttle);
+      return;
+    }
+
     const contract = request.body?.contract as Contract | undefined;
 
     if (!contract || contract.id !== request.params.id) {
@@ -5178,11 +7092,15 @@ app.put("/api/contracts/:id", async (request, response, next) => {
       return;
     }
 
-    const store = await readStore();
-    const existingIndex = store.contracts.findIndex((item) => item.id === contract.id);
-    const existingContract =
-      existingIndex >= 0 ? store.contracts[existingIndex] : undefined;
-    const actor = request.header("X-DirectSign-Actor") ?? "advertiser";
+    const {
+      store,
+      existingIndex,
+      existingContract,
+    } = await readContractWriteContext(contract.id);
+    const actor =
+      request.header("X-Yeollock-Actor") ??
+      request.header("X-DirectSign-Actor") ??
+      "advertiser";
     let normalizedContract = normalizeContract(contract);
 
     if (actor !== "advertiser" && actor !== "influencer") {
@@ -5217,6 +7135,16 @@ app.put("/api/contracts/:id", async (request, response, next) => {
 
     if (validationError) {
       response.status(422).json({ error: validationError });
+      return;
+    }
+
+    const advertiserAccessError =
+      actor === "advertiser"
+        ? verifyAdvertiserContractWriteAccess(existingContract, normalizedContract)
+        : undefined;
+
+    if (advertiserAccessError) {
+      response.status(403).json({ error: advertiserAccessError });
       return;
     }
 
@@ -5259,19 +7187,16 @@ app.put("/api/contracts/:id", async (request, response, next) => {
     ) {
       response.status(403).json({
         error:
-          "Advertiser business verification approval is required before sending contracts",
+          "광고주 사업자 인증 승인 후 계약 공유 링크를 발송할 수 있습니다.",
       });
       return;
     }
 
-    const nextContracts =
-      existingIndex >= 0
-        ? store.contracts.map((item) =>
-            item.id === normalizedContract.id ? normalizedContract : item,
-          )
-        : [...store.contracts, normalizedContract];
-
-    const nextStore = { contracts: nextContracts };
+    const nextStore = mergeContractIntoStore(
+      store,
+      existingIndex,
+      normalizedContract,
+    );
     await writeStore(nextStore);
     response.json({ contract: normalizedContract });
   } catch (error) {
@@ -5291,10 +7216,7 @@ app.use(
   },
 );
 
-const isVercelFunction =
-  Boolean(process.env.VERCEL) ||
-  Boolean(process.env.VERCEL_REGION) ||
-  Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME);
+const isVercelFunction = isHostedRuntime;
 
 if (!isVercelFunction) {
   if (isPreview) {

@@ -7,6 +7,7 @@ data/
 .DS_Store
 *.log
 .env*
+.mcp.json
 supabase/.temp/
 !.env.example
 .vercel

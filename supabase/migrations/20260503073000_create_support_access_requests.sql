@@ -31,6 +31,7 @@ set search_path = public
 as $$
   select
     auth.role() = 'service_role'
+    or public.directsign_is_admin()
     or exists (
       select 1
       from public.contracts
@@ -62,6 +63,7 @@ set search_path = public
 as $$
   select
     auth.role() = 'service_role'
+    or public.directsign_is_admin()
     or exists (
       select 1
       from public.contracts

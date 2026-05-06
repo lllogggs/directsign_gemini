@@ -2,9 +2,9 @@
 <img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
 </div>
 
-# 연락미 (yeollock.me)
+# yeollock.me
 
-연락미는 광고주와 인플루언서가 연락, 계약 검토, 수정 협의, 전자서명 증빙을 한 곳에서 처리하는 워크스페이스입니다.
+yeollock.me는 광고주와 인플루언서가 연락, 계약 검토, 수정 협의, 전자서명 증빙을 한 곳에서 처리하는 워크스페이스입니다.
 
 For production launch readiness, service scope, and legal/security operations,
 see [`docs/launch-readiness.md`](docs/launch-readiness.md).
@@ -21,6 +21,22 @@ View your app in AI Studio: https://ai.studio/apps/e786620b-1980-4964-9772-882fa
 2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
 3. Run the app:
    `npm run dev`
+
+## Standard QA
+
+Use the same project QA command whether the request comes from desktop Codex,
+Discord, or the terminal:
+
+```bash
+npm run qa
+```
+
+This command runs tests, lint, build, dependency audit, linked Supabase migration
+status, `/api/health`, protected API access checks, and legal route smoke checks.
+It intentionally does not require local Supabase Docker/Postgres; local database
+migration checks should only be run when local Supabase is explicitly requested.
+`npm run qa:discord` remains as a compatibility alias for older Discord logs or
+commands, but the standard command is `npm run qa`.
 
 ## Production domain
 
@@ -47,7 +63,13 @@ The configured product can store contracts in Supabase through the local Express
 4. Run `supabase/migrations/20260501030000_create_verification_requests.sql` for advertiser business verification and influencer account checks.
 5. Run `supabase/migrations/20260502055903_add_influencer_account_ownership_verification.sql` to store influencer ownership challenge codes, proof URLs, and best-effort automated check results.
 6. Run `supabase/migrations/20260503073000_create_support_access_requests.sql` to restrict operator contract access and store customer-approved support access audits.
-7. Add these values to `.env.local`:
+7. Generate server-only secrets:
+
+```bash
+npm run secrets:generate
+```
+
+8. Add these values to `.env.local`:
 
 ```env
 SUPABASE_URL="https://YOUR_PROJECT.supabase.co"
@@ -56,17 +78,33 @@ SUPABASE_SERVICE_ROLE_KEY="YOUR_SERVICE_ROLE_KEY"
 SUPABASE_CONTRACTS_TABLE="directsign_contracts"
 SUPABASE_SCHEMA_VERSION="v2"
 APP_URL="https://yeollock.me"
-PRODUCT_NAME="연락미"
-VITE_PRODUCT_NAME="연락미"
-ADMIN_ACCESS_CODE="YOUR_OPERATOR_ACCESS_CODE"
-ADMIN_SESSION_SECRET="YOUR_LONG_RANDOM_SESSION_SECRET"
+PRODUCT_NAME="yeollock.me"
+VITE_PRODUCT_NAME="yeollock.me"
+ADMIN_ACCESS_CODE="VALUE_FROM_NPM_RUN_SECRETS_GENERATE"
+ADMIN_SESSION_SECRET="VALUE_FROM_NPM_RUN_SECRETS_GENERATE"
 ADMIN_LOGIN_MAX_FAILURES="5"
 ADMIN_LOGIN_WINDOW_SECONDS="900"
 ADMIN_LOGIN_LOCK_SECONDS="900"
+PUBLIC_AUTH_IP_MAX_ATTEMPTS="40"
+PUBLIC_AUTH_EMAIL_MAX_ATTEMPTS="8"
+PUBLIC_AUTH_WINDOW_SECONDS="900"
+SENSITIVE_ENDPOINT_IP_MAX_ATTEMPTS="60"
+SENSITIVE_ENDPOINT_SUBJECT_MAX_ATTEMPTS="20"
+SENSITIVE_ENDPOINT_WINDOW_SECONDS="900"
+DIRECTSIGN_TOKEN_ENCRYPTION_SECRET="VALUE_FROM_NPM_RUN_SECRETS_GENERATE"
+CONTENT_SECURITY_POLICY_REPORT_ONLY="false"
 DIRECTSIGN_DEMO_MODE="false"
 DIRECTSIGN_DEFAULT_ADVERTISER_ID="adv_1"
 DIRECTSIGN_DEFAULT_INFLUENCER_ID="influencer_guest"
 DIRECTSIGN_ALLOW_LOCAL_PRIVATE_FILE_FALLBACK="false"
+VITE_LEGAL_OPERATING_MODE="free_individual"
+VITE_LEGAL_OPERATOR_NAME=""
+VITE_LEGAL_REPRESENTATIVE_NAME=""
+VITE_LEGAL_BUSINESS_REGISTRATION_NUMBER=""
+VITE_LEGAL_MAIL_ORDER_BUSINESS_NUMBER=""
+VITE_LEGAL_ADDRESS=""
+VITE_LEGAL_CONTACT_EMAIL="support@yeollock.me"
+VITE_LEGAL_CONTACT_PHONE=""
 ```
 
 When `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are present, `/api/contracts` reads from the compatibility table and writes both the compatibility table and the normalized v2 schema. Without them, the app falls back to `data/contracts.json`.
@@ -74,11 +112,13 @@ Demo seed contracts are disabled by default. Set `DIRECTSIGN_DEMO_MODE="true"` o
 
 In Supabase mode, `support_access_requests` is required. The app fails closed instead of storing operator support access audits in local files when this table is missing. Private evidence files also fail closed if Supabase Storage upload fails unless `DIRECTSIGN_ALLOW_LOCAL_PRIVATE_FILE_FALLBACK="true"` is set for local development.
 
-Before launch, review and publish `/privacy`, `/terms`, and `/legal/e-sign-consent`. They are service-ready drafts for privacy notice, terms, and electronic signature consent, but the operator must replace placeholder contact details, actual subprocessors, data-retention periods, customer support channels, and company information with legally reviewed production values.
+Set `APP_URL` to the deployed origin before enabling public signup. Production signup redirects fail closed when `APP_URL` is missing. Public advertiser/influencer login and signup endpoints are rate-limited by IP and email. `DIRECTSIGN_TOKEN_ENCRYPTION_SECRET` protects new legacy compatibility-table share tokens at rest; production startup fails when it is missing, short, or placeholder-like. Keep it stable across deployments.
+
+Before launch, review and publish `/privacy`, `/terms`, and `/legal/e-sign-consent`. Keep `VITE_LEGAL_OPERATING_MODE="free_individual"` while there is no business registration and the service is provided for free; in that mode business registration, mail-order registration, address, and phone fields are not required. The legal pages still require the real service operator, privacy/contact representative, and contact email. Switch to `VITE_LEGAL_OPERATING_MODE="registered_business"` before paid/business use and then fill the business registration, mail-order registration if applicable, address, and phone fields. The legal pages show a "출시 전 입력 필요" status while required fields for the selected mode are blank.
 
 The product is currently scoped as a contract platform only. It records contract payment terms as clauses between the advertiser and influencer, but it does not perform settlement, payout, escrow, tax invoice issuance, withholding, refund processing, or collection work. Keep this boundary visible in sales material, onboarding copy, terms, support scripts, and internal operating procedures.
 
-Production responses include baseline security headers and admin login throttling. Keep `ADMIN_ACCESS_CODE` and `ADMIN_SESSION_SECRET` long, unique, and server-side only.
+Production responses include baseline security headers, enforcing CSP by default, admin login throttling, public auth throttling, and required server-only token encryption. Keep `ADMIN_ACCESS_CODE`, `ADMIN_SESSION_SECRET`, and `DIRECTSIGN_TOKEN_ENCRYPTION_SECRET` long, unique, stable, and server-side only. Local development can auto-generate missing runtime secrets in ignored `data/runtime-secrets.json`; do not rely on that for production.
 
 Supabase Auth should use email confirmation for public signup:
 
@@ -91,7 +131,7 @@ Advertiser verification is intentionally manual in the first production path:
 
 - Advertisers can draft contracts immediately.
 - Sending a share link is blocked until a business verification request is approved in `/admin`.
-- Influencers can still open contract links and sign.
+- Influencers can open contract links for review, but signing is blocked until their platform account verification is approved.
 - Public influencer signup only stores checked activity categories and platform selections, then sends the creator to the dashboard after email confirmation and login.
 - Influencer platform account ownership verification is deferred until a contract context exists. It asks the creator to place a product challenge code in a platform-specific public location, such as an Instagram bio, YouTube channel description, or Naver Blog profile/post.
 - `/admin` shows the challenge code, proof URL, screenshot evidence, and automated check status. Operator approval remains authoritative because some platforms block unauthenticated crawls.

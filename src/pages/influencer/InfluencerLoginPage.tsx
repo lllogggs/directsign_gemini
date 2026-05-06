@@ -87,7 +87,7 @@ export function InfluencerLoginPage() {
       footer={
         <div className="flex items-center justify-center gap-3">
           <Link
-            to="/signup/influencer"
+            to={`/signup/influencer?next=${encodeURIComponent(nextPath)}`}
             className="text-[13px] font-semibold text-neutral-950 transition hover:text-neutral-600"
           >
             계정 만들기

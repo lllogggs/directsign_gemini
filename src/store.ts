@@ -124,7 +124,10 @@ const normalizeContract = (contract: Contract): Contract => ({
 
 const persistContractToServer = async (
   contract: Contract,
-  set: (partial: Partial<AppState>) => void,
+  set: (
+    partial: Partial<AppState> | ((state: AppState) => Partial<AppState>),
+  ) => void,
+  rollbackContracts: Contract[],
   options: PersistOptions = {},
 ) => {
   set({ isSyncing: true, syncError: undefined });
@@ -135,9 +138,9 @@ const persistContractToServer = async (
       credentials: "include",
       headers: {
         "Content-Type": "application/json",
-        "X-DirectSign-Actor": options.actor ?? "advertiser",
+        "X-Yeollock-Actor": options.actor ?? "advertiser",
         ...(options.shareToken
-          ? { "X-DirectSign-Share-Token": options.shareToken }
+          ? { "X-Yeollock-Share-Token": options.shareToken }
           : {}),
       },
       body: JSON.stringify({ contract }),
@@ -147,9 +150,45 @@ const persistContractToServer = async (
       throw new Error(`저장 API 오류 (${response.status})`);
     }
 
-    set({ isSyncing: false, syncError: undefined });
+    const data = (await response.json()) as { contract?: Contract };
+    const serverContract = data.contract ? normalizeContract(data.contract) : undefined;
+
+    set((state) => {
+      const current = state.contracts.find((item) => item.id === contract.id);
+      const shouldAcceptServerContract = Boolean(
+        serverContract && current?.updated_at === contract.updated_at,
+      );
+
+      return {
+        contracts: shouldAcceptServerContract
+          ? state.contracts.map((item) =>
+              item.id === serverContract!.id ? serverContract! : item,
+            )
+          : state.contracts,
+        isSyncing: false,
+        syncError: undefined,
+      };
+    });
   } catch (error) {
-    set({ isSyncing: false, syncError: getErrorMessage(error) });
+    set((state) => {
+      const current = state.contracts.find((item) => item.id === contract.id);
+      const rollbackContract = rollbackContracts.find(
+        (item) => item.id === contract.id,
+      );
+      const shouldRollbackCurrentWrite = Boolean(
+        current?.updated_at === contract.updated_at && rollbackContract,
+      );
+
+      return {
+        contracts: shouldRollbackCurrentWrite
+          ? state.contracts.map((item) =>
+              item.id === contract.id ? rollbackContract! : item,
+            )
+          : state.contracts,
+        isSyncing: false,
+        syncError: getErrorMessage(error),
+      };
+    });
   }
 };
 
@@ -236,6 +275,7 @@ export const useAppStore = create<AppState>()(
 
       addContract: (contractData) => {
         const now = new Date().toISOString();
+        const rollbackContracts = get().contracts;
         const evidence =
           contractData.evidence ??
           createEvidence({
@@ -270,12 +310,13 @@ export const useAppStore = create<AppState>()(
         };
 
         set((state) => ({ contracts: [...state.contracts, newContract] }));
-        void persistContractToServer(newContract, set);
+        void persistContractToServer(newContract, set, rollbackContracts);
         return newContract;
       },
 
       updateContract: (id, updates, options) => {
         let updatedContract: Contract | undefined;
+        const rollbackContracts = get().contracts;
 
         set((state) => ({
           contracts: state.contracts.map((contract) => {
@@ -293,12 +334,18 @@ export const useAppStore = create<AppState>()(
         }));
 
         if (updatedContract) {
-          void persistContractToServer(updatedContract, set, options);
+          void persistContractToServer(
+            updatedContract,
+            set,
+            rollbackContracts,
+            options,
+          );
         }
       },
 
       updateClauseStatus: (contractId, clauseId, status, historyEntry, options) => {
         let updatedContract: Contract | undefined;
+        const rollbackContracts = get().contracts;
 
         set((state) => {
           const contract = state.contracts.find((item) => item.id === contractId);
@@ -362,7 +409,12 @@ export const useAppStore = create<AppState>()(
         });
 
         if (updatedContract) {
-          void persistContractToServer(updatedContract, set, options);
+          void persistContractToServer(
+            updatedContract,
+            set,
+            rollbackContracts,
+            options,
+          );
         }
       },
 

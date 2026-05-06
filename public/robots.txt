@@ -1,2 +1,7 @@
 User-agent: *
 Allow: /
+Disallow: /admin
+Disallow: /advertiser
+Disallow: /contract
+Disallow: /influencer
+Disallow: /marketing

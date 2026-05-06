@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
   BadgeCheck,
@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useAppStore } from "../../store";
 import { PRODUCT_NAME } from "../../domain/brand";
+import { buildLoginRedirect } from "../../domain/navigation";
 import {
   type InfluencerPlatform,
   type InfluencerVerificationMethod,
@@ -30,6 +31,34 @@ const API_BASE =
   typeof import.meta !== "undefined"
     ? (import.meta.env.VITE_API_BASE_URL ?? "")
     : "";
+const MAX_VERIFICATION_FILE_SIZE = 4 * 1024 * 1024;
+const ACCEPTED_VERIFICATION_FILE_TYPES = new Set([
+  "application/pdf",
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+]);
+
+const inferVerificationFileType = (file: File) => {
+  if (file.type) return file.type;
+  const extension = file.name.split(".").pop()?.toLowerCase();
+  if (extension === "pdf") return "application/pdf";
+  if (extension === "png") return "image/png";
+  if (extension === "jpg" || extension === "jpeg") return "image/jpeg";
+  if (extension === "webp") return "image/webp";
+  return "";
+};
+
+const validateVerificationFile = (file: File | null) => {
+  if (!file) return undefined;
+  if (!ACCEPTED_VERIFICATION_FILE_TYPES.has(inferVerificationFileType(file))) {
+    return "PDF, PNG, JPG, WebP 파일만 업로드할 수 있습니다.";
+  }
+  if (file.size > MAX_VERIFICATION_FILE_SIZE) {
+    return "인증 파일은 4MB 이하로 업로드해주세요.";
+  }
+  return undefined;
+};
 
 interface InfluencerVerificationForm {
   subject_name: string;
@@ -167,6 +196,7 @@ const PLATFORM_META: Record<
 
 export function InfluencerVerification() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const contractId = searchParams.get("contractId");
   const token = searchParams.get("token");
@@ -179,7 +209,12 @@ export function InfluencerVerification() {
   const contract = useAppStore((state) =>
     contractId ? state.getContract(contractId) : undefined,
   );
-  const { summary, isLoading: isVerificationLoading } = useVerificationSummary();
+  const {
+    summary,
+    isLoading: isVerificationLoading,
+    refresh: refreshVerificationSummary,
+    statusCode: verificationStatusCode,
+  } = useVerificationSummary({ role: "influencer" });
   const [prefilledContractId, setPrefilledContractId] = useState("");
   const [platform, setPlatform] = useState<InfluencerPlatform>("instagram");
   const [method, setMethod] =
@@ -200,6 +235,20 @@ export function InfluencerVerification() {
   const verifiedHandle =
     latest?.platform_handle || verification?.account?.platform_handle;
   const verifiedUrl = latest?.platform_url || verification?.account?.platform_url;
+
+  useEffect(() => {
+    if (verificationStatusCode !== 401) return;
+
+    navigate(
+      buildLoginRedirect(
+        "/login/influencer",
+        `${location.pathname}${location.search}`,
+        "/influencer/dashboard",
+        ["/influencer", "/contract"],
+      ),
+      { replace: true },
+    );
+  }, [location.pathname, location.search, navigate, verificationStatusCode]);
 
   useEffect(() => {
     if (!contract || prefilledContractId === contract.id) return;
@@ -255,6 +304,12 @@ export function InfluencerVerification() {
       return;
     }
 
+    const fileError = validateVerificationFile(file);
+    if (fileError) {
+      setError(fileError);
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -268,6 +323,7 @@ export function InfluencerVerification() {
         },
         body: JSON.stringify({
           ...form,
+          ...(contractId ? { contract_id: contractId } : {}),
           platform,
           target_id: buildTargetId(platform, form),
           ownership_verification_method: method,
@@ -276,7 +332,7 @@ export function InfluencerVerification() {
           evidence_file: file
             ? {
                 name: file.name,
-                type: file.type,
+                type: inferVerificationFileType(file),
                 size: file.size,
                 data_url: fileDataUrl,
               }
@@ -297,6 +353,7 @@ export function InfluencerVerification() {
       setForm(initialForm);
       setFile(null);
       setChallengeCode(createChallengeCode());
+      await refreshVerificationSummary();
     } catch (submitError) {
       setError(
         submitError instanceof Error
@@ -342,7 +399,7 @@ export function InfluencerVerification() {
                   <p className="mt-1 text-sm leading-6 text-neutral-500">
                     {approved
                       ? `${verifiedHandle || "등록된 계정"} 기준으로 인증되어 있습니다. 다른 플랫폼을 추가하거나 계정 정보가 바뀐 경우에만 새 요청을 남기세요.`
-                      : "계정 소유 확인은 계약 검토와 서명을 막지 않지만, 당사자 확인과 분쟁 대응 신뢰도를 높입니다."}
+                      : "계약 검토는 가능하지만, 서명하려면 계정 소유 인증 승인이 먼저 필요합니다."}
                   </p>
                 </div>
               </div>
@@ -541,7 +598,18 @@ export function InfluencerVerification() {
                   type="file"
                   accept="application/pdf,image/png,image/jpeg,image/webp"
                   className="sr-only"
-                  onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+                  onChange={(event) => {
+                    const nextFile = event.target.files?.[0] ?? null;
+                    const fileError = validateVerificationFile(nextFile);
+                    if (fileError) {
+                      setFile(null);
+                      setError(fileError);
+                      event.currentTarget.value = "";
+                      return;
+                    }
+                    setFile(nextFile);
+                    setError("");
+                  }}
                 />
               </label>
             </div>
@@ -571,11 +639,13 @@ export function InfluencerVerification() {
 
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || isVerificationLoading || verificationStatusCode === 401}
               className="h-11 w-full rounded-lg bg-neutral-950 px-5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-500 disabled:shadow-none"
             >
               {isSubmitting
                 ? "접수 중"
+                : isVerificationLoading
+                  ? "계정 확인 중"
                 : approved
                   ? "플랫폼 인증 추가 요청"
                   : "계정 소유 인증 요청"}
@@ -607,8 +677,8 @@ export function InfluencerVerification() {
 
           <TrustNote
             icon={<Link2 className="h-4 w-4" />}
-            title="계약 진행과 분리"
-            body="계정 인증 요청은 계약 검토와 서명을 막지 않습니다. 당사자 확인, 반복 거래, 분쟁 대응을 위한 신뢰 정보로 관리됩니다."
+            title="서명 전 필수 순서"
+            body="계약 검토는 계속할 수 있지만, 전자서명은 플랫폼 계정 인증이 승인된 뒤에만 진행됩니다."
           />
           <TrustNote
             icon={<BadgeCheck className="h-4 w-4" />}

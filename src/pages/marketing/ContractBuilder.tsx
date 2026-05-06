@@ -381,7 +381,7 @@ export function ContractBuilder() {
   const isSyncing = useAppStore((state) => state.isSyncing);
   const syncError = useAppStore((state) => state.syncError);
   const { summary: verificationSummary, isLoading: isVerificationLoading } =
-    useVerificationSummary();
+    useVerificationSummary({ role: "advertiser" });
   const advertiserVerificationStatus =
     verificationSummary?.advertiser.status ?? "not_submitted";
   const canSendContract = advertiserVerificationStatus === "approved";
@@ -401,6 +401,14 @@ export function ContractBuilder() {
   const allErrors = useMemo(() => validateContractDraft(draft), [draft]);
   const stepErrors = validationErrors.filter((error) => error.step === step);
   const currentStepHasBlockingError = allErrors.some((error) => error.step === step);
+  const shareResultState =
+    result?.mode === "share"
+      ? syncError
+        ? "error"
+        : isSyncing
+          ? "syncing"
+          : "ready"
+      : undefined;
 
   const updateDraft = (
     updater: Partial<ContractDraft> | ((current: ContractDraft) => ContractDraft),
@@ -631,14 +639,14 @@ export function ContractBuilder() {
   };
 
   const copyToClipboard = () => {
-    if (!result?.link || result.stale) return;
+    if (!result?.link || result.stale || isSyncing || syncError) return;
     navigator.clipboard.writeText(result.link);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-[#f6f7f9] font-sans text-neutral-900 md:h-screen md:overflow-hidden">
+    <div className="flex min-h-[100dvh] flex-col bg-[#f6f7f9] font-sans text-neutral-900 lg:h-screen lg:overflow-hidden">
       <header className="z-10 flex h-[72px] shrink-0 items-center justify-between border-b border-neutral-200 bg-white/95 px-5 backdrop-blur md:px-10">
         <div className="flex items-center gap-4">
           <button
@@ -660,8 +668,8 @@ export function ContractBuilder() {
         </div>
       </header>
 
-      <main className="flex flex-1 flex-col md:flex-row md:overflow-hidden">
-        <aside className="relative z-10 hidden w-[300px] shrink-0 flex-col gap-12 border-r border-neutral-200 bg-white p-10 pr-8 shadow-sm md:flex">
+      <main className="flex flex-1 flex-col lg:flex-row lg:overflow-hidden">
+        <aside className="relative z-10 hidden w-[300px] shrink-0 flex-col gap-12 border-r border-neutral-200 bg-white p-10 pr-8 shadow-sm lg:flex">
           <div>
             <h3 className="mb-10 text-[10px] font-medium uppercase tracking-[0.2em] text-neutral-400">
               계약 작성
@@ -699,8 +707,8 @@ export function ContractBuilder() {
           </div>
         </aside>
 
-        <section className="custom-scrollbar relative z-0 w-full shrink-0 bg-[#f6f7f9] md:w-[620px] md:overflow-y-auto">
-          <div className="max-w-[520px] p-8 md:p-14">
+        <section className="custom-scrollbar relative z-0 w-full shrink-0 bg-[#f6f7f9] lg:w-[620px] lg:overflow-y-auto">
+          <div className="mx-auto max-w-[520px] p-8 md:p-14">
             <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
               {step} / 5 단계
             </p>
@@ -1283,24 +1291,34 @@ export function ContractBuilder() {
                   <CheckCircle2 strokeWidth={1.5} className="h-6 w-6 text-neutral-900" />
                 </div>
                 <h3 className="mb-3 text-xl font-heading tracking-tight text-neutral-900">
-                  {result.mode === "draft" ? "초안 저장 완료" : "공유 링크 생성 완료"}
+                  {result.mode === "draft"
+                    ? "초안 저장 완료"
+                    : shareResultState === "syncing"
+                      ? "공유 링크 저장 중"
+                      : shareResultState === "error"
+                        ? "공유 링크 확인 필요"
+                        : "공유 링크 생성 완료"}
                 </h3>
                 <p className="mx-auto mb-6 max-w-[320px] text-[13px] leading-6 text-neutral-500">
                   {result.mode === "draft"
                     ? "계약이 초안 상태로 저장되었습니다. 아직 상대방에게 공유되지 않았습니다."
-                    : "이 링크를 전달하면 상대방이 계약서를 검토할 수 있습니다."}
+                    : shareResultState === "syncing"
+                      ? "서버 저장이 끝나면 링크를 복사해 전달할 수 있습니다."
+                      : shareResultState === "error"
+                        ? "현재 브라우저에만 변경 사항이 남아 있습니다. 서버 저장 상태를 확인한 뒤 공유하세요."
+                        : "이 링크를 전달하면 상대방이 계약서를 검토할 수 있습니다."}
                 </p>
                 {result.mode === "share" && (
                   <div
                     className={`mb-5 border px-4 py-3 text-left text-[12px] leading-5 ${
-                      syncError
+                      shareResultState === "error"
                         ? "border-amber-200 bg-amber-50 text-amber-800"
                         : "border-neutral-200 bg-neutral-50 text-neutral-800"
                     }`}
                   >
-                    {syncError
+                    {shareResultState === "error"
                       ? "서버 저장에 실패했습니다. 현재 브라우저에는 저장되지만 다른 기기 공유 전에 네트워크를 확인하세요."
-                      : isSyncing
+                      : shareResultState === "syncing"
                         ? "서버 저장소에 계약을 반영하고 있습니다."
                         : "서버 저장소에 반영되어 다른 브라우저에서도 링크를 열 수 있습니다."}
                   </div>
@@ -1315,7 +1333,7 @@ export function ContractBuilder() {
                     <Button
                       type="button"
                       onClick={copyToClipboard}
-                      disabled={result.stale}
+                      disabled={result.stale || isSyncing || Boolean(syncError)}
                       className="h-[44px] shrink-0 rounded-none bg-neutral-900 px-5 text-[12px] font-medium uppercase tracking-wider text-white hover:bg-neutral-800 disabled:bg-neutral-100 disabled:text-neutral-400"
                     >
                       <Copy className="mr-2 h-3.5 w-3.5" />

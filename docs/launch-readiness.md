@@ -1,23 +1,27 @@
-# 연락미 Launch Readiness
+# yeollock.me Launch Readiness
 
 Last reviewed: 2026-05-04
 
 ## Current Scope
 
-연락미 (yeollock.me) is a contract platform for advertisers and influencers. The production
+yeollock.me is a contract platform for advertisers and influencers. The production
 scope is contract drafting, review, negotiation, sharing, e-signature evidence,
 document storage, account verification, and support access auditing.
 
-연락미 does not currently provide settlement, payout, escrow, tax invoice
+yeollock.me does not currently provide settlement, payout, escrow, tax invoice
 issuance, withholding, refund processing, or collection services. Contract
 payment terms can be recorded as clauses, but actual payment and tax handling
 remain between the contract parties.
 
 ## Must Before Public Launch
 
-- Replace all placeholder company information in `/privacy`, `/terms`, and
-  `/legal/e-sign-consent`: legal entity name, representative, business number,
-  address, contact email, customer support channel, and actual subprocessors.
+- Replace all placeholder operator information in `/privacy`, `/terms`, and
+  `/legal/e-sign-consent`. For the initial free individual service, keep
+  `VITE_LEGAL_OPERATING_MODE="free_individual"` and publish the real service
+  operator, privacy/contact representative, contact email, and customer support
+  channel. Before paid or registered-business use, switch to
+  `VITE_LEGAL_OPERATING_MODE="registered_business"` and add the business number,
+  mail-order registration if applicable, address, and phone.
 - Confirm the privacy policy against the current PIPC privacy policy guide.
   The PIPC guide list shows the current 2026.4 privacy policy guide as of this
   review date: https://m.pipc.go.kr/np/cop/bbs/selectBoardList.do?bbsId=BS217&mCode=D010030000
@@ -32,9 +36,15 @@ remain between the contract parties.
   advertiser/influencer redirect URLs, and separate production keys.
 - Create the private storage bucket for signed PDFs and verification evidence.
   Do not enable local private file fallback in production.
+- Configure `SIGNED_PDF_FONT_PATH` with a Korean-capable TTF font and verify
+  that a signed Korean contract PDF renders readable text.
 - Set strong server-only secrets: `SUPABASE_SERVICE_ROLE_KEY`,
-  `ADMIN_ACCESS_CODE`, `ADMIN_SESSION_SECRET`. Do not prefix secrets with
-  `VITE_`.
+  `ADMIN_ACCESS_CODE`, `ADMIN_SESSION_SECRET`,
+  `DIRECTSIGN_TOKEN_ENCRYPTION_SECRET`. Generate app secrets with
+  `npm run secrets:generate`, keep them stable across deployments, and do not
+  prefix secrets with `VITE_`.
+- Set `APP_URL` to the deployed origin, keep public auth rate limits enabled, and
+  leave CSP enforcing unless temporarily diagnosing a production rollout issue.
 - Confirm advertiser verification operations: who reviews business evidence,
   what is accepted, rejection reason templates, and support SLA.
 - Confirm support access operations: party request required, 24-hour access
@@ -54,7 +64,7 @@ remain between the contract parties.
 - Add backup and restore verification for Supabase database and private storage.
 - Add operator playbooks for verification approval, support access, abuse
   reports, account deletion, and contract evidence export.
-- Add customer-facing help copy explaining that 연락미 is not a settlement or
+- Add customer-facing help copy explaining that yeollock.me is not a settlement or
   payment intermediary.
 - Run full manual flows on desktop and mobile: advertiser signup, email
   confirmation, business verification request, admin approval, contract draft,

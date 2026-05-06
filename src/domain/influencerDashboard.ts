@@ -77,6 +77,10 @@ export interface InfluencerDashboardContract {
   verification_href: string;
   platform_labels: string[];
   platforms: InfluencerPlatform[];
+  platform_accounts: Array<{
+    platform: InfluencerPlatform;
+    url?: string;
+  }>;
   fee_label: string;
   period_label: string;
   deadline_label: string;

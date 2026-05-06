@@ -19,6 +19,34 @@ const API_BASE =
   typeof import.meta !== "undefined"
     ? (import.meta.env.VITE_API_BASE_URL ?? "")
     : "";
+const MAX_VERIFICATION_FILE_SIZE = 4 * 1024 * 1024;
+const ACCEPTED_VERIFICATION_FILE_TYPES = new Set([
+  "application/pdf",
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+]);
+
+const inferVerificationFileType = (file: File) => {
+  if (file.type) return file.type;
+  const extension = file.name.split(".").pop()?.toLowerCase();
+  if (extension === "pdf") return "application/pdf";
+  if (extension === "png") return "image/png";
+  if (extension === "jpg" || extension === "jpeg") return "image/jpeg";
+  if (extension === "webp") return "image/webp";
+  return "";
+};
+
+const validateVerificationFile = (file: File | null) => {
+  if (!file) return undefined;
+  if (!ACCEPTED_VERIFICATION_FILE_TYPES.has(inferVerificationFileType(file))) {
+    return "PDF, PNG, JPG, WebP 파일만 업로드할 수 있습니다.";
+  }
+  if (file.size > MAX_VERIFICATION_FILE_SIZE) {
+    return "인증 파일은 4MB 이하로 업로드해주세요.";
+  }
+  return undefined;
+};
 
 interface AdvertiserVerificationForm {
   subject_name: string;
@@ -46,7 +74,7 @@ const initialForm: AdvertiserVerificationForm = {
 
 export function AdvertiserVerification() {
   const navigate = useNavigate();
-  const { summary, isLoading, refresh } = useVerificationSummary();
+  const { summary, isLoading, refresh } = useVerificationSummary({ role: "advertiser" });
   const [form, setForm] = useState(initialForm);
   const [file, setFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -87,6 +115,12 @@ export function AdvertiserVerification() {
       return;
     }
 
+    const fileError = validateVerificationFile(file);
+    if (fileError) {
+      setError(fileError);
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -102,7 +136,7 @@ export function AdvertiserVerification() {
           ...form,
           evidence_file: {
             name: file.name,
-            type: file.type,
+            type: inferVerificationFileType(file),
             size: file.size,
             data_url: file_data_url,
           },
@@ -260,7 +294,18 @@ export function AdvertiserVerification() {
                   type="file"
                   accept="application/pdf,image/png,image/jpeg,image/webp"
                   className="sr-only"
-                  onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+                  onChange={(event) => {
+                    const nextFile = event.target.files?.[0] ?? null;
+                    const fileError = validateVerificationFile(nextFile);
+                    if (fileError) {
+                      setFile(null);
+                      setError(fileError);
+                      event.currentTarget.value = "";
+                      return;
+                    }
+                    setFile(nextFile);
+                    setError("");
+                  }}
                 />
               </label>
             </div>

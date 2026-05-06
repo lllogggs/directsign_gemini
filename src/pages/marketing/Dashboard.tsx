@@ -163,7 +163,7 @@ export function Dashboard() {
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [compact, setCompact] = useState(false);
   const { summary: verificationSummary, isLoading: isVerificationLoading } =
-    useVerificationSummary();
+    useVerificationSummary({ role: "advertiser" });
   const advertiserVerificationStatus =
     verificationSummary?.advertiser.status ?? "not_submitted";
   const advertiserAccount = useMemo<AdvertiserAccountSummary>(() => {
@@ -247,6 +247,7 @@ export function Dashboard() {
   );
 
   const summary = useMemo(() => {
+    const now = Date.now();
     const needsAction = contracts.filter(
       (contract) =>
         contract.status === "NEGOTIATING" ||
@@ -255,12 +256,14 @@ export function Dashboard() {
     const dueSoon = contracts.filter((contract) => {
       const due = parseDate(contract.workflow?.due_at);
       if (!Number.isFinite(due)) return false;
-      const days = Math.ceil((due - Date.now()) / dayMs);
-      return contract.status !== "SIGNED" && days <= 2;
+      const days = Math.ceil((due - now) / dayMs);
+      return contract.status !== "SIGNED" && days >= 0 && days <= 2;
     }).length;
-    const activeLinks = contracts.filter(
-      (contract) => contract.evidence?.share_token_status === "active",
-    ).length;
+    const activeLinks = contracts.filter((contract) => {
+      if (contract.evidence?.share_token_status !== "active") return false;
+      const expiresAt = parseDate(contract.evidence.share_token_expires_at);
+      return !Number.isFinite(expiresAt) || expiresAt > now;
+    }).length;
     const value = contracts.reduce((sum, contract) => sum + parseMoney(contract.campaign?.budget), 0);
 
     return { needsAction, dueSoon, activeLinks, value };
@@ -937,11 +940,11 @@ function EmptyState({ isInitialEmpty }: { isInitialEmpty: boolean }) {
       <p className="mt-3 text-[15px] font-semibold text-neutral-900">
         {isInitialEmpty ? "아직 계약이 없습니다" : "조건에 맞는 계약이 없습니다"}
       </p>
-      {!isInitialEmpty && (
-        <p className="mt-1 text-[13px] text-neutral-500">
-          검색어를 줄이거나 상태 필터를 전체로 바꿔보세요.
-        </p>
-      )}
+      <p className="mt-1 max-w-md text-[13px] leading-6 text-neutral-500">
+        {isInitialEmpty
+          ? "사업자 인증이 완료되어 있다면 새 계약을 만들고, 초안 저장 후 최종본 공유 링크를 활성화할 수 있습니다."
+          : "검색어를 줄이거나 상태 필터를 전체로 바꿔보세요."}
+      </p>
       <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
         <a
           href="/advertiser/builder"

@@ -90,12 +90,20 @@ export interface VerificationAccountInfo {
   platform_url?: string;
 }
 
+export interface ApprovedInfluencerPlatform {
+  platform: InfluencerPlatform;
+  handle: string;
+  url?: string;
+  approved_at?: string;
+}
+
 export interface VerificationProfile {
   target_type: VerificationTargetType;
   target_id: string;
   status: VerificationStatus;
   latest_request?: VerificationRequest;
   account?: VerificationAccountInfo;
+  approved_platforms?: ApprovedInfluencerPlatform[];
 }
 
 export interface VerificationSummary {
@@ -106,8 +114,8 @@ export interface VerificationSummary {
 export const verificationStatusLabel = (status: VerificationStatus) => {
   const labels: Record<VerificationStatus, string> = {
     not_submitted: "미제출",
-    pending: "검토중",
-    approved: "인증완료",
+    pending: "검수 중",
+    approved: "인증 완료",
     rejected: "반려",
   };
 

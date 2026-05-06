@@ -76,8 +76,8 @@ const STAGE_META: Record<
     icon: <Clock3 className="h-4 w-4" />,
   },
   ready_to_sign: {
-    label: "서명 가능",
-    helper: "최종 확인",
+    label: "서명 준비",
+    helper: "인증 후 서명",
     className: "border-neutral-200 bg-white text-neutral-700",
     icon: <FileSignature className="h-4 w-4" />,
   },
@@ -265,9 +265,16 @@ export function InfluencerDashboard() {
       .includes(normalizedQuery);
   });
   const verification = VERIFICATION_META[dashboard.verification.status];
+  const activeContractForVerification = dashboard.contracts.find(
+    (contract) => contract.stage !== "signed",
+  );
+  const hasVerificationRecord =
+    dashboard.verification.status !== "not_submitted" ||
+    dashboard.verification.approved_platforms.length > 0;
   const showVerificationAction =
+    Boolean(activeContractForVerification) ||
     dashboard.summary.verification_needed ||
-    dashboard.verification.status !== "not_submitted";
+    hasVerificationRecord;
 
   const handleLogout = async () => {
     await fetch(`${API_BASE}/api/influencer/logout`, {
@@ -328,7 +335,12 @@ export function InfluencerDashboard() {
               dashboard={dashboard}
               verification={verification}
               showVerificationAction={showVerificationAction}
-              onVerify={() => navigate("/influencer/verification")}
+              onVerify={() =>
+                navigate(
+                  activeContractForVerification?.verification_href ??
+                    "/influencer/verification",
+                )
+              }
             />
             <div className="grid gap-4 p-4 lg:grid-cols-[190px_minmax(0,1fr)] lg:items-center">
               <div className="min-w-0">
@@ -350,7 +362,7 @@ export function InfluencerDashboard() {
                   tone="amber"
                 />
                 <SummaryTile
-                  label="서명 가능"
+                  label="서명 준비"
                   value={dashboard.summary.ready_to_sign}
                   icon={<FileSignature className="h-4 w-4" />}
                   tone="neutral"
@@ -790,11 +802,11 @@ function EmptyContracts({ hasQuery }: { hasQuery: boolean }) {
       <h2 className="mt-3 text-[15px] font-semibold text-neutral-950">
         {hasQuery ? "조건에 맞는 계약이 없습니다" : "아직 받은 계약이 없습니다"}
       </h2>
-      {hasQuery && (
-        <p className="mt-1 max-w-md text-[13px] leading-6 text-neutral-500">
-          검색어를 줄이거나 상태 필터를 전체로 바꿔보세요.
-        </p>
-      )}
+      <p className="mt-1 max-w-md text-[13px] leading-6 text-neutral-500">
+        {hasQuery
+          ? "검색어를 줄이거나 상태 필터를 전체로 바꿔보세요."
+          : "계약 초대가 오면 검토, 수정 협의, 플랫폼 인증, 서명 순서대로 이곳에 표시됩니다."}
+      </p>
     </section>
   );
 }

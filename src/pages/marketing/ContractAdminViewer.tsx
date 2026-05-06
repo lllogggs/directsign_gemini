@@ -23,6 +23,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { ClauseHistory, Contract, ContractStatus, useAppStore } from "../../store";
 import { createShareToken } from "../../domain/contracts";
 import { PRODUCT_NAME } from "../../domain/brand";
+import { verificationStatusLabel } from "../../domain/verification";
+import { useVerificationSummary } from "../../hooks/useVerificationSummary";
 
 const buildShareUrl = (contractId: string, shareToken?: string) =>
   `${window.location.origin}/contract/${contractId}${
@@ -82,8 +84,17 @@ export function ContractAdminViewer() {
   const [replyContent, setReplyContent] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState<string>();
   const [supportReason, setSupportReason] = useState("");
+  const [supportScope, setSupportScope] = useState<"contract" | "contract_and_pdf">(
+    "contract",
+  );
+  const [supportConsentAccepted, setSupportConsentAccepted] = useState(false);
   const [isRequestingSupport, setIsRequestingSupport] = useState(false);
   const [draftConfirmationOpen, setDraftConfirmationOpen] = useState(false);
+  const { summary: verificationSummary, isLoading: isVerificationLoading } =
+    useVerificationSummary({ role: "advertiser" });
+  const advertiserVerificationStatus =
+    verificationSummary?.advertiser.status ?? "not_submitted";
+  const isAdvertiserVerified = advertiserVerificationStatus === "approved";
 
   const summary = useMemo(() => {
     if (!contract) return undefined;
@@ -123,9 +134,17 @@ export function ContractAdminViewer() {
     contract.status === "SIGNED"
       ? "서명 완료"
       : summary.allApproved
-        ? "서명 요청 보내기"
+        ? isVerificationLoading
+          ? "인증 확인 중"
+          : isAdvertiserVerified
+            ? "공유 링크 활성화"
+            : "사업자 인증 필요"
         : "수정 요청 검토";
-  const canRequestSignatures = summary.allApproved && contract.status !== "SIGNED";
+  const canRequestSignatures =
+    summary.allApproved &&
+    contract.status !== "SIGNED" &&
+    isAdvertiserVerified &&
+    !isVerificationLoading;
 
   const handleAction = (
     clauseId: string,
@@ -200,6 +219,15 @@ export function ContractAdminViewer() {
   };
 
   const requestSignatures = () => {
+    if (!isAdvertiserVerified) {
+      setNotice(
+        `광고주 사업자 인증 승인 후 공유 링크를 활성화할 수 있습니다. 현재 상태: ${verificationStatusLabel(
+          advertiserVerificationStatus,
+        )}`,
+      );
+      return;
+    }
+
     const now = new Date().toISOString();
     const shareToken = contract.evidence?.share_token ?? createShareToken();
 
@@ -210,7 +238,7 @@ export function ContractAdminViewer() {
         next_action: "인플루언서의 최종 서명을 기다리는 중입니다.",
         due_at: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
         risk_level: "medium",
-        last_message: "최종본 서명 요청을 발송했습니다.",
+        last_message: "최종본 공유 링크를 활성화했습니다.",
       },
       evidence: {
         share_token_status: "active",
@@ -225,7 +253,7 @@ export function ContractAdminViewer() {
           id: `audit_${Date.now()}`,
           actor: "advertiser",
           action: "signature_requested",
-          description: "광고주가 최종본 서명 요청 링크를 발급했습니다.",
+          description: "광고주가 최종본 공유 링크를 활성화했습니다.",
           created_at: now,
         },
       ],
@@ -236,6 +264,17 @@ export function ContractAdminViewer() {
   const handlePrimaryAction = () => {
     if (canRequestSignatures) {
       requestSignatures();
+      return;
+    }
+
+    if (summary.allApproved && contract.status !== "SIGNED") {
+      if (isVerificationLoading) {
+        setNotice("광고주 사업자 인증 상태를 확인한 뒤 다시 시도해 주세요.");
+        return;
+      }
+
+      setNotice("사업자 인증 요청 화면에서 승인 절차를 먼저 완료해 주세요.");
+      navigate("/advertiser/verification");
       return;
     }
 
@@ -251,6 +290,10 @@ export function ContractAdminViewer() {
       setNotice("운영자가 확인할 내용을 5자 이상 남겨주세요.");
       return;
     }
+    if (!supportConsentAccepted) {
+      setNotice("운영자에게 열람권을 부여하는 데 동의해야 합니다.");
+      return;
+    }
 
     setIsRequestingSupport(true);
 
@@ -264,7 +307,7 @@ export function ContractAdminViewer() {
             "Content-Type": "application/json",
             Accept: "application/json",
           },
-          body: JSON.stringify({ reason, scope: "contract_and_pdf" }),
+          body: JSON.stringify({ reason, scope: supportScope }),
         },
       );
       const data = (await response.json()) as {
@@ -276,6 +319,7 @@ export function ContractAdminViewer() {
       }
 
       setSupportReason("");
+      setSupportConsentAccepted(false);
       setNotice("운영자가 24시간 동안 이 계약을 확인할 수 있습니다.");
     } catch (error) {
       setNotice(
@@ -327,7 +371,10 @@ export function ContractAdminViewer() {
             <button
               type="button"
               onClick={handlePrimaryAction}
-              disabled={contract.status === "SIGNED"}
+              disabled={
+                contract.status === "SIGNED" ||
+                (summary.allApproved && isVerificationLoading)
+              }
               className="hidden h-10 items-center gap-2 rounded-lg bg-neutral-950 px-4 text-[12px] font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition hover:bg-neutral-800 hover:shadow-[0_14px_30px_rgba(15,23,42,0.18)] disabled:bg-neutral-200 disabled:text-neutral-400 disabled:shadow-none sm:inline-flex"
             >
               <Send className="h-4 w-4" />
@@ -577,7 +624,7 @@ export function ContractAdminViewer() {
                     {summary.activeShare ? "공유 링크 활성화" : "공유 링크 비활성"}
                   </p>
                   <p className="mt-2 truncate font-mono text-[12px] text-neutral-500">
-                    {summary.activeShare ? summary.shareUrl : "서명 요청 시 링크가 활성화됩니다."}
+                    {summary.activeShare ? summary.shareUrl : "최종본 공유 시 링크가 활성화됩니다."}
                   </p>
                   <button
                     type="button"
@@ -591,16 +638,30 @@ export function ContractAdminViewer() {
                 </div>
                 <button
                   type="button"
-                  onClick={requestSignatures}
-                  disabled={!canRequestSignatures}
+                  onClick={handlePrimaryAction}
+                  disabled={
+                    contract.status === "SIGNED" ||
+                    (summary.allApproved && isVerificationLoading)
+                  }
                   className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-neutral-950 text-[13px] font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition hover:bg-neutral-800 hover:shadow-[0_14px_30px_rgba(15,23,42,0.18)] disabled:bg-neutral-200 disabled:text-neutral-400 disabled:shadow-none"
                 >
                   <Send className="h-4 w-4" />
                   {primaryActionLabel}
                 </button>
+                {contract.status === "SIGNED" && (
+                  <a
+                    href={contract.pdf_url || `/api/contracts/${contract.id}/final-pdf`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white text-[13px] font-semibold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
+                  >
+                    <FileText className="h-4 w-4" />
+                    서명본 PDF 내려받기
+                  </a>
+                )}
                 {!summary.allApproved && (
                   <p className="text-center text-[12px] font-semibold text-amber-700">
-                    조항 검토가 끝나면 서명 요청을 보낼 수 있습니다.
+                    조항 검토가 끝나면 최종본 공유 링크를 활성화할 수 있습니다.
                   </p>
                 )}
               </div>
@@ -620,10 +681,66 @@ export function ContractAdminViewer() {
                   value={supportReason}
                   onChange={(event) => setSupportReason(event.target.value)}
                 />
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {[
+                    {
+                      value: "contract" as const,
+                      label: "계약 본문만",
+                      description: "조항 확인에 필요한 최소 범위",
+                    },
+                    {
+                      value: "contract_and_pdf" as const,
+                      label: "본문 + 서명 PDF",
+                      description: "서명 증빙 확인이 필요할 때만",
+                    },
+                  ].map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setSupportScope(option.value)}
+                      className={`rounded-lg border px-3 py-2 text-left transition ${
+                        supportScope === option.value
+                          ? "border-neutral-950 bg-neutral-950 text-white"
+                          : "border-neutral-200 bg-[#fbfbfc] text-neutral-700 hover:border-neutral-400"
+                      }`}
+                    >
+                      <span className="block text-[12px] font-semibold">
+                        {option.label}
+                      </span>
+                      <span
+                        className={`mt-1 block text-[11px] leading-4 ${
+                          supportScope === option.value
+                            ? "text-neutral-300"
+                            : "text-neutral-500"
+                        }`}
+                      >
+                        {option.description}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-neutral-200 bg-white px-3 py-3 text-left text-[12px] leading-5 text-neutral-600">
+                  <input
+                    type="checkbox"
+                    checked={supportConsentAccepted}
+                    onChange={(event) =>
+                      setSupportConsentAccepted(event.target.checked)
+                    }
+                    className="mt-0.5 h-4 w-4 rounded border-neutral-300 text-neutral-950 accent-neutral-950"
+                  />
+                  <span>
+                    선택한 범위의 계약 자료를 운영자가 24시간 확인하고, 열람 기록이
+                    감사 로그에 남는 것에 동의합니다.
+                  </span>
+                </label>
                 <button
                   type="button"
                   onClick={requestOperatorSupport}
-                  disabled={isRequestingSupport || supportReason.trim().length < 5}
+                  disabled={
+                    isRequestingSupport ||
+                    supportReason.trim().length < 5 ||
+                    !supportConsentAccepted
+                  }
                   className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-neutral-950 bg-neutral-950 text-[13px] font-semibold text-white transition-colors hover:bg-neutral-800 disabled:border-neutral-200 disabled:bg-neutral-200 disabled:text-neutral-500"
                 >
                   <LifeBuoy className="h-4 w-4" />
