@@ -127,6 +127,30 @@ const smokeRoute = async (baseUrl, route, expectedStatuses) => {
   }
 };
 
+const smokeAppShellRoute = async (baseUrl, route) => {
+  try {
+    const response = await fetchWithTimeout(`${baseUrl}${route}`, {
+      headers: { Accept: "text/html" },
+    });
+    const body = await response.text();
+    const hasRoot = body.includes('id="root"');
+    const hasViteError = body.includes("vite-error-overlay") || body.includes("[plugin:vite");
+    const ok = response.status === 200 && hasRoot && !hasViteError;
+
+    record(
+      `UI shell ${route}`,
+      ok ? "pass" : "fail",
+      `status ${response.status}, root ${hasRoot ? "yes" : "no"}, vite error ${
+        hasViteError ? "yes" : "no"
+      }`,
+    );
+    return ok;
+  } catch (error) {
+    record(`UI shell ${route}`, "fail", error instanceof Error ? error.message : String(error));
+    return false;
+  }
+};
+
 const smokeMethodRoute = async (
   baseUrl,
   method,
@@ -269,7 +293,22 @@ const main = async () => {
         [400],
         {},
       ),
+      await smokeRoute(server.baseUrl, "/api/contracts/nonexistent/deliverables", [404]),
+      await smokeMethodRoute(
+        server.baseUrl,
+        "POST",
+        "/api/contracts/nonexistent/deliverables",
+        [401, 503],
+        {},
+      ),
       await smokeRoute(server.baseUrl, "/api/contracts/nonexistent/final-pdf", [404]),
+      await smokeAppShellRoute(server.baseUrl, "/"),
+      await smokeAppShellRoute(server.baseUrl, "/signup/advertiser"),
+      await smokeAppShellRoute(server.baseUrl, "/login/advertiser"),
+      await smokeAppShellRoute(server.baseUrl, "/login/influencer"),
+      await smokeAppShellRoute(server.baseUrl, "/advertiser/dashboard"),
+      await smokeAppShellRoute(server.baseUrl, "/influencer/dashboard"),
+      await smokeAppShellRoute(server.baseUrl, "/contract/nonexistent"),
       await smokeRoute(server.baseUrl, "/privacy", [200]),
       await smokeRoute(server.baseUrl, "/terms", [200]),
       await smokeRoute(server.baseUrl, "/legal/e-sign-consent", [200]),

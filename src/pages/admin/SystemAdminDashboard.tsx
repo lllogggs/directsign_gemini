@@ -1,9 +1,8 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
   ArrowUpRight,
-  CheckCircle2,
   Clock3,
   FileText,
   Lock,
@@ -154,7 +153,7 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
     };
   }, []);
 
-  const loadAdminData = async () => {
+  const loadAdminData = useCallback(async () => {
     setIsLoadingData(true);
     setDataError("");
 
@@ -228,13 +227,17 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
     } finally {
       setIsLoadingData(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (isAuthenticated) {
-      void loadAdminData();
+      const timer = window.setTimeout(() => {
+        void loadAdminData();
+      }, 0);
+      return () => window.clearTimeout(timer);
     }
-  }, [isAuthenticated]);
+    return undefined;
+  }, [isAuthenticated, loadAdminData]);
 
   const handleLogin = async (event: React.FormEvent) => {
     event.preventDefault();

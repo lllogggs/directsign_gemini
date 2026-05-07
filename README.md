@@ -8,8 +8,8 @@ yeollock.me는 광고주와 인플루언서가 연락, 계약 검토, 수정 협
 
 For production launch readiness, service scope, and legal/security operations,
 see [`docs/launch-readiness.md`](docs/launch-readiness.md).
-
-View your app in AI Studio: https://ai.studio/apps/e786620b-1980-4964-9772-882fad39365a
+Owner-only launch tasks are tracked in
+[`docs/owner-action-memo.md`](docs/owner-action-memo.md).
 
 ## Run Locally
 
@@ -18,7 +18,8 @@ View your app in AI Studio: https://ai.studio/apps/e786620b-1980-4964-9772-882fa
 
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+2. Copy [.env.example](.env.example) to `.env.local` and fill only the services
+   you are testing locally. `GEMINI_API_KEY` is currently optional/reserved.
 3. Run the app:
    `npm run dev`
 
@@ -32,7 +33,8 @@ npm run qa
 ```
 
 This command runs tests, lint, build, dependency audit, linked Supabase migration
-status, `/api/health`, protected API access checks, and legal route smoke checks.
+status, `/api/health`, protected API access checks, app-shell UI route smoke
+checks, and legal route smoke checks.
 It intentionally does not require local Supabase Docker/Postgres; local database
 migration checks should only be run when local Supabase is explicitly requested.
 `npm run qa:discord` remains as a compatibility alias for older Discord logs or
@@ -118,7 +120,7 @@ Before launch, review and publish `/privacy`, `/terms`, and `/legal/e-sign-conse
 
 The product is currently scoped as a contract platform only. It records contract payment terms as clauses between the advertiser and influencer, but it does not perform settlement, payout, escrow, tax invoice issuance, withholding, refund processing, or collection work. Keep this boundary visible in sales material, onboarding copy, terms, support scripts, and internal operating procedures.
 
-Production responses include baseline security headers, enforcing CSP by default, admin login throttling, public auth throttling, and required server-only token encryption. Keep `ADMIN_ACCESS_CODE`, `ADMIN_SESSION_SECRET`, and `DIRECTSIGN_TOKEN_ENCRYPTION_SECRET` long, unique, stable, and server-side only. Local development can auto-generate missing runtime secrets in ignored `data/runtime-secrets.json`; do not rely on that for production.
+Production responses include baseline security headers, enforcing CSP by default, admin login throttling, public auth throttling, signed PDF Korean font embedding through the bundled NanumGothic font, and required server-only token encryption. Keep `ADMIN_ACCESS_CODE`, `ADMIN_SESSION_SECRET`, and `DIRECTSIGN_TOKEN_ENCRYPTION_SECRET` long, unique, stable, and server-side only. Local development can auto-generate missing runtime secrets in ignored `data/runtime-secrets.json`; do not rely on that for production.
 
 Supabase Auth should use email confirmation for public signup:
 

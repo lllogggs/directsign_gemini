@@ -253,25 +253,29 @@ export function InfluencerVerification() {
   useEffect(() => {
     if (!contract || prefilledContractId === contract.id) return;
 
-    const inferredPlatform = inferPlatform(contract.influencer_info.channel_url);
-    if (inferredPlatform) {
-      setPlatform(inferredPlatform);
-      setMethod(PLATFORM_META[inferredPlatform].methods[0]);
-    }
+    const timer = window.setTimeout(() => {
+      const inferredPlatform = inferPlatform(contract.influencer_info.channel_url);
+      if (inferredPlatform) {
+        setPlatform(inferredPlatform);
+        setMethod(PLATFORM_META[inferredPlatform].methods[0]);
+      }
 
-    setForm((current) => ({
-      ...current,
-      subject_name: current.subject_name || contract.influencer_info.name,
-      submitted_by_email:
-        current.submitted_by_email || contract.influencer_info.contact,
-      platform_handle:
-        current.platform_handle ||
-        inferHandle(contract.influencer_info.channel_url, inferredPlatform ?? platform),
-      platform_url: current.platform_url || contract.influencer_info.channel_url,
-      ownership_challenge_url:
-        current.ownership_challenge_url || contract.influencer_info.channel_url,
-    }));
-    setPrefilledContractId(contract.id);
+      setForm((current) => ({
+        ...current,
+        subject_name: current.subject_name || contract.influencer_info.name,
+        submitted_by_email:
+          current.submitted_by_email || contract.influencer_info.contact,
+        platform_handle:
+          current.platform_handle ||
+          inferHandle(contract.influencer_info.channel_url, inferredPlatform ?? platform),
+        platform_url: current.platform_url || contract.influencer_info.channel_url,
+        ownership_challenge_url:
+          current.ownership_challenge_url || contract.influencer_info.channel_url,
+      }));
+      setPrefilledContractId(contract.id);
+    }, 0);
+
+    return () => window.clearTimeout(timer);
   }, [contract, platform, prefilledContractId]);
 
   const updateForm = (updates: Partial<InfluencerVerificationForm>) => {

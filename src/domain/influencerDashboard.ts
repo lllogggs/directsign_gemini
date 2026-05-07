@@ -16,7 +16,10 @@ export type InfluencerDashboardContractStage =
   | "review_needed"
   | "change_pending"
   | "ready_to_sign"
+  | "deliverables_due"
+  | "deliverables_review"
   | "signed"
+  | "completed"
   | "waiting";
 
 export interface InfluencerDashboardUser {

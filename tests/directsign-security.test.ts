@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const root = process.cwd();
@@ -26,6 +26,43 @@ describe("yeollock.me security regressions", () => {
     ]) {
       assert.match(robots, new RegExp(`Disallow:\\s*${route}`));
     }
+  });
+
+  it("applies baseline security headers to Vercel static and API routes", () => {
+    const vercelConfig = JSON.parse(read("vercel.json")) as {
+      headers?: Array<{
+        source?: string;
+        headers?: Array<{ key?: string; value?: string }>;
+      }>;
+    };
+    const globalHeaders = vercelConfig.headers?.find(
+      (entry) => entry.source === "/(.*)",
+    )?.headers;
+
+    assert.ok(globalHeaders);
+    const byKey = new Map(globalHeaders.map((header) => [header.key, header.value]));
+
+    assert.equal(byKey.get("X-Content-Type-Options"), "nosniff");
+    assert.equal(byKey.get("X-Frame-Options"), "DENY");
+    assert.equal(byKey.get("Referrer-Policy"), "no-referrer");
+    assert.match(byKey.get("Permissions-Policy") ?? "", /camera=\(\)/);
+    assert.match(byKey.get("Strict-Transport-Security") ?? "", /includeSubDomains/);
+    assert.match(byKey.get("Content-Security-Policy") ?? "", /frame-ancestors 'none'/);
+    assert.match(byKey.get("Content-Security-Policy") ?? "", /connect-src 'self' https:\/\/\*\.supabase\.co wss:\/\/\*\.supabase\.co/);
+  });
+
+  it("bundles a Korean-capable font for server-signed PDFs", () => {
+    const server = read("server/index.ts");
+    const vercelConfig = JSON.parse(read("vercel.json")) as {
+      functions?: Record<string, { includeFiles?: string }>;
+    };
+
+    assert.match(server, /public", "fonts", "NanumGothic-Regular\.ttf"/);
+    assert.equal(
+      vercelConfig.functions?.["api/index.ts"]?.includeFiles,
+      "public/fonts/**",
+    );
+    assert.ok(statSync(join(root, "public/fonts/NanumGothic-Regular.ttf")).size > 1_000_000);
   });
 
   it("keeps duplicate early Supabase migrations as no-ops", () => {
@@ -137,6 +174,32 @@ describe("yeollock.me security regressions", () => {
     assert.doesNotMatch(pdfDownloadBlock, /X-Yeollock-Share-Token/);
   });
 
+  it("keeps signed content deliverables behind authenticated server APIs", () => {
+    const server = read("server/index.ts");
+    const getRouteStart = server.indexOf('app.get("/api/contracts/:id/deliverables"');
+    const postRouteStart = server.indexOf('app.post("/api/contracts/:id/deliverables"');
+    const patchRouteStart = server.indexOf(
+      'app.patch("/api/contracts/:id/deliverables/:deliverableId"',
+    );
+    const supportRouteStart = server.indexOf(
+      'app.post("/api/contracts/:id/support-access-requests"',
+    );
+    const getRoute = server.slice(getRouteStart, postRouteStart);
+    const postRoute = server.slice(postRouteStart, patchRouteStart);
+    const patchRoute = server.slice(patchRouteStart, supportRouteStart);
+
+    assert.notEqual(getRouteStart, -1);
+    assert.notEqual(postRouteStart, -1);
+    assert.notEqual(patchRouteStart, -1);
+    assert.match(getRoute, /allowShareToken:\s*false/);
+    assert.match(postRoute, /requireInfluencerSession/);
+    assert.match(postRoute, /storeDeliverableFile/);
+    assert.match(postRoute, /contract_files/);
+    assert.match(patchRoute, /requireAdvertiserSession/);
+    assert.match(patchRoute, /updateContractDeliverableWorkflow/);
+    assert.match(server, /status:\s*"completed"/);
+  });
+
   it("keeps public auth and signature evidence server-authored", () => {
     const server = read("server/index.ts");
     const signRouteStart = server.indexOf(
@@ -155,6 +218,7 @@ describe("yeollock.me security regressions", () => {
     assert.doesNotMatch(authHeaders, /supabaseServiceRoleKey/);
     assert.match(server, /const signatureConsentText\s*=/);
     assert.match(server, /setSignedPdfAccessCookie\(response, updatedContract\)/);
+    assert.match(signRoute, /share_token_status:\s*"revoked"/);
     assert.doesNotMatch(signRoute, /request\.body\?\.consent_text/);
     assert.match(server, /buildServerAuthoredContract/);
   });

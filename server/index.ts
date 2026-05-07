@@ -347,6 +347,7 @@ const signedPdfFontCandidates = [
   process.env.SIGNED_PDF_FONT_PATH,
   path.join(root, "assets", "fonts", "NotoSansKR-Regular.ttf"),
   path.join(root, "public", "fonts", "NotoSansKR-Regular.ttf"),
+  path.join(root, "public", "fonts", "NanumGothic-Regular.ttf"),
   "C:\\Windows\\Fonts\\malgun.ttf",
   "/usr/share/fonts/truetype/noto/NotoSansKR-Regular.ttf",
   "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
@@ -502,14 +503,6 @@ const clauseStatuses = new Set(["APPROVED", "MODIFICATION_REQUESTED", "DELETION_
 const shareTokenStatuses = new Set(["not_issued", "active", "expired", "revoked"]);
 const pdfStatuses = new Set(["not_ready", "draft_ready", "signed_ready"]);
 const verificationStatuses = new Set(["pending", "approved", "rejected"]);
-const verificationTargetTypes = new Set([
-  "advertiser_organization",
-  "influencer_account",
-]);
-const verificationTypes = new Set([
-  "business_registration_certificate",
-  "platform_account",
-]);
 const influencerPlatforms = new Set<InfluencerPlatform>([
   "instagram",
   "youtube",
@@ -551,6 +544,8 @@ const evidenceFileMimeTypes = new Set([
   "image/webp",
 ]);
 const maxVerificationFileSize = 4 * 1024 * 1024;
+const deliverableFileMimeTypes = evidenceFileMimeTypes;
+const maxDeliverableFileSize = maxVerificationFileSize;
 const signatureImageMimeTypes = new Set([
   "image/png",
   "image/jpeg",
@@ -558,6 +553,19 @@ const signatureImageMimeTypes = new Set([
 ]);
 const maxSignatureImageSize = 1 * 1024 * 1024;
 const maxOwnershipCheckBytes = 256 * 1024;
+const deliverableReviewStatuses = new Set<DeliverableReviewStatus>([
+  "draft",
+  "submitted",
+  "changes_requested",
+  "approved",
+  "rejected",
+  "waived",
+]);
+const advertiserDeliverableReviewStatuses = new Set<DeliverableReviewStatus>([
+  "changes_requested",
+  "approved",
+  "rejected",
+]);
 
 const hasText = (value: unknown): value is string =>
   typeof value === "string" && value.trim().length > 0;
@@ -778,13 +786,60 @@ interface SupabaseShareLinkRow {
   expires_at?: string | null;
 }
 
+type DeliverableReviewStatus =
+  | "draft"
+  | "submitted"
+  | "changes_requested"
+  | "approved"
+  | "rejected"
+  | "waived";
+
 interface SupabaseDeliverableRequirementRow {
+  id: string;
   contract_id: string;
+  deliverable_type: string;
+  title: string;
+  description?: string | null;
+  quantity?: number | null;
+  due_at?: string | null;
+  review_required?: boolean | null;
+  evidence_required?: boolean | null;
+  order_no?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
 }
 
 interface SupabaseDeliverableRow {
+  id: string;
   contract_id: string;
-  review_status?: string | null;
+  requirement_id?: string | null;
+  creator_profile_id?: string | null;
+  title?: string | null;
+  url?: string | null;
+  submitted_at?: string | null;
+  review_status?: DeliverableReviewStatus | null;
+  review_comment?: string | null;
+  reviewed_by_profile_id?: string | null;
+  reviewed_at?: string | null;
+  metadata?: Record<string, unknown> | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+interface SupabaseContractFileRow {
+  id: string;
+  contract_id: string;
+  uploaded_by_profile_id?: string | null;
+  related_type?: string | null;
+  related_id?: string | null;
+  file_type?: string | null;
+  bucket: string;
+  storage_path: string;
+  file_name?: string | null;
+  content_type?: string | null;
+  byte_size?: number | string | null;
+  file_hash?: string | null;
+  created_at?: string | null;
 }
 
 interface SupabaseSupportAccessRequestRow {
@@ -3365,6 +3420,11 @@ const mapContractStatusToV2 = (status: Contract["status"]) => {
   return statuses[status];
 };
 
+const mapContractToV2Status = (contract: Contract) => {
+  if (contract.status !== "SIGNED") return mapContractStatusToV2(contract.status);
+  return (contract.campaign?.deliverables?.length ?? 0) > 0 ? "active" : "completed";
+};
+
 const mapClauseStatusToV2 = (status: Contract["clauses"][number]["status"]) => {
   const statuses: Record<Contract["clauses"][number]["status"], string> = {
     APPROVED: "accepted",
@@ -3531,7 +3591,7 @@ const syncSupabaseV2Contract = async (contract: Contract) => {
     {
       id: contract.id,
       legacy_contract_id: contract.id,
-      status: mapContractStatusToV2(contract.status),
+      status: mapContractToV2Status(contract),
       campaign_title: contract.title,
       campaign_summary: contract.workflow?.last_message,
       campaign_start_date: toDateOnly(contract.campaign?.start_date),
@@ -3555,7 +3615,7 @@ const syncSupabaseV2Contract = async (contract: Contract) => {
           ? toIsoDateTime(contract.signature_data?.signed_at ?? contract.updated_at)
           : undefined,
       completed_at:
-        contract.status === "SIGNED"
+        mapContractToV2Status(contract) === "completed"
           ? toIsoDateTime(contract.signature_data?.signed_at ?? contract.updated_at)
           : undefined,
       created_at: toIsoDateTime(contract.created_at),
@@ -4808,11 +4868,29 @@ const dashboardStageMeta: Record<
     actionLabel: "인증 후 서명",
     nextAction: "최종본 확인과 플랫폼 계정 인증 승인이 끝나면 전자서명을 완료할 수 있습니다.",
   },
+  deliverables_due: {
+    label: "콘텐츠 제출",
+    statusLabel: "콘텐츠 제출 필요",
+    actionLabel: "제출하기",
+    nextAction: "서명 완료 후 콘텐츠 링크나 증빙 파일을 제출해 주세요.",
+  },
+  deliverables_review: {
+    label: "검수 대기",
+    statusLabel: "광고주 검수 중",
+    actionLabel: "제출 내역 보기",
+    nextAction: "제출한 콘텐츠를 광고주가 검수하고 있습니다.",
+  },
   signed: {
     label: "완료",
     statusLabel: "서명 완료",
     actionLabel: "완료본 보기",
     nextAction: "서명본과 감사 기록을 보관하세요.",
+  },
+  completed: {
+    label: "완료",
+    statusLabel: "계약 완료",
+    actionLabel: "완료 내역 보기",
+    nextAction: "모든 콘텐츠 검수와 계약 증빙이 완료되었습니다.",
   },
   waiting: {
     label: "대기",
@@ -4826,7 +4904,8 @@ const inferDashboardStage = (
   status: SupabaseContractV2Row["status"],
   nextActorRole?: string | null,
 ): InfluencerDashboardContractStage => {
-  if (status === "completed" || status === "active") return "signed";
+  if (status === "completed") return "completed";
+  if (status === "active") return "signed";
   if (status === "signing") return "ready_to_sign";
   if (status === "negotiating" && nextActorRole === "influencer") {
     return "review_needed";
@@ -4927,8 +5006,7 @@ const buildV2DashboardContract = ({
   deliverableRequirements: SupabaseDeliverableRequirementRow[];
   deliverables: SupabaseDeliverableRow[];
 }): InfluencerDashboardContract => {
-  const stage = inferDashboardStage(contract.status, contract.next_actor_role);
-  const stageMeta = dashboardStageMeta[stage];
+  let stage = inferDashboardStage(contract.status, contract.next_actor_role);
   const advertiserParty =
     parties.find((party) => ["advertiser", "agency", "marketer"].includes(party.party_role)) ??
     parties.find((party) => party.party_role !== "influencer");
@@ -4956,7 +5034,30 @@ const buildV2DashboardContract = ({
   const approvedDeliverables = deliverables.filter(
     (deliverable) => deliverable.review_status === "approved",
   ).length;
-  const recordStatus = stage === "signed" ? "ready" : "not_ready";
+  const deliverableSummary = buildDeliverableSummary(deliverableRequirements, deliverables);
+  const needsDeliverables = deliverableSummary.total > 0;
+  const hasDeliverableRevision = deliverables.some((deliverable) =>
+    ["changes_requested", "rejected"].includes(
+      normalizeDeliverableStatus(deliverable.review_status),
+    ),
+  );
+
+  if (contract.status === "completed") {
+    stage = "completed";
+  } else if (contract.status === "active" && needsDeliverables) {
+    stage =
+      deliverableSummary.approved >= deliverableSummary.total
+        ? "completed"
+        : deliverableSummary.submitted >= deliverableSummary.total && !hasDeliverableRevision
+          ? "deliverables_review"
+          : "deliverables_due";
+  }
+
+  const stageMeta = dashboardStageMeta[stage];
+  const recordStatus =
+    ["signed", "deliverables_due", "deliverables_review", "completed"].includes(stage)
+      ? "ready"
+      : "not_ready";
 
   return {
     id: contract.id,
@@ -5000,9 +5101,9 @@ const buildV2DashboardContract = ({
       change_requested: changeRequestedClauses,
     },
     deliverable_summary: {
-      total: deliverableRequirements.length || legacyContract?.campaign?.deliverables?.length || 0,
-      submitted: submittedDeliverables,
-      approved: approvedDeliverables,
+      total: deliverableSummary.total || legacyContract?.campaign?.deliverables?.length || 0,
+      submitted: deliverableSummary.submitted || submittedDeliverables,
+      approved: deliverableSummary.approved || approvedDeliverables,
     },
     record_summary: {
       status: recordStatus,
@@ -5340,7 +5441,7 @@ const buildDashboardTasks = (
   }
 
   for (const contract of contracts) {
-    if (contract.stage === "signed" || contract.stage === "waiting") continue;
+    if (["signed", "completed", "waiting"].includes(contract.stage)) continue;
 
     tasks.push({
       id: `contract:${contract.id}`,
@@ -5450,12 +5551,12 @@ const buildInfluencerDashboard = async (
       ),
       readSupabaseRows<SupabaseDeliverableRequirementRow>(
         "deliverable_requirements",
-        `?select=contract_id&contract_id=in.${contractFilter}`,
+        `?select=*&contract_id=in.${contractFilter}`,
         "deliverable requirements",
       ),
       readSupabaseRows<SupabaseDeliverableRow>(
         "deliverables",
-        `?select=contract_id,review_status&contract_id=in.${contractFilter}`,
+        `?select=*&contract_id=in.${contractFilter}`,
         "deliverables",
       ),
     ]);
@@ -5551,7 +5652,11 @@ const buildInfluencerDashboard = async (
     review_needed: dashboardContracts.filter((contract) => contract.stage === "review_needed").length,
     change_pending: dashboardContracts.filter((contract) => contract.stage === "change_pending").length,
     ready_to_sign: dashboardContracts.filter((contract) => contract.stage === "ready_to_sign").length,
-    signed: dashboardContracts.filter((contract) => contract.stage === "signed").length,
+    signed: dashboardContracts.filter((contract) =>
+      ["signed", "deliverables_due", "deliverables_review", "completed"].includes(
+        contract.stage,
+      ),
+    ).length,
     verification_needed:
       hasActiveContract &&
       (verificationStatus !== "approved" || hasActiveContractRequiringVerification),
@@ -5663,6 +5768,352 @@ const mergeContractIntoStore = (
         )
       : [...store.contracts, contract],
 });
+
+const submittedDeliverableStatuses = new Set<DeliverableReviewStatus>([
+  "submitted",
+  "changes_requested",
+  "approved",
+  "rejected",
+]);
+
+const normalizeDeliverableStatus = (
+  value: string | null | undefined,
+): DeliverableReviewStatus =>
+  deliverableReviewStatuses.has(value as DeliverableReviewStatus)
+    ? (value as DeliverableReviewStatus)
+    : "draft";
+
+const normalizeDeliverableQuantity = (value: number | null | undefined) =>
+  Number.isFinite(value) && Number(value) > 0 ? Math.floor(Number(value)) : 1;
+
+const buildLegacyDeliverableRequirementRows = (
+  contract: Contract,
+): SupabaseDeliverableRequirementRow[] =>
+  (contract.campaign?.deliverables ?? []).map((deliverable, index) => ({
+    id: stableUuid(`${contract.id}:deliverable-requirement:${index}:${deliverable}`),
+    contract_id: contract.id,
+    deliverable_type: inferDeliverableType(deliverable),
+    title: deliverable,
+    description: deliverable,
+    quantity: 1,
+    due_at: toIsoDateTime(contract.campaign?.upload_due_at ?? contract.campaign?.deadline),
+    review_required: true,
+    evidence_required: true,
+    order_no: index + 1,
+    created_at: contract.created_at,
+    updated_at: contract.updated_at,
+  }));
+
+const readContractDeliverableBundle = async (
+  contract: Contract,
+) => {
+  if (!useSupabase || !isUuid(contract.id)) {
+    return {
+      requirements: buildLegacyDeliverableRequirementRows(contract),
+      deliverables: [] as SupabaseDeliverableRow[],
+      files: [] as SupabaseContractFileRow[],
+    };
+  }
+
+  const [requirements, deliverables] = await Promise.all([
+    readSupabaseRows<SupabaseDeliverableRequirementRow>(
+      "deliverable_requirements",
+      `?select=*&contract_id=eq.${encodeURIComponent(contract.id)}&order=order_no.asc`,
+      "deliverable requirements",
+    ),
+    readSupabaseRows<SupabaseDeliverableRow>(
+      "deliverables",
+      `?select=*&contract_id=eq.${encodeURIComponent(contract.id)}&order=created_at.asc`,
+      "deliverables",
+    ),
+  ]);
+  const deliverableIds = deliverables.map((deliverable) => deliverable.id);
+  const files = deliverableIds.length
+    ? await readSupabaseRows<SupabaseContractFileRow>(
+        "contract_files",
+        `?select=*&contract_id=eq.${encodeURIComponent(
+          contract.id,
+        )}&related_type=eq.deliverable&related_id=in.${postgrestInFilter(
+          deliverableIds,
+        )}&order=created_at.asc`,
+        "deliverable files",
+      )
+    : [];
+
+  return {
+    requirements: requirements.length
+      ? requirements
+      : buildLegacyDeliverableRequirementRows(contract),
+    deliverables,
+    files,
+  };
+};
+
+const countDeliverableUnits = (
+  requirements: SupabaseDeliverableRequirementRow[],
+  deliverables: SupabaseDeliverableRow[],
+  predicate: (status: DeliverableReviewStatus) => boolean,
+) => {
+  if (requirements.length === 0) {
+    return deliverables.filter((deliverable) =>
+      predicate(normalizeDeliverableStatus(deliverable.review_status)),
+    ).length;
+  }
+
+  return requirements.reduce((total, requirement) => {
+    const requirementDeliverables = deliverables.filter(
+      (deliverable) => deliverable.requirement_id === requirement.id,
+    );
+    const matchingCount = requirementDeliverables.filter((deliverable) =>
+      predicate(normalizeDeliverableStatus(deliverable.review_status)),
+    ).length;
+    return total + Math.min(normalizeDeliverableQuantity(requirement.quantity), matchingCount);
+  }, 0);
+};
+
+const buildDeliverableSummary = (
+  requirements: SupabaseDeliverableRequirementRow[],
+  deliverables: SupabaseDeliverableRow[],
+) => {
+  const total = requirements.length
+    ? requirements.reduce(
+        (sum, requirement) => sum + normalizeDeliverableQuantity(requirement.quantity),
+        0,
+      )
+    : deliverables.length;
+  const submitted = countDeliverableUnits(requirements, deliverables, (status) =>
+    submittedDeliverableStatuses.has(status),
+  );
+  const approved = countDeliverableUnits(
+    requirements,
+    deliverables,
+    (status) => status === "approved" || status === "waived",
+  );
+
+  return { total, submitted, approved };
+};
+
+const buildDeliverableResponse = (
+  contract: Contract,
+  bundle: Awaited<ReturnType<typeof readContractDeliverableBundle>>,
+) => {
+  const filesByDeliverable = new Map<string, SupabaseContractFileRow[]>();
+  for (const file of bundle.files) {
+    if (!file.related_id) continue;
+    filesByDeliverable.set(file.related_id, [
+      ...(filesByDeliverable.get(file.related_id) ?? []),
+      file,
+    ]);
+  }
+
+  const submissions = bundle.deliverables.map((deliverable) => ({
+    id: deliverable.id,
+    contract_id: deliverable.contract_id,
+    requirement_id: deliverable.requirement_id,
+    title: deliverable.title,
+    url: deliverable.url,
+    submitted_at: deliverable.submitted_at,
+    review_status: normalizeDeliverableStatus(deliverable.review_status),
+    review_comment: deliverable.review_comment,
+    reviewed_at: deliverable.reviewed_at,
+    metadata: deliverable.metadata ?? {},
+    files: (filesByDeliverable.get(deliverable.id) ?? []).map((file) => ({
+      id: file.id,
+      file_name: file.file_name,
+      content_type: file.content_type,
+      byte_size: Number(file.byte_size ?? 0),
+      created_at: file.created_at,
+      download_url: `/api/contracts/${encodeURIComponent(
+        contract.id,
+      )}/deliverables/${encodeURIComponent(deliverable.id)}/files/${encodeURIComponent(
+        file.id,
+      )}`,
+    })),
+  }));
+
+  return {
+    contract_id: contract.id,
+    requirements: bundle.requirements.map((requirement) => ({
+      id: requirement.id,
+      contract_id: requirement.contract_id,
+      deliverable_type: requirement.deliverable_type,
+      title: requirement.title,
+      description: requirement.description,
+      quantity: normalizeDeliverableQuantity(requirement.quantity),
+      due_at: requirement.due_at,
+      review_required: requirement.review_required !== false,
+      evidence_required: requirement.evidence_required === true,
+      order_no: requirement.order_no ?? 1,
+      submissions: submissions.filter(
+        (submission) => submission.requirement_id === requirement.id,
+      ),
+    })),
+    submissions,
+    summary: buildDeliverableSummary(bundle.requirements, bundle.deliverables),
+  };
+};
+
+const validateDeliverableFile = (
+  file: ReturnType<typeof parseEvidenceFile> | undefined,
+) => {
+  if (!file) return undefined;
+  if (!deliverableFileMimeTypes.has(file.type)) {
+    return "Only PDF, PNG, JPG, or WebP proof files are allowed";
+  }
+  if (file.size <= 0 || file.size > maxDeliverableFileSize) {
+    return "Proof file must be 4MB or smaller";
+  }
+  if (!file.data_url.startsWith("data:")) {
+    return "Proof file is invalid";
+  }
+  return undefined;
+};
+
+const storeDeliverableFile = async ({
+  contractId,
+  deliverableId,
+  file,
+}: {
+  contractId: string;
+  deliverableId: string;
+  file: NonNullable<ReturnType<typeof parseEvidenceFile>>;
+}) => {
+  const { contentType, buffer } = dataUrlToBuffer(file.data_url);
+
+  if (
+    contentType !== file.type ||
+    !assertDeclaredMimeMatchesContent(contentType, buffer, deliverableFileMimeTypes) ||
+    buffer.byteLength <= 0 ||
+    buffer.byteLength > maxDeliverableFileSize
+  ) {
+    throw new Error("Proof file content is invalid");
+  }
+
+  return storePrivateBuffer({
+    area: "deliverables",
+    ownerId: contractId,
+    fileId: deliverableId,
+    fileName: file.name,
+    contentType,
+    buffer,
+  });
+};
+
+const insertContractEvent = async ({
+  contractId,
+  actorProfileId,
+  actorRole,
+  actorDisplayName,
+  eventType,
+  targetType,
+  targetId,
+  payload,
+  request,
+}: {
+  contractId: string;
+  actorProfileId?: string;
+  actorRole: string;
+  actorDisplayName?: string;
+  eventType: string;
+  targetType?: string;
+  targetId?: string;
+  payload: Record<string, unknown>;
+  request: express.Request;
+}) => {
+  if (!useSupabase || !isUuid(contractId)) return;
+
+  await insertSupabaseRowsReturning(
+    "contract_events",
+    [
+      {
+        id: randomUUID(),
+        contract_id: contractId,
+        actor_profile_id: actorProfileId,
+        actor_role: actorRole,
+        actor_display_name: actorDisplayName,
+        event_type: eventType,
+        target_type: targetType,
+        target_id: targetId,
+        payload,
+        ip_address: getClientIp(request),
+        user_agent: request.header("user-agent") ?? "unknown",
+      },
+    ],
+    "contract event",
+  );
+};
+
+const updateContractDeliverableWorkflow = async (
+  contractId: string,
+  request: express.Request,
+) => {
+  if (!useSupabase || !isUuid(contractId)) return;
+
+  const legacyContract = await readSupabaseV2ContractAsLegacy(contractId);
+  if (!legacyContract) return;
+
+  const bundle = await readContractDeliverableBundle(legacyContract);
+  const summary = buildDeliverableSummary(bundle.requirements, bundle.deliverables);
+  const hasRevision = bundle.deliverables.some((deliverable) =>
+    ["changes_requested", "rejected"].includes(
+      normalizeDeliverableStatus(deliverable.review_status),
+    ),
+  );
+  const hasPendingReview =
+    summary.submitted > summary.approved && !hasRevision;
+  const completed =
+    summary.total > 0 && summary.approved >= summary.total;
+  const now = new Date().toISOString();
+
+  const updates = completed
+    ? {
+        status: "completed",
+        next_actor_role: null,
+        next_action: "모든 콘텐츠 제출물이 승인되어 계약 이행이 완료되었습니다.",
+        next_due_at: null,
+        completed_at: now,
+        updated_at: now,
+      }
+    : hasPendingReview
+      ? {
+          status: "active",
+          next_actor_role: "advertiser",
+          next_action: "제출된 콘텐츠 링크와 증빙을 검수하고 승인 또는 수정 요청을 남기세요.",
+          next_due_at: null,
+          completed_at: null,
+          updated_at: now,
+        }
+      : {
+          status: "active",
+          next_actor_role: "influencer",
+          next_action: hasRevision
+            ? "수정 요청된 콘텐츠를 보완한 뒤 링크나 증빙 파일을 다시 제출하세요."
+            : "콘텐츠 링크와 증빙 파일을 제출해 광고주 검수를 요청하세요.",
+          next_due_at: null,
+          completed_at: null,
+          updated_at: now,
+        };
+
+  await patchSupabaseRecord(
+    "contracts",
+    `?id=eq.${encodeURIComponent(contractId)}`,
+    updates,
+    "Supabase contract deliverable workflow update",
+  );
+
+  if (completed) {
+    await insertContractEvent({
+      contractId,
+      actorRole: "system",
+      actorDisplayName: productName,
+      eventType: "contract_completed",
+      targetType: "contract",
+      targetId: contractId,
+      payload: { summary },
+      request,
+    });
+  }
+};
 
 const resolveInfluencerVerificationContractAccess = async (
   auth: InfluencerSession,
@@ -6155,7 +6606,7 @@ app.get("/api/influencer/session", async (request, response, next) => {
   }
 });
 
-app.post("/api/influencer/login", async (request, response, next) => {
+app.post("/api/influencer/login", async (request, response, _next) => {
   try {
     const email = normalizeRequiredText(request.body?.email).toLowerCase();
     const password = normalizeRequiredText(request.body?.password);
@@ -6815,6 +7266,364 @@ app.get("/api/contracts", async (request, response, next) => {
   }
 });
 
+app.get("/api/contracts/:id/deliverables", async (request, response, next) => {
+  try {
+    const { existingContract: contract } = await readContractWriteContext(
+      request.params.id,
+    );
+
+    if (!contract) {
+      response.status(404).json({ error: "Contract not found" });
+      return;
+    }
+
+    const access = await resolveLegacyContractAccess(request, response, contract, {
+      allowShareToken: false,
+    });
+    if (!access) return;
+
+    response.setHeader("Cache-Control", "no-store");
+    response.json(buildDeliverableResponse(contract, await readContractDeliverableBundle(contract)));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/contracts/:id/deliverables", async (request, response, next) => {
+  try {
+    const throttle = consumeSensitiveEndpointRateLimit(
+      request,
+      "deliverable_submit",
+      request.params.id,
+    );
+    if (throttle.blocked) {
+      sendSensitiveRateLimitResponse(response, throttle);
+      return;
+    }
+
+    if (!useSupabase) {
+      response.status(503).json({ error: "Deliverable submission requires Supabase" });
+      return;
+    }
+
+    const influencerAuth = await requireInfluencerSession(request, response);
+    if (!influencerAuth) return;
+
+    const { existingContract: contract } = await readContractWriteContext(
+      request.params.id,
+    );
+
+    if (!contract) {
+      response.status(404).json({ error: "Contract not found" });
+      return;
+    }
+    if (!canInfluencerAccessLegacyContract(influencerAuth, contract)) {
+      response.status(403).json({ error: "Contract access is not allowed" });
+      return;
+    }
+    if (contract.status !== "SIGNED") {
+      response.status(409).json({ error: "Contract must be signed before deliverables can be submitted" });
+      return;
+    }
+
+    const bundle = await readContractDeliverableBundle(contract);
+    const requirementId = normalizeOptionalText(request.body?.requirement_id);
+    const requirement = requirementId
+      ? bundle.requirements.find((item) => item.id === requirementId)
+      : bundle.requirements[0];
+
+    if (bundle.requirements.length > 0 && !requirement) {
+      response.status(422).json({ error: "Valid deliverable requirement is required" });
+      return;
+    }
+
+    const title =
+      normalizeOptionalText(request.body?.title) ??
+      requirement?.title ??
+      "콘텐츠 증빙";
+    const url = normalizeUrlValue(request.body?.url);
+    const note = normalizeOptionalText(request.body?.note);
+    const evidenceFile = parseEvidenceFile(request.body?.evidence_file);
+    const evidenceError = validateDeliverableFile(evidenceFile);
+
+    if (!url && !evidenceFile) {
+      response.status(422).json({ error: "Content URL or proof file is required" });
+      return;
+    }
+    if (request.body?.url && !url) {
+      response.status(422).json({ error: "Content URL must be http or https" });
+      return;
+    }
+    if (evidenceError) {
+      response.status(422).json({ error: evidenceError });
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const deliverableId = randomUUID();
+    const storedFile = evidenceFile
+      ? await storeDeliverableFile({
+          contractId: contract.id,
+          deliverableId,
+          file: evidenceFile,
+        })
+      : undefined;
+    const [deliverable] = await insertSupabaseRowsReturning<SupabaseDeliverableRow>(
+      "deliverables",
+      [
+        {
+          id: deliverableId,
+          contract_id: contract.id,
+          requirement_id: requirement?.id,
+          creator_profile_id: influencerAuth.profile.id,
+          title,
+          url,
+          submitted_at: now,
+          review_status: "submitted",
+          metadata: {
+            note,
+            proof_file: storedFile,
+            submitted_ip: getClientIp(request),
+            submitted_user_agent: request.header("user-agent") ?? "unknown",
+          },
+          created_at: now,
+          updated_at: now,
+        },
+      ],
+      "deliverable",
+    );
+
+    if (!deliverable) {
+      throw new Error("Deliverable insert did not return a row");
+    }
+
+    if (storedFile) {
+      await insertSupabaseRowsReturning(
+        "contract_files",
+        [
+          {
+            id: randomUUID(),
+            contract_id: contract.id,
+            uploaded_by_profile_id: influencerAuth.profile.id,
+            related_type: "deliverable",
+            related_id: deliverable.id,
+            file_type: "evidence",
+            bucket: storedFile.bucket,
+            storage_path: storedFile.path,
+            file_name: storedFile.file_name,
+            content_type: storedFile.content_type,
+            byte_size: storedFile.byte_size,
+            file_hash: storedFile.sha256,
+            created_at: now,
+          },
+        ],
+        "contract file",
+      );
+    }
+
+    await insertContractEvent({
+      contractId: contract.id,
+      actorProfileId: influencerAuth.profile.id,
+      actorRole: "influencer",
+      actorDisplayName: influencerAuth.profile.name,
+      eventType: "deliverable_submitted",
+      targetType: "deliverable",
+      targetId: deliverable.id,
+      payload: {
+        requirement_id: requirement?.id,
+        title,
+        has_url: Boolean(url),
+        has_file: Boolean(storedFile),
+      },
+      request,
+    });
+    await updateContractDeliverableWorkflow(contract.id, request);
+
+    const updatedBundle = await readContractDeliverableBundle(contract);
+    response.status(201).json({
+      deliverable,
+      ...buildDeliverableResponse(contract, updatedBundle),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch("/api/contracts/:id/deliverables/:deliverableId", async (request, response, next) => {
+  try {
+    const throttle = consumeSensitiveEndpointRateLimit(
+      request,
+      "deliverable_review",
+      request.params.deliverableId,
+    );
+    if (throttle.blocked) {
+      sendSensitiveRateLimitResponse(response, throttle);
+      return;
+    }
+
+    if (!useSupabase) {
+      response.status(503).json({ error: "Deliverable review requires Supabase" });
+      return;
+    }
+
+    const advertiserAuth = await requireAdvertiserSession(request, response);
+    if (!advertiserAuth) return;
+
+    const { existingContract: contract } = await readContractWriteContext(
+      request.params.id,
+    );
+
+    if (!contract) {
+      response.status(404).json({ error: "Contract not found" });
+      return;
+    }
+    if (!canAdvertiserAccessLegacyContract(advertiserAuth, contract)) {
+      response.status(403).json({ error: "Contract access is not allowed" });
+      return;
+    }
+
+    const status = normalizeRequiredText(request.body?.review_status) as DeliverableReviewStatus;
+    const reviewComment = normalizeOptionalText(request.body?.review_comment);
+    if (!advertiserDeliverableReviewStatuses.has(status)) {
+      response.status(422).json({ error: "Valid review status is required" });
+      return;
+    }
+    if ((status === "changes_requested" || status === "rejected") && !reviewComment) {
+      response.status(422).json({ error: "Review comment is required when requesting changes or rejecting" });
+      return;
+    }
+
+    const deliverables = await readSupabaseRows<SupabaseDeliverableRow>(
+      "deliverables",
+      `?select=*&id=eq.${encodeURIComponent(
+        request.params.deliverableId,
+      )}&contract_id=eq.${encodeURIComponent(contract.id)}&limit=1`,
+      "deliverable review target",
+    );
+    const deliverable = deliverables[0];
+    if (!deliverable) {
+      response.status(404).json({ error: "Deliverable not found" });
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const patchResponse = await fetchSupabase(
+      "deliverables",
+      `?id=eq.${encodeURIComponent(deliverable.id)}`,
+      {
+        method: "PATCH",
+        headers: { Prefer: "return=representation" },
+        body: JSON.stringify({
+          review_status: status,
+          review_comment: reviewComment,
+          reviewed_by_profile_id: advertiserAuth.profile.id,
+          reviewed_at: now,
+          updated_at: now,
+        }),
+      },
+    );
+    await assertSupabaseOk(patchResponse, "Supabase deliverable review update");
+    const [updatedDeliverable] = (await patchResponse.json()) as SupabaseDeliverableRow[];
+
+    await insertContractEvent({
+      contractId: contract.id,
+      actorProfileId: advertiserAuth.profile.id,
+      actorRole: "advertiser",
+      actorDisplayName: advertiserAuth.profile.name,
+      eventType:
+        status === "approved"
+          ? "deliverable_approved"
+          : status === "changes_requested"
+            ? "deliverable_changes_requested"
+            : "deliverable_rejected",
+      targetType: "deliverable",
+      targetId: deliverable.id,
+      payload: { review_status: status, review_comment: reviewComment },
+      request,
+    });
+    await updateContractDeliverableWorkflow(contract.id, request);
+
+    const updatedBundle = await readContractDeliverableBundle(contract);
+    response.json({
+      deliverable: updatedDeliverable,
+      ...buildDeliverableResponse(contract, updatedBundle),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get(
+  "/api/contracts/:id/deliverables/:deliverableId/files/:fileId",
+  async (request, response, next) => {
+    try {
+      const { existingContract: contract } = await readContractWriteContext(
+        request.params.id,
+      );
+
+      if (!contract) {
+        response.status(404).json({ error: "Contract not found" });
+        return;
+      }
+
+      const access = await resolveLegacyContractAccess(request, response, contract, {
+        allowShareToken: false,
+      });
+      if (!access) return;
+
+      const rows = await readSupabaseRows<SupabaseContractFileRow>(
+        "contract_files",
+        `?select=*&id=eq.${encodeURIComponent(
+          request.params.fileId,
+        )}&contract_id=eq.${encodeURIComponent(
+          contract.id,
+        )}&related_type=eq.deliverable&related_id=eq.${encodeURIComponent(
+          request.params.deliverableId,
+        )}&limit=1`,
+        "deliverable file",
+      );
+      const file = rows[0];
+      if (!file) {
+        response.status(404).json({ error: "Deliverable file not found" });
+        return;
+      }
+
+      const storedFile = parseStoredPrivateFile({
+        provider: "supabase_storage",
+        bucket: file.bucket,
+        path: file.storage_path,
+        file_name: file.file_name ?? `${file.id}.${extensionForMimeType(file.content_type ?? "")}`,
+        content_type: file.content_type ?? "application/octet-stream",
+        byte_size: Number(file.byte_size ?? 0),
+        sha256: file.file_hash,
+        stored_at: file.created_at ?? new Date(0).toISOString(),
+      });
+
+      if (!storedFile) {
+        response.status(404).json({ error: "Deliverable file metadata is invalid" });
+        return;
+      }
+
+      const fileBuffer = await readStoredPrivateFile(storedFile);
+      const currentHash = createHash("sha256").update(fileBuffer).digest("hex");
+      if (currentHash !== storedFile.sha256) {
+        response.status(409).json({ error: "Deliverable file integrity check failed" });
+        return;
+      }
+
+      response.setHeader("Content-Type", storedFile.content_type);
+      response.setHeader("Cache-Control", "no-store");
+      response.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${sanitizeStorageSegment(storedFile.file_name)}"`,
+      );
+      response.send(fileBuffer);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
 app.post("/api/contracts/:id/support-access-requests", async (request, response, next) => {
   try {
     const throttle = consumeSensitiveEndpointRateLimit(
@@ -7209,9 +8018,9 @@ app.post("/api/contracts/:id/signatures/influencer", async (request, response, n
       ...existing,
       status: "SIGNED",
       evidence: {
-        share_token_status: "active",
-        share_token: existing.evidence?.share_token,
-        share_token_expires_at: existing.evidence?.share_token_expires_at,
+        share_token_status: "revoked",
+        share_token: undefined,
+        share_token_expires_at: undefined,
         audit_ready: true,
         pdf_status: "signed_ready",
       },

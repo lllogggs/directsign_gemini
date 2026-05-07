@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { VerificationSummary } from "../domain/verification";
 
 const API_BASE =
@@ -17,6 +17,22 @@ const buildVerificationStatusUrl = (role?: VerificationSummaryOptions["role"]) =
   return `${API_BASE}/api/verification/status${suffix}`;
 };
 
+const isAsciiOnly = (value: string) =>
+  value.split("").every((character) => character.charCodeAt(0) <= 0x7f);
+
+const getVerificationSummaryErrorMessage = (message?: string) => {
+  if (!message) return "인증 상태를 불러오지 못했습니다.";
+  if (message.includes("401")) return "로그인 후 인증 상태를 확인할 수 있습니다.";
+  if (message.includes("403")) return "인증 상태를 확인할 권한이 없습니다.";
+  if (message.toLowerCase().includes("api error")) {
+    return "인증 상태를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.";
+  }
+  if (isAsciiOnly(message)) {
+    return "인증 상태를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.";
+  }
+  return message;
+};
+
 export function useVerificationSummary(options?: VerificationSummaryOptions) {
   const [summary, setSummary] = useState<VerificationSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -24,7 +40,7 @@ export function useVerificationSummary(options?: VerificationSummaryOptions) {
   const [statusCode, setStatusCode] = useState<number | undefined>();
   const role = options?.role;
 
-  const load = async (signal?: AbortSignal) => {
+  const load = useCallback(async (signal?: AbortSignal) => {
     setIsLoading(true);
     setError(undefined);
     setStatusCode(undefined);
@@ -39,7 +55,7 @@ export function useVerificationSummary(options?: VerificationSummaryOptions) {
       setStatusCode(response.status);
 
       if (!response.ok) {
-        throw new Error(`Verification API error (${response.status})`);
+        throw new Error(`인증 상태 API 오류 (${response.status})`);
       }
 
       setSummary((await response.json()) as VerificationSummary);
@@ -48,13 +64,13 @@ export function useVerificationSummary(options?: VerificationSummaryOptions) {
       setSummary(null);
       setError(
         requestError instanceof Error
-          ? requestError.message
-          : "Verification status could not be loaded.",
+          ? getVerificationSummaryErrorMessage(requestError.message)
+          : "인증 상태를 불러오지 못했습니다.",
       );
     } finally {
       if (!signal?.aborted) setIsLoading(false);
     }
-  };
+  }, [role]);
 
   const refresh = async () => {
     await load();
@@ -62,10 +78,15 @@ export function useVerificationSummary(options?: VerificationSummaryOptions) {
 
   useEffect(() => {
     const controller = new AbortController();
-    void load(controller.signal);
+    const timer = window.setTimeout(() => {
+      void load(controller.signal);
+    }, 0);
 
-    return () => controller.abort();
-  }, [role]);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [load]);
 
   return { summary, isLoading, error, refresh, statusCode };
 }

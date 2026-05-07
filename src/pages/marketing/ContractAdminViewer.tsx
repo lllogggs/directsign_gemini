@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   AlertCircle,
@@ -13,6 +13,7 @@ import {
   Link2,
   MessageSquareText,
   PenLine,
+  RefreshCw,
   Save,
   Send,
   ShieldCheck,
@@ -24,6 +25,17 @@ import { createShareToken } from "../../domain/contracts";
 import { PRODUCT_NAME } from "../../domain/brand";
 import { verificationStatusLabel } from "../../domain/verification";
 import { useVerificationSummary } from "../../hooks/useVerificationSummary";
+import {
+  formatFileSize,
+  getDeliverableErrorMessage,
+  getSubmissionNote,
+  isDeliverableRevisionStatus,
+  reviewStatusLabel,
+  reviewStatusTone,
+  submittedReviewStatuses,
+  type DeliverablesResponse,
+  type DeliverableReviewStatus,
+} from "../../domain/deliverables";
 
 const buildShareUrl = (contractId: string, shareToken?: string) =>
   `${window.location.origin}/contract/${contractId}${
@@ -77,8 +89,8 @@ const STATUS_META: Record<
     icon: <PenLine className="h-4 w-4" />,
   },
   SIGNED: {
-    label: "완료",
-    helper: "서명본 보관 완료",
+    label: "서명 완료",
+    helper: "서명본 보관 및 콘텐츠 이행 관리",
     badge: "border-neutral-200 bg-white text-neutral-700",
     icon: <CheckCircle2 className="h-4 w-4" />,
   },
@@ -102,6 +114,12 @@ export function ContractAdminViewer() {
   const [supportConsentAccepted, setSupportConsentAccepted] = useState(false);
   const [isRequestingSupport, setIsRequestingSupport] = useState(false);
   const [draftConfirmationOpen, setDraftConfirmationOpen] = useState(false);
+  const [deliverables, setDeliverables] = useState<DeliverablesResponse>();
+  const [deliverablesError, setDeliverablesError] = useState("");
+  const [deliverablesNotice, setDeliverablesNotice] = useState("");
+  const [isLoadingDeliverables, setIsLoadingDeliverables] = useState(false);
+  const [reviewComments, setReviewComments] = useState<Record<string, string>>({});
+  const [reviewingDeliverableId, setReviewingDeliverableId] = useState("");
   const { summary: verificationSummary, isLoading: isVerificationLoading } =
     useVerificationSummary({ role: "advertiser" });
   const advertiserVerificationStatus =
@@ -347,6 +365,112 @@ export function ContractAdminViewer() {
     }
   };
 
+  const loadDeliverables = async () => {
+    setIsLoadingDeliverables(true);
+    setDeliverablesError("");
+    setDeliverablesNotice("");
+
+    try {
+      const response = await fetch(
+        `/api/contracts/${encodeURIComponent(contract.id)}/deliverables`,
+        {
+          credentials: "include",
+          headers: { Accept: "application/json" },
+        },
+      );
+      const data = (await response.json()) as DeliverablesResponse;
+
+      if (!response.ok) {
+        throw new Error(data.error ?? `콘텐츠 제출 내역 API 오류 (${response.status})`);
+      }
+
+      setDeliverables(data);
+    } catch (error) {
+      setDeliverablesError(
+        getDeliverableErrorMessage(
+          error instanceof Error ? error.message : undefined,
+          "콘텐츠 제출 내역을 불러오지 못했습니다.",
+        ),
+      );
+    } finally {
+      setIsLoadingDeliverables(false);
+    }
+  };
+
+  const reviewDeliverable = async (
+    deliverableId: string,
+    reviewStatus: Extract<
+      DeliverableReviewStatus,
+      "approved" | "changes_requested" | "rejected"
+    >,
+  ) => {
+    const reviewComment = reviewComments[deliverableId]?.trim();
+
+    if (
+      (reviewStatus === "changes_requested" || reviewStatus === "rejected") &&
+      !reviewComment
+    ) {
+      setDeliverablesError("수정 요청이나 반려에는 검수 코멘트가 필요합니다.");
+      setDeliverablesNotice("");
+      return;
+    }
+
+    setReviewingDeliverableId(deliverableId);
+    setDeliverablesError("");
+    setDeliverablesNotice("");
+
+    try {
+      const response = await fetch(
+        `/api/contracts/${encodeURIComponent(contract.id)}/deliverables/${encodeURIComponent(
+          deliverableId,
+        )}`,
+        {
+          method: "PATCH",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            review_status: reviewStatus,
+            review_comment: reviewComment || undefined,
+          }),
+        },
+      );
+      const data = (await response.json()) as DeliverablesResponse;
+
+      if (!response.ok) {
+        throw new Error(data.error ?? `콘텐츠 검수 실패 (${response.status})`);
+      }
+
+      setDeliverables(data);
+      setReviewComments((current) => ({ ...current, [deliverableId]: "" }));
+      setDeliverablesNotice(
+        reviewStatus === "approved"
+          ? "콘텐츠 제출물을 승인했습니다. 모든 항목이 승인되면 계약이 완료 상태로 전환됩니다."
+          : reviewStatus === "changes_requested"
+            ? "인플루언서에게 콘텐츠 수정 요청을 보냈습니다."
+            : "콘텐츠 제출물을 반려했습니다.",
+      );
+      setNotice(
+        reviewStatus === "approved"
+          ? "콘텐츠 제출물을 승인했습니다."
+          : reviewStatus === "changes_requested"
+            ? "콘텐츠 수정 요청을 보냈습니다."
+            : "콘텐츠 제출물을 반려했습니다.",
+      );
+    } catch (error) {
+      setDeliverablesError(
+        getDeliverableErrorMessage(
+          error instanceof Error ? error.message : undefined,
+          "콘텐츠 검수에 실패했습니다.",
+        ),
+      );
+    } finally {
+      setReviewingDeliverableId("");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#f4f5f7] font-sans text-neutral-950">
       <header className="sticky top-0 z-30 border-b border-neutral-200/80 bg-white/95 shadow-[0_1px_0_rgba(15,23,42,0.04)] backdrop-blur">
@@ -467,6 +591,22 @@ export function ContractAdminViewer() {
               닫기
             </button>
           </div>
+        )}
+
+        {contract.status === "SIGNED" && (
+          <AdvertiserDeliverablesPanel
+            data={deliverables}
+            error={deliverablesError}
+            notice={deliverablesNotice}
+            isLoading={isLoadingDeliverables}
+            reviewComments={reviewComments}
+            reviewingDeliverableId={reviewingDeliverableId}
+            onReload={loadDeliverables}
+            onCommentChange={(deliverableId, value) =>
+              setReviewComments((current) => ({ ...current, [deliverableId]: value }))
+            }
+            onReview={reviewDeliverable}
+          />
         )}
 
         <section className="grid gap-5 xl:grid-cols-[300px_minmax(0,1fr)_360px]">
@@ -808,6 +948,266 @@ export function ContractAdminViewer() {
         </section>
       </main>
     </div>
+  );
+}
+
+function AdvertiserDeliverablesPanel({
+  data,
+  error,
+  notice,
+  isLoading,
+  reviewComments,
+  reviewingDeliverableId,
+  onReload,
+  onCommentChange,
+  onReview,
+}: {
+  data?: DeliverablesResponse;
+  error: string;
+  notice: string;
+  isLoading: boolean;
+  reviewComments: Record<string, string>;
+  reviewingDeliverableId: string;
+  onReload: () => void;
+  onCommentChange: (deliverableId: string, value: string) => void;
+  onReview: (
+    deliverableId: string,
+    reviewStatus: Extract<
+      DeliverableReviewStatus,
+      "approved" | "changes_requested" | "rejected"
+    >,
+  ) => void;
+}) {
+  useEffect(() => {
+    if (!data && !isLoading && !error) {
+      onReload();
+    }
+  }, [data, error, isLoading, onReload]);
+
+  const requirements = data?.requirements ?? [];
+  const isInitialLoading = isLoading && !data;
+
+  return (
+    <section className="mb-5 overflow-hidden rounded-lg border border-neutral-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)]">
+      <div className="border-b border-neutral-200 bg-[#fbfbfc] px-5 py-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
+              콘텐츠 검수
+            </p>
+            <h2 className="mt-1 text-[20px] font-semibold tracking-[-0.02em]">
+              제출 링크와 증빙 확인
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={onReload}
+            disabled={isLoading}
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-700 transition hover:border-neutral-400 disabled:text-neutral-300"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />
+            새로고침
+          </button>
+        </div>
+        {data?.summary && (
+          <p className="mt-2 text-[12px] font-semibold text-neutral-500">
+            제출 {data.summary.submitted}/{data.summary.total} · 승인 {data.summary.approved}/{data.summary.total}
+          </p>
+        )}
+      </div>
+
+      {error && (
+        <div className="border-b border-rose-200 bg-rose-50 px-5 py-3 text-[13px] font-semibold text-rose-700">
+          {error}
+        </div>
+      )}
+
+      {notice && !error && (
+        <div className="border-b border-emerald-200 bg-emerald-50 px-5 py-3 text-[13px] font-semibold text-emerald-800">
+          {notice}
+        </div>
+      )}
+
+      <div className="divide-y divide-neutral-100">
+        {isInitialLoading ? (
+          <div className="p-5 text-[14px] font-semibold text-neutral-500">
+            제출 내역을 불러오는 중입니다.
+          </div>
+        ) : requirements.length === 0 ? (
+          <div className="p-5 text-[14px] leading-6 text-neutral-500">
+            아직 제출 또는 요구된 콘텐츠 항목이 없습니다.
+          </div>
+        ) : (
+          requirements.map((requirement) => {
+            const approvedCount = requirement.submissions.filter(
+              (submission) => submission.review_status === "approved",
+            ).length;
+            const submittedCount = requirement.submissions.filter((submission) =>
+              submittedReviewStatuses.has(submission.review_status),
+            ).length;
+            const pendingReviewCount = requirement.submissions.filter(
+              (submission) => submission.review_status === "submitted",
+            ).length;
+            const hasRevisionRequest = requirement.submissions.some((submission) =>
+              isDeliverableRevisionStatus(submission.review_status),
+            );
+            const isComplete = approvedCount >= requirement.quantity;
+            const requirementTone = isComplete
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+              : pendingReviewCount > 0
+                ? "border-sky-200 bg-sky-50 text-sky-700"
+                : hasRevisionRequest
+                  ? "border-amber-200 bg-amber-50 text-amber-800"
+                  : "border-neutral-200 bg-white text-neutral-500";
+            const requirementLabel = isComplete
+              ? "승인 완료"
+              : pendingReviewCount > 0
+                ? "검수 필요"
+                : hasRevisionRequest
+                  ? "재제출 대기"
+                  : "제출 대기";
+
+            return (
+            <article key={requirement.id} className="p-5">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h3 className="text-[16px] font-semibold text-neutral-950">
+                    {requirement.title}
+                  </h3>
+                  <p className="mt-1 text-[12px] font-semibold text-neutral-500">
+                    필요 {requirement.quantity}건 · 제출 {submittedCount}건 · 승인 {approvedCount}건
+                  </p>
+                </div>
+                <span
+                  className={`inline-flex w-fit rounded-full border px-3 py-1 text-[12px] font-semibold ${requirementTone}`}
+                >
+                  {requirementLabel}
+                </span>
+              </div>
+
+              <div className="mt-4 space-y-3">
+                {requirement.submissions.length === 0 ? (
+                  <p className="rounded-lg border border-neutral-200 bg-[#fbfbfc] px-4 py-3 text-[13px] font-semibold text-neutral-500">
+                    제출 대기 중입니다.
+                  </p>
+                ) : (
+                  requirement.submissions.map((submission) => {
+                    const isReviewing = reviewingDeliverableId === submission.id;
+                    const reviewDone = ["approved", "changes_requested", "rejected"].includes(
+                      submission.review_status,
+                    );
+                    const note = getSubmissionNote(submission);
+
+                    return (
+                      <div
+                        key={submission.id}
+                        className="rounded-lg border border-neutral-200 bg-[#fbfbfc] p-4"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span
+                            className={`rounded-full border px-2.5 py-1 text-[12px] font-semibold ${reviewStatusTone(
+                              submission.review_status,
+                            )}`}
+                          >
+                            {reviewStatusLabel(submission.review_status)}
+                          </span>
+                          <span className="text-[12px] text-neutral-400">
+                            {formatDateTime(submission.submitted_at)}
+                          </span>
+                        </div>
+
+                        {submission.url && (
+                          <a
+                            href={submission.url}
+                            target="_blank"
+                            rel="noreferrer noopener"
+                            className="mt-3 inline-flex max-w-full items-center gap-2 text-[13px] font-semibold text-neutral-900 underline underline-offset-4"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+                            <span className="truncate">{submission.url}</span>
+                          </a>
+                        )}
+                        {submission.files.length > 0 && (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {submission.files.map((file) => (
+                              <a
+                                key={file.id}
+                                href={file.download_url}
+                                className="inline-flex h-8 max-w-full items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-2.5 text-[12px] font-semibold text-neutral-700"
+                              >
+                                <FileText className="h-3.5 w-3.5 shrink-0" />
+                                <span className="truncate">
+                                  {file.file_name ?? "증빙 파일"}
+                                </span>
+                                {formatFileSize(file.byte_size) && (
+                                  <span className="shrink-0 text-neutral-400">
+                                    {formatFileSize(file.byte_size)}
+                                  </span>
+                                )}
+                              </a>
+                            ))}
+                          </div>
+                        )}
+                        {note && (
+                          <p className="mt-3 rounded-md bg-white px-3 py-2 text-[12px] leading-5 text-neutral-600 ring-1 ring-neutral-200">
+                            제출 메모: {note}
+                          </p>
+                        )}
+                        {submission.review_comment && (
+                          <p className="mt-3 rounded-md bg-white px-3 py-2 text-[12px] leading-5 text-neutral-600 ring-1 ring-neutral-200">
+                            검수 코멘트: {submission.review_comment}
+                          </p>
+                        )}
+
+                        {!reviewDone && (
+                          <div className="mt-4 grid gap-3">
+                            <Textarea
+                              className="min-h-[76px] rounded-md border-neutral-200 bg-white text-[13px] shadow-none focus-visible:ring-1 focus-visible:ring-neutral-900"
+                              placeholder="수정 요청이나 반려 사유를 적어 주세요."
+                              value={reviewComments[submission.id] ?? ""}
+                              onChange={(event) =>
+                                onCommentChange(submission.id, event.target.value)
+                              }
+                            />
+                            <div className="grid gap-2 sm:grid-cols-3">
+                              <button
+                                type="button"
+                                onClick={() => onReview(submission.id, "approved")}
+                                disabled={isReviewing}
+                                className="h-10 rounded-md bg-neutral-950 text-[13px] font-semibold text-white disabled:bg-neutral-200 disabled:text-neutral-500"
+                              >
+                                승인
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => onReview(submission.id, "changes_requested")}
+                                disabled={isReviewing}
+                                className="h-10 rounded-md border border-neutral-200 bg-white text-[13px] font-semibold text-neutral-700 disabled:text-neutral-300"
+                              >
+                                수정 요청
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => onReview(submission.id, "rejected")}
+                                disabled={isReviewing}
+                                className="h-10 rounded-md border border-rose-200 bg-rose-50 text-[13px] font-semibold text-rose-700 disabled:text-rose-300"
+                              >
+                                반려
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </article>
+            );
+          })
+        )}
+      </div>
+    </section>
   );
 }
 

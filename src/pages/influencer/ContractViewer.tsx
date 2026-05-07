@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useAppStore, type Contract, type ContractStatus } from "../../store";
 import { useVerificationSummary } from "../../hooks/useVerificationSummary";
@@ -7,6 +7,20 @@ import {
   type InfluencerPlatform,
   verificationStatusLabel,
 } from "../../domain/verification";
+import {
+  DELIVERABLE_FILE_ACCEPT,
+  formatFileSize,
+  getDeliverableErrorMessage,
+  getSubmissionNote,
+  isDeliverableRevisionStatus,
+  readFileAsDataUrl,
+  reviewStatusLabel,
+  reviewStatusTone,
+  submittedReviewStatuses,
+  validateDeliverableFile,
+  validateDeliverableUrl,
+  type DeliverablesResponse,
+} from "../../domain/deliverables";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
@@ -20,13 +34,17 @@ import {
   CheckCircle2,
   Clock3,
   Eraser,
+  ExternalLink,
   FileSignature,
   FileText,
   LifeBuoy,
+  Link2,
   MessageSquare,
   PenTool,
+  RefreshCw,
   ShieldCheck,
   Trash2,
+  Upload,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -81,6 +99,9 @@ const normalizeComparableUrl = (value: string | undefined) => {
   }
 };
 
+const isAsciiOnly = (value: string) =>
+  value.split("").every((character) => character.charCodeAt(0) <= 0x7f);
+
 const approvedPlatformMatchesContract = (
   approvedPlatform: { platform: InfluencerPlatform; url?: string },
   requiredPlatform: InfluencerPlatform,
@@ -111,6 +132,9 @@ const getContractLoadErrorMessage = (message?: string) => {
   if (message === "Share token has expired") {
     return "공유 링크 유효기간이 만료되었습니다.";
   }
+  if (isAsciiOnly(message)) {
+    return "계약을 불러올 수 없습니다. 링크와 로그인 상태를 확인해 주세요.";
+  }
   return message;
 };
 
@@ -130,6 +154,9 @@ const getSignatureErrorMessage = (message?: string) => {
   }
   if (message === "All clauses must be approved before signing") {
     return "서명 전에 모든 조항이 승인되어야 합니다.";
+  }
+  if (isAsciiOnly(message)) {
+    return "서명 저장에 실패했습니다. 잠시 후 다시 시도해 주세요.";
   }
   return message;
 };
@@ -230,6 +257,15 @@ export function ContractViewer() {
   const [supportConsentAccepted, setSupportConsentAccepted] = useState(false);
   const [isRequestingSupport, setIsRequestingSupport] = useState(false);
   const [supportNotice, setSupportNotice] = useState("");
+  const [deliverables, setDeliverables] = useState<DeliverablesResponse>();
+  const [deliverablesError, setDeliverablesError] = useState("");
+  const [deliverablesNotice, setDeliverablesNotice] = useState("");
+  const [isLoadingDeliverables, setIsLoadingDeliverables] = useState(false);
+  const [deliverableForms, setDeliverableForms] = useState<
+    Record<string, { url: string; note: string; file?: File }>
+  >({});
+  const [submittingDeliverableId, setSubmittingDeliverableId] = useState("");
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
 
   const getCanvasPoint = (e: React.MouseEvent | React.TouchEvent): CanvasPoint | null => {
     const canvas = canvasRef.current;
@@ -333,7 +369,7 @@ export function ContractViewer() {
         : canvas.toDataURL("image/png");
     if (!dataUrl) {
       setIsSignLoading(false);
-      setSignError("Signature image could not be generated.");
+      setSignError("서명 이미지를 만들지 못했습니다. 다시 시도해 주세요.");
       return;
     }
 
@@ -390,7 +426,7 @@ export function ContractViewer() {
       );
 
       if (!pdfResponse.ok) {
-        throw new Error(`Signed PDF download failed (${pdfResponse.status})`);
+        throw new Error(`서명본 PDF 다운로드 실패 (${pdfResponse.status})`);
       }
 
       downloadBlob(
@@ -408,6 +444,116 @@ export function ContractViewer() {
         ? "계약 서명이 완료되었습니다. 서명본 PDF가 다운로드되었습니다."
         : "계약 서명이 완료되었습니다. PDF 자동 다운로드는 실패했지만 서버 증빙은 저장되었습니다.",
     );
+  };
+
+  const loadDeliverables = useCallback(async () => {
+    const contractId = contract?.id;
+    if (!contractId) return;
+
+    setIsLoadingDeliverables(true);
+    setDeliverablesError("");
+    setDeliverablesNotice("");
+
+    try {
+      const response = await fetch(
+        `/api/contracts/${encodeURIComponent(contractId)}/deliverables`,
+        {
+          credentials: "include",
+          headers: { Accept: "application/json" },
+        },
+      );
+      const data = (await response.json()) as DeliverablesResponse;
+
+      if (!response.ok) {
+        throw new Error(data.error ?? `콘텐츠 제출 내역 API 오류 (${response.status})`);
+      }
+
+      setDeliverables(data);
+    } catch (error) {
+      setDeliverablesError(
+        getDeliverableErrorMessage(
+          error instanceof Error ? error.message : undefined,
+          "콘텐츠 제출 내역을 불러오지 못했습니다.",
+        ),
+      );
+    } finally {
+      setIsLoadingDeliverables(false);
+    }
+  }, [contract?.id]);
+
+  const submitDeliverable = async (requirementId: string) => {
+    if (!contract) return;
+
+    const form = deliverableForms[requirementId] ?? { url: "", note: "" };
+    const url = form.url.trim();
+    const note = form.note.trim();
+    const urlError = validateDeliverableUrl(url);
+    const fileError = validateDeliverableFile(form.file);
+
+    if (!url && !form.file) {
+      setDeliverablesError("콘텐츠 URL 또는 증빙 파일을 추가해 주세요.");
+      setDeliverablesNotice("");
+      return;
+    }
+
+    if (urlError || fileError) {
+      setDeliverablesError(urlError ?? fileError ?? "제출 정보를 확인해 주세요.");
+      setDeliverablesNotice("");
+      return;
+    }
+
+    setSubmittingDeliverableId(requirementId);
+    setDeliverablesError("");
+    setDeliverablesNotice("");
+
+    try {
+      const evidenceFile = form.file
+        ? {
+            name: form.file.name,
+            type: form.file.type,
+            size: form.file.size,
+            data_url: await readFileAsDataUrl(form.file),
+          }
+        : undefined;
+      const response = await fetch(
+        `/api/contracts/${encodeURIComponent(contract.id)}/deliverables`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            requirement_id: requirementId,
+            url: url || undefined,
+            note: note || undefined,
+            evidence_file: evidenceFile,
+          }),
+        },
+      );
+      const data = (await response.json()) as DeliverablesResponse;
+
+      if (!response.ok) {
+        throw new Error(data.error ?? `콘텐츠 제출 실패 (${response.status})`);
+      }
+
+      setDeliverables(data);
+      setDeliverablesNotice("콘텐츠 제출물을 접수했습니다. 광고주 검수 결과를 이 화면에서 확인할 수 있습니다.");
+      setDeliverableForms((current) => ({
+        ...current,
+        [requirementId]: { url: "", note: "" },
+      }));
+    } catch (error) {
+      setDeliverablesError(
+        getDeliverableErrorMessage(
+          error instanceof Error ? error.message : undefined,
+          "콘텐츠 제출에 실패했습니다.",
+        ),
+      );
+    } finally {
+      setSubmittingDeliverableId("");
+    }
   };
 
   useEffect(() => {
@@ -466,10 +612,18 @@ export function ContractViewer() {
   }, [selection]);
 
   useEffect(() => {
-    setVerifiedAccessKey("");
-    setServerAccessRole(undefined);
-    setSharedContractError("");
+    const timer = window.setTimeout(() => {
+      setVerifiedAccessKey("");
+      setServerAccessRole(undefined);
+      setSharedContractError("");
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [accessVerificationKey]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setCurrentTime(Date.now()), 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (!id || verifiedAccessKey === accessVerificationKey) return;
@@ -541,6 +695,19 @@ export function ContractViewer() {
     verifiedAccessKey,
   ]);
 
+  useEffect(() => {
+    if (
+      contract?.status === "SIGNED" &&
+      (serverAccessRole === "influencer" || serverAccessRole === "advertiser")
+    ) {
+      const timer = window.setTimeout(() => {
+        void loadDeliverables();
+      }, 0);
+      return () => window.clearTimeout(timer);
+    }
+    return undefined;
+  }, [contract?.status, loadDeliverables, serverAccessRole]);
+
   const serverAccessVerified = verifiedAccessKey === accessVerificationKey;
   const shouldWaitForServerAccess = !serverAccessVerified;
 
@@ -574,18 +741,21 @@ export function ContractViewer() {
   const expectedShareToken = contract.evidence?.share_token;
   const shareTokenExpired =
     Boolean(contract.evidence?.share_token_expires_at) &&
-    new Date(contract.evidence!.share_token_expires_at!).getTime() < Date.now();
+    new Date(contract.evidence!.share_token_expires_at!).getTime() < currentTime;
   const shareTokenRequired =
     contract.evidence?.share_token_status === "active" &&
     Boolean(expectedShareToken);
   const hasValidShareToken =
     serverAccessVerified || !shareTokenRequired || shareToken === expectedShareToken;
   const isOperatorSupportView = serverAccessRole === "admin" && !shareToken;
+  const hasAuthenticatedContractAccess =
+    serverAccessRole === "advertiser" || serverAccessRole === "influencer";
   const canRequestOperatorSupport =
     serverAccessRole === "advertiser" || serverAccessRole === "influencer";
 
   if (
     !isOperatorSupportView &&
+    !hasAuthenticatedContractAccess &&
     (contract.status === "DRAFT" ||
       contract.evidence?.share_token_status === "not_issued" ||
       contract.evidence?.share_token_status === "revoked")
@@ -598,7 +768,11 @@ export function ContractViewer() {
     );
   }
 
-  if (!isOperatorSupportView && (shareTokenExpired || !hasValidShareToken)) {
+  if (
+    !isOperatorSupportView &&
+    !hasAuthenticatedContractAccess &&
+    (shareTokenExpired || !hasValidShareToken)
+  ) {
     return (
       <AccessMessage
         title="보안 링크가 만료되었습니다"
@@ -639,7 +813,7 @@ export function ContractViewer() {
   const isContractSignableState =
     contract.status === "APPROVED" &&
     contract.evidence?.share_token_status === "active" &&
-    (typeof shareExpiresAt !== "number" || shareExpiresAt > Date.now());
+    (typeof shareExpiresAt !== "number" || shareExpiresAt > currentTime);
   const requiredContractPlatforms = Array.from(
     new Set(
       contract.campaign?.platforms?.length
@@ -694,6 +868,14 @@ export function ContractViewer() {
               influencerVerificationStatus,
             )}`
           : "모든 조항과 계정 인증이 완료되어 서명할 수 있습니다.";
+  const heroTitle =
+    contract.status === "SIGNED"
+      ? "서명 완료 후 콘텐츠 이행을 관리하세요"
+      : "서명 전 계약 내용을 확인하세요";
+  const heroDescription =
+    contract.status === "SIGNED"
+      ? "서명본은 저장되었습니다. 남은 산출물은 링크나 증빙 파일로 제출하고 광고주 검수 결과를 확인하세요."
+      : "핵심 조건을 먼저 확인하고, 수정이 필요한 조항은 해당 문구를 선택해 요청을 남기세요. 모든 조항과 계정 인증이 승인되면 서명할 수 있습니다.";
 
   const plainSummary = [
     {
@@ -912,11 +1094,10 @@ export function ContractViewer() {
                   </span>
                 </div>
                 <h2 className="text-2xl font-semibold tracking-tight text-neutral-950 sm:text-3xl">
-                  서명 전 계약 내용을 확인하세요
+                  {heroTitle}
                 </h2>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-neutral-600">
-                  핵심 조건을 먼저 확인하고, 수정이 필요한 조항은 해당 문구를 선택해
-                  요청을 남기세요. 모든 조항과 계정 인증이 승인되면 서명할 수 있습니다.
+                  {heroDescription}
                 </p>
               </div>
               <div className="grid grid-cols-2 gap-2 md:w-64">
@@ -1071,6 +1252,30 @@ export function ContractViewer() {
               })}
             </div>
           </section>
+
+          {contract.status === "SIGNED" && (
+            <InfluencerDeliverablesPanel
+              data={deliverables}
+              error={deliverablesError}
+              notice={deliverablesNotice}
+              isLoading={isLoadingDeliverables}
+              forms={deliverableForms}
+              submittingRequirementId={submittingDeliverableId}
+              onReload={loadDeliverables}
+              onFormChange={(requirementId, patch) =>
+                setDeliverableForms((current) => ({
+                  ...current,
+                  [requirementId]: {
+                    ...(current[requirementId] ?? { url: "", note: "" }),
+                    ...patch,
+                  },
+                }))
+              }
+              onSubmit={submitDeliverable}
+              loginHref={loginForVerificationPath}
+              canSubmit={hasAuthenticatedContractAccess && serverAccessRole === "influencer"}
+            />
+          )}
         </section>
 
         <aside className="space-y-4 lg:sticky lg:top-20 lg:h-fit">
@@ -1094,6 +1299,24 @@ export function ContractViewer() {
                 label="계약 플랫폼 인증 승인 완료"
               />
               <ChecklistRow checked={contract.status === "SIGNED"} label="서명 완료" />
+              {contract.status === "SIGNED" && deliverables?.summary && (
+                <>
+                  <ChecklistRow
+                    checked={
+                      deliverables.summary.total === 0 ||
+                      deliverables.summary.submitted >= deliverables.summary.total
+                    }
+                    label={`콘텐츠 제출 ${deliverables.summary.submitted}/${deliverables.summary.total}`}
+                  />
+                  <ChecklistRow
+                    checked={
+                      deliverables.summary.total === 0 ||
+                      deliverables.summary.approved >= deliverables.summary.total
+                    }
+                    label={`광고주 승인 ${deliverables.summary.approved}/${deliverables.summary.total}`}
+                  />
+                </>
+              )}
             </div>
           </div>
 
@@ -1593,6 +1816,316 @@ export function ContractViewer() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function InfluencerDeliverablesPanel({
+  data,
+  error,
+  notice,
+  isLoading,
+  forms,
+  submittingRequirementId,
+  canSubmit,
+  loginHref,
+  onReload,
+  onFormChange,
+  onSubmit,
+}: {
+  data?: DeliverablesResponse;
+  error: string;
+  notice: string;
+  isLoading: boolean;
+  forms: Record<string, { url: string; note: string; file?: File }>;
+  submittingRequirementId: string;
+  canSubmit: boolean;
+  loginHref: string;
+  onReload: () => void;
+  onFormChange: (
+    requirementId: string,
+    patch: Partial<{ url: string; note: string; file?: File }>,
+  ) => void;
+  onSubmit: (requirementId: string) => void;
+}) {
+  const requirements = data?.requirements ?? [];
+  const summary = data?.summary;
+  const isInitialLoading = isLoading && !data;
+
+  return (
+    <section className="overflow-hidden rounded-lg border border-neutral-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)]">
+      <div className="border-b border-neutral-200 bg-[#fbfbfc] px-5 py-4 sm:px-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-neutral-500">
+              콘텐츠 제출
+            </p>
+            <h2 className="mt-1 text-lg font-semibold text-neutral-950">
+              링크와 증빙 업로드
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={onReload}
+            disabled={isLoading}
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-700 transition hover:border-neutral-400 disabled:text-neutral-300"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />
+            새로고침
+          </button>
+        </div>
+        {summary && (
+          <p className="mt-2 text-xs font-semibold text-neutral-500">
+            제출 {summary.submitted}/{summary.total} · 승인 {summary.approved}/{summary.total}
+          </p>
+        )}
+      </div>
+
+      {!canSubmit && (
+        <div className="border-b border-amber-200 bg-amber-50 px-5 py-3 text-sm font-semibold text-amber-800 sm:px-6">
+          콘텐츠 제출은 로그인한 인플루언서 계정에서만 가능합니다.
+          <a href={loginHref} className="ml-2 underline underline-offset-4">
+            로그인
+          </a>
+        </div>
+      )}
+
+      {error && (
+        <div className="border-b border-rose-200 bg-rose-50 px-5 py-3 text-sm font-semibold text-rose-700 sm:px-6">
+          {error}
+        </div>
+      )}
+
+      {notice && !error && (
+        <div className="border-b border-emerald-200 bg-emerald-50 px-5 py-3 text-sm font-semibold text-emerald-800 sm:px-6">
+          {notice}
+        </div>
+      )}
+
+      <div className="divide-y divide-neutral-100">
+        {isInitialLoading ? (
+          <div className="p-5 text-sm font-semibold text-neutral-500 sm:p-6">
+            제출 항목을 불러오는 중입니다.
+          </div>
+        ) : requirements.length === 0 ? (
+          <div className="p-5 text-sm leading-6 text-neutral-500 sm:p-6">
+            제출할 콘텐츠 항목이 아직 없습니다.
+          </div>
+        ) : (
+          requirements.map((requirement) => {
+            const form = forms[requirement.id] ?? { url: "", note: "" };
+            const approvedCount = requirement.submissions.filter(
+              (submission) => submission.review_status === "approved",
+            ).length;
+            const submittedCount = requirement.submissions.filter((submission) =>
+              submittedReviewStatuses.has(submission.review_status),
+            ).length;
+            const pendingReviewCount = requirement.submissions.filter(
+              (submission) => submission.review_status === "submitted",
+            ).length;
+            const revisionRequest = [...requirement.submissions]
+              .reverse()
+              .find((submission) =>
+                isDeliverableRevisionStatus(submission.review_status),
+              );
+            const isComplete = approvedCount >= requirement.quantity;
+            const isSubmitting = submittingRequirementId === requirement.id;
+            const statusText = isComplete
+              ? "승인 완료"
+              : revisionRequest
+                ? "재제출 필요"
+                : pendingReviewCount > 0
+                  ? "검수 대기"
+                  : "제출 필요";
+            const statusTone = isComplete
+              ? "bg-emerald-50 text-emerald-700"
+              : revisionRequest
+                ? "bg-amber-50 text-amber-800"
+                : pendingReviewCount > 0
+                  ? "bg-sky-50 text-sky-700"
+                  : "bg-amber-50 text-amber-700";
+            const urlError = validateDeliverableUrl(form.url);
+            const fileError = validateDeliverableFile(form.file);
+            const hasFormError = Boolean(urlError || fileError);
+
+            return (
+              <article key={requirement.id} className="p-5 sm:p-6">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <h3 className="text-base font-semibold text-neutral-950">
+                      {requirement.title}
+                    </h3>
+                    <p className="mt-1 text-xs font-medium text-neutral-500">
+                      필요 {requirement.quantity}건 · 제출 {submittedCount}건 · 승인 {approvedCount}건
+                    </p>
+                    {revisionRequest?.review_comment && (
+                      <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold leading-5 text-amber-800">
+                        광고주 요청: {revisionRequest.review_comment}
+                      </p>
+                    )}
+                  </div>
+                  <span
+                    className={`inline-flex w-fit items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${
+                      statusTone
+                    }`}
+                  >
+                    {isComplete ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Clock3 className="h-3.5 w-3.5" />}
+                    {statusText}
+                  </span>
+                </div>
+
+                {requirement.submissions.length > 0 && (
+                  <div className="mt-4 space-y-2">
+                    {requirement.submissions.map((submission) => {
+                      const note = getSubmissionNote(submission);
+
+                      return (
+                        <div
+                          key={submission.id}
+                          className="rounded-lg border border-neutral-200 bg-[#fbfbfc] p-3"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span
+                              className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${reviewStatusTone(
+                                submission.review_status,
+                              )}`}
+                            >
+                              {reviewStatusLabel(submission.review_status)}
+                            </span>
+                            <span className="text-xs text-neutral-400">
+                              {formatDateTime(submission.submitted_at)}
+                            </span>
+                          </div>
+                          {submission.url && (
+                            <a
+                              href={submission.url}
+                              target="_blank"
+                              rel="noreferrer noopener"
+                              className="mt-2 inline-flex max-w-full items-center gap-1.5 text-sm font-semibold text-neutral-900 underline underline-offset-4"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+                              <span className="truncate">{submission.url}</span>
+                            </a>
+                          )}
+                          {submission.files.length > 0 && (
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {submission.files.map((file) => (
+                                <a
+                                  key={file.id}
+                                  href={file.download_url}
+                                  className="inline-flex h-8 max-w-full items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-2.5 text-xs font-semibold text-neutral-700"
+                                >
+                                  <FileText className="h-3.5 w-3.5 shrink-0" />
+                                  <span className="truncate">
+                                    {file.file_name ?? "증빙 파일"}
+                                  </span>
+                                  {formatFileSize(file.byte_size) && (
+                                    <span className="shrink-0 text-neutral-400">
+                                      {formatFileSize(file.byte_size)}
+                                    </span>
+                                  )}
+                                </a>
+                              ))}
+                            </div>
+                          )}
+                          {note && (
+                            <p className="mt-2 rounded-md bg-white px-3 py-2 text-xs leading-5 text-neutral-600 ring-1 ring-neutral-200">
+                              제출 메모: {note}
+                            </p>
+                          )}
+                          {submission.review_comment && (
+                            <p className="mt-2 rounded-md bg-white px-3 py-2 text-xs leading-5 text-neutral-600 ring-1 ring-neutral-200">
+                              광고주 코멘트: {submission.review_comment}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {canSubmit && !isComplete && (
+                  <div className="mt-4 grid gap-3 rounded-lg border border-neutral-200 bg-[#fbfbfc] p-4">
+                    <label className="block">
+                      <span className="flex items-center gap-2 text-xs font-semibold text-neutral-700">
+                        <Link2 className="h-3.5 w-3.5" />
+                        콘텐츠 URL
+                      </span>
+                      <input
+                        value={form.url}
+                        onChange={(event) =>
+                          onFormChange(requirement.id, { url: event.target.value })
+                        }
+                        className={`mt-2 h-10 w-full rounded-lg border bg-white px-3 text-sm outline-none transition focus:border-neutral-950 ${
+                          urlError ? "border-rose-300" : "border-neutral-200"
+                        }`}
+                        placeholder="https://..."
+                        aria-invalid={Boolean(urlError)}
+                      />
+                      {urlError && (
+                        <span className="mt-1 block text-xs font-semibold text-rose-700">
+                          {urlError}
+                        </span>
+                      )}
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-semibold text-neutral-700">
+                        메모
+                      </span>
+                      <textarea
+                        value={form.note}
+                        onChange={(event) =>
+                          onFormChange(requirement.id, { note: event.target.value })
+                        }
+                        className="mt-2 min-h-20 w-full resize-none rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-neutral-950"
+                        placeholder="광고주가 확인할 내용을 적어 주세요."
+                      />
+                    </label>
+                    <label className="flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold text-neutral-700">
+                      <Upload className="h-4 w-4" />
+                      <span className="min-w-0 flex-1 truncate">
+                        {form.file ? form.file.name : "증빙 파일 선택"}
+                      </span>
+                      {form.file && formatFileSize(form.file.size) && (
+                        <span className="shrink-0 text-xs text-neutral-400">
+                          {formatFileSize(form.file.size)}
+                        </span>
+                      )}
+                      <input
+                        type="file"
+                        accept={DELIVERABLE_FILE_ACCEPT}
+                        className="sr-only"
+                        onChange={(event) =>
+                          onFormChange(requirement.id, {
+                            file: event.target.files?.[0],
+                          })
+                        }
+                      />
+                    </label>
+                    {fileError && (
+                      <p className="text-xs font-semibold text-rose-700">
+                        {fileError}
+                      </p>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => onSubmit(requirement.id)}
+                      disabled={
+                        isSubmitting ||
+                        hasFormError ||
+                        (!form.url.trim() && !form.file)
+                      }
+                      className="h-10 rounded-lg bg-neutral-950 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:bg-neutral-200 disabled:text-neutral-500"
+                    >
+                      {isSubmitting ? "제출 중" : "검수 요청"}
+                    </button>
+                  </div>
+                )}
+              </article>
+            );
+          })
+        )}
+      </div>
+    </section>
   );
 }
 

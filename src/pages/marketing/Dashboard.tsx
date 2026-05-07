@@ -1,9 +1,8 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   AlertCircle,
   ArrowUpRight,
-  CalendarClock,
   CheckCircle2,
   Clock3,
   CopyCheck,
@@ -93,9 +92,9 @@ const STATUS_META: Record<
     icon: <PenLine className="h-4 w-4" strokeWidth={1.8} />,
   },
   SIGNED: {
-    label: "완료",
-    shortLabel: "완료",
-    helper: "서명본 보관 완료",
+    label: "서명 완료",
+    shortLabel: "서명",
+    helper: "서명본 보관 및 콘텐츠 이행 관리",
     tone: "text-neutral-600",
     badge: "border-neutral-200 bg-white text-neutral-700",
     icon: <CheckCircle2 className="h-4 w-4" strokeWidth={1.8} />,
@@ -162,6 +161,7 @@ export function Dashboard() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [compact, setCompact] = useState(false);
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
   const { summary: verificationSummary, isLoading: isVerificationLoading } =
     useVerificationSummary({ role: "advertiser" });
   const advertiserVerificationStatus =
@@ -207,8 +207,13 @@ export function Dashboard() {
   const actionQueue = useMemo(() => {
     return contracts
       .filter((contract) => contract.status !== "SIGNED")
-      .sort((a, b) => priorityScore(b) - priorityScore(a));
-  }, [contracts]);
+      .sort((a, b) => priorityScore(b, currentTime) - priorityScore(a, currentTime));
+  }, [contracts, currentTime]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setCurrentTime(Date.now()), 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const filteredContracts = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -247,7 +252,7 @@ export function Dashboard() {
   );
 
   const summary = useMemo(() => {
-    const now = Date.now();
+    const now = currentTime;
     const needsAction = contracts.filter(
       (contract) =>
         contract.status === "NEGOTIATING" ||
@@ -267,7 +272,7 @@ export function Dashboard() {
     const value = contracts.reduce((sum, contract) => sum + parseMoney(contract.campaign?.budget), 0);
 
     return { needsAction, dueSoon, activeLinks, value };
-  }, [contracts]);
+  }, [contracts, currentTime]);
   const priorityContracts = actionQueue.slice(0, 3);
   const hasPriorityContracts = priorityContracts.length > 0;
 
@@ -340,6 +345,7 @@ export function Dashboard() {
 
           <ActionQueue
             contracts={priorityContracts}
+            currentTime={currentTime}
             onOpen={(contract) => navigate(`/advertiser/contract/${contract.id}`)}
           />
         </section>
@@ -582,9 +588,11 @@ function SyncPill({
 
 function ActionQueue({
   contracts,
+  currentTime,
   onOpen,
 }: {
   contracts: Contract[];
+  currentTime: number;
   onOpen: (contract: Contract) => void;
 }) {
   if (contracts.length === 0) return null;
@@ -627,7 +635,7 @@ function ActionQueue({
               </div>
               <div className="mt-2 flex items-center gap-2 text-[11px] font-semibold text-neutral-500">
                 <StatusBadge status={contract.status} dense />
-                <span>{formatDue(contract.workflow?.due_at)}</span>
+                <span>{formatDue(contract.workflow?.due_at, currentTime)}</span>
               </div>
             </button>
           ))
@@ -971,7 +979,7 @@ function SyncErrorPanel({ message }: { message: string }) {
 
 const dayMs = 24 * 60 * 60 * 1000;
 
-function priorityScore(contract: Contract) {
+function priorityScore(contract: Contract, currentTime: number) {
   const statusWeight: Record<ContractStatus, number> = {
     NEGOTIATING: 50,
     APPROVED: 40,
@@ -980,7 +988,7 @@ function priorityScore(contract: Contract) {
     SIGNED: 0,
   };
   const due = parseDate(contract.workflow?.due_at);
-  const dueBoost = Number.isFinite(due) ? Math.max(0, 20 - Math.ceil((due - Date.now()) / dayMs) * 4) : 0;
+  const dueBoost = Number.isFinite(due) ? Math.max(0, 20 - Math.ceil((due - currentTime) / dayMs) * 4) : 0;
   const actorBoost = contract.workflow?.next_actor === "advertiser" ? 20 : 0;
   return statusWeight[contract.status] + dueBoost + actorBoost;
 }
@@ -993,7 +1001,7 @@ function nextActionLabel(contract: Contract) {
     REVIEWING: "인플루언서의 검토 응답을 기다리는 중입니다.",
     NEGOTIATING: "수정 요청을 검토하고 답변하세요.",
     APPROVED: "최종본 서명을 요청할 수 있습니다.",
-    SIGNED: "서명본과 감사 기록이 보관되었습니다.",
+    SIGNED: "서명본과 감사 기록을 보관하고, 필요한 콘텐츠 제출/검수를 이어가세요.",
   };
 
   return actions[contract.status];
@@ -1034,10 +1042,10 @@ function formatPeriod(contract: Contract) {
   return "미정";
 }
 
-function formatDue(value?: string) {
+function formatDue(value: string | undefined, currentTime: number) {
   if (!value) return "기한 미정";
   const due = new Date(value);
-  const days = Math.ceil((due.getTime() - Date.now()) / dayMs);
+  const days = Math.ceil((due.getTime() - currentTime) / dayMs);
 
   if (days < 0) return `${Math.abs(days)}일 지연`;
   if (days === 0) return "오늘 마감";

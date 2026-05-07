@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Link, Navigate, useLocation } from "react-router-dom";
 import { AuthLoginScreen } from "../../components/AuthLoginScreen";
 import { buildLoginRedirect } from "../../domain/navigation";
@@ -38,9 +38,9 @@ export function AdvertiserAuthGate({
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const refreshContracts = async () => {
+  const refreshContracts = useCallback(async () => {
     await hydrateContracts({ force: true });
-  };
+  }, [hydrateContracts]);
 
   useEffect(() => {
     let cancelled = false;
@@ -73,7 +73,7 @@ export function AdvertiserAuthGate({
     return () => {
       cancelled = true;
     };
-  }, [hydrateContracts]);
+  }, [refreshContracts]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();

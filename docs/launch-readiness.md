@@ -15,6 +15,8 @@ remain between the contract parties.
 
 ## Must Before Public Launch
 
+Owner-only checklist: see [`owner-action-memo.md`](owner-action-memo.md).
+
 - Replace all placeholder operator information in `/privacy`, `/terms`, and
   `/legal/e-sign-consent`. For the initial free individual service, keep
   `VITE_LEGAL_OPERATING_MODE="free_individual"` and publish the real service
@@ -36,8 +38,9 @@ remain between the contract parties.
   advertiser/influencer redirect URLs, and separate production keys.
 - Create the private storage bucket for signed PDFs and verification evidence.
   Do not enable local private file fallback in production.
-- Configure `SIGNED_PDF_FONT_PATH` with a Korean-capable TTF font and verify
-  that a signed Korean contract PDF renders readable text.
+- Verify that signed Korean contract PDFs render readable text. Production
+  bundles NanumGothic for the default path; `SIGNED_PDF_FONT_PATH` can override
+  it with another Korean-capable TTF font if needed.
 - Set strong server-only secrets: `SUPABASE_SERVICE_ROLE_KEY`,
   `ADMIN_ACCESS_CODE`, `ADMIN_SESSION_SECRET`,
   `DIRECTSIGN_TOKEN_ENCRYPTION_SECRET`. Generate app secrets with
