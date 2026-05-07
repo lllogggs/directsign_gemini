@@ -1,6 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { useAppStore, type Contract, type ContractStatus } from "../../store";
+import {
+  useAppStore,
+  type ClauseHistory,
+  type Contract,
+  type ContractStatus,
+} from "../../store";
+import { apiFetch, apiPath } from "../../domain/api";
 import { useVerificationSummary } from "../../hooks/useVerificationSummary";
 import { buildLoginRedirect } from "../../domain/navigation";
 import {
@@ -376,7 +382,7 @@ export function ContractViewer() {
     let signedContract: typeof contract | undefined;
 
     try {
-      const response = await fetch(`/api/contracts/${contract.id}/signatures/influencer`, {
+      const response = await apiFetch(`/api/contracts/${contract.id}/signatures/influencer`, {
         method: "POST",
         credentials: "include",
         headers: {
@@ -415,7 +421,7 @@ export function ContractViewer() {
 
     let pdfDownloaded = false;
     try {
-      const pdfResponse = await fetch(
+      const pdfResponse = await apiFetch(
         signedContract?.pdf_url || `/api/contracts/${contract.id}/final-pdf`,
         {
           credentials: "include",
@@ -455,7 +461,7 @@ export function ContractViewer() {
     setDeliverablesNotice("");
 
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `/api/contracts/${encodeURIComponent(contractId)}/deliverables`,
         {
           credentials: "include",
@@ -515,7 +521,7 @@ export function ContractViewer() {
             data_url: await readFileAsDataUrl(form.file),
           }
         : undefined;
-      const response = await fetch(
+      const response = await apiFetch(
         `/api/contracts/${encodeURIComponent(contract.id)}/deliverables`,
         {
           method: "POST",
@@ -641,7 +647,7 @@ export function ContractViewer() {
         if (shareToken) query.set("token", shareToken);
         if (supportAccessRequestId) query.set("support", supportAccessRequestId);
         const suffix = query.size > 0 ? `?${query.toString()}` : "";
-        const response = await fetch(`/api/contracts/${encodeURIComponent(id)}${suffix}`, {
+        const response = await apiFetch(`/api/contracts/${encodeURIComponent(id)}${suffix}`, {
           headers: {
             Accept: "application/json",
             ...(supportAccessRequestId
@@ -752,6 +758,10 @@ export function ContractViewer() {
     serverAccessRole === "advertiser" || serverAccessRole === "influencer";
   const canRequestOperatorSupport =
     serverAccessRole === "advertiser" || serverAccessRole === "influencer";
+  const canSubmitClauseReview =
+    serverAccessRole === "influencer" &&
+    !isOperatorSupportView &&
+    contract.status !== "SIGNED";
 
   if (
     !isOperatorSupportView &&
@@ -902,7 +912,7 @@ export function ContractViewer() {
   const rawFinalPdfHref =
     contract.pdf_url ||
     (contract.status === "SIGNED"
-      ? `/api/contracts/${encodeURIComponent(contract.id)}/final-pdf`
+      ? apiPath(`/api/contracts/${encodeURIComponent(contract.id)}/final-pdf`)
       : undefined);
   const finalPdfHref =
     rawFinalPdfHref && supportAccessRequestId
@@ -929,8 +939,52 @@ export function ContractViewer() {
       ]
     : [];
 
+  const openClauseFeedback = (
+    clause: Contract["clauses"][number],
+    type: "MODIFICATION_REQUESTED" | "DELETION_REQUESTED",
+  ) => {
+    setFeedbackModal({
+      isOpen: true,
+      type,
+      clauseId: clause.clause_id,
+      selectedText: `전체 조항: ${clause.category}`,
+    });
+    setFeedbackComment("");
+    setFeedbackError("");
+  };
+
+  const approveClause = (clause: Contract["clauses"][number]) => {
+    if (!canSubmitClauseReview) {
+      setFeedbackModal({
+        isOpen: true,
+        type: "MODIFICATION_REQUESTED",
+        clauseId: clause.clause_id,
+        selectedText: `전체 조항: ${clause.category}`,
+      });
+      setFeedbackError("조항 의견을 남기거나 승인하려면 인플루언서 계정으로 로그인해야 합니다.");
+      return;
+    }
+
+    updateClauseStatus(
+      contract.id,
+      clause.clause_id,
+      "APPROVED",
+      {
+        role: "influencer",
+        action: "승인" as ClauseHistory["action"],
+        comment: "이 조항을 확인하고 승인했습니다.",
+        timestamp: new Date().toISOString(),
+      },
+      { actor: "influencer" },
+    );
+  };
+
   const handleFeedbackSubmit = () => {
     if (!feedbackModal) return;
+    if (!canSubmitClauseReview) {
+      setFeedbackError("조항 의견을 남기려면 인플루언서 계정으로 로그인해야 합니다.");
+      return;
+    }
     const trimmedComment = feedbackComment.trim();
 
     if (!trimmedComment) {
@@ -978,7 +1032,7 @@ export function ContractViewer() {
     setSupportNotice("");
 
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `/api/contracts/${encodeURIComponent(contract.id)}/support-access-requests`,
         {
           method: "POST",
@@ -1018,7 +1072,13 @@ export function ContractViewer() {
       {!isOperatorSupportView && selection?.showTooltip && (
         <div
           className="fixed z-50 -translate-x-1/2 -translate-y-full pb-3 animate-in fade-in zoom-in-95 slide-in-from-bottom-1 duration-150"
-          style={{ top: selection.y, left: selection.x }}
+          style={{
+            top: selection.y,
+            left:
+              typeof window === "undefined"
+                ? selection.x
+                : Math.min(Math.max(selection.x, 132), window.innerWidth - 132),
+          }}
         >
           <div className="flex items-center gap-1 rounded-lg border border-neutral-800 bg-neutral-950 p-1 text-white shadow-2xl">
             <button
@@ -1108,7 +1168,11 @@ export function ContractViewer() {
           </div>
 
           {signNotice && (
-            <div className="flex items-center justify-between gap-3 rounded-lg border border-neutral-200 bg-[#fcfcfd] px-4 py-3 text-sm font-semibold text-neutral-800 shadow-[inset_3px_0_0_rgba(23,23,23,0.12)]">
+            <div
+              role="status"
+              aria-live="polite"
+              className="flex items-center justify-between gap-3 rounded-lg border border-neutral-200 bg-[#fcfcfd] px-4 py-3 text-sm font-semibold text-neutral-800 shadow-[inset_3px_0_0_rgba(23,23,23,0.12)]"
+            >
               <span className="flex items-center gap-2">
                 <CheckCircle2 className="h-4 w-4 text-neutral-700" />
                 {signNotice}
@@ -1208,13 +1272,61 @@ export function ContractViewer() {
                         ) : (
                           <Clock3 className="h-3.5 w-3.5" />
                         )}
-                        {isApproved ? "승인 완료" : "수정 요청 중"}
+                        {isApproved
+                          ? "승인 완료"
+                          : clause.status === "PENDING_REVIEW"
+                            ? "검토 대기"
+                            : "수정 요청 중"}
                       </span>
                     </div>
 
                     <div className="mt-5 rounded-lg border border-neutral-200 bg-white p-4 text-[15px] leading-7 text-neutral-800 selection:bg-neutral-200 selection:text-neutral-950 sm:p-5">
                       <p className="whitespace-pre-wrap">{clause.content}</p>
                     </div>
+
+                    {!isOperatorSupportView && contract.status !== "SIGNED" && (
+                      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                        <button
+                          type="button"
+                          onClick={() => approveClause(clause)}
+                          disabled={isApproved || !canSubmitClauseReview}
+                          className="h-11 rounded-lg border border-neutral-200 bg-white text-sm font-semibold text-neutral-800 transition hover:border-neutral-400 hover:bg-[#fbfbfc] disabled:cursor-not-allowed disabled:border-neutral-100 disabled:bg-neutral-100 disabled:text-neutral-400"
+                        >
+                          {isApproved ? "승인 완료" : "이 조항 승인"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openClauseFeedback(clause, "MODIFICATION_REQUESTED")}
+                          disabled={!canSubmitClauseReview}
+                          className="h-11 rounded-lg border border-amber-200 bg-amber-50 text-sm font-semibold text-amber-800 transition hover:border-amber-300 hover:bg-amber-100 disabled:cursor-not-allowed disabled:border-neutral-100 disabled:bg-neutral-100 disabled:text-neutral-400"
+                        >
+                          수정 요청
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openClauseFeedback(clause, "DELETION_REQUESTED")}
+                          disabled={!canSubmitClauseReview}
+                          className="h-11 rounded-lg border border-rose-200 bg-rose-50 text-sm font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:border-neutral-100 disabled:bg-neutral-100 disabled:text-neutral-400"
+                        >
+                          삭제 요청
+                        </button>
+                      </div>
+                    )}
+
+                    {!isOperatorSupportView &&
+                      contract.status !== "SIGNED" &&
+                      !canSubmitClauseReview && (
+                        <div className="mt-3 rounded-lg border border-neutral-200 bg-[#fbfbfc] px-4 py-3 text-xs leading-5 text-neutral-600">
+                          의견 제출과 조항 승인은 인플루언서 로그인 후 가능합니다.
+                          <button
+                            type="button"
+                            onClick={() => navigate(loginForVerificationPath)}
+                            className="ml-2 font-semibold text-neutral-950 underline underline-offset-2"
+                          >
+                            로그인
+                          </button>
+                        </div>
+                      )}
 
                     {clause.history.length > 0 && (
                       <div className="mt-4 rounded-lg border border-neutral-200 bg-white p-4">
@@ -1442,7 +1554,11 @@ export function ContractViewer() {
                   </span>
                 </label>
                 {supportNotice && (
-                  <p className="text-xs font-semibold text-neutral-600">
+                  <p
+                    role="status"
+                    aria-live="polite"
+                    className="text-xs font-semibold text-neutral-600"
+                  >
                     {supportNotice}
                   </p>
                 )}
@@ -1634,7 +1750,11 @@ export function ContractViewer() {
               }}
             />
             {feedbackError && (
-              <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+              <p
+                role="alert"
+                aria-live="assertive"
+                className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800"
+              >
                 {feedbackError}
               </p>
             )}
@@ -1787,7 +1907,11 @@ export function ContractViewer() {
               </span>
             </label>
             {signError && (
-              <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+              <p
+                role="alert"
+                aria-live="assertive"
+                className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800"
+              >
                 {signError}
               </p>
             )}

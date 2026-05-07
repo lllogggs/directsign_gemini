@@ -58,7 +58,7 @@ export interface DeliverablesResponse {
 export const DELIVERABLE_FILE_ACCEPT =
   "application/pdf,image/png,image/jpeg,image/webp";
 
-export const MAX_DELIVERABLE_FILE_SIZE_BYTES = 4 * 1024 * 1024;
+export const MAX_DELIVERABLE_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 
 const isAsciiOnly = (value: string) =>
   value.split("").every((character) => character.charCodeAt(0) <= 0x7f);
@@ -139,7 +139,7 @@ export const validateDeliverableFile = (file?: File) => {
     return "비어 있는 파일은 첨부할 수 없습니다.";
   }
   if (file.size > MAX_DELIVERABLE_FILE_SIZE_BYTES) {
-    return "증빙 파일은 4MB 이하로 첨부해 주세요.";
+    return "증빙 파일은 10MB 이하로 첨부해 주세요.";
   }
   return undefined;
 };
@@ -171,7 +171,7 @@ export const getDeliverableErrorMessage = (
       "콘텐츠 URL은 https:// 또는 http:// 주소만 입력할 수 있습니다.",
     "Only PDF, PNG, JPG, or WebP proof files are allowed":
       "증빙 파일은 PDF, PNG, JPG, WebP만 첨부할 수 있습니다.",
-    "Proof file must be 4MB or smaller": "증빙 파일은 4MB 이하로 첨부해 주세요.",
+    "Proof file must be 10MB or smaller": "증빙 파일은 10MB 이하로 첨부해 주세요.",
     "Proof file is invalid": "증빙 파일 형식을 확인해 주세요.",
     "Proof file content is invalid": "증빙 파일 내용과 형식이 일치하지 않습니다.",
     "File could not be read": "파일을 읽지 못했습니다. 파일을 다시 선택해 주세요.",

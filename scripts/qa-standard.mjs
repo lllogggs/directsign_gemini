@@ -76,7 +76,12 @@ const startTemporaryServer = async () => {
   const baseUrl = `http://127.0.0.1:${qaPort}`;
   serverProcess = spawn(npmCommand, ["run", "dev"], {
     cwd: root,
-    env: { ...process.env, PORT: String(qaPort), NO_COLOR: "1" },
+    env: {
+      ...process.env,
+      PORT: String(qaPort),
+      DISABLE_HMR: process.env.DISABLE_HMR ?? "true",
+      NO_COLOR: "1",
+    },
     shell: isWindows,
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,

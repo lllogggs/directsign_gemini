@@ -9,6 +9,7 @@ import {
   Clause,
 } from "../../store";
 import { createShareToken } from "../../domain/contracts";
+import { buildContractShareUrl } from "../../domain/links";
 import {
   verificationStatusLabel,
   verificationStatusTone,
@@ -142,11 +143,6 @@ const addDays = (days: number) => {
   return date.toISOString();
 };
 
-const buildShareUrl = (contractId: string, shareToken?: string) =>
-  `${window.location.origin}/contract/${contractId}${
-    shareToken ? `?token=${encodeURIComponent(shareToken)}` : ""
-  }`;
-
 const getDeliverableRows = (draft: ContractDraft) => {
   const selectedRows = draft.channels.map((channel) => ({
     channel,
@@ -212,7 +208,7 @@ const buildContractClauses = (draft: ContractDraft): Clause[] => {
       content: `본 계약에 따라 인플루언서는 다음 매체에 정해진 건수의 콘텐츠를 업로드하고 지정된 기간 동안 유지해야 한다:\n${deliverables.join(
         "\n",
       )}`,
-      status: "APPROVED",
+      status: "PENDING_REVIEW",
       history: [],
     });
   }
@@ -235,7 +231,7 @@ const buildContractClauses = (draft: ContractDraft): Clause[] => {
         `광고주 검수 회신 기한: ${draft.reviewDueDate || "입력 필요"}`,
         `수정 가능 횟수: ${draft.revisionLimit || "입력 필요"}`,
       ].join("\n"),
-      status: "APPROVED",
+      status: "PENDING_REVIEW",
       history: [],
     });
   }
@@ -252,7 +248,7 @@ const buildContractClauses = (draft: ContractDraft): Clause[] => {
       ]
         .filter(Boolean)
         .join("\n"),
-      status: "APPROVED",
+      status: "PENDING_REVIEW",
       history: [],
     });
   }
@@ -262,7 +258,7 @@ const buildContractClauses = (draft: ContractDraft): Clause[] => {
       clause_id: "draft_exclusivity",
       category: "경쟁사 배제",
       content: `업로드 후 다음 조건에 따라 동종 업계의 타 브랜드 광고를 진행하지 아니한다: ${draft.exclusivity}`,
-      status: "APPROVED",
+      status: "PENDING_REVIEW",
       history: [],
     });
   }
@@ -272,7 +268,7 @@ const buildContractClauses = (draft: ContractDraft): Clause[] => {
       clause_id: "draft_payment",
       category: "대가 지급",
       content: `본 계약의 대가로 광고주는 인플루언서에게 다음과 같이 지급한다: ${draft.payment}`,
-      status: "APPROVED",
+      status: "PENDING_REVIEW",
       history: [],
     });
   }
@@ -282,7 +278,7 @@ const buildContractClauses = (draft: ContractDraft): Clause[] => {
       clause_id: clause.id,
       category: clause.category || "기타 특약",
       content: clause.content,
-      status: "APPROVED",
+      status: "PENDING_REVIEW",
       history: [],
     });
   });
@@ -302,6 +298,17 @@ const validateContractDraft = (draft: ContractDraft): ValidationError[] => {
   requireField(1, "influencerName", draft.influencerName, "인플루언서명 또는 채널명을 입력하세요.");
   requireField(1, "influencerUrl", draft.influencerUrl, "메인 채널 URL을 입력하세요.");
   requireField(1, "influencerContact", draft.influencerContact, "연락처를 입력하세요.");
+
+  if (
+    !isBlank(draft.influencerContact) &&
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(draft.influencerContact.trim())
+  ) {
+    errors.push({
+      step: 1,
+      field: "influencerContact",
+      message: "서명 계정 확인을 위해 인플루언서 이메일을 입력하세요.",
+    });
+  }
 
   if (!isBlank(draft.influencerUrl) && !isHttpUrl(draft.influencerUrl)) {
     errors.push({
@@ -658,7 +665,7 @@ export function ContractBuilder() {
 
     const link =
       mode === "share" && contractId
-        ? buildShareUrl(contractId, payload.evidence?.share_token)
+        ? buildContractShareUrl(contractId, payload.evidence?.share_token)
         : undefined;
     setResult({ mode, link, stale: false });
   };

@@ -1,10 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
+import { apiFetch } from "../domain/api";
 import type { VerificationSummary } from "../domain/verification";
-
-const API_BASE =
-  typeof import.meta !== "undefined"
-    ? (import.meta.env.VITE_API_BASE_URL ?? "")
-    : "";
 
 type VerificationSummaryOptions = {
   role?: "advertiser" | "influencer";
@@ -14,7 +10,7 @@ const buildVerificationStatusUrl = (role?: VerificationSummaryOptions["role"]) =
   const query = new URLSearchParams();
   if (role) query.set("role", role);
   const suffix = query.size > 0 ? `?${query.toString()}` : "";
-  return `${API_BASE}/api/verification/status${suffix}`;
+  return `/api/verification/status${suffix}`;
 };
 
 const isAsciiOnly = (value: string) =>
@@ -46,7 +42,7 @@ export function useVerificationSummary(options?: VerificationSummaryOptions) {
     setStatusCode(undefined);
 
     try {
-      const response = await fetch(buildVerificationStatusUrl(role), {
+      const response = await apiFetch(buildVerificationStatusUrl(role), {
         headers: { Accept: "application/json" },
         credentials: "include",
         signal,

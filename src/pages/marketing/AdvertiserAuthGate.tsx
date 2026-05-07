@@ -1,13 +1,9 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Link, Navigate, useLocation } from "react-router-dom";
 import { AuthLoginScreen } from "../../components/AuthLoginScreen";
+import { apiFetch } from "../../domain/api";
 import { buildLoginRedirect } from "../../domain/navigation";
 import { useAppStore } from "../../store";
-
-const API_BASE =
-  typeof import.meta !== "undefined"
-    ? (import.meta.env.VITE_API_BASE_URL ?? "")
-    : "";
 
 type AdvertiserSessionResponse = {
   authenticated?: boolean;
@@ -47,7 +43,7 @@ export function AdvertiserAuthGate({
 
     const checkSession = async () => {
       try {
-        const response = await fetch(`${API_BASE}/api/advertiser/session`, {
+        const response = await apiFetch("/api/advertiser/session", {
           headers: { Accept: "application/json" },
           credentials: "include",
         });
@@ -81,7 +77,7 @@ export function AdvertiserAuthGate({
     setError("");
 
     try {
-      const response = await fetch(`${API_BASE}/api/advertiser/login`, {
+      const response = await apiFetch("/api/advertiser/login", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

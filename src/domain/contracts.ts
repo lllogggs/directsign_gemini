@@ -8,6 +8,7 @@ export type ContractStatus =
   | "APPROVED"
   | "SIGNED";
 export type ClauseStatus =
+  | "PENDING_REVIEW"
   | "APPROVED"
   | "MODIFICATION_REQUESTED"
   | "DELETION_REQUESTED";
@@ -24,7 +25,7 @@ export type ContractPlatform =
 export interface ClauseHistory {
   id: string;
   role: "advertiser" | "influencer";
-  action: "수정 요청" | "삭제 요청" | "수락" | "거절" | "대안 제시";
+  action: string;
   comment: string;
   timestamp: string;
 }

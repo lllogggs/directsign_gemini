@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { v4 as uuidv4 } from "uuid";
 import { createEvidence, createShareToken, createWorkflow } from "./domain/contracts";
+import { apiFetch } from "./domain/api";
 import type {
   AuditEvent,
   ClauseHistory,
@@ -25,11 +26,6 @@ export type {
   ContractType,
   PdfStatus,
 } from "./domain/contracts";
-
-const API_BASE =
-  typeof import.meta !== "undefined"
-    ? (import.meta.env.VITE_API_BASE_URL ?? "")
-    : "";
 
 const clearLegacyPersistedContracts = () => {
   if (typeof window === "undefined") return;
@@ -72,15 +68,22 @@ type HydrateOptions = {
 const mergeContracts = (
   local: Contract[],
   remote: Contract[],
-  options: { allowLocalMerge: boolean },
+  options: { allowLocalMerge: boolean; preserveLocalIds?: string[] },
 ) => {
   const byId = new Map<string, Contract>();
+  const preserveLocalIds = new Set(options.preserveLocalIds ?? []);
 
   remote.filter((contract) => !isInternalQaContract(contract)).forEach((contract) => {
     byId.set(contract.id, normalizeContract(contract));
   });
 
   if (!options.allowLocalMerge) {
+    local
+      .filter((contract) => preserveLocalIds.has(contract.id))
+      .forEach((contract) => {
+        if (!byId.has(contract.id)) byId.set(contract.id, normalizeContract(contract));
+      });
+
     return Array.from(byId.values()).sort(
       (a, b) => parseDate(b.updated_at) - parseDate(a.updated_at),
     );
@@ -111,6 +114,25 @@ type PersistOptions = {
   shareToken?: string;
 };
 
+const createSyncOperationId = () =>
+  `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+const finishSyncOperation = (
+  state: AppState,
+  key: string,
+  operationId: string,
+) => {
+  const syncOperationIds = { ...state.syncOperationIds };
+  if (syncOperationIds[key] === operationId) {
+    delete syncOperationIds[key];
+  }
+
+  return {
+    syncOperationIds,
+    isSyncing: Object.keys(syncOperationIds).length > 0,
+  };
+};
+
 const normalizeEvidence = (
   evidence: Contract["evidence"],
   current?: Contract["evidence"],
@@ -139,14 +161,19 @@ const persistContractToServer = async (
   contract: Contract,
   set: (
     partial: Partial<AppState> | ((state: AppState) => Partial<AppState>),
-  ) => void,
+) => void,
   rollbackContracts: Contract[],
   options: PersistOptions = {},
 ) => {
-  set({ isSyncing: true, syncError: undefined });
+  const operationId = createSyncOperationId();
+  set((state) => ({
+    syncOperationIds: { ...state.syncOperationIds, [contract.id]: operationId },
+    isSyncing: true,
+    syncError: undefined,
+  }));
 
   try {
-    const response = await fetch(`${API_BASE}/api/contracts/${contract.id}`, {
+    const response = await apiFetch(`/api/contracts/${contract.id}`, {
       method: "PUT",
       credentials: "include",
       headers: {
@@ -177,8 +204,10 @@ const persistContractToServer = async (
           ? state.contracts.map((item) =>
               item.id === serverContract!.id ? serverContract! : item,
             )
+          : serverContract && !current
+            ? [...state.contracts, serverContract]
           : state.contracts,
-        isSyncing: false,
+        ...finishSyncOperation(state, contract.id, operationId),
         syncError: undefined,
       };
     });
@@ -198,7 +227,7 @@ const persistContractToServer = async (
               item.id === contract.id ? rollbackContract! : item,
             )
           : state.contracts,
-        isSyncing: false,
+        ...finishSyncOperation(state, contract.id, operationId),
         syncError: getErrorMessage(error),
       };
     });
@@ -209,6 +238,7 @@ interface AppState {
   contracts: Contract[];
   isHydrated: boolean;
   isSyncing: boolean;
+  syncOperationIds: Record<string, string>;
   syncError?: string;
   hydrateContracts: (options?: HydrateOptions) => Promise<void>;
   resetHydration: () => void;
@@ -237,14 +267,21 @@ export const useAppStore = create<AppState>()(
       contracts: [],
       isHydrated: false,
       isSyncing: false,
+      syncOperationIds: {},
       syncError: undefined,
 
       hydrateContracts: async (options = {}) => {
         if (get().isHydrated && !options.force) return;
-        set({ isSyncing: true, syncError: undefined });
+        const operationId = createSyncOperationId();
+        const syncKey = "__hydrate_contracts__";
+        set((state) => ({
+          syncOperationIds: { ...state.syncOperationIds, [syncKey]: operationId },
+          isSyncing: true,
+          syncError: undefined,
+        }));
 
         try {
-          const response = await fetch(`${API_BASE}/api/contracts`, {
+          const response = await apiFetch("/api/contracts", {
             headers: { Accept: "application/json" },
             credentials: "include",
           });
@@ -257,23 +294,26 @@ export const useAppStore = create<AppState>()(
           const remoteContracts = Array.isArray(data.contracts)
             ? data.contracts
             : [];
+          const pendingLocalContractIds = Object.keys(get().syncOperationIds).filter(
+            (key) => key !== "__hydrate_contracts__",
+          );
           const mergedContracts = mergeContracts(get().contracts, remoteContracts, {
             allowLocalMerge: data.allow_local_merge === true,
+            preserveLocalIds: pendingLocalContractIds,
           });
 
-          set({
+          set((state) => ({
             contracts: mergedContracts,
             isHydrated: true,
-            isSyncing: false,
+            ...finishSyncOperation(state, syncKey, operationId),
             syncError: undefined,
-          });
+          }));
         } catch (error) {
-          set({
-            contracts: [],
+          set((state) => ({
             isHydrated: true,
-            isSyncing: false,
+            ...finishSyncOperation(state, syncKey, operationId),
             syncError: getErrorMessage(error),
-          });
+          }));
         }
       },
 
@@ -282,6 +322,7 @@ export const useAppStore = create<AppState>()(
           contracts: [],
           isHydrated: true,
           isSyncing: false,
+          syncOperationIds: {},
           syncError: undefined,
         });
       },
@@ -383,7 +424,7 @@ export const useAppStore = create<AppState>()(
           ) {
             nextStatus = "NEGOTIATING";
           } else if (
-            contract.status === "NEGOTIATING" &&
+            (contract.status === "REVIEWING" || contract.status === "NEGOTIATING") &&
             updatedClauses.every((clause) => clause.status === "APPROVED")
           ) {
             nextStatus = "APPROVED";
@@ -440,6 +481,7 @@ export const useAppStore = create<AppState>()(
               )
             : [...state.contracts, normalizedContract],
           isSyncing: false,
+          syncOperationIds: {},
           syncError: undefined,
         }));
       },
@@ -454,6 +496,7 @@ export const useAppStore = create<AppState>()(
         if (state) {
           state.isHydrated = false;
           state.isSyncing = false;
+          state.syncOperationIds = {};
           state.syncError = undefined;
         }
       },

@@ -27,6 +27,12 @@ const isRegisteredBusiness = LEGAL_OPERATING_MODE === "registered_business";
 const defaultLegalOperatorName = `${PRODUCT_NAME} 운영자`;
 const defaultLegalRepresentativeName = "개인정보 보호책임자";
 
+const configuredLegalOperatorName = readPublicEnv("VITE_LEGAL_OPERATOR_NAME");
+const configuredLegalRepresentativeName = readPublicEnv(
+  "VITE_LEGAL_REPRESENTATIVE_NAME",
+);
+const configuredLegalContactEmail = readPublicEnv("VITE_LEGAL_CONTACT_EMAIL");
+
 const LEGAL_OPERATING_MODE_LABELS: Record<LegalOperatingMode, string> = {
   free_individual: "무료 개인 운영 서비스",
   registered_business: "사업자 운영 서비스",
@@ -34,10 +40,8 @@ const LEGAL_OPERATING_MODE_LABELS: Record<LegalOperatingMode, string> = {
 
 export const LEGAL_OPERATOR = {
   operatingMode: LEGAL_OPERATING_MODE,
-  name: readPublicEnv("VITE_LEGAL_OPERATOR_NAME") ?? defaultLegalOperatorName,
-  representative:
-    readPublicEnv("VITE_LEGAL_REPRESENTATIVE_NAME") ??
-    defaultLegalRepresentativeName,
+  name: configuredLegalOperatorName ?? defaultLegalOperatorName,
+  representative: configuredLegalRepresentativeName ?? defaultLegalRepresentativeName,
   businessRegistrationNumber: readPublicEnv(
     "VITE_LEGAL_BUSINESS_REGISTRATION_NUMBER",
   ),
@@ -106,4 +110,8 @@ export const missingLegalOperatorFields = LEGAL_OPERATOR_FIELDS.filter(
   (field) => field.required && !field.value,
 );
 
-export const hasConfiguredLegalOperator = missingLegalOperatorFields.length === 0;
+export const hasConfiguredLegalOperator =
+  missingLegalOperatorFields.length === 0 &&
+  Boolean(configuredLegalOperatorName) &&
+  Boolean(configuredLegalRepresentativeName) &&
+  Boolean(configuredLegalContactEmail);

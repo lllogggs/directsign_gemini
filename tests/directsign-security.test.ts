@@ -79,6 +79,18 @@ describe("yeollock.me security regressions", () => {
     assert.doesNotMatch(duplicateVerification, /create\s+trigger/i);
   });
 
+  it("documents the real Supabase migration chain instead of the no-op schema", () => {
+    const readme = read("README.md");
+
+    assert.match(readme, /Apply every SQL file[\s\S]+timestamp order/);
+    assert.match(readme, /20260430193123_create_directsign_v2_schema\.sql/);
+    assert.match(readme, /20260501020000_create_directsign_v2_schema\.sql[\s\S]+no-op/);
+    assert.match(readme, /20260505070645_harden_contract_support_access\.sql/);
+    assert.match(readme, /20260506075008_restrict_authenticated_direct_writes\.sql/);
+    assert.match(readme, /20260507224346_allow_revoked_support_access_event\.sql/);
+    assert.match(readme, /20260507230025_lock_reserved_settlement_tables\.sql/);
+  });
+
   it("blocks authenticated Data API writes for security-sensitive tables", () => {
     const migration = read(
       "supabase/migrations/20260506075008_restrict_authenticated_direct_writes.sql",
@@ -99,6 +111,39 @@ describe("yeollock.me security regressions", () => {
     assert.match(migration, /to service_role;/);
   });
 
+  it("keeps future settlement and payout tables reserved until marketplace launch", () => {
+    const migration = read(
+      "supabase/migrations/20260507230025_lock_reserved_settlement_tables.sql",
+    );
+
+    for (const table of [
+      "settlement_periods",
+      "settlement_reports",
+      "settlement_items",
+      "payouts",
+    ]) {
+      assert.match(migration, new RegExp(`'${table}'`));
+    }
+
+    assert.match(migration, /drop policy if exists/);
+    assert.match(migration, /revoke all on table public\.%I from public, anon, authenticated/);
+    assert.match(migration, /grant all on table public\.%I to service_role/);
+    assert.match(migration, /Reserved for future marketplace settlement features/);
+  });
+
+  it("fails closed for production demo mode and anonymous admin attribution", () => {
+    const server = read("server/index.ts");
+    const envExample = read(".env.example");
+
+    assert.match(server, /DIRECTSIGN_ALLOW_PRODUCTION_DEMO_MODE/);
+    assert.match(server, /DIRECTSIGN_DEMO_MODE cannot be enabled in production/);
+    assert.match(server, /Production requires ADMIN_ACCESS_CODE/);
+    assert.match(server, /Production requires ADMIN_OPERATOR_NAME/);
+    assert.match(server, /const adminOperatorName = configuredAdminOperatorName/);
+    assert.match(envExample, /ADMIN_OPERATOR_NAME=""/);
+    assert.match(envExample, /DIRECTSIGN_ALLOW_PRODUCTION_DEMO_MODE="false"/);
+  });
+
   it("fails closed when Supabase support access audit events cannot be stored", () => {
     const server = read("server/index.ts");
 
@@ -109,6 +154,33 @@ describe("yeollock.me security regressions", () => {
       /if \(!allowLocalSupportAccessStore\) \{\s*throw createMissingSupportAccessEventStoreError\(\);/s,
     );
     assert.match(server, /await ensureSupportAccessEventStoreAvailable\(\);/);
+  });
+
+  it("surfaces support access audit events and records revocations explicitly", () => {
+    const server = read("server/index.ts");
+    const migration = read(
+      "supabase/migrations/20260507224346_allow_revoked_support_access_event.sql",
+    );
+
+    assert.match(server, /interface SupportAccessAuditEvent[\s\S]+"revoked"/);
+    assert.match(server, /const attachSupportAccessEvents = async/);
+    assert.match(server, /support_access_events/);
+    assert.match(server, /action: status === "closed" \? "closed" : "revoked"/);
+    assert.match(migration, /'revoked'/);
+  });
+
+  it("uses server operator identity for admin verification reviews", () => {
+    const server = read("server/index.ts");
+    const reviewRouteStart = server.indexOf(
+      'app.patch("/api/admin/verification-requests/:id"',
+    );
+    const reviewRouteEnd = server.indexOf('app.get("/api/contracts"', reviewRouteStart);
+    const reviewRoute = server.slice(reviewRouteStart, reviewRouteEnd);
+
+    assert.notEqual(reviewRouteStart, -1);
+    assert.notEqual(reviewRouteEnd, -1);
+    assert.match(reviewRoute, /const reviewedByName = adminOperatorName/);
+    assert.doesNotMatch(reviewRoute, /request\.body\?\.reviewed_by_name/);
   });
 
   it("does not present share links as complete before server sync settles", () => {
@@ -124,6 +196,20 @@ describe("yeollock.me security regressions", () => {
       builder,
       /shareResultState === "ready"[\s\S]+!result\.stale/,
     );
+    assert.match(builder, /buildContractShareUrl/);
+  });
+
+  it("builds public share links from configured public site URL", () => {
+    const links = read("src/domain/links.ts");
+    const builder = read("src/pages/marketing/ContractBuilder.tsx");
+    const adminViewer = read("src/pages/marketing/ContractAdminViewer.tsx");
+    const envExample = read(".env.example");
+
+    assert.match(links, /VITE_PUBLIC_SITE_URL/);
+    assert.match(links, /buildContractShareUrl/);
+    assert.match(builder, /buildContractShareUrl/);
+    assert.match(adminViewer, /buildContractShareUrl/);
+    assert.match(envExample, /VITE_PUBLIC_SITE_URL="https:\/\/yeollock\.me"/);
   });
 
   it("does not keep contracts or share tokens in persistent browser localStorage", () => {
@@ -174,6 +260,23 @@ describe("yeollock.me security regressions", () => {
     assert.doesNotMatch(pdfDownloadBlock, /X-Yeollock-Share-Token/);
   });
 
+  it("blocks bearer share tokens from influencer review mutations", () => {
+    const server = read("server/index.ts");
+    const reviewRouteStart = server.indexOf(
+      'app.put("/api/contracts/:id"',
+    );
+    const reviewRouteEnd = server.indexOf(
+      'if (isPreview)',
+      reviewRouteStart,
+    );
+    const reviewRoute = server.slice(reviewRouteStart, reviewRouteEnd);
+
+    assert.notEqual(reviewRouteStart, -1);
+    assert.notEqual(reviewRouteEnd, -1);
+    assert.match(reviewRoute, /allowShareToken:\s*false/);
+    assert.match(reviewRoute, /Influencer session is required for contract review changes/);
+  });
+
   it("keeps signed content deliverables behind authenticated server APIs", () => {
     const server = read("server/index.ts");
     const getRouteStart = server.indexOf('app.get("/api/contracts/:id/deliverables"');
@@ -198,6 +301,89 @@ describe("yeollock.me security regressions", () => {
     assert.match(patchRoute, /requireAdvertiserSession/);
     assert.match(patchRoute, /updateContractDeliverableWorkflow/);
     assert.match(server, /status:\s*"completed"/);
+  });
+
+  it("requires support PDF scope before support operators can download deliverable files", () => {
+    const server = read("server/index.ts");
+    const routeStart = server.indexOf(
+      '"/api/contracts/:id/deliverables/:deliverableId/files/:fileId"',
+    );
+    const routeEnd = server.indexOf(
+      'app.post("/api/contracts/:id/support-access-requests"',
+      routeStart,
+    );
+    const route = server.slice(routeStart, routeEnd);
+
+    assert.notEqual(routeStart, -1);
+    assert.notEqual(routeEnd, -1);
+    assert.match(route, /does not include private file access/);
+    assert.match(route, /deliverable_file_downloaded/);
+    assert.match(route, /viewed_pdf/);
+  });
+
+  it("audits evidence and signed PDF downloads on the server", () => {
+    const server = read("server/index.ts");
+
+    assert.match(server, /appendVerificationEvidenceAccessAudit/);
+    assert.match(server, /evidence_access_audit/);
+    assert.match(server, /Cache-Control", "no-store"/);
+    assert.match(server, /signed_pdf_downloaded/);
+  });
+
+  it("keeps file limits aligned at 10MB for verification and proof evidence", () => {
+    const server = read("server/index.ts");
+    const deliverables = read("src/domain/deliverables.ts");
+    const advertiserVerification = read("src/pages/marketing/AdvertiserVerification.tsx");
+    const influencerVerification = read("src/pages/influencer/InfluencerVerification.tsx");
+
+    assert.match(server, /const maxVerificationFileSize = 10 \* 1024 \* 1024/);
+    assert.match(server, /const maxDeliverableFileSize = maxVerificationFileSize/);
+    assert.match(server, /Verification evidence file must be 10MB or smaller/);
+    assert.match(server, /Proof file must be 10MB or smaller/);
+    assert.match(deliverables, /MAX_DELIVERABLE_FILE_SIZE_BYTES = 10 \* 1024 \* 1024/);
+    assert.match(deliverables, /Proof file must be 10MB or smaller/);
+    assert.match(advertiserVerification, /MAX_VERIFICATION_FILE_SIZE = 10 \* 1024 \* 1024/);
+    assert.match(influencerVerification, /MAX_VERIFICATION_FILE_SIZE = 10 \* 1024 \* 1024/);
+    assert.doesNotMatch(advertiserVerification, /4MB/);
+    assert.doesNotMatch(influencerVerification, /4MB/);
+  });
+
+  it("routes frontend API calls through the API base helper", () => {
+    const api = read("src/domain/api.ts");
+
+    assert.match(api, /VITE_API_BASE_URL/);
+    assert.match(api, /apiFetch/);
+
+    for (const file of [
+      "src/hooks/useVerificationSummary.ts",
+      "src/pages/admin/SystemAdminDashboard.tsx",
+      "src/pages/auth/SignupPage.tsx",
+      "src/pages/influencer/ContractViewer.tsx",
+      "src/pages/influencer/InfluencerDashboard.tsx",
+      "src/pages/influencer/InfluencerLoginPage.tsx",
+      "src/pages/influencer/InfluencerVerification.tsx",
+      "src/pages/marketing/AdvertiserAuthGate.tsx",
+      "src/pages/marketing/AdvertiserVerification.tsx",
+      "src/pages/marketing/ContractAdminViewer.tsx",
+      "src/pages/marketing/ContractBuilder.tsx",
+      "src/store.ts",
+    ]) {
+      assert.doesNotMatch(read(file), /fetch\(\s*["'`]\/api/);
+    }
+  });
+
+  it("starts generated clauses as pending review and exposes mobile clause actions", () => {
+    const builder = read("src/pages/marketing/ContractBuilder.tsx");
+    const viewer = read("src/pages/influencer/ContractViewer.tsx");
+    const adminViewer = read("src/pages/marketing/ContractAdminViewer.tsx");
+
+    assert.match(builder, /status:\s*"PENDING_REVIEW"/);
+    assert.match(builder, /influencerContact[\s\S]+서명 계정 확인/);
+    assert.match(viewer, /const approveClause = \(/);
+    assert.match(viewer, /canSubmitClauseReview/);
+    assert.match(viewer, /이 조항 승인/);
+    assert.match(viewer, /수정 요청/);
+    assert.match(adminViewer, /검토 대기/);
   });
 
   it("keeps public auth and signature evidence server-authored", () => {

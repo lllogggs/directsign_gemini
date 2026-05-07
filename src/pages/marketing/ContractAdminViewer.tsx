@@ -21,7 +21,9 @@ import {
 import { format } from "date-fns";
 import { Textarea } from "@/components/ui/textarea";
 import { ClauseHistory, Contract, ContractStatus, useAppStore } from "../../store";
+import { apiFetch, apiPath } from "../../domain/api";
 import { createShareToken } from "../../domain/contracts";
+import { buildContractShareUrl } from "../../domain/links";
 import { PRODUCT_NAME } from "../../domain/brand";
 import { verificationStatusLabel } from "../../domain/verification";
 import { useVerificationSummary } from "../../hooks/useVerificationSummary";
@@ -36,11 +38,6 @@ import {
   type DeliverablesResponse,
   type DeliverableReviewStatus,
 } from "../../domain/deliverables";
-
-const buildShareUrl = (contractId: string, shareToken?: string) =>
-  `${window.location.origin}/contract/${contractId}${
-    shareToken ? `?token=${encodeURIComponent(shareToken)}` : ""
-  }`;
 
 const getSafeExternalHref = (value?: string) => {
   if (!value) return undefined;
@@ -136,7 +133,7 @@ export function ContractAdminViewer() {
       pendingClauses,
       activeShare,
       allApproved,
-      shareUrl: buildShareUrl(contract.id, contract.evidence?.share_token),
+      shareUrl: buildContractShareUrl(contract.id, contract.evidence?.share_token),
     };
   }, [contract]);
   const safeInfluencerHref = getSafeExternalHref(
@@ -331,7 +328,7 @@ export function ContractAdminViewer() {
     setIsRequestingSupport(true);
 
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `/api/contracts/${encodeURIComponent(contract.id)}/support-access-requests`,
         {
           method: "POST",
@@ -371,7 +368,7 @@ export function ContractAdminViewer() {
     setDeliverablesNotice("");
 
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `/api/contracts/${encodeURIComponent(contract.id)}/deliverables`,
         {
           credentials: "include",
@@ -420,7 +417,7 @@ export function ContractAdminViewer() {
     setDeliverablesNotice("");
 
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `/api/contracts/${encodeURIComponent(contract.id)}/deliverables/${encodeURIComponent(
           deliverableId,
         )}`,
@@ -514,7 +511,7 @@ export function ContractAdminViewer() {
                 contract.status === "SIGNED" ||
                 (summary.allApproved && isVerificationLoading)
               }
-              className="hidden h-10 items-center gap-2 rounded-lg bg-neutral-950 px-4 text-[12px] font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition hover:bg-neutral-800 hover:shadow-[0_14px_30px_rgba(15,23,42,0.18)] disabled:bg-neutral-200 disabled:text-neutral-400 disabled:shadow-none sm:inline-flex"
+              className="inline-flex h-10 items-center gap-2 rounded-lg bg-neutral-950 px-4 text-[12px] font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition hover:bg-neutral-800 hover:shadow-[0_14px_30px_rgba(15,23,42,0.18)] disabled:bg-neutral-200 disabled:text-neutral-400 disabled:shadow-none"
             >
               <Send className="h-4 w-4" />
               {primaryActionLabel}
@@ -815,7 +812,7 @@ export function ContractAdminViewer() {
                 </button>
                 {contract.status === "SIGNED" && (
                   <a
-                    href={contract.pdf_url || `/api/contracts/${contract.id}/final-pdf`}
+            href={contract.pdf_url || apiPath(`/api/contracts/${contract.id}/final-pdf`)}
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white text-[13px] font-semibold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
@@ -1310,11 +1307,19 @@ function MetaLine({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ClauseBadge({ status }: { status: "APPROVED" | "MODIFICATION_REQUESTED" | "DELETION_REQUESTED" }) {
+function ClauseBadge({ status }: { status: Contract["clauses"][number]["status"] }) {
   if (status === "APPROVED") {
     return (
       <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-semibold text-neutral-700">
         승인
+      </span>
+    );
+  }
+
+  if (status === "PENDING_REVIEW") {
+    return (
+      <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700">
+        검토 대기
       </span>
     );
   }

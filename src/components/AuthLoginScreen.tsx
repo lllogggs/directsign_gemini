@@ -42,6 +42,8 @@ export function AuthLoginScreen({
   footer,
   onSubmit,
 }: AuthLoginScreenProps) {
+  const errorId = error ? `${title.replace(/\s+/g, "-")}-login-error` : undefined;
+
   return (
     <main className="flex min-h-screen items-center justify-center bg-[linear-gradient(180deg,#fafafa_0%,#f3f4f6_100%)] px-5 py-8 font-sans text-neutral-950">
       <section className="w-full max-w-[420px] overflow-hidden rounded-lg border border-neutral-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04),0_24px_70px_rgba(15,23,42,0.10)]">
@@ -71,7 +73,11 @@ export function AuthLoginScreen({
             ) : null}
           </div>
 
-          <form className="mt-6 space-y-4" onSubmit={onSubmit}>
+          <form
+            className="mt-6 space-y-4"
+            onSubmit={onSubmit}
+            aria-describedby={errorId}
+          >
             {fields.map((field) => (
               <label key={field.id} className="block">
                 <span className="text-[13px] font-semibold text-neutral-800">
@@ -86,6 +92,8 @@ export function AuthLoginScreen({
                   placeholder={field.placeholder}
                   required={field.required}
                   disabled={field.disabled || isSubmitting}
+                  aria-invalid={Boolean(error) || undefined}
+                  aria-describedby={errorId}
                 />
               </label>
             ))}
@@ -93,7 +101,12 @@ export function AuthLoginScreen({
             {children}
 
             {error ? (
-              <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-[13px] font-semibold leading-5 text-rose-700 shadow-[inset_3px_0_0_rgba(225,29,72,0.35)]">
+              <div
+                id={errorId}
+                role="alert"
+                aria-live="assertive"
+                className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-[13px] font-semibold leading-5 text-rose-700 shadow-[inset_3px_0_0_rgba(225,29,72,0.35)]"
+              >
                 {error}
               </div>
             ) : null}

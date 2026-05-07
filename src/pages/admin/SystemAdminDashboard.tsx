@@ -18,6 +18,7 @@ import {
   type VerificationRequest,
 } from "../../domain/verification";
 import { AuthLoginScreen } from "../../components/AuthLoginScreen";
+import { apiFetch } from "../../domain/api";
 import { buildLoginRedirect, getNextPath } from "../../domain/navigation";
 import { PRODUCT_NAME } from "../../domain/brand";
 
@@ -122,7 +123,7 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
 
     const checkSession = async () => {
       try {
-        const response = await fetch("/api/admin/session", {
+        const response = await apiFetch("/api/admin/session", {
           headers: { Accept: "application/json" },
         });
         const data = (await response.json()) as {
@@ -160,11 +161,11 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
     try {
       const [metricsResult, supportResult, verificationResult] =
         await Promise.allSettled([
-          fetch("/api/admin/metrics", { headers: { Accept: "application/json" } }),
-          fetch("/api/admin/support-access-requests", {
+          apiFetch("/api/admin/metrics", { headers: { Accept: "application/json" } }),
+          apiFetch("/api/admin/support-access-requests", {
             headers: { Accept: "application/json" },
           }),
-          fetch("/api/admin/verification-requests", {
+          apiFetch("/api/admin/verification-requests", {
             headers: { Accept: "application/json" },
           }),
         ]);
@@ -245,7 +246,7 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
     setError("");
 
     try {
-      const response = await fetch("/api/admin/login", {
+      const response = await apiFetch("/api/admin/login", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -282,7 +283,7 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
   };
 
   const handleLogout = async () => {
-    await fetch("/api/admin/logout", { method: "POST" });
+    await apiFetch("/api/admin/logout", { method: "POST" });
     setIsAuthenticated(false);
     setMetrics(emptyMetrics);
     setSupportRequests([]);
@@ -297,7 +298,7 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
     setDataError("");
 
     try {
-      const response = await fetch(`/api/admin/verification-requests/${id}`, {
+      const response = await apiFetch(`/api/admin/verification-requests/${id}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -338,7 +339,7 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
     setDataError("");
 
     try {
-      const response = await fetch(`/api/admin/support-access-requests/${id}`, {
+      const response = await apiFetch(`/api/admin/support-access-requests/${id}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",

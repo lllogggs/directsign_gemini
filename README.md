@@ -60,18 +60,16 @@ The Vercel project already has `yeollock.me` and `www.yeollock.me` attached.
 The configured product can store contracts in Supabase through the local Express API. The browser never receives the Supabase service role key.
 
 1. Create a Supabase project.
-2. Run `supabase/migrations/20260501000000_create_directsign_contracts.sql` in the Supabase SQL editor for the current UI compatibility table.
-3. Run `supabase/migrations/20260501020000_create_directsign_v2_schema.sql` for the normalized contract, clause, pricing, sharing, signature, and audit tables.
-4. Run `supabase/migrations/20260501030000_create_verification_requests.sql` for advertiser business verification and influencer account checks.
-5. Run `supabase/migrations/20260502055903_add_influencer_account_ownership_verification.sql` to store influencer ownership challenge codes, proof URLs, and best-effort automated check results.
-6. Run `supabase/migrations/20260503073000_create_support_access_requests.sql` to restrict operator contract access and store customer-approved support access audits.
-7. Generate server-only secrets:
+2. Apply every SQL file in `supabase/migrations` in timestamp order. The required base schema is `supabase/migrations/20260430193123_create_directsign_v2_schema.sql`; `20260501020000_create_directsign_v2_schema.sql` is intentionally a consolidated no-op kept only for migration history compatibility.
+3. Confirm the later hardening migrations are applied, especially `20260505070645_harden_contract_support_access.sql`, `20260505081146_harden_signature_evidence_support_boundaries.sql`, `20260506043140_add_signup_legal_consents.sql`, `20260506075008_restrict_authenticated_direct_writes.sql`, `20260507224346_allow_revoked_support_access_event.sql`, and `20260507230025_lock_reserved_settlement_tables.sql`.
+4. Run Supabase Security Advisor after applying migrations and resolve any RLS, exposed table, or storage warnings before launch.
+5. Generate server-only secrets:
 
 ```bash
 npm run secrets:generate
 ```
 
-8. Add these values to `.env.local`:
+6. Add these values to `.env.local`:
 
 ```env
 SUPABASE_URL="https://YOUR_PROJECT.supabase.co"
@@ -80,9 +78,11 @@ SUPABASE_SERVICE_ROLE_KEY="YOUR_SERVICE_ROLE_KEY"
 SUPABASE_CONTRACTS_TABLE="directsign_contracts"
 SUPABASE_SCHEMA_VERSION="v2"
 APP_URL="https://yeollock.me"
+VITE_PUBLIC_SITE_URL="https://yeollock.me"
 PRODUCT_NAME="yeollock.me"
 VITE_PRODUCT_NAME="yeollock.me"
 ADMIN_ACCESS_CODE="VALUE_FROM_NPM_RUN_SECRETS_GENERATE"
+ADMIN_OPERATOR_NAME="REAL_OPERATOR_NAME"
 ADMIN_SESSION_SECRET="VALUE_FROM_NPM_RUN_SECRETS_GENERATE"
 ADMIN_LOGIN_MAX_FAILURES="5"
 ADMIN_LOGIN_WINDOW_SECONDS="900"
@@ -96,6 +96,7 @@ SENSITIVE_ENDPOINT_WINDOW_SECONDS="900"
 DIRECTSIGN_TOKEN_ENCRYPTION_SECRET="VALUE_FROM_NPM_RUN_SECRETS_GENERATE"
 CONTENT_SECURITY_POLICY_REPORT_ONLY="false"
 DIRECTSIGN_DEMO_MODE="false"
+DIRECTSIGN_ALLOW_PRODUCTION_DEMO_MODE="false"
 DIRECTSIGN_DEFAULT_ADVERTISER_ID="adv_1"
 DIRECTSIGN_DEFAULT_INFLUENCER_ID="influencer_guest"
 DIRECTSIGN_ALLOW_LOCAL_PRIVATE_FILE_FALLBACK="false"

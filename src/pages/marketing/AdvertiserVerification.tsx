@@ -11,15 +11,12 @@ import {
   verificationStatusLabel,
   verificationStatusTone,
 } from "../../domain/verification";
+import { apiFetch } from "../../domain/api";
 import { useVerificationSummary } from "../../hooks/useVerificationSummary";
 import { PRODUCT_NAME } from "../../domain/brand";
 import { removeInternalTestLabel } from "../../domain/display";
 
-const API_BASE =
-  typeof import.meta !== "undefined"
-    ? (import.meta.env.VITE_API_BASE_URL ?? "")
-    : "";
-const MAX_VERIFICATION_FILE_SIZE = 4 * 1024 * 1024;
+const MAX_VERIFICATION_FILE_SIZE = 10 * 1024 * 1024;
 const ACCEPTED_VERIFICATION_FILE_TYPES = new Set([
   "application/pdf",
   "image/png",
@@ -39,11 +36,11 @@ const inferVerificationFileType = (file: File) => {
 
 const validateVerificationFile = (file: File | null) => {
   if (!file) return undefined;
+  if (file.size > MAX_VERIFICATION_FILE_SIZE) {
+    return `인증 파일은 ${MAX_VERIFICATION_FILE_SIZE / 1024 / 1024}MB 이하로 업로드해주세요.`;
+  }
   if (!ACCEPTED_VERIFICATION_FILE_TYPES.has(inferVerificationFileType(file))) {
     return "PDF, PNG, JPG, WebP 파일만 업로드할 수 있습니다.";
-  }
-  if (file.size > MAX_VERIFICATION_FILE_SIZE) {
-    return "인증 파일은 4MB 이하로 업로드해주세요.";
   }
   return undefined;
 };
@@ -125,7 +122,7 @@ export function AdvertiserVerification() {
 
     try {
       const file_data_url = await readFileAsDataUrl(file);
-      const response = await fetch(`${API_BASE}/api/verification/advertiser`, {
+      const response = await apiFetch("/api/verification/advertiser", {
         method: "POST",
         credentials: "include",
         headers: {
@@ -323,12 +320,20 @@ export function AdvertiserVerification() {
             </div>
 
             {error && (
-              <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
+              <div
+                role="alert"
+                aria-live="assertive"
+                className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700"
+              >
                 {error}
               </div>
             )}
             {submitted && (
-              <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm font-semibold text-neutral-800">
+              <div
+                role="status"
+                aria-live="polite"
+                className="rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm font-semibold text-neutral-800"
+              >
                 인증 요청이 접수되었습니다. 승인 전까지 계약 발송은 제한됩니다.
               </div>
             )}

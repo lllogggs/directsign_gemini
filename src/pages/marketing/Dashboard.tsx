@@ -64,15 +64,15 @@ const STATUS_META: Record<
     shortLabel: "초안",
     helper: "공유 전 작성 중",
     tone: "text-neutral-500",
-    badge: "border-neutral-200 bg-white text-neutral-700",
+    badge: "border-neutral-200 bg-white text-neutral-600",
     icon: <FileText className="h-4 w-4" strokeWidth={1.8} />,
   },
   REVIEWING: {
     label: "검토 중",
     shortLabel: "검토",
     helper: "상대방 응답 대기",
-    tone: "text-neutral-500",
-    badge: "border-neutral-200 bg-white text-neutral-700",
+    tone: "text-sky-700",
+    badge: "border-sky-200 bg-sky-50 text-sky-700",
     icon: <Clock3 className="h-4 w-4" strokeWidth={1.8} />,
   },
   NEGOTIATING: {
@@ -87,16 +87,16 @@ const STATUS_META: Record<
     label: "서명 대기",
     shortLabel: "서명",
     helper: "최종본 승인 완료",
-    tone: "text-neutral-600",
-    badge: "border-neutral-200 bg-white text-neutral-700",
+    tone: "text-indigo-700",
+    badge: "border-indigo-200 bg-indigo-50 text-indigo-700",
     icon: <PenLine className="h-4 w-4" strokeWidth={1.8} />,
   },
   SIGNED: {
     label: "서명 완료",
     shortLabel: "서명",
     helper: "서명본 보관 및 콘텐츠 이행 관리",
-    tone: "text-neutral-600",
-    badge: "border-neutral-200 bg-white text-neutral-700",
+    tone: "text-neutral-900",
+    badge: "border-neutral-300 bg-neutral-100 text-neutral-900",
     icon: <CheckCircle2 className="h-4 w-4" strokeWidth={1.8} />,
   },
 };
@@ -571,7 +571,7 @@ function SyncPill({
 }) {
   if (syncError) {
     return (
-      <span className="hidden h-9 items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 text-[12px] font-semibold text-amber-700 sm:inline-flex">
+      <span className="inline-flex h-9 items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 text-[12px] font-semibold text-amber-700">
         <AlertCircle className="h-3.5 w-3.5" />
         동기화 확인 필요
       </span>
@@ -579,7 +579,7 @@ function SyncPill({
   }
 
   return (
-    <span className="hidden h-9 items-center gap-2 rounded-full border border-neutral-200 bg-white px-3 text-[12px] font-semibold text-neutral-600 sm:inline-flex">
+      <span className="inline-flex h-9 items-center gap-2 rounded-full border border-neutral-200 bg-white px-3 text-[12px] font-semibold text-neutral-600">
       <CopyCheck className="h-3.5 w-3.5 text-neutral-500" />
       {isSyncing ? "저장 중" : "저장 완료"}
     </span>

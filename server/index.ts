@@ -2,7 +2,7 @@ import express from "express";
 import dotenv from "dotenv";
 import fsSync from "node:fs";
 import fs from "node:fs/promises";
-import { request as httpRequest } from "node:http";
+import { createServer as createHttpServer, request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import path from "node:path";
 import {
@@ -122,6 +122,7 @@ interface SupportAccessAuditEvent {
     | "viewed_contract"
     | "viewed_pdf"
     | "closed"
+    | "revoked"
     | "expired";
   actor_role: SupportAccessActorRole;
   actor_name?: string;
@@ -180,6 +181,14 @@ const supabaseSchemaVersion = process.env.SUPABASE_SCHEMA_VERSION ?? "v2";
 const useSupabase = Boolean(supabaseUrl && supabaseServiceRoleKey);
 const useSupabaseV2 = useSupabase && supabaseSchemaVersion !== "legacy";
 const demoMode = process.env.DIRECTSIGN_DEMO_MODE === "true";
+const allowProductionDemoMode =
+  process.env.DIRECTSIGN_ALLOW_PRODUCTION_DEMO_MODE === "true";
+
+if (isProductionRuntime && demoMode && !allowProductionDemoMode) {
+  throw new Error(
+    "DIRECTSIGN_DEMO_MODE cannot be enabled in production. Set it to false before deploy.",
+  );
+}
 
 if (isProductionRuntime && !demoMode) {
   if (!useSupabase) {
@@ -309,12 +318,21 @@ const resolveServerSecret = ({
 };
 
 const adminAccessCode = readConfiguredServerSecret("ADMIN_ACCESS_CODE");
+const configuredAdminOperatorName = readConfiguredServerSecret("ADMIN_OPERATOR_NAME");
 const adminSessionSecret = resolveServerSecret({
   name: "ADMIN_SESSION_SECRET",
   purpose: "signing admin session cookies",
-  requiredInProduction: Boolean(adminAccessCode),
-  generateLocal: Boolean(adminAccessCode),
+  requiredInProduction: isProductionRuntime || Boolean(adminAccessCode),
+  generateLocal: Boolean(adminAccessCode) || !isProductionRuntime,
 });
+
+if (isProductionRuntime && !demoMode && !adminAccessCode?.trim()) {
+  throw new Error("Production requires ADMIN_ACCESS_CODE for operator access.");
+}
+
+if (isProductionRuntime && !demoMode && !configuredAdminOperatorName?.trim()) {
+  throw new Error("Production requires ADMIN_OPERATOR_NAME for audit attribution.");
+}
 const adminSessionCookie = "directsign_admin_session";
 const adminSessionMaxAgeSeconds = 60 * 60 * 8;
 const advertiserAccessCookie = "directsign_advertiser_access";
@@ -341,6 +359,7 @@ const signatureConsentVersion = "directsign-signature-consent-v1";
 const signatureConsentText =
   "계약 최종본, 모든 조항, 서명 증빙 보관 기준, 전자서명 안내 문서를 확인했고 전자서명에 동의합니다.";
 const productName = process.env.PRODUCT_NAME ?? process.env.VITE_PRODUCT_NAME ?? "yeollock.me";
+const adminOperatorName = configuredAdminOperatorName ?? `${productName} 운영자`;
 const signupTermsVersion = "2026-05-06";
 const signupPrivacyPolicyVersion = "2026-05-06";
 const signedPdfFontCandidates = [
@@ -499,7 +518,12 @@ interface RateLimitBucket {
 const publicAuthRateLimitBuckets = new Map<string, RateLimitBucket>();
 
 const contractStatuses = new Set(["DRAFT", "REVIEWING", "NEGOTIATING", "APPROVED", "SIGNED"]);
-const clauseStatuses = new Set(["APPROVED", "MODIFICATION_REQUESTED", "DELETION_REQUESTED"]);
+const clauseStatuses = new Set([
+  "PENDING_REVIEW",
+  "APPROVED",
+  "MODIFICATION_REQUESTED",
+  "DELETION_REQUESTED",
+]);
 const shareTokenStatuses = new Set(["not_issued", "active", "expired", "revoked"]);
 const pdfStatuses = new Set(["not_ready", "draft_ready", "signed_ready"]);
 const verificationStatuses = new Set(["pending", "approved", "rejected"]);
@@ -543,7 +567,7 @@ const evidenceFileMimeTypes = new Set([
   "image/jpeg",
   "image/webp",
 ]);
-const maxVerificationFileSize = 4 * 1024 * 1024;
+const maxVerificationFileSize = 10 * 1024 * 1024;
 const deliverableFileMimeTypes = evidenceFileMimeTypes;
 const maxDeliverableFileSize = maxVerificationFileSize;
 const signatureImageMimeTypes = new Set([
@@ -1248,6 +1272,43 @@ const normalizeSupportAccessRequest = (
   updated_at: row.updated_at,
 });
 
+const normalizeSupportAccessEvent = (
+  row: SupabaseSupportAccessEventRow,
+): SupportAccessAuditEvent => ({
+  id: row.id,
+  action: row.action,
+  actor_role: row.actor_role,
+  actor_name: row.actor_name ?? undefined,
+  description: row.description,
+  ip: row.ip ?? undefined,
+  user_agent: row.user_agent ?? undefined,
+  created_at: row.created_at,
+});
+
+const attachSupportAccessEvents = async (
+  records: SupportAccessRequestRecord[],
+) => {
+  if (!useSupabase || records.length === 0) return records;
+
+  const ids = records.map((record) => record.id);
+  const eventRows = await readSupabaseRows<SupabaseSupportAccessEventRow>(
+    "support_access_events",
+    `?select=*&support_access_request_id=in.(${ids.join(",")})&order=created_at.asc`,
+    "support access events",
+  );
+  const eventsByRequestId = new Map<string, SupportAccessAuditEvent[]>();
+  eventRows.forEach((row) => {
+    const current = eventsByRequestId.get(row.support_access_request_id) ?? [];
+    current.push(normalizeSupportAccessEvent(row));
+    eventsByRequestId.set(row.support_access_request_id, current);
+  });
+
+  return records.map((record) => ({
+    ...record,
+    audit_events: eventsByRequestId.get(record.id) ?? record.audit_events ?? [],
+  }));
+};
+
 const readSupportAccessRequestsFromFile = async () => {
   try {
     const contents = await fs.readFile(supportAccessDataFile, "utf8");
@@ -1288,7 +1349,7 @@ const readSupportAccessRequests = async () => {
         "?select=*&order=created_at.desc",
         "support access requests",
       );
-      return rows.map(normalizeSupportAccessRequest);
+      return attachSupportAccessEvents(rows.map(normalizeSupportAccessRequest));
     } catch (error) {
       if (!isMissingSupabaseSupportAccessTableError(error)) {
         throw error;
@@ -1635,6 +1696,45 @@ const resolveLegacyContractAccess = async (
   }
 
   return undefined;
+};
+
+type ResolvedLegacyContractAccess = NonNullable<
+  Awaited<ReturnType<typeof resolveLegacyContractAccess>>
+>;
+
+const contractAccessActor = (
+  access: ResolvedLegacyContractAccess | undefined,
+  fallbackRole = "signed_pdf_cookie",
+) => {
+  if (!access) {
+    return {
+      actorProfileId: undefined,
+      actorRole: fallbackRole,
+      actorDisplayName: fallbackRole,
+    };
+  }
+
+  if ("auth" in access) {
+    return {
+      actorProfileId: access.auth.profile.id,
+      actorRole: access.role,
+      actorDisplayName: access.auth.profile.name ?? access.auth.profile.email,
+    };
+  }
+
+  if (access.role === "admin") {
+    return {
+      actorProfileId: undefined,
+      actorRole: "admin",
+      actorDisplayName: adminOperatorName,
+    };
+  }
+
+  return {
+    actorProfileId: undefined,
+    actorRole: access.role,
+    actorDisplayName: access.role,
+  };
 };
 
 const sha256Hex = (value: string) =>
@@ -2817,7 +2917,7 @@ const validateEvidenceFile = (
     return "Only PDF, PNG, JPG, or WebP files are allowed";
   }
   if (file.size <= 0 || file.size > maxVerificationFileSize) {
-    return "Verification evidence file must be 4MB or smaller";
+    return "Verification evidence file must be 10MB or smaller";
   }
   if (!file.data_url.startsWith("data:")) {
     return "Verification evidence file is invalid";
@@ -3427,6 +3527,7 @@ const mapContractToV2Status = (contract: Contract) => {
 
 const mapClauseStatusToV2 = (status: Contract["clauses"][number]["status"]) => {
   const statuses: Record<Contract["clauses"][number]["status"], string> = {
+    PENDING_REVIEW: "pending",
     APPROVED: "accepted",
     MODIFICATION_REQUESTED: "requested_change",
     DELETION_REQUESTED: "requested_change",
@@ -4217,6 +4318,57 @@ const writeVerificationRequests = async (
     "utf8",
   );
   await fs.rename(tempFile, verificationDataFile);
+};
+
+const appendVerificationEvidenceAccessAudit = async (
+  record: VerificationRequestRecord,
+  request: express.Request,
+) => {
+  const existingAudit = Array.isArray(
+    record.evidence_snapshot_json?.evidence_access_audit,
+  )
+    ? (record.evidence_snapshot_json!.evidence_access_audit as unknown[])
+    : [];
+  const auditEvent = {
+    id: randomUUID(),
+    action: "evidence_downloaded",
+    actor_role: "admin",
+    actor_name: adminOperatorName,
+    ip: getClientIp(request),
+    user_agent: request.header("user-agent") ?? "unknown",
+    created_at: new Date().toISOString(),
+  };
+  const evidenceSnapshot = {
+    ...(record.evidence_snapshot_json ?? {}),
+    evidence_access_audit: [...existingAudit.slice(-49), auditEvent],
+  };
+  const updatedAt = new Date().toISOString();
+
+  if (useSupabase) {
+    await patchSupabaseRecord(
+      "verification_requests",
+      `?id=eq.${encodeURIComponent(record.id)}`,
+      {
+        evidence_snapshot_json: evidenceSnapshot,
+        updated_at: updatedAt,
+      },
+      "Supabase verification evidence access audit",
+    );
+    return;
+  }
+
+  const records = await readVerificationRequests();
+  await writeVerificationRequests(
+    records.map((item) =>
+      item.id === record.id
+        ? {
+            ...item,
+            evidence_snapshot_json: evidenceSnapshot,
+            updated_at: updatedAt,
+          }
+        : item,
+    ),
+  );
 };
 
 const applyVerificationStatusSideEffects = async (
@@ -5206,6 +5358,7 @@ const mapV2PlatformToLegacy = (platform: InfluencerPlatform): ContractPlatformVa
 const mapV2ClauseStatusToLegacy = (
   status: SupabaseContractClauseRow["status"],
 ): Contract["clauses"][number]["status"] => {
+  if (status === "pending") return "PENDING_REVIEW";
   if (status === "accepted") return "APPROVED";
   if (status === "rejected" || status === "removed") return "DELETION_REQUESTED";
   return "MODIFICATION_REQUESTED";
@@ -5327,7 +5480,7 @@ const buildLegacyContractFromV2Rows = ({
             clause_id: `${contract.id}:clause:summary`,
             category: "계약 요약",
             content: contract.campaign_summary ?? "계약 세부 조항을 확인하세요.",
-            status: status === "APPROVED" || status === "SIGNED" ? "APPROVED" : "MODIFICATION_REQUESTED",
+            status: status === "APPROVED" || status === "SIGNED" ? "APPROVED" : "PENDING_REVIEW",
             history: [],
           },
         ],
@@ -5961,7 +6114,7 @@ const validateDeliverableFile = (
     return "Only PDF, PNG, JPG, or WebP proof files are allowed";
   }
   if (file.size <= 0 || file.size > maxDeliverableFileSize) {
-    return "Proof file must be 4MB or smaller";
+    return "Proof file must be 10MB or smaller";
   }
   if (!file.data_url.startsWith("data:")) {
     return "Proof file is invalid";
@@ -6345,9 +6498,9 @@ app.patch("/api/admin/support-access-requests/:id", async (request, response, ne
 
     const statusAuditEvent: SupportAccessAuditEvent = {
       id: randomUUID(),
-      action: status === "closed" ? "closed" : "expired",
+      action: status === "closed" ? "closed" : "revoked",
       actor_role: "admin",
-      actor_name: `${productName} 운영자`,
+      actor_name: adminOperatorName,
       description:
         status === "closed"
           ? "운영자가 지원 열람을 종료했습니다."
@@ -6360,7 +6513,7 @@ app.patch("/api/admin/support-access-requests/:id", async (request, response, ne
     const updated = await updateSupportAccessRequest({
       ...record,
       status,
-      reviewed_by_name: `${productName} 운영자`,
+      reviewed_by_name: adminOperatorName,
       reviewed_at: new Date().toISOString(),
       audit_events: useSupabase
         ? record.audit_events
@@ -7159,10 +7312,12 @@ app.get("/api/admin/verification-requests/:id/evidence", async (request, respons
       }
 
       response.setHeader("Content-Type", storedFile.content_type);
+      response.setHeader("Cache-Control", "no-store");
       response.setHeader(
         "Content-Disposition",
         `attachment; filename="${sanitizeStorageSegment(storedFile.file_name)}"`,
       );
+      await appendVerificationEvidenceAccessAudit(record, request);
       response.send(fileBuffer);
       return;
     }
@@ -7175,7 +7330,9 @@ app.get("/api/admin/verification-requests/:id/evidence", async (request, respons
         return;
       }
       response.setHeader("Content-Type", contentType);
+      response.setHeader("Cache-Control", "no-store");
       response.setHeader("Content-Disposition", `attachment; filename="${record.id}-evidence.${extensionForMimeType(contentType)}"`);
+      await appendVerificationEvidenceAccessAudit(record, request);
       response.send(buffer);
       return;
     }
@@ -7202,8 +7359,7 @@ app.patch("/api/admin/verification-requests/:id", async (request, response, next
 
     const status = normalizeRequiredText(request.body?.status);
     const reviewerNote = normalizeOptionalText(request.body?.reviewer_note);
-    const reviewedByName =
-      normalizeOptionalText(request.body?.reviewed_by_name) ?? `${productName} 운영자`;
+    const reviewedByName = adminOperatorName;
 
     if (!verificationStatuses.has(status)) {
       response.status(422).json({ error: "Valid verification status is required" });
@@ -7570,6 +7726,12 @@ app.get(
         allowShareToken: false,
       });
       if (!access) return;
+      if (access.role === "admin" && access.supportAccess.scope !== "contract_and_pdf") {
+        response.status(403).json({
+          error: "This support access request does not include private file access",
+        });
+        return;
+      }
 
       const rows = await readSupabaseRows<SupabaseContractFileRow>(
         "contract_files",
@@ -7609,6 +7771,33 @@ app.get(
       if (currentHash !== storedFile.sha256) {
         response.status(409).json({ error: "Deliverable file integrity check failed" });
         return;
+      }
+
+      const actor = contractAccessActor(access);
+      await insertContractEvent({
+        contractId: contract.id,
+        actorProfileId: actor.actorProfileId,
+        actorRole: actor.actorRole,
+        actorDisplayName: actor.actorDisplayName,
+        eventType: "deliverable_file_downloaded",
+        targetType: "contract_file",
+        targetId: file.id,
+        payload: {
+          deliverable_id: request.params.deliverableId,
+          file_name: storedFile.file_name,
+          access_role: access.role,
+        },
+        request,
+      });
+      if (access.role === "admin") {
+        await appendSupportAccessAuditEvent(access.supportAccess.id, {
+          action: "viewed_pdf",
+          actor_role: "admin",
+          actor_name: adminOperatorName,
+          description: "운영자가 당사자 요청에 따라 제출 증빙 파일을 내려받았습니다.",
+          ip: getClientIp(request),
+          user_agent: request.header("user-agent") ?? "unknown",
+        });
       }
 
       response.setHeader("Content-Type", storedFile.content_type);
@@ -7774,7 +7963,7 @@ app.get("/api/contracts/:id", async (request, response, next) => {
       await appendSupportAccessAuditEvent(access.supportAccess.id, {
         action: "viewed_contract",
         actor_role: "admin",
-        actor_name: `${productName} 운영자`,
+        actor_name: adminOperatorName,
         description: "운영자가 당사자 요청에 따라 계약 본문을 열람했습니다.",
         ip: getClientIp(request),
         user_agent: request.header("user-agent") ?? "unknown",
@@ -7831,7 +8020,7 @@ app.get("/api/contracts/:id/final-pdf", async (request, response, next) => {
       await appendSupportAccessAuditEvent(access.supportAccess.id, {
         action: "viewed_pdf",
         actor_role: "admin",
-        actor_name: `${productName} 운영자`,
+        actor_name: adminOperatorName,
         description: "운영자가 당사자 요청에 따라 서명본 PDF를 열람했습니다.",
         ip: getClientIp(request),
         user_agent: request.header("user-agent") ?? "unknown",
@@ -7862,6 +8051,25 @@ app.get("/api/contracts/:id/final-pdf", async (request, response, next) => {
       response.status(409).json({ error: "Signed PDF integrity check failed" });
       return;
     }
+
+    const actor = contractAccessActor(
+      access,
+      signedPdfCookieAccess ? "signed_pdf_cookie" : "unknown",
+    );
+    await insertContractEvent({
+      contractId: contract.id,
+      actorProfileId: actor.actorProfileId,
+      actorRole: actor.actorRole,
+      actorDisplayName: actor.actorDisplayName,
+      eventType: "signed_pdf_downloaded",
+      targetType: "signed_pdf",
+      targetId: contract.id,
+      payload: {
+        access_role: access?.role ?? "signed_pdf_cookie",
+        file_name: storedFile.file_name,
+      },
+      request,
+    });
 
     response.setHeader("Content-Type", "application/pdf");
     response.setHeader("Cache-Control", "no-store");
@@ -8158,14 +8366,14 @@ app.put("/api/contracts/:id", async (request, response, next) => {
             allowAdmin: false,
             allowAdvertiser: false,
             allowInfluencer: true,
-            allowShareToken: true,
+            allowShareToken: false,
             sendError: false,
           })
         : undefined;
 
       if (!access) {
         response.status(403).json({
-          error: "Valid share token or influencer session is required",
+          error: "Influencer session is required for contract review changes",
         });
         return;
       }
@@ -8229,6 +8437,8 @@ app.use(
 const isVercelFunction = isHostedRuntime;
 
 if (!isVercelFunction) {
+  const httpServer = createHttpServer(app);
+
   if (isPreview) {
     const distDir = path.join(root, ["di", "st"].join(""));
     app.use(express.static(distDir));
@@ -8239,13 +8449,16 @@ if (!isVercelFunction) {
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       root,
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: { server: httpServer },
+      },
       appType: "spa",
     });
     app.use(vite.middlewares);
   }
 
-  app.listen(port, "0.0.0.0", () => {
+  httpServer.listen(port, "0.0.0.0", () => {
     console.log(
       `[${productName}] ${isPreview ? "preview" : "dev"} server running on http://localhost:${port}`,
     );

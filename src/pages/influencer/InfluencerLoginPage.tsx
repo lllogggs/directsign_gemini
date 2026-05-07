@@ -1,13 +1,9 @@
 import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { AuthLoginScreen } from "../../components/AuthLoginScreen";
+import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
 import { getNextPath } from "../../domain/navigation";
-
-const API_BASE =
-  typeof import.meta !== "undefined"
-    ? (import.meta.env.VITE_API_BASE_URL ?? "")
-    : "";
 
 export function InfluencerLoginPage() {
   const navigate = useNavigate();
@@ -27,7 +23,7 @@ export function InfluencerLoginPage() {
     setError("");
 
     try {
-      const response = await fetch(`${API_BASE}/api/influencer/login`, {
+      const response = await apiFetch("/api/influencer/login", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

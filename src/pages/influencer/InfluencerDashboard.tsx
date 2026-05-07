@@ -21,6 +21,7 @@ import {
   UserCheck,
   Youtube,
 } from "lucide-react";
+import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
 import type {
   InfluencerDashboardContract,
@@ -31,11 +32,6 @@ import type {
 import { buildLoginRedirect } from "../../domain/navigation";
 import { removeInternalTestLabel } from "../../domain/display";
 import type { InfluencerPlatform, VerificationStatus } from "../../domain/verification";
-
-const API_BASE =
-  typeof import.meta !== "undefined"
-    ? (import.meta.env.VITE_API_BASE_URL ?? "")
-    : "";
 
 type DashboardState =
   | { status: "loading" }
@@ -113,6 +109,15 @@ const STAGE_META: Record<
     icon: <Clock3 className="h-4 w-4" />,
   },
 };
+
+const getStageMeta = (stage: InfluencerDashboardContractStage) => ({
+  ...STAGE_META[stage],
+  ...(stage === "signed"
+    ? { label: "서명 완료", helper: "이행 관리" }
+    : stage === "completed"
+      ? { label: "검수 완료", helper: "보관됨" }
+      : {}),
+});
 
 const PLATFORM_META: Record<
   InfluencerPlatform,
@@ -203,7 +208,7 @@ export function InfluencerDashboard() {
     );
 
     try {
-      const response = await fetch(`${API_BASE}/api/influencer/dashboard`, {
+      const response = await apiFetch("/api/influencer/dashboard", {
         headers: { Accept: "application/json" },
         credentials: "include",
       });
@@ -305,7 +310,7 @@ export function InfluencerDashboard() {
     hasVerificationRecord;
 
   const handleLogout = async () => {
-    await fetch(`${API_BASE}/api/influencer/logout`, {
+    await apiFetch("/api/influencer/logout", {
       method: "POST",
       credentials: "include",
     });
@@ -436,7 +441,7 @@ export function InfluencerDashboard() {
               <React.Fragment key={stage}>
                 <FilterChip
                   active={filter === stage}
-                  label={stage === "all" ? "전체" : STAGE_META[stage].label}
+                  label={stage === "all" ? "전체" : getStageMeta(stage).label}
                   count={
                     stage === "all"
                       ? dashboard.contracts.length
@@ -789,7 +794,7 @@ function TableText({ label, value }: { label: string; value: string }) {
 }
 
 function StageBadge({ stage }: { stage: InfluencerDashboardContractStage }) {
-  const meta = STAGE_META[stage];
+  const meta = getStageMeta(stage);
 
   return (
     <span
