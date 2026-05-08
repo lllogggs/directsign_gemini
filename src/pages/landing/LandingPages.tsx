@@ -8,63 +8,55 @@ import {
   FileText,
   MessageSquareText,
   PenLine,
-  ShieldCheck,
-  Sparkles,
   UserRound,
   type LucideIcon,
 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { PRODUCT_NAME } from "../../domain/brand";
+import { PRODUCT_DESCRIPTION, PRODUCT_NAME } from "../../domain/brand";
 
 type IntroRole = "advertiser" | "influencer";
 
 type RoleCard = {
   role: IntroRole;
   title: string;
-  label: string;
   href: string;
-  description: string;
   icon: LucideIcon;
-  tone: string;
+  className: string;
 };
 
 const roleCards: RoleCard[] = [
   {
     role: "advertiser",
     title: "광고주",
-    label: "브랜드, 대행사, 마케팅팀",
     href: "/intro/advertiser",
-    description:
-      "계약을 만들고, 보내고, 서명 상태를 확인합니다.",
     icon: Building2,
-    tone: "bg-sky-50 text-sky-700 ring-sky-100",
+    className:
+      "border-sky-200 text-sky-950 hover:border-sky-500 hover:bg-sky-50",
   },
   {
     role: "influencer",
     title: "인플루언서",
-    label: "크리에이터, 매니저, MCN",
     href: "/intro/influencer",
-    description:
-      "받은 계약을 검토하고, 수정 요청과 서명을 처리합니다.",
     icon: UserRound,
-    tone: "bg-fuchsia-50 text-fuchsia-700 ring-fuchsia-100",
+    className:
+      "border-fuchsia-200 text-fuchsia-950 hover:border-fuchsia-500 hover:bg-fuchsia-50",
   },
 ];
 
 const introConfig = {
   advertiser: {
-    eyebrow: "광고주 워크스페이스",
-    title: "광고 계약을 만들고 보낸 뒤, 끝까지 추적합니다",
+    eyebrow: "광고주용 계약 운영",
+    title: "캠페인 계약을 보내고, 수정 요청과 서명 증빙까지 봅니다",
     description:
-      "가상의 광고주 대시보드 예시처럼 계약 초안, 검토 상태, 수정 요청, 서명 증빙을 하나의 운영 화면에서 확인합니다.",
-    primaryLabel: "광고주 계정 만들기",
+      "브랜드와 대행사가 인플루언서 계약 초안을 만들고 공유한 뒤, 검토 의견, 수정 협의, 서명 완료 상태를 계약별로 관리합니다.",
+    primaryLabel: "광고주로 시작하기",
     primaryHref: "/signup/advertiser",
-    secondaryLabel: "광고주 로그인",
+    secondaryLabel: "기존 광고주 로그인",
     secondaryHref: "/login/advertiser",
     switchLabel: "인플루언서 소개 보기",
     switchHref: "/intro/influencer",
-    previewTitle: "광고주 예시 대시보드",
-    previewSubtitle: "계약 운영 현황",
+    previewTitle: "광고주 계약함",
+    previewSubtitle: "오늘 처리할 계약",
     summary: [
       { label: "확인 필요", value: "3", tone: "text-amber-700" },
       { label: "48시간 내 마감", value: "2", tone: "text-rose-700" },
@@ -100,38 +92,38 @@ const introConfig = {
     features: [
       {
         icon: FileText,
-        title: "계약 초안 생성",
+        title: "조건을 계약서로 정리",
         description:
-          "광고 조건, 플랫폼, 기간, 금액을 정리해 검토 가능한 계약 초안으로 넘깁니다.",
+          "캠페인명, 채널, 금액, 일정, 검수 기준을 빠뜨리지 않고 검토 가능한 계약 초안으로 정리합니다.",
       },
       {
         icon: MessageSquareText,
-        title: "수정 협의 추적",
+        title: "수정 요청을 조항별로 기록",
         description:
-          "인플루언서의 수정 요청과 광고주의 답변 상태를 계약 단위로 모아 봅니다.",
+          "인플루언서의 질문과 수정 요청, 광고주의 답변을 계약 이력에 남겨 승인 전 혼선을 줄입니다.",
       },
       {
         icon: FileSignature,
-        title: "서명 증빙 보관",
+        title: "서명 증빙까지 확인",
         description:
-          "최종본, 서명 시각, 동의 문구, PDF 다운로드 흐름을 운영 기준에 맞춰 남깁니다.",
+          "최종본, 서명 시각, 동의 문구, PDF 다운로드 흐름을 계약별 증빙으로 확인합니다.",
       },
     ],
-    proofPoints: ["사업자 인증 후 공유", "계약별 다음 행동", "서명 완료 후 증빙 확인"],
+    proofPoints: ["사업자 인증 후 계약 발송", "수정 요청·승인 이력 보관", "서명 완료 PDF 확인"],
   },
   influencer: {
-    eyebrow: "인플루언서 워크스페이스",
-    title: "받은 계약을 이해하고, 필요한 행동만 빠르게 처리합니다",
+    eyebrow: "인플루언서용 계약 검토",
+    title: "받은 계약을 확인하고, 수정 요청과 서명을 차례대로 처리합니다",
     description:
-      "가상의 인플루언서 대시보드 예시처럼 계약 검토, 수정 요청, 플랫폼 인증, 서명과 콘텐츠 제출 흐름을 한 곳에서 확인합니다.",
-    primaryLabel: "인플루언서 계정 만들기",
+      "크리에이터와 매니저가 광고 조건을 모바일에서도 읽기 쉽게 확인하고, 불편한 조항은 수정 요청한 뒤 안전하게 서명합니다.",
+    primaryLabel: "인플루언서로 시작하기",
     primaryHref: "/signup/influencer",
-    secondaryLabel: "인플루언서 로그인",
+    secondaryLabel: "기존 인플루언서 로그인",
     secondaryHref: "/login/influencer",
     switchLabel: "광고주 소개 보기",
     switchHref: "/intro/advertiser",
-    previewTitle: "인플루언서 예시 대시보드",
-    previewSubtitle: "계약 처리 현황",
+    previewTitle: "인플루언서 계약함",
+    previewSubtitle: "오늘 확인할 계약",
     summary: [
       { label: "검토 필요", value: "2", tone: "text-amber-700" },
       { label: "수정 협의", value: "1", tone: "text-amber-700" },
@@ -169,22 +161,22 @@ const introConfig = {
         icon: ClipboardCheck,
         title: "핵심 조건 확인",
         description:
-          "금액, 기간, 제출물, 사용 권한처럼 놓치기 쉬운 조건을 계약 화면에서 바로 확인합니다.",
+          "금액, 업로드 일정, 제출물, 사용 권한처럼 놓치기 쉬운 조건을 계약 화면에서 먼저 확인합니다.",
       },
       {
         icon: PenLine,
-        title: "수정 요청",
+        title: "불리한 조항 수정 요청",
         description:
-          "동의하기 어려운 조항은 계약 안에서 요청하고 광고주 답변을 기다립니다.",
+          "동의하기 어려운 조항은 계약 안에서 바로 요청하고 광고주 답변을 같은 화면에서 기다립니다.",
       },
       {
         icon: FileCheck2,
-        title: "서명 후 제출 관리",
+        title: "서명과 제출 상태 확인",
         description:
-          "서명 완료 뒤 콘텐츠 링크와 증빙 파일 제출 상태까지 이어서 확인합니다.",
+          "서명 완료 뒤 콘텐츠 링크, 증빙 파일, 다음 제출 상태까지 이어서 확인합니다.",
       },
     ],
-    proofPoints: ["모바일 검토 흐름", "플랫폼 계정 인증", "완료 계약 보관"],
+    proofPoints: ["모바일 계약 검토", "플랫폼 계정 인증", "완료 계약 보관"],
   },
 } satisfies Record<
   IntroRole,
@@ -216,84 +208,41 @@ const introConfig = {
 
 export function StartPage() {
   return (
-    <main className="min-h-screen bg-[#f5f6f8] font-sans text-neutral-950">
-      <div className="flex min-h-screen flex-col px-4 py-5 sm:px-6">
-        <header className="mx-auto flex w-full max-w-[980px] items-center justify-between">
-          <Link to="/" className="flex min-w-0 items-center gap-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-neutral-950 text-white shadow-[0_8px_24px_rgba(15,23,42,0.16)]">
-              <ShieldCheck className="h-4 w-4" />
-            </span>
-            <span className="truncate text-[18px] font-semibold text-neutral-950">
-              {PRODUCT_NAME}
-            </span>
-          </Link>
-          <Link
-            to="/login"
-            className="inline-flex h-10 items-center rounded-lg border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-700 transition hover:border-neutral-400 hover:text-neutral-950"
-          >
-            로그인
-          </Link>
+    <main className="min-h-screen bg-[#f6f5f2] font-sans text-neutral-950">
+      <div className="mx-auto flex min-h-screen w-full max-w-[920px] flex-col px-4 py-5 sm:px-6">
+        <header className="flex h-12 items-center justify-center sm:justify-start">
+          <BrandLockup />
         </header>
 
-        <section className="mx-auto flex w-full max-w-[520px] flex-1 flex-col justify-center py-10">
-          <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_24px_70px_rgba(15,23,42,0.08)] sm:p-6">
-            <div className="text-center">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-neutral-950 text-white">
-                <ShieldCheck className="h-5 w-5" />
-              </div>
-              <h1 className="mt-5 text-[26px] font-semibold leading-tight tracking-normal text-neutral-950 sm:text-[30px]">
-                어떤 계정으로 시작할까요?
-              </h1>
-              <p className="mx-auto mt-3 max-w-[360px] text-[14px] leading-6 text-neutral-500">
-                계약을 보내는 쪽인지, 검토하고 서명하는 쪽인지 선택해 주세요.
-              </p>
-            </div>
+        <section className="flex flex-1 flex-col items-center justify-center py-10 text-center">
+          <h1 className="sr-only">
+            {PRODUCT_NAME}
+          </h1>
+          <p className="max-w-[680px] text-[20px] font-semibold leading-8 text-neutral-950 sm:text-[26px] sm:leading-9">
+            {PRODUCT_DESCRIPTION}
+          </p>
 
-            <div className="mt-6 grid gap-3">
-              {roleCards.map((role) => {
-                const Icon = role.icon;
+          <div className="mt-8 grid w-full max-w-[460px] gap-3 sm:grid-cols-2">
+            {roleCards.map((role) => {
+              const Icon = role.icon;
 
-                return (
-                  <Link
-                    key={role.role}
-                    to={role.href}
-                    className="group flex min-w-0 items-center gap-4 rounded-lg border border-neutral-200 bg-white p-4 text-left transition hover:border-neutral-950 hover:bg-[#fbfbfc]"
-                  >
-                    <span
-                      className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-lg ring-1 ${role.tone}`}
-                    >
-                      <Icon className="h-5 w-5" />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-[17px] font-semibold text-neutral-950">
-                        {role.title}
-                      </span>
-                      <span className="mt-1 block text-[12px] font-semibold text-neutral-400">
-                        {role.label}
-                      </span>
-                      <span className="mt-2 block text-[13px] leading-5 text-neutral-600">
-                        {role.description}
-                      </span>
-                    </span>
-                    <ArrowRight className="h-5 w-5 shrink-0 text-neutral-400 transition group-hover:translate-x-0.5 group-hover:text-neutral-950" />
-                  </Link>
-                );
-              })}
-            </div>
-
-            <p className="mt-5 border-t border-neutral-100 pt-4 text-center text-[13px] font-medium text-neutral-500">
-              이미 계정이 있다면{" "}
-              <Link
-                to="/login"
-                className="font-semibold text-neutral-950 transition hover:text-neutral-600"
-              >
-                로그인
-              </Link>
-            </p>
+              return (
+                <Link
+                  key={role.role}
+                  to={role.href}
+                  aria-label={`${role.title} 화면으로 이동`}
+                  className={`group inline-flex h-14 items-center justify-center gap-2 rounded-lg border bg-white px-5 text-[16px] font-semibold shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition ${role.className}`}
+                >
+                  <Icon className="h-4 w-4" />
+                  {role.title}
+                  <ArrowRight className="h-4 w-4 text-neutral-400 transition group-hover:translate-x-0.5 group-hover:text-current" />
+                </Link>
+              );
+            })}
           </div>
         </section>
 
-        <footer className="mx-auto flex w-full max-w-[980px] flex-wrap justify-center gap-x-3 gap-y-2 text-[12px] font-medium text-neutral-400 sm:justify-end">
+        <footer className="flex flex-wrap justify-center gap-x-3 gap-y-2 text-[12px] font-medium text-neutral-400 sm:justify-end">
           <Link className="transition hover:text-neutral-950" to="/privacy">
             개인정보 처리방침
           </Link>
@@ -316,13 +265,13 @@ export function RoleIntroPage({ role }: { role: IntroRole }) {
     <main className="min-h-screen bg-[#f5f6f8] font-sans text-neutral-950">
       <LandingHeader />
 
-      <section className="border-b border-neutral-200/80 bg-[#f8f9fb]">
-        <div className="mx-auto grid max-w-[1240px] gap-8 px-4 py-8 sm:px-6 lg:grid-cols-[minmax(0,0.76fr)_minmax(500px,1fr)] lg:items-center lg:px-8 lg:py-12">
+      <section className="border-b border-neutral-200/80 bg-[#f6f5f2]">
+        <div className="mx-auto grid max-w-[1240px] gap-8 px-4 py-10 sm:px-6 lg:grid-cols-[minmax(0,0.74fr)_minmax(500px,1fr)] lg:items-center lg:px-8 lg:py-14">
           <div className="min-w-0">
             <p className="text-[13px] font-semibold text-neutral-500">
               {config.eyebrow}
             </p>
-            <h1 className="mt-4 max-w-2xl text-[34px] font-semibold leading-[1.12] tracking-normal text-neutral-950 sm:text-[48px]">
+            <h1 className="mt-4 max-w-2xl text-[32px] font-semibold leading-[1.12] tracking-normal text-neutral-950 sm:text-[46px]">
               {config.title}
             </h1>
             <p className="mt-5 max-w-2xl text-[16px] leading-7 text-neutral-600">
@@ -349,7 +298,7 @@ export function RoleIntroPage({ role }: { role: IntroRole }) {
               {config.proofPoints.map((point) => (
                 <span
                   key={point}
-                  className="inline-flex h-9 items-center gap-2 rounded-full border border-neutral-200 bg-white px-3 text-[12px] font-semibold text-neutral-600"
+                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-[12px] font-semibold text-neutral-600"
                 >
                   <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
                   {point}
@@ -405,14 +354,7 @@ function LandingHeader() {
   return (
     <header className="border-b border-neutral-200/80 bg-white">
       <div className="mx-auto flex h-[68px] max-w-[1240px] items-center justify-between px-4 sm:px-6 lg:px-8">
-        <Link to="/" className="flex min-w-0 items-center gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-neutral-950 text-white shadow-[0_8px_24px_rgba(15,23,42,0.16)]">
-            <ShieldCheck className="h-4 w-4" />
-          </span>
-          <span className="truncate text-[18px] font-semibold text-neutral-950">
-            {PRODUCT_NAME}
-          </span>
-        </Link>
+        <BrandLockup />
 
         <nav
           aria-label="서비스 메뉴"
@@ -442,6 +384,19 @@ function LandingHeader() {
   );
 }
 
+function BrandLockup() {
+  return (
+    <Link to="/" className="flex min-w-0 items-center gap-3">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-950 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <FileSignature className="h-4 w-4" />
+      </span>
+      <span className="truncate text-[18px] font-semibold text-neutral-950">
+        {PRODUCT_NAME}
+      </span>
+    </Link>
+  );
+}
+
 function RoleDashboardPreview({
   config,
 }: {
@@ -455,14 +410,13 @@ function RoleDashboardPreview({
       <div className="border-b border-neutral-200 bg-white p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-[12px] font-semibold text-neutral-400">가상 화면</p>
+            <p className="text-[12px] font-semibold text-neutral-400">역할별 작업 화면</p>
             <h2 className="mt-1 truncate text-[18px] font-semibold text-neutral-950">
               {config.previewTitle}
             </h2>
           </div>
-          <span className="inline-flex h-8 items-center gap-1.5 rounded-full border border-neutral-200 bg-[#fbfbfc] px-3 text-[12px] font-semibold text-neutral-600">
-            <Sparkles className="h-3.5 w-3.5 text-amber-500" />
-            샘플 데이터
+          <span className="inline-flex h-8 items-center rounded-lg border border-neutral-200 bg-[#fbfbfc] px-3 text-[12px] font-semibold text-neutral-600">
+            계약 흐름
           </span>
         </div>
       </div>
@@ -475,7 +429,7 @@ function RoleDashboardPreview({
                 {config.previewSubtitle}
               </p>
               <p className="mt-1 text-[20px] font-semibold text-neutral-950">
-                오늘 먼저 볼 일
+                바로 처리할 일
               </p>
             </div>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:min-w-[430px]">
