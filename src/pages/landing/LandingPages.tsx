@@ -1,13 +1,11 @@
 import {
   ArrowRight,
-  BadgeCheck,
   Building2,
   CheckCircle2,
   ClipboardCheck,
   FileCheck2,
   FileSignature,
   FileText,
-  Link2,
   MessageSquareText,
   PenLine,
   ShieldCheck,
@@ -16,7 +14,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { PRODUCT_DESCRIPTION, PRODUCT_NAME } from "../../domain/brand";
+import { PRODUCT_NAME } from "../../domain/brand";
 
 type IntroRole = "advertiser" | "influencer";
 
@@ -28,7 +26,6 @@ type RoleCard = {
   description: string;
   icon: LucideIcon;
   tone: string;
-  metrics: Array<{ label: string; value: string }>;
 };
 
 const roleCards: RoleCard[] = [
@@ -38,13 +35,9 @@ const roleCards: RoleCard[] = [
     label: "브랜드, 대행사, 마케팅팀",
     href: "/intro/advertiser",
     description:
-      "캠페인 조건을 계약서로 정리하고 검토, 수정 협의, 서명 상태를 한 화면에서 관리합니다.",
+      "계약을 만들고, 보내고, 서명 상태를 확인합니다.",
     icon: Building2,
     tone: "bg-sky-50 text-sky-700 ring-sky-100",
-    metrics: [
-      { label: "검토 필요", value: "3" },
-      { label: "서명 대기", value: "5" },
-    ],
   },
   {
     role: "influencer",
@@ -52,13 +45,9 @@ const roleCards: RoleCard[] = [
     label: "크리에이터, 매니저, MCN",
     href: "/intro/influencer",
     description:
-      "받은 계약의 핵심 조건을 확인하고 수정 요청, 플랫폼 인증, 전자서명을 순서대로 처리합니다.",
+      "받은 계약을 검토하고, 수정 요청과 서명을 처리합니다.",
     icon: UserRound,
     tone: "bg-fuchsia-50 text-fuchsia-700 ring-fuchsia-100",
-    metrics: [
-      { label: "검토 필요", value: "2" },
-      { label: "제출 예정", value: "4" },
-    ],
   },
 ];
 
@@ -228,23 +217,39 @@ const introConfig = {
 export function StartPage() {
   return (
     <main className="min-h-screen bg-[#f5f6f8] font-sans text-neutral-950">
-      <LandingHeader />
-
-      <section className="border-b border-neutral-200/80 bg-[#f8f9fb]">
-        <div className="mx-auto grid w-full max-w-[1240px] gap-8 px-4 pb-10 pt-8 sm:px-6 lg:grid-cols-[minmax(0,0.84fr)_minmax(420px,1fr)] lg:items-center lg:px-8 lg:pb-12 lg:pt-12">
-          <div className="min-w-0">
-            <div className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-3 py-1 text-[12px] font-semibold text-neutral-600 shadow-sm">
-              <ShieldCheck className="h-3.5 w-3.5 text-neutral-900" />
-              계약과 서명을 한 곳에서
-            </div>
-            <h1 className="mt-5 text-[42px] font-semibold leading-[1.05] tracking-normal text-neutral-950 sm:text-[56px]">
+      <div className="flex min-h-screen flex-col px-4 py-5 sm:px-6">
+        <header className="mx-auto flex w-full max-w-[980px] items-center justify-between">
+          <Link to="/" className="flex min-w-0 items-center gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-neutral-950 text-white shadow-[0_8px_24px_rgba(15,23,42,0.16)]">
+              <ShieldCheck className="h-4 w-4" />
+            </span>
+            <span className="truncate text-[18px] font-semibold text-neutral-950">
               {PRODUCT_NAME}
-            </h1>
-            <p className="mt-5 max-w-xl text-[17px] leading-7 text-neutral-600">
-              {PRODUCT_DESCRIPTION}
-            </p>
+            </span>
+          </Link>
+          <Link
+            to="/login"
+            className="inline-flex h-10 items-center rounded-lg border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-700 transition hover:border-neutral-400 hover:text-neutral-950"
+          >
+            로그인
+          </Link>
+        </header>
 
-            <div className="mt-7 grid gap-3">
+        <section className="mx-auto flex w-full max-w-[520px] flex-1 flex-col justify-center py-10">
+          <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_24px_70px_rgba(15,23,42,0.08)] sm:p-6">
+            <div className="text-center">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-neutral-950 text-white">
+                <ShieldCheck className="h-5 w-5" />
+              </div>
+              <h1 className="mt-5 text-[26px] font-semibold leading-tight tracking-normal text-neutral-950 sm:text-[30px]">
+                어떤 계정으로 시작할까요?
+              </h1>
+              <p className="mx-auto mt-3 max-w-[360px] text-[14px] leading-6 text-neutral-500">
+                계약을 보내는 쪽인지, 검토하고 서명하는 쪽인지 선택해 주세요.
+              </p>
+            </div>
+
+            <div className="mt-6 grid gap-3">
               {roleCards.map((role) => {
                 const Icon = role.icon;
 
@@ -252,75 +257,54 @@ export function StartPage() {
                   <Link
                     key={role.role}
                     to={role.href}
-                    className="group flex min-w-0 flex-col gap-4 rounded-lg border border-neutral-200 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:border-neutral-950 hover:shadow-[0_18px_42px_rgba(15,23,42,0.10)] sm:flex-row sm:items-center sm:justify-between"
+                    className="group flex min-w-0 items-center gap-4 rounded-lg border border-neutral-200 bg-white p-4 text-left transition hover:border-neutral-950 hover:bg-[#fbfbfc]"
                   >
-                    <span className="flex min-w-0 gap-4">
-                      <span
-                        className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-lg ring-1 ${role.tone}`}
-                      >
-                        <Icon className="h-5 w-5" />
+                    <span
+                      className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-lg ring-1 ${role.tone}`}
+                    >
+                      <Icon className="h-5 w-5" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[17px] font-semibold text-neutral-950">
+                        {role.title}
                       </span>
-                      <span className="min-w-0">
-                        <span className="block text-[18px] font-semibold text-neutral-950">
-                          {role.title}
-                        </span>
-                        <span className="mt-1 block text-[12px] font-semibold text-neutral-400">
-                          {role.label}
-                        </span>
-                        <span className="mt-2 block text-[14px] leading-6 text-neutral-600">
-                          {role.description}
-                        </span>
+                      <span className="mt-1 block text-[12px] font-semibold text-neutral-400">
+                        {role.label}
+                      </span>
+                      <span className="mt-2 block text-[13px] leading-5 text-neutral-600">
+                        {role.description}
                       </span>
                     </span>
-                    <span className="flex shrink-0 items-center gap-3 sm:flex-col sm:items-end">
-                      <span className="grid grid-cols-2 gap-2">
-                        {role.metrics.map((metric) => (
-                          <span
-                            key={metric.label}
-                            className="min-w-[72px] rounded-md border border-neutral-200 bg-[#fbfbfc] px-2.5 py-2 text-left"
-                          >
-                            <span className="block text-[11px] font-semibold text-neutral-400">
-                              {metric.label}
-                            </span>
-                            <span className="mt-1 block text-[18px] font-semibold text-neutral-950">
-                              {metric.value}
-                            </span>
-                          </span>
-                        ))}
-                      </span>
-                      <ArrowRight className="h-5 w-5 text-neutral-400 transition group-hover:translate-x-0.5 group-hover:text-neutral-950" />
-                    </span>
+                    <ArrowRight className="h-5 w-5 shrink-0 text-neutral-400 transition group-hover:translate-x-0.5 group-hover:text-neutral-950" />
                   </Link>
                 );
               })}
             </div>
+
+            <p className="mt-5 border-t border-neutral-100 pt-4 text-center text-[13px] font-medium text-neutral-500">
+              이미 계정이 있다면{" "}
+              <Link
+                to="/login"
+                className="font-semibold text-neutral-950 transition hover:text-neutral-600"
+              >
+                로그인
+              </Link>
+            </p>
           </div>
+        </section>
 
-          <UnifiedDashboardPreview />
-        </div>
-      </section>
-
-      <section className="bg-white">
-        <div className="mx-auto grid max-w-[1240px] gap-4 px-4 py-8 sm:px-6 md:grid-cols-3 lg:px-8">
-          <TrustItem
-            icon={BadgeCheck}
-            title="역할별 흐름"
-            description="광고주와 인플루언서가 서로 다른 화면에서 필요한 일만 처리합니다."
-          />
-          <TrustItem
-            icon={Link2}
-            title="계약 링크"
-            description="검토, 수정, 서명 흐름을 계약별 링크와 상태로 이어갑니다."
-          />
-          <TrustItem
-            icon={FileSignature}
-            title="전자서명 증빙"
-            description="서명 완료 뒤 확인해야 할 기록을 계약 단위로 보관합니다."
-          />
-        </div>
-      </section>
-
-      <LandingFooter />
+        <footer className="mx-auto flex w-full max-w-[980px] flex-wrap justify-center gap-x-3 gap-y-2 text-[12px] font-medium text-neutral-400 sm:justify-end">
+          <Link className="transition hover:text-neutral-950" to="/privacy">
+            개인정보 처리방침
+          </Link>
+          <Link className="transition hover:text-neutral-950" to="/terms">
+            이용약관
+          </Link>
+          <Link className="transition hover:text-neutral-950" to="/legal/e-sign-consent">
+            전자서명 안내
+          </Link>
+        </footer>
+      </div>
     </main>
   );
 }
@@ -455,94 +439,6 @@ function LandingHeader() {
         </nav>
       </div>
     </header>
-  );
-}
-
-function UnifiedDashboardPreview() {
-  return (
-    <section
-      aria-label="서비스 예시 대시보드"
-      className="min-w-0 overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04),0_24px_70px_rgba(15,23,42,0.10)]"
-    >
-      <div className="flex items-center justify-between border-b border-neutral-200 bg-white px-4 py-3">
-        <div className="min-w-0">
-          <p className="text-[12px] font-semibold text-neutral-400">예시 화면</p>
-          <h2 className="mt-1 truncate text-[17px] font-semibold text-neutral-950">
-            계약 운영 보드
-          </h2>
-        </div>
-        <span className="inline-flex h-8 items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 text-[12px] font-semibold text-emerald-700">
-          <CheckCircle2 className="h-3.5 w-3.5" />
-          저장 완료
-        </span>
-      </div>
-
-      <div className="grid gap-0 lg:grid-cols-[180px_minmax(0,1fr)]">
-        <aside className="hidden border-r border-neutral-200 bg-[#fbfbfc] p-4 lg:block">
-          <div className="space-y-2">
-            {["계약", "수정 협의", "서명", "증빙"].map((item, index) => (
-              <div
-                key={item}
-                className={`rounded-md px-3 py-2 text-[13px] font-semibold ${
-                  index === 0
-                    ? "bg-neutral-950 text-white"
-                    : "text-neutral-500"
-                }`}
-              >
-                {item}
-              </div>
-            ))}
-          </div>
-          <div className="mt-6 rounded-lg border border-neutral-200 bg-white p-3">
-            <p className="text-[11px] font-semibold text-neutral-400">
-              오늘 처리
-            </p>
-            <p className="mt-2 text-[24px] font-semibold text-neutral-950">5</p>
-          </div>
-        </aside>
-
-        <div className="min-w-0 p-4">
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <MiniMetric label="검토 필요" value="3" tone="text-amber-700" />
-            <MiniMetric label="서명 대기" value="5" tone="text-neutral-950" />
-            <MiniMetric label="수정 협의" value="2" tone="text-amber-700" />
-            <MiniMetric label="완료" value="12" tone="text-neutral-950" />
-          </div>
-
-          <div className="mt-4 overflow-hidden rounded-lg border border-neutral-200">
-            {[
-              ["브랜드 캠페인 계약", "광고주", "수정 요청", "amber"],
-              ["릴스 콘텐츠 협찬", "인플루언서", "서명 준비", "neutral"],
-              ["유튜브 리뷰 패키지", "광고주", "검토 중", "sky"],
-            ].map(([title, owner, status, tone]) => (
-              <div
-                key={title}
-                className="grid min-w-0 grid-cols-[minmax(0,1fr)_92px] gap-3 border-b border-neutral-100 px-4 py-3 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_120px_110px]"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-[14px] font-semibold text-neutral-950">
-                    {title}
-                  </p>
-                  <p className="mt-1 truncate text-[12px] text-neutral-400">
-                    다음 행동이 정리됨
-                  </p>
-                </div>
-                <p className="hidden self-center text-[13px] font-semibold text-neutral-500 sm:block">
-                  {owner}
-                </p>
-                <span
-                  className={`self-center rounded-md border px-2 py-1 text-center text-[12px] font-semibold ${statusToneClass(
-                    tone,
-                  )}`}
-                >
-                  {status}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </section>
   );
 }
 
@@ -682,30 +578,6 @@ function PreviewText({ label, value }: { label: string; value: string }) {
   );
 }
 
-function TrustItem({
-  icon: Icon,
-  title,
-  description,
-}: {
-  icon: LucideIcon;
-  title: string;
-  description: string;
-}) {
-  return (
-    <article className="flex min-w-0 gap-3 rounded-lg border border-neutral-200 bg-[#fbfbfc] p-4">
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-neutral-950 ring-1 ring-neutral-200">
-        <Icon className="h-4 w-4" />
-      </div>
-      <div className="min-w-0">
-        <h2 className="text-[15px] font-semibold text-neutral-950">{title}</h2>
-        <p className="mt-1 text-[13px] leading-6 text-neutral-600">
-          {description}
-        </p>
-      </div>
-    </article>
-  );
-}
-
 function LandingFooter() {
   return (
     <footer className="border-t border-neutral-200 bg-white">
@@ -725,10 +597,4 @@ function LandingFooter() {
       </div>
     </footer>
   );
-}
-
-function statusToneClass(tone: string) {
-  if (tone === "amber") return "border-amber-200 bg-amber-50 text-amber-800";
-  if (tone === "sky") return "border-sky-200 bg-sky-50 text-sky-700";
-  return "border-neutral-200 bg-white text-neutral-700";
 }
