@@ -308,6 +308,8 @@ const main = async () => {
       ),
       await smokeRoute(server.baseUrl, "/api/contracts/nonexistent/final-pdf", [404]),
       await smokeAppShellRoute(server.baseUrl, "/"),
+      await smokeAppShellRoute(server.baseUrl, "/intro/advertiser"),
+      await smokeAppShellRoute(server.baseUrl, "/intro/influencer"),
       await smokeAppShellRoute(server.baseUrl, "/signup/advertiser"),
       await smokeAppShellRoute(server.baseUrl, "/login/advertiser"),
       await smokeAppShellRoute(server.baseUrl, "/login/influencer"),

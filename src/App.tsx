@@ -37,6 +37,21 @@ const LoginLanding = lazy(() =>
     default: module.LoginLanding,
   })),
 );
+const StartPage = lazy(() =>
+  import("./pages/landing/LandingPages").then((module) => ({
+    default: module.StartPage,
+  })),
+);
+const AdvertiserIntroPage = lazy(() =>
+  import("./pages/landing/LandingPages").then((module) => ({
+    default: () => <module.RoleIntroPage role="advertiser" />,
+  })),
+);
+const InfluencerIntroPage = lazy(() =>
+  import("./pages/landing/LandingPages").then((module) => ({
+    default: () => <module.RoleIntroPage role="influencer" />,
+  })),
+);
 const SignupPage = lazy(() =>
   import("./pages/auth/SignupPage").then((module) => ({
     default: module.SignupPage,
@@ -211,10 +226,10 @@ function NotFoundPage() {
         </p>
         <div className="mt-6 grid gap-2">
           <Link
-            to="/login"
+            to="/"
             className="flex h-11 items-center justify-center rounded-lg bg-neutral-950 text-sm font-semibold text-white transition hover:bg-neutral-800"
           >
-            로그인으로 이동
+            처음으로 이동
           </Link>
           <Link
             to="/influencer/dashboard"
@@ -245,8 +260,10 @@ function AppRoutes() {
         <Routes>
           <Route
             path="/"
-            element={<Navigate to="/login" replace />}
+            element={<StartPage />}
           />
+          <Route path="/intro/advertiser" element={<AdvertiserIntroPage />} />
+          <Route path="/intro/influencer" element={<InfluencerIntroPage />} />
           <Route path="/login" element={<LoginLanding />} />
           <Route path="/login/advertiser" element={<AdvertiserLoginRoute />} />
           <Route path="/login/influencer" element={<InfluencerLoginPage />} />
