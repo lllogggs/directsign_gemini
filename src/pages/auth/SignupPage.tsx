@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { ArrowRight, Check, MailCheck, ShieldCheck } from "lucide-react";
+import { ArrowRight, Check, MailCheck } from "lucide-react";
 import { AuthLoginScreen } from "../../components/AuthLoginScreen";
 import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
@@ -50,17 +50,15 @@ type SignupConsents = {
 
 const roleConfig = {
   advertiser: {
-    title: "광고주 계정 만들기",
-    description:
-      "사업자 인증이 승인되기 전에는 초안 저장만 가능하고, 계약 공유 링크 발송은 차단됩니다.",
+    title: "광고주 가입",
+    description: "계약 작성과 공유를 시작합니다.",
     endpoint: "/api/advertiser/signup",
     nextPath: "/advertiser/verification",
     loginPath: "/login/advertiser",
   },
   influencer: {
-    title: "인플루언서 계정 만들기",
-    description:
-      "계약 검토와 서명을 위해 활동 분야, 플랫폼, 필수 약관 동의를 확인합니다.",
+    title: "인플루언서 가입",
+    description: "받은 계약을 검토하고 서명합니다.",
     endpoint: "/api/influencer/signup",
     nextPath: "/influencer/dashboard",
     loginPath: "/login/influencer",
@@ -180,57 +178,65 @@ export function SignupPage({ role }: { role: SignupRole }) {
 
   if (confirmationEmail) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#f6f7f9] px-5 py-8 font-sans text-neutral-950">
-        <section className="w-full max-w-[420px] rounded-lg border border-neutral-200 bg-white p-6 shadow-[0_18px_55px_rgba(15,23,42,0.08)] sm:p-7">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-neutral-950 text-white">
-              <ShieldCheck className="h-4 w-4" strokeWidth={2} />
-            </div>
-            <p className="text-[17px] font-semibold leading-5 text-neutral-950">
-              {PRODUCT_NAME}
-            </p>
-          </div>
-
-          <div className="mt-7">
-            <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-neutral-950 text-white">
-              <MailCheck className="h-5 w-5" strokeWidth={2} />
-            </div>
-            <h1 className="mt-5 text-[26px] font-semibold leading-tight tracking-normal text-neutral-950">
-              이메일을 확인해 주세요
-            </h1>
-            <p className="mt-3 text-[14px] leading-6 text-neutral-500">
-              {confirmationMessage}
-            </p>
-          </div>
-
-          <div className="mt-5 rounded-lg border border-neutral-200 bg-[#fafafa] px-4 py-3 text-[14px] font-semibold text-neutral-950">
-            {confirmationEmail}
-          </div>
-
-          <div className="mt-6 space-y-3">
+      <main className="min-h-screen bg-[#f5f7f2] px-5 py-5 font-sans text-[#141714] sm:px-6">
+        <div className="mx-auto flex min-h-[calc(100vh-40px)] w-full max-w-[1040px] flex-col">
+          <header className="flex h-14 items-center justify-between">
             <Link
-              to={loginRedirectPath}
-              className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-neutral-950 px-5 text-[15px] font-semibold text-white transition hover:bg-neutral-800"
+              to="/"
+              aria-label={`${PRODUCT_NAME} 홈`}
+              className="inline-flex items-center gap-2.5"
             >
-              로그인하기
-              <ArrowRight className="h-4 w-4" />
+              <SignupLogoMark />
+              <span className="font-neo-heavy text-[18px] leading-none tracking-[-0.045em] text-neutral-950">
+                {PRODUCT_NAME}
+              </span>
             </Link>
-            <button
-              type="button"
-              onClick={() => {
-                setConfirmationEmail("");
-                setConfirmationMessage("");
-              }}
-              className="flex h-11 w-full items-center justify-center rounded-lg border border-neutral-200 bg-white px-5 text-[14px] font-semibold text-neutral-600 transition hover:border-neutral-400 hover:text-neutral-950"
-            >
-              이메일 다시 입력
-            </button>
-          </div>
+          </header>
 
-          <p className="mt-5 border-t border-neutral-100 pt-4 text-center text-[12px] font-medium leading-5 text-neutral-400">
-            메일이 보이지 않으면 스팸함과 프로모션함을 먼저 확인해 주세요.
-          </p>
-        </section>
+          <section className="grid flex-1 place-items-center py-8">
+            <div className="w-full max-w-[460px] rounded-[18px] border border-[#d8ded4] bg-white/95 p-6 shadow-[0_1px_0_rgba(255,255,255,0.8),0_26px_70px_rgba(20,23,20,0.10)] sm:p-7">
+              <div className="flex h-11 w-11 items-center justify-center rounded-[12px] bg-[#2563eb] text-white shadow-[0_14px_34px_rgba(37,99,235,0.20)]">
+                <MailCheck className="h-5 w-5" strokeWidth={2} />
+              </div>
+              <div className="mt-6">
+                <h1 className="font-neo-heavy text-[28px] leading-tight tracking-[-0.035em] text-[#141714]">
+                  이메일을 확인해 주세요
+                </h1>
+                <p className="mt-2 text-[14px] font-medium leading-6 text-[#59605b]">
+                  {confirmationMessage}
+                </p>
+              </div>
+
+              <div className="mt-5 rounded-[10px] border border-[#d8ded4] bg-[#fbfcfa] px-4 py-3 text-[14px] font-semibold text-[#141714]">
+                {confirmationEmail}
+              </div>
+
+              <div className="mt-6 space-y-3">
+                <Link
+                  to={loginRedirectPath}
+                  className="group flex h-12 w-full items-center justify-center gap-2 rounded-[10px] bg-[#2563eb] px-5 text-[15px] font-semibold text-white shadow-[0_14px_34px_rgba(37,99,235,0.24)] transition hover:bg-[#1d4ed8]"
+                >
+                  로그인하기
+                  <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setConfirmationEmail("");
+                    setConfirmationMessage("");
+                  }}
+                  className="flex h-11 w-full items-center justify-center rounded-[10px] border border-[#d8ded4] bg-white px-5 text-[14px] font-semibold text-[#59605b] transition hover:border-neutral-400 hover:text-neutral-950"
+                >
+                  이메일 다시 입력
+                </button>
+              </div>
+
+              <p className="mt-5 border-t border-[#edf0ea] pt-4 text-center text-[12px] font-semibold leading-5 text-[#7d887f]">
+                메일이 보이지 않으면 스팸함과 프로모션함을 먼저 확인해 주세요.
+              </p>
+            </div>
+          </section>
+        </div>
       </main>
     );
   }
@@ -282,7 +288,7 @@ export function SignupPage({ role }: { role: SignupRole }) {
           onChange: setPassword,
         },
       ]}
-      submitLabel="계정 만들기"
+      submitLabel="가입하기"
       submittingLabel="생성 중"
       submitDisabled={!requiredConsentsAccepted}
       isSubmitting={isSubmitting}
@@ -290,7 +296,7 @@ export function SignupPage({ role }: { role: SignupRole }) {
       footer={
         <Link
           to={loginRedirectPath}
-          className="text-[13px] font-semibold text-neutral-500 transition hover:text-neutral-950"
+            className="text-[13px] font-semibold text-[#59605b] transition hover:text-neutral-950"
         >
           이미 계정이 있으면 로그인하기
         </Link>
@@ -352,7 +358,7 @@ function MultiSelectGroup<T extends string>({
 }) {
   return (
     <fieldset className="space-y-2">
-      <legend className="text-[13px] font-semibold text-neutral-800">
+      <legend className="text-[13px] font-semibold text-[#303630]">
         {label}
       </legend>
       <div className="flex flex-wrap gap-2">
@@ -366,10 +372,10 @@ function MultiSelectGroup<T extends string>({
               aria-pressed={selected}
               disabled={disabled}
               onClick={() => onToggle(option.value)}
-              className={`inline-flex h-10 items-center gap-1.5 rounded-lg border px-3 text-[13px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+              className={`inline-flex h-10 items-center gap-1.5 rounded-[10px] border px-3 text-[13px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
                 selected
-                  ? "border-neutral-950 bg-neutral-950 text-white"
-                  : "border-neutral-200 bg-[#fbfbfc] text-neutral-700 hover:border-neutral-400 hover:bg-white"
+                  ? "border-[#2563eb] bg-[#2563eb] text-white"
+                  : "border-[#d8ded4] bg-[#fbfcfa] text-[#59605b] hover:border-neutral-400 hover:bg-white hover:text-neutral-950"
               }`}
             >
               {selected ? <Check className="h-3.5 w-3.5" /> : null}
@@ -392,17 +398,17 @@ function SignupConsentPanel({
   onToggle: (key: keyof SignupConsents) => void;
 }) {
   return (
-    <section className="rounded-lg border border-neutral-200 bg-[#fbfbfc] p-4">
+    <section className="rounded-[12px] border border-[#d8ded4] bg-[#fbfcfa] p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-[13px] font-semibold text-neutral-950">
+          <p className="text-[13px] font-semibold text-[#141714]">
             필수 약관 및 개인정보 동의
           </p>
-          <p className="mt-1 text-[12px] leading-5 text-neutral-500">
+          <p className="mt-1 text-[12px] font-medium leading-5 text-[#7d887f]">
             가입, 인증, 계약 작성, 전자서명 증빙 보관에 필요한 내용을 확인하고 동의해야 합니다.
           </p>
         </div>
-        <span className="shrink-0 rounded-full border border-neutral-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-neutral-500">
+        <span className="shrink-0 rounded-full border border-[#d8ded4] bg-white px-2 py-0.5 text-[11px] font-semibold text-[#7d887f]">
           v{LEGAL_DOCUMENT_VERSION}
         </span>
       </div>
@@ -451,11 +457,11 @@ function ConsentCheckbox({
   const checkboxId = `signup-consent-${linkTo.replace(/[^a-z0-9]/gi, "-")}`;
 
   return (
-    <div className="flex items-start gap-3 rounded-lg border border-neutral-200 bg-white p-3 transition hover:border-neutral-300">
+    <div className="flex items-start gap-3 rounded-[10px] border border-[#d8ded4] bg-white p-3 transition hover:border-neutral-400">
       <input
         id={checkboxId}
         type="checkbox"
-        className="mt-1 h-4 w-4 accent-neutral-950"
+        className="mt-1 h-4 w-4 accent-[#2563eb]"
         checked={checked}
         disabled={disabled}
         required
@@ -464,21 +470,45 @@ function ConsentCheckbox({
       <span className="min-w-0">
         <label
           htmlFor={checkboxId}
-          className="block cursor-pointer text-[13px] font-semibold text-neutral-900"
+          className="block cursor-pointer text-[13px] font-semibold text-[#141714]"
         >
           {title}
         </label>
-        <span className="mt-1 block text-[12px] leading-5 text-neutral-500">
+        <span className="mt-1 block text-[12px] font-medium leading-5 text-[#7d887f]">
           {description}
         </span>
         <Link
           to={linkTo}
           target="_blank"
-          className="mt-2 inline-flex text-[12px] font-semibold text-neutral-950 underline underline-offset-4"
+          className="mt-2 inline-flex text-[12px] font-semibold text-[#2563eb] underline underline-offset-4"
         >
           {linkLabel}
         </Link>
       </span>
     </div>
+  );
+}
+
+function SignupLogoMark() {
+  return (
+    <span className="inline-flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[11px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
+      <svg
+        aria-hidden="true"
+        className="h-[23px] w-[23px]"
+        fill="none"
+        viewBox="0 0 32 32"
+      >
+        <circle cx="9.8" cy="11.2" r="3" fill="currentColor" opacity="0.96" />
+        <circle cx="22.2" cy="11.2" r="3" fill="currentColor" opacity="0.96" />
+        <circle cx="16" cy="22" r="3" fill="currentColor" opacity="0.96" />
+        <path
+          d="M12.1 12.8 16 19.1l3.9-6.3"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="2.1"
+        />
+      </svg>
+    </span>
   );
 }

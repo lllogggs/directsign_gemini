@@ -1,7 +1,10 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import {fileURLToPath} from 'url';
 import {defineConfig, loadEnv} from 'vite';
+
+const configDir = path.dirname(fileURLToPath(import.meta.url));
 
 const productNameHtmlPlugin = (productName: string) => ({
   name: 'product-name-html',
@@ -10,9 +13,27 @@ const productNameHtmlPlugin = (productName: string) => ({
   },
 });
 
+const normalizeProductName = (value?: string) => {
+  const trimmed = value?.trim();
+  const normalized = trimmed?.toLowerCase();
+
+  if (
+    !trimmed ||
+    normalized === 'yeollock' ||
+    normalized === 'yeollock.me' ||
+    normalized === 'directsign'
+  ) {
+    return '연락미';
+  }
+
+  return trimmed;
+};
+
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
-  const productName = env.VITE_PRODUCT_NAME || env.PRODUCT_NAME || 'yeollock.me';
+  const productName = normalizeProductName(
+    env.VITE_PRODUCT_NAME || env.PRODUCT_NAME,
+  );
 
   return {
     plugins: [productNameHtmlPlugin(productName), react(), tailwindcss()],
@@ -21,7 +42,7 @@ export default defineConfig(({mode}) => {
     },
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, '.'),
+        '@': path.resolve(configDir, '.'),
       },
     },
     server: {

@@ -31,6 +31,7 @@ import type {
 } from "../../domain/influencerDashboard";
 import { buildLoginRedirect } from "../../domain/navigation";
 import { removeInternalTestLabel } from "../../domain/display";
+import { formatElapsedDayLabel, formatUploadDueLabel } from "../../domain/timing";
 import type { InfluencerPlatform, VerificationStatus } from "../../domain/verification";
 
 type DashboardState =
@@ -39,6 +40,7 @@ type DashboardState =
   | { status: "error"; message: string };
 
 type ContractFilter = "all" | InfluencerDashboardContractStage;
+type PlatformFilter = "all" | InfluencerPlatform;
 
 const STAGE_ORDER: ContractFilter[] = [
   "all",
@@ -49,6 +51,14 @@ const STAGE_ORDER: ContractFilter[] = [
   "deliverables_review",
   "signed",
   "completed",
+];
+
+const PLATFORM_ORDER: InfluencerPlatform[] = [
+  "instagram",
+  "youtube",
+  "tiktok",
+  "naver_blog",
+  "other",
 ];
 
 const STAGE_META: Record<
@@ -201,6 +211,8 @@ export function InfluencerDashboard() {
   const [state, setState] = useState<DashboardState>({ status: "loading" });
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<ContractFilter>("all");
+  const [platformFilter, setPlatformFilter] = useState<PlatformFilter>("all");
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
 
   const loadDashboard = useCallback(async () => {
     setState((current) =>
@@ -267,6 +279,11 @@ export function InfluencerDashboard() {
     return () => window.clearTimeout(timer);
   }, [loadDashboard]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => setCurrentTime(Date.now()), 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   if (state.status === "loading") {
     return <DashboardShell><LoadingView /></DashboardShell>;
   }
@@ -280,8 +297,32 @@ export function InfluencerDashboard() {
   }
 
   const dashboard = state.dashboard;
-  const filteredContracts = dashboard.contracts.filter((contract) => {
-    if (filter !== "all" && contract.stage !== filter) return false;
+  const stageContracts = dashboard.contracts.filter((contract) =>
+    filter === "all" ? true : contract.stage === filter,
+  );
+  const platformOptions = PLATFORM_ORDER.filter((platform) =>
+    stageContracts.some((contract) => contract.platforms.includes(platform)),
+  );
+  const platformCounts = new Map<InfluencerPlatform, number>();
+  platformOptions.forEach((platform) => {
+    platformCounts.set(
+      platform,
+      stageContracts.filter((contract) => contract.platforms.includes(platform)).length,
+    );
+  });
+  const effectivePlatformFilter =
+    platformFilter !== "all" && platformOptions.includes(platformFilter)
+      ? platformFilter
+      : "all";
+
+  const filteredContracts = stageContracts.filter((contract) => {
+    if (
+      effectivePlatformFilter !== "all" &&
+      !contract.platforms.includes(effectivePlatformFilter)
+    ) {
+      return false;
+    }
+
     const normalizedQuery = query.trim().toLowerCase();
     if (!normalizedQuery) return true;
 
@@ -447,19 +488,54 @@ export function InfluencerDashboard() {
                       ? dashboard.contracts.length
                       : dashboard.contracts.filter((contract) => contract.stage === stage).length
                   }
-                  onClick={() => setFilter(stage)}
+                  onClick={() => {
+                    setFilter(stage);
+                    setPlatformFilter("all");
+                  }}
                 />
               </React.Fragment>
             ))}
           </div>
           </div>
+          {platformOptions.length > 0 ? (
+            <div className="mt-2 flex gap-1.5 overflow-x-auto border-t border-neutral-100 pt-2">
+              <PlatformFilterChip
+                active={effectivePlatformFilter === "all"}
+                label="모든 플랫폼"
+                count={stageContracts.length}
+                onClick={() => setPlatformFilter("all")}
+              />
+              {platformOptions.map((platform) => {
+                const meta = PLATFORM_META[platform];
+                return (
+                  <React.Fragment key={platform}>
+                    <PlatformFilterChip
+                      active={effectivePlatformFilter === platform}
+                      label={meta.label}
+                      count={platformCounts.get(platform) ?? 0}
+                      icon={meta.icon}
+                      onClick={() => setPlatformFilter(platform)}
+                    />
+                  </React.Fragment>
+                );
+              })}
+            </div>
+          ) : null}
         </section>
 
         {filteredContracts.length === 0 ? (
-          <EmptyContracts hasQuery={query.trim().length > 0 || filter !== "all"} />
+          <EmptyContracts
+            hasQuery={
+              query.trim().length > 0 ||
+              filter !== "all" ||
+              effectivePlatformFilter !== "all"
+            }
+          />
         ) : (
           <ContractTable
             contracts={filteredContracts}
+            currentTime={currentTime}
+            filter={filter}
             onOpen={(contract) => { void navigate(contract.action_href); }}
           />
         )}
@@ -715,6 +791,37 @@ function FilterChip({
   );
 }
 
+function PlatformFilterChip({
+  active,
+  label,
+  count,
+  icon,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  count: number;
+  icon?: React.ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-semibold transition ${
+        active
+          ? "border-neutral-950 bg-neutral-950 text-white"
+          : "border-neutral-200 bg-[#fbfbfc] text-neutral-600 hover:border-neutral-400 hover:bg-white"
+      }`}
+    >
+      {icon ? <span className="flex h-3.5 w-3.5 items-center justify-center">{icon}</span> : null}
+      <span>{label}</span>
+      <span className={active ? "text-white/65" : "text-neutral-400"}>{count}</span>
+    </button>
+  );
+}
+
 function EmptyContracts({ hasQuery }: { hasQuery: boolean }) {
   return (
     <section className="flex min-h-[190px] flex-col items-center justify-center rounded-b-lg border-x border-b border-neutral-200/80 bg-white px-6 text-center shadow-[0_18px_48px_rgba(15,23,42,0.04)]">
@@ -735,20 +842,22 @@ function EmptyContracts({ hasQuery }: { hasQuery: boolean }) {
 
 function ContractTable({
   contracts,
+  currentTime,
+  filter,
   onOpen,
 }: {
   contracts: InfluencerDashboardContract[];
+  currentTime: number;
+  filter: ContractFilter;
   onOpen: (contract: InfluencerDashboardContract) => void;
 }) {
   return (
     <section className="overflow-hidden rounded-b-lg border-x border-b border-neutral-200/80 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.04)]">
-      <div className="hidden grid-cols-[minmax(260px,1.35fr)_190px_180px_140px_170px_160px_48px] border-b border-neutral-200 bg-[#fbfbfc] px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-neutral-400 lg:grid">
-        <span>계약명</span>
-        <span>광고주</span>
+      <div className="hidden grid-cols-[minmax(0,0.9fr)_minmax(0,1fr)_minmax(0,1.15fr)_150px_48px] gap-3 border-b border-neutral-200 bg-[#fbfbfc] px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-neutral-400 lg:grid">
+        <span>브랜드</span>
+        <span>계약</span>
         <span>플랫폼</span>
-        <span>금액</span>
-        <span>기간</span>
-        <span>현 단계</span>
+        <span>마감일</span>
         <span />
       </div>
       <div className="divide-y divide-neutral-100">
@@ -757,21 +866,35 @@ function ContractTable({
             key={contract.id}
             type="button"
             onClick={() => onOpen(contract)}
-            className="group grid w-full gap-3 px-4 py-3 text-left transition-colors hover:bg-neutral-50 lg:grid-cols-[minmax(260px,1.35fr)_190px_180px_140px_170px_160px_48px] lg:items-center"
+            className="group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 px-4 py-3.5 text-left transition-colors hover:bg-neutral-50 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1fr)_minmax(0,1.15fr)_150px_48px] lg:gap-3 lg:px-5 lg:py-3"
           >
             <div className="min-w-0">
-              <p className="truncate text-[15px] font-semibold text-neutral-950">
-                {contract.title}
-              </p>
-              <p className="mt-1 truncate text-[12px] text-neutral-500">
-                {contract.next_action_label}
+              <p className="truncate text-[13px] font-semibold text-neutral-950">
+                {contract.advertiser_name}
               </p>
             </div>
-            <TableText label="광고주" value={contract.advertiser_name} />
-            <PlatformChips contract={contract} />
-            <TableText label="금액" value={contract.fee_label} />
-            <TableText label="기간" value={contract.period_label} />
-            <StageBadge stage={contract.stage} />
+            <StageTiming
+              contract={contract}
+              currentTime={currentTime}
+              filter={filter}
+              compactMobile
+            />
+            <div className="min-w-0">
+              <p className="truncate text-[13px] font-semibold text-neutral-950">
+                {contract.title}
+              </p>
+              <p className="mt-1 truncate text-[11px] font-medium text-neutral-400 lg:hidden">
+                계약
+              </p>
+            </div>
+            <PlatformAccountCell contract={contract} />
+            <div className="hidden lg:block">
+              <StageTiming
+                contract={contract}
+                currentTime={currentTime}
+                filter={filter}
+              />
+            </div>
             <div className="hidden justify-end lg:flex">
               <ArrowRight className="h-4 w-4 text-neutral-300 transition-colors group-hover:text-neutral-900" />
             </div>
@@ -779,17 +902,6 @@ function ContractTable({
         ))}
       </div>
     </section>
-  );
-}
-
-function TableText({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-0">
-      <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-neutral-300 lg:hidden">
-        {label}
-      </p>
-      <p className="truncate text-[13px] text-neutral-700">{value}</p>
-    </div>
   );
 }
 
@@ -806,26 +918,142 @@ function StageBadge({ stage }: { stage: InfluencerDashboardContractStage }) {
   );
 }
 
-function PlatformChips({ contract }: { contract: InfluencerDashboardContract }) {
-  const platforms = contract.platforms.length ? contract.platforms : (["other"] as InfluencerPlatform[]);
+function StageTiming({
+  contract,
+  currentTime,
+  filter,
+  compactMobile = false,
+}: {
+  contract: InfluencerDashboardContract;
+  currentTime: number;
+  filter: ContractFilter;
+  compactMobile?: boolean;
+}) {
+  const showStage = filter === "all";
 
   return (
-    <div className="flex min-w-0 flex-wrap gap-1.5">
-      {platforms.map((platform) => {
-        const meta = PLATFORM_META[platform];
-        return (
-          <span
-            key={platform}
-            title={meta.label}
-            className={`inline-flex h-7 max-w-full items-center gap-1.5 rounded-md border px-2 text-[11px] font-semibold ${meta.className}`}
-          >
-            {meta.icon}
-            <span className="truncate">{meta.label}</span>
-          </span>
-        );
-      })}
+    <div className={`min-w-0 ${compactMobile ? "text-right lg:hidden" : ""}`}>
+      {showStage && !compactMobile && <StageBadge stage={contract.stage} />}
+      {showStage && compactMobile ? (
+        <p className="truncate text-[11px] font-semibold text-neutral-500">
+          {getStageMeta(contract.stage).label}
+        </p>
+      ) : null}
+      <p
+        className={`truncate font-semibold tabular-nums ${
+          showStage && !compactMobile
+            ? "mt-1 text-[11px] text-neutral-400"
+            : compactMobile
+              ? "mt-0.5 text-[12px] text-neutral-500"
+              : "text-[12px] text-neutral-600"
+        }`}
+      >
+        {formatInfluencerTimingLabel(contract, currentTime)}
+      </p>
     </div>
   );
+}
+
+function PlatformAccountCell({ contract }: { contract: InfluencerDashboardContract }) {
+  const items = getInfluencerPlatformDisplayItems(contract);
+  const first = items[0];
+  const platformLabel =
+    items.length > 1 ? `${first.label} 외 ${items.length - 1}` : first.label;
+
+  return (
+    <div className="min-w-0">
+      <p className="truncate text-[13px] font-semibold text-neutral-950">
+        {platformLabel}
+      </p>
+      <p className="mt-1 truncate text-[11px] font-medium text-neutral-400">
+        {contract.influencer_name} / {first.accountId}
+      </p>
+    </div>
+  );
+}
+
+function getInfluencerPlatformDisplayItems(contract: InfluencerDashboardContract) {
+  const source = [
+    contract.title,
+    contract.next_action_label,
+    contract.period_label,
+    ...contract.platform_labels,
+  ]
+    .join(" ")
+    .toLowerCase();
+  const accounts: Array<{ platform: InfluencerPlatform; url?: string }> =
+    contract.platform_accounts.length > 0
+      ? contract.platform_accounts
+      : contract.platforms.map((platform) => ({ platform }));
+  const fallbackAccounts =
+    accounts.length > 0 ? accounts : [{ platform: "other" as InfluencerPlatform }];
+
+  return fallbackAccounts.map((account) => ({
+    platform: account.platform,
+    label: getDetailedInfluencerPlatformLabel(account.platform, source),
+    accountId: formatInfluencerAccountId(account.url, account.platform),
+  }));
+}
+
+function getDetailedInfluencerPlatformLabel(
+  platform: InfluencerPlatform,
+  source: string,
+) {
+  if (platform === "youtube") {
+    if (source.includes("shorts") || source.includes("short") || source.includes("숏츠")) {
+      return "유튜브-숏츠";
+    }
+    if (source.includes("longform") || source.includes("long-form") || source.includes("롱폼")) {
+      return "유튜브-롱폼";
+    }
+  }
+
+  if (platform === "instagram") {
+    if (source.includes("reels") || source.includes("reel") || source.includes("릴스")) {
+      return "인스타그램-릴스";
+    }
+    if (source.includes("story") || source.includes("stories") || source.includes("스토리")) {
+      return "인스타그램-스토리";
+    }
+    if (source.includes("feed") || source.includes("피드")) return "인스타그램-피드";
+  }
+
+  if (platform === "tiktok") return "틱톡-숏폼";
+  if (platform === "naver_blog") return "네이버 블로그";
+  return PLATFORM_META[platform].label;
+}
+
+function formatInfluencerAccountId(url: string | undefined, platform: InfluencerPlatform) {
+  if (!url) return "계정 미입력";
+
+  try {
+    const parsed = new URL(url.startsWith("http") ? url : `https://${url}`);
+    const pathSegment = parsed.pathname
+      .split("/")
+      .map((part) => part.trim())
+      .filter(Boolean)[0];
+    const clean = decodeURIComponent(pathSegment ?? "")
+      .replace(/^@/, "")
+      .trim();
+
+    if (!clean) return parsed.hostname.replace(/^www\./, "");
+    if (platform === "naver_blog") return clean;
+    return `@${clean}`;
+  } catch {
+    const clean = url.replace(/^https?:\/\//, "").replace(/^@/, "").split(/[/?#]/)[0];
+    return platform === "naver_blog" ? clean : `@${clean}`;
+  }
+}
+
+function formatInfluencerTimingLabel(
+  contract: InfluencerDashboardContract,
+  currentTime: number,
+) {
+  if (contract.stage === "signed" || contract.stage === "completed") {
+    return formatUploadDueLabel(contract.due_at, currentTime);
+  }
+
+  return formatElapsedDayLabel(contract.updated_at, currentTime, "받은 지");
 }
 
 function formatDate(value: string) {

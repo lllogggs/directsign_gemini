@@ -11,3 +11,5 @@ data/
 supabase/.temp/
 !.env.example
 .vercel
+.od-skills/
+moz*-image.png

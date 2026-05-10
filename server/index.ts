@@ -8449,6 +8449,7 @@ if (!isVercelFunction) {
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       root,
+      configLoader: "runner",
       server: {
         middlewareMode: true,
         hmr: { server: httpServer },

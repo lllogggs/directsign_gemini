@@ -1,4 +1,5 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import url('https://hangeul.pstatic.net/hangeul_static/css/nanum-square-neo.css');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -7,8 +8,8 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-    --font-heading: 'Geist Variable', 'Inter', var(--font-sans);
-    --font-sans: 'Inter', 'Geist Variable', sans-serif;
+    --font-heading: 'NanumSquareNeoExtraBold', 'NanumSquareNeoBold', 'NanumSquareNeo', 'Noto Sans KR', 'Inter', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+    --font-sans: 'NanumSquareNeo', 'Noto Sans KR', 'Inter', 'Geist Variable', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
     --font-mono: 'JetBrains Mono', monospace;
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
@@ -129,4 +130,16 @@
   html {
     @apply font-sans;
     }
+}
+
+@layer utilities {
+  .font-neo-title {
+    font-family: 'NanumSquareNeoExtraBold', 'NanumSquareNeoBold', 'NanumSquareNeo', 'Noto Sans KR', sans-serif;
+    font-weight: 400;
+  }
+
+  .font-neo-heavy {
+    font-family: 'NanumSquareNeoHeavy', 'NanumSquareNeoExtraBold', 'NanumSquareNeoBold', 'NanumSquareNeo', 'Noto Sans KR', sans-serif;
+    font-weight: 400;
+  }
 }

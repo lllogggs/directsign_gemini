@@ -14,7 +14,6 @@ import {
   Plus,
   Search,
   ShieldCheck,
-  Sparkles,
 } from "lucide-react";
 import { format } from "date-fns";
 import {
@@ -29,6 +28,7 @@ import {
   type VerificationStatus,
 } from "../../domain/verification";
 import { removeInternalTestLabel } from "../../domain/display";
+import { formatElapsedDayLabel, formatUploadDueLabel } from "../../domain/timing";
 import { useVerificationSummary } from "../../hooks/useVerificationSummary";
 import { PRODUCT_NAME } from "../../domain/brand";
 
@@ -42,6 +42,13 @@ type AdvertiserAccountSummary = {
 
 const STATUS_ORDER: ContractStatus[] = [
   "DRAFT",
+  "REVIEWING",
+  "NEGOTIATING",
+  "APPROVED",
+  "SIGNED",
+];
+
+const FILTER_STATUS_ORDER: ContractStatus[] = [
   "REVIEWING",
   "NEGOTIATING",
   "APPROVED",
@@ -68,9 +75,9 @@ const STATUS_META: Record<
     icon: <FileText className="h-4 w-4" strokeWidth={1.8} />,
   },
   REVIEWING: {
-    label: "검토 중",
-    shortLabel: "검토",
-    helper: "상대방 응답 대기",
+    label: "제안",
+    shortLabel: "제안",
+    helper: "인플루언서 검토 대기",
     tone: "text-sky-700",
     badge: "border-sky-200 bg-sky-50 text-sky-700",
     icon: <Clock3 className="h-4 w-4" strokeWidth={1.8} />,
@@ -87,13 +94,13 @@ const STATUS_META: Record<
     label: "서명 대기",
     shortLabel: "서명",
     helper: "최종본 승인 완료",
-    tone: "text-indigo-700",
-    badge: "border-indigo-200 bg-indigo-50 text-indigo-700",
+    tone: "text-sky-700",
+    badge: "border-sky-200 bg-sky-50 text-sky-700",
     icon: <PenLine className="h-4 w-4" strokeWidth={1.8} />,
   },
   SIGNED: {
     label: "서명 완료",
-    shortLabel: "서명",
+    shortLabel: "완료",
     helper: "서명본 보관 및 콘텐츠 이행 관리",
     tone: "text-neutral-900",
     badge: "border-neutral-300 bg-neutral-100 text-neutral-900",
@@ -119,7 +126,7 @@ const PLATFORM_META: Record<
   YOUTUBE: {
     label: "유튜브",
     shortLabel: "유튜브",
-    className: "border-[#ff0033]/20 bg-[#ff0033]/10 text-[#d70022]",
+    className: "border-neutral-200 bg-white text-neutral-700",
     mark: (
       <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-current">
         <path d="M21.6 7.2a2.8 2.8 0 0 0-2-2C17.9 4.8 12 4.8 12 4.8s-5.9 0-7.6.4a2.8 2.8 0 0 0-2 2A29 29 0 0 0 2 12a29 29 0 0 0 .4 4.8 2.8 2.8 0 0 0 2 2c1.7.4 7.6.4 7.6.4s5.9 0 7.6-.4a2.8 2.8 0 0 0 2-2A29 29 0 0 0 22 12a29 29 0 0 0-.4-4.8ZM10 14.9V9.1l5.2 2.9L10 14.9Z" />
@@ -129,7 +136,7 @@ const PLATFORM_META: Record<
   INSTAGRAM: {
     label: "인스타그램",
     shortLabel: "인스타",
-    className: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
+    className: "border-neutral-200 bg-white text-neutral-700",
     mark: (
       <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-none stroke-current">
         <rect x="5" y="5" width="14" height="14" rx="4" strokeWidth="2" />
@@ -141,7 +148,7 @@ const PLATFORM_META: Record<
   TIKTOK: {
     label: "틱톡",
     shortLabel: "틱톡",
-    className: "border-neutral-200 bg-neutral-950 text-white",
+    className: "border-neutral-200 bg-white text-neutral-700",
     mark: <span className="text-[12px] font-black">♪</span>,
   },
   OTHER: {
@@ -274,21 +281,19 @@ export function Dashboard() {
     return { needsAction, dueSoon, activeLinks, value };
   }, [contracts, currentTime]);
   const priorityContracts = actionQueue.slice(0, 3);
-  const hasPriorityContracts = priorityContracts.length > 0;
-
   return (
-    <div className="min-h-screen bg-[#f4f5f7] font-sans text-neutral-950">
-      <header className="sticky top-0 z-30 border-b border-neutral-200/80 bg-white/95 shadow-[0_1px_0_rgba(15,23,42,0.04)] backdrop-blur">
-        <div className="mx-auto flex h-[72px] max-w-[1480px] items-center justify-between px-5 sm:px-8 lg:px-10">
+    <div className="min-h-screen bg-neutral-50 font-sans text-neutral-950">
+      <header className="sticky top-0 z-30 border-b border-neutral-200 bg-white/95 backdrop-blur">
+        <div className="mx-auto flex h-16 max-w-[1480px] items-center justify-between px-4 sm:px-6 lg:px-8">
           <button
             type="button"
             onClick={() => navigate("/advertiser/dashboard")}
             className="flex items-center gap-3"
           >
-            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-950 text-white shadow-[0_8px_24px_rgba(15,23,42,0.16)]">
+            <span className="flex h-9 w-9 items-center justify-center rounded-md bg-neutral-950 text-white">
               <ShieldCheck className="h-4 w-4" strokeWidth={2} />
             </span>
-            <span className="text-[19px] font-semibold tracking-[-0.02em]">{PRODUCT_NAME}</span>
+            <span className="text-[18px] font-semibold tracking-[-0.02em]">{PRODUCT_NAME}</span>
           </button>
 
           <div className="flex items-center gap-2">
@@ -296,7 +301,7 @@ export function Dashboard() {
             <button
               type="button"
               onClick={() => navigate("/advertiser/builder")}
-              className="inline-flex h-11 items-center gap-2 rounded-lg bg-neutral-950 px-4 text-[13px] font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition hover:bg-neutral-800 hover:shadow-[0_14px_30px_rgba(15,23,42,0.18)]"
+              className="inline-flex h-10 items-center gap-2 rounded-md bg-neutral-950 px-4 text-[13px] font-semibold text-white transition hover:bg-neutral-800"
             >
               <Plus className="h-4 w-4" strokeWidth={2} />
               새 계약
@@ -305,44 +310,31 @@ export function Dashboard() {
         </div>
       </header>
 
-      <main className="mx-auto w-full min-w-0 max-w-[1320px] px-4 py-4 sm:px-6 lg:px-8">
-        <section
-          className={`mb-3 grid min-w-0 items-start gap-3 ${
-            hasPriorityContracts
-              ? "lg:grid-cols-[minmax(0,1fr)_300px]"
-              : "lg:grid-cols-1"
-          }`}
-        >
-          <div className="min-w-0 overflow-hidden rounded-lg border border-neutral-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)]">
-            <VerificationBanner
-              status={advertiserVerificationStatus}
-              account={advertiserAccount}
-              isLoading={isVerificationLoading}
-              onOpen={() => navigate("/advertiser/verification")}
-              embedded
-            />
-            <div className="grid gap-4 p-4 lg:grid-cols-[190px_minmax(0,1fr)] lg:items-center">
-              <div className="min-w-0">
-                <p className="hidden">
-                  광고주 워크스페이스
-                </p>
-                <h1 className="text-[22px] font-semibold leading-7 tracking-[-0.02em] text-neutral-950">
-                  계약 운영 현황
-                </h1>
-                <p className="hidden">
-                  계약명, 인플루언서, 플랫폼, 금액, 기간, 현재 단계를 같은 규칙으로
-                  확인하고 바로 다음 행동으로 이동하세요.
-                </p>
-              </div>
-              <div className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-4">
-                <MetricTile label="확인 필요" value={summary.needsAction} tone="amber" />
-                <MetricTile label="48시간 내 마감" value={summary.dueSoon} tone="rose" />
-                <MetricTile label="활성 링크" value={summary.activeLinks} tone="neutral" />
-                <MetricTile label="계약 금액" value={formatMoney(summary.value)} tone="neutral" compact />
-              </div>
+      <main className="mx-auto w-full min-w-0 max-w-[1380px] px-4 py-3 sm:px-6 lg:px-8">
+        <section className="mb-3 min-w-0 overflow-hidden rounded-lg border border-neutral-200 bg-white">
+          <VerificationBanner
+            status={advertiserVerificationStatus}
+            account={advertiserAccount}
+            isLoading={isVerificationLoading}
+            onOpen={() => navigate("/advertiser/verification")}
+            embedded
+          />
+          <div className="grid gap-3 px-4 py-3 lg:grid-cols-[220px_minmax(0,1fr)] lg:items-center">
+            <div className="min-w-0">
+              <h1 className="text-[20px] font-semibold leading-7 tracking-[-0.02em] text-neutral-950">
+                계약 운영 현황
+              </h1>
+              <p className="mt-0.5 text-[12px] font-medium text-neutral-500">
+                전체 {contracts.length.toLocaleString()}건 · 검색 결과 {filteredContracts.length.toLocaleString()}건
+              </p>
+            </div>
+            <div className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-4">
+              <MetricTile label="확인 필요" value={summary.needsAction} tone="amber" />
+              <MetricTile label="48시간 내 처리" value={summary.dueSoon} tone="rose" />
+              <MetricTile label="활성 링크" value={summary.activeLinks} tone="sky" />
+              <MetricTile label="계약 금액" value={formatMoney(summary.value)} tone="neutral" compact />
             </div>
           </div>
-
           <ActionQueue
             contracts={priorityContracts}
             currentTime={currentTime}
@@ -350,17 +342,22 @@ export function Dashboard() {
           />
         </section>
 
-        <section className="rounded-t-lg border border-b-0 border-neutral-200/80 bg-white p-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <section className="rounded-t-lg border border-b-0 border-neutral-200 bg-white p-3">
           <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
-            <div className="relative min-w-0 flex-1">
-              <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                aria-label="계약 검색"
-                placeholder="계약명, 인플루언서, 플랫폼, 금액으로 검색"
-                className="h-10 w-full rounded-md border border-neutral-200 bg-[#fbfbfc] pl-9 pr-4 text-[13px] outline-none transition-colors placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-900 focus:bg-white focus:shadow-[0_0_0_3px_rgba(23,23,23,0.05)]"
-              />
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              <div className="relative min-w-0 flex-1">
+                <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  aria-label="계약 검색"
+                  placeholder="계약명, 인플루언서, 플랫폼, 금액으로 검색"
+                  className="h-10 w-full rounded-md border border-neutral-200 bg-white pl-9 pr-4 text-[13px] outline-none transition-colors placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-900 focus:shadow-[0_0_0_3px_rgba(23,23,23,0.05)]"
+                />
+              </div>
+              <span className="hidden whitespace-nowrap text-[12px] font-semibold text-neutral-500 md:inline">
+                {filteredContracts.length.toLocaleString()}건 표시
+              </span>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -370,7 +367,7 @@ export function Dashboard() {
                 count={contracts.length}
                 onClick={() => setStatusFilter("ALL")}
               />
-              {STATUS_ORDER.map((status) => (
+              {FILTER_STATUS_ORDER.map((status) => (
                 <React.Fragment key={status}>
                   <StatusChip
                     active={statusFilter === status}
@@ -416,12 +413,15 @@ export function Dashboard() {
           <ContractTable
             compact={compact}
             contracts={filteredContracts}
+            currentTime={currentTime}
+            statusFilter={statusFilter}
             totalContracts={contracts.length}
             onOpen={(contract) => navigate(`/advertiser/contract/${contract.id}`)}
           />
         ) : (
           <ContractBoard
             compact={compact}
+            currentTime={currentTime}
             groupedContracts={groupedContracts}
             onOpen={(contract) => navigate(`/advertiser/contract/${contract.id}`)}
           />
@@ -452,10 +452,10 @@ function VerificationBanner({
         embedded
           ? `border-b px-4 py-3 ${
               approved
-                ? "border-neutral-200/80 bg-[#fcfcfd]"
+                ? "border-neutral-200 bg-neutral-50"
                 : "border-amber-200 bg-amber-50/85"
             }`
-          : `mb-3 rounded-lg border px-3 py-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${
+          : `mb-3 rounded-md border px-3 py-2.5 ${
               approved
                 ? "border-neutral-200 bg-white"
                 : "border-amber-200 bg-amber-50/85"
@@ -498,17 +498,12 @@ function VerificationBanner({
                 </span>
               )}
             </div>
-            <p className="hidden">
-              {approved
-                ? "인증이 완료되어 계약 공유 링크를 발송할 수 있습니다."
-                : "계약 초안 작성은 가능하지만, 공유 링크 발송은 운영자 승인 후 가능합니다."}
-            </p>
           </div>
         </div>
         <button
           type="button"
           onClick={onOpen}
-          className={`h-9 shrink-0 whitespace-nowrap rounded-lg px-3 text-[13px] font-semibold transition ${
+          className={`h-9 shrink-0 whitespace-nowrap rounded-md px-3 text-[13px] font-semibold transition ${
             approved
               ? "border border-neutral-200 bg-white text-neutral-800 hover:border-neutral-300 hover:bg-neutral-50"
               : "bg-neutral-950 text-white hover:bg-neutral-800"
@@ -535,18 +530,18 @@ function MetricTile({
   const accentClass = {
     amber: "bg-amber-500",
     rose: "bg-rose-500",
-    sky: "bg-neutral-500",
+    sky: "bg-sky-500",
     neutral: "bg-neutral-500",
   }[tone];
   const valueClass = {
     amber: "text-amber-700",
     rose: "text-rose-700",
-    sky: "text-neutral-950",
+    sky: "text-sky-700",
     neutral: "text-neutral-950",
   }[tone];
 
   return (
-    <div className="rounded-md border border-neutral-200/80 bg-[#fcfcfd] px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
+    <div className="rounded-md border border-neutral-200 bg-white px-3 py-2.5">
       <div className="flex items-center gap-2">
         <span className={`h-1.5 w-1.5 rounded-full ${accentClass}`} />
         <p className="text-[11px] font-semibold leading-4 text-neutral-500">{label}</p>
@@ -571,7 +566,7 @@ function SyncPill({
 }) {
   if (syncError) {
     return (
-      <span className="inline-flex h-9 items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 text-[12px] font-semibold text-amber-700">
+      <span className="inline-flex h-9 items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 text-[12px] font-semibold text-amber-700">
         <AlertCircle className="h-3.5 w-3.5" />
         동기화 확인 필요
       </span>
@@ -579,7 +574,7 @@ function SyncPill({
   }
 
   return (
-      <span className="inline-flex h-9 items-center gap-2 rounded-full border border-neutral-200 bg-white px-3 text-[12px] font-semibold text-neutral-600">
+    <span className="inline-flex h-9 items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 text-[12px] font-semibold text-neutral-600">
       <CopyCheck className="h-3.5 w-3.5 text-neutral-500" />
       {isSyncing ? "저장 중" : "저장 완료"}
     </span>
@@ -598,36 +593,25 @@ function ActionQueue({
   if (contracts.length === 0) return null;
 
   return (
-    <aside className="min-w-0 rounded-lg border border-neutral-200/80 bg-white p-3 text-neutral-950 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_42px_rgba(15,23,42,0.06)]">
-      <div className="mb-2 flex min-w-0 items-center justify-between">
+    <aside className="min-w-0 border-t border-neutral-200 bg-neutral-50 px-4 py-3 text-neutral-950">
+      <div className="grid gap-2 lg:grid-cols-[160px_minmax(0,1fr)] lg:items-center">
         <div className="min-w-0">
-          <p className="hidden">
-            우선 확인 항목
-          </p>
-          <h2 className="text-[15px] font-semibold tracking-[-0.01em]">
-            먼저 확인할 계약
-          </h2>
+          <p className="text-[12px] font-semibold text-neutral-500">먼저 처리할 계약</p>
+          <p className="mt-0.5 text-[12px] text-neutral-400">{contracts.length}건</p>
         </div>
-        <Sparkles className="h-4 w-4 text-amber-500" />
-      </div>
 
-      <div className="min-w-0 space-y-2">
-        {contracts.length === 0 ? (
-          <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-[12px] leading-5 text-neutral-500">
-            광고주가 바로 처리해야 할 계약이 없습니다.
-          </div>
-        ) : (
-          contracts.map((contract) => (
+        <div className="grid min-w-0 gap-2 md:grid-cols-3">
+          {contracts.map((contract) => (
             <button
               key={contract.id}
               type="button"
               onClick={() => onOpen(contract)}
-              className="group w-full rounded-lg border border-neutral-200 bg-[#fbfbfc] p-3 text-left transition hover:-translate-y-0.5 hover:border-neutral-300 hover:bg-white hover:shadow-[0_12px_26px_rgba(15,23,42,0.08)]"
+              className="group min-w-0 rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-left transition-colors hover:border-neutral-300 hover:bg-neutral-50"
             >
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="truncate text-[14px] font-semibold">{contract.title}</p>
-                  <p className="mt-1 truncate text-[12px] text-neutral-400">
+                  <p className="truncate text-[13px] font-semibold">{contract.title}</p>
+                  <p className="mt-1 truncate text-[12px] text-neutral-500">
                     {contract.influencer_info.name} · {nextActionLabel(contract)}
                   </p>
                 </div>
@@ -635,11 +619,11 @@ function ActionQueue({
               </div>
               <div className="mt-2 flex items-center gap-2 text-[11px] font-semibold text-neutral-500">
                 <StatusBadge status={contract.status} dense />
-                <span>{formatDue(contract.workflow?.due_at, currentTime)}</span>
+                <span>{formatAdvertiserTimingLabel(contract, currentTime)}</span>
               </div>
             </button>
-          ))
-        )}
+          ))}
+        </div>
       </div>
     </aside>
   );
@@ -711,31 +695,34 @@ function IconToggle({
 function ContractTable({
   contracts,
   compact,
+  currentTime,
+  statusFilter,
   totalContracts,
   onOpen,
 }: {
   contracts: Contract[];
   compact: boolean;
+  currentTime: number;
+  statusFilter: StatusFilter;
   totalContracts: number;
   onOpen: (contract: Contract) => void;
 }) {
   if (contracts.length === 0) return <EmptyState isInitialEmpty={totalContracts === 0} />;
 
+  const dueHeader = getAdvertiserDueHeader(statusFilter);
+
   return (
-    <section className="overflow-hidden rounded-b-lg border-x border-b border-neutral-200/80 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.04)]">
+    <section className="overflow-hidden rounded-b-lg border-x border-b border-neutral-200 bg-white">
       <div
-        className={`hidden border-b border-neutral-200 bg-[#fbfbfc] px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-neutral-400 lg:grid ${
+        className={`hidden border-b border-neutral-200 bg-neutral-50 px-5 py-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-neutral-500 lg:grid ${
           compact
             ? "grid-cols-[minmax(260px,1fr)_220px_150px_48px]"
-            : "grid-cols-[minmax(260px,1.35fr)_190px_180px_140px_170px_160px_48px]"
+            : "grid-cols-[minmax(280px,1.35fr)_minmax(220px,0.9fr)_170px_48px]"
         }`}
       >
-        <span>계약명</span>
+        <span>계약</span>
         <span>인플루언서</span>
-        {!compact && <span>플랫폼</span>}
-        {!compact && <span>금액</span>}
-        {!compact && <span>기간</span>}
-        <span>현 단계</span>
+        <span>{dueHeader}</span>
         <span />
       </div>
       <div className="divide-y divide-neutral-100">
@@ -744,6 +731,8 @@ function ContractTable({
             <ContractRow
               compact={compact}
               contract={contract}
+              currentTime={currentTime}
+              statusFilter={statusFilter}
               onOpen={() => onOpen(contract)}
             />
           </React.Fragment>
@@ -756,69 +745,54 @@ function ContractTable({
 function ContractRow({
   contract,
   compact,
+  currentTime,
+  statusFilter,
   onOpen,
 }: {
   contract: Contract;
   compact: boolean;
+  currentTime: number;
+  statusFilter: StatusFilter;
   onOpen: () => void;
 }) {
   return (
     <button
       type="button"
       onClick={onOpen}
-      className={`group grid w-full gap-3 px-4 py-3 text-left transition-colors hover:bg-neutral-50 lg:items-center ${
+      className={`group grid w-full gap-3 px-4 py-2.5 text-left transition-colors hover:bg-neutral-50 lg:items-center ${
         compact
           ? "lg:grid-cols-[minmax(260px,1fr)_220px_150px_48px]"
-          : "lg:grid-cols-[minmax(260px,1.35fr)_190px_180px_140px_170px_160px_48px]"
+          : "lg:grid-cols-[minmax(280px,1.35fr)_minmax(220px,0.9fr)_170px_48px]"
       }`}
     >
       <div className="min-w-0">
         <p className="truncate text-[15px] font-semibold text-neutral-950">
           {contract.title}
         </p>
-        {!compact && (
-          <p className="mt-1 truncate text-[12px] text-neutral-500">
-            {nextActionLabel(contract)}
-          </p>
-        )}
+        <p className="mt-1 truncate text-[12px] text-neutral-500">
+          {formatContractTypeLabel(contract.type)}
+        </p>
       </div>
 
       <div className="min-w-0">
         <p className="truncate text-[13px] font-semibold text-neutral-800">
           {contract.influencer_info.name}
         </p>
-        {!compact && (
-          <p className="truncate text-[12px] text-neutral-400">
-            {contract.influencer_info.contact || "연락처 미입력"}
-          </p>
-        )}
+        <p className="truncate text-[12px] text-neutral-400">
+          {formatPlatforms(contract) || "플랫폼 미정"}
+        </p>
       </div>
 
-      {!compact && (
-        <>
-          <PlatformBadges contract={contract} />
-          <TableText label="금액" value={contract.campaign?.budget ?? "미정"} />
-          <TableText label="기간" value={formatPeriod(contract)} />
-        </>
-      )}
-
-      <StatusBadge status={contract.status} />
+      <StatusTiming
+        contract={contract}
+        currentTime={currentTime}
+        showStatus={statusFilter === "ALL"}
+      />
 
       <div className="hidden justify-end lg:flex">
         <ArrowUpRight className="h-4 w-4 text-neutral-300 transition-colors group-hover:text-neutral-900" />
       </div>
     </button>
-  );
-}
-
-function TableText({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-0">
-      <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-neutral-300 lg:hidden">
-        {label}
-      </p>
-      <p className="truncate text-[13px] text-neutral-700">{value}</p>
-    </div>
   );
 }
 
@@ -848,21 +822,44 @@ function StatusBadge({
   );
 }
 
+function StatusTiming({
+  contract,
+  currentTime,
+  showStatus,
+}: {
+  contract: Contract;
+  currentTime: number;
+  showStatus: boolean;
+}) {
+  return (
+    <div className="min-w-0">
+      {showStatus && <StatusBadge status={contract.status} />}
+      <p
+        className={`truncate text-[12px] font-semibold tabular-nums ${
+          showStatus ? "mt-1 text-neutral-400" : "text-neutral-600"
+        }`}
+      >
+        {formatAdvertiserTimingLabel(contract, currentTime)}
+      </p>
+    </div>
+  );
+}
+
 function PlatformBadges({ contract }: { contract: Contract }) {
-  const platforms = getContractPlatforms(contract);
+  const platforms = getContractPlatformDisplayItems(contract);
 
   return (
     <div className="flex min-w-0 flex-wrap gap-1.5">
-      {platforms.map((platform) => {
-        const meta = PLATFORM_META[platform];
+      {platforms.map((item) => {
+        const meta = PLATFORM_META[item.platform];
         return (
           <span
-            key={platform}
-            title={meta.label}
+            key={`${item.platform}:${item.label}`}
+            title={item.title}
             className={`inline-flex h-7 max-w-full items-center gap-1.5 rounded-md border px-2 text-[11px] font-semibold ${meta.className}`}
           >
             {meta.mark}
-            <span className="truncate">{meta.label}</span>
+            <span className="truncate">{item.label}</span>
           </span>
         );
       })}
@@ -873,20 +870,22 @@ function PlatformBadges({ contract }: { contract: Contract }) {
 function ContractBoard({
   groupedContracts,
   compact,
+  currentTime,
   onOpen,
 }: {
   groupedContracts: Record<ContractStatus, Contract[]>;
   compact: boolean;
+  currentTime: number;
   onOpen: (contract: Contract) => void;
 }) {
   return (
-    <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+    <section className="grid gap-2 rounded-b-lg border-x border-b border-neutral-200 bg-white p-3 md:grid-cols-2 xl:grid-cols-5">
       {STATUS_ORDER.map((status) => {
         const meta = STATUS_META[status];
         const contracts = groupedContracts[status];
 
         return (
-          <div key={status} className="min-w-0">
+          <div key={status} className="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 p-2">
             <div className="mb-2 flex items-center justify-between px-1">
               <div className="flex items-center gap-2">
                 <span className={meta.tone}>{meta.icon}</span>
@@ -894,16 +893,15 @@ function ContractBoard({
                   <h2 className="text-[13px] font-semibold text-neutral-900">
                     {meta.label}
                   </h2>
-                  <p className="hidden">{meta.helper}</p>
                 </div>
               </div>
               <span className="rounded-full bg-white px-2 py-1 text-[12px] font-semibold text-neutral-500 ring-1 ring-neutral-200">
                 {contracts.length}
               </span>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               {contracts.length === 0 ? (
-                <div className="flex min-h-[72px] items-center justify-center rounded-lg border border-dashed border-neutral-200 bg-white/50 text-[13px] text-neutral-300">
+                <div className="flex min-h-[64px] items-center justify-center rounded-md border border-dashed border-neutral-200 bg-white text-[13px] text-neutral-300">
                   계약 없음
                 </div>
               ) : (
@@ -912,7 +910,7 @@ function ContractBoard({
                     key={contract.id}
                     type="button"
                     onClick={() => onOpen(contract)}
-                    className="group w-full rounded-lg border border-neutral-200/80 bg-white p-3 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:border-neutral-300 hover:bg-neutral-50 hover:shadow-[0_12px_26px_rgba(15,23,42,0.08)]"
+                    className="group w-full rounded-md border border-neutral-200 bg-white p-3 text-left transition-colors hover:border-neutral-300 hover:bg-neutral-50"
                   >
                     <p className="line-clamp-2 text-[14px] font-semibold leading-5 text-neutral-950">
                       {contract.title}
@@ -925,6 +923,9 @@ function ContractBoard({
                         <PlatformBadges contract={contract} />
                         <p className="truncate text-[12px] text-neutral-500">
                           {contract.campaign?.budget ?? "금액 미정"} · {formatPeriod(contract)}
+                        </p>
+                        <p className="text-[11px] font-semibold tabular-nums text-neutral-400">
+                          {formatAdvertiserTimingLabel(contract, currentTime)}
                         </p>
                       </div>
                     )}
@@ -941,25 +942,52 @@ function ContractBoard({
 
 function EmptyState({ isInitialEmpty }: { isInitialEmpty: boolean }) {
   return (
-    <section className="flex min-h-[190px] flex-col items-center justify-center rounded-b-lg border-x border-b border-neutral-200/80 bg-white px-6 text-center shadow-[0_18px_48px_rgba(15,23,42,0.04)]">
-      <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#fbfbfc] text-neutral-300 ring-1 ring-neutral-200">
-        <FileText className="h-5 w-5" strokeWidth={1.7} />
-      </div>
-      <p className="mt-3 text-[15px] font-semibold text-neutral-900">
-        {isInitialEmpty ? "아직 계약이 없습니다" : "조건에 맞는 계약이 없습니다"}
-      </p>
-      <p className="mt-1 max-w-md text-[13px] leading-6 text-neutral-500">
-        {isInitialEmpty
-          ? "사업자 인증이 완료되어 있다면 새 계약을 만들고, 초안 저장 후 최종본 공유 링크를 활성화할 수 있습니다."
-          : "검색어를 줄이거나 상태 필터를 전체로 바꿔보세요."}
-      </p>
-      <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-        <a
-          href="/advertiser/builder"
-          className="inline-flex h-10 items-center justify-center rounded-lg bg-neutral-950 px-4 text-[13px] font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition hover:bg-neutral-800"
-        >
-          새 계약 만들기
-        </a>
+    <section className="rounded-b-lg border-x border-b border-neutral-200 bg-white">
+      <div className="grid gap-4 px-5 py-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-center">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="flex h-8 w-8 items-center justify-center rounded-md bg-neutral-50 text-neutral-400 ring-1 ring-neutral-200">
+              <FileText className="h-4 w-4" strokeWidth={1.7} />
+            </span>
+            <p className="text-[15px] font-semibold text-neutral-900">
+              {isInitialEmpty ? "아직 계약이 없습니다" : "조건에 맞는 계약이 없습니다"}
+            </p>
+          </div>
+          <p className="mt-3 max-w-2xl text-[13px] leading-6 text-neutral-500">
+            {isInitialEmpty
+              ? "첫 계약을 만들면 이 화면에서 상태, 공유 링크, 마감 임박 항목을 바로 관리할 수 있습니다."
+              : "검색어를 줄이거나 상태 필터를 전체로 바꾸면 숨겨진 계약을 다시 확인할 수 있습니다."}
+          </p>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <a
+              href="/advertiser/builder"
+              className="inline-flex h-10 items-center justify-center rounded-md bg-neutral-950 px-4 text-[13px] font-semibold text-white transition hover:bg-neutral-800"
+            >
+              새 계약 만들기
+            </a>
+            <span className="text-[12px] font-medium text-neutral-400">
+              초안 저장 후 공유 링크를 활성화할 수 있습니다.
+            </span>
+          </div>
+        </div>
+
+        <div className="rounded-md border border-neutral-200 bg-neutral-50 p-4">
+          <p className="text-[12px] font-semibold text-neutral-500">다음 행동</p>
+          <ol className="mt-3 space-y-2 text-[13px] text-neutral-700">
+            <li className="flex gap-2">
+              <span className="font-semibold text-neutral-400">1</span>
+              <span>계약 초안 생성</span>
+            </li>
+            <li className="flex gap-2">
+              <span className="font-semibold text-neutral-400">2</span>
+              <span>인플루언서 정보와 캠페인 조건 입력</span>
+            </li>
+            <li className="flex gap-2">
+              <span className="font-semibold text-neutral-400">3</span>
+              <span>최종본 검토 후 공유 링크 발송</span>
+            </li>
+          </ol>
+        </div>
       </div>
     </section>
   );
@@ -1027,9 +1055,90 @@ function getContractPlatforms(contract: Contract): ContractPlatform[] {
 }
 
 function formatPlatforms(contract: Contract) {
-  return getContractPlatforms(contract)
-    .map((platform) => PLATFORM_META[platform].label)
+  return getContractPlatformDisplayItems(contract)
+    .map((item) => item.label)
     .join(", ");
+}
+
+function formatContractTypeLabel(type: Contract["type"]) {
+  if (type === "PPL") return "유료 광고 (PPL)";
+  if (type === "협찬") return "제품 협찬";
+  if (type === "공동구매") return "공동구매";
+  return type;
+}
+
+function getAdvertiserDueHeader(statusFilter: StatusFilter) {
+  if (statusFilter === "ALL") return "현 단계";
+  if (statusFilter === "SIGNED") return "기한";
+  const headers: Record<Exclude<ContractStatus, "SIGNED">, string> = {
+    DRAFT: "작성일로부터",
+    REVIEWING: "제안일로부터",
+    NEGOTIATING: "수정요청일로부터",
+    APPROVED: "서명요청일로부터",
+  };
+  return headers[statusFilter];
+}
+
+function getContractPlatformDisplayItems(contract: Contract) {
+  const source = getContractPlatformSource(contract);
+
+  return getContractPlatforms(contract).flatMap((platform) =>
+    getPlatformLabelsFromSource(platform, source).map((label) => ({
+      platform,
+      label,
+      title: PLATFORM_META[platform].label,
+    })),
+  );
+}
+
+function getContractPlatformSource(contract: Contract) {
+  return [
+    contract.title,
+    contract.type,
+    contract.influencer_info.channel_url,
+    ...(contract.campaign?.deliverables ?? []),
+    ...(contract.clauses ?? []).map((clause) => clause.content),
+  ]
+    .join(" ")
+    .toLowerCase();
+}
+
+function getPlatformLabelsFromSource(platform: ContractPlatform, source: string) {
+  const labels: string[] = [];
+  const add = (label: string) => {
+    if (!labels.includes(label)) labels.push(label);
+  };
+
+  if (platform === "YOUTUBE") {
+    if (source.includes("shorts") || source.includes("숏츠")) add("유튜브-숏츠");
+    if (
+      source.includes("longform") ||
+      source.includes("long-form") ||
+      source.includes("롱폼")
+    ) {
+      add("유튜브-롱폼");
+    }
+  }
+
+  if (platform === "INSTAGRAM") {
+    if (source.includes("reels") || source.includes("reel") || source.includes("릴스")) {
+      add("인스타그램-릴스");
+    }
+    if (source.includes("story") || source.includes("stories") || source.includes("스토리")) {
+      add("인스타그램-스토리");
+    }
+    if (source.includes("feed") || source.includes("피드")) add("인스타그램-피드");
+    if (source.includes("live") || source.includes("라이브")) add("인스타그램-라이브");
+  }
+
+  if (platform === "TIKTOK") {
+    if (source.includes("short") || source.includes("숏폼")) add("틱톡-숏폼");
+  }
+
+  if (platform === "NAVER_BLOG") add("네이버 블로그");
+  if (platform === "OTHER") add("기타");
+
+  return labels.length > 0 ? labels : [PLATFORM_META[platform].label];
 }
 
 function formatPeriod(contract: Contract) {
@@ -1042,15 +1151,27 @@ function formatPeriod(contract: Contract) {
   return "미정";
 }
 
-function formatDue(value: string | undefined, currentTime: number) {
-  if (!value) return "기한 미정";
-  const due = new Date(value);
-  const days = Math.ceil((due.getTime() - currentTime) / dayMs);
+function formatAdvertiserTimingLabel(contract: Contract, currentTime: number) {
+  if (contract.status === "SIGNED") {
+    return formatUploadDueLabel(
+      contract.campaign?.upload_due_at ?? contract.campaign?.deadline,
+      currentTime,
+      "기한",
+    );
+  }
 
-  if (days < 0) return `${Math.abs(days)}일 지연`;
-  if (days === 0) return "오늘 마감";
-  if (days === 1) return "내일 마감";
-  return `${format(due, "MM.dd")} 마감`;
+  const elapsedPrefix: Record<Exclude<ContractStatus, "SIGNED">, string> = {
+    DRAFT: "작성일로부터",
+    REVIEWING: "제안일로부터",
+    NEGOTIATING: "수정요청일로부터",
+    APPROVED: "서명요청일로부터",
+  };
+
+  return formatElapsedDayLabel(
+    contract.updated_at ?? contract.created_at,
+    currentTime,
+    elapsedPrefix[contract.status],
+  );
 }
 
 function formatDate(value: string) {
