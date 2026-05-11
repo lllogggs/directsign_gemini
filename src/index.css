@@ -1,9 +1,43 @@
-@import url('https://hangeul.pstatic.net/hangeul_static/css/nanum-square-neo.css');
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
+
+@font-face {
+    font-family: 'NanumSquareNeoLight';
+    src: url('/fonts/nanum-square-neo/NanumSquareNeoTTF-aLt.woff2') format('woff2');
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'NanumSquareNeo';
+    src: url('/fonts/nanum-square-neo/NanumSquareNeoTTF-bRg.woff2') format('woff2');
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'NanumSquareNeoBold';
+    src: url('/fonts/nanum-square-neo/NanumSquareNeoTTF-cBd.woff2') format('woff2');
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'NanumSquareNeoExtraBold';
+    src: url('/fonts/nanum-square-neo/NanumSquareNeoTTF-dEb.woff2') format('woff2');
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'NanumSquareNeoHeavy';
+    src: url('/fonts/nanum-square-neo/NanumSquareNeoTTF-eHv.woff2') format('woff2');
+    font-style: normal;
+    font-display: swap;
+}
 
 @custom-variant dark (&:is(.dark *));
 
