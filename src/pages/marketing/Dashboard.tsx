@@ -2,13 +2,10 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   AlertCircle,
-  ArrowUpRight,
   CheckCircle2,
   Clock3,
   CopyCheck,
   FileText,
-  Grid3X3,
-  List,
   MoreHorizontal,
   PenLine,
   Plus,
@@ -32,8 +29,7 @@ import { formatElapsedDayLabel, formatUploadDueLabel } from "../../domain/timing
 import { useVerificationSummary } from "../../hooks/useVerificationSummary";
 import { PRODUCT_NAME } from "../../domain/brand";
 
-type StatusFilter = ContractStatus | "ALL";
-type ViewMode = "list" | "board";
+type StatusFilter = ContractStatus | "ALL" | "PENDING";
 type AdvertiserAccountSummary = {
   name: string;
   meta: string;
@@ -42,13 +38,6 @@ type AdvertiserAccountSummary = {
 
 const STATUS_ORDER: ContractStatus[] = [
   "DRAFT",
-  "REVIEWING",
-  "NEGOTIATING",
-  "APPROVED",
-  "SIGNED",
-];
-
-const FILTER_STATUS_ORDER: ContractStatus[] = [
   "REVIEWING",
   "NEGOTIATING",
   "APPROVED",
@@ -166,8 +155,6 @@ export function Dashboard() {
   const syncError = useAppStore((state) => state.syncError);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
-  const [viewMode, setViewMode] = useState<ViewMode>("list");
-  const [compact, setCompact] = useState(false);
   const [currentTime, setCurrentTime] = useState(() => Date.now());
   const { summary: verificationSummary, isLoading: isVerificationLoading } =
     useVerificationSummary({ role: "advertiser" });
@@ -227,7 +214,14 @@ export function Dashboard() {
 
     return contracts
       .filter((contract) => {
-        if (statusFilter !== "ALL" && contract.status !== statusFilter) return false;
+        if (statusFilter === "PENDING" && contract.status === "SIGNED") return false;
+        if (
+          statusFilter !== "ALL" &&
+          statusFilter !== "PENDING" &&
+          contract.status !== statusFilter
+        ) {
+          return false;
+        }
         if (!normalizedQuery) return true;
 
         return [
@@ -245,18 +239,6 @@ export function Dashboard() {
       })
       .sort((a, b) => parseDate(b.updated_at) - parseDate(a.updated_at));
   }, [contracts, query, statusFilter]);
-
-  const groupedContracts = useMemo(
-    () =>
-      STATUS_ORDER.reduce(
-        (acc, status) => {
-          acc[status] = filteredContracts.filter((contract) => contract.status === status);
-          return acc;
-        },
-        {} as Record<ContractStatus, Contract[]>,
-      ),
-    [filteredContracts],
-  );
 
   const summary = useMemo(() => {
     const now = currentTime;
@@ -310,8 +292,27 @@ export function Dashboard() {
         </div>
       </header>
 
-      <main className="mx-auto w-full min-w-0 max-w-[1380px] px-4 py-3 sm:px-6 lg:px-8">
-        <section className="mb-3 min-w-0 overflow-hidden rounded-lg border border-neutral-200 bg-white">
+      <main className="mx-auto w-full min-w-0 max-w-[1320px] px-4 py-4 sm:px-6 lg:px-8">
+        <section className="min-w-0 overflow-hidden rounded-[8px] border border-[#cbd5cc] bg-[#fdfdfb] shadow-[0_22px_60px_rgba(23,26,23,0.10)]">
+          <div className="border-b border-[#d9e0d9] bg-white px-4 py-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[12px] font-semibold text-[#7d857f]">
+                  계약 운영 화면
+                </p>
+                <h1 className="mt-1 truncate text-[18px] font-semibold text-[#171a17]">
+                  캠페인 계약 운영
+                </h1>
+                <p className="mt-1 text-[12px] font-medium text-[#7d857f]">
+                  전체 {contracts.length.toLocaleString()}건 · 검색 결과 {filteredContracts.length.toLocaleString()}건
+                </p>
+              </div>
+              <span className="inline-flex h-8 items-center rounded-[8px] bg-[#eef0ed] px-3 text-[12px] font-semibold text-[#303630]">
+                발송 가능
+              </span>
+            </div>
+          </div>
+
           <VerificationBanner
             status={advertiserVerificationStatus}
             account={advertiserAccount}
@@ -319,113 +320,74 @@ export function Dashboard() {
             onOpen={() => navigate("/advertiser/verification")}
             embedded
           />
-          <div className="grid gap-3 px-4 py-3 lg:grid-cols-[220px_minmax(0,1fr)] lg:items-center">
-            <div className="min-w-0">
-              <h1 className="text-[20px] font-semibold leading-7 tracking-[-0.02em] text-neutral-950">
-                계약 운영 현황
-              </h1>
-              <p className="mt-0.5 text-[12px] font-medium text-neutral-500">
-                전체 {contracts.length.toLocaleString()}건 · 검색 결과 {filteredContracts.length.toLocaleString()}건
-              </p>
-            </div>
-            <div className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-4">
-              <MetricTile label="확인 필요" value={summary.needsAction} tone="amber" />
-              <MetricTile label="48시간 내 처리" value={summary.dueSoon} tone="rose" />
-              <MetricTile label="활성 링크" value={summary.activeLinks} tone="sky" />
-              <MetricTile label="계약 금액" value={formatMoney(summary.value)} tone="neutral" compact />
-            </div>
-          </div>
-          <ActionQueue
-            contracts={priorityContracts}
-            currentTime={currentTime}
-            onOpen={(contract) => navigate(`/advertiser/contract/${contract.id}`)}
-          />
-        </section>
 
-        <section className="rounded-t-lg border border-b-0 border-neutral-200 bg-white p-3">
-          <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
-            <div className="flex min-w-0 flex-1 items-center gap-3">
-              <div className="relative min-w-0 flex-1">
-                <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
-                <input
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  aria-label="계약 검색"
-                  placeholder="계약명, 인플루언서, 플랫폼, 금액으로 검색"
-                  className="h-10 w-full rounded-md border border-neutral-200 bg-white pl-9 pr-4 text-[13px] outline-none transition-colors placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-900 focus:shadow-[0_0_0_3px_rgba(23,23,23,0.05)]"
-                />
+          <div className="grid xl:grid-cols-[minmax(0,1fr)_220px]">
+            <div className="min-w-0 p-4">
+              <div className="mb-3 rounded-[8px] border border-[#d9e0d9] bg-[#f8faf7] p-4">
+                <div className="flex flex-col gap-4">
+                  <div>
+                    <p className="text-[12px] font-semibold text-[#7d857f]">
+                      오늘 처리할 계약
+                    </p>
+                    <p className="mt-1 text-[20px] font-semibold text-[#171a17]">
+                      바로 처리할 일
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    <MetricTile label="확인 필요" value={summary.needsAction} tone="amber" />
+                    <MetricTile label="48시간 내 처리" value={summary.dueSoon} tone="rose" />
+                    <MetricTile label="활성 링크" value={summary.activeLinks} tone="sky" />
+                    <MetricTile label="계약 금액" value={formatMoney(summary.value)} tone="neutral" compact />
+                  </div>
+                </div>
               </div>
-              <span className="hidden whitespace-nowrap text-[12px] font-semibold text-neutral-500 md:inline">
-                {filteredContracts.length.toLocaleString()}건 표시
-              </span>
+
+              <section className="rounded-t-[8px] border border-b-0 border-[#d9e0d9] bg-white p-2">
+                <div className="flex items-center gap-2">
+                  <div className="relative min-w-0 flex-1">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8b938d]" />
+                    <input
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                      aria-label="계약 검색"
+                      placeholder="계약명, 상대방, 플랫폼 검색"
+                      className="h-9 w-full rounded-[6px] border border-[#d9e0d9] bg-[#f8faf7] pl-8 pr-3 text-[12px] font-semibold text-[#303630] outline-none transition-colors placeholder:text-[#8b938d] hover:border-[#cbd5cc] focus:border-[#171a17] focus:bg-white"
+                    />
+                  </div>
+                  <StatusChip
+                    active={statusFilter === "ALL"}
+                    label="전체"
+                    count={contracts.length}
+                    onClick={() => setStatusFilter("ALL")}
+                  />
+                  <StatusChip
+                    active={statusFilter === "PENDING"}
+                    label="대기"
+                    count={contracts.length - statusCounts.SIGNED}
+                    onClick={() => setStatusFilter("PENDING")}
+                  />
+                </div>
+              </section>
+
+              {syncError && <SyncErrorPanel message={syncError} />}
+
+              <ContractTable
+                compact={false}
+                contracts={filteredContracts}
+                currentTime={currentTime}
+                statusFilter={statusFilter}
+                totalContracts={contracts.length}
+                onOpen={(contract) => navigate(`/advertiser/contract/${contract.id}`)}
+              />
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <StatusChip
-                active={statusFilter === "ALL"}
-                label="전체"
-                count={contracts.length}
-                onClick={() => setStatusFilter("ALL")}
-              />
-              {FILTER_STATUS_ORDER.map((status) => (
-                <React.Fragment key={status}>
-                  <StatusChip
-                    active={statusFilter === status}
-                    label={STATUS_META[status].shortLabel}
-                    count={statusCounts[status]}
-                    onClick={() => setStatusFilter(status)}
-                  />
-                </React.Fragment>
-              ))}
-              <span className="mx-1 hidden h-6 w-px bg-neutral-200 lg:inline-block" />
-              <IconToggle
-                active={viewMode === "list"}
-                label="목록"
-                icon={<List className="h-4 w-4" />}
-                onClick={() => setViewMode("list")}
-              />
-              <IconToggle
-                active={viewMode === "board"}
-                label="칸반"
-                icon={<Grid3X3 className="h-4 w-4" />}
-                onClick={() => setViewMode("board")}
-              />
-              <button
-                type="button"
-                onClick={() => setCompact((value) => !value)}
-                className={`h-9 rounded-md border px-3 text-[12px] font-semibold transition-colors ${
-                  compact
-                    ? "border-neutral-950 bg-neutral-950 text-white"
-                    : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300"
-                }`}
-              >
-                접은 보기
-              </button>
-            </div>
+            <ActionQueue
+              contracts={priorityContracts}
+              currentTime={currentTime}
+              onOpen={(contract) => navigate(`/advertiser/contract/${contract.id}`)}
+            />
           </div>
         </section>
-
-        {syncError && (
-          <SyncErrorPanel message={syncError} />
-        )}
-
-        {viewMode === "list" ? (
-          <ContractTable
-            compact={compact}
-            contracts={filteredContracts}
-            currentTime={currentTime}
-            statusFilter={statusFilter}
-            totalContracts={contracts.length}
-            onOpen={(contract) => navigate(`/advertiser/contract/${contract.id}`)}
-          />
-        ) : (
-          <ContractBoard
-            compact={compact}
-            currentTime={currentTime}
-            groupedContracts={groupedContracts}
-            onOpen={(contract) => navigate(`/advertiser/contract/${contract.id}`)}
-          />
-        )}
       </main>
     </div>
   );
@@ -541,10 +503,10 @@ function MetricTile({
   }[tone];
 
   return (
-    <div className="rounded-md border border-neutral-200 bg-white px-3 py-2.5">
+    <div className="rounded-[8px] border border-[#d9e0d9] bg-white px-3 py-2.5">
       <div className="flex items-center gap-2">
         <span className={`h-1.5 w-1.5 rounded-full ${accentClass}`} />
-        <p className="text-[11px] font-semibold leading-4 text-neutral-500">{label}</p>
+        <p className="text-[11px] font-semibold leading-4 text-[#7d857f]">{label}</p>
       </div>
       <p
         className={`mt-2 font-semibold tracking-[-0.03em] ${valueClass} ${
@@ -590,40 +552,34 @@ function ActionQueue({
   currentTime: number;
   onOpen: (contract: Contract) => void;
 }) {
-  if (contracts.length === 0) return null;
-
   return (
-    <aside className="min-w-0 border-t border-neutral-200 bg-neutral-50 px-4 py-3 text-neutral-950">
-      <div className="grid gap-2 lg:grid-cols-[160px_minmax(0,1fr)] lg:items-center">
-        <div className="min-w-0">
-          <p className="text-[12px] font-semibold text-neutral-500">먼저 처리할 계약</p>
-          <p className="mt-0.5 text-[12px] text-neutral-400">{contracts.length}건</p>
-        </div>
-
-        <div className="grid min-w-0 gap-2 md:grid-cols-3">
-          {contracts.map((contract) => (
+    <aside className="border-t border-[#d9e0d9] bg-[#f8faf7] p-4 xl:border-l xl:border-t-0">
+      <p className="text-[12px] font-semibold text-[#59605b]">최근 이력</p>
+      <div className="mt-4 space-y-4">
+        {contracts.length > 0 ? (
+          contracts.map((contract) => (
             <button
               key={contract.id}
               type="button"
               onClick={() => onOpen(contract)}
-              className="group min-w-0 rounded-md border border-neutral-200 bg-white px-3 py-2.5 text-left transition-colors hover:border-neutral-300 hover:bg-neutral-50"
+              className="group flex w-full gap-3 text-left"
             >
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="truncate text-[13px] font-semibold">{contract.title}</p>
-                  <p className="mt-1 truncate text-[12px] text-neutral-500">
-                    {contract.influencer_info.name} · {nextActionLabel(contract)}
-                  </p>
-                </div>
-                <ArrowUpRight className="h-4 w-4 shrink-0 text-neutral-400 transition-colors group-hover:text-neutral-900" />
-              </div>
-              <div className="mt-2 flex items-center gap-2 text-[11px] font-semibold text-neutral-500">
-                <StatusBadge status={contract.status} dense />
-                <span>{formatAdvertiserTimingLabel(contract, currentTime)}</span>
-              </div>
+              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#303630]" />
+              <span className="min-w-0">
+                <span className="block truncate text-[11px] font-semibold text-[#8b938d]">
+                  {STATUS_META[contract.status].label} · {formatAdvertiserTimingLabel(contract, currentTime)}
+                </span>
+                <span className="mt-1 block line-clamp-2 text-[12px] font-semibold leading-5 text-[#303630]">
+                  {formatDashboardContractTitle(contract.title)}
+                </span>
+              </span>
             </button>
-          ))}
-        </div>
+          ))
+        ) : (
+          <p className="text-[12px] font-semibold leading-5 text-[#8b938d]">
+            바로 처리할 계약이 없습니다.
+          </p>
+        )}
       </div>
     </aside>
   );
@@ -645,49 +601,20 @@ function StatusChip({
       type="button"
       aria-pressed={active}
       onClick={onClick}
-      className={`inline-flex h-9 items-center gap-2 rounded-md border px-3 text-[12px] font-semibold transition-colors ${
+      className={`hidden h-9 shrink-0 items-center rounded-[6px] border px-3 text-[12px] font-semibold transition-colors sm:inline-flex ${
         active
-          ? "border-neutral-950 bg-neutral-950 text-white"
-          : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300"
+          ? "border-[#171a17] bg-[#171a17] text-white"
+          : "border-[#d9e0d9] bg-white text-[#59605b] hover:border-[#cbd5cc]"
       }`}
     >
       {label}
       <span
         className={`rounded-full px-1.5 py-0.5 text-[11px] ${
-          active ? "bg-white/15 text-white" : "bg-neutral-100 text-neutral-500"
+          active ? "bg-white/15 text-white" : "bg-[#f8faf7] text-[#7d857f]"
         }`}
       >
         {count}
       </span>
-    </button>
-  );
-}
-
-function IconToggle({
-  active,
-  icon,
-  label,
-  onClick,
-}: {
-  active: boolean;
-  icon: React.ReactNode;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      aria-pressed={active}
-      title={label}
-      onClick={onClick}
-      className={`inline-flex h-9 w-9 items-center justify-center rounded-md border transition-colors ${
-        active
-          ? "border-neutral-950 bg-neutral-950 text-white"
-          : "border-neutral-200 bg-white text-neutral-500 hover:border-neutral-300"
-      }`}
-    >
-      {icon}
     </button>
   );
 }
@@ -712,20 +639,20 @@ function ContractTable({
   const dueHeader = getAdvertiserDueHeader(statusFilter);
 
   return (
-    <section className="overflow-hidden rounded-b-lg border-x border-b border-neutral-200 bg-white">
+    <section className="overflow-hidden rounded-b-[8px] border border-[#d9e0d9] bg-white">
       <div
-        className={`hidden border-b border-neutral-200 bg-neutral-50 px-5 py-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-neutral-500 lg:grid ${
+        className={`hidden border-b border-[#d9e0d9] bg-[#f8faf7] px-4 py-3 text-[11px] font-semibold text-[#7d857f] lg:grid ${
           compact
-            ? "grid-cols-[minmax(260px,1fr)_220px_150px_48px]"
-            : "grid-cols-[minmax(280px,1.35fr)_minmax(220px,0.9fr)_170px_48px]"
+            ? "grid-cols-[minmax(220px,1fr)_130px_90px_120px]"
+            : "grid-cols-[minmax(260px,1fr)_150px_100px_130px]"
         }`}
       >
         <span>계약</span>
-        <span>인플루언서</span>
+        <span>상대</span>
+        <span>금액</span>
         <span>{dueHeader}</span>
-        <span />
       </div>
-      <div className="divide-y divide-neutral-100">
+      <div className="divide-y divide-[#edf1ed]">
         {contracts.map((contract) => (
           <React.Fragment key={contract.id}>
             <ContractRow
@@ -759,39 +686,37 @@ function ContractRow({
     <button
       type="button"
       onClick={onOpen}
-      className={`group grid w-full gap-3 px-4 py-2.5 text-left transition-colors hover:bg-neutral-50 lg:items-center ${
+      className={`group grid w-full gap-3 px-4 py-3 text-left transition-colors hover:bg-[#f8faf7] lg:items-center ${
         compact
-          ? "lg:grid-cols-[minmax(260px,1fr)_220px_150px_48px]"
-          : "lg:grid-cols-[minmax(280px,1.35fr)_minmax(220px,0.9fr)_170px_48px]"
+          ? "lg:grid-cols-[minmax(220px,1fr)_130px_90px_120px]"
+          : "lg:grid-cols-[minmax(260px,1fr)_150px_100px_130px]"
       }`}
     >
       <div className="min-w-0">
-        <p className="truncate text-[15px] font-semibold text-neutral-950">
-          {contract.title}
+        <p className="truncate text-[14px] font-semibold text-[#171a17]">
+          {formatDashboardContractTitle(contract.title)}
         </p>
-        <p className="mt-1 truncate text-[12px] text-neutral-500">
-          {formatContractTypeLabel(contract.type)}
+        <p className="mt-1 truncate text-[12px] text-[#7d857f]">
+          {formatPlatforms(contract) || formatContractTypeLabel(contract.type)} · {formatPeriod(contract)}
         </p>
       </div>
 
       <div className="min-w-0">
-        <p className="truncate text-[13px] font-semibold text-neutral-800">
+        <p className="truncate text-[13px] font-semibold text-[#303630]">
           {contract.influencer_info.name}
         </p>
-        <p className="truncate text-[12px] text-neutral-400">
-          {formatPlatforms(contract) || "플랫폼 미정"}
+        <p className="truncate text-[12px] text-[#8b938d]">
+          인플루언서
         </p>
       </div>
+
+      <PreviewAmount value={contract.campaign?.budget ?? "미정"} />
 
       <StatusTiming
         contract={contract}
         currentTime={currentTime}
-        showStatus={statusFilter === "ALL"}
+        showStatus={statusFilter === "ALL" || statusFilter === "PENDING"}
       />
-
-      <div className="hidden justify-end lg:flex">
-        <ArrowUpRight className="h-4 w-4 text-neutral-300 transition-colors group-hover:text-neutral-900" />
-      </div>
     </button>
   );
 }
@@ -845,150 +770,29 @@ function StatusTiming({
   );
 }
 
-function PlatformBadges({ contract }: { contract: Contract }) {
-  const platforms = getContractPlatformDisplayItems(contract);
-
+function PreviewAmount({ value }: { value: string }) {
   return (
-    <div className="flex min-w-0 flex-wrap gap-1.5">
-      {platforms.map((item) => {
-        const meta = PLATFORM_META[item.platform];
-        return (
-          <span
-            key={`${item.platform}:${item.label}`}
-            title={item.title}
-            className={`inline-flex h-7 max-w-full items-center gap-1.5 rounded-md border px-2 text-[11px] font-semibold ${meta.className}`}
-          >
-            {meta.mark}
-            <span className="truncate">{item.label}</span>
-          </span>
-        );
-      })}
+    <div className="min-w-0">
+      <p className="truncate text-[13px] font-semibold text-[#303630]">{value}</p>
+      <p className="mt-1 truncate text-[12px] text-[#8b938d]">금액</p>
     </div>
-  );
-}
-
-function ContractBoard({
-  groupedContracts,
-  compact,
-  currentTime,
-  onOpen,
-}: {
-  groupedContracts: Record<ContractStatus, Contract[]>;
-  compact: boolean;
-  currentTime: number;
-  onOpen: (contract: Contract) => void;
-}) {
-  return (
-    <section className="grid gap-2 rounded-b-lg border-x border-b border-neutral-200 bg-white p-3 md:grid-cols-2 xl:grid-cols-5">
-      {STATUS_ORDER.map((status) => {
-        const meta = STATUS_META[status];
-        const contracts = groupedContracts[status];
-
-        return (
-          <div key={status} className="min-w-0 rounded-md border border-neutral-200 bg-neutral-50 p-2">
-            <div className="mb-2 flex items-center justify-between px-1">
-              <div className="flex items-center gap-2">
-                <span className={meta.tone}>{meta.icon}</span>
-                <div>
-                  <h2 className="text-[13px] font-semibold text-neutral-900">
-                    {meta.label}
-                  </h2>
-                </div>
-              </div>
-              <span className="rounded-full bg-white px-2 py-1 text-[12px] font-semibold text-neutral-500 ring-1 ring-neutral-200">
-                {contracts.length}
-              </span>
-            </div>
-            <div className="space-y-1.5">
-              {contracts.length === 0 ? (
-                <div className="flex min-h-[64px] items-center justify-center rounded-md border border-dashed border-neutral-200 bg-white text-[13px] text-neutral-300">
-                  계약 없음
-                </div>
-              ) : (
-                contracts.map((contract) => (
-                  <button
-                    key={contract.id}
-                    type="button"
-                    onClick={() => onOpen(contract)}
-                    className="group w-full rounded-md border border-neutral-200 bg-white p-3 text-left transition-colors hover:border-neutral-300 hover:bg-neutral-50"
-                  >
-                    <p className="line-clamp-2 text-[14px] font-semibold leading-5 text-neutral-950">
-                      {contract.title}
-                    </p>
-                    <p className="mt-2 truncate text-[12px] font-semibold text-neutral-600">
-                      {contract.influencer_info.name}
-                    </p>
-                    {!compact && (
-                      <div className="mt-4 space-y-2">
-                        <PlatformBadges contract={contract} />
-                        <p className="truncate text-[12px] text-neutral-500">
-                          {contract.campaign?.budget ?? "금액 미정"} · {formatPeriod(contract)}
-                        </p>
-                        <p className="text-[11px] font-semibold tabular-nums text-neutral-400">
-                          {formatAdvertiserTimingLabel(contract, currentTime)}
-                        </p>
-                      </div>
-                    )}
-                  </button>
-                ))
-              )}
-            </div>
-          </div>
-        );
-      })}
-    </section>
   );
 }
 
 function EmptyState({ isInitialEmpty }: { isInitialEmpty: boolean }) {
   return (
-    <section className="rounded-b-lg border-x border-b border-neutral-200 bg-white">
-      <div className="grid gap-4 px-5 py-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-center">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-md bg-neutral-50 text-neutral-400 ring-1 ring-neutral-200">
-              <FileText className="h-4 w-4" strokeWidth={1.7} />
-            </span>
-            <p className="text-[15px] font-semibold text-neutral-900">
-              {isInitialEmpty ? "아직 계약이 없습니다" : "조건에 맞는 계약이 없습니다"}
-            </p>
-          </div>
-          <p className="mt-3 max-w-2xl text-[13px] leading-6 text-neutral-500">
-            {isInitialEmpty
-              ? "첫 계약을 만들면 이 화면에서 상태, 공유 링크, 마감 임박 항목을 바로 관리할 수 있습니다."
-              : "검색어를 줄이거나 상태 필터를 전체로 바꾸면 숨겨진 계약을 다시 확인할 수 있습니다."}
-          </p>
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            <a
-              href="/advertiser/builder"
-              className="inline-flex h-10 items-center justify-center rounded-md bg-neutral-950 px-4 text-[13px] font-semibold text-white transition hover:bg-neutral-800"
-            >
-              새 계약 만들기
-            </a>
-            <span className="text-[12px] font-medium text-neutral-400">
-              초안 저장 후 공유 링크를 활성화할 수 있습니다.
-            </span>
-          </div>
-        </div>
-
-        <div className="rounded-md border border-neutral-200 bg-neutral-50 p-4">
-          <p className="text-[12px] font-semibold text-neutral-500">다음 행동</p>
-          <ol className="mt-3 space-y-2 text-[13px] text-neutral-700">
-            <li className="flex gap-2">
-              <span className="font-semibold text-neutral-400">1</span>
-              <span>계약 초안 생성</span>
-            </li>
-            <li className="flex gap-2">
-              <span className="font-semibold text-neutral-400">2</span>
-              <span>인플루언서 정보와 캠페인 조건 입력</span>
-            </li>
-            <li className="flex gap-2">
-              <span className="font-semibold text-neutral-400">3</span>
-              <span>최종본 검토 후 공유 링크 발송</span>
-            </li>
-          </ol>
-        </div>
+    <section className="flex min-h-[190px] flex-col items-center justify-center rounded-b-[8px] border border-[#d9e0d9] bg-white px-6 text-center">
+      <div className="flex h-10 w-10 items-center justify-center rounded-[8px] bg-[#f8faf7] text-[#aeb7b0] ring-1 ring-[#d9e0d9]">
+        <FileText className="h-5 w-5" strokeWidth={1.7} />
       </div>
+      <h2 className="mt-3 text-[14px] font-semibold text-[#171a17]">
+        {isInitialEmpty ? "아직 계약이 없습니다" : "조건에 맞는 계약이 없습니다"}
+      </h2>
+      <p className="mt-1 max-w-md text-[12px] leading-5 text-[#7d857f]">
+        {isInitialEmpty
+          ? "새 계약을 만들면 이곳에서 바로 관리할 수 있습니다."
+          : "검색어를 줄이거나 전체로 바꿔보세요."}
+      </p>
     </section>
   );
 }
@@ -1019,20 +823,6 @@ function priorityScore(contract: Contract, currentTime: number) {
   const dueBoost = Number.isFinite(due) ? Math.max(0, 20 - Math.ceil((due - currentTime) / dayMs) * 4) : 0;
   const actorBoost = contract.workflow?.next_actor === "advertiser" ? 20 : 0;
   return statusWeight[contract.status] + dueBoost + actorBoost;
-}
-
-function nextActionLabel(contract: Contract) {
-  if (contract.workflow?.next_action) return contract.workflow.next_action;
-
-  const actions: Record<ContractStatus, string> = {
-    DRAFT: "초안을 완성하고 공유 링크를 발송하세요.",
-    REVIEWING: "인플루언서의 검토 응답을 기다리는 중입니다.",
-    NEGOTIATING: "수정 요청을 검토하고 답변하세요.",
-    APPROVED: "최종본 서명을 요청할 수 있습니다.",
-    SIGNED: "서명본과 감사 기록을 보관하고, 필요한 콘텐츠 제출/검수를 이어가세요.",
-  };
-
-  return actions[contract.status];
 }
 
 function getContractPlatforms(contract: Contract): ContractPlatform[] {
@@ -1067,8 +857,14 @@ function formatContractTypeLabel(type: Contract["type"]) {
   return type;
 }
 
+function formatDashboardContractTitle(title: string) {
+  const cleaned = title.replace(/^\[[^\]]+\]\s*/, "").trim();
+  return removeInternalTestLabel(cleaned || title, "계약명 미정");
+}
+
 function getAdvertiserDueHeader(statusFilter: StatusFilter) {
   if (statusFilter === "ALL") return "현 단계";
+  if (statusFilter === "PENDING") return "상태";
   if (statusFilter === "SIGNED") return "기한";
   const headers: Record<Exclude<ContractStatus, "SIGNED">, string> = {
     DRAFT: "작성일로부터",

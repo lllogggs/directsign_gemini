@@ -303,6 +303,20 @@ describe("yeollock.me security regressions", () => {
     assert.match(server, /status:\s*"completed"/);
   });
 
+  it("counts orphan deliverable submissions against single matching requirements", () => {
+    const server = read("server/index.ts");
+    const counterStart = server.indexOf("const countDeliverableUnits =");
+    const counterEnd = server.indexOf("const buildDeliverableSummary =", counterStart);
+    const counter = server.slice(counterStart, counterEnd);
+
+    assert.notEqual(counterStart, -1);
+    assert.notEqual(counterEnd, -1);
+    assert.match(counter, /unassignedDeliverables/);
+    assert.match(counter, /!deliverable\.requirement_id/);
+    assert.match(counter, /unassignedOffset/);
+    assert.match(counter, /Math\.min\(quantity, matchingCount\)/);
+  });
+
   it("requires support PDF scope before support operators can download deliverable files", () => {
     const server = read("server/index.ts");
     const routeStart = server.indexOf(

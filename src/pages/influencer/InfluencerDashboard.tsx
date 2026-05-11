@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   AlertCircle,
-  ArrowRight,
   BadgeCheck,
   BookOpen,
   CheckCircle2,
@@ -17,7 +16,6 @@ import {
   RefreshCw,
   Search,
   ShieldCheck,
-  Sparkles,
   UserCheck,
   Youtube,
 } from "lucide-react";
@@ -39,27 +37,7 @@ type DashboardState =
   | { status: "ready"; dashboard: InfluencerDashboardResponse }
   | { status: "error"; message: string };
 
-type ContractFilter = "all" | InfluencerDashboardContractStage;
-type PlatformFilter = "all" | InfluencerPlatform;
-
-const STAGE_ORDER: ContractFilter[] = [
-  "all",
-  "review_needed",
-  "change_pending",
-  "ready_to_sign",
-  "deliverables_due",
-  "deliverables_review",
-  "signed",
-  "completed",
-];
-
-const PLATFORM_ORDER: InfluencerPlatform[] = [
-  "instagram",
-  "youtube",
-  "tiktok",
-  "naver_blog",
-  "other",
-];
+type ContractFilter = "all" | "active" | InfluencerDashboardContractStage;
 
 const STAGE_META: Record<
   InfluencerDashboardContractStage,
@@ -211,7 +189,6 @@ export function InfluencerDashboard() {
   const [state, setState] = useState<DashboardState>({ status: "loading" });
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<ContractFilter>("all");
-  const [platformFilter, setPlatformFilter] = useState<PlatformFilter>("all");
   const [currentTime, setCurrentTime] = useState(() => Date.now());
 
   const loadDashboard = useCallback(async () => {
@@ -297,32 +274,18 @@ export function InfluencerDashboard() {
   }
 
   const dashboard = state.dashboard;
-  const stageContracts = dashboard.contracts.filter((contract) =>
-    filter === "all" ? true : contract.stage === filter,
+  const activeContracts = dashboard.contracts.filter(
+    (contract) => contract.stage !== "signed" && contract.stage !== "completed",
   );
-  const platformOptions = PLATFORM_ORDER.filter((platform) =>
-    stageContracts.some((contract) => contract.platforms.includes(platform)),
-  );
-  const platformCounts = new Map<InfluencerPlatform, number>();
-  platformOptions.forEach((platform) => {
-    platformCounts.set(
-      platform,
-      stageContracts.filter((contract) => contract.platforms.includes(platform)).length,
-    );
+  const stageContracts = dashboard.contracts.filter((contract) => {
+    if (filter === "all") return true;
+    if (filter === "active") {
+      return contract.stage !== "signed" && contract.stage !== "completed";
+    }
+    return contract.stage === filter;
   });
-  const effectivePlatformFilter =
-    platformFilter !== "all" && platformOptions.includes(platformFilter)
-      ? platformFilter
-      : "all";
 
   const filteredContracts = stageContracts.filter((contract) => {
-    if (
-      effectivePlatformFilter !== "all" &&
-      !contract.platforms.includes(effectivePlatformFilter)
-    ) {
-      return false;
-    }
-
     const normalizedQuery = query.trim().toLowerCase();
     if (!normalizedQuery) return true;
 
@@ -397,155 +360,133 @@ export function InfluencerDashboard() {
       </header>
 
       <main className="mx-auto w-full max-w-[1320px] px-4 py-4 sm:px-6 lg:px-8">
-        <section
-          className={`mb-3 grid min-w-0 items-start gap-3 ${
-            dashboard.tasks.length > 0
-              ? "lg:grid-cols-[minmax(0,1fr)_300px]"
-              : "lg:grid-cols-1"
-          }`}
-        >
-          <div className="min-w-0 overflow-hidden rounded-lg border border-neutral-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)]">
-            <InfluencerAccountBanner
-              dashboard={dashboard}
-              verification={verification}
-              showVerificationAction={showVerificationAction}
-              onVerify={() =>
-                navigate(
-                  activeContractForVerification?.verification_href ??
-                    "/influencer/verification",
-                )
-              }
-            />
-            <div className="grid gap-4 p-4 lg:grid-cols-[190px_minmax(0,1fr)] lg:items-center">
+        <section className="min-w-0 overflow-hidden rounded-[8px] border border-[#cbd5cc] bg-[#fdfdfb] shadow-[0_22px_60px_rgba(23,26,23,0.10)]">
+          <div className="border-b border-[#d9e0d9] bg-white px-4 py-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0">
-                <h1 className="text-[22px] font-semibold leading-7 tracking-normal text-neutral-950">
-                  계약 처리 현황
+                <p className="text-[12px] font-semibold text-[#7d857f]">
+                  계약 운영 화면
+                </p>
+                <h1 className="mt-1 truncate text-[18px] font-semibold text-[#171a17]">
+                  받은 계약 검토
                 </h1>
+                <p className="mt-1 text-[12px] font-medium text-[#7d857f]">
+                  전체 {dashboard.contracts.length.toLocaleString()}건 · 검색 결과 {filteredContracts.length.toLocaleString()}건
+                </p>
               </div>
-              <div className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-5">
-                <SummaryTile
-                  label="검토 필요"
-                  value={dashboard.summary.review_needed}
-                  icon={<FileText className="h-4 w-4" />}
-                  tone="amber"
-                />
-                <SummaryTile
-                  label="수정 협의"
-                  value={dashboard.summary.change_pending}
-                  icon={<Clock3 className="h-4 w-4" />}
-                  tone="amber"
-                />
-                <SummaryTile
-                  label="서명 준비"
-                  value={dashboard.summary.ready_to_sign}
-                  icon={<FileSignature className="h-4 w-4" />}
-                  tone="neutral"
-                />
-                <SummaryTile
-                  label="완료"
-                  value={dashboard.summary.signed}
-                  icon={<CheckCircle2 className="h-4 w-4" />}
-                  tone="neutral"
-                />
-                <SummaryTile
-                  label="확정 금액"
-                  value={dashboard.summary.total_fixed_fee_label}
-                  icon={<FileCheck2 className="h-4 w-4" />}
-                  tone="neutral"
-                  compact
-                />
-              </div>
+              <span className="inline-flex h-8 items-center rounded-[8px] bg-[#eef0ed] px-3 text-[12px] font-semibold text-[#303630]">
+                검토 가능
+              </span>
             </div>
           </div>
 
-          <PriorityPanel
-            tasks={dashboard.tasks}
-            nextDeadline={dashboard.summary.next_deadline}
-            onOpen={(href) => { void navigate(href); }}
-          />
-        </section>
-
-        <section className="rounded-t-lg border border-b-0 border-neutral-200/80 bg-white p-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
-          <div className="relative min-w-0 flex-1">
-            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              aria-label="계약 검색"
-              placeholder="계약명, 광고주, 플랫폼 검색"
-              className="h-10 w-full rounded-md border border-neutral-200 bg-[#fbfbfc] pl-9 pr-3 text-[13px] outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950 focus:bg-white focus:shadow-[0_0_0_3px_rgba(23,23,23,0.05)]"
-            />
-          </div>
-          <div className="flex gap-2 overflow-x-auto pb-1 lg:pb-0">
-            {STAGE_ORDER.map((stage) => (
-              <React.Fragment key={stage}>
-                <FilterChip
-                  active={filter === stage}
-                  label={stage === "all" ? "전체" : getStageMeta(stage).label}
-                  count={
-                    stage === "all"
-                      ? dashboard.contracts.length
-                      : dashboard.contracts.filter((contract) => contract.stage === stage).length
-                  }
-                  onClick={() => {
-                    setFilter(stage);
-                    setPlatformFilter("all");
-                  }}
-                />
-              </React.Fragment>
-            ))}
-          </div>
-          </div>
-          {platformOptions.length > 0 ? (
-            <div className="mt-2 flex gap-1.5 overflow-x-auto border-t border-neutral-100 pt-2">
-              <PlatformFilterChip
-                active={effectivePlatformFilter === "all"}
-                label="모든 플랫폼"
-                count={stageContracts.length}
-                onClick={() => setPlatformFilter("all")}
-              />
-              {platformOptions.map((platform) => {
-                const meta = PLATFORM_META[platform];
-                return (
-                  <React.Fragment key={platform}>
-                    <PlatformFilterChip
-                      active={effectivePlatformFilter === platform}
-                      label={meta.label}
-                      count={platformCounts.get(platform) ?? 0}
-                      icon={meta.icon}
-                      onClick={() => setPlatformFilter(platform)}
-                    />
-                  </React.Fragment>
-                );
-              })}
-            </div>
-          ) : null}
-        </section>
-
-        {filteredContracts.length === 0 ? (
-          <EmptyContracts
-            hasQuery={
-              query.trim().length > 0 ||
-              filter !== "all" ||
-              effectivePlatformFilter !== "all"
+          <InfluencerAccountBanner
+            dashboard={dashboard}
+            verification={verification}
+            showVerificationAction={showVerificationAction}
+            onVerify={() =>
+              navigate(
+                activeContractForVerification?.verification_href ??
+                  "/influencer/verification",
+              )
             }
           />
-        ) : (
-          <ContractTable
-            contracts={filteredContracts}
-            currentTime={currentTime}
-            filter={filter}
-            onOpen={(contract) => { void navigate(contract.action_href); }}
-          />
-        )}
+
+          <div className="grid xl:grid-cols-[minmax(0,1fr)_220px]">
+            <div className="min-w-0 p-4">
+              <div className="mb-3 rounded-[8px] border border-[#d9e0d9] bg-[#f8faf7] p-4">
+                <div className="flex flex-col gap-4">
+                  <div>
+                    <p className="text-[12px] font-semibold text-[#7d857f]">
+                      오늘 확인할 계약
+                    </p>
+                    <p className="mt-1 text-[20px] font-semibold text-[#171a17]">
+                      바로 처리할 일
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    <SummaryTile
+                      label="검토 필요"
+                      value={dashboard.summary.review_needed}
+                      icon={<FileText className="h-4 w-4" />}
+                      tone="amber"
+                    />
+                    <SummaryTile
+                      label="수정 협의"
+                      value={dashboard.summary.change_pending}
+                      icon={<Clock3 className="h-4 w-4" />}
+                      tone="amber"
+                    />
+                    <SummaryTile
+                      label="서명 준비"
+                      value={dashboard.summary.ready_to_sign}
+                      icon={<FileSignature className="h-4 w-4" />}
+                      tone="neutral"
+                    />
+                    <SummaryTile
+                      label="확정 금액"
+                      value={dashboard.summary.total_fixed_fee_label}
+                      icon={<FileCheck2 className="h-4 w-4" />}
+                      tone="neutral"
+                      compact
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <section className="rounded-t-[8px] border border-b-0 border-[#d9e0d9] bg-white p-2">
+                <div className="flex items-center gap-2">
+                  <div className="relative min-w-0 flex-1">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8b938d]" />
+                    <input
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                      aria-label="계약 검색"
+                      placeholder="계약명, 상대방, 플랫폼 검색"
+                      className="h-9 w-full rounded-[6px] border border-[#d9e0d9] bg-[#f8faf7] pl-8 pr-3 text-[12px] font-semibold text-[#303630] outline-none transition-colors placeholder:text-[#8b938d] hover:border-[#cbd5cc] focus:border-[#171a17] focus:bg-white"
+                    />
+                  </div>
+                  <FilterChip
+                    active={filter === "all"}
+                    label="전체"
+                    count={dashboard.contracts.length}
+                    onClick={() => setFilter("all")}
+                  />
+                  <FilterChip
+                    active={filter === "active"}
+                    label="대기"
+                    count={activeContracts.length}
+                    onClick={() => setFilter("active")}
+                  />
+                </div>
+              </section>
+
+              {filteredContracts.length === 0 ? (
+                <EmptyContracts hasQuery={query.trim().length > 0 || filter !== "all"} />
+              ) : (
+                <ContractTable
+                  contracts={filteredContracts}
+                  currentTime={currentTime}
+                  filter={filter}
+                  onOpen={(contract) => { void navigate(contract.action_href); }}
+                />
+              )}
+            </div>
+
+            <PriorityPanel
+              tasks={dashboard.tasks}
+              nextDeadline={dashboard.summary.next_deadline}
+              onOpen={(href) => { void navigate(href); }}
+            />
+          </div>
+        </section>
       </main>
     </DashboardShell>
   );
 }
 
 function DashboardShell({ children }: { children: React.ReactNode }) {
-  return <div className="min-h-screen bg-[#f4f5f7] font-sans text-neutral-950">{children}</div>;
+  return <div className="min-h-screen bg-neutral-50 font-sans text-neutral-950">{children}</div>;
 }
 
 function LoadingView() {
@@ -679,40 +620,37 @@ function PriorityPanel({
   nextDeadline?: string;
   onOpen: (href: string) => void;
 }) {
-  if (tasks.length === 0) return null;
-
   return (
-    <aside className="rounded-lg border border-neutral-200/80 bg-white p-4 text-neutral-950 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_42px_rgba(15,23,42,0.06)]">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-[18px] font-semibold leading-6">
-            먼저 처리할 계약
-          </h2>
-        </div>
-        <Sparkles className="h-4 w-4 text-amber-500" />
-      </div>
-      <p className="mt-2 text-[12px] font-semibold text-neutral-500">
+    <aside className="border-t border-[#d9e0d9] bg-[#f8faf7] p-4 xl:border-l xl:border-t-0">
+      <p className="text-[12px] font-semibold text-[#59605b]">최근 이력</p>
+      <p className="mt-2 text-[12px] font-semibold text-[#8b938d]">
         {nextDeadline ? formatDeadline(nextDeadline) : "마감 없음"}
       </p>
       <div className="mt-4 space-y-2">
-        {tasks.slice(0, 3).map((task) => (
-          <button
-            key={task.id}
-            type="button"
-            onClick={() => onOpen(task.href)}
-            className="group w-full rounded-md border border-neutral-200 bg-[#fbfbfc] px-3 py-2.5 text-left transition hover:-translate-y-0.5 hover:border-neutral-300 hover:bg-white hover:shadow-[0_12px_26px_rgba(15,23,42,0.08)]"
-          >
-            <div className="flex items-center justify-between gap-3">
-              <p className="min-w-0 truncate text-[13px] font-semibold">
-                {task.title}
-              </p>
-              <ArrowRight className="h-4 w-4 shrink-0 text-neutral-400 transition group-hover:translate-x-0.5 group-hover:text-neutral-950" />
-            </div>
-            <p className="mt-1 truncate text-[12px] text-neutral-500">
-              {task.action_label}
-            </p>
-          </button>
-        ))}
+        {tasks.length > 0 ? (
+          tasks.slice(0, 4).map((task) => (
+            <button
+              key={task.id}
+              type="button"
+              onClick={() => onOpen(task.href)}
+              className="group flex w-full gap-3 text-left"
+            >
+              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#303630]" />
+              <span className="min-w-0">
+                <span className="block truncate text-[11px] font-semibold text-[#8b938d]">
+                  {task.action_label}
+                </span>
+                <span className="mt-1 block line-clamp-2 text-[12px] font-semibold leading-5 text-[#303630]">
+                  {formatDashboardContractTitle(task.title)}
+                </span>
+              </span>
+            </button>
+          ))
+        ) : (
+          <p className="text-[12px] font-semibold leading-5 text-[#8b938d]">
+            바로 처리할 계약이 없습니다.
+          </p>
+        )}
       </div>
     </aside>
   );
@@ -746,10 +684,10 @@ function SummaryTile({
   const spanClass = compact ? "col-span-2 sm:col-span-1" : "";
 
   return (
-    <div className={`rounded-md border border-neutral-200/80 bg-[#fcfcfd] px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] ${spanClass}`}>
+    <div className={`rounded-[8px] border border-[#d9e0d9] bg-white px-3 py-2.5 ${spanClass}`}>
       <div className="flex items-center gap-2">
         <span className={`h-1.5 w-1.5 rounded-full ${accentClass}`} />
-        <p className="text-[11px] font-semibold leading-4 text-neutral-500">{label}</p>
+        <p className="text-[11px] font-semibold leading-4 text-[#7d857f]">{label}</p>
         <span className="hidden">{icon}</span>
       </div>
       <p
@@ -779,10 +717,10 @@ function FilterChip({
       type="button"
       aria-pressed={active}
       onClick={onClick}
-      className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border px-3 text-[12px] font-semibold transition ${
+      className={`hidden h-9 shrink-0 items-center rounded-[6px] border px-3 text-[12px] font-semibold transition sm:inline-flex ${
         active
-          ? "border-neutral-950 bg-neutral-950 text-white"
-          : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-400"
+          ? "border-[#171a17] bg-[#171a17] text-white"
+          : "border-[#d9e0d9] bg-white text-[#59605b] hover:border-[#cbd5cc]"
       }`}
     >
       {label}
@@ -791,50 +729,19 @@ function FilterChip({
   );
 }
 
-function PlatformFilterChip({
-  active,
-  label,
-  count,
-  icon,
-  onClick,
-}: {
-  active: boolean;
-  label: string;
-  count: number;
-  icon?: React.ReactNode;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={active}
-      onClick={onClick}
-      className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-semibold transition ${
-        active
-          ? "border-neutral-950 bg-neutral-950 text-white"
-          : "border-neutral-200 bg-[#fbfbfc] text-neutral-600 hover:border-neutral-400 hover:bg-white"
-      }`}
-    >
-      {icon ? <span className="flex h-3.5 w-3.5 items-center justify-center">{icon}</span> : null}
-      <span>{label}</span>
-      <span className={active ? "text-white/65" : "text-neutral-400"}>{count}</span>
-    </button>
-  );
-}
-
 function EmptyContracts({ hasQuery }: { hasQuery: boolean }) {
   return (
-    <section className="flex min-h-[190px] flex-col items-center justify-center rounded-b-lg border-x border-b border-neutral-200/80 bg-white px-6 text-center shadow-[0_18px_48px_rgba(15,23,42,0.04)]">
-      <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#fbfbfc] text-neutral-300 ring-1 ring-neutral-200">
+    <section className="flex min-h-[190px] flex-col items-center justify-center rounded-b-[8px] border border-[#d9e0d9] bg-white px-6 text-center">
+      <div className="flex h-10 w-10 items-center justify-center rounded-[8px] bg-[#f8faf7] text-[#aeb7b0] ring-1 ring-[#d9e0d9]">
         <FileText className="h-5 w-5" strokeWidth={1.7} />
       </div>
-      <h2 className="mt-3 text-[15px] font-semibold text-neutral-950">
+      <h2 className="mt-3 text-[14px] font-semibold text-[#171a17]">
         {hasQuery ? "조건에 맞는 계약이 없습니다" : "아직 받은 계약이 없습니다"}
       </h2>
-      <p className="mt-1 max-w-md text-[13px] leading-6 text-neutral-500">
+      <p className="mt-1 max-w-md text-[12px] leading-5 text-[#7d857f]">
         {hasQuery
-          ? "검색어를 줄이거나 상태 필터를 전체로 바꿔보세요."
-          : "계약 초대가 오면 검토, 수정 협의, 플랫폼 인증, 서명 순서대로 이곳에 표시됩니다."}
+          ? "검색어를 줄이거나 전체로 바꿔보세요."
+          : "계약 초대가 오면 이곳에 표시됩니다."}
       </p>
     </section>
   );
@@ -852,25 +759,27 @@ function ContractTable({
   onOpen: (contract: InfluencerDashboardContract) => void;
 }) {
   return (
-    <section className="overflow-hidden rounded-b-lg border-x border-b border-neutral-200/80 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.04)]">
-      <div className="hidden grid-cols-[minmax(0,0.9fr)_minmax(0,1fr)_minmax(0,1.15fr)_150px_48px] gap-3 border-b border-neutral-200 bg-[#fbfbfc] px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-neutral-400 lg:grid">
-        <span>브랜드</span>
+    <section className="overflow-hidden rounded-b-[8px] border border-[#d9e0d9] bg-white">
+      <div className="hidden grid-cols-[minmax(260px,1fr)_150px_100px_130px] gap-3 border-b border-[#d9e0d9] bg-[#f8faf7] px-4 py-3 text-[11px] font-semibold text-[#7d857f] lg:grid">
         <span>계약</span>
-        <span>플랫폼</span>
-        <span>마감일</span>
-        <span />
+        <span>상대</span>
+        <span>금액</span>
+        <span>상태</span>
       </div>
-      <div className="divide-y divide-neutral-100">
+      <div className="divide-y divide-[#edf1ed]">
         {contracts.map((contract) => (
           <button
             key={contract.id}
             type="button"
             onClick={() => onOpen(contract)}
-            className="group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 px-4 py-3.5 text-left transition-colors hover:bg-neutral-50 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1fr)_minmax(0,1.15fr)_150px_48px] lg:gap-3 lg:px-5 lg:py-3"
+            className="group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 px-4 py-3 text-left transition-colors hover:bg-[#f8faf7] lg:grid-cols-[minmax(260px,1fr)_150px_100px_130px] lg:gap-3 lg:items-center"
           >
             <div className="min-w-0">
-              <p className="truncate text-[13px] font-semibold text-neutral-950">
-                {contract.advertiser_name}
+              <p className="truncate text-[14px] font-semibold text-[#171a17]">
+                {formatDashboardContractTitle(contract.title)}
+              </p>
+              <p className="mt-1 truncate text-[12px] text-[#7d857f]">
+                {formatInfluencerContractMeta(contract)}
               </p>
             </div>
             <StageTiming
@@ -880,23 +789,20 @@ function ContractTable({
               compactMobile
             />
             <div className="min-w-0">
-              <p className="truncate text-[13px] font-semibold text-neutral-950">
-                {contract.title}
+              <p className="truncate text-[13px] font-semibold text-[#303630]">
+                {contract.advertiser_name}
               </p>
-              <p className="mt-1 truncate text-[11px] font-medium text-neutral-400 lg:hidden">
-                계약
+              <p className="mt-1 truncate text-[12px] text-[#8b938d]">
+                광고주
               </p>
             </div>
-            <PlatformAccountCell contract={contract} />
+            <PreviewAmount value={contract.fee_label} />
             <div className="hidden lg:block">
               <StageTiming
                 contract={contract}
                 currentTime={currentTime}
                 filter={filter}
               />
-            </div>
-            <div className="hidden justify-end lg:flex">
-              <ArrowRight className="h-4 w-4 text-neutral-300 transition-colors group-hover:text-neutral-900" />
             </div>
           </button>
         ))}
@@ -929,7 +835,7 @@ function StageTiming({
   filter: ContractFilter;
   compactMobile?: boolean;
 }) {
-  const showStage = filter === "all";
+  const showStage = filter === "all" || filter === "active";
 
   return (
     <div className={`min-w-0 ${compactMobile ? "text-right lg:hidden" : ""}`}>
@@ -954,22 +860,27 @@ function StageTiming({
   );
 }
 
-function PlatformAccountCell({ contract }: { contract: InfluencerDashboardContract }) {
+function PreviewAmount({ value }: { value: string }) {
+  return (
+    <div className="min-w-0">
+      <p className="truncate text-[13px] font-semibold text-[#303630]">{value}</p>
+      <p className="mt-1 truncate text-[12px] text-[#8b938d]">금액</p>
+    </div>
+  );
+}
+
+function formatDashboardContractTitle(title: string) {
+  const cleaned = title.replace(/^\[[^\]]+\]\s*/, "").trim();
+  return removeInternalTestLabel(cleaned || title, "계약명 미정");
+}
+
+function formatInfluencerContractMeta(contract: InfluencerDashboardContract) {
   const items = getInfluencerPlatformDisplayItems(contract);
   const first = items[0];
   const platformLabel =
     items.length > 1 ? `${first.label} 외 ${items.length - 1}` : first.label;
 
-  return (
-    <div className="min-w-0">
-      <p className="truncate text-[13px] font-semibold text-neutral-950">
-        {platformLabel}
-      </p>
-      <p className="mt-1 truncate text-[11px] font-medium text-neutral-400">
-        {contract.influencer_name} / {first.accountId}
-      </p>
-    </div>
-  );
+  return `${platformLabel} · ${contract.period_label}`;
 }
 
 function getInfluencerPlatformDisplayItems(contract: InfluencerDashboardContract) {

@@ -6013,14 +6013,31 @@ const countDeliverableUnits = (
     ).length;
   }
 
+  const requirementIds = new Set(requirements.map((requirement) => requirement.id));
+  const unassignedDeliverables = deliverables.filter(
+    (deliverable) =>
+      !deliverable.requirement_id || !requirementIds.has(deliverable.requirement_id),
+  );
+  let unassignedOffset = 0;
+
   return requirements.reduce((total, requirement) => {
+    const quantity = normalizeDeliverableQuantity(requirement.quantity);
     const requirementDeliverables = deliverables.filter(
       (deliverable) => deliverable.requirement_id === requirement.id,
     );
-    const matchingCount = requirementDeliverables.filter((deliverable) =>
+    const deliverablesForRequirement =
+      requirementDeliverables.length > 0
+        ? requirementDeliverables
+        : unassignedDeliverables.slice(unassignedOffset, unassignedOffset + quantity);
+
+    if (requirementDeliverables.length === 0) {
+      unassignedOffset += quantity;
+    }
+
+    const matchingCount = deliverablesForRequirement.filter((deliverable) =>
       predicate(normalizeDeliverableStatus(deliverable.review_status)),
     ).length;
-    return total + Math.min(normalizeDeliverableQuantity(requirement.quantity), matchingCount);
+    return total + Math.min(quantity, matchingCount);
   }, 0);
 };
 
