@@ -626,7 +626,7 @@ const influencerPreviewSlides: InfluencerPreviewSlide[] = [
 export function StartPage() {
   return (
     <main className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950">
-      <div className="mx-auto grid min-h-screen w-full max-w-[850px] grid-rows-[68px_1fr_48px] px-5 sm:px-6">
+      <div className="mx-auto grid min-h-screen w-full max-w-[850px] content-start grid-rows-[60px_auto_44px] px-5 sm:content-normal sm:grid-rows-[68px_1fr_48px] sm:px-6">
         <header className="flex items-center justify-between">
           <Link
             to="/"
@@ -643,7 +643,7 @@ export function StartPage() {
           </Link>
         </header>
 
-        <section className="flex items-center justify-center py-7 sm:py-9">
+        <section className="flex items-start justify-center pb-4 pt-[clamp(30px,6svh,52px)] sm:items-center sm:py-9">
           <div className="w-full max-w-[790px]">
             <h1
               className="landing-start-title font-neo-heavy mb-7 text-center text-[31px] leading-[1.12] tracking-normal text-neutral-950 sm:mb-8 sm:text-[46px] sm:leading-[1.08]"
@@ -1136,7 +1136,7 @@ function InfluencerPreviewSlideView({
         </div>
       </div>
 
-      <div className="overflow-hidden">
+      <div className="space-y-2.5 bg-[#fbfaf7] p-3 sm:space-y-0 sm:bg-white sm:p-0">
         <div className="hidden grid-cols-[minmax(0,0.82fr)_minmax(0,0.9fr)_minmax(0,1.08fr)_104px] gap-3 border-b border-neutral-200 bg-[#fbfaf7] px-4 py-2.5 text-[10px] font-extrabold text-neutral-400 sm:grid sm:px-5">
           <span>브랜드</span>
           <span>계약</span>
@@ -1146,20 +1146,43 @@ function InfluencerPreviewSlideView({
         {slide.items.map((item) => (
           <div
             key={`${slide.label}-${item.brand}-${item.contract}-${item.platform}`}
-            className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 border-b border-neutral-200 bg-white px-4 py-3.5 last:border-b-0 sm:grid-cols-[minmax(0,0.82fr)_minmax(0,0.9fr)_minmax(0,1.08fr)_104px] sm:gap-3 sm:px-5 sm:py-3"
+            className="min-w-0 rounded-[8px] border border-neutral-200 bg-white p-3.5 shadow-[0_8px_22px_rgba(15,23,42,0.04)] sm:grid sm:grid-cols-[minmax(0,0.82fr)_minmax(0,0.9fr)_minmax(0,1.08fr)_104px] sm:items-center sm:gap-3 sm:rounded-none sm:border-0 sm:border-b sm:border-neutral-200 sm:px-5 sm:py-3 sm:shadow-none sm:last:border-b-0"
           >
-            <div className="min-w-0">
+            <div className="sm:hidden">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-extrabold text-neutral-400">
+                    계약
+                  </p>
+                  <p className="mt-1 truncate text-[14px] font-extrabold tracking-[-0.01em] text-neutral-950">
+                    {item.contract}
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-full border border-neutral-200 bg-[#f8f7f4] px-2.5 py-1 text-[11px] font-extrabold text-neutral-600">
+                  {slide.title}
+                </span>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <MobilePreviewMeta label="브랜드" value={item.brand} />
+                <MobilePreviewMeta label="마감" value={item.due} />
+              </div>
+              <div className="mt-2">
+                <MobilePreviewMeta
+                  label="플랫폼"
+                  value={item.platform}
+                  detail={`${item.accountName} / ${item.accountId}`}
+                />
+              </div>
+            </div>
+            <div className="hidden min-w-0 sm:block">
               <p className="truncate text-[13px] font-extrabold tracking-[-0.01em] text-neutral-900">
                 {item.brand}
               </p>
             </div>
-            <span className="text-[12px] font-extrabold tabular-nums text-neutral-500 sm:hidden">
-              {item.due}
-            </span>
-            <p className="min-w-0 truncate text-[13px] font-extrabold tracking-[-0.015em] text-neutral-950">
+            <p className="hidden min-w-0 truncate text-[13px] font-extrabold tracking-[-0.015em] text-neutral-950 sm:block">
               {item.contract}
             </p>
-            <div className="min-w-0">
+            <div className="hidden min-w-0 sm:block">
               <p className="truncate text-[13px] font-extrabold tracking-[-0.01em] text-neutral-950">
                 {item.platform}
               </p>
@@ -1424,7 +1447,7 @@ function AdvertiserPreviewSlideView({
         </div>
       </div>
 
-      <div className="overflow-hidden">
+      <div className="space-y-2.5 bg-[#fbfaf7] p-3 sm:space-y-0 sm:bg-white sm:p-0">
         <div className="hidden grid-cols-[minmax(0,1.55fr)_minmax(0,0.95fr)_104px] gap-3 border-b border-neutral-200 bg-[#fbfaf7] px-4 py-2.5 text-[10px] font-extrabold text-neutral-400 sm:grid sm:px-5">
           <span>계약</span>
           <span>인플루언서</span>
@@ -1433,9 +1456,39 @@ function AdvertiserPreviewSlideView({
         {slide.rows.map((row) => (
           <div
             key={`${slide.label}-${row.partner}-${row.contract}`}
-            className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 border-b border-neutral-200 bg-white px-4 py-3.5 last:border-b-0 sm:grid-cols-[minmax(0,1.55fr)_minmax(0,0.95fr)_104px] sm:gap-3 sm:px-5 sm:py-3"
+            className="min-w-0 rounded-[8px] border border-neutral-200 bg-white p-3.5 shadow-[0_8px_22px_rgba(15,23,42,0.04)] sm:grid sm:grid-cols-[minmax(0,1.55fr)_minmax(0,0.95fr)_104px] sm:items-center sm:gap-3 sm:rounded-none sm:border-0 sm:border-b sm:border-neutral-200 sm:px-5 sm:py-3 sm:shadow-none sm:last:border-b-0"
           >
-            <div className="min-w-0">
+            <div className="sm:hidden">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-extrabold text-neutral-400">
+                    계약
+                  </p>
+                  <p className="mt-1 truncate text-[14px] font-extrabold tracking-[-0.01em] text-neutral-950">
+                    {row.contract}
+                  </p>
+                  <p className="mt-1 truncate text-[11px] font-bold text-neutral-400">
+                    {row.contractType}
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-full border border-neutral-200 bg-[#f8f7f4] px-2.5 py-1 text-[11px] font-extrabold text-neutral-600">
+                  {row.status ?? slide.title}
+                </span>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <MobilePreviewMeta label="인플루언서" value={row.partner} />
+                <MobilePreviewMeta label="플랫폼" value={row.channel} />
+              </div>
+              <div className="mt-2">
+                <MobilePreviewMeta
+                  label="마감/상태"
+                  value={`${slide.dueHeader} ${row.due} · ${
+                    row.status ?? slide.title
+                  }`}
+                />
+              </div>
+            </div>
+            <div className="hidden min-w-0 sm:block">
               <p className="truncate text-[13px] font-extrabold tracking-[-0.01em] text-neutral-900">
                 {row.contract}
               </p>
@@ -1443,21 +1496,7 @@ function AdvertiserPreviewSlideView({
                 {row.contractType}
               </p>
             </div>
-            <div className="text-right sm:hidden">
-              {row.status ? (
-                <>
-                  <p className="text-[12px] font-extrabold text-neutral-700">{row.status}</p>
-                  <p className="mt-0.5 text-[11px] font-extrabold tabular-nums text-neutral-400">
-                    {row.due}
-                  </p>
-                </>
-              ) : (
-                <p className="text-[12px] font-extrabold tabular-nums text-neutral-500">
-                  {row.due}
-                </p>
-              )}
-            </div>
-            <div className="min-w-0">
+            <div className="hidden min-w-0 sm:block">
               <p className="truncate text-[13px] font-extrabold tracking-[-0.015em] text-neutral-950">
                 {row.partner}
               </p>
@@ -1484,6 +1523,30 @@ function AdvertiserPreviewSlideView({
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function MobilePreviewMeta({
+  label,
+  value,
+  detail,
+}: {
+  label: string;
+  value: string;
+  detail?: string;
+}) {
+  return (
+    <div className="min-w-0 rounded-[6px] bg-[#f8f7f4] px-3 py-2">
+      <p className="text-[10px] font-extrabold text-neutral-400">{label}</p>
+      <p className="mt-1 truncate text-[12px] font-extrabold tracking-[-0.01em] text-neutral-900">
+        {value}
+      </p>
+      {detail ? (
+        <p className="mt-0.5 truncate text-[10px] font-bold text-neutral-400">
+          {detail}
+        </p>
+      ) : null}
     </div>
   );
 }
