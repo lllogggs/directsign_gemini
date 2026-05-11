@@ -646,7 +646,7 @@ export function StartPage() {
         <section className="flex items-center justify-center py-7 sm:py-9">
           <div className="w-full max-w-[790px]">
             <h1
-              className="font-neo-heavy mb-7 text-center text-[31px] leading-[1.12] tracking-normal text-neutral-950 sm:mb-8 sm:text-[46px] sm:leading-[1.08]"
+              className="landing-start-title font-neo-heavy mb-7 text-center text-[31px] leading-[1.12] tracking-normal text-neutral-950 sm:mb-8 sm:text-[46px] sm:leading-[1.08]"
               aria-label="계약은 더 간편하게, 합의는 더 신뢰 있게"
             >
               <span className="landing-start-copy-line landing-start-copy-line-1 block">

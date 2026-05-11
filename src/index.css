@@ -189,19 +189,26 @@
     font-weight: 400;
   }
 
+  .landing-start-title {
+    text-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.9),
+      0 10px 30px rgba(15, 23, 42, 0.13),
+      0 2px 10px rgba(15, 23, 42, 0.08);
+  }
+
   .landing-start-copy-line {
     opacity: 0;
     transform: translateY(10px);
-    animation: landing-start-copy-in 680ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+    animation: landing-start-copy-in 1120ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
     will-change: opacity, transform;
   }
 
   .landing-start-copy-line-1 {
-    animation-delay: 140ms;
+    animation-delay: 220ms;
   }
 
   .landing-start-copy-line-2 {
-    animation-delay: 740ms;
+    animation-delay: 980ms;
   }
 
   @media (prefers-reduced-motion: reduce) {
