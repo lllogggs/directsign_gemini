@@ -133,6 +133,18 @@
 }
 
 @layer utilities {
+  @keyframes landing-start-copy-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
   .font-neo-title {
     font-family: 'NanumSquareNeoExtraBold', 'NanumSquareNeoBold', 'NanumSquareNeo', 'Noto Sans KR', sans-serif;
     font-weight: 400;
@@ -141,5 +153,29 @@
   .font-neo-heavy {
     font-family: 'NanumSquareNeoHeavy', 'NanumSquareNeoExtraBold', 'NanumSquareNeoBold', 'NanumSquareNeo', 'Noto Sans KR', sans-serif;
     font-weight: 400;
+  }
+
+  .landing-start-copy-line {
+    opacity: 0;
+    transform: translateY(10px);
+    animation: landing-start-copy-in 680ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+    will-change: opacity, transform;
+  }
+
+  .landing-start-copy-line-1 {
+    animation-delay: 140ms;
+  }
+
+  .landing-start-copy-line-2 {
+    animation-delay: 740ms;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .landing-start-copy-line {
+      opacity: 1;
+      transform: none;
+      animation: none;
+      will-change: auto;
+    }
   }
 }

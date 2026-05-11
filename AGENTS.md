@@ -163,5 +163,7 @@ Ask the user before implementing these changes:
 - Agents should have strong points of view, but Codex must make the tradeoffs clear.
 - Uncertainty must be labeled as an assumption.
 - Implementation details should follow existing project patterns unless there is a clear reason to change them.
+- For long-running Discord bridge tasks, Codex should send a brief progress message at least every 15 minutes so the user knows the task is still active.
+- The 15-minute update can be a short Korean status saying the task is currently processing when there is no meaningful new result yet.
 - If the user says "just do it", Codex can proceed within the already approved scope.
 - If the user says "review only", Codex must not modify code.

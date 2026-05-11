@@ -645,14 +645,24 @@ export function StartPage() {
 
         <section className="flex items-center justify-center py-7 sm:py-9">
           <div className="w-full max-w-[790px]">
-            <h1 className="sr-only">{PRODUCT_NAME} 시작하기</h1>
+            <h1
+              className="font-neo-heavy mb-7 text-center text-[31px] leading-[1.12] tracking-normal text-neutral-950 sm:mb-8 sm:text-[46px] sm:leading-[1.08]"
+              aria-label="계약은 더 간편하게, 합의는 더 신뢰 있게"
+            >
+              <span className="landing-start-copy-line landing-start-copy-line-1 block">
+                계약은 더 간편하게
+              </span>
+              <span className="landing-start-copy-line landing-start-copy-line-2 mt-1 block">
+                합의는 더 신뢰 있게
+              </span>
+            </h1>
             <div className="grid gap-3.5 sm:grid-cols-2 sm:gap-4">
               {roleCards.map((role) => {
                 const Icon = role.icon;
                 const isAdvertiser = role.role === "advertiser";
                 const detail = isAdvertiser
-                  ? "작성 · 공유 · 관리"
-                  : "검토 · 요청 · 서명";
+                  ? "브랜드사 · 광고대행사"
+                  : "크리에이터 · 스트리머 · MCN";
 
                 return (
                   <Link
