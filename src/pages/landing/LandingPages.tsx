@@ -32,6 +32,14 @@ type RoleCard = {
   markClass: string;
 };
 
+type StartServiceCard = {
+  title: string;
+  description: string;
+  icon: LucideIcon;
+  iconClass: string;
+  iconBgClass: string;
+};
+
 type IntroConfig = {
   eyebrow: string;
   title: string[];
@@ -97,6 +105,30 @@ const roleCards: RoleCard[] = [
     href: "/intro/influencer",
     icon: UserRound,
     markClass: "border-neutral-200 bg-white text-neutral-800",
+  },
+];
+
+const startServiceCards: StartServiceCard[] = [
+  {
+    title: "계약내용 입력",
+    description: "조건만 넣으면 초안 정리",
+    icon: FileText,
+    iconClass: "text-blue-700",
+    iconBgClass: "bg-blue-50",
+  },
+  {
+    title: "전자계약",
+    description: "검토 링크와 서명 진행",
+    icon: FileSignature,
+    iconClass: "text-emerald-700",
+    iconBgClass: "bg-emerald-50",
+  },
+  {
+    title: "대시보드 관리",
+    description: "상태와 이력을 한눈에",
+    icon: ClipboardCheck,
+    iconClass: "text-amber-700",
+    iconBgClass: "bg-amber-50",
   },
 ];
 
@@ -370,8 +402,15 @@ type AdvertiserPreviewBuilderSlide = {
     label: string;
     value: string;
   }>;
-  deliverables: string[];
-  safeguards: string[];
+  contractSummary: Array<{
+    label: string;
+    value: string;
+  }>;
+  clauseInputs: string[];
+  generatedClauses: Array<{
+    title: string;
+    text: string;
+  }>;
 };
 
 type AdvertiserPreviewSlide =
@@ -393,15 +432,29 @@ const advertiserPreviewSlides: AdvertiserPreviewSlide[] = [
       { label: "금액", value: "2,800,000원" },
       { label: "업로드", value: "6월 12일 18:00" },
     ],
-    deliverables: [
-      "릴스 1건",
-      "스토리 2건",
-      "초안 검수 1회",
+    contractSummary: [
+      { label: "광고주", value: "브레드룸" },
+      { label: "인플루언서", value: "민서홈" },
+      { label: "채널", value: "Instagram Reels" },
+      { label: "지급", value: "2,800,000원" },
     ],
-    safeguards: [
-      "광고 표시 문구",
-      "2차 활용 범위",
-      "서명 증빙 보관",
+    clauseInputs: [
+      "콘텐츠는 업로드 후 3개월 동안 브랜드 채널에서 활용",
+      "릴스 1건, 스토리 2건 업로드 후 초안 검수 1회",
+    ],
+    generatedClauses: [
+      {
+        title: "산출물 및 일정",
+        text: "인플루언서는 릴스 1건과 스토리 2건을 6월 12일 18:00까지 업로드합니다.",
+      },
+      {
+        title: "콘텐츠 활용 범위",
+        text: "브랜드는 업로드 콘텐츠를 브랜드 공식 채널에서 3개월 동안 활용할 수 있습니다.",
+      },
+      {
+        title: "광고 표시",
+        text: "콘텐츠에는 협찬 및 광고 표시 문구를 플랫폼 정책에 맞게 포함합니다.",
+      },
     ],
   },
   {
@@ -533,8 +586,16 @@ type InfluencerPreviewRevisionSlide = {
   accentClass: string;
   brand: string;
   contract: string;
-  clauseTitle: string;
-  clauseText: string;
+  summary: Array<{
+    label: string;
+    value: string;
+  }>;
+  clauses: Array<{
+    title: string;
+    text: string;
+    status: string;
+    active?: boolean;
+  }>;
   requestText: string;
   checks: string[];
 };
@@ -553,9 +614,30 @@ const influencerPreviewSlides: InfluencerPreviewSlide[] = [
     accentClass: "bg-amber-500",
     brand: "브레드룸",
     contract: "공동구매",
-    clauseTitle: "2차 콘텐츠 활용",
-    clauseText:
-      "브랜드는 업로드 콘텐츠를 광고 소재로 12개월 동안 활용할 수 있습니다.",
+    summary: [
+      { label: "계약명", value: "브레드룸 공동구매" },
+      { label: "지급", value: "판매수수료 12%" },
+      { label: "마감", value: "6월 12일" },
+      { label: "검토", value: "1개 조항 확인 필요" },
+    ],
+    clauses: [
+      {
+        title: "판매 및 정산",
+        text: "판매 수수료는 공동구매 종료 후 7영업일 이내 정산합니다.",
+        status: "승인 가능",
+      },
+      {
+        title: "2차 콘텐츠 활용",
+        text: "브랜드는 업로드 콘텐츠를 광고 소재로 12개월 동안 활용할 수 있습니다.",
+        status: "수정 필요",
+        active: true,
+      },
+      {
+        title: "광고 표시",
+        text: "콘텐츠에는 협찬 및 공동구매 안내 문구를 플랫폼 정책에 맞게 표시합니다.",
+        status: "승인 가능",
+      },
+    ],
     requestText:
       "활용 기간을 3개월로 줄이고, 추가 활용은 별도 동의 후 진행하고 싶어요.",
     checks: [
@@ -679,6 +761,33 @@ export function StartPage() {
 
         <section className="flex items-start justify-center pb-4 pt-[clamp(30px,6svh,52px)] sm:items-center sm:py-9">
           <div className="w-full max-w-[790px]">
+            <div
+              className="mx-auto mb-6 grid max-w-[640px] grid-cols-3 gap-2 sm:mb-7 sm:gap-3"
+              aria-label="서비스 구성"
+            >
+              {startServiceCards.map((service) => {
+                const Icon = service.icon;
+
+                return (
+                  <div
+                    key={service.title}
+                    className="min-w-0 rounded-[16px] border border-neutral-200/90 bg-white/82 px-2.5 py-3 text-center shadow-[0_1px_0_rgba(15,23,42,0.03),0_12px_32px_rgba(15,23,42,0.035)] sm:px-4 sm:py-4"
+                  >
+                    <span
+                      className={`mx-auto flex h-8 w-8 items-center justify-center rounded-[11px] ${service.iconBgClass} ${service.iconClass} sm:h-9 sm:w-9`}
+                    >
+                      <Icon className="h-4 w-4 sm:h-[17px] sm:w-[17px]" />
+                    </span>
+                    <strong className="mt-2 block break-keep text-[12px] font-extrabold leading-tight tracking-[-0.005em] text-neutral-950 sm:text-[14px]">
+                      {service.title}
+                    </strong>
+                    <span className="mt-1 hidden break-keep text-[11px] font-bold leading-4 text-neutral-500 sm:block">
+                      {service.description}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
             <h1
               className="landing-start-title font-neo-heavy mb-7 text-center text-[31px] leading-[1.12] tracking-normal text-neutral-950 sm:mb-8 sm:text-[46px] sm:leading-[1.08]"
               aria-label="계약은 더 간편하게, 합의는 더 신뢰 있게"
@@ -1053,7 +1162,7 @@ function InfluencerPreviewCarousel() {
   return (
     <section
       aria-label="인플루언서 수정 요청 및 계약 미리보기"
-      className="w-full min-w-0 max-w-full overflow-hidden rounded-[30px] border border-neutral-200 bg-[#fbfaf7] shadow-[0_24px_70px_rgba(15,23,42,0.08)]"
+      className="mx-auto w-full min-w-0 max-w-[calc(100vw-40px)] overflow-hidden rounded-[30px] border border-neutral-200 bg-[#fbfaf7] shadow-[0_24px_70px_rgba(15,23,42,0.08)] sm:max-w-full"
     >
       <div className="flex items-center justify-between gap-3 border-b border-neutral-200 bg-white px-4 py-3 sm:px-5">
         <div className="flex min-w-0 items-center gap-2">
@@ -1081,9 +1190,9 @@ function InfluencerPreviewCarousel() {
         </div>
       </div>
 
-      <div className="p-4 sm:p-5">
+      <div className="min-w-0 p-4 sm:p-5">
         <div
-          className="mb-4 grid grid-cols-4 gap-1 rounded-full bg-neutral-100 p-1"
+          className="mb-4 grid min-w-0 grid-cols-4 gap-1 overflow-hidden rounded-full bg-neutral-100 p-1"
           role="tablist"
           aria-label="미리보기 종류"
         >
@@ -1094,7 +1203,7 @@ function InfluencerPreviewCarousel() {
               role="tab"
               aria-selected={activeIndex === index}
               onClick={() => showSlide(index)}
-              className={`h-9 rounded-full text-[12px] font-extrabold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 ${
+              className={`h-9 min-w-0 rounded-full px-1 text-[12px] font-extrabold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 ${
                 activeIndex === index
                   ? "bg-white text-neutral-950 shadow-[0_1px_0_rgba(15,23,42,0.04)]"
                   : "text-neutral-500 hover:text-neutral-800"
@@ -1269,28 +1378,96 @@ function InfluencerRevisionPreview({
       </div>
 
       <div className="bg-[#fbfaf7] p-3 sm:p-5">
-        <div className="rounded-[16px] border border-amber-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-[11px] font-extrabold text-amber-700">
-              선택한 조항
-            </p>
-            <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-extrabold text-amber-700">
-              수정 필요
+        <div className="grid gap-2 sm:grid-cols-4">
+          {slide.summary.map((item) => (
+            <div
+              key={item.label}
+              className="min-w-0 rounded-[12px] border border-neutral-200 bg-white px-3 py-3 shadow-[0_8px_22px_rgba(15,23,42,0.035)]"
+            >
+              <p className="text-[10px] font-extrabold text-neutral-400">
+                {item.label}
+              </p>
+              <p className="mt-1 truncate text-[12px] font-extrabold text-neutral-950">
+                {item.value}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-3 overflow-hidden rounded-[16px] border border-neutral-200 bg-white shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+          <div className="flex items-center justify-between gap-3 border-b border-neutral-200 bg-white px-4 py-3">
+            <div className="min-w-0">
+              <p className="text-[11px] font-extrabold text-neutral-400">
+                계약 조항
+              </p>
+              <p className="mt-1 truncate text-[14px] font-extrabold text-neutral-950">
+                조항별 검토
+              </p>
+            </div>
+            <span className="shrink-0 rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-extrabold text-amber-700">
+              1개 확인 필요
             </span>
           </div>
-          <p className="mt-2 text-[14px] font-extrabold tracking-[-0.01em] text-neutral-950">
-            {slide.clauseTitle}
-          </p>
-          <p className="mt-2 rounded-[12px] bg-[#f8f7f4] px-3 py-2.5 text-[12px] font-bold leading-5 text-neutral-600">
-            {slide.clauseText}
-          </p>
+
+          <div className="divide-y divide-neutral-200">
+            {slide.clauses.map((clause, index) => (
+              <div
+                key={clause.title}
+                className={`p-3.5 ${clause.active ? "bg-amber-50/65" : "bg-white"}`}
+              >
+                <div className="flex items-start gap-3">
+                  <span
+                    className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[12px] font-extrabold ${
+                      clause.active
+                        ? "bg-amber-100 text-amber-800"
+                        : "bg-neutral-100 text-neutral-600"
+                    }`}
+                  >
+                    {index + 1}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="min-w-0 truncate text-[13px] font-extrabold text-neutral-950">
+                        {clause.title}
+                      </p>
+                      <span
+                        className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-extrabold ${
+                          clause.active
+                            ? "bg-amber-100 text-amber-800"
+                            : "bg-neutral-100 text-neutral-600"
+                        }`}
+                      >
+                        {clause.status}
+                      </span>
+                    </div>
+                    <p className="mt-2 line-clamp-2 rounded-[10px] border border-neutral-200 bg-white px-3 py-2 text-[11px] font-bold leading-4 text-neutral-600">
+                      {clause.text}
+                    </p>
+                    {clause.active ? (
+                      <div className="mt-2 grid gap-1.5 sm:grid-cols-3">
+                        <span className="inline-flex h-8 items-center justify-center rounded-[8px] border border-neutral-200 bg-white text-[11px] font-extrabold text-neutral-700">
+                          이 조항 승인
+                        </span>
+                        <span className="inline-flex h-8 items-center justify-center rounded-[8px] border border-amber-200 bg-amber-50 text-[11px] font-extrabold text-amber-800">
+                          수정 요청
+                        </span>
+                        <span className="inline-flex h-8 items-center justify-center rounded-[8px] border border-rose-200 bg-rose-50 text-[11px] font-extrabold text-rose-700">
+                          삭제 요청
+                        </span>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className="mt-3 rounded-[16px] border border-neutral-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
           <p className="text-[11px] font-extrabold text-neutral-400">
-            요청 내용
+            수정 요청 작성
           </p>
-          <p className="mt-2 min-h-[72px] rounded-[12px] border border-neutral-200 bg-[#f8f7f4] px-3 py-2.5 text-[12px] font-bold leading-5 text-neutral-700">
+          <p className="mt-2 min-h-[56px] rounded-[12px] border border-neutral-200 bg-[#f8f7f4] px-3 py-2.5 text-[12px] font-bold leading-5 text-neutral-700">
             {slide.requestText}
           </p>
         </div>
@@ -1457,7 +1634,7 @@ function AdvertiserPreviewCarousel() {
   return (
     <section
       aria-label="광고주 계약 작성 및 대시보드 미리보기"
-      className="w-full min-w-0 max-w-full overflow-hidden rounded-[30px] border border-neutral-200 bg-[#fbfaf7] shadow-[0_24px_70px_rgba(15,23,42,0.08)]"
+      className="mx-auto w-full min-w-0 max-w-[calc(100vw-40px)] overflow-hidden rounded-[30px] border border-neutral-200 bg-[#fbfaf7] shadow-[0_24px_70px_rgba(15,23,42,0.08)] sm:max-w-full"
     >
       <div className="flex items-center justify-between gap-3 border-b border-neutral-200 bg-white px-4 py-3 sm:px-5">
         <div className="flex min-w-0 items-center gap-2">
@@ -1485,9 +1662,9 @@ function AdvertiserPreviewCarousel() {
         </div>
       </div>
 
-      <div className="p-4 sm:p-5">
+      <div className="min-w-0 p-4 sm:p-5">
         <div
-          className="mb-4 grid grid-cols-4 gap-1 rounded-full bg-neutral-100 p-1"
+          className="mb-4 grid min-w-0 grid-cols-4 gap-1 overflow-hidden rounded-full bg-neutral-100 p-1"
           role="tablist"
           aria-label="미리보기 종류"
         >
@@ -1498,13 +1675,13 @@ function AdvertiserPreviewCarousel() {
               role="tab"
               aria-selected={activeIndex === index}
               onClick={() => showSlide(index)}
-              className={`h-9 rounded-full text-[12px] font-extrabold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 ${
+              className={`h-9 min-w-0 rounded-full px-1 text-[12px] font-extrabold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 ${
                 activeIndex === index
                   ? "bg-white text-neutral-950 shadow-[0_1px_0_rgba(15,23,42,0.04)]"
                   : "text-neutral-500 hover:text-neutral-800"
               }`}
             >
-              <span className="inline-flex items-center justify-center gap-1 whitespace-nowrap">
+              <span className="inline-flex min-w-0 max-w-full items-center justify-center gap-1 overflow-hidden whitespace-nowrap">
                 {slide.label}
                 <span
                   className={`text-[10px] ${
@@ -1687,53 +1864,107 @@ function AdvertiserBuilderPreview({
       </div>
 
       <div className="bg-[#fbfaf7] p-3 sm:p-5">
-        <div className="grid gap-2 sm:grid-cols-2">
-          {slide.fields.map((field) => (
-            <div
-              key={field.label}
-              className="min-w-0 rounded-[12px] border border-neutral-200 bg-white px-3 py-3 shadow-[0_8px_22px_rgba(15,23,42,0.035)]"
-            >
-              <p className="text-[10px] font-extrabold text-neutral-400">
-                {field.label}
-              </p>
-              <p className="mt-1 truncate text-[13px] font-extrabold tracking-[-0.01em] text-neutral-950">
-                {field.value}
-              </p>
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)]">
+          <div className="min-w-0 rounded-[16px] border border-neutral-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[11px] font-extrabold text-neutral-400">
+                  조건 입력
+                </p>
+                <p className="mt-1 truncate text-[13px] font-extrabold text-neutral-950">
+                  조항까지 직접 정리
+                </p>
+              </div>
+              <PenLine className="h-4 w-4 shrink-0 text-blue-600" />
             </div>
-          ))}
-        </div>
 
-        <div className="mt-3 rounded-[16px] border border-neutral-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-[11px] font-extrabold text-neutral-400">
-              산출물
-            </p>
-            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-extrabold text-blue-700">
-              자동 초안
-            </span>
-          </div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {slide.deliverables.map((item) => (
-              <span
-                key={item}
-                className="rounded-full border border-neutral-200 bg-[#f8f7f4] px-3 py-1.5 text-[11px] font-extrabold text-neutral-700"
-              >
-                {item}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        <div className="mt-3 grid gap-2 sm:grid-cols-3">
-          {slide.safeguards.map((item) => (
-            <div
-              key={item}
-              className="flex min-h-9 items-center gap-2 rounded-[10px] border border-neutral-200 bg-white px-3 text-[11px] font-extrabold text-neutral-600"
-            >
-              <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-blue-600" />
-              <span className="truncate">{item}</span>
+            <div className="mt-3 grid gap-2">
+              {slide.fields.map((field) => (
+                <div
+                  key={field.label}
+                  className="min-w-0 rounded-[10px] border border-neutral-200 bg-[#f8f7f4] px-3 py-2.5"
+                >
+                  <p className="text-[10px] font-extrabold text-neutral-400">
+                    {field.label}
+                  </p>
+                  <p className="mt-1 truncate text-[12px] font-extrabold text-neutral-950">
+                    {field.value}
+                  </p>
+                </div>
+              ))}
             </div>
-          ))}
+
+            <div className="mt-3 rounded-[12px] border border-dashed border-blue-200 bg-blue-50/50 p-3">
+              <p className="text-[10px] font-extrabold text-blue-700">
+                추가 조항 입력
+              </p>
+              <div className="mt-2 space-y-1.5">
+                {slide.clauseInputs.map((clause) => (
+                  <p
+                    key={clause}
+                    className="rounded-[8px] bg-white px-2.5 py-2 text-[11px] font-bold leading-4 text-neutral-700"
+                  >
+                    {clause}
+                  </p>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="min-w-0 overflow-hidden rounded-[16px] border border-neutral-200 bg-white shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+            <div className="border-b border-neutral-200 bg-white px-4 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-extrabold text-neutral-400">
+                    실시간 계약서
+                  </p>
+                  <p className="mt-1 truncate text-[14px] font-extrabold text-neutral-950">
+                    신제품 언박싱 릴스 계약서
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-extrabold text-blue-700">
+                  자동 반영
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 bg-[#fbfaf7] p-3">
+              {slide.contractSummary.map((item) => (
+                <div
+                  key={item.label}
+                  className="min-w-0 rounded-[8px] border border-neutral-200 bg-white px-2.5 py-2"
+                >
+                  <p className="text-[10px] font-extrabold text-neutral-400">
+                    {item.label}
+                  </p>
+                  <p className="mt-1 truncate text-[11px] font-extrabold text-neutral-900">
+                    {item.value}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            <div className="space-y-2 px-3 pb-3">
+              {slide.generatedClauses.map((clause, index) => (
+                <div
+                  key={clause.title}
+                  className="rounded-[12px] border border-neutral-200 bg-white p-3"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-neutral-950 text-[10px] font-extrabold text-white">
+                      {index + 1}
+                    </span>
+                    <p className="truncate text-[12px] font-extrabold text-neutral-950">
+                      {clause.title}
+                    </p>
+                  </div>
+                  <p className="mt-2 line-clamp-2 text-[11px] font-bold leading-4 text-neutral-600">
+                    {clause.text}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
 
         <div className="mt-3 flex items-center justify-between gap-3 rounded-[14px] bg-neutral-950 px-4 py-3 text-white">
