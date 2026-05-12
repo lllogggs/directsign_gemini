@@ -678,7 +678,7 @@ export function ContractBuilder() {
   };
 
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-[#f7f6f3] font-sans text-neutral-950 lg:h-screen lg:overflow-hidden">
+    <div className="flex min-h-[100dvh] flex-col bg-[#f7f6f3] font-sans text-neutral-950 lg:h-[100dvh] lg:overflow-hidden">
       <header className="z-10 flex h-[68px] shrink-0 items-center justify-between border-b border-neutral-200/80 bg-[#f7f6f3]/95 px-5 backdrop-blur md:px-8">
         <div className="flex items-center gap-4">
           <button
@@ -700,8 +700,8 @@ export function ContractBuilder() {
         </div>
       </header>
 
-      <main className="flex flex-1 flex-col lg:flex-row lg:gap-6 lg:overflow-hidden lg:px-8 lg:pb-8">
-        <aside className="relative z-10 hidden w-[286px] shrink-0 flex-col gap-12 border border-neutral-200/90 bg-white/95 p-8 pr-7 shadow-[0_1px_0_rgba(15,23,42,0.035),0_18px_46px_rgba(15,23,42,0.05)] xl:mt-8 xl:flex xl:rounded-[22px]">
+      <main className="grid flex-1 grid-cols-1 lg:min-h-0 lg:grid-cols-[minmax(420px,520px)_minmax(0,1fr)] lg:gap-5 lg:overflow-hidden lg:px-6 lg:pb-6 xl:grid-cols-[220px_minmax(420px,500px)_minmax(430px,1fr)]">
+        <aside className="relative z-10 hidden min-h-0 flex-col gap-10 overflow-y-auto border border-neutral-200/90 bg-white/95 p-6 shadow-[0_1px_0_rgba(15,23,42,0.035),0_18px_46px_rgba(15,23,42,0.05)] xl:mt-6 xl:flex xl:rounded-[18px]">
           <div>
             <h3 className="mb-10 text-[10px] font-medium uppercase tracking-[0.2em] text-neutral-400">
               계약 작성
@@ -739,8 +739,8 @@ export function ContractBuilder() {
           </div>
         </aside>
 
-        <section className="contract-builder-surface custom-scrollbar relative z-0 w-full shrink-0 bg-transparent lg:w-[560px] lg:overflow-y-auto xl:w-[620px]">
-          <div className="mx-auto max-w-[520px] p-6 md:p-10 lg:px-2 lg:py-8">
+        <section className="contract-builder-surface custom-scrollbar relative z-0 min-h-0 w-full bg-transparent lg:overflow-y-auto">
+          <div className="mx-auto max-w-[520px] p-6 md:p-10 lg:px-1 lg:py-6">
             <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
               {step} / 5 단계
             </p>
@@ -1393,7 +1393,7 @@ export function ContractBuilder() {
           </div>
         </section>
 
-        <section className="hidden flex-1 flex-col overflow-hidden bg-transparent py-8 lg:flex">
+        <section className="hidden min-h-0 flex-col overflow-hidden bg-transparent py-6 lg:flex">
           <BuilderReviewPanel draft={draft} clauses={clauses} />
         </section>
       </main>
@@ -1406,149 +1406,243 @@ const BuilderReviewPanel: React.FC<{
   clauses: Clause[];
 }> = ({ draft, clauses }) => {
   const hasDeliverables = getDeliverableRows(draft).some((row) => row.channel);
+  const deliverables = getDeliverableRows(draft).filter(
+    (row) => row.channel || row.postCount || row.duration,
+  );
+  const previewDate = new Date().toISOString().split("T")[0];
 
   return (
-    <div className="custom-scrollbar flex flex-1 flex-col gap-4 overflow-y-auto pr-1">
-      <div className="rounded-[22px] border border-neutral-900 bg-neutral-950 p-6 text-white shadow-[0_18px_48px_rgba(15,23,42,0.18)]">
-        <div className="mb-6 flex items-center justify-between gap-4">
-          <div>
+    <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto pr-1">
+      <div className="mx-auto w-full max-w-[760px] space-y-4">
+        <div className="sticky top-0 z-10 rounded-[18px] border border-neutral-900 bg-neutral-950 p-4 text-white shadow-[0_18px_48px_rgba(15,23,42,0.18)]">
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
+                실시간 계약서
+              </p>
+              <h2 className="mt-1 truncate text-[20px] font-semibold tracking-[-0.02em]">
+                {draft.title || `${draft.type} 계약서`}
+              </h2>
+            </div>
+            <span className="shrink-0 rounded-full bg-white/10 px-3 py-1 text-[12px] font-semibold text-neutral-200">
+              {previewDate}
+            </span>
+          </div>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+            <ChecklistLine checked={!isBlank(draft.title)} label="계약명" />
+            <ChecklistLine checked={!isBlank(draft.influencerName)} label="상대방" />
+            <ChecklistLine checked={hasDeliverables} label="플랫폼" />
+            <ChecklistLine checked={!isBlank(draft.payment)} label="지급" />
+            <ChecklistLine checked={clauses.length > 0} label="조항" />
+          </div>
+        </div>
+
+        <article className="min-h-[calc(100dvh-180px)] rounded-[18px] border border-neutral-200 bg-[#fffdf8] px-7 py-8 shadow-[0_1px_0_rgba(15,23,42,0.035),0_18px_46px_rgba(15,23,42,0.08)]">
+          <header className="border-b border-neutral-200 pb-7 text-center">
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
-              발송 전 체크리스트
+              Electronic Contract Draft
             </p>
-            <h2 className="mt-1 text-[22px] font-semibold tracking-[-0.02em]">
-              발송 전 점검
+            <h2 className="mt-3 text-[28px] font-semibold leading-tight tracking-[-0.03em] text-neutral-950">
+              {draft.title || `${draft.type} 계약서`}
             </h2>
-          </div>
-          <span className="rounded-full bg-white/10 px-3 py-1 text-[12px] font-semibold text-neutral-200">
-            {new Date().toISOString().split("T")[0]}
-          </span>
-        </div>
-        <div className="grid gap-2">
-          <ChecklistLine checked={!isBlank(draft.title)} label="계약명이 입력되었습니다" />
-          <ChecklistLine
-            checked={!isBlank(draft.influencerName)}
-            label="인플루언서 정보가 입력되었습니다"
-          />
-          <ChecklistLine checked={hasDeliverables} label="플랫폼과 업로드 조건이 있습니다" />
-          <ChecklistLine checked={!isBlank(draft.payment)} label="지급 조건이 입력되었습니다" />
-          <ChecklistLine checked={clauses.length > 0} label="계약 조항 미리보기가 준비되었습니다" />
-        </div>
-      </div>
-
-      <div className="rounded-[22px] border border-neutral-200/90 bg-white p-6 shadow-[0_1px_0_rgba(15,23,42,0.035),0_18px_46px_rgba(15,23,42,0.05)]">
-        <div className="mb-5 flex items-start justify-between gap-4">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
-              실시간 계약 요약
+            <p className="mt-3 text-[13px] font-semibold text-neutral-500">
+              작성일 {previewDate}
             </p>
-            <h2 className="font-neo-heavy mt-1 text-[24px] leading-tight tracking-[-0.035em] text-neutral-950">
-              {draft.title || `${draft.type} 계약`}
-            </h2>
-          </div>
-          <span className="rounded-md border border-neutral-200 bg-[#fafafa] px-2.5 py-1 text-[12px] font-semibold text-neutral-600">
-            {draft.type}
-          </span>
-        </div>
+          </header>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <SummaryCard label="광고주" value={draft.advertiserName || "미입력"} />
-          <SummaryCard label="인플루언서" value={draft.influencerName || "미입력"} />
-          <SummaryCard label="채널" value={draft.influencerUrl || "미입력"} mono />
-          <SummaryCard label="지급" value={draft.payment || "미입력"} />
-          <SummaryCard
-            label="캠페인 기간"
-            value={
-              draft.campaignStart || draft.campaignEnd
-                ? `${draft.campaignStart || "시작일 미입력"} - ${
-                    draft.campaignEnd || "종료일 미입력"
-                  }`
-                : "미입력"
-            }
-          />
-          <SummaryCard label="업로드 마감" value={draft.uploadDueDate || "미입력"} />
-        </div>
-      </div>
+          <ContractDocumentSection title="계약 개요">
+            <DocumentRows
+              rows={[
+                ["계약 종류", formatDraftValue(draft.type)],
+                ["광고주", formatDraftValue(draft.advertiserName)],
+                ["광고주 담당자", formatDraftValue(draft.advertiserManager, "-")],
+                ["인플루언서", formatDraftValue(draft.influencerName)],
+                ["연락처", formatDraftValue(draft.influencerContact)],
+                ["대표 채널", formatDraftValue(draft.influencerUrl)],
+              ]}
+            />
+          </ContractDocumentSection>
 
-      <div className="rounded-[22px] border border-neutral-200/90 bg-white p-6 shadow-[0_1px_0_rgba(15,23,42,0.035),0_18px_46px_rgba(15,23,42,0.05)]">
-        <div className="mb-5 flex items-center justify-between">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
-              조항
-            </p>
-            <h2 className="mt-1 text-[20px] font-semibold tracking-[-0.02em] text-neutral-950">
-              생성될 조항
-            </h2>
-          </div>
-          <span className="rounded-full bg-neutral-100 px-2.5 py-1 text-[12px] font-semibold text-neutral-500">
-            {clauses.length}개
-          </span>
-        </div>
-
-        {clauses.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-neutral-200 bg-[#fafafa] p-6 text-center text-[13px] leading-6 text-neutral-500">
-            왼쪽 조건을 입력하면 공유 전 검토할 조항이 이곳에 생성됩니다.
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {clauses.map((clause, index) => (
-              <div
-                key={clause.clause_id}
-                className="rounded-[14px] border border-neutral-200 bg-[#fbfaf7] p-4"
-              >
-                <div className="mb-2 flex items-center gap-3">
-                  <span className="font-mono text-[12px] font-semibold text-neutral-400">
-                    {String(index + 1).padStart(2, "0")}
-                  </span>
-                  <h3 className="text-[14px] font-semibold text-neutral-950">
-                    {clause.category}
-                  </h3>
-                </div>
-                <p className="line-clamp-3 whitespace-pre-wrap pl-7 text-[13px] leading-6 text-neutral-600">
-                  {clause.content}
-                </p>
+          <ContractDocumentSection title="제1조 제공 매체 및 콘텐츠 조건">
+            {deliverables.length > 0 ? (
+              <div className="space-y-2">
+                {deliverables.map((row, index) => (
+                  <div
+                    key={`${row.channel}-${index}`}
+                    className="rounded-[10px] border border-neutral-200 bg-white px-4 py-3"
+                  >
+                    <p className="text-[13px] font-semibold text-neutral-950">
+                      {row.channel || "매체명 입력 필요"}
+                    </p>
+                    <p className="mt-1 text-[12px] leading-5 text-neutral-600">
+                      업로드 {row.postCount || "입력 필요"} · 유지기간{" "}
+                      {row.duration || "입력 필요"}
+                    </p>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        )}
+            ) : (
+              <DocumentEmpty text="채널 조건을 선택하면 제공 콘텐츠 조건이 여기에 작성됩니다." />
+            )}
+          </ContractDocumentSection>
+
+          <ContractDocumentSection title="제2조 일정 및 검수">
+            <DocumentRows
+              rows={[
+                ["캠페인 기간", formatDateRange(draft.campaignStart, draft.campaignEnd)],
+                ["업로드 마감일", formatDraftValue(draft.uploadDueDate)],
+                ["광고주 검수 회신", formatDraftValue(draft.reviewDueDate)],
+                ["수정 가능 횟수", formatDraftValue(draft.revisionLimit)],
+              ]}
+            />
+          </ContractDocumentSection>
+
+          <ContractDocumentSection title="제3조 광고 표시 및 추적">
+            <DocumentParagraph>
+              {formatDraftValue(
+                draft.disclosureText,
+                "광고 표시 조건을 입력하면 계약서에 반영됩니다.",
+              )}
+            </DocumentParagraph>
+            {draft.trackingLink && (
+              <p className="mt-3 rounded-[10px] border border-neutral-200 bg-white px-4 py-3 font-mono text-[12px] leading-5 text-neutral-600">
+                {draft.trackingLink}
+              </p>
+            )}
+          </ContractDocumentSection>
+
+          <ContractDocumentSection title="제4조 지급 조건">
+            <DocumentParagraph>
+              {formatDraftValue(
+                draft.payment,
+                "지급 금액, 세금 처리, 지급 시점을 입력하면 계약서에 반영됩니다.",
+              )}
+            </DocumentParagraph>
+          </ContractDocumentSection>
+
+          {draft.exclusivity && (
+            <ContractDocumentSection title="제5조 경쟁사 배제">
+              <DocumentParagraph>{draft.exclusivity}</DocumentParagraph>
+            </ContractDocumentSection>
+          )}
+
+          <ContractDocumentSection title="특약 및 자동 생성 조항">
+            {clauses.length > 0 ? (
+              <div className="space-y-4">
+                {clauses.map((clause, index) => (
+                  <section
+                    key={clause.clause_id}
+                    className="border-b border-neutral-100 pb-4 last:border-0 last:pb-0"
+                  >
+                    <div className="mb-2 flex items-center gap-3">
+                      <span className="font-mono text-[12px] font-semibold text-neutral-400">
+                        {String(index + 1).padStart(2, "0")}
+                      </span>
+                      <h3 className="text-[14px] font-semibold text-neutral-950">
+                        {clause.category}
+                      </h3>
+                    </div>
+                    <p className="whitespace-pre-wrap pl-7 text-[13px] leading-6 text-neutral-600">
+                      {clause.content}
+                    </p>
+                  </section>
+                ))}
+              </div>
+            ) : (
+              <DocumentEmpty text="필수 조건을 입력하면 계약 조항이 자동으로 생성됩니다." />
+            )}
+          </ContractDocumentSection>
+
+          <section className="mt-8 grid grid-cols-2 gap-4 border-t border-neutral-200 pt-6">
+            <SignatureBox label="광고주" value={draft.advertiserName || "서명 전"} />
+            <SignatureBox label="인플루언서" value={draft.influencerName || "서명 전"} />
+          </section>
+        </article>
       </div>
     </div>
   );
+};
+
+const ContractDocumentSection: React.FC<{
+  title: string;
+  children: React.ReactNode;
+}> = ({ title, children }) => (
+  <section className="border-b border-neutral-200 py-6 last:border-0">
+    <h3 className="mb-4 text-[15px] font-semibold tracking-[-0.01em] text-neutral-950">
+      {title}
+    </h3>
+    {children}
+  </section>
+);
+
+const DocumentRows: React.FC<{ rows: Array<[string, string]> }> = ({ rows }) => (
+  <dl className="grid gap-2 sm:grid-cols-2">
+    {rows.map(([label, value]) => (
+      <div
+        key={label}
+        className="min-w-0 rounded-[10px] border border-neutral-200 bg-white px-4 py-3"
+      >
+        <dt className="text-[11px] font-semibold text-neutral-400">{label}</dt>
+        <dd className="mt-1 truncate text-[13px] font-semibold text-neutral-900">
+          {value}
+        </dd>
+      </div>
+    ))}
+  </dl>
+);
+
+const DocumentParagraph: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <p className="whitespace-pre-wrap text-[13px] leading-7 text-neutral-700">
+    {children}
+  </p>
+);
+
+const DocumentEmpty: React.FC<{ text: string }> = ({ text }) => (
+  <div className="rounded-[10px] border border-dashed border-neutral-200 bg-white/70 px-4 py-5 text-center text-[13px] leading-6 text-neutral-500">
+    {text}
+  </div>
+);
+
+const SignatureBox: React.FC<{ label: string; value: string }> = ({ label, value }) => (
+  <div className="rounded-[10px] border border-neutral-200 bg-white px-4 py-5">
+    <p className="text-[11px] font-semibold text-neutral-400">{label}</p>
+    <p className="mt-5 border-t border-neutral-200 pt-3 text-center text-[13px] font-semibold text-neutral-800">
+      {value}
+    </p>
+  </div>
+);
+
+const formatDraftValue = (value?: string, fallback = "입력 필요") => {
+  const normalized = value?.trim();
+  return normalized ? normalized : fallback;
+};
+
+const formatDateRange = (start?: string, end?: string) => {
+  if (!start && !end) return "입력 필요";
+  return `${start || "시작일 입력 필요"} - ${end || "종료일 입력 필요"}`;
 };
 
 const ChecklistLine: React.FC<{ checked: boolean; label: string }> = ({
   checked,
   label,
 }) => (
-  <div className="flex items-center gap-3 rounded-lg bg-white/[0.06] px-3 py-2">
+  <div className="flex items-center gap-2 rounded-lg bg-white/[0.06] px-2.5 py-2">
     <span
-      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${
+      className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full ${
         checked ? "bg-white text-neutral-950" : "bg-white/10 text-neutral-500"
       }`}
     >
-      <Check className="h-3 w-3" strokeWidth={3} />
+      <Check className="h-2.5 w-2.5" strokeWidth={3} />
     </span>
-    <span className={checked ? "text-[13px] font-semibold text-white" : "text-[13px] text-neutral-400"}>
-      {label}
-    </span>
-  </div>
-);
-
-const SummaryCard: React.FC<{ label: string; value: string; mono?: boolean }> = ({
-  label,
-  value,
-  mono,
-}) => (
-  <div className="rounded-[14px] border border-neutral-200 bg-[#fbfaf7] px-4 py-3">
-    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-neutral-400">
-      {label}
-    </p>
-    <p
-      className={`mt-1 truncate text-[14px] font-semibold text-neutral-900 ${
-        mono ? "font-mono" : ""
-      }`}
+    <span
+      className={
+        checked
+          ? "truncate text-[12px] font-semibold text-white"
+          : "truncate text-[12px] text-neutral-400"
+      }
     >
-      {value}
-    </p>
+      {label}
+    </span>
   </div>
 );
 

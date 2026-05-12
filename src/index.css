@@ -189,6 +189,29 @@
     font-weight: 400;
   }
 
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(115, 115, 115, 0.45) transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: rgba(115, 115, 115, 0.35);
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(82, 82, 82, 0.55);
+  }
+
   .landing-start-title {
     text-shadow:
       0 1px 0 rgba(255, 255, 255, 0.9),

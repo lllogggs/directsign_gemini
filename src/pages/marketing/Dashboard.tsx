@@ -30,6 +30,9 @@ import { useVerificationSummary } from "../../hooks/useVerificationSummary";
 import { PRODUCT_NAME } from "../../domain/brand";
 
 type StatusFilter = "AUTHORING" | "REVISION" | "SIGNING" | "DONE";
+type PlatformFilter = "ALL" | ContractPlatform;
+type ContractTypeFilter = "ALL" | Contract["type"];
+type DetailStatusFilter = "ALL" | ContractStatus;
 type AdvertiserAccountSummary = {
   name: string;
   meta: string;
@@ -53,6 +56,27 @@ const DASHBOARD_TABS: Array<{
   { id: "REVISION", label: "수정", statuses: ["NEGOTIATING"] },
   { id: "SIGNING", label: "서명", statuses: ["APPROVED"] },
   { id: "DONE", label: "완료", statuses: ["SIGNED"] },
+];
+
+const PLATFORM_FILTERS: PlatformFilter[] = [
+  "ALL",
+  "INSTAGRAM",
+  "YOUTUBE",
+  "TIKTOK",
+  "NAVER_BLOG",
+  "OTHER",
+];
+
+const CONTRACT_TYPE_FILTERS: ContractTypeFilter[] = [
+  "ALL",
+  "협찬",
+  "PPL",
+  "공동구매",
+];
+
+const DETAIL_STATUS_FILTERS: DetailStatusFilter[] = [
+  "ALL",
+  ...STATUS_ORDER,
 ];
 
 const STATUS_META: Record<
@@ -120,13 +144,13 @@ const PLATFORM_META: Record<
   NAVER_BLOG: {
     label: "네이버 블로그",
     shortLabel: "블로그",
-    className: "border-neutral-200 bg-white text-neutral-700",
+    className: "border-emerald-200 bg-emerald-50 text-emerald-700",
     mark: <span className="text-[10px] font-black">B</span>,
   },
   YOUTUBE: {
     label: "유튜브",
     shortLabel: "유튜브",
-    className: "border-neutral-200 bg-white text-neutral-700",
+    className: "border-rose-200 bg-rose-50 text-rose-700",
     mark: (
       <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-current">
         <path d="M21.6 7.2a2.8 2.8 0 0 0-2-2C17.9 4.8 12 4.8 12 4.8s-5.9 0-7.6.4a2.8 2.8 0 0 0-2 2A29 29 0 0 0 2 12a29 29 0 0 0 .4 4.8 2.8 2.8 0 0 0 2 2c1.7.4 7.6.4 7.6.4s5.9 0 7.6-.4a2.8 2.8 0 0 0 2-2A29 29 0 0 0 22 12a29 29 0 0 0-.4-4.8ZM10 14.9V9.1l5.2 2.9L10 14.9Z" />
@@ -136,7 +160,7 @@ const PLATFORM_META: Record<
   INSTAGRAM: {
     label: "인스타그램",
     shortLabel: "인스타",
-    className: "border-neutral-200 bg-white text-neutral-700",
+    className: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
     mark: (
       <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-none stroke-current">
         <rect x="5" y="5" width="14" height="14" rx="4" strokeWidth="2" />
@@ -148,7 +172,7 @@ const PLATFORM_META: Record<
   TIKTOK: {
     label: "틱톡",
     shortLabel: "틱톡",
-    className: "border-neutral-200 bg-white text-neutral-700",
+    className: "border-cyan-200 bg-cyan-50 text-cyan-700",
     mark: <span className="text-[12px] font-black">♪</span>,
   },
   OTHER: {
@@ -166,6 +190,11 @@ export function Dashboard() {
   const syncError = useAppStore((state) => state.syncError);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("AUTHORING");
+  const [platformFilter, setPlatformFilter] = useState<PlatformFilter>("ALL");
+  const [contractTypeFilter, setContractTypeFilter] =
+    useState<ContractTypeFilter>("ALL");
+  const [detailStatusFilter, setDetailStatusFilter] =
+    useState<DetailStatusFilter>("ALL");
   const [currentTime, setCurrentTime] = useState(() => Date.now());
   const { summary: verificationSummary, isLoading: isVerificationLoading } =
     useVerificationSummary({ role: "advertiser" });
@@ -209,16 +238,41 @@ export function Dashboard() {
     [contracts],
   );
 
-  const actionQueue = useMemo(() => {
-    return contracts
-      .filter((contract) => contract.status !== "SIGNED")
-      .sort((a, b) => priorityScore(b, currentTime) - priorityScore(a, currentTime));
-  }, [contracts, currentTime]);
-
   useEffect(() => {
     const timer = window.setInterval(() => setCurrentTime(Date.now()), 60 * 1000);
     return () => window.clearInterval(timer);
   }, []);
+
+  const platformCounts = useMemo(
+    () =>
+      PLATFORM_FILTERS.reduce(
+        (acc, platform) => {
+          acc[platform] =
+            platform === "ALL"
+              ? contracts.length
+              : contracts.filter((contract) =>
+                  getContractPlatforms(contract).includes(platform),
+                ).length;
+          return acc;
+        },
+        {} as Record<PlatformFilter, number>,
+      ),
+    [contracts],
+  );
+  const contractTypeCounts = useMemo(
+    () =>
+      CONTRACT_TYPE_FILTERS.reduce(
+        (acc, type) => {
+          acc[type] =
+            type === "ALL"
+              ? contracts.length
+              : contracts.filter((contract) => contract.type === type).length;
+          return acc;
+        },
+        {} as Record<ContractTypeFilter, number>,
+      ),
+    [contracts],
+  );
 
   const filteredContracts = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -227,7 +281,23 @@ export function Dashboard() {
       .filter((contract) => {
         const selectedTab = DASHBOARD_TABS.find((tab) => tab.id === statusFilter);
 
-        if (selectedTab && !selectedTab.statuses.includes(contract.status)) {
+        if (
+          detailStatusFilter === "ALL" &&
+          selectedTab &&
+          !selectedTab.statuses.includes(contract.status)
+        ) {
+          return false;
+        }
+        if (detailStatusFilter !== "ALL" && contract.status !== detailStatusFilter) {
+          return false;
+        }
+        if (
+          platformFilter !== "ALL" &&
+          !getContractPlatforms(contract).includes(platformFilter)
+        ) {
+          return false;
+        }
+        if (contractTypeFilter !== "ALL" && contract.type !== contractTypeFilter) {
           return false;
         }
         if (!normalizedQuery) return true;
@@ -239,6 +309,7 @@ export function Dashboard() {
           contract.influencer_info.channel_url,
           formatPlatforms(contract),
           contract.campaign?.budget,
+          contract.type,
           formatPeriod(contract),
           STATUS_META[contract.status].label,
         ]
@@ -246,31 +317,27 @@ export function Dashboard() {
           .some((value) => value!.toLowerCase().includes(normalizedQuery));
       })
       .sort((a, b) => parseDate(b.updated_at) - parseDate(a.updated_at));
-  }, [contracts, query, statusFilter]);
+  }, [
+    contracts,
+    contractTypeFilter,
+    detailStatusFilter,
+    platformFilter,
+    query,
+    statusFilter,
+  ]);
+  const handleTabChange = (tab: StatusFilter) => {
+    setStatusFilter(tab);
+    setDetailStatusFilter("ALL");
+  };
+  const handleDetailStatusChange = (status: DetailStatusFilter) => {
+    setDetailStatusFilter(status);
 
-  const summary = useMemo(() => {
-    const now = currentTime;
-    const needsAction = contracts.filter(
-      (contract) =>
-        contract.status === "NEGOTIATING" ||
-        contract.workflow?.next_actor === "advertiser",
-    ).length;
-    const dueSoon = contracts.filter((contract) => {
-      const due = parseDate(contract.workflow?.due_at);
-      if (!Number.isFinite(due)) return false;
-      const days = Math.ceil((due - now) / dayMs);
-      return contract.status !== "SIGNED" && days >= 0 && days <= 2;
-    }).length;
-    const activeLinks = contracts.filter((contract) => {
-      if (contract.evidence?.share_token_status !== "active") return false;
-      const expiresAt = parseDate(contract.evidence.share_token_expires_at);
-      return !Number.isFinite(expiresAt) || expiresAt > now;
-    }).length;
-    const value = contracts.reduce((sum, contract) => sum + parseMoney(contract.campaign?.budget), 0);
+    if (status !== "ALL") {
+      const matchingTab = DASHBOARD_TABS.find((tab) => tab.statuses.includes(status));
+      if (matchingTab) setStatusFilter(matchingTab.id);
+    }
+  };
 
-    return { needsAction, dueSoon, activeLinks, value };
-  }, [contracts, currentTime]);
-  const priorityContracts = actionQueue.slice(0, 3);
   return (
     <div className="min-h-screen bg-neutral-50 font-sans text-neutral-950">
       <header className="sticky top-0 z-30 border-b border-neutral-200 bg-white/95 backdrop-blur">
@@ -329,62 +396,78 @@ export function Dashboard() {
             embedded
           />
 
-          <div className="grid xl:grid-cols-[minmax(0,1fr)_220px]">
-            <div className="min-w-0 p-4">
-              <div className="mb-3 rounded-[8px] border border-[#d9e0d9] bg-[#f8faf7] p-4">
-                <div className="flex flex-col gap-4">
-                  <div>
-                    <p className="text-[12px] font-semibold text-[#7d857f]">
-                      오늘 처리할 계약
-                    </p>
-                    <p className="mt-1 text-[20px] font-semibold text-[#171a17]">
-                      바로 처리할 일
-                    </p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                    <MetricTile label="확인 필요" value={summary.needsAction} tone="amber" />
-                    <MetricTile label="48시간 내 처리" value={summary.dueSoon} tone="rose" />
-                    <MetricTile label="활성 링크" value={summary.activeLinks} tone="sky" />
-                    <MetricTile label="계약 금액" value={formatMoney(summary.value)} tone="neutral" compact />
-                  </div>
-                </div>
-              </div>
-
-              <section className="rounded-t-[8px] border border-b-0 border-[#d9e0d9] bg-white p-2">
-                <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
-                  <div className="relative min-w-0 flex-1">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8b938d]" />
-                    <input
-                      value={query}
-                      onChange={(event) => setQuery(event.target.value)}
-                      aria-label="계약 검색"
-                      placeholder="계약명, 상대방, 플랫폼 검색"
-                      className="h-9 w-full rounded-[6px] border border-[#d9e0d9] bg-[#f8faf7] pl-8 pr-3 text-[12px] font-semibold text-[#303630] outline-none transition-colors placeholder:text-[#8b938d] hover:border-[#cbd5cc] focus:border-[#171a17] focus:bg-white"
-                    />
-                  </div>
-                  <DashboardTabs
-                    activeTab={statusFilter}
-                    counts={statusCounts}
-                    onChange={setStatusFilter}
+          <div className="min-w-0 p-4">
+            <section className="rounded-t-[8px] border border-b-0 border-[#d9e0d9] bg-white p-3">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+                <div className="relative min-w-0 flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8b938d]" />
+                  <input
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    aria-label="계약 검색"
+                    placeholder="계약명, 상대방, 플랫폼, 종류 검색"
+                    className="h-10 w-full rounded-[6px] border border-[#d9e0d9] bg-[#f8faf7] pl-8 pr-3 text-[12px] font-semibold text-[#303630] outline-none transition-colors placeholder:text-[#8b938d] hover:border-[#cbd5cc] focus:border-[#171a17] focus:bg-white"
                   />
                 </div>
-              </section>
+                <DashboardTabs
+                  activeTab={statusFilter}
+                  counts={statusCounts}
+                  onChange={handleTabChange}
+                />
+              </div>
 
-              {syncError && <SyncErrorPanel message={syncError} />}
+              <div className="mt-3 grid gap-3 xl:grid-cols-[1.2fr_0.9fr_1fr]">
+                <FilterGroup label="플랫폼">
+                  {PLATFORM_FILTERS.map((platform) => (
+                    <FilterButton
+                      key={platform}
+                      active={platformFilter === platform}
+                      count={platformCounts[platform]}
+                      label={formatPlatformFilterLabel(platform)}
+                      onClick={() => setPlatformFilter(platform)}
+                    />
+                  ))}
+                </FilterGroup>
 
-              <ContractTable
-                compact={false}
-                contracts={filteredContracts}
-                currentTime={currentTime}
-                statusFilter={statusFilter}
-                totalContracts={contracts.length}
-                onOpen={(contract) => navigate(`/advertiser/contract/${contract.id}`)}
-              />
-            </div>
+                <FilterGroup label="계약 종류">
+                  {CONTRACT_TYPE_FILTERS.map((type) => (
+                    <FilterButton
+                      key={type}
+                      active={contractTypeFilter === type}
+                      count={
+                        type === "ALL"
+                          ? contractTypeCounts.ALL
+                          : contractTypeCounts[type]
+                      }
+                      label={type === "ALL" ? "전체" : formatContractTypeLabel(type)}
+                      onClick={() => setContractTypeFilter(type)}
+                    />
+                  ))}
+                </FilterGroup>
 
-            <ActionQueue
-              contracts={priorityContracts}
+                <FilterGroup label="계약 상태">
+                  {DETAIL_STATUS_FILTERS.map((status) => (
+                    <FilterButton
+                      key={status}
+                      active={detailStatusFilter === status}
+                      count={
+                        status === "ALL" ? contracts.length : statusCounts[status]
+                      }
+                      label={status === "ALL" ? "전체" : STATUS_META[status].shortLabel}
+                      onClick={() => handleDetailStatusChange(status)}
+                    />
+                  ))}
+                </FilterGroup>
+              </div>
+            </section>
+
+            {syncError && <SyncErrorPanel message={syncError} />}
+
+            <ContractTable
+              contracts={filteredContracts}
               currentTime={currentTime}
+              statusFilter={statusFilter}
+              totalContracts={contracts.length}
               onOpen={(contract) => navigate(`/advertiser/contract/${contract.id}`)}
             />
           </div>
@@ -479,47 +562,6 @@ function VerificationBanner({
   );
 }
 
-function MetricTile({
-  label,
-  value,
-  tone,
-  compact = false,
-}: {
-  label: string;
-  value: number | string;
-  tone: "amber" | "rose" | "sky" | "neutral";
-  compact?: boolean;
-}) {
-  const accentClass = {
-    amber: "bg-amber-500",
-    rose: "bg-rose-500",
-    sky: "bg-sky-500",
-    neutral: "bg-neutral-500",
-  }[tone];
-  const valueClass = {
-    amber: "text-amber-700",
-    rose: "text-rose-700",
-    sky: "text-sky-700",
-    neutral: "text-neutral-950",
-  }[tone];
-
-  return (
-    <div className="rounded-[8px] border border-[#d9e0d9] bg-white px-3 py-2.5">
-      <div className="flex items-center gap-2">
-        <span className={`h-1.5 w-1.5 rounded-full ${accentClass}`} />
-        <p className="text-[11px] font-semibold leading-4 text-[#7d857f]">{label}</p>
-      </div>
-      <p
-        className={`mt-2 font-semibold tracking-[-0.03em] ${valueClass} ${
-          compact ? "text-[18px]" : "text-[22px]"
-        }`}
-      >
-        {value}
-      </p>
-    </div>
-  );
-}
-
 function SyncPill({
   isSyncing,
   syncError,
@@ -544,46 +586,81 @@ function SyncPill({
   );
 }
 
-function ActionQueue({
-  contracts,
-  currentTime,
-  onOpen,
+function FilterGroup({
+  label,
+  children,
 }: {
-  contracts: Contract[];
-  currentTime: number;
-  onOpen: (contract: Contract) => void;
+  label: string;
+  children: React.ReactNode;
 }) {
   return (
-    <aside className="border-t border-[#d9e0d9] bg-[#f8faf7] p-4 xl:border-l xl:border-t-0">
-      <p className="text-[12px] font-semibold text-[#59605b]">최근 이력</p>
-      <div className="mt-4 space-y-4">
-        {contracts.length > 0 ? (
-          contracts.map((contract) => (
-            <button
-              key={contract.id}
-              type="button"
-              onClick={() => onOpen(contract)}
-              className="group flex w-full gap-3 text-left"
-            >
-              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#303630]" />
-              <span className="min-w-0">
-                <span className="block truncate text-[11px] font-semibold text-[#8b938d]">
-                  {STATUS_META[contract.status].label} · {formatAdvertiserTimingLabel(contract, currentTime)}
-                </span>
-                <span className="mt-1 block line-clamp-2 text-[12px] font-semibold leading-5 text-[#303630]">
-                  {formatDashboardContractTitle(contract.title)}
-                </span>
-              </span>
-            </button>
-          ))
-        ) : (
-          <p className="text-[12px] font-semibold leading-5 text-[#8b938d]">
-            바로 처리할 계약이 없습니다.
-          </p>
-        )}
-      </div>
-    </aside>
+    <div className="min-w-0 rounded-[8px] border border-[#e5e9e4] bg-[#f8faf7] p-2.5">
+      <p className="mb-2 px-1 text-[11px] font-semibold text-[#7d857f]">{label}</p>
+      <div className="flex min-w-0 flex-wrap gap-1.5">{children}</div>
+    </div>
   );
+}
+
+const FilterButton: React.FC<{
+  active: boolean;
+  count: number;
+  label: string;
+  onClick: () => void;
+}> = ({
+  active,
+  count,
+  label,
+  onClick,
+}) => {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex h-8 min-w-0 items-center gap-1.5 rounded-[6px] border px-2.5 text-[12px] font-semibold transition ${
+        active
+          ? "border-[#171a17] bg-[#171a17] text-white"
+          : "border-[#d9e0d9] bg-white text-[#59605b] hover:border-[#b8c2ba] hover:text-[#171a17]"
+      }`}
+    >
+      <span className="truncate">{label}</span>
+      <span
+        className={`text-[10px] ${
+          active ? "text-white/70" : "text-[#a0aaa2]"
+        }`}
+      >
+        {count}
+      </span>
+    </button>
+  );
+};
+
+function PlatformPills({ contract }: { contract: Contract }) {
+  const items = getContractPlatformDisplayItems(contract);
+
+  return (
+    <div className="flex min-w-0 flex-wrap gap-1">
+      {items.slice(0, 3).map((item) => (
+        <span
+          key={`${item.platform}-${item.label}`}
+          className={`inline-flex h-6 max-w-full items-center gap-1 rounded-[5px] border px-2 text-[11px] font-semibold ${PLATFORM_META[item.platform].className}`}
+          title={item.title}
+        >
+          <span className="shrink-0">{PLATFORM_META[item.platform].mark}</span>
+          <span className="truncate">{item.label}</span>
+        </span>
+      ))}
+      {items.length > 3 && (
+        <span className="inline-flex h-6 items-center rounded-[5px] border border-neutral-200 bg-white px-2 text-[11px] font-semibold text-neutral-500">
+          +{items.length - 3}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function formatPlatformFilterLabel(platform: PlatformFilter) {
+  if (platform === "ALL") return "전체";
+  return PLATFORM_META[platform].shortLabel;
 }
 
 function DashboardTabs({
@@ -637,14 +714,12 @@ function DashboardTabs({
 
 function ContractTable({
   contracts,
-  compact,
   currentTime,
   statusFilter,
   totalContracts,
   onOpen,
 }: {
   contracts: Contract[];
-  compact: boolean;
   currentTime: number;
   statusFilter: StatusFilter;
   totalContracts: number;
@@ -656,15 +731,10 @@ function ContractTable({
 
   return (
     <section className="overflow-hidden rounded-b-[8px] border border-[#d9e0d9] bg-white">
-      <div
-        className={`hidden border-b border-[#d9e0d9] bg-[#f8faf7] px-4 py-3 text-[11px] font-semibold text-[#7d857f] lg:grid ${
-          compact
-            ? "grid-cols-[minmax(220px,1fr)_130px_90px_120px]"
-            : "grid-cols-[minmax(260px,1fr)_150px_100px_130px]"
-        }`}
-      >
+      <div className="hidden grid-cols-[minmax(280px,1.3fr)_minmax(150px,0.9fr)_110px_120px_150px] border-b border-[#d9e0d9] bg-[#f8faf7] px-4 py-3 text-[11px] font-semibold text-[#7d857f] lg:grid">
         <span>계약</span>
-        <span>상대</span>
+        <span>플랫폼</span>
+        <span>종류</span>
         <span>금액</span>
         <span>{dueHeader}</span>
       </div>
@@ -672,10 +742,8 @@ function ContractTable({
         {contracts.map((contract) => (
           <React.Fragment key={contract.id}>
             <ContractRow
-              compact={compact}
               contract={contract}
               currentTime={currentTime}
-              statusFilter={statusFilter}
               onOpen={() => onOpen(contract)}
             />
           </React.Fragment>
@@ -687,43 +755,42 @@ function ContractTable({
 
 function ContractRow({
   contract,
-  compact,
   currentTime,
-  statusFilter,
   onOpen,
 }: {
   contract: Contract;
-  compact: boolean;
   currentTime: number;
-  statusFilter: StatusFilter;
   onOpen: () => void;
 }) {
   return (
     <button
       type="button"
       onClick={onOpen}
-      className={`group grid w-full gap-3 px-4 py-3 text-left transition-colors hover:bg-[#f8faf7] lg:items-center ${
-        compact
-          ? "lg:grid-cols-[minmax(220px,1fr)_130px_90px_120px]"
-          : "lg:grid-cols-[minmax(260px,1fr)_150px_100px_130px]"
-      }`}
+      className="group grid w-full gap-3 px-4 py-3 text-left transition-colors hover:bg-[#f8faf7] lg:grid-cols-[minmax(280px,1.3fr)_minmax(150px,0.9fr)_110px_120px_150px] lg:items-center"
     >
       <div className="min-w-0">
-        <p className="truncate text-[14px] font-semibold text-[#171a17]">
-          {formatDashboardContractTitle(contract.title)}
-        </p>
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <p className="min-w-0 truncate text-[14px] font-semibold text-[#171a17]">
+            {formatDashboardContractTitle(contract.title)}
+          </p>
+          <span className="lg:hidden">
+            <StatusBadge status={contract.status} dense />
+          </span>
+        </div>
         <p className="mt-1 truncate text-[12px] text-[#7d857f]">
-          {formatPlatforms(contract) || formatContractTypeLabel(contract.type)} · {formatPeriod(contract)}
+          {contract.influencer_info.name} · {formatPeriod(contract)}
         </p>
       </div>
 
       <div className="min-w-0">
+        <PlatformPills contract={contract} />
+      </div>
+
+      <div className="min-w-0">
         <p className="truncate text-[13px] font-semibold text-[#303630]">
-          {contract.influencer_info.name}
+          {formatContractTypeLabel(contract.type)}
         </p>
-        <p className="truncate text-[12px] text-[#8b938d]">
-          인플루언서
-        </p>
+        <p className="mt-1 truncate text-[12px] text-[#8b938d]">종류</p>
       </div>
 
       <PreviewAmount value={contract.campaign?.budget ?? "미정"} />
@@ -731,7 +798,7 @@ function ContractRow({
       <StatusTiming
         contract={contract}
         currentTime={currentTime}
-        showStatus={statusFilter === "AUTHORING"}
+        showStatus
       />
     </button>
   );
@@ -823,22 +890,6 @@ function SyncErrorPanel({ message }: { message: string }) {
       <p className="mt-2 font-mono text-[11px] text-amber-700">{message}</p>
     </section>
   );
-}
-
-const dayMs = 24 * 60 * 60 * 1000;
-
-function priorityScore(contract: Contract, currentTime: number) {
-  const statusWeight: Record<ContractStatus, number> = {
-    NEGOTIATING: 50,
-    APPROVED: 40,
-    REVIEWING: 30,
-    DRAFT: 20,
-    SIGNED: 0,
-  };
-  const due = parseDate(contract.workflow?.due_at);
-  const dueBoost = Number.isFinite(due) ? Math.max(0, 20 - Math.ceil((due - currentTime) / dayMs) * 4) : 0;
-  const actorBoost = contract.workflow?.next_actor === "advertiser" ? 20 : 0;
-  return statusWeight[contract.status] + dueBoost + actorBoost;
 }
 
 function getContractPlatforms(contract: Contract): ContractPlatform[] {
@@ -992,19 +1043,6 @@ function parseDate(value?: string) {
   if (!value) return Number.POSITIVE_INFINITY;
   const time = new Date(value).getTime();
   return Number.isFinite(time) ? time : Number.POSITIVE_INFINITY;
-}
-
-function parseMoney(value?: string) {
-  if (!value || value.includes("%")) return 0;
-  const parsed = Number(value.replace(/[^\d.-]/g, ""));
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function formatMoney(value: number) {
-  if (value <= 0) return "-";
-  if (value >= 100000000) return `${Math.round(value / 100000000)}억`;
-  if (value >= 10000) return `${Math.round(value / 10000).toLocaleString()}만`;
-  return value.toLocaleString();
 }
 
 function formatBusinessRegistrationNumber(value: string) {
