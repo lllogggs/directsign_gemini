@@ -700,8 +700,8 @@ export function ContractBuilder() {
         </div>
       </header>
 
-      <main className="flex flex-1 flex-col lg:gap-6 lg:overflow-hidden lg:px-8 lg:pb-8">
-        <aside className="relative z-10 hidden w-[286px] shrink-0 flex-col gap-12 border border-neutral-200/90 bg-white/95 p-8 pr-7 shadow-[0_1px_0_rgba(15,23,42,0.035),0_18px_46px_rgba(15,23,42,0.05)] lg:mt-8 lg:flex lg:rounded-[22px]">
+      <main className="flex flex-1 flex-col lg:flex-row lg:gap-6 lg:overflow-hidden lg:px-8 lg:pb-8">
+        <aside className="relative z-10 hidden w-[286px] shrink-0 flex-col gap-12 border border-neutral-200/90 bg-white/95 p-8 pr-7 shadow-[0_1px_0_rgba(15,23,42,0.035),0_18px_46px_rgba(15,23,42,0.05)] xl:mt-8 xl:flex xl:rounded-[22px]">
           <div>
             <h3 className="mb-10 text-[10px] font-medium uppercase tracking-[0.2em] text-neutral-400">
               계약 작성
@@ -739,7 +739,7 @@ export function ContractBuilder() {
           </div>
         </aside>
 
-        <section className="contract-builder-surface custom-scrollbar relative z-0 w-full shrink-0 bg-transparent lg:w-[620px] lg:overflow-y-auto">
+        <section className="contract-builder-surface custom-scrollbar relative z-0 w-full shrink-0 bg-transparent lg:w-[560px] lg:overflow-y-auto xl:w-[620px]">
           <div className="mx-auto max-w-[520px] p-6 md:p-10 lg:px-2 lg:py-8">
             <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
               {step} / 5 단계
