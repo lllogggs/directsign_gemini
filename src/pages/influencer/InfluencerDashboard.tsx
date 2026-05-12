@@ -37,7 +37,7 @@ type DashboardState =
   | { status: "ready"; dashboard: InfluencerDashboardResponse }
   | { status: "error"; message: string };
 
-type ContractFilter = "all" | "active" | InfluencerDashboardContractStage;
+type ContractFilter = "revision" | "review" | "sign" | "done";
 
 const STAGE_META: Record<
   InfluencerDashboardContractStage,
@@ -106,6 +106,21 @@ const getStageMeta = (stage: InfluencerDashboardContractStage) => ({
       ? { label: "검수 완료", helper: "보관됨" }
       : {}),
 });
+
+const DASHBOARD_TABS: Array<{
+  id: ContractFilter;
+  label: string;
+  stages: InfluencerDashboardContractStage[];
+}> = [
+  { id: "revision", label: "수정", stages: ["change_pending"] },
+  { id: "review", label: "검토", stages: ["review_needed", "waiting"] },
+  { id: "sign", label: "서명", stages: ["ready_to_sign"] },
+  {
+    id: "done",
+    label: "완료",
+    stages: ["deliverables_due", "deliverables_review", "signed", "completed"],
+  },
+];
 
 const PLATFORM_META: Record<
   InfluencerPlatform,
@@ -188,7 +203,7 @@ export function InfluencerDashboard() {
   const location = useLocation();
   const [state, setState] = useState<DashboardState>({ status: "loading" });
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<ContractFilter>("all");
+  const [filter, setFilter] = useState<ContractFilter>("revision");
   const [currentTime, setCurrentTime] = useState(() => Date.now());
 
   const loadDashboard = useCallback(async () => {
@@ -274,15 +289,17 @@ export function InfluencerDashboard() {
   }
 
   const dashboard = state.dashboard;
-  const activeContracts = dashboard.contracts.filter(
-    (contract) => contract.stage !== "signed" && contract.stage !== "completed",
+  const stageCounts = dashboard.contracts.reduce(
+    (acc, contract) => {
+      acc[contract.stage] = (acc[contract.stage] ?? 0) + 1;
+      return acc;
+    },
+    {} as Partial<Record<InfluencerDashboardContractStage, number>>,
   );
   const stageContracts = dashboard.contracts.filter((contract) => {
-    if (filter === "all") return true;
-    if (filter === "active") {
-      return contract.stage !== "signed" && contract.stage !== "completed";
-    }
-    return contract.stage === filter;
+    const selectedTab = DASHBOARD_TABS.find((tab) => tab.id === filter);
+
+    return selectedTab ? selectedTab.stages.includes(contract.stage) : true;
   });
 
   const filteredContracts = stageContracts.filter((contract) => {
@@ -435,7 +452,7 @@ export function InfluencerDashboard() {
               </div>
 
               <section className="rounded-t-[8px] border border-b-0 border-[#d9e0d9] bg-white p-2">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
                   <div className="relative min-w-0 flex-1">
                     <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8b938d]" />
                     <input
@@ -446,28 +463,20 @@ export function InfluencerDashboard() {
                       className="h-9 w-full rounded-[6px] border border-[#d9e0d9] bg-[#f8faf7] pl-8 pr-3 text-[12px] font-semibold text-[#303630] outline-none transition-colors placeholder:text-[#8b938d] hover:border-[#cbd5cc] focus:border-[#171a17] focus:bg-white"
                     />
                   </div>
-                  <FilterChip
-                    active={filter === "all"}
-                    label="전체"
-                    count={dashboard.contracts.length}
-                    onClick={() => setFilter("all")}
-                  />
-                  <FilterChip
-                    active={filter === "active"}
-                    label="대기"
-                    count={activeContracts.length}
-                    onClick={() => setFilter("active")}
+                  <DashboardTabs
+                    activeTab={filter}
+                    counts={stageCounts}
+                    onChange={setFilter}
                   />
                 </div>
               </section>
 
               {filteredContracts.length === 0 ? (
-                <EmptyContracts hasQuery={query.trim().length > 0 || filter !== "all"} />
+                <EmptyContracts hasQuery={query.trim().length > 0 || dashboard.contracts.length > 0} />
               ) : (
                 <ContractTable
                   contracts={filteredContracts}
                   currentTime={currentTime}
-                  filter={filter}
                   onOpen={(contract) => { void navigate(contract.action_href); }}
                 />
               )}
@@ -701,31 +710,55 @@ function SummaryTile({
   );
 }
 
-function FilterChip({
-  active,
-  label,
-  count,
-  onClick,
+function DashboardTabs({
+  activeTab,
+  counts,
+  onChange,
 }: {
-  active: boolean;
-  label: string;
-  count: number;
-  onClick: () => void;
+  activeTab: ContractFilter;
+  counts: Partial<Record<InfluencerDashboardContractStage, number>>;
+  onChange: (tab: ContractFilter) => void;
 }) {
   return (
-    <button
-      type="button"
-      aria-pressed={active}
-      onClick={onClick}
-      className={`hidden h-9 shrink-0 items-center rounded-[6px] border px-3 text-[12px] font-semibold transition sm:inline-flex ${
-        active
-          ? "border-[#171a17] bg-[#171a17] text-white"
-          : "border-[#d9e0d9] bg-white text-[#59605b] hover:border-[#cbd5cc]"
-      }`}
+    <div
+      className="grid min-w-0 grid-cols-4 gap-1 overflow-hidden rounded-full bg-neutral-100 p-1 lg:w-[360px] lg:shrink-0"
+      role="tablist"
+      aria-label="계약 상태"
     >
-      {label}
-      <span className={active ? "text-white/70" : "text-neutral-400"}>{count}</span>
-    </button>
+      {DASHBOARD_TABS.map((tab) => {
+        const active = activeTab === tab.id;
+        const count = tab.stages.reduce(
+          (sum, stage) => sum + (counts[stage] ?? 0),
+          0,
+        );
+
+        return (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            onClick={() => onChange(tab.id)}
+            className={`h-9 min-w-0 rounded-full px-1 text-[12px] font-extrabold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 ${
+              active
+                ? "bg-white text-neutral-950 shadow-[0_1px_0_rgba(15,23,42,0.04)]"
+                : "text-neutral-500 hover:text-neutral-800"
+            }`}
+          >
+            <span className="inline-flex min-w-0 max-w-full items-center justify-center gap-1 overflow-hidden whitespace-nowrap">
+              {tab.label}
+              <span
+                className={`text-[10px] ${
+                  active ? "text-neutral-500" : "text-neutral-400"
+                }`}
+              >
+                {count}
+              </span>
+            </span>
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -750,12 +783,10 @@ function EmptyContracts({ hasQuery }: { hasQuery: boolean }) {
 function ContractTable({
   contracts,
   currentTime,
-  filter,
   onOpen,
 }: {
   contracts: InfluencerDashboardContract[];
   currentTime: number;
-  filter: ContractFilter;
   onOpen: (contract: InfluencerDashboardContract) => void;
 }) {
   return (
@@ -785,7 +816,6 @@ function ContractTable({
             <StageTiming
               contract={contract}
               currentTime={currentTime}
-              filter={filter}
               compactMobile
             />
             <div className="min-w-0">
@@ -801,7 +831,6 @@ function ContractTable({
               <StageTiming
                 contract={contract}
                 currentTime={currentTime}
-                filter={filter}
               />
             </div>
           </button>
@@ -827,31 +856,25 @@ function StageBadge({ stage }: { stage: InfluencerDashboardContractStage }) {
 function StageTiming({
   contract,
   currentTime,
-  filter,
   compactMobile = false,
 }: {
   contract: InfluencerDashboardContract;
   currentTime: number;
-  filter: ContractFilter;
   compactMobile?: boolean;
 }) {
-  const showStage = filter === "all" || filter === "active";
-
   return (
     <div className={`min-w-0 ${compactMobile ? "text-right lg:hidden" : ""}`}>
-      {showStage && !compactMobile && <StageBadge stage={contract.stage} />}
-      {showStage && compactMobile ? (
+      {!compactMobile && <StageBadge stage={contract.stage} />}
+      {compactMobile ? (
         <p className="truncate text-[11px] font-semibold text-neutral-500">
           {getStageMeta(contract.stage).label}
         </p>
       ) : null}
       <p
         className={`truncate font-semibold tabular-nums ${
-          showStage && !compactMobile
+          !compactMobile
             ? "mt-1 text-[11px] text-neutral-400"
-            : compactMobile
-              ? "mt-0.5 text-[12px] text-neutral-500"
-              : "text-[12px] text-neutral-600"
+            : "mt-0.5 text-[12px] text-neutral-500"
         }`}
       >
         {formatInfluencerTimingLabel(contract, currentTime)}

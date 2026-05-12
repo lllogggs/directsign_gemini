@@ -29,7 +29,7 @@ import { formatElapsedDayLabel, formatUploadDueLabel } from "../../domain/timing
 import { useVerificationSummary } from "../../hooks/useVerificationSummary";
 import { PRODUCT_NAME } from "../../domain/brand";
 
-type StatusFilter = ContractStatus | "ALL" | "PENDING";
+type StatusFilter = "AUTHORING" | "REVISION" | "SIGNING" | "DONE";
 type AdvertiserAccountSummary = {
   name: string;
   meta: string;
@@ -42,6 +42,17 @@ const STATUS_ORDER: ContractStatus[] = [
   "NEGOTIATING",
   "APPROVED",
   "SIGNED",
+];
+
+const DASHBOARD_TABS: Array<{
+  id: StatusFilter;
+  label: string;
+  statuses: ContractStatus[];
+}> = [
+  { id: "AUTHORING", label: "작성", statuses: ["DRAFT", "REVIEWING"] },
+  { id: "REVISION", label: "수정", statuses: ["NEGOTIATING"] },
+  { id: "SIGNING", label: "서명", statuses: ["APPROVED"] },
+  { id: "DONE", label: "완료", statuses: ["SIGNED"] },
 ];
 
 const STATUS_META: Record<
@@ -154,7 +165,7 @@ export function Dashboard() {
   const isSyncing = useAppStore((state) => state.isSyncing);
   const syncError = useAppStore((state) => state.syncError);
   const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("AUTHORING");
   const [currentTime, setCurrentTime] = useState(() => Date.now());
   const { summary: verificationSummary, isLoading: isVerificationLoading } =
     useVerificationSummary({ role: "advertiser" });
@@ -214,12 +225,9 @@ export function Dashboard() {
 
     return contracts
       .filter((contract) => {
-        if (statusFilter === "PENDING" && contract.status === "SIGNED") return false;
-        if (
-          statusFilter !== "ALL" &&
-          statusFilter !== "PENDING" &&
-          contract.status !== statusFilter
-        ) {
+        const selectedTab = DASHBOARD_TABS.find((tab) => tab.id === statusFilter);
+
+        if (selectedTab && !selectedTab.statuses.includes(contract.status)) {
           return false;
         }
         if (!normalizedQuery) return true;
@@ -343,7 +351,7 @@ export function Dashboard() {
               </div>
 
               <section className="rounded-t-[8px] border border-b-0 border-[#d9e0d9] bg-white p-2">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
                   <div className="relative min-w-0 flex-1">
                     <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8b938d]" />
                     <input
@@ -354,17 +362,10 @@ export function Dashboard() {
                       className="h-9 w-full rounded-[6px] border border-[#d9e0d9] bg-[#f8faf7] pl-8 pr-3 text-[12px] font-semibold text-[#303630] outline-none transition-colors placeholder:text-[#8b938d] hover:border-[#cbd5cc] focus:border-[#171a17] focus:bg-white"
                     />
                   </div>
-                  <StatusChip
-                    active={statusFilter === "ALL"}
-                    label="전체"
-                    count={contracts.length}
-                    onClick={() => setStatusFilter("ALL")}
-                  />
-                  <StatusChip
-                    active={statusFilter === "PENDING"}
-                    label="대기"
-                    count={contracts.length - statusCounts.SIGNED}
-                    onClick={() => setStatusFilter("PENDING")}
+                  <DashboardTabs
+                    activeTab={statusFilter}
+                    counts={statusCounts}
+                    onChange={setStatusFilter}
                   />
                 </div>
               </section>
@@ -585,37 +586,52 @@ function ActionQueue({
   );
 }
 
-function StatusChip({
-  active,
-  label,
-  count,
-  onClick,
+function DashboardTabs({
+  activeTab,
+  counts,
+  onChange,
 }: {
-  active: boolean;
-  label: string;
-  count: number;
-  onClick: () => void;
+  activeTab: StatusFilter;
+  counts: Record<ContractStatus, number>;
+  onChange: (tab: StatusFilter) => void;
 }) {
   return (
-    <button
-      type="button"
-      aria-pressed={active}
-      onClick={onClick}
-      className={`hidden h-9 shrink-0 items-center rounded-[6px] border px-3 text-[12px] font-semibold transition-colors sm:inline-flex ${
-        active
-          ? "border-[#171a17] bg-[#171a17] text-white"
-          : "border-[#d9e0d9] bg-white text-[#59605b] hover:border-[#cbd5cc]"
-      }`}
+    <div
+      className="grid min-w-0 grid-cols-4 gap-1 overflow-hidden rounded-full bg-neutral-100 p-1 lg:w-[360px] lg:shrink-0"
+      role="tablist"
+      aria-label="계약 상태"
     >
-      {label}
-      <span
-        className={`rounded-full px-1.5 py-0.5 text-[11px] ${
-          active ? "bg-white/15 text-white" : "bg-[#f8faf7] text-[#7d857f]"
-        }`}
-      >
-        {count}
-      </span>
-    </button>
+      {DASHBOARD_TABS.map((tab) => {
+        const active = activeTab === tab.id;
+        const count = tab.statuses.reduce((sum, status) => sum + counts[status], 0);
+
+        return (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            onClick={() => onChange(tab.id)}
+            className={`h-9 min-w-0 rounded-full px-1 text-[12px] font-extrabold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 ${
+              active
+                ? "bg-white text-neutral-950 shadow-[0_1px_0_rgba(15,23,42,0.04)]"
+                : "text-neutral-500 hover:text-neutral-800"
+            }`}
+          >
+            <span className="inline-flex min-w-0 max-w-full items-center justify-center gap-1 overflow-hidden whitespace-nowrap">
+              {tab.label}
+              <span
+                className={`text-[10px] ${
+                  active ? "text-neutral-500" : "text-neutral-400"
+                }`}
+              >
+                {count}
+              </span>
+            </span>
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -715,7 +731,7 @@ function ContractRow({
       <StatusTiming
         contract={contract}
         currentTime={currentTime}
-        showStatus={statusFilter === "ALL" || statusFilter === "PENDING"}
+        showStatus={statusFilter === "AUTHORING"}
       />
     </button>
   );
@@ -863,14 +879,11 @@ function formatDashboardContractTitle(title: string) {
 }
 
 function getAdvertiserDueHeader(statusFilter: StatusFilter) {
-  if (statusFilter === "ALL") return "현 단계";
-  if (statusFilter === "PENDING") return "상태";
-  if (statusFilter === "SIGNED") return "기한";
-  const headers: Record<Exclude<ContractStatus, "SIGNED">, string> = {
-    DRAFT: "작성일로부터",
-    REVIEWING: "제안일로부터",
-    NEGOTIATING: "수정요청일로부터",
-    APPROVED: "서명요청일로부터",
+  if (statusFilter === "AUTHORING") return "현 단계";
+  if (statusFilter === "DONE") return "기한";
+  const headers: Record<Exclude<StatusFilter, "AUTHORING" | "DONE">, string> = {
+    REVISION: "수정요청일로부터",
+    SIGNING: "서명요청일로부터",
   };
   return headers[statusFilter];
 }
