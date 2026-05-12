@@ -2,7 +2,8 @@ node_modules/
 build/
 dist/
 coverage/
-qa-artifacts/
+qa-artifacts/*
+!qa-artifacts/seed-dashboard-matrix.mjs
 data/
 .DS_Store
 *.log

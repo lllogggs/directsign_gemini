@@ -12,6 +12,7 @@
     "test": "tsx --test tests/directsign-security.test.ts",
     "qa": "node scripts/qa-standard.mjs",
     "qa:discord": "npm run qa",
+    "seed:test-accounts": "node scripts/seed-test-accounts.mjs",
     "secrets:generate": "node scripts/generate-secrets.mjs"
   },
   "dependencies": {
