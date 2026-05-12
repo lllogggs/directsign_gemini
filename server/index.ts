@@ -1129,7 +1129,7 @@ const readDefaultOrganizationForProfile = async (profileId: string) => {
 };
 
 const isAdvertiserRole = (role: SupabaseProfileRow["role"] | undefined) =>
-  role === "marketer" || role === "admin";
+  role === "marketer";
 
 const isInfluencerRole = (role: SupabaseProfileRow["role"] | undefined) =>
   role === "influencer";
@@ -1141,14 +1141,16 @@ const requireAdvertiserSession = async (
   const auth = await authenticateAdvertiserRequest(request, response);
 
   if (!auth) {
-    response.status(401).json({ error: "Advertiser session is required" });
+    response.status(401).json({ error: "광고주 로그인이 필요합니다." });
     return undefined;
   }
 
   const profile = await readProfileByUserId(auth.user.id);
 
   if (!isAdvertiserRole(profile?.role)) {
-    response.status(403).json({ error: "Advertiser account is required" });
+    response.status(403).json({
+      error: "광고주 계정 권한이 필요합니다. 광고주 계정으로 로그인해 주세요.",
+    });
     return undefined;
   }
 
@@ -1162,14 +1164,16 @@ const requireInfluencerSession = async (
   const auth = await authenticateInfluencerRequest(request, response);
 
   if (!auth) {
-    response.status(401).json({ error: "Influencer session is required" });
+    response.status(401).json({ error: "인플루언서 로그인이 필요합니다." });
     return undefined;
   }
 
   const profile = await readProfileByUserId(auth.user.id);
 
   if (!isInfluencerRole(profile?.role)) {
-    response.status(403).json({ error: "Influencer account is required" });
+    response.status(403).json({
+      error: "인플루언서 계정 권한이 필요합니다. 인플루언서 계정으로 로그인해 주세요.",
+    });
     return undefined;
   }
 
@@ -1665,7 +1669,7 @@ const resolveLegacyContractAccess = async (
       if (sendError) {
         response
           .status(403)
-          .json({ error: "Active support access request id is required" });
+          .json({ error: "활성화된 지원 열람 요청 정보가 필요합니다." });
       }
       return undefined;
     }
@@ -1679,7 +1683,9 @@ const resolveLegacyContractAccess = async (
     }
 
     if (sendError) {
-      response.status(403).json({ error: "Active support access request is required" });
+      response
+        .status(403)
+        .json({ error: "활성화된 지원 열람 요청이 있어야 열람할 수 있습니다." });
     }
     return undefined;
   }
@@ -1692,7 +1698,7 @@ const resolveLegacyContractAccess = async (
   }
 
   if (sendError) {
-    response.status(403).json({ error: "Contract access is not allowed" });
+    response.status(403).json({ error: "이 계약을 볼 권한이 없습니다." });
   }
 
   return undefined;
@@ -1957,6 +1963,7 @@ const clearAdvertiserSessionCookies = (response: express.Response) => {
   response.setHeader("Set-Cookie", [
     `${advertiserAccessCookie}=; ${clearAdvertiserCookieOptions()}`,
     `${advertiserRefreshCookie}=; ${clearAdvertiserCookieOptions()}`,
+    `${signedPdfAccessCookie}=; ${signedPdfCookieOptions(0)}`,
   ]);
 };
 
@@ -1990,6 +1997,7 @@ const clearInfluencerSessionCookies = (response: express.Response) => {
   response.setHeader("Set-Cookie", [
     `${influencerAccessCookie}=; ${clearInfluencerCookieOptions()}`,
     `${influencerRefreshCookie}=; ${clearInfluencerCookieOptions()}`,
+    `${signedPdfAccessCookie}=; ${signedPdfCookieOptions(0)}`,
   ]);
 };
 
@@ -2334,6 +2342,9 @@ const createSupabaseSignupUser = async ({
 const getLoginFailureMessage = (error: unknown, fallback: string) => {
   const message = error instanceof Error ? error.message : "";
   const normalized = message.toLowerCase();
+  const isAsciiMessage = message
+    .split("")
+    .every((character) => character.charCodeAt(0) <= 0x7f);
 
   if (
     normalized.includes("invalid login credentials") ||
@@ -2349,12 +2360,29 @@ const getLoginFailureMessage = (error: unknown, fallback: string) => {
     return `이메일 인증 후 로그인할 수 있습니다. 받은 편지함의 ${productName} 확인 메일을 열어주세요.`;
   }
 
-  return hasText(message) ? message : fallback;
+  if (
+    normalized.includes("influencer role is required") ||
+    normalized.includes("influencer account is required")
+  ) {
+    return "인플루언서 계정 권한이 필요합니다. 인플루언서 계정으로 로그인해 주세요.";
+  }
+
+  if (
+    normalized.includes("advertiser role is required") ||
+    normalized.includes("advertiser account is required")
+  ) {
+    return "광고주 계정 권한이 필요합니다. 광고주 계정으로 로그인해 주세요.";
+  }
+
+  return hasText(message) && !isAsciiMessage ? message : fallback;
 };
 
 const getSignupFailureMessage = (error: unknown, fallback: string) => {
   const message = error instanceof Error ? error.message : "";
   const normalized = message.toLowerCase();
+  const isAsciiMessage = message
+    .split("")
+    .every((character) => character.charCodeAt(0) <= 0x7f);
 
   if (
     normalized.includes("user already registered") ||
@@ -2364,7 +2392,7 @@ const getSignupFailureMessage = (error: unknown, fallback: string) => {
     return "이미 가입된 이메일이면 로그인해 주세요. 새 가입이라면 받은 편지함의 인증 메일을 확인해 주세요.";
   }
 
-  return hasText(message) ? message : fallback;
+  return hasText(message) && !isAsciiMessage ? message : fallback;
 };
 
 const refreshSupabaseSession = async (refreshToken: string) => {
@@ -6307,7 +6335,7 @@ const resolveInfluencerVerificationContractAccess = async (
 
   if (legacyContract) {
     if (!canInfluencerAccessLegacyContract(auth, legacyContract)) {
-      return { ok: false, status: 403, error: "Contract access is not allowed" };
+      return { ok: false, status: 403, error: "이 계약을 볼 권한이 없습니다." };
     }
 
     if (legacyContract.status === "SIGNED") {
@@ -6343,7 +6371,7 @@ const resolveInfluencerVerificationContractAccess = async (
       );
 
       if (!hasPartyAccess) {
-        return { ok: false, status: 403, error: "Contract access is not allowed" };
+        return { ok: false, status: 403, error: "이 계약을 볼 권한이 없습니다." };
       }
 
       if (inferDashboardStage(contract.status, contract.next_actor_role) === "signed") {
@@ -6401,7 +6429,7 @@ app.post("/api/admin/login", (request, response) => {
   if (throttle.blocked) {
     response.setHeader("Retry-After", String(throttle.retryAfterSeconds ?? 60));
     response.status(429).json({
-      error: "Too many failed admin login attempts. Try again later.",
+      error: "운영자 로그인 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.",
       retry_after_seconds: throttle.retryAfterSeconds,
     });
     return;
@@ -6412,7 +6440,7 @@ app.post("/api/admin/login", (request, response) => {
     console.warn(
       `[${productName} Admin] failed login attempt from ${getClientIp(request)} (${attempt.failures}/${adminLoginMaxFailures})`,
     );
-    response.status(401).json({ error: "Invalid admin access code" });
+    response.status(401).json({ error: "운영자 인증 코드가 올바르지 않습니다." });
     return;
   }
 
@@ -6427,10 +6455,10 @@ app.post("/api/admin/login", (request, response) => {
 });
 
 app.post("/api/admin/logout", (_request, response) => {
-  response.setHeader(
-    "Set-Cookie",
+  response.setHeader("Set-Cookie", [
     `${adminSessionCookie}=; ${clearAdminCookieOptions()}`,
-  );
+    `${signedPdfAccessCookie}=; ${signedPdfCookieOptions(0)}`,
+  ]);
   response.json({ authenticated: false });
 });
 
@@ -6583,7 +6611,7 @@ app.post("/api/advertiser/login", async (request, response) => {
     const password = normalizeRequiredText(request.body?.password);
 
     if (!email.includes("@") || !password) {
-      response.status(422).json({ error: "Valid email and password are required" });
+      response.status(422).json({ error: "이메일과 비밀번호를 입력해 주세요." });
       return;
     }
 
@@ -6597,7 +6625,9 @@ app.post("/api/advertiser/login", async (request, response) => {
     const profile = await readProfileByUserId(session.user.id);
 
     if (!isAdvertiserRole(profile?.role)) {
-      response.status(403).json({ error: "Advertiser account is required" });
+      response.status(403).json({
+        error: "광고주 계정 권한이 필요합니다. 광고주 계정으로 로그인해 주세요.",
+      });
       return;
     }
 
@@ -6617,7 +6647,7 @@ app.post("/api/advertiser/login", async (request, response) => {
     });
   } catch (error) {
     response.status(401).json({
-      error: getLoginFailureMessage(error, "Advertiser login failed"),
+      error: getLoginFailureMessage(error, "광고주 로그인에 실패했습니다."),
     });
   }
 });
@@ -6782,7 +6812,7 @@ app.post("/api/influencer/login", async (request, response, _next) => {
     const password = normalizeRequiredText(request.body?.password);
 
     if (!email.includes("@") || !password) {
-      response.status(422).json({ error: "Valid email and password are required" });
+      response.status(422).json({ error: "이메일과 비밀번호를 입력해 주세요." });
       return;
     }
 
@@ -6796,7 +6826,9 @@ app.post("/api/influencer/login", async (request, response, _next) => {
     const dashboard = await buildInfluencerDashboard(session.user);
 
     if (dashboard.user.role !== "influencer") {
-      response.status(403).json({ error: "Influencer account is required" });
+      response.status(403).json({
+        error: "인플루언서 계정 권한이 필요합니다. 인플루언서 계정으로 로그인해 주세요.",
+      });
       return;
     }
 
@@ -6810,7 +6842,7 @@ app.post("/api/influencer/login", async (request, response, _next) => {
     });
   } catch (error) {
     response.status(401).json({
-      error: getLoginFailureMessage(error, "Influencer login failed"),
+      error: getLoginFailureMessage(error, "인플루언서 로그인에 실패했습니다."),
     });
   }
 });
@@ -6955,7 +6987,9 @@ app.get("/api/influencer/dashboard", async (request, response, next) => {
     response.json(await buildInfluencerDashboard(auth.user));
   } catch (error) {
     if (error instanceof Error && error.message === "Influencer role is required") {
-      response.status(403).json({ error: "Influencer account is required" });
+      response.status(403).json({
+        error: "인플루언서 계정 권한이 필요합니다. 인플루언서 계정으로 로그인해 주세요.",
+      });
       return;
     }
 
@@ -7015,7 +7049,7 @@ app.get("/api/verification/status", async (request, response, next) => {
       }
     }
 
-    response.status(401).json({ error: "Authenticated session is required" });
+    response.status(401).json({ error: "로그인 후 이용할 수 있습니다." });
   } catch (error) {
     next(error);
   }
@@ -7491,7 +7525,7 @@ app.post("/api/contracts/:id/deliverables", async (request, response, next) => {
       return;
     }
     if (!canInfluencerAccessLegacyContract(influencerAuth, contract)) {
-      response.status(403).json({ error: "Contract access is not allowed" });
+      response.status(403).json({ error: "이 계약을 볼 권한이 없습니다." });
       return;
     }
     if (contract.status !== "SIGNED") {
@@ -7651,7 +7685,7 @@ app.patch("/api/contracts/:id/deliverables/:deliverableId", async (request, resp
       return;
     }
     if (!canAdvertiserAccessLegacyContract(advertiserAuth, contract)) {
-      response.status(403).json({ error: "Contract access is not allowed" });
+      response.status(403).json({ error: "이 계약을 볼 권한이 없습니다." });
       return;
     }
 
@@ -8144,7 +8178,7 @@ app.post("/api/contracts/:id/signatures/influencer", async (request, response, n
     if (!influencerAuth) return;
 
     if (!canInfluencerAccessLegacyContract(influencerAuth, existing)) {
-      response.status(403).json({ error: "Contract access is not allowed" });
+      response.status(403).json({ error: "이 계약을 볼 권한이 없습니다." });
       return;
     }
 
@@ -8157,7 +8191,7 @@ app.post("/api/contracts/:id/signatures/influencer", async (request, response, n
       (typeof shareExpiresAt === "number" && shareExpiresAt < Date.now())
     ) {
       response.status(409).json({
-        error: "Contract must be approved and actively shared before signing",
+        error: "광고주가 최종본 공유를 활성화한 뒤 서명할 수 있습니다.",
       });
       return;
     }
@@ -8178,7 +8212,7 @@ app.post("/api/contracts/:id/signatures/influencer", async (request, response, n
 
     if (!existing.clauses.every((clause) => clause.status === "APPROVED")) {
       response.status(409).json({
-        error: "All clauses must be approved before signing",
+        error: "서명 전에 모든 조항이 승인되어야 합니다.",
       });
       return;
     }
@@ -8350,7 +8384,7 @@ app.put("/api/contracts/:id", async (request, response, next) => {
         existingContract &&
         !canAdvertiserAccessLegacyContract(advertiserAuth, existingContract)
       ) {
-        response.status(403).json({ error: "Contract access is not allowed" });
+        response.status(403).json({ error: "이 계약을 볼 권한이 없습니다." });
         return;
       }
 
@@ -8390,7 +8424,8 @@ app.put("/api/contracts/:id", async (request, response, next) => {
 
       if (!access) {
         response.status(403).json({
-          error: "Influencer session is required for contract review changes",
+          error: "계약 검토 변경은 인플루언서 로그인 후 진행할 수 있습니다.",
+          code: "Influencer session is required for contract review changes",
         });
         return;
       }

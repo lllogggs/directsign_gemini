@@ -1,7 +1,7 @@
 export function getSafeRedirectPath(
   candidate: string | null | undefined,
   fallback: string,
-  allowedPrefixes: string[],
+  allowedPrefixes: readonly string[],
 ) {
   if (!candidate) return fallback;
 
@@ -22,7 +22,7 @@ export function getSafeRedirectPath(
 export function getNextPath(
   search: string,
   fallback: string,
-  allowedPrefixes: string[],
+  allowedPrefixes: readonly string[],
 ) {
   const params = new URLSearchParams(search);
   return getSafeRedirectPath(params.get("next"), fallback, allowedPrefixes);
@@ -32,7 +32,7 @@ export function buildLoginRedirect(
   loginPath: string,
   currentPath: string,
   fallback: string,
-  allowedPrefixes: string[],
+  allowedPrefixes: readonly string[],
 ) {
   const nextPath = getSafeRedirectPath(currentPath, fallback, allowedPrefixes);
   return `${loginPath}?next=${encodeURIComponent(nextPath)}`;

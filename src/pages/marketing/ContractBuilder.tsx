@@ -32,10 +32,12 @@ import {
   Check,
   CheckCircle2,
   Copy,
+  LogOut,
   Plus,
   ShieldCheck,
   Trash2,
 } from "lucide-react";
+import { apiFetch } from "../../domain/api";
 
 type StepId = 1 | 2 | 3 | 4 | 5;
 type ResultMode = "draft" | "share";
@@ -412,6 +414,7 @@ export function ContractBuilder() {
   const getContract = useAppStore((state) => state.getContract);
   const isSyncing = useAppStore((state) => state.isSyncing);
   const syncError = useAppStore((state) => state.syncError);
+  const resetHydration = useAppStore((state) => state.resetHydration);
   const { summary: verificationSummary, isLoading: isVerificationLoading } =
     useVerificationSummary({ role: "advertiser" });
   const advertiserVerificationStatus =
@@ -676,6 +679,19 @@ export function ContractBuilder() {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+  const handleLogout = async () => {
+    try {
+      await apiFetch("/api/advertiser/logout", {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch (error) {
+      console.warn("[Yeollock] advertiser logout request failed", error);
+    } finally {
+      resetHydration();
+      navigate("/login/advertiser", { replace: true });
+    }
+  };
 
   return (
     <div className="flex min-h-[100dvh] flex-col bg-[#f7f6f3] font-sans text-neutral-950 lg:h-[100dvh] lg:overflow-hidden">
@@ -698,6 +714,15 @@ export function ContractBuilder() {
             </span>
           </div>
         </div>
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="inline-flex h-10 items-center gap-2 rounded-[12px] border border-neutral-200 bg-white/75 px-3 text-[13px] font-semibold text-neutral-600 shadow-[0_1px_0_rgba(15,23,42,0.02)] transition hover:border-neutral-300 hover:bg-white hover:text-neutral-950"
+          aria-label="로그아웃"
+        >
+          <LogOut className="h-4 w-4" strokeWidth={1.8} />
+          <span className="hidden sm:inline">로그아웃</span>
+        </button>
       </header>
 
       <main className="grid flex-1 grid-cols-1 lg:min-h-0 lg:grid-cols-[minmax(420px,520px)_minmax(0,1fr)] lg:gap-5 lg:overflow-hidden lg:px-6 lg:pb-6 xl:grid-cols-[220px_minmax(420px,500px)_minmax(430px,1fr)]">

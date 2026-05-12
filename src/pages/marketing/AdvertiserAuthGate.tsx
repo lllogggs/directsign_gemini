@@ -3,6 +3,7 @@ import { Link, Navigate, useLocation } from "react-router-dom";
 import { AuthLoginScreen } from "../../components/AuthLoginScreen";
 import { apiFetch } from "../../domain/api";
 import { buildLoginRedirect } from "../../domain/navigation";
+import { translateApiErrorMessage } from "../../domain/userMessages";
 import { useAppStore } from "../../store";
 
 type AdvertiserSessionResponse = {
@@ -89,7 +90,12 @@ export function AdvertiserAuthGate({
       const data = (await response.json()) as AdvertiserSessionResponse;
 
       if (!response.ok || data.authenticated !== true) {
-        throw new Error(data.error ?? "광고주 계정으로 로그인할 수 없습니다.");
+        throw new Error(
+          translateApiErrorMessage(
+            data.error,
+            "광고주 계정으로 로그인할 수 없습니다.",
+          ),
+        );
       }
 
       setIsAuthenticated(true);
@@ -97,7 +103,10 @@ export function AdvertiserAuthGate({
     } catch (loginError) {
       setError(
         loginError instanceof Error
-          ? loginError.message
+          ? translateApiErrorMessage(
+              loginError.message,
+              "광고주 계정으로 로그인할 수 없습니다.",
+            )
           : "광고주 계정으로 로그인할 수 없습니다.",
       );
     } finally {

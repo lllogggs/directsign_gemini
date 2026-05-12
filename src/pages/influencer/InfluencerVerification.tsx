@@ -20,6 +20,7 @@ import { useAppStore } from "../../store";
 import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
 import { buildLoginRedirect } from "../../domain/navigation";
+import { translateApiErrorMessage } from "../../domain/userMessages";
 import {
   type InfluencerPlatform,
   type InfluencerVerificationMethod,
@@ -347,7 +348,12 @@ export function InfluencerVerification() {
       const data = (await response.json()) as { error?: string };
 
       if (!response.ok) {
-        throw new Error(data.error ?? "계정 인증 요청을 접수하지 못했습니다.");
+        throw new Error(
+          translateApiErrorMessage(
+            data.error,
+            "계정 인증 요청을 접수하지 못했습니다.",
+          ),
+        );
       }
 
       setSubmitted(true);
@@ -358,7 +364,10 @@ export function InfluencerVerification() {
     } catch (submitError) {
       setError(
         submitError instanceof Error
-          ? submitError.message
+          ? translateApiErrorMessage(
+              submitError.message,
+              "계정 인증 요청을 접수하지 못했습니다.",
+            )
           : "계정 인증 요청을 접수하지 못했습니다.",
       );
     } finally {

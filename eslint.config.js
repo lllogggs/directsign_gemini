@@ -12,6 +12,8 @@ export default tseslint.config(
       "coverage",
       "node_modules",
       "qa-artifacts",
+      ".tmp",
+      ".codex-logs",
       ".vercel",
     ],
   },

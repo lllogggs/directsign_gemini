@@ -162,6 +162,7 @@ const persistContractToServer = async (
   set: (
     partial: Partial<AppState> | ((state: AppState) => Partial<AppState>),
 ) => void,
+  operationEpoch: number,
   rollbackContracts: Contract[],
   options: PersistOptions = {},
 ) => {
@@ -194,6 +195,8 @@ const persistContractToServer = async (
     const serverContract = data.contract ? normalizeContract(data.contract) : undefined;
 
     set((state) => {
+      if (state.sessionEpoch !== operationEpoch) return {};
+
       const current = state.contracts.find((item) => item.id === contract.id);
       const shouldAcceptServerContract = Boolean(
         serverContract && current?.updated_at === contract.updated_at,
@@ -213,6 +216,8 @@ const persistContractToServer = async (
     });
   } catch (error) {
     set((state) => {
+      if (state.sessionEpoch !== operationEpoch) return {};
+
       const current = state.contracts.find((item) => item.id === contract.id);
       const rollbackContract = rollbackContracts.find(
         (item) => item.id === contract.id,
@@ -240,6 +245,7 @@ interface AppState {
   isSyncing: boolean;
   syncOperationIds: Record<string, string>;
   syncError?: string;
+  sessionEpoch: number;
   hydrateContracts: (options?: HydrateOptions) => Promise<void>;
   resetHydration: () => void;
   addContract: (
@@ -269,10 +275,12 @@ export const useAppStore = create<AppState>()(
       isSyncing: false,
       syncOperationIds: {},
       syncError: undefined,
+      sessionEpoch: 0,
 
       hydrateContracts: async (options = {}) => {
         if (get().isHydrated && !options.force) return;
         const operationId = createSyncOperationId();
+        const operationEpoch = get().sessionEpoch;
         const syncKey = "__hydrate_contracts__";
         set((state) => ({
           syncOperationIds: { ...state.syncOperationIds, [syncKey]: operationId },
@@ -294,37 +302,49 @@ export const useAppStore = create<AppState>()(
           const remoteContracts = Array.isArray(data.contracts)
             ? data.contracts
             : [];
-          const pendingLocalContractIds = Object.keys(get().syncOperationIds).filter(
+          const currentState = get();
+          if (currentState.sessionEpoch !== operationEpoch) return;
+
+          const pendingLocalContractIds = Object.keys(currentState.syncOperationIds).filter(
             (key) => key !== "__hydrate_contracts__",
           );
-          const mergedContracts = mergeContracts(get().contracts, remoteContracts, {
+          const mergedContracts = mergeContracts(currentState.contracts, remoteContracts, {
             allowLocalMerge: data.allow_local_merge === true,
             preserveLocalIds: pendingLocalContractIds,
           });
 
-          set((state) => ({
-            contracts: mergedContracts,
-            isHydrated: true,
-            ...finishSyncOperation(state, syncKey, operationId),
-            syncError: undefined,
-          }));
+          set((state) => {
+            if (state.sessionEpoch !== operationEpoch) return {};
+
+            return {
+              contracts: mergedContracts,
+              isHydrated: true,
+              ...finishSyncOperation(state, syncKey, operationId),
+              syncError: undefined,
+            };
+          });
         } catch (error) {
-          set((state) => ({
-            isHydrated: true,
-            ...finishSyncOperation(state, syncKey, operationId),
-            syncError: getErrorMessage(error),
-          }));
+          set((state) => {
+            if (state.sessionEpoch !== operationEpoch) return {};
+
+            return {
+              isHydrated: true,
+              ...finishSyncOperation(state, syncKey, operationId),
+              syncError: getErrorMessage(error),
+            };
+          });
         }
       },
 
       resetHydration: () => {
-        set({
+        set((state) => ({
           contracts: [],
           isHydrated: true,
           isSyncing: false,
           syncOperationIds: {},
           syncError: undefined,
-        });
+          sessionEpoch: state.sessionEpoch + 1,
+        }));
       },
 
       addContract: (contractData) => {
@@ -364,7 +384,12 @@ export const useAppStore = create<AppState>()(
         };
 
         set((state) => ({ contracts: [...state.contracts, newContract] }));
-        void persistContractToServer(newContract, set, rollbackContracts);
+        void persistContractToServer(
+          newContract,
+          set,
+          get().sessionEpoch,
+          rollbackContracts,
+        );
         return newContract;
       },
 
@@ -391,6 +416,7 @@ export const useAppStore = create<AppState>()(
           void persistContractToServer(
             updatedContract,
             set,
+            get().sessionEpoch,
             rollbackContracts,
             options,
           );
@@ -466,6 +492,7 @@ export const useAppStore = create<AppState>()(
           void persistContractToServer(
             updatedContract,
             set,
+            get().sessionEpoch,
             rollbackContracts,
             options,
           );
@@ -498,6 +525,7 @@ export const useAppStore = create<AppState>()(
           state.isSyncing = false;
           state.syncOperationIds = {};
           state.syncError = undefined;
+          state.sessionEpoch = 0;
         }
       },
     },

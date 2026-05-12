@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   AlertCircle,
@@ -6,6 +6,7 @@ import {
   Clock3,
   CopyCheck,
   FileText,
+  LogOut,
   MoreHorizontal,
   PenLine,
   Plus,
@@ -30,9 +31,9 @@ import {
   formatPublicContactValue,
   removeInternalTestLabel,
 } from "../../domain/display";
-import { formatElapsedDayLabel, formatUploadDueLabel } from "../../domain/timing";
 import { useVerificationSummary } from "../../hooks/useVerificationSummary";
 import { PRODUCT_NAME } from "../../domain/brand";
+import { apiFetch } from "../../domain/api";
 
 type StatusFilter = "AUTHORING" | "REVISION" | "SIGNING" | "DONE";
 type PlatformFilter = "ALL" | ContractPlatform;
@@ -193,6 +194,7 @@ export function Dashboard() {
   const contracts = useAppStore((state) => state.contracts);
   const isSyncing = useAppStore((state) => state.isSyncing);
   const syncError = useAppStore((state) => state.syncError);
+  const resetHydration = useAppStore((state) => state.resetHydration);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("AUTHORING");
   const [platformFilter, setPlatformFilter] = useState<PlatformFilter>("ALL");
@@ -200,7 +202,6 @@ export function Dashboard() {
     useState<ContractTypeFilter>("ALL");
   const [detailStatusFilter, setDetailStatusFilter] =
     useState<DetailStatusFilter>("ALL");
-  const [currentTime, setCurrentTime] = useState(() => Date.now());
   const { summary: verificationSummary, isLoading: isVerificationLoading } =
     useVerificationSummary({ role: "advertiser" });
   const advertiserVerificationStatus =
@@ -248,11 +249,6 @@ export function Dashboard() {
       ),
     [contracts],
   );
-
-  useEffect(() => {
-    const timer = window.setInterval(() => setCurrentTime(Date.now()), 60 * 1000);
-    return () => window.clearInterval(timer);
-  }, []);
 
   const platformCounts = useMemo(
     () =>
@@ -349,6 +345,19 @@ export function Dashboard() {
       if (matchingTab) setStatusFilter(matchingTab.id);
     }
   };
+  const handleLogout = async () => {
+    try {
+      await apiFetch("/api/advertiser/logout", {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch (error) {
+      console.warn("[Yeollock] advertiser logout request failed", error);
+    } finally {
+      resetHydration();
+      navigate("/login/advertiser", { replace: true });
+    }
+  };
 
   return (
     <div className="min-h-screen bg-neutral-50 font-sans text-neutral-950">
@@ -374,6 +383,15 @@ export function Dashboard() {
             >
               <Plus className="h-4 w-4" strokeWidth={2} />
               새 계약
+            </button>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="inline-flex h-10 items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
+              aria-label="로그아웃"
+            >
+              <LogOut className="h-4 w-4" strokeWidth={2} />
+              <span className="hidden sm:inline">로그아웃</span>
             </button>
           </div>
         </div>
@@ -430,48 +448,54 @@ export function Dashboard() {
                 />
               </div>
 
-              <div className="mt-3 grid gap-3 xl:grid-cols-[1.2fr_0.9fr_1fr]">
-                <FilterGroup label="플랫폼">
-                  {PLATFORM_FILTERS.map((platform) => (
-                    <FilterButton
-                      key={platform}
-                      active={platformFilter === platform}
-                      count={platformCounts[platform]}
-                      label={formatPlatformFilterLabel(platform)}
-                      onClick={() => setPlatformFilter(platform)}
-                    />
-                  ))}
-                </FilterGroup>
+              <div className="mt-3 overflow-x-auto border-t border-[#edf1ed] pt-3">
+                <div className="flex min-w-max items-center gap-4">
+                  <FilterSection label="플랫폼">
+                    {PLATFORM_FILTERS.map((platform) => (
+                      <FilterButton
+                        key={platform}
+                        active={platformFilter === platform}
+                        count={platformCounts[platform]}
+                        label={formatPlatformFilterLabel(platform)}
+                        onClick={() => setPlatformFilter(platform)}
+                      />
+                    ))}
+                  </FilterSection>
 
-                <FilterGroup label="계약 종류">
-                  {CONTRACT_TYPE_FILTERS.map((type) => (
-                    <FilterButton
-                      key={type}
-                      active={contractTypeFilter === type}
-                      count={
-                        type === "ALL"
-                          ? contractTypeCounts.ALL
-                          : contractTypeCounts[type]
-                      }
-                      label={type === "ALL" ? "전체" : formatContractTypeLabel(type)}
-                      onClick={() => setContractTypeFilter(type)}
-                    />
-                  ))}
-                </FilterGroup>
+                  <FilterDivider />
 
-                <FilterGroup label="계약 상태">
-                  {DETAIL_STATUS_FILTERS.map((status) => (
-                    <FilterButton
-                      key={status}
-                      active={detailStatusFilter === status}
-                      count={
-                        status === "ALL" ? contracts.length : statusCounts[status]
-                      }
-                      label={status === "ALL" ? "전체" : STATUS_META[status].shortLabel}
-                      onClick={() => handleDetailStatusChange(status)}
-                    />
-                  ))}
-                </FilterGroup>
+                  <FilterSection label="계약 종류">
+                    {CONTRACT_TYPE_FILTERS.map((type) => (
+                      <FilterButton
+                        key={type}
+                        active={contractTypeFilter === type}
+                        count={
+                          type === "ALL"
+                            ? contractTypeCounts.ALL
+                            : contractTypeCounts[type]
+                        }
+                        label={type === "ALL" ? "전체" : formatContractTypeLabel(type)}
+                        onClick={() => setContractTypeFilter(type)}
+                      />
+                    ))}
+                  </FilterSection>
+
+                  <FilterDivider />
+
+                  <FilterSection label="계약 상태">
+                    {DETAIL_STATUS_FILTERS.map((status) => (
+                      <FilterButton
+                        key={status}
+                        active={detailStatusFilter === status}
+                        count={
+                          status === "ALL" ? contracts.length : statusCounts[status]
+                        }
+                        label={status === "ALL" ? "전체" : STATUS_META[status].shortLabel}
+                        onClick={() => handleDetailStatusChange(status)}
+                      />
+                    ))}
+                  </FilterSection>
+                </div>
               </div>
             </section>
 
@@ -479,7 +503,6 @@ export function Dashboard() {
 
             <ContractTable
               contracts={filteredContracts}
-              currentTime={currentTime}
               statusFilter={statusFilter}
               totalContracts={contracts.length}
               onOpen={(contract) => navigate(`/advertiser/contract/${contract.id}`)}
@@ -600,7 +623,7 @@ function SyncPill({
   );
 }
 
-function FilterGroup({
+function FilterSection({
   label,
   children,
 }: {
@@ -608,11 +631,15 @@ function FilterGroup({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-w-0 rounded-[8px] border border-[#e5e9e4] bg-[#f8faf7] p-2.5">
-      <p className="mb-2 px-1 text-[11px] font-semibold text-[#7d857f]">{label}</p>
-      <div className="flex min-w-0 flex-wrap gap-1.5">{children}</div>
+    <div className="flex shrink-0 items-center gap-2">
+      <p className="shrink-0 text-[13px] font-extrabold text-[#303630]">{label}</p>
+      <div className="flex shrink-0 items-center gap-1.5">{children}</div>
     </div>
   );
+}
+
+function FilterDivider() {
+  return <span className="h-6 w-px shrink-0 bg-[#d9e0d9]" aria-hidden="true" />;
 }
 
 const FilterButton: React.FC<{
@@ -630,7 +657,7 @@ const FilterButton: React.FC<{
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex h-8 min-w-0 items-center gap-1.5 rounded-[6px] border px-2.5 text-[12px] font-semibold transition ${
+      className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[6px] border px-2.5 text-[12px] font-bold transition ${
         active
           ? "border-[#171a17] bg-[#171a17] text-white"
           : "border-[#d9e0d9] bg-white text-[#59605b] hover:border-[#b8c2ba] hover:text-[#171a17]"
@@ -761,13 +788,11 @@ function DashboardTabs({
 
 function ContractTable({
   contracts,
-  currentTime,
   statusFilter,
   totalContracts,
   onOpen,
 }: {
   contracts: Contract[];
-  currentTime: number;
   statusFilter: StatusFilter;
   totalContracts: number;
   onOpen: (contract: Contract) => void;
@@ -790,7 +815,6 @@ function ContractTable({
           <React.Fragment key={contract.id}>
             <ContractRow
               contract={contract}
-              currentTime={currentTime}
               onOpen={() => onOpen(contract)}
             />
           </React.Fragment>
@@ -802,11 +826,9 @@ function ContractTable({
 
 function ContractRow({
   contract,
-  currentTime,
   onOpen,
 }: {
   contract: Contract;
-  currentTime: number;
   onOpen: () => void;
 }) {
   return (
@@ -824,9 +846,6 @@ function ContractRow({
             <StatusBadge status={contract.status} dense />
           </span>
         </div>
-        <p className="mt-1 truncate text-[12px] text-[#7d857f]">
-          {removeInternalTestLabel(contract.influencer_info.name, "인플루언서")} · {formatPeriod(contract)}
-        </p>
       </div>
 
       <div className="min-w-0">
@@ -837,16 +856,11 @@ function ContractRow({
         <p className="truncate text-[13px] font-semibold text-[#303630]">
           {formatContractTypeLabel(contract.type)}
         </p>
-        <p className="mt-1 truncate text-[12px] text-[#8b938d]">종류</p>
       </div>
 
       <PreviewAmount value={formatMoneyLabel(contract.campaign?.budget)} />
 
-      <StatusTiming
-        contract={contract}
-        currentTime={currentTime}
-        showStatus
-      />
+      <StatusTiming contract={contract} />
     </button>
   );
 }
@@ -879,23 +893,12 @@ function StatusBadge({
 
 function StatusTiming({
   contract,
-  currentTime,
-  showStatus,
 }: {
   contract: Contract;
-  currentTime: number;
-  showStatus: boolean;
 }) {
   return (
     <div className="min-w-0">
-      {showStatus && <StatusBadge status={contract.status} />}
-      <p
-        className={`truncate text-[12px] font-semibold tabular-nums ${
-          showStatus ? "mt-1 text-neutral-400" : "text-neutral-600"
-        }`}
-      >
-        {formatAdvertiserTimingLabel(contract, currentTime)}
-      </p>
+      <StatusBadge status={contract.status} />
     </div>
   );
 }
@@ -904,7 +907,6 @@ function PreviewAmount({ value }: { value: string }) {
   return (
     <div className="min-w-0">
       <p className="truncate text-[13px] font-semibold text-[#303630]">{value}</p>
-      <p className="mt-1 truncate text-[12px] text-[#8b938d]">금액</p>
     </div>
   );
 }
@@ -976,14 +978,8 @@ function formatDashboardContractTitle(title: string) {
   return formatContractTitleForDisplay(cleaned || title, "계약명 미정");
 }
 
-function getAdvertiserDueHeader(statusFilter: StatusFilter) {
-  if (statusFilter === "AUTHORING") return "현 단계";
-  if (statusFilter === "DONE") return "기한";
-  const headers: Record<Exclude<StatusFilter, "AUTHORING" | "DONE">, string> = {
-    REVISION: "수정요청일로부터",
-    SIGNING: "서명요청일로부터",
-  };
-  return headers[statusFilter];
+function getAdvertiserDueHeader(_statusFilter: StatusFilter) {
+  return "현 단계";
 }
 
 function getContractPlatformDisplayItems(contract: Contract) {
@@ -1056,29 +1052,6 @@ function formatPeriod(contract: Contract) {
   if (contract.campaign?.deadline) return `${formatDate(contract.campaign.deadline)}까지`;
   if (contract.workflow?.due_at) return `${formatDate(contract.workflow.due_at)}까지`;
   return "미정";
-}
-
-function formatAdvertiserTimingLabel(contract: Contract, currentTime: number) {
-  if (contract.status === "SIGNED") {
-    return formatUploadDueLabel(
-      contract.campaign?.upload_due_at ?? contract.campaign?.deadline,
-      currentTime,
-      "기한",
-    );
-  }
-
-  const elapsedPrefix: Record<Exclude<ContractStatus, "SIGNED">, string> = {
-    DRAFT: "작성일로부터",
-    REVIEWING: "제안일로부터",
-    NEGOTIATING: "수정요청일로부터",
-    APPROVED: "서명요청일로부터",
-  };
-
-  return formatElapsedDayLabel(
-    contract.updated_at ?? contract.created_at,
-    currentTime,
-    elapsedPrefix[contract.status],
-  );
 }
 
 function formatDate(value: string) {

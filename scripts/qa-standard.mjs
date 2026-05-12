@@ -251,9 +251,27 @@ const checkSupabaseMigrations = async () => {
   return true;
 };
 
+const stopProcessTree = (processId) => {
+  if (!processId) return;
+
+  if (isWindows) {
+    spawnSync("taskkill", ["/pid", String(processId), "/t", "/f"], {
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    return;
+  }
+
+  try {
+    process.kill(processId, "SIGTERM");
+  } catch {
+    // The process may have already exited.
+  }
+};
+
 const cleanup = () => {
   if (serverProcess && !serverProcess.killed) {
-    serverProcess.kill();
+    stopProcessTree(serverProcess.pid);
   }
 };
 

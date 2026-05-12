@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "../domain/api";
+import { translateApiErrorMessage } from "../domain/userMessages";
 import type { VerificationSummary } from "../domain/verification";
 
 type VerificationSummaryOptions = {
@@ -13,20 +14,14 @@ const buildVerificationStatusUrl = (role?: VerificationSummaryOptions["role"]) =
   return `/api/verification/status${suffix}`;
 };
 
-const isAsciiOnly = (value: string) =>
-  value.split("").every((character) => character.charCodeAt(0) <= 0x7f);
-
 const getVerificationSummaryErrorMessage = (message?: string) => {
   if (!message) return "인증 상태를 불러오지 못했습니다.";
   if (message.includes("401")) return "로그인 후 인증 상태를 확인할 수 있습니다.";
   if (message.includes("403")) return "인증 상태를 확인할 권한이 없습니다.";
-  if (message.toLowerCase().includes("api error")) {
-    return "인증 상태를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.";
-  }
-  if (isAsciiOnly(message)) {
-    return "인증 상태를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.";
-  }
-  return message;
+  return translateApiErrorMessage(
+    message,
+    "인증 상태를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.",
+  );
 };
 
 export function useVerificationSummary(options?: VerificationSummaryOptions) {

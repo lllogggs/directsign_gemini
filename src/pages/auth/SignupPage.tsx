@@ -5,6 +5,7 @@ import { AuthLoginScreen } from "../../components/AuthLoginScreen";
 import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
 import { getNextPath } from "../../domain/navigation";
+import { translateApiErrorMessage } from "../../domain/userMessages";
 
 const LEGAL_DOCUMENT_VERSION = "2026-05-06";
 
@@ -147,7 +148,9 @@ export function SignupPage({ role }: { role: SignupRole }) {
       const data = (await response.json()) as SignupResponse;
 
       if (!response.ok) {
-        throw new Error(data.error ?? "계정을 만들 수 없습니다.");
+        throw new Error(
+          translateApiErrorMessage(data.error, "계정을 만들 수 없습니다."),
+        );
       }
 
       if (data.confirmation_required) {
@@ -164,11 +167,13 @@ export function SignupPage({ role }: { role: SignupRole }) {
         return;
       }
 
-      throw new Error(data.error ?? "계정을 만들 수 없습니다.");
+      throw new Error(
+        translateApiErrorMessage(data.error, "계정을 만들 수 없습니다."),
+      );
     } catch (signupError) {
       setError(
         signupError instanceof Error
-          ? signupError.message
+          ? translateApiErrorMessage(signupError.message, "계정을 만들 수 없습니다.")
           : "계정을 만들 수 없습니다.",
       );
     } finally {

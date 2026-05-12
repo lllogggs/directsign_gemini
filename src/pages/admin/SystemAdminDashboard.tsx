@@ -21,6 +21,7 @@ import { AuthLoginScreen } from "../../components/AuthLoginScreen";
 import { apiFetch } from "../../domain/api";
 import { buildLoginRedirect, getNextPath } from "../../domain/navigation";
 import { PRODUCT_NAME } from "../../domain/brand";
+import { translateApiErrorMessage } from "../../domain/userMessages";
 
 type AdminMetrics = {
   contract_count: number;
@@ -180,7 +181,9 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
         if (metricsResult.value.ok && metricsData.metrics) {
           setMetrics(metricsData.metrics);
         } else {
-          failedSections.push(metricsData.error ?? "운영 지표");
+          failedSections.push(
+            translateApiErrorMessage(metricsData.error, "운영 지표"),
+          );
         }
       } else {
         failedSections.push("운영 지표");
@@ -194,7 +197,9 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
         if (supportResult.value.ok) {
           setSupportRequests(supportData.support_access_requests ?? []);
         } else {
-          failedSections.push(supportData.error ?? "지원 열람 요청");
+          failedSections.push(
+            translateApiErrorMessage(supportData.error, "지원 열람 요청"),
+          );
         }
       } else {
         failedSections.push("지원 열람 요청");
@@ -208,7 +213,9 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
         if (verificationResult.value.ok) {
           setVerificationRequests(verificationData.verification_requests ?? []);
         } else {
-          failedSections.push(verificationData.error ?? "인증 대기열");
+          failedSections.push(
+            translateApiErrorMessage(verificationData.error, "인증 대기열"),
+          );
         }
       } else {
         failedSections.push("인증 대기열");
@@ -222,7 +229,10 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
     } catch (requestError) {
       setDataError(
         requestError instanceof Error
-          ? requestError.message
+          ? translateApiErrorMessage(
+              requestError.message,
+              "운영 데이터를 불러오지 못했습니다.",
+            )
           : "운영 데이터를 불러오지 못했습니다.",
       );
     } finally {
@@ -283,11 +293,16 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
   };
 
   const handleLogout = async () => {
-    await apiFetch("/api/admin/logout", { method: "POST" });
-    setIsAuthenticated(false);
-    setMetrics(emptyMetrics);
-    setSupportRequests([]);
-    setVerificationRequests([]);
+    try {
+      await apiFetch("/api/admin/logout", { method: "POST" });
+    } catch (error) {
+      console.warn("[Yeollock] admin logout request failed", error);
+    } finally {
+      setIsAuthenticated(false);
+      setMetrics(emptyMetrics);
+      setSupportRequests([]);
+      setVerificationRequests([]);
+    }
   };
 
   const reviewVerificationRequest = async (
@@ -319,14 +334,19 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
       };
 
       if (!response.ok || !data.request) {
-        throw new Error(data.error ?? "인증 검토 처리에 실패했습니다.");
+        throw new Error(
+          translateApiErrorMessage(data.error, "인증 검토 처리에 실패했습니다."),
+        );
       }
 
       await loadAdminData();
     } catch (requestError) {
       setDataError(
         requestError instanceof Error
-          ? requestError.message
+          ? translateApiErrorMessage(
+              requestError.message,
+              "인증 검토 처리에 실패했습니다.",
+            )
           : "인증 검토 처리에 실패했습니다.",
       );
     } finally {
@@ -353,14 +373,19 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
       };
 
       if (!response.ok || !data.request) {
-        throw new Error(data.error ?? "지원 열람을 종료하지 못했습니다.");
+        throw new Error(
+          translateApiErrorMessage(data.error, "지원 열람을 종료하지 못했습니다."),
+        );
       }
 
       await loadAdminData();
     } catch (requestError) {
       setDataError(
         requestError instanceof Error
-          ? requestError.message
+          ? translateApiErrorMessage(
+              requestError.message,
+              "지원 열람을 종료하지 못했습니다.",
+            )
           : "지원 열람을 종료하지 못했습니다.",
       );
     } finally {

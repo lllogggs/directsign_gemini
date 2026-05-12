@@ -4,6 +4,7 @@ import { AuthLoginScreen } from "../../components/AuthLoginScreen";
 import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
 import { getNextPath } from "../../domain/navigation";
+import { translateApiErrorMessage } from "../../domain/userMessages";
 
 export function InfluencerLoginPage() {
   const navigate = useNavigate();
@@ -38,14 +39,16 @@ export function InfluencerLoginPage() {
 
       if (!response.ok || !("authenticated" in data)) {
         const errorMessage = "error" in data ? data.error : undefined;
-        throw new Error(errorMessage ?? "로그인에 실패했습니다.");
+        throw new Error(
+          translateApiErrorMessage(errorMessage, "로그인에 실패했습니다."),
+        );
       }
 
       navigate(nextPath, { replace: true });
     } catch (loginError) {
       setError(
         loginError instanceof Error
-          ? loginError.message
+          ? translateApiErrorMessage(loginError.message, "로그인에 실패했습니다.")
           : "로그인에 실패했습니다.",
       );
     } finally {

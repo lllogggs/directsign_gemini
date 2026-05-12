@@ -11,6 +11,7 @@ import {
   FileText,
   LifeBuoy,
   Link2,
+  LogOut,
   MessageSquareText,
   PenLine,
   RefreshCw,
@@ -27,6 +28,7 @@ import { buildContractShareUrl } from "../../domain/links";
 import { PRODUCT_NAME } from "../../domain/brand";
 import { verificationStatusLabel } from "../../domain/verification";
 import { useVerificationSummary } from "../../hooks/useVerificationSummary";
+import { translateApiErrorMessage } from "../../domain/userMessages";
 import {
   formatContractTitleForDisplay,
   formatMoneyLabel,
@@ -109,6 +111,7 @@ export function ContractAdminViewer() {
   const updateContract = useAppStore((state) => state.updateContract);
   const isSyncing = useAppStore((state) => state.isSyncing);
   const syncError = useAppStore((state) => state.syncError);
+  const resetHydration = useAppStore((state) => state.resetHydration);
   const contract = getContract(id || "");
   const [replyContent, setReplyContent] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState<string>();
@@ -358,7 +361,12 @@ export function ContractAdminViewer() {
       };
 
       if (!response.ok) {
-        throw new Error(data.error ?? "운영자 확인 요청을 보내지 못했습니다.");
+        throw new Error(
+          translateApiErrorMessage(
+            data.error,
+            "운영자 확인 요청을 보내지 못했습니다.",
+          ),
+        );
       }
 
       setSupportReason("");
@@ -367,7 +375,10 @@ export function ContractAdminViewer() {
     } catch (error) {
       setNotice(
         error instanceof Error
-          ? error.message
+          ? translateApiErrorMessage(
+              error.message,
+              "운영자 확인 요청을 보내지 못했습니다.",
+            )
           : "운영자 확인 요청을 보내지 못했습니다.",
       );
     } finally {
@@ -450,7 +461,12 @@ export function ContractAdminViewer() {
       const data = (await response.json()) as DeliverablesResponse;
 
       if (!response.ok) {
-        throw new Error(data.error ?? `콘텐츠 검수 실패 (${response.status})`);
+        throw new Error(
+          getDeliverableErrorMessage(
+            data.error,
+            `콘텐츠 검수 실패 (${response.status})`,
+          ),
+        );
       }
 
       setDeliverables(data);
@@ -478,6 +494,19 @@ export function ContractAdminViewer() {
       );
     } finally {
       setReviewingDeliverableId("");
+    }
+  };
+  const handleLogout = async () => {
+    try {
+      await apiFetch("/api/advertiser/logout", {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch (error) {
+      console.warn("[Yeollock] advertiser logout request failed", error);
+    } finally {
+      resetHydration();
+      navigate("/login/advertiser", { replace: true });
     }
   };
 
@@ -528,6 +557,15 @@ export function ContractAdminViewer() {
             >
               <Send className="h-4 w-4" />
               {primaryActionLabel}
+            </button>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="inline-flex h-10 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-[12px] font-semibold text-neutral-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
+              aria-label="로그아웃"
+            >
+              <LogOut className="h-4 w-4" />
+              <span className="hidden sm:inline">로그아웃</span>
             </button>
           </div>
         </div>

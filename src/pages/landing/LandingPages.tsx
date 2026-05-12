@@ -134,6 +134,13 @@ function getStartRoleTone(role: IntroRole) {
 
 const startServiceCards: StartServiceCard[] = [
   {
+    title: "상호 컨택",
+    description: "제안과 조건을 한곳에",
+    icon: MessageSquareText,
+    iconClass: "text-neutral-800",
+    iconBgClass: "bg-neutral-100",
+  },
+  {
     title: "계약내용 입력",
     description: "조건만 넣으면 초안 정리",
     icon: FileText,
@@ -783,35 +790,8 @@ export function StartPage() {
           </Link>
         </header>
 
-        <section className="flex items-start justify-center pb-4 pt-[clamp(30px,6svh,52px)] sm:items-center sm:py-9">
-          <div className="w-full max-w-[790px]">
-            <div
-              className="mx-auto mb-6 grid max-w-[640px] grid-cols-3 gap-2 sm:mb-7 sm:gap-3"
-              aria-label="서비스 구성"
-            >
-              {startServiceCards.map((service) => {
-                const Icon = service.icon;
-
-                return (
-                  <div
-                    key={service.title}
-                    className="min-w-0 rounded-[16px] border border-neutral-200/90 bg-white/82 px-2.5 py-3 text-center shadow-[0_1px_0_rgba(15,23,42,0.03),0_12px_32px_rgba(15,23,42,0.035)] sm:px-4 sm:py-4"
-                  >
-                    <span
-                      className={`mx-auto flex h-8 w-8 items-center justify-center rounded-[11px] ${service.iconBgClass} ${service.iconClass} sm:h-9 sm:w-9`}
-                    >
-                      <Icon className="h-4 w-4 sm:h-[17px] sm:w-[17px]" />
-                    </span>
-                    <strong className="mt-2 block break-keep text-[12px] font-extrabold leading-tight tracking-[-0.005em] text-neutral-950 sm:text-[14px]">
-                      {service.title}
-                    </strong>
-                    <span className="mt-1 hidden break-keep text-[11px] font-bold leading-4 text-neutral-500 sm:block">
-                      {service.description}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
+        <section className="flex items-start justify-center pb-4 pt-[clamp(28px,5svh,44px)] sm:pb-8 sm:pt-[clamp(44px,8svh,76px)]">
+          <div className="w-full max-w-[710px]">
             <h1
               className="landing-start-title font-neo-heavy mb-7 text-center text-[31px] leading-[1.12] tracking-normal text-neutral-950 sm:mb-8 sm:text-[46px] sm:leading-[1.08]"
               aria-label="입력은 간단하게, 계약은 확실하게"
@@ -823,6 +803,33 @@ export function StartPage() {
                 계약은 확실하게
               </span>
             </h1>
+            <div
+              className="mx-auto mb-5 grid grid-cols-2 gap-2 sm:mb-6 sm:grid-cols-4 sm:gap-3"
+              aria-label="서비스 구성"
+            >
+              {startServiceCards.map((service) => {
+                const Icon = service.icon;
+
+                return (
+                  <div
+                    key={service.title}
+                    className="min-w-0 rounded-[16px] border border-neutral-200/90 bg-white/82 px-2.5 py-3 text-center shadow-[0_1px_0_rgba(15,23,42,0.03),0_12px_32px_rgba(15,23,42,0.035)] sm:px-3 sm:py-4"
+                  >
+                    <span
+                      className={`mx-auto flex h-8 w-8 items-center justify-center rounded-[11px] ${service.iconBgClass} ${service.iconClass} sm:h-9 sm:w-9`}
+                    >
+                      <Icon className="h-4 w-4 sm:h-[17px] sm:w-[17px]" />
+                    </span>
+                    <strong className="mt-2 block break-keep text-[12px] font-extrabold leading-tight tracking-[-0.005em] text-neutral-950 sm:text-[13px]">
+                      {service.title}
+                    </strong>
+                    <span className="mt-1 hidden break-keep text-[11px] font-bold leading-4 text-neutral-500 sm:block">
+                      {service.description}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
             <div className="grid gap-3.5 sm:grid-cols-2 sm:gap-4">
               {roleCards.map((role) => {
                 const Icon = role.icon;

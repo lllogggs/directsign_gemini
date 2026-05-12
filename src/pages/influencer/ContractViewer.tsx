@@ -34,6 +34,7 @@ import {
   formatPublicUrlLabel,
   removeInternalTestLabel,
 } from "../../domain/display";
+import { translateApiErrorMessage } from "../../domain/userMessages";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
@@ -164,6 +165,9 @@ const getSignatureErrorMessage = (message?: string) => {
   }
   if (message === "Contract access is not allowed") {
     return "이 계약을 서명할 수 있는 인플루언서 계정이 아닙니다.";
+  }
+  if (message === "Contract must be approved and actively shared before signing") {
+    return "광고주가 서명 가능한 상태로 공유한 계약만 서명할 수 있습니다.";
   }
   if (message === "All clauses must be approved before signing") {
     return "서명 전에 모든 조항이 승인되어야 합니다.";
@@ -548,7 +552,12 @@ export function ContractViewer() {
       const data = (await response.json()) as DeliverablesResponse;
 
       if (!response.ok) {
-        throw new Error(data.error ?? `콘텐츠 제출 실패 (${response.status})`);
+        throw new Error(
+          getDeliverableErrorMessage(
+            data.error,
+            `콘텐츠 제출 실패 (${response.status})`,
+          ),
+        );
       }
 
       setDeliverables(data);
@@ -682,7 +691,7 @@ export function ContractViewer() {
         if (!cancelled) {
           setSharedContractError(
             error instanceof Error
-              ? error.message
+              ? getContractLoadErrorMessage(error.message)
               : "계약을 불러올 수 없습니다.",
           );
         }
@@ -1063,7 +1072,12 @@ export function ContractViewer() {
       };
 
       if (!response.ok) {
-        throw new Error(data.error ?? "운영자 확인 요청을 보내지 못했습니다.");
+        throw new Error(
+          translateApiErrorMessage(
+            data.error,
+            "운영자 확인 요청을 보내지 못했습니다.",
+          ),
+        );
       }
 
       setSupportReason("");
@@ -1072,7 +1086,10 @@ export function ContractViewer() {
     } catch (error) {
       setSupportNotice(
         error instanceof Error
-          ? error.message
+          ? translateApiErrorMessage(
+              error.message,
+              "운영자 확인 요청을 보내지 못했습니다.",
+            )
           : "운영자 확인 요청을 보내지 못했습니다.",
       );
     } finally {

@@ -15,6 +15,7 @@ import { apiFetch } from "../../domain/api";
 import { useVerificationSummary } from "../../hooks/useVerificationSummary";
 import { PRODUCT_NAME } from "../../domain/brand";
 import { removeInternalTestLabel } from "../../domain/display";
+import { translateApiErrorMessage } from "../../domain/userMessages";
 
 const MAX_VERIFICATION_FILE_SIZE = 10 * 1024 * 1024;
 const ACCEPTED_VERIFICATION_FILE_TYPES = new Set([
@@ -143,7 +144,9 @@ export function AdvertiserVerification() {
       const data = (await response.json()) as { error?: string };
 
       if (!response.ok) {
-        throw new Error(data.error ?? "인증 요청을 접수하지 못했습니다.");
+        throw new Error(
+          translateApiErrorMessage(data.error, "인증 요청을 접수하지 못했습니다."),
+        );
       }
 
       setSubmitted(true);
@@ -153,7 +156,10 @@ export function AdvertiserVerification() {
     } catch (submitError) {
       setError(
         submitError instanceof Error
-          ? submitError.message
+          ? translateApiErrorMessage(
+              submitError.message,
+              "인증 요청을 접수하지 못했습니다.",
+            )
           : "인증 요청을 접수하지 못했습니다.",
       );
     } finally {
