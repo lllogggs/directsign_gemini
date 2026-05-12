@@ -108,6 +108,30 @@ const roleCards: RoleCard[] = [
   },
 ];
 
+function getStartRoleTone(role: IntroRole) {
+  if (role === "advertiser") {
+    return {
+      card:
+        "border-[#bfdbfe] bg-[linear-gradient(180deg,#eff6ff_0%,#ffffff_54%)] hover:border-[#93c5fd]",
+      icon: "border-[#bfdbfe] bg-[#eff6ff] text-[#2563eb] group-hover:border-[#2563eb] group-hover:bg-[#2563eb] group-hover:text-white",
+      arrow:
+        "border-[#bfdbfe] bg-white text-[#2563eb]/55 group-hover:border-[#2563eb] group-hover:bg-[#2563eb] group-hover:text-white",
+      divider: "border-[#bfdbfe]/75",
+      detail: "text-[#2563eb]",
+    };
+  }
+
+  return {
+    card:
+      "border-[#a7f3d0] bg-[linear-gradient(180deg,#ecfdf5_0%,#ffffff_54%)] hover:border-[#6ee7b7]",
+    icon: "border-[#a7f3d0] bg-[#ecfdf5] text-[#059669] group-hover:border-[#059669] group-hover:bg-[#059669] group-hover:text-white",
+    arrow:
+      "border-[#a7f3d0] bg-white text-[#059669]/55 group-hover:border-[#059669] group-hover:bg-[#059669] group-hover:text-white",
+    divider: "border-[#a7f3d0]/75",
+    detail: "text-[#059669]",
+  };
+}
+
 const startServiceCards: StartServiceCard[] = [
   {
     title: "계약내용 입력",
@@ -802,6 +826,7 @@ export function StartPage() {
             <div className="grid gap-3.5 sm:grid-cols-2 sm:gap-4">
               {roleCards.map((role) => {
                 const Icon = role.icon;
+                const tone = getStartRoleTone(role.role);
                 const isAdvertiser = role.role === "advertiser";
                 const detail = isAdvertiser
                   ? "브랜드사 · 광고대행사"
@@ -812,13 +837,13 @@ export function StartPage() {
                     key={role.role}
                     to={role.href}
                     aria-label={`${role.title}로 시작`}
-                    className="group flex min-h-[196px] flex-col rounded-[22px] border border-neutral-200/90 bg-white px-5 py-5 text-left shadow-[0_1px_0_rgba(15,23,42,0.035),0_16px_42px_rgba(15,23,42,0.035)] transition hover:-translate-y-0.5 hover:border-neutral-300 hover:shadow-[0_1px_0_rgba(15,23,42,0.04),0_22px_58px_rgba(15,23,42,0.06)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:min-h-[238px] sm:px-6 sm:py-6"
+                    className={`group flex min-h-[196px] flex-col rounded-[22px] border px-5 py-5 text-left shadow-[0_1px_0_rgba(15,23,42,0.035),0_16px_42px_rgba(15,23,42,0.035)] transition hover:-translate-y-0.5 hover:shadow-[0_1px_0_rgba(15,23,42,0.04),0_22px_58px_rgba(15,23,42,0.06)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:min-h-[238px] sm:px-6 sm:py-6 ${tone.card}`}
                   >
                     <span className="flex items-center justify-between">
-                      <span className="flex h-9 w-9 items-center justify-center rounded-[12px] border border-neutral-200 bg-[#f6f5f2] text-neutral-800 transition group-hover:border-neutral-950 group-hover:bg-neutral-950 group-hover:text-white">
+                      <span className={`flex h-9 w-9 items-center justify-center rounded-[12px] border transition ${tone.icon}`}>
                         <Icon className="h-[17px] w-[17px]" />
                       </span>
-                      <span className="flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-300 transition group-hover:border-neutral-950 group-hover:bg-neutral-950 group-hover:text-white">
+                      <span className={`flex h-8 w-8 items-center justify-center rounded-full border transition ${tone.arrow}`}>
                         <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
                       </span>
                     </span>
@@ -827,7 +852,7 @@ export function StartPage() {
                       <strong className="font-neo-heavy block text-[30px] leading-none tracking-[-0.035em] text-neutral-950 sm:text-[38px]">
                         {role.title}
                       </strong>
-                      <span className="mt-3.5 block border-t border-neutral-200 pt-3.5 text-[12px] font-bold tracking-[-0.005em] text-neutral-500 sm:mt-4 sm:pt-4">
+                      <span className={`mt-3.5 block border-t pt-3.5 text-[12px] font-bold tracking-[-0.005em] sm:mt-4 sm:pt-4 ${tone.divider} ${tone.detail}`}>
                         {detail}
                       </span>
                     </span>

@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { ArrowLeft, ShieldCheck } from "lucide-react";
 import { PRODUCT_NAME } from "../../domain/brand";
 import {
@@ -310,6 +310,7 @@ export function LegalDocumentPage({
 }: {
   documentType: LegalDocumentType;
 }) {
+  const navigate = useNavigate();
   const legalDocument = legalDocuments[documentType];
 
   useEffect(() => {
@@ -320,16 +321,27 @@ export function LegalDocumentPage({
     descriptionTag?.setAttribute("content", legalDocument.description);
   }, [legalDocument.description, legalDocument.title]);
 
+  const handleBack = () => {
+    const historyState = window.history.state as { idx?: number } | null;
+    if (typeof historyState?.idx === "number" && historyState.idx > 0) {
+      navigate(-1);
+      return;
+    }
+
+    navigate("/");
+  };
+
   return (
     <main className="min-h-screen bg-[#fafafa] px-5 py-8 font-sans text-neutral-950 sm:py-12">
       <div className="mx-auto w-full max-w-[880px]">
-        <Link
-          to="/login"
+        <button
+          type="button"
+          onClick={handleBack}
           className="inline-flex h-10 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-600 shadow-sm transition hover:border-neutral-950 hover:text-neutral-950"
         >
           <ArrowLeft className="h-4 w-4" />
-          로그인으로 돌아가기
-        </Link>
+          이전 화면으로 돌아가기
+        </button>
 
         <section className="mt-5 rounded-lg border border-neutral-200 bg-white p-6 shadow-[0_18px_55px_rgba(15,23,42,0.06)] sm:p-8">
           <div className="flex items-center gap-3">

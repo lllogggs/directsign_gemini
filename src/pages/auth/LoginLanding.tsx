@@ -5,6 +5,7 @@ import { getSafeRedirectPath } from "../../domain/navigation";
 
 const loginRoles = [
   {
+    role: "advertiser",
     title: "광고주 로그인",
     detail: "작성 · 공유 · 관리",
     href: "/login/advertiser",
@@ -13,6 +14,7 @@ const loginRoles = [
     icon: Building2,
   },
   {
+    role: "influencer",
     title: "인플루언서 로그인",
     detail: "검토 · 요청 · 서명",
     href: "/login/influencer",
@@ -20,7 +22,31 @@ const loginRoles = [
     allowedPrefixes: ["/influencer", "/contract"],
     icon: UserRound,
   },
-];
+] as const;
+
+function getRoleTone(role: (typeof loginRoles)[number]["role"]) {
+  if (role === "advertiser") {
+    return {
+      card:
+        "border-[#bfdbfe] bg-[linear-gradient(180deg,#eff6ff_0%,#ffffff_54%)] hover:border-[#93c5fd]",
+      icon: "border-[#bfdbfe] bg-[#eff6ff] text-[#2563eb] group-hover:border-[#2563eb] group-hover:bg-[#2563eb] group-hover:text-white",
+      arrow:
+        "border-[#bfdbfe] bg-white text-[#2563eb]/55 group-hover:border-[#2563eb] group-hover:bg-[#2563eb] group-hover:text-white",
+      divider: "border-[#bfdbfe]/75",
+      detail: "text-[#2563eb]",
+    };
+  }
+
+  return {
+    card:
+      "border-[#a7f3d0] bg-[linear-gradient(180deg,#ecfdf5_0%,#ffffff_54%)] hover:border-[#6ee7b7]",
+    icon: "border-[#a7f3d0] bg-[#ecfdf5] text-[#059669] group-hover:border-[#059669] group-hover:bg-[#059669] group-hover:text-white",
+    arrow:
+      "border-[#a7f3d0] bg-white text-[#059669]/55 group-hover:border-[#059669] group-hover:bg-[#059669] group-hover:text-white",
+    divider: "border-[#a7f3d0]/75",
+    detail: "text-[#059669]",
+  };
+}
 
 export function LoginLanding() {
   const location = useLocation();
@@ -28,7 +54,7 @@ export function LoginLanding() {
 
   return (
     <main className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950">
-      <div className="mx-auto grid min-h-screen w-full max-w-[760px] grid-rows-[68px_1fr_48px] px-5 sm:px-6">
+      <div className="mx-auto grid min-h-screen w-full max-w-[850px] grid-rows-[68px_1fr_48px] px-5 sm:px-6">
         <header className="flex items-center justify-between">
           <Link
             to="/"
@@ -46,11 +72,12 @@ export function LoginLanding() {
         </header>
 
         <section className="flex items-center justify-center py-7 sm:py-9">
-          <div className="w-full">
+          <div className="w-full max-w-[520px]">
             <h1 className="sr-only">{PRODUCT_NAME} 로그인</h1>
-            <div className="grid gap-3.5 sm:grid-cols-2 sm:gap-4">
+            <div className="grid gap-3.5 sm:gap-4">
               {loginRoles.map((role) => {
                 const Icon = role.icon;
+                const tone = getRoleTone(role.role);
                 const next = getSafeRedirectPath(
                   requestedNext,
                   role.fallback,
@@ -63,13 +90,13 @@ export function LoginLanding() {
                     key={role.href}
                     to={href}
                     aria-label={role.title}
-                    className="group flex min-h-[174px] flex-col rounded-[22px] border border-neutral-200/90 bg-white px-5 py-5 text-left shadow-[0_1px_0_rgba(15,23,42,0.035),0_16px_42px_rgba(15,23,42,0.035)] transition hover:-translate-y-0.5 hover:border-neutral-300 hover:shadow-[0_1px_0_rgba(15,23,42,0.04),0_22px_58px_rgba(15,23,42,0.06)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:min-h-[210px] sm:px-6 sm:py-6"
+                    className={`group flex min-h-[156px] flex-col rounded-[22px] border px-5 py-5 text-left shadow-[0_1px_0_rgba(15,23,42,0.035),0_16px_42px_rgba(15,23,42,0.035)] transition hover:-translate-y-0.5 hover:shadow-[0_1px_0_rgba(15,23,42,0.04),0_22px_58px_rgba(15,23,42,0.06)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:min-h-[170px] sm:px-6 sm:py-6 ${tone.card}`}
                   >
                     <span className="flex items-center justify-between">
-                      <span className="flex h-9 w-9 items-center justify-center rounded-[12px] border border-neutral-200 bg-[#f6f5f2] text-neutral-800 transition group-hover:border-neutral-950 group-hover:bg-neutral-950 group-hover:text-white">
+                      <span className={`flex h-9 w-9 items-center justify-center rounded-[12px] border transition ${tone.icon}`}>
                         <Icon className="h-[17px] w-[17px]" />
                       </span>
-                      <span className="flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-300 transition group-hover:border-neutral-950 group-hover:bg-neutral-950 group-hover:text-white">
+                      <span className={`flex h-8 w-8 items-center justify-center rounded-full border transition ${tone.arrow}`}>
                         <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
                       </span>
                     </span>
@@ -78,7 +105,7 @@ export function LoginLanding() {
                       <strong className="font-neo-heavy block text-[25px] leading-none tracking-[-0.035em] text-neutral-950 sm:text-[30px]">
                         {role.title}
                       </strong>
-                      <span className="mt-3.5 block border-t border-neutral-200 pt-3.5 text-[12px] font-bold tracking-[-0.005em] text-neutral-500 sm:mt-4 sm:pt-4">
+                      <span className={`mt-3.5 block border-t pt-3.5 text-[12px] font-bold tracking-[-0.005em] sm:mt-4 sm:pt-4 ${tone.divider} ${tone.detail}`}>
                         {role.detail}
                       </span>
                     </span>
