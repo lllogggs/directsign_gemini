@@ -158,9 +158,9 @@ export const getDeliverableErrorMessage = (
     "Contract not found": "계약서를 찾을 수 없습니다.",
     "Contract access is not allowed": "이 계약의 콘텐츠 정보를 볼 권한이 없습니다.",
     "Deliverable submission requires Supabase":
-      "콘텐츠 제출은 운영 DB 연결 후 사용할 수 있습니다.",
+      "현재 계정에서는 콘텐츠 제출을 사용할 수 없습니다. 관리자에게 문의해 주세요.",
     "Deliverable review requires Supabase":
-      "콘텐츠 검수는 운영 DB 연결 후 사용할 수 있습니다.",
+      "현재 계정에서는 콘텐츠 검수를 사용할 수 없습니다. 관리자에게 문의해 주세요.",
     "Contract must be signed before deliverables can be submitted":
       "전자서명 완료 후 콘텐츠를 제출할 수 있습니다.",
     "Valid deliverable requirement is required":

@@ -28,6 +28,14 @@ import { PRODUCT_NAME } from "../../domain/brand";
 import { verificationStatusLabel } from "../../domain/verification";
 import { useVerificationSummary } from "../../hooks/useVerificationSummary";
 import {
+  formatContractTitleForDisplay,
+  formatMoneyLabel,
+  formatOperationalText,
+  formatPublicUrlLabel,
+  formatPublicContactValue,
+  removeInternalTestLabel,
+} from "../../domain/display";
+import {
   formatFileSize,
   getDeliverableErrorMessage,
   getSubmissionNote,
@@ -175,6 +183,11 @@ export function ContractAdminViewer() {
     contract.status !== "SIGNED" &&
     isAdvertiserVerified &&
     !isVerificationLoading;
+  const displayContractTitle = formatContractTitleForDisplay(contract.title);
+  const displayInfluencerName = removeInternalTestLabel(
+    contract.influencer_info.name,
+    "인플루언서",
+  );
 
   const handleAction = (
     clauseId: string,
@@ -378,7 +391,7 @@ export function ContractAdminViewer() {
       const data = (await response.json()) as DeliverablesResponse;
 
       if (!response.ok) {
-        throw new Error(data.error ?? `콘텐츠 제출 내역 API 오류 (${response.status})`);
+        throw new Error(data.error ?? "콘텐츠 제출 내역을 불러오지 못했습니다.");
       }
 
       setDeliverables(data);
@@ -531,16 +544,19 @@ export function ContractAdminViewer() {
                 </span>
               </div>
               <h1 className="max-w-4xl text-[30px] font-semibold leading-tight tracking-[-0.03em] text-neutral-950 sm:text-[38px]">
-                {contract.title}
+                {displayContractTitle}
               </h1>
               <p className="mt-3 max-w-3xl text-[14px] leading-6 text-neutral-500">
-                {contract.workflow?.next_action ?? STATUS_META[contract.status].helper}
+                {formatOperationalText(
+                  contract.workflow?.next_action,
+                  STATUS_META[contract.status].helper,
+                )}
               </p>
             </div>
 
             <div className="grid min-w-0 gap-2 sm:grid-cols-2 xl:w-[520px]">
-              <InfoTile label="인플루언서" value={contract.influencer_info.name} />
-              <InfoTile label="금액" value={contract.campaign?.budget ?? "미정"} />
+              <InfoTile label="인플루언서" value={displayInfluencerName} />
+              <InfoTile label="금액" value={formatMoneyLabel(contract.campaign?.budget)} />
               <InfoTile label="기간" value={formatPeriod(contract)} />
               <InfoTile label="다음 기한" value={formatDue(contract.workflow?.due_at)} />
             </div>
@@ -566,14 +582,14 @@ export function ContractAdminViewer() {
             icon={<ShieldCheck className="h-4 w-4" />}
             label="감사 준비"
             value={contract.evidence?.audit_ready ? "준비됨" : "미완료"}
-            helper={contract.evidence?.pdf_status === "signed_ready" ? "서명 PDF 준비" : "초안 PDF 기준"}
+            helper={contract.evidence?.pdf_status === "signed_ready" ? "서명 PDF 준비" : "서명 전 문서 기준"}
             tone="neutral"
           />
           <WorkflowCard
             icon={<CalendarClock className="h-4 w-4" />}
             label="저장 상태"
             value={syncError ? "확인 필요" : isSyncing ? "저장 중" : "저장 완료"}
-            helper={syncError ? "동기화 실패 가능성" : "서버 저장소와 동기화"}
+            helper={syncError ? "저장 상태 확인 필요" : "변경 사항 반영됨"}
             tone={syncError ? "amber" : "neutral"}
           />
         </section>
@@ -612,8 +628,11 @@ export function ContractAdminViewer() {
               <div className="space-y-4">
                 <PersonLine
                   label="인플루언서"
-                  value={contract.influencer_info.name}
-                  helper={contract.influencer_info.contact || "연락처 미입력"}
+                  value={displayInfluencerName}
+                  helper={formatPublicContactValue(
+                    contract.influencer_info.contact,
+                    "연락처 미입력",
+                  )}
                 />
                 {safeInfluencerHref ? (
                   <a
@@ -707,12 +726,12 @@ export function ContractAdminViewer() {
                             {String(index + 1).padStart(2, "0")}
                           </span>
                           <h3 className="text-[16px] font-semibold text-neutral-950">
-                            {clause.category}
+                            {formatOperationalText(clause.category)}
                           </h3>
                           <ClauseBadge status={clause.status} />
                         </div>
                         <p className="max-w-3xl whitespace-pre-wrap text-[14px] leading-7 text-neutral-700">
-                          {clause.content}
+                          {formatOperationalText(clause.content)}
                         </p>
                       </div>
                     </div>
@@ -724,7 +743,7 @@ export function ContractAdminViewer() {
                           인플루언서 의견
                         </div>
                         <p className="whitespace-pre-wrap text-[14px] leading-6 text-neutral-800">
-                          {latestHistory.comment}
+                          {formatOperationalText(latestHistory.comment)}
                         </p>
                       </div>
                     )}
@@ -928,13 +947,13 @@ export function ContractAdminViewer() {
                     .map((event) => (
                       <div key={event.id} className="border-l-2 border-neutral-200 pl-3">
                         <p className="text-[12px] font-semibold text-neutral-900">
-                          {actorLabel(event.actor)} · {event.action}
+                          {actorLabel(event.actor)} · {formatAuditActionLabel(event.action)}
                         </p>
                         <p className="mt-1 text-[12px] text-neutral-400">
                           {formatDateTime(event.created_at)}
                         </p>
                         <p className="mt-2 text-[13px] leading-6 text-neutral-600">
-                          {event.description}
+                          {formatAuditDescription(event.description)}
                         </p>
                       </div>
                     ))
@@ -1069,7 +1088,7 @@ function AdvertiserDeliverablesPanel({
               <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <h3 className="text-[16px] font-semibold text-neutral-950">
-                    {requirement.title}
+                    {formatOperationalText(requirement.title)}
                   </h3>
                   <p className="mt-1 text-[12px] font-semibold text-neutral-500">
                     필요 {requirement.quantity}건 · 제출 {submittedCount}건 · 승인 {approvedCount}건
@@ -1093,7 +1112,7 @@ function AdvertiserDeliverablesPanel({
                     const reviewDone = ["approved", "changes_requested", "rejected"].includes(
                       submission.review_status,
                     );
-                    const note = getSubmissionNote(submission);
+                    const note = formatOperationalText(getSubmissionNote(submission));
 
                     return (
                       <div
@@ -1121,7 +1140,9 @@ function AdvertiserDeliverablesPanel({
                             className="mt-3 inline-flex max-w-full items-center gap-2 text-[13px] font-semibold text-neutral-900 underline underline-offset-4"
                           >
                             <ExternalLink className="h-3.5 w-3.5 shrink-0" />
-                            <span className="truncate">{submission.url}</span>
+                            <span className="truncate">
+                              {formatPublicUrlLabel(submission.url, "제출 링크 열기")}
+                            </span>
                           </a>
                         )}
                         {submission.files.length > 0 && (
@@ -1152,7 +1173,7 @@ function AdvertiserDeliverablesPanel({
                         )}
                         {submission.review_comment && (
                           <p className="mt-3 rounded-md bg-white px-3 py-2 text-[12px] leading-5 text-neutral-600 ring-1 ring-neutral-200">
-                            검수 코멘트: {submission.review_comment}
+                            검수 코멘트: {formatOperationalText(submission.review_comment)}
                           </p>
                         )}
 
@@ -1366,4 +1387,32 @@ function actorLabel(actor: string) {
   if (actor === "advertiser") return "광고주";
   if (actor === "influencer") return "인플루언서";
   return "시스템";
+}
+
+function formatAuditActionLabel(action: string) {
+  const labels: Record<string, string> = {
+    all_clauses_approved: "모든 조항 승인",
+    clause_change_requested: "조항 수정 요청",
+    contract_signed: "전자서명 완료",
+    created: "지원 요청 생성",
+    draft_saved: "초안 저장",
+    evidence_downloaded: "증빙 파일 다운로드",
+    qa_contract_seeded: "계약 생성",
+    share_link_issued: "공유 링크 생성",
+    signature_requested: "서명 요청",
+    viewed_contract: "계약 본문 열람",
+    viewed_pdf: "PDF 열람",
+  };
+
+  if (labels[action]) return labels[action];
+  if (/[가-힣]/.test(action)) return action;
+  return "운영 기록";
+}
+
+function formatAuditDescription(description: string) {
+  if (/IP=|UA=/i.test(description)) {
+    return "전자서명이 완료되었고 접속 정보는 감사 기록에 보관됩니다.";
+  }
+
+  return description;
 }

@@ -27,6 +27,13 @@ import {
   validateDeliverableUrl,
   type DeliverablesResponse,
 } from "../../domain/deliverables";
+import {
+  formatContractTitleForDisplay,
+  formatMoneyLabel,
+  formatOperationalText,
+  formatPublicUrlLabel,
+  removeInternalTestLabel,
+} from "../../domain/display";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
@@ -471,7 +478,7 @@ export function ContractViewer() {
       const data = (await response.json()) as DeliverablesResponse;
 
       if (!response.ok) {
-        throw new Error(data.error ?? `콘텐츠 제출 내역 API 오류 (${response.status})`);
+        throw new Error(data.error ?? "콘텐츠 제출 내역을 불러오지 못했습니다.");
       }
 
       setDeliverables(data);
@@ -800,6 +807,12 @@ export function ContractViewer() {
   const deadline = contract.campaign?.deadline
     ? format(new Date(contract.campaign.deadline), "yyyy.MM.dd")
     : contract.campaign?.end_date || contract.campaign?.period || "미지정";
+  const displayContractTitle = formatContractTitleForDisplay(contract.title);
+  const displayInfluencerName = removeInternalTestLabel(
+    contract.influencer_info.name,
+    "인플루언서",
+  );
+  const displayBudget = formatMoneyLabel(contract.campaign?.budget, "미지정");
   const reviewTone = allApproved ? "text-neutral-700" : "text-amber-700";
   const verificationPath = `/influencer/verification?contractId=${encodeURIComponent(
     contract.id,
@@ -890,11 +903,11 @@ export function ContractViewer() {
   const plainSummary = [
     {
       label: "캠페인",
-      value: contract.title,
+      value: displayContractTitle,
     },
     {
       label: "보상",
-      value: contract.campaign?.budget || "미지정",
+      value: displayBudget,
     },
     {
       label: "마감일",
@@ -922,7 +935,7 @@ export function ContractViewer() {
       : rawFinalPdfHref;
   const signatureEvidenceRows = signatureData
     ? [
-        { label: "서명자", value: signatureData.signer_name || contract.influencer_info.name },
+        { label: "서명자", value: signatureData.signer_name || displayInfluencerName },
         { label: "서명 완료", value: formatDateTime(signatureData.signed_at) },
         {
           label: "계약 해시",
@@ -947,7 +960,7 @@ export function ContractViewer() {
       isOpen: true,
       type,
       clauseId: clause.clause_id,
-      selectedText: `전체 조항: ${clause.category}`,
+      selectedText: `전체 조항: ${formatOperationalText(clause.category)}`,
     });
     setFeedbackComment("");
     setFeedbackError("");
@@ -959,7 +972,7 @@ export function ContractViewer() {
         isOpen: true,
         type: "MODIFICATION_REQUESTED",
         clauseId: clause.clause_id,
-        selectedText: `전체 조항: ${clause.category}`,
+        selectedText: `전체 조항: ${formatOperationalText(clause.category)}`,
       });
       setFeedbackError("조항 의견을 남기거나 승인하려면 인플루언서 계정으로 로그인해야 합니다.");
       return;
@@ -1127,7 +1140,7 @@ export function ContractViewer() {
                 보안 계약 검토
               </p>
               <h1 className="truncate text-base font-semibold text-neutral-950 sm:text-lg">
-                {contract.title}
+                {displayContractTitle}
               </h1>
             </div>
           </div>
@@ -1253,7 +1266,7 @@ export function ContractViewer() {
                         </div>
                         <div className="min-w-0">
                           <h3 className="text-base font-semibold text-neutral-950">
-                            {clause.category}
+                            {formatOperationalText(clause.category)}
                           </h3>
                           <p className="mt-1 text-xs text-neutral-500">
                             아래 문구를 정확히 선택하면 수정이나 삭제 요청을 보낼 수 있습니다.
@@ -1281,7 +1294,9 @@ export function ContractViewer() {
                     </div>
 
                     <div className="mt-5 rounded-lg border border-neutral-200 bg-white p-4 text-[15px] leading-7 text-neutral-800 selection:bg-neutral-200 selection:text-neutral-950 sm:p-5">
-                      <p className="whitespace-pre-wrap">{clause.content}</p>
+                      <p className="whitespace-pre-wrap">
+                        {formatOperationalText(clause.content)}
+                      </p>
                     </div>
 
                     {!isOperatorSupportView && contract.status !== "SIGNED" && (
@@ -1348,11 +1363,11 @@ export function ContractViewer() {
                                   {format(new Date(historyItem.timestamp), "yyyy.MM.dd HH:mm")}
                                 </span>
                           <span className="rounded-md border border-neutral-200 bg-[#fbfbfc] px-2 py-0.5 text-xs font-semibold text-neutral-600">
-                                  {historyItem.action}
+                                  {formatOperationalText(historyItem.action)}
                                 </span>
                               </div>
                               <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-neutral-700">
-                                {historyItem.comment}
+                                {formatOperationalText(historyItem.comment)}
                               </p>
                             </div>
                           ))}
@@ -1607,7 +1622,7 @@ export function ContractViewer() {
             </p>
             <div className="mt-4 space-y-4">
               <PartyRow label="광고주" value={contract.advertiser_info?.name || "광고주"} />
-              <PartyRow label="인플루언서" value={contract.influencer_info.name} />
+              <PartyRow label="인플루언서" value={displayInfluencerName} />
             </div>
             {contract.status === "SIGNED" && signatureData && (
               <div className="mt-5 rounded-lg border border-neutral-200 bg-[#fbfbfc] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
@@ -2086,14 +2101,14 @@ function InfluencerDeliverablesPanel({
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
                     <h3 className="text-base font-semibold text-neutral-950">
-                      {requirement.title}
+                      {formatOperationalText(requirement.title)}
                     </h3>
                     <p className="mt-1 text-xs font-medium text-neutral-500">
                       필요 {requirement.quantity}건 · 제출 {submittedCount}건 · 승인 {approvedCount}건
                     </p>
                     {revisionRequest?.review_comment && (
                       <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold leading-5 text-amber-800">
-                        광고주 요청: {revisionRequest.review_comment}
+                        광고주 요청: {formatOperationalText(revisionRequest.review_comment)}
                       </p>
                     )}
                   </div>
@@ -2110,7 +2125,7 @@ function InfluencerDeliverablesPanel({
                 {requirement.submissions.length > 0 && (
                   <div className="mt-4 space-y-2">
                     {requirement.submissions.map((submission) => {
-                      const note = getSubmissionNote(submission);
+                      const note = formatOperationalText(getSubmissionNote(submission));
 
                       return (
                         <div
@@ -2137,7 +2152,9 @@ function InfluencerDeliverablesPanel({
                               className="mt-2 inline-flex max-w-full items-center gap-1.5 text-sm font-semibold text-neutral-900 underline underline-offset-4"
                             >
                               <ExternalLink className="h-3.5 w-3.5 shrink-0" />
-                              <span className="truncate">{submission.url}</span>
+                              <span className="truncate">
+                                {formatPublicUrlLabel(submission.url, "제출 링크 열기")}
+                              </span>
                             </a>
                           )}
                           {submission.files.length > 0 && (
@@ -2168,7 +2185,7 @@ function InfluencerDeliverablesPanel({
                           )}
                           {submission.review_comment && (
                             <p className="mt-2 rounded-md bg-white px-3 py-2 text-xs leading-5 text-neutral-600 ring-1 ring-neutral-200">
-                              광고주 코멘트: {submission.review_comment}
+                              광고주 코멘트: {formatOperationalText(submission.review_comment)}
                             </p>
                           )}
                         </div>

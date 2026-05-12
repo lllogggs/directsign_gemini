@@ -812,7 +812,7 @@ export function ContractBuilder() {
                     <Label>광고주/브랜드명</Label>
                     <Input
                       className="mt-1.5"
-                      placeholder="ex) 다이렉트뷰티"
+                      placeholder="예: 다이렉트뷰티"
                       value={draft.advertiserName}
                       onChange={(event) =>
                         updateDraft({ advertiserName: event.target.value })
@@ -824,7 +824,7 @@ export function ContractBuilder() {
                     <Label>담당자명</Label>
                     <Input
                       className="mt-1.5"
-                      placeholder="ex) 김마케팅 매니저"
+                      placeholder="예: 김마케팅 매니저"
                       value={draft.advertiserManager}
                       onChange={(event) =>
                         updateDraft({ advertiserManager: event.target.value })
@@ -836,7 +836,7 @@ export function ContractBuilder() {
                     <Label>계약 건명</Label>
                     <Input
                       className="mt-1.5"
-                      placeholder="ex) 5월 선크림 숏폼 PPL 계약"
+                      placeholder="예: 5월 선크림 숏폼 PPL 계약"
                       value={draft.title}
                       onChange={(event) => updateDraft({ title: event.target.value })}
                     />
@@ -849,7 +849,7 @@ export function ContractBuilder() {
                         <Label>성명 또는 채널명</Label>
                         <Input
                           className="mt-1.5"
-                          placeholder="ex) 뷰티온에어"
+                          placeholder="예: 뷰티온에어"
                           value={draft.influencerName}
                           onChange={(event) =>
                             updateDraft({ influencerName: event.target.value })
@@ -914,7 +914,7 @@ export function ContractBuilder() {
                                 </Label>
                                 <Input
                                   className="mt-1 h-8 bg-white text-xs"
-                                  placeholder="ex) 2회"
+                                  placeholder="예: 2회"
                                   value={draft.channelDetails[channel]?.postCount || ""}
                                   onChange={(event) =>
                                     handleChannelDetailChange(
@@ -931,7 +931,7 @@ export function ContractBuilder() {
                                 </Label>
                                 <Input
                                   className="mt-1 h-8 bg-white text-xs"
-                                  placeholder="ex) 3개월"
+                                  placeholder="예: 3개월"
                                   value={draft.channelDetails[channel]?.duration || ""}
                                   onChange={(event) =>
                                     handleChannelDetailChange(
@@ -971,7 +971,7 @@ export function ContractBuilder() {
                           <Label className="text-xs text-neutral-500">매체명</Label>
                           <Input
                             className="mt-1 h-8 bg-white text-xs"
-                            placeholder="ex) 네이버 카페, 커뮤니티"
+                            placeholder="예: 네이버 카페, 커뮤니티"
                             value={draft.otherChannel}
                             onChange={(event) =>
                               updateDraft({ otherChannel: event.target.value })
@@ -985,7 +985,7 @@ export function ContractBuilder() {
                             </Label>
                             <Input
                               className="mt-1 h-8 bg-white text-xs"
-                              placeholder="ex) 1회"
+                              placeholder="예: 1회"
                               value={draft.otherChannelDetails.postCount}
                               onChange={(event) =>
                                 updateDraft((current) => ({
@@ -1004,7 +1004,7 @@ export function ContractBuilder() {
                             </Label>
                             <Input
                               className="mt-1 h-8 bg-white text-xs"
-                              placeholder="ex) 6개월"
+                              placeholder="예: 6개월"
                               value={draft.otherChannelDetails.duration}
                               onChange={(event) =>
                                 updateDraft((current) => ({
@@ -1080,7 +1080,7 @@ export function ContractBuilder() {
                     <Label>수정 가능 횟수</Label>
                     <Input
                       className="mt-1.5"
-                      placeholder="ex) 최대 2회"
+                      placeholder="예: 최대 2회"
                       value={draft.revisionLimit}
                       onChange={(event) =>
                         updateDraft({ revisionLimit: event.target.value })
@@ -1092,7 +1092,7 @@ export function ContractBuilder() {
                     <Label>광고 표시 조건</Label>
                     <Input
                       className="mt-1.5"
-                      placeholder="ex) 본문 첫 줄에 유료광고 또는 #광고 표기"
+                      placeholder="예: 본문 첫 줄에 유료광고 또는 #광고 표기"
                       value={draft.disclosureText}
                       onChange={(event) =>
                         updateDraft({ disclosureText: event.target.value })
@@ -1108,7 +1108,7 @@ export function ContractBuilder() {
                     <Label>쿠폰/링크/해시태그</Label>
                     <Input
                       className="mt-1.5"
-                      placeholder="ex) #브랜드명 #AD / coupon: SUN20"
+                      placeholder="예: #브랜드명 #AD / 쿠폰코드 SUN20"
                       value={draft.trackingLink}
                       onChange={(event) => updateDraft({ trackingLink: event.target.value })}
                     />
@@ -1118,7 +1118,7 @@ export function ContractBuilder() {
                     <Label>경쟁사 배제 조건</Label>
                     <Input
                       className="mt-1.5"
-                      placeholder="ex) 업로드 후 2개월간 동종 선케어 브랜드 광고 불가"
+                      placeholder="예: 업로드 후 2개월간 동종 선케어 브랜드 광고 불가"
                       value={draft.exclusivity}
                       onChange={(event) => updateDraft({ exclusivity: event.target.value })}
                     />
@@ -1128,7 +1128,7 @@ export function ContractBuilder() {
                     <Label>지급 조건</Label>
                     <Textarea
                       className="mt-1.5 min-h-[110px]"
-                      placeholder="ex) 총 1,200,000원, 세금계산서 수령 후 7영업일 내 지급"
+                      placeholder="예: 총 1,200,000원, 세금계산서 수령 후 7영업일 내 지급"
                       value={draft.payment}
                       onChange={(event) => updateDraft({ payment: event.target.value })}
                     />
@@ -1166,7 +1166,7 @@ export function ContractBuilder() {
                     <h3 className="mb-3 text-sm font-semibold">직접 특약 추가</h3>
                     <div className="space-y-3">
                       <Input
-                        placeholder="조항 카테고리 (ex: 비밀유지)"
+                        placeholder="조항 카테고리 (예: 비밀유지)"
                         value={draft.newClauseCategory}
                         onChange={(event) =>
                           updateDraft({ newClauseCategory: event.target.value })
@@ -1337,9 +1337,9 @@ export function ContractBuilder() {
                   {result.mode === "draft"
                     ? "계약이 초안 상태로 저장되었습니다. 아직 상대방에게 공유되지 않았습니다."
                     : shareResultState === "syncing"
-                      ? "서버 저장이 끝나면 링크를 복사해 전달할 수 있습니다."
+                      ? "변경 사항 저장이 끝나면 링크를 복사해 전달할 수 있습니다."
                       : shareResultState === "error"
-                        ? "현재 브라우저에만 변경 사항이 남아 있습니다. 서버 저장 상태를 확인한 뒤 공유하세요."
+                        ? "변경 사항이 완전히 저장되지 않았습니다. 저장 상태를 확인한 뒤 공유하세요."
                         : "이 링크를 전달하면 상대방이 계약서를 검토할 수 있습니다."}
                 </p>
                 {result.mode === "share" && (
@@ -1351,10 +1351,10 @@ export function ContractBuilder() {
                     }`}
                   >
                     {shareResultState === "error"
-                      ? "서버 저장에 실패했습니다. 현재 브라우저에는 저장되지만 다른 기기 공유 전에 네트워크를 확인하세요."
+                      ? "저장에 실패했습니다. 네트워크 상태를 확인한 뒤 다시 공유 링크를 생성하세요."
                       : shareResultState === "syncing"
-                        ? "서버 저장소에 계약을 반영하고 있습니다."
-                        : "서버 저장소에 반영되어 다른 브라우저에서도 링크를 열 수 있습니다."}
+                        ? "계약 내용을 저장하고 있습니다."
+                        : "저장이 완료되었습니다. 링크를 전달해도 됩니다."}
                   </div>
                 )}
                 {result.mode === "share" &&
@@ -1440,7 +1440,7 @@ const BuilderReviewPanel: React.FC<{
         <article className="min-h-[calc(100dvh-180px)] rounded-[18px] border border-neutral-200 bg-[#fffdf8] px-7 py-8 shadow-[0_1px_0_rgba(15,23,42,0.035),0_18px_46px_rgba(15,23,42,0.08)]">
           <header className="border-b border-neutral-200 pb-7 text-center">
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
-              Electronic Contract Draft
+              전자계약서 초안
             </p>
             <h2 className="mt-3 text-[28px] font-semibold leading-tight tracking-[-0.03em] text-neutral-950">
               {draft.title || `${draft.type} 계약서`}

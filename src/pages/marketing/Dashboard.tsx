@@ -24,7 +24,12 @@ import {
   verificationStatusTone,
   type VerificationStatus,
 } from "../../domain/verification";
-import { removeInternalTestLabel } from "../../domain/display";
+import {
+  formatContractTitleForDisplay,
+  formatMoneyLabel,
+  formatPublicContactValue,
+  removeInternalTestLabel,
+} from "../../domain/display";
 import { formatElapsedDayLabel, formatUploadDueLabel } from "../../domain/timing";
 import { useVerificationSummary } from "../../hooks/useVerificationSummary";
 import { PRODUCT_NAME } from "../../domain/brand";
@@ -200,6 +205,10 @@ export function Dashboard() {
     useVerificationSummary({ role: "advertiser" });
   const advertiserVerificationStatus =
     verificationSummary?.advertiser.status ?? "not_submitted";
+  const readinessBadge = getAdvertiserReadinessBadge(
+    advertiserVerificationStatus,
+    isVerificationLoading,
+  );
   const advertiserAccount = useMemo<AdvertiserAccountSummary>(() => {
     const advertiser = verificationSummary?.advertiser;
     const latest = advertiser?.latest_request;
@@ -215,7 +224,9 @@ export function Dashboard() {
     const manager = removeInternalTestLabel(
       latest?.submitted_by_name || account?.name || contractAdvertiser?.manager,
     );
-    const email = latest?.submitted_by_email || account?.email;
+    const email = formatPublicContactValue(
+      latest?.submitted_by_email || account?.email,
+    );
     const meta = [manager, email].filter(Boolean).join(" · ");
 
     return {
@@ -304,11 +315,12 @@ export function Dashboard() {
 
         return [
           contract.title,
-          contract.influencer_info.name,
-          contract.influencer_info.contact,
+          formatDashboardContractTitle(contract.title),
+          removeInternalTestLabel(contract.influencer_info.name, "인플루언서"),
+          formatPublicContactValue(contract.influencer_info.contact),
           contract.influencer_info.channel_url,
           formatPlatforms(contract),
-          contract.campaign?.budget,
+          formatMoneyLabel(contract.campaign?.budget),
           contract.type,
           formatPeriod(contract),
           STATUS_META[contract.status].label,
@@ -382,8 +394,10 @@ export function Dashboard() {
                   전체 {contracts.length.toLocaleString()}건 · 검색 결과 {filteredContracts.length.toLocaleString()}건
                 </p>
               </div>
-              <span className="inline-flex h-8 items-center rounded-[8px] bg-[#eef0ed] px-3 text-[12px] font-semibold text-[#303630]">
-                발송 가능
+              <span
+                className={`inline-flex h-8 items-center rounded-[8px] px-3 text-[12px] font-semibold ${readinessBadge.className}`}
+              >
+                {readinessBadge.label}
               </span>
             </div>
           </div>
@@ -663,6 +677,39 @@ function formatPlatformFilterLabel(platform: PlatformFilter) {
   return PLATFORM_META[platform].shortLabel;
 }
 
+function getAdvertiserReadinessBadge(
+  status: VerificationStatus,
+  isLoading: boolean,
+) {
+  if (isLoading) {
+    return {
+      label: "상태 확인 중",
+      className: "bg-neutral-100 text-neutral-600",
+    };
+  }
+
+  const badges: Record<VerificationStatus, { label: string; className: string }> = {
+    approved: {
+      label: "발송 가능",
+      className: "bg-[#eef0ed] text-[#303630]",
+    },
+    pending: {
+      label: "인증 검수 중",
+      className: "bg-amber-50 text-amber-800",
+    },
+    rejected: {
+      label: "인증 재제출 필요",
+      className: "bg-rose-50 text-rose-700",
+    },
+    not_submitted: {
+      label: "사업자 인증 필요",
+      className: "bg-amber-50 text-amber-800",
+    },
+  };
+
+  return badges[status];
+}
+
 function DashboardTabs({
   activeTab,
   counts,
@@ -778,7 +825,7 @@ function ContractRow({
           </span>
         </div>
         <p className="mt-1 truncate text-[12px] text-[#7d857f]">
-          {contract.influencer_info.name} · {formatPeriod(contract)}
+          {removeInternalTestLabel(contract.influencer_info.name, "인플루언서")} · {formatPeriod(contract)}
         </p>
       </div>
 
@@ -793,7 +840,7 @@ function ContractRow({
         <p className="mt-1 truncate text-[12px] text-[#8b938d]">종류</p>
       </div>
 
-      <PreviewAmount value={contract.campaign?.budget ?? "미정"} />
+      <PreviewAmount value={formatMoneyLabel(contract.campaign?.budget)} />
 
       <StatusTiming
         contract={contract}
@@ -926,7 +973,7 @@ function formatContractTypeLabel(type: Contract["type"]) {
 
 function formatDashboardContractTitle(title: string) {
   const cleaned = title.replace(/^\[[^\]]+\]\s*/, "").trim();
-  return removeInternalTestLabel(cleaned || title, "계약명 미정");
+  return formatContractTitleForDisplay(cleaned || title, "계약명 미정");
 }
 
 function getAdvertiserDueHeader(statusFilter: StatusFilter) {

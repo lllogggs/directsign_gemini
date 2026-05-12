@@ -28,7 +28,13 @@ import type {
   InfluencerDashboardTask,
 } from "../../domain/influencerDashboard";
 import { buildLoginRedirect } from "../../domain/navigation";
-import { removeInternalTestLabel } from "../../domain/display";
+import {
+  formatContractTitleForDisplay,
+  formatMoneyLabel,
+  formatPublicContactValue,
+  formatPublicHandleValue,
+  removeInternalTestLabel,
+} from "../../domain/display";
 import { formatElapsedDayLabel, formatUploadDueLabel } from "../../domain/timing";
 import type { InfluencerPlatform, VerificationStatus } from "../../domain/verification";
 
@@ -247,9 +253,7 @@ export function InfluencerDashboard() {
 
       if (!response.ok || !("authenticated" in data)) {
         const errorMessage = "error" in data ? data.error : undefined;
-        throw new Error(
-          errorMessage ?? `인플루언서 대시보드 API 오류 (${response.status})`,
-        );
+        throw new Error(errorMessage ?? "인플루언서 대시보드를 불러오지 못했습니다.");
       }
 
       setState({ status: "ready", dashboard: data });
@@ -307,9 +311,9 @@ export function InfluencerDashboard() {
     if (!normalizedQuery) return true;
 
     return [
-      contract.title,
-      contract.advertiser_name,
-      contract.fee_label,
+      formatDashboardContractTitle(contract.title),
+      removeInternalTestLabel(contract.advertiser_name, "광고주"),
+      formatMoneyLabel(contract.fee_label),
       contract.period_label,
       contract.stage_label,
       ...contract.platform_labels,
@@ -442,7 +446,7 @@ export function InfluencerDashboard() {
                     />
                     <SummaryTile
                       label="확정 금액"
-                      value={dashboard.summary.total_fixed_fee_label}
+                      value={formatMoneyLabel(dashboard.summary.total_fixed_fee_label, "-")}
                       icon={<FileCheck2 className="h-4 w-4" />}
                       tone="neutral"
                       compact
@@ -547,6 +551,7 @@ function InfluencerAccountBanner({
   const verificationApproved = dashboard.verification.status === "approved";
   const activityPlatforms = dashboard.user.activity_platforms.slice(0, 3);
   const approvedPlatforms = dashboard.verification.approved_platforms.slice(0, 2);
+  const displayEmail = formatPublicContactValue(dashboard.user.email);
 
   return (
     <section className="border-b border-neutral-200/80 bg-[#fcfcfd] px-4 py-3">
@@ -574,8 +579,12 @@ function InfluencerAccountBanner({
               <span className="max-w-[220px] truncate font-semibold text-neutral-800">
                 {removeInternalTestLabel(dashboard.user.name, "인플루언서 계정")}
               </span>
-              <span className="hidden h-3 w-px bg-neutral-200 sm:inline-block" />
-              <span className="max-w-[340px] truncate">{dashboard.user.email}</span>
+              {displayEmail && (
+                <>
+                  <span className="hidden h-3 w-px bg-neutral-200 sm:inline-block" />
+                  <span className="max-w-[340px] truncate">{displayEmail}</span>
+                </>
+              )}
               <span className="rounded-full bg-neutral-100 px-2 py-0.5 font-semibold text-neutral-600">
                 이메일 {dashboard.user.email_verified ? "확인됨" : "확인 필요"}
               </span>
@@ -585,7 +594,12 @@ function InfluencerAccountBanner({
                   className="inline-flex max-w-[170px] items-center gap-1.5 truncate rounded-full bg-neutral-100 px-2 py-0.5 font-semibold text-neutral-600"
                 >
                   {PLATFORM_META[platform.platform].icon}
-                  <span className="truncate">{platform.handle}</span>
+                  <span className="truncate">
+                    {formatPublicHandleValue(
+                      platform.handle,
+                      PLATFORM_META[platform.platform].label,
+                    )}
+                  </span>
                 </span>
               ))}
               {approvedPlatforms.length === 0 &&
@@ -820,13 +834,13 @@ function ContractTable({
             />
             <div className="min-w-0">
               <p className="truncate text-[13px] font-semibold text-[#303630]">
-                {contract.advertiser_name}
+                {removeInternalTestLabel(contract.advertiser_name, "광고주")}
               </p>
               <p className="mt-1 truncate text-[12px] text-[#8b938d]">
                 광고주
               </p>
             </div>
-            <PreviewAmount value={contract.fee_label} />
+            <PreviewAmount value={formatMoneyLabel(contract.fee_label)} />
             <div className="hidden lg:block">
               <StageTiming
                 contract={contract}
@@ -894,7 +908,7 @@ function PreviewAmount({ value }: { value: string }) {
 
 function formatDashboardContractTitle(title: string) {
   const cleaned = title.replace(/^\[[^\]]+\]\s*/, "").trim();
-  return removeInternalTestLabel(cleaned || title, "계약명 미정");
+  return formatContractTitleForDisplay(cleaned || title, "계약명 미정");
 }
 
 function formatInfluencerContractMeta(contract: InfluencerDashboardContract) {
