@@ -790,13 +790,13 @@ export function StartPage() {
             </div>
             <h1
               className="landing-start-title font-neo-heavy mb-7 text-center text-[31px] leading-[1.12] tracking-normal text-neutral-950 sm:mb-8 sm:text-[46px] sm:leading-[1.08]"
-              aria-label="계약은 더 간편하게, 합의는 더 신뢰 있게"
+              aria-label="입력은 간단하게, 계약은 확실하게"
             >
               <span className="landing-start-copy-line landing-start-copy-line-1 block">
-                계약은 더 간편하게
+                입력은 간단하게
               </span>
               <span className="landing-start-copy-line landing-start-copy-line-2 mt-1 block">
-                합의는 더 신뢰 있게
+                계약은 확실하게
               </span>
             </h1>
             <div className="grid gap-3.5 sm:grid-cols-2 sm:gap-4">
