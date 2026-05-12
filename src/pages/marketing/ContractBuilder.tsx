@@ -678,30 +678,30 @@ export function ContractBuilder() {
   };
 
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-[#f6f7f9] font-sans text-neutral-900 lg:h-screen lg:overflow-hidden">
-      <header className="z-10 flex h-[72px] shrink-0 items-center justify-between border-b border-neutral-200 bg-white/95 px-5 backdrop-blur md:px-10">
+    <div className="flex min-h-[100dvh] flex-col bg-[#f7f6f3] font-sans text-neutral-950 lg:h-screen lg:overflow-hidden">
+      <header className="z-10 flex h-[68px] shrink-0 items-center justify-between border-b border-neutral-200/80 bg-[#f7f6f3]/95 px-5 backdrop-blur md:px-8">
         <div className="flex items-center gap-4">
           <button
             type="button"
             onClick={() => navigate("/advertiser/dashboard")}
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-500 transition-colors hover:text-neutral-950"
+            className="flex h-9 w-9 items-center justify-center rounded-[12px] border border-neutral-200 bg-white/75 text-neutral-500 shadow-[0_1px_0_rgba(15,23,42,0.02)] transition hover:border-neutral-300 hover:bg-white hover:text-neutral-950"
             aria-label="대시보드로 돌아가기"
           >
             <ArrowLeft strokeWidth={1.5} className="h-5 w-5" />
           </button>
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-neutral-950 text-white shadow-sm">
+            <div className="flex h-9 w-9 items-center justify-center rounded-[11px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
               <ShieldCheck className="h-4 w-4" strokeWidth={2} />
             </div>
-            <span className="text-[18px] font-semibold tracking-tight text-neutral-950">
+            <span className="font-neo-heavy text-[18px] leading-none tracking-[-0.045em] text-neutral-950">
               {PRODUCT_NAME}
             </span>
           </div>
         </div>
       </header>
 
-      <main className="flex flex-1 flex-col lg:flex-row lg:overflow-hidden">
-        <aside className="relative z-10 hidden w-[300px] shrink-0 flex-col gap-12 border-r border-neutral-200 bg-white p-10 pr-8 shadow-sm lg:flex">
+      <main className="flex flex-1 flex-col lg:gap-6 lg:overflow-hidden lg:px-8 lg:pb-8">
+        <aside className="relative z-10 hidden w-[286px] shrink-0 flex-col gap-12 border border-neutral-200/90 bg-white/95 p-8 pr-7 shadow-[0_1px_0_rgba(15,23,42,0.035),0_18px_46px_rgba(15,23,42,0.05)] lg:mt-8 lg:flex lg:rounded-[22px]">
           <div>
             <h3 className="mb-10 text-[10px] font-medium uppercase tracking-[0.2em] text-neutral-400">
               계약 작성
@@ -722,7 +722,7 @@ export function ContractBuilder() {
                   <div
                     className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] transition-all duration-300 ${
                       step === item.s
-                        ? "border border-neutral-900 bg-white text-neutral-900 ring-4 ring-neutral-100"
+                        ? "border border-neutral-900 bg-white text-neutral-900 ring-4 ring-[#ebe6dc]"
                         : step > item.s
                           ? "bg-neutral-900 text-white"
                           : "border border-neutral-200 bg-white text-neutral-300"
@@ -739,19 +739,19 @@ export function ContractBuilder() {
           </div>
         </aside>
 
-        <section className="custom-scrollbar relative z-0 w-full shrink-0 bg-[#f6f7f9] lg:w-[620px] lg:overflow-y-auto">
-          <div className="mx-auto max-w-[520px] p-8 md:p-14">
+        <section className="contract-builder-surface custom-scrollbar relative z-0 w-full shrink-0 bg-transparent lg:w-[620px] lg:overflow-y-auto">
+          <div className="mx-auto max-w-[520px] p-6 md:p-10 lg:px-2 lg:py-8">
             <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
               {step} / 5 단계
             </p>
-            <h1 className="mb-4 text-[32px] font-semibold tracking-[-0.03em] text-neutral-950">
+            <h1 className="font-neo-heavy mb-4 text-[32px] leading-tight tracking-[-0.035em] text-neutral-950">
               새 전자계약서 작성
             </h1>
             <p className="mb-10 text-[13px] leading-relaxed text-neutral-500">
               핵심 조건을 구조화하고 발송 전 체크리스트를 통과한 뒤 공유 링크를 생성합니다.
             </p>
 
-            <div className="mb-6 rounded-lg border border-neutral-200 bg-white p-4 shadow-sm">
+            <div className="mb-6 rounded-[18px] border border-neutral-200/90 bg-white/95 p-4 shadow-[0_1px_0_rgba(15,23,42,0.035),0_16px_42px_rgba(15,23,42,0.035)]">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-neutral-950">
@@ -777,7 +777,7 @@ export function ContractBuilder() {
                 <button
                   type="button"
                   onClick={() => navigate("/advertiser/verification")}
-                  className="mt-4 h-10 w-full rounded-lg border border-neutral-200 bg-neutral-50 text-sm font-semibold text-neutral-700 transition hover:border-neutral-400 hover:bg-white"
+                  className="mt-4 h-10 w-full rounded-[12px] border border-neutral-200 bg-[#fbfaf7] text-sm font-semibold text-neutral-700 transition hover:border-neutral-400 hover:bg-white"
                 >
                   사업자 인증 요청하기
                 </button>
@@ -891,10 +891,10 @@ export function ContractBuilder() {
                       {CHANNEL_OPTIONS.map((channel) => (
                         <div
                           key={channel}
-                          className={`border transition-colors ${
+                          className={`rounded-[14px] border transition-colors ${
                             draft.channels.includes(channel)
-                              ? "border-neutral-900 bg-white"
-                              : "border-neutral-200 bg-white/70"
+                              ? "border-neutral-900 bg-white shadow-[0_10px_24px_rgba(15,23,42,0.04)]"
+                              : "border-neutral-200 bg-white/75"
                           }`}
                         >
                           <label className="flex cursor-pointer items-start p-3">
@@ -950,8 +950,10 @@ export function ContractBuilder() {
                   </div>
 
                   <div
-                    className={`border bg-white transition-colors ${
-                      draft.hasOtherChannel ? "border-neutral-900" : "border-neutral-200"
+                    className={`rounded-[14px] border bg-white transition-colors ${
+                      draft.hasOtherChannel
+                        ? "border-neutral-900 shadow-[0_10px_24px_rgba(15,23,42,0.04)]"
+                        : "border-neutral-200"
                     }`}
                   >
                     <label className="flex cursor-pointer items-start p-3">
@@ -1144,7 +1146,7 @@ export function ContractBuilder() {
                         variant="outline"
                         size="sm"
                         onClick={() => addTemplateClause("delivery")}
-                        className="rounded-none text-xs"
+                        className="rounded-[12px] text-xs"
                       >
                         <Plus className="mr-1 h-3 w-3" /> 파손 책임
                       </Button>
@@ -1153,14 +1155,14 @@ export function ContractBuilder() {
                         variant="outline"
                         size="sm"
                         onClick={() => addTemplateClause("cs")}
-                        className="rounded-none text-xs"
+                        className="rounded-[12px] text-xs"
                       >
                         <Plus className="mr-1 h-3 w-3" /> 고객 CS 전담
                       </Button>
                     </div>
                   </div>
 
-                  <div className="border border-neutral-200 bg-white p-4">
+                  <div className="rounded-[18px] border border-neutral-200/90 bg-white/95 p-4 shadow-[0_1px_0_rgba(15,23,42,0.035),0_16px_42px_rgba(15,23,42,0.035)]">
                     <h3 className="mb-3 text-sm font-semibold">직접 특약 추가</h3>
                     <div className="space-y-3">
                       <Input
@@ -1180,7 +1182,7 @@ export function ContractBuilder() {
                       <Button
                         type="button"
                         variant="secondary"
-                        className="w-full rounded-none"
+                        className="w-full rounded-[12px]"
                         onClick={addCustomClause}
                         disabled={!draft.newClauseContent.trim()}
                       >
@@ -1197,7 +1199,7 @@ export function ContractBuilder() {
                       {draft.customClauses.map((clause) => (
                         <div
                           key={clause.id}
-                          className="flex items-start justify-between gap-3 border border-neutral-200 bg-white p-3"
+                          className="flex items-start justify-between gap-3 rounded-[14px] border border-neutral-200 bg-white p-3 shadow-[0_8px_20px_rgba(15,23,42,0.03)]"
                         >
                           <div className="min-w-0">
                             <p className="text-[13px] font-semibold text-neutral-900">
@@ -1227,13 +1229,13 @@ export function ContractBuilder() {
                   {allErrors.length > 0 ? (
                     <ValidationSummary errors={allErrors} />
                   ) : (
-                    <div className="border border-neutral-200 bg-neutral-50 p-4 text-[13px] text-neutral-800">
+                    <div className="rounded-[16px] border border-neutral-200 bg-[#fbfaf7] p-4 text-[13px] text-neutral-800">
                       필수 조건이 모두 채워졌습니다. 초안 저장 또는 공유 링크 생성을 선택하세요.
                     </div>
                   )}
 
                   {result?.stale && (
-                    <div className="border border-amber-200 bg-amber-50 p-4 text-[13px] leading-6 text-amber-800">
+                    <div className="rounded-[16px] border border-amber-200 bg-amber-50 p-4 text-[13px] leading-6 text-amber-800">
                       계약 내용을 수정했습니다. 기존 공유 링크에 반영하려면 다시 공유 링크를 생성하세요.
                     </div>
                   )}
@@ -1276,7 +1278,7 @@ export function ContractBuilder() {
                 <Button
                   type="button"
                   variant="outline"
-                  className="h-[52px] rounded-none border-neutral-200 px-7 text-[12px] font-medium uppercase tracking-wider text-neutral-600 shadow-none hover:bg-neutral-100 hover:text-neutral-900"
+                  className="h-12 rounded-[12px] border-neutral-200 bg-white px-7 text-[14px] font-bold text-neutral-700 shadow-[0_1px_0_rgba(15,23,42,0.02)] hover:bg-neutral-100 hover:text-neutral-900"
                   onClick={goBack}
                 >
                   이전
@@ -1286,7 +1288,7 @@ export function ContractBuilder() {
               {step < 5 ? (
                 <Button
                   type="button"
-                  className="h-[52px] flex-1 rounded-none bg-neutral-900 text-[12px] font-medium uppercase tracking-wider text-white shadow-none hover:bg-neutral-800"
+                  className="h-12 flex-1 rounded-[12px] bg-neutral-950 text-[14px] font-bold text-white shadow-[0_14px_34px_rgba(15,23,42,0.18)] hover:-translate-y-0.5 hover:bg-neutral-800"
                   onClick={goNext}
                 >
                   다음
@@ -1296,14 +1298,14 @@ export function ContractBuilder() {
                   <Button
                     type="button"
                     variant="outline"
-                    className="h-[52px] flex-1 rounded-none border-neutral-200 text-[12px] font-medium uppercase tracking-wider text-neutral-700 shadow-none hover:bg-neutral-100"
+                    className="h-12 flex-1 rounded-[12px] border-neutral-200 bg-white text-[14px] font-bold text-neutral-700 shadow-[0_1px_0_rgba(15,23,42,0.02)] hover:bg-neutral-100"
                     onClick={() => saveContract("draft")}
                   >
                     초안 저장
                   </Button>
                   <Button
                     type="button"
-                    className="h-[52px] flex-1 rounded-none bg-neutral-900 text-[12px] font-medium uppercase tracking-wider text-white shadow-none hover:bg-neutral-800"
+                    className="h-12 flex-1 rounded-[12px] bg-neutral-950 text-[14px] font-bold text-white shadow-[0_14px_34px_rgba(15,23,42,0.18)] hover:-translate-y-0.5 hover:bg-neutral-800 disabled:translate-y-0 disabled:bg-neutral-200 disabled:text-neutral-500 disabled:shadow-none"
                     onClick={() => saveContract("share")}
                     disabled={
                       currentStepHasBlockingError ||
@@ -1318,7 +1320,7 @@ export function ContractBuilder() {
             </div>
 
             {result && (
-              <div className="mt-10 border border-neutral-200 bg-white p-7 text-center shadow-[0_4px_24px_rgba(0,0,0,0.02)]">
+              <div className="mt-10 rounded-[22px] border border-neutral-200/90 bg-white p-7 text-center shadow-[0_1px_0_rgba(15,23,42,0.035),0_20px_58px_rgba(15,23,42,0.06)]">
                 <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-neutral-50">
                   <CheckCircle2 strokeWidth={1.5} className="h-6 w-6 text-neutral-900" />
                 </div>
@@ -1359,28 +1361,28 @@ export function ContractBuilder() {
                   result.link &&
                   shareResultState === "ready" &&
                   !result.stale && (
-                  <div className="flex w-full items-center gap-3">
-                    <Input
-                      readOnly
-                      value={result.link}
-                      className="h-[44px] flex-1 rounded-none border-neutral-200 bg-neutral-50 px-4 font-mono text-[12px] text-neutral-600 focus-visible:ring-0"
-                    />
-                    <Button
-                      type="button"
-                      onClick={copyToClipboard}
-                      disabled={result.stale || isSyncing || Boolean(syncError)}
-                      className="h-[44px] shrink-0 rounded-none bg-neutral-900 px-5 text-[12px] font-medium uppercase tracking-wider text-white hover:bg-neutral-800 disabled:bg-neutral-100 disabled:text-neutral-400"
-                    >
-                      <Copy className="mr-2 h-3.5 w-3.5" />
-                      {copied ? "복사됨" : "복사"}
-                    </Button>
-                  </div>
-                )}
+                    <div className="flex w-full items-center gap-3">
+                      <Input
+                        readOnly
+                        value={result.link}
+                        className="h-11 flex-1 rounded-[12px] border-neutral-200 bg-[#fbfaf7] px-4 font-mono text-[12px] text-neutral-600 focus-visible:ring-0"
+                      />
+                      <Button
+                        type="button"
+                        onClick={copyToClipboard}
+                        disabled={result.stale || isSyncing || Boolean(syncError)}
+                        className="h-11 shrink-0 rounded-[12px] bg-neutral-950 px-5 text-[13px] font-bold text-white hover:bg-neutral-800 disabled:bg-neutral-100 disabled:text-neutral-400"
+                      >
+                        <Copy className="mr-2 h-3.5 w-3.5" />
+                        {copied ? "복사됨" : "복사"}
+                      </Button>
+                    </div>
+                  )}
                 {savedContractId && (
                   <Button
                     type="button"
                     variant="outline"
-                    className="mt-4 h-10 rounded-none border-neutral-200 px-5 text-[12px] font-medium text-neutral-700"
+                    className="mt-4 h-10 rounded-[12px] border-neutral-200 bg-white px-5 text-[13px] font-semibold text-neutral-700"
                     onClick={() => navigate(`/advertiser/contract/${savedContractId}`)}
                   >
                     관리 화면 열기
@@ -1391,7 +1393,7 @@ export function ContractBuilder() {
           </div>
         </section>
 
-        <section className="hidden flex-1 flex-col overflow-hidden bg-[#f6f7f9] p-10 pl-0 lg:flex">
+        <section className="hidden flex-1 flex-col overflow-hidden bg-transparent py-8 lg:flex">
           <BuilderReviewPanel draft={draft} clauses={clauses} />
         </section>
       </main>
@@ -1406,8 +1408,8 @@ const BuilderReviewPanel: React.FC<{
   const hasDeliverables = getDeliverableRows(draft).some((row) => row.channel);
 
   return (
-    <div className="custom-scrollbar flex flex-1 flex-col gap-4 overflow-y-auto">
-      <div className="rounded-xl border border-neutral-200 bg-neutral-950 p-6 text-white shadow-sm">
+    <div className="custom-scrollbar flex flex-1 flex-col gap-4 overflow-y-auto pr-1">
+      <div className="rounded-[22px] border border-neutral-900 bg-neutral-950 p-6 text-white shadow-[0_18px_48px_rgba(15,23,42,0.18)]">
         <div className="mb-6 flex items-center justify-between gap-4">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
@@ -1433,13 +1435,13 @@ const BuilderReviewPanel: React.FC<{
         </div>
       </div>
 
-      <div className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
+      <div className="rounded-[22px] border border-neutral-200/90 bg-white p-6 shadow-[0_1px_0_rgba(15,23,42,0.035),0_18px_46px_rgba(15,23,42,0.05)]">
         <div className="mb-5 flex items-start justify-between gap-4">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
               실시간 계약 요약
             </p>
-            <h2 className="mt-1 text-[24px] font-semibold tracking-[-0.03em] text-neutral-950">
+            <h2 className="font-neo-heavy mt-1 text-[24px] leading-tight tracking-[-0.035em] text-neutral-950">
               {draft.title || `${draft.type} 계약`}
             </h2>
           </div>
@@ -1467,7 +1469,7 @@ const BuilderReviewPanel: React.FC<{
         </div>
       </div>
 
-      <div className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
+      <div className="rounded-[22px] border border-neutral-200/90 bg-white p-6 shadow-[0_1px_0_rgba(15,23,42,0.035),0_18px_46px_rgba(15,23,42,0.05)]">
         <div className="mb-5 flex items-center justify-between">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
@@ -1491,7 +1493,7 @@ const BuilderReviewPanel: React.FC<{
             {clauses.map((clause, index) => (
               <div
                 key={clause.clause_id}
-                className="rounded-lg border border-neutral-200 bg-[#fafafa] p-4"
+                className="rounded-[14px] border border-neutral-200 bg-[#fbfaf7] p-4"
               >
                 <div className="mb-2 flex items-center gap-3">
                   <span className="font-mono text-[12px] font-semibold text-neutral-400">
@@ -1536,7 +1538,7 @@ const SummaryCard: React.FC<{ label: string; value: string; mono?: boolean }> = 
   value,
   mono,
 }) => (
-  <div className="rounded-lg border border-neutral-200 bg-[#fafafa] px-4 py-3">
+  <div className="rounded-[14px] border border-neutral-200 bg-[#fbfaf7] px-4 py-3">
     <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-neutral-400">
       {label}
     </p>
@@ -1551,7 +1553,7 @@ const SummaryCard: React.FC<{ label: string; value: string; mono?: boolean }> = 
 );
 
 const ValidationSummary: React.FC<{ errors: ValidationError[] }> = ({ errors }) => (
-  <div className="mb-6 border border-amber-200 bg-amber-50 p-4 text-[13px] text-amber-800">
+  <div className="mb-6 rounded-[16px] border border-amber-200 bg-amber-50 p-4 text-[13px] text-amber-800">
     <p className="mb-2 font-semibold">확인이 필요한 항목</p>
     <ul className="space-y-1">
       {errors.map((error) => (
@@ -1565,7 +1567,7 @@ const ReviewBlock: React.FC<{ title: string; children: React.ReactNode }> = ({
   title,
   children,
 }) => (
-  <div className="border border-neutral-200 bg-white p-4">
+  <div className="rounded-[16px] border border-neutral-200/90 bg-white p-4 shadow-[0_10px_24px_rgba(15,23,42,0.035)]">
     <h3 className="mb-3 text-[12px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
       {title}
     </h3>

@@ -339,11 +339,13 @@ const introConfig = {
   },
 } satisfies Record<IntroRole, IntroConfig>;
 
-type AdvertiserPreviewSlide = {
+type AdvertiserPreviewListSlide = {
+  kind: "list";
   label: string;
   title: string;
   count: string;
   countLabel: string;
+  tabMeta?: string;
   dueHeader: string;
   accentClass: string;
   rows: Array<{
@@ -356,39 +358,54 @@ type AdvertiserPreviewSlide = {
   }>;
 };
 
+type AdvertiserPreviewBuilderSlide = {
+  kind: "builder";
+  label: string;
+  title: string;
+  count: string;
+  countLabel: string;
+  tabMeta?: string;
+  accentClass: string;
+  fields: Array<{
+    label: string;
+    value: string;
+  }>;
+  deliverables: string[];
+  safeguards: string[];
+};
+
+type AdvertiserPreviewSlide =
+  | AdvertiserPreviewBuilderSlide
+  | AdvertiserPreviewListSlide;
+
 const advertiserPreviewSlides: AdvertiserPreviewSlide[] = [
   {
-    label: "제안",
-    title: "제안",
-    count: "2",
-    countLabel: "건",
-    dueHeader: "제안일로부터",
+    kind: "builder",
+    label: "작성",
+    title: "계약서 작성",
+    count: "3",
+    countLabel: "분",
+    tabMeta: "초안",
     accentClass: "bg-blue-600",
-    rows: [
-      {
-        partner: "정유나",
-        contract: "런칭 라이브 공지",
-        contractType: "공동구매",
-        channel: "인스타그램-라이브",
-        due: "D+4",
-      },
-      {
-        partner: "채널오브",
-        contract: "브랜드 숏폼 패키지",
-        contractType: "유료 광고 (PPL)",
-        channel: "유튜브-숏츠",
-        due: "D+6",
-      },
-      {
-        partner: "민채널",
-        contract: "월간 리뷰 콘텐츠",
-        contractType: "제품 협찬",
-        channel: "네이버 블로그",
-        due: "D+7",
-      },
+    fields: [
+      { label: "캠페인명", value: "신제품 언박싱 릴스" },
+      { label: "계약 유형", value: "제품 협찬 + 제작비" },
+      { label: "금액", value: "2,800,000원" },
+      { label: "업로드", value: "6월 12일 18:00" },
+    ],
+    deliverables: [
+      "릴스 1건",
+      "스토리 2건",
+      "초안 검수 1회",
+    ],
+    safeguards: [
+      "광고 표시 문구",
+      "2차 활용 범위",
+      "서명 증빙 보관",
     ],
   },
   {
+    kind: "list",
     label: "수정",
     title: "수정 요청",
     count: "1",
@@ -420,6 +437,7 @@ const advertiserPreviewSlides: AdvertiserPreviewSlide[] = [
     ],
   },
   {
+    kind: "list",
     label: "서명",
     title: "서명 대기",
     count: "4",
@@ -451,6 +469,7 @@ const advertiserPreviewSlides: AdvertiserPreviewSlide[] = [
     ],
   },
   {
+    kind: "list",
     label: "완료",
     title: "서명 완료",
     count: "12",
@@ -483,10 +502,12 @@ const advertiserPreviewSlides: AdvertiserPreviewSlide[] = [
   },
 ];
 
-type InfluencerPreviewSlide = {
+type InfluencerPreviewListSlide = {
+  kind: "list";
   label: string;
   title: string;
   count: string;
+  tabMeta?: string;
   accentClass: string;
   platformFilters: Array<{
     label: string;
@@ -503,8 +524,48 @@ type InfluencerPreviewSlide = {
   }>;
 };
 
+type InfluencerPreviewRevisionSlide = {
+  kind: "revision";
+  label: string;
+  title: string;
+  count: string;
+  tabMeta?: string;
+  accentClass: string;
+  brand: string;
+  contract: string;
+  clauseTitle: string;
+  clauseText: string;
+  requestText: string;
+  checks: string[];
+};
+
+type InfluencerPreviewSlide =
+  | InfluencerPreviewRevisionSlide
+  | InfluencerPreviewListSlide;
+
 const influencerPreviewSlides: InfluencerPreviewSlide[] = [
   {
+    kind: "revision",
+    label: "수정",
+    title: "수정 요청",
+    count: "1",
+    tabMeta: "요청",
+    accentClass: "bg-amber-500",
+    brand: "브레드룸",
+    contract: "공동구매",
+    clauseTitle: "2차 콘텐츠 활용",
+    clauseText:
+      "브랜드는 업로드 콘텐츠를 광고 소재로 12개월 동안 활용할 수 있습니다.",
+    requestText:
+      "활용 기간을 3개월로 줄이고, 추가 활용은 별도 동의 후 진행하고 싶어요.",
+    checks: [
+      "문제 조항 선택",
+      "요청 사유 작성",
+      "광고주 답변 대기",
+    ],
+  },
+  {
+    kind: "list",
     label: "검토",
     title: "받은 계약",
     count: "2",
@@ -534,35 +595,7 @@ const influencerPreviewSlides: InfluencerPreviewSlide[] = [
     ],
   },
   {
-    label: "요청",
-    title: "수정 요청",
-    count: "1",
-    accentClass: "bg-amber-500",
-    platformFilters: [
-      { label: "전체", count: "2" },
-      { label: "인스타그램-피드", count: "1", active: true },
-      { label: "틱톡-숏폼", count: "1" },
-    ],
-    items: [
-      {
-        brand: "브레드룸",
-        contract: "공동구매",
-        platform: "인스타그램-피드",
-        accountName: "민서홈",
-        accountId: "@minseo.home",
-        due: "받은 지 D+4",
-      },
-      {
-        brand: "피트스튜디오",
-        contract: "유료 광고 (PPL)",
-        platform: "틱톡-숏폼",
-        accountName: "민서홈",
-        accountId: "@minseo.home",
-        due: "받은 지 D+2",
-      },
-    ],
-  },
-  {
+    kind: "list",
     label: "서명",
     title: "서명 대기",
     count: "1",
@@ -592,6 +625,7 @@ const influencerPreviewSlides: InfluencerPreviewSlide[] = [
     ],
   },
   {
+    kind: "list",
     label: "완료",
     title: "서명 완료",
     count: "4",
@@ -1018,7 +1052,7 @@ function InfluencerPreviewCarousel() {
 
   return (
     <section
-      aria-label="인플루언서 계약 검토 미리보기"
+      aria-label="인플루언서 수정 요청 및 계약 미리보기"
       className="w-full min-w-0 max-w-full overflow-hidden rounded-[30px] border border-neutral-200 bg-[#fbfaf7] shadow-[0_24px_70px_rgba(15,23,42,0.08)]"
     >
       <div className="flex items-center justify-between gap-3 border-b border-neutral-200 bg-white px-4 py-3 sm:px-5">
@@ -1090,6 +1124,10 @@ function InfluencerPreviewSlideView({
 }: {
   slide: InfluencerPreviewSlide;
 }) {
+  if (slide.kind === "revision") {
+    return <InfluencerRevisionPreview slide={slide} />;
+  }
+
   return (
     <div
       key={slide.label}
@@ -1195,6 +1233,91 @@ function InfluencerPreviewSlideView({
             </span>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function InfluencerRevisionPreview({
+  slide,
+}: {
+  slide: InfluencerPreviewRevisionSlide;
+}) {
+  return (
+    <div
+      key={slide.label}
+      className="overflow-hidden rounded-[22px] border border-neutral-200 bg-white"
+    >
+      <div className="flex items-center justify-between gap-4 border-b border-neutral-200 px-4 py-4 sm:px-5">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className={`h-2 w-2 rounded-full ${slide.accentClass}`} />
+            <p className="text-[12px] font-extrabold tracking-[-0.01em] text-neutral-950">
+              {slide.title}
+            </p>
+          </div>
+          <p className="mt-1 truncate text-[11px] font-bold text-neutral-400">
+            {slide.brand} · {slide.contract}
+          </p>
+        </div>
+        <div className="flex shrink-0 items-baseline justify-end gap-1 text-right">
+          <span className="font-neo-heavy text-[26px] leading-none tracking-[-0.05em] text-neutral-950">
+            {slide.count}
+          </span>
+          <span className="text-[11px] font-extrabold text-neutral-400">건</span>
+        </div>
+      </div>
+
+      <div className="bg-[#fbfaf7] p-3 sm:p-5">
+        <div className="rounded-[16px] border border-amber-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-[11px] font-extrabold text-amber-700">
+              선택한 조항
+            </p>
+            <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-extrabold text-amber-700">
+              수정 필요
+            </span>
+          </div>
+          <p className="mt-2 text-[14px] font-extrabold tracking-[-0.01em] text-neutral-950">
+            {slide.clauseTitle}
+          </p>
+          <p className="mt-2 rounded-[12px] bg-[#f8f7f4] px-3 py-2.5 text-[12px] font-bold leading-5 text-neutral-600">
+            {slide.clauseText}
+          </p>
+        </div>
+
+        <div className="mt-3 rounded-[16px] border border-neutral-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+          <p className="text-[11px] font-extrabold text-neutral-400">
+            요청 내용
+          </p>
+          <p className="mt-2 min-h-[72px] rounded-[12px] border border-neutral-200 bg-[#f8f7f4] px-3 py-2.5 text-[12px] font-bold leading-5 text-neutral-700">
+            {slide.requestText}
+          </p>
+        </div>
+
+        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+          {slide.checks.map((check) => (
+            <div
+              key={check}
+              className="flex min-h-9 items-center gap-2 rounded-[10px] border border-neutral-200 bg-white px-3 text-[11px] font-extrabold text-neutral-600"
+            >
+              <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+              <span className="truncate">{check}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-3 flex items-center justify-between gap-3 rounded-[14px] bg-neutral-950 px-4 py-3 text-white">
+          <div className="min-w-0">
+            <p className="text-[11px] font-extrabold text-white/55">
+              다음 행동
+            </p>
+            <p className="mt-1 truncate text-[13px] font-extrabold">
+              수정 요청 보내기
+            </p>
+          </div>
+          <ArrowRight className="h-4 w-4 shrink-0" />
+        </div>
       </div>
     </div>
   );
@@ -1333,7 +1456,7 @@ function AdvertiserPreviewCarousel() {
 
   return (
     <section
-      aria-label="광고주 대시보드 미리보기"
+      aria-label="광고주 계약 작성 및 대시보드 미리보기"
       className="w-full min-w-0 max-w-full overflow-hidden rounded-[30px] border border-neutral-200 bg-[#fbfaf7] shadow-[0_24px_70px_rgba(15,23,42,0.08)]"
     >
       <div className="flex items-center justify-between gap-3 border-b border-neutral-200 bg-white px-4 py-3 sm:px-5">
@@ -1388,7 +1511,7 @@ function AdvertiserPreviewCarousel() {
                     activeIndex === index ? "text-neutral-500" : "text-neutral-400"
                   }`}
                 >
-                  {slide.count}
+                  {slide.tabMeta ?? slide.count}
                 </span>
               </span>
             </button>
@@ -1414,6 +1537,10 @@ function AdvertiserPreviewSlideView({
 }: {
   slide: AdvertiserPreviewSlide;
 }) {
+  if (slide.kind === "builder") {
+    return <AdvertiserBuilderPreview slide={slide} />;
+  }
+
   return (
     <div
       key={slide.label}
@@ -1522,6 +1649,104 @@ function AdvertiserPreviewSlideView({
             </div>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function AdvertiserBuilderPreview({
+  slide,
+}: {
+  slide: AdvertiserPreviewBuilderSlide;
+}) {
+  return (
+    <div
+      key={slide.label}
+      className="overflow-hidden rounded-[22px] border border-neutral-200 bg-white"
+    >
+      <div className="flex items-center justify-between gap-4 border-b border-neutral-200 px-4 py-4 sm:px-5">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className={`h-2 w-2 rounded-full ${slide.accentClass}`} />
+            <p className="text-[12px] font-extrabold tracking-[-0.01em] text-neutral-950">
+              {slide.title}
+            </p>
+          </div>
+          <p className="mt-1 truncate text-[11px] font-bold text-neutral-400">
+            조건을 넣으면 초안과 검토 링크까지 정리됩니다
+          </p>
+        </div>
+        <div className="flex shrink-0 items-baseline justify-end gap-1 text-right">
+          <span className="font-neo-heavy text-[26px] leading-none tracking-[-0.05em] text-neutral-950">
+            {slide.count}
+          </span>
+          <span className="text-[11px] font-extrabold text-neutral-400">
+            {slide.countLabel}
+          </span>
+        </div>
+      </div>
+
+      <div className="bg-[#fbfaf7] p-3 sm:p-5">
+        <div className="grid gap-2 sm:grid-cols-2">
+          {slide.fields.map((field) => (
+            <div
+              key={field.label}
+              className="min-w-0 rounded-[12px] border border-neutral-200 bg-white px-3 py-3 shadow-[0_8px_22px_rgba(15,23,42,0.035)]"
+            >
+              <p className="text-[10px] font-extrabold text-neutral-400">
+                {field.label}
+              </p>
+              <p className="mt-1 truncate text-[13px] font-extrabold tracking-[-0.01em] text-neutral-950">
+                {field.value}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-3 rounded-[16px] border border-neutral-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-[11px] font-extrabold text-neutral-400">
+              산출물
+            </p>
+            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-extrabold text-blue-700">
+              자동 초안
+            </span>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {slide.deliverables.map((item) => (
+              <span
+                key={item}
+                className="rounded-full border border-neutral-200 bg-[#f8f7f4] px-3 py-1.5 text-[11px] font-extrabold text-neutral-700"
+              >
+                {item}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+          {slide.safeguards.map((item) => (
+            <div
+              key={item}
+              className="flex min-h-9 items-center gap-2 rounded-[10px] border border-neutral-200 bg-white px-3 text-[11px] font-extrabold text-neutral-600"
+            >
+              <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-blue-600" />
+              <span className="truncate">{item}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-3 flex items-center justify-between gap-3 rounded-[14px] bg-neutral-950 px-4 py-3 text-white">
+          <div className="min-w-0">
+            <p className="text-[11px] font-extrabold text-white/55">
+              다음 행동
+            </p>
+            <p className="mt-1 truncate text-[13px] font-extrabold">
+              초안 만들고 검토 링크 보내기
+            </p>
+          </div>
+          <ArrowRight className="h-4 w-4 shrink-0" />
+        </div>
       </div>
     </div>
   );

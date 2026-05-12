@@ -1068,7 +1068,7 @@ export function ContractViewer() {
   };
 
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-[#f4f5f7] text-neutral-950">
+    <div className="flex min-h-[100dvh] flex-col bg-[#f7f6f3] text-neutral-950">
       {!isOperatorSupportView && selection?.showTooltip && (
         <div
           className="fixed z-50 -translate-x-1/2 -translate-y-full pb-3 animate-in fade-in zoom-in-95 slide-in-from-bottom-1 duration-150"
@@ -1719,10 +1719,18 @@ export function ContractViewer() {
           }
         }}
       >
-        <DialogContent className="rounded-lg border-neutral-200 p-0 shadow-[0_24px_70px_rgba(15,23,42,0.16)] sm:max-w-lg">
-          <div className="border-b border-neutral-200 p-6">
+        <DialogContent className="overflow-hidden rounded-[22px] border-neutral-200/90 bg-white p-0 shadow-[0_1px_0_rgba(15,23,42,0.035),0_24px_70px_rgba(15,23,42,0.14)] sm:max-w-lg">
+          <div className="border-b border-neutral-200/80 bg-white p-6">
             <DialogHeader>
-              <DialogTitle className="text-xl font-semibold text-neutral-950">
+              <div className="mb-4 flex items-center gap-3">
+                <span className="flex h-9 w-9 items-center justify-center rounded-[11px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
+                  <ShieldCheck className="h-4 w-4" strokeWidth={1.8} />
+                </span>
+                <span className="text-[12px] font-bold text-neutral-500">
+                  안전한 계약 의견
+                </span>
+              </div>
+              <DialogTitle className="font-neo-heavy text-[24px] leading-tight tracking-[-0.035em] text-neutral-950">
                 {feedbackModal?.type === "MODIFICATION_REQUESTED"
                   ? "조항 수정 요청"
                   : "조항 삭제 요청"}
@@ -1733,11 +1741,11 @@ export function ContractViewer() {
             </DialogHeader>
           </div>
           <div className="space-y-4 p-6">
-            <div className="rounded-lg border border-neutral-200 bg-[#fbfbfc] p-4 text-sm leading-6 text-neutral-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
+            <div className="rounded-[16px] border border-neutral-200 bg-[#fbfaf7] p-4 text-sm leading-6 text-neutral-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
               "{feedbackModal?.selectedText}"
             </div>
             <Textarea
-              className="min-h-[132px] resize-none rounded-lg border-neutral-200 bg-white p-4 text-sm text-neutral-950 placeholder:text-neutral-400 focus-visible:ring-2 focus-visible:ring-neutral-950"
+              className="min-h-[132px] resize-none rounded-[16px] border-neutral-200 bg-[#fbfaf7] p-4 text-sm font-semibold text-neutral-950 placeholder:text-neutral-400 focus-visible:border-neutral-950 focus-visible:bg-white focus-visible:ring-[3px] focus-visible:ring-neutral-950/10"
               placeholder={
                 feedbackModal?.type === "MODIFICATION_REQUESTED"
                   ? "예: 게시 유지 기간을 3개월로 조정해 주세요."
@@ -1753,15 +1761,15 @@ export function ContractViewer() {
               <p
                 role="alert"
                 aria-live="assertive"
-                className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800"
+                className="rounded-[12px] border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800"
               >
                 {feedbackError}
               </p>
             )}
           </div>
-          <div className="flex gap-3 border-t border-neutral-200 bg-[#fbfbfc] p-4">
+          <div className="flex gap-3 border-t border-neutral-200 bg-[#fbfaf7] p-4">
             <button
-              className="h-11 flex-1 rounded-lg border border-neutral-200 bg-white text-sm font-semibold text-neutral-700 hover:bg-neutral-100"
+              className="h-11 flex-1 rounded-[12px] border border-neutral-200 bg-white text-sm font-semibold text-neutral-700 shadow-[0_1px_0_rgba(15,23,42,0.02)] hover:bg-neutral-100"
               onClick={() => {
                 setFeedbackModal(null);
                 setFeedbackError("");
@@ -1770,7 +1778,7 @@ export function ContractViewer() {
               취소
             </button>
             <button
-              className="h-11 flex-[2] rounded-lg bg-neutral-950 text-sm font-semibold text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-500"
+              className="h-11 flex-[2] rounded-[12px] bg-neutral-950 text-sm font-bold text-white shadow-[0_14px_34px_rgba(15,23,42,0.18)] hover:-translate-y-0.5 hover:bg-neutral-800 disabled:cursor-not-allowed disabled:translate-y-0 disabled:bg-neutral-200 disabled:text-neutral-500 disabled:shadow-none"
               onClick={handleFeedbackSubmit}
               disabled={!feedbackComment.trim()}
             >
@@ -1787,11 +1795,13 @@ export function ContractViewer() {
           if (!open) setSignError("");
         }}
       >
-        <DialogContent className="rounded-lg border-neutral-200 p-0 shadow-[0_24px_70px_rgba(15,23,42,0.16)] sm:max-w-lg">
-          <div className="border-b border-neutral-200 p-6">
+        <DialogContent className="overflow-hidden rounded-[22px] border-neutral-200/90 bg-white p-0 shadow-[0_1px_0_rgba(15,23,42,0.035),0_24px_70px_rgba(15,23,42,0.14)] sm:max-w-lg">
+          <div className="border-b border-neutral-200/80 bg-white p-6">
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-3 text-xl font-semibold text-neutral-950">
-                <FileSignature className="h-5 w-5" strokeWidth={1.8} />
+              <DialogTitle className="font-neo-heavy flex items-center gap-3 text-[24px] leading-tight tracking-[-0.035em] text-neutral-950">
+                <span className="flex h-9 w-9 items-center justify-center rounded-[11px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
+                  <FileSignature className="h-4 w-4" strokeWidth={1.8} />
+                </span>
                 동의 후 서명
               </DialogTitle>
               <DialogDescription className="pt-2 text-sm leading-6 text-neutral-600">
@@ -1802,7 +1812,7 @@ export function ContractViewer() {
           </div>
 
           <div className="space-y-4 p-6">
-            <div className="rounded-lg border border-neutral-200 bg-[#fbfbfc] p-4 text-sm leading-6 text-neutral-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
+            <div className="rounded-[16px] border border-neutral-200 bg-[#fbfaf7] p-4 text-sm leading-6 text-neutral-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
               모든 조항이 승인되었습니다. 서명자 이름과 동의 여부는 감사 기록에 함께 저장됩니다.
             </div>
             <label className="block">
@@ -1815,7 +1825,7 @@ export function ContractViewer() {
                   setSignerName(event.target.value);
                   if (signError) setSignError("");
                 }}
-                className="mt-2 h-11 w-full rounded-lg border border-neutral-200 bg-white px-3 text-sm font-medium text-neutral-950 outline-none transition focus:border-neutral-950"
+                className="mt-2 h-11 w-full rounded-[12px] border border-neutral-200 bg-[#fbfaf7] px-3 text-sm font-semibold text-neutral-950 outline-none transition focus:border-neutral-950 focus:bg-white focus:shadow-[0_0_0_3px_rgba(23,23,23,0.08)]"
                 placeholder="이름 또는 활동명"
               />
             </label>
@@ -1834,7 +1844,7 @@ export function ContractViewer() {
                     setSignError("");
                     if (option.value === "typed") clearSignature();
                   }}
-                  className={`h-10 rounded-lg border text-sm font-semibold transition ${
+                  className={`h-10 rounded-[12px] border text-sm font-semibold transition ${
                     signatureMode === option.value
                       ? "border-neutral-950 bg-neutral-950 text-white"
                       : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-400"
@@ -1844,7 +1854,7 @@ export function ContractViewer() {
                 </button>
               ))}
             </div>
-            <div className="relative h-48 overflow-hidden rounded-lg border border-neutral-300 bg-white">
+            <div className="relative h-48 overflow-hidden rounded-[16px] border border-neutral-300 bg-white">
               <canvas
                 ref={canvasRef}
                 role="img"
@@ -1875,7 +1885,7 @@ export function ContractViewer() {
                 type="button"
                 onClick={clearSignature}
                 disabled={signatureMode === "typed"}
-                className="absolute right-3 top-3 flex h-9 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-600 shadow-[0_1px_2px_rgba(15,23,42,0.04)] hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
+                className="absolute right-3 top-3 flex h-9 items-center gap-2 rounded-[12px] border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-600 shadow-[0_1px_2px_rgba(15,23,42,0.04)] hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Eraser className="h-3.5 w-3.5" strokeWidth={1.8} />
                 지우기
@@ -1892,7 +1902,7 @@ export function ContractViewer() {
                 ? "서명이 입력되었습니다."
                 : "서명란에 직접 서명해 주세요."}
             </p>
-            <label className="flex items-start gap-3 rounded-lg border border-neutral-200 bg-white p-3 text-sm leading-5 text-neutral-700">
+            <label className="flex items-start gap-3 rounded-[16px] border border-neutral-200 bg-white p-3 text-sm leading-5 text-neutral-700">
               <input
                 type="checkbox"
                 checked={consentAccepted}
@@ -1910,22 +1920,22 @@ export function ContractViewer() {
               <p
                 role="alert"
                 aria-live="assertive"
-                className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800"
+                className="rounded-[12px] border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800"
               >
                 {signError}
               </p>
             )}
           </div>
 
-          <div className="flex gap-3 border-t border-neutral-200 bg-[#fbfbfc] p-4">
+          <div className="flex gap-3 border-t border-neutral-200 bg-[#fbfaf7] p-4">
             <button
-              className="h-11 flex-1 rounded-lg border border-neutral-200 bg-white text-sm font-semibold text-neutral-700 hover:bg-neutral-100"
+              className="h-11 flex-1 rounded-[12px] border border-neutral-200 bg-white text-sm font-semibold text-neutral-700 shadow-[0_1px_0_rgba(15,23,42,0.02)] hover:bg-neutral-100"
               onClick={() => setShowSignModal(false)}
             >
               취소
             </button>
             <button
-              className="h-11 flex-[2] rounded-lg bg-neutral-950 text-sm font-semibold text-white hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-500"
+              className="h-11 flex-[2] rounded-[12px] bg-neutral-950 text-sm font-bold text-white shadow-[0_14px_34px_rgba(15,23,42,0.18)] hover:-translate-y-0.5 hover:bg-neutral-800 disabled:cursor-not-allowed disabled:translate-y-0 disabled:bg-neutral-200 disabled:text-neutral-500 disabled:shadow-none"
               onClick={handleSignComplete}
               disabled={
                 isSignLoading ||
@@ -2261,7 +2271,7 @@ function AccessMessage({
   description: string;
 }) {
   return (
-    <div className="flex min-h-[100dvh] items-center justify-center bg-[#f4f5f7] px-4">
+    <div className="flex min-h-[100dvh] items-center justify-center bg-[#f7f6f3] px-4">
       <div className="w-full max-w-md rounded-lg border border-neutral-200/80 bg-white p-6 text-center shadow-[0_1px_2px_rgba(15,23,42,0.04),0_22px_60px_rgba(15,23,42,0.08)]">
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-amber-50 text-amber-700">
           <AlertTriangle className="h-6 w-6" strokeWidth={1.8} />

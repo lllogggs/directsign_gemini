@@ -211,6 +211,35 @@
     animation-delay: 980ms;
   }
 
+  .contract-builder-surface [data-slot="input"],
+  .contract-builder-surface [data-slot="select-trigger"] {
+    min-height: 44px;
+    width: 100%;
+    border-color: rgb(229 229 229);
+    border-radius: 12px;
+    background-color: #fbfaf7;
+    padding-inline: 1rem;
+    font-weight: 600;
+    box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02);
+  }
+
+  .contract-builder-surface [data-slot="textarea"] {
+    border-color: rgb(229 229 229);
+    border-radius: 12px;
+    background-color: #fbfaf7;
+    padding: 0.875rem 1rem;
+    font-weight: 600;
+    box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02);
+  }
+
+  .contract-builder-surface [data-slot="input"]:focus-visible,
+  .contract-builder-surface [data-slot="textarea"]:focus-visible,
+  .contract-builder-surface [data-slot="select-trigger"]:focus-visible {
+    border-color: rgb(23 23 23);
+    background-color: white;
+    box-shadow: 0 0 0 3px rgba(23, 23, 23, 0.08);
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .landing-start-copy-line {
       opacity: 1;
