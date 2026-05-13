@@ -418,11 +418,17 @@ describe("yeollock.me security regressions", () => {
 
   it("keeps advertiser marketplace messages focused on sent proposals", () => {
     const inbox = read("src/pages/marketplace/MarketplaceInboxPage.tsx");
+    const server = read("server/index.ts");
 
     assert.match(inbox, /role === "advertiser" \? "sent" : "inbox"/);
     assert.match(inbox, /summaryTitle:\s*\(openCount: number\) =>/);
     assert.match(inbox, /`보낸 제안 \$\{openCount\.toLocaleString\(\)\}건이 진행 중입니다`/);
     assert.match(inbox, /primaryBucketLabel: "보낸 제안"/);
+    assert.match(inbox, /platformFilterOptions/);
+    assert.match(inbox, /제안 종류/);
+    assert.match(inbox, /function PlatformPills/);
+    assert.match(server, /addPlatformInfoToMarketplaceProposals/);
+    assert.match(server, /marketplace_influencer_channels/);
     assert.match(
       inbox,
       /role === "advertiser"[\s\S]+id: "sent", label: copy\.primaryBucketLabel/,

@@ -1007,6 +1007,7 @@ interface SupabaseMarketplaceContactProposalRow {
   status: MarketplaceProposalStatus;
   created_at: string;
   updated_at: string;
+  marketplace_platforms?: MarketplaceMessageThread["platforms"];
 }
 
 const requireSupabaseConfig = () => {
@@ -4299,6 +4300,7 @@ const mapMarketplaceProposalToMessage = (
     targetHandle: row.target_handle,
     counterpartName,
     counterpartHref: getMarketplaceCounterpartHref(role, row, bucket),
+    platforms: row.marketplace_platforms ?? [],
     proposalType: row.proposal_type,
     proposalTypeLabel: getProposalTypeLabel(row.proposal_type),
     proposalSummary: row.proposal_summary,
@@ -4408,6 +4410,126 @@ const addSenderBrandHandlesToMarketplaceProposals = async (
   }));
 };
 
+const addPlatformInfoToMarketplaceProposals = async (
+  rows: SupabaseMarketplaceContactProposalRow[],
+) => {
+  if (!useSupabase || rows.length === 0) return rows;
+
+  const targetInfluencerProfileIds = Array.from(
+    new Set(
+      rows
+        .filter((row) => row.direction === "advertiser_to_influencer")
+        .map((row) => row.target_influencer_profile_id)
+        .filter((id): id is string => hasText(id ?? undefined)),
+    ),
+  );
+  const senderProfileIds = Array.from(
+    new Set(
+      rows
+        .filter((row) => row.direction === "influencer_to_brand")
+        .map((row) => row.sender_profile_id)
+        .filter((id): id is string => hasText(id ?? undefined)),
+    ),
+  );
+  const targetBrandProfileIds = Array.from(
+    new Set(
+      rows
+        .filter((row) => row.direction === "influencer_to_brand")
+        .map((row) => row.target_brand_profile_id)
+        .filter((id): id is string => hasText(id ?? undefined)),
+    ),
+  );
+
+  const senderInfluencerProfiles =
+    senderProfileIds.length > 0
+      ? await readSupabaseRows<SupabaseMarketplaceInfluencerProfileRow>(
+          "marketplace_influencer_profiles",
+          `?select=id,owner_profile_id&owner_profile_id=in.${postgrestInFilter(
+            senderProfileIds,
+          )}`,
+          "marketplace proposal sender influencer profiles",
+        )
+      : [];
+  const senderInfluencerProfileIdByOwnerId = new Map(
+    senderInfluencerProfiles.map((profile) => [profile.owner_profile_id, profile.id]),
+  );
+  const influencerProfileIds = Array.from(
+    new Set([
+      ...targetInfluencerProfileIds,
+      ...senderInfluencerProfiles.map((profile) => profile.id),
+    ]),
+  );
+  const channelRows =
+    influencerProfileIds.length > 0
+      ? await readSupabaseRows<SupabaseMarketplaceInfluencerChannelRow>(
+          "marketplace_influencer_channels",
+          `?select=profile_id,platform,label,handle,url,sort_order&profile_id=in.${postgrestInFilter(
+            influencerProfileIds,
+          )}&order=sort_order.asc`,
+          "marketplace proposal platform channels",
+        )
+      : [];
+  const channelsByProfileId = new Map<
+    string,
+    MarketplaceMessageThread["platforms"]
+  >();
+  for (const channel of channelRows) {
+    const channels = channelsByProfileId.get(channel.profile_id) ?? [];
+    channels.push({
+      platform: channel.platform,
+      label: channel.label || platformLabels[channel.platform],
+      handle: channel.handle,
+      url: channel.url ?? undefined,
+    });
+    channelsByProfileId.set(channel.profile_id, channels);
+  }
+
+  const brandRows =
+    targetBrandProfileIds.length > 0
+      ? await readSupabaseRows<Pick<SupabaseMarketplaceBrandProfileRow, "id" | "preferred_platforms">>(
+          "marketplace_brand_profiles",
+          `?select=id,preferred_platforms&id=in.${postgrestInFilter(
+            targetBrandProfileIds,
+          )}`,
+          "marketplace proposal brand platform preferences",
+        )
+      : [];
+  const brandPlatformsById = new Map(
+    brandRows.map((brand) => [
+      brand.id,
+      (brand.preferred_platforms ?? []).map((platform) => ({
+        platform,
+        label: platformLabels[platform],
+      })),
+    ]),
+  );
+
+  return rows.map((row) => {
+    const influencerProfileId =
+      row.direction === "advertiser_to_influencer"
+        ? row.target_influencer_profile_id
+        : row.sender_profile_id
+          ? senderInfluencerProfileIdByOwnerId.get(row.sender_profile_id)
+          : undefined;
+    const influencerPlatforms = influencerProfileId
+      ? channelsByProfileId.get(influencerProfileId) ?? []
+      : [];
+    const brandPlatforms = row.target_brand_profile_id
+      ? brandPlatformsById.get(row.target_brand_profile_id) ?? []
+      : [];
+
+    return {
+      ...row,
+      marketplace_platforms:
+        influencerPlatforms.length > 0
+          ? influencerPlatforms
+          : brandPlatforms.length > 0
+            ? brandPlatforms
+            : [{ platform: "other" as InfluencerPlatform, label: platformLabels.other }],
+    };
+  });
+};
+
 const readMarketplaceMessagesForAdvertiser = async (
   auth: AdvertiserSession,
 ): Promise<MarketplaceMessagesResponse> => {
@@ -4441,10 +4563,12 @@ const readMarketplaceMessagesForAdvertiser = async (
 
   return buildMarketplaceMessagesResponse(
     "advertiser",
-    uniqueRowsById([
-      ...(await addSenderInfluencerHandlesToMarketplaceProposals(incomingRows)),
-      ...sentRows,
-    ]),
+    await addPlatformInfoToMarketplaceProposals(
+      uniqueRowsById([
+        ...(await addSenderInfluencerHandlesToMarketplaceProposals(incomingRows)),
+        ...sentRows,
+      ]),
+    ),
   );
 };
 
@@ -4479,10 +4603,12 @@ const readMarketplaceMessagesForInfluencer = async (
 
   return buildMarketplaceMessagesResponse(
     "influencer",
-    uniqueRowsById([
-      ...(await addSenderBrandHandlesToMarketplaceProposals(incomingRows)),
-      ...sentRows,
-    ]),
+    await addPlatformInfoToMarketplaceProposals(
+      uniqueRowsById([
+        ...(await addSenderBrandHandlesToMarketplaceProposals(incomingRows)),
+        ...sentRows,
+      ]),
+    ),
   );
 };
 

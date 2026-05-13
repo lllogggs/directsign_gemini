@@ -2,6 +2,7 @@ import {
   proposalTypeLabels,
   type CampaignProposalType,
 } from "./marketplace.js";
+import type { InfluencerPlatform } from "./verification.js";
 
 export type MarketplaceInboxRole = "advertiser" | "influencer";
 export type MarketplaceMessageBucket = "inbox" | "sent";
@@ -26,6 +27,12 @@ export type MarketplaceMessageThread = {
   targetHandle: string;
   counterpartName: string;
   counterpartHref?: string;
+  platforms: Array<{
+    platform: InfluencerPlatform;
+    label: string;
+    handle?: string;
+    url?: string;
+  }>;
   proposalType: CampaignProposalType;
   proposalTypeLabel: string;
   proposalSummary: string;

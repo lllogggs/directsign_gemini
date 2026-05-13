@@ -7,11 +7,15 @@ import {
   Send,
   ShieldCheck,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
-import type { CampaignProposalType } from "../../domain/marketplace";
+import {
+  getPlatformTone,
+  platformLabels,
+  type CampaignProposalType,
+} from "../../domain/marketplace";
 import {
   emptyMarketplaceMessageSummary,
   formatMarketplaceMessageDate,
@@ -20,6 +24,7 @@ import {
   type MarketplaceMessagesResponse,
   type MarketplaceProposalStatus,
 } from "../../domain/marketplaceInbox";
+import type { InfluencerPlatform } from "../../domain/verification";
 
 type InboxState =
   | { status: "loading" }
@@ -27,6 +32,33 @@ type InboxState =
   | { status: "error"; message: string };
 
 type MessageThread = MarketplaceMessagesResponse["threads"][number];
+type PlatformFilter = "all" | InfluencerPlatform;
+type ProposalTypeFilter = "all" | CampaignProposalType;
+type ProposalStatusFilter = "all" | MarketplaceProposalStatus;
+
+const platformFilterOptions: PlatformFilter[] = [
+  "all",
+  "instagram",
+  "youtube",
+  "tiktok",
+  "naver_blog",
+  "other",
+];
+const proposalTypeFilterOptions: ProposalTypeFilter[] = [
+  "all",
+  "sponsored_post",
+  "product_seeding",
+  "ppl",
+  "group_buy",
+  "visit_review",
+];
+const proposalStatusFilterOptions: ProposalStatusFilter[] = [
+  "all",
+  "submitted",
+  "reviewed",
+  "converted_to_contract",
+  "closed",
+];
 
 const proposalTypeLabels: Record<CampaignProposalType, string> = {
   sponsored_post: "유료 광고",
@@ -127,6 +159,10 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
   const primaryBucket: MarketplaceMessageBucket = role === "advertiser" ? "sent" : "inbox";
   const [state, setState] = useState<InboxState>({ status: "loading" });
   const [bucket, setBucket] = useState<MarketplaceMessageBucket>(primaryBucket);
+  const [platformFilter, setPlatformFilter] = useState<PlatformFilter>("all");
+  const [proposalTypeFilter, setProposalTypeFilter] =
+    useState<ProposalTypeFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<ProposalStatusFilter>("all");
   const [query, setQuery] = useState("");
 
   const loadMessages = useCallback(async () => {
@@ -232,10 +268,57 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
           { id: "inbox", label: copy.primaryBucketLabel, count: data.summary.inboxCount },
           { id: "sent", label: copy.secondaryBucketLabel, count: data.summary.sentCount },
         ];
+  const bucketThreads = useMemo(
+    () => data.threads.filter((thread) => thread.bucket === bucket),
+    [bucket, data.threads],
+  );
+  const platformCounts = useMemo(() => {
+    const counts = Object.fromEntries(
+      platformFilterOptions.map((platform) => [platform, 0]),
+    ) as Record<PlatformFilter, number>;
+    counts.all = bucketThreads.length;
+    for (const thread of bucketThreads) {
+      const platforms: InfluencerPlatform[] = thread.platforms.length
+        ? thread.platforms.map((item) => item.platform)
+        : ["other" as InfluencerPlatform];
+      for (const platform of new Set<InfluencerPlatform>(platforms)) {
+        counts[platform] += 1;
+      }
+    }
+    return counts;
+  }, [bucketThreads]);
+  const proposalTypeCounts = useMemo(() => {
+    const counts = Object.fromEntries(
+      proposalTypeFilterOptions.map((type) => [type, 0]),
+    ) as Record<ProposalTypeFilter, number>;
+    counts.all = bucketThreads.length;
+    for (const thread of bucketThreads) counts[thread.proposalType] += 1;
+    return counts;
+  }, [bucketThreads]);
+  const statusCounts = useMemo(() => {
+    const counts = Object.fromEntries(
+      proposalStatusFilterOptions.map((status) => [status, 0]),
+    ) as Record<ProposalStatusFilter, number>;
+    counts.all = bucketThreads.length;
+    for (const thread of bucketThreads) counts[thread.status] += 1;
+    return counts;
+  }, [bucketThreads]);
   const visibleThreads = useMemo(
     () =>
-      data.threads.filter((thread) => {
-        if (thread.bucket !== bucket) return false;
+      bucketThreads.filter((thread) => {
+        if (
+          platformFilter !== "all" &&
+          !thread.platforms.some((item) => item.platform === platformFilter)
+        ) {
+          return false;
+        }
+        if (
+          proposalTypeFilter !== "all" &&
+          thread.proposalType !== proposalTypeFilter
+        ) {
+          return false;
+        }
+        if (statusFilter !== "all" && thread.status !== statusFilter) return false;
         if (!normalizedQuery) return true;
 
         return [
@@ -244,6 +327,11 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
           thread.counterpartName,
           thread.senderIntro,
           thread.proposalSummary,
+          ...thread.platforms.flatMap((item) => [
+            item.label,
+            item.handle ?? "",
+            platformLabels[item.platform],
+          ]),
           getProposalTypeLabel(thread),
           proposalStatusLabels[thread.status],
         ]
@@ -251,12 +339,17 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
           .toLowerCase()
           .includes(normalizedQuery);
       }),
-    [bucket, data.threads, normalizedQuery],
+    [bucketThreads, normalizedQuery, platformFilter, proposalTypeFilter, statusFilter],
   );
   const headerBadge =
     role === "advertiser"
       ? `진행 중 ${sentOpenCount.toLocaleString()}건`
       : `확인 필요 ${data.summary.unreadCount.toLocaleString()}건`;
+  const resetScopedFilters = () => {
+    setPlatformFilter("all");
+    setProposalTypeFilter("all");
+    setStatusFilter("all");
+  };
 
   return (
     <div className="min-h-screen bg-neutral-50 font-sans text-neutral-950">
@@ -348,11 +441,55 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
                         active={bucket === option.id}
                         label={option.label}
                         count={option.count}
-                        onClick={() => setBucket(option.id)}
+                        onClick={() => {
+                          setBucket(option.id);
+                          resetScopedFilters();
+                        }}
                       />
                     </div>
                   ))}
                 </div>
+              </div>
+
+              <div className="mt-3 grid gap-2 border-t border-[#edf1ed] pt-3 xl:grid-cols-[1.08fr_1.08fr_0.94fr]">
+                <FilterGroup label="플랫폼">
+                  {platformFilterOptions.map((platform) => (
+                    <div key={platform}>
+                      <FilterButton
+                        active={platformFilter === platform}
+                        count={platformCounts[platform]}
+                        label={platform === "all" ? "전체" : platformLabels[platform]}
+                        tone={platform === "all" ? undefined : getPlatformTone(platform)}
+                        onClick={() => setPlatformFilter(platform)}
+                      />
+                    </div>
+                  ))}
+                </FilterGroup>
+                <FilterGroup label="제안 종류">
+                  {proposalTypeFilterOptions.map((type) => (
+                    <div key={type}>
+                      <FilterButton
+                        active={proposalTypeFilter === type}
+                        count={proposalTypeCounts[type]}
+                        label={type === "all" ? "전체" : proposalTypeLabels[type]}
+                        onClick={() => setProposalTypeFilter(type)}
+                      />
+                    </div>
+                  ))}
+                </FilterGroup>
+                <FilterGroup label="상태">
+                  {proposalStatusFilterOptions.map((status) => (
+                    <div key={status}>
+                      <FilterButton
+                        active={statusFilter === status}
+                        count={statusCounts[status]}
+                        label={status === "all" ? "전체" : proposalStatusLabels[status]}
+                        tone={status === "all" ? undefined : proposalStatusTone[status]}
+                        onClick={() => setStatusFilter(status)}
+                      />
+                    </div>
+                  ))}
+                </FilterGroup>
               </div>
             </section>
 
@@ -412,7 +549,7 @@ function BucketButton({
       onClick={onClick}
       role="tab"
       aria-selected={active}
-      className={`h-9 min-w-0 rounded-full px-1 text-[12px] font-extrabold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 ${
+      className={`h-9 w-full min-w-0 rounded-full px-1 text-[12px] font-extrabold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 ${
         active
           ? "bg-white text-neutral-950 shadow-[0_1px_0_rgba(15,23,42,0.04)]"
           : "text-neutral-500 hover:text-neutral-800"
@@ -423,6 +560,58 @@ function BucketButton({
         <span className={`text-[10px] ${active ? "text-neutral-500" : "text-neutral-400"}`}>
           {count.toLocaleString()}
         </span>
+      </span>
+    </button>
+  );
+}
+
+function FilterGroup({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="min-w-0 rounded-[7px] border border-[#e5eae5] bg-[#fbfcfa] px-3 py-2.5">
+      <span className="block text-[12px] font-extrabold text-[#303630]">{label}</span>
+      <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5">{children}</div>
+    </div>
+  );
+}
+
+function FilterButton({
+  active,
+  count,
+  label,
+  onClick,
+  tone,
+}: {
+  active: boolean;
+  count: number;
+  label: string;
+  onClick: () => void;
+  tone?: string;
+}) {
+  const activeClass = tone ?? "border-[#171a17] bg-[#171a17] text-white";
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[6px] border px-2.5 text-[12px] font-bold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 ${
+        active
+          ? activeClass
+          : "border-[#d9e0d9] bg-white text-[#59605b] hover:border-[#b8c2ba] hover:text-[#171a17]"
+      }`}
+    >
+      <span>{label}</span>
+      <span
+        className={`text-[11px] ${
+          active ? "opacity-80" : "text-[#a0aaa2]"
+        }`}
+      >
+        {count.toLocaleString()}
       </span>
     </button>
   );
@@ -439,10 +628,12 @@ function MessageTable({
 }) {
   return (
     <section className="overflow-hidden rounded-b-[8px] border border-[#d9e0d9] bg-white">
-      <div className="hidden grid-cols-[112px_minmax(180px,0.9fr)_minmax(280px,1.3fr)_130px_120px] border-b border-[#d9e0d9] bg-[#f8faf7] px-4 py-3 text-[11px] font-semibold text-[#7d857f] lg:grid">
+      <div className="hidden grid-cols-[104px_minmax(160px,0.85fr)_minmax(166px,0.9fr)_104px_minmax(240px,1.25fr)_122px_104px] border-b border-[#d9e0d9] bg-[#f8faf7] px-4 py-3 text-[11px] font-semibold text-[#7d857f] lg:grid">
         <span>상태</span>
         <span>상대</span>
-        <span>제안</span>
+        <span>플랫폼</span>
+        <span>종류</span>
+        <span>제안 내용</span>
         <span className="text-right">{copy.dateHeader}</span>
         <span className="sr-only">액션</span>
       </div>
@@ -484,7 +675,7 @@ function MessageThreadRow({
   const proposalTypeLabel = getProposalTypeLabel(thread);
 
   return (
-    <article className="grid gap-3 bg-white px-4 py-3 text-left transition-colors hover:bg-[#f8faf7] lg:grid-cols-[112px_minmax(180px,0.9fr)_minmax(280px,1.3fr)_130px_120px] lg:items-center">
+    <article className="grid gap-3 bg-white px-4 py-3 text-left transition-colors hover:bg-[#f8faf7] lg:grid-cols-[104px_minmax(160px,0.85fr)_minmax(166px,0.9fr)_104px_minmax(240px,1.25fr)_122px_104px] lg:items-center">
       <div className="flex min-w-0 items-center gap-2 md:block">
         <span
           className={`inline-flex h-6 shrink-0 items-center rounded-md border px-2 text-[11px] font-semibold ${proposalStatusTone[thread.status]}`}
@@ -508,14 +699,19 @@ function MessageThreadRow({
       </div>
 
       <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="inline-flex h-6 items-center rounded-[5px] border border-[#d9e0d9] bg-white px-2 text-[11px] font-semibold text-[#59605b]">
-            {proposalTypeLabel}
-          </span>
-          <p className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[#303630]">
-            {thread.proposalSummary}
-          </p>
-        </div>
+        <PlatformPills platforms={thread.platforms} />
+      </div>
+
+      <div className="min-w-0">
+        <span className="inline-flex h-6 items-center rounded-[5px] border border-[#d9e0d9] bg-white px-2 text-[11px] font-semibold text-[#59605b]">
+          {proposalTypeLabel}
+        </span>
+      </div>
+
+      <div className="min-w-0">
+        <p className="truncate text-[13px] font-semibold text-[#303630]">
+          {thread.proposalSummary}
+        </p>
         <p className="mt-1 line-clamp-1 text-[12px] font-medium leading-5 text-[#7d857f] lg:hidden">
           {formatMarketplaceMessageDate(thread.createdAt)}
         </p>
@@ -544,6 +740,41 @@ function MessageThreadRow({
   );
 }
 
+function PlatformPills({ platforms }: { platforms: MessageThread["platforms"] }) {
+  const visiblePlatforms =
+    platforms.length > 0
+      ? platforms
+      : [{ platform: "other" as InfluencerPlatform, label: platformLabels.other }];
+  const visibleCount = Math.min(visiblePlatforms.length, 2);
+
+  return (
+    <div className="flex min-w-0 flex-wrap gap-1">
+      {visiblePlatforms.slice(0, visibleCount).map((item, index) => (
+        <span
+          key={`${item.platform}-${item.handle ?? item.label}-${index}`}
+          title={item.handle ? `${formatPlatformLabel(item)} · ${item.handle}` : formatPlatformLabel(item)}
+          className={`inline-flex h-6 max-w-full items-center rounded-[5px] border px-2 text-[11px] font-bold ${getPlatformTone(
+            item.platform,
+          )}`}
+        >
+          <span className="truncate">{formatPlatformLabel(item)}</span>
+        </span>
+      ))}
+      {visiblePlatforms.length > visibleCount ? (
+        <span className="inline-flex h-6 items-center rounded-[5px] border border-[#d9e0d9] bg-white px-2 text-[11px] font-bold text-[#7d857f]">
+          +{visiblePlatforms.length - visibleCount}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function formatPlatformLabel(item: MessageThread["platforms"][number]) {
+  const baseLabel = platformLabels[item.platform];
+  if (!item.label || item.label === baseLabel) return baseLabel;
+  return `${baseLabel}-${item.label}`;
+}
+
 function getProposalTypeLabel(thread: MessageThread) {
   return proposalTypeLabels[thread.proposalType] ?? thread.proposalTypeLabel;
 }
@@ -563,11 +794,13 @@ function LoadingState() {
         {Array.from({ length: 5 }).map((_, index) => (
           <div
             key={index}
-            className="grid gap-3 rounded-[8px] border border-[#edf1ed] bg-[#f8faf7] px-3 py-3 lg:grid-cols-[112px_minmax(180px,0.9fr)_minmax(280px,1.3fr)_130px_120px]"
+            className="grid gap-3 rounded-[8px] border border-[#edf1ed] bg-[#f8faf7] px-3 py-3 lg:grid-cols-[104px_minmax(160px,0.85fr)_minmax(166px,0.9fr)_104px_minmax(240px,1.25fr)_122px_104px]"
           >
             <div className="h-6 rounded bg-neutral-200/70" />
             <div className="h-6 rounded bg-neutral-200/70" />
             <div className="h-6 rounded bg-neutral-200/70" />
+            <div className="hidden h-6 rounded bg-neutral-200/70 md:block" />
+            <div className="hidden h-6 rounded bg-neutral-200/70 md:block" />
             <div className="hidden h-6 rounded bg-neutral-200/70 md:block" />
             <div className="hidden h-6 rounded bg-neutral-200/70 md:block" />
           </div>
