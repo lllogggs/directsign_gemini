@@ -378,6 +378,14 @@ export function Dashboard() {
             <SyncPill isSyncing={isSyncing} syncError={syncError} />
             <button
               type="button"
+              onClick={() => navigate("/advertiser/discover")}
+              className="inline-flex h-10 items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
+            >
+              <Search className="h-4 w-4" strokeWidth={2} />
+              <span className="hidden sm:inline">인플루언서 찾기</span>
+            </button>
+            <button
+              type="button"
               onClick={() => navigate("/advertiser/builder")}
               className="inline-flex h-10 items-center gap-2 rounded-md bg-neutral-950 px-4 text-[13px] font-semibold text-white transition hover:bg-neutral-800"
             >

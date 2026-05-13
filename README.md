@@ -61,7 +61,7 @@ The configured product can store contracts in Supabase through the local Express
 
 1. Create a Supabase project.
 2. Apply every SQL file in `supabase/migrations` in timestamp order. The required base schema is `supabase/migrations/20260430193123_create_directsign_v2_schema.sql`; `20260501020000_create_directsign_v2_schema.sql` is intentionally a consolidated no-op kept only for migration history compatibility.
-3. Confirm the later hardening migrations are applied, especially `20260505070645_harden_contract_support_access.sql`, `20260505081146_harden_signature_evidence_support_boundaries.sql`, `20260506043140_add_signup_legal_consents.sql`, `20260506075008_restrict_authenticated_direct_writes.sql`, `20260507224346_allow_revoked_support_access_event.sql`, and `20260507230025_lock_reserved_settlement_tables.sql`.
+3. Confirm the later hardening and marketplace migrations are applied, especially `20260505070645_harden_contract_support_access.sql`, `20260505081146_harden_signature_evidence_support_boundaries.sql`, `20260506043140_add_signup_legal_consents.sql`, `20260506075008_restrict_authenticated_direct_writes.sql`, `20260507224346_allow_revoked_support_access_event.sql`, `20260507230025_lock_reserved_settlement_tables.sql`, and `20260513035730_add_marketplace_profiles.sql`.
 4. Run Supabase Security Advisor after applying migrations and resolve any RLS, exposed table, or storage warnings before launch.
 5. Generate server-only secrets:
 

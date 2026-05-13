@@ -28,10 +28,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   ArrowLeft,
   Check,
   CheckCircle2,
   Copy,
+  FileText,
   LogOut,
   Plus,
   ShieldCheck,
@@ -425,6 +433,7 @@ export function ContractBuilder() {
   const [draft, setDraft] = useState<ContractDraft>(INITIAL_DRAFT);
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   const [savedContractId, setSavedContractId] = useState("");
+  const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
   const [result, setResult] = useState<{
     mode: ResultMode;
     link?: string;
@@ -709,7 +718,7 @@ export function ContractBuilder() {
             <div className="flex h-9 w-9 items-center justify-center rounded-[11px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
               <ShieldCheck className="h-4 w-4" strokeWidth={2} />
             </div>
-            <span className="font-neo-heavy text-[18px] leading-none tracking-[-0.045em] text-neutral-950">
+            <span className="font-neo-heavy text-[18px] leading-none text-neutral-950">
               {PRODUCT_NAME}
             </span>
           </div>
@@ -725,8 +734,8 @@ export function ContractBuilder() {
         </button>
       </header>
 
-      <main className="grid flex-1 grid-cols-1 lg:min-h-0 lg:grid-cols-[minmax(420px,520px)_minmax(0,1fr)] lg:gap-5 lg:overflow-hidden lg:px-6 lg:pb-6 xl:grid-cols-[220px_minmax(420px,500px)_minmax(430px,1fr)]">
-        <aside className="relative z-10 hidden min-h-0 flex-col gap-10 overflow-y-auto border border-neutral-200/90 bg-white/95 p-6 shadow-[0_1px_0_rgba(15,23,42,0.035),0_18px_46px_rgba(15,23,42,0.05)] xl:mt-6 xl:flex xl:rounded-[18px]">
+      <main className="grid flex-1 grid-cols-1 lg:min-h-0 lg:grid-cols-[minmax(400px,500px)_minmax(0,1fr)] lg:gap-4 lg:overflow-hidden lg:px-5 lg:pb-5 xl:grid-cols-[200px_minmax(400px,480px)_minmax(460px,1fr)]">
+        <aside className="relative z-10 hidden min-h-0 flex-col gap-10 overflow-y-auto border border-neutral-200/90 bg-white/95 p-5 shadow-[0_1px_0_rgba(15,23,42,0.035),0_18px_46px_rgba(15,23,42,0.05)] xl:mt-5 xl:flex xl:rounded-[16px]">
           <div>
             <h3 className="mb-10 text-[10px] font-medium uppercase tracking-[0.2em] text-neutral-400">
               계약 작성
@@ -764,56 +773,57 @@ export function ContractBuilder() {
           </div>
         </aside>
 
-        <section className="contract-builder-surface custom-scrollbar relative z-0 min-h-0 w-full bg-transparent lg:overflow-y-auto">
-          <div className="mx-auto max-w-[520px] p-6 md:p-10 lg:px-1 lg:py-6">
-            <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
-              {step} / 5 단계
-            </p>
-            <h1 className="font-neo-heavy mb-4 text-[32px] leading-tight tracking-[-0.035em] text-neutral-950">
-              새 전자계약서 작성
-            </h1>
-            <p className="mb-10 text-[13px] leading-relaxed text-neutral-500">
-              핵심 조건을 구조화하고 발송 전 체크리스트를 통과한 뒤 공유 링크를 생성합니다.
-            </p>
+        <section className="contract-builder-surface relative z-0 min-h-0 w-full bg-transparent lg:overflow-hidden">
+          <div className="mx-auto flex h-full max-w-[520px] flex-col p-6 md:p-10 lg:px-1 lg:py-5">
+            <div className="custom-scrollbar min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-2">
+              <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
+                {step} / 5 단계
+              </p>
+              <h1 className="font-neo-heavy mb-3 text-[28px] leading-tight text-neutral-950 lg:text-[30px]">
+                새 전자계약서 작성
+              </h1>
+              <p className="mb-6 text-[13px] leading-relaxed text-neutral-500">
+                핵심 조건을 구조화하고 발송 전 체크리스트를 통과한 뒤 공유 링크를 생성합니다.
+              </p>
 
-            <div className="mb-6 rounded-[18px] border border-neutral-200/90 bg-white/95 p-4 shadow-[0_1px_0_rgba(15,23,42,0.035),0_16px_42px_rgba(15,23,42,0.035)]">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-neutral-950">
-                    광고주 인증 상태
-                  </p>
-                  <p className="mt-1 text-xs leading-5 text-neutral-500">
-                    {canSendContract
-                      ? "계약 공유 링크를 생성하고 인플루언서에게 발송할 수 있습니다."
-                      : "승인 전에는 초안 저장만 가능하고 공유 링크 발송은 차단됩니다."}
-                  </p>
+              <div className="mb-5 rounded-[16px] border border-neutral-200/90 bg-white/95 p-3.5 shadow-[0_1px_0_rgba(15,23,42,0.035),0_14px_34px_rgba(15,23,42,0.035)]">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-neutral-950">
+                      광고주 인증 상태
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-neutral-500">
+                      {canSendContract
+                        ? "계약 공유 링크를 생성하고 인플루언서에게 발송할 수 있습니다."
+                        : "승인 전에는 초안 저장만 가능하고 공유 링크 발송은 차단됩니다."}
+                    </p>
+                  </div>
+                  <span
+                    className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold ${verificationStatusTone(
+                      advertiserVerificationStatus,
+                    )}`}
+                  >
+                    {isVerificationLoading
+                      ? "확인중"
+                      : verificationStatusLabel(advertiserVerificationStatus)}
+                  </span>
                 </div>
-                <span
-                  className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold ${verificationStatusTone(
-                    advertiserVerificationStatus,
-                  )}`}
-                >
-                  {isVerificationLoading
-                    ? "확인중"
-                    : verificationStatusLabel(advertiserVerificationStatus)}
-                </span>
+                {!canSendContract && !isVerificationLoading && (
+                  <button
+                    type="button"
+                    onClick={() => navigate("/advertiser/verification")}
+                    className="mt-3 h-9 w-full rounded-[12px] border border-neutral-200 bg-[#fbfaf7] text-sm font-semibold text-neutral-700 transition hover:border-neutral-400 hover:bg-white"
+                  >
+                    사업자 인증 요청하기
+                  </button>
+                )}
               </div>
-              {!canSendContract && !isVerificationLoading && (
-                <button
-                  type="button"
-                  onClick={() => navigate("/advertiser/verification")}
-                  className="mt-4 h-10 w-full rounded-[12px] border border-neutral-200 bg-[#fbfaf7] text-sm font-semibold text-neutral-700 transition hover:border-neutral-400 hover:bg-white"
-                >
-                  사업자 인증 요청하기
-                </button>
-              )}
-            </div>
 
-            {stepErrors.length > 0 && <ValidationSummary errors={stepErrors} />}
+              {stepErrors.length > 0 && <ValidationSummary errors={stepErrors} />}
 
-            <div className="space-y-6">
+              <div className="space-y-5">
               {step === 1 && (
-                <section className="animate-in fade-in slide-in-from-right-4 space-y-6">
+                <section className="animate-in fade-in slide-in-from-right-4 space-y-4">
                   <div>
                     <Label>계약 유형</Label>
                     <Select
@@ -867,9 +877,9 @@ export function ContractBuilder() {
                     />
                   </div>
 
-                  <div className="border-t border-neutral-100 pt-4">
-                    <h3 className="mb-4 text-sm font-medium">인플루언서 정보</h3>
-                    <div className="space-y-4">
+                  <div className="border-t border-neutral-100 pt-3">
+                    <h3 className="mb-3 text-sm font-medium">인플루언서 정보</h3>
+                    <div className="space-y-3">
                       <div>
                         <Label>성명 또는 채널명</Label>
                         <Input
@@ -1296,21 +1306,105 @@ export function ContractBuilder() {
                   </ReviewBlock>
                 </section>
               )}
+              </div>
+
+              {result && (
+                <div className="mt-7 rounded-[20px] border border-neutral-200/90 bg-white p-6 text-center shadow-[0_1px_0_rgba(15,23,42,0.035),0_20px_58px_rgba(15,23,42,0.06)]">
+                  <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-neutral-50">
+                    <CheckCircle2 strokeWidth={1.5} className="h-6 w-6 text-neutral-900" />
+                  </div>
+                  <h3 className="mb-3 text-xl font-heading tracking-tight text-neutral-900">
+                    {result.mode === "draft"
+                      ? "초안 저장 완료"
+                      : shareResultState === "syncing"
+                        ? "공유 링크 저장 중"
+                        : shareResultState === "error"
+                          ? "공유 링크 확인 필요"
+                          : "공유 링크 생성 완료"}
+                  </h3>
+                  <p className="mx-auto mb-6 max-w-[320px] text-[13px] leading-6 text-neutral-500">
+                    {result.mode === "draft"
+                      ? "계약이 초안 상태로 저장되었습니다. 아직 상대방에게 공유되지 않았습니다."
+                      : shareResultState === "syncing"
+                        ? "변경 사항 저장이 끝나면 링크를 복사해 전달할 수 있습니다."
+                        : shareResultState === "error"
+                          ? "변경 사항이 완전히 저장되지 않았습니다. 저장 상태를 확인한 뒤 공유하세요."
+                          : "이 링크를 전달하면 상대방이 계약서를 검토할 수 있습니다."}
+                  </p>
+                  {result.mode === "share" && (
+                    <div
+                      className={`mb-5 border px-4 py-3 text-left text-[12px] leading-5 ${
+                        shareResultState === "error"
+                          ? "border-amber-200 bg-amber-50 text-amber-800"
+                          : "border-neutral-200 bg-neutral-50 text-neutral-800"
+                      }`}
+                    >
+                      {shareResultState === "error"
+                        ? "저장에 실패했습니다. 네트워크 상태를 확인한 뒤 다시 공유 링크를 생성하세요."
+                        : shareResultState === "syncing"
+                          ? "계약 내용을 저장하고 있습니다."
+                          : "저장이 완료되었습니다. 링크를 전달해도 됩니다."}
+                    </div>
+                  )}
+                  {result.mode === "share" &&
+                    result.link &&
+                    shareResultState === "ready" &&
+                    !result.stale && (
+                      <div className="flex w-full items-center gap-3">
+                        <Input
+                          readOnly
+                          value={result.link}
+                          className="h-11 flex-1 rounded-[12px] border-neutral-200 bg-[#fbfaf7] px-4 font-mono text-[12px] text-neutral-600 focus-visible:ring-0"
+                        />
+                        <Button
+                          type="button"
+                          onClick={copyToClipboard}
+                          disabled={result.stale || isSyncing || Boolean(syncError)}
+                          className="h-11 shrink-0 rounded-[12px] bg-neutral-950 px-5 text-[13px] font-bold text-white hover:bg-neutral-800 disabled:bg-neutral-100 disabled:text-neutral-400"
+                        >
+                          <Copy className="mr-2 h-3.5 w-3.5" />
+                          {copied ? "복사됨" : "복사"}
+                        </Button>
+                      </div>
+                    )}
+                  {savedContractId && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="mt-4 h-10 rounded-[12px] border-neutral-200 bg-white px-5 text-[13px] font-semibold text-neutral-700"
+                      onClick={() => navigate(`/advertiser/contract/${savedContractId}`)}
+                    >
+                      관리 화면 열기
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
 
-            <div className="mt-12 flex gap-3 border-t border-neutral-200 pt-7">
-              {step > 1 && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-12 rounded-[12px] border-neutral-200 bg-white px-7 text-[14px] font-bold text-neutral-700 shadow-[0_1px_0_rgba(15,23,42,0.02)] hover:bg-neutral-100 hover:text-neutral-900"
-                  onClick={goBack}
-                >
-                  이전
-                </Button>
-              )}
+            <div className="sticky bottom-0 z-20 -mx-6 mt-4 flex shrink-0 flex-col gap-3 border-t border-neutral-200 bg-[#f7f6f3]/95 px-6 pb-4 pt-4 shadow-[0_-18px_36px_rgba(15,23,42,0.08)] backdrop-blur md:-mx-10 md:px-10 lg:static lg:mx-0 lg:bg-[#f7f6f3] lg:px-0 lg:pb-0 lg:shadow-none lg:backdrop-blur-none">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 w-full rounded-[12px] border-neutral-200 bg-white text-[13px] font-bold text-neutral-700 shadow-[0_1px_0_rgba(15,23,42,0.02)] hover:bg-neutral-100 lg:hidden"
+                onClick={() => setMobilePreviewOpen(true)}
+              >
+                <FileText className="mr-2 h-4 w-4" strokeWidth={1.8} />
+                초안 확인하기
+              </Button>
 
-              {step < 5 ? (
+              <div className="flex gap-3">
+                {step > 1 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-12 rounded-[12px] border-neutral-200 bg-white px-7 text-[14px] font-bold text-neutral-700 shadow-[0_1px_0_rgba(15,23,42,0.02)] hover:bg-neutral-100 hover:text-neutral-900"
+                    onClick={goBack}
+                  >
+                    이전
+                  </Button>
+                )}
+
+                {step < 5 ? (
                 <Button
                   type="button"
                   className="h-12 flex-1 rounded-[12px] bg-neutral-950 text-[14px] font-bold text-white shadow-[0_14px_34px_rgba(15,23,42,0.18)] hover:-translate-y-0.5 hover:bg-neutral-800"
@@ -1331,97 +1425,60 @@ export function ContractBuilder() {
                   <Button
                     type="button"
                     className="h-12 flex-1 rounded-[12px] bg-neutral-950 text-[14px] font-bold text-white shadow-[0_14px_34px_rgba(15,23,42,0.18)] hover:-translate-y-0.5 hover:bg-neutral-800 disabled:translate-y-0 disabled:bg-neutral-200 disabled:text-neutral-500 disabled:shadow-none"
-                    onClick={() => saveContract("share")}
-                    disabled={
-                      currentStepHasBlockingError ||
-                      isVerificationLoading ||
-                      !canSendContract
-                    }
-                  >
-                    공유 링크 생성
-                  </Button>
-                </>
-              )}
-            </div>
-
-            {result && (
-              <div className="mt-10 rounded-[22px] border border-neutral-200/90 bg-white p-7 text-center shadow-[0_1px_0_rgba(15,23,42,0.035),0_20px_58px_rgba(15,23,42,0.06)]">
-                <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-neutral-50">
-                  <CheckCircle2 strokeWidth={1.5} className="h-6 w-6 text-neutral-900" />
-                </div>
-                <h3 className="mb-3 text-xl font-heading tracking-tight text-neutral-900">
-                  {result.mode === "draft"
-                    ? "초안 저장 완료"
-                    : shareResultState === "syncing"
-                      ? "공유 링크 저장 중"
-                      : shareResultState === "error"
-                        ? "공유 링크 확인 필요"
-                        : "공유 링크 생성 완료"}
-                </h3>
-                <p className="mx-auto mb-6 max-w-[320px] text-[13px] leading-6 text-neutral-500">
-                  {result.mode === "draft"
-                    ? "계약이 초안 상태로 저장되었습니다. 아직 상대방에게 공유되지 않았습니다."
-                    : shareResultState === "syncing"
-                      ? "변경 사항 저장이 끝나면 링크를 복사해 전달할 수 있습니다."
-                      : shareResultState === "error"
-                        ? "변경 사항이 완전히 저장되지 않았습니다. 저장 상태를 확인한 뒤 공유하세요."
-                        : "이 링크를 전달하면 상대방이 계약서를 검토할 수 있습니다."}
-                </p>
-                {result.mode === "share" && (
-                  <div
-                    className={`mb-5 border px-4 py-3 text-left text-[12px] leading-5 ${
-                      shareResultState === "error"
-                        ? "border-amber-200 bg-amber-50 text-amber-800"
-                        : "border-neutral-200 bg-neutral-50 text-neutral-800"
-                    }`}
-                  >
-                    {shareResultState === "error"
-                      ? "저장에 실패했습니다. 네트워크 상태를 확인한 뒤 다시 공유 링크를 생성하세요."
-                      : shareResultState === "syncing"
-                        ? "계약 내용을 저장하고 있습니다."
-                        : "저장이 완료되었습니다. 링크를 전달해도 됩니다."}
-                  </div>
-                )}
-                {result.mode === "share" &&
-                  result.link &&
-                  shareResultState === "ready" &&
-                  !result.stale && (
-                    <div className="flex w-full items-center gap-3">
-                      <Input
-                        readOnly
-                        value={result.link}
-                        className="h-11 flex-1 rounded-[12px] border-neutral-200 bg-[#fbfaf7] px-4 font-mono text-[12px] text-neutral-600 focus-visible:ring-0"
-                      />
-                      <Button
-                        type="button"
-                        onClick={copyToClipboard}
-                        disabled={result.stale || isSyncing || Boolean(syncError)}
-                        className="h-11 shrink-0 rounded-[12px] bg-neutral-950 px-5 text-[13px] font-bold text-white hover:bg-neutral-800 disabled:bg-neutral-100 disabled:text-neutral-400"
-                      >
-                        <Copy className="mr-2 h-3.5 w-3.5" />
-                        {copied ? "복사됨" : "복사"}
-                      </Button>
-                    </div>
-                  )}
-                {savedContractId && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="mt-4 h-10 rounded-[12px] border-neutral-200 bg-white px-5 text-[13px] font-semibold text-neutral-700"
-                    onClick={() => navigate(`/advertiser/contract/${savedContractId}`)}
-                  >
-                    관리 화면 열기
-                  </Button>
+                      onClick={() => saveContract("share")}
+                      disabled={
+                        currentStepHasBlockingError ||
+                        isVerificationLoading ||
+                        !canSendContract
+                      }
+                    >
+                      공유 링크 생성
+                    </Button>
+                  </>
                 )}
               </div>
-            )}
+            </div>
           </div>
         </section>
 
-        <section className="hidden min-h-0 flex-col overflow-hidden bg-transparent py-6 lg:flex">
+        <section className="hidden min-h-0 flex-col overflow-hidden bg-transparent py-5 lg:flex">
           <BuilderReviewPanel draft={draft} clauses={clauses} />
         </section>
       </main>
+
+      <Dialog open={mobilePreviewOpen} onOpenChange={setMobilePreviewOpen}>
+        <DialogContent
+          showCloseButton={false}
+          className="!left-0 !top-0 !block !h-dvh !max-h-none !w-screen !max-w-none !translate-x-0 !translate-y-0 overflow-hidden rounded-none border-0 bg-[#f7f6f3] p-0 ring-0 sm:!max-w-none lg:hidden"
+        >
+          <div className="flex h-dvh min-h-0 flex-col bg-[#f7f6f3]">
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-neutral-200 bg-white px-4 py-3 shadow-[0_1px_0_rgba(15,23,42,0.035)]">
+              <DialogHeader className="sr-only">
+                <DialogTitle>계약서 초안 미리보기</DialogTitle>
+                <DialogDescription>
+                  작성 중인 입력값이 반영된 모바일 계약서 초안 미리보기입니다.
+                </DialogDescription>
+              </DialogHeader>
+              <button
+                type="button"
+                className="inline-flex h-10 min-w-0 items-center gap-2 rounded-[12px] border border-neutral-200 bg-white px-3 text-[13px] font-bold text-neutral-800 shadow-[0_1px_0_rgba(15,23,42,0.02)] transition hover:bg-neutral-100"
+                onClick={() => setMobilePreviewOpen(false)}
+                aria-label="입력 화면으로 돌아가기"
+              >
+                <ArrowLeft className="h-4 w-4 shrink-0" strokeWidth={1.8} />
+                <span className="truncate">입력으로 돌아가기</span>
+              </button>
+              <span className="shrink-0 rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1 text-[11px] font-bold text-neutral-500">
+                실시간 초안
+              </span>
+            </div>
+
+            <div className="min-h-0 flex-1 p-3">
+              <BuilderReviewPanel draft={draft} clauses={clauses} />
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -1437,23 +1494,33 @@ const BuilderReviewPanel: React.FC<{
   const previewDate = new Date().toISOString().split("T")[0];
 
   return (
-    <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto pr-1">
-      <div className="mx-auto w-full max-w-[760px] space-y-4">
-        <div className="sticky top-0 z-10 rounded-[18px] border border-neutral-900 bg-neutral-950 p-4 text-white shadow-[0_18px_48px_rgba(15,23,42,0.18)]">
+    <div className="min-h-0 flex-1 overflow-hidden rounded-[18px] border border-neutral-200 bg-[#e8e5de] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.45),0_18px_42px_rgba(15,23,42,0.05)]">
+      <div className="custom-scrollbar h-full overflow-y-auto pr-1">
+        <div className="sticky top-0 z-10 mx-auto w-full max-w-[760px] rounded-[12px] border border-neutral-200 bg-white/95 p-3 text-neutral-950 shadow-[0_10px_28px_rgba(15,23,42,0.08)] backdrop-blur">
           <div className="flex items-center justify-between gap-4">
-            <div className="min-w-0">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
-                실시간 계약서
-              </p>
-              <h2 className="mt-1 truncate text-[20px] font-semibold tracking-[-0.02em]">
-                {draft.title || `${draft.type} 계약서`}
-              </h2>
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] border border-neutral-200 bg-neutral-50 text-neutral-700">
+                <FileText className="h-4 w-4" strokeWidth={1.8} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
+                  문서 미리보기
+                </p>
+                <h2 className="mt-0.5 truncate text-[18px] font-semibold">
+                  {draft.title || `${draft.type} 계약서`}
+                </h2>
+              </div>
             </div>
-            <span className="shrink-0 rounded-full bg-white/10 px-3 py-1 text-[12px] font-semibold text-neutral-200">
-              {previewDate}
-            </span>
+            <div className="flex shrink-0 items-center gap-2">
+              <span className="rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1 text-[12px] font-semibold text-neutral-600">
+                A4
+              </span>
+              <span className="rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1 text-[12px] font-semibold text-neutral-600">
+                {previewDate}
+              </span>
+            </div>
           </div>
-          <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
             <ChecklistLine checked={!isBlank(draft.title)} label="계약명" />
             <ChecklistLine checked={!isBlank(draft.influencerName)} label="상대방" />
             <ChecklistLine checked={hasDeliverables} label="플랫폼" />
@@ -1462,12 +1529,12 @@ const BuilderReviewPanel: React.FC<{
           </div>
         </div>
 
-        <article className="min-h-[calc(100dvh-180px)] rounded-[18px] border border-neutral-200 bg-[#fffdf8] px-7 py-8 shadow-[0_1px_0_rgba(15,23,42,0.035),0_18px_46px_rgba(15,23,42,0.08)]">
+        <article className="mx-auto mt-3 min-h-[1080px] w-full max-w-[680px] rounded-[3px] border border-neutral-300 bg-white px-5 py-8 shadow-[0_1px_0_rgba(15,23,42,0.05),0_20px_46px_rgba(15,23,42,0.18)] sm:px-10 sm:py-10">
           <header className="border-b border-neutral-200 pb-7 text-center">
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
               전자계약서 초안
             </p>
-            <h2 className="mt-3 text-[28px] font-semibold leading-tight tracking-[-0.03em] text-neutral-950">
+            <h2 className="mt-3 text-[22px] font-semibold leading-tight text-neutral-950 sm:text-[28px]">
               {draft.title || `${draft.type} 계약서`}
             </h2>
             <p className="mt-3 text-[13px] font-semibold text-neutral-500">
@@ -1494,7 +1561,7 @@ const BuilderReviewPanel: React.FC<{
                 {deliverables.map((row, index) => (
                   <div
                     key={`${row.channel}-${index}`}
-                    className="rounded-[10px] border border-neutral-200 bg-white px-4 py-3"
+                    className="border border-neutral-200 bg-neutral-50/60 px-4 py-3"
                   >
                     <p className="text-[13px] font-semibold text-neutral-950">
                       {row.channel || "매체명 입력 필요"}
@@ -1593,7 +1660,7 @@ const ContractDocumentSection: React.FC<{
   children: React.ReactNode;
 }> = ({ title, children }) => (
   <section className="border-b border-neutral-200 py-6 last:border-0">
-    <h3 className="mb-4 text-[15px] font-semibold tracking-[-0.01em] text-neutral-950">
+    <h3 className="mb-4 text-[15px] font-semibold text-neutral-950">
       {title}
     </h3>
     {children}
@@ -1601,14 +1668,16 @@ const ContractDocumentSection: React.FC<{
 );
 
 const DocumentRows: React.FC<{ rows: Array<[string, string]> }> = ({ rows }) => (
-  <dl className="grid gap-2 sm:grid-cols-2">
+  <dl className="overflow-hidden border border-neutral-300">
     {rows.map(([label, value]) => (
       <div
         key={label}
-        className="min-w-0 rounded-[10px] border border-neutral-200 bg-white px-4 py-3"
+        className="grid min-w-0 grid-cols-[108px_1fr] border-b border-neutral-200 last:border-b-0 sm:grid-cols-[132px_1fr]"
       >
-        <dt className="text-[11px] font-semibold text-neutral-400">{label}</dt>
-        <dd className="mt-1 truncate text-[13px] font-semibold text-neutral-900">
+        <dt className="bg-neutral-50 px-3 py-2.5 text-[11px] font-semibold text-neutral-500">
+          {label}
+        </dt>
+        <dd className="min-w-0 break-words border-l border-neutral-200 px-3 py-2.5 text-[13px] font-semibold text-neutral-900">
           {value}
         </dd>
       </div>
@@ -1623,13 +1692,13 @@ const DocumentParagraph: React.FC<{ children: React.ReactNode }> = ({ children }
 );
 
 const DocumentEmpty: React.FC<{ text: string }> = ({ text }) => (
-  <div className="rounded-[10px] border border-dashed border-neutral-200 bg-white/70 px-4 py-5 text-center text-[13px] leading-6 text-neutral-500">
+  <div className="border border-dashed border-neutral-300 bg-neutral-50/70 px-4 py-5 text-center text-[13px] leading-6 text-neutral-500">
     {text}
   </div>
 );
 
 const SignatureBox: React.FC<{ label: string; value: string }> = ({ label, value }) => (
-  <div className="rounded-[10px] border border-neutral-200 bg-white px-4 py-5">
+  <div className="border border-neutral-300 bg-white px-4 py-5">
     <p className="text-[11px] font-semibold text-neutral-400">{label}</p>
     <p className="mt-5 border-t border-neutral-200 pt-3 text-center text-[13px] font-semibold text-neutral-800">
       {value}
@@ -1651,10 +1720,10 @@ const ChecklistLine: React.FC<{ checked: boolean; label: string }> = ({
   checked,
   label,
 }) => (
-  <div className="flex items-center gap-2 rounded-lg bg-white/[0.06] px-2.5 py-2">
+  <div className="flex items-center gap-2 rounded-lg bg-neutral-100 px-2.5 py-2">
     <span
       className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full ${
-        checked ? "bg-white text-neutral-950" : "bg-white/10 text-neutral-500"
+        checked ? "bg-neutral-950 text-white" : "bg-white text-neutral-400"
       }`}
     >
       <Check className="h-2.5 w-2.5" strokeWidth={3} />
@@ -1662,8 +1731,8 @@ const ChecklistLine: React.FC<{ checked: boolean; label: string }> = ({
     <span
       className={
         checked
-          ? "truncate text-[12px] font-semibold text-white"
-          : "truncate text-[12px] text-neutral-400"
+          ? "truncate text-[12px] font-semibold text-neutral-950"
+          : "truncate text-[12px] text-neutral-500"
       }
     >
       {label}

@@ -87,6 +87,26 @@ const LegalDocumentPage = lazy(() =>
     default: module.LegalDocumentPage,
   })),
 );
+const AdvertiserInfluencerDiscoveryPage = lazy(() =>
+  import("./pages/marketplace/MarketplacePages").then((module) => ({
+    default: module.AdvertiserInfluencerDiscoveryPage,
+  })),
+);
+const InfluencerBrandDiscoveryPage = lazy(() =>
+  import("./pages/marketplace/MarketplacePages").then((module) => ({
+    default: module.InfluencerBrandDiscoveryPage,
+  })),
+);
+const PublicInfluencerProfilePage = lazy(() =>
+  import("./pages/marketplace/MarketplacePages").then((module) => ({
+    default: module.PublicInfluencerProfilePage,
+  })),
+);
+const PublicBrandProfilePage = lazy(() =>
+  import("./pages/marketplace/MarketplacePages").then((module) => ({
+    default: module.PublicBrandProfilePage,
+  })),
+);
 
 function AppLoading({ label = "계약 데이터를 불러오는 중입니다" }: { label?: string }) {
   return (
@@ -295,6 +315,14 @@ function AppRoutes() {
             }
           />
           <Route
+            path="/advertiser/discover"
+            element={
+              <AdvertiserAuthGate redirectUnauthenticated>
+                <AdvertiserInfluencerDiscoveryPage />
+              </AdvertiserAuthGate>
+            }
+          />
+          <Route
             path="/advertiser/verification"
             element={
               <AdvertiserAuthGate redirectUnauthenticated>
@@ -319,6 +347,12 @@ function AppRoutes() {
             path="/influencer/dashboard"
             element={<InfluencerDashboard />}
           />
+          <Route
+            path="/influencer/brands"
+            element={<InfluencerBrandDiscoveryPage />}
+          />
+          <Route path="/brands/:brandHandle" element={<PublicBrandProfilePage />} />
+          <Route path="/:profileHandle" element={<PublicInfluencerProfilePage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </Suspense>

@@ -134,30 +134,30 @@ function getStartRoleTone(role: IntroRole) {
 
 const startServiceCards: StartServiceCard[] = [
   {
-    title: "상호 컨택",
-    description: "제안과 조건을 한곳에",
-    icon: MessageSquareText,
+    title: "공개 프로필",
+    description: "yeollock.me/핸들로 신뢰 확인",
+    icon: UserRound,
     iconClass: "text-neutral-800",
     iconBgClass: "bg-neutral-100",
   },
   {
-    title: "계약내용 입력",
-    description: "조건만 넣으면 초안 정리",
-    icon: FileText,
+    title: "상호 탐색",
+    description: "인플루언서와 브랜드를 둘러봄",
+    icon: Search,
     iconClass: "text-blue-700",
     iconBgClass: "bg-blue-50",
   },
   {
-    title: "전자계약",
-    description: "검토 링크와 서명 진행",
-    icon: FileSignature,
+    title: "제안 초안",
+    description: "브랜드 소개와 광고 형태로 시작",
+    icon: MessageSquareText,
     iconClass: "text-emerald-700",
     iconBgClass: "bg-emerald-50",
   },
   {
-    title: "대시보드 관리",
-    description: "상태와 이력을 한눈에",
-    icon: ClipboardCheck,
+    title: "전자계약",
+    description: "검토 링크와 서명 기록 관리",
+    icon: FileSignature,
     iconClass: "text-amber-700",
     iconBgClass: "bg-amber-50",
   },
@@ -1097,6 +1097,12 @@ function InfluencerIntroScreen({ config }: { config: IntroConfig }) {
                 →
               </span>
             </Link>
+            <Link
+              to="/influencer/brands"
+              className="inline-flex h-11 items-center justify-center rounded-[14px] border border-neutral-200 bg-white px-5 text-[13px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
+            >
+              입점 브랜드 둘러보기
+            </Link>
           </div>
 
           <p className="mt-6 max-w-[320px] text-[14px] font-extrabold leading-6 tracking-[-0.02em] text-neutral-600">
@@ -1568,6 +1574,12 @@ function AdvertiserIntroScreen({ config }: { config: IntroConfig }) {
               >
                 →
               </span>
+            </Link>
+            <Link
+              to="/advertiser/discover"
+              className="inline-flex h-11 items-center justify-center rounded-[14px] border border-neutral-200 bg-white px-5 text-[13px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
+            >
+              인플루언서 둘러보기
             </Link>
           </div>
 

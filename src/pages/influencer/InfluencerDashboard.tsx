@@ -6,6 +6,7 @@ import {
   BookOpen,
   CheckCircle2,
   Clock3,
+  ExternalLink,
   FileCheck2,
   FileSignature,
   FileText,
@@ -14,8 +15,11 @@ import {
   LogOut,
   Music2,
   RefreshCw,
+  Save,
   Search,
+  Settings2,
   ShieldCheck,
+  Store,
   UserCheck,
   Youtube,
 } from "lucide-react";
@@ -34,6 +38,18 @@ import {
   formatPublicHandleValue,
   removeInternalTestLabel,
 } from "../../domain/display";
+import {
+  proposalTypeLabels,
+  type CampaignProposalType,
+} from "../../domain/marketplace";
+import {
+  buildDefaultPublicProfileSettings,
+  buildPublicProfileSettingsFromForm,
+  getPublicProfileHandleError,
+  normalizePublicProfileHandle,
+  type InfluencerPublicProfileResponse,
+  type InfluencerPublicProfileSettings,
+} from "../../domain/publicInfluencerProfile";
 import { translateApiErrorMessage } from "../../domain/userMessages";
 import type { InfluencerPlatform, VerificationStatus } from "../../domain/verification";
 
@@ -154,6 +170,10 @@ const DETAIL_STAGE_FILTERS: DetailStageFilter[] = [
   "completed",
 ];
 
+const PROFILE_PROPOSAL_TYPES = Object.entries(proposalTypeLabels) as Array<
+  [CampaignProposalType, string]
+>;
+
 const PLATFORM_META: Record<
   InfluencerPlatform,
   {
@@ -235,6 +255,11 @@ export function InfluencerDashboard() {
   const [platformFilter, setPlatformFilter] = useState<PlatformFilter>("all");
   const [detailStageFilter, setDetailStageFilter] =
     useState<DetailStageFilter>("all");
+  const [profileSettingsOpen, setProfileSettingsOpen] = useState(false);
+  const [publicProfileOverride, setPublicProfileOverride] =
+    useState<InfluencerPublicProfileSettings | null>(null);
+  const readyDashboardUserId =
+    state.status === "ready" ? state.dashboard.user.id : undefined;
 
   const loadDashboard = useCallback(async () => {
     setState((current) =>
@@ -298,6 +323,32 @@ export function InfluencerDashboard() {
     }, 0);
     return () => window.clearTimeout(timer);
   }, [loadDashboard]);
+
+  useEffect(() => {
+    if (state.status !== "ready") return;
+
+    let active = true;
+
+    void apiFetch("/api/influencer/public-profile", {
+      headers: { Accept: "application/json" },
+      credentials: "include",
+    })
+      .then(async (response) => {
+        if (!response.ok) return undefined;
+        return (await response.json()) as InfluencerPublicProfileResponse;
+      })
+      .then((data) => {
+        if (!active || !data?.profile) return;
+        setPublicProfileOverride(data.profile);
+      })
+      .catch(() => {
+        if (active) setPublicProfileOverride(null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [readyDashboardUserId, state.status]);
 
   if (state.status === "loading") {
     return <DashboardShell><LoadingView /></DashboardShell>;
@@ -371,6 +422,10 @@ export function InfluencerDashboard() {
       .includes(normalizedQuery);
   });
   const verification = VERIFICATION_META[dashboard.verification.status];
+  const publicProfile =
+    publicProfileOverride?.ownerId === dashboard.user.id
+      ? publicProfileOverride
+      : buildDefaultPublicProfileSettings(dashboard);
   const activeContractForVerification = dashboard.contracts.find(
     (contract) => contract.stage !== "signed",
   );
@@ -425,6 +480,14 @@ export function InfluencerDashboard() {
           <div className="flex items-center gap-2">
             <button
               type="button"
+              onClick={() => navigate("/influencer/brands")}
+              className="inline-flex h-10 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-600 transition hover:border-neutral-400 hover:text-neutral-950"
+            >
+              <Store className="h-4 w-4" />
+              <span className="hidden sm:inline">브랜드 찾기</span>
+            </button>
+            <button
+              type="button"
               onClick={loadDashboard}
               className="flex h-10 w-10 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-600 transition hover:border-neutral-400 hover:text-neutral-950"
               aria-label="새로고침"
@@ -477,6 +540,11 @@ export function InfluencerDashboard() {
                   "/influencer/verification",
               )
             }
+            onOpenPublicProfile={() => {
+              if (publicProfile.published) navigate(`/${publicProfile.handle}`);
+            }}
+            publicProfile={publicProfile}
+            onEditPublicProfile={() => setProfileSettingsOpen(true)}
           />
 
           <div className="min-w-0 p-4">
@@ -545,6 +613,40 @@ export function InfluencerDashboard() {
           </div>
         </section>
       </main>
+
+      {profileSettingsOpen ? (
+        <PublicProfileSettingsDialog
+          dashboard={dashboard}
+          initialProfile={publicProfile}
+          onClose={() => setProfileSettingsOpen(false)}
+          onSave={async (profile) => {
+            const response = await apiFetch("/api/influencer/public-profile", {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify(profile),
+            });
+
+            if (!response.ok) {
+              const data = (await response.json().catch(() => ({}))) as {
+                error?: string;
+              };
+              throw new Error(
+                data.error ?? "공개 프로필을 저장하지 못했습니다.",
+              );
+            }
+
+            const data = (await response.json()) as InfluencerPublicProfileResponse;
+            if (!data.profile) {
+              throw new Error("저장된 공개 프로필을 확인할 수 없습니다.");
+            }
+
+            setPublicProfileOverride(data.profile);
+            setProfileSettingsOpen(false);
+            return data.profile;
+          }}
+        />
+      ) : null}
     </DashboardShell>
   );
 }
@@ -593,11 +695,17 @@ function InfluencerAccountBanner({
   verification,
   showVerificationAction,
   onVerify,
+  onOpenPublicProfile,
+  publicProfile,
+  onEditPublicProfile,
 }: {
   dashboard: InfluencerDashboardResponse;
   verification: (typeof VERIFICATION_META)[VerificationStatus];
   showVerificationAction: boolean;
   onVerify: () => void;
+  publicProfile: InfluencerPublicProfileSettings;
+  onOpenPublicProfile?: () => void;
+  onEditPublicProfile: () => void;
 }) {
   const verificationApproved = dashboard.verification.status === "approved";
   const activityPlatforms = dashboard.user.activity_platforms.slice(0, 3);
@@ -663,25 +771,378 @@ function InfluencerAccountBanner({
                     <span className="truncate">{PLATFORM_META[platform].label}</span>
                   </span>
                 ))}
+              <span
+                className={`inline-flex max-w-[260px] items-center gap-1.5 truncate rounded-full px-2 py-0.5 font-semibold ${
+                  publicProfile.published
+                    ? "bg-emerald-50 text-emerald-800"
+                    : "bg-amber-50 text-amber-800"
+                }`}
+              >
+                <Globe2 className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">
+                  {publicProfile.published
+                    ? `yeollock.me/${publicProfile.handle}`
+                    : `주소 설정 전 · ${publicProfile.handle}`}
+                </span>
+              </span>
             </div>
           </div>
         </div>
-        {showVerificationAction ? (
+        <div className="flex shrink-0 items-center gap-2">
           <button
             type="button"
-            onClick={onVerify}
-            className={`inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-3 text-[13px] font-semibold transition ${
-              verificationApproved
-                ? "border border-neutral-200 bg-white text-neutral-800 hover:border-neutral-300 hover:bg-neutral-50"
-                : "bg-neutral-950 text-white hover:bg-neutral-800"
-            }`}
+            onClick={onEditPublicProfile}
+            className="hidden h-9 items-center gap-2 whitespace-nowrap rounded-lg border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 sm:inline-flex"
           >
-            <BadgeCheck className="h-3.5 w-3.5" />
-            {verificationApproved ? "플랫폼 인증 관리" : "플랫폼 계정 인증"}
+            <Settings2 className="h-3.5 w-3.5" />
+            프로필 설정
           </button>
-        ) : null}
+          {publicProfile.published && onOpenPublicProfile ? (
+            <button
+              type="button"
+              onClick={onOpenPublicProfile}
+              className="hidden h-9 items-center gap-2 whitespace-nowrap rounded-lg border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 sm:inline-flex"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              공개 프로필
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={onEditPublicProfile}
+            className="inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 sm:hidden"
+            aria-label="공개 프로필 설정"
+            title="공개 프로필 설정"
+          >
+            <Settings2 className="h-3.5 w-3.5" />
+          </button>
+          {showVerificationAction ? (
+            <button
+              type="button"
+              onClick={onVerify}
+              className={`inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-3 text-[13px] font-semibold transition ${
+                verificationApproved
+                  ? "border border-neutral-200 bg-white text-neutral-800 hover:border-neutral-300 hover:bg-neutral-50"
+                  : "bg-neutral-950 text-white hover:bg-neutral-800"
+              }`}
+            >
+              <BadgeCheck className="h-3.5 w-3.5" />
+              {verificationApproved ? "플랫폼 인증 관리" : "플랫폼 계정 인증"}
+            </button>
+          ) : null}
+        </div>
       </div>
     </section>
+  );
+}
+
+function PublicProfileSettingsDialog({
+  dashboard,
+  initialProfile,
+  onClose,
+  onSave,
+}: {
+  dashboard: InfluencerDashboardResponse;
+  initialProfile: InfluencerPublicProfileSettings;
+  onClose: () => void;
+  onSave: (
+    profile: InfluencerPublicProfileSettings,
+  ) => Promise<InfluencerPublicProfileSettings>;
+}) {
+  const [saveError, setSaveError] = useState<string | undefined>();
+  const [isSaving, setIsSaving] = useState(false);
+  const [form, setForm] = useState({
+    handle: initialProfile.handle,
+    displayName: initialProfile.displayName,
+    headline: initialProfile.headline,
+    bio: initialProfile.bio,
+    location: initialProfile.location,
+    startingPriceLabel: initialProfile.startingPriceLabel,
+    responseTimeLabel: initialProfile.responseTimeLabel,
+    brandFit: initialProfile.brandFit.join(", "),
+    collaborationTypes: initialProfile.collaborationTypes,
+  });
+  const normalizedHandle = normalizePublicProfileHandle(form.handle);
+  const handleError = getPublicProfileHandleError(normalizedHandle);
+  const requiredFilled =
+    form.displayName.trim().length > 0 &&
+    form.headline.trim().length > 0 &&
+    form.bio.trim().length > 0;
+  const canSave = !handleError && requiredFilled;
+  const approvedPlatforms = dashboard.verification.approved_platforms;
+
+  const toggleProposalType = (type: CampaignProposalType) => {
+    setForm((current) => {
+      const exists = current.collaborationTypes.includes(type);
+      return {
+        ...current,
+        collaborationTypes: exists
+          ? current.collaborationTypes.filter((item) => item !== type)
+          : [...current.collaborationTypes, type],
+      };
+    });
+  };
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!canSave || isSaving) return;
+
+    setIsSaving(true);
+    setSaveError(undefined);
+
+    try {
+      await onSave(buildPublicProfileSettingsFromForm(dashboard, form));
+    } catch (error) {
+      setSaveError(
+        error instanceof Error
+          ? error.message
+          : "공개 프로필을 저장하지 못했습니다.",
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end bg-neutral-950/45 px-0 sm:items-center sm:justify-center sm:px-4">
+      <section className="max-h-[94vh] w-full overflow-y-auto rounded-t-[12px] border border-neutral-200 bg-white p-4 shadow-[0_24px_70px_rgba(15,23,42,0.22)] sm:max-w-[640px] sm:rounded-[12px] sm:p-5">
+        <div className="mb-4 flex items-start justify-between gap-3 border-b border-neutral-200 pb-4">
+          <div className="min-w-0">
+            <p className="text-[12px] font-semibold text-neutral-500">
+              연락미 계정 프로필
+            </p>
+            <h2 className="mt-1 text-[20px] font-semibold text-neutral-950">
+              공개 프로필 설정
+            </h2>
+            <p className="mt-1 text-[13px] font-medium leading-5 text-neutral-500">
+              광고주가 보는 주소와 소개 문구를 직접 정하고, 인증된 플랫폼 계정은 자동으로 연결합니다.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-9 shrink-0 items-center rounded-md border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-600 transition hover:border-neutral-300 hover:bg-neutral-50"
+          >
+            닫기
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="grid gap-4">
+          <ProfileSettingsField
+            label="공개 주소"
+            hint={`저장 후 yeollock.me/${normalizedHandle || "내주소"} 로 공개됩니다.`}
+            error={handleError}
+          >
+            <div className="grid grid-cols-[auto_minmax(0,1fr)] overflow-hidden rounded-md border border-neutral-200 bg-[#f8faf7] focus-within:border-neutral-950">
+              <span className="flex h-11 items-center border-r border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-500">
+                yeollock.me/
+              </span>
+              <input
+                required
+                value={form.handle}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, handle: event.target.value }))
+                }
+                placeholder="my_handle"
+                className="h-11 min-w-0 bg-transparent px-3 text-[13px] font-semibold text-neutral-950 outline-none placeholder:text-neutral-400"
+              />
+            </div>
+          </ProfileSettingsField>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <ProfileSettingsField label="활동명">
+              <input
+                required
+                value={form.displayName}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    displayName: event.target.value,
+                  }))
+                }
+                className="marketplace-input"
+              />
+            </ProfileSettingsField>
+            <ProfileSettingsField label="활동 지역">
+              <input
+                value={form.location}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, location: event.target.value }))
+                }
+                placeholder="예: 서울 · 원격 협업"
+                className="marketplace-input"
+              />
+            </ProfileSettingsField>
+          </div>
+
+          <ProfileSettingsField label="한 줄 소개">
+            <input
+              required
+              value={form.headline}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, headline: event.target.value }))
+              }
+              placeholder="광고주가 첫 화면에서 볼 소개 문구"
+              className="marketplace-input"
+            />
+          </ProfileSettingsField>
+
+          <ProfileSettingsField label="프로필 소개">
+            <textarea
+              required
+              rows={4}
+              value={form.bio}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, bio: event.target.value }))
+              }
+              placeholder="주요 콘텐츠, 잘 맞는 브랜드, 협업 방식 등을 적어 주세요."
+              className="marketplace-input resize-none"
+            />
+          </ProfileSettingsField>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <ProfileSettingsField label="협업 단가">
+              <input
+                value={form.startingPriceLabel}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    startingPriceLabel: event.target.value,
+                  }))
+                }
+                placeholder="예: 150만원부터"
+                className="marketplace-input"
+              />
+            </ProfileSettingsField>
+            <ProfileSettingsField label="응답 시간">
+              <input
+                value={form.responseTimeLabel}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    responseTimeLabel: event.target.value,
+                  }))
+                }
+                placeholder="예: 보통 1영업일 내 응답"
+                className="marketplace-input"
+              />
+            </ProfileSettingsField>
+          </div>
+
+          <ProfileSettingsField
+            label="브랜드 적합 키워드"
+            hint="쉼표로 구분해 최대 6개까지 공개 프로필에 표시합니다."
+          >
+            <input
+              value={form.brandFit}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, brandFit: event.target.value }))
+              }
+              placeholder="예: 뷰티 신제품, 릴스 리뷰, 사용감 중심"
+              className="marketplace-input"
+            />
+          </ProfileSettingsField>
+
+          <ProfileSettingsField label="받고 싶은 광고 형태">
+            <div className="flex flex-wrap gap-2">
+              {PROFILE_PROPOSAL_TYPES.map(([type, label]) => {
+                const active = form.collaborationTypes.includes(type);
+                return (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => toggleProposalType(type)}
+                    className={`inline-flex h-9 items-center rounded-md border px-3 text-[12px] font-semibold transition ${
+                      active
+                        ? "border-neutral-950 bg-neutral-950 text-white"
+                        : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300 hover:text-neutral-950"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </ProfileSettingsField>
+
+          <section className="rounded-[8px] border border-neutral-200 bg-[#f8faf7] p-3">
+            <p className="text-[12px] font-semibold text-neutral-500">
+              연동된 플랫폼 계정
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {approvedPlatforms.length > 0 ? (
+                approvedPlatforms.map((platform) => (
+                  <span
+                    key={`${platform.platform}:${platform.handle}`}
+                    className="inline-flex h-8 max-w-full items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-2.5 text-[12px] font-semibold text-neutral-700"
+                  >
+                    {PLATFORM_META[platform.platform].icon}
+                    <span className="truncate">
+                      {formatPublicHandleValue(
+                        platform.handle,
+                        PLATFORM_META[platform.platform].label,
+                      )}
+                    </span>
+                  </span>
+                ))
+              ) : (
+                <span className="text-[12px] font-medium text-neutral-500">
+                  플랫폼 인증을 완료하면 공개 프로필 채널에 자동으로 표시됩니다.
+                </span>
+              )}
+            </div>
+          </section>
+
+          {saveError ? (
+            <p className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] font-semibold text-rose-700">
+              {saveError}
+            </p>
+          ) : null}
+
+          <div className="flex flex-col-reverse gap-2 border-t border-neutral-200 pt-4 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex h-11 items-center justify-center rounded-md border border-neutral-200 bg-white px-4 text-[14px] font-semibold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
+            >
+              취소
+            </button>
+            <button
+              type="submit"
+              disabled={!canSave || isSaving}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-neutral-950 px-4 text-[14px] font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-300"
+            >
+              <Save className="h-4 w-4" />
+              {isSaving ? "저장 중" : "저장 후 공개"}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  );
+}
+
+function ProfileSettingsField({
+  label,
+  hint,
+  error,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  error?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="grid gap-2">
+      <span className="text-[13px] font-semibold text-neutral-800">{label}</span>
+      {children}
+      {error ? (
+        <span className="text-[12px] font-semibold text-rose-600">{error}</span>
+      ) : hint ? (
+        <span className="text-[12px] font-medium text-neutral-500">{hint}</span>
+      ) : null}
+    </div>
   );
 }
 
