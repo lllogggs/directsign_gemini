@@ -420,11 +420,14 @@ describe("yeollock.me security regressions", () => {
     const inbox = read("src/pages/marketplace/MarketplaceInboxPage.tsx");
 
     assert.match(inbox, /role === "advertiser" \? "sent" : "inbox"/);
-    assert.match(inbox, /title:\s*"보낸 제안 진행 상황"/);
+    assert.match(inbox, /summaryTitle:\s*\(openCount: number\) =>/);
+    assert.match(inbox, /`보낸 제안 \$\{openCount\.toLocaleString\(\)\}건이 진행 중입니다`/);
+    assert.match(inbox, /primaryBucketLabel: "보낸 제안"/);
     assert.match(
       inbox,
-      /role === "advertiser"[\s\S]+id: "sent", label: "보낸 제안"/,
+      /role === "advertiser"[\s\S]+id: "sent", label: copy\.primaryBucketLabel/,
     );
+    assert.match(inbox, /function MessageThreadRow/);
     assert.doesNotMatch(inbox, /function NotificationPanel/);
   });
 

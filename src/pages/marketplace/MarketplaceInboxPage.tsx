@@ -12,14 +12,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
+import type { CampaignProposalType } from "../../domain/marketplace";
 import {
   emptyMarketplaceMessageSummary,
   formatMarketplaceMessageDate,
-  proposalStatusLabels,
-  proposalStatusTone,
   type MarketplaceInboxRole,
   type MarketplaceMessageBucket,
   type MarketplaceMessagesResponse,
+  type MarketplaceProposalStatus,
 } from "../../domain/marketplaceInbox";
 
 type InboxState =
@@ -27,12 +27,38 @@ type InboxState =
   | { status: "ready"; data: MarketplaceMessagesResponse }
   | { status: "error"; message: string };
 
+type MessageThread = MarketplaceMessagesResponse["threads"][number];
+
+const proposalTypeLabels: Record<CampaignProposalType, string> = {
+  sponsored_post: "유료 광고",
+  product_seeding: "제품 협찬",
+  ppl: "PPL",
+  group_buy: "공동구매",
+  visit_review: "방문 리뷰",
+};
+
+const proposalStatusLabels: Record<MarketplaceProposalStatus, string> = {
+  submitted: "제안 전송",
+  reviewed: "진행 중",
+  converted_to_contract: "계약 전환",
+  closed: "종료",
+};
+
+const proposalStatusTone: Record<MarketplaceProposalStatus, string> = {
+  submitted: "border-amber-200 bg-amber-50 text-amber-800",
+  reviewed: "border-sky-200 bg-sky-50 text-sky-700",
+  converted_to_contract: "border-blue-200 bg-blue-50 text-blue-700",
+  closed: "border-neutral-200 bg-neutral-100 text-neutral-600",
+};
+
 const roleCopy = {
   advertiser: {
-    eyebrow: "광고주 제안함",
-    title: "보낸 제안 진행 상황",
-    description:
-      "인플루언서에게 보낸 제안이 검토 중인지, 계약으로 이어졌는지 먼저 확인합니다.",
+    eyebrow: "광고주 메시지함",
+    summaryTitle: (openCount: number) =>
+      openCount > 0
+        ? `보낸 제안 ${openCount.toLocaleString()}건이 진행 중입니다`
+        : "보낸 제안 진행 상황",
+    summaryHint: "인플루언서에게 보낸 제안의 확인, 검토, 계약 전환을 관리합니다.",
     backHref: "/advertiser/dashboard",
     backLabel: "계약 대시보드",
     discoverHref: "/advertiser/discover",
@@ -41,12 +67,20 @@ const roleCopy = {
     primaryLabel: "계약 작성",
     emptyInbox: "아직 받은 역제안이 없습니다",
     emptySent: "아직 보낸 컨택 제안이 없습니다",
+    emptyInboxBody: "공개 프로필이나 탐색 화면에서 들어온 역제안이 여기에 쌓입니다.",
+    emptySentBody: "인플루언서를 찾아 제안을 보내면 진행 상태가 여기에 정리됩니다.",
+    primaryBucketLabel: "보낸 제안",
+    secondaryBucketLabel: "받은 제안",
+    searchPlaceholder: "인플루언서, 제안 종류, 제안 내용 검색",
+    dateHeader: "보낸 날",
   },
   influencer: {
     eyebrow: "인플루언서 메시지함",
-    title: "브랜드 제안과 내 역제안을 계약 전까지 관리합니다",
-    description:
-      "광고주가 보낸 컨택과 내가 브랜드에 보낸 제안을 분리해 보고, 계약 검토 흐름으로 이어지게 합니다.",
+    summaryTitle: (openCount: number) =>
+      openCount > 0
+        ? `받은 제안 ${openCount.toLocaleString()}건을 확인해야 합니다`
+        : "받은 제안과 역제안 관리",
+    summaryHint: "브랜드 제안과 내가 보낸 역제안을 계약 검토 흐름으로 정리합니다.",
     backHref: "/influencer/dashboard",
     backLabel: "계약 대시보드",
     discoverHref: "/influencer/brands",
@@ -55,13 +89,19 @@ const roleCopy = {
     primaryLabel: "계약 검토",
     emptyInbox: "아직 받은 브랜드 제안이 없습니다",
     emptySent: "아직 보낸 역제안이 없습니다",
+    emptyInboxBody: "브랜드가 보낸 컨택 제안이 도착하면 이 화면에서 확인할 수 있습니다.",
+    emptySentBody: "브랜드에 보낸 역제안의 진행 상태가 여기에 정리됩니다.",
+    primaryBucketLabel: "받은 제안",
+    secondaryBucketLabel: "보낸 제안",
+    searchPlaceholder: "브랜드, 제안 종류, 제안 내용 검색",
+    dateHeader: "도착일",
   },
 } satisfies Record<
   MarketplaceInboxRole,
   {
     eyebrow: string;
-    title: string;
-    description: string;
+    summaryTitle: (openCount: number) => string;
+    summaryHint: string;
     backHref: string;
     backLabel: string;
     discoverHref: string;
@@ -70,6 +110,12 @@ const roleCopy = {
     primaryLabel: string;
     emptyInbox: string;
     emptySent: string;
+    emptyInboxBody: string;
+    emptySentBody: string;
+    primaryBucketLabel: string;
+    secondaryBucketLabel: string;
+    searchPlaceholder: string;
+    dateHeader: string;
   }
 >;
 
@@ -153,6 +199,7 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
   const focusMetrics =
     role === "advertiser"
       ? {
+          headingCount: sentOpenCount,
           primaryLabel: "보낸 제안",
           primaryValue: data.summary.sentCount,
           firstLabel: "진행 중",
@@ -161,6 +208,7 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
           secondValue: sentConvertedCount,
         }
       : {
+          headingCount: inboxOpenCount,
           primaryLabel: "받은 제안",
           primaryValue: data.summary.inboxCount,
           firstLabel: "확인 필요",
@@ -175,12 +223,12 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
   }> =
     role === "advertiser"
       ? [
-          { id: "sent", label: "보낸 제안", count: data.summary.sentCount },
-          { id: "inbox", label: "받은 제안", count: data.summary.inboxCount },
+          { id: "sent", label: copy.primaryBucketLabel, count: data.summary.sentCount },
+          { id: "inbox", label: copy.secondaryBucketLabel, count: data.summary.inboxCount },
         ]
       : [
-          { id: "inbox", label: "받은 제안", count: data.summary.inboxCount },
-          { id: "sent", label: "보낸 제안", count: data.summary.sentCount },
+          { id: "inbox", label: copy.primaryBucketLabel, count: data.summary.inboxCount },
+          { id: "sent", label: copy.secondaryBucketLabel, count: data.summary.sentCount },
         ];
   const visibleThreads = useMemo(
     () =>
@@ -194,7 +242,7 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
           thread.counterpartName,
           thread.senderIntro,
           thread.proposalSummary,
-          thread.proposalTypeLabel,
+          getProposalTypeLabel(thread),
           proposalStatusLabels[thread.status],
         ]
           .join(" ")
@@ -205,20 +253,22 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
   );
 
   return (
-    <main className="min-h-screen bg-neutral-50 font-sans text-neutral-950">
+    <main className="min-h-screen bg-[#f6f6f5] font-sans text-neutral-950">
       <header className="sticky top-0 z-30 border-b border-neutral-200 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-[1320px] items-center justify-between px-4 sm:px-6 lg:px-8">
-          <Link to="/" className="flex min-w-0 items-center gap-3">
-            <span className="flex h-9 w-9 items-center justify-center rounded-md bg-neutral-950 text-white">
+        <div className="mx-auto flex h-14 max-w-[1180px] items-center justify-between px-4 sm:px-6">
+          <Link to="/" className="flex min-w-0 items-center gap-2.5">
+            <span className="flex h-8 w-8 items-center justify-center rounded-[7px] bg-neutral-950 text-white">
               <ShieldCheck className="h-4 w-4" />
             </span>
-            <span className="truncate text-[18px] font-semibold">{PRODUCT_NAME}</span>
+            <span className="truncate text-[17px] font-extrabold tracking-[-0.01em]">
+              {PRODUCT_NAME}
+            </span>
           </Link>
 
           <div className="flex items-center gap-2">
             <Link
               to={copy.backHref}
-              className="inline-flex h-10 items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
+              className="inline-flex h-9 items-center gap-2 rounded-[7px] border border-neutral-200 bg-white px-3 text-[12px] font-bold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
             >
               <ArrowLeft className="h-4 w-4" />
               <span className="hidden sm:inline">{copy.backLabel}</span>
@@ -226,7 +276,7 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
             <button
               type="button"
               onClick={() => void loadMessages()}
-              className="flex h-10 w-10 items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-600 transition hover:border-neutral-300 hover:text-neutral-950"
+              className="flex h-9 w-9 items-center justify-center rounded-[7px] border border-neutral-200 bg-white text-neutral-600 transition hover:border-neutral-300 hover:text-neutral-950"
               aria-label="새로고침"
               title="새로고침"
             >
@@ -236,29 +286,30 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
         </div>
       </header>
 
-      <section className="border-b border-neutral-200 bg-white">
-        <div className="mx-auto max-w-[1260px] px-4 py-5 sm:px-6 lg:px-8">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div className="mx-auto max-w-[1180px] px-4 py-4 sm:px-6">
+        <section className="overflow-hidden rounded-[12px] border border-neutral-200 bg-white">
+          <div className="grid gap-4 px-4 py-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
             <div className="min-w-0">
-              <p className="text-[12px] font-semibold text-neutral-500">{copy.eyebrow}</p>
-              <h1 className="mt-1 text-[28px] font-semibold leading-tight text-neutral-950 sm:text-[34px]">
-                {copy.title}
+              <p className="text-[12px] font-bold text-neutral-500">{copy.eyebrow}</p>
+              <h1 className="mt-1 text-[22px] font-extrabold leading-tight tracking-[-0.01em] text-neutral-950 sm:text-[26px]">
+                {copy.summaryTitle(focusMetrics.headingCount)}
               </h1>
-              <p className="mt-2 max-w-2xl text-[14px] font-medium leading-6 text-neutral-600">
-                {copy.description}
+              <p className="mt-1 text-[13px] font-semibold leading-5 text-neutral-500">
+                {copy.summaryHint}
               </p>
             </div>
+
             <div className="flex flex-wrap gap-2">
               <Link
                 to={copy.discoverHref}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
+                className="inline-flex h-9 items-center justify-center gap-2 rounded-[7px] border border-neutral-200 bg-white px-3 text-[12px] font-bold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
               >
                 <Search className="h-4 w-4" />
                 {copy.discoverLabel}
               </Link>
               <Link
                 to={copy.primaryHref}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-neutral-950 px-3 text-[13px] font-semibold text-white transition hover:bg-neutral-800"
+                className="inline-flex h-9 items-center justify-center gap-2 rounded-[7px] bg-neutral-950 px-3 text-[12px] font-bold text-white transition hover:bg-neutral-800"
               >
                 <FileText className="h-4 w-4" />
                 {copy.primaryLabel}
@@ -266,36 +317,25 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
             </div>
           </div>
 
-          <div className="mt-5 rounded-[10px] border border-neutral-200 bg-[#fbfbfa] p-4">
-            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_320px] sm:items-center">
-              <div>
-                <p className="text-[12px] font-semibold text-neutral-500">
-                  {focusMetrics.primaryLabel}
-                </p>
-                <p className="mt-1 text-[34px] font-semibold leading-none tabular-nums text-neutral-950">
-                  {focusMetrics.primaryValue.toLocaleString()}
-                </p>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <FocusMetric
-                  label={focusMetrics.firstLabel}
-                  value={focusMetrics.firstValue}
-                />
-                <FocusMetric
-                  label={focusMetrics.secondLabel}
-                  value={focusMetrics.secondValue}
-                />
-              </div>
-            </div>
+          <div className="grid border-t border-neutral-200 bg-neutral-50/80 sm:grid-cols-3">
+            <SummaryMetric
+              label={focusMetrics.primaryLabel}
+              value={focusMetrics.primaryValue}
+              emphasis={role === "advertiser"}
+            />
+            <SummaryMetric
+              label={focusMetrics.firstLabel}
+              value={focusMetrics.firstValue}
+              emphasis={role !== "advertiser"}
+            />
+            <SummaryMetric label={focusMetrics.secondLabel} value={focusMetrics.secondValue} />
           </div>
-        </div>
-      </section>
+        </section>
 
-      <div className="mx-auto max-w-[1260px] px-4 py-4 sm:px-6 lg:px-8">
-        <section className="min-w-0 overflow-hidden rounded-[10px] border border-[#d9e0d9] bg-white">
-          <div className="border-b border-[#d9e0d9] bg-[#f8faf7] p-3">
+        <section className="mt-3 min-w-0 overflow-hidden rounded-[12px] border border-neutral-200 bg-white">
+          <div className="border-b border-neutral-200 bg-white p-3">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-              <div className="grid grid-cols-2 gap-1 rounded-full bg-white p-1 ring-1 ring-[#d9e0d9] lg:w-[300px]">
+              <div className="grid grid-cols-2 gap-1 rounded-[9px] bg-neutral-100 p-1 lg:w-[280px]">
                 {bucketOptions.map((option) => (
                   <div key={option.id}>
                     <BucketButton
@@ -308,13 +348,13 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
                 ))}
               </div>
               <div className="relative min-w-0 flex-1">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8b938d]" />
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-400" />
                 <input
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   aria-label="제안 검색"
-                  placeholder="상대방, 소개, 제안 내용 검색"
-                  className="h-10 w-full rounded-[6px] border border-[#d9e0d9] bg-white pl-8 pr-3 text-[12px] font-semibold text-[#303630] outline-none transition-colors placeholder:text-[#8b938d] hover:border-[#cbd5cc] focus:border-[#171a17]"
+                  placeholder={copy.searchPlaceholder}
+                  className="h-10 w-full rounded-[8px] border border-neutral-200 bg-white pl-8 pr-3 text-[13px] font-semibold text-neutral-900 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950"
                 />
               </div>
             </div>
@@ -327,18 +367,25 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
           ) : visibleThreads.length === 0 ? (
             <EmptyState
               title={bucket === "inbox" ? copy.emptyInbox : copy.emptySent}
-              body={
-                bucket === "inbox"
-                  ? "탐색 화면과 공개 프로필에서 들어온 제안이 여기에 쌓입니다."
-                  : "상대에게 보낸 컨택 제안의 상태를 여기에서 다시 확인할 수 있습니다."
-              }
+              body={bucket === "inbox" ? copy.emptyInboxBody : copy.emptySentBody}
             />
           ) : (
-            <div className="max-h-[calc(100vh-300px)] min-h-[360px] divide-y divide-[#edf1ed] overflow-y-auto">
-              {visibleThreads.map((thread) => (
-                <MessageThreadCard key={thread.id} role={role} thread={thread} />
-              ))}
-            </div>
+            <>
+              <div className="hidden grid-cols-[112px_minmax(150px,200px)_minmax(0,1fr)_118px_118px] border-b border-neutral-200 bg-neutral-50 px-4 py-2.5 text-[11px] font-extrabold text-neutral-500 md:grid">
+                <span>상태</span>
+                <span>상대</span>
+                <span>제안</span>
+                <span className="text-right">{copy.dateHeader}</span>
+                <span className="sr-only">액션</span>
+              </div>
+              <div className="max-h-[calc(100vh-292px)] min-h-[340px] divide-y divide-neutral-100 overflow-y-auto">
+                {visibleThreads.map((thread) => (
+                  <div key={thread.id}>
+                    <MessageThreadRow role={role} thread={thread} />
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </section>
       </div>
@@ -346,12 +393,27 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
   );
 }
 
-function FocusMetric({ label, value }: { label: string; value: number }) {
+function SummaryMetric({
+  label,
+  value,
+  emphasis = false,
+}: {
+  label: string;
+  value: number;
+  emphasis?: boolean;
+}) {
   return (
-    <div className="rounded-[8px] border border-neutral-200 bg-white px-3 py-2">
-      <p className="text-[11px] font-semibold text-neutral-500">{label}</p>
-      <p className="mt-1 text-[20px] font-semibold tabular-nums text-neutral-950">
-        {value.toLocaleString()}
+    <div
+      className={`flex items-center justify-between gap-3 border-t border-neutral-200 px-4 py-3 first:border-t-0 sm:block sm:border-l sm:border-t-0 sm:first:border-l-0 ${
+        emphasis ? "bg-white" : ""
+      }`}
+    >
+      <p className="text-[12px] font-bold text-neutral-500">{label}</p>
+      <p className="mt-0 flex items-baseline gap-0.5 text-neutral-950 sm:mt-1">
+        <span className="text-[22px] font-extrabold leading-none tabular-nums">
+          {value.toLocaleString()}
+        </span>
+        <span className="text-[13px] font-bold text-neutral-500">건</span>
       </p>
     </div>
   );
@@ -372,24 +434,26 @@ function BucketButton({
     <button
       type="button"
       onClick={onClick}
-      className={`h-9 w-full rounded-full px-2 text-[12px] font-extrabold transition ${
+      className={`inline-flex h-8 items-center justify-center gap-1 rounded-[7px] px-2 text-[12px] font-extrabold transition ${
         active
-          ? "bg-neutral-950 text-white"
-          : "text-neutral-500 hover:bg-neutral-50 hover:text-neutral-950"
+          ? "bg-white text-neutral-950 shadow-[0_1px_2px_rgba(15,23,42,0.08)]"
+          : "text-neutral-500 hover:bg-white/70 hover:text-neutral-950"
       }`}
     >
-      {label} <span className={active ? "text-white/70" : "text-neutral-400"}>{count}</span>
+      <span>{label}</span>
+      <span className={active ? "text-neutral-500" : "text-neutral-400"}>
+        {count.toLocaleString()}
+      </span>
     </button>
   );
 }
 
-function MessageThreadCard({
+function MessageThreadRow({
   role,
   thread,
 }: {
-  key?: string;
   role: MarketplaceInboxRole;
-  thread: MarketplaceMessagesResponse["threads"][number];
+  thread: MessageThread;
 }) {
   const actionHref =
     role === "advertiser"
@@ -404,70 +468,105 @@ function MessageThreadCard({
         : "상대 보기"
       : thread.bucket === "inbox"
         ? "브랜드 보기"
-        : "제안 대상 보기";
-  const relationshipLabel = thread.bucket === "sent" ? "받는 사람" : "보낸 사람";
-  const relationshipName = thread.bucket === "sent" ? thread.targetName : thread.senderName;
+        : "대상 보기";
+  const relationshipLabel = getRelationshipLabel(role, thread);
+  const relationshipName =
+    thread.bucket === "sent" ? thread.targetName : thread.senderName;
+  const proposalTypeLabel = getProposalTypeLabel(thread);
 
   return (
-    <article className="grid gap-4 bg-white px-4 py-4 transition hover:bg-[#f8faf7] lg:grid-cols-[minmax(0,1fr)_220px] lg:items-center">
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <span
-            className={`inline-flex h-7 items-center rounded-md border px-2.5 text-[12px] font-semibold ${proposalStatusTone[thread.status]}`}
-          >
-            {proposalStatusLabels[thread.status]}
+    <article className="grid gap-3 bg-white px-4 py-3.5 transition hover:bg-neutral-50 md:grid-cols-[112px_minmax(150px,200px)_minmax(0,1fr)_118px_118px] md:items-center">
+      <div className="flex min-w-0 items-center gap-2 md:block">
+        <span
+          className={`inline-flex h-6 shrink-0 items-center rounded-[6px] border px-2 text-[11px] font-extrabold ${proposalStatusTone[thread.status]}`}
+        >
+          {proposalStatusLabels[thread.status]}
+        </span>
+        {thread.unread ? (
+          <span className="inline-flex h-6 items-center rounded-[6px] bg-neutral-950 px-2 text-[11px] font-extrabold text-white md:mt-1">
+            새 메시지
           </span>
-          <span className="inline-flex h-7 items-center rounded-md border border-neutral-200 bg-white px-2.5 text-[12px] font-semibold text-neutral-600">
-            {thread.proposalTypeLabel}
-          </span>
-          {thread.unread ? (
-            <span className="inline-flex h-7 items-center rounded-md bg-neutral-950 px-2.5 text-[12px] font-semibold text-white">
-              읽지 않음
-            </span>
-          ) : null}
-        </div>
+        ) : null}
+      </div>
 
-        <h2 className="mt-3 truncate text-[18px] font-semibold text-neutral-950">
+      <div className="min-w-0">
+        <p className="truncate text-[14px] font-extrabold text-neutral-950">
           {thread.counterpartName}
-        </h2>
-        <p className="mt-1 text-[13px] font-semibold text-neutral-500">
-          {relationshipLabel} · {relationshipName} · {formatMarketplaceMessageDate(thread.createdAt)}
         </p>
-        <p className="mt-3 line-clamp-2 text-[14px] font-medium leading-6 text-neutral-700">
-          {thread.proposalSummary}
+        <p className="mt-0.5 truncate text-[12px] font-semibold text-neutral-500">
+          {relationshipLabel} · {relationshipName}
         </p>
       </div>
 
-      <aside className="grid gap-2 lg:justify-items-end">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex h-6 items-center rounded-[6px] border border-neutral-200 bg-white px-2 text-[11px] font-extrabold text-neutral-700">
+            {proposalTypeLabel}
+          </span>
+          <p className="min-w-0 flex-1 truncate text-[13px] font-semibold text-neutral-800">
+            {thread.proposalSummary}
+          </p>
+        </div>
+        <p className="mt-1 line-clamp-1 text-[12px] font-medium leading-5 text-neutral-500 md:hidden">
+          {formatMarketplaceMessageDate(thread.createdAt)}
+        </p>
+      </div>
+
+      <p className="hidden text-right text-[12px] font-bold tabular-nums text-neutral-500 md:block">
+        {formatMarketplaceMessageDate(thread.createdAt)}
+      </p>
+
+      <div className="flex md:justify-end">
         {actionHref ? (
           <Link
             to={actionHref}
-            className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-neutral-950 px-3 text-[13px] font-semibold text-white transition hover:bg-neutral-800 lg:w-[150px]"
+            className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-[7px] border border-neutral-200 bg-white px-3 text-[12px] font-extrabold text-neutral-800 transition hover:border-neutral-950 hover:bg-neutral-950 hover:text-white md:w-[104px]"
           >
             {actionLabel}
-            <ArrowRight className="h-4 w-4" />
+            <ArrowRight className="h-3.5 w-3.5" />
           </Link>
         ) : (
-          <span className="inline-flex h-10 w-full items-center justify-center rounded-md border border-neutral-200 text-[13px] font-semibold text-neutral-500 lg:w-[150px]">
-            프로필 연결 대기
+          <span className="inline-flex h-9 w-full items-center justify-center rounded-[7px] border border-neutral-200 text-[12px] font-bold text-neutral-500 md:w-[104px]">
+            연결 대기
           </span>
         )}
-      </aside>
+      </div>
     </article>
   );
 }
 
+function getProposalTypeLabel(thread: MessageThread) {
+  return proposalTypeLabels[thread.proposalType] ?? thread.proposalTypeLabel;
+}
+
+function getRelationshipLabel(role: MarketplaceInboxRole, thread: MessageThread) {
+  if (role === "advertiser") {
+    return thread.bucket === "sent" ? "인플루언서" : "보낸 사람";
+  }
+
+  return thread.bucket === "inbox" ? "브랜드" : "제안 대상";
+}
+
 function LoadingState() {
   return (
-    <section className="flex min-h-[360px] items-center justify-center px-6 py-10 text-center">
-      <div>
-        <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-[8px] bg-neutral-100 text-neutral-500">
-          <MessageSquareText className="h-5 w-5 animate-pulse" />
-        </div>
-        <p className="mt-3 text-[13px] font-semibold text-neutral-600">
-          메시지함을 불러오는 중입니다
-        </p>
+    <section className="min-h-[340px] px-4 py-4">
+      <div className="space-y-2">
+        {Array.from({ length: 5 }).map((_, index) => (
+          <div
+            key={index}
+            className="grid gap-3 rounded-[8px] border border-neutral-100 bg-neutral-50 px-3 py-3 md:grid-cols-[112px_minmax(150px,200px)_minmax(0,1fr)_118px_118px]"
+          >
+            <div className="h-6 rounded bg-neutral-200/70" />
+            <div className="h-6 rounded bg-neutral-200/70" />
+            <div className="h-6 rounded bg-neutral-200/70" />
+            <div className="hidden h-6 rounded bg-neutral-200/70 md:block" />
+            <div className="hidden h-6 rounded bg-neutral-200/70 md:block" />
+          </div>
+        ))}
       </div>
+      <p className="sr-only" role="status">
+        메시지함을 불러오는 중입니다.
+      </p>
     </section>
   );
 }
@@ -480,21 +579,21 @@ function ErrorState({
   onRetry: () => void;
 }) {
   return (
-    <section className="flex min-h-[360px] items-center justify-center px-6 py-10 text-center">
+    <section className="flex min-h-[340px] items-center justify-center px-6 py-10 text-center">
       <div className="max-w-md">
         <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-[8px] bg-rose-50 text-rose-600">
           <MessageSquareText className="h-5 w-5" />
         </div>
-        <h2 className="mt-4 text-[17px] font-semibold text-neutral-950">
+        <h2 className="mt-4 text-[17px] font-extrabold text-neutral-950">
           메시지함을 열 수 없습니다
         </h2>
-        <p className="mt-2 text-[13px] font-medium leading-6 text-neutral-600">
+        <p className="mt-2 text-[13px] font-semibold leading-6 text-neutral-600">
           {message}
         </p>
         <button
           type="button"
           onClick={onRetry}
-          className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-md bg-neutral-950 px-4 text-[13px] font-semibold text-white transition hover:bg-neutral-800"
+          className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-[7px] bg-neutral-950 px-4 text-[13px] font-extrabold text-white transition hover:bg-neutral-800"
         >
           <RefreshCw className="h-4 w-4" />
           다시 시도
@@ -506,13 +605,13 @@ function ErrorState({
 
 function EmptyState({ title, body }: { title: string; body: string }) {
   return (
-    <section className="flex min-h-[360px] items-center justify-center px-6 py-10 text-center">
+    <section className="flex min-h-[340px] items-center justify-center px-6 py-10 text-center">
       <div className="max-w-md">
         <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-[8px] bg-neutral-100 text-neutral-500">
           <Send className="h-5 w-5" />
         </div>
-        <h2 className="mt-4 text-[17px] font-semibold text-neutral-950">{title}</h2>
-        <p className="mt-2 text-[13px] font-medium leading-6 text-neutral-600">
+        <h2 className="mt-4 text-[17px] font-extrabold text-neutral-950">{title}</h2>
+        <p className="mt-2 text-[13px] font-semibold leading-6 text-neutral-600">
           {body}
         </p>
       </div>
