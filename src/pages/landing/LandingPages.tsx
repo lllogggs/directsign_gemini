@@ -15,7 +15,7 @@ import {
   UserRound,
   type LucideIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { PRODUCT_NAME } from "../../domain/brand";
 
@@ -401,6 +401,418 @@ const introConfig = {
     proofPoints: ["모바일 계약 검토", "플랫폼 계정 인증", "완료 계약 보관"],
   },
 } satisfies Record<IntroRole, IntroConfig>;
+
+type RolePreviewProfile = {
+  kind: "profile";
+  header: string;
+  profileName: string;
+  handle: string;
+  headline: string;
+  tags: string[];
+  stats: Array<{ label: string; value: string }>;
+  channels: Array<{ label: string; value: string; status: string }>;
+  actionLabel: string;
+  footerNote: string;
+};
+
+type RolePreviewDiscover = {
+  kind: "discover";
+  header: string;
+  searchPlaceholder: string;
+  filters: Array<{ label: string; active?: boolean }>;
+  cards: Array<{
+    name: string;
+    meta: string;
+    badge: string;
+    description: string;
+    stats: Array<{ label: string; value: string }>;
+    action: string;
+  }>;
+};
+
+type RolePreviewProposal = {
+  kind: "proposal";
+  header: string;
+  targetLabel: string;
+  targetName: string;
+  fields: Array<{ label: string; value: string }>;
+  chips: string[];
+  message: string;
+  timeline: string[];
+  actionLabel: string;
+};
+
+type RolePreviewContract = {
+  kind: "contract";
+  header: string;
+  count: string;
+  countLabel: string;
+  rows: Array<{
+    name: string;
+    title: string;
+    status: string;
+    statusClass: string;
+    due: string;
+  }>;
+  nextAction: string;
+};
+
+type RolePreview = RolePreviewProfile | RolePreviewDiscover | RolePreviewProposal | RolePreviewContract;
+
+type RoleIntroSlide = {
+  label: string;
+  eyebrow: string;
+  title: string[];
+  description: string;
+  helper: string;
+  primaryLabel: string;
+  primaryHref: string;
+  secondaryLabel: string;
+  secondaryHref: string;
+  icon: LucideIcon;
+  accentClass: string;
+  iconClass: string;
+  cardClass: string;
+  preview: RolePreview;
+};
+
+const ROLE_PREVIEW_AUTO_DELAY_MS = 5000;
+const ROLE_PREVIEW_MANUAL_RESUME_DELAY_MS = 9000;
+
+const roleIntroSlides = {
+  advertiser: [
+    {
+      label: "공개 프로필",
+      eyebrow: "공개 프로필 확인",
+      title: ["신뢰할 수 있는", "인플루언서 프로필"],
+      description:
+        "광고주는 yeollock.me/핸들에서 인증 채널, 최근 협업, 가능 광고 형태를 확인하고 바로 컨택을 시작합니다.",
+      helper: "광고주가 연락 전에 확인해야 할 신뢰 정보",
+      primaryLabel: "인플루언서 찾기",
+      primaryHref: "/advertiser/discover",
+      secondaryLabel: "메시지함 보기",
+      secondaryHref: "/advertiser/messages",
+      icon: UserRound,
+      accentClass: "bg-neutral-950",
+      iconClass: "text-neutral-950",
+      cardClass: "border-neutral-300 bg-white",
+      preview: {
+        kind: "profile",
+        header: "인플루언서 공개 프로필",
+        profileName: "소라핏",
+        handle: "yeollock.me/sora_fit",
+        headline: "홈트, 건강식품, 러닝 챌린지 숏폼에 강한 웰니스 크리에이터",
+        tags: ["Instagram", "TikTok", "운동/웰니스"],
+        stats: [
+          { label: "팔로워", value: "12.8만" },
+          { label: "평균 반응", value: "4.7%" },
+          { label: "응답", value: "2시간" },
+        ],
+        channels: [
+          { label: "Instagram", value: "@sora_fit", status: "인증됨" },
+          { label: "TikTok", value: "@sora.move", status: "인증됨" },
+        ],
+        actionLabel: "컨택 제안하기",
+        footerNote: "브랜드 소개와 희망 광고 형태를 남기면 메시지함에 제안이 저장됩니다.",
+      },
+    },
+    {
+      label: "상호 탐색",
+      eyebrow: "광고주 탐색 화면",
+      title: ["조건에 맞는", "인플루언서 찾기"],
+      description:
+        "분야, 채널, 협업 형태로 인플루언서를 둘러보고 브랜드와 잘 맞는 프로필에서 바로 제안합니다.",
+      helper: "검색, 필터, 프로필 비교로 컨택 후보 정리",
+      primaryLabel: "둘러보기 열기",
+      primaryHref: "/advertiser/discover",
+      secondaryLabel: "광고주 가입",
+      secondaryHref: "/signup/advertiser",
+      icon: Search,
+      accentClass: "bg-blue-600",
+      iconClass: "text-blue-700",
+      cardClass: "border-blue-200 bg-blue-50/55",
+      preview: {
+        kind: "discover",
+        header: "인플루언서 둘러보기",
+        searchPlaceholder: "카테고리, 플랫폼, 핸들 검색",
+        filters: [
+          { label: "웰니스", active: true },
+          { label: "릴스" },
+          { label: "공동구매" },
+        ],
+        cards: [
+          {
+            name: "소라핏",
+            meta: "Instagram · TikTok",
+            badge: "웰니스 핏 참고",
+            description: "건강식품과 운동 루틴 숏폼 전환율이 높은 크리에이터",
+            stats: [
+              { label: "팔로워", value: "12.8만" },
+              { label: "협업", value: "18건" },
+            ],
+            action: "프로필 보기",
+          },
+          {
+            name: "오늘의 주방",
+            meta: "YouTube · Blog",
+            badge: "리뷰형 콘텐츠",
+            description: "주방가전 사용기를 상세 리뷰와 쇼츠로 함께 제작",
+            stats: [
+              { label: "구독자", value: "8.4만" },
+              { label: "평점", value: "4.9" },
+            ],
+            action: "컨택 제안",
+          },
+        ],
+      },
+    },
+    {
+      label: "제안 초안",
+      eyebrow: "컨택과 메시지함",
+      title: ["브랜드 소개와", "광고 형태 제안"],
+      description:
+        "가벼운 브랜드 소개, 희망 광고 형태, 예산 범위로 첫 메시지를 보내고 제안 흐름을 메시지함에서 이어갑니다.",
+      helper: "제안 저장 후 계약 전 대화와 알림으로 연결",
+      primaryLabel: "제안 보내기",
+      primaryHref: "/advertiser/discover",
+      secondaryLabel: "메시지함 보기",
+      secondaryHref: "/advertiser/messages",
+      icon: MessageSquareText,
+      accentClass: "bg-emerald-600",
+      iconClass: "text-emerald-700",
+      cardClass: "border-emerald-200 bg-emerald-50/60",
+      preview: {
+        kind: "proposal",
+        header: "컨택 제안 초안",
+        targetLabel: "받는 사람",
+        targetName: "소라핏 · 웰니스 크리에이터",
+        fields: [
+          { label: "브랜드", value: "런데이랩" },
+          { label: "광고 형태", value: "릴스 1건 + 스토리 2건" },
+          { label: "예산", value: "250만-320만원" },
+          { label: "희망 일정", value: "6월 둘째 주" },
+        ],
+        chips: ["제품 협찬", "유료 광고", "숏폼"],
+        message:
+          "러닝 입문자를 위한 여름 캠페인을 준비 중입니다. 실제 운동 루틴에 자연스럽게 녹인 릴스 협업을 제안드리고 싶습니다.",
+        timeline: ["제안 저장", "메시지함 알림", "조건 합의", "계약서 작성"],
+        actionLabel: "제안 보내기",
+      },
+    },
+    {
+      label: "전자계약",
+      eyebrow: "제안 이후 계약 관리",
+      title: ["합의된 제안을", "전자계약으로 관리"],
+      description:
+        "합의된 조건은 계약서로 전환하고 검토 링크, 수정 요청, 최종 서명 증빙을 계약별로 남깁니다.",
+      helper: "제안에서 계약으로 이어지는 운영 기록",
+      primaryLabel: "계약 만들기",
+      primaryHref: "/advertiser/builder",
+      secondaryLabel: "대시보드 보기",
+      secondaryHref: "/advertiser/dashboard",
+      icon: FileSignature,
+      accentClass: "bg-amber-500",
+      iconClass: "text-amber-700",
+      cardClass: "border-amber-200 bg-amber-50/70",
+      preview: {
+        kind: "contract",
+        header: "광고주 계약 대시보드",
+        count: "4",
+        countLabel: "진행",
+        rows: [
+          {
+            name: "소라핏",
+            title: "러닝 챌린지 릴스 캠페인",
+            status: "검토 링크 발송",
+            statusClass: "bg-blue-50 text-blue-700",
+            due: "오늘 18:00",
+          },
+          {
+            name: "오늘의 주방",
+            title: "주방가전 리뷰 콘텐츠",
+            status: "수정 요청",
+            statusClass: "bg-amber-50 text-amber-800",
+            due: "D+1",
+          },
+          {
+            name: "민서홈",
+            title: "홈카페 공동구매",
+            status: "서명 완료",
+            statusClass: "bg-emerald-50 text-emerald-700",
+            due: "완료",
+          },
+        ],
+        nextAction: "수정 요청 답변 후 최종 서명 요청",
+      },
+    },
+  ],
+  influencer: [
+    {
+      label: "공개 프로필",
+      eyebrow: "내 공개 프로필",
+      title: ["브랜드가 바로 보는", "내 공개 프로필"],
+      description:
+        "원하는 공개 주소, 소개 문구, 인증 채널을 묶어 브랜드가 확인하고 컨택할 수 있는 프로필을 운영합니다.",
+      helper: "입점 브랜드와 광고주가 보는 첫 신뢰 화면",
+      primaryLabel: "프로필 설정",
+      primaryHref: "/influencer/dashboard",
+      secondaryLabel: "브랜드 찾기",
+      secondaryHref: "/influencer/brands",
+      icon: UserRound,
+      accentClass: "bg-neutral-950",
+      iconClass: "text-neutral-950",
+      cardClass: "border-neutral-300 bg-white",
+      preview: {
+        kind: "profile",
+        header: "내 공개 프로필",
+        profileName: "민서홈",
+        handle: "yeollock.me/minseo_home",
+        headline: "살림, 홈카페, 소형가전 리뷰를 생활 장면 중심으로 소개합니다.",
+        tags: ["Instagram", "Blog", "리빙/홈카페"],
+        stats: [
+          { label: "팔로워", value: "9.6만" },
+          { label: "최근 협업", value: "14건" },
+          { label: "응답", value: "당일" },
+        ],
+        channels: [
+          { label: "Instagram", value: "@minseo.home", status: "인증됨" },
+          { label: "Blog", value: "minseo-home", status: "인증됨" },
+        ],
+        actionLabel: "브랜드 컨택 받기",
+        footerNote: "프로필 소개와 가능 광고 형태를 저장하면 브랜드가 같은 주소로 확인합니다.",
+      },
+    },
+    {
+      label: "상호 탐색",
+      eyebrow: "브랜드 탐색 화면",
+      title: ["공개 브랜드를", "직접 둘러보기"],
+      description:
+        "협업 가능한 브랜드와 광고 형태를 확인하고 내 채널과 맞는 곳에 먼저 역제안할 수 있습니다.",
+      helper: "카테고리와 제안 조건으로 브랜드 비교",
+      primaryLabel: "브랜드 둘러보기",
+      primaryHref: "/influencer/brands",
+      secondaryLabel: "인플루언서 가입",
+      secondaryHref: "/signup/influencer",
+      icon: Search,
+      accentClass: "bg-blue-600",
+      iconClass: "text-blue-700",
+      cardClass: "border-blue-200 bg-blue-50/55",
+      preview: {
+        kind: "discover",
+        header: "공개 브랜드 둘러보기",
+        searchPlaceholder: "브랜드, 카테고리, 광고 형태 검색",
+        filters: [
+          { label: "리빙", active: true },
+          { label: "제품 협찬" },
+          { label: "공동구매" },
+        ],
+        cards: [
+          {
+            name: "브레드룸",
+            meta: "홈카페 · 식품",
+            badge: "릴스 협업 모집",
+            description: "신제품 시식과 홈카페 레시피형 콘텐츠 제안을 받고 있습니다.",
+            stats: [
+              { label: "예산", value: "150만+" },
+              { label: "응답", value: "1일" },
+            ],
+            action: "역제안",
+          },
+          {
+            name: "모노트립",
+            meta: "여행 · 숙박",
+            badge: "방문 콘텐츠",
+            description: "주말 숙박권과 브이로그형 리뷰 콘텐츠를 함께 운영합니다.",
+            stats: [
+              { label: "형태", value: "방문" },
+              { label: "채널", value: "YouTube" },
+            ],
+            action: "브랜드 보기",
+          },
+        ],
+      },
+    },
+    {
+      label: "제안 초안",
+      eyebrow: "브랜드 제안 초안",
+      title: ["내 채널에 맞춰", "브랜드에", "제안"],
+      description:
+        "내 공개 프로필과 채널 강점을 바탕으로 브랜드에 광고 형태, 일정, 콘텐츠 아이디어를 먼저 보냅니다.",
+      helper: "브랜드가 검토하기 쉬운 제안 초안",
+      primaryLabel: "역제안하기",
+      primaryHref: "/influencer/brands",
+      secondaryLabel: "메시지함 보기",
+      secondaryHref: "/influencer/messages",
+      icon: MessageSquareText,
+      accentClass: "bg-emerald-600",
+      iconClass: "text-emerald-700",
+      cardClass: "border-emerald-200 bg-emerald-50/60",
+      preview: {
+        kind: "proposal",
+        header: "브랜드 역제안 초안",
+        targetLabel: "제안 브랜드",
+        targetName: "브레드룸 · 홈카페 식품",
+        fields: [
+          { label: "내 프로필", value: "yeollock.me/minseo_home" },
+          { label: "광고 형태", value: "릴스 1건 + 블로그 리뷰" },
+          { label: "제안 금액", value: "180만원" },
+          { label: "업로드", value: "제품 수령 후 7일" },
+        ],
+        chips: ["홈카페 레시피", "제품 리뷰", "공동구매 가능"],
+        message:
+          "브레드룸 신제품을 홈카페 루틴에 녹인 릴스와 블로그 리뷰로 소개하고 싶습니다. 기존 독자층과 잘 맞는 포맷을 제안드립니다.",
+        timeline: ["역제안 저장", "메시지함 알림", "조건 협의", "계약 검토"],
+        actionLabel: "역제안 보내기",
+      },
+    },
+    {
+      label: "전자계약",
+      eyebrow: "받은 계약 검토",
+      title: ["조건 확인부터", "서명과 제출까지"],
+      description:
+        "브랜드가 보낸 계약을 핵심 조건부터 확인하고, 수정 요청과 전자서명, 콘텐츠 제출 상태를 이어서 관리합니다.",
+      helper: "모바일에서도 놓치지 않는 계약 검토 흐름",
+      primaryLabel: "받은 계약 보기",
+      primaryHref: "/influencer/dashboard",
+      secondaryLabel: "브랜드 찾기",
+      secondaryHref: "/influencer/brands",
+      icon: FileSignature,
+      accentClass: "bg-amber-500",
+      iconClass: "text-amber-700",
+      cardClass: "border-amber-200 bg-amber-50/70",
+      preview: {
+        kind: "contract",
+        header: "인플루언서 계약 검토",
+        count: "3",
+        countLabel: "대기",
+        rows: [
+          {
+            name: "브레드룸",
+            title: "홈카페 공동구매 계약",
+            status: "2차 활용 수정 필요",
+            statusClass: "bg-amber-50 text-amber-800",
+            due: "오늘 검토",
+          },
+          {
+            name: "모노트립",
+            title: "숙박 브이로그 협찬",
+            status: "서명 가능",
+            statusClass: "bg-blue-50 text-blue-700",
+            due: "D+1",
+          },
+          {
+            name: "누디브랜딩",
+            title: "뷰티 릴스 패키지",
+            status: "제출 대기",
+            statusClass: "bg-emerald-50 text-emerald-700",
+            due: "D-3",
+          },
+        ],
+        nextAction: "불리한 조항은 수정 요청 후 광고주 답변 확인",
+      },
+    },
+  ],
+} satisfies Record<IntroRole, RoleIntroSlide[]>;
 
 type AdvertiserPreviewListSlide = {
   kind: "list";
@@ -923,11 +1335,784 @@ function LogoMark() {
 export function RoleIntroPage({ role }: { role: IntroRole }) {
   const config = introConfig[role];
 
-  if (role === "advertiser") {
-    return <AdvertiserIntroScreen config={config} />;
+  return (
+    <RoleFeatureIntroScreen
+      config={config}
+      role={role}
+      slides={roleIntroSlides[role]}
+    />
+  );
+}
+
+function RoleFeatureIntroScreen({
+  role,
+  config,
+  slides,
+}: {
+  role: IntroRole;
+  config: IntroConfig;
+  slides: RoleIntroSlide[];
+}) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [previewIndex, setPreviewIndex] = useState(0);
+  const activeSlide = slides[activeIndex] ?? slides[0];
+  const roleLabel = role === "advertiser" ? "광고주" : "인플루언서";
+  const RoleIcon = role === "advertiser" ? Building2 : UserRound;
+  const handleFeatureSelect = useCallback((index: number) => {
+    setActiveIndex(index);
+    setPreviewIndex(index);
+  }, []);
+
+  return (
+    <main className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950">
+      <header className="border-b border-neutral-200/80 bg-[#fbfaf7]/95">
+        <div className="mx-auto flex h-[68px] max-w-[1120px] items-center justify-between px-5 sm:px-6 lg:px-8">
+          <BrandLockup />
+          <Link
+            to={config.secondaryHref}
+            className="inline-flex h-9 items-center rounded-full border border-neutral-200 bg-white px-3 text-[12px] font-bold text-neutral-500 transition hover:border-neutral-300 hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
+          >
+            로그인
+          </Link>
+        </div>
+      </header>
+
+      <section className="mx-auto grid min-h-[calc(100vh-68px)] max-w-[1120px] gap-6 px-5 py-7 sm:px-6 lg:grid-cols-[0.8fr_1.2fr] lg:grid-rows-[auto_auto] lg:items-center lg:gap-x-8 lg:gap-y-0 lg:px-8 lg:py-10">
+        <div className="min-w-0 lg:self-end">
+          <p className="inline-flex items-center gap-2 text-[13px] font-extrabold text-neutral-500">
+            <RoleIcon className="h-4 w-4" />
+            {roleLabel} 초기 화면
+          </p>
+          <p className="mt-4 text-[13px] font-extrabold text-neutral-500">
+            {activeSlide.eyebrow}
+          </p>
+          <h1 className="font-neo-heavy mt-2 max-w-[430px] text-[34px] leading-[1.05] tracking-normal text-neutral-950 sm:text-[52px] sm:leading-[1]">
+            {activeSlide.title.map((line) => (
+              <span key={line} className="block">
+                {line}
+              </span>
+            ))}
+          </h1>
+
+          <p className="mt-5 max-w-[420px] break-keep text-[15px] font-bold leading-7 text-neutral-600">
+            {activeSlide.description}
+          </p>
+        </div>
+
+        <RoleFeaturePreviewCarousel
+          className="lg:col-start-2 lg:row-span-2 lg:row-start-1"
+          onActiveIndexChange={setActiveIndex}
+          onPreviewIndexChange={setPreviewIndex}
+          previewIndex={previewIndex}
+          slides={slides}
+        />
+
+        <div className="min-w-0 lg:self-start">
+          <div
+            className="mt-6 grid w-full max-w-[430px] grid-cols-1 gap-2 md:grid-cols-2"
+            aria-label={`${roleLabel} 기능 선택`}
+          >
+            {slides.map((slide, index) => {
+              const Icon = slide.icon;
+              const selected = activeIndex === index;
+
+              return (
+                <button
+                  key={slide.label}
+                  type="button"
+                  onClick={() => handleFeatureSelect(index)}
+                  className={`group min-h-[92px] rounded-[8px] border p-3 text-left transition hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-neutral-950 ${
+                    selected
+                      ? `${slide.cardClass} shadow-[0_12px_30px_rgba(15,23,42,0.08)]`
+                      : "border-neutral-200 bg-white/70 hover:border-neutral-300"
+                  }`}
+                  aria-pressed={selected}
+                >
+                  <span className="flex items-start justify-between gap-2">
+                    <span
+                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] bg-white shadow-[inset_0_0_0_1px_rgba(15,23,42,0.08)] ${
+                        selected ? slide.iconClass : "text-neutral-500"
+                      }`}
+                    >
+                      <Icon className="h-4 w-4" />
+                    </span>
+                    <span
+                      className={`mt-1 h-2 w-2 rounded-full ${
+                        selected ? slide.accentClass : "bg-neutral-200"
+                      }`}
+                    />
+                  </span>
+                  <span className="mt-3 block text-[13px] font-extrabold tracking-normal text-neutral-950">
+                    {slide.label}
+                  </span>
+                  <span className="mt-1 line-clamp-2 block break-keep text-[11px] font-bold leading-4 text-neutral-500">
+                    {slide.helper}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-6 flex w-full max-w-[430px] flex-col gap-2 sm:flex-row">
+            <Link
+              to={activeSlide.primaryHref}
+              className="group inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-[8px] bg-blue-600 px-5 text-[14px] font-extrabold tracking-normal text-white shadow-[0_14px_34px_rgba(37,99,235,0.24)] ring-1 ring-blue-500/20 transition duration-200 hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-[0_18px_42px_rgba(37,99,235,0.28)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700 active:translate-y-0"
+            >
+              <span>{activeSlide.primaryLabel}</span>
+              <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
+            </Link>
+            <Link
+              to={activeSlide.secondaryHref}
+              className="inline-flex h-12 flex-1 items-center justify-center rounded-[8px] border border-neutral-200 bg-white px-5 text-[13px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
+            >
+              {activeSlide.secondaryLabel}
+            </Link>
+          </div>
+
+          <Link
+            to={config.switchHref}
+            className="mt-6 inline-flex text-[12px] font-bold text-neutral-400 transition hover:text-neutral-700"
+          >
+            {config.switchLabel}
+          </Link>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function RoleFeaturePreviewCarousel({
+  slides,
+  previewIndex,
+  className = "",
+  onActiveIndexChange,
+  onPreviewIndexChange,
+}: {
+  slides: RoleIntroSlide[];
+  previewIndex: number;
+  className?: string;
+  onActiveIndexChange: (index: number) => void;
+  onPreviewIndexChange: (index: number) => void;
+}) {
+  const [isFading, setIsFading] = useState(false);
+  const [isAutoPaused, setIsAutoPaused] = useState(false);
+  const [autoPausedUntil, setAutoPausedUntil] = useState(0);
+  const transitionTimers = useRef<number[]>([]);
+  const activeSlide = slides[previewIndex] ?? slides[0];
+
+  const clearTransitionTimers = useCallback(() => {
+    transitionTimers.current.forEach((timer) => window.clearTimeout(timer));
+    transitionTimers.current = [];
+  }, []);
+
+  const prefersReducedMotion = useCallback(
+    () =>
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+    [],
+  );
+
+  const showSlide = useCallback(
+    (nextIndex: number, syncIntroCopy = true) => {
+      const normalizedIndex = (nextIndex + slides.length) % slides.length;
+
+      if (normalizedIndex === previewIndex) {
+        return;
+      }
+
+      clearTransitionTimers();
+
+      const applySlide = () => {
+        onPreviewIndexChange(normalizedIndex);
+
+        if (syncIntroCopy) {
+          onActiveIndexChange(normalizedIndex);
+        }
+      };
+
+      if (prefersReducedMotion()) {
+        applySlide();
+        return;
+      }
+
+      setIsFading(true);
+      transitionTimers.current = [
+        window.setTimeout(applySlide, 240),
+        window.setTimeout(() => {
+          setIsFading(false);
+          transitionTimers.current = [];
+        }, 520),
+      ];
+    },
+    [
+      clearTransitionTimers,
+      onActiveIndexChange,
+      onPreviewIndexChange,
+      prefersReducedMotion,
+      previewIndex,
+      slides.length,
+    ],
+  );
+
+  const showManualSlide = useCallback(
+    (nextIndex: number) => {
+      setAutoPausedUntil(Date.now() + ROLE_PREVIEW_MANUAL_RESUME_DELAY_MS);
+      showSlide(nextIndex, true);
+    },
+    [showSlide],
+  );
+
+  useEffect(() => {
+    if (prefersReducedMotion() || isAutoPaused) {
+      return undefined;
+    }
+
+    const now = Date.now();
+    const delay =
+      autoPausedUntil > now
+        ? autoPausedUntil - now
+        : ROLE_PREVIEW_AUTO_DELAY_MS;
+
+    const timer = window.setTimeout(() => {
+      setAutoPausedUntil(0);
+      showSlide(previewIndex === slides.length - 1 ? 0 : previewIndex + 1, false);
+    }, delay);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    autoPausedUntil,
+    isAutoPaused,
+    prefersReducedMotion,
+    previewIndex,
+    showSlide,
+    slides.length,
+  ]);
+
+  useEffect(() => clearTransitionTimers, [clearTransitionTimers]);
+
+  return (
+    <section
+      aria-label="기능별 화면 미리보기"
+      className={`${className} mx-auto w-full min-w-0 max-w-[calc(100vw-40px)] overflow-hidden rounded-[18px] border border-neutral-200 bg-[#fbfaf7] shadow-[0_24px_70px_rgba(15,23,42,0.08)] sm:max-w-full sm:rounded-[24px]`}
+      onBlurCapture={(event) => {
+        const nextTarget = event.relatedTarget;
+
+        if (
+          !(nextTarget instanceof Node) ||
+          !event.currentTarget.contains(nextTarget)
+        ) {
+          setIsAutoPaused(false);
+        }
+      }}
+      onFocusCapture={() => setIsAutoPaused(true)}
+      onMouseEnter={() => setIsAutoPaused(true)}
+      onMouseLeave={() => setIsAutoPaused(false)}
+    >
+      <div className="flex items-center justify-between gap-3 border-b border-neutral-200 bg-white px-4 py-3 sm:px-5">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
+          <span className="h-2.5 w-2.5 rounded-full bg-amber-300" />
+          <span className="h-2.5 w-2.5 rounded-full bg-blue-400" />
+        </div>
+        <div className="flex items-center gap-1" aria-label="미리보기 이동">
+          <button
+            type="button"
+            onClick={() => showManualSlide(previewIndex - 1)}
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 text-neutral-500 transition hover:border-neutral-300 hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950"
+            aria-label="이전 기능 미리보기"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => showManualSlide(previewIndex + 1)}
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 text-neutral-500 transition hover:border-neutral-300 hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950"
+            aria-label="다음 기능 미리보기"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+
+      <div className="min-w-0 p-4 sm:p-5">
+        <div
+          className="mb-4 grid min-w-0 grid-cols-4 gap-1 overflow-hidden rounded-full bg-neutral-100 p-1"
+          role="tablist"
+          aria-label="기능 미리보기 종류"
+        >
+          {slides.map((slide, index) => (
+            <button
+              key={slide.label}
+              type="button"
+              role="tab"
+              aria-controls={`role-preview-panel-${index}`}
+              aria-selected={previewIndex === index}
+              onClick={() => showManualSlide(index)}
+              tabIndex={previewIndex === index ? 0 : -1}
+              className={`h-9 min-w-0 rounded-full px-1 text-[12px] font-extrabold tracking-normal transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 ${
+                previewIndex === index
+                  ? "bg-white text-neutral-950 shadow-[0_1px_0_rgba(15,23,42,0.04)]"
+                  : "text-neutral-500 hover:text-neutral-800"
+              }`}
+            >
+              <span className="block truncate">{slide.label}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="relative min-h-[460px] sm:min-h-[530px]">
+          <RolePreviewSlideView
+            panelId={`role-preview-panel-${previewIndex}`}
+            slide={activeSlide}
+          />
+          <div
+            aria-hidden="true"
+            className={`pointer-events-none absolute inset-0 z-10 rounded-[14px] bg-white transition-opacity duration-300 ease-out sm:rounded-[16px] ${
+              isFading ? "opacity-100" : "opacity-0"
+            }`}
+          />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function RolePreviewSlideView({
+  slide,
+  panelId,
+}: {
+  slide: RoleIntroSlide;
+  panelId: string;
+}) {
+  if (slide.preview.kind === "profile") {
+    return (
+      <RoleProfilePreview
+        panelId={panelId}
+        preview={slide.preview}
+        slide={slide}
+      />
+    );
   }
 
-  return <InfluencerIntroScreen config={config} />;
+  if (slide.preview.kind === "discover") {
+    return (
+      <RoleDiscoverPreview
+        panelId={panelId}
+        preview={slide.preview}
+        slide={slide}
+      />
+    );
+  }
+
+  if (slide.preview.kind === "proposal") {
+    return (
+      <RoleProposalPreview
+        panelId={panelId}
+        preview={slide.preview}
+        slide={slide}
+      />
+    );
+  }
+
+  return (
+    <RoleContractPreview
+      panelId={panelId}
+      preview={slide.preview}
+      slide={slide}
+    />
+  );
+}
+
+function RolePreviewPanel({
+  slide,
+  children,
+  meta,
+  panelId,
+}: {
+  slide: RoleIntroSlide;
+  children: ReactNode;
+  meta?: ReactNode;
+  panelId: string;
+}) {
+  return (
+    <div
+      id={panelId}
+      key={slide.label}
+      role="tabpanel"
+      className="min-h-[460px] overflow-hidden rounded-[14px] border border-neutral-200 bg-white sm:min-h-[530px] sm:rounded-[16px]"
+    >
+      <div className="flex items-center justify-between gap-4 border-b border-neutral-200 px-4 py-4 sm:px-5">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className={`h-2 w-2 rounded-full ${slide.accentClass}`} />
+            <p className="truncate text-[12px] font-extrabold tracking-normal text-neutral-950">
+              {slide.preview.header}
+            </p>
+          </div>
+          <p className="mt-1 truncate text-[11px] font-bold text-neutral-400">
+            {slide.helper}
+          </p>
+        </div>
+        {meta ? <div className="shrink-0">{meta}</div> : null}
+      </div>
+
+      <div className="bg-[#fbfaf7] p-3 sm:p-5">{children}</div>
+    </div>
+  );
+}
+
+function RoleProfilePreview({
+  slide,
+  preview,
+  panelId,
+}: {
+  slide: RoleIntroSlide;
+  preview: RolePreviewProfile;
+  panelId: string;
+}) {
+  return (
+    <RolePreviewPanel
+      panelId={panelId}
+      slide={slide}
+      meta={
+        <span className="rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-[10px] font-extrabold text-neutral-600">
+          공개 링크
+        </span>
+      }
+    >
+      <div className="rounded-[12px] border border-neutral-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+        <div className="flex items-start gap-3">
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[12px] bg-neutral-950 text-[18px] font-extrabold text-white">
+            {preview.profileName.slice(0, 2)}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[18px] font-extrabold text-neutral-950">
+              {preview.profileName}
+            </p>
+            <p className="mt-1 truncate text-[12px] font-bold text-blue-700">
+              {preview.handle}
+            </p>
+            <p className="mt-3 break-keep text-[13px] font-bold leading-5 text-neutral-600">
+              {preview.headline}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-1.5">
+          {preview.tags.map((tag) => (
+            <span
+              key={tag}
+              className="rounded-full border border-neutral-200 bg-[#f8f7f4] px-2.5 py-1 text-[11px] font-extrabold text-neutral-600"
+            >
+              {tag}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+        {preview.stats.map((stat) => (
+          <div
+            key={stat.label}
+            className="rounded-[8px] border border-neutral-200 bg-white px-3 py-3"
+          >
+            <p className="text-[10px] font-extrabold text-neutral-400">
+              {stat.label}
+            </p>
+            <p className="mt-1 text-[16px] font-extrabold text-neutral-950">
+              {stat.value}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-3 overflow-hidden rounded-[12px] border border-neutral-200 bg-white">
+        {preview.channels.map((channel) => (
+          <div
+            key={channel.label}
+            className="grid grid-cols-[minmax(0,0.8fr)_minmax(0,1fr)_72px] gap-3 border-b border-neutral-200 px-4 py-3 last:border-b-0"
+          >
+            <span className="truncate text-[12px] font-extrabold text-neutral-500">
+              {channel.label}
+            </span>
+            <span className="truncate text-[12px] font-extrabold text-neutral-950">
+              {channel.value}
+            </span>
+            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-center text-[10px] font-extrabold text-emerald-700">
+              {channel.status}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-3 rounded-[12px] bg-neutral-950 p-4 text-white">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[11px] font-extrabold text-white/55">다음 행동</p>
+            <p className="mt-1 truncate text-[14px] font-extrabold">
+              {preview.actionLabel}
+            </p>
+          </div>
+          <ArrowRight className="h-4 w-4 shrink-0" />
+        </div>
+        <p className="mt-3 break-keep text-[11px] font-bold leading-5 text-white/65">
+          {preview.footerNote}
+        </p>
+      </div>
+    </RolePreviewPanel>
+  );
+}
+
+function RoleDiscoverPreview({
+  slide,
+  preview,
+  panelId,
+}: {
+  slide: RoleIntroSlide;
+  preview: RolePreviewDiscover;
+  panelId: string;
+}) {
+  return (
+    <RolePreviewPanel
+      panelId={panelId}
+      slide={slide}
+      meta={
+        <span className="font-neo-heavy text-[26px] leading-none text-neutral-950">
+          {preview.cards.length}
+        </span>
+      }
+    >
+      <div className="rounded-[12px] border border-neutral-200 bg-white p-3">
+        <div className="flex items-center gap-2 rounded-[8px] border border-neutral-200 bg-[#f8f7f4] px-3 py-2 text-[11px] font-bold text-neutral-400">
+          <Search className="h-3.5 w-3.5" />
+          <span className="min-w-0 truncate">{preview.searchPlaceholder}</span>
+        </div>
+        <div className="mt-2 flex gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {preview.filters.map((filter) => (
+            <span
+              key={filter.label}
+              className={`inline-flex h-7 shrink-0 items-center rounded-full border px-2.5 text-[11px] font-extrabold ${
+                filter.active
+                  ? "border-neutral-950 bg-neutral-950 text-white"
+                  : "border-neutral-200 bg-white text-neutral-500"
+              }`}
+            >
+              {filter.label}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-3">
+        {preview.cards.map((card) => (
+          <article
+            key={card.name}
+            className="rounded-[12px] border border-neutral-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.035)]"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate text-[16px] font-extrabold text-neutral-950">
+                  {card.name}
+                </p>
+                <p className="mt-1 truncate text-[11px] font-bold text-neutral-400">
+                  {card.meta}
+                </p>
+              </div>
+              <span className="shrink-0 rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-extrabold text-blue-700">
+                {card.badge}
+              </span>
+            </div>
+            <p className="mt-3 line-clamp-2 break-keep text-[12px] font-bold leading-5 text-neutral-600">
+              {card.description}
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {card.stats.map((stat) => (
+                <div
+                  key={stat.label}
+                  className="rounded-[8px] bg-[#f8f7f4] px-3 py-2"
+                >
+                  <p className="text-[10px] font-extrabold text-neutral-400">
+                    {stat.label}
+                  </p>
+                  <p className="mt-1 truncate text-[12px] font-extrabold text-neutral-950">
+                    {stat.value}
+                  </p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 flex h-9 items-center justify-between rounded-[8px] border border-neutral-200 px-3 text-[12px] font-extrabold text-neutral-700">
+              {card.action}
+              <ArrowRight className="h-3.5 w-3.5" />
+            </div>
+          </article>
+        ))}
+      </div>
+    </RolePreviewPanel>
+  );
+}
+
+function RoleProposalPreview({
+  slide,
+  preview,
+  panelId,
+}: {
+  slide: RoleIntroSlide;
+  preview: RolePreviewProposal;
+  panelId: string;
+}) {
+  return (
+    <RolePreviewPanel
+      panelId={panelId}
+      slide={slide}
+      meta={
+        <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-extrabold text-emerald-700">
+          초안 저장
+        </span>
+      }
+    >
+      <div className="rounded-[12px] border border-neutral-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+        <p className="text-[11px] font-extrabold text-neutral-400">
+          {preview.targetLabel}
+        </p>
+        <p className="mt-1 truncate text-[16px] font-extrabold text-neutral-950">
+          {preview.targetName}
+        </p>
+        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          {preview.fields.map((field) => (
+            <div
+              key={field.label}
+              className="rounded-[8px] border border-neutral-200 bg-[#f8f7f4] px-3 py-2.5"
+            >
+              <p className="text-[10px] font-extrabold text-neutral-400">
+                {field.label}
+              </p>
+              <p className="mt-1 truncate text-[12px] font-extrabold text-neutral-950">
+                {field.value}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-3 rounded-[12px] border border-neutral-200 bg-white p-4">
+        <p className="text-[11px] font-extrabold text-neutral-400">
+          제안 메시지
+        </p>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {preview.chips.map((chip) => (
+            <span
+              key={chip}
+              className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-extrabold text-emerald-700"
+            >
+              {chip}
+            </span>
+          ))}
+        </div>
+        <p className="mt-3 min-h-[88px] break-keep rounded-[8px] border border-neutral-200 bg-[#f8f7f4] px-3 py-3 text-[12px] font-bold leading-5 text-neutral-700">
+          {preview.message}
+        </p>
+      </div>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-4">
+        {preview.timeline.map((item, index) => (
+          <div
+            key={item}
+            className="rounded-[8px] border border-neutral-200 bg-white px-3 py-3"
+          >
+            <p className="text-[10px] font-extrabold text-neutral-400">
+              0{index + 1}
+            </p>
+            <p className="mt-1 truncate text-[11px] font-extrabold text-neutral-800">
+              {item}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-3 flex items-center justify-between gap-3 rounded-[12px] bg-neutral-950 px-4 py-3 text-white">
+        <div className="min-w-0">
+          <p className="text-[11px] font-extrabold text-white/55">다음 행동</p>
+          <p className="mt-1 truncate text-[13px] font-extrabold">
+            {preview.actionLabel}
+          </p>
+        </div>
+        <ArrowRight className="h-4 w-4 shrink-0" />
+      </div>
+    </RolePreviewPanel>
+  );
+}
+
+function RoleContractPreview({
+  slide,
+  preview,
+  panelId,
+}: {
+  slide: RoleIntroSlide;
+  preview: RolePreviewContract;
+  panelId: string;
+}) {
+  return (
+    <RolePreviewPanel
+      panelId={panelId}
+      slide={slide}
+      meta={
+        <div className="flex items-baseline gap-1">
+          <span className="font-neo-heavy text-[26px] leading-none text-neutral-950">
+            {preview.count}
+          </span>
+          <span className="text-[11px] font-extrabold text-neutral-400">
+            {preview.countLabel}
+          </span>
+        </div>
+      }
+    >
+      <div className="overflow-hidden rounded-[12px] border border-neutral-200 bg-white">
+        <div className="hidden grid-cols-[minmax(0,0.9fr)_minmax(0,1.4fr)_112px] gap-3 border-b border-neutral-200 bg-[#f8f7f4] px-4 py-2.5 text-[10px] font-extrabold text-neutral-400 sm:grid">
+          <span>상대</span>
+          <span>계약/제안</span>
+          <span>상태</span>
+        </div>
+        {preview.rows.map((row) => (
+          <div
+            key={`${row.name}-${row.title}`}
+            className="border-b border-neutral-200 p-3.5 last:border-b-0 sm:grid sm:grid-cols-[minmax(0,0.9fr)_minmax(0,1.4fr)_112px] sm:items-center sm:gap-3 sm:px-4 sm:py-3"
+          >
+            <div className="min-w-0">
+              <p className="truncate text-[13px] font-extrabold text-neutral-950">
+                {row.name}
+              </p>
+              <p className="mt-1 text-[10px] font-bold text-neutral-400 sm:hidden">
+                {row.due}
+              </p>
+            </div>
+            <div className="mt-2 min-w-0 sm:mt-0">
+              <p className="truncate text-[13px] font-extrabold text-neutral-900">
+                {row.title}
+              </p>
+              <p className="mt-1 hidden text-[10px] font-bold text-neutral-400 sm:block">
+                {row.due}
+              </p>
+            </div>
+            <span
+              className={`mt-3 inline-flex h-7 max-w-full items-center justify-center truncate rounded-full px-2.5 text-[10px] font-extrabold sm:mt-0 ${row.statusClass}`}
+            >
+              {row.status}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-3 rounded-[12px] border border-neutral-200 bg-white p-4">
+        <p className="text-[11px] font-extrabold text-neutral-400">다음 행동</p>
+        <div className="mt-2 flex items-center justify-between gap-3 rounded-[8px] bg-neutral-950 px-3 py-3 text-white">
+          <p className="min-w-0 truncate text-[13px] font-extrabold">
+            {preview.nextAction}
+          </p>
+          <ArrowRight className="h-4 w-4 shrink-0" />
+        </div>
+      </div>
+    </RolePreviewPanel>
+  );
 }
 
 function _LegacyRoleIntroScreen({ config }: { config: IntroConfig }) {
@@ -1060,7 +2245,7 @@ function _LegacyRoleIntroScreen({ config }: { config: IntroConfig }) {
   );
 }
 
-function InfluencerIntroScreen({ config }: { config: IntroConfig }) {
+function _InfluencerIntroScreen({ config }: { config: IntroConfig }) {
   return (
     <main className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950">
       <header className="border-b border-neutral-200/80 bg-[#fbfaf7]/95">
@@ -1538,7 +2723,7 @@ function InfluencerRevisionPreview({
   );
 }
 
-function AdvertiserIntroScreen({ config }: { config: IntroConfig }) {
+function _AdvertiserIntroScreen({ config }: { config: IntroConfig }) {
   return (
     <main className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950">
       <header className="border-b border-neutral-200/80 bg-[#fbfaf7]/95">
