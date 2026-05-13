@@ -37,6 +37,16 @@ import {
   type MarketplaceInfluencerProfile,
 } from "../src/domain/marketplace.js";
 import {
+  getProposalTypeLabel,
+  type MarketplaceInboxRole,
+  type MarketplaceMessageBucket,
+  type MarketplaceMessageSummary,
+  type MarketplaceMessageThread,
+  type MarketplaceMessagesResponse,
+  type MarketplaceProposalDirection,
+  type MarketplaceProposalStatus,
+} from "../src/domain/marketplaceInbox.js";
+import {
   buildDefaultPublicProfileSettings,
   createMarketplaceProfileFromPublicSettings,
   getPublicProfileHandleError,
@@ -977,6 +987,26 @@ interface SupabaseMarketplaceBrandProfileRow {
   is_published: boolean;
   created_at?: string | null;
   updated_at?: string | null;
+}
+
+interface SupabaseMarketplaceContactProposalRow {
+  id: string;
+  direction: MarketplaceProposalDirection;
+  target_influencer_profile_id?: string | null;
+  target_brand_profile_id?: string | null;
+  target_handle: string;
+  target_display_name: string;
+  sender_profile_id?: string | null;
+  sender_organization_id?: string | null;
+  sender_brand_handle?: string | null;
+  sender_influencer_handle?: string | null;
+  sender_name: string;
+  sender_intro: string;
+  proposal_type: CampaignProposalType;
+  proposal_summary: string;
+  status: MarketplaceProposalStatus;
+  created_at: string;
+  updated_at: string;
 }
 
 const requireSupabaseConfig = () => {
@@ -4195,6 +4225,265 @@ const validateMarketplaceProposal = (body: Record<string, unknown>) => {
   }
 
   return { senderName, senderIntro, proposalType, proposalSummary };
+};
+
+const emptyMarketplaceMessageSummary = (): MarketplaceMessageSummary => ({
+  inboxCount: 0,
+  sentCount: 0,
+  unreadCount: 0,
+  submittedCount: 0,
+  reviewedCount: 0,
+  convertedCount: 0,
+  closedCount: 0,
+});
+
+const getMarketplaceCounterpartHref = (
+  role: MarketplaceInboxRole,
+  row: SupabaseMarketplaceContactProposalRow,
+  bucket: MarketplaceMessageBucket,
+) => {
+  if (bucket === "sent") {
+    return row.direction === "advertiser_to_influencer"
+      ? `/${row.target_handle}`
+      : `/brands/${row.target_handle}`;
+  }
+
+  if (
+    role === "advertiser" &&
+    row.direction === "influencer_to_brand" &&
+    row.sender_influencer_handle
+  ) {
+    return `/${row.sender_influencer_handle}`;
+  }
+
+  if (
+    role === "influencer" &&
+    row.direction === "advertiser_to_influencer" &&
+    row.sender_brand_handle
+  ) {
+    return `/brands/${row.sender_brand_handle}`;
+  }
+
+  if (role === "advertiser" && row.direction === "influencer_to_brand") {
+    return undefined;
+  }
+
+  if (role === "influencer" && row.direction === "advertiser_to_influencer") {
+    return undefined;
+  }
+
+  return undefined;
+};
+
+const mapMarketplaceProposalToMessage = (
+  row: SupabaseMarketplaceContactProposalRow,
+  role: MarketplaceInboxRole,
+): MarketplaceMessageThread => {
+  const isAdvertiserInbox =
+    role === "advertiser" && row.direction === "influencer_to_brand";
+  const isInfluencerInbox =
+    role === "influencer" && row.direction === "advertiser_to_influencer";
+  const bucket: MarketplaceMessageBucket =
+    isAdvertiserInbox || isInfluencerInbox ? "inbox" : "sent";
+  const counterpartName = bucket === "inbox" ? row.sender_name : row.target_display_name;
+
+  return {
+    id: row.id,
+    bucket,
+    direction: row.direction,
+    status: row.status,
+    unread: bucket === "inbox" && row.status === "submitted",
+    senderName: row.sender_name,
+    senderIntro: row.sender_intro,
+    targetName: row.target_display_name,
+    targetHandle: row.target_handle,
+    counterpartName,
+    counterpartHref: getMarketplaceCounterpartHref(role, row, bucket),
+    proposalType: row.proposal_type,
+    proposalTypeLabel: getProposalTypeLabel(row.proposal_type),
+    proposalSummary: row.proposal_summary,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+};
+
+const buildMarketplaceMessagesResponse = (
+  role: MarketplaceInboxRole,
+  rows: SupabaseMarketplaceContactProposalRow[],
+): MarketplaceMessagesResponse => {
+  const threads = rows
+    .map((row) => mapMarketplaceProposalToMessage(row, role))
+    .sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+  const summary = threads.reduce((acc, thread) => {
+    if (thread.bucket === "inbox") acc.inboxCount += 1;
+    if (thread.bucket === "sent") acc.sentCount += 1;
+    if (thread.unread) acc.unreadCount += 1;
+    if (thread.status === "submitted") acc.submittedCount += 1;
+    if (thread.status === "reviewed") acc.reviewedCount += 1;
+    if (thread.status === "converted_to_contract") acc.convertedCount += 1;
+    if (thread.status === "closed") acc.closedCount += 1;
+    return acc;
+  }, emptyMarketplaceMessageSummary());
+
+  return { role, threads, summary };
+};
+
+const readMarketplaceProposalRows = async (
+  query: string,
+  label: string,
+): Promise<SupabaseMarketplaceContactProposalRow[]> => {
+  if (!useSupabase) return [];
+
+  return readSupabaseRows<SupabaseMarketplaceContactProposalRow>(
+    "marketplace_contact_proposals",
+    query,
+    label,
+  );
+};
+
+const addSenderInfluencerHandlesToMarketplaceProposals = async (
+  rows: SupabaseMarketplaceContactProposalRow[],
+) => {
+  const senderProfileIds = Array.from(
+    new Set(
+      rows
+        .map((row) => row.sender_profile_id)
+        .filter((id): id is string => hasText(id ?? undefined)),
+    ),
+  );
+
+  if (!useSupabase || senderProfileIds.length === 0) return rows;
+
+  const profileRows = await readSupabaseRows<SupabaseMarketplaceInfluencerProfileRow>(
+    "marketplace_influencer_profiles",
+    `?select=owner_profile_id,public_handle&owner_profile_id=in.${postgrestInFilter(
+      senderProfileIds,
+    )}`,
+    "sender influencer public profile handles",
+  );
+  const handleByOwnerId = new Map(
+    profileRows.map((profile) => [profile.owner_profile_id, profile.public_handle]),
+  );
+
+  return rows.map((row) => ({
+    ...row,
+    sender_influencer_handle: row.sender_profile_id
+      ? handleByOwnerId.get(row.sender_profile_id) ?? null
+      : null,
+  }));
+};
+
+const addSenderBrandHandlesToMarketplaceProposals = async (
+  rows: SupabaseMarketplaceContactProposalRow[],
+) => {
+  const senderOrganizationIds = Array.from(
+    new Set(
+      rows
+        .map((row) => row.sender_organization_id)
+        .filter((id): id is string => hasText(id ?? undefined)),
+    ),
+  );
+
+  if (!useSupabase || senderOrganizationIds.length === 0) return rows;
+
+  const brandRows = await readSupabaseRows<SupabaseMarketplaceBrandProfileRow>(
+    "marketplace_brand_profiles",
+    `?select=organization_id,public_handle&organization_id=in.${postgrestInFilter(
+      senderOrganizationIds,
+    )}`,
+    "sender brand public profile handles",
+  );
+  const handleByOrganizationId = new Map(
+    brandRows.map((brand) => [brand.organization_id, brand.public_handle]),
+  );
+
+  return rows.map((row) => ({
+    ...row,
+    sender_brand_handle: row.sender_organization_id
+      ? handleByOrganizationId.get(row.sender_organization_id) ?? null
+      : null,
+  }));
+};
+
+const readMarketplaceMessagesForAdvertiser = async (
+  auth: AdvertiserSession,
+): Promise<MarketplaceMessagesResponse> => {
+  const organization = await readDefaultOrganizationForProfile(auth.profile.id);
+  const brandRows =
+    useSupabase && organization
+      ? await readSupabaseRows<SupabaseMarketplaceBrandProfileRow>(
+          "marketplace_brand_profiles",
+          `?select=id,public_handle&organization_id=eq.${encodeURIComponent(
+            organization.id,
+          )}`,
+          "advertiser marketplace brand profiles",
+        )
+      : [];
+  const brandIds = brandRows.map((row) => row.id).filter(Boolean);
+  const incomingRows =
+    brandIds.length > 0
+      ? await readMarketplaceProposalRows(
+          `?select=*&direction=eq.influencer_to_brand&target_brand_profile_id=in.${postgrestInFilter(
+            brandIds,
+          )}&order=created_at.desc`,
+          "advertiser marketplace incoming proposals",
+        )
+      : [];
+  const sentRows = await readMarketplaceProposalRows(
+    `?select=*&direction=eq.advertiser_to_influencer&sender_profile_id=eq.${encodeURIComponent(
+      auth.profile.id,
+    )}&order=created_at.desc`,
+    "advertiser marketplace sent proposals",
+  );
+
+  return buildMarketplaceMessagesResponse(
+    "advertiser",
+    uniqueRowsById([
+      ...(await addSenderInfluencerHandlesToMarketplaceProposals(incomingRows)),
+      ...sentRows,
+    ]),
+  );
+};
+
+const readMarketplaceMessagesForInfluencer = async (
+  auth: InfluencerSession,
+): Promise<MarketplaceMessagesResponse> => {
+  const profileRows = useSupabase
+    ? await readSupabaseRows<SupabaseMarketplaceInfluencerProfileRow>(
+        "marketplace_influencer_profiles",
+        `?select=id,public_handle&owner_profile_id=eq.${encodeURIComponent(
+          auth.profile.id,
+        )}`,
+        "influencer marketplace public profiles",
+      )
+    : [];
+  const publicProfileIds = profileRows.map((row) => row.id).filter(Boolean);
+  const incomingRows =
+    publicProfileIds.length > 0
+      ? await readMarketplaceProposalRows(
+          `?select=*&direction=eq.advertiser_to_influencer&target_influencer_profile_id=in.${postgrestInFilter(
+            publicProfileIds,
+          )}&order=created_at.desc`,
+          "influencer marketplace incoming proposals",
+        )
+      : [];
+  const sentRows = await readMarketplaceProposalRows(
+    `?select=*&direction=eq.influencer_to_brand&sender_profile_id=eq.${encodeURIComponent(
+      auth.profile.id,
+    )}&order=created_at.desc`,
+    "influencer marketplace sent proposals",
+  );
+
+  return buildMarketplaceMessagesResponse(
+    "influencer",
+    uniqueRowsById([
+      ...(await addSenderBrandHandlesToMarketplaceProposals(incomingRows)),
+      ...sentRows,
+    ]),
+  );
 };
 
 const readSupabaseStore = async (): Promise<ContractStoreFile> => {
@@ -7778,6 +8067,34 @@ app.post(
     }
   },
 );
+
+app.get("/api/marketplace/messages", async (request, response, next) => {
+  try {
+    const role = normalizeOptionalText(request.query.role);
+
+    if (role === "advertiser") {
+      const advertiserAuth = await requireAdvertiserSession(request, response);
+      if (!advertiserAuth) return;
+
+      response.setHeader("Cache-Control", "no-store");
+      response.json(await readMarketplaceMessagesForAdvertiser(advertiserAuth));
+      return;
+    }
+
+    if (role === "influencer") {
+      const influencerAuth = await requireInfluencerSession(request, response);
+      if (!influencerAuth) return;
+
+      response.setHeader("Cache-Control", "no-store");
+      response.json(await readMarketplaceMessagesForInfluencer(influencerAuth));
+      return;
+    }
+
+    response.status(422).json({ error: "role must be advertiser or influencer" });
+  } catch (error) {
+    next(error);
+  }
+});
 
 app.get("/api/verification/status", async (request, response, next) => {
   try {

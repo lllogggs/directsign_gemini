@@ -13,6 +13,7 @@ import {
   Globe2,
   Instagram,
   LogOut,
+  MessageSquareText,
   Music2,
   RefreshCw,
   Save,
@@ -52,6 +53,7 @@ import {
 } from "../../domain/publicInfluencerProfile";
 import { translateApiErrorMessage } from "../../domain/userMessages";
 import type { InfluencerPlatform, VerificationStatus } from "../../domain/verification";
+import { useMarketplaceMessageSummary } from "../../hooks/useMarketplaceMessageSummary";
 
 type DashboardState =
   | { status: "loading" }
@@ -258,6 +260,10 @@ export function InfluencerDashboard() {
   const [profileSettingsOpen, setProfileSettingsOpen] = useState(false);
   const [publicProfileOverride, setPublicProfileOverride] =
     useState<InfluencerPublicProfileSettings | null>(null);
+  const {
+    summary: messageSummary,
+    isLoading: isMessageSummaryLoading,
+  } = useMarketplaceMessageSummary("influencer");
   const readyDashboardUserId =
     state.status === "ready" ? state.dashboard.user.id : undefined;
 
@@ -478,6 +484,11 @@ export function InfluencerDashboard() {
           </button>
 
           <div className="flex items-center gap-2">
+            <MessageCenterButton
+              unreadCount={messageSummary.unreadCount}
+              isLoading={isMessageSummaryLoading}
+              onClick={() => navigate("/influencer/messages")}
+            />
             <button
               type="button"
               onClick={() => navigate("/influencer/brands")}
@@ -567,7 +578,7 @@ export function InfluencerDashboard() {
                 />
               </div>
 
-              <div className="mt-3 overflow-x-auto border-t border-[#edf1ed] pt-3">
+              <div className="no-scrollbar mt-3 overflow-x-auto border-t border-[#edf1ed] pt-3">
                 <div className="flex min-w-max items-center gap-4">
                   <FilterSection label="플랫폼">
                     {PLATFORM_FILTERS.map((platform) => (
@@ -653,6 +664,38 @@ export function InfluencerDashboard() {
 
 function DashboardShell({ children }: { children: React.ReactNode }) {
   return <div className="min-h-screen bg-neutral-50 font-sans text-neutral-950">{children}</div>;
+}
+
+function MessageCenterButton({
+  unreadCount,
+  isLoading,
+  onClick,
+}: {
+  unreadCount: number;
+  isLoading: boolean;
+  onClick: () => void;
+}) {
+  const badge = unreadCount > 0 ? unreadCount : undefined;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="relative inline-flex h-10 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-600 transition hover:border-neutral-400 hover:text-neutral-950"
+      aria-label="메시지함"
+      title="메시지함"
+    >
+      <MessageSquareText className="h-4 w-4" />
+      <span className="hidden sm:inline">메시지함</span>
+      {badge ? (
+        <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1.5 text-[10px] font-extrabold tabular-nums text-white ring-2 ring-white">
+          {badge > 9 ? "9+" : badge}
+        </span>
+      ) : isLoading ? (
+        <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-neutral-300 ring-2 ring-white" />
+      ) : null}
+    </button>
+  );
 }
 
 function LoadingView() {
@@ -1284,7 +1327,7 @@ function ContractTable({
         <span>금액</span>
         <span>상태</span>
       </div>
-      <div className="divide-y divide-[#edf1ed]">
+      <div className="max-h-[620px] divide-y divide-[#edf1ed] overflow-y-auto lg:max-h-[calc(100vh-360px)]">
         {contracts.map((contract) => (
           <button
             key={contract.id}

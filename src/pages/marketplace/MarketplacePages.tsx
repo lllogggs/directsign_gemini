@@ -1103,6 +1103,8 @@ function InfluencerContactDialog({
         <ProposalSubmitted
           title="제안이 저장됐습니다"
           body="브랜드 소개와 광고 형태가 서버에 저장됐습니다. 이후 메시지함과 계약 작성 흐름으로 이어 붙일 수 있습니다."
+          actionHref="/advertiser/messages"
+          actionLabel="메시지함 보기"
           onClose={onClose}
         />
       ) : (
@@ -1244,6 +1246,8 @@ function BrandContactDialog({
         <ProposalSubmitted
           title="역제안이 저장됐습니다"
           body="내 채널 소개와 광고 형태가 서버에 저장됐습니다. 이후 메시지함과 계약 작성 흐름으로 이어 붙일 수 있습니다."
+          actionHref="/influencer/messages"
+          actionLabel="메시지함 보기"
           onClose={onClose}
         />
       ) : (
@@ -1362,10 +1366,14 @@ function DialogFrame({
 function ProposalSubmitted({
   title,
   body,
+  actionHref,
+  actionLabel,
   onClose,
 }: {
   title: string;
   body: string;
+  actionHref?: string;
+  actionLabel?: string;
   onClose: () => void;
 }) {
   return (
@@ -1377,13 +1385,23 @@ function ProposalSubmitted({
           <p className="mt-2 text-[13px] font-medium leading-6 text-emerald-800">
             {body}
           </p>
-          <button
-            type="button"
-            onClick={onClose}
-            className="mt-4 inline-flex h-10 items-center rounded-md bg-emerald-900 px-4 text-[13px] font-semibold text-white transition hover:bg-emerald-800"
-          >
-            확인
-          </button>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {actionHref && actionLabel ? (
+              <Link
+                to={actionHref}
+                className="inline-flex h-10 items-center rounded-md bg-emerald-900 px-4 text-[13px] font-semibold text-white transition hover:bg-emerald-800"
+              >
+                {actionLabel}
+              </Link>
+            ) : null}
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex h-10 items-center rounded-md border border-emerald-200 bg-white px-4 text-[13px] font-semibold text-emerald-800 transition hover:border-emerald-300"
+            >
+              확인
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -1423,7 +1441,7 @@ function PlatformFilterBar({
   onChange: (value: PlatformFilter) => void;
 }) {
   return (
-    <div className="flex gap-1.5 overflow-x-auto pb-1 lg:max-w-[560px]">
+    <div className="no-scrollbar flex gap-1.5 overflow-x-auto pb-1 lg:max-w-[560px]">
       {platformFilterOptions.map((platform) => {
         const active = value === platform;
         const label = platform === "all" ? "전체" : platformLabels[platform];

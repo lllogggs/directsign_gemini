@@ -296,6 +296,15 @@
     box-shadow: 0 0 0 3px rgba(23, 23, 23, 0.08);
   }
 
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .landing-start-copy-line {
       opacity: 1;

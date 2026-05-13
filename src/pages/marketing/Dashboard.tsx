@@ -7,6 +7,7 @@ import {
   CopyCheck,
   FileText,
   LogOut,
+  MessageSquareText,
   MoreHorizontal,
   PenLine,
   Plus,
@@ -32,6 +33,7 @@ import {
   removeInternalTestLabel,
 } from "../../domain/display";
 import { useVerificationSummary } from "../../hooks/useVerificationSummary";
+import { useMarketplaceMessageSummary } from "../../hooks/useMarketplaceMessageSummary";
 import { PRODUCT_NAME } from "../../domain/brand";
 import { apiFetch } from "../../domain/api";
 
@@ -204,6 +206,10 @@ export function Dashboard() {
     useState<DetailStatusFilter>("ALL");
   const { summary: verificationSummary, isLoading: isVerificationLoading } =
     useVerificationSummary({ role: "advertiser" });
+  const {
+    summary: messageSummary,
+    isLoading: isMessageSummaryLoading,
+  } = useMarketplaceMessageSummary("advertiser");
   const advertiserVerificationStatus =
     verificationSummary?.advertiser.status ?? "not_submitted";
   const readinessBadge = getAdvertiserReadinessBadge(
@@ -376,6 +382,11 @@ export function Dashboard() {
 
           <div className="flex items-center gap-2">
             <SyncPill isSyncing={isSyncing} syncError={syncError} />
+            <MessageCenterButton
+              unreadCount={messageSummary.unreadCount}
+              isLoading={isMessageSummaryLoading}
+              onClick={() => navigate("/advertiser/messages")}
+            />
             <button
               type="button"
               onClick={() => navigate("/advertiser/discover")}
@@ -456,7 +467,7 @@ export function Dashboard() {
                 />
               </div>
 
-              <div className="mt-3 overflow-x-auto border-t border-[#edf1ed] pt-3">
+              <div className="no-scrollbar mt-3 overflow-x-auto border-t border-[#edf1ed] pt-3">
                 <div className="flex min-w-max items-center gap-4">
                   <FilterSection label="플랫폼">
                     {PLATFORM_FILTERS.map((platform) => (
@@ -628,6 +639,38 @@ function SyncPill({
       <CopyCheck className="h-3.5 w-3.5 text-neutral-500" />
       {isSyncing ? "저장 중" : "저장 완료"}
     </span>
+  );
+}
+
+function MessageCenterButton({
+  unreadCount,
+  isLoading,
+  onClick,
+}: {
+  unreadCount: number;
+  isLoading: boolean;
+  onClick: () => void;
+}) {
+  const badge = unreadCount > 0 ? unreadCount : undefined;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="relative inline-flex h-10 items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
+      aria-label="메시지함"
+      title="메시지함"
+    >
+      <MessageSquareText className="h-4 w-4" strokeWidth={2} />
+      <span className="hidden sm:inline">메시지함</span>
+      {badge ? (
+        <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1.5 text-[10px] font-extrabold tabular-nums text-white ring-2 ring-white">
+          {badge > 9 ? "9+" : badge}
+        </span>
+      ) : isLoading ? (
+        <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-neutral-300 ring-2 ring-white" />
+      ) : null}
+    </button>
   );
 }
 
@@ -818,7 +861,7 @@ function ContractTable({
         <span>금액</span>
         <span>{dueHeader}</span>
       </div>
-      <div className="divide-y divide-[#edf1ed]">
+      <div className="max-h-[620px] divide-y divide-[#edf1ed] overflow-y-auto lg:max-h-[calc(100vh-360px)]">
         {contracts.map((contract) => (
           <React.Fragment key={contract.id}>
             <ContractRow

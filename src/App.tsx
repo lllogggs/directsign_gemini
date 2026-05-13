@@ -107,6 +107,16 @@ const PublicBrandProfilePage = lazy(() =>
     default: module.PublicBrandProfilePage,
   })),
 );
+const AdvertiserMessagesPage = lazy(() =>
+  import("./pages/marketplace/MarketplaceInboxPage").then((module) => ({
+    default: () => <module.MarketplaceInboxPage role="advertiser" />,
+  })),
+);
+const InfluencerMessagesPage = lazy(() =>
+  import("./pages/marketplace/MarketplaceInboxPage").then((module) => ({
+    default: () => <module.MarketplaceInboxPage role="influencer" />,
+  })),
+);
 
 function AppLoading({ label = "계약 데이터를 불러오는 중입니다" }: { label?: string }) {
   return (
@@ -323,6 +333,14 @@ function AppRoutes() {
             }
           />
           <Route
+            path="/advertiser/messages"
+            element={
+              <AdvertiserAuthGate redirectUnauthenticated>
+                <AdvertiserMessagesPage />
+              </AdvertiserAuthGate>
+            }
+          />
+          <Route
             path="/advertiser/verification"
             element={
               <AdvertiserAuthGate redirectUnauthenticated>
@@ -350,6 +368,10 @@ function AppRoutes() {
           <Route
             path="/influencer/brands"
             element={<InfluencerBrandDiscoveryPage />}
+          />
+          <Route
+            path="/influencer/messages"
+            element={<InfluencerMessagesPage />}
           />
           <Route path="/brands/:brandHandle" element={<PublicBrandProfilePage />} />
           <Route path="/:profileHandle" element={<PublicInfluencerProfilePage />} />
