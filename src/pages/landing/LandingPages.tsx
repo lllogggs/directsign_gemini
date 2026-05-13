@@ -134,29 +134,29 @@ function getStartRoleTone(role: IntroRole) {
 
 const startServiceCards: StartServiceCard[] = [
   {
-    title: "공개 프로필",
-    description: "yeollock.me/핸들로 신뢰 확인",
+    title: "간편한 컨택",
+    description: "프로필 확인 후 바로 제안",
     icon: UserRound,
     iconClass: "text-neutral-800",
     iconBgClass: "bg-neutral-100",
   },
   {
-    title: "상호 탐색",
-    description: "인플루언서와 브랜드를 둘러봄",
+    title: "계약서 작성",
+    description: "조건을 넣으면 초안 정리",
     icon: Search,
     iconClass: "text-blue-700",
     iconBgClass: "bg-blue-50",
   },
   {
-    title: "제안 초안",
-    description: "브랜드 소개와 광고 형태로 시작",
+    title: "전자계약",
+    description: "검토 링크와 서명 진행",
     icon: MessageSquareText,
     iconClass: "text-emerald-700",
     iconBgClass: "bg-emerald-50",
   },
   {
-    title: "전자계약",
-    description: "검토 링크와 서명 기록 관리",
+    title: "계약 관리",
+    description: "상태와 이력을 한눈에 관리",
     icon: FileSignature,
     iconClass: "text-amber-700",
     iconBgClass: "bg-amber-50",
@@ -482,12 +482,12 @@ const ROLE_PREVIEW_MANUAL_RESUME_DELAY_MS = 9000;
 const roleIntroSlides = {
   advertiser: [
     {
-      label: "공개 프로필",
-      eyebrow: "공개 프로필 확인",
-      title: ["신뢰할 수 있는", "인플루언서 프로필"],
+      label: "간편한 컨택",
+      eyebrow: "간편한 컨택",
+      title: ["신뢰할 수 있는", "간편한 컨택"],
       description:
-        "광고주는 yeollock.me/핸들에서 인증 채널, 최근 협업, 가능 광고 형태를 확인하고 바로 컨택을 시작합니다.",
-      helper: "광고주가 연락 전에 확인해야 할 신뢰 정보",
+        "인증 채널, 최근 협업, 가능 광고 형태를 확인한 뒤 브랜드와 맞는 인플루언서에게 바로 컨택합니다.",
+      helper: "프로필 확인 후 컨택 시작",
       primaryLabel: "인플루언서 찾기",
       primaryHref: "/advertiser/discover",
       secondaryLabel: "메시지함 보기",
@@ -517,14 +517,14 @@ const roleIntroSlides = {
       },
     },
     {
-      label: "상호 탐색",
-      eyebrow: "광고주 탐색 화면",
-      title: ["조건에 맞는", "인플루언서 찾기"],
+      label: "계약서 작성",
+      eyebrow: "계약서 작성",
+      title: ["합의 조건으로", "계약서 작성"],
       description:
-        "분야, 채널, 협업 형태로 인플루언서를 둘러보고 브랜드와 잘 맞는 프로필에서 바로 제안합니다.",
-      helper: "검색, 필터, 프로필 비교로 컨택 후보 정리",
-      primaryLabel: "둘러보기 열기",
-      primaryHref: "/advertiser/discover",
+        "컨택으로 합의한 플랫폼, 광고 형태, 금액, 기간을 계약서 초안에 맞춰 빠르게 정리합니다.",
+      helper: "조건을 넣으면 초안으로 정리",
+      primaryLabel: "계약서 작성",
+      primaryHref: "/advertiser/builder",
       secondaryLabel: "광고주 가입",
       secondaryHref: "/signup/advertiser",
       icon: Search,
@@ -532,49 +532,32 @@ const roleIntroSlides = {
       iconClass: "text-blue-700",
       cardClass: "border-blue-200 bg-blue-50/55",
       preview: {
-        kind: "discover",
-        header: "인플루언서 둘러보기",
-        searchPlaceholder: "카테고리, 플랫폼, 핸들 검색",
-        filters: [
-          { label: "웰니스", active: true },
-          { label: "릴스" },
-          { label: "공동구매" },
+        kind: "proposal",
+        header: "계약서 작성",
+        targetLabel: "계약 대상",
+        targetName: "소라핏 · Instagram/TikTok",
+        fields: [
+          { label: "계약명", value: "러닝 챌린지 릴스 캠페인" },
+          { label: "플랫폼", value: "Instagram · TikTok" },
+          { label: "금액", value: "320만원" },
+          { label: "기간", value: "2026.06.01-06.20" },
         ],
-        cards: [
-          {
-            name: "소라핏",
-            meta: "Instagram · TikTok",
-            badge: "웰니스 핏 참고",
-            description: "건강식품과 운동 루틴 숏폼 전환율이 높은 크리에이터",
-            stats: [
-              { label: "팔로워", value: "12.8만" },
-              { label: "협업", value: "18건" },
-            ],
-            action: "프로필 보기",
-          },
-          {
-            name: "오늘의 주방",
-            meta: "YouTube · Blog",
-            badge: "리뷰형 콘텐츠",
-            description: "주방가전 사용기를 상세 리뷰와 쇼츠로 함께 제작",
-            stats: [
-              { label: "구독자", value: "8.4만" },
-              { label: "평점", value: "4.9" },
-            ],
-            action: "컨택 제안",
-          },
-        ],
+        chips: ["유료 광고(PPL)", "릴스 1건", "스토리 2건"],
+        message:
+          "광고 표시, 업로드 일정, 검수 기준, 2차 활용 여부를 계약서 조항으로 정리합니다.",
+        timeline: ["조건 입력", "조항 확인", "PDF 초안", "검토 링크"],
+        actionLabel: "계약서 초안 만들기",
       },
     },
     {
-      label: "제안 초안",
-      eyebrow: "컨택과 메시지함",
-      title: ["브랜드 소개와", "광고 형태 제안"],
+      label: "전자계약",
+      eyebrow: "전자계약",
+      title: ["검토 링크와", "전자서명 진행"],
       description:
-        "가벼운 브랜드 소개, 희망 광고 형태, 예산 범위로 첫 메시지를 보내고 제안 흐름을 메시지함에서 이어갑니다.",
-      helper: "제안 저장 후 계약 전 대화와 알림으로 연결",
-      primaryLabel: "제안 보내기",
-      primaryHref: "/advertiser/discover",
+        "작성한 계약서를 검토 링크로 보내고 수정 요청, 승인, 전자서명 흐름을 한 화면에서 이어갑니다.",
+      helper: "검토 링크와 전자서명 진행",
+      primaryLabel: "계약 발송",
+      primaryHref: "/advertiser/builder",
       secondaryLabel: "메시지함 보기",
       secondaryHref: "/advertiser/messages",
       icon: MessageSquareText,
@@ -583,7 +566,7 @@ const roleIntroSlides = {
       cardClass: "border-emerald-200 bg-emerald-50/60",
       preview: {
         kind: "proposal",
-        header: "컨택 제안 초안",
+        header: "전자계약 발송",
         targetLabel: "받는 사람",
         targetName: "소라핏 · 웰니스 크리에이터",
         fields: [
@@ -596,18 +579,18 @@ const roleIntroSlides = {
         message:
           "러닝 입문자를 위한 여름 캠페인을 준비 중입니다. 실제 운동 루틴에 자연스럽게 녹인 릴스 협업을 제안드리고 싶습니다.",
         timeline: ["제안 저장", "메시지함 알림", "조건 합의", "계약서 작성"],
-        actionLabel: "제안 보내기",
+        actionLabel: "검토 링크 보내기",
       },
     },
     {
-      label: "전자계약",
-      eyebrow: "제안 이후 계약 관리",
-      title: ["합의된 제안을", "전자계약으로 관리"],
+      label: "계약 관리",
+      eyebrow: "계약 관리",
+      title: ["진행 상황을", "계약별로 관리"],
       description:
-        "합의된 조건은 계약서로 전환하고 검토 링크, 수정 요청, 최종 서명 증빙을 계약별로 남깁니다.",
-      helper: "제안에서 계약으로 이어지는 운영 기록",
-      primaryLabel: "계약 만들기",
-      primaryHref: "/advertiser/builder",
+        "작성, 수정, 서명, 완료 상태를 계약별로 모아 보고 필요한 다음 행동을 바로 처리합니다.",
+      helper: "계약 상태와 이력 관리",
+      primaryLabel: "대시보드 보기",
+      primaryHref: "/advertiser/dashboard",
       secondaryLabel: "대시보드 보기",
       secondaryHref: "/advertiser/dashboard",
       icon: FileSignature,
@@ -648,12 +631,12 @@ const roleIntroSlides = {
   ],
   influencer: [
     {
-      label: "공개 프로필",
-      eyebrow: "내 공개 프로필",
-      title: ["브랜드가 바로 보는", "내 공개 프로필"],
+      label: "간편한 컨택",
+      eyebrow: "간편한 컨택",
+      title: ["브랜드와 연결되는", "간편한 컨택"],
       description:
-        "원하는 공개 주소, 소개 문구, 인증 채널을 묶어 브랜드가 확인하고 컨택할 수 있는 프로필을 운영합니다.",
-      helper: "입점 브랜드와 광고주가 보는 첫 신뢰 화면",
+        "내 공개 프로필과 인증 채널을 기반으로 브랜드가 신뢰하고 연락할 수 있는 컨택 흐름을 만듭니다.",
+      helper: "프로필과 인증 채널로 컨택",
       primaryLabel: "프로필 설정",
       primaryHref: "/influencer/dashboard",
       secondaryLabel: "브랜드 찾기",
@@ -683,14 +666,14 @@ const roleIntroSlides = {
       },
     },
     {
-      label: "상호 탐색",
-      eyebrow: "브랜드 탐색 화면",
-      title: ["공개 브랜드를", "직접 둘러보기"],
+      label: "계약서 작성",
+      eyebrow: "계약서 작성",
+      title: ["합의한 조건을", "계약서로 확인"],
       description:
-        "협업 가능한 브랜드와 광고 형태를 확인하고 내 채널과 맞는 곳에 먼저 역제안할 수 있습니다.",
-      helper: "카테고리와 제안 조건으로 브랜드 비교",
-      primaryLabel: "브랜드 둘러보기",
-      primaryHref: "/influencer/brands",
+        "브랜드가 보낸 광고 조건, 금액, 기간, 산출물을 계약서 형태로 확인하고 빠진 부분을 바로 봅니다.",
+      helper: "받은 조건을 계약서로 확인",
+      primaryLabel: "받은 계약 보기",
+      primaryHref: "/influencer/dashboard",
       secondaryLabel: "인플루언서 가입",
       secondaryHref: "/signup/influencer",
       icon: Search,
@@ -698,49 +681,32 @@ const roleIntroSlides = {
       iconClass: "text-blue-700",
       cardClass: "border-blue-200 bg-blue-50/55",
       preview: {
-        kind: "discover",
-        header: "공개 브랜드 둘러보기",
-        searchPlaceholder: "브랜드, 카테고리, 광고 형태 검색",
-        filters: [
-          { label: "리빙", active: true },
-          { label: "제품 협찬" },
-          { label: "공동구매" },
+        kind: "proposal",
+        header: "계약서 조건 확인",
+        targetLabel: "받은 계약",
+        targetName: "브레드룸 · 홈카페 공동구매",
+        fields: [
+          { label: "브랜드", value: "브레드룸" },
+          { label: "플랫폼", value: "Instagram · Blog" },
+          { label: "금액", value: "판매 수수료 18%" },
+          { label: "기간", value: "2026.06.01-06.20" },
         ],
-        cards: [
-          {
-            name: "브레드룸",
-            meta: "홈카페 · 식품",
-            badge: "릴스 협업 모집",
-            description: "신제품 시식과 홈카페 레시피형 콘텐츠 제안을 받고 있습니다.",
-            stats: [
-              { label: "예산", value: "150만+" },
-              { label: "응답", value: "1일" },
-            ],
-            action: "역제안",
-          },
-          {
-            name: "모노트립",
-            meta: "여행 · 숙박",
-            badge: "방문 콘텐츠",
-            description: "주말 숙박권과 브이로그형 리뷰 콘텐츠를 함께 운영합니다.",
-            stats: [
-              { label: "형태", value: "방문" },
-              { label: "채널", value: "YouTube" },
-            ],
-            action: "브랜드 보기",
-          },
-        ],
+        chips: ["공동구매", "릴스 1건", "블로그 리뷰"],
+        message:
+          "광고주가 입력한 조건을 먼저 확인하고 빠진 산출물, 정산 기준, 사용 권한을 체크합니다.",
+        timeline: ["조건 확인", "질문 작성", "수정 요청", "전자서명"],
+        actionLabel: "조건 확인하기",
       },
     },
     {
-      label: "제안 초안",
-      eyebrow: "브랜드 제안 초안",
-      title: ["내 채널에 맞춰", "브랜드에", "제안"],
+      label: "전자계약",
+      eyebrow: "전자계약",
+      title: ["수정 요청부터", "전자서명까지"],
       description:
-        "내 공개 프로필과 채널 강점을 바탕으로 브랜드에 광고 형태, 일정, 콘텐츠 아이디어를 먼저 보냅니다.",
-      helper: "브랜드가 검토하기 쉬운 제안 초안",
-      primaryLabel: "역제안하기",
-      primaryHref: "/influencer/brands",
+        "불리하거나 애매한 조항은 수정 요청하고, 합의가 끝나면 전자서명으로 안전하게 마무리합니다.",
+      helper: "수정 요청과 전자서명 진행",
+      primaryLabel: "계약 검토",
+      primaryHref: "/influencer/dashboard",
       secondaryLabel: "메시지함 보기",
       secondaryHref: "/influencer/messages",
       icon: MessageSquareText,
@@ -749,7 +715,7 @@ const roleIntroSlides = {
       cardClass: "border-emerald-200 bg-emerald-50/60",
       preview: {
         kind: "proposal",
-        header: "브랜드 역제안 초안",
+        header: "전자계약 검토",
         targetLabel: "제안 브랜드",
         targetName: "브레드룸 · 홈카페 식품",
         fields: [
@@ -762,16 +728,16 @@ const roleIntroSlides = {
         message:
           "브레드룸 신제품을 홈카페 루틴에 녹인 릴스와 블로그 리뷰로 소개하고 싶습니다. 기존 독자층과 잘 맞는 포맷을 제안드립니다.",
         timeline: ["역제안 저장", "메시지함 알림", "조건 협의", "계약 검토"],
-        actionLabel: "역제안 보내기",
+        actionLabel: "수정 요청 또는 서명",
       },
     },
     {
-      label: "전자계약",
-      eyebrow: "받은 계약 검토",
-      title: ["조건 확인부터", "서명과 제출까지"],
+      label: "계약 관리",
+      eyebrow: "계약 관리",
+      title: ["받은 계약을", "상태별로 관리"],
       description:
-        "브랜드가 보낸 계약을 핵심 조건부터 확인하고, 수정 요청과 전자서명, 콘텐츠 제출 상태를 이어서 관리합니다.",
-      helper: "모바일에서도 놓치지 않는 계약 검토 흐름",
+        "검토 필요, 수정 협의, 서명 가능, 완료 계약을 한 화면에서 보고 다음 할 일을 놓치지 않습니다.",
+      helper: "받은 계약 상태와 이력 관리",
       primaryLabel: "받은 계약 보기",
       primaryHref: "/influencer/dashboard",
       secondaryLabel: "브랜드 찾기",
@@ -1364,7 +1330,7 @@ function RoleFeatureIntroScreen({
   }, []);
 
   return (
-    <main className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950">
+    <main className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950 lg:h-screen lg:overflow-hidden">
       <header className="border-b border-neutral-200/80 bg-[#fbfaf7]/95">
         <div className="mx-auto flex h-[68px] max-w-[1120px] items-center justify-between px-5 sm:px-6 lg:px-8">
           <BrandLockup />
@@ -1377,37 +1343,75 @@ function RoleFeatureIntroScreen({
         </div>
       </header>
 
-      <section className="mx-auto grid min-h-[calc(100vh-68px)] max-w-[1120px] gap-6 px-5 py-7 sm:px-6 lg:grid-cols-[0.8fr_1.2fr] lg:grid-rows-[auto_auto] lg:items-center lg:gap-x-8 lg:gap-y-0 lg:px-8 lg:py-10">
-        <div className="min-w-0 lg:self-end">
+      <section className="mx-auto grid min-h-[calc(100vh-68px)] max-w-[1120px] gap-5 px-5 py-5 sm:px-6 lg:h-[calc(100vh-68px)] lg:grid-cols-[340px_minmax(0,1fr)] lg:items-center lg:gap-8 lg:overflow-hidden lg:px-8 lg:py-5">
+        <div className="min-w-0 lg:self-center">
           <p className="inline-flex items-center gap-2 text-[13px] font-extrabold text-neutral-500">
             <RoleIcon className="h-4 w-4" />
-            {roleLabel} 초기 화면
+            {roleLabel}
           </p>
-          <p className="mt-4 text-[13px] font-extrabold text-neutral-500">
-            {activeSlide.eyebrow}
-          </p>
-          <h1 className="font-neo-heavy mt-2 max-w-[430px] text-[34px] leading-[1.05] tracking-normal text-neutral-950 sm:text-[52px] sm:leading-[1]">
-            {activeSlide.title.map((line) => (
-              <span key={line} className="block">
-                {line}
-              </span>
-            ))}
+          <h1 className="font-neo-heavy mt-4 text-[44px] leading-[0.98] tracking-normal text-neutral-950 sm:text-[58px] lg:text-[60px]">
+            {activeSlide.label}
           </h1>
 
-          <p className="mt-5 max-w-[420px] break-keep text-[15px] font-bold leading-7 text-neutral-600">
+          <p className="mt-5 max-w-[330px] break-keep text-[14px] font-bold leading-6 text-neutral-600">
             {activeSlide.description}
           </p>
+
+          <div
+            className="mt-7 grid w-full max-w-[330px] grid-cols-2 gap-2"
+            aria-label={`${roleLabel} 기능 선택`}
+          >
+            {slides.map((slide, index) => {
+              const selected = activeIndex === index;
+
+              return (
+                <button
+                  key={slide.label}
+                  type="button"
+                  onClick={() => handleFeatureSelect(index)}
+                  className={`group flex h-14 items-center justify-between rounded-[10px] border px-4 text-left text-[14px] font-extrabold transition hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-neutral-950 ${
+                    selected
+                      ? "border-neutral-950 bg-neutral-950 text-white shadow-[0_14px_34px_rgba(15,23,42,0.16)]"
+                      : "border-neutral-200 bg-white/80 text-neutral-500 hover:border-neutral-300 hover:text-neutral-950"
+                  }`}
+                  aria-pressed={selected}
+                >
+                  <span>{slide.label}</span>
+                  <span
+                    className={`h-2 w-2 rounded-full ${
+                      selected ? "bg-white" : slide.accentClass
+                    }`}
+                  />
+                </button>
+              );
+            })}
+          </div>
+
+          <Link
+            to={activeSlide.primaryHref}
+            className="group mt-7 inline-flex h-12 w-full max-w-[330px] items-center justify-center gap-2 rounded-[12px] bg-blue-600 px-5 text-[14px] font-extrabold tracking-normal text-white shadow-[0_14px_34px_rgba(37,99,235,0.24)] ring-1 ring-blue-500/20 transition duration-200 hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-[0_18px_42px_rgba(37,99,235,0.28)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700 active:translate-y-0"
+          >
+            <span>{activeSlide.primaryLabel}</span>
+            <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
+          </Link>
+
+          <Link
+            to={config.switchHref}
+            className="mt-5 inline-flex text-[12px] font-bold text-neutral-400 transition hover:text-neutral-700"
+          >
+            {config.switchLabel}
+          </Link>
         </div>
 
         <RoleFeaturePreviewCarousel
-          className="lg:col-start-2 lg:row-span-2 lg:row-start-1"
+          className="lg:col-start-2 lg:row-start-1"
           onActiveIndexChange={setActiveIndex}
           onPreviewIndexChange={setPreviewIndex}
           previewIndex={previewIndex}
           slides={slides}
         />
 
-        <div className="min-w-0 lg:self-start">
+        <div className="hidden">
           <div
             className="mt-6 grid w-full max-w-[430px] grid-cols-1 gap-2 md:grid-cols-2"
             aria-label={`${roleLabel} 기능 선택`}
@@ -1575,7 +1579,7 @@ function RoleFeaturePreviewCarousel({
 
     const timer = window.setTimeout(() => {
       setAutoPausedUntil(0);
-      showSlide(previewIndex === slides.length - 1 ? 0 : previewIndex + 1, false);
+      showSlide(previewIndex === slides.length - 1 ? 0 : previewIndex + 1, true);
     }, delay);
 
     return () => window.clearTimeout(timer);
@@ -1593,7 +1597,7 @@ function RoleFeaturePreviewCarousel({
   return (
     <section
       aria-label="기능별 화면 미리보기"
-      className={`${className} mx-auto w-full min-w-0 max-w-[calc(100vw-40px)] overflow-hidden rounded-[18px] border border-neutral-200 bg-[#fbfaf7] shadow-[0_24px_70px_rgba(15,23,42,0.08)] sm:max-w-full sm:rounded-[24px]`}
+      className={`${className} mx-auto flex w-full min-w-0 max-w-[calc(100vw-40px)] flex-col overflow-hidden rounded-[18px] border border-neutral-200 bg-[#fbfaf7] shadow-[0_24px_70px_rgba(15,23,42,0.08)] sm:max-w-full sm:rounded-[24px] lg:h-[calc(100vh-96px)] lg:max-h-[640px]`}
       onBlurCapture={(event) => {
         const nextTarget = event.relatedTarget;
 
@@ -1634,9 +1638,9 @@ function RoleFeaturePreviewCarousel({
         </div>
       </div>
 
-      <div className="min-w-0 p-4 sm:p-5">
+      <div className="flex min-h-0 flex-1 flex-col p-3 sm:p-4">
         <div
-          className="mb-4 grid min-w-0 grid-cols-4 gap-1 overflow-hidden rounded-full bg-neutral-100 p-1"
+          className="mb-3 grid min-w-0 shrink-0 grid-cols-4 gap-1 overflow-hidden rounded-full bg-neutral-100 p-1"
           role="tablist"
           aria-label="기능 미리보기 종류"
         >
@@ -1660,17 +1664,17 @@ function RoleFeaturePreviewCarousel({
           ))}
         </div>
 
-        <div className="relative min-h-[460px] sm:min-h-[530px]">
-          <RolePreviewSlideView
-            panelId={`role-preview-panel-${previewIndex}`}
-            slide={activeSlide}
-          />
+        <div className="relative min-h-[420px] flex-1 overflow-hidden lg:min-h-0">
           <div
-            aria-hidden="true"
-            className={`pointer-events-none absolute inset-0 z-10 rounded-[14px] bg-white transition-opacity duration-300 ease-out sm:rounded-[16px] ${
-              isFading ? "opacity-100" : "opacity-0"
+            className={`h-full transition duration-300 ease-out ${
+              isFading ? "translate-x-4 opacity-0" : "translate-x-0 opacity-100"
             }`}
-          />
+          >
+            <RolePreviewSlideView
+              panelId={`role-preview-panel-${previewIndex}`}
+              slide={activeSlide}
+            />
+          </div>
         </div>
       </div>
     </section>
@@ -1739,9 +1743,9 @@ function RolePreviewPanel({
       id={panelId}
       key={slide.label}
       role="tabpanel"
-      className="min-h-[460px] overflow-hidden rounded-[14px] border border-neutral-200 bg-white sm:min-h-[530px] sm:rounded-[16px]"
+      className="flex h-full min-h-[420px] flex-col overflow-hidden rounded-[14px] border border-neutral-200 bg-white lg:min-h-0 sm:rounded-[16px]"
     >
-      <div className="flex items-center justify-between gap-4 border-b border-neutral-200 px-4 py-4 sm:px-5">
+      <div className="flex shrink-0 items-center justify-between gap-4 border-b border-neutral-200 px-4 py-3 sm:px-5">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <span className={`h-2 w-2 rounded-full ${slide.accentClass}`} />
@@ -1756,7 +1760,9 @@ function RolePreviewPanel({
         {meta ? <div className="shrink-0">{meta}</div> : null}
       </div>
 
-      <div className="bg-[#fbfaf7] p-3 sm:p-5">{children}</div>
+      <div className="min-h-0 flex-1 overflow-hidden bg-[#fbfaf7] p-3 sm:p-4">
+        {children}
+      </div>
     </div>
   );
 }
@@ -1780,7 +1786,7 @@ function RoleProfilePreview({
         </span>
       }
     >
-      <div className="rounded-[12px] border border-neutral-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+      <div className="rounded-[12px] border border-neutral-200 bg-white p-3.5 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
         <div className="flex items-start gap-3">
           <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[12px] bg-neutral-950 text-[18px] font-extrabold text-white">
             {preview.profileName.slice(0, 2)}
@@ -1855,7 +1861,7 @@ function RoleProfilePreview({
           </div>
           <ArrowRight className="h-4 w-4 shrink-0" />
         </div>
-        <p className="mt-3 break-keep text-[11px] font-bold leading-5 text-white/65">
+        <p className="mt-2 hidden break-keep text-[11px] font-bold leading-5 text-white/65 xl:block">
           {preview.footerNote}
         </p>
       </div>
@@ -1903,11 +1909,11 @@ function RoleDiscoverPreview({
         </div>
       </div>
 
-      <div className="mt-3 grid gap-3">
+      <div className="mt-2 grid gap-2">
         {preview.cards.map((card) => (
           <article
             key={card.name}
-            className="rounded-[12px] border border-neutral-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.035)]"
+            className="rounded-[12px] border border-neutral-200 bg-white p-3 shadow-[0_10px_28px_rgba(15,23,42,0.035)]"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
@@ -1922,10 +1928,10 @@ function RoleDiscoverPreview({
                 {card.badge}
               </span>
             </div>
-            <p className="mt-3 line-clamp-2 break-keep text-[12px] font-bold leading-5 text-neutral-600">
+            <p className="mt-2 line-clamp-1 break-keep text-[12px] font-bold leading-5 text-neutral-600">
               {card.description}
             </p>
-            <div className="mt-3 grid grid-cols-2 gap-2">
+            <div className="mt-2 grid grid-cols-2 gap-2">
               {card.stats.map((stat) => (
                 <div
                   key={stat.label}
@@ -1940,7 +1946,7 @@ function RoleDiscoverPreview({
                 </div>
               ))}
             </div>
-            <div className="mt-3 flex h-9 items-center justify-between rounded-[8px] border border-neutral-200 px-3 text-[12px] font-extrabold text-neutral-700">
+            <div className="mt-2 flex h-8 items-center justify-between rounded-[8px] border border-neutral-200 px-3 text-[12px] font-extrabold text-neutral-700">
               {card.action}
               <ArrowRight className="h-3.5 w-3.5" />
             </div>
@@ -1970,18 +1976,18 @@ function RoleProposalPreview({
         </span>
       }
     >
-      <div className="rounded-[12px] border border-neutral-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+      <div className="rounded-[12px] border border-neutral-200 bg-white p-3.5 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
         <p className="text-[11px] font-extrabold text-neutral-400">
           {preview.targetLabel}
         </p>
         <p className="mt-1 truncate text-[16px] font-extrabold text-neutral-950">
           {preview.targetName}
         </p>
-        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
           {preview.fields.map((field) => (
             <div
               key={field.label}
-              className="rounded-[8px] border border-neutral-200 bg-[#f8f7f4] px-3 py-2.5"
+              className="rounded-[8px] border border-neutral-200 bg-[#f8f7f4] px-3 py-2"
             >
               <p className="text-[10px] font-extrabold text-neutral-400">
                 {field.label}
@@ -1994,7 +2000,7 @@ function RoleProposalPreview({
         </div>
       </div>
 
-      <div className="mt-3 rounded-[12px] border border-neutral-200 bg-white p-4">
+      <div className="mt-2 rounded-[12px] border border-neutral-200 bg-white p-3.5">
         <p className="text-[11px] font-extrabold text-neutral-400">
           제안 메시지
         </p>
@@ -2008,16 +2014,16 @@ function RoleProposalPreview({
             </span>
           ))}
         </div>
-        <p className="mt-3 min-h-[88px] break-keep rounded-[8px] border border-neutral-200 bg-[#f8f7f4] px-3 py-3 text-[12px] font-bold leading-5 text-neutral-700">
+        <p className="mt-2 min-h-[60px] break-keep rounded-[8px] border border-neutral-200 bg-[#f8f7f4] px-3 py-2.5 text-[12px] font-bold leading-5 text-neutral-700">
           {preview.message}
         </p>
       </div>
 
-      <div className="mt-3 grid gap-2 sm:grid-cols-4">
+      <div className="mt-2 hidden gap-2 xl:grid xl:grid-cols-4">
         {preview.timeline.map((item, index) => (
           <div
             key={item}
-            className="rounded-[8px] border border-neutral-200 bg-white px-3 py-3"
+            className="rounded-[8px] border border-neutral-200 bg-white px-3 py-2"
           >
             <p className="text-[10px] font-extrabold text-neutral-400">
               0{index + 1}
@@ -2029,7 +2035,7 @@ function RoleProposalPreview({
         ))}
       </div>
 
-      <div className="mt-3 flex items-center justify-between gap-3 rounded-[12px] bg-neutral-950 px-4 py-3 text-white">
+      <div className="mt-2 hidden items-center justify-between gap-3 rounded-[12px] bg-neutral-950 px-4 py-3 text-white xl:flex">
         <div className="min-w-0">
           <p className="text-[11px] font-extrabold text-white/55">다음 행동</p>
           <p className="mt-1 truncate text-[13px] font-extrabold">
