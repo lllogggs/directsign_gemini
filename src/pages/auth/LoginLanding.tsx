@@ -78,12 +78,16 @@ export function LoginLanding() {
               {loginRoles.map((role) => {
                 const Icon = role.icon;
                 const tone = getRoleTone(role.role);
-                const next = getSafeRedirectPath(
-                  requestedNext,
-                  role.fallback,
-                  role.allowedPrefixes,
-                );
-                const href = `${role.href}?next=${encodeURIComponent(next)}`;
+                const next = requestedNext
+                  ? getSafeRedirectPath(
+                      requestedNext,
+                      role.fallback,
+                      role.allowedPrefixes,
+                    )
+                  : "";
+                const href = next
+                  ? `${role.href}?next=${encodeURIComponent(next)}`
+                  : role.href;
 
                 return (
                   <Link

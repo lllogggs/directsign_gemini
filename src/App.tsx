@@ -226,7 +226,7 @@ function AdvertiserLoginRoute() {
   const nextPath = getNextPath(location.search, "/advertiser/dashboard", ["/advertiser"]);
 
   return (
-    <AdvertiserAuthGate>
+    <AdvertiserAuthGate redirectAfterLogin={nextPath}>
       <Navigate to={nextPath} replace />
     </AdvertiserAuthGate>
   );

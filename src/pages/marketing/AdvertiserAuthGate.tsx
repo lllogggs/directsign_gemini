@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Link, Navigate, useLocation } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { AuthLoginScreen } from "../../components/AuthLoginScreen";
 import { apiFetch } from "../../domain/api";
 import { buildLoginRedirect } from "../../domain/navigation";
@@ -22,12 +22,15 @@ type AdvertiserSessionResponse = {
 export function AdvertiserAuthGate({
   children,
   redirectUnauthenticated = false,
+  redirectAfterLogin,
 }: {
   children: React.ReactNode;
   redirectUnauthenticated?: boolean;
+  redirectAfterLogin?: string;
 }) {
   const hydrateContracts = useAppStore((state) => state.hydrateContracts);
   const location = useLocation();
+  const navigate = useNavigate();
   const [isChecking, setIsChecking] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [email, setEmail] = useState("");
@@ -99,6 +102,12 @@ export function AdvertiserAuthGate({
       }
 
       setIsAuthenticated(true);
+      if (redirectAfterLogin) {
+        void refreshContracts();
+        navigate(redirectAfterLogin, { replace: true });
+        return;
+      }
+
       await refreshContracts();
     } catch (loginError) {
       setError(

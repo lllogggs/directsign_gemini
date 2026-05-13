@@ -404,6 +404,18 @@ describe("yeollock.me security regressions", () => {
     }
   });
 
+  it("redirects advertiser login immediately after successful authentication", () => {
+    const app = read("src/App.tsx");
+    const advertiserAuthGate = read("src/pages/marketing/AdvertiserAuthGate.tsx");
+    const loginLanding = read("src/pages/auth/LoginLanding.tsx");
+
+    assert.match(app, /<AdvertiserAuthGate redirectAfterLogin=\{nextPath\}>/);
+    assert.match(advertiserAuthGate, /useNavigate/);
+    assert.match(advertiserAuthGate, /navigate\(redirectAfterLogin, \{ replace: true \}\)/);
+    assert.match(loginLanding, /const href = next[\s\S]+\? `\$\{role\.href\}\?next=/);
+    assert.match(loginLanding, /: role\.href/);
+  });
+
   it("starts generated clauses as pending review and exposes mobile clause actions", () => {
     const builder = read("src/pages/marketing/ContractBuilder.tsx");
     const viewer = read("src/pages/influencer/ContractViewer.tsx");
