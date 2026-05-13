@@ -1,7 +1,6 @@
 import {
   ArrowLeft,
   ArrowRight,
-  FileText,
   MessageSquareText,
   RefreshCw,
   Search,
@@ -54,6 +53,7 @@ const proposalStatusTone: Record<MarketplaceProposalStatus, string> = {
 const roleCopy = {
   advertiser: {
     eyebrow: "광고주 메시지함",
+    panelTitle: "보낸 제안 관리",
     summaryTitle: (openCount: number) =>
       openCount > 0
         ? `보낸 제안 ${openCount.toLocaleString()}건이 진행 중입니다`
@@ -76,6 +76,7 @@ const roleCopy = {
   },
   influencer: {
     eyebrow: "인플루언서 메시지함",
+    panelTitle: "받은 제안 관리",
     summaryTitle: (openCount: number) =>
       openCount > 0
         ? `받은 제안 ${openCount.toLocaleString()}건을 확인해야 합니다`
@@ -100,6 +101,7 @@ const roleCopy = {
   MarketplaceInboxRole,
   {
     eyebrow: string;
+    panelTitle: string;
     summaryTitle: (openCount: number) => string;
     summaryHint: string;
     backHref: string;
@@ -251,24 +253,26 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
       }),
     [bucket, data.threads, normalizedQuery],
   );
+  const headerBadge =
+    role === "advertiser"
+      ? `진행 중 ${sentOpenCount.toLocaleString()}건`
+      : `확인 필요 ${data.summary.unreadCount.toLocaleString()}건`;
 
   return (
-    <main className="min-h-screen bg-[#f6f6f5] font-sans text-neutral-950">
+    <div className="min-h-screen bg-neutral-50 font-sans text-neutral-950">
       <header className="sticky top-0 z-30 border-b border-neutral-200 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-[1180px] items-center justify-between px-4 sm:px-6">
-          <Link to="/" className="flex min-w-0 items-center gap-2.5">
-            <span className="flex h-8 w-8 items-center justify-center rounded-[7px] bg-neutral-950 text-white">
+        <div className="mx-auto flex h-16 max-w-[1320px] items-center justify-between px-4 sm:px-6 lg:px-8">
+          <Link to="/" className="flex min-w-0 items-center gap-3">
+            <span className="flex h-9 w-9 items-center justify-center rounded-md bg-neutral-950 text-white">
               <ShieldCheck className="h-4 w-4" />
             </span>
-            <span className="truncate text-[17px] font-extrabold tracking-[-0.01em]">
-              {PRODUCT_NAME}
-            </span>
+            <span className="truncate text-[18px] font-semibold">{PRODUCT_NAME}</span>
           </Link>
 
           <div className="flex items-center gap-2">
             <Link
               to={copy.backHref}
-              className="inline-flex h-9 items-center gap-2 rounded-[7px] border border-neutral-200 bg-white px-3 text-[12px] font-bold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
+              className="inline-flex h-10 items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
             >
               <ArrowLeft className="h-4 w-4" />
               <span className="hidden sm:inline">{copy.backLabel}</span>
@@ -276,7 +280,7 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
             <button
               type="button"
               onClick={() => void loadMessages()}
-              className="flex h-9 w-9 items-center justify-center rounded-[7px] border border-neutral-200 bg-white text-neutral-600 transition hover:border-neutral-300 hover:text-neutral-950"
+              className="flex h-10 w-10 items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-600 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
               aria-label="새로고침"
               title="새로고침"
             >
@@ -286,134 +290,106 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
         </div>
       </header>
 
-      <div className="mx-auto max-w-[1180px] px-4 py-4 sm:px-6">
-        <section className="overflow-hidden rounded-[12px] border border-neutral-200 bg-white">
-          <div className="grid gap-4 px-4 py-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-            <div className="min-w-0">
-              <p className="text-[12px] font-bold text-neutral-500">{copy.eyebrow}</p>
-              <h1 className="mt-1 text-[22px] font-extrabold leading-tight tracking-[-0.01em] text-neutral-950 sm:text-[26px]">
-                {copy.summaryTitle(focusMetrics.headingCount)}
-              </h1>
-              <p className="mt-1 text-[13px] font-semibold leading-5 text-neutral-500">
-                {copy.summaryHint}
-              </p>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <Link
-                to={copy.discoverHref}
-                className="inline-flex h-9 items-center justify-center gap-2 rounded-[7px] border border-neutral-200 bg-white px-3 text-[12px] font-bold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
-              >
-                <Search className="h-4 w-4" />
-                {copy.discoverLabel}
-              </Link>
-              <Link
-                to={copy.primaryHref}
-                className="inline-flex h-9 items-center justify-center gap-2 rounded-[7px] bg-neutral-950 px-3 text-[12px] font-bold text-white transition hover:bg-neutral-800"
-              >
-                <FileText className="h-4 w-4" />
-                {copy.primaryLabel}
-              </Link>
+      <main className="mx-auto w-full min-w-0 max-w-[1320px] px-4 py-4 sm:px-6 lg:px-8">
+        <section className="min-w-0 overflow-hidden rounded-[8px] border border-[#cbd5cc] bg-[#fdfdfb] shadow-[0_22px_60px_rgba(23,26,23,0.10)]">
+          <div className="border-b border-[#d9e0d9] bg-white px-4 py-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[12px] font-semibold text-[#7d857f]">
+                  제안 운영 화면
+                </p>
+                <h1 className="mt-1 truncate text-[18px] font-semibold text-[#171a17]">
+                  {copy.panelTitle}
+                </h1>
+                <p className="mt-1 text-[12px] font-medium text-[#7d857f]">
+                  전체 {data.threads.length.toLocaleString()}건 · 검색 결과{" "}
+                  {visibleThreads.length.toLocaleString()}건
+                </p>
+              </div>
+              <span className="inline-flex h-8 items-center rounded-[8px] bg-[#eef0ed] px-3 text-[12px] font-semibold text-[#303630]">
+                {headerBadge}
+              </span>
             </div>
           </div>
 
-          <div className="grid border-t border-neutral-200 bg-neutral-50/80 sm:grid-cols-3">
+          <div className="grid border-b border-neutral-200/80 bg-[#fcfcfd] sm:grid-cols-3">
             <SummaryMetric
               label={focusMetrics.primaryLabel}
               value={focusMetrics.primaryValue}
-              emphasis={role === "advertiser"}
             />
             <SummaryMetric
               label={focusMetrics.firstLabel}
               value={focusMetrics.firstValue}
-              emphasis={role !== "advertiser"}
             />
             <SummaryMetric label={focusMetrics.secondLabel} value={focusMetrics.secondValue} />
           </div>
-        </section>
 
-        <section className="mt-3 min-w-0 overflow-hidden rounded-[12px] border border-neutral-200 bg-white">
-          <div className="border-b border-neutral-200 bg-white p-3">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-              <div className="grid grid-cols-2 gap-1 rounded-[9px] bg-neutral-100 p-1 lg:w-[280px]">
-                {bucketOptions.map((option) => (
-                  <div key={option.id}>
-                    <BucketButton
-                      active={bucket === option.id}
-                      label={option.label}
-                      count={option.count}
-                      onClick={() => setBucket(option.id)}
-                    />
-                  </div>
-                ))}
+          <div className="min-w-0 p-4">
+            <section className="rounded-t-[8px] border border-b-0 border-[#d9e0d9] bg-white p-3">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+                <div className="relative min-w-0 flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8b938d]" />
+                  <input
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    aria-label="제안 검색"
+                    placeholder={copy.searchPlaceholder}
+                    className="h-10 w-full rounded-[6px] border border-[#d9e0d9] bg-[#f8faf7] pl-8 pr-3 text-[12px] font-semibold text-[#303630] outline-none transition-colors placeholder:text-[#8b938d] hover:border-[#cbd5cc] focus:border-[#171a17] focus:bg-white"
+                  />
+                </div>
+                <div
+                  className="grid min-w-0 grid-cols-2 gap-1 overflow-hidden rounded-full bg-neutral-100 p-1 lg:w-[300px] lg:shrink-0"
+                  role="tablist"
+                  aria-label="제안함"
+                >
+                  {bucketOptions.map((option) => (
+                    <div key={option.id}>
+                      <BucketButton
+                        active={bucket === option.id}
+                        label={option.label}
+                        count={option.count}
+                        onClick={() => setBucket(option.id)}
+                      />
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div className="relative min-w-0 flex-1">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-400" />
-                <input
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  aria-label="제안 검색"
-                  placeholder={copy.searchPlaceholder}
-                  className="h-10 w-full rounded-[8px] border border-neutral-200 bg-white pl-8 pr-3 text-[13px] font-semibold text-neutral-900 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950"
-                />
-              </div>
-            </div>
+            </section>
+
+            {state.status === "loading" ? (
+              <LoadingState />
+            ) : state.status === "error" ? (
+              <ErrorState message={state.message} onRetry={loadMessages} />
+            ) : visibleThreads.length === 0 ? (
+              <EmptyState
+                title={bucket === "inbox" ? copy.emptyInbox : copy.emptySent}
+                body={bucket === "inbox" ? copy.emptyInboxBody : copy.emptySentBody}
+              />
+            ) : (
+              <MessageTable copy={copy} role={role} threads={visibleThreads} />
+            )}
           </div>
-
-          {state.status === "loading" ? (
-            <LoadingState />
-          ) : state.status === "error" ? (
-            <ErrorState message={state.message} onRetry={loadMessages} />
-          ) : visibleThreads.length === 0 ? (
-            <EmptyState
-              title={bucket === "inbox" ? copy.emptyInbox : copy.emptySent}
-              body={bucket === "inbox" ? copy.emptyInboxBody : copy.emptySentBody}
-            />
-          ) : (
-            <>
-              <div className="hidden grid-cols-[112px_minmax(150px,200px)_minmax(0,1fr)_118px_118px] border-b border-neutral-200 bg-neutral-50 px-4 py-2.5 text-[11px] font-extrabold text-neutral-500 md:grid">
-                <span>상태</span>
-                <span>상대</span>
-                <span>제안</span>
-                <span className="text-right">{copy.dateHeader}</span>
-                <span className="sr-only">액션</span>
-              </div>
-              <div className="max-h-[calc(100vh-292px)] min-h-[340px] divide-y divide-neutral-100 overflow-y-auto">
-                {visibleThreads.map((thread) => (
-                  <div key={thread.id}>
-                    <MessageThreadRow role={role} thread={thread} />
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
         </section>
-      </div>
-    </main>
+      </main>
+    </div>
   );
 }
 
 function SummaryMetric({
   label,
   value,
-  emphasis = false,
 }: {
   label: string;
   value: number;
-  emphasis?: boolean;
 }) {
   return (
-    <div
-      className={`flex items-center justify-between gap-3 border-t border-neutral-200 px-4 py-3 first:border-t-0 sm:block sm:border-l sm:border-t-0 sm:first:border-l-0 ${
-        emphasis ? "bg-white" : ""
-      }`}
-    >
-      <p className="text-[12px] font-bold text-neutral-500">{label}</p>
-      <p className="mt-0 flex items-baseline gap-0.5 text-neutral-950 sm:mt-1">
-        <span className="text-[22px] font-extrabold leading-none tabular-nums">
+    <div className="flex items-center justify-between gap-3 border-t border-neutral-200/80 px-4 py-3 first:border-t-0 sm:block sm:border-l sm:border-t-0 sm:first:border-l-0">
+      <p className="text-[12px] font-semibold text-[#7d857f]">{label}</p>
+      <p className="mt-0 flex items-baseline gap-0.5 text-[#171a17] sm:mt-1">
+        <span className="text-[22px] font-semibold leading-none tabular-nums">
           {value.toLocaleString()}
         </span>
-        <span className="text-[13px] font-bold text-neutral-500">건</span>
+        <span className="text-[13px] font-semibold text-[#7d857f]">건</span>
       </p>
     </div>
   );
@@ -434,17 +410,50 @@ function BucketButton({
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex h-8 items-center justify-center gap-1 rounded-[7px] px-2 text-[12px] font-extrabold transition ${
+      role="tab"
+      aria-selected={active}
+      className={`h-9 min-w-0 rounded-full px-1 text-[12px] font-extrabold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 ${
         active
-          ? "bg-white text-neutral-950 shadow-[0_1px_2px_rgba(15,23,42,0.08)]"
-          : "text-neutral-500 hover:bg-white/70 hover:text-neutral-950"
+          ? "bg-white text-neutral-950 shadow-[0_1px_0_rgba(15,23,42,0.04)]"
+          : "text-neutral-500 hover:text-neutral-800"
       }`}
     >
-      <span>{label}</span>
-      <span className={active ? "text-neutral-500" : "text-neutral-400"}>
-        {count.toLocaleString()}
+      <span className="inline-flex min-w-0 max-w-full items-center justify-center gap-1 overflow-hidden whitespace-nowrap">
+        {label}
+        <span className={`text-[10px] ${active ? "text-neutral-500" : "text-neutral-400"}`}>
+          {count.toLocaleString()}
+        </span>
       </span>
     </button>
+  );
+}
+
+function MessageTable({
+  copy,
+  role,
+  threads,
+}: {
+  copy: (typeof roleCopy)[MarketplaceInboxRole];
+  role: MarketplaceInboxRole;
+  threads: MessageThread[];
+}) {
+  return (
+    <section className="overflow-hidden rounded-b-[8px] border border-[#d9e0d9] bg-white">
+      <div className="hidden grid-cols-[112px_minmax(180px,0.9fr)_minmax(280px,1.3fr)_130px_120px] border-b border-[#d9e0d9] bg-[#f8faf7] px-4 py-3 text-[11px] font-semibold text-[#7d857f] lg:grid">
+        <span>상태</span>
+        <span>상대</span>
+        <span>제안</span>
+        <span className="text-right">{copy.dateHeader}</span>
+        <span className="sr-only">액션</span>
+      </div>
+      <div className="max-h-[620px] divide-y divide-[#edf1ed] overflow-y-auto lg:max-h-[calc(100vh-360px)]">
+        {threads.map((thread) => (
+          <div key={thread.id}>
+            <MessageThreadRow role={role} thread={thread} />
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -475,58 +484,58 @@ function MessageThreadRow({
   const proposalTypeLabel = getProposalTypeLabel(thread);
 
   return (
-    <article className="grid gap-3 bg-white px-4 py-3.5 transition hover:bg-neutral-50 md:grid-cols-[112px_minmax(150px,200px)_minmax(0,1fr)_118px_118px] md:items-center">
+    <article className="grid gap-3 bg-white px-4 py-3 text-left transition-colors hover:bg-[#f8faf7] lg:grid-cols-[112px_minmax(180px,0.9fr)_minmax(280px,1.3fr)_130px_120px] lg:items-center">
       <div className="flex min-w-0 items-center gap-2 md:block">
         <span
-          className={`inline-flex h-6 shrink-0 items-center rounded-[6px] border px-2 text-[11px] font-extrabold ${proposalStatusTone[thread.status]}`}
+          className={`inline-flex h-6 shrink-0 items-center rounded-md border px-2 text-[11px] font-semibold ${proposalStatusTone[thread.status]}`}
         >
           {proposalStatusLabels[thread.status]}
         </span>
         {thread.unread ? (
-          <span className="inline-flex h-6 items-center rounded-[6px] bg-neutral-950 px-2 text-[11px] font-extrabold text-white md:mt-1">
+          <span className="inline-flex h-6 items-center rounded-md bg-neutral-950 px-2 text-[11px] font-semibold text-white md:mt-1">
             새 메시지
           </span>
         ) : null}
       </div>
 
       <div className="min-w-0">
-        <p className="truncate text-[14px] font-extrabold text-neutral-950">
+        <p className="truncate text-[14px] font-semibold text-[#171a17]">
           {thread.counterpartName}
         </p>
-        <p className="mt-0.5 truncate text-[12px] font-semibold text-neutral-500">
+        <p className="mt-0.5 truncate text-[12px] font-medium text-[#7d857f]">
           {relationshipLabel} · {relationshipName}
         </p>
       </div>
 
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="inline-flex h-6 items-center rounded-[6px] border border-neutral-200 bg-white px-2 text-[11px] font-extrabold text-neutral-700">
+          <span className="inline-flex h-6 items-center rounded-[5px] border border-[#d9e0d9] bg-white px-2 text-[11px] font-semibold text-[#59605b]">
             {proposalTypeLabel}
           </span>
-          <p className="min-w-0 flex-1 truncate text-[13px] font-semibold text-neutral-800">
+          <p className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[#303630]">
             {thread.proposalSummary}
           </p>
         </div>
-        <p className="mt-1 line-clamp-1 text-[12px] font-medium leading-5 text-neutral-500 md:hidden">
+        <p className="mt-1 line-clamp-1 text-[12px] font-medium leading-5 text-[#7d857f] lg:hidden">
           {formatMarketplaceMessageDate(thread.createdAt)}
         </p>
       </div>
 
-      <p className="hidden text-right text-[12px] font-bold tabular-nums text-neutral-500 md:block">
+      <p className="hidden text-right text-[12px] font-semibold tabular-nums text-[#7d857f] lg:block">
         {formatMarketplaceMessageDate(thread.createdAt)}
       </p>
 
-      <div className="flex md:justify-end">
+      <div className="flex lg:justify-end">
         {actionHref ? (
           <Link
             to={actionHref}
-            className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-[7px] border border-neutral-200 bg-white px-3 text-[12px] font-extrabold text-neutral-800 transition hover:border-neutral-950 hover:bg-neutral-950 hover:text-white md:w-[104px]"
+            className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-md border border-neutral-200 bg-white px-3 text-[12px] font-semibold text-neutral-700 transition hover:border-neutral-950 hover:bg-neutral-950 hover:text-white lg:w-[104px]"
           >
             {actionLabel}
             <ArrowRight className="h-3.5 w-3.5" />
           </Link>
         ) : (
-          <span className="inline-flex h-9 w-full items-center justify-center rounded-[7px] border border-neutral-200 text-[12px] font-bold text-neutral-500 md:w-[104px]">
+          <span className="inline-flex h-9 w-full items-center justify-center rounded-md border border-neutral-200 text-[12px] font-semibold text-neutral-500 lg:w-[104px]">
             연결 대기
           </span>
         )}
@@ -549,12 +558,12 @@ function getRelationshipLabel(role: MarketplaceInboxRole, thread: MessageThread)
 
 function LoadingState() {
   return (
-    <section className="min-h-[340px] px-4 py-4">
+    <section className="rounded-b-[8px] border border-[#d9e0d9] bg-white px-4 py-4">
       <div className="space-y-2">
         {Array.from({ length: 5 }).map((_, index) => (
           <div
             key={index}
-            className="grid gap-3 rounded-[8px] border border-neutral-100 bg-neutral-50 px-3 py-3 md:grid-cols-[112px_minmax(150px,200px)_minmax(0,1fr)_118px_118px]"
+            className="grid gap-3 rounded-[8px] border border-[#edf1ed] bg-[#f8faf7] px-3 py-3 lg:grid-cols-[112px_minmax(180px,0.9fr)_minmax(280px,1.3fr)_130px_120px]"
           >
             <div className="h-6 rounded bg-neutral-200/70" />
             <div className="h-6 rounded bg-neutral-200/70" />
@@ -579,21 +588,21 @@ function ErrorState({
   onRetry: () => void;
 }) {
   return (
-    <section className="flex min-h-[340px] items-center justify-center px-6 py-10 text-center">
+    <section className="flex min-h-[190px] items-center justify-center rounded-b-[8px] border border-[#d9e0d9] bg-white px-6 py-10 text-center">
       <div className="max-w-md">
-        <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-[8px] bg-rose-50 text-rose-600">
+        <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-[8px] bg-rose-50 text-rose-700">
           <MessageSquareText className="h-5 w-5" />
         </div>
-        <h2 className="mt-4 text-[17px] font-extrabold text-neutral-950">
+        <h2 className="mt-3 text-[14px] font-semibold text-[#171a17]">
           메시지함을 열 수 없습니다
         </h2>
-        <p className="mt-2 text-[13px] font-semibold leading-6 text-neutral-600">
+        <p className="mt-1 text-[12px] font-medium leading-5 text-[#7d857f]">
           {message}
         </p>
         <button
           type="button"
           onClick={onRetry}
-          className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-[7px] bg-neutral-950 px-4 text-[13px] font-extrabold text-white transition hover:bg-neutral-800"
+          className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-md bg-neutral-950 px-4 text-[13px] font-semibold text-white transition hover:bg-neutral-800"
         >
           <RefreshCw className="h-4 w-4" />
           다시 시도
@@ -605,13 +614,13 @@ function ErrorState({
 
 function EmptyState({ title, body }: { title: string; body: string }) {
   return (
-    <section className="flex min-h-[340px] items-center justify-center px-6 py-10 text-center">
+    <section className="flex min-h-[190px] flex-col items-center justify-center rounded-b-[8px] border border-[#d9e0d9] bg-white px-6 py-10 text-center">
       <div className="max-w-md">
-        <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-[8px] bg-neutral-100 text-neutral-500">
+        <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-[8px] bg-[#f8faf7] text-[#aeb7b0] ring-1 ring-[#d9e0d9]">
           <Send className="h-5 w-5" />
         </div>
-        <h2 className="mt-4 text-[17px] font-extrabold text-neutral-950">{title}</h2>
-        <p className="mt-2 text-[13px] font-semibold leading-6 text-neutral-600">
+        <h2 className="mt-3 text-[14px] font-semibold text-[#171a17]">{title}</h2>
+        <p className="mt-1 max-w-md text-[12px] leading-5 text-[#7d857f]">
           {body}
         </p>
       </div>
