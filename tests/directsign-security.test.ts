@@ -416,6 +416,18 @@ describe("yeollock.me security regressions", () => {
     assert.match(loginLanding, /: role\.href/);
   });
 
+  it("keeps advertiser marketplace messages focused on sent proposals", () => {
+    const inbox = read("src/pages/marketplace/MarketplaceInboxPage.tsx");
+
+    assert.match(inbox, /role === "advertiser" \? "sent" : "inbox"/);
+    assert.match(inbox, /title:\s*"보낸 제안 진행 상황"/);
+    assert.match(
+      inbox,
+      /role === "advertiser"[\s\S]+id: "sent", label: "보낸 제안"/,
+    );
+    assert.doesNotMatch(inbox, /function NotificationPanel/);
+  });
+
   it("starts generated clauses as pending review and exposes mobile clause actions", () => {
     const builder = read("src/pages/marketing/ContractBuilder.tsx");
     const viewer = read("src/pages/influencer/ContractViewer.tsx");

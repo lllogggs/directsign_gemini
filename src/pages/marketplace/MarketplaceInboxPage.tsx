@@ -1,7 +1,6 @@
 import {
   ArrowLeft,
   ArrowRight,
-  Bell,
   FileText,
   MessageSquareText,
   RefreshCw,
@@ -16,7 +15,6 @@ import { PRODUCT_NAME } from "../../domain/brand";
 import {
   emptyMarketplaceMessageSummary,
   formatMarketplaceMessageDate,
-  marketplaceFlowSteps,
   proposalStatusLabels,
   proposalStatusTone,
   type MarketplaceInboxRole,
@@ -31,10 +29,10 @@ type InboxState =
 
 const roleCopy = {
   advertiser: {
-    eyebrow: "광고주 메시지함",
-    title: "인플루언서 제안과 계약 전환을 한 곳에서 봅니다",
+    eyebrow: "광고주 제안함",
+    title: "보낸 제안 진행 상황",
     description:
-      "공개 프로필에서 보낸 컨택, 인플루언서의 역제안, 계약 작성 전 확인해야 할 초안 대화를 정리합니다.",
+      "인플루언서에게 보낸 제안이 검토 중인지, 계약으로 이어졌는지 먼저 확인합니다.",
     backHref: "/advertiser/dashboard",
     backLabel: "계약 대시보드",
     discoverHref: "/advertiser/discover",
@@ -78,8 +76,9 @@ const roleCopy = {
 export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
   const navigate = useNavigate();
   const copy = roleCopy[role];
+  const primaryBucket: MarketplaceMessageBucket = role === "advertiser" ? "sent" : "inbox";
   const [state, setState] = useState<InboxState>({ status: "loading" });
-  const [bucket, setBucket] = useState<MarketplaceMessageBucket>("inbox");
+  const [bucket, setBucket] = useState<MarketplaceMessageBucket>(primaryBucket);
   const [query, setQuery] = useState("");
 
   const loadMessages = useCallback(async () => {
@@ -137,6 +136,52 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
           summary: emptyMarketplaceMessageSummary,
         };
   const normalizedQuery = query.trim().toLowerCase();
+  const sentThreads = useMemo(
+    () => data.threads.filter((thread) => thread.bucket === "sent"),
+    [data.threads],
+  );
+  const sentOpenCount = sentThreads.filter((thread) =>
+    ["submitted", "reviewed"].includes(thread.status),
+  ).length;
+  const sentConvertedCount = sentThreads.filter(
+    (thread) => thread.status === "converted_to_contract",
+  ).length;
+  const inboxOpenCount = data.threads.filter(
+    (thread) =>
+      thread.bucket === "inbox" && ["submitted", "reviewed"].includes(thread.status),
+  ).length;
+  const focusMetrics =
+    role === "advertiser"
+      ? {
+          primaryLabel: "보낸 제안",
+          primaryValue: data.summary.sentCount,
+          firstLabel: "진행 중",
+          firstValue: sentOpenCount,
+          secondLabel: "계약 전환",
+          secondValue: sentConvertedCount,
+        }
+      : {
+          primaryLabel: "받은 제안",
+          primaryValue: data.summary.inboxCount,
+          firstLabel: "확인 필요",
+          firstValue: data.summary.unreadCount,
+          secondLabel: "진행 중",
+          secondValue: inboxOpenCount,
+        };
+  const bucketOptions: Array<{
+    id: MarketplaceMessageBucket;
+    label: string;
+    count: number;
+  }> =
+    role === "advertiser"
+      ? [
+          { id: "sent", label: "보낸 제안", count: data.summary.sentCount },
+          { id: "inbox", label: "받은 제안", count: data.summary.inboxCount },
+        ]
+      : [
+          { id: "inbox", label: "받은 제안", count: data.summary.inboxCount },
+          { id: "sent", label: "보낸 제안", count: data.summary.sentCount },
+        ];
   const visibleThreads = useMemo(
     () =>
       data.threads.filter((thread) => {
@@ -192,90 +237,75 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
       </header>
 
       <section className="border-b border-neutral-200 bg-white">
-        <div className="mx-auto max-w-[1320px] px-4 py-5 sm:px-6 lg:px-8">
-          <p className="text-[12px] font-semibold text-neutral-500">{copy.eyebrow}</p>
-          <div className="mt-2 grid gap-4 lg:grid-cols-[minmax(0,1fr)_420px] lg:items-end">
+        <div className="mx-auto max-w-[1260px] px-4 py-5 sm:px-6 lg:px-8">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="min-w-0">
-              <h1 className="text-[27px] font-semibold leading-tight text-neutral-950 sm:text-[34px]">
+              <p className="text-[12px] font-semibold text-neutral-500">{copy.eyebrow}</p>
+              <h1 className="mt-1 text-[28px] font-semibold leading-tight text-neutral-950 sm:text-[34px]">
                 {copy.title}
               </h1>
-              <p className="mt-2 max-w-3xl text-[14px] font-medium leading-6 text-neutral-600">
+              <p className="mt-2 max-w-2xl text-[14px] font-medium leading-6 text-neutral-600">
                 {copy.description}
               </p>
             </div>
-            <div className="grid grid-cols-3 gap-2">
-              <InboxMetric label="받은 제안" value={data.summary.inboxCount} />
-              <InboxMetric label="새 알림" value={data.summary.unreadCount} />
-              <InboxMetric label="보낸 제안" value={data.summary.sentCount} />
+            <div className="flex flex-wrap gap-2">
+              <Link
+                to={copy.discoverHref}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
+              >
+                <Search className="h-4 w-4" />
+                {copy.discoverLabel}
+              </Link>
+              <Link
+                to={copy.primaryHref}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-neutral-950 px-3 text-[13px] font-semibold text-white transition hover:bg-neutral-800"
+              >
+                <FileText className="h-4 w-4" />
+                {copy.primaryLabel}
+              </Link>
             </div>
           </div>
 
-          <nav
-            aria-label="마켓플레이스 업무 흐름"
-            className="no-scrollbar mt-5 flex gap-2 overflow-x-auto"
-          >
-            {marketplaceFlowSteps[role].map((step) => {
-              const active = step.href.endsWith("/messages");
-              return (
-                <Link
-                  key={`${step.label}-${step.href}`}
-                  to={step.href}
-                  className={`inline-flex h-9 shrink-0 items-center rounded-md border px-3 text-[12px] font-semibold transition ${
-                    active
-                      ? "border-neutral-950 bg-neutral-950 text-white"
-                      : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300 hover:text-neutral-950"
-                  }`}
-                >
-                  {step.label}
-                </Link>
-              );
-            })}
-          </nav>
+          <div className="mt-5 rounded-[10px] border border-neutral-200 bg-[#fbfbfa] p-4">
+            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_320px] sm:items-center">
+              <div>
+                <p className="text-[12px] font-semibold text-neutral-500">
+                  {focusMetrics.primaryLabel}
+                </p>
+                <p className="mt-1 text-[34px] font-semibold leading-none tabular-nums text-neutral-950">
+                  {focusMetrics.primaryValue.toLocaleString()}
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <FocusMetric
+                  label={focusMetrics.firstLabel}
+                  value={focusMetrics.firstValue}
+                />
+                <FocusMetric
+                  label={focusMetrics.secondLabel}
+                  value={focusMetrics.secondValue}
+                />
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
-      <div className="mx-auto grid max-w-[1320px] gap-4 px-4 py-4 sm:px-6 lg:grid-cols-[280px_minmax(0,1fr)] lg:px-8">
-        <aside className="grid gap-3 self-start">
-          <NotificationPanel
-            unreadCount={data.summary.unreadCount}
-            submittedCount={data.summary.submittedCount}
-            convertedCount={data.summary.convertedCount}
-            role={role}
-          />
-          <div className="grid gap-2 rounded-[8px] border border-neutral-200 bg-white p-3">
-            <Link
-              to={copy.discoverHref}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
-            >
-              <Search className="h-4 w-4" />
-              {copy.discoverLabel}
-            </Link>
-            <Link
-              to={copy.primaryHref}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-neutral-950 px-3 text-[13px] font-semibold text-white transition hover:bg-neutral-800"
-            >
-              <FileText className="h-4 w-4" />
-              {copy.primaryLabel}
-            </Link>
-          </div>
-        </aside>
-
-        <section className="min-w-0 overflow-hidden rounded-[8px] border border-[#d9e0d9] bg-white">
+      <div className="mx-auto max-w-[1260px] px-4 py-4 sm:px-6 lg:px-8">
+        <section className="min-w-0 overflow-hidden rounded-[10px] border border-[#d9e0d9] bg-white">
           <div className="border-b border-[#d9e0d9] bg-[#f8faf7] p-3">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-              <div className="grid grid-cols-2 gap-1 rounded-full bg-white p-1 ring-1 ring-[#d9e0d9] lg:w-[260px]">
-                <BucketButton
-                  active={bucket === "inbox"}
-                  label="받은 제안"
-                  count={data.summary.inboxCount}
-                  onClick={() => setBucket("inbox")}
-                />
-                <BucketButton
-                  active={bucket === "sent"}
-                  label="보낸 제안"
-                  count={data.summary.sentCount}
-                  onClick={() => setBucket("sent")}
-                />
+              <div className="grid grid-cols-2 gap-1 rounded-full bg-white p-1 ring-1 ring-[#d9e0d9] lg:w-[300px]">
+                {bucketOptions.map((option) => (
+                  <div key={option.id}>
+                    <BucketButton
+                      active={bucket === option.id}
+                      label={option.label}
+                      count={option.count}
+                      onClick={() => setBucket(option.id)}
+                    />
+                  </div>
+                ))}
               </div>
               <div className="relative min-w-0 flex-1">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8b938d]" />
@@ -304,7 +334,7 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
               }
             />
           ) : (
-            <div className="max-h-[calc(100vh-330px)] min-h-[360px] divide-y divide-[#edf1ed] overflow-y-auto">
+            <div className="max-h-[calc(100vh-300px)] min-h-[360px] divide-y divide-[#edf1ed] overflow-y-auto">
               {visibleThreads.map((thread) => (
                 <MessageThreadCard key={thread.id} role={role} thread={thread} />
               ))}
@@ -316,61 +346,13 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
   );
 }
 
-function InboxMetric({ label, value }: { label: string; value: number }) {
+function FocusMetric({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-[8px] border border-neutral-200 bg-neutral-50 px-3 py-2">
+    <div className="rounded-[8px] border border-neutral-200 bg-white px-3 py-2">
       <p className="text-[11px] font-semibold text-neutral-500">{label}</p>
-      <p className="mt-1 text-[22px] font-semibold tabular-nums text-neutral-950">
+      <p className="mt-1 text-[20px] font-semibold tabular-nums text-neutral-950">
         {value.toLocaleString()}
       </p>
-    </div>
-  );
-}
-
-function NotificationPanel({
-  unreadCount,
-  submittedCount,
-  convertedCount,
-  role,
-}: {
-  unreadCount: number;
-  submittedCount: number;
-  convertedCount: number;
-  role: MarketplaceInboxRole;
-}) {
-  const contractLabel =
-    role === "advertiser" ? "조건이 맞는 제안은 계약 작성으로 넘기세요." : "계약 링크가 오면 검토 화면에서 이어집니다.";
-
-  return (
-    <section className="rounded-[8px] border border-neutral-200 bg-white p-4">
-      <div className="flex items-center gap-2">
-        <span className="flex h-9 w-9 items-center justify-center rounded-md bg-neutral-950 text-white">
-          <Bell className="h-4 w-4" />
-        </span>
-        <div>
-          <p className="text-[13px] font-semibold text-neutral-950">알림</p>
-          <p className="text-[12px] font-medium text-neutral-500">제안 기준으로 정리</p>
-        </div>
-      </div>
-      <div className="mt-4 grid gap-2">
-        <NotificationRow label="새로 확인할 제안" value={unreadCount} />
-        <NotificationRow label="아직 열려 있는 제안" value={submittedCount} />
-        <NotificationRow label="계약으로 전환됨" value={convertedCount} />
-      </div>
-      <p className="mt-4 rounded-md bg-[#f8faf7] px-3 py-2 text-[12px] font-medium leading-5 text-neutral-600">
-        {contractLabel}
-      </p>
-    </section>
-  );
-}
-
-function NotificationRow({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2">
-      <span className="text-[12px] font-semibold text-neutral-600">{label}</span>
-      <span className="text-[13px] font-semibold tabular-nums text-neutral-950">
-        {value.toLocaleString()}
-      </span>
     </div>
   );
 }
@@ -390,7 +372,7 @@ function BucketButton({
     <button
       type="button"
       onClick={onClick}
-      className={`h-9 rounded-full px-2 text-[12px] font-extrabold transition ${
+      className={`h-9 w-full rounded-full px-2 text-[12px] font-extrabold transition ${
         active
           ? "bg-neutral-950 text-white"
           : "text-neutral-500 hover:bg-neutral-50 hover:text-neutral-950"
@@ -419,71 +401,59 @@ function MessageThreadCard({
     role === "advertiser"
       ? thread.bucket === "inbox"
         ? "계약 작성"
-        : "프로필 보기"
+        : "상대 보기"
       : thread.bucket === "inbox"
         ? "브랜드 보기"
         : "제안 대상 보기";
+  const relationshipLabel = thread.bucket === "sent" ? "받는 사람" : "보낸 사람";
+  const relationshipName = thread.bucket === "sent" ? thread.targetName : thread.senderName;
 
   return (
-    <article className="grid gap-3 bg-white px-4 py-4 transition hover:bg-[#f8faf7] lg:grid-cols-[minmax(0,1fr)_190px]">
+    <article className="grid gap-4 bg-white px-4 py-4 transition hover:bg-[#f8faf7] lg:grid-cols-[minmax(0,1fr)_220px] lg:items-center">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <span
-            className={`inline-flex h-7 items-center rounded-md border px-2.5 text-[11px] font-semibold ${proposalStatusTone[thread.status]}`}
+            className={`inline-flex h-7 items-center rounded-md border px-2.5 text-[12px] font-semibold ${proposalStatusTone[thread.status]}`}
           >
             {proposalStatusLabels[thread.status]}
           </span>
-          <span className="inline-flex h-7 items-center rounded-md border border-neutral-200 bg-white px-2.5 text-[11px] font-semibold text-neutral-600">
+          <span className="inline-flex h-7 items-center rounded-md border border-neutral-200 bg-white px-2.5 text-[12px] font-semibold text-neutral-600">
             {thread.proposalTypeLabel}
           </span>
           {thread.unread ? (
-            <span className="inline-flex h-7 items-center rounded-md bg-neutral-950 px-2.5 text-[11px] font-semibold text-white">
+            <span className="inline-flex h-7 items-center rounded-md bg-neutral-950 px-2.5 text-[12px] font-semibold text-white">
               읽지 않음
             </span>
           ) : null}
         </div>
 
-        <h2 className="mt-3 truncate text-[16px] font-semibold text-neutral-950">
+        <h2 className="mt-3 truncate text-[18px] font-semibold text-neutral-950">
           {thread.counterpartName}
         </h2>
-        <p className="mt-1 text-[13px] font-medium leading-5 text-neutral-600">
-          {thread.senderIntro}
+        <p className="mt-1 text-[13px] font-semibold text-neutral-500">
+          {relationshipLabel} · {relationshipName} · {formatMarketplaceMessageDate(thread.createdAt)}
         </p>
-        <p className="mt-3 rounded-[8px] border border-neutral-200 bg-neutral-50 px-3 py-2 text-[13px] font-semibold leading-6 text-neutral-800">
+        <p className="mt-3 line-clamp-2 text-[14px] font-medium leading-6 text-neutral-700">
           {thread.proposalSummary}
         </p>
       </div>
 
-      <aside className="grid content-between gap-3 rounded-[8px] border border-neutral-200 bg-white p-3">
-        <div className="grid gap-2 text-[12px]">
-          <MessageMeta label="대상" value={thread.targetName} />
-          <MessageMeta label="보낸 사람" value={thread.senderName} />
-          <MessageMeta label="접수" value={formatMarketplaceMessageDate(thread.createdAt)} />
-        </div>
+      <aside className="grid gap-2 lg:justify-items-end">
         {actionHref ? (
           <Link
             to={actionHref}
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-neutral-950 px-3 text-[13px] font-semibold text-white transition hover:bg-neutral-800"
+            className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-neutral-950 px-3 text-[13px] font-semibold text-white transition hover:bg-neutral-800 lg:w-[150px]"
           >
             {actionLabel}
             <ArrowRight className="h-4 w-4" />
           </Link>
         ) : (
-          <span className="inline-flex h-10 items-center justify-center rounded-md border border-neutral-200 text-[13px] font-semibold text-neutral-500">
+          <span className="inline-flex h-10 w-full items-center justify-center rounded-md border border-neutral-200 text-[13px] font-semibold text-neutral-500 lg:w-[150px]">
             프로필 연결 대기
           </span>
         )}
       </aside>
     </article>
-  );
-}
-
-function MessageMeta({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="grid grid-cols-[56px_minmax(0,1fr)] gap-2">
-      <span className="font-semibold text-neutral-500">{label}</span>
-      <span className="truncate font-semibold text-neutral-800">{value}</span>
-    </div>
   );
 }
 
