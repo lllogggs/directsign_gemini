@@ -476,9 +476,6 @@ type RoleIntroSlide = {
   preview: RolePreview;
 };
 
-const ROLE_PREVIEW_AUTO_DELAY_MS = 5000;
-const ROLE_PREVIEW_MANUAL_RESUME_DELAY_MS = 9000;
-
 const roleIntroSlides = {
   advertiser: [
     {
@@ -1405,81 +1402,9 @@ function RoleFeatureIntroScreen({
 
         <RoleFeaturePreviewCarousel
           className="lg:col-start-2 lg:row-start-1"
-          onActiveIndexChange={setActiveIndex}
-          onPreviewIndexChange={setPreviewIndex}
           previewIndex={previewIndex}
           slides={slides}
         />
-
-        <div className="hidden">
-          <div
-            className="mt-6 grid w-full max-w-[430px] grid-cols-1 gap-2 md:grid-cols-2"
-            aria-label={`${roleLabel} 기능 선택`}
-          >
-            {slides.map((slide, index) => {
-              const Icon = slide.icon;
-              const selected = activeIndex === index;
-
-              return (
-                <button
-                  key={slide.label}
-                  type="button"
-                  onClick={() => handleFeatureSelect(index)}
-                  className={`group min-h-[92px] rounded-[8px] border p-3 text-left transition hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-neutral-950 ${
-                    selected
-                      ? `${slide.cardClass} shadow-[0_12px_30px_rgba(15,23,42,0.08)]`
-                      : "border-neutral-200 bg-white/70 hover:border-neutral-300"
-                  }`}
-                  aria-pressed={selected}
-                >
-                  <span className="flex items-start justify-between gap-2">
-                    <span
-                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] bg-white shadow-[inset_0_0_0_1px_rgba(15,23,42,0.08)] ${
-                        selected ? slide.iconClass : "text-neutral-500"
-                      }`}
-                    >
-                      <Icon className="h-4 w-4" />
-                    </span>
-                    <span
-                      className={`mt-1 h-2 w-2 rounded-full ${
-                        selected ? slide.accentClass : "bg-neutral-200"
-                      }`}
-                    />
-                  </span>
-                  <span className="mt-3 block text-[13px] font-extrabold tracking-normal text-neutral-950">
-                    {slide.label}
-                  </span>
-                  <span className="mt-1 line-clamp-2 block break-keep text-[11px] font-bold leading-4 text-neutral-500">
-                    {slide.helper}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="mt-6 flex w-full max-w-[430px] flex-col gap-2 sm:flex-row">
-            <Link
-              to={activeSlide.primaryHref}
-              className="group inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-[8px] bg-blue-600 px-5 text-[14px] font-extrabold tracking-normal text-white shadow-[0_14px_34px_rgba(37,99,235,0.24)] ring-1 ring-blue-500/20 transition duration-200 hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-[0_18px_42px_rgba(37,99,235,0.28)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700 active:translate-y-0"
-            >
-              <span>{activeSlide.primaryLabel}</span>
-              <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
-            </Link>
-            <Link
-              to={activeSlide.secondaryHref}
-              className="inline-flex h-12 flex-1 items-center justify-center rounded-[8px] border border-neutral-200 bg-white px-5 text-[13px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
-            >
-              {activeSlide.secondaryLabel}
-            </Link>
-          </div>
-
-          <Link
-            to={config.switchHref}
-            className="mt-6 inline-flex text-[12px] font-bold text-neutral-400 transition hover:text-neutral-700"
-          >
-            {config.switchLabel}
-          </Link>
-        </div>
       </section>
     </main>
   );
@@ -1489,20 +1414,16 @@ function RoleFeaturePreviewCarousel({
   slides,
   previewIndex,
   className = "",
-  onActiveIndexChange,
-  onPreviewIndexChange,
 }: {
   slides: RoleIntroSlide[];
   previewIndex: number;
   className?: string;
-  onActiveIndexChange: (index: number) => void;
-  onPreviewIndexChange: (index: number) => void;
 }) {
+  const [displayIndex, setDisplayIndex] = useState(previewIndex);
   const [isFading, setIsFading] = useState(false);
-  const [isAutoPaused, setIsAutoPaused] = useState(false);
-  const [autoPausedUntil, setAutoPausedUntil] = useState(0);
+  const displayIndexRef = useRef(previewIndex);
   const transitionTimers = useRef<number[]>([]);
-  const activeSlide = slides[previewIndex] ?? slides[0];
+  const activeSlide = slides[displayIndex] ?? slides[0];
 
   const clearTransitionTimers = useCallback(() => {
     transitionTimers.current.forEach((timer) => window.clearTimeout(timer));
@@ -1516,80 +1437,43 @@ function RoleFeaturePreviewCarousel({
     [],
   );
 
-  const showSlide = useCallback(
-    (nextIndex: number, syncIntroCopy = true) => {
-      const normalizedIndex = (nextIndex + slides.length) % slides.length;
-
-      if (normalizedIndex === previewIndex) {
-        return;
-      }
-
-      clearTransitionTimers();
-
-      const applySlide = () => {
-        onPreviewIndexChange(normalizedIndex);
-
-        if (syncIntroCopy) {
-          onActiveIndexChange(normalizedIndex);
-        }
-      };
-
-      if (prefersReducedMotion()) {
-        applySlide();
-        return;
-      }
-
-      setIsFading(true);
-      transitionTimers.current = [
-        window.setTimeout(applySlide, 240),
-        window.setTimeout(() => {
-          setIsFading(false);
-          transitionTimers.current = [];
-        }, 520),
-      ];
-    },
-    [
-      clearTransitionTimers,
-      onActiveIndexChange,
-      onPreviewIndexChange,
-      prefersReducedMotion,
-      previewIndex,
-      slides.length,
-    ],
-  );
-
-  const showManualSlide = useCallback(
-    (nextIndex: number) => {
-      setAutoPausedUntil(Date.now() + ROLE_PREVIEW_MANUAL_RESUME_DELAY_MS);
-      showSlide(nextIndex, true);
-    },
-    [showSlide],
-  );
-
   useEffect(() => {
-    if (prefersReducedMotion() || isAutoPaused) {
+    if (displayIndexRef.current === previewIndex) {
       return undefined;
     }
 
-    const now = Date.now();
-    const delay =
-      autoPausedUntil > now
-        ? autoPausedUntil - now
-        : ROLE_PREVIEW_AUTO_DELAY_MS;
+    clearTransitionTimers();
 
-    const timer = window.setTimeout(() => {
-      setAutoPausedUntil(0);
-      showSlide(previewIndex === slides.length - 1 ? 0 : previewIndex + 1, true);
-    }, delay);
+    const commitDisplayIndex = () => {
+      displayIndexRef.current = previewIndex;
+      setDisplayIndex(previewIndex);
+    };
 
-    return () => window.clearTimeout(timer);
+    if (prefersReducedMotion()) {
+      transitionTimers.current = [
+        window.setTimeout(() => {
+          commitDisplayIndex();
+          setIsFading(false);
+          transitionTimers.current = [];
+        }, 0),
+      ];
+      return undefined;
+    }
+
+    transitionTimers.current = [
+      window.setTimeout(() => setIsFading(true), 0),
+      window.setTimeout(commitDisplayIndex, 160),
+      window.setTimeout(() => {
+        setIsFading(false);
+        transitionTimers.current = [];
+      }, 340),
+    ];
+
+    return clearTransitionTimers;
   }, [
-    autoPausedUntil,
-    isAutoPaused,
+    clearTransitionTimers,
     prefersReducedMotion,
     previewIndex,
-    showSlide,
-    slides.length,
   ]);
 
   useEffect(() => clearTransitionTimers, [clearTransitionTimers]);
@@ -1598,19 +1482,6 @@ function RoleFeaturePreviewCarousel({
     <section
       aria-label="기능별 화면 미리보기"
       className={`${className} mx-auto flex w-full min-w-0 max-w-[calc(100vw-40px)] flex-col overflow-hidden rounded-[18px] border border-neutral-200 bg-[#fbfaf7] shadow-[0_24px_70px_rgba(15,23,42,0.08)] sm:max-w-full sm:rounded-[24px] lg:h-[calc(100vh-96px)] lg:max-h-[640px]`}
-      onBlurCapture={(event) => {
-        const nextTarget = event.relatedTarget;
-
-        if (
-          !(nextTarget instanceof Node) ||
-          !event.currentTarget.contains(nextTarget)
-        ) {
-          setIsAutoPaused(false);
-        }
-      }}
-      onFocusCapture={() => setIsAutoPaused(true)}
-      onMouseEnter={() => setIsAutoPaused(true)}
-      onMouseLeave={() => setIsAutoPaused(false)}
     >
       <div className="flex items-center justify-between gap-3 border-b border-neutral-200 bg-white px-4 py-3 sm:px-5">
         <div className="flex min-w-0 items-center gap-2">
@@ -1618,52 +1489,12 @@ function RoleFeaturePreviewCarousel({
           <span className="h-2.5 w-2.5 rounded-full bg-amber-300" />
           <span className="h-2.5 w-2.5 rounded-full bg-blue-400" />
         </div>
-        <div className="flex items-center gap-1" aria-label="미리보기 이동">
-          <button
-            type="button"
-            onClick={() => showManualSlide(previewIndex - 1)}
-            className="flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 text-neutral-500 transition hover:border-neutral-300 hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950"
-            aria-label="이전 기능 미리보기"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            onClick={() => showManualSlide(previewIndex + 1)}
-            className="flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 text-neutral-500 transition hover:border-neutral-300 hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950"
-            aria-label="다음 기능 미리보기"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </button>
-        </div>
+        <span className="rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-[10px] font-extrabold text-neutral-500">
+          미리보기
+        </span>
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col p-3 sm:p-4">
-        <div
-          className="mb-3 grid min-w-0 shrink-0 grid-cols-4 gap-1 overflow-hidden rounded-full bg-neutral-100 p-1"
-          role="tablist"
-          aria-label="기능 미리보기 종류"
-        >
-          {slides.map((slide, index) => (
-            <button
-              key={slide.label}
-              type="button"
-              role="tab"
-              aria-controls={`role-preview-panel-${index}`}
-              aria-selected={previewIndex === index}
-              onClick={() => showManualSlide(index)}
-              tabIndex={previewIndex === index ? 0 : -1}
-              className={`h-9 min-w-0 rounded-full px-1 text-[12px] font-extrabold tracking-normal transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 ${
-                previewIndex === index
-                  ? "bg-white text-neutral-950 shadow-[0_1px_0_rgba(15,23,42,0.04)]"
-                  : "text-neutral-500 hover:text-neutral-800"
-              }`}
-            >
-              <span className="block truncate">{slide.label}</span>
-            </button>
-          ))}
-        </div>
-
         <div className="relative min-h-[420px] flex-1 overflow-hidden lg:min-h-0">
           <div
             className={`h-full transition duration-300 ease-out ${
