@@ -1,4 +1,4 @@
-import type { InfluencerPlatform } from "./verification";
+import type { InfluencerPlatform } from "./verification.js";
 
 export type CampaignProposalType =
   | "sponsored_post"

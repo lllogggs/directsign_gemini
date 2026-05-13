@@ -1,4 +1,4 @@
-import { PRODUCT_NAME } from "./brand";
+import { PRODUCT_NAME } from "./brand.js";
 
 const readPublicEnv = (name: string) => {
   const value =

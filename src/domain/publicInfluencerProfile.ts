@@ -1,13 +1,13 @@
 import type {
   InfluencerDashboardResponse,
   InfluencerActivityCategory,
-} from "./influencerDashboard";
+} from "./influencerDashboard.js";
 import type {
   CampaignProposalType,
   MarketplaceInfluencerProfile,
-} from "./marketplace";
-import { platformLabels } from "./marketplace";
-import type { InfluencerPlatform } from "./verification";
+} from "./marketplace.js";
+import { platformLabels } from "./marketplace.js";
+import type { InfluencerPlatform } from "./verification.js";
 
 export type InfluencerPublicProfileSettings = {
   ownerId: string;

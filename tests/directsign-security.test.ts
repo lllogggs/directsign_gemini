@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const root = process.cwd();
@@ -63,6 +63,24 @@ describe("yeollock.me security regressions", () => {
       "public/fonts/**",
     );
     assert.ok(statSync(join(root, "public/fonts/NanumGothic-Regular.ttf")).size > 1_000_000);
+  });
+
+  it("keeps server-loaded domain imports compatible with Vercel ESM runtime", () => {
+    const domainDir = join(root, "src/domain");
+    const domainFiles = readdirSync(domainDir).filter((file) => file.endsWith(".ts"));
+
+    for (const file of domainFiles) {
+      const source = read(`src/domain/${file}`);
+      const relativeImports = source.matchAll(/from\s+["'](\.{1,2}\/[^"']+)["']/g);
+
+      for (const match of relativeImports) {
+        assert.match(
+          match[1],
+          /\.js$/,
+          `${file} uses an extensionless relative import that can break Vercel serverless ESM: ${match[1]}`,
+        );
+      }
+    }
   });
 
   it("keeps duplicate early Supabase migrations as no-ops", () => {

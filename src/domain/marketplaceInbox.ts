@@ -1,7 +1,7 @@
 import {
   proposalTypeLabels,
   type CampaignProposalType,
-} from "./marketplace";
+} from "./marketplace.js";
 
 export type MarketplaceInboxRole = "advertiser" | "influencer";
 export type MarketplaceMessageBucket = "inbox" | "sent";

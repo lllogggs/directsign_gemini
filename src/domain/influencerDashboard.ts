@@ -1,4 +1,8 @@
-import type { InfluencerPlatform, VerificationRequest, VerificationStatus } from "./verification";
+import type {
+  InfluencerPlatform,
+  VerificationRequest,
+  VerificationStatus,
+} from "./verification.js";
 
 export type InfluencerActivityCategory =
   | "mukbang"
