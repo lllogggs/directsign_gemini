@@ -738,25 +738,29 @@ function ContractTable({
         </div>
       </div>
 
-      <div className="hidden grid-cols-[minmax(360px,1.5fr)_minmax(180px,0.82fr)_minmax(108px,0.48fr)_minmax(120px,0.52fr)_minmax(130px,0.56fr)] items-end gap-2 border-b border-[#d9e0d9] bg-[#f8faf7] px-3 py-2 lg:grid">
-        <ContractNameSearch value={query} onChange={onQueryChange} />
+      <div className="hidden grid-cols-[minmax(150px,0.62fr)_minmax(108px,0.46fr)_minmax(360px,1.5fr)_minmax(112px,0.48fr)_minmax(88px,0.38fr)_minmax(120px,0.5fr)] items-end gap-3 border-b border-[#d9e0d9] bg-[#f8faf7] px-3 py-2 lg:grid">
         <TableFilterSelect
           label="플랫폼"
           value={platformFilter}
           options={platformOptions}
+          maxWidthClassName="max-w-[150px]"
           onChange={(value) => onPlatformFilterChange(value as PlatformFilter)}
         />
         <TableFilterSelect
           label="종류"
           value={contractTypeFilter}
           options={contractTypeOptions}
+          maxWidthClassName="max-w-[118px]"
           onChange={(value) => onContractTypeFilterChange(value as ContractTypeFilter)}
         />
-        <div className="pb-1.5 text-[11px] font-extrabold text-[#7d857f]">금액</div>
+        <ContractNameSearch value={query} onChange={onQueryChange} />
+        <div className="pb-1.5 text-[11px] font-extrabold text-[#7d857f]">정액</div>
+        <div className="pb-1.5 text-[11px] font-extrabold text-[#7d857f]">수수료</div>
         <TableFilterSelect
           label="현 단계"
           value={detailStatusFilter}
           options={statusOptions}
+          maxWidthClassName="max-w-[124px]"
           onChange={(value) => onDetailStatusFilterChange(value as DetailStatusFilter)}
         />
       </div>
@@ -796,7 +800,7 @@ function ContractNameSearch({
           onChange={(event) => onChange(event.target.value)}
           aria-label="계약명 검색"
           placeholder="계약명으로 검색"
-        className="h-8 w-full max-w-full rounded-[6px] border border-[#d9e0d9] bg-white pl-7 pr-2 text-[12px] font-semibold text-[#303630] outline-none transition-colors placeholder:text-[#8b938d] hover:border-[#cbd5cc] focus:border-[#171a17]"
+          className="h-8 w-full max-w-full rounded-[6px] border border-[#d9e0d9] bg-white pl-7 pr-2 text-[12px] font-semibold text-[#303630] outline-none transition-colors placeholder:text-[#8b938d] hover:border-[#cbd5cc] focus:border-[#171a17]"
         />
       </span>
     </label>
@@ -807,11 +811,13 @@ function TableFilterSelect({
   label,
   value,
   options,
+  maxWidthClassName = "max-w-full",
   onChange,
 }: {
   label: string;
   value: string;
   options: Array<{ value: string; label: string; count: number }>;
+  maxWidthClassName?: string;
   onChange: (value: string) => void;
 }) {
   return (
@@ -821,7 +827,7 @@ function TableFilterSelect({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         aria-label={`${label} 필터`}
-        className="mt-1 h-8 w-full max-w-full rounded-[6px] border border-[#d9e0d9] bg-white px-2 text-[12px] font-bold text-[#303630] outline-none transition-colors hover:border-[#cbd5cc] focus:border-[#171a17]"
+        className={`mt-1 h-8 w-full ${maxWidthClassName} rounded-[6px] border border-[#d9e0d9] bg-white px-2 text-[12px] font-bold text-[#303630] outline-none transition-colors hover:border-[#cbd5cc] focus:border-[#171a17]`}
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>
@@ -840,12 +846,24 @@ function ContractRow({
   contract: Contract;
   onOpen: () => void;
 }) {
+  const payment = splitPaymentLabels(contract.campaign?.budget);
+
   return (
     <button
       type="button"
       onClick={onOpen}
-      className="group grid w-full gap-2 px-3 py-1.5 text-left transition-colors hover:bg-[#f8faf7] lg:min-h-[38px] lg:grid-cols-[minmax(360px,1.5fr)_minmax(180px,0.82fr)_minmax(108px,0.48fr)_minmax(120px,0.52fr)_minmax(130px,0.56fr)] lg:items-center"
+      className="group grid w-full gap-2 px-3 py-1.5 text-left transition-colors hover:bg-[#f8faf7] lg:min-h-[38px] lg:grid-cols-[minmax(150px,0.62fr)_minmax(108px,0.46fr)_minmax(360px,1.5fr)_minmax(112px,0.48fr)_minmax(88px,0.38fr)_minmax(120px,0.5fr)] lg:items-center"
     >
+      <div className="min-w-0">
+        <PlatformPills contract={contract} />
+      </div>
+
+      <div className="min-w-0">
+        <p className="truncate text-[12px] font-semibold text-[#303630]">
+          {formatContractTypeLabel(contract.type)}
+        </p>
+      </div>
+
       <div className="min-w-0">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <p className="min-w-0 truncate text-[13px] font-semibold text-[#171a17]">
@@ -857,17 +875,9 @@ function ContractRow({
         </div>
       </div>
 
-      <div className="min-w-0">
-        <PlatformPills contract={contract} />
-      </div>
+      <PaymentCell value={payment.fixed} />
 
-      <div className="min-w-0">
-        <p className="truncate text-[12px] font-semibold text-[#303630]">
-          {formatContractTypeLabel(contract.type)}
-        </p>
-      </div>
-
-      <PreviewAmount value={formatMoneyLabel(contract.campaign?.budget)} />
+      <PaymentCell value={payment.commission} />
 
       <StatusTiming contract={contract} />
     </button>
@@ -912,7 +922,7 @@ function StatusTiming({
   );
 }
 
-function PreviewAmount({ value }: { value: string }) {
+function PaymentCell({ value }: { value: string }) {
   return (
     <div className="min-w-0">
       <p className="truncate text-[12px] font-semibold text-[#303630]">{value}</p>
@@ -981,6 +991,27 @@ function formatContractTypeFilterLabel(type: Contract["type"]) {
   if (type === "협찬") return "협찬";
   if (type === "공동구매") return "공동구매";
   return type;
+}
+
+function splitPaymentLabels(value?: string | null) {
+  const label = formatMoneyLabel(value, "-");
+  const normalized = label.replace(/\s+/g, " ").trim();
+  const percentMatch = normalized.match(/(\d+(?:\.\d+)?)\s*%/);
+  const isCommission =
+    Boolean(percentMatch) ||
+    /수수료|판매\s*수익|커미션|commission/i.test(normalized);
+
+  if (isCommission) {
+    return {
+      fixed: "-",
+      commission: percentMatch ? `${percentMatch[1]}%` : normalized || "-",
+    };
+  }
+
+  return {
+    fixed: normalized || "-",
+    commission: "-",
+  };
 }
 
 function formatDashboardContractTitle(title: string) {
