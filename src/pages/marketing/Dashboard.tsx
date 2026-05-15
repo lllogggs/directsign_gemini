@@ -738,7 +738,7 @@ function ContractTable({
         </div>
       </div>
 
-      <div className="hidden grid-cols-[minmax(320px,1.35fr)_minmax(180px,0.9fr)_120px_130px_130px] items-end gap-3 border-b border-[#d9e0d9] bg-[#f8faf7] px-3 py-2 lg:grid">
+      <div className="hidden grid-cols-[minmax(360px,1.5fr)_minmax(180px,0.82fr)_minmax(108px,0.48fr)_minmax(120px,0.52fr)_minmax(130px,0.56fr)] items-end gap-2 border-b border-[#d9e0d9] bg-[#f8faf7] px-3 py-2 lg:grid">
         <ContractNameSearch value={query} onChange={onQueryChange} />
         <TableFilterSelect
           label="플랫폼"
@@ -796,7 +796,7 @@ function ContractNameSearch({
           onChange={(event) => onChange(event.target.value)}
           aria-label="계약명 검색"
           placeholder="계약명으로 검색"
-          className="h-8 w-full rounded-[6px] border border-[#d9e0d9] bg-white pl-7 pr-2 text-[12px] font-semibold text-[#303630] outline-none transition-colors placeholder:text-[#8b938d] hover:border-[#cbd5cc] focus:border-[#171a17]"
+        className="h-8 w-full max-w-full rounded-[6px] border border-[#d9e0d9] bg-white pl-7 pr-2 text-[12px] font-semibold text-[#303630] outline-none transition-colors placeholder:text-[#8b938d] hover:border-[#cbd5cc] focus:border-[#171a17]"
         />
       </span>
     </label>
@@ -821,7 +821,7 @@ function TableFilterSelect({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         aria-label={`${label} 필터`}
-        className="mt-1 h-8 w-full rounded-[6px] border border-[#d9e0d9] bg-white px-2 text-[12px] font-bold text-[#303630] outline-none transition-colors hover:border-[#cbd5cc] focus:border-[#171a17]"
+        className="mt-1 h-8 w-full max-w-full rounded-[6px] border border-[#d9e0d9] bg-white px-2 text-[12px] font-bold text-[#303630] outline-none transition-colors hover:border-[#cbd5cc] focus:border-[#171a17]"
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>
@@ -844,7 +844,7 @@ function ContractRow({
     <button
       type="button"
       onClick={onOpen}
-      className="group grid w-full gap-2 px-3 py-1.5 text-left transition-colors hover:bg-[#f8faf7] lg:min-h-[38px] lg:grid-cols-[minmax(320px,1.35fr)_minmax(180px,0.9fr)_120px_130px_130px] lg:items-center"
+      className="group grid w-full gap-2 px-3 py-1.5 text-left transition-colors hover:bg-[#f8faf7] lg:min-h-[38px] lg:grid-cols-[minmax(360px,1.5fr)_minmax(180px,0.82fr)_minmax(108px,0.48fr)_minmax(120px,0.52fr)_minmax(130px,0.56fr)] lg:items-center"
     >
       <div className="min-w-0">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
