@@ -2,6 +2,9 @@ import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   AlertCircle,
+  ArrowDownWideNarrow,
+  ArrowUpDown,
+  ArrowUpWideNarrow,
   CheckCircle2,
   Clock3,
   CopyCheck,
@@ -39,7 +42,15 @@ import { apiFetch } from "../../domain/api";
 
 type PlatformFilter = "ALL" | ContractPlatform;
 type ContractTypeFilter = "ALL" | Contract["type"];
+type AmountFilter = "ALL" | "FIXED" | "COMMISSION";
+type ActualAmountKind = Exclude<AmountFilter, "ALL">;
 type DetailStatusFilter = "ALL" | ContractStatus;
+type SortKey = "updated" | "platform" | "type" | "title" | "amount" | "status";
+type SortDirection = "asc" | "desc";
+type ContractSort = {
+  key: SortKey;
+  direction: SortDirection;
+};
 type AdvertiserAccountSummary = {
   name: string;
   meta: string;
@@ -74,6 +85,8 @@ const DETAIL_STATUS_FILTERS: DetailStatusFilter[] = [
   "ALL",
   ...STATUS_ORDER,
 ];
+
+const AMOUNT_FILTERS: AmountFilter[] = ["ALL", "FIXED", "COMMISSION"];
 
 const STATUS_META: Record<
   ContractStatus,
@@ -189,8 +202,13 @@ export function Dashboard() {
   const [platformFilter, setPlatformFilter] = useState<PlatformFilter>("ALL");
   const [contractTypeFilter, setContractTypeFilter] =
     useState<ContractTypeFilter>("ALL");
+  const [amountFilter, setAmountFilter] = useState<AmountFilter>("ALL");
   const [detailStatusFilter, setDetailStatusFilter] =
     useState<DetailStatusFilter>("ALL");
+  const [sortState, setSortState] = useState<ContractSort>({
+    key: "updated",
+    direction: "desc",
+  });
   const { summary: verificationSummary, isLoading: isVerificationLoading } =
     useVerificationSummary({ role: "advertiser" });
   const {
@@ -273,6 +291,22 @@ export function Dashboard() {
       ),
     [contracts],
   );
+  const amountCounts = useMemo(
+    () =>
+      AMOUNT_FILTERS.reduce(
+        (acc, amount) => {
+          acc[amount] =
+            amount === "ALL"
+              ? contracts.length
+              : contracts.filter((contract) =>
+                  getAmountFilterKind(contract.campaign?.budget) === amount,
+                ).length;
+          return acc;
+        },
+        {} as Record<AmountFilter, number>,
+      ),
+    [contracts],
+  );
 
   const filteredContracts = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -291,6 +325,12 @@ export function Dashboard() {
         if (contractTypeFilter !== "ALL" && contract.type !== contractTypeFilter) {
           return false;
         }
+        if (
+          amountFilter !== "ALL" &&
+          getAmountFilterKind(contract.campaign?.budget) !== amountFilter
+        ) {
+          return false;
+        }
         if (!normalizedQuery) return true;
 
         return [
@@ -300,14 +340,23 @@ export function Dashboard() {
           .filter(Boolean)
           .some((value) => value!.toLowerCase().includes(normalizedQuery));
       })
-      .sort((a, b) => parseDate(b.updated_at) - parseDate(a.updated_at));
+      .sort((a, b) => compareContractsBySort(a, b, sortState));
   }, [
+    amountFilter,
     contracts,
     contractTypeFilter,
     detailStatusFilter,
     platformFilter,
     query,
+    sortState,
   ]);
+  const handleSortChange = (key: SortKey) => {
+    setSortState((current) => ({
+      key,
+      direction:
+        current.key === key && current.direction === "asc" ? "desc" : "asc",
+    }));
+  };
   const handleLogout = async () => {
     try {
       await apiFetch("/api/advertiser/logout", {
@@ -427,9 +476,14 @@ export function Dashboard() {
               contractTypeFilter={contractTypeFilter}
               onContractTypeFilterChange={setContractTypeFilter}
               contractTypeCounts={contractTypeCounts}
+              amountFilter={amountFilter}
+              onAmountFilterChange={setAmountFilter}
+              amountCounts={amountCounts}
               detailStatusFilter={detailStatusFilter}
               onDetailStatusFilterChange={setDetailStatusFilter}
               statusCounts={statusCounts}
+              sortState={sortState}
+              onSortChange={handleSortChange}
               onOpen={(contract) => navigate(`/advertiser/contract/${contract.id}`)}
             />
           </div>
@@ -676,9 +730,14 @@ function ContractTable({
   contractTypeFilter,
   onContractTypeFilterChange,
   contractTypeCounts,
+  amountFilter,
+  onAmountFilterChange,
+  amountCounts,
   detailStatusFilter,
   onDetailStatusFilterChange,
   statusCounts,
+  sortState,
+  onSortChange,
   onOpen,
 }: {
   contracts: Contract[];
@@ -691,9 +750,14 @@ function ContractTable({
   contractTypeFilter: ContractTypeFilter;
   onContractTypeFilterChange: (value: ContractTypeFilter) => void;
   contractTypeCounts: Record<ContractTypeFilter, number>;
+  amountFilter: AmountFilter;
+  onAmountFilterChange: (value: AmountFilter) => void;
+  amountCounts: Record<AmountFilter, number>;
   detailStatusFilter: DetailStatusFilter;
   onDetailStatusFilterChange: (value: DetailStatusFilter) => void;
   statusCounts: Record<ContractStatus, number>;
+  sortState: ContractSort;
+  onSortChange: (key: SortKey) => void;
   onOpen: (contract: Contract) => void;
 }) {
   const platformOptions = PLATFORM_FILTERS.map((platform) => ({
@@ -711,55 +775,108 @@ function ContractTable({
     label: status === "ALL" ? "전체" : STATUS_META[status].shortLabel,
     count: status === "ALL" ? totalContracts : statusCounts[status],
   }));
+  const amountOptions = AMOUNT_FILTERS.map((amount) => ({
+    value: amount,
+    label: formatAmountFilterLabel(amount),
+    count: amountCounts[amount],
+  }));
 
   return (
     <section className="overflow-hidden rounded-[8px] border border-[#d9e0d9] bg-white lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
       <div className="grid gap-2 border-b border-[#d9e0d9] bg-[#f8faf7] p-2 lg:hidden">
-        <ContractNameSearch value={query} onChange={onQueryChange} />
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <ContractNameSearch
+          value={query}
+          onChange={onQueryChange}
+          sortKey="title"
+          sortState={sortState}
+          onSortChange={onSortChange}
+        />
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
           <TableFilterSelect
             label="플랫폼"
             value={platformFilter}
             options={platformOptions}
+            sortKey="platform"
+            sortState={sortState}
+            onSortChange={onSortChange}
             onChange={(value) => onPlatformFilterChange(value as PlatformFilter)}
           />
           <TableFilterSelect
             label="종류"
             value={contractTypeFilter}
             options={contractTypeOptions}
+            sortKey="type"
+            sortState={sortState}
+            onSortChange={onSortChange}
             onChange={(value) => onContractTypeFilterChange(value as ContractTypeFilter)}
+          />
+          <TableFilterSelect
+            label="금액"
+            value={amountFilter}
+            options={amountOptions}
+            sortKey="amount"
+            sortState={sortState}
+            onSortChange={onSortChange}
+            onChange={(value) => onAmountFilterChange(value as AmountFilter)}
           />
           <TableFilterSelect
             label="현 단계"
             value={detailStatusFilter}
             options={statusOptions}
+            sortKey="status"
+            sortState={sortState}
+            onSortChange={onSortChange}
             onChange={(value) => onDetailStatusFilterChange(value as DetailStatusFilter)}
           />
         </div>
       </div>
 
-      <div className="hidden grid-cols-[minmax(155px,0.46fr)_minmax(120px,0.36fr)_minmax(320px,1fr)_minmax(145px,0.42fr)_minmax(124px,0.36fr)] items-end gap-3 border-b border-[#d9e0d9] bg-[#f8faf7] px-3 py-2 lg:grid">
+      <div className="hidden grid-cols-[minmax(155px,0.46fr)_minmax(120px,0.36fr)_minmax(320px,1fr)_minmax(145px,0.42fr)_minmax(124px,0.36fr)] items-end gap-2 border-b border-[#d9e0d9] bg-[#f8faf7] px-3 py-2 lg:grid">
         <TableFilterSelect
           label="플랫폼"
           value={platformFilter}
           options={platformOptions}
-          maxWidthClassName="w-[125px]"
+          maxWidthClassName="w-[119px]"
+          sortKey="platform"
+          sortState={sortState}
+          onSortChange={onSortChange}
           onChange={(value) => onPlatformFilterChange(value as PlatformFilter)}
         />
         <TableFilterSelect
           label="종류"
           value={contractTypeFilter}
           options={contractTypeOptions}
-          maxWidthClassName="w-[102px]"
+          maxWidthClassName="w-[97px]"
+          sortKey="type"
+          sortState={sortState}
+          onSortChange={onSortChange}
           onChange={(value) => onContractTypeFilterChange(value as ContractTypeFilter)}
         />
-        <ContractNameSearch value={query} onChange={onQueryChange} />
-        <div className="pb-1.5 text-[11px] font-extrabold text-[#7d857f]">금액</div>
+        <ContractNameSearch
+          value={query}
+          onChange={onQueryChange}
+          sortKey="title"
+          sortState={sortState}
+          onSortChange={onSortChange}
+        />
+        <TableFilterSelect
+          label="금액"
+          value={amountFilter}
+          options={amountOptions}
+          maxWidthClassName="w-[112px]"
+          sortKey="amount"
+          sortState={sortState}
+          onSortChange={onSortChange}
+          onChange={(value) => onAmountFilterChange(value as AmountFilter)}
+        />
         <TableFilterSelect
           label="현 단계"
           value={detailStatusFilter}
           options={statusOptions}
-          maxWidthClassName="w-[112px]"
+          maxWidthClassName="w-[106px]"
+          sortKey="status"
+          sortState={sortState}
+          onSortChange={onSortChange}
           onChange={(value) => onDetailStatusFilterChange(value as DetailStatusFilter)}
         />
       </div>
@@ -785,13 +902,24 @@ function ContractTable({
 function ContractNameSearch({
   value,
   onChange,
+  sortKey,
+  sortState,
+  onSortChange,
 }: {
   value: string;
   onChange: (value: string) => void;
+  sortKey?: SortKey;
+  sortState?: ContractSort;
+  onSortChange?: (key: SortKey) => void;
 }) {
   return (
-    <label className="block min-w-0 lg:w-[95%]">
-      <span className="text-[11px] font-extrabold text-[#7d857f]">계약명</span>
+    <div className="block min-w-0 lg:w-[90%]">
+      <ColumnHeader
+        label="계약명"
+        sortKey={sortKey}
+        sortState={sortState}
+        onSortChange={onSortChange}
+      />
       <span className="relative mt-1 block">
         <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8b938d]" />
         <input
@@ -802,7 +930,7 @@ function ContractNameSearch({
           className="h-8 w-full max-w-full rounded-[6px] border border-[#d9e0d9] bg-white pl-7 pr-2 text-[12px] font-semibold text-[#303630] outline-none transition-colors placeholder:text-[#8b938d] hover:border-[#cbd5cc] focus:border-[#171a17]"
         />
       </span>
-    </label>
+    </div>
   );
 }
 
@@ -811,17 +939,28 @@ function TableFilterSelect({
   value,
   options,
   maxWidthClassName = "w-full",
+  sortKey,
+  sortState,
+  onSortChange,
   onChange,
 }: {
   label: string;
   value: string;
   options: Array<{ value: string; label: string; count: number }>;
   maxWidthClassName?: string;
+  sortKey?: SortKey;
+  sortState?: ContractSort;
+  onSortChange?: (key: SortKey) => void;
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="block min-w-0">
-      <span className="block text-[11px] font-extrabold text-[#7d857f]">{label}</span>
+    <div className="block min-w-0">
+      <ColumnHeader
+        label={label}
+        sortKey={sortKey}
+        sortState={sortState}
+        onSortChange={onSortChange}
+      />
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
@@ -834,7 +973,70 @@ function TableFilterSelect({
           </option>
         ))}
       </select>
-    </label>
+    </div>
+  );
+}
+
+function ColumnHeader({
+  label,
+  sortKey,
+  sortState,
+  onSortChange,
+}: {
+  label: string;
+  sortKey?: SortKey;
+  sortState?: ContractSort;
+  onSortChange?: (key: SortKey) => void;
+}) {
+  return (
+    <div className="flex h-4 items-center gap-1">
+      <span className="block text-[11px] font-extrabold text-[#7d857f]">{label}</span>
+      {sortKey && sortState && onSortChange ? (
+        <SortButton
+          label={label}
+          sortKey={sortKey}
+          sortState={sortState}
+          onSortChange={onSortChange}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function SortButton({
+  label,
+  sortKey,
+  sortState,
+  onSortChange,
+}: {
+  label: string;
+  sortKey: SortKey;
+  sortState: ContractSort;
+  onSortChange: (key: SortKey) => void;
+}) {
+  const active = sortState.key === sortKey;
+  const Icon = active
+    ? sortState.direction === "asc"
+      ? ArrowUpWideNarrow
+      : ArrowDownWideNarrow
+    : ArrowUpDown;
+  const nextDirection =
+    active && sortState.direction === "asc" ? "내림차순" : "오름차순";
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSortChange(sortKey)}
+      aria-label={`${label} ${nextDirection} 정렬`}
+      title={`${label} ${nextDirection} 정렬`}
+      className={`inline-flex h-4 w-4 items-center justify-center rounded-[4px] transition-colors ${
+        active
+          ? "bg-[#171a17] text-white"
+          : "text-[#9aa39d] hover:bg-[#eef0ed] hover:text-[#303630]"
+      }`}
+    >
+      <Icon className="h-3 w-3" strokeWidth={2.2} />
+    </button>
   );
 }
 
@@ -990,12 +1192,129 @@ function formatContractTypeFilterLabel(type: Contract["type"]) {
   return type;
 }
 
+function formatAmountFilterLabel(filter: AmountFilter) {
+  if (filter === "FIXED") return "정액";
+  if (filter === "COMMISSION") return "수수료";
+  return "전체";
+}
+
+function getAmountFilterKind(value?: string | null): ActualAmountKind {
+  const text = `${value ?? ""} ${formatMoneyLabel(value, "")}`.toLowerCase();
+
+  if (/%|commission|수수료|판매\s*수익/.test(text)) return "COMMISSION";
+  return "FIXED";
+}
+
 function formatDashboardAmountLabel(value?: string | null) {
   const label = formatMoneyLabel(value, "-").replace(/\s+/g, " ").trim();
   const percentMatch = label.match(/(\d+(?:\.\d+)?)\s*%/);
 
   if (percentMatch) return `수수료 ${percentMatch[1]}%`;
   return label || "-";
+}
+
+function compareContractsBySort(a: Contract, b: Contract, sort: ContractSort) {
+  let result: number;
+
+  switch (sort.key) {
+    case "platform":
+      result = compareText(getPlatformSortLabel(a), getPlatformSortLabel(b));
+      break;
+    case "type":
+      result = compareText(formatContractTypeLabel(a.type), formatContractTypeLabel(b.type));
+      break;
+    case "title":
+      result = compareText(
+        formatDashboardContractTitle(a.title),
+        formatDashboardContractTitle(b.title),
+      );
+      break;
+    case "amount":
+      result = compareAmountValues(a.campaign?.budget, b.campaign?.budget);
+      break;
+    case "status":
+      result = STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status);
+      break;
+    case "updated":
+    default:
+      result = parseDate(a.updated_at) - parseDate(b.updated_at);
+      break;
+  }
+
+  if (result === 0) {
+    result = compareText(formatDashboardContractTitle(a.title), formatDashboardContractTitle(b.title));
+  }
+
+  return sort.direction === "asc" ? result : -result;
+}
+
+function getPlatformSortLabel(contract: Contract) {
+  return getContractPlatforms(contract)
+    .map((platform) => PLATFORM_META[platform].shortLabel)
+    .join(" ");
+}
+
+function compareText(a: string, b: string) {
+  return a.localeCompare(b, "ko-KR", {
+    numeric: true,
+    sensitivity: "base",
+  });
+}
+
+function compareAmountValues(a?: string | null, b?: string | null) {
+  const amountA = getAmountSortMeta(a);
+  const amountB = getAmountSortMeta(b);
+
+  if (amountA.kind !== amountB.kind) {
+    return amountA.kind === "FIXED" ? -1 : 1;
+  }
+
+  if (Number.isFinite(amountA.value) && Number.isFinite(amountB.value)) {
+    return amountA.value - amountB.value;
+  }
+  if (Number.isFinite(amountA.value)) return -1;
+  if (Number.isFinite(amountB.value)) return 1;
+  return compareText(amountA.label, amountB.label);
+}
+
+function getAmountSortMeta(value?: string | null) {
+  const kind = getAmountFilterKind(value);
+  const label = formatDashboardAmountLabel(value);
+  const raw = `${value ?? ""} ${label}`.replace(/,/g, "").toLowerCase();
+  const percentMatch = raw.match(/(\d+(?:\.\d+)?)\s*%/);
+
+  if (kind === "COMMISSION") {
+    return {
+      kind,
+      label,
+      value: percentMatch ? Number(percentMatch[1]) : Number.NaN,
+    };
+  }
+
+  const manWonMatch = raw.match(/(\d+(?:\.\d+)?)\s*만/);
+  if (manWonMatch) {
+    return {
+      kind,
+      label,
+      value: Number(manWonMatch[1]) * 10000,
+    };
+  }
+
+  const wonMatch = raw.match(/(\d{4,})\s*(?:원|krw)?/i);
+  if (wonMatch) {
+    return {
+      kind,
+      label,
+      value: Number(wonMatch[1]),
+    };
+  }
+
+  const fallbackMatch = raw.match(/(\d+(?:\.\d+)?)/);
+  return {
+    kind,
+    label,
+    value: fallbackMatch ? Number(fallbackMatch[1]) : Number.NaN,
+  };
 }
 
 function formatDashboardContractTitle(title: string) {
