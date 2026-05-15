@@ -367,18 +367,18 @@ export function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950">
+    <div className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950 lg:h-screen lg:overflow-hidden">
       <header className="sticky top-0 z-30 border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
-        <div className="mx-auto flex h-[68px] max-w-[1480px] items-center justify-between px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto flex h-12 max-w-[1500px] items-center justify-between px-3 sm:px-5 lg:px-6">
           <button
             type="button"
             onClick={() => navigate("/advertiser/dashboard")}
             className="flex shrink-0 items-center gap-3"
           >
-            <span className="flex h-10 w-10 items-center justify-center rounded-[13px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
+            <span className="flex h-9 w-9 items-center justify-center rounded-[11px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
               <ShieldCheck className="h-4 w-4" strokeWidth={2} />
             </span>
-            <span className="font-neo-heavy hidden text-[19px] leading-none sm:inline">{PRODUCT_NAME}</span>
+            <span className="font-neo-heavy hidden text-[18px] leading-none sm:inline">{PRODUCT_NAME}</span>
           </button>
 
           <div className="no-scrollbar ml-3 flex min-w-0 items-center gap-2 overflow-x-auto">
@@ -386,9 +386,9 @@ export function Dashboard() {
             <button
               type="button"
               onClick={() => navigate("/advertiser/builder")}
-              className="inline-flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-[12px] bg-blue-600 px-4 text-[13px] font-extrabold text-white shadow-[0_14px_34px_rgba(37,99,235,0.20)] transition hover:bg-blue-700"
+              className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[9px] bg-blue-600 px-3 text-[12px] font-extrabold text-white shadow-[0_10px_24px_rgba(37,99,235,0.18)] transition hover:bg-blue-700"
             >
-              <Plus className="h-4 w-4" strokeWidth={2} />
+              <Plus className="h-3.5 w-3.5" strokeWidth={2} />
               새 계약
             </button>
             <MessageCenterButton
@@ -399,49 +399,46 @@ export function Dashboard() {
             <button
               type="button"
               onClick={() => navigate("/advertiser/discover")}
-              className="inline-flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-[12px] border border-neutral-200 bg-white px-3 text-[13px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
+              className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-2.5 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
             >
-              <Search className="h-4 w-4" strokeWidth={2} />
+              <Search className="h-3.5 w-3.5" strokeWidth={2} />
               <span className="hidden sm:inline">상대 찾기</span>
             </button>
             <button
               type="button"
               onClick={() => navigate("/advertiser/campaigns")}
-              className="inline-flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-[12px] border border-neutral-200 bg-white px-3 text-[13px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
+              className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-2.5 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
             >
-              <Megaphone className="h-4 w-4" strokeWidth={2} />
+              <Megaphone className="h-3.5 w-3.5" strokeWidth={2} />
               <span className="hidden sm:inline">모집글</span>
             </button>
             <button
               type="button"
               onClick={handleLogout}
-              className="inline-flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-[12px] border border-neutral-200 bg-white px-3 text-[13px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
+              className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-2.5 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
               aria-label="로그아웃"
             >
-              <LogOut className="h-4 w-4" strokeWidth={2} />
+              <LogOut className="h-3.5 w-3.5" strokeWidth={2} />
               <span className="hidden sm:inline">로그아웃</span>
             </button>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto w-full min-w-0 max-w-[1320px] px-4 py-4 sm:px-6 lg:px-8">
-        <section className="min-w-0 overflow-hidden rounded-[18px] border border-neutral-200 bg-[#fdfdfb] shadow-[0_22px_60px_rgba(23,26,23,0.08)]">
-          <div className="border-b border-[#d9e0d9] bg-white px-4 py-4">
+      <main className="mx-auto w-full min-w-0 max-w-[1500px] px-3 py-2 sm:px-5 lg:h-[calc(100vh-48px)] lg:overflow-hidden lg:px-6">
+        <section className="min-w-0 overflow-hidden rounded-[12px] border border-neutral-200 bg-[#fdfdfb] shadow-[0_16px_44px_rgba(23,26,23,0.07)] lg:flex lg:h-full lg:flex-col">
+          <div className="border-b border-[#d9e0d9] bg-white px-4 py-2">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-[12px] font-semibold text-[#7d857f]">
-                  계약 운영 화면
-                </p>
-                <h1 className="mt-1 truncate text-[18px] font-semibold text-[#171a17]">
+              <div className="flex min-w-0 flex-wrap items-end gap-x-3 gap-y-1">
+                  <h1 className="truncate text-[17px] font-bold text-[#171a17]">
                   계약 운영
                 </h1>
-                <p className="mt-1 text-[12px] font-medium text-[#7d857f]">
+                <p className="pb-0.5 text-[12px] font-semibold text-[#7d857f]">
                   전체 {contracts.length.toLocaleString()}건 · 검색 결과 {filteredContracts.length.toLocaleString()}건 · 진행 중인 계약 포함
                 </p>
               </div>
               <span
-                className={`inline-flex h-8 items-center rounded-[8px] px-3 text-[12px] font-semibold ${readinessBadge.className}`}
+                className={`inline-flex h-7 items-center rounded-[8px] px-2.5 text-[12px] font-semibold ${readinessBadge.className}`}
               >
                 {readinessBadge.label}
               </span>
@@ -456,11 +453,13 @@ export function Dashboard() {
             embedded
           />
 
-          <div className="min-w-0 p-4">
-            <ContractFirstNotice onCreate={() => navigate("/advertiser/builder")} />
+          <div className="min-w-0 p-2.5 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+            {contracts.length === 0 ? (
+              <ContractFirstNotice onCreate={() => navigate("/advertiser/builder")} />
+            ) : null}
 
-            <section className="rounded-t-[8px] border border-b-0 border-[#d9e0d9] bg-white p-3">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+            <section className="shrink-0 rounded-t-[8px] border border-b-0 border-[#d9e0d9] bg-white p-2.5">
+              <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
                 <div className="relative min-w-0 flex-1">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8b938d]" />
                   <input
@@ -468,7 +467,7 @@ export function Dashboard() {
                     onChange={(event) => setQuery(event.target.value)}
                     aria-label="계약 검색"
                     placeholder="계약명, 상대방, 플랫폼, 종류 검색"
-                    className="h-10 w-full rounded-[6px] border border-[#d9e0d9] bg-[#f8faf7] pl-8 pr-3 text-[12px] font-semibold text-[#303630] outline-none transition-colors placeholder:text-[#8b938d] hover:border-[#cbd5cc] focus:border-[#171a17] focus:bg-white"
+                    className="h-9 w-full rounded-[6px] border border-[#d9e0d9] bg-[#f8faf7] pl-8 pr-3 text-[12px] font-semibold text-[#303630] outline-none transition-colors placeholder:text-[#8b938d] hover:border-[#cbd5cc] focus:border-[#171a17] focus:bg-white"
                   />
                 </div>
                 <DashboardTabs
@@ -478,8 +477,7 @@ export function Dashboard() {
                 />
               </div>
 
-              <div className="no-scrollbar mt-3 overflow-x-auto border-t border-[#edf1ed] pt-3">
-                <div className="flex min-w-max items-center gap-4">
+              <div className="mt-2 grid gap-2 border-t border-[#edf1ed] pt-2 xl:grid-cols-[460px_310px_minmax(0,1fr)]">
                   <FilterSection label="플랫폼">
                     {PLATFORM_FILTERS.map((platform) => (
                       <FilterButton
@@ -492,8 +490,6 @@ export function Dashboard() {
                     ))}
                   </FilterSection>
 
-                  <FilterDivider />
-
                   <FilterSection label="계약 종류">
                     {CONTRACT_TYPE_FILTERS.map((type) => (
                       <FilterButton
@@ -504,13 +500,11 @@ export function Dashboard() {
                             ? contractTypeCounts.ALL
                             : contractTypeCounts[type]
                         }
-                        label={type === "ALL" ? "전체" : formatContractTypeLabel(type)}
+                        label={type === "ALL" ? "전체" : formatContractTypeFilterLabel(type)}
                         onClick={() => setContractTypeFilter(type)}
                       />
                     ))}
                   </FilterSection>
-
-                  <FilterDivider />
 
                   <FilterSection label="계약 상태">
                     {DETAIL_STATUS_FILTERS.map((status) => (
@@ -525,7 +519,6 @@ export function Dashboard() {
                       />
                     ))}
                   </FilterSection>
-                </div>
               </div>
             </section>
 
@@ -563,9 +556,9 @@ function VerificationBanner({
     <section
       className={
         embedded
-          ? `border-b px-4 py-3 ${
+          ? `border-b px-4 py-2 ${
               approved
-                ? "border-neutral-200 bg-neutral-50"
+                ? "border-neutral-200 bg-[#fbfbf8]"
                 : "border-amber-200 bg-amber-50/85"
             }`
           : `mb-3 rounded-md border px-3 py-2.5 ${
@@ -578,45 +571,45 @@ function VerificationBanner({
       <div className="flex flex-row items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <div
-            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-[7px] ${
               approved
                 ? "bg-white text-neutral-800 ring-1 ring-neutral-200"
                 : "bg-amber-100 text-amber-700"
             }`}
           >
-            <ShieldCheck className="h-4 w-4" />
+            <ShieldCheck className="h-3.5 w-3.5" />
           </div>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="text-sm font-semibold text-neutral-950">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            <div className="flex shrink-0 items-center gap-2">
+              <p className="text-[13px] font-bold text-neutral-950">
                 광고주 사업자 인증
               </p>
               <span
-                className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${verificationStatusTone(
+                className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${verificationStatusTone(
                   status,
                 )}`}
               >
                 {isLoading ? "확인중" : verificationStatusLabel(status)}
               </span>
             </div>
-            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[12px] leading-4 text-neutral-500">
-              <span className="max-w-[220px] truncate font-semibold text-neutral-800">
-                {account.name}
+            <span className="max-w-[180px] truncate text-[12px] font-semibold text-neutral-800">
+              {account.name}
+            </span>
+            <span className="hidden h-3 w-px bg-neutral-200 sm:inline-block" />
+            <span className="max-w-[300px] truncate text-[12px] text-neutral-500">
+              {account.meta}
+            </span>
+            {account.businessNumber && (
+              <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-semibold text-neutral-600">
+                사업자 {formatBusinessRegistrationNumber(account.businessNumber)}
               </span>
-              <span className="hidden h-3 w-px bg-neutral-200 sm:inline-block" />
-              <span className="max-w-[340px] truncate">{account.meta}</span>
-              {account.businessNumber && (
-                <span className="rounded-full bg-neutral-100 px-2 py-0.5 font-semibold text-neutral-600">
-                  사업자 {formatBusinessRegistrationNumber(account.businessNumber)}
-                </span>
-              )}
-            </div>
+            )}
           </div>
         </div>
         <button
           type="button"
           onClick={onOpen}
-          className={`h-9 shrink-0 whitespace-nowrap rounded-md px-3 text-[13px] font-semibold transition ${
+          className={`h-7 shrink-0 whitespace-nowrap rounded-md px-3 text-[12px] font-semibold transition ${
             approved
               ? "border border-neutral-200 bg-white text-neutral-800 hover:border-neutral-300 hover:bg-neutral-50"
               : "bg-neutral-950 text-white hover:bg-neutral-800"
@@ -661,7 +654,7 @@ function SyncPill({
 }) {
   if (syncError) {
     return (
-      <span className="inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-md border border-amber-200 bg-amber-50 px-3 text-[12px] font-semibold text-amber-700">
+      <span className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-amber-200 bg-amber-50 px-2.5 text-[12px] font-semibold text-amber-700">
         <AlertCircle className="h-3.5 w-3.5" />
         동기화 확인 필요
       </span>
@@ -669,7 +662,7 @@ function SyncPill({
   }
 
   return (
-    <span className="inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-md border border-neutral-200 bg-white px-3 text-[12px] font-semibold text-neutral-600">
+    <span className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-neutral-200 bg-white px-2.5 text-[12px] font-semibold text-neutral-600">
       <CopyCheck className="h-3.5 w-3.5 text-neutral-500" />
       {isSyncing ? "저장 중" : "저장 완료"}
     </span>
@@ -691,11 +684,11 @@ function MessageCenterButton({
     <button
       type="button"
       onClick={onClick}
-      className="relative inline-flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-[12px] border border-neutral-200 bg-white px-3 text-[13px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
+      className="relative inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-2.5 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
       aria-label="메시지함"
       title="메시지함"
     >
-      <MessageSquareText className="h-4 w-4" strokeWidth={2} />
+      <MessageSquareText className="h-3.5 w-3.5" strokeWidth={2} />
       <span className="hidden sm:inline">메시지함</span>
       {badge ? (
         <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1.5 text-[10px] font-extrabold tabular-nums text-white ring-2 ring-white">
@@ -716,15 +709,11 @@ function FilterSection({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex shrink-0 items-center gap-2">
-      <p className="shrink-0 text-[13px] font-extrabold text-[#303630]">{label}</p>
-      <div className="flex shrink-0 items-center gap-1.5">{children}</div>
+    <div className="flex min-w-0 items-center gap-2 rounded-[7px] border border-[#e5eae5] bg-[#fbfcfa] px-2 py-1.5">
+      <p className="shrink-0 text-[12px] font-extrabold text-[#303630]">{label}</p>
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5">{children}</div>
     </div>
   );
-}
-
-function FilterDivider() {
-  return <span className="h-6 w-px shrink-0 bg-[#d9e0d9]" aria-hidden="true" />;
 }
 
 const FilterButton: React.FC<{
@@ -742,7 +731,7 @@ const FilterButton: React.FC<{
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[6px] border px-2.5 text-[12px] font-bold transition ${
+      className={`inline-flex h-6 shrink-0 items-center gap-1 rounded-[6px] border px-1.5 text-[11px] font-bold transition ${
         active
           ? "border-[#171a17] bg-[#171a17] text-white"
           : "border-[#d9e0d9] bg-white text-[#59605b] hover:border-[#b8c2ba] hover:text-[#171a17]"
@@ -768,7 +757,7 @@ function PlatformPills({ contract }: { contract: Contract }) {
       {items.slice(0, 3).map((item) => (
         <span
           key={`${item.platform}-${item.label}`}
-          className={`inline-flex h-6 max-w-full items-center gap-1 rounded-[5px] border px-2 text-[11px] font-semibold ${PLATFORM_META[item.platform].className}`}
+          className={`inline-flex h-5 max-w-full items-center gap-1 rounded-[5px] border px-1.5 text-[10px] font-semibold ${PLATFORM_META[item.platform].className}`}
           title={item.title}
         >
           <span className="shrink-0">{PLATFORM_META[item.platform].mark}</span>
@@ -776,7 +765,7 @@ function PlatformPills({ contract }: { contract: Contract }) {
         </span>
       ))}
       {items.length > 3 && (
-        <span className="inline-flex h-6 items-center rounded-[5px] border border-neutral-200 bg-white px-2 text-[11px] font-semibold text-neutral-500">
+        <span className="inline-flex h-5 items-center rounded-[5px] border border-neutral-200 bg-white px-1.5 text-[10px] font-semibold text-neutral-500">
           +{items.length - 3}
         </span>
       )}
@@ -833,7 +822,7 @@ function DashboardTabs({
 }) {
   return (
     <div
-      className="grid min-w-0 grid-cols-4 gap-1 overflow-hidden rounded-full bg-neutral-100 p-1 lg:w-[360px] lg:shrink-0"
+      className="grid min-w-0 grid-cols-4 gap-1 overflow-hidden rounded-full bg-neutral-100 p-1 lg:w-[320px] lg:shrink-0"
       role="tablist"
       aria-label="계약 상태"
     >
@@ -848,7 +837,7 @@ function DashboardTabs({
             role="tab"
             aria-selected={active}
             onClick={() => onChange(tab.id)}
-            className={`h-9 min-w-0 rounded-full px-1 text-[12px] font-extrabold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 ${
+            className={`h-7 min-w-0 rounded-full px-1 text-[11px] font-extrabold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 ${
               active
                 ? "bg-white text-neutral-950 shadow-[0_1px_0_rgba(15,23,42,0.04)]"
                 : "text-neutral-500 hover:text-neutral-800"
@@ -887,15 +876,15 @@ function ContractTable({
   const dueHeader = getAdvertiserDueHeader(statusFilter);
 
   return (
-    <section className="overflow-hidden rounded-b-[8px] border border-[#d9e0d9] bg-white">
-      <div className="hidden grid-cols-[minmax(280px,1.3fr)_minmax(150px,0.9fr)_110px_120px_150px] border-b border-[#d9e0d9] bg-[#f8faf7] px-4 py-3 text-[11px] font-semibold text-[#7d857f] lg:grid">
+    <section className="overflow-hidden rounded-b-[8px] border border-[#d9e0d9] bg-white lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+      <div className="hidden grid-cols-[minmax(320px,1.35fr)_minmax(180px,0.9fr)_120px_130px_130px] border-b border-[#d9e0d9] bg-[#f8faf7] px-3 py-1.5 text-[11px] font-semibold text-[#7d857f] lg:grid">
         <span>계약</span>
         <span>플랫폼</span>
         <span>종류</span>
         <span>금액</span>
         <span>{dueHeader}</span>
       </div>
-      <div className="max-h-[620px] divide-y divide-[#edf1ed] overflow-y-auto lg:max-h-[calc(100vh-360px)]">
+      <div className="max-h-[620px] divide-y divide-[#edf1ed] overflow-y-auto lg:max-h-none lg:min-h-0 lg:flex-1">
         {contracts.map((contract) => (
           <React.Fragment key={contract.id}>
             <ContractRow
@@ -920,11 +909,11 @@ function ContractRow({
     <button
       type="button"
       onClick={onOpen}
-      className="group grid w-full gap-3 px-4 py-3 text-left transition-colors hover:bg-[#f8faf7] lg:grid-cols-[minmax(280px,1.3fr)_minmax(150px,0.9fr)_110px_120px_150px] lg:items-center"
+      className="group grid w-full gap-2 px-3 py-1.5 text-left transition-colors hover:bg-[#f8faf7] lg:min-h-[38px] lg:grid-cols-[minmax(320px,1.35fr)_minmax(180px,0.9fr)_120px_130px_130px] lg:items-center"
     >
       <div className="min-w-0">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <p className="min-w-0 truncate text-[14px] font-semibold text-[#171a17]">
+          <p className="min-w-0 truncate text-[13px] font-semibold text-[#171a17]">
             {formatDashboardContractTitle(contract.title)}
           </p>
           <span className="lg:hidden">
@@ -938,7 +927,7 @@ function ContractRow({
       </div>
 
       <div className="min-w-0">
-        <p className="truncate text-[13px] font-semibold text-[#303630]">
+        <p className="truncate text-[12px] font-semibold text-[#303630]">
           {formatContractTypeLabel(contract.type)}
         </p>
       </div>
@@ -967,7 +956,7 @@ function StatusBadge({
   return (
     <span
       className={`inline-flex w-fit items-center gap-1.5 rounded-md border font-semibold ${className} ${
-        dense ? "px-2 py-1 text-[11px]" : "px-2.5 py-1.5 text-[12px]"
+        dense ? "px-2 py-1 text-[11px]" : "px-2 py-1 text-[11px]"
       }`}
     >
       <span className={inverted ? "text-white" : meta.tone}>{meta.icon}</span>
@@ -991,7 +980,7 @@ function StatusTiming({
 function PreviewAmount({ value }: { value: string }) {
   return (
     <div className="min-w-0">
-      <p className="truncate text-[13px] font-semibold text-[#303630]">{value}</p>
+      <p className="truncate text-[12px] font-semibold text-[#303630]">{value}</p>
     </div>
   );
 }
@@ -1054,6 +1043,13 @@ function formatPlatforms(contract: Contract) {
 function formatContractTypeLabel(type: Contract["type"]) {
   if (type === "PPL") return "유료 광고 (PPL)";
   if (type === "협찬") return "제품 협찬";
+  if (type === "공동구매") return "공동구매";
+  return type;
+}
+
+function formatContractTypeFilterLabel(type: Contract["type"]) {
+  if (type === "PPL") return "PPL";
+  if (type === "협찬") return "협찬";
   if (type === "공동구매") return "공동구매";
   return type;
 }
