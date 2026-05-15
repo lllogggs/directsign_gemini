@@ -28,7 +28,6 @@ import {
 } from "../../domain/verification";
 import {
   formatContractTitleForDisplay,
-  formatMoneyLabel,
   formatPublicContactValue,
   removeInternalTestLabel,
 } from "../../domain/display";
@@ -738,29 +737,27 @@ function ContractTable({
         </div>
       </div>
 
-      <div className="hidden grid-cols-[minmax(150px,0.62fr)_minmax(108px,0.46fr)_minmax(360px,1.5fr)_minmax(112px,0.48fr)_minmax(88px,0.38fr)_minmax(120px,0.5fr)] items-end gap-3 border-b border-[#d9e0d9] bg-[#f8faf7] px-3 py-2 lg:grid">
+      <div className="hidden grid-cols-[minmax(140px,0.4fr)_minmax(118px,0.34fr)_minmax(520px,1fr)_minmax(128px,0.36fr)] items-end gap-3 border-b border-[#d9e0d9] bg-[#f8faf7] px-3 py-2 lg:grid">
         <TableFilterSelect
           label="플랫폼"
           value={platformFilter}
           options={platformOptions}
-          maxWidthClassName="max-w-[150px]"
+          maxWidthClassName="w-[132px]"
           onChange={(value) => onPlatformFilterChange(value as PlatformFilter)}
         />
         <TableFilterSelect
           label="종류"
           value={contractTypeFilter}
           options={contractTypeOptions}
-          maxWidthClassName="max-w-[118px]"
+          maxWidthClassName="w-[108px]"
           onChange={(value) => onContractTypeFilterChange(value as ContractTypeFilter)}
         />
         <ContractNameSearch value={query} onChange={onQueryChange} />
-        <div className="pb-1.5 text-[11px] font-extrabold text-[#7d857f]">정액</div>
-        <div className="pb-1.5 text-[11px] font-extrabold text-[#7d857f]">수수료</div>
         <TableFilterSelect
           label="현 단계"
           value={detailStatusFilter}
           options={statusOptions}
-          maxWidthClassName="max-w-[124px]"
+          maxWidthClassName="w-[118px]"
           onChange={(value) => onDetailStatusFilterChange(value as DetailStatusFilter)}
         />
       </div>
@@ -811,7 +808,7 @@ function TableFilterSelect({
   label,
   value,
   options,
-  maxWidthClassName = "max-w-full",
+  maxWidthClassName = "w-full",
   onChange,
 }: {
   label: string;
@@ -822,12 +819,12 @@ function TableFilterSelect({
 }) {
   return (
     <label className="block min-w-0">
-      <span className="text-[11px] font-extrabold text-[#7d857f]">{label}</span>
+      <span className="block text-[11px] font-extrabold text-[#7d857f]">{label}</span>
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
         aria-label={`${label} 필터`}
-        className={`mt-1 h-8 w-full ${maxWidthClassName} rounded-[6px] border border-[#d9e0d9] bg-white px-2 text-[12px] font-bold text-[#303630] outline-none transition-colors hover:border-[#cbd5cc] focus:border-[#171a17]`}
+        className={`mt-1 block h-8 max-w-full ${maxWidthClassName} rounded-[6px] border border-[#d9e0d9] bg-white px-2 text-[12px] font-bold text-[#303630] outline-none transition-colors hover:border-[#cbd5cc] focus:border-[#171a17]`}
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>
@@ -846,13 +843,11 @@ function ContractRow({
   contract: Contract;
   onOpen: () => void;
 }) {
-  const payment = splitPaymentLabels(contract.campaign?.budget);
-
   return (
     <button
       type="button"
       onClick={onOpen}
-      className="group grid w-full gap-2 px-3 py-1.5 text-left transition-colors hover:bg-[#f8faf7] lg:min-h-[38px] lg:grid-cols-[minmax(150px,0.62fr)_minmax(108px,0.46fr)_minmax(360px,1.5fr)_minmax(112px,0.48fr)_minmax(88px,0.38fr)_minmax(120px,0.5fr)] lg:items-center"
+      className="group grid w-full gap-2 px-3 py-1.5 text-left transition-colors hover:bg-[#f8faf7] lg:min-h-[38px] lg:grid-cols-[minmax(140px,0.4fr)_minmax(118px,0.34fr)_minmax(520px,1fr)_minmax(128px,0.36fr)] lg:items-center"
     >
       <div className="min-w-0">
         <PlatformPills contract={contract} />
@@ -874,10 +869,6 @@ function ContractRow({
           </span>
         </div>
       </div>
-
-      <PaymentCell value={payment.fixed} />
-
-      <PaymentCell value={payment.commission} />
 
       <StatusTiming contract={contract} />
     </button>
@@ -918,14 +909,6 @@ function StatusTiming({
   return (
     <div className="min-w-0">
       <StatusBadge status={contract.status} />
-    </div>
-  );
-}
-
-function PaymentCell({ value }: { value: string }) {
-  return (
-    <div className="min-w-0">
-      <p className="truncate text-[12px] font-semibold text-[#303630]">{value}</p>
     </div>
   );
 }
@@ -991,27 +974,6 @@ function formatContractTypeFilterLabel(type: Contract["type"]) {
   if (type === "협찬") return "협찬";
   if (type === "공동구매") return "공동구매";
   return type;
-}
-
-function splitPaymentLabels(value?: string | null) {
-  const label = formatMoneyLabel(value, "-");
-  const normalized = label.replace(/\s+/g, " ").trim();
-  const percentMatch = normalized.match(/(\d+(?:\.\d+)?)\s*%/);
-  const isCommission =
-    Boolean(percentMatch) ||
-    /수수료|판매\s*수익|커미션|commission/i.test(normalized);
-
-  if (isCommission) {
-    return {
-      fixed: "-",
-      commission: percentMatch ? `${percentMatch[1]}%` : normalized || "-",
-    };
-  }
-
-  return {
-    fixed: normalized || "-",
-    commission: "-",
-  };
 }
 
 function formatDashboardContractTitle(title: string) {
