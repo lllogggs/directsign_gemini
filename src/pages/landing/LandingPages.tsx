@@ -1400,7 +1400,7 @@ function RoleFeatureIntroScreen({
           </nav>
           <Link
             to={config.secondaryHref}
-            className="inline-flex h-9 items-center rounded-full border border-neutral-200 bg-white px-3 text-[12px] font-bold text-neutral-500 transition hover:border-neutral-300 hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
+            className="col-start-3 inline-flex h-9 items-center justify-self-end whitespace-nowrap rounded-full border border-neutral-200 bg-white px-3 text-[12px] font-bold text-neutral-500 transition hover:border-neutral-300 hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
           >
             로그인
           </Link>

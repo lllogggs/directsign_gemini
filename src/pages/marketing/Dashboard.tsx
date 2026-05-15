@@ -5,6 +5,7 @@ import {
   ArrowDownWideNarrow,
   ArrowUpDown,
   ArrowUpWideNarrow,
+  ChevronDown,
   CheckCircle2,
   Clock3,
   CopyCheck,
@@ -17,6 +18,7 @@ import {
   Plus,
   Search,
   ShieldCheck,
+  SlidersHorizontal,
 } from "lucide-react";
 import {
   Contract,
@@ -386,8 +388,10 @@ export function Dashboard() {
             <span className="font-neo-heavy hidden text-[18px] leading-none sm:inline">{PRODUCT_NAME}</span>
           </button>
 
-          <div className="no-scrollbar ml-3 flex min-w-0 items-center gap-2 overflow-x-auto">
-            <SyncPill isSyncing={isSyncing} syncError={syncError} />
+          <div className="no-scrollbar ml-2 flex min-w-0 items-center gap-2 overflow-x-auto sm:ml-3">
+            <div className="hidden shrink-0 sm:block">
+              <SyncPill isSyncing={isSyncing} syncError={syncError} />
+            </div>
             <button
               type="button"
               onClick={() => navigate("/advertiser/builder")}
@@ -640,18 +644,18 @@ function MessageCenterButton({
     <button
       type="button"
       onClick={onClick}
-      className="relative inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-2.5 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
+      className="relative inline-flex h-8 w-8 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-0 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950 sm:w-auto sm:justify-start sm:px-2.5"
       aria-label="메시지함"
       title="메시지함"
     >
       <MessageSquareText className="h-3.5 w-3.5" strokeWidth={2} />
       <span className="hidden sm:inline">메시지함</span>
       {badge ? (
-        <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1.5 text-[10px] font-extrabold tabular-nums text-white ring-2 ring-white">
+        <span className="absolute right-0 top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-extrabold tabular-nums text-white ring-2 ring-white">
           {badge > 9 ? "9+" : badge}
         </span>
       ) : isLoading ? (
-        <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-neutral-300 ring-2 ring-white" />
+        <span className="absolute right-0 top-0 h-2.5 w-2.5 rounded-full bg-neutral-300 ring-2 ring-white" />
       ) : null}
     </button>
   );
@@ -780,6 +784,23 @@ function ContractTable({
     label: formatAmountFilterLabel(amount),
     count: amountCounts[amount],
   }));
+  const activeFilterLabels = [
+    platformFilter !== "ALL"
+      ? platformOptions.find((option) => option.value === platformFilter)?.label
+      : null,
+    contractTypeFilter !== "ALL"
+      ? contractTypeOptions.find((option) => option.value === contractTypeFilter)?.label
+      : null,
+    amountFilter !== "ALL"
+      ? amountOptions.find((option) => option.value === amountFilter)?.label
+      : null,
+    detailStatusFilter !== "ALL"
+      ? statusOptions.find((option) => option.value === detailStatusFilter)?.label
+      : null,
+  ].filter((label): label is string => Boolean(label));
+  const mobileFilterSummary =
+    activeFilterLabels.length > 0 ? activeFilterLabels.join(" · ") : "전체 조건";
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
   return (
     <section className="overflow-hidden rounded-[8px] border border-[#d9e0d9] bg-white lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
@@ -790,8 +811,36 @@ function ContractTable({
           sortKey="title"
           sortState={sortState}
           onSortChange={onSortChange}
+          compact
         />
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
+        <button
+          type="button"
+          onClick={() => setMobileFiltersOpen((current) => !current)}
+          aria-expanded={mobileFiltersOpen}
+          aria-controls="advertiser-mobile-contract-filters"
+          className="flex h-9 min-w-0 items-center gap-2 rounded-[6px] border border-[#d9e0d9] bg-white px-2 text-left text-[12px] font-extrabold text-[#303630] transition-colors hover:border-[#cbd5cc]"
+        >
+          <SlidersHorizontal className="h-3.5 w-3.5 shrink-0 text-[#606861]" strokeWidth={2} />
+          <span className="shrink-0">필터</span>
+          <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-[#606861]">
+            {mobileFilterSummary}
+          </span>
+          {activeFilterLabels.length > 0 ? (
+            <span className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-[#171a17] px-1.5 text-[11px] font-extrabold text-white">
+              {activeFilterLabels.length}
+            </span>
+          ) : null}
+          <ChevronDown
+            className={`h-3.5 w-3.5 shrink-0 text-[#606861] transition-transform ${
+              mobileFiltersOpen ? "rotate-180" : ""
+            }`}
+            strokeWidth={2}
+          />
+        </button>
+        <div
+          id="advertiser-mobile-contract-filters"
+          className={`${mobileFiltersOpen ? "grid" : "hidden"} gap-1.5`}
+        >
           <TableFilterSelect
             label="플랫폼"
             value={platformFilter}
@@ -800,6 +849,7 @@ function ContractTable({
             sortState={sortState}
             onSortChange={onSortChange}
             onChange={(value) => onPlatformFilterChange(value as PlatformFilter)}
+            compact
           />
           <TableFilterSelect
             label="종류"
@@ -809,6 +859,7 @@ function ContractTable({
             sortState={sortState}
             onSortChange={onSortChange}
             onChange={(value) => onContractTypeFilterChange(value as ContractTypeFilter)}
+            compact
           />
           <TableFilterSelect
             label="금액"
@@ -818,6 +869,7 @@ function ContractTable({
             sortState={sortState}
             onSortChange={onSortChange}
             onChange={(value) => onAmountFilterChange(value as AmountFilter)}
+            compact
           />
           <TableFilterSelect
             label="현 단계"
@@ -827,6 +879,7 @@ function ContractTable({
             sortState={sortState}
             onSortChange={onSortChange}
             onChange={(value) => onDetailStatusFilterChange(value as DetailStatusFilter)}
+            compact
           />
         </div>
       </div>
@@ -905,22 +958,30 @@ function ContractNameSearch({
   sortKey,
   sortState,
   onSortChange,
+  compact = false,
 }: {
   value: string;
   onChange: (value: string) => void;
   sortKey?: SortKey;
   sortState?: ContractSort;
   onSortChange?: (key: SortKey) => void;
+  compact?: boolean;
 }) {
   return (
-    <div className="block min-w-0 lg:w-[90%]">
+    <div
+      className={
+        compact
+          ? "grid min-w-0 grid-cols-[70px_minmax(0,1fr)] items-center gap-2"
+          : "block min-w-0 lg:w-[90%]"
+      }
+    >
       <ColumnHeader
         label="계약명"
         sortKey={sortKey}
         sortState={sortState}
         onSortChange={onSortChange}
       />
-      <span className="relative mt-1 block">
+      <span className={`relative block ${compact ? "" : "mt-1"}`}>
         <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8b938d]" />
         <input
           value={value}
@@ -943,6 +1004,7 @@ function TableFilterSelect({
   sortState,
   onSortChange,
   onChange,
+  compact = false,
 }: {
   label: string;
   value: string;
@@ -952,9 +1014,16 @@ function TableFilterSelect({
   sortState?: ContractSort;
   onSortChange?: (key: SortKey) => void;
   onChange: (value: string) => void;
+  compact?: boolean;
 }) {
   return (
-    <div className="block min-w-0">
+    <div
+      className={
+        compact
+          ? "grid min-w-0 grid-cols-[70px_minmax(0,1fr)] items-center gap-2"
+          : "block min-w-0"
+      }
+    >
       <ColumnHeader
         label={label}
         sortKey={sortKey}
@@ -965,7 +1034,9 @@ function TableFilterSelect({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         aria-label={`${label} 필터`}
-        className={`mt-1 block h-8 max-w-full ${maxWidthClassName} rounded-[6px] border border-[#d9e0d9] bg-white px-2 text-[12px] font-bold text-[#303630] outline-none transition-colors hover:border-[#cbd5cc] focus:border-[#171a17]`}
+        className={`block h-8 max-w-full ${maxWidthClassName} ${
+          compact ? "" : "mt-1"
+        } rounded-[6px] border border-[#d9e0d9] bg-white px-2 text-[12px] font-bold text-[#303630] outline-none transition-colors hover:border-[#cbd5cc] focus:border-[#171a17]`}
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>

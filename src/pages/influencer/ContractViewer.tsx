@@ -1183,7 +1183,7 @@ export function ContractViewer() {
                     {getStatusLabel(contract.status)}
                   </span>
                 </div>
-                <h2 className="text-2xl font-semibold tracking-tight text-neutral-950 sm:text-3xl">
+                <h2 className="break-keep text-[25px] font-semibold leading-tight tracking-tight text-neutral-950 sm:text-3xl">
                   {heroTitle}
                 </h2>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-neutral-600">

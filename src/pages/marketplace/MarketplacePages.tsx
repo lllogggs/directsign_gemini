@@ -559,10 +559,10 @@ export function PublicInfluencerProfilePage() {
                 <h1 className="mt-2 text-[34px] font-semibold leading-tight text-neutral-950 sm:text-[44px]">
                   {profile.displayName}
                 </h1>
-                <p className="mt-3 max-w-2xl text-[16px] font-medium leading-7 text-neutral-600">
+                <p className="mt-3 max-w-2xl break-keep text-[16px] font-medium leading-7 text-neutral-600">
                   {profile.headline}
                 </p>
-                <p className="mt-4 max-w-3xl text-[14px] leading-6 text-neutral-600">
+                <p className="mt-4 max-w-3xl break-keep text-[14px] leading-6 text-neutral-600">
                   {profile.bio}
                 </p>
                 <div className="mt-5 flex flex-col gap-2 sm:flex-row">
@@ -756,10 +756,10 @@ export function PublicBrandProfilePage() {
                 <h1 className="mt-2 text-[34px] font-semibold leading-tight text-neutral-950 sm:text-[44px]">
                   {brand.displayName}
                 </h1>
-                <p className="mt-3 max-w-2xl text-[16px] font-medium leading-7 text-neutral-600">
+                <p className="mt-3 max-w-2xl break-keep text-[16px] font-medium leading-7 text-neutral-600">
                   {brand.headline}
                 </p>
-                <p className="mt-4 max-w-3xl text-[14px] leading-6 text-neutral-600">
+                <p className="mt-4 max-w-3xl break-keep text-[14px] leading-6 text-neutral-600">
                   {brand.description}
                 </p>
                 <div className="mt-5 flex flex-col gap-2 sm:flex-row">
@@ -906,7 +906,7 @@ function MarketplaceShell({
           <p className="text-[13px] font-extrabold text-neutral-500">{eyebrow}</p>
           <div className="mt-2 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div className="min-w-0">
-              <h1 className="font-neo-heavy text-[38px] leading-none text-neutral-950 sm:text-[48px]">
+              <h1 className="font-neo-heavy text-[34px] leading-[1.05] text-neutral-950 sm:text-[48px] sm:leading-none">
                 {title}
               </h1>
               <p className="mt-4 max-w-3xl break-keep text-[14px] font-bold leading-6 text-neutral-600">
@@ -922,7 +922,7 @@ function MarketplaceShell({
         </div>
       </section>
 
-      <div className="mx-auto my-5 max-w-[1320px] overflow-hidden rounded-[18px] border border-neutral-200 bg-[#fdfdfb] shadow-[0_22px_60px_rgba(23,26,23,0.06)]">
+      <div className="mx-4 my-5 max-w-[1320px] overflow-hidden rounded-[18px] border border-neutral-200 bg-[#fdfdfb] shadow-[0_22px_60px_rgba(23,26,23,0.06)] sm:mx-6 lg:mx-auto">
         {children}
       </div>
     </main>
@@ -938,7 +938,7 @@ function InfluencerDiscoveryCard({
   onContact: () => void;
 }) {
   return (
-    <article className="flex min-h-[360px] flex-col rounded-[18px] border border-neutral-200 bg-white p-4 shadow-[0_12px_34px_rgba(15,23,42,0.035)]">
+    <article className="flex min-h-[360px] w-full min-w-0 flex-col rounded-[18px] border border-neutral-200 bg-white p-4 shadow-[0_12px_34px_rgba(15,23,42,0.035)]">
       <div className="flex items-start gap-3">
         <AvatarBlock label={profile.avatarLabel} />
         <div className="min-w-0 flex-1">
@@ -1010,7 +1010,7 @@ function BrandDiscoveryCard({
   onContact: () => void;
 }) {
   return (
-    <article className="flex min-h-[360px] flex-col rounded-[18px] border border-neutral-200 bg-white p-4 shadow-[0_12px_34px_rgba(15,23,42,0.035)]">
+    <article className="flex min-h-[360px] w-full min-w-0 flex-col rounded-[18px] border border-neutral-200 bg-white p-4 shadow-[0_12px_34px_rgba(15,23,42,0.035)]">
       <div className="flex items-start gap-3">
         <AvatarBlock label={brand.logoLabel} />
         <div className="min-w-0 flex-1">
@@ -1476,7 +1476,7 @@ function PlatformFilterBar({
   onChange: (value: PlatformFilter) => void;
 }) {
   return (
-    <div className="no-scrollbar flex gap-1.5 overflow-x-auto pb-1 lg:max-w-[560px]">
+    <div className="flex flex-wrap gap-1.5 lg:no-scrollbar lg:max-w-[560px] lg:flex-nowrap lg:overflow-x-auto lg:pb-1">
       {platformFilterOptions.map((platform) => {
         const active = value === platform;
         const label = platform === "all" ? "전체" : platformLabels[platform];

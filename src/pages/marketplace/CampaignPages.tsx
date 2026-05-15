@@ -812,7 +812,7 @@ function CampaignShell({
           </p>
           <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-end">
             <div className="min-w-0">
-              <h1 className="font-neo-heavy text-[38px] leading-none text-neutral-950 sm:text-[48px]">
+              <h1 className="font-neo-heavy text-[34px] leading-[1.05] text-neutral-950 sm:text-[48px] sm:leading-none">
                 {title}
               </h1>
               <p className="mt-4 max-w-3xl break-keep text-[14px] font-bold leading-6 text-neutral-600">

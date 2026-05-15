@@ -513,55 +513,62 @@ export function ContractAdminViewer() {
   return (
     <div className="min-h-screen bg-[#f4f5f7] font-sans text-neutral-950">
       <header className="sticky top-0 z-30 border-b border-neutral-200/80 bg-white/95 shadow-[0_1px_0_rgba(15,23,42,0.04)] backdrop-blur">
-        <div className="mx-auto flex h-[72px] max-w-[1480px] items-center justify-between px-5 sm:px-8 lg:px-10">
-          <div className="flex min-w-0 items-center gap-3">
+        <div className="mx-auto flex h-14 max-w-[1480px] items-center justify-between px-4 sm:h-[72px] sm:px-8 lg:px-10">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             <button
               type="button"
               onClick={() => navigate("/advertiser/dashboard")}
-              className="flex h-9 w-9 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-500 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-neutral-300 hover:text-neutral-950"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-500 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-neutral-300 hover:text-neutral-950 sm:h-9 sm:w-9"
               aria-label="대시보드로 돌아가기"
             >
               <ArrowLeft className="h-4 w-4" />
             </button>
-            <div className="flex min-w-0 items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-950 text-white shadow-[0_8px_24px_rgba(15,23,42,0.16)]">
+            <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-neutral-950 text-white shadow-[0_8px_24px_rgba(15,23,42,0.16)]">
                 <ShieldCheck className="h-4 w-4" />
               </span>
-              <div className="min-w-0">
+              <div className="hidden min-w-0 sm:block">
                 <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
                   계약 워크스페이스
                 </p>
                 <p className="truncate text-[16px] font-semibold">{PRODUCT_NAME}</p>
               </div>
+              <span className="font-neo-heavy truncate text-[18px] leading-none sm:hidden">
+                {PRODUCT_NAME}
+              </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
             <button
               type="button"
               onClick={copyLink}
               disabled={!summary.activeShare}
-              className="inline-flex h-10 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-[12px] font-semibold text-neutral-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-neutral-300 disabled:text-neutral-300 disabled:shadow-none"
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center gap-0 rounded-lg border border-neutral-200 bg-white px-0 text-[12px] font-semibold text-neutral-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-neutral-300 disabled:text-neutral-300 disabled:shadow-none sm:w-auto sm:gap-2 sm:px-3"
+              aria-label="링크 복사"
+              title="링크 복사"
             >
               <Copy className="h-4 w-4" />
-              링크 복사
+              <span className="hidden sm:inline">링크 복사</span>
             </button>
             <button
               type="button"
               onClick={handlePrimaryAction}
+              aria-label={primaryActionLabel}
+              title={primaryActionLabel}
               disabled={
                 contract.status === "SIGNED" ||
                 (summary.allApproved && isVerificationLoading)
               }
-              className="inline-flex h-10 items-center gap-2 rounded-lg bg-neutral-950 px-4 text-[12px] font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition hover:bg-neutral-800 hover:shadow-[0_14px_30px_rgba(15,23,42,0.18)] disabled:bg-neutral-200 disabled:text-neutral-400 disabled:shadow-none"
+              className="inline-flex h-10 w-12 shrink-0 items-center justify-center gap-0 rounded-lg bg-neutral-950 px-0 text-[12px] font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition hover:bg-neutral-800 hover:shadow-[0_14px_30px_rgba(15,23,42,0.18)] disabled:bg-neutral-200 disabled:text-neutral-400 disabled:shadow-none sm:w-auto sm:gap-2 sm:px-4"
             >
               <Send className="h-4 w-4" />
-              {primaryActionLabel}
+              <span className="hidden sm:inline">{primaryActionLabel}</span>
             </button>
             <button
               type="button"
               onClick={handleLogout}
-              className="inline-flex h-10 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-[12px] font-semibold text-neutral-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center gap-0 rounded-lg border border-neutral-200 bg-white px-0 text-[12px] font-semibold text-neutral-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950 sm:w-auto sm:gap-2 sm:px-3"
               aria-label="로그아웃"
             >
               <LogOut className="h-4 w-4" />

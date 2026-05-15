@@ -404,7 +404,7 @@ function SignupConsentPanel({
 }) {
   return (
     <section className="rounded-[12px] border border-[#d8ded4] bg-[#fbfcfa] p-4">
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-col items-start gap-2 sm:flex-row sm:justify-between sm:gap-3">
         <div>
           <p className="text-[13px] font-semibold text-[#141714]">
             필수 약관 및 개인정보 동의
