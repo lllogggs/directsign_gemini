@@ -28,6 +28,7 @@ import {
 } from "../../domain/verification";
 import {
   formatContractTitleForDisplay,
+  formatMoneyLabel,
   formatPublicContactValue,
   removeInternalTestLabel,
 } from "../../domain/display";
@@ -737,27 +738,28 @@ function ContractTable({
         </div>
       </div>
 
-      <div className="hidden grid-cols-[minmax(140px,0.4fr)_minmax(118px,0.34fr)_minmax(520px,1fr)_minmax(128px,0.36fr)] items-end gap-3 border-b border-[#d9e0d9] bg-[#f8faf7] px-3 py-2 lg:grid">
+      <div className="hidden grid-cols-[minmax(155px,0.46fr)_minmax(120px,0.36fr)_minmax(320px,1fr)_minmax(145px,0.42fr)_minmax(124px,0.36fr)] items-end gap-3 border-b border-[#d9e0d9] bg-[#f8faf7] px-3 py-2 lg:grid">
         <TableFilterSelect
           label="플랫폼"
           value={platformFilter}
           options={platformOptions}
-          maxWidthClassName="w-[132px]"
+          maxWidthClassName="w-[125px]"
           onChange={(value) => onPlatformFilterChange(value as PlatformFilter)}
         />
         <TableFilterSelect
           label="종류"
           value={contractTypeFilter}
           options={contractTypeOptions}
-          maxWidthClassName="w-[108px]"
+          maxWidthClassName="w-[102px]"
           onChange={(value) => onContractTypeFilterChange(value as ContractTypeFilter)}
         />
         <ContractNameSearch value={query} onChange={onQueryChange} />
+        <div className="pb-1.5 text-[11px] font-extrabold text-[#7d857f]">금액</div>
         <TableFilterSelect
           label="현 단계"
           value={detailStatusFilter}
           options={statusOptions}
-          maxWidthClassName="w-[118px]"
+          maxWidthClassName="w-[112px]"
           onChange={(value) => onDetailStatusFilterChange(value as DetailStatusFilter)}
         />
       </div>
@@ -788,7 +790,7 @@ function ContractNameSearch({
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="block min-w-0">
+    <label className="block min-w-0 lg:w-[95%]">
       <span className="text-[11px] font-extrabold text-[#7d857f]">계약명</span>
       <span className="relative mt-1 block">
         <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8b938d]" />
@@ -847,7 +849,7 @@ function ContractRow({
     <button
       type="button"
       onClick={onOpen}
-      className="group grid w-full gap-2 px-3 py-1.5 text-left transition-colors hover:bg-[#f8faf7] lg:min-h-[38px] lg:grid-cols-[minmax(140px,0.4fr)_minmax(118px,0.34fr)_minmax(520px,1fr)_minmax(128px,0.36fr)] lg:items-center"
+      className="group grid w-full gap-2 px-3 py-1.5 text-left transition-colors hover:bg-[#f8faf7] lg:min-h-[38px] lg:grid-cols-[minmax(155px,0.46fr)_minmax(120px,0.36fr)_minmax(320px,1fr)_minmax(145px,0.42fr)_minmax(124px,0.36fr)] lg:items-center"
     >
       <div className="min-w-0">
         <PlatformPills contract={contract} />
@@ -870,8 +872,20 @@ function ContractRow({
         </div>
       </div>
 
+      <AmountCell value={contract.campaign?.budget} />
+
       <StatusTiming contract={contract} />
     </button>
+  );
+}
+
+function AmountCell({ value }: { value?: string | null }) {
+  const label = formatDashboardAmountLabel(value);
+
+  return (
+    <div className="min-w-0">
+      <p className="truncate text-[12px] font-semibold text-[#303630]">{label}</p>
+    </div>
   );
 }
 
@@ -974,6 +988,14 @@ function formatContractTypeFilterLabel(type: Contract["type"]) {
   if (type === "협찬") return "협찬";
   if (type === "공동구매") return "공동구매";
   return type;
+}
+
+function formatDashboardAmountLabel(value?: string | null) {
+  const label = formatMoneyLabel(value, "-").replace(/\s+/g, " ").trim();
+  const percentMatch = label.match(/(\d+(?:\.\d+)?)\s*%/);
+
+  if (percentMatch) return `수수료 ${percentMatch[1]}%`;
+  return label || "-";
 }
 
 function formatDashboardContractTitle(title: string) {
