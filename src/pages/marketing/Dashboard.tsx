@@ -15,7 +15,6 @@ import {
   Search,
   ShieldCheck,
 } from "lucide-react";
-import { format } from "date-fns";
 import {
   Contract,
   ContractPlatform,
@@ -38,7 +37,6 @@ import { useMarketplaceMessageSummary } from "../../hooks/useMarketplaceMessageS
 import { PRODUCT_NAME } from "../../domain/brand";
 import { apiFetch } from "../../domain/api";
 
-type StatusFilter = "AUTHORING" | "REVISION" | "SIGNING" | "DONE";
 type PlatformFilter = "ALL" | ContractPlatform;
 type ContractTypeFilter = "ALL" | Contract["type"];
 type DetailStatusFilter = "ALL" | ContractStatus;
@@ -54,17 +52,6 @@ const STATUS_ORDER: ContractStatus[] = [
   "NEGOTIATING",
   "APPROVED",
   "SIGNED",
-];
-
-const DASHBOARD_TABS: Array<{
-  id: StatusFilter;
-  label: string;
-  statuses: ContractStatus[];
-}> = [
-  { id: "AUTHORING", label: "작성", statuses: ["DRAFT", "REVIEWING"] },
-  { id: "REVISION", label: "수정", statuses: ["NEGOTIATING"] },
-  { id: "SIGNING", label: "서명", statuses: ["APPROVED"] },
-  { id: "DONE", label: "완료", statuses: ["SIGNED"] },
 ];
 
 const PLATFORM_FILTERS: PlatformFilter[] = [
@@ -199,7 +186,6 @@ export function Dashboard() {
   const syncError = useAppStore((state) => state.syncError);
   const resetHydration = useAppStore((state) => state.resetHydration);
   const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("AUTHORING");
   const [platformFilter, setPlatformFilter] = useState<PlatformFilter>("ALL");
   const [contractTypeFilter, setContractTypeFilter] =
     useState<ContractTypeFilter>("ALL");
@@ -293,15 +279,6 @@ export function Dashboard() {
 
     return contracts
       .filter((contract) => {
-        const selectedTab = DASHBOARD_TABS.find((tab) => tab.id === statusFilter);
-
-        if (
-          detailStatusFilter === "ALL" &&
-          selectedTab &&
-          !selectedTab.statuses.includes(contract.status)
-        ) {
-          return false;
-        }
         if (detailStatusFilter !== "ALL" && contract.status !== detailStatusFilter) {
           return false;
         }
@@ -319,14 +296,6 @@ export function Dashboard() {
         return [
           contract.title,
           formatDashboardContractTitle(contract.title),
-          removeInternalTestLabel(contract.influencer_info.name, "인플루언서"),
-          formatPublicContactValue(contract.influencer_info.contact),
-          contract.influencer_info.channel_url,
-          formatPlatforms(contract),
-          formatMoneyLabel(contract.campaign?.budget),
-          contract.type,
-          formatPeriod(contract),
-          STATUS_META[contract.status].label,
         ]
           .filter(Boolean)
           .some((value) => value!.toLowerCase().includes(normalizedQuery));
@@ -338,20 +307,7 @@ export function Dashboard() {
     detailStatusFilter,
     platformFilter,
     query,
-    statusFilter,
   ]);
-  const handleTabChange = (tab: StatusFilter) => {
-    setStatusFilter(tab);
-    setDetailStatusFilter("ALL");
-  };
-  const handleDetailStatusChange = (status: DetailStatusFilter) => {
-    setDetailStatusFilter(status);
-
-    if (status !== "ALL") {
-      const matchingTab = DASHBOARD_TABS.find((tab) => tab.statuses.includes(status));
-      if (matchingTab) setStatusFilter(matchingTab.id);
-    }
-  };
   const handleLogout = async () => {
     try {
       await apiFetch("/api/advertiser/logout", {
@@ -458,76 +414,22 @@ export function Dashboard() {
               <ContractFirstNotice onCreate={() => navigate("/advertiser/builder")} />
             ) : null}
 
-            <section className="shrink-0 rounded-t-[8px] border border-b-0 border-[#d9e0d9] bg-white p-2.5">
-              <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
-                <div className="relative min-w-0 flex-1">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8b938d]" />
-                  <input
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    aria-label="계약 검색"
-                    placeholder="계약명, 상대방, 플랫폼, 종류 검색"
-                    className="h-9 w-full rounded-[6px] border border-[#d9e0d9] bg-[#f8faf7] pl-8 pr-3 text-[12px] font-semibold text-[#303630] outline-none transition-colors placeholder:text-[#8b938d] hover:border-[#cbd5cc] focus:border-[#171a17] focus:bg-white"
-                  />
-                </div>
-                <DashboardTabs
-                  activeTab={statusFilter}
-                  counts={statusCounts}
-                  onChange={handleTabChange}
-                />
-              </div>
-
-              <div className="mt-2 grid gap-2 border-t border-[#edf1ed] pt-2 xl:grid-cols-[460px_310px_minmax(0,1fr)]">
-                  <FilterSection label="플랫폼">
-                    {PLATFORM_FILTERS.map((platform) => (
-                      <FilterButton
-                        key={platform}
-                        active={platformFilter === platform}
-                        count={platformCounts[platform]}
-                        label={formatPlatformFilterLabel(platform)}
-                        onClick={() => setPlatformFilter(platform)}
-                      />
-                    ))}
-                  </FilterSection>
-
-                  <FilterSection label="계약 종류">
-                    {CONTRACT_TYPE_FILTERS.map((type) => (
-                      <FilterButton
-                        key={type}
-                        active={contractTypeFilter === type}
-                        count={
-                          type === "ALL"
-                            ? contractTypeCounts.ALL
-                            : contractTypeCounts[type]
-                        }
-                        label={type === "ALL" ? "전체" : formatContractTypeFilterLabel(type)}
-                        onClick={() => setContractTypeFilter(type)}
-                      />
-                    ))}
-                  </FilterSection>
-
-                  <FilterSection label="계약 상태">
-                    {DETAIL_STATUS_FILTERS.map((status) => (
-                      <FilterButton
-                        key={status}
-                        active={detailStatusFilter === status}
-                        count={
-                          status === "ALL" ? contracts.length : statusCounts[status]
-                        }
-                        label={status === "ALL" ? "전체" : STATUS_META[status].shortLabel}
-                        onClick={() => handleDetailStatusChange(status)}
-                      />
-                    ))}
-                  </FilterSection>
-              </div>
-            </section>
-
             {syncError && <SyncErrorPanel message={syncError} />}
 
             <ContractTable
               contracts={filteredContracts}
-              statusFilter={statusFilter}
               totalContracts={contracts.length}
+              query={query}
+              onQueryChange={setQuery}
+              platformFilter={platformFilter}
+              onPlatformFilterChange={setPlatformFilter}
+              platformCounts={platformCounts}
+              contractTypeFilter={contractTypeFilter}
+              onContractTypeFilterChange={setContractTypeFilter}
+              contractTypeCounts={contractTypeCounts}
+              detailStatusFilter={detailStatusFilter}
+              onDetailStatusFilterChange={setDetailStatusFilter}
+              statusCounts={statusCounts}
               onOpen={(contract) => navigate(`/advertiser/contract/${contract.id}`)}
             />
           </div>
@@ -701,54 +603,6 @@ function MessageCenterButton({
   );
 }
 
-function FilterSection({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="flex min-w-0 items-center gap-2 rounded-[7px] border border-[#e5eae5] bg-[#fbfcfa] px-2 py-1.5">
-      <p className="shrink-0 text-[12px] font-extrabold text-[#303630]">{label}</p>
-      <div className="flex min-w-0 flex-wrap items-center gap-1.5">{children}</div>
-    </div>
-  );
-}
-
-const FilterButton: React.FC<{
-  active: boolean;
-  count: number;
-  label: string;
-  onClick: () => void;
-}> = ({
-  active,
-  count,
-  label,
-  onClick,
-}) => {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`inline-flex h-6 shrink-0 items-center gap-1 rounded-[6px] border px-1.5 text-[11px] font-bold transition ${
-        active
-          ? "border-[#171a17] bg-[#171a17] text-white"
-          : "border-[#d9e0d9] bg-white text-[#59605b] hover:border-[#b8c2ba] hover:text-[#171a17]"
-      }`}
-    >
-      <span className="truncate">{label}</span>
-      <span
-        className={`text-[10px] ${
-          active ? "text-white/70" : "text-[#a0aaa2]"
-        }`}
-      >
-        {count}
-      </span>
-    </button>
-  );
-};
-
 function PlatformPills({ contract }: { contract: Contract }) {
   const items = getContractPlatformDisplayItems(contract);
 
@@ -811,90 +665,171 @@ function getAdvertiserReadinessBadge(
   return badges[status];
 }
 
-function DashboardTabs({
-  activeTab,
-  counts,
-  onChange,
-}: {
-  activeTab: StatusFilter;
-  counts: Record<ContractStatus, number>;
-  onChange: (tab: StatusFilter) => void;
-}) {
-  return (
-    <div
-      className="grid min-w-0 grid-cols-4 gap-1 overflow-hidden rounded-full bg-neutral-100 p-1 lg:w-[320px] lg:shrink-0"
-      role="tablist"
-      aria-label="계약 상태"
-    >
-      {DASHBOARD_TABS.map((tab) => {
-        const active = activeTab === tab.id;
-        const count = tab.statuses.reduce((sum, status) => sum + counts[status], 0);
-
-        return (
-          <button
-            key={tab.id}
-            type="button"
-            role="tab"
-            aria-selected={active}
-            onClick={() => onChange(tab.id)}
-            className={`h-7 min-w-0 rounded-full px-1 text-[11px] font-extrabold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 ${
-              active
-                ? "bg-white text-neutral-950 shadow-[0_1px_0_rgba(15,23,42,0.04)]"
-                : "text-neutral-500 hover:text-neutral-800"
-            }`}
-          >
-            <span className="inline-flex min-w-0 max-w-full items-center justify-center gap-1 overflow-hidden whitespace-nowrap">
-              {tab.label}
-              <span
-                className={`text-[10px] ${
-                  active ? "text-neutral-500" : "text-neutral-400"
-                }`}
-              >
-                {count}
-              </span>
-            </span>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 function ContractTable({
   contracts,
-  statusFilter,
   totalContracts,
+  query,
+  onQueryChange,
+  platformFilter,
+  onPlatformFilterChange,
+  platformCounts,
+  contractTypeFilter,
+  onContractTypeFilterChange,
+  contractTypeCounts,
+  detailStatusFilter,
+  onDetailStatusFilterChange,
+  statusCounts,
   onOpen,
 }: {
   contracts: Contract[];
-  statusFilter: StatusFilter;
   totalContracts: number;
+  query: string;
+  onQueryChange: (value: string) => void;
+  platformFilter: PlatformFilter;
+  onPlatformFilterChange: (value: PlatformFilter) => void;
+  platformCounts: Record<PlatformFilter, number>;
+  contractTypeFilter: ContractTypeFilter;
+  onContractTypeFilterChange: (value: ContractTypeFilter) => void;
+  contractTypeCounts: Record<ContractTypeFilter, number>;
+  detailStatusFilter: DetailStatusFilter;
+  onDetailStatusFilterChange: (value: DetailStatusFilter) => void;
+  statusCounts: Record<ContractStatus, number>;
   onOpen: (contract: Contract) => void;
 }) {
-  if (contracts.length === 0) return <EmptyState isInitialEmpty={totalContracts === 0} />;
-
-  const dueHeader = getAdvertiserDueHeader(statusFilter);
+  const platformOptions = PLATFORM_FILTERS.map((platform) => ({
+    value: platform,
+    label: formatPlatformFilterLabel(platform),
+    count: platformCounts[platform],
+  }));
+  const contractTypeOptions = CONTRACT_TYPE_FILTERS.map((type) => ({
+    value: type,
+    label: type === "ALL" ? "전체" : formatContractTypeFilterLabel(type),
+    count: contractTypeCounts[type],
+  }));
+  const statusOptions = DETAIL_STATUS_FILTERS.map((status) => ({
+    value: status,
+    label: status === "ALL" ? "전체" : STATUS_META[status].shortLabel,
+    count: status === "ALL" ? totalContracts : statusCounts[status],
+  }));
 
   return (
-    <section className="overflow-hidden rounded-b-[8px] border border-[#d9e0d9] bg-white lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
-      <div className="hidden grid-cols-[minmax(320px,1.35fr)_minmax(180px,0.9fr)_120px_130px_130px] border-b border-[#d9e0d9] bg-[#f8faf7] px-3 py-1.5 text-[11px] font-semibold text-[#7d857f] lg:grid">
-        <span>계약</span>
-        <span>플랫폼</span>
-        <span>종류</span>
-        <span>금액</span>
-        <span>{dueHeader}</span>
+    <section className="overflow-hidden rounded-[8px] border border-[#d9e0d9] bg-white lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+      <div className="grid gap-2 border-b border-[#d9e0d9] bg-[#f8faf7] p-2 lg:hidden">
+        <ContractNameSearch value={query} onChange={onQueryChange} />
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <TableFilterSelect
+            label="플랫폼"
+            value={platformFilter}
+            options={platformOptions}
+            onChange={(value) => onPlatformFilterChange(value as PlatformFilter)}
+          />
+          <TableFilterSelect
+            label="종류"
+            value={contractTypeFilter}
+            options={contractTypeOptions}
+            onChange={(value) => onContractTypeFilterChange(value as ContractTypeFilter)}
+          />
+          <TableFilterSelect
+            label="현 단계"
+            value={detailStatusFilter}
+            options={statusOptions}
+            onChange={(value) => onDetailStatusFilterChange(value as DetailStatusFilter)}
+          />
+        </div>
       </div>
+
+      <div className="hidden grid-cols-[minmax(320px,1.35fr)_minmax(180px,0.9fr)_120px_130px_130px] items-end gap-3 border-b border-[#d9e0d9] bg-[#f8faf7] px-3 py-2 lg:grid">
+        <ContractNameSearch value={query} onChange={onQueryChange} />
+        <TableFilterSelect
+          label="플랫폼"
+          value={platformFilter}
+          options={platformOptions}
+          onChange={(value) => onPlatformFilterChange(value as PlatformFilter)}
+        />
+        <TableFilterSelect
+          label="종류"
+          value={contractTypeFilter}
+          options={contractTypeOptions}
+          onChange={(value) => onContractTypeFilterChange(value as ContractTypeFilter)}
+        />
+        <div className="pb-1.5 text-[11px] font-extrabold text-[#7d857f]">금액</div>
+        <TableFilterSelect
+          label="현 단계"
+          value={detailStatusFilter}
+          options={statusOptions}
+          onChange={(value) => onDetailStatusFilterChange(value as DetailStatusFilter)}
+        />
+      </div>
+
       <div className="max-h-[620px] divide-y divide-[#edf1ed] overflow-y-auto lg:max-h-none lg:min-h-0 lg:flex-1">
-        {contracts.map((contract) => (
-          <React.Fragment key={contract.id}>
-            <ContractRow
-              contract={contract}
-              onOpen={() => onOpen(contract)}
-            />
-          </React.Fragment>
-        ))}
+        {contracts.length > 0 ? (
+          contracts.map((contract) => (
+            <React.Fragment key={contract.id}>
+              <ContractRow
+                contract={contract}
+                onOpen={() => onOpen(contract)}
+              />
+            </React.Fragment>
+          ))
+        ) : (
+          <EmptyState isInitialEmpty={totalContracts === 0} />
+        )}
       </div>
     </section>
+  );
+}
+
+function ContractNameSearch({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="block min-w-0">
+      <span className="text-[11px] font-extrabold text-[#7d857f]">계약명</span>
+      <span className="relative mt-1 block">
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8b938d]" />
+        <input
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          aria-label="계약명 검색"
+          placeholder="계약명으로 검색"
+          className="h-8 w-full rounded-[6px] border border-[#d9e0d9] bg-white pl-7 pr-2 text-[12px] font-semibold text-[#303630] outline-none transition-colors placeholder:text-[#8b938d] hover:border-[#cbd5cc] focus:border-[#171a17]"
+        />
+      </span>
+    </label>
+  );
+}
+
+function TableFilterSelect({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: Array<{ value: string; label: string; count: number }>;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="block min-w-0">
+      <span className="text-[11px] font-extrabold text-[#7d857f]">{label}</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        aria-label={`${label} 필터`}
+        className="mt-1 h-8 w-full rounded-[6px] border border-[#d9e0d9] bg-white px-2 text-[12px] font-bold text-[#303630] outline-none transition-colors hover:border-[#cbd5cc] focus:border-[#171a17]"
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label} {option.count}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
@@ -987,7 +922,7 @@ function PreviewAmount({ value }: { value: string }) {
 
 function EmptyState({ isInitialEmpty }: { isInitialEmpty: boolean }) {
   return (
-    <section className="flex min-h-[190px] flex-col items-center justify-center rounded-b-[8px] border border-[#d9e0d9] bg-white px-6 text-center">
+    <section className="flex min-h-[190px] flex-col items-center justify-center bg-white px-6 text-center">
       <div className="flex h-10 w-10 items-center justify-center rounded-[8px] bg-[#f8faf7] text-[#aeb7b0] ring-1 ring-[#d9e0d9]">
         <FileText className="h-5 w-5" strokeWidth={1.7} />
       </div>
@@ -1034,12 +969,6 @@ function getContractPlatforms(contract: Contract): ContractPlatform[] {
   return platforms.size > 0 ? Array.from(platforms) : ["OTHER"];
 }
 
-function formatPlatforms(contract: Contract) {
-  return getContractPlatformDisplayItems(contract)
-    .map((item) => item.label)
-    .join(", ");
-}
-
 function formatContractTypeLabel(type: Contract["type"]) {
   if (type === "PPL") return "유료 광고 (PPL)";
   if (type === "협찬") return "제품 협찬";
@@ -1059,85 +988,12 @@ function formatDashboardContractTitle(title: string) {
   return formatContractTitleForDisplay(cleaned || title, "계약명 미정");
 }
 
-function getAdvertiserDueHeader(_statusFilter: StatusFilter) {
-  return "현 단계";
-}
-
 function getContractPlatformDisplayItems(contract: Contract) {
-  const source = getContractPlatformSource(contract);
-
-  return getContractPlatforms(contract).flatMap((platform) =>
-    getPlatformLabelsFromSource(platform, source).map((label) => ({
-      platform,
-      label,
-      title: PLATFORM_META[platform].label,
-    })),
-  );
-}
-
-function getContractPlatformSource(contract: Contract) {
-  return [
-    contract.title,
-    contract.type,
-    contract.influencer_info.channel_url,
-    ...(contract.campaign?.deliverables ?? []),
-    ...(contract.clauses ?? []).map((clause) => clause.content),
-  ]
-    .join(" ")
-    .toLowerCase();
-}
-
-function getPlatformLabelsFromSource(platform: ContractPlatform, source: string) {
-  const labels: string[] = [];
-  const add = (label: string) => {
-    if (!labels.includes(label)) labels.push(label);
-  };
-
-  if (platform === "YOUTUBE") {
-    if (source.includes("shorts") || source.includes("숏츠")) add("유튜브-숏츠");
-    if (
-      source.includes("longform") ||
-      source.includes("long-form") ||
-      source.includes("롱폼")
-    ) {
-      add("유튜브-롱폼");
-    }
-  }
-
-  if (platform === "INSTAGRAM") {
-    if (source.includes("reels") || source.includes("reel") || source.includes("릴스")) {
-      add("인스타그램-릴스");
-    }
-    if (source.includes("story") || source.includes("stories") || source.includes("스토리")) {
-      add("인스타그램-스토리");
-    }
-    if (source.includes("feed") || source.includes("피드")) add("인스타그램-피드");
-    if (source.includes("live") || source.includes("라이브")) add("인스타그램-라이브");
-  }
-
-  if (platform === "TIKTOK") {
-    if (source.includes("short") || source.includes("숏폼")) add("틱톡-숏폼");
-  }
-
-  if (platform === "NAVER_BLOG") add("네이버 블로그");
-  if (platform === "OTHER") add("기타");
-
-  return labels.length > 0 ? labels : [PLATFORM_META[platform].label];
-}
-
-function formatPeriod(contract: Contract) {
-  if (contract.campaign?.period) return contract.campaign.period;
-  if (contract.campaign?.start_date && contract.campaign?.end_date) {
-    return `${formatDate(contract.campaign.start_date)} - ${formatDate(contract.campaign.end_date)}`;
-  }
-  if (contract.campaign?.deadline) return `${formatDate(contract.campaign.deadline)}까지`;
-  if (contract.workflow?.due_at) return `${formatDate(contract.workflow.due_at)}까지`;
-  return "미정";
-}
-
-function formatDate(value: string) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : format(date, "yyyy.MM.dd");
+  return getContractPlatforms(contract).map((platform) => ({
+    platform,
+    label: PLATFORM_META[platform].shortLabel,
+    title: PLATFORM_META[platform].label,
+  }));
 }
 
 function parseDate(value?: string) {
