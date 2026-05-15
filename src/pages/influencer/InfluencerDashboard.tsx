@@ -13,6 +13,7 @@ import {
   Globe2,
   Instagram,
   LogOut,
+  Megaphone,
   MessageSquareText,
   Music2,
   RefreshCw,
@@ -46,6 +47,9 @@ import {
 import {
   buildDefaultPublicProfileSettings,
   buildPublicProfileSettingsFromForm,
+  formatInfluencerPublicProfileUrl,
+  getAutomaticPublicProfileHandle,
+  getInfluencerPublicProfilePath,
   getPublicProfileHandleError,
   normalizePublicProfileHandle,
   type InfluencerPublicProfileResponse,
@@ -60,7 +64,19 @@ type DashboardState =
   | { status: "ready"; dashboard: InfluencerDashboardResponse }
   | { status: "error"; message: string };
 
-type ContractFilter = "revision" | "review" | "sign" | "fulfillment" | "done";
+type PublicProfileSavePayload = InfluencerPublicProfileSettings & {
+  alternateHandle?: string;
+};
+
+type PublicProfileSaveError = Error & {
+  code?: string;
+  handle?: string;
+  profileUrl?: string;
+  suggestedHandles?: string[];
+  canCustomizeHandle?: boolean;
+};
+
+type ContractFilter = "review" | "revision" | "sign" | "fulfillment" | "done";
 type PlatformFilter = "all" | InfluencerPlatform;
 type DetailStageFilter = "all" | InfluencerDashboardContractStage;
 
@@ -137,8 +153,8 @@ const DASHBOARD_TABS: Array<{
   label: string;
   stages: InfluencerDashboardContractStage[];
 }> = [
-  { id: "revision", label: "수정", stages: ["change_pending"] },
   { id: "review", label: "검토", stages: ["review_needed", "waiting"] },
+  { id: "revision", label: "수정", stages: ["change_pending"] },
   { id: "sign", label: "서명", stages: ["ready_to_sign"] },
   {
     id: "fulfillment",
@@ -253,7 +269,7 @@ export function InfluencerDashboard() {
   const location = useLocation();
   const [state, setState] = useState<DashboardState>({ status: "loading" });
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<ContractFilter>("revision");
+  const [filter, setFilter] = useState<ContractFilter>("review");
   const [platformFilter, setPlatformFilter] = useState<PlatformFilter>("all");
   const [detailStageFilter, setDetailStageFilter] =
     useState<DetailStageFilter>("all");
@@ -470,20 +486,28 @@ export function InfluencerDashboard() {
 
   return (
     <DashboardShell>
-      <header className="sticky top-0 z-30 border-b border-neutral-200/80 bg-white/95 shadow-[0_1px_0_rgba(15,23,42,0.04)] backdrop-blur">
-        <div className="mx-auto flex h-[72px] max-w-[1320px] items-center justify-between px-4 sm:px-6 lg:px-8">
+      <header className="sticky top-0 z-30 border-b border-neutral-200/80 bg-[#fbfaf7]/95 shadow-[0_1px_0_rgba(15,23,42,0.04)] backdrop-blur">
+        <div className="mx-auto flex h-[68px] max-w-[1320px] items-center justify-between px-4 sm:px-6 lg:px-8">
           <button
             type="button"
             onClick={() => navigate("/influencer/dashboard")}
-            className="flex min-w-0 items-center gap-3"
+            className="flex shrink-0 items-center gap-3"
           >
-            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-950 text-white shadow-[0_8px_24px_rgba(15,23,42,0.16)]">
+            <span className="flex h-10 w-10 items-center justify-center rounded-[13px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
               <ShieldCheck className="h-4 w-4" />
             </span>
-            <span className="truncate text-[19px] font-semibold tracking-[-0.02em]">{PRODUCT_NAME}</span>
+            <span className="font-neo-heavy hidden text-[19px] leading-none sm:inline">{PRODUCT_NAME}</span>
           </button>
 
-          <div className="flex items-center gap-2">
+          <div className="no-scrollbar ml-3 flex min-w-0 items-center gap-2 overflow-x-auto">
+            <button
+              type="button"
+              onClick={() => navigate("/influencer/dashboard")}
+              className="inline-flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-[12px] bg-blue-600 px-3 text-[13px] font-extrabold text-white shadow-[0_14px_34px_rgba(37,99,235,0.20)] transition hover:bg-blue-700"
+            >
+              <FileText className="h-4 w-4" />
+              받은 계약
+            </button>
             <MessageCenterButton
               unreadCount={messageSummary.unreadCount}
               isLoading={isMessageSummaryLoading}
@@ -492,15 +516,23 @@ export function InfluencerDashboard() {
             <button
               type="button"
               onClick={() => navigate("/influencer/brands")}
-              className="inline-flex h-10 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-600 transition hover:border-neutral-400 hover:text-neutral-950"
+              className="inline-flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-[12px] border border-neutral-200 bg-white px-3 text-[13px] font-extrabold text-neutral-600 transition hover:border-neutral-300 hover:text-neutral-950"
             >
               <Store className="h-4 w-4" />
               <span className="hidden sm:inline">브랜드 찾기</span>
             </button>
             <button
               type="button"
+              onClick={() => navigate("/influencer/campaigns")}
+              className="inline-flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-[12px] border border-neutral-200 bg-white px-3 text-[13px] font-extrabold text-neutral-600 transition hover:border-neutral-300 hover:text-neutral-950"
+            >
+              <Megaphone className="h-4 w-4" />
+              <span className="hidden sm:inline">모집글</span>
+            </button>
+            <button
+              type="button"
               onClick={loadDashboard}
-              className="flex h-10 w-10 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-600 transition hover:border-neutral-400 hover:text-neutral-950"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] border border-neutral-200 bg-white text-neutral-600 transition hover:border-neutral-300 hover:text-neutral-950"
               aria-label="새로고침"
               title="새로고침"
             >
@@ -509,7 +541,7 @@ export function InfluencerDashboard() {
             <button
               type="button"
               onClick={handleLogout}
-              className="inline-flex h-10 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-600 transition hover:border-neutral-400 hover:text-neutral-950"
+              className="inline-flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-[12px] border border-neutral-200 bg-white px-3 text-[13px] font-extrabold text-neutral-600 transition hover:border-neutral-300 hover:text-neutral-950"
               aria-label="로그아웃"
               title="로그아웃"
             >
@@ -521,7 +553,7 @@ export function InfluencerDashboard() {
       </header>
 
       <main className="mx-auto w-full max-w-[1320px] px-4 py-4 sm:px-6 lg:px-8">
-        <section className="min-w-0 overflow-hidden rounded-[8px] border border-[#cbd5cc] bg-[#fdfdfb] shadow-[0_22px_60px_rgba(23,26,23,0.10)]">
+        <section className="min-w-0 overflow-hidden rounded-[18px] border border-neutral-200 bg-[#fdfdfb] shadow-[0_22px_60px_rgba(23,26,23,0.08)]">
           <div className="border-b border-[#d9e0d9] bg-white px-4 py-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0">
@@ -532,7 +564,7 @@ export function InfluencerDashboard() {
                   받은 계약 검토
                 </h1>
                 <p className="mt-1 text-[12px] font-medium text-[#7d857f]">
-                  전체 {dashboard.contracts.length.toLocaleString()}건 · 검색 결과 {filteredContracts.length.toLocaleString()}건
+                  전체 {dashboard.contracts.length.toLocaleString()}건 · 검색 결과 {filteredContracts.length.toLocaleString()}건 · 검토할 계약 포함
                 </p>
               </div>
               <span className="inline-flex h-8 items-center rounded-[8px] bg-[#eef0ed] px-3 text-[12px] font-semibold text-[#303630]">
@@ -552,13 +584,17 @@ export function InfluencerDashboard() {
               )
             }
             onOpenPublicProfile={() => {
-              if (publicProfile.published) navigate(`/${publicProfile.handle}`);
+              if (publicProfile.published) {
+                navigate(getInfluencerPublicProfilePath(publicProfile.handle));
+              }
             }}
             publicProfile={publicProfile}
             onEditPublicProfile={() => setProfileSettingsOpen(true)}
           />
 
           <div className="min-w-0 p-4">
+            <InfluencerContractNotice />
+
             <section className="rounded-t-[8px] border border-b-0 border-[#d9e0d9] bg-white p-3">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
                 <div className="relative min-w-0 flex-1">
@@ -641,9 +677,21 @@ export function InfluencerDashboard() {
             if (!response.ok) {
               const data = (await response.json().catch(() => ({}))) as {
                 error?: string;
+                code?: string;
+                handle?: string;
+                profile_url?: string;
+                suggested_handles?: string[];
+                can_customize_handle?: boolean;
               };
-              throw new Error(
-                data.error ?? "공개 프로필을 저장하지 못했습니다.",
+              throw Object.assign(
+                new Error(data.error ?? "공개 프로필을 저장하지 못했습니다."),
+                {
+                  code: data.code,
+                  handle: data.handle,
+                  profileUrl: data.profile_url,
+                  suggestedHandles: data.suggested_handles,
+                  canCustomizeHandle: data.can_customize_handle,
+                } satisfies Partial<PublicProfileSaveError>,
               );
             }
 
@@ -663,7 +711,7 @@ export function InfluencerDashboard() {
 }
 
 function DashboardShell({ children }: { children: React.ReactNode }) {
-  return <div className="min-h-screen bg-neutral-50 font-sans text-neutral-950">{children}</div>;
+  return <div className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950">{children}</div>;
 }
 
 function MessageCenterButton({
@@ -681,7 +729,7 @@ function MessageCenterButton({
     <button
       type="button"
       onClick={onClick}
-      className="relative inline-flex h-10 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-600 transition hover:border-neutral-400 hover:text-neutral-950"
+      className="relative inline-flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-[12px] border border-neutral-200 bg-white px-3 text-[13px] font-extrabold text-neutral-600 transition hover:border-neutral-300 hover:text-neutral-950"
       aria-label="메시지함"
       title="메시지함"
     >
@@ -730,6 +778,19 @@ function ErrorView({ message, onRetry }: { message: string; onRetry: () => void 
         </button>
       </div>
     </div>
+  );
+}
+
+function InfluencerContractNotice() {
+  return (
+    <section className="mb-3 rounded-[10px] border border-emerald-100 bg-emerald-50/70 px-4 py-3">
+      <p className="text-[13px] font-semibold text-emerald-950">
+        받은 계약 링크를 안전하게 검토할 수 있습니다
+      </p>
+      <p className="mt-1 text-[12px] font-medium leading-5 text-emerald-800/80">
+        Yeollock 계약 링크를 받으면 조건 확인, 수정 요청, 전자서명을 같은 흐름으로 처리합니다.
+      </p>
+    </section>
   );
 }
 
@@ -823,15 +884,31 @@ function InfluencerAccountBanner({
               >
                 <Globe2 className="h-3.5 w-3.5 shrink-0" />
                 <span className="truncate">
-                  {publicProfile.published
-                    ? `yeollock.me/${publicProfile.handle}`
-                    : `주소 설정 전 · ${publicProfile.handle}`}
+                  {publicProfile.handle
+                    ? publicProfile.published
+                      ? formatInfluencerPublicProfileUrl(publicProfile.handle)
+                      : `저장 전 · ${formatInfluencerPublicProfileUrl(publicProfile.handle)}`
+                    : "플랫폼 인증 후 자동 생성"}
                 </span>
               </span>
             </div>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          {showVerificationAction ? (
+            <button
+              type="button"
+              onClick={onVerify}
+              className={`inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-3 text-[13px] font-semibold transition ${
+                verificationApproved
+                  ? "border border-neutral-200 bg-white text-neutral-800 hover:border-neutral-300 hover:bg-neutral-50"
+                  : "bg-neutral-950 text-white hover:bg-neutral-800"
+              }`}
+            >
+              <BadgeCheck className="h-3.5 w-3.5" />
+              {verificationApproved ? "서명 인증 관리" : "서명 인증"}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={onEditPublicProfile}
@@ -859,20 +936,6 @@ function InfluencerAccountBanner({
           >
             <Settings2 className="h-3.5 w-3.5" />
           </button>
-          {showVerificationAction ? (
-            <button
-              type="button"
-              onClick={onVerify}
-              className={`inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-3 text-[13px] font-semibold transition ${
-                verificationApproved
-                  ? "border border-neutral-200 bg-white text-neutral-800 hover:border-neutral-300 hover:bg-neutral-50"
-                  : "bg-neutral-950 text-white hover:bg-neutral-800"
-              }`}
-            >
-              <BadgeCheck className="h-3.5 w-3.5" />
-              {verificationApproved ? "플랫폼 인증 관리" : "플랫폼 계정 인증"}
-            </button>
-          ) : null}
         </div>
       </div>
     </section>
@@ -889,13 +952,30 @@ function PublicProfileSettingsDialog({
   initialProfile: InfluencerPublicProfileSettings;
   onClose: () => void;
   onSave: (
-    profile: InfluencerPublicProfileSettings,
+    profile: PublicProfileSavePayload,
   ) => Promise<InfluencerPublicProfileSettings>;
 }) {
+  const approvedPlatforms = dashboard.verification.approved_platforms;
+  const automaticHandle = getAutomaticPublicProfileHandle(approvedPlatforms);
+  const initialManualHandle =
+    automaticHandle &&
+    initialProfile.handle &&
+    normalizePublicProfileHandle(initialProfile.handle) !== automaticHandle
+      ? normalizePublicProfileHandle(initialProfile.handle)
+      : "";
   const [saveError, setSaveError] = useState<string | undefined>();
   const [isSaving, setIsSaving] = useState(false);
+  const [manualHandleAllowed, setManualHandleAllowed] = useState(
+    Boolean(initialManualHandle),
+  );
+  const [manualHandle, setManualHandle] = useState(initialManualHandle);
+  const [conflictHandle, setConflictHandle] = useState<string | undefined>(
+    initialManualHandle ? automaticHandle : undefined,
+  );
+  const [suggestedHandles, setSuggestedHandles] = useState<string[]>([]);
+  const [isAppealing, setIsAppealing] = useState(false);
+  const [appealMessage, setAppealMessage] = useState<string | undefined>();
   const [form, setForm] = useState({
-    handle: initialProfile.handle,
     displayName: initialProfile.displayName,
     headline: initialProfile.headline,
     bio: initialProfile.bio,
@@ -905,14 +985,26 @@ function PublicProfileSettingsDialog({
     brandFit: initialProfile.brandFit.join(", "),
     collaborationTypes: initialProfile.collaborationTypes,
   });
-  const normalizedHandle = normalizePublicProfileHandle(form.handle);
-  const handleError = getPublicProfileHandleError(normalizedHandle);
+  const automaticHandleError = automaticHandle
+    ? getPublicProfileHandleError(automaticHandle)
+    : "플랫폼 인증을 완료하면 첫 등록 플랫폼 ID로 프로필 주소가 자동 생성됩니다.";
+  const normalizedManualHandle = normalizePublicProfileHandle(manualHandle).replace(
+    /\s+/g,
+    "_",
+  );
+  const manualHandleError = manualHandleAllowed
+    ? normalizedManualHandle
+      ? getPublicProfileHandleError(normalizedManualHandle)
+      : "다른 공개 주소를 입력해 주세요."
+    : undefined;
   const requiredFilled =
     form.displayName.trim().length > 0 &&
     form.headline.trim().length > 0 &&
     form.bio.trim().length > 0;
-  const canSave = !handleError && requiredFilled;
-  const approvedPlatforms = dashboard.verification.approved_platforms;
+  const canSave =
+    !automaticHandleError &&
+    requiredFilled &&
+    (!manualHandleAllowed || !manualHandleError);
 
   const toggleProposalType = (type: CampaignProposalType) => {
     setForm((current) => {
@@ -934,8 +1026,28 @@ function PublicProfileSettingsDialog({
     setSaveError(undefined);
 
     try {
-      await onSave(buildPublicProfileSettingsFromForm(dashboard, form));
+      await onSave({
+        ...buildPublicProfileSettingsFromForm(dashboard, form),
+        ...(manualHandleAllowed
+          ? { alternateHandle: normalizedManualHandle }
+          : {}),
+      });
     } catch (error) {
+      if (error instanceof Error) {
+        const profileError = error as PublicProfileSaveError;
+        if (
+          profileError.code === "public_profile_handle_conflict" &&
+          profileError.canCustomizeHandle
+        ) {
+          setManualHandleAllowed(true);
+          setConflictHandle(profileError.handle ?? automaticHandle);
+          setSuggestedHandles(profileError.suggestedHandles ?? []);
+          if (!manualHandle && profileError.suggestedHandles?.[0]) {
+            setManualHandle(profileError.suggestedHandles[0]);
+          }
+          setAppealMessage(undefined);
+        }
+      }
       setSaveError(
         error instanceof Error
           ? error.message
@@ -943,6 +1055,45 @@ function PublicProfileSettingsDialog({
       );
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleAppeal = async () => {
+    if (!conflictHandle || isAppealing) return;
+
+    setIsAppealing(true);
+    setSaveError(undefined);
+    setAppealMessage(undefined);
+
+    try {
+      const response = await apiFetch("/api/influencer/public-profile/handle-appeal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          alternateHandle: normalizedManualHandle || undefined,
+        }),
+      });
+      const data = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        already_submitted?: boolean;
+      };
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "이의신청을 접수하지 못했습니다.");
+      }
+
+      setAppealMessage(
+        data.already_submitted
+          ? "이미 관리자 검토 대기열에 접수되어 있습니다."
+          : "관리자 검토 대기열에 접수했습니다.",
+      );
+    } catch (error) {
+      setSaveError(
+        error instanceof Error ? error.message : "이의신청을 접수하지 못했습니다.",
+      );
+    } finally {
+      setIsAppealing(false);
     }
   };
 
@@ -958,7 +1109,7 @@ function PublicProfileSettingsDialog({
               공개 프로필 설정
             </h2>
             <p className="mt-1 text-[13px] font-medium leading-5 text-neutral-500">
-              광고주가 보는 주소와 소개 문구를 직접 정하고, 인증된 플랫폼 계정은 자동으로 연결합니다.
+              소개 문구를 정하면 주소는 첫 등록 플랫폼 ID로 자동 고정되고, 인증된 플랫폼 계정은 자동으로 연결합니다.
             </p>
           </div>
           <button
@@ -973,23 +1124,74 @@ function PublicProfileSettingsDialog({
         <form onSubmit={handleSubmit} className="grid gap-4">
           <ProfileSettingsField
             label="공개 주소"
-            hint={`저장 후 yeollock.me/${normalizedHandle || "내주소"} 로 공개됩니다.`}
-            error={handleError}
+            hint={
+              manualHandleAllowed && conflictHandle
+                ? `자동 주소 ${formatInfluencerPublicProfileUrl(
+                    conflictHandle,
+                  )}가 겹쳐 대체 주소를 저장할 수 있습니다.`
+                : automaticHandle
+                ? `첫 등록 플랫폼 ID 기준으로 ${formatInfluencerPublicProfileUrl(
+                    automaticHandle,
+                  )} 로 고정됩니다.`
+                : undefined
+            }
+            error={manualHandleAllowed ? manualHandleError : automaticHandleError}
           >
-            <div className="grid grid-cols-[auto_minmax(0,1fr)] overflow-hidden rounded-md border border-neutral-200 bg-[#f8faf7] focus-within:border-neutral-950">
+            <div className="grid grid-cols-[auto_minmax(0,1fr)] overflow-hidden rounded-md border border-neutral-200 bg-[#f8faf7]">
               <span className="flex h-11 items-center border-r border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-500">
                 yeollock.me/
               </span>
-              <input
-                required
-                value={form.handle}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, handle: event.target.value }))
-                }
-                placeholder="my_handle"
-                className="h-11 min-w-0 bg-transparent px-3 text-[13px] font-semibold text-neutral-950 outline-none placeholder:text-neutral-400"
-              />
+              {manualHandleAllowed ? (
+                <input
+                  value={manualHandle}
+                  onChange={(event) => setManualHandle(event.target.value)}
+                  placeholder={suggestedHandles[0] ?? "creator_id_2"}
+                  className="h-11 min-w-0 border-0 bg-white px-3 text-[13px] font-semibold text-neutral-950 outline-none focus:ring-2 focus:ring-neutral-950/10"
+                />
+              ) : (
+                <span className="flex h-11 min-w-0 items-center truncate px-3 text-[13px] font-semibold text-neutral-950">
+                  {automaticHandle ?? "platform-id"}
+                </span>
+              )}
             </div>
+            {manualHandleAllowed && conflictHandle ? (
+              <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-xs leading-5 text-amber-900">
+                <p className="font-semibold">
+                  {formatInfluencerPublicProfileUrl(conflictHandle)}가 이미 사용 중입니다.
+                </p>
+                {suggestedHandles.length > 0 ? (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {suggestedHandles.map((handle) => (
+                      <button
+                        key={handle}
+                        type="button"
+                        onClick={() => setManualHandle(handle)}
+                        className="h-8 rounded-md border border-amber-200 bg-white px-2.5 font-semibold text-amber-900 transition hover:border-amber-300"
+                      >
+                        {formatInfluencerPublicProfileUrl(handle)}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleAppeal}
+                    disabled={isAppealing}
+                    className="h-8 rounded-md bg-neutral-950 px-3 font-semibold text-white transition hover:bg-neutral-800 disabled:bg-neutral-300"
+                  >
+                    {isAppealing ? "접수 중" : "이의신청하기"}
+                  </button>
+                  {appealMessage ? (
+                    <span className="font-semibold text-emerald-700">{appealMessage}</span>
+                  ) : (
+                    <span className="text-amber-800">
+                      본인 플랫폼 ID가 맞으면 운영자가 점유 계정을 확인합니다.
+                    </span>
+                  )}
+                </div>
+              </div>
+            ) : null}
           </ProfileSettingsField>
 
           <div className="grid gap-3 sm:grid-cols-2">
@@ -1156,7 +1358,7 @@ function PublicProfileSettingsDialog({
               className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-neutral-950 px-4 text-[14px] font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-300"
             >
               <Save className="h-4 w-4" />
-              {isSaving ? "저장 중" : "저장 후 공개"}
+              {isSaving ? "저장 중" : "저장"}
             </button>
           </div>
         </form>
@@ -1305,7 +1507,7 @@ function EmptyContracts({ hasQuery }: { hasQuery: boolean }) {
       <p className="mt-1 max-w-md text-[12px] leading-5 text-[#7d857f]">
         {hasQuery
           ? "검색어를 줄이거나 전체로 바꿔보세요."
-          : "계약 초대가 오면 이곳에 표시됩니다."}
+          : "브랜드가 Yeollock 계약 링크를 보내면 이곳에 표시됩니다."}
       </p>
     </section>
   );

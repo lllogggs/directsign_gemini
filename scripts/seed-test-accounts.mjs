@@ -32,7 +32,7 @@ const accounts = {
 };
 
 const testHandles = {
-  influencer: "qa_influencer",
+  influencer: "qa.sora",
   brand: "qa-test-brand",
 };
 

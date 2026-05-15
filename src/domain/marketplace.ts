@@ -7,6 +7,20 @@ export type CampaignProposalType =
   | "group_buy"
   | "visit_review";
 
+export type MarketplaceCampaignStatus = "open" | "draft" | "closed";
+
+export type MarketplaceBrandCampaign = {
+  id?: string;
+  title: string;
+  type: CampaignProposalType;
+  budget: string;
+  summary?: string;
+  deadline?: string;
+  platforms?: InfluencerPlatform[];
+  deliverables?: string[];
+  status?: MarketplaceCampaignStatus;
+};
+
 export type MarketplaceInfluencerProfile = {
   id: string;
   handle: string;
@@ -56,12 +70,22 @@ export type MarketplaceBrandProfile = {
   statusLabel: string;
   fitTags: string[];
   audienceTargets: string[];
-  activeCampaigns: Array<{
-    title: string;
-    type: CampaignProposalType;
-    budget: string;
-  }>;
+  activeCampaigns: MarketplaceBrandCampaign[];
   recentCreators: string[];
+};
+
+export type MarketplaceCampaignPost = MarketplaceBrandCampaign & {
+  id: string;
+  brandId: string;
+  brandHandle: string;
+  brandName: string;
+  brandCategory: string;
+  brandHeadline: string;
+  brandLogoLabel: string;
+  brandHref: string;
+  typeLabel: string;
+  platformLabels: string[];
+  deadlineLabel: string;
 };
 
 export const proposalTypeLabels: Record<CampaignProposalType, string> = {
@@ -337,7 +361,14 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
 ];
 
 export function normalizeMarketplaceHandle(handle: string) {
-  return handle.trim().replace(/^@/, "").replace(/^\//, "").toLowerCase();
+  return handle
+    .trim()
+    .replace(/^https?:\/\/(www\.)?yeollock\.me\//i, "")
+    .replace(/^yeollock\.me\//i, "")
+    .replace(/^@/, "")
+    .replace(/^\//, "")
+    .split(/[/?#]/)[0]
+    .toLowerCase();
 }
 
 export function mergeMarketplaceInfluencerProfiles(
@@ -389,7 +420,7 @@ export function findBrandProfileByHandle(
 }
 
 export function getInfluencerProfilePath(profile: MarketplaceInfluencerProfile) {
-  return `/${profile.handle}`;
+  return `/${normalizeMarketplaceHandle(profile.handle)}`;
 }
 
 export function getBrandProfilePath(profile: MarketplaceBrandProfile) {
@@ -398,6 +429,49 @@ export function getBrandProfilePath(profile: MarketplaceBrandProfile) {
 
 export function formatProposalTypes(types: CampaignProposalType[]) {
   return types.map((type) => proposalTypeLabels[type]).join(", ");
+}
+
+export function getCampaignDeadlineLabel(deadline: string | undefined) {
+  if (!deadline) return "상시 검토";
+  const date = new Date(deadline);
+  if (Number.isNaN(date.getTime())) return deadline;
+
+  return new Intl.DateTimeFormat("ko-KR", {
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+export function buildMarketplaceCampaignPosts(
+  brands: MarketplaceBrandProfile[],
+): MarketplaceCampaignPost[] {
+  return brands
+    .flatMap((brand) =>
+      brand.activeCampaigns.map((campaign, index) => {
+        const platforms =
+          campaign.platforms && campaign.platforms.length > 0
+            ? campaign.platforms
+            : brand.preferredPlatforms;
+
+        return {
+          ...campaign,
+          id: campaign.id ?? `${brand.id}:${index}:${campaign.title}`,
+          brandId: brand.id,
+          brandHandle: brand.handle,
+          brandName: brand.displayName,
+          brandCategory: brand.category,
+          brandHeadline: brand.headline,
+          brandLogoLabel: brand.logoLabel,
+          brandHref: getBrandProfilePath(brand),
+          typeLabel: proposalTypeLabels[campaign.type],
+          platformLabels: platforms.map((platform) => platformLabels[platform]),
+          deadlineLabel: getCampaignDeadlineLabel(campaign.deadline),
+          platforms,
+          status: campaign.status ?? "open",
+        } satisfies MarketplaceCampaignPost;
+      }),
+    )
+    .filter((campaign) => campaign.status !== "closed");
 }
 
 export function getPlatformTone(platform: InfluencerPlatform) {

@@ -1,6 +1,7 @@
 import {
   ArrowLeft,
   ArrowRight,
+  FileSignature,
   MessageSquareText,
   RefreshCw,
   Search,
@@ -35,6 +36,13 @@ type MessageThread = MarketplaceMessagesResponse["threads"][number];
 type PlatformFilter = "all" | InfluencerPlatform;
 type ProposalTypeFilter = "all" | CampaignProposalType;
 type ProposalStatusFilter = "all" | MarketplaceProposalStatus;
+
+type ProposalAcceptResponse = {
+  contract?: {
+    id: string;
+  };
+  already_converted?: boolean;
+};
 
 const platformFilterOptions: PlatformFilter[] = [
   "all",
@@ -84,8 +92,8 @@ const proposalStatusTone: Record<MarketplaceProposalStatus, string> = {
 
 const roleCopy = {
   advertiser: {
-    eyebrow: "광고주 메시지함",
-    panelTitle: "보낸 제안 관리",
+    eyebrow: "광고주 계약 전환",
+    panelTitle: "계약으로 넘길 제안",
     summaryTitle: (openCount: number) =>
       openCount > 0
         ? `보낸 제안 ${openCount.toLocaleString()}건이 진행 중입니다`
@@ -107,8 +115,8 @@ const roleCopy = {
     dateHeader: "보낸 날",
   },
   influencer: {
-    eyebrow: "인플루언서 메시지함",
-    panelTitle: "받은 제안 관리",
+    eyebrow: "인플루언서 계약 검토",
+    panelTitle: "계약 전 검토할 제안",
     summaryTitle: (openCount: number) =>
       openCount > 0
         ? `받은 제안 ${openCount.toLocaleString()}건을 확인해야 합니다`
@@ -345,6 +353,7 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
     role === "advertiser"
       ? `진행 중 ${sentOpenCount.toLocaleString()}건`
       : `확인 필요 ${data.summary.unreadCount.toLocaleString()}건`;
+  const contractHomeIsPrimary = copy.primaryHref === copy.backHref;
   const resetScopedFilters = () => {
     setPlatformFilter("all");
     setProposalTypeFilter("all");
@@ -352,28 +361,45 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
   };
 
   return (
-    <div className="min-h-screen bg-neutral-50 font-sans text-neutral-950">
-      <header className="sticky top-0 z-30 border-b border-neutral-200 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-[1320px] items-center justify-between px-4 sm:px-6 lg:px-8">
-          <Link to="/" className="flex min-w-0 items-center gap-3">
-            <span className="flex h-9 w-9 items-center justify-center rounded-md bg-neutral-950 text-white">
+    <div className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950">
+      <header className="sticky top-0 z-30 border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
+        <div className="mx-auto flex h-[68px] max-w-[1320px] items-center justify-between px-4 sm:px-6 lg:px-8">
+          <Link to="/" className="flex shrink-0 items-center gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-[13px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
               <ShieldCheck className="h-4 w-4" />
             </span>
-            <span className="truncate text-[18px] font-semibold">{PRODUCT_NAME}</span>
+            <span className="font-neo-heavy hidden text-[19px] leading-none sm:inline">{PRODUCT_NAME}</span>
           </Link>
 
-          <div className="flex items-center gap-2">
+          <div className="no-scrollbar ml-3 flex min-w-0 items-center gap-2 overflow-x-auto">
+            {!contractHomeIsPrimary ? (
+              <Link
+                to={copy.primaryHref}
+                className="inline-flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-[12px] bg-blue-600 px-3 text-[13px] font-extrabold text-white shadow-[0_14px_34px_rgba(37,99,235,0.20)] transition hover:bg-blue-700"
+              >
+                <FileSignature className="h-4 w-4" />
+                {copy.primaryLabel}
+              </Link>
+            ) : null}
             <Link
               to={copy.backHref}
-              className="inline-flex h-10 items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
+              className={`inline-flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-[12px] px-3 text-[13px] font-extrabold transition ${
+                contractHomeIsPrimary
+                  ? "bg-blue-600 text-white shadow-[0_14px_34px_rgba(37,99,235,0.20)] hover:bg-blue-700"
+                  : "border border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300 hover:text-neutral-950"
+              }`}
             >
-              <ArrowLeft className="h-4 w-4" />
+              {contractHomeIsPrimary ? (
+                <FileSignature className="h-4 w-4" />
+              ) : (
+                <ArrowLeft className="h-4 w-4" />
+              )}
               <span className="hidden sm:inline">{copy.backLabel}</span>
             </Link>
             <button
               type="button"
               onClick={() => void loadMessages()}
-              className="flex h-10 w-10 items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-600 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] border border-neutral-200 bg-white text-neutral-600 transition hover:border-neutral-300 hover:text-neutral-950"
               aria-label="새로고침"
               title="새로고침"
             >
@@ -384,14 +410,14 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
       </header>
 
       <main className="mx-auto w-full min-w-0 max-w-[1320px] px-4 py-4 sm:px-6 lg:px-8">
-        <section className="min-w-0 overflow-hidden rounded-[8px] border border-[#cbd5cc] bg-[#fdfdfb] shadow-[0_22px_60px_rgba(23,26,23,0.10)]">
+        <section className="min-w-0 overflow-hidden rounded-[18px] border border-neutral-200 bg-[#fdfdfb] shadow-[0_22px_60px_rgba(23,26,23,0.08)]">
           <div className="border-b border-[#d9e0d9] bg-white px-4 py-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-[12px] font-semibold text-[#7d857f]">
-                  제안 운영 화면
+                <p className="text-[12px] font-extrabold text-[#7d857f]">
+                  {copy.eyebrow}
                 </p>
-                <h1 className="mt-1 truncate text-[18px] font-semibold text-[#171a17]">
+                <h1 className="font-neo-heavy mt-1 truncate text-[22px] leading-tight text-[#171a17]">
                   {copy.panelTitle}
                 </h1>
                 <p className="mt-1 text-[12px] font-medium text-[#7d857f]">
@@ -399,7 +425,7 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
                   {visibleThreads.length.toLocaleString()}건
                 </p>
               </div>
-              <span className="inline-flex h-8 items-center rounded-[8px] bg-[#eef0ed] px-3 text-[12px] font-semibold text-[#303630]">
+              <span className="inline-flex h-8 items-center rounded-full bg-[#eef0ed] px-3 text-[12px] font-extrabold text-[#303630]">
                 {headerBadge}
               </span>
             </div>
@@ -655,24 +681,80 @@ function MessageThreadRow({
   role: MarketplaceInboxRole;
   thread: MessageThread;
 }) {
+  const navigate = useNavigate();
+  const [isAccepting, setIsAccepting] = useState(false);
+  const [acceptError, setAcceptError] = useState<string | undefined>();
+  const canAcceptAsContract =
+    role === "advertiser" &&
+    thread.bucket === "inbox" &&
+    thread.direction === "influencer_to_brand" &&
+    thread.status !== "converted_to_contract" &&
+    thread.status !== "closed";
   const actionHref =
-    role === "advertiser"
-      ? thread.bucket === "inbox"
-        ? "/advertiser/builder"
-        : thread.counterpartHref
-      : thread.counterpartHref ?? "/influencer/dashboard";
+    thread.convertedContractId
+      ? `/advertiser/contract/${thread.convertedContractId}`
+      : role === "advertiser"
+        ? thread.bucket === "inbox"
+          ? "/advertiser/builder"
+          : thread.counterpartHref
+        : thread.counterpartHref ?? "/influencer/dashboard";
   const actionLabel =
-    role === "advertiser"
-      ? thread.bucket === "inbox"
-        ? "계약 작성"
-        : "상대 보기"
-      : thread.bucket === "inbox"
-        ? "브랜드 보기"
-        : "대상 보기";
+    thread.convertedContractId
+      ? "초안 보기"
+      : role === "advertiser"
+        ? thread.bucket === "inbox"
+          ? "계약 작성"
+          : "상대 보기"
+        : thread.bucket === "inbox"
+          ? "브랜드 보기"
+          : "대상 보기";
   const relationshipLabel = getRelationshipLabel(role, thread);
   const relationshipName =
     thread.bucket === "sent" ? thread.targetName : thread.senderName;
   const proposalTypeLabel = getProposalTypeLabel(thread);
+
+  const acceptAsContract = async () => {
+    if (isAccepting) return;
+
+    setIsAccepting(true);
+    setAcceptError(undefined);
+
+    try {
+      const response = await apiFetch(
+        `/api/advertiser/marketplace/proposals/${encodeURIComponent(thread.id)}/accept`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+        },
+      );
+
+      if (response.status === 401) {
+        navigate("/login/advertiser", { replace: true });
+        return;
+      }
+
+      const data = (await response.json().catch(() => ({}))) as
+        | ProposalAcceptResponse
+        | { error?: string };
+
+      if (!response.ok || !("contract" in data) || !data.contract?.id) {
+        throw new Error(
+          "error" in data
+            ? data.error ?? "계약 초안을 생성하지 못했습니다."
+            : "계약 초안을 생성하지 못했습니다.",
+        );
+      }
+
+      navigate(`/advertiser/contract/${data.contract.id}`);
+    } catch (error) {
+      setAcceptError(
+        error instanceof Error ? error.message : "계약 초안을 생성하지 못했습니다.",
+      );
+    } finally {
+      setIsAccepting(false);
+    }
+  };
 
   return (
     <article className="grid gap-3 bg-white px-4 py-3 text-left transition-colors hover:bg-[#f8faf7] lg:grid-cols-[104px_minmax(160px,0.85fr)_minmax(166px,0.9fr)_104px_minmax(240px,1.25fr)_122px_104px] lg:items-center">
@@ -721,8 +803,18 @@ function MessageThreadRow({
         {formatMarketplaceMessageDate(thread.createdAt)}
       </p>
 
-      <div className="flex lg:justify-end">
-        {actionHref ? (
+      <div className="grid gap-1 lg:justify-end">
+        {canAcceptAsContract ? (
+          <button
+            type="button"
+            onClick={() => void acceptAsContract()}
+            disabled={isAccepting}
+            className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-md bg-blue-600 px-3 text-[12px] font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-neutral-300 lg:w-[104px]"
+          >
+            {isAccepting ? "생성 중" : "수락"}
+            <FileSignature className="h-3.5 w-3.5" />
+          </button>
+        ) : actionHref ? (
           <Link
             to={actionHref}
             className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-md border border-neutral-200 bg-white px-3 text-[12px] font-semibold text-neutral-700 transition hover:border-neutral-950 hover:bg-neutral-950 hover:text-white lg:w-[104px]"
@@ -735,6 +827,11 @@ function MessageThreadRow({
             연결 대기
           </span>
         )}
+        {acceptError ? (
+          <p className="max-w-[220px] text-[11px] font-semibold leading-4 text-rose-700 lg:text-right">
+            {acceptError}
+          </p>
+        ) : null}
       </div>
     </article>
   );

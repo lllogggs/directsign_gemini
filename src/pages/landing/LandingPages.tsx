@@ -16,7 +16,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { PRODUCT_NAME } from "../../domain/brand";
 
 type IntroRole = "advertiser" | "influencer";
@@ -35,6 +35,7 @@ type RoleCard = {
 type StartServiceCard = {
   title: string;
   description: string;
+  href: string;
   icon: LucideIcon;
   iconClass: string;
   iconBgClass: string;
@@ -87,9 +88,9 @@ const roleCards: RoleCard[] = [
   {
     role: "advertiser",
     title: "광고주",
-    eyebrow: "계약을 만들고 공유하는 팀",
+    eyebrow: "광고 계약을 확실하게 남기는 팀",
     description:
-      "캠페인 조건을 정리하고, 검토 링크를 보내고, 서명 완료 상태까지 한 화면에서 관리합니다.",
+      "합의한 광고 조건을 계약서, 검토 링크, 서명 증빙으로 남깁니다.",
     cta: "광고주로 시작하기",
     href: "/intro/advertiser",
     icon: Building2,
@@ -98,9 +99,9 @@ const roleCards: RoleCard[] = [
   {
     role: "influencer",
     title: "인플루언서",
-    eyebrow: "받은 계약을 검토하는 크리에이터",
+    eyebrow: "받은 광고 조건을 안전하게 확인하는 크리에이터",
     description:
-      "계약 내용을 확인하고, 필요한 수정 요청을 남기고, 모바일에서 바로 서명합니다.",
+      "Yeollock 계약 링크에서 조건을 확인하고 수정 요청과 서명을 진행합니다.",
     cta: "인플루언서로 시작하기",
     href: "/intro/influencer",
     icon: UserRound,
@@ -134,34 +135,50 @@ function getStartRoleTone(role: IntroRole) {
 
 const startServiceCards: StartServiceCard[] = [
   {
-    title: "간편한 컨택",
-    description: "프로필 확인 후 바로 제안",
-    icon: UserRound,
+    title: "계약 조건 입력",
+    description: "상대와 조건부터 정리",
+    href: "/intro/advertiser?feature=start",
+    icon: ClipboardCheck,
     iconClass: "text-neutral-800",
     iconBgClass: "bg-neutral-100",
   },
   {
     title: "계약서 작성",
     description: "조건을 넣으면 초안 정리",
-    icon: Search,
+    href: "/intro/advertiser?feature=terms",
+    icon: FileText,
     iconClass: "text-blue-700",
     iconBgClass: "bg-blue-50",
   },
   {
-    title: "전자계약",
-    description: "검토 링크와 서명 진행",
+    title: "검토·수정",
+    description: "링크에서 의견과 답변",
+    href: "/intro/advertiser?feature=review",
     icon: MessageSquareText,
     iconClass: "text-emerald-700",
     iconBgClass: "bg-emerald-50",
   },
   {
-    title: "계약 관리",
-    description: "상태와 이력을 한눈에 관리",
+    title: "서명·증빙",
+    description: "전자서명과 PDF 보관",
+    href: "/intro/advertiser?feature=evidence",
     icon: FileSignature,
     iconClass: "text-amber-700",
     iconBgClass: "bg-amber-50",
   },
 ];
+
+const publicHeaderFeatureLinks = [
+  { label: "계약 작성", href: "/intro/advertiser?feature=start" },
+  { label: "검토 링크", href: "/intro/advertiser?feature=review" },
+  { label: "받은 계약", href: "/intro/influencer?feature=receive" },
+  { label: "서명 증빙", href: "/intro/advertiser?feature=evidence" },
+];
+
+const roleFeatureKeys: Record<IntroRole, string[]> = {
+  advertiser: ["start", "terms", "review", "evidence"],
+  influencer: ["receive", "terms", "request", "archive"],
+};
 
 const introConfig = {
   advertiser: {
@@ -479,58 +496,56 @@ type RoleIntroSlide = {
 const roleIntroSlides = {
   advertiser: [
     {
-      label: "간편한 컨택",
-      eyebrow: "간편한 컨택",
-      title: ["신뢰할 수 있는", "간편한 컨택"],
+      label: "계약 시작",
+      eyebrow: "계약 시작",
+      title: ["광고 조건을", "계약으로 시작"],
       description:
-        "인증 채널, 최근 협업, 가능 광고 형태를 확인한 뒤 브랜드와 맞는 인플루언서에게 바로 컨택합니다.",
-      helper: "프로필 확인 후 컨택 시작",
-      primaryLabel: "인플루언서 찾기",
-      primaryHref: "/advertiser/discover",
-      secondaryLabel: "메시지함 보기",
-      secondaryHref: "/advertiser/messages",
-      icon: UserRound,
+        "상대 정보와 합의 조건을 입력하면 계약서 초안부터 검토 링크, 전자서명까지 이어집니다.",
+      helper: "광고 조건을 계약으로 정리",
+      primaryLabel: "새 계약 만들기",
+      primaryHref: "/advertiser/builder",
+      secondaryLabel: "계약 대시보드",
+      secondaryHref: "/advertiser/dashboard",
+      icon: ClipboardCheck,
       accentClass: "bg-neutral-950",
       iconClass: "text-neutral-950",
       cardClass: "border-neutral-300 bg-white",
       preview: {
-        kind: "profile",
-        header: "인플루언서 공개 프로필",
-        profileName: "소라핏",
-        handle: "yeollock.me/sora_fit",
-        headline: "홈트, 건강식품, 러닝 챌린지 숏폼에 강한 웰니스 크리에이터",
-        tags: ["Instagram", "TikTok", "운동/웰니스"],
-        stats: [
-          { label: "팔로워", value: "12.8만" },
-          { label: "평균 반응", value: "4.7%" },
-          { label: "응답", value: "2시간" },
+        kind: "proposal",
+        header: "광고 계약 시작",
+        targetLabel: "상대",
+        targetName: "소라핏 · Instagram",
+        fields: [
+          { label: "진행 단계", value: "조건 확인" },
+          { label: "계약명", value: "러닝 챌린지 릴스" },
+          { label: "금액", value: "320만원" },
+          { label: "업로드", value: "2026.06.12" },
         ],
-        channels: [
-          { label: "Instagram", value: "@sora_fit", status: "인증됨" },
-          { label: "TikTok", value: "@sora.move", status: "인증됨" },
-        ],
-        actionLabel: "컨택 제안하기",
-        footerNote: "브랜드 소개와 희망 광고 형태를 남기면 메시지함에 제안이 저장됩니다.",
+        chips: ["조건 확인", "유료 광고(PPL)", "릴스 1건"],
+        message:
+          "상대방, 금액, 일정, 산출물을 입력하면 Yeollock 계약 초안으로 이어집니다.",
+        timeline: ["상대 정보 입력", "조건 정리", "검토 링크", "전자서명"],
+        actionLabel: "계약 초안 만들기",
       },
     },
     {
-      label: "계약서 작성",
-      eyebrow: "계약서 작성",
-      title: ["합의 조건으로", "계약서 작성"],
+      label: "조건 정리",
+      eyebrow: "조건 정리",
+      title: ["합의 조건을", "계약서로 정리"],
       description:
-        "컨택으로 합의한 플랫폼, 광고 형태, 금액, 기간을 계약서 초안에 맞춰 빠르게 정리합니다.",
+        "플랫폼, 광고 형태, 금액, 일정, 검수 기준, 2차 활용 범위를 빠뜨리지 않고 같은 형식으로 정리합니다.",
       helper: "조건을 넣으면 초안으로 정리",
       primaryLabel: "계약서 작성",
       primaryHref: "/advertiser/builder",
       secondaryLabel: "광고주 가입",
       secondaryHref: "/signup/advertiser",
-      icon: Search,
+      icon: FileText,
       accentClass: "bg-blue-600",
       iconClass: "text-blue-700",
       cardClass: "border-blue-200 bg-blue-50/55",
       preview: {
         kind: "proposal",
-        header: "계약서 작성",
+        header: "계약 조건 정리",
         targetLabel: "계약 대상",
         targetName: "소라핏 · Instagram/TikTok",
         fields: [
@@ -547,13 +562,13 @@ const roleIntroSlides = {
       },
     },
     {
-      label: "전자계약",
-      eyebrow: "전자계약",
-      title: ["검토 링크와", "전자서명 진행"],
+      label: "검토·수정",
+      eyebrow: "검토·수정",
+      title: ["검토 링크로", "수정까지 한곳에서"],
       description:
-        "작성한 계약서를 검토 링크로 보내고 수정 요청, 승인, 전자서명 흐름을 한 화면에서 이어갑니다.",
-      helper: "검토 링크와 전자서명 진행",
-      primaryLabel: "계약 발송",
+        "작성한 계약서를 링크로 보내고, 인플루언서의 질문과 수정 요청, 광고주의 답변을 계약 이력에 남깁니다.",
+      helper: "검토 링크와 수정 이력",
+      primaryLabel: "검토 링크 보내기",
       primaryHref: "/advertiser/builder",
       secondaryLabel: "메시지함 보기",
       secondaryHref: "/advertiser/messages",
@@ -563,29 +578,29 @@ const roleIntroSlides = {
       cardClass: "border-emerald-200 bg-emerald-50/60",
       preview: {
         kind: "proposal",
-        header: "전자계약 발송",
+        header: "검토 링크 발송",
         targetLabel: "받는 사람",
         targetName: "소라핏 · 웰니스 크리에이터",
         fields: [
-          { label: "브랜드", value: "런데이랩" },
-          { label: "광고 형태", value: "릴스 1건 + 스토리 2건" },
-          { label: "예산", value: "250만-320만원" },
-          { label: "희망 일정", value: "6월 둘째 주" },
+          { label: "링크 상태", value: "열람 가능" },
+          { label: "수정 요청", value: "2차 활용 기간" },
+          { label: "답변 기한", value: "오늘 18:00" },
+          { label: "최종본", value: "승인 전" },
         ],
-        chips: ["제품 협찬", "유료 광고", "숏폼"],
+        chips: ["조항별 의견", "답변 기록", "최종본 승인"],
         message:
-          "러닝 입문자를 위한 여름 캠페인을 준비 중입니다. 실제 운동 루틴에 자연스럽게 녹인 릴스 협업을 제안드리고 싶습니다.",
-        timeline: ["제안 저장", "메시지함 알림", "조건 합의", "계약서 작성"],
-        actionLabel: "검토 링크 보내기",
+          "수정 요청은 계약서 안에 남기고, 광고주 답변 뒤 최종본을 다시 승인받아 서명 단계로 넘깁니다.",
+        timeline: ["링크 열람", "수정 요청", "광고주 답변", "최종 승인"],
+        actionLabel: "요청 답변하기",
       },
     },
     {
-      label: "계약 관리",
-      eyebrow: "계약 관리",
-      title: ["진행 상황을", "계약별로 관리"],
+      label: "서명·증빙",
+      eyebrow: "서명·증빙",
+      title: ["서명 완료와", "증빙 보관"],
       description:
-        "작성, 수정, 서명, 완료 상태를 계약별로 모아 보고 필요한 다음 행동을 바로 처리합니다.",
-      helper: "계약 상태와 이력 관리",
+        "최종본 서명, 동의 시각, 서명 PDF, 이후 제출 상태를 계약별로 모아 문제가 생겨도 확인할 수 있게 둡니다.",
+      helper: "서명 상태와 증빙 보관",
       primaryLabel: "대시보드 보기",
       primaryHref: "/advertiser/dashboard",
       secondaryLabel: "대시보드 보기",
@@ -596,7 +611,7 @@ const roleIntroSlides = {
       cardClass: "border-amber-200 bg-amber-50/70",
       preview: {
         kind: "contract",
-        header: "광고주 계약 대시보드",
+        header: "계약 증빙 대시보드",
         count: "4",
         countLabel: "진행",
         rows: [
@@ -622,58 +637,56 @@ const roleIntroSlides = {
             due: "완료",
           },
         ],
-        nextAction: "수정 요청 답변 후 최종 서명 요청",
+        nextAction: "최종본 승인 후 서명 요청",
       },
     },
   ],
   influencer: [
     {
-      label: "간편한 컨택",
-      eyebrow: "간편한 컨택",
-      title: ["브랜드와 연결되는", "간편한 컨택"],
+      label: "계약 수신",
+      eyebrow: "계약 수신",
+      title: ["받은 계약을", "링크로 확인"],
       description:
-        "내 공개 프로필과 인증 채널을 기반으로 브랜드가 신뢰하고 연락할 수 있는 컨택 흐름을 만듭니다.",
-      helper: "프로필과 인증 채널로 컨택",
-      primaryLabel: "프로필 설정",
+        "계약 링크를 받으면 광고 조건과 서명 흐름을 한곳에서 확인합니다.",
+      helper: "받은 계약을 안전하게 확인",
+      primaryLabel: "받은 계약 보기",
       primaryHref: "/influencer/dashboard",
-      secondaryLabel: "브랜드 찾기",
-      secondaryHref: "/influencer/brands",
-      icon: UserRound,
+      secondaryLabel: "공개 프로필 설정",
+      secondaryHref: "/influencer/dashboard",
+      icon: ClipboardCheck,
       accentClass: "bg-neutral-950",
       iconClass: "text-neutral-950",
       cardClass: "border-neutral-300 bg-white",
       preview: {
-        kind: "profile",
-        header: "내 공개 프로필",
-        profileName: "민서홈",
-        handle: "yeollock.me/minseo_home",
-        headline: "살림, 홈카페, 소형가전 리뷰를 생활 장면 중심으로 소개합니다.",
-        tags: ["Instagram", "Blog", "리빙/홈카페"],
-        stats: [
-          { label: "팔로워", value: "9.6만" },
-          { label: "최근 협업", value: "14건" },
-          { label: "응답", value: "당일" },
+        kind: "proposal",
+        header: "받은 계약 초대",
+        targetLabel: "보낸 브랜드",
+        targetName: "브레드룸 · 홈카페 식품",
+        fields: [
+          { label: "요청 내용", value: "광고 계약 검토" },
+          { label: "계약 형태", value: "공동구매" },
+          { label: "지급", value: "판매 수수료 18%" },
+          { label: "업로드", value: "제품 수령 후 7일" },
         ],
-        channels: [
-          { label: "Instagram", value: "@minseo.home", status: "인증됨" },
-          { label: "Blog", value: "minseo-home", status: "인증됨" },
-        ],
-        actionLabel: "브랜드 컨택 받기",
-        footerNote: "프로필 소개와 가능 광고 형태를 저장하면 브랜드가 같은 주소로 확인합니다.",
+        chips: ["Yeollock 계약 링크", "검토 필요", "서명 전"],
+        message:
+          "계약 링크 안에서 조건, 산출물, 사용 권한을 먼저 확인합니다.",
+        timeline: ["계약 링크 열람", "조건 확인", "수정 요청", "전자서명"],
+        actionLabel: "조건 확인하기",
       },
     },
     {
-      label: "계약서 작성",
-      eyebrow: "계약서 작성",
-      title: ["합의한 조건을", "계약서로 확인"],
+      label: "조건 검토",
+      eyebrow: "조건 검토",
+      title: ["돈, 일정, 권한을", "서명 전에 확인"],
       description:
-        "브랜드가 보낸 광고 조건, 금액, 기간, 산출물을 계약서 형태로 확인하고 빠진 부분을 바로 봅니다.",
+        "금액, 업로드 일정, 검수 기준, 광고 표시, 콘텐츠 사용 권한처럼 나중에 문제가 되는 조건을 먼저 봅니다.",
       helper: "받은 조건을 계약서로 확인",
       primaryLabel: "받은 계약 보기",
       primaryHref: "/influencer/dashboard",
       secondaryLabel: "인플루언서 가입",
       secondaryHref: "/signup/influencer",
-      icon: Search,
+      icon: FileText,
       accentClass: "bg-blue-600",
       iconClass: "text-blue-700",
       cardClass: "border-blue-200 bg-blue-50/55",
@@ -696,13 +709,13 @@ const roleIntroSlides = {
       },
     },
     {
-      label: "전자계약",
-      eyebrow: "전자계약",
-      title: ["수정 요청부터", "전자서명까지"],
+      label: "수정 요청",
+      eyebrow: "수정 요청",
+      title: ["불리한 조항은", "서명 전에 요청"],
       description:
-        "불리하거나 애매한 조항은 수정 요청하고, 합의가 끝나면 전자서명으로 안전하게 마무리합니다.",
-      helper: "수정 요청과 전자서명 진행",
-      primaryLabel: "계약 검토",
+        "애매한 문구나 불리한 조항은 계약서 안에서 바로 이유를 남기고, 광고주의 답변을 같은 화면에서 기다립니다.",
+      helper: "조항별 수정 요청",
+      primaryLabel: "수정 요청 확인",
       primaryHref: "/influencer/dashboard",
       secondaryLabel: "메시지함 보기",
       secondaryHref: "/influencer/messages",
@@ -712,33 +725,33 @@ const roleIntroSlides = {
       cardClass: "border-emerald-200 bg-emerald-50/60",
       preview: {
         kind: "proposal",
-        header: "전자계약 검토",
+        header: "조항별 수정 요청",
         targetLabel: "제안 브랜드",
         targetName: "브레드룸 · 홈카페 식품",
         fields: [
-          { label: "내 프로필", value: "yeollock.me/minseo_home" },
-          { label: "광고 형태", value: "릴스 1건 + 블로그 리뷰" },
-          { label: "제안 금액", value: "180만원" },
-          { label: "업로드", value: "제품 수령 후 7일" },
+          { label: "문제 조항", value: "2차 활용 기간" },
+          { label: "요청 내용", value: "12개월 -> 3개월" },
+          { label: "답변 상태", value: "광고주 확인 중" },
+          { label: "서명 상태", value: "대기" },
         ],
-        chips: ["홈카페 레시피", "제품 리뷰", "공동구매 가능"],
+        chips: ["요청 사유 기록", "답변 대기", "서명 전 확인"],
         message:
-          "브레드룸 신제품을 홈카페 루틴에 녹인 릴스와 블로그 리뷰로 소개하고 싶습니다. 기존 독자층과 잘 맞는 포맷을 제안드립니다.",
-        timeline: ["역제안 저장", "메시지함 알림", "조건 협의", "계약 검토"],
+          "활용 기간이 길면 나중에 광고 소재로 계속 쓰일 수 있어요. 기간을 줄이거나 추가 활용 동의를 별도로 받도록 요청합니다.",
+        timeline: ["조항 선택", "요청 사유 작성", "광고주 답변", "최종본 확인"],
         actionLabel: "수정 요청 또는 서명",
       },
     },
     {
-      label: "계약 관리",
-      eyebrow: "계약 관리",
-      title: ["받은 계약을", "상태별로 관리"],
+      label: "서명·보관",
+      eyebrow: "서명·보관",
+      title: ["동의한 계약만", "서명하고 보관"],
       description:
-        "검토 필요, 수정 협의, 서명 가능, 완료 계약을 한 화면에서 보고 다음 할 일을 놓치지 않습니다.",
-      helper: "받은 계약 상태와 이력 관리",
+        "최종 조건에 동의한 뒤 전자서명하고, 완료 계약과 제출 상태를 보관해 이후 분쟁이나 확인 요청에 대비합니다.",
+      helper: "서명 상태와 완료 계약 보관",
       primaryLabel: "받은 계약 보기",
       primaryHref: "/influencer/dashboard",
-      secondaryLabel: "브랜드 찾기",
-      secondaryHref: "/influencer/brands",
+      secondaryLabel: "공개 프로필 설정",
+      secondaryHref: "/influencer/dashboard",
       icon: FileSignature,
       accentClass: "bg-amber-500",
       iconClass: "text-amber-700",
@@ -771,7 +784,7 @@ const roleIntroSlides = {
             due: "D-3",
           },
         ],
-        nextAction: "불리한 조항은 수정 요청 후 광고주 답변 확인",
+        nextAction: "최종본 확인 후 서명하기",
       },
     },
   ],
@@ -1149,7 +1162,7 @@ export function StartPage() {
   return (
     <main className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950">
       <div className="mx-auto grid min-h-screen w-full max-w-[850px] content-start grid-rows-[60px_auto_44px] px-5 sm:content-normal sm:grid-rows-[68px_1fr_48px] sm:px-6">
-        <header className="flex items-center justify-between">
+        <header className="flex items-center justify-between gap-3">
           <Link
             to="/"
             className="-ml-1 flex min-w-0 items-center gap-2.5 rounded-[12px] px-1 py-1 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
@@ -1157,27 +1170,46 @@ export function StartPage() {
           >
             <BrandLogo />
           </Link>
-          <Link
-            to="/login"
-            className="inline-flex min-h-8 items-center rounded-full border border-neutral-200 bg-white/65 px-3 text-[11px] font-bold tracking-[-0.005em] text-neutral-500 shadow-[0_1px_0_rgba(15,23,42,0.02)] transition hover:border-neutral-300 hover:bg-white hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
-          >
-            로그인
-          </Link>
+          <div className="flex min-w-0 items-center gap-1.5">
+            <nav
+              aria-label="계약 기능"
+              className="hidden min-w-0 items-center gap-1 sm:flex"
+            >
+              {publicHeaderFeatureLinks.map((item) => (
+                <Link
+                  key={item.label}
+                  to={item.href}
+                  className="inline-flex h-8 items-center rounded-full px-2.5 text-[11px] font-extrabold tracking-[-0.005em] text-neutral-500 transition hover:bg-white/80 hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </nav>
+            <Link
+              to="/login"
+              className="inline-flex min-h-8 shrink-0 items-center rounded-full border border-neutral-200 bg-white/65 px-3 text-[11px] font-bold tracking-[-0.005em] text-neutral-500 shadow-[0_1px_0_rgba(15,23,42,0.02)] transition hover:border-neutral-300 hover:bg-white hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
+            >
+              로그인
+            </Link>
+          </div>
         </header>
 
         <section className="flex items-start justify-center pb-4 pt-[clamp(28px,5svh,44px)] sm:pb-8 sm:pt-[clamp(44px,8svh,76px)]">
           <div className="w-full max-w-[710px]">
             <h1
-              className="landing-start-title font-neo-heavy mb-7 text-center text-[31px] leading-[1.12] tracking-normal text-neutral-950 sm:mb-8 sm:text-[46px] sm:leading-[1.08]"
-              aria-label="입력은 간단하게, 계약은 확실하게"
+              className="landing-start-title font-neo-heavy mb-3 text-center text-[31px] leading-[1.12] tracking-normal text-neutral-950 sm:text-[46px] sm:leading-[1.08]"
+              aria-label="광고 계약은 확실하게"
             >
               <span className="landing-start-copy-line landing-start-copy-line-1 block">
-                입력은 간단하게
+                광고 계약은
               </span>
               <span className="landing-start-copy-line landing-start-copy-line-2 mt-1 block">
-                계약은 확실하게
+                확실하게
               </span>
             </h1>
+            <p className="mx-auto mb-6 max-w-[560px] break-keep text-center text-[14px] font-bold leading-6 text-neutral-600 sm:mb-7 sm:text-[15px]">
+              광고 조건을 계약서 작성부터 검토 링크, 전자서명 증빙까지 한 흐름으로 정리합니다.
+            </p>
             <div
               className="mx-auto mb-5 grid grid-cols-2 gap-2 sm:mb-6 sm:grid-cols-4 sm:gap-3"
               aria-label="서비스 구성"
@@ -1186,9 +1218,11 @@ export function StartPage() {
                 const Icon = service.icon;
 
                 return (
-                  <div
+                  <Link
                     key={service.title}
-                    className="min-w-0 rounded-[16px] border border-neutral-200/90 bg-white/82 px-2.5 py-3 text-center shadow-[0_1px_0_rgba(15,23,42,0.03),0_12px_32px_rgba(15,23,42,0.035)] sm:px-3 sm:py-4"
+                    to={service.href}
+                    aria-label={`${service.title} 기능 보기`}
+                    className="min-w-0 rounded-[16px] border border-neutral-200/90 bg-white/82 px-2.5 py-3 text-center shadow-[0_1px_0_rgba(15,23,42,0.03),0_12px_32px_rgba(15,23,42,0.035)] transition hover:-translate-y-0.5 hover:border-neutral-300 hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:px-3 sm:py-4"
                   >
                     <span
                       className={`mx-auto flex h-8 w-8 items-center justify-center rounded-[11px] ${service.iconBgClass} ${service.iconClass} sm:h-9 sm:w-9`}
@@ -1201,7 +1235,7 @@ export function StartPage() {
                     <span className="mt-1 hidden break-keep text-[11px] font-bold leading-4 text-neutral-500 sm:block">
                       {service.description}
                     </span>
-                  </div>
+                  </Link>
                 );
               })}
             </div>
@@ -1211,8 +1245,8 @@ export function StartPage() {
                 const tone = getStartRoleTone(role.role);
                 const isAdvertiser = role.role === "advertiser";
                 const detail = isAdvertiser
-                  ? "브랜드사 · 광고대행사"
-                  : "크리에이터 · 스트리머 · MCN";
+                  ? "계약 작성 · 검토 링크 · 서명 증빙"
+                  : "받은 계약 · 수정 요청 · 전자서명";
 
                 return (
                   <Link
@@ -1316,21 +1350,54 @@ function RoleFeatureIntroScreen({
   config: IntroConfig;
   slides: RoleIntroSlide[];
 }) {
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [previewIndex, setPreviewIndex] = useState(0);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const featureKeys = roleFeatureKeys[role];
+  const requestedFeatureIndex = Math.max(
+    0,
+    featureKeys.indexOf(searchParams.get("feature") ?? ""),
+  );
+  const activeIndex = requestedFeatureIndex;
+  const previewIndex = requestedFeatureIndex;
   const activeSlide = slides[activeIndex] ?? slides[0];
   const roleLabel = role === "advertiser" ? "광고주" : "인플루언서";
   const RoleIcon = role === "advertiser" ? Building2 : UserRound;
+
   const handleFeatureSelect = useCallback((index: number) => {
-    setActiveIndex(index);
-    setPreviewIndex(index);
-  }, []);
+    const featureKey = roleFeatureKeys[role][index];
+    if (featureKey) {
+      setSearchParams({ feature: featureKey }, { replace: true });
+    }
+  }, [role, setSearchParams]);
 
   return (
     <main className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950 lg:h-screen lg:overflow-hidden">
       <header className="border-b border-neutral-200/80 bg-[#fbfaf7]/95">
-        <div className="mx-auto flex h-[68px] max-w-[1120px] items-center justify-between px-5 sm:px-6 lg:px-8">
+        <div className="mx-auto grid h-[68px] max-w-[1120px] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-5 sm:px-6 lg:px-8">
           <BrandLockup />
+          <nav
+            aria-label={`${roleLabel} 기능`}
+            className="hidden min-w-0 items-center justify-center gap-1 sm:flex"
+          >
+            {slides.map((slide, index) => {
+              const selected = activeIndex === index;
+
+              return (
+                <button
+                  key={slide.label}
+                  type="button"
+                  onClick={() => handleFeatureSelect(index)}
+                  className={`inline-flex h-9 items-center rounded-full px-3 text-[12px] font-extrabold transition focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 ${
+                    selected
+                      ? "bg-neutral-950 text-white shadow-[0_10px_24px_rgba(15,23,42,0.14)]"
+                      : "text-neutral-500 hover:bg-white hover:text-neutral-950"
+                  }`}
+                  aria-pressed={selected}
+                >
+                  {slide.label}
+                </button>
+              );
+            })}
+          </nav>
           <Link
             to={config.secondaryHref}
             className="inline-flex h-9 items-center rounded-full border border-neutral-200 bg-white px-3 text-[12px] font-bold text-neutral-500 transition hover:border-neutral-300 hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
@@ -2120,10 +2187,10 @@ function _InfluencerIntroScreen({ config }: { config: IntroConfig }) {
               </span>
             </Link>
             <Link
-              to="/influencer/brands"
+              to="/influencer/campaigns"
               className="inline-flex h-11 items-center justify-center rounded-[14px] border border-neutral-200 bg-white px-5 text-[13px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
             >
-              입점 브랜드 둘러보기
+              모집 캠페인 둘러보기
             </Link>
           </div>
 

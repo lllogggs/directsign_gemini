@@ -7,6 +7,7 @@ import {
   CopyCheck,
   FileText,
   LogOut,
+  Megaphone,
   MessageSquareText,
   MoreHorizontal,
   PenLine,
@@ -107,8 +108,8 @@ const STATUS_META: Record<
     icon: <FileText className="h-4 w-4" strokeWidth={1.8} />,
   },
   REVIEWING: {
-    label: "제안",
-    shortLabel: "제안",
+    label: "검토 대기",
+    shortLabel: "검토",
     helper: "인플루언서 검토 대기",
     tone: "text-sky-700",
     badge: "border-sky-200 bg-sky-50 text-sky-700",
@@ -366,22 +367,30 @@ export function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-neutral-50 font-sans text-neutral-950">
-      <header className="sticky top-0 z-30 border-b border-neutral-200 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-[1480px] items-center justify-between px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950">
+      <header className="sticky top-0 z-30 border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
+        <div className="mx-auto flex h-[68px] max-w-[1480px] items-center justify-between px-4 sm:px-6 lg:px-8">
           <button
             type="button"
             onClick={() => navigate("/advertiser/dashboard")}
-            className="flex items-center gap-3"
+            className="flex shrink-0 items-center gap-3"
           >
-            <span className="flex h-9 w-9 items-center justify-center rounded-md bg-neutral-950 text-white">
+            <span className="flex h-10 w-10 items-center justify-center rounded-[13px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
               <ShieldCheck className="h-4 w-4" strokeWidth={2} />
             </span>
-            <span className="text-[18px] font-semibold tracking-[-0.02em]">{PRODUCT_NAME}</span>
+            <span className="font-neo-heavy hidden text-[19px] leading-none sm:inline">{PRODUCT_NAME}</span>
           </button>
 
-          <div className="flex items-center gap-2">
+          <div className="no-scrollbar ml-3 flex min-w-0 items-center gap-2 overflow-x-auto">
             <SyncPill isSyncing={isSyncing} syncError={syncError} />
+            <button
+              type="button"
+              onClick={() => navigate("/advertiser/builder")}
+              className="inline-flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-[12px] bg-blue-600 px-4 text-[13px] font-extrabold text-white shadow-[0_14px_34px_rgba(37,99,235,0.20)] transition hover:bg-blue-700"
+            >
+              <Plus className="h-4 w-4" strokeWidth={2} />
+              새 계약
+            </button>
             <MessageCenterButton
               unreadCount={messageSummary.unreadCount}
               isLoading={isMessageSummaryLoading}
@@ -390,23 +399,23 @@ export function Dashboard() {
             <button
               type="button"
               onClick={() => navigate("/advertiser/discover")}
-              className="inline-flex h-10 items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
+              className="inline-flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-[12px] border border-neutral-200 bg-white px-3 text-[13px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
             >
               <Search className="h-4 w-4" strokeWidth={2} />
-              <span className="hidden sm:inline">인플루언서 찾기</span>
+              <span className="hidden sm:inline">상대 찾기</span>
             </button>
             <button
               type="button"
-              onClick={() => navigate("/advertiser/builder")}
-              className="inline-flex h-10 items-center gap-2 rounded-md bg-neutral-950 px-4 text-[13px] font-semibold text-white transition hover:bg-neutral-800"
+              onClick={() => navigate("/advertiser/campaigns")}
+              className="inline-flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-[12px] border border-neutral-200 bg-white px-3 text-[13px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
             >
-              <Plus className="h-4 w-4" strokeWidth={2} />
-              새 계약
+              <Megaphone className="h-4 w-4" strokeWidth={2} />
+              <span className="hidden sm:inline">모집글</span>
             </button>
             <button
               type="button"
               onClick={handleLogout}
-              className="inline-flex h-10 items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
+              className="inline-flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-[12px] border border-neutral-200 bg-white px-3 text-[13px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
               aria-label="로그아웃"
             >
               <LogOut className="h-4 w-4" strokeWidth={2} />
@@ -417,7 +426,7 @@ export function Dashboard() {
       </header>
 
       <main className="mx-auto w-full min-w-0 max-w-[1320px] px-4 py-4 sm:px-6 lg:px-8">
-        <section className="min-w-0 overflow-hidden rounded-[8px] border border-[#cbd5cc] bg-[#fdfdfb] shadow-[0_22px_60px_rgba(23,26,23,0.10)]">
+        <section className="min-w-0 overflow-hidden rounded-[18px] border border-neutral-200 bg-[#fdfdfb] shadow-[0_22px_60px_rgba(23,26,23,0.08)]">
           <div className="border-b border-[#d9e0d9] bg-white px-4 py-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0">
@@ -425,10 +434,10 @@ export function Dashboard() {
                   계약 운영 화면
                 </p>
                 <h1 className="mt-1 truncate text-[18px] font-semibold text-[#171a17]">
-                  캠페인 계약 운영
+                  계약 운영
                 </h1>
                 <p className="mt-1 text-[12px] font-medium text-[#7d857f]">
-                  전체 {contracts.length.toLocaleString()}건 · 검색 결과 {filteredContracts.length.toLocaleString()}건
+                  전체 {contracts.length.toLocaleString()}건 · 검색 결과 {filteredContracts.length.toLocaleString()}건 · 진행 중인 계약 포함
                 </p>
               </div>
               <span
@@ -448,6 +457,8 @@ export function Dashboard() {
           />
 
           <div className="min-w-0 p-4">
+            <ContractFirstNotice onCreate={() => navigate("/advertiser/builder")} />
+
             <section className="rounded-t-[8px] border border-b-0 border-[#d9e0d9] bg-white p-3">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
                 <div className="relative min-w-0 flex-1">
@@ -618,6 +629,29 @@ function VerificationBanner({
   );
 }
 
+function ContractFirstNotice({ onCreate }: { onCreate: () => void }) {
+  return (
+    <section className="mb-3 flex flex-col gap-3 rounded-[10px] border border-blue-100 bg-blue-50/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0">
+        <p className="text-[13px] font-semibold text-blue-950">
+          먼저 계약을 만들고 검토 링크를 발급하세요
+        </p>
+        <p className="mt-1 text-[12px] font-medium leading-5 text-blue-800/80">
+          상대 정보와 금액, 일정, 산출물을 입력하면 검토 링크, 수정 요청, 전자서명 증빙까지 이어집니다.
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={onCreate}
+        className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-[8px] bg-blue-600 px-3 text-[12px] font-extrabold text-white transition hover:bg-blue-700"
+      >
+        <Plus className="h-3.5 w-3.5" strokeWidth={2} />
+        새 계약
+      </button>
+    </section>
+  );
+}
+
 function SyncPill({
   isSyncing,
   syncError,
@@ -627,7 +661,7 @@ function SyncPill({
 }) {
   if (syncError) {
     return (
-      <span className="inline-flex h-9 items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 text-[12px] font-semibold text-amber-700">
+      <span className="inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-md border border-amber-200 bg-amber-50 px-3 text-[12px] font-semibold text-amber-700">
         <AlertCircle className="h-3.5 w-3.5" />
         동기화 확인 필요
       </span>
@@ -635,7 +669,7 @@ function SyncPill({
   }
 
   return (
-    <span className="inline-flex h-9 items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 text-[12px] font-semibold text-neutral-600">
+    <span className="inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-md border border-neutral-200 bg-white px-3 text-[12px] font-semibold text-neutral-600">
       <CopyCheck className="h-3.5 w-3.5 text-neutral-500" />
       {isSyncing ? "저장 중" : "저장 완료"}
     </span>
@@ -657,7 +691,7 @@ function MessageCenterButton({
     <button
       type="button"
       onClick={onClick}
-      className="relative inline-flex h-10 items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
+      className="relative inline-flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-[12px] border border-neutral-200 bg-white px-3 text-[13px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
       aria-label="메시지함"
       title="메시지함"
     >
@@ -973,7 +1007,7 @@ function EmptyState({ isInitialEmpty }: { isInitialEmpty: boolean }) {
       </h2>
       <p className="mt-1 max-w-md text-[12px] leading-5 text-[#7d857f]">
         {isInitialEmpty
-          ? "새 계약을 만들면 이곳에서 바로 관리할 수 있습니다."
+          ? "상대 정보와 합의 조건을 입력해 새 계약을 만들고 바로 관리할 수 있습니다."
           : "검색어를 줄이거나 전체로 바꿔보세요."}
       </p>
     </section>

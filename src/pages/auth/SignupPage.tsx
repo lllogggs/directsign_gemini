@@ -52,14 +52,14 @@ type SignupConsents = {
 const roleConfig = {
   advertiser: {
     title: "광고주 가입",
-    description: "계약 작성과 공유를 시작합니다.",
+    description: "광고 계약 작성과 서명 증빙을 한 흐름으로 시작합니다.",
     endpoint: "/api/advertiser/signup",
     nextPath: "/advertiser/verification",
     loginPath: "/login/advertiser",
   },
   influencer: {
     title: "인플루언서 가입",
-    description: "받은 계약을 검토하고 서명합니다.",
+    description: "받은 계약을 검토하고 안전하게 서명합니다.",
     endpoint: "/api/influencer/signup",
     nextPath: "/influencer/dashboard",
     loginPath: "/login/influencer",

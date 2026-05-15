@@ -437,6 +437,75 @@ describe("yeollock.me security regressions", () => {
     assert.doesNotMatch(inbox, /function NotificationPanel/);
   });
 
+  it("keeps influencer public profile links on the root handle URL", () => {
+    const app = read("src/App.tsx");
+    const publicProfile = read("src/domain/publicInfluencerProfile.ts");
+    const marketplace = read("src/domain/marketplace.ts");
+    const marketplacePages = read("src/pages/marketplace/MarketplacePages.tsx");
+    const influencerDashboard = read("src/pages/influencer/InfluencerDashboard.tsx");
+    const server = read("server/index.ts");
+
+    assert.match(
+      app,
+      /<Route path="\/:profileHandle" element=\{<PublicInfluencerProfilePage \/>\} \/>/,
+    );
+    assert.match(publicProfile, /export function getInfluencerPublicProfilePath/);
+    assert.match(publicProfile, /return clean \? `\/\$\{clean\}` : "\/"/);
+    assert.match(publicProfile, /export function formatInfluencerPublicProfileUrl/);
+    assert.match(publicProfile, /return clean \? `yeollock\.me\/\$\{clean\}` : "yeollock\.me"/);
+    assert.match(marketplace, /return `\/\$\{normalizeMarketplaceHandle\(profile\.handle\)\}`/);
+    assert.match(marketplacePages, /formatInfluencerPublicProfileUrl\(profile\.handle\)/);
+    assert.match(
+      influencerDashboard,
+      /navigate\(getInfluencerPublicProfilePath\(publicProfile\.handle\)\)/,
+    );
+    assert.match(server, /getInfluencerPublicProfilePath\(row\.target_handle\)/);
+    assert.match(server, /getInfluencerPublicProfilePath\(row\.sender_influencer_handle\)/);
+    assert.doesNotMatch(marketplacePages, /yeollock\.me\/\{profile\.handle\}/);
+  });
+
+  it("derives influencer public profile handles from the first registered platform", () => {
+    const publicProfile = read("src/domain/publicInfluencerProfile.ts");
+    const influencerDashboard = read("src/pages/influencer/InfluencerDashboard.tsx");
+    const server = read("server/index.ts");
+    const migration = read(
+      "supabase/migrations/20260514012437_allow_dot_in_influencer_public_handles.sql",
+    );
+
+    assert.match(publicProfile, /export function getAutomaticPublicProfileHandle/);
+    assert.match(publicProfile, /const firstPlatformHandle = platforms\?\.\[0\]\?\.handle/);
+    assert.match(publicProfile, /handle: defaults\.handle/);
+    assert.match(publicProfile, /\[a-z0-9_\.-\]/);
+    assert.match(influencerDashboard, /getAutomaticPublicProfileHandle\(approvedPlatforms\)/);
+    assert.match(influencerDashboard, /첫 등록 플랫폼 ID 기준/);
+    assert.doesNotMatch(influencerDashboard, /value=\{form\.handle\}/);
+    assert.doesNotMatch(influencerDashboard, /handle: initialProfile\.handle/);
+    assert.match(server, /const automaticHandle = getAutomaticPublicProfileHandle\(approvedPlatforms\) \?\? ""/);
+    assert.match(server, /buildApprovedInfluencerPlatforms\(verificationRequests\)/);
+    assert.match(server, /parseDateAscending\(a\.created_at, b\.created_at\)/);
+    assert.doesNotMatch(server, /normalizePublicProfileHandle\(normalizeRequiredText\(body\.handle\)\)/);
+    assert.match(migration, /drop constraint if exists marketplace_influencer_profiles_handle_format/);
+    assert.match(migration, /order by owner_profile_id, created_at asc/);
+  });
+
+  it("opens manual influencer public handles only after conflicts and queues appeals", () => {
+    const influencerDashboard = read("src/pages/influencer/InfluencerDashboard.tsx");
+    const adminDashboard = read("src/pages/admin/SystemAdminDashboard.tsx");
+    const server = read("server/index.ts");
+
+    assert.match(server, /findInfluencerPublicHandleConflict/);
+    assert.match(server, /code: "public_profile_handle_conflict"/);
+    assert.match(server, /body\.alternateHandle/);
+    assert.doesNotMatch(server, /body\.handle/);
+    assert.match(server, /app\.post\("\/api\/influencer\/public-profile\/handle-appeal"/);
+    assert.match(server, /request_type: "public_profile_handle_claim"/);
+    assert.match(influencerDashboard, /manualHandleAllowed/);
+    assert.match(influencerDashboard, /alternateHandle: normalizedManualHandle/);
+    assert.match(influencerDashboard, /이의신청하기/);
+    assert.match(adminDashboard, /public_profile_handle_claim/);
+    assert.match(adminDashboard, /공개 주소 소유권 이의신청/);
+  });
+
   it("starts generated clauses as pending review and exposes mobile clause actions", () => {
     const builder = read("src/pages/marketing/ContractBuilder.tsx");
     const viewer = read("src/pages/influencer/ContractViewer.tsx");

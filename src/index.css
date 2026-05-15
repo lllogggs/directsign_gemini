@@ -296,6 +296,34 @@
     box-shadow: 0 0 0 3px rgba(23, 23, 23, 0.08);
   }
 
+  .campaign-input {
+    min-height: 44px;
+    width: 100%;
+    border: 1px solid rgb(229 229 229);
+    border-radius: 12px;
+    background-color: #f8f7f4;
+    padding: 0.75rem 0.875rem;
+    font-size: 13px;
+    font-weight: 700;
+    color: rgb(23 23 23);
+    outline: none;
+    transition:
+      border-color 150ms ease,
+      background-color 150ms ease,
+      box-shadow 150ms ease;
+  }
+
+  .campaign-input::placeholder {
+    color: rgb(163 163 163);
+    font-weight: 700;
+  }
+
+  .campaign-input:focus {
+    border-color: rgb(23 23 23);
+    background-color: white;
+    box-shadow: 0 0 0 3px rgba(23, 23, 23, 0.08);
+  }
+
   .no-scrollbar {
     scrollbar-width: none;
     -ms-overflow-style: none;

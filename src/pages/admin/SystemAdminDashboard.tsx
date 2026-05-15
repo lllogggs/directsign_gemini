@@ -805,6 +805,13 @@ function VerificationReviewPanel({
                 : undefined;
           const proofUrl = request.ownership_challenge_url ?? request.platform_url;
           const isPending = request.status === "pending";
+          const isHandleAppeal = isPublicProfileHandleAppeal(request);
+          const claimedHandle = getEvidenceString(request, "claimed_handle");
+          const claimedProfileUrl =
+            getEvidenceString(request, "claimed_profile_url") ||
+            (claimedHandle ? `https://yeollock.me/${claimedHandle}` : "");
+          const currentOwnerId = getEvidenceString(request, "current_owner_profile_id");
+          const claimReason = getEvidenceString(request, "reason") || request.note;
 
           return (
             <article
@@ -830,6 +837,22 @@ function VerificationReviewPanel({
               </div>
 
               <div className="mt-3 space-y-1 text-xs leading-5 text-neutral-500">
+                {isHandleAppeal && (
+                  <>
+                    <p className="font-semibold text-amber-700">
+                      공개 주소 소유권 이의신청
+                    </p>
+                    {claimedHandle && (
+                      <p>요청 주소 yeollock.me/{claimedHandle}</p>
+                    )}
+                    {currentOwnerId && (
+                      <p>현재 점유 프로필 {shortId(currentOwnerId)}</p>
+                    )}
+                    {claimReason && (
+                      <p className="line-clamp-3 text-neutral-700">{claimReason}</p>
+                    )}
+                  </>
+                )}
                 {request.platform_handle && <p>핸들 {request.platform_handle}</p>}
                 {request.ownership_challenge_code && (
                   <p className="font-mono text-neutral-700">
@@ -853,6 +876,16 @@ function VerificationReviewPanel({
                     className="inline-flex h-9 items-center rounded-lg border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-700 transition hover:border-neutral-400"
                   >
                     증빙 URL
+                  </a>
+                )}
+                {isHandleAppeal && claimedProfileUrl && (
+                  <a
+                    href={claimedProfileUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex h-9 items-center rounded-lg border border-amber-200 bg-amber-50 px-3 text-xs font-semibold text-amber-800 transition hover:border-amber-300"
+                  >
+                    점유 프로필
                   </a>
                 )}
                 {evidenceUrl && (
@@ -956,9 +989,21 @@ function formatDateTime(value: string) {
 }
 
 function verificationTypeLabel(request: VerificationRequest) {
+  if (isPublicProfileHandleAppeal(request)) {
+    return "인플루언서 공개 주소 이의신청";
+  }
   if (request.target_type === "advertiser_organization") {
     return "광고주 사업자 인증";
   }
   const platform = request.platform ? ` · ${request.platform}` : "";
   return `인플루언서 계정 인증${platform}`;
+}
+
+function isPublicProfileHandleAppeal(request: VerificationRequest) {
+  return request.evidence_snapshot_json?.request_type === "public_profile_handle_claim";
+}
+
+function getEvidenceString(request: VerificationRequest, key: string) {
+  const value = request.evidence_snapshot_json?.[key];
+  return typeof value === "string" && value.trim() ? value : "";
 }

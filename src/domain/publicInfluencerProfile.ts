@@ -77,13 +77,41 @@ export function normalizePublicProfileHandle(value: string) {
     .toLowerCase();
 }
 
+export function getInfluencerPublicProfilePath(handle: string) {
+  const clean = normalizePublicProfileHandle(handle);
+  return clean ? `/${clean}` : "/";
+}
+
+export function formatInfluencerPublicProfileUrl(handle: string) {
+  const clean = normalizePublicProfileHandle(handle);
+  return clean ? `yeollock.me/${clean}` : "yeollock.me";
+}
+
+export function buildInfluencerPublicProfileUrl(handle: string) {
+  return `https://${formatInfluencerPublicProfileUrl(handle)}`;
+}
+
+export function getAutomaticPublicProfileHandle(
+  platforms: Array<{ handle: string }> | undefined,
+) {
+  const firstPlatformHandle = platforms?.[0]?.handle;
+  if (!firstPlatformHandle) return undefined;
+
+  const normalized = normalizePublicProfileHandle(firstPlatformHandle).replace(
+    /\s+/g,
+    "_",
+  );
+
+  return normalized || undefined;
+}
+
 export function getPublicProfileHandleError(handle: string) {
   if (!handle) return "공개 주소를 입력해 주세요.";
   if (handle.length < 3 || handle.length > 30) {
     return "공개 주소는 3-30자로 입력해 주세요.";
   }
-  if (!/^[a-z0-9][a-z0-9_-]*[a-z0-9]$/.test(handle)) {
-    return "영문 소문자, 숫자, 밑줄, 하이픈만 사용할 수 있습니다.";
+  if (!/^[a-z0-9][a-z0-9_.-]*[a-z0-9]$/.test(handle)) {
+    return "영문 소문자, 숫자, 밑줄, 하이픈, 점만 사용할 수 있습니다.";
   }
   if (reservedProfileHandles.has(handle)) {
     return "서비스에서 사용하는 주소라 다른 주소를 선택해 주세요.";
@@ -99,11 +127,7 @@ export function buildDefaultPublicProfileSettings(
   dashboard: InfluencerDashboardResponse,
 ): InfluencerPublicProfileSettings {
   const approvedPlatforms = dashboard.verification.approved_platforms;
-  const firstApprovedHandle = approvedPlatforms[0]?.handle;
-  const defaultHandle =
-    getValidDefaultHandle(firstApprovedHandle) ??
-    getValidDefaultHandle(dashboard.user.name) ??
-    `creator_${dashboard.user.id.slice(0, 6).toLowerCase()}`;
+  const defaultHandle = getAutomaticPublicProfileHandle(approvedPlatforms) ?? "";
   const categories = dashboard.user.activity_categories
     .map((category) => categoryLabels[category])
     .filter(Boolean);
@@ -139,7 +163,6 @@ export function buildDefaultPublicProfileSettings(
 export function buildPublicProfileSettingsFromForm(
   dashboard: InfluencerDashboardResponse,
   form: {
-    handle: string;
     displayName: string;
     headline: string;
     bio: string;
@@ -159,7 +182,7 @@ export function buildPublicProfileSettingsFromForm(
 
   return {
     ...defaults,
-    handle: normalizePublicProfileHandle(form.handle),
+    handle: defaults.handle,
     displayName: form.displayName.trim(),
     headline: form.headline.trim(),
     bio: form.bio.trim(),
@@ -204,7 +227,7 @@ export function createMarketplaceProfileFromPublicSettings(
               platform: "other",
               label: "연락미 프로필",
               handle: settings.handle,
-              url: `https://yeollock.me/${settings.handle}`,
+              url: buildInfluencerPublicProfileUrl(settings.handle),
               followersLabel: "프로필 공개",
               performanceLabel: "제안 가능",
             },
@@ -229,15 +252,6 @@ export function createMarketplaceProfileFromPublicSettings(
       "최종 조건은 전자계약 단계에서 다시 확인합니다.",
     ],
   };
-}
-
-function getValidDefaultHandle(value: string | undefined) {
-  if (!value) return undefined;
-  const normalized = normalizePublicProfileHandle(value)
-    .replace(/\s+/g, "_")
-    .replace(/[^a-z0-9_-]/g, "");
-
-  return getPublicProfileHandleError(normalized) ? undefined : normalized;
 }
 
 function buildAvatarLabel(name: string) {
@@ -274,5 +288,5 @@ function buildPlatformUrl(platform: InfluencerPlatform, handle: string) {
   if (platform === "youtube") return `https://youtube.com/@${clean}`;
   if (platform === "tiktok") return `https://tiktok.com/@${clean}`;
   if (platform === "naver_blog") return `https://blog.naver.com/${clean}`;
-  return `https://yeollock.me/${clean}`;
+  return buildInfluencerPublicProfileUrl(clean);
 }

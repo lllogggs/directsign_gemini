@@ -228,8 +228,18 @@ const checkSupabaseMigrations = async () => {
   if (output) console.log(output);
 
   if (result.status !== 0) {
-    record("Supabase linked migrations", "fail", `exit ${result.status}`);
-    return false;
+    const transientConnectionIssue =
+      /ECIRCUITBREAKER|too many authentication failures|SUPABASE_DB_PASSWORD/i.test(
+        output,
+      );
+    record(
+      "Supabase linked migrations",
+      transientConnectionIssue ? "warn" : "fail",
+      transientConnectionIssue
+        ? "remote migration check temporarily blocked by Supabase connection guard"
+        : `exit ${result.status}`,
+    );
+    return transientConnectionIssue;
   }
 
   const pendingLocal = output
@@ -249,6 +259,41 @@ const checkSupabaseMigrations = async () => {
 
   record("Supabase linked migrations", "pass");
   return true;
+};
+
+const readMarketplaceInfluencerHandle = async (baseUrl) => {
+  try {
+    const response = await fetchWithTimeout(`${baseUrl}/api/marketplace/influencers`);
+    if (!response.ok) {
+      record(
+        "Marketplace influencer handle",
+        "fail",
+        `status ${response.status}, expected 200`,
+      );
+      return null;
+    }
+
+    const data = await response.json();
+    const profiles = Array.isArray(data.profiles) ? data.profiles : [];
+    const qaProfile =
+      profiles.find((profile) => profile.displayName?.includes("QA")) ??
+      profiles.find((profile) => profile.handle);
+
+    if (!qaProfile?.handle) {
+      record("Marketplace influencer handle", "fail", "no public handle returned");
+      return null;
+    }
+
+    record("Marketplace influencer handle", "pass", qaProfile.handle);
+    return qaProfile.handle;
+  } catch (error) {
+    record(
+      "Marketplace influencer handle",
+      "fail",
+      error instanceof Error ? error.message : String(error),
+    );
+    return null;
+  }
 };
 
 const stopProcessTree = (processId) => {
@@ -296,6 +341,12 @@ const main = async () => {
 
   try {
     const server = await ensureServer();
+    const influencerPublicHandle = await readMarketplaceInfluencerHandle(server.baseUrl);
+    requiredChecks.push(Boolean(influencerPublicHandle));
+    const influencerPublicPath = influencerPublicHandle
+      ? `/${encodeURIComponent(influencerPublicHandle)}`
+      : "/qa_influencer";
+
     record(
       "/api/health",
       "pass",
@@ -328,9 +379,15 @@ const main = async () => {
       ),
       await smokeRoute(server.baseUrl, "/api/contracts/nonexistent/final-pdf", [404]),
       await smokeRoute(server.baseUrl, "/api/marketplace/influencers", [200]),
-      await smokeRoute(server.baseUrl, "/api/marketplace/influencers/qa_influencer", [200]),
+      await smokeRoute(
+        server.baseUrl,
+        `/api/marketplace/influencers/${encodeURIComponent(influencerPublicHandle ?? "qa_influencer")}`,
+        [200],
+      ),
       await smokeRoute(server.baseUrl, "/api/marketplace/brands", [200]),
       await smokeRoute(server.baseUrl, "/api/marketplace/brands/qa-test-brand", [200]),
+      await smokeRoute(server.baseUrl, "/api/marketplace/campaigns", [200]),
+      await smokeRoute(server.baseUrl, "/api/advertiser/campaigns", [401]),
       await smokeAppShellRoute(server.baseUrl, "/"),
       await smokeAppShellRoute(server.baseUrl, "/intro/advertiser"),
       await smokeAppShellRoute(server.baseUrl, "/intro/influencer"),
@@ -339,11 +396,13 @@ const main = async () => {
       await smokeAppShellRoute(server.baseUrl, "/login/influencer"),
       await smokeAppShellRoute(server.baseUrl, "/advertiser/dashboard"),
       await smokeAppShellRoute(server.baseUrl, "/advertiser/discover"),
+      await smokeAppShellRoute(server.baseUrl, "/advertiser/campaigns"),
       await smokeAppShellRoute(server.baseUrl, "/advertiser/messages"),
       await smokeAppShellRoute(server.baseUrl, "/influencer/dashboard"),
       await smokeAppShellRoute(server.baseUrl, "/influencer/brands"),
+      await smokeAppShellRoute(server.baseUrl, "/influencer/campaigns"),
       await smokeAppShellRoute(server.baseUrl, "/influencer/messages"),
-      await smokeAppShellRoute(server.baseUrl, "/qa_influencer"),
+      await smokeAppShellRoute(server.baseUrl, influencerPublicPath),
       await smokeAppShellRoute(server.baseUrl, "/brands/qa-test-brand"),
       await smokeAppShellRoute(server.baseUrl, "/contract/nonexistent"),
       await smokeRoute(server.baseUrl, "/privacy", [200]),

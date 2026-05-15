@@ -10,6 +10,7 @@ import {
   Handshake,
   Instagram,
   Mail,
+  Megaphone,
   MessageSquareText,
   Music2,
   Search,
@@ -36,7 +37,11 @@ import {
   type MarketplaceBrandProfile,
   type MarketplaceInfluencerProfile,
 } from "../../domain/marketplace";
-import type { InfluencerPublicProfileResponse } from "../../domain/publicInfluencerProfile";
+import {
+  formatInfluencerPublicProfileUrl,
+  getInfluencerPublicProfilePath,
+  type InfluencerPublicProfileResponse,
+} from "../../domain/publicInfluencerProfile";
 import type { InfluencerPlatform } from "../../domain/verification";
 
 type PlatformFilter = "all" | InfluencerPlatform;
@@ -231,7 +236,9 @@ function useInfluencerPublicProfilePath() {
       .then(async (response) => {
         if (!response.ok) return undefined;
         const data = (await response.json()) as InfluencerPublicProfileResponse;
-        return data.profile?.published ? `/${data.profile.handle}` : undefined;
+        return data.profile?.published
+          ? getInfluencerPublicProfilePath(data.profile.handle)
+          : undefined;
       })
       .then((nextPath) => {
         if (active) setPath(nextPath);
@@ -289,20 +296,30 @@ export function AdvertiserInfluencerDiscoveryPage() {
     <MarketplaceShell
       eyebrow="광고주 탐색"
       title="인플루언서 둘러보기"
-      description="공개 프로필을 확인하고 브랜드 소개, 광고 형태, 제안 요약으로 가볍게 컨택을 시작합니다."
+      description="계약 작성 전 상대 정보를 확인하고, 필요한 컨택 내용을 계약 작성 흐름으로 이어갑니다."
       backHref="/advertiser/dashboard"
-      backLabel="대시보드"
+      backLabel="계약 대시보드"
       profileCount={profiles.length}
       brandCount={brands.length}
       actions={
-        <button
-          type="button"
-          onClick={() => navigate("/advertiser/builder")}
-          className="inline-flex h-10 items-center gap-2 rounded-md bg-neutral-950 px-3 text-[13px] font-semibold text-white transition hover:bg-neutral-800"
-        >
-          <FileText className="h-4 w-4" />
-          새 계약
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => navigate("/advertiser/builder")}
+            className="inline-flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-[12px] bg-blue-600 px-3 text-[13px] font-extrabold text-white shadow-[0_14px_34px_rgba(37,99,235,0.20)] transition hover:bg-blue-700"
+          >
+            <FileText className="h-4 w-4" />
+            새 계약
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate("/advertiser/campaigns")}
+            className="hidden h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-[12px] border border-neutral-200 bg-white px-3 text-[13px] font-extrabold text-neutral-600 transition hover:border-neutral-300 hover:text-neutral-950 sm:inline-flex"
+          >
+            <Megaphone className="h-4 w-4" />
+            모집글
+          </button>
+        </div>
       }
     >
       <section className="grid gap-3 border-b border-[#d9e0d9] bg-white px-4 py-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
@@ -392,20 +409,38 @@ export function InfluencerBrandDiscoveryPage() {
     <MarketplaceShell
       eyebrow="인플루언서 탐색"
       title="입점 브랜드 둘러보기"
-      description="내 채널과 맞는 브랜드를 찾고, 활동 채널 소개와 광고 형태로 먼저 제안할 수 있습니다."
+      description="받은 계약을 우선 확인하고, 필요할 때 브랜드 정보와 컨택 내용을 계약 검토 전 단계로 정리합니다."
       backHref="/influencer/dashboard"
-      backLabel="대시보드"
+      backLabel="계약 대시보드"
       profileCount={profiles.length}
       brandCount={brands.length}
       actions={
-        <button
-          type="button"
-          onClick={() => navigate(publicProfilePath ?? "/influencer/dashboard")}
-          className="inline-flex h-10 items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
-        >
-          <UserRound className="h-4 w-4" />
-          {publicProfilePath ? "내 공개 프로필" : "프로필 설정"}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => navigate("/influencer/dashboard")}
+            className="inline-flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-[12px] bg-blue-600 px-3 text-[13px] font-extrabold text-white shadow-[0_14px_34px_rgba(37,99,235,0.20)] transition hover:bg-blue-700"
+          >
+            <FileText className="h-4 w-4" />
+            받은 계약
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate("/influencer/campaigns")}
+            className="hidden h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-[12px] border border-neutral-200 bg-white px-3 text-[13px] font-extrabold text-neutral-600 transition hover:border-neutral-300 hover:text-neutral-950 sm:inline-flex"
+          >
+            <Megaphone className="h-4 w-4" />
+            캠페인 보기
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate(publicProfilePath ?? "/influencer/dashboard")}
+            className="hidden h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-[12px] border border-neutral-200 bg-white px-3 text-[13px] font-extrabold text-neutral-600 transition hover:border-neutral-300 hover:text-neutral-950 sm:inline-flex"
+          >
+            <UserRound className="h-4 w-4" />
+            {publicProfilePath ? "내 공개 프로필" : "프로필 설정"}
+          </button>
+        </div>
       }
     >
       <section className="grid gap-3 border-b border-[#d9e0d9] bg-white px-4 py-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
@@ -519,7 +554,7 @@ export function PublicInfluencerProfilePage() {
               <AvatarBlock label={profile.avatarLabel} size="large" />
               <div className="min-w-0 flex-1">
                 <p className="text-[13px] font-semibold text-neutral-500">
-                  yeollock.me/{profile.handle}
+                  {formatInfluencerPublicProfileUrl(profile.handle)}
                 </p>
                 <h1 className="mt-2 text-[34px] font-semibold leading-tight text-neutral-950 sm:text-[44px]">
                   {profile.displayName}
@@ -844,50 +879,50 @@ function MarketplaceShell({
   children: ReactNode;
 }) {
   return (
-    <main className="min-h-screen bg-neutral-50 font-sans text-neutral-950">
-      <header className="sticky top-0 z-30 border-b border-neutral-200 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-[1320px] items-center justify-between px-4 sm:px-6 lg:px-8">
-          <Link to="/" className="flex min-w-0 items-center gap-3">
-            <span className="flex h-9 w-9 items-center justify-center rounded-md bg-neutral-950 text-white">
+    <main className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950">
+      <header className="sticky top-0 z-30 border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
+        <div className="mx-auto flex h-[68px] max-w-[1320px] items-center justify-between px-4 sm:px-6 lg:px-8">
+          <Link to="/" className="flex shrink-0 items-center gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-[13px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
               <ShieldCheck className="h-4 w-4" />
             </span>
-            <span className="truncate text-[18px] font-semibold">{PRODUCT_NAME}</span>
+            <span className="font-neo-heavy hidden text-[19px] leading-none sm:inline">{PRODUCT_NAME}</span>
           </Link>
-          <div className="flex items-center gap-2">
+          <div className="no-scrollbar ml-3 flex min-w-0 items-center gap-2 overflow-x-auto">
             <Link
               to={backHref}
-              className="inline-flex h-10 items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
+              className="inline-flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-[12px] border border-neutral-200 bg-white px-3 text-[13px] font-extrabold text-neutral-600 transition hover:border-neutral-300 hover:text-neutral-950"
             >
               <ArrowLeft className="h-4 w-4" />
-              {backLabel}
+              <span className="hidden sm:inline">{backLabel}</span>
             </Link>
             {actions}
           </div>
         </div>
       </header>
 
-      <section className="border-b border-neutral-200 bg-white">
-        <div className="mx-auto max-w-[1320px] px-4 py-5 sm:px-6 lg:px-8">
-          <p className="text-[12px] font-semibold text-neutral-500">{eyebrow}</p>
+      <section className="border-b border-neutral-200/80 bg-[#f7f6f3]">
+        <div className="mx-auto max-w-[1320px] px-4 py-6 sm:px-6 lg:px-8">
+          <p className="text-[13px] font-extrabold text-neutral-500">{eyebrow}</p>
           <div className="mt-2 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div className="min-w-0">
-              <h1 className="text-[28px] font-semibold leading-tight text-neutral-950 sm:text-[34px]">
+              <h1 className="font-neo-heavy text-[38px] leading-none text-neutral-950 sm:text-[48px]">
                 {title}
               </h1>
-              <p className="mt-2 max-w-3xl text-[14px] font-medium leading-6 text-neutral-600">
+              <p className="mt-4 max-w-3xl break-keep text-[14px] font-bold leading-6 text-neutral-600">
                 {description}
               </p>
             </div>
-            <div className="grid grid-cols-3 gap-2 sm:w-[420px]">
+            <div className="grid grid-cols-3 gap-2 rounded-[18px] border border-neutral-200 bg-white p-2 shadow-[0_12px_34px_rgba(15,23,42,0.04)] sm:w-[420px]">
               <MiniMetric label="공개 프로필" value={(profileCount ?? marketplaceInfluencers.length).toString()} />
               <MiniMetric label="입점 브랜드" value={(brandCount ?? marketplaceBrands.length).toString()} />
-              <MiniMetric label="제안 방식" value="양방향" />
+              <MiniMetric label="계약 전환" value="검토 후" />
             </div>
           </div>
         </div>
       </section>
 
-      <div className="mx-auto max-w-[1320px] overflow-hidden border-x border-neutral-200 bg-[#fdfdfb]">
+      <div className="mx-auto my-5 max-w-[1320px] overflow-hidden rounded-[18px] border border-neutral-200 bg-[#fdfdfb] shadow-[0_22px_60px_rgba(23,26,23,0.06)]">
         {children}
       </div>
     </main>
@@ -903,7 +938,7 @@ function InfluencerDiscoveryCard({
   onContact: () => void;
 }) {
   return (
-    <article className="flex min-h-[360px] flex-col rounded-[8px] border border-neutral-200 bg-white p-4">
+    <article className="flex min-h-[360px] flex-col rounded-[18px] border border-neutral-200 bg-white p-4 shadow-[0_12px_34px_rgba(15,23,42,0.035)]">
       <div className="flex items-start gap-3">
         <AvatarBlock label={profile.avatarLabel} />
         <div className="min-w-0 flex-1">
@@ -914,13 +949,13 @@ function InfluencerDiscoveryCard({
             <BadgeCheck className="h-4 w-4 shrink-0 text-neutral-700" />
           </div>
           <p className="mt-1 truncate text-[12px] font-semibold text-neutral-500">
-            yeollock.me/{profile.handle}
+            {formatInfluencerPublicProfileUrl(profile.handle)}
           </p>
         </div>
         <button
           type="button"
           onClick={onContact}
-          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md bg-neutral-950 px-3 text-[12px] font-semibold text-white transition hover:bg-neutral-800"
+          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-[10px] bg-neutral-950 px-3 text-[12px] font-extrabold text-white transition hover:bg-neutral-800"
         >
           <Send className="h-3.5 w-3.5" />
           제안
@@ -957,7 +992,7 @@ function InfluencerDiscoveryCard({
       <div className="mt-auto pt-5">
         <Link
           to={getInfluencerProfilePath(profile)}
-          className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md border border-neutral-200 bg-white text-[13px] font-semibold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
+          className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-[12px] border border-neutral-200 bg-white text-[13px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
         >
           프로필 보기
         </Link>
@@ -975,7 +1010,7 @@ function BrandDiscoveryCard({
   onContact: () => void;
 }) {
   return (
-    <article className="flex min-h-[360px] flex-col rounded-[8px] border border-neutral-200 bg-white p-4">
+    <article className="flex min-h-[360px] flex-col rounded-[18px] border border-neutral-200 bg-white p-4 shadow-[0_12px_34px_rgba(15,23,42,0.035)]">
       <div className="flex items-start gap-3">
         <AvatarBlock label={brand.logoLabel} />
         <div className="min-w-0 flex-1">
@@ -992,7 +1027,7 @@ function BrandDiscoveryCard({
         <button
           type="button"
           onClick={onContact}
-          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md bg-neutral-950 px-3 text-[12px] font-semibold text-white transition hover:bg-neutral-800"
+          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-[10px] bg-neutral-950 px-3 text-[12px] font-extrabold text-white transition hover:bg-neutral-800"
         >
           <Send className="h-3.5 w-3.5" />
           제안
@@ -1029,7 +1064,7 @@ function BrandDiscoveryCard({
       <div className="mt-auto grid gap-2 pt-5">
         <Link
           to={getBrandProfilePath(brand)}
-          className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md border border-neutral-200 bg-white text-[13px] font-semibold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
+          className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-[12px] border border-neutral-200 bg-white text-[13px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
         >
           브랜드 보기
         </Link>
@@ -1582,9 +1617,9 @@ function FormField({
 
 function MiniMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[8px] border border-neutral-200 bg-neutral-50 px-3 py-2">
-      <p className="text-[11px] font-semibold text-neutral-500">{label}</p>
-      <p className="mt-1 truncate text-[15px] font-semibold text-neutral-950">
+    <div className="rounded-[14px] bg-[#f8f7f4] px-3 py-3">
+      <p className="text-[11px] font-extrabold text-neutral-400">{label}</p>
+      <p className="mt-1 truncate text-[13px] font-extrabold text-neutral-950">
         {value}
       </p>
     </div>

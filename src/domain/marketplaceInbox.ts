@@ -36,6 +36,9 @@ export type MarketplaceMessageThread = {
   proposalType: CampaignProposalType;
   proposalTypeLabel: string;
   proposalSummary: string;
+  campaignId?: string;
+  campaignTitle?: string;
+  convertedContractId?: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -82,15 +85,15 @@ export const proposalStatusTone: Record<MarketplaceProposalStatus, string> = {
 
 export const marketplaceFlowSteps = {
   advertiser: [
+    { label: "모집글", href: "/advertiser/campaigns" },
     { label: "탐색", href: "/advertiser/discover" },
     { label: "제안함", href: "/advertiser/messages" },
     { label: "계약 작성", href: "/advertiser/builder" },
-    { label: "계약 관리", href: "/advertiser/dashboard" },
   ],
   influencer: [
+    { label: "캠페인 확인", href: "/influencer/campaigns" },
     { label: "브랜드 탐색", href: "/influencer/brands" },
     { label: "제안함", href: "/influencer/messages" },
-    { label: "공개 프로필", href: "/influencer/dashboard" },
     { label: "계약 검토", href: "/influencer/dashboard" },
   ],
 } satisfies Record<MarketplaceInboxRole, Array<{ label: string; href: string }>>;

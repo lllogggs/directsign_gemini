@@ -17,7 +17,12 @@ import {
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { fileURLToPath } from "node:url";
-import { createDemoContracts, createShareToken } from "../src/domain/contracts.js";
+import {
+  createDemoContracts,
+  createEvidence,
+  createShareToken,
+  createWorkflow,
+} from "../src/domain/contracts.js";
 import type { Contract } from "../src/domain/contracts.js";
 import type {
   InfluencerDashboardContract,
@@ -26,6 +31,7 @@ import type {
   InfluencerDashboardTask,
 } from "../src/domain/influencerDashboard";
 import {
+  buildMarketplaceCampaignPosts,
   findBrandProfileByHandle,
   findInfluencerProfileByHandle,
   mergeMarketplaceBrandProfiles,
@@ -33,7 +39,9 @@ import {
   marketplaceBrands,
   platformLabels,
   type CampaignProposalType,
+  type MarketplaceBrandCampaign,
   type MarketplaceBrandProfile,
+  type MarketplaceCampaignPost,
   type MarketplaceInfluencerProfile,
 } from "../src/domain/marketplace.js";
 import {
@@ -48,7 +56,11 @@ import {
 } from "../src/domain/marketplaceInbox.js";
 import {
   buildDefaultPublicProfileSettings,
+  buildInfluencerPublicProfileUrl,
   createMarketplaceProfileFromPublicSettings,
+  formatInfluencerPublicProfileUrl,
+  getAutomaticPublicProfileHandle,
+  getInfluencerPublicProfilePath,
   getPublicProfileHandleError,
   normalizePublicProfileHandle,
   type InfluencerPublicProfileSettings,
@@ -965,6 +977,16 @@ interface SupabaseMarketplaceInfluencerChannelRow {
   sort_order?: number | null;
 }
 
+type SupabaseMarketplaceInfluencerHandleRow = Pick<
+  SupabaseMarketplaceInfluencerProfileRow,
+  | "id"
+  | "owner_profile_id"
+  | "public_handle"
+  | "display_name"
+  | "created_at"
+  | "updated_at"
+>;
+
 interface SupabaseMarketplaceBrandProfileRow {
   id: string;
   organization_id: string;
@@ -1004,10 +1026,28 @@ interface SupabaseMarketplaceContactProposalRow {
   sender_intro: string;
   proposal_type: CampaignProposalType;
   proposal_summary: string;
+  campaign_id?: string | null;
+  campaign_snapshot?: MarketplaceCampaignSnapshot | null;
+  converted_contract_id?: string | null;
   status: MarketplaceProposalStatus;
   created_at: string;
   updated_at: string;
   marketplace_platforms?: MarketplaceMessageThread["platforms"];
+}
+
+interface MarketplaceCampaignSnapshot {
+  id: string;
+  title: string;
+  type: CampaignProposalType;
+  budget: string;
+  summary?: string;
+  deadline?: string;
+  platforms?: InfluencerPlatform[];
+  deliverables?: string[];
+  brandId: string;
+  brandHandle: string;
+  brandName: string;
+  brandCategory?: string;
 }
 
 const requireSupabaseConfig = () => {
@@ -3818,8 +3858,19 @@ const normalizeMarketplacePortfolio = (
     .slice(0, 6);
 };
 
+const marketplaceCampaignStatuses = new Set(["open", "draft", "closed"]);
+
+const normalizeCampaignPlatforms = (
+  value: unknown,
+  fallback: InfluencerPlatform[] = [],
+) => {
+  const { selected } = normalizeSelectedValues(value, influencerPlatforms);
+  return selected.length > 0 ? selected : fallback;
+};
+
 const normalizeBrandCampaigns = (
   value: unknown,
+  maxItems = 8,
 ): MarketplaceBrandProfile["activeCampaigns"] => {
   if (!Array.isArray(value)) return [];
 
@@ -3827,16 +3878,32 @@ const normalizeBrandCampaigns = (
     .map((item) => {
       if (!item || typeof item !== "object") return undefined;
       const record = item as Record<string, unknown>;
+      const id = normalizeOptionalText(record.id)?.slice(0, 80);
       const title = normalizeRequiredText(record.title);
       const type = normalizeRequiredText(record.type) as CampaignProposalType;
       const budget = normalizeRequiredText(record.budget);
+      const summary = normalizeOptionalText(record.summary)?.slice(0, 1000);
+      const deadline = normalizeOptionalText(record.deadline)?.slice(0, 40);
+      const status = normalizeOptionalText(record.status);
+      const platforms = normalizeCampaignPlatforms(record.platforms);
+      const deliverables = normalizeStringArrayForStorage(record.deliverables, [], 6);
       if (!title || !budget || !campaignProposalTypes.has(type)) return undefined;
-      return { title, type, budget };
+      return {
+        ...(id ? { id } : {}),
+        title: title.slice(0, 100),
+        type,
+        budget: budget.slice(0, 80),
+        ...(summary ? { summary } : {}),
+        ...(deadline ? { deadline } : {}),
+        ...(platforms.length > 0 ? { platforms } : {}),
+        ...(deliverables.length > 0 ? { deliverables } : {}),
+        ...(status && marketplaceCampaignStatuses.has(status) ? { status } : {}),
+      };
     })
-    .filter((item): item is MarketplaceBrandProfile["activeCampaigns"][number] =>
+    .filter((item): item is MarketplaceBrandCampaign =>
       Boolean(item),
     )
-    .slice(0, 6);
+    .slice(0, maxItems);
 };
 
 const buildMarketplaceAvatarLabel = (name: string, fallback = "IN") => {
@@ -3867,7 +3934,7 @@ const buildMarketplacePlatformUrl = (
   if (platform === "youtube") return `https://youtube.com/@${clean}`;
   if (platform === "tiktok") return `https://tiktok.com/@${clean}`;
   if (platform === "naver_blog") return `https://blog.naver.com/${clean}`;
-  return `https://yeollock.me/${clean}`;
+  return buildInfluencerPublicProfileUrl(clean);
 };
 
 const groupMarketplaceChannelsByProfileId = (
@@ -4027,6 +4094,415 @@ const readMarketplaceBrandProfiles = async () => {
   return mergeMarketplaceBrandProfiles(rows.map(mapBrandProfileRowToMarketplaceProfile));
 };
 
+const buildMarketplaceBrandHandle = (
+  organization: SupabaseOrganizationRow,
+  profile: SupabaseProfileRow,
+) => {
+  const source = `${organization.name || profile.company_name || profile.name || "brand"}`;
+  const normalized = source
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  const suffix = organization.id.replace(/-/g, "").slice(0, 6);
+  const base = normalized.length >= 3 ? normalized.slice(0, 20).replace(/-+$/g, "") : "brand";
+
+  return `${base}-${suffix}`.slice(0, 30).replace(/-+$/g, "");
+};
+
+const readAdvertiserMarketplaceBrandRow = async (
+  organizationId: string,
+) => {
+  if (!useSupabase) return undefined;
+
+  const rows = await readSupabaseRows<SupabaseMarketplaceBrandProfileRow>(
+    "marketplace_brand_profiles",
+    `?select=*&organization_id=eq.${encodeURIComponent(organizationId)}&limit=1`,
+    "advertiser marketplace brand profile",
+  );
+
+  return rows[0];
+};
+
+const buildAdvertiserBrandProfileFromAuth = (
+  auth: AdvertiserSession,
+  organization: SupabaseOrganizationRow,
+  row?: SupabaseMarketplaceBrandProfileRow,
+): MarketplaceBrandProfile => {
+  if (row) return mapBrandProfileRowToMarketplaceProfile(row);
+
+  const name = organization.name || auth.profile.company_name || auth.profile.name || "광고주";
+
+  return {
+    id: stableUuid(`marketplace:brand:${organization.id}`),
+    handle: buildMarketplaceBrandHandle(organization, auth.profile),
+    displayName: name,
+    category: "캠페인 모집",
+    headline: "인플루언서 협업 캠페인을 모집합니다",
+    description:
+      "모집글을 등록하면 인플루언서가 캠페인 조건을 확인하고 브랜드에 역제안할 수 있습니다.",
+    location: "운영 지역 미입력",
+    logoLabel: buildMarketplaceAvatarLabel(name, "BR"),
+    preferredPlatforms: [],
+    proposalTypes: ["sponsored_post", "product_seeding"],
+    budgetRangeLabel: "협의 가능",
+    responseTimeLabel: "제안 확인 후 응답",
+    statusLabel: "모집 준비",
+    fitTags: ["캠페인 모집", "전자계약 가능"],
+    audienceTargets: [],
+    activeCampaigns: [],
+    recentCreators: [],
+  };
+};
+
+const readAdvertiserCampaignBoard = async (auth: AdvertiserSession) => {
+  const organization = await readDefaultOrganizationForProfile(auth.profile.id);
+  if (!organization) {
+    return {
+      organization: undefined,
+      brand: undefined,
+      campaigns: [] as MarketplaceBrandCampaign[],
+    };
+  }
+
+  const row = await readAdvertiserMarketplaceBrandRow(organization.id);
+  const brand = buildAdvertiserBrandProfileFromAuth(auth, organization, row);
+
+  return {
+    organization,
+    brand,
+    campaigns: brand.activeCampaigns,
+  };
+};
+
+const validateMarketplaceCampaignInput = (body: Record<string, unknown>) => {
+  const title = normalizeRequiredText(body.title);
+  const type = normalizeRequiredText(body.type) as CampaignProposalType;
+  const budget = normalizeRequiredText(body.budget);
+  const summary = normalizeRequiredText(body.summary);
+  const deadline = normalizeOptionalText(body.deadline);
+  const platforms = normalizeCampaignPlatforms(body.platforms, ["instagram"]);
+  const deliverables = normalizeStringArrayForStorage(body.deliverables, [], 6);
+
+  if (!title || title.length > 100) {
+    return { error: "캠페인명은 100자 이내로 입력해 주세요." };
+  }
+  if (!campaignProposalTypes.has(type)) {
+    return { error: "모집 형태를 선택해 주세요." };
+  }
+  if (!budget || budget.length > 80) {
+    return { error: "예산 또는 협의 조건을 80자 이내로 입력해 주세요." };
+  }
+  if (!summary || summary.length > 1000) {
+    return { error: "모집 설명은 1000자 이내로 입력해 주세요." };
+  }
+  if (deadline && deadline.length > 40) {
+    return { error: "마감일을 40자 이내로 입력해 주세요." };
+  }
+
+  return {
+    title,
+    type,
+    budget,
+    summary,
+    deadline,
+    platforms,
+    deliverables,
+  };
+};
+
+const upsertAdvertiserMarketplaceCampaign = async (
+  auth: AdvertiserSession,
+  body: Record<string, unknown>,
+) => {
+  if (!useSupabase) {
+    return {
+      ok: false as const,
+      status: 503,
+      error: "Supabase 설정이 필요합니다.",
+    };
+  }
+
+  const organization = await readDefaultOrganizationForProfile(auth.profile.id);
+  if (!organization) {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "광고주 조직 정보를 찾을 수 없습니다.",
+    };
+  }
+
+  const payload = validateMarketplaceCampaignInput(body);
+  if ("error" in payload) {
+    return { ok: false as const, status: 422, error: payload.error };
+  }
+
+  const existing = await readAdvertiserMarketplaceBrandRow(organization.id);
+  const currentBrand = buildAdvertiserBrandProfileFromAuth(auth, organization, existing);
+  const now = new Date().toISOString();
+  const campaign: MarketplaceBrandCampaign = {
+    id: randomUUID(),
+    title: payload.title,
+    type: payload.type,
+    budget: payload.budget,
+    summary: payload.summary,
+    ...(payload.deadline ? { deadline: payload.deadline } : {}),
+    platforms: payload.platforms,
+    deliverables:
+      payload.deliverables.length > 0
+        ? payload.deliverables
+        : ["콘텐츠 산출물 협의"],
+    status: "open",
+  };
+  const campaigns = normalizeBrandCampaigns(
+    [campaign, ...currentBrand.activeCampaigns],
+    8,
+  );
+  const preferredPlatforms = Array.from(
+    new Set([
+      ...payload.platforms,
+      ...currentBrand.preferredPlatforms,
+    ]),
+  );
+  const proposalTypes = Array.from(
+    new Set([payload.type, ...currentBrand.proposalTypes]),
+  );
+  const rowId = existing?.id ?? stableUuid(`marketplace:brand:${organization.id}`);
+  const displayName = currentBrand.displayName || organization.name;
+  const category =
+    currentBrand.category === "캠페인 모집" && payload.deliverables.length > 0
+      ? payload.deliverables[0]
+      : currentBrand.category;
+
+  await upsertSupabaseV2Rows(
+    "marketplace_brand_profiles",
+    [
+      {
+        id: rowId,
+        organization_id: organization.id,
+        public_handle:
+          existing?.public_handle ?? buildMarketplaceBrandHandle(organization, auth.profile),
+        display_name: displayName,
+        category,
+        headline: payload.title,
+        description: payload.summary,
+        location: currentBrand.location || "운영 지역 미입력",
+        logo_label: currentBrand.logoLabel || buildMarketplaceAvatarLabel(displayName, "BR"),
+        preferred_platforms: preferredPlatforms,
+        proposal_types: proposalTypes,
+        budget_range_label: payload.budget,
+        response_time_label: currentBrand.responseTimeLabel || "제안 확인 후 응답",
+        status_label: "모집 중",
+        fit_tags:
+          payload.deliverables.length > 0
+            ? payload.deliverables
+            : currentBrand.fitTags.length > 0
+              ? currentBrand.fitTags
+              : ["캠페인 모집"],
+        audience_targets: currentBrand.audienceTargets,
+        active_campaigns: campaigns,
+        recent_creators: currentBrand.recentCreators,
+        is_published: true,
+        updated_at: now,
+      },
+    ],
+    "organization_id",
+  );
+
+  const savedRow = await readAdvertiserMarketplaceBrandRow(organization.id);
+  const brand = buildAdvertiserBrandProfileFromAuth(auth, organization, savedRow);
+
+  return {
+    ok: true as const,
+    brand,
+    campaign,
+    campaigns: brand.activeCampaigns,
+  };
+};
+
+const buildMarketplaceCampaignSnapshot = (
+  campaign: MarketplaceCampaignPost,
+): MarketplaceCampaignSnapshot => ({
+  id: campaign.id,
+  title: campaign.title,
+  type: campaign.type,
+  budget: campaign.budget,
+  ...(campaign.summary ? { summary: campaign.summary } : {}),
+  ...(campaign.deadline ? { deadline: campaign.deadline } : {}),
+  ...(campaign.platforms?.length ? { platforms: campaign.platforms } : {}),
+  ...(campaign.deliverables?.length ? { deliverables: campaign.deliverables } : {}),
+  brandId: campaign.brandId,
+  brandHandle: campaign.brandHandle,
+  brandName: campaign.brandName,
+  brandCategory: campaign.brandCategory,
+});
+
+const normalizeMarketplaceCampaignSnapshot = (
+  value: unknown,
+): MarketplaceCampaignSnapshot | undefined => {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  const id = normalizeRequiredText(record.id);
+  const title = normalizeRequiredText(record.title);
+  const type = normalizeRequiredText(record.type) as CampaignProposalType;
+  const budget = normalizeRequiredText(record.budget);
+  const brandId = normalizeRequiredText(record.brandId);
+  const brandHandle = normalizeRequiredText(record.brandHandle);
+  const brandName = normalizeRequiredText(record.brandName);
+  const summary = normalizeOptionalText(record.summary);
+  const deadline = normalizeOptionalText(record.deadline);
+  const brandCategory = normalizeOptionalText(record.brandCategory);
+  const platforms = normalizeCampaignPlatforms(record.platforms);
+  const deliverables = normalizeStringArrayForStorage(record.deliverables, [], 8);
+
+  if (
+    !id ||
+    !title ||
+    !budget ||
+    !brandId ||
+    !brandHandle ||
+    !brandName ||
+    !campaignProposalTypes.has(type)
+  ) {
+    return undefined;
+  }
+
+  return {
+    id,
+    title,
+    type,
+    budget,
+    ...(summary ? { summary } : {}),
+    ...(deadline ? { deadline } : {}),
+    ...(platforms.length ? { platforms } : {}),
+    ...(deliverables.length ? { deliverables } : {}),
+    brandId,
+    brandHandle,
+    brandName,
+    ...(brandCategory ? { brandCategory } : {}),
+  };
+};
+
+const findMarketplaceCampaignPostById = async (campaignId: string) => {
+  const campaigns = buildMarketplaceCampaignPosts(await readMarketplaceBrandProfiles());
+  return campaigns.find((campaign) => campaign.id === campaignId);
+};
+
+const readInfluencerMarketplaceProfileForApplication = async (
+  auth: InfluencerSession,
+) => {
+  if (!useSupabase) return undefined;
+
+  const { profiles, channels } = await readMarketplaceInfluencerRows(
+    `?select=*&owner_profile_id=eq.${encodeURIComponent(auth.profile.id)}&limit=1`,
+  );
+  const profile = profiles[0];
+  if (!profile) return undefined;
+
+  return mapInfluencerProfileRowToMarketplaceProfile(
+    profile,
+    channels.get(profile.id) ?? [],
+  );
+};
+
+const buildCampaignApplicationSummary = (campaign: MarketplaceCampaignPost) => {
+  const lines = [
+    `캠페인 신청: ${campaign.title}`,
+    campaign.summary ? `모집 설명: ${campaign.summary}` : undefined,
+    `예산/조건: ${campaign.budget}`,
+    campaign.deliverables?.length
+      ? `산출물: ${campaign.deliverables.join(", ")}`
+      : undefined,
+    campaign.platformLabels.length
+      ? `플랫폼: ${campaign.platformLabels.join(", ")}`
+      : undefined,
+    campaign.deadline ? `제안 마감: ${campaign.deadline}` : undefined,
+  ].filter((line): line is string => Boolean(line));
+
+  return lines.join("\n").slice(0, 1500);
+};
+
+const submitMarketplaceCampaignApplication = async (
+  auth: InfluencerSession,
+  campaignId: string,
+) => {
+  if (!useSupabase) {
+    return {
+      ok: false as const,
+      status: 503,
+      error: "Supabase 설정이 필요합니다.",
+    };
+  }
+
+  const campaign = await findMarketplaceCampaignPostById(campaignId);
+  if (!campaign || !isUuid(campaign.brandId)) {
+    return {
+      ok: false as const,
+      status: 404,
+      error: "신청 가능한 캠페인을 찾을 수 없습니다.",
+    };
+  }
+
+  const existingRows = await readMarketplaceProposalRows(
+    `?select=*&direction=eq.influencer_to_brand&sender_profile_id=eq.${encodeURIComponent(
+      auth.profile.id,
+    )}&target_brand_profile_id=eq.${encodeURIComponent(
+      campaign.brandId,
+    )}&campaign_id=eq.${encodeURIComponent(campaign.id)}&status=in.(submitted,reviewed,converted_to_contract)&limit=1`,
+    "marketplace campaign application duplicate check",
+  );
+
+  if (existingRows[0]) {
+    return {
+      ok: true as const,
+      alreadySubmitted: true,
+      proposal: existingRows[0],
+    };
+  }
+
+  const publicProfile = await readInfluencerMarketplaceProfileForApplication(auth);
+  const senderName =
+    publicProfile?.displayName ||
+    auth.profile.name ||
+    auth.user.email ||
+    "인플루언서";
+  const senderIntro =
+    publicProfile?.headline ||
+    auth.profile.activity_categories?.join(", ") ||
+    "캠페인 조건을 확인하고 신청했습니다.";
+  const now = new Date().toISOString();
+  const proposalId = randomUUID();
+  const rows = await insertSupabaseRowsReturning<SupabaseMarketplaceContactProposalRow>(
+    "marketplace_contact_proposals",
+    [
+      {
+        id: proposalId,
+        direction: "influencer_to_brand",
+        target_brand_profile_id: campaign.brandId,
+        target_handle: campaign.brandHandle,
+        target_display_name: campaign.brandName,
+        sender_profile_id: auth.profile.id,
+        sender_name: senderName,
+        sender_intro: senderIntro,
+        proposal_type: campaign.type,
+        proposal_summary: buildCampaignApplicationSummary(campaign),
+        campaign_id: campaign.id,
+        campaign_snapshot: buildMarketplaceCampaignSnapshot(campaign),
+        status: "submitted",
+        created_at: now,
+        updated_at: now,
+      },
+    ],
+    "marketplace campaign application",
+  );
+
+  return {
+    ok: true as const,
+    alreadySubmitted: false,
+    proposal: rows[0],
+  };
+};
+
 const readStoredInfluencerPublicProfile = async (ownerProfileId: string) => {
   if (!useSupabase) return undefined;
 
@@ -4041,6 +4517,88 @@ const readStoredInfluencerPublicProfile = async (ownerProfileId: string) => {
     channels.get(profile.id) ?? [],
   );
 };
+
+const normalizeAlternatePublicProfileHandle = (value: unknown) => {
+  const raw = normalizeOptionalText(value);
+  if (!raw) return "";
+  return normalizePublicProfileHandle(raw).replace(/\s+/g, "_");
+};
+
+const readMarketplaceInfluencerProfileByHandle = async (handle: string) => {
+  if (!useSupabase) return undefined;
+
+  const rows = await readSupabaseRows<SupabaseMarketplaceInfluencerHandleRow>(
+    "marketplace_influencer_profiles",
+    `?select=id,owner_profile_id,public_handle,display_name,created_at,updated_at&public_handle=eq.${encodeURIComponent(
+      handle,
+    )}&limit=1`,
+    "marketplace influencer handle lookup",
+  );
+
+  return rows[0];
+};
+
+const findInfluencerPublicHandleConflict = async (
+  handle: string,
+  ownerProfileId: string,
+) => {
+  const existing = await readMarketplaceInfluencerProfileByHandle(handle);
+  return existing && existing.owner_profile_id !== ownerProfileId
+    ? existing
+    : undefined;
+};
+
+const appendPublicHandleSuffix = (baseHandle: string, suffix: string) => {
+  const maxBaseLength = Math.max(1, 30 - suffix.length);
+  const base = baseHandle.slice(0, maxBaseLength).replace(/[_.-]+$/g, "");
+  const candidate = `${base}${suffix}`;
+  return getPublicProfileHandleError(candidate) ? undefined : candidate;
+};
+
+const buildAlternatePublicProfileHandleSuggestions = (
+  baseHandle: string,
+  ownerProfileId: string,
+) => {
+  const ownerSuffix = ownerProfileId.replace(/-/g, "").slice(0, 4);
+  const suffixes = [
+    ownerSuffix ? `_${ownerSuffix}` : "_2",
+    ".official",
+    "_creator",
+    "_2",
+  ];
+
+  return Array.from(
+    new Set(
+      suffixes
+        .map((suffix) => appendPublicHandleSuffix(baseHandle, suffix))
+        .filter((value): value is string => Boolean(value)),
+    ),
+  ).slice(0, 3);
+};
+
+const buildPublicProfileHandleConflictResult = ({
+  handle,
+  ownerProfileId,
+  error,
+}: {
+  handle: string;
+  ownerProfileId: string;
+  error?: string;
+}) => ({
+  ok: false as const,
+  status: 409,
+  code: "public_profile_handle_conflict",
+  error:
+    error ??
+    "이미 사용 중인 플랫폼 ID입니다. 다른 공개 주소를 입력하거나 이의신청을 접수해 주세요.",
+  handle,
+  profile_url: formatInfluencerPublicProfileUrl(handle),
+  can_customize_handle: true,
+  suggested_handles: buildAlternatePublicProfileHandleSuggestions(
+    handle,
+    ownerProfileId,
+  ),
+});
 
 const upsertInfluencerPublicProfile = async ({
   authUser,
@@ -4057,27 +4615,66 @@ const upsertInfluencerPublicProfile = async ({
 
   const dashboard = await buildInfluencerDashboard(authUser);
   const defaults = buildDefaultPublicProfileSettings(dashboard);
-  const handle = normalizePublicProfileHandle(normalizeRequiredText(body.handle));
-  const handleError = getPublicProfileHandleError(handle);
+  const approvedPlatforms = dashboard.verification.approved_platforms;
+  const automaticHandle = getAutomaticPublicProfileHandle(approvedPlatforms) ?? "";
+  const handleError = automaticHandle
+    ? getPublicProfileHandleError(automaticHandle)
+    : "플랫폼 인증을 먼저 완료하면 첫 등록 플랫폼 ID로 공개 주소가 자동 생성됩니다.";
 
   if (handleError) {
     return { ok: false as const, status: 422, error: handleError };
   }
 
-  const existingHandleRows =
-    await readSupabaseRows<SupabaseMarketplaceInfluencerProfileRow>(
-      "marketplace_influencer_profiles",
-      `?select=id,owner_profile_id,public_handle,display_name,headline,bio,location,avatar_label,categories,audience,audience_tags,collaboration_types,starting_price_label,response_time_label,verified_label,brand_fit,recent_brands,portfolio,proposal_hints,is_published,created_at,updated_at&public_handle=eq.${encodeURIComponent(handle)}&limit=1`,
-      "marketplace influencer handle check",
-    );
-  const existingForHandle = existingHandleRows[0];
+  const automaticHandleConflict = await findInfluencerPublicHandleConflict(
+    automaticHandle,
+    profile.id,
+  );
+  let handle = automaticHandle;
 
-  if (existingForHandle && existingForHandle.owner_profile_id !== profile.id) {
-    return {
-      ok: false as const,
-      status: 409,
-      error: "이미 사용 중인 공개 주소입니다. 다른 주소를 선택해 주세요.",
-    };
+  if (automaticHandleConflict) {
+    const alternateHandle = normalizeAlternatePublicProfileHandle(
+      body.alternateHandle,
+    );
+
+    if (!alternateHandle) {
+      return buildPublicProfileHandleConflictResult({
+        handle: automaticHandle,
+        ownerProfileId: profile.id,
+      });
+    }
+
+    const alternateHandleError = getPublicProfileHandleError(alternateHandle);
+    if (alternateHandleError) {
+      return {
+        ok: false as const,
+        status: 422,
+        code: "public_profile_alternate_handle_invalid",
+        error: alternateHandleError,
+        handle: alternateHandle,
+      };
+    }
+
+    if (alternateHandle === automaticHandle) {
+      return buildPublicProfileHandleConflictResult({
+        handle: automaticHandle,
+        ownerProfileId: profile.id,
+      });
+    }
+
+    const alternateHandleConflict = await findInfluencerPublicHandleConflict(
+      alternateHandle,
+      profile.id,
+    );
+
+    if (alternateHandleConflict) {
+      return buildPublicProfileHandleConflictResult({
+        handle: alternateHandle,
+        ownerProfileId: profile.id,
+        error: "입력한 공개 주소가 이미 사용 중입니다. 다른 주소를 입력해 주세요.",
+      });
+    }
+
+    handle = alternateHandle;
   }
 
   const now = new Date().toISOString();
@@ -4124,7 +4721,7 @@ const upsertInfluencerPublicProfile = async ({
     responseTimeLabel:
       normalizeRequiredText(body.responseTimeLabel) ||
       defaults.responseTimeLabel,
-    platforms: dashboard.verification.approved_platforms.map((platform) => ({
+    platforms: approvedPlatforms.map((platform) => ({
       platform: platform.platform,
       handle: platform.handle,
       url: platform.url,
@@ -4202,6 +4799,123 @@ const upsertInfluencerPublicProfile = async ({
   return { ok: true as const, profile: savedProfile };
 };
 
+const submitInfluencerPublicHandleAppeal = async ({
+  authUser,
+  profile,
+  body,
+  request,
+}: {
+  authUser: SupabaseAuthUser;
+  profile: SupabaseProfileRow;
+  body: Record<string, unknown>;
+  request: express.Request;
+}) => {
+  const dashboard = await buildInfluencerDashboard(authUser);
+  const approvedPlatforms = dashboard.verification.approved_platforms;
+  const primaryPlatform = approvedPlatforms[0];
+  const automaticHandle = getAutomaticPublicProfileHandle(approvedPlatforms) ?? "";
+  const handleError = automaticHandle
+    ? getPublicProfileHandleError(automaticHandle)
+    : "플랫폼 인증을 먼저 완료하면 공개 주소 이의신청을 접수할 수 있습니다.";
+
+  if (handleError || !primaryPlatform) {
+    return {
+      ok: false as const,
+      status: 422,
+      error: handleError ?? "공개 주소 이의신청에 사용할 인증 플랫폼이 없습니다.",
+    };
+  }
+
+  const conflict = await findInfluencerPublicHandleConflict(
+    automaticHandle,
+    profile.id,
+  );
+
+  if (!conflict) {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "현재 공개 주소 충돌이 없어 이의신청을 접수할 수 없습니다.",
+    };
+  }
+
+  const existingAppeal = (await readVerificationRequests()).find(
+    (record) =>
+      record.status === "pending" &&
+      record.profile_id === profile.id &&
+      record.evidence_snapshot_json?.request_type ===
+        "public_profile_handle_claim" &&
+      record.evidence_snapshot_json?.claimed_handle === automaticHandle,
+  );
+
+  if (existingAppeal) {
+    return {
+      ok: true as const,
+      request: existingAppeal,
+      already_submitted: true,
+    };
+  }
+
+  const now = new Date().toISOString();
+  const submittedName =
+    normalizeRequiredText(profile.name) ||
+    normalizeRequiredText(authUser.email) ||
+    "인플루언서";
+  const submittedEmail = normalizeOptionalText(profile.email ?? authUser.email);
+  const alternateHandle = normalizeAlternatePublicProfileHandle(
+    body.alternateHandle,
+  );
+  const reason =
+    normalizeOptionalText(body.reason) ||
+    `${formatInfluencerPublicProfileUrl(
+      automaticHandle,
+    )} 주소가 이미 사용 중이지만 신청자의 인증 플랫폼 ID와 일치합니다.`;
+
+  const record: VerificationRequestRecord = {
+    id: randomUUID(),
+    target_type: "influencer_account",
+    target_id: profile.id,
+    verification_type: "platform_account",
+    status: "pending",
+    profile_id: profile.id,
+    subject_name: `${submittedName} 공개 주소 이의신청`,
+    submitted_by_name: submittedName,
+    submitted_by_email: submittedEmail,
+    platform: primaryPlatform.platform,
+    platform_handle: primaryPlatform.handle,
+    platform_url: primaryPlatform.url,
+    ownership_verification_method: "screenshot_review",
+    ownership_check_status: "not_run",
+    evidence_snapshot_json: {
+      request_type: "public_profile_handle_claim",
+      claim_type: "platform_handle_conflict",
+      claimed_handle: automaticHandle,
+      claimed_profile_url: buildInfluencerPublicProfileUrl(automaticHandle),
+      requested_alternate_handle: alternateHandle || null,
+      current_owner_profile_id: conflict.owner_profile_id,
+      current_marketplace_profile_id: conflict.id,
+      requested_by_profile_id: profile.id,
+      submitted_from: "public_profile_settings",
+      platform: primaryPlatform.platform,
+      platform_handle: primaryPlatform.handle,
+      platform_url: primaryPlatform.url,
+      reason,
+      created_at: now,
+    },
+    note: reason,
+    submitted_ip: getClientIp(request),
+    submitted_user_agent: request.header("user-agent") ?? "unknown",
+    created_at: now,
+    updated_at: now,
+  };
+
+  return {
+    ok: true as const,
+    request: await insertVerificationRequest(record),
+    already_submitted: false,
+  };
+};
+
 const validateMarketplaceProposal = (body: Record<string, unknown>) => {
   const senderName = normalizeRequiredText(
     body.senderName ?? body.brandName ?? body.creatorName,
@@ -4245,7 +4959,7 @@ const getMarketplaceCounterpartHref = (
 ) => {
   if (bucket === "sent") {
     return row.direction === "advertiser_to_influencer"
-      ? `/${row.target_handle}`
+      ? getInfluencerPublicProfilePath(row.target_handle)
       : `/brands/${row.target_handle}`;
   }
 
@@ -4254,7 +4968,7 @@ const getMarketplaceCounterpartHref = (
     row.direction === "influencer_to_brand" &&
     row.sender_influencer_handle
   ) {
-    return `/${row.sender_influencer_handle}`;
+    return getInfluencerPublicProfilePath(row.sender_influencer_handle);
   }
 
   if (
@@ -4304,6 +5018,10 @@ const mapMarketplaceProposalToMessage = (
     proposalType: row.proposal_type,
     proposalTypeLabel: getProposalTypeLabel(row.proposal_type),
     proposalSummary: row.proposal_summary,
+    campaignId: row.campaign_id ?? undefined,
+    campaignTitle:
+      normalizeMarketplaceCampaignSnapshot(row.campaign_snapshot)?.title ?? undefined,
+    convertedContractId: row.converted_contract_id ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -5275,6 +5993,322 @@ const patchSupabaseRecord = async (
   await assertSupabaseOk(response, label);
 };
 
+const marketplacePlatformToContractPlatform = (
+  platform: InfluencerPlatform,
+): ContractPlatformValue => {
+  const platforms: Record<InfluencerPlatform, ContractPlatformValue> = {
+    instagram: "INSTAGRAM",
+    youtube: "YOUTUBE",
+    tiktok: "TIKTOK",
+    naver_blog: "NAVER_BLOG",
+    other: "OTHER",
+  };
+
+  return platforms[platform];
+};
+
+const proposalTypeToContractType = (
+  type: CampaignProposalType,
+): Contract["type"] => {
+  if (type === "ppl") return "PPL";
+  if (type === "group_buy") return "공동구매";
+  return "협찬";
+};
+
+const safeMarketplaceProposalChannelUrl = (
+  row: SupabaseMarketplaceContactProposalRow,
+) => {
+  const platformUrl = row.marketplace_platforms?.find((platform) =>
+    isSafeHttpUrl(platform.url),
+  )?.url;
+  if (platformUrl) return platformUrl;
+
+  const handle = row.sender_influencer_handle ?? normalizePublicProfileHandle(row.sender_name);
+  const profileUrl = buildInfluencerPublicProfileUrl(handle);
+  return isSafeHttpUrl(profileUrl) ? profileUrl : "https://yeollock.me";
+};
+
+const buildMarketplaceCampaignDraftClauses = (
+  snapshot: MarketplaceCampaignSnapshot,
+  row: SupabaseMarketplaceContactProposalRow,
+): Contract["clauses"] => {
+  const platforms =
+    snapshot.platforms?.map((platform) => platformLabels[platform]).join(", ") ||
+    "계약 작성 단계에서 확정";
+  const deliverables =
+    snapshot.deliverables?.filter(hasText).join(", ") ||
+    "계약 작성 단계에서 확정";
+
+  return [
+    {
+      clause_id: "campaign_application_scope",
+      category: "캠페인 범위",
+      content: [
+        `캠페인명: ${snapshot.title}`,
+        snapshot.summary ? `모집 설명: ${snapshot.summary}` : undefined,
+        `브랜드: ${snapshot.brandName}`,
+        `신청 내용: ${row.proposal_summary}`,
+      ]
+        .filter((line): line is string => Boolean(line))
+        .join("\n"),
+      status: "PENDING_REVIEW",
+      history: [],
+    },
+    {
+      clause_id: "campaign_application_deliverables",
+      category: "산출물 및 플랫폼",
+      content: `인플루언서는 ${platforms} 채널에서 다음 산출물을 제공한다: ${deliverables}. 세부 업로드 수량, 유지 기간, 검수 기준은 광고주가 초안에서 최종 확인한다.`,
+      status: "PENDING_REVIEW",
+      history: [],
+    },
+    {
+      clause_id: "campaign_application_payment",
+      category: "지급 조건",
+      content: `본 캠페인의 예산 또는 지급 조건은 "${snapshot.budget}"을 기준으로 하며, 세금계산서, 원천징수, 지급일 등 세부 조건은 계약서 확정 전 확인한다.`,
+      status: "PENDING_REVIEW",
+      history: [],
+    },
+    {
+      clause_id: "campaign_application_review",
+      category: "광고 표시 및 검수",
+      content:
+        "콘텐츠에는 관계 법령과 플랫폼 정책에 맞는 광고 표시를 포함한다. 광고주는 업로드 전 검수 기준, 수정 가능 횟수, 최종 업로드 기한을 계약서에서 명확히 확정한다.",
+      status: "PENDING_REVIEW",
+      history: [],
+    },
+  ];
+};
+
+const resolveMarketplaceCampaignSnapshotForProposal = async (
+  row: SupabaseMarketplaceContactProposalRow,
+) => {
+  const storedSnapshot = normalizeMarketplaceCampaignSnapshot(row.campaign_snapshot);
+  if (storedSnapshot) return storedSnapshot;
+
+  if (row.campaign_id) {
+    const campaign = await findMarketplaceCampaignPostById(row.campaign_id);
+    if (campaign) return buildMarketplaceCampaignSnapshot(campaign);
+  }
+
+  return {
+    id: row.campaign_id ?? row.id,
+    title:
+      row.proposal_summary
+        .split("\n")[0]
+        ?.replace(/^캠페인 신청:\s*/, "")
+        .trim() || `${row.target_display_name} 캠페인`,
+    type: row.proposal_type,
+    budget: "협의 가능",
+    summary: row.proposal_summary,
+    brandId: row.target_brand_profile_id ?? "",
+    brandHandle: row.target_handle,
+    brandName: row.target_display_name,
+  } satisfies MarketplaceCampaignSnapshot;
+};
+
+const readMarketplaceProposalForAdvertiserAcceptance = async (
+  auth: AdvertiserSession,
+  proposalId: string,
+) => {
+  if (!useSupabase) {
+    return {
+      ok: false as const,
+      status: 503,
+      error: "Supabase 설정이 필요합니다.",
+    };
+  }
+
+  const organization = await readDefaultOrganizationForProfile(auth.profile.id);
+  if (!organization) {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "광고주 조직 정보를 찾을 수 없습니다.",
+    };
+  }
+
+  const brandRow = await readAdvertiserMarketplaceBrandRow(organization.id);
+  if (!brandRow) {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "캠페인 브랜드 프로필을 찾을 수 없습니다.",
+    };
+  }
+
+  const proposalRows = await readMarketplaceProposalRows(
+    `?select=*&id=eq.${encodeURIComponent(proposalId)}&limit=1`,
+    "marketplace proposal acceptance lookup",
+  );
+  const proposal = proposalRows[0];
+
+  if (!proposal) {
+    return {
+      ok: false as const,
+      status: 404,
+      error: "신청 내역을 찾을 수 없습니다.",
+    };
+  }
+
+  if (
+    proposal.direction !== "influencer_to_brand" ||
+    proposal.target_brand_profile_id !== brandRow.id
+  ) {
+    return {
+      ok: false as const,
+      status: 403,
+      error: "이 신청을 수락할 권한이 없습니다.",
+    };
+  }
+
+  const [withSenderHandle] = await addSenderInfluencerHandlesToMarketplaceProposals([
+    proposal,
+  ]);
+  const [enrichedProposal] = await addPlatformInfoToMarketplaceProposals([
+    withSenderHandle,
+  ]);
+
+  return {
+    ok: true as const,
+    organization,
+    brand: mapBrandProfileRowToMarketplaceProfile(brandRow),
+    proposal: enrichedProposal,
+  };
+};
+
+const createDraftContractFromMarketplaceApplication = async (
+  auth: AdvertiserSession,
+  proposalId: string,
+) => {
+  const acceptance = await readMarketplaceProposalForAdvertiserAcceptance(
+    auth,
+    proposalId,
+  );
+
+  if (!acceptance.ok) {
+    return {
+      ok: false as const,
+      status: acceptance.status,
+      error: acceptance.error,
+    };
+  }
+
+  const { organization, brand, proposal } = acceptance;
+  if (proposal.status === "closed") {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "종료된 신청은 계약 초안으로 전환할 수 없습니다.",
+    };
+  }
+
+  if (proposal.converted_contract_id) {
+    const existing = await readContractWriteContext(proposal.converted_contract_id);
+    if (existing.existingContract) {
+      return {
+        ok: true as const,
+        status: 200,
+        contract: existing.existingContract,
+        alreadyConverted: true,
+      };
+    }
+  }
+
+  const snapshot = await resolveMarketplaceCampaignSnapshotForProposal(proposal);
+  const senderProfile = proposal.sender_profile_id
+    ? await readProfileByUserId(proposal.sender_profile_id)
+    : undefined;
+  const now = new Date().toISOString();
+  const contractId = randomUUID();
+  const platforms =
+    snapshot.platforms && snapshot.platforms.length > 0
+      ? snapshot.platforms.map(marketplacePlatformToContractPlatform)
+      : proposal.marketplace_platforms?.map((platform) =>
+          marketplacePlatformToContractPlatform(platform.platform),
+        ) ?? ["OTHER"];
+  const uniquePlatforms = Array.from(new Set(platforms));
+  const channelUrl = safeMarketplaceProposalChannelUrl(proposal);
+  const influencerContact =
+    senderProfile?.email || proposal.sender_influencer_handle || "계약 작성 단계에서 확인";
+  const contract: Contract = {
+    id: contractId,
+    advertiser_id: auth.profile.id,
+    advertiser_info: {
+      name: organization.name || brand.displayName,
+      manager: auth.profile.email || auth.user.email || auth.profile.name,
+    },
+    type: proposalTypeToContractType(snapshot.type),
+    status: "DRAFT",
+    title: `${snapshot.title} 계약서 초안`,
+    influencer_info: {
+      name: proposal.sender_name,
+      channel_url: channelUrl,
+      contact: influencerContact,
+    },
+    campaign: {
+      budget: snapshot.budget,
+      deadline: snapshot.deadline,
+      upload_due_at: snapshot.deadline,
+      platforms: uniquePlatforms,
+      deliverables:
+        snapshot.deliverables && snapshot.deliverables.length > 0
+          ? snapshot.deliverables
+          : [getProposalTypeLabel(snapshot.type)],
+    },
+    workflow: createWorkflow("DRAFT", {
+      last_message:
+        "캠페인 신청 수락으로 계약 초안이 생성되었습니다. 광고주가 세부 조건을 확인한 뒤 검토 링크를 발급해야 합니다.",
+    }),
+    evidence: createEvidence({
+      share_token_status: "not_issued",
+      audit_ready: false,
+      pdf_status: "not_ready",
+    }),
+    audit_events: [
+      {
+        id: randomUUID(),
+        actor: "advertiser",
+        action: "campaign_application_accepted",
+        description:
+          "광고주가 캠페인 신청을 수락했고, 캠페인 조건을 기반으로 계약 초안이 생성되었습니다.",
+        created_at: now,
+      },
+    ],
+    clauses: buildMarketplaceCampaignDraftClauses(snapshot, proposal),
+    created_at: now,
+    updated_at: now,
+  };
+
+  const validationError = validateContractPayload(contract);
+  if (validationError) {
+    return {
+      ok: false as const,
+      status: 422,
+      error: validationError,
+    };
+  }
+
+  const { store, existingIndex } = await readContractWriteContext(contract.id);
+  await writeStore(mergeContractIntoStore(store, existingIndex, contract));
+  await patchSupabaseRecord(
+    "marketplace_contact_proposals",
+    `?id=eq.${encodeURIComponent(proposal.id)}`,
+    {
+      status: "converted_to_contract",
+      converted_contract_id: contract.id,
+      updated_at: now,
+    },
+    "Supabase marketplace proposal contract conversion",
+  );
+
+  return {
+    ok: true as const,
+    status: 201,
+    contract,
+    alreadyConverted: false,
+  };
+};
+
 const readVerificationRequests = async (): Promise<VerificationRequestRecord[]> => {
   if (useSupabase) {
     return readSupabaseVerificationRequests();
@@ -5515,6 +6549,12 @@ const parseDateDescending = (a: string, b: string) => {
   return (Number.isFinite(right) ? right : 0) - (Number.isFinite(left) ? left : 0);
 };
 
+const parseDateAscending = (a: string, b: string) => {
+  const left = new Date(a).getTime();
+  const right = new Date(b).getTime();
+  return (Number.isFinite(left) ? left : 0) - (Number.isFinite(right) ? right : 0);
+};
+
 const getInfluencerVerificationRequestsForAuth = async (
   auth: InfluencerSession,
 ) => {
@@ -5528,6 +6568,19 @@ const getInfluencerVerificationRequestsForAuth = async (
           normalizeEmail(request.submitted_by_email ?? "") === userEmail)),
   );
 };
+
+const buildApprovedInfluencerPlatforms = (
+  requests: VerificationRequestRecord[],
+): InfluencerDashboardResponse["verification"]["approved_platforms"] =>
+  [...requests]
+    .filter((request) => request.status === "approved" && request.platform && request.platform_handle)
+    .sort((a, b) => parseDateAscending(a.created_at, b.created_at))
+    .map((request) => ({
+      platform: request.platform!,
+      handle: request.platform_handle!,
+      url: request.platform_url,
+      approved_at: request.reviewed_at,
+    }));
 
 const deriveVerificationStatus = (
   requests: VerificationRequestRecord[],
@@ -5741,21 +6794,14 @@ const buildInfluencerScopedVerificationSummary = async (
   auth: InfluencerSession,
 ) => {
   const requests = await getInfluencerVerificationRequestsForAuth(auth);
-  const influencerLatest = requests.sort((a, b) =>
+  const influencerLatest = [...requests].sort((a, b) =>
     parseDateDescending(a.created_at, b.created_at),
   )[0];
   const status = deriveVerificationStatus(
     requests,
     auth.profile.verification_status ?? "not_submitted",
   );
-  const approvedPlatforms = requests
-    .filter((request) => request.status === "approved" && request.platform && request.platform_handle)
-    .map((request) => ({
-      platform: request.platform!,
-      handle: request.platform_handle!,
-      url: request.platform_url,
-      approved_at: request.reviewed_at,
-    }));
+  const approvedPlatforms = buildApprovedInfluencerPlatforms(requests);
 
   return {
     advertiser: emptyVerificationProfile(
@@ -6753,7 +7799,7 @@ const buildInfluencerDashboard = async (
       (request.profile_id === authUser.id ||
         request.submitted_by_email?.trim().toLowerCase() === userEmail),
   );
-  const latestVerification = verificationRequests
+  const latestVerification = [...verificationRequests]
     .sort((a, b) => parseDateDescending(a.created_at, b.created_at))[0];
   const latestVerificationForResponse =
     latestVerification?.status === "not_submitted"
@@ -6764,14 +7810,7 @@ const buildInfluencerDashboard = async (
     (profile?.verification_status as VerificationStatus | undefined) ??
       "not_submitted",
   );
-  const approvedPlatforms = verificationRequests
-    .filter((request) => request.status === "approved" && request.platform && request.platform_handle)
-    .map((request) => ({
-      platform: request.platform!,
-      handle: request.platform_handle!,
-      url: request.platform_url,
-      approved_at: request.reviewed_at,
-    }));
+  const approvedPlatforms = buildApprovedInfluencerPlatforms(verificationRequests);
   const nextDeadline = dashboardContracts
     .map((contract) => contract.due_at)
     .filter((value): value is string => hasText(value))
@@ -8023,6 +9062,140 @@ app.get("/api/marketplace/brands/:handle", async (request, response, next) => {
   }
 });
 
+app.get("/api/marketplace/campaigns", async (_request, response, next) => {
+  try {
+    const brands = await readMarketplaceBrandProfiles();
+
+    response.setHeader("Cache-Control", "no-store");
+    response.json({ campaigns: buildMarketplaceCampaignPosts(brands) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post(
+  "/api/marketplace/campaigns/:campaignId/applications",
+  async (request, response, next) => {
+    try {
+      const influencerAuth = await requireInfluencerSession(request, response);
+      if (!influencerAuth) return;
+
+      const throttle = consumeSensitiveEndpointRateLimit(
+        request,
+        "marketplace_campaign_application",
+        `${influencerAuth.profile.id}:${request.params.campaignId}`,
+      );
+      if (throttle.blocked) {
+        sendSensitiveRateLimitResponse(response, throttle);
+        return;
+      }
+
+      const result = await submitMarketplaceCampaignApplication(
+        influencerAuth,
+        request.params.campaignId,
+      );
+
+      if (!result.ok) {
+        response.status(result.status).json({ error: result.error });
+        return;
+      }
+
+      response.status(result.alreadySubmitted ? 200 : 201).json({
+        proposal: {
+          id: result.proposal.id,
+          status: result.proposal.status,
+          campaign_id: result.proposal.campaign_id,
+          target_handle: result.proposal.target_handle,
+        },
+        already_submitted: result.alreadySubmitted,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+app.get("/api/advertiser/campaigns", async (request, response, next) => {
+  try {
+    const advertiserAuth = await requireAdvertiserSession(request, response);
+    if (!advertiserAuth) return;
+
+    const board = await readAdvertiserCampaignBoard(advertiserAuth);
+
+    response.setHeader("Cache-Control", "no-store");
+    response.json({
+      brand: board.brand ?? null,
+      campaigns: board.campaigns,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/advertiser/campaigns", async (request, response, next) => {
+  try {
+    const advertiserAuth = await requireAdvertiserSession(request, response);
+    if (!advertiserAuth) return;
+
+    const result = await upsertAdvertiserMarketplaceCampaign(
+      advertiserAuth,
+      request.body && typeof request.body === "object"
+        ? (request.body as Record<string, unknown>)
+        : {},
+    );
+
+    if (!result.ok) {
+      response.status(result.status).json({ error: result.error });
+      return;
+    }
+
+    response.status(201).json({
+      brand: result.brand,
+      campaign: result.campaign,
+      campaigns: result.campaigns,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post(
+  "/api/advertiser/marketplace/proposals/:id/accept",
+  async (request, response, next) => {
+    try {
+      const advertiserAuth = await requireAdvertiserSession(request, response);
+      if (!advertiserAuth) return;
+
+      const throttle = consumeSensitiveEndpointRateLimit(
+        request,
+        "marketplace_proposal_accept",
+        `${advertiserAuth.profile.id}:${request.params.id}`,
+      );
+      if (throttle.blocked) {
+        sendSensitiveRateLimitResponse(response, throttle);
+        return;
+      }
+
+      const result = await createDraftContractFromMarketplaceApplication(
+        advertiserAuth,
+        request.params.id,
+      );
+
+      if (!result.ok) {
+        response.status(result.status).json({ error: result.error });
+        return;
+      }
+
+      response.status(result.status).json({
+        contract: result.contract,
+        already_converted: result.alreadyConverted,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
 app.get("/api/influencer/public-profile", async (request, response, next) => {
   try {
     const influencerAuth = await requireInfluencerSession(request, response);
@@ -8052,11 +9225,52 @@ app.put("/api/influencer/public-profile", async (request, response, next) => {
     });
 
     if (!result.ok) {
-      response.status(result.status).json({ error: result.error });
+      const { ok: _ok, status, ...payload } = result;
+      response.status(status).json(payload);
       return;
     }
 
     response.json({ profile: result.profile });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/influencer/public-profile/handle-appeal", async (request, response, next) => {
+  try {
+    const influencerAuth = await requireInfluencerSession(request, response);
+    if (!influencerAuth) return;
+
+    const throttle = consumeSensitiveEndpointRateLimit(
+      request,
+      "public_profile_handle_appeal",
+      influencerAuth.profile.id,
+    );
+    if (throttle.blocked) {
+      sendSensitiveRateLimitResponse(response, throttle);
+      return;
+    }
+
+    const result = await submitInfluencerPublicHandleAppeal({
+      authUser: influencerAuth.user,
+      profile: influencerAuth.profile,
+      body:
+        request.body && typeof request.body === "object"
+          ? (request.body as Record<string, unknown>)
+          : {},
+      request,
+    });
+
+    if (!result.ok) {
+      const { ok: _ok, status, ...payload } = result;
+      response.status(status).json(payload);
+      return;
+    }
+
+    response.status(result.already_submitted ? 200 : 201).json({
+      request: result.request,
+      already_submitted: result.already_submitted,
+    });
   } catch (error) {
     next(error);
   }
