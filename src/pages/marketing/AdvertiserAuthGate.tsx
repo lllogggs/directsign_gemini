@@ -19,6 +19,27 @@ type AdvertiserSessionResponse = {
   error?: string;
 };
 
+const advertiserLoginTrustBadges = [
+  "사업자 인증 후 공유",
+  "검토 링크 상태 기록",
+  "서명 PDF·감사 이력",
+];
+
+const advertiserLoginProcessSummary = [
+  {
+    title: "인증 상태 확인",
+    description: "승인된 광고주만 계약 공유 링크를 열 수 있습니다.",
+  },
+  {
+    title: "계약과 검토 링크 관리",
+    description: "초안, 승인, 수정 요청 상태를 한 곳에서 확인합니다.",
+  },
+  {
+    title: "서명 증빙 보관",
+    description: "완료된 계약은 PDF와 감사 이력으로 남깁니다.",
+  },
+];
+
 export function AdvertiserAuthGate({
   children,
   redirectUnauthenticated = false,
@@ -149,6 +170,9 @@ export function AdvertiserAuthGate({
     return (
       <AuthLoginScreen
         title="광고주 로그인"
+        description="계약 공유 전 인증 상태와 서명 증빙을 확인합니다."
+        trustBadges={advertiserLoginTrustBadges}
+        processSummary={advertiserLoginProcessSummary}
         fields={[
           {
             id: "email",
@@ -174,12 +198,19 @@ export function AdvertiserAuthGate({
         isSubmitting={isSubmitting}
         error={error}
         footer={
-          <div className="flex items-center justify-center gap-3">
+          <div className="flex flex-wrap items-center justify-center gap-3">
             <Link
               to="/signup/advertiser"
               className="text-[13px] font-semibold text-neutral-950 transition hover:text-neutral-600"
             >
               계정 만들기
+            </Link>
+            <span className="h-3 w-px bg-neutral-200" />
+            <Link
+              to="/reset-password?role=advertiser"
+              className="text-[13px] font-semibold text-neutral-500 transition hover:text-neutral-950"
+            >
+              비밀번호 재설정
             </Link>
             <span className="h-3 w-px bg-neutral-200" />
             <Link

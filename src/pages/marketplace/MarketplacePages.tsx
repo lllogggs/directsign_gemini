@@ -20,7 +20,15 @@ import {
   UserRound,
   Youtube,
 } from "lucide-react";
-import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
+import {
+  type FormEvent,
+  type ReactNode,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
@@ -82,7 +90,7 @@ type MarketplaceBrandResponse = {
 function useMarketplaceInfluencers() {
   const [profiles, setProfiles] =
     useState<MarketplaceInfluencerProfile[]>(marketplaceInfluencers);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(marketplaceInfluencers.length === 0);
 
   useEffect(() => {
     let active = true;
@@ -116,7 +124,7 @@ function useMarketplaceInfluencers() {
 function useMarketplaceBrands() {
   const [brands, setBrands] =
     useState<MarketplaceBrandProfile[]>(marketplaceBrands);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(marketplaceBrands.length === 0);
 
   useEffect(() => {
     let active = true;
@@ -148,8 +156,17 @@ function useMarketplaceBrands() {
 }
 
 function useMarketplaceInfluencerProfile(handle: string | undefined) {
-  const [profile, setProfile] = useState<MarketplaceInfluencerProfile | null>(null);
-  const [isLoading, setIsLoading] = useState(Boolean(handle));
+  const fallbackProfile = useMemo(
+    () =>
+      handle
+        ? marketplaceInfluencers.find((item) => item.handle === handle) ?? null
+        : null,
+    [handle],
+  );
+  const [remoteResult, setRemoteResult] = useState<{
+    handle: string;
+    profile: MarketplaceInfluencerProfile | null;
+  } | null>(null);
 
   useEffect(() => {
     if (!handle) return;
@@ -165,30 +182,36 @@ function useMarketplaceInfluencerProfile(handle: string | undefined) {
         return (await response.json()) as MarketplaceInfluencerResponse;
       })
       .then((data) => {
-        if (active) setProfile(data.profile);
+        if (active) setRemoteResult({ handle, profile: data.profile });
       })
       .catch(() => {
         if (active) {
-          setProfile(
-            marketplaceInfluencers.find((item) => item.handle === handle) ?? null,
-          );
+          setRemoteResult({ handle, profile: fallbackProfile });
         }
-      })
-      .finally(() => {
-        if (active) setIsLoading(false);
       });
 
     return () => {
       active = false;
     };
-  }, [handle]);
+  }, [fallbackProfile, handle]);
 
-  return { profile, isLoading };
+  const hasRemoteResult = remoteResult?.handle === handle;
+
+  return {
+    profile: hasRemoteResult ? remoteResult.profile : fallbackProfile,
+    isLoading: Boolean(handle && !fallbackProfile && !hasRemoteResult),
+  };
 }
 
 function useMarketplaceBrandProfile(handle: string | undefined) {
-  const [brand, setBrand] = useState<MarketplaceBrandProfile | null>(null);
-  const [isLoading, setIsLoading] = useState(Boolean(handle));
+  const fallbackBrand = useMemo(
+    () => (handle ? marketplaceBrands.find((item) => item.handle === handle) ?? null : null),
+    [handle],
+  );
+  const [remoteResult, setRemoteResult] = useState<{
+    brand: MarketplaceBrandProfile | null;
+    handle: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!handle) return;
@@ -204,23 +227,25 @@ function useMarketplaceBrandProfile(handle: string | undefined) {
         return (await response.json()) as MarketplaceBrandResponse;
       })
       .then((data) => {
-        if (active) setBrand(data.brand);
+        if (active) setRemoteResult({ handle, brand: data.brand });
       })
       .catch(() => {
         if (active) {
-          setBrand(marketplaceBrands.find((item) => item.handle === handle) ?? null);
+          setRemoteResult({ handle, brand: fallbackBrand });
         }
-      })
-      .finally(() => {
-        if (active) setIsLoading(false);
       });
 
     return () => {
       active = false;
     };
-  }, [handle]);
+  }, [fallbackBrand, handle]);
 
-  return { brand, isLoading };
+  const hasRemoteResult = remoteResult?.handle === handle;
+
+  return {
+    brand: hasRemoteResult ? remoteResult.brand : fallbackBrand,
+    isLoading: Boolean(handle && !fallbackBrand && !hasRemoteResult),
+  };
 }
 
 function useInfluencerPublicProfilePath() {
@@ -515,10 +540,15 @@ export function PublicInfluencerProfilePage() {
         description="핸들이 바뀌었거나 아직 공개되지 않은 프로필입니다."
         backHref="/"
         backLabel="처음으로"
+        showMetrics={false}
       >
         <EmptyMarketplaceState
           title="공개 프로필 없음"
           body="주소를 다시 확인하거나 인플루언서에게 최신 프로필 링크를 요청해 주세요."
+          primaryHref="/advertiser/discover"
+          primaryLabel="인플루언서 찾기"
+          secondaryHref="/intro/advertiser"
+          secondaryLabel="광고주 시작 화면"
         />
       </MarketplaceShell>
     );
@@ -526,24 +556,24 @@ export function PublicInfluencerProfilePage() {
 
   return (
     <main className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950">
-      <header className="border-b border-[#d9e0d9] bg-white/95 backdrop-blur">
+      <header className="border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-[1180px] items-center justify-between px-4 sm:px-6 lg:px-8">
           <Link to="/" className="flex items-center gap-3">
-            <span className="flex h-9 w-9 items-center justify-center rounded-md bg-neutral-950 text-white">
+            <span className="flex h-9 w-9 items-center justify-center rounded-[12px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
               <ShieldCheck className="h-4 w-4" />
             </span>
-            <span className="text-[18px] font-semibold">{PRODUCT_NAME}</span>
+            <span className="font-neo-heavy text-[18px] leading-none tracking-[-0.045em]">{PRODUCT_NAME}</span>
           </Link>
           <Link
             to="/intro/advertiser"
-            className="inline-flex h-10 items-center rounded-md border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
+            className="inline-flex h-10 items-center rounded-[12px] border border-neutral-200 bg-white px-3 text-[13px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
           >
-            광고주 시작
+            광고주 시작하기
           </Link>
         </div>
       </header>
 
-      <section className="border-b border-[#d9e0d9] bg-white">
+      <section className="border-b border-neutral-200/80 bg-white">
         <div className="mx-auto grid max-w-[1180px] gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:px-8">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
@@ -556,7 +586,7 @@ export function PublicInfluencerProfilePage() {
                 <p className="text-[13px] font-semibold text-neutral-500">
                   {formatInfluencerPublicProfileUrl(profile.handle)}
                 </p>
-                <h1 className="mt-2 text-[34px] font-semibold leading-tight text-neutral-950 sm:text-[44px]">
+                <h1 className="font-neo-heavy mt-2 text-[34px] leading-tight tracking-[-0.035em] text-neutral-950 sm:text-[44px]">
                   {profile.displayName}
                 </h1>
                 <p className="mt-3 max-w-2xl break-keep text-[16px] font-medium leading-7 text-neutral-600">
@@ -569,14 +599,14 @@ export function PublicInfluencerProfilePage() {
                   <button
                     type="button"
                     onClick={() => setShowContact(true)}
-                    className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-neutral-950 px-4 text-[14px] font-semibold text-white transition hover:bg-neutral-800"
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-[12px] bg-neutral-950 px-4 text-[14px] font-extrabold text-white transition hover:bg-neutral-800"
                   >
                     <Handshake className="h-4 w-4" />
-                    컨택 제안하기
+                    인플루언서에게 제안하기
                   </button>
                   <Link
                     to="/advertiser/discover"
-                    className="inline-flex h-11 items-center justify-center gap-2 rounded-md border border-neutral-200 bg-white px-4 text-[14px] font-semibold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-[12px] border border-neutral-200 bg-white px-4 text-[14px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
                   >
                     다른 인플루언서 보기
                     <ArrowRight className="h-4 w-4" />
@@ -586,7 +616,7 @@ export function PublicInfluencerProfilePage() {
             </div>
           </div>
 
-          <aside className="rounded-[8px] border border-[#d9e0d9] bg-[#f8faf7] p-4">
+          <aside className="rounded-[14px] border border-neutral-200 bg-[#fbfaf7] p-4">
             <p className="text-[12px] font-semibold text-neutral-500">
               컨택 시작 정보
             </p>
@@ -613,7 +643,7 @@ export function PublicInfluencerProfilePage() {
                   href={platform.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="grid gap-3 rounded-[8px] border border-neutral-200 bg-white p-4 transition hover:border-neutral-300"
+                  className="grid gap-3 rounded-[14px] border border-neutral-200 bg-white p-4 transition hover:border-neutral-300"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <PlatformPill platform={platform.platform} label={platform.label} />
@@ -637,7 +667,7 @@ export function PublicInfluencerProfilePage() {
               {profile.portfolio.map((item) => (
                 <article
                   key={`${item.brand}-${item.title}`}
-                  className="rounded-[8px] border border-neutral-200 bg-white p-4"
+                  className="rounded-[14px] border border-neutral-200 bg-white p-4"
                 >
                   <p className="text-[12px] font-semibold text-neutral-500">
                     {item.brand}
@@ -712,10 +742,15 @@ export function PublicBrandProfilePage() {
         description="핸들이 바뀌었거나 아직 공개되지 않은 브랜드 프로필입니다."
         backHref="/influencer/brands"
         backLabel="브랜드 찾기"
+        showMetrics={false}
       >
         <EmptyMarketplaceState
           title="공개 브랜드 없음"
           body="주소를 다시 확인하거나 브랜드에게 최신 프로필 링크를 요청해 주세요."
+          primaryHref="/influencer/brands"
+          primaryLabel="브랜드 찾기"
+          secondaryHref="/intro/influencer"
+          secondaryLabel="인플루언서 시작 화면"
         />
       </MarketplaceShell>
     );
@@ -723,24 +758,24 @@ export function PublicBrandProfilePage() {
 
   return (
     <main className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950">
-      <header className="border-b border-[#d9e0d9] bg-white/95 backdrop-blur">
+      <header className="border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-[1180px] items-center justify-between px-4 sm:px-6 lg:px-8">
           <Link to="/" className="flex items-center gap-3">
-            <span className="flex h-9 w-9 items-center justify-center rounded-md bg-neutral-950 text-white">
+            <span className="flex h-9 w-9 items-center justify-center rounded-[12px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
               <ShieldCheck className="h-4 w-4" />
             </span>
-            <span className="text-[18px] font-semibold">{PRODUCT_NAME}</span>
+            <span className="font-neo-heavy text-[18px] leading-none tracking-[-0.045em]">{PRODUCT_NAME}</span>
           </Link>
           <Link
             to="/intro/influencer"
-            className="inline-flex h-10 items-center rounded-md border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
+            className="inline-flex h-10 items-center rounded-[12px] border border-neutral-200 bg-white px-3 text-[13px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
           >
-            인플루언서 시작
+            인플루언서 시작하기
           </Link>
         </div>
       </header>
 
-      <section className="border-b border-[#d9e0d9] bg-white">
+      <section className="border-b border-neutral-200/80 bg-white">
         <div className="mx-auto grid max-w-[1180px] gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:px-8">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
@@ -753,7 +788,7 @@ export function PublicBrandProfilePage() {
                 <p className="text-[13px] font-semibold text-neutral-500">
                   yeollock.me/brands/{brand.handle}
                 </p>
-                <h1 className="mt-2 text-[34px] font-semibold leading-tight text-neutral-950 sm:text-[44px]">
+                <h1 className="font-neo-heavy mt-2 text-[34px] leading-tight tracking-[-0.035em] text-neutral-950 sm:text-[44px]">
                   {brand.displayName}
                 </h1>
                 <p className="mt-3 max-w-2xl break-keep text-[16px] font-medium leading-7 text-neutral-600">
@@ -766,14 +801,14 @@ export function PublicBrandProfilePage() {
                   <button
                     type="button"
                     onClick={() => setShowContact(true)}
-                    className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-neutral-950 px-4 text-[14px] font-semibold text-white transition hover:bg-neutral-800"
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-[12px] bg-neutral-950 px-4 text-[14px] font-extrabold text-white transition hover:bg-neutral-800"
                   >
                     <Handshake className="h-4 w-4" />
-                    역제안하기
+                    브랜드에 역제안하기
                   </button>
                   <Link
                     to="/influencer/brands"
-                    className="inline-flex h-11 items-center justify-center gap-2 rounded-md border border-neutral-200 bg-white px-4 text-[14px] font-semibold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-[12px] border border-neutral-200 bg-white px-4 text-[14px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
                   >
                     다른 브랜드 보기
                     <ArrowRight className="h-4 w-4" />
@@ -783,7 +818,7 @@ export function PublicBrandProfilePage() {
             </div>
           </div>
 
-          <aside className="rounded-[8px] border border-[#d9e0d9] bg-[#f8faf7] p-4">
+          <aside className="rounded-[14px] border border-neutral-200 bg-[#fbfaf7] p-4">
             <p className="text-[12px] font-semibold text-neutral-500">
               제안 시작 정보
             </p>
@@ -807,7 +842,7 @@ export function PublicBrandProfilePage() {
               {brand.activeCampaigns.map((campaign) => (
                 <article
                   key={`${campaign.title}-${campaign.type}`}
-                  className="rounded-[8px] border border-neutral-200 bg-white p-4"
+                  className="rounded-[14px] border border-neutral-200 bg-white p-4"
                 >
                   <p className="text-[12px] font-semibold text-neutral-500">
                     {proposalTypeLabels[campaign.type]}
@@ -866,6 +901,7 @@ function MarketplaceShell({
   profileCount,
   brandCount,
   actions,
+  showMetrics = true,
   children,
 }: {
   eyebrow: string;
@@ -876,6 +912,7 @@ function MarketplaceShell({
   profileCount?: number;
   brandCount?: number;
   actions?: ReactNode;
+  showMetrics?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -913,11 +950,13 @@ function MarketplaceShell({
                 {description}
               </p>
             </div>
-            <div className="grid grid-cols-3 gap-2 rounded-[18px] border border-neutral-200 bg-white p-2 shadow-[0_12px_34px_rgba(15,23,42,0.04)] sm:w-[420px]">
-              <MiniMetric label="공개 프로필" value={(profileCount ?? marketplaceInfluencers.length).toString()} />
-              <MiniMetric label="입점 브랜드" value={(brandCount ?? marketplaceBrands.length).toString()} />
-              <MiniMetric label="계약 전환" value="검토 후" />
-            </div>
+            {showMetrics ? (
+              <div className="grid grid-cols-3 gap-2 rounded-[18px] border border-neutral-200 bg-white p-2 shadow-[0_12px_34px_rgba(15,23,42,0.04)] sm:w-[420px]">
+                <MiniMetric label="공개 프로필" value={(profileCount ?? marketplaceInfluencers.length).toString()} />
+                <MiniMetric label="입점 브랜드" value={(brandCount ?? marketplaceBrands.length).toString()} />
+                <MiniMetric label="계약 전환" value="검토 후" />
+              </div>
+            ) : null}
           </div>
         </div>
       </section>
@@ -958,7 +997,7 @@ function InfluencerDiscoveryCard({
           className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-[10px] bg-neutral-950 px-3 text-[12px] font-extrabold text-white transition hover:bg-neutral-800"
         >
           <Send className="h-3.5 w-3.5" />
-          제안
+          제안하기
         </button>
       </div>
 
@@ -1030,7 +1069,7 @@ function BrandDiscoveryCard({
           className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-[10px] bg-neutral-950 px-3 text-[12px] font-extrabold text-white transition hover:bg-neutral-800"
         >
           <Send className="h-3.5 w-3.5" />
-          제안
+          역제안
         </button>
       </div>
 
@@ -1093,6 +1132,7 @@ function InfluencerContactDialog({
     proposalType: profile.collaborationTypes[0] ?? "sponsored_post",
     proposalSummary: "",
   });
+  const loginNext = encodeURIComponent(getInfluencerProfilePath(profile));
   const canSubmit =
     form.brandName.trim().length > 0 &&
     form.brandIntro.trim().length > 0 &&
@@ -1137,7 +1177,7 @@ function InfluencerContactDialog({
       {submitted ? (
         <ProposalSubmitted
           title="제안이 저장됐습니다"
-          body="브랜드 소개와 광고 형태가 서버에 저장됐습니다. 이후 메시지함과 계약 작성 흐름으로 이어 붙일 수 있습니다."
+          body="브랜드 소개와 광고 형태가 메시지함에 저장됐습니다. 계약으로 진행할 제안인지 검토한 뒤 계약 작성 흐름으로 넘길 수 있습니다."
           actionHref="/advertiser/messages"
           actionLabel="메시지함 보기"
           onClose={onClose}
@@ -1201,9 +1241,17 @@ function InfluencerContactDialog({
             />
           </FormField>
           {error ? (
-            <p className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] font-semibold text-rose-700">
-              {error}
-            </p>
+            <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2">
+              <p className="text-[12px] font-semibold text-rose-700">{error}</p>
+              {error.includes("로그인") ? (
+                <Link
+                  to={`/login/advertiser?next=${loginNext}`}
+                  className="mt-2 inline-flex h-9 items-center rounded-md bg-neutral-950 px-3 text-[12px] font-semibold text-white transition hover:bg-neutral-800"
+                >
+                  광고주 로그인하고 계속
+                </Link>
+              ) : null}
+            </div>
           ) : null}
           <button
             type="submit"
@@ -1236,6 +1284,7 @@ function BrandContactDialog({
     proposalType: brand.proposalTypes[0] ?? "sponsored_post",
     proposalSummary: "",
   });
+  const loginNext = encodeURIComponent(getBrandProfilePath(brand));
   const canSubmit =
     form.creatorName.trim().length > 0 &&
     form.channelIntro.trim().length > 0 &&
@@ -1280,7 +1329,7 @@ function BrandContactDialog({
       {submitted ? (
         <ProposalSubmitted
           title="역제안이 저장됐습니다"
-          body="내 채널 소개와 광고 형태가 서버에 저장됐습니다. 이후 메시지함과 계약 작성 흐름으로 이어 붙일 수 있습니다."
+          body="내 채널 소개와 광고 형태가 메시지함에 저장됐습니다. 브랜드가 검토할 조건과 이후 계약 전환 상태를 같은 화면에서 확인할 수 있습니다."
           actionHref="/influencer/messages"
           actionLabel="메시지함 보기"
           onClose={onClose}
@@ -1347,9 +1396,17 @@ function BrandContactDialog({
             />
           </FormField>
           {error ? (
-            <p className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] font-semibold text-rose-700">
-              {error}
-            </p>
+            <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2">
+              <p className="text-[12px] font-semibold text-rose-700">{error}</p>
+              {error.includes("로그인") ? (
+                <Link
+                  to={`/login/influencer?next=${loginNext}`}
+                  className="mt-2 inline-flex h-9 items-center rounded-md bg-neutral-950 px-3 text-[12px] font-semibold text-white transition hover:bg-neutral-800"
+                >
+                  인플루언서 로그인하고 계속
+                </Link>
+              ) : null}
+            </div>
           ) : null}
           <button
             type="submit"
@@ -1374,13 +1431,82 @@ function DialogFrame({
   onClose: () => void;
   children: ReactNode;
 }) {
+  const titleId = useId();
+  const panelRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const previousActiveElement =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.setTimeout(() => panelRef.current?.focus(), 0);
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+
+      if (event.key !== "Tab") return;
+
+      const focusableElements = (
+        panelRef.current
+          ? Array.from(
+              panelRef.current.querySelectorAll(
+                'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+              ),
+            )
+          : []
+      ).filter((element): element is HTMLElement => element instanceof HTMLElement);
+
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        panelRef.current?.focus();
+        return;
+      }
+
+      const first = focusableElements[0];
+      const last = focusableElements[focusableElements.length - 1];
+      const active = document.activeElement;
+
+      if (event.shiftKey && active === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousActiveElement?.focus();
+    };
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-end bg-neutral-950/40 px-0 sm:items-center sm:justify-center sm:px-4">
-      <section className="max-h-[92vh] w-full overflow-y-auto rounded-t-[8px] border border-neutral-200 bg-white p-4 shadow-[0_24px_70px_rgba(15,23,42,0.18)] sm:max-w-[560px] sm:rounded-[8px] sm:p-5">
+    <div
+      className="fixed inset-0 z-50 flex items-end bg-neutral-950/40 px-0 sm:items-center sm:justify-center sm:px-4"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        className="max-h-[92vh] w-full overflow-y-auto rounded-t-[8px] border border-neutral-200 bg-white p-4 shadow-[0_24px_70px_rgba(15,23,42,0.18)] outline-none sm:max-w-[560px] sm:rounded-[8px] sm:p-5"
+      >
         <div className="mb-4 flex items-start justify-between gap-3 border-b border-neutral-200 pb-4">
           <div>
             <p className="text-[12px] font-semibold text-neutral-500">상호 컨택</p>
-            <h2 className="mt-1 text-[20px] font-semibold text-neutral-950">
+            <h2 id={titleId} className="mt-1 text-[20px] font-semibold text-neutral-950">
               {title}
             </h2>
           </div>
@@ -1629,9 +1755,17 @@ function MiniMetric({ label, value }: { label: string; value: string }) {
 function EmptyMarketplaceState({
   title,
   body,
+  primaryHref,
+  primaryLabel,
+  secondaryHref,
+  secondaryLabel,
 }: {
   title: string;
   body: string;
+  primaryHref?: string;
+  primaryLabel?: string;
+  secondaryHref?: string;
+  secondaryLabel?: string;
 }) {
   return (
     <section className="flex min-h-[240px] flex-col items-center justify-center px-6 py-10 text-center">
@@ -1642,6 +1776,26 @@ function EmptyMarketplaceState({
       <p className="mt-2 max-w-md text-[13px] font-medium leading-6 text-neutral-600">
         {body}
       </p>
+      {(primaryHref && primaryLabel) || (secondaryHref && secondaryLabel) ? (
+        <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+          {primaryHref && primaryLabel ? (
+            <Link
+              to={primaryHref}
+              className="inline-flex h-10 items-center justify-center rounded-md bg-neutral-950 px-4 text-[13px] font-semibold text-white transition hover:bg-neutral-800"
+            >
+              {primaryLabel}
+            </Link>
+          ) : null}
+          {secondaryHref && secondaryLabel ? (
+            <Link
+              to={secondaryHref}
+              className="inline-flex h-10 items-center justify-center rounded-md border border-neutral-200 bg-white px-4 text-[13px] font-semibold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
+            >
+              {secondaryLabel}
+            </Link>
+          ) : null}
+        </div>
+      ) : null}
     </section>
   );
 }

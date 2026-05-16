@@ -1,5 +1,5 @@
 import React from "react";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, CheckCircle2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { PRODUCT_NAME } from "../domain/brand";
 
@@ -18,6 +18,11 @@ export interface AuthLoginField {
 interface AuthLoginScreenProps {
   title: string;
   description?: string;
+  trustBadges?: string[];
+  processSummary?: Array<{
+    title: string;
+    description: string;
+  }>;
   fields: AuthLoginField[];
   children?: React.ReactNode;
   submitLabel: string;
@@ -32,6 +37,8 @@ interface AuthLoginScreenProps {
 export function AuthLoginScreen({
   title,
   description,
+  trustBadges,
+  processSummary,
   fields,
   children,
   submitLabel,
@@ -78,6 +85,38 @@ export function AuthLoginScreen({
                     <p className="mt-2 text-[14px] font-semibold leading-6 text-neutral-500">
                       {description}
                     </p>
+                  ) : null}
+                  {trustBadges && trustBadges.length > 0 ? (
+                    <ul className="mt-4 flex flex-wrap gap-2">
+                      {trustBadges.map((badge) => (
+                        <li
+                          key={badge}
+                          className="inline-flex min-h-8 items-center gap-1.5 rounded-full border border-[#d8e2d6] bg-[#f6f8f4] px-3 text-[11px] font-bold leading-4 text-[#3f4a40]"
+                        >
+                          <CheckCircle2 className="h-3.5 w-3.5 text-[#2563eb]" />
+                          <span>{badge}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  {processSummary && processSummary.length > 0 ? (
+                    <ol className="mt-5 divide-y divide-neutral-100 border-y border-neutral-100">
+                      {processSummary.map((step, index) => (
+                        <li key={step.title} className="flex gap-3 py-3 text-left">
+                          <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-neutral-950 text-[10px] font-bold leading-none text-white">
+                            {index + 1}
+                          </span>
+                          <span className="min-w-0">
+                            <strong className="block text-[12px] font-bold text-neutral-900">
+                              {step.title}
+                            </strong>
+                            <span className="mt-0.5 block text-[12px] font-semibold leading-5 text-neutral-500">
+                              {step.description}
+                            </span>
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
                   ) : null}
                 </div>
 

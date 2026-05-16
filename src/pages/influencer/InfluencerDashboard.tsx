@@ -477,7 +477,7 @@ export function InfluencerDashboard() {
         credentials: "include",
       });
     } catch (error) {
-      console.warn("[Yeollock] influencer logout request failed", error);
+      console.warn(`[${PRODUCT_NAME}] influencer logout request failed`, error);
     } finally {
       navigate("/login/influencer", { replace: true });
     }
@@ -518,7 +518,7 @@ export function InfluencerDashboard() {
               className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-2.5 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
             >
               <Store className="h-3.5 w-3.5" strokeWidth={2} />
-              <span className="hidden sm:inline">브랜드 찾기</span>
+              <span>브랜드 찾기</span>
             </button>
             <button
               type="button"
@@ -526,7 +526,7 @@ export function InfluencerDashboard() {
               className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-2.5 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
             >
               <Megaphone className="h-3.5 w-3.5" strokeWidth={2} />
-              <span className="hidden sm:inline">모집글</span>
+              <span>모집글</span>
             </button>
             <button
               type="button"
@@ -545,13 +545,13 @@ export function InfluencerDashboard() {
               title="로그아웃"
             >
               <LogOut className="h-3.5 w-3.5" strokeWidth={2} />
-              <span className="hidden sm:inline">로그아웃</span>
+              <span>로그아웃</span>
             </button>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto w-full min-w-0 max-w-[1500px] px-3 py-2 sm:px-5 lg:h-[calc(100vh-48px)] lg:overflow-hidden lg:px-6">
+      <main className="mx-auto w-full min-w-0 max-w-[1500px] px-3 py-2 sm:px-5 lg:min-h-[calc(100vh-48px)] lg:px-6">
         <section className="min-w-0 overflow-hidden rounded-[12px] border border-neutral-200 bg-[#fdfdfb] shadow-[0_16px_44px_rgba(23,26,23,0.07)] lg:flex lg:h-full lg:flex-col">
           <div className="border-b border-[#d9e0d9] bg-white px-4 py-2">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -661,7 +661,7 @@ export function InfluencerDashboard() {
 }
 
 function DashboardShell({ children }: { children: React.ReactNode }) {
-  return <div className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950 lg:h-screen lg:overflow-hidden">{children}</div>;
+  return <div className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950">{children}</div>;
 }
 
 function MessageCenterButton({
@@ -679,12 +679,12 @@ function MessageCenterButton({
     <button
       type="button"
       onClick={onClick}
-      className="relative inline-flex h-8 w-8 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-0 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950 sm:w-auto sm:justify-start sm:px-2.5"
+      className="relative inline-flex h-8 w-auto shrink-0 items-center justify-start gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-2.5 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
       aria-label="메시지함"
       title="메시지함"
     >
       <MessageSquareText className="h-3.5 w-3.5" strokeWidth={2} />
-      <span className="hidden sm:inline">메시지함</span>
+      <span>메시지함</span>
       {badge ? (
         <span className="absolute right-0 top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-extrabold tabular-nums text-white ring-2 ring-white">
           {badge > 9 ? "9+" : badge}
@@ -1340,7 +1340,7 @@ function EmptyContracts({ hasQuery }: { hasQuery: boolean }) {
       <p className="mt-1 max-w-md text-[12px] leading-5 text-[#7d857f]">
         {hasQuery
           ? "검색어를 줄이거나 전체로 바꿔보세요."
-          : "브랜드가 Yeollock 계약 링크를 보내면 이곳에 표시됩니다."}
+          : `브랜드가 ${PRODUCT_NAME} 계약 링크를 보내면 이곳에 표시됩니다.`}
       </p>
     </section>
   );
@@ -1530,35 +1530,58 @@ function ContractTable({
       </div>
       <div className="max-h-[620px] divide-y divide-[#edf1ed] overflow-y-auto lg:max-h-none lg:min-h-0 lg:flex-1">
         {contracts.length > 0 ? (
-          contracts.map((contract) => (
+          contracts.map((contract) => {
+            const advertiserName = removeInternalTestLabel(
+              contract.advertiser_name,
+              "광고주",
+            );
+            const amountLabel = formatDashboardAmountLabel(contract.fee_label);
+
+            return (
             <button
               key={contract.id}
               type="button"
               onClick={() => onOpen(contract)}
-              className="group grid w-full gap-2 px-3 py-1.5 text-left transition-colors hover:bg-[#f8faf7] lg:min-h-[38px] lg:grid-cols-[minmax(155px,0.46fr)_minmax(120px,0.36fr)_minmax(320px,1fr)_minmax(145px,0.42fr)_minmax(124px,0.36fr)] lg:items-center"
+              className="group grid w-full gap-2 px-3 py-2 text-left transition-colors hover:bg-[#f8faf7] lg:min-h-[38px] lg:grid-cols-[minmax(155px,0.46fr)_minmax(120px,0.36fr)_minmax(320px,1fr)_minmax(145px,0.42fr)_minmax(124px,0.36fr)] lg:items-center lg:py-1.5"
             >
-              <div className="min-w-0">
+              <div className="flex min-w-0 items-center justify-between gap-2 lg:block">
                 <PlatformPills contract={contract} />
+                <span className="shrink-0 lg:hidden">
+                  <StageBadge stage={contract.stage} dense />
+                </span>
               </div>
-              <div className="min-w-0">
+              <div className="hidden min-w-0 lg:block">
                 <p className="truncate text-[12px] font-semibold text-[#303630]">
-                  {removeInternalTestLabel(contract.advertiser_name, "광고주")}
+                  {advertiserName}
                 </p>
               </div>
               <div className="min-w-0">
-                <div className="flex min-w-0 flex-wrap items-center gap-2">
-                  <p className="min-w-0 truncate text-[13px] font-semibold text-[#171a17]">
-                    {formatDashboardContractTitle(contract.title)}
-                  </p>
-                  <span className="lg:hidden">
-                    <StageBadge stage={contract.stage} dense />
+                <p className="min-w-0 truncate text-[13px] font-semibold text-[#171a17]">
+                  {formatDashboardContractTitle(contract.title)}
+                </p>
+                <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-semibold lg:hidden">
+                  <span className="inline-flex min-w-0 max-w-full items-center gap-1">
+                    <span className="shrink-0 text-[#8b938d]">광고주</span>
+                    <span className="min-w-0 truncate text-[#303630]">
+                      {advertiserName}
+                    </span>
+                  </span>
+                  <span aria-hidden="true" className="h-3 w-px bg-[#d9e0d9]" />
+                  <span className="inline-flex min-w-0 max-w-full items-center gap-1">
+                    <span className="shrink-0 text-[#8b938d]">금액</span>
+                    <span className="min-w-0 truncate text-[#303630]">
+                      {amountLabel}
+                    </span>
                   </span>
                 </div>
               </div>
-              <PreviewAmount value={formatDashboardAmountLabel(contract.fee_label)} />
+              <div className="hidden min-w-0 lg:block">
+                <PreviewAmount value={amountLabel} />
+              </div>
               <StageTiming contract={contract} />
             </button>
-          ))
+            );
+          })
         ) : (
           <EmptyContracts hasQuery={totalContracts > 0} />
         )}
@@ -1777,7 +1800,7 @@ function StageTiming({
   contract: InfluencerDashboardContract;
 }) {
   return (
-    <div className="min-w-0">
+    <div className="hidden min-w-0 lg:block">
       <StageBadge stage={contract.stage} />
     </div>
   );

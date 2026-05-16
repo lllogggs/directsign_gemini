@@ -543,6 +543,24 @@ describe("yeollock.me security regressions", () => {
     assert.match(server, /buildServerAuthoredContract/);
   });
 
+  it("keeps legacy share token decrypt warnings opt-in and deduplicated", () => {
+    const server = read("server/index.ts");
+    const decryptStart = server.indexOf("const decryptShareTokenFromLegacyStore");
+    const decryptEnd = server.indexOf("const normalizeContract", decryptStart);
+    const decryptBlock = server.slice(decryptStart, decryptEnd);
+
+    assert.match(server, /DIRECTSIGN_LOG_LEGACY_TOKEN_DECRYPT_WARNINGS/);
+    assert.match(server, /loggedLegacyShareTokenDecryptFailures/);
+    assert.match(server, /maxLoggedLegacyShareTokenDecryptFailures/);
+    assert.match(decryptBlock, /if \(logLegacyShareTokenDecryptWarnings\)/);
+    assert.match(decryptBlock, /createHash\("sha256"\)\.update\(value\)/);
+    assert.match(decryptBlock, /console\.warn\(`/);
+    assert.doesNotMatch(
+      decryptBlock,
+      /console\.warn\("\[yeollock\.me\] failed to decrypt legacy share token"\)/,
+    );
+  });
+
   it("rejects unsafe external contract URLs before they reach user-facing links", () => {
     const server = read("server/index.ts");
     const builder = read("src/pages/marketing/ContractBuilder.tsx");

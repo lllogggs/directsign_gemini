@@ -296,7 +296,7 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
     try {
       await apiFetch("/api/admin/logout", { method: "POST" });
     } catch (error) {
-      console.warn("[Yeollock] admin logout request failed", error);
+      console.warn(`[${PRODUCT_NAME}] admin logout request failed`, error);
     } finally {
       setIsAuthenticated(false);
       setMetrics(emptyMetrics);

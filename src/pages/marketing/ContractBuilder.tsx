@@ -11,9 +11,10 @@ import {
 import { createShareToken } from "../../domain/contracts";
 import { buildContractShareUrl } from "../../domain/links";
 import {
-  verificationStatusLabel,
   verificationStatusTone,
+  type VerificationStatus,
 } from "../../domain/verification";
+import { removeInternalTestLabel } from "../../domain/display";
 import { useVerificationSummary } from "../../hooks/useVerificationSummary";
 import { PRODUCT_NAME } from "../../domain/brand";
 import { Button } from "@/components/ui/button";
@@ -415,6 +416,47 @@ const buildWorkflow = (status: ContractStatus): Contract["workflow"] => {
   };
 };
 
+function getAdvertiserVerificationBuilderCopy(
+  status: VerificationStatus,
+  isLoading: boolean,
+) {
+  if (isLoading) {
+    return {
+      label: "상태 확인 중",
+      helper: "사업자 인증 상태를 확인한 뒤 공유 가능 여부를 표시합니다.",
+      actionLabel: "인증 상태 보기",
+    };
+  }
+
+  const copies: Record<
+    VerificationStatus,
+    { label: string; helper: string; actionLabel: string }
+  > = {
+    approved: {
+      label: "인증 완료",
+      helper: "계약 공유 링크를 생성하고 인플루언서에게 발송할 수 있습니다.",
+      actionLabel: "인증 정보 보기",
+    },
+    pending: {
+      label: "검수 중",
+      helper: "인증 요청이 접수되었습니다. 검수 완료 전에는 초안 저장만 가능하고 공유 링크 발송은 차단됩니다.",
+      actionLabel: "검수 상태 보기",
+    },
+    rejected: {
+      label: "재제출 필요",
+      helper: "반려 사유를 확인하고 새 증빙으로 다시 제출해야 공유 링크를 발송할 수 있습니다.",
+      actionLabel: "재제출",
+    },
+    not_submitted: {
+      label: "제출 필요",
+      helper: "사업자 인증을 제출해야 인플루언서에게 공유 링크를 보낼 수 있습니다.",
+      actionLabel: "사업자 인증 제출",
+    },
+  };
+
+  return copies[status];
+}
+
 export function ContractBuilder() {
   const navigate = useNavigate();
   const addContract = useAppStore((state) => state.addContract);
@@ -428,12 +470,29 @@ export function ContractBuilder() {
   const advertiserVerificationStatus =
     verificationSummary?.advertiser.status ?? "not_submitted";
   const canSendContract = advertiserVerificationStatus === "approved";
+  const verificationCopy = getAdvertiserVerificationBuilderCopy(
+    advertiserVerificationStatus,
+    isVerificationLoading,
+  );
+  const advertiserDefaults = verificationSummary?.advertiser;
+  const defaultAdvertiserName = removeInternalTestLabel(
+    advertiserDefaults?.latest_request?.subject_name ||
+      advertiserDefaults?.account?.company_name,
+  );
+  const defaultAdvertiserManager = removeInternalTestLabel(
+    advertiserDefaults?.latest_request?.submitted_by_name ||
+      advertiserDefaults?.account?.name,
+  );
 
   const [step, setStep] = useState<StepId>(1);
   const [draft, setDraft] = useState<ContractDraft>(INITIAL_DRAFT);
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   const [savedContractId, setSavedContractId] = useState("");
   const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
+  const [editedAdvertiserFields, setEditedAdvertiserFields] = useState({
+    name: false,
+    manager: false,
+  });
   const [result, setResult] = useState<{
     mode: ResultMode;
     link?: string;
@@ -441,8 +500,29 @@ export function ContractBuilder() {
   } | null>(null);
   const [copied, setCopied] = useState(false);
 
+  const draftWithAdvertiserDefaults = useMemo(
+    () => ({
+      ...draft,
+      advertiserName: editedAdvertiserFields.name
+        ? draft.advertiserName
+        : draft.advertiserName || defaultAdvertiserName,
+      advertiserManager: editedAdvertiserFields.manager
+        ? draft.advertiserManager
+        : draft.advertiserManager || defaultAdvertiserManager,
+    }),
+    [
+      defaultAdvertiserManager,
+      defaultAdvertiserName,
+      draft,
+      editedAdvertiserFields.manager,
+      editedAdvertiserFields.name,
+    ],
+  );
   const clauses = useMemo(() => buildContractClauses(draft), [draft]);
-  const allErrors = useMemo(() => validateContractDraft(draft), [draft]);
+  const allErrors = useMemo(
+    () => validateContractDraft(draftWithAdvertiserDefaults),
+    [draftWithAdvertiserDefaults],
+  );
   const stepErrors = validationErrors.filter((error) => error.step === step);
   const currentStepHasBlockingError = allErrors.some((error) => error.step === step);
   const shareResultState =
@@ -555,7 +635,7 @@ export function ContractBuilder() {
   };
 
   const goNext = () => {
-    const nextErrors = validateContractDraft(draft).filter(
+    const nextErrors = validateContractDraft(draftWithAdvertiserDefaults).filter(
       (error) => error.step === step,
     );
 
@@ -575,50 +655,55 @@ export function ContractBuilder() {
 
   const buildContractPayload = (
     status: ContractStatus,
+    sourceDraft: ContractDraft,
     shareToken?: string,
-  ): Omit<Contract, "id" | "created_at" | "updated_at"> => ({
-    advertiser_id: "adv_1",
-    advertiser_info: {
-      name: draft.advertiserName.trim(),
-      manager: draft.advertiserManager.trim() || undefined,
-    },
-    title: draft.title.trim(),
-    type: draft.type,
-    status,
-    influencer_info: {
-      name: draft.influencerName.trim(),
-      channel_url: draft.influencerUrl.trim(),
-      contact: draft.influencerContact.trim(),
-    },
-    campaign: {
-      budget: draft.payment.trim(),
-      start_date: draft.campaignStart,
-      end_date: draft.campaignEnd,
-      upload_due_at: draft.uploadDueDate,
-      review_due_at: draft.reviewDueDate,
-      revision_limit: draft.revisionLimit.trim(),
-      disclosure_text: draft.disclosureText.trim(),
-      tracking_link: draft.trackingLink.trim() || undefined,
-      period:
-        draft.campaignStart && draft.campaignEnd
-          ? `${draft.campaignStart} - ${draft.campaignEnd}`
-          : undefined,
-      platforms: getSelectedPlatforms(draft),
-      deliverables: getDeliverableRows(draft)
-        .filter((row) => row.channel)
-        .map((row) => `${row.channel} ${row.postCount} / ${row.duration}`),
-    },
-    workflow: buildWorkflow(status),
-    evidence: {
-      share_token_status: status === "DRAFT" ? "not_issued" : "active",
-      share_token: status === "DRAFT" ? undefined : shareToken,
-      share_token_expires_at: status === "DRAFT" ? undefined : addDays(7),
-      audit_ready: status !== "DRAFT",
-      pdf_status: status === "DRAFT" ? "not_ready" : "draft_ready",
-    },
-    audit_events: [],
-    clauses,
-  });
+  ): Omit<Contract, "id" | "created_at" | "updated_at"> => {
+    const draft = sourceDraft;
+
+    return {
+      advertiser_id: "adv_1",
+      advertiser_info: {
+        name: draft.advertiserName.trim(),
+        manager: draft.advertiserManager.trim() || undefined,
+      },
+      title: draft.title.trim(),
+      type: draft.type,
+      status,
+      influencer_info: {
+        name: draft.influencerName.trim(),
+        channel_url: draft.influencerUrl.trim(),
+        contact: draft.influencerContact.trim(),
+      },
+      campaign: {
+        budget: draft.payment.trim(),
+        start_date: draft.campaignStart,
+        end_date: draft.campaignEnd,
+        upload_due_at: draft.uploadDueDate,
+        review_due_at: draft.reviewDueDate,
+        revision_limit: draft.revisionLimit.trim(),
+        disclosure_text: draft.disclosureText.trim(),
+        tracking_link: draft.trackingLink.trim() || undefined,
+        period:
+          draft.campaignStart && draft.campaignEnd
+            ? `${draft.campaignStart} - ${draft.campaignEnd}`
+            : undefined,
+        platforms: getSelectedPlatforms(draft),
+        deliverables: getDeliverableRows(draft)
+          .filter((row) => row.channel)
+          .map((row) => `${row.channel} ${row.postCount} / ${row.duration}`),
+      },
+      workflow: buildWorkflow(status),
+      evidence: {
+        share_token_status: status === "DRAFT" ? "not_issued" : "active",
+        share_token: status === "DRAFT" ? undefined : shareToken,
+        share_token_expires_at: status === "DRAFT" ? undefined : addDays(7),
+        audit_ready: status !== "DRAFT",
+        pdf_status: status === "DRAFT" ? "not_ready" : "draft_ready",
+      },
+      audit_events: [],
+      clauses,
+    };
+  };
 
   const saveContract = (mode: ResultMode) => {
     if (mode === "share" && !canSendContract) {
@@ -633,7 +718,8 @@ export function ContractBuilder() {
       return;
     }
 
-    const errors = validateContractDraft(draft);
+    const draftToSave = draftWithAdvertiserDefaults;
+    const errors = validateContractDraft(draftToSave);
 
     if (errors.length > 0) {
       setValidationErrors(errors);
@@ -647,7 +733,7 @@ export function ContractBuilder() {
       status === "DRAFT"
         ? undefined
         : (existing?.evidence?.share_token ?? createShareToken());
-    const payload = buildContractPayload(status, shareToken);
+    const payload = buildContractPayload(status, draftToSave, shareToken);
     const now = new Date().toISOString();
     const event = {
       id: `audit_${Date.now()}`,
@@ -695,7 +781,7 @@ export function ContractBuilder() {
         credentials: "include",
       });
     } catch (error) {
-      console.warn("[Yeollock] advertiser logout request failed", error);
+      console.warn(`[${PRODUCT_NAME}] advertiser logout request failed`, error);
     } finally {
       resetHydration();
       navigate("/login/advertiser", { replace: true });
@@ -793,9 +879,7 @@ export function ContractBuilder() {
                       광고주 인증 상태
                     </p>
                     <p className="mt-1 text-xs leading-5 text-neutral-500">
-                      {canSendContract
-                        ? "계약 공유 링크를 생성하고 인플루언서에게 발송할 수 있습니다."
-                        : "승인 전에는 초안 저장만 가능하고 공유 링크 발송은 차단됩니다."}
+                      {verificationCopy.helper}
                     </p>
                   </div>
                   <span
@@ -803,9 +887,7 @@ export function ContractBuilder() {
                       advertiserVerificationStatus,
                     )}`}
                   >
-                    {isVerificationLoading
-                      ? "확인중"
-                      : verificationStatusLabel(advertiserVerificationStatus)}
+                    {verificationCopy.label}
                   </span>
                 </div>
                 {!canSendContract && !isVerificationLoading && (
@@ -814,7 +896,7 @@ export function ContractBuilder() {
                     onClick={() => navigate("/advertiser/verification")}
                     className="mt-3 h-9 w-full rounded-[12px] border border-neutral-200 bg-[#fbfaf7] text-sm font-semibold text-neutral-700 transition hover:border-neutral-400 hover:bg-white"
                   >
-                    사업자 인증 요청하기
+                    {verificationCopy.actionLabel}
                   </button>
                 )}
               </div>
@@ -848,10 +930,14 @@ export function ContractBuilder() {
                     <Input
                       className="mt-1.5"
                       placeholder="예: 다이렉트뷰티"
-                      value={draft.advertiserName}
-                      onChange={(event) =>
-                        updateDraft({ advertiserName: event.target.value })
-                      }
+                      value={draftWithAdvertiserDefaults.advertiserName}
+                      onChange={(event) => {
+                        setEditedAdvertiserFields((current) => ({
+                          ...current,
+                          name: true,
+                        }));
+                        updateDraft({ advertiserName: event.target.value });
+                      }}
                     />
                   </div>
 
@@ -860,10 +946,14 @@ export function ContractBuilder() {
                     <Input
                       className="mt-1.5"
                       placeholder="예: 김마케팅 매니저"
-                      value={draft.advertiserManager}
-                      onChange={(event) =>
-                        updateDraft({ advertiserManager: event.target.value })
-                      }
+                      value={draftWithAdvertiserDefaults.advertiserManager}
+                      onChange={(event) => {
+                        setEditedAdvertiserFields((current) => ({
+                          ...current,
+                          manager: true,
+                        }));
+                        updateDraft({ advertiserManager: event.target.value });
+                      }}
                     />
                   </div>
 
@@ -1276,8 +1366,14 @@ export function ContractBuilder() {
                   )}
 
                   <ReviewBlock title="계약 당사자">
-                    <SummaryRow label="광고주" value={draft.advertiserName || "미입력"} />
-                    <SummaryRow label="담당자" value={draft.advertiserManager || "-"} />
+                    <SummaryRow
+                      label="광고주"
+                      value={draftWithAdvertiserDefaults.advertiserName || "미입력"}
+                    />
+                    <SummaryRow
+                      label="담당자"
+                      value={draftWithAdvertiserDefaults.advertiserManager || "-"}
+                    />
                     <SummaryRow label="인플루언서" value={draft.influencerName || "미입력"} />
                   </ReviewBlock>
 
@@ -1442,7 +1538,7 @@ export function ContractBuilder() {
         </section>
 
         <section className="hidden min-h-0 flex-col overflow-hidden bg-transparent py-5 lg:flex">
-          <BuilderReviewPanel draft={draft} clauses={clauses} />
+          <BuilderReviewPanel draft={draftWithAdvertiserDefaults} clauses={clauses} />
         </section>
       </main>
 
@@ -1474,7 +1570,7 @@ export function ContractBuilder() {
             </div>
 
             <div className="min-h-0 flex-1 p-3">
-              <BuilderReviewPanel draft={draft} clauses={clauses} />
+              <BuilderReviewPanel draft={draftWithAdvertiserDefaults} clauses={clauses} />
             </div>
           </div>
         </DialogContent>

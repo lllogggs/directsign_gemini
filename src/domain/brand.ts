@@ -2,7 +2,9 @@ const configuredProductName =
   (typeof import.meta !== "undefined" && import.meta.env.VITE_PRODUCT_NAME) ||
   "연락미";
 
-const normalizedProductName = configuredProductName.trim();
+const normalizedProductName = configuredProductName
+  .replace(/\\r|\\n/g, "")
+  .trim();
 const normalizedProductKey = normalizedProductName.toLowerCase();
 
 export const PRODUCT_NAME =

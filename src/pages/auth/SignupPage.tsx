@@ -72,6 +72,49 @@ const roleConfig = {
   loginPath: string;
 }>;
 
+const signupTrustContent = {
+  advertiser: {
+    trustBadges: ["사업자 인증 후 공유", "검토 링크 상태 기록", "서명 PDF·감사 이력"],
+    processSummary: [
+      {
+        title: "사업자 인증",
+        description: "승인 후 계약 공유 링크를 열 수 있습니다.",
+      },
+      {
+        title: "계약 작성",
+        description: "조건 입력 후 초안과 검토 링크를 준비합니다.",
+      },
+      {
+        title: "서명 증빙",
+        description: "승인, 서명, PDF 이력을 계약에 남깁니다.",
+      },
+    ],
+  },
+  influencer: {
+    trustBadges: ["계약 조건 확인", "수정 요청 기록", "서명 PDF 확인"],
+    processSummary: [
+      {
+        title: "계약 확인",
+        description: "받은 링크의 조건과 요청 사항을 먼저 확인합니다.",
+      },
+      {
+        title: "수정 요청",
+        description: "필요한 변경은 계약 흐름 안에 기록합니다.",
+      },
+      {
+        title: "전자서명",
+        description: "서명 완료 후 PDF와 감사 이력을 확인합니다.",
+      },
+    ],
+  },
+} satisfies Record<
+  SignupRole,
+  {
+    trustBadges: string[];
+    processSummary: Array<{ title: string; description: string }>;
+  }
+>;
+
 export function SignupPage({ role }: { role: SignupRole }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -250,6 +293,7 @@ export function SignupPage({ role }: { role: SignupRole }) {
     <AuthLoginScreen
       title={config.title}
       description={config.description}
+      trustBadges={signupTrustContent[role].trustBadges}
       fields={[
         ...(role === "advertiser"
           ? [
@@ -293,7 +337,7 @@ export function SignupPage({ role }: { role: SignupRole }) {
           onChange: setPassword,
         },
       ]}
-      submitLabel="가입하기"
+      submitLabel="시작하기"
       submittingLabel="생성 중"
       submitDisabled={!requiredConsentsAccepted}
       isSubmitting={isSubmitting}
@@ -301,7 +345,7 @@ export function SignupPage({ role }: { role: SignupRole }) {
       footer={
         <Link
           to={loginRedirectPath}
-            className="text-[13px] font-semibold text-[#59605b] transition hover:text-neutral-950"
+          className="text-[13px] font-semibold text-[#59605b] transition hover:text-neutral-950"
         >
           이미 계정이 있으면 로그인하기
         </Link>
@@ -331,6 +375,8 @@ export function SignupPage({ role }: { role: SignupRole }) {
         </>
       ) : null}
 
+      <SignupFlowNotice role={role} />
+
       <SignupConsentPanel
         consents={consents}
         disabled={isSubmitting}
@@ -339,6 +385,28 @@ export function SignupPage({ role }: { role: SignupRole }) {
         }
       />
     </AuthLoginScreen>
+  );
+}
+
+function SignupFlowNotice({ role }: { role: SignupRole }) {
+  const content =
+    role === "advertiser"
+      ? {
+          title: "가입 후 진행 순서",
+          body: "이메일 인증 후 사업자 인증을 제출합니다. 승인 전에는 계약 공유 링크 발송이 제한됩니다.",
+        }
+      : {
+          title: "공개 프로필 노출 범위",
+          body: "활동 분야와 플랫폼은 기본 정보로 저장됩니다. 공개 노출 항목은 대시보드에서 관리합니다.",
+        };
+
+  return (
+    <section className="rounded-[12px] border border-blue-100 bg-blue-50/70 px-4 py-3">
+      <p className="text-[13px] font-semibold text-blue-950">{content.title}</p>
+      <p className="mt-1 text-[12px] font-semibold leading-5 text-blue-800/80">
+        {content.body}
+      </p>
+    </section>
   );
 }
 
@@ -410,7 +478,7 @@ function SignupConsentPanel({
             필수 약관 및 개인정보 동의
           </p>
           <p className="mt-1 text-[12px] font-medium leading-5 text-[#7d887f]">
-            가입, 인증, 계약 작성, 전자서명 증빙 보관에 필요한 내용을 확인하고 동의해야 합니다.
+            가입과 계약 진행에 필요한 필수 항목입니다.
           </p>
         </div>
         <span className="shrink-0 rounded-full border border-[#d8ded4] bg-white px-2 py-0.5 text-[11px] font-semibold text-[#7d887f]">
@@ -423,7 +491,7 @@ function SignupConsentPanel({
           checked={consents.terms}
           disabled={disabled}
           title="이용약관 필수 동의"
-          description="서비스 범위, 계약 내용 책임, 미보증, 광고주 인증 후 공유 제한, 대금·세금·정산 비취급, 전자서명 증빙 기준을 확인했습니다."
+          description="서비스 범위, 계약 책임, 정산 비취급, 전자서명 증빙 기준을 확인했습니다."
           linkTo="/terms"
           linkLabel="약관 보기"
           onToggle={() => onToggle("terms")}
@@ -432,7 +500,7 @@ function SignupConsentPanel({
           checked={consents.privacy}
           disabled={disabled}
           title="개인정보 처리방침 필수 동의"
-          description="수집 항목, 이용 목적, 보유 기간, 계약 당사자 간 제공, 권리 행사, 파기 및 보안 조치를 확인했습니다."
+          description="수집 항목, 이용 목적, 보유 기간, 계약 당사자 제공 기준을 확인했습니다."
           linkTo="/privacy"
           linkLabel="개인정보 보기"
           onToggle={() => onToggle("privacy")}

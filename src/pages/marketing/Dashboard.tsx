@@ -27,7 +27,6 @@ import {
   useAppStore,
 } from "../../store";
 import {
-  verificationStatusLabel,
   verificationStatusTone,
   type VerificationStatus,
 } from "../../domain/verification";
@@ -245,7 +244,7 @@ export function Dashboard() {
 
     return {
       name,
-      meta: meta || "계정 정보 확인 필요",
+      meta: meta || "인증 전 계정 정보 확인 예정",
       businessNumber:
         latest?.business_registration_number || account?.business_registration_number,
     };
@@ -366,7 +365,7 @@ export function Dashboard() {
         credentials: "include",
       });
     } catch (error) {
-      console.warn("[Yeollock] advertiser logout request failed", error);
+      console.warn(`[${PRODUCT_NAME}] advertiser logout request failed`, error);
     } finally {
       resetHydration();
       navigate("/login/advertiser", { replace: true });
@@ -374,7 +373,7 @@ export function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950 lg:h-screen lg:overflow-hidden">
+    <div className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950">
       <header className="sticky top-0 z-30 border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
         <div className="mx-auto flex h-12 max-w-[1500px] items-center justify-between px-3 sm:px-5 lg:px-6">
           <button
@@ -411,7 +410,7 @@ export function Dashboard() {
               className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-2.5 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
             >
               <Search className="h-3.5 w-3.5" strokeWidth={2} />
-              <span className="hidden sm:inline">상대 찾기</span>
+              <span>상대 찾기</span>
             </button>
             <button
               type="button"
@@ -419,7 +418,7 @@ export function Dashboard() {
               className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-2.5 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
             >
               <Megaphone className="h-3.5 w-3.5" strokeWidth={2} />
-              <span className="hidden sm:inline">모집글</span>
+              <span>모집글</span>
             </button>
             <button
               type="button"
@@ -428,13 +427,13 @@ export function Dashboard() {
               aria-label="로그아웃"
             >
               <LogOut className="h-3.5 w-3.5" strokeWidth={2} />
-              <span className="hidden sm:inline">로그아웃</span>
+              <span>로그아웃</span>
             </button>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto w-full min-w-0 max-w-[1500px] px-3 py-2 sm:px-5 lg:h-[calc(100vh-48px)] lg:overflow-hidden lg:px-6">
+      <main className="mx-auto w-full min-w-0 max-w-[1500px] px-3 py-2 sm:px-5 lg:min-h-[calc(100vh-48px)] lg:px-6">
         <section className="min-w-0 overflow-hidden rounded-[12px] border border-neutral-200 bg-[#fdfdfb] shadow-[0_16px_44px_rgba(23,26,23,0.07)] lg:flex lg:h-full lg:flex-col">
           <div className="border-b border-[#d9e0d9] bg-white px-4 py-2">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -511,6 +510,7 @@ function VerificationBanner({
   embedded?: boolean;
 }) {
   const approved = status === "approved";
+  const copy = getAdvertiserVerificationBannerCopy(status, isLoading);
 
   return (
     <section
@@ -549,7 +549,7 @@ function VerificationBanner({
                   status,
                 )}`}
               >
-                {isLoading ? "확인중" : verificationStatusLabel(status)}
+                {copy.statusLabel}
               </span>
             </div>
             <span className="max-w-[180px] truncate text-[12px] font-semibold text-neutral-800">
@@ -564,6 +564,9 @@ function VerificationBanner({
                 사업자 {formatBusinessRegistrationNumber(account.businessNumber)}
               </span>
             )}
+            <p className="basis-full text-[12px] font-semibold leading-5 text-neutral-600">
+              {copy.helper}
+            </p>
           </div>
         </div>
         <button
@@ -575,7 +578,7 @@ function VerificationBanner({
               : "bg-neutral-950 text-white hover:bg-neutral-800"
           }`}
         >
-          {approved ? "인증 정보 보기" : "인증 요청하기"}
+          {copy.actionLabel}
         </button>
       </div>
     </section>
@@ -644,12 +647,12 @@ function MessageCenterButton({
     <button
       type="button"
       onClick={onClick}
-      className="relative inline-flex h-8 w-8 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-0 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950 sm:w-auto sm:justify-start sm:px-2.5"
+      className="relative inline-flex h-8 w-auto shrink-0 items-center justify-start gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-2.5 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
       aria-label="메시지함"
       title="메시지함"
     >
       <MessageSquareText className="h-3.5 w-3.5" strokeWidth={2} />
-      <span className="hidden sm:inline">메시지함</span>
+      <span>메시지함</span>
       {badge ? (
         <span className="absolute right-0 top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-extrabold tabular-nums text-white ring-2 ring-white">
           {badge > 9 ? "9+" : badge}
@@ -703,24 +706,65 @@ function getAdvertiserReadinessBadge(
 
   const badges: Record<VerificationStatus, { label: string; className: string }> = {
     approved: {
-      label: "발송 가능",
+      label: "공유 가능",
       className: "bg-[#eef0ed] text-[#303630]",
     },
     pending: {
-      label: "인증 검수 중",
+      label: "검수 중",
       className: "bg-amber-50 text-amber-800",
     },
     rejected: {
-      label: "인증 재제출 필요",
+      label: "재제출 필요",
       className: "bg-rose-50 text-rose-700",
     },
     not_submitted: {
-      label: "사업자 인증 필요",
+      label: "인증 제출 필요",
       className: "bg-amber-50 text-amber-800",
     },
   };
 
   return badges[status];
+}
+
+function getAdvertiserVerificationBannerCopy(
+  status: VerificationStatus,
+  isLoading: boolean,
+) {
+  if (isLoading) {
+    return {
+      statusLabel: "상태 확인 중",
+      helper: "계정의 사업자 인증 상태를 확인하고 있습니다.",
+      actionLabel: "인증 상태 보기",
+    };
+  }
+
+  const copies: Record<
+    VerificationStatus,
+    { statusLabel: string; helper: string; actionLabel: string }
+  > = {
+    approved: {
+      statusLabel: "인증 완료",
+      helper: "인증된 광고주로 계약 공유 링크를 발송할 수 있습니다.",
+      actionLabel: "인증 정보 보기",
+    },
+    pending: {
+      statusLabel: "검수 중",
+      helper: "인증 요청이 접수되었습니다. 검수 완료 전에는 공유 링크 발송이 제한됩니다.",
+      actionLabel: "검수 상태 보기",
+    },
+    rejected: {
+      statusLabel: "재제출 필요",
+      helper: "반려 사유를 확인하고 새 증빙으로 다시 제출해 주세요.",
+      actionLabel: "재제출",
+    },
+    not_submitted: {
+      statusLabel: "제출 필요",
+      helper: "사업자 인증을 제출해야 인플루언서에게 공유 링크를 보낼 수 있습니다.",
+      actionLabel: "인증 제출",
+    },
+  };
+
+  return copies[status];
 }
 
 function ContractTable({
@@ -1118,34 +1162,48 @@ function ContractRow({
   contract: Contract;
   onOpen: () => void;
 }) {
+  const typeLabel = formatContractTypeLabel(contract.type);
+  const amountLabel = formatDashboardAmountLabel(contract.campaign?.budget);
+
   return (
     <button
       type="button"
       onClick={onOpen}
-      className="group grid w-full gap-2 px-3 py-1.5 text-left transition-colors hover:bg-[#f8faf7] lg:min-h-[38px] lg:grid-cols-[minmax(155px,0.46fr)_minmax(120px,0.36fr)_minmax(320px,1fr)_minmax(145px,0.42fr)_minmax(124px,0.36fr)] lg:items-center"
+      className="group grid w-full gap-2 px-3 py-2 text-left transition-colors hover:bg-[#f8faf7] lg:min-h-[38px] lg:grid-cols-[minmax(155px,0.46fr)_minmax(120px,0.36fr)_minmax(320px,1fr)_minmax(145px,0.42fr)_minmax(124px,0.36fr)] lg:items-center lg:py-1.5"
     >
-      <div className="min-w-0">
+      <div className="flex min-w-0 items-center justify-between gap-2 lg:block">
         <PlatformPills contract={contract} />
+        <span className="shrink-0 lg:hidden">
+          <StatusBadge status={contract.status} dense />
+        </span>
       </div>
 
-      <div className="min-w-0">
+      <div className="hidden min-w-0 lg:block">
         <p className="truncate text-[12px] font-semibold text-[#303630]">
-          {formatContractTypeLabel(contract.type)}
+          {typeLabel}
         </p>
       </div>
 
       <div className="min-w-0">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <p className="min-w-0 truncate text-[13px] font-semibold text-[#171a17]">
-            {formatDashboardContractTitle(contract.title)}
-          </p>
-          <span className="lg:hidden">
-            <StatusBadge status={contract.status} dense />
+        <p className="min-w-0 truncate text-[13px] font-semibold text-[#171a17]">
+          {formatDashboardContractTitle(contract.title)}
+        </p>
+        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-semibold lg:hidden">
+          <span className="inline-flex min-w-0 max-w-full items-center gap-1">
+            <span className="shrink-0 text-[#8b938d]">유형</span>
+            <span className="min-w-0 truncate text-[#303630]">{typeLabel}</span>
+          </span>
+          <span aria-hidden="true" className="h-3 w-px bg-[#d9e0d9]" />
+          <span className="inline-flex min-w-0 max-w-full items-center gap-1">
+            <span className="shrink-0 text-[#8b938d]">금액</span>
+            <span className="min-w-0 truncate text-[#303630]">{amountLabel}</span>
           </span>
         </div>
       </div>
 
-      <AmountCell value={contract.campaign?.budget} />
+      <div className="hidden min-w-0 lg:block">
+        <AmountCell value={contract.campaign?.budget} />
+      </div>
 
       <StatusTiming contract={contract} />
     </button>
@@ -1194,7 +1252,7 @@ function StatusTiming({
   contract: Contract;
 }) {
   return (
-    <div className="min-w-0">
+    <div className="hidden min-w-0 lg:block">
       <StatusBadge status={contract.status} />
     </div>
   );

@@ -459,6 +459,10 @@ const shareTokenEncryptionSecret = resolveServerSecret({
   requiredInProduction: true,
   generateLocal: true,
 });
+const logLegacyShareTokenDecryptWarnings =
+  process.env.DIRECTSIGN_LOG_LEGACY_TOKEN_DECRYPT_WARNINGS === "true";
+const loggedLegacyShareTokenDecryptFailures = new Set<string>();
+const maxLoggedLegacyShareTokenDecryptFailures = 100;
 
 export const app = express();
 app.set("trust proxy", isHostedRuntime ? 1 : false);
@@ -540,6 +544,11 @@ app.use((_request, response, next) => {
     );
   }
   next();
+});
+
+app.get("/favicon.ico", (_request, response) => {
+  response.type("image/x-icon");
+  response.sendFile(path.join(root, "public", "favicon.ico"));
 });
 
 interface AdminLoginAttempt {
@@ -675,7 +684,19 @@ const decryptShareTokenFromLegacyStore = (value: string | undefined | null) => {
       decipher.final(),
     ]).toString("utf8");
   } catch {
-    console.warn("[yeollock.me] failed to decrypt legacy share token");
+    if (logLegacyShareTokenDecryptWarnings) {
+      const fingerprint = createHash("sha256").update(value).digest("hex").slice(0, 12);
+      if (!loggedLegacyShareTokenDecryptFailures.has(fingerprint)) {
+        if (
+          loggedLegacyShareTokenDecryptFailures.size >=
+          maxLoggedLegacyShareTokenDecryptFailures
+        ) {
+          loggedLegacyShareTokenDecryptFailures.clear();
+        }
+        loggedLegacyShareTokenDecryptFailures.add(fingerprint);
+        console.warn(`[yeollock.me] failed to decrypt legacy share token ${fingerprint}`);
+      }
+    }
     return undefined;
   }
 };
@@ -2489,6 +2510,45 @@ const createSupabaseSignupUser = async ({
   return authUser;
 };
 
+const requestSupabasePasswordRecovery = async ({
+  email,
+  redirectTo,
+}: {
+  email: string;
+  redirectTo: string;
+}) => {
+  const url = new URL(supabaseAuthUrl("/recover"));
+  url.searchParams.set("redirect_to", redirectTo);
+
+  const response = await fetch(url.toString(), {
+    method: "POST",
+    headers: supabaseAuthHeaders(),
+    body: JSON.stringify({ email }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await parseSupabaseError(response));
+  }
+};
+
+const updateSupabasePasswordWithRecoveryToken = async ({
+  accessToken,
+  password,
+}: {
+  accessToken: string;
+  password: string;
+}) => {
+  const response = await fetch(supabaseAuthUrl("/user"), {
+    method: "PUT",
+    headers: supabaseAuthHeaders(accessToken),
+    body: JSON.stringify({ password }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await parseSupabaseError(response));
+  }
+};
+
 const getLoginFailureMessage = (error: unknown, fallback: string) => {
   const message = error instanceof Error ? error.message : "";
   const normalized = message.toLowerCase();
@@ -4094,6 +4154,129 @@ const readMarketplaceBrandProfiles = async () => {
   return mergeMarketplaceBrandProfiles(rows.map(mapBrandProfileRowToMarketplaceProfile));
 };
 
+const publicMarketplaceCacheMaxAgeSeconds = 60;
+const publicMarketplaceCacheStaleSeconds = 300;
+const publicMarketplaceCacheControl = `public, max-age=${publicMarketplaceCacheMaxAgeSeconds}, stale-while-revalidate=${publicMarketplaceCacheStaleSeconds}`;
+
+type PublicMarketplaceCacheKey =
+  | "marketplace-influencers"
+  | "marketplace-brands"
+  | "marketplace-campaigns";
+
+type PublicMarketplaceCacheEntry<T> = {
+  value?: T;
+  expiresAt: number;
+  staleUntil: number;
+  refresh?: Promise<T>;
+};
+
+const publicMarketplaceCache = new Map<
+  PublicMarketplaceCacheKey,
+  PublicMarketplaceCacheEntry<unknown>
+>();
+
+const refreshPublicMarketplaceCache = async <T,>(
+  key: PublicMarketplaceCacheKey,
+  loader: () => Promise<T>,
+) => {
+  const value = await loader();
+  const now = Date.now();
+  publicMarketplaceCache.set(key, {
+    value,
+    expiresAt: now + publicMarketplaceCacheMaxAgeSeconds * 1000,
+    staleUntil:
+      now +
+      (publicMarketplaceCacheMaxAgeSeconds + publicMarketplaceCacheStaleSeconds) *
+        1000,
+  });
+  return value;
+};
+
+const readPublicMarketplaceCache = async <T,>(
+  key: PublicMarketplaceCacheKey,
+  loader: () => Promise<T>,
+) => {
+  const now = Date.now();
+  const cached = publicMarketplaceCache.get(
+    key,
+  ) as PublicMarketplaceCacheEntry<T> | undefined;
+
+  if (cached?.value !== undefined && cached.expiresAt > now) {
+    return cached.value;
+  }
+
+  if (cached?.value !== undefined && cached.staleUntil > now) {
+    if (!cached.refresh) {
+      cached.refresh = refreshPublicMarketplaceCache(key, loader)
+        .catch((error) => {
+          console.warn(
+            `[${productName}] public marketplace cache refresh failed: ${
+              error instanceof Error ? error.message : "unknown error"
+            }`,
+          );
+          return cached.value as T;
+        })
+        .finally(() => {
+          const latest = publicMarketplaceCache.get(key);
+          if (latest) delete (latest as PublicMarketplaceCacheEntry<T>).refresh;
+        });
+      publicMarketplaceCache.set(key, cached);
+    }
+    return cached.value;
+  }
+
+  if (cached?.refresh) return cached.refresh;
+
+  const refresh = refreshPublicMarketplaceCache(key, loader);
+  publicMarketplaceCache.set(key, {
+    value: cached?.value,
+    expiresAt: cached?.expiresAt ?? 0,
+    staleUntil: cached?.staleUntil ?? 0,
+    refresh,
+  });
+  return refresh;
+};
+
+const clearPublicMarketplaceCache = () => {
+  publicMarketplaceCache.clear();
+};
+
+const sendPublicMarketplaceJson = <T,>(
+  response: express.Response,
+  payload: T,
+) => {
+  response.setHeader("Cache-Control", publicMarketplaceCacheControl);
+  response.json(payload);
+};
+
+const warmPublicMarketplaceCache = () => {
+  if (process.env.DISABLE_PUBLIC_MARKETPLACE_CACHE_WARMUP === "1") return;
+
+  setTimeout(() => {
+    void Promise.all([
+      readPublicMarketplaceCache(
+        "marketplace-influencers",
+        readMarketplaceInfluencerProfiles,
+      ),
+      readPublicMarketplaceCache("marketplace-brands", readMarketplaceBrandProfiles),
+    ])
+      .then(([, brands]) =>
+        readPublicMarketplaceCache("marketplace-campaigns", async () =>
+          buildMarketplaceCampaignPosts(brands),
+        ),
+      )
+      .catch((error) => {
+        console.warn(
+          `[${productName}] public marketplace cache warmup failed: ${
+            error instanceof Error ? error.message : "unknown error"
+          }`,
+        );
+      });
+  }, 0);
+};
+
+warmPublicMarketplaceCache();
+
 const buildMarketplaceBrandHandle = (
   organization: SupabaseOrganizationRow,
   profile: SupabaseProfileRow,
@@ -4308,6 +4491,7 @@ const upsertAdvertiserMarketplaceCampaign = async (
     ],
     "organization_id",
   );
+  clearPublicMarketplaceCache();
 
   const savedRow = await readAdvertiserMarketplaceBrandRow(organization.id);
   const brand = buildAdvertiserBrandProfileFromAuth(auth, organization, savedRow);
@@ -4795,6 +4979,7 @@ const upsertInfluencerPublicProfile = async ({
       updated_at: now,
     })),
   );
+  clearPublicMarketplaceCache();
 
   return { ok: true as const, profile: savedProfile };
 };
@@ -5347,6 +5532,29 @@ const readSupabaseStore = async (): Promise<ContractStoreFile> => {
       .map(restoreLegacyContractFromSupabase)
       .filter((contract): contract is Contract => Boolean(contract?.id)),
   });
+};
+
+const readSupabaseLegacyContract = async (
+  contractId: string,
+): Promise<Contract | undefined> => {
+  if (!useSupabase || !hasText(contractId)) return undefined;
+
+  const response = await fetchSupabase(
+    supabaseLegacyTable,
+    `?select=contract,share_token&id=eq.${encodeURIComponent(contractId)}&limit=1`,
+  );
+
+  await assertSupabaseOk(response, "Supabase legacy contract read");
+
+  const rows = (await response.json()) as Array<
+    Pick<SupabaseContractRow, "contract" | "share_token">
+  >;
+  const row = rows[0];
+
+  if (!row) return undefined;
+
+  const contract = restoreLegacyContractFromSupabase(row);
+  return contract?.id ? normalizeContract(contract) : undefined;
 };
 
 const upsertSupabaseContracts = async (contracts: Contract[]) => {
@@ -7929,6 +8137,22 @@ const readStore = async (): Promise<ContractStoreFile> => {
 };
 
 const readContractWriteContext = async (contractId: string) => {
+  if (useSupabase) {
+    const legacyContract = await readSupabaseLegacyContract(contractId);
+    const v2Contract =
+      !legacyContract && isUuid(contractId)
+        ? await readSupabaseV2ContractAsLegacy(contractId)
+        : undefined;
+    const existingContract = legacyContract ?? v2Contract;
+
+    return {
+      store: { contracts: existingContract ? [existingContract] : [] },
+      existingIndex: legacyContract ? 0 : -1,
+      existingContract,
+      isV2Only: !legacyContract && Boolean(v2Contract),
+    };
+  }
+
   const store = await readStore();
   const existingIndex = store.contracts.findIndex((item) => item.id === contractId);
   const legacyContract =
@@ -7944,6 +8168,18 @@ const readContractWriteContext = async (contractId: string) => {
     existingContract: legacyContract ?? v2Contract,
     isV2Only: !legacyContract && Boolean(v2Contract),
   };
+};
+
+const readContractById = async (contractId: string) => {
+  if (useSupabase) {
+    return (
+      (await readSupabaseLegacyContract(contractId)) ??
+      (await readSupabaseV2ContractAsLegacy(contractId))
+    );
+  }
+
+  const store = await readStore();
+  return store.contracts.find((item) => item.id === contractId);
 };
 
 const mergeContractIntoStore = (
@@ -8614,6 +8850,97 @@ app.get("/api/advertiser/session", async (request, response, next) => {
   }
 });
 
+app.post("/api/auth/password-reset/request", async (request, response) => {
+  try {
+    const email = normalizeEmail(request.body?.email);
+    const role = normalizeRequiredText(request.body?.role);
+
+    if (!isValidEmail(email)) {
+      response.status(422).json({ error: "올바른 이메일을 입력해 주세요." });
+      return;
+    }
+
+    if (!useSupabase) {
+      response.status(503).json({ error: "Password reset requires Supabase Auth" });
+      return;
+    }
+
+    const throttle = consumePublicAuthRateLimit(request, "password_reset", email);
+    if (throttle.blocked) {
+      sendPublicAuthRateLimitResponse(response, throttle);
+      return;
+    }
+
+    const resetUrl = new URL("/reset-password", `${getAppBaseUrl(request)}/`);
+    if (role === "advertiser" || role === "influencer") {
+      resetUrl.searchParams.set("role", role);
+    }
+
+    await requestSupabasePasswordRecovery({
+      email,
+      redirectTo: resetUrl.toString(),
+    });
+    clearPublicAuthRateLimit(request, "password_reset", email);
+
+    response.status(202).json({
+      message:
+        "가입된 이메일이면 비밀번호 재설정 링크를 보냈습니다. 받은 편지함과 스팸함을 확인해 주세요.",
+    });
+  } catch (error) {
+    response.status(400).json({
+      error: getLoginFailureMessage(
+        error,
+        "비밀번호 재설정 메일을 보내지 못했습니다.",
+      ),
+    });
+  }
+});
+
+app.post("/api/auth/password-reset/complete", async (request, response) => {
+  try {
+    const accessToken = normalizeRequiredText(request.body?.access_token);
+    const password = normalizeRequiredText(request.body?.password);
+    const passwordError = validateSignupPassword(password);
+
+    if (!accessToken) {
+      response.status(422).json({ error: "재설정 링크가 올바르지 않습니다." });
+      return;
+    }
+    if (passwordError) {
+      response.status(422).json({ error: passwordError });
+      return;
+    }
+
+    if (!useSupabase) {
+      response.status(503).json({ error: "Password reset requires Supabase Auth" });
+      return;
+    }
+
+    const throttle = consumeSensitiveEndpointRateLimit(
+      request,
+      "password_reset_complete",
+      accessToken.slice(0, 24),
+    );
+    if (throttle.blocked) {
+      sendSensitiveRateLimitResponse(response, throttle);
+      return;
+    }
+
+    await updateSupabasePasswordWithRecoveryToken({ accessToken, password });
+
+    response.json({
+      message: "비밀번호를 변경했습니다. 새 비밀번호로 로그인해 주세요.",
+    });
+  } catch (error) {
+    response.status(400).json({
+      error: getLoginFailureMessage(
+        error,
+        "비밀번호를 변경하지 못했습니다. 재설정 링크를 다시 요청해 주세요.",
+      ),
+    });
+  }
+});
+
 app.post("/api/advertiser/login", async (request, response) => {
   try {
     const email = normalizeRequiredText(request.body?.email).toLowerCase();
@@ -9008,8 +9335,11 @@ app.get("/api/influencer/dashboard", async (request, response, next) => {
 
 app.get("/api/marketplace/influencers", async (_request, response, next) => {
   try {
-    response.setHeader("Cache-Control", "no-store");
-    response.json({ profiles: await readMarketplaceInfluencerProfiles() });
+    const profiles = await readPublicMarketplaceCache(
+      "marketplace-influencers",
+      readMarketplaceInfluencerProfiles,
+    );
+    sendPublicMarketplaceJson(response, { profiles });
   } catch (error) {
     next(error);
   }
@@ -9019,7 +9349,10 @@ app.get("/api/marketplace/influencers/:handle", async (request, response, next) 
   try {
     const profile = findInfluencerProfileByHandle(
       request.params.handle,
-      await readMarketplaceInfluencerProfiles(),
+      await readPublicMarketplaceCache(
+        "marketplace-influencers",
+        readMarketplaceInfluencerProfiles,
+      ),
     );
 
     if (!profile) {
@@ -9027,8 +9360,7 @@ app.get("/api/marketplace/influencers/:handle", async (request, response, next) 
       return;
     }
 
-    response.setHeader("Cache-Control", "no-store");
-    response.json({ profile });
+    sendPublicMarketplaceJson(response, { profile });
   } catch (error) {
     next(error);
   }
@@ -9036,8 +9368,11 @@ app.get("/api/marketplace/influencers/:handle", async (request, response, next) 
 
 app.get("/api/marketplace/brands", async (_request, response, next) => {
   try {
-    response.setHeader("Cache-Control", "no-store");
-    response.json({ brands: await readMarketplaceBrandProfiles() });
+    const brands = await readPublicMarketplaceCache(
+      "marketplace-brands",
+      readMarketplaceBrandProfiles,
+    );
+    sendPublicMarketplaceJson(response, { brands });
   } catch (error) {
     next(error);
   }
@@ -9047,7 +9382,10 @@ app.get("/api/marketplace/brands/:handle", async (request, response, next) => {
   try {
     const brand = findBrandProfileByHandle(
       request.params.handle,
-      await readMarketplaceBrandProfiles(),
+      await readPublicMarketplaceCache(
+        "marketplace-brands",
+        readMarketplaceBrandProfiles,
+      ),
     );
 
     if (!brand) {
@@ -9055,8 +9393,7 @@ app.get("/api/marketplace/brands/:handle", async (request, response, next) => {
       return;
     }
 
-    response.setHeader("Cache-Control", "no-store");
-    response.json({ brand });
+    sendPublicMarketplaceJson(response, { brand });
   } catch (error) {
     next(error);
   }
@@ -9064,10 +9401,17 @@ app.get("/api/marketplace/brands/:handle", async (request, response, next) => {
 
 app.get("/api/marketplace/campaigns", async (_request, response, next) => {
   try {
-    const brands = await readMarketplaceBrandProfiles();
-
-    response.setHeader("Cache-Control", "no-store");
-    response.json({ campaigns: buildMarketplaceCampaignPosts(brands) });
+    const campaigns = await readPublicMarketplaceCache(
+      "marketplace-campaigns",
+      async () =>
+        buildMarketplaceCampaignPosts(
+          await readPublicMarketplaceCache(
+            "marketplace-brands",
+            readMarketplaceBrandProfiles,
+          ),
+        ),
+    );
+    sendPublicMarketplaceJson(response, { campaigns });
   } catch (error) {
     next(error);
   }
@@ -10315,10 +10659,7 @@ app.post("/api/contracts/:id/support-access-requests", async (request, response,
       return;
     }
 
-    const store = await readStore();
-    const contract =
-      store.contracts.find((item) => item.id === request.params.id) ??
-      (await readSupabaseV2ContractAsLegacy(request.params.id));
+    const contract = await readContractById(request.params.id);
 
     if (!contract) {
       response.status(404).json({ error: "Contract not found" });
@@ -10434,10 +10775,7 @@ app.post("/api/contracts/:id/support-access-requests", async (request, response,
 
 app.get("/api/contracts/:id", async (request, response, next) => {
   try {
-    const store = await readStore();
-    const contract =
-      store.contracts.find((item) => item.id === request.params.id) ??
-      (await readSupabaseV2ContractAsLegacy(request.params.id));
+    const contract = await readContractById(request.params.id);
 
     if (!contract) {
       response.status(404).json({ error: "Contract not found" });
@@ -10479,9 +10817,7 @@ app.get("/api/contracts/:id/final-pdf", async (request, response, next) => {
       return;
     }
 
-    const { existingContract: contract } = await readContractWriteContext(
-      request.params.id,
-    );
+    const contract = await readContractById(request.params.id);
 
     if (!contract) {
       response.status(404).json({ error: "Contract not found" });
@@ -10932,8 +11268,19 @@ if (!isVercelFunction) {
 
   if (isPreview) {
     const distDir = path.join(root, ["di", "st"].join(""));
-    app.use(express.static(distDir));
+    app.use(
+      express.static(distDir, {
+        immutable: true,
+        maxAge: "1y",
+        setHeaders: (response, filePath) => {
+          if (filePath.endsWith("index.html")) {
+            response.setHeader("Cache-Control", "no-cache");
+          }
+        },
+      }),
+    );
     app.get("*", (_request, response) => {
+      response.setHeader("Cache-Control", "no-cache");
       response.sendFile(path.join(distDir, "index.html"));
     });
   } else {

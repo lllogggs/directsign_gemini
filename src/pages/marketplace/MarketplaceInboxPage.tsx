@@ -8,7 +8,7 @@ import {
   Send,
   ShieldCheck,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
@@ -109,6 +109,10 @@ const roleCopy = {
     emptySent: "아직 보낸 컨택 제안이 없습니다",
     emptyInboxBody: "공개 프로필이나 탐색 화면에서 들어온 역제안이 여기에 쌓입니다.",
     emptySentBody: "인플루언서를 찾아 제안을 보내면 진행 상태가 여기에 정리됩니다.",
+    emptyInboxActionLabel: "인플루언서 찾기",
+    emptyInboxActionHref: "/advertiser/discover",
+    emptySentActionLabel: "인플루언서 찾기",
+    emptySentActionHref: "/advertiser/discover",
     primaryBucketLabel: "보낸 제안",
     secondaryBucketLabel: "받은 제안",
     searchPlaceholder: "인플루언서, 제안 종류, 제안 내용 검색",
@@ -132,6 +136,10 @@ const roleCopy = {
     emptySent: "아직 보낸 역제안이 없습니다",
     emptyInboxBody: "브랜드가 보낸 컨택 제안이 도착하면 이 화면에서 확인할 수 있습니다.",
     emptySentBody: "브랜드에 보낸 역제안의 진행 상태가 여기에 정리됩니다.",
+    emptyInboxActionLabel: "브랜드 찾기",
+    emptyInboxActionHref: "/influencer/brands",
+    emptySentActionLabel: "브랜드 찾기",
+    emptySentActionHref: "/influencer/brands",
     primaryBucketLabel: "받은 제안",
     secondaryBucketLabel: "보낸 제안",
     searchPlaceholder: "브랜드, 제안 종류, 제안 내용 검색",
@@ -154,6 +162,10 @@ const roleCopy = {
     emptySent: string;
     emptyInboxBody: string;
     emptySentBody: string;
+    emptyInboxActionLabel: string;
+    emptyInboxActionHref: string;
+    emptySentActionLabel: string;
+    emptySentActionHref: string;
     primaryBucketLabel: string;
     secondaryBucketLabel: string;
     searchPlaceholder: string;
@@ -477,46 +489,43 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
                 </div>
               </div>
 
-              <div className="mt-3 grid gap-2 border-t border-[#edf1ed] pt-3 xl:grid-cols-[1.08fr_1.08fr_0.94fr]">
-                <FilterGroup label="플랫폼">
-                  {platformFilterOptions.map((platform) => (
-                    <div key={platform}>
-                      <FilterButton
-                        active={platformFilter === platform}
-                        count={platformCounts[platform]}
-                        label={platform === "all" ? "전체" : platformLabels[platform]}
-                        tone={platform === "all" ? undefined : getPlatformTone(platform)}
-                        onClick={() => setPlatformFilter(platform)}
-                      />
-                    </div>
-                  ))}
-                </FilterGroup>
-                <FilterGroup label="제안 종류">
-                  {proposalTypeFilterOptions.map((type) => (
-                    <div key={type}>
-                      <FilterButton
-                        active={proposalTypeFilter === type}
-                        count={proposalTypeCounts[type]}
-                        label={type === "all" ? "전체" : proposalTypeLabels[type]}
-                        onClick={() => setProposalTypeFilter(type)}
-                      />
-                    </div>
-                  ))}
-                </FilterGroup>
-                <FilterGroup label="상태">
-                  {proposalStatusFilterOptions.map((status) => (
-                    <div key={status}>
-                      <FilterButton
-                        active={statusFilter === status}
-                        count={statusCounts[status]}
-                        label={status === "all" ? "전체" : proposalStatusLabels[status]}
-                        tone={status === "all" ? undefined : proposalStatusTone[status]}
-                        onClick={() => setStatusFilter(status)}
-                      />
-                    </div>
-                  ))}
-                </FilterGroup>
+              <div className="mt-3 grid gap-2 border-t border-[#edf1ed] pt-3 md:grid-cols-3">
+                <SelectFilter
+                  label="플랫폼"
+                  value={platformFilter}
+                  onChange={(value) => setPlatformFilter(value as PlatformFilter)}
+                  options={platformFilterOptions.map((platform) => ({
+                    value: platform,
+                    label: platform === "all" ? "전체" : platformLabels[platform],
+                    count: platformCounts[platform],
+                  }))}
+                />
+                <SelectFilter
+                  label="제안 종류"
+                  value={proposalTypeFilter}
+                  onChange={(value) => setProposalTypeFilter(value as ProposalTypeFilter)}
+                  options={proposalTypeFilterOptions.map((type) => ({
+                    value: type,
+                    label: type === "all" ? "전체" : proposalTypeLabels[type],
+                    count: proposalTypeCounts[type],
+                  }))}
+                />
+                <SelectFilter
+                  label="상태"
+                  value={statusFilter}
+                  onChange={(value) => setStatusFilter(value as ProposalStatusFilter)}
+                  options={proposalStatusFilterOptions.map((status) => ({
+                    value: status,
+                    label: status === "all" ? "전체" : proposalStatusLabels[status],
+                    count: statusCounts[status],
+                  }))}
+                />
               </div>
+              <ActiveFilterSummary
+                platformFilter={platformFilter}
+                proposalTypeFilter={proposalTypeFilter}
+                statusFilter={statusFilter}
+              />
             </section>
 
             {state.status === "loading" ? (
@@ -527,6 +536,16 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
               <EmptyState
                 title={bucket === "inbox" ? copy.emptyInbox : copy.emptySent}
                 body={bucket === "inbox" ? copy.emptyInboxBody : copy.emptySentBody}
+                actionLabel={
+                  bucket === "inbox"
+                    ? copy.emptyInboxActionLabel
+                    : copy.emptySentActionLabel
+                }
+                actionHref={
+                  bucket === "inbox"
+                    ? copy.emptyInboxActionHref
+                    : copy.emptySentActionHref
+                }
               />
             ) : (
               <MessageTable copy={copy} role={role} threads={visibleThreads} />
@@ -591,55 +610,96 @@ function BucketButton({
   );
 }
 
-function FilterGroup({
+function SelectFilter({
   label,
-  children,
+  value,
+  onChange,
+  options,
 }: {
   label: string;
-  children: ReactNode;
+  value: string;
+  onChange: (value: string) => void;
+  options: Array<{ value: string; label: string; count: number }>;
 }) {
   return (
-    <div className="min-w-0 rounded-[7px] border border-[#e5eae5] bg-[#fbfcfa] px-3 py-2.5">
-      <span className="block text-[12px] font-extrabold text-[#303630]">{label}</span>
-      <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5">{children}</div>
-    </div>
+    <label className="grid min-w-0 gap-1.5">
+      <span className="text-[12px] font-extrabold text-[#303630]">{label}</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-10 w-full rounded-[6px] border border-[#d9e0d9] bg-[#f8faf7] px-3 text-[12px] font-bold text-[#303630] outline-none transition-colors hover:border-[#cbd5cc] focus:border-[#171a17] focus:bg-white"
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label} {option.count.toLocaleString()}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
-function FilterButton({
-  active,
-  count,
+function InlineFilterBadge({
   label,
-  onClick,
   tone,
 }: {
-  active: boolean;
-  count: number;
   label: string;
-  onClick: () => void;
   tone?: string;
 }) {
-  const activeClass = tone ?? "border-[#171a17] bg-[#171a17] text-white";
-
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[6px] border px-2.5 text-[12px] font-bold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 ${
-        active
-          ? activeClass
-          : "border-[#d9e0d9] bg-white text-[#59605b] hover:border-[#b8c2ba] hover:text-[#171a17]"
+    <span
+      className={`inline-flex h-5 items-center rounded-[5px] border px-1.5 text-[10px] font-bold ${
+        tone ?? "border-[#d9e0d9] bg-white text-[#59605b]"
       }`}
     >
-      <span>{label}</span>
-      <span
-        className={`text-[11px] ${
-          active ? "opacity-80" : "text-[#a0aaa2]"
-        }`}
-      >
-        {count.toLocaleString()}
-      </span>
-    </button>
+      {label}
+    </span>
+  );
+}
+
+function ActiveFilterSummary({
+  platformFilter,
+  proposalTypeFilter,
+  statusFilter,
+}: {
+  platformFilter: PlatformFilter;
+  proposalTypeFilter: ProposalTypeFilter;
+  statusFilter: ProposalStatusFilter;
+}) {
+  const activeItems = [
+    platformFilter !== "all"
+      ? {
+          key: "platform",
+          label: platformLabels[platformFilter],
+          tone: getPlatformTone(platformFilter),
+        }
+      : undefined,
+    proposalTypeFilter !== "all"
+      ? {
+          key: "type",
+          label: proposalTypeLabels[proposalTypeFilter],
+        }
+      : undefined,
+    statusFilter !== "all"
+      ? {
+          key: "status",
+          label: proposalStatusLabels[statusFilter],
+          tone: proposalStatusTone[statusFilter],
+        }
+      : undefined,
+  ].filter(Boolean) as Array<{ key: string; label: string; tone?: string }>;
+
+  if (activeItems.length === 0) return null;
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-[#7d857f]">
+      <span>적용 필터</span>
+      {activeItems.map((item) => (
+        <span key={item.key}>
+          <InlineFilterBadge label={item.label} tone={item.tone} />
+        </span>
+      ))}
+    </div>
   );
 }
 
@@ -867,9 +927,7 @@ function PlatformPills({ platforms }: { platforms: MessageThread["platforms"] })
 }
 
 function formatPlatformLabel(item: MessageThread["platforms"][number]) {
-  const baseLabel = platformLabels[item.platform];
-  if (!item.label || item.label === baseLabel) return baseLabel;
-  return `${baseLabel}-${item.label}`;
+  return platformLabels[item.platform];
 }
 
 function getProposalTypeLabel(thread: MessageThread) {
@@ -886,26 +944,22 @@ function getRelationshipLabel(role: MarketplaceInboxRole, thread: MessageThread)
 
 function LoadingState() {
   return (
-    <section className="rounded-b-[8px] border border-[#d9e0d9] bg-white px-4 py-4">
-      <div className="space-y-2">
-        {Array.from({ length: 5 }).map((_, index) => (
-          <div
-            key={index}
-            className="grid gap-3 rounded-[8px] border border-[#edf1ed] bg-[#f8faf7] px-3 py-3 lg:grid-cols-[104px_minmax(160px,0.85fr)_minmax(166px,0.9fr)_104px_minmax(240px,1.25fr)_122px_104px]"
-          >
-            <div className="h-6 rounded bg-neutral-200/70" />
-            <div className="h-6 rounded bg-neutral-200/70" />
-            <div className="h-6 rounded bg-neutral-200/70" />
-            <div className="hidden h-6 rounded bg-neutral-200/70 md:block" />
-            <div className="hidden h-6 rounded bg-neutral-200/70 md:block" />
-            <div className="hidden h-6 rounded bg-neutral-200/70 md:block" />
-            <div className="hidden h-6 rounded bg-neutral-200/70 md:block" />
-          </div>
-        ))}
+    <section
+      className="flex min-h-[190px] items-center justify-center rounded-b-[8px] border border-[#d9e0d9] bg-white px-6 py-10 text-center"
+      role="status"
+      aria-live="polite"
+    >
+      <div className="max-w-md">
+        <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-[8px] bg-[#f8faf7] text-[#59605b] ring-1 ring-[#d9e0d9]">
+          <RefreshCw className="h-5 w-5 animate-spin" />
+        </div>
+        <h2 className="mt-3 text-[14px] font-semibold text-[#171a17]">
+          제안함을 확인하는 중입니다
+        </h2>
+        <p className="mt-1 text-[12px] font-medium leading-5 text-[#7d857f]">
+          저장된 제안이 없으면 빈 상태와 다음 행동을 바로 안내합니다.
+        </p>
       </div>
-      <p className="sr-only" role="status">
-        메시지함을 불러오는 중입니다.
-      </p>
     </section>
   );
 }
@@ -942,7 +996,17 @@ function ErrorState({
   );
 }
 
-function EmptyState({ title, body }: { title: string; body: string }) {
+function EmptyState({
+  title,
+  body,
+  actionLabel,
+  actionHref,
+}: {
+  title: string;
+  body: string;
+  actionLabel: string;
+  actionHref: string;
+}) {
   return (
     <section className="flex min-h-[190px] flex-col items-center justify-center rounded-b-[8px] border border-[#d9e0d9] bg-white px-6 py-10 text-center">
       <div className="max-w-md">
@@ -953,6 +1017,13 @@ function EmptyState({ title, body }: { title: string; body: string }) {
         <p className="mt-1 max-w-md text-[12px] leading-5 text-[#7d857f]">
           {body}
         </p>
+        <Link
+          to={actionHref}
+          className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-md bg-neutral-950 px-4 text-[13px] font-semibold text-white transition hover:bg-neutral-800"
+        >
+          {actionLabel}
+          <ArrowRight className="h-4 w-4" />
+        </Link>
       </div>
     </section>
   );

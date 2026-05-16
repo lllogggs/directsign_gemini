@@ -159,13 +159,25 @@ export function ContractAdminViewer() {
           <p className="mt-4 text-[16px] font-semibold text-neutral-900">
             계약서를 찾을 수 없습니다
           </p>
-          <button
-            type="button"
-            onClick={() => navigate("/advertiser/dashboard")}
-            className="mt-5 rounded-md bg-neutral-950 px-4 py-2 text-[13px] font-semibold text-white"
-          >
-            대시보드로 돌아가기
-          </button>
+          <p className="mt-2 max-w-sm text-[13px] leading-6 text-neutral-500">
+            삭제되었거나 다른 계정의 계약일 수 있습니다. 대시보드에서 계약 상태를 다시 확인하거나 새 계약 초안을 만들어 주세요.
+          </p>
+          <div className="mt-5 grid gap-2 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => navigate("/advertiser/dashboard")}
+              className="rounded-md bg-neutral-950 px-4 py-2 text-[13px] font-semibold text-white"
+            >
+              대시보드로 돌아가기
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate("/advertiser/builder")}
+              className="rounded-md border border-neutral-200 bg-white px-4 py-2 text-[13px] font-semibold text-neutral-700"
+            >
+              새 계약 만들기
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -503,7 +515,7 @@ export function ContractAdminViewer() {
         credentials: "include",
       });
     } catch (error) {
-      console.warn("[Yeollock] advertiser logout request failed", error);
+      console.warn(`[${PRODUCT_NAME}] advertiser logout request failed`, error);
     } finally {
       resetHydration();
       navigate("/login/advertiser", { replace: true });

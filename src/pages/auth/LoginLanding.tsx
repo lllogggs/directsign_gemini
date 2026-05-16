@@ -1,4 +1,4 @@
-import { ArrowRight, Building2, UserRound } from "lucide-react";
+import { ArrowRight, Building2, CheckCircle2, UserRound } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { PRODUCT_NAME } from "../../domain/brand";
 import { getSafeRedirectPath } from "../../domain/navigation";
@@ -23,6 +23,12 @@ const loginRoles = [
     icon: UserRound,
   },
 ] as const;
+
+const loginTrustPoints = [
+  "사업자 인증 후 공유",
+  "검토 링크 상태 기록",
+  "서명 PDF·감사 이력",
+];
 
 function getRoleTone(role: (typeof loginRoles)[number]["role"]) {
   if (role === "advertiser") {
@@ -74,6 +80,22 @@ export function LoginLanding() {
         <section className="flex items-center justify-center py-7 sm:py-9">
           <div className="w-full max-w-[520px]">
             <h1 className="sr-only">{PRODUCT_NAME} 로그인</h1>
+            <div className="mb-5 text-center">
+              <p className="text-[13px] font-bold leading-5 text-neutral-600">
+                계약 공유 전 인증과 서명 증빙을 다시 확인합니다.
+              </p>
+              <ul className="mt-3 flex flex-wrap justify-center gap-2">
+                {loginTrustPoints.map((point) => (
+                  <li
+                    key={point}
+                    className="inline-flex min-h-8 items-center gap-1.5 rounded-full border border-neutral-200 bg-white/70 px-3 text-[11px] font-bold text-neutral-600 shadow-[0_1px_0_rgba(15,23,42,0.02)]"
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5 text-[#2563eb]" />
+                    <span>{point}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
             <div className="grid gap-3.5 sm:gap-4">
               {loginRoles.map((role) => {
                 const Icon = role.icon;
@@ -126,6 +148,9 @@ export function LoginLanding() {
           </Link>
           <Link className="transition hover:text-neutral-950" to="/terms">
             이용약관
+          </Link>
+          <Link className="transition hover:text-neutral-950" to="/legal/e-sign-consent">
+            전자서명
           </Link>
         </footer>
       </div>

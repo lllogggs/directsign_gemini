@@ -226,6 +226,7 @@ export function InfluencerVerification() {
   const selectedPlatform = PLATFORM_META[platform];
   const selectedMethod = METHOD_META[method];
   const proofUrl = form.ownership_challenge_url || form.platform_url;
+  const evidenceHref = proofUrl.trim();
   const verification = summary?.influencer;
   const verificationStatus = verification?.status ?? "not_submitted";
   const latest = verification?.latest_request;
@@ -703,15 +704,21 @@ export function InfluencerVerification() {
             title="관리자 검수"
             body="자동 확인은 보조 수단입니다. 최종 승인은 운영자가 코드, URL, 스크린샷을 함께 확인한 뒤 처리합니다."
           />
-          <a
-            href={proofUrl || form.platform_url || selectedPlatform.urlPlaceholder}
-            target="_blank"
-            rel="noreferrer"
-            className="flex h-11 items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white text-sm font-semibold text-neutral-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-neutral-400 hover:shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
-          >
-            <ExternalLink className="h-4 w-4" />
-            증빙 URL 열기
-          </a>
+          {evidenceHref ? (
+            <a
+              href={evidenceHref}
+              target="_blank"
+              rel="noreferrer"
+              className="flex h-11 items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white text-sm font-semibold text-neutral-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-neutral-400 hover:shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
+            >
+              <ExternalLink className="h-4 w-4" />
+              증빙 URL 열기
+            </a>
+          ) : (
+            <div className="flex min-h-11 items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50 px-3 text-center text-sm font-semibold text-neutral-400">
+              증빙 URL 입력 후 열기 가능
+            </div>
+          )}
         </aside>
       </main>
     </div>

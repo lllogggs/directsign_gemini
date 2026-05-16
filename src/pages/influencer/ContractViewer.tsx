@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   useAppStore,
   type ClauseHistory,
@@ -738,6 +738,22 @@ export function ContractViewer() {
       <AccessMessage
         title="계약을 불러올 수 없습니다"
         description={sharedContractError}
+        actions={
+          <>
+            <Link
+              to="/login/influencer"
+              className="flex h-11 items-center justify-center rounded-lg bg-neutral-950 px-4 text-sm font-semibold text-white transition hover:bg-neutral-800"
+            >
+              인플루언서 로그인
+            </Link>
+            <Link
+              to="/"
+              className="flex h-11 items-center justify-center rounded-lg border border-neutral-200 bg-[#fbfbfc] px-4 text-sm font-semibold text-neutral-700 transition hover:border-neutral-400 hover:bg-white"
+            >
+              처음으로 이동
+            </Link>
+          </>
+        }
       />
     );
   }
@@ -755,7 +771,23 @@ export function ContractViewer() {
     return (
       <AccessMessage
         title="계약서를 찾을 수 없습니다"
-        description="계약서가 삭제되었거나 링크가 올바르지 않을 수 있습니다."
+        description="계약서가 삭제되었거나 링크가 만료되었을 수 있습니다. 광고주에게 최신 검토 링크를 다시 요청해 주세요."
+        actions={
+          <>
+            <Link
+              to="/login/influencer"
+              className="flex h-11 items-center justify-center rounded-lg bg-neutral-950 px-4 text-sm font-semibold text-white transition hover:bg-neutral-800"
+            >
+              내 계약함 확인
+            </Link>
+            <Link
+              to="/"
+              className="flex h-11 items-center justify-center rounded-lg border border-neutral-200 bg-[#fbfbfc] px-4 text-sm font-semibold text-neutral-700 transition hover:border-neutral-400 hover:bg-white"
+            >
+              처음으로 이동
+            </Link>
+          </>
+        }
       />
     );
   }
@@ -790,6 +822,14 @@ export function ContractViewer() {
       <AccessMessage
         title="아직 활성화되지 않은 검토 링크입니다"
         description="광고주에게 새 계약 검토 링크 발급을 요청해 주세요."
+        actions={
+          <Link
+            to="/login/influencer"
+            className="flex h-11 items-center justify-center rounded-lg bg-neutral-950 px-4 text-sm font-semibold text-white transition hover:bg-neutral-800"
+          >
+            내 계약함 확인
+          </Link>
+        }
       />
     );
   }
@@ -803,6 +843,14 @@ export function ContractViewer() {
       <AccessMessage
         title="보안 링크가 만료되었습니다"
         description="계속 진행하려면 광고주에게 새 검토 링크를 요청해 주세요."
+        actions={
+          <Link
+            to="/login/influencer"
+            className="flex h-11 items-center justify-center rounded-lg bg-neutral-950 px-4 text-sm font-semibold text-white transition hover:bg-neutral-800"
+          >
+            내 계약함 확인
+          </Link>
+        }
       />
     );
   }
@@ -2300,9 +2348,11 @@ function InfluencerDeliverablesPanel({
 function AccessMessage({
   title,
   description,
+  actions,
 }: {
   title: string;
   description: string;
+  actions?: React.ReactNode;
 }) {
   return (
     <div className="flex min-h-[100dvh] items-center justify-center bg-[#f7f6f3] px-4">
@@ -2312,6 +2362,7 @@ function AccessMessage({
         </div>
         <h1 className="mt-4 text-xl font-semibold text-neutral-950">{title}</h1>
         <p className="mt-2 text-sm leading-6 text-neutral-600">{description}</p>
+        {actions ? <div className="mt-6 grid gap-2">{actions}</div> : null}
       </div>
     </div>
   );

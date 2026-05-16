@@ -6,6 +6,27 @@ import { PRODUCT_NAME } from "../../domain/brand";
 import { getNextPath } from "../../domain/navigation";
 import { translateApiErrorMessage } from "../../domain/userMessages";
 
+const influencerLoginTrustBadges = [
+  "계약 조건 확인",
+  "수정 요청 기록",
+  "서명 PDF 확인",
+];
+
+const influencerLoginProcessSummary = [
+  {
+    title: "받은 계약 확인",
+    description: "광고 조건, 일정, 금액을 링크에서 다시 확인합니다.",
+  },
+  {
+    title: "수정 요청",
+    description: "필요한 변경 사항은 계약 기록에 남깁니다.",
+  },
+  {
+    title: "전자서명",
+    description: "완료 후 PDF와 서명 이력을 확인합니다.",
+  },
+];
+
 export function InfluencerLoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -59,6 +80,9 @@ export function InfluencerLoginPage() {
   return (
     <AuthLoginScreen
       title="인플루언서 로그인"
+      description="받은 계약의 조건, 수정 요청, 서명 이력을 확인합니다."
+      trustBadges={influencerLoginTrustBadges}
+      processSummary={influencerLoginProcessSummary}
       fields={[
         {
           id: "email",
@@ -84,12 +108,19 @@ export function InfluencerLoginPage() {
       isSubmitting={isSubmitting}
       error={error}
       footer={
-        <div className="flex items-center justify-center gap-3">
+        <div className="flex flex-wrap items-center justify-center gap-3">
           <Link
             to={`/signup/influencer?next=${encodeURIComponent(nextPath)}`}
             className="text-[13px] font-semibold text-neutral-950 transition hover:text-neutral-600"
           >
             계정 만들기
+          </Link>
+          <span className="h-3 w-px bg-neutral-200" />
+          <Link
+            to="/reset-password?role=influencer"
+            className="text-[13px] font-semibold text-neutral-500 transition hover:text-neutral-950"
+          >
+            비밀번호 재설정
           </Link>
           <span className="h-3 w-px bg-neutral-200" />
           <Link

@@ -97,10 +97,10 @@ export const proposalTypeLabels: Record<CampaignProposalType, string> = {
 };
 
 export const platformLabels: Record<InfluencerPlatform, string> = {
-  instagram: "인스타그램",
+  instagram: "인스타",
   youtube: "유튜브",
   tiktok: "틱톡",
-  naver_blog: "네이버 블로그",
+  naver_blog: "블로그",
   other: "기타",
 };
 
@@ -270,7 +270,7 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
     handle: "breadroom",
     displayName: "브레드룸",
     category: "뷰티 · 라이프스타일",
-    headline: "신제품 런칭과 숏폼 전환 테스트를 함께할 크리에이터를 찾습니다",
+    headline: "신제품 런칭과 숏폼 전환을 함께할 크리에이터를 찾습니다",
     description:
       "사용 장면이 분명한 뷰티/라이프스타일 콘텐츠를 선호합니다. 브랜드 소개와 필수 표현은 가볍게 제공하고, 크리에이터의 자연스러운 사용 경험을 우선합니다.",
     location: "서울 성수",
@@ -332,7 +332,7 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
     handle: "object-studio",
     displayName: "오브제스튜디오",
     category: "리빙 · 소품",
-    headline: "저장형 리빙 콘텐츠와 공동구매 테스트를 함께할 파트너를 찾습니다",
+    headline: "저장형 리빙 콘텐츠와 공동구매를 함께할 파트너를 찾습니다",
     description:
       "제품 배치, 공간 전후 비교, 실제 사용 루틴이 보이는 콘텐츠를 선호합니다. 공동구매는 수수료 조건을 계약서에 분리해 기록합니다.",
     location: "온라인 입점",
