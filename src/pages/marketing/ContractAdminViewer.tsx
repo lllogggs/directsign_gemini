@@ -37,6 +37,8 @@ import {
   formatPublicContactValue,
   removeInternalTestLabel,
 } from "../../domain/display";
+import { ScreenHelpButton } from "../../components/ScreenHelp";
+import { SCREEN_HELP_CONTENT } from "../../domain/screenHelp";
 import {
   formatFileSize,
   getDeliverableErrorMessage,
@@ -191,7 +193,7 @@ export function ContractAdminViewer() {
           ? "인증 확인 중"
           : isAdvertiserVerified
             ? "공유 링크 활성화"
-            : "사업자 인증 필요"
+            : "광고주 인증 필요"
         : "수정 요청 검토";
   const canRequestSignatures =
     summary.allApproved &&
@@ -279,7 +281,7 @@ export function ContractAdminViewer() {
   const requestSignatures = () => {
     if (!isAdvertiserVerified) {
       setNotice(
-        `광고주 사업자 인증 승인 후 공유 링크를 활성화할 수 있습니다. 현재 상태: ${verificationStatusLabel(
+        `사업자 인증 승인 후 공유 링크를 활성화할 수 있습니다. 현재 상태: ${verificationStatusLabel(
           advertiserVerificationStatus,
         )}`,
       );
@@ -327,11 +329,11 @@ export function ContractAdminViewer() {
 
     if (summary.allApproved && contract.status !== "SIGNED") {
       if (isVerificationLoading) {
-        setNotice("광고주 사업자 인증 상태를 확인한 뒤 다시 시도해 주세요.");
+        setNotice("사업자 인증 상태를 확인한 뒤 다시 시도해 주세요.");
         return;
       }
 
-      setNotice("사업자 인증 요청 화면에서 승인 절차를 먼저 완료해 주세요.");
+      setNotice("사업자 인증 화면에서 승인 절차를 먼저 완료해 주세요.");
       navigate("/advertiser/verification");
       return;
     }
@@ -600,9 +602,15 @@ export function ContractAdminViewer() {
                   {contract.type}
                 </span>
               </div>
-              <h1 className="max-w-4xl text-[30px] font-semibold leading-tight tracking-[-0.03em] text-neutral-950 sm:text-[38px]">
-                {displayContractTitle}
-              </h1>
+              <div className="flex max-w-4xl items-start gap-2">
+                <h1 className="min-w-0 text-[30px] font-semibold leading-tight tracking-[-0.03em] text-neutral-950 sm:text-[38px]">
+                  {displayContractTitle}
+                </h1>
+                <ScreenHelpButton
+                  content={SCREEN_HELP_CONTENT.contractAdmin}
+                  className="mt-1.5 sm:mt-2"
+                />
+              </div>
               <p className="mt-3 max-w-3xl text-[14px] leading-6 text-neutral-500">
                 {formatOperationalText(
                   contract.workflow?.next_action,

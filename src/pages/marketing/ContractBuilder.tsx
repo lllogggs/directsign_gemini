@@ -17,6 +17,8 @@ import {
 import { removeInternalTestLabel } from "../../domain/display";
 import { useVerificationSummary } from "../../hooks/useVerificationSummary";
 import { PRODUCT_NAME } from "../../domain/brand";
+import { ScreenHelpButton } from "../../components/ScreenHelp";
+import { SCREEN_HELP_CONTENT } from "../../domain/screenHelp";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -711,7 +713,7 @@ export function ContractBuilder() {
       setValidationErrors([
         {
           field: "advertiser_verification",
-          message: "광고주 사업자 인증 승인 후 계약을 발송할 수 있습니다.",
+          message: "사업자 인증 승인 후 계약을 발송할 수 있습니다.",
           step: 5,
         },
       ]);
@@ -865,9 +867,15 @@ export function ContractBuilder() {
               <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
                 {step} / 5 단계
               </p>
-              <h1 className="font-neo-heavy mb-3 text-[28px] leading-tight text-neutral-950 lg:text-[30px]">
-                새 전자계약서 작성
-              </h1>
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <h1 className="font-neo-heavy text-[28px] leading-tight text-neutral-950 lg:text-[30px]">
+                  새 전자계약서 작성
+                </h1>
+                <ScreenHelpButton
+                  content={SCREEN_HELP_CONTENT.contractBuilder}
+                  className="mt-0.5"
+                />
+              </div>
               <p className="mb-6 text-[13px] leading-relaxed text-neutral-500">
                 핵심 조건을 구조화하고 발송 전 체크리스트를 통과한 뒤 공유 링크를 생성합니다.
               </p>

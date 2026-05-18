@@ -64,17 +64,24 @@ const roleConfig = {
     nextPath: "/influencer/dashboard",
     loginPath: "/login/influencer",
   },
-} satisfies Record<SignupRole, {
-  title: string;
-  description: string;
-  endpoint: string;
-  nextPath: string;
-  loginPath: string;
-}>;
+} satisfies Record<
+  SignupRole,
+  {
+    title: string;
+    description: string;
+    endpoint: string;
+    nextPath: string;
+    loginPath: string;
+  }
+>;
 
 const signupTrustContent = {
   advertiser: {
-    trustBadges: ["사업자 인증 후 공유", "검토 링크 상태 기록", "서명 PDF·감사 이력"],
+    trustBadges: [
+      "사업자 인증 후 공유",
+      "검토 링크 상태 기록",
+      "서명 PDF·감사 이력",
+    ],
     processSummary: [
       {
         title: "사업자 인증",
@@ -121,8 +128,38 @@ export function SignupPage({ role }: { role: SignupRole }) {
   const config = roleConfig[role];
   const allowedNextPrefixes =
     role === "influencer" ? ["/influencer", "/contract"] : ["/advertiser"];
-  const nextPath = getNextPath(location.search, config.nextPath, allowedNextPrefixes);
+  const nextPath = getNextPath(
+    location.search,
+    config.nextPath,
+    allowedNextPrefixes,
+  );
   const loginRedirectPath = `${config.loginPath}?next=${encodeURIComponent(nextPath)}`;
+  const isContractContinuationSignup =
+    role === "influencer" && nextPath.startsWith("/contract/");
+  const signupDescription = isContractContinuationSignup
+    ? "받은 계약을 이어서 진행하려면 인플루언서 계정을 만든 뒤 같은 계약으로 돌아옵니다."
+    : config.description;
+  const signupProcessSummary = isContractContinuationSignup
+    ? [
+        {
+          title: "계약 링크 유지",
+          description:
+            "가입 또는 로그인 후 방금 받은 계약 화면으로 다시 이동합니다.",
+        },
+        {
+          title: "플랫폼 인증",
+          description: "서명 전에 필요한 인플루언서 계정 인증을 제출합니다.",
+        },
+        {
+          title: "조항 승인과 서명",
+          description:
+            "수정 요청, 조항 승인, 전자서명을 계약 화면에서 이어갑니다.",
+        },
+      ]
+    : signupTrustContent[role].processSummary;
+  const signupSubmitLabel = isContractContinuationSignup
+    ? "가입하고 계약으로 돌아가기"
+    : "시작하기";
   const [name, setName] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [email, setEmail] = useState("");
@@ -154,7 +191,9 @@ export function SignupPage({ role }: { role: SignupRole }) {
       const normalizedEmail = email.trim().toLowerCase();
 
       if (!requiredConsentsAccepted) {
-        throw new Error("회원가입에는 이용약관과 개인정보 처리방침 필수 동의가 필요합니다.");
+        throw new Error(
+          "회원가입에는 이용약관과 개인정보 처리방침 필수 동의가 필요합니다.",
+        );
       }
 
       if (
@@ -179,7 +218,9 @@ export function SignupPage({ role }: { role: SignupRole }) {
           privacy_accepted: consents.privacy,
           terms_version: LEGAL_DOCUMENT_VERSION,
           privacy_policy_version: LEGAL_DOCUMENT_VERSION,
-          ...(role === "advertiser" ? { company_name: companyName.trim() } : {}),
+          ...(role === "advertiser"
+            ? { company_name: companyName.trim() }
+            : {}),
           ...(role === "influencer"
             ? {
                 activity_categories: activityCategories,
@@ -216,7 +257,10 @@ export function SignupPage({ role }: { role: SignupRole }) {
     } catch (signupError) {
       setError(
         signupError instanceof Error
-          ? translateApiErrorMessage(signupError.message, "계정을 만들 수 없습니다.")
+          ? translateApiErrorMessage(
+              signupError.message,
+              "계정을 만들 수 없습니다.",
+            )
           : "계정을 만들 수 없습니다.",
       );
     } finally {
@@ -292,8 +336,9 @@ export function SignupPage({ role }: { role: SignupRole }) {
   return (
     <AuthLoginScreen
       title={config.title}
-      description={config.description}
+      description={signupDescription}
       trustBadges={signupTrustContent[role].trustBadges}
+      processSummary={signupProcessSummary}
       fields={[
         ...(role === "advertiser"
           ? [
@@ -337,7 +382,7 @@ export function SignupPage({ role }: { role: SignupRole }) {
           onChange: setPassword,
         },
       ]}
-      submitLabel="시작하기"
+      submitLabel={signupSubmitLabel}
       submittingLabel="생성 중"
       submitDisabled={!requiredConsentsAccepted}
       isSubmitting={isSubmitting}
@@ -345,7 +390,7 @@ export function SignupPage({ role }: { role: SignupRole }) {
       footer={
         <Link
           to={loginRedirectPath}
-          className="text-[13px] font-semibold text-[#59605b] transition hover:text-neutral-950"
+          className="inline-flex min-h-10 items-center text-[13px] font-semibold text-[#59605b] transition hover:text-neutral-950"
         >
           이미 계정이 있으면 로그인하기
         </Link>
@@ -375,7 +420,10 @@ export function SignupPage({ role }: { role: SignupRole }) {
         </>
       ) : null}
 
-      <SignupFlowNotice role={role} />
+      <SignupFlowNotice
+        role={role}
+        isContractContinuation={isContractContinuationSignup}
+      />
 
       <SignupConsentPanel
         consents={consents}
@@ -388,9 +436,19 @@ export function SignupPage({ role }: { role: SignupRole }) {
   );
 }
 
-function SignupFlowNotice({ role }: { role: SignupRole }) {
-  const content =
-    role === "advertiser"
+function SignupFlowNotice({
+  role,
+  isContractContinuation,
+}: {
+  role: SignupRole;
+  isContractContinuation: boolean;
+}) {
+  const content = isContractContinuation
+    ? {
+        title: "계약 링크를 계속 이어갑니다",
+        body: "가입이나 이메일 인증 후 로그인하면 받은 계약으로 돌아가 조항 승인과 서명을 진행합니다.",
+      }
+    : role === "advertiser"
       ? {
           title: "가입 후 진행 순서",
           body: "이메일 인증 후 사업자 인증을 제출합니다. 승인 전에는 계약 공유 링크 발송이 제한됩니다.",
@@ -534,7 +592,7 @@ function ConsentCheckbox({
       <input
         id={checkboxId}
         type="checkbox"
-        className="mt-1 h-4 w-4 accent-[#2563eb]"
+        className="mt-0.5 h-10 w-10 shrink-0 accent-[#2563eb]"
         checked={checked}
         disabled={disabled}
         required
@@ -553,7 +611,7 @@ function ConsentCheckbox({
         <Link
           to={linkTo}
           target="_blank"
-          className="mt-2 inline-flex text-[12px] font-semibold text-[#2563eb] underline underline-offset-4"
+          className="mt-2 inline-flex min-h-10 items-center text-[12px] font-semibold text-[#2563eb] underline underline-offset-4"
         >
           {linkLabel}
         </Link>

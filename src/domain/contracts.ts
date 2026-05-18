@@ -14,6 +14,7 @@ export type ClauseStatus =
   | "DELETION_REQUESTED";
 export type ContractActor = "advertiser" | "influencer" | "system";
 export type ContractRiskLevel = "low" | "medium" | "high";
+export type AdvertiserTrustRiskLevel = "low" | "medium" | "high";
 export type PdfStatus = "not_ready" | "draft_ready" | "signed_ready";
 export type ContractPlatform =
   | "NAVER_BLOG"
@@ -21,6 +22,29 @@ export type ContractPlatform =
   | "INSTAGRAM"
   | "TIKTOK"
   | "OTHER";
+
+export interface AdvertiserTrustFlag {
+  code: string;
+  label: string;
+  severity: AdvertiserTrustRiskLevel;
+}
+
+export interface ContractAdvertiserTrust {
+  business_verification_status?: "not_submitted" | "pending" | "approved" | "rejected";
+  business_verification_label?: string;
+  business_verified_at?: string;
+  business_name?: string;
+  business_registration_number_masked?: string;
+  representative_name?: string;
+  manager_name?: string;
+  manager_phone?: string;
+  manager_email_domain?: string;
+  first_contract?: boolean;
+  risk_score?: number;
+  risk_level?: AdvertiserTrustRiskLevel;
+  risk_flags?: AdvertiserTrustFlag[];
+  guidance?: string;
+}
 
 export interface ClauseHistory {
   id: string;
@@ -85,6 +109,7 @@ export interface Contract {
     name: string;
     manager?: string;
   };
+  advertiser_trust?: ContractAdvertiserTrust;
   type: ContractType;
   status: ContractStatus;
   title: string;

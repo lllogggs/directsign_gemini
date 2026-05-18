@@ -108,6 +108,7 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
   const [dataError, setDataError] = useState("");
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [reviewingVerificationId, setReviewingVerificationId] = useState("");
+  const [checkingVerificationId, setCheckingVerificationId] = useState("");
   const [closingSupportId, setClosingSupportId] = useState("");
 
   const activeSupportRequests = useMemo(
@@ -351,6 +352,47 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
       );
     } finally {
       setReviewingVerificationId("");
+    }
+  };
+
+  const rerunVerificationAutomation = async (id: string) => {
+    setCheckingVerificationId(id);
+    setDataError("");
+
+    try {
+      const response = await apiFetch(
+        `/api/admin/verification-requests/${id}/automation-check`,
+        {
+          method: "POST",
+          headers: { Accept: "application/json" },
+        },
+      );
+      const data = (await response.json()) as {
+        request?: VerificationRequest;
+        error?: string;
+      };
+
+      if (!response.ok || !data.request) {
+        throw new Error(
+          translateApiErrorMessage(
+            data.error,
+            "자동 확인을 다시 실행하지 못했습니다.",
+          ),
+        );
+      }
+
+      await loadAdminData();
+    } catch (requestError) {
+      setDataError(
+        requestError instanceof Error
+          ? translateApiErrorMessage(
+              requestError.message,
+              "자동 확인을 다시 실행하지 못했습니다.",
+            )
+          : "자동 확인을 다시 실행하지 못했습니다.",
+      );
+    } finally {
+      setCheckingVerificationId("");
     }
   };
 
@@ -607,8 +649,10 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
                   : verificationRequests.slice(0, 5)
               }
               reviewingId={reviewingVerificationId}
+              checkingId={checkingVerificationId}
               onApprove={(id) => reviewVerificationRequest(id, "approved")}
               onReject={(id) => reviewVerificationRequest(id, "rejected")}
+              onRecheck={rerunVerificationAutomation}
             />
           </div>
         </section>
@@ -778,13 +822,17 @@ function SupportAccessPanel({
 function VerificationReviewPanel({
   requests,
   reviewingId,
+  checkingId,
   onApprove,
   onReject,
+  onRecheck,
 }: {
   requests: VerificationRequest[];
   reviewingId: string;
+  checkingId: string;
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
+  onRecheck: (id: string) => void;
 }) {
   return (
     <section className="rounded-lg border border-neutral-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)]">
@@ -812,6 +860,7 @@ function VerificationReviewPanel({
             (claimedHandle ? `https://yeollock.me/${claimedHandle}` : "");
           const currentOwnerId = getEvidenceString(request, "current_owner_profile_id");
           const claimReason = getEvidenceString(request, "reason") || request.note;
+          const automationSummary = getVerificationAutomationSummary(request);
 
           return (
             <article
@@ -854,6 +903,14 @@ function VerificationReviewPanel({
                   </>
                 )}
                 {request.platform_handle && <p>핸들 {request.platform_handle}</p>}
+                {request.ownership_verification_method && (
+                  <p>방식 {verificationMethodLabel(request.ownership_verification_method)}</p>
+                )}
+                {request.ownership_verification_method === "instagram_dm_code" && (
+                  <p className="font-semibold text-neutral-700">
+                    공식 인스타그램 DM 발신 계정과 프로필 URL을 대조 후 승인
+                  </p>
+                )}
                 {request.ownership_challenge_code && (
                   <p className="font-mono text-neutral-700">
                     코드 {request.ownership_challenge_code}
@@ -898,6 +955,15 @@ function VerificationReviewPanel({
                     문서 보기
                   </a>
                 )}
+                <button
+                  type="button"
+                  disabled={checkingId === request.id}
+                  title={automationSummary || undefined}
+                  onClick={() => onRecheck(request.id)}
+                  className="inline-flex h-9 items-center rounded-lg border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-700 transition hover:border-neutral-400 disabled:opacity-50"
+                >
+                  {checkingId === request.id ? "자동 확인 중" : "자동 확인"}
+                </button>
                 {isPending && (
                   <>
                     <button
@@ -993,10 +1059,22 @@ function verificationTypeLabel(request: VerificationRequest) {
     return "인플루언서 공개 주소 이의신청";
   }
   if (request.target_type === "advertiser_organization") {
-    return "광고주 사업자 인증";
+    return "사업자 인증";
   }
   const platform = request.platform ? ` · ${request.platform}` : "";
   return `인플루언서 계정 인증${platform}`;
+}
+
+function verificationMethodLabel(method: string) {
+  const labels: Record<string, string> = {
+    instagram_dm_code: "Instagram DM 수동 확인",
+    profile_bio_code: "프로필 소개 코드",
+    public_post_code: "공개 게시글 코드",
+    channel_description_code: "채널 설명 코드",
+    screenshot_review: "스크린샷 검수",
+  };
+
+  return labels[method] ?? method;
 }
 
 function isPublicProfileHandleAppeal(request: VerificationRequest) {
@@ -1006,4 +1084,38 @@ function isPublicProfileHandleAppeal(request: VerificationRequest) {
 function getEvidenceString(request: VerificationRequest, key: string) {
   const value = request.evidence_snapshot_json?.[key];
   return typeof value === "string" && value.trim() ? value : "";
+}
+
+function getVerificationAutomationSummary(request: VerificationRequest) {
+  const automation =
+    request.evidence_snapshot_json?.automation ??
+    (request.evidence_snapshot_json?.ownership_verification as
+      | { automation?: unknown }
+      | undefined)?.automation;
+
+  if (!automation || typeof automation !== "object") return "";
+
+  const typed = automation as Record<string, unknown>;
+  const result =
+    typed.business_registration ??
+    typed.platform_account ??
+    typed.instagram_dm ??
+    typed.ownership_challenge;
+
+  if (!result || typeof result !== "object") return "";
+
+  const payload = result as {
+    provider?: unknown;
+    status?: unknown;
+    mode?: unknown;
+    message?: unknown;
+    checked_at?: unknown;
+  };
+  const provider = typeof payload.provider === "string" ? payload.provider : "automation";
+  const status = typeof payload.status === "string" ? payload.status : "unknown";
+  const mode = typeof payload.mode === "string" ? payload.mode : "manual";
+  const checkedAt =
+    typeof payload.checked_at === "string" ? formatDateTime(payload.checked_at) : "";
+
+  return `자동 확인 ${status} · ${provider} · ${mode}${checkedAt ? ` · ${checkedAt}` : ""}`;
 }

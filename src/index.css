@@ -174,8 +174,8 @@
 @layer utilities {
   @keyframes landing-start-copy-in {
     from {
-      opacity: 0;
-      transform: translateY(10px);
+      opacity: 1;
+      transform: translateY(6px);
     }
 
     to {
@@ -225,18 +225,18 @@
   }
 
   .landing-start-copy-line {
-    opacity: 0;
-    transform: translateY(10px);
-    animation: landing-start-copy-in 1120ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    opacity: 1;
+    transform: translateY(6px);
+    animation: landing-start-copy-in 560ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
     will-change: opacity, transform;
   }
 
   .landing-start-copy-line-1 {
-    animation-delay: 220ms;
+    animation-delay: 0ms;
   }
 
   .landing-start-copy-line-2 {
-    animation-delay: 980ms;
+    animation-delay: 80ms;
   }
 
   .contract-builder-surface [data-slot="input"],

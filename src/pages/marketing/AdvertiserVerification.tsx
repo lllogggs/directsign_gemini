@@ -34,7 +34,7 @@ const advertiserVerificationTrustNotes = [
   },
   {
     title: "권장 증빙",
-    body: "사업자등록증명원 PDF 또는 원본을 식별할 수 있는 이미지 파일을 업로드해 주세요.",
+    body: "광고주 계정의 계약 발송 권한을 확인할 수 있는 사업자 증빙을 업로드해 주세요.",
   },
   {
     title: "민감 정보 처리",
@@ -70,6 +70,7 @@ interface AdvertiserVerificationForm {
   submitted_by_name: string;
   submitted_by_email: string;
   manager_phone: string;
+  business_start_date: string;
   document_issue_date: string;
   document_check_number: string;
   note: string;
@@ -82,6 +83,7 @@ const initialForm: AdvertiserVerificationForm = {
   submitted_by_name: "",
   submitted_by_email: "",
   manager_phone: "",
+  business_start_date: "",
   document_issue_date: "",
   document_check_number: "",
   note: "",
@@ -110,6 +112,7 @@ const withVerificationDefaults = (
   submitted_by_email:
     form.submitted_by_email || latest?.submitted_by_email || account?.email || "",
   manager_phone: form.manager_phone || latest?.manager_phone || "",
+  business_start_date: form.business_start_date || "",
   document_issue_date:
     form.document_issue_date || latest?.document_issue_date || "",
   document_check_number:
@@ -265,12 +268,12 @@ export function AdvertiserVerification() {
 
           <div className="mb-5">
             <h1 className="text-[24px] font-semibold tracking-tight">
-              {approved ? "사업자 인증 정보" : "광고주 사업자 인증"}
+              {approved ? "사업자 인증 정보" : "사업자 인증"}
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-neutral-500">
               {approved
                 ? "현재 승인 상태를 유지합니다. 상호, 담당자, 사업자 정보가 바뀌면 새 증빙으로 갱신 요청을 남겨주세요."
-                : "계약 초안 작성은 바로 가능하지만, 인플루언서에게 계약을 발송하려면 운영자 수기 승인이 필요합니다."}
+                : "계약 초안 작성은 바로 가능하지만, 인플루언서에게 계약을 발송하려면 광고주 계정 검수가 필요합니다. 이 정보는 서비스 운영자 법적 고지 정보와 별개입니다."}
             </p>
             <div className="mt-4 grid gap-2 sm:grid-cols-3">
               {advertiserVerificationTrustNotes.map((note) => (
@@ -329,6 +332,12 @@ export function AdvertiserVerification() {
                 label="담당자 연락처"
                 value={visibleForm.manager_phone}
                 onChange={(value) => updateForm({ manager_phone: value })}
+              />
+              <TextField
+                label="개업일자"
+                type="date"
+                value={visibleForm.business_start_date}
+                onChange={(value) => updateForm({ business_start_date: value })}
               />
               <TextField
                 label="문서 발급일"

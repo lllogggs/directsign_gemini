@@ -1,0 +1,162 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1120" viewBox="0 0 1600 1120">
+  <defs>
+    <style>
+      .bg { fill: #f7f6f3; }
+      .card { fill: #ffffff; stroke: #dedbd2; stroke-width: 1; }
+      .ink { fill: #111111; }
+      .paper { fill: #ffffff; }
+      .muted { fill: #6f6b63; }
+      .title { font-family: Inter, Pretendard, Arial, sans-serif; font-size: 32px; font-weight: 800; fill: #111111; }
+      .label { font-family: Inter, Pretendard, Arial, sans-serif; font-size: 20px; font-weight: 800; fill: #111111; }
+      .note { font-family: Inter, Pretendard, Arial, sans-serif; font-size: 15px; font-weight: 600; fill: #6f6b63; }
+      .thin { fill: none; stroke: #ffffff; stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; }
+      .mid { fill: none; stroke: #ffffff; stroke-width: 9; stroke-linecap: round; stroke-linejoin: round; }
+      .darkStroke { fill: none; stroke: #111111; stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; }
+      .accent { fill: #2563eb; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="1600" height="1120"/>
+  <text class="title" x="80" y="84">연락미 로고 샘플</text>
+  <text class="note" x="80" y="118">사이트 적용 전 검토용. 사람 + 수화기 + 자물쇠/키홀을 간결한 SaaS 아이콘으로 정리한 8안입니다.</text>
+
+  <!-- card 1 -->
+  <g transform="translate(80 170)">
+    <rect class="card" width="330" height="360" rx="22"/>
+    <g transform="translate(105 46)">
+      <rect class="ink" width="120" height="120" rx="28"/>
+      <circle class="paper" cx="60" cy="34" r="14"/>
+      <path class="paper" d="M35 89c3-23 17-35 25-35s22 12 25 35c1 5-3 8-8 8H43c-5 0-9-3-8-8Z"/>
+      <circle class="ink" cx="60" cy="76" r="5"/>
+      <path class="ink" d="M57 81h6l-1 14h-4z"/>
+      <path class="mid" d="M31 38c-13 19-10 44 6 60"/>
+      <path class="paper" d="M27 34c6-6 13-7 18-2l4 4-14 14-5-4c-5-4-6-8-3-12Z"/>
+      <path class="paper" d="M36 92c4 3 8 5 13 7l-3 17c-9-1-18-6-25-13 2-7 7-11 15-11Z"/>
+    </g>
+    <text class="label" x="28" y="220">01. 앱 아이콘형</text>
+    <text class="note" x="28" y="250">가장 명확한 사람+수화기+키홀</text>
+    <text class="note" x="28" y="276">작은 favicon에서도 읽히는 구조</text>
+  </g>
+
+  <!-- card 2 -->
+  <g transform="translate(450 170)">
+    <rect class="card" width="330" height="360" rx="22"/>
+    <g transform="translate(105 46)">
+      <circle class="ink" cx="60" cy="60" r="60"/>
+      <circle class="paper" cx="60" cy="31" r="13"/>
+      <path class="paper" d="M35 83c4-22 17-33 25-33s21 11 25 33c1 6-3 10-9 10H44c-6 0-10-4-9-10Z"/>
+      <circle class="ink" cx="60" cy="72" r="5"/>
+      <path class="ink" d="M57 77h6l-1 14h-4z"/>
+      <path class="thin" d="M30 36c-13 16-13 43 1 58 6 7 14 12 24 15"/>
+      <path class="paper" d="M27 31c6-5 13-5 18 0l4 4-13 13-5-4c-5-4-7-9-4-13Z"/>
+    </g>
+    <text class="label" x="28" y="220">02. 원형 배지</text>
+    <text class="note" x="28" y="250">둥근 앱 런처와 SNS 프로필에 적합</text>
+    <text class="note" x="28" y="276">조금 더 부드러운 인상</text>
+  </g>
+
+  <!-- card 3 -->
+  <g transform="translate(820 170)">
+    <rect class="card" width="330" height="360" rx="22"/>
+    <g transform="translate(105 46)">
+      <rect class="ink" width="120" height="120" rx="24"/>
+      <path class="thin" d="M37 55V42c0-14 10-24 23-24s23 10 23 24v13"/>
+      <rect class="paper" x="31" y="52" width="58" height="44" rx="12"/>
+      <circle class="ink" cx="60" cy="72" r="5"/>
+      <path class="ink" d="M57 77h6l-1 13h-4z"/>
+      <path class="thin" d="M29 86c-10-16-8-37 5-51"/>
+      <path class="paper" d="M26 29c6-5 13-5 18 0l4 4-13 13-5-4c-5-4-7-9-4-13Z"/>
+    </g>
+    <text class="label" x="28" y="220">03. 보안 강조형</text>
+    <text class="note" x="28" y="250">계약·인증 서비스 신뢰감이 강함</text>
+    <text class="note" x="28" y="276">사람보다 자물쇠가 먼저 보임</text>
+  </g>
+
+  <!-- card 4 -->
+  <g transform="translate(1190 170)">
+    <rect class="card" width="330" height="360" rx="22"/>
+    <g transform="translate(105 46)">
+      <rect class="ink" width="120" height="120" rx="30"/>
+      <path class="mid" d="M32 78c15 18 41 21 61 5"/>
+      <path class="paper" d="M30 73c6-5 13-4 18 1l5 5-14 13-6-5c-5-4-7-10-3-14Z"/>
+      <path class="paper" d="M92 74c5-5 12-6 18-2 3 5 1 11-4 15l-6 5-14-13 6-5Z"/>
+      <circle class="paper" cx="44" cy="42" r="10"/>
+      <circle class="paper" cx="76" cy="42" r="10"/>
+      <path class="paper" d="M28 75c4-16 12-24 18-24s14 8 18 24Z"/>
+      <path class="paper" d="M56 75c4-16 12-24 18-24s14 8 18 24Z"/>
+      <circle class="ink" cx="60" cy="81" r="4"/>
+      <path class="ink" d="M58 85h4l-1 10h-2z"/>
+    </g>
+    <text class="label" x="28" y="220">04. 합의/악수형</text>
+    <text class="note" x="28" y="250">계약 합의 의미는 좋음</text>
+    <text class="note" x="28" y="276">다소 법무/컨설팅 느낌</text>
+  </g>
+
+  <!-- card 5 -->
+  <g transform="translate(80 580)">
+    <rect class="card" width="330" height="360" rx="22"/>
+    <g transform="translate(105 46)">
+      <rect class="paper" width="120" height="120" rx="28" stroke="#111" stroke-width="7"/>
+      <circle class="ink" cx="60" cy="33" r="13"/>
+      <path class="ink" d="M35 88c3-22 17-34 25-34s22 12 25 34c1 6-3 10-9 10H44c-6 0-10-4-9-10Z"/>
+      <circle class="paper" cx="60" cy="75" r="5"/>
+      <path class="paper" d="M57 80h6l-1 13h-4z"/>
+      <path class="darkStroke" d="M29 37c-13 20-10 46 8 61"/>
+      <path class="ink" d="M25 32c6-6 13-7 18-2l4 4-14 14-5-4c-5-4-6-8-3-12Z"/>
+    </g>
+    <text class="label" x="28" y="220">05. 라이트 반전형</text>
+    <text class="note" x="28" y="250">흰 배경 문서/워터마크에 유리</text>
+    <text class="note" x="28" y="276">헤더 아이콘보다는 보조 로고</text>
+  </g>
+
+  <!-- card 6 -->
+  <g transform="translate(450 580)">
+    <rect class="card" width="330" height="360" rx="22"/>
+    <g transform="translate(105 46)">
+      <rect class="ink" width="120" height="120" rx="26"/>
+      <path class="paper" d="M28 84c20 22 50 22 70 0 6-7 6-16 0-23l-7-8-17 17 7 8c-11 8-31 8-42 0l7-8-17-17-7 8c-6 7-6 16 0 23Z"/>
+      <circle class="paper" cx="60" cy="36" r="14"/>
+      <path class="paper" d="M37 83c4-21 16-31 23-31s19 10 23 31Z"/>
+      <circle class="ink" cx="60" cy="73" r="5"/>
+      <path class="ink" d="M57 78h6l-1 13h-4z"/>
+    </g>
+    <text class="label" x="28" y="220">06. 수화기 링형</text>
+    <text class="note" x="28" y="250">연락 의미가 가장 먼저 읽힘</text>
+    <text class="note" x="28" y="276">조금 더 캐릭터성이 있음</text>
+  </g>
+
+  <!-- card 7 -->
+  <g transform="translate(820 580)">
+    <rect class="card" width="330" height="360" rx="22"/>
+    <g transform="translate(105 46)">
+      <rect class="ink" width="120" height="120" rx="24"/>
+      <path class="thin" d="M36 79c10 13 25 20 42 18"/>
+      <path class="paper" d="M31 74c6-5 13-5 18 0l5 5-14 13-6-5c-5-4-7-9-3-13Z"/>
+      <circle class="paper" cx="60" cy="36" r="14"/>
+      <path class="paper" d="M37 89c4-23 16-34 23-34s19 11 23 34c1 5-3 9-8 9H45c-5 0-9-4-8-9Z"/>
+      <path class="ink" d="M52 76a8 8 0 1 1 16 0c0 3-2 6-4 7v10h-8V83c-2-1-4-4-4-7Z"/>
+      <rect class="accent" x="87" y="84" width="22" height="22" rx="11"/>
+      <path class="thin" d="M93 95l4 4 7-9" style="stroke-width:4"/>
+    </g>
+    <text class="label" x="28" y="220">07. 인증 체크형</text>
+    <text class="note" x="28" y="250">QA/인증 의미가 즉시 보임</text>
+    <text class="note" x="28" y="276">메인 로고보다 상태 배지 느낌</text>
+  </g>
+
+  <!-- card 8 -->
+  <g transform="translate(1190 580)">
+    <rect class="card" width="330" height="360" rx="22"/>
+    <g transform="translate(105 46)">
+      <rect class="ink" width="120" height="120" rx="30"/>
+      <circle class="paper" cx="60" cy="34" r="15"/>
+      <path class="paper" d="M35 91c3-24 17-37 25-37s22 13 25 37c1 5-3 8-8 8H43c-5 0-9-3-8-8Z"/>
+      <path class="ink" d="M53 76a7 7 0 1 1 14 0c0 3-2 5-4 6v13h-6V82c-2-1-4-3-4-6Z"/>
+      <path class="mid" d="M29 40c-12 18-10 43 6 58"/>
+      <path class="paper" d="M25 34c6-6 13-7 18-2l5 5-14 14-6-5c-5-4-6-8-3-12Z"/>
+      <path class="paper" d="M34 93c5 4 11 7 18 9l-3 15c-11-2-21-8-29-17 3-6 8-8 14-7Z"/>
+    </g>
+    <text class="label" x="28" y="220">08. 최종 추천형</text>
+    <text class="note" x="28" y="250">간결하고 앱 아이콘/헤더에 모두 적합</text>
+    <text class="note" x="28" y="276">사람·연락·보안이 균형 있게 읽힘</text>
+  </g>
+</svg>

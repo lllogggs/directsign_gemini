@@ -40,6 +40,14 @@ import { useVerificationSummary } from "../../hooks/useVerificationSummary";
 import { useMarketplaceMessageSummary } from "../../hooks/useMarketplaceMessageSummary";
 import { PRODUCT_NAME } from "../../domain/brand";
 import { apiFetch } from "../../domain/api";
+import {
+  ContractFirstExperienceDialog,
+  ScreenHelpButton,
+} from "../../components/ScreenHelp";
+import {
+  CONTRACT_FIRST_EXPERIENCE_CONTENT,
+  SCREEN_HELP_CONTENT,
+} from "../../domain/screenHelp";
 
 type PlatformFilter = "ALL" | ContractPlatform;
 type ContractTypeFilter = "ALL" | Contract["type"];
@@ -196,6 +204,7 @@ const PLATFORM_META: Record<
 export function Dashboard() {
   const navigate = useNavigate();
   const contracts = useAppStore((state) => state.contracts);
+  const isHydrated = useAppStore((state) => state.isHydrated);
   const isSyncing = useAppStore((state) => state.isSyncing);
   const syncError = useAppStore((state) => state.syncError);
   const resetHydration = useAppStore((state) => state.resetHydration);
@@ -351,6 +360,12 @@ export function Dashboard() {
     query,
     sortState,
   ]);
+  const displayFilteredContracts = collapseInternalDuplicateContracts(
+    filteredContracts,
+    getDashboardContractCollapseKey,
+  );
+  const contractCountSummary =
+    `전체 ${contracts.length.toLocaleString()}건 · 검색 결과 ${displayFilteredContracts.length.toLocaleString()}건`;
   const handleSortChange = (key: SortKey) => {
     setSortState((current) => ({
       key,
@@ -373,13 +388,19 @@ export function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950">
+    <div className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950 lg:h-screen lg:overflow-hidden">
+      {isHydrated && contracts.length === 0 ? (
+        <ContractFirstExperienceDialog
+          content={CONTRACT_FIRST_EXPERIENCE_CONTENT}
+          onCreateContract={() => navigate("/advertiser/builder")}
+        />
+      ) : null}
       <header className="sticky top-0 z-30 border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
         <div className="mx-auto flex h-12 max-w-[1500px] items-center justify-between px-3 sm:px-5 lg:px-6">
           <button
             type="button"
             onClick={() => navigate("/advertiser/dashboard")}
-            className="flex shrink-0 items-center gap-3"
+            className="flex h-10 min-w-10 shrink-0 items-center gap-3"
           >
             <span className="flex h-9 w-9 items-center justify-center rounded-[11px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
               <ShieldCheck className="h-4 w-4" strokeWidth={2} />
@@ -387,17 +408,19 @@ export function Dashboard() {
             <span className="font-neo-heavy hidden text-[18px] leading-none sm:inline">{PRODUCT_NAME}</span>
           </button>
 
-          <div className="no-scrollbar ml-2 flex min-w-0 items-center gap-2 overflow-x-auto sm:ml-3">
+          <div className="ml-2 flex min-w-0 items-center justify-end gap-1.5 sm:ml-3 sm:gap-2">
             <div className="hidden shrink-0 sm:block">
               <SyncPill isSyncing={isSyncing} syncError={syncError} />
             </div>
             <button
               type="button"
               onClick={() => navigate("/advertiser/builder")}
-              className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[9px] bg-blue-600 px-3 text-[12px] font-extrabold text-white shadow-[0_10px_24px_rgba(37,99,235,0.18)] transition hover:bg-blue-700"
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] bg-blue-600 px-0 text-[12px] font-extrabold text-white shadow-[0_10px_24px_rgba(37,99,235,0.18)] transition hover:bg-blue-700 sm:w-auto sm:px-3"
+              aria-label="새 계약"
+              title="새 계약"
             >
               <Plus className="h-3.5 w-3.5" strokeWidth={2} />
-              새 계약
+              <span className="hidden sm:inline">새 계약</span>
             </button>
             <MessageCenterButton
               unreadCount={messageSummary.unreadCount}
@@ -407,42 +430,53 @@ export function Dashboard() {
             <button
               type="button"
               onClick={() => navigate("/advertiser/discover")}
-              className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-2.5 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-0 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950 sm:w-auto sm:px-2.5"
+              aria-label="상대 찾기"
+              title="상대 찾기"
             >
               <Search className="h-3.5 w-3.5" strokeWidth={2} />
-              <span>상대 찾기</span>
+              <span className="hidden sm:inline">상대 찾기</span>
             </button>
             <button
               type="button"
               onClick={() => navigate("/advertiser/campaigns")}
-              className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-2.5 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-0 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950 sm:w-auto sm:px-2.5"
+              aria-label="모집글"
+              title="모집글"
             >
               <Megaphone className="h-3.5 w-3.5" strokeWidth={2} />
-              <span>모집글</span>
+              <span className="hidden sm:inline">모집글</span>
             </button>
             <button
               type="button"
               onClick={handleLogout}
-              className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-2.5 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-0 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950 sm:w-auto sm:px-2.5"
               aria-label="로그아웃"
+              title="로그아웃"
             >
               <LogOut className="h-3.5 w-3.5" strokeWidth={2} />
-              <span>로그아웃</span>
+              <span className="hidden sm:inline">로그아웃</span>
             </button>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto w-full min-w-0 max-w-[1500px] px-3 py-2 sm:px-5 lg:min-h-[calc(100vh-48px)] lg:px-6">
+      <main className="mx-auto w-full min-w-0 max-w-[1500px] px-3 py-2 sm:px-5 lg:flex lg:h-[calc(100vh-48px)] lg:flex-col lg:overflow-hidden lg:px-6">
         <section className="min-w-0 overflow-hidden rounded-[12px] border border-neutral-200 bg-[#fdfdfb] shadow-[0_16px_44px_rgba(23,26,23,0.07)] lg:flex lg:h-full lg:flex-col">
           <div className="border-b border-[#d9e0d9] bg-white px-4 py-2">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex min-w-0 flex-wrap items-end gap-x-3 gap-y-1">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+                <div className="flex min-w-0 items-center gap-1.5">
                   <h1 className="truncate text-[17px] font-bold text-[#171a17]">
-                  계약 운영
-                </h1>
+                    계약 운영
+                  </h1>
+                  <ScreenHelpButton
+                    content={SCREEN_HELP_CONTENT.advertiserDashboard}
+                    buttonClassName="h-7 w-7 rounded-[8px]"
+                  />
+                </div>
                 <p className="pb-0.5 text-[12px] font-semibold text-[#7d857f]">
-                  전체 {contracts.length.toLocaleString()}건 · 검색 결과 {filteredContracts.length.toLocaleString()}건 · 진행 중인 계약 포함
+                  {contractCountSummary} · 진행 중인 계약 포함
                 </p>
               </div>
               <span
@@ -542,7 +576,7 @@ function VerificationBanner({
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
             <div className="flex shrink-0 items-center gap-2">
               <p className="text-[13px] font-bold text-neutral-950">
-                광고주 사업자 인증
+                사업자 인증
               </p>
               <span
                 className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${verificationStatusTone(
@@ -572,7 +606,7 @@ function VerificationBanner({
         <button
           type="button"
           onClick={onOpen}
-          className={`h-7 shrink-0 whitespace-nowrap rounded-md px-3 text-[12px] font-semibold transition ${
+          className={`h-10 shrink-0 whitespace-nowrap rounded-md px-3 text-[12px] font-semibold transition ${
             approved
               ? "border border-neutral-200 bg-white text-neutral-800 hover:border-neutral-300 hover:bg-neutral-50"
               : "bg-neutral-950 text-white hover:bg-neutral-800"
@@ -647,12 +681,12 @@ function MessageCenterButton({
     <button
       type="button"
       onClick={onClick}
-      className="relative inline-flex h-8 w-auto shrink-0 items-center justify-start gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-2.5 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
+      className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-0 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950 sm:w-auto sm:px-2.5"
       aria-label="메시지함"
       title="메시지함"
     >
       <MessageSquareText className="h-3.5 w-3.5" strokeWidth={2} />
-      <span>메시지함</span>
+      <span className="hidden sm:inline">메시지함</span>
       {badge ? (
         <span className="absolute right-0 top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-extrabold tabular-nums text-white ring-2 ring-white">
           {badge > 9 ? "9+" : badge}
@@ -845,6 +879,10 @@ function ContractTable({
   const mobileFilterSummary =
     activeFilterLabels.length > 0 ? activeFilterLabels.join(" · ") : "전체 조건";
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const displayContracts = collapseInternalDuplicateContracts(
+    contracts,
+    getDashboardContractCollapseKey,
+  );
 
   return (
     <section className="overflow-hidden rounded-[8px] border border-[#d9e0d9] bg-white lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
@@ -862,7 +900,7 @@ function ContractTable({
           onClick={() => setMobileFiltersOpen((current) => !current)}
           aria-expanded={mobileFiltersOpen}
           aria-controls="advertiser-mobile-contract-filters"
-          className="flex h-9 min-w-0 items-center gap-2 rounded-[6px] border border-[#d9e0d9] bg-white px-2 text-left text-[12px] font-extrabold text-[#303630] transition-colors hover:border-[#cbd5cc]"
+          className="flex h-10 min-w-0 items-center gap-2 rounded-[6px] border border-[#d9e0d9] bg-white px-3 text-left text-[12px] font-extrabold text-[#303630] transition-colors hover:border-[#cbd5cc]"
         >
           <SlidersHorizontal className="h-3.5 w-3.5 shrink-0 text-[#606861]" strokeWidth={2} />
           <span className="shrink-0">필터</span>
@@ -979,8 +1017,8 @@ function ContractTable({
       </div>
 
       <div className="max-h-[620px] divide-y divide-[#edf1ed] overflow-y-auto lg:max-h-none lg:min-h-0 lg:flex-1">
-        {contracts.length > 0 ? (
-          contracts.map((contract) => (
+        {displayContracts.length > 0 ? (
+          displayContracts.map((contract) => (
             <React.Fragment key={contract.id}>
               <ContractRow
                 contract={contract}
@@ -1032,7 +1070,7 @@ function ContractNameSearch({
           onChange={(event) => onChange(event.target.value)}
           aria-label="계약명 검색"
           placeholder="계약명으로 검색"
-          className="h-8 w-full max-w-full rounded-[6px] border border-[#d9e0d9] bg-white pl-7 pr-2 text-[12px] font-semibold text-[#303630] outline-none transition-colors placeholder:text-[#8b938d] hover:border-[#cbd5cc] focus:border-[#171a17]"
+          className="h-10 w-full max-w-full rounded-[6px] border border-[#d9e0d9] bg-white pl-7 pr-2 text-[12px] font-semibold text-[#303630] outline-none transition-colors placeholder:text-[#8b938d] hover:border-[#cbd5cc] focus:border-[#171a17]"
         />
       </span>
     </div>
@@ -1078,7 +1116,7 @@ function TableFilterSelect({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         aria-label={`${label} 필터`}
-        className={`block h-8 max-w-full ${maxWidthClassName} ${
+        className={`block h-10 max-w-full ${maxWidthClassName} ${
           compact ? "" : "mt-1"
         } rounded-[6px] border border-[#d9e0d9] bg-white px-2 text-[12px] font-bold text-[#303630] outline-none transition-colors hover:border-[#cbd5cc] focus:border-[#171a17]`}
       >
@@ -1104,7 +1142,7 @@ function ColumnHeader({
   onSortChange?: (key: SortKey) => void;
 }) {
   return (
-    <div className="flex h-4 items-center gap-1">
+    <div className="flex h-10 items-center gap-1">
       <span className="block text-[11px] font-extrabold text-[#7d857f]">{label}</span>
       {sortKey && sortState && onSortChange ? (
         <SortButton
@@ -1144,13 +1182,13 @@ function SortButton({
       onClick={() => onSortChange(sortKey)}
       aria-label={`${label} ${nextDirection} 정렬`}
       title={`${label} ${nextDirection} 정렬`}
-      className={`inline-flex h-4 w-4 items-center justify-center rounded-[4px] transition-colors ${
+      className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[6px] transition-colors ${
         active
           ? "bg-[#171a17] text-white"
           : "text-[#9aa39d] hover:bg-[#eef0ed] hover:text-[#303630]"
       }`}
     >
-      <Icon className="h-3 w-3" strokeWidth={2.2} />
+      <Icon className="h-3.5 w-3.5" strokeWidth={2.2} />
     </button>
   );
 }
@@ -1188,17 +1226,9 @@ function ContractRow({
         <p className="min-w-0 truncate text-[13px] font-semibold text-[#171a17]">
           {formatDashboardContractTitle(contract.title)}
         </p>
-        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-semibold lg:hidden">
-          <span className="inline-flex min-w-0 max-w-full items-center gap-1">
-            <span className="shrink-0 text-[#8b938d]">유형</span>
-            <span className="min-w-0 truncate text-[#303630]">{typeLabel}</span>
-          </span>
-          <span aria-hidden="true" className="h-3 w-px bg-[#d9e0d9]" />
-          <span className="inline-flex min-w-0 max-w-full items-center gap-1">
-            <span className="shrink-0 text-[#8b938d]">금액</span>
-            <span className="min-w-0 truncate text-[#303630]">{amountLabel}</span>
-          </span>
-        </div>
+        <p className="mt-1 min-w-0 truncate text-[11px] font-semibold text-[#606861] lg:hidden">
+          {typeLabel} · {amountLabel}
+        </p>
       </div>
 
       <div className="hidden min-w-0 lg:block">
@@ -1449,6 +1479,39 @@ function getAmountSortMeta(value?: string | null) {
 function formatDashboardContractTitle(title: string) {
   const cleaned = title.replace(/^\[[^\]]+\]\s*/, "").trim();
   return formatContractTitleForDisplay(cleaned || title, "계약명 미정");
+}
+
+function collapseInternalDuplicateContracts<T extends { title: string }>(
+  contracts: T[],
+  getKey: (contract: T) => string,
+) {
+  const seen = new Set<string>();
+  const result: T[] = [];
+
+  for (const contract of contracts) {
+    const isInternalRepeat = /^\[QA-[^\]]+\]/.test(contract.title);
+    if (!isInternalRepeat) {
+      result.push(contract);
+      continue;
+    }
+
+    const key = getKey(contract);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(contract);
+  }
+
+  return result;
+}
+
+function getDashboardContractCollapseKey(contract: Contract) {
+  return [
+    formatDashboardContractTitle(contract.title),
+    contract.status,
+    formatContractTypeLabel(contract.type),
+    formatDashboardAmountLabel(contract.campaign?.budget),
+    getContractPlatforms(contract).join(","),
+  ].join("|");
 }
 
 function getContractPlatformDisplayItems(contract: Contract) {

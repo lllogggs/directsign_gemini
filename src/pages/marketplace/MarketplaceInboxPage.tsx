@@ -594,7 +594,7 @@ function BucketButton({
       onClick={onClick}
       role="tab"
       aria-selected={active}
-      className={`h-9 w-full min-w-0 rounded-full px-1 text-[12px] font-extrabold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 ${
+      className={`h-10 w-full min-w-0 rounded-full px-1 text-[12px] font-extrabold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 ${
         active
           ? "bg-white text-neutral-950 shadow-[0_1px_0_rgba(15,23,42,0.04)]"
           : "text-neutral-500 hover:text-neutral-800"
@@ -770,7 +770,11 @@ function MessageThreadRow({
           : "대상 보기";
   const relationshipLabel = getRelationshipLabel(role, thread);
   const relationshipName =
-    thread.bucket === "sent" ? thread.targetName : thread.senderName;
+    thread.bucket === "sent"
+      ? thread.targetName
+      : thread.senderName;
+  const counterpartName = thread.counterpartName;
+  const proposalSummary = thread.proposalSummary;
   const proposalTypeLabel = getProposalTypeLabel(thread);
 
   const acceptAsContract = async () => {
@@ -833,7 +837,7 @@ function MessageThreadRow({
 
       <div className="min-w-0">
         <p className="truncate text-[14px] font-semibold text-[#171a17]">
-          {thread.counterpartName}
+          {counterpartName}
         </p>
         <p className="mt-0.5 truncate text-[12px] font-medium text-[#7d857f]">
           {relationshipLabel} · {relationshipName}
@@ -851,8 +855,8 @@ function MessageThreadRow({
       </div>
 
       <div className="min-w-0">
-        <p className="truncate text-[13px] font-semibold text-[#303630]">
-          {thread.proposalSummary}
+        <p className="line-clamp-2 break-keep text-[13px] font-semibold leading-5 text-[#303630]">
+          {proposalSummary}
         </p>
         <p className="mt-1 line-clamp-1 text-[12px] font-medium leading-5 text-[#7d857f] lg:hidden">
           {formatMarketplaceMessageDate(thread.createdAt)}
@@ -954,10 +958,10 @@ function LoadingState() {
           <RefreshCw className="h-5 w-5 animate-spin" />
         </div>
         <h2 className="mt-3 text-[14px] font-semibold text-[#171a17]">
-          제안함을 확인하는 중입니다
+          제안함 데이터를 불러오는 중입니다
         </h2>
         <p className="mt-1 text-[12px] font-medium leading-5 text-[#7d857f]">
-          저장된 제안이 없으면 빈 상태와 다음 행동을 바로 안내합니다.
+          잠시 후 결과가 없으면 빈 상태와 다음 행동을 안내합니다.
         </p>
       </div>
     </section>

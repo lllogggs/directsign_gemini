@@ -82,7 +82,7 @@ VITE_PUBLIC_SITE_URL="https://yeollock.me"
 PRODUCT_NAME="yeollock.me"
 VITE_PRODUCT_NAME="yeollock.me"
 ADMIN_ACCESS_CODE="VALUE_FROM_NPM_RUN_SECRETS_GENERATE"
-ADMIN_OPERATOR_NAME="REAL_OPERATOR_NAME"
+ADMIN_OPERATOR_NAME="yeollock.me 운영자"
 ADMIN_SESSION_SECRET="VALUE_FROM_NPM_RUN_SECRETS_GENERATE"
 ADMIN_LOGIN_MAX_FAILURES="5"
 ADMIN_LOGIN_WINDOW_SECONDS="900"
@@ -117,7 +117,7 @@ In Supabase mode, `support_access_requests` is required. The app fails closed in
 
 Set `APP_URL` to the deployed origin before enabling public signup. Production signup redirects fail closed when `APP_URL` is missing. Public advertiser/influencer login and signup endpoints are rate-limited by IP and email. `DIRECTSIGN_TOKEN_ENCRYPTION_SECRET` protects new legacy compatibility-table share tokens at rest; production startup fails when it is missing, short, or placeholder-like. Keep it stable across deployments.
 
-Before launch, review and publish `/privacy`, `/terms`, and `/legal/e-sign-consent`. Keep `VITE_LEGAL_OPERATING_MODE="free_individual"` while there is no business registration and the service is provided for free; in that mode business registration, mail-order registration, address, and phone fields are not required. The legal pages use safe public defaults for the operator and privacy representative so production pages never show placeholder launch text, but the real service operator/contact values should still be filled before public traffic. Switch to `VITE_LEGAL_OPERATING_MODE="registered_business"` before paid/business use and then fill the business registration, mail-order registration if applicable, address, and phone fields.
+Before launch, review and publish `/privacy`, `/terms`, and `/legal/e-sign-consent`. Keep `VITE_LEGAL_OPERATING_MODE="free_individual"` while there is no business registration and the service is provided for free; in that mode business registration, mail-order registration, address, and phone fields are not required. The legal pages use safe public defaults and a support email so development, QA, and early validation are not blocked by private owner information. Switch to `VITE_LEGAL_OPERATING_MODE="registered_business"` only before paid/business use and then fill the business registration, mail-order registration if applicable, address, and phone fields.
 
 The product is currently scoped as a contract platform only. It records contract payment terms as clauses between the advertiser and influencer, but it does not perform settlement, payout, escrow, tax invoice issuance, withholding, refund processing, or collection work. Keep this boundary visible in sales material, onboarding copy, terms, support scripts, and internal operating procedures.
 

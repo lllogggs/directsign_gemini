@@ -76,6 +76,12 @@ const initialForm: InfluencerVerificationForm = {
   note: "",
 };
 
+const OFFICIAL_INSTAGRAM_HANDLE =
+  String(import.meta.env.VITE_INSTAGRAM_OFFICIAL_HANDLE ?? "yeollockme")
+    .trim()
+    .replace(/^@+/, "") || "yeollockme";
+const OFFICIAL_INSTAGRAM_URL = `https://instagram.com/${OFFICIAL_INSTAGRAM_HANDLE}`;
+
 const METHOD_META: Record<
   InfluencerVerificationMethod,
   {
@@ -83,17 +89,21 @@ const METHOD_META: Record<
     helper: string;
   }
 > = {
+  instagram_dm_code: {
+    label: "Instagram DM 인증",
+    helper: "연락미 공식 계정에 인증 코드를 DM으로 보내고 운영자가 확인",
+  },
   profile_bio_code: {
     label: "프로필 소개에 코드 삽입",
-    helper: "바이오, 소개글, 웹사이트 영역처럼 운영자가 공개 확인할 수 있는 위치",
+    helper: "프로필 소개, 바이오, 웹사이트 영역처럼 공개로 보이는 위치",
   },
   public_post_code: {
     label: "공개 게시글로 인증",
-    helper: "인증 코드가 들어간 공개 게시글, 커뮤니티 글, 블로그 글 URL",
+    helper: "인증 코드가 들어간 공개 게시글, 커뮤니티 글, 영상/쇼츠 URL",
   },
   channel_description_code: {
     label: "채널 설명에 코드 삽입",
-    helper: "유튜브 채널 설명 또는 공개 영상 설명란",
+    helper: "유튜브 채널 설명 또는 공개 영상/쇼츠 설명란",
   },
   screenshot_review: {
     label: "스크린샷 검수",
@@ -123,11 +133,17 @@ const PLATFORM_META: Record<
     proofPlaceholder: "https://instagram.com/creator 또는 인증 게시글 URL",
     className: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
     icon: <Instagram className="h-4 w-4" />,
-    methods: ["profile_bio_code", "public_post_code", "screenshot_review"],
+    methods: [
+      "instagram_dm_code",
+      "profile_bio_code",
+      "public_post_code",
+      "screenshot_review",
+    ],
     instructions: [
-      "프로필 소개 또는 공개 게시글 본문에 인증 코드를 그대로 넣으세요.",
-      "비공개 계정이면 프로필 화면과 계정 설정 화면 캡처를 첨부하세요.",
-      "검수 완료 후 코드는 삭제해도 됩니다.",
+      "가장 권장하는 방식은 연락미 공식 인스타그램 계정으로 인증 코드를 DM 보내는 것입니다.",
+      "DM을 보낸 뒤 요청을 접수하면 운영자가 발신 계정과 입력한 프로필 URL을 대조합니다.",
+      "공개 흔적을 남기기 싫다면 프로필 소개나 게시글보다 DM 인증을 선택하세요.",
+      "Meta 자동화가 연결되기 전까지는 운영자가 직접 확인해 승인합니다.",
     ],
   },
   youtube: {
@@ -135,14 +151,15 @@ const PLATFORM_META: Record<
     hostHint: "youtube.com 또는 youtu.be",
     handlePlaceholder: "@channel",
     urlPlaceholder: "https://youtube.com/@channel",
-    proofPlaceholder: "채널 소개, 커뮤니티 글, 영상 설명 URL",
+    proofPlaceholder: "채널 소개, 영상, 쇼츠, 커뮤니티 글 URL",
     className: "border-red-200 bg-red-50 text-red-700",
     icon: <Youtube className="h-4 w-4" />,
     methods: ["channel_description_code", "public_post_code", "screenshot_review"],
     instructions: [
-      "채널 설명, 커뮤니티 글, 또는 공개 영상 설명란에 인증 코드를 넣으세요.",
-      "증빙 URL은 코드가 실제로 보이는 공개 페이지로 입력하세요.",
-      "운영자가 코드와 채널명이 일치하는지 확인합니다.",
+      "채널 소개에 코드를 넣거나, 공개 영상/쇼츠 설명에 코드를 넣어 주세요.",
+      "증빙 URL에는 코드가 보이는 채널, 영상, 쇼츠, 커뮤니티 글 주소를 넣으면 됩니다.",
+      "자동화는 채널 핸들, 영상 소유 채널, 인증 코드 포함 여부를 함께 확인합니다.",
+      "인증이 끝나면 코드는 삭제해도 됩니다.",
     ],
   },
   naver_blog: {
@@ -155,9 +172,10 @@ const PLATFORM_META: Record<
     icon: <BookOpen className="h-4 w-4" />,
     methods: ["profile_bio_code", "public_post_code", "screenshot_review"],
     instructions: [
-      "블로그 소개글 또는 공개 인증 글에 인증 코드를 넣으세요.",
-      "서로이웃 전용 글은 확인이 어려우니 공개 글을 권장합니다.",
-      "블로그 ID와 계약서의 채널 정보가 같은지 함께 검수됩니다.",
+      "블로그 소개글 또는 공개 글 본문에 인증 코드를 넣어 주세요.",
+      "서로이웃 전용 글은 자동 확인이 어렵기 때문에 공개 글을 권장합니다.",
+      "자동화는 블로그 ID와 인증 코드가 같은 글에 있는지 함께 확인합니다.",
+      "인증이 끝나면 코드는 삭제해도 됩니다.",
     ],
   },
   tiktok: {
@@ -170,9 +188,10 @@ const PLATFORM_META: Record<
     icon: <Music2 className="h-4 w-4" />,
     methods: ["profile_bio_code", "public_post_code", "screenshot_review"],
     instructions: [
-      "프로필 소개 또는 공개 영상 설명에 인증 코드를 넣으세요.",
-      "외부에서 확인이 막히면 스크린샷 검수로 제출하세요.",
-      "검수 완료 후 코드는 삭제해도 됩니다.",
+      "프로필 소개 또는 공개 영상 설명에 인증 코드를 넣어 주세요.",
+      "TikTok이 외부 확인을 막으면 코드가 보이는 화면을 캡처해 제출해 주세요.",
+      "OAuth 연결 전에는 공개 URL 확인과 스크린샷 검수를 함께 사용합니다.",
+      "인증이 끝나면 코드는 삭제해도 됩니다.",
     ],
   },
   other: {
@@ -216,17 +235,23 @@ export function InfluencerVerification() {
   const [prefilledContractId, setPrefilledContractId] = useState("");
   const [platform, setPlatform] = useState<InfluencerPlatform>("instagram");
   const [method, setMethod] =
-    useState<InfluencerVerificationMethod>("profile_bio_code");
+    useState<InfluencerVerificationMethod>("instagram_dm_code");
   const [challengeCode, setChallengeCode] = useState(createChallengeCode);
   const [form, setForm] = useState(initialForm);
   const [file, setFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [submittedChallengeCode, setSubmittedChallengeCode] = useState("");
   const selectedPlatform = PLATFORM_META[platform];
   const selectedMethod = METHOD_META[method];
   const proofUrl = form.ownership_challenge_url || form.platform_url;
   const evidenceHref = proofUrl.trim();
+  const isInstagramDmMethod =
+    platform === "instagram" && method === "instagram_dm_code";
+  const challengeHelpText = isInstagramDmMethod
+    ? `요청 접수 후 이 코드를 연락미 공식 인스타그램 @${OFFICIAL_INSTAGRAM_HANDLE}으로 DM 보내 주세요.`
+    : "아래 코드를 복사해 프로필 소개나 공개 게시글에 잠깐 넣어 주세요. 인증이 끝나면 삭제해도 됩니다.";
   const verification = summary?.influencer;
   const verificationStatus = verification?.status ?? "not_submitted";
   const latest = verification?.latest_request;
@@ -281,6 +306,7 @@ export function InfluencerVerification() {
     setForm((current) => ({ ...current, ...updates }));
     setError("");
     setSubmitted(false);
+    setSubmittedChallengeCode("");
   };
 
   const updatePlatform = (nextPlatform: InfluencerPlatform) => {
@@ -288,6 +314,14 @@ export function InfluencerVerification() {
     setMethod(PLATFORM_META[nextPlatform].methods[0]);
     setError("");
     setSubmitted(false);
+    setSubmittedChallengeCode("");
+  };
+
+  const updateMethod = (nextMethod: InfluencerVerificationMethod) => {
+    setMethod(nextMethod);
+    setError("");
+    setSubmitted(false);
+    setSubmittedChallengeCode("");
   };
 
   const handleCopyCode = async () => {
@@ -342,7 +376,9 @@ export function InfluencerVerification() {
             : undefined,
           note:
             form.note ||
-            `${selectedPlatform.label} 계정에 ${PRODUCT_NAME} 인증 코드 ${challengeCode}를 게시했습니다.`,
+            (isInstagramDmMethod
+              ? `${PRODUCT_NAME} 공식 인스타그램 @${OFFICIAL_INSTAGRAM_HANDLE}으로 인증 코드 ${challengeCode}를 DM 발송합니다.`
+              : `${selectedPlatform.label} 계정에 ${PRODUCT_NAME} 인증 코드 ${challengeCode}를 게시했습니다.`),
         }),
       });
 
@@ -358,6 +394,7 @@ export function InfluencerVerification() {
       }
 
       setSubmitted(true);
+      setSubmittedChallengeCode(challengeCode);
       setForm(initialForm);
       setFile(null);
       setChallengeCode(createChallengeCode());
@@ -517,7 +554,7 @@ export function InfluencerVerification() {
                     {PRODUCT_NAME} 인증 코드
                   </p>
                   <p className="mt-1 text-xs leading-5 text-neutral-500">
-                    선택한 플랫폼의 공개 영역에 아래 코드를 그대로 넣으세요.
+                    {challengeHelpText}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -534,6 +571,16 @@ export function InfluencerVerification() {
                     onClick={() => setChallengeCode(createChallengeCode())}
                     icon={<RefreshCw className="h-4 w-4" />}
                   />
+                  {isInstagramDmMethod && (
+                    <a
+                      href={OFFICIAL_INSTAGRAM_URL}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="hidden h-10 items-center rounded-md border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-700 transition hover:border-neutral-400 sm:inline-flex"
+                    >
+                      @{OFFICIAL_INSTAGRAM_HANDLE}
+                    </a>
+                  )}
                 </div>
               </div>
 
@@ -559,7 +606,7 @@ export function InfluencerVerification() {
                   <button
                     key={item}
                     type="button"
-                    onClick={() => setMethod(item)}
+                    onClick={() => updateMethod(item)}
                     className={`rounded-lg border p-3 text-left transition ${
                     method === item
                         ? "border-neutral-950 bg-neutral-950 text-white shadow-[0_12px_26px_rgba(15,23,42,0.14)]"
@@ -581,16 +628,46 @@ export function InfluencerVerification() {
               </div>
             </div>
 
-            <TextField
-              label="증빙 URL"
-              type="url"
-              value={form.ownership_challenge_url}
-              onChange={(value) =>
-                updateForm({ ownership_challenge_url: value })
-              }
-              placeholder={selectedPlatform.proofPlaceholder}
-              required={method !== "screenshot_review"}
-            />
+            {isInstagramDmMethod ? (
+              <div className="rounded-lg border border-neutral-200 bg-[#fbfbfc] px-4 py-3 text-sm leading-6 text-neutral-600">
+                <p className="font-semibold text-neutral-950">
+                  DM 인증은 별도 공개 URL 없이 프로필 URL로 접수됩니다.
+                </p>
+                <p className="mt-1">
+                  요청 접수 후 같은 코드{" "}
+                  <span className="font-mono font-semibold text-neutral-950">
+                    {challengeCode}
+                  </span>
+                  를 공식 계정{" "}
+                  <a
+                    href={OFFICIAL_INSTAGRAM_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-semibold text-neutral-950 underline underline-offset-4"
+                  >
+                    @{OFFICIAL_INSTAGRAM_HANDLE}
+                  </a>
+                  으로 DM 보내 주세요.
+                </p>
+              </div>
+            ) : (
+              <>
+                <TextField
+                  label="증빙 URL"
+                  type="url"
+                  value={form.ownership_challenge_url}
+                  onChange={(value) =>
+                    updateForm({ ownership_challenge_url: value })
+                  }
+                  placeholder={selectedPlatform.proofPlaceholder}
+                  required={method !== "screenshot_review"}
+                />
+                <p className="-mt-2 rounded-lg border border-neutral-200 bg-[#fbfbfc] px-3 py-2 text-xs leading-5 text-neutral-500">
+                  자동 확인은 이 URL에서 인증코드를 먼저 찾습니다. 접근이 막히는
+                  플랫폼은 스크린샷을 함께 올리면 운영자가 이어서 확인합니다.
+                </p>
+              </>
+            )}
 
             <div>
               <label className="text-sm font-semibold text-neutral-900">
@@ -652,7 +729,9 @@ export function InfluencerVerification() {
                 aria-live="polite"
                 className="rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm font-semibold text-neutral-800"
               >
-                계정 소유 인증 요청을 접수했습니다. 운영자 검수 후 승인됩니다.
+                {isInstagramDmMethod
+                  ? `인증 요청을 접수했습니다. 코드 ${submittedChallengeCode}를 연락미 공식 인스타그램 @${OFFICIAL_INSTAGRAM_HANDLE}으로 DM 보내면 운영자가 확인합니다.`
+                  : "계정 소유 인증 요청을 접수했습니다. 운영자 검수 후 승인됩니다."}
               </div>
             )}
 
@@ -688,7 +767,16 @@ export function InfluencerVerification() {
             </div>
             <InfoRow label="인증 방식" value={selectedMethod.label} />
             <InfoRow label="인증 코드" value={challengeCode} mono />
-            <InfoRow label="증빙 URL" value={proofUrl || verifiedUrl || "미입력"} />
+            <InfoRow
+              label={isInstagramDmMethod ? "인스타 프로필" : "증빙 URL"}
+              value={proofUrl || verifiedUrl || "미입력"}
+            />
+            {isInstagramDmMethod && (
+              <InfoRow
+                label="DM 받을 계정"
+                value={`@${OFFICIAL_INSTAGRAM_HANDLE}`}
+              />
+            )}
             {approved && verifiedHandle && (
               <InfoRow label="승인 계정" value={verifiedHandle} />
             )}
@@ -702,7 +790,11 @@ export function InfluencerVerification() {
           <TrustNote
             icon={<BadgeCheck className="h-4 w-4" />}
             title="관리자 검수"
-            body="자동 확인은 보조 수단입니다. 최종 승인은 운영자가 코드, URL, 스크린샷을 함께 확인한 뒤 처리합니다."
+            body={
+              isInstagramDmMethod
+                ? "자동 DM 연동 전까지는 운영자가 공식 계정으로 온 DM 발신자와 입력한 프로필 URL을 대조해 승인합니다."
+                : "자동 확인은 보조 수단입니다. 최종 승인은 운영자가 코드, URL, 스크린샷을 함께 확인한 뒤 처리합니다."
+            }
           />
           {evidenceHref ? (
             <a

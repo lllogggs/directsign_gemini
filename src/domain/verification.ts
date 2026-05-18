@@ -20,6 +20,7 @@ export type InfluencerPlatform =
   | "other";
 
 export type InfluencerVerificationMethod =
+  | "instagram_dm_code"
   | "profile_bio_code"
   | "public_post_code"
   | "channel_description_code"

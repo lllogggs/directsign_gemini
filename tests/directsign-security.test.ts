@@ -543,6 +543,19 @@ describe("yeollock.me security regressions", () => {
     assert.match(server, /buildServerAuthoredContract/);
   });
 
+  it("server-authors advertiser trust risk for influencer review links", () => {
+    const server = read("server/index.ts");
+    const contracts = read("src/domain/contracts.ts");
+    const viewer = read("src/pages/influencer/ContractViewer.tsx");
+
+    assert.match(contracts, /advertiser_trust/);
+    assert.match(server, /buildAdvertiserTrustSnapshot/);
+    assert.match(server, /first_contract_on_yeollock/);
+    assert.match(server, /Advertiser trust metadata cannot be changed by influencer/);
+    assert.match(viewer, /AdvertiserTrustNotice/);
+    assert.match(viewer, /유선 또는 공식 채널/);
+  });
+
   it("keeps legacy share token decrypt warnings opt-in and deduplicated", () => {
     const server = read("server/index.ts");
     const decryptStart = server.indexOf("const decryptShareTokenFromLegacyStore");
@@ -592,5 +605,54 @@ describe("yeollock.me security regressions", () => {
     assert.doesNotMatch(legalPage, /출시 전 입력 필요/);
     assert.doesNotMatch(legalPage, /미설정/);
     assert.doesNotMatch(readme, /출시 전 입력 필요/);
+    assert.doesNotMatch(readme, /REAL_OPERATOR_NAME/);
+  });
+
+  it("keeps verification automation optional until provider registration", () => {
+    const server = read("server/index.ts");
+    const envExample = read(".env.example");
+    const influencerVerification = read("src/pages/influencer/InfluencerVerification.tsx");
+    const adminDashboard = read("src/pages/admin/SystemAdminDashboard.tsx");
+
+    assert.match(envExample, /NTS_BUSINESS_STATUS_API_KEY=""/);
+    assert.match(envExample, /NTS_BUSINESS_VALIDATE_API_KEY=""/);
+    assert.match(envExample, /VERIFICATION_AUTO_APPROVE_BUSINESS="false"/);
+    assert.match(envExample, /VERIFICATION_AUTO_APPROVE_PLATFORM="false"/);
+    assert.match(envExample, /YOUTUBE_DATA_API_KEY=""/);
+    assert.match(envExample, /NAVER_CLIENT_ID=""/);
+    assert.match(envExample, /TIKTOK_CLIENT_KEY=""/);
+    assert.match(envExample, /TIKTOK_ACCOUNT_ACCESS_TOKEN=""/);
+    assert.match(envExample, /META_APP_ID=""/);
+    assert.match(envExample, /META_GRAPH_ACCESS_TOKEN=""/);
+    assert.match(envExample, /META_WEBHOOK_VERIFY_TOKEN=""/);
+    assert.match(envExample, /VITE_INSTAGRAM_OFFICIAL_HANDLE="yeollockme"/);
+    assert.match(server, /runBusinessRegistrationAutomationCheck/);
+    assert.match(server, /buildVerificationAutomationPlan/);
+    assert.match(server, /runPlatformAccountAutomationCheck/);
+    assert.match(server, /extractNaverBlogId/);
+    assert.match(server, /parseYoutubeVideoId/);
+    assert.match(server, /fetchYoutubeVideoForProof/);
+    assert.match(server, /https:\/\/www\.googleapis\.com\/youtube\/v3\/videos/);
+    assert.match(server, /proof_video_channel_matched/);
+    assert.match(server, /video\.snippet\.description/);
+    assert.match(server, /Instagram 공개 증빙 URL/);
+    assert.match(server, /TikTok 공개 증빙 URL/);
+    assert.match(server, /proof_source/);
+    assert.match(server, /\/api\/admin\/verification-requests\/:id\/automation-check/);
+    assert.match(server, /\/api\/webhooks\/instagram/);
+    assert.match(server, /business_start_date/);
+    assert.match(server, /VERIFICATION_AUTO_APPROVE_BUSINESS/);
+    assert.match(server, /VERIFICATION_AUTO_APPROVE_PLATFORM/);
+    assert.match(server, /status: "not_configured"/);
+    assert.match(server, /provider: "youtube_data_api"/);
+    assert.match(server, /provider: "tiktok_login_kit"/);
+    assert.match(server, /provider: "instagram_messaging_webhook"/);
+    assert.match(server, /"instagram_dm_code"/);
+    assert.match(server, /runInstagramDmManualCheck/);
+    assert.match(server, /business_registration: businessAutomationCheck/);
+    assert.match(server, /platform_account: platformAutomationCheck/);
+    assert.match(influencerVerification, /Instagram DM 인증/);
+    assert.match(influencerVerification, /OFFICIAL_INSTAGRAM_HANDLE/);
+    assert.match(adminDashboard, /Instagram DM 수동 확인/);
   });
 });

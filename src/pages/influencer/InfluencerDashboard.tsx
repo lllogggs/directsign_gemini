@@ -443,10 +443,16 @@ export function InfluencerDashboard() {
         ...contract.platform_labels,
       ]
         .join(" ")
-        .toLowerCase()
-        .includes(normalizedQuery);
+      .toLowerCase()
+      .includes(normalizedQuery);
     })
     .sort((a, b) => compareContractsBySort(a, b, sortState));
+  const displayFilteredContracts = collapseInternalDuplicateContracts(
+    filteredContracts,
+    getInfluencerDashboardContractCollapseKey,
+  );
+  const contractCountSummary =
+    `전체 ${dashboard.contracts.length.toLocaleString()}건 · 검색 결과 ${displayFilteredContracts.length.toLocaleString()}건`;
   const verification = VERIFICATION_META[dashboard.verification.status];
   const publicProfile =
     publicProfileOverride?.ownerId === dashboard.user.id
@@ -490,7 +496,7 @@ export function InfluencerDashboard() {
           <button
             type="button"
             onClick={() => navigate("/influencer/dashboard")}
-            className="flex shrink-0 items-center gap-3"
+            className="flex h-10 min-w-10 shrink-0 items-center gap-3"
           >
             <span className="flex h-9 w-9 items-center justify-center rounded-[11px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
               <ShieldCheck className="h-4 w-4" strokeWidth={2} />
@@ -498,14 +504,16 @@ export function InfluencerDashboard() {
             <span className="font-neo-heavy hidden text-[18px] leading-none sm:inline">{PRODUCT_NAME}</span>
           </button>
 
-          <div className="no-scrollbar ml-2 flex min-w-0 items-center gap-2 overflow-x-auto sm:ml-3">
+          <div className="ml-2 flex min-w-0 items-center justify-end gap-1.5 sm:ml-3 sm:gap-2">
             <button
               type="button"
               onClick={() => navigate("/influencer/dashboard")}
-              className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[9px] bg-neutral-950 px-3 text-[12px] font-extrabold text-white shadow-[0_10px_24px_rgba(23,26,23,0.14)] transition hover:bg-neutral-800"
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] bg-neutral-950 px-0 text-[12px] font-extrabold text-white shadow-[0_10px_24px_rgba(23,26,23,0.14)] transition hover:bg-neutral-800 sm:w-auto sm:px-3"
+              aria-label="받은 계약"
+              title="받은 계약"
             >
               <FileText className="h-3.5 w-3.5" strokeWidth={2} />
-              받은 계약
+              <span className="hidden sm:inline">받은 계약</span>
             </button>
             <MessageCenterButton
               unreadCount={messageSummary.unreadCount}
@@ -515,23 +523,27 @@ export function InfluencerDashboard() {
             <button
               type="button"
               onClick={() => navigate("/influencer/brands")}
-              className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-2.5 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-0 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950 sm:w-auto sm:px-2.5"
+              aria-label="브랜드 찾기"
+              title="브랜드 찾기"
             >
               <Store className="h-3.5 w-3.5" strokeWidth={2} />
-              <span>브랜드 찾기</span>
+              <span className="hidden sm:inline">브랜드 찾기</span>
             </button>
             <button
               type="button"
               onClick={() => navigate("/influencer/campaigns")}
-              className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-2.5 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-0 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950 sm:w-auto sm:px-2.5"
+              aria-label="모집글"
+              title="모집글"
             >
               <Megaphone className="h-3.5 w-3.5" strokeWidth={2} />
-              <span>모집글</span>
+              <span className="hidden sm:inline">모집글</span>
             </button>
             <button
               type="button"
               onClick={loadDashboard}
-              className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-[9px] border border-neutral-200 bg-white text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950 sm:flex"
+              className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-[9px] border border-neutral-200 bg-white text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950 sm:flex"
               aria-label="새로고침"
               title="새로고침"
             >
@@ -540,18 +552,18 @@ export function InfluencerDashboard() {
             <button
               type="button"
               onClick={handleLogout}
-              className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-2.5 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-0 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950 sm:w-auto sm:px-2.5"
               aria-label="로그아웃"
               title="로그아웃"
             >
               <LogOut className="h-3.5 w-3.5" strokeWidth={2} />
-              <span>로그아웃</span>
+              <span className="hidden sm:inline">로그아웃</span>
             </button>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto w-full min-w-0 max-w-[1500px] px-3 py-2 sm:px-5 lg:min-h-[calc(100vh-48px)] lg:px-6">
+      <main className="mx-auto w-full min-w-0 max-w-[1500px] px-3 py-2 sm:px-5 lg:flex lg:h-[calc(100vh-48px)] lg:flex-col lg:overflow-hidden lg:px-6">
         <section className="min-w-0 overflow-hidden rounded-[12px] border border-neutral-200 bg-[#fdfdfb] shadow-[0_16px_44px_rgba(23,26,23,0.07)] lg:flex lg:h-full lg:flex-col">
           <div className="border-b border-[#d9e0d9] bg-white px-4 py-2">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -560,7 +572,7 @@ export function InfluencerDashboard() {
                   받은 계약
                 </h1>
                 <p className="pb-0.5 text-[12px] font-semibold text-[#7d857f]">
-                  전체 {dashboard.contracts.length.toLocaleString()}건 · 검색 결과 {filteredContracts.length.toLocaleString()}건 · 검토할 계약 포함
+                  {contractCountSummary} · 검토할 계약 포함
                 </p>
               </div>
               <span className="inline-flex h-8 items-center rounded-[8px] bg-[#eef0ed] px-3 text-[12px] font-semibold text-[#303630]">
@@ -661,7 +673,11 @@ export function InfluencerDashboard() {
 }
 
 function DashboardShell({ children }: { children: React.ReactNode }) {
-  return <div className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950">{children}</div>;
+  return (
+    <div className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950 lg:h-screen lg:overflow-hidden">
+      {children}
+    </div>
+  );
 }
 
 function MessageCenterButton({
@@ -679,12 +695,12 @@ function MessageCenterButton({
     <button
       type="button"
       onClick={onClick}
-      className="relative inline-flex h-8 w-auto shrink-0 items-center justify-start gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-2.5 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
+      className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-0 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950 sm:w-auto sm:px-2.5"
       aria-label="메시지함"
       title="메시지함"
     >
       <MessageSquareText className="h-3.5 w-3.5" strokeWidth={2} />
-      <span>메시지함</span>
+      <span className="hidden sm:inline">메시지함</span>
       {badge ? (
         <span className="absolute right-0 top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-extrabold tabular-nums text-white ring-2 ring-white">
           {badge > 9 ? "9+" : badge}
@@ -749,8 +765,12 @@ function InfluencerAccountBanner({
   onEditPublicProfile: () => void;
 }) {
   const verificationApproved = dashboard.verification.status === "approved";
-  const activityPlatforms = dashboard.user.activity_platforms.slice(0, 3);
-  const approvedPlatforms = dashboard.verification.approved_platforms.slice(0, 2);
+  const activityPlatforms = Array.from(
+    new Set(dashboard.user.activity_platforms),
+  ).slice(0, 3);
+  const approvedPlatforms = dedupeApprovedPlatforms(
+    dashboard.verification.approved_platforms,
+  ).slice(0, 2);
   const displayEmail = formatPublicContactValue(dashboard.user.email);
 
   return (
@@ -836,7 +856,7 @@ function InfluencerAccountBanner({
             <button
               type="button"
               onClick={onVerify}
-              className={`inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[9px] px-2.5 text-[12px] font-extrabold transition ${
+              className={`inline-flex h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[9px] px-3 text-[12px] font-extrabold transition ${
                 verificationApproved
                   ? "border border-neutral-200 bg-white text-neutral-800 hover:border-neutral-300 hover:bg-neutral-50"
                   : "bg-neutral-950 text-white hover:bg-neutral-800"
@@ -849,7 +869,7 @@ function InfluencerAccountBanner({
           <button
             type="button"
             onClick={onEditPublicProfile}
-            className="hidden h-8 items-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-2.5 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 sm:inline-flex"
+            className="hidden h-10 items-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-3 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 sm:inline-flex"
           >
             <Settings2 className="h-3.5 w-3.5" />
             프로필 설정
@@ -858,7 +878,7 @@ function InfluencerAccountBanner({
             <button
               type="button"
               onClick={onOpenPublicProfile}
-              className="hidden h-8 items-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-2.5 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 sm:inline-flex"
+              className="hidden h-10 items-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-3 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 sm:inline-flex"
             >
               <ExternalLink className="h-3.5 w-3.5" />
               공개 프로필
@@ -867,7 +887,7 @@ function InfluencerAccountBanner({
           <button
             type="button"
             onClick={onEditPublicProfile}
-            className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-2.5 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 sm:hidden"
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 sm:hidden"
             aria-label="공개 프로필 설정"
             title="공개 프로필 설정"
           >
@@ -892,7 +912,9 @@ function PublicProfileSettingsDialog({
     profile: PublicProfileSavePayload,
   ) => Promise<InfluencerPublicProfileSettings>;
 }) {
-  const approvedPlatforms = dashboard.verification.approved_platforms;
+  const approvedPlatforms = dedupeApprovedPlatforms(
+    dashboard.verification.approved_platforms,
+  );
   const automaticHandle = getAutomaticPublicProfileHandle(approvedPlatforms);
   const initialManualHandle =
     automaticHandle &&
@@ -1410,6 +1432,10 @@ function ContractTable({
   const mobileFilterSummary =
     activeFilterLabels.length > 0 ? activeFilterLabels.join(" · ") : "전체 조건";
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const displayContracts = collapseInternalDuplicateContracts(
+    contracts,
+    getInfluencerDashboardContractCollapseKey,
+  );
 
   return (
     <section className="overflow-hidden rounded-[8px] border border-[#d9e0d9] bg-white lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
@@ -1427,7 +1453,7 @@ function ContractTable({
           onClick={() => setMobileFiltersOpen((current) => !current)}
           aria-expanded={mobileFiltersOpen}
           aria-controls="influencer-mobile-contract-filters"
-          className="flex h-9 min-w-0 items-center gap-2 rounded-[6px] border border-[#d9e0d9] bg-white px-2 text-left text-[12px] font-extrabold text-[#303630] transition-colors hover:border-[#cbd5cc]"
+          className="flex h-10 min-w-0 items-center gap-2 rounded-[6px] border border-[#d9e0d9] bg-white px-3 text-left text-[12px] font-extrabold text-[#303630] transition-colors hover:border-[#cbd5cc]"
         >
           <SlidersHorizontal className="h-3.5 w-3.5 shrink-0 text-[#606861]" strokeWidth={2} />
           <span className="shrink-0">필터</span>
@@ -1529,8 +1555,8 @@ function ContractTable({
         />
       </div>
       <div className="max-h-[620px] divide-y divide-[#edf1ed] overflow-y-auto lg:max-h-none lg:min-h-0 lg:flex-1">
-        {contracts.length > 0 ? (
-          contracts.map((contract) => {
+        {displayContracts.length > 0 ? (
+          displayContracts.map((contract) => {
             const advertiserName = removeInternalTestLabel(
               contract.advertiser_name,
               "광고주",
@@ -1559,21 +1585,9 @@ function ContractTable({
                 <p className="min-w-0 truncate text-[13px] font-semibold text-[#171a17]">
                   {formatDashboardContractTitle(contract.title)}
                 </p>
-                <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-semibold lg:hidden">
-                  <span className="inline-flex min-w-0 max-w-full items-center gap-1">
-                    <span className="shrink-0 text-[#8b938d]">광고주</span>
-                    <span className="min-w-0 truncate text-[#303630]">
-                      {advertiserName}
-                    </span>
-                  </span>
-                  <span aria-hidden="true" className="h-3 w-px bg-[#d9e0d9]" />
-                  <span className="inline-flex min-w-0 max-w-full items-center gap-1">
-                    <span className="shrink-0 text-[#8b938d]">금액</span>
-                    <span className="min-w-0 truncate text-[#303630]">
-                      {amountLabel}
-                    </span>
-                  </span>
-                </div>
+                <p className="mt-1 min-w-0 truncate text-[11px] font-semibold text-[#606861] lg:hidden">
+                  {advertiserName} · {amountLabel}
+                </p>
               </div>
               <div className="hidden min-w-0 lg:block">
                 <PreviewAmount value={amountLabel} />
@@ -1626,7 +1640,7 @@ function ContractNameSearch({
           onChange={(event) => onChange(event.target.value)}
           aria-label="계약명 검색"
           placeholder="계약명으로 검색"
-          className="h-8 w-full max-w-full rounded-[6px] border border-[#d9e0d9] bg-white pl-7 pr-2 text-[12px] font-semibold text-[#303630] outline-none transition-colors placeholder:text-[#8b938d] hover:border-[#cbd5cc] focus:border-[#171a17]"
+          className="h-10 w-full max-w-full rounded-[6px] border border-[#d9e0d9] bg-white pl-7 pr-2 text-[12px] font-semibold text-[#303630] outline-none transition-colors placeholder:text-[#8b938d] hover:border-[#cbd5cc] focus:border-[#171a17]"
         />
       </span>
     </div>
@@ -1672,7 +1686,7 @@ function TableFilterSelect({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         aria-label={`${label} 필터`}
-        className={`block h-8 max-w-full ${maxWidthClassName} ${
+        className={`block h-10 max-w-full ${maxWidthClassName} ${
           compact ? "" : "mt-1"
         } rounded-[6px] border border-[#d9e0d9] bg-white px-2 text-[12px] font-bold text-[#303630] outline-none transition-colors hover:border-[#cbd5cc] focus:border-[#171a17]`}
       >
@@ -1698,7 +1712,7 @@ function ColumnHeader({
   onSortChange?: (key: SortKey) => void;
 }) {
   return (
-    <div className="flex h-4 items-center gap-1">
+    <div className="flex h-10 items-center gap-1">
       <span className="block text-[11px] font-extrabold text-[#7d857f]">{label}</span>
       {sortKey && sortState && onSortChange ? (
         <SortButton
@@ -1731,7 +1745,7 @@ function SortableColumnSpacer({
         sortState={sortState}
         onSortChange={onSortChange}
       />
-      <div className="mt-1 h-8" aria-hidden="true" />
+      <div className="mt-1 h-10" aria-hidden="true" />
     </div>
   );
 }
@@ -1762,13 +1776,13 @@ function SortButton({
       onClick={() => onSortChange(sortKey)}
       aria-label={`${label} ${nextDirection} 정렬`}
       title={`${label} ${nextDirection} 정렬`}
-      className={`inline-flex h-4 w-4 items-center justify-center rounded-[4px] transition-colors ${
+      className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[6px] transition-colors ${
         active
           ? "bg-[#171a17] text-white"
           : "text-[#9aa39d] hover:bg-[#eef0ed] hover:text-[#303630]"
       }`}
     >
-      <Icon className="h-3 w-3" strokeWidth={2.2} />
+      <Icon className="h-3.5 w-3.5" strokeWidth={2.2} />
     </button>
   );
 }
@@ -2023,6 +2037,52 @@ function getAmountSortMeta(value?: string | null) {
 function formatDashboardContractTitle(title: string) {
   const cleaned = title.replace(/^\[[^\]]+\]\s*/, "").trim();
   return formatContractTitleForDisplay(cleaned || title, "계약명 미정");
+}
+
+function collapseInternalDuplicateContracts<T extends { title: string }>(
+  contracts: T[],
+  getKey: (contract: T) => string,
+) {
+  const seen = new Set<string>();
+  const result: T[] = [];
+
+  for (const contract of contracts) {
+    const isInternalRepeat = /^\[QA-[^\]]+\]/.test(contract.title);
+    if (!isInternalRepeat) {
+      result.push(contract);
+      continue;
+    }
+
+    const key = getKey(contract);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(contract);
+  }
+
+  return result;
+}
+
+function getInfluencerDashboardContractCollapseKey(
+  contract: InfluencerDashboardContract,
+) {
+  return [
+    formatDashboardContractTitle(contract.title),
+    contract.stage,
+    removeInternalTestLabel(contract.advertiser_name, "광고주"),
+    formatDashboardAmountLabel(contract.fee_label),
+    getInfluencerContractPlatforms(contract).join(","),
+  ].join("|");
+}
+
+function dedupeApprovedPlatforms(
+  platforms: InfluencerDashboardResponse["verification"]["approved_platforms"],
+) {
+  const seen = new Set<InfluencerPlatform>();
+  return platforms.filter((platform) => {
+    if (seen.has(platform.platform)) return false;
+    seen.add(platform.platform);
+    return true;
+  });
 }
 
 function parseDate(value?: string) {

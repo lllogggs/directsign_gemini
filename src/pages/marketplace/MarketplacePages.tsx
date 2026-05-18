@@ -401,11 +401,15 @@ export function InfluencerBrandDiscoveryPage() {
   const publicProfilePath = useInfluencerPublicProfilePath();
   const { profiles } = useMarketplaceInfluencers();
   const { brands, isLoading } = useMarketplaceBrands();
+  const displayBrands = useMemo(
+    () => dedupeBrandsByDisplayIdentity(brands),
+    [brands],
+  );
 
   const filteredBrands = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
 
-    return brands.filter((brand) => {
+    return displayBrands.filter((brand) => {
       const matchesPlatform =
         platformFilter === "all" ||
         brand.preferredPlatforms.includes(platformFilter);
@@ -428,7 +432,7 @@ export function InfluencerBrandDiscoveryPage() {
         .toLowerCase()
         .includes(normalizedQuery);
     });
-  }, [brands, platformFilter, query]);
+  }, [displayBrands, platformFilter, query]);
 
   return (
     <MarketplaceShell
@@ -438,7 +442,7 @@ export function InfluencerBrandDiscoveryPage() {
       backHref="/influencer/dashboard"
       backLabel="계약 대시보드"
       profileCount={profiles.length}
-      brandCount={brands.length}
+      brandCount={displayBrands.length}
       actions={
         <div className="flex items-center gap-2">
           <button
@@ -558,7 +562,7 @@ export function PublicInfluencerProfilePage() {
     <main className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950">
       <header className="border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-[1180px] items-center justify-between px-4 sm:px-6 lg:px-8">
-          <Link to="/" className="flex items-center gap-3">
+          <Link to="/" className="flex min-h-10 min-w-10 items-center gap-3">
             <span className="flex h-9 w-9 items-center justify-center rounded-[12px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
               <ShieldCheck className="h-4 w-4" />
             </span>
@@ -583,17 +587,17 @@ export function PublicInfluencerProfilePage() {
             <div className="mt-5 flex flex-col gap-5 sm:flex-row sm:items-start">
               <AvatarBlock label={profile.avatarLabel} size="large" />
               <div className="min-w-0 flex-1">
-                <p className="text-[13px] font-semibold text-neutral-500">
+                <p className="break-all text-[13px] font-semibold text-neutral-500">
                   {formatInfluencerPublicProfileUrl(profile.handle)}
                 </p>
                 <h1 className="font-neo-heavy mt-2 text-[34px] leading-tight tracking-[-0.035em] text-neutral-950 sm:text-[44px]">
                   {profile.displayName}
                 </h1>
                 <p className="mt-3 max-w-2xl break-keep text-[16px] font-medium leading-7 text-neutral-600">
-                  {profile.headline}
+                  {cleanMarketplaceCopy(profile.headline)}
                 </p>
                 <p className="mt-4 max-w-3xl break-keep text-[14px] leading-6 text-neutral-600">
-                  {profile.bio}
+                  {cleanMarketplaceCopy(profile.bio)}
                 </p>
                 <div className="mt-5 flex flex-col gap-2 sm:flex-row">
                   <button
@@ -676,7 +680,7 @@ export function PublicInfluencerProfilePage() {
                     {item.title}
                   </h2>
                   <p className="mt-3 text-[13px] font-medium text-neutral-600">
-                    {item.result}
+                    {cleanMarketplaceCopy(item.result)}
                   </p>
                 </article>
               ))}
@@ -686,7 +690,7 @@ export function PublicInfluencerProfilePage() {
 
         <aside className="grid gap-4">
           <ProfileSection title="브랜드 적합도">
-            <TagList items={profile.brandFit} />
+            <TagList items={profile.brandFit.map(cleanMarketplaceCopy)} />
           </ProfileSection>
           <ProfileSection title="제안 전에 포함할 내용">
             <ul className="grid gap-2">
@@ -696,7 +700,7 @@ export function PublicInfluencerProfilePage() {
                   className="flex gap-2 text-[13px] font-medium leading-5 text-neutral-600"
                 >
                   <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-neutral-700" />
-                  <span>{hint}</span>
+                  <span>{cleanMarketplaceCopy(hint)}</span>
                 </li>
               ))}
             </ul>
@@ -785,17 +789,17 @@ export function PublicBrandProfilePage() {
             <div className="mt-5 flex flex-col gap-5 sm:flex-row sm:items-start">
               <AvatarBlock label={brand.logoLabel} size="large" />
               <div className="min-w-0 flex-1">
-                <p className="text-[13px] font-semibold text-neutral-500">
+                <p className="break-all text-[13px] font-semibold text-neutral-500">
                   yeollock.me/brands/{brand.handle}
                 </p>
                 <h1 className="font-neo-heavy mt-2 text-[34px] leading-tight tracking-[-0.035em] text-neutral-950 sm:text-[44px]">
                   {brand.displayName}
                 </h1>
                 <p className="mt-3 max-w-2xl break-keep text-[16px] font-medium leading-7 text-neutral-600">
-                  {brand.headline}
+                  {cleanMarketplaceCopy(brand.headline)}
                 </p>
                 <p className="mt-4 max-w-3xl break-keep text-[14px] leading-6 text-neutral-600">
-                  {brand.description}
+                  {cleanMarketplaceCopy(brand.description)}
                 </p>
                 <div className="mt-5 flex flex-col gap-2 sm:flex-row">
                   <button
@@ -873,10 +877,10 @@ export function PublicBrandProfilePage() {
 
         <aside className="grid gap-4">
           <ProfileSection title="잘 맞는 크리에이터">
-            <TagList items={brand.fitTags} />
+            <TagList items={brand.fitTags.map(cleanMarketplaceCopy)} />
           </ProfileSection>
           <ProfileSection title="타깃 고객">
-            <TagList items={brand.audienceTargets} />
+            <TagList items={brand.audienceTargets.map(cleanMarketplaceCopy)} />
           </ProfileSection>
         </aside>
       </section>
@@ -954,7 +958,7 @@ function MarketplaceShell({
               <div className="grid grid-cols-3 gap-2 rounded-[18px] border border-neutral-200 bg-white p-2 shadow-[0_12px_34px_rgba(15,23,42,0.04)] sm:w-[420px]">
                 <MiniMetric label="공개 프로필" value={(profileCount ?? marketplaceInfluencers.length).toString()} />
                 <MiniMetric label="입점 브랜드" value={(brandCount ?? marketplaceBrands.length).toString()} />
-                <MiniMetric label="계약 전환" value="검토 후" />
+                <MiniMetric label="계약 연결" value="검토 뒤" />
               </div>
             ) : null}
           </div>
@@ -991,21 +995,13 @@ function InfluencerDiscoveryCard({
             {formatInfluencerPublicProfileUrl(profile.handle)}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onContact}
-          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-[10px] bg-neutral-950 px-3 text-[12px] font-extrabold text-white transition hover:bg-neutral-800"
-        >
-          <Send className="h-3.5 w-3.5" />
-          제안하기
-        </button>
       </div>
 
       <p className="mt-4 line-clamp-2 text-[14px] font-semibold leading-6 text-neutral-800">
-        {profile.headline}
+        {cleanMarketplaceCopy(profile.headline)}
       </p>
       <p className="mt-2 line-clamp-2 text-[13px] leading-5 text-neutral-600">
-        {profile.audience}
+        {cleanMarketplaceCopy(profile.audience)}
       </p>
 
       <div className="mt-4 flex flex-wrap gap-1.5">
@@ -1025,15 +1021,23 @@ function InfluencerDiscoveryCard({
       </dl>
 
       <div className="mt-4">
-        <TagList items={profile.brandFit.slice(0, 3)} />
+        <TagList items={profile.brandFit.slice(0, 3).map(cleanMarketplaceCopy)} />
       </div>
 
-      <div className="mt-auto pt-5">
+      <div className="mt-auto grid grid-cols-2 gap-2 pt-5">
+        <button
+          type="button"
+          onClick={onContact}
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-[12px] bg-neutral-950 px-3 text-[13px] font-extrabold text-white transition hover:bg-neutral-800"
+        >
+          <Send className="h-4 w-4" />
+          제안
+        </button>
         <Link
           to={getInfluencerProfilePath(profile)}
           className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-[12px] border border-neutral-200 bg-white text-[13px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
         >
-          프로필 보기
+          상세
         </Link>
       </div>
     </article>
@@ -1063,21 +1067,13 @@ function BrandDiscoveryCard({
             {brand.category} · {brand.statusLabel}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onContact}
-          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-[10px] bg-neutral-950 px-3 text-[12px] font-extrabold text-white transition hover:bg-neutral-800"
-        >
-          <Send className="h-3.5 w-3.5" />
-          역제안
-        </button>
       </div>
 
       <p className="mt-4 line-clamp-2 text-[14px] font-semibold leading-6 text-neutral-800">
-        {brand.headline}
+        {cleanMarketplaceCopy(brand.headline)}
       </p>
       <p className="mt-2 line-clamp-3 text-[13px] leading-5 text-neutral-600">
-        {brand.description}
+        {cleanMarketplaceCopy(brand.description)}
       </p>
 
       <div className="mt-4 flex flex-wrap gap-1.5">
@@ -1097,19 +1093,24 @@ function BrandDiscoveryCard({
       </dl>
 
       <div className="mt-4">
-        <TagList items={brand.fitTags.slice(0, 3)} />
+        <TagList items={brand.fitTags.slice(0, 3).map(cleanMarketplaceCopy)} />
       </div>
 
-      <div className="mt-auto grid gap-2 pt-5">
+      <div className="mt-auto grid grid-cols-2 gap-2 pt-5">
+        <button
+          type="button"
+          onClick={onContact}
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-[12px] bg-neutral-950 px-3 text-[13px] font-extrabold text-white transition hover:bg-neutral-800"
+        >
+          <Send className="h-4 w-4" />
+          역제안
+        </button>
         <Link
           to={getBrandProfilePath(brand)}
           className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-[12px] border border-neutral-200 bg-white text-[13px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
         >
-          브랜드 보기
+          브랜드
         </Link>
-        <p className="text-[11px] font-semibold text-neutral-500">
-          제안 전 캠페인 조건은 계약 단계에서 다시 확인됩니다.
-        </p>
       </div>
     </article>
   );
@@ -1612,7 +1613,7 @@ function PlatformFilterBar({
             key={platform}
             type="button"
             onClick={() => onChange(platform)}
-            className={`inline-flex h-9 shrink-0 items-center rounded-md border px-3 text-[12px] font-semibold transition ${
+            className={`inline-flex h-10 shrink-0 items-center rounded-md border px-3 text-[12px] font-semibold transition ${
               active
                 ? "border-neutral-950 bg-neutral-950 text-white"
                 : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300 hover:text-neutral-950"
@@ -1624,6 +1625,43 @@ function PlatformFilterBar({
       })}
     </div>
   );
+}
+
+function cleanMarketplaceCopy(value: string) {
+  return value
+    .replace(
+      "광고주 컨택, 제안 저장, 전자계약 전환 흐름을 검증하기 위한 공개 프로필입니다.",
+      "브랜드 컨택과 전자계약 전환에 적합한 공개 프로필입니다.",
+    )
+    .replace(
+      "인플루언서가 입점 브랜드를 둘러보고 역제안할 수 있도록 구성한 광고주 프로필입니다.",
+      "인플루언서가 브랜드 정보와 제안 조건을 빠르게 확인할 수 있는 공개 프로필입니다.",
+    )
+    .replace("뷰티와 테크 라이프스타일 제품을 빠르게 검증하는 인플루언서", "뷰티와 테크 라이프스타일 제품을 선명하게 소개하는 인플루언서")
+    .replace("빠르게 검증하는", "선명하게 소개하는")
+    .replace("신제품 검증", "신제품 리뷰")
+    .replace("계약 전환", "계약 협업")
+    .replace("제안 저장과 계약 생성 흐름 검증", "제안부터 계약 생성까지 이어진 협업")
+    .replace(/\bQA\b/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function dedupeBrandsByDisplayIdentity(brands: MarketplaceBrandProfile[]) {
+  const seen = new Set<string>();
+
+  return brands.filter((brand) => {
+    const key = [
+      brand.displayName,
+      brand.category,
+      brand.statusLabel,
+    ]
+      .map((value) => value.trim().toLowerCase().replace(/\s+/g, " "))
+      .join("|");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function PlatformPill({

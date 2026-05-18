@@ -498,8 +498,10 @@ export function InfluencerCampaignDiscoveryPage() {
           status: "ready",
           campaigns:
             data.campaigns.length > 0
-              ? data.campaigns
-              : buildMarketplaceCampaignPosts(marketplaceBrands),
+              ? dedupeCampaignsByBrandIdentity(data.campaigns)
+              : dedupeCampaignsByBrandIdentity(
+                  buildMarketplaceCampaignPosts(marketplaceBrands),
+                ),
         });
       })
       .catch((error) => {
@@ -521,7 +523,7 @@ export function InfluencerCampaignDiscoveryPage() {
   const campaigns =
     state.status === "ready"
       ? state.campaigns
-      : buildMarketplaceCampaignPosts(marketplaceBrands);
+      : dedupeCampaignsByBrandIdentity(buildMarketplaceCampaignPosts(marketplaceBrands));
   const visibleCampaigns = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
 
@@ -685,7 +687,51 @@ export function InfluencerCampaignDiscoveryPage() {
               className="h-11 w-full rounded-[12px] border border-neutral-200 bg-[#f8f7f4] pl-10 pr-3 text-[13px] font-bold text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950 focus:bg-white"
             />
           </div>
-          <div className="flex min-w-0 flex-wrap gap-2">
+          <details className="rounded-[14px] border border-neutral-200 bg-[#fbfaf7] px-3 py-2 lg:hidden">
+            <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 text-[12px] font-extrabold text-neutral-700">
+              <span>필터</span>
+              <span className="min-w-0 truncate text-neutral-400">
+                플랫폼 · 카테고리 · 형태
+              </span>
+            </summary>
+            <div className="mt-3 grid gap-2">
+              <FilterGroup label="플랫폼">
+                {platformOptions.map((platform) => (
+                  <FilterButton
+                    key={platform}
+                    active={platformFilter === platform}
+                    count={platformCounts[platform]}
+                    label={platform === "all" ? "전체" : platformLabels[platform]}
+                    onClick={() => setPlatformFilter(platform)}
+                    tone={platform === "all" ? undefined : getPlatformTone(platform)}
+                  />
+                ))}
+              </FilterGroup>
+              <FilterGroup label="카테고리">
+                {categoryOptions.map((category) => (
+                  <FilterButton
+                    key={category}
+                    active={categoryFilter === category}
+                    count={categoryCounts[category]}
+                    label={category === "all" ? "전체" : category}
+                    onClick={() => setCategoryFilter(category)}
+                  />
+                ))}
+              </FilterGroup>
+              <FilterGroup label="형태">
+                {proposalTypeFilterOptions.map((type) => (
+                  <FilterButton
+                    key={type}
+                    active={proposalTypeFilter === type}
+                    count={typeCounts[type]}
+                    label={type === "all" ? "전체" : proposalTypeLabels[type]}
+                    onClick={() => setProposalTypeFilter(type)}
+                  />
+                ))}
+              </FilterGroup>
+            </div>
+          </details>
+          <div className="hidden min-w-0 flex-wrap gap-2 lg:flex">
             <FilterGroup label="플랫폼">
               {platformOptions.map((platform) => (
                 <FilterButton
@@ -946,7 +992,7 @@ function CampaignPostCard({
 
       <div className="mt-4 grid grid-cols-2 gap-2">
         <MiniInfo label="예산" value={campaign.budget} />
-        <MiniInfo label="제안 마감" value={campaign.deadlineLabel} />
+        <MiniInfo label="마감" value={campaign.deadlineLabel} />
       </div>
 
       <div className="mt-4 flex flex-wrap gap-1.5">
@@ -968,18 +1014,15 @@ function CampaignPostCard({
           className="inline-flex h-11 items-center justify-center gap-2 rounded-[12px] bg-neutral-950 px-4 text-[13px] font-extrabold text-white transition hover:bg-neutral-800"
         >
           <Send className="h-4 w-4" />
-          {isApplying ? "신청 중" : "캠페인 신청"}
+          {isApplying ? "신청 중" : "신청"}
         </button>
         <Link
           to={campaign.brandHref}
           className="inline-flex h-10 items-center justify-center gap-2 rounded-[12px] border border-neutral-200 bg-white px-4 text-[13px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
         >
-          브랜드 보기
+          브랜드
           <ArrowRight className="h-4 w-4" />
         </Link>
-        <p className="text-[11px] font-bold leading-4 text-neutral-400">
-          광고주가 수락하면 캠페인 조건이 계약 초안에 반영됩니다.
-        </p>
       </div>
     </article>
   );
@@ -1033,7 +1076,7 @@ function FilterButton({
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-extrabold transition ${
+      className={`inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[11px] font-extrabold transition sm:px-2.5 ${
         active
           ? activeClass
           : "border-neutral-200 bg-white text-neutral-500 hover:border-neutral-300 hover:text-neutral-950"
@@ -1045,6 +1088,27 @@ function FilterButton({
       </span>
     </button>
   );
+}
+
+function dedupeCampaignsByBrandIdentity(campaigns: MarketplaceCampaignPost[]) {
+  const brandHandleByIdentity = new Map<string, string>();
+
+  return campaigns.filter((campaign) => {
+    const identity = [
+      campaign.brandName,
+      campaign.brandCategory,
+    ]
+      .map((value) => value.trim().toLowerCase().replace(/\s+/g, " "))
+      .join("|");
+    const firstBrandHandle = brandHandleByIdentity.get(identity);
+
+    if (!firstBrandHandle) {
+      brandHandleByIdentity.set(identity, campaign.brandHandle);
+      return true;
+    }
+
+    return firstBrandHandle === campaign.brandHandle;
+  });
 }
 
 function PanelState({

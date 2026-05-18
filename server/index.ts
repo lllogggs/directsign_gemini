@@ -98,6 +98,7 @@ type InfluencerActivityCategory =
   | "lifestyle"
   | "finance";
 type InfluencerVerificationMethod =
+  | "instagram_dm_code"
   | "profile_bio_code"
   | "public_post_code"
   | "channel_description_code"
@@ -466,7 +467,15 @@ const maxLoggedLegacyShareTokenDecryptFailures = 100;
 
 export const app = express();
 app.set("trust proxy", isHostedRuntime ? 1 : false);
-app.use(express.json({ limit: "10mb" }));
+app.use(
+  express.json({
+    limit: "10mb",
+    verify: (request, _response, buffer) => {
+      (request as express.Request & { rawBody?: Buffer }).rawBody =
+        Buffer.from(buffer);
+    },
+  }),
+);
 
 const stateChangingMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const allowedConfiguredOrigins = [
@@ -576,6 +585,7 @@ const clauseStatuses = new Set([
 const shareTokenStatuses = new Set(["not_issued", "active", "expired", "revoked"]);
 const pdfStatuses = new Set(["not_ready", "draft_ready", "signed_ready"]);
 const verificationStatuses = new Set(["pending", "approved", "rejected"]);
+const advertiserTrustRiskLevels = new Set(["low", "medium", "high"]);
 const influencerPlatforms = new Set<InfluencerPlatform>([
   "instagram",
   "youtube",
@@ -596,6 +606,7 @@ const influencerActivityCategories = new Set<InfluencerActivityCategory>([
   "finance",
 ]);
 const influencerVerificationMethods = new Set([
+  "instagram_dm_code",
   "profile_bio_code",
   "public_post_code",
   "channel_description_code",
@@ -3119,6 +3130,1312 @@ const checkOwnershipChallenge = async (
       error: error instanceof Error ? error.message : "Challenge check failed",
     };
   }
+};
+
+type VerificationAutomationStatus =
+  | "not_configured"
+  | "matched"
+  | "not_found"
+  | "blocked"
+  | "failed"
+  | "invalid_input";
+
+type VerificationAutomationMode =
+  | "api_ready"
+  | "public_challenge"
+  | "manual_fallback"
+  | "oauth_required"
+  | "webhook_ready";
+
+interface VerificationAutomationResult {
+  provider: string;
+  configured: boolean;
+  mode: VerificationAutomationMode;
+  status: VerificationAutomationStatus;
+  checked_at: string;
+  http_status?: number;
+  result_hash?: string;
+  message: string;
+  next_action?: string;
+  matched_fields?: string[];
+  ownership_check?: {
+    status: OwnershipCheckStatus;
+    checked_at: string;
+    http_status?: number;
+    error?: string;
+  };
+  public_challenge?: {
+    status: OwnershipCheckStatus;
+    checked_at: string;
+    http_status?: number;
+    error?: string;
+  };
+  profile?: Record<string, unknown>;
+  plan?: ReturnType<typeof buildVerificationAutomationPlan>;
+}
+
+const hasConfiguredEnv = (...names: string[]) =>
+  names.some((name) => hasText(process.env[name]));
+
+const buildVerificationAutomationPlan = (platform: InfluencerPlatform) => {
+  const plans: Record<
+    InfluencerPlatform,
+    {
+      provider: string;
+      configured: boolean;
+      mode: VerificationAutomationMode;
+      registration_required: boolean;
+      note: string;
+      required_env: string[];
+      fallback: string;
+    }
+  > = {
+    youtube: {
+      provider: "youtube_data_api",
+      configured: hasConfiguredEnv("YOUTUBE_DATA_API_KEY"),
+      mode: hasConfiguredEnv("YOUTUBE_DATA_API_KEY")
+        ? "api_ready"
+        : "public_challenge",
+      registration_required: !hasConfiguredEnv("YOUTUBE_DATA_API_KEY"),
+      required_env: ["YOUTUBE_DATA_API_KEY"],
+      fallback: "public challenge code on the channel/proof URL",
+      note: "YouTube Data API 또는 Google OAuth 등록 후 채널 소유 확인 자동화를 확장할 수 있습니다.",
+    },
+    naver_blog: {
+      provider: "naver_search_api",
+      configured: hasConfiguredEnv("NAVER_CLIENT_ID", "NAVER_CLIENT_SECRET"),
+      mode: hasConfiguredEnv("NAVER_CLIENT_ID", "NAVER_CLIENT_SECRET")
+        ? "api_ready"
+        : "public_challenge",
+      registration_required: !hasConfiguredEnv("NAVER_CLIENT_ID", "NAVER_CLIENT_SECRET"),
+      required_env: ["NAVER_CLIENT_ID", "NAVER_CLIENT_SECRET"],
+      fallback: "public blog post/profile challenge code",
+      note: "Naver 개발자 앱 등록 전에는 공개 URL의 인증 코드 확인으로 fallback합니다.",
+    },
+    instagram: {
+      provider: "instagram_graph_api",
+      configured: hasConfiguredEnv("META_GRAPH_ACCESS_TOKEN", "META_IG_USER_ID"),
+      mode: hasConfiguredEnv("META_GRAPH_ACCESS_TOKEN", "META_IG_USER_ID")
+        ? "api_ready"
+        : hasConfiguredEnv("META_WEBHOOK_VERIFY_TOKEN")
+          ? "webhook_ready"
+          : "manual_fallback",
+      registration_required: !hasConfiguredEnv("META_APP_ID", "META_APP_SECRET"),
+      required_env: [
+        "META_APP_ID",
+        "META_APP_SECRET",
+        "META_GRAPH_ACCESS_TOKEN",
+        "META_IG_USER_ID",
+      ],
+      fallback: "profile bio/post challenge, screenshot, or inbound Instagram DM webhook",
+      note: "Instagram Graph API는 Meta 앱 등록과 권한 심사가 필요하므로 현재는 코드/스크린샷 검수로 처리합니다.",
+    },
+    tiktok: {
+      provider: "tiktok_login_kit",
+      configured: hasConfiguredEnv("TIKTOK_ACCOUNT_ACCESS_TOKEN"),
+      mode: hasConfiguredEnv("TIKTOK_ACCOUNT_ACCESS_TOKEN")
+        ? "api_ready"
+        : "oauth_required",
+      registration_required: !hasConfiguredEnv("TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET"),
+      required_env: [
+        "TIKTOK_CLIENT_KEY",
+        "TIKTOK_CLIENT_SECRET",
+        "TIKTOK_ACCOUNT_ACCESS_TOKEN",
+      ],
+      fallback: "TikTok Login OAuth, public challenge code, or screenshot review",
+      note: "TikTok Login Kit 등록 전에는 공개 URL 또는 스크린샷 검수로 처리합니다.",
+    },
+    other: {
+      provider: "public_url_challenge",
+      configured: false,
+      mode: "public_challenge",
+      registration_required: false,
+      required_env: [],
+      fallback: "public URL challenge or screenshot review",
+      note: "공개 URL에 인증 코드를 넣는 방식으로 운영자 검수를 보조합니다.",
+    },
+  };
+
+  return plans[platform];
+};
+
+const fetchJsonWithTimeout = async <T>(
+  url: string,
+  init: RequestInit = {},
+  timeoutMs = 6500,
+): Promise<{ status: number; ok: boolean; payload: T; body: string }> => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const apiResponse = await fetch(url, {
+      ...init,
+      signal: controller.signal,
+    });
+    const body = await apiResponse.text();
+    let payload = {} as T;
+
+    try {
+      payload = body ? (JSON.parse(body) as T) : ({} as T);
+    } catch {
+      payload = {} as T;
+    }
+
+    return {
+      status: apiResponse.status,
+      ok: apiResponse.ok,
+      payload,
+      body,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
+const normalizeDateCompact = (value: string | undefined) => {
+  if (!value) return undefined;
+  const digits = value.replace(/\D/g, "");
+  if (digits.length !== 8) return undefined;
+  const year = Number(digits.slice(0, 4));
+  const month = Number(digits.slice(4, 6));
+  const day = Number(digits.slice(6, 8));
+  if (
+    !Number.isInteger(year) ||
+    year < 1900 ||
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > 31
+  ) {
+    return undefined;
+  }
+  return digits;
+};
+
+const normalizeHandleForComparison = (value: string | undefined) =>
+  normalizeRequiredText(value)
+    .replace(/^@+/, "")
+    .replace(/^https?:\/\/(www\.)?/i, "")
+    .replace(/\/+$/, "")
+    .toLowerCase();
+
+const extractNaverBlogId = (value: string | undefined) => {
+  const raw = normalizeRequiredText(value);
+  if (!raw) return "";
+
+  try {
+    const url = new URL(raw);
+    const host = url.hostname.toLowerCase();
+    if (host === "blog.naver.com" || host === "m.blog.naver.com") {
+      return normalizeHandleForComparison(url.pathname.split("/").filter(Boolean)[0]);
+    }
+  } catch {
+    // Fall through to direct handle normalization.
+  }
+
+  return normalizeHandleForComparison(raw);
+};
+
+const stripHtmlTags = (value: string | undefined) =>
+  normalizeRequiredText(value).replace(/<[^>]*>/g, " ");
+
+const buildAutomationOwnershipStatus = (
+  status: VerificationAutomationStatus,
+): OwnershipCheckStatus => {
+  if (status === "matched") return "matched";
+  if (status === "not_found" || status === "invalid_input") return "not_found";
+  if (status === "blocked" || status === "not_configured") return "blocked";
+  return "failed";
+};
+
+const shouldAutoApproveBusinessVerification = (
+  check: VerificationAutomationResult,
+) =>
+  process.env.VERIFICATION_AUTO_APPROVE_BUSINESS === "true" &&
+  check.status === "matched" &&
+  (check.profile?.validate_status === "matched" ||
+    check.profile?.validate_status === undefined);
+
+const shouldAutoApprovePlatformVerification = (
+  check: VerificationAutomationResult,
+) =>
+  process.env.VERIFICATION_AUTO_APPROVE_PLATFORM === "true" &&
+  check.status === "matched";
+
+const runBusinessRegistrationAutomationCheck = async (
+  businessRegistrationNumber: string,
+  options: {
+    businessStartDate?: string;
+    representativeName?: string;
+    subjectName?: string;
+  } = {},
+): Promise<VerificationAutomationResult> => {
+  const checkedAt = new Date().toISOString();
+  const normalizedNumber = normalizeBusinessRegistrationNumber(
+    businessRegistrationNumber,
+  );
+  const serviceKey =
+    process.env.NTS_BUSINESS_STATUS_API_KEY?.trim() ||
+    process.env.NTS_BUSINESS_VALIDATE_API_KEY?.trim() ||
+    "";
+  const statusServiceKey =
+    process.env.NTS_BUSINESS_STATUS_API_KEY?.trim() || serviceKey;
+  const validateServiceKey =
+    process.env.NTS_BUSINESS_VALIDATE_API_KEY?.trim() || serviceKey;
+  const businessStartDate = normalizeDateCompact(options.businessStartDate);
+  const representativeName = normalizeRequiredText(options.representativeName);
+  const subjectName = normalizeRequiredText(options.subjectName);
+
+  if (!isValidBusinessRegistrationNumber(normalizedNumber)) {
+    return {
+      provider: "nts_businessman",
+      configured: Boolean(serviceKey),
+      mode: serviceKey ? "api_ready" : "manual_fallback",
+      status: "invalid_input",
+      checked_at: checkedAt,
+      message: "사업자등록번호 체크섬이 유효하지 않아 자동 조회를 건너뛰었습니다.",
+    };
+  }
+
+  if (!serviceKey) {
+    return {
+      provider: "nts_businessman",
+      configured: false,
+      mode: "manual_fallback",
+      status: "not_configured",
+      checked_at: checkedAt,
+      message:
+        "국세청 사업자등록정보 API 키가 없어 수동 검수로 접수합니다. API 등록 후 NTS_BUSINESS_STATUS_API_KEY를 설정하면 자동 상태 조회가 실행됩니다.",
+    };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+
+  try {
+    const url = new URL("https://api.odcloud.kr/api/nts-businessman/v1/status");
+    url.searchParams.set("serviceKey", statusServiceKey);
+    const apiResponse = await fetch(url.toString(), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ b_no: [normalizedNumber] }),
+      signal: controller.signal,
+    });
+    const payload = (await apiResponse.json().catch(() => ({}))) as {
+      data?: Array<{
+        b_no?: string;
+        b_stt?: string;
+        b_stt_cd?: string;
+        tax_type?: string;
+        end_dt?: string;
+      }>;
+    };
+    const result = payload.data?.[0];
+    let validateStatus: VerificationAutomationStatus | undefined;
+    let validateHttpStatus: number | undefined;
+    let validatePayload: unknown;
+
+    if (validateServiceKey && businessStartDate && representativeName) {
+      const validateUrl = new URL("https://api.odcloud.kr/api/nts-businessman/v1/validate");
+      validateUrl.searchParams.set("serviceKey", validateServiceKey);
+      const validateResponse = await fetchJsonWithTimeout<{
+        data?: Array<{
+          valid?: string;
+          valid_msg?: string;
+          request_param?: Record<string, unknown>;
+          status?: Record<string, unknown>;
+        }>;
+      }>(
+        validateUrl.toString(),
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            businesses: [
+              {
+                b_no: normalizedNumber,
+                start_dt: businessStartDate,
+                p_nm: representativeName,
+                ...(subjectName ? { b_nm: subjectName } : {}),
+              },
+            ],
+          }),
+        },
+        6500,
+      );
+      validateHttpStatus = validateResponse.status;
+      validatePayload = validateResponse.payload;
+      validateStatus =
+        validateResponse.ok && validateResponse.payload.data?.[0]?.valid === "01"
+          ? "matched"
+          : "not_found";
+    } else if (validateServiceKey) {
+      validateStatus = "invalid_input";
+    }
+    const isActive =
+      result?.b_stt_cd === "01" ||
+      normalizeRequiredText(result?.b_stt).includes("계속");
+
+    return {
+      provider: "nts_businessman",
+      configured: true,
+      mode: "api_ready",
+      status:
+        apiResponse.ok &&
+        isActive &&
+        (validateStatus === undefined || validateStatus === "matched")
+          ? "matched"
+          : "not_found",
+      checked_at: checkedAt,
+      http_status: apiResponse.status,
+      result_hash: sha256Hex(
+        JSON.stringify({ status: result ?? payload, validate: validatePayload }),
+      ),
+      profile: {
+        business_status_code: result?.b_stt_cd,
+        business_status_label: result?.b_stt,
+        tax_type: result?.tax_type,
+        validate_status: validateStatus,
+        validate_http_status: validateHttpStatus,
+        validate_attempted: validateStatus !== undefined,
+        validate_input_ready: Boolean(businessStartDate && representativeName),
+      },
+      message:
+        apiResponse.ok && isActive
+          ? "국세청 사업자등록 상태 조회에서 계속사업자로 확인되었습니다."
+          : "국세청 사업자등록 상태 조회 결과를 운영자 검수에서 확인해야 합니다.",
+    };
+  } catch (error) {
+    return {
+      provider: "nts_businessman",
+      configured: true,
+      mode: "api_ready",
+      status: "failed",
+      checked_at: checkedAt,
+      message:
+        error instanceof Error
+          ? `국세청 사업자등록 상태 자동 조회 실패: ${error.message}`
+          : "국세청 사업자등록 상태 자동 조회에 실패했습니다.",
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
+const buildNotConfiguredAutomationResult = (
+  plan: ReturnType<typeof buildVerificationAutomationPlan>,
+  checkedAt: string,
+  message?: string,
+): VerificationAutomationResult => ({
+  provider: plan.provider,
+  configured: false,
+  mode: plan.mode,
+  status: "not_configured",
+  checked_at: checkedAt,
+  message: message ?? plan.note,
+  next_action: plan.fallback,
+  plan,
+});
+
+const runPublicChallengeAutomation = async (
+  proofUrl: string | undefined,
+  challengeCode: string,
+) => {
+  if (!proofUrl) {
+    return {
+      status: "not_run" as OwnershipCheckStatus,
+      checked_at: new Date().toISOString(),
+      error: "Proof URL is missing",
+    };
+  }
+
+  return checkOwnershipChallenge(proofUrl, challengeCode);
+};
+
+const parseYoutubeChannelTarget = (
+  platformUrl: string,
+  platformHandle: string,
+) => {
+  try {
+    const url = new URL(platformUrl);
+    const parts = url.pathname.split("/").filter(Boolean);
+    const channelIndex = parts.findIndex((part) => part === "channel");
+    if (channelIndex >= 0 && parts[channelIndex + 1]) {
+      return { type: "id" as const, value: parts[channelIndex + 1] };
+    }
+    const handlePart = parts.find((part) => part.startsWith("@"));
+    if (handlePart) {
+      return { type: "handle" as const, value: handlePart.replace(/^@/, "") };
+    }
+  } catch {
+    // Fall back to the submitted handle.
+  }
+
+  return {
+    type: "handle" as const,
+    value: normalizeHandleForComparison(platformHandle),
+  };
+};
+
+const parseYoutubeVideoId = (value: string | undefined) => {
+  if (!hasText(value)) return undefined;
+
+  try {
+    const url = new URL(value);
+    const hostname = url.hostname.toLowerCase();
+    const parts = url.pathname.split("/").filter(Boolean);
+    const directVideoId =
+      hostname === "youtu.be" ? parts[0] : url.searchParams.get("v") ?? undefined;
+    const pathVideoId =
+      parts[0] && ["shorts", "embed", "live"].includes(parts[0])
+        ? parts[1]
+        : undefined;
+    const candidate = directVideoId ?? pathVideoId;
+    return candidate && /^[a-zA-Z0-9_-]{6,}$/.test(candidate)
+      ? candidate
+      : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+const containsChallengeCode = (
+  value: string | undefined | null,
+  challengeCode: string,
+) =>
+  normalizeRequiredText(value)
+    .toUpperCase()
+    .includes(challengeCode.toUpperCase());
+
+type YoutubeChannelItem = {
+  id?: string;
+  snippet?: {
+    title?: string;
+    description?: string;
+    customUrl?: string;
+    publishedAt?: string;
+  };
+  statistics?: {
+    subscriberCount?: string;
+    videoCount?: string;
+    viewCount?: string;
+    hiddenSubscriberCount?: boolean;
+  };
+};
+
+type YoutubeVideoItem = {
+  id?: string;
+  snippet?: {
+    channelId?: string;
+    channelTitle?: string;
+    title?: string;
+    description?: string;
+    publishedAt?: string;
+  };
+  status?: {
+    privacyStatus?: string;
+    uploadStatus?: string;
+  };
+};
+
+const fetchYoutubeChannelForTarget = async (
+  apiKey: string,
+  target: ReturnType<typeof parseYoutubeChannelTarget>,
+) => {
+  const url = new URL("https://www.googleapis.com/youtube/v3/channels");
+  url.searchParams.set("part", "snippet,statistics");
+  url.searchParams.set("key", apiKey);
+  if (target.type === "id") {
+    url.searchParams.set("id", target.value);
+  } else {
+    url.searchParams.set(
+      "forHandle",
+      target.value.startsWith("@") ? target.value : `@${target.value}`,
+    );
+  }
+
+  return fetchJsonWithTimeout<{
+    items?: YoutubeChannelItem[];
+    error?: unknown;
+  }>(url.toString());
+};
+
+const fetchYoutubeVideoForProof = async (apiKey: string, videoId: string) => {
+  const url = new URL("https://www.googleapis.com/youtube/v3/videos");
+  url.searchParams.set("part", "snippet,status");
+  url.searchParams.set("id", videoId);
+  url.searchParams.set("key", apiKey);
+
+  return fetchJsonWithTimeout<{
+    items?: YoutubeVideoItem[];
+    error?: unknown;
+  }>(url.toString());
+};
+
+const runYoutubeAutomationCheck = async ({
+  platformUrl,
+  platformHandle,
+  proofUrl,
+  ownershipMethod,
+  challengeCode,
+}: {
+  platformUrl: string;
+  platformHandle: string;
+  proofUrl?: string;
+  ownershipMethod: InfluencerVerificationMethod;
+  challengeCode: string;
+}): Promise<VerificationAutomationResult> => {
+  const checkedAt = new Date().toISOString();
+  const plan = buildVerificationAutomationPlan("youtube");
+  const apiKey = process.env.YOUTUBE_DATA_API_KEY?.trim();
+
+  if (!apiKey) {
+    const publicChallenge = await runPublicChallengeAutomation(
+      proofUrl ?? platformUrl,
+      challengeCode,
+    );
+
+    return {
+      ...buildNotConfiguredAutomationResult(
+        plan,
+        publicChallenge.checked_at,
+        publicChallenge.status === "matched"
+          ? "YouTube 공개 증빙 URL에서 인증코드를 확인했습니다. API 키가 연결되면 채널 일치 여부까지 자동 확인합니다."
+          : "YOUTUBE_DATA_API_KEY가 없어 YouTube 공개 증빙 URL만 확인했습니다. 관리자 검수가 필요합니다.",
+      ),
+      status:
+        publicChallenge.status === "matched" ? "matched" : "not_configured",
+      http_status: publicChallenge.http_status,
+      matched_fields:
+        publicChallenge.status === "matched" ? ["public_url"] : undefined,
+      ownership_check: publicChallenge,
+      public_challenge: publicChallenge,
+    };
+  }
+
+  const target = parseYoutubeChannelTarget(platformUrl, platformHandle);
+  if (!target.value) {
+    return {
+      provider: plan.provider,
+      configured: true,
+      mode: "api_ready",
+      status: "invalid_input",
+      checked_at: checkedAt,
+      message: "YouTube channel handle or channel id is required.",
+      plan,
+    };
+  }
+
+  try {
+    const channelResponse = await fetchYoutubeChannelForTarget(apiKey, target);
+    const channel = channelResponse.payload.items?.[0];
+    const proofVideoId = parseYoutubeVideoId(proofUrl);
+    const videoResponse = proofVideoId
+      ? await fetchYoutubeVideoForProof(apiKey, proofVideoId)
+      : undefined;
+    const video = videoResponse?.payload.items?.[0];
+    const channelDescriptionMatched = containsChallengeCode(
+      channel?.snippet?.description,
+      challengeCode,
+    );
+    const videoTitleMatched = containsChallengeCode(
+      video?.snippet?.title,
+      challengeCode,
+    );
+    const videoDescriptionMatched = containsChallengeCode(
+      video?.snippet?.description,
+      challengeCode,
+    );
+    const videoChannelMatches =
+      Boolean(channel?.id && video?.snippet?.channelId) &&
+      channel?.id === video?.snippet?.channelId;
+    const videoProofMatched =
+      Boolean(video) &&
+      videoChannelMatches &&
+      (videoTitleMatched || videoDescriptionMatched);
+    const shouldTryPublicProof =
+      !channelDescriptionMatched &&
+      !videoProofMatched &&
+      ownershipMethod !== "channel_description_code" &&
+      hasText(proofUrl);
+    const publicChallenge = shouldTryPublicProof
+      ? await runPublicChallengeAutomation(proofUrl, challengeCode)
+      : undefined;
+    const publicProofMatched = publicChallenge?.status === "matched";
+    const matched =
+      channelDescriptionMatched || videoProofMatched || publicProofMatched;
+    const matchedFields = [
+      channelDescriptionMatched ? "channel.snippet.description" : undefined,
+      videoTitleMatched && videoChannelMatches ? "video.snippet.title" : undefined,
+      videoDescriptionMatched && videoChannelMatches
+        ? "video.snippet.description"
+        : undefined,
+      publicProofMatched ? "public_url" : undefined,
+    ].filter((value): value is string => Boolean(value));
+    const ownershipCheck = {
+      status: matched ? "matched" : ("not_found" as OwnershipCheckStatus),
+      checked_at: publicChallenge?.checked_at ?? checkedAt,
+      http_status: videoResponse?.status ?? channelResponse.status,
+    };
+
+    return {
+      provider: plan.provider,
+      configured: true,
+      mode: "api_ready",
+      status: channelResponse.ok && matched ? "matched" : "not_found",
+      checked_at: checkedAt,
+      http_status: videoResponse?.status ?? channelResponse.status,
+      result_hash: sha256Hex(
+        JSON.stringify({
+          channel: channelResponse.payload,
+          video: videoResponse?.payload,
+          public_challenge: publicChallenge,
+        }),
+      ),
+      message:
+        channelResponse.ok && matched
+          ? videoProofMatched
+            ? "YouTube 영상/쇼츠 증빙이 제출 채널과 일치하고 인증코드를 포함합니다."
+            : channelDescriptionMatched
+              ? "YouTube 채널 설명에서 인증코드를 확인했습니다."
+              : "YouTube 공개 증빙 URL에서 인증코드를 확인했습니다."
+          : "YouTube 채널 또는 제출 증빙에서 인증코드를 확인하지 못했습니다.",
+      matched_fields: matchedFields,
+      ownership_check: {
+        ...ownershipCheck,
+        status: channelResponse.ok ? ownershipCheck.status : "failed",
+      },
+      public_challenge: publicChallenge,
+      profile: channel
+        ? {
+            channel_id: channel.id,
+            title: channel.snippet?.title,
+            custom_url: channel.snippet?.customUrl,
+            published_at: channel.snippet?.publishedAt,
+            subscriber_count: channel.statistics?.subscriberCount,
+            video_count: channel.statistics?.videoCount,
+            hidden_subscriber_count: channel.statistics?.hiddenSubscriberCount,
+            proof_video_id: video?.id,
+            proof_video_title: video?.snippet?.title,
+            proof_video_channel_id: video?.snippet?.channelId,
+            proof_video_channel_title: video?.snippet?.channelTitle,
+            proof_video_published_at: video?.snippet?.publishedAt,
+            proof_video_privacy_status: video?.status?.privacyStatus,
+            proof_video_code_found: videoTitleMatched || videoDescriptionMatched,
+            proof_video_channel_matched: videoChannelMatches,
+            proof_source: videoProofMatched
+              ? "video"
+              : channelDescriptionMatched
+                ? "channel"
+                : publicProofMatched
+                  ? "public_url"
+                  : undefined,
+          }
+        : undefined,
+      plan,
+    };
+  } catch (error) {
+    return {
+      provider: plan.provider,
+      configured: true,
+      mode: "api_ready",
+      status: "failed",
+      checked_at: checkedAt,
+      message: error instanceof Error ? error.message : "YouTube API check failed.",
+      plan,
+    };
+  }
+};
+
+const runNaverBlogAutomationCheck = async ({
+  platformHandle,
+  platformUrl,
+  proofUrl,
+  challengeCode,
+}: {
+  platformHandle: string;
+  platformUrl: string;
+  proofUrl?: string;
+  challengeCode: string;
+}): Promise<VerificationAutomationResult> => {
+  const checkedAt = new Date().toISOString();
+  const plan = buildVerificationAutomationPlan("naver_blog");
+  const expectedBlogId =
+    extractNaverBlogId(platformHandle) ||
+    extractNaverBlogId(platformUrl) ||
+    extractNaverBlogId(proofUrl);
+  const publicChallenge = await runPublicChallengeAutomation(proofUrl, challengeCode);
+  if (publicChallenge.status === "matched") {
+    return {
+      provider: plan.provider,
+      configured: plan.configured,
+      mode: plan.mode,
+      status: "matched",
+      checked_at: publicChallenge.checked_at,
+      http_status: publicChallenge.http_status,
+      message: "네이버 블로그 공개 증빙 URL에서 인증코드를 확인했습니다.",
+      matched_fields: ["public_url"],
+      ownership_check: publicChallenge,
+      public_challenge: publicChallenge,
+      profile: {
+        blog_id: expectedBlogId || undefined,
+        proof_source: "public_url",
+      },
+      plan,
+    };
+  }
+
+  const clientId = process.env.NAVER_CLIENT_ID?.trim();
+  const clientSecret = process.env.NAVER_CLIENT_SECRET?.trim();
+  if (!clientId || !clientSecret) {
+    return {
+      ...buildNotConfiguredAutomationResult(
+        plan,
+        publicChallenge.checked_at,
+        "NAVER_CLIENT_ID/NAVER_CLIENT_SECRET이 없어 공개 증빙 URL만 확인했습니다. 자동 확인이 막히면 관리자 검수가 필요합니다.",
+      ),
+      public_challenge: publicChallenge,
+      ownership_check: publicChallenge,
+      profile: {
+        blog_id: expectedBlogId || undefined,
+      },
+    };
+  }
+
+  try {
+    const url = new URL("https://openapi.naver.com/v1/search/blog.json");
+    url.searchParams.set("query", `${challengeCode} ${expectedBlogId || platformHandle}`);
+    url.searchParams.set("display", "10");
+    url.searchParams.set("sort", "date");
+    const apiResponse = await fetchJsonWithTimeout<{
+      items?: Array<{
+        title?: string;
+        link?: string;
+        description?: string;
+        bloggername?: string;
+        bloggerlink?: string;
+      }>;
+      errorMessage?: string;
+    }>(url.toString(), {
+      headers: {
+        "X-Naver-Client-Id": clientId,
+        "X-Naver-Client-Secret": clientSecret,
+        Accept: "application/json",
+      },
+    });
+    const items = apiResponse.payload.items ?? [];
+    const matchedItem = items.find((item) => {
+      const haystack = [
+        stripHtmlTags(item.title),
+        stripHtmlTags(item.description),
+        item.link,
+        item.bloggerlink,
+        item.bloggername,
+      ]
+        .filter(Boolean)
+        .join(" ");
+      const bloggerId = extractNaverBlogId(item.bloggerlink);
+      const linkBlogId = extractNaverBlogId(item.link);
+      const handleMatches =
+        !expectedBlogId ||
+        bloggerId === expectedBlogId ||
+        linkBlogId === expectedBlogId ||
+        normalizeHandleForComparison(item.bloggername).includes(expectedBlogId);
+      return containsChallengeCode(haystack, challengeCode) && handleMatches;
+    });
+
+    return {
+      provider: plan.provider,
+      configured: true,
+      mode: "api_ready",
+      status: apiResponse.ok && matchedItem ? "matched" : "not_found",
+      checked_at: checkedAt,
+      http_status: apiResponse.status,
+      result_hash: sha256Hex(JSON.stringify(apiResponse.payload)),
+      message: matchedItem
+        ? "네이버 블로그 검색 API에서 제출 블로그의 인증코드를 확인했습니다."
+        : "네이버 블로그 검색 API에서 제출 블로그의 인증코드를 찾지 못했습니다.",
+      matched_fields: matchedItem ? ["search.items"] : [],
+      ownership_check: {
+        status: apiResponse.ok && matchedItem ? "matched" : "not_found",
+        checked_at: checkedAt,
+        http_status: apiResponse.status,
+      },
+      public_challenge: publicChallenge,
+      profile: matchedItem
+        ? {
+            blog_id: expectedBlogId || undefined,
+            link: matchedItem.link,
+            bloggername: matchedItem.bloggername,
+            bloggerlink: matchedItem.bloggerlink,
+            proof_source: "naver_search_api",
+          }
+        : {
+            blog_id: expectedBlogId || undefined,
+          },
+      plan,
+    };
+  } catch (error) {
+    return {
+      provider: plan.provider,
+      configured: true,
+      mode: "api_ready",
+      status: "failed",
+      checked_at: checkedAt,
+      message: error instanceof Error ? error.message : "Naver blog API check failed.",
+      public_challenge: publicChallenge,
+      ownership_check: publicChallenge,
+      plan,
+    };
+  }
+};
+
+const runInstagramAutomationCheck = async ({
+  platformHandle,
+  proofUrl,
+  challengeCode,
+}: {
+  platformHandle: string;
+  proofUrl?: string;
+  challengeCode: string;
+}): Promise<VerificationAutomationResult> => {
+  const checkedAt = new Date().toISOString();
+  const plan = buildVerificationAutomationPlan("instagram");
+  const accessToken = process.env.META_GRAPH_ACCESS_TOKEN?.trim();
+  const igUserId = process.env.META_IG_USER_ID?.trim();
+  const graphVersion = process.env.META_GRAPH_API_VERSION?.trim() || "v24.0";
+  const username = normalizeHandleForComparison(platformHandle).replace(/[^a-z0-9._]/g, "");
+  const publicChallenge = await runPublicChallengeAutomation(proofUrl, challengeCode);
+
+  if (!accessToken || !igUserId) {
+    return {
+      ...buildNotConfiguredAutomationResult(
+        plan,
+        publicChallenge.checked_at,
+        publicChallenge.status === "matched"
+          ? "Instagram 공개 증빙 URL에서 인증코드를 확인했습니다. Graph API 연결 전에는 관리자 검수와 함께 사용합니다."
+          : "Instagram Graph API가 없어 공개 증빙 URL만 확인했습니다. Instagram이 접근을 막으면 스크린샷 검수가 필요합니다.",
+      ),
+      status:
+        publicChallenge.status === "matched" ? "matched" : "not_configured",
+      http_status: publicChallenge.http_status,
+      matched_fields:
+        publicChallenge.status === "matched" ? ["public_url"] : undefined,
+      public_challenge: publicChallenge,
+      ownership_check: publicChallenge,
+      profile: {
+        username: username || undefined,
+        proof_source:
+          publicChallenge.status === "matched" ? "public_url" : undefined,
+      },
+    };
+  }
+  if (!username) {
+    return {
+      provider: plan.provider,
+      configured: true,
+      mode: "api_ready",
+      status: "invalid_input",
+      checked_at: checkedAt,
+      message: "Instagram username is required.",
+      plan,
+    };
+  }
+
+  try {
+    const url = new URL(`https://graph.facebook.com/${graphVersion}/${igUserId}`);
+    url.searchParams.set(
+      "fields",
+      `business_discovery.username(${username}){id,username,followers_count,media_count,biography,website,profile_picture_url}`,
+    );
+    url.searchParams.set("access_token", accessToken);
+    const apiResponse = await fetchJsonWithTimeout<{
+      business_discovery?: {
+        id?: string;
+        username?: string;
+        followers_count?: number;
+        media_count?: number;
+        biography?: string;
+        website?: string;
+        profile_picture_url?: string;
+      };
+      error?: unknown;
+    }>(url.toString());
+    const profile = apiResponse.payload.business_discovery;
+    const bioMatched = containsChallengeCode(profile?.biography, challengeCode);
+    const publicMatched = publicChallenge.status === "matched";
+    const matched = bioMatched || publicMatched;
+
+    return {
+      provider: plan.provider,
+      configured: true,
+      mode: "api_ready",
+      status: apiResponse.ok && matched ? "matched" : "not_found",
+      checked_at: publicMatched ? publicChallenge.checked_at : checkedAt,
+      http_status: apiResponse.status,
+      result_hash: sha256Hex(
+        JSON.stringify({
+          graph: apiResponse.payload,
+          public_challenge: publicChallenge,
+        }),
+      ),
+      message: matched
+        ? bioMatched
+          ? "Instagram Graph API에서 프로필 소개의 인증코드를 확인했습니다."
+          : "Instagram 공개 증빙 URL에서 인증코드를 확인했습니다."
+        : "Instagram 프로필 또는 공개 증빙에서 인증코드를 확인하지 못했습니다.",
+      matched_fields: [
+        bioMatched ? "business_discovery.biography" : undefined,
+        publicMatched ? "public_url" : undefined,
+      ].filter((value): value is string => Boolean(value)),
+      ownership_check: {
+        status: apiResponse.ok && matched ? "matched" : "not_found",
+        checked_at: publicMatched ? publicChallenge.checked_at : checkedAt,
+        http_status: apiResponse.status,
+      },
+      public_challenge: publicChallenge,
+      profile: profile
+        ? {
+            id: profile.id,
+            username: profile.username,
+            followers_count: profile.followers_count,
+            media_count: profile.media_count,
+            website: profile.website,
+            proof_source: bioMatched
+              ? "instagram_graph_api"
+              : publicMatched
+                ? "public_url"
+                : undefined,
+          }
+        : {
+            username,
+            proof_source: publicMatched ? "public_url" : undefined,
+          },
+      plan,
+    };
+  } catch (error) {
+    const publicFallback = publicChallenge.status === "matched";
+    return {
+      provider: plan.provider,
+      configured: true,
+      mode: "api_ready",
+      status: publicFallback ? "matched" : "failed",
+      checked_at: publicFallback ? publicChallenge.checked_at : checkedAt,
+      message: publicFallback
+        ? "Instagram Graph API 확인은 실패했지만 공개 증빙 URL에서 인증코드를 확인했습니다."
+        : error instanceof Error
+          ? error.message
+          : "Instagram API check failed.",
+      matched_fields: publicFallback ? ["public_url"] : undefined,
+      public_challenge: publicChallenge,
+      ownership_check: publicChallenge,
+      profile: {
+        username,
+        proof_source: publicFallback ? "public_url" : undefined,
+      },
+      plan,
+    };
+  }
+};
+
+const runInstagramDmManualCheck = (
+  challengeCode: string,
+): VerificationAutomationResult => {
+  const checkedAt = new Date().toISOString();
+  const plan = buildVerificationAutomationPlan("instagram");
+  const webhookConfigured = Boolean(
+    process.env.META_WEBHOOK_VERIFY_TOKEN?.trim() &&
+      process.env.META_APP_SECRET?.trim(),
+  );
+
+  return {
+    provider: webhookConfigured
+      ? "instagram_messaging_webhook"
+      : "instagram_dm_manual_review",
+    configured: webhookConfigured,
+    mode: webhookConfigured ? "webhook_ready" : "manual_fallback",
+    status: "blocked",
+    checked_at: checkedAt,
+    message:
+      "Instagram DM challenge is pending operator review until inbound webhook automation approves it.",
+    next_action:
+      "Confirm the influencer sent this challenge code to the official Instagram account, then approve manually.",
+    matched_fields: [],
+    ownership_check: {
+      status: "not_run",
+      checked_at: checkedAt,
+    },
+    profile: {
+      challenge_code_hash: sha256Hex(challengeCode),
+      review_channel: "instagram_dm",
+      webhook_configured: webhookConfigured,
+    },
+    plan,
+  };
+};
+
+const runTikTokAutomationCheck = async ({
+  platformHandle,
+  proofUrl,
+  challengeCode,
+  accessToken,
+}: {
+  platformHandle: string;
+  proofUrl?: string;
+  challengeCode: string;
+  accessToken?: string;
+}): Promise<VerificationAutomationResult> => {
+  const checkedAt = new Date().toISOString();
+  const plan = buildVerificationAutomationPlan("tiktok");
+  const token = accessToken?.trim() || process.env.TIKTOK_ACCOUNT_ACCESS_TOKEN?.trim();
+  const publicChallenge = await runPublicChallengeAutomation(proofUrl, challengeCode);
+
+  if (!token) {
+    return {
+      ...buildNotConfiguredAutomationResult(
+        plan,
+        publicChallenge.checked_at,
+        publicChallenge.status === "matched"
+          ? "TikTok 공개 증빙 URL에서 인증코드를 확인했습니다. OAuth 연결 전에는 관리자 검수와 함께 사용합니다."
+          : "TikTok OAuth 토큰이 없어 공개 증빙 URL만 확인했습니다. TikTok이 접근을 막으면 스크린샷 검수가 필요합니다.",
+      ),
+      status:
+        publicChallenge.status === "matched" ? "matched" : "not_configured",
+      http_status: publicChallenge.http_status,
+      matched_fields:
+        publicChallenge.status === "matched" ? ["public_url"] : undefined,
+      public_challenge: publicChallenge,
+      ownership_check: publicChallenge,
+      profile: {
+        username: normalizeHandleForComparison(platformHandle) || undefined,
+        proof_source:
+          publicChallenge.status === "matched" ? "public_url" : undefined,
+      },
+    };
+  }
+
+  try {
+    const url = new URL("https://open.tiktokapis.com/v2/user/info/");
+    url.searchParams.set(
+      "fields",
+      [
+        "open_id",
+        "union_id",
+        "display_name",
+        "username",
+        "bio_description",
+        "profile_deep_link",
+        "is_verified",
+        "follower_count",
+        "following_count",
+        "likes_count",
+        "video_count",
+      ].join(","),
+    );
+    const apiResponse = await fetchJsonWithTimeout<{
+      data?: {
+        user?: {
+          open_id?: string;
+          union_id?: string;
+          display_name?: string;
+          username?: string;
+          bio_description?: string;
+          profile_deep_link?: string;
+          is_verified?: boolean;
+          follower_count?: number;
+          following_count?: number;
+          likes_count?: number;
+          video_count?: number;
+        };
+      };
+      error?: unknown;
+    }>(url.toString(), {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+      },
+    });
+    const user = apiResponse.payload.data?.user;
+    const expectedHandle = normalizeHandleForComparison(platformHandle);
+    const userHandle = normalizeHandleForComparison(user?.username);
+    const handleMatches = expectedHandle ? expectedHandle === userHandle : true;
+    const bioMatched = Boolean(
+      handleMatches && containsChallengeCode(user?.bio_description, challengeCode),
+    );
+    const publicMatched = publicChallenge.status === "matched";
+    const matched = bioMatched || publicMatched;
+
+    return {
+      provider: plan.provider,
+      configured: true,
+      mode: "api_ready",
+      status: apiResponse.ok && matched ? "matched" : "not_found",
+      checked_at: checkedAt,
+      http_status: apiResponse.status,
+      result_hash: sha256Hex(
+        JSON.stringify({
+          user_info: apiResponse.payload,
+          public_challenge: publicChallenge,
+        }),
+      ),
+      message: matched
+        ? bioMatched
+          ? "TikTok OAuth 사용자 정보에서 핸들과 프로필 소개 인증코드를 확인했습니다."
+          : "TikTok 공개 증빙 URL에서 인증코드를 확인했습니다."
+        : "TikTok OAuth 사용자 정보 또는 공개 증빙에서 인증코드를 확인하지 못했습니다.",
+      matched_fields: [
+        bioMatched ? "data.user.username" : undefined,
+        bioMatched ? "data.user.bio_description" : undefined,
+        publicMatched ? "public_url" : undefined,
+      ].filter((value): value is string => Boolean(value)),
+      ownership_check: {
+        status: apiResponse.ok && matched ? "matched" : "not_found",
+        checked_at: publicMatched ? publicChallenge.checked_at : checkedAt,
+        http_status: apiResponse.status,
+      },
+      public_challenge: publicChallenge,
+      profile: user
+        ? {
+            open_id_hash: user.open_id ? sha256Hex(user.open_id) : undefined,
+            union_id_hash: user.union_id ? sha256Hex(user.union_id) : undefined,
+            display_name: user.display_name,
+            username: user.username,
+            profile_deep_link: user.profile_deep_link,
+            is_verified: user.is_verified,
+            follower_count: user.follower_count,
+            following_count: user.following_count,
+            likes_count: user.likes_count,
+            video_count: user.video_count,
+            proof_source: bioMatched
+              ? "tiktok_oauth"
+              : publicMatched
+                ? "public_url"
+                : undefined,
+          }
+        : {
+            username: expectedHandle || undefined,
+            proof_source: publicMatched ? "public_url" : undefined,
+          },
+      plan,
+    };
+  } catch (error) {
+    const publicFallback = publicChallenge.status === "matched";
+    return {
+      provider: plan.provider,
+      configured: true,
+      mode: "api_ready",
+      status: publicFallback ? "matched" : "failed",
+      checked_at: publicFallback ? publicChallenge.checked_at : checkedAt,
+      message: publicFallback
+        ? "TikTok OAuth 확인은 실패했지만 공개 증빙 URL에서 인증코드를 확인했습니다."
+        : error instanceof Error
+          ? error.message
+          : "TikTok API check failed.",
+      matched_fields: publicFallback ? ["public_url"] : undefined,
+      public_challenge: publicChallenge,
+      ownership_check: publicChallenge,
+      profile: {
+        username: normalizeHandleForComparison(platformHandle) || undefined,
+        proof_source: publicFallback ? "public_url" : undefined,
+      },
+      plan,
+    };
+  }
+};
+
+const runPlatformAccountAutomationCheck = async ({
+  platform,
+  platformHandle,
+  platformUrl,
+  proofUrl,
+  ownershipMethod,
+  challengeCode,
+  platformAccessToken,
+}: {
+  platform: InfluencerPlatform;
+  platformHandle: string;
+  platformUrl: string;
+  proofUrl?: string;
+  ownershipMethod: InfluencerVerificationMethod;
+  challengeCode: string;
+  platformAccessToken?: string;
+}): Promise<VerificationAutomationResult> => {
+  const checkedAt = new Date().toISOString();
+  const plan = buildVerificationAutomationPlan(platform);
+
+  if (platform === "instagram" && ownershipMethod === "instagram_dm_code") {
+    return runInstagramDmManualCheck(challengeCode);
+  }
+
+  if (ownershipMethod === "screenshot_review") {
+    return {
+      provider: plan.provider,
+      configured: plan.configured,
+      mode: plan.mode,
+      status: "blocked",
+      checked_at: checkedAt,
+      message: "Screenshot review cannot be fully automated.",
+      next_action: "Operator must review the submitted evidence file.",
+      ownership_check: { status: "not_run", checked_at: checkedAt },
+      plan,
+    };
+  }
+
+  if (platform === "youtube") {
+    const apiResult = await runYoutubeAutomationCheck({
+      platformUrl,
+      platformHandle,
+      proofUrl,
+      ownershipMethod,
+      challengeCode,
+    });
+    return apiResult;
+  }
+
+  if (platform === "naver_blog") {
+    return runNaverBlogAutomationCheck({
+      platformHandle,
+      platformUrl,
+      proofUrl,
+      challengeCode,
+    });
+  }
+
+  if (platform === "instagram") {
+    return runInstagramAutomationCheck({ platformHandle, proofUrl, challengeCode });
+  }
+
+  if (platform === "tiktok") {
+    return runTikTokAutomationCheck({
+      platformHandle,
+      proofUrl,
+      challengeCode,
+      accessToken: platformAccessToken,
+    });
+  }
+
+  const publicChallenge = await runPublicChallengeAutomation(proofUrl, challengeCode);
+  return {
+    provider: plan.provider,
+    configured: false,
+    mode: plan.mode,
+    status: publicChallenge.status === "matched" ? "matched" : "not_configured",
+    checked_at: publicChallenge.checked_at,
+    http_status: publicChallenge.http_status,
+    message:
+      publicChallenge.status === "matched"
+        ? "Public proof URL contains the challenge code."
+        : "No platform API is configured; operator review is required.",
+    ownership_check: publicChallenge,
+    public_challenge: publicChallenge,
+    plan,
+  };
 };
 
 const parseEvidenceFile = (value: unknown) => {
@@ -5946,6 +7263,25 @@ const validateContractPayload = (contract: Contract) => {
     if (!Array.isArray(clause.history)) return "Clause history must be an array";
   }
 
+  if (contract.advertiser_trust) {
+    if (
+      contract.advertiser_trust.risk_level &&
+      !advertiserTrustRiskLevels.has(contract.advertiser_trust.risk_level)
+    ) {
+      return "Invalid advertiser trust risk level";
+    }
+    if (
+      typeof contract.advertiser_trust.risk_score === "number" &&
+      (
+        !Number.isFinite(contract.advertiser_trust.risk_score) ||
+        contract.advertiser_trust.risk_score < 0 ||
+        contract.advertiser_trust.risk_score > 100
+      )
+    ) {
+      return "Invalid advertiser trust risk score";
+    }
+  }
+
   if (contract.evidence) {
     if (!shareTokenStatuses.has(contract.evidence.share_token_status)) {
       return "Invalid share token status";
@@ -6006,6 +7342,10 @@ const verifyInfluencerContractWriteAccess = (
 
   if (!jsonEqual(incoming.advertiser_info, existing.advertiser_info)) {
     return "Advertiser information cannot be changed by influencer";
+  }
+
+  if (!jsonEqual(incoming.advertiser_trust, existing.advertiser_trust)) {
+    return "Advertiser trust metadata cannot be changed by influencer";
   }
 
   if (!jsonEqual(incoming.influencer_info, existing.influencer_info)) {
@@ -6739,6 +8079,283 @@ const updateVerificationRequestReview = async ({
   return updatedRecord;
 };
 
+const updateVerificationRequestAutomation = async (
+  record: VerificationRequestRecord,
+  updates: Partial<VerificationRequestRecord>,
+) => {
+  const updatedRecord = normalizeVerificationRequest({
+    ...record,
+    ...updates,
+    updated_at: updates.updated_at ?? new Date().toISOString(),
+  });
+
+  if (useSupabase) {
+    const response = await fetchSupabase(
+      "verification_requests",
+      `?id=eq.${encodeURIComponent(record.id)}`,
+      {
+        method: "PATCH",
+        headers: { Prefer: "return=representation" },
+        body: JSON.stringify(updates),
+      },
+    );
+
+    await assertSupabaseOk(response, "Supabase verification automation update");
+    const rows = (await response.json()) as VerificationRequestRecord[];
+    const savedRecord = rows[0] ? normalizeVerificationRequest(rows[0]) : updatedRecord;
+    await applyVerificationStatusSideEffects(savedRecord);
+    return savedRecord;
+  }
+
+  const verificationRequests = await readVerificationRequests();
+  await writeVerificationRequests(
+    verificationRequests.map((item) =>
+      item.id === record.id ? updatedRecord : item,
+    ),
+  );
+  return updatedRecord;
+};
+
+const rerunVerificationAutomation = async (
+  record: VerificationRequestRecord,
+) => {
+  const checkedAt = new Date().toISOString();
+  const existingSnapshot = record.evidence_snapshot_json ?? {};
+
+  if (record.target_type === "advertiser_organization") {
+    if (!record.business_registration_number) {
+      throw new Error("Business registration number is missing");
+    }
+
+    const result = await runBusinessRegistrationAutomationCheck(
+      record.business_registration_number,
+      {
+        businessStartDate: normalizeOptionalText(
+          existingSnapshot.business_start_date,
+        ),
+        representativeName: record.representative_name,
+        subjectName: record.subject_name,
+      },
+    );
+    const autoApprove =
+      record.status === "pending" && shouldAutoApproveBusinessVerification(result);
+    const nextSnapshot = {
+      ...existingSnapshot,
+      automation: {
+        ...((existingSnapshot.automation as Record<string, unknown> | undefined) ?? {}),
+        business_registration: result,
+      },
+    };
+    const updatedRecord = await updateVerificationRequestAutomation(record, {
+      evidence_snapshot_json: nextSnapshot,
+      ...(autoApprove
+        ? {
+            status: "approved" as VerificationStatus,
+            reviewer_note:
+              "Auto-approved by NTS business status/validation automation.",
+            reviewed_by_name: `${productName} automation`,
+            reviewed_at: checkedAt,
+          }
+        : {}),
+      updated_at: checkedAt,
+    });
+
+    return { record: updatedRecord, automation: result };
+  }
+
+  if (record.target_type === "influencer_account") {
+    if (
+      !record.platform ||
+      !record.platform_handle ||
+      !record.platform_url ||
+      !record.ownership_challenge_code
+    ) {
+      throw new Error("Platform verification request is missing required fields");
+    }
+
+    const result = await runPlatformAccountAutomationCheck({
+      platform: record.platform,
+      platformHandle: record.platform_handle,
+      platformUrl: record.platform_url,
+      proofUrl: record.ownership_challenge_url ?? record.platform_url,
+      ownershipMethod:
+        record.ownership_verification_method ?? "screenshot_review",
+      challengeCode: record.ownership_challenge_code,
+    });
+    const ownershipCheck =
+      result.ownership_check ??
+      ({
+        status: buildAutomationOwnershipStatus(result.status),
+        checked_at: result.checked_at,
+        http_status: result.http_status,
+      } satisfies {
+        status: OwnershipCheckStatus;
+        checked_at: string;
+        http_status?: number;
+      });
+    const autoApprove =
+      record.status === "pending" && shouldAutoApprovePlatformVerification(result);
+    const existingOwnershipVerification =
+      (existingSnapshot.ownership_verification as
+        | Record<string, unknown>
+        | undefined) ?? {};
+    const existingAutomation =
+      (existingOwnershipVerification.automation as
+        | Record<string, unknown>
+        | undefined) ?? {};
+    const nextSnapshot = {
+      ...existingSnapshot,
+      ownership_verification: {
+        ...existingOwnershipVerification,
+        automation: {
+          ...existingAutomation,
+          platform_account: result,
+          ownership_challenge: ownershipCheck,
+        },
+      },
+    };
+    const updatedRecord = await updateVerificationRequestAutomation(record, {
+      evidence_snapshot_json: nextSnapshot,
+      ownership_check_status: ownershipCheck.status,
+      ownership_checked_at: ownershipCheck.checked_at,
+      ...(autoApprove
+        ? {
+            status: "approved" as VerificationStatus,
+            reviewer_note: "Auto-approved by platform ownership automation.",
+            reviewed_by_name: `${productName} automation`,
+            reviewed_at: checkedAt,
+          }
+        : {}),
+      updated_at: checkedAt,
+    });
+
+    return { record: updatedRecord, automation: result };
+  }
+
+  throw new Error("Unsupported verification target type");
+};
+
+const verifyMetaWebhookSignature = (request: express.Request) => {
+  const appSecret = process.env.META_APP_SECRET?.trim();
+  if (!appSecret) return false;
+  const signature = request.header("x-hub-signature-256");
+  const rawBody = (request as express.Request & { rawBody?: Buffer }).rawBody;
+  if (!signature?.startsWith("sha256=") || !rawBody) return false;
+
+  const expected = `sha256=${createHmac("sha256", appSecret)
+    .update(rawBody)
+    .digest("hex")}`;
+  const left = Buffer.from(signature);
+  const right = Buffer.from(expected);
+  return left.length === right.length && timingSafeEqual(left, right);
+};
+
+const extractInstagramDmChallengeEvents = (body: unknown) => {
+  const events: Array<{
+    challengeCode: string;
+    senderId?: string;
+    messageId?: string;
+    receivedAt: string;
+  }> = [];
+  const entries = Array.isArray((body as { entry?: unknown[] })?.entry)
+    ? ((body as { entry: unknown[] }).entry)
+    : [];
+
+  for (const entry of entries) {
+    const messaging = Array.isArray((entry as { messaging?: unknown[] })?.messaging)
+      ? ((entry as { messaging: unknown[] }).messaging)
+      : [];
+
+    for (const item of messaging) {
+      const message = (item as { message?: { text?: unknown; mid?: unknown } }).message;
+      const text = normalizeRequiredText(message?.text).toUpperCase();
+      const match = text.match(/DS-[A-Z0-9]{4}-[A-Z0-9]{4}/);
+      if (!match) continue;
+
+      events.push({
+        challengeCode: match[0],
+        senderId: normalizeOptionalText(
+          (item as { sender?: { id?: unknown } }).sender?.id,
+        ),
+        messageId: normalizeOptionalText(message?.mid),
+        receivedAt: new Date().toISOString(),
+      });
+    }
+  }
+
+  return events;
+};
+
+const applyInstagramDmChallengeEvent = async (event: {
+  challengeCode: string;
+  senderId?: string;
+  messageId?: string;
+  receivedAt: string;
+}) => {
+  const records = await readVerificationRequests();
+  const record = records
+    .filter(
+      (item) =>
+        item.target_type === "influencer_account" &&
+        item.platform === "instagram" &&
+        item.status === "pending" &&
+        item.ownership_challenge_code === event.challengeCode,
+    )
+    .sort((a, b) => parseDateDescending(a.created_at, b.created_at))[0];
+
+  if (!record) return undefined;
+
+  const existingSnapshot = record.evidence_snapshot_json ?? {};
+  const dmAutomation: VerificationAutomationResult = {
+    provider: "instagram_messaging_webhook",
+    configured: true,
+    mode: "webhook_ready",
+    status: "matched",
+    checked_at: event.receivedAt,
+    message: "Instagram inbound DM contained the pending challenge code.",
+    matched_fields: ["messaging.message.text"],
+    ownership_check: {
+      status: "matched",
+      checked_at: event.receivedAt,
+    },
+    profile: {
+      sender_id_hash: event.senderId ? sha256Hex(event.senderId) : undefined,
+      message_id_hash: event.messageId ? sha256Hex(event.messageId) : undefined,
+    },
+  };
+  const autoApprove = shouldAutoApprovePlatformVerification(dmAutomation);
+  const nextSnapshot = {
+    ...existingSnapshot,
+    ownership_verification: {
+      ...((existingSnapshot.ownership_verification as
+        | Record<string, unknown>
+        | undefined) ?? {}),
+      automation: {
+        ...(((existingSnapshot.ownership_verification as
+          | Record<string, unknown>
+          | undefined)?.automation as Record<string, unknown> | undefined) ?? {}),
+        instagram_dm: dmAutomation,
+      },
+    },
+  };
+
+  return updateVerificationRequestAutomation(record, {
+    evidence_snapshot_json: nextSnapshot,
+    ownership_check_status: "matched",
+    ownership_checked_at: event.receivedAt,
+    ...(autoApprove
+      ? {
+          status: "approved" as VerificationStatus,
+          reviewer_note:
+            "Auto-approved by inbound Instagram DM challenge automation.",
+          reviewed_by_name: `${productName} automation`,
+          reviewed_at: event.receivedAt,
+        }
+      : {}),
+    updated_at: event.receivedAt,
+  });
+};
+
 const latestVerificationForTarget = (
   requests: VerificationRequestRecord[],
   targetType: VerificationTargetType,
@@ -7070,6 +8687,260 @@ const isAdvertiserApprovedForContractSend = async (
   const latest = relevantRequests[0];
 
   return latest?.status === "approved" && hasText(latest.reviewed_at);
+};
+
+const maskBusinessRegistrationNumber = (value: string | undefined) => {
+  const digits = normalizeBusinessRegistrationNumber(value ?? "");
+  if (digits.length !== 10) return undefined;
+  return `${digits.slice(0, 3)}-${digits.slice(3, 5)}-*****`;
+};
+
+const personalEmailDomains = new Set([
+  "gmail.com",
+  "naver.com",
+  "daum.net",
+  "hanmail.net",
+  "kakao.com",
+  "outlook.com",
+  "hotmail.com",
+  "yahoo.com",
+  "icloud.com",
+  "proton.me",
+  "protonmail.com",
+]);
+
+const extractEmailDomain = (value: string | undefined | null) => {
+  const email = normalizeOptionalText(value)?.toLowerCase();
+  if (!email) return undefined;
+  const atIndex = email.lastIndexOf("@");
+  if (atIndex < 0 || atIndex === email.length - 1) return undefined;
+  return email.slice(atIndex + 1);
+};
+
+const normalizeBusinessNameForTrust = (value: string | undefined | null) =>
+  normalizeRequiredText(value)
+    .toLowerCase()
+    .replace(/\s/g, "")
+    .replace(/[()（）.,·ㆍ\-_]/g, "")
+    .replace(/주식회사|유한회사|합자회사|합명회사|사단법인|재단법인|㈜|\(주\)|주\)/g, "");
+
+const businessNamesLikelyMatch = (
+  left: string | undefined | null,
+  right: string | undefined | null,
+) => {
+  const normalizedLeft = normalizeBusinessNameForTrust(left);
+  const normalizedRight = normalizeBusinessNameForTrust(right);
+  if (!normalizedLeft || !normalizedRight) return true;
+  return normalizedLeft.includes(normalizedRight) || normalizedRight.includes(normalizedLeft);
+};
+
+const extractVerificationBusinessStartDate = (
+  record: VerificationRequestRecord | undefined,
+) => {
+  const snapshotValue = record?.evidence_snapshot_json?.business_start_date;
+  return normalizeOptionalText(snapshotValue);
+};
+
+const parseBusinessStartDate = (value: string | undefined) => {
+  if (!value) return undefined;
+  const digits = value.replace(/[^\d]/g, "");
+  if (digits.length !== 8) return undefined;
+  const year = Number(digits.slice(0, 4));
+  const month = Number(digits.slice(4, 6));
+  const day = Number(digits.slice(6, 8));
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return Number.isNaN(date.getTime()) ? undefined : date;
+};
+
+const isDateWithinDays = (value: string | undefined, days: number) => {
+  const date = parseBusinessStartDate(value);
+  if (!date) return false;
+  const ageMs = Date.now() - date.getTime();
+  if (ageMs < 0) return false;
+  return ageMs <= days * 24 * 60 * 60 * 1000;
+};
+
+const isInternalContractUrl = (rawUrl: string) => {
+  try {
+    const url = new URL(rawUrl);
+    const hostname = url.hostname.toLowerCase();
+    return (
+      hostname === "yeollock.me" ||
+      hostname.endsWith(".yeollock.me") ||
+      hostname === "localhost" ||
+      hostname === "127.0.0.1"
+    );
+  } catch {
+    return false;
+  }
+};
+
+const hasExternalContractLink = (contract: Contract) => {
+  const linkTexts = [
+    contract.campaign?.tracking_link,
+    contract.workflow?.last_message,
+    ...contract.clauses.map((clause) => clause.content),
+  ].filter(hasText);
+  const urls = linkTexts.flatMap((text) => text.match(/https?:\/\/[^\s"'<>]+/g) ?? []);
+  return urls.some((url) => !isInternalContractUrl(url));
+};
+
+const getAdvertiserBusinessVerificationRequests = async (
+  auth: AdvertiserSession,
+  contract: Contract,
+) => {
+  const organization = await readDefaultOrganizationForProfile(auth.profile.id);
+  const targetIds = Array.from(
+    new Set(
+      [
+        auth.profile.id,
+        organization?.id,
+        contract.advertiser_id,
+      ].filter((value): value is string => hasText(value)),
+    ),
+  );
+  const requests = await readVerificationRequests();
+  const relevantRequests = requests
+    .filter(
+      (request) =>
+        request.target_type === "advertiser_organization" &&
+        request.verification_type === "business_registration_certificate" &&
+        (
+          targetIds.includes(request.target_id) ||
+          request.profile_id === auth.profile.id ||
+          (hasText(organization?.id) && request.organization_id === organization?.id) ||
+          (
+            hasText(organization?.business_verification_request_id) &&
+            request.id === organization?.business_verification_request_id
+          )
+        ),
+    )
+    .sort((a, b) => parseDateDescending(a.created_at, b.created_at));
+
+  return { organization, requests: relevantRequests };
+};
+
+const buildAdvertiserTrustSnapshot = async (
+  auth: AdvertiserSession,
+  contract: Contract,
+  contracts: Contract[],
+): Promise<Contract["advertiser_trust"]> => {
+  const { organization, requests } = await getAdvertiserBusinessVerificationRequests(
+    auth,
+    contract,
+  );
+  const latest = requests[0];
+  const previousProgressContracts = contracts.filter(
+    (item) =>
+      item.id !== contract.id &&
+      item.advertiser_id === contract.advertiser_id &&
+      item.status !== "DRAFT" &&
+      !item.id.startsWith("demo-contract-"),
+  );
+  const firstContract = previousProgressContracts.length === 0;
+  const managerEmail =
+    latest?.submitted_by_email ?? auth.profile.email ?? auth.user.email;
+  const managerEmailDomain = extractEmailDomain(managerEmail);
+  const budgetAmount = parseMoneyAmount(contract.campaign?.budget);
+  const businessStartDate = extractVerificationBusinessStartDate(latest);
+  const verifiedBusinessName =
+    latest?.subject_name ?? organization?.name ?? contract.advertiser_info?.name;
+  const riskFlags: NonNullable<
+    NonNullable<Contract["advertiser_trust"]>["risk_flags"]
+  > = [];
+  let riskScore = 0;
+
+  const addFlag = (
+    condition: boolean,
+    score: number,
+    code: string,
+    label: string,
+    severity: "low" | "medium" | "high",
+  ) => {
+    if (!condition) return;
+    riskScore += score;
+    riskFlags.push({ code, label, severity });
+  };
+
+  addFlag(
+    latest?.status !== "approved",
+    50,
+    "business_verification_not_approved",
+    "사업자 인증이 아직 완료되지 않았습니다.",
+    "high",
+  );
+  addFlag(
+    firstContract,
+    30,
+    "first_contract_on_yeollock",
+    "연락미에서 처음 광고 계약을 진행하는 광고주입니다.",
+    "medium",
+  );
+  addFlag(
+    Boolean(managerEmailDomain && personalEmailDomains.has(managerEmailDomain)),
+    10,
+    "personal_manager_email_domain",
+    "담당자 이메일이 개인 메일 도메인입니다.",
+    "low",
+  );
+  addFlag(
+    !businessNamesLikelyMatch(verifiedBusinessName, contract.advertiser_info?.name),
+    15,
+    "business_name_contract_name_mismatch",
+    "인증 사업자명과 계약서의 광고주명이 다릅니다.",
+    "medium",
+  );
+  addFlag(
+    isDateWithinDays(businessStartDate, 90),
+    15,
+    "recent_business_start_date",
+    "개업일이 최근 90일 이내입니다.",
+    "medium",
+  );
+  addFlag(
+    typeof budgetAmount === "number" && budgetAmount >= 3000000,
+    15,
+    "high_first_contract_amount",
+    "첫 거래 기준 계약 금액이 큰 편입니다.",
+    "medium",
+  );
+  addFlag(
+    hasExternalContractLink(contract),
+    10,
+    "external_link_in_contract_terms",
+    "계약 조건에 외부 링크가 포함되어 있습니다.",
+    "low",
+  );
+
+  const cappedScore = Math.min(100, riskScore);
+  const riskLevel = cappedScore >= 60 ? "high" : cappedScore >= 30 ? "medium" : "low";
+  const verificationLabels: Record<string, string> = {
+    approved: "국세청 사업자 정보 확인 완료",
+    pending: "사업자 인증 검토 중",
+    rejected: "사업자 인증 반려",
+    not_submitted: "사업자 인증 미제출",
+  };
+  const verificationStatus = latest?.status ?? "not_submitted";
+
+  return {
+    business_verification_status: verificationStatus,
+    business_verification_label: verificationLabels[verificationStatus],
+    business_verified_at: latest?.reviewed_at ?? latest?.updated_at,
+    business_name: verifiedBusinessName,
+    business_registration_number_masked:
+      maskBusinessRegistrationNumber(latest?.business_registration_number) ??
+      maskBusinessRegistrationNumber(organization?.business_registration_number ?? undefined),
+    representative_name: latest?.representative_name,
+    manager_name: contract.advertiser_info?.manager ?? latest?.submitted_by_name,
+    manager_phone: latest?.manager_phone,
+    manager_email_domain: managerEmailDomain,
+    first_contract: firstContract,
+    risk_score: cappedScore,
+    risk_level: riskLevel,
+    risk_flags: riskFlags,
+    guidance:
+      "처음 거래하는 광고주라면 계약 전 사업자 정보와 담당자가 맞는지 유선 또는 공식 채널로 한 번 더 확인하세요.",
+  };
 };
 
 const isContractSendAttempt = (
@@ -9780,6 +11651,42 @@ app.get("/api/marketplace/messages", async (request, response, next) => {
   }
 });
 
+app.get("/api/webhooks/instagram", (request, response) => {
+  const verifyToken = process.env.META_WEBHOOK_VERIFY_TOKEN?.trim();
+  const mode = normalizeOptionalText(request.query["hub.mode"]);
+  const token = normalizeOptionalText(request.query["hub.verify_token"]);
+  const challenge = normalizeOptionalText(request.query["hub.challenge"]);
+
+  if (verifyToken && mode === "subscribe" && token === verifyToken && challenge) {
+    response.status(200).send(challenge);
+    return;
+  }
+
+  response.status(403).json({ error: "Instagram webhook verification failed" });
+});
+
+app.post("/api/webhooks/instagram", async (request, response, next) => {
+  try {
+    if (!process.env.META_WEBHOOK_VERIFY_TOKEN?.trim()) {
+      response.status(404).json({ error: "Instagram webhook is not configured" });
+      return;
+    }
+    if (!verifyMetaWebhookSignature(request)) {
+      response.status(401).json({ error: "Invalid Instagram webhook signature" });
+      return;
+    }
+
+    const events = extractInstagramDmChallengeEvents(request.body);
+    const updated = (
+      await Promise.all(events.map((event) => applyInstagramDmChallengeEvent(event)))
+    ).filter((record): record is VerificationRequestRecord => Boolean(record));
+
+    response.json({ received: true, matched: updated.length });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.get("/api/verification/status", async (request, response, next) => {
   try {
     const requestedRole = normalizeOptionalText(request.query.role);
@@ -9870,6 +11777,9 @@ app.post("/api/verification/advertiser", async (request, response, next) => {
     const documentIssueDate = normalizeDateOnlyValue(
       request.body?.document_issue_date,
     );
+    const businessStartDate = normalizeDateOnlyValue(
+      request.body?.business_start_date,
+    );
     const documentCheckNumber = normalizeOptionalText(
       request.body?.document_check_number,
     );
@@ -9902,8 +11812,15 @@ app.post("/api/verification/advertiser", async (request, response, next) => {
       return;
     }
 
+    const businessAutomationCheck =
+      await runBusinessRegistrationAutomationCheck(businessRegistrationNumber, {
+        businessStartDate,
+        representativeName,
+        subjectName,
+      });
     const now = new Date().toISOString();
     const requestId = randomUUID();
+    const autoApprove = shouldAutoApproveBusinessVerification(businessAutomationCheck);
     const storedEvidenceFile = await storeEvidenceFile({
       requestId,
       ownerId: verificationContext.profileId,
@@ -9915,7 +11832,7 @@ app.post("/api/verification/advertiser", async (request, response, next) => {
       target_type: "advertiser_organization",
       target_id: verificationContext.targetId,
       verification_type: "business_registration_certificate",
-      status: "pending",
+      status: autoApprove ? "approved" : "pending",
       profile_id: verificationContext.profileId,
       organization_id: verificationContext.organizationId,
       subject_name: subjectName,
@@ -9936,11 +11853,20 @@ app.post("/api/verification/advertiser", async (request, response, next) => {
         organization_id: verificationContext.organizationId,
         submitted_business_registration_number:
           normalizeBusinessRegistrationNumber(businessRegistrationNumber),
+        business_start_date: businessStartDate,
         document_check_number: documentCheckNumber,
+        automation: {
+          business_registration: businessAutomationCheck,
+        },
       }),
       note,
+      reviewer_note: autoApprove
+        ? "Auto-approved by NTS business status/validation automation."
+        : undefined,
       submitted_ip: getClientIp(request),
       submitted_user_agent: request.header("user-agent") ?? "unknown",
+      reviewed_by_name: autoApprove ? `${productName} automation` : undefined,
+      reviewed_at: autoApprove ? now : undefined,
       created_at: now,
       updated_at: now,
     });
@@ -9997,6 +11923,9 @@ app.post("/api/verification/influencer", async (request, response, next) => {
     const ownershipChallengeUrl =
       normalizeUrlValue(request.body?.ownership_challenge_url) ?? platformUrl;
     const targetId = influencerAuth.profile.id;
+    const platformAccessToken = normalizeOptionalText(
+      request.body?.platform_access_token,
+    );
     const note = normalizeOptionalText(request.body?.note);
     const evidenceFile = parseEvidenceFile(request.body?.evidence_file);
     const evidenceError = evidenceFile
@@ -10013,6 +11942,10 @@ app.post("/api/verification/influencer", async (request, response, next) => {
     }
     if (!influencerVerificationMethods.has(ownershipMethod)) {
       response.status(422).json({ error: "Valid ownership verification method is required" });
+      return;
+    }
+    if (ownershipMethod === "instagram_dm_code" && platform !== "instagram") {
+      response.status(422).json({ error: "Instagram DM verification is only available for Instagram" });
       return;
     }
     if (!platformHandle || !platformUrl) {
@@ -10044,15 +11977,29 @@ app.post("/api/verification/influencer", async (request, response, next) => {
     }
 
     const now = new Date().toISOString();
-    const shouldRunOwnershipCheck =
-      ownershipMethod !== "screenshot_review" &&
-      Boolean(ownershipChallengeUrl) &&
-      platform !== "instagram" &&
-      platform !== "tiktok" &&
-      platform !== "other";
-    const ownershipCheck = shouldRunOwnershipCheck
-      ? await checkOwnershipChallenge(ownershipChallengeUrl!, ownershipChallengeCode)
-      : { status: "not_run" as OwnershipCheckStatus, checked_at: now };
+    const platformAutomationCheck = await runPlatformAccountAutomationCheck({
+      platform,
+      platformHandle,
+      platformUrl,
+      proofUrl: ownershipChallengeUrl,
+      ownershipMethod,
+      challengeCode: ownershipChallengeCode,
+      platformAccessToken,
+    });
+    const ownershipCheck =
+      platformAutomationCheck.ownership_check ??
+      ({
+        status: buildAutomationOwnershipStatus(platformAutomationCheck.status),
+        checked_at: platformAutomationCheck.checked_at,
+        http_status: platformAutomationCheck.http_status,
+      } satisfies {
+        status: OwnershipCheckStatus;
+        checked_at: string;
+        http_status?: number;
+      });
+    const autoApprove = shouldAutoApprovePlatformVerification(
+      platformAutomationCheck,
+    );
     const requestId = randomUUID();
     const storedEvidenceFile = evidenceFile
       ? await storeEvidenceFile({
@@ -10067,7 +12014,7 @@ app.post("/api/verification/influencer", async (request, response, next) => {
       target_type: "influencer_account",
       target_id: targetId,
       verification_type: "platform_account",
-      status: "pending",
+      status: autoApprove ? "approved" : "pending",
       profile_id: influencerAuth.profile.id,
       subject_name: subjectName,
       submitted_by_email: submittedByEmail,
@@ -10093,11 +12040,20 @@ app.post("/api/verification/influencer", async (request, response, next) => {
           challenge_code: ownershipChallengeCode,
           challenge_url: ownershipChallengeUrl,
           automated_check: ownershipCheck,
+          automation: {
+            platform_account: platformAutomationCheck,
+            ownership_challenge: ownershipCheck,
+          },
         },
       }),
       note,
+      reviewer_note: autoApprove
+        ? "Auto-approved by platform ownership automation."
+        : undefined,
       submitted_ip: getClientIp(request),
       submitted_user_agent: request.header("user-agent") ?? "unknown",
+      reviewed_by_name: autoApprove ? `${productName} automation` : undefined,
+      reviewed_at: autoApprove ? now : undefined,
       created_at: now,
       updated_at: now,
     });
@@ -10113,6 +12069,39 @@ app.get("/api/admin/verification-requests", async (request, response, next) => {
     if (!requireAdminSession(request, response)) return;
     response.json({
       verification_requests: await readVerificationRequests(),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/admin/verification-requests/:id/automation-check", async (request, response, next) => {
+  try {
+    const throttle = consumeSensitiveEndpointRateLimit(
+      request,
+      "admin_verification_automation_check",
+      request.params.id,
+    );
+    if (throttle.blocked) {
+      sendSensitiveRateLimitResponse(response, throttle);
+      return;
+    }
+
+    if (!requireAdminSession(request, response)) return;
+
+    const record = (await readVerificationRequests()).find(
+      (item) => item.id === request.params.id,
+    );
+
+    if (!record) {
+      response.status(404).json({ error: "Verification request not found" });
+      return;
+    }
+
+    const result = await rerunVerificationAutomation(record);
+    response.json({
+      request: result.record,
+      automation: result.automation,
     });
   } catch (error) {
     next(error);
@@ -11226,16 +13215,27 @@ app.put("/api/contracts/:id", async (request, response, next) => {
     ) {
       response.status(403).json({
         error:
-          "광고주 사업자 인증 승인 후 계약 공유 링크를 발송할 수 있습니다.",
+          "사업자 인증 승인 후 계약 공유 링크를 발송할 수 있습니다.",
       });
       return;
     }
 
-    const updatedContract = buildServerAuthoredContract(
+    let updatedContract = buildServerAuthoredContract(
       actor as Exclude<AuditActor, "system">,
       existingContract,
       normalizedContract,
     );
+
+    if (actor === "advertiser") {
+      updatedContract = {
+        ...updatedContract,
+        advertiser_trust: await buildAdvertiserTrustSnapshot(
+          advertiserAuth!,
+          updatedContract,
+          store.contracts,
+        ),
+      };
+    }
 
     const nextStore = mergeContractIntoStore(
       store,

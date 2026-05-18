@@ -58,7 +58,7 @@ export function AuthLoginScreen({
           <Link
             to="/"
             aria-label={`${PRODUCT_NAME} 홈`}
-            className="inline-flex items-center gap-2.5"
+            className="inline-flex min-h-10 items-center gap-2.5"
           >
             <AuthLogoMark />
             <span className="font-neo-heavy text-[18px] leading-none tracking-[-0.045em] text-neutral-950">
@@ -67,7 +67,7 @@ export function AuthLoginScreen({
           </Link>
           <Link
             to="/login"
-            className="rounded-full border border-neutral-200 bg-white/65 px-3 py-1.5 text-[12px] font-bold text-neutral-500 shadow-[0_1px_0_rgba(15,23,42,0.02)] transition hover:border-neutral-300 hover:bg-white hover:text-neutral-950"
+            className="inline-flex min-h-10 items-center rounded-full border border-neutral-200 bg-white/65 px-3 text-[12px] font-bold text-neutral-500 shadow-[0_1px_0_rgba(15,23,42,0.02)] transition hover:border-neutral-300 hover:bg-white hover:text-neutral-950"
           >
             다른 로그인
           </Link>
@@ -180,15 +180,15 @@ export function AuthLoginScreen({
 
             <nav
               aria-label="법적 문서"
-              className="mt-5 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-[12px] font-semibold text-neutral-400"
+              className="mt-5 flex flex-wrap items-center justify-center gap-2 text-[12px] font-semibold text-neutral-400"
             >
-              <Link className="transition hover:text-neutral-950" to="/privacy">
+              <Link className="inline-flex min-h-10 items-center px-2 transition hover:text-neutral-950" to="/privacy">
                 개인정보 처리방침
               </Link>
-              <Link className="transition hover:text-neutral-950" to="/terms">
+              <Link className="inline-flex min-h-10 items-center px-2 transition hover:text-neutral-950" to="/terms">
                 이용약관
               </Link>
-              <Link className="transition hover:text-neutral-950" to="/legal/e-sign-consent">
+              <Link className="inline-flex min-h-10 items-center px-2 transition hover:text-neutral-950" to="/legal/e-sign-consent">
                 전자서명 안내
               </Link>
             </nav>

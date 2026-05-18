@@ -252,7 +252,7 @@ const introConfig = {
   },
   influencer: {
     eyebrow: "인플루언서 워크스페이스",
-    title: ["광고 계약 확인부터", "수정 요청, 서명까지"],
+    title: ["광고 계약 수신부터", "수정 요청, 서명까지"],
     description:
       "크리에이터와 매니저가 광고 조건을 모바일에서도 읽기 쉽게 확인하고, 불리한 조항은 수정 요청한 뒤 안전하게 서명합니다.",
     primaryLabel: "시작하기",
@@ -266,7 +266,7 @@ const introConfig = {
     accentDot: "bg-[#7a4a2d]",
     previewTitle: "받은 계약 검토",
     previewSubtitle: "오늘 확인할 계약",
-    previewBadge: "검토 가능",
+    previewBadge: "계약 수신",
     sectionLabel: "인플루언서에게 필요한 흐름",
     sectionTitle: "조건 확인, 수정 요청, 서명을 한 화면에서 처리합니다",
     summary: [
@@ -596,10 +596,10 @@ const roleIntroSlides = {
     {
       label: "계약 수신",
       eyebrow: "계약 수신",
-      title: ["받은 계약을", "링크로 확인"],
+      title: ["계약 링크를", "먼저 열람"],
       description:
         "계약 링크를 받으면 광고 조건과 서명 흐름을 한곳에서 확인합니다.",
-      helper: "받은 계약을 안전하게 확인",
+      helper: "광고 조건을 안전하게 확인",
       primaryLabel: "받은 계약 보기",
       primaryHref: "/influencer/dashboard",
       secondaryLabel: "공개 프로필 설정",
@@ -610,19 +610,19 @@ const roleIntroSlides = {
       cardClass: "border-neutral-300 bg-white",
       preview: {
         kind: "proposal",
-        header: "받은 계약 초대",
+        header: "브랜드 초대 도착",
         targetLabel: "보낸 브랜드",
         targetName: "브레드룸 · 홈카페 식품",
         fields: [
-          { label: "요청 내용", value: "광고 계약 검토" },
+          { label: "요청 내용", value: "광고 조건 검토" },
           { label: "계약 형태", value: "공동구매" },
           { label: "지급", value: "판매 수수료 18%" },
           { label: "업로드", value: "제품 수령 후 7일" },
         ],
-        chips: [`${PRODUCT_NAME} 계약 링크`, "검토 필요", "서명 전"],
+        chips: ["계약 링크", "검토 필요", "서명 전"],
         message:
           "계약 링크 안에서 조건, 산출물, 사용 권한을 먼저 확인합니다.",
-        timeline: ["계약 링크 열람", "조건 확인", "수정 요청", "전자서명"],
+        timeline: ["링크 열람", "조건 확인", "수정 요청", "전자서명"],
         actionLabel: "받은 계약 보기",
       },
     },
@@ -1112,7 +1112,7 @@ const influencerPreviewSlides: InfluencerPreviewSlide[] = [
 export function StartPage() {
   return (
     <main className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950">
-      <div className="mx-auto grid min-h-screen w-full max-w-[800px] content-start grid-rows-[60px_auto_44px] px-5 sm:content-normal sm:grid-rows-[68px_1fr_48px] sm:px-6">
+      <div className="mx-auto grid min-h-screen w-full max-w-[800px] content-start grid-rows-[60px_auto_44px] px-5 sm:content-normal sm:grid-rows-[68px_minmax(0,1fr)_58px] sm:px-6 lg:grid-rows-[72px_minmax(0,1fr)_60px]">
         <header className="flex items-center justify-between gap-3">
           <Link
             to="/"
@@ -1124,30 +1124,30 @@ export function StartPage() {
           <div className="flex min-w-0 items-center gap-1.5">
             <Link
               to="/login"
-              className="inline-flex min-h-8 shrink-0 items-center rounded-full border border-neutral-200 bg-white/65 px-3 text-[11px] font-bold tracking-[-0.005em] text-neutral-500 shadow-[0_1px_0_rgba(15,23,42,0.02)] transition hover:border-neutral-300 hover:bg-white hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
+              className="inline-flex min-h-10 shrink-0 items-center rounded-full border border-neutral-200 bg-white/65 px-3 text-[11px] font-bold tracking-[-0.005em] text-neutral-500 shadow-[0_1px_0_rgba(15,23,42,0.02)] transition hover:border-neutral-300 hover:bg-white hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
             >
               로그인
             </Link>
           </div>
         </header>
 
-        <section className="flex items-start justify-center pb-4 pt-[clamp(24px,4.5svh,40px)] sm:pb-8 sm:pt-[clamp(36px,7svh,64px)]">
+        <section className="flex min-h-0 items-start justify-center pb-5 pt-[clamp(24px,4.5svh,40px)] sm:items-center sm:py-8 lg:py-0">
           <div className="w-full max-w-[680px]">
             <h1
-              className="landing-start-title font-neo-heavy mb-3 text-center text-[31px] leading-[1.12] tracking-normal text-neutral-950 sm:text-[46px] sm:leading-[1.08]"
+              className="landing-start-title font-neo-heavy mb-6 text-center text-[31px] leading-[1.1] tracking-normal text-neutral-950 sm:mb-8 sm:text-[46px] sm:leading-[1.05]"
               aria-label="광고 계약은 확실하게"
             >
               <span className="landing-start-copy-line landing-start-copy-line-1 block">
                 광고 계약은
               </span>
-              <span className="landing-start-copy-line landing-start-copy-line-2 mt-1 block">
+              <span className="landing-start-copy-line landing-start-copy-line-2 mt-2 block sm:mt-3">
                 확실하게
               </span>
             </h1>
-            <p className="mx-auto mb-7 max-w-[560px] break-keep text-center text-[14px] font-bold leading-6 text-neutral-600 sm:mb-9 sm:text-[15px]">
+            <p className="mx-auto mb-12 max-w-[560px] break-keep text-center text-[14px] font-bold leading-7 text-neutral-600 sm:mb-16 sm:text-[15px]">
               광고 조건을 계약서 작성부터 검토 링크, 전자서명 증빙까지 한 흐름으로 정리합니다.
             </p>
-            <div className="grid gap-3.5 sm:grid-cols-2 sm:gap-4">
+            <div className="grid gap-4 sm:grid-cols-2 sm:gap-6">
               {roleCards.map((role) => {
                 const Icon = role.icon;
                 const tone = getStartRoleTone(role.role);
@@ -1161,7 +1161,7 @@ export function StartPage() {
                     key={role.role}
                     to={role.href}
                     aria-label={`시작하기 (${role.title})`}
-                    className={`group flex min-h-[188px] flex-col rounded-[20px] border px-5 py-5 text-left shadow-[0_1px_0_rgba(15,23,42,0.035),0_16px_42px_rgba(15,23,42,0.035)] transition hover:-translate-y-0.5 hover:shadow-[0_1px_0_rgba(15,23,42,0.04),0_22px_58px_rgba(15,23,42,0.06)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:min-h-[214px] sm:px-6 sm:py-6 ${tone.card}`}
+                    className={`group flex min-h-[188px] flex-col rounded-[20px] border px-5 py-5 text-left shadow-[0_1px_0_rgba(15,23,42,0.035),0_16px_42px_rgba(15,23,42,0.035)] transition hover:-translate-y-0.5 hover:shadow-[0_1px_0_rgba(15,23,42,0.04),0_22px_58px_rgba(15,23,42,0.06)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:min-h-[232px] sm:px-6 sm:py-6 lg:min-h-[238px] ${tone.card}`}
                   >
                     <span className="flex items-center justify-between">
                       <span className={`flex h-9 w-9 items-center justify-center rounded-[12px] border transition ${tone.icon}`}>
@@ -1328,28 +1328,28 @@ function RoleFeatureIntroScreen({
           <BrandLockup />
           <Link
             to={config.secondaryHref}
-            className="inline-flex h-9 items-center justify-self-end whitespace-nowrap rounded-full border border-neutral-200 bg-white px-3 text-[12px] font-bold text-neutral-500 transition hover:border-neutral-300 hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
+            className="inline-flex h-10 items-center justify-self-end whitespace-nowrap rounded-full border border-neutral-200 bg-white px-3 text-[12px] font-bold text-neutral-500 transition hover:border-neutral-300 hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
           >
             로그인
           </Link>
         </div>
       </header>
 
-      <section className="mx-auto grid min-h-[calc(100vh-68px)] max-w-[1120px] gap-5 px-5 py-5 sm:px-6 lg:h-[calc(100vh-68px)] lg:grid-cols-[320px_minmax(0,1fr)] lg:items-center lg:gap-7 lg:overflow-hidden lg:px-8 lg:py-5">
+      <section className="mx-auto grid min-h-[calc(100vh-68px)] max-w-[1120px] gap-4 px-4 py-4 sm:gap-5 sm:px-6 sm:py-5 lg:h-[calc(100vh-68px)] lg:grid-cols-[320px_minmax(0,1fr)] lg:items-center lg:gap-7 lg:overflow-hidden lg:px-8 lg:py-5">
         <div className="min-w-0 lg:max-w-[318px] lg:self-center">
           <p className="text-[13px] font-extrabold text-neutral-500">
             {roleLabel}
           </p>
-          <h1 className="font-neo-heavy mt-3 text-[40px] leading-[1.02] tracking-normal text-neutral-950 sm:text-[54px] lg:text-[52px]">
+          <h1 className="font-neo-heavy mt-2 text-[36px] leading-[1.02] tracking-normal text-neutral-950 sm:mt-3 sm:text-[54px] lg:text-[52px]">
             {activeSlide.label}
           </h1>
 
-          <p className="mt-4 max-w-[318px] break-keep text-[14px] font-bold leading-6 text-neutral-600">
+          <p className="mt-3 line-clamp-2 max-w-[318px] break-keep text-[13px] font-bold leading-6 text-neutral-600 sm:mt-4 sm:text-[14px]">
             {activeSlide.description}
           </p>
 
           <div
-            className="mt-6 grid w-full max-w-[318px] grid-cols-2 gap-2 lg:grid-cols-1"
+            className="mt-4 grid w-full max-w-[318px] grid-cols-2 gap-2 sm:mt-6 lg:grid-cols-1"
             aria-label={`${roleLabel} 기능 선택`}
             onFocus={() => setIsPreviewPaused(true)}
             onBlur={() => setIsPreviewPaused(false)}
@@ -1364,7 +1364,7 @@ function RoleFeatureIntroScreen({
                   key={slide.label}
                   type="button"
                   onClick={() => handleFeatureSelect(index)}
-                  className={`group flex h-[52px] items-center justify-between rounded-[12px] border px-4 text-left text-[14px] font-extrabold transition hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-neutral-950 ${
+                  className={`group flex h-11 items-center justify-between rounded-[12px] border px-3 text-left text-[12px] font-extrabold transition hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-neutral-950 sm:h-[52px] sm:px-4 sm:text-[14px] ${
                     selected
                       ? "border-neutral-950 bg-neutral-950 text-white shadow-[0_14px_34px_rgba(15,23,42,0.16)]"
                       : "border-neutral-200 bg-white/80 text-neutral-500 hover:border-neutral-300 hover:text-neutral-950"
@@ -1393,7 +1393,7 @@ function RoleFeatureIntroScreen({
 
           <Link
             to={activeSlide.primaryHref}
-            className="group mt-6 inline-flex h-12 w-full max-w-[318px] items-center justify-center gap-2 rounded-[12px] bg-blue-600 px-5 text-[14px] font-extrabold tracking-normal text-white shadow-[0_14px_34px_rgba(37,99,235,0.24)] ring-1 ring-blue-500/20 transition duration-200 hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-[0_18px_42px_rgba(37,99,235,0.28)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700 active:translate-y-0"
+            className="group mt-4 inline-flex h-11 w-full max-w-[318px] items-center justify-center gap-2 rounded-[12px] bg-blue-600 px-5 text-[14px] font-extrabold tracking-normal text-white shadow-[0_14px_34px_rgba(37,99,235,0.24)] ring-1 ring-blue-500/20 transition duration-200 hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-[0_18px_42px_rgba(37,99,235,0.28)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700 active:translate-y-0 sm:mt-6 sm:h-12"
           >
             <span>{activeSlide.primaryLabel}</span>
             <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
@@ -1401,7 +1401,7 @@ function RoleFeatureIntroScreen({
 
           <Link
             to={config.switchHref}
-            className="mt-5 inline-flex text-[12px] font-bold text-neutral-400 transition hover:text-neutral-700"
+            className="mt-4 inline-flex min-h-10 items-center text-[12px] font-bold text-neutral-400 transition hover:text-neutral-700 sm:mt-5"
           >
             {config.switchLabel}
           </Link>
@@ -1957,7 +1957,7 @@ function RoleDashboardStylePreview({
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-2">
               <span className="truncate text-[12px] font-extrabold text-neutral-950">
-                {isAdvertiser ? "광고주 사업자 인증" : "플랫폼 계정 인증"}
+                {isAdvertiser ? "사업자 인증" : "플랫폼 계정 인증"}
               </span>
               <span className="rounded-full border border-neutral-200 bg-white px-2 py-0.5 text-[10px] font-extrabold text-neutral-700">
                 인증 완료
@@ -2307,7 +2307,7 @@ function _InfluencerIntroScreen({ config }: { config: IntroConfig }) {
           <BrandLockup />
           <Link
             to={config.secondaryHref}
-            className="inline-flex h-9 items-center rounded-full border border-neutral-200 bg-white px-3 text-[12px] font-bold text-neutral-500 transition hover:border-neutral-300 hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
+            className="inline-flex h-10 items-center rounded-full border border-neutral-200 bg-white px-3 text-[12px] font-bold text-neutral-500 transition hover:border-neutral-300 hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
           >
             로그인
           </Link>
@@ -2785,7 +2785,7 @@ function _AdvertiserIntroScreen({ config }: { config: IntroConfig }) {
           <BrandLockup />
           <Link
             to={config.secondaryHref}
-            className="inline-flex h-9 items-center rounded-full border border-neutral-200 bg-white px-3 text-[12px] font-bold text-neutral-500 transition hover:border-neutral-300 hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
+            className="inline-flex h-10 items-center rounded-full border border-neutral-200 bg-white px-3 text-[12px] font-bold text-neutral-500 transition hover:border-neutral-300 hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
           >
             로그인
           </Link>
@@ -3328,7 +3328,7 @@ function BrandLockup() {
   return (
     <Link
       to="/"
-      className="-ml-1 flex min-w-0 items-center gap-3 rounded-[12px] px-1 py-1 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#171a17]"
+      className="-ml-1 flex min-h-10 min-w-10 items-center gap-3 rounded-[12px] px-1 py-1 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#171a17]"
       aria-label={`${LANDING_BRAND_NAME} 홈`}
     >
       <BrandLogo />
