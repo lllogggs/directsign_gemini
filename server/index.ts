@@ -5220,6 +5220,20 @@ const upsertSupabaseV2Rows = async (
   await assertSupabaseOk(response, `Supabase ${table} upsert`);
 };
 
+const insertSupabaseV2Rows = async (
+  table: string,
+  rows: Array<Record<string, unknown>>,
+) => {
+  if (rows.length === 0) return;
+
+  const response = await fetchSupabase(table, "", {
+    method: "POST",
+    headers: { Prefer: "return=minimal" },
+    body: JSON.stringify(normalizeRowsForPostgrest(rows)),
+  });
+  await assertSupabaseOk(response, `Supabase ${table} insert`);
+};
+
 const insertSupabaseV2RowsIgnoringDuplicates = async (
   table: string,
   rows: Array<Record<string, unknown>>,
@@ -6204,7 +6218,7 @@ const runMarketplaceFollowerSyncInternal = async ({
       );
     }
 
-    await upsertSupabaseV2Rows(
+    await insertSupabaseV2Rows(
       "marketplace_follower_sync_events",
       channelResults.map((result) => result.event),
     );
