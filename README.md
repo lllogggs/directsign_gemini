@@ -61,7 +61,7 @@ The configured product can store contracts in Supabase through the local Express
 
 1. Create a Supabase project.
 2. Apply every SQL file in `supabase/migrations` in timestamp order. The required base schema is `supabase/migrations/20260430193123_create_directsign_v2_schema.sql`; `20260501020000_create_directsign_v2_schema.sql` is intentionally a consolidated no-op kept only for migration history compatibility.
-3. Confirm the later hardening and marketplace migrations are applied, especially `20260505070645_harden_contract_support_access.sql`, `20260505081146_harden_signature_evidence_support_boundaries.sql`, `20260506043140_add_signup_legal_consents.sql`, `20260506075008_restrict_authenticated_direct_writes.sql`, `20260507224346_allow_revoked_support_access_event.sql`, `20260507230025_lock_reserved_settlement_tables.sql`, `20260513035730_add_marketplace_profiles.sql`, and `20260516123052_harden_security_definer_helpers.sql`.
+3. Confirm the later hardening and marketplace migrations are applied, especially `20260505070645_harden_contract_support_access.sql`, `20260505081146_harden_signature_evidence_support_boundaries.sql`, `20260506043140_add_signup_legal_consents.sql`, `20260506075008_restrict_authenticated_direct_writes.sql`, `20260507224346_allow_revoked_support_access_event.sql`, `20260507230025_lock_reserved_settlement_tables.sql`, `20260513035730_add_marketplace_profiles.sql`, `20260516123052_harden_security_definer_helpers.sql`, and `20260518044009_add_marketplace_follower_sync.sql`.
 4. Run Supabase Security Advisor after applying migrations and resolve any RLS, exposed table, or storage warnings before launch.
 5. Generate server-only secrets:
 
@@ -77,6 +77,9 @@ SUPABASE_PUBLISHABLE_KEY="YOUR_SUPABASE_PUBLISHABLE_KEY"
 SUPABASE_SERVICE_ROLE_KEY="YOUR_SERVICE_ROLE_KEY"
 SUPABASE_CONTRACTS_TABLE="directsign_contracts"
 SUPABASE_SCHEMA_VERSION="v2"
+CRON_SECRET="VALUE_FROM_NPM_RUN_SECRETS_GENERATE"
+MARKETPLACE_FOLLOWER_SYNC_MAX_CHANNELS="25"
+MARKETPLACE_FOLLOWER_SYNC_STALE_DAYS="6"
 APP_URL="https://yeollock.me"
 VITE_PUBLIC_SITE_URL="https://yeollock.me"
 PRODUCT_NAME="yeollock.me"
@@ -138,3 +141,5 @@ Advertiser verification is intentionally manual in the first production path:
 - Public influencer signup only stores checked activity categories and platform selections, then sends the creator to the dashboard after email confirmation and login.
 - Influencer platform account ownership verification is deferred until a contract context exists. It asks the creator to place a product challenge code in a platform-specific public location, such as an Instagram bio, YouTube channel description, or Naver Blog profile/post.
 - `/admin` shows the challenge code, proof URL, screenshot evidence, and automated check status. Operator approval remains authoritative because some platforms block unauthenticated crawls.
+
+Marketplace follower labels are refreshed by Vercel Cron through `/api/cron/sync-marketplace-followers` once per week. Keep `CRON_SECRET` server-side and configure it in production before deploying the cron. The sync only updates counts that can be verified through configured provider APIs, keeps the previous public label on failures, and records run/event history in server-only Supabase tables.

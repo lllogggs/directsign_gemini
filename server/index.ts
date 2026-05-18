@@ -360,6 +360,7 @@ const resolveServerSecret = ({
 
 const adminAccessCode = readConfiguredServerSecret("ADMIN_ACCESS_CODE");
 const configuredAdminOperatorName = readConfiguredServerSecret("ADMIN_OPERATOR_NAME");
+const cronSecret = readConfiguredServerSecret("CRON_SECRET");
 const adminSessionSecret = resolveServerSecret({
   name: "ADMIN_SESSION_SECRET",
   purpose: "signing admin session cookies",
@@ -450,6 +451,21 @@ const sensitiveEndpointWindowMs =
     process.env.SENSITIVE_ENDPOINT_WINDOW_SECONDS,
     15 * 60,
   ) * 1000;
+const marketplaceFollowerSyncMaxChannels = Math.min(
+  Math.floor(
+    parsePositiveNumberEnv(
+      process.env.MARKETPLACE_FOLLOWER_SYNC_MAX_CHANNELS,
+      25,
+    ),
+  ),
+  100,
+);
+const marketplaceFollowerSyncStaleMs =
+  parsePositiveNumberEnv(process.env.MARKETPLACE_FOLLOWER_SYNC_STALE_DAYS, 6) *
+  24 *
+  60 *
+  60 *
+  1000;
 const cspReportOnly =
   process.env.CONTENT_SECURITY_POLICY_REPORT_ONLY === "true" ||
   process.env.DIRECTSIGN_CSP_REPORT_ONLY === "true";
@@ -1006,7 +1022,22 @@ interface SupabaseMarketplaceInfluencerChannelRow {
   url?: string | null;
   followers_label?: string | null;
   performance_label?: string | null;
+  follower_count?: number | null;
+  follower_count_synced_at?: string | null;
+  follower_sync_status?:
+    | "not_synced"
+    | "synced"
+    | "stale"
+    | "failed"
+    | "skipped"
+    | "not_configured"
+    | null;
+  follower_sync_source?: string | null;
+  follower_sync_error?: string | null;
+  follower_sync_metadata?: Record<string, unknown> | null;
   sort_order?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
 }
 
 type SupabaseMarketplaceInfluencerHandleRow = Pick<
@@ -1018,6 +1049,22 @@ type SupabaseMarketplaceInfluencerHandleRow = Pick<
   | "created_at"
   | "updated_at"
 >;
+
+interface SupabaseMarketplaceFollowerSyncRunRow {
+  id: string;
+  requested_by: string;
+  status: "running" | "completed" | "partial_failed" | "failed";
+  started_at: string;
+  finished_at?: string | null;
+  channels_checked: number;
+  channels_updated: number;
+  channels_failed: number;
+  channels_skipped: number;
+  error_message?: string | null;
+  metadata?: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
 
 interface SupabaseMarketplaceBrandProfileRow {
   id: string;
@@ -2403,6 +2450,24 @@ const getBearerToken = (request: express.Request) => {
   return scheme?.toLowerCase() === "bearer" && hasText(token) ? token : undefined;
 };
 
+const requireCronRequest = (
+  request: express.Request,
+  response: express.Response,
+) => {
+  if (!cronSecret) {
+    response.status(503).json({ error: "CRON_SECRET is not configured" });
+    return false;
+  }
+
+  const token = getBearerToken(request);
+  if (!token || !safeEqual(token, cronSecret)) {
+    response.status(401).json({ error: "Unauthorized" });
+    return false;
+  }
+
+  return true;
+};
+
 const fetchSupabaseAuthUser = async (accessToken: string) => {
   const response = await fetch(supabaseAuthUrl("/user"), {
     headers: supabaseAuthHeaders(accessToken),
@@ -3647,6 +3712,7 @@ type YoutubeVideoItem = {
 const fetchYoutubeChannelForTarget = async (
   apiKey: string,
   target: ReturnType<typeof parseYoutubeChannelTarget>,
+  timeoutMs = 6500,
 ) => {
   const url = new URL("https://www.googleapis.com/youtube/v3/channels");
   url.searchParams.set("part", "snippet,statistics");
@@ -3663,7 +3729,7 @@ const fetchYoutubeChannelForTarget = async (
   return fetchJsonWithTimeout<{
     items?: YoutubeChannelItem[];
     error?: unknown;
-  }>(url.toString());
+  }>(url.toString(), {}, timeoutMs);
 };
 
 const fetchYoutubeVideoForProof = async (apiKey: string, videoId: string) => {
@@ -5593,6 +5659,640 @@ const warmPublicMarketplaceCache = () => {
 };
 
 warmPublicMarketplaceCache();
+
+type MarketplaceFollowerSyncStatus =
+  | "synced"
+  | "failed"
+  | "skipped"
+  | "not_configured";
+
+type MarketplaceFollowerSyncEventStatus =
+  | "updated"
+  | "unchanged"
+  | "failed"
+  | "skipped"
+  | "not_configured";
+
+type MarketplaceFollowerSyncSnapshot = {
+  status: MarketplaceFollowerSyncStatus;
+  checkedAt: string;
+  provider: string;
+  followerCount?: number;
+  httpStatus?: number;
+  error?: string;
+  metadata?: Record<string, unknown>;
+};
+
+type MarketplaceFollowerSyncQueueItem = {
+  profile: SupabaseMarketplaceInfluencerProfileRow;
+  channel: SupabaseMarketplaceInfluencerChannelRow;
+};
+
+type MarketplaceFollowerSyncResult = {
+  run_id: string;
+  status: SupabaseMarketplaceFollowerSyncRunRow["status"];
+  started_at: string;
+  finished_at: string;
+  requested_by: string;
+  channels_checked: number;
+  channels_updated: number;
+  channels_failed: number;
+  channels_skipped: number;
+};
+
+const marketplaceFollowerSyncConcurrency = 5;
+let marketplaceFollowerSyncInFlight:
+  | Promise<MarketplaceFollowerSyncResult>
+  | undefined;
+
+const truncateMarketplaceSyncText = (value: string | undefined, max = 500) => {
+  if (!value) return undefined;
+  return value.length > max ? `${value.slice(0, max - 1)}...` : value;
+};
+
+const normalizeFollowerCount = (value: unknown) => {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number(value.replace(/[^\d]/g, ""))
+        : Number.NaN;
+
+  if (!Number.isFinite(parsed) || parsed < 0) return undefined;
+  return Math.floor(parsed);
+};
+
+const formatMarketplaceFollowerCountLabel = (count: number) => {
+  if (count >= 10_000) {
+    const tenThousands = count / 10_000;
+    const formatted =
+      tenThousands >= 100
+        ? Math.round(tenThousands).toLocaleString("ko-KR")
+        : tenThousands.toFixed(1).replace(/\.0$/, "");
+    return `${formatted}\ub9cc`;
+  }
+
+  return `${count.toLocaleString("ko-KR")}\uba85`;
+};
+
+const buildFollowerSnapshot = (
+  snapshot: Omit<MarketplaceFollowerSyncSnapshot, "checkedAt"> & {
+    checkedAt?: string;
+  },
+): MarketplaceFollowerSyncSnapshot => ({
+  ...snapshot,
+  checkedAt: snapshot.checkedAt ?? new Date().toISOString(),
+  error: truncateMarketplaceSyncText(snapshot.error),
+});
+
+const fetchYoutubeFollowerSnapshot = async (
+  channel: SupabaseMarketplaceInfluencerChannelRow,
+): Promise<MarketplaceFollowerSyncSnapshot> => {
+  const apiKey = process.env.YOUTUBE_DATA_API_KEY?.trim();
+  if (!apiKey) {
+    return buildFollowerSnapshot({
+      status: "not_configured",
+      provider: "youtube_data_api",
+      error: "YOUTUBE_DATA_API_KEY is not configured.",
+    });
+  }
+
+  const target = parseYoutubeChannelTarget(channel.url ?? "", channel.handle);
+  if (!target.value) {
+    return buildFollowerSnapshot({
+      status: "skipped",
+      provider: "youtube_data_api",
+      error: "YouTube channel handle or channel id is missing.",
+    });
+  }
+
+  try {
+    const response = await fetchYoutubeChannelForTarget(apiKey, target, 4500);
+    const item = response.payload.items?.[0];
+    const followerCount = normalizeFollowerCount(item?.statistics?.subscriberCount);
+
+    if (!response.ok) {
+      return buildFollowerSnapshot({
+        status: "failed",
+        provider: "youtube_data_api",
+        httpStatus: response.status,
+        error: "YouTube Data API request failed.",
+      });
+    }
+
+    if (!item) {
+      return buildFollowerSnapshot({
+        status: "failed",
+        provider: "youtube_data_api",
+        httpStatus: response.status,
+        error: "YouTube channel was not found.",
+      });
+    }
+
+    if (item.statistics?.hiddenSubscriberCount || followerCount === undefined) {
+      return buildFollowerSnapshot({
+        status: "skipped",
+        provider: "youtube_data_api",
+        httpStatus: response.status,
+        error: "YouTube subscriber count is hidden.",
+        metadata: {
+          channel_id: item.id,
+          title: item.snippet?.title,
+          hidden_subscriber_count: item.statistics?.hiddenSubscriberCount ?? false,
+        },
+      });
+    }
+
+    return buildFollowerSnapshot({
+      status: "synced",
+      provider: "youtube_data_api",
+      httpStatus: response.status,
+      followerCount,
+      metadata: {
+        channel_id: item.id,
+        title: item.snippet?.title,
+        custom_url: item.snippet?.customUrl,
+        video_count: normalizeFollowerCount(item.statistics?.videoCount),
+      },
+    });
+  } catch (error) {
+    return buildFollowerSnapshot({
+      status: "failed",
+      provider: "youtube_data_api",
+      error: error instanceof Error ? error.message : "YouTube sync failed.",
+    });
+  }
+};
+
+const fetchInstagramFollowerSnapshot = async (
+  channel: SupabaseMarketplaceInfluencerChannelRow,
+): Promise<MarketplaceFollowerSyncSnapshot> => {
+  const accessToken = process.env.META_GRAPH_ACCESS_TOKEN?.trim();
+  const igUserId = process.env.META_IG_USER_ID?.trim();
+  const graphVersion = process.env.META_GRAPH_API_VERSION?.trim() || "v24.0";
+  const username = normalizeHandleForComparison(channel.handle).replace(
+    /[^a-z0-9._]/g,
+    "",
+  );
+
+  if (!accessToken || !igUserId) {
+    return buildFollowerSnapshot({
+      status: "not_configured",
+      provider: "instagram_graph_api",
+      error: "META_GRAPH_ACCESS_TOKEN/META_IG_USER_ID is not configured.",
+      metadata: { username: username || undefined },
+    });
+  }
+
+  if (!username) {
+    return buildFollowerSnapshot({
+      status: "skipped",
+      provider: "instagram_graph_api",
+      error: "Instagram username is missing.",
+    });
+  }
+
+  try {
+    const url = new URL(`https://graph.facebook.com/${graphVersion}/${igUserId}`);
+    url.searchParams.set(
+      "fields",
+      `business_discovery.username(${username}){id,username,followers_count,media_count}`,
+    );
+    url.searchParams.set("access_token", accessToken);
+    const response = await fetchJsonWithTimeout<{
+      business_discovery?: {
+        id?: string;
+        username?: string;
+        followers_count?: number;
+        media_count?: number;
+      };
+      error?: unknown;
+    }>(url.toString(), {}, 4500);
+    const profile = response.payload.business_discovery;
+    const followerCount = normalizeFollowerCount(profile?.followers_count);
+
+    if (!response.ok) {
+      return buildFollowerSnapshot({
+        status: "failed",
+        provider: "instagram_graph_api",
+        httpStatus: response.status,
+        error: "Instagram Graph API request failed.",
+        metadata: { username },
+      });
+    }
+
+    if (!profile || followerCount === undefined) {
+      return buildFollowerSnapshot({
+        status: "failed",
+        provider: "instagram_graph_api",
+        httpStatus: response.status,
+        error: "Instagram business discovery did not return a follower count.",
+        metadata: { username },
+      });
+    }
+
+    return buildFollowerSnapshot({
+      status: "synced",
+      provider: "instagram_graph_api",
+      httpStatus: response.status,
+      followerCount,
+      metadata: {
+        id: profile.id,
+        username: profile.username,
+        media_count: profile.media_count,
+      },
+    });
+  } catch (error) {
+    return buildFollowerSnapshot({
+      status: "failed",
+      provider: "instagram_graph_api",
+      error: error instanceof Error ? error.message : "Instagram sync failed.",
+      metadata: { username },
+    });
+  }
+};
+
+const fetchTikTokFollowerSnapshot = async (
+  channel: SupabaseMarketplaceInfluencerChannelRow,
+): Promise<MarketplaceFollowerSyncSnapshot> => {
+  const token = process.env.TIKTOK_ACCOUNT_ACCESS_TOKEN?.trim();
+  const expectedHandle = normalizeHandleForComparison(channel.handle);
+
+  if (!token) {
+    return buildFollowerSnapshot({
+      status: "not_configured",
+      provider: "tiktok_login_kit",
+      error: "TIKTOK_ACCOUNT_ACCESS_TOKEN is not configured.",
+      metadata: { expected_handle: expectedHandle || undefined },
+    });
+  }
+
+  try {
+    const url = new URL("https://open.tiktokapis.com/v2/user/info/");
+    url.searchParams.set(
+      "fields",
+      ["username", "display_name", "follower_count", "video_count"].join(","),
+    );
+    const response = await fetchJsonWithTimeout<{
+      data?: {
+        user?: {
+          username?: string;
+          display_name?: string;
+          follower_count?: number;
+          video_count?: number;
+        };
+      };
+      error?: unknown;
+    }>(
+      url.toString(),
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+        },
+      },
+      4500,
+    );
+    const user = response.payload.data?.user;
+    const userHandle = normalizeHandleForComparison(user?.username);
+    const followerCount = normalizeFollowerCount(user?.follower_count);
+
+    if (!response.ok) {
+      return buildFollowerSnapshot({
+        status: "failed",
+        provider: "tiktok_login_kit",
+        httpStatus: response.status,
+        error: "TikTok user info request failed.",
+        metadata: { expected_handle: expectedHandle || undefined },
+      });
+    }
+
+    if (expectedHandle && userHandle && expectedHandle !== userHandle) {
+      return buildFollowerSnapshot({
+        status: "skipped",
+        provider: "tiktok_login_kit",
+        httpStatus: response.status,
+        error: "TikTok token user does not match the marketplace channel handle.",
+        metadata: {
+          expected_handle: expectedHandle,
+          token_username: userHandle,
+        },
+      });
+    }
+
+    if (!user || followerCount === undefined) {
+      return buildFollowerSnapshot({
+        status: "failed",
+        provider: "tiktok_login_kit",
+        httpStatus: response.status,
+        error: "TikTok user info did not return a follower count.",
+        metadata: { expected_handle: expectedHandle || undefined },
+      });
+    }
+
+    return buildFollowerSnapshot({
+      status: "synced",
+      provider: "tiktok_login_kit",
+      httpStatus: response.status,
+      followerCount,
+      metadata: {
+        username: user.username,
+        display_name: user.display_name,
+        video_count: user.video_count,
+      },
+    });
+  } catch (error) {
+    return buildFollowerSnapshot({
+      status: "failed",
+      provider: "tiktok_login_kit",
+      error: error instanceof Error ? error.message : "TikTok sync failed.",
+      metadata: { expected_handle: expectedHandle || undefined },
+    });
+  }
+};
+
+const fetchMarketplaceFollowerSnapshot = (
+  channel: SupabaseMarketplaceInfluencerChannelRow,
+) => {
+  if (channel.platform === "youtube") return fetchYoutubeFollowerSnapshot(channel);
+  if (channel.platform === "instagram") return fetchInstagramFollowerSnapshot(channel);
+  if (channel.platform === "tiktok") return fetchTikTokFollowerSnapshot(channel);
+
+  return Promise.resolve(
+    buildFollowerSnapshot({
+      status: "skipped",
+      provider:
+        channel.platform === "naver_blog"
+          ? "naver_search_api"
+          : "public_url_challenge",
+      error: `${channel.platform} follower sync is not supported by a configured provider.`,
+    }),
+  );
+};
+
+const getMarketplaceFollowerSyncChannelStatus = (
+  snapshot: MarketplaceFollowerSyncSnapshot,
+): NonNullable<SupabaseMarketplaceInfluencerChannelRow["follower_sync_status"]> => {
+  if (snapshot.status === "synced") return "synced";
+  return snapshot.status;
+};
+
+const getMarketplaceFollowerSyncEventStatus = ({
+  snapshot,
+  previousCount,
+}: {
+  snapshot: MarketplaceFollowerSyncSnapshot;
+  previousCount?: number;
+}): MarketplaceFollowerSyncEventStatus => {
+  if (snapshot.status === "synced") {
+    return previousCount === snapshot.followerCount ? "unchanged" : "updated";
+  }
+  return snapshot.status;
+};
+
+const isMarketplaceFollowerSyncDue = (
+  channel: SupabaseMarketplaceInfluencerChannelRow,
+  nowMs = Date.now(),
+) => {
+  if (channel.follower_sync_status !== "synced") return true;
+  if (!channel.follower_count_synced_at) return true;
+  const syncedAt = Date.parse(channel.follower_count_synced_at);
+  return !Number.isFinite(syncedAt) || nowMs - syncedAt >= marketplaceFollowerSyncStaleMs;
+};
+
+const compareMarketplaceFollowerSyncQueue = (
+  left: MarketplaceFollowerSyncQueueItem,
+  right: MarketplaceFollowerSyncQueueItem,
+) => {
+  const leftSynced = left.channel.follower_count_synced_at
+    ? Date.parse(left.channel.follower_count_synced_at)
+    : 0;
+  const rightSynced = right.channel.follower_count_synced_at
+    ? Date.parse(right.channel.follower_count_synced_at)
+    : 0;
+
+  return leftSynced - rightSynced;
+};
+
+const readMarketplaceFollowerSyncQueue = async (limit: number) => {
+  const { profiles, channels } = await readMarketplaceInfluencerRows(
+    "?select=*&is_published=eq.true&order=updated_at.desc",
+  );
+  const queue = profiles.flatMap((profile) =>
+    (channels.get(profile.id) ?? []).map((channel) => ({ profile, channel })),
+  );
+
+  return queue
+    .filter(({ channel }) => isMarketplaceFollowerSyncDue(channel))
+    .sort(compareMarketplaceFollowerSyncQueue)
+    .slice(0, limit);
+};
+
+const syncMarketplaceFollowerChannel = async ({
+  runId,
+  item,
+}: {
+  runId: string;
+  item: MarketplaceFollowerSyncQueueItem;
+}) => {
+  const snapshot = await fetchMarketplaceFollowerSnapshot(item.channel);
+  const previousCount = item.channel.follower_count ?? undefined;
+  const nextFollowersLabel =
+    snapshot.status === "synced" && snapshot.followerCount !== undefined
+      ? formatMarketplaceFollowerCountLabel(snapshot.followerCount)
+      : item.channel.followers_label;
+  const eventStatus = getMarketplaceFollowerSyncEventStatus({
+    snapshot,
+    previousCount,
+  });
+  const channelSyncStatus = getMarketplaceFollowerSyncChannelStatus(snapshot);
+  const checkedAt = snapshot.checkedAt;
+
+  await patchSupabaseRecord(
+    "marketplace_influencer_channels",
+    `?id=eq.${encodeURIComponent(item.channel.id)}`,
+    {
+      ...(snapshot.status === "synced"
+        ? {
+            follower_count: snapshot.followerCount,
+            followers_label: nextFollowersLabel,
+            follower_count_synced_at: checkedAt,
+          }
+        : {}),
+      follower_sync_status: channelSyncStatus,
+      follower_sync_source: snapshot.provider,
+      follower_sync_error: snapshot.error ?? null,
+      follower_sync_metadata: {
+        ...(snapshot.metadata ?? {}),
+        checked_at: checkedAt,
+        http_status: snapshot.httpStatus ?? null,
+      },
+      updated_at: checkedAt,
+    },
+    "Supabase marketplace follower channel sync",
+  );
+
+  return {
+    event: {
+      id: randomUUID(),
+      run_id: runId,
+      channel_id: item.channel.id,
+      profile_id: item.profile.id,
+      platform: item.channel.platform,
+      handle: item.channel.handle,
+      status: eventStatus,
+      previous_follower_count: previousCount ?? null,
+      follower_count: snapshot.followerCount ?? null,
+      previous_followers_label: item.channel.followers_label ?? null,
+      followers_label: nextFollowersLabel ?? null,
+      provider: snapshot.provider,
+      http_status: snapshot.httpStatus ?? null,
+      error_message: snapshot.error ?? null,
+      checked_at: checkedAt,
+      metadata: snapshot.metadata ?? {},
+    },
+    snapshot,
+    eventStatus,
+  };
+};
+
+const runMarketplaceFollowerSyncInternal = async ({
+  requestedBy,
+  maxChannels = marketplaceFollowerSyncMaxChannels,
+}: {
+  requestedBy: string;
+  maxChannels?: number;
+}): Promise<MarketplaceFollowerSyncResult> => {
+  if (!useSupabase) {
+    throw new Error("Supabase is not configured");
+  }
+
+  const startedAt = new Date().toISOString();
+  const runId = randomUUID();
+  const effectiveMaxChannels = Math.max(1, Math.min(Math.floor(maxChannels), 100));
+
+  await upsertSupabaseV2Rows("marketplace_follower_sync_runs", [
+    {
+      id: runId,
+      requested_by: requestedBy,
+      status: "running",
+      started_at: startedAt,
+      channels_checked: 0,
+      channels_updated: 0,
+      channels_failed: 0,
+      channels_skipped: 0,
+      metadata: {
+        max_channels: effectiveMaxChannels,
+        stale_days:
+          marketplaceFollowerSyncStaleMs / (24 * 60 * 60 * 1000),
+      },
+    },
+  ]);
+
+  try {
+    const queue = await readMarketplaceFollowerSyncQueue(effectiveMaxChannels);
+    const channelResults: Awaited<
+      ReturnType<typeof syncMarketplaceFollowerChannel>
+    >[] = [];
+
+    for (let index = 0; index < queue.length; index += marketplaceFollowerSyncConcurrency) {
+      const chunk = queue.slice(index, index + marketplaceFollowerSyncConcurrency);
+      channelResults.push(
+        ...(await Promise.all(
+          chunk.map((item) => syncMarketplaceFollowerChannel({ runId, item })),
+        )),
+      );
+    }
+
+    await upsertSupabaseV2Rows(
+      "marketplace_follower_sync_events",
+      channelResults.map((result) => result.event),
+    );
+
+    const channelsUpdated = channelResults.filter((result) =>
+      ["updated", "unchanged"].includes(result.eventStatus),
+    ).length;
+    const channelsFailed = channelResults.filter(
+      (result) => result.eventStatus === "failed",
+    ).length;
+    const channelsSkipped = channelResults.length - channelsUpdated - channelsFailed;
+    const finishedAt = new Date().toISOString();
+    const status: SupabaseMarketplaceFollowerSyncRunRow["status"] =
+      channelsFailed > 0 && channelsUpdated + channelsSkipped > 0
+        ? "partial_failed"
+        : channelsFailed > 0
+          ? "failed"
+          : "completed";
+
+    await patchSupabaseRecord(
+      "marketplace_follower_sync_runs",
+      `?id=eq.${encodeURIComponent(runId)}`,
+      {
+        status,
+        finished_at: finishedAt,
+        channels_checked: channelResults.length,
+        channels_updated: channelsUpdated,
+        channels_failed: channelsFailed,
+        channels_skipped: channelsSkipped,
+        metadata: {
+          max_channels: effectiveMaxChannels,
+          queued_channels: queue.length,
+          stale_days:
+            marketplaceFollowerSyncStaleMs / (24 * 60 * 60 * 1000),
+        },
+      },
+      "Supabase marketplace follower sync run update",
+    );
+
+    if (channelsUpdated > 0) clearPublicMarketplaceCache();
+
+    return {
+      run_id: runId,
+      status,
+      started_at: startedAt,
+      finished_at: finishedAt,
+      requested_by: requestedBy,
+      channels_checked: channelResults.length,
+      channels_updated: channelsUpdated,
+      channels_failed: channelsFailed,
+      channels_skipped: channelsSkipped,
+    };
+  } catch (error) {
+    clearPublicMarketplaceCache();
+    const finishedAt = new Date().toISOString();
+    const message = truncateMarketplaceSyncText(
+      error instanceof Error ? error.message : "Marketplace follower sync failed.",
+    );
+
+    await patchSupabaseRecord(
+      "marketplace_follower_sync_runs",
+      `?id=eq.${encodeURIComponent(runId)}`,
+      {
+        status: "failed",
+        finished_at: finishedAt,
+        error_message: message,
+      },
+      "Supabase marketplace follower sync failure update",
+    );
+
+    throw error;
+  }
+};
+
+const runMarketplaceFollowerSync = (options: {
+  requestedBy: string;
+  maxChannels?: number;
+}) => {
+  if (!marketplaceFollowerSyncInFlight) {
+    marketplaceFollowerSyncInFlight = runMarketplaceFollowerSyncInternal(options).finally(
+      () => {
+        marketplaceFollowerSyncInFlight = undefined;
+      },
+    );
+  }
+
+  return marketplaceFollowerSyncInFlight;
+};
 
 const buildMarketplaceBrandHandle = (
   organization: SupabaseOrganizationRow,
@@ -11203,6 +11903,29 @@ app.get("/api/influencer/dashboard", async (request, response, next) => {
     next(error);
   }
 });
+
+app.get(
+  "/api/cron/sync-marketplace-followers",
+  async (request, response, next) => {
+    if (!requireCronRequest(request, response)) return;
+
+    try {
+      const maxChannels =
+        typeof request.query.max_channels === "string"
+          ? Number(request.query.max_channels)
+          : marketplaceFollowerSyncMaxChannels;
+      const result = await runMarketplaceFollowerSync({
+        requestedBy: "vercel_cron",
+        maxChannels: Number.isFinite(maxChannels)
+          ? maxChannels
+          : marketplaceFollowerSyncMaxChannels,
+      });
+      response.json(result);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 app.get("/api/marketplace/influencers", async (_request, response, next) => {
   try {

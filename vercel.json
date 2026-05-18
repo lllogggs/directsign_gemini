@@ -8,6 +8,12 @@
       "excludeFiles": "data/**"
     }
   },
+  "crons": [
+    {
+      "path": "/api/cron/sync-marketplace-followers",
+      "schedule": "0 18 * * 0"
+    }
+  ],
   "headers": [
     {
       "source": "/assets/(.*)",

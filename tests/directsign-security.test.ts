@@ -65,6 +65,48 @@ describe("yeollock.me security regressions", () => {
     assert.ok(statSync(join(root, "public/fonts/NanumGothic-Regular.ttf")).size > 1_000_000);
   });
 
+  it("protects weekly marketplace follower sync with cron auth and server-only logs", () => {
+    const server = read("server/index.ts");
+    const envExample = read(".env.example");
+    const migration = read(
+      "supabase/migrations/20260518044009_add_marketplace_follower_sync.sql",
+    );
+    const vercelConfig = JSON.parse(read("vercel.json")) as {
+      crons?: Array<{ path?: string; schedule?: string }>;
+    };
+
+    assert.ok(
+      vercelConfig.crons?.some(
+        (cron) =>
+          cron.path === "/api/cron/sync-marketplace-followers" &&
+          cron.schedule === "0 18 * * 0",
+      ),
+    );
+    assert.match(envExample, /CRON_SECRET=""/);
+    assert.match(server, /const cronSecret = readConfiguredServerSecret\("CRON_SECRET"\)/);
+    assert.match(server, /requireCronRequest/);
+    assert.match(server, /safeEqual\(token, cronSecret\)/);
+    assert.match(server, /\/api\/cron\/sync-marketplace-followers/);
+    assert.match(server, /runMarketplaceFollowerSync/);
+    assert.match(server, /marketplace_follower_sync_runs/);
+    assert.match(server, /marketplace_follower_sync_events/);
+    assert.match(server, /follower_count_synced_at/);
+    assert.match(server, /clearPublicMarketplaceCache\(\)/);
+    assert.match(
+      migration,
+      /alter table public\.marketplace_influencer_channels[\s\S]+follower_count/,
+    );
+    assert.match(migration, /marketplace_follower_sync_runs/);
+    assert.match(migration, /marketplace_follower_sync_events/);
+    assert.match(migration, /enable row level security/);
+    assert.match(
+      migration,
+      /revoke all on table[\s\S]+from public, anon, authenticated;/,
+    );
+    assert.match(migration, /grant select, insert, update on table[\s\S]+to service_role;/);
+    assert.doesNotMatch(migration, /grant[\s\S]+to anon;/);
+  });
+
   it("keeps server-loaded domain imports compatible with Vercel ESM runtime", () => {
     const domainDir = join(root, "src/domain");
     const domainFiles = readdirSync(domainDir).filter((file) => file.endsWith(".ts"));
@@ -107,6 +149,7 @@ describe("yeollock.me security regressions", () => {
     assert.match(readme, /20260506075008_restrict_authenticated_direct_writes\.sql/);
     assert.match(readme, /20260507224346_allow_revoked_support_access_event\.sql/);
     assert.match(readme, /20260507230025_lock_reserved_settlement_tables\.sql/);
+    assert.match(readme, /20260518044009_add_marketplace_follower_sync\.sql/);
   });
 
   it("blocks authenticated Data API writes for security-sensitive tables", () => {

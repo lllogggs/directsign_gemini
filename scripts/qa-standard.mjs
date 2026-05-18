@@ -95,12 +95,20 @@ const supportsCurrentApiSurface = async (baseUrl) => {
       `${baseUrl}/api/marketplace/influencers`,
       { headers: { Accept: "application/json" }, timeoutMs: 5000 },
     );
-    return (
-      marketplaceResponse.status === 200 &&
-      (marketplaceResponse.headers.get("cache-control") ?? "").includes(
+    if (
+      marketplaceResponse.status !== 200 ||
+      !(marketplaceResponse.headers.get("cache-control") ?? "").includes(
         "stale-while-revalidate=300",
       )
+    ) {
+      return false;
+    }
+
+    const cronResponse = await fetchWithTimeout(
+      `${baseUrl}/api/cron/sync-marketplace-followers`,
+      { timeoutMs: 5000 },
     );
+    return [401, 503].includes(cronResponse.status);
   } catch {
     return false;
   }
@@ -865,6 +873,7 @@ const main = async () => {
       await smokeRoute(server.baseUrl, "/api/influencer/dashboard", [401]),
       await smokeRoute(server.baseUrl, "/api/marketplace/messages?role=advertiser", [401]),
       await smokeRoute(server.baseUrl, "/api/marketplace/messages?role=influencer", [401]),
+      await smokeRoute(server.baseUrl, "/api/cron/sync-marketplace-followers", [401, 503]),
       await smokeMethodRoute(server.baseUrl, "POST", "/api/admin/logout", [200]),
       await smokeMethodRoute(server.baseUrl, "POST", "/api/advertiser/logout", [200]),
       await smokeMethodRoute(server.baseUrl, "POST", "/api/influencer/logout", [200]),
