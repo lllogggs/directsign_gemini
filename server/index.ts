@@ -402,7 +402,7 @@ const signatureConsentText =
   "계약 최종본, 모든 조항, 서명 증빙 보관 기준, 전자서명 안내 문서를 확인했고 전자서명에 동의합니다.";
 const productName = process.env.PRODUCT_NAME ?? process.env.VITE_PRODUCT_NAME ?? "yeollock.me";
 const adminOperatorName = configuredAdminOperatorName ?? `${productName} 운영자`;
-const signupTermsVersion = "2026-05-06";
+const signupTermsVersion = "2026-05-19";
 const signupPrivacyPolicyVersion = "2026-05-06";
 const signedPdfFontCandidates = [
   process.env.SIGNED_PDF_FONT_PATH,
@@ -420,6 +420,7 @@ const parsePositiveNumberEnv = (value: string | undefined, fallback: number) => 
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
+const dayMs = 24 * 60 * 60 * 1000;
 const adminLoginMaxFailures = parsePositiveNumberEnv(
   process.env.ADMIN_LOGIN_MAX_FAILURES,
   5,
@@ -462,10 +463,12 @@ const marketplaceFollowerSyncMaxChannels = Math.min(
 );
 const marketplaceFollowerSyncStaleMs =
   parsePositiveNumberEnv(process.env.MARKETPLACE_FOLLOWER_SYNC_STALE_DAYS, 6) *
-  24 *
-  60 *
-  60 *
-  1000;
+  dayMs;
+const marketplaceNaverBlogVisitorSyncStaleMs =
+  parsePositiveNumberEnv(
+    process.env.MARKETPLACE_NAVER_BLOG_VISITOR_SYNC_STALE_DAYS,
+    1,
+  ) * dayMs;
 const cspReportOnly =
   process.env.CONTENT_SECURITY_POLICY_REPORT_ONLY === "true" ||
   process.env.DIRECTSIGN_CSP_REPORT_ONLY === "true";
@@ -3357,6 +3360,29 @@ const fetchJsonWithTimeout = async <T>(
   }
 };
 
+const fetchTextWithTimeout = async (
+  url: string,
+  init: RequestInit = {},
+  timeoutMs = 6500,
+): Promise<{ status: number; ok: boolean; body: string }> => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const apiResponse = await fetch(url, {
+      ...init,
+      signal: controller.signal,
+    });
+    return {
+      status: apiResponse.status,
+      ok: apiResponse.ok,
+      body: await apiResponse.text(),
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
 const normalizeDateCompact = (value: string | undefined) => {
   if (!value) return undefined;
   const digits = value.replace(/\D/g, "");
@@ -3392,6 +3418,11 @@ const extractNaverBlogId = (value: string | undefined) => {
     const url = new URL(raw);
     const host = url.hostname.toLowerCase();
     if (host === "blog.naver.com" || host === "m.blog.naver.com") {
+      const queryBlogId = normalizeHandleForComparison(
+        url.searchParams.get("blogId") ?? undefined,
+      );
+      if (queryBlogId) return queryBlogId;
+
       return normalizeHandleForComparison(url.pathname.split("/").filter(Boolean)[0]);
     }
   } catch {
@@ -5692,6 +5723,7 @@ type MarketplaceFollowerSyncSnapshot = {
   checkedAt: string;
   provider: string;
   followerCount?: number;
+  followersLabel?: string;
   httpStatus?: number;
   error?: string;
   metadata?: Record<string, unknown>;
@@ -5749,6 +5781,29 @@ const formatMarketplaceFollowerCountLabel = (count: number) => {
   return `${count.toLocaleString("ko-KR")}\uba85`;
 };
 
+const formatMarketplacePersonCountLabel = (count: number) => {
+  if (count >= 10_000) {
+    const tenThousands = count / 10_000;
+    const formatted =
+      tenThousands >= 100
+        ? Math.round(tenThousands).toLocaleString("ko-KR")
+        : tenThousands.toFixed(1).replace(/\.0$/, "");
+    return `${formatted}\ub9cc\uba85`;
+  }
+
+  return `${count.toLocaleString("ko-KR")}\uba85`;
+};
+
+const formatNaverBlogVisitorLabel = (
+  count: number,
+  basis: "yesterday" | "stored_5_day_average",
+) =>
+  basis === "yesterday"
+    ? `\uc5b4\uc81c \ubc29\ubb38\uc790 ${formatMarketplacePersonCountLabel(count)}`
+    : `\ucd5c\uadfc 5\uc77c \ud3c9\uade0 \ubc29\ubb38\uc790 ${formatMarketplacePersonCountLabel(
+        count,
+      )}`;
+
 const buildFollowerSnapshot = (
   snapshot: Omit<MarketplaceFollowerSyncSnapshot, "checkedAt"> & {
     checkedAt?: string;
@@ -5758,6 +5813,142 @@ const buildFollowerSnapshot = (
   checkedAt: snapshot.checkedAt ?? new Date().toISOString(),
   error: truncateMarketplaceSyncText(snapshot.error),
 });
+
+type NaverBlogVisitorCount = {
+  date: string;
+  count: number;
+};
+
+const naverBlogVisitorCounterProvider = "naver_blog_public_visitor_counter";
+const naverBlogVisitorAverageWindowDays = 5;
+const kstOffsetMs = 9 * 60 * 60 * 1000;
+
+const formatKstCompactDate = (date: Date, dayOffset = 0) => {
+  const kstDate = new Date(date.getTime() + kstOffsetMs + dayOffset * dayMs);
+  const year = kstDate.getUTCFullYear().toString().padStart(4, "0");
+  const month = (kstDate.getUTCMonth() + 1).toString().padStart(2, "0");
+  const day = kstDate.getUTCDate().toString().padStart(2, "0");
+  return `${year}${month}${day}`;
+};
+
+const getNaverBlogVisitorTargetDate = (date = new Date()) =>
+  formatKstCompactDate(date, -1);
+
+const normalizeNaverBlogVisitorCounts = (
+  counts: NaverBlogVisitorCount[],
+) => {
+  const byDate = new Map<string, number>();
+  for (const count of counts) {
+    if (!normalizeDateCompact(count.date)) continue;
+    if (!Number.isFinite(count.count) || count.count < 0) continue;
+    byDate.set(count.date, Math.floor(count.count));
+  }
+
+  return Array.from(byDate.entries())
+    .map(([date, count]) => ({ date, count }))
+    .sort((left, right) => right.date.localeCompare(left.date));
+};
+
+const parseNaverBlogVisitorCounts = (body: string) =>
+  normalizeNaverBlogVisitorCounts(
+    Array.from(body.matchAll(/<visitorcnt\b[^>]*\/?>/gi))
+      .map((match) => {
+        const tag = match[0];
+        const id = tag.match(/\bid\s*=\s*["']([^"']+)["']/i)?.[1];
+        const count = normalizeFollowerCount(
+          tag.match(/\bcnt\s*=\s*["']([^"']+)["']/i)?.[1],
+        );
+        const date = normalizeDateCompact(id);
+        if (!date || count === undefined) return undefined;
+        return { date, count };
+      })
+      .filter((count): count is NaverBlogVisitorCount => Boolean(count)),
+  );
+
+const readNaverBlogVisitorCountsFromMetadata = (
+  metadata: Record<string, unknown> | null | undefined,
+) => {
+  const rawCounts = metadata?.naver_blog_daily_visitors;
+  if (!Array.isArray(rawCounts)) return [];
+
+  return normalizeNaverBlogVisitorCounts(
+    rawCounts
+      .map((item) => {
+        if (!item || typeof item !== "object") return undefined;
+        const record = item as Record<string, unknown>;
+        const date = normalizeDateCompact(
+          typeof record.date === "string" || typeof record.date === "number"
+            ? String(record.date)
+            : undefined,
+        );
+        const count = normalizeFollowerCount(record.count);
+        if (!date || count === undefined) return undefined;
+        return { date, count };
+      })
+      .filter((count): count is NaverBlogVisitorCount => Boolean(count)),
+  );
+};
+
+const selectNaverBlogCompletedVisitorCounts = (
+  counts: NaverBlogVisitorCount[],
+  targetDate: string,
+) =>
+  normalizeNaverBlogVisitorCounts(counts)
+    .filter((count) => count.date <= targetDate)
+    .slice(0, naverBlogVisitorAverageWindowDays);
+
+const calculateNaverBlogFiveDayAverage = (
+  counts: NaverBlogVisitorCount[],
+) => {
+  const windowCounts = counts.slice(0, naverBlogVisitorAverageWindowDays);
+  if (windowCounts.length < naverBlogVisitorAverageWindowDays) return undefined;
+  return Math.round(
+    windowCounts.reduce((total, count) => total + count.count, 0) /
+      windowCounts.length,
+  );
+};
+
+const buildNaverBlogStoredAverageSnapshot = ({
+  channel,
+  blogId,
+  targetDate,
+  checkedAt,
+  httpStatus,
+  error,
+}: {
+  channel: SupabaseMarketplaceInfluencerChannelRow;
+  blogId: string;
+  targetDate: string;
+  checkedAt: string;
+  httpStatus?: number;
+  error: string;
+}) => {
+  const storedCounts = selectNaverBlogCompletedVisitorCounts(
+    readNaverBlogVisitorCountsFromMetadata(channel.follower_sync_metadata),
+    targetDate,
+  );
+  const average = calculateNaverBlogFiveDayAverage(storedCounts);
+  if (average === undefined) return undefined;
+
+  return buildFollowerSnapshot({
+    status: "synced",
+    provider: naverBlogVisitorCounterProvider,
+    checkedAt,
+    followerCount: average,
+    followersLabel: formatNaverBlogVisitorLabel(average, "stored_5_day_average"),
+    httpStatus,
+    error,
+    metadata: {
+      metric: "daily_blog_visitors",
+      value_basis: "stored_5_day_average",
+      target_date: targetDate,
+      blog_id: blogId,
+      naver_blog_daily_visitors: storedCounts,
+      average_window_days: naverBlogVisitorAverageWindowDays,
+      source_error: error,
+    },
+  });
+};
 
 const fetchYoutubeFollowerSnapshot = async (
   channel: SupabaseMarketplaceInfluencerChannelRow,
@@ -6025,20 +6216,142 @@ const fetchTikTokFollowerSnapshot = async (
   }
 };
 
+const fetchNaverBlogVisitorSnapshot = async (
+  channel: SupabaseMarketplaceInfluencerChannelRow,
+): Promise<MarketplaceFollowerSyncSnapshot> => {
+  const checkedAt = new Date().toISOString();
+  const targetDate = getNaverBlogVisitorTargetDate(new Date(checkedAt));
+  const blogId =
+    extractNaverBlogId(channel.handle) || extractNaverBlogId(channel.url ?? undefined);
+
+  if (!blogId) {
+    return buildFollowerSnapshot({
+      status: "skipped",
+      provider: naverBlogVisitorCounterProvider,
+      checkedAt,
+      error: "Naver Blog id is missing.",
+    });
+  }
+
+  try {
+    const url = new URL("https://blog.naver.com/NVisitorgp4Ajax.nhn");
+    url.searchParams.set("blogId", blogId);
+    const response = await fetchTextWithTimeout(
+      url.toString(),
+      {
+        headers: {
+          Accept: "application/xml,text/xml,*/*",
+          "User-Agent": "DirectSignMarketplaceSync/1.0",
+        },
+      },
+      4500,
+    );
+    const visitorCounts = parseNaverBlogVisitorCounts(response.body);
+    const completedCounts = selectNaverBlogCompletedVisitorCounts(
+      visitorCounts,
+      targetDate,
+    );
+    const targetCount = completedCounts.find((count) => count.date === targetDate);
+    const fiveDayAverage = calculateNaverBlogFiveDayAverage(completedCounts);
+
+    if (!response.ok) {
+      return (
+        buildNaverBlogStoredAverageSnapshot({
+          channel,
+          blogId,
+          targetDate,
+          checkedAt,
+          httpStatus: response.status,
+          error: "Naver Blog visitor counter request failed; showing stored five day average.",
+        }) ??
+        buildFollowerSnapshot({
+          status: "failed",
+          provider: naverBlogVisitorCounterProvider,
+          checkedAt,
+          httpStatus: response.status,
+          error: "Naver Blog visitor counter request failed.",
+          metadata: { blog_id: blogId, target_date: targetDate },
+        })
+      );
+    }
+
+    if (!targetCount) {
+      return (
+        buildNaverBlogStoredAverageSnapshot({
+          channel,
+          blogId,
+          targetDate,
+          checkedAt,
+          httpStatus: response.status,
+          error:
+            "Naver Blog visitor counter did not include yesterday; showing stored five day average.",
+        }) ??
+        buildFollowerSnapshot({
+          status: "failed",
+          provider: naverBlogVisitorCounterProvider,
+          checkedAt,
+          httpStatus: response.status,
+          error: "Naver Blog visitor counter did not include yesterday.",
+          metadata: {
+            blog_id: blogId,
+            target_date: targetDate,
+            naver_blog_daily_visitors: completedCounts,
+          },
+        })
+      );
+    }
+
+    return buildFollowerSnapshot({
+      status: "synced",
+      provider: naverBlogVisitorCounterProvider,
+      checkedAt,
+      httpStatus: response.status,
+      followerCount: targetCount.count,
+      followersLabel: formatNaverBlogVisitorLabel(targetCount.count, "yesterday"),
+      metadata: {
+        metric: "daily_blog_visitors",
+        value_basis: "yesterday",
+        target_date: targetDate,
+        blog_id: blogId,
+        naver_blog_daily_visitors: completedCounts,
+        average_window_days: naverBlogVisitorAverageWindowDays,
+        five_day_average: fiveDayAverage ?? null,
+      },
+    });
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : "Naver Blog visitor sync failed.";
+    return (
+      buildNaverBlogStoredAverageSnapshot({
+        channel,
+        blogId,
+        targetDate,
+        checkedAt,
+        error: `${errorMessage}; showing stored five day average.`,
+      }) ??
+      buildFollowerSnapshot({
+        status: "failed",
+        provider: naverBlogVisitorCounterProvider,
+        checkedAt,
+        error: errorMessage,
+        metadata: { blog_id: blogId, target_date: targetDate },
+      })
+    );
+  }
+};
+
 const fetchMarketplaceFollowerSnapshot = (
   channel: SupabaseMarketplaceInfluencerChannelRow,
 ) => {
   if (channel.platform === "youtube") return fetchYoutubeFollowerSnapshot(channel);
   if (channel.platform === "instagram") return fetchInstagramFollowerSnapshot(channel);
   if (channel.platform === "tiktok") return fetchTikTokFollowerSnapshot(channel);
+  if (channel.platform === "naver_blog") return fetchNaverBlogVisitorSnapshot(channel);
 
   return Promise.resolve(
     buildFollowerSnapshot({
       status: "skipped",
-      provider:
-        channel.platform === "naver_blog"
-          ? "naver_search_api"
-          : "public_url_challenge",
+      provider: "public_url_challenge",
       error: `${channel.platform} follower sync is not supported by a configured provider.`,
     }),
   );
@@ -6071,7 +6384,11 @@ const isMarketplaceFollowerSyncDue = (
   if (channel.follower_sync_status !== "synced") return true;
   if (!channel.follower_count_synced_at) return true;
   const syncedAt = Date.parse(channel.follower_count_synced_at);
-  return !Number.isFinite(syncedAt) || nowMs - syncedAt >= marketplaceFollowerSyncStaleMs;
+  const staleMs =
+    channel.platform === "naver_blog"
+      ? marketplaceNaverBlogVisitorSyncStaleMs
+      : marketplaceFollowerSyncStaleMs;
+  return !Number.isFinite(syncedAt) || nowMs - syncedAt >= staleMs;
 };
 
 const compareMarketplaceFollowerSyncQueue = (
@@ -6113,7 +6430,8 @@ const syncMarketplaceFollowerChannel = async ({
   const previousCount = item.channel.follower_count ?? undefined;
   const nextFollowersLabel =
     snapshot.status === "synced" && snapshot.followerCount !== undefined
-      ? formatMarketplaceFollowerCountLabel(snapshot.followerCount)
+      ? (snapshot.followersLabel ??
+        formatMarketplaceFollowerCountLabel(snapshot.followerCount))
       : item.channel.followers_label;
   const eventStatus = getMarketplaceFollowerSyncEventStatus({
     snapshot,
@@ -6197,8 +6515,8 @@ const runMarketplaceFollowerSyncInternal = async ({
       channels_skipped: 0,
       metadata: {
         max_channels: effectiveMaxChannels,
-        stale_days:
-          marketplaceFollowerSyncStaleMs / (24 * 60 * 60 * 1000),
+        stale_days: marketplaceFollowerSyncStaleMs / dayMs,
+        naver_blog_stale_days: marketplaceNaverBlogVisitorSyncStaleMs / dayMs,
       },
     },
   ]);
@@ -6251,8 +6569,8 @@ const runMarketplaceFollowerSyncInternal = async ({
         metadata: {
           max_channels: effectiveMaxChannels,
           queued_channels: queue.length,
-          stale_days:
-            marketplaceFollowerSyncStaleMs / (24 * 60 * 60 * 1000),
+          stale_days: marketplaceFollowerSyncStaleMs / dayMs,
+          naver_blog_stale_days: marketplaceNaverBlogVisitorSyncStaleMs / dayMs,
         },
       },
       "Supabase marketplace follower sync run update",
@@ -10408,8 +10726,14 @@ const buildDashboardTasks = (
               account.url,
             ),
           ),
-      );
+  );
   const activeContractNeedingVerification = contracts.find(contractNeedsVerification);
+  const latestRejectedVerification = verificationRequests
+    .filter((request) => request.status === "rejected")
+    .sort((a, b) => parseDateDescending(a.created_at, b.created_at))[0];
+  const rejectionNote =
+    latestRejectedVerification?.reviewer_note ||
+    "프로필 URL, 핸들, 인증 코드 위치 또는 공개 접근 가능 여부를 확인할 수 없습니다.";
 
   if (
     activeContract &&
@@ -10420,12 +10744,24 @@ const buildDashboardTasks = (
       id: "verification",
       contract_id: taskContract.id,
       tone: verificationStatus === "rejected" ? "rose" : "amber",
-      title: verificationStatus === "pending" ? "계정 인증 검토 중" : "플랫폼 계정 인증 필요",
+      title:
+        verificationStatus === "pending"
+          ? "계정 인증 검토 중"
+          : verificationStatus === "rejected"
+            ? "계정 인증 재제출 필요"
+            : "플랫폼 계정 인증 필요",
       body:
         verificationStatus === "pending"
           ? "운영자 검토가 끝나면 계정 인증 상태가 갱신됩니다."
+          : verificationStatus === "rejected"
+            ? `반려 사유: ${rejectionNote} 계약 검토는 가능하지만, 서명하려면 새 증빙으로 다시 승인받아야 합니다.`
           : "계약 검토는 가능하지만, 서명하려면 플랫폼 계정 인증 승인이 먼저 필요합니다.",
-      action_label: verificationStatus === "pending" ? "인증 상태 보기" : "인증 제출",
+      action_label:
+        verificationStatus === "pending"
+          ? "인증 상태 보기"
+          : verificationStatus === "rejected"
+            ? "인증 재제출"
+            : "인증 제출",
       href: taskContract.verification_href,
     });
   }

@@ -80,6 +80,7 @@ SUPABASE_SCHEMA_VERSION="v2"
 CRON_SECRET="VALUE_FROM_NPM_RUN_SECRETS_GENERATE"
 MARKETPLACE_FOLLOWER_SYNC_MAX_CHANNELS="25"
 MARKETPLACE_FOLLOWER_SYNC_STALE_DAYS="6"
+MARKETPLACE_NAVER_BLOG_VISITOR_SYNC_STALE_DAYS="1"
 APP_URL="https://yeollock.me"
 VITE_PUBLIC_SITE_URL="https://yeollock.me"
 PRODUCT_NAME="yeollock.me"
@@ -104,12 +105,12 @@ DIRECTSIGN_DEFAULT_ADVERTISER_ID="adv_1"
 DIRECTSIGN_DEFAULT_INFLUENCER_ID="influencer_guest"
 DIRECTSIGN_ALLOW_LOCAL_PRIVATE_FILE_FALLBACK="false"
 VITE_LEGAL_OPERATING_MODE="free_individual"
-VITE_LEGAL_OPERATOR_NAME=""
-VITE_LEGAL_REPRESENTATIVE_NAME=""
+VITE_LEGAL_OPERATOR_NAME="김재우"
+VITE_LEGAL_REPRESENTATIVE_NAME="김재우"
 VITE_LEGAL_BUSINESS_REGISTRATION_NUMBER=""
 VITE_LEGAL_MAIL_ORDER_BUSINESS_NUMBER=""
 VITE_LEGAL_ADDRESS=""
-VITE_LEGAL_CONTACT_EMAIL="support@yeollock.me"
+VITE_LEGAL_CONTACT_EMAIL="yeollockme@gmail.com"
 VITE_LEGAL_CONTACT_PHONE=""
 ```
 
@@ -120,7 +121,7 @@ In Supabase mode, `support_access_requests` is required. The app fails closed in
 
 Set `APP_URL` to the deployed origin before enabling public signup. Production signup redirects fail closed when `APP_URL` is missing. Public advertiser/influencer login and signup endpoints are rate-limited by IP and email. `DIRECTSIGN_TOKEN_ENCRYPTION_SECRET` protects new legacy compatibility-table share tokens at rest; production startup fails when it is missing, short, or placeholder-like. Keep it stable across deployments.
 
-Before launch, review and publish `/privacy`, `/terms`, and `/legal/e-sign-consent`. Keep `VITE_LEGAL_OPERATING_MODE="free_individual"` while there is no business registration and the service is provided for free; in that mode business registration, mail-order registration, address, and phone fields are not required. The legal pages use safe public defaults and a support email so development, QA, and early validation are not blocked by private owner information. Switch to `VITE_LEGAL_OPERATING_MODE="registered_business"` only before paid/business use and then fill the business registration, mail-order registration if applicable, address, and phone fields.
+Before launch, review and publish `/privacy`, `/terms`, and `/legal/e-sign-consent`. Keep `VITE_LEGAL_OPERATING_MODE="free_individual"` while there is no business registration and the service is provided for free; in that mode business registration, mail-order registration, address, and phone fields are not required. The legal pages use the public operator name and contact email above so development, QA, and early validation are not blocked by business registration details. Switch to `VITE_LEGAL_OPERATING_MODE="registered_business"` only before paid/business use and then fill the business registration, mail-order registration if applicable, address, and phone fields.
 
 The product is currently scoped as a contract platform only. It records contract payment terms as clauses between the advertiser and influencer, but it does not perform settlement, payout, escrow, tax invoice issuance, withholding, refund processing, or collection work. Keep this boundary visible in sales material, onboarding copy, terms, support scripts, and internal operating procedures.
 
@@ -142,4 +143,4 @@ Advertiser verification is intentionally manual in the first production path:
 - Influencer platform account ownership verification is deferred until a contract context exists. It asks the creator to place a product challenge code in a platform-specific public location, such as an Instagram bio, YouTube channel description, or Naver Blog profile/post.
 - `/admin` shows the challenge code, proof URL, screenshot evidence, and automated check status. Operator approval remains authoritative because some platforms block unauthenticated crawls.
 
-Marketplace follower labels are refreshed by Vercel Cron through `/api/cron/sync-marketplace-followers` once per week. Keep `CRON_SECRET` server-side and configure it in production before deploying the cron. The sync only updates counts that can be verified through configured provider APIs, keeps the previous public label on failures, and records run/event history in server-only Supabase tables.
+Marketplace follower labels are refreshed by Vercel Cron through `/api/cron/sync-marketplace-followers`. Keep `CRON_SECRET` server-side and configure it in production before deploying the cron. Instagram/YouTube follower counts keep the configured stale window, while Naver Blog channels are checked daily and display yesterday's public visitor count when available. If yesterday's Naver count cannot be read, the sync falls back to the stored five-day visitor average when five saved daily counts exist. Failed provider checks keep the previous public label and record run/event history in server-only Supabase tables.

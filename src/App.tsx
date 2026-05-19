@@ -12,6 +12,7 @@ import { AdvertiserAuthGate } from "./pages/marketing/AdvertiserAuthGate";
 import { RoleIntroPage, StartPage } from "./pages/landing/LandingPages";
 import { getNextPath } from "./domain/navigation";
 import { PRODUCT_DESCRIPTION, PRODUCT_NAME } from "./domain/brand";
+import { LEGAL_CONTACT_EMAIL } from "./domain/legalEntity";
 
 type RouteModuleLoader = () => Promise<unknown>;
 
@@ -271,6 +272,12 @@ const utilityNoIndexPrefixes = ["/login", "/signup", "/reset-password"];
 const publicSiteOrigin =
   (import.meta.env.VITE_SITE_URL as string | undefined)?.trim().replace(/\/$/, "") ||
   "https://yeollock.me";
+const officialInstagramHandle =
+  String(import.meta.env.VITE_INSTAGRAM_OFFICIAL_HANDLE ?? "yeollockme")
+    .trim()
+    .replace(/^@+/, "") || "yeollockme";
+const publicSameAsUrls = [`https://www.instagram.com/${officialInstagramHandle}/`];
+const seoDateModified = "2026-05-19";
 
 type RouteSeoConfig = {
   title: string;
@@ -351,8 +358,19 @@ const buildStructuredData = ({
         "@type": "Organization",
         "@id": `${publicSiteOrigin}/#organization`,
         name: PRODUCT_NAME,
+        alternateName: "yeollock.me",
         url: `${publicSiteOrigin}/`,
         logo: `${publicSiteOrigin}/favicon.svg`,
+        email: LEGAL_CONTACT_EMAIL,
+        contactPoint: [
+          {
+            "@type": "ContactPoint",
+            contactType: "customer support",
+            email: LEGAL_CONTACT_EMAIL,
+            availableLanguage: ["ko-KR"],
+          },
+        ],
+        sameAs: publicSameAsUrls,
         knowsAbout: seoKeywordList,
       },
       {
@@ -360,6 +378,7 @@ const buildStructuredData = ({
         "@id": `${publicSiteOrigin}/#website`,
         name: PRODUCT_NAME,
         url: `${publicSiteOrigin}/`,
+        description: searchIntentSeoDescription,
         inLanguage: "ko-KR",
         publisher: { "@id": `${publicSiteOrigin}/#organization` },
       },
@@ -374,6 +393,13 @@ const buildStructuredData = ({
         description: searchIntentSeoDescription,
         keywords: seoKeywordList.join(", "),
         featureList: seoFeatureList,
+        isAccessibleForFree: true,
+        offers: {
+          "@type": "Offer",
+          price: "0",
+          priceCurrency: "KRW",
+          availability: "https://schema.org/InStock",
+        },
         audience: [
           {
             "@type": "BusinessAudience",
@@ -393,6 +419,7 @@ const buildStructuredData = ({
         description,
         keywords: keywordText,
         inLanguage: "ko-KR",
+        dateModified: seoDateModified,
         isPartOf: { "@id": `${publicSiteOrigin}/#website` },
         about: { "@id": `${publicSiteOrigin}/#app` },
       },

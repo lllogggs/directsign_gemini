@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
+  AlertTriangle,
   ArrowLeft,
   BadgeCheck,
   BookOpen,
@@ -22,6 +23,7 @@ import { PRODUCT_NAME } from "../../domain/brand";
 import { buildLoginRedirect } from "../../domain/navigation";
 import { translateApiErrorMessage } from "../../domain/userMessages";
 import {
+  getVerificationRejectionGuidance,
   type InfluencerPlatform,
   type InfluencerVerificationMethod,
   verificationStatusLabel,
@@ -256,6 +258,10 @@ export function InfluencerVerification() {
   const verificationStatus = verification?.status ?? "not_submitted";
   const latest = verification?.latest_request;
   const approved = verificationStatus === "approved";
+  const rejectionGuidance =
+    verificationStatus === "rejected"
+      ? getVerificationRejectionGuidance(latest, "influencer_account")
+      : undefined;
   const verifiedHandle =
     latest?.platform_handle || verification?.account?.platform_handle;
   const verifiedUrl = latest?.platform_url || verification?.account?.platform_url;
@@ -462,6 +468,35 @@ export function InfluencerVerification() {
               </span>
             </div>
           </div>
+
+          {rejectionGuidance && (
+            <div className="mb-5 rounded-lg border border-rose-200 bg-rose-50 p-4 shadow-[inset_3px_0_0_rgba(190,18,60,0.22)]">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-rose-700 ring-1 ring-rose-100">
+                  <AlertTriangle className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-rose-900">
+                    {rejectionGuidance.title}
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-rose-800/80">
+                    {rejectionGuidance.body}
+                  </p>
+                  <div className="mt-3 rounded-md border border-rose-100 bg-white/70 px-3 py-2 text-xs font-semibold leading-5 text-rose-900">
+                    반려 사유: {rejectionGuidance.reviewerNote}
+                  </div>
+                  <ul className="mt-3 grid gap-2 text-xs leading-5 text-rose-900 sm:grid-cols-2">
+                    {rejectionGuidance.checklist.map((item) => (
+                      <li key={item} className="flex items-start gap-2">
+                        <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="mb-5">
             <h1 className="text-[24px] font-semibold tracking-tight">
@@ -746,6 +781,8 @@ export function InfluencerVerification() {
                   ? "계정 확인 중"
                 : approved
                   ? "플랫폼 인증 추가 요청"
+                  : verificationStatus === "rejected"
+                    ? "계정 인증 재제출"
                   : "계정 소유 인증 요청"}
             </button>
           </form>

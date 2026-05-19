@@ -133,3 +133,77 @@ export const verificationStatusTone = (status: VerificationStatus) => {
 
   return tones[status];
 };
+
+export interface VerificationRejectionGuidance {
+  title: string;
+  body: string;
+  reviewerNote: string;
+  checklist: string[];
+}
+
+const platformLabel = (platform?: InfluencerPlatform) => {
+  const labels: Record<InfluencerPlatform, string> = {
+    instagram: "인스타그램",
+    youtube: "유튜브",
+    tiktok: "틱톡",
+    naver_blog: "네이버 블로그",
+    other: "기타 플랫폼",
+  };
+
+  return platform ? labels[platform] : "플랫폼";
+};
+
+const getInfluencerPlatformChecklistItem = (request?: VerificationRequest) => {
+  if (request?.platform === "youtube") {
+    return "유튜브 채널 소개, 영상, 쇼츠, 커뮤니티 글 중 인증 코드가 보이는 공개 URL을 제출해 주세요.";
+  }
+  if (request?.platform === "instagram") {
+    return "인스타그램은 공식 계정 DM 발신 계정, 프로필 URL, 인증 코드가 서로 일치해야 합니다.";
+  }
+  if (request?.platform === "tiktok") {
+    return "틱톡 프로필 또는 영상 설명에서 인증 코드가 보이지 않으면 코드가 보이는 스크린샷을 함께 제출해 주세요.";
+  }
+  if (request?.platform === "naver_blog") {
+    return "네이버 블로그는 서로이웃 전용 글이 아닌 공개 글이나 프로필 소개에서 인증 코드가 보여야 합니다.";
+  }
+
+  return "운영자가 로그인 없이 확인할 수 있는 공개 URL이나 코드가 보이는 스크린샷을 제출해 주세요.";
+};
+
+export const getVerificationRejectionGuidance = (
+  request?: VerificationRequest,
+  fallbackTargetType?: VerificationTargetType,
+): VerificationRejectionGuidance => {
+  const targetType = request?.target_type ?? fallbackTargetType;
+  const reviewerNote =
+    request?.reviewer_note?.trim() ||
+    "운영자가 제출 정보와 증빙을 대조하는 과정에서 확인이 필요한 항목을 찾았습니다.";
+
+  if (targetType === "advertiser_organization") {
+    return {
+      title: "사업자 인증 재제출이 필요합니다",
+      body: "계약 초안 작성은 계속할 수 있지만, 새 증빙으로 승인되기 전까지 공유 링크 발송은 제한됩니다.",
+      reviewerNote,
+      checklist: [
+        "사업자등록번호, 회사명, 대표자명이 증빙 문서와 가입 정보에서 서로 일치하는지 확인해 주세요.",
+        "발급일과 문서확인번호가 보이는 최근 사업자등록증명원 PDF 또는 이미지를 올려 주세요.",
+        "문서 전체가 잘리지 않고 흐릿하지 않은지, 민감 정보를 가린 경우에도 검수에 필요한 항목은 보이는지 확인해 주세요.",
+        "대행사가 브랜드를 대신 계약하는 경우 운영자 메모에 관계와 계약 권한을 적어 주세요.",
+      ],
+    };
+  }
+
+  const label = platformLabel(request?.platform);
+
+  return {
+    title: `${label} 계정 인증 재제출이 필요합니다`,
+    body: "계약 내용 검토는 계속할 수 있지만, 인증이 승인되기 전까지 해당 계약의 전자서명은 제한됩니다.",
+    reviewerNote,
+    checklist: [
+      "프로필 URL과 핸들이 실제 본인 계정과 일치하고 외부에서 열람 가능한지 확인해 주세요.",
+      "인증 코드가 증빙 URL의 공개 화면에 그대로 보이거나, 코드와 계정 소유자가 함께 보이는 스크린샷을 첨부해 주세요.",
+      getInfluencerPlatformChecklistItem(request),
+      "인증이 끝나기 전에 코드가 들어간 게시글이나 소개 문구를 삭제하지 말아 주세요.",
+    ],
+  };
+};

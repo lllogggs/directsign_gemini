@@ -1,5 +1,10 @@
 User-agent: *
 Allow: /
+Allow: /intro/
+Allow: /privacy
+Allow: /terms
+Allow: /legal/e-sign-consent
+Allow: /llms.txt
 Disallow: /api
 Disallow: /admin
 Disallow: /advertiser

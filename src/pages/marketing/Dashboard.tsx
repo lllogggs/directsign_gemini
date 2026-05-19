@@ -27,7 +27,9 @@ import {
   useAppStore,
 } from "../../store";
 import {
+  getVerificationRejectionGuidance,
   verificationStatusTone,
+  type VerificationRequest,
   type VerificationStatus,
 } from "../../domain/verification";
 import {
@@ -259,65 +261,6 @@ export function Dashboard() {
     };
   }, [contracts, verificationSummary]);
 
-  const statusCounts = useMemo(
-    () =>
-      STATUS_ORDER.reduce(
-        (acc, status) => {
-          acc[status] = contracts.filter((contract) => contract.status === status).length;
-          return acc;
-        },
-        {} as Record<ContractStatus, number>,
-      ),
-    [contracts],
-  );
-
-  const platformCounts = useMemo(
-    () =>
-      PLATFORM_FILTERS.reduce(
-        (acc, platform) => {
-          acc[platform] =
-            platform === "ALL"
-              ? contracts.length
-              : contracts.filter((contract) =>
-                  getContractPlatforms(contract).includes(platform),
-                ).length;
-          return acc;
-        },
-        {} as Record<PlatformFilter, number>,
-      ),
-    [contracts],
-  );
-  const contractTypeCounts = useMemo(
-    () =>
-      CONTRACT_TYPE_FILTERS.reduce(
-        (acc, type) => {
-          acc[type] =
-            type === "ALL"
-              ? contracts.length
-              : contracts.filter((contract) => contract.type === type).length;
-          return acc;
-        },
-        {} as Record<ContractTypeFilter, number>,
-      ),
-    [contracts],
-  );
-  const amountCounts = useMemo(
-    () =>
-      AMOUNT_FILTERS.reduce(
-        (acc, amount) => {
-          acc[amount] =
-            amount === "ALL"
-              ? contracts.length
-              : contracts.filter((contract) =>
-                  getAmountFilterKind(contract.campaign?.budget) === amount,
-                ).length;
-          return acc;
-        },
-        {} as Record<AmountFilter, number>,
-      ),
-    [contracts],
-  );
-
   const filteredContracts = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
 
@@ -491,6 +434,7 @@ export function Dashboard() {
             status={advertiserVerificationStatus}
             account={advertiserAccount}
             isLoading={isVerificationLoading}
+            latest={verificationSummary?.advertiser.latest_request}
             onOpen={() => navigate("/advertiser/verification")}
             embedded
           />
@@ -509,16 +453,12 @@ export function Dashboard() {
               onQueryChange={setQuery}
               platformFilter={platformFilter}
               onPlatformFilterChange={setPlatformFilter}
-              platformCounts={platformCounts}
               contractTypeFilter={contractTypeFilter}
               onContractTypeFilterChange={setContractTypeFilter}
-              contractTypeCounts={contractTypeCounts}
               amountFilter={amountFilter}
               onAmountFilterChange={setAmountFilter}
-              amountCounts={amountCounts}
               detailStatusFilter={detailStatusFilter}
               onDetailStatusFilterChange={setDetailStatusFilter}
-              statusCounts={statusCounts}
               sortState={sortState}
               onSortChange={handleSortChange}
               onOpen={(contract) => navigate(`/advertiser/contract/${contract.id}`)}
@@ -534,17 +474,20 @@ function VerificationBanner({
   status,
   account,
   isLoading,
+  latest,
   onOpen,
   embedded = false,
 }: {
   status: VerificationStatus;
   account: AdvertiserAccountSummary;
   isLoading: boolean;
+  latest?: VerificationRequest;
   onOpen: () => void;
   embedded?: boolean;
 }) {
   const approved = status === "approved";
-  const copy = getAdvertiserVerificationBannerCopy(status, isLoading);
+  const rejected = status === "rejected";
+  const copy = getAdvertiserVerificationBannerCopy(status, isLoading, latest);
 
   return (
     <section
@@ -553,11 +496,15 @@ function VerificationBanner({
           ? `border-b px-4 py-2 ${
               approved
                 ? "border-neutral-200 bg-[#fbfbf8]"
+                : rejected
+                  ? "border-rose-200 bg-rose-50/85"
                 : "border-amber-200 bg-amber-50/85"
             }`
           : `mb-3 rounded-md border px-3 py-2.5 ${
               approved
                 ? "border-neutral-200 bg-white"
+                : rejected
+                  ? "border-rose-200 bg-rose-50/85"
                 : "border-amber-200 bg-amber-50/85"
             }`
       }
@@ -568,6 +515,8 @@ function VerificationBanner({
             className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-[7px] ${
               approved
                 ? "bg-white text-neutral-800 ring-1 ring-neutral-200"
+                : rejected
+                  ? "bg-rose-100 text-rose-700"
                 : "bg-amber-100 text-amber-700"
             }`}
           >
@@ -763,6 +712,7 @@ function getAdvertiserReadinessBadge(
 function getAdvertiserVerificationBannerCopy(
   status: VerificationStatus,
   isLoading: boolean,
+  latest?: VerificationRequest,
 ) {
   if (isLoading) {
     return {
@@ -771,6 +721,10 @@ function getAdvertiserVerificationBannerCopy(
       actionLabel: "인증 상태 보기",
     };
   }
+  const rejectionGuidance =
+    status === "rejected"
+      ? getVerificationRejectionGuidance(latest, "advertiser_organization")
+      : undefined;
 
   const copies: Record<
     VerificationStatus,
@@ -788,7 +742,9 @@ function getAdvertiserVerificationBannerCopy(
     },
     rejected: {
       statusLabel: "재제출 필요",
-      helper: "반려 사유를 확인하고 새 증빙으로 다시 제출해 주세요.",
+      helper: rejectionGuidance
+        ? `반려 사유: ${rejectionGuidance.reviewerNote} 새 증빙으로 다시 제출해 주세요.`
+        : "반려 사유를 확인하고 새 증빙으로 다시 제출해 주세요.",
       actionLabel: "재제출",
     },
     not_submitted: {
@@ -808,16 +764,12 @@ function ContractTable({
   onQueryChange,
   platformFilter,
   onPlatformFilterChange,
-  platformCounts,
   contractTypeFilter,
   onContractTypeFilterChange,
-  contractTypeCounts,
   amountFilter,
   onAmountFilterChange,
-  amountCounts,
   detailStatusFilter,
   onDetailStatusFilterChange,
-  statusCounts,
   sortState,
   onSortChange,
   onOpen,
@@ -828,16 +780,12 @@ function ContractTable({
   onQueryChange: (value: string) => void;
   platformFilter: PlatformFilter;
   onPlatformFilterChange: (value: PlatformFilter) => void;
-  platformCounts: Record<PlatformFilter, number>;
   contractTypeFilter: ContractTypeFilter;
   onContractTypeFilterChange: (value: ContractTypeFilter) => void;
-  contractTypeCounts: Record<ContractTypeFilter, number>;
   amountFilter: AmountFilter;
   onAmountFilterChange: (value: AmountFilter) => void;
-  amountCounts: Record<AmountFilter, number>;
   detailStatusFilter: DetailStatusFilter;
   onDetailStatusFilterChange: (value: DetailStatusFilter) => void;
-  statusCounts: Record<ContractStatus, number>;
   sortState: ContractSort;
   onSortChange: (key: SortKey) => void;
   onOpen: (contract: Contract) => void;
@@ -845,22 +793,18 @@ function ContractTable({
   const platformOptions = PLATFORM_FILTERS.map((platform) => ({
     value: platform,
     label: formatPlatformFilterLabel(platform),
-    count: platformCounts[platform],
   }));
   const contractTypeOptions = CONTRACT_TYPE_FILTERS.map((type) => ({
     value: type,
     label: type === "ALL" ? "전체" : formatContractTypeFilterLabel(type),
-    count: contractTypeCounts[type],
   }));
   const statusOptions = DETAIL_STATUS_FILTERS.map((status) => ({
     value: status,
     label: status === "ALL" ? "전체" : STATUS_META[status].shortLabel,
-    count: status === "ALL" ? totalContracts : statusCounts[status],
   }));
   const amountOptions = AMOUNT_FILTERS.map((amount) => ({
     value: amount,
     label: formatAmountFilterLabel(amount),
-    count: amountCounts[amount],
   }));
   const activeFilterLabels = [
     platformFilter !== "ALL"
@@ -907,11 +851,6 @@ function ContractTable({
           <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-[#606861]">
             {mobileFilterSummary}
           </span>
-          {activeFilterLabels.length > 0 ? (
-            <span className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-[#171a17] px-1.5 text-[11px] font-extrabold text-white">
-              {activeFilterLabels.length}
-            </span>
-          ) : null}
           <ChevronDown
             className={`h-3.5 w-3.5 shrink-0 text-[#606861] transition-transform ${
               mobileFiltersOpen ? "rotate-180" : ""
@@ -1090,7 +1029,7 @@ function TableFilterSelect({
 }: {
   label: string;
   value: string;
-  options: Array<{ value: string; label: string; count: number }>;
+  options: Array<{ value: string; label: string }>;
   maxWidthClassName?: string;
   sortKey?: SortKey;
   sortState?: ContractSort;
@@ -1122,7 +1061,7 @@ function TableFilterSelect({
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>
-            {option.label} {option.count}
+            {option.label}
           </option>
         ))}
       </select>

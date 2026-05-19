@@ -383,37 +383,6 @@ export function InfluencerDashboard() {
   }
 
   const dashboard = state.dashboard;
-  const stageCounts = dashboard.contracts.reduce(
-    (acc, contract) => {
-      acc[contract.stage] = (acc[contract.stage] ?? 0) + 1;
-      return acc;
-    },
-    {} as Partial<Record<InfluencerDashboardContractStage, number>>,
-  );
-  const platformCounts = PLATFORM_FILTERS.reduce(
-    (acc, platform) => {
-      acc[platform] =
-        platform === "all"
-          ? dashboard.contracts.length
-          : dashboard.contracts.filter((contract) =>
-              getInfluencerContractPlatforms(contract).includes(platform),
-            ).length;
-      return acc;
-    },
-    {} as Record<PlatformFilter, number>,
-  );
-  const amountCounts = AMOUNT_FILTERS.reduce(
-    (acc, amount) => {
-      acc[amount] =
-        amount === "all"
-          ? dashboard.contracts.length
-          : dashboard.contracts.filter((contract) =>
-              getAmountFilterKind(contract.fee_label) === amount,
-            ).length;
-      return acc;
-    },
-    {} as Record<AmountFilter, number>,
-  );
   const normalizedQuery = query.trim().toLowerCase();
   const filteredContracts = dashboard.contracts
     .filter((contract) => {
@@ -608,13 +577,10 @@ export function InfluencerDashboard() {
               onQueryChange={setQuery}
               platformFilter={platformFilter}
               onPlatformFilterChange={setPlatformFilter}
-              platformCounts={platformCounts}
               amountFilter={amountFilter}
               onAmountFilterChange={setAmountFilter}
-              amountCounts={amountCounts}
               detailStageFilter={detailStageFilter}
               onDetailStageFilterChange={setDetailStageFilter}
-              stageCounts={stageCounts}
               sortState={sortState}
               onSortChange={handleSortChange}
               onOpen={(contract) => { void navigate(contract.action_href); }}
@@ -1375,13 +1341,10 @@ function ContractTable({
   onQueryChange,
   platformFilter,
   onPlatformFilterChange,
-  platformCounts,
   amountFilter,
   onAmountFilterChange,
-  amountCounts,
   detailStageFilter,
   onDetailStageFilterChange,
-  stageCounts,
   sortState,
   onSortChange,
   onOpen,
@@ -1392,13 +1355,10 @@ function ContractTable({
   onQueryChange: (value: string) => void;
   platformFilter: PlatformFilter;
   onPlatformFilterChange: (value: PlatformFilter) => void;
-  platformCounts: Record<PlatformFilter, number>;
   amountFilter: AmountFilter;
   onAmountFilterChange: (value: AmountFilter) => void;
-  amountCounts: Record<AmountFilter, number>;
   detailStageFilter: DetailStageFilter;
   onDetailStageFilterChange: (value: DetailStageFilter) => void;
-  stageCounts: Partial<Record<InfluencerDashboardContractStage, number>>;
   sortState: ContractSort;
   onSortChange: (key: SortKey) => void;
   onOpen: (contract: InfluencerDashboardContract) => void;
@@ -1406,17 +1366,14 @@ function ContractTable({
   const platformOptions = PLATFORM_FILTERS.map((platform) => ({
     value: platform,
     label: formatPlatformFilterLabel(platform),
-    count: platformCounts[platform],
   }));
   const amountOptions = AMOUNT_FILTERS.map((amount) => ({
     value: amount,
     label: formatAmountFilterLabel(amount),
-    count: amountCounts[amount],
   }));
   const stageOptions = DETAIL_STAGE_FILTERS.map((stage) => ({
     value: stage,
     label: formatDetailStageFilterLabel(stage),
-    count: stage === "all" ? totalContracts : stageCounts[stage] ?? 0,
   }));
   const activeFilterLabels = [
     platformFilter !== "all"
@@ -1460,11 +1417,6 @@ function ContractTable({
           <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-[#606861]">
             {mobileFilterSummary}
           </span>
-          {activeFilterLabels.length > 0 ? (
-            <span className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-[#171a17] px-1.5 text-[11px] font-extrabold text-white">
-              {activeFilterLabels.length}
-            </span>
-          ) : null}
           <ChevronDown
             className={`h-3.5 w-3.5 shrink-0 text-[#606861] transition-transform ${
               mobileFiltersOpen ? "rotate-180" : ""
@@ -1660,7 +1612,7 @@ function TableFilterSelect({
 }: {
   label: string;
   value: string;
-  options: Array<{ value: string; label: string; count: number }>;
+  options: Array<{ value: string; label: string }>;
   maxWidthClassName?: string;
   sortKey?: SortKey;
   sortState?: ContractSort;
@@ -1692,7 +1644,7 @@ function TableFilterSelect({
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>
-            {option.label} {option.count}
+            {option.label}
           </option>
         ))}
       </select>

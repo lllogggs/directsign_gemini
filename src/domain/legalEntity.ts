@@ -1,5 +1,3 @@
-import { PRODUCT_NAME } from "./brand.js";
-
 const readPublicEnv = (name: string) => {
   const value =
     typeof import.meta !== "undefined"
@@ -19,13 +17,13 @@ const readLegalOperatingMode = (): LegalOperatingMode => {
 };
 
 export const LEGAL_CONTACT_EMAIL =
-  readPublicEnv("VITE_LEGAL_CONTACT_EMAIL") ?? "support@yeollock.me";
+  readPublicEnv("VITE_LEGAL_CONTACT_EMAIL") ?? "yeollockme@gmail.com";
 
 export const LEGAL_OPERATING_MODE = readLegalOperatingMode();
 
 const isRegisteredBusiness = LEGAL_OPERATING_MODE === "registered_business";
-const defaultLegalOperatorName = `${PRODUCT_NAME} 운영자`;
-const defaultLegalRepresentativeName = "개인정보 보호책임자";
+const defaultLegalOperatorName = "김재우";
+const defaultLegalRepresentativeName = "김재우";
 
 const configuredLegalOperatorName = readPublicEnv("VITE_LEGAL_OPERATOR_NAME");
 const configuredLegalRepresentativeName = readPublicEnv(

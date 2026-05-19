@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
+  AlertTriangle,
   ArrowLeft,
   Building2,
   CheckCircle2,
@@ -10,6 +11,7 @@ import {
 import {
   type VerificationAccountInfo,
   type VerificationRequest,
+  getVerificationRejectionGuidance,
   verificationStatusLabel,
   verificationStatusTone,
 } from "../../domain/verification";
@@ -134,6 +136,10 @@ export function AdvertiserVerification() {
   const latest = advertiser?.latest_request;
   const account = advertiser?.account;
   const approved = status === "approved";
+  const rejectionGuidance =
+    status === "rejected"
+      ? getVerificationRejectionGuidance(latest, "advertiser_organization")
+      : undefined;
   const displayCompany = removeInternalTestLabel(
     latest?.subject_name || account?.company_name,
     "브랜드",
@@ -261,6 +267,35 @@ export function AdvertiserVerification() {
                     {displayCompany} 계정은 계약 공유 링크를 발송할 수 있습니다.
                     정보가 바뀐 경우에만 아래에서 갱신 심사를 요청하세요.
                   </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {rejectionGuidance && (
+            <div className="mb-5 rounded-lg border border-rose-200 bg-rose-50 p-4 shadow-[inset_3px_0_0_rgba(190,18,60,0.22)]">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-rose-700 ring-1 ring-rose-100">
+                  <AlertTriangle className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-rose-900">
+                    {rejectionGuidance.title}
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-rose-800/80">
+                    {rejectionGuidance.body}
+                  </p>
+                  <div className="mt-3 rounded-md border border-rose-100 bg-white/70 px-3 py-2 text-xs font-semibold leading-5 text-rose-900">
+                    반려 사유: {rejectionGuidance.reviewerNote}
+                  </div>
+                  <ul className="mt-3 grid gap-2 text-xs leading-5 text-rose-900 sm:grid-cols-2">
+                    {rejectionGuidance.checklist.map((item) => (
+                      <li key={item} className="flex items-start gap-2">
+                        <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               </div>
             </div>
@@ -428,6 +463,8 @@ export function AdvertiserVerification() {
                 ? "접수 중"
                 : approved
                   ? "인증 정보 갱신 요청"
+                  : status === "rejected"
+                    ? "새 증빙으로 재제출"
                   : "수기 심사 요청"}
             </button>
           </form>

@@ -131,10 +131,10 @@ grant select, insert on table
 to service_role;
 
 comment on column public.marketplace_influencer_channels.follower_count is
-  'Latest numeric follower or subscriber count from the platform API when available.';
+  'Latest numeric follower, subscriber, or public daily visitor count from the platform provider when available.';
 
 comment on column public.marketplace_influencer_channels.follower_count_synced_at is
-  'Time when follower_count and followers_label were last refreshed from a platform API.';
+  'Time when follower_count and followers_label were last refreshed from a platform provider.';
 
 comment on table public.marketplace_follower_sync_runs is
   'Server-only summary records for marketplace follower count sync executions.';

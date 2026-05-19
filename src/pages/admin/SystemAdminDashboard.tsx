@@ -312,6 +312,7 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
   ) => {
     setReviewingVerificationId(id);
     setDataError("");
+    const targetRequest = verificationRequests.find((request) => request.id === id);
 
     try {
       const response = await apiFetch(`/api/admin/verification-requests/${id}`, {
@@ -323,10 +324,10 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
         body: JSON.stringify({
           status,
           reviewed_by_name: `${PRODUCT_NAME} 운영자`,
-          reviewer_note:
-            status === "approved"
-              ? "수기 확인 후 승인했습니다."
-              : "제출 정보 또는 증빙 확인이 필요합니다.",
+          reviewer_note: buildDefaultVerificationReviewerNote(
+            status,
+            targetRequest,
+          ),
         }),
       });
       const data = (await response.json()) as {
@@ -1075,6 +1076,28 @@ function verificationMethodLabel(method: string) {
   };
 
   return labels[method] ?? method;
+}
+
+function buildDefaultVerificationReviewerNote(
+  status: "approved" | "rejected",
+  request?: VerificationRequest,
+) {
+  if (status === "approved") return "수기 확인 후 승인했습니다.";
+  if (!request) return "제출 정보와 증빙을 대조할 수 없습니다. 필요한 항목을 확인해 다시 제출해 주세요.";
+
+  if (isPublicProfileHandleAppeal(request)) {
+    return "공개 주소 소유권을 확인할 증빙이 충분하지 않습니다. 본인 계정임을 확인할 수 있는 URL이나 스크린샷을 다시 제출해 주세요.";
+  }
+
+  if (request.target_type === "advertiser_organization") {
+    return "사업자등록번호, 대표자명, 발급일, 문서번호 또는 증빙 파일을 확인할 수 없습니다. 최신 사업자등록증명원으로 다시 제출해 주세요.";
+  }
+
+  if (request.ownership_verification_method === "instagram_dm_code") {
+    return "공식 인스타그램 DM 발신 계정과 제출한 프로필 URL 또는 인증 코드가 일치하는지 확인할 수 없습니다. 같은 코드로 다시 DM을 보내고 재제출해 주세요.";
+  }
+
+  return "프로필 URL, 핸들, 인증 코드 위치 또는 공개 접근 가능 여부를 확인할 수 없습니다. 코드가 보이는 URL이나 스크린샷으로 다시 제출해 주세요.";
 }
 
 function isPublicProfileHandleAppeal(request: VerificationRequest) {

@@ -65,7 +65,7 @@ describe("yeollock.me security regressions", () => {
     assert.ok(statSync(join(root, "public/fonts/NanumGothic-Regular.ttf")).size > 1_000_000);
   });
 
-  it("protects weekly marketplace follower sync with cron auth and server-only logs", () => {
+  it("protects marketplace follower sync with cron auth and server-only logs", () => {
     const server = read("server/index.ts");
     const envExample = read(".env.example");
     const migration = read(
@@ -79,10 +79,11 @@ describe("yeollock.me security regressions", () => {
       vercelConfig.crons?.some(
         (cron) =>
           cron.path === "/api/cron/sync-marketplace-followers" &&
-          cron.schedule === "0 18 * * 0",
+          cron.schedule === "0 18 * * *",
       ),
     );
     assert.match(envExample, /CRON_SECRET=""/);
+    assert.match(envExample, /MARKETPLACE_NAVER_BLOG_VISITOR_SYNC_STALE_DAYS="1"/);
     assert.match(server, /const cronSecret = readConfiguredServerSecret\("CRON_SECRET"\)/);
     assert.match(server, /requireCronRequest/);
     assert.match(server, /safeEqual\(token, cronSecret\)/);
@@ -92,6 +93,10 @@ describe("yeollock.me security regressions", () => {
     assert.match(server, /marketplace_follower_sync_events/);
     assert.match(server, /follower_count_synced_at/);
     assert.match(server, /clearPublicMarketplaceCache\(\)/);
+    assert.match(server, /NVisitorgp4Ajax\.nhn/);
+    assert.match(server, /naver_blog_public_visitor_counter/);
+    assert.match(server, /stored_5_day_average/);
+    assert.match(server, /getNaverBlogVisitorTargetDate/);
     assert.match(
       migration,
       /alter table public\.marketplace_influencer_channels[\s\S]+follower_count/,
@@ -649,6 +654,20 @@ describe("yeollock.me security regressions", () => {
     assert.doesNotMatch(legalPage, /미설정/);
     assert.doesNotMatch(readme, /출시 전 입력 필요/);
     assert.doesNotMatch(readme, /REAL_OPERATOR_NAME/);
+  });
+
+  it("discloses that free signup and usage can later become paid", () => {
+    const legalPage = read("src/pages/legal/LegalDocumentPage.tsx");
+    const signupPage = read("src/pages/auth/SignupPage.tsx");
+    const server = read("server/index.ts");
+
+    assert.match(server, /const signupTermsVersion = "2026-05-19"/);
+    assert.match(signupPage, /const TERMS_DOCUMENT_VERSION = "2026-05-19"/);
+    assert.match(signupPage, /현재 가입과 기본 서비스 이용은 무료입니다/);
+    assert.match(signupPage, /향후 일부 또는 전체\s+기능이 유료로 전환될 수 있으며/);
+    assert.match(legalPage, /effectiveDate: "2026-05-19"/);
+    assert.match(legalPage, /향후 일부 또는 전체 기능이 유료로 전환될 수 있으며/);
+    assert.match(legalPage, /전환 전 별도 고지/);
   });
 
   it("keeps verification automation optional until provider registration", () => {

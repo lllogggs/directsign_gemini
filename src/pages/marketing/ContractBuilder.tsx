@@ -11,7 +11,9 @@ import {
 import { createShareToken } from "../../domain/contracts";
 import { buildContractShareUrl } from "../../domain/links";
 import {
+  getVerificationRejectionGuidance,
   verificationStatusTone,
+  type VerificationRequest,
   type VerificationStatus,
 } from "../../domain/verification";
 import { removeInternalTestLabel } from "../../domain/display";
@@ -421,6 +423,7 @@ const buildWorkflow = (status: ContractStatus): Contract["workflow"] => {
 function getAdvertiserVerificationBuilderCopy(
   status: VerificationStatus,
   isLoading: boolean,
+  latest?: VerificationRequest,
 ) {
   if (isLoading) {
     return {
@@ -429,6 +432,10 @@ function getAdvertiserVerificationBuilderCopy(
       actionLabel: "인증 상태 보기",
     };
   }
+  const rejectionGuidance =
+    status === "rejected"
+      ? getVerificationRejectionGuidance(latest, "advertiser_organization")
+      : undefined;
 
   const copies: Record<
     VerificationStatus,
@@ -446,7 +453,9 @@ function getAdvertiserVerificationBuilderCopy(
     },
     rejected: {
       label: "재제출 필요",
-      helper: "반려 사유를 확인하고 새 증빙으로 다시 제출해야 공유 링크를 발송할 수 있습니다.",
+      helper: rejectionGuidance
+        ? `반려 사유: ${rejectionGuidance.reviewerNote} 새 증빙으로 다시 제출해야 공유 링크를 발송할 수 있습니다.`
+        : "반려 사유를 확인하고 새 증빙으로 다시 제출해야 공유 링크를 발송할 수 있습니다.",
       actionLabel: "재제출",
     },
     not_submitted: {
@@ -475,6 +484,7 @@ export function ContractBuilder() {
   const verificationCopy = getAdvertiserVerificationBuilderCopy(
     advertiserVerificationStatus,
     isVerificationLoading,
+    verificationSummary?.advertiser.latest_request,
   );
   const advertiserDefaults = verificationSummary?.advertiser;
   const defaultAdvertiserName = removeInternalTestLabel(
@@ -1577,7 +1587,7 @@ export function ContractBuilder() {
               </span>
             </div>
 
-            <div className="min-h-0 flex-1 p-3">
+            <div className="flex min-h-0 flex-1 overflow-hidden p-3">
               <BuilderReviewPanel draft={draftWithAdvertiserDefaults} clauses={clauses} />
             </div>
           </div>
@@ -1598,8 +1608,8 @@ const BuilderReviewPanel: React.FC<{
   const previewDate = new Date().toISOString().split("T")[0];
 
   return (
-    <div className="min-h-0 flex-1 overflow-hidden rounded-[18px] border border-neutral-200 bg-[#e8e5de] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.45),0_18px_42px_rgba(15,23,42,0.05)]">
-      <div className="custom-scrollbar h-full overflow-y-auto pr-1">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[18px] border border-neutral-200 bg-[#e8e5de] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.45),0_18px_42px_rgba(15,23,42,0.05)]">
+      <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
         <div className="sticky top-0 z-10 mx-auto w-full max-w-[760px] rounded-[12px] border border-neutral-200 bg-white/95 p-3 text-neutral-950 shadow-[0_10px_28px_rgba(15,23,42,0.08)] backdrop-blur">
           <div className="flex items-center justify-between gap-4">
             <div className="flex min-w-0 items-center gap-3">

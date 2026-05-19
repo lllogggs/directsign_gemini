@@ -558,42 +558,10 @@ export function InfluencerCampaignDiscoveryPage() {
     });
   }, [campaigns, categoryFilter, platformFilter, proposalTypeFilter, query]);
 
-  const platformCounts = useMemo(() => {
-    const counts = Object.fromEntries(platformOptions.map((platform) => [platform, 0])) as Record<
-      PlatformFilter,
-      number
-    >;
-    counts.all = campaigns.length;
-    for (const campaign of campaigns) {
-      for (const platform of new Set<InfluencerPlatform>(campaign.platforms ?? [])) {
-        counts[platform] += 1;
-      }
-    }
-    return counts;
-  }, [campaigns]);
-
-  const typeCounts = useMemo(() => {
-    const counts = Object.fromEntries(
-      proposalTypeFilterOptions.map((type) => [type, 0]),
-    ) as Record<ProposalTypeFilter, number>;
-    counts.all = campaigns.length;
-    for (const campaign of campaigns) counts[campaign.type] += 1;
-    return counts;
-  }, [campaigns]);
-
   const categoryOptions = useMemo(
     () => ["all", ...Array.from(new Set(campaigns.map((campaign) => campaign.brandCategory))).sort()],
     [campaigns],
   );
-
-  const categoryCounts = useMemo(() => {
-    const counts = Object.fromEntries(
-      categoryOptions.map((category) => [category, 0]),
-    ) as Record<CategoryFilter, number>;
-    counts.all = campaigns.length;
-    for (const campaign of campaigns) counts[campaign.brandCategory] += 1;
-    return counts;
-  }, [campaigns, categoryOptions]);
 
   const applyToCampaign = async (campaign: MarketplaceCampaignPost) => {
     if (applyingCampaignId) return;
@@ -700,7 +668,6 @@ export function InfluencerCampaignDiscoveryPage() {
                   <FilterButton
                     key={platform}
                     active={platformFilter === platform}
-                    count={platformCounts[platform]}
                     label={platform === "all" ? "전체" : platformLabels[platform]}
                     onClick={() => setPlatformFilter(platform)}
                     tone={platform === "all" ? undefined : getPlatformTone(platform)}
@@ -712,7 +679,6 @@ export function InfluencerCampaignDiscoveryPage() {
                   <FilterButton
                     key={category}
                     active={categoryFilter === category}
-                    count={categoryCounts[category]}
                     label={category === "all" ? "전체" : category}
                     onClick={() => setCategoryFilter(category)}
                   />
@@ -723,7 +689,6 @@ export function InfluencerCampaignDiscoveryPage() {
                   <FilterButton
                     key={type}
                     active={proposalTypeFilter === type}
-                    count={typeCounts[type]}
                     label={type === "all" ? "전체" : proposalTypeLabels[type]}
                     onClick={() => setProposalTypeFilter(type)}
                   />
@@ -737,7 +702,6 @@ export function InfluencerCampaignDiscoveryPage() {
                 <FilterButton
                   key={platform}
                   active={platformFilter === platform}
-                  count={platformCounts[platform]}
                   label={platform === "all" ? "전체" : platformLabels[platform]}
                   onClick={() => setPlatformFilter(platform)}
                   tone={platform === "all" ? undefined : getPlatformTone(platform)}
@@ -749,7 +713,6 @@ export function InfluencerCampaignDiscoveryPage() {
                 <FilterButton
                   key={category}
                   active={categoryFilter === category}
-                  count={categoryCounts[category]}
                   label={category === "all" ? "전체" : category}
                   onClick={() => setCategoryFilter(category)}
                 />
@@ -760,7 +723,6 @@ export function InfluencerCampaignDiscoveryPage() {
                 <FilterButton
                   key={type}
                   active={proposalTypeFilter === type}
-                  count={typeCounts[type]}
                   label={type === "all" ? "전체" : proposalTypeLabels[type]}
                   onClick={() => setProposalTypeFilter(type)}
                 />
@@ -1058,14 +1020,12 @@ function FilterGroup({
 
 function FilterButton({
   active,
-  count,
   label,
   onClick,
   tone,
 }: {
   key?: string;
   active: boolean;
-  count: number;
   label: string;
   onClick: () => void;
   tone?: string;
@@ -1083,9 +1043,6 @@ function FilterButton({
       }`}
     >
       <span>{label}</span>
-      <span className={active ? "opacity-75" : "text-neutral-300"}>
-        {count.toLocaleString()}
-      </span>
     </button>
   );
 }

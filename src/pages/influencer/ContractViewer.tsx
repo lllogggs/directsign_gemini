@@ -15,6 +15,7 @@ import { apiFetch, apiPath } from "../../domain/api";
 import { useVerificationSummary } from "../../hooks/useVerificationSummary";
 import { buildLoginRedirect } from "../../domain/navigation";
 import {
+  getVerificationRejectionGuidance,
   type InfluencerPlatform,
   verificationStatusLabel,
 } from "../../domain/verification";
@@ -943,6 +944,13 @@ export function ContractViewer() {
   );
   const influencerVerificationStatus =
     verificationSummary?.influencer.status ?? "not_submitted";
+  const influencerRejectionGuidance =
+    influencerVerificationStatus === "rejected"
+      ? getVerificationRejectionGuidance(
+          verificationSummary?.influencer.latest_request,
+          "influencer_account",
+        )
+      : undefined;
   const hasVerificationStatusError =
     Boolean(verificationStatusError) && verificationStatusCode !== 401;
   const isInfluencerAuthenticated =
@@ -1051,14 +1059,20 @@ export function ContractViewer() {
                   : "서명 가능";
   const verificationPanelTitle = isContractPlatformVerificationApproved
     ? "계정 인증 확인됨"
+    : influencerRejectionGuidance
+      ? "계정 인증 재제출 필요"
     : "서명 전 계정 인증 필요";
   const verificationPanelDescription = isContractPlatformVerificationApproved
     ? "계정 인증은 확인되었습니다. 서명 가능 여부는 조항 승인과 광고주 서명 요청 상태에 따라 열립니다."
+    : influencerRejectionGuidance
+      ? `계약 검토는 가능하지만 서명은 제한됩니다. 반려 사유: ${influencerRejectionGuidance.reviewerNote}`
     : "계약 검토는 가능하지만 서명은 계정 인증 승인 후 진행할 수 있습니다.";
   const verificationPanelActionLabel = isContractPlatformVerificationApproved
     ? "인증 정보 보기"
     : needsInfluencerAccountSession
       ? "가입/로그인 후 인증"
+      : influencerRejectionGuidance
+        ? "계정 인증 재제출"
       : "계정 인증 진행";
   const showContractAccountGuide =
     !isOperatorSupportView &&

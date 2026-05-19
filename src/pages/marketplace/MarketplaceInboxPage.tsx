@@ -292,37 +292,6 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
     () => data.threads.filter((thread) => thread.bucket === bucket),
     [bucket, data.threads],
   );
-  const platformCounts = useMemo(() => {
-    const counts = Object.fromEntries(
-      platformFilterOptions.map((platform) => [platform, 0]),
-    ) as Record<PlatformFilter, number>;
-    counts.all = bucketThreads.length;
-    for (const thread of bucketThreads) {
-      const platforms: InfluencerPlatform[] = thread.platforms.length
-        ? thread.platforms.map((item) => item.platform)
-        : ["other" as InfluencerPlatform];
-      for (const platform of new Set<InfluencerPlatform>(platforms)) {
-        counts[platform] += 1;
-      }
-    }
-    return counts;
-  }, [bucketThreads]);
-  const proposalTypeCounts = useMemo(() => {
-    const counts = Object.fromEntries(
-      proposalTypeFilterOptions.map((type) => [type, 0]),
-    ) as Record<ProposalTypeFilter, number>;
-    counts.all = bucketThreads.length;
-    for (const thread of bucketThreads) counts[thread.proposalType] += 1;
-    return counts;
-  }, [bucketThreads]);
-  const statusCounts = useMemo(() => {
-    const counts = Object.fromEntries(
-      proposalStatusFilterOptions.map((status) => [status, 0]),
-    ) as Record<ProposalStatusFilter, number>;
-    counts.all = bucketThreads.length;
-    for (const thread of bucketThreads) counts[thread.status] += 1;
-    return counts;
-  }, [bucketThreads]);
   const visibleThreads = useMemo(
     () =>
       bucketThreads.filter((thread) => {
@@ -497,7 +466,6 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
                   options={platformFilterOptions.map((platform) => ({
                     value: platform,
                     label: platform === "all" ? "전체" : platformLabels[platform],
-                    count: platformCounts[platform],
                   }))}
                 />
                 <SelectFilter
@@ -507,7 +475,6 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
                   options={proposalTypeFilterOptions.map((type) => ({
                     value: type,
                     label: type === "all" ? "전체" : proposalTypeLabels[type],
-                    count: proposalTypeCounts[type],
                   }))}
                 />
                 <SelectFilter
@@ -517,7 +484,6 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
                   options={proposalStatusFilterOptions.map((status) => ({
                     value: status,
                     label: status === "all" ? "전체" : proposalStatusLabels[status],
-                    count: statusCounts[status],
                   }))}
                 />
               </div>
@@ -619,7 +585,7 @@ function SelectFilter({
   label: string;
   value: string;
   onChange: (value: string) => void;
-  options: Array<{ value: string; label: string; count: number }>;
+  options: Array<{ value: string; label: string }>;
 }) {
   return (
     <label className="grid min-w-0 gap-1.5">
@@ -631,7 +597,7 @@ function SelectFilter({
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>
-            {option.label} {option.count.toLocaleString()}
+            {option.label}
           </option>
         ))}
       </select>

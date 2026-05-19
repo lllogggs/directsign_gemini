@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>연락미 인플루언서 소개서</title>
+    <style>
+      @page {
+        size: A4;
+        margin: 12mm;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: #f3f4f2;
+        color: #171717;
+        font-family:
+          "NanumSquareNeo", "Noto Sans KR", "Apple SD Gothic Neo",
+          "Malgun Gothic", Arial, sans-serif;
+      }
+
+      .sheet {
+        width: min(1120px, calc(100vw - 32px));
+        margin: 24px auto;
+        border: 1px solid #d9ded8;
+        background: #fbfaf7;
+        box-shadow: 0 28px 80px rgba(15, 23, 42, 0.1);
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 0.95fr) minmax(360px, 0.8fr);
+        gap: 34px;
+        min-height: 560px;
+        padding: 46px;
+        border-bottom: 1px solid #dde1db;
+      }
+
+      .eyebrow {
+        margin: 0 0 16px;
+        color: #059669;
+        font-size: 13px;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(42px, 6vw, 72px);
+        line-height: 0.98;
+        letter-spacing: -0.03em;
+      }
+
+      .lead {
+        margin: 22px 0 0;
+        max-width: 590px;
+        color: #525252;
+        font-size: 18px;
+        font-weight: 700;
+        line-height: 1.75;
+        word-break: keep-all;
+      }
+
+      .checklist {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 30px;
+      }
+
+      .checklist span {
+        min-height: 78px;
+        border: 1px solid #d9ded8;
+        background: #ffffff;
+        padding: 14px;
+        font-size: 14px;
+        font-weight: 900;
+        line-height: 1.45;
+      }
+
+      .screen {
+        justify-self: center;
+        width: min(390px, 100%);
+        align-self: center;
+        overflow: hidden;
+        border: 1px solid #d7dcd5;
+        background: #ffffff;
+        box-shadow: 0 22px 60px rgba(15, 23, 42, 0.14);
+      }
+
+      .screen img {
+        display: block;
+        width: 100%;
+        min-height: 500px;
+        object-fit: cover;
+        object-position: top center;
+      }
+
+      .caption {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        border-top: 1px solid #e5e7eb;
+        padding: 14px 16px;
+        color: #525252;
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .content {
+        display: grid;
+        grid-template-columns: 1fr 1fr 0.86fr;
+        gap: 18px;
+        padding: 28px 46px 42px;
+      }
+
+      .panel {
+        border: 1px solid #d9ded8;
+        background: #ffffff;
+        padding: 22px;
+      }
+
+      .panel h2 {
+        margin: 0;
+        font-size: 19px;
+        line-height: 1.35;
+      }
+
+      .panel ul {
+        display: grid;
+        gap: 12px;
+        margin: 18px 0 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .panel li {
+        color: #4b5563;
+        font-size: 14px;
+        font-weight: 700;
+        line-height: 1.65;
+      }
+
+      .metric {
+        display: grid;
+        grid-template-columns: 52px 1fr;
+        gap: 12px;
+        align-items: center;
+      }
+
+      .metric strong {
+        font-size: 28px;
+        letter-spacing: -0.03em;
+      }
+
+      .metric span {
+        color: #525252;
+        font-size: 13px;
+        font-weight: 800;
+        line-height: 1.5;
+      }
+
+      .contact {
+        background: #171717;
+        color: #ffffff;
+      }
+
+      .contact p {
+        margin: 14px 0 0;
+        color: rgba(255, 255, 255, 0.72);
+        font-size: 13px;
+        font-weight: 700;
+        line-height: 1.7;
+      }
+
+      .contact a {
+        color: #ffffff;
+        text-decoration: none;
+      }
+
+      @media (max-width: 860px) {
+        .hero,
+        .content {
+          grid-template-columns: 1fr;
+          padding: 28px;
+        }
+
+        .checklist {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media print {
+        body {
+          background: #ffffff;
+        }
+
+        .sheet {
+          width: 100%;
+          margin: 0;
+          box-shadow: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="sheet">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">연락미 | 인플루언서·크리에이터용</p>
+          <h1>받은 광고 계약을 먼저 확인하고 안전하게 서명하세요</h1>
+          <p class="lead">
+            광고주가 보낸 계약 링크에서 금액, 업로드 일정, 콘텐츠 사용 범위,
+            검수 기준을 확인하고 필요한 수정 요청을 남긴 뒤 전자서명까지 진행합니다.
+          </p>
+          <div class="checklist" aria-label="인플루언서 핵심 가치">
+            <span>숨은 2차 사용 조건을 계약 전 확인</span>
+            <span>불리한 조항은 바로 수정 요청</span>
+            <span>서명 완료본과 제출 상태를 보관</span>
+            <span>모바일에서도 읽기 쉬운 계약 흐름</span>
+          </div>
+        </div>
+        <figure class="screen">
+          <img
+            src="./assets/yeollock-influencer-screen.png"
+            alt="연락미 인플루언서 화면 캡처"
+          />
+          <figcaption class="caption">
+            <span>인플루언서 계약 검토 화면</span>
+            <span>yeollock.me</span>
+          </figcaption>
+        </figure>
+      </section>
+
+      <section class="content">
+        <article class="panel">
+          <h2>크리에이터가 얻는 것</h2>
+          <ul>
+            <li>금액, 일정, 업로드 채널, 콘텐츠 사용 범위를 한 화면에서 확인합니다.</li>
+            <li>조항별로 질문이나 수정 요청을 남겨 말로만 합의하는 위험을 줄입니다.</li>
+            <li>서명 완료본과 이후 제출 상태를 계약별로 다시 확인할 수 있습니다.</li>
+          </ul>
+        </article>
+
+        <article class="panel">
+          <h2>광고 제안을 받을 때 좋은 이유</h2>
+          <ul>
+            <li>브랜드가 요구하는 산출물과 검수 기준을 계약 전에 명확히 봅니다.</li>
+            <li>사용권, 업로드 기한, 수정 범위처럼 분쟁이 잦은 항목을 놓치지 않습니다.</li>
+            <li>전자서명 후에도 최종 조건과 증빙이 남아 정산·제출 확인이 쉽습니다.</li>
+          </ul>
+        </article>
+
+        <article class="panel contact">
+          <h2>제휴·입점 문의</h2>
+          <div class="metric">
+            <strong>3</strong>
+            <span>계약 확인, 수정 요청, 전자서명을 한 흐름으로 처리합니다.</span>
+          </div>
+          <p>
+            담당자 김재우<br />
+            이메일 <a href="mailto:yeollockme@gmail.com">yeollockme@gmail.com</a><br />
+            인스타그램 <a href="https://www.instagram.com/yeollockme">@yeollockme</a>
+          </p>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>

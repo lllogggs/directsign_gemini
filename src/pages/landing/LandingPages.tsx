@@ -102,6 +102,39 @@ const roleCards: RoleCard[] = [
   },
 ];
 
+const startProofPoints = [
+  {
+    label: "검토 링크",
+    description: "상대방이 조건을 바로 확인",
+  },
+  {
+    label: "수정 이력",
+    description: "조항별 요청과 응답 보관",
+  },
+  {
+    label: "서명 증빙",
+    description: "최종본과 감사 기록 정리",
+  },
+];
+
+const startSearchContext = [
+  {
+    title: "광고주가 남기는 기록",
+    body: "협찬, PPL, 공동구매 제안에서 캠페인명, 금액, 일정, 산출물, 광고 표시 문구, 검수 기준을 계약서 형태로 정리합니다.",
+    items: ["사업자 인증 후 공유 링크 발송", "조항별 수정 요청 확인", "최종본 서명 증빙 보관"],
+  },
+  {
+    title: "인플루언서가 확인하는 흐름",
+    body: "계약 링크에서 광고 조건을 먼저 읽고, 동의하기 어려운 조항은 이유를 남긴 뒤 최종 조건에만 전자서명합니다.",
+    items: ["모바일 계약 검토", "플랫폼 계정 소유 인증", "서명 완료 계약 보관"],
+  },
+  {
+    title: "연락미가 하지 않는 일",
+    body: "정산 대행, 에스크로, 법률 자문, 세무 대행, 광고 성과 보증이 아니라 광고 계약 과정의 기록과 증빙을 정리하는 업무 도구입니다.",
+    items: ["계약 성사 보증 아님", "대금 지급 대행 아님", "법률·세무 최종 판단 아님"],
+  },
+];
+
 function getStartRoleTone(role: IntroRole) {
   if (role === "advertiser") {
     return {
@@ -934,7 +967,6 @@ type InfluencerPreviewListSlide = {
   accentClass: string;
   platformFilters: Array<{
     label: string;
-    count: string;
     active?: boolean;
   }>;
   items: Array<{
@@ -1023,9 +1055,9 @@ const influencerPreviewSlides: InfluencerPreviewSlide[] = [
     count: "2",
     accentClass: "bg-blue-600",
     platformFilters: [
-      { label: "전체", count: "2", active: true },
-      { label: "인스타", count: "1" },
-      { label: "유튜브", count: "1" },
+      { label: "전체", active: true },
+      { label: "인스타" },
+      { label: "유튜브" },
     ],
     items: [
       {
@@ -1053,9 +1085,9 @@ const influencerPreviewSlides: InfluencerPreviewSlide[] = [
     count: "1",
     accentClass: "bg-blue-600",
     platformFilters: [
-      { label: "전체", count: "2" },
-      { label: "유튜브", count: "1", active: true },
-      { label: "블로그", count: "1" },
+      { label: "전체" },
+      { label: "유튜브", active: true },
+      { label: "블로그" },
     ],
     items: [
       {
@@ -1083,10 +1115,10 @@ const influencerPreviewSlides: InfluencerPreviewSlide[] = [
     count: "4",
     accentClass: "bg-neutral-950",
     platformFilters: [
-      { label: "전체", count: "4", active: true },
-      { label: "인스타", count: "2" },
-      { label: "유튜브", count: "1" },
-      { label: "블로그", count: "1" },
+      { label: "전체", active: true },
+      { label: "인스타" },
+      { label: "유튜브" },
+      { label: "블로그" },
     ],
     items: [
       {
@@ -1112,7 +1144,7 @@ const influencerPreviewSlides: InfluencerPreviewSlide[] = [
 export function StartPage() {
   return (
     <main className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950">
-      <div className="mx-auto grid min-h-screen w-full max-w-[800px] content-start grid-rows-[60px_auto_44px] px-5 sm:content-normal sm:grid-rows-[68px_minmax(0,1fr)_58px] sm:px-6 lg:grid-rows-[72px_minmax(0,1fr)_60px]">
+      <div className="mx-auto grid min-h-screen w-full max-w-[880px] content-start grid-rows-[60px_auto_44px] px-5 sm:content-normal sm:grid-rows-[68px_minmax(0,1fr)_58px] sm:px-6 lg:grid-rows-[72px_minmax(0,1fr)_60px]">
         <header className="flex items-center justify-between gap-3">
           <Link
             to="/"
@@ -1131,10 +1163,10 @@ export function StartPage() {
           </div>
         </header>
 
-        <section className="flex min-h-0 items-start justify-center pb-5 pt-[clamp(24px,4.5svh,40px)] sm:items-center sm:py-8 lg:py-0">
-          <div className="w-full max-w-[680px]">
+        <section className="flex min-h-0 items-start justify-center pb-5 pt-[clamp(18px,3.8svh,34px)] sm:items-center sm:py-8 lg:py-0">
+          <div className="w-full max-w-[760px]">
             <h1
-              className="landing-start-title font-neo-heavy mb-6 text-center text-[31px] leading-[1.1] tracking-normal text-neutral-950 sm:mb-8 sm:text-[46px] sm:leading-[1.05]"
+              className="landing-start-title font-neo-heavy mb-5 text-center text-[31px] leading-[1.1] tracking-normal text-neutral-950 sm:mb-7 sm:text-[46px] sm:leading-[1.05]"
               aria-label="광고 계약은 확실하게"
             >
               <span className="landing-start-copy-line landing-start-copy-line-1 block">
@@ -1144,10 +1176,30 @@ export function StartPage() {
                 확실하게
               </span>
             </h1>
-            <p className="mx-auto mb-12 max-w-[560px] break-keep text-center text-[14px] font-bold leading-7 text-neutral-600 sm:mb-16 sm:text-[15px]">
+            <p className="mx-auto max-w-[560px] break-keep text-center text-[14px] font-bold leading-7 text-neutral-600 sm:text-[15px]">
               광고 조건을 계약서 작성부터 검토 링크, 전자서명 증빙까지 한 흐름으로 정리합니다.
             </p>
-            <div className="grid gap-4 sm:grid-cols-2 sm:gap-6">
+            <div className="mx-auto mt-5 grid max-w-[660px] gap-2 sm:grid-cols-3">
+              {startProofPoints.map((point) => (
+                <div
+                  key={point.label}
+                  className="flex min-h-[58px] items-center gap-3 rounded-[12px] border border-neutral-200 bg-white/72 px-3.5 py-3 shadow-[0_1px_0_rgba(15,23,42,0.025)]"
+                >
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-neutral-950 text-white">
+                    <ShieldCheck className="h-4 w-4" strokeWidth={2} />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-[12px] font-extrabold text-neutral-950">
+                      {point.label}
+                    </span>
+                    <span className="mt-0.5 block truncate text-[11px] font-bold text-neutral-500">
+                      {point.description}
+                    </span>
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="mt-8 grid gap-4 sm:grid-cols-2 sm:gap-6 lg:mt-9">
               {roleCards.map((role) => {
                 const Icon = role.icon;
                 const tone = getStartRoleTone(role.role);
@@ -1200,6 +1252,51 @@ export function StartPage() {
           </Link>
         </footer>
       </div>
+
+      <section
+        aria-labelledby="contract-record-summary"
+        className="border-t border-neutral-200 bg-white px-5 py-10 sm:px-6 lg:px-8"
+      >
+        <div className="mx-auto max-w-[880px]">
+          <p className="text-[12px] font-extrabold text-neutral-400">
+            광고 계약 기록
+          </p>
+          <h2
+            id="contract-record-summary"
+            className="font-neo-heavy mt-2 text-[26px] leading-tight tracking-normal text-neutral-950 sm:text-[34px]"
+          >
+            광고 제안을 계약과 서명 증빙으로 정리합니다
+          </h2>
+          <p className="mt-3 max-w-[680px] break-keep text-[14px] font-semibold leading-7 text-neutral-600">
+            연락미는 광고주와 인플루언서가 협찬, PPL, 공동구매 조건을 같은 문서에서 확인하고,
+            수정 이력과 최종 동의 기록을 남기도록 만든 한국어 광고 계약 워크스페이스입니다.
+          </p>
+
+          <div className="mt-7 grid gap-3 lg:grid-cols-3">
+            {startSearchContext.map((item) => (
+              <article
+                key={item.title}
+                className="rounded-lg border border-neutral-200 bg-[#fbfbfc] p-4"
+              >
+                <h3 className="text-[14px] font-extrabold text-neutral-950">
+                  {item.title}
+                </h3>
+                <p className="mt-2 text-[13px] font-semibold leading-6 text-neutral-600">
+                  {item.body}
+                </p>
+                <ul className="mt-4 space-y-2 text-[12px] font-bold leading-5 text-neutral-500">
+                  {item.items.map((detail) => (
+                    <li key={detail} className="flex items-start gap-2">
+                      <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-700" />
+                      <span>{detail}</span>
+                    </li>
+                  ))}
+                </ul>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
     </main>
   );
 }
@@ -1321,21 +1418,76 @@ function RoleFeatureIntroScreen({
     return () => window.clearInterval(timer);
   }, [hasManualSelection, isPreviewPaused, slides.length]);
 
+  const roleSwitchItems = [
+    { role: "advertiser" as const, label: "광고주", href: "/intro/advertiser" },
+    { role: "influencer" as const, label: "인플루언서", href: "/intro/influencer" },
+  ];
+
   return (
     <main className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950 lg:h-screen lg:overflow-hidden">
       <header className="border-b border-neutral-200/80 bg-[#fbfaf7]/95">
         <div className="mx-auto flex h-[68px] max-w-[1120px] items-center justify-between gap-3 px-5 sm:px-6 lg:px-8">
           <BrandLockup />
-          <Link
-            to={config.secondaryHref}
-            className="inline-flex h-10 items-center justify-self-end whitespace-nowrap rounded-full border border-neutral-200 bg-white px-3 text-[12px] font-bold text-neutral-500 transition hover:border-neutral-300 hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
-          >
-            로그인
-          </Link>
+          <div className="flex min-w-0 items-center gap-2">
+            <nav
+              aria-label="역할 화면 전환"
+              className="hidden items-center rounded-full border border-neutral-200 bg-white/75 p-1 text-[12px] font-extrabold shadow-[0_1px_0_rgba(15,23,42,0.02)] sm:flex"
+            >
+              {roleSwitchItems.map((item) => {
+                const selected = item.role === role;
+
+                return (
+                  <Link
+                    key={item.role}
+                    to={item.href}
+                    className={`inline-flex h-8 items-center rounded-full px-3 transition ${
+                      selected
+                        ? "bg-neutral-950 text-white"
+                        : "text-neutral-500 hover:bg-neutral-100 hover:text-neutral-950"
+                    }`}
+                    aria-current={selected ? "page" : undefined}
+                  >
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </nav>
+            <Link
+              to={config.secondaryHref}
+              className="inline-flex h-10 items-center justify-self-end whitespace-nowrap rounded-full border border-neutral-200 bg-white px-3 text-[12px] font-bold text-neutral-500 transition hover:border-neutral-300 hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
+            >
+              로그인
+            </Link>
+          </div>
         </div>
       </header>
+      <div className="border-b border-neutral-200/80 bg-[#fbfaf7]/95 px-4 py-2 sm:hidden">
+        <nav
+          aria-label="모바일 역할 화면 전환"
+          className="mx-auto grid max-w-[420px] grid-cols-2 gap-1 rounded-[12px] border border-neutral-200 bg-white p-1 text-[12px] font-extrabold shadow-[0_8px_20px_rgba(15,23,42,0.04)]"
+        >
+          {roleSwitchItems.map((item) => {
+            const selected = item.role === role;
 
-      <section className="mx-auto grid min-h-[calc(100vh-68px)] max-w-[1120px] gap-4 px-4 py-4 sm:gap-5 sm:px-6 sm:py-5 lg:h-[calc(100vh-68px)] lg:grid-cols-[320px_minmax(0,1fr)] lg:items-center lg:gap-7 lg:overflow-hidden lg:px-8 lg:py-5">
+            return (
+              <Link
+                key={item.role}
+                to={item.href}
+                className={`flex h-9 items-center justify-center rounded-[9px] transition ${
+                  selected
+                    ? "bg-neutral-950 text-white"
+                    : "text-neutral-500 hover:bg-neutral-100 hover:text-neutral-950"
+                }`}
+                aria-current={selected ? "page" : undefined}
+              >
+                {item.label}
+              </Link>
+            );
+          })}
+        </nav>
+      </div>
+
+      <section className="mx-auto grid min-h-[calc(100vh-124px)] max-w-[1120px] gap-4 px-4 py-4 sm:min-h-[calc(100vh-68px)] sm:gap-5 sm:px-6 sm:py-5 lg:h-[calc(100vh-68px)] lg:grid-cols-[320px_minmax(0,1fr)] lg:items-center lg:gap-7 lg:overflow-hidden lg:px-8 lg:py-5">
         <div className="min-w-0 lg:max-w-[318px] lg:self-center">
           <p className="text-[13px] font-extrabold text-neutral-500">
             {roleLabel}
@@ -2552,9 +2704,6 @@ function InfluencerPreviewSlideView({
               }`}
             >
               <span>{filter.label}</span>
-              <span className={filter.active ? "text-white/65" : "text-neutral-400"}>
-                {filter.count}
-              </span>
             </span>
           ))}
         </div>

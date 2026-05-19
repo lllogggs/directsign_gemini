@@ -19,11 +19,12 @@ Owner-only checklist: see [`owner-action-memo.md`](owner-action-memo.md).
 
 - Keep `/privacy`, `/terms`, and `/legal/e-sign-consent` free of placeholder
   launch text. For the initial free individual service, keep
-  `VITE_LEGAL_OPERATING_MODE="free_individual"`; owner representative name,
-  business number, mail-order registration, address, and phone are not required
-  for development, QA, or early validation. Before paid or registered-business
-  use, switch to `VITE_LEGAL_OPERATING_MODE="registered_business"` and add the
-  business number, mail-order registration if applicable, address, and phone.
+  `VITE_LEGAL_OPERATING_MODE="free_individual"` and show the public operator
+  contact as `김재우` / `yeollockme@gmail.com`; business number, mail-order
+  registration, address, and phone are not required for development, QA, or
+  early validation. Before paid or registered-business use, switch to
+  `VITE_LEGAL_OPERATING_MODE="registered_business"` and add the business
+  number, mail-order registration if applicable, address, and phone.
 - Confirm the privacy policy against the current PIPC privacy policy guide.
   The PIPC guide list shows the current 2026.4 privacy policy guide as of this
   review date: https://m.pipc.go.kr/np/cop/bbs/selectBoardList.do?bbsId=BS217&mCode=D010030000

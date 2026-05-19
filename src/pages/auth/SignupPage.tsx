@@ -7,7 +7,8 @@ import { PRODUCT_NAME } from "../../domain/brand";
 import { getNextPath } from "../../domain/navigation";
 import { translateApiErrorMessage } from "../../domain/userMessages";
 
-const LEGAL_DOCUMENT_VERSION = "2026-05-06";
+const TERMS_DOCUMENT_VERSION = "2026-05-19";
+const PRIVACY_POLICY_DOCUMENT_VERSION = "2026-05-06";
 
 type SignupRole = "advertiser" | "influencer";
 
@@ -216,8 +217,8 @@ export function SignupPage({ role }: { role: SignupRole }) {
           password,
           terms_accepted: consents.terms,
           privacy_accepted: consents.privacy,
-          terms_version: LEGAL_DOCUMENT_VERSION,
-          privacy_policy_version: LEGAL_DOCUMENT_VERSION,
+          terms_version: TERMS_DOCUMENT_VERSION,
+          privacy_policy_version: PRIVACY_POLICY_DOCUMENT_VERSION,
           ...(role === "advertiser"
             ? { company_name: companyName.trim() }
             : {}),
@@ -539,17 +540,22 @@ function SignupConsentPanel({
             가입과 계약 진행에 필요한 필수 항목입니다.
           </p>
         </div>
-        <span className="shrink-0 rounded-full border border-[#d8ded4] bg-white px-2 py-0.5 text-[11px] font-semibold text-[#7d887f]">
-          v{LEGAL_DOCUMENT_VERSION}
+        <span className="w-fit max-w-full rounded-full border border-[#d8ded4] bg-white px-2 py-0.5 text-[11px] font-semibold leading-5 text-[#7d887f]">
+          약관 v{TERMS_DOCUMENT_VERSION} / 개인정보 v{PRIVACY_POLICY_DOCUMENT_VERSION}
         </span>
       </div>
+
+      <p className="mt-3 rounded-[10px] border border-[#d8ded4] bg-white px-3 py-2 text-[12px] font-semibold leading-5 text-[#59605b]">
+        현재 가입과 기본 서비스 이용은 무료입니다. 다만 향후 일부 또는 전체
+        기능이 유료로 전환될 수 있으며, 전환 전 대상·요금·시행일을 고지합니다.
+      </p>
 
       <div className="mt-4 space-y-3">
         <ConsentCheckbox
           checked={consents.terms}
           disabled={disabled}
           title="이용약관 필수 동의"
-          description="서비스 범위, 계약 책임, 정산 비취급, 전자서명 증빙 기준을 확인했습니다."
+          description="무료 제공 단계와 향후 유료 전환 가능성, 서비스 범위, 계약 책임, 정산 비취급, 전자서명 증빙 기준을 확인했습니다."
           linkTo="/terms"
           linkLabel="약관 보기"
           onToggle={() => onToggle("terms")}
