@@ -9,6 +9,7 @@ export interface AuthLoginField {
   value: string;
   type: "email" | "password" | "text";
   autoComplete?: string;
+  helper?: React.ReactNode;
   placeholder?: string;
   required?: boolean;
   disabled?: boolean;
@@ -142,6 +143,9 @@ export function AuthLoginScreen({
                         aria-invalid={Boolean(error) || undefined}
                         aria-describedby={errorId}
                       />
+                      {field.helper ? (
+                        <span className="mt-2 block">{field.helper}</span>
+                      ) : null}
                     </label>
                   ))}
 

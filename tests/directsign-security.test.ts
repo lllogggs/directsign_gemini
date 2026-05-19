@@ -145,16 +145,19 @@ describe("yeollock.me security regressions", () => {
   });
 
   it("documents the real Supabase migration chain instead of the no-op schema", () => {
-    const readme = read("README.md");
+    const launchReadiness = read("docs/launch-readiness.md");
 
-    assert.match(readme, /Apply every SQL file[\s\S]+timestamp order/);
-    assert.match(readme, /20260430193123_create_directsign_v2_schema\.sql/);
-    assert.match(readme, /20260501020000_create_directsign_v2_schema\.sql[\s\S]+no-op/);
-    assert.match(readme, /20260505070645_harden_contract_support_access\.sql/);
-    assert.match(readme, /20260506075008_restrict_authenticated_direct_writes\.sql/);
-    assert.match(readme, /20260507224346_allow_revoked_support_access_event\.sql/);
-    assert.match(readme, /20260507230025_lock_reserved_settlement_tables\.sql/);
-    assert.match(readme, /20260518044009_add_marketplace_follower_sync\.sql/);
+    assert.match(launchReadiness, /Apply every SQL file[\s\S]+timestamp order/);
+    assert.match(launchReadiness, /20260430193123_create_directsign_v2_schema\.sql/);
+    assert.match(
+      launchReadiness,
+      /20260501020000_create_directsign_v2_schema\.sql[\s\S]+no-op/,
+    );
+    assert.match(launchReadiness, /20260505070645_harden_contract_support_access\.sql/);
+    assert.match(launchReadiness, /20260506075008_restrict_authenticated_direct_writes\.sql/);
+    assert.match(launchReadiness, /20260507224346_allow_revoked_support_access_event\.sql/);
+    assert.match(launchReadiness, /20260507230025_lock_reserved_settlement_tables\.sql/);
+    assert.match(launchReadiness, /20260518044009_add_marketplace_follower_sync\.sql/);
   });
 
   it("blocks authenticated Data API writes for security-sensitive tables", () => {
@@ -639,7 +642,8 @@ describe("yeollock.me security regressions", () => {
     const legalEntity = read("src/domain/legalEntity.ts");
     const legalPage = read("src/pages/legal/LegalDocumentPage.tsx");
     const envExample = read(".env.example");
-    const readme = read("README.md");
+    const launchReadiness = read("docs/launch-readiness.md");
+    const ownerMemo = read("docs/owner-action-memo.md");
 
     assert.match(envExample, /VITE_LEGAL_OPERATING_MODE="free_individual"/);
     assert.match(legalEntity, /"free_individual"/);
@@ -647,13 +651,16 @@ describe("yeollock.me security regressions", () => {
     assert.match(legalEntity, /해당 없음\(무료 개인 운영\)/);
     assert.match(legalEntity, /required: isRegisteredBusiness/);
     assert.match(
-      readme,
-      /business registration, mail-order registration, address, and phone fields are not required/,
+      launchReadiness,
+      /business number, mail-order\s+registration, address, and phone are not required/,
     );
+    assert.match(ownerMemo, /free_individual[\s\S]+사업자등록번호, 주소, 전화번호/);
     assert.doesNotMatch(legalPage, /출시 전 입력 필요/);
     assert.doesNotMatch(legalPage, /미설정/);
-    assert.doesNotMatch(readme, /출시 전 입력 필요/);
-    assert.doesNotMatch(readme, /REAL_OPERATOR_NAME/);
+    assert.doesNotMatch(launchReadiness, /출시 전 입력 필요/);
+    assert.doesNotMatch(launchReadiness, /REAL_OPERATOR_NAME/);
+    assert.doesNotMatch(ownerMemo, /출시 전 입력 필요/);
+    assert.doesNotMatch(ownerMemo, /REAL_OPERATOR_NAME/);
   });
 
   it("discloses that free signup and usage can later become paid", () => {

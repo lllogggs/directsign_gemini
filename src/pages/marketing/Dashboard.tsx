@@ -10,7 +10,9 @@ import {
   Clock3,
   CopyCheck,
   FileText,
+  KeyRound,
   LogOut,
+  Mail,
   Megaphone,
   MessageSquareText,
   MoreHorizontal,
@@ -41,6 +43,7 @@ import {
 import { useVerificationSummary } from "../../hooks/useVerificationSummary";
 import { useMarketplaceMessageSummary } from "../../hooks/useMarketplaceMessageSummary";
 import { PRODUCT_NAME } from "../../domain/brand";
+import { LEGAL_CONTACT_EMAIL } from "../../domain/legalEntity";
 import { apiFetch } from "../../domain/api";
 import {
   ContractFirstExperienceDialog,
@@ -65,6 +68,7 @@ type ContractSort = {
 type AdvertiserAccountSummary = {
   name: string;
   meta: string;
+  email?: string;
   businessNumber?: string;
 };
 
@@ -256,6 +260,7 @@ export function Dashboard() {
     return {
       name,
       meta: meta || "인증 전 계정 정보 확인 예정",
+      email: email || undefined,
       businessNumber:
         latest?.business_registration_number || account?.business_registration_number,
     };
@@ -349,6 +354,9 @@ export function Dashboard() {
               <ShieldCheck className="h-4 w-4" strokeWidth={2} />
             </span>
             <span className="font-neo-heavy hidden text-[18px] leading-none sm:inline">{PRODUCT_NAME}</span>
+            <span className="max-w-[92px] truncate text-[12px] font-extrabold leading-none text-neutral-700 sm:hidden">
+              광고주 · 계약
+            </span>
           </button>
 
           <div className="ml-2 flex min-w-0 items-center justify-end gap-1.5 sm:ml-3 sm:gap-2">
@@ -439,6 +447,11 @@ export function Dashboard() {
             embedded
           />
 
+          <AdvertiserAccountSettingsStrip
+            account={advertiserAccount}
+            onChangePassword={() => navigate("/reset-password?role=advertiser")}
+          />
+
           <div className="min-w-0 p-2.5 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
             {contracts.length === 0 ? (
               <ContractFirstNotice onCreate={() => navigate("/advertiser/builder")} />
@@ -467,6 +480,63 @@ export function Dashboard() {
         </section>
       </main>
     </div>
+  );
+}
+
+function AdvertiserAccountSettingsStrip({
+  account,
+  onChangePassword,
+}: {
+  account: AdvertiserAccountSummary;
+  onChangePassword: () => void;
+}) {
+  const emailChangeHref = buildSupportMailtoHref({
+    subject: "광고주 계정 이메일 변경 요청",
+    body: [
+      "광고주 계정 이메일 변경을 요청합니다.",
+      "",
+      `현재 표시 이메일: ${account.email ?? "확인 필요"}`,
+      "변경할 이메일:",
+      "회사/브랜드명:",
+      "요청 사유:",
+    ].join("\n"),
+  });
+
+  return (
+    <section className="border-b border-blue-100 bg-blue-50/70 px-4 py-2.5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-[13px] font-extrabold text-blue-950">계정 설정</p>
+            {account.email ? (
+              <span className="max-w-full truncate rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-blue-800 ring-1 ring-blue-100">
+                {account.email}
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-1 text-[12px] font-semibold leading-5 text-blue-800/85">
+            이메일 변경은 계약 권한 보호를 위해 운영자 확인 후 처리합니다. 비밀번호는 가입 이메일로 재설정할 수 있습니다.
+          </p>
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <a
+            href={emailChangeHref}
+            className="inline-flex h-9 items-center gap-1.5 rounded-[8px] border border-blue-200 bg-white px-3 text-[12px] font-extrabold text-blue-700 transition hover:border-blue-300 hover:bg-blue-50"
+          >
+            <Mail className="h-3.5 w-3.5" />
+            이메일 변경
+          </a>
+          <button
+            type="button"
+            onClick={onChangePassword}
+            className="inline-flex h-9 items-center gap-1.5 rounded-[8px] bg-blue-600 px-3 text-[12px] font-extrabold text-white shadow-[0_8px_18px_rgba(37,99,235,0.14)] transition hover:bg-blue-700"
+          >
+            <KeyRound className="h-3.5 w-3.5" />
+            비밀번호 변경
+          </button>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -566,6 +636,18 @@ function VerificationBanner({
       </div>
     </section>
   );
+}
+
+function buildSupportMailtoHref({
+  subject,
+  body,
+}: {
+  subject: string;
+  body: string;
+}) {
+  return `mailto:${LEGAL_CONTACT_EMAIL}?subject=${encodeURIComponent(
+    subject,
+  )}&body=${encodeURIComponent(body)}`;
 }
 
 function ContractFirstNotice({ onCreate }: { onCreate: () => void }) {

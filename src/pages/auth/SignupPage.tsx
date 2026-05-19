@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { ArrowRight, Check, MailCheck } from "lucide-react";
+import { ArrowRight, Check, Info, MailCheck } from "lucide-react";
 import { AuthLoginScreen } from "../../components/AuthLoginScreen";
 import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
@@ -9,6 +9,8 @@ import { translateApiErrorMessage } from "../../domain/userMessages";
 
 const TERMS_DOCUMENT_VERSION = "2026-05-19";
 const PRIVACY_POLICY_DOCUMENT_VERSION = "2026-05-06";
+const ADVERTISER_TEAM_EMAIL_NOTICE =
+  "팀원들과 함께 계약서를 관리하시려면 부서 공용 이메일(예: marketing@brand.com)로 가입하는 것을 강력히 권장합니다. 담당자 변경이나 퇴사 시 계정 인수인계 및 관리가 훨씬 안전하고 용이합니다.";
 
 type SignupRole = "advertiser" | "influencer";
 
@@ -180,6 +182,13 @@ export function SignupPage({ role }: { role: SignupRole }) {
   const [confirmationMessage, setConfirmationMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const requiredConsentsAccepted = consents.terms && consents.privacy;
+  const influencerCategorySelected = activityCategories.length > 0;
+  const influencerPlatformSelected = activityPlatforms.length > 0;
+  const influencerRequiredProfileComplete =
+    role !== "influencer" ||
+    (influencerCategorySelected && influencerPlatformSelected);
+  const canSubmitSignup =
+    requiredConsentsAccepted && influencerRequiredProfileComplete;
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -369,6 +378,7 @@ export function SignupPage({ role }: { role: SignupRole }) {
           value: email,
           type: "email",
           autoComplete: "email",
+          helper: role === "advertiser" ? <AdvertiserTeamEmailNotice /> : undefined,
           required: true,
           onChange: setEmail,
         },
@@ -385,7 +395,7 @@ export function SignupPage({ role }: { role: SignupRole }) {
       ]}
       submitLabel={signupSubmitLabel}
       submittingLabel="생성 중"
-      submitDisabled={!requiredConsentsAccepted}
+      submitDisabled={!canSubmitSignup}
       isSubmitting={isSubmitting}
       error={error}
       footer={
@@ -418,6 +428,10 @@ export function SignupPage({ role }: { role: SignupRole }) {
               setActivityPlatforms((current) => toggleValue(current, value))
             }
           />
+          <InfluencerSignupReadiness
+            categorySelected={influencerCategorySelected}
+            platformSelected={influencerPlatformSelected}
+          />
         </>
       ) : null}
 
@@ -434,6 +448,69 @@ export function SignupPage({ role }: { role: SignupRole }) {
         }
       />
     </AuthLoginScreen>
+  );
+}
+
+function AdvertiserTeamEmailNotice() {
+  return (
+    <span className="flex gap-2 rounded-[12px] border border-blue-200 bg-blue-50 px-3.5 py-3 text-left text-[12px] font-semibold leading-5 text-blue-900">
+      <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
+      <span>{ADVERTISER_TEAM_EMAIL_NOTICE}</span>
+    </span>
+  );
+}
+
+function InfluencerSignupReadiness({
+  categorySelected,
+  platformSelected,
+}: {
+  categorySelected: boolean;
+  platformSelected: boolean;
+}) {
+  const items = [
+    { label: "활동 분야 1개 이상", complete: categorySelected },
+    { label: "활동 플랫폼 1개 이상", complete: platformSelected },
+  ];
+  const complete = items.every((item) => item.complete);
+
+  return (
+    <section
+      aria-live="polite"
+      className={`rounded-[12px] border px-4 py-3 ${
+        complete
+          ? "border-emerald-200 bg-emerald-50/75"
+          : "border-amber-200 bg-amber-50/80"
+      }`}
+    >
+      <p
+        className={`text-[13px] font-semibold ${
+          complete ? "text-emerald-950" : "text-amber-950"
+        }`}
+      >
+        {complete
+          ? "가입 필수 선택이 완료되었습니다"
+          : "가입하려면 아래 필수 선택을 먼저 완료해 주세요"}
+      </p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {items.map((item) => (
+          <span
+            key={item.label}
+            className={`inline-flex min-h-7 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-bold ${
+              item.complete
+                ? "border-emerald-200 bg-white text-emerald-800"
+                : "border-amber-200 bg-white text-amber-800"
+            }`}
+          >
+            {item.complete ? (
+              <Check className="h-3.5 w-3.5" />
+            ) : (
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+            )}
+            {item.label}
+          </span>
+        ))}
+      </div>
+    </section>
   );
 }
 

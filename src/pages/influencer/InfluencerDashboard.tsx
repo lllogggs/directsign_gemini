@@ -16,7 +16,9 @@ import {
   FileText,
   Globe2,
   Instagram,
+  KeyRound,
   LogOut,
+  Mail,
   Megaphone,
   MessageSquareText,
   Music2,
@@ -32,6 +34,7 @@ import {
 } from "lucide-react";
 import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
+import { LEGAL_CONTACT_EMAIL } from "../../domain/legalEntity";
 import type {
   InfluencerDashboardContract,
   InfluencerDashboardContractStage,
@@ -471,6 +474,9 @@ export function InfluencerDashboard() {
               <ShieldCheck className="h-4 w-4" strokeWidth={2} />
             </span>
             <span className="font-neo-heavy hidden text-[18px] leading-none sm:inline">{PRODUCT_NAME}</span>
+            <span className="max-w-[104px] truncate text-[12px] font-extrabold leading-none text-neutral-700 sm:hidden">
+              인플루언서 · 받은 계약
+            </span>
           </button>
 
           <div className="ml-2 flex min-w-0 items-center justify-end gap-1.5 sm:ml-3 sm:gap-2">
@@ -930,6 +936,17 @@ function PublicProfileSettingsDialog({
     !automaticHandleError &&
     requiredFilled &&
     (!manualHandleAllowed || !manualHandleError);
+  const emailChangeHref = buildSupportMailtoHref({
+    subject: "인플루언서 계정 이메일 변경 요청",
+    body: [
+      "인플루언서 계정 이메일 변경을 요청합니다.",
+      "",
+      `현재 표시 이메일: ${dashboard.user.email || "확인 필요"}`,
+      "변경할 이메일:",
+      "활동명:",
+      "요청 사유:",
+    ].join("\n"),
+  });
 
   const toggleProposalType = (type: CampaignProposalType) => {
     setForm((current) => {
@@ -1047,6 +1064,40 @@ function PublicProfileSettingsDialog({
         </div>
 
         <form onSubmit={handleSubmit} className="grid gap-4">
+          <section className="rounded-[10px] border border-blue-100 bg-blue-50/70 p-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-[13px] font-extrabold text-blue-950">
+                    계정 설정
+                  </p>
+                  <span className="max-w-full truncate rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-blue-800 ring-1 ring-blue-100">
+                    {dashboard.user.email}
+                  </span>
+                </div>
+                <p className="mt-1 text-[12px] font-semibold leading-5 text-blue-800/85">
+                  이메일 변경은 계정 소유 확인 후 처리합니다. 비밀번호는 가입 이메일로 재설정할 수 있습니다.
+                </p>
+              </div>
+              <div className="flex shrink-0 flex-wrap gap-2">
+                <a
+                  href={emailChangeHref}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-[8px] border border-blue-200 bg-white px-3 text-[12px] font-extrabold text-blue-700 transition hover:border-blue-300 hover:bg-blue-50"
+                >
+                  <Mail className="h-3.5 w-3.5" />
+                  이메일 변경
+                </a>
+                <a
+                  href="/reset-password?role=influencer"
+                  className="inline-flex h-9 items-center gap-1.5 rounded-[8px] bg-blue-600 px-3 text-[12px] font-extrabold text-white shadow-[0_8px_18px_rgba(37,99,235,0.14)] transition hover:bg-blue-700"
+                >
+                  <KeyRound className="h-3.5 w-3.5" />
+                  비밀번호 변경
+                </a>
+              </div>
+            </div>
+          </section>
+
           <ProfileSettingsField
             label="공개 주소"
             hint={
@@ -1314,6 +1365,18 @@ function ProfileSettingsField({
       ) : null}
     </div>
   );
+}
+
+function buildSupportMailtoHref({
+  subject,
+  body,
+}: {
+  subject: string;
+  body: string;
+}) {
+  return `mailto:${LEGAL_CONTACT_EMAIL}?subject=${encodeURIComponent(
+    subject,
+  )}&body=${encodeURIComponent(body)}`;
 }
 
 function EmptyContracts({ hasQuery }: { hasQuery: boolean }) {

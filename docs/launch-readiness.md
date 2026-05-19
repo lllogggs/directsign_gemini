@@ -34,7 +34,17 @@ Owner-only checklist: see [`owner-action-memo.md`](owner-action-memo.md).
   제34조 requires prompt notification to data subjects after a leak is known:
   https://law.go.kr/lsLinkCommonInfo.do?chrClsCd=010202&lsJoLnkSeq=1020398739
 - Run Supabase migrations in order and verify RLS policies are enabled for every
-  exposed public table before connecting production data.
+  exposed public table before connecting production data. Apply every SQL file
+  in `supabase/migrations` in timestamp order. The required base schema is
+  `20260430193123_create_directsign_v2_schema.sql`; the later
+  `20260501020000_create_directsign_v2_schema.sql` file is a consolidated no-op
+  kept only for migration history compatibility. Confirm the hardening and
+  marketplace migrations are applied, especially
+  `20260505070645_harden_contract_support_access.sql`,
+  `20260506075008_restrict_authenticated_direct_writes.sql`,
+  `20260507224346_allow_revoked_support_access_event.sql`,
+  `20260507230025_lock_reserved_settlement_tables.sql`, and
+  `20260518044009_add_marketplace_follower_sync.sql`.
 - Configure production Supabase Auth: email confirmation on, deployed Site URL,
   advertiser/influencer redirect URLs, and separate production keys.
 - Create the private storage bucket for signed PDFs and verification evidence.

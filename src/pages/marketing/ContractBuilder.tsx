@@ -1588,7 +1588,11 @@ export function ContractBuilder() {
             </div>
 
             <div className="flex min-h-0 flex-1 overflow-hidden p-3">
-              <BuilderReviewPanel draft={draftWithAdvertiserDefaults} clauses={clauses} />
+              <BuilderReviewPanel
+                draft={draftWithAdvertiserDefaults}
+                clauses={clauses}
+                density="compact"
+              />
             </div>
           </div>
         </DialogContent>
@@ -1600,7 +1604,9 @@ export function ContractBuilder() {
 const BuilderReviewPanel: React.FC<{
   draft: ContractDraft;
   clauses: Clause[];
-}> = ({ draft, clauses }) => {
+  density?: "regular" | "compact";
+}> = ({ draft, clauses, density = "regular" }) => {
+  const isCompact = density === "compact";
   const hasDeliverables = getDeliverableRows(draft).some((row) => row.channel);
   const deliverables = getDeliverableRows(draft).filter(
     (row) => row.channel || row.postCount || row.duration,
@@ -1608,19 +1614,39 @@ const BuilderReviewPanel: React.FC<{
   const previewDate = new Date().toISOString().split("T")[0];
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[18px] border border-neutral-200 bg-[#e8e5de] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.45),0_18px_42px_rgba(15,23,42,0.05)]">
+    <div
+      data-preview-density={density}
+      className={`flex min-h-0 flex-1 flex-col overflow-hidden border border-neutral-200 bg-[#e8e5de] shadow-[inset_0_1px_0_rgba(255,255,255,0.45),0_18px_42px_rgba(15,23,42,0.05)] ${
+        isCompact ? "rounded-[12px] p-2" : "rounded-[18px] p-3"
+      }`}
+    >
       <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
-        <div className="sticky top-0 z-10 mx-auto w-full max-w-[760px] rounded-[12px] border border-neutral-200 bg-white/95 p-3 text-neutral-950 shadow-[0_10px_28px_rgba(15,23,42,0.08)] backdrop-blur">
+        <div
+          data-preview-summary
+          className={`mx-auto w-full max-w-[760px] border border-neutral-200 bg-white/95 text-neutral-950 ${
+            isCompact
+              ? "rounded-[10px] px-3 py-2 shadow-[0_1px_0_rgba(15,23,42,0.04)]"
+              : "sticky top-0 z-10 rounded-[12px] p-3 shadow-[0_10px_28px_rgba(15,23,42,0.08)] backdrop-blur"
+          }`}
+        >
           <div className="flex items-center justify-between gap-4">
             <div className="flex min-w-0 items-center gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] border border-neutral-200 bg-neutral-50 text-neutral-700">
-                <FileText className="h-4 w-4" strokeWidth={1.8} />
+              <div
+                className={`flex shrink-0 items-center justify-center border border-neutral-200 bg-neutral-50 text-neutral-700 ${
+                  isCompact ? "h-8 w-8 rounded-[9px]" : "h-9 w-9 rounded-[10px]"
+                }`}
+              >
+                <FileText className={isCompact ? "h-3.5 w-3.5" : "h-4 w-4"} strokeWidth={1.8} />
               </div>
               <div className="min-w-0">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
                   문서 미리보기
                 </p>
-                <h2 className="mt-0.5 truncate text-[18px] font-semibold">
+                <h2
+                  className={`mt-0.5 truncate font-semibold ${
+                    isCompact ? "text-[15px]" : "text-[18px]"
+                  }`}
+                >
                   {draft.title || `${draft.type} 계약서`}
                 </h2>
               </div>
@@ -1629,21 +1655,30 @@ const BuilderReviewPanel: React.FC<{
               <span className="rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1 text-[12px] font-semibold text-neutral-600">
                 A4
               </span>
-              <span className="rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1 text-[12px] font-semibold text-neutral-600">
-                {previewDate}
-              </span>
+              {!isCompact && (
+                <span className="rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1 text-[12px] font-semibold text-neutral-600">
+                  {previewDate}
+                </span>
+              )}
             </div>
           </div>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
-            <ChecklistLine checked={!isBlank(draft.title)} label="계약명" />
-            <ChecklistLine checked={!isBlank(draft.influencerName)} label="상대방" />
-            <ChecklistLine checked={hasDeliverables} label="플랫폼" />
-            <ChecklistLine checked={!isBlank(draft.payment)} label="지급" />
-            <ChecklistLine checked={clauses.length > 0} label="조항" />
-          </div>
+          {!isCompact && (
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+              <ChecklistLine checked={!isBlank(draft.title)} label="계약명" />
+              <ChecklistLine checked={!isBlank(draft.influencerName)} label="상대방" />
+              <ChecklistLine checked={hasDeliverables} label="플랫폼" />
+              <ChecklistLine checked={!isBlank(draft.payment)} label="지급" />
+              <ChecklistLine checked={clauses.length > 0} label="조항" />
+            </div>
+          )}
         </div>
 
-        <article className="mx-auto mt-3 min-h-[1080px] w-full max-w-[680px] rounded-[3px] border border-neutral-300 bg-white px-5 py-8 shadow-[0_1px_0_rgba(15,23,42,0.05),0_20px_46px_rgba(15,23,42,0.18)] sm:px-10 sm:py-10">
+        <article
+          data-preview-document
+          className={`mx-auto min-h-[1080px] w-full max-w-[680px] rounded-[3px] border border-neutral-300 bg-white shadow-[0_1px_0_rgba(15,23,42,0.05),0_20px_46px_rgba(15,23,42,0.18)] sm:px-10 sm:py-10 ${
+            isCompact ? "mt-2 px-4 py-6" : "mt-3 px-5 py-8"
+          }`}
+        >
           <header className="border-b border-neutral-200 pb-7 text-center">
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
               전자계약서 초안

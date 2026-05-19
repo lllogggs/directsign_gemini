@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
+import { KeyRound } from "lucide-react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { AuthLoginScreen } from "../../components/AuthLoginScreen";
 import { apiFetch } from "../../domain/api";
@@ -198,27 +199,43 @@ export function AdvertiserAuthGate({
         isSubmitting={isSubmitting}
         error={error}
         footer={
-          <div className="flex flex-wrap items-center justify-center gap-3">
-            <Link
-              to="/signup/advertiser"
-              className="inline-flex min-h-10 items-center text-[13px] font-semibold text-neutral-950 transition hover:text-neutral-600"
-            >
-              계정 만들기
-            </Link>
-            <span className="h-3 w-px bg-neutral-200" />
-            <Link
-              to="/reset-password?role=advertiser"
-              className="inline-flex min-h-10 items-center text-[13px] font-semibold text-neutral-500 transition hover:text-neutral-950"
-            >
-              비밀번호 재설정
-            </Link>
-            <span className="h-3 w-px bg-neutral-200" />
-            <Link
-              to="/login"
-              className="inline-flex min-h-10 items-center text-[13px] font-semibold text-neutral-500 transition hover:text-neutral-950"
-            >
-              돌아가기
-            </Link>
+          <div className="space-y-4 text-left">
+            <div className="rounded-[14px] border border-blue-200 bg-blue-50 px-4 py-3">
+              <div className="flex items-start gap-3">
+                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-white text-blue-600 ring-1 ring-blue-100">
+                  <KeyRound className="h-4 w-4" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-[13px] font-extrabold leading-5 text-blue-950">
+                    담당자가 변경되었나요?
+                  </p>
+                  <p className="mt-1 text-[12px] font-semibold leading-5 text-blue-800/85">
+                    부서 공용 이메일을 통해 비밀번호를 재설정하여 계정을 안전하게 인수인계하세요.
+                  </p>
+                  <Link
+                    to="/reset-password?role=advertiser"
+                    className="mt-3 inline-flex min-h-10 items-center justify-center rounded-[10px] bg-blue-600 px-4 text-[13px] font-extrabold text-white shadow-[0_10px_24px_rgba(37,99,235,0.16)] transition hover:bg-blue-700"
+                  >
+                    비밀번호 찾기 / 재설정
+                  </Link>
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <Link
+                to="/signup/advertiser"
+                className="inline-flex min-h-10 items-center text-[13px] font-semibold text-neutral-950 transition hover:text-neutral-600"
+              >
+                계정 만들기
+              </Link>
+              <span className="h-3 w-px bg-neutral-200" />
+              <Link
+                to="/login"
+                className="inline-flex min-h-10 items-center text-[13px] font-semibold text-neutral-500 transition hover:text-neutral-950"
+              >
+                돌아가기
+              </Link>
+            </div>
           </div>
         }
         onSubmit={handleSubmit}

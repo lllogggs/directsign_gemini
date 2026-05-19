@@ -1179,6 +1179,22 @@ export function StartPage() {
             <p className="mx-auto max-w-[560px] break-keep text-center text-[14px] font-bold leading-7 text-neutral-600 sm:text-[15px]">
               광고 조건을 계약서 작성부터 검토 링크, 전자서명 증빙까지 한 흐름으로 정리합니다.
             </p>
+            <div className="mx-auto mt-5 grid max-w-[360px] grid-cols-2 gap-2 sm:hidden">
+              <Link
+                to="/intro/advertiser"
+                className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-[12px] bg-neutral-950 px-3 text-[13px] font-extrabold text-white shadow-[0_14px_30px_rgba(15,23,42,0.14)]"
+              >
+                광고주 시작
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+              <Link
+                to="/intro/influencer"
+                className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-[12px] border border-neutral-200 bg-white px-3 text-[13px] font-extrabold text-neutral-900 shadow-[0_1px_0_rgba(15,23,42,0.025)]"
+              >
+                인플루언서 시작
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </div>
             <div className="mx-auto mt-5 grid max-w-[660px] gap-2 sm:grid-cols-3">
               {startProofPoints.map((point) => (
                 <div
