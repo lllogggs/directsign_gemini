@@ -205,6 +205,9 @@ export function ContractAdminViewer() {
     contract.influencer_info.name,
     "인플루언서",
   );
+  const signatureData = contract.signature_data;
+  const signatureDisplayName =
+    signatureData?.signer_name?.trim() || displayInfluencerName;
 
   const handleAction = (
     clauseId: string,
@@ -728,6 +731,27 @@ export function ContractAdminViewer() {
                 <MetaLine label="공유 만료" value={formatDateTime(contract.evidence?.share_token_expires_at)} />
               </div>
             </Panel>
+
+            {contract.status === "SIGNED" && signatureData && (
+              <Panel title="서명 정보">
+                <div className="space-y-4">
+                  <PersonLine
+                    label="전자서명자"
+                    value={signatureDisplayName}
+                    helper={formatPublicContactValue(
+                      signatureData.signer_email,
+                      "연락처 비공개",
+                    )}
+                  />
+                  <div className="space-y-3 text-[13px]">
+                    <MetaLine
+                      label="서명 시각"
+                      value={formatDateTime(signatureData.signed_at)}
+                    />
+                  </div>
+                </div>
+              </Panel>
+            )}
 
             <button
               type="button"

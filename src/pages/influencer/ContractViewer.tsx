@@ -1102,6 +1102,8 @@ export function ContractViewer() {
     },
   ];
   const signatureData = contract.signature_data;
+  const signatureDisplayName =
+    signatureData?.signer_name?.trim() || displayInfluencerName;
   const rawFinalPdfHref =
     contract.pdf_url ||
     (contract.status === "SIGNED"
@@ -1117,9 +1119,9 @@ export function ContractViewer() {
     ? [
         {
           label: "서명자",
-          value: signatureData.signer_name || displayInfluencerName,
+          value: signatureDisplayName,
         },
-        { label: "서명 완료", value: formatDateTime(signatureData.signed_at) },
+        { label: "서명 시각", value: formatDateTime(signatureData.signed_at) },
         {
           label: "계약 해시",
           value: signatureData.contract_hash
@@ -1945,15 +1947,28 @@ export function ContractViewer() {
                   </span>
                 </div>
                 {signatureData.inf_sign ? (
-                  <img
-                    src={signatureData.inf_sign}
-                    alt="인플루언서 서명"
-                    className="mt-3 h-12 max-w-full mix-blend-multiply"
-                  />
+                  <div className="mt-3 rounded-lg border border-neutral-200 bg-white px-3 py-3">
+                    <img
+                      src={signatureData.inf_sign}
+                      alt="인플루언서 서명"
+                      className="h-12 max-w-full mix-blend-multiply"
+                    />
+                    <p className="mt-2 text-sm font-semibold text-neutral-950">
+                      {signatureDisplayName}
+                    </p>
+                  </div>
                 ) : (
-                  <p className="mt-3 rounded-md bg-white px-3 py-2 text-xs font-medium leading-5 text-neutral-500 ring-1 ring-neutral-200">
-                    서명 이미지는 원본을 노출하지 않고 안전 저장소에 보관됩니다.
-                  </p>
+                  <div className="mt-3 rounded-lg border border-neutral-200 bg-white px-3 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-neutral-500">
+                      인플루언서 전자서명
+                    </p>
+                    <p className="mt-2 border-b border-neutral-300 pb-1 text-lg font-semibold text-neutral-950">
+                      {signatureDisplayName}
+                    </p>
+                    <p className="mt-2 text-xs leading-5 text-neutral-500">
+                      서명 원본은 안전 저장소에 보관됩니다.
+                    </p>
+                  </div>
                 )}
                 <div className="mt-4 grid gap-2">
                   {signatureEvidenceRows.map((row) => (

@@ -7,6 +7,10 @@ import { pathToFileURL } from "node:url";
 const root = process.cwd();
 const baseUrl = process.env.SALES_CAPTURE_BASE_URL ?? "http://127.0.0.1:3000";
 const outputDir = path.join(root, "docs", "sales", "assets");
+const captureAdvertiserEmail =
+  process.env.SALES_CAPTURE_ADVERTISER_EMAIL ?? "test.advertiser@yeollock.me";
+const captureAdvertiserPassword =
+  process.env.QA_TEST_PASSWORD ?? "YeollockTest!2026";
 const profileDir = path.join(
   root,
   ".tmp",
@@ -249,6 +253,224 @@ const closePage = async (client, page) => {
   await client.send("Target.closeTarget", { targetId: page.targetId });
 };
 
+const evaluate = async (client, page, expression) => {
+  const result = await client.send(
+    "Runtime.evaluate",
+    {
+      expression,
+      awaitPromise: true,
+      returnByValue: true,
+    },
+    page.sessionId,
+  );
+
+  if (result.exceptionDetails) {
+    throw new Error(
+      result.exceptionDetails.exception?.description ??
+        result.exceptionDetails.text ??
+        "Browser evaluation failed",
+    );
+  }
+
+  return result.result?.value;
+};
+
+const waitForBodyText = async (client, page, text, timeout = 15000) => {
+  const deadline = Date.now() + timeout;
+
+  while (Date.now() < deadline) {
+    const hasText = await evaluate(
+      client,
+      page,
+      `document.body?.innerText.includes(${JSON.stringify(text)})`,
+    );
+    if (hasText) return;
+    await sleep(300);
+  }
+
+  throw new Error(`Timed out waiting for text: ${text}`);
+};
+
+const loginAdvertiser = async (client) => {
+  const page = await openPage(client, `${baseUrl}/login/advertiser`, {
+    width: 1360,
+    height: 850,
+  });
+
+  const loginResult = await evaluate(
+    client,
+    page,
+    `fetch("/api/advertiser/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        email: ${JSON.stringify(captureAdvertiserEmail)},
+        password: ${JSON.stringify(captureAdvertiserPassword)}
+      })
+    }).then(async (response) => ({
+      ok: response.ok,
+      status: response.status,
+      body: await response.json().catch(() => ({}))
+    }))`,
+  );
+
+  if (!loginResult?.ok || loginResult.body?.authenticated !== true) {
+    throw new Error(`Advertiser capture login failed (${loginResult?.status ?? "unknown"})`);
+  }
+
+  return page;
+};
+
+const getSalesContractsForCapture = async (client, page) => {
+  const contracts = await evaluate(
+    client,
+    page,
+    `fetch("/api/contracts", {
+      headers: { Accept: "application/json" },
+      credentials: "include"
+    }).then(async (response) => {
+      if (!response.ok) return null;
+      const data = await response.json();
+      const contracts = Array.isArray(data.contracts) ? data.contracts : [];
+      const active = contracts.find((item) =>
+        item?.status !== "SIGNED" &&
+        item?.evidence?.share_token_status === "active" &&
+        item?.evidence?.share_token
+      );
+      const signed = contracts.find((item) =>
+        item?.status === "SIGNED" &&
+        (item?.pdf_url || item?.evidence?.pdf_status === "signed_ready")
+      ) || contracts.find((item) => item?.status === "SIGNED");
+      const fallback = contracts[0];
+      const mapContract = (item) => item
+        ? {
+            id: item.id,
+            token: item?.evidence?.share_token,
+            status: item.status,
+          }
+        : null;
+      return {
+        active: mapContract(active || fallback),
+        signed: mapContract(signed),
+      };
+    })`,
+  );
+
+  if (!contracts?.active?.id) {
+    throw new Error("No contract was available for sales capture");
+  }
+
+  return contracts;
+};
+
+const scrollToText = async (client, page, text, offset = 0) => {
+  await evaluate(
+    client,
+    page,
+    `(() => {
+      const text = ${JSON.stringify(text)};
+      const elements = Array.from(document.querySelectorAll("a, button, h1, h2, h3, p, section, aside, div"));
+      const target = elements.find((element) => element.textContent?.includes(text));
+      if (!target) return false;
+      target.scrollIntoView({ block: "center", inline: "nearest" });
+      window.scrollBy(0, ${Number(offset)});
+      return true;
+    })()`,
+  );
+  await sleep(500);
+};
+
+const prepareBuilderForCapture = async (client, page) => {
+  const result = await evaluate(
+    client,
+    page,
+    `new Promise(async (resolve, reject) => {
+      const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
+      const setNativeValue = (element, value) => {
+        const prototype = Object.getPrototypeOf(element);
+        const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
+        if (descriptor?.set) descriptor.set.call(element, value);
+        else element.value = value;
+        element.dispatchEvent(new Event("input", { bubbles: true }));
+        element.dispatchEvent(new Event("change", { bubbles: true }));
+      };
+      const byLabel = (labelText) => {
+        const label = Array.from(document.querySelectorAll("label")).find((item) =>
+          item.textContent?.trim().includes(labelText)
+        );
+        const container = label?.parentElement;
+        return container?.querySelector("input, textarea");
+      };
+      const setByLabel = async (labelText, value) => {
+        const field = byLabel(labelText);
+        if (!field) throw new Error("Field not found: " + labelText);
+        field.focus();
+        setNativeValue(field, value);
+        await sleep(80);
+      };
+      const clickButton = async (text) => {
+        const button = Array.from(document.querySelectorAll("button")).find(
+          (item) => item.textContent?.includes(text) && !item.disabled
+        );
+        if (!button) throw new Error("Button not found: " + text);
+        button.click();
+        await sleep(450);
+      };
+      const clickOptionLabel = async (text) => {
+        const label = Array.from(document.querySelectorAll("label")).find((item) =>
+          item.textContent?.includes(text)
+        );
+        const input = label?.querySelector("input");
+        if (!input) throw new Error("Option not found: " + text);
+        input.click();
+        await sleep(180);
+      };
+
+      try {
+        await setByLabel("광고주/브랜드명", "브레드룸");
+        await setByLabel("담당자명", "김마케팅 매니저");
+        await setByLabel("계약 건명", "신제품 선크림 릴스 계약");
+        await setByLabel("성명 또는 채널명", "뷰티온에어");
+        await setByLabel("메인 채널 URL", "https://instagram.com/beauty_onair");
+        await setByLabel("연락처", "creator@example.com");
+        await clickButton("다음");
+
+        await clickOptionLabel("인스타그램 릴스");
+        const uploadCount = document.querySelector('input[placeholder="예: 2회"]');
+        const duration = document.querySelector('input[placeholder="예: 3개월"]');
+        if (!uploadCount || !duration) throw new Error("Deliverable fields not found");
+        setNativeValue(uploadCount, "릴스 1건");
+        setNativeValue(duration, "업로드 후 30일");
+        await sleep(100);
+        await clickButton("다음");
+
+        const dateInputs = Array.from(document.querySelectorAll('input[type="date"]'));
+        ["2026-06-01", "2026-06-30", "2026-06-12", "2026-06-10"].forEach(
+          (value, index) => setNativeValue(dateInputs[index], value)
+        );
+        await sleep(100);
+        await setByLabel("수정 가능 횟수", "최대 2회");
+        await setByLabel("지급 조건", "총 1,200,000원, 콘텐츠 업로드 확인 후 7영업일 내 지급");
+        await setByLabel("경쟁사 배제 조건", "업로드 후 30일간 동종 선케어 브랜드 광고 제외");
+        await clickButton("다음");
+        await clickButton("다음");
+
+        resolve({
+          ok: document.body.innerText.includes("필수 조건이 모두 채워졌습니다") &&
+            document.body.innerText.includes("공유 링크 생성")
+        });
+      } catch (error) {
+        reject(error);
+      }
+    })`,
+  );
+
+  if (!result?.ok) {
+    throw new Error("Contract builder capture was not prepared");
+  }
+};
+
 await fs.mkdir(outputDir, { recursive: true });
 await fs.mkdir(profileDir, { recursive: true });
 
@@ -278,6 +500,68 @@ try {
   const endpoint = await readDevToolsEndpoint();
   client = new CdpClient(endpoint);
   await client.connect();
+
+  const authPage = await loginAdvertiser(client);
+  const { active: salesContract, signed: signedContract } =
+    await getSalesContractsForCapture(client, authPage);
+  await closePage(client, authPage);
+
+  const dashboardPage = await openPage(
+    client,
+    `${baseUrl}/advertiser/dashboard`,
+    { width: 1440, height: 940 },
+  );
+  await waitForBodyText(client, dashboardPage, "계약 운영");
+  await capturePng(client, dashboardPage, "yeollock-advertiser-dashboard.png");
+  await closePage(client, dashboardPage);
+
+  const builderPage = await openPage(
+    client,
+    `${baseUrl}/advertiser/builder`,
+    { width: 1440, height: 940 },
+  );
+  await waitForBodyText(client, builderPage, "새 전자계약서 작성");
+  await prepareBuilderForCapture(client, builderPage);
+  await capturePng(client, builderPage, "yeollock-contract-builder.png");
+  await closePage(client, builderPage);
+
+  const adminContractPage = await openPage(
+    client,
+    `${baseUrl}/advertiser/contract/${encodeURIComponent(salesContract.id)}`,
+    { width: 1440, height: 940 },
+  );
+  await waitForBodyText(client, adminContractPage, "계약 워크스페이스");
+  await capturePng(client, adminContractPage, "yeollock-contract-admin.png");
+  await closePage(client, adminContractPage);
+
+  if (signedContract?.id) {
+    const completedContractPage = await openPage(
+      client,
+      `${baseUrl}/advertiser/contract/${encodeURIComponent(signedContract.id)}`,
+      { width: 1440, height: 940 },
+    );
+    await waitForBodyText(client, completedContractPage, "서명본 PDF 내려받기");
+    await scrollToText(client, completedContractPage, "서명본 PDF 내려받기", -180);
+    await capturePng(
+      client,
+      completedContractPage,
+      "yeollock-contract-completed-admin.png",
+    );
+    await closePage(client, completedContractPage);
+  }
+
+  if (salesContract.token) {
+    const influencerContractPage = await openPage(
+      client,
+      `${baseUrl}/contract/${encodeURIComponent(salesContract.id)}?token=${encodeURIComponent(
+        salesContract.token,
+      )}`,
+      { width: 390, height: 844, mobile: true, deviceScaleFactor: 2 },
+    );
+    await waitForBodyText(client, influencerContractPage, "계약");
+    await capturePng(client, influencerContractPage, "yeollock-influencer-contract.png");
+    await closePage(client, influencerContractPage);
+  }
 
   const advertiserPage = await openPage(
     client,
@@ -325,6 +609,11 @@ try {
         ok: true,
         baseUrl,
         outputs: [
+          "docs/sales/assets/yeollock-advertiser-dashboard.png",
+          "docs/sales/assets/yeollock-contract-builder.png",
+          "docs/sales/assets/yeollock-contract-admin.png",
+          "docs/sales/assets/yeollock-contract-completed-admin.png",
+          "docs/sales/assets/yeollock-influencer-contract.png",
           "docs/sales/assets/yeollock-advertiser-screen.png",
           "docs/sales/assets/yeollock-influencer-screen.png",
           "docs/sales/advertiser-introduction.pdf",

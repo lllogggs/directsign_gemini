@@ -5035,6 +5035,9 @@ const buildSignedContractPdf = async ({
     `Consent text: ${consentText || "The signer confirmed the contract terms and agreed to electronic signature."}`,
   ].forEach((line) => addLine(line));
 
+  addHeading("Displayed signature");
+  addLine(`Influencer signature name: ${signerName}`);
+
   if (signatureDataUrl && signatureContentType) {
     try {
       const imageType =
