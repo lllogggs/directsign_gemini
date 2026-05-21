@@ -1,6 +1,5 @@
 import {
   ArrowLeft,
-  ArrowRight,
   FileSignature,
   FileText,
   Megaphone,
@@ -277,10 +276,10 @@ export function AdvertiserCampaignRecruitmentPage() {
         </>
       }
     >
-      <section className="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+      <section className="grid gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
         <form
           onSubmit={handleSubmit}
-          className="rounded-[18px] border border-neutral-200 bg-white p-4 shadow-[0_18px_48px_rgba(15,23,42,0.055)]"
+          className="rounded-[18px] border border-neutral-200 bg-white p-4 shadow-[0_18px_48px_rgba(15,23,42,0.055)] lg:min-h-0 lg:overflow-y-auto"
         >
           <div className="flex items-start justify-between gap-3 border-b border-neutral-200 pb-4">
             <div>
@@ -459,7 +458,7 @@ export function AdvertiserCampaignRecruitmentPage() {
           </div>
         </form>
 
-        <section className="rounded-[18px] border border-neutral-200 bg-[#fbfaf7] p-4 shadow-[0_18px_48px_rgba(15,23,42,0.04)]">
+        <section className="rounded-[18px] border border-neutral-200 bg-[#fbfaf7] p-4 shadow-[0_18px_48px_rgba(15,23,42,0.04)] lg:min-h-0 lg:overflow-y-auto">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-[12px] font-extrabold text-neutral-400">
@@ -689,8 +688,8 @@ export function InfluencerCampaignDiscoveryPage() {
         </>
       }
     >
-      <section className="overflow-hidden rounded-[18px] border border-neutral-200 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.055)]">
-        <div className="grid gap-3 border-b border-neutral-200 bg-white p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+      <section className="overflow-hidden rounded-[18px] border border-neutral-200 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.055)] lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+        <div className="grid gap-2 border-b border-neutral-200 bg-white p-3 lg:grid-cols-[280px_minmax(0,1fr)] lg:items-start">
           <div className="relative min-w-0">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
             <input
@@ -698,7 +697,7 @@ export function InfluencerCampaignDiscoveryPage() {
               onChange={(event) => setQuery(event.target.value)}
               aria-label="캠페인 검색"
               placeholder="브랜드, 캠페인, 플랫폼, 산출물 검색"
-              className="h-11 w-full rounded-[12px] border border-neutral-200 bg-[#f8f7f4] pl-10 pr-3 text-[13px] font-bold text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950 focus:bg-white"
+              className="h-10 w-full rounded-[10px] border border-neutral-200 bg-[#f8f7f4] pl-10 pr-3 text-[13px] font-bold text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950 focus:bg-white"
             />
           </div>
           <details className="rounded-[14px] border border-neutral-200 bg-[#fbfaf7] px-3 py-2 lg:hidden">
@@ -742,7 +741,7 @@ export function InfluencerCampaignDiscoveryPage() {
               </FilterGroup>
             </div>
           </details>
-          <div className="hidden min-w-0 flex-wrap gap-2 lg:flex">
+          <div className="hidden min-w-0 flex-wrap gap-1.5 lg:flex">
             <FilterGroup label="플랫폼">
               {platformOptions.map((platform) => (
                 <FilterButton
@@ -788,7 +787,7 @@ export function InfluencerCampaignDiscoveryPage() {
             body="검색어를 줄이거나 필터를 전체로 바꿔보세요."
           />
         ) : (
-          <div className="grid gap-3 bg-[#fbfaf7] p-4 lg:grid-cols-3">
+          <div className="grid gap-3 bg-[#fbfaf7] p-3 lg:min-h-0 lg:flex-1 lg:grid-cols-3 lg:overflow-y-auto">
             {applicationNotice ? (
               <p
                 className={`rounded-[12px] border px-3 py-2 text-[12px] font-extrabold lg:col-span-3 ${
@@ -833,9 +832,9 @@ function CampaignShell({
   children: ReactNode;
 }) {
   return (
-    <main className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950">
+    <main className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950 lg:flex lg:h-screen lg:flex-col lg:overflow-hidden">
       <header className="sticky top-0 z-30 border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
-        <div className="mx-auto flex h-[68px] max-w-[1320px] items-center justify-between px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto flex h-14 max-w-[1320px] items-center justify-between px-4 sm:px-6 lg:px-8">
           <Link to="/" className="flex shrink-0 items-center gap-3">
             <span className="flex h-10 w-10 items-center justify-center rounded-[13px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
               <ShieldCheck className="h-4 w-4" />
@@ -858,18 +857,18 @@ function CampaignShell({
         </div>
       </header>
 
-      <section className="border-b border-neutral-200/80 bg-[#f7f6f3]">
-        <div className="mx-auto max-w-[1320px] px-4 py-6 sm:px-6 lg:px-8">
+      <section className="border-b border-neutral-200/80 bg-[#f7f6f3] lg:shrink-0">
+        <div className="mx-auto max-w-[1320px] px-4 py-4 sm:px-6 lg:px-8 lg:py-3">
           <p className="inline-flex items-center gap-2 text-[13px] font-extrabold text-neutral-500">
             <Megaphone className="h-4 w-4" />
             {eyebrow}
           </p>
-          <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-end">
+          <div className="mt-2 grid gap-3 lg:grid-cols-[minmax(0,1fr)_330px] lg:items-end">
             <div className="min-w-0">
-              <h1 className="font-neo-heavy text-[34px] leading-[1.05] text-neutral-950 sm:text-[48px] sm:leading-none">
+              <h1 className="font-neo-heavy text-[32px] leading-[1.05] text-neutral-950 sm:text-[42px] sm:leading-none">
                 {title}
               </h1>
-              <p className="mt-4 max-w-3xl break-keep text-[14px] font-bold leading-6 text-neutral-600">
+              <p className="mt-3 max-w-3xl break-keep text-[13px] font-bold leading-6 text-neutral-600">
                 {description}
               </p>
             </div>
@@ -882,7 +881,7 @@ function CampaignShell({
         </div>
       </section>
 
-      <div className="mx-auto max-w-[1320px] px-4 py-5 sm:px-6 lg:px-8">
+      <div className="mx-auto flex w-full max-w-[1320px] min-h-0 flex-1 flex-col px-4 py-3 sm:px-6 lg:px-8">
         {children}
       </div>
     </main>
@@ -1006,7 +1005,7 @@ function CampaignPostCard({
   onApply: (campaign: MarketplaceCampaignPost) => void;
 }) {
   return (
-    <article className="flex min-h-[330px] flex-col rounded-[18px] border border-neutral-200 bg-white p-4 shadow-[0_12px_34px_rgba(15,23,42,0.04)]">
+    <article className="flex min-h-[360px] flex-col rounded-[18px] border border-neutral-200 bg-white p-4 shadow-[0_12px_34px_rgba(15,23,42,0.04)]">
       <div className="flex items-start gap-3">
         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-neutral-950 text-[13px] font-extrabold text-white">
           {campaign.brandLogoLabel}
@@ -1052,23 +1051,16 @@ function CampaignPostCard({
         ))}
       </div>
 
-      <div className="mt-auto grid gap-2 pt-5">
+      <div className="mt-auto pt-5">
         <button
           type="button"
           onClick={() => onApply(campaign)}
           disabled={isApplying}
-          className="inline-flex h-11 items-center justify-center gap-2 rounded-[12px] bg-neutral-950 px-4 text-[13px] font-extrabold text-white transition hover:bg-neutral-800"
+          className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-[12px] bg-neutral-950 px-4 text-[13px] font-extrabold text-white transition hover:bg-neutral-800"
         >
           <Send className="h-4 w-4" />
           {isApplying ? "신청 중" : "신청"}
         </button>
-        <Link
-          to={campaign.brandHref}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-[12px] border border-neutral-200 bg-white px-4 text-[13px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
-        >
-          브랜드
-          <ArrowRight className="h-4 w-4" />
-        </Link>
       </div>
     </article>
   );
@@ -1093,7 +1085,7 @@ function FilterGroup({
   children: ReactNode;
 }) {
   return (
-    <div className="flex min-w-0 items-center gap-2 rounded-[14px] border border-neutral-200 bg-[#fbfaf7] px-3 py-2">
+    <div className="flex min-w-0 items-center gap-2 rounded-[12px] border border-neutral-200 bg-[#fbfaf7] px-2.5 py-1.5">
       <span className="shrink-0 text-[12px] font-extrabold text-neutral-500">
         {label}
       </span>
@@ -1120,7 +1112,7 @@ function FilterButton({
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[11px] font-extrabold transition sm:px-2.5 ${
+      className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-extrabold transition sm:px-2 ${
         active
           ? activeClass
           : "border-neutral-200 bg-white text-neutral-500 hover:border-neutral-300 hover:text-neutral-950"
