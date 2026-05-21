@@ -1416,8 +1416,8 @@ function CampaignLifecycleTabs({
   onChange: (value: CampaignLifecycle) => void;
 }) {
   return (
-    <div className="border-b border-[#d9e0d9] bg-white p-2">
-      <div className="grid gap-1.5 sm:grid-cols-3">
+    <div className="border-b border-[#d9e0d9] bg-[#ede9e3] px-2 pt-2">
+      <div className="flex min-w-0 items-end gap-0.5 overflow-x-auto">
         {CAMPAIGN_LIFECYCLE_TABS.map((tab) => {
           const active = value === tab.value;
           return (
@@ -1426,18 +1426,20 @@ function CampaignLifecycleTabs({
               type="button"
               onClick={() => onChange(tab.value)}
               aria-pressed={active}
-              className={`flex h-10 items-center justify-between gap-2 rounded-[7px] border px-3 text-left transition ${
+              className={`relative flex h-10 min-w-[128px] flex-1 items-center justify-between gap-2 rounded-t-[14px] border px-3 text-left transition ${
                 active
-                  ? "border-[#171a17] bg-[#171a17] text-white"
-                  : "border-[#d9e0d9] bg-[#f8faf7] text-[#303630] hover:border-[#cbd5cc] hover:bg-white"
+                  ? "z-10 -mb-px border-[#d9e0d9] border-b-white bg-white pb-px text-[#171a17] shadow-[0_-1px_0_rgba(255,255,255,0.86)_inset,0_-8px_20px_rgba(23,26,23,0.05)]"
+                  : "mb-0.5 border-transparent bg-[#ded8d1] text-[#4f574f] hover:bg-[#e7e2dc] hover:text-[#171a17]"
               }`}
             >
               <span className="truncate text-[13px] font-extrabold">
                 {tab.label}
               </span>
               <span
-                className={`inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-md px-1.5 text-[12px] font-extrabold ${
-                  active ? "bg-white text-[#171a17]" : "bg-white text-[#303630]"
+                className={`inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full px-1.5 text-[12px] font-extrabold ${
+                  active
+                    ? "bg-[#171a17] text-white"
+                    : "bg-white/80 text-[#303630]"
                 }`}
               >
                 {counts[tab.value].toLocaleString()}
