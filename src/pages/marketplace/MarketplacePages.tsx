@@ -342,7 +342,7 @@ export function AdvertiserInfluencerDiscoveryPage() {
             className="hidden h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-[12px] border border-neutral-200 bg-white px-3 text-[13px] font-extrabold text-neutral-600 transition hover:border-neutral-300 hover:text-neutral-950 sm:inline-flex"
           >
             <Megaphone className="h-4 w-4" />
-            모집글
+            캠페인
           </button>
         </div>
       }

@@ -3,6 +3,7 @@ import type {
   VerificationRequest,
   VerificationStatus,
 } from "./verification.js";
+import type { MarketplaceProposalStatus } from "./marketplaceInbox.js";
 
 export type InfluencerActivityCategory =
   | "mukbang"
@@ -25,6 +26,21 @@ export type InfluencerDashboardContractStage =
   | "signed"
   | "completed"
   | "waiting";
+
+export type InfluencerDashboardApplicationStage =
+  | "submitted"
+  | "reviewed"
+  | "accepted"
+  | "closed";
+
+export interface InfluencerDashboardActivityEvent {
+  id: string;
+  actor: string;
+  action: string;
+  label: string;
+  description: string;
+  created_at: string;
+}
 
 export interface InfluencerDashboardUser {
   id: string;
@@ -107,6 +123,31 @@ export interface InfluencerDashboardContract {
     label: string;
     status: "not_ready" | "ready";
   };
+  activity_events: InfluencerDashboardActivityEvent[];
+}
+
+export interface InfluencerDashboardApplication {
+  id: string;
+  campaign_id?: string;
+  campaign_title: string;
+  brand_name: string;
+  brand_handle?: string;
+  status: MarketplaceProposalStatus;
+  stage: InfluencerDashboardApplicationStage;
+  stage_label: string;
+  next_action_label: string;
+  action_label: string;
+  action_href: string;
+  platform_labels: string[];
+  platforms: InfluencerPlatform[];
+  fee_label: string;
+  deadline_label: string;
+  due_at?: string;
+  proposal_summary: string;
+  converted_contract_id?: string;
+  created_at: string;
+  updated_at: string;
+  activity_events: InfluencerDashboardActivityEvent[];
 }
 
 export interface InfluencerDashboardResponse {
@@ -116,4 +157,5 @@ export interface InfluencerDashboardResponse {
   summary: InfluencerDashboardSummary;
   tasks: InfluencerDashboardTask[];
   contracts: InfluencerDashboardContract[];
+  applications: InfluencerDashboardApplication[];
 }

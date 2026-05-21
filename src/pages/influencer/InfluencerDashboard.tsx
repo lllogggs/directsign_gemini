@@ -25,10 +25,10 @@ import {
   RefreshCw,
   Save,
   Search,
+  Settings,
   Settings2,
   ShieldCheck,
   SlidersHorizontal,
-  Store,
   UserCheck,
   Youtube,
 } from "lucide-react";
@@ -36,6 +36,9 @@ import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
 import { LEGAL_CONTACT_EMAIL } from "../../domain/legalEntity";
 import type {
+  InfluencerDashboardActivityEvent,
+  InfluencerDashboardApplication,
+  InfluencerDashboardApplicationStage,
   InfluencerDashboardContract,
   InfluencerDashboardContractStage,
   InfluencerDashboardResponse,
@@ -87,12 +90,80 @@ type PublicProfileSaveError = Error & {
 type PlatformFilter = "all" | InfluencerPlatform;
 type AmountFilter = "all" | "fixed" | "commission";
 type ActualAmountKind = Exclude<AmountFilter, "all">;
-type DetailStageFilter = "all" | InfluencerDashboardContractStage;
-type SortKey = "updated" | "platform" | "advertiser" | "title" | "amount" | "stage";
+type InfluencerApplicationWorkStage =
+  | "application_submitted"
+  | "application_reviewed"
+  | "application_accepted"
+  | "application_closed";
+type InfluencerWorkStage =
+  | InfluencerDashboardContractStage
+  | InfluencerApplicationWorkStage;
+type DetailStageFilter = "all" | InfluencerWorkStage;
+type DeadlineFilter = "all" | "overdue" | "this_week" | "later" | "none";
+type InfluencerCampaignLifecycle = "APPLIED" | "IN_PROGRESS" | "ENDED";
+type SortKey =
+  | "updated"
+  | "platform"
+  | "advertiser"
+  | "title"
+  | "amount"
+  | "stage"
+  | "deadline";
 type SortDirection = "asc" | "desc";
 type ContractSort = {
   key: SortKey;
   direction: SortDirection;
+};
+type InfluencerAccountSummary = {
+  name: string;
+  email?: string;
+};
+type InfluencerCampaignWorkItem = {
+  id: string;
+  kind: "contract" | "application";
+  lifecycle: InfluencerCampaignLifecycle;
+  title: string;
+  advertiser_name: string;
+  stage: InfluencerWorkStage;
+  stage_label: string;
+  next_action_label: string;
+  action_label: string;
+  action_href: string;
+  platform_labels: string[];
+  platforms: InfluencerPlatform[];
+  platform_accounts: Array<{
+    platform: InfluencerPlatform;
+    url?: string;
+  }>;
+  fee_label: string;
+  deadline_label: string;
+  due_at?: string;
+  updated_at: string;
+  deliverable_summary: {
+    total: number;
+    submitted: number;
+    approved: number;
+  };
+  activity_events: InfluencerDashboardActivityEvent[];
+  source_contract?: InfluencerDashboardContract;
+  source_application?: InfluencerDashboardApplication;
+};
+type InfluencerOperationsSummary = {
+  newOffers: number;
+  pendingApplications: number;
+  actionableContracts: number;
+  overdueItems: number;
+  dueSoonItems: number;
+  deliverablesDue: number;
+};
+type InfluencerAlertTone = "amber" | "blue" | "rose" | "emerald" | "neutral";
+type InfluencerAlert = {
+  id: string;
+  label: string;
+  detail: string;
+  href: string;
+  tone: InfluencerAlertTone;
+  priority: number;
 };
 
 const STAGE_META: Record<
@@ -163,6 +234,49 @@ const getStageMeta = (stage: InfluencerDashboardContractStage) => ({
       : {}),
 });
 
+const APPLICATION_STAGE_META: Record<
+  InfluencerApplicationWorkStage,
+  {
+    label: string;
+    helper: string;
+    className: string;
+    icon: React.ReactNode;
+  }
+> = {
+  application_submitted: {
+    label: "지원 접수",
+    helper: "광고주 검토 대기",
+    className: "border-amber-200 bg-amber-50 text-amber-800",
+    icon: <Clock3 className="h-4 w-4" />,
+  },
+  application_reviewed: {
+    label: "검토 중",
+    helper: "메시지 확인",
+    className: "border-sky-200 bg-sky-50 text-sky-700",
+    icon: <MessageSquareText className="h-4 w-4" />,
+  },
+  application_accepted: {
+    label: "수락 완료",
+    helper: "계약 확인",
+    className: "border-blue-200 bg-blue-50 text-blue-700",
+    icon: <CheckCircle2 className="h-4 w-4" />,
+  },
+  application_closed: {
+    label: "종료",
+    helper: "기록 보관",
+    className: "border-neutral-200 bg-neutral-100 text-neutral-600",
+    icon: <CheckCircle2 className="h-4 w-4" />,
+  },
+};
+
+const getWorkStageMeta = (stage: InfluencerWorkStage) => {
+  if (stage.startsWith("application_")) {
+    return APPLICATION_STAGE_META[stage as InfluencerApplicationWorkStage];
+  }
+
+  return getStageMeta(stage as InfluencerDashboardContractStage);
+};
+
 const PLATFORM_FILTERS: PlatformFilter[] = [
   "all",
   "instagram",
@@ -176,6 +290,9 @@ const AMOUNT_FILTERS: AmountFilter[] = ["all", "fixed", "commission"];
 
 const DETAIL_STAGE_FILTERS: DetailStageFilter[] = [
   "all",
+  "application_submitted",
+  "application_reviewed",
+  "application_accepted",
   "review_needed",
   "change_pending",
   "ready_to_sign",
@@ -183,6 +300,37 @@ const DETAIL_STAGE_FILTERS: DetailStageFilter[] = [
   "deliverables_review",
   "signed",
   "completed",
+  "application_closed",
+];
+
+const CAMPAIGN_LIFECYCLE_TABS: Array<{
+  value: InfluencerCampaignLifecycle;
+  label: string;
+  helper: string;
+}> = [
+  {
+    value: "APPLIED",
+    label: "지원중",
+    helper: "광고주 검토 대기",
+  },
+  {
+    value: "IN_PROGRESS",
+    label: "진행중",
+    helper: "계약·서명·제출",
+  },
+  {
+    value: "ENDED",
+    label: "종료",
+    helper: "완료·종료 보관",
+  },
+];
+
+const DEADLINE_FILTERS: DeadlineFilter[] = [
+  "all",
+  "overdue",
+  "this_week",
+  "later",
+  "none",
 ];
 
 const PROFILE_PROPOSAL_TYPES = Object.entries(proposalTypeLabels) as Array<
@@ -266,15 +414,20 @@ export function InfluencerDashboard() {
   const location = useLocation();
   const [state, setState] = useState<DashboardState>({ status: "loading" });
   const [query, setQuery] = useState("");
+  const [campaignLifecycle, setCampaignLifecycle] =
+    useState<InfluencerCampaignLifecycle>("IN_PROGRESS");
   const [platformFilter, setPlatformFilter] = useState<PlatformFilter>("all");
+  const [brandFilter, setBrandFilter] = useState("all");
   const [amountFilter, setAmountFilter] = useState<AmountFilter>("all");
   const [detailStageFilter, setDetailStageFilter] =
     useState<DetailStageFilter>("all");
+  const [deadlineFilter, setDeadlineFilter] = useState<DeadlineFilter>("all");
   const [sortState, setSortState] = useState<ContractSort>({
     key: "updated",
     direction: "desc",
   });
   const [profileSettingsOpen, setProfileSettingsOpen] = useState(false);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [publicProfileOverride, setPublicProfileOverride] =
     useState<InfluencerPublicProfileSettings | null>(null);
   const {
@@ -387,45 +540,60 @@ export function InfluencerDashboard() {
 
   const dashboard = state.dashboard;
   const normalizedQuery = query.trim().toLowerCase();
-  const filteredContracts = dashboard.contracts
-    .filter((contract) => {
-      if (detailStageFilter !== "all" && contract.stage !== detailStageFilter) {
+  const campaignItems = buildInfluencerCampaignWorkItems(dashboard);
+  const visibleCampaignItems = campaignItems.filter(
+    (item) => item.lifecycle === campaignLifecycle,
+  );
+  const lifecycleCounts = getInfluencerCampaignLifecycleCounts(campaignItems);
+  const operationsSummary = getInfluencerOperationsSummary(
+    campaignItems,
+    messageSummary.unreadCount,
+  );
+  const operationAlerts = buildInfluencerAlerts(
+    campaignItems,
+    messageSummary.unreadCount,
+  );
+  const recentActivities = buildInfluencerRecentActivities(campaignItems);
+  const brandOptions = buildInfluencerBrandFilterOptions(campaignItems);
+  const filteredCampaignItems = visibleCampaignItems
+    .filter((item) => {
+      if (detailStageFilter !== "all" && item.stage !== detailStageFilter) {
+        return false;
+      }
+      const advertiserName = removeInternalTestLabel(
+        item.advertiser_name,
+        "광고주",
+      );
+      if (brandFilter !== "all" && advertiserName !== brandFilter) {
         return false;
       }
       if (
         platformFilter !== "all" &&
-        !getInfluencerContractPlatforms(contract).includes(platformFilter)
+        !getInfluencerCampaignItemPlatforms(item).includes(platformFilter)
       ) {
         return false;
       }
       if (
         amountFilter !== "all" &&
-        getAmountFilterKind(contract.fee_label) !== amountFilter
+        getAmountFilterKind(item.fee_label) !== amountFilter
       ) {
+        return false;
+      }
+      if (!matchesDeadlineFilter(item, deadlineFilter)) {
         return false;
       }
       if (!normalizedQuery) return true;
 
-      return [
-        formatDashboardContractTitle(contract.title),
-        removeInternalTestLabel(contract.advertiser_name, "광고주"),
-        formatMoneyLabel(contract.fee_label),
-        contract.period_label,
-        contract.stage_label,
-        ...contract.platform_labels,
-      ]
-        .join(" ")
-      .toLowerCase()
-      .includes(normalizedQuery);
+      return formatDashboardContractTitle(item.title)
+        .toLowerCase()
+        .includes(normalizedQuery);
     })
-    .sort((a, b) => compareContractsBySort(a, b, sortState));
-  const displayFilteredContracts = collapseInternalDuplicateContracts(
-    filteredContracts,
-    getInfluencerDashboardContractCollapseKey,
-  );
-  const contractCountSummary =
-    `전체 ${dashboard.contracts.length.toLocaleString()}건 · 검색 결과 ${displayFilteredContracts.length.toLocaleString()}건`;
+    .sort((a, b) => compareCampaignItemsBySort(a, b, sortState));
   const verification = VERIFICATION_META[dashboard.verification.status];
+  const accountSummary: InfluencerAccountSummary = {
+    name: removeInternalTestLabel(dashboard.user.name, "인플루언서 계정"),
+    email: formatPublicContactValue(dashboard.user.email) || undefined,
+  };
   const publicProfile =
     publicProfileOverride?.ownerId === dashboard.user.id
       ? publicProfileOverride
@@ -475,7 +643,7 @@ export function InfluencerDashboard() {
             </span>
             <span className="font-neo-heavy hidden text-[18px] leading-none sm:inline">{PRODUCT_NAME}</span>
             <span className="max-w-[104px] truncate text-[12px] font-extrabold leading-none text-neutral-700 sm:hidden">
-              인플루언서 · 받은 계약
+              인플루언서 · 내 캠페인
             </span>
           </button>
 
@@ -484,46 +652,27 @@ export function InfluencerDashboard() {
               type="button"
               onClick={() => navigate("/influencer/dashboard")}
               className="inline-flex h-10 w-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] bg-neutral-950 px-0 text-[12px] font-extrabold text-white shadow-[0_10px_24px_rgba(23,26,23,0.14)] transition hover:bg-neutral-800 sm:w-auto sm:px-3"
-              aria-label="받은 계약"
-              title="받은 계약"
+              aria-label="내 캠페인"
+              title="내 캠페인"
             >
               <FileText className="h-3.5 w-3.5" strokeWidth={2} />
-              <span className="hidden sm:inline">받은 계약</span>
+              <span className="hidden sm:inline">내 캠페인</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate("/influencer/campaigns")}
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-0 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950 sm:w-auto sm:px-2.5"
+              aria-label="캠페인 찾기"
+              title="캠페인 찾기"
+            >
+              <Megaphone className="h-3.5 w-3.5" strokeWidth={2} />
+              <span className="hidden sm:inline">캠페인 찾기</span>
             </button>
             <MessageCenterButton
               unreadCount={messageSummary.unreadCount}
               isLoading={isMessageSummaryLoading}
               onClick={() => navigate("/influencer/messages")}
             />
-            <button
-              type="button"
-              onClick={() => navigate("/influencer/brands")}
-              className="inline-flex h-10 w-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-0 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950 sm:w-auto sm:px-2.5"
-              aria-label="브랜드 찾기"
-              title="브랜드 찾기"
-            >
-              <Store className="h-3.5 w-3.5" strokeWidth={2} />
-              <span className="hidden sm:inline">브랜드 찾기</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate("/influencer/campaigns")}
-              className="inline-flex h-10 w-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-0 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950 sm:w-auto sm:px-2.5"
-              aria-label="모집글"
-              title="모집글"
-            >
-              <Megaphone className="h-3.5 w-3.5" strokeWidth={2} />
-              <span className="hidden sm:inline">모집글</span>
-            </button>
-            <button
-              type="button"
-              onClick={loadDashboard}
-              className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-[9px] border border-neutral-200 bg-white text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950 sm:flex"
-              aria-label="새로고침"
-              title="새로고침"
-            >
-              <RefreshCw className="h-3.5 w-3.5" strokeWidth={2} />
-            </button>
             <button
               type="button"
               onClick={handleLogout}
@@ -534,6 +683,15 @@ export function InfluencerDashboard() {
               <LogOut className="h-3.5 w-3.5" strokeWidth={2} />
               <span className="hidden sm:inline">로그아웃</span>
             </button>
+            <InfluencerAccountSettingsMenu
+              account={accountSummary}
+              open={accountMenuOpen}
+              onToggle={() => setAccountMenuOpen((current) => !current)}
+              onChangePassword={() => {
+                setAccountMenuOpen(false);
+                navigate("/reset-password?role=influencer");
+              }}
+            />
           </div>
         </div>
       </header>
@@ -544,14 +702,11 @@ export function InfluencerDashboard() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex min-w-0 flex-wrap items-end gap-x-3 gap-y-1">
                 <h1 className="truncate text-[17px] font-bold text-[#171a17]">
-                  받은 계약
+                  내 캠페인
                 </h1>
-                <p className="pb-0.5 text-[12px] font-semibold text-[#7d857f]">
-                  {contractCountSummary} · 검토할 계약 포함
-                </p>
               </div>
-              <span className="inline-flex h-8 items-center rounded-[8px] bg-[#eef0ed] px-3 text-[12px] font-semibold text-[#303630]">
-                검토 가능
+              <span className={`inline-flex h-8 items-center rounded-[8px] border px-3 text-[12px] font-semibold ${verification.className}`}>
+                {verification.label}
               </span>
             </div>
           </div>
@@ -576,20 +731,36 @@ export function InfluencerDashboard() {
           />
 
           <div className="min-w-0 p-2.5 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+            <InfluencerOperationsPanel
+              summary={operationsSummary}
+              alerts={operationAlerts}
+              activities={recentActivities}
+              onOpen={(href) => navigate(href)}
+            />
+            <InfluencerCampaignLifecycleTabs
+              value={campaignLifecycle}
+              counts={lifecycleCounts}
+              onChange={setCampaignLifecycle}
+            />
             <ContractTable
-              contracts={filteredContracts}
-              totalContracts={dashboard.contracts.length}
+              items={filteredCampaignItems}
+              totalItems={visibleCampaignItems.length}
               query={query}
               onQueryChange={setQuery}
               platformFilter={platformFilter}
               onPlatformFilterChange={setPlatformFilter}
+              brandFilter={brandFilter}
+              onBrandFilterChange={setBrandFilter}
+              brandOptions={brandOptions}
               amountFilter={amountFilter}
               onAmountFilterChange={setAmountFilter}
               detailStageFilter={detailStageFilter}
               onDetailStageFilterChange={setDetailStageFilter}
+              deadlineFilter={deadlineFilter}
+              onDeadlineFilterChange={setDeadlineFilter}
               sortState={sortState}
               onSortChange={handleSortChange}
-              onOpen={(contract) => { void navigate(contract.action_href); }}
+              onOpen={(item) => { void navigate(item.action_href); }}
             />
           </div>
         </section>
@@ -684,6 +855,75 @@ function MessageCenterButton({
   );
 }
 
+function InfluencerAccountSettingsMenu({
+  account,
+  open,
+  onToggle,
+  onChangePassword,
+}: {
+  account: InfluencerAccountSummary;
+  open: boolean;
+  onToggle: () => void;
+  onChangePassword: () => void;
+}) {
+  const emailChangeHref = buildSupportMailtoHref({
+    subject: "인플루언서 계정 이메일 변경 요청",
+    body: [
+      "인플루언서 계정 이메일 변경을 요청합니다.",
+      "",
+      `현재 표시 이메일: ${account.email ?? "확인 필요"}`,
+      `활동명: ${account.name}`,
+      "변경할 이메일:",
+      "요청 사유:",
+    ].join("\n"),
+  });
+
+  return (
+    <div className="relative shrink-0">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-label="계정 설정"
+        title="계정 설정"
+        aria-expanded={open}
+        className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[9px] border border-neutral-200 bg-white text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
+      >
+        <Settings className="h-3.5 w-3.5" strokeWidth={2} />
+      </button>
+
+      {open ? (
+        <div className="absolute right-0 top-[calc(100%+8px)] z-40 w-[260px] overflow-hidden rounded-[12px] border border-neutral-200 bg-white text-left shadow-[0_18px_50px_rgba(15,23,42,0.14)]">
+          <div className="border-b border-neutral-100 px-4 py-3">
+            <p className="text-[13px] font-extrabold text-neutral-950">
+              계정 설정
+            </p>
+            {account.email ? (
+              <p className="mt-1 truncate text-[12px] font-semibold text-neutral-500">
+                {account.email}
+              </p>
+            ) : null}
+          </div>
+          <a
+            href={emailChangeHref}
+            className="flex h-11 items-center gap-2 px-4 text-[12px] font-extrabold text-neutral-700 transition hover:bg-neutral-50 hover:text-neutral-950"
+          >
+            <Mail className="h-3.5 w-3.5" />
+            이메일 변경
+          </a>
+          <button
+            type="button"
+            onClick={onChangePassword}
+            className="flex h-11 w-full items-center gap-2 px-4 text-left text-[12px] font-extrabold text-neutral-700 transition hover:bg-neutral-50 hover:text-neutral-950"
+          >
+            <KeyRound className="h-3.5 w-3.5" />
+            비밀번호 변경
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function LoadingView() {
   return (
     <div className="flex min-h-screen items-center justify-center px-5">
@@ -743,7 +983,6 @@ function InfluencerAccountBanner({
   const approvedPlatforms = dedupeApprovedPlatforms(
     dashboard.verification.approved_platforms,
   ).slice(0, 2);
-  const displayEmail = formatPublicContactValue(dashboard.user.email);
 
   return (
     <section className="border-b border-[#d9e0d9] bg-[#fcfcfd] px-4 py-2.5">
@@ -770,15 +1009,6 @@ function InfluencerAccountBanner({
             <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[12px] leading-4 text-neutral-500">
               <span className="max-w-[220px] truncate font-semibold text-neutral-800">
                 {removeInternalTestLabel(dashboard.user.name, "인플루언서 계정")}
-              </span>
-              {displayEmail && (
-                <>
-                  <span className="hidden h-3 w-px bg-neutral-200 sm:inline-block" />
-                  <span className="max-w-[340px] truncate">{displayEmail}</span>
-                </>
-              )}
-              <span className="rounded-full bg-neutral-100 px-2 py-0.5 font-semibold text-neutral-600">
-                이메일 {dashboard.user.email_verified ? "확인됨" : "확인 필요"}
               </span>
               {approvedPlatforms.map((platform) => (
                 <span
@@ -936,17 +1166,6 @@ function PublicProfileSettingsDialog({
     !automaticHandleError &&
     requiredFilled &&
     (!manualHandleAllowed || !manualHandleError);
-  const emailChangeHref = buildSupportMailtoHref({
-    subject: "인플루언서 계정 이메일 변경 요청",
-    body: [
-      "인플루언서 계정 이메일 변경을 요청합니다.",
-      "",
-      `현재 표시 이메일: ${dashboard.user.email || "확인 필요"}`,
-      "변경할 이메일:",
-      "활동명:",
-      "요청 사유:",
-    ].join("\n"),
-  });
 
   const toggleProposalType = (type: CampaignProposalType) => {
     setForm((current) => {
@@ -1064,40 +1283,6 @@ function PublicProfileSettingsDialog({
         </div>
 
         <form onSubmit={handleSubmit} className="grid gap-4">
-          <section className="rounded-[10px] border border-blue-100 bg-blue-50/70 p-3">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-[13px] font-extrabold text-blue-950">
-                    계정 설정
-                  </p>
-                  <span className="max-w-full truncate rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-blue-800 ring-1 ring-blue-100">
-                    {dashboard.user.email}
-                  </span>
-                </div>
-                <p className="mt-1 text-[12px] font-semibold leading-5 text-blue-800/85">
-                  이메일 변경은 계정 소유 확인 후 처리합니다. 비밀번호는 가입 이메일로 재설정할 수 있습니다.
-                </p>
-              </div>
-              <div className="flex shrink-0 flex-wrap gap-2">
-                <a
-                  href={emailChangeHref}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-[8px] border border-blue-200 bg-white px-3 text-[12px] font-extrabold text-blue-700 transition hover:border-blue-300 hover:bg-blue-50"
-                >
-                  <Mail className="h-3.5 w-3.5" />
-                  이메일 변경
-                </a>
-                <a
-                  href="/reset-password?role=influencer"
-                  className="inline-flex h-9 items-center gap-1.5 rounded-[8px] bg-blue-600 px-3 text-[12px] font-extrabold text-white shadow-[0_8px_18px_rgba(37,99,235,0.14)] transition hover:bg-blue-700"
-                >
-                  <KeyRound className="h-3.5 w-3.5" />
-                  비밀번호 변경
-                </a>
-              </div>
-            </div>
-          </section>
-
           <ProfileSettingsField
             label="공개 주소"
             hint={
@@ -1386,45 +1571,232 @@ function EmptyContracts({ hasQuery }: { hasQuery: boolean }) {
         <FileText className="h-5 w-5" strokeWidth={1.7} />
       </div>
       <h2 className="mt-3 text-[14px] font-semibold text-[#171a17]">
-        {hasQuery ? "조건에 맞는 계약이 없습니다" : "아직 받은 계약이 없습니다"}
+        {hasQuery ? "조건에 맞는 캠페인이 없습니다" : "아직 내 캠페인이 없습니다"}
       </h2>
       <p className="mt-1 max-w-md text-[12px] leading-5 text-[#7d857f]">
         {hasQuery
           ? "검색어를 줄이거나 전체로 바꿔보세요."
-          : `브랜드가 ${PRODUCT_NAME} 계약 링크를 보내면 이곳에 표시됩니다.`}
+          : `캠페인에 지원하거나 브랜드가 ${PRODUCT_NAME} 계약을 진행하면 이곳에 표시됩니다.`}
       </p>
     </section>
   );
 }
 
+function InfluencerOperationsPanel({
+  summary,
+  alerts,
+  activities,
+  onOpen,
+}: {
+  summary: InfluencerOperationsSummary;
+  alerts: InfluencerAlert[];
+  activities: InfluencerDashboardActivityEvent[];
+  onOpen: (href: string) => void;
+}) {
+  const metrics = [
+    {
+      label: "새 제안",
+      value: summary.newOffers,
+      tone: "text-blue-700",
+    },
+    {
+      label: "지원중",
+      value: summary.pendingApplications,
+      tone: "text-amber-700",
+    },
+    {
+      label: "처리 필요",
+      value: summary.actionableContracts + summary.deliverablesDue,
+      tone: "text-rose-700",
+    },
+    {
+      label: "마감 임박",
+      value: summary.overdueItems + summary.dueSoonItems,
+      tone: "text-emerald-700",
+    },
+  ];
+
+  return (
+    <div className="mb-2 grid gap-2 lg:grid-cols-[minmax(0,0.72fr)_minmax(0,0.72fr)_minmax(0,0.86fr)]">
+      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4 lg:col-span-1">
+        {metrics.map((metric) => (
+          <div
+            key={metric.label}
+            className="min-w-0 rounded-[7px] border border-[#d9e0d9] bg-white px-2.5 py-2"
+          >
+            <p className="truncate text-[11px] font-extrabold text-[#7d857f]">
+              {metric.label}
+            </p>
+            <p className={`mt-0.5 text-[16px] font-extrabold ${metric.tone}`}>
+              {metric.value.toLocaleString()}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      <div className="min-w-0 rounded-[7px] border border-[#d9e0d9] bg-white px-2.5 py-2">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[11px] font-extrabold text-[#7d857f]">
+            처리 알림
+          </p>
+          <span className="text-[11px] font-semibold text-[#9aa39d]">
+            우선순위 {alerts.length.toLocaleString()}건
+          </span>
+        </div>
+        {alerts.length > 0 ? (
+          <div className="mt-1.5 flex gap-1.5 overflow-x-auto pb-0.5">
+            {alerts.slice(0, 4).map((alert) => (
+              <button
+                key={alert.id}
+                type="button"
+                onClick={() => onOpen(alert.href)}
+                className={`inline-flex min-h-8 min-w-[190px] max-w-[260px] items-center gap-2 rounded-md border px-2 text-left text-[11px] font-extrabold transition hover:border-[#171a17] ${getInfluencerAlertToneClass(alert.tone)}`}
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate">{alert.label}</span>
+                  <span className="block truncate font-semibold opacity-75">
+                    {alert.detail}
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-2 text-[12px] font-semibold text-[#7d857f]">
+            지금 바로 처리할 캠페인 알림이 없습니다.
+          </p>
+        )}
+      </div>
+
+      <div className="min-w-0 rounded-[7px] border border-[#d9e0d9] bg-white px-2.5 py-2">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[11px] font-extrabold text-[#7d857f]">
+            활동 기록
+          </p>
+          <span className="text-[11px] font-semibold text-[#9aa39d]">
+            최근 {activities.length.toLocaleString()}건
+          </span>
+        </div>
+        {activities.length > 0 ? (
+          <div className="mt-2 grid gap-1.5">
+            {activities.slice(0, 3).map((activity) => (
+              <div
+                key={activity.id}
+                className="grid gap-0.5 border-l-2 border-[#d9e0d9] pl-2"
+              >
+                <div className="flex min-w-0 items-center justify-between gap-2">
+                  <p className="truncate text-[11px] font-extrabold text-[#171a17]">
+                    {activity.actor} · {activity.label}
+                  </p>
+                  <span className="shrink-0 text-[10px] font-semibold text-[#9aa39d]">
+                    {formatInfluencerActivityDate(activity.created_at)}
+                  </span>
+                </div>
+                <p className="line-clamp-1 text-[11px] font-semibold text-[#606861]">
+                  {activity.description}
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-2 text-[12px] font-semibold text-[#7d857f]">
+            아직 표시할 활동 기록이 없습니다.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function InfluencerCampaignLifecycleTabs({
+  value,
+  counts,
+  onChange,
+}: {
+  value: InfluencerCampaignLifecycle;
+  counts: Record<InfluencerCampaignLifecycle, number>;
+  onChange: (value: InfluencerCampaignLifecycle) => void;
+}) {
+  return (
+    <div className="mb-2 grid gap-1.5 rounded-[8px] border border-[#d9e0d9] bg-white p-2 sm:grid-cols-3">
+      {CAMPAIGN_LIFECYCLE_TABS.map((tab) => {
+        const active = value === tab.value;
+        return (
+          <button
+            key={tab.value}
+            type="button"
+            onClick={() => onChange(tab.value)}
+            aria-pressed={active}
+            className={`flex min-h-12 items-center justify-between gap-2 rounded-[7px] border px-3 py-2 text-left transition ${
+              active
+                ? "border-[#171a17] bg-[#171a17] text-white"
+                : "border-[#d9e0d9] bg-[#f8faf7] text-[#303630] hover:border-[#cbd5cc] hover:bg-white"
+            }`}
+          >
+            <span className="min-w-0">
+              <span className="block truncate text-[13px] font-extrabold">
+                {tab.label}
+              </span>
+              <span
+                className={`mt-0.5 block truncate text-[11px] font-semibold ${
+                  active ? "text-white/70" : "text-[#7d857f]"
+                }`}
+              >
+                {tab.helper}
+              </span>
+            </span>
+            <span
+              className={`inline-flex h-7 min-w-7 shrink-0 items-center justify-center rounded-md px-2 text-[12px] font-extrabold ${
+                active ? "bg-white text-[#171a17]" : "bg-white text-[#303630]"
+              }`}
+            >
+              {counts[tab.value].toLocaleString()}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function ContractTable({
-  contracts,
-  totalContracts,
+  items,
+  totalItems,
   query,
   onQueryChange,
   platformFilter,
   onPlatformFilterChange,
+  brandFilter,
+  onBrandFilterChange,
+  brandOptions,
   amountFilter,
   onAmountFilterChange,
   detailStageFilter,
   onDetailStageFilterChange,
+  deadlineFilter,
+  onDeadlineFilterChange,
   sortState,
   onSortChange,
   onOpen,
 }: {
-  contracts: InfluencerDashboardContract[];
-  totalContracts: number;
+  items: InfluencerCampaignWorkItem[];
+  totalItems: number;
   query: string;
   onQueryChange: (value: string) => void;
   platformFilter: PlatformFilter;
   onPlatformFilterChange: (value: PlatformFilter) => void;
+  brandFilter: string;
+  onBrandFilterChange: (value: string) => void;
+  brandOptions: Array<{ value: string; label: string }>;
   amountFilter: AmountFilter;
   onAmountFilterChange: (value: AmountFilter) => void;
   detailStageFilter: DetailStageFilter;
   onDetailStageFilterChange: (value: DetailStageFilter) => void;
+  deadlineFilter: DeadlineFilter;
+  onDeadlineFilterChange: (value: DeadlineFilter) => void;
   sortState: ContractSort;
   onSortChange: (key: SortKey) => void;
-  onOpen: (contract: InfluencerDashboardContract) => void;
+  onOpen: (item: InfluencerCampaignWorkItem) => void;
 }) {
   const platformOptions = PLATFORM_FILTERS.map((platform) => ({
     value: platform,
@@ -1438,9 +1810,16 @@ function ContractTable({
     value: stage,
     label: formatDetailStageFilterLabel(stage),
   }));
+  const deadlineOptions = DEADLINE_FILTERS.map((deadline) => ({
+    value: deadline,
+    label: formatDeadlineFilterLabel(deadline),
+  }));
   const activeFilterLabels = [
     platformFilter !== "all"
       ? platformOptions.find((option) => option.value === platformFilter)?.label
+      : null,
+    brandFilter !== "all"
+      ? brandOptions.find((option) => option.value === brandFilter)?.label
       : null,
     amountFilter !== "all"
       ? amountOptions.find((option) => option.value === amountFilter)?.label
@@ -1448,13 +1827,16 @@ function ContractTable({
     detailStageFilter !== "all"
       ? stageOptions.find((option) => option.value === detailStageFilter)?.label
       : null,
+    deadlineFilter !== "all"
+      ? deadlineOptions.find((option) => option.value === deadlineFilter)?.label
+      : null,
   ].filter((label): label is string => Boolean(label));
   const mobileFilterSummary =
     activeFilterLabels.length > 0 ? activeFilterLabels.join(" · ") : "전체 조건";
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
-  const displayContracts = collapseInternalDuplicateContracts(
-    contracts,
-    getInfluencerDashboardContractCollapseKey,
+  const displayItems = collapseInternalDuplicateContracts(
+    items,
+    getInfluencerDashboardItemCollapseKey,
   );
 
   return (
@@ -1502,6 +1884,16 @@ function ContractTable({
             compact
           />
           <TableFilterSelect
+            label="브랜드"
+            value={brandFilter}
+            options={brandOptions}
+            sortKey="advertiser"
+            sortState={sortState}
+            onSortChange={onSortChange}
+            onChange={onBrandFilterChange}
+            compact
+          />
+          <TableFilterSelect
             label="금액"
             value={amountFilter}
             options={amountOptions}
@@ -1512,7 +1904,7 @@ function ContractTable({
             compact
           />
           <TableFilterSelect
-            label="현 단계"
+            label="현재 상태"
             value={detailStageFilter}
             options={stageOptions}
             sortKey="stage"
@@ -1521,25 +1913,39 @@ function ContractTable({
             onChange={(value) => onDetailStageFilterChange(value as DetailStageFilter)}
             compact
           />
+          <TableFilterSelect
+            label="마감"
+            value={deadlineFilter}
+            options={deadlineOptions}
+            sortKey="deadline"
+            sortState={sortState}
+            onSortChange={onSortChange}
+            onChange={(value) => onDeadlineFilterChange(value as DeadlineFilter)}
+            compact
+          />
         </div>
       </div>
 
-      <div className="hidden grid-cols-[minmax(155px,0.46fr)_minmax(120px,0.36fr)_minmax(320px,1fr)_minmax(145px,0.42fr)_minmax(124px,0.36fr)] items-end gap-2 border-b border-[#d9e0d9] bg-[#f8faf7] px-3 py-2 lg:grid">
+      <div className="hidden grid-cols-[minmax(130px,0.36fr)_minmax(140px,0.38fr)_minmax(280px,1fr)_minmax(115px,0.32fr)_minmax(128px,0.35fr)_minmax(150px,0.42fr)] items-end gap-2 border-b border-[#d9e0d9] bg-[#f8faf7] px-3 py-2 lg:grid">
         <TableFilterSelect
           label="플랫폼"
           value={platformFilter}
           options={platformOptions}
-          maxWidthClassName="w-[119px]"
+          maxWidthClassName="w-[112px]"
           sortKey="platform"
           sortState={sortState}
           onSortChange={onSortChange}
           onChange={(value) => onPlatformFilterChange(value as PlatformFilter)}
         />
-        <SortableColumnSpacer
-          label="광고주"
+        <TableFilterSelect
+          label="브랜드"
+          value={brandFilter}
+          options={brandOptions}
+          maxWidthClassName="w-[124px]"
           sortKey="advertiser"
           sortState={sortState}
           onSortChange={onSortChange}
+          onChange={onBrandFilterChange}
         />
         <ContractNameSearch
           value={query}
@@ -1559,7 +1965,7 @@ function ContractTable({
           onChange={(value) => onAmountFilterChange(value as AmountFilter)}
         />
         <TableFilterSelect
-          label="현 단계"
+          label="현재 상태"
           value={detailStageFilter}
           options={stageOptions}
           maxWidthClassName="w-[106px]"
@@ -1568,27 +1974,37 @@ function ContractTable({
           onSortChange={onSortChange}
           onChange={(value) => onDetailStageFilterChange(value as DetailStageFilter)}
         />
+        <TableFilterSelect
+          label="마감"
+          value={deadlineFilter}
+          options={deadlineOptions}
+          maxWidthClassName="w-[132px]"
+          sortKey="deadline"
+          sortState={sortState}
+          onSortChange={onSortChange}
+          onChange={(value) => onDeadlineFilterChange(value as DeadlineFilter)}
+        />
       </div>
       <div className="max-h-[620px] divide-y divide-[#edf1ed] overflow-y-auto lg:max-h-none lg:min-h-0 lg:flex-1">
-        {displayContracts.length > 0 ? (
-          displayContracts.map((contract) => {
+        {displayItems.length > 0 ? (
+          displayItems.map((item) => {
             const advertiserName = removeInternalTestLabel(
-              contract.advertiser_name,
+              item.advertiser_name,
               "광고주",
             );
-            const amountLabel = formatDashboardAmountLabel(contract.fee_label);
+            const amountLabel = formatDashboardAmountLabel(item.fee_label);
 
             return (
             <button
-              key={contract.id}
+              key={item.id}
               type="button"
-              onClick={() => onOpen(contract)}
-              className="group grid w-full gap-2 px-3 py-2 text-left transition-colors hover:bg-[#f8faf7] lg:min-h-[38px] lg:grid-cols-[minmax(155px,0.46fr)_minmax(120px,0.36fr)_minmax(320px,1fr)_minmax(145px,0.42fr)_minmax(124px,0.36fr)] lg:items-center lg:py-1.5"
+              onClick={() => onOpen(item)}
+              className="group grid w-full gap-2 px-3 py-2 text-left transition-colors hover:bg-[#f8faf7] lg:min-h-[42px] lg:grid-cols-[minmax(130px,0.36fr)_minmax(140px,0.38fr)_minmax(280px,1fr)_minmax(115px,0.32fr)_minmax(128px,0.35fr)_minmax(150px,0.42fr)] lg:items-center lg:py-1.5"
             >
               <div className="flex min-w-0 items-center justify-between gap-2 lg:block">
-                <PlatformPills contract={contract} />
+                <PlatformPills item={item} />
                 <span className="shrink-0 lg:hidden">
-                  <StageBadge stage={contract.stage} dense />
+                  <StageBadge stage={item.stage} dense />
                 </span>
               </div>
               <div className="hidden min-w-0 lg:block">
@@ -1598,21 +2014,29 @@ function ContractTable({
               </div>
               <div className="min-w-0">
                 <p className="min-w-0 truncate text-[13px] font-semibold text-[#171a17]">
-                  {formatDashboardContractTitle(contract.title)}
+                  {formatDashboardContractTitle(item.title)}
                 </p>
                 <p className="mt-1 min-w-0 truncate text-[11px] font-semibold text-[#606861] lg:hidden">
-                  {advertiserName} · {amountLabel}
+                  {advertiserName} · {amountLabel} · {formatDeadlineDisplay(item)}
                 </p>
+                {item.kind === "application" ? (
+                  <p className="mt-1 truncate text-[11px] font-semibold text-[#7d857f]">
+                    {item.next_action_label}
+                  </p>
+                ) : null}
               </div>
               <div className="hidden min-w-0 lg:block">
                 <PreviewAmount value={amountLabel} />
               </div>
-              <StageTiming contract={contract} />
+              <div className="hidden min-w-0 lg:block">
+                <StageBadge stage={item.stage} />
+              </div>
+              <DueAndSubmission item={item} />
             </button>
             );
           })
         ) : (
-          <EmptyContracts hasQuery={totalContracts > 0} />
+          <EmptyContracts hasQuery={totalItems > 0} />
         )}
       </div>
     </section>
@@ -1643,7 +2067,7 @@ function ContractNameSearch({
       }
     >
       <ColumnHeader
-        label="계약명"
+        label="캠페인명"
         sortKey={sortKey}
         sortState={sortState}
         onSortChange={onSortChange}
@@ -1653,8 +2077,8 @@ function ContractNameSearch({
         <input
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          aria-label="계약명 검색"
-          placeholder="계약명으로 검색"
+          aria-label="캠페인명 검색"
+          placeholder="캠페인명으로 검색"
           className="h-10 w-full max-w-full rounded-[6px] border border-[#d9e0d9] bg-white pl-7 pr-2 text-[12px] font-semibold text-[#303630] outline-none transition-colors placeholder:text-[#8b938d] hover:border-[#cbd5cc] focus:border-[#171a17]"
         />
       </span>
@@ -1741,30 +2165,6 @@ function ColumnHeader({
   );
 }
 
-function SortableColumnSpacer({
-  label,
-  sortKey,
-  sortState,
-  onSortChange,
-}: {
-  label: string;
-  sortKey: SortKey;
-  sortState: ContractSort;
-  onSortChange: (key: SortKey) => void;
-}) {
-  return (
-    <div className="block min-w-0">
-      <ColumnHeader
-        label={label}
-        sortKey={sortKey}
-        sortState={sortState}
-        onSortChange={onSortChange}
-      />
-      <div className="mt-1 h-10" aria-hidden="true" />
-    </div>
-  );
-}
-
 function SortButton({
   label,
   sortKey,
@@ -1806,10 +2206,10 @@ function StageBadge({
   stage,
   dense = false,
 }: {
-  stage: InfluencerDashboardContractStage;
+  stage: InfluencerWorkStage;
   dense?: boolean;
 }) {
-  const meta = getStageMeta(stage);
+  const meta = getWorkStageMeta(stage);
 
   return (
     <span
@@ -1823,14 +2223,21 @@ function StageBadge({
   );
 }
 
-function StageTiming({
-  contract,
+function DueAndSubmission({
+  item,
 }: {
-  contract: InfluencerDashboardContract;
+  item: InfluencerCampaignWorkItem;
 }) {
+  const submission = getSubmissionStatusMeta(item);
+
   return (
-    <div className="hidden min-w-0 lg:block">
-      <StageBadge stage={contract.stage} />
+    <div className="min-w-0">
+      <p className="truncate text-[12px] font-semibold text-[#303630]">
+        {formatDeadlineDisplay(item)}
+      </p>
+      <p className={`mt-0.5 truncate text-[11px] font-semibold ${submission.className}`}>
+        {submission.label}
+      </p>
     </div>
   );
 }
@@ -1843,8 +2250,8 @@ function PreviewAmount({ value }: { value: string }) {
   );
 }
 
-function PlatformPills({ contract }: { contract: InfluencerDashboardContract }) {
-  const items = getInfluencerPlatformDisplayItems(contract);
+function PlatformPills({ item }: { item: InfluencerCampaignWorkItem }) {
+  const items = getInfluencerPlatformDisplayItems(item);
 
   return (
     <div className="flex min-w-0 flex-wrap gap-1">
@@ -1871,19 +2278,305 @@ function PlatformPills({ contract }: { contract: InfluencerDashboardContract }) 
   );
 }
 
-function getInfluencerPlatformDisplayItems(contract: InfluencerDashboardContract) {
+function buildInfluencerCampaignWorkItems(
+  dashboard: InfluencerDashboardResponse,
+): InfluencerCampaignWorkItem[] {
+  const contractIds = new Set(dashboard.contracts.map((contract) => contract.id));
+  const contractItems = dashboard.contracts.map(
+    (contract): InfluencerCampaignWorkItem => ({
+      id: `contract:${contract.id}`,
+      kind: "contract",
+      lifecycle: getContractLifecycle(contract),
+      title: contract.title,
+      advertiser_name: contract.advertiser_name,
+      stage: contract.stage,
+      stage_label: contract.stage_label,
+      next_action_label: contract.next_action_label,
+      action_label: contract.action_label,
+      action_href: contract.action_href,
+      platform_labels: contract.platform_labels,
+      platforms: contract.platforms,
+      platform_accounts: contract.platform_accounts,
+      fee_label: contract.fee_label,
+      deadline_label: contract.deadline_label,
+      due_at: contract.due_at,
+      updated_at: contract.updated_at,
+      deliverable_summary: contract.deliverable_summary,
+      activity_events: contract.activity_events ?? [],
+      source_contract: contract,
+    }),
+  );
+  const applicationItems = (dashboard.applications ?? [])
+    .filter(
+      (application) =>
+        !application.converted_contract_id ||
+        !contractIds.has(application.converted_contract_id),
+    )
+    .map(
+      (application): InfluencerCampaignWorkItem => ({
+        id: `application:${application.id}`,
+        kind: "application",
+        lifecycle: getApplicationLifecycle(application),
+        title: application.campaign_title,
+        advertiser_name: application.brand_name,
+        stage: mapApplicationWorkStage(application.stage),
+        stage_label: application.stage_label,
+        next_action_label: application.next_action_label,
+        action_label: application.action_label,
+        action_href: application.action_href,
+        platform_labels: application.platform_labels,
+        platforms: application.platforms,
+        platform_accounts: application.platforms.map((platform) => ({ platform })),
+        fee_label: application.fee_label,
+        deadline_label: application.deadline_label,
+        due_at: application.due_at,
+        updated_at: application.updated_at,
+        deliverable_summary: {
+          total: 0,
+          submitted: 0,
+          approved: 0,
+        },
+        activity_events: application.activity_events ?? [],
+        source_application: application,
+      }),
+    );
+
+  return [...applicationItems, ...contractItems].sort(
+    (a, b) => parseDate(b.updated_at) - parseDate(a.updated_at),
+  );
+}
+
+function mapApplicationWorkStage(
+  stage: InfluencerDashboardApplicationStage,
+): InfluencerApplicationWorkStage {
+  if (stage === "reviewed") return "application_reviewed";
+  if (stage === "accepted") return "application_accepted";
+  if (stage === "closed") return "application_closed";
+  return "application_submitted";
+}
+
+function getContractLifecycle(
+  contract: InfluencerDashboardContract,
+): InfluencerCampaignLifecycle {
+  if (contract.stage === "completed" || contract.stage === "signed") {
+    return "ENDED";
+  }
+
+  return "IN_PROGRESS";
+}
+
+function getApplicationLifecycle(
+  application: InfluencerDashboardApplication,
+): InfluencerCampaignLifecycle {
+  if (application.stage === "closed") return "ENDED";
+  if (application.stage === "accepted") return "IN_PROGRESS";
+  return "APPLIED";
+}
+
+function getInfluencerCampaignLifecycleCounts(
+  items: InfluencerCampaignWorkItem[],
+) {
+  return items.reduce<Record<InfluencerCampaignLifecycle, number>>(
+    (counts, item) => {
+      counts[item.lifecycle] += 1;
+      return counts;
+    },
+    { APPLIED: 0, IN_PROGRESS: 0, ENDED: 0 },
+  );
+}
+
+function getInfluencerOperationsSummary(
+  items: InfluencerCampaignWorkItem[],
+  newOffers: number,
+): InfluencerOperationsSummary {
+  return items.reduce<InfluencerOperationsSummary>(
+    (summary, item) => {
+      if (item.kind === "application" && item.lifecycle === "APPLIED") {
+        summary.pendingApplications += 1;
+      }
+      if (
+        item.kind === "contract" &&
+        ["review_needed", "change_pending", "ready_to_sign"].includes(item.stage)
+      ) {
+        summary.actionableContracts += 1;
+      }
+      if (item.kind === "contract" && item.stage === "deliverables_due") {
+        summary.deliverablesDue += 1;
+      }
+      if (item.lifecycle !== "ENDED" && isCampaignItemDeadlineOverdue(item)) {
+        summary.overdueItems += 1;
+      } else if (item.lifecycle !== "ENDED" && isCampaignItemDeadlineDueSoon(item)) {
+        summary.dueSoonItems += 1;
+      }
+      return summary;
+    },
+    {
+      newOffers,
+      pendingApplications: 0,
+      actionableContracts: 0,
+      overdueItems: 0,
+      dueSoonItems: 0,
+      deliverablesDue: 0,
+    },
+  );
+}
+
+function buildInfluencerAlerts(
+  items: InfluencerCampaignWorkItem[],
+  newOffers: number,
+): InfluencerAlert[] {
+  const alerts: InfluencerAlert[] = [];
+
+  if (newOffers > 0) {
+    alerts.push({
+      id: "messages:new-offers",
+      label: `새 제안 ${newOffers}건`,
+      detail: "브랜드가 보낸 개별 제안을 메시지함에서 확인하세요.",
+      href: "/influencer/messages",
+      tone: "blue",
+      priority: 5,
+    });
+  }
+
+  for (const item of items) {
+    if (item.lifecycle === "ENDED") continue;
+
+    if (item.kind === "contract" && item.stage === "review_needed") {
+      alerts.push({
+        id: `${item.id}:review`,
+        label: "계약 검토 필요",
+        detail: formatDashboardContractTitle(item.title),
+        href: item.action_href,
+        tone: "amber",
+        priority: 10,
+      });
+    }
+
+    if (item.kind === "contract" && item.stage === "ready_to_sign") {
+      alerts.push({
+        id: `${item.id}:sign`,
+        label: "서명 대기",
+        detail: formatDashboardContractTitle(item.title),
+        href: item.action_href,
+        tone: "blue",
+        priority: 20,
+      });
+    }
+
+    if (item.kind === "contract" && item.stage === "deliverables_due") {
+      alerts.push({
+        id: `${item.id}:deliverables`,
+        label: "콘텐츠 제출 필요",
+        detail: formatDashboardContractTitle(item.title),
+        href: item.action_href,
+        tone: "rose",
+        priority: 30,
+      });
+    }
+
+    if (isCampaignItemDeadlineOverdue(item)) {
+      alerts.push({
+        id: `${item.id}:overdue`,
+        label: "마감 지남",
+        detail: formatDashboardContractTitle(item.title),
+        href: item.action_href,
+        tone: "rose",
+        priority: 40,
+      });
+    } else if (isCampaignItemDeadlineDueSoon(item)) {
+      alerts.push({
+        id: `${item.id}:due-soon`,
+        label: "7일 이내 마감",
+        detail: formatDashboardContractTitle(item.title),
+        href: item.action_href,
+        tone: "emerald",
+        priority: 50,
+      });
+    }
+
+    if (item.kind === "application" && item.stage === "application_reviewed") {
+      alerts.push({
+        id: `${item.id}:reviewed`,
+        label: "지원 검토 중",
+        detail: formatDashboardContractTitle(item.title),
+        href: item.action_href,
+        tone: "amber",
+        priority: 60,
+      });
+    }
+  }
+
+  return alerts
+    .sort((a, b) => a.priority - b.priority || compareText(a.detail, b.detail))
+    .slice(0, 8);
+}
+
+function buildInfluencerRecentActivities(items: InfluencerCampaignWorkItem[]) {
+  return items
+    .flatMap((item) =>
+      item.activity_events.map((event) => ({
+        ...event,
+        id: `${item.id}:${event.id}`,
+      })),
+    )
+    .filter((event) => Number.isFinite(parseDate(event.created_at)))
+    .sort((a, b) => parseDate(b.created_at) - parseDate(a.created_at))
+    .slice(0, 8);
+}
+
+function getInfluencerAlertToneClass(tone: InfluencerAlertTone) {
+  const tones: Record<InfluencerAlertTone, string> = {
+    amber: "border-amber-200 bg-amber-50 text-amber-800",
+    blue: "border-blue-200 bg-blue-50 text-blue-700",
+    rose: "border-rose-200 bg-rose-50 text-rose-700",
+    emerald: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    neutral: "border-neutral-200 bg-neutral-100 text-neutral-600",
+  };
+
+  return tones[tone];
+}
+
+function isCampaignItemDeadlineOverdue(item: InfluencerCampaignWorkItem) {
+  const dueTime = getDueTime(item);
+  if (!Number.isFinite(dueTime)) return false;
+  return getDaysUntilTime(dueTime) < 0;
+}
+
+function isCampaignItemDeadlineDueSoon(item: InfluencerCampaignWorkItem) {
+  const dueTime = getDueTime(item);
+  if (!Number.isFinite(dueTime)) return false;
+  const daysUntil = getDaysUntilTime(dueTime);
+  return daysUntil >= 0 && daysUntil <= 7;
+}
+
+function getDaysUntilTime(time: number) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.floor((time - today.getTime()) / (24 * 60 * 60 * 1000));
+}
+
+function formatInfluencerActivityDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return new Intl.DateTimeFormat("ko-KR", {
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+function getInfluencerPlatformDisplayItems(item: InfluencerCampaignWorkItem) {
   const source = [
-    contract.title,
-    contract.next_action_label,
-    contract.period_label,
-    ...contract.platform_labels,
+    item.title,
+    item.next_action_label,
+    ...item.platform_labels,
   ]
     .join(" ")
     .toLowerCase();
   const accounts: Array<{ platform: InfluencerPlatform; url?: string }> =
-    contract.platform_accounts.length > 0
-      ? contract.platform_accounts
-      : contract.platforms.map((platform) => ({ platform }));
+    item.platform_accounts.length > 0
+      ? item.platform_accounts
+      : item.platforms.map((platform) => ({ platform }));
   const fallbackAccounts =
     accounts.length > 0 ? accounts : [{ platform: "other" as InfluencerPlatform }];
 
@@ -1894,11 +2587,11 @@ function getInfluencerPlatformDisplayItems(contract: InfluencerDashboardContract
   }));
 }
 
-function getInfluencerContractPlatforms(contract: InfluencerDashboardContract) {
+function getInfluencerCampaignItemPlatforms(item: InfluencerCampaignWorkItem) {
   const platforms =
-    contract.platforms.length > 0
-      ? contract.platforms
-      : contract.platform_accounts.map((account) => account.platform);
+    item.platforms.length > 0
+      ? item.platforms
+      : item.platform_accounts.map((account) => account.platform);
   const uniquePlatforms = Array.from(new Set(platforms));
 
   return uniquePlatforms.length > 0
@@ -1913,7 +2606,7 @@ function formatPlatformFilterLabel(platform: PlatformFilter) {
 
 function formatDetailStageFilterLabel(stage: DetailStageFilter) {
   if (stage === "all") return "전체";
-  return getStageMeta(stage).label;
+  return getWorkStageMeta(stage).label;
 }
 
 function formatAmountFilterLabel(filter: AmountFilter) {
@@ -1922,11 +2615,117 @@ function formatAmountFilterLabel(filter: AmountFilter) {
   return "전체";
 }
 
+function formatDeadlineFilterLabel(filter: DeadlineFilter) {
+  if (filter === "overdue") return "마감 지남";
+  if (filter === "this_week") return "7일 이내";
+  if (filter === "later") return "이후";
+  if (filter === "none") return "마감 없음";
+  return "전체";
+}
+
+function buildInfluencerBrandFilterOptions(
+  items: InfluencerCampaignWorkItem[],
+) {
+  const brands = Array.from(
+    new Set(
+      items
+        .map((item) => removeInternalTestLabel(item.advertiser_name, "광고주"))
+        .filter(Boolean),
+    ),
+  ).sort(compareText);
+
+  return [
+    { value: "all", label: "전체" },
+    ...brands.map((brand) => ({ value: brand, label: brand })),
+  ];
+}
+
 function getAmountFilterKind(value?: string | null): ActualAmountKind {
   const text = `${value ?? ""} ${formatMoneyLabel(value, "")}`.toLowerCase();
 
   if (/%|commission|수수료|판매\s*수익/.test(text)) return "commission";
   return "fixed";
+}
+
+function matchesDeadlineFilter(
+  item: InfluencerCampaignWorkItem,
+  filter: DeadlineFilter,
+) {
+  if (filter === "all") return true;
+  const dueTime = getDueTime(item);
+  if (!Number.isFinite(dueTime)) return filter === "none";
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const daysUntilDue = Math.floor(
+    (dueTime - today.getTime()) / (24 * 60 * 60 * 1000),
+  );
+
+  if (filter === "overdue") return daysUntilDue < 0;
+  if (filter === "this_week") return daysUntilDue >= 0 && daysUntilDue <= 7;
+  if (filter === "later") return daysUntilDue > 7;
+  return false;
+}
+
+function formatDeadlineDisplay(item: InfluencerCampaignWorkItem) {
+  const label = item.deadline_label?.trim();
+  if (label) return label;
+  if (!Number.isFinite(getDueTime(item))) return "마감 없음";
+
+  return new Intl.DateTimeFormat("ko-KR", {
+    month: "numeric",
+    day: "numeric",
+  }).format(new Date(item.due_at as string));
+}
+
+function getSubmissionStatusMeta(item: InfluencerCampaignWorkItem) {
+  if (item.kind === "application") {
+    return {
+      label: item.next_action_label || "지원 상태 확인",
+      className:
+        item.stage === "application_closed"
+          ? "text-[#7d857f]"
+          : item.stage === "application_accepted"
+            ? "text-blue-700"
+            : "text-amber-700",
+    };
+  }
+
+  const { total, submitted, approved } = item.deliverable_summary;
+
+  if (total <= 0) {
+    return {
+      label: item.next_action_label || "제출 없음",
+      className: "text-[#7d857f]",
+    };
+  }
+
+  if (approved >= total) {
+    return { label: "제출 승인", className: "text-emerald-700" };
+  }
+
+  if (submitted >= total) {
+    return { label: "제출 완료", className: "text-[#303630]" };
+  }
+
+  if (submitted > 0) {
+    return {
+      label: `${submitted}/${total} 제출`,
+      className: "text-amber-700",
+    };
+  }
+
+  if (item.stage === "deliverables_due") {
+    return { label: "제출 필요", className: "text-amber-700" };
+  }
+
+  return { label: "제출 대기", className: "text-[#7d857f]" };
+}
+
+function getDueTime(item: Pick<InfluencerCampaignWorkItem, "due_at">) {
+  if (!item.due_at) return Number.POSITIVE_INFINITY;
+  const time = new Date(item.due_at).getTime();
+  return Number.isFinite(time) ? time : Number.POSITIVE_INFINITY;
 }
 
 function formatDashboardAmountLabel(value?: string | null) {
@@ -1937,9 +2736,9 @@ function formatDashboardAmountLabel(value?: string | null) {
   return label || "-";
 }
 
-function compareContractsBySort(
-  a: InfluencerDashboardContract,
-  b: InfluencerDashboardContract,
+function compareCampaignItemsBySort(
+  a: InfluencerCampaignWorkItem,
+  b: InfluencerCampaignWorkItem,
   sort: ContractSort,
 ) {
   let result: number;
@@ -1967,6 +2766,9 @@ function compareContractsBySort(
       result =
         DETAIL_STAGE_FILTERS.indexOf(a.stage) - DETAIL_STAGE_FILTERS.indexOf(b.stage);
       break;
+    case "deadline":
+      result = getDueTime(a) - getDueTime(b);
+      break;
     case "updated":
     default:
       result = parseDate(a.updated_at) - parseDate(b.updated_at);
@@ -1980,8 +2782,8 @@ function compareContractsBySort(
   return sort.direction === "asc" ? result : -result;
 }
 
-function getPlatformSortLabel(contract: InfluencerDashboardContract) {
-  return getInfluencerContractPlatforms(contract)
+function getPlatformSortLabel(item: InfluencerCampaignWorkItem) {
+  return getInfluencerCampaignItemPlatforms(item)
     .map((platform) => formatInfluencerPlatformShortLabel(platform))
     .join(" ");
 }
@@ -2051,7 +2853,7 @@ function getAmountSortMeta(value?: string | null) {
 
 function formatDashboardContractTitle(title: string) {
   const cleaned = title.replace(/^\[[^\]]+\]\s*/, "").trim();
-  return formatContractTitleForDisplay(cleaned || title, "계약명 미정");
+  return formatContractTitleForDisplay(cleaned || title, "캠페인명 미정");
 }
 
 function collapseInternalDuplicateContracts<T extends { title: string }>(
@@ -2077,15 +2879,16 @@ function collapseInternalDuplicateContracts<T extends { title: string }>(
   return result;
 }
 
-function getInfluencerDashboardContractCollapseKey(
-  contract: InfluencerDashboardContract,
+function getInfluencerDashboardItemCollapseKey(
+  item: InfluencerCampaignWorkItem,
 ) {
   return [
-    formatDashboardContractTitle(contract.title),
-    contract.stage,
-    removeInternalTestLabel(contract.advertiser_name, "광고주"),
-    formatDashboardAmountLabel(contract.fee_label),
-    getInfluencerContractPlatforms(contract).join(","),
+    item.kind,
+    formatDashboardContractTitle(item.title),
+    item.stage,
+    removeInternalTestLabel(item.advertiser_name, "광고주"),
+    formatDashboardAmountLabel(item.fee_label),
+    getInfluencerCampaignItemPlatforms(item).join(","),
   ].join("|");
 }
 

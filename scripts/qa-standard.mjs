@@ -363,7 +363,7 @@ const browserRenderRoutes = [
   {
     name: "home",
     path: "/",
-    requiredText: ["광고 계약은", "전자서명 증빙"],
+    requiredText: ["광고 계약은", "전자서명 완료"],
     minTextLength: 80,
   },
   {

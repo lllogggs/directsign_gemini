@@ -85,7 +85,7 @@ export const proposalStatusTone: Record<MarketplaceProposalStatus, string> = {
 
 export const marketplaceFlowSteps = {
   advertiser: [
-    { label: "모집글", href: "/advertiser/campaigns" },
+    { label: "캠페인", href: "/advertiser/campaigns" },
     { label: "탐색", href: "/advertiser/discover" },
     { label: "제안함", href: "/advertiser/messages" },
     { label: "계약 작성", href: "/advertiser/builder" },

@@ -132,8 +132,8 @@ export function AdvertiserCampaignRecruitmentPage() {
       if (!response.ok || !("campaigns" in data)) {
         throw new Error(
           "error" in data
-            ? data.error ?? "모집글을 불러오지 못했습니다."
-            : "모집글을 불러오지 못했습니다.",
+            ? data.error ?? "캠페인을 불러오지 못했습니다."
+            : "캠페인을 불러오지 못했습니다.",
         );
       }
 
@@ -148,7 +148,7 @@ export function AdvertiserCampaignRecruitmentPage() {
         message:
           error instanceof Error
             ? error.message
-            : "모집글을 불러오지 못했습니다.",
+            : "캠페인을 불러오지 못했습니다.",
       });
     }
   }, [navigate]);
@@ -212,8 +212,8 @@ export function AdvertiserCampaignRecruitmentPage() {
       if (!response.ok || !("campaigns" in data)) {
         throw new Error(
           "error" in data
-            ? data.error ?? "모집글을 저장하지 못했습니다."
-            : "모집글을 저장하지 못했습니다.",
+            ? data.error ?? "캠페인을 저장하지 못했습니다."
+            : "캠페인을 저장하지 못했습니다.",
         );
       }
 
@@ -222,7 +222,7 @@ export function AdvertiserCampaignRecruitmentPage() {
         brand: data.brand,
         campaigns: data.campaigns,
       });
-      setSavedMessage("모집글이 공개 캠페인 목록에 반영되었습니다.");
+      setSavedMessage("캠페인이 공개 목록에 반영되었습니다.");
       setForm((current) => ({
         ...current,
         title: "",
@@ -233,7 +233,7 @@ export function AdvertiserCampaignRecruitmentPage() {
       }));
     } catch (error) {
       setSubmitError(
-        error instanceof Error ? error.message : "모집글을 저장하지 못했습니다.",
+        error instanceof Error ? error.message : "캠페인을 저장하지 못했습니다.",
       );
     } finally {
       setIsSubmitting(false);
@@ -246,8 +246,8 @@ export function AdvertiserCampaignRecruitmentPage() {
   return (
     <CampaignShell
       eyebrow="광고주 캠페인"
-      title="캠페인 모집글 작성"
-      description="모집 조건을 정리한 뒤, 실제 진행은 계약 작성과 검토 링크 발급으로 이어갑니다."
+      title="캠페인 작성"
+      description="캠페인 조건을 정리한 뒤, 실제 진행은 계약 작성과 검토 링크 발급으로 이어갑니다."
       backHref="/advertiser/dashboard"
       backLabel="계약 대시보드"
       actions={
@@ -277,10 +277,10 @@ export function AdvertiserCampaignRecruitmentPage() {
           <div className="flex items-start justify-between gap-3 border-b border-neutral-200 pb-4">
             <div>
               <p className="text-[12px] font-extrabold text-neutral-400">
-                모집 조건 입력
+                캠페인 조건 입력
               </p>
               <h2 className="mt-1 text-[20px] font-extrabold text-neutral-950">
-                새 모집글
+                새 캠페인
               </h2>
             </div>
             <span className="inline-flex h-9 items-center rounded-full bg-emerald-50 px-3 text-[12px] font-extrabold text-emerald-700">
@@ -302,7 +302,7 @@ export function AdvertiserCampaignRecruitmentPage() {
             </CampaignField>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <CampaignField label="모집 형태">
+              <CampaignField label="캠페인 형태">
                 <select
                   value={form.type}
                   onChange={(event) =>
@@ -333,7 +333,7 @@ export function AdvertiserCampaignRecruitmentPage() {
               </CampaignField>
             </div>
 
-            <CampaignField label="모집 설명">
+            <CampaignField label="캠페인 설명">
               <textarea
                 required
                 rows={5}
@@ -372,7 +372,7 @@ export function AdvertiserCampaignRecruitmentPage() {
               </CampaignField>
             </div>
 
-            <CampaignField label="모집 플랫폼">
+            <CampaignField label="진행 플랫폼">
               <div className="flex flex-wrap gap-2">
                 {platformOptions
                   .filter((platform): platform is InfluencerPlatform => platform !== "all")
@@ -413,7 +413,7 @@ export function AdvertiserCampaignRecruitmentPage() {
               className="inline-flex h-12 items-center justify-center gap-2 rounded-[14px] bg-blue-600 px-5 text-[14px] font-extrabold text-white shadow-[0_14px_34px_rgba(37,99,235,0.22)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:shadow-none"
             >
               <Plus className="h-4 w-4" />
-              {isSubmitting ? "저장 중" : "모집글 공개"}
+              {isSubmitting ? "저장 중" : "캠페인 공개"}
             </button>
           </div>
         </form>
@@ -422,7 +422,7 @@ export function AdvertiserCampaignRecruitmentPage() {
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-[12px] font-extrabold text-neutral-400">
-                공개 중인 모집글
+                공개 중인 캠페인
               </p>
               <h2 className="mt-1 truncate text-[20px] font-extrabold text-neutral-950">
                 {brand?.displayName ?? "브랜드 프로필 준비 중"}
@@ -443,14 +443,14 @@ export function AdvertiserCampaignRecruitmentPage() {
           </div>
 
           {state.status === "loading" ? (
-            <PanelState icon={<RefreshCw className="h-5 w-5 animate-spin" />} title="모집글을 불러오는 중" />
+            <PanelState icon={<RefreshCw className="h-5 w-5 animate-spin" />} title="캠페인을 불러오는 중" />
           ) : state.status === "error" ? (
             <PanelState icon={<Megaphone className="h-5 w-5" />} title={state.message} />
           ) : campaigns.length === 0 ? (
             <PanelState
               icon={<Megaphone className="h-5 w-5" />}
-              title="아직 공개 모집글이 없습니다"
-              body="첫 모집글을 등록하면 인플루언서 캠페인 화면에 바로 표시됩니다."
+              title="아직 공개 캠페인이 없습니다"
+              body="첫 캠페인을 등록하면 인플루언서 캠페인 화면에 바로 표시됩니다."
             />
           ) : (
             <div className="mt-4 grid gap-3">
@@ -875,6 +875,8 @@ function AdvertiserCampaignCard({
   key?: string;
   campaign: MarketplaceBrandCampaign;
 }) {
+  const statusMeta = getAdvertiserCampaignStatusMeta(campaign);
+
   return (
     <article className="rounded-[14px] border border-neutral-200 bg-white p-4">
       <div className="flex items-start justify-between gap-3">
@@ -886,8 +888,10 @@ function AdvertiserCampaignCard({
             {campaign.title}
           </h3>
         </div>
-        <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-extrabold text-emerald-700">
-          공개
+        <span
+          className={`rounded-full px-2.5 py-1 text-[10px] font-extrabold ${statusMeta.className}`}
+        >
+          {statusMeta.label}
         </span>
       </div>
       <p className="mt-3 line-clamp-2 text-[13px] font-bold leading-5 text-neutral-600">
@@ -909,6 +913,32 @@ function AdvertiserCampaignCard({
       </div>
     </article>
   );
+}
+
+function getAdvertiserCampaignStatusMeta(campaign: MarketplaceBrandCampaign) {
+  if (campaign.status === "ended") {
+    return {
+      label: "종료",
+      className: "bg-neutral-100 text-neutral-600",
+    };
+  }
+  if (campaign.status === "closed") {
+    return {
+      label: "모집 종료",
+      className: "bg-amber-50 text-amber-700",
+    };
+  }
+  if (campaign.status === "draft") {
+    return {
+      label: "비공개",
+      className: "bg-neutral-100 text-neutral-600",
+    };
+  }
+
+  return {
+    label: "공개",
+    className: "bg-emerald-50 text-emerald-700",
+  };
 }
 
 function CampaignPostCard({

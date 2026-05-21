@@ -28,37 +28,37 @@ export type ContractFirstExperienceContent = {
 export const CONTRACT_FIRST_EXPERIENCE_CONTENT = {
   id: "advertiser-contract-first-experience",
   storageKey: "yeollock:advertiser-contract-first-experience:v1",
-  title: "첫 계약은 이렇게 시작합니다",
+  title: "새 계약과 새 캠페인의 차이",
   summary:
-    "광고 조건을 계약서로 정리하고, 인플루언서 검토 링크와 전자서명 증빙까지 한 흐름으로 관리합니다.",
+    "새 계약은 이미 협의된 내용을 계약서로 옮기는 기능이고, 새 캠페인은 같은 조건으로 여러 인플루언서 계약을 발송하기 위한 기능입니다.",
   steps: [
     {
-      title: "계약 조건 입력",
+      title: "새 계약",
       description:
-        "브랜드, 인플루언서, 플랫폼, 업로드 조건, 일정과 지급 조건을 실제 합의 내용 기준으로 채웁니다.",
+        "다른 플랫폼이나 DM에서 브랜드와 인플루언서가 이미 협의한 조건을 계약서로 편하게 정리합니다.",
     },
     {
-      title: "발송 전 확인",
+      title: "새 캠페인",
       description:
-        "광고 표시 문구, 지급 조건, 검토 기한처럼 분쟁이 생기기 쉬운 항목을 공유 전에 다시 봅니다.",
+        "캠페인 조건을 먼저 만들고, 매칭된 인플루언서마다 같은 캠페인 조건으로 계약서를 만들어 발송합니다.",
     },
     {
-      title: "검토 링크 공유",
+      title: "조건 확인",
       description:
-        "사업자 인증이 완료되면 링크를 전달하고, 인플루언서는 조항 승인이나 수정 요청을 남깁니다.",
+        "금액, 업로드 일정, 산출물, 사용 권한처럼 분쟁이 생기기 쉬운 항목을 발송 전에 확인합니다.",
     },
     {
-      title: "서명본 보관",
+      title: "계약 발송",
       description:
-        "최종 합의 후 전자서명이 끝나면 서명 PDF와 감사 이력이 계약 증빙으로 남습니다.",
+        "인플루언서가 조건을 검토하고 최종 동의하면 전자서명과 계약 보관까지 이어집니다.",
     },
   ],
   checks: [
-    "공유 링크 발송은 광고주 인증 상태에 따라 제한될 수 있습니다.",
+    "이미 한 명과 협의된 건이면 새 계약을 선택하세요.",
+    "여러 인플루언서와 같은 조건으로 진행할 건이면 새 캠페인을 선택하세요.",
     "자동으로 구성된 조항도 광고주가 최종 책임지고 검토해야 합니다.",
-    "막히는 화면에서는 제목 옆 ? 버튼으로 현재 화면 도움말을 다시 열 수 있습니다.",
   ],
-  primaryActionLabel: "새 계약 만들기",
+  primaryActionLabel: "새 계약",
   secondaryActionLabel: "확인했습니다",
 } satisfies ContractFirstExperienceContent;
 

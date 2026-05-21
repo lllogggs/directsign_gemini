@@ -7,7 +7,7 @@ export type CampaignProposalType =
   | "group_buy"
   | "visit_review";
 
-export type MarketplaceCampaignStatus = "open" | "draft" | "closed";
+export type MarketplaceCampaignStatus = "open" | "draft" | "closed" | "ended";
 
 export type MarketplaceBrandCampaign = {
   id?: string;
@@ -19,6 +19,20 @@ export type MarketplaceBrandCampaign = {
   platforms?: InfluencerPlatform[];
   deliverables?: string[];
   status?: MarketplaceCampaignStatus;
+  createdAt?: string;
+  updatedAt?: string;
+  statusUpdatedAt?: string;
+  statusUpdatedBy?: string;
+  closedAt?: string;
+  endedAt?: string;
+  reopenedAt?: string;
+  activityEvents?: Array<{
+    id: string;
+    actor: string;
+    action: string;
+    description: string;
+    createdAt: string;
+  }>;
 };
 
 export type MarketplaceInfluencerProfile = {
@@ -471,7 +485,7 @@ export function buildMarketplaceCampaignPosts(
         } satisfies MarketplaceCampaignPost;
       }),
     )
-    .filter((campaign) => campaign.status !== "closed");
+    .filter((campaign) => campaign.status === "open");
 }
 
 export function getPlatformTone(platform: InfluencerPlatform) {

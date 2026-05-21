@@ -25,6 +25,8 @@ import {
 } from "../src/domain/contracts.js";
 import type { Contract } from "../src/domain/contracts.js";
 import type {
+  InfluencerDashboardActivityEvent,
+  InfluencerDashboardApplication,
   InfluencerDashboardContract,
   InfluencerDashboardContractStage,
   InfluencerDashboardResponse,
@@ -41,6 +43,7 @@ import {
   type CampaignProposalType,
   type MarketplaceBrandCampaign,
   type MarketplaceBrandProfile,
+  type MarketplaceCampaignStatus,
   type MarketplaceCampaignPost,
   type MarketplaceInfluencerProfile,
 } from "../src/domain/marketplace.js";
@@ -903,6 +906,16 @@ interface SupabaseContractClauseRow {
   title?: string | null;
   body?: string | null;
   status: "pending" | "accepted" | "requested_change" | "rejected" | "countered" | "removed";
+}
+
+interface SupabaseContractEventRow {
+  id: string;
+  contract_id: string;
+  actor_role?: string | null;
+  actor_display_name?: string | null;
+  event_type: string;
+  payload?: Record<string, unknown> | null;
+  created_at: string;
 }
 
 interface SupabaseShareLinkRow {
@@ -5374,7 +5387,16 @@ const normalizeMarketplacePortfolio = (
     .slice(0, 6);
 };
 
-const marketplaceCampaignStatuses = new Set(["open", "draft", "closed"]);
+const marketplaceCampaignStatuses = new Set(["open", "draft", "closed", "ended"]);
+const advertiserCampaignStatusUpdates = new Set<MarketplaceCampaignStatus>([
+  "open",
+  "closed",
+  "ended",
+]);
+const isAdvertiserCampaignStatusUpdate = (
+  value: string,
+): value is MarketplaceCampaignStatus =>
+  advertiserCampaignStatusUpdates.has(value as MarketplaceCampaignStatus);
 
 const normalizeCampaignPlatforms = (
   value: unknown,
@@ -5382,6 +5404,30 @@ const normalizeCampaignPlatforms = (
 ) => {
   const { selected } = normalizeSelectedValues(value, influencerPlatforms);
   return selected.length > 0 ? selected : fallback;
+};
+
+const normalizeBrandCampaignActivityEvents = (
+  value: unknown,
+): NonNullable<MarketplaceBrandCampaign["activityEvents"]> => {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((item) => {
+      if (!item || typeof item !== "object") return undefined;
+      const record = item as Record<string, unknown>;
+      const id = normalizeOptionalText(record.id)?.slice(0, 80);
+      const actor = normalizeOptionalText(record.actor)?.slice(0, 120);
+      const action = normalizeOptionalText(record.action)?.slice(0, 80);
+      const description = normalizeOptionalText(record.description)?.slice(0, 500);
+      const createdAt = normalizeOptionalText(record.createdAt ?? record.created_at);
+      if (!id || !actor || !action || !description || !createdAt) return undefined;
+      return { id, actor, action, description, createdAt };
+    })
+    .filter(
+      (item): item is NonNullable<MarketplaceBrandCampaign["activityEvents"]>[number] =>
+        Boolean(item),
+    )
+    .slice(0, 80);
 };
 
 const normalizeBrandCampaigns = (
@@ -5401,6 +5447,20 @@ const normalizeBrandCampaigns = (
       const summary = normalizeOptionalText(record.summary)?.slice(0, 1000);
       const deadline = normalizeOptionalText(record.deadline)?.slice(0, 40);
       const status = normalizeOptionalText(record.status);
+      const createdAt = normalizeOptionalText(record.createdAt ?? record.created_at);
+      const updatedAt = normalizeOptionalText(record.updatedAt ?? record.updated_at);
+      const statusUpdatedAt = normalizeOptionalText(
+        record.statusUpdatedAt ?? record.status_updated_at,
+      );
+      const statusUpdatedBy = normalizeOptionalText(
+        record.statusUpdatedBy ?? record.status_updated_by,
+      )?.slice(0, 120);
+      const closedAt = normalizeOptionalText(record.closedAt ?? record.closed_at);
+      const endedAt = normalizeOptionalText(record.endedAt ?? record.ended_at);
+      const reopenedAt = normalizeOptionalText(record.reopenedAt ?? record.reopened_at);
+      const activityEvents = normalizeBrandCampaignActivityEvents(
+        record.activityEvents ?? record.activity_events,
+      );
       const platforms = normalizeCampaignPlatforms(record.platforms);
       const deliverables = normalizeStringArrayForStorage(record.deliverables, [], 6);
       if (!title || !budget || !campaignProposalTypes.has(type)) return undefined;
@@ -5414,6 +5474,14 @@ const normalizeBrandCampaigns = (
         ...(platforms.length > 0 ? { platforms } : {}),
         ...(deliverables.length > 0 ? { deliverables } : {}),
         ...(status && marketplaceCampaignStatuses.has(status) ? { status } : {}),
+        ...(createdAt ? { createdAt } : {}),
+        ...(updatedAt ? { updatedAt } : {}),
+        ...(statusUpdatedAt ? { statusUpdatedAt } : {}),
+        ...(statusUpdatedBy ? { statusUpdatedBy } : {}),
+        ...(closedAt ? { closedAt } : {}),
+        ...(endedAt ? { endedAt } : {}),
+        ...(reopenedAt ? { reopenedAt } : {}),
+        ...(activityEvents.length > 0 ? { activityEvents } : {}),
       };
     })
     .filter((item): item is MarketplaceBrandCampaign =>
@@ -6800,6 +6868,7 @@ const upsertAdvertiserMarketplaceCampaign = async (
   const existing = await readAdvertiserMarketplaceBrandRow(organization.id);
   const currentBrand = buildAdvertiserBrandProfileFromAuth(auth, organization, existing);
   const now = new Date().toISOString();
+  const actor = auth.profile.email || auth.user.email || auth.profile.name;
   const campaign: MarketplaceBrandCampaign = {
     id: randomUUID(),
     title: payload.title,
@@ -6813,6 +6882,19 @@ const upsertAdvertiserMarketplaceCampaign = async (
         ? payload.deliverables
         : ["콘텐츠 산출물 협의"],
     status: "open",
+    createdAt: now,
+    updatedAt: now,
+    statusUpdatedAt: now,
+    statusUpdatedBy: actor,
+    activityEvents: [
+      {
+        id: randomUUID(),
+        actor,
+        action: "campaign_created",
+        description: "캠페인 모집글이 공개되었습니다.",
+        createdAt: now,
+      },
+    ],
   };
   const campaigns = normalizeBrandCampaigns(
     [campaign, ...currentBrand.activeCampaigns],
@@ -6877,6 +6959,138 @@ const upsertAdvertiserMarketplaceCampaign = async (
     ok: true as const,
     brand,
     campaign,
+    campaigns: brand.activeCampaigns,
+  };
+};
+
+const updateAdvertiserMarketplaceCampaignStatus = async (
+  auth: AdvertiserSession,
+  campaignId: string,
+  body: Record<string, unknown>,
+) => {
+  if (!useSupabase) {
+    return {
+      ok: false as const,
+      status: 503,
+      error: "Supabase 설정이 필요합니다.",
+    };
+  }
+
+  const requestedStatus = normalizeOptionalText(body.status);
+  if (!isAdvertiserCampaignStatusUpdate(requestedStatus)) {
+    return {
+      ok: false as const,
+      status: 422,
+      error: "변경할 캠페인 상태를 확인해 주세요.",
+    };
+  }
+
+  const organization = await readDefaultOrganizationForProfile(auth.profile.id);
+  if (!organization) {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "광고주 조직 정보를 찾을 수 없습니다.",
+    };
+  }
+
+  const existing = await readAdvertiserMarketplaceBrandRow(organization.id);
+  if (!existing) {
+    return {
+      ok: false as const,
+      status: 404,
+      error: "캠페인 브랜드 프로필을 찾을 수 없습니다.",
+    };
+  }
+
+  const currentBrand = buildAdvertiserBrandProfileFromAuth(auth, organization, existing);
+  const campaignIndex = currentBrand.activeCampaigns.findIndex(
+    (campaign) => campaign.id === campaignId,
+  );
+
+  if (campaignIndex < 0) {
+    return {
+      ok: false as const,
+      status: 404,
+      error: "변경할 캠페인을 찾을 수 없습니다.",
+    };
+  }
+
+  const now = new Date().toISOString();
+  const actor = auth.profile.email || auth.user.email || auth.profile.name;
+  const currentCampaign = currentBrand.activeCampaigns[campaignIndex];
+  const {
+    closedAt: _closedAt,
+    endedAt: _endedAt,
+    reopenedAt: _reopenedAt,
+    statusUpdatedAt: _statusUpdatedAt,
+    statusUpdatedBy: _statusUpdatedBy,
+    updatedAt: _updatedAt,
+    ...baseCampaign
+  } = currentCampaign;
+  const statusFields =
+    requestedStatus === "open"
+      ? { reopenedAt: now }
+      : requestedStatus === "ended"
+        ? { endedAt: now }
+        : { closedAt: now };
+  const statusLabel =
+    requestedStatus === "open"
+      ? "모집중"
+      : requestedStatus === "closed"
+        ? "모집 종료"
+        : "종료";
+  const activityEvents = [
+    ...(currentCampaign.activityEvents ?? []),
+    {
+      id: randomUUID(),
+      actor,
+      action: "campaign_status_updated",
+      description: `캠페인 상태를 ${statusLabel} 상태로 변경했습니다.`,
+      createdAt: now,
+    },
+  ].slice(-80);
+  const updatedCampaign: MarketplaceBrandCampaign = {
+    ...baseCampaign,
+    status: requestedStatus,
+    updatedAt: now,
+    statusUpdatedAt: now,
+    statusUpdatedBy: actor,
+    activityEvents,
+    ...statusFields,
+  };
+  const activeCampaigns = currentBrand.activeCampaigns.map((campaign, index) =>
+    index === campaignIndex ? updatedCampaign : campaign,
+  );
+  const campaigns = normalizeBrandCampaigns(activeCampaigns, 8);
+
+  await patchSupabaseRecord(
+    "marketplace_brand_profiles",
+    `?id=eq.${encodeURIComponent(existing.id)}`,
+    {
+      active_campaigns: campaigns,
+      status_label:
+        requestedStatus === "open"
+          ? "모집 중"
+          : requestedStatus === "closed"
+            ? "모집 종료"
+            : "운영 종료",
+      updated_at: now,
+    },
+    "Supabase advertiser campaign status update",
+  );
+  clearPublicMarketplaceCache();
+
+  const savedRow = await readAdvertiserMarketplaceBrandRow(organization.id);
+  const brand = buildAdvertiserBrandProfileFromAuth(auth, organization, savedRow);
+  const savedCampaign =
+    brand.activeCampaigns.find((campaign) => campaign.id === campaignId) ??
+    updatedCampaign;
+
+  return {
+    ok: true as const,
+    brand,
+    campaign: savedCampaign,
     campaigns: brand.activeCampaigns,
   };
 };
@@ -10226,6 +10440,108 @@ const formatPricingTerm = (
   return legacyContract?.campaign?.budget ?? "금액 미정";
 };
 
+const formatDashboardActivityActorRole = (role?: string | null) => {
+  if (role === "advertiser" || role === "agency" || role === "marketer") {
+    return "광고주";
+  }
+  if (role === "influencer") return "인플루언서";
+  return "시스템";
+};
+
+const formatDashboardActivityAction = (action: string) => {
+  const labels: Record<string, string> = {
+    campaign_application_submitted: "캠페인 지원",
+    campaign_application_reviewed: "지원 검토",
+    campaign_application_accepted: "지원 수락",
+    campaign_application_closed: "지원 종료",
+    contract_created: "계약 생성",
+    share_link_issued: "검토 링크 발급",
+    contract_signed: "계약 서명",
+    contract_completed: "계약 완료",
+    post_link_submitted: "콘텐츠 제출",
+    deliverable_submitted: "콘텐츠 제출",
+    deliverable_approved: "제출 승인",
+    deliverable_changes_requested: "수정 요청",
+    deliverable_rejected: "제출 반려",
+    signed_pdf_downloaded: "서명본 다운로드",
+    deliverable_file_downloaded: "증빙 다운로드",
+  };
+
+  return labels[action] ?? action.replace(/_/g, " ");
+};
+
+const normalizeDashboardActivityEvent = (
+  event: {
+    id: string;
+    actor?: string | null;
+    actorRole?: string | null;
+    action: string;
+    description?: string | null;
+    createdAt: string;
+  },
+): InfluencerDashboardActivityEvent => ({
+  id: event.id,
+  actor:
+    normalizeOptionalText(event.actor) ??
+    formatDashboardActivityActorRole(event.actorRole),
+  action: event.action,
+  label: formatDashboardActivityAction(event.action),
+  description:
+    normalizeOptionalText(event.description) ??
+    `${formatDashboardActivityAction(event.action)} 기록이 생성되었습니다.`,
+  created_at: event.createdAt,
+});
+
+const mapContractEventRowsToDashboardActivities = (
+  rows: SupabaseContractEventRow[],
+): InfluencerDashboardActivityEvent[] =>
+  rows
+    .map((row) => {
+      const description = normalizeOptionalText(
+        row.payload?.description ?? row.payload?.message,
+      );
+
+      return normalizeDashboardActivityEvent({
+        id: row.id,
+        actor: row.actor_display_name,
+        actorRole: row.actor_role,
+        action: row.event_type,
+        description,
+        createdAt: row.created_at,
+      });
+    })
+    .filter((event) => Number.isFinite(parseDashboardDate(event.created_at)))
+    .sort(
+      (a, b) =>
+        parseDashboardDate(b.created_at) - parseDashboardDate(a.created_at),
+    )
+    .slice(0, 20);
+
+const mapLegacyAuditEventsToDashboardActivities = (
+  events: Contract["audit_events"] = [],
+): InfluencerDashboardActivityEvent[] =>
+  events
+    .map((event) =>
+      normalizeDashboardActivityEvent({
+        id: event.id,
+        actorRole: event.actor,
+        action: event.action,
+        description: event.description,
+        createdAt: event.created_at,
+      }),
+    )
+    .filter((event) => Number.isFinite(parseDashboardDate(event.created_at)))
+    .sort(
+      (a, b) =>
+        parseDashboardDate(b.created_at) - parseDashboardDate(a.created_at),
+    )
+    .slice(0, 20);
+
+const withFallbackDashboardActivity = (
+  events: InfluencerDashboardActivityEvent[],
+  fallback: InfluencerDashboardActivityEvent,
+) => (events.length > 0 ? events : [fallback]);
+
 const dashboardStageMeta: Record<
   InfluencerDashboardContractStage,
   {
@@ -10381,6 +10697,7 @@ const buildV2DashboardContract = ({
   clauses,
   deliverableRequirements,
   deliverables,
+  events,
 }: {
   contract: SupabaseContractV2Row;
   legacyContract?: Contract;
@@ -10390,6 +10707,7 @@ const buildV2DashboardContract = ({
   clauses: SupabaseContractClauseRow[];
   deliverableRequirements: SupabaseDeliverableRequirementRow[];
   deliverables: SupabaseDeliverableRow[];
+  events: SupabaseContractEventRow[];
 }): InfluencerDashboardContract => {
   let stage = inferDashboardStage(contract.status, contract.next_actor_role);
   const advertiserParty =
@@ -10443,6 +10761,20 @@ const buildV2DashboardContract = ({
     ["signed", "deliverables_due", "deliverables_review", "completed"].includes(stage)
       ? "ready"
       : "not_ready";
+  const activityEvents = withFallbackDashboardActivity(
+    mapContractEventRowsToDashboardActivities(events),
+    normalizeDashboardActivityEvent({
+      id: `${contract.id}:contract-created`,
+      actor:
+        advertiserParty?.company_name ??
+        advertiserParty?.display_name ??
+        legacyContract?.advertiser_info?.name ??
+        "광고주",
+      action: "contract_created",
+      description: "광고주가 계약 초안을 생성했습니다.",
+      createdAt: contract.created_at ?? contract.updated_at,
+    }),
+  );
 
   return {
     id: contract.id,
@@ -10494,6 +10826,7 @@ const buildV2DashboardContract = ({
       status: recordStatus,
       label: recordStatus === "ready" ? "서명본 보관됨" : "서명 후 보관",
     },
+    activity_events: activityEvents,
   };
 };
 
@@ -10511,6 +10844,16 @@ const buildLegacyDashboardContract = (
   const approvedClauses = contract.clauses.filter(
     (clause) => clause.status === "APPROVED",
   ).length;
+  const activityEvents = withFallbackDashboardActivity(
+    mapLegacyAuditEventsToDashboardActivities(contract.audit_events),
+    normalizeDashboardActivityEvent({
+      id: `${contract.id}:contract-created`,
+      actor: contract.advertiser_info?.name ?? "광고주",
+      action: "contract_created",
+      description: "광고주가 계약 초안을 생성했습니다.",
+      createdAt: contract.created_at,
+    }),
+  );
 
   return {
     id: contract.id,
@@ -10562,7 +10905,175 @@ const buildLegacyDashboardContract = (
       status: contract.status === "SIGNED" ? "ready" : "not_ready",
       label: contract.status === "SIGNED" ? "서명본 보관됨" : "서명 후 보관",
     },
+    activity_events: activityEvents,
   };
+};
+
+const applicationStageMeta: Record<
+  InfluencerDashboardApplication["stage"],
+  {
+    label: string;
+    actionLabel: string;
+    nextAction: string;
+  }
+> = {
+  submitted: {
+    label: "지원 접수",
+    actionLabel: "신청 내역 보기",
+    nextAction: "광고주가 지원 내용을 검토하는 중입니다.",
+  },
+  reviewed: {
+    label: "검토 중",
+    actionLabel: "메시지 확인",
+    nextAction: "광고주 검토가 진행 중입니다. 추가 요청은 메시지함에서 확인하세요.",
+  },
+  accepted: {
+    label: "수락 완료",
+    actionLabel: "계약 보기",
+    nextAction: "지원이 수락되었습니다. 생성된 계약 초안을 확인하세요.",
+  },
+  closed: {
+    label: "종료",
+    actionLabel: "기록 보기",
+    nextAction: "지원 흐름이 종료되었습니다. 메시지함에서 기록을 확인할 수 있습니다.",
+  },
+};
+
+const inferApplicationStage = (
+  row: SupabaseMarketplaceContactProposalRow,
+): InfluencerDashboardApplication["stage"] => {
+  if (row.converted_contract_id || row.status === "converted_to_contract") {
+    return "accepted";
+  }
+  if (row.status === "reviewed") return "reviewed";
+  if (row.status === "closed") return "closed";
+  return "submitted";
+};
+
+const buildApplicationActivityEvents = (
+  row: SupabaseMarketplaceContactProposalRow,
+  brandName: string,
+): InfluencerDashboardActivityEvent[] => {
+  const events = [
+    normalizeDashboardActivityEvent({
+      id: `${row.id}:submitted`,
+      actor: row.sender_name || "인플루언서",
+      action: "campaign_application_submitted",
+      description: `${brandName} 캠페인에 지원했습니다.`,
+      createdAt: row.created_at,
+    }),
+  ];
+
+  if (row.status === "reviewed") {
+    events.push(
+      normalizeDashboardActivityEvent({
+        id: `${row.id}:reviewed`,
+        actor: brandName,
+        action: "campaign_application_reviewed",
+        description: "광고주가 지원 내용을 검토 중으로 표시했습니다.",
+        createdAt: row.updated_at,
+      }),
+    );
+  }
+
+  if (row.converted_contract_id || row.status === "converted_to_contract") {
+    events.push(
+      normalizeDashboardActivityEvent({
+        id: `${row.id}:accepted`,
+        actor: brandName,
+        action: "campaign_application_accepted",
+        description: "지원이 수락되어 계약 초안이 생성되었습니다.",
+        createdAt: row.updated_at,
+      }),
+    );
+  }
+
+  if (row.status === "closed") {
+    events.push(
+      normalizeDashboardActivityEvent({
+        id: `${row.id}:closed`,
+        actor: brandName,
+        action: "campaign_application_closed",
+        description: "캠페인 지원 흐름이 종료되었습니다.",
+        createdAt: row.updated_at,
+      }),
+    );
+  }
+
+  return events.sort(
+    (a, b) =>
+      parseDashboardDate(b.created_at) - parseDashboardDate(a.created_at),
+  );
+};
+
+const mapMarketplaceProposalToDashboardApplication = (
+  row: SupabaseMarketplaceContactProposalRow,
+): InfluencerDashboardApplication => {
+  const snapshot = normalizeMarketplaceCampaignSnapshot(row.campaign_snapshot);
+  const stage = inferApplicationStage(row);
+  const stageMeta = applicationStageMeta[stage];
+  const platformSource =
+    snapshot?.platforms && snapshot.platforms.length > 0
+      ? snapshot.platforms
+      : row.marketplace_platforms?.map((platform) => platform.platform) ?? [];
+  const platforms = Array.from(
+    new Set(
+      (platformSource.length > 0 ? platformSource : ["other"]).map(
+        normalizeInfluencerPlatform,
+      ),
+    ),
+  );
+  const brandName = snapshot?.brandName ?? row.target_display_name ?? "광고주";
+  const actionHref = row.converted_contract_id
+    ? `/contract/${encodeURIComponent(row.converted_contract_id)}`
+    : "/influencer/messages";
+
+  return {
+    id: row.id,
+    campaign_id: row.campaign_id ?? snapshot?.id ?? undefined,
+    campaign_title:
+      snapshot?.title ??
+      (row.campaign_id ? `캠페인 ${row.campaign_id}` : getProposalTypeLabel(row.proposal_type)),
+    brand_name: brandName,
+    brand_handle: snapshot?.brandHandle ?? row.target_handle ?? undefined,
+    status: row.status,
+    stage,
+    stage_label: stageMeta.label,
+    next_action_label: stageMeta.nextAction,
+    action_label: stageMeta.actionLabel,
+    action_href: actionHref,
+    platform_labels: platforms.map((platform) => dashboardPlatformLabels[platform]),
+    platforms,
+    fee_label: snapshot?.budget ?? "조건 협의",
+    deadline_label: formatDashboardDue(snapshot?.deadline),
+    due_at: snapshot?.deadline,
+    proposal_summary: row.proposal_summary,
+    converted_contract_id: row.converted_contract_id ?? undefined,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    activity_events: buildApplicationActivityEvents(row, brandName),
+  };
+};
+
+const buildInfluencerDashboardApplications = async (
+  profileId: string | undefined,
+): Promise<InfluencerDashboardApplication[]> => {
+  if (!useSupabase || !profileId) return [];
+
+  const rows = await readMarketplaceProposalRows(
+    `?select=*&direction=eq.influencer_to_brand&sender_profile_id=eq.${encodeURIComponent(
+      profileId,
+    )}&order=updated_at.desc`,
+    "influencer dashboard campaign applications",
+  );
+  const enrichedRows = await addPlatformInfoToMarketplaceProposals(rows);
+
+  return enrichedRows
+    .map(mapMarketplaceProposalToDashboardApplication)
+    .sort(
+      (a, b) =>
+        parseDashboardDate(b.updated_at) - parseDashboardDate(a.updated_at),
+    );
 };
 
 const mapV2StatusToLegacyStatus = (
@@ -10927,6 +11438,7 @@ const buildInfluencerDashboard = async (
       clauses,
       deliverableRequirements,
       deliverables,
+      contractEvents,
     ] = await Promise.all([
       readSupabaseRows<SupabaseContractV2Row>(
         "contracts",
@@ -10963,12 +11475,18 @@ const buildInfluencerDashboard = async (
         `?select=*&contract_id=in.${contractFilter}`,
         "deliverables",
       ),
+      readSupabaseRows<SupabaseContractEventRow>(
+        "contract_events",
+        `?select=id,contract_id,actor_role,actor_display_name,event_type,payload,created_at&contract_id=in.${contractFilter}&order=created_at.desc`,
+        "contract events",
+      ),
     ]);
     const partiesByContract = groupByContractId(allParties);
     const platformsByContract = groupByContractId(platforms);
     const clausesByContract = groupByContractId(clauses);
     const requirementsByContract = groupByContractId(deliverableRequirements);
     const deliverablesByContract = groupByContractId(deliverables);
+    const eventsByContract = groupByContractId(contractEvents);
     const pricingByContract = new Map(
       pricingTerms.map((pricingTerm) => [pricingTerm.contract_id, pricingTerm]),
     );
@@ -10986,6 +11504,7 @@ const buildInfluencerDashboard = async (
         clauses: clausesByContract.get(contract.id) ?? [],
         deliverableRequirements: requirementsByContract.get(contract.id) ?? [],
         deliverables: deliverablesByContract.get(contract.id) ?? [],
+        events: eventsByContract.get(contract.id) ?? [],
       }),
     );
 
@@ -10998,6 +11517,9 @@ const buildInfluencerDashboard = async (
 
   dashboardContracts.sort(
     (a, b) => parseDashboardDate(b.updated_at) - parseDashboardDate(a.updated_at),
+  );
+  const dashboardApplications = await buildInfluencerDashboardApplications(
+    profile?.id ?? authUser.id,
   );
 
   const verificationRequests = (await readVerificationRequests()).filter(
@@ -11085,6 +11607,7 @@ const buildInfluencerDashboard = async (
       verificationRequests,
     ),
     contracts: dashboardContracts,
+    applications: dashboardApplications,
   };
 };
 
@@ -12525,6 +13048,34 @@ app.post("/api/advertiser/campaigns", async (request, response, next) => {
     }
 
     response.status(201).json({
+      brand: result.brand,
+      campaign: result.campaign,
+      campaigns: result.campaigns,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch("/api/advertiser/campaigns/:id/status", async (request, response, next) => {
+  try {
+    const advertiserAuth = await requireAdvertiserSession(request, response);
+    if (!advertiserAuth) return;
+
+    const result = await updateAdvertiserMarketplaceCampaignStatus(
+      advertiserAuth,
+      request.params.id,
+      request.body && typeof request.body === "object"
+        ? (request.body as Record<string, unknown>)
+        : {},
+    );
+
+    if (!result.ok) {
+      response.status(result.status).json({ error: result.error });
+      return;
+    }
+
+    response.json({
       brand: result.brand,
       campaign: result.campaign,
       campaigns: result.campaigns,

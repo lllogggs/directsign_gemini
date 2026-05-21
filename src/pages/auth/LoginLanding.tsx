@@ -1,4 +1,4 @@
-import { ArrowRight, Building2, CheckCircle2, KeyRound, UserRound } from "lucide-react";
+import { ArrowRight, Building2, UserRound } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { PRODUCT_NAME } from "../../domain/brand";
 import { getSafeRedirectPath } from "../../domain/navigation";
@@ -23,12 +23,6 @@ const loginRoles = [
     icon: UserRound,
   },
 ] as const;
-
-const loginTrustPoints = [
-  "사업자 인증 후 공유",
-  "검토 링크 상태 기록",
-  "서명 PDF·감사 이력",
-];
 
 function getRoleTone(role: (typeof loginRoles)[number]["role"]) {
   if (role === "advertiser") {
@@ -59,8 +53,8 @@ export function LoginLanding() {
   const requestedNext = new URLSearchParams(location.search).get("next");
 
   return (
-    <main className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950">
-      <div className="mx-auto grid min-h-screen w-full max-w-[850px] grid-rows-[68px_1fr_48px] px-5 sm:px-6">
+    <main className="h-svh overflow-hidden bg-[#f7f6f3] font-sans text-neutral-950">
+      <div className="mx-auto grid h-svh w-full max-w-[760px] grid-rows-[56px_minmax(0,1fr)_34px] px-5 sm:grid-rows-[60px_minmax(0,1fr)_38px] sm:px-6">
         <header className="flex items-center justify-between">
           <Link
             to="/"
@@ -77,26 +71,15 @@ export function LoginLanding() {
           </Link>
         </header>
 
-        <section className="flex items-center justify-center py-7 sm:py-9">
-          <div className="w-full max-w-[520px]">
+        <section className="flex min-h-0 items-center justify-center py-2">
+          <div className="w-full max-w-[500px]">
             <h1 className="sr-only">{PRODUCT_NAME} 로그인</h1>
-            <div className="mb-5 text-center">
+            <div className="mb-3 text-center">
               <p className="text-[13px] font-bold leading-5 text-neutral-600">
-                계약 공유 전 인증과 서명 증빙을 다시 확인합니다.
+                로그인할 역할을 선택하세요.
               </p>
-              <ul className="mt-3 flex flex-wrap justify-center gap-2">
-                {loginTrustPoints.map((point) => (
-                  <li
-                    key={point}
-                    className="inline-flex min-h-8 items-center gap-1.5 rounded-full border border-neutral-200 bg-white/70 px-3 text-[11px] font-bold text-neutral-600 shadow-[0_1px_0_rgba(15,23,42,0.02)]"
-                  >
-                    <CheckCircle2 className="h-3.5 w-3.5 text-[#2563eb]" />
-                    <span>{point}</span>
-                  </li>
-                ))}
-              </ul>
             </div>
-            <div className="grid gap-3.5 sm:gap-4">
+            <div className="grid gap-2.5 sm:gap-3">
               {loginRoles.map((role) => {
                 const Icon = role.icon;
                 const tone = getRoleTone(role.role);
@@ -116,7 +99,7 @@ export function LoginLanding() {
                     key={role.href}
                     to={href}
                     aria-label={role.title}
-                    className={`group flex min-h-[156px] flex-col rounded-[22px] border px-5 py-5 text-left shadow-[0_1px_0_rgba(15,23,42,0.035),0_16px_42px_rgba(15,23,42,0.035)] transition hover:-translate-y-0.5 hover:shadow-[0_1px_0_rgba(15,23,42,0.04),0_22px_58px_rgba(15,23,42,0.06)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:min-h-[170px] sm:px-6 sm:py-6 ${tone.card}`}
+                    className={`group flex min-h-[112px] flex-col rounded-[18px] border px-4 py-4 text-left shadow-[0_1px_0_rgba(15,23,42,0.035),0_16px_42px_rgba(15,23,42,0.035)] transition hover:-translate-y-0.5 hover:shadow-[0_1px_0_rgba(15,23,42,0.04),0_22px_58px_rgba(15,23,42,0.06)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:min-h-[124px] sm:px-5 sm:py-5 ${tone.card}`}
                   >
                     <span className="flex items-center justify-between">
                       <span className={`flex h-9 w-9 items-center justify-center rounded-[12px] border transition ${tone.icon}`}>
@@ -131,7 +114,7 @@ export function LoginLanding() {
                       <strong className="font-neo-heavy block text-[25px] leading-none tracking-[-0.035em] text-neutral-950 sm:text-[30px]">
                         {role.title}
                       </strong>
-                      <span className={`mt-3.5 block border-t pt-3.5 text-[12px] font-bold tracking-[-0.005em] sm:mt-4 sm:pt-4 ${tone.divider} ${tone.detail}`}>
+                      <span className={`mt-3 block border-t pt-3 text-[12px] font-bold tracking-[-0.005em] ${tone.divider} ${tone.detail}`}>
                         {role.detail}
                       </span>
                     </span>
@@ -139,26 +122,13 @@ export function LoginLanding() {
                 );
               })}
             </div>
-            <div className="mt-4 rounded-[16px] border border-blue-200 bg-blue-50 px-4 py-3 text-left shadow-[0_1px_0_rgba(15,23,42,0.02)]">
-              <div className="flex items-start gap-3">
-                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-white text-blue-600 ring-1 ring-blue-100">
-                  <KeyRound className="h-4 w-4" />
-                </span>
-                <div className="min-w-0">
-                  <p className="text-[13px] font-extrabold leading-5 text-blue-950">
-                    담당자가 변경되었나요?
-                  </p>
-                  <p className="mt-1 text-[12px] font-semibold leading-5 text-blue-800/85">
-                    부서 공용 이메일을 통해 비밀번호를 재설정하여 계정을 안전하게 인수인계하세요.
-                  </p>
-                  <Link
-                    to="/reset-password?role=advertiser"
-                    className="mt-3 inline-flex min-h-9 items-center rounded-[9px] bg-blue-600 px-3 text-[12px] font-extrabold text-white shadow-[0_10px_24px_rgba(37,99,235,0.16)] transition hover:bg-blue-700"
-                  >
-                    비밀번호 찾기 / 재설정
-                  </Link>
-                </div>
-              </div>
+            <div className="mt-3 text-center">
+              <Link
+                to="/reset-password?role=advertiser"
+                className="inline-flex min-h-8 items-center text-[12px] font-bold text-neutral-500 transition hover:text-neutral-950"
+              >
+                비밀번호 재설정
+              </Link>
             </div>
           </div>
         </section>
