@@ -464,7 +464,7 @@ export function AdvertiserCampaignRecruitmentPage() {
               </p>
             ) : null}
 
-            <div className="sticky bottom-2 mt-4 rounded-[16px] border border-neutral-200 bg-white/95 p-3 shadow-[0_14px_34px_rgba(15,23,42,0.08)] backdrop-blur">
+            <div className="mt-4 rounded-[16px] border border-neutral-200 bg-white p-3 shadow-[0_14px_34px_rgba(15,23,42,0.08)]">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <p
                   className={`break-keep text-[12px] font-extrabold leading-5 ${
