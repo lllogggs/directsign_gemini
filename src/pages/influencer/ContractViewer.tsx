@@ -1,5 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import {
+  Link,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
 import {
   useAppStore,
   type ClauseHistory,
@@ -10,6 +15,7 @@ import { apiFetch, apiPath } from "../../domain/api";
 import { useVerificationSummary } from "../../hooks/useVerificationSummary";
 import { buildLoginRedirect } from "../../domain/navigation";
 import {
+  getVerificationRejectionGuidance,
   type InfluencerPlatform,
   verificationStatusLabel,
 } from "../../domain/verification";
@@ -35,6 +41,8 @@ import {
   removeInternalTestLabel,
 } from "../../domain/display";
 import { translateApiErrorMessage } from "../../domain/userMessages";
+import { ScreenHelpButton } from "../../components/ScreenHelp";
+import { SCREEN_HELP_CONTENT } from "../../domain/screenHelp";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
@@ -45,6 +53,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   AlertTriangle,
+  ChevronDown,
   CheckCircle2,
   Clock3,
   Eraser,
@@ -75,9 +84,19 @@ const STATUS_LABELS: Record<ContractStatus, string> = {
   SIGNED: "서명 완료",
 };
 
-const getStatusLabel = (status: ContractStatus) => STATUS_LABELS[status] ?? status;
+const CONTRACT_ACCOUNT_GUIDE_STEPS = [
+  "계약 내용 먼저 확인",
+  "인플루언서 가입 또는 로그인",
+  "플랫폼 계정 인증",
+  "조항 승인 후 서명",
+] as const;
 
-const contractPlatformToInfluencerPlatform = (platform: string): InfluencerPlatform => {
+const getStatusLabel = (status: ContractStatus) =>
+  STATUS_LABELS[status] ?? status;
+
+const contractPlatformToInfluencerPlatform = (
+  platform: string,
+): InfluencerPlatform => {
   const platforms: Record<string, InfluencerPlatform> = {
     NAVER_BLOG: "naver_blog",
     YOUTUBE: "youtube",
@@ -122,7 +141,8 @@ const approvedPlatformMatchesContract = (
   contractChannelUrl: string | undefined,
 ) => {
   if (approvedPlatform.platform !== requiredPlatform) return false;
-  const inferredContractPlatform = inferInfluencerPlatformFromUrl(contractChannelUrl);
+  const inferredContractPlatform =
+    inferInfluencerPlatformFromUrl(contractChannelUrl);
   if (inferredContractPlatform !== requiredPlatform) return true;
 
   const contractUrl = normalizeComparableUrl(contractChannelUrl);
@@ -157,16 +177,23 @@ const getSignatureErrorMessage = (message?: string) => {
   if (message === "Influencer session is required") {
     return "서명하려면 인플루언서 로그인이 필요합니다.";
   }
-  if (message === "Influencer account verification must be approved before signing") {
+  if (
+    message ===
+    "Influencer account verification must be approved before signing"
+  ) {
     return "계정 인증 승인 후 서명할 수 있습니다.";
   }
-  if (message === "Contract platform verification must be approved before signing") {
+  if (
+    message === "Contract platform verification must be approved before signing"
+  ) {
     return "이 계약의 플랫폼 계정 인증이 승인된 뒤 서명할 수 있습니다.";
   }
   if (message === "Contract access is not allowed") {
     return "이 계약을 서명할 수 있는 인플루언서 계정이 아닙니다.";
   }
-  if (message === "Contract must be approved and actively shared before signing") {
+  if (
+    message === "Contract must be approved and actively shared before signing"
+  ) {
     return "광고주가 서명 가능한 상태로 공유한 계약만 서명할 수 있습니다.";
   }
   if (message === "All clauses must be approved before signing") {
@@ -263,14 +290,15 @@ export function ContractViewer() {
   const shareToken = searchParams.get("token") ?? "";
   const supportAccessRequestId = searchParams.get("support") ?? "";
   const accessVerificationKey = `${id ?? ""}:${shareToken}:${supportAccessRequestId}`;
-  const [isFetchingSharedContract, setIsFetchingSharedContract] = useState(false);
+  const [isFetchingSharedContract, setIsFetchingSharedContract] =
+    useState(false);
   const [sharedContractError, setSharedContractError] = useState("");
   const [verifiedAccessKey, setVerifiedAccessKey] = useState("");
   const [serverAccessRole, setServerAccessRole] = useState<string>();
   const [supportReason, setSupportReason] = useState("");
-  const [supportScope, setSupportScope] = useState<"contract" | "contract_and_pdf">(
-    "contract",
-  );
+  const [supportScope, setSupportScope] = useState<
+    "contract" | "contract_and_pdf"
+  >("contract");
   const [supportConsentAccepted, setSupportConsentAccepted] = useState(false);
   const [isRequestingSupport, setIsRequestingSupport] = useState(false);
   const [supportNotice, setSupportNotice] = useState("");
@@ -282,9 +310,18 @@ export function ContractViewer() {
     Record<string, { url: string; note: string; file?: File }>
   >({});
   const [submittingDeliverableId, setSubmittingDeliverableId] = useState("");
+  const [postLinkDraft, setPostLinkDraft] = useState<{
+    contractId: string;
+    value: string;
+  }>();
+  const [postLinkError, setPostLinkError] = useState("");
+  const [postLinkNotice, setPostLinkNotice] = useState("");
+  const [isSubmittingPostLink, setIsSubmittingPostLink] = useState(false);
   const [currentTime, setCurrentTime] = useState(() => Date.now());
 
-  const getCanvasPoint = (e: React.MouseEvent | React.TouchEvent): CanvasPoint | null => {
+  const getCanvasPoint = (
+    e: React.MouseEvent | React.TouchEvent,
+  ): CanvasPoint | null => {
     const canvas = canvasRef.current;
     if (!canvas) return null;
 
@@ -393,19 +430,22 @@ export function ContractViewer() {
     let signedContract: typeof contract | undefined;
 
     try {
-      const response = await apiFetch(`/api/contracts/${contract.id}/signatures/influencer`, {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Yeollock-Share-Token": shareToken,
+      const response = await apiFetch(
+        `/api/contracts/${contract.id}/signatures/influencer`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Yeollock-Share-Token": shareToken,
+          },
+          body: JSON.stringify({
+            signature_data: dataUrl,
+            signer_name: signerName.trim(),
+            consent_accepted: consentAccepted,
+          }),
         },
-        body: JSON.stringify({
-          signature_data: dataUrl,
-          signer_name: signerName.trim(),
-          consent_accepted: consentAccepted,
-        }),
-      });
+      );
 
       const result = (await response.json()) as {
         contract?: typeof contract;
@@ -482,7 +522,9 @@ export function ContractViewer() {
       const data = (await response.json()) as DeliverablesResponse;
 
       if (!response.ok) {
-        throw new Error(data.error ?? "콘텐츠 제출 내역을 불러오지 못했습니다.");
+        throw new Error(
+          data.error ?? "콘텐츠 제출 내역을 불러오지 못했습니다.",
+        );
       }
 
       setDeliverables(data);
@@ -514,7 +556,9 @@ export function ContractViewer() {
     }
 
     if (urlError || fileError) {
-      setDeliverablesError(urlError ?? fileError ?? "제출 정보를 확인해 주세요.");
+      setDeliverablesError(
+        urlError ?? fileError ?? "제출 정보를 확인해 주세요.",
+      );
       setDeliverablesNotice("");
       return;
     }
@@ -561,7 +605,9 @@ export function ContractViewer() {
       }
 
       setDeliverables(data);
-      setDeliverablesNotice("콘텐츠 제출물을 접수했습니다. 광고주 검수 결과를 이 화면에서 확인할 수 있습니다.");
+      setDeliverablesNotice(
+        "콘텐츠 제출물을 접수했습니다. 광고주 검수 결과를 이 화면에서 확인할 수 있습니다.",
+      );
       setDeliverableForms((current) => ({
         ...current,
         [requirementId]: { url: "", note: "" },
@@ -575,6 +621,80 @@ export function ContractViewer() {
       );
     } finally {
       setSubmittingDeliverableId("");
+    }
+  };
+
+  const submitPostLink = async () => {
+    if (!contract) return;
+
+    const postLink = (
+      postLinkDraft?.contractId === contract.id
+        ? postLinkDraft.value
+        : contract.post_link ?? ""
+    ).trim();
+    const urlError = validateDeliverableUrl(postLink);
+
+    if (!postLink) {
+      setPostLinkError("게시물 링크를 입력해 주세요.");
+      setPostLinkNotice("");
+      return;
+    }
+    if (urlError) {
+      setPostLinkError(urlError);
+      setPostLinkNotice("");
+      return;
+    }
+
+    setIsSubmittingPostLink(true);
+    setPostLinkError("");
+    setPostLinkNotice("");
+
+    try {
+      const response = await apiFetch(
+        `/api/contracts/${encodeURIComponent(contract.id)}/post-link`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({ post_link: postLink }),
+        },
+      );
+      const data = (await response.json()) as {
+        contract?: Contract;
+        error?: string;
+      };
+
+      if (!response.ok || !data.contract) {
+        throw new Error(
+          getDeliverableErrorMessage(
+            data.error,
+            `게시물 링크 제출 실패 (${response.status})`,
+          ),
+        );
+      }
+
+      replaceContract(data.contract);
+      setPostLinkDraft({
+        contractId: data.contract.id,
+        value: data.contract.post_link ?? postLink,
+      });
+      setPostLinkNotice(
+        "게시물 링크를 제출했습니다. 광고주 대시보드에는 업로드완료로 표시됩니다.",
+      );
+    } catch (error) {
+      setPostLinkError(
+        error instanceof Error
+          ? getDeliverableErrorMessage(
+              error.message,
+              "게시물 링크 제출에 실패했습니다.",
+            )
+          : "게시물 링크 제출에 실패했습니다.",
+      );
+    } finally {
+      setIsSubmittingPostLink(false);
     }
   };
 
@@ -643,7 +763,10 @@ export function ContractViewer() {
   }, [accessVerificationKey]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => setCurrentTime(Date.now()), 60 * 1000);
+    const timer = window.setInterval(
+      () => setCurrentTime(Date.now()),
+      60 * 1000,
+    );
     return () => window.clearInterval(timer);
   }, []);
 
@@ -661,17 +784,23 @@ export function ContractViewer() {
       try {
         const query = new URLSearchParams();
         if (shareToken) query.set("token", shareToken);
-        if (supportAccessRequestId) query.set("support", supportAccessRequestId);
+        if (supportAccessRequestId)
+          query.set("support", supportAccessRequestId);
         const suffix = query.size > 0 ? `?${query.toString()}` : "";
-        const response = await apiFetch(`/api/contracts/${encodeURIComponent(id)}${suffix}`, {
-          headers: {
-            Accept: "application/json",
-            ...(supportAccessRequestId
-              ? { "X-Yeollock-Support-Access-Request": supportAccessRequestId }
-              : {}),
+        const response = await apiFetch(
+          `/api/contracts/${encodeURIComponent(id)}${suffix}`,
+          {
+            headers: {
+              Accept: "application/json",
+              ...(supportAccessRequestId
+                ? {
+                    "X-Yeollock-Support-Access-Request": supportAccessRequestId,
+                  }
+                : {}),
+            },
+            credentials: "include",
           },
-          credentials: "include",
-        });
+        );
         const data = (await response.json()) as {
           contract?: Contract;
           access_role?: string;
@@ -738,6 +867,22 @@ export function ContractViewer() {
       <AccessMessage
         title="계약을 불러올 수 없습니다"
         description={sharedContractError}
+        actions={
+          <>
+            <Link
+              to="/login/influencer"
+              className="flex h-11 items-center justify-center rounded-lg bg-neutral-950 px-4 text-sm font-semibold text-white transition hover:bg-neutral-800"
+            >
+              인플루언서 로그인
+            </Link>
+            <Link
+              to="/"
+              className="flex h-11 items-center justify-center rounded-lg border border-neutral-200 bg-[#fbfbfc] px-4 text-sm font-semibold text-neutral-700 transition hover:border-neutral-400 hover:bg-white"
+            >
+              처음으로 이동
+            </Link>
+          </>
+        }
       />
     );
   }
@@ -755,7 +900,23 @@ export function ContractViewer() {
     return (
       <AccessMessage
         title="계약서를 찾을 수 없습니다"
-        description="계약서가 삭제되었거나 링크가 올바르지 않을 수 있습니다."
+        description="계약서가 삭제되었거나 링크가 만료되었을 수 있습니다. 광고주에게 최신 검토 링크를 다시 요청해 주세요."
+        actions={
+          <>
+            <Link
+              to="/login/influencer"
+              className="flex h-11 items-center justify-center rounded-lg bg-neutral-950 px-4 text-sm font-semibold text-white transition hover:bg-neutral-800"
+            >
+              내 계약함 확인
+            </Link>
+            <Link
+              to="/"
+              className="flex h-11 items-center justify-center rounded-lg border border-neutral-200 bg-[#fbfbfc] px-4 text-sm font-semibold text-neutral-700 transition hover:border-neutral-400 hover:bg-white"
+            >
+              처음으로 이동
+            </Link>
+          </>
+        }
       />
     );
   }
@@ -763,21 +924,20 @@ export function ContractViewer() {
   const expectedShareToken = contract.evidence?.share_token;
   const shareTokenExpired =
     Boolean(contract.evidence?.share_token_expires_at) &&
-    new Date(contract.evidence!.share_token_expires_at!).getTime() < currentTime;
+    new Date(contract.evidence!.share_token_expires_at!).getTime() <
+      currentTime;
   const shareTokenRequired =
     contract.evidence?.share_token_status === "active" &&
     Boolean(expectedShareToken);
   const hasValidShareToken =
-    serverAccessVerified || !shareTokenRequired || shareToken === expectedShareToken;
+    serverAccessVerified ||
+    !shareTokenRequired ||
+    shareToken === expectedShareToken;
   const isOperatorSupportView = serverAccessRole === "admin" && !shareToken;
   const hasAuthenticatedContractAccess =
     serverAccessRole === "advertiser" || serverAccessRole === "influencer";
   const canRequestOperatorSupport =
     serverAccessRole === "advertiser" || serverAccessRole === "influencer";
-  const canSubmitClauseReview =
-    serverAccessRole === "influencer" &&
-    !isOperatorSupportView &&
-    contract.status !== "SIGNED";
 
   if (
     !isOperatorSupportView &&
@@ -790,6 +950,14 @@ export function ContractViewer() {
       <AccessMessage
         title="아직 활성화되지 않은 검토 링크입니다"
         description="광고주에게 새 계약 검토 링크 발급을 요청해 주세요."
+        actions={
+          <Link
+            to="/login/influencer"
+            className="flex h-11 items-center justify-center rounded-lg bg-neutral-950 px-4 text-sm font-semibold text-white transition hover:bg-neutral-800"
+          >
+            내 계약함 확인
+          </Link>
+        }
       />
     );
   }
@@ -803,11 +971,21 @@ export function ContractViewer() {
       <AccessMessage
         title="보안 링크가 만료되었습니다"
         description="계속 진행하려면 광고주에게 새 검토 링크를 요청해 주세요."
+        actions={
+          <Link
+            to="/login/influencer"
+            className="flex h-11 items-center justify-center rounded-lg bg-neutral-950 px-4 text-sm font-semibold text-white transition hover:bg-neutral-800"
+          >
+            내 계약함 확인
+          </Link>
+        }
       />
     );
   }
 
-  const allApproved = contract.clauses.every((clause) => clause.status === "APPROVED");
+  const allApproved = contract.clauses.every(
+    (clause) => clause.status === "APPROVED",
+  );
   const pendingClauses = contract.clauses.filter(
     (clause) => clause.status !== "APPROVED",
   ).length;
@@ -826,19 +1004,53 @@ export function ContractViewer() {
   const verificationPath = `/influencer/verification?contractId=${encodeURIComponent(
     contract.id,
   )}${shareToken ? `&token=${encodeURIComponent(shareToken)}` : ""}`;
+  const currentContractPath = `/contract/${encodeURIComponent(contract.id)}${
+    shareToken ? `?token=${encodeURIComponent(shareToken)}` : ""
+  }`;
   const loginForVerificationPath = buildLoginRedirect(
     "/login/influencer",
     verificationPath,
     "/influencer/dashboard",
     ["/influencer", "/contract"],
   );
+  const signupForContractPath = buildLoginRedirect(
+    "/signup/influencer",
+    currentContractPath,
+    "/influencer/dashboard",
+    ["/influencer", "/contract"],
+  );
   const influencerVerificationStatus =
     verificationSummary?.influencer.status ?? "not_submitted";
+  const influencerRejectionGuidance =
+    influencerVerificationStatus === "rejected"
+      ? getVerificationRejectionGuidance(
+          verificationSummary?.influencer.latest_request,
+          "influencer_account",
+        )
+      : undefined;
   const hasVerificationStatusError =
     Boolean(verificationStatusError) && verificationStatusCode !== 401;
   const isInfluencerAuthenticated =
     Boolean(verificationSummary) && verificationStatusCode !== 401;
-  const isInfluencerVerificationApproved = influencerVerificationStatus === "approved";
+  const influencerSessionEmail =
+    verificationSummary?.influencer.account?.email?.trim().toLowerCase();
+  const contractInfluencerEmail =
+    contract.influencer_info.contact?.trim().toLowerCase();
+  const isInfluencerContractOwner =
+    Boolean(influencerSessionEmail) &&
+    Boolean(contractInfluencerEmail) &&
+    influencerSessionEmail === contractInfluencerEmail;
+  const isInfluencerReviewerAuthenticated =
+    isInfluencerAuthenticated &&
+    (serverAccessRole === "influencer" || isInfluencerContractOwner);
+  const needsInfluencerAccountSession =
+    !isInfluencerReviewerAuthenticated || verificationStatusCode === 401;
+  const canSubmitClauseReview =
+    isInfluencerReviewerAuthenticated &&
+    !isOperatorSupportView &&
+    contract.status !== "SIGNED";
+  const isInfluencerVerificationApproved =
+    influencerVerificationStatus === "approved";
   const shareExpiresAt = contract.evidence?.share_token_expires_at
     ? new Date(contract.evidence.share_token_expires_at).getTime()
     : undefined;
@@ -850,7 +1062,11 @@ export function ContractViewer() {
     new Set(
       contract.campaign?.platforms?.length
         ? contract.campaign.platforms.map(contractPlatformToInfluencerPlatform)
-        : [inferInfluencerPlatformFromUrl(contract.influencer_info.channel_url)],
+        : [
+            inferInfluencerPlatformFromUrl(
+              contract.influencer_info.channel_url,
+            ),
+          ],
     ),
   );
   const approvedPlatforms =
@@ -873,33 +1089,33 @@ export function ContractViewer() {
     isContractSignableState &&
     isContractPlatformVerificationApproved;
   const signButtonLabel = !allApproved
-    ? "서명 잠김"
+    ? "조항 승인 필요"
     : !isContractSignableState
       ? "광고주 서명 요청 대기"
-    : isVerificationLoading
-      ? "인증 확인 중"
-      : hasVerificationStatusError
-        ? "인증 다시 확인"
-      : !isInfluencerAuthenticated || verificationStatusCode === 401
-        ? "로그인 후 인증하기"
-        : !isContractPlatformVerificationApproved
-          ? "인증 후 서명하기"
-          : "동의 후 서명하기";
+      : isVerificationLoading
+        ? "인증 확인 중"
+        : hasVerificationStatusError
+          ? "인증 다시 확인"
+          : needsInfluencerAccountSession
+            ? "가입/로그인 후 진행"
+            : !isContractPlatformVerificationApproved
+              ? "인증 후 서명하기"
+              : "동의 후 서명하기";
   const signStatusMessage = !allApproved
     ? "서명 전에 남은 조항 요청을 먼저 정리해야 합니다."
     : !isContractSignableState
       ? "광고주가 최종본을 승인하고 서명 링크를 활성화하면 서명할 수 있습니다."
-    : isVerificationLoading
-      ? "서명 가능 여부를 확인하기 위해 계정 인증 상태를 불러오고 있습니다."
-      : hasVerificationStatusError
-        ? "인증 상태를 불러오지 못했습니다. 잠시 후 다시 확인해주세요."
-      : !isInfluencerAuthenticated || verificationStatusCode === 401
-        ? "모든 조항은 준비됐지만, 서명하려면 로그인 후 계정 인증 승인이 필요합니다."
-        : !isContractPlatformVerificationApproved
-          ? `모든 조항은 준비됐지만, 이 계약 플랫폼의 계정 인증 승인이 필요합니다. 현재 상태: ${verificationStatusLabel(
-              influencerVerificationStatus,
-            )}`
-          : "모든 조항과 계정 인증이 완료되어 서명할 수 있습니다.";
+      : isVerificationLoading
+        ? "서명 가능 여부를 확인하기 위해 계정 인증 상태를 불러오고 있습니다."
+        : hasVerificationStatusError
+          ? "인증 상태를 불러오지 못했습니다. 잠시 후 다시 확인해주세요."
+          : needsInfluencerAccountSession
+            ? "계정이 없으면 가입 후 이 계약으로 돌아와 인증과 서명을 이어갈 수 있습니다."
+            : !isContractPlatformVerificationApproved
+              ? `모든 조항은 준비됐지만, 이 계약 플랫폼의 계정 인증 승인이 필요합니다. 현재 상태: ${verificationStatusLabel(
+                  influencerVerificationStatus,
+                )}`
+              : "모든 조항과 계정 인증이 완료되어 서명할 수 있습니다.";
   const heroTitle =
     contract.status === "SIGNED"
       ? "서명 완료 후 콘텐츠 이행을 관리하세요"
@@ -907,7 +1123,52 @@ export function ContractViewer() {
   const heroDescription =
     contract.status === "SIGNED"
       ? "서명본은 저장되었습니다. 남은 산출물은 링크나 증빙 파일로 제출하고 광고주 검수 결과를 확인하세요."
-      : "핵심 조건을 먼저 확인하고, 수정이 필요한 조항은 해당 문구를 선택해 요청을 남기세요. 모든 조항과 계정 인증이 승인되면 서명할 수 있습니다.";
+      : needsInfluencerAccountSession
+        ? "보안 링크로 계약 내용은 먼저 확인할 수 있습니다. 조항 승인, 수정 요청, 서명은 가입 또는 로그인 후 이 계약으로 돌아와 진행합니다."
+        : "핵심 조건을 먼저 확인하고, 수정이 필요한 조항은 해당 문구를 선택해 요청을 남기세요. 조항과 계정 인증이 모두 준비되면 서명할 수 있습니다.";
+  const clauseChecklistLabel = allApproved
+    ? "모든 조항 승인 완료"
+    : `조항 승인 ${approvedClauses}/${contract.clauses.length}`;
+  const signatureChecklistChecked =
+    contract.status === "SIGNED" || canOpenSignModal;
+  const signatureChecklistLabel =
+    contract.status === "SIGNED"
+      ? "서명 완료"
+      : !allApproved
+        ? "조항 승인 후 서명 가능"
+        : !isContractSignableState
+          ? "광고주 서명 요청 대기"
+          : isVerificationLoading
+            ? "인증 상태 확인 중"
+            : hasVerificationStatusError
+              ? "인증 상태 확인 필요"
+              : needsInfluencerAccountSession
+                ? "가입/로그인 후 서명 조건 확인"
+                : !isContractPlatformVerificationApproved
+                  ? "계정 인증 후 서명 가능"
+                  : "서명 가능";
+  const verificationPanelTitle = isContractPlatformVerificationApproved
+    ? "계정 인증 확인됨"
+    : influencerRejectionGuidance
+      ? "계정 인증 재제출 필요"
+    : "서명 전 계정 인증 필요";
+  const verificationPanelDescription = isContractPlatformVerificationApproved
+    ? "계정 인증은 확인되었습니다. 서명 가능 여부는 조항 승인과 광고주 서명 요청 상태에 따라 열립니다."
+    : influencerRejectionGuidance
+      ? `계약 검토는 가능하지만 서명은 제한됩니다. 반려 사유: ${influencerRejectionGuidance.reviewerNote}`
+    : "계약 검토는 가능하지만 서명은 계정 인증 승인 후 진행할 수 있습니다.";
+  const verificationPanelActionLabel = isContractPlatformVerificationApproved
+    ? "인증 정보 보기"
+    : needsInfluencerAccountSession
+      ? "가입/로그인 후 인증"
+      : influencerRejectionGuidance
+        ? "계정 인증 재제출"
+      : "계정 인증 진행";
+  const showContractAccountGuide =
+    !isOperatorSupportView &&
+    contract.status !== "SIGNED" &&
+    needsInfluencerAccountSession;
+  const advertiserTrust = contract.advertiser_trust;
 
   const plainSummary = [
     {
@@ -931,6 +1192,8 @@ export function ContractViewer() {
     },
   ];
   const signatureData = contract.signature_data;
+  const signatureDisplayName =
+    signatureData?.signer_name?.trim() || displayInfluencerName;
   const rawFinalPdfHref =
     contract.pdf_url ||
     (contract.status === "SIGNED"
@@ -944,8 +1207,11 @@ export function ContractViewer() {
       : rawFinalPdfHref;
   const signatureEvidenceRows = signatureData
     ? [
-        { label: "서명자", value: signatureData.signer_name || displayInfluencerName },
-        { label: "서명 완료", value: formatDateTime(signatureData.signed_at) },
+        {
+          label: "서명자",
+          value: signatureDisplayName,
+        },
+        { label: "서명 시각", value: formatDateTime(signatureData.signed_at) },
         {
           label: "계약 해시",
           value: signatureData.contract_hash
@@ -983,7 +1249,9 @@ export function ContractViewer() {
         clauseId: clause.clause_id,
         selectedText: `전체 조항: ${formatOperationalText(clause.category)}`,
       });
-      setFeedbackError("조항 의견을 남기거나 승인하려면 인플루언서 계정으로 로그인해야 합니다.");
+      setFeedbackError(
+        "조항 의견을 남기거나 승인하려면 인플루언서 계정으로 로그인해야 합니다.",
+      );
       return;
     }
 
@@ -1004,13 +1272,17 @@ export function ContractViewer() {
   const handleFeedbackSubmit = () => {
     if (!feedbackModal) return;
     if (!canSubmitClauseReview) {
-      setFeedbackError("조항 의견을 남기려면 인플루언서 계정으로 로그인해야 합니다.");
+      setFeedbackError(
+        "조항 의견을 남기려면 인플루언서 계정으로 로그인해야 합니다.",
+      );
       return;
     }
     const trimmedComment = feedbackComment.trim();
 
     if (!trimmedComment) {
-      setFeedbackError("광고주가 요청 의도를 이해할 수 있도록 사유를 입력해 주세요.");
+      setFeedbackError(
+        "광고주가 요청 의도를 이해할 수 있도록 사유를 입력해 주세요.",
+      );
       return;
     }
 
@@ -1161,8 +1433,16 @@ export function ContractViewer() {
               </h1>
             </div>
           </div>
-          <div className="hidden items-center gap-2 sm:flex">
-            <StatusPill status={contract.status} allApproved={allApproved} />
+          <div className="flex shrink-0 items-center gap-2">
+            <div className="hidden items-center gap-2 sm:flex">
+              <StatusPill status={contract.status} allApproved={allApproved} />
+            </div>
+            {!isOperatorSupportView ? (
+              <ScreenHelpButton
+                content={SCREEN_HELP_CONTENT.influencerContract}
+                buttonClassName="h-9 w-9 rounded-lg"
+              />
+            ) : null}
           </div>
         </div>
       </header>
@@ -1183,7 +1463,7 @@ export function ContractViewer() {
                     {getStatusLabel(contract.status)}
                   </span>
                 </div>
-                <h2 className="text-2xl font-semibold tracking-tight text-neutral-950 sm:text-3xl">
+                <h2 className="break-keep text-[25px] font-semibold leading-tight tracking-tight text-neutral-950 sm:text-3xl">
                   {heroTitle}
                 </h2>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-neutral-600">
@@ -1191,8 +1471,15 @@ export function ContractViewer() {
                 </p>
               </div>
               <div className="grid grid-cols-2 gap-2 md:w-64">
-                <MetricCard label="승인" value={`${approvedClauses}/${contract.clauses.length}`} />
-                <MetricCard label="대기" value={String(pendingClauses)} tone={pendingClauses ? "amber" : "neutral"} />
+                <MetricCard
+                  label="승인"
+                  value={`${approvedClauses}/${contract.clauses.length}`}
+                />
+                <MetricCard
+                  label="대기"
+                  value={String(pendingClauses)}
+                  tone={pendingClauses ? "amber" : "neutral"}
+                />
               </div>
             </div>
           </div>
@@ -1216,6 +1503,11 @@ export function ContractViewer() {
               </button>
             </div>
           )}
+
+          <AdvertiserTrustNotice
+            trust={advertiserTrust}
+            advertiserName={contract.advertiser_info?.name || "광고주"}
+          />
 
           <div className="grid gap-3 sm:grid-cols-2">
             {plainSummary.map((item) => (
@@ -1247,13 +1539,17 @@ export function ContractViewer() {
                     조항별 검토
                   </h2>
                 </div>
-                <div className={`flex items-center gap-2 text-sm font-medium ${reviewTone}`}>
+                <div
+                  className={`flex items-center gap-2 text-sm font-medium ${reviewTone}`}
+                >
                   {allApproved ? (
                     <CheckCircle2 className="h-4 w-4" />
                   ) : (
                     <AlertTriangle className="h-4 w-4" />
                   )}
-                  {allApproved ? "조항 승인 완료" : `${pendingClauses}개 조항 확인 필요`}
+                  {allApproved
+                    ? "조항 승인 완료"
+                    : `${pendingClauses}개 조항 확인 필요`}
                 </div>
               </div>
             </div>
@@ -1286,7 +1582,8 @@ export function ContractViewer() {
                             {formatOperationalText(clause.category)}
                           </h3>
                           <p className="mt-1 text-xs text-neutral-500">
-                            아래 문구를 정확히 선택하면 수정이나 삭제 요청을 보낼 수 있습니다.
+                            아래 문구를 정확히 선택하면 수정이나 삭제 요청을
+                            보낼 수 있습니다.
                           </p>
                         </div>
                       </div>
@@ -1328,7 +1625,9 @@ export function ContractViewer() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => openClauseFeedback(clause, "MODIFICATION_REQUESTED")}
+                          onClick={() =>
+                            openClauseFeedback(clause, "MODIFICATION_REQUESTED")
+                          }
                           disabled={!canSubmitClauseReview}
                           className="h-11 rounded-lg border border-amber-200 bg-amber-50 text-sm font-semibold text-amber-800 transition hover:border-amber-300 hover:bg-amber-100 disabled:cursor-not-allowed disabled:border-neutral-100 disabled:bg-neutral-100 disabled:text-neutral-400"
                         >
@@ -1336,7 +1635,9 @@ export function ContractViewer() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => openClauseFeedback(clause, "DELETION_REQUESTED")}
+                          onClick={() =>
+                            openClauseFeedback(clause, "DELETION_REQUESTED")
+                          }
                           disabled={!canSubmitClauseReview}
                           className="h-11 rounded-lg border border-rose-200 bg-rose-50 text-sm font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:border-neutral-100 disabled:bg-neutral-100 disabled:text-neutral-400"
                         >
@@ -1349,14 +1650,25 @@ export function ContractViewer() {
                       contract.status !== "SIGNED" &&
                       !canSubmitClauseReview && (
                         <div className="mt-3 rounded-lg border border-neutral-200 bg-[#fbfbfc] px-4 py-3 text-xs leading-5 text-neutral-600">
-                          의견 제출과 조항 승인은 인플루언서 로그인 후 가능합니다.
-                          <button
-                            type="button"
-                            onClick={() => navigate(loginForVerificationPath)}
-                            className="ml-2 font-semibold text-neutral-950 underline underline-offset-2"
-                          >
-                            로그인
-                          </button>
+                          <p>
+                            계정 생성 또는 로그인 후 이 계약으로 돌아와 의견
+                            제출과 조항 승인을 진행할 수 있습니다.
+                          </p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <Link
+                              to={signupForContractPath}
+                              className="inline-flex min-h-10 items-center rounded-md bg-neutral-950 px-3 font-semibold text-white transition hover:bg-neutral-800"
+                            >
+                              가입하고 계속
+                            </Link>
+                            <button
+                              type="button"
+                              onClick={() => navigate(loginForVerificationPath)}
+                              className="inline-flex min-h-10 items-center rounded-md border border-neutral-200 bg-white px-3 font-semibold text-neutral-950 transition hover:border-neutral-400"
+                            >
+                              로그인
+                            </button>
+                          </div>
                         </div>
                       )}
 
@@ -1374,12 +1686,17 @@ export function ContractViewer() {
                             >
                               <div className="flex flex-wrap items-center gap-2">
                                 <span className="text-sm font-semibold text-neutral-950">
-                                  {historyItem.role === "influencer" ? "나" : "광고주"}
+                                  {historyItem.role === "influencer"
+                                    ? "나"
+                                    : "광고주"}
                                 </span>
                                 <span className="text-xs text-neutral-500">
-                                  {format(new Date(historyItem.timestamp), "yyyy.MM.dd HH:mm")}
+                                  {format(
+                                    new Date(historyItem.timestamp),
+                                    "yyyy.MM.dd HH:mm",
+                                  )}
                                 </span>
-                          <span className="rounded-md border border-neutral-200 bg-[#fbfbfc] px-2 py-0.5 text-xs font-semibold text-neutral-600">
+                                <span className="rounded-md border border-neutral-200 bg-[#fbfbfc] px-2 py-0.5 text-xs font-semibold text-neutral-600">
                                   {formatOperationalText(historyItem.action)}
                                 </span>
                               </div>
@@ -1398,27 +1715,54 @@ export function ContractViewer() {
           </section>
 
           {contract.status === "SIGNED" && (
-            <InfluencerDeliverablesPanel
-              data={deliverables}
-              error={deliverablesError}
-              notice={deliverablesNotice}
-              isLoading={isLoadingDeliverables}
-              forms={deliverableForms}
-              submittingRequirementId={submittingDeliverableId}
-              onReload={loadDeliverables}
-              onFormChange={(requirementId, patch) =>
-                setDeliverableForms((current) => ({
-                  ...current,
-                  [requirementId]: {
-                    ...(current[requirementId] ?? { url: "", note: "" }),
-                    ...patch,
-                  },
-                }))
-              }
-              onSubmit={submitDeliverable}
-              loginHref={loginForVerificationPath}
-              canSubmit={hasAuthenticatedContractAccess && serverAccessRole === "influencer"}
-            />
+            <>
+              <PostLinkSubmissionPanel
+                value={
+                  postLinkDraft?.contractId === contract.id
+                    ? postLinkDraft.value
+                    : contract.post_link ?? ""
+                }
+                currentLink={contract.post_link}
+                error={postLinkError}
+                notice={postLinkNotice}
+                isSubmitting={isSubmittingPostLink}
+                canSubmit={
+                  hasAuthenticatedContractAccess &&
+                  serverAccessRole === "influencer"
+                }
+                loginHref={loginForVerificationPath}
+                onChange={(value) => {
+                  setPostLinkDraft({ contractId: contract.id, value });
+                  if (postLinkError) setPostLinkError("");
+                  if (postLinkNotice) setPostLinkNotice("");
+                }}
+                onSubmit={submitPostLink}
+              />
+              <InfluencerDeliverablesPanel
+                data={deliverables}
+                error={deliverablesError}
+                notice={deliverablesNotice}
+                isLoading={isLoadingDeliverables}
+                forms={deliverableForms}
+                submittingRequirementId={submittingDeliverableId}
+                onReload={loadDeliverables}
+                onFormChange={(requirementId, patch) =>
+                  setDeliverableForms((current) => ({
+                    ...current,
+                    [requirementId]: {
+                      ...(current[requirementId] ?? { url: "", note: "" }),
+                      ...patch,
+                    },
+                  }))
+                }
+                onSubmit={submitDeliverable}
+                loginHref={loginForVerificationPath}
+                canSubmit={
+                  hasAuthenticatedContractAccess &&
+                  serverAccessRole === "influencer"
+                }
+              />
+            </>
           )}
         </section>
 
@@ -1432,30 +1776,36 @@ export function ContractViewer() {
                 <p className="text-sm font-semibold text-neutral-950">
                   검토 체크리스트
                 </p>
-                <p className="text-xs text-neutral-500">최근 수정 {lastUpdated}</p>
+                <p className="text-xs text-neutral-500">
+                  최근 수정 {lastUpdated}
+                </p>
               </div>
             </div>
             <div className="space-y-3 text-sm">
               <ChecklistRow checked label="보안 링크 확인됨" />
-              <ChecklistRow checked={allApproved} label="모든 조항 승인 완료" />
               <ChecklistRow
-                checked={isContractPlatformVerificationApproved}
-                label="계약 플랫폼 인증 승인 완료"
+                checked={allApproved}
+                label={clauseChecklistLabel}
               />
-              <ChecklistRow checked={contract.status === "SIGNED"} label="서명 완료" />
+              <ChecklistRow
+                checked={signatureChecklistChecked}
+                label={signatureChecklistLabel}
+              />
               {contract.status === "SIGNED" && deliverables?.summary && (
                 <>
                   <ChecklistRow
                     checked={
                       deliverables.summary.total === 0 ||
-                      deliverables.summary.submitted >= deliverables.summary.total
+                      deliverables.summary.submitted >=
+                        deliverables.summary.total
                     }
                     label={`콘텐츠 제출 ${deliverables.summary.submitted}/${deliverables.summary.total}`}
                   />
                   <ChecklistRow
                     checked={
                       deliverables.summary.total === 0 ||
-                      deliverables.summary.approved >= deliverables.summary.total
+                      deliverables.summary.approved >=
+                        deliverables.summary.total
                     }
                     label={`광고주 승인 ${deliverables.summary.approved}/${deliverables.summary.total}`}
                   />
@@ -1463,6 +1813,55 @@ export function ContractViewer() {
               )}
             </div>
           </div>
+
+          {showContractAccountGuide && (
+            <div className="rounded-lg border border-blue-100 bg-blue-50/70 p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_14px_36px_rgba(15,23,42,0.05)]">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-blue-700 ring-1 ring-blue-100">
+                  <Link2 className="h-5 w-5" strokeWidth={1.9} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-neutral-950">
+                    계정이 없어도 먼저 검토할 수 있어요
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-neutral-600">
+                    받은 계약은 지금 확인하고, 가입 후 같은 계약으로 돌아와
+                    승인과 서명을 이어갑니다.
+                  </p>
+                </div>
+              </div>
+              <ol className="mt-4 grid gap-2">
+                {CONTRACT_ACCOUNT_GUIDE_STEPS.map((step, index) => (
+                  <li
+                    key={step}
+                    className="flex items-center gap-2 text-xs font-semibold text-neutral-700"
+                  >
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-neutral-950 text-[10px] leading-none text-white">
+                      {index + 1}
+                    </span>
+                    <span>{step}</span>
+                  </li>
+                ))}
+              </ol>
+              <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
+                <Link
+                  to={signupForContractPath}
+                  className="inline-flex min-h-11 items-center justify-center rounded-lg bg-neutral-950 px-4 text-sm font-semibold text-white transition hover:bg-neutral-800"
+                >
+                  가입하고 이 계약 계속
+                </Link>
+                <Link
+                  to={loginForVerificationPath}
+                  className="inline-flex min-h-11 items-center justify-center rounded-lg border border-blue-100 bg-white px-4 text-sm font-semibold text-neutral-700 transition hover:border-neutral-300 hover:text-neutral-950"
+                >
+                  기존 계정 로그인
+                </Link>
+              </div>
+              <p className="mt-3 text-[11px] font-semibold leading-5 text-blue-900/70">
+                가입 또는 로그인 후 이 계약 링크로 다시 연결됩니다.
+              </p>
+            </div>
+          )}
 
           {!isOperatorSupportView && (
             <div className="rounded-lg border border-neutral-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_14px_36px_rgba(15,23,42,0.05)]">
@@ -1472,12 +1871,10 @@ export function ContractViewer() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-neutral-950">
-                    {isContractPlatformVerificationApproved
-                      ? "계약 플랫폼 인증 완료"
-                      : "계약 플랫폼 인증 필요"}
+                    {verificationPanelTitle}
                   </p>
                   <p className="mt-1 text-xs leading-5 text-neutral-500">
-                    계약 검토는 가능하지만 서명은 계정 인증 승인 후 진행할 수 있습니다.
+                    {verificationPanelDescription}
                   </p>
                 </div>
               </div>
@@ -1485,14 +1882,14 @@ export function ContractViewer() {
                 type="button"
                 onClick={() =>
                   navigate(
-                    isInfluencerAuthenticated
+                    isInfluencerReviewerAuthenticated
                       ? verificationPath
-                      : loginForVerificationPath,
+                      : signupForContractPath,
                   )
                 }
-                  className="mt-4 h-10 w-full rounded-lg border border-neutral-200 bg-[#fbfbfc] text-sm font-semibold text-neutral-700 transition hover:border-neutral-400 hover:bg-white hover:shadow-[0_10px_22px_rgba(15,23,42,0.08)]"
+                className="mt-4 h-10 w-full rounded-lg border border-neutral-200 bg-[#fbfbfc] text-sm font-semibold text-neutral-700 transition hover:border-neutral-400 hover:bg-white hover:shadow-[0_10px_22px_rgba(15,23,42,0.08)]"
               >
-                {isContractPlatformVerificationApproved ? "인증 정보 보기" : "계정 인증 진행"}
+                {verificationPanelActionLabel}
               </button>
             </div>
           )}
@@ -1508,105 +1905,113 @@ export function ContractViewer() {
                     운영자 지원 열람 중
                   </p>
                   <p className="mt-1 text-xs leading-5 text-neutral-500">
-                    당사자 요청으로 열린 화면입니다. 본문과 PDF 열람은 감사 기록에 남습니다.
+                    당사자 요청으로 열린 화면입니다. 본문과 PDF 열람은 감사
+                    기록에 남습니다.
                   </p>
                 </div>
               </div>
             ) : canRequestOperatorSupport ? (
-              <div className="space-y-3">
-                <div className="flex items-start gap-3">
+              <details className="group">
+                <summary className="flex cursor-pointer list-none items-start gap-3 rounded-lg outline-none transition hover:bg-[#fbfbfc] focus-visible:ring-2 focus-visible:ring-neutral-950">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-neutral-700">
                     <LifeBuoy className="h-5 w-5" />
                   </div>
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-neutral-950">
                       운영자 확인 요청
                     </p>
                     <p className="mt-1 text-xs leading-5 text-neutral-500">
-                      로그인한 계약 당사자가 요청할 때만 24시간 열람권이 열립니다.
+                      필요할 때만 열어 24시간 열람권을 부여합니다.
                     </p>
                   </div>
-                </div>
-                <Textarea
-                  className="min-h-[88px] rounded-lg border-neutral-200 bg-white p-3 text-sm text-neutral-950 placeholder:text-neutral-400 focus-visible:ring-2 focus-visible:ring-neutral-950"
-                  placeholder="예: 조항 해석을 확인해 주세요."
-                  value={supportReason}
-                  onChange={(event) => setSupportReason(event.target.value)}
-                />
-                <div className="grid gap-2">
-                  {[
-                    {
-                      value: "contract" as const,
-                      label: "계약 본문만",
-                      description: "조항과 상태 확인에 필요한 최소 범위",
-                    },
-                    {
-                      value: "contract_and_pdf" as const,
-                      label: "본문 + 서명 PDF",
-                      description: "서명 증빙 확인이 필요한 경우에만 선택",
-                    },
-                  ].map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => setSupportScope(option.value)}
-                      className={`rounded-lg border px-3 py-2 text-left transition ${
-                        supportScope === option.value
-                          ? "border-neutral-950 bg-neutral-950 text-white"
-                          : "border-neutral-200 bg-[#fbfbfc] text-neutral-700 hover:border-neutral-400"
-                      }`}
-                    >
-                      <span className="block text-xs font-semibold">
-                        {option.label}
-                      </span>
-                      <span
-                        className={`mt-1 block text-[11px] leading-4 ${
+                  <ChevronDown className="mt-1 h-4 w-4 shrink-0 text-neutral-400 transition group-open:rotate-180" />
+                </summary>
+                <div className="mt-3 space-y-3">
+                  <p className="rounded-lg border border-neutral-200 bg-[#fbfbfc] px-3 py-2 text-[11px] font-semibold leading-5 text-neutral-500">
+                    계약 해석이나 증빙 확인이 필요한 경우에만 사용하세요. 요청
+                    사유와 열람 범위는 감사 기록에 남습니다.
+                  </p>
+                  <Textarea
+                    className="min-h-[88px] rounded-lg border-neutral-200 bg-white p-3 text-sm text-neutral-950 placeholder:text-neutral-400 focus-visible:ring-2 focus-visible:ring-neutral-950"
+                    placeholder="예: 조항 해석을 확인해 주세요."
+                    value={supportReason}
+                    onChange={(event) => setSupportReason(event.target.value)}
+                  />
+                  <div className="grid gap-2">
+                    {[
+                      {
+                        value: "contract" as const,
+                        label: "계약 본문만",
+                        description: "조항과 상태 확인에 필요한 최소 범위",
+                      },
+                      {
+                        value: "contract_and_pdf" as const,
+                        label: "본문 + 서명 PDF",
+                        description: "서명 증빙 확인이 필요한 경우에만 선택",
+                      },
+                    ].map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setSupportScope(option.value)}
+                        className={`rounded-lg border px-3 py-2 text-left transition ${
                           supportScope === option.value
-                            ? "text-neutral-300"
-                            : "text-neutral-500"
+                            ? "border-neutral-950 bg-neutral-950 text-white"
+                            : "border-neutral-200 bg-[#fbfbfc] text-neutral-700 hover:border-neutral-400"
                         }`}
                       >
-                        {option.description}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-                <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-neutral-200 bg-white px-3 py-3 text-left text-[12px] leading-5 text-neutral-600">
-                  <input
-                    type="checkbox"
-                    checked={supportConsentAccepted}
-                    onChange={(event) =>
-                      setSupportConsentAccepted(event.target.checked)
+                        <span className="block text-xs font-semibold">
+                          {option.label}
+                        </span>
+                        <span
+                          className={`mt-1 block text-[11px] leading-4 ${
+                            supportScope === option.value
+                              ? "text-neutral-300"
+                              : "text-neutral-500"
+                          }`}
+                        >
+                          {option.description}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                  <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-neutral-200 bg-white px-3 py-3 text-left text-[12px] leading-5 text-neutral-600">
+                    <input
+                      type="checkbox"
+                      checked={supportConsentAccepted}
+                      onChange={(event) =>
+                        setSupportConsentAccepted(event.target.checked)
+                      }
+                      className="mt-0.5 h-10 w-10 shrink-0 rounded border-neutral-300 text-neutral-950 accent-neutral-950"
+                    />
+                    <span>
+                      선택한 범위의 계약 자료를 운영자가 24시간 확인하고, 열람
+                      기록이 감사 로그에 남는 것에 동의합니다.
+                    </span>
+                  </label>
+                  {supportNotice && (
+                    <p
+                      role="status"
+                      aria-live="polite"
+                      className="text-xs font-semibold text-neutral-600"
+                    >
+                      {supportNotice}
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={requestOperatorSupport}
+                    disabled={
+                      isRequestingSupport ||
+                      supportReason.trim().length < 5 ||
+                      !supportConsentAccepted
                     }
-                    className="mt-0.5 h-4 w-4 rounded border-neutral-300 text-neutral-950 accent-neutral-950"
-                  />
-                  <span>
-                    선택한 범위의 계약 자료를 운영자가 24시간 확인하고, 열람 기록이
-                    감사 로그에 남는 것에 동의합니다.
-                  </span>
-                </label>
-                {supportNotice && (
-                  <p
-                    role="status"
-                    aria-live="polite"
-                    className="text-xs font-semibold text-neutral-600"
+                    className="h-10 w-full rounded-lg bg-neutral-950 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:bg-neutral-200 disabled:text-neutral-500"
                   >
-                    {supportNotice}
-                  </p>
-                )}
-                <button
-                  type="button"
-                  onClick={requestOperatorSupport}
-                  disabled={
-                    isRequestingSupport ||
-                    supportReason.trim().length < 5 ||
-                    !supportConsentAccepted
-                  }
-                  className="h-10 w-full rounded-lg bg-neutral-950 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:bg-neutral-200 disabled:text-neutral-500"
-                >
-                  요청 보내기
-                </button>
-              </div>
+                    요청 보내기
+                  </button>
+                </div>
+              </details>
             ) : (
               <div className="space-y-3">
                 <div className="flex items-start gap-3">
@@ -1618,7 +2023,8 @@ export function ContractViewer() {
                       로그인 후 요청 가능
                     </p>
                     <p className="mt-1 text-xs leading-5 text-neutral-500">
-                      운영자 열람은 계약 당사자가 로그인한 뒤 명시적으로 허용해야 합니다.
+                      운영자 열람은 계약 당사자가 로그인한 뒤 명시적으로
+                      허용해야 합니다.
                     </p>
                   </div>
                 </div>
@@ -1638,7 +2044,10 @@ export function ContractViewer() {
               계약 당사자
             </p>
             <div className="mt-4 space-y-4">
-              <PartyRow label="광고주" value={contract.advertiser_info?.name || "광고주"} />
+              <PartyRow
+                label="광고주"
+                value={contract.advertiser_info?.name || "광고주"}
+              />
               <PartyRow label="인플루언서" value={displayInfluencerName} />
             </div>
             {contract.status === "SIGNED" && signatureData && (
@@ -1652,15 +2061,28 @@ export function ContractViewer() {
                   </span>
                 </div>
                 {signatureData.inf_sign ? (
-                  <img
-                    src={signatureData.inf_sign}
-                    alt="인플루언서 서명"
-                    className="mt-3 h-12 max-w-full mix-blend-multiply"
-                  />
+                  <div className="mt-3 rounded-lg border border-neutral-200 bg-white px-3 py-3">
+                    <img
+                      src={signatureData.inf_sign}
+                      alt="인플루언서 서명"
+                      className="h-12 max-w-full mix-blend-multiply"
+                    />
+                    <p className="mt-2 text-sm font-semibold text-neutral-950">
+                      {signatureDisplayName}
+                    </p>
+                  </div>
                 ) : (
-                  <p className="mt-3 rounded-md bg-white px-3 py-2 text-xs font-medium leading-5 text-neutral-500 ring-1 ring-neutral-200">
-                    서명 이미지는 원본을 노출하지 않고 안전 저장소에 보관됩니다.
-                  </p>
+                  <div className="mt-3 rounded-lg border border-neutral-200 bg-white px-3 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-neutral-500">
+                      인플루언서 전자서명
+                    </p>
+                    <p className="mt-2 border-b border-neutral-300 pb-1 text-lg font-semibold text-neutral-950">
+                      {signatureDisplayName}
+                    </p>
+                    <p className="mt-2 text-xs leading-5 text-neutral-500">
+                      서명 원본은 안전 저장소에 보관됩니다.
+                    </p>
+                  </div>
                 )}
                 <div className="mt-4 grid gap-2">
                   {signatureEvidenceRows.map((row) => (
@@ -1691,7 +2113,9 @@ export function ContractViewer() {
             <div className="flex items-start gap-3">
               <div
                 className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
-                  allApproved ? "bg-neutral-100 text-neutral-700" : "bg-amber-50 text-amber-700"
+                  allApproved
+                    ? "bg-neutral-100 text-neutral-700"
+                    : "bg-amber-50 text-amber-700"
                 }`}
               >
                 {allApproved ? (
@@ -1712,11 +2136,17 @@ export function ContractViewer() {
             <button
               className={`flex h-12 w-full items-center justify-center gap-2 rounded-lg px-5 text-sm font-semibold transition sm:w-auto sm:min-w-56 ${
                 canOpenSignModal ||
-                (allApproved && isContractSignableState && !isVerificationLoading)
+                (allApproved &&
+                  isContractSignableState &&
+                  !isVerificationLoading)
                   ? "bg-neutral-950 text-white hover:bg-neutral-800"
                   : "cursor-not-allowed bg-neutral-200 text-neutral-500"
               }`}
-              disabled={!allApproved || isVerificationLoading || !isContractSignableState}
+              disabled={
+                !allApproved ||
+                isVerificationLoading ||
+                !isContractSignableState
+              }
               onClick={() => {
                 if (hasVerificationStatusError) {
                   void refreshVerificationSummary();
@@ -1729,9 +2159,9 @@ export function ContractViewer() {
                 }
 
                 navigate(
-                  isInfluencerAuthenticated
+                  isInfluencerReviewerAuthenticated
                     ? verificationPath
-                    : loginForVerificationPath,
+                    : signupForContractPath,
                 );
               }}
             >
@@ -1845,7 +2275,8 @@ export function ContractViewer() {
 
           <div className="space-y-4 p-6">
             <div className="rounded-[16px] border border-neutral-200 bg-[#fbfaf7] p-4 text-sm leading-6 text-neutral-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
-              모든 조항이 승인되었습니다. 서명자 이름과 동의 여부는 감사 기록에 함께 저장됩니다.
+              모든 조항이 승인되었습니다. 서명자 이름과 동의 여부는 감사 기록에
+              함께 저장됩니다.
             </div>
             <label className="block">
               <span className="text-[13px] font-semibold text-neutral-800">
@@ -1861,7 +2292,11 @@ export function ContractViewer() {
                 placeholder="이름 또는 활동명"
               />
             </label>
-            <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="서명 입력 방식">
+            <div
+              className="grid grid-cols-2 gap-2"
+              role="radiogroup"
+              aria-label="서명 입력 방식"
+            >
               {[
                 { value: "draw" as const, label: "직접 서명" },
                 { value: "typed" as const, label: "이름으로 서명" },
@@ -1892,7 +2327,9 @@ export function ContractViewer() {
                 role="img"
                 aria-label="직접 서명 입력 영역"
                 className={`h-full w-full touch-none ${
-                  signatureMode === "draw" ? "cursor-crosshair" : "cursor-default opacity-20"
+                  signatureMode === "draw"
+                    ? "cursor-crosshair"
+                    : "cursor-default opacity-20"
                 }`}
                 onMouseDown={startDrawing}
                 onMouseMove={draw}
@@ -1930,9 +2367,11 @@ export function ContractViewer() {
                   : "text-amber-700"
               }`}
             >
-              {signatureMode === "typed" ? "입력한 이름을 전자서명 이미지로 기록합니다." : hasSignatureStroke
-                ? "서명이 입력되었습니다."
-                : "서명란에 직접 서명해 주세요."}
+              {signatureMode === "typed"
+                ? "입력한 이름을 전자서명 이미지로 기록합니다."
+                : hasSignatureStroke
+                  ? "서명이 입력되었습니다."
+                  : "서명란에 직접 서명해 주세요."}
             </p>
             <label className="flex items-start gap-3 rounded-[16px] border border-neutral-200 bg-white p-3 text-sm leading-5 text-neutral-700">
               <input
@@ -1944,9 +2383,7 @@ export function ContractViewer() {
                 }}
                 className="mt-1 h-4 w-4 accent-neutral-950"
               />
-              <span>
-                계약 조항을 확인했고 전자서명에 동의합니다.
-              </span>
+              <span>계약 조항을 확인했고 전자서명에 동의합니다.</span>
             </label>
             {signError && (
               <p
@@ -2035,13 +2472,16 @@ function InfluencerDeliverablesPanel({
             disabled={isLoading}
             className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-700 transition hover:border-neutral-400 disabled:text-neutral-300"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`}
+            />
             새로고침
           </button>
         </div>
         {summary && (
           <p className="mt-2 text-xs font-semibold text-neutral-500">
-            제출 {summary.submitted}/{summary.total} · 승인 {summary.approved}/{summary.total}
+            제출 {summary.submitted}/{summary.total} · 승인 {summary.approved}/
+            {summary.total}
           </p>
         )}
       </div>
@@ -2082,8 +2522,9 @@ function InfluencerDeliverablesPanel({
             const approvedCount = requirement.submissions.filter(
               (submission) => submission.review_status === "approved",
             ).length;
-            const submittedCount = requirement.submissions.filter((submission) =>
-              submittedReviewStatuses.has(submission.review_status),
+            const submittedCount = requirement.submissions.filter(
+              (submission) =>
+                submittedReviewStatuses.has(submission.review_status),
             ).length;
             const pendingReviewCount = requirement.submissions.filter(
               (submission) => submission.review_status === "submitted",
@@ -2121,11 +2562,13 @@ function InfluencerDeliverablesPanel({
                       {formatOperationalText(requirement.title)}
                     </h3>
                     <p className="mt-1 text-xs font-medium text-neutral-500">
-                      필요 {requirement.quantity}건 · 제출 {submittedCount}건 · 승인 {approvedCount}건
+                      필요 {requirement.quantity}건 · 제출 {submittedCount}건 ·
+                      승인 {approvedCount}건
                     </p>
                     {revisionRequest?.review_comment && (
                       <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold leading-5 text-amber-800">
-                        광고주 요청: {formatOperationalText(revisionRequest.review_comment)}
+                        광고주 요청:{" "}
+                        {formatOperationalText(revisionRequest.review_comment)}
                       </p>
                     )}
                   </div>
@@ -2134,7 +2577,11 @@ function InfluencerDeliverablesPanel({
                       statusTone
                     }`}
                   >
-                    {isComplete ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Clock3 className="h-3.5 w-3.5" />}
+                    {isComplete ? (
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                    ) : (
+                      <Clock3 className="h-3.5 w-3.5" />
+                    )}
                     {statusText}
                   </span>
                 </div>
@@ -2142,7 +2589,9 @@ function InfluencerDeliverablesPanel({
                 {requirement.submissions.length > 0 && (
                   <div className="mt-4 space-y-2">
                     {requirement.submissions.map((submission) => {
-                      const note = formatOperationalText(getSubmissionNote(submission));
+                      const note = formatOperationalText(
+                        getSubmissionNote(submission),
+                      );
 
                       return (
                         <div
@@ -2170,7 +2619,10 @@ function InfluencerDeliverablesPanel({
                             >
                               <ExternalLink className="h-3.5 w-3.5 shrink-0" />
                               <span className="truncate">
-                                {formatPublicUrlLabel(submission.url, "제출 링크 열기")}
+                                {formatPublicUrlLabel(
+                                  submission.url,
+                                  "제출 링크 열기",
+                                )}
                               </span>
                             </a>
                           )}
@@ -2202,7 +2654,8 @@ function InfluencerDeliverablesPanel({
                           )}
                           {submission.review_comment && (
                             <p className="mt-2 rounded-md bg-white px-3 py-2 text-xs leading-5 text-neutral-600 ring-1 ring-neutral-200">
-                              광고주 코멘트: {formatOperationalText(submission.review_comment)}
+                              광고주 코멘트:{" "}
+                              {formatOperationalText(submission.review_comment)}
                             </p>
                           )}
                         </div>
@@ -2221,7 +2674,9 @@ function InfluencerDeliverablesPanel({
                       <input
                         value={form.url}
                         onChange={(event) =>
-                          onFormChange(requirement.id, { url: event.target.value })
+                          onFormChange(requirement.id, {
+                            url: event.target.value,
+                          })
                         }
                         className={`mt-2 h-10 w-full rounded-lg border bg-white px-3 text-sm outline-none transition focus:border-neutral-950 ${
                           urlError ? "border-rose-300" : "border-neutral-200"
@@ -2242,7 +2697,9 @@ function InfluencerDeliverablesPanel({
                       <textarea
                         value={form.note}
                         onChange={(event) =>
-                          onFormChange(requirement.id, { note: event.target.value })
+                          onFormChange(requirement.id, {
+                            note: event.target.value,
+                          })
                         }
                         className="mt-2 min-h-20 w-full resize-none rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-neutral-950"
                         placeholder="광고주가 확인할 내용을 적어 주세요."
@@ -2297,12 +2754,124 @@ function InfluencerDeliverablesPanel({
   );
 }
 
+function PostLinkSubmissionPanel({
+  value,
+  currentLink,
+  error,
+  notice,
+  isSubmitting,
+  canSubmit,
+  loginHref,
+  onChange,
+  onSubmit,
+}: {
+  value: string;
+  currentLink?: string;
+  error: string;
+  notice: string;
+  isSubmitting: boolean;
+  canSubmit: boolean;
+  loginHref: string;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+}) {
+  const urlError = validateDeliverableUrl(value);
+  const disabled =
+    !canSubmit || isSubmitting || !value.trim() || Boolean(urlError);
+
+  return (
+    <section className="overflow-hidden rounded-lg border border-neutral-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)]">
+      <div className="border-b border-neutral-200 bg-[#fbfbfc] px-5 py-4 sm:px-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-neutral-500">
+              게시물 링크 제출
+            </p>
+            <h2 className="mt-1 text-lg font-semibold text-neutral-950">
+              캠페인 결과물 URL
+            </h2>
+            <p className="mt-1 text-sm leading-6 text-neutral-500">
+              서명 완료 후 실제 업로드된 게시물 링크를 제출하면 광고주 대시보드에서 업로드완료로 표시됩니다.
+            </p>
+          </div>
+          {currentLink ? (
+            <a
+              href={currentLink}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-700 transition hover:border-neutral-400"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              제출 링크 열기
+            </a>
+          ) : null}
+        </div>
+      </div>
+
+      {!canSubmit && (
+        <div className="border-b border-amber-200 bg-amber-50 px-5 py-3 text-sm font-semibold text-amber-800 sm:px-6">
+          게시물 링크 제출은 로그인한 인플루언서 계정에서만 가능합니다.
+          <a href={loginHref} className="ml-2 underline underline-offset-4">
+            로그인
+          </a>
+        </div>
+      )}
+
+      {error && (
+        <div className="border-b border-rose-200 bg-rose-50 px-5 py-3 text-sm font-semibold text-rose-700 sm:px-6">
+          {error}
+        </div>
+      )}
+
+      {notice && !error && (
+        <div className="border-b border-emerald-200 bg-emerald-50 px-5 py-3 text-sm font-semibold text-emerald-800 sm:px-6">
+          {notice}
+        </div>
+      )}
+
+      <div className="grid gap-3 p-5 sm:grid-cols-[minmax(0,1fr)_140px] sm:p-6">
+        <label className="block min-w-0">
+          <span className="flex items-center gap-2 text-xs font-semibold text-neutral-700">
+            <Link2 className="h-3.5 w-3.5" />
+            게시물 링크
+          </span>
+          <input
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            className={`mt-2 h-10 w-full rounded-lg border bg-white px-3 text-sm outline-none transition focus:border-neutral-950 ${
+              urlError ? "border-rose-300" : "border-neutral-200"
+            }`}
+            placeholder="https://..."
+            aria-invalid={Boolean(urlError || error)}
+            disabled={!canSubmit || isSubmitting}
+          />
+          {urlError && (
+            <span className="mt-1 block text-xs font-semibold text-rose-700">
+              {urlError}
+            </span>
+          )}
+        </label>
+        <button
+          type="button"
+          onClick={onSubmit}
+          disabled={disabled}
+          className="mt-6 h-10 rounded-lg bg-neutral-950 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-500 sm:mt-auto"
+        >
+          {isSubmitting ? "제출 중" : "링크 제출"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
 function AccessMessage({
   title,
   description,
+  actions,
 }: {
   title: string;
   description: string;
+  actions?: React.ReactNode;
 }) {
   return (
     <div className="flex min-h-[100dvh] items-center justify-center bg-[#f7f6f3] px-4">
@@ -2312,8 +2881,125 @@ function AccessMessage({
         </div>
         <h1 className="mt-4 text-xl font-semibold text-neutral-950">{title}</h1>
         <p className="mt-2 text-sm leading-6 text-neutral-600">{description}</p>
+        {actions ? <div className="mt-6 grid gap-2">{actions}</div> : null}
       </div>
     </div>
+  );
+}
+
+function AdvertiserTrustNotice({
+  trust,
+  advertiserName,
+}: {
+  trust?: Contract["advertiser_trust"];
+  advertiserName: string;
+}) {
+  if (!trust) return null;
+
+  const riskLevel = trust.risk_level ?? "low";
+  const riskTone =
+    riskLevel === "high"
+      ? "border-rose-200 bg-rose-50 text-rose-800"
+      : riskLevel === "medium"
+        ? "border-amber-200 bg-amber-50 text-amber-800"
+        : "border-emerald-200 bg-emerald-50 text-emerald-800";
+  const verificationTone =
+    trust.business_verification_status === "approved"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+      : "border-amber-200 bg-amber-50 text-amber-800";
+  const riskLabel =
+    riskLevel === "high" ? "높음" : riskLevel === "medium" ? "주의" : "낮음";
+  const visibleFlags = (trust.risk_flags ?? []).filter(
+    (flag) => flag.code !== "first_contract_on_yeollock",
+  );
+  const rows = [
+    {
+      label: "인증 사업자",
+      value: trust.business_name || advertiserName,
+    },
+    {
+      label: "사업자번호",
+      value: trust.business_registration_number_masked || "확인 완료",
+    },
+    {
+      label: "대표자",
+      value: trust.representative_name || "인증 정보 기준 확인",
+    },
+    {
+      label: "담당자 확인",
+      value: trust.manager_phone || "계약 전 통화 또는 공식 채널로 확인",
+    },
+  ];
+
+  return (
+    <section className="rounded-lg border border-neutral-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_16px_40px_rgba(15,23,42,0.05)]">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex min-w-0 gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-neutral-950 text-white">
+            <ShieldCheck className="h-5 w-5" strokeWidth={1.8} />
+          </div>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${verificationTone}`}
+              >
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                {trust.business_verification_label || "사업자 정보 확인"}
+              </span>
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${riskTone}`}
+              >
+                위험점수 {trust.risk_score ?? 0}/100 · {riskLabel}
+              </span>
+            </div>
+            <h3 className="mt-3 break-keep text-lg font-semibold tracking-tight text-neutral-950">
+              {trust.first_contract
+                ? "연락미에서 처음 광고 계약을 진행하는 광고주입니다"
+                : "광고주 사업자 확인 정보를 다시 확인하세요"}
+            </h3>
+            <p className="mt-2 max-w-2xl break-keep text-sm leading-6 text-neutral-600">
+              {trust.guidance ||
+                "계약 전 사업자 정보와 담당자가 맞는지 유선 또는 공식 채널로 한 번 더 확인하세요."}
+            </p>
+          </div>
+        </div>
+        {riskLevel !== "low" && (
+          <div className="flex shrink-0 items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+            <AlertTriangle className="h-4 w-4" strokeWidth={1.8} />
+            확인 후 서명 권장
+          </div>
+        )}
+      </div>
+
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {rows.map((row) => (
+          <div
+            key={row.label}
+            className="rounded-lg border border-neutral-200 bg-[#fcfcfd] p-3"
+          >
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-neutral-500">
+              {row.label}
+            </p>
+            <p className="mt-1 break-keep text-sm font-semibold leading-5 text-neutral-950">
+              {row.value}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      {visibleFlags.length > 0 && (
+        <div className="mt-4 flex flex-wrap gap-2">
+          {visibleFlags.slice(0, 4).map((flag) => (
+            <span
+              key={flag.code}
+              className="rounded-full border border-neutral-200 bg-[#fbfbfc] px-2.5 py-1 text-xs font-semibold text-neutral-600"
+            >
+              {flag.label}
+            </span>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -2360,11 +3046,13 @@ function MetricCard({
 }) {
   const toneClass =
     tone === "amber"
-        ? "border border-amber-200 bg-amber-50 text-amber-700"
-        : "border border-neutral-200 bg-[#fcfcfd] text-neutral-800";
+      ? "border border-amber-200 bg-amber-50 text-amber-700"
+      : "border border-neutral-200 bg-[#fcfcfd] text-neutral-800";
 
   return (
-    <div className={`rounded-lg p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] ${toneClass}`}>
+    <div
+      className={`rounded-lg p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] ${toneClass}`}
+    >
       <p className="text-xs font-semibold uppercase tracking-[0.12em] opacity-80">
         {label}
       </p>
@@ -2374,16 +3062,22 @@ function MetricCard({
 }
 
 function ChecklistRow({ checked, label }: { checked: boolean; label: string }) {
+  const Icon = checked ? CheckCircle2 : Clock3;
+
   return (
     <div className="flex items-center gap-3">
       <div
         className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
-          checked ? "bg-neutral-100 text-neutral-700" : "bg-neutral-100 text-neutral-400"
+          checked
+            ? "bg-neutral-100 text-neutral-700"
+            : "bg-neutral-100 text-neutral-400"
         }`}
       >
-        <CheckCircle2 className="h-4 w-4" strokeWidth={1.8} />
+        <Icon className="h-4 w-4" strokeWidth={1.8} />
       </div>
-      <span className={checked ? "text-neutral-800" : "text-neutral-500"}>{label}</span>
+      <span className={checked ? "text-neutral-800" : "text-neutral-500"}>
+        {label}
+      </span>
     </div>
   );
 }

@@ -13,6 +13,9 @@ export const removeInternalTestLabel = (value?: string | null, fallback = "") =>
     .replace(/^QA Advertiser$/i, "광고주")
     .replace(/^QA Influencer$/i, "인플루언서")
     .replace(/^QA\s+/i, "")
+    .replace(/\s+QA$/i, "")
+    .replace(/\s+Test$/i, "")
+    .replace(/\s+테스트$/g, "")
     .trim();
 
   return cleaned || fallback || text;

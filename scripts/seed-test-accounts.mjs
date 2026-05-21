@@ -9,19 +9,38 @@ const SERVICE_KEY =
   process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SECRET_KEY;
 const TEST_ACCOUNT_PASSWORD =
   process.env.QA_TEST_PASSWORD ?? "YeollockTest!2026";
+const PUBLIC_SITE_URL = (
+  process.env.PUBLIC_SITE_URL ??
+  process.env.VITE_PUBLIC_SITE_URL ??
+  "https://yeollock.me"
+).replace(/\/$/, "");
+const DASHBOARD_BASE_URL = (
+  process.env.DASHBOARD_BASE_URL ??
+  process.env.QA_BASE_URL ??
+  PUBLIC_SITE_URL
+).replace(/\/$/, "");
+const LEGACY_CONTRACTS_TABLE =
+  process.env.SUPABASE_CONTRACTS_TABLE ?? "directsign_contracts";
+
+const timestamp = new Date().toISOString();
 
 const accounts = {
   advertiser: {
     email: "test.advertiser@yeollock.me",
     role: "marketer",
-    name: "QA Advertiser",
-    company_name: "QA Test Brand",
+    name: "광고주 매니저",
+    company_name: "브레드룸",
   },
   influencer: {
     email: "test.influencer@yeollock.me",
     role: "influencer",
-    name: "QA Influencer",
+    name: "크리에이터 소라",
   },
+};
+
+const testHandles = {
+  influencer: "creator-sora",
+  brand: "breadroom-partner",
 };
 
 if (!SUPABASE_URL || !SERVICE_KEY) {
@@ -42,6 +61,22 @@ const stableUuid = (seed) => {
     .slice(0, 32)
     .split("");
   hash[12] = "4";
+  hash[16] = ((Number.parseInt(hash[16], 16) & 0x3) | 0x8).toString(16);
+  const value = hash.join("");
+  return `${value.slice(0, 8)}-${value.slice(8, 12)}-${value.slice(
+    12,
+    16,
+  )}-${value.slice(16, 20)}-${value.slice(20)}`;
+};
+
+const stableServerUuid = (seed) => {
+  const hash = crypto
+    .createHash("sha256")
+    .update(seed)
+    .digest("hex")
+    .slice(0, 32)
+    .split("");
+  hash[12] = "5";
   hash[16] = ((Number.parseInt(hash[16], 16) & 0x3) | 0x8).toString(16);
   const value = hash.join("");
   return `${value.slice(0, 8)}-${value.slice(8, 12)}-${value.slice(
@@ -87,6 +122,18 @@ const upsert = async (table, rows, onConflict = "id", label = table) => {
       body: JSON.stringify(normalizeRows(rows)),
     },
     `${label} upsert`,
+  );
+};
+
+const removeRows = async (table, query, label = table) => {
+  await rest(
+    table,
+    query,
+    {
+      method: "DELETE",
+      headers: { Prefer: "return=minimal" },
+    },
+    `${label} delete`,
   );
 };
 
@@ -170,8 +217,6 @@ const ensureAuthUser = async ({ email, role, name, company_name }) => {
 };
 
 const ensureProfilesAndOrganization = async (advertiser, influencer) => {
-  const timestamp = new Date().toISOString();
-
   await upsert(
     "profiles",
     [
@@ -194,7 +239,7 @@ const ensureProfilesAndOrganization = async (advertiser, influencer) => {
         email: influencer.email,
         company_name: null,
         activity_categories: ["lifestyle", "beauty", "tech"],
-        activity_platforms: ["instagram", "youtube", "naver_blog"],
+        activity_platforms: ["instagram", "youtube", "tiktok", "naver_blog"],
         verification_status: "approved",
         email_verified_at: timestamp,
         updated_at: timestamp,
@@ -226,7 +271,7 @@ const ensureProfilesAndOrganization = async (advertiser, influencer) => {
         business_registration_number: "1234567890",
         business_verification_status: "approved",
         business_verified_at: timestamp,
-        representative_name: "QA Representative",
+        representative_name: "브레드룸 대표",
         created_by_profile_id: advertiser.id,
         updated_at: timestamp,
       },
@@ -252,12 +297,883 @@ const ensureProfilesAndOrganization = async (advertiser, influencer) => {
   return { organizationId };
 };
 
+const ensureVerificationRecords = async ({ advertiser, influencer, organizationId }) => {
+  const businessVerificationId = stableUuid(
+    `qa:verification:advertiser:${organizationId}`,
+  );
+
+  await upsert(
+    "verification_requests",
+    [
+      {
+        id: businessVerificationId,
+        target_type: "advertiser_organization",
+        target_id: organizationId,
+        verification_type: "business_registration_certificate",
+        status: "approved",
+        profile_id: advertiser.id,
+        organization_id: organizationId,
+        subject_name: accounts.advertiser.company_name,
+        submitted_by_name: accounts.advertiser.name,
+        submitted_by_email: advertiser.email,
+        business_registration_number: "1234567890",
+        representative_name: "브레드룸 대표",
+        evidence_snapshot_json: { seeded: true, source: "seed-test-accounts" },
+        ownership_check_status: "not_run",
+        note: "승인된 사업자 인증 데이터",
+        reviewed_by_name: "운영자",
+        reviewed_at: timestamp,
+        created_at: timestamp,
+        updated_at: timestamp,
+      },
+      {
+        id: stableUuid(`qa:verification:influencer:instagram:${influencer.id}`),
+        target_type: "influencer_account",
+        target_id: influencer.id,
+        verification_type: "platform_account",
+        status: "approved",
+        profile_id: influencer.id,
+        subject_name: accounts.influencer.name,
+        submitted_by_email: influencer.email,
+        platform: "instagram",
+        platform_handle: "creator.sora",
+        platform_url: "https://instagram.com/creator.sora",
+        ownership_verification_method: "profile_bio_code",
+        ownership_challenge_code: "DS-QA26-SORA",
+        ownership_challenge_url: "https://instagram.com/creator.sora",
+        ownership_check_status: "matched",
+        ownership_checked_at: timestamp,
+        evidence_snapshot_json: { seeded: true, platform: "instagram" },
+        note: "승인된 플랫폼 계정 인증 데이터",
+        reviewed_by_name: "운영자",
+        reviewed_at: timestamp,
+        created_at: timestamp,
+        updated_at: timestamp,
+      },
+      {
+        id: stableUuid(`qa:verification:influencer:youtube:${influencer.id}`),
+        target_type: "influencer_account",
+        target_id: influencer.id,
+        verification_type: "platform_account",
+        status: "approved",
+        profile_id: influencer.id,
+        subject_name: accounts.influencer.name,
+        submitted_by_email: influencer.email,
+        platform: "youtube",
+        platform_handle: "@creator_sora",
+        platform_url: "https://youtube.com/@creator_sora",
+        ownership_verification_method: "channel_description_code",
+        ownership_challenge_code: "DS-QA26-SORA",
+        ownership_challenge_url: "https://youtube.com/@creator_sora",
+        ownership_check_status: "matched",
+        ownership_checked_at: timestamp,
+        evidence_snapshot_json: { seeded: true, platform: "youtube" },
+        note: "승인된 플랫폼 계정 인증 데이터",
+        reviewed_by_name: "운영자",
+        reviewed_at: timestamp,
+        created_at: timestamp,
+        updated_at: timestamp,
+      },
+      {
+        id: stableUuid(`qa:verification:influencer:tiktok:${influencer.id}`),
+        target_type: "influencer_account",
+        target_id: influencer.id,
+        verification_type: "platform_account",
+        status: "approved",
+        profile_id: influencer.id,
+        subject_name: accounts.influencer.name,
+        submitted_by_email: influencer.email,
+        platform: "tiktok",
+        platform_handle: "@creator.sora",
+        platform_url: "https://www.tiktok.com/@creator.sora",
+        ownership_verification_method: "profile_bio_code",
+        ownership_challenge_code: "DS-QA26-SORA",
+        ownership_challenge_url: "https://www.tiktok.com/@creator.sora",
+        ownership_check_status: "matched",
+        ownership_checked_at: timestamp,
+        evidence_snapshot_json: { seeded: true, platform: "tiktok" },
+        note: "승인된 플랫폼 계정 인증 데이터",
+        reviewed_by_name: "운영자",
+        reviewed_at: timestamp,
+        created_at: timestamp,
+        updated_at: timestamp,
+      },
+      {
+        id: stableUuid(`qa:verification:influencer:naver_blog:${influencer.id}`),
+        target_type: "influencer_account",
+        target_id: influencer.id,
+        verification_type: "platform_account",
+        status: "approved",
+        profile_id: influencer.id,
+        subject_name: accounts.influencer.name,
+        submitted_by_email: influencer.email,
+        platform: "naver_blog",
+        platform_handle: "creator_sora",
+        platform_url: "https://blog.naver.com/creator_sora",
+        ownership_verification_method: "profile_bio_code",
+        ownership_challenge_code: "DS-QA26-SORA",
+        ownership_challenge_url: "https://blog.naver.com/creator_sora",
+        ownership_check_status: "matched",
+        ownership_checked_at: timestamp,
+        evidence_snapshot_json: { seeded: true, platform: "naver_blog" },
+        note: "승인된 플랫폼 계정 인증 데이터",
+        reviewed_by_name: "운영자",
+        reviewed_at: timestamp,
+        created_at: timestamp,
+        updated_at: timestamp,
+      },
+    ],
+    "id",
+    "verification requests",
+  );
+
+  await upsert(
+    "organizations",
+    [
+      {
+        id: organizationId,
+        name: accounts.advertiser.company_name,
+        organization_type: "advertiser",
+        business_registration_number: "1234567890",
+        representative_name: "브레드룸 대표",
+        created_by_profile_id: advertiser.id,
+        business_verification_request_id: businessVerificationId,
+        business_verification_status: "approved",
+        business_verified_at: timestamp,
+        updated_at: timestamp,
+      },
+    ],
+    "id",
+    "organization verification link",
+  );
+};
+
+const ensureMarketplaceProfiles = async ({ influencer, organizationId }) => {
+  const influencerProfileId = stableServerUuid(
+    `marketplace:influencer:${influencer.id}`,
+  );
+  const brandProfileId = stableUuid(`qa:marketplace:brand:${organizationId}`);
+
+  await upsert(
+    "marketplace_influencer_profiles",
+    [
+      {
+        id: influencerProfileId,
+        owner_profile_id: influencer.id,
+        public_handle: testHandles.influencer,
+        display_name: "크리에이터 소라",
+        headline: "뷰티와 테크 라이프스타일 제품을 빠르게 검증하는 인플루언서",
+        bio:
+          "광고주 컨택, 제안 저장, 전자계약 전환 흐름을 검증하기 위한 공개 프로필입니다. 릴스와 쇼츠 중심으로 제품 사용 장면과 조건 확인을 명확히 보여줍니다.",
+        location: "서울 · 원격 협업",
+        avatar_label: "QS",
+        categories: ["뷰티", "테크", "라이프스타일"],
+        audience: "20-34 실사용 후기 관심 고객",
+        audience_tags: ["숏폼 리뷰", "신제품 검증", "구매 전환", "계약 전환"],
+        collaboration_types: ["sponsored_post", "product_seeding", "ppl"],
+        starting_price_label: "120만원부터",
+        response_time_label: "당일 응답",
+        verified_label: "플랫폼 인증 완료",
+        brand_fit: ["신제품 런칭", "릴스/쇼츠 리뷰", "사용감 중심", "계약 전환"],
+        recent_brands: ["브레드룸", "오브제스튜디오", "모노트립"],
+        portfolio: [
+          {
+            title: "신제품 숏폼 리뷰",
+            brand: "브레드룸",
+            result: "제안 저장과 계약 생성 흐름 검증",
+          },
+          {
+            title: "테크 소품 사용 후기",
+            brand: "채널랩",
+            result: "콘텐츠 조건 확인 체크리스트 정리",
+          },
+        ],
+        proposal_hints: [
+          "브랜드 소개와 광고 형태를 함께 보내면 제안 저장이 가능합니다.",
+          "업로드 채널, 희망 일정, 콘텐츠 사용 범위를 포함해 주세요.",
+          "최종 조건은 전자계약 단계에서 다시 확인합니다.",
+        ],
+        is_published: true,
+        updated_at: timestamp,
+      },
+    ],
+    "owner_profile_id",
+    "marketplace influencer profile",
+  );
+
+  await removeRows(
+    "marketplace_influencer_channels",
+    `?profile_id=eq.${encodeURIComponent(influencerProfileId)}`,
+    "marketplace influencer channels",
+  );
+
+  await upsert(
+    "marketplace_influencer_channels",
+    [
+      {
+        id: stableUuid(`qa:marketplace:channel:instagram:${influencerProfileId}`),
+        profile_id: influencerProfileId,
+        platform: "instagram",
+        label: "릴스",
+        handle: "creator.sora",
+        url: "https://instagram.com/creator.sora",
+        followers_label: "8.1만",
+        performance_label: "평균 조회 2.9만",
+        sort_order: 0,
+        updated_at: timestamp,
+      },
+      {
+        id: stableUuid(`qa:marketplace:channel:youtube:${influencerProfileId}`),
+        profile_id: influencerProfileId,
+        platform: "youtube",
+        label: "쇼츠",
+        handle: "@creator_sora",
+        url: "https://youtube.com/@creator_sora",
+        followers_label: "2.4만",
+        performance_label: "완주율 41%",
+        sort_order: 1,
+        updated_at: timestamp,
+      },
+    ],
+    "id",
+    "marketplace influencer channels",
+  );
+
+  await upsert(
+    "marketplace_brand_profiles",
+    [
+      {
+        id: brandProfileId,
+        organization_id: organizationId,
+        public_handle: testHandles.brand,
+        display_name: "브레드룸",
+        category: "뷰티 · 라이프스타일",
+        headline: "신제품 런칭과 숏폼 전환을 함께할 브랜드",
+        description:
+          "인플루언서가 입점 브랜드를 둘러보고 역제안할 수 있도록 구성한 광고주 프로필입니다. 브랜드 소개, 광고 형태, 예산 범위가 공개 프로필에서 바로 보이도록 구성했습니다.",
+        location: "서울 성수 · 온라인",
+        logo_label: "BQ",
+        preferred_platforms: ["instagram", "youtube", "naver_blog"],
+        proposal_types: ["sponsored_post", "product_seeding", "ppl"],
+        budget_range_label: "100만-450만원",
+        response_time_label: "1영업일 내 확인",
+        status_label: "입점 브랜드",
+        fit_tags: ["뷰티 신제품", "릴스/쇼츠", "사용 후기", "계약 전환"],
+        audience_targets: ["20-34 뷰티 관심 고객", "데일리 루틴", "선물 구매층"],
+        active_campaigns: [
+          {
+            title: "신제품 언박싱 릴스",
+            type: "sponsored_post",
+            applicantLimit: "12명",
+            budget: "180만-280만원",
+            deadline: "2026-06-10",
+            uploadDeadline: "2026-06-24",
+          },
+          {
+            title: "파우치 필수템 리뷰",
+            type: "product_seeding",
+            applicantLimit: "8명",
+            budget: "제품 제공 + 제작비",
+            deadline: "2026-06-14",
+            uploadDeadline: "2026-06-28",
+          },
+        ],
+        recent_creators: ["크리에이터 소라", "제우", "민서홈"],
+        is_published: true,
+        updated_at: timestamp,
+      },
+    ],
+    "organization_id",
+    "marketplace brand profile",
+  );
+
+  return {
+    influencerProfileId,
+    brandProfileId,
+    links: {
+      influencer_profile: `${PUBLIC_SITE_URL}/${testHandles.influencer}`,
+      advertiser_brand_profile: `${PUBLIC_SITE_URL}/brands/${testHandles.brand}`,
+      advertiser_discovery: `${PUBLIC_SITE_URL}/advertiser/discover`,
+      influencer_brand_discovery: `${PUBLIC_SITE_URL}/influencer/brands`,
+    },
+  };
+};
+
+const signatureImageDataUrl =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
+const showcaseBatch = `showcase-${timestamp.replace(/[-:.TZ]/g, "").slice(0, 14)}`;
+
+const addDays = (days) => {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toISOString();
+};
+
+const dateOnly = (days) => addDays(days).slice(0, 10);
+const shareToken = () => crypto.randomUUID().replaceAll("-", "");
+const postgrestInFilter = (values) =>
+  `(${values.map((value) => encodeURIComponent(value)).join(",")})`;
+
+const chunkValues = (values, size = 40) => {
+  const chunks = [];
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size));
+  }
+  return chunks;
+};
+
+const getSetCookies = (response) => {
+  if (typeof response.headers.getSetCookie === "function") {
+    return response.headers.getSetCookie();
+  }
+  const combined = response.headers.get("set-cookie");
+  return combined ? combined.split(/,(?=\s*(?:directsign_|yeollock_))/g) : [];
+};
+
+const cookieHeaderFrom = (response) =>
+  getSetCookies(response)
+    .map((cookie) => cookie.split(";")[0].trim())
+    .filter(Boolean)
+    .join("; ");
+
+const appJson = async (path, init = {}, label = path) => {
+  const response = await fetch(`${DASHBOARD_BASE_URL}${path}`, {
+    ...init,
+    headers: {
+      Accept: "application/json",
+      ...(init.headers ?? {}),
+    },
+  });
+  return parseJsonResponse(response, label);
+};
+
+const login = async (path, email) => {
+  const response = await fetch(`${DASHBOARD_BASE_URL}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password: TEST_ACCOUNT_PASSWORD }),
+  });
+  const body = await response.text();
+  if (!response.ok) {
+    throw new Error(`${path} failed (${response.status}): ${body.slice(0, 700)}`);
+  }
+  const cookie = cookieHeaderFrom(response);
+  if (!cookie) throw new Error(`${path} did not return session cookies`);
+  return { cookie, body: JSON.parse(body) };
+};
+
+const archiveV2Contracts = async (contractIds) => {
+  for (const ids of chunkValues(contractIds)) {
+    if (ids.length === 0) continue;
+    await rest(
+      "contracts",
+      `?id=in.${postgrestInFilter(ids)}`,
+      {
+        method: "PATCH",
+        headers: { Prefer: "return=minimal" },
+        body: JSON.stringify({
+          deleted_at: timestamp,
+          updated_at: timestamp,
+        }),
+      },
+      "showcase v2 contract archive",
+    );
+  }
+};
+
+const deleteLegacyContracts = async (contractIds) => {
+  for (const ids of chunkValues(contractIds)) {
+    if (ids.length === 0) continue;
+    await removeRows(
+      LEGACY_CONTRACTS_TABLE,
+      `?id=in.${postgrestInFilter(ids)}`,
+      "showcase legacy contract cleanup",
+    );
+  }
+};
+
+const clearMarketplaceMessages = async ({ advertiser, influencer, marketplace }) => {
+  await removeRows(
+    "marketplace_contact_proposals",
+    `?sender_profile_id=eq.${encodeURIComponent(advertiser.id)}`,
+    "showcase advertiser proposal cleanup",
+  );
+  await removeRows(
+    "marketplace_contact_proposals",
+    `?sender_profile_id=eq.${encodeURIComponent(influencer.id)}`,
+    "showcase influencer proposal cleanup",
+  );
+  await removeRows(
+    "marketplace_contact_proposals",
+    `?target_influencer_profile_id=eq.${encodeURIComponent(marketplace.influencerProfileId)}`,
+    "showcase influencer target proposal cleanup",
+  );
+  await removeRows(
+    "marketplace_contact_proposals",
+    `?target_brand_profile_id=eq.${encodeURIComponent(marketplace.brandProfileId)}`,
+    "showcase brand target proposal cleanup",
+  );
+};
+
+const cleanupDashboardShowcaseData = async ({
+  advertiser,
+  influencer,
+  marketplace,
+  advertiserCookie,
+}) => {
+  const data = await appJson(
+    "/api/contracts",
+    { headers: { Cookie: advertiserCookie } },
+    "advertiser contract list before showcase cleanup",
+  );
+  const existingContracts = Array.isArray(data.contracts) ? data.contracts : [];
+  const contractIds = [
+    ...new Set(
+      existingContracts
+        .filter(
+          (contract) =>
+            contract.advertiser_id === advertiser.id ||
+            contract.influencer_info?.contact === influencer.email ||
+            contract.advertiser_info?.name === accounts.advertiser.company_name,
+        )
+        .map((contract) => contract.id)
+        .filter(Boolean),
+    ),
+  ];
+
+  await archiveV2Contracts(contractIds);
+  await deleteLegacyContracts(contractIds);
+  await clearMarketplaceMessages({ advertiser, influencer, marketplace });
+
+  return { archivedContracts: contractIds.length };
+};
+
+const showcaseScenarios = [
+  {
+    key: "draft-minseo",
+    title: "브레드룸 여름 루틴 릴스 계약서 초안",
+    campaignName: "브레드룸 여름 루틴 캠페인",
+    influencerName: "민서홈",
+    influencerContact: "minseo.home@example.com",
+    channelUrl: "https://instagram.com/minseo.home",
+    type: "협찬",
+    status: "DRAFT",
+    nextActor: "advertiser",
+    nextAction: "조건을 확인한 뒤 검토 링크를 발송하세요.",
+    budget: "900,000원 + 제품 제공",
+    platforms: ["INSTAGRAM"],
+    deliverables: ["인스타그램 릴스 1건"],
+    dueDays: 5,
+    risk: "low",
+    clauses: "draft",
+  },
+  {
+    key: "review-reels",
+    title: "브레드룸 신제품 언박싱 릴스 계약서",
+    campaignName: "브레드룸 신제품 언박싱 릴스",
+    influencerName: accounts.influencer.name,
+    influencerContact: accounts.influencer.email,
+    channelUrl: "https://instagram.com/creator.sora",
+    type: "협찬",
+    status: "REVIEWING",
+    nextActor: "influencer",
+    nextAction: "크리에이터가 조항을 검토하고 있습니다.",
+    lastMessage: "필수 표현과 사용 기간을 검토 중입니다.",
+    budget: "2,400,000원",
+    platforms: ["INSTAGRAM"],
+    deliverables: ["인스타그램 릴스 1건", "스토리 2건"],
+    dueDays: 2,
+    risk: "medium",
+    clauses: "review",
+  },
+  {
+    key: "negotiating-shorts",
+    title: "파우치 필수템 쇼츠 리뷰 수정 협의",
+    campaignName: "파우치 필수템 쇼츠 리뷰",
+    influencerName: accounts.influencer.name,
+    influencerContact: accounts.influencer.email,
+    channelUrl: "https://youtube.com/@creator_sora",
+    type: "PPL",
+    status: "NEGOTIATING",
+    nextActor: "advertiser",
+    nextAction: "수정 요청한 사용 기간과 2차 활용 범위를 답변하세요.",
+    lastMessage: "2차 활용 기간을 3개월로 줄여 달라는 요청이 있습니다.",
+    budget: "3,200,000원",
+    platforms: ["YOUTUBE", "INSTAGRAM"],
+    deliverables: ["유튜브 쇼츠 1건", "인스타그램 스토리 2건"],
+    dueDays: 1,
+    risk: "high",
+    clauses: "change",
+  },
+  {
+    key: "ready-blog",
+    title: "데일리 루틴 블로그 리뷰 최종본",
+    campaignName: "데일리 루틴 블로그 리뷰",
+    influencerName: accounts.influencer.name,
+    influencerContact: accounts.influencer.email,
+    channelUrl: "https://blog.naver.com/creator_sora",
+    type: "협찬",
+    status: "APPROVED",
+    nextActor: "influencer",
+    nextAction: "최종본을 확인하고 전자서명을 완료하세요.",
+    budget: "1,800,000원",
+    platforms: ["NAVER_BLOG"],
+    deliverables: ["네이버 블로그 상세 리뷰 1건"],
+    dueDays: 3,
+    risk: "medium",
+    clauses: "approved",
+  },
+  {
+    key: "due-popup",
+    title: "성수 팝업 방문 릴스 콘텐츠 제출",
+    campaignName: "성수 팝업 방문 릴스",
+    influencerName: accounts.influencer.name,
+    influencerContact: accounts.influencer.email,
+    channelUrl: "https://instagram.com/creator.sora",
+    type: "협찬",
+    status: "APPROVED",
+    nextActor: "influencer",
+    nextAction: "서명 완료 후 콘텐츠 링크나 증빙 파일을 제출하세요.",
+    budget: "2,100,000원",
+    platforms: ["INSTAGRAM"],
+    deliverables: ["인스타그램 릴스 1건", "틱톡 숏폼 1건"],
+    dueDays: 4,
+    risk: "medium",
+    clauses: "approved",
+    sign: true,
+  },
+  {
+    key: "review-submitted",
+    title: "나이트 케어 쇼츠 검수 대기",
+    campaignName: "나이트 케어 쇼츠 패키지",
+    influencerName: accounts.influencer.name,
+    influencerContact: accounts.influencer.email,
+    channelUrl: "https://youtube.com/@creator_sora",
+    type: "PPL",
+    status: "APPROVED",
+    nextActor: "influencer",
+    nextAction: "제출한 콘텐츠를 광고주가 검수하고 있습니다.",
+    budget: "2,800,000원",
+    platforms: ["YOUTUBE"],
+    deliverables: ["유튜브 쇼츠 1건"],
+    dueDays: 6,
+    risk: "low",
+    clauses: "approved",
+    sign: true,
+    submitDeliverable: true,
+  },
+  {
+    key: "completed-groupbuy",
+    title: "공동구매 파일럿 콘텐츠 검수 완료",
+    campaignName: "브레드룸 공동구매 파일럿",
+    influencerName: accounts.influencer.name,
+    influencerContact: accounts.influencer.email,
+    channelUrl: "https://blog.naver.com/creator_sora",
+    type: "공동구매",
+    status: "APPROVED",
+    nextActor: "system",
+    nextAction: "서명본과 검수 기록을 보관하세요.",
+    budget: "수수료 18%",
+    platforms: ["NAVER_BLOG"],
+    deliverables: ["네이버 블로그 리뷰 1건", "인스타그램 스토리 2건"],
+    dueDays: 7,
+    risk: "low",
+    clauses: "approved",
+    sign: true,
+    submitDeliverable: true,
+    approveDeliverable: true,
+  },
+];
+
+const clauseStatusFor = (scenario, index) => {
+  if (scenario.clauses === "approved") return "APPROVED";
+  if (scenario.clauses === "change" && index === 2) return "MODIFICATION_REQUESTED";
+  return "PENDING_REVIEW";
+};
+
+const buildShowcaseClauses = (scenario) =>
+  [
+    {
+      clause_id: "scope",
+      category: "산출물",
+      content: `${scenario.deliverables.join(", ")}을 지정 채널에 업로드합니다.`,
+    },
+    {
+      clause_id: "schedule",
+      category: "일정",
+      content: `${dateOnly(1)}부터 ${dateOnly(21)}까지 제작, 검수, 업로드를 진행합니다.`,
+    },
+    {
+      clause_id: "usage",
+      category: "콘텐츠 사용",
+      content: "광고주는 계약 기간 동안 브랜드 채널과 랜딩 페이지에서 콘텐츠를 활용할 수 있습니다.",
+    },
+    {
+      clause_id: "payment",
+      category: "지급 조건",
+      content: `${scenario.budget} 조건으로 캠페인 종료 후 정산합니다.`,
+    },
+  ].map((clause, index) => ({
+    ...clause,
+    status: clauseStatusFor(scenario, index),
+    history:
+      scenario.clauses === "change" && index === 2
+        ? [
+            {
+              id: crypto.randomUUID(),
+              role: "influencer",
+              action: "수정 요청",
+              comment:
+                "2차 활용 기간과 사용 채널을 계약서에 더 좁게 적어 주세요.",
+              timestamp: addDays(-1),
+            },
+          ]
+        : [],
+  }));
+
+const buildShowcaseContract = (scenario, advertiserId) => {
+  const activeShare = scenario.status !== "DRAFT";
+  const createdAt = addDays(-4);
+  const updatedAt = addDays(scenario.key === "draft-minseo" ? -2 : 0);
+
+  return {
+    id: stableUuid(`${showcaseBatch}:${scenario.key}`),
+    advertiser_id: advertiserId,
+    campaign_name: scenario.campaignName,
+    advertiser_info: {
+      name: accounts.advertiser.company_name,
+      manager: accounts.advertiser.name,
+    },
+    type: scenario.type,
+    status: scenario.status,
+    title: scenario.title,
+    influencer_info: {
+      name: scenario.influencerName,
+      channel_url: scenario.channelUrl,
+      contact: scenario.influencerContact,
+    },
+    campaign: {
+      budget: scenario.budget,
+      start_date: dateOnly(1),
+      end_date: dateOnly(21),
+      deadline: dateOnly(scenario.dueDays),
+      upload_due_at: dateOnly(scenario.dueDays),
+      review_due_at: dateOnly(scenario.dueDays + 2),
+      revision_limit: "2",
+      disclosure_text: "#광고 #협찬",
+      tracking_link: `${PUBLIC_SITE_URL}/qa/showcase/${scenario.key}`,
+      period: `${dateOnly(1)} - ${dateOnly(21)}`,
+      platforms: scenario.platforms,
+      deliverables: scenario.deliverables,
+    },
+    workflow: {
+      next_actor: scenario.nextActor,
+      next_action: scenario.nextAction,
+      due_at: addDays(scenario.dueDays),
+      last_message: scenario.lastMessage,
+      risk_level: scenario.risk,
+    },
+    evidence: {
+      share_token_status: activeShare ? "active" : "not_issued",
+      share_token: activeShare ? shareToken() : undefined,
+      share_token_expires_at: activeShare ? addDays(14) : undefined,
+      audit_ready: activeShare,
+      pdf_status: activeShare ? "draft_ready" : "not_ready",
+    },
+    audit_events: [
+      {
+        id: crypto.randomUUID(),
+        actor: "advertiser",
+        action: scenario.status === "DRAFT" ? "draft_saved" : "contract_created",
+        description:
+          scenario.status === "DRAFT"
+            ? "광고주가 계약 초안을 저장했습니다."
+            : "광고주가 검토 링크를 발송했습니다.",
+        created_at: createdAt,
+      },
+    ],
+    clauses: buildShowcaseClauses(scenario),
+    created_at: createdAt,
+    updated_at: updatedAt,
+  };
+};
+
+const putContract = async (contract, advertiserCookie) => {
+  const response = await fetch(
+    `${DASHBOARD_BASE_URL}/api/contracts/${encodeURIComponent(contract.id)}`,
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Cookie: advertiserCookie,
+        "X-Yeollock-Actor": "advertiser",
+      },
+      body: JSON.stringify({ contract }),
+    },
+  );
+  const body = await response.text();
+  if (!response.ok) {
+    throw new Error(
+      `PUT contract ${contract.title} failed (${response.status}): ${body.slice(0, 700)}`,
+    );
+  }
+  return JSON.parse(body).contract;
+};
+
+const signContract = async (contractId, influencerCookie) => {
+  const response = await fetch(
+    `${DASHBOARD_BASE_URL}/api/contracts/${encodeURIComponent(contractId)}/signatures/influencer`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: influencerCookie },
+      body: JSON.stringify({
+        signature_data: signatureImageDataUrl,
+        signer_name: accounts.influencer.name,
+        consent_accepted: true,
+      }),
+    },
+  );
+  const body = await response.text();
+  if (!response.ok) {
+    throw new Error(
+      `sign contract ${contractId} failed (${response.status}): ${body.slice(0, 700)}`,
+    );
+  }
+  return JSON.parse(body).contract;
+};
+
+const submitDeliverable = async (contractId, scenario, influencerCookie) => {
+  const response = await fetch(
+    `${DASHBOARD_BASE_URL}/api/contracts/${encodeURIComponent(contractId)}/deliverables`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: influencerCookie },
+      body: JSON.stringify({
+        title: scenario.deliverables[0] ?? "콘텐츠 증빙",
+        url: `${scenario.channelUrl.replace(/\/$/, "")}/showcase-${scenario.key}`,
+        note: "쇼케이스 대시보드용 제출 링크입니다.",
+      }),
+    },
+  );
+  const body = await response.text();
+  if (!response.ok) {
+    throw new Error(
+      `submit deliverable ${contractId} failed (${response.status}): ${body.slice(0, 700)}`,
+    );
+  }
+  return JSON.parse(body).deliverable;
+};
+
+const approveDeliverable = async (contractId, deliverableId, advertiserCookie) => {
+  const response = await fetch(
+    `${DASHBOARD_BASE_URL}/api/contracts/${encodeURIComponent(contractId)}/deliverables/${encodeURIComponent(
+      deliverableId,
+    )}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Cookie: advertiserCookie },
+      body: JSON.stringify({
+        review_status: "approved",
+        review_comment: "쇼케이스 검수 완료",
+      }),
+    },
+  );
+  const body = await response.text();
+  if (!response.ok) {
+    throw new Error(
+      `approve deliverable ${deliverableId} failed (${response.status}): ${body.slice(0, 700)}`,
+    );
+  }
+  return JSON.parse(body).deliverable;
+};
+
+const seedDashboardShowcase = async ({ advertiser, influencer, marketplace }) => {
+  const advertiserSession = await login("/api/advertiser/login", advertiser.email);
+  const influencerSession = await login("/api/influencer/login", influencer.email);
+  const cleanup = await cleanupDashboardShowcaseData({
+    advertiser,
+    influencer,
+    marketplace,
+    advertiserCookie: advertiserSession.cookie,
+  });
+  const created = [];
+
+  for (const scenario of showcaseScenarios) {
+    let contract = await putContract(
+      buildShowcaseContract(scenario, advertiser.id),
+      advertiserSession.cookie,
+    );
+
+    if (scenario.sign) {
+      contract = await signContract(contract.id, influencerSession.cookie);
+    }
+
+    let deliverable;
+    if (scenario.submitDeliverable) {
+      deliverable = await submitDeliverable(
+        contract.id,
+        scenario,
+        influencerSession.cookie,
+      );
+    }
+    if (scenario.approveDeliverable && deliverable?.id) {
+      await approveDeliverable(
+        contract.id,
+        deliverable.id,
+        advertiserSession.cookie,
+      );
+    }
+
+    created.push({
+      id: contract.id,
+      title: scenario.title,
+      status: contract.status,
+      influencer: scenario.influencerName,
+    });
+  }
+
+  const advertiserContractsResponse = await appJson(
+    "/api/contracts",
+    { headers: { Cookie: advertiserSession.cookie } },
+    "advertiser contract list after showcase seed",
+  );
+  const influencerDashboard = await appJson(
+    "/api/influencer/dashboard",
+    { headers: { Cookie: influencerSession.cookie } },
+    "influencer dashboard after showcase seed",
+  );
+
+  return {
+    base_url: DASHBOARD_BASE_URL,
+    archived_contracts: cleanup.archivedContracts,
+    created_contracts: created.length,
+    advertiser_visible_contracts: advertiserContractsResponse.contracts?.length ?? 0,
+    influencer_visible_contracts: influencerDashboard.contracts?.length ?? 0,
+    influencer_visible_applications: influencerDashboard.applications?.length ?? 0,
+    sample_contracts: created.map((contract) => ({
+      title: contract.title,
+      status: contract.status,
+      influencer: contract.influencer,
+    })),
+  };
+};
+
 const advertiser = await ensureAuthUser(accounts.advertiser);
 const influencer = await ensureAuthUser(accounts.influencer);
 const { organizationId } = await ensureProfilesAndOrganization(
   advertiser,
   influencer,
 );
+await ensureVerificationRecords({ advertiser, influencer, organizationId });
+const marketplace = await ensureMarketplaceProfiles({
+  influencer,
+  organizationId,
+});
+const dashboardShowcase = await seedDashboardShowcase({
+  advertiser,
+  influencer,
+  marketplace,
+});
 
 console.log(
   JSON.stringify(
@@ -273,8 +1189,17 @@ console.log(
           login_path: "/login/influencer",
         },
       },
-      password: TEST_ACCOUNT_PASSWORD,
+      password: {
+        configured_by: "QA_TEST_PASSWORD",
+        printed: false,
+      },
       organization_id: organizationId,
+      marketplace_profiles: {
+        influencer_profile_id: marketplace.influencerProfileId,
+        advertiser_brand_profile_id: marketplace.brandProfileId,
+        links: marketplace.links,
+      },
+      dashboard_showcase: dashboardShowcase,
     },
     null,
     2,

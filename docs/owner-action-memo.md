@@ -1,8 +1,23 @@
 # 오너 액션 메모
 
-최종 업데이트: 2026-05-07
+최종 업데이트: 2026-05-18
 
-아래 항목은 제품 소유자 확인, production 대시보드 접근, 법무/사업자 정보가 필요한 작업입니다. production 비밀키나 실제 인증 코드는 Discord에 붙여 넣지 마세요.
+아래 항목은 제품 소유자 확인과 production 대시보드 접근이 필요한 작업입니다. production 비밀키나 실제 인증 코드는 Discord에 붙여 넣지 마세요. 현재 무료 개인 운영 단계에서는 사업자등록번호, 주소, 통신판매업 신고번호 같은 사업자 정보를 요구하지 않습니다.
+
+## 0. 기상 후 체크리스트 (2026-05-18)
+
+오늘 새벽 기준 production 배포는 `https://yeollock.me`에 완료되어 있고, 헬스체크는 정상입니다.
+
+바로 볼 것:
+
+- 광고주 대시보드에서 화면 전체가 아니라 계약 표 내부만 스크롤되는지 직접 확인합니다.
+- `동일 조건 계약 ... 묶어 표시합니다` 문구가 광고주/인플루언서 대시보드에 더 이상 보이지 않는지 확인합니다.
+- 공식 Instagram 계정 `@yeollockme`를 실제로 확보했는지 확인합니다. 확보 전이면 먼저 계정을 만들고 프로필에 연락미 서비스 계정임을 알 수 있게 정리합니다.
+- 인스타 수동 인증 운영 방식 확인: 인플루언서가 연락미 공식 계정으로 `DS-XXXX-XXXX` 코드를 DM 보내면, 관리자 화면에서 요청 코드, 제출 프로필 URL, 실제 DM 발신 계정을 대조해 승인합니다.
+- 실제 광고주 계정 1개로 사업자 인증부터 계약 작성, 공유 링크 발송까지 테스트합니다.
+- 실제 인플루언서 계정 1개로 계약 링크 열기, 가입/로그인 후 복귀, 인스타 DM 인증 요청, 관리자 승인, 서명까지 테스트합니다.
+- 아직 받지 않은 외부 API는 우선순위를 정합니다: Naver Search API, Meta App/OAuth/Webhook, TikTok Developer App. Meta는 승인 전까지 필수로 보지 말고 DM 수동 인증으로 운영합니다.
+- 공개 법적 고지에는 운영자명 `김재우`, 문의 이메일 `yeollockme@gmail.com`을 사용합니다. 사업자번호, 주소, 전화번호는 유료화 또는 사업자 명의 운영 전 별도 검토로 둡니다.
 
 ## 1. 가입 플로우 직접 확인
 
@@ -13,24 +28,24 @@
 - 공개 인플루언서 가입을 받을 예정이면 인플루언서 가입도 같은 방식으로 한 번 확인합니다.
 - 테스트 중 Supabase rate limit이 뜨면 임시 이메일을 계속 만들지 말고 제한 시간이 풀릴 때까지 기다립니다.
 
-## 2. Vercel Production legal env 설정
+## 2. Vercel Production legal env 확인
 
-공개 트래픽 전에 Vercel Production 환경변수에 실제 운영자 정보를 넣어야 합니다.
+현재는 `free_individual` 운영으로 두고, 공개 담당자명과 문의 이메일만 표시합니다. 유료화하거나 사업자 명의 운영으로 전환할 때만 사업자 정보 값을 실제 정보로 바꿉니다.
 
 ```env
 VITE_LEGAL_OPERATING_MODE="free_individual"
-VITE_LEGAL_OPERATOR_NAME="REAL_OPERATOR_NAME"
-VITE_LEGAL_REPRESENTATIVE_NAME="REAL_PRIVACY_REPRESENTATIVE_NAME"
-VITE_LEGAL_CONTACT_EMAIL="REAL_CONTACT_EMAIL"
+VITE_LEGAL_OPERATOR_NAME="김재우"
+VITE_LEGAL_REPRESENTATIVE_NAME="김재우"
+VITE_LEGAL_CONTACT_EMAIL="yeollockme@gmail.com"
 VITE_LEGAL_CONTACT_PHONE=""
 VITE_LEGAL_BUSINESS_REGISTRATION_NUMBER=""
 VITE_LEGAL_MAIL_ORDER_BUSINESS_NUMBER=""
 VITE_LEGAL_ADDRESS=""
 ```
 
-`free_individual`은 무료 서비스이고 아직 사업자 운영이 아닐 때만 사용하세요. 유료화하거나 사업자 명의로 운영하면 `registered_business`로 바꾸고 사업자등록번호, 주소, 전화번호, 통신판매업 신고번호를 채워야 합니다.
+`free_individual`에서는 사업자등록번호, 주소, 전화번호, 통신판매업 신고번호 입력을 요구하지 않습니다. 이 항목들은 운영 전 확인 TODO로만 남기고, 현재 개발·QA 흐름을 막지 않습니다.
 
-설정 후 production을 다시 배포하고 아래 문서에 실제 운영자/연락처 정보가 표시되는지 확인합니다.
+설정 후 production을 다시 배포하고 아래 문서가 placeholder 없이 `김재우`와 `yeollockme@gmail.com`으로 표시되는지 확인합니다.
 
 - `https://yeollock.me/privacy`
 - `https://yeollock.me/terms`
@@ -84,3 +99,4 @@ Supabase는 2026-04-28부터 신규 프로젝트에서 테이블이 Data API에 
 - 실제 인플루언서 계정으로 가입부터 플랫폼 인증 요청까지 완료합니다.
 - 관리자 승인 후 계약 생성, 공유 링크, 검토, 서명, 콘텐츠 제출, 광고주 검수, 완료 계약 확인까지 한 번 끝까지 진행합니다.
 - 최종 서명본 PDF와 완료 계약 상태 화면을 런치 기록용으로 캡처해 둡니다.
+- 유료화 또는 사업자 명의 운영으로 전환하기 전, 운영자 법률 정보와 약관 문구를 별도 검토합니다.

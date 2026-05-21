@@ -2,26 +2,43 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   AlertCircle,
+  ArrowDownWideNarrow,
+  ArrowUpDown,
+  ArrowUpWideNarrow,
   BadgeCheck,
   BookOpen,
+  ChevronDown,
   CheckCircle2,
   Clock3,
+  ExternalLink,
   FileCheck2,
   FileSignature,
   FileText,
   Globe2,
   Instagram,
+  KeyRound,
   LogOut,
+  Mail,
+  Megaphone,
+  MessageSquareText,
   Music2,
   RefreshCw,
+  Save,
   Search,
+  Settings,
+  Settings2,
   ShieldCheck,
+  SlidersHorizontal,
   UserCheck,
   Youtube,
 } from "lucide-react";
 import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
+import { LEGAL_CONTACT_EMAIL } from "../../domain/legalEntity";
 import type {
+  InfluencerDashboardActivityEvent,
+  InfluencerDashboardApplication,
+  InfluencerDashboardApplicationStage,
   InfluencerDashboardContract,
   InfluencerDashboardContractStage,
   InfluencerDashboardResponse,
@@ -34,17 +51,120 @@ import {
   formatPublicHandleValue,
   removeInternalTestLabel,
 } from "../../domain/display";
+import {
+  proposalTypeLabels,
+  type CampaignProposalType,
+} from "../../domain/marketplace";
+import {
+  buildDefaultPublicProfileSettings,
+  buildPublicProfileSettingsFromForm,
+  formatInfluencerPublicProfileUrl,
+  getAutomaticPublicProfileHandle,
+  getInfluencerPublicProfilePath,
+  getPublicProfileHandleError,
+  normalizePublicProfileHandle,
+  type InfluencerPublicProfileResponse,
+  type InfluencerPublicProfileSettings,
+} from "../../domain/publicInfluencerProfile";
 import { translateApiErrorMessage } from "../../domain/userMessages";
 import type { InfluencerPlatform, VerificationStatus } from "../../domain/verification";
+import { useMarketplaceMessageSummary } from "../../hooks/useMarketplaceMessageSummary";
 
 type DashboardState =
   | { status: "loading" }
   | { status: "ready"; dashboard: InfluencerDashboardResponse }
   | { status: "error"; message: string };
 
-type ContractFilter = "revision" | "review" | "sign" | "fulfillment" | "done";
+type PublicProfileSavePayload = InfluencerPublicProfileSettings & {
+  alternateHandle?: string;
+};
+
+type PublicProfileSaveError = Error & {
+  code?: string;
+  handle?: string;
+  profileUrl?: string;
+  suggestedHandles?: string[];
+  canCustomizeHandle?: boolean;
+};
+
 type PlatformFilter = "all" | InfluencerPlatform;
-type DetailStageFilter = "all" | InfluencerDashboardContractStage;
+type AmountFilter = "all" | "fixed" | "commission";
+type ActualAmountKind = Exclude<AmountFilter, "all">;
+type InfluencerApplicationWorkStage =
+  | "application_submitted"
+  | "application_reviewed"
+  | "application_accepted"
+  | "application_closed";
+type InfluencerWorkStage =
+  | InfluencerDashboardContractStage
+  | InfluencerApplicationWorkStage;
+type DetailStageFilter = "all" | InfluencerWorkStage;
+type DeadlineFilter = "all" | "overdue" | "this_week" | "later" | "none";
+type InfluencerCampaignLifecycle = "APPLIED" | "IN_PROGRESS" | "ENDED";
+type SortKey =
+  | "updated"
+  | "platform"
+  | "advertiser"
+  | "title"
+  | "amount"
+  | "stage"
+  | "deadline";
+type SortDirection = "asc" | "desc";
+type ContractSort = {
+  key: SortKey;
+  direction: SortDirection;
+};
+type InfluencerAccountSummary = {
+  name: string;
+  email?: string;
+};
+type InfluencerCampaignWorkItem = {
+  id: string;
+  kind: "contract" | "application";
+  lifecycle: InfluencerCampaignLifecycle;
+  title: string;
+  advertiser_name: string;
+  stage: InfluencerWorkStage;
+  stage_label: string;
+  next_action_label: string;
+  action_label: string;
+  action_href: string;
+  platform_labels: string[];
+  platforms: InfluencerPlatform[];
+  platform_accounts: Array<{
+    platform: InfluencerPlatform;
+    url?: string;
+  }>;
+  fee_label: string;
+  deadline_label: string;
+  due_at?: string;
+  updated_at: string;
+  deliverable_summary: {
+    total: number;
+    submitted: number;
+    approved: number;
+  };
+  activity_events: InfluencerDashboardActivityEvent[];
+  source_contract?: InfluencerDashboardContract;
+  source_application?: InfluencerDashboardApplication;
+};
+type InfluencerOperationsSummary = {
+  newOffers: number;
+  pendingApplications: number;
+  actionableContracts: number;
+  overdueItems: number;
+  dueSoonItems: number;
+  deliverablesDue: number;
+};
+type InfluencerAlertTone = "amber" | "blue" | "rose" | "emerald" | "neutral";
+type InfluencerAlert = {
+  id: string;
+  label: string;
+  detail: string;
+  href: string;
+  tone: InfluencerAlertTone;
+  priority: number;
+};
 
 const STAGE_META: Record<
   InfluencerDashboardContractStage,
@@ -114,25 +234,48 @@ const getStageMeta = (stage: InfluencerDashboardContractStage) => ({
       : {}),
 });
 
-const DASHBOARD_TABS: Array<{
-  id: ContractFilter;
-  label: string;
-  stages: InfluencerDashboardContractStage[];
-}> = [
-  { id: "revision", label: "수정", stages: ["change_pending"] },
-  { id: "review", label: "검토", stages: ["review_needed", "waiting"] },
-  { id: "sign", label: "서명", stages: ["ready_to_sign"] },
+const APPLICATION_STAGE_META: Record<
+  InfluencerApplicationWorkStage,
   {
-    id: "fulfillment",
-    label: "이행",
-    stages: ["deliverables_due", "deliverables_review"],
+    label: string;
+    helper: string;
+    className: string;
+    icon: React.ReactNode;
+  }
+> = {
+  application_submitted: {
+    label: "지원 접수",
+    helper: "광고주 검토 대기",
+    className: "border-amber-200 bg-amber-50 text-amber-800",
+    icon: <Clock3 className="h-4 w-4" />,
   },
-  {
-    id: "done",
-    label: "완료",
-    stages: ["signed", "completed"],
+  application_reviewed: {
+    label: "검토 중",
+    helper: "메시지 확인",
+    className: "border-sky-200 bg-sky-50 text-sky-700",
+    icon: <MessageSquareText className="h-4 w-4" />,
   },
-];
+  application_accepted: {
+    label: "수락 완료",
+    helper: "계약 확인",
+    className: "border-blue-200 bg-blue-50 text-blue-700",
+    icon: <CheckCircle2 className="h-4 w-4" />,
+  },
+  application_closed: {
+    label: "종료",
+    helper: "기록 보관",
+    className: "border-neutral-200 bg-neutral-100 text-neutral-600",
+    icon: <CheckCircle2 className="h-4 w-4" />,
+  },
+};
+
+const getWorkStageMeta = (stage: InfluencerWorkStage) => {
+  if (stage.startsWith("application_")) {
+    return APPLICATION_STAGE_META[stage as InfluencerApplicationWorkStage];
+  }
+
+  return getStageMeta(stage as InfluencerDashboardContractStage);
+};
 
 const PLATFORM_FILTERS: PlatformFilter[] = [
   "all",
@@ -143,8 +286,13 @@ const PLATFORM_FILTERS: PlatformFilter[] = [
   "other",
 ];
 
+const AMOUNT_FILTERS: AmountFilter[] = ["all", "fixed", "commission"];
+
 const DETAIL_STAGE_FILTERS: DetailStageFilter[] = [
   "all",
+  "application_submitted",
+  "application_reviewed",
+  "application_accepted",
   "review_needed",
   "change_pending",
   "ready_to_sign",
@@ -152,7 +300,20 @@ const DETAIL_STAGE_FILTERS: DetailStageFilter[] = [
   "deliverables_review",
   "signed",
   "completed",
+  "application_closed",
 ];
+
+const DEADLINE_FILTERS: DeadlineFilter[] = [
+  "all",
+  "overdue",
+  "this_week",
+  "later",
+  "none",
+];
+
+const PROFILE_PROPOSAL_TYPES = Object.entries(proposalTypeLabels) as Array<
+  [CampaignProposalType, string]
+>;
 
 const PLATFORM_META: Record<
   InfluencerPlatform,
@@ -231,10 +392,26 @@ export function InfluencerDashboard() {
   const location = useLocation();
   const [state, setState] = useState<DashboardState>({ status: "loading" });
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<ContractFilter>("revision");
   const [platformFilter, setPlatformFilter] = useState<PlatformFilter>("all");
+  const [brandFilter, setBrandFilter] = useState("all");
+  const [amountFilter, setAmountFilter] = useState<AmountFilter>("all");
   const [detailStageFilter, setDetailStageFilter] =
     useState<DetailStageFilter>("all");
+  const [deadlineFilter, setDeadlineFilter] = useState<DeadlineFilter>("all");
+  const [sortState, setSortState] = useState<ContractSort>({
+    key: "updated",
+    direction: "desc",
+  });
+  const [profileSettingsOpen, setProfileSettingsOpen] = useState(false);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [publicProfileOverride, setPublicProfileOverride] =
+    useState<InfluencerPublicProfileSettings | null>(null);
+  const {
+    summary: messageSummary,
+    isLoading: isMessageSummaryLoading,
+  } = useMarketplaceMessageSummary("influencer");
+  const readyDashboardUserId =
+    state.status === "ready" ? state.dashboard.user.id : undefined;
 
   const loadDashboard = useCallback(async () => {
     setState((current) =>
@@ -299,6 +476,32 @@ export function InfluencerDashboard() {
     return () => window.clearTimeout(timer);
   }, [loadDashboard]);
 
+  useEffect(() => {
+    if (state.status !== "ready") return;
+
+    let active = true;
+
+    void apiFetch("/api/influencer/public-profile", {
+      headers: { Accept: "application/json" },
+      credentials: "include",
+    })
+      .then(async (response) => {
+        if (!response.ok) return undefined;
+        return (await response.json()) as InfluencerPublicProfileResponse;
+      })
+      .then((data) => {
+        if (!active || !data?.profile) return;
+        setPublicProfileOverride(data.profile);
+      })
+      .catch(() => {
+        if (active) setPublicProfileOverride(null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [readyDashboardUserId, state.status]);
+
   if (state.status === "loading") {
     return <DashboardShell><LoadingView /></DashboardShell>;
   }
@@ -312,65 +515,62 @@ export function InfluencerDashboard() {
   }
 
   const dashboard = state.dashboard;
-  const stageCounts = dashboard.contracts.reduce(
-    (acc, contract) => {
-      acc[contract.stage] = (acc[contract.stage] ?? 0) + 1;
-      return acc;
-    },
-    {} as Partial<Record<InfluencerDashboardContractStage, number>>,
+  const normalizedQuery = query.trim().toLowerCase();
+  const campaignItems = buildInfluencerCampaignWorkItems(dashboard);
+  const visibleCampaignItems = campaignItems;
+  const operationsSummary = getInfluencerOperationsSummary(
+    campaignItems,
+    messageSummary.unreadCount,
   );
-  const platformCounts = PLATFORM_FILTERS.reduce(
-    (acc, platform) => {
-      acc[platform] =
-        platform === "all"
-          ? dashboard.contracts.length
-          : dashboard.contracts.filter((contract) =>
-              getInfluencerContractPlatforms(contract).includes(platform),
-            ).length;
-      return acc;
-    },
-    {} as Record<PlatformFilter, number>,
+  const operationAlerts = buildInfluencerAlerts(
+    campaignItems,
+    messageSummary.unreadCount,
   );
-  const stageContracts = dashboard.contracts.filter((contract) => {
-    const selectedTab = DASHBOARD_TABS.find((tab) => tab.id === filter);
+  const recentActivities = buildInfluencerRecentActivities(campaignItems);
+  const brandOptions = buildInfluencerBrandFilterOptions(campaignItems);
+  const filteredCampaignItems = visibleCampaignItems
+    .filter((item) => {
+      if (detailStageFilter !== "all" && item.stage !== detailStageFilter) {
+        return false;
+      }
+      const advertiserName = removeInternalTestLabel(
+        item.advertiser_name,
+        "광고주",
+      );
+      if (brandFilter !== "all" && advertiserName !== brandFilter) {
+        return false;
+      }
+      if (
+        platformFilter !== "all" &&
+        !getInfluencerCampaignItemPlatforms(item).includes(platformFilter)
+      ) {
+        return false;
+      }
+      if (
+        amountFilter !== "all" &&
+        getAmountFilterKind(item.fee_label) !== amountFilter
+      ) {
+        return false;
+      }
+      if (!matchesDeadlineFilter(item, deadlineFilter)) {
+        return false;
+      }
+      if (!normalizedQuery) return true;
 
-    if (
-      detailStageFilter === "all" &&
-      selectedTab &&
-      !selectedTab.stages.includes(contract.stage)
-    ) {
-      return false;
-    }
-    if (detailStageFilter !== "all" && contract.stage !== detailStageFilter) {
-      return false;
-    }
-    if (
-      platformFilter !== "all" &&
-      !getInfluencerContractPlatforms(contract).includes(platformFilter)
-    ) {
-      return false;
-    }
-
-    return true;
-  });
-
-  const filteredContracts = stageContracts.filter((contract) => {
-    const normalizedQuery = query.trim().toLowerCase();
-    if (!normalizedQuery) return true;
-
-    return [
-      formatDashboardContractTitle(contract.title),
-      removeInternalTestLabel(contract.advertiser_name, "광고주"),
-      formatMoneyLabel(contract.fee_label),
-      contract.period_label,
-      contract.stage_label,
-      ...contract.platform_labels,
-    ]
-      .join(" ")
-      .toLowerCase()
-      .includes(normalizedQuery);
-  });
+      return formatDashboardContractTitle(item.title)
+        .toLowerCase()
+        .includes(normalizedQuery);
+    })
+    .sort((a, b) => compareCampaignItemsBySort(a, b, sortState));
   const verification = VERIFICATION_META[dashboard.verification.status];
+  const accountSummary: InfluencerAccountSummary = {
+    name: removeInternalTestLabel(dashboard.user.name, "인플루언서 계정"),
+    email: formatPublicContactValue(dashboard.user.email) || undefined,
+  };
+  const publicProfile =
+    publicProfileOverride?.ownerId === dashboard.user.id
+      ? publicProfileOverride
+      : buildDefaultPublicProfileSettings(dashboard);
   const activeContractForVerification = dashboard.contracts.find(
     (contract) => contract.stage !== "signed",
   );
@@ -381,17 +581,12 @@ export function InfluencerDashboard() {
     Boolean(activeContractForVerification) ||
     dashboard.summary.verification_needed ||
     hasVerificationRecord;
-  const handleTabChange = (tab: ContractFilter) => {
-    setFilter(tab);
-    setDetailStageFilter("all");
-  };
-  const handleDetailStageChange = (stage: DetailStageFilter) => {
-    setDetailStageFilter(stage);
-
-    if (stage !== "all") {
-      const matchingTab = DASHBOARD_TABS.find((tab) => tab.stages.includes(stage));
-      if (matchingTab) setFilter(matchingTab.id);
-    }
+  const handleSortChange = (key: SortKey) => {
+    setSortState((current) => ({
+      key,
+      direction:
+        current.key === key && current.direction === "asc" ? "desc" : "asc",
+    }));
   };
 
   const handleLogout = async () => {
@@ -401,7 +596,7 @@ export function InfluencerDashboard() {
         credentials: "include",
       });
     } catch (error) {
-      console.warn("[Yeollock] influencer logout request failed", error);
+      console.warn(`[${PRODUCT_NAME}] influencer logout request failed`, error);
     } finally {
       navigate("/login/influencer", { replace: true });
     }
@@ -409,60 +604,82 @@ export function InfluencerDashboard() {
 
   return (
     <DashboardShell>
-      <header className="sticky top-0 z-30 border-b border-neutral-200/80 bg-white/95 shadow-[0_1px_0_rgba(15,23,42,0.04)] backdrop-blur">
-        <div className="mx-auto flex h-[72px] max-w-[1320px] items-center justify-between px-4 sm:px-6 lg:px-8">
+      <header className="sticky top-0 z-30 border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
+        <div className="mx-auto flex h-12 max-w-[1500px] items-center justify-between px-3 sm:px-5 lg:px-6">
           <button
             type="button"
             onClick={() => navigate("/influencer/dashboard")}
-            className="flex min-w-0 items-center gap-3"
+            className="flex h-10 min-w-10 shrink-0 items-center gap-3"
           >
-            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-950 text-white shadow-[0_8px_24px_rgba(15,23,42,0.16)]">
-              <ShieldCheck className="h-4 w-4" />
+            <span className="flex h-9 w-9 items-center justify-center rounded-[11px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
+              <ShieldCheck className="h-4 w-4" strokeWidth={2} />
             </span>
-            <span className="truncate text-[19px] font-semibold tracking-[-0.02em]">{PRODUCT_NAME}</span>
+            <span className="font-neo-heavy hidden text-[18px] leading-none sm:inline">{PRODUCT_NAME}</span>
+            <span className="max-w-[104px] truncate text-[12px] font-extrabold leading-none text-neutral-700 sm:hidden">
+              인플루언서 · 내 캠페인
+            </span>
           </button>
 
-          <div className="flex items-center gap-2">
+          <div className="ml-2 flex min-w-0 items-center justify-end gap-1.5 sm:ml-3 sm:gap-2">
             <button
               type="button"
-              onClick={loadDashboard}
-              className="flex h-10 w-10 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-600 transition hover:border-neutral-400 hover:text-neutral-950"
-              aria-label="새로고침"
-              title="새로고침"
+              onClick={() => navigate("/influencer/dashboard")}
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] bg-neutral-950 px-0 text-[12px] font-extrabold text-white shadow-[0_10px_24px_rgba(23,26,23,0.14)] transition hover:bg-neutral-800 sm:w-auto sm:px-3"
+              aria-label="내 캠페인"
+              title="내 캠페인"
             >
-              <RefreshCw className="h-4 w-4" />
+              <FileText className="h-3.5 w-3.5" strokeWidth={2} />
+              <span className="hidden sm:inline">내 캠페인</span>
             </button>
+            <button
+              type="button"
+              onClick={() => navigate("/influencer/campaigns")}
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-0 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950 sm:w-auto sm:px-2.5"
+              aria-label="캠페인 찾기"
+              title="캠페인 찾기"
+            >
+              <Megaphone className="h-3.5 w-3.5" strokeWidth={2} />
+              <span className="hidden sm:inline">캠페인 찾기</span>
+            </button>
+            <MessageCenterButton
+              unreadCount={messageSummary.unreadCount}
+              isLoading={isMessageSummaryLoading}
+              onClick={() => navigate("/influencer/messages")}
+            />
             <button
               type="button"
               onClick={handleLogout}
-              className="inline-flex h-10 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-600 transition hover:border-neutral-400 hover:text-neutral-950"
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-0 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950 sm:w-auto sm:px-2.5"
               aria-label="로그아웃"
               title="로그아웃"
             >
-              <LogOut className="h-4 w-4" />
+              <LogOut className="h-3.5 w-3.5" strokeWidth={2} />
               <span className="hidden sm:inline">로그아웃</span>
             </button>
+            <InfluencerAccountSettingsMenu
+              account={accountSummary}
+              open={accountMenuOpen}
+              onToggle={() => setAccountMenuOpen((current) => !current)}
+              onChangePassword={() => {
+                setAccountMenuOpen(false);
+                navigate("/reset-password?role=influencer");
+              }}
+            />
           </div>
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-[1320px] px-4 py-4 sm:px-6 lg:px-8">
-        <section className="min-w-0 overflow-hidden rounded-[8px] border border-[#cbd5cc] bg-[#fdfdfb] shadow-[0_22px_60px_rgba(23,26,23,0.10)]">
-          <div className="border-b border-[#d9e0d9] bg-white px-4 py-4">
+      <main className="mx-auto w-full min-w-0 max-w-[1500px] px-3 py-2 sm:px-5 lg:flex lg:h-[calc(100vh-48px)] lg:flex-col lg:overflow-hidden lg:px-6">
+        <section className="min-w-0 overflow-hidden rounded-[12px] border border-neutral-200 bg-[#fdfdfb] shadow-[0_16px_44px_rgba(23,26,23,0.07)] lg:flex lg:h-full lg:flex-col">
+          <div className="border-b border-[#d9e0d9] bg-white px-4 py-2">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-[12px] font-semibold text-[#7d857f]">
-                  계약 운영 화면
-                </p>
-                <h1 className="mt-1 truncate text-[18px] font-semibold text-[#171a17]">
-                  받은 계약 검토
+              <div className="flex min-w-0 flex-wrap items-end gap-x-3 gap-y-1">
+                <h1 className="truncate text-[17px] font-bold text-[#171a17]">
+                  내 캠페인
                 </h1>
-                <p className="mt-1 text-[12px] font-medium text-[#7d857f]">
-                  전체 {dashboard.contracts.length.toLocaleString()}건 · 검색 결과 {filteredContracts.length.toLocaleString()}건
-                </p>
               </div>
-              <span className="inline-flex h-8 items-center rounded-[8px] bg-[#eef0ed] px-3 text-[12px] font-semibold text-[#303630]">
-                검토 가능
+              <span className={`inline-flex h-8 items-center rounded-[8px] border px-3 text-[12px] font-semibold ${verification.className}`}>
+                {verification.label}
               </span>
             </div>
           </div>
@@ -477,80 +694,202 @@ export function InfluencerDashboard() {
                   "/influencer/verification",
               )
             }
+            onOpenPublicProfile={() => {
+              if (publicProfile.published) {
+                navigate(getInfluencerPublicProfilePath(publicProfile.handle));
+              }
+            }}
+            publicProfile={publicProfile}
+            onEditPublicProfile={() => setProfileSettingsOpen(true)}
           />
 
-          <div className="min-w-0 p-4">
-            <section className="rounded-t-[8px] border border-b-0 border-[#d9e0d9] bg-white p-3">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-                <div className="relative min-w-0 flex-1">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8b938d]" />
-                  <input
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    aria-label="계약 검색"
-                    placeholder="계약명, 광고주, 플랫폼, 상태 검색"
-                    className="h-10 w-full rounded-[6px] border border-[#d9e0d9] bg-[#f8faf7] pl-8 pr-3 text-[12px] font-semibold text-[#303630] outline-none transition-colors placeholder:text-[#8b938d] hover:border-[#cbd5cc] focus:border-[#171a17] focus:bg-white"
-                  />
-                </div>
-                <DashboardTabs
-                  activeTab={filter}
-                  counts={stageCounts}
-                  onChange={handleTabChange}
-                />
-              </div>
-
-              <div className="mt-3 overflow-x-auto border-t border-[#edf1ed] pt-3">
-                <div className="flex min-w-max items-center gap-4">
-                  <FilterSection label="플랫폼">
-                    {PLATFORM_FILTERS.map((platform) => (
-                      <FilterButton
-                        key={platform}
-                        active={platformFilter === platform}
-                        count={platformCounts[platform]}
-                        label={formatPlatformFilterLabel(platform)}
-                        onClick={() => setPlatformFilter(platform)}
-                      />
-                    ))}
-                  </FilterSection>
-
-                  <FilterDivider />
-
-                  <FilterSection label="계약 상태">
-                    {DETAIL_STAGE_FILTERS.map((stage) => (
-                      <FilterButton
-                        key={stage}
-                        active={detailStageFilter === stage}
-                        count={
-                          stage === "all"
-                            ? dashboard.contracts.length
-                            : stageCounts[stage] ?? 0
-                        }
-                        label={formatDetailStageFilterLabel(stage)}
-                        onClick={() => handleDetailStageChange(stage)}
-                      />
-                    ))}
-                  </FilterSection>
-                </div>
-              </div>
-            </section>
-
-            {filteredContracts.length === 0 ? (
-              <EmptyContracts hasQuery={query.trim().length > 0 || dashboard.contracts.length > 0} />
-            ) : (
-              <ContractTable
-                contracts={filteredContracts}
-                onOpen={(contract) => { void navigate(contract.action_href); }}
-              />
-            )}
+          <div className="min-w-0 p-2.5 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+            <InfluencerOperationsPanel
+              summary={operationsSummary}
+              alerts={operationAlerts}
+              activities={recentActivities}
+              onOpen={(href) => navigate(href)}
+            />
+            <ContractTable
+              items={filteredCampaignItems}
+              totalItems={visibleCampaignItems.length}
+              query={query}
+              onQueryChange={setQuery}
+              platformFilter={platformFilter}
+              onPlatformFilterChange={setPlatformFilter}
+              brandFilter={brandFilter}
+              onBrandFilterChange={setBrandFilter}
+              brandOptions={brandOptions}
+              amountFilter={amountFilter}
+              onAmountFilterChange={setAmountFilter}
+              detailStageFilter={detailStageFilter}
+              onDetailStageFilterChange={setDetailStageFilter}
+              deadlineFilter={deadlineFilter}
+              onDeadlineFilterChange={setDeadlineFilter}
+              sortState={sortState}
+              onSortChange={handleSortChange}
+              onOpen={(item) => { void navigate(item.action_href); }}
+            />
           </div>
         </section>
       </main>
+
+      {profileSettingsOpen ? (
+        <PublicProfileSettingsDialog
+          dashboard={dashboard}
+          initialProfile={publicProfile}
+          onClose={() => setProfileSettingsOpen(false)}
+          onSave={async (profile) => {
+            const response = await apiFetch("/api/influencer/public-profile", {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify(profile),
+            });
+
+            if (!response.ok) {
+              const data = (await response.json().catch(() => ({}))) as {
+                error?: string;
+                code?: string;
+                handle?: string;
+                profile_url?: string;
+                suggested_handles?: string[];
+                can_customize_handle?: boolean;
+              };
+              throw Object.assign(
+                new Error(data.error ?? "공개 프로필을 저장하지 못했습니다."),
+                {
+                  code: data.code,
+                  handle: data.handle,
+                  profileUrl: data.profile_url,
+                  suggestedHandles: data.suggested_handles,
+                  canCustomizeHandle: data.can_customize_handle,
+                } satisfies Partial<PublicProfileSaveError>,
+              );
+            }
+
+            const data = (await response.json()) as InfluencerPublicProfileResponse;
+            if (!data.profile) {
+              throw new Error("저장된 공개 프로필을 확인할 수 없습니다.");
+            }
+
+            setPublicProfileOverride(data.profile);
+            setProfileSettingsOpen(false);
+            return data.profile;
+          }}
+        />
+      ) : null}
     </DashboardShell>
   );
 }
 
 function DashboardShell({ children }: { children: React.ReactNode }) {
-  return <div className="min-h-screen bg-neutral-50 font-sans text-neutral-950">{children}</div>;
+  return (
+    <div className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950 lg:h-screen lg:overflow-hidden">
+      {children}
+    </div>
+  );
+}
+
+function MessageCenterButton({
+  unreadCount,
+  isLoading,
+  onClick,
+}: {
+  unreadCount: number;
+  isLoading: boolean;
+  onClick: () => void;
+}) {
+  const badge = unreadCount > 0 ? unreadCount : undefined;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-0 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950 sm:w-auto sm:px-2.5"
+      aria-label="메시지함"
+      title="메시지함"
+    >
+      <MessageSquareText className="h-3.5 w-3.5" strokeWidth={2} />
+      <span className="hidden sm:inline">메시지함</span>
+      {badge ? (
+        <span className="absolute right-0 top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-extrabold tabular-nums text-white ring-2 ring-white">
+          {badge > 9 ? "9+" : badge}
+        </span>
+      ) : isLoading ? (
+        <span className="absolute right-0 top-0 h-2.5 w-2.5 rounded-full bg-neutral-300 ring-2 ring-white" />
+      ) : null}
+    </button>
+  );
+}
+
+function InfluencerAccountSettingsMenu({
+  account,
+  open,
+  onToggle,
+  onChangePassword,
+}: {
+  account: InfluencerAccountSummary;
+  open: boolean;
+  onToggle: () => void;
+  onChangePassword: () => void;
+}) {
+  const emailChangeHref = buildSupportMailtoHref({
+    subject: "인플루언서 계정 이메일 변경 요청",
+    body: [
+      "인플루언서 계정 이메일 변경을 요청합니다.",
+      "",
+      `현재 표시 이메일: ${account.email ?? "확인 필요"}`,
+      `활동명: ${account.name}`,
+      "변경할 이메일:",
+      "요청 사유:",
+    ].join("\n"),
+  });
+
+  return (
+    <div className="relative shrink-0">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-label="계정 설정"
+        title="계정 설정"
+        aria-expanded={open}
+        className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[9px] border border-neutral-200 bg-white text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
+      >
+        <Settings className="h-3.5 w-3.5" strokeWidth={2} />
+      </button>
+
+      {open ? (
+        <div className="absolute right-0 top-[calc(100%+8px)] z-40 w-[260px] overflow-hidden rounded-[12px] border border-neutral-200 bg-white text-left shadow-[0_18px_50px_rgba(15,23,42,0.14)]">
+          <div className="border-b border-neutral-100 px-4 py-3">
+            <p className="text-[13px] font-extrabold text-neutral-950">
+              계정 설정
+            </p>
+            {account.email ? (
+              <p className="mt-1 truncate text-[12px] font-semibold text-neutral-500">
+                {account.email}
+              </p>
+            ) : null}
+          </div>
+          <a
+            href={emailChangeHref}
+            className="flex h-11 items-center gap-2 px-4 text-[12px] font-extrabold text-neutral-700 transition hover:bg-neutral-50 hover:text-neutral-950"
+          >
+            <Mail className="h-3.5 w-3.5" />
+            이메일 변경
+          </a>
+          <button
+            type="button"
+            onClick={onChangePassword}
+            className="flex h-11 w-full items-center gap-2 px-4 text-left text-[12px] font-extrabold text-neutral-700 transition hover:bg-neutral-50 hover:text-neutral-950"
+          >
+            <KeyRound className="h-3.5 w-3.5" />
+            비밀번호 변경
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function LoadingView() {
@@ -593,19 +932,28 @@ function InfluencerAccountBanner({
   verification,
   showVerificationAction,
   onVerify,
+  onOpenPublicProfile,
+  publicProfile,
+  onEditPublicProfile,
 }: {
   dashboard: InfluencerDashboardResponse;
   verification: (typeof VERIFICATION_META)[VerificationStatus];
   showVerificationAction: boolean;
   onVerify: () => void;
+  publicProfile: InfluencerPublicProfileSettings;
+  onOpenPublicProfile?: () => void;
+  onEditPublicProfile: () => void;
 }) {
   const verificationApproved = dashboard.verification.status === "approved";
-  const activityPlatforms = dashboard.user.activity_platforms.slice(0, 3);
-  const approvedPlatforms = dashboard.verification.approved_platforms.slice(0, 2);
-  const displayEmail = formatPublicContactValue(dashboard.user.email);
+  const activityPlatforms = Array.from(
+    new Set(dashboard.user.activity_platforms),
+  ).slice(0, 3);
+  const approvedPlatforms = dedupeApprovedPlatforms(
+    dashboard.verification.approved_platforms,
+  ).slice(0, 2);
 
   return (
-    <section className="border-b border-neutral-200/80 bg-[#fcfcfd] px-4 py-3">
+    <section className="border-b border-[#d9e0d9] bg-[#fcfcfd] px-4 py-2.5">
       <div className="flex flex-row items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-neutral-800 ring-1 ring-neutral-200">
@@ -629,15 +977,6 @@ function InfluencerAccountBanner({
             <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[12px] leading-4 text-neutral-500">
               <span className="max-w-[220px] truncate font-semibold text-neutral-800">
                 {removeInternalTestLabel(dashboard.user.name, "인플루언서 계정")}
-              </span>
-              {displayEmail && (
-                <>
-                  <span className="hidden h-3 w-px bg-neutral-200 sm:inline-block" />
-                  <span className="max-w-[340px] truncate">{displayEmail}</span>
-                </>
-              )}
-              <span className="rounded-full bg-neutral-100 px-2 py-0.5 font-semibold text-neutral-600">
-                이메일 {dashboard.user.email_verified ? "확인됨" : "확인 필요"}
               </span>
               {approvedPlatforms.map((platform) => (
                 <span
@@ -663,200 +1002,1120 @@ function InfluencerAccountBanner({
                     <span className="truncate">{PLATFORM_META[platform].label}</span>
                   </span>
                 ))}
+              <span
+                className={`inline-flex max-w-[260px] items-center gap-1.5 truncate rounded-full px-2 py-0.5 font-semibold ${
+                  publicProfile.published
+                    ? "bg-neutral-100 text-neutral-700"
+                    : "bg-amber-50 text-amber-800"
+                }`}
+              >
+                <Globe2 className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">
+                  {publicProfile.handle
+                    ? publicProfile.published
+                      ? formatInfluencerPublicProfileUrl(publicProfile.handle)
+                      : `저장 전 · ${formatInfluencerPublicProfileUrl(publicProfile.handle)}`
+                    : "플랫폼 인증 후 자동 생성"}
+                </span>
+              </span>
             </div>
           </div>
         </div>
-        {showVerificationAction ? (
+        <div className="flex shrink-0 items-center gap-2">
+          {showVerificationAction ? (
+            <button
+              type="button"
+              onClick={onVerify}
+              className={`inline-flex h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[9px] px-3 text-[12px] font-extrabold transition ${
+                verificationApproved
+                  ? "border border-neutral-200 bg-white text-neutral-800 hover:border-neutral-300 hover:bg-neutral-50"
+                  : "bg-neutral-950 text-white hover:bg-neutral-800"
+              }`}
+            >
+              <BadgeCheck className="h-3.5 w-3.5" />
+              {verificationApproved ? "서명 인증 관리" : "서명 인증"}
+            </button>
+          ) : null}
           <button
             type="button"
-            onClick={onVerify}
-            className={`inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-3 text-[13px] font-semibold transition ${
-              verificationApproved
-                ? "border border-neutral-200 bg-white text-neutral-800 hover:border-neutral-300 hover:bg-neutral-50"
-                : "bg-neutral-950 text-white hover:bg-neutral-800"
-            }`}
+            onClick={onEditPublicProfile}
+            className="hidden h-10 items-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-3 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 sm:inline-flex"
           >
-            <BadgeCheck className="h-3.5 w-3.5" />
-            {verificationApproved ? "플랫폼 인증 관리" : "플랫폼 계정 인증"}
+            <Settings2 className="h-3.5 w-3.5" />
+            프로필 설정
           </button>
-        ) : null}
+          {publicProfile.published && onOpenPublicProfile ? (
+            <button
+              type="button"
+              onClick={onOpenPublicProfile}
+              className="hidden h-10 items-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-3 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 sm:inline-flex"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              공개 프로필
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={onEditPublicProfile}
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 sm:hidden"
+            aria-label="공개 프로필 설정"
+            title="공개 프로필 설정"
+          >
+            <Settings2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
     </section>
   );
 }
 
-function DashboardTabs({
-  activeTab,
-  counts,
-  onChange,
+function PublicProfileSettingsDialog({
+  dashboard,
+  initialProfile,
+  onClose,
+  onSave,
 }: {
-  activeTab: ContractFilter;
-  counts: Partial<Record<InfluencerDashboardContractStage, number>>;
-  onChange: (tab: ContractFilter) => void;
+  dashboard: InfluencerDashboardResponse;
+  initialProfile: InfluencerPublicProfileSettings;
+  onClose: () => void;
+  onSave: (
+    profile: PublicProfileSavePayload,
+  ) => Promise<InfluencerPublicProfileSettings>;
 }) {
-  return (
-    <div
-      className="grid min-w-0 grid-cols-5 gap-1 overflow-hidden rounded-full bg-neutral-100 p-1 lg:w-[420px] lg:shrink-0"
-      role="tablist"
-      aria-label="계약 상태"
-    >
-      {DASHBOARD_TABS.map((tab) => {
-        const active = activeTab === tab.id;
-        const count = tab.stages.reduce(
-          (sum, stage) => sum + (counts[stage] ?? 0),
-          0,
-        );
+  const approvedPlatforms = dedupeApprovedPlatforms(
+    dashboard.verification.approved_platforms,
+  );
+  const automaticHandle = getAutomaticPublicProfileHandle(approvedPlatforms);
+  const initialManualHandle =
+    automaticHandle &&
+    initialProfile.handle &&
+    normalizePublicProfileHandle(initialProfile.handle) !== automaticHandle
+      ? normalizePublicProfileHandle(initialProfile.handle)
+      : "";
+  const [saveError, setSaveError] = useState<string | undefined>();
+  const [isSaving, setIsSaving] = useState(false);
+  const [manualHandleAllowed, setManualHandleAllowed] = useState(
+    Boolean(initialManualHandle),
+  );
+  const [manualHandle, setManualHandle] = useState(initialManualHandle);
+  const [conflictHandle, setConflictHandle] = useState<string | undefined>(
+    initialManualHandle ? automaticHandle : undefined,
+  );
+  const [suggestedHandles, setSuggestedHandles] = useState<string[]>([]);
+  const [isAppealing, setIsAppealing] = useState(false);
+  const [appealMessage, setAppealMessage] = useState<string | undefined>();
+  const [form, setForm] = useState({
+    displayName: initialProfile.displayName,
+    headline: initialProfile.headline,
+    bio: initialProfile.bio,
+    location: initialProfile.location,
+    startingPriceLabel: initialProfile.startingPriceLabel,
+    responseTimeLabel: initialProfile.responseTimeLabel,
+    brandFit: initialProfile.brandFit.join(", "),
+    collaborationTypes: initialProfile.collaborationTypes,
+  });
+  const automaticHandleError = automaticHandle
+    ? getPublicProfileHandleError(automaticHandle)
+    : "플랫폼 인증을 완료하면 첫 등록 플랫폼 ID로 프로필 주소가 자동 생성됩니다.";
+  const normalizedManualHandle = normalizePublicProfileHandle(manualHandle).replace(
+    /\s+/g,
+    "_",
+  );
+  const manualHandleError = manualHandleAllowed
+    ? normalizedManualHandle
+      ? getPublicProfileHandleError(normalizedManualHandle)
+      : "다른 공개 주소를 입력해 주세요."
+    : undefined;
+  const requiredFilled =
+    form.displayName.trim().length > 0 &&
+    form.headline.trim().length > 0 &&
+    form.bio.trim().length > 0;
+  const canSave =
+    !automaticHandleError &&
+    requiredFilled &&
+    (!manualHandleAllowed || !manualHandleError);
 
-        return (
+  const toggleProposalType = (type: CampaignProposalType) => {
+    setForm((current) => {
+      const exists = current.collaborationTypes.includes(type);
+      return {
+        ...current,
+        collaborationTypes: exists
+          ? current.collaborationTypes.filter((item) => item !== type)
+          : [...current.collaborationTypes, type],
+      };
+    });
+  };
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!canSave || isSaving) return;
+
+    setIsSaving(true);
+    setSaveError(undefined);
+
+    try {
+      await onSave({
+        ...buildPublicProfileSettingsFromForm(dashboard, form),
+        ...(manualHandleAllowed
+          ? { alternateHandle: normalizedManualHandle }
+          : {}),
+      });
+    } catch (error) {
+      if (error instanceof Error) {
+        const profileError = error as PublicProfileSaveError;
+        if (
+          profileError.code === "public_profile_handle_conflict" &&
+          profileError.canCustomizeHandle
+        ) {
+          setManualHandleAllowed(true);
+          setConflictHandle(profileError.handle ?? automaticHandle);
+          setSuggestedHandles(profileError.suggestedHandles ?? []);
+          if (!manualHandle && profileError.suggestedHandles?.[0]) {
+            setManualHandle(profileError.suggestedHandles[0]);
+          }
+          setAppealMessage(undefined);
+        }
+      }
+      setSaveError(
+        error instanceof Error
+          ? error.message
+          : "공개 프로필을 저장하지 못했습니다.",
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleAppeal = async () => {
+    if (!conflictHandle || isAppealing) return;
+
+    setIsAppealing(true);
+    setSaveError(undefined);
+    setAppealMessage(undefined);
+
+    try {
+      const response = await apiFetch("/api/influencer/public-profile/handle-appeal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          alternateHandle: normalizedManualHandle || undefined,
+        }),
+      });
+      const data = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        already_submitted?: boolean;
+      };
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "이의신청을 접수하지 못했습니다.");
+      }
+
+      setAppealMessage(
+        data.already_submitted
+          ? "이미 관리자 검토 대기열에 접수되어 있습니다."
+          : "관리자 검토 대기열에 접수했습니다.",
+      );
+    } catch (error) {
+      setSaveError(
+        error instanceof Error ? error.message : "이의신청을 접수하지 못했습니다.",
+      );
+    } finally {
+      setIsAppealing(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end bg-neutral-950/45 px-0 sm:items-center sm:justify-center sm:px-4">
+      <section className="max-h-[94vh] w-full overflow-y-auto rounded-t-[12px] border border-neutral-200 bg-white p-4 shadow-[0_24px_70px_rgba(15,23,42,0.22)] sm:max-w-[640px] sm:rounded-[12px] sm:p-5">
+        <div className="mb-4 flex items-start justify-between gap-3 border-b border-neutral-200 pb-4">
+          <div className="min-w-0">
+            <p className="text-[12px] font-semibold text-neutral-500">
+              연락미 계정 프로필
+            </p>
+            <h2 className="mt-1 text-[20px] font-semibold text-neutral-950">
+              공개 프로필 설정
+            </h2>
+            <p className="mt-1 text-[13px] font-medium leading-5 text-neutral-500">
+              소개 문구를 정하면 주소는 첫 등록 플랫폼 ID로 자동 고정되고, 인증된 플랫폼 계정은 자동으로 연결합니다.
+            </p>
+          </div>
           <button
-            key={tab.id}
             type="button"
-            role="tab"
-            aria-selected={active}
-            onClick={() => onChange(tab.id)}
-            className={`h-9 min-w-0 rounded-full px-1 text-[12px] font-extrabold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950 ${
-              active
-                ? "bg-white text-neutral-950 shadow-[0_1px_0_rgba(15,23,42,0.04)]"
-                : "text-neutral-500 hover:text-neutral-800"
-            }`}
+            onClick={onClose}
+            className="inline-flex h-9 shrink-0 items-center rounded-md border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-600 transition hover:border-neutral-300 hover:bg-neutral-50"
           >
-            <span className="inline-flex min-w-0 max-w-full items-center justify-center gap-1 overflow-hidden whitespace-nowrap">
-              {tab.label}
-              <span
-                className={`text-[10px] ${
-                  active ? "text-neutral-500" : "text-neutral-400"
-                }`}
-              >
-                {count}
-              </span>
-            </span>
+            닫기
           </button>
-        );
-      })}
+        </div>
+
+        <form onSubmit={handleSubmit} className="grid gap-4">
+          <ProfileSettingsField
+            label="공개 주소"
+            hint={
+              manualHandleAllowed && conflictHandle
+                ? `자동 주소 ${formatInfluencerPublicProfileUrl(
+                    conflictHandle,
+                  )}가 겹쳐 대체 주소를 저장할 수 있습니다.`
+                : automaticHandle
+                ? `첫 등록 플랫폼 ID 기준으로 ${formatInfluencerPublicProfileUrl(
+                    automaticHandle,
+                  )} 로 고정됩니다.`
+                : undefined
+            }
+            error={manualHandleAllowed ? manualHandleError : automaticHandleError}
+          >
+            <div className="grid grid-cols-[auto_minmax(0,1fr)] overflow-hidden rounded-md border border-neutral-200 bg-[#f8faf7]">
+              <span className="flex h-11 items-center border-r border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-500">
+                yeollock.me/
+              </span>
+              {manualHandleAllowed ? (
+                <input
+                  value={manualHandle}
+                  onChange={(event) => setManualHandle(event.target.value)}
+                  placeholder={suggestedHandles[0] ?? "creator_id_2"}
+                  className="h-11 min-w-0 border-0 bg-white px-3 text-[13px] font-semibold text-neutral-950 outline-none focus:ring-2 focus:ring-neutral-950/10"
+                />
+              ) : (
+                <span className="flex h-11 min-w-0 items-center truncate px-3 text-[13px] font-semibold text-neutral-950">
+                  {automaticHandle ?? "platform-id"}
+                </span>
+              )}
+            </div>
+            {manualHandleAllowed && conflictHandle ? (
+              <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-xs leading-5 text-amber-900">
+                <p className="font-semibold">
+                  {formatInfluencerPublicProfileUrl(conflictHandle)}가 이미 사용 중입니다.
+                </p>
+                {suggestedHandles.length > 0 ? (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {suggestedHandles.map((handle) => (
+                      <button
+                        key={handle}
+                        type="button"
+                        onClick={() => setManualHandle(handle)}
+                        className="h-8 rounded-md border border-amber-200 bg-white px-2.5 font-semibold text-amber-900 transition hover:border-amber-300"
+                      >
+                        {formatInfluencerPublicProfileUrl(handle)}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleAppeal}
+                    disabled={isAppealing}
+                    className="h-8 rounded-md bg-neutral-950 px-3 font-semibold text-white transition hover:bg-neutral-800 disabled:bg-neutral-300"
+                  >
+                    {isAppealing ? "접수 중" : "이의신청하기"}
+                  </button>
+                  {appealMessage ? (
+                    <span className="font-semibold text-emerald-700">{appealMessage}</span>
+                  ) : (
+                    <span className="text-amber-800">
+                      본인 플랫폼 ID가 맞으면 운영자가 점유 계정을 확인합니다.
+                    </span>
+                  )}
+                </div>
+              </div>
+            ) : null}
+          </ProfileSettingsField>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <ProfileSettingsField label="활동명">
+              <input
+                required
+                value={form.displayName}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    displayName: event.target.value,
+                  }))
+                }
+                className="marketplace-input"
+              />
+            </ProfileSettingsField>
+            <ProfileSettingsField label="활동 지역">
+              <input
+                value={form.location}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, location: event.target.value }))
+                }
+                placeholder="예: 서울 · 원격 협업"
+                className="marketplace-input"
+              />
+            </ProfileSettingsField>
+          </div>
+
+          <ProfileSettingsField label="한 줄 소개">
+            <input
+              required
+              value={form.headline}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, headline: event.target.value }))
+              }
+              placeholder="광고주가 첫 화면에서 볼 소개 문구"
+              className="marketplace-input"
+            />
+          </ProfileSettingsField>
+
+          <ProfileSettingsField label="프로필 소개">
+            <textarea
+              required
+              rows={4}
+              value={form.bio}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, bio: event.target.value }))
+              }
+              placeholder="주요 콘텐츠, 잘 맞는 브랜드, 협업 방식 등을 적어 주세요."
+              className="marketplace-input resize-none"
+            />
+          </ProfileSettingsField>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <ProfileSettingsField label="협업 단가">
+              <input
+                value={form.startingPriceLabel}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    startingPriceLabel: event.target.value,
+                  }))
+                }
+                placeholder="예: 150만원부터"
+                className="marketplace-input"
+              />
+            </ProfileSettingsField>
+            <ProfileSettingsField label="응답 시간">
+              <input
+                value={form.responseTimeLabel}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    responseTimeLabel: event.target.value,
+                  }))
+                }
+                placeholder="예: 보통 1영업일 내 응답"
+                className="marketplace-input"
+              />
+            </ProfileSettingsField>
+          </div>
+
+          <ProfileSettingsField
+            label="브랜드 적합 키워드"
+            hint="쉼표로 구분해 최대 6개까지 공개 프로필에 표시합니다."
+          >
+            <input
+              value={form.brandFit}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, brandFit: event.target.value }))
+              }
+              placeholder="예: 뷰티 신제품, 릴스 리뷰, 사용감 중심"
+              className="marketplace-input"
+            />
+          </ProfileSettingsField>
+
+          <ProfileSettingsField label="받고 싶은 광고 형태">
+            <div className="flex flex-wrap gap-2">
+              {PROFILE_PROPOSAL_TYPES.map(([type, label]) => {
+                const active = form.collaborationTypes.includes(type);
+                return (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => toggleProposalType(type)}
+                    className={`inline-flex h-9 items-center rounded-md border px-3 text-[12px] font-semibold transition ${
+                      active
+                        ? "border-neutral-950 bg-neutral-950 text-white"
+                        : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300 hover:text-neutral-950"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </ProfileSettingsField>
+
+          <section className="rounded-[8px] border border-neutral-200 bg-[#f8faf7] p-3">
+            <p className="text-[12px] font-semibold text-neutral-500">
+              연동된 플랫폼 계정
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {approvedPlatforms.length > 0 ? (
+                approvedPlatforms.map((platform) => (
+                  <span
+                    key={`${platform.platform}:${platform.handle}`}
+                    className="inline-flex h-8 max-w-full items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-2.5 text-[12px] font-semibold text-neutral-700"
+                  >
+                    {PLATFORM_META[platform.platform].icon}
+                    <span className="truncate">
+                      {formatPublicHandleValue(
+                        platform.handle,
+                        PLATFORM_META[platform.platform].label,
+                      )}
+                    </span>
+                  </span>
+                ))
+              ) : (
+                <span className="text-[12px] font-medium text-neutral-500">
+                  플랫폼 인증을 완료하면 공개 프로필 채널에 자동으로 표시됩니다.
+                </span>
+              )}
+            </div>
+          </section>
+
+          {saveError ? (
+            <p className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] font-semibold text-rose-700">
+              {saveError}
+            </p>
+          ) : null}
+
+          <div className="flex flex-col-reverse gap-2 border-t border-neutral-200 pt-4 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex h-11 items-center justify-center rounded-md border border-neutral-200 bg-white px-4 text-[14px] font-semibold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
+            >
+              취소
+            </button>
+            <button
+              type="submit"
+              disabled={!canSave || isSaving}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-neutral-950 px-4 text-[14px] font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-300"
+            >
+              <Save className="h-4 w-4" />
+              {isSaving ? "저장 중" : "저장"}
+            </button>
+          </div>
+        </form>
+      </section>
     </div>
   );
 }
 
-function FilterSection({
+function ProfileSettingsField({
   label,
+  hint,
+  error,
   children,
 }: {
   label: string;
+  hint?: string;
+  error?: string;
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex shrink-0 items-center gap-2">
-      <p className="shrink-0 text-[13px] font-extrabold text-[#303630]">{label}</p>
-      <div className="flex shrink-0 items-center gap-1.5">{children}</div>
+    <div className="grid gap-2">
+      <span className="text-[13px] font-semibold text-neutral-800">{label}</span>
+      {children}
+      {error ? (
+        <span className="text-[12px] font-semibold text-rose-600">{error}</span>
+      ) : hint ? (
+        <span className="text-[12px] font-medium text-neutral-500">{hint}</span>
+      ) : null}
     </div>
   );
 }
 
-function FilterDivider() {
-  return <span className="h-6 w-px shrink-0 bg-[#d9e0d9]" aria-hidden="true" />;
+function buildSupportMailtoHref({
+  subject,
+  body,
+}: {
+  subject: string;
+  body: string;
+}) {
+  return `mailto:${LEGAL_CONTACT_EMAIL}?subject=${encodeURIComponent(
+    subject,
+  )}&body=${encodeURIComponent(body)}`;
 }
-
-const FilterButton: React.FC<{
-  active: boolean;
-  count: number;
-  label: string;
-  onClick: () => void;
-}> = ({
-  active,
-  count,
-  label,
-  onClick,
-}) => {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[6px] border px-2.5 text-[12px] font-bold transition ${
-        active
-          ? "border-[#171a17] bg-[#171a17] text-white"
-          : "border-[#d9e0d9] bg-white text-[#59605b] hover:border-[#b8c2ba] hover:text-[#171a17]"
-      }`}
-    >
-      <span className="truncate">{label}</span>
-      <span
-        className={`text-[10px] ${
-          active ? "text-white/70" : "text-[#a0aaa2]"
-        }`}
-      >
-        {count}
-      </span>
-    </button>
-  );
-};
 
 function EmptyContracts({ hasQuery }: { hasQuery: boolean }) {
   return (
-    <section className="flex min-h-[190px] flex-col items-center justify-center rounded-b-[8px] border border-[#d9e0d9] bg-white px-6 text-center">
+    <section className="flex min-h-[190px] flex-col items-center justify-center bg-white px-6 text-center">
       <div className="flex h-10 w-10 items-center justify-center rounded-[8px] bg-[#f8faf7] text-[#aeb7b0] ring-1 ring-[#d9e0d9]">
         <FileText className="h-5 w-5" strokeWidth={1.7} />
       </div>
       <h2 className="mt-3 text-[14px] font-semibold text-[#171a17]">
-        {hasQuery ? "조건에 맞는 계약이 없습니다" : "아직 받은 계약이 없습니다"}
+        {hasQuery ? "조건에 맞는 캠페인이 없습니다" : "아직 내 캠페인이 없습니다"}
       </h2>
       <p className="mt-1 max-w-md text-[12px] leading-5 text-[#7d857f]">
         {hasQuery
           ? "검색어를 줄이거나 전체로 바꿔보세요."
-          : "계약 초대가 오면 이곳에 표시됩니다."}
+          : `캠페인에 지원하거나 브랜드가 ${PRODUCT_NAME} 계약을 진행하면 이곳에 표시됩니다.`}
       </p>
     </section>
   );
 }
 
-function ContractTable({
-  contracts,
+function InfluencerOperationsPanel({
+  summary,
+  alerts,
+  activities,
   onOpen,
 }: {
-  contracts: InfluencerDashboardContract[];
-  onOpen: (contract: InfluencerDashboardContract) => void;
+  summary: InfluencerOperationsSummary;
+  alerts: InfluencerAlert[];
+  activities: InfluencerDashboardActivityEvent[];
+  onOpen: (href: string) => void;
 }) {
+  const metrics = [
+    {
+      label: "새 제안",
+      value: summary.newOffers,
+      tone: "text-blue-700",
+    },
+    {
+      label: "지원중",
+      value: summary.pendingApplications,
+      tone: "text-amber-700",
+    },
+    {
+      label: "처리 필요",
+      value: summary.actionableContracts + summary.deliverablesDue,
+      tone: "text-rose-700",
+    },
+    {
+      label: "마감 임박",
+      value: summary.overdueItems + summary.dueSoonItems,
+      tone: "text-emerald-700",
+    },
+  ];
+
   return (
-    <section className="overflow-hidden rounded-b-[8px] border border-[#d9e0d9] bg-white">
-      <div className="hidden grid-cols-[minmax(280px,1.25fr)_minmax(150px,0.8fr)_130px_120px_130px] gap-3 border-b border-[#d9e0d9] bg-[#f8faf7] px-4 py-3 text-[11px] font-semibold text-[#7d857f] lg:grid">
-        <span>계약</span>
-        <span>플랫폼</span>
-        <span>상대</span>
-        <span>금액</span>
-        <span>상태</span>
-      </div>
-      <div className="divide-y divide-[#edf1ed]">
-        {contracts.map((contract) => (
-          <button
-            key={contract.id}
-            type="button"
-            onClick={() => onOpen(contract)}
-            className="group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-3 px-4 py-3 text-left transition-colors hover:bg-[#f8faf7] lg:grid-cols-[minmax(280px,1.25fr)_minmax(150px,0.8fr)_130px_120px_130px] lg:gap-3 lg:items-center"
+    <div className="mb-2 grid gap-2 lg:grid-cols-[minmax(0,0.72fr)_minmax(0,0.72fr)_minmax(0,0.86fr)]">
+      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4 lg:col-span-1">
+        {metrics.map((metric) => (
+          <div
+            key={metric.label}
+            className="min-w-0 rounded-[7px] border border-[#d9e0d9] bg-white px-2.5 py-2"
           >
-            <div className="min-w-0">
-              <div className="flex min-w-0 flex-wrap items-center gap-2">
-                <p className="min-w-0 truncate text-[14px] font-semibold text-[#171a17]">
-                  {formatDashboardContractTitle(contract.title)}
-                </p>
-                <span className="lg:hidden">
-                  <StageBadge stage={contract.stage} dense />
-                </span>
-              </div>
-            </div>
-            <div className="min-w-0">
-              <PlatformPills contract={contract} />
-            </div>
-            <div className="min-w-0">
-              <p className="truncate text-[13px] font-semibold text-[#303630]">
-                {removeInternalTestLabel(contract.advertiser_name, "광고주")}
-              </p>
-            </div>
-            <PreviewAmount value={formatMoneyLabel(contract.fee_label)} />
-            <div className="hidden lg:block">
-              <StageTiming contract={contract} />
-            </div>
-          </button>
+            <p className="truncate text-[11px] font-extrabold text-[#7d857f]">
+              {metric.label}
+            </p>
+            <p className={`mt-0.5 text-[16px] font-extrabold ${metric.tone}`}>
+              {metric.value.toLocaleString()}
+            </p>
+          </div>
         ))}
       </div>
+
+      <div className="min-w-0 rounded-[7px] border border-[#d9e0d9] bg-white px-2.5 py-2">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[11px] font-extrabold text-[#7d857f]">
+            처리 알림
+          </p>
+          <span className="text-[11px] font-semibold text-[#9aa39d]">
+            우선순위 {alerts.length.toLocaleString()}건
+          </span>
+        </div>
+        {alerts.length > 0 ? (
+          <div className="mt-1.5 flex gap-1.5 overflow-x-auto pb-0.5">
+            {alerts.slice(0, 4).map((alert) => (
+              <button
+                key={alert.id}
+                type="button"
+                onClick={() => onOpen(alert.href)}
+                className={`inline-flex min-h-8 min-w-[190px] max-w-[260px] items-center gap-2 rounded-md border px-2 text-left text-[11px] font-extrabold transition hover:border-[#171a17] ${getInfluencerAlertToneClass(alert.tone)}`}
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate">{alert.label}</span>
+                  <span className="block truncate font-semibold opacity-75">
+                    {alert.detail}
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-2 text-[12px] font-semibold text-[#7d857f]">
+            지금 바로 처리할 캠페인 알림이 없습니다.
+          </p>
+        )}
+      </div>
+
+      <div className="min-w-0 rounded-[7px] border border-[#d9e0d9] bg-white px-2.5 py-2">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[11px] font-extrabold text-[#7d857f]">
+            활동 기록
+          </p>
+          <span className="text-[11px] font-semibold text-[#9aa39d]">
+            최근 {activities.length.toLocaleString()}건
+          </span>
+        </div>
+        {activities.length > 0 ? (
+          <div className="mt-2 grid gap-1.5">
+            {activities.slice(0, 3).map((activity) => (
+              <div
+                key={activity.id}
+                className="grid gap-0.5 border-l-2 border-[#d9e0d9] pl-2"
+              >
+                <div className="flex min-w-0 items-center justify-between gap-2">
+                  <p className="truncate text-[11px] font-extrabold text-[#171a17]">
+                    {activity.actor} · {activity.label}
+                  </p>
+                  <span className="shrink-0 text-[10px] font-semibold text-[#9aa39d]">
+                    {formatInfluencerActivityDate(activity.created_at)}
+                  </span>
+                </div>
+                <p className="line-clamp-1 text-[11px] font-semibold text-[#606861]">
+                  {activity.description}
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-2 text-[12px] font-semibold text-[#7d857f]">
+            아직 표시할 활동 기록이 없습니다.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ContractTable({
+  items,
+  totalItems,
+  query,
+  onQueryChange,
+  platformFilter,
+  onPlatformFilterChange,
+  brandFilter,
+  onBrandFilterChange,
+  brandOptions,
+  amountFilter,
+  onAmountFilterChange,
+  detailStageFilter,
+  onDetailStageFilterChange,
+  deadlineFilter,
+  onDeadlineFilterChange,
+  sortState,
+  onSortChange,
+  onOpen,
+}: {
+  items: InfluencerCampaignWorkItem[];
+  totalItems: number;
+  query: string;
+  onQueryChange: (value: string) => void;
+  platformFilter: PlatformFilter;
+  onPlatformFilterChange: (value: PlatformFilter) => void;
+  brandFilter: string;
+  onBrandFilterChange: (value: string) => void;
+  brandOptions: Array<{ value: string; label: string }>;
+  amountFilter: AmountFilter;
+  onAmountFilterChange: (value: AmountFilter) => void;
+  detailStageFilter: DetailStageFilter;
+  onDetailStageFilterChange: (value: DetailStageFilter) => void;
+  deadlineFilter: DeadlineFilter;
+  onDeadlineFilterChange: (value: DeadlineFilter) => void;
+  sortState: ContractSort;
+  onSortChange: (key: SortKey) => void;
+  onOpen: (item: InfluencerCampaignWorkItem) => void;
+}) {
+  const platformOptions = PLATFORM_FILTERS.map((platform) => ({
+    value: platform,
+    label: formatPlatformFilterLabel(platform),
+  }));
+  const amountOptions = AMOUNT_FILTERS.map((amount) => ({
+    value: amount,
+    label: formatAmountFilterLabel(amount),
+  }));
+  const stageOptions = DETAIL_STAGE_FILTERS.map((stage) => ({
+    value: stage,
+    label: formatDetailStageFilterLabel(stage),
+  }));
+  const deadlineOptions = DEADLINE_FILTERS.map((deadline) => ({
+    value: deadline,
+    label: formatDeadlineFilterLabel(deadline),
+  }));
+  const activeFilterLabels = [
+    platformFilter !== "all"
+      ? platformOptions.find((option) => option.value === platformFilter)?.label
+      : null,
+    brandFilter !== "all"
+      ? brandOptions.find((option) => option.value === brandFilter)?.label
+      : null,
+    amountFilter !== "all"
+      ? amountOptions.find((option) => option.value === amountFilter)?.label
+      : null,
+    detailStageFilter !== "all"
+      ? stageOptions.find((option) => option.value === detailStageFilter)?.label
+      : null,
+    deadlineFilter !== "all"
+      ? deadlineOptions.find((option) => option.value === deadlineFilter)?.label
+      : null,
+  ].filter((label): label is string => Boolean(label));
+  const mobileFilterSummary =
+    activeFilterLabels.length > 0 ? activeFilterLabels.join(" · ") : "전체 조건";
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const displayItems = collapseInternalDuplicateContracts(
+    items,
+    getInfluencerDashboardItemCollapseKey,
+  );
+
+  return (
+    <section className="overflow-hidden rounded-[8px] border border-[#d9e0d9] bg-white lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+      <div className="grid gap-2 border-b border-[#d9e0d9] bg-[#f8faf7] p-2 lg:hidden">
+        <ContractNameSearch
+          value={query}
+          onChange={onQueryChange}
+          sortKey="title"
+          sortState={sortState}
+          onSortChange={onSortChange}
+          compact
+        />
+        <button
+          type="button"
+          onClick={() => setMobileFiltersOpen((current) => !current)}
+          aria-expanded={mobileFiltersOpen}
+          aria-controls="influencer-mobile-contract-filters"
+          className="flex h-10 min-w-0 items-center gap-2 rounded-[6px] border border-[#d9e0d9] bg-white px-3 text-left text-[12px] font-extrabold text-[#303630] transition-colors hover:border-[#cbd5cc]"
+        >
+          <SlidersHorizontal className="h-3.5 w-3.5 shrink-0 text-[#606861]" strokeWidth={2} />
+          <span className="shrink-0">필터</span>
+          <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-[#606861]">
+            {mobileFilterSummary}
+          </span>
+          <ChevronDown
+            className={`h-3.5 w-3.5 shrink-0 text-[#606861] transition-transform ${
+              mobileFiltersOpen ? "rotate-180" : ""
+            }`}
+            strokeWidth={2}
+          />
+        </button>
+        <div
+          id="influencer-mobile-contract-filters"
+          className={`${mobileFiltersOpen ? "grid" : "hidden"} gap-1.5`}
+        >
+          <TableFilterSelect
+            label="플랫폼"
+            value={platformFilter}
+            options={platformOptions}
+            sortKey="platform"
+            sortState={sortState}
+            onSortChange={onSortChange}
+            onChange={(value) => onPlatformFilterChange(value as PlatformFilter)}
+            compact
+          />
+          <TableFilterSelect
+            label="브랜드"
+            value={brandFilter}
+            options={brandOptions}
+            sortKey="advertiser"
+            sortState={sortState}
+            onSortChange={onSortChange}
+            onChange={onBrandFilterChange}
+            compact
+          />
+          <TableFilterSelect
+            label="금액"
+            value={amountFilter}
+            options={amountOptions}
+            sortKey="amount"
+            sortState={sortState}
+            onSortChange={onSortChange}
+            onChange={(value) => onAmountFilterChange(value as AmountFilter)}
+            compact
+          />
+          <TableFilterSelect
+            label="현재 상태"
+            value={detailStageFilter}
+            options={stageOptions}
+            sortKey="stage"
+            sortState={sortState}
+            onSortChange={onSortChange}
+            onChange={(value) => onDetailStageFilterChange(value as DetailStageFilter)}
+            compact
+          />
+          <TableFilterSelect
+            label="마감"
+            value={deadlineFilter}
+            options={deadlineOptions}
+            sortKey="deadline"
+            sortState={sortState}
+            onSortChange={onSortChange}
+            onChange={(value) => onDeadlineFilterChange(value as DeadlineFilter)}
+            compact
+          />
+        </div>
+      </div>
+
+      <div className="hidden grid-cols-[minmax(130px,0.36fr)_minmax(140px,0.38fr)_minmax(280px,1fr)_minmax(115px,0.32fr)_minmax(128px,0.35fr)_minmax(150px,0.42fr)] items-end gap-2 border-b border-[#d9e0d9] bg-[#f8faf7] px-3 py-2 lg:grid">
+        <TableFilterSelect
+          label="플랫폼"
+          value={platformFilter}
+          options={platformOptions}
+          maxWidthClassName="w-[112px]"
+          sortKey="platform"
+          sortState={sortState}
+          onSortChange={onSortChange}
+          onChange={(value) => onPlatformFilterChange(value as PlatformFilter)}
+        />
+        <TableFilterSelect
+          label="브랜드"
+          value={brandFilter}
+          options={brandOptions}
+          maxWidthClassName="w-[124px]"
+          sortKey="advertiser"
+          sortState={sortState}
+          onSortChange={onSortChange}
+          onChange={onBrandFilterChange}
+        />
+        <ContractNameSearch
+          value={query}
+          onChange={onQueryChange}
+          sortKey="title"
+          sortState={sortState}
+          onSortChange={onSortChange}
+        />
+        <TableFilterSelect
+          label="금액"
+          value={amountFilter}
+          options={amountOptions}
+          maxWidthClassName="w-[112px]"
+          sortKey="amount"
+          sortState={sortState}
+          onSortChange={onSortChange}
+          onChange={(value) => onAmountFilterChange(value as AmountFilter)}
+        />
+        <TableFilterSelect
+          label="현재 상태"
+          value={detailStageFilter}
+          options={stageOptions}
+          maxWidthClassName="w-[106px]"
+          sortKey="stage"
+          sortState={sortState}
+          onSortChange={onSortChange}
+          onChange={(value) => onDetailStageFilterChange(value as DetailStageFilter)}
+        />
+        <TableFilterSelect
+          label="마감"
+          value={deadlineFilter}
+          options={deadlineOptions}
+          maxWidthClassName="w-[132px]"
+          sortKey="deadline"
+          sortState={sortState}
+          onSortChange={onSortChange}
+          onChange={(value) => onDeadlineFilterChange(value as DeadlineFilter)}
+        />
+      </div>
+      <div className="max-h-[620px] divide-y divide-[#edf1ed] overflow-y-auto lg:max-h-none lg:min-h-0 lg:flex-1">
+        {displayItems.length > 0 ? (
+          displayItems.map((item) => {
+            const advertiserName = removeInternalTestLabel(
+              item.advertiser_name,
+              "광고주",
+            );
+            const amountLabel = formatDashboardAmountLabel(item.fee_label);
+
+            return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => onOpen(item)}
+              className="group grid w-full gap-2 px-3 py-2 text-left transition-colors hover:bg-[#f8faf7] lg:min-h-[42px] lg:grid-cols-[minmax(130px,0.36fr)_minmax(140px,0.38fr)_minmax(280px,1fr)_minmax(115px,0.32fr)_minmax(128px,0.35fr)_minmax(150px,0.42fr)] lg:items-center lg:py-1.5"
+            >
+              <div className="flex min-w-0 items-center justify-between gap-2 lg:block">
+                <PlatformPills item={item} />
+                <span className="shrink-0 lg:hidden">
+                  <StageBadge stage={item.stage} dense />
+                </span>
+              </div>
+              <div className="hidden min-w-0 lg:block">
+                <p className="truncate text-[12px] font-semibold text-[#303630]">
+                  {advertiserName}
+                </p>
+              </div>
+              <div className="min-w-0">
+                <p className="min-w-0 truncate text-[13px] font-semibold text-[#171a17]">
+                  {formatDashboardContractTitle(item.title)}
+                </p>
+                <p className="mt-1 min-w-0 truncate text-[11px] font-semibold text-[#606861] lg:hidden">
+                  {advertiserName} · {amountLabel} · {formatDeadlineDisplay(item)}
+                </p>
+                {item.kind === "application" ? (
+                  <p className="mt-1 truncate text-[11px] font-semibold text-[#7d857f]">
+                    {item.next_action_label}
+                  </p>
+                ) : null}
+              </div>
+              <div className="hidden min-w-0 lg:block">
+                <PreviewAmount value={amountLabel} />
+              </div>
+              <div className="hidden min-w-0 lg:block">
+                <StageBadge stage={item.stage} />
+              </div>
+              <DueAndSubmission item={item} />
+            </button>
+            );
+          })
+        ) : (
+          <EmptyContracts hasQuery={totalItems > 0} />
+        )}
+      </div>
     </section>
+  );
+}
+
+function ContractNameSearch({
+  value,
+  onChange,
+  sortKey,
+  sortState,
+  onSortChange,
+  compact = false,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  sortKey?: SortKey;
+  sortState?: ContractSort;
+  onSortChange?: (key: SortKey) => void;
+  compact?: boolean;
+}) {
+  return (
+    <div
+      className={
+        compact
+          ? "grid min-w-0 grid-cols-[70px_minmax(0,1fr)] items-center gap-2"
+          : "block min-w-0 lg:w-[90%]"
+      }
+    >
+      <ColumnHeader
+        label="캠페인명"
+        sortKey={sortKey}
+        sortState={sortState}
+        onSortChange={onSortChange}
+      />
+      <span className={`relative block ${compact ? "" : "mt-1"}`}>
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8b938d]" />
+        <input
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          aria-label="캠페인명 검색"
+          placeholder="캠페인명으로 검색"
+          className="h-10 w-full max-w-full rounded-[6px] border border-[#d9e0d9] bg-white pl-7 pr-2 text-[12px] font-semibold text-[#303630] outline-none transition-colors placeholder:text-[#8b938d] hover:border-[#cbd5cc] focus:border-[#171a17]"
+        />
+      </span>
+    </div>
+  );
+}
+
+function TableFilterSelect({
+  label,
+  value,
+  options,
+  maxWidthClassName = "w-full",
+  sortKey,
+  sortState,
+  onSortChange,
+  onChange,
+  compact = false,
+}: {
+  label: string;
+  value: string;
+  options: Array<{ value: string; label: string }>;
+  maxWidthClassName?: string;
+  sortKey?: SortKey;
+  sortState?: ContractSort;
+  onSortChange?: (key: SortKey) => void;
+  onChange: (value: string) => void;
+  compact?: boolean;
+}) {
+  return (
+    <div
+      className={
+        compact
+          ? "grid min-w-0 grid-cols-[70px_minmax(0,1fr)] items-center gap-2"
+          : "block min-w-0"
+      }
+    >
+      <ColumnHeader
+        label={label}
+        sortKey={sortKey}
+        sortState={sortState}
+        onSortChange={onSortChange}
+      />
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        aria-label={`${label} 필터`}
+        className={`block h-10 max-w-full ${maxWidthClassName} ${
+          compact ? "" : "mt-1"
+        } rounded-[6px] border border-[#d9e0d9] bg-white px-2 text-[12px] font-bold text-[#303630] outline-none transition-colors hover:border-[#cbd5cc] focus:border-[#171a17]`}
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function ColumnHeader({
+  label,
+  sortKey,
+  sortState,
+  onSortChange,
+}: {
+  label: string;
+  sortKey?: SortKey;
+  sortState?: ContractSort;
+  onSortChange?: (key: SortKey) => void;
+}) {
+  return (
+    <div className="flex h-10 items-center gap-1">
+      <span className="block text-[11px] font-extrabold text-[#7d857f]">{label}</span>
+      {sortKey && sortState && onSortChange ? (
+        <SortButton
+          label={label}
+          sortKey={sortKey}
+          sortState={sortState}
+          onSortChange={onSortChange}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function SortButton({
+  label,
+  sortKey,
+  sortState,
+  onSortChange,
+}: {
+  label: string;
+  sortKey: SortKey;
+  sortState: ContractSort;
+  onSortChange: (key: SortKey) => void;
+}) {
+  const active = sortState.key === sortKey;
+  const Icon = active
+    ? sortState.direction === "asc"
+      ? ArrowUpWideNarrow
+      : ArrowDownWideNarrow
+    : ArrowUpDown;
+  const nextDirection =
+    active && sortState.direction === "asc" ? "내림차순" : "오름차순";
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSortChange(sortKey)}
+      aria-label={`${label} ${nextDirection} 정렬`}
+      title={`${label} ${nextDirection} 정렬`}
+      className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[6px] transition-colors ${
+        active
+          ? "bg-[#171a17] text-white"
+          : "text-[#9aa39d] hover:bg-[#eef0ed] hover:text-[#303630]"
+      }`}
+    >
+      <Icon className="h-3.5 w-3.5" strokeWidth={2.2} />
+    </button>
   );
 }
 
@@ -864,10 +2123,10 @@ function StageBadge({
   stage,
   dense = false,
 }: {
-  stage: InfluencerDashboardContractStage;
+  stage: InfluencerWorkStage;
   dense?: boolean;
 }) {
-  const meta = getStageMeta(stage);
+  const meta = getWorkStageMeta(stage);
 
   return (
     <span
@@ -881,14 +2140,21 @@ function StageBadge({
   );
 }
 
-function StageTiming({
-  contract,
+function DueAndSubmission({
+  item,
 }: {
-  contract: InfluencerDashboardContract;
+  item: InfluencerCampaignWorkItem;
 }) {
+  const submission = getSubmissionStatusMeta(item);
+
   return (
     <div className="min-w-0">
-      <StageBadge stage={contract.stage} />
+      <p className="truncate text-[12px] font-semibold text-[#303630]">
+        {formatDeadlineDisplay(item)}
+      </p>
+      <p className={`mt-0.5 truncate text-[11px] font-semibold ${submission.className}`}>
+        {submission.label}
+      </p>
     </div>
   );
 }
@@ -901,8 +2167,8 @@ function PreviewAmount({ value }: { value: string }) {
   );
 }
 
-function PlatformPills({ contract }: { contract: InfluencerDashboardContract }) {
-  const items = getInfluencerPlatformDisplayItems(contract);
+function PlatformPills({ item }: { item: InfluencerCampaignWorkItem }) {
+  const items = getInfluencerPlatformDisplayItems(item);
 
   return (
     <div className="flex min-w-0 flex-wrap gap-1">
@@ -929,19 +2195,293 @@ function PlatformPills({ contract }: { contract: InfluencerDashboardContract }) 
   );
 }
 
-function getInfluencerPlatformDisplayItems(contract: InfluencerDashboardContract) {
+function buildInfluencerCampaignWorkItems(
+  dashboard: InfluencerDashboardResponse,
+): InfluencerCampaignWorkItem[] {
+  const contractIds = new Set(dashboard.contracts.map((contract) => contract.id));
+  const contractItems = dashboard.contracts.map(
+    (contract): InfluencerCampaignWorkItem => ({
+      id: `contract:${contract.id}`,
+      kind: "contract",
+      lifecycle: getContractLifecycle(contract),
+      title: contract.title,
+      advertiser_name: contract.advertiser_name,
+      stage: contract.stage,
+      stage_label: contract.stage_label,
+      next_action_label: contract.next_action_label,
+      action_label: contract.action_label,
+      action_href: contract.action_href,
+      platform_labels: contract.platform_labels,
+      platforms: contract.platforms,
+      platform_accounts: contract.platform_accounts,
+      fee_label: contract.fee_label,
+      deadline_label: contract.deadline_label,
+      due_at: contract.due_at,
+      updated_at: contract.updated_at,
+      deliverable_summary: contract.deliverable_summary,
+      activity_events: contract.activity_events ?? [],
+      source_contract: contract,
+    }),
+  );
+  const applicationItems = (dashboard.applications ?? [])
+    .filter(
+      (application) =>
+        !application.converted_contract_id ||
+        !contractIds.has(application.converted_contract_id),
+    )
+    .map(
+      (application): InfluencerCampaignWorkItem => ({
+        id: `application:${application.id}`,
+        kind: "application",
+        lifecycle: getApplicationLifecycle(application),
+        title: application.campaign_title,
+        advertiser_name: application.brand_name,
+        stage: mapApplicationWorkStage(application.stage),
+        stage_label: application.stage_label,
+        next_action_label: application.next_action_label,
+        action_label: application.action_label,
+        action_href: application.action_href,
+        platform_labels: application.platform_labels,
+        platforms: application.platforms,
+        platform_accounts: application.platforms.map((platform) => ({ platform })),
+        fee_label: application.fee_label,
+        deadline_label: application.deadline_label,
+        due_at: application.due_at,
+        updated_at: application.updated_at,
+        deliverable_summary: {
+          total: 0,
+          submitted: 0,
+          approved: 0,
+        },
+        activity_events: application.activity_events ?? [],
+        source_application: application,
+      }),
+    );
+
+  return [...applicationItems, ...contractItems].sort(
+    (a, b) => parseDate(b.updated_at) - parseDate(a.updated_at),
+  );
+}
+
+function mapApplicationWorkStage(
+  stage: InfluencerDashboardApplicationStage,
+): InfluencerApplicationWorkStage {
+  if (stage === "reviewed") return "application_reviewed";
+  if (stage === "accepted") return "application_accepted";
+  if (stage === "closed") return "application_closed";
+  return "application_submitted";
+}
+
+function getContractLifecycle(
+  contract: InfluencerDashboardContract,
+): InfluencerCampaignLifecycle {
+  if (contract.stage === "completed" || contract.stage === "signed") {
+    return "ENDED";
+  }
+
+  return "IN_PROGRESS";
+}
+
+function getApplicationLifecycle(
+  application: InfluencerDashboardApplication,
+): InfluencerCampaignLifecycle {
+  if (application.stage === "closed") return "ENDED";
+  if (application.stage === "accepted") return "IN_PROGRESS";
+  return "APPLIED";
+}
+
+function getInfluencerOperationsSummary(
+  items: InfluencerCampaignWorkItem[],
+  newOffers: number,
+): InfluencerOperationsSummary {
+  return items.reduce<InfluencerOperationsSummary>(
+    (summary, item) => {
+      if (item.kind === "application" && item.lifecycle === "APPLIED") {
+        summary.pendingApplications += 1;
+      }
+      if (
+        item.kind === "contract" &&
+        ["review_needed", "change_pending", "ready_to_sign"].includes(item.stage)
+      ) {
+        summary.actionableContracts += 1;
+      }
+      if (item.kind === "contract" && item.stage === "deliverables_due") {
+        summary.deliverablesDue += 1;
+      }
+      if (item.lifecycle !== "ENDED" && isCampaignItemDeadlineOverdue(item)) {
+        summary.overdueItems += 1;
+      } else if (item.lifecycle !== "ENDED" && isCampaignItemDeadlineDueSoon(item)) {
+        summary.dueSoonItems += 1;
+      }
+      return summary;
+    },
+    {
+      newOffers,
+      pendingApplications: 0,
+      actionableContracts: 0,
+      overdueItems: 0,
+      dueSoonItems: 0,
+      deliverablesDue: 0,
+    },
+  );
+}
+
+function buildInfluencerAlerts(
+  items: InfluencerCampaignWorkItem[],
+  newOffers: number,
+): InfluencerAlert[] {
+  const alerts: InfluencerAlert[] = [];
+
+  if (newOffers > 0) {
+    alerts.push({
+      id: "messages:new-offers",
+      label: `새 제안 ${newOffers}건`,
+      detail: "브랜드가 보낸 개별 제안을 메시지함에서 확인하세요.",
+      href: "/influencer/messages",
+      tone: "blue",
+      priority: 5,
+    });
+  }
+
+  for (const item of items) {
+    if (item.lifecycle === "ENDED") continue;
+
+    if (item.kind === "contract" && item.stage === "review_needed") {
+      alerts.push({
+        id: `${item.id}:review`,
+        label: "계약 검토 필요",
+        detail: formatDashboardContractTitle(item.title),
+        href: item.action_href,
+        tone: "amber",
+        priority: 10,
+      });
+    }
+
+    if (item.kind === "contract" && item.stage === "ready_to_sign") {
+      alerts.push({
+        id: `${item.id}:sign`,
+        label: "서명 대기",
+        detail: formatDashboardContractTitle(item.title),
+        href: item.action_href,
+        tone: "blue",
+        priority: 20,
+      });
+    }
+
+    if (item.kind === "contract" && item.stage === "deliverables_due") {
+      alerts.push({
+        id: `${item.id}:deliverables`,
+        label: "콘텐츠 제출 필요",
+        detail: formatDashboardContractTitle(item.title),
+        href: item.action_href,
+        tone: "rose",
+        priority: 30,
+      });
+    }
+
+    if (isCampaignItemDeadlineOverdue(item)) {
+      alerts.push({
+        id: `${item.id}:overdue`,
+        label: "마감 지남",
+        detail: formatDashboardContractTitle(item.title),
+        href: item.action_href,
+        tone: "rose",
+        priority: 40,
+      });
+    } else if (isCampaignItemDeadlineDueSoon(item)) {
+      alerts.push({
+        id: `${item.id}:due-soon`,
+        label: "7일 이내 마감",
+        detail: formatDashboardContractTitle(item.title),
+        href: item.action_href,
+        tone: "emerald",
+        priority: 50,
+      });
+    }
+
+    if (item.kind === "application" && item.stage === "application_reviewed") {
+      alerts.push({
+        id: `${item.id}:reviewed`,
+        label: "지원 검토 중",
+        detail: formatDashboardContractTitle(item.title),
+        href: item.action_href,
+        tone: "amber",
+        priority: 60,
+      });
+    }
+  }
+
+  return alerts
+    .sort((a, b) => a.priority - b.priority || compareText(a.detail, b.detail))
+    .slice(0, 8);
+}
+
+function buildInfluencerRecentActivities(items: InfluencerCampaignWorkItem[]) {
+  return items
+    .flatMap((item) =>
+      item.activity_events.map((event) => ({
+        ...event,
+        id: `${item.id}:${event.id}`,
+      })),
+    )
+    .filter((event) => Number.isFinite(parseDate(event.created_at)))
+    .sort((a, b) => parseDate(b.created_at) - parseDate(a.created_at))
+    .slice(0, 8);
+}
+
+function getInfluencerAlertToneClass(tone: InfluencerAlertTone) {
+  const tones: Record<InfluencerAlertTone, string> = {
+    amber: "border-amber-200 bg-amber-50 text-amber-800",
+    blue: "border-blue-200 bg-blue-50 text-blue-700",
+    rose: "border-rose-200 bg-rose-50 text-rose-700",
+    emerald: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    neutral: "border-neutral-200 bg-neutral-100 text-neutral-600",
+  };
+
+  return tones[tone];
+}
+
+function isCampaignItemDeadlineOverdue(item: InfluencerCampaignWorkItem) {
+  const dueTime = getDueTime(item);
+  if (!Number.isFinite(dueTime)) return false;
+  return getDaysUntilTime(dueTime) < 0;
+}
+
+function isCampaignItemDeadlineDueSoon(item: InfluencerCampaignWorkItem) {
+  const dueTime = getDueTime(item);
+  if (!Number.isFinite(dueTime)) return false;
+  const daysUntil = getDaysUntilTime(dueTime);
+  return daysUntil >= 0 && daysUntil <= 7;
+}
+
+function getDaysUntilTime(time: number) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.floor((time - today.getTime()) / (24 * 60 * 60 * 1000));
+}
+
+function formatInfluencerActivityDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return new Intl.DateTimeFormat("ko-KR", {
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+function getInfluencerPlatformDisplayItems(item: InfluencerCampaignWorkItem) {
   const source = [
-    contract.title,
-    contract.next_action_label,
-    contract.period_label,
-    ...contract.platform_labels,
+    item.title,
+    item.next_action_label,
+    ...item.platform_labels,
   ]
     .join(" ")
     .toLowerCase();
   const accounts: Array<{ platform: InfluencerPlatform; url?: string }> =
-    contract.platform_accounts.length > 0
-      ? contract.platform_accounts
-      : contract.platforms.map((platform) => ({ platform }));
+    item.platform_accounts.length > 0
+      ? item.platform_accounts
+      : item.platforms.map((platform) => ({ platform }));
   const fallbackAccounts =
     accounts.length > 0 ? accounts : [{ platform: "other" as InfluencerPlatform }];
 
@@ -952,11 +2492,11 @@ function getInfluencerPlatformDisplayItems(contract: InfluencerDashboardContract
   }));
 }
 
-function getInfluencerContractPlatforms(contract: InfluencerDashboardContract) {
+function getInfluencerCampaignItemPlatforms(item: InfluencerCampaignWorkItem) {
   const platforms =
-    contract.platforms.length > 0
-      ? contract.platforms
-      : contract.platform_accounts.map((account) => account.platform);
+    item.platforms.length > 0
+      ? item.platforms
+      : item.platform_accounts.map((account) => account.platform);
   const uniquePlatforms = Array.from(new Set(platforms));
 
   return uniquePlatforms.length > 0
@@ -966,44 +2506,327 @@ function getInfluencerContractPlatforms(contract: InfluencerDashboardContract) {
 
 function formatPlatformFilterLabel(platform: PlatformFilter) {
   if (platform === "all") return "전체";
-  return PLATFORM_META[platform].label;
+  return formatInfluencerPlatformShortLabel(platform);
 }
 
 function formatDetailStageFilterLabel(stage: DetailStageFilter) {
   if (stage === "all") return "전체";
-  return getStageMeta(stage).label;
+  return getWorkStageMeta(stage).label;
+}
+
+function formatAmountFilterLabel(filter: AmountFilter) {
+  if (filter === "fixed") return "정액";
+  if (filter === "commission") return "수수료";
+  return "전체";
+}
+
+function formatDeadlineFilterLabel(filter: DeadlineFilter) {
+  if (filter === "overdue") return "마감 지남";
+  if (filter === "this_week") return "7일 이내";
+  if (filter === "later") return "이후";
+  if (filter === "none") return "마감 없음";
+  return "전체";
+}
+
+function buildInfluencerBrandFilterOptions(
+  items: InfluencerCampaignWorkItem[],
+) {
+  const brands = Array.from(
+    new Set(
+      items
+        .map((item) => removeInternalTestLabel(item.advertiser_name, "광고주"))
+        .filter(Boolean),
+    ),
+  ).sort(compareText);
+
+  return [
+    { value: "all", label: "전체" },
+    ...brands.map((brand) => ({ value: brand, label: brand })),
+  ];
+}
+
+function getAmountFilterKind(value?: string | null): ActualAmountKind {
+  const text = `${value ?? ""} ${formatMoneyLabel(value, "")}`.toLowerCase();
+
+  if (/%|commission|수수료|판매\s*수익/.test(text)) return "commission";
+  return "fixed";
+}
+
+function matchesDeadlineFilter(
+  item: InfluencerCampaignWorkItem,
+  filter: DeadlineFilter,
+) {
+  if (filter === "all") return true;
+  const dueTime = getDueTime(item);
+  if (!Number.isFinite(dueTime)) return filter === "none";
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const daysUntilDue = Math.floor(
+    (dueTime - today.getTime()) / (24 * 60 * 60 * 1000),
+  );
+
+  if (filter === "overdue") return daysUntilDue < 0;
+  if (filter === "this_week") return daysUntilDue >= 0 && daysUntilDue <= 7;
+  if (filter === "later") return daysUntilDue > 7;
+  return false;
+}
+
+function formatDeadlineDisplay(item: InfluencerCampaignWorkItem) {
+  const label = item.deadline_label?.trim();
+  if (label) return label;
+  if (!Number.isFinite(getDueTime(item))) return "마감 없음";
+
+  return new Intl.DateTimeFormat("ko-KR", {
+    month: "numeric",
+    day: "numeric",
+  }).format(new Date(item.due_at as string));
+}
+
+function getSubmissionStatusMeta(item: InfluencerCampaignWorkItem) {
+  if (item.kind === "application") {
+    return {
+      label: item.next_action_label || "지원 상태 확인",
+      className:
+        item.stage === "application_closed"
+          ? "text-[#7d857f]"
+          : item.stage === "application_accepted"
+            ? "text-blue-700"
+            : "text-amber-700",
+    };
+  }
+
+  const { total, submitted, approved } = item.deliverable_summary;
+
+  if (total <= 0) {
+    return {
+      label: item.next_action_label || "제출 없음",
+      className: "text-[#7d857f]",
+    };
+  }
+
+  if (approved >= total) {
+    return { label: "제출 승인", className: "text-emerald-700" };
+  }
+
+  if (submitted >= total) {
+    return { label: "제출 완료", className: "text-[#303630]" };
+  }
+
+  if (submitted > 0) {
+    return {
+      label: `${submitted}/${total} 제출`,
+      className: "text-amber-700",
+    };
+  }
+
+  if (item.stage === "deliverables_due") {
+    return { label: "제출 필요", className: "text-amber-700" };
+  }
+
+  return { label: "제출 대기", className: "text-[#7d857f]" };
+}
+
+function getDueTime(item: Pick<InfluencerCampaignWorkItem, "due_at">) {
+  if (!item.due_at) return Number.POSITIVE_INFINITY;
+  const time = new Date(item.due_at).getTime();
+  return Number.isFinite(time) ? time : Number.POSITIVE_INFINITY;
+}
+
+function formatDashboardAmountLabel(value?: string | null) {
+  const label = formatMoneyLabel(value, "-").replace(/\s+/g, " ").trim();
+  const percentMatch = label.match(/(\d+(?:\.\d+)?)\s*%/);
+
+  if (percentMatch) return `수수료 ${percentMatch[1]}%`;
+  return label || "-";
+}
+
+function compareCampaignItemsBySort(
+  a: InfluencerCampaignWorkItem,
+  b: InfluencerCampaignWorkItem,
+  sort: ContractSort,
+) {
+  let result: number;
+
+  switch (sort.key) {
+    case "platform":
+      result = compareText(getPlatformSortLabel(a), getPlatformSortLabel(b));
+      break;
+    case "advertiser":
+      result = compareText(
+        removeInternalTestLabel(a.advertiser_name, "광고주"),
+        removeInternalTestLabel(b.advertiser_name, "광고주"),
+      );
+      break;
+    case "title":
+      result = compareText(
+        formatDashboardContractTitle(a.title),
+        formatDashboardContractTitle(b.title),
+      );
+      break;
+    case "amount":
+      result = compareAmountValues(a.fee_label, b.fee_label);
+      break;
+    case "stage":
+      result =
+        DETAIL_STAGE_FILTERS.indexOf(a.stage) - DETAIL_STAGE_FILTERS.indexOf(b.stage);
+      break;
+    case "deadline":
+      result = getDueTime(a) - getDueTime(b);
+      break;
+    case "updated":
+    default:
+      result = parseDate(a.updated_at) - parseDate(b.updated_at);
+      break;
+  }
+
+  if (result === 0) {
+    result = compareText(formatDashboardContractTitle(a.title), formatDashboardContractTitle(b.title));
+  }
+
+  return sort.direction === "asc" ? result : -result;
+}
+
+function getPlatformSortLabel(item: InfluencerCampaignWorkItem) {
+  return getInfluencerCampaignItemPlatforms(item)
+    .map((platform) => formatInfluencerPlatformShortLabel(platform))
+    .join(" ");
+}
+
+function compareText(a: string, b: string) {
+  return a.localeCompare(b, "ko-KR", {
+    numeric: true,
+    sensitivity: "base",
+  });
+}
+
+function compareAmountValues(a?: string | null, b?: string | null) {
+  const amountA = getAmountSortMeta(a);
+  const amountB = getAmountSortMeta(b);
+
+  if (amountA.kind !== amountB.kind) {
+    return amountA.kind === "fixed" ? -1 : 1;
+  }
+
+  if (Number.isFinite(amountA.value) && Number.isFinite(amountB.value)) {
+    return amountA.value - amountB.value;
+  }
+  if (Number.isFinite(amountA.value)) return -1;
+  if (Number.isFinite(amountB.value)) return 1;
+  return compareText(amountA.label, amountB.label);
+}
+
+function getAmountSortMeta(value?: string | null) {
+  const kind = getAmountFilterKind(value);
+  const label = formatDashboardAmountLabel(value);
+  const raw = `${value ?? ""} ${label}`.replace(/,/g, "").toLowerCase();
+  const percentMatch = raw.match(/(\d+(?:\.\d+)?)\s*%/);
+
+  if (kind === "commission") {
+    return {
+      kind,
+      label,
+      value: percentMatch ? Number(percentMatch[1]) : Number.NaN,
+    };
+  }
+
+  const manWonMatch = raw.match(/(\d+(?:\.\d+)?)\s*만/);
+  if (manWonMatch) {
+    return {
+      kind,
+      label,
+      value: Number(manWonMatch[1]) * 10000,
+    };
+  }
+
+  const wonMatch = raw.match(/(\d{4,})\s*(?:원|krw)?/i);
+  if (wonMatch) {
+    return {
+      kind,
+      label,
+      value: Number(wonMatch[1]),
+    };
+  }
+
+  const fallbackMatch = raw.match(/(\d+(?:\.\d+)?)/);
+  return {
+    kind,
+    label,
+    value: fallbackMatch ? Number(fallbackMatch[1]) : Number.NaN,
+  };
 }
 
 function formatDashboardContractTitle(title: string) {
   const cleaned = title.replace(/^\[[^\]]+\]\s*/, "").trim();
-  return formatContractTitleForDisplay(cleaned || title, "계약명 미정");
+  return formatContractTitleForDisplay(cleaned || title, "캠페인명 미정");
+}
+
+function collapseInternalDuplicateContracts<T extends { title: string }>(
+  contracts: T[],
+  getKey: (contract: T) => string,
+) {
+  const seen = new Set<string>();
+  const result: T[] = [];
+
+  for (const contract of contracts) {
+    const isInternalRepeat = /^\[QA-[^\]]+\]/.test(contract.title);
+    if (!isInternalRepeat) {
+      result.push(contract);
+      continue;
+    }
+
+    const key = getKey(contract);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(contract);
+  }
+
+  return result;
+}
+
+function getInfluencerDashboardItemCollapseKey(
+  item: InfluencerCampaignWorkItem,
+) {
+  return [
+    item.kind,
+    formatDashboardContractTitle(item.title),
+    item.stage,
+    removeInternalTestLabel(item.advertiser_name, "광고주"),
+    formatDashboardAmountLabel(item.fee_label),
+    getInfluencerCampaignItemPlatforms(item).join(","),
+  ].join("|");
+}
+
+function dedupeApprovedPlatforms(
+  platforms: InfluencerDashboardResponse["verification"]["approved_platforms"],
+) {
+  const seen = new Set<InfluencerPlatform>();
+  return platforms.filter((platform) => {
+    if (seen.has(platform.platform)) return false;
+    seen.add(platform.platform);
+    return true;
+  });
+}
+
+function parseDate(value?: string) {
+  if (!value) return Number.POSITIVE_INFINITY;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : Number.POSITIVE_INFINITY;
 }
 
 function getDetailedInfluencerPlatformLabel(
   platform: InfluencerPlatform,
   source: string,
 ) {
-  if (platform === "youtube") {
-    if (source.includes("shorts") || source.includes("short") || source.includes("숏츠")) {
-      return "유튜브-숏츠";
-    }
-    if (source.includes("longform") || source.includes("long-form") || source.includes("롱폼")) {
-      return "유튜브-롱폼";
-    }
-  }
+  void source;
+  return formatInfluencerPlatformShortLabel(platform);
+}
 
-  if (platform === "instagram") {
-    if (source.includes("reels") || source.includes("reel") || source.includes("릴스")) {
-      return "인스타그램-릴스";
-    }
-    if (source.includes("story") || source.includes("stories") || source.includes("스토리")) {
-      return "인스타그램-스토리";
-    }
-    if (source.includes("feed") || source.includes("피드")) return "인스타그램-피드";
-  }
-
-  if (platform === "tiktok") return "틱톡-숏폼";
-  if (platform === "naver_blog") return "네이버 블로그";
+function formatInfluencerPlatformShortLabel(platform: InfluencerPlatform) {
+  if (platform === "instagram") return "인스타";
+  if (platform === "youtube") return "유튜브";
+  if (platform === "tiktok") return "틱톡";
+  if (platform === "naver_blog") return "블로그";
   return PLATFORM_META[platform].label;
 }
 

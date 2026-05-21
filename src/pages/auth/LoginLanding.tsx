@@ -7,7 +7,7 @@ const loginRoles = [
   {
     role: "advertiser",
     title: "광고주 로그인",
-    detail: "작성 · 공유 · 관리",
+    detail: "계약 작성 · 검토 링크 · 증빙 관리",
     href: "/login/advertiser",
     fallback: "/advertiser/dashboard",
     allowedPrefixes: ["/advertiser"],
@@ -16,7 +16,7 @@ const loginRoles = [
   {
     role: "influencer",
     title: "인플루언서 로그인",
-    detail: "검토 · 요청 · 서명",
+    detail: "계약 검토 · 수정 요청 · 전자서명",
     href: "/login/influencer",
     fallback: "/influencer/dashboard",
     allowedPrefixes: ["/influencer", "/contract"],
@@ -53,8 +53,8 @@ export function LoginLanding() {
   const requestedNext = new URLSearchParams(location.search).get("next");
 
   return (
-    <main className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950">
-      <div className="mx-auto grid min-h-screen w-full max-w-[850px] grid-rows-[68px_1fr_48px] px-5 sm:px-6">
+    <main className="h-svh overflow-hidden bg-[#f7f6f3] font-sans text-neutral-950">
+      <div className="mx-auto grid h-svh w-full max-w-[760px] grid-rows-[56px_minmax(0,1fr)_34px] px-5 sm:grid-rows-[60px_minmax(0,1fr)_38px] sm:px-6">
         <header className="flex items-center justify-between">
           <Link
             to="/"
@@ -71,26 +71,35 @@ export function LoginLanding() {
           </Link>
         </header>
 
-        <section className="flex items-center justify-center py-7 sm:py-9">
-          <div className="w-full max-w-[520px]">
+        <section className="flex min-h-0 items-center justify-center py-2">
+          <div className="w-full max-w-[500px]">
             <h1 className="sr-only">{PRODUCT_NAME} 로그인</h1>
-            <div className="grid gap-3.5 sm:gap-4">
+            <div className="mb-3 text-center">
+              <p className="text-[13px] font-bold leading-5 text-neutral-600">
+                로그인할 역할을 선택하세요.
+              </p>
+            </div>
+            <div className="grid gap-2.5 sm:gap-3">
               {loginRoles.map((role) => {
                 const Icon = role.icon;
                 const tone = getRoleTone(role.role);
-                const next = getSafeRedirectPath(
-                  requestedNext,
-                  role.fallback,
-                  role.allowedPrefixes,
-                );
-                const href = `${role.href}?next=${encodeURIComponent(next)}`;
+                const next = requestedNext
+                  ? getSafeRedirectPath(
+                      requestedNext,
+                      role.fallback,
+                      role.allowedPrefixes,
+                    )
+                  : "";
+                const href = next
+                  ? `${role.href}?next=${encodeURIComponent(next)}`
+                  : role.href;
 
                 return (
                   <Link
                     key={role.href}
                     to={href}
                     aria-label={role.title}
-                    className={`group flex min-h-[156px] flex-col rounded-[22px] border px-5 py-5 text-left shadow-[0_1px_0_rgba(15,23,42,0.035),0_16px_42px_rgba(15,23,42,0.035)] transition hover:-translate-y-0.5 hover:shadow-[0_1px_0_rgba(15,23,42,0.04),0_22px_58px_rgba(15,23,42,0.06)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:min-h-[170px] sm:px-6 sm:py-6 ${tone.card}`}
+                    className={`group flex min-h-[112px] flex-col rounded-[18px] border px-4 py-4 text-left shadow-[0_1px_0_rgba(15,23,42,0.035),0_16px_42px_rgba(15,23,42,0.035)] transition hover:-translate-y-0.5 hover:shadow-[0_1px_0_rgba(15,23,42,0.04),0_22px_58px_rgba(15,23,42,0.06)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:min-h-[124px] sm:px-5 sm:py-5 ${tone.card}`}
                   >
                     <span className="flex items-center justify-between">
                       <span className={`flex h-9 w-9 items-center justify-center rounded-[12px] border transition ${tone.icon}`}>
@@ -105,13 +114,21 @@ export function LoginLanding() {
                       <strong className="font-neo-heavy block text-[25px] leading-none tracking-[-0.035em] text-neutral-950 sm:text-[30px]">
                         {role.title}
                       </strong>
-                      <span className={`mt-3.5 block border-t pt-3.5 text-[12px] font-bold tracking-[-0.005em] sm:mt-4 sm:pt-4 ${tone.divider} ${tone.detail}`}>
+                      <span className={`mt-3 block border-t pt-3 text-[12px] font-bold tracking-[-0.005em] ${tone.divider} ${tone.detail}`}>
                         {role.detail}
                       </span>
                     </span>
                   </Link>
                 );
               })}
+            </div>
+            <div className="mt-3 text-center">
+              <Link
+                to="/reset-password?role=advertiser"
+                className="inline-flex min-h-8 items-center text-[12px] font-bold text-neutral-500 transition hover:text-neutral-950"
+              >
+                비밀번호 재설정
+              </Link>
             </div>
           </div>
         </section>
@@ -122,6 +139,9 @@ export function LoginLanding() {
           </Link>
           <Link className="transition hover:text-neutral-950" to="/terms">
             이용약관
+          </Link>
+          <Link className="transition hover:text-neutral-950" to="/legal/e-sign-consent">
+            전자서명
           </Link>
         </footer>
       </div>

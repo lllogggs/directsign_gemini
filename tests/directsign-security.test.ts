@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const root = process.cwd();
@@ -65,6 +65,71 @@ describe("yeollock.me security regressions", () => {
     assert.ok(statSync(join(root, "public/fonts/NanumGothic-Regular.ttf")).size > 1_000_000);
   });
 
+  it("protects marketplace follower sync with cron auth and server-only logs", () => {
+    const server = read("server/index.ts");
+    const envExample = read(".env.example");
+    const migration = read(
+      "supabase/migrations/20260518044009_add_marketplace_follower_sync.sql",
+    );
+    const vercelConfig = JSON.parse(read("vercel.json")) as {
+      crons?: Array<{ path?: string; schedule?: string }>;
+    };
+
+    assert.ok(
+      vercelConfig.crons?.some(
+        (cron) =>
+          cron.path === "/api/cron/sync-marketplace-followers" &&
+          cron.schedule === "0 18 * * *",
+      ),
+    );
+    assert.match(envExample, /CRON_SECRET=""/);
+    assert.match(envExample, /MARKETPLACE_NAVER_BLOG_VISITOR_SYNC_STALE_DAYS="1"/);
+    assert.match(server, /const cronSecret = readConfiguredServerSecret\("CRON_SECRET"\)/);
+    assert.match(server, /requireCronRequest/);
+    assert.match(server, /safeEqual\(token, cronSecret\)/);
+    assert.match(server, /\/api\/cron\/sync-marketplace-followers/);
+    assert.match(server, /runMarketplaceFollowerSync/);
+    assert.match(server, /marketplace_follower_sync_runs/);
+    assert.match(server, /marketplace_follower_sync_events/);
+    assert.match(server, /follower_count_synced_at/);
+    assert.match(server, /clearPublicMarketplaceCache\(\)/);
+    assert.match(server, /NVisitorgp4Ajax\.nhn/);
+    assert.match(server, /naver_blog_public_visitor_counter/);
+    assert.match(server, /stored_5_day_average/);
+    assert.match(server, /getNaverBlogVisitorTargetDate/);
+    assert.match(
+      migration,
+      /alter table public\.marketplace_influencer_channels[\s\S]+follower_count/,
+    );
+    assert.match(migration, /marketplace_follower_sync_runs/);
+    assert.match(migration, /marketplace_follower_sync_events/);
+    assert.match(migration, /enable row level security/);
+    assert.match(
+      migration,
+      /revoke all on table[\s\S]+from public, anon, authenticated;/,
+    );
+    assert.match(migration, /grant select, insert, update on table[\s\S]+to service_role;/);
+    assert.doesNotMatch(migration, /grant[\s\S]+to anon;/);
+  });
+
+  it("keeps server-loaded domain imports compatible with Vercel ESM runtime", () => {
+    const domainDir = join(root, "src/domain");
+    const domainFiles = readdirSync(domainDir).filter((file) => file.endsWith(".ts"));
+
+    for (const file of domainFiles) {
+      const source = read(`src/domain/${file}`);
+      const relativeImports = source.matchAll(/from\s+["'](\.{1,2}\/[^"']+)["']/g);
+
+      for (const match of relativeImports) {
+        assert.match(
+          match[1],
+          /\.js$/,
+          `${file} uses an extensionless relative import that can break Vercel serverless ESM: ${match[1]}`,
+        );
+      }
+    }
+  });
+
   it("keeps duplicate early Supabase migrations as no-ops", () => {
     const duplicateSchema = read(
       "supabase/migrations/20260501020000_create_directsign_v2_schema.sql",
@@ -80,15 +145,19 @@ describe("yeollock.me security regressions", () => {
   });
 
   it("documents the real Supabase migration chain instead of the no-op schema", () => {
-    const readme = read("README.md");
+    const launchReadiness = read("docs/launch-readiness.md");
 
-    assert.match(readme, /Apply every SQL file[\s\S]+timestamp order/);
-    assert.match(readme, /20260430193123_create_directsign_v2_schema\.sql/);
-    assert.match(readme, /20260501020000_create_directsign_v2_schema\.sql[\s\S]+no-op/);
-    assert.match(readme, /20260505070645_harden_contract_support_access\.sql/);
-    assert.match(readme, /20260506075008_restrict_authenticated_direct_writes\.sql/);
-    assert.match(readme, /20260507224346_allow_revoked_support_access_event\.sql/);
-    assert.match(readme, /20260507230025_lock_reserved_settlement_tables\.sql/);
+    assert.match(launchReadiness, /Apply every SQL file[\s\S]+timestamp order/);
+    assert.match(launchReadiness, /20260430193123_create_directsign_v2_schema\.sql/);
+    assert.match(
+      launchReadiness,
+      /20260501020000_create_directsign_v2_schema\.sql[\s\S]+no-op/,
+    );
+    assert.match(launchReadiness, /20260505070645_harden_contract_support_access\.sql/);
+    assert.match(launchReadiness, /20260506075008_restrict_authenticated_direct_writes\.sql/);
+    assert.match(launchReadiness, /20260507224346_allow_revoked_support_access_event\.sql/);
+    assert.match(launchReadiness, /20260507230025_lock_reserved_settlement_tables\.sql/);
+    assert.match(launchReadiness, /20260518044009_add_marketplace_follower_sync\.sql/);
   });
 
   it("blocks authenticated Data API writes for security-sensitive tables", () => {
@@ -386,6 +455,108 @@ describe("yeollock.me security regressions", () => {
     }
   });
 
+  it("redirects advertiser login immediately after successful authentication", () => {
+    const app = read("src/App.tsx");
+    const advertiserAuthGate = read("src/pages/marketing/AdvertiserAuthGate.tsx");
+    const loginLanding = read("src/pages/auth/LoginLanding.tsx");
+
+    assert.match(app, /<AdvertiserAuthGate redirectAfterLogin=\{nextPath\}>/);
+    assert.match(advertiserAuthGate, /useNavigate/);
+    assert.match(advertiserAuthGate, /navigate\(redirectAfterLogin, \{ replace: true \}\)/);
+    assert.match(loginLanding, /const href = next[\s\S]+\? `\$\{role\.href\}\?next=/);
+    assert.match(loginLanding, /: role\.href/);
+  });
+
+  it("keeps advertiser marketplace messages focused on sent proposals", () => {
+    const inbox = read("src/pages/marketplace/MarketplaceInboxPage.tsx");
+    const server = read("server/index.ts");
+
+    assert.match(inbox, /role === "advertiser" \? "sent" : "inbox"/);
+    assert.match(inbox, /summaryTitle:\s*\(openCount: number\) =>/);
+    assert.match(inbox, /`보낸 제안 \$\{openCount\.toLocaleString\(\)\}건이 진행 중입니다`/);
+    assert.match(inbox, /primaryBucketLabel: "보낸 제안"/);
+    assert.match(inbox, /platformFilterOptions/);
+    assert.match(inbox, /제안 종류/);
+    assert.match(inbox, /function PlatformPills/);
+    assert.match(server, /addPlatformInfoToMarketplaceProposals/);
+    assert.match(server, /marketplace_influencer_channels/);
+    assert.match(
+      inbox,
+      /role === "advertiser"[\s\S]+id: "sent", label: copy\.primaryBucketLabel/,
+    );
+    assert.match(inbox, /function MessageThreadRow/);
+    assert.doesNotMatch(inbox, /function NotificationPanel/);
+  });
+
+  it("keeps influencer public profile links on the root handle URL", () => {
+    const app = read("src/App.tsx");
+    const publicProfile = read("src/domain/publicInfluencerProfile.ts");
+    const marketplace = read("src/domain/marketplace.ts");
+    const marketplacePages = read("src/pages/marketplace/MarketplacePages.tsx");
+    const influencerDashboard = read("src/pages/influencer/InfluencerDashboard.tsx");
+    const server = read("server/index.ts");
+
+    assert.match(
+      app,
+      /<Route path="\/:profileHandle" element=\{<PublicInfluencerProfilePage \/>\} \/>/,
+    );
+    assert.match(publicProfile, /export function getInfluencerPublicProfilePath/);
+    assert.match(publicProfile, /return clean \? `\/\$\{clean\}` : "\/"/);
+    assert.match(publicProfile, /export function formatInfluencerPublicProfileUrl/);
+    assert.match(publicProfile, /return clean \? `yeollock\.me\/\$\{clean\}` : "yeollock\.me"/);
+    assert.match(marketplace, /return `\/\$\{normalizeMarketplaceHandle\(profile\.handle\)\}`/);
+    assert.match(marketplacePages, /formatInfluencerPublicProfileUrl\(profile\.handle\)/);
+    assert.match(
+      influencerDashboard,
+      /navigate\(getInfluencerPublicProfilePath\(publicProfile\.handle\)\)/,
+    );
+    assert.match(server, /getInfluencerPublicProfilePath\(row\.target_handle\)/);
+    assert.match(server, /getInfluencerPublicProfilePath\(row\.sender_influencer_handle\)/);
+    assert.doesNotMatch(marketplacePages, /yeollock\.me\/\{profile\.handle\}/);
+  });
+
+  it("derives influencer public profile handles from the first registered platform", () => {
+    const publicProfile = read("src/domain/publicInfluencerProfile.ts");
+    const influencerDashboard = read("src/pages/influencer/InfluencerDashboard.tsx");
+    const server = read("server/index.ts");
+    const migration = read(
+      "supabase/migrations/20260514012437_allow_dot_in_influencer_public_handles.sql",
+    );
+
+    assert.match(publicProfile, /export function getAutomaticPublicProfileHandle/);
+    assert.match(publicProfile, /const firstPlatformHandle = platforms\?\.\[0\]\?\.handle/);
+    assert.match(publicProfile, /handle: defaults\.handle/);
+    assert.match(publicProfile, /\[a-z0-9_\.-\]/);
+    assert.match(influencerDashboard, /getAutomaticPublicProfileHandle\(approvedPlatforms\)/);
+    assert.match(influencerDashboard, /첫 등록 플랫폼 ID 기준/);
+    assert.doesNotMatch(influencerDashboard, /value=\{form\.handle\}/);
+    assert.doesNotMatch(influencerDashboard, /handle: initialProfile\.handle/);
+    assert.match(server, /const automaticHandle = getAutomaticPublicProfileHandle\(approvedPlatforms\) \?\? ""/);
+    assert.match(server, /buildApprovedInfluencerPlatforms\(verificationRequests\)/);
+    assert.match(server, /parseDateAscending\(a\.created_at, b\.created_at\)/);
+    assert.doesNotMatch(server, /normalizePublicProfileHandle\(normalizeRequiredText\(body\.handle\)\)/);
+    assert.match(migration, /drop constraint if exists marketplace_influencer_profiles_handle_format/);
+    assert.match(migration, /order by owner_profile_id, created_at asc/);
+  });
+
+  it("opens manual influencer public handles only after conflicts and queues appeals", () => {
+    const influencerDashboard = read("src/pages/influencer/InfluencerDashboard.tsx");
+    const adminDashboard = read("src/pages/admin/SystemAdminDashboard.tsx");
+    const server = read("server/index.ts");
+
+    assert.match(server, /findInfluencerPublicHandleConflict/);
+    assert.match(server, /code: "public_profile_handle_conflict"/);
+    assert.match(server, /body\.alternateHandle/);
+    assert.doesNotMatch(server, /body\.handle/);
+    assert.match(server, /app\.post\("\/api\/influencer\/public-profile\/handle-appeal"/);
+    assert.match(server, /request_type: "public_profile_handle_claim"/);
+    assert.match(influencerDashboard, /manualHandleAllowed/);
+    assert.match(influencerDashboard, /alternateHandle: normalizedManualHandle/);
+    assert.match(influencerDashboard, /이의신청하기/);
+    assert.match(adminDashboard, /public_profile_handle_claim/);
+    assert.match(adminDashboard, /공개 주소 소유권 이의신청/);
+  });
+
   it("starts generated clauses as pending review and exposes mobile clause actions", () => {
     const builder = read("src/pages/marketing/ContractBuilder.tsx");
     const viewer = read("src/pages/influencer/ContractViewer.tsx");
@@ -423,6 +594,37 @@ describe("yeollock.me security regressions", () => {
     assert.match(server, /buildServerAuthoredContract/);
   });
 
+  it("server-authors advertiser trust risk for influencer review links", () => {
+    const server = read("server/index.ts");
+    const contracts = read("src/domain/contracts.ts");
+    const viewer = read("src/pages/influencer/ContractViewer.tsx");
+
+    assert.match(contracts, /advertiser_trust/);
+    assert.match(server, /buildAdvertiserTrustSnapshot/);
+    assert.match(server, /first_contract_on_yeollock/);
+    assert.match(server, /Advertiser trust metadata cannot be changed by influencer/);
+    assert.match(viewer, /AdvertiserTrustNotice/);
+    assert.match(viewer, /유선 또는 공식 채널/);
+  });
+
+  it("keeps legacy share token decrypt warnings opt-in and deduplicated", () => {
+    const server = read("server/index.ts");
+    const decryptStart = server.indexOf("const decryptShareTokenFromLegacyStore");
+    const decryptEnd = server.indexOf("const normalizeContract", decryptStart);
+    const decryptBlock = server.slice(decryptStart, decryptEnd);
+
+    assert.match(server, /DIRECTSIGN_LOG_LEGACY_TOKEN_DECRYPT_WARNINGS/);
+    assert.match(server, /loggedLegacyShareTokenDecryptFailures/);
+    assert.match(server, /maxLoggedLegacyShareTokenDecryptFailures/);
+    assert.match(decryptBlock, /if \(logLegacyShareTokenDecryptWarnings\)/);
+    assert.match(decryptBlock, /createHash\("sha256"\)\.update\(value\)/);
+    assert.match(decryptBlock, /console\.warn\(`/);
+    assert.doesNotMatch(
+      decryptBlock,
+      /console\.warn\("\[yeollock\.me\] failed to decrypt legacy share token"\)/,
+    );
+  });
+
   it("rejects unsafe external contract URLs before they reach user-facing links", () => {
     const server = read("server/index.ts");
     const builder = read("src/pages/marketing/ContractBuilder.tsx");
@@ -440,7 +642,8 @@ describe("yeollock.me security regressions", () => {
     const legalEntity = read("src/domain/legalEntity.ts");
     const legalPage = read("src/pages/legal/LegalDocumentPage.tsx");
     const envExample = read(".env.example");
-    const readme = read("README.md");
+    const launchReadiness = read("docs/launch-readiness.md");
+    const ownerMemo = read("docs/owner-action-memo.md");
 
     assert.match(envExample, /VITE_LEGAL_OPERATING_MODE="free_individual"/);
     assert.match(legalEntity, /"free_individual"/);
@@ -448,11 +651,77 @@ describe("yeollock.me security regressions", () => {
     assert.match(legalEntity, /해당 없음\(무료 개인 운영\)/);
     assert.match(legalEntity, /required: isRegisteredBusiness/);
     assert.match(
-      readme,
-      /business registration, mail-order registration, address, and phone fields are not required/,
+      launchReadiness,
+      /business number, mail-order\s+registration, address, and phone are not required/,
     );
+    assert.match(ownerMemo, /free_individual[\s\S]+사업자등록번호, 주소, 전화번호/);
     assert.doesNotMatch(legalPage, /출시 전 입력 필요/);
     assert.doesNotMatch(legalPage, /미설정/);
-    assert.doesNotMatch(readme, /출시 전 입력 필요/);
+    assert.doesNotMatch(launchReadiness, /출시 전 입력 필요/);
+    assert.doesNotMatch(launchReadiness, /REAL_OPERATOR_NAME/);
+    assert.doesNotMatch(ownerMemo, /출시 전 입력 필요/);
+    assert.doesNotMatch(ownerMemo, /REAL_OPERATOR_NAME/);
+  });
+
+  it("discloses that free signup and usage can later become paid", () => {
+    const legalPage = read("src/pages/legal/LegalDocumentPage.tsx");
+    const signupPage = read("src/pages/auth/SignupPage.tsx");
+    const server = read("server/index.ts");
+
+    assert.match(server, /const signupTermsVersion = "2026-05-19"/);
+    assert.match(signupPage, /const TERMS_DOCUMENT_VERSION = "2026-05-19"/);
+    assert.match(signupPage, /현재 가입과 기본 서비스 이용은 무료입니다/);
+    assert.match(signupPage, /향후 일부 또는 전체\s+기능이 유료로 전환될 수 있으며/);
+    assert.match(legalPage, /effectiveDate: "2026-05-19"/);
+    assert.match(legalPage, /향후 일부 또는 전체 기능이 유료로 전환될 수 있으며/);
+    assert.match(legalPage, /전환 전 별도 고지/);
+  });
+
+  it("keeps verification automation optional until provider registration", () => {
+    const server = read("server/index.ts");
+    const envExample = read(".env.example");
+    const influencerVerification = read("src/pages/influencer/InfluencerVerification.tsx");
+    const adminDashboard = read("src/pages/admin/SystemAdminDashboard.tsx");
+
+    assert.match(envExample, /NTS_BUSINESS_STATUS_API_KEY=""/);
+    assert.match(envExample, /NTS_BUSINESS_VALIDATE_API_KEY=""/);
+    assert.match(envExample, /VERIFICATION_AUTO_APPROVE_BUSINESS="false"/);
+    assert.match(envExample, /VERIFICATION_AUTO_APPROVE_PLATFORM="false"/);
+    assert.match(envExample, /YOUTUBE_DATA_API_KEY=""/);
+    assert.match(envExample, /NAVER_CLIENT_ID=""/);
+    assert.match(envExample, /TIKTOK_CLIENT_KEY=""/);
+    assert.match(envExample, /TIKTOK_ACCOUNT_ACCESS_TOKEN=""/);
+    assert.match(envExample, /META_APP_ID=""/);
+    assert.match(envExample, /META_GRAPH_ACCESS_TOKEN=""/);
+    assert.match(envExample, /META_WEBHOOK_VERIFY_TOKEN=""/);
+    assert.match(envExample, /VITE_INSTAGRAM_OFFICIAL_HANDLE="yeollockme"/);
+    assert.match(server, /runBusinessRegistrationAutomationCheck/);
+    assert.match(server, /buildVerificationAutomationPlan/);
+    assert.match(server, /runPlatformAccountAutomationCheck/);
+    assert.match(server, /extractNaverBlogId/);
+    assert.match(server, /parseYoutubeVideoId/);
+    assert.match(server, /fetchYoutubeVideoForProof/);
+    assert.match(server, /https:\/\/www\.googleapis\.com\/youtube\/v3\/videos/);
+    assert.match(server, /proof_video_channel_matched/);
+    assert.match(server, /video\.snippet\.description/);
+    assert.match(server, /Instagram 공개 증빙 URL/);
+    assert.match(server, /TikTok 공개 증빙 URL/);
+    assert.match(server, /proof_source/);
+    assert.match(server, /\/api\/admin\/verification-requests\/:id\/automation-check/);
+    assert.match(server, /\/api\/webhooks\/instagram/);
+    assert.match(server, /business_start_date/);
+    assert.match(server, /VERIFICATION_AUTO_APPROVE_BUSINESS/);
+    assert.match(server, /VERIFICATION_AUTO_APPROVE_PLATFORM/);
+    assert.match(server, /status: "not_configured"/);
+    assert.match(server, /provider: "youtube_data_api"/);
+    assert.match(server, /provider: "tiktok_login_kit"/);
+    assert.match(server, /provider: "instagram_messaging_webhook"/);
+    assert.match(server, /"instagram_dm_code"/);
+    assert.match(server, /runInstagramDmManualCheck/);
+    assert.match(server, /business_registration: businessAutomationCheck/);
+    assert.match(server, /platform_account: platformAutomationCheck/);
+    assert.match(influencerVerification, /Instagram DM 인증/);
+    assert.match(influencerVerification, /OFFICIAL_INSTAGRAM_HANDLE/);
+    assert.match(adminDashboard, /Instagram DM 수동 확인/);
   });
 });

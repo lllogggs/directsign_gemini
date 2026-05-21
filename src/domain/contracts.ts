@@ -14,6 +14,7 @@ export type ClauseStatus =
   | "DELETION_REQUESTED";
 export type ContractActor = "advertiser" | "influencer" | "system";
 export type ContractRiskLevel = "low" | "medium" | "high";
+export type AdvertiserTrustRiskLevel = "low" | "medium" | "high";
 export type PdfStatus = "not_ready" | "draft_ready" | "signed_ready";
 export type ContractPlatform =
   | "NAVER_BLOG"
@@ -21,6 +22,29 @@ export type ContractPlatform =
   | "INSTAGRAM"
   | "TIKTOK"
   | "OTHER";
+
+export interface AdvertiserTrustFlag {
+  code: string;
+  label: string;
+  severity: AdvertiserTrustRiskLevel;
+}
+
+export interface ContractAdvertiserTrust {
+  business_verification_status?: "not_submitted" | "pending" | "approved" | "rejected";
+  business_verification_label?: string;
+  business_verified_at?: string;
+  business_name?: string;
+  business_registration_number_masked?: string;
+  representative_name?: string;
+  manager_name?: string;
+  manager_phone?: string;
+  manager_email_domain?: string;
+  first_contract?: boolean;
+  risk_score?: number;
+  risk_level?: AdvertiserTrustRiskLevel;
+  risk_flags?: AdvertiserTrustFlag[];
+  guidance?: string;
+}
 
 export interface ClauseHistory {
   id: string;
@@ -81,10 +105,13 @@ export interface AuditEvent {
 export interface Contract {
   id: string;
   advertiser_id: string;
+  campaign_name?: string;
+  post_link?: string;
   advertiser_info?: {
     name: string;
     manager?: string;
   };
+  advertiser_trust?: ContractAdvertiserTrust;
   type: ContractType;
   status: ContractStatus;
   title: string;
@@ -197,13 +224,14 @@ export const createDemoContracts = (): Contract[] => {
     {
       id: "demo-contract-1",
       advertiser_id: "adv-1",
+      campaign_name: "루트코스메틱 수분크림 인스타 릴스 협찬",
       advertiser_info: {
-        name: "아르코 패션",
+        name: "루트코스메틱",
         manager: "김마케팅",
       },
       type: "협찬",
       status: "REVIEWING",
-      title: "OOTD 패션 브랜드 여름 신상 협찬 건",
+      title: "루트코스메틱 수분크림 인스타 릴스 협찬",
       influencer_info: {
         name: "패션크리에이터A",
         channel_url: "https://instagram.com/fashion_a",
@@ -265,13 +293,14 @@ export const createDemoContracts = (): Contract[] => {
     {
       id: "demo-contract-2",
       advertiser_id: "adv-1",
+      campaign_name: "테크베어 스마트 모니터 유튜브 리뷰 건",
       advertiser_info: {
-        name: "뷰티코스메틱",
+        name: "테크베어",
         manager: "박브랜드",
       },
       type: "PPL",
       status: "NEGOTIATING",
-      title: "뷰티 숏폼 PPL 2차 수정 검토",
+      title: "테크베어 스마트 모니터 유튜브 리뷰 건",
       influencer_info: {
         name: "뷰티메이커B",
         channel_url: "https://youtube.com/@beauty_b",
@@ -333,13 +362,14 @@ export const createDemoContracts = (): Contract[] => {
     {
       id: "demo-contract-3",
       advertiser_id: "adv-1",
+      campaign_name: "네오슈즈 신발 2종 공동구매 진행",
       advertiser_info: {
-        name: "헬스케어랩",
+        name: "네오슈즈",
         manager: "이커머스",
       },
       type: "공동구매",
       status: "APPROVED",
-      title: "헬스케어 공동구매 최종본 서명 대기",
+      title: "네오슈즈 신발 2종 공동구매 진행",
       influencer_info: {
         name: "헬스라이프C",
         channel_url: "https://instagram.com/health_c",

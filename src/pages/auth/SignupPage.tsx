@@ -1,13 +1,16 @@
 import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { ArrowRight, Check, MailCheck } from "lucide-react";
+import { ArrowRight, Check, Info, MailCheck } from "lucide-react";
 import { AuthLoginScreen } from "../../components/AuthLoginScreen";
 import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
 import { getNextPath } from "../../domain/navigation";
 import { translateApiErrorMessage } from "../../domain/userMessages";
 
-const LEGAL_DOCUMENT_VERSION = "2026-05-06";
+const TERMS_DOCUMENT_VERSION = "2026-05-19";
+const PRIVACY_POLICY_DOCUMENT_VERSION = "2026-05-06";
+const ADVERTISER_TEAM_EMAIL_NOTICE =
+  "팀원들과 함께 계약서를 관리하시려면 부서 공용 이메일(예: marketing@brand.com)로 가입하는 것을 강력히 권장합니다. 담당자 변경이나 퇴사 시 계정 인수인계 및 관리가 훨씬 안전하고 용이합니다.";
 
 type SignupRole = "advertiser" | "influencer";
 
@@ -52,25 +55,75 @@ type SignupConsents = {
 const roleConfig = {
   advertiser: {
     title: "광고주 가입",
-    description: "계약 작성과 공유를 시작합니다.",
+    description: "광고 계약 작성과 서명 증빙을 한 흐름으로 시작합니다.",
     endpoint: "/api/advertiser/signup",
     nextPath: "/advertiser/verification",
     loginPath: "/login/advertiser",
   },
   influencer: {
     title: "인플루언서 가입",
-    description: "받은 계약을 검토하고 서명합니다.",
+    description: "받은 계약을 검토하고 안전하게 서명합니다.",
     endpoint: "/api/influencer/signup",
     nextPath: "/influencer/dashboard",
     loginPath: "/login/influencer",
   },
-} satisfies Record<SignupRole, {
-  title: string;
-  description: string;
-  endpoint: string;
-  nextPath: string;
-  loginPath: string;
-}>;
+} satisfies Record<
+  SignupRole,
+  {
+    title: string;
+    description: string;
+    endpoint: string;
+    nextPath: string;
+    loginPath: string;
+  }
+>;
+
+const signupTrustContent = {
+  advertiser: {
+    trustBadges: [
+      "사업자 인증 후 공유",
+      "검토 링크 상태 기록",
+      "서명 PDF·감사 이력",
+    ],
+    processSummary: [
+      {
+        title: "사업자 인증",
+        description: "승인 후 계약 공유 링크를 열 수 있습니다.",
+      },
+      {
+        title: "계약 작성",
+        description: "조건 입력 후 초안과 검토 링크를 준비합니다.",
+      },
+      {
+        title: "서명 증빙",
+        description: "승인, 서명, PDF 이력을 계약에 남깁니다.",
+      },
+    ],
+  },
+  influencer: {
+    trustBadges: ["계약 조건 확인", "수정 요청 기록", "서명 PDF 확인"],
+    processSummary: [
+      {
+        title: "계약 확인",
+        description: "받은 링크의 조건과 요청 사항을 먼저 확인합니다.",
+      },
+      {
+        title: "수정 요청",
+        description: "필요한 변경은 계약 흐름 안에 기록합니다.",
+      },
+      {
+        title: "전자서명",
+        description: "서명 완료 후 PDF와 감사 이력을 확인합니다.",
+      },
+    ],
+  },
+} satisfies Record<
+  SignupRole,
+  {
+    trustBadges: string[];
+    processSummary: Array<{ title: string; description: string }>;
+  }
+>;
 
 export function SignupPage({ role }: { role: SignupRole }) {
   const navigate = useNavigate();
@@ -78,8 +131,38 @@ export function SignupPage({ role }: { role: SignupRole }) {
   const config = roleConfig[role];
   const allowedNextPrefixes =
     role === "influencer" ? ["/influencer", "/contract"] : ["/advertiser"];
-  const nextPath = getNextPath(location.search, config.nextPath, allowedNextPrefixes);
+  const nextPath = getNextPath(
+    location.search,
+    config.nextPath,
+    allowedNextPrefixes,
+  );
   const loginRedirectPath = `${config.loginPath}?next=${encodeURIComponent(nextPath)}`;
+  const isContractContinuationSignup =
+    role === "influencer" && nextPath.startsWith("/contract/");
+  const signupDescription = isContractContinuationSignup
+    ? "받은 계약을 이어서 진행하려면 인플루언서 계정을 만든 뒤 같은 계약으로 돌아옵니다."
+    : config.description;
+  const signupProcessSummary = isContractContinuationSignup
+    ? [
+        {
+          title: "계약 링크 유지",
+          description:
+            "가입 또는 로그인 후 방금 받은 계약 화면으로 다시 이동합니다.",
+        },
+        {
+          title: "플랫폼 인증",
+          description: "서명 전에 필요한 인플루언서 계정 인증을 제출합니다.",
+        },
+        {
+          title: "조항 승인과 서명",
+          description:
+            "수정 요청, 조항 승인, 전자서명을 계약 화면에서 이어갑니다.",
+        },
+      ]
+    : signupTrustContent[role].processSummary;
+  const signupSubmitLabel = isContractContinuationSignup
+    ? "가입하고 계약으로 돌아가기"
+    : "시작하기";
   const [name, setName] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [email, setEmail] = useState("");
@@ -99,6 +182,13 @@ export function SignupPage({ role }: { role: SignupRole }) {
   const [confirmationMessage, setConfirmationMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const requiredConsentsAccepted = consents.terms && consents.privacy;
+  const influencerCategorySelected = activityCategories.length > 0;
+  const influencerPlatformSelected = activityPlatforms.length > 0;
+  const influencerRequiredProfileComplete =
+    role !== "influencer" ||
+    (influencerCategorySelected && influencerPlatformSelected);
+  const canSubmitSignup =
+    requiredConsentsAccepted && influencerRequiredProfileComplete;
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -111,7 +201,9 @@ export function SignupPage({ role }: { role: SignupRole }) {
       const normalizedEmail = email.trim().toLowerCase();
 
       if (!requiredConsentsAccepted) {
-        throw new Error("회원가입에는 이용약관과 개인정보 처리방침 필수 동의가 필요합니다.");
+        throw new Error(
+          "회원가입에는 이용약관과 개인정보 처리방침 필수 동의가 필요합니다.",
+        );
       }
 
       if (
@@ -134,9 +226,11 @@ export function SignupPage({ role }: { role: SignupRole }) {
           password,
           terms_accepted: consents.terms,
           privacy_accepted: consents.privacy,
-          terms_version: LEGAL_DOCUMENT_VERSION,
-          privacy_policy_version: LEGAL_DOCUMENT_VERSION,
-          ...(role === "advertiser" ? { company_name: companyName.trim() } : {}),
+          terms_version: TERMS_DOCUMENT_VERSION,
+          privacy_policy_version: PRIVACY_POLICY_DOCUMENT_VERSION,
+          ...(role === "advertiser"
+            ? { company_name: companyName.trim() }
+            : {}),
           ...(role === "influencer"
             ? {
                 activity_categories: activityCategories,
@@ -173,7 +267,10 @@ export function SignupPage({ role }: { role: SignupRole }) {
     } catch (signupError) {
       setError(
         signupError instanceof Error
-          ? translateApiErrorMessage(signupError.message, "계정을 만들 수 없습니다.")
+          ? translateApiErrorMessage(
+              signupError.message,
+              "계정을 만들 수 없습니다.",
+            )
           : "계정을 만들 수 없습니다.",
       );
     } finally {
@@ -249,7 +346,9 @@ export function SignupPage({ role }: { role: SignupRole }) {
   return (
     <AuthLoginScreen
       title={config.title}
-      description={config.description}
+      description={signupDescription}
+      trustBadges={signupTrustContent[role].trustBadges}
+      processSummary={signupProcessSummary}
       fields={[
         ...(role === "advertiser"
           ? [
@@ -279,6 +378,7 @@ export function SignupPage({ role }: { role: SignupRole }) {
           value: email,
           type: "email",
           autoComplete: "email",
+          helper: role === "advertiser" ? <AdvertiserTeamEmailNotice /> : undefined,
           required: true,
           onChange: setEmail,
         },
@@ -293,15 +393,15 @@ export function SignupPage({ role }: { role: SignupRole }) {
           onChange: setPassword,
         },
       ]}
-      submitLabel="가입하기"
+      submitLabel={signupSubmitLabel}
       submittingLabel="생성 중"
-      submitDisabled={!requiredConsentsAccepted}
+      submitDisabled={!canSubmitSignup}
       isSubmitting={isSubmitting}
       error={error}
       footer={
         <Link
           to={loginRedirectPath}
-            className="text-[13px] font-semibold text-[#59605b] transition hover:text-neutral-950"
+          className="inline-flex min-h-10 items-center text-[13px] font-semibold text-[#59605b] transition hover:text-neutral-950"
         >
           이미 계정이 있으면 로그인하기
         </Link>
@@ -328,8 +428,17 @@ export function SignupPage({ role }: { role: SignupRole }) {
               setActivityPlatforms((current) => toggleValue(current, value))
             }
           />
+          <InfluencerSignupReadiness
+            categorySelected={influencerCategorySelected}
+            platformSelected={influencerPlatformSelected}
+          />
         </>
       ) : null}
+
+      <SignupFlowNotice
+        role={role}
+        isContractContinuation={isContractContinuationSignup}
+      />
 
       <SignupConsentPanel
         consents={consents}
@@ -339,6 +448,101 @@ export function SignupPage({ role }: { role: SignupRole }) {
         }
       />
     </AuthLoginScreen>
+  );
+}
+
+function AdvertiserTeamEmailNotice() {
+  return (
+    <span className="flex gap-2 rounded-[12px] border border-blue-200 bg-blue-50 px-3.5 py-3 text-left text-[12px] font-semibold leading-5 text-blue-900">
+      <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
+      <span>{ADVERTISER_TEAM_EMAIL_NOTICE}</span>
+    </span>
+  );
+}
+
+function InfluencerSignupReadiness({
+  categorySelected,
+  platformSelected,
+}: {
+  categorySelected: boolean;
+  platformSelected: boolean;
+}) {
+  const items = [
+    { label: "활동 분야 1개 이상", complete: categorySelected },
+    { label: "활동 플랫폼 1개 이상", complete: platformSelected },
+  ];
+  const complete = items.every((item) => item.complete);
+
+  return (
+    <section
+      aria-live="polite"
+      className={`rounded-[12px] border px-4 py-3 ${
+        complete
+          ? "border-emerald-200 bg-emerald-50/75"
+          : "border-amber-200 bg-amber-50/80"
+      }`}
+    >
+      <p
+        className={`text-[13px] font-semibold ${
+          complete ? "text-emerald-950" : "text-amber-950"
+        }`}
+      >
+        {complete
+          ? "가입 필수 선택이 완료되었습니다"
+          : "가입하려면 아래 필수 선택을 먼저 완료해 주세요"}
+      </p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {items.map((item) => (
+          <span
+            key={item.label}
+            className={`inline-flex min-h-7 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-bold ${
+              item.complete
+                ? "border-emerald-200 bg-white text-emerald-800"
+                : "border-amber-200 bg-white text-amber-800"
+            }`}
+          >
+            {item.complete ? (
+              <Check className="h-3.5 w-3.5" />
+            ) : (
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+            )}
+            {item.label}
+          </span>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function SignupFlowNotice({
+  role,
+  isContractContinuation,
+}: {
+  role: SignupRole;
+  isContractContinuation: boolean;
+}) {
+  const content = isContractContinuation
+    ? {
+        title: "계약 링크를 계속 이어갑니다",
+        body: "가입이나 이메일 인증 후 로그인하면 받은 계약으로 돌아가 조항 승인과 서명을 진행합니다.",
+      }
+    : role === "advertiser"
+      ? {
+          title: "가입 후 진행 순서",
+          body: "이메일 인증 후 사업자 인증을 제출합니다. 승인 전에는 계약 공유 링크 발송이 제한됩니다.",
+        }
+      : {
+          title: "공개 프로필 노출 범위",
+          body: "활동 분야와 플랫폼은 기본 정보로 저장됩니다. 공개 노출 항목은 대시보드에서 관리합니다.",
+        };
+
+  return (
+    <section className="rounded-[12px] border border-blue-100 bg-blue-50/70 px-4 py-3">
+      <p className="text-[13px] font-semibold text-blue-950">{content.title}</p>
+      <p className="mt-1 text-[12px] font-semibold leading-5 text-blue-800/80">
+        {content.body}
+      </p>
+    </section>
   );
 }
 
@@ -404,26 +608,31 @@ function SignupConsentPanel({
 }) {
   return (
     <section className="rounded-[12px] border border-[#d8ded4] bg-[#fbfcfa] p-4">
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-col items-start gap-2 sm:flex-row sm:justify-between sm:gap-3">
         <div>
           <p className="text-[13px] font-semibold text-[#141714]">
             필수 약관 및 개인정보 동의
           </p>
           <p className="mt-1 text-[12px] font-medium leading-5 text-[#7d887f]">
-            가입, 인증, 계약 작성, 전자서명 증빙 보관에 필요한 내용을 확인하고 동의해야 합니다.
+            가입과 계약 진행에 필요한 필수 항목입니다.
           </p>
         </div>
-        <span className="shrink-0 rounded-full border border-[#d8ded4] bg-white px-2 py-0.5 text-[11px] font-semibold text-[#7d887f]">
-          v{LEGAL_DOCUMENT_VERSION}
+        <span className="w-fit max-w-full rounded-full border border-[#d8ded4] bg-white px-2 py-0.5 text-[11px] font-semibold leading-5 text-[#7d887f]">
+          약관 v{TERMS_DOCUMENT_VERSION} / 개인정보 v{PRIVACY_POLICY_DOCUMENT_VERSION}
         </span>
       </div>
+
+      <p className="mt-3 rounded-[10px] border border-[#d8ded4] bg-white px-3 py-2 text-[12px] font-semibold leading-5 text-[#59605b]">
+        현재 가입과 기본 서비스 이용은 무료입니다. 다만 향후 일부 또는 전체
+        기능이 유료로 전환될 수 있으며, 전환 전 대상·요금·시행일을 고지합니다.
+      </p>
 
       <div className="mt-4 space-y-3">
         <ConsentCheckbox
           checked={consents.terms}
           disabled={disabled}
           title="이용약관 필수 동의"
-          description="서비스 범위, 계약 내용 책임, 미보증, 광고주 인증 후 공유 제한, 대금·세금·정산 비취급, 전자서명 증빙 기준을 확인했습니다."
+          description="무료 제공 단계와 향후 유료 전환 가능성, 서비스 범위, 계약 책임, 정산 비취급, 전자서명 증빙 기준을 확인했습니다."
           linkTo="/terms"
           linkLabel="약관 보기"
           onToggle={() => onToggle("terms")}
@@ -432,7 +641,7 @@ function SignupConsentPanel({
           checked={consents.privacy}
           disabled={disabled}
           title="개인정보 처리방침 필수 동의"
-          description="수집 항목, 이용 목적, 보유 기간, 계약 당사자 간 제공, 권리 행사, 파기 및 보안 조치를 확인했습니다."
+          description="수집 항목, 이용 목적, 보유 기간, 계약 당사자 제공 기준을 확인했습니다."
           linkTo="/privacy"
           linkLabel="개인정보 보기"
           onToggle={() => onToggle("privacy")}
@@ -466,7 +675,7 @@ function ConsentCheckbox({
       <input
         id={checkboxId}
         type="checkbox"
-        className="mt-1 h-4 w-4 accent-[#2563eb]"
+        className="mt-0.5 h-10 w-10 shrink-0 accent-[#2563eb]"
         checked={checked}
         disabled={disabled}
         required
@@ -485,7 +694,7 @@ function ConsentCheckbox({
         <Link
           to={linkTo}
           target="_blank"
-          className="mt-2 inline-flex text-[12px] font-semibold text-[#2563eb] underline underline-offset-4"
+          className="mt-2 inline-flex min-h-10 items-center text-[12px] font-semibold text-[#2563eb] underline underline-offset-4"
         >
           {linkLabel}
         </Link>

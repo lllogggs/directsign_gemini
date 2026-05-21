@@ -37,6 +37,8 @@ import {
   formatPublicContactValue,
   removeInternalTestLabel,
 } from "../../domain/display";
+import { ScreenHelpButton } from "../../components/ScreenHelp";
+import { SCREEN_HELP_CONTENT } from "../../domain/screenHelp";
 import {
   formatFileSize,
   getDeliverableErrorMessage,
@@ -159,13 +161,25 @@ export function ContractAdminViewer() {
           <p className="mt-4 text-[16px] font-semibold text-neutral-900">
             계약서를 찾을 수 없습니다
           </p>
-          <button
-            type="button"
-            onClick={() => navigate("/advertiser/dashboard")}
-            className="mt-5 rounded-md bg-neutral-950 px-4 py-2 text-[13px] font-semibold text-white"
-          >
-            대시보드로 돌아가기
-          </button>
+          <p className="mt-2 max-w-sm text-[13px] leading-6 text-neutral-500">
+            삭제되었거나 다른 계정의 계약일 수 있습니다. 대시보드에서 계약 상태를 다시 확인하거나 새 계약 초안을 만들어 주세요.
+          </p>
+          <div className="mt-5 grid gap-2 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => navigate("/advertiser/dashboard")}
+              className="rounded-md bg-neutral-950 px-4 py-2 text-[13px] font-semibold text-white"
+            >
+              대시보드로 돌아가기
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate("/advertiser/builder")}
+              className="rounded-md border border-neutral-200 bg-white px-4 py-2 text-[13px] font-semibold text-neutral-700"
+            >
+              새 계약 만들기
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -179,7 +193,7 @@ export function ContractAdminViewer() {
           ? "인증 확인 중"
           : isAdvertiserVerified
             ? "공유 링크 활성화"
-            : "사업자 인증 필요"
+            : "광고주 인증 필요"
         : "수정 요청 검토";
   const canRequestSignatures =
     summary.allApproved &&
@@ -191,6 +205,9 @@ export function ContractAdminViewer() {
     contract.influencer_info.name,
     "인플루언서",
   );
+  const signatureData = contract.signature_data;
+  const signatureDisplayName =
+    signatureData?.signer_name?.trim() || displayInfluencerName;
 
   const handleAction = (
     clauseId: string,
@@ -267,7 +284,7 @@ export function ContractAdminViewer() {
   const requestSignatures = () => {
     if (!isAdvertiserVerified) {
       setNotice(
-        `광고주 사업자 인증 승인 후 공유 링크를 활성화할 수 있습니다. 현재 상태: ${verificationStatusLabel(
+        `사업자 인증 승인 후 공유 링크를 활성화할 수 있습니다. 현재 상태: ${verificationStatusLabel(
           advertiserVerificationStatus,
         )}`,
       );
@@ -315,11 +332,11 @@ export function ContractAdminViewer() {
 
     if (summary.allApproved && contract.status !== "SIGNED") {
       if (isVerificationLoading) {
-        setNotice("광고주 사업자 인증 상태를 확인한 뒤 다시 시도해 주세요.");
+        setNotice("사업자 인증 상태를 확인한 뒤 다시 시도해 주세요.");
         return;
       }
 
-      setNotice("사업자 인증 요청 화면에서 승인 절차를 먼저 완료해 주세요.");
+      setNotice("사업자 인증 화면에서 승인 절차를 먼저 완료해 주세요.");
       navigate("/advertiser/verification");
       return;
     }
@@ -503,7 +520,7 @@ export function ContractAdminViewer() {
         credentials: "include",
       });
     } catch (error) {
-      console.warn("[Yeollock] advertiser logout request failed", error);
+      console.warn(`[${PRODUCT_NAME}] advertiser logout request failed`, error);
     } finally {
       resetHydration();
       navigate("/login/advertiser", { replace: true });
@@ -513,55 +530,62 @@ export function ContractAdminViewer() {
   return (
     <div className="min-h-screen bg-[#f4f5f7] font-sans text-neutral-950">
       <header className="sticky top-0 z-30 border-b border-neutral-200/80 bg-white/95 shadow-[0_1px_0_rgba(15,23,42,0.04)] backdrop-blur">
-        <div className="mx-auto flex h-[72px] max-w-[1480px] items-center justify-between px-5 sm:px-8 lg:px-10">
-          <div className="flex min-w-0 items-center gap-3">
+        <div className="mx-auto flex h-14 max-w-[1480px] items-center justify-between px-4 sm:h-[72px] sm:px-8 lg:px-10">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             <button
               type="button"
               onClick={() => navigate("/advertiser/dashboard")}
-              className="flex h-9 w-9 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-500 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-neutral-300 hover:text-neutral-950"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-500 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-neutral-300 hover:text-neutral-950 sm:h-9 sm:w-9"
               aria-label="대시보드로 돌아가기"
             >
               <ArrowLeft className="h-4 w-4" />
             </button>
-            <div className="flex min-w-0 items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-950 text-white shadow-[0_8px_24px_rgba(15,23,42,0.16)]">
+            <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-neutral-950 text-white shadow-[0_8px_24px_rgba(15,23,42,0.16)]">
                 <ShieldCheck className="h-4 w-4" />
               </span>
-              <div className="min-w-0">
+              <div className="hidden min-w-0 sm:block">
                 <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
                   계약 워크스페이스
                 </p>
                 <p className="truncate text-[16px] font-semibold">{PRODUCT_NAME}</p>
               </div>
+              <span className="font-neo-heavy truncate text-[18px] leading-none sm:hidden">
+                {PRODUCT_NAME}
+              </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
             <button
               type="button"
               onClick={copyLink}
               disabled={!summary.activeShare}
-              className="inline-flex h-10 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-[12px] font-semibold text-neutral-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-neutral-300 disabled:text-neutral-300 disabled:shadow-none"
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center gap-0 rounded-lg border border-neutral-200 bg-white px-0 text-[12px] font-semibold text-neutral-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-neutral-300 disabled:text-neutral-300 disabled:shadow-none sm:w-auto sm:gap-2 sm:px-3"
+              aria-label="링크 복사"
+              title="링크 복사"
             >
               <Copy className="h-4 w-4" />
-              링크 복사
+              <span className="hidden sm:inline">링크 복사</span>
             </button>
             <button
               type="button"
               onClick={handlePrimaryAction}
+              aria-label={primaryActionLabel}
+              title={primaryActionLabel}
               disabled={
                 contract.status === "SIGNED" ||
                 (summary.allApproved && isVerificationLoading)
               }
-              className="inline-flex h-10 items-center gap-2 rounded-lg bg-neutral-950 px-4 text-[12px] font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition hover:bg-neutral-800 hover:shadow-[0_14px_30px_rgba(15,23,42,0.18)] disabled:bg-neutral-200 disabled:text-neutral-400 disabled:shadow-none"
+              className="inline-flex h-10 w-12 shrink-0 items-center justify-center gap-0 rounded-lg bg-neutral-950 px-0 text-[12px] font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition hover:bg-neutral-800 hover:shadow-[0_14px_30px_rgba(15,23,42,0.18)] disabled:bg-neutral-200 disabled:text-neutral-400 disabled:shadow-none sm:w-auto sm:gap-2 sm:px-4"
             >
               <Send className="h-4 w-4" />
-              {primaryActionLabel}
+              <span className="hidden sm:inline">{primaryActionLabel}</span>
             </button>
             <button
               type="button"
               onClick={handleLogout}
-              className="inline-flex h-10 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-[12px] font-semibold text-neutral-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center gap-0 rounded-lg border border-neutral-200 bg-white px-0 text-[12px] font-semibold text-neutral-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950 sm:w-auto sm:gap-2 sm:px-3"
               aria-label="로그아웃"
             >
               <LogOut className="h-4 w-4" />
@@ -581,9 +605,15 @@ export function ContractAdminViewer() {
                   {contract.type}
                 </span>
               </div>
-              <h1 className="max-w-4xl text-[30px] font-semibold leading-tight tracking-[-0.03em] text-neutral-950 sm:text-[38px]">
-                {displayContractTitle}
-              </h1>
+              <div className="flex max-w-4xl items-start gap-2">
+                <h1 className="min-w-0 text-[30px] font-semibold leading-tight tracking-[-0.03em] text-neutral-950 sm:text-[38px]">
+                  {displayContractTitle}
+                </h1>
+                <ScreenHelpButton
+                  content={SCREEN_HELP_CONTENT.contractAdmin}
+                  className="mt-1.5 sm:mt-2"
+                />
+              </div>
               <p className="mt-3 max-w-3xl text-[14px] leading-6 text-neutral-500">
                 {formatOperationalText(
                   contract.workflow?.next_action,
@@ -701,6 +731,27 @@ export function ContractAdminViewer() {
                 <MetaLine label="공유 만료" value={formatDateTime(contract.evidence?.share_token_expires_at)} />
               </div>
             </Panel>
+
+            {contract.status === "SIGNED" && signatureData && (
+              <Panel title="서명 정보">
+                <div className="space-y-4">
+                  <PersonLine
+                    label="전자서명자"
+                    value={signatureDisplayName}
+                    helper={formatPublicContactValue(
+                      signatureData.signer_email,
+                      "연락처 비공개",
+                    )}
+                  />
+                  <div className="space-y-3 text-[13px]">
+                    <MetaLine
+                      label="서명 시각"
+                      value={formatDateTime(signatureData.signed_at)}
+                    />
+                  </div>
+                </div>
+              </Panel>
+            )}
 
             <button
               type="button"

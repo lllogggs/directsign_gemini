@@ -94,6 +94,7 @@ Customer roles should be included when a product change affects their workflow, 
 ### Advertiser Customer
 
 - Represents brands, agencies, and marketing teams creating and managing contracts.
+- Default viewpoint: always review as a new advertiser customer who is seeing the service for the first time, unless the user explicitly asks for existing-user feedback.
 - Cares about speed, legal confidence, team collaboration, status visibility, revision history, and campaign deadlines.
 - Likely positive reactions:
   - Faster contract creation.
@@ -107,6 +108,7 @@ Customer roles should be included when a product change affects their workflow, 
 ### Influencer Customer
 
 - Represents creators reviewing, negotiating, and signing contracts.
+- Default viewpoint: always review as a new influencer customer who is seeing the service for the first time, unless the user explicitly asks for existing-user feedback.
 - Cares about mobile clarity, easy review, fair terms, simple revision requests, trust, and low friction.
 - Likely positive reactions:
   - No-login or low-friction review.

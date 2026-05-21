@@ -17,13 +17,14 @@ remain between the contract parties.
 
 Owner-only checklist: see [`owner-action-memo.md`](owner-action-memo.md).
 
-- Replace all placeholder operator information in `/privacy`, `/terms`, and
-  `/legal/e-sign-consent`. For the initial free individual service, keep
-  `VITE_LEGAL_OPERATING_MODE="free_individual"` and publish the real service
-  operator, privacy/contact representative, contact email, and customer support
-  channel. Before paid or registered-business use, switch to
-  `VITE_LEGAL_OPERATING_MODE="registered_business"` and add the business number,
-  mail-order registration if applicable, address, and phone.
+- Keep `/privacy`, `/terms`, and `/legal/e-sign-consent` free of placeholder
+  launch text. For the initial free individual service, keep
+  `VITE_LEGAL_OPERATING_MODE="free_individual"` and show the public operator
+  contact as `김재우` / `yeollockme@gmail.com`; business number, mail-order
+  registration, address, and phone are not required for development, QA, or
+  early validation. Before paid or registered-business use, switch to
+  `VITE_LEGAL_OPERATING_MODE="registered_business"` and add the business
+  number, mail-order registration if applicable, address, and phone.
 - Confirm the privacy policy against the current PIPC privacy policy guide.
   The PIPC guide list shows the current 2026.4 privacy policy guide as of this
   review date: https://m.pipc.go.kr/np/cop/bbs/selectBoardList.do?bbsId=BS217&mCode=D010030000
@@ -33,7 +34,17 @@ Owner-only checklist: see [`owner-action-memo.md`](owner-action-memo.md).
   제34조 requires prompt notification to data subjects after a leak is known:
   https://law.go.kr/lsLinkCommonInfo.do?chrClsCd=010202&lsJoLnkSeq=1020398739
 - Run Supabase migrations in order and verify RLS policies are enabled for every
-  exposed public table before connecting production data.
+  exposed public table before connecting production data. Apply every SQL file
+  in `supabase/migrations` in timestamp order. The required base schema is
+  `20260430193123_create_directsign_v2_schema.sql`; the later
+  `20260501020000_create_directsign_v2_schema.sql` file is a consolidated no-op
+  kept only for migration history compatibility. Confirm the hardening and
+  marketplace migrations are applied, especially
+  `20260505070645_harden_contract_support_access.sql`,
+  `20260506075008_restrict_authenticated_direct_writes.sql`,
+  `20260507224346_allow_revoked_support_access_event.sql`,
+  `20260507230025_lock_reserved_settlement_tables.sql`, and
+  `20260518044009_add_marketplace_follower_sync.sql`.
 - Configure production Supabase Auth: email confirmation on, deployed Site URL,
   advertiser/influencer redirect URLs, and separate production keys.
 - Create the private storage bucket for signed PDFs and verification evidence.

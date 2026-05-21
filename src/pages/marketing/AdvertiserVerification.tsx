@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
+  AlertTriangle,
   ArrowLeft,
   Building2,
   CheckCircle2,
@@ -8,6 +9,9 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import {
+  type VerificationAccountInfo,
+  type VerificationRequest,
+  getVerificationRejectionGuidance,
   verificationStatusLabel,
   verificationStatusTone,
 } from "../../domain/verification";
@@ -24,6 +28,21 @@ const ACCEPTED_VERIFICATION_FILE_TYPES = new Set([
   "image/jpeg",
   "image/webp",
 ]);
+
+const advertiserVerificationTrustNotes = [
+  {
+    title: "검수 중 공유 제한",
+    body: "요청 접수 후에는 상태가 검수 중으로 표시되고, 승인 전 공유 링크 발송은 차단됩니다.",
+  },
+  {
+    title: "권장 증빙",
+    body: "광고주 계정의 계약 발송 권한을 확인할 수 있는 사업자 증빙을 업로드해 주세요.",
+  },
+  {
+    title: "민감 정보 처리",
+    body: "제출 파일은 인증 검수와 계약 발송 제한 확인 용도로만 사용됩니다.",
+  },
+];
 
 const inferVerificationFileType = (file: File) => {
   if (file.type) return file.type;
@@ -53,6 +72,7 @@ interface AdvertiserVerificationForm {
   submitted_by_name: string;
   submitted_by_email: string;
   manager_phone: string;
+  business_start_date: string;
   document_issue_date: string;
   document_check_number: string;
   note: string;
@@ -65,10 +85,41 @@ const initialForm: AdvertiserVerificationForm = {
   submitted_by_name: "",
   submitted_by_email: "",
   manager_phone: "",
+  business_start_date: "",
   document_issue_date: "",
   document_check_number: "",
   note: "",
 };
+
+const withVerificationDefaults = (
+  form: AdvertiserVerificationForm,
+  latest?: VerificationRequest,
+  account?: VerificationAccountInfo,
+): AdvertiserVerificationForm => ({
+  ...form,
+  subject_name:
+    form.subject_name || latest?.subject_name || account?.company_name || "",
+  business_registration_number:
+    form.business_registration_number ||
+    latest?.business_registration_number ||
+    account?.business_registration_number ||
+    "",
+  representative_name:
+    form.representative_name ||
+    latest?.representative_name ||
+    account?.representative_name ||
+    "",
+  submitted_by_name:
+    form.submitted_by_name || latest?.submitted_by_name || account?.name || "",
+  submitted_by_email:
+    form.submitted_by_email || latest?.submitted_by_email || account?.email || "",
+  manager_phone: form.manager_phone || latest?.manager_phone || "",
+  business_start_date: form.business_start_date || "",
+  document_issue_date:
+    form.document_issue_date || latest?.document_issue_date || "",
+  document_check_number:
+    form.document_check_number || latest?.document_check_number || "",
+});
 
 export function AdvertiserVerification() {
   const navigate = useNavigate();
@@ -78,12 +129,17 @@ export function AdvertiserVerification() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [hasEditedForm, setHasEditedForm] = useState(false);
 
   const advertiser = summary?.advertiser;
   const status = advertiser?.status ?? "not_submitted";
   const latest = advertiser?.latest_request;
   const account = advertiser?.account;
   const approved = status === "approved";
+  const rejectionGuidance =
+    status === "rejected"
+      ? getVerificationRejectionGuidance(latest, "advertiser_organization")
+      : undefined;
   const displayCompany = removeInternalTestLabel(
     latest?.subject_name || account?.company_name,
     "브랜드",
@@ -97,9 +153,12 @@ export function AdvertiserVerification() {
     latest?.business_registration_number ||
     account?.business_registration_number ||
     "-";
+  const visibleForm =
+    hasEditedForm || submitted ? form : withVerificationDefaults(form, latest, account);
 
   const updateForm = (updates: Partial<AdvertiserVerificationForm>) => {
-    setForm((current) => ({ ...current, ...updates }));
+    setForm({ ...visibleForm, ...updates });
+    setHasEditedForm(true);
     setError("");
     setSubmitted(false);
   };
@@ -131,7 +190,7 @@ export function AdvertiserVerification() {
           Accept: "application/json",
         },
         body: JSON.stringify({
-          ...form,
+          ...visibleForm,
           evidence_file: {
             name: file.name,
             type: inferVerificationFileType(file),
@@ -152,6 +211,7 @@ export function AdvertiserVerification() {
       setSubmitted(true);
       setFile(null);
       setForm(initialForm);
+      setHasEditedForm(false);
       await refresh();
     } catch (submitError) {
       setError(
@@ -212,28 +272,72 @@ export function AdvertiserVerification() {
             </div>
           )}
 
+          {rejectionGuidance && (
+            <div className="mb-5 rounded-lg border border-rose-200 bg-rose-50 p-4 shadow-[inset_3px_0_0_rgba(190,18,60,0.22)]">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-rose-700 ring-1 ring-rose-100">
+                  <AlertTriangle className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-rose-900">
+                    {rejectionGuidance.title}
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-rose-800/80">
+                    {rejectionGuidance.body}
+                  </p>
+                  <div className="mt-3 rounded-md border border-rose-100 bg-white/70 px-3 py-2 text-xs font-semibold leading-5 text-rose-900">
+                    반려 사유: {rejectionGuidance.reviewerNote}
+                  </div>
+                  <ul className="mt-3 grid gap-2 text-xs leading-5 text-rose-900 sm:grid-cols-2">
+                    {rejectionGuidance.checklist.map((item) => (
+                      <li key={item} className="flex items-start gap-2">
+                        <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="mb-5">
             <h1 className="text-[24px] font-semibold tracking-tight">
-              {approved ? "사업자 인증 정보" : "광고주 사업자 인증"}
+              {approved ? "사업자 인증 정보" : "사업자 인증"}
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-neutral-500">
               {approved
                 ? "현재 승인 상태를 유지합니다. 상호, 담당자, 사업자 정보가 바뀌면 새 증빙으로 갱신 요청을 남겨주세요."
-                : "계약 초안 작성은 바로 가능하지만, 인플루언서에게 계약을 발송하려면 운영자 수기 승인이 필요합니다."}
+                : "계약 초안 작성은 바로 가능하지만, 인플루언서에게 계약을 발송하려면 광고주 계정 검수가 필요합니다. 이 정보는 서비스 운영자 법적 고지 정보와 별개입니다."}
             </p>
+            <div className="mt-4 grid gap-2 sm:grid-cols-3">
+              {advertiserVerificationTrustNotes.map((note) => (
+                <div
+                  key={note.title}
+                  className="rounded-lg border border-neutral-200 bg-[#fbfbfc] px-3 py-3"
+                >
+                  <p className="text-xs font-semibold text-neutral-950">
+                    {note.title}
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-neutral-500">
+                    {note.body}
+                  </p>
+                </div>
+              ))}
+            </div>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2">
               <TextField
                 label="회사/브랜드명"
-                value={form.subject_name}
+                value={visibleForm.subject_name}
                 onChange={(value) => updateForm({ subject_name: value })}
                 required
               />
               <TextField
                 label="사업자등록번호"
-                value={form.business_registration_number}
+                value={visibleForm.business_registration_number}
                 onChange={(value) =>
                   updateForm({ business_registration_number: value })
                 }
@@ -242,38 +346,44 @@ export function AdvertiserVerification() {
               />
               <TextField
                 label="대표자명"
-                value={form.representative_name}
+                value={visibleForm.representative_name}
                 onChange={(value) => updateForm({ representative_name: value })}
                 required
               />
               <TextField
                 label="담당자명"
-                value={form.submitted_by_name}
+                value={visibleForm.submitted_by_name}
                 onChange={(value) => updateForm({ submitted_by_name: value })}
                 required
               />
               <TextField
                 label="담당자 이메일"
                 type="email"
-                value={form.submitted_by_email}
+                value={visibleForm.submitted_by_email}
                 onChange={(value) => updateForm({ submitted_by_email: value })}
                 required
               />
               <TextField
                 label="담당자 연락처"
-                value={form.manager_phone}
+                value={visibleForm.manager_phone}
                 onChange={(value) => updateForm({ manager_phone: value })}
+              />
+              <TextField
+                label="개업일자"
+                type="date"
+                value={visibleForm.business_start_date}
+                onChange={(value) => updateForm({ business_start_date: value })}
               />
               <TextField
                 label="문서 발급일"
                 type="date"
-                value={form.document_issue_date}
+                value={visibleForm.document_issue_date}
                 onChange={(value) => updateForm({ document_issue_date: value })}
                 required
               />
               <TextField
                 label="문서확인번호/발급번호"
-                value={form.document_check_number}
+                value={visibleForm.document_check_number}
                 onChange={(value) =>
                   updateForm({ document_check_number: value })
                 }
@@ -318,7 +428,7 @@ export function AdvertiserVerification() {
                 운영자에게 남길 메모
               </label>
               <textarea
-                value={form.note}
+                value={visibleForm.note}
                 onChange={(event) => updateForm({ note: event.target.value })}
                 className="mt-2 min-h-20 w-full rounded-lg border border-neutral-200 bg-[#fbfbfc] p-4 text-sm outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950 focus:bg-white focus:shadow-[0_0_0_3px_rgba(23,23,23,0.05)]"
                 placeholder="상호가 브랜드명과 다르거나 대행사가 대신 계약하는 경우 적어주세요."
@@ -353,6 +463,8 @@ export function AdvertiserVerification() {
                 ? "접수 중"
                 : approved
                   ? "인증 정보 갱신 요청"
+                  : status === "rejected"
+                    ? "새 증빙으로 재제출"
                   : "수기 심사 요청"}
             </button>
           </form>

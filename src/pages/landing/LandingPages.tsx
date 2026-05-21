@@ -1,6 +1,5 @@
 import {
   ArrowRight,
-  Building2,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -12,32 +11,24 @@ import {
   PenLine,
   Search,
   ShieldCheck,
-  UserRound,
   type LucideIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { PRODUCT_NAME } from "../../domain/brand";
 
 type IntroRole = "advertiser" | "influencer";
 
+const LANDING_BRAND_NAME = "연락미";
+
 type RoleCard = {
   role: IntroRole;
   title: string;
+  emoji: string;
   eyebrow: string;
   description: string;
   cta: string;
   href: string;
-  icon: LucideIcon;
-  markClass: string;
-};
-
-type StartServiceCard = {
-  title: string;
-  description: string;
-  icon: LucideIcon;
-  iconClass: string;
-  iconBgClass: string;
 };
 
 type IntroConfig = {
@@ -87,24 +78,40 @@ const roleCards: RoleCard[] = [
   {
     role: "advertiser",
     title: "광고주",
-    eyebrow: "계약을 만들고 공유하는 팀",
+    emoji: "🏢",
+    eyebrow: "광고 계약을 확실하게 남기는 팀",
     description:
-      "캠페인 조건을 정리하고, 검토 링크를 보내고, 서명 완료 상태까지 한 화면에서 관리합니다.",
-    cta: "광고주로 시작하기",
+      "합의한 광고 조건을 계약서, 협의 기록, 완료 상태로 정리합니다.",
+    cta: "시작하기",
     href: "/intro/advertiser",
-    icon: Building2,
-    markClass: "border-neutral-950 bg-neutral-950 text-white",
   },
   {
     role: "influencer",
     title: "인플루언서",
-    eyebrow: "받은 계약을 검토하는 크리에이터",
+    emoji: "📸",
+    eyebrow: "받은 광고 조건을 안전하게 확인하는 크리에이터",
     description:
-      "계약 내용을 확인하고, 필요한 수정 요청을 남기고, 모바일에서 바로 서명합니다.",
-    cta: "인플루언서로 시작하기",
+      `${PRODUCT_NAME} 계약 링크에서 조건을 확인하고 수정 요청과 서명을 진행합니다.`,
+    cta: "시작하기",
     href: "/intro/influencer",
-    icon: UserRound,
-    markClass: "border-neutral-200 bg-white text-neutral-800",
+  },
+];
+
+const startSearchContext = [
+  {
+    title: "광고주가 남기는 기록",
+    body: "협찬, PPL, 공동구매 제안에서 캠페인명, 금액, 일정, 산출물, 광고 표시 문구, 검수 기준을 계약서 형태로 정리합니다.",
+    items: ["사업자 인증 후 공유 링크 발송", "조항별 수정 요청 확인", "최종본 서명 증빙 보관"],
+  },
+  {
+    title: "인플루언서가 확인하는 흐름",
+    body: "계약 링크에서 광고 조건을 먼저 읽고, 동의하기 어려운 조항은 이유를 남긴 뒤 최종 조건에만 전자서명합니다.",
+    items: ["모바일 계약 검토", "플랫폼 계정 소유 인증", "서명 완료 계약 보관"],
+  },
+  {
+    title: "연락미가 하지 않는 일",
+    body: "정산 대행, 에스크로, 법률 자문, 세무 대행, 광고 성과 보증이 아니라 광고 계약 과정의 기록과 증빙을 정리하는 업무 도구입니다.",
+    items: ["계약 성사 보증 아님", "대금 지급 대행 아님", "법률·세무 최종 판단 아님"],
   },
 ];
 
@@ -113,9 +120,6 @@ function getStartRoleTone(role: IntroRole) {
     return {
       card:
         "border-[#bfdbfe] bg-[linear-gradient(180deg,#eff6ff_0%,#ffffff_54%)] hover:border-[#93c5fd]",
-      icon: "border-[#bfdbfe] bg-[#eff6ff] text-[#2563eb] group-hover:border-[#2563eb] group-hover:bg-[#2563eb] group-hover:text-white",
-      arrow:
-        "border-[#bfdbfe] bg-white text-[#2563eb]/55 group-hover:border-[#2563eb] group-hover:bg-[#2563eb] group-hover:text-white",
       divider: "border-[#bfdbfe]/75",
       detail: "text-[#2563eb]",
     };
@@ -124,44 +128,15 @@ function getStartRoleTone(role: IntroRole) {
   return {
     card:
       "border-[#a7f3d0] bg-[linear-gradient(180deg,#ecfdf5_0%,#ffffff_54%)] hover:border-[#6ee7b7]",
-    icon: "border-[#a7f3d0] bg-[#ecfdf5] text-[#059669] group-hover:border-[#059669] group-hover:bg-[#059669] group-hover:text-white",
-    arrow:
-      "border-[#a7f3d0] bg-white text-[#059669]/55 group-hover:border-[#059669] group-hover:bg-[#059669] group-hover:text-white",
     divider: "border-[#a7f3d0]/75",
     detail: "text-[#059669]",
   };
 }
 
-const startServiceCards: StartServiceCard[] = [
-  {
-    title: "상호 컨택",
-    description: "제안과 조건을 한곳에",
-    icon: MessageSquareText,
-    iconClass: "text-neutral-800",
-    iconBgClass: "bg-neutral-100",
-  },
-  {
-    title: "계약내용 입력",
-    description: "조건만 넣으면 초안 정리",
-    icon: FileText,
-    iconClass: "text-blue-700",
-    iconBgClass: "bg-blue-50",
-  },
-  {
-    title: "전자계약",
-    description: "검토 링크와 서명 진행",
-    icon: FileSignature,
-    iconClass: "text-emerald-700",
-    iconBgClass: "bg-emerald-50",
-  },
-  {
-    title: "대시보드 관리",
-    description: "상태와 이력을 한눈에",
-    icon: ClipboardCheck,
-    iconClass: "text-amber-700",
-    iconBgClass: "bg-amber-50",
-  },
-];
+const roleFeatureKeys: Record<IntroRole, string[]> = {
+  advertiser: ["start", "terms", "review", "evidence"],
+  influencer: ["receive", "terms", "request", "archive"],
+};
 
 const introConfig = {
   advertiser: {
@@ -169,7 +144,7 @@ const introConfig = {
     title: ["계약 초안부터", "서명 증빙까지", "한 화면에서"],
     description:
       "광고주와 대행사가 계약 조건을 정리하고, 공유 링크를 보내고, 인플루언서 의견과 서명 완료 상태를 한 화면에서 확인합니다.",
-    primaryLabel: "광고주로 시작",
+    primaryLabel: "시작하기",
     primaryHref: "/signup/advertiser",
     secondaryLabel: "광고주 로그인",
     secondaryHref: "/login/advertiser",
@@ -284,10 +259,10 @@ const introConfig = {
   },
   influencer: {
     eyebrow: "인플루언서 워크스페이스",
-    title: ["광고 계약 확인부터", "수정 요청, 서명까지"],
+    title: ["광고 계약 수신부터", "수정 요청, 서명까지"],
     description:
       "크리에이터와 매니저가 광고 조건을 모바일에서도 읽기 쉽게 확인하고, 불리한 조항은 수정 요청한 뒤 안전하게 서명합니다.",
-    primaryLabel: "인플루언서로 시작",
+    primaryLabel: "시작하기",
     primaryHref: "/signup/influencer",
     secondaryLabel: "인플루언서 로그인",
     secondaryHref: "/login/influencer",
@@ -298,7 +273,7 @@ const introConfig = {
     accentDot: "bg-[#7a4a2d]",
     previewTitle: "받은 계약 검토",
     previewSubtitle: "오늘 확인할 계약",
-    previewBadge: "검토 가능",
+    previewBadge: "계약 수신",
     sectionLabel: "인플루언서에게 필요한 흐름",
     sectionTitle: "조건 확인, 수정 요청, 서명을 한 화면에서 처리합니다",
     summary: [
@@ -402,6 +377,377 @@ const introConfig = {
   },
 } satisfies Record<IntroRole, IntroConfig>;
 
+type RolePreviewProfile = {
+  kind: "profile";
+  header: string;
+  profileName: string;
+  handle: string;
+  headline: string;
+  tags: string[];
+  stats: Array<{ label: string; value: string }>;
+  channels: Array<{ label: string; value: string; status: string }>;
+  actionLabel: string;
+  footerNote: string;
+};
+
+type RolePreviewDiscover = {
+  kind: "discover";
+  header: string;
+  searchPlaceholder: string;
+  filters: Array<{ label: string; active?: boolean }>;
+  cards: Array<{
+    name: string;
+    meta: string;
+    badge: string;
+    description: string;
+    stats: Array<{ label: string; value: string }>;
+    action: string;
+  }>;
+};
+
+type RolePreviewProposal = {
+  kind: "proposal";
+  header: string;
+  targetLabel: string;
+  targetName: string;
+  fields: Array<{ label: string; value: string }>;
+  chips: string[];
+  message: string;
+  timeline: string[];
+  actionLabel: string;
+};
+
+type RolePreviewContract = {
+  kind: "contract";
+  header: string;
+  count: string;
+  countLabel: string;
+  rows: Array<{
+    name: string;
+    title: string;
+    status: string;
+    statusClass: string;
+    due: string;
+  }>;
+  nextAction: string;
+};
+
+type RolePreview = RolePreviewProfile | RolePreviewDiscover | RolePreviewProposal | RolePreviewContract;
+
+type RoleIntroSlide = {
+  label: string;
+  eyebrow: string;
+  title: string[];
+  description: string;
+  helper: string;
+  primaryLabel: string;
+  primaryHref: string;
+  secondaryLabel: string;
+  secondaryHref: string;
+  icon: LucideIcon;
+  accentClass: string;
+  iconClass: string;
+  cardClass: string;
+  preview: RolePreview;
+};
+
+const roleIntroSlides = {
+  advertiser: [
+    {
+      label: "조건 입력",
+      eyebrow: "계약 시작",
+      title: ["광고 조건을", "계약으로 시작"],
+      description:
+        "상대 정보와 합의 조건을 입력하면 계약서 초안부터 검토 링크, 전자서명까지 이어집니다.",
+      helper: "광고 조건을 계약으로 정리",
+      primaryLabel: "시작하기",
+      primaryHref: "/signup/advertiser",
+      secondaryLabel: "광고주 로그인",
+      secondaryHref: "/login/advertiser",
+      icon: ClipboardCheck,
+      accentClass: "bg-neutral-950",
+      iconClass: "text-neutral-950",
+      cardClass: "border-neutral-300 bg-white",
+      preview: {
+        kind: "proposal",
+        header: "광고 계약 시작",
+        targetLabel: "상대",
+        targetName: "소라핏 · Instagram",
+        fields: [
+          { label: "진행 단계", value: "조건 확인" },
+          { label: "계약명", value: "러닝 챌린지 릴스" },
+          { label: "금액", value: "320만원" },
+          { label: "업로드", value: "2026.06.12" },
+        ],
+        chips: ["조건 확인", "유료 광고(PPL)", "릴스 1건"],
+        message:
+          `상대방, 금액, 일정, 산출물을 입력하면 ${PRODUCT_NAME} 계약 초안으로 이어집니다.`,
+        timeline: ["상대 정보 입력", "조건 정리", "검토 링크", "전자서명"],
+        actionLabel: "시작하기",
+      },
+    },
+    {
+      label: "조건 정리",
+      eyebrow: "조건 정리",
+      title: ["합의 조건을", "계약서로 정리"],
+      description:
+        "플랫폼, 광고 형태, 금액, 일정, 검수 기준, 2차 활용 범위를 빠뜨리지 않고 같은 형식으로 정리합니다.",
+      helper: "조건을 넣으면 초안으로 정리",
+      primaryLabel: "시작하기",
+      primaryHref: "/signup/advertiser",
+      secondaryLabel: "광고주 로그인",
+      secondaryHref: "/login/advertiser",
+      icon: FileText,
+      accentClass: "bg-blue-600",
+      iconClass: "text-blue-700",
+      cardClass: "border-blue-200 bg-blue-50/55",
+      preview: {
+        kind: "proposal",
+        header: "계약 조건 정리",
+        targetLabel: "계약 대상",
+        targetName: "소라핏 · Instagram/TikTok",
+        fields: [
+          { label: "계약명", value: "러닝 챌린지 릴스 캠페인" },
+          { label: "플랫폼", value: "Instagram · TikTok" },
+          { label: "금액", value: "320만원" },
+          { label: "기간", value: "2026.06.01-06.20" },
+        ],
+        chips: ["유료 광고(PPL)", "릴스 1건", "스토리 2건"],
+        message:
+          "광고 표시, 업로드 일정, 검수 기준, 2차 활용 여부를 계약서 조항으로 정리합니다.",
+        timeline: ["조건 입력", "조항 확인", "PDF 초안", "검토 링크"],
+        actionLabel: "시작하기",
+      },
+    },
+    {
+      label: "협의 기록",
+      eyebrow: "검토·수정",
+      title: ["검토 링크로", "수정까지 한곳에서"],
+      description:
+        "작성한 계약서를 링크로 보내고, 인플루언서의 질문과 수정 요청, 광고주의 답변을 계약 이력에 남깁니다.",
+      helper: "검토 링크와 수정 이력",
+      primaryLabel: "시작하기",
+      primaryHref: "/signup/advertiser",
+      secondaryLabel: "광고주 로그인",
+      secondaryHref: "/login/advertiser",
+      icon: MessageSquareText,
+      accentClass: "bg-emerald-600",
+      iconClass: "text-emerald-700",
+      cardClass: "border-emerald-200 bg-emerald-50/60",
+      preview: {
+        kind: "proposal",
+        header: "검토 링크 발송",
+        targetLabel: "받는 사람",
+        targetName: "소라핏 · 웰니스 크리에이터",
+        fields: [
+          { label: "링크 상태", value: "열람 가능" },
+          { label: "수정 요청", value: "2차 활용 기간" },
+          { label: "답변 기한", value: "오늘 18:00" },
+          { label: "최종본", value: "승인 전" },
+        ],
+        chips: ["조항별 의견", "답변 기록", "최종본 승인"],
+        message:
+          "수정 요청은 계약서 안에 남기고, 광고주 답변 뒤 최종본을 다시 승인받아 서명 단계로 넘깁니다.",
+        timeline: ["링크 열람", "수정 요청", "광고주 답변", "최종 승인"],
+        actionLabel: "시작하기",
+      },
+    },
+    {
+      label: "서명 보관",
+      eyebrow: "서명·증빙",
+      title: ["서명 완료와", "증빙 보관"],
+      description:
+        "최종본 서명, 동의 시각, 서명 PDF, 이후 제출 상태를 계약별로 모아 문제가 생겨도 확인할 수 있게 둡니다.",
+      helper: "서명 상태와 증빙 보관",
+      primaryLabel: "시작하기",
+      primaryHref: "/signup/advertiser",
+      secondaryLabel: "광고주 로그인",
+      secondaryHref: "/login/advertiser",
+      icon: FileSignature,
+      accentClass: "bg-amber-500",
+      iconClass: "text-amber-700",
+      cardClass: "border-amber-200 bg-amber-50/70",
+      preview: {
+        kind: "contract",
+        header: "계약 증빙 대시보드",
+        count: "4",
+        countLabel: "진행",
+        rows: [
+          {
+            name: "소라핏",
+            title: "러닝 챌린지 릴스 캠페인",
+            status: "검토 링크 발송",
+            statusClass: "bg-blue-50 text-blue-700",
+            due: "오늘 18:00",
+          },
+          {
+            name: "오늘의 주방",
+            title: "주방가전 리뷰 콘텐츠",
+            status: "수정 요청",
+            statusClass: "bg-amber-50 text-amber-800",
+            due: "오늘 답변",
+          },
+          {
+            name: "민서홈",
+            title: "홈카페 공동구매",
+            status: "서명 완료",
+            statusClass: "bg-emerald-50 text-emerald-700",
+            due: "완료",
+          },
+        ],
+        nextAction: "시작하기",
+      },
+    },
+  ],
+  influencer: [
+    {
+      label: "계약 확인",
+      eyebrow: "계약 수신",
+      title: ["계약 링크를", "먼저 열람"],
+      description:
+        "계약 링크를 받으면 광고 조건과 서명 흐름을 한곳에서 확인합니다.",
+      helper: "광고 조건을 안전하게 확인",
+      primaryLabel: "시작하기",
+      primaryHref: "/signup/influencer",
+      secondaryLabel: "인플루언서 로그인",
+      secondaryHref: "/login/influencer",
+      icon: ClipboardCheck,
+      accentClass: "bg-neutral-950",
+      iconClass: "text-neutral-950",
+      cardClass: "border-neutral-300 bg-white",
+      preview: {
+        kind: "proposal",
+        header: "브랜드 초대 도착",
+        targetLabel: "보낸 브랜드",
+        targetName: "브레드룸 · 홈카페 식품",
+        fields: [
+          { label: "요청 내용", value: "광고 조건 검토" },
+          { label: "계약 형태", value: "공동구매" },
+          { label: "지급", value: "판매 수수료 18%" },
+          { label: "업로드", value: "제품 수령 후 7일" },
+        ],
+        chips: ["계약 링크", "검토 필요", "서명 전"],
+        message:
+          "계약 링크 안에서 조건, 산출물, 사용 권한을 먼저 확인합니다.",
+        timeline: ["링크 열람", "조건 확인", "수정 요청", "전자서명"],
+        actionLabel: "시작하기",
+      },
+    },
+    {
+      label: "조건 확인",
+      eyebrow: "조건 검토",
+      title: ["돈, 일정, 권한을", "서명 전에 확인"],
+      description:
+        "금액, 업로드 일정, 검수 기준, 광고 표시, 콘텐츠 사용 권한처럼 나중에 문제가 되는 조건을 먼저 봅니다.",
+      helper: "받은 조건을 계약서로 확인",
+      primaryLabel: "시작하기",
+      primaryHref: "/signup/influencer",
+      secondaryLabel: "인플루언서 로그인",
+      secondaryHref: "/login/influencer",
+      icon: FileText,
+      accentClass: "bg-blue-600",
+      iconClass: "text-blue-700",
+      cardClass: "border-blue-200 bg-blue-50/55",
+      preview: {
+        kind: "proposal",
+        header: "계약서 조건 확인",
+        targetLabel: "받은 계약",
+        targetName: "브레드룸 · 홈카페 공동구매",
+        fields: [
+          { label: "브랜드", value: "브레드룸" },
+          { label: "플랫폼", value: "Instagram · Blog" },
+          { label: "금액", value: "판매 수수료 18%" },
+          { label: "기간", value: "2026.06.01-06.20" },
+        ],
+        chips: ["공동구매", "릴스 1건", "블로그 리뷰"],
+        message:
+          "광고주가 입력한 조건을 먼저 확인하고 빠진 산출물, 정산 기준, 사용 권한을 체크합니다.",
+        timeline: ["조건 확인", "질문 작성", "수정 요청", "전자서명"],
+        actionLabel: "시작하기",
+      },
+    },
+    {
+      label: "수정 협의",
+      eyebrow: "수정 요청",
+      title: ["불리한 조항은", "서명 전에 요청"],
+      description:
+        "애매한 문구나 불리한 조항은 계약서 안에서 바로 이유를 남기고, 광고주의 답변을 같은 화면에서 기다립니다.",
+      helper: "조항별 수정 요청",
+      primaryLabel: "시작하기",
+      primaryHref: "/signup/influencer",
+      secondaryLabel: "인플루언서 로그인",
+      secondaryHref: "/login/influencer",
+      icon: MessageSquareText,
+      accentClass: "bg-emerald-600",
+      iconClass: "text-emerald-700",
+      cardClass: "border-emerald-200 bg-emerald-50/60",
+      preview: {
+        kind: "proposal",
+        header: "조항별 수정 요청",
+        targetLabel: "제안 브랜드",
+        targetName: "브레드룸 · 홈카페 식품",
+        fields: [
+          { label: "문제 조항", value: "2차 활용 기간" },
+          { label: "요청 내용", value: "12개월 -> 3개월" },
+          { label: "답변 상태", value: "광고주 확인 중" },
+          { label: "서명 상태", value: "대기" },
+        ],
+        chips: ["요청 사유 기록", "답변 대기", "서명 전 확인"],
+        message:
+          "활용 기간이 길면 나중에 광고 소재로 계속 쓰일 수 있어요. 기간을 줄이거나 추가 활용 동의를 별도로 받도록 요청합니다.",
+        timeline: ["조항 선택", "요청 사유 작성", "광고주 답변", "최종본 확인"],
+        actionLabel: "시작하기",
+      },
+    },
+    {
+      label: "서명 보관",
+      eyebrow: "서명·보관",
+      title: ["동의한 계약만", "서명하고 보관"],
+      description:
+        "최종 조건에 동의한 뒤 전자서명하고, 완료 계약과 제출 상태를 보관해 이후 분쟁이나 확인 요청에 대비합니다.",
+      helper: "서명 상태와 완료 계약 보관",
+      primaryLabel: "시작하기",
+      primaryHref: "/signup/influencer",
+      secondaryLabel: "인플루언서 로그인",
+      secondaryHref: "/login/influencer",
+      icon: FileSignature,
+      accentClass: "bg-amber-500",
+      iconClass: "text-amber-700",
+      cardClass: "border-amber-200 bg-amber-50/70",
+      preview: {
+        kind: "contract",
+        header: "인플루언서 계약 검토",
+        count: "3",
+        countLabel: "대기",
+        rows: [
+          {
+            name: "브레드룸",
+            title: "홈카페 공동구매 계약",
+            status: "2차 활용 수정 필요",
+            statusClass: "bg-amber-50 text-amber-800",
+            due: "오늘 검토",
+          },
+          {
+            name: "모노트립",
+            title: "숙박 브이로그 협찬",
+            status: "서명 가능",
+            statusClass: "bg-blue-50 text-blue-700",
+            due: "서명 가능",
+          },
+          {
+            name: "누디브랜딩",
+            title: "뷰티 릴스 패키지",
+            status: "제출 대기",
+            statusClass: "bg-emerald-50 text-emerald-700",
+            due: "제출 대기",
+          },
+        ],
+        nextAction: "시작하기",
+      },
+    },
+  ],
+} satisfies Record<IntroRole, RoleIntroSlide[]>;
+
 type AdvertiserPreviewListSlide = {
   kind: "list";
   label: string;
@@ -494,29 +840,29 @@ const advertiserPreviewSlides: AdvertiserPreviewSlide[] = [
     title: "수정 요청",
     count: "1",
     countLabel: "건",
-    dueHeader: "수정요청일로부터",
+    dueHeader: "상태",
     accentClass: "bg-amber-500",
     rows: [
       {
         partner: "오브제스튜디오",
         contract: "2차 콘텐츠 사용 범위",
         contractType: "유료 광고 (PPL)",
-        channel: "유튜브-숏츠",
-        due: "D+1",
+        channel: "유튜브",
+        due: "확인 필요",
       },
       {
         partner: "박도윤",
         contract: "업로드 일정 조정",
         contractType: "제품 협찬",
-        channel: "유튜브-롱폼",
-        due: "D+2",
+        channel: "유튜브",
+        due: "일정 협의",
       },
       {
         partner: "스튜디오 문",
         contract: "제품 제공 조건",
         contractType: "제품 협찬",
-        channel: "네이버 블로그",
-        due: "D+4",
+        channel: "블로그",
+        due: "조건 확인",
       },
     ],
   },
@@ -526,29 +872,29 @@ const advertiserPreviewSlides: AdvertiserPreviewSlide[] = [
     title: "서명 대기",
     count: "4",
     countLabel: "건",
-    dueHeader: "서명요청일로부터",
+    dueHeader: "상태",
     accentClass: "bg-blue-600",
     rows: [
       {
         partner: "모노트립",
         contract: "카페 팝업 방문 영상",
         contractType: "제품 협찬",
-        channel: "유튜브-롱폼",
-        due: "D+2",
+        channel: "유튜브",
+        due: "서명 준비",
       },
       {
         partner: "윤서랩",
         contract: "신제품 언박싱 릴스",
         contractType: "공동구매",
-        channel: "인스타그램-릴스",
-        due: "D+3",
+        channel: "인스타",
+        due: "최종 확인",
       },
       {
         partner: "채널오브",
         contract: "브랜드 숏폼 패키지",
         contractType: "유료 광고 (PPL)",
-        channel: "유튜브-숏츠",
-        due: "D+6",
+        channel: "유튜브",
+        due: "서명 요청",
       },
     ],
   },
@@ -565,22 +911,22 @@ const advertiserPreviewSlides: AdvertiserPreviewSlide[] = [
         partner: "한서진",
         contract: "FW 룩북 숏폼",
         contractType: "유료 광고 (PPL)",
-        channel: "인스타그램-릴스",
-        due: "D-4",
+        channel: "인스타",
+        due: "업로드 예정",
       },
       {
         partner: "오브제스튜디오",
         contract: "브랜드 인터뷰 영상",
         contractType: "제품 협찬",
-        channel: "유튜브-롱폼",
-        due: "D-9",
+        channel: "유튜브",
+        due: "일정 확정",
       },
       {
         partner: "민채널",
         contract: "월간 리뷰 콘텐츠",
         contractType: "제품 협찬",
-        channel: "네이버 블로그",
-        due: "D-12",
+        channel: "블로그",
+        due: "보관 완료",
       },
     ],
   },
@@ -595,7 +941,6 @@ type InfluencerPreviewListSlide = {
   accentClass: string;
   platformFilters: Array<{
     label: string;
-    count: string;
     active?: boolean;
   }>;
   items: Array<{
@@ -684,26 +1029,26 @@ const influencerPreviewSlides: InfluencerPreviewSlide[] = [
     count: "2",
     accentClass: "bg-blue-600",
     platformFilters: [
-      { label: "전체", count: "2", active: true },
-      { label: "인스타그램-릴스", count: "1" },
-      { label: "유튜브-숏츠", count: "1" },
+      { label: "전체", active: true },
+      { label: "인스타" },
+      { label: "유튜브" },
     ],
     items: [
       {
         brand: "모노트립",
         contract: "제품 협찬",
-        platform: "인스타그램-릴스",
+        platform: "인스타",
         accountName: "민서홈",
         accountId: "@minseo.home",
-        due: "받은 지 D+1",
+        due: "오늘 확인",
       },
       {
         brand: "오브제스튜디오",
         contract: "유료 광고 (PPL)",
-        platform: "유튜브-숏츠",
+        platform: "유튜브",
         accountName: "민서홈",
         accountId: "@minseo.home",
-        due: "받은 지 D+3",
+        due: "검토 필요",
       },
     ],
   },
@@ -714,26 +1059,26 @@ const influencerPreviewSlides: InfluencerPreviewSlide[] = [
     count: "1",
     accentClass: "bg-blue-600",
     platformFilters: [
-      { label: "전체", count: "2" },
-      { label: "유튜브-롱폼", count: "1", active: true },
-      { label: "네이버 블로그", count: "1" },
+      { label: "전체" },
+      { label: "유튜브", active: true },
+      { label: "블로그" },
     ],
     items: [
       {
         brand: "채널오브",
         contract: "유료 광고 (PPL)",
-        platform: "유튜브-롱폼",
+        platform: "유튜브",
         accountName: "민서홈",
         accountId: "@minseo.home",
-        due: "받은 지 D+2",
+        due: "서명 대기",
       },
       {
         brand: "민채널",
         contract: "제품 협찬",
-        platform: "네이버 블로그",
+        platform: "블로그",
         accountName: "민서홈",
         accountId: "minseo.home",
-        due: "받은 지 D+5",
+        due: "서명 확인",
       },
     ],
   },
@@ -744,27 +1089,27 @@ const influencerPreviewSlides: InfluencerPreviewSlide[] = [
     count: "4",
     accentClass: "bg-neutral-950",
     platformFilters: [
-      { label: "전체", count: "4", active: true },
-      { label: "인스타그램-릴스", count: "2" },
-      { label: "유튜브-롱폼", count: "1" },
-      { label: "네이버 블로그", count: "1" },
+      { label: "전체", active: true },
+      { label: "인스타" },
+      { label: "유튜브" },
+      { label: "블로그" },
     ],
     items: [
       {
         brand: "한서진",
         contract: "제품 협찬",
-        platform: "인스타그램-릴스",
+        platform: "인스타",
         accountName: "민서홈",
         accountId: "@minseo.home",
-        due: "업로드 D-4",
+        due: "업로드 예정",
       },
       {
         brand: "오브제스튜디오",
         contract: "유료 광고 (PPL)",
-        platform: "유튜브-롱폼",
+        platform: "유튜브",
         accountName: "민서홈",
         accountId: "@minseo.home",
-        due: "업로드 D-9",
+        due: "일정 확정",
       },
     ],
   },
@@ -773,94 +1118,87 @@ const influencerPreviewSlides: InfluencerPreviewSlide[] = [
 export function StartPage() {
   return (
     <main className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950">
-      <div className="mx-auto grid min-h-screen w-full max-w-[850px] content-start grid-rows-[60px_auto_44px] px-5 sm:content-normal sm:grid-rows-[68px_1fr_48px] sm:px-6">
-        <header className="flex items-center justify-between">
+      <div className="mx-auto grid min-h-screen w-full max-w-[880px] content-start grid-rows-[60px_auto_44px] px-5 sm:content-normal sm:grid-rows-[68px_minmax(0,1fr)_58px] sm:px-6 lg:grid-rows-[72px_minmax(0,1fr)_60px]">
+        <header className="flex items-center justify-between gap-3">
           <Link
             to="/"
             className="-ml-1 flex min-w-0 items-center gap-2.5 rounded-[12px] px-1 py-1 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
-            aria-label={`${PRODUCT_NAME} 홈`}
+            aria-label={`${LANDING_BRAND_NAME} 홈`}
           >
             <BrandLogo />
           </Link>
-          <Link
-            to="/login"
-            className="inline-flex min-h-8 items-center rounded-full border border-neutral-200 bg-white/65 px-3 text-[11px] font-bold tracking-[-0.005em] text-neutral-500 shadow-[0_1px_0_rgba(15,23,42,0.02)] transition hover:border-neutral-300 hover:bg-white hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
-          >
-            로그인
-          </Link>
+          <div className="flex min-w-0 items-center gap-1.5">
+            <Link
+              to="/login"
+              className="inline-flex min-h-10 shrink-0 items-center rounded-full border border-neutral-200 bg-white/65 px-3 text-[11px] font-bold tracking-[-0.005em] text-neutral-500 shadow-[0_1px_0_rgba(15,23,42,0.02)] transition hover:border-neutral-300 hover:bg-white hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
+            >
+              로그인
+            </Link>
+          </div>
         </header>
 
-        <section className="flex items-start justify-center pb-4 pt-[clamp(28px,5svh,44px)] sm:pb-8 sm:pt-[clamp(44px,8svh,76px)]">
-          <div className="w-full max-w-[710px]">
+        <section className="flex min-h-0 items-start justify-center pb-5 pt-[clamp(18px,3.8svh,34px)] sm:items-center sm:py-8 lg:py-0">
+          <div className="w-full max-w-[760px]">
             <h1
-              className="landing-start-title font-neo-heavy mb-7 text-center text-[31px] leading-[1.12] tracking-normal text-neutral-950 sm:mb-8 sm:text-[46px] sm:leading-[1.08]"
-              aria-label="입력은 간단하게, 계약은 확실하게"
+              className="landing-start-title font-neo-heavy mb-5 text-center text-[31px] leading-[1.1] tracking-normal text-neutral-950 sm:mb-7 sm:text-[46px] sm:leading-[1.05]"
+              aria-label="광고 계약은 확실하게"
             >
               <span className="landing-start-copy-line landing-start-copy-line-1 block">
-                입력은 간단하게
+                광고 계약은
               </span>
-              <span className="landing-start-copy-line landing-start-copy-line-2 mt-1 block">
-                계약은 확실하게
+              <span className="landing-start-copy-line landing-start-copy-line-2 mt-2 block sm:mt-3">
+                확실하게
               </span>
             </h1>
-            <div
-              className="mx-auto mb-5 grid grid-cols-2 gap-2 sm:mb-6 sm:grid-cols-4 sm:gap-3"
-              aria-label="서비스 구성"
-            >
-              {startServiceCards.map((service) => {
-                const Icon = service.icon;
-
-                return (
-                  <div
-                    key={service.title}
-                    className="min-w-0 rounded-[16px] border border-neutral-200/90 bg-white/82 px-2.5 py-3 text-center shadow-[0_1px_0_rgba(15,23,42,0.03),0_12px_32px_rgba(15,23,42,0.035)] sm:px-3 sm:py-4"
-                  >
-                    <span
-                      className={`mx-auto flex h-8 w-8 items-center justify-center rounded-[11px] ${service.iconBgClass} ${service.iconClass} sm:h-9 sm:w-9`}
-                    >
-                      <Icon className="h-4 w-4 sm:h-[17px] sm:w-[17px]" />
-                    </span>
-                    <strong className="mt-2 block break-keep text-[12px] font-extrabold leading-tight tracking-[-0.005em] text-neutral-950 sm:text-[13px]">
-                      {service.title}
-                    </strong>
-                    <span className="mt-1 hidden break-keep text-[11px] font-bold leading-4 text-neutral-500 sm:block">
-                      {service.description}
-                    </span>
-                  </div>
-                );
-              })}
+            <p className="mx-auto max-w-[560px] break-keep text-center text-[14px] font-bold leading-7 text-neutral-600 sm:text-[15px]">
+              광고 조건을 계약서 작성부터 협의, 전자서명 완료까지 한 흐름으로 정리합니다.
+            </p>
+            <div className="mx-auto mt-5 grid max-w-[360px] grid-cols-2 gap-2 sm:hidden">
+              <Link
+                to="/intro/advertiser"
+                className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-[12px] bg-neutral-950 px-3 text-[13px] font-extrabold text-white shadow-[0_14px_30px_rgba(15,23,42,0.14)]"
+              >
+                광고주 시작
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+              <Link
+                to="/intro/influencer"
+                className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-[12px] border border-neutral-200 bg-white px-3 text-[13px] font-extrabold text-neutral-900 shadow-[0_1px_0_rgba(15,23,42,0.025)]"
+              >
+                인플루언서 시작
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
             </div>
-            <div className="grid gap-3.5 sm:grid-cols-2 sm:gap-4">
+            <div className="mt-8 grid gap-4 sm:grid-cols-2 sm:gap-6 lg:mt-10">
               {roleCards.map((role) => {
-                const Icon = role.icon;
                 const tone = getStartRoleTone(role.role);
                 const isAdvertiser = role.role === "advertiser";
                 const detail = isAdvertiser
-                  ? "브랜드사 · 광고대행사"
-                  : "크리에이터 · 스트리머 · MCN";
+                  ? "계약 작성 · 협의 관리 · 완료 보관"
+                  : "받은 계약 · 수정 요청 · 전자서명";
 
                 return (
                   <Link
                     key={role.role}
                     to={role.href}
-                    aria-label={`${role.title}로 시작`}
-                    className={`group flex min-h-[196px] flex-col rounded-[22px] border px-5 py-5 text-left shadow-[0_1px_0_rgba(15,23,42,0.035),0_16px_42px_rgba(15,23,42,0.035)] transition hover:-translate-y-0.5 hover:shadow-[0_1px_0_rgba(15,23,42,0.04),0_22px_58px_rgba(15,23,42,0.06)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:min-h-[238px] sm:px-6 sm:py-6 ${tone.card}`}
+                    aria-label={`시작하기 (${role.title})`}
+                    className={`group flex min-h-[176px] flex-col justify-between rounded-[20px] border px-5 py-5 text-left shadow-[0_1px_0_rgba(15,23,42,0.035),0_16px_42px_rgba(15,23,42,0.035)] transition hover:-translate-y-0.5 hover:shadow-[0_1px_0_rgba(15,23,42,0.04),0_22px_58px_rgba(15,23,42,0.06)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:min-h-[214px] sm:px-6 sm:py-6 lg:min-h-[220px] ${tone.card}`}
                   >
-                    <span className="flex items-center justify-between">
-                      <span className={`flex h-9 w-9 items-center justify-center rounded-[12px] border transition ${tone.icon}`}>
-                        <Icon className="h-[17px] w-[17px]" />
+                    <span className="block">
+                      <span className="block text-[30px] leading-none sm:text-[34px]" aria-hidden="true">
+                        {role.emoji}
                       </span>
-                      <span className={`flex h-8 w-8 items-center justify-center rounded-full border transition ${tone.arrow}`}>
-                        <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
-                      </span>
-                    </span>
-
-                    <span className="mt-auto block">
-                      <strong className="font-neo-heavy block text-[30px] leading-none tracking-[-0.035em] text-neutral-950 sm:text-[38px]">
+                      <strong className="font-neo-heavy mt-3 block text-[30px] leading-none tracking-[-0.035em] text-neutral-950 sm:text-[38px]">
                         {role.title}
                       </strong>
+                    </span>
+                    <span className="block">
                       <span className={`mt-3.5 block border-t pt-3.5 text-[12px] font-bold tracking-[-0.005em] sm:mt-4 sm:pt-4 ${tone.divider} ${tone.detail}`}>
                         {detail}
+                      </span>
+                      <span className={`mt-3 inline-flex items-center gap-1.5 text-[12px] font-extrabold tracking-normal ${tone.detail}`}>
+                        {role.cta}
+                        <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5" />
                       </span>
                     </span>
                   </Link>
@@ -879,6 +1217,51 @@ export function StartPage() {
           </Link>
         </footer>
       </div>
+
+      <section
+        aria-labelledby="contract-record-summary"
+        className="border-t border-neutral-200 bg-white px-5 py-10 sm:px-6 lg:px-8"
+      >
+        <div className="mx-auto max-w-[880px]">
+          <p className="text-[12px] font-extrabold text-neutral-400">
+            광고 계약 기록
+          </p>
+          <h2
+            id="contract-record-summary"
+            className="font-neo-heavy mt-2 text-[26px] leading-tight tracking-normal text-neutral-950 sm:text-[34px]"
+          >
+            광고 제안을 계약과 서명 증빙으로 정리합니다
+          </h2>
+          <p className="mt-3 max-w-[680px] break-keep text-[14px] font-semibold leading-7 text-neutral-600">
+            연락미는 광고주와 인플루언서가 협찬, PPL, 공동구매 조건을 같은 문서에서 확인하고,
+            수정 이력과 최종 동의 기록을 남기도록 만든 한국어 광고 계약 워크스페이스입니다.
+          </p>
+
+          <div className="mt-7 grid gap-3 lg:grid-cols-3">
+            {startSearchContext.map((item) => (
+              <article
+                key={item.title}
+                className="rounded-lg border border-neutral-200 bg-[#fbfbfc] p-4"
+              >
+                <h3 className="text-[14px] font-extrabold text-neutral-950">
+                  {item.title}
+                </h3>
+                <p className="mt-2 text-[13px] font-semibold leading-6 text-neutral-600">
+                  {item.body}
+                </p>
+                <ul className="mt-4 space-y-2 text-[12px] font-bold leading-5 text-neutral-500">
+                  {item.items.map((detail) => (
+                    <li key={detail} className="flex items-start gap-2">
+                      <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-700" />
+                      <span>{detail}</span>
+                    </li>
+                  ))}
+                </ul>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
     </main>
   );
 }
@@ -889,7 +1272,7 @@ function BrandLogo() {
       <LogoMark />
       <span className="flex items-center">
         <span className="font-neo-heavy text-[18px] leading-none tracking-[-0.045em] text-neutral-950 sm:text-[19px]">
-          {PRODUCT_NAME}
+          {LANDING_BRAND_NAME}
         </span>
       </span>
     </span>
@@ -923,11 +1306,1331 @@ function LogoMark() {
 export function RoleIntroPage({ role }: { role: IntroRole }) {
   const config = introConfig[role];
 
-  if (role === "advertiser") {
-    return <AdvertiserIntroScreen config={config} />;
+  return (
+    <RoleFeatureIntroScreen
+      config={config}
+      role={role}
+      slides={roleIntroSlides[role]}
+    />
+  );
+}
+
+function RoleFeatureIntroScreen({
+  role,
+  config,
+  slides,
+}: {
+  role: IntroRole;
+  config: IntroConfig;
+  slides: RoleIntroSlide[];
+}) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const featureKeys = roleFeatureKeys[role];
+  const requestedFeatureIndex = Math.max(
+    0,
+    featureKeys.indexOf(searchParams.get("feature") ?? ""),
+  );
+  const [activeIndex, setActiveIndex] = useState(requestedFeatureIndex);
+  const [hasManualSelection, setHasManualSelection] = useState(false);
+  const [isPreviewPaused, setIsPreviewPaused] = useState(false);
+  const requestedFeatureIndexRef = useRef(requestedFeatureIndex);
+  const activeSlide = slides[activeIndex] ?? slides[0];
+  const roleLabel = role === "advertiser" ? "광고주" : "인플루언서";
+  const brochureFacts =
+    role === "advertiser"
+      ? [
+          { label: "진행 계약", value: "18건" },
+          { label: "오늘 응답", value: "6건" },
+        ]
+      : [
+          { label: "받은 계약", value: "12건" },
+          { label: "확인 필요", value: "4건" },
+        ];
+
+  const handleFeatureSelect = useCallback((index: number) => {
+    setHasManualSelection(true);
+    setActiveIndex(index);
+    const featureKey = roleFeatureKeys[role][index];
+    if (featureKey) {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.set("feature", featureKey);
+      setSearchParams(nextParams, { replace: true });
+    }
+  }, [role, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (requestedFeatureIndexRef.current === requestedFeatureIndex) {
+      return undefined;
+    }
+
+    requestedFeatureIndexRef.current = requestedFeatureIndex;
+    const syncTimer = window.setTimeout(() => {
+      setHasManualSelection(true);
+      setActiveIndex(requestedFeatureIndex);
+    }, 0);
+
+    return () => window.clearTimeout(syncTimer);
+  }, [requestedFeatureIndex]);
+
+  useEffect(() => {
+    if (slides.length < 2 || hasManualSelection || isPreviewPaused) {
+      return undefined;
+    }
+
+    if (
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
+      return undefined;
+    }
+
+    const timer = window.setInterval(() => {
+      setActiveIndex((currentIndex) => {
+        return (currentIndex + 1) % slides.length;
+      });
+    }, 4600);
+
+    return () => window.clearInterval(timer);
+  }, [hasManualSelection, isPreviewPaused, slides.length]);
+
+  const roleSwitchItems = [
+    { role: "advertiser" as const, label: "광고주", href: "/intro/advertiser" },
+    { role: "influencer" as const, label: "인플루언서", href: "/intro/influencer" },
+  ];
+
+  return (
+    <main className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950">
+      <header className="border-b border-neutral-200/80 bg-[#fbfaf7]/95">
+        <div className="mx-auto flex h-[68px] max-w-[1120px] items-center justify-between gap-3 px-5 sm:px-6 lg:px-8">
+          <BrandLockup />
+          <div className="flex min-w-0 items-center gap-2">
+            <nav
+              aria-label="역할 화면 전환"
+              className="hidden items-center rounded-full border border-neutral-200 bg-white/75 p-1 text-[12px] font-extrabold shadow-[0_1px_0_rgba(15,23,42,0.02)] sm:flex"
+            >
+              {roleSwitchItems.map((item) => {
+                const selected = item.role === role;
+
+                return (
+                  <Link
+                    key={item.role}
+                    to={item.href}
+                    className={`inline-flex h-8 items-center rounded-full px-3 transition ${
+                      selected
+                        ? "bg-neutral-950 text-white"
+                        : "text-neutral-500 hover:bg-neutral-100 hover:text-neutral-950"
+                    }`}
+                    aria-current={selected ? "page" : undefined}
+                  >
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </nav>
+            <Link
+              to={config.secondaryHref}
+              className="inline-flex h-10 items-center justify-self-end whitespace-nowrap rounded-full border border-neutral-200 bg-white px-3 text-[12px] font-bold text-neutral-500 transition hover:border-neutral-300 hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
+            >
+              로그인
+            </Link>
+          </div>
+        </div>
+      </header>
+      <div className="border-b border-neutral-200/80 bg-[#fbfaf7]/95 px-4 py-2 sm:hidden">
+        <nav
+          aria-label="모바일 역할 화면 전환"
+          className="mx-auto grid max-w-[420px] grid-cols-2 gap-1 rounded-[12px] border border-neutral-200 bg-white p-1 text-[12px] font-extrabold shadow-[0_8px_20px_rgba(15,23,42,0.04)]"
+        >
+          {roleSwitchItems.map((item) => {
+            const selected = item.role === role;
+
+            return (
+              <Link
+                key={item.role}
+                to={item.href}
+                className={`flex h-9 items-center justify-center rounded-[9px] transition ${
+                  selected
+                    ? "bg-neutral-950 text-white"
+                    : "text-neutral-500 hover:bg-neutral-100 hover:text-neutral-950"
+                }`}
+                aria-current={selected ? "page" : undefined}
+              >
+                {item.label}
+              </Link>
+            );
+          })}
+        </nav>
+      </div>
+
+      <section className="mx-auto max-w-[1280px] px-4 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-9">
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)] lg:items-start">
+          <aside className="min-w-0 pt-2 lg:pt-8">
+            <p className="inline-flex h-8 items-center rounded-full border border-neutral-200 bg-white px-3 text-[12px] font-extrabold text-neutral-500">
+              {roleLabel} 소개서
+            </p>
+            <h1 className="font-neo-heavy mt-4 text-[38px] leading-[1.03] tracking-normal text-neutral-950 sm:text-[56px] lg:text-[62px]">
+              {activeSlide.title.map((line) => (
+                <span key={line} className="block">
+                  {line}
+                </span>
+              ))}
+            </h1>
+
+            <p className="mt-5 max-w-[520px] break-keep text-[14px] font-bold leading-7 text-neutral-600 sm:text-[16px]">
+              {activeSlide.description}
+            </p>
+
+            <div className="mt-6 grid max-w-[520px] grid-cols-2 gap-2">
+              {brochureFacts.map((fact) => (
+                <div
+                  key={fact.label}
+                  className="rounded-[14px] border border-neutral-200 bg-white px-4 py-3 shadow-[0_1px_0_rgba(15,23,42,0.025)]"
+                >
+                  <p className="text-[11px] font-extrabold text-neutral-400">
+                    {fact.label}
+                  </p>
+                  <p className="mt-1 text-[22px] font-extrabold text-neutral-950">
+                    {fact.value}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-6 flex max-w-[520px] flex-col gap-2 sm:flex-row">
+              <Link
+                to={activeSlide.primaryHref}
+                className="group inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-[12px] bg-blue-600 px-5 text-[14px] font-extrabold tracking-normal text-white shadow-[0_14px_34px_rgba(37,99,235,0.24)] ring-1 ring-blue-500/20 transition duration-200 hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-[0_18px_42px_rgba(37,99,235,0.28)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700 active:translate-y-0"
+              >
+                <span>{activeSlide.primaryLabel}</span>
+                <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
+              </Link>
+              <Link
+                to={activeSlide.secondaryHref}
+                className="inline-flex h-12 flex-1 items-center justify-center rounded-[12px] border border-neutral-200 bg-white px-5 text-[14px] font-extrabold text-neutral-600 transition hover:border-neutral-300 hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
+              >
+                {activeSlide.secondaryLabel}
+              </Link>
+            </div>
+
+            <Link
+              to={config.switchHref}
+              className="mt-5 inline-flex min-h-10 items-center text-[12px] font-bold text-neutral-400 transition hover:text-neutral-700"
+            >
+              {config.switchLabel}
+            </Link>
+          </aside>
+
+          <RoleFeaturePreviewCarousel
+            previewIndex={activeIndex}
+            role={role}
+            slides={slides}
+          />
+        </div>
+
+        <div
+          className="mt-5 grid gap-2 sm:grid-cols-2 lg:mt-7 lg:grid-cols-4"
+          aria-label={`${roleLabel} 기능 선택`}
+          onFocus={() => setIsPreviewPaused(true)}
+          onBlur={() => setIsPreviewPaused(false)}
+          onMouseEnter={() => setIsPreviewPaused(true)}
+          onMouseLeave={() => setIsPreviewPaused(false)}
+        >
+          {slides.map((slide, index) => {
+            const selected = activeIndex === index;
+            const SlideIcon = slide.icon;
+
+            return (
+              <button
+                key={slide.label}
+                type="button"
+                onClick={() => handleFeatureSelect(index)}
+                className={`group min-h-[96px] rounded-[16px] border p-4 text-left transition hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-neutral-950 ${
+                  selected
+                    ? "border-neutral-950 bg-neutral-950 text-white shadow-[0_16px_38px_rgba(15,23,42,0.16)]"
+                    : "border-neutral-200 bg-white text-neutral-500 shadow-[0_1px_0_rgba(15,23,42,0.025)] hover:border-neutral-300 hover:text-neutral-950"
+                }`}
+                aria-pressed={selected}
+              >
+                <span className="flex items-start justify-between gap-3">
+                  <span
+                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] ${
+                      selected ? "bg-white/15 text-white" : "bg-neutral-100"
+                    }`}
+                  >
+                    <SlideIcon className="h-4 w-4" strokeWidth={2.2} />
+                  </span>
+                  <span
+                    className={`mt-1 h-2 w-2 rounded-full ${
+                      selected ? "bg-white" : slide.accentClass
+                    }`}
+                  />
+                </span>
+                <span className="mt-3 block text-[14px] font-extrabold">
+                  {slide.label}
+                </span>
+                <span
+                  className={`mt-1 block line-clamp-2 break-keep text-[12px] font-bold leading-5 ${
+                    selected ? "text-white/65" : "text-neutral-500"
+                  }`}
+                >
+                  {slide.helper}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function RoleFeaturePreviewCarousel({
+  slides,
+  previewIndex,
+  role,
+  className = "",
+}: {
+  slides: RoleIntroSlide[];
+  previewIndex: number;
+  role: IntroRole;
+  className?: string;
+}) {
+  const [displayIndex, setDisplayIndex] = useState(previewIndex);
+  const [isFading, setIsFading] = useState(false);
+  const displayIndexRef = useRef(previewIndex);
+  const transitionTimers = useRef<number[]>([]);
+  const activeSlide = slides[displayIndex] ?? slides[0];
+
+  const clearTransitionTimers = useCallback(() => {
+    transitionTimers.current.forEach((timer) => window.clearTimeout(timer));
+    transitionTimers.current = [];
+  }, []);
+
+  const prefersReducedMotion = useCallback(
+    () =>
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+    [],
+  );
+
+  useEffect(() => {
+    if (displayIndexRef.current === previewIndex) {
+      return undefined;
+    }
+
+    clearTransitionTimers();
+
+    const commitDisplayIndex = () => {
+      displayIndexRef.current = previewIndex;
+      setDisplayIndex(previewIndex);
+    };
+
+    if (prefersReducedMotion()) {
+      transitionTimers.current = [
+        window.setTimeout(() => {
+          commitDisplayIndex();
+          setIsFading(false);
+          transitionTimers.current = [];
+        }, 0),
+      ];
+      return undefined;
+    }
+
+    transitionTimers.current = [
+      window.setTimeout(() => setIsFading(true), 0),
+      window.setTimeout(commitDisplayIndex, 160),
+      window.setTimeout(() => {
+        setIsFading(false);
+        transitionTimers.current = [];
+      }, 340),
+    ];
+
+    return clearTransitionTimers;
+  }, [
+    clearTransitionTimers,
+    prefersReducedMotion,
+    previewIndex,
+  ]);
+
+  useEffect(() => clearTransitionTimers, [clearTransitionTimers]);
+
+  return (
+    <section
+      aria-label="기능별 화면 미리보기"
+      className={`${className} mx-auto flex w-full min-w-0 max-w-[calc(100vw-40px)] flex-col overflow-hidden rounded-[22px] border border-neutral-200 bg-[linear-gradient(180deg,#ffffff_0%,#fbfaf7_100%)] shadow-[0_24px_70px_rgba(15,23,42,0.08)] sm:max-w-full sm:rounded-[26px]`}
+    >
+      <div className="flex items-center justify-between gap-3 border-b border-neutral-200 bg-white px-4 py-3 sm:px-5">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${activeSlide.accentClass}`} />
+          <div className="min-w-0">
+            <p className="truncate text-[12px] font-extrabold text-neutral-950">
+              {role === "advertiser" ? "광고주 화면" : "인플루언서 화면"}
+            </p>
+            <p className="mt-0.5 truncate text-[10px] font-bold text-neutral-400">
+              {activeSlide.eyebrow}
+            </p>
+          </div>
+        </div>
+        <span className="rounded-full border border-neutral-200 bg-[#fbfaf7] px-2.5 py-1 text-[10px] font-extrabold text-neutral-500">
+          {activeSlide.label}
+        </span>
+      </div>
+
+      <div className="flex min-h-0 flex-1 flex-col p-3 sm:p-4 lg:p-5">
+        <div className="relative min-h-[460px] flex-1 overflow-hidden sm:min-h-[560px] lg:min-h-[620px]">
+          <div
+            className={`h-full transition duration-300 ease-out ${
+              isFading ? "translate-x-4 opacity-0" : "translate-x-0 opacity-100"
+            }`}
+          >
+            <RolePreviewSlideView
+              panelId={`role-preview-panel-${previewIndex}`}
+              role={role}
+              slide={activeSlide}
+            />
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function RolePreviewSlideView({
+  slide,
+  role,
+  panelId,
+}: {
+  slide: RoleIntroSlide;
+  role: IntroRole;
+  panelId: string;
+}) {
+  if (slide.preview.kind === "profile") {
+    return (
+      <RoleProfilePreview
+        panelId={panelId}
+        preview={slide.preview}
+        slide={slide}
+      />
+    );
   }
 
-  return <InfluencerIntroScreen config={config} />;
+  if (slide.preview.kind === "discover") {
+    return (
+      <RoleDiscoverPreview
+        panelId={panelId}
+        preview={slide.preview}
+        slide={slide}
+      />
+    );
+  }
+
+  if (slide.preview.kind === "proposal") {
+    return (
+      <RoleProposalPreview
+        panelId={panelId}
+        preview={slide.preview}
+        role={role}
+        slide={slide}
+      />
+    );
+  }
+
+  return (
+    <RoleContractPreview
+      panelId={panelId}
+      preview={slide.preview}
+      role={role}
+      slide={slide}
+    />
+  );
+}
+
+function RolePreviewPanel({
+  slide,
+  children,
+  meta,
+  panelId,
+}: {
+  slide: RoleIntroSlide;
+  children: ReactNode;
+  meta?: ReactNode;
+  panelId: string;
+}) {
+  return (
+    <div
+      id={panelId}
+      key={slide.label}
+      role="region"
+      aria-label={`${slide.label} 미리보기`}
+      className="flex h-full min-h-[420px] flex-col overflow-hidden rounded-[14px] border border-neutral-200 bg-white lg:min-h-0 sm:rounded-[16px]"
+    >
+      <div className="flex shrink-0 items-center justify-between gap-4 border-b border-neutral-200 px-4 py-3 sm:px-5">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className={`h-2 w-2 rounded-full ${slide.accentClass}`} />
+            <p className="truncate text-[12px] font-extrabold tracking-normal text-neutral-950">
+              {slide.preview.header}
+            </p>
+          </div>
+          <p className="mt-1 truncate text-[11px] font-bold text-neutral-400">
+            {slide.helper}
+          </p>
+        </div>
+        {meta ? <div className="shrink-0">{meta}</div> : null}
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-hidden bg-[#fbfaf7] p-3 sm:p-4">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function RoleProfilePreview({
+  slide,
+  preview,
+  panelId,
+}: {
+  slide: RoleIntroSlide;
+  preview: RolePreviewProfile;
+  panelId: string;
+}) {
+  return (
+    <RolePreviewPanel
+      panelId={panelId}
+      slide={slide}
+      meta={
+        <span className="rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-[10px] font-extrabold text-neutral-600">
+          공개 링크
+        </span>
+      }
+    >
+      <div className="rounded-[12px] border border-neutral-200 bg-white p-3.5 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+        <div className="flex items-start gap-3">
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[12px] bg-neutral-950 text-[18px] font-extrabold text-white">
+            {preview.profileName.slice(0, 2)}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[18px] font-extrabold text-neutral-950">
+              {preview.profileName}
+            </p>
+            <p className="mt-1 truncate text-[12px] font-bold text-blue-700">
+              {preview.handle}
+            </p>
+            <p className="mt-3 break-keep text-[13px] font-bold leading-5 text-neutral-600">
+              {preview.headline}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-1.5">
+          {preview.tags.map((tag) => (
+            <span
+              key={tag}
+              className="rounded-full border border-neutral-200 bg-[#f8f7f4] px-2.5 py-1 text-[11px] font-extrabold text-neutral-600"
+            >
+              {tag}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+        {preview.stats.map((stat) => (
+          <div
+            key={stat.label}
+            className="rounded-[8px] border border-neutral-200 bg-white px-3 py-3"
+          >
+            <p className="text-[10px] font-extrabold text-neutral-400">
+              {stat.label}
+            </p>
+            <p className="mt-1 text-[16px] font-extrabold text-neutral-950">
+              {stat.value}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-3 overflow-hidden rounded-[12px] border border-neutral-200 bg-white">
+        {preview.channels.map((channel) => (
+          <div
+            key={channel.label}
+            className="grid grid-cols-[minmax(0,0.8fr)_minmax(0,1fr)_72px] gap-3 border-b border-neutral-200 px-4 py-3 last:border-b-0"
+          >
+            <span className="truncate text-[12px] font-extrabold text-neutral-500">
+              {channel.label}
+            </span>
+            <span className="truncate text-[12px] font-extrabold text-neutral-950">
+              {channel.value}
+            </span>
+            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-center text-[10px] font-extrabold text-emerald-700">
+              {channel.status}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-3 rounded-[12px] bg-neutral-950 p-4 text-white">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[11px] font-extrabold text-white/55">다음 행동</p>
+            <p className="mt-1 truncate text-[14px] font-extrabold">
+              {preview.actionLabel}
+            </p>
+          </div>
+          <ArrowRight className="h-4 w-4 shrink-0" />
+        </div>
+        <p className="mt-2 hidden break-keep text-[11px] font-bold leading-5 text-white/65 xl:block">
+          {preview.footerNote}
+        </p>
+      </div>
+    </RolePreviewPanel>
+  );
+}
+
+function RoleDiscoverPreview({
+  slide,
+  preview,
+  panelId,
+}: {
+  slide: RoleIntroSlide;
+  preview: RolePreviewDiscover;
+  panelId: string;
+}) {
+  return (
+    <RolePreviewPanel
+      panelId={panelId}
+      slide={slide}
+      meta={
+        <span className="font-neo-heavy text-[26px] leading-none text-neutral-950">
+          {preview.cards.length}
+        </span>
+      }
+    >
+      <div className="rounded-[12px] border border-neutral-200 bg-white p-3">
+        <div className="flex items-center gap-2 rounded-[8px] border border-neutral-200 bg-[#f8f7f4] px-3 py-2 text-[11px] font-bold text-neutral-400">
+          <Search className="h-3.5 w-3.5" />
+          <span className="min-w-0 truncate">{preview.searchPlaceholder}</span>
+        </div>
+        <div className="mt-2 flex gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {preview.filters.map((filter) => (
+            <span
+              key={filter.label}
+              className={`inline-flex h-7 shrink-0 items-center rounded-full border px-2.5 text-[11px] font-extrabold ${
+                filter.active
+                  ? "border-neutral-950 bg-neutral-950 text-white"
+                  : "border-neutral-200 bg-white text-neutral-500"
+              }`}
+            >
+              {filter.label}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-2 grid gap-2">
+        {preview.cards.map((card) => (
+          <article
+            key={card.name}
+            className="rounded-[12px] border border-neutral-200 bg-white p-3 shadow-[0_10px_28px_rgba(15,23,42,0.035)]"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate text-[16px] font-extrabold text-neutral-950">
+                  {card.name}
+                </p>
+                <p className="mt-1 truncate text-[11px] font-bold text-neutral-400">
+                  {card.meta}
+                </p>
+              </div>
+              <span className="shrink-0 rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-extrabold text-blue-700">
+                {card.badge}
+              </span>
+            </div>
+            <p className="mt-2 line-clamp-1 break-keep text-[12px] font-bold leading-5 text-neutral-600">
+              {card.description}
+            </p>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              {card.stats.map((stat) => (
+                <div
+                  key={stat.label}
+                  className="rounded-[8px] bg-[#f8f7f4] px-3 py-2"
+                >
+                  <p className="text-[10px] font-extrabold text-neutral-400">
+                    {stat.label}
+                  </p>
+                  <p className="mt-1 truncate text-[12px] font-extrabold text-neutral-950">
+                    {stat.value}
+                  </p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-2 flex h-8 items-center justify-between rounded-[8px] border border-neutral-200 px-3 text-[12px] font-extrabold text-neutral-700">
+              {card.action}
+              <ArrowRight className="h-3.5 w-3.5" />
+            </div>
+          </article>
+        ))}
+      </div>
+    </RolePreviewPanel>
+  );
+}
+
+type IntroDashboardRow = {
+  platform: string;
+  platformClass: string;
+  kind: string;
+  party: string;
+  title: string;
+  amount: string;
+  status: string;
+  statusClass: string;
+  deadline: string;
+  note: string;
+};
+
+type IntroDashboardCampaign = {
+  name: string;
+  platform: string;
+  platformClass: string;
+  participants: number;
+  completed: number;
+  status: string;
+  due: string;
+};
+
+const introDashboardDemoData = {
+  advertiser: {
+    accountName: "브래드룸",
+    accountMeta: "123-**-67890",
+    verificationMeta: "",
+    summary: "캠페인 3개 · 진행 계약 18건",
+    campaigns: [
+      {
+        name: "오브레 비건 선크림 릴스 캠페인",
+        platform: "인스타",
+        platformClass: "border-pink-200 bg-pink-50 text-pink-700",
+        participants: 6,
+        completed: 2,
+        status: "수정 요청 포함",
+        due: "D+1",
+      },
+      {
+        name: "하우스핏 홈트 챌린지 유튜브 리뷰",
+        platform: "유튜브",
+        platformClass: "border-rose-200 bg-rose-50 text-rose-700",
+        participants: 5,
+        completed: 1,
+        status: "서명 진행",
+        due: "D+2",
+      },
+      {
+        name: "브루잉랩 콜드브루 공동구매 계약",
+        platform: "블로그",
+        platformClass: "border-emerald-200 bg-emerald-50 text-emerald-700",
+        participants: 7,
+        completed: 4,
+        status: "콘텐츠 검수",
+        due: "D+4",
+      },
+    ],
+    rows: [
+      {
+        platform: "인스타",
+        platformClass: "border-pink-200 bg-pink-50 text-pink-700",
+        kind: "협찬",
+        party: "민서홈",
+        title: "오브레 비건 선크림 릴스 캠페인",
+        amount: "180만원",
+        status: "검토 필요",
+        statusClass: "border-amber-200 bg-amber-50 text-amber-800",
+        deadline: "D+3",
+        note: "릴스 1건 · 스토리 2건",
+      },
+      {
+        platform: "인스타",
+        platformClass: "border-pink-200 bg-pink-50 text-pink-700",
+        kind: "협찬",
+        party: "루나데이",
+        title: "오브레 비건 선크림 릴스 캠페인",
+        amount: "180만원",
+        status: "수정 요청",
+        statusClass: "border-amber-200 bg-amber-50 text-amber-800",
+        deadline: "D+1",
+        note: "2차 활용 기간 조정",
+      },
+      {
+        platform: "유튜브",
+        platformClass: "border-rose-200 bg-rose-50 text-rose-700",
+        kind: "PPL",
+        party: "하루핏",
+        title: "하우스핏 홈트 챌린지 유튜브 리뷰",
+        amount: "260만원",
+        status: "서명 준비",
+        statusClass: "border-blue-200 bg-blue-50 text-blue-700",
+        deadline: "D+2",
+        note: "유튜브 리뷰 1건",
+      },
+      {
+        platform: "블로그",
+        platformClass: "border-emerald-200 bg-emerald-50 text-emerald-700",
+        kind: "공동구매",
+        party: "지유로그",
+        title: "브루잉랩 콜드브루 공동구매 계약",
+        amount: "판매 18%",
+        status: "검수 대기",
+        statusClass: "border-neutral-200 bg-white text-neutral-700",
+        deadline: "D+4",
+        note: "블로그 리뷰 · 공구 링크",
+      },
+    ],
+  },
+  influencer: {
+    accountName: "민서홈",
+    accountMeta: "@minseo_home · creator@minseo-home.kr",
+    verificationMeta: "Instagram · YouTube · Naver Blog 인증 완료",
+    summary: "받은 계약 12건 · 이번 주 확인 4건",
+    rows: [
+      {
+        platform: "인스타",
+        platformClass: "border-pink-200 bg-pink-50 text-pink-700",
+        kind: "협찬",
+        party: "오브레 스튜디오",
+        title: "오브레 비건 선크림 릴스 캠페인",
+        amount: "180만원",
+        status: "검토 필요",
+        statusClass: "border-amber-200 bg-amber-50 text-amber-800",
+        deadline: "D+3",
+        note: "조항 확인",
+      },
+      {
+        platform: "인스타",
+        platformClass: "border-pink-200 bg-pink-50 text-pink-700",
+        kind: "협찬",
+        party: "오브레 스튜디오",
+        title: "오브레 비건 선크림 릴스 캠페인",
+        amount: "180만원",
+        status: "수정 협의",
+        statusClass: "border-amber-200 bg-amber-50 text-amber-800",
+        deadline: "D+1",
+        note: "활용 기간 답변 대기",
+      },
+      {
+        platform: "유튜브",
+        platformClass: "border-rose-200 bg-rose-50 text-rose-700",
+        kind: "PPL",
+        party: "하우스핏",
+        title: "홈트 챌린지 유튜브 리뷰",
+        amount: "260만원",
+        status: "서명 준비",
+        statusClass: "border-blue-200 bg-blue-50 text-blue-700",
+        deadline: "D+2",
+        note: "본인 인증 후 서명",
+      },
+      {
+        platform: "블로그",
+        platformClass: "border-emerald-200 bg-emerald-50 text-emerald-700",
+        kind: "공동구매",
+        party: "브루잉랩",
+        title: "콜드브루 공동구매 계약",
+        amount: "판매 18%",
+        status: "콘텐츠 제출",
+        statusClass: "border-amber-200 bg-amber-50 text-amber-800",
+        deadline: "D+4",
+        note: "링크/증빙 제출",
+      },
+      {
+        platform: "유튜브",
+        platformClass: "border-rose-200 bg-rose-50 text-rose-700",
+        kind: "PPL",
+        party: "하우스핏",
+        title: "홈트 챌린지 유튜브 리뷰",
+        amount: "260만원",
+        status: "검수 완료",
+        statusClass: "border-neutral-200 bg-white text-neutral-700",
+        deadline: "완료",
+        note: "보관됨",
+      },
+    ],
+  },
+} satisfies {
+  advertiser: {
+    accountName: string;
+    accountMeta: string;
+    verificationMeta: string;
+    summary: string;
+    campaigns: IntroDashboardCampaign[];
+    rows: IntroDashboardRow[];
+  };
+  influencer: {
+    accountName: string;
+    accountMeta: string;
+    verificationMeta: string;
+    summary: string;
+    rows: IntroDashboardRow[];
+  };
+};
+
+function RoleDashboardStylePreview({
+  slide,
+  role,
+  header,
+  panelId,
+  focusLabel,
+}: {
+  slide: RoleIntroSlide;
+  role: IntroRole;
+  header: string;
+  panelId: string;
+  focusLabel: string;
+}) {
+  const isAdvertiser = role === "advertiser";
+  const data = isAdvertiser
+    ? introDashboardDemoData.advertiser
+    : introDashboardDemoData.influencer;
+  const rows = data.rows;
+  const selectedRowIndex = Math.max(
+    0,
+    Math.min(
+      rows.length - 1,
+      roleIntroSlides[role].findIndex((candidate) => candidate.label === slide.label),
+    ),
+  );
+
+  return (
+    <div
+      id={panelId}
+      role="region"
+      aria-label={`${slide.label} 미리보기`}
+      className="flex h-full min-h-[420px] flex-col overflow-hidden rounded-[14px] border border-neutral-200 bg-[#f7f6f3] lg:min-h-0 sm:rounded-[16px]"
+    >
+      <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-neutral-200 bg-[#fbfaf7] px-3 sm:px-4">
+        <div className="flex min-w-0 items-center gap-2">
+          <LogoMark />
+          <div className="min-w-0">
+            <p className="truncate text-[12px] font-extrabold text-neutral-950">
+              {isAdvertiser ? "광고주 · 대시보드" : "인플루언서 · 받은 계약"}
+            </p>
+            <p className="mt-0.5 truncate text-[10px] font-bold text-neutral-400">
+              가상 데모 화면 · {header}
+            </p>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <span className="hidden h-8 items-center rounded-[8px] border border-neutral-200 bg-white px-2 text-[10px] font-extrabold text-neutral-700 sm:inline-flex">
+            {focusLabel}
+          </span>
+          <span className="inline-flex h-8 items-center rounded-[8px] bg-neutral-950 px-2.5 text-[10px] font-extrabold text-white">
+            {isAdvertiser ? "공유 가능" : "검토 가능"}
+          </span>
+        </div>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto p-2.5">
+        {isAdvertiser ? (
+          <AdvertiserIntroDashboardPreview
+            campaigns={introDashboardDemoData.advertiser.campaigns}
+            data={introDashboardDemoData.advertiser}
+            rows={rows}
+            selectedRowIndex={selectedRowIndex}
+            slide={slide}
+          />
+        ) : (
+          <InfluencerIntroDashboardPreview
+            data={introDashboardDemoData.influencer}
+            rows={rows}
+            selectedRowIndex={selectedRowIndex}
+            slide={slide}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AdvertiserIntroDashboardPreview({
+  data,
+  campaigns,
+  rows,
+  selectedRowIndex,
+  slide,
+}: {
+  data: typeof introDashboardDemoData.advertiser;
+  campaigns: IntroDashboardCampaign[];
+  rows: IntroDashboardRow[];
+  selectedRowIndex: number;
+  slide: RoleIntroSlide;
+}) {
+  const selectedCampaignIndex = Math.min(selectedRowIndex, campaigns.length - 1);
+
+  return (
+    <section className="min-w-0 overflow-hidden rounded-[12px] border border-neutral-200 bg-[#fdfdfb] shadow-[0_16px_44px_rgba(23,26,23,0.07)]">
+      <IntroDashboardTitleBar
+        title="광고주 대시보드"
+        summary={data.summary}
+        badge="공유 가능"
+      />
+      <IntroAccountBanner
+        icon={<ShieldCheck className="h-3.5 w-3.5" />}
+        title="사업자 인증"
+        name={data.accountName}
+        meta={data.accountMeta}
+        detail={data.verificationMeta}
+      />
+      <div className="grid gap-2 p-2.5 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
+        <section className="overflow-hidden rounded-[10px] border border-[#d9e0d9] bg-white">
+          <div className="grid gap-2 border-b border-[#d9e0d9] bg-[#f8faf7] p-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+            <IntroSearchBox label="캠페인명" placeholder="캠페인명으로 검색" />
+            <p className="px-1 pb-2 text-[12px] font-semibold text-[#7d857f] sm:text-right">
+              전체 계약 21건
+            </p>
+          </div>
+          <div className="divide-y divide-[#edf1ed]">
+            {campaigns.map((campaign, index) => (
+              <div
+                key={campaign.name}
+                className={`grid gap-2 px-3 py-3 text-left transition-colors sm:grid-cols-[minmax(0,1fr)_86px_78px] sm:items-center ${
+                  index === selectedCampaignIndex ? "bg-blue-50/45" : "bg-white"
+                }`}
+              >
+                <div className="min-w-0">
+                  <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                    <span
+                      className={`inline-flex h-6 items-center rounded-md border px-2 text-[11px] font-semibold ${campaign.platformClass}`}
+                    >
+                      {campaign.platform}
+                    </span>
+                    <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-extrabold text-neutral-600">
+                      {campaign.status}
+                    </span>
+                  </div>
+                  <p className="truncate text-[13px] font-semibold text-[#171a17]">
+                    {campaign.name}
+                  </p>
+                </div>
+                <IntroMetric label="참여" value={`${campaign.participants}명`} />
+                <IntroMetric
+                  label="완료"
+                  value={`${campaign.completed}/${campaign.participants}`}
+                />
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="overflow-hidden rounded-[10px] border border-[#d9e0d9] bg-white">
+          <div className="border-b border-[#d9e0d9] bg-[#f8faf7] px-3 py-3">
+            <p className="text-[11px] font-extrabold text-[#7d857f]">
+              선택 캠페인 상세
+            </p>
+            <div className="mt-1 flex min-w-0 items-center justify-between gap-2">
+              <h3 className="truncate text-[16px] font-bold text-[#171a17]">
+                {campaigns[selectedCampaignIndex]?.name}
+              </h3>
+              <span className="shrink-0 rounded-[8px] bg-neutral-100 px-2.5 py-1 text-[10px] font-extrabold text-neutral-700">
+                {slide.label}
+              </span>
+            </div>
+          </div>
+          <IntroContractRows rows={rows} selectedRowIndex={selectedRowIndex} />
+        </section>
+      </div>
+    </section>
+  );
+}
+
+function InfluencerIntroDashboardPreview({
+  data,
+  rows,
+  selectedRowIndex,
+  slide,
+}: {
+  data: typeof introDashboardDemoData.influencer;
+  rows: IntroDashboardRow[];
+  selectedRowIndex: number;
+  slide: RoleIntroSlide;
+}) {
+  return (
+    <section className="min-w-0 overflow-hidden rounded-[12px] border border-neutral-200 bg-[#fdfdfb] shadow-[0_16px_44px_rgba(23,26,23,0.07)]">
+      <IntroDashboardTitleBar
+        title="받은 계약"
+        summary={data.summary}
+        badge="검토 가능"
+      />
+      <IntroAccountBanner
+        icon={<ShieldCheck className="h-3.5 w-3.5" />}
+        title="플랫폼 계정 인증"
+        name={data.accountName}
+        meta={data.accountMeta}
+        detail={data.verificationMeta}
+      />
+      <div className="p-2.5">
+        <section className="overflow-hidden rounded-[10px] border border-[#d9e0d9] bg-white">
+          <div className="grid gap-2 border-b border-[#d9e0d9] bg-[#f8faf7] p-2 sm:grid-cols-[minmax(0,1.1fr)_90px_110px_110px]">
+            <IntroSearchBox label="계약명" placeholder="계약명으로 검색" />
+            <IntroFilter label="플랫폼" value="전체" />
+            <IntroFilter label="금액" value="정액·수수료" />
+            <IntroFilter label="현 단계" value={slide.label} />
+          </div>
+          <IntroContractRows rows={rows} selectedRowIndex={selectedRowIndex} />
+        </section>
+      </div>
+    </section>
+  );
+}
+
+function IntroDashboardTitleBar({
+  title,
+  summary,
+  badge,
+}: {
+  title: string;
+  summary: string;
+  badge: string;
+}) {
+  return (
+    <div className="border-b border-[#d9e0d9] bg-white px-4 py-2">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 flex-wrap items-end gap-x-3 gap-y-1">
+          <h2 className="truncate text-[17px] font-bold text-[#171a17]">
+            {title}
+          </h2>
+          <p className="pb-0.5 text-[12px] font-semibold text-[#7d857f]">
+            {summary}
+          </p>
+        </div>
+        <span className="inline-flex h-7 items-center rounded-[8px] bg-[#eef0ed] px-2.5 text-[12px] font-semibold text-[#303630]">
+          {badge}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function IntroAccountBanner({
+  icon,
+  title,
+  name,
+  meta,
+  detail,
+}: {
+  icon: ReactNode;
+  title: string;
+  name: string;
+  meta: string;
+  detail: string;
+}) {
+  const compactBusiness = title === "사업자 인증";
+
+  return (
+    <section className="border-b border-neutral-200 bg-[#fbfbf8] px-4 py-2">
+      <div className="flex min-w-0 items-center gap-2">
+        {!compactBusiness ? (
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] bg-white text-neutral-800 ring-1 ring-neutral-200">
+            {icon}
+          </div>
+        ) : null}
+        <div className="min-w-0">
+          {compactBusiness ? (
+            <>
+              <p className="truncate text-[15px] font-bold text-neutral-950">
+                {name}
+              </p>
+              <p className="mt-0.5 truncate text-[11px] font-semibold text-neutral-500">
+                사업자번호 {meta}
+              </p>
+            </>
+          ) : (
+            <>
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <p className="text-[13px] font-bold text-neutral-950">{title}</p>
+                <span className="rounded-full border border-neutral-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-neutral-700">
+                  인증 완료
+                </span>
+                <span className="max-w-[180px] truncate text-[12px] font-semibold text-neutral-800">
+                  {name}
+                </span>
+              </div>
+              <p className="mt-1 truncate text-[11px] font-semibold text-neutral-500">
+                {[meta, detail].filter(Boolean).join(" · ")}
+              </p>
+            </>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function IntroSearchBox({
+  label,
+  placeholder,
+}: {
+  label: string;
+  placeholder: string;
+}) {
+  return (
+    <label className="block min-w-0">
+      <span className="mb-1 block text-[11px] font-extrabold text-[#7d857f]">
+        {label}
+      </span>
+      <span className="flex h-9 items-center gap-1.5 rounded-[7px] border border-[#d9e0d9] bg-white px-2 text-[11px] font-semibold text-[#8b938d]">
+        <Search className="h-3.5 w-3.5 shrink-0" />
+        <span className="truncate">{placeholder}</span>
+      </span>
+    </label>
+  );
+}
+
+function IntroFilter({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <p className="mb-1 text-[11px] font-extrabold text-[#7d857f]">{label}</p>
+      <div className="h-9 truncate rounded-[7px] border border-[#d9e0d9] bg-white px-2 py-2 text-[11px] font-semibold text-[#303630]">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function IntroMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[10px] font-extrabold text-[#7d857f]">{label}</p>
+      <p className="mt-1 text-[12px] font-semibold text-[#303630]">{value}</p>
+    </div>
+  );
+}
+
+function IntroContractRows({
+  rows,
+  selectedRowIndex,
+}: {
+  rows: IntroDashboardRow[];
+  selectedRowIndex: number;
+}) {
+  return (
+    <>
+      <div className="hidden grid-cols-[82px_92px_112px_minmax(0,1fr)_88px_88px] gap-2 border-b border-[#d9e0d9] bg-[#f8faf7] px-3 py-2 text-[10px] font-extrabold text-[#7d857f] md:grid">
+        <span>플랫폼</span>
+        <span>종류</span>
+        <span>상대</span>
+        <span>계약명</span>
+        <span>금액</span>
+        <span>현 단계</span>
+      </div>
+      <div className="hidden divide-y divide-[#edf1ed] md:block">
+        {rows.map((row, index) => (
+          <div
+            key={`${row.platform}-${row.title}-${row.status}-${index}`}
+            className={`grid grid-cols-[82px_92px_112px_minmax(0,1fr)_88px_88px] items-center gap-2 px-3 py-2.5 ${
+              index === selectedRowIndex ? "bg-blue-50/45" : "bg-white"
+            }`}
+          >
+            <span
+              className={`inline-flex h-6 w-fit max-w-full items-center truncate rounded-[6px] border px-2 text-[10px] font-extrabold ${row.platformClass}`}
+            >
+              {row.platform}
+            </span>
+            <span className="truncate text-[11px] font-extrabold text-neutral-800">
+              {row.kind}
+            </span>
+            <span className="truncate text-[11px] font-semibold text-neutral-600">
+              {row.party}
+            </span>
+            <span className="truncate text-[12px] font-extrabold text-neutral-950">
+              {row.title}
+            </span>
+            <span className="truncate text-[11px] font-extrabold text-neutral-800">
+              {row.amount}
+            </span>
+            <span
+              className={`inline-flex h-7 w-fit max-w-full items-center truncate rounded-[7px] border px-2 text-[10px] font-extrabold ${row.statusClass}`}
+            >
+              {row.status}
+            </span>
+          </div>
+        ))}
+      </div>
+      <div className="grid gap-2 p-2 md:hidden">
+        {rows.slice(0, 4).map((row, index) => (
+          <div
+            key={`${row.platform}-${row.title}-${row.status}-${index}-mobile`}
+            className={`rounded-[10px] border border-neutral-200 p-3 ${
+              index === selectedRowIndex ? "bg-blue-50/45" : "bg-white"
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span
+                className={`inline-flex h-6 max-w-[78px] items-center truncate rounded-[6px] border px-2 text-[10px] font-extrabold ${row.platformClass}`}
+              >
+                {row.platform}
+              </span>
+              <span
+                className={`inline-flex h-6 max-w-[92px] items-center truncate rounded-[7px] border px-2 text-[10px] font-extrabold ${row.statusClass}`}
+              >
+                {row.status}
+              </span>
+            </div>
+            <p className="mt-2 truncate text-[12px] font-extrabold text-neutral-950">
+              {row.title}
+            </p>
+            <div className="mt-1 flex items-center justify-between gap-2 text-[10px] font-extrabold text-neutral-500">
+              <span className="truncate">{row.party}</span>
+              <span className="shrink-0 text-neutral-800">{row.amount}</span>
+            </div>
+            <p className="mt-1 truncate text-[10px] font-bold text-neutral-400">
+              {row.note} · {row.deadline}
+            </p>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function RoleProposalPreview({
+  slide,
+  preview,
+  role,
+  panelId,
+}: {
+  slide: RoleIntroSlide;
+  preview: RolePreviewProposal;
+  role: IntroRole;
+  panelId: string;
+}) {
+  return (
+    <RoleDashboardStylePreview
+      focusLabel={preview.actionLabel}
+      header={preview.header}
+      panelId={panelId}
+      role={role}
+      slide={slide}
+    />
+  );
+}
+
+function RoleContractPreview({
+  slide,
+  preview,
+  role,
+  panelId,
+}: {
+  slide: RoleIntroSlide;
+  preview: RolePreviewContract;
+  role: IntroRole;
+  panelId: string;
+}) {
+  return (
+    <RoleDashboardStylePreview
+      focusLabel={preview.nextAction}
+      header={preview.header}
+      panelId={panelId}
+      role={role}
+      slide={slide}
+    />
+  );
 }
 
 function _LegacyRoleIntroScreen({ config }: { config: IntroConfig }) {
@@ -1060,7 +2763,7 @@ function _LegacyRoleIntroScreen({ config }: { config: IntroConfig }) {
   );
 }
 
-function InfluencerIntroScreen({ config }: { config: IntroConfig }) {
+function _InfluencerIntroScreen({ config }: { config: IntroConfig }) {
   return (
     <main className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950">
       <header className="border-b border-neutral-200/80 bg-[#fbfaf7]/95">
@@ -1068,7 +2771,7 @@ function InfluencerIntroScreen({ config }: { config: IntroConfig }) {
           <BrandLockup />
           <Link
             to={config.secondaryHref}
-            className="inline-flex h-9 items-center rounded-full border border-neutral-200 bg-white px-3 text-[12px] font-bold text-neutral-500 transition hover:border-neutral-300 hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
+            className="inline-flex h-10 items-center rounded-full border border-neutral-200 bg-white px-3 text-[12px] font-bold text-neutral-500 transition hover:border-neutral-300 hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
           >
             로그인
           </Link>
@@ -1089,13 +2792,19 @@ function InfluencerIntroScreen({ config }: { config: IntroConfig }) {
               to={config.primaryHref}
               className="group inline-flex h-12 items-center justify-center gap-2 rounded-[14px] bg-blue-600 px-5 text-[14px] font-extrabold tracking-[-0.01em] text-white shadow-[0_14px_34px_rgba(37,99,235,0.24)] ring-1 ring-blue-500/20 transition duration-200 hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-[0_18px_42px_rgba(37,99,235,0.28)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700 active:translate-y-0"
             >
-              <span>받은 계약 확인하기</span>
+              <span>시작하기</span>
               <span
                 aria-hidden="true"
                 className="text-[15px] leading-none transition-transform duration-200 group-hover:translate-x-0.5"
               >
                 →
               </span>
+            </Link>
+            <Link
+              to="/influencer/campaigns"
+              className="inline-flex h-11 items-center justify-center rounded-[14px] border border-neutral-200 bg-white px-5 text-[13px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
+            >
+              모집 캠페인 둘러보기
             </Link>
           </div>
 
@@ -1307,9 +3016,6 @@ function InfluencerPreviewSlideView({
               }`}
             >
               <span>{filter.label}</span>
-              <span className={filter.active ? "text-white/65" : "text-neutral-400"}>
-                {filter.count}
-              </span>
             </span>
           ))}
         </div>
@@ -1532,7 +3238,7 @@ function InfluencerRevisionPreview({
   );
 }
 
-function AdvertiserIntroScreen({ config }: { config: IntroConfig }) {
+function _AdvertiserIntroScreen({ config }: { config: IntroConfig }) {
   return (
     <main className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950">
       <header className="border-b border-neutral-200/80 bg-[#fbfaf7]/95">
@@ -1540,7 +3246,7 @@ function AdvertiserIntroScreen({ config }: { config: IntroConfig }) {
           <BrandLockup />
           <Link
             to={config.secondaryHref}
-            className="inline-flex h-9 items-center rounded-full border border-neutral-200 bg-white px-3 text-[12px] font-bold text-neutral-500 transition hover:border-neutral-300 hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
+            className="inline-flex h-10 items-center rounded-full border border-neutral-200 bg-white px-3 text-[12px] font-bold text-neutral-500 transition hover:border-neutral-300 hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
           >
             로그인
           </Link>
@@ -1561,13 +3267,19 @@ function AdvertiserIntroScreen({ config }: { config: IntroConfig }) {
               to={config.primaryHref}
               className="group inline-flex h-12 items-center justify-center gap-2 rounded-[14px] bg-blue-600 px-5 text-[14px] font-extrabold tracking-[-0.01em] text-white shadow-[0_14px_34px_rgba(37,99,235,0.24)] ring-1 ring-blue-500/20 transition duration-200 hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-[0_18px_42px_rgba(37,99,235,0.28)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700 active:translate-y-0"
             >
-              <span>새 계약 만들기</span>
+              <span>시작하기</span>
               <span
                 aria-hidden="true"
                 className="text-[15px] leading-none transition-transform duration-200 group-hover:translate-x-0.5"
               >
                 →
               </span>
+            </Link>
+            <Link
+              to="/advertiser/discover"
+              className="inline-flex h-11 items-center justify-center rounded-[14px] border border-neutral-200 bg-white px-5 text-[13px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
+            >
+              인플루언서 둘러보기
             </Link>
           </div>
 
@@ -2077,8 +3789,8 @@ function BrandLockup() {
   return (
     <Link
       to="/"
-      className="-ml-1 flex min-w-0 items-center gap-3 rounded-[12px] px-1 py-1 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#171a17]"
-      aria-label={`${PRODUCT_NAME} 홈`}
+      className="-ml-1 flex min-h-10 min-w-10 items-center gap-3 rounded-[12px] px-1 py-1 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#171a17]"
+      aria-label={`${LANDING_BRAND_NAME} 홈`}
     >
       <BrandLogo />
     </Link>

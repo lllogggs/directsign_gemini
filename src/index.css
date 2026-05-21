@@ -174,8 +174,8 @@
 @layer utilities {
   @keyframes landing-start-copy-in {
     from {
-      opacity: 0;
-      transform: translateY(10px);
+      opacity: 1;
+      transform: translateY(6px);
     }
 
     to {
@@ -196,12 +196,12 @@
 
   .custom-scrollbar {
     scrollbar-width: thin;
-    scrollbar-color: rgba(115, 115, 115, 0.45) transparent;
+    scrollbar-color: rgba(115, 115, 115, 0.28) transparent;
   }
 
   .custom-scrollbar::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
   }
 
   .custom-scrollbar::-webkit-scrollbar-track {
@@ -210,11 +210,11 @@
 
   .custom-scrollbar::-webkit-scrollbar-thumb {
     border-radius: 999px;
-    background: rgba(115, 115, 115, 0.35);
+    background: rgba(115, 115, 115, 0.24);
   }
 
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: rgba(82, 82, 82, 0.55);
+    background: rgba(82, 82, 82, 0.42);
   }
 
   .landing-start-title {
@@ -225,23 +225,23 @@
   }
 
   .landing-start-copy-line {
-    opacity: 0;
-    transform: translateY(10px);
-    animation: landing-start-copy-in 1120ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    opacity: 1;
+    transform: translateY(6px);
+    animation: landing-start-copy-in 560ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
     will-change: opacity, transform;
   }
 
   .landing-start-copy-line-1 {
-    animation-delay: 220ms;
+    animation-delay: 0ms;
   }
 
   .landing-start-copy-line-2 {
-    animation-delay: 980ms;
+    animation-delay: 80ms;
   }
 
   .contract-builder-surface [data-slot="input"],
   .contract-builder-surface [data-slot="select-trigger"] {
-    min-height: 44px;
+    min-height: 42px;
     width: 100%;
     border-color: rgb(229 229 229);
     border-radius: 12px;
@@ -266,6 +266,71 @@
     border-color: rgb(23 23 23);
     background-color: white;
     box-shadow: 0 0 0 3px rgba(23, 23, 23, 0.08);
+  }
+
+  .marketplace-input {
+    min-height: 44px;
+    width: 100%;
+    border: 1px solid rgb(229 229 229);
+    border-radius: 8px;
+    background-color: #fbfaf7;
+    padding: 0.75rem 0.875rem;
+    font-size: 13px;
+    font-weight: 600;
+    color: rgb(23 23 23);
+    outline: none;
+    transition:
+      border-color 150ms ease,
+      background-color 150ms ease,
+      box-shadow 150ms ease;
+  }
+
+  .marketplace-input::placeholder {
+    color: rgb(115 115 115);
+    font-weight: 500;
+  }
+
+  .marketplace-input:focus {
+    border-color: rgb(23 23 23);
+    background-color: white;
+    box-shadow: 0 0 0 3px rgba(23, 23, 23, 0.08);
+  }
+
+  .campaign-input {
+    min-height: 44px;
+    width: 100%;
+    border: 1px solid rgb(229 229 229);
+    border-radius: 12px;
+    background-color: #f8f7f4;
+    padding: 0.75rem 0.875rem;
+    font-size: 13px;
+    font-weight: 700;
+    color: rgb(23 23 23);
+    outline: none;
+    transition:
+      border-color 150ms ease,
+      background-color 150ms ease,
+      box-shadow 150ms ease;
+  }
+
+  .campaign-input::placeholder {
+    color: rgb(163 163 163);
+    font-weight: 700;
+  }
+
+  .campaign-input:focus {
+    border-color: rgb(23 23 23);
+    background-color: white;
+    box-shadow: 0 0 0 3px rgba(23, 23, 23, 0.08);
+  }
+
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
   }
 
   @media (prefers-reduced-motion: reduce) {

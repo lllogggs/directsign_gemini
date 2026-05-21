@@ -13,10 +13,13 @@ import type {
 
 export type {
   AuditEvent,
+  AdvertiserTrustFlag,
+  AdvertiserTrustRiskLevel,
   Clause,
   ClauseHistory,
   ClauseStatus,
   Contract,
+  ContractAdvertiserTrust,
   ContractActor,
   ContractCampaign,
   ContractEvidence,

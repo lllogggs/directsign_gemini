@@ -59,6 +59,7 @@ export function InfluencerLoginPage() {
   return (
     <AuthLoginScreen
       title="인플루언서 로그인"
+      description="받은 계약 화면으로 이동합니다."
       fields={[
         {
           id: "email",
@@ -84,17 +85,24 @@ export function InfluencerLoginPage() {
       isSubmitting={isSubmitting}
       error={error}
       footer={
-        <div className="flex items-center justify-center gap-3">
+        <div className="flex flex-wrap items-center justify-center gap-3">
           <Link
             to={`/signup/influencer?next=${encodeURIComponent(nextPath)}`}
-            className="text-[13px] font-semibold text-neutral-950 transition hover:text-neutral-600"
+            className="inline-flex min-h-10 items-center text-[13px] font-semibold text-neutral-950 transition hover:text-neutral-600"
           >
             계정 만들기
           </Link>
           <span className="h-3 w-px bg-neutral-200" />
           <Link
+            to="/reset-password?role=influencer"
+            className="inline-flex min-h-10 items-center text-[13px] font-semibold text-neutral-500 transition hover:text-neutral-950"
+          >
+            비밀번호 재설정
+          </Link>
+          <span className="h-3 w-px bg-neutral-200" />
+          <Link
             to="/login"
-            className="text-[13px] font-semibold text-neutral-500 transition hover:text-neutral-950"
+            className="inline-flex min-h-10 items-center text-[13px] font-semibold text-neutral-500 transition hover:text-neutral-950"
           >
             돌아가기
           </Link>
