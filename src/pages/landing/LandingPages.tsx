@@ -24,7 +24,7 @@ const LANDING_BRAND_NAME = "연락미";
 type RoleCard = {
   role: IntroRole;
   title: string;
-  emoji: string;
+  icon: LucideIcon;
   eyebrow: string;
   description: string;
   cta: string;
@@ -78,7 +78,7 @@ const roleCards: RoleCard[] = [
   {
     role: "advertiser",
     title: "광고주",
-    emoji: "🏢",
+    icon: FileCheck2,
     eyebrow: "광고 계약을 확실하게 남기는 팀",
     description:
       "합의한 광고 조건을 계약서, 협의 기록, 완료 상태로 정리합니다.",
@@ -88,30 +88,12 @@ const roleCards: RoleCard[] = [
   {
     role: "influencer",
     title: "인플루언서",
-    emoji: "📸",
+    icon: PenLine,
     eyebrow: "받은 광고 조건을 안전하게 확인하는 크리에이터",
     description:
       `${PRODUCT_NAME} 계약 링크에서 조건을 확인하고 수정 요청과 서명을 진행합니다.`,
     cta: "시작하기",
     href: "/intro/influencer",
-  },
-];
-
-const startSearchContext = [
-  {
-    title: "광고주가 남기는 기록",
-    body: "협찬, PPL, 공동구매 제안에서 캠페인명, 금액, 일정, 산출물, 광고 표시 문구, 검수 기준을 계약서 형태로 정리합니다.",
-    items: ["사업자 인증 후 공유 링크 발송", "조항별 수정 요청 확인", "최종본 서명 증빙 보관"],
-  },
-  {
-    title: "인플루언서가 확인하는 흐름",
-    body: "계약 링크에서 광고 조건을 먼저 읽고, 동의하기 어려운 조항은 이유를 남긴 뒤 최종 조건에만 전자서명합니다.",
-    items: ["모바일 계약 검토", "플랫폼 계정 소유 인증", "서명 완료 계약 보관"],
-  },
-  {
-    title: "연락미가 하지 않는 일",
-    body: "정산 대행, 에스크로, 법률 자문, 세무 대행, 광고 성과 보증이 아니라 광고 계약 과정의 기록과 증빙을 정리하는 업무 도구입니다.",
-    items: ["계약 성사 보증 아님", "대금 지급 대행 아님", "법률·세무 최종 판단 아님"],
   },
 ];
 
@@ -454,12 +436,12 @@ type RoleIntroSlide = {
 const roleIntroSlides = {
   advertiser: [
     {
-      label: "조건 입력",
+      label: "초안 작성",
       eyebrow: "계약 시작",
-      title: ["광고 조건을", "계약으로 시작"],
+      title: ["DM 합의를", "계약서 초안으로"],
       description:
-        "상대 정보와 합의 조건을 입력하면 계약서 초안부터 검토 링크, 전자서명까지 이어집니다.",
-      helper: "광고 조건을 계약으로 정리",
+        "브랜드, 보상, 일정, 산출물을 입력하면 광고 조건이 계약서 초안으로 정리됩니다.",
+      helper: "조건 입력만으로 초안 생성",
       primaryLabel: "시작하기",
       primaryHref: "/signup/advertiser",
       secondaryLabel: "광고주 로그인",
@@ -487,12 +469,12 @@ const roleIntroSlides = {
       },
     },
     {
-      label: "조건 정리",
-      eyebrow: "조건 정리",
-      title: ["합의 조건을", "계약서로 정리"],
+      label: "검토 링크",
+      eyebrow: "링크 발송",
+      title: ["작성한 계약을", "검토 링크로 발송"],
       description:
-        "플랫폼, 광고 형태, 금액, 일정, 검수 기준, 2차 활용 범위를 빠뜨리지 않고 같은 형식으로 정리합니다.",
-      helper: "조건을 넣으면 초안으로 정리",
+        "초안을 인플루언서가 바로 열어볼 수 있는 검토 링크로 보내고 진행 상태를 확인합니다.",
+      helper: "계약서 작성 후 링크 발송",
       primaryLabel: "시작하기",
       primaryHref: "/signup/advertiser",
       secondaryLabel: "광고주 로그인",
@@ -520,12 +502,12 @@ const roleIntroSlides = {
       },
     },
     {
-      label: "협의 기록",
+      label: "수정 기록",
       eyebrow: "검토·수정",
       title: ["검토 링크로", "수정까지 한곳에서"],
       description:
         "작성한 계약서를 링크로 보내고, 인플루언서의 질문과 수정 요청, 광고주의 답변을 계약 이력에 남깁니다.",
-      helper: "검토 링크와 수정 이력",
+      helper: "조항별 요청과 답변 보관",
       primaryLabel: "시작하기",
       primaryHref: "/signup/advertiser",
       secondaryLabel: "광고주 로그인",
@@ -553,12 +535,12 @@ const roleIntroSlides = {
       },
     },
     {
-      label: "서명 보관",
+      label: "서명 증빙",
       eyebrow: "서명·증빙",
       title: ["서명 완료와", "증빙 보관"],
       description:
         "최종본 서명, 동의 시각, 서명 PDF, 이후 제출 상태를 계약별로 모아 문제가 생겨도 확인할 수 있게 둡니다.",
-      helper: "서명 상태와 증빙 보관",
+      helper: "최종본과 PDF 증빙 확인",
       primaryLabel: "시작하기",
       primaryHref: "/signup/advertiser",
       secondaryLabel: "광고주 로그인",
@@ -603,10 +585,10 @@ const roleIntroSlides = {
     {
       label: "계약 확인",
       eyebrow: "계약 수신",
-      title: ["계약 링크를", "먼저 열람"],
+      title: ["받은 계약을", "먼저 확인"],
       description:
-        "계약 링크를 받으면 광고 조건과 서명 흐름을 한곳에서 확인합니다.",
-      helper: "광고 조건을 안전하게 확인",
+        "광고주가 보낸 링크에서 금액, 업로드 일정, 산출물, 사용 범위를 먼저 확인합니다.",
+      helper: "금액·일정·범위 먼저 확인",
       primaryLabel: "시작하기",
       primaryHref: "/signup/influencer",
       secondaryLabel: "인플루언서 로그인",
@@ -639,7 +621,7 @@ const roleIntroSlides = {
       title: ["돈, 일정, 권한을", "서명 전에 확인"],
       description:
         "금액, 업로드 일정, 검수 기준, 광고 표시, 콘텐츠 사용 권한처럼 나중에 문제가 되는 조건을 먼저 봅니다.",
-      helper: "받은 조건을 계약서로 확인",
+      helper: "숨은 조건을 서명 전 확인",
       primaryLabel: "시작하기",
       primaryHref: "/signup/influencer",
       secondaryLabel: "인플루언서 로그인",
@@ -667,12 +649,12 @@ const roleIntroSlides = {
       },
     },
     {
-      label: "수정 협의",
+      label: "수정 요청",
       eyebrow: "수정 요청",
       title: ["불리한 조항은", "서명 전에 요청"],
       description:
         "애매한 문구나 불리한 조항은 계약서 안에서 바로 이유를 남기고, 광고주의 답변을 같은 화면에서 기다립니다.",
-      helper: "조항별 수정 요청",
+      helper: "불리한 조항은 바로 요청",
       primaryLabel: "시작하기",
       primaryHref: "/signup/influencer",
       secondaryLabel: "인플루언서 로그인",
@@ -700,12 +682,12 @@ const roleIntroSlides = {
       },
     },
     {
-      label: "서명 보관",
+      label: "완료 보관",
       eyebrow: "서명·보관",
       title: ["동의한 계약만", "서명하고 보관"],
       description:
         "최종 조건에 동의한 뒤 전자서명하고, 완료 계약과 제출 상태를 보관해 이후 분쟁이나 확인 요청에 대비합니다.",
-      helper: "서명 상태와 완료 계약 보관",
+      helper: "서명 완료본과 제출 상태 보관",
       primaryLabel: "시작하기",
       primaryHref: "/signup/influencer",
       secondaryLabel: "인플루언서 로그인",
@@ -1173,6 +1155,7 @@ export function StartPage() {
               {roleCards.map((role) => {
                 const tone = getStartRoleTone(role.role);
                 const isAdvertiser = role.role === "advertiser";
+                const RoleIcon = role.icon;
                 const detail = isAdvertiser
                   ? "계약 작성 · 협의 관리 · 완료 보관"
                   : "받은 계약 · 수정 요청 · 전자서명";
@@ -1185,8 +1168,11 @@ export function StartPage() {
                     className={`group flex min-h-[176px] flex-col justify-between rounded-[20px] border px-5 py-5 text-left shadow-[0_1px_0_rgba(15,23,42,0.035),0_16px_42px_rgba(15,23,42,0.035)] transition hover:-translate-y-0.5 hover:shadow-[0_1px_0_rgba(15,23,42,0.04),0_22px_58px_rgba(15,23,42,0.06)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:min-h-[214px] sm:px-6 sm:py-6 lg:min-h-[220px] ${tone.card}`}
                   >
                     <span className="block">
-                      <span className="block text-[30px] leading-none sm:text-[34px]" aria-hidden="true">
-                        {role.emoji}
+                      <span
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-[10px] border border-neutral-200 bg-white/80 text-neutral-950 shadow-[0_1px_0_rgba(15,23,42,0.025)] sm:h-10 sm:w-10"
+                        aria-hidden="true"
+                      >
+                        <RoleIcon className="h-5 w-5" strokeWidth={2.2} />
                       </span>
                       <strong className="font-neo-heavy mt-3 block text-[30px] leading-none tracking-[-0.035em] text-neutral-950 sm:text-[38px]">
                         {role.title}
@@ -1217,51 +1203,6 @@ export function StartPage() {
           </Link>
         </footer>
       </div>
-
-      <section
-        aria-labelledby="contract-record-summary"
-        className="border-t border-neutral-200 bg-white px-5 py-10 sm:px-6 lg:px-8"
-      >
-        <div className="mx-auto max-w-[880px]">
-          <p className="text-[12px] font-extrabold text-neutral-400">
-            광고 계약 기록
-          </p>
-          <h2
-            id="contract-record-summary"
-            className="font-neo-heavy mt-2 text-[26px] leading-tight tracking-normal text-neutral-950 sm:text-[34px]"
-          >
-            광고 제안을 계약과 서명 증빙으로 정리합니다
-          </h2>
-          <p className="mt-3 max-w-[680px] break-keep text-[14px] font-semibold leading-7 text-neutral-600">
-            연락미는 광고주와 인플루언서가 협찬, PPL, 공동구매 조건을 같은 문서에서 확인하고,
-            수정 이력과 최종 동의 기록을 남기도록 만든 한국어 광고 계약 워크스페이스입니다.
-          </p>
-
-          <div className="mt-7 grid gap-3 lg:grid-cols-3">
-            {startSearchContext.map((item) => (
-              <article
-                key={item.title}
-                className="rounded-lg border border-neutral-200 bg-[#fbfbfc] p-4"
-              >
-                <h3 className="text-[14px] font-extrabold text-neutral-950">
-                  {item.title}
-                </h3>
-                <p className="mt-2 text-[13px] font-semibold leading-6 text-neutral-600">
-                  {item.body}
-                </p>
-                <ul className="mt-4 space-y-2 text-[12px] font-bold leading-5 text-neutral-500">
-                  {item.items.map((detail) => (
-                    <li key={detail} className="flex items-start gap-2">
-                      <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-700" />
-                      <span>{detail}</span>
-                    </li>
-                  ))}
-                </ul>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
     </main>
   );
 }
@@ -1399,9 +1340,9 @@ function RoleFeatureIntroScreen({
   ];
 
   return (
-    <main className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950">
+    <main className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950 lg:h-screen lg:overflow-hidden">
       <header className="border-b border-neutral-200/80 bg-[#fbfaf7]/95">
-        <div className="mx-auto flex h-[68px] max-w-[1120px] items-center justify-between gap-3 px-5 sm:px-6 lg:px-8">
+        <div className="mx-auto flex h-[58px] max-w-[1120px] items-center justify-between gap-3 px-5 sm:px-6 lg:px-8">
           <BrandLockup />
           <div className="flex min-w-0 items-center gap-2">
             <nav
@@ -1462,13 +1403,13 @@ function RoleFeatureIntroScreen({
         </nav>
       </div>
 
-      <section className="mx-auto max-w-[1280px] px-4 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-9">
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)] lg:items-start">
-          <aside className="min-w-0 pt-2 lg:pt-8">
+      <section className="mx-auto flex w-full max-w-[1280px] flex-col px-4 py-4 sm:px-6 sm:py-5 lg:h-[calc(100vh-58px)] lg:min-h-0 lg:overflow-hidden lg:px-8 lg:py-4">
+        <div className="grid min-h-0 gap-4 lg:flex-1 lg:grid-cols-[minmax(0,0.78fr)_minmax(0,1.22fr)] lg:items-stretch">
+          <aside className="min-w-0 pt-1 lg:flex lg:min-h-0 lg:flex-col lg:justify-center lg:pt-0">
             <p className="inline-flex h-8 items-center rounded-full border border-neutral-200 bg-white px-3 text-[12px] font-extrabold text-neutral-500">
               {roleLabel} 소개서
             </p>
-            <h1 className="font-neo-heavy mt-4 text-[38px] leading-[1.03] tracking-normal text-neutral-950 sm:text-[56px] lg:text-[62px]">
+            <h1 className="font-neo-heavy mt-3 text-[34px] leading-[1.03] tracking-normal text-neutral-950 sm:text-[48px] lg:text-[52px]">
               {activeSlide.title.map((line) => (
                 <span key={line} className="block">
                   {line}
@@ -1476,37 +1417,37 @@ function RoleFeatureIntroScreen({
               ))}
             </h1>
 
-            <p className="mt-5 max-w-[520px] break-keep text-[14px] font-bold leading-7 text-neutral-600 sm:text-[16px]">
+            <p className="mt-4 max-w-[520px] break-keep text-[14px] font-bold leading-6 text-neutral-600 sm:text-[15px]">
               {activeSlide.description}
             </p>
 
-            <div className="mt-6 grid max-w-[520px] grid-cols-2 gap-2">
+            <div className="mt-4 grid max-w-[520px] grid-cols-2 gap-2">
               {brochureFacts.map((fact) => (
                 <div
                   key={fact.label}
-                  className="rounded-[14px] border border-neutral-200 bg-white px-4 py-3 shadow-[0_1px_0_rgba(15,23,42,0.025)]"
+                  className="rounded-[12px] border border-neutral-200 bg-white px-3 py-2.5 shadow-[0_1px_0_rgba(15,23,42,0.025)]"
                 >
                   <p className="text-[11px] font-extrabold text-neutral-400">
                     {fact.label}
                   </p>
-                  <p className="mt-1 text-[22px] font-extrabold text-neutral-950">
+                  <p className="mt-1 text-[20px] font-extrabold text-neutral-950">
                     {fact.value}
                   </p>
                 </div>
               ))}
             </div>
 
-            <div className="mt-6 flex max-w-[520px] flex-col gap-2 sm:flex-row">
+            <div className="mt-4 flex max-w-[520px] flex-col gap-2 sm:flex-row">
               <Link
                 to={activeSlide.primaryHref}
-                className="group inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-[12px] bg-blue-600 px-5 text-[14px] font-extrabold tracking-normal text-white shadow-[0_14px_34px_rgba(37,99,235,0.24)] ring-1 ring-blue-500/20 transition duration-200 hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-[0_18px_42px_rgba(37,99,235,0.28)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700 active:translate-y-0"
+                className="group inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-[12px] bg-blue-600 px-5 text-[14px] font-extrabold tracking-normal text-white shadow-[0_14px_34px_rgba(37,99,235,0.24)] ring-1 ring-blue-500/20 transition duration-200 hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-[0_18px_42px_rgba(37,99,235,0.28)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700 active:translate-y-0"
               >
                 <span>{activeSlide.primaryLabel}</span>
                 <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
               </Link>
               <Link
                 to={activeSlide.secondaryHref}
-                className="inline-flex h-12 flex-1 items-center justify-center rounded-[12px] border border-neutral-200 bg-white px-5 text-[14px] font-extrabold text-neutral-600 transition hover:border-neutral-300 hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
+                className="inline-flex h-11 flex-1 items-center justify-center rounded-[12px] border border-neutral-200 bg-white px-5 text-[14px] font-extrabold text-neutral-600 transition hover:border-neutral-300 hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
               >
                 {activeSlide.secondaryLabel}
               </Link>
@@ -1514,7 +1455,7 @@ function RoleFeatureIntroScreen({
 
             <Link
               to={config.switchHref}
-              className="mt-5 inline-flex min-h-10 items-center text-[12px] font-bold text-neutral-400 transition hover:text-neutral-700"
+              className="mt-3 inline-flex min-h-9 items-center text-[12px] font-bold text-neutral-400 transition hover:text-neutral-700"
             >
               {config.switchLabel}
             </Link>
@@ -1528,7 +1469,7 @@ function RoleFeatureIntroScreen({
         </div>
 
         <div
-          className="mt-5 grid gap-2 sm:grid-cols-2 lg:mt-7 lg:grid-cols-4"
+          className="mt-4 grid gap-2 sm:grid-cols-2 lg:mt-4 lg:grid-cols-4"
           aria-label={`${roleLabel} 기능 선택`}
           onFocus={() => setIsPreviewPaused(true)}
           onBlur={() => setIsPreviewPaused(false)}
@@ -1544,7 +1485,7 @@ function RoleFeatureIntroScreen({
                 key={slide.label}
                 type="button"
                 onClick={() => handleFeatureSelect(index)}
-                className={`group min-h-[96px] rounded-[16px] border p-4 text-left transition hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-neutral-950 ${
+                className={`group min-h-[76px] rounded-[14px] border p-3 text-left transition hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-neutral-950 ${
                   selected
                     ? "border-neutral-950 bg-neutral-950 text-white shadow-[0_16px_38px_rgba(15,23,42,0.16)]"
                     : "border-neutral-200 bg-white text-neutral-500 shadow-[0_1px_0_rgba(15,23,42,0.025)] hover:border-neutral-300 hover:text-neutral-950"
@@ -1553,7 +1494,7 @@ function RoleFeatureIntroScreen({
               >
                 <span className="flex items-start justify-between gap-3">
                   <span
-                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] ${
+                    className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-[9px] ${
                       selected ? "bg-white/15 text-white" : "bg-neutral-100"
                     }`}
                   >
@@ -1565,11 +1506,11 @@ function RoleFeatureIntroScreen({
                     }`}
                   />
                 </span>
-                <span className="mt-3 block text-[14px] font-extrabold">
+                <span className="mt-2 block text-[13px] font-extrabold">
                   {slide.label}
                 </span>
                 <span
-                  className={`mt-1 block line-clamp-2 break-keep text-[12px] font-bold leading-5 ${
+                  className={`mt-1 block line-clamp-1 break-keep text-[12px] font-bold leading-5 ${
                     selected ? "text-white/65" : "text-neutral-500"
                   }`}
                 >
@@ -1676,8 +1617,8 @@ function RoleFeaturePreviewCarousel({
         </span>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col p-3 sm:p-4 lg:p-5">
-        <div className="relative min-h-[460px] flex-1 overflow-hidden sm:min-h-[560px] lg:min-h-[620px]">
+      <div className="flex min-h-0 flex-1 flex-col p-3 sm:p-4 lg:p-3">
+        <div className="relative min-h-[420px] flex-1 overflow-hidden sm:min-h-[500px] lg:min-h-0">
           <div
             className={`h-full transition duration-300 ease-out ${
               isFading ? "translate-x-4 opacity-0" : "translate-x-0 opacity-100"
@@ -2202,7 +2143,7 @@ function RoleDashboardStylePreview({
       id={panelId}
       role="region"
       aria-label={`${slide.label} 미리보기`}
-      className="flex h-full min-h-[420px] flex-col overflow-hidden rounded-[14px] border border-neutral-200 bg-[#f7f6f3] lg:min-h-0 sm:rounded-[16px]"
+      className="flex h-full min-h-[380px] flex-col overflow-hidden rounded-[14px] border border-neutral-200 bg-[#f7f6f3] sm:min-h-[420px] sm:rounded-[16px] lg:min-h-0"
     >
       <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-neutral-200 bg-[#fbfaf7] px-3 sm:px-4">
         <div className="flex min-w-0 items-center gap-2">
@@ -2511,19 +2452,17 @@ function IntroContractRows({
 }) {
   return (
     <>
-      <div className="hidden grid-cols-[82px_92px_112px_minmax(0,1fr)_88px_88px] gap-2 border-b border-[#d9e0d9] bg-[#f8faf7] px-3 py-2 text-[10px] font-extrabold text-[#7d857f] md:grid">
+      <div className="hidden grid-cols-[74px_92px_minmax(0,1fr)_82px] gap-2 border-b border-[#d9e0d9] bg-[#f8faf7] px-3 py-2 text-[10px] font-extrabold text-[#7d857f] md:grid">
         <span>플랫폼</span>
-        <span>종류</span>
         <span>상대</span>
         <span>계약명</span>
-        <span>금액</span>
-        <span>현 단계</span>
+        <span>지급</span>
       </div>
       <div className="hidden divide-y divide-[#edf1ed] md:block">
         {rows.map((row, index) => (
           <div
             key={`${row.platform}-${row.title}-${row.status}-${index}`}
-            className={`grid grid-cols-[82px_92px_112px_minmax(0,1fr)_88px_88px] items-center gap-2 px-3 py-2.5 ${
+            className={`grid grid-cols-[74px_92px_minmax(0,1fr)_82px] items-center gap-2 px-3 py-2.5 ${
               index === selectedRowIndex ? "bg-blue-50/45" : "bg-white"
             }`}
           >
@@ -2531,9 +2470,6 @@ function IntroContractRows({
               className={`inline-flex h-6 w-fit max-w-full items-center truncate rounded-[6px] border px-2 text-[10px] font-extrabold ${row.platformClass}`}
             >
               {row.platform}
-            </span>
-            <span className="truncate text-[11px] font-extrabold text-neutral-800">
-              {row.kind}
             </span>
             <span className="truncate text-[11px] font-semibold text-neutral-600">
               {row.party}
@@ -2543,11 +2479,6 @@ function IntroContractRows({
             </span>
             <span className="truncate text-[11px] font-extrabold text-neutral-800">
               {row.amount}
-            </span>
-            <span
-              className={`inline-flex h-7 w-fit max-w-full items-center truncate rounded-[7px] border px-2 text-[10px] font-extrabold ${row.statusClass}`}
-            >
-              {row.status}
             </span>
           </div>
         ))}
