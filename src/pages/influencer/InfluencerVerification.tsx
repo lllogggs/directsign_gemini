@@ -574,12 +574,10 @@ export function InfluencerVerification() {
                       visibleApprovedPlatformChips.map((item) => (
                         <span
                           key={`${item.platform}-${item.handle ?? item.url ?? "approved"}`}
-                          className="inline-flex h-8 max-w-full items-center rounded-full border border-emerald-200 bg-white px-3 text-xs font-semibold text-emerald-800"
+                          className="inline-flex h-8 max-w-full items-center truncate rounded-full border border-emerald-200 bg-white px-3 text-xs font-semibold text-emerald-800"
                         >
-                          <span className="truncate">
-                            {PLATFORM_META[item.platform]?.label ?? item.platform}
-                            {item.handle ? ` · ${item.handle}` : ""}
-                          </span>
+                          {PLATFORM_META[item.platform]?.label ?? item.platform}
+                          {item.handle ? ` · ${item.handle}` : ""}
                         </span>
                       ))
                     ) : (
