@@ -31,6 +31,7 @@ interface AuthLoginScreenProps {
   submitDisabled?: boolean;
   isSubmitting: boolean;
   error?: string;
+  errorHint?: string;
   footer?: React.ReactNode;
   onSubmit: (event: React.FormEvent) => void;
 }
@@ -47,6 +48,7 @@ export function AuthLoginScreen({
   submitDisabled = false,
   isSubmitting,
   error,
+  errorHint,
   footer,
   onSubmit,
 }: AuthLoginScreenProps) {
@@ -158,7 +160,12 @@ export function AuthLoginScreen({
                       aria-live="assertive"
                       className="rounded-[12px] border border-red-200 bg-red-50 px-4 py-3 text-[13px] font-semibold leading-5 text-red-700"
                     >
-                      {error}
+                      <p>{error}</p>
+                      {errorHint ? (
+                        <p className="mt-1 text-[12px] font-medium text-red-600">
+                          {errorHint}
+                        </p>
+                      ) : null}
                     </div>
                   ) : null}
 

@@ -43,8 +43,12 @@ import {
   formatPublicContactValue,
   removeInternalTestLabel,
 } from "../../domain/display";
-import { useVerificationSummary } from "../../hooks/useVerificationSummary";
+import {
+  clearVerificationSummaryCache,
+  useVerificationSummary,
+} from "../../hooks/useVerificationSummary";
 import { useMarketplaceMessageSummary } from "../../hooks/useMarketplaceMessageSummary";
+import { clearAdvertiserSessionCache } from "../../domain/advertiserSessionCache";
 import { PRODUCT_NAME } from "../../domain/brand";
 import { LEGAL_CONTACT_EMAIL } from "../../domain/legalEntity";
 import { apiFetch } from "../../domain/api";
@@ -634,6 +638,8 @@ export function Dashboard() {
     } catch (error) {
       console.warn(`[${PRODUCT_NAME}] advertiser logout request failed`, error);
     } finally {
+      clearAdvertiserSessionCache();
+      clearVerificationSummaryCache("advertiser");
       resetHydration();
       navigate("/login/advertiser", { replace: true });
     }

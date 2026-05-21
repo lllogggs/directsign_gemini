@@ -4,7 +4,6 @@ import {
   BadgeCheck,
   BookOpen,
   CheckCircle2,
-  ExternalLink,
   FileText,
   Globe2,
   Handshake,
@@ -48,6 +47,7 @@ import {
 import {
   formatInfluencerPublicProfileUrl,
   getInfluencerPublicProfilePath,
+  normalizePublicProfileHandle,
   type InfluencerPublicProfileResponse,
 } from "../../domain/publicInfluencerProfile";
 import type { InfluencerPlatform } from "../../domain/verification";
@@ -70,6 +70,10 @@ const proposalTypeOptions: CampaignProposalType[] = [
   "group_buy",
   "visit_review",
 ];
+
+const demoInfluencerProfileAliases: Record<string, string> = {
+  "creator-sora": "zeu_k",
+};
 
 type MarketplaceInfluencersResponse = {
   profiles: MarketplaceInfluencerProfile[];
@@ -157,10 +161,21 @@ function useMarketplaceBrands() {
 
 function useMarketplaceInfluencerProfile(handle: string | undefined) {
   const fallbackProfile = useMemo(
-    () =>
-      handle
-        ? marketplaceInfluencers.find((item) => item.handle === handle) ?? null
-        : null,
+    () => {
+      if (!handle) return null;
+      const normalizedHandle = normalizePublicProfileHandle(handle);
+      const sourceHandle =
+        demoInfluencerProfileAliases[normalizedHandle] ?? normalizedHandle;
+      const profile =
+        marketplaceInfluencers.find(
+          (item) => normalizePublicProfileHandle(item.handle) === sourceHandle,
+        ) ?? null;
+
+      if (!profile) return null;
+      return sourceHandle === normalizedHandle
+        ? profile
+        : { ...profile, id: `${profile.id}-${normalizedHandle}`, handle: normalizedHandle };
+    },
     [handle],
   );
   const [remoteResult, setRemoteResult] = useState<{
@@ -177,7 +192,7 @@ function useMarketplaceInfluencerProfile(handle: string | undefined) {
       headers: { Accept: "application/json" },
     })
       .then(async (response) => {
-        if (response.status === 404) return { profile: null };
+        if (response.status === 404) return { profile: fallbackProfile };
         if (!response.ok) throw new Error("Marketplace influencer failed");
         return (await response.json()) as MarketplaceInfluencerResponse;
       })
@@ -222,7 +237,7 @@ function useMarketplaceBrandProfile(handle: string | undefined) {
       headers: { Accept: "application/json" },
     })
       .then(async (response) => {
-        if (response.status === 404) return { brand: null };
+        if (response.status === 404) return { brand: fallbackBrand };
         if (!response.ok) throw new Error("Marketplace brand failed");
         return (await response.json()) as MarketplaceBrandResponse;
       })
@@ -578,28 +593,28 @@ export function PublicInfluencerProfilePage() {
       </header>
 
       <section className="border-b border-neutral-200/80 bg-white">
-        <div className="mx-auto grid max-w-[1180px] gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:px-8">
+        <div className="mx-auto grid max-w-[1120px] gap-5 px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_300px] lg:px-8">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <StatusPill icon={<BadgeCheck className="h-3.5 w-3.5" />} label={profile.verifiedLabel} />
               <StatusPill icon={<Mail className="h-3.5 w-3.5" />} label={profile.responseTimeLabel} />
             </div>
-            <div className="mt-5 flex flex-col gap-5 sm:flex-row sm:items-start">
+            <div className="mt-4 flex flex-col gap-5 sm:flex-row sm:items-start">
               <AvatarBlock label={profile.avatarLabel} size="large" />
               <div className="min-w-0 flex-1">
                 <p className="break-all text-[13px] font-semibold text-neutral-500">
                   {formatInfluencerPublicProfileUrl(profile.handle)}
                 </p>
-                <h1 className="font-neo-heavy mt-2 text-[34px] leading-tight tracking-[-0.035em] text-neutral-950 sm:text-[44px]">
+                <h1 className="font-neo-heavy mt-2 text-[32px] leading-tight tracking-[-0.035em] text-neutral-950 sm:text-[40px]">
                   {profile.displayName}
                 </h1>
                 <p className="mt-3 max-w-2xl break-keep text-[16px] font-medium leading-7 text-neutral-600">
                   {cleanMarketplaceCopy(profile.headline)}
                 </p>
-                <p className="mt-4 max-w-3xl break-keep text-[14px] leading-6 text-neutral-600">
+                <p className="mt-3 max-w-3xl break-keep text-[14px] leading-6 text-neutral-600">
                   {cleanMarketplaceCopy(profile.bio)}
                 </p>
-                <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+                <div className="mt-4 flex flex-col gap-2 sm:flex-row">
                   <button
                     type="button"
                     onClick={() => setShowContact(true)}
@@ -620,10 +635,8 @@ export function PublicInfluencerProfilePage() {
             </div>
           </div>
 
-          <aside className="rounded-[14px] border border-neutral-200 bg-[#fbfaf7] p-4">
-            <p className="text-[12px] font-semibold text-neutral-500">
-              컨택 시작 정보
-            </p>
+          <aside className="rounded-[12px] border border-neutral-200 bg-[#fbfaf7] p-4">
+            <p className="text-[12px] font-semibold text-neutral-500">컨택 기준</p>
             <dl className="mt-3 grid gap-2">
               <ProfileFact label="활동 지역" value={profile.location} />
               <ProfileFact label="주요 타깃" value={profile.audience} />
@@ -637,74 +650,79 @@ export function PublicInfluencerProfilePage() {
         </div>
       </section>
 
-      <section className="mx-auto grid max-w-[1180px] gap-4 px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:px-8">
-        <div className="grid gap-4">
-          <ProfileSection title="활동 채널">
-            <div className="grid gap-3 md:grid-cols-2">
-              {profile.platforms.map((platform) => (
-                <a
-                  key={`${platform.platform}-${platform.handle}`}
-                  href={platform.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="grid gap-3 rounded-[14px] border border-neutral-200 bg-white p-4 transition hover:border-neutral-300"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <PlatformPill platform={platform.platform} label={platform.label} />
-                    <ExternalLink className="h-4 w-4 shrink-0 text-neutral-400" />
-                  </div>
-                  <div>
-                    <p className="text-[15px] font-semibold text-neutral-950">
-                      {platform.handle}
+      <section className="mx-auto grid max-w-[1120px] gap-4 px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_300px] lg:px-8">
+        <section className="rounded-[12px] border border-neutral-200 bg-white p-5">
+          <h2 className="text-[16px] font-semibold text-neutral-950">핵심 정보</h2>
+          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+            <div>
+              <p className="mb-2 text-[12px] font-semibold text-neutral-500">활동 채널</p>
+              <div className="grid gap-2">
+                {profile.platforms.map((platform) => (
+                  <a
+                    key={`${platform.platform}-${platform.handle}`}
+                    href={platform.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center justify-between gap-3 rounded-[10px] border border-neutral-200 bg-[#fbfaf7] px-3 py-3 transition hover:border-neutral-300"
+                  >
+                    <div className="min-w-0">
+                      <PlatformPill platform={platform.platform} label={platform.label} />
+                      <p className="mt-2 truncate text-[13px] font-semibold text-neutral-950">
+                        {platform.handle}
+                      </p>
+                    </div>
+                    <p className="shrink-0 text-right text-[12px] font-semibold leading-5 text-neutral-500">
+                      {platform.followersLabel}
+                      <br />
+                      {platform.performanceLabel}
                     </p>
-                    <p className="mt-1 text-[12px] font-medium text-neutral-500">
-                      {platform.followersLabel} · {platform.performanceLabel}
+                  </a>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-2 text-[12px] font-semibold text-neutral-500">최근 성과</p>
+              <div className="grid gap-2">
+                {profile.portfolio.slice(0, 3).map((item) => (
+                  <article
+                    key={`${item.brand}-${item.title}`}
+                    className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-[10px] border border-neutral-200 bg-[#fbfaf7] px-3 py-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-[13px] font-semibold text-neutral-950">
+                        {item.title}
+                      </p>
+                      <p className="mt-1 text-[12px] font-semibold text-neutral-500">
+                        {item.brand}
+                      </p>
+                    </div>
+                    <p className="shrink-0 text-right text-[12px] font-semibold text-neutral-700">
+                      {cleanMarketplaceCopy(item.result)}
                     </p>
-                  </div>
-                </a>
-              ))}
+                  </article>
+                ))}
+              </div>
             </div>
-          </ProfileSection>
+          </div>
+        </section>
 
-          <ProfileSection title="최근 협업">
-            <div className="grid gap-3 md:grid-cols-3">
-              {profile.portfolio.map((item) => (
-                <article
-                  key={`${item.brand}-${item.title}`}
-                  className="rounded-[14px] border border-neutral-200 bg-white p-4"
-                >
-                  <p className="text-[12px] font-semibold text-neutral-500">
-                    {item.brand}
-                  </p>
-                  <h2 className="mt-2 text-[15px] font-semibold text-neutral-950">
-                    {item.title}
-                  </h2>
-                  <p className="mt-3 text-[13px] font-medium text-neutral-600">
-                    {cleanMarketplaceCopy(item.result)}
-                  </p>
-                </article>
-              ))}
-            </div>
-          </ProfileSection>
-        </div>
-
-        <aside className="grid gap-4">
-          <ProfileSection title="브랜드 적합도">
+        <aside className="rounded-[12px] border border-neutral-200 bg-white p-5">
+          <h2 className="text-[16px] font-semibold text-neutral-950">제안 기준</h2>
+          <div className="mt-4">
             <TagList items={profile.brandFit.map(cleanMarketplaceCopy)} />
-          </ProfileSection>
-          <ProfileSection title="제안 전에 포함할 내용">
-            <ul className="grid gap-2">
-              {profile.proposalHints.map((hint) => (
-                <li
-                  key={hint}
-                  className="flex gap-2 text-[13px] font-medium leading-5 text-neutral-600"
-                >
-                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-neutral-700" />
-                  <span>{cleanMarketplaceCopy(hint)}</span>
-                </li>
-              ))}
-            </ul>
-          </ProfileSection>
+          </div>
+          <ul className="mt-4 grid gap-2 border-t border-neutral-100 pt-4">
+            {profile.proposalHints.slice(0, 3).map((hint) => (
+              <li
+                key={hint}
+                className="flex gap-2 text-[13px] font-medium leading-5 text-neutral-600"
+              >
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-neutral-700" />
+                <span>{cleanMarketplaceCopy(hint)}</span>
+              </li>
+            ))}
+          </ul>
         </aside>
       </section>
 

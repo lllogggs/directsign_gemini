@@ -27,7 +27,11 @@ import { createShareToken } from "../../domain/contracts";
 import { buildContractShareUrl } from "../../domain/links";
 import { PRODUCT_NAME } from "../../domain/brand";
 import { verificationStatusLabel } from "../../domain/verification";
-import { useVerificationSummary } from "../../hooks/useVerificationSummary";
+import {
+  clearVerificationSummaryCache,
+  useVerificationSummary,
+} from "../../hooks/useVerificationSummary";
+import { clearAdvertiserSessionCache } from "../../domain/advertiserSessionCache";
 import { translateApiErrorMessage } from "../../domain/userMessages";
 import {
   formatContractTitleForDisplay,
@@ -522,6 +526,8 @@ export function ContractAdminViewer() {
     } catch (error) {
       console.warn(`[${PRODUCT_NAME}] advertiser logout request failed`, error);
     } finally {
+      clearAdvertiserSessionCache();
+      clearVerificationSummaryCache("advertiser");
       resetHydration();
       navigate("/login/advertiser", { replace: true });
     }

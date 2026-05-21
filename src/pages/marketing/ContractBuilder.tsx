@@ -17,7 +17,11 @@ import {
   type VerificationStatus,
 } from "../../domain/verification";
 import { removeInternalTestLabel } from "../../domain/display";
-import { useVerificationSummary } from "../../hooks/useVerificationSummary";
+import {
+  clearVerificationSummaryCache,
+  useVerificationSummary,
+} from "../../hooks/useVerificationSummary";
+import { clearAdvertiserSessionCache } from "../../domain/advertiserSessionCache";
 import { PRODUCT_NAME } from "../../domain/brand";
 import { ScreenHelpButton } from "../../components/ScreenHelp";
 import { SCREEN_HELP_CONTENT } from "../../domain/screenHelp";
@@ -799,6 +803,8 @@ export function ContractBuilder() {
     } catch (error) {
       console.warn(`[${PRODUCT_NAME}] advertiser logout request failed`, error);
     } finally {
+      clearAdvertiserSessionCache();
+      clearVerificationSummaryCache("advertiser");
       resetHydration();
       navigate("/login/advertiser", { replace: true });
     }

@@ -11,7 +11,6 @@ import {
   FileImage,
   Globe2,
   Instagram,
-  Link2,
   Music2,
   RefreshCw,
   ShieldCheck,
@@ -252,9 +251,6 @@ export function InfluencerVerification() {
   const evidenceHref = proofUrl.trim();
   const isInstagramDmMethod =
     platform === "instagram" && method === "instagram_dm_code";
-  const challengeHelpText = isInstagramDmMethod
-    ? `요청 접수 후 이 코드를 연락미 공식 인스타그램 @${OFFICIAL_INSTAGRAM_HANDLE}으로 DM 보내 주세요.`
-    : "아래 코드를 복사해 프로필 소개나 공개 게시글에 잠깐 넣어 주세요. 인증이 끝나면 삭제해도 됩니다.";
   const verification = summary?.influencer;
   const verificationStatus = verification?.status ?? "not_submitted";
   const latest = verification?.latest_request;
@@ -469,9 +465,9 @@ export function InfluencerVerification() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f4f5f7] font-sans text-neutral-950">
+    <div className="fixed inset-0 overflow-hidden bg-[#f4f5f7] font-sans text-neutral-950">
       <header className="border-b border-neutral-200/80 bg-white shadow-[0_1px_0_rgba(15,23,42,0.04)]">
-        <div className="mx-auto flex h-[72px] max-w-6xl items-center justify-between px-5 sm:px-8">
+        <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-5 sm:px-8">
           <button
             type="button"
             onClick={() => navigate(returnPath)}
@@ -487,9 +483,9 @@ export function InfluencerVerification() {
         </div>
       </header>
 
-      <main className="mx-auto grid max-w-6xl gap-4 px-5 py-4 sm:px-8 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <section className="rounded-lg border border-neutral-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)] sm:p-6">
-          <div className="mb-5 rounded-lg border border-neutral-200 bg-[#fbfbfc] p-4 shadow-[inset_3px_0_0_rgba(23,23,23,0.12)]">
+      <main className="mx-auto grid h-[calc(100vh-64px)] max-w-5xl gap-3 overflow-hidden px-5 py-4 sm:px-8 lg:grid-cols-[minmax(0,1fr)_260px]">
+        <section className="min-h-0 overflow-y-auto rounded-lg border border-neutral-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)] sm:p-5">
+          <div className="mb-4 rounded-lg border border-neutral-200 bg-[#fbfbfc] p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-start gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-neutral-950 text-white">
@@ -512,7 +508,7 @@ export function InfluencerVerification() {
                 )}`}
               >
                 {isVerificationLoading
-                  ? "확인중"
+                  ? "정보 확인 중"
                   : verificationStatusLabel(verificationStatus)}
               </span>
             </div>
@@ -553,8 +549,8 @@ export function InfluencerVerification() {
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-neutral-500">
               {approved
-                ? "인증된 계정을 유지하면서 새 플랫폼이나 변경된 계정만 추가 검수로 관리합니다."
-                : "블로그, 인스타그램, 유튜브 등 계약에 쓰는 채널이 본인 계정인지 인증 코드와 증빙 URL로 확인합니다."}
+                ? "이미 승인된 계정은 유지됩니다. 새 채널이나 변경된 URL만 추가로 접수하세요."
+                : "계약에 쓰는 채널이 본인 계정인지 코드, DM, URL 중 가능한 방식으로 확인합니다."}
             </p>
           </div>
 
@@ -604,15 +600,15 @@ export function InfluencerVerification() {
           ) : null}
 
           {showRequestForm ? (
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-3">
             <div>
-              <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="mb-2 flex items-center justify-between gap-3">
                 <p className="text-sm font-semibold text-neutral-900">플랫폼</p>
                 <span className="text-xs font-medium text-neutral-400">
                   {selectedPlatform.hostHint}
                 </span>
               </div>
-              <div className="grid gap-2 sm:grid-cols-5">
+              <div className="flex flex-wrap gap-2">
                 {(Object.keys(PLATFORM_META) as InfluencerPlatform[]).map((item) => {
                   const meta = PLATFORM_META[item];
                   const active = item === platform;
@@ -622,23 +618,23 @@ export function InfluencerVerification() {
                       key={item}
                       type="button"
                       onClick={() => updatePlatform(item)}
-                      className={`flex min-h-[64px] flex-col items-start justify-between rounded-lg border p-3 text-left transition ${
+                      className={`inline-flex h-10 items-center gap-2 rounded-lg border px-3 text-sm font-semibold transition ${
                         active
                           ? `${meta.className} shadow-[0_10px_24px_rgba(15,23,42,0.08)] ring-2 ring-neutral-950/10`
-                          : "border-neutral-200 bg-white text-neutral-600 hover:-translate-y-0.5 hover:border-neutral-400 hover:shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
+                          : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-400 hover:shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
                       }`}
                     >
-                      <span className="flex h-8 w-8 items-center justify-center rounded-md bg-white/70 text-current">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-md bg-white/70 text-current">
                         {meta.icon}
                       </span>
-                      <span className="text-xs font-semibold">{meta.label}</span>
+                      <span>{meta.label}</span>
                     </button>
                   );
                 })}
               </div>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-2">
               <TextField
                 label="이름/활동명"
                 value={form.subject_name}
@@ -677,14 +673,16 @@ export function InfluencerVerification() {
               />
             </div>
 
-            <section className="rounded-lg border border-neutral-200 bg-[#fbfbfc] p-4">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <section className="rounded-lg border border-neutral-200 bg-[#fbfbfc] p-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-sm font-semibold text-neutral-950">
-                    {PRODUCT_NAME} 인증 코드
+                    {PRODUCT_NAME} 인증 흐름
                   </p>
                   <p className="mt-1 text-xs leading-5 text-neutral-500">
-                    {challengeHelpText}
+                    {isInstagramDmMethod
+                      ? `코드 복사 → @${OFFICIAL_INSTAGRAM_HANDLE} DM → 요청 접수`
+                      : "코드 복사 → 프로필/게시글에 임시 등록 → 증빙 URL 입력"}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -714,73 +712,39 @@ export function InfluencerVerification() {
                 </div>
               </div>
 
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                {selectedPlatform.instructions.map((instruction) => (
-                  <div
-                    key={instruction}
-                    className="flex items-start gap-2 rounded-md bg-white px-3 py-2 text-xs leading-5 text-neutral-600"
-                  >
-                    <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-600" />
-                    <span>{instruction}</span>
-                  </div>
-                ))}
+              <div className="mt-3 rounded-md bg-white px-3 py-2 text-xs font-semibold leading-5 text-neutral-600">
+                {isInstagramDmMethod
+                  ? "공개 댓글이나 게시글 없이 DM으로 확인합니다."
+                  : "검수 후 프로필/게시글에 남긴 코드는 삭제해도 됩니다."}
               </div>
             </section>
 
             <div>
-              <p className="mb-3 text-sm font-semibold text-neutral-900">
+              <p className="mb-2 text-sm font-semibold text-neutral-900">
                 인증 방식
               </p>
-              <div className="grid gap-2 sm:grid-cols-2">
+              <div className="flex flex-wrap gap-2">
                 {selectedPlatform.methods.map((item) => (
                   <button
                     key={item}
                     type="button"
                     onClick={() => updateMethod(item)}
-                    className={`rounded-lg border p-3 text-left transition ${
+                    className={`h-10 rounded-lg border px-3 text-sm font-semibold transition ${
                     method === item
                         ? "border-neutral-950 bg-neutral-950 text-white shadow-[0_12px_26px_rgba(15,23,42,0.14)]"
-                        : "border-neutral-200 bg-white text-neutral-700 hover:-translate-y-0.5 hover:border-neutral-400 hover:shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
+                        : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-400 hover:shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
                     }`}
                   >
-                    <span className="text-sm font-semibold">
                       {METHOD_META[item].label}
-                    </span>
-                    <span
-                      className={`mt-2 block text-xs leading-5 ${
-                        method === item ? "text-neutral-300" : "text-neutral-500"
-                      }`}
-                    >
-                      {METHOD_META[item].helper}
-                    </span>
                   </button>
                 ))}
               </div>
+              <p className="mt-2 rounded-lg border border-neutral-200 bg-[#fbfbfc] px-3 py-2 text-xs leading-5 text-neutral-500">
+                {selectedMethod.helper}
+              </p>
             </div>
 
-            {isInstagramDmMethod ? (
-              <div className="rounded-lg border border-neutral-200 bg-[#fbfbfc] px-4 py-3 text-sm leading-6 text-neutral-600">
-                <p className="font-semibold text-neutral-950">
-                  DM 인증은 별도 공개 URL 없이 프로필 URL로 접수됩니다.
-                </p>
-                <p className="mt-1">
-                  요청 접수 후 같은 코드{" "}
-                  <span className="font-mono font-semibold text-neutral-950">
-                    {challengeCode}
-                  </span>
-                  를 공식 계정{" "}
-                  <a
-                    href={OFFICIAL_INSTAGRAM_URL}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="font-semibold text-neutral-950 underline underline-offset-4"
-                  >
-                    @{OFFICIAL_INSTAGRAM_HANDLE}
-                  </a>
-                  으로 DM 보내 주세요.
-                </p>
-              </div>
-            ) : (
+            {!isInstagramDmMethod ? (
               <>
                 <TextField
                   label="증빙 URL"
@@ -793,24 +757,25 @@ export function InfluencerVerification() {
                   required={method !== "screenshot_review"}
                 />
                 <p className="-mt-2 rounded-lg border border-neutral-200 bg-[#fbfbfc] px-3 py-2 text-xs leading-5 text-neutral-500">
-                  자동 확인은 이 URL에서 인증코드를 먼저 찾습니다. 접근이 막히는
-                  플랫폼은 스크린샷을 함께 올리면 운영자가 이어서 확인합니다.
+                  접근이 막히는 플랫폼은 스크린샷을 함께 올리면 운영자가 이어서 확인합니다.
                 </p>
               </>
-            )}
+            ) : null}
 
             <div>
               <label className="text-sm font-semibold text-neutral-900">
                 증빙 스크린샷
                 {method === "screenshot_review" ? " (필수)" : " (선택)"}
               </label>
-              <label className="mt-2 flex min-h-28 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-neutral-300 bg-[#fbfbfc] px-4 py-5 text-center transition hover:border-neutral-500 hover:bg-white hover:shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
-                <FileImage className="mb-2 h-5 w-5 text-neutral-500" />
+              <label className="mt-2 flex min-h-20 cursor-pointer items-center justify-center gap-3 rounded-lg border border-dashed border-neutral-300 bg-[#fbfbfc] px-4 py-4 text-center transition hover:border-neutral-500 hover:bg-white hover:shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
+                <FileImage className="h-5 w-5 shrink-0 text-neutral-500" />
+                <span className="text-left">
                 <span className="text-sm font-semibold text-neutral-900">
                   {file ? file.name : "PNG, JPG, WebP, PDF 업로드"}
                 </span>
-                <span className="mt-1 text-xs text-neutral-500">
-                  프로필 소유자 화면, 코드가 보이는 공개 화면, 설정 화면 등을 첨부하세요.
+                <span className="mt-1 block text-xs text-neutral-500">
+                  소유자 화면이나 코드가 보이는 화면이면 충분합니다.
+                </span>
                 </span>
                 <input
                   type="file"
@@ -860,7 +825,7 @@ export function InfluencerVerification() {
                 className="rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm font-semibold text-neutral-800"
               >
                 {isInstagramDmMethod
-                  ? `인증 요청을 접수했습니다. 코드 ${submittedChallengeCode}를 연락미 공식 인스타그램 @${OFFICIAL_INSTAGRAM_HANDLE}으로 DM 보내면 운영자가 확인합니다.`
+                  ? `접수 완료. 코드 ${submittedChallengeCode}를 @${OFFICIAL_INSTAGRAM_HANDLE}으로 DM 보내면 확인합니다.`
                   : "계정 소유 인증 요청을 접수했습니다. 운영자 검수 후 승인됩니다."}
               </div>
             )}
@@ -884,8 +849,8 @@ export function InfluencerVerification() {
           ) : null}
         </section>
 
-        <aside className="space-y-4">
-          <section className="rounded-lg border border-neutral-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_14px_34px_rgba(15,23,42,0.05)]">
+        <aside className="min-h-0 space-y-3 overflow-y-auto">
+          <section className="rounded-lg border border-neutral-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_14px_34px_rgba(15,23,42,0.05)]">
             <div className="mb-4 flex items-center gap-3">
               <div
                 className={`flex h-10 w-10 items-center justify-center rounded-lg ${sidebarClassName}`}
@@ -893,6 +858,7 @@ export function InfluencerVerification() {
                 {sidebarIcon}
               </div>
               <div>
+                <p className="text-xs font-semibold text-neutral-400">현재 선택</p>
                 <p className="text-sm font-semibold text-neutral-950">
                   {sidebarPlatformLabel}
                 </p>
@@ -930,24 +896,12 @@ export function InfluencerVerification() {
             )}
           </section>
 
-          <TrustNote
-            icon={<Link2 className="h-4 w-4" />}
-            title={showRequestForm ? "서명 전 필수 순서" : "서명 조건"}
-            body={
-              showRequestForm
-                ? "계약 검토는 계속할 수 있지만, 전자서명은 플랫폼 계정 인증이 승인된 뒤에만 진행됩니다."
-                : "인증된 플랫폼 계약은 조항 승인과 광고주 서명 요청 상태가 맞으면 바로 서명할 수 있습니다."
-            }
-          />
-          <TrustNote
-            icon={<BadgeCheck className="h-4 w-4" />}
-            title="관리자 검수"
-            body={
-              isInstagramDmMethod
-                ? "자동 DM 연동 전까지는 운영자가 공식 계정으로 온 DM 발신자와 입력한 프로필 URL을 대조해 승인합니다."
-                : "자동 확인은 보조 수단입니다. 최종 승인은 운영자가 코드, URL, 스크린샷을 함께 확인한 뒤 처리합니다."
-            }
-          />
+          <section className="rounded-lg border border-neutral-200/80 bg-white p-4 text-sm leading-6 text-neutral-600 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_14px_34px_rgba(15,23,42,0.05)]">
+            <p className="font-semibold text-neutral-950">서명 조건</p>
+            <p className="mt-1">
+              계약 검토는 계속 가능하고, 전자서명은 플랫폼 인증 승인 뒤 진행됩니다.
+            </p>
+          </section>
           {sidebarEvidenceHref ? (
             <a
               href={sidebarEvidenceHref}
@@ -1018,26 +972,6 @@ function IconButton({
     >
       {icon}
     </button>
-  );
-}
-
-function TrustNote({
-  icon,
-  title,
-  body,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  body: string;
-}) {
-  return (
-    <section className="rounded-lg border border-neutral-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_14px_34px_rgba(15,23,42,0.05)]">
-      <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-lg bg-neutral-100 text-neutral-700">
-        {icon}
-      </div>
-      <p className="text-sm font-semibold text-neutral-950">{title}</p>
-      <p className="mt-2 text-sm leading-6 text-neutral-500">{body}</p>
-    </section>
   );
 }
 

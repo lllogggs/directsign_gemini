@@ -84,6 +84,7 @@ export function InfluencerLoginPage() {
       submitLabel="대시보드 열기"
       isSubmitting={isSubmitting}
       error={error}
+      errorHint="이메일과 비밀번호를 확인해 주세요. 처음 받은 계약이라면 계정 만들기 후 같은 계약으로 돌아옵니다."
       footer={
         <div className="flex flex-wrap items-center justify-center gap-3">
           <Link

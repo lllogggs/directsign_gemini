@@ -508,7 +508,21 @@ export function InfluencerDashboard() {
   if (state.status === "error") {
     return (
       <DashboardShell>
-        <ErrorView message={state.message} onRetry={loadDashboard} />
+        <ErrorView
+          message={state.message}
+          onRetry={loadDashboard}
+          onLogin={() =>
+            navigate(
+              buildLoginRedirect(
+                "/login/influencer",
+                `${location.pathname}${location.search}`,
+                "/influencer/dashboard",
+                ["/influencer", "/contract"],
+              ),
+              { replace: true },
+            )
+          }
+        />
       </DashboardShell>
     );
   }
@@ -902,7 +916,15 @@ function LoadingView() {
   );
 }
 
-function ErrorView({ message, onRetry }: { message: string; onRetry: () => void }) {
+function ErrorView({
+  message,
+  onRetry,
+  onLogin,
+}: {
+  message: string;
+  onRetry: () => void;
+  onLogin: () => void;
+}) {
   return (
     <div className="flex min-h-screen items-center justify-center px-5">
       <div className="w-full max-w-md rounded-lg border border-neutral-200/80 bg-white p-6 text-center shadow-[0_1px_2px_rgba(15,23,42,0.04),0_22px_60px_rgba(15,23,42,0.08)]">
@@ -910,13 +932,25 @@ function ErrorView({ message, onRetry }: { message: string; onRetry: () => void 
           <AlertCircle className="h-5 w-5" />
         </div>
         <p className="mt-4 text-sm font-semibold text-neutral-950">{message}</p>
-        <button
-          type="button"
-          onClick={onRetry}
-          className="mt-5 h-10 rounded-lg bg-neutral-950 px-4 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition hover:bg-neutral-800"
-        >
-          다시 시도
-        </button>
+        <p className="mt-2 text-xs font-medium leading-5 text-neutral-500">
+          세션이 만료됐으면 로그인 후 같은 대시보드로 돌아옵니다.
+        </p>
+        <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-center">
+          <button
+            type="button"
+            onClick={onLogin}
+            className="h-10 rounded-lg bg-neutral-950 px-4 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition hover:bg-neutral-800"
+          >
+            로그인으로 이동
+          </button>
+          <button
+            type="button"
+            onClick={onRetry}
+            className="h-10 rounded-lg border border-neutral-200 bg-white px-4 text-sm font-semibold text-neutral-700 transition hover:border-neutral-300 hover:text-neutral-950"
+          >
+            다시 시도
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1223,17 +1257,17 @@ function PublicProfileSettingsDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end bg-neutral-950/45 px-0 sm:items-center sm:justify-center sm:px-4">
-      <section className="max-h-[94vh] w-full overflow-y-auto rounded-t-[12px] border border-neutral-200 bg-white p-4 shadow-[0_24px_70px_rgba(15,23,42,0.22)] sm:max-w-[640px] sm:rounded-[12px] sm:p-5">
+      <section className="max-h-[94vh] w-full overflow-y-auto rounded-t-[12px] border border-neutral-200 bg-white p-4 shadow-[0_24px_70px_rgba(15,23,42,0.22)] sm:max-w-[760px] sm:rounded-[12px] sm:p-5">
         <div className="mb-4 flex items-start justify-between gap-3 border-b border-neutral-200 pb-4">
           <div className="min-w-0">
             <p className="text-[12px] font-semibold text-neutral-500">
               연락미 계정 프로필
             </p>
             <h2 className="mt-1 text-[20px] font-semibold text-neutral-950">
-              공개 프로필 설정
+              공개 프로필
             </h2>
             <p className="mt-1 text-[13px] font-medium leading-5 text-neutral-500">
-              소개 문구를 정하면 주소는 첫 등록 플랫폼 ID로 자동 고정되고, 인증된 플랫폼 계정은 자동으로 연결합니다.
+              광고주가 볼 이름, 소개, 협업 조건만 간단히 정리합니다.
             </p>
           </div>
           <button
@@ -1245,39 +1279,45 @@ function PublicProfileSettingsDialog({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="grid gap-4">
-          <ProfileSettingsField
-            label="공개 주소"
-            hint={
-              manualHandleAllowed && conflictHandle
-                ? `자동 주소 ${formatInfluencerPublicProfileUrl(
-                    conflictHandle,
-                  )}가 겹쳐 대체 주소를 저장할 수 있습니다.`
-                : automaticHandle
-                ? `첫 등록 플랫폼 ID 기준으로 ${formatInfluencerPublicProfileUrl(
-                    automaticHandle,
-                  )} 로 고정됩니다.`
-                : undefined
-            }
-            error={manualHandleAllowed ? manualHandleError : automaticHandleError}
-          >
-            <div className="grid grid-cols-[auto_minmax(0,1fr)] overflow-hidden rounded-md border border-neutral-200 bg-[#f8faf7]">
-              <span className="flex h-11 items-center border-r border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-500">
-                yeollock.me/
-              </span>
+        <form onSubmit={handleSubmit} className="grid gap-3">
+          <section className="rounded-[8px] border border-neutral-200 bg-[#f8faf7] p-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-[12px] font-semibold text-neutral-500">공개 주소</p>
+                <p className="mt-1 break-all text-[13px] font-semibold text-neutral-950">
+                  yeollock.me/{manualHandleAllowed
+                    ? normalizedManualHandle || suggestedHandles[0] || "creator_id"
+                    : automaticHandle ?? "platform-id"}
+                </p>
+              </div>
               {manualHandleAllowed ? (
                 <input
                   value={manualHandle}
                   onChange={(event) => setManualHandle(event.target.value)}
                   placeholder={suggestedHandles[0] ?? "creator_id_2"}
-                  className="h-11 min-w-0 border-0 bg-white px-3 text-[13px] font-semibold text-neutral-950 outline-none focus:ring-2 focus:ring-neutral-950/10"
+                  aria-label="공개 주소 직접 입력"
+                  className="h-10 min-w-0 rounded-md border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-950 outline-none focus:ring-2 focus:ring-neutral-950/10 sm:w-[240px]"
                 />
-              ) : (
-                <span className="flex h-11 min-w-0 items-center truncate px-3 text-[13px] font-semibold text-neutral-950">
-                  {automaticHandle ?? "platform-id"}
-                </span>
-              )}
+              ) : null}
             </div>
+            {manualHandleAllowed ? (
+              <p className="mt-2 text-[12px] font-medium text-neutral-500">
+                {manualHandleAllowed && conflictHandle
+                  ? `자동 주소 ${formatInfluencerPublicProfileUrl(
+                      conflictHandle,
+                    )}가 겹쳐 대체 주소를 저장합니다.`
+                  : "원하는 공개 주소를 입력할 수 있습니다."}
+              </p>
+            ) : automaticHandle ? (
+              <p className="mt-2 text-[12px] font-medium text-neutral-500">
+                첫 등록 플랫폼 ID 기준으로 자동 생성됩니다.
+              </p>
+            ) : null}
+            {(manualHandleAllowed ? manualHandleError : automaticHandleError) ? (
+              <p className="mt-2 text-[12px] font-semibold text-rose-700">
+                {manualHandleAllowed ? manualHandleError : automaticHandleError}
+              </p>
+            ) : null}
             {manualHandleAllowed && conflictHandle ? (
               <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-xs leading-5 text-amber-900">
                 <p className="font-semibold">
@@ -1316,128 +1356,129 @@ function PublicProfileSettingsDialog({
                 </div>
               </div>
             ) : null}
-          </ProfileSettingsField>
+          </section>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <ProfileSettingsField label="활동명">
+          <section className="grid gap-3 rounded-[8px] border border-neutral-200 bg-white p-3">
+            <p className="text-[13px] font-semibold text-neutral-950">기본 정보</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <ProfileSettingsField label="활동명">
+                <input
+                  required
+                  value={form.displayName}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      displayName: event.target.value,
+                    }))
+                  }
+                  className="marketplace-input"
+                />
+              </ProfileSettingsField>
+              <ProfileSettingsField label="활동 지역">
+                <input
+                  value={form.location}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, location: event.target.value }))
+                  }
+                  placeholder="예: 서울 · 원격 협업"
+                  className="marketplace-input"
+                />
+              </ProfileSettingsField>
+            </div>
+
+            <ProfileSettingsField label="한 줄 소개">
               <input
                 required
-                value={form.displayName}
+                value={form.headline}
                 onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    displayName: event.target.value,
-                  }))
+                  setForm((current) => ({ ...current, headline: event.target.value }))
                 }
+                placeholder="광고주가 첫 화면에서 볼 소개 문구"
                 className="marketplace-input"
               />
             </ProfileSettingsField>
-            <ProfileSettingsField label="활동 지역">
-              <input
-                value={form.location}
+
+            <ProfileSettingsField label="프로필 소개">
+              <textarea
+                required
+                rows={3}
+                value={form.bio}
                 onChange={(event) =>
-                  setForm((current) => ({ ...current, location: event.target.value }))
+                  setForm((current) => ({ ...current, bio: event.target.value }))
                 }
-                placeholder="예: 서울 · 원격 협업"
-                className="marketplace-input"
+                placeholder="주요 콘텐츠, 잘 맞는 브랜드, 협업 방식 등을 적어 주세요."
+                className="marketplace-input resize-none"
               />
             </ProfileSettingsField>
-          </div>
+          </section>
 
-          <ProfileSettingsField label="한 줄 소개">
-            <input
-              required
-              value={form.headline}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, headline: event.target.value }))
-              }
-              placeholder="광고주가 첫 화면에서 볼 소개 문구"
-              className="marketplace-input"
-            />
-          </ProfileSettingsField>
-
-          <ProfileSettingsField label="프로필 소개">
-            <textarea
-              required
-              rows={4}
-              value={form.bio}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, bio: event.target.value }))
-              }
-              placeholder="주요 콘텐츠, 잘 맞는 브랜드, 협업 방식 등을 적어 주세요."
-              className="marketplace-input resize-none"
-            />
-          </ProfileSettingsField>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <ProfileSettingsField label="협업 단가">
-              <input
-                value={form.startingPriceLabel}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    startingPriceLabel: event.target.value,
-                  }))
-                }
-                placeholder="예: 150만원부터"
-                className="marketplace-input"
-              />
-            </ProfileSettingsField>
-            <ProfileSettingsField label="응답 시간">
-              <input
-                value={form.responseTimeLabel}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    responseTimeLabel: event.target.value,
-                  }))
-                }
-                placeholder="예: 보통 1영업일 내 응답"
-                className="marketplace-input"
-              />
-            </ProfileSettingsField>
-          </div>
-
-          <ProfileSettingsField
-            label="브랜드 적합 키워드"
-            hint="쉼표로 구분해 최대 6개까지 공개 프로필에 표시합니다."
-          >
-            <input
-              value={form.brandFit}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, brandFit: event.target.value }))
-              }
-              placeholder="예: 뷰티 신제품, 릴스 리뷰, 사용감 중심"
-              className="marketplace-input"
-            />
-          </ProfileSettingsField>
-
-          <ProfileSettingsField label="받고 싶은 광고 형태">
-            <div className="flex flex-wrap gap-2">
-              {PROFILE_PROPOSAL_TYPES.map(([type, label]) => {
-                const active = form.collaborationTypes.includes(type);
-                return (
-                  <button
-                    key={type}
-                    type="button"
-                    onClick={() => toggleProposalType(type)}
-                    className={`inline-flex h-9 items-center rounded-md border px-3 text-[12px] font-semibold transition ${
-                      active
-                        ? "border-neutral-950 bg-neutral-950 text-white"
-                        : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300 hover:text-neutral-950"
-                    }`}
-                  >
-                    {label}
-                  </button>
-                );
-              })}
+          <section className="grid gap-3 rounded-[8px] border border-neutral-200 bg-white p-3">
+            <p className="text-[13px] font-semibold text-neutral-950">협업 조건</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <ProfileSettingsField label="협업 단가">
+                <input
+                  value={form.startingPriceLabel}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      startingPriceLabel: event.target.value,
+                    }))
+                  }
+                  placeholder="예: 150만원부터"
+                  className="marketplace-input"
+                />
+              </ProfileSettingsField>
+              <ProfileSettingsField label="응답 시간">
+                <input
+                  value={form.responseTimeLabel}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      responseTimeLabel: event.target.value,
+                    }))
+                  }
+                  placeholder="예: 보통 1영업일 내 응답"
+                  className="marketplace-input"
+                />
+              </ProfileSettingsField>
             </div>
-          </ProfileSettingsField>
+
+            <ProfileSettingsField label="브랜드 적합 키워드">
+              <input
+                value={form.brandFit}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, brandFit: event.target.value }))
+                }
+                placeholder="예: 뷰티 신제품, 릴스 리뷰, 사용감 중심"
+                className="marketplace-input"
+              />
+            </ProfileSettingsField>
+
+            <ProfileSettingsField label="받고 싶은 광고 형태">
+              <div className="flex flex-wrap gap-2">
+                {PROFILE_PROPOSAL_TYPES.map(([type, label]) => {
+                  const active = form.collaborationTypes.includes(type);
+                  return (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => toggleProposalType(type)}
+                      className={`inline-flex h-9 items-center rounded-md border px-3 text-[12px] font-semibold transition ${
+                        active
+                          ? "border-neutral-950 bg-neutral-950 text-white"
+                          : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300 hover:text-neutral-950"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </ProfileSettingsField>
+          </section>
 
           <section className="rounded-[8px] border border-neutral-200 bg-[#f8faf7] p-3">
-            <p className="text-[12px] font-semibold text-neutral-500">
-              연동된 플랫폼 계정
-            </p>
+            <p className="text-[12px] font-semibold text-neutral-500">인증 플랫폼</p>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {approvedPlatforms.length > 0 ? (
                 approvedPlatforms.map((platform) => (

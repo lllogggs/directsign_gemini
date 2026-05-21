@@ -29,21 +29,6 @@ const ACCEPTED_VERIFICATION_FILE_TYPES = new Set([
   "image/webp",
 ]);
 
-const advertiserVerificationTrustNotes = [
-  {
-    title: "검수 중 공유 제한",
-    body: "요청 접수 후에는 상태가 검수 중으로 표시되고, 승인 전 공유 링크 발송은 차단됩니다.",
-  },
-  {
-    title: "권장 증빙",
-    body: "광고주 계정의 계약 발송 권한을 확인할 수 있는 사업자 증빙을 업로드해 주세요.",
-  },
-  {
-    title: "민감 정보 처리",
-    body: "제출 파일은 인증 검수와 계약 발송 제한 확인 용도로만 사용됩니다.",
-  },
-];
-
 const inferVerificationFileType = (file: File) => {
   if (file.type) return file.type;
   const extension = file.name.split(".").pop()?.toLowerCase();
@@ -230,9 +215,9 @@ export function AdvertiserVerification() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f4f5f7] font-sans text-neutral-950">
+    <div className="fixed inset-0 overflow-hidden bg-[#f4f5f7] font-sans text-neutral-950">
       <header className="border-b border-neutral-200/80 bg-white shadow-[0_1px_0_rgba(15,23,42,0.04)]">
-        <div className="mx-auto flex h-[72px] max-w-5xl items-center justify-between px-5 sm:px-8">
+        <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-5 sm:px-8">
           <button
             type="button"
             onClick={() => navigate("/advertiser/dashboard")}
@@ -253,11 +238,12 @@ export function AdvertiserVerification() {
         </div>
       </header>
 
-      <main className="mx-auto grid max-w-6xl gap-4 px-5 py-4 sm:px-8 lg:grid-cols-[minmax(0,1fr)_300px]">
-        <section className="rounded-lg border border-neutral-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)] sm:p-6">
+      <main className="mx-auto grid h-[calc(100vh-64px)] max-w-5xl gap-3 overflow-hidden px-5 py-4 sm:px-8 lg:grid-cols-[minmax(0,1fr)_260px]">
+        <section className="min-h-0 overflow-y-auto rounded-lg border border-neutral-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)] sm:p-5">
           {approved && !showVerificationForm && (
-            <div className="rounded-lg border border-neutral-200 bg-[#fbfbfc] p-4 shadow-[inset_3px_0_0_rgba(23,23,23,0.12)]">
-              <div className="flex items-start gap-3">
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex items-start gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-neutral-950 text-white">
                   <ShieldCheck className="h-5 w-5" />
                 </div>
@@ -265,23 +251,18 @@ export function AdvertiserVerification() {
                   <p className="text-sm font-semibold text-neutral-950">
                     사업자 인증이 완료되었습니다
                   </p>
-                  <p className="mt-1 text-sm leading-6 text-neutral-500">
+                  <p className="mt-1 text-sm leading-6 text-emerald-800/80">
                     {displayCompany} 계정은 계약 공유 링크를 발송할 수 있습니다.
-                    정보가 바뀐 경우에만 갱신 심사를 요청하세요.
                   </p>
-                  <div className="mt-4 grid gap-2 sm:grid-cols-3">
-                    <InfoRow label="회사명" value={displayCompany} compact />
-                    <InfoRow label="담당자" value={displayManager} compact />
-                    <InfoRow label="사업자번호" value={displayBusinessNumber} compact />
-                  </div>
+                </div>
+                </div>
                   <button
                     type="button"
                     onClick={() => setShowUpdateForm(true)}
-                    className="mt-4 h-10 rounded-lg border border-neutral-200 bg-white px-4 text-sm font-semibold text-neutral-900 transition hover:border-neutral-400 hover:shadow-[0_8px_20px_rgba(15,23,42,0.08)]"
+                  className="h-10 shrink-0 rounded-lg border border-emerald-200 bg-white px-4 text-sm font-semibold text-emerald-900 transition hover:border-emerald-300"
                   >
                     인증 정보 갱신 요청
                   </button>
-                </div>
               </div>
             </div>
           )}
@@ -316,138 +297,171 @@ export function AdvertiserVerification() {
           )}
 
           {showVerificationForm && (
-            <div className="mb-5">
+            <div className="mb-4 border-b border-neutral-100 pb-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
               <h1 className="text-[24px] font-semibold tracking-tight">
                 {approved ? "사업자 인증 정보 갱신" : "사업자 인증"}
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-neutral-500">
                 {approved
-                  ? "현재 승인 상태를 유지합니다. 상호, 담당자, 사업자 정보가 바뀌면 새 증빙으로 갱신 요청을 남겨주세요."
-                  : "계약 초안 작성은 바로 가능하지만, 인플루언서에게 계약을 발송하려면 광고주 계정 검수가 필요합니다. 이 정보는 서비스 운영자 법적 고지 정보와 별개입니다."}
+                  ? "상호, 담당자, 사업자 정보가 바뀐 경우에만 새 증빙으로 갱신합니다."
+                  : "계약 발송 전 사업자번호와 증빙을 확인합니다. 운영자 법적 고지 정보와는 별개입니다."}
               </p>
-              <div className="mt-4 grid gap-2 sm:grid-cols-3">
-                {advertiserVerificationTrustNotes.map((note) => (
-                  <div
-                    key={note.title}
-                    className="rounded-lg border border-neutral-200 bg-[#fbfbfc] px-3 py-3"
-                  >
-                    <p className="text-xs font-semibold text-neutral-950">
-                      {note.title}
-                    </p>
-                    <p className="mt-1 text-xs leading-5 text-neutral-500">
-                      {note.body}
-                    </p>
-                  </div>
-                ))}
+                </div>
+                <span
+                  className={`w-fit rounded-full border px-3 py-1 text-xs font-semibold ${verificationStatusTone(
+                    status,
+                  )}`}
+                >
+                  {isLoading ? "정보 확인 중" : verificationStatusLabel(status)}
+                </span>
+              </div>
+              <div className="mt-4 grid gap-2 text-xs font-semibold leading-5 text-neutral-600 sm:grid-cols-3">
+                <div className="rounded-lg border border-neutral-200 bg-[#fbfbfc] px-3 py-2">
+                  <span className="block text-neutral-950">필수</span>
+                  사업자번호, 대표자명, 증빙 파일
+                </div>
+                <div className="rounded-lg border border-neutral-200 bg-[#fbfbfc] px-3 py-2">
+                  <span className="block text-neutral-950">검토</span>
+                  보통 1영업일 내 확인
+                </div>
+                <div className="rounded-lg border border-neutral-200 bg-[#fbfbfc] px-3 py-2">
+                  <span className="block text-neutral-950">제한</span>
+                  승인 전 계약 공유 차단
+                </div>
               </div>
             </div>
           )}
 
           {showVerificationForm && (
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <TextField
-                  label="회사/브랜드명"
-                  value={visibleForm.subject_name}
-                  onChange={(value) => updateForm({ subject_name: value })}
-                  required
-                />
-                <TextField
-                  label="사업자등록번호"
-                  value={visibleForm.business_registration_number}
-                  onChange={(value) =>
-                    updateForm({ business_registration_number: value })
-                  }
-                  placeholder="000-00-00000"
-                  required
-                />
-                <TextField
-                  label="대표자명"
-                  value={visibleForm.representative_name}
-                  onChange={(value) => updateForm({ representative_name: value })}
-                  required
-                />
-                <TextField
-                  label="담당자명"
-                  value={visibleForm.submitted_by_name}
-                  onChange={(value) => updateForm({ submitted_by_name: value })}
-                  required
-                />
-                <TextField
-                  label="담당자 이메일"
-                  type="email"
-                  value={visibleForm.submitted_by_email}
-                  onChange={(value) => updateForm({ submitted_by_email: value })}
-                  required
-                />
-                <TextField
-                  label="담당자 연락처"
-                  value={visibleForm.manager_phone}
-                  onChange={(value) => updateForm({ manager_phone: value })}
-                />
-                <TextField
-                  label="개업일자"
-                  type="date"
-                  value={visibleForm.business_start_date}
-                  onChange={(value) => updateForm({ business_start_date: value })}
-                />
-                <TextField
-                  label="문서 발급일"
-                  type="date"
-                  value={visibleForm.document_issue_date}
-                  onChange={(value) => updateForm({ document_issue_date: value })}
-                  required
-                />
-                <TextField
-                  label="문서확인번호/발급번호"
-                  value={visibleForm.document_check_number}
-                  onChange={(value) =>
-                    updateForm({ document_check_number: value })
-                  }
-                  placeholder="정부24/홈택스 문서 번호"
-                />
-              </div>
-
-              <div>
-                <label className="text-sm font-semibold text-neutral-900">
-                  사업자등록증명원 파일
-                </label>
-                <label className="mt-2 flex min-h-28 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-neutral-300 bg-[#fbfbfc] px-4 py-5 text-center transition hover:border-neutral-500 hover:bg-white hover:shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
-                  <FileUp className="mb-3 h-6 w-6 text-neutral-500" />
-                  <span className="text-sm font-semibold text-neutral-900">
-                    {file ? file.name : "PDF 또는 이미지 업로드"}
-                  </span>
-                  <span className="mt-1 text-xs text-neutral-500">
-                    최근 1~3개월 이내 발급본을 권장합니다.
-                  </span>
-                  <input
-                    type="file"
-                    accept="application/pdf,image/png,image/jpeg,image/webp"
-                    className="sr-only"
-                    onChange={(event) => {
-                      const nextFile = event.target.files?.[0] ?? null;
-                      const fileError = validateVerificationFile(nextFile);
-                      if (fileError) {
-                        setFile(null);
-                        setError(fileError);
-                        event.currentTarget.value = "";
-                        return;
-                      }
-                      setFile(nextFile);
-                      setError("");
-                    }}
+            <form onSubmit={handleSubmit} className="space-y-3">
+              <section className="rounded-lg border border-neutral-200 bg-white p-3">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-neutral-950">
+                      사업자 정보
+                    </p>
+                    <p className="mt-0.5 text-xs font-medium text-neutral-500">
+                      국세청 조회와 증빙 대조에 쓰는 필수 정보입니다.
+                    </p>
+                  </div>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <TextField
+                    label="회사/브랜드명"
+                    value={visibleForm.subject_name}
+                    onChange={(value) => updateForm({ subject_name: value })}
+                    required
                   />
-                </label>
-              </div>
+                  <TextField
+                    label="사업자등록번호"
+                    value={visibleForm.business_registration_number}
+                    onChange={(value) =>
+                      updateForm({ business_registration_number: value })
+                    }
+                    placeholder="000-00-00000"
+                    required
+                  />
+                  <TextField
+                    label="대표자명"
+                    value={visibleForm.representative_name}
+                    onChange={(value) => updateForm({ representative_name: value })}
+                    required
+                  />
+                  <TextField
+                    label="개업일자"
+                    type="date"
+                    value={visibleForm.business_start_date}
+                    onChange={(value) => updateForm({ business_start_date: value })}
+                  />
+                </div>
+              </section>
+
+              <section className="rounded-lg border border-neutral-200 bg-white p-3">
+                <div className="mb-3">
+                  <p className="text-sm font-semibold text-neutral-950">
+                    담당자와 증빙
+                  </p>
+                  <p className="mt-0.5 text-xs font-medium text-neutral-500">
+                    증빙 파일은 심사와 감사 기록 용도로만 사용합니다.
+                  </p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <TextField
+                    label="담당자명"
+                    value={visibleForm.submitted_by_name}
+                    onChange={(value) => updateForm({ submitted_by_name: value })}
+                    required
+                  />
+                  <TextField
+                    label="담당자 이메일"
+                    type="email"
+                    value={visibleForm.submitted_by_email}
+                    onChange={(value) => updateForm({ submitted_by_email: value })}
+                    required
+                  />
+                  <TextField
+                    label="담당자 연락처"
+                    value={visibleForm.manager_phone}
+                    onChange={(value) => updateForm({ manager_phone: value })}
+                  />
+                  <TextField
+                    label="문서 발급일"
+                    type="date"
+                    value={visibleForm.document_issue_date}
+                    onChange={(value) =>
+                      updateForm({ document_issue_date: value })
+                    }
+                    required
+                  />
+                  <TextField
+                    label="문서확인번호/발급번호"
+                    value={visibleForm.document_check_number}
+                    onChange={(value) =>
+                      updateForm({ document_check_number: value })
+                    }
+                    placeholder="정부24/홈택스 문서 번호"
+                  />
+                  <label className="block">
+                    <span className="text-sm font-semibold text-neutral-900">
+                      사업자등록증명원 파일
+                    </span>
+                    <span className="mt-2 flex h-11 cursor-pointer items-center gap-3 rounded-lg border border-dashed border-neutral-300 bg-[#fbfbfc] px-3 transition hover:border-neutral-500 hover:bg-white">
+                      <FileUp className="h-4 w-4 shrink-0 text-neutral-500" />
+                      <span className="min-w-0 truncate text-sm font-semibold text-neutral-900">
+                        {file ? file.name : "PDF/이미지 업로드"}
+                      </span>
+                      <input
+                        type="file"
+                        accept="application/pdf,image/png,image/jpeg,image/webp"
+                        className="sr-only"
+                        onChange={(event) => {
+                          const nextFile = event.target.files?.[0] ?? null;
+                          const fileError = validateVerificationFile(nextFile);
+                          if (fileError) {
+                            setFile(null);
+                            setError(fileError);
+                            event.currentTarget.value = "";
+                            return;
+                          }
+                          setFile(nextFile);
+                          setError("");
+                        }}
+                      />
+                    </span>
+                  </label>
+                </div>
+              </section>
 
               <div>
                 <label className="text-sm font-semibold text-neutral-900">
-                  운영자에게 남길 메모
+                  선택 메모
                 </label>
                 <textarea
                   value={visibleForm.note}
                   onChange={(event) => updateForm({ note: event.target.value })}
-                  className="mt-2 min-h-20 w-full rounded-lg border border-neutral-200 bg-[#fbfbfc] p-4 text-sm outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950 focus:bg-white focus:shadow-[0_0_0_3px_rgba(23,23,23,0.05)]"
+                  className="mt-2 min-h-16 w-full rounded-lg border border-neutral-200 bg-[#fbfbfc] p-3 text-sm outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950 focus:bg-white focus:shadow-[0_0_0_3px_rgba(23,23,23,0.05)]"
                   placeholder="상호가 브랜드명과 다르거나 대행사가 대신 계약하는 경우 적어주세요."
                 />
               </div>
@@ -488,7 +502,7 @@ export function AdvertiserVerification() {
           )}
         </section>
 
-        <aside className="space-y-4">
+        <aside className="min-h-0 space-y-3 overflow-y-auto">
           <section className="rounded-lg border border-neutral-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_14px_34px_rgba(15,23,42,0.05)]">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
@@ -497,7 +511,7 @@ export function AdvertiserVerification() {
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-neutral-950">
-                    광고주 인증 상태
+                    제출 전 확인
                   </p>
                 </div>
               </div>
@@ -506,16 +520,16 @@ export function AdvertiserVerification() {
                   status,
                 )}`}
               >
-                {isLoading ? "확인중" : verificationStatusLabel(status)}
+                {isLoading ? "정보 확인 중" : verificationStatusLabel(status)}
               </span>
             </div>
 
-            {(latest || account) && (
-              <div className="mt-5 space-y-3 border-t border-neutral-100 pt-5 text-sm">
-                <InfoRow label="회사명" value={displayCompany} />
-                <InfoRow label="담당자" value={displayManager} />
+            {(latest || account) ? (
+              <div className="mt-4 space-y-3 border-t border-neutral-100 pt-4 text-sm">
+                <InfoRow label="회사" value={displayCompany} />
+                <InfoRow label="담당" value={displayManager} />
                 <InfoRow label="이메일" value={displayEmail} />
-                <InfoRow label="사업자번호" value={displayBusinessNumber} />
+                <InfoRow label="사업자" value={displayBusinessNumber} />
                 {latest && (
                   <InfoRow
                     label="제출일"
@@ -528,22 +542,19 @@ export function AdvertiserVerification() {
                   <InfoRow label="검토 메모" value={latest.reviewer_note} />
                 )}
               </div>
-            )}
-          </section>
-
-          <section className="rounded-lg border border-neutral-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_14px_34px_rgba(15,23,42,0.05)]">
-            <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-neutral-950">
-              <CheckCircle2 className="h-4 w-4" />
-              승인 기준
-            </div>
-            <ul className="space-y-2 text-sm leading-6 text-neutral-600">
-              <li>사업자등록번호 형식과 체크섬이 유효해야 합니다.</li>
-              <li>사업자등록증명원 발급일과 문서번호를 확인합니다.</li>
-              <li>회사명, 대표자명, 가입 정보가 합리적으로 일치해야 합니다.</li>
-              <li>
-                {approved
-                  ? "승인 후에도 정보 변경 시 새 증빙으로 갱신 심사를 남깁니다."
-                  : "승인 전에는 공유 링크 발송이 서버에서 차단됩니다."}
+            ) : null}
+            <ul className="mt-4 space-y-2 border-t border-neutral-100 pt-4 text-xs leading-5 text-neutral-600">
+              <li className="flex gap-2">
+                <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-500" />
+                사업자번호와 대표자명을 확인합니다.
+              </li>
+              <li className="flex gap-2">
+                <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-500" />
+                파일은 10MB 이하 PDF/이미지만 받습니다.
+              </li>
+              <li className="flex gap-2">
+                <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-500" />
+                보통 1영업일 내 확인합니다.
               </li>
             </ul>
           </section>
