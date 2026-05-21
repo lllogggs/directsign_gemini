@@ -1145,8 +1145,10 @@ interface MarketplaceCampaignSnapshot {
   title: string;
   type: CampaignProposalType;
   budget: string;
+  applicantLimit?: string;
   summary?: string;
   deadline?: string;
+  uploadDeadline?: string;
   platforms?: InfluencerPlatform[];
   deliverables?: string[];
   brandId: string;
@@ -5444,8 +5446,14 @@ const normalizeBrandCampaigns = (
       const title = normalizeRequiredText(record.title);
       const type = normalizeRequiredText(record.type) as CampaignProposalType;
       const budget = normalizeRequiredText(record.budget);
+      const applicantLimit = normalizeOptionalText(
+        record.applicantLimit ?? record.applicant_limit,
+      )?.slice(0, 40);
       const summary = normalizeOptionalText(record.summary)?.slice(0, 1000);
       const deadline = normalizeOptionalText(record.deadline)?.slice(0, 40);
+      const uploadDeadline = normalizeOptionalText(
+        record.uploadDeadline ?? record.upload_deadline,
+      )?.slice(0, 40);
       const status = normalizeOptionalText(record.status);
       const createdAt = normalizeOptionalText(record.createdAt ?? record.created_at);
       const updatedAt = normalizeOptionalText(record.updatedAt ?? record.updated_at);
@@ -5469,8 +5477,10 @@ const normalizeBrandCampaigns = (
         title: title.slice(0, 100),
         type,
         budget: budget.slice(0, 80),
+        ...(applicantLimit ? { applicantLimit } : {}),
         ...(summary ? { summary } : {}),
         ...(deadline ? { deadline } : {}),
+        ...(uploadDeadline ? { uploadDeadline } : {}),
         ...(platforms.length > 0 ? { platforms } : {}),
         ...(deliverables.length > 0 ? { deliverables } : {}),
         ...(status && marketplaceCampaignStatuses.has(status) ? { status } : {}),
@@ -6806,34 +6816,47 @@ const readAdvertiserCampaignBoard = async (auth: AdvertiserSession) => {
 const validateMarketplaceCampaignInput = (body: Record<string, unknown>) => {
   const title = normalizeRequiredText(body.title);
   const type = normalizeRequiredText(body.type) as CampaignProposalType;
+  const applicantLimit = normalizeRequiredText(body.applicantLimit);
   const budget = normalizeRequiredText(body.budget);
   const summary = normalizeRequiredText(body.summary);
   const deadline = normalizeOptionalText(body.deadline);
+  const uploadDeadline = normalizeOptionalText(body.uploadDeadline);
   const platforms = normalizeCampaignPlatforms(body.platforms, ["instagram"]);
   const deliverables = normalizeStringArrayForStorage(body.deliverables, [], 6);
 
   if (!title || title.length > 100) {
-    return { error: "캠페인명은 100자 이내로 입력해 주세요." };
+    return { error: "제목은 100자 이내로 입력해 주세요." };
   }
   if (!campaignProposalTypes.has(type)) {
-    return { error: "모집 형태를 선택해 주세요." };
+    return { error: "광고형태를 선택해 주세요." };
+  }
+  if (!applicantLimit || applicantLimit.length > 40) {
+    return { error: "모집인원을 40자 이내로 입력해 주세요." };
   }
   if (!budget || budget.length > 80) {
-    return { error: "예산 또는 협의 조건을 80자 이내로 입력해 주세요." };
+    return { error: "지급내용을 80자 이내로 입력해 주세요." };
   }
   if (!summary || summary.length > 1000) {
-    return { error: "모집 설명은 1000자 이내로 입력해 주세요." };
+    return { error: "캠페인설명은 1000자 이내로 입력해 주세요." };
   }
-  if (deadline && deadline.length > 40) {
-    return { error: "마감일을 40자 이내로 입력해 주세요." };
+  if (!deliverables.length) {
+    return { error: "산출물을 6개 이내로 입력해 주세요." };
+  }
+  if (!uploadDeadline || uploadDeadline.length > 40) {
+    return { error: "업로드 마감일을 40자 이내로 입력해 주세요." };
+  }
+  if (!deadline || deadline.length > 40) {
+    return { error: "모집마감일을 40자 이내로 입력해 주세요." };
   }
 
   return {
     title,
     type,
+    applicantLimit,
     budget,
     summary,
     deadline,
+    uploadDeadline,
     platforms,
     deliverables,
   };
@@ -6873,9 +6896,11 @@ const upsertAdvertiserMarketplaceCampaign = async (
     id: randomUUID(),
     title: payload.title,
     type: payload.type,
+    applicantLimit: payload.applicantLimit,
     budget: payload.budget,
     summary: payload.summary,
     ...(payload.deadline ? { deadline: payload.deadline } : {}),
+    uploadDeadline: payload.uploadDeadline,
     platforms: payload.platforms,
     deliverables:
       payload.deliverables.length > 0
@@ -7102,8 +7127,10 @@ const buildMarketplaceCampaignSnapshot = (
   title: campaign.title,
   type: campaign.type,
   budget: campaign.budget,
+  ...(campaign.applicantLimit ? { applicantLimit: campaign.applicantLimit } : {}),
   ...(campaign.summary ? { summary: campaign.summary } : {}),
   ...(campaign.deadline ? { deadline: campaign.deadline } : {}),
+  ...(campaign.uploadDeadline ? { uploadDeadline: campaign.uploadDeadline } : {}),
   ...(campaign.platforms?.length ? { platforms: campaign.platforms } : {}),
   ...(campaign.deliverables?.length ? { deliverables: campaign.deliverables } : {}),
   brandId: campaign.brandId,
@@ -7121,11 +7148,17 @@ const normalizeMarketplaceCampaignSnapshot = (
   const title = normalizeRequiredText(record.title);
   const type = normalizeRequiredText(record.type) as CampaignProposalType;
   const budget = normalizeRequiredText(record.budget);
+  const applicantLimit = normalizeOptionalText(
+    record.applicantLimit ?? record.applicant_limit,
+  );
   const brandId = normalizeRequiredText(record.brandId);
   const brandHandle = normalizeRequiredText(record.brandHandle);
   const brandName = normalizeRequiredText(record.brandName);
   const summary = normalizeOptionalText(record.summary);
   const deadline = normalizeOptionalText(record.deadline);
+  const uploadDeadline = normalizeOptionalText(
+    record.uploadDeadline ?? record.upload_deadline,
+  );
   const brandCategory = normalizeOptionalText(record.brandCategory);
   const platforms = normalizeCampaignPlatforms(record.platforms);
   const deliverables = normalizeStringArrayForStorage(record.deliverables, [], 8);
@@ -7147,8 +7180,10 @@ const normalizeMarketplaceCampaignSnapshot = (
     title,
     type,
     budget,
+    ...(applicantLimit ? { applicantLimit } : {}),
     ...(summary ? { summary } : {}),
     ...(deadline ? { deadline } : {}),
+    ...(uploadDeadline ? { uploadDeadline } : {}),
     ...(platforms.length ? { platforms } : {}),
     ...(deliverables.length ? { deliverables } : {}),
     brandId,
@@ -7184,14 +7219,16 @@ const buildCampaignApplicationSummary = (campaign: MarketplaceCampaignPost) => {
   const lines = [
     `캠페인 신청: ${campaign.title}`,
     campaign.summary ? `모집 설명: ${campaign.summary}` : undefined,
-    `예산/조건: ${campaign.budget}`,
+    campaign.applicantLimit ? `모집인원: ${campaign.applicantLimit}` : undefined,
+    `지급내용: ${campaign.budget}`,
     campaign.deliverables?.length
       ? `산출물: ${campaign.deliverables.join(", ")}`
       : undefined,
     campaign.platformLabels.length
       ? `플랫폼: ${campaign.platformLabels.join(", ")}`
       : undefined,
-    campaign.deadline ? `제안 마감: ${campaign.deadline}` : undefined,
+    campaign.uploadDeadline ? `업로드 마감일: ${campaign.uploadDeadline}` : undefined,
+    campaign.deadline ? `모집마감일: ${campaign.deadline}` : undefined,
   ].filter((line): line is string => Boolean(line));
 
   return lines.join("\n").slice(0, 1500);
@@ -8918,6 +8955,11 @@ const buildMarketplaceCampaignDraftClauses = (
       content: [
         `캠페인명: ${snapshot.title}`,
         snapshot.summary ? `모집 설명: ${snapshot.summary}` : undefined,
+        snapshot.applicantLimit ? `모집인원: ${snapshot.applicantLimit}` : undefined,
+        snapshot.deadline ? `모집마감일: ${snapshot.deadline}` : undefined,
+        snapshot.uploadDeadline
+          ? `업로드 마감일: ${snapshot.uploadDeadline}`
+          : undefined,
         `브랜드: ${snapshot.brandName}`,
         `신청 내용: ${row.proposal_summary}`,
       ]
@@ -8929,7 +8971,9 @@ const buildMarketplaceCampaignDraftClauses = (
     {
       clause_id: "campaign_application_deliverables",
       category: "산출물 및 플랫폼",
-      content: `인플루언서는 ${platforms} 채널에서 다음 산출물을 제공한다: ${deliverables}. 세부 업로드 수량, 유지 기간, 검수 기준은 광고주가 초안에서 최종 확인한다.`,
+      content: `인플루언서는 ${platforms} 채널에서 다음 산출물을 제공한다: ${deliverables}. 업로드 마감일은 ${
+        snapshot.uploadDeadline ?? "계약 작성 단계에서 확정"
+      } 기준이며, 세부 업로드 수량, 유지 기간, 검수 기준은 광고주가 초안에서 최종 확인한다.`,
       status: "PENDING_REVIEW",
       history: [],
     },
@@ -9120,7 +9164,7 @@ const createDraftContractFromMarketplaceApplication = async (
     campaign: {
       budget: snapshot.budget,
       deadline: snapshot.deadline,
-      upload_due_at: snapshot.deadline,
+      upload_due_at: snapshot.uploadDeadline ?? snapshot.deadline,
       platforms: uniquePlatforms,
       deliverables:
         snapshot.deliverables && snapshot.deliverables.length > 0

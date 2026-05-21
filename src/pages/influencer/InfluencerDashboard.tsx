@@ -303,28 +303,6 @@ const DETAIL_STAGE_FILTERS: DetailStageFilter[] = [
   "application_closed",
 ];
 
-const CAMPAIGN_LIFECYCLE_TABS: Array<{
-  value: InfluencerCampaignLifecycle;
-  label: string;
-  helper: string;
-}> = [
-  {
-    value: "APPLIED",
-    label: "지원중",
-    helper: "광고주 검토 대기",
-  },
-  {
-    value: "IN_PROGRESS",
-    label: "진행중",
-    helper: "계약·서명·제출",
-  },
-  {
-    value: "ENDED",
-    label: "종료",
-    helper: "완료·종료 보관",
-  },
-];
-
 const DEADLINE_FILTERS: DeadlineFilter[] = [
   "all",
   "overdue",
@@ -414,8 +392,6 @@ export function InfluencerDashboard() {
   const location = useLocation();
   const [state, setState] = useState<DashboardState>({ status: "loading" });
   const [query, setQuery] = useState("");
-  const [campaignLifecycle, setCampaignLifecycle] =
-    useState<InfluencerCampaignLifecycle>("IN_PROGRESS");
   const [platformFilter, setPlatformFilter] = useState<PlatformFilter>("all");
   const [brandFilter, setBrandFilter] = useState("all");
   const [amountFilter, setAmountFilter] = useState<AmountFilter>("all");
@@ -541,10 +517,7 @@ export function InfluencerDashboard() {
   const dashboard = state.dashboard;
   const normalizedQuery = query.trim().toLowerCase();
   const campaignItems = buildInfluencerCampaignWorkItems(dashboard);
-  const visibleCampaignItems = campaignItems.filter(
-    (item) => item.lifecycle === campaignLifecycle,
-  );
-  const lifecycleCounts = getInfluencerCampaignLifecycleCounts(campaignItems);
+  const visibleCampaignItems = campaignItems;
   const operationsSummary = getInfluencerOperationsSummary(
     campaignItems,
     messageSummary.unreadCount,
@@ -736,11 +709,6 @@ export function InfluencerDashboard() {
               alerts={operationAlerts}
               activities={recentActivities}
               onOpen={(href) => navigate(href)}
-            />
-            <InfluencerCampaignLifecycleTabs
-              value={campaignLifecycle}
-              counts={lifecycleCounts}
-              onChange={setCampaignLifecycle}
             />
             <ContractTable
               items={filteredCampaignItems}
@@ -1708,57 +1676,6 @@ function InfluencerOperationsPanel({
   );
 }
 
-function InfluencerCampaignLifecycleTabs({
-  value,
-  counts,
-  onChange,
-}: {
-  value: InfluencerCampaignLifecycle;
-  counts: Record<InfluencerCampaignLifecycle, number>;
-  onChange: (value: InfluencerCampaignLifecycle) => void;
-}) {
-  return (
-    <div className="mb-2 grid gap-1.5 rounded-[8px] border border-[#d9e0d9] bg-white p-2 sm:grid-cols-3">
-      {CAMPAIGN_LIFECYCLE_TABS.map((tab) => {
-        const active = value === tab.value;
-        return (
-          <button
-            key={tab.value}
-            type="button"
-            onClick={() => onChange(tab.value)}
-            aria-pressed={active}
-            className={`flex min-h-12 items-center justify-between gap-2 rounded-[7px] border px-3 py-2 text-left transition ${
-              active
-                ? "border-[#171a17] bg-[#171a17] text-white"
-                : "border-[#d9e0d9] bg-[#f8faf7] text-[#303630] hover:border-[#cbd5cc] hover:bg-white"
-            }`}
-          >
-            <span className="min-w-0">
-              <span className="block truncate text-[13px] font-extrabold">
-                {tab.label}
-              </span>
-              <span
-                className={`mt-0.5 block truncate text-[11px] font-semibold ${
-                  active ? "text-white/70" : "text-[#7d857f]"
-                }`}
-              >
-                {tab.helper}
-              </span>
-            </span>
-            <span
-              className={`inline-flex h-7 min-w-7 shrink-0 items-center justify-center rounded-md px-2 text-[12px] font-extrabold ${
-                active ? "bg-white text-[#171a17]" : "bg-white text-[#303630]"
-              }`}
-            >
-              {counts[tab.value].toLocaleString()}
-            </span>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 function ContractTable({
   items,
   totalItems,
@@ -2371,18 +2288,6 @@ function getApplicationLifecycle(
   if (application.stage === "closed") return "ENDED";
   if (application.stage === "accepted") return "IN_PROGRESS";
   return "APPLIED";
-}
-
-function getInfluencerCampaignLifecycleCounts(
-  items: InfluencerCampaignWorkItem[],
-) {
-  return items.reduce<Record<InfluencerCampaignLifecycle, number>>(
-    (counts, item) => {
-      counts[item.lifecycle] += 1;
-      return counts;
-    },
-    { APPLIED: 0, IN_PROGRESS: 0, ENDED: 0 },
-  );
 }
 
 function getInfluencerOperationsSummary(

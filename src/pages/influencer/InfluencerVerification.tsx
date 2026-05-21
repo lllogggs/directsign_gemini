@@ -262,9 +262,17 @@ export function InfluencerVerification() {
     verificationStatus === "rejected"
       ? getVerificationRejectionGuidance(latest, "influencer_account")
       : undefined;
+  const selectedApprovedPlatform = verification?.approved_platforms?.find(
+    (item) => item.platform === platform,
+  );
+  const latestMatchesSelectedPlatform =
+    latest?.platform === undefined || latest.platform === platform;
   const verifiedHandle =
-    latest?.platform_handle || verification?.account?.platform_handle;
-  const verifiedUrl = latest?.platform_url || verification?.account?.platform_url;
+    selectedApprovedPlatform?.handle ||
+    (latestMatchesSelectedPlatform ? latest?.platform_handle : undefined);
+  const verifiedUrl =
+    selectedApprovedPlatform?.url ||
+    (latestMatchesSelectedPlatform ? latest?.platform_url : undefined);
 
   useEffect(() => {
     if (verificationStatusCode !== 401) return;
@@ -318,6 +326,12 @@ export function InfluencerVerification() {
   const updatePlatform = (nextPlatform: InfluencerPlatform) => {
     setPlatform(nextPlatform);
     setMethod(PLATFORM_META[nextPlatform].methods[0]);
+    setForm((current) => ({
+      ...current,
+      platform_handle: "",
+      platform_url: "",
+      ownership_challenge_url: "",
+    }));
     setError("");
     setSubmitted(false);
     setSubmittedChallengeCode("");

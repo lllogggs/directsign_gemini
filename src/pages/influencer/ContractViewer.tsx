@@ -938,10 +938,6 @@ export function ContractViewer() {
     serverAccessRole === "advertiser" || serverAccessRole === "influencer";
   const canRequestOperatorSupport =
     serverAccessRole === "advertiser" || serverAccessRole === "influencer";
-  const canSubmitClauseReview =
-    serverAccessRole === "influencer" &&
-    !isOperatorSupportView &&
-    contract.status !== "SIGNED";
 
   if (
     !isOperatorSupportView &&
@@ -1036,10 +1032,23 @@ export function ContractViewer() {
     Boolean(verificationStatusError) && verificationStatusCode !== 401;
   const isInfluencerAuthenticated =
     Boolean(verificationSummary) && verificationStatusCode !== 401;
+  const influencerSessionEmail =
+    verificationSummary?.influencer.account?.email?.trim().toLowerCase();
+  const contractInfluencerEmail =
+    contract.influencer_info.contact?.trim().toLowerCase();
+  const isInfluencerContractOwner =
+    Boolean(influencerSessionEmail) &&
+    Boolean(contractInfluencerEmail) &&
+    influencerSessionEmail === contractInfluencerEmail;
   const isInfluencerReviewerAuthenticated =
-    serverAccessRole === "influencer" && isInfluencerAuthenticated;
+    isInfluencerAuthenticated &&
+    (serverAccessRole === "influencer" || isInfluencerContractOwner);
   const needsInfluencerAccountSession =
     !isInfluencerReviewerAuthenticated || verificationStatusCode === 401;
+  const canSubmitClauseReview =
+    isInfluencerReviewerAuthenticated &&
+    !isOperatorSupportView &&
+    contract.status !== "SIGNED";
   const isInfluencerVerificationApproved =
     influencerVerificationStatus === "approved";
   const shareExpiresAt = contract.evidence?.share_token_expires_at

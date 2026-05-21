@@ -262,7 +262,7 @@ const buildContractClauses = (draft: ContractDraft): Clause[] => {
         `광고 표시 문구: ${draft.disclosureText || "입력 필요"}`,
         "광고주와 인플루언서는 경제적 이해관계가 소비자에게 명확히 인식되도록 콘텐츠의 제목, 본문 첫 부분, 영상 설명 또는 플랫폼상 쉽게 확인 가능한 위치에 광고 표시를 유지해야 한다.",
         "플랫폼 정책이나 관계 법령상 더 엄격한 표시가 필요한 경우 그 기준을 우선 적용한다.",
-        draft.trackingLink ? `필수 링크/쿠폰/해시태그: ${draft.trackingLink}` : "",
+        draft.trackingLink ? `필수 추적 링크: ${draft.trackingLink}` : "",
       ]
         .filter(Boolean)
         .join("\n"),
@@ -1252,13 +1252,16 @@ export function ContractBuilder() {
                   </div>
 
                   <div>
-                    <Label>쿠폰/링크/해시태그</Label>
+                    <Label>추적 링크</Label>
                     <Input
                       className="mt-1.5"
-                      placeholder="예: #브랜드명 #AD / 쿠폰코드 SUN20"
+                      placeholder="예: https://brand.example.com/campaign"
                       value={draft.trackingLink}
                       onChange={(event) => updateDraft({ trackingLink: event.target.value })}
                     />
+                    <p className="mt-2 text-[12px] leading-5 text-neutral-500">
+                      쿠폰 코드나 해시태그는 광고 표시 조건 또는 특약에 적어 주세요.
+                    </p>
                   </div>
 
                   <div>

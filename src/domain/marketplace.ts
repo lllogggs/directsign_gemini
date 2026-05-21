@@ -14,8 +14,10 @@ export type MarketplaceBrandCampaign = {
   title: string;
   type: CampaignProposalType;
   budget: string;
+  applicantLimit?: string;
   summary?: string;
   deadline?: string;
+  uploadDeadline?: string;
   platforms?: InfluencerPlatform[];
   deliverables?: string[];
   status?: MarketplaceCampaignStatus;
@@ -300,12 +302,18 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
       {
         title: "신제품 언박싱 릴스",
         type: "sponsored_post",
+        applicantLimit: "12명",
         budget: "180만-280만원",
+        deadline: "2026-06-10",
+        uploadDeadline: "2026-06-24",
       },
       {
         title: "파우치 필수템 리뷰",
         type: "product_seeding",
+        applicantLimit: "8명",
         budget: "제품 제공 + 제작비",
+        deadline: "2026-06-14",
+        uploadDeadline: "2026-06-28",
       },
     ],
     recentCreators: ["제우", "민서홈"],

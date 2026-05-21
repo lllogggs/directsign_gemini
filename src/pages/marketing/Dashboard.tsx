@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   AlertCircle,
   ArrowLeft,
@@ -100,15 +100,6 @@ type CampaignGroup = {
   platforms: ContractPlatform[];
   brands: string[];
 };
-type CampaignOperationsSummary = {
-  newApplicants: number;
-  actionableApplicants: number;
-  overdueContracts: number;
-  dueSoonContracts: number;
-  draftContracts: number;
-  revisionRequests: number;
-  submittedLinks: number;
-};
 type CampaignAlertTone = "amber" | "blue" | "rose" | "emerald" | "neutral";
 type CampaignAlert = {
   id: string;
@@ -198,22 +189,18 @@ const CAMPAIGN_COMPLETION_OPTIONS: Array<{
 const CAMPAIGN_LIFECYCLE_TABS: Array<{
   value: CampaignLifecycle;
   label: string;
-  helper: string;
 }> = [
   {
     value: "RECRUITING",
     label: "모집중",
-    helper: "지원자 검토",
   },
   {
     value: "IN_PROGRESS",
     label: "진행중",
-    helper: "계약·서명·제출",
   },
   {
     value: "ENDED",
     label: "종료",
-    helper: "완료·마감 보관",
   },
 ];
 
@@ -380,6 +367,7 @@ export function Dashboard() {
   const isSyncing = useAppStore((state) => state.isSyncing);
   const syncError = useAppStore((state) => state.syncError);
   const resetHydration = useAppStore((state) => state.resetHydration);
+  const [searchParams, setSearchParams] = useSearchParams();
   const [query, setQuery] = useState("");
   const [campaignPlatformFilter, setCampaignPlatformFilter] =
     useState<PlatformFilter>("ALL");
@@ -390,7 +378,6 @@ export function Dashboard() {
     useState<CampaignCompletionFilter>("ALL");
   const [campaignLifecycleFilter, setCampaignLifecycleFilter] =
     useState<CampaignLifecycle>("RECRUITING");
-  const [selectedCampaignKey, setSelectedCampaignKey] = useState<string>();
   const [marketplaceState, setMarketplaceState] =
     useState<MarketplaceDashboardState>({
       status: "loading",
@@ -524,14 +511,6 @@ export function Dashboard() {
       marketplaceState.threads,
     ],
   );
-  const campaignOperationsSummary = useMemo(
-    () => getCampaignOperationsSummary(campaignGroups),
-    [campaignGroups],
-  );
-  const campaignAlerts = useMemo(
-    () => buildCampaignAlerts(campaignGroups),
-    [campaignGroups],
-  );
   const campaignTabCounts = useMemo(
     () => getCampaignLifecycleCounts(campaignGroups),
     [campaignGroups],
@@ -569,15 +548,23 @@ export function Dashboard() {
     campaignPlatformFilter,
     query,
   ]);
+  const selectedCampaignKey = searchParams.get("campaign") ?? undefined;
   const selectedCampaign = selectedCampaignKey
     ? campaignGroups.find((campaign) => campaign.key === selectedCampaignKey)
     : undefined;
   const openContract = (contract: Contract) =>
     navigate(`/advertiser/contract/${contract.id}`);
+  const setCampaignQueryParam = (key?: string) => {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      if (key) next.set("campaign", key);
+      else next.delete("campaign");
+      return next;
+    });
+  };
   const openCampaign = (campaign: CampaignGroup) =>
-    setSelectedCampaignKey(campaign.key);
-  const openCampaignByKey = (key: string) => setSelectedCampaignKey(key);
-  const closeCampaign = () => setSelectedCampaignKey(undefined);
+    setCampaignQueryParam(campaign.key);
+  const closeCampaign = () => setCampaignQueryParam();
   const updateCampaignStatus = useCallback(
     async (campaign: CampaignGroup, status: CampaignStatusAction) => {
       if (!campaign.campaignId) {
@@ -808,11 +795,8 @@ export function Dashboard() {
               onParticipantFilterChange={setCampaignParticipantFilter}
               completionFilter={campaignCompletionFilter}
               onCompletionFilterChange={setCampaignCompletionFilter}
-              operationsSummary={campaignOperationsSummary}
-              alerts={campaignAlerts}
               selectedCampaign={selectedCampaign}
               onOpenCampaign={openCampaign}
-              onOpenCampaignByKey={openCampaignByKey}
               onBack={closeCampaign}
               onOpenContract={openContract}
               onAcceptApplication={acceptCampaignApplication}
@@ -1275,11 +1259,8 @@ function CampaignDashboard({
   onParticipantFilterChange,
   completionFilter,
   onCompletionFilterChange,
-  operationsSummary,
-  alerts,
   selectedCampaign,
   onOpenCampaign,
-  onOpenCampaignByKey,
   onBack,
   onOpenContract,
   onAcceptApplication,
@@ -1303,11 +1284,8 @@ function CampaignDashboard({
   onParticipantFilterChange: (value: CampaignParticipantFilter) => void;
   completionFilter: CampaignCompletionFilter;
   onCompletionFilterChange: (value: CampaignCompletionFilter) => void;
-  operationsSummary: CampaignOperationsSummary;
-  alerts: CampaignAlert[];
   selectedCampaign?: CampaignGroup;
   onOpenCampaign: (campaign: CampaignGroup) => void;
-  onOpenCampaignByKey: (key: string) => void;
   onBack: () => void;
   onOpenContract: (contract: Contract) => void;
   onAcceptApplication: (thread: MarketplaceMessageThread) => Promise<void>;
@@ -1350,10 +1328,7 @@ function CampaignDashboard({
       onParticipantFilterChange={onParticipantFilterChange}
       completionFilter={completionFilter}
       onCompletionFilterChange={onCompletionFilterChange}
-      operationsSummary={operationsSummary}
-      alerts={alerts}
       onOpenCampaign={onOpenCampaign}
-      onOpenCampaignByKey={onOpenCampaignByKey}
     />
   );
 }
@@ -1375,10 +1350,7 @@ function CampaignListView({
   onParticipantFilterChange,
   completionFilter,
   onCompletionFilterChange,
-  operationsSummary,
-  alerts,
   onOpenCampaign,
-  onOpenCampaignByKey,
 }: {
   campaigns: CampaignGroup[];
   totalContracts: number;
@@ -1396,29 +1368,22 @@ function CampaignListView({
   onParticipantFilterChange: (value: CampaignParticipantFilter) => void;
   completionFilter: CampaignCompletionFilter;
   onCompletionFilterChange: (value: CampaignCompletionFilter) => void;
-  operationsSummary: CampaignOperationsSummary;
-  alerts: CampaignAlert[];
   onOpenCampaign: (campaign: CampaignGroup) => void;
-  onOpenCampaignByKey: (key: string) => void;
 }) {
   const platformOptions = PLATFORM_FILTERS.map((platform) => ({
     value: platform,
     label: formatPlatformFilterLabel(platform),
   }));
+  const dateColumnLabel = lifecycleFilter === "ENDED" ? "종료일" : "마감일";
 
   return (
     <section className="overflow-hidden rounded-[10px] border border-[#d9e0d9] bg-white lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
-      <CampaignOperationsPanel
-        summary={operationsSummary}
-        alerts={alerts}
-        onOpenCampaign={onOpenCampaignByKey}
-      />
       <CampaignLifecycleTabs
         value={lifecycleFilter}
         counts={lifecycleCounts}
         onChange={onLifecycleFilterChange}
       />
-      <div className="grid gap-2 border-b border-[#d9e0d9] bg-[#f8faf7] p-2 lg:grid-cols-[minmax(140px,0.42fr)_minmax(150px,0.45fr)_minmax(260px,1fr)_minmax(120px,0.34fr)_minmax(120px,0.34fr)] lg:items-end">
+      <div className="grid gap-2 border-b border-[#d9e0d9] bg-[#f8faf7] p-2 lg:grid-cols-[minmax(72px,0.16fr)_minmax(92px,0.2fr)_minmax(300px,1fr)_minmax(140px,0.34fr)_minmax(104px,0.24fr)_minmax(104px,0.24fr)] lg:items-end">
         <TableFilterSelect
           label="플랫폼"
           value={platformFilter}
@@ -1432,16 +1397,24 @@ function CampaignListView({
           onChange={onBrandFilterChange}
         />
         <CampaignSearch value={query} onChange={onQueryChange} />
+        <div className="hidden min-w-0 lg:block">
+          <ColumnHeader label="지급내용" />
+          <div className="mt-1 h-10" />
+        </div>
         <TableFilterSelect
-          label="참여인원"
+          label="진도율"
           value={participantFilter}
           options={CAMPAIGN_PARTICIPANT_OPTIONS}
           onChange={(value) =>
             onParticipantFilterChange(value as CampaignParticipantFilter)
           }
         />
+        <div className="hidden min-w-0 lg:block">
+          <ColumnHeader label={dateColumnLabel} />
+          <div className="mt-1 h-10" />
+        </div>
         <TableFilterSelect
-          label="완료율"
+          label="완료 상태"
           value={completionFilter}
           options={CAMPAIGN_COMPLETION_OPTIONS}
           onChange={(value) =>
@@ -1468,93 +1441,6 @@ function CampaignListView({
   );
 }
 
-function CampaignOperationsPanel({
-  summary,
-  alerts,
-  onOpenCampaign,
-}: {
-  summary: CampaignOperationsSummary;
-  alerts: CampaignAlert[];
-  onOpenCampaign: (key: string) => void;
-}) {
-  const metrics = [
-    {
-      label: "새 지원",
-      value: summary.newApplicants,
-      tone: "text-amber-700",
-    },
-    {
-      label: "수정 요청",
-      value: summary.revisionRequests,
-      tone: "text-rose-700",
-    },
-    {
-      label: "마감 임박",
-      value: summary.dueSoonContracts + summary.overdueContracts,
-      tone: "text-blue-700",
-    },
-    {
-      label: "제출 확인",
-      value: summary.submittedLinks,
-      tone: "text-emerald-700",
-    },
-  ];
-
-  return (
-    <div className="grid gap-2 border-b border-[#d9e0d9] bg-[#fbfbf8] p-2 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
-      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
-        {metrics.map((metric) => (
-          <div
-            key={metric.label}
-            className="min-w-0 rounded-[7px] border border-[#d9e0d9] bg-white px-2.5 py-2"
-          >
-            <p className="truncate text-[11px] font-extrabold text-[#7d857f]">
-              {metric.label}
-            </p>
-            <p className={`mt-0.5 text-[16px] font-extrabold ${metric.tone}`}>
-              {metric.value.toLocaleString()}
-            </p>
-          </div>
-        ))}
-      </div>
-
-      <div className="min-w-0 rounded-[7px] border border-[#d9e0d9] bg-white px-2.5 py-2">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-[11px] font-extrabold text-[#7d857f]">
-            처리 알림
-          </p>
-          <span className="text-[11px] font-semibold text-[#9aa39d]">
-            우선순위 {alerts.length.toLocaleString()}건
-          </span>
-        </div>
-        {alerts.length > 0 ? (
-          <div className="mt-1.5 flex gap-1.5 overflow-x-auto pb-0.5">
-            {alerts.slice(0, 4).map((alert) => (
-              <button
-                key={alert.id}
-                type="button"
-                onClick={() => onOpenCampaign(alert.campaignKey)}
-                className={`inline-flex min-h-8 min-w-[190px] max-w-[260px] items-center gap-2 rounded-md border px-2 text-left text-[11px] font-extrabold transition hover:border-[#171a17] ${getCampaignAlertToneClass(alert.tone)}`}
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate">{alert.label}</span>
-                  <span className="block truncate font-semibold opacity-75">
-                    {alert.campaignName}
-                  </span>
-                </span>
-              </button>
-            ))}
-          </div>
-        ) : (
-          <p className="mt-2 text-[12px] font-semibold text-[#7d857f]">
-            지금 바로 처리할 캠페인 알림이 없습니다.
-          </p>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function CampaignLifecycleTabs({
   value,
   counts,
@@ -1565,43 +1451,36 @@ function CampaignLifecycleTabs({
   onChange: (value: CampaignLifecycle) => void;
 }) {
   return (
-    <div className="grid gap-1.5 border-b border-[#d9e0d9] bg-white p-2 sm:grid-cols-3">
-      {CAMPAIGN_LIFECYCLE_TABS.map((tab) => {
-        const active = value === tab.value;
-        return (
-          <button
-            key={tab.value}
-            type="button"
-            onClick={() => onChange(tab.value)}
-            aria-pressed={active}
-            className={`flex min-h-12 items-center justify-between gap-2 rounded-[7px] border px-3 py-2 text-left transition ${
-              active
-                ? "border-[#171a17] bg-[#171a17] text-white"
-                : "border-[#d9e0d9] bg-[#f8faf7] text-[#303630] hover:border-[#cbd5cc] hover:bg-white"
-            }`}
-          >
-            <span className="min-w-0">
-              <span className="block truncate text-[13px] font-extrabold">
+    <div className="border-b border-[#d9e0d9] bg-white p-2">
+      <div className="grid gap-1.5 sm:grid-cols-3">
+        {CAMPAIGN_LIFECYCLE_TABS.map((tab) => {
+          const active = value === tab.value;
+          return (
+            <button
+              key={tab.value}
+              type="button"
+              onClick={() => onChange(tab.value)}
+              aria-pressed={active}
+              className={`flex h-10 items-center justify-between gap-2 rounded-[7px] border px-3 text-left transition ${
+                active
+                  ? "border-[#171a17] bg-[#171a17] text-white"
+                  : "border-[#d9e0d9] bg-[#f8faf7] text-[#303630] hover:border-[#cbd5cc] hover:bg-white"
+              }`}
+            >
+              <span className="truncate text-[13px] font-extrabold">
                 {tab.label}
               </span>
               <span
-                className={`mt-0.5 block truncate text-[11px] font-semibold ${
-                  active ? "text-white/70" : "text-[#7d857f]"
+                className={`inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-md px-1.5 text-[12px] font-extrabold ${
+                  active ? "bg-white text-[#171a17]" : "bg-white text-[#303630]"
                 }`}
               >
-                {tab.helper}
+                {counts[tab.value].toLocaleString()}
               </span>
-            </span>
-            <span
-              className={`inline-flex h-7 min-w-7 shrink-0 items-center justify-center rounded-md px-2 text-[12px] font-extrabold ${
-                active ? "bg-white text-[#171a17]" : "bg-white text-[#303630]"
-              }`}
-            >
-              {counts[tab.value].toLocaleString()}
-            </span>
-          </button>
-        );
-      })}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -1643,72 +1522,47 @@ function CampaignRow({
   campaign: CampaignGroup;
   onOpen: () => void;
 }) {
-  const completionRatio = getCampaignCompletionRatio(campaign);
   const brandLabel = campaign.brands.join(", ");
-  const displayParticipantCount = getCampaignDisplayParticipantCount(campaign);
-  const statusMeta = getCampaignLifecycleMeta(campaign);
-  const badges = getCampaignRowBadges(campaign);
+  const progress = getCampaignRosterProgress(campaign);
+  const platformLabel = formatCampaignPlatformSummary(campaign.platforms);
+  const paymentLabel = getCampaignPaymentLabel(campaign);
+  const dateLabel = getCampaignListDateLabel(campaign);
 
   return (
     <button
       type="button"
       onClick={onOpen}
-      aria-label={`${campaign.name} 캠페인 열기, 참여인원 ${displayParticipantCount}명, 완료율 ${completionRatio}%`}
-      className="group grid w-full gap-2 px-3 py-3 text-left transition-colors hover:bg-[#f8faf7] lg:min-h-[54px] lg:grid-cols-[minmax(140px,0.42fr)_minmax(150px,0.45fr)_minmax(260px,1fr)_minmax(90px,0.24fr)_minmax(120px,0.34fr)] lg:items-center"
+      aria-label={`${campaign.name} 캠페인 열기, 지급내용 ${paymentLabel}, 진도율 ${progress.label}, 날짜 ${dateLabel}`}
+      className="group grid w-full gap-2 px-3 py-2 text-left transition-colors hover:bg-[#f8faf7] lg:min-h-[46px] lg:grid-cols-[minmax(72px,0.16fr)_minmax(92px,0.2fr)_minmax(300px,1fr)_minmax(140px,0.34fr)_minmax(104px,0.24fr)_minmax(104px,0.24fr)] lg:items-center"
     >
-      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-        {campaign.platforms.slice(0, 3).map((platform) => (
-          <span
-            key={platform}
-            className={`inline-flex h-6 items-center gap-1 rounded-md border px-2 text-[11px] font-semibold ${PLATFORM_META[platform].className}`}
-            title={PLATFORM_META[platform].label}
-          >
-            {PLATFORM_META[platform].mark}
-            {PLATFORM_META[platform].shortLabel}
-          </span>
-        ))}
+      <div className="min-w-0">
+        <span className="inline-flex h-7 max-w-full items-center rounded-md border border-[#d9e0d9] bg-white px-2 text-[12px] font-semibold text-[#303630]">
+          <span className="truncate">{platformLabel}</span>
+        </span>
       </div>
-      <p className="min-w-0 truncate text-[12px] font-semibold text-[#303630]">
+      <p className="min-w-0 truncate whitespace-nowrap text-[12px] font-semibold text-[#303630]">
         {brandLabel}
       </p>
-      <div className="min-w-0">
-        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-          <p className="min-w-0 truncate text-[14px] font-semibold text-[#171a17]">
-            {campaign.name}
-          </p>
-          <span
-            className={`inline-flex h-6 shrink-0 items-center rounded-md border px-2 text-[11px] font-extrabold ${statusMeta.className}`}
-          >
-            {statusMeta.label}
-          </span>
-        </div>
-        {badges.length > 0 ? (
-          <div className="mt-1 flex min-w-0 flex-wrap gap-1">
-            {badges.map((badge) => (
-              <span
-                key={badge.label}
-                className={`inline-flex h-5 items-center rounded border px-1.5 text-[10px] font-extrabold ${getCampaignAlertToneClass(badge.tone)}`}
-              >
-                {badge.label}
-              </span>
-            ))}
-          </div>
-        ) : null}
-      </div>
-      <p className="text-[13px] font-semibold text-[#303630]">
-        {displayParticipantCount.toLocaleString()}명
+      <p className="min-w-0 truncate whitespace-nowrap text-[14px] font-semibold text-[#171a17]">
+        {campaign.name}
+      </p>
+      <p className="min-w-0 truncate whitespace-nowrap text-[12px] font-semibold text-[#303630]">
+        {paymentLabel}
       </p>
       <div className="min-w-0">
-        <p className="text-[13px] font-semibold text-[#303630]">
-          {completionRatio}%
+        <p className="whitespace-nowrap text-[13px] font-extrabold text-[#171a17]">
+          {progress.label}
         </p>
         <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-[#e6ebe6]">
           <div
             className="h-full rounded-full bg-[#171a17]"
-            style={{ width: `${completionRatio}%` }}
+            style={{ width: `${progress.percent}%` }}
           />
         </div>
       </div>
+      <p className="min-w-0 truncate whitespace-nowrap text-[12px] font-semibold text-[#303630]">
+        {dateLabel}
+      </p>
     </button>
   );
 }
@@ -3195,6 +3049,109 @@ function getCampaignLifecycleCounts(campaigns: CampaignGroup[]) {
   );
 }
 
+function getCampaignRosterProgress(campaign: CampaignGroup) {
+  const current = getCampaignDisplayParticipantCount(campaign);
+  const capacity = getCampaignCapacity(campaign);
+  const percent = capacity
+    ? Math.min(100, Math.round((current / capacity) * 100))
+    : current > 0
+      ? 100
+      : 0;
+
+  return {
+    label: `${current.toLocaleString()}/${capacity?.toLocaleString() ?? "미정"}`,
+    percent,
+  };
+}
+
+function getCampaignCapacity(campaign: CampaignGroup) {
+  const raw = campaign.marketplaceCampaign?.applicantLimit;
+  if (!raw) return undefined;
+
+  const match = raw.replace(/,/g, "").match(/\d+/);
+  if (!match) return undefined;
+
+  const value = Number(match[0]);
+  return Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+function formatCampaignPlatformSummary(platforms: ContractPlatform[]) {
+  const labels = platforms.map((platform) => PLATFORM_META[platform].shortLabel);
+  if (labels.length <= 1) return labels[0] ?? "기타";
+
+  return `${labels[0]} 외 ${labels.length - 1}`;
+}
+
+function getCampaignPaymentLabel(campaign: CampaignGroup) {
+  const value =
+    campaign.marketplaceCampaign?.budget ??
+    campaign.contracts.find((contract) => contract.campaign?.budget)?.campaign?.budget;
+
+  return formatDashboardAmountLabel(value);
+}
+
+function getCampaignListDateLabel(campaign: CampaignGroup) {
+  const value =
+    campaign.lifecycle === "ENDED"
+      ? getCampaignEndedDateValue(campaign)
+      : getCampaignDeadlineValue(campaign);
+
+  return formatCampaignListDate(value);
+}
+
+function getCampaignDeadlineValue(campaign: CampaignGroup) {
+  const contractDates = campaign.contracts
+    .map(
+      (contract) =>
+        contract.workflow?.due_at ??
+        contract.campaign?.upload_due_at ??
+        contract.campaign?.deadline ??
+        contract.campaign?.end_date,
+    )
+    .filter((value): value is string => Boolean(value))
+    .sort((a, b) => getDateMs(a) - getDateMs(b));
+
+  if (campaign.lifecycle === "IN_PROGRESS" && contractDates.length > 0) {
+    return contractDates[0];
+  }
+
+  return (
+    campaign.marketplaceCampaign?.deadline ??
+    campaign.marketplaceCampaign?.uploadDeadline ??
+    contractDates[0]
+  );
+}
+
+function getCampaignEndedDateValue(campaign: CampaignGroup) {
+  const contractDates = campaign.contracts
+    .map(
+      (contract) =>
+        contract.signature_data?.signed_at ??
+        contract.campaign?.end_date ??
+        contract.updated_at,
+    )
+    .filter((value): value is string => Boolean(value))
+    .sort((a, b) => getDateMs(b) - getDateMs(a));
+
+  return (
+    campaign.marketplaceCampaign?.endedAt ??
+    campaign.marketplaceCampaign?.closedAt ??
+    contractDates[0] ??
+    campaign.latestUpdatedAt
+  );
+}
+
+function formatCampaignListDate(value?: string) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return new Intl.DateTimeFormat("ko-KR", {
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
 function getCampaignLifecycle(campaign: CampaignGroup): CampaignLifecycle {
   if (campaign.marketplaceCampaign?.status === "ended") return "ENDED";
   if (
@@ -3218,33 +3175,6 @@ function getCampaignLifecycleSortOrder(lifecycle: CampaignLifecycle) {
   if (lifecycle === "RECRUITING") return 0;
   if (lifecycle === "IN_PROGRESS") return 1;
   return 2;
-}
-
-function getCampaignOperationsSummary(
-  campaigns: CampaignGroup[],
-): CampaignOperationsSummary {
-  return campaigns.reduce<CampaignOperationsSummary>(
-    (summary, campaign) => {
-      const counts = getCampaignActionCounts(campaign);
-      summary.newApplicants += counts.newApplicants;
-      summary.actionableApplicants += counts.actionableApplicants;
-      summary.overdueContracts += counts.overdueContracts;
-      summary.dueSoonContracts += counts.dueSoonContracts;
-      summary.draftContracts += counts.draftContracts;
-      summary.revisionRequests += counts.revisionRequests;
-      summary.submittedLinks += counts.submittedLinks;
-      return summary;
-    },
-    {
-      newApplicants: 0,
-      actionableApplicants: 0,
-      overdueContracts: 0,
-      dueSoonContracts: 0,
-      draftContracts: 0,
-      revisionRequests: 0,
-      submittedLinks: 0,
-    },
-  );
 }
 
 function getCampaignActionCounts(campaign: CampaignGroup) {
@@ -3351,29 +3281,6 @@ function buildCampaignAlerts(campaigns: CampaignGroup[]): CampaignAlert[] {
     .sort((a, b) => a.priority - b.priority || compareText(a.campaignName, b.campaignName));
 }
 
-function getCampaignRowBadges(campaign: CampaignGroup) {
-  const counts = getCampaignActionCounts(campaign);
-  const badges: Array<{ label: string; tone: CampaignAlertTone }> = [];
-
-  if (counts.newApplicants > 0) {
-    badges.push({ label: `새 지원 ${counts.newApplicants}`, tone: "amber" });
-  }
-  if (counts.revisionRequests > 0) {
-    badges.push({ label: `수정 ${counts.revisionRequests}`, tone: "rose" });
-  }
-  if (counts.overdueContracts > 0) {
-    badges.push({ label: `마감 지남 ${counts.overdueContracts}`, tone: "rose" });
-  }
-  if (counts.dueSoonContracts > 0) {
-    badges.push({ label: `마감 임박 ${counts.dueSoonContracts}`, tone: "blue" });
-  }
-  if (counts.submittedLinks > 0) {
-    badges.push({ label: `제출 ${counts.submittedLinks}`, tone: "emerald" });
-  }
-
-  return badges.slice(0, 3);
-}
-
 function getCampaignAlertToneClass(tone: CampaignAlertTone) {
   const tones: Record<CampaignAlertTone, string> = {
     amber: "border-amber-200 bg-amber-50 text-amber-800",
@@ -3390,27 +3297,20 @@ function getCampaignLifecycleMeta(campaign: CampaignGroup) {
   const recruitmentStatus = campaign.marketplaceCampaign?.status;
 
   if (campaign.lifecycle === "RECRUITING") {
-    return recruitmentStatus === "closed"
-      ? {
-          label: "모집 종료",
-          className: "border-amber-200 bg-amber-50 text-amber-700",
-        }
-      : {
-          label: "모집중",
-          className: "border-blue-200 bg-blue-50 text-blue-700",
-        };
+    return {
+      label: recruitmentStatus === "closed" ? "종료" : "모집중",
+      className:
+        recruitmentStatus === "closed"
+          ? "border-neutral-200 bg-neutral-100 text-neutral-600"
+          : "border-blue-200 bg-blue-50 text-blue-700",
+    };
   }
 
   if (campaign.lifecycle === "IN_PROGRESS") {
-    return recruitmentStatus === "open"
-      ? {
-          label: "진행중 · 모집중",
-          className: "border-blue-200 bg-blue-50 text-blue-700",
-        }
-      : {
-          label: "진행중",
-          className: "border-neutral-300 bg-neutral-100 text-neutral-800",
-        };
+    return {
+      label: "진행중",
+      className: "border-neutral-300 bg-neutral-100 text-neutral-800",
+    };
   }
 
   return {

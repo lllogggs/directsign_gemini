@@ -73,6 +73,60 @@ function InfluencerIntroPage() {
   return <RoleIntroPage role="influencer" />;
 }
 
+function SignupLanding() {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-[#f7f7f4] px-4 py-10">
+      <section className="w-full max-w-[520px] rounded-[18px] border border-neutral-200 bg-white p-6 shadow-[0_24px_70px_rgba(15,23,42,0.08)]">
+        <Link
+          to="/"
+          className="inline-flex items-center gap-2 text-[13px] font-extrabold text-neutral-500 transition hover:text-neutral-950"
+        >
+          연락미 홈
+        </Link>
+        <p className="mt-8 text-[12px] font-extrabold uppercase tracking-[0.16em] text-neutral-400">
+          계정 만들기
+        </p>
+        <h1 className="mt-3 text-[28px] font-bold leading-tight text-neutral-950">
+          어떤 역할로 시작할까요?
+        </h1>
+        <p className="mt-3 text-[14px] font-semibold leading-6 text-neutral-600">
+          광고 계약을 만들 광고주인지, 받은 계약을 검토할 인플루언서인지 선택해 주세요.
+        </p>
+        <div className="mt-7 grid gap-3">
+          <Link
+            to="/signup/advertiser"
+            className="rounded-[14px] border border-blue-200 bg-blue-50 p-4 text-left transition hover:border-blue-300 hover:bg-blue-100"
+          >
+            <strong className="block text-[18px] font-extrabold text-blue-950">
+              광고주로 가입
+            </strong>
+            <span className="mt-2 block text-[13px] font-bold leading-5 text-blue-700">
+              계약 작성, 검토 링크 발송, 서명 증빙 관리를 시작합니다.
+            </span>
+          </Link>
+          <Link
+            to="/signup/influencer"
+            className="rounded-[14px] border border-emerald-200 bg-emerald-50 p-4 text-left transition hover:border-emerald-300 hover:bg-emerald-100"
+          >
+            <strong className="block text-[18px] font-extrabold text-emerald-950">
+              인플루언서로 가입
+            </strong>
+            <span className="mt-2 block text-[13px] font-bold leading-5 text-emerald-700">
+              받은 계약 검토, 수정 요청, 전자서명을 이어갑니다.
+            </span>
+          </Link>
+        </div>
+        <Link
+          to="/login"
+          className="mt-5 inline-flex h-10 items-center justify-center rounded-[10px] border border-neutral-200 px-3 text-[13px] font-extrabold text-neutral-600 transition hover:border-neutral-300 hover:text-neutral-950"
+        >
+          이미 계정이 있어요
+        </Link>
+      </section>
+    </main>
+  );
+}
+
 const SignupPage = lazy(() =>
   loadSignupPage().then((module) => ({
     default: module.SignupPage,
@@ -986,6 +1040,7 @@ function AppRoutes() {
           <Route path="/login/advertiser" element={<AdvertiserLoginRoute />} />
           <Route path="/login/influencer" element={<InfluencerLoginPage />} />
           <Route path="/reset-password" element={<PasswordResetPage />} />
+          <Route path="/signup" element={<SignupLanding />} />
           <Route path="/signup/advertiser" element={<SignupPage role="advertiser" />} />
           <Route path="/signup/influencer" element={<SignupPage role="influencer" />} />
           <Route path="/privacy" element={<LegalDocumentPage documentType="privacy" />} />

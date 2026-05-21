@@ -99,9 +99,11 @@ export function AdvertiserCampaignRecruitmentPage() {
   const [form, setForm] = useState({
     title: "",
     type: "sponsored_post" as CampaignProposalType,
+    applicantLimit: "",
     budget: "",
     summary: "",
     deadline: "",
+    uploadDeadline: "",
     platforms: ["instagram"] as InfluencerPlatform[],
     deliverables: "",
   });
@@ -162,8 +164,12 @@ export function AdvertiserCampaignRecruitmentPage() {
 
   const canSubmit =
     form.title.trim().length > 0 &&
+    form.applicantLimit.trim().length > 0 &&
     form.budget.trim().length > 0 &&
+    form.deliverables.trim().length > 0 &&
     form.summary.trim().length > 0 &&
+    form.uploadDeadline.trim().length > 0 &&
+    form.deadline.trim().length > 0 &&
     form.platforms.length > 0;
 
   const togglePlatform = (platform: InfluencerPlatform) => {
@@ -226,9 +232,11 @@ export function AdvertiserCampaignRecruitmentPage() {
       setForm((current) => ({
         ...current,
         title: "",
+        applicantLimit: "",
         budget: "",
         summary: "",
         deadline: "",
+        uploadDeadline: "",
         deliverables: "",
       }));
     } catch (error) {
@@ -289,90 +297,7 @@ export function AdvertiserCampaignRecruitmentPage() {
           </div>
 
           <div className="mt-4 grid gap-4">
-            <CampaignField label="캠페인명">
-              <input
-                required
-                value={form.title}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, title: event.target.value }))
-                }
-                placeholder="예: 여름 러닝 챌린지 릴스 모집"
-                className="campaign-input"
-              />
-            </CampaignField>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <CampaignField label="캠페인 형태">
-                <select
-                  value={form.type}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      type: event.target.value as CampaignProposalType,
-                    }))
-                  }
-                  className="campaign-input"
-                >
-                  {proposalTypeOptions.map((type) => (
-                    <option key={type} value={type}>
-                      {proposalTypeLabels[type]}
-                    </option>
-                  ))}
-                </select>
-              </CampaignField>
-              <CampaignField label="예산/조건">
-                <input
-                  required
-                  value={form.budget}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, budget: event.target.value }))
-                  }
-                  placeholder="예: 150만-300만원"
-                  className="campaign-input"
-                />
-              </CampaignField>
-            </div>
-
-            <CampaignField label="캠페인 설명">
-              <textarea
-                required
-                rows={5}
-                value={form.summary}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, summary: event.target.value }))
-                }
-                placeholder="인플루언서가 바로 판단할 수 있도록 제품, 타깃, 원하는 콘텐츠 톤, 검수 기준을 적어 주세요."
-                className="campaign-input resize-none"
-              />
-            </CampaignField>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <CampaignField label="제안 마감">
-                <input
-                  type="date"
-                  value={form.deadline}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, deadline: event.target.value }))
-                  }
-                  className="campaign-input"
-                />
-              </CampaignField>
-              <CampaignField label="산출물">
-                <input
-                  value={form.deliverables}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      deliverables: event.target.value,
-                    }))
-                  }
-                  placeholder="예: 릴스 1건, 스토리 2건"
-                  className="campaign-input"
-                />
-              </CampaignField>
-            </div>
-
-            <CampaignField label="진행 플랫폼">
+            <CampaignField label="플랫폼">
               <div className="flex flex-wrap gap-2">
                 {platformOptions
                   .filter((platform): platform is InfluencerPlatform => platform !== "all")
@@ -395,6 +320,122 @@ export function AdvertiserCampaignRecruitmentPage() {
                   })}
               </div>
             </CampaignField>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <CampaignField label="광고형태">
+                <select
+                  value={form.type}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      type: event.target.value as CampaignProposalType,
+                    }))
+                  }
+                  className="campaign-input"
+                >
+                  {proposalTypeOptions.map((type) => (
+                    <option key={type} value={type}>
+                      {proposalTypeLabels[type]}
+                    </option>
+                  ))}
+                </select>
+              </CampaignField>
+              <CampaignField label="제목">
+                <input
+                  required
+                  value={form.title}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, title: event.target.value }))
+                  }
+                  placeholder="예: 여름 러닝 챌린지 릴스 모집"
+                  className="campaign-input"
+                />
+              </CampaignField>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <CampaignField label="모집인원">
+                <input
+                  required
+                  value={form.applicantLimit}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      applicantLimit: event.target.value,
+                    }))
+                  }
+                  placeholder="예: 5명"
+                  className="campaign-input"
+                />
+              </CampaignField>
+              <CampaignField label="지급내용">
+                <input
+                  required
+                  value={form.budget}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, budget: event.target.value }))
+                  }
+                  placeholder="예: 150만-300만원"
+                  className="campaign-input"
+                />
+              </CampaignField>
+            </div>
+
+            <CampaignField label="산출물">
+              <input
+                required
+                value={form.deliverables}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    deliverables: event.target.value,
+                  }))
+                }
+                placeholder="예: 릴스 1건, 스토리 2건"
+                className="campaign-input"
+              />
+            </CampaignField>
+
+            <CampaignField label="캠페인설명">
+              <textarea
+                required
+                rows={5}
+                value={form.summary}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, summary: event.target.value }))
+                }
+                placeholder="인플루언서가 바로 판단할 수 있도록 제품, 타깃, 원하는 콘텐츠 톤, 검수 기준을 적어 주세요."
+                className="campaign-input resize-none"
+              />
+            </CampaignField>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <CampaignField label="업로드 마감일">
+                <input
+                  required
+                  type="date"
+                  value={form.uploadDeadline}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      uploadDeadline: event.target.value,
+                    }))
+                  }
+                  className="campaign-input"
+                />
+              </CampaignField>
+              <CampaignField label="모집마감일">
+                <input
+                  required
+                  type="date"
+                  value={form.deadline}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, deadline: event.target.value }))
+                  }
+                  className="campaign-input"
+                />
+              </CampaignField>
+            </div>
 
             {submitError ? (
               <p className="rounded-[12px] border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] font-extrabold text-rose-700">
@@ -565,6 +606,11 @@ export function InfluencerCampaignDiscoveryPage() {
 
   const applyToCampaign = async (campaign: MarketplaceCampaignPost) => {
     if (applyingCampaignId) return;
+
+    const confirmed = window.confirm(
+      `${campaign.title} 캠페인에 신청할까요?\n\n신청하면 광고주에게 프로필과 캠페인 신청 의사가 전달됩니다.`,
+    );
+    if (!confirmed) return;
 
     setApplyingCampaignId(campaign.id);
     setApplicationNotice(undefined);
@@ -898,8 +944,16 @@ function AdvertiserCampaignCard({
         {campaign.summary ?? "상세 설명은 브랜드 프로필에서 확인합니다."}
       </p>
       <div className="mt-3 grid grid-cols-2 gap-2">
-        <MiniInfo label="예산" value={campaign.budget} />
-        <MiniInfo label="마감" value={getCampaignDeadlineLabel(campaign.deadline)} />
+        <MiniInfo label="지급" value={campaign.budget} />
+        <MiniInfo label="모집" value={campaign.applicantLimit ?? "상시"} />
+        <MiniInfo
+          label="업로드"
+          value={getCampaignDeadlineLabel(campaign.uploadDeadline)}
+        />
+        <MiniInfo
+          label="모집마감"
+          value={getCampaignDeadlineLabel(campaign.deadline)}
+        />
       </div>
       <div className="mt-3 flex flex-wrap gap-1.5">
         {(campaign.platforms ?? []).map((platform) => (
@@ -983,8 +1037,8 @@ function CampaignPostCard({
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-2">
-        <MiniInfo label="예산" value={campaign.budget} />
-        <MiniInfo label="마감" value={campaign.deadlineLabel} />
+        <MiniInfo label="지급" value={campaign.budget} />
+        <MiniInfo label="모집마감" value={campaign.deadlineLabel} />
       </div>
 
       <div className="mt-4 flex flex-wrap gap-1.5">
