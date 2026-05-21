@@ -170,6 +170,22 @@ export function AdvertiserCampaignRecruitmentPage() {
     form.uploadDeadline.trim().length > 0 &&
     form.deadline.trim().length > 0 &&
     form.platforms.length > 0;
+  const missingFormLabels = [
+    form.platforms.length > 0 ? undefined : "플랫폼",
+    form.type.trim().length > 0 ? undefined : "광고형태",
+    form.title.trim().length > 0 ? undefined : "제목",
+    form.applicantLimit.trim().length > 0 ? undefined : "모집인원",
+    form.budget.trim().length > 0 ? undefined : "지급내용",
+    form.deliverables.trim().length > 0 ? undefined : "산출물",
+    form.summary.trim().length > 0 ? undefined : "캠페인설명",
+    form.uploadDeadline.trim().length > 0 ? undefined : "업로드 마감일",
+    form.deadline.trim().length > 0 ? undefined : "모집마감일",
+  ].filter(Boolean) as string[];
+  const submitHelperText = canSubmit
+    ? "필수 조건이 준비되었습니다. 공개하면 인플루언서 캠페인 화면에 바로 노출됩니다."
+    : `남은 필수 항목: ${missingFormLabels.slice(0, 4).join(", ")}${
+        missingFormLabels.length > 4 ? ` 외 ${missingFormLabels.length - 4}개` : ""
+      }`;
 
   const togglePlatform = (platform: InfluencerPlatform) => {
     setForm((current) => {
@@ -306,6 +322,7 @@ export function AdvertiserCampaignRecruitmentPage() {
                       <button
                         key={platform}
                         type="button"
+                        aria-pressed={active}
                         onClick={() => togglePlatform(platform)}
                         className={`inline-flex h-9 items-center rounded-[10px] border px-3 text-[12px] font-extrabold transition ${
                           active
@@ -447,14 +464,25 @@ export function AdvertiserCampaignRecruitmentPage() {
               </p>
             ) : null}
 
-            <button
-              type="submit"
-              disabled={!canSubmit || isSubmitting}
-              className="inline-flex h-12 items-center justify-center gap-2 rounded-[14px] bg-blue-600 px-5 text-[14px] font-extrabold text-white shadow-[0_14px_34px_rgba(37,99,235,0.22)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:shadow-none"
-            >
-              <Plus className="h-4 w-4" />
-              {isSubmitting ? "저장 중" : "캠페인 공개"}
-            </button>
+            <div className="sticky bottom-0 -mx-4 -mb-4 mt-2 border-t border-neutral-200 bg-white/95 p-4 backdrop-blur">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p
+                  className={`break-keep text-[12px] font-extrabold leading-5 ${
+                    canSubmit ? "text-emerald-700" : "text-neutral-500"
+                  }`}
+                >
+                  {submitHelperText}
+                </p>
+                <button
+                  type="submit"
+                  disabled={!canSubmit || isSubmitting}
+                  className="inline-flex h-12 w-full shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[14px] bg-blue-600 px-5 text-[14px] font-extrabold text-white shadow-[0_14px_34px_rgba(37,99,235,0.22)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:shadow-none sm:w-auto sm:min-w-[148px]"
+                >
+                  <Plus className="h-4 w-4" />
+                  {isSubmitting ? "저장 중" : "캠페인 공개"}
+                </button>
+              </div>
+            </div>
           </div>
         </form>
 
@@ -606,13 +634,12 @@ export function InfluencerCampaignDiscoveryPage() {
   const applyToCampaign = async (campaign: MarketplaceCampaignPost) => {
     if (applyingCampaignId) return;
 
-    const confirmed = window.confirm(
-      `${campaign.title} 캠페인에 신청할까요?\n\n신청하면 광고주에게 프로필과 캠페인 신청 의사가 전달됩니다.`,
-    );
-    if (!confirmed) return;
-
     setApplyingCampaignId(campaign.id);
-    setApplicationNotice(undefined);
+    setApplicationNotice({
+      campaignId: campaign.id,
+      tone: "success",
+      message: `${campaign.title} 신청을 전송 중입니다.`,
+    });
 
     try {
       const response = await apiFetch(
@@ -907,10 +934,10 @@ function CampaignField({
   children: ReactNode;
 }) {
   return (
-    <label className="grid gap-2">
+    <div className="grid gap-2">
       <span className="text-[13px] font-extrabold text-neutral-800">{label}</span>
       {children}
-    </label>
+    </div>
   );
 }
 
@@ -1056,7 +1083,8 @@ function CampaignPostCard({
           type="button"
           onClick={() => onApply(campaign)}
           disabled={isApplying}
-          className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-[12px] bg-neutral-950 px-4 text-[13px] font-extrabold text-white transition hover:bg-neutral-800"
+          aria-busy={isApplying}
+          className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-[12px] bg-neutral-950 px-4 text-[13px] font-extrabold text-white transition hover:bg-neutral-800 disabled:cursor-wait disabled:bg-neutral-300 disabled:text-neutral-500"
         >
           <Send className="h-4 w-4" />
           {isApplying ? "신청 중" : "신청"}

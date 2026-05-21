@@ -245,6 +245,7 @@ export function InfluencerVerification() {
   const [error, setError] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [submittedChallengeCode, setSubmittedChallengeCode] = useState("");
+  const [showAdditionalRequest, setShowAdditionalRequest] = useState(false);
   const selectedPlatform = PLATFORM_META[platform];
   const selectedMethod = METHOD_META[method];
   const proofUrl = form.ownership_challenge_url || form.platform_url;
@@ -258,11 +259,36 @@ export function InfluencerVerification() {
   const verificationStatus = verification?.status ?? "not_submitted";
   const latest = verification?.latest_request;
   const approved = verificationStatus === "approved";
+  const approvedPlatforms = verification?.approved_platforms ?? [];
+  const approvedPlatformChips = approvedPlatforms.filter((item, index, items) => {
+    const key = `${item.platform}:${item.handle ?? item.url ?? ""}`;
+    return (
+      items.findIndex(
+        (candidate) =>
+          `${candidate.platform}:${candidate.handle ?? candidate.url ?? ""}` === key,
+      ) === index
+    );
+  });
+  const visibleApprovedPlatformChips = approvedPlatformChips.slice(0, 6);
+  const hiddenApprovedPlatformChipCount =
+    approvedPlatformChips.length - visibleApprovedPlatformChips.length;
+  const approvedPlatformNames = Array.from(
+    new Set(
+      approvedPlatforms.map(
+        (item) => PLATFORM_META[item.platform]?.label ?? item.platform,
+      ),
+    ),
+  );
+  const approvedPlatformLabel =
+    approvedPlatformNames.length > 1
+      ? `${approvedPlatformNames.length}개 플랫폼 인증`
+      : approvedPlatformNames[0] ?? "";
+  const showRequestForm = !approved || showAdditionalRequest;
   const rejectionGuidance =
     verificationStatus === "rejected"
       ? getVerificationRejectionGuidance(latest, "influencer_account")
       : undefined;
-  const selectedApprovedPlatform = verification?.approved_platforms?.find(
+  const selectedApprovedPlatform = approvedPlatforms.find(
     (item) => item.platform === platform,
   );
   const latestMatchesSelectedPlatform =
@@ -273,6 +299,22 @@ export function InfluencerVerification() {
   const verifiedUrl =
     selectedApprovedPlatform?.url ||
     (latestMatchesSelectedPlatform ? latest?.platform_url : undefined);
+  const sidebarEvidenceHref = showRequestForm
+    ? evidenceHref
+    : verifiedUrl?.trim() ?? "";
+  const sidebarPlatformLabel = showRequestForm
+    ? selectedPlatform.label
+    : approvedPlatformLabel
+      ? approvedPlatformLabel
+      : "승인된 플랫폼";
+  const sidebarIcon = showRequestForm ? (
+    selectedPlatform.icon
+  ) : (
+    <BadgeCheck className="h-4 w-4" />
+  );
+  const sidebarClassName = showRequestForm
+    ? selectedPlatform.className
+    : "border-emerald-200 bg-emerald-50 text-emerald-700";
 
   useEffect(() => {
     if (verificationStatusCode !== 401) return;
@@ -417,7 +459,6 @@ export function InfluencerVerification() {
       setSubmittedChallengeCode(challengeCode);
       setForm(initialForm);
       setFile(null);
-      setChallengeCode(createChallengeCode());
       await refreshVerificationSummary();
     } catch (submitError) {
       setError(
@@ -523,6 +564,54 @@ export function InfluencerVerification() {
             </p>
           </div>
 
+          {approved && !showRequestForm ? (
+            <section className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <p className="flex items-center gap-2 text-sm font-semibold text-emerald-900">
+                    <CheckCircle2 className="h-4 w-4" />
+                    서명에 사용할 플랫폼 인증이 준비되었습니다
+                  </p>
+                  <p className="mt-2 max-w-2xl break-keep text-sm leading-6 text-emerald-800/80">
+                    기존 인증은 유지됩니다. 새 플랫폼을 추가하거나 계정 URL이 바뀐 경우에만 추가 요청을 남기세요.
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {visibleApprovedPlatformChips.length > 0 ? (
+                      visibleApprovedPlatformChips.map((item) => (
+                        <span
+                          key={`${item.platform}-${item.handle ?? item.url ?? "approved"}`}
+                          className="inline-flex h-8 max-w-full items-center rounded-full border border-emerald-200 bg-white px-3 text-xs font-semibold text-emerald-800"
+                        >
+                          <span className="truncate">
+                            {PLATFORM_META[item.platform]?.label ?? item.platform}
+                            {item.handle ? ` · ${item.handle}` : ""}
+                          </span>
+                        </span>
+                      ))
+                    ) : (
+                      <span className="inline-flex h-8 items-center rounded-full border border-emerald-200 bg-white px-3 text-xs font-semibold text-emerald-800">
+                        {verifiedHandle || "승인된 계정"}
+                      </span>
+                    )}
+                    {hiddenApprovedPlatformChipCount > 0 ? (
+                      <span className="inline-flex h-8 items-center rounded-full border border-emerald-200 bg-white px-3 text-xs font-semibold text-emerald-800">
+                        외 {hiddenApprovedPlatformChipCount}개
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAdditionalRequest(true)}
+                  className="inline-flex h-10 shrink-0 items-center justify-center rounded-lg bg-neutral-950 px-4 text-sm font-semibold text-white transition hover:bg-neutral-800"
+                >
+                  다른 플랫폼 인증 추가
+                </button>
+              </div>
+            </section>
+          ) : null}
+
+          {showRequestForm ? (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <div className="mb-3 flex items-center justify-between gap-3">
@@ -800,43 +889,63 @@ export function InfluencerVerification() {
                   : "계정 소유 인증 요청"}
             </button>
           </form>
+          ) : null}
         </section>
 
         <aside className="space-y-4">
           <section className="rounded-lg border border-neutral-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_14px_34px_rgba(15,23,42,0.05)]">
             <div className="mb-4 flex items-center gap-3">
               <div
-                className={`flex h-10 w-10 items-center justify-center rounded-lg ${selectedPlatform.className}`}
+                className={`flex h-10 w-10 items-center justify-center rounded-lg ${sidebarClassName}`}
               >
-                {selectedPlatform.icon}
+                {sidebarIcon}
               </div>
               <div>
                 <p className="text-sm font-semibold text-neutral-950">
-                  {selectedPlatform.label}
+                  {sidebarPlatformLabel}
                 </p>
               </div>
             </div>
-            <InfoRow label="인증 방식" value={selectedMethod.label} />
-            <InfoRow label="인증 코드" value={challengeCode} mono />
-            <InfoRow
-              label={isInstagramDmMethod ? "인스타 프로필" : "증빙 URL"}
-              value={proofUrl || verifiedUrl || "미입력"}
-            />
-            {isInstagramDmMethod && (
-              <InfoRow
-                label="DM 받을 계정"
-                value={`@${OFFICIAL_INSTAGRAM_HANDLE}`}
-              />
-            )}
-            {approved && verifiedHandle && (
-              <InfoRow label="승인 계정" value={verifiedHandle} />
+            {showRequestForm ? (
+              <>
+                <InfoRow label="인증 방식" value={selectedMethod.label} />
+                <InfoRow label="인증 코드" value={challengeCode} mono />
+                <InfoRow
+                  label={isInstagramDmMethod ? "인스타 프로필" : "증빙 URL"}
+                  value={proofUrl || verifiedUrl || "미입력"}
+                />
+                {isInstagramDmMethod && (
+                  <InfoRow
+                    label="DM 받을 계정"
+                    value={`@${OFFICIAL_INSTAGRAM_HANDLE}`}
+                  />
+                )}
+                {approved && verifiedHandle && (
+                  <InfoRow label="승인 계정" value={verifiedHandle} />
+                )}
+              </>
+            ) : (
+              <>
+                <InfoRow label="현재 상태" value="인증 완료" />
+                {verifiedHandle ? (
+                  <InfoRow label="대표 계정" value={verifiedHandle} />
+                ) : null}
+                <InfoRow
+                  label="추가 인증"
+                  value="필요할 때만 새 요청"
+                />
+              </>
             )}
           </section>
 
           <TrustNote
             icon={<Link2 className="h-4 w-4" />}
-            title="서명 전 필수 순서"
-            body="계약 검토는 계속할 수 있지만, 전자서명은 플랫폼 계정 인증이 승인된 뒤에만 진행됩니다."
+            title={showRequestForm ? "서명 전 필수 순서" : "서명 조건"}
+            body={
+              showRequestForm
+                ? "계약 검토는 계속할 수 있지만, 전자서명은 플랫폼 계정 인증이 승인된 뒤에만 진행됩니다."
+                : "인증된 플랫폼 계약은 조항 승인과 광고주 서명 요청 상태가 맞으면 바로 서명할 수 있습니다."
+            }
           />
           <TrustNote
             icon={<BadgeCheck className="h-4 w-4" />}
@@ -847,9 +956,9 @@ export function InfluencerVerification() {
                 : "자동 확인은 보조 수단입니다. 최종 승인은 운영자가 코드, URL, 스크린샷을 함께 확인한 뒤 처리합니다."
             }
           />
-          {evidenceHref ? (
+          {sidebarEvidenceHref ? (
             <a
-              href={evidenceHref}
+              href={sidebarEvidenceHref}
               target="_blank"
               rel="noreferrer"
               className="flex h-11 items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white text-sm font-semibold text-neutral-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-neutral-400 hover:shadow-[0_10px_24px_rgba(15,23,42,0.06)]"

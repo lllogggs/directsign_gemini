@@ -1109,12 +1109,14 @@ export function ContractViewer() {
         ? "서명 가능 여부를 확인하기 위해 계정 인증 상태를 불러오고 있습니다."
         : hasVerificationStatusError
           ? "인증 상태를 불러오지 못했습니다. 잠시 후 다시 확인해주세요."
-          : needsInfluencerAccountSession
-            ? "계정이 없으면 가입 후 이 계약으로 돌아와 인증과 서명을 이어갈 수 있습니다."
+            : needsInfluencerAccountSession
+              ? "계정이 없으면 가입 후 이 계약으로 돌아와 인증과 서명을 이어갈 수 있습니다."
             : !isContractPlatformVerificationApproved
-              ? `모든 조항은 준비됐지만, 이 계약 플랫폼의 계정 인증 승인이 필요합니다. 현재 상태: ${verificationStatusLabel(
-                  influencerVerificationStatus,
-                )}`
+              ? isInfluencerVerificationApproved
+                ? "모든 조항은 준비됐지만, 이 계약에 쓰는 채널 인증을 추가해야 서명할 수 있습니다."
+                : `모든 조항은 준비됐지만, 이 계약 플랫폼의 계정 인증 승인이 필요합니다. 현재 상태: ${verificationStatusLabel(
+                    influencerVerificationStatus,
+                  )}`
               : "모든 조항과 계정 인증이 완료되어 서명할 수 있습니다.";
   const heroTitle =
     contract.status === "SIGNED"
@@ -1151,19 +1153,25 @@ export function ContractViewer() {
     ? "계정 인증 확인됨"
     : influencerRejectionGuidance
       ? "계정 인증 재제출 필요"
-    : "서명 전 계정 인증 필요";
+      : isInfluencerVerificationApproved
+        ? "계약 채널 인증 필요"
+        : "서명 전 계정 인증 필요";
   const verificationPanelDescription = isContractPlatformVerificationApproved
     ? "계정 인증은 확인되었습니다. 서명 가능 여부는 조항 승인과 광고주 서명 요청 상태에 따라 열립니다."
     : influencerRejectionGuidance
       ? `계약 검토는 가능하지만 서명은 제한됩니다. 반려 사유: ${influencerRejectionGuidance.reviewerNote}`
-    : "계약 검토는 가능하지만 서명은 계정 인증 승인 후 진행할 수 있습니다.";
+      : isInfluencerVerificationApproved
+        ? "다른 플랫폼 인증은 완료됐지만, 이 계약에 적힌 채널과 일치하는 인증이 아직 없습니다."
+        : "계약 검토는 가능하지만 서명은 계정 인증 승인 후 진행할 수 있습니다.";
   const verificationPanelActionLabel = isContractPlatformVerificationApproved
     ? "인증 정보 보기"
     : needsInfluencerAccountSession
       ? "가입/로그인 후 인증"
       : influencerRejectionGuidance
         ? "계정 인증 재제출"
-      : "계정 인증 진행";
+        : isInfluencerVerificationApproved
+          ? "계약 채널 인증"
+          : "계정 인증 진행";
   const showContractAccountGuide =
     !isOperatorSupportView &&
     contract.status !== "SIGNED" &&

@@ -51,16 +51,21 @@ export const formatContractTitleForDisplay = (
     const typeLabel = formatRawContractType(parts[0]);
     const stageLabel = formatRawContractStage(parts.slice(1).join(" "));
 
-    if (typeLabel && stageLabel) return `${typeLabel} 계약 ${stageLabel}`;
-    if (typeLabel) return `${typeLabel} 계약`;
-    if (stageLabel) return `계약 ${stageLabel}`;
+    if (typeLabel && stageLabel) {
+      return normalizeContractTitleWords(`${typeLabel} 계약 ${stageLabel}`);
+    }
+    if (typeLabel) return normalizeContractTitleWords(`${typeLabel} 계약`);
+    if (stageLabel) return normalizeContractTitleWords(`계약 ${stageLabel}`);
   }
 
   const standaloneType = formatRawContractType(cleaned);
-  if (standaloneType) return `${standaloneType} 계약`;
+  if (standaloneType) return normalizeContractTitleWords(`${standaloneType} 계약`);
 
-  return cleaned;
+  return normalizeContractTitleWords(cleaned);
 };
+
+const normalizeContractTitleWords = (value: string) =>
+  value.replace(/계약\s+계약/g, "계약").replace(/\s+/g, " ").trim();
 
 export const formatMoneyLabel = (
   value?: string | null,

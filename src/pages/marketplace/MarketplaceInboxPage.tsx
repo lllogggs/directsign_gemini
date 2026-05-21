@@ -178,7 +178,8 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
   const copy = roleCopy[role];
   const primaryBucket: MarketplaceMessageBucket = role === "advertiser" ? "sent" : "inbox";
   const [state, setState] = useState<InboxState>({ status: "loading" });
-  const [bucket, setBucket] = useState<MarketplaceMessageBucket>(primaryBucket);
+  const [selectedBucket, setSelectedBucket] =
+    useState<MarketplaceMessageBucket>();
   const [platformFilter, setPlatformFilter] = useState<PlatformFilter>("all");
   const [proposalTypeFilter, setProposalTypeFilter] =
     useState<ProposalTypeFilter>("all");
@@ -288,6 +289,8 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
           { id: "inbox", label: copy.primaryBucketLabel, count: data.summary.inboxCount },
           { id: "sent", label: copy.secondaryBucketLabel, count: data.summary.sentCount },
         ];
+  const fallbackBucket = bucketOptions.find((option) => option.count > 0)?.id;
+  const bucket = selectedBucket ?? fallbackBucket ?? primaryBucket;
   const bucketThreads = useMemo(
     () => data.threads.filter((thread) => thread.bucket === bucket),
     [bucket, data.threads],
@@ -449,7 +452,7 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
                         label={option.label}
                         count={option.count}
                         onClick={() => {
-                          setBucket(option.id);
+                          setSelectedBucket(option.id);
                           resetScopedFilters();
                         }}
                       />
@@ -718,7 +721,9 @@ function MessageThreadRow({
     thread.status !== "closed";
   const actionHref =
     thread.convertedContractId
-      ? `/advertiser/contract/${thread.convertedContractId}`
+      ? role === "advertiser"
+        ? `/advertiser/contract/${thread.convertedContractId}`
+        : `/contract/${thread.convertedContractId}`
       : role === "advertiser"
         ? thread.bucket === "inbox"
           ? "/advertiser/builder"
@@ -726,7 +731,9 @@ function MessageThreadRow({
         : thread.counterpartHref ?? "/influencer/dashboard";
   const actionLabel =
     thread.convertedContractId
-      ? "초안 보기"
+      ? role === "advertiser"
+        ? "초안 보기"
+        : "계약 검토"
       : role === "advertiser"
         ? thread.bucket === "inbox"
           ? "계약 작성"
