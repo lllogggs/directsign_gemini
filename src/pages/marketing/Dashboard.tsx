@@ -1356,7 +1356,7 @@ function CampaignListView({
         counts={lifecycleCounts}
         onChange={onLifecycleFilterChange}
       />
-      <div className="grid gap-2 border-b border-[#d9e0d9] bg-[#f8faf7] p-2 lg:grid-cols-[minmax(72px,0.16fr)_minmax(92px,0.2fr)_minmax(300px,1fr)_minmax(140px,0.34fr)_minmax(104px,0.24fr)_minmax(104px,0.24fr)] lg:items-end">
+      <div className="grid gap-2 border-b border-[#d9e0d9] bg-[#f8faf7] p-2 lg:grid-cols-[minmax(86px,0.18fr)_minmax(92px,0.18fr)_minmax(220px,0.72fr)_minmax(170px,0.46fr)_minmax(150px,0.38fr)_minmax(120px,0.3fr)] lg:items-end">
         <TableFilterSelect
           label="플랫폼"
           value={platformFilter}
@@ -1491,6 +1491,8 @@ function CampaignRow({
 }) {
   const brandLabel = campaign.brands.join(", ");
   const progress = getCampaignRosterProgress(campaign);
+  const primaryPlatform = campaign.platforms[0] ?? "OTHER";
+  const platformMeta = PLATFORM_META[primaryPlatform];
   const platformLabel = formatCampaignPlatformSummary(campaign.platforms);
   const paymentLabel = getCampaignPaymentLabel(campaign);
   const dateLabel = getCampaignListDateLabel(campaign);
@@ -1500,10 +1502,13 @@ function CampaignRow({
       type="button"
       onClick={onOpen}
       aria-label={`${campaign.name} 캠페인 열기, 지급내용 ${paymentLabel}, 진도율 ${progress.label}, 날짜 ${dateLabel}`}
-      className="group grid w-full gap-2 px-3 py-2 text-left transition-colors hover:bg-[#f8faf7] lg:min-h-[46px] lg:grid-cols-[minmax(72px,0.16fr)_minmax(92px,0.2fr)_minmax(300px,1fr)_minmax(140px,0.34fr)_minmax(104px,0.24fr)_minmax(104px,0.24fr)] lg:items-center"
+      className="group grid w-full gap-2 px-3 py-2 text-left transition-colors hover:bg-[#f8faf7] lg:min-h-[46px] lg:grid-cols-[minmax(86px,0.18fr)_minmax(92px,0.18fr)_minmax(220px,0.72fr)_minmax(170px,0.46fr)_minmax(150px,0.38fr)_minmax(120px,0.3fr)] lg:items-center"
     >
       <div className="min-w-0">
-        <span className="inline-flex h-7 max-w-full items-center rounded-md border border-[#d9e0d9] bg-white px-2 text-[12px] font-semibold text-[#303630]">
+        <span
+          className={`inline-flex h-7 max-w-full items-center gap-1 rounded-md border px-2 text-[12px] font-extrabold ${platformMeta.className}`}
+        >
+          <span className="shrink-0">{platformMeta.mark}</span>
           <span className="truncate">{platformLabel}</span>
         </span>
       </div>
