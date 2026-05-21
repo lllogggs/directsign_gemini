@@ -140,6 +140,9 @@ const INITIAL_DRAFT: ContractDraft = {
   newClauseContent: "",
 };
 
+const DEFAULT_CONTRACT_TITLE_EXAMPLE =
+  "루트코스메틱 수분크림 인스타 릴스 협찬";
+
 const isBlank = (value?: string) => !value || value.trim().length === 0;
 const REQUIRED_DISCLOSURE_PATTERN = /광고|유료|협찬|대가|sponsored|ad/i;
 
@@ -674,6 +677,7 @@ export function ContractBuilder() {
 
     return {
       advertiser_id: "adv_1",
+      campaign_name: draft.title.trim(),
       advertiser_info: {
         name: draft.advertiserName.trim(),
         manager: draft.advertiserManager.trim() || undefined,
@@ -979,7 +983,7 @@ export function ContractBuilder() {
                     <Label>계약 건명</Label>
                     <Input
                       className="mt-1.5"
-                      placeholder="예: 5월 선크림 숏폼 PPL 계약"
+                      placeholder={`예: ${DEFAULT_CONTRACT_TITLE_EXAMPLE}`}
                       value={draft.title}
                       onChange={(event) => updateDraft({ title: event.target.value })}
                     />
@@ -1647,7 +1651,7 @@ const BuilderReviewPanel: React.FC<{
                     isCompact ? "text-[15px]" : "text-[18px]"
                   }`}
                 >
-                  {draft.title || `${draft.type} 계약서`}
+                  {draft.title || DEFAULT_CONTRACT_TITLE_EXAMPLE}
                 </h2>
               </div>
             </div>
@@ -1684,7 +1688,7 @@ const BuilderReviewPanel: React.FC<{
               전자계약서 초안
             </p>
             <h2 className="mt-3 text-[22px] font-semibold leading-tight text-neutral-950 sm:text-[28px]">
-              {draft.title || `${draft.type} 계약서`}
+              {draft.title || DEFAULT_CONTRACT_TITLE_EXAMPLE}
             </h2>
             <p className="mt-3 text-[13px] font-semibold text-neutral-500">
               작성일 {previewDate}

@@ -1,6 +1,5 @@
 import {
   ArrowRight,
-  Building2,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -12,7 +11,6 @@ import {
   PenLine,
   Search,
   ShieldCheck,
-  UserRound,
   type LucideIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
@@ -30,8 +28,6 @@ type RoleCard = {
   description: string;
   cta: string;
   href: string;
-  icon: LucideIcon;
-  markClass: string;
 };
 
 type IntroConfig = {
@@ -86,8 +82,6 @@ const roleCards: RoleCard[] = [
       "합의한 광고 조건을 계약서, 검토 링크, 서명 증빙으로 남깁니다.",
     cta: "시작하기",
     href: "/intro/advertiser",
-    icon: Building2,
-    markClass: "border-neutral-950 bg-neutral-950 text-white",
   },
   {
     role: "influencer",
@@ -97,8 +91,6 @@ const roleCards: RoleCard[] = [
       `${PRODUCT_NAME} 계약 링크에서 조건을 확인하고 수정 요청과 서명을 진행합니다.`,
     cta: "시작하기",
     href: "/intro/influencer",
-    icon: UserRound,
-    markClass: "border-neutral-200 bg-white text-neutral-800",
   },
 ];
 
@@ -140,9 +132,6 @@ function getStartRoleTone(role: IntroRole) {
     return {
       card:
         "border-[#bfdbfe] bg-[linear-gradient(180deg,#eff6ff_0%,#ffffff_54%)] hover:border-[#93c5fd]",
-      icon: "border-[#bfdbfe] bg-[#eff6ff] text-[#2563eb] group-hover:border-[#2563eb] group-hover:bg-[#2563eb] group-hover:text-white",
-      arrow:
-        "border-[#bfdbfe] bg-white text-[#2563eb]/55 group-hover:border-[#2563eb] group-hover:bg-[#2563eb] group-hover:text-white",
       divider: "border-[#bfdbfe]/75",
       detail: "text-[#2563eb]",
     };
@@ -151,9 +140,6 @@ function getStartRoleTone(role: IntroRole) {
   return {
     card:
       "border-[#a7f3d0] bg-[linear-gradient(180deg,#ecfdf5_0%,#ffffff_54%)] hover:border-[#6ee7b7]",
-    icon: "border-[#a7f3d0] bg-[#ecfdf5] text-[#059669] group-hover:border-[#059669] group-hover:bg-[#059669] group-hover:text-white",
-    arrow:
-      "border-[#a7f3d0] bg-white text-[#059669]/55 group-hover:border-[#059669] group-hover:bg-[#059669] group-hover:text-white",
     divider: "border-[#a7f3d0]/75",
     detail: "text-[#059669]",
   };
@@ -1217,7 +1203,6 @@ export function StartPage() {
             </div>
             <div className="mt-8 grid gap-4 sm:grid-cols-2 sm:gap-6 lg:mt-9">
               {roleCards.map((role) => {
-                const Icon = role.icon;
                 const tone = getStartRoleTone(role.role);
                 const isAdvertiser = role.role === "advertiser";
                 const detail = isAdvertiser
@@ -1229,17 +1214,8 @@ export function StartPage() {
                     key={role.role}
                     to={role.href}
                     aria-label={`시작하기 (${role.title})`}
-                    className={`group flex min-h-[188px] flex-col rounded-[20px] border px-5 py-5 text-left shadow-[0_1px_0_rgba(15,23,42,0.035),0_16px_42px_rgba(15,23,42,0.035)] transition hover:-translate-y-0.5 hover:shadow-[0_1px_0_rgba(15,23,42,0.04),0_22px_58px_rgba(15,23,42,0.06)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:min-h-[232px] sm:px-6 sm:py-6 lg:min-h-[238px] ${tone.card}`}
+                    className={`group flex min-h-[164px] flex-col rounded-[20px] border px-5 py-5 text-left shadow-[0_1px_0_rgba(15,23,42,0.035),0_16px_42px_rgba(15,23,42,0.035)] transition hover:-translate-y-0.5 hover:shadow-[0_1px_0_rgba(15,23,42,0.04),0_22px_58px_rgba(15,23,42,0.06)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:min-h-[208px] sm:px-6 sm:py-6 lg:min-h-[214px] ${tone.card}`}
                   >
-                    <span className="flex items-center justify-between">
-                      <span className={`flex h-9 w-9 items-center justify-center rounded-[12px] border transition ${tone.icon}`}>
-                        <Icon className="h-[17px] w-[17px]" />
-                      </span>
-                      <span className={`flex h-8 w-8 items-center justify-center rounded-full border transition ${tone.arrow}`}>
-                        <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
-                      </span>
-                    </span>
-
                     <span className="mt-auto block">
                       <strong className="font-neo-heavy block text-[30px] leading-none tracking-[-0.035em] text-neutral-950 sm:text-[38px]">
                         {role.title}
@@ -1503,16 +1479,23 @@ function RoleFeatureIntroScreen({
         </nav>
       </div>
 
-      <section className="mx-auto grid min-h-[calc(100vh-124px)] max-w-[1120px] gap-4 px-4 py-4 sm:min-h-[calc(100vh-68px)] sm:gap-5 sm:px-6 sm:py-5 lg:h-[calc(100vh-68px)] lg:grid-cols-[320px_minmax(0,1fr)] lg:items-center lg:gap-7 lg:overflow-hidden lg:px-8 lg:py-5">
-        <div className="min-w-0 lg:max-w-[318px] lg:self-center">
+      <section className="mx-auto grid min-h-[calc(100vh-124px)] max-w-[1280px] gap-4 px-4 py-4 sm:min-h-[calc(100vh-68px)] sm:gap-5 sm:px-6 sm:py-5 lg:h-[calc(100vh-68px)] lg:grid-cols-[minmax(0,1fr)_300px] lg:items-center lg:gap-6 lg:overflow-hidden lg:px-8 lg:py-5">
+        <RoleFeaturePreviewCarousel
+          className="lg:col-start-1 lg:row-start-1"
+          previewIndex={activeIndex}
+          role={role}
+          slides={slides}
+        />
+
+        <aside className="min-w-0 lg:col-start-2 lg:row-start-1 lg:max-w-[300px] lg:self-center">
           <p className="text-[13px] font-extrabold text-neutral-500">
             {roleLabel}
           </p>
-          <h1 className="font-neo-heavy mt-2 text-[36px] leading-[1.02] tracking-normal text-neutral-950 sm:mt-3 sm:text-[54px] lg:text-[52px]">
-            {activeSlide.label}
+          <h1 className="font-neo-heavy mt-2 text-[34px] leading-[1.04] tracking-normal text-neutral-950 sm:mt-3 sm:text-[48px] lg:text-[42px]">
+            실제 화면으로 먼저 확인
           </h1>
 
-          <p className="mt-3 line-clamp-2 max-w-[318px] break-keep text-[13px] font-bold leading-6 text-neutral-600 sm:mt-4 sm:text-[14px]">
+          <p className="mt-3 max-w-[318px] break-keep text-[13px] font-bold leading-6 text-neutral-600 sm:mt-4 sm:text-[14px]">
             {activeSlide.description}
           </p>
 
@@ -1573,14 +1556,7 @@ function RoleFeatureIntroScreen({
           >
             {config.switchLabel}
           </Link>
-        </div>
-
-        <RoleFeaturePreviewCarousel
-          className="lg:col-start-2 lg:row-start-1"
-          previewIndex={activeIndex}
-          role={role}
-          slides={slides}
-        />
+        </aside>
       </section>
     </main>
   );
@@ -1659,7 +1635,7 @@ function RoleFeaturePreviewCarousel({
   return (
     <section
       aria-label="기능별 화면 미리보기"
-      className={`${className} mx-auto flex w-full min-w-0 max-w-[calc(100vw-40px)] flex-col overflow-hidden rounded-[18px] border border-neutral-200 bg-[#fbfaf7] shadow-[0_24px_70px_rgba(15,23,42,0.08)] sm:max-w-full sm:rounded-[22px] lg:h-[calc(100vh-104px)] lg:max-h-[610px]`}
+      className={`${className} mx-auto flex w-full min-w-0 max-w-[calc(100vw-40px)] flex-col overflow-hidden rounded-[18px] border border-neutral-200 bg-[#fbfaf7] shadow-[0_24px_70px_rgba(15,23,42,0.08)] sm:max-w-full sm:rounded-[22px] lg:h-[calc(100vh-104px)] lg:max-h-[660px]`}
     >
       <div className="flex items-center justify-between gap-3 border-b border-neutral-200 bg-white px-4 py-3 sm:px-5">
         <div className="flex min-w-0 items-center gap-2.5">
@@ -1982,10 +1958,195 @@ type IntroDashboardRow = {
   platform: string;
   platformClass: string;
   kind: string;
+  party: string;
   title: string;
   amount: string;
   status: string;
   statusClass: string;
+  deadline: string;
+  note: string;
+};
+
+type IntroDashboardCampaign = {
+  name: string;
+  platform: string;
+  platformClass: string;
+  participants: number;
+  completed: number;
+  status: string;
+  due: string;
+};
+
+const introDashboardTestData = {
+  advertiser: {
+    accountName: "QA Test Brand",
+    accountMeta: "QA Advertiser · test.advertiser@yeollock.me",
+    verificationMeta: "사업자 123-**-7890 · 인증 완료",
+    summary: "캠페인 3개 · 테스트 계약 21건",
+    campaigns: [
+      {
+        name: "루트코스메틱 수분크림 인스타 릴스 협찬",
+        platform: "인스타",
+        platformClass: "border-pink-200 bg-pink-50 text-pink-700",
+        participants: 7,
+        completed: 1,
+        status: "수정 요청 포함",
+        due: "D+1",
+      },
+      {
+        name: "테크베어 스마트 모니터 유튜브 리뷰 건",
+        platform: "유튜브",
+        platformClass: "border-rose-200 bg-rose-50 text-rose-700",
+        participants: 7,
+        completed: 2,
+        status: "검토·서명 진행",
+        due: "D+2",
+      },
+      {
+        name: "네오슈즈 신발 2종 공동구매 진행",
+        platform: "블로그",
+        platformClass: "border-emerald-200 bg-emerald-50 text-emerald-700",
+        participants: 7,
+        completed: 3,
+        status: "공동구매 운영",
+        due: "D+4",
+      },
+    ],
+    rows: [
+      {
+        platform: "인스타",
+        platformClass: "border-pink-200 bg-pink-50 text-pink-700",
+        kind: "협찬",
+        party: "QA Influencer",
+        title: "루트코스메틱 수분크림 인스타 릴스 협찬",
+        amount: "150만원",
+        status: "검토 필요",
+        statusClass: "border-amber-200 bg-amber-50 text-amber-800",
+        deadline: "D+3",
+        note: "Instagram Reels 1 / 30s",
+      },
+      {
+        platform: "인스타",
+        platformClass: "border-pink-200 bg-pink-50 text-pink-700",
+        kind: "협찬",
+        party: "QA Influencer",
+        title: "루트코스메틱 수분크림 인스타 릴스 협찬",
+        amount: "150만원",
+        status: "수정 요청",
+        statusClass: "border-amber-200 bg-amber-50 text-amber-800",
+        deadline: "D+1",
+        note: "QA change request",
+      },
+      {
+        platform: "유튜브",
+        platformClass: "border-rose-200 bg-rose-50 text-rose-700",
+        kind: "PPL",
+        party: "QA Influencer",
+        title: "테크베어 스마트 모니터 유튜브 리뷰 건",
+        amount: "240만원",
+        status: "서명 준비",
+        statusClass: "border-blue-200 bg-blue-50 text-blue-700",
+        deadline: "D+2",
+        note: "YouTube Shorts 1 / 45s",
+      },
+      {
+        platform: "블로그",
+        platformClass: "border-emerald-200 bg-emerald-50 text-emerald-700",
+        kind: "공동구매",
+        party: "QA Influencer",
+        title: "네오슈즈 신발 2종 공동구매 진행",
+        amount: "18%",
+        status: "검수 대기",
+        statusClass: "border-neutral-200 bg-white text-neutral-700",
+        deadline: "D+4",
+        note: "Naver Blog review 1 / post",
+      },
+    ],
+  },
+  influencer: {
+    accountName: "QA Influencer",
+    accountMeta: "test.influencer@yeollock.me · yeollock_test_creator",
+    verificationMeta: "Instagram · YouTube · Naver Blog 인증 완료",
+    summary: "전체 21건 · 검색 결과 21건",
+    rows: [
+      {
+        platform: "인스타",
+        platformClass: "border-pink-200 bg-pink-50 text-pink-700",
+        kind: "협찬",
+        party: "QA Test Brand",
+        title: "루트코스메틱 수분크림 인스타 릴스 협찬",
+        amount: "150만원",
+        status: "검토 필요",
+        statusClass: "border-amber-200 bg-amber-50 text-amber-800",
+        deadline: "D+3",
+        note: "조항 확인",
+      },
+      {
+        platform: "인스타",
+        platformClass: "border-pink-200 bg-pink-50 text-pink-700",
+        kind: "협찬",
+        party: "QA Test Brand",
+        title: "루트코스메틱 수분크림 인스타 릴스 협찬",
+        amount: "150만원",
+        status: "수정 협의",
+        statusClass: "border-amber-200 bg-amber-50 text-amber-800",
+        deadline: "D+1",
+        note: "응답 대기",
+      },
+      {
+        platform: "유튜브",
+        platformClass: "border-rose-200 bg-rose-50 text-rose-700",
+        kind: "PPL",
+        party: "QA Test Brand",
+        title: "테크베어 스마트 모니터 유튜브 리뷰 건",
+        amount: "240만원",
+        status: "서명 준비",
+        statusClass: "border-blue-200 bg-blue-50 text-blue-700",
+        deadline: "D+2",
+        note: "인증 후 서명",
+      },
+      {
+        platform: "블로그",
+        platformClass: "border-emerald-200 bg-emerald-50 text-emerald-700",
+        kind: "공동구매",
+        party: "QA Test Brand",
+        title: "네오슈즈 신발 2종 공동구매 진행",
+        amount: "18%",
+        status: "콘텐츠 제출",
+        statusClass: "border-amber-200 bg-amber-50 text-amber-800",
+        deadline: "D+4",
+        note: "링크/증빙 제출",
+      },
+      {
+        platform: "유튜브",
+        platformClass: "border-rose-200 bg-rose-50 text-rose-700",
+        kind: "PPL",
+        party: "QA Test Brand",
+        title: "테크베어 스마트 모니터 유튜브 리뷰 건",
+        amount: "240만원",
+        status: "검수 완료",
+        statusClass: "border-neutral-200 bg-white text-neutral-700",
+        deadline: "완료",
+        note: "보관됨",
+      },
+    ],
+  },
+} satisfies {
+  advertiser: {
+    accountName: string;
+    accountMeta: string;
+    verificationMeta: string;
+    summary: string;
+    campaigns: IntroDashboardCampaign[];
+    rows: IntroDashboardRow[];
+  };
+  influencer: {
+    accountName: string;
+    accountMeta: string;
+    verificationMeta: string;
+    summary: string;
+    rows: IntroDashboardRow[];
+  };
 };
 
 function RoleDashboardStylePreview({
@@ -2002,294 +2163,390 @@ function RoleDashboardStylePreview({
   focusLabel: string;
 }) {
   const isAdvertiser = role === "advertiser";
-  const rows: IntroDashboardRow[] = isAdvertiser
-    ? [
-        {
-          platform: "인스타",
-          platformClass: "border-pink-200 bg-pink-50 text-pink-700",
-          kind: "제품 협찬",
-          title: "신제품 언박싱 릴스 계약서 초안",
-          amount: "180만-280만원",
-          status: "초안",
-          statusClass: "border-neutral-200 bg-white text-neutral-700",
-        },
-        {
-          platform: "블로그",
-          platformClass: "border-emerald-200 bg-emerald-50 text-emerald-700",
-          kind: "공동구매",
-          title: "공동구매 계약 검토 대기",
-          amount: "판매 수수료 18%",
-          status: "검토 대기",
-          statusClass: "border-sky-200 bg-sky-50 text-sky-700",
-        },
-        {
-          platform: "유튜브",
-          platformClass: "border-rose-200 bg-rose-50 text-rose-700",
-          kind: "유료 광고",
-          title: "유튜브 쇼츠 계약 서명 대기",
-          amount: "240만원",
-          status: "서명 대기",
-          statusClass: "border-blue-200 bg-blue-50 text-blue-700",
-        },
-        {
-          platform: "인스타",
-          platformClass: "border-pink-200 bg-pink-50 text-pink-700",
-          kind: "제품 협찬",
-          title: "제품 협찬 계약 완료",
-          amount: "150만원",
-          status: "서명 완료",
-          statusClass: "border-neutral-200 bg-white text-neutral-700",
-        },
-      ]
-    : [
-        {
-          platform: "인스타",
-          platformClass: "border-pink-200 bg-pink-50 text-pink-700",
-          kind: "제품 협찬",
-          title: "제품 협찬 계약 수정 요청",
-          amount: "150만원",
-          status: "수정 협의",
-          statusClass: "border-amber-200 bg-amber-50 text-amber-800",
-        },
-        {
-          platform: "유튜브",
-          platformClass: "border-rose-200 bg-rose-50 text-rose-700",
-          kind: "유료 광고",
-          title: "유튜브 쇼츠 계약 검토 필요",
-          amount: "240만원",
-          status: "검토 필요",
-          statusClass: "border-sky-200 bg-sky-50 text-sky-700",
-        },
-        {
-          platform: "블로그",
-          platformClass: "border-emerald-200 bg-emerald-50 text-emerald-700",
-          kind: "공동구매",
-          title: "공동구매 계약 서명 가능",
-          amount: "판매 수수료 18%",
-          status: "서명 가능",
-          statusClass: "border-blue-200 bg-blue-50 text-blue-700",
-        },
-        {
-          platform: "틱톡",
-          platformClass: "border-neutral-300 bg-neutral-50 text-neutral-700",
-          kind: "제품 협찬",
-          title: "틱톡 리뷰 콘텐츠 완료",
-          amount: "120만원",
-          status: "완료",
-          statusClass: "border-neutral-200 bg-white text-neutral-700",
-        },
-      ];
+  const data = isAdvertiser
+    ? introDashboardTestData.advertiser
+    : introDashboardTestData.influencer;
+  const rows = data.rows;
   const selectedRowIndex = Math.max(
     0,
-    roleIntroSlides[role].findIndex((candidate) => candidate.label === slide.label),
+    Math.min(
+      rows.length - 1,
+      roleIntroSlides[role].findIndex((candidate) => candidate.label === slide.label),
+    ),
   );
-  const actionSummary =
-    slide.preview.kind === "proposal"
-      ? slide.preview.message
-      : slide.preview.kind === "contract"
-        ? slide.preview.nextAction
-        : slide.helper;
-  const actionChips =
-    slide.preview.kind === "proposal"
-      ? slide.preview.chips.slice(0, 3)
-      : slide.preview.kind === "contract"
-        ? [`${slide.preview.countLabel} ${slide.preview.count}`, "증빙 보관"]
-        : [slide.helper];
 
   return (
-    <RolePreviewPanel
-      panelId={panelId}
-      slide={slide}
-      meta={
-        <span className="rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-[10px] font-extrabold text-neutral-600">
-          {isAdvertiser ? "발송 가능" : "검토 가능"}
-        </span>
-      }
+    <div
+      id={panelId}
+      role="region"
+      aria-label={`${slide.label} 미리보기`}
+      className="flex h-full min-h-[420px] flex-col overflow-hidden rounded-[14px] border border-neutral-200 bg-[#f7f6f3] lg:min-h-0 sm:rounded-[16px]"
     >
-      <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[12px] border border-neutral-200 bg-white">
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-neutral-200 bg-[#fbfaf7] px-4 py-3">
+      <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-neutral-200 bg-[#fbfaf7] px-3 sm:px-4">
+        <div className="flex min-w-0 items-center gap-2">
+          <LogoMark />
           <div className="min-w-0">
-            <p className="truncate text-[10px] font-extrabold text-neutral-400">
-              {isAdvertiser ? "계약 운영 화면" : "받은 계약 화면"}
+            <p className="truncate text-[12px] font-extrabold text-neutral-950">
+              {isAdvertiser ? "광고주 · 계약 운영" : "인플루언서 · 받은 계약"}
             </p>
-            <h3 className="mt-0.5 truncate text-[17px] font-extrabold text-neutral-950">
-              {isAdvertiser ? "계약 운영" : "받은 계약 검토"}
-            </h3>
+            <p className="mt-0.5 truncate text-[10px] font-bold text-neutral-400">
+              테스트 계정 데모 · {header}
+            </p>
           </div>
-          <span className="shrink-0 rounded-[8px] bg-neutral-100 px-2.5 py-1 text-[10px] font-extrabold text-neutral-700">
-            {header}
-          </span>
         </div>
-
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-neutral-200 px-4 py-2.5">
-          <div className="min-w-0">
-            <div className="flex min-w-0 items-center gap-2">
-              <span className="truncate text-[12px] font-extrabold text-neutral-950">
-                {isAdvertiser ? "사업자 인증" : "플랫폼 계정 인증"}
-              </span>
-              <span className="rounded-full border border-neutral-200 bg-white px-2 py-0.5 text-[10px] font-extrabold text-neutral-700">
-                인증 완료
-              </span>
-            </div>
-            <p className="mt-1 truncate text-[10px] font-bold text-neutral-500">
-              {isAdvertiser
-                ? "브랜드 · 광고주 매니저 · 사업자 123-**-67890"
-                : "크리에이터 · 인스타 · 유튜브 · 블로그"}
-            </p>
-          </div>
-          <span className="hidden shrink-0 rounded-[8px] border border-neutral-200 bg-white px-2.5 py-1.5 text-[10px] font-extrabold text-neutral-700 sm:inline-flex">
+        <div className="flex shrink-0 items-center gap-1.5">
+          <span className="hidden h-8 items-center rounded-[8px] border border-neutral-200 bg-white px-2 text-[10px] font-extrabold text-neutral-700 sm:inline-flex">
             {focusLabel}
           </span>
-        </div>
-
-        <div className="min-h-0 flex-1 overflow-hidden p-3">
-          <div className="mb-2 grid gap-2 rounded-[12px] border border-neutral-200 bg-white p-3 shadow-[0_8px_22px_rgba(15,23,42,0.035)] sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-            <div className="min-w-0">
-              <div className="flex min-w-0 items-center gap-2">
-                <span className={`h-2 w-2 shrink-0 rounded-full ${slide.accentClass}`} />
-                <p className="truncate text-[12px] font-extrabold text-neutral-950">
-                  {slide.preview.header}
-                </p>
-              </div>
-              <p className="mt-1 line-clamp-2 break-keep text-[11px] font-bold leading-5 text-neutral-500">
-                {actionSummary}
-              </p>
-            </div>
-            <div className="flex min-w-0 flex-wrap gap-1.5 sm:max-w-[220px] sm:justify-end">
-              {actionChips.map((chip) => (
-                <span
-                  key={chip}
-                  className="rounded-full border border-neutral-200 bg-[#fbfaf7] px-2 py-1 text-[10px] font-extrabold text-neutral-600"
-                >
-                  {chip}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          <div className="mb-2 rounded-[10px] border border-neutral-200 bg-[#fbfaf7] p-2 text-[10px] font-extrabold text-neutral-500 sm:hidden">
-            <p className="mb-1">계약명</p>
-            <div className="flex h-8 items-center gap-1.5 rounded-[8px] border border-neutral-200 bg-white px-2 text-neutral-400">
-              <Search className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">계약명으로 검색</span>
-            </div>
-            <div className="mt-2 grid grid-cols-3 gap-1.5">
-              {["플랫폼", "종류", "현 단계"].map((label) => (
-                <div
-                  key={label}
-                  className="h-7 rounded-[7px] border border-neutral-200 bg-white px-2 py-1.5 text-neutral-700"
-                >
-                  {label}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="mb-2 hidden grid-cols-[minmax(0,1.05fr)_96px_104px_116px_104px] gap-2 rounded-[10px] border border-neutral-200 bg-[#fbfaf7] p-2 text-[10px] font-extrabold text-neutral-500 sm:grid">
-            <div className="min-w-0">
-              <p className="mb-1">계약명</p>
-              <div className="flex h-8 items-center gap-1.5 rounded-[8px] border border-neutral-200 bg-white px-2 text-neutral-400">
-                <Search className="h-3.5 w-3.5 shrink-0" />
-                <span className="truncate">계약명으로 검색</span>
-              </div>
-            </div>
-            <div>
-              <p className="mb-1">플랫폼</p>
-              <div className="h-8 rounded-[8px] border border-neutral-200 bg-white px-2 py-2 text-neutral-700">
-                전체
-              </div>
-            </div>
-            <div>
-              <p className="mb-1">종류</p>
-              <div className="h-8 rounded-[8px] border border-neutral-200 bg-white px-2 py-2 text-neutral-700">
-                전체
-              </div>
-            </div>
-            <div>
-              <p className="mb-1">금액</p>
-              <div className="h-8 rounded-[8px] border border-neutral-200 bg-white px-2 py-2 text-neutral-700">
-                정액·수수료
-              </div>
-            </div>
-            <div>
-              <p className="mb-1">현 단계</p>
-              <div className="h-8 rounded-[8px] border border-neutral-200 bg-white px-2 py-2 text-neutral-700">
-                전체
-              </div>
-            </div>
-          </div>
-
-          <div className="hidden overflow-hidden rounded-[10px] border border-neutral-200 bg-white sm:block">
-            <div className="grid grid-cols-[96px_104px_minmax(0,1fr)_116px_104px] gap-2 border-b border-neutral-200 bg-[#fbfaf7] px-3 py-2 text-[10px] font-extrabold text-neutral-400">
-              <span>플랫폼</span>
-              <span>종류</span>
-              <span>계약명</span>
-              <span>금액</span>
-              <span>현 단계</span>
-            </div>
-            {rows.map((row, index) => (
-              <div
-                key={`${row.platform}-${row.title}`}
-                className={`grid grid-cols-[96px_104px_minmax(0,1fr)_116px_104px] items-center gap-2 border-b border-neutral-200 px-3 py-2.5 last:border-b-0 ${
-                  index === selectedRowIndex ? "bg-blue-50/45" : "bg-white"
-                }`}
-              >
-                <span
-                  className={`inline-flex h-6 w-fit max-w-full items-center truncate rounded-[6px] border px-2 text-[10px] font-extrabold ${row.platformClass}`}
-                >
-                  {row.platform}
-                </span>
-                <span className="truncate text-[11px] font-extrabold text-neutral-800">
-                  {row.kind}
-                </span>
-                <span className="truncate text-[12px] font-extrabold text-neutral-950">
-                  {row.title}
-                </span>
-                <span className="truncate text-[11px] font-extrabold text-neutral-800">
-                  {row.amount}
-                </span>
-                <span
-                  className={`inline-flex h-7 w-fit max-w-full items-center truncate rounded-[7px] border px-2 text-[10px] font-extrabold ${row.statusClass}`}
-                >
-                  {row.status}
-                </span>
-              </div>
-            ))}
-          </div>
-
-          <div className="grid gap-2 sm:hidden">
-            {rows.slice(0, 3).map((row, index) => (
-              <div
-                key={`${row.platform}-${row.title}-mobile`}
-                className={`rounded-[10px] border border-neutral-200 p-3 ${
-                  index === selectedRowIndex ? "bg-blue-50/45" : "bg-white"
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span
-                    className={`inline-flex h-6 max-w-[72px] items-center truncate rounded-[6px] border px-2 text-[10px] font-extrabold ${row.platformClass}`}
-                  >
-                    {row.platform}
-                  </span>
-                  <span
-                    className={`inline-flex h-6 max-w-[82px] items-center truncate rounded-[7px] border px-2 text-[10px] font-extrabold ${row.statusClass}`}
-                  >
-                    {row.status}
-                  </span>
-                </div>
-                <p className="mt-2 truncate text-[12px] font-extrabold text-neutral-950">
-                  {row.title}
-                </p>
-                <div className="mt-1 flex items-center justify-between gap-2 text-[10px] font-extrabold text-neutral-500">
-                  <span className="truncate">{row.kind}</span>
-                  <span className="shrink-0 text-neutral-800">{row.amount}</span>
-                </div>
-              </div>
-            ))}
-          </div>
+          <span className="inline-flex h-8 items-center rounded-[8px] bg-neutral-950 px-2.5 text-[10px] font-extrabold text-white">
+            {isAdvertiser ? "공유 가능" : "검토 가능"}
+          </span>
         </div>
       </div>
-    </RolePreviewPanel>
+
+      <div className="min-h-0 flex-1 overflow-y-auto p-2.5">
+        {isAdvertiser ? (
+          <AdvertiserIntroDashboardPreview
+            campaigns={introDashboardTestData.advertiser.campaigns}
+            data={introDashboardTestData.advertiser}
+            rows={rows}
+            selectedRowIndex={selectedRowIndex}
+            slide={slide}
+          />
+        ) : (
+          <InfluencerIntroDashboardPreview
+            data={introDashboardTestData.influencer}
+            rows={rows}
+            selectedRowIndex={selectedRowIndex}
+            slide={slide}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AdvertiserIntroDashboardPreview({
+  data,
+  campaigns,
+  rows,
+  selectedRowIndex,
+  slide,
+}: {
+  data: typeof introDashboardTestData.advertiser;
+  campaigns: IntroDashboardCampaign[];
+  rows: IntroDashboardRow[];
+  selectedRowIndex: number;
+  slide: RoleIntroSlide;
+}) {
+  const selectedCampaignIndex = Math.min(selectedRowIndex, campaigns.length - 1);
+
+  return (
+    <section className="min-w-0 overflow-hidden rounded-[12px] border border-neutral-200 bg-[#fdfdfb] shadow-[0_16px_44px_rgba(23,26,23,0.07)]">
+      <IntroDashboardTitleBar
+        title="계약 운영"
+        summary={data.summary}
+        badge="공유 가능"
+      />
+      <IntroAccountBanner
+        icon={<ShieldCheck className="h-3.5 w-3.5" />}
+        title="사업자 인증"
+        name={data.accountName}
+        meta={data.accountMeta}
+        detail={data.verificationMeta}
+      />
+      <div className="grid gap-2 p-2.5 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
+        <section className="overflow-hidden rounded-[10px] border border-[#d9e0d9] bg-white">
+          <div className="grid gap-2 border-b border-[#d9e0d9] bg-[#f8faf7] p-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+            <IntroSearchBox label="캠페인명" placeholder="캠페인명으로 검색" />
+            <p className="px-1 pb-2 text-[12px] font-semibold text-[#7d857f] sm:text-right">
+              전체 계약 21건
+            </p>
+          </div>
+          <div className="divide-y divide-[#edf1ed]">
+            {campaigns.map((campaign, index) => (
+              <div
+                key={campaign.name}
+                className={`grid gap-2 px-3 py-3 text-left transition-colors sm:grid-cols-[minmax(0,1fr)_86px_78px] sm:items-center ${
+                  index === selectedCampaignIndex ? "bg-blue-50/45" : "bg-white"
+                }`}
+              >
+                <div className="min-w-0">
+                  <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                    <span
+                      className={`inline-flex h-6 items-center rounded-md border px-2 text-[11px] font-semibold ${campaign.platformClass}`}
+                    >
+                      {campaign.platform}
+                    </span>
+                    <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-extrabold text-neutral-600">
+                      {campaign.status}
+                    </span>
+                  </div>
+                  <p className="truncate text-[13px] font-semibold text-[#171a17]">
+                    {campaign.name}
+                  </p>
+                </div>
+                <IntroMetric label="참여" value={`${campaign.participants}명`} />
+                <IntroMetric
+                  label="완료"
+                  value={`${campaign.completed}/${campaign.participants}`}
+                />
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="overflow-hidden rounded-[10px] border border-[#d9e0d9] bg-white">
+          <div className="border-b border-[#d9e0d9] bg-[#f8faf7] px-3 py-3">
+            <p className="text-[11px] font-extrabold text-[#7d857f]">
+              선택 캠페인 상세
+            </p>
+            <div className="mt-1 flex min-w-0 items-center justify-between gap-2">
+              <h3 className="truncate text-[16px] font-bold text-[#171a17]">
+                {campaigns[selectedCampaignIndex]?.name}
+              </h3>
+              <span className="shrink-0 rounded-[8px] bg-neutral-100 px-2.5 py-1 text-[10px] font-extrabold text-neutral-700">
+                {slide.label}
+              </span>
+            </div>
+          </div>
+          <IntroContractRows rows={rows} selectedRowIndex={selectedRowIndex} />
+        </section>
+      </div>
+    </section>
+  );
+}
+
+function InfluencerIntroDashboardPreview({
+  data,
+  rows,
+  selectedRowIndex,
+  slide,
+}: {
+  data: typeof introDashboardTestData.influencer;
+  rows: IntroDashboardRow[];
+  selectedRowIndex: number;
+  slide: RoleIntroSlide;
+}) {
+  return (
+    <section className="min-w-0 overflow-hidden rounded-[12px] border border-neutral-200 bg-[#fdfdfb] shadow-[0_16px_44px_rgba(23,26,23,0.07)]">
+      <IntroDashboardTitleBar
+        title="받은 계약"
+        summary={data.summary}
+        badge="검토 가능"
+      />
+      <IntroAccountBanner
+        icon={<ShieldCheck className="h-3.5 w-3.5" />}
+        title="플랫폼 계정 인증"
+        name={data.accountName}
+        meta={data.accountMeta}
+        detail={data.verificationMeta}
+      />
+      <div className="p-2.5">
+        <section className="overflow-hidden rounded-[10px] border border-[#d9e0d9] bg-white">
+          <div className="grid gap-2 border-b border-[#d9e0d9] bg-[#f8faf7] p-2 sm:grid-cols-[minmax(0,1.1fr)_90px_110px_110px]">
+            <IntroSearchBox label="계약명" placeholder="계약명으로 검색" />
+            <IntroFilter label="플랫폼" value="전체" />
+            <IntroFilter label="금액" value="정액·수수료" />
+            <IntroFilter label="현 단계" value={slide.label} />
+          </div>
+          <IntroContractRows rows={rows} selectedRowIndex={selectedRowIndex} />
+        </section>
+      </div>
+    </section>
+  );
+}
+
+function IntroDashboardTitleBar({
+  title,
+  summary,
+  badge,
+}: {
+  title: string;
+  summary: string;
+  badge: string;
+}) {
+  return (
+    <div className="border-b border-[#d9e0d9] bg-white px-4 py-2">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 flex-wrap items-end gap-x-3 gap-y-1">
+          <h2 className="truncate text-[17px] font-bold text-[#171a17]">
+            {title}
+          </h2>
+          <p className="pb-0.5 text-[12px] font-semibold text-[#7d857f]">
+            {summary}
+          </p>
+        </div>
+        <span className="inline-flex h-7 items-center rounded-[8px] bg-[#eef0ed] px-2.5 text-[12px] font-semibold text-[#303630]">
+          {badge}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function IntroAccountBanner({
+  icon,
+  title,
+  name,
+  meta,
+  detail,
+}: {
+  icon: ReactNode;
+  title: string;
+  name: string;
+  meta: string;
+  detail: string;
+}) {
+  return (
+    <section className="border-b border-neutral-200 bg-[#fbfbf8] px-4 py-2">
+      <div className="flex min-w-0 items-center gap-2">
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] bg-white text-neutral-800 ring-1 ring-neutral-200">
+          {icon}
+        </div>
+        <div className="min-w-0">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <p className="text-[13px] font-bold text-neutral-950">{title}</p>
+            <span className="rounded-full border border-neutral-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-neutral-700">
+              인증 완료
+            </span>
+            <span className="max-w-[180px] truncate text-[12px] font-semibold text-neutral-800">
+              {name}
+            </span>
+          </div>
+          <p className="mt-1 truncate text-[11px] font-semibold text-neutral-500">
+            {meta} · {detail}
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function IntroSearchBox({
+  label,
+  placeholder,
+}: {
+  label: string;
+  placeholder: string;
+}) {
+  return (
+    <label className="block min-w-0">
+      <span className="mb-1 block text-[11px] font-extrabold text-[#7d857f]">
+        {label}
+      </span>
+      <span className="flex h-9 items-center gap-1.5 rounded-[7px] border border-[#d9e0d9] bg-white px-2 text-[11px] font-semibold text-[#8b938d]">
+        <Search className="h-3.5 w-3.5 shrink-0" />
+        <span className="truncate">{placeholder}</span>
+      </span>
+    </label>
+  );
+}
+
+function IntroFilter({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <p className="mb-1 text-[11px] font-extrabold text-[#7d857f]">{label}</p>
+      <div className="h-9 truncate rounded-[7px] border border-[#d9e0d9] bg-white px-2 py-2 text-[11px] font-semibold text-[#303630]">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function IntroMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[10px] font-extrabold text-[#7d857f]">{label}</p>
+      <p className="mt-1 text-[12px] font-semibold text-[#303630]">{value}</p>
+    </div>
+  );
+}
+
+function IntroContractRows({
+  rows,
+  selectedRowIndex,
+}: {
+  rows: IntroDashboardRow[];
+  selectedRowIndex: number;
+}) {
+  return (
+    <>
+      <div className="hidden grid-cols-[82px_92px_112px_minmax(0,1fr)_88px_88px] gap-2 border-b border-[#d9e0d9] bg-[#f8faf7] px-3 py-2 text-[10px] font-extrabold text-[#7d857f] md:grid">
+        <span>플랫폼</span>
+        <span>종류</span>
+        <span>상대</span>
+        <span>계약명</span>
+        <span>금액</span>
+        <span>현 단계</span>
+      </div>
+      <div className="hidden divide-y divide-[#edf1ed] md:block">
+        {rows.map((row, index) => (
+          <div
+            key={`${row.platform}-${row.title}-${row.status}-${index}`}
+            className={`grid grid-cols-[82px_92px_112px_minmax(0,1fr)_88px_88px] items-center gap-2 px-3 py-2.5 ${
+              index === selectedRowIndex ? "bg-blue-50/45" : "bg-white"
+            }`}
+          >
+            <span
+              className={`inline-flex h-6 w-fit max-w-full items-center truncate rounded-[6px] border px-2 text-[10px] font-extrabold ${row.platformClass}`}
+            >
+              {row.platform}
+            </span>
+            <span className="truncate text-[11px] font-extrabold text-neutral-800">
+              {row.kind}
+            </span>
+            <span className="truncate text-[11px] font-semibold text-neutral-600">
+              {row.party}
+            </span>
+            <span className="truncate text-[12px] font-extrabold text-neutral-950">
+              {row.title}
+            </span>
+            <span className="truncate text-[11px] font-extrabold text-neutral-800">
+              {row.amount}
+            </span>
+            <span
+              className={`inline-flex h-7 w-fit max-w-full items-center truncate rounded-[7px] border px-2 text-[10px] font-extrabold ${row.statusClass}`}
+            >
+              {row.status}
+            </span>
+          </div>
+        ))}
+      </div>
+      <div className="grid gap-2 p-2 md:hidden">
+        {rows.slice(0, 4).map((row, index) => (
+          <div
+            key={`${row.platform}-${row.title}-${row.status}-${index}-mobile`}
+            className={`rounded-[10px] border border-neutral-200 p-3 ${
+              index === selectedRowIndex ? "bg-blue-50/45" : "bg-white"
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span
+                className={`inline-flex h-6 max-w-[78px] items-center truncate rounded-[6px] border px-2 text-[10px] font-extrabold ${row.platformClass}`}
+              >
+                {row.platform}
+              </span>
+              <span
+                className={`inline-flex h-6 max-w-[92px] items-center truncate rounded-[7px] border px-2 text-[10px] font-extrabold ${row.statusClass}`}
+              >
+                {row.status}
+              </span>
+            </div>
+            <p className="mt-2 truncate text-[12px] font-extrabold text-neutral-950">
+              {row.title}
+            </p>
+            <div className="mt-1 flex items-center justify-between gap-2 text-[10px] font-extrabold text-neutral-500">
+              <span className="truncate">{row.party}</span>
+              <span className="shrink-0 text-neutral-800">{row.amount}</span>
+            </div>
+            <p className="mt-1 truncate text-[10px] font-bold text-neutral-400">
+              {row.note} · {row.deadline}
+            </p>
+          </div>
+        ))}
+      </div>
+    </>
   );
 }
 

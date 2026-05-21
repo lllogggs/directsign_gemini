@@ -491,14 +491,19 @@
 
       .completed-contract-layout {
         display: grid;
-        grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
-        gap: 10px;
+        grid-template-columns: minmax(0, 0.88fr) minmax(0, 1.12fr);
+        gap: 12px;
         align-items: start;
-        margin-top: 10px;
+        margin-top: 11px;
       }
 
       .completed-contract-layout .screen-frame {
         margin-top: 0;
+      }
+
+      .completed-side {
+        display: grid;
+        gap: 8px;
       }
 
       .document-frame .screen-shot {
@@ -716,7 +721,7 @@
       }
 
       .completed-admin-frame img {
-        max-height: 66mm;
+        max-height: 82mm;
       }
 
       .completed-proof {
@@ -748,11 +753,102 @@
         line-height: 1.4;
       }
 
+      .completed-summary {
+        border-radius: 8px;
+        background: var(--ink);
+        color: #ffffff;
+        padding: 11px 12px;
+      }
+
+      .completed-summary strong {
+        display: block;
+        font-size: 11px;
+        font-weight: 900;
+      }
+
+      .completed-summary span {
+        display: block;
+        margin-top: 6px;
+        color: rgba(255, 255, 255, 0.76);
+        font-size: 8.8px;
+        font-weight: 700;
+        line-height: 1.45;
+      }
+
       .closing-layout {
         display: grid;
         grid-template-columns: 1fr 54mm;
         gap: 12px;
         margin-top: 14px;
+      }
+
+      .pilot-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 52mm;
+        gap: 10px;
+        align-items: start;
+        margin-top: 12px;
+      }
+
+      .screen-frame.actual.pilot-screen img {
+        max-height: 104mm;
+      }
+
+      .pilot-sidebar {
+        display: grid;
+        gap: 8px;
+      }
+
+      .pilot-note {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #ffffff;
+        padding: 11px;
+      }
+
+      .pilot-note h3 {
+        color: var(--ink);
+        font-size: 12.5px;
+      }
+
+      .pilot-note p {
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 9.5px;
+        font-weight: 700;
+        line-height: 1.5;
+      }
+
+      .pilot-note strong {
+        display: block;
+        color: var(--blue);
+        font-size: 9px;
+        font-weight: 900;
+      }
+
+      .pilot-note + .pilot-note {
+        background: var(--green-soft);
+        border-color: #b7ead3;
+      }
+
+      .pilot-sidebar .contact-card {
+        min-height: auto;
+        padding: 12px;
+      }
+
+      .pilot-sidebar .contact-card h3 {
+        font-size: 15px;
+      }
+
+      .pilot-sidebar .contact-card p {
+        margin-top: 8px;
+        font-size: 9.8px;
+        line-height: 1.55;
+      }
+
+      .pilot-sidebar .contact-card .contact-bottom {
+        margin-top: 12px;
+        padding-top: 10px;
       }
 
       .pilot-mini {
@@ -1294,7 +1390,7 @@
 
         <div class="cover-main">
           <p class="kicker">광고주 · 브랜드 · 대행사용</p>
-          <h1>계약서 만들고, 검토 링크로 바로 발송</h1>
+          <h1>계약서 만들고,<br />검토 링크로 바로 발송</h1>
           <p class="lead">
             연락미는 인플루언서 광고 조건을 계약서로 정리하고, 수정 요청과 전자서명 증빙까지 한 화면에서 관리합니다.
           </p>
@@ -1366,7 +1462,7 @@
 
         <div class="page-body">
           <p class="kicker">Contract Builder</p>
-          <h2>광고 조건을 입력하면 계약서 초안이 만들어집니다</h2>
+          <h2>광고 조건을 입력하면<br />계약서 초안이 만들어집니다</h2>
           <p class="section-intro">
             복잡한 법률 문서부터 시작하지 않고, 캠페인 운영에 필요한 조건만 채우면 됩니다.
           </p>
@@ -1432,7 +1528,7 @@
 
         <div class="page-body">
           <p class="kicker">Send & Manage</p>
-          <h2>링크 발송 뒤에는 계약별 워크스페이스에서 관리합니다</h2>
+          <h2>링크 발송 뒤에는<br />계약별 워크스페이스에서 관리합니다</h2>
           <p class="section-intro">
             수정 요청, 최종본 승인, 전자서명, 제출물 검수를 한 계약 안에서 따라갑니다.
           </p>
@@ -1502,7 +1598,7 @@
 
         <div class="page-body">
           <p class="kicker">Influencer Review</p>
-          <h2>인플루언서는 모바일 링크에서 검토하고 서명합니다</h2>
+          <h2>인플루언서는 모바일 링크에서<br />검토하고 서명합니다</h2>
           <p class="section-intro">
             광고주가 보낸 링크에서 금액, 일정, 산출물, 사용 범위를 확인하고 필요한 조항만 수정 요청합니다.
           </p>
@@ -1563,7 +1659,7 @@
 
         <div class="page-body">
           <p class="kicker">Completed Contract</p>
-          <h2>서명 완료 후에는 계약 본문과 PDF를 다시 확인합니다</h2>
+          <h2>서명 완료 후에는<br />계약 본문과 PDF를 다시 확인합니다</h2>
           <p class="section-intro">
             완료된 계약을 다시 열면 실제 조항, 서명 상태, 서명본 PDF 내려받기 버튼까지 한 화면에서 확인합니다.
           </p>
@@ -1592,7 +1688,7 @@
               <div class="screen-shot">
                 <div class="document-toolbar">
                   <span class="pdf-badge">PDF</span>
-                  <strong>DS-2026-001_인플루언서_광고계약서.pdf</strong>
+                  <strong>DS-2026-001_서명본.pdf</strong>
                   <span>100% · 1쪽</span>
                 </div>
                 <div class="contract-paper" aria-label="연락미 실제 계약서 본문 예시">
@@ -1609,7 +1705,7 @@
                   </p>
                   <div class="contract-meta-grid">
                     <div><span>광고주</span><strong>블루셀룸 / 김마케팅 매니저</strong></div>
-                    <div><span>인플루언서</span><strong>뷰티온에어 / creator@example.com</strong></div>
+                    <div><span>인플루언서</span><strong>뷰티온에어</strong></div>
                     <div><span>계약 금액</span><strong>총 1,200,000원</strong></div>
                     <div><span>캠페인 기간</span><strong>2026.06.01 - 2026.06.30</strong></div>
                   </div>
@@ -1637,7 +1733,7 @@
               </div>
             </figure>
 
-            <div>
+            <div class="completed-side">
               <figure class="screen-frame actual completed-admin-frame">
                 <div class="screen-top">
                   <span>완료 계약 조회 / PDF 다운로드</span>
@@ -1665,6 +1761,10 @@
                 <div><strong>완료 후 다시 열람</strong><span>광고주가 계약 화면에서 최종 상태와 본문을 재확인합니다.</span></div>
                 <div><strong>PDF 증빙 보관</strong><span>내부 공유나 정산 확인이 필요할 때 서명본을 내려받습니다.</span></div>
               </div>
+              <div class="completed-summary">
+                <strong>완료 후 남는 증빙</strong>
+                <span>계약 본문, 서명자 이름, PDF 파일, 생성 기록이 같은 계약 화면에 남아 내부 공유와 정산 확인에 씁니다.</span>
+              </div>
             </div>
           </div>
         </div>
@@ -1683,7 +1783,7 @@
 
         <div class="page-body">
           <p class="kicker">Pilot</p>
-          <h2>처음에는 캠페인 1건만 연락미로 발송해 보세요</h2>
+          <h2>처음에는 캠페인 1건만<br />연락미로 발송해 보세요</h2>
           <p class="section-intro">
             기존 DM 합의를 계약서 초안으로 옮기고, 검토 링크 발송부터 완료 계약 조회와 PDF 보관까지 비교하면 됩니다.
           </p>
@@ -1699,48 +1799,53 @@
             </div>
           </div>
 
-          <figure class="screen-frame actual short">
-            <div class="screen-top">
-              <span>광고주 시작 화면</span>
-              <span>간편한 컨택 · 계약서 작성 · 전자계약</span>
-            </div>
-            <div class="screen-shot">
-              <img src="./assets/yeollock-advertiser-screen.png" alt="연락미 광고주 시작 화면" />
-              <span
-                class="spotlight pin-outside"
-                data-note="처음 쓰는 광고주도 흐름 이해"
-                style="left: 11.1%; top: 42.9%; width: 23.4%; height: 35.6%; --pin-left: -11px; --pin-top: -11px;"
-              >
-                <span>01</span>
-              </span>
-              <span
-                class="spotlight pin-right"
-                data-note="계약 운영 화면 미리 확인"
-                style="left: 36.8%; top: 18.2%; width: 52%; height: 71.8%; --pin-right: -11px; --pin-top: -11px;"
-              >
-                <span>02</span>
-              </span>
-            </div>
-          </figure>
-
-          <div class="closing-layout">
-            <div>
-              <div class="note">
-                <h3>범위</h3>
-                <p>연락미는 계약 운영 기록과 전자서명 증빙 도구입니다. 법률 자문, 정산 대행, 성과 보증은 별도 영역입니다.</p>
+          <div class="pilot-layout">
+            <figure class="screen-frame actual pilot-screen">
+              <div class="screen-top">
+                <span>광고주 시작 화면</span>
+                <span>간편한 컨택 · 계약서 작성 · 전자계약</span>
               </div>
-            </div>
+              <div class="screen-shot">
+                <img src="./assets/yeollock-advertiser-screen.png" alt="연락미 광고주 시작 화면" />
+                <span
+                  class="spotlight pin-outside"
+                  data-note="처음 쓰는 광고주도 흐름 이해"
+                  style="left: 11.1%; top: 42.9%; width: 23.4%; height: 35.6%; --pin-left: -11px; --pin-top: -11px;"
+                >
+                  <span>01</span>
+                </span>
+                <span
+                  class="spotlight pin-right"
+                  data-note="계약 운영 화면 미리 확인"
+                  style="left: 36.8%; top: 18.2%; width: 52%; height: 71.8%; --pin-right: -11px; --pin-top: -11px;"
+                >
+                  <span>02</span>
+                </span>
+              </div>
+            </figure>
 
-            <aside class="contact-card">
-              <h3>광고주 문의</h3>
-              <p>파일럿 캠페인 기준으로 계약 작성과 링크 발송 흐름을 안내합니다.</p>
-              <div class="contact-bottom">
-                <p>
-                  담당자 김재우<br />
-                  이메일 <a href="mailto:yeollockme@gmail.com">yeollockme@gmail.com</a><br />
-                  인스타그램 <a href="https://www.instagram.com/yeollockme">@yeollockme</a><br />
-                  사이트 yeollock.me
-                </p>
+            <aside class="pilot-sidebar">
+              <div class="pilot-note">
+                <strong>파일럿 기준</strong>
+                <h3>캠페인 1건으로 화면과 흐름을 먼저 확인</h3>
+                <p>기존 DM 합의를 계약서 초안으로 옮기고, 링크 발송과 완료 계약 조회까지 실제 운영 화면에서 비교합니다.</p>
+              </div>
+              <div class="pilot-note">
+                <strong>적용 범위</strong>
+                <h3>계약 기록과 전자서명 증빙 도구</h3>
+                <p>법률 자문, 정산 대행, 성과 보증은 별도 영역으로 두고 계약 운영 흐름을 먼저 정리합니다.</p>
+              </div>
+              <div class="contact-card">
+                <h3>광고주 문의</h3>
+                <p>파일럿 캠페인 기준으로 계약 작성과 링크 발송 흐름을 안내합니다.</p>
+                <div class="contact-bottom">
+                  <p>
+                    담당자 김재우<br />
+                    이메일 <a href="mailto:yeollockme@gmail.com">yeollockme@gmail.com</a><br />
+                    인스타그램 <a href="https://www.instagram.com/yeollockme">@yeollockme</a><br />
+                    사이트 yeollock.me
+                  </p>
+                </div>
               </div>
             </aside>
           </div>

@@ -732,7 +732,15 @@ const decryptShareTokenFromLegacyStore = (value: string | undefined | null) => {
 };
 
 const normalizeContract = (contract: Contract): Contract => {
-  if (!contract.evidence) return contract;
+  const normalizedContract: Contract = {
+    ...contract,
+    campaign_name: hasText(contract.campaign_name)
+      ? contract.campaign_name.trim()
+      : contract.title,
+    post_link: hasText(contract.post_link) ? contract.post_link.trim() : undefined,
+  };
+
+  if (!contract.evidence) return normalizedContract;
 
   const shareToken =
     contract.evidence.share_token_status === "active"
@@ -740,7 +748,7 @@ const normalizeContract = (contract: Contract): Contract => {
       : undefined;
 
   return {
-    ...contract,
+    ...normalizedContract,
     evidence: {
       ...contract.evidence,
       share_token: shareToken,
@@ -755,6 +763,8 @@ const normalizeStore = (store: ContractStoreFile): ContractStoreFile => ({
 interface SupabaseContractRow {
   id: string;
   advertiser_id: string;
+  campaign_name?: string | null;
+  post_link?: string | null;
   title: string;
   status: string;
   influencer_name?: string | null;
@@ -1211,7 +1221,8 @@ const protectLegacyContractForSupabase = (contract: Contract): Contract => {
 };
 
 const restoreLegacyContractFromSupabase = (
-  row: Pick<SupabaseContractRow, "contract" | "share_token">,
+  row: Pick<SupabaseContractRow, "contract" | "share_token"> &
+    Partial<Pick<SupabaseContractRow, "campaign_name" | "post_link">>,
 ) => {
   const fallbackToken = decryptShareTokenFromLegacyStore(row.share_token);
   const contractToken = decryptShareTokenFromLegacyStore(
@@ -1219,12 +1230,20 @@ const restoreLegacyContractFromSupabase = (
   );
   const shareToken = contractToken ?? fallbackToken;
 
-  if (!row.contract?.evidence || !shareToken) return row.contract;
+  const restoredContract = row.contract
+    ? {
+        ...row.contract,
+        campaign_name: row.contract.campaign_name ?? row.campaign_name ?? undefined,
+        post_link: row.contract.post_link ?? row.post_link ?? undefined,
+      }
+    : row.contract;
+
+  if (!restoredContract?.evidence || !shareToken) return restoredContract;
 
   return {
-    ...row.contract,
+    ...restoredContract,
     evidence: {
-      ...row.contract.evidence,
+      ...restoredContract.evidence,
       share_token: shareToken,
     },
   };
@@ -1237,6 +1256,8 @@ const toSupabaseRow = (contract: Contract): SupabaseContractRow => {
   return {
     id: normalizedContract.id,
     advertiser_id: normalizedContract.advertiser_id,
+    campaign_name: normalizedContract.campaign_name ?? normalizedContract.title,
+    post_link: normalizedContract.post_link ?? null,
     title: normalizedContract.title,
     status: normalizedContract.status,
     influencer_name: normalizedContract.influencer_info?.name,
@@ -1286,6 +1307,10 @@ const assertSupabaseOk = async (response: Response, label: string) => {
     );
   }
 };
+
+const isMissingLegacyCampaignColumnError = (message: string) =>
+  /campaign_name|post_link/i.test(message) &&
+  /column|schema cache|Could not find/i.test(message);
 
 const readSupabaseRows = async <T>(table: string, query = "", label = table) => {
   const response = await fetchSupabase(table, query);
@@ -7868,15 +7893,29 @@ const readMarketplaceMessagesForInfluencer = async (
 };
 
 const readSupabaseStore = async (): Promise<ContractStoreFile> => {
-  const response = await fetchSupabase(
+  let response = await fetchSupabase(
     supabaseLegacyTable,
-    "?select=contract,share_token&order=updated_at.desc",
+    "?select=contract,share_token,campaign_name,post_link&order=updated_at.desc",
   );
+
+  if (!response.ok) {
+    const errorMessage = await parseSupabaseError(response);
+    if (!isMissingLegacyCampaignColumnError(errorMessage)) {
+      throw new Error(
+        `Supabase legacy read failed (${response.status}): ${errorMessage}`,
+      );
+    }
+    response = await fetchSupabase(
+      supabaseLegacyTable,
+      "?select=contract,share_token&order=updated_at.desc",
+    );
+  }
 
   await assertSupabaseOk(response, "Supabase legacy read");
 
   const rows = (await response.json()) as Array<
-    Pick<SupabaseContractRow, "contract" | "share_token">
+    Pick<SupabaseContractRow, "contract" | "share_token"> &
+      Partial<Pick<SupabaseContractRow, "campaign_name" | "post_link">>
   >;
 
   return normalizeStore({
@@ -7891,15 +7930,29 @@ const readSupabaseLegacyContract = async (
 ): Promise<Contract | undefined> => {
   if (!useSupabase || !hasText(contractId)) return undefined;
 
-  const response = await fetchSupabase(
+  let response = await fetchSupabase(
     supabaseLegacyTable,
-    `?select=contract,share_token&id=eq.${encodeURIComponent(contractId)}&limit=1`,
+    `?select=contract,share_token,campaign_name,post_link&id=eq.${encodeURIComponent(contractId)}&limit=1`,
   );
+
+  if (!response.ok) {
+    const errorMessage = await parseSupabaseError(response);
+    if (!isMissingLegacyCampaignColumnError(errorMessage)) {
+      throw new Error(
+        `Supabase legacy contract read failed (${response.status}): ${errorMessage}`,
+      );
+    }
+    response = await fetchSupabase(
+      supabaseLegacyTable,
+      `?select=contract,share_token&id=eq.${encodeURIComponent(contractId)}&limit=1`,
+    );
+  }
 
   await assertSupabaseOk(response, "Supabase legacy contract read");
 
   const rows = (await response.json()) as Array<
-    Pick<SupabaseContractRow, "contract" | "share_token">
+    Pick<SupabaseContractRow, "contract" | "share_token"> &
+      Partial<Pick<SupabaseContractRow, "campaign_name" | "post_link">>
   >;
   const row = rows[0];
 
@@ -7912,13 +7965,32 @@ const readSupabaseLegacyContract = async (
 const upsertSupabaseContracts = async (contracts: Contract[]) => {
   if (contracts.length === 0) return;
 
-  const response = await fetchSupabase(supabaseLegacyTable, "?on_conflict=id", {
+  const rows = contracts.map((contract) => toSupabaseRow(contract));
+  let response = await fetchSupabase(supabaseLegacyTable, "?on_conflict=id", {
     method: "POST",
     headers: {
       Prefer: "resolution=merge-duplicates,return=minimal",
     },
-    body: JSON.stringify(contracts.map((contract) => toSupabaseRow(contract))),
+    body: JSON.stringify(rows),
   });
+
+  if (!response.ok) {
+    const errorMessage = await parseSupabaseError(response);
+    if (!isMissingLegacyCampaignColumnError(errorMessage)) {
+      throw new Error(
+        `Supabase legacy write failed (${response.status}): ${errorMessage}`,
+      );
+    }
+    response = await fetchSupabase(supabaseLegacyTable, "?on_conflict=id", {
+      method: "POST",
+      headers: {
+        Prefer: "resolution=merge-duplicates,return=minimal",
+      },
+      body: JSON.stringify(
+        rows.map(({ campaign_name: _campaignName, post_link: _postLink, ...row }) => row),
+      ),
+    });
+  }
 
   await assertSupabaseOk(response, "Supabase legacy write");
 };
@@ -8285,6 +8357,9 @@ const validateContractPayload = (contract: Contract) => {
     !isSafeHttpUrl(contract.campaign?.tracking_link)
   ) {
     return "Tracking link must be an http(s) URL";
+  }
+  if (hasText(contract.post_link) && !isSafeHttpUrl(contract.post_link)) {
+    return "Submitted post link must be an http(s) URL";
   }
   if (!Array.isArray(contract.clauses) || contract.clauses.length === 0) {
     return "At least one clause is required";
@@ -11119,6 +11194,15 @@ const mergeContractIntoStore = (
       : [...store.contracts, contract],
 });
 
+const upsertContractIntoStore = (
+  store: ContractStoreFile,
+  contract: Contract,
+) => ({
+  contracts: store.contracts.some((item) => item.id === contract.id)
+    ? store.contracts.map((item) => (item.id === contract.id ? contract : item))
+    : [...store.contracts, contract],
+});
+
 const submittedDeliverableStatuses = new Set<DeliverableReviewStatus>([
   "submitted",
   "changes_requested",
@@ -13339,6 +13423,97 @@ app.get("/api/contracts/:id/deliverables", async (request, response, next) => {
 
     response.setHeader("Cache-Control", "no-store");
     response.json(buildDeliverableResponse(contract, await readContractDeliverableBundle(contract)));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/contracts/:id/post-link", async (request, response, next) => {
+  try {
+    const throttle = consumeSensitiveEndpointRateLimit(
+      request,
+      "post_link_submit",
+      request.params.id,
+    );
+    if (throttle.blocked) {
+      sendSensitiveRateLimitResponse(response, throttle);
+      return;
+    }
+
+    const postLink = normalizeUrlValue(
+      request.body?.post_link ?? request.body?.url,
+    );
+
+    if (!postLink) {
+      response.status(422).json({
+        error: "Submitted post link must be an http(s) URL",
+      });
+      return;
+    }
+
+    const influencerAuth = await requireInfluencerSession(request, response);
+    if (!influencerAuth) return;
+
+    const {
+      store,
+      existingContract: contract,
+    } = await readContractWriteContext(request.params.id);
+
+    if (!contract) {
+      response.status(404).json({ error: "Contract not found" });
+      return;
+    }
+    if (!canInfluencerAccessLegacyContract(influencerAuth, contract)) {
+      response.status(403).json({ error: "이 계약을 볼 권한이 없습니다." });
+      return;
+    }
+    if (contract.status !== "SIGNED") {
+      response.status(409).json({
+        error: "Contract must be signed before post link can be submitted",
+      });
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const updatedContract = normalizeContract({
+      ...contract,
+      post_link: postLink,
+      workflow: {
+        ...contract.workflow,
+        next_actor: contract.workflow?.next_actor ?? "system",
+        next_action:
+          contract.workflow?.next_action ??
+          "서명 완료본과 감사 기록을 보관하세요.",
+        risk_level: contract.workflow?.risk_level ?? "low",
+        last_message: "인플루언서가 게시물 링크를 제출했습니다.",
+      },
+      audit_events: [
+        ...(contract.audit_events ?? []),
+        {
+          id: randomUUID(),
+          actor: "influencer",
+          action: "post_link_submitted",
+          description: "인플루언서가 캠페인 결과물 링크를 제출했습니다.",
+          created_at: now,
+        },
+      ],
+      updated_at: now,
+    });
+
+    await writeStore(upsertContractIntoStore(store, updatedContract));
+    await insertContractEvent({
+      contractId: contract.id,
+      actorProfileId: influencerAuth.profile.id,
+      actorRole: "influencer",
+      actorDisplayName: influencerAuth.profile.name,
+      eventType: "post_link_submitted",
+      targetType: "contract",
+      targetId: contract.id,
+      payload: { has_url: true },
+      request,
+    });
+
+    response.json({ contract: updatedContract, post_link: postLink });
   } catch (error) {
     next(error);
   }

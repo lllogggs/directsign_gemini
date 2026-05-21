@@ -310,6 +310,13 @@ export function ContractViewer() {
     Record<string, { url: string; note: string; file?: File }>
   >({});
   const [submittingDeliverableId, setSubmittingDeliverableId] = useState("");
+  const [postLinkDraft, setPostLinkDraft] = useState<{
+    contractId: string;
+    value: string;
+  }>();
+  const [postLinkError, setPostLinkError] = useState("");
+  const [postLinkNotice, setPostLinkNotice] = useState("");
+  const [isSubmittingPostLink, setIsSubmittingPostLink] = useState(false);
   const [currentTime, setCurrentTime] = useState(() => Date.now());
 
   const getCanvasPoint = (
@@ -614,6 +621,80 @@ export function ContractViewer() {
       );
     } finally {
       setSubmittingDeliverableId("");
+    }
+  };
+
+  const submitPostLink = async () => {
+    if (!contract) return;
+
+    const postLink = (
+      postLinkDraft?.contractId === contract.id
+        ? postLinkDraft.value
+        : contract.post_link ?? ""
+    ).trim();
+    const urlError = validateDeliverableUrl(postLink);
+
+    if (!postLink) {
+      setPostLinkError("게시물 링크를 입력해 주세요.");
+      setPostLinkNotice("");
+      return;
+    }
+    if (urlError) {
+      setPostLinkError(urlError);
+      setPostLinkNotice("");
+      return;
+    }
+
+    setIsSubmittingPostLink(true);
+    setPostLinkError("");
+    setPostLinkNotice("");
+
+    try {
+      const response = await apiFetch(
+        `/api/contracts/${encodeURIComponent(contract.id)}/post-link`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({ post_link: postLink }),
+        },
+      );
+      const data = (await response.json()) as {
+        contract?: Contract;
+        error?: string;
+      };
+
+      if (!response.ok || !data.contract) {
+        throw new Error(
+          getDeliverableErrorMessage(
+            data.error,
+            `게시물 링크 제출 실패 (${response.status})`,
+          ),
+        );
+      }
+
+      replaceContract(data.contract);
+      setPostLinkDraft({
+        contractId: data.contract.id,
+        value: data.contract.post_link ?? postLink,
+      });
+      setPostLinkNotice(
+        "게시물 링크를 제출했습니다. 광고주 대시보드에는 업로드완료로 표시됩니다.",
+      );
+    } catch (error) {
+      setPostLinkError(
+        error instanceof Error
+          ? getDeliverableErrorMessage(
+              error.message,
+              "게시물 링크 제출에 실패했습니다.",
+            )
+          : "게시물 링크 제출에 실패했습니다.",
+      );
+    } finally {
+      setIsSubmittingPostLink(false);
     }
   };
 
@@ -1625,30 +1706,54 @@ export function ContractViewer() {
           </section>
 
           {contract.status === "SIGNED" && (
-            <InfluencerDeliverablesPanel
-              data={deliverables}
-              error={deliverablesError}
-              notice={deliverablesNotice}
-              isLoading={isLoadingDeliverables}
-              forms={deliverableForms}
-              submittingRequirementId={submittingDeliverableId}
-              onReload={loadDeliverables}
-              onFormChange={(requirementId, patch) =>
-                setDeliverableForms((current) => ({
-                  ...current,
-                  [requirementId]: {
-                    ...(current[requirementId] ?? { url: "", note: "" }),
-                    ...patch,
-                  },
-                }))
-              }
-              onSubmit={submitDeliverable}
-              loginHref={loginForVerificationPath}
-              canSubmit={
-                hasAuthenticatedContractAccess &&
-                serverAccessRole === "influencer"
-              }
-            />
+            <>
+              <PostLinkSubmissionPanel
+                value={
+                  postLinkDraft?.contractId === contract.id
+                    ? postLinkDraft.value
+                    : contract.post_link ?? ""
+                }
+                currentLink={contract.post_link}
+                error={postLinkError}
+                notice={postLinkNotice}
+                isSubmitting={isSubmittingPostLink}
+                canSubmit={
+                  hasAuthenticatedContractAccess &&
+                  serverAccessRole === "influencer"
+                }
+                loginHref={loginForVerificationPath}
+                onChange={(value) => {
+                  setPostLinkDraft({ contractId: contract.id, value });
+                  if (postLinkError) setPostLinkError("");
+                  if (postLinkNotice) setPostLinkNotice("");
+                }}
+                onSubmit={submitPostLink}
+              />
+              <InfluencerDeliverablesPanel
+                data={deliverables}
+                error={deliverablesError}
+                notice={deliverablesNotice}
+                isLoading={isLoadingDeliverables}
+                forms={deliverableForms}
+                submittingRequirementId={submittingDeliverableId}
+                onReload={loadDeliverables}
+                onFormChange={(requirementId, patch) =>
+                  setDeliverableForms((current) => ({
+                    ...current,
+                    [requirementId]: {
+                      ...(current[requirementId] ?? { url: "", note: "" }),
+                      ...patch,
+                    },
+                  }))
+                }
+                onSubmit={submitDeliverable}
+                loginHref={loginForVerificationPath}
+                canSubmit={
+                  hasAuthenticatedContractAccess &&
+                  serverAccessRole === "influencer"
+                }
+              />
+            </>
           )}
         </section>
 
@@ -2635,6 +2740,116 @@ function InfluencerDeliverablesPanel({
             );
           })
         )}
+      </div>
+    </section>
+  );
+}
+
+function PostLinkSubmissionPanel({
+  value,
+  currentLink,
+  error,
+  notice,
+  isSubmitting,
+  canSubmit,
+  loginHref,
+  onChange,
+  onSubmit,
+}: {
+  value: string;
+  currentLink?: string;
+  error: string;
+  notice: string;
+  isSubmitting: boolean;
+  canSubmit: boolean;
+  loginHref: string;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+}) {
+  const urlError = validateDeliverableUrl(value);
+  const disabled =
+    !canSubmit || isSubmitting || !value.trim() || Boolean(urlError);
+
+  return (
+    <section className="overflow-hidden rounded-lg border border-neutral-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)]">
+      <div className="border-b border-neutral-200 bg-[#fbfbfc] px-5 py-4 sm:px-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-neutral-500">
+              게시물 링크 제출
+            </p>
+            <h2 className="mt-1 text-lg font-semibold text-neutral-950">
+              캠페인 결과물 URL
+            </h2>
+            <p className="mt-1 text-sm leading-6 text-neutral-500">
+              서명 완료 후 실제 업로드된 게시물 링크를 제출하면 광고주 대시보드에서 업로드완료로 표시됩니다.
+            </p>
+          </div>
+          {currentLink ? (
+            <a
+              href={currentLink}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-700 transition hover:border-neutral-400"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              제출 링크 열기
+            </a>
+          ) : null}
+        </div>
+      </div>
+
+      {!canSubmit && (
+        <div className="border-b border-amber-200 bg-amber-50 px-5 py-3 text-sm font-semibold text-amber-800 sm:px-6">
+          게시물 링크 제출은 로그인한 인플루언서 계정에서만 가능합니다.
+          <a href={loginHref} className="ml-2 underline underline-offset-4">
+            로그인
+          </a>
+        </div>
+      )}
+
+      {error && (
+        <div className="border-b border-rose-200 bg-rose-50 px-5 py-3 text-sm font-semibold text-rose-700 sm:px-6">
+          {error}
+        </div>
+      )}
+
+      {notice && !error && (
+        <div className="border-b border-emerald-200 bg-emerald-50 px-5 py-3 text-sm font-semibold text-emerald-800 sm:px-6">
+          {notice}
+        </div>
+      )}
+
+      <div className="grid gap-3 p-5 sm:grid-cols-[minmax(0,1fr)_140px] sm:p-6">
+        <label className="block min-w-0">
+          <span className="flex items-center gap-2 text-xs font-semibold text-neutral-700">
+            <Link2 className="h-3.5 w-3.5" />
+            게시물 링크
+          </span>
+          <input
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            className={`mt-2 h-10 w-full rounded-lg border bg-white px-3 text-sm outline-none transition focus:border-neutral-950 ${
+              urlError ? "border-rose-300" : "border-neutral-200"
+            }`}
+            placeholder="https://..."
+            aria-invalid={Boolean(urlError || error)}
+            disabled={!canSubmit || isSubmitting}
+          />
+          {urlError && (
+            <span className="mt-1 block text-xs font-semibold text-rose-700">
+              {urlError}
+            </span>
+          )}
+        </label>
+        <button
+          type="button"
+          onClick={onSubmit}
+          disabled={disabled}
+          className="mt-6 h-10 rounded-lg bg-neutral-950 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-500 sm:mt-auto"
+        >
+          {isSubmitting ? "제출 중" : "링크 제출"}
+        </button>
       </div>
     </section>
   );

@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   AlertCircle,
+  ArrowLeft,
   ArrowDownWideNarrow,
   ArrowUpDown,
   ArrowUpWideNarrow,
@@ -9,6 +10,7 @@ import {
   CheckCircle2,
   Clock3,
   CopyCheck,
+  ExternalLink,
   FileText,
   KeyRound,
   LogOut,
@@ -64,6 +66,14 @@ type SortDirection = "asc" | "desc";
 type ContractSort = {
   key: SortKey;
   direction: SortDirection;
+};
+type CampaignGroup = {
+  name: string;
+  contracts: Contract[];
+  participantCount: number;
+  completedCount: number;
+  latestUpdatedAt: string;
+  platforms: ContractPlatform[];
 };
 type AdvertiserAccountSummary = {
   name: string;
@@ -215,16 +225,7 @@ export function Dashboard() {
   const syncError = useAppStore((state) => state.syncError);
   const resetHydration = useAppStore((state) => state.resetHydration);
   const [query, setQuery] = useState("");
-  const [platformFilter, setPlatformFilter] = useState<PlatformFilter>("ALL");
-  const [contractTypeFilter, setContractTypeFilter] =
-    useState<ContractTypeFilter>("ALL");
-  const [amountFilter, setAmountFilter] = useState<AmountFilter>("ALL");
-  const [detailStatusFilter, setDetailStatusFilter] =
-    useState<DetailStatusFilter>("ALL");
-  const [sortState, setSortState] = useState<ContractSort>({
-    key: "updated",
-    direction: "desc",
-  });
+  const [selectedCampaignName, setSelectedCampaignName] = useState<string>();
   const { summary: verificationSummary, isLoading: isVerificationLoading } =
     useVerificationSummary({ role: "advertiser" });
   const {
@@ -266,61 +267,37 @@ export function Dashboard() {
     };
   }, [contracts, verificationSummary]);
 
-  const filteredContracts = useMemo(() => {
+  const campaignGroups = useMemo(
+    () => groupContractsByCampaign(contracts),
+    [contracts],
+  );
+  const filteredCampaigns = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
 
-    return contracts
-      .filter((contract) => {
-        if (detailStatusFilter !== "ALL" && contract.status !== detailStatusFilter) {
-          return false;
-        }
-        if (
-          platformFilter !== "ALL" &&
-          !getContractPlatforms(contract).includes(platformFilter)
-        ) {
-          return false;
-        }
-        if (contractTypeFilter !== "ALL" && contract.type !== contractTypeFilter) {
-          return false;
-        }
-        if (
-          amountFilter !== "ALL" &&
-          getAmountFilterKind(contract.campaign?.budget) !== amountFilter
-        ) {
-          return false;
-        }
-        if (!normalizedQuery) return true;
+    if (!normalizedQuery) return campaignGroups;
 
-        return [
-          contract.title,
-          formatDashboardContractTitle(contract.title),
-        ]
-          .filter(Boolean)
-          .some((value) => value!.toLowerCase().includes(normalizedQuery));
-      })
-      .sort((a, b) => compareContractsBySort(a, b, sortState));
-  }, [
-    amountFilter,
-    contracts,
-    contractTypeFilter,
-    detailStatusFilter,
-    platformFilter,
-    query,
-    sortState,
-  ]);
-  const displayFilteredContracts = collapseInternalDuplicateContracts(
-    filteredContracts,
-    getDashboardContractCollapseKey,
-  );
-  const contractCountSummary =
-    `전체 ${contracts.length.toLocaleString()}건 · 검색 결과 ${displayFilteredContracts.length.toLocaleString()}건`;
-  const handleSortChange = (key: SortKey) => {
-    setSortState((current) => ({
-      key,
-      direction:
-        current.key === key && current.direction === "asc" ? "desc" : "asc",
-    }));
-  };
+    return campaignGroups.filter((campaign) =>
+      campaign.name.toLowerCase().includes(normalizedQuery),
+    );
+  }, [campaignGroups, query]);
+  const selectedCampaign = selectedCampaignName
+    ? campaignGroups.find((campaign) => campaign.name === selectedCampaignName)
+    : undefined;
+  const campaignCountSummary =
+    `캠페인 ${campaignGroups.length.toLocaleString()}개 · 참여 인원 ${contracts.length.toLocaleString()}명`;
+  const searchCountSummary =
+    query.trim()
+      ? `검색 결과 ${filteredCampaigns.length.toLocaleString()}개`
+      : campaignCountSummary;
+  const contractCountSummary = selectedCampaign
+    ? `${selectedCampaign.name} · 참여 인원 ${selectedCampaign.participantCount.toLocaleString()}명`
+    : searchCountSummary;
+  const openContract = (contract: Contract) =>
+    navigate(`/advertiser/contract/${contract.id}`);
+  const openCampaign = (campaign: CampaignGroup) =>
+    setSelectedCampaignName(campaign.name);
+  const closeCampaign = () => setSelectedCampaignName(undefined);
+  const visibleCampaigns = filteredCampaigns;
   const handleLogout = async () => {
     try {
       await apiFetch("/api/advertiser/logout", {
@@ -459,22 +436,15 @@ export function Dashboard() {
 
             {syncError && <SyncErrorPanel message={syncError} />}
 
-            <ContractTable
-              contracts={filteredContracts}
+            <CampaignDashboard
+              campaigns={visibleCampaigns}
               totalContracts={contracts.length}
               query={query}
               onQueryChange={setQuery}
-              platformFilter={platformFilter}
-              onPlatformFilterChange={setPlatformFilter}
-              contractTypeFilter={contractTypeFilter}
-              onContractTypeFilterChange={setContractTypeFilter}
-              amountFilter={amountFilter}
-              onAmountFilterChange={setAmountFilter}
-              detailStatusFilter={detailStatusFilter}
-              onDetailStatusFilterChange={setDetailStatusFilter}
-              sortState={sortState}
-              onSortChange={handleSortChange}
-              onOpen={(contract) => navigate(`/advertiser/contract/${contract.id}`)}
+              selectedCampaign={selectedCampaign}
+              onOpenCampaign={openCampaign}
+              onBack={closeCampaign}
+              onOpenContract={openContract}
             />
           </div>
         </section>
@@ -839,6 +809,288 @@ function getAdvertiserVerificationBannerCopy(
   return copies[status];
 }
 
+function CampaignDashboard({
+  campaigns,
+  totalContracts,
+  query,
+  onQueryChange,
+  selectedCampaign,
+  onOpenCampaign,
+  onBack,
+  onOpenContract,
+}: {
+  campaigns: CampaignGroup[];
+  totalContracts: number;
+  query: string;
+  onQueryChange: (value: string) => void;
+  selectedCampaign?: CampaignGroup;
+  onOpenCampaign: (campaign: CampaignGroup) => void;
+  onBack: () => void;
+  onOpenContract: (contract: Contract) => void;
+}) {
+  if (selectedCampaign) {
+    return (
+      <CampaignDetailView
+        campaign={selectedCampaign}
+        onBack={onBack}
+        onOpenContract={onOpenContract}
+      />
+    );
+  }
+
+  return (
+    <CampaignListView
+      campaigns={campaigns}
+      totalContracts={totalContracts}
+      query={query}
+      onQueryChange={onQueryChange}
+      onOpenCampaign={onOpenCampaign}
+    />
+  );
+}
+
+function CampaignListView({
+  campaigns,
+  totalContracts,
+  query,
+  onQueryChange,
+  onOpenCampaign,
+}: {
+  campaigns: CampaignGroup[];
+  totalContracts: number;
+  query: string;
+  onQueryChange: (value: string) => void;
+  onOpenCampaign: (campaign: CampaignGroup) => void;
+}) {
+  return (
+    <section className="overflow-hidden rounded-[10px] border border-[#d9e0d9] bg-white lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+      <div className="grid gap-2 border-b border-[#d9e0d9] bg-[#f8faf7] p-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+        <CampaignSearch value={query} onChange={onQueryChange} />
+        <p className="px-1 pb-2 text-[12px] font-semibold text-[#7d857f] sm:text-right">
+          전체 계약 {totalContracts.toLocaleString()}건
+        </p>
+      </div>
+
+      <div className="max-h-[620px] divide-y divide-[#edf1ed] overflow-y-auto lg:max-h-none lg:min-h-0 lg:flex-1">
+        {campaigns.length > 0 ? (
+          campaigns.map((campaign) => (
+            <React.Fragment key={campaign.name}>
+              <CampaignRow
+                campaign={campaign}
+                onOpen={() => onOpenCampaign(campaign)}
+              />
+            </React.Fragment>
+          ))
+        ) : (
+          <EmptyState isInitialEmpty={totalContracts === 0} />
+        )}
+      </div>
+    </section>
+  );
+}
+
+function CampaignSearch({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="block min-w-0">
+      <span className="mb-1 block text-[11px] font-extrabold text-[#7d857f]">
+        캠페인명
+      </span>
+      <span className="relative block">
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8b938d]" />
+        <input
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          aria-label="캠페인명 검색"
+          placeholder="캠페인명으로 검색"
+          className="h-10 w-full max-w-full rounded-[6px] border border-[#d9e0d9] bg-white pl-7 pr-2 text-[12px] font-semibold text-[#303630] outline-none transition-colors placeholder:text-[#8b938d] hover:border-[#cbd5cc] focus:border-[#171a17]"
+        />
+      </span>
+    </label>
+  );
+}
+
+function CampaignRow({
+  campaign,
+  onOpen,
+}: {
+  campaign: CampaignGroup;
+  onOpen: () => void;
+}) {
+  const completionLabel = `${campaign.completedCount}/${campaign.participantCount}`;
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="group grid w-full gap-2 px-3 py-3 text-left transition-colors hover:bg-[#f8faf7] lg:min-h-[54px] lg:grid-cols-[minmax(360px,1fr)_minmax(160px,0.24fr)_minmax(180px,0.28fr)] lg:items-center"
+    >
+      <div className="min-w-0">
+        <div className="mb-1 flex flex-wrap items-center gap-1.5">
+          {campaign.platforms.slice(0, 3).map((platform) => (
+            <span
+              key={platform}
+              className={`inline-flex h-6 items-center gap-1 rounded-md border px-2 text-[11px] font-semibold ${PLATFORM_META[platform].className}`}
+              title={PLATFORM_META[platform].label}
+            >
+              {PLATFORM_META[platform].mark}
+              {PLATFORM_META[platform].shortLabel}
+            </span>
+          ))}
+        </div>
+        <p className="truncate text-[14px] font-semibold text-[#171a17]">
+          {campaign.name}
+        </p>
+      </div>
+      <div className="min-w-0">
+        <p className="text-[11px] font-extrabold text-[#7d857f]">총 참여 인원</p>
+        <p className="mt-1 text-[13px] font-semibold text-[#303630]">
+          {campaign.participantCount.toLocaleString()}명
+        </p>
+      </div>
+      <div className="min-w-0">
+        <p className="text-[11px] font-extrabold text-[#7d857f]">완료율</p>
+        <p className="mt-1 text-[13px] font-semibold text-[#303630]">
+          {completionLabel}
+        </p>
+      </div>
+    </button>
+  );
+}
+
+function CampaignDetailView({
+  campaign,
+  onBack,
+  onOpenContract,
+}: {
+  campaign: CampaignGroup;
+  onBack: () => void;
+  onOpenContract: (contract: Contract) => void;
+}) {
+  const completionRatio =
+    campaign.participantCount > 0
+      ? Math.min(100, Math.round((campaign.completedCount / campaign.participantCount) * 100))
+      : 0;
+
+  return (
+    <section className="overflow-hidden rounded-[10px] border border-[#d9e0d9] bg-white lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+      <div className="border-b border-[#d9e0d9] bg-[#f8faf7] px-3 py-3">
+        <button
+          type="button"
+          onClick={onBack}
+          className="mb-3 inline-flex h-8 items-center gap-1.5 rounded-[7px] border border-[#d9e0d9] bg-white px-2.5 text-[12px] font-extrabold text-[#303630] transition hover:border-[#cbd5cc]"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" strokeWidth={2} />
+          캠페인 목록
+        </button>
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_260px] lg:items-end">
+          <div className="min-w-0">
+            <p className="text-[11px] font-extrabold text-[#7d857f]">
+              캠페인 상세
+            </p>
+            <h2 className="mt-1 truncate text-[18px] font-bold text-[#171a17]">
+              {campaign.name}
+            </h2>
+          </div>
+          <div>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[13px] font-extrabold text-[#171a17]">
+                완료율: {campaign.completedCount} / {campaign.participantCount}
+              </p>
+              <span className="text-[12px] font-semibold text-[#606861]">
+                {completionRatio}%
+              </span>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#e6ebe6]">
+              <div
+                className="h-full rounded-full bg-[#171a17]"
+                style={{ width: `${completionRatio}%` }}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="hidden grid-cols-[minmax(180px,0.7fr)_minmax(120px,0.34fr)_minmax(130px,0.34fr)_minmax(180px,0.55fr)] gap-2 border-b border-[#d9e0d9] bg-[#f8faf7] px-3 py-2 lg:grid">
+        {["인플루언서 이름", "현재 상태", "마감일", "제출된 링크"].map((label) => (
+          <span
+            key={label}
+            className="text-[11px] font-extrabold text-[#7d857f]"
+          >
+            {label}
+          </span>
+        ))}
+      </div>
+
+      <div className="max-h-[620px] divide-y divide-[#edf1ed] overflow-y-auto lg:max-h-none lg:min-h-0 lg:flex-1">
+        {campaign.contracts.map((contract) => (
+          <React.Fragment key={contract.id}>
+            <CampaignInfluencerRow
+              contract={contract}
+              onOpen={() => onOpenContract(contract)}
+            />
+          </React.Fragment>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function CampaignInfluencerRow({
+  contract,
+  onOpen,
+}: {
+  contract: Contract;
+  onOpen: () => void;
+}) {
+  const progress = getCampaignProgressStatus(contract);
+  const deadline = formatCampaignDeadline(contract);
+  const postLink = contract.post_link;
+
+  return (
+    <div className="grid gap-2 px-3 py-3 lg:min-h-[46px] lg:grid-cols-[minmax(180px,0.7fr)_minmax(120px,0.34fr)_minmax(130px,0.34fr)_minmax(180px,0.55fr)] lg:items-center lg:py-2">
+      <button
+        type="button"
+        onClick={onOpen}
+        className="min-w-0 text-left text-[13px] font-semibold text-[#171a17] underline-offset-4 hover:underline"
+      >
+        <span className="block truncate">
+          {removeInternalTestLabel(contract.influencer_info.name, "인플루언서")}
+        </span>
+      </button>
+      <span
+        className={`inline-flex w-fit items-center rounded-md border px-2 py-1 text-[11px] font-semibold ${progress.className}`}
+      >
+        {progress.label}
+      </span>
+      <span className="text-[12px] font-semibold text-[#303630]">
+        {deadline}
+      </span>
+      <span className="min-w-0">
+        {postLink ? (
+          <a
+            href={postLink}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="inline-flex max-w-full items-center gap-1.5 text-[12px] font-semibold text-[#171a17] underline underline-offset-4"
+          >
+            <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">제출 링크 열기</span>
+          </a>
+        ) : (
+          <span className="text-[12px] font-semibold text-[#9aa39d]">-</span>
+        )}
+      </span>
+    </div>
+  );
+}
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function ContractTable({
   contracts,
   totalContracts,
@@ -1393,7 +1645,7 @@ function formatDashboardAmountLabel(value?: string | null) {
   return label || "-";
 }
 
-function compareContractsBySort(a: Contract, b: Contract, sort: ContractSort) {
+function _compareContractsBySort(a: Contract, b: Contract, sort: ContractSort) {
   let result: number;
 
   switch (sort.key) {
@@ -1533,6 +1785,96 @@ function getDashboardContractCollapseKey(contract: Contract) {
     formatDashboardAmountLabel(contract.campaign?.budget),
     getContractPlatforms(contract).join(","),
   ].join("|");
+}
+
+function getContractCampaignName(contract: Contract) {
+  return formatContractTitleForDisplay(
+    (contract.campaign_name ?? contract.title).replace(/^\[[^\]]+\]\s*/, "").trim(),
+    "캠페인명 미정",
+  );
+}
+
+function groupContractsByCampaign(contracts: Contract[]): CampaignGroup[] {
+  const groups = new Map<string, Contract[]>();
+
+  for (const contract of contracts) {
+    const campaignName = getContractCampaignName(contract);
+    groups.set(campaignName, [...(groups.get(campaignName) ?? []), contract]);
+  }
+
+  return Array.from(groups.entries())
+    .map(([name, campaignContracts]) => {
+      const participantCount = new Set(
+        campaignContracts.map((contract) =>
+          removeInternalTestLabel(contract.influencer_info.name, "인플루언서"),
+        ),
+      ).size;
+      const completedCount = campaignContracts.filter((contract) =>
+        Boolean(contract.post_link),
+      ).length;
+      const latestUpdatedAt = campaignContracts
+        .map((contract) => contract.updated_at)
+        .sort((a, b) => getDateMs(b) - getDateMs(a))[0] ?? "";
+      const platforms = Array.from(
+        new Set(campaignContracts.flatMap(getContractPlatforms)),
+      );
+
+      return {
+        name,
+        contracts: [...campaignContracts].sort((a, b) =>
+          compareText(a.influencer_info.name, b.influencer_info.name),
+        ),
+        participantCount,
+        completedCount,
+        latestUpdatedAt,
+        platforms,
+      };
+    })
+    .sort((a, b) => {
+      const updatedDiff = getDateMs(b.latestUpdatedAt) - getDateMs(a.latestUpdatedAt);
+      return updatedDiff || compareText(a.name, b.name);
+    });
+}
+
+function getCampaignProgressStatus(contract: Contract) {
+  if (contract.post_link) {
+    return {
+      label: "업로드완료",
+      className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    };
+  }
+  if (contract.status === "SIGNED") {
+    return {
+      label: "서명완료",
+      className: "border-neutral-300 bg-neutral-100 text-neutral-800",
+    };
+  }
+  return {
+    label: "서명대기",
+    className: "border-sky-200 bg-sky-50 text-sky-700",
+  };
+}
+
+function formatCampaignDeadline(contract: Contract) {
+  const value =
+    contract.campaign?.upload_due_at ??
+    contract.campaign?.deadline ??
+    contract.campaign?.end_date;
+  if (!value) return "-";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return date.toLocaleDateString("ko-KR", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+}
+
+function getDateMs(value?: string) {
+  const time = value ? new Date(value).getTime() : 0;
+  return Number.isFinite(time) ? time : 0;
 }
 
 function getContractPlatformDisplayItems(contract: Contract) {
