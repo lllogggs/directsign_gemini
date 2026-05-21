@@ -130,6 +130,7 @@ export function AdvertiserVerification() {
   const [error, setError] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [hasEditedForm, setHasEditedForm] = useState(false);
+  const [showUpdateForm, setShowUpdateForm] = useState(false);
 
   const advertiser = summary?.advertiser;
   const status = advertiser?.status ?? "not_submitted";
@@ -155,6 +156,7 @@ export function AdvertiserVerification() {
     "-";
   const visibleForm =
     hasEditedForm || submitted ? form : withVerificationDefaults(form, latest, account);
+  const showVerificationForm = !approved || showUpdateForm;
 
   const updateForm = (updates: Partial<AdvertiserVerificationForm>) => {
     setForm({ ...visibleForm, ...updates });
@@ -253,20 +255,32 @@ export function AdvertiserVerification() {
 
       <main className="mx-auto grid max-w-6xl gap-4 px-5 py-4 sm:px-8 lg:grid-cols-[minmax(0,1fr)_300px]">
         <section className="rounded-lg border border-neutral-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)] sm:p-6">
-          {approved && (
-            <div className="mb-5 rounded-lg border border-neutral-200 bg-[#fbfbfc] p-4 shadow-[inset_3px_0_0_rgba(23,23,23,0.12)]">
+          {approved && !showVerificationForm && (
+            <div className="rounded-lg border border-neutral-200 bg-[#fbfbfc] p-4 shadow-[inset_3px_0_0_rgba(23,23,23,0.12)]">
               <div className="flex items-start gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-neutral-950 text-white">
                   <ShieldCheck className="h-5 w-5" />
                 </div>
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold text-neutral-950">
                     사업자 인증이 완료되었습니다
                   </p>
                   <p className="mt-1 text-sm leading-6 text-neutral-500">
                     {displayCompany} 계정은 계약 공유 링크를 발송할 수 있습니다.
-                    정보가 바뀐 경우에만 아래에서 갱신 심사를 요청하세요.
+                    정보가 바뀐 경우에만 갱신 심사를 요청하세요.
                   </p>
+                  <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                    <InfoRow label="회사명" value={displayCompany} compact />
+                    <InfoRow label="담당자" value={displayManager} compact />
+                    <InfoRow label="사업자번호" value={displayBusinessNumber} compact />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowUpdateForm(true)}
+                    className="mt-4 h-10 rounded-lg border border-neutral-200 bg-white px-4 text-sm font-semibold text-neutral-900 transition hover:border-neutral-400 hover:shadow-[0_8px_20px_rgba(15,23,42,0.08)]"
+                  >
+                    인증 정보 갱신 요청
+                  </button>
                 </div>
               </div>
             </div>
@@ -301,173 +315,177 @@ export function AdvertiserVerification() {
             </div>
           )}
 
-          <div className="mb-5">
-            <h1 className="text-[24px] font-semibold tracking-tight">
-              {approved ? "사업자 인증 정보" : "사업자 인증"}
-            </h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-neutral-500">
-              {approved
-                ? "현재 승인 상태를 유지합니다. 상호, 담당자, 사업자 정보가 바뀌면 새 증빙으로 갱신 요청을 남겨주세요."
-                : "계약 초안 작성은 바로 가능하지만, 인플루언서에게 계약을 발송하려면 광고주 계정 검수가 필요합니다. 이 정보는 서비스 운영자 법적 고지 정보와 별개입니다."}
-            </p>
-            <div className="mt-4 grid gap-2 sm:grid-cols-3">
-              {advertiserVerificationTrustNotes.map((note) => (
-                <div
-                  key={note.title}
-                  className="rounded-lg border border-neutral-200 bg-[#fbfbfc] px-3 py-3"
-                >
-                  <p className="text-xs font-semibold text-neutral-950">
-                    {note.title}
-                  </p>
-                  <p className="mt-1 text-xs leading-5 text-neutral-500">
-                    {note.body}
-                  </p>
-                </div>
-              ))}
+          {showVerificationForm && (
+            <div className="mb-5">
+              <h1 className="text-[24px] font-semibold tracking-tight">
+                {approved ? "사업자 인증 정보 갱신" : "사업자 인증"}
+              </h1>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-neutral-500">
+                {approved
+                  ? "현재 승인 상태를 유지합니다. 상호, 담당자, 사업자 정보가 바뀌면 새 증빙으로 갱신 요청을 남겨주세요."
+                  : "계약 초안 작성은 바로 가능하지만, 인플루언서에게 계약을 발송하려면 광고주 계정 검수가 필요합니다. 이 정보는 서비스 운영자 법적 고지 정보와 별개입니다."}
+              </p>
+              <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                {advertiserVerificationTrustNotes.map((note) => (
+                  <div
+                    key={note.title}
+                    className="rounded-lg border border-neutral-200 bg-[#fbfbfc] px-3 py-3"
+                  >
+                    <p className="text-xs font-semibold text-neutral-950">
+                      {note.title}
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-neutral-500">
+                      {note.body}
+                    </p>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <TextField
-                label="회사/브랜드명"
-                value={visibleForm.subject_name}
-                onChange={(value) => updateForm({ subject_name: value })}
-                required
-              />
-              <TextField
-                label="사업자등록번호"
-                value={visibleForm.business_registration_number}
-                onChange={(value) =>
-                  updateForm({ business_registration_number: value })
-                }
-                placeholder="000-00-00000"
-                required
-              />
-              <TextField
-                label="대표자명"
-                value={visibleForm.representative_name}
-                onChange={(value) => updateForm({ representative_name: value })}
-                required
-              />
-              <TextField
-                label="담당자명"
-                value={visibleForm.submitted_by_name}
-                onChange={(value) => updateForm({ submitted_by_name: value })}
-                required
-              />
-              <TextField
-                label="담당자 이메일"
-                type="email"
-                value={visibleForm.submitted_by_email}
-                onChange={(value) => updateForm({ submitted_by_email: value })}
-                required
-              />
-              <TextField
-                label="담당자 연락처"
-                value={visibleForm.manager_phone}
-                onChange={(value) => updateForm({ manager_phone: value })}
-              />
-              <TextField
-                label="개업일자"
-                type="date"
-                value={visibleForm.business_start_date}
-                onChange={(value) => updateForm({ business_start_date: value })}
-              />
-              <TextField
-                label="문서 발급일"
-                type="date"
-                value={visibleForm.document_issue_date}
-                onChange={(value) => updateForm({ document_issue_date: value })}
-                required
-              />
-              <TextField
-                label="문서확인번호/발급번호"
-                value={visibleForm.document_check_number}
-                onChange={(value) =>
-                  updateForm({ document_check_number: value })
-                }
-                placeholder="정부24/홈택스 문서 번호"
-              />
-            </div>
-
-            <div>
-              <label className="text-sm font-semibold text-neutral-900">
-                사업자등록증명원 파일
-              </label>
-              <label className="mt-2 flex min-h-28 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-neutral-300 bg-[#fbfbfc] px-4 py-5 text-center transition hover:border-neutral-500 hover:bg-white hover:shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
-                <FileUp className="mb-3 h-6 w-6 text-neutral-500" />
-                <span className="text-sm font-semibold text-neutral-900">
-                  {file ? file.name : "PDF 또는 이미지 업로드"}
-                </span>
-                <span className="mt-1 text-xs text-neutral-500">
-                  최근 1~3개월 이내 발급본을 권장합니다.
-                </span>
-                <input
-                  type="file"
-                  accept="application/pdf,image/png,image/jpeg,image/webp"
-                  className="sr-only"
-                  onChange={(event) => {
-                    const nextFile = event.target.files?.[0] ?? null;
-                    const fileError = validateVerificationFile(nextFile);
-                    if (fileError) {
-                      setFile(null);
-                      setError(fileError);
-                      event.currentTarget.value = "";
-                      return;
-                    }
-                    setFile(nextFile);
-                    setError("");
-                  }}
+          {showVerificationForm && (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <TextField
+                  label="회사/브랜드명"
+                  value={visibleForm.subject_name}
+                  onChange={(value) => updateForm({ subject_name: value })}
+                  required
                 />
-              </label>
-            </div>
-
-            <div>
-              <label className="text-sm font-semibold text-neutral-900">
-                운영자에게 남길 메모
-              </label>
-              <textarea
-                value={visibleForm.note}
-                onChange={(event) => updateForm({ note: event.target.value })}
-                className="mt-2 min-h-20 w-full rounded-lg border border-neutral-200 bg-[#fbfbfc] p-4 text-sm outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950 focus:bg-white focus:shadow-[0_0_0_3px_rgba(23,23,23,0.05)]"
-                placeholder="상호가 브랜드명과 다르거나 대행사가 대신 계약하는 경우 적어주세요."
-              />
-            </div>
-
-            {error && (
-              <div
-                role="alert"
-                aria-live="assertive"
-                className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700"
-              >
-                {error}
+                <TextField
+                  label="사업자등록번호"
+                  value={visibleForm.business_registration_number}
+                  onChange={(value) =>
+                    updateForm({ business_registration_number: value })
+                  }
+                  placeholder="000-00-00000"
+                  required
+                />
+                <TextField
+                  label="대표자명"
+                  value={visibleForm.representative_name}
+                  onChange={(value) => updateForm({ representative_name: value })}
+                  required
+                />
+                <TextField
+                  label="담당자명"
+                  value={visibleForm.submitted_by_name}
+                  onChange={(value) => updateForm({ submitted_by_name: value })}
+                  required
+                />
+                <TextField
+                  label="담당자 이메일"
+                  type="email"
+                  value={visibleForm.submitted_by_email}
+                  onChange={(value) => updateForm({ submitted_by_email: value })}
+                  required
+                />
+                <TextField
+                  label="담당자 연락처"
+                  value={visibleForm.manager_phone}
+                  onChange={(value) => updateForm({ manager_phone: value })}
+                />
+                <TextField
+                  label="개업일자"
+                  type="date"
+                  value={visibleForm.business_start_date}
+                  onChange={(value) => updateForm({ business_start_date: value })}
+                />
+                <TextField
+                  label="문서 발급일"
+                  type="date"
+                  value={visibleForm.document_issue_date}
+                  onChange={(value) => updateForm({ document_issue_date: value })}
+                  required
+                />
+                <TextField
+                  label="문서확인번호/발급번호"
+                  value={visibleForm.document_check_number}
+                  onChange={(value) =>
+                    updateForm({ document_check_number: value })
+                  }
+                  placeholder="정부24/홈택스 문서 번호"
+                />
               </div>
-            )}
-            {submitted && (
-              <div
-                role="status"
-                aria-live="polite"
-                className="rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm font-semibold text-neutral-800"
-              >
-                인증 요청이 접수되었습니다. 승인 전까지 계약 발송은 제한됩니다.
-              </div>
-            )}
 
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="h-11 w-full rounded-lg bg-neutral-950 px-5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-500 disabled:shadow-none"
-            >
-              {isSubmitting
-                ? "접수 중"
-                : approved
-                  ? "인증 정보 갱신 요청"
-                  : status === "rejected"
-                    ? "새 증빙으로 재제출"
-                  : "수기 심사 요청"}
-            </button>
-          </form>
+              <div>
+                <label className="text-sm font-semibold text-neutral-900">
+                  사업자등록증명원 파일
+                </label>
+                <label className="mt-2 flex min-h-28 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-neutral-300 bg-[#fbfbfc] px-4 py-5 text-center transition hover:border-neutral-500 hover:bg-white hover:shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
+                  <FileUp className="mb-3 h-6 w-6 text-neutral-500" />
+                  <span className="text-sm font-semibold text-neutral-900">
+                    {file ? file.name : "PDF 또는 이미지 업로드"}
+                  </span>
+                  <span className="mt-1 text-xs text-neutral-500">
+                    최근 1~3개월 이내 발급본을 권장합니다.
+                  </span>
+                  <input
+                    type="file"
+                    accept="application/pdf,image/png,image/jpeg,image/webp"
+                    className="sr-only"
+                    onChange={(event) => {
+                      const nextFile = event.target.files?.[0] ?? null;
+                      const fileError = validateVerificationFile(nextFile);
+                      if (fileError) {
+                        setFile(null);
+                        setError(fileError);
+                        event.currentTarget.value = "";
+                        return;
+                      }
+                      setFile(nextFile);
+                      setError("");
+                    }}
+                  />
+                </label>
+              </div>
+
+              <div>
+                <label className="text-sm font-semibold text-neutral-900">
+                  운영자에게 남길 메모
+                </label>
+                <textarea
+                  value={visibleForm.note}
+                  onChange={(event) => updateForm({ note: event.target.value })}
+                  className="mt-2 min-h-20 w-full rounded-lg border border-neutral-200 bg-[#fbfbfc] p-4 text-sm outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950 focus:bg-white focus:shadow-[0_0_0_3px_rgba(23,23,23,0.05)]"
+                  placeholder="상호가 브랜드명과 다르거나 대행사가 대신 계약하는 경우 적어주세요."
+                />
+              </div>
+
+              {error && (
+                <div
+                  role="alert"
+                  aria-live="assertive"
+                  className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700"
+                >
+                  {error}
+                </div>
+              )}
+              {submitted && (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className="rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm font-semibold text-neutral-800"
+                >
+                  인증 요청이 접수되었습니다. 승인 전까지 계약 발송은 제한됩니다.
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="h-11 w-full rounded-lg bg-neutral-950 px-5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-500 disabled:shadow-none"
+              >
+                {isSubmitting
+                  ? "접수 중"
+                  : approved
+                    ? "인증 정보 갱신 요청"
+                    : status === "rejected"
+                      ? "새 증빙으로 재제출"
+                      : "수기 심사 요청"}
+              </button>
+            </form>
+          )}
         </section>
 
         <aside className="space-y-4">
@@ -565,9 +583,23 @@ function TextField({
   );
 }
 
-function InfoRow({ label, value }: { label: string; value: string }) {
+function InfoRow({
+  label,
+  value,
+  compact = false,
+}: {
+  label: string;
+  value: string;
+  compact?: boolean;
+}) {
   return (
-    <div>
+    <div
+      className={
+        compact
+          ? "rounded-md border border-neutral-200 bg-white px-3 py-2"
+          : undefined
+      }
+    >
       <p className="text-xs font-semibold text-neutral-400">{label}</p>
       <p className="mt-1 break-words font-medium text-neutral-800">{value}</p>
     </div>

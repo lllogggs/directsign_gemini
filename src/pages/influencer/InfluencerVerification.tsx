@@ -261,15 +261,9 @@ export function InfluencerVerification() {
   const approved = verificationStatus === "approved";
   const approvedPlatforms = verification?.approved_platforms ?? [];
   const approvedPlatformChips = approvedPlatforms.filter((item, index, items) => {
-    const key = `${item.platform}:${item.handle ?? item.url ?? ""}`;
-    return (
-      items.findIndex(
-        (candidate) =>
-          `${candidate.platform}:${candidate.handle ?? candidate.url ?? ""}` === key,
-      ) === index
-    );
+    return items.findIndex((candidate) => candidate.platform === item.platform) === index;
   });
-  const visibleApprovedPlatformChips = approvedPlatformChips.slice(0, 6);
+  const visibleApprovedPlatformChips = approvedPlatformChips.slice(0, 4);
   const hiddenApprovedPlatformChipCount =
     approvedPlatformChips.length - visibleApprovedPlatformChips.length;
   const approvedPlatformNames = Array.from(

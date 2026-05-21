@@ -740,7 +740,7 @@ function MessageThreadRow({
           : "상대 보기"
         : thread.bucket === "inbox"
           ? "브랜드 보기"
-          : "대상 보기";
+          : "캠페인 보기";
   const relationshipLabel = getRelationshipLabel(role, thread);
   const relationshipName =
     thread.bucket === "sent"
