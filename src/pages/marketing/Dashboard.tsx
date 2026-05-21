@@ -1416,7 +1416,7 @@ function CampaignLifecycleTabs({
   onChange: (value: CampaignLifecycle) => void;
 }) {
   return (
-    <div className="border-b border-[#d9e0d9] bg-[#ede9e3] px-2 pt-2">
+    <div className="border-b border-[#d9e0d9] bg-[#e6e0d8] px-2 pt-2">
       <div className="flex min-w-0 items-end gap-0.5 overflow-x-auto">
         {CAMPAIGN_LIFECYCLE_TABS.map((tab) => {
           const active = value === tab.value;
@@ -1428,8 +1428,8 @@ function CampaignLifecycleTabs({
               aria-pressed={active}
               className={`relative flex h-10 min-w-[128px] flex-1 items-center justify-between gap-2 rounded-t-[14px] border px-3 text-left transition ${
                 active
-                  ? "z-10 -mb-px border-[#d9e0d9] border-b-white bg-white pb-px text-[#171a17] shadow-[0_-1px_0_rgba(255,255,255,0.86)_inset,0_-8px_20px_rgba(23,26,23,0.05)]"
-                  : "mb-0.5 border-transparent bg-[#ded8d1] text-[#4f574f] hover:bg-[#e7e2dc] hover:text-[#171a17]"
+                  ? "z-10 -mb-px border-[#d9e0d9] border-b-[#f8faf7] bg-[#f8faf7] pb-px text-[#171a17] shadow-[0_-1px_0_rgba(255,255,255,0.9)_inset,0_-8px_20px_rgba(23,26,23,0.05)]"
+                  : "mb-0.5 border-transparent bg-[#d8d1c8] text-[#4f574f] hover:bg-[#e1dbd3] hover:text-[#171a17]"
               }`}
             >
               <span className="truncate text-[13px] font-extrabold">
