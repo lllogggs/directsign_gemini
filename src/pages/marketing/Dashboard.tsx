@@ -1521,11 +1521,11 @@ function CampaignRow({
       <p className="min-w-0 truncate whitespace-nowrap text-[12px] font-semibold text-[#303630]">
         {paymentLabel}
       </p>
-      <div className="min-w-0">
+      <div className="min-w-0 pr-3 lg:pr-5">
         <p className="whitespace-nowrap text-[13px] font-extrabold text-[#171a17]">
           {progress.label}
         </p>
-        <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-[#e6ebe6]">
+        <div className="mt-1 h-1.5 max-w-[128px] overflow-hidden rounded-full bg-[#e6ebe6]">
           <div
             className="h-full rounded-full bg-[#171a17]"
             style={{ width: `${progress.percent}%` }}
@@ -3004,6 +3004,13 @@ function getCampaignLifecycleCounts(campaigns: CampaignGroup[]) {
 function getCampaignRosterProgress(campaign: CampaignGroup) {
   const current = getCampaignDisplayParticipantCount(campaign);
   const capacity = getCampaignCapacity(campaign);
+  if (!capacity) {
+    return {
+      label: current > 0 ? `${current.toLocaleString()}/미정` : "0/미정",
+      percent: current > 0 ? 12 : 0,
+    };
+  }
+
   const percent = Math.min(100, Math.round((current / capacity) * 100));
 
   return {
@@ -3014,19 +3021,16 @@ function getCampaignRosterProgress(campaign: CampaignGroup) {
 
 function getCampaignCapacity(campaign: CampaignGroup) {
   const raw = campaign.marketplaceCampaign?.applicantLimit;
-  const fallback = Math.max(
-    getCampaignDisplayParticipantCount(campaign),
-    campaign.contracts.length,
-    campaign.applicants.length,
-    1,
-  );
-  if (!raw) return fallback;
+  if (!raw) return undefined;
 
-  const match = raw.replace(/,/g, "").match(/\d+/);
-  if (!match) return fallback;
+  const values = raw
+    .replace(/,/g, "")
+    .match(/\d+/g)
+    ?.map((item) => Number(item))
+    .filter((value) => Number.isFinite(value) && value > 0);
 
-  const value = Number(match[0]);
-  return Number.isFinite(value) && value > 0 ? value : fallback;
+  if (!values?.length) return undefined;
+  return Math.max(...values);
 }
 
 function formatCampaignPlatformSummary(platforms: ContractPlatform[]) {
