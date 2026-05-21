@@ -2997,27 +2997,29 @@ function getCampaignLifecycleCounts(campaigns: CampaignGroup[]) {
 function getCampaignRosterProgress(campaign: CampaignGroup) {
   const current = getCampaignDisplayParticipantCount(campaign);
   const capacity = getCampaignCapacity(campaign);
-  const percent = capacity
-    ? Math.min(100, Math.round((current / capacity) * 100))
-    : current > 0
-      ? 100
-      : 0;
+  const percent = Math.min(100, Math.round((current / capacity) * 100));
 
   return {
-    label: `${current.toLocaleString()}/${capacity?.toLocaleString() ?? "미정"}`,
+    label: `${current.toLocaleString()}/${capacity.toLocaleString()}`,
     percent,
   };
 }
 
 function getCampaignCapacity(campaign: CampaignGroup) {
   const raw = campaign.marketplaceCampaign?.applicantLimit;
-  if (!raw) return undefined;
+  const fallback = Math.max(
+    getCampaignDisplayParticipantCount(campaign),
+    campaign.contracts.length,
+    campaign.applicants.length,
+    1,
+  );
+  if (!raw) return fallback;
 
   const match = raw.replace(/,/g, "").match(/\d+/);
-  if (!match) return undefined;
+  if (!match) return fallback;
 
   const value = Number(match[0]);
-  return Number.isFinite(value) && value > 0 ? value : undefined;
+  return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
 function formatCampaignPlatformSummary(platforms: ContractPlatform[]) {
