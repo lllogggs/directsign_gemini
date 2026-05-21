@@ -68,7 +68,6 @@ type AmountFilter = "ALL" | "FIXED" | "COMMISSION";
 type ActualAmountKind = Exclude<AmountFilter, "ALL">;
 type DetailStatusFilter = "ALL" | ContractStatus;
 type CampaignParticipantFilter = "ALL" | "ONE" | "TWO_TO_FIVE" | "SIX_PLUS";
-type CampaignCompletionFilter = "ALL" | "NOT_STARTED" | "IN_PROGRESS" | "DONE";
 type CampaignLifecycle = "RECRUITING" | "IN_PROGRESS" | "ENDED";
 type CampaignStatusAction = Extract<MarketplaceCampaignStatus, "open" | "closed" | "ended">;
 type DetailProgressFilter = "ALL" | "UPLOAD_DONE" | "SIGNED_DONE" | "SIGN_PENDING";
@@ -174,16 +173,6 @@ const CAMPAIGN_PARTICIPANT_OPTIONS: Array<{
   { value: "ONE", label: "1명" },
   { value: "TWO_TO_FIVE", label: "2-5명" },
   { value: "SIX_PLUS", label: "6명 이상" },
-];
-
-const CAMPAIGN_COMPLETION_OPTIONS: Array<{
-  value: CampaignCompletionFilter;
-  label: string;
-}> = [
-  { value: "ALL", label: "전체" },
-  { value: "NOT_STARTED", label: "0%" },
-  { value: "IN_PROGRESS", label: "진행 중" },
-  { value: "DONE", label: "100%" },
 ];
 
 const CAMPAIGN_LIFECYCLE_TABS: Array<{
@@ -374,8 +363,6 @@ export function Dashboard() {
   const [campaignBrandFilter, setCampaignBrandFilter] = useState("ALL");
   const [campaignParticipantFilter, setCampaignParticipantFilter] =
     useState<CampaignParticipantFilter>("ALL");
-  const [campaignCompletionFilter, setCampaignCompletionFilter] =
-    useState<CampaignCompletionFilter>("ALL");
   const [campaignLifecycleFilter, setCampaignLifecycleFilter] =
     useState<CampaignLifecycle>("RECRUITING");
   const [marketplaceState, setMarketplaceState] =
@@ -536,12 +523,10 @@ export function Dashboard() {
       (campaignBrandFilter === "ALL" ||
         campaign.brands.includes(campaignBrandFilter)) &&
       matchesCampaignParticipantFilter(campaign, campaignParticipantFilter) &&
-      matchesCampaignCompletionFilter(campaign, campaignCompletionFilter) &&
       campaign.lifecycle === campaignLifecycleFilter,
     );
   }, [
     campaignBrandFilter,
-    campaignCompletionFilter,
     campaignGroups,
     campaignLifecycleFilter,
     campaignParticipantFilter,
@@ -793,8 +778,6 @@ export function Dashboard() {
               brandOptions={campaignBrandOptions}
               participantFilter={campaignParticipantFilter}
               onParticipantFilterChange={setCampaignParticipantFilter}
-              completionFilter={campaignCompletionFilter}
-              onCompletionFilterChange={setCampaignCompletionFilter}
               selectedCampaign={selectedCampaign}
               onOpenCampaign={openCampaign}
               onBack={closeCampaign}
@@ -1257,8 +1240,6 @@ function CampaignDashboard({
   brandOptions,
   participantFilter,
   onParticipantFilterChange,
-  completionFilter,
-  onCompletionFilterChange,
   selectedCampaign,
   onOpenCampaign,
   onBack,
@@ -1282,8 +1263,6 @@ function CampaignDashboard({
   brandOptions: FilterOption[];
   participantFilter: CampaignParticipantFilter;
   onParticipantFilterChange: (value: CampaignParticipantFilter) => void;
-  completionFilter: CampaignCompletionFilter;
-  onCompletionFilterChange: (value: CampaignCompletionFilter) => void;
   selectedCampaign?: CampaignGroup;
   onOpenCampaign: (campaign: CampaignGroup) => void;
   onBack: () => void;
@@ -1326,8 +1305,6 @@ function CampaignDashboard({
       brandOptions={brandOptions}
       participantFilter={participantFilter}
       onParticipantFilterChange={onParticipantFilterChange}
-      completionFilter={completionFilter}
-      onCompletionFilterChange={onCompletionFilterChange}
       onOpenCampaign={onOpenCampaign}
     />
   );
@@ -1348,8 +1325,6 @@ function CampaignListView({
   brandOptions,
   participantFilter,
   onParticipantFilterChange,
-  completionFilter,
-  onCompletionFilterChange,
   onOpenCampaign,
 }: {
   campaigns: CampaignGroup[];
@@ -1366,8 +1341,6 @@ function CampaignListView({
   brandOptions: FilterOption[];
   participantFilter: CampaignParticipantFilter;
   onParticipantFilterChange: (value: CampaignParticipantFilter) => void;
-  completionFilter: CampaignCompletionFilter;
-  onCompletionFilterChange: (value: CampaignCompletionFilter) => void;
   onOpenCampaign: (campaign: CampaignGroup) => void;
 }) {
   const platformOptions = PLATFORM_FILTERS.map((platform) => ({
@@ -1413,14 +1386,6 @@ function CampaignListView({
           <ColumnHeader label={dateColumnLabel} />
           <div className="mt-1 h-10" />
         </div>
-        <TableFilterSelect
-          label="완료 상태"
-          value={completionFilter}
-          options={CAMPAIGN_COMPLETION_OPTIONS}
-          onChange={(value) =>
-            onCompletionFilterChange(value as CampaignCompletionFilter)
-          }
-        />
       </div>
 
       <div className="max-h-[620px] divide-y divide-[#edf1ed] overflow-y-auto lg:max-h-none lg:min-h-0 lg:flex-1">
@@ -2834,14 +2799,6 @@ function getDashboardContractCollapseKey(contract: Contract) {
   ].join("|");
 }
 
-function getCampaignCompletionRatio(campaign: CampaignGroup) {
-  if (campaign.acceptedParticipantCount <= 0) return 0;
-  return Math.min(
-    100,
-    Math.round((campaign.completedCount / campaign.acceptedParticipantCount) * 100),
-  );
-}
-
 function matchesCampaignParticipantFilter(
   campaign: CampaignGroup,
   filter: CampaignParticipantFilter,
@@ -2854,18 +2811,6 @@ function matchesCampaignParticipantFilter(
     return participantCount >= 2 && participantCount <= 5;
   }
   return participantCount >= 6;
-}
-
-function matchesCampaignCompletionFilter(
-  campaign: CampaignGroup,
-  filter: CampaignCompletionFilter,
-) {
-  if (filter === "ALL") return true;
-  const ratio = getCampaignCompletionRatio(campaign);
-
-  if (filter === "NOT_STARTED") return ratio === 0;
-  if (filter === "IN_PROGRESS") return ratio > 0 && ratio < 100;
-  return ratio === 100;
 }
 
 function getContractBrandName(contract: Contract) {
