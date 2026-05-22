@@ -33,6 +33,8 @@ interface AuthLoginScreenProps {
   error?: string;
   errorHint?: string;
   footer?: React.ReactNode;
+  showOtherLoginLink?: boolean;
+  showLegalFooter?: boolean;
   onSubmit: (event: React.FormEvent) => void;
 }
 
@@ -50,13 +52,15 @@ export function AuthLoginScreen({
   error,
   errorHint,
   footer,
+  showOtherLoginLink = true,
+  showLegalFooter = true,
   onSubmit,
 }: AuthLoginScreenProps) {
   const errorId = error ? `${title.replace(/\s+/g, "-")}-login-error` : undefined;
 
   return (
-    <main className="min-h-svh bg-[#f7f6f3] px-4 py-2 font-sans text-neutral-950 sm:h-svh sm:overflow-hidden sm:px-6 sm:py-5">
-      <div className="mx-auto flex min-h-svh w-full max-w-[1040px] flex-col sm:h-full sm:min-h-0">
+    <main className="h-svh overflow-hidden bg-[#f7f6f3] px-4 py-2 font-sans text-neutral-950 sm:px-6 sm:py-5">
+      <div className="mx-auto flex h-full min-h-0 w-full max-w-[1040px] flex-col">
         <header className="flex h-12 shrink-0 items-center justify-between sm:h-14">
           <Link
             to="/"
@@ -68,15 +72,17 @@ export function AuthLoginScreen({
               {PRODUCT_NAME}
             </span>
           </Link>
-          <Link
-            to="/login"
-            className="inline-flex min-h-10 items-center rounded-full border border-neutral-200 bg-white/65 px-3 text-[12px] font-bold text-neutral-500 shadow-[0_1px_0_rgba(15,23,42,0.02)] transition hover:border-neutral-300 hover:bg-white hover:text-neutral-950"
-          >
-            다른 로그인
-          </Link>
+          {showOtherLoginLink ? (
+            <Link
+              to="/login"
+              className="inline-flex min-h-10 items-center rounded-full border border-neutral-200 bg-white/65 px-3 text-[12px] font-bold text-neutral-500 shadow-[0_1px_0_rgba(15,23,42,0.02)] transition hover:border-neutral-300 hover:bg-white hover:text-neutral-950"
+            >
+              다른 로그인
+            </Link>
+          ) : null}
         </header>
 
-        <section className="grid place-items-center overflow-visible py-2 pb-4 sm:min-h-0 sm:flex-1 sm:overflow-hidden sm:py-6">
+        <section className="grid min-h-0 flex-1 place-items-center overflow-hidden py-2 pb-3 sm:py-6">
           <div className="flex max-h-none w-full max-w-[460px] flex-col sm:min-h-0 sm:max-h-full">
             <section className="custom-scrollbar overflow-visible rounded-[16px] border border-neutral-200/90 bg-white shadow-[0_1px_0_rgba(15,23,42,0.035),0_16px_44px_rgba(15,23,42,0.05)] sm:min-h-0 sm:max-h-full sm:overflow-y-auto sm:rounded-[18px]">
               <div className="p-4 sm:p-6">
@@ -189,20 +195,22 @@ export function AuthLoginScreen({
               </div>
             </section>
 
-            <nav
-              aria-label="법적 문서"
-              className="mt-2 flex shrink-0 flex-wrap items-center justify-center gap-1 text-[12px] font-semibold text-neutral-400 sm:mt-3 sm:gap-2"
-            >
-              <Link className="inline-flex min-h-7 items-center px-2 transition hover:text-neutral-950 sm:min-h-8" to="/privacy">
-                개인정보 처리방침
-              </Link>
-              <Link className="inline-flex min-h-7 items-center px-2 transition hover:text-neutral-950 sm:min-h-8" to="/terms">
-                이용약관
-              </Link>
-              <Link className="inline-flex min-h-7 items-center px-2 transition hover:text-neutral-950 sm:min-h-8" to="/legal/e-sign-consent">
-                전자서명 안내
-              </Link>
-            </nav>
+            {showLegalFooter ? (
+              <nav
+                aria-label="법적 문서"
+                className="mt-2 flex shrink-0 flex-wrap items-center justify-center gap-1 text-[12px] font-semibold text-neutral-400 sm:mt-3 sm:gap-2"
+              >
+                <Link className="inline-flex min-h-7 items-center px-2 transition hover:text-neutral-950 sm:min-h-8" to="/privacy">
+                  개인정보 처리방침
+                </Link>
+                <Link className="inline-flex min-h-7 items-center px-2 transition hover:text-neutral-950 sm:min-h-8" to="/terms">
+                  이용약관
+                </Link>
+                <Link className="inline-flex min-h-7 items-center px-2 transition hover:text-neutral-950 sm:min-h-8" to="/legal/e-sign-consent">
+                  전자서명 안내
+                </Link>
+              </nav>
+            ) : null}
           </div>
         </section>
       </div>

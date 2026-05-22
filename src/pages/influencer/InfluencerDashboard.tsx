@@ -395,8 +395,8 @@ export function InfluencerDashboard() {
   const [detailStageFilter, setDetailStageFilter] =
     useState<DetailStageFilter>("all");
   const [deadlineFilter, setDeadlineFilter] = useState<DeadlineFilter>("all");
-  const [campaignLifecycleFilter, setCampaignLifecycleFilter] =
-    useState<InfluencerCampaignLifecycle>("APPLIED");
+  const [selectedCampaignLifecycleFilter, setSelectedCampaignLifecycleFilter] =
+    useState<InfluencerCampaignLifecycle | null>(null);
   const [sortState, setSortState] = useState<ContractSort>({
     key: "updated",
     direction: "desc",
@@ -581,6 +581,11 @@ export function InfluencerDashboard() {
   const campaignItems = buildInfluencerCampaignWorkItems(dashboard);
   const visibleCampaignItems = campaignItems;
   const lifecycleCounts = getInfluencerLifecycleCounts(visibleCampaignItems);
+  const campaignLifecycleFilter =
+    selectedCampaignLifecycleFilter ??
+    INFLUENCER_LIFECYCLE_TABS.find((tab) => lifecycleCounts[tab.value] > 0)
+      ?.value ??
+    "APPLIED";
   const brandOptions = buildInfluencerBrandFilterOptions(campaignItems);
   const filteredCampaignItems = visibleCampaignItems
     .filter((item) => {
@@ -767,7 +772,7 @@ export function InfluencerDashboard() {
               lifecycleFilter={campaignLifecycleFilter}
               lifecycleCounts={lifecycleCounts}
               onLifecycleFilterChange={(value) => {
-                setCampaignLifecycleFilter(value);
+                setSelectedCampaignLifecycleFilter(value);
                 setDetailStageFilter("all");
                 setDeadlineFilter("all");
               }}
@@ -1712,10 +1717,11 @@ function ContractTable({
     deadlineFilter !== "all"
       ? deadlineOptions.find((option) => option.value === deadlineFilter)?.label
       : null,
+    query.trim() ? `검색 ${query.trim()}` : null,
   ].filter((label): label is string => Boolean(label));
-  const mobileFilterSummary =
+  const filterSummary =
     activeFilterLabels.length > 0 ? activeFilterLabels.join(" · ") : "전체 조건";
-  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const displayItems = collapseInternalDuplicateContracts(
     items,
     getInfluencerDashboardItemCollapseKey,
@@ -1730,150 +1736,80 @@ function ContractTable({
         counts={lifecycleCounts}
         onChange={onLifecycleFilterChange}
       />
-      <div className="grid gap-2 border-b border-[#d9e0d9] bg-[#f8faf7] p-2 lg:hidden">
-        <ContractNameSearch
-          value={query}
-          onChange={onQueryChange}
-          sortKey="title"
-          sortState={sortState}
-          onSortChange={onSortChange}
-          compact
-        />
-        <button
-          type="button"
-          onClick={() => setMobileFiltersOpen((current) => !current)}
-          aria-expanded={mobileFiltersOpen}
-          aria-controls="influencer-mobile-contract-filters"
-          className="flex h-10 min-w-0 items-center gap-2 rounded-[6px] border border-[#d9e0d9] bg-white px-3 text-left text-[12px] font-extrabold text-[#303630] transition-colors hover:border-[#cbd5cc]"
-        >
-          <SlidersHorizontal className="h-3.5 w-3.5 shrink-0 text-[#606861]" strokeWidth={2} />
-          <span className="shrink-0">필터</span>
-          <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-[#606861]">
-            {mobileFilterSummary}
-          </span>
-          <ChevronDown
-            className={`h-3.5 w-3.5 shrink-0 text-[#606861] transition-transform ${
-              mobileFiltersOpen ? "rotate-180" : ""
-            }`}
-            strokeWidth={2}
-          />
-        </button>
-        <div
-          id="influencer-mobile-contract-filters"
-          className={`${mobileFiltersOpen ? "grid" : "hidden"} gap-1.5`}
-        >
-          <TableFilterSelect
-            label="플랫폼"
-            value={platformFilter}
-            options={platformOptions}
-            sortKey="platform"
-            sortState={sortState}
-            onSortChange={onSortChange}
-            onChange={(value) => onPlatformFilterChange(value as PlatformFilter)}
-            compact
-          />
-          <TableFilterSelect
-            label="브랜드"
-            value={brandFilter}
-            options={brandOptions}
-            sortKey="advertiser"
-            sortState={sortState}
-            onSortChange={onSortChange}
-            onChange={onBrandFilterChange}
-            compact
-          />
-          <TableFilterSelect
-            label="금액"
-            value={amountFilter}
-            options={amountOptions}
-            sortKey="amount"
-            sortState={sortState}
-            onSortChange={onSortChange}
-            onChange={(value) => onAmountFilterChange(value as AmountFilter)}
-            compact
-          />
-          <TableFilterSelect
-            label="현재 상태"
-            value={detailStageFilter}
-            options={stageOptions}
-            sortKey="stage"
-            sortState={sortState}
-            onSortChange={onSortChange}
-            onChange={(value) => onDetailStageFilterChange(value as DetailStageFilter)}
-            compact
-          />
-          <TableFilterSelect
-            label="마감"
-            value={deadlineFilter}
-            options={deadlineOptions}
-            sortKey="deadline"
-            sortState={sortState}
-            onSortChange={onSortChange}
-            onChange={(value) => onDeadlineFilterChange(value as DeadlineFilter)}
-            compact
+      <div className="border-b border-[#d9e0d9] bg-[#fbfcfa]">
+        <div className="flex min-h-11 items-center justify-between gap-3 px-3 py-2">
+          <div className="min-w-0">
+            <p className="truncate text-[12px] font-extrabold text-[#171a17]">
+              캠페인 목록
+            </p>
+            <p className="mt-0.5 truncate text-[11px] font-semibold text-[#606861]">
+              {displayItems.length.toLocaleString("ko-KR")}건 표시 · {filterSummary}
+            </p>
+          </div>
+          <InfluencerFilterToggleButton
+            open={filtersOpen}
+            activeCount={activeFilterLabels.length}
+            onClick={() => setFiltersOpen((current) => !current)}
+            controlsId="influencer-contract-filters"
           />
         </div>
+        {filtersOpen ? (
+          <div
+            id="influencer-contract-filters"
+            className="grid gap-2 border-t border-[#edf1ed] bg-[#f8faf7] p-2 lg:grid-cols-[minmax(110px,0.2fr)_minmax(130px,0.22fr)_minmax(240px,0.62fr)_minmax(120px,0.2fr)_minmax(130px,0.22fr)_minmax(120px,0.2fr)]"
+          >
+            <TableFilterSelect
+              label="플랫폼"
+              value={platformFilter}
+              options={platformOptions}
+              onChange={(value) => onPlatformFilterChange(value as PlatformFilter)}
+              compact
+            />
+            <TableFilterSelect
+              label="브랜드"
+              value={brandFilter}
+              options={brandOptions}
+              onChange={onBrandFilterChange}
+              compact
+            />
+            <ContractNameSearch
+              value={query}
+              onChange={onQueryChange}
+              sortKey="title"
+              sortState={sortState}
+              onSortChange={onSortChange}
+              compact
+            />
+            <TableFilterSelect
+              label="지급내용"
+              value={amountFilter}
+              options={amountOptions}
+              onChange={(value) => onAmountFilterChange(value as AmountFilter)}
+              compact
+            />
+            <TableFilterSelect
+              label={metricColumnLabel}
+              value={detailStageFilter}
+              options={stageOptions}
+              onChange={(value) => onDetailStageFilterChange(value as DetailStageFilter)}
+              compact
+            />
+            <TableFilterSelect
+              label={dateColumnLabel}
+              value={deadlineFilter}
+              options={deadlineOptions}
+              onChange={(value) => onDeadlineFilterChange(value as DeadlineFilter)}
+              compact
+            />
+          </div>
+        ) : null}
       </div>
-
-      <div className="hidden grid-cols-[minmax(86px,0.18fr)_minmax(92px,0.18fr)_minmax(220px,0.72fr)_minmax(170px,0.46fr)_minmax(150px,0.38fr)_minmax(120px,0.3fr)] items-end gap-2 border-b border-[#d9e0d9] bg-[#f8faf7] px-3 py-2 lg:grid">
-        <TableFilterSelect
-          label="플랫폼"
-          value={platformFilter}
-          options={platformOptions}
-          maxWidthClassName="w-[112px]"
-          sortKey="platform"
-          sortState={sortState}
-          onSortChange={onSortChange}
-          onChange={(value) => onPlatformFilterChange(value as PlatformFilter)}
-        />
-        <TableFilterSelect
-          label="브랜드"
-          value={brandFilter}
-          options={brandOptions}
-          maxWidthClassName="w-[124px]"
-          sortKey="advertiser"
-          sortState={sortState}
-          onSortChange={onSortChange}
-          onChange={onBrandFilterChange}
-        />
-        <ContractNameSearch
-          value={query}
-          onChange={onQueryChange}
-          sortKey="title"
-          sortState={sortState}
-          onSortChange={onSortChange}
-        />
-        <TableFilterSelect
-          label="지급내용"
-          value={amountFilter}
-          options={amountOptions}
-          maxWidthClassName="w-[112px]"
-          sortKey="amount"
-          sortState={sortState}
-          onSortChange={onSortChange}
-          onChange={(value) => onAmountFilterChange(value as AmountFilter)}
-        />
-        <TableFilterSelect
-          label={metricColumnLabel}
-          value={detailStageFilter}
-          options={stageOptions}
-          maxWidthClassName="w-[120px]"
-          sortKey="stage"
-          sortState={sortState}
-          onSortChange={onSortChange}
-          onChange={(value) => onDetailStageFilterChange(value as DetailStageFilter)}
-        />
-        <TableFilterSelect
-          label={dateColumnLabel}
-          value={deadlineFilter}
-          options={deadlineOptions}
-          maxWidthClassName="w-[112px]"
-          sortKey="deadline"
-          sortState={sortState}
-          onSortChange={onSortChange}
-          onChange={(value) => onDeadlineFilterChange(value as DeadlineFilter)}
-        />
-      </div>
+      <InfluencerTableHeaderRow
+        metricColumnLabel={metricColumnLabel}
+        dateColumnLabel={dateColumnLabel}
+        sortState={sortState}
+        onSortChange={onSortChange}
+      />
       <div className="max-h-[620px] divide-y divide-[#edf1ed] overflow-y-auto lg:max-h-none lg:min-h-0 lg:flex-1">
         {displayItems.length > 0 ? (
           displayItems.map((item) => {
@@ -1927,6 +1863,95 @@ function ContractTable({
         )}
       </div>
     </section>
+  );
+}
+
+function InfluencerTableHeaderRow({
+  metricColumnLabel,
+  dateColumnLabel,
+  sortState,
+  onSortChange,
+}: {
+  metricColumnLabel: string;
+  dateColumnLabel: string;
+  sortState: ContractSort;
+  onSortChange: (key: SortKey) => void;
+}) {
+  return (
+    <div className="hidden border-b border-[#e3e8e3] bg-white px-3 py-2 lg:grid lg:grid-cols-[minmax(86px,0.18fr)_minmax(92px,0.18fr)_minmax(220px,0.72fr)_minmax(170px,0.46fr)_minmax(150px,0.38fr)_minmax(120px,0.3fr)] lg:items-center lg:gap-2">
+      <ColumnHeader
+        label="플랫폼"
+        sortKey="platform"
+        sortState={sortState}
+        onSortChange={onSortChange}
+      />
+      <ColumnHeader
+        label="브랜드"
+        sortKey="advertiser"
+        sortState={sortState}
+        onSortChange={onSortChange}
+      />
+      <ColumnHeader
+        label="캠페인명"
+        sortKey="title"
+        sortState={sortState}
+        onSortChange={onSortChange}
+      />
+      <ColumnHeader
+        label="지급내용"
+        sortKey="amount"
+        sortState={sortState}
+        onSortChange={onSortChange}
+      />
+      <ColumnHeader
+        label={metricColumnLabel}
+        sortKey="stage"
+        sortState={sortState}
+        onSortChange={onSortChange}
+      />
+      <ColumnHeader
+        label={dateColumnLabel}
+        sortKey="deadline"
+        sortState={sortState}
+        onSortChange={onSortChange}
+      />
+    </div>
+  );
+}
+
+function InfluencerFilterToggleButton({
+  open,
+  activeCount,
+  controlsId,
+  onClick,
+}: {
+  open: boolean;
+  activeCount: number;
+  controlsId: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-expanded={open}
+      aria-controls={controlsId}
+      className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[6px] border border-[#d9e0d9] bg-white px-2.5 text-[12px] font-extrabold text-[#303630] transition-colors hover:border-[#cbd5cc]"
+    >
+      <SlidersHorizontal className="h-3.5 w-3.5 text-[#606861]" strokeWidth={2} />
+      <span>필터</span>
+      {activeCount > 0 ? (
+        <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[#171a17] px-1 text-[11px] font-extrabold text-white">
+          {activeCount}
+        </span>
+      ) : null}
+      <ChevronDown
+        className={`h-3.5 w-3.5 text-[#606861] transition-transform ${
+          open ? "rotate-180" : ""
+        }`}
+        strokeWidth={2}
+      />
+    </button>
   );
 }
 

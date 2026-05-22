@@ -1249,7 +1249,7 @@ function RoleFeatureIntroScreen({
   config: IntroConfig;
   slides: RoleIntroSlide[];
 }) {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const featureKeys = roleFeatureKeys[role];
   const requestedFeatureIndex = Math.max(
     0,
@@ -1257,31 +1257,22 @@ function RoleFeatureIntroScreen({
   );
   const [activeIndex, setActiveIndex] = useState(requestedFeatureIndex);
   const [hasManualSelection, setHasManualSelection] = useState(false);
-  const [isPreviewPaused, setIsPreviewPaused] = useState(false);
   const requestedFeatureIndexRef = useRef(requestedFeatureIndex);
-  const activeSlide = slides[activeIndex] ?? slides[0];
-  const roleLabel = role === "advertiser" ? "광고주" : "인플루언서";
-  const brochureFacts =
+  const startHref = role === "advertiser" ? "/login/advertiser" : "/login/influencer";
+  const introCopy =
     role === "advertiser"
-      ? [
-          { label: "진행 계약", value: "18건" },
-          { label: "오늘 응답", value: "6건" },
-        ]
-      : [
-          { label: "받은 계약", value: "12건" },
-          { label: "확인 필요", value: "4건" },
-        ];
-
-  const handleFeatureSelect = useCallback((index: number) => {
-    setHasManualSelection(true);
-    setActiveIndex(index);
-    const featureKey = roleFeatureKeys[role][index];
-    if (featureKey) {
-      const nextParams = new URLSearchParams(searchParams);
-      nextParams.set("feature", featureKey);
-      setSearchParams(nextParams, { replace: true });
-    }
-  }, [role, searchParams, setSearchParams]);
+      ? {
+          eyebrow: "광고주용",
+          title: ["계약 작성 후", "검토 링크 발송"],
+          description:
+            "초안 작성, 검토 링크, 서명 증빙까지 광고 계약 진행 상태를 한 화면에서 확인합니다.",
+        }
+      : {
+          eyebrow: "인플루언서용",
+          title: ["받은 계약을", "확인하고 서명"],
+          description:
+            "계약 조건 확인, 수정 요청, 전자서명을 모바일에서도 막힘 없이 진행합니다.",
+        };
 
   useEffect(() => {
     if (requestedFeatureIndexRef.current === requestedFeatureIndex) {
@@ -1298,7 +1289,7 @@ function RoleFeatureIntroScreen({
   }, [requestedFeatureIndex]);
 
   useEffect(() => {
-    if (slides.length < 2 || hasManualSelection || isPreviewPaused) {
+    if (slides.length < 2 || hasManualSelection) {
       return undefined;
     }
 
@@ -1316,7 +1307,7 @@ function RoleFeatureIntroScreen({
     }, 4600);
 
     return () => window.clearInterval(timer);
-  }, [hasManualSelection, isPreviewPaused, slides.length]);
+  }, [hasManualSelection, slides.length]);
 
   const roleSwitchItems = [
     { role: "advertiser" as const, label: "광고주", href: "/intro/advertiser" },
@@ -1352,12 +1343,6 @@ function RoleFeatureIntroScreen({
                 );
               })}
             </nav>
-            <Link
-              to={config.secondaryHref}
-              className="inline-flex h-10 items-center justify-self-end whitespace-nowrap rounded-full border border-neutral-200 bg-white px-3 text-[12px] font-bold text-neutral-500 transition hover:border-neutral-300 hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
-            >
-              로그인
-            </Link>
           </div>
         </div>
       </header>
@@ -1387,53 +1372,31 @@ function RoleFeatureIntroScreen({
         </nav>
       </div>
 
-      <section className="mx-auto flex h-[calc(100svh-109px)] min-h-0 w-full max-w-[1280px] flex-col overflow-hidden px-4 py-3 sm:h-[calc(100svh-58px)] sm:px-6 sm:py-5 lg:h-[calc(100vh-58px)] lg:px-8 lg:py-4">
-        <div className="grid min-h-0 gap-3 lg:flex-1 lg:grid-cols-[minmax(0,0.78fr)_minmax(0,1.22fr)] lg:items-stretch">
+      <section className="mx-auto flex h-[calc(100svh-109px)] min-h-0 w-full max-w-[1180px] overflow-hidden px-4 py-4 sm:h-[calc(100svh-58px)] sm:px-6 sm:py-6 lg:h-[calc(100vh-58px)] lg:px-8">
+        <div className="grid min-h-0 w-full gap-5 lg:grid-cols-[minmax(310px,0.82fr)_minmax(0,1.18fr)] lg:items-center">
           <aside className="min-w-0 shrink-0 pt-0 lg:flex lg:min-h-0 lg:flex-col lg:justify-center">
             <p className="inline-flex h-8 items-center rounded-full border border-neutral-200 bg-white px-3 text-[12px] font-extrabold text-neutral-500">
-              {roleLabel} 소개서
+              {introCopy.eyebrow}
             </p>
-            <h1 className="font-neo-heavy mt-2 text-[28px] leading-[1.03] tracking-normal text-neutral-950 sm:mt-3 sm:text-[48px] lg:text-[52px]">
-              {activeSlide.title.map((line) => (
+            <h1 className="font-neo-heavy mt-3 text-[30px] leading-[1.03] tracking-normal text-neutral-950 sm:text-[48px] lg:text-[54px]">
+              {introCopy.title.map((line) => (
                 <span key={line} className="block">
                   {line}
                 </span>
               ))}
             </h1>
 
-            <p className="mt-2 line-clamp-2 max-w-[520px] break-keep text-[13px] font-bold leading-5 text-neutral-600 sm:mt-4 sm:line-clamp-none sm:text-[15px] sm:leading-6">
-              {activeSlide.description}
+            <p className="mt-3 max-w-[430px] break-keep text-[14px] font-bold leading-6 text-neutral-600 sm:mt-4 sm:text-[16px] sm:leading-7">
+              {introCopy.description}
             </p>
 
-            <div className="mt-4 hidden max-w-[520px] grid-cols-2 gap-2 sm:grid">
-              {brochureFacts.map((fact) => (
-                <div
-                  key={fact.label}
-                  className="rounded-[12px] border border-neutral-200 bg-white px-3 py-2.5 shadow-[0_1px_0_rgba(15,23,42,0.025)]"
-                >
-                  <p className="text-[11px] font-extrabold text-neutral-400">
-                    {fact.label}
-                  </p>
-                  <p className="mt-1 text-[20px] font-extrabold text-neutral-950">
-                    {fact.value}
-                  </p>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-3 grid max-w-[520px] grid-cols-2 gap-2 sm:mt-4 sm:flex sm:flex-row">
+            <div className="mt-5 flex max-w-[260px]">
               <Link
-                to={activeSlide.primaryHref}
-                className="group inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-[12px] bg-blue-600 px-4 text-[13px] font-extrabold tracking-normal text-white shadow-[0_14px_34px_rgba(37,99,235,0.24)] ring-1 ring-blue-500/20 transition duration-200 hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-[0_18px_42px_rgba(37,99,235,0.28)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700 active:translate-y-0 sm:h-11 sm:px-5 sm:text-[14px]"
+                to={startHref}
+                className="group inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-[12px] bg-blue-600 px-5 text-[14px] font-extrabold tracking-normal text-white shadow-[0_14px_34px_rgba(37,99,235,0.24)] ring-1 ring-blue-500/20 transition duration-200 hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-[0_18px_42px_rgba(37,99,235,0.28)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700 active:translate-y-0"
               >
-                <span>{activeSlide.primaryLabel}</span>
+                <span>시작하기</span>
                 <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
-              </Link>
-              <Link
-                to={activeSlide.secondaryHref}
-                className="inline-flex h-10 flex-1 items-center justify-center rounded-[12px] border border-neutral-200 bg-white px-4 text-[13px] font-extrabold text-neutral-600 transition hover:border-neutral-300 hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:h-11 sm:px-5 sm:text-[14px]"
-              >
-                {activeSlide.secondaryLabel}
               </Link>
             </div>
 
@@ -1452,58 +1415,6 @@ function RoleFeatureIntroScreen({
           />
         </div>
 
-        <div
-          className="no-scrollbar mt-3 flex gap-2 overflow-x-auto pb-1 sm:mt-4 sm:grid sm:grid-cols-2 sm:overflow-visible sm:pb-0 lg:grid-cols-4"
-          aria-label={`${roleLabel} 기능 선택`}
-          onFocus={() => setIsPreviewPaused(true)}
-          onBlur={() => setIsPreviewPaused(false)}
-          onMouseEnter={() => setIsPreviewPaused(true)}
-          onMouseLeave={() => setIsPreviewPaused(false)}
-        >
-          {slides.map((slide, index) => {
-            const selected = activeIndex === index;
-            const SlideIcon = slide.icon;
-
-            return (
-              <button
-                key={slide.label}
-                type="button"
-                onClick={() => handleFeatureSelect(index)}
-                className={`group min-h-[54px] min-w-[148px] rounded-[14px] border p-2.5 text-left transition hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-neutral-950 sm:min-h-[76px] sm:min-w-0 sm:p-3 ${
-                  selected
-                    ? "border-neutral-950 bg-neutral-950 text-white shadow-[0_16px_38px_rgba(15,23,42,0.16)]"
-                    : "border-neutral-200 bg-white text-neutral-500 shadow-[0_1px_0_rgba(15,23,42,0.025)] hover:border-neutral-300 hover:text-neutral-950"
-                }`}
-                aria-pressed={selected}
-              >
-                <span className="flex items-start justify-between gap-3">
-                  <span
-                    className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-[9px] ${
-                      selected ? "bg-white/15 text-white" : "bg-neutral-100"
-                    }`}
-                  >
-                    <SlideIcon className="h-4 w-4" strokeWidth={2.2} />
-                  </span>
-                  <span
-                    className={`mt-1 h-2 w-2 rounded-full ${
-                      selected ? "bg-white" : slide.accentClass
-                    }`}
-                  />
-                </span>
-                <span className="mt-2 block text-[13px] font-extrabold">
-                  {slide.label}
-                </span>
-                <span
-                  className={`mt-1 hidden line-clamp-1 break-keep text-[12px] font-bold leading-5 sm:block ${
-                    selected ? "text-white/65" : "text-neutral-500"
-                  }`}
-                >
-                  {slide.helper}
-                </span>
-              </button>
-            );
-          })}
-        </div>
       </section>
     </main>
   );
@@ -1582,7 +1493,7 @@ function RoleFeaturePreviewCarousel({
   return (
     <section
       aria-label="기능별 화면 미리보기"
-      className={`${className} mx-auto flex min-h-0 w-full min-w-0 flex-1 max-w-[calc(100vw-40px)] flex-col overflow-hidden rounded-[18px] border border-neutral-200 bg-[linear-gradient(180deg,#ffffff_0%,#fbfaf7_100%)] shadow-[0_18px_52px_rgba(15,23,42,0.07)] sm:max-w-full sm:rounded-[26px] sm:shadow-[0_24px_70px_rgba(15,23,42,0.08)]`}
+      className={`${className} mx-auto flex min-h-0 w-full min-w-0 flex-1 max-w-[calc(100vw-40px)] flex-col overflow-hidden rounded-[18px] border border-neutral-200 bg-[linear-gradient(180deg,#ffffff_0%,#fbfaf7_100%)] shadow-[0_18px_52px_rgba(15,23,42,0.07)] sm:max-w-full sm:rounded-[26px] sm:shadow-[0_24px_70px_rgba(15,23,42,0.08)] lg:max-w-[690px]`}
     >
       <div className="flex items-center justify-between gap-3 border-b border-neutral-200 bg-white px-3 py-2.5 sm:px-5 sm:py-3">
         <div className="flex min-w-0 items-center gap-2.5">
@@ -2099,15 +2010,11 @@ const introDashboardDemoData = {
 function RoleDashboardStylePreview({
   slide,
   role,
-  header,
   panelId,
-  focusLabel,
 }: {
   slide: RoleIntroSlide;
   role: IntroRole;
-  header: string;
   panelId: string;
-  focusLabel: string;
 }) {
   const isAdvertiser = role === "advertiser";
   const data = isAdvertiser
@@ -2129,36 +2036,12 @@ function RoleDashboardStylePreview({
       aria-label={`${slide.label} 미리보기`}
       className="flex h-full min-h-[380px] flex-col overflow-hidden rounded-[14px] border border-neutral-200 bg-[#f7f6f3] sm:min-h-[420px] sm:rounded-[16px] lg:min-h-0"
     >
-      <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-neutral-200 bg-[#fbfaf7] px-3 sm:px-4">
-        <div className="flex min-w-0 items-center gap-2">
-          <LogoMark />
-          <div className="min-w-0">
-            <p className="truncate text-[12px] font-extrabold text-neutral-950">
-              {isAdvertiser ? "광고주 · 대시보드" : "인플루언서 · 받은 계약"}
-            </p>
-            <p className="mt-0.5 truncate text-[10px] font-bold text-neutral-400">
-              가상 데모 화면 · {header}
-            </p>
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-1.5">
-          <span className="hidden h-8 items-center rounded-[8px] border border-neutral-200 bg-white px-2 text-[10px] font-extrabold text-neutral-700 sm:inline-flex">
-            {focusLabel}
-          </span>
-          <span className="inline-flex h-8 items-center rounded-[8px] bg-neutral-950 px-2.5 text-[10px] font-extrabold text-white">
-            {isAdvertiser ? "공유 가능" : "검토 가능"}
-          </span>
-        </div>
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-y-auto p-2.5">
+      <div className="min-h-0 flex-1 overflow-hidden p-2.5">
         {isAdvertiser ? (
           <AdvertiserIntroDashboardPreview
             campaigns={introDashboardDemoData.advertiser.campaigns}
             data={introDashboardDemoData.advertiser}
-            rows={rows}
             selectedRowIndex={selectedRowIndex}
-            slide={slide}
           />
         ) : (
           <InfluencerIntroDashboardPreview
@@ -2176,24 +2059,20 @@ function RoleDashboardStylePreview({
 function AdvertiserIntroDashboardPreview({
   data,
   campaigns,
-  rows,
   selectedRowIndex,
-  slide,
 }: {
   data: typeof introDashboardDemoData.advertiser;
   campaigns: IntroDashboardCampaign[];
-  rows: IntroDashboardRow[];
   selectedRowIndex: number;
-  slide: RoleIntroSlide;
 }) {
   const selectedCampaignIndex = Math.min(selectedRowIndex, campaigns.length - 1);
 
   return (
     <section className="min-w-0 overflow-hidden rounded-[12px] border border-neutral-200 bg-[#fdfdfb] shadow-[0_16px_44px_rgba(23,26,23,0.07)]">
       <IntroDashboardTitleBar
-        title="계약 운영 대시보드"
-        summary={data.summary}
-        badge="공유 가능"
+        title="계약 운영"
+        summary="진행 계약 18건"
+        badge="검토 링크"
       />
       <IntroAccountBanner
         icon={<ShieldCheck className="h-3.5 w-3.5" />}
@@ -2202,7 +2081,7 @@ function AdvertiserIntroDashboardPreview({
         meta={data.accountMeta}
         detail={data.verificationMeta}
       />
-      <div className="grid gap-2 p-2.5 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
+      <div className="p-2.5">
         <section className="overflow-hidden rounded-[10px] border border-[#d9e0d9] bg-white">
           <div className="grid gap-2 border-b border-[#d9e0d9] bg-[#f8faf7] p-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
             <IntroSearchBox label="캠페인명" placeholder="캠페인명으로 검색" />
@@ -2241,23 +2120,6 @@ function AdvertiserIntroDashboardPreview({
               </div>
             ))}
           </div>
-        </section>
-
-        <section className="overflow-hidden rounded-[10px] border border-[#d9e0d9] bg-white">
-          <div className="border-b border-[#d9e0d9] bg-[#f8faf7] px-3 py-3">
-            <p className="text-[11px] font-extrabold text-[#7d857f]">
-              선택 캠페인 상세
-            </p>
-            <div className="mt-1 flex min-w-0 items-center justify-between gap-2">
-              <h3 className="truncate text-[16px] font-bold text-[#171a17]">
-                {campaigns[selectedCampaignIndex]?.name}
-              </h3>
-              <span className="shrink-0 rounded-[8px] bg-neutral-100 px-2.5 py-1 text-[10px] font-extrabold text-neutral-700">
-                {slide.label}
-              </span>
-            </div>
-          </div>
-          <IntroContractRows rows={rows} selectedRowIndex={selectedRowIndex} />
         </section>
       </div>
     </section>
@@ -2506,7 +2368,6 @@ function IntroContractRows({
 
 function RoleProposalPreview({
   slide,
-  preview,
   role,
   panelId,
 }: {
@@ -2517,8 +2378,6 @@ function RoleProposalPreview({
 }) {
   return (
     <RoleDashboardStylePreview
-      focusLabel={preview.actionLabel}
-      header={preview.header}
       panelId={panelId}
       role={role}
       slide={slide}
@@ -2528,7 +2387,6 @@ function RoleProposalPreview({
 
 function RoleContractPreview({
   slide,
-  preview,
   role,
   panelId,
 }: {
@@ -2539,8 +2397,6 @@ function RoleContractPreview({
 }) {
   return (
     <RoleDashboardStylePreview
-      focusLabel={preview.nextAction}
-      header={preview.header}
       panelId={panelId}
       role={role}
       slide={slide}

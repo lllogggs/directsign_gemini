@@ -969,6 +969,10 @@ const measureBrowserInputAction = async (client, sessionId, label) => {
     client,
     sessionId,
     `(async () => {
+      const waitFrames = async () => {
+        await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+        await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+      };
       const setValue = (element, value) => {
         const setter = Object.getOwnPropertyDescriptor(
           Object.getPrototypeOf(element),
@@ -979,17 +983,30 @@ const measureBrowserInputAction = async (client, sessionId, label) => {
         element.dispatchEvent(new Event("input", { bubbles: true }));
         element.dispatchEvent(new Event("change", { bubbles: true }));
       };
-      const inputs = Array.from(document.querySelectorAll("input"));
-      const input = inputs.find((item) =>
+      const findSearchInput = () => Array.from(document.querySelectorAll("input")).find((item) =>
         item.type === "search" ||
         /검색|search/i.test(item.placeholder || "") ||
         /search/i.test(item.getAttribute("aria-label") || "")
       );
+      const openFiltersIfNeeded = async () => {
+        const button = Array.from(document.querySelectorAll("button")).find((item) =>
+          /필터|filter/i.test(item.textContent || "") ||
+          /filter/i.test(item.getAttribute("aria-controls") || "")
+        );
+        if (!button) return false;
+        button.click();
+        await waitFrames();
+        return true;
+      };
+      let input = findSearchInput();
+      if (!input) {
+        const opened = await openFiltersIfNeeded();
+        if (opened) input = findSearchInput();
+      }
       if (!input) return { ok: false, detail: "search input missing" };
       const startedAt = performance.now();
       setValue(input, "릴스");
-      await new Promise((resolve) => requestAnimationFrame(() => resolve()));
-      await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+      await waitFrames();
       return {
         ok: true,
         durationMs: Math.round(performance.now() - startedAt),
@@ -1017,17 +1034,35 @@ const measureBrowserSelectAction = async (client, sessionId, label) => {
     client,
     sessionId,
     `(async () => {
-      const select = Array.from(document.querySelectorAll("select")).find(
+      const waitFrames = async () => {
+        await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+        await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+      };
+      const findSelect = () => Array.from(document.querySelectorAll("select")).find(
         (item) => item.options.length > 1,
       );
+      const openFiltersIfNeeded = async () => {
+        const button = Array.from(document.querySelectorAll("button")).find((item) =>
+          /필터|filter/i.test(item.textContent || "") ||
+          /filter/i.test(item.getAttribute("aria-controls") || "")
+        );
+        if (!button) return false;
+        button.click();
+        await waitFrames();
+        return true;
+      };
+      let select = findSelect();
+      if (!select) {
+        const opened = await openFiltersIfNeeded();
+        if (opened) select = findSelect();
+      }
       if (!select) return { ok: false, detail: "select filter missing" };
       const nextIndex = select.selectedIndex === 0 ? 1 : 0;
       const startedAt = performance.now();
       select.selectedIndex = nextIndex;
       select.dispatchEvent(new Event("input", { bubbles: true }));
       select.dispatchEvent(new Event("change", { bubbles: true }));
-      await new Promise((resolve) => requestAnimationFrame(() => resolve()));
-      await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+      await waitFrames();
       return {
         ok: true,
         durationMs: Math.round(performance.now() - startedAt),

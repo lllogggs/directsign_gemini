@@ -333,18 +333,18 @@ export function LegalDocumentPage({
   };
 
   return (
-    <main className="min-h-screen bg-[#fafafa] px-5 py-8 font-sans text-neutral-950 sm:py-12">
-      <div className="mx-auto w-full max-w-[880px]">
+    <main className="h-svh overflow-hidden bg-[#fafafa] px-5 py-4 font-sans text-neutral-950 sm:py-5">
+      <div className="mx-auto flex h-full w-full max-w-[880px] flex-col">
         <button
           type="button"
           onClick={handleBack}
-          className="inline-flex h-10 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-600 shadow-sm transition hover:border-neutral-950 hover:text-neutral-950"
+          className="inline-flex h-10 w-fit shrink-0 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-600 shadow-sm transition hover:border-neutral-950 hover:text-neutral-950"
         >
           <ArrowLeft className="h-4 w-4" />
           이전 화면으로 돌아가기
         </button>
 
-        <section className="mt-5 rounded-lg border border-neutral-200 bg-white p-6 shadow-[0_18px_55px_rgba(15,23,42,0.06)] sm:p-8">
+        <section className="mt-4 min-h-0 flex-1 overflow-y-auto rounded-lg border border-neutral-200 bg-white p-5 shadow-[0_18px_55px_rgba(15,23,42,0.06)] sm:p-7">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-neutral-950 text-white">
               <ShieldCheck className="h-4 w-4" />

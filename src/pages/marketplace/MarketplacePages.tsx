@@ -3,6 +3,7 @@ import {
   ArrowRight,
   BadgeCheck,
   BookOpen,
+  ChevronDown,
   CheckCircle2,
   FileText,
   Globe2,
@@ -15,6 +16,7 @@ import {
   Search,
   Send,
   ShieldCheck,
+  SlidersHorizontal,
   Store,
   UserRound,
   Youtube,
@@ -299,6 +301,7 @@ export function AdvertiserInfluencerDiscoveryPage() {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [platformFilter, setPlatformFilter] = useState<PlatformFilter>("all");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectedProfile, setSelectedProfile] =
     useState<MarketplaceInfluencerProfile | null>(null);
   const { profiles, isLoading } = useMarketplaceInfluencers();
@@ -331,6 +334,12 @@ export function AdvertiserInfluencerDiscoveryPage() {
         .includes(normalizedQuery);
     });
   }, [platformFilter, profiles, query]);
+  const activeFilterLabels = [
+    query.trim() ? `검색 ${query.trim()}` : null,
+    platformFilter !== "all" ? platformLabels[platformFilter] : null,
+  ].filter((label): label is string => Boolean(label));
+  const filterSummary =
+    activeFilterLabels.length > 0 ? activeFilterLabels.join(" · ") : "전체 조건";
 
   return (
     <MarketplaceShell
@@ -362,39 +371,42 @@ export function AdvertiserInfluencerDiscoveryPage() {
         </div>
       }
     >
-      <section className="grid gap-3 border-b border-[#d9e0d9] bg-white px-4 py-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+      <DiscoveryControls
+        title="인플루언서 목록"
+        count={filteredProfiles.length}
+        summary={filterSummary}
+        open={filtersOpen}
+        activeCount={activeFilterLabels.length}
+        controlsId="advertiser-influencer-filters"
+        onToggle={() => setFiltersOpen((current) => !current)}
+      >
         <SearchBox
           value={query}
           onChange={setQuery}
           label="인플루언서 검색"
           placeholder="이름, 핸들, 카테고리, 브랜드 적합도 검색"
         />
-        <PlatformFilterBar
-          value={platformFilter}
-          onChange={setPlatformFilter}
-        />
-      </section>
-
-      <section className="grid gap-3 p-4 lg:grid-cols-3">
-        {filteredProfiles.map((profile) => (
-          <InfluencerDiscoveryCard
-            key={profile.id}
-            profile={profile}
-            onContact={() => setSelectedProfile(profile)}
-          />
-        ))}
-      </section>
+        <PlatformFilterBar value={platformFilter} onChange={setPlatformFilter} />
+      </DiscoveryControls>
 
       {isLoading ? (
         <MarketplaceLoadingState label="인플루언서 프로필을 불러오는 중입니다" />
-      ) : null}
-
-      {filteredProfiles.length === 0 ? (
+      ) : filteredProfiles.length === 0 ? (
         <EmptyMarketplaceState
           title="조건에 맞는 인플루언서가 없습니다"
-          body="검색어를 줄이거나 플랫폼 필터를 전체로 바꿔보세요."
+          body="검색어나 조건을 줄여보세요."
         />
-      ) : null}
+      ) : (
+        <section className="grid min-h-0 flex-1 gap-3 overflow-y-auto p-3 lg:grid-cols-3 lg:p-4">
+          {filteredProfiles.map((profile) => (
+            <InfluencerDiscoveryCard
+              key={profile.id}
+              profile={profile}
+              onContact={() => setSelectedProfile(profile)}
+            />
+          ))}
+        </section>
+      )}
 
       {selectedProfile ? (
         <InfluencerContactDialog
@@ -411,6 +423,7 @@ export function InfluencerBrandDiscoveryPage() {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [platformFilter, setPlatformFilter] = useState<PlatformFilter>("all");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectedBrand, setSelectedBrand] =
     useState<MarketplaceBrandProfile | null>(null);
   const publicProfilePath = useInfluencerPublicProfilePath();
@@ -448,6 +461,12 @@ export function InfluencerBrandDiscoveryPage() {
         .includes(normalizedQuery);
     });
   }, [displayBrands, platformFilter, query]);
+  const activeFilterLabels = [
+    query.trim() ? `검색 ${query.trim()}` : null,
+    platformFilter !== "all" ? platformLabels[platformFilter] : null,
+  ].filter((label): label is string => Boolean(label));
+  const filterSummary =
+    activeFilterLabels.length > 0 ? activeFilterLabels.join(" · ") : "전체 조건";
 
   return (
     <MarketplaceShell
@@ -487,39 +506,42 @@ export function InfluencerBrandDiscoveryPage() {
         </div>
       }
     >
-      <section className="grid gap-3 border-b border-[#d9e0d9] bg-white px-4 py-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+      <DiscoveryControls
+        title="브랜드 목록"
+        count={filteredBrands.length}
+        summary={filterSummary}
+        open={filtersOpen}
+        activeCount={activeFilterLabels.length}
+        controlsId="influencer-brand-filters"
+        onToggle={() => setFiltersOpen((current) => !current)}
+      >
         <SearchBox
           value={query}
           onChange={setQuery}
           label="브랜드 검색"
           placeholder="브랜드, 카테고리, 캠페인, 타깃 검색"
         />
-        <PlatformFilterBar
-          value={platformFilter}
-          onChange={setPlatformFilter}
-        />
-      </section>
-
-      <section className="grid gap-3 p-4 lg:grid-cols-3">
-        {filteredBrands.map((brand) => (
-          <BrandDiscoveryCard
-            key={brand.id}
-            brand={brand}
-            onContact={() => setSelectedBrand(brand)}
-          />
-        ))}
-      </section>
+        <PlatformFilterBar value={platformFilter} onChange={setPlatformFilter} />
+      </DiscoveryControls>
 
       {isLoading ? (
         <MarketplaceLoadingState label="브랜드 프로필을 불러오는 중입니다" />
-      ) : null}
-
-      {filteredBrands.length === 0 ? (
+      ) : filteredBrands.length === 0 ? (
         <EmptyMarketplaceState
           title="조건에 맞는 브랜드가 없습니다"
-          body="검색어를 줄이거나 플랫폼 필터를 전체로 바꿔보세요."
+          body="검색어나 조건을 줄여보세요."
         />
-      ) : null}
+      ) : (
+        <section className="grid min-h-0 flex-1 gap-3 overflow-y-auto p-3 lg:grid-cols-3 lg:p-4">
+          {filteredBrands.map((brand) => (
+            <BrandDiscoveryCard
+              key={brand.id}
+              brand={brand}
+              onContact={() => setSelectedBrand(brand)}
+            />
+          ))}
+        </section>
+      )}
 
       {selectedBrand ? (
         <BrandContactDialog
@@ -574,8 +596,8 @@ export function PublicInfluencerProfilePage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950">
-      <header className="border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
+    <main className="flex h-svh flex-col overflow-hidden bg-[#f7f6f3] font-sans text-neutral-950">
+      <header className="shrink-0 border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-[1180px] items-center justify-between px-4 sm:px-6 lg:px-8">
           <Link to="/" className="flex min-h-10 min-w-10 items-center gap-3">
             <span className="flex h-9 w-9 items-center justify-center rounded-[12px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
@@ -592,139 +614,141 @@ export function PublicInfluencerProfilePage() {
         </div>
       </header>
 
-      <section className="border-b border-neutral-200/80 bg-white">
-        <div className="mx-auto grid max-w-[1120px] gap-5 px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_300px] lg:px-8">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <StatusPill icon={<BadgeCheck className="h-3.5 w-3.5" />} label={profile.verifiedLabel} />
-              <StatusPill icon={<Mail className="h-3.5 w-3.5" />} label={profile.responseTimeLabel} />
-            </div>
-            <div className="mt-4 flex flex-col gap-5 sm:flex-row sm:items-start">
-              <AvatarBlock label={profile.avatarLabel} size="large" />
-              <div className="min-w-0 flex-1">
-                <p className="break-all text-[13px] font-semibold text-neutral-500">
-                  {formatInfluencerPublicProfileUrl(profile.handle)}
-                </p>
-                <h1 className="font-neo-heavy mt-2 text-[32px] leading-tight tracking-[-0.035em] text-neutral-950 sm:text-[40px]">
-                  {profile.displayName}
-                </h1>
-                <p className="mt-3 max-w-2xl break-keep text-[16px] font-medium leading-7 text-neutral-600">
-                  {cleanMarketplaceCopy(profile.headline)}
-                </p>
-                <p className="mt-3 max-w-3xl break-keep text-[14px] leading-6 text-neutral-600">
-                  {cleanMarketplaceCopy(profile.bio)}
-                </p>
-                <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-                  <button
-                    type="button"
-                    onClick={() => setShowContact(true)}
-                    className="inline-flex h-11 items-center justify-center gap-2 rounded-[12px] bg-neutral-950 px-4 text-[14px] font-extrabold text-white transition hover:bg-neutral-800"
-                  >
-                    <Handshake className="h-4 w-4" />
-                    인플루언서에게 제안하기
-                  </button>
-                  <Link
-                    to="/advertiser/discover"
-                    className="inline-flex h-11 items-center justify-center gap-2 rounded-[12px] border border-neutral-200 bg-white px-4 text-[14px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
-                  >
-                    다른 인플루언서 보기
-                    <ArrowRight className="h-4 w-4" />
-                  </Link>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <section className="border-b border-neutral-200/80 bg-white">
+          <div className="mx-auto grid max-w-[1120px] gap-5 px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_300px] lg:px-8">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <StatusPill icon={<BadgeCheck className="h-3.5 w-3.5" />} label={profile.verifiedLabel} />
+                <StatusPill icon={<Mail className="h-3.5 w-3.5" />} label={profile.responseTimeLabel} />
+              </div>
+              <div className="mt-4 flex flex-col gap-5 sm:flex-row sm:items-start">
+                <AvatarBlock label={profile.avatarLabel} size="large" />
+                <div className="min-w-0 flex-1">
+                  <p className="break-all text-[13px] font-semibold text-neutral-500">
+                    {formatInfluencerPublicProfileUrl(profile.handle)}
+                  </p>
+                  <h1 className="font-neo-heavy mt-2 text-[32px] leading-tight tracking-[-0.035em] text-neutral-950 sm:text-[40px]">
+                    {profile.displayName}
+                  </h1>
+                  <p className="mt-3 max-w-2xl break-keep text-[16px] font-medium leading-7 text-neutral-600">
+                    {cleanMarketplaceCopy(profile.headline)}
+                  </p>
+                  <p className="mt-3 max-w-3xl break-keep text-[14px] leading-6 text-neutral-600">
+                    {cleanMarketplaceCopy(profile.bio)}
+                  </p>
+                  <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                    <button
+                      type="button"
+                      onClick={() => setShowContact(true)}
+                      className="inline-flex h-11 items-center justify-center gap-2 rounded-[12px] bg-neutral-950 px-4 text-[14px] font-extrabold text-white transition hover:bg-neutral-800"
+                    >
+                      <Handshake className="h-4 w-4" />
+                      인플루언서에게 제안하기
+                    </button>
+                    <Link
+                      to="/advertiser/discover"
+                      className="inline-flex h-11 items-center justify-center gap-2 rounded-[12px] border border-neutral-200 bg-white px-4 text-[14px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
+                    >
+                      다른 인플루언서 보기
+                      <ArrowRight className="h-4 w-4" />
+                    </Link>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          <aside className="rounded-[12px] border border-neutral-200 bg-[#fbfaf7] p-4">
-            <p className="text-[12px] font-semibold text-neutral-500">컨택 기준</p>
-            <dl className="mt-3 grid gap-2">
-              <ProfileFact label="활동 지역" value={profile.location} />
-              <ProfileFact label="주요 타깃" value={profile.audience} />
-              <ProfileFact label="협업 단가" value={profile.startingPriceLabel} />
-              <ProfileFact
-                label="가능 형태"
-                value={formatProposalTypes(profile.collaborationTypes)}
-              />
-            </dl>
-          </aside>
-        </div>
-      </section>
-
-      <section className="mx-auto grid max-w-[1120px] gap-4 px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_300px] lg:px-8">
-        <section className="rounded-[12px] border border-neutral-200 bg-white p-5">
-          <h2 className="text-[16px] font-semibold text-neutral-950">핵심 정보</h2>
-          <div className="mt-4 grid gap-4 lg:grid-cols-2">
-            <div>
-              <p className="mb-2 text-[12px] font-semibold text-neutral-500">활동 채널</p>
-              <div className="grid gap-2">
-                {profile.platforms.map((platform) => (
-                  <a
-                    key={`${platform.platform}-${platform.handle}`}
-                    href={platform.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center justify-between gap-3 rounded-[10px] border border-neutral-200 bg-[#fbfaf7] px-3 py-3 transition hover:border-neutral-300"
-                  >
-                    <div className="min-w-0">
-                      <PlatformPill platform={platform.platform} label={platform.label} />
-                      <p className="mt-2 truncate text-[13px] font-semibold text-neutral-950">
-                        {platform.handle}
-                      </p>
-                    </div>
-                    <p className="shrink-0 text-right text-[12px] font-semibold leading-5 text-neutral-500">
-                      {platform.followersLabel}
-                      <br />
-                      {platform.performanceLabel}
-                    </p>
-                  </a>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <p className="mb-2 text-[12px] font-semibold text-neutral-500">최근 성과</p>
-              <div className="grid gap-2">
-                {profile.portfolio.slice(0, 3).map((item) => (
-                  <article
-                    key={`${item.brand}-${item.title}`}
-                    className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-[10px] border border-neutral-200 bg-[#fbfaf7] px-3 py-3"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-[13px] font-semibold text-neutral-950">
-                        {item.title}
-                      </p>
-                      <p className="mt-1 text-[12px] font-semibold text-neutral-500">
-                        {item.brand}
-                      </p>
-                    </div>
-                    <p className="shrink-0 text-right text-[12px] font-semibold text-neutral-700">
-                      {cleanMarketplaceCopy(item.result)}
-                    </p>
-                  </article>
-                ))}
-              </div>
-            </div>
+            <aside className="rounded-[12px] border border-neutral-200 bg-[#fbfaf7] p-4">
+              <p className="text-[12px] font-semibold text-neutral-500">컨택 기준</p>
+              <dl className="mt-3 grid gap-2">
+                <ProfileFact label="활동 지역" value={profile.location} />
+                <ProfileFact label="주요 타깃" value={profile.audience} />
+                <ProfileFact label="협업 단가" value={profile.startingPriceLabel} />
+                <ProfileFact
+                  label="가능 형태"
+                  value={formatProposalTypes(profile.collaborationTypes)}
+                />
+              </dl>
+            </aside>
           </div>
         </section>
 
-        <aside className="rounded-[12px] border border-neutral-200 bg-white p-5">
-          <h2 className="text-[16px] font-semibold text-neutral-950">제안 기준</h2>
-          <div className="mt-4">
-            <TagList items={profile.brandFit.map(cleanMarketplaceCopy)} />
-          </div>
-          <ul className="mt-4 grid gap-2 border-t border-neutral-100 pt-4">
-            {profile.proposalHints.slice(0, 3).map((hint) => (
-              <li
-                key={hint}
-                className="flex gap-2 text-[13px] font-medium leading-5 text-neutral-600"
-              >
-                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-neutral-700" />
-                <span>{cleanMarketplaceCopy(hint)}</span>
-              </li>
-            ))}
-          </ul>
-        </aside>
-      </section>
+        <section className="mx-auto grid max-w-[1120px] gap-4 px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_300px] lg:px-8">
+          <section className="rounded-[12px] border border-neutral-200 bg-white p-5">
+            <h2 className="text-[16px] font-semibold text-neutral-950">핵심 정보</h2>
+            <div className="mt-4 grid gap-4 lg:grid-cols-2">
+              <div>
+                <p className="mb-2 text-[12px] font-semibold text-neutral-500">활동 채널</p>
+                <div className="grid gap-2">
+                  {profile.platforms.map((platform) => (
+                    <a
+                      key={`${platform.platform}-${platform.handle}`}
+                      href={platform.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center justify-between gap-3 rounded-[10px] border border-neutral-200 bg-[#fbfaf7] px-3 py-3 transition hover:border-neutral-300"
+                    >
+                      <div className="min-w-0">
+                        <PlatformPill platform={platform.platform} label={platform.label} />
+                        <p className="mt-2 truncate text-[13px] font-semibold text-neutral-950">
+                          {platform.handle}
+                        </p>
+                      </div>
+                      <p className="shrink-0 text-right text-[12px] font-semibold leading-5 text-neutral-500">
+                        {platform.followersLabel}
+                        <br />
+                        {platform.performanceLabel}
+                      </p>
+                    </a>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="mb-2 text-[12px] font-semibold text-neutral-500">최근 성과</p>
+                <div className="grid gap-2">
+                  {profile.portfolio.slice(0, 3).map((item) => (
+                    <article
+                      key={`${item.brand}-${item.title}`}
+                      className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-[10px] border border-neutral-200 bg-[#fbfaf7] px-3 py-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-[13px] font-semibold text-neutral-950">
+                          {item.title}
+                        </p>
+                        <p className="mt-1 text-[12px] font-semibold text-neutral-500">
+                          {item.brand}
+                        </p>
+                      </div>
+                      <p className="shrink-0 text-right text-[12px] font-semibold text-neutral-700">
+                        {cleanMarketplaceCopy(item.result)}
+                      </p>
+                    </article>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <aside className="rounded-[12px] border border-neutral-200 bg-white p-5">
+            <h2 className="text-[16px] font-semibold text-neutral-950">제안 기준</h2>
+            <div className="mt-4">
+              <TagList items={profile.brandFit.map(cleanMarketplaceCopy)} />
+            </div>
+            <ul className="mt-4 grid gap-2 border-t border-neutral-100 pt-4">
+              {profile.proposalHints.slice(0, 3).map((hint) => (
+                <li
+                  key={hint}
+                  className="flex gap-2 text-[13px] font-medium leading-5 text-neutral-600"
+                >
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-neutral-700" />
+                  <span>{cleanMarketplaceCopy(hint)}</span>
+                </li>
+              ))}
+            </ul>
+          </aside>
+        </section>
+      </div>
 
       {showContact ? (
         <InfluencerContactDialog
@@ -779,8 +803,8 @@ export function PublicBrandProfilePage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950">
-      <header className="border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
+    <main className="flex h-svh flex-col overflow-hidden bg-[#f7f6f3] font-sans text-neutral-950">
+      <header className="shrink-0 border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-[1180px] items-center justify-between px-4 sm:px-6 lg:px-8">
           <Link to="/" className="flex items-center gap-3">
             <span className="flex h-9 w-9 items-center justify-center rounded-[12px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
@@ -797,8 +821,9 @@ export function PublicBrandProfilePage() {
         </div>
       </header>
 
-      <section className="border-b border-neutral-200/80 bg-white">
-        <div className="mx-auto grid max-w-[1180px] gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:px-8">
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <section className="border-b border-neutral-200/80 bg-white">
+          <div className="mx-auto grid max-w-[1180px] gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:px-8">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <StatusPill icon={<Store className="h-3.5 w-3.5" />} label={brand.statusLabel} />
@@ -854,10 +879,10 @@ export function PublicBrandProfilePage() {
               />
             </dl>
           </aside>
-        </div>
-      </section>
+          </div>
+        </section>
 
-      <section className="mx-auto grid max-w-[1180px] gap-4 px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:px-8">
+        <section className="mx-auto grid max-w-[1180px] gap-4 px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:px-8">
         <div className="grid gap-4">
           <ProfileSection title="진행 중인 캠페인">
             <div className="grid gap-3 md:grid-cols-2">
@@ -901,7 +926,8 @@ export function PublicBrandProfilePage() {
             <TagList items={brand.audienceTargets.map(cleanMarketplaceCopy)} />
           </ProfileSection>
         </aside>
-      </section>
+        </section>
+      </div>
 
       {showContact ? (
         <BrandContactDialog
@@ -938,8 +964,8 @@ function MarketplaceShell({
   children: ReactNode;
 }) {
   return (
-    <main className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950">
-      <header className="sticky top-0 z-30 border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
+    <main className="flex h-svh flex-col overflow-hidden bg-[#f7f6f3] font-sans text-neutral-950">
+      <header className="z-30 shrink-0 border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
         <div className="mx-auto flex h-[68px] max-w-[1320px] items-center justify-between px-4 sm:px-6 lg:px-8">
           <Link to="/" className="flex shrink-0 items-center gap-3">
             <span className="flex h-10 w-10 items-center justify-center rounded-[13px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
@@ -960,20 +986,20 @@ function MarketplaceShell({
         </div>
       </header>
 
-      <section className="border-b border-neutral-200/80 bg-[#f7f6f3]">
-        <div className="mx-auto max-w-[1320px] px-4 py-6 sm:px-6 lg:px-8">
+      <section className="shrink-0 border-b border-neutral-200/80 bg-[#f7f6f3]">
+        <div className="mx-auto max-w-[1320px] px-4 py-3 sm:px-6 sm:py-4 lg:px-8">
           <p className="text-[13px] font-extrabold text-neutral-500">{eyebrow}</p>
-          <div className="mt-2 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div className="mt-1.5 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div className="min-w-0">
-              <h1 className="font-neo-heavy text-[34px] leading-[1.05] text-neutral-950 sm:text-[48px] sm:leading-none">
+              <h1 className="font-neo-heavy text-[28px] leading-[1.05] text-neutral-950 sm:text-[36px] sm:leading-none">
                 {title}
               </h1>
-              <p className="mt-4 max-w-3xl break-keep text-[14px] font-bold leading-6 text-neutral-600">
+              <p className="mt-2 line-clamp-1 max-w-3xl break-keep text-[13px] font-bold leading-5 text-neutral-600">
                 {description}
               </p>
             </div>
             {showMetrics ? (
-              <div className="grid grid-cols-3 gap-2 rounded-[18px] border border-neutral-200 bg-white p-2 shadow-[0_12px_34px_rgba(15,23,42,0.04)] sm:w-[420px]">
+              <div className="grid grid-cols-3 gap-1.5 rounded-[14px] border border-neutral-200 bg-white p-1.5 shadow-[0_10px_26px_rgba(15,23,42,0.035)] sm:w-[360px]">
                 <MiniMetric label="공개 프로필" value={(profileCount ?? marketplaceInfluencers.length).toString()} />
                 <MiniMetric label="입점 브랜드" value={(brandCount ?? marketplaceBrands.length).toString()} />
                 <MiniMetric label="계약 연결" value="검토 뒤" />
@@ -983,7 +1009,7 @@ function MarketplaceShell({
         </div>
       </section>
 
-      <div className="mx-4 my-5 max-w-[1320px] overflow-hidden rounded-[18px] border border-neutral-200 bg-[#fdfdfb] shadow-[0_22px_60px_rgba(23,26,23,0.06)] sm:mx-6 lg:mx-auto">
+      <div className="mx-4 my-3 flex min-h-0 max-w-[1320px] flex-1 flex-col overflow-hidden rounded-[14px] border border-neutral-200 bg-[#fdfdfb] shadow-[0_18px_44px_rgba(23,26,23,0.055)] sm:mx-6 lg:mx-auto lg:w-full">
         {children}
       </div>
     </main>
@@ -1607,9 +1633,73 @@ function SearchBox({
         onChange={(event) => onChange(event.target.value)}
         aria-label={label}
         placeholder={placeholder}
-        className="h-11 w-full rounded-md border border-neutral-200 bg-[#f8faf7] pl-9 pr-3 text-[13px] font-semibold text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950 focus:bg-white"
+        className="h-9 w-full rounded-md border border-neutral-200 bg-white pl-9 pr-3 text-[12px] font-semibold text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950"
       />
     </div>
+  );
+}
+
+function DiscoveryControls({
+  title,
+  count,
+  summary,
+  open,
+  activeCount,
+  controlsId,
+  onToggle,
+  children,
+}: {
+  title: string;
+  count: number;
+  summary: string;
+  open: boolean;
+  activeCount: number;
+  controlsId: string;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <section className="border-b border-[#d9e0d9] bg-white">
+      <div className="flex min-h-12 items-center justify-between gap-3 px-4 py-2">
+        <div className="min-w-0">
+          <p className="truncate text-[13px] font-extrabold text-neutral-950">
+            {title}
+          </p>
+          <p className="mt-0.5 truncate text-[11px] font-bold text-neutral-500">
+            {count.toLocaleString()}건 표시 · {summary}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={open}
+          aria-controls={controlsId}
+          className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[8px] border border-neutral-200 bg-white px-2.5 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:text-neutral-950"
+        >
+          <SlidersHorizontal className="h-3.5 w-3.5 text-neutral-500" strokeWidth={2} />
+          <span>필터</span>
+          {activeCount > 0 ? (
+            <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-neutral-950 px-1 text-[11px] font-extrabold text-white">
+              {activeCount}
+            </span>
+          ) : null}
+          <ChevronDown
+            className={`h-3.5 w-3.5 text-neutral-500 transition-transform ${
+              open ? "rotate-180" : ""
+            }`}
+            strokeWidth={2}
+          />
+        </button>
+      </div>
+      {open ? (
+        <div
+          id={controlsId}
+          className="grid gap-3 border-t border-[#edf1ed] bg-[#fbfaf7] px-4 py-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start"
+        >
+          {children}
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -1621,7 +1711,7 @@ function PlatformFilterBar({
   onChange: (value: PlatformFilter) => void;
 }) {
   return (
-    <div className="flex flex-wrap gap-1.5 lg:no-scrollbar lg:max-w-[560px] lg:flex-nowrap lg:overflow-x-auto lg:pb-1">
+    <div className="flex flex-wrap gap-1.5 lg:no-scrollbar lg:max-w-[560px] lg:flex-nowrap lg:overflow-x-auto">
       {platformFilterOptions.map((platform) => {
         const active = value === platform;
         const label = platform === "all" ? "전체" : platformLabels[platform];
@@ -1631,7 +1721,7 @@ function PlatformFilterBar({
             key={platform}
             type="button"
             onClick={() => onChange(platform)}
-            className={`inline-flex h-10 shrink-0 items-center rounded-md border px-3 text-[12px] font-semibold transition ${
+            className={`inline-flex h-8 shrink-0 items-center rounded-md border px-2.5 text-[12px] font-semibold transition ${
               active
                 ? "border-neutral-950 bg-neutral-950 text-white"
                 : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300 hover:text-neutral-950"
@@ -1824,7 +1914,7 @@ function EmptyMarketplaceState({
   secondaryLabel?: string;
 }) {
   return (
-    <section className="flex min-h-[240px] flex-col items-center justify-center px-6 py-10 text-center">
+    <section className="flex min-h-[240px] flex-1 flex-col items-center justify-center px-6 py-10 text-center">
       <div className="flex h-11 w-11 items-center justify-center rounded-[8px] bg-neutral-100 text-neutral-500">
         <MessageSquareText className="h-5 w-5" />
       </div>
@@ -1858,7 +1948,7 @@ function EmptyMarketplaceState({
 
 function MarketplaceLoadingState({ label }: { label: string }) {
   return (
-    <section className="flex min-h-[160px] items-center justify-center border-t border-neutral-200 bg-white px-6 py-8 text-center">
+    <section className="flex min-h-[160px] flex-1 items-center justify-center border-t border-neutral-200 bg-white px-6 py-8 text-center">
       <div>
         <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-[8px] bg-neutral-100 text-neutral-500">
           <Search className="h-4 w-4 animate-pulse" />

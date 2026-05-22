@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { ArrowRight, Check, Info, MailCheck } from "lucide-react";
+import { ArrowRight, MailCheck, X } from "lucide-react";
 import { AuthLoginScreen } from "../../components/AuthLoginScreen";
 import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
@@ -9,8 +9,6 @@ import { translateApiErrorMessage } from "../../domain/userMessages";
 
 const TERMS_DOCUMENT_VERSION = "2026-05-19";
 const PRIVACY_POLICY_DOCUMENT_VERSION = "2026-05-06";
-const ADVERTISER_TEAM_EMAIL_NOTICE =
-  "팀원들과 함께 계약서를 관리하시려면 부서 공용 이메일(예: marketing@brand.com)로 가입하는 것을 강력히 권장합니다. 담당자 변경이나 퇴사 시 계정 인수인계 및 관리가 훨씬 안전하고 용이합니다.";
 
 type SignupRole = "advertiser" | "influencer";
 
@@ -55,14 +53,12 @@ type SignupConsents = {
 const roleConfig = {
   advertiser: {
     title: "광고주 가입",
-    description: "광고 계약 작성과 서명 증빙을 한 흐름으로 시작합니다.",
     endpoint: "/api/advertiser/signup",
     nextPath: "/advertiser/verification",
     loginPath: "/login/advertiser",
   },
   influencer: {
     title: "인플루언서 가입",
-    description: "받은 계약을 검토하고 안전하게 서명합니다.",
     endpoint: "/api/influencer/signup",
     nextPath: "/influencer/dashboard",
     loginPath: "/login/influencer",
@@ -71,57 +67,9 @@ const roleConfig = {
   SignupRole,
   {
     title: string;
-    description: string;
     endpoint: string;
     nextPath: string;
     loginPath: string;
-  }
->;
-
-const signupTrustContent = {
-  advertiser: {
-    trustBadges: [
-      "사업자 인증 후 공유",
-      "검토 링크 상태 기록",
-      "서명 PDF·감사 이력",
-    ],
-    processSummary: [
-      {
-        title: "사업자 인증",
-        description: "승인 후 계약 공유 링크를 열 수 있습니다.",
-      },
-      {
-        title: "계약 작성",
-        description: "조건 입력 후 초안과 검토 링크를 준비합니다.",
-      },
-      {
-        title: "서명 증빙",
-        description: "승인, 서명, PDF 이력을 계약에 남깁니다.",
-      },
-    ],
-  },
-  influencer: {
-    trustBadges: ["계약 조건 확인", "수정 요청 기록", "서명 PDF 확인"],
-    processSummary: [
-      {
-        title: "계약 확인",
-        description: "받은 링크의 조건과 요청 사항을 먼저 확인합니다.",
-      },
-      {
-        title: "수정 요청",
-        description: "필요한 변경은 계약 흐름 안에 기록합니다.",
-      },
-      {
-        title: "전자서명",
-        description: "서명 완료 후 PDF와 감사 이력을 확인합니다.",
-      },
-    ],
-  },
-} satisfies Record<
-  SignupRole,
-  {
-    trustBadges: string[];
-    processSummary: Array<{ title: string; description: string }>;
   }
 >;
 
@@ -139,30 +87,9 @@ export function SignupPage({ role }: { role: SignupRole }) {
   const loginRedirectPath = `${config.loginPath}?next=${encodeURIComponent(nextPath)}`;
   const isContractContinuationSignup =
     role === "influencer" && nextPath.startsWith("/contract/");
-  const signupDescription = isContractContinuationSignup
-    ? "받은 계약을 이어서 진행하려면 인플루언서 계정을 만든 뒤 같은 계약으로 돌아옵니다."
-    : config.description;
-  const signupProcessSummary = isContractContinuationSignup
-    ? [
-        {
-          title: "계약 링크 유지",
-          description:
-            "가입 또는 로그인 후 방금 받은 계약 화면으로 다시 이동합니다.",
-        },
-        {
-          title: "플랫폼 인증",
-          description: "서명 전에 필요한 인플루언서 계정 인증을 제출합니다.",
-        },
-        {
-          title: "조항 승인과 서명",
-          description:
-            "수정 요청, 조항 승인, 전자서명을 계약 화면에서 이어갑니다.",
-        },
-      ]
-    : signupTrustContent[role].processSummary;
   const signupSubmitLabel = isContractContinuationSignup
     ? "가입하고 계약으로 돌아가기"
-    : "시작하기";
+    : "가입하기";
   const [name, setName] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [email, setEmail] = useState("");
@@ -181,6 +108,9 @@ export function SignupPage({ role }: { role: SignupRole }) {
   const [confirmationEmail, setConfirmationEmail] = useState("");
   const [confirmationMessage, setConfirmationMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [openLegalDocument, setOpenLegalDocument] = useState<
+    "terms" | "privacy" | null
+  >(null);
   const requiredConsentsAccepted = consents.terms && consents.privacy;
   const influencerCategorySelected = activityCategories.length > 0;
   const influencerPlatformSelected = activityPlatforms.length > 0;
@@ -344,309 +274,180 @@ export function SignupPage({ role }: { role: SignupRole }) {
   }
 
   return (
-    <AuthLoginScreen
-      title={config.title}
-      description={signupDescription}
-      trustBadges={signupTrustContent[role].trustBadges}
-      processSummary={signupProcessSummary}
-      fields={[
-        ...(role === "advertiser"
-          ? [
-              {
-                id: "companyName",
-                label: "회사명 또는 브랜드명",
-                value: companyName,
-                type: "text" as const,
-                autoComplete: "organization",
-                required: true,
-                onChange: setCompanyName,
-              },
-            ]
-          : []),
-        {
-          id: "name",
-          label: role === "advertiser" ? "담당자명" : "이름 또는 활동명",
-          value: name,
-          type: "text",
-          autoComplete: "name",
-          required: true,
-          onChange: setName,
-        },
-        {
-          id: "email",
-          label: "이메일",
-          value: email,
-          type: "email",
-          autoComplete: "email",
-          helper: role === "advertiser" ? <AdvertiserTeamEmailNotice /> : undefined,
-          required: true,
-          onChange: setEmail,
-        },
-        {
-          id: "password",
-          label: "비밀번호",
-          value: password,
-          type: "password",
-          autoComplete: "new-password",
-          placeholder: "영문과 숫자를 포함해 8자 이상",
-          required: true,
-          onChange: setPassword,
-        },
-      ]}
-      submitLabel={signupSubmitLabel}
-      submittingLabel="생성 중"
-      submitDisabled={!canSubmitSignup}
-      isSubmitting={isSubmitting}
-      error={error}
-      footer={
-        <Link
-          to={loginRedirectPath}
-          className="inline-flex min-h-8 items-center text-[13px] font-semibold text-[#59605b] transition hover:text-neutral-950 sm:min-h-10"
-        >
-          이미 계정이 있으면 로그인하기
-        </Link>
-      }
-      onSubmit={handleSubmit}
-    >
-      {role === "influencer" ? (
-        <>
-          <MultiSelectGroup
-            label="활동 분야"
-            options={INFLUENCER_CATEGORY_OPTIONS}
-            selectedValues={activityCategories}
-            disabled={isSubmitting}
-            onToggle={(value) =>
-              setActivityCategories((current) => toggleValue(current, value))
-            }
-          />
-          <MultiSelectGroup
-            label="활동 플랫폼"
-            options={INFLUENCER_PLATFORM_OPTIONS}
-            selectedValues={activityPlatforms}
-            disabled={isSubmitting}
-            onToggle={(value) =>
-              setActivityPlatforms((current) => toggleValue(current, value))
-            }
-          />
-          <InfluencerSignupReadiness
-            categorySelected={influencerCategorySelected}
-            platformSelected={influencerPlatformSelected}
-          />
-        </>
-      ) : null}
-
-      <SignupFlowNotice
-        role={role}
-        isContractContinuation={isContractContinuationSignup}
-      />
-
-      <SignupConsentPanel
-        consents={consents}
-        disabled={isSubmitting}
-        onToggle={(key) =>
-          setConsents((current) => ({ ...current, [key]: !current[key] }))
-        }
-      />
-    </AuthLoginScreen>
-  );
-}
-
-function AdvertiserTeamEmailNotice() {
-  return (
-    <span className="flex gap-2 rounded-[12px] border border-blue-200 bg-blue-50 px-3 py-2.5 text-left text-[12px] font-semibold leading-5 text-blue-900 sm:px-3.5 sm:py-3">
-      <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
-      <span className="line-clamp-2 sm:line-clamp-none">{ADVERTISER_TEAM_EMAIL_NOTICE}</span>
-    </span>
-  );
-}
-
-function InfluencerSignupReadiness({
-  categorySelected,
-  platformSelected,
-}: {
-  categorySelected: boolean;
-  platformSelected: boolean;
-}) {
-  const items = [
-    { label: "활동 분야 1개 이상", complete: categorySelected },
-    { label: "활동 플랫폼 1개 이상", complete: platformSelected },
-  ];
-  const complete = items.every((item) => item.complete);
-
-  return (
-    <section
-      aria-live="polite"
-      className={`rounded-[12px] border px-3 py-2.5 sm:px-4 sm:py-3 ${
-        complete
-          ? "border-emerald-200 bg-emerald-50/75"
-          : "border-amber-200 bg-amber-50/80"
-      }`}
-    >
-      <p
-        className={`text-[13px] font-semibold ${
-          complete ? "text-emerald-950" : "text-amber-950"
-        }`}
-      >
-        {complete
-          ? "가입 필수 선택이 완료되었습니다"
-          : "가입하려면 아래 필수 선택을 먼저 완료해 주세요"}
-      </p>
-      <div className="mt-2 flex flex-wrap gap-1.5 sm:gap-2">
-        {items.map((item) => (
-          <span
-            key={item.label}
-            className={`inline-flex min-h-7 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-bold ${
-              item.complete
-                ? "border-emerald-200 bg-white text-emerald-800"
-                : "border-amber-200 bg-white text-amber-800"
-            }`}
+    <>
+      <AuthLoginScreen
+        title={config.title}
+        fields={[
+          ...(role === "advertiser"
+            ? [
+                {
+                  id: "companyName",
+                  label: "회사명 또는 브랜드명",
+                  value: companyName,
+                  type: "text" as const,
+                  autoComplete: "organization",
+                  required: true,
+                  onChange: setCompanyName,
+                },
+              ]
+            : []),
+          {
+            id: "name",
+            label: role === "advertiser" ? "담당자명" : "이름 또는 활동명",
+            value: name,
+            type: "text",
+            autoComplete: "name",
+            required: true,
+            onChange: setName,
+          },
+          {
+            id: "email",
+            label: "이메일",
+            value: email,
+            type: "email",
+            autoComplete: "email",
+            required: true,
+            onChange: setEmail,
+          },
+          {
+            id: "password",
+            label: "비밀번호",
+            value: password,
+            type: "password",
+            autoComplete: "new-password",
+            placeholder: "영문과 숫자를 포함해 8자 이상",
+            required: true,
+            onChange: setPassword,
+          },
+        ]}
+        submitLabel={signupSubmitLabel}
+        submittingLabel="생성 중"
+        submitDisabled={!canSubmitSignup}
+        isSubmitting={isSubmitting}
+        error={error}
+        showLegalFooter={false}
+        showOtherLoginLink={false}
+        footer={
+          <Link
+            to={loginRedirectPath}
+            className="inline-flex min-h-8 items-center text-[13px] font-semibold text-[#59605b] transition hover:text-neutral-950 sm:min-h-10"
           >
-            {item.complete ? (
-              <Check className="h-3.5 w-3.5" />
-            ) : (
-              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-            )}
-            {item.label}
-          </span>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function SignupFlowNotice({
-  role,
-  isContractContinuation,
-}: {
-  role: SignupRole;
-  isContractContinuation: boolean;
-}) {
-  const content = isContractContinuation
-    ? {
-        title: "계약 링크를 계속 이어갑니다",
-        body: "가입이나 이메일 인증 후 로그인하면 받은 계약으로 돌아가 조항 승인과 서명을 진행합니다.",
-      }
-    : role === "advertiser"
-      ? {
-          title: "가입 후 진행 순서",
-          body: "이메일 인증 후 사업자 인증을 제출합니다. 승인 전에는 계약 공유 링크 발송이 제한됩니다.",
+            이미 계정이 있으면 로그인하기
+          </Link>
         }
-      : {
-          title: "공개 프로필 노출 범위",
-          body: "활동 분야와 플랫폼은 기본 정보로 저장됩니다. 공개 노출 항목은 대시보드에서 관리합니다.",
-        };
+        onSubmit={handleSubmit}
+      >
+        {role === "influencer" ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <SignupSelectField
+              label="활동 분야"
+              value={activityCategories[0] ?? ""}
+              options={INFLUENCER_CATEGORY_OPTIONS}
+              disabled={isSubmitting}
+              onChange={(value) =>
+                setActivityCategories(
+                  value ? [value as InfluencerActivityCategory] : [],
+                )
+              }
+            />
+            <SignupSelectField
+              label="대표 플랫폼"
+              value={activityPlatforms[0] ?? ""}
+              options={INFLUENCER_PLATFORM_OPTIONS}
+              disabled={isSubmitting}
+              onChange={(value) =>
+                setActivityPlatforms(
+                  value ? [value as InfluencerSignupPlatform] : [],
+                )
+              }
+            />
+          </div>
+        ) : null}
 
-  return (
-    <section className="rounded-[12px] border border-blue-100 bg-blue-50/70 px-3 py-2.5 sm:px-4 sm:py-3">
-      <p className="text-[13px] font-semibold text-blue-950">{content.title}</p>
-      <p className="mt-1 line-clamp-2 text-[12px] font-semibold leading-5 text-blue-800/80 sm:line-clamp-none">
-        {content.body}
-      </p>
-    </section>
+        <SignupConsentPanel
+          consents={consents}
+          disabled={isSubmitting}
+          onOpenDocument={setOpenLegalDocument}
+          onToggle={(key) =>
+            setConsents((current) => ({ ...current, [key]: !current[key] }))
+          }
+        />
+      </AuthLoginScreen>
+      <LegalConsentModal
+        document={openLegalDocument}
+        onClose={() => setOpenLegalDocument(null)}
+      />
+    </>
   );
 }
 
-function toggleValue<T extends string>(values: T[], value: T) {
-  return values.includes(value)
-    ? values.filter((current) => current !== value)
-    : [...values, value];
-}
-
-function MultiSelectGroup<T extends string>({
+function SignupSelectField<T extends string>({
   label,
+  value,
   options,
-  selectedValues,
   disabled,
-  onToggle,
+  onChange,
 }: {
   label: string;
+  value: T | "";
   options: readonly { value: T; label: string }[];
-  selectedValues: T[];
   disabled: boolean;
-  onToggle: (value: T) => void;
+  onChange: (value: T | "") => void;
 }) {
   return (
-    <fieldset className="space-y-1.5 sm:space-y-2">
-      <legend className="text-[13px] font-semibold text-[#303630]">
+    <label className="block">
+      <span className="text-[13px] font-bold text-neutral-700">
         {label}
-      </legend>
-      <div className="flex flex-wrap gap-1.5 sm:gap-2">
-        {options.map((option) => {
-          const selected = selectedValues.includes(option.value);
-
-          return (
-            <button
-              key={option.value}
-              type="button"
-              aria-pressed={selected}
-              disabled={disabled}
-              onClick={() => onToggle(option.value)}
-              className={`inline-flex h-9 items-center gap-1.5 rounded-[10px] border px-2.5 text-[12px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 sm:h-10 sm:px-3 sm:text-[13px] ${
-                selected
-                  ? "border-[#2563eb] bg-[#2563eb] text-white"
-                  : "border-[#d8ded4] bg-[#fbfcfa] text-[#59605b] hover:border-neutral-400 hover:bg-white hover:text-neutral-950"
-              }`}
-            >
-              {selected ? <Check className="h-3.5 w-3.5" /> : null}
-              {option.label}
-            </button>
-          );
-        })}
-      </div>
-    </fieldset>
+      </span>
+      <select
+        value={value}
+        required
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value as T | "")}
+        className="mt-1.5 h-10 w-full rounded-[12px] border border-neutral-200 bg-[#fbfaf7] px-3 text-[14px] font-semibold text-neutral-950 outline-none transition hover:border-neutral-300 focus:border-blue-600 focus:bg-white focus:shadow-[0_0_0_3px_rgba(37,99,235,0.10)] disabled:bg-neutral-100 disabled:text-neutral-400 sm:mt-2 sm:h-11"
+      >
+        <option value="">선택</option>
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
 function SignupConsentPanel({
   consents,
   disabled,
+  onOpenDocument,
   onToggle,
 }: {
   consents: SignupConsents;
   disabled: boolean;
+  onOpenDocument: (document: keyof SignupConsents) => void;
   onToggle: (key: keyof SignupConsents) => void;
 }) {
   return (
-    <section className="rounded-[12px] border border-[#d8ded4] bg-[#fbfcfa] p-3 sm:p-4">
-      <div className="flex flex-col items-start gap-2 sm:flex-row sm:justify-between sm:gap-3">
-        <div>
-          <p className="text-[13px] font-semibold text-[#141714]">
-            필수 약관 및 개인정보 동의
-          </p>
-          <p className="mt-1 text-[12px] font-medium leading-5 text-[#7d887f]">
-            가입과 계약 진행에 필요한 필수 항목입니다.
-          </p>
-        </div>
-        <span className="w-fit max-w-full rounded-full border border-[#d8ded4] bg-white px-2 py-0.5 text-[11px] font-semibold leading-5 text-[#7d887f]">
-          약관 v{TERMS_DOCUMENT_VERSION} / 개인정보 v{PRIVACY_POLICY_DOCUMENT_VERSION}
-        </span>
-      </div>
-
-      <p className="mt-2 line-clamp-2 rounded-[10px] border border-[#d8ded4] bg-white px-3 py-2 text-[12px] font-semibold leading-5 text-[#59605b] sm:mt-3 sm:line-clamp-none">
-        현재 가입과 기본 서비스 이용은 무료입니다. 다만 향후 일부 또는 전체
-        기능이 유료로 전환될 수 있으며, 전환 전 대상·요금·시행일을 고지합니다.
-      </p>
-
-      <div className="mt-3 space-y-2 sm:mt-4 sm:space-y-3">
-        <ConsentCheckbox
-          checked={consents.terms}
-          disabled={disabled}
-          title="이용약관 필수 동의"
-          description="무료 제공 단계와 향후 유료 전환 가능성, 서비스 범위, 계약 책임, 정산 비취급, 전자서명 증빙 기준을 확인했습니다."
-          linkTo="/terms"
-          linkLabel="약관 보기"
-          onToggle={() => onToggle("terms")}
-        />
-        <ConsentCheckbox
-          checked={consents.privacy}
-          disabled={disabled}
-          title="개인정보 처리방침 필수 동의"
-          description="수집 항목, 이용 목적, 보유 기간, 계약 당사자 제공 기준을 확인했습니다."
-          linkTo="/privacy"
-          linkLabel="개인정보 보기"
-          onToggle={() => onToggle("privacy")}
-        />
-      </div>
+    <section className="space-y-2 rounded-[12px] border border-neutral-200 bg-[#fbfaf7] p-2.5">
+      <ConsentCheckbox
+        checked={consents.terms}
+        disabled={disabled}
+        document="terms"
+        title="이용약관 동의"
+        version={TERMS_DOCUMENT_VERSION}
+        onOpenDocument={onOpenDocument}
+        onToggle={() => onToggle("terms")}
+      />
+      <ConsentCheckbox
+        checked={consents.privacy}
+        disabled={disabled}
+        document="privacy"
+        title="개인정보 처리방침 동의"
+        version={PRIVACY_POLICY_DOCUMENT_VERSION}
+        onOpenDocument={onOpenDocument}
+        onToggle={() => onToggle("privacy")}
+      />
     </section>
   );
 }
@@ -654,51 +455,146 @@ function SignupConsentPanel({
 function ConsentCheckbox({
   checked,
   disabled,
+  document,
   title,
-  description,
-  linkTo,
-  linkLabel,
+  version,
+  onOpenDocument,
   onToggle,
 }: {
   checked: boolean;
   disabled: boolean;
+  document: keyof SignupConsents;
   title: string;
-  description: string;
-  linkTo: string;
-  linkLabel: string;
+  version: string;
+  onOpenDocument: (document: keyof SignupConsents) => void;
   onToggle: () => void;
 }) {
-  const checkboxId = `signup-consent-${linkTo.replace(/[^a-z0-9]/gi, "-")}`;
+  const checkboxId = `signup-consent-${document}`;
 
   return (
-    <div className="flex items-start gap-2.5 rounded-[10px] border border-[#d8ded4] bg-white p-2.5 transition hover:border-neutral-400 sm:gap-3 sm:p-3">
+    <div className="flex min-h-12 items-center gap-2.5 rounded-[10px] border border-neutral-200 bg-white px-3 py-2 transition hover:border-neutral-300">
       <input
         id={checkboxId}
         type="checkbox"
-        className="mt-0.5 h-5 w-5 shrink-0 accent-[#2563eb] sm:h-10 sm:w-10"
+        className="h-[18px] w-[18px] shrink-0 accent-[#2563eb]"
         checked={checked}
         disabled={disabled}
         required
         onChange={onToggle}
       />
-      <span className="min-w-0">
+      <span className="min-w-0 flex-1">
         <label
           htmlFor={checkboxId}
-          className="block cursor-pointer text-[13px] font-semibold text-[#141714]"
+          className="block cursor-pointer truncate text-[13px] font-bold text-neutral-900"
         >
           {title}
         </label>
-        <span className="mt-1 block line-clamp-2 text-[12px] font-medium leading-5 text-[#7d887f] sm:line-clamp-none">
-          {description}
+        <span className="mt-0.5 block text-[11px] font-semibold text-neutral-400">
+          v{version}
         </span>
-        <Link
-          to={linkTo}
-          target="_blank"
-          className="mt-1 inline-flex min-h-7 items-center text-[12px] font-semibold text-[#2563eb] underline underline-offset-4 sm:mt-2 sm:min-h-10"
-        >
-          {linkLabel}
-        </Link>
       </span>
+      <button
+        type="button"
+        onClick={() => onOpenDocument(document)}
+        className="inline-flex h-8 shrink-0 items-center rounded-[9px] border border-neutral-200 bg-[#fbfaf7] px-3 text-[12px] font-bold text-neutral-600 transition hover:border-neutral-300 hover:bg-white hover:text-neutral-950"
+      >
+        보기
+      </button>
+    </div>
+  );
+}
+
+function LegalConsentModal({
+  document,
+  onClose,
+}: {
+  document: keyof SignupConsents | null;
+  onClose: () => void;
+}) {
+  if (!document) {
+    return null;
+  }
+
+  const content =
+    document === "terms"
+      ? {
+          title: "이용약관",
+          version: TERMS_DOCUMENT_VERSION,
+          href: "/terms",
+          items: [
+            "연락미 계정 생성과 서비스 이용 조건을 확인합니다.",
+            "계약 작성, 검토 링크, 전자서명 증빙의 기본 책임 범위를 확인합니다.",
+            "현재 가입과 기본 서비스 이용은 무료입니다. 향후 일부 또는 전체 기능이 유료로 전환될 수 있으며, 전환 전 안내합니다.",
+          ],
+        }
+      : {
+          title: "개인정보 처리방침",
+          version: PRIVACY_POLICY_DOCUMENT_VERSION,
+          href: "/privacy",
+          items: [
+            "계정 생성과 계약 진행에 필요한 정보만 수집합니다.",
+            "계약 당사자 확인, 서명 증빙, 알림 제공 목적으로 사용합니다.",
+            "보관 기간과 제공 기준은 처리방침 문서에서 확인할 수 있습니다.",
+          ],
+        };
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-neutral-950/35 px-4 py-6 backdrop-blur-[2px]">
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="legal-consent-modal-title"
+        className="w-full max-w-[520px] overflow-hidden rounded-[18px] border border-neutral-200 bg-white shadow-[0_28px_90px_rgba(15,23,42,0.22)]"
+      >
+        <header className="flex items-start justify-between gap-4 border-b border-neutral-100 px-5 py-4">
+          <div>
+            <h2
+              id="legal-consent-modal-title"
+              className="font-neo-heavy text-[22px] leading-tight tracking-normal text-neutral-950"
+            >
+              {content.title}
+            </h2>
+            <p className="mt-1 text-[12px] font-bold text-neutral-400">
+              v{content.version}
+            </p>
+          </div>
+          <button
+            type="button"
+            aria-label="닫기"
+            onClick={onClose}
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] border border-neutral-200 bg-[#fbfaf7] text-neutral-500 transition hover:bg-white hover:text-neutral-950"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </header>
+
+        <div className="px-5 py-5">
+          <ul className="space-y-2.5 text-[14px] font-semibold leading-6 text-neutral-700">
+            {content.items.map((item) => (
+              <li key={item} className="flex gap-2.5">
+                <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-neutral-950" />
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Link
+              to={content.href}
+              target="_blank"
+              className="inline-flex h-10 items-center justify-center rounded-[10px] border border-neutral-200 bg-white px-4 text-[13px] font-bold text-neutral-600 transition hover:border-neutral-300 hover:text-neutral-950"
+            >
+              전체 문서 열기
+            </Link>
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex h-10 items-center justify-center rounded-[10px] bg-neutral-950 px-5 text-[13px] font-bold text-white transition hover:bg-neutral-800"
+            >
+              확인
+            </button>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

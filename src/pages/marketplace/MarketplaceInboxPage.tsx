@@ -1,12 +1,14 @@
 import {
   ArrowLeft,
   ArrowRight,
+  ChevronDown,
   FileSignature,
   MessageSquareText,
   RefreshCw,
   Search,
   Send,
   ShieldCheck,
+  SlidersHorizontal,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -185,6 +187,7 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
     useState<ProposalTypeFilter>("all");
   const [statusFilter, setStatusFilter] = useState<ProposalStatusFilter>("all");
   const [query, setQuery] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const loadMessages = useCallback(async () => {
     setState((current) =>
@@ -338,6 +341,16 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
       ? `진행 중 ${sentOpenCount.toLocaleString()}건`
       : `확인 필요 ${data.summary.unreadCount.toLocaleString()}건`;
   const contractHomeIsPrimary = copy.primaryHref === copy.backHref;
+  const activeFilterLabels = [
+    query.trim() ? `검색 ${query.trim()}` : null,
+    platformFilter !== "all" ? platformLabels[platformFilter] : null,
+    proposalTypeFilter !== "all"
+      ? proposalTypeLabels[proposalTypeFilter]
+      : null,
+    statusFilter !== "all" ? proposalStatusLabels[statusFilter] : null,
+  ].filter((label): label is string => Boolean(label));
+  const filterSummary =
+    activeFilterLabels.length > 0 ? activeFilterLabels.join(" · ") : "전체 조건";
   const resetScopedFilters = () => {
     setPlatformFilter("all");
     setProposalTypeFilter("all");
@@ -345,8 +358,8 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
   };
 
   return (
-    <div className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950">
-      <header className="sticky top-0 z-30 border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
+    <div className="flex h-svh flex-col overflow-hidden bg-[#f7f6f3] font-sans text-neutral-950">
+      <header className="z-30 shrink-0 border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
         <div className="mx-auto flex h-[68px] max-w-[1320px] items-center justify-between px-4 sm:px-6 lg:px-8">
           <Link to="/" className="flex shrink-0 items-center gap-3">
             <span className="flex h-10 w-10 items-center justify-center rounded-[13px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
@@ -393,9 +406,9 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
         </div>
       </header>
 
-      <main className="mx-auto w-full min-w-0 max-w-[1320px] px-4 py-4 sm:px-6 lg:px-8">
-        <section className="min-w-0 overflow-hidden rounded-[18px] border border-neutral-200 bg-[#fdfdfb] shadow-[0_22px_60px_rgba(23,26,23,0.08)]">
-          <div className="border-b border-[#d9e0d9] bg-white px-4 py-4">
+      <main className="mx-auto flex min-h-0 w-full min-w-0 max-w-[1320px] flex-1 flex-col px-4 py-3 sm:px-6 lg:px-8">
+        <section className="min-w-0 overflow-hidden rounded-[14px] border border-neutral-200 bg-[#fdfdfb] shadow-[0_18px_44px_rgba(23,26,23,0.07)] lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+          <div className="shrink-0 border-b border-[#d9e0d9] bg-white px-4 py-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-[12px] font-extrabold text-[#7d857f]">
@@ -404,10 +417,6 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
                 <h1 className="font-neo-heavy mt-1 truncate text-[22px] leading-tight text-[#171a17]">
                   {copy.panelTitle}
                 </h1>
-                <p className="mt-1 text-[12px] font-medium text-[#7d857f]">
-                  전체 {data.threads.length.toLocaleString()}건 · 검색 결과{" "}
-                  {visibleThreads.length.toLocaleString()}건
-                </p>
               </div>
               <span className="inline-flex h-8 items-center rounded-full bg-[#eef0ed] px-3 text-[12px] font-extrabold text-[#303630]">
                 {headerBadge}
@@ -415,7 +424,7 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
             </div>
           </div>
 
-          <div className="grid border-b border-neutral-200/80 bg-[#fcfcfd] sm:grid-cols-3">
+          <div className="grid shrink-0 border-b border-neutral-200/80 bg-[#fcfcfd] sm:grid-cols-3">
             <SummaryMetric
               label={focusMetrics.primaryLabel}
               value={focusMetrics.primaryValue}
@@ -427,74 +436,90 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
             <SummaryMetric label={focusMetrics.secondLabel} value={focusMetrics.secondValue} />
           </div>
 
-          <div className="min-w-0 p-4">
+          <div className="min-w-0 p-3 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
             <section className="rounded-t-[8px] border border-b-0 border-[#d9e0d9] bg-white p-3">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-                <div className="relative min-w-0 flex-1">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8b938d]" />
-                  <input
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    aria-label="제안 검색"
-                    placeholder={copy.searchPlaceholder}
-                    className="h-10 w-full rounded-[6px] border border-[#d9e0d9] bg-[#f8faf7] pl-8 pr-3 text-[12px] font-semibold text-[#303630] outline-none transition-colors placeholder:text-[#8b938d] hover:border-[#cbd5cc] focus:border-[#171a17] focus:bg-white"
-                  />
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="min-w-0">
+                  <p className="truncate text-[13px] font-extrabold text-[#171a17]">
+                    제안 목록
+                  </p>
+                  <p className="mt-0.5 truncate text-[11px] font-semibold text-[#606861]">
+                    {visibleThreads.length.toLocaleString()}건 표시 · {filterSummary}
+                  </p>
                 </div>
-                <div
-                  className="grid min-w-0 grid-cols-2 gap-1 overflow-hidden rounded-full bg-neutral-100 p-1 lg:w-[300px] lg:shrink-0"
-                  role="tablist"
-                  aria-label="제안함"
-                >
-                  {bucketOptions.map((option) => (
-                    <div key={option.id}>
-                      <BucketButton
-                        active={bucket === option.id}
-                        label={option.label}
-                        count={option.count}
-                        onClick={() => {
-                          setSelectedBucket(option.id);
-                          resetScopedFilters();
-                        }}
-                      />
-                    </div>
-                  ))}
+                <div className="flex min-w-0 items-center gap-2">
+                  <div
+                    className="grid min-w-[220px] grid-cols-2 gap-1 overflow-hidden rounded-full bg-neutral-100 p-1 lg:w-[300px] lg:shrink-0"
+                    role="tablist"
+                    aria-label="제안함"
+                  >
+                    {bucketOptions.map((option) => (
+                      <div key={option.id}>
+                        <BucketButton
+                          active={bucket === option.id}
+                          label={option.label}
+                          count={option.count}
+                          onClick={() => {
+                            setSelectedBucket(option.id);
+                            resetScopedFilters();
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <InboxFilterToggleButton
+                    open={filtersOpen}
+                    activeCount={activeFilterLabels.length}
+                    controlsId="marketplace-message-filters"
+                    onClick={() => setFiltersOpen((current) => !current)}
+                  />
                 </div>
               </div>
 
-              <div className="mt-3 grid gap-2 border-t border-[#edf1ed] pt-3 md:grid-cols-3">
-                <SelectFilter
-                  label="플랫폼"
-                  value={platformFilter}
-                  onChange={(value) => setPlatformFilter(value as PlatformFilter)}
-                  options={platformFilterOptions.map((platform) => ({
-                    value: platform,
-                    label: platform === "all" ? "전체" : platformLabels[platform],
-                  }))}
-                />
-                <SelectFilter
-                  label="제안 종류"
-                  value={proposalTypeFilter}
-                  onChange={(value) => setProposalTypeFilter(value as ProposalTypeFilter)}
-                  options={proposalTypeFilterOptions.map((type) => ({
-                    value: type,
-                    label: type === "all" ? "전체" : proposalTypeLabels[type],
-                  }))}
-                />
-                <SelectFilter
-                  label="상태"
-                  value={statusFilter}
-                  onChange={(value) => setStatusFilter(value as ProposalStatusFilter)}
-                  options={proposalStatusFilterOptions.map((status) => ({
-                    value: status,
-                    label: status === "all" ? "전체" : proposalStatusLabels[status],
-                  }))}
-                />
-              </div>
-              <ActiveFilterSummary
-                platformFilter={platformFilter}
-                proposalTypeFilter={proposalTypeFilter}
-                statusFilter={statusFilter}
-              />
+              {filtersOpen ? (
+                <div
+                  id="marketplace-message-filters"
+                  className="mt-3 grid gap-2 border-t border-[#edf1ed] pt-3 lg:grid-cols-[minmax(260px,1fr)_160px_160px_160px]"
+                >
+                  <div className="relative min-w-0">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8b938d]" />
+                    <input
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                      aria-label="제안 검색"
+                      placeholder={copy.searchPlaceholder}
+                      className="h-9 w-full rounded-[6px] border border-[#d9e0d9] bg-[#f8faf7] pl-8 pr-3 text-[12px] font-semibold text-[#303630] outline-none transition-colors placeholder:text-[#8b938d] hover:border-[#cbd5cc] focus:border-[#171a17] focus:bg-white"
+                    />
+                  </div>
+                  <SelectFilter
+                    label="플랫폼"
+                    value={platformFilter}
+                    onChange={(value) => setPlatformFilter(value as PlatformFilter)}
+                    options={platformFilterOptions.map((platform) => ({
+                      value: platform,
+                      label: platform === "all" ? "전체" : platformLabels[platform],
+                    }))}
+                  />
+                  <SelectFilter
+                    label="제안 종류"
+                    value={proposalTypeFilter}
+                    onChange={(value) => setProposalTypeFilter(value as ProposalTypeFilter)}
+                    options={proposalTypeFilterOptions.map((type) => ({
+                      value: type,
+                      label: type === "all" ? "전체" : proposalTypeLabels[type],
+                    }))}
+                  />
+                  <SelectFilter
+                    label="상태"
+                    value={statusFilter}
+                    onChange={(value) => setStatusFilter(value as ProposalStatusFilter)}
+                    options={proposalStatusFilterOptions.map((status) => ({
+                      value: status,
+                      label: status === "all" ? "전체" : proposalStatusLabels[status],
+                    }))}
+                  />
+                </div>
+              ) : null}
             </section>
 
             {state.status === "loading" ? (
@@ -596,7 +621,7 @@ function SelectFilter({
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="h-10 w-full rounded-[6px] border border-[#d9e0d9] bg-[#f8faf7] px-3 text-[12px] font-bold text-[#303630] outline-none transition-colors hover:border-[#cbd5cc] focus:border-[#171a17] focus:bg-white"
+        className="h-9 w-full rounded-[6px] border border-[#d9e0d9] bg-[#f8faf7] px-3 text-[12px] font-bold text-[#303630] outline-none transition-colors hover:border-[#cbd5cc] focus:border-[#171a17] focus:bg-white"
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>
@@ -608,67 +633,39 @@ function SelectFilter({
   );
 }
 
-function InlineFilterBadge({
-  label,
-  tone,
+function InboxFilterToggleButton({
+  open,
+  activeCount,
+  controlsId,
+  onClick,
 }: {
-  label: string;
-  tone?: string;
+  open: boolean;
+  activeCount: number;
+  controlsId: string;
+  onClick: () => void;
 }) {
   return (
-    <span
-      className={`inline-flex h-5 items-center rounded-[5px] border px-1.5 text-[10px] font-bold ${
-        tone ?? "border-[#d9e0d9] bg-white text-[#59605b]"
-      }`}
+    <button
+      type="button"
+      onClick={onClick}
+      aria-expanded={open}
+      aria-controls={controlsId}
+      className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-[8px] border border-[#d9e0d9] bg-white px-2.5 text-[12px] font-extrabold text-[#303630] transition hover:border-[#cbd5cc]"
     >
-      {label}
-    </span>
-  );
-}
-
-function ActiveFilterSummary({
-  platformFilter,
-  proposalTypeFilter,
-  statusFilter,
-}: {
-  platformFilter: PlatformFilter;
-  proposalTypeFilter: ProposalTypeFilter;
-  statusFilter: ProposalStatusFilter;
-}) {
-  const activeItems = [
-    platformFilter !== "all"
-      ? {
-          key: "platform",
-          label: platformLabels[platformFilter],
-          tone: getPlatformTone(platformFilter),
-        }
-      : undefined,
-    proposalTypeFilter !== "all"
-      ? {
-          key: "type",
-          label: proposalTypeLabels[proposalTypeFilter],
-        }
-      : undefined,
-    statusFilter !== "all"
-      ? {
-          key: "status",
-          label: proposalStatusLabels[statusFilter],
-          tone: proposalStatusTone[statusFilter],
-        }
-      : undefined,
-  ].filter(Boolean) as Array<{ key: string; label: string; tone?: string }>;
-
-  if (activeItems.length === 0) return null;
-
-  return (
-    <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-[#7d857f]">
-      <span>적용 필터</span>
-      {activeItems.map((item) => (
-        <span key={item.key}>
-          <InlineFilterBadge label={item.label} tone={item.tone} />
+      <SlidersHorizontal className="h-3.5 w-3.5 text-[#606861]" strokeWidth={2} />
+      <span>필터</span>
+      {activeCount > 0 ? (
+        <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[#171a17] px-1 text-[11px] font-extrabold text-white">
+          {activeCount}
         </span>
-      ))}
-    </div>
+      ) : null}
+      <ChevronDown
+        className={`h-3.5 w-3.5 text-[#606861] transition-transform ${
+          open ? "rotate-180" : ""
+        }`}
+        strokeWidth={2}
+      />
+    </button>
   );
 }
 
@@ -682,7 +679,7 @@ function MessageTable({
   threads: MessageThread[];
 }) {
   return (
-    <section className="overflow-hidden rounded-b-[8px] border border-[#d9e0d9] bg-white">
+    <section className="overflow-hidden rounded-b-[8px] border border-[#d9e0d9] bg-white lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
       <div className="hidden grid-cols-[104px_minmax(160px,0.85fr)_minmax(166px,0.9fr)_104px_minmax(240px,1.25fr)_122px_104px] border-b border-[#d9e0d9] bg-[#f8faf7] px-4 py-3 text-[11px] font-semibold text-[#7d857f] lg:grid">
         <span>상태</span>
         <span>상대</span>
@@ -692,7 +689,7 @@ function MessageTable({
         <span className="text-right">{copy.dateHeader}</span>
         <span className="sr-only">액션</span>
       </div>
-      <div className="max-h-[620px] divide-y divide-[#edf1ed] overflow-y-auto lg:max-h-[calc(100vh-360px)]">
+      <div className="max-h-[620px] divide-y divide-[#edf1ed] overflow-y-auto lg:max-h-none lg:min-h-0 lg:flex-1">
         {threads.map((thread) => (
           <div key={thread.id}>
             <MessageThreadRow role={role} thread={thread} />

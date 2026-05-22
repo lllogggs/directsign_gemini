@@ -1,5 +1,6 @@
 import {
   ArrowLeft,
+  ChevronDown,
   FileSignature,
   FileText,
   Megaphone,
@@ -8,6 +9,7 @@ import {
   Search,
   Send,
   ShieldCheck,
+  SlidersHorizontal,
 } from "lucide-react";
 import {
   type FormEvent,
@@ -566,6 +568,7 @@ export function InfluencerCampaignDiscoveryPage() {
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
   const [proposalTypeFilter, setProposalTypeFilter] =
     useState<ProposalTypeFilter>("all");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [applyingCampaignId, setApplyingCampaignId] = useState<string | undefined>();
   const [applicationNotice, setApplicationNotice] = useState<
     | { campaignId: string; tone: "success" | "error"; message: string }
@@ -658,6 +661,14 @@ export function InfluencerCampaignDiscoveryPage() {
     categoryFilter !== "all",
     proposalTypeFilter !== "all",
   ].filter(Boolean).length;
+  const activeFilterLabels = [
+    query.trim() ? `검색 ${query.trim()}` : null,
+    platformFilter !== "all" ? platformLabels[platformFilter] : null,
+    categoryFilter !== "all" ? categoryFilter : null,
+    proposalTypeFilter !== "all" ? proposalTypeLabels[proposalTypeFilter] : null,
+  ].filter((label): label is string => Boolean(label));
+  const filterSummary =
+    activeFilterLabels.length > 0 ? activeFilterLabels.join(" · ") : "전체 조건";
 
   const applyToCampaign = async (campaign: MarketplaceCampaignPost) => {
     if (applyingCampaignId) return;
@@ -732,7 +743,7 @@ export function InfluencerCampaignDiscoveryPage() {
       metrics={[
         { label: "모집", value: `${visibleCampaigns.length}건` },
         {
-          label: "필터",
+          label: "조건",
           value: activeFilterCount > 0 ? `${activeFilterCount}개 적용` : "전체",
         },
         { label: "신청", value: "계약 연결" },
@@ -757,100 +768,73 @@ export function InfluencerCampaignDiscoveryPage() {
       }
     >
       <section className="overflow-hidden rounded-[18px] border border-neutral-200 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.055)] lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
-        <div className="grid gap-2 border-b border-neutral-200 bg-white p-3 lg:grid-cols-[280px_minmax(0,1fr)] lg:items-start">
-          <div className="relative min-w-0">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              aria-label="캠페인 검색"
-              placeholder="브랜드, 캠페인, 플랫폼, 산출물 검색"
-              className="h-10 w-full rounded-[10px] border border-neutral-200 bg-[#f8f7f4] pl-10 pr-3 text-[13px] font-bold text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950 focus:bg-white"
+        <div className="border-b border-neutral-200 bg-white">
+          <div className="flex min-h-12 items-center justify-between gap-3 px-3 py-2">
+            <div className="min-w-0">
+              <p className="truncate text-[13px] font-extrabold text-neutral-950">
+                모집 캠페인
+              </p>
+              <p className="mt-0.5 truncate text-[11px] font-bold text-neutral-500">
+                {visibleCampaigns.length.toLocaleString()}건 표시 · {filterSummary}
+              </p>
+            </div>
+            <CampaignFilterToggleButton
+              open={filtersOpen}
+              activeCount={activeFilterLabels.length}
+              controlsId="influencer-campaign-filters"
+              onClick={() => setFiltersOpen((current) => !current)}
             />
           </div>
-          <details className="rounded-[14px] border border-neutral-200 bg-[#fbfaf7] px-3 py-2 lg:hidden">
-            <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 text-[12px] font-extrabold text-neutral-700">
-              <span>필터</span>
-              <span className="min-w-0 truncate text-neutral-400">
-                플랫폼 · 카테고리 · 형태
-              </span>
-            </summary>
-            <div className="mt-3 grid gap-2">
-              <FilterGroup label="플랫폼">
-                {platformOptions.map((platform) => (
-                  <FilterButton
-                    key={platform}
-                    active={platformFilter === platform}
-                    label={platform === "all" ? "전체" : platformLabels[platform]}
-                    onClick={() => setPlatformFilter(platform)}
-                    tone={platform === "all" ? undefined : getPlatformTone(platform)}
-                  />
-                ))}
-              </FilterGroup>
-              <FilterGroup label="카테고리">
-                {categoryOptions.map((category) => (
-                  <FilterButton
-                    key={category}
-                    active={categoryFilter === category}
-                    label={category === "all" ? "전체" : category}
-                    onClick={() => setCategoryFilter(category)}
-                  />
-                ))}
-              </FilterGroup>
-              <FilterGroup label="형태">
-                {proposalTypeFilterOptions.map((type) => (
-                  <FilterButton
-                    key={type}
-                    active={proposalTypeFilter === type}
-                    label={type === "all" ? "전체" : proposalTypeLabels[type]}
-                    onClick={() => setProposalTypeFilter(type)}
-                  />
-                ))}
-              </FilterGroup>
+          {filtersOpen ? (
+            <div
+              id="influencer-campaign-filters"
+              className="grid gap-2 border-t border-neutral-200 bg-[#fbfaf7] p-3 lg:grid-cols-[280px_minmax(0,1fr)] lg:items-start"
+            >
+              <div className="relative min-w-0">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  aria-label="캠페인 검색"
+                  placeholder="브랜드, 캠페인, 플랫폼, 산출물 검색"
+                  className="h-9 w-full rounded-[8px] border border-neutral-200 bg-white pl-10 pr-3 text-[12px] font-bold text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950"
+                />
+              </div>
+              <div className="grid min-w-0 gap-2 lg:grid-cols-3">
+                <FilterGroup label="플랫폼">
+                  {platformOptions.map((platform) => (
+                    <FilterButton
+                      key={platform}
+                      active={platformFilter === platform}
+                      label={platform === "all" ? "전체" : platformLabels[platform]}
+                      onClick={() => setPlatformFilter(platform)}
+                      tone={platform === "all" ? undefined : getPlatformTone(platform)}
+                    />
+                  ))}
+                </FilterGroup>
+                <FilterGroup label="카테고리">
+                  {categoryOptions.map((category) => (
+                    <FilterButton
+                      key={category}
+                      active={categoryFilter === category}
+                      label={category === "all" ? "전체" : category}
+                      onClick={() => setCategoryFilter(category)}
+                    />
+                  ))}
+                </FilterGroup>
+                <FilterGroup label="형태">
+                  {proposalTypeFilterOptions.map((type) => (
+                    <FilterButton
+                      key={type}
+                      active={proposalTypeFilter === type}
+                      label={type === "all" ? "전체" : proposalTypeLabels[type]}
+                      onClick={() => setProposalTypeFilter(type)}
+                    />
+                  ))}
+                </FilterGroup>
+              </div>
             </div>
-          </details>
-          <div className="hidden min-w-0 flex-wrap gap-1.5 lg:flex">
-            <FilterGroup label="플랫폼">
-              {platformOptions.map((platform) => (
-                <FilterButton
-                  key={platform}
-                  active={platformFilter === platform}
-                  label={platform === "all" ? "전체" : platformLabels[platform]}
-                  onClick={() => setPlatformFilter(platform)}
-                  tone={platform === "all" ? undefined : getPlatformTone(platform)}
-                />
-              ))}
-            </FilterGroup>
-            <FilterGroup label="카테고리">
-              {categoryOptions.map((category) => (
-                <FilterButton
-                  key={category}
-                  active={categoryFilter === category}
-                  label={category === "all" ? "전체" : category}
-                  onClick={() => setCategoryFilter(category)}
-                />
-              ))}
-            </FilterGroup>
-            <FilterGroup label="형태">
-              {proposalTypeFilterOptions.map((type) => (
-                <FilterButton
-                  key={type}
-                  active={proposalTypeFilter === type}
-                  label={type === "all" ? "전체" : proposalTypeLabels[type]}
-                  onClick={() => setProposalTypeFilter(type)}
-                />
-              ))}
-            </FilterGroup>
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-1 border-b border-neutral-200 bg-[#fbfaf7] px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-[12px] font-extrabold text-neutral-700">
-            모집 캠페인 {visibleCampaigns.length}건
-          </p>
-          <p className="break-keep text-[11px] font-bold leading-5 text-neutral-500">
-            내 계약 현황과 분리된 탐색 화면입니다.
-          </p>
+          ) : null}
         </div>
 
         {state.status === "loading" ? (
@@ -861,7 +845,7 @@ export function InfluencerCampaignDiscoveryPage() {
           <PanelState
             icon={<Megaphone className="h-5 w-5" />}
             title="조건에 맞는 캠페인이 없습니다"
-            body="검색어를 줄이거나 필터를 전체로 바꿔보세요."
+            body="검색어나 조건을 줄여보세요."
           />
         ) : (
           <div className="grid gap-3 bg-[#fbfaf7] p-3 sm:grid-cols-2 lg:min-h-0 lg:flex-1 lg:overflow-y-auto xl:grid-cols-3">
@@ -937,14 +921,14 @@ function CampaignShell({
       </header>
 
       <section className="shrink-0 border-b border-neutral-200/80 bg-[#f7f6f3]">
-        <div className="mx-auto max-w-[1320px] px-4 py-2.5 sm:px-6 sm:py-4 lg:px-8 lg:py-3">
+        <div className="mx-auto max-w-[1320px] px-4 py-2.5 sm:px-6 sm:py-3 lg:px-8">
           <p className="inline-flex items-center gap-2 text-[12px] font-extrabold text-neutral-500 sm:text-[13px]">
             <Megaphone className="h-4 w-4" />
             {eyebrow}
           </p>
           <div className="mt-1.5 grid gap-2 sm:mt-2 sm:gap-3 lg:grid-cols-[minmax(0,1fr)_330px] lg:items-end">
             <div className="min-w-0">
-              <h1 className="font-neo-heavy text-[26px] leading-[1.05] text-neutral-950 sm:text-[42px] sm:leading-none">
+              <h1 className="font-neo-heavy text-[26px] leading-[1.05] text-neutral-950 sm:text-[34px] sm:leading-none">
                 {title}
               </h1>
               <p className="mt-1.5 line-clamp-1 max-w-3xl break-keep text-[12px] font-bold leading-5 text-neutral-600 sm:mt-3 sm:line-clamp-none sm:text-[13px] sm:leading-6">
@@ -1165,6 +1149,42 @@ function MiniInfo({ label, value }: { label: string; value: string }) {
         {value}
       </p>
     </div>
+  );
+}
+
+function CampaignFilterToggleButton({
+  open,
+  activeCount,
+  controlsId,
+  onClick,
+}: {
+  open: boolean;
+  activeCount: number;
+  controlsId: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-expanded={open}
+      aria-controls={controlsId}
+      className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[8px] border border-neutral-200 bg-white px-2.5 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:text-neutral-950"
+    >
+      <SlidersHorizontal className="h-3.5 w-3.5 text-neutral-500" strokeWidth={2} />
+      <span>필터</span>
+      {activeCount > 0 ? (
+        <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-neutral-950 px-1 text-[11px] font-extrabold text-white">
+          {activeCount}
+        </span>
+      ) : null}
+      <ChevronDown
+        className={`h-3.5 w-3.5 text-neutral-500 transition-transform ${
+          open ? "rotate-180" : ""
+        }`}
+        strokeWidth={2}
+      />
+    </button>
   );
 }
 
