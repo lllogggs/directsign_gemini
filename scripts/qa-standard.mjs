@@ -421,6 +421,18 @@ const browserRenderViewports = [
   { name: "mobile", width: 375, height: 812, mobile: true },
 ];
 
+const qaCredentials = {
+  advertiserEmail: process.env.QA_ADVERTISER_EMAIL || "test.advertiser@yeollock.me",
+  influencerEmail: process.env.QA_INFLUENCER_EMAIL || "test.influencer@yeollock.me",
+  password: process.env.QA_TEST_PASSWORD || "YeollockTest!2026",
+};
+
+const browserPerformanceBudgets = {
+  loginMs: Number(process.env.QA_LOGIN_BUDGET_MS || 5000),
+  routeMs: Number(process.env.QA_ROUTE_TRANSITION_BUDGET_MS || 3500),
+  actionMs: Number(process.env.QA_ACTION_BUDGET_MS || 250),
+};
+
 const isAbsoluteWindowsPath = (candidate) => /^[a-z]:[\\/]/i.test(candidate);
 
 const findBrowserExecutable = async () => {
@@ -769,6 +781,422 @@ const checkBrowserRenderedRoutes = async (baseUrl) => {
   return checkResults.every(Boolean);
 };
 
+const evaluateCdpValue = async (client, sessionId, expression) => {
+  const evaluation = await client.send(
+    "Runtime.evaluate",
+    {
+      expression,
+      awaitPromise: true,
+      returnByValue: true,
+    },
+    sessionId,
+  );
+
+  if (evaluation.exceptionDetails) {
+    const exceptionText =
+      evaluation.exceptionDetails.text ||
+      evaluation.exceptionDetails.exception?.description ||
+      "Runtime evaluation failed";
+    throw new Error(exceptionText);
+  }
+
+  return evaluation.result?.value;
+};
+
+const waitForRouteReady = async (
+  client,
+  sessionId,
+  expectedPath,
+  { minTextLength = 60, timeoutMs = 15000 } = {},
+) => {
+  const deadline = Date.now() + timeoutMs;
+  let lastMetrics = {};
+
+  while (Date.now() < deadline) {
+    lastMetrics = await evaluateCdpValue(
+      client,
+      sessionId,
+      `(() => {
+        const bodyText = document.body?.innerText?.replace(/\\s+/g, " ").trim() || "";
+        const root = document.getElementById("root");
+        return {
+          pathname: location.pathname,
+          href: location.href,
+          bodyTextLength: bodyText.length,
+          rootChildCount: root?.childElementCount ?? 0,
+          hasViteError:
+            bodyText.includes("[plugin:vite") ||
+            bodyText.includes("vite-error-overlay") ||
+            Boolean(document.querySelector("vite-error-overlay")),
+          stillLoading:
+            /불러오는 중|확인 중|loading/i.test(bodyText) && bodyText.length < 120,
+          sample: bodyText.slice(0, 80),
+        };
+      })()`,
+    );
+
+    const isExpectedPath = !expectedPath || lastMetrics.pathname === expectedPath;
+    const isReady =
+      isExpectedPath &&
+      Number(lastMetrics.bodyTextLength ?? 0) >= minTextLength &&
+      Number(lastMetrics.rootChildCount ?? 0) > 0 &&
+      !lastMetrics.hasViteError &&
+      !lastMetrics.stillLoading;
+
+    if (isReady) return lastMetrics;
+    if (lastMetrics.hasViteError) break;
+    await sleep(100);
+  }
+
+  throw new Error(
+    `route ${expectedPath || "(any)"} not ready; path ${lastMetrics.pathname || "unknown"}, text ${
+      lastMetrics.bodyTextLength ?? 0
+    }, sample "${lastMetrics.sample || "empty"}"`,
+  );
+};
+
+const fillLoginAndSubmit = async (client, sessionId, email, password) =>
+  await evaluateCdpValue(
+    client,
+    sessionId,
+    `(() => {
+      const setValue = (element, value) => {
+        const setter = Object.getOwnPropertyDescriptor(
+          Object.getPrototypeOf(element),
+          "value",
+        )?.set;
+        if (setter) setter.call(element, value);
+        else element.value = value;
+        element.dispatchEvent(new Event("input", { bubbles: true }));
+        element.dispatchEvent(new Event("change", { bubbles: true }));
+      };
+      const emailInput = document.querySelector('input[type="email"], input[name="email"]');
+      const passwordInput = document.querySelector('input[type="password"], input[name="password"]');
+      const submitButton = document.querySelector('button[type="submit"]');
+      if (!emailInput || !passwordInput || !submitButton) {
+        return {
+          ok: false,
+          detail: "login form controls missing",
+        };
+      }
+      setValue(emailInput, ${JSON.stringify(email)});
+      setValue(passwordInput, ${JSON.stringify(password)});
+      submitButton.click();
+      return { ok: true };
+    })()`,
+  );
+
+const measureBrowserLogin = async (client, sessionId, baseUrl, role, email) => {
+  const loginPath = `/login/${role}`;
+  const dashboardPath = `/${role}/dashboard`;
+  await client.send("Page.navigate", { url: new URL(loginPath, baseUrl).toString() }, sessionId);
+  await waitForRouteReady(client, sessionId, loginPath, {
+    minTextLength: 50,
+    timeoutMs: 15000,
+  });
+
+  const startedAt = performance.now();
+  const submitted = await fillLoginAndSubmit(
+    client,
+    sessionId,
+    email,
+    qaCredentials.password,
+  );
+  if (!submitted?.ok) {
+    record(`Browser perf login ${role}`, "fail", submitted?.detail || "submit failed");
+    return false;
+  }
+
+  try {
+    await waitForRouteReady(client, sessionId, dashboardPath, {
+      minTextLength: 80,
+      timeoutMs: Math.max(browserPerformanceBudgets.loginMs + 5000, 15000),
+    });
+  } catch (error) {
+    record(
+      `Browser perf login ${role}`,
+      "fail",
+      error instanceof Error ? error.message : String(error),
+    );
+    return false;
+  }
+
+  const durationMs = Math.round(performance.now() - startedAt);
+  const ok = durationMs <= browserPerformanceBudgets.loginMs;
+  record(
+    `Browser perf login ${role}`,
+    ok ? "pass" : "fail",
+    `${durationMs}ms, budget ${browserPerformanceBudgets.loginMs}ms`,
+  );
+  return ok;
+};
+
+const measureBrowserRouteTransition = async (
+  client,
+  sessionId,
+  baseUrl,
+  route,
+  label,
+) => {
+  const startedAt = performance.now();
+  try {
+    await client.send("Page.navigate", { url: new URL(route, baseUrl).toString() }, sessionId);
+    await waitForRouteReady(client, sessionId, route, {
+      minTextLength: 70,
+      timeoutMs: Math.max(browserPerformanceBudgets.routeMs + 5000, 12000),
+    });
+  } catch (error) {
+    record(
+      `Browser perf route ${label}`,
+      "fail",
+      error instanceof Error ? error.message : String(error),
+    );
+    return false;
+  }
+
+  const durationMs = Math.round(performance.now() - startedAt);
+  const ok = durationMs <= browserPerformanceBudgets.routeMs;
+  record(
+    `Browser perf route ${label}`,
+    ok ? "pass" : "fail",
+    `${durationMs}ms, budget ${browserPerformanceBudgets.routeMs}ms`,
+  );
+  return ok;
+};
+
+const measureBrowserInputAction = async (client, sessionId, label) => {
+  const result = await evaluateCdpValue(
+    client,
+    sessionId,
+    `(async () => {
+      const setValue = (element, value) => {
+        const setter = Object.getOwnPropertyDescriptor(
+          Object.getPrototypeOf(element),
+          "value",
+        )?.set;
+        if (setter) setter.call(element, value);
+        else element.value = value;
+        element.dispatchEvent(new Event("input", { bubbles: true }));
+        element.dispatchEvent(new Event("change", { bubbles: true }));
+      };
+      const inputs = Array.from(document.querySelectorAll("input"));
+      const input = inputs.find((item) =>
+        item.type === "search" ||
+        /검색|search/i.test(item.placeholder || "") ||
+        /search/i.test(item.getAttribute("aria-label") || "")
+      );
+      if (!input) return { ok: false, detail: "search input missing" };
+      const startedAt = performance.now();
+      setValue(input, "릴스");
+      await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+      await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+      return {
+        ok: true,
+        durationMs: Math.round(performance.now() - startedAt),
+        value: input.value,
+      };
+    })()`,
+  );
+
+  if (!result?.ok) {
+    record(`Browser perf action ${label} search`, "fail", result?.detail || "action failed");
+    return false;
+  }
+
+  const ok = result.durationMs <= browserPerformanceBudgets.actionMs;
+  record(
+    `Browser perf action ${label} search`,
+    ok ? "pass" : "fail",
+    `${result.durationMs}ms, budget ${browserPerformanceBudgets.actionMs}ms`,
+  );
+  return ok;
+};
+
+const measureBrowserSelectAction = async (client, sessionId, label) => {
+  const result = await evaluateCdpValue(
+    client,
+    sessionId,
+    `(async () => {
+      const select = Array.from(document.querySelectorAll("select")).find(
+        (item) => item.options.length > 1,
+      );
+      if (!select) return { ok: false, detail: "select filter missing" };
+      const nextIndex = select.selectedIndex === 0 ? 1 : 0;
+      const startedAt = performance.now();
+      select.selectedIndex = nextIndex;
+      select.dispatchEvent(new Event("input", { bubbles: true }));
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+      await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+      await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+      return {
+        ok: true,
+        durationMs: Math.round(performance.now() - startedAt),
+        value: select.value,
+      };
+    })()`,
+  );
+
+  if (!result?.ok) {
+    record(`Browser perf action ${label} filter`, "fail", result?.detail || "action failed");
+    return false;
+  }
+
+  const ok = result.durationMs <= browserPerformanceBudgets.actionMs;
+  record(
+    `Browser perf action ${label} filter`,
+    ok ? "pass" : "fail",
+    `${result.durationMs}ms, budget ${browserPerformanceBudgets.actionMs}ms`,
+  );
+  return ok;
+};
+
+const checkBrowserPerformance = async (baseUrl) => {
+  if (process.env.QA_SKIP_BROWSER_PERFORMANCE === "1") {
+    record(
+      "Browser performance checks",
+      "warn",
+      "skipped by QA_SKIP_BROWSER_PERFORMANCE=1",
+    );
+    return true;
+  }
+
+  const browserExecutable = await findBrowserExecutable();
+  if (!browserExecutable) {
+    record("Browser performance checks", "fail", "Chrome or Edge executable not found");
+    return false;
+  }
+
+  const outputDir = path.join(
+    root,
+    "qa-artifacts",
+    `browser-performance-${new Date().toISOString().replace(/[:.]/g, "-")}`,
+  );
+  const profileDir = path.join(outputDir, "chrome-profile");
+  await fs.mkdir(profileDir, { recursive: true });
+
+  const browserProcess = spawn(
+    browserExecutable,
+    [
+      "--headless=new",
+      "--disable-gpu",
+      "--disable-dev-shm-usage",
+      "--no-first-run",
+      "--no-default-browser-check",
+      "--remote-debugging-port=0",
+      `--user-data-dir=${profileDir}`,
+      "about:blank",
+    ],
+    {
+      cwd: root,
+      stdio: ["ignore", "ignore", "pipe"],
+      windowsHide: true,
+    },
+  );
+  let browserErrorOutput = "";
+  browserProcess.stderr.on("data", (chunk) => {
+    browserErrorOutput += chunk.toString();
+  });
+
+  let client;
+  const checkResults = [];
+
+  try {
+    const endpoint = await readDevToolsEndpoint(profileDir);
+    client = new CdpClient(endpoint.webSocketUrl);
+    await client.connect();
+
+    const target = await client.send("Target.createTarget", { url: "about:blank" });
+    const targetId = target.targetId;
+    const attached = await client.send("Target.attachToTarget", {
+      targetId,
+      flatten: true,
+    });
+    const sessionId = attached.sessionId;
+
+    try {
+      await client.send("Page.enable", {}, sessionId);
+      await client.send("Runtime.enable", {}, sessionId);
+      await client.send(
+        "Emulation.setDeviceMetricsOverride",
+        {
+          width: 1365,
+          height: 900,
+          deviceScaleFactor: 1,
+          mobile: false,
+        },
+        sessionId,
+      );
+
+      checkResults.push(
+        await measureBrowserLogin(
+          client,
+          sessionId,
+          baseUrl,
+          "advertiser",
+          qaCredentials.advertiserEmail,
+        ),
+      );
+      checkResults.push(await measureBrowserInputAction(client, sessionId, "advertiser"));
+      checkResults.push(await measureBrowserSelectAction(client, sessionId, "advertiser"));
+      for (const [route, label] of [
+        ["/advertiser/builder", "advertiser builder"],
+        ["/advertiser/campaigns", "advertiser campaigns"],
+        ["/advertiser/messages", "advertiser messages"],
+        ["/advertiser/discover", "advertiser discover"],
+        ["/advertiser/verification", "advertiser verification"],
+      ]) {
+        checkResults.push(
+          await measureBrowserRouteTransition(client, sessionId, baseUrl, route, label),
+        );
+      }
+
+      checkResults.push(
+        await measureBrowserLogin(
+          client,
+          sessionId,
+          baseUrl,
+          "influencer",
+          qaCredentials.influencerEmail,
+        ),
+      );
+      checkResults.push(await measureBrowserInputAction(client, sessionId, "influencer"));
+      checkResults.push(await measureBrowserSelectAction(client, sessionId, "influencer"));
+      for (const [route, label] of [
+        ["/influencer/campaigns", "influencer campaigns"],
+        ["/influencer/brands", "influencer brands"],
+        ["/influencer/messages", "influencer messages"],
+        ["/influencer/verification", "influencer verification"],
+      ]) {
+        checkResults.push(
+          await measureBrowserRouteTransition(client, sessionId, baseUrl, route, label),
+        );
+      }
+    } finally {
+      if (targetId) {
+        try {
+          await client.send("Target.closeTarget", { targetId });
+        } catch {
+          // Closing the whole browser at the end is enough for a failed target.
+        }
+      }
+    }
+  } catch (error) {
+    record(
+      "Browser performance checks",
+      "fail",
+      `${
+        error instanceof Error ? error.message : String(error)
+      }${browserErrorOutput ? `; browser stderr: ${browserErrorOutput.slice(0, 240)}` : ""}`,
+    );
+    checkResults.push(false);
+  } finally {
+    client?.close();
+    stopProcessTree(browserProcess.pid);
+  }
+
+  return checkResults.every(Boolean);
+};
+
 const readMarketplaceInfluencerHandle = async (baseUrl) => {
   try {
     const response = await fetchWithTimeout(`${baseUrl}/api/marketplace/influencers`);
@@ -941,6 +1369,7 @@ const main = async () => {
       await smokeRoute(server.baseUrl, "/legal/e-sign-consent", [200]),
     );
     requiredChecks.push(await checkBrowserRenderedRoutes(server.baseUrl));
+    requiredChecks.push(await checkBrowserPerformance(server.baseUrl));
   } catch (error) {
     record("API/route smoke", "fail", error instanceof Error ? error.message : String(error));
     requiredChecks.push(false);
