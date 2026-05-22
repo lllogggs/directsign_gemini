@@ -90,6 +90,17 @@ type CampaignApplicationResponse = {
   already_submitted?: boolean;
 };
 
+type CampaignShellMetric = {
+  label: string;
+  value: string;
+};
+
+const defaultCampaignShellMetrics: CampaignShellMetric[] = [
+  { label: "계약 전", value: "조건 정리" },
+  { label: "검토", value: "상대 확인" },
+  { label: "계약", value: "작성 연결" },
+];
+
 export function AdvertiserCampaignRecruitmentPage() {
   const navigate = useNavigate();
   const [state, setState] = useState<AdvertiserCampaignState>({
@@ -270,9 +281,17 @@ export function AdvertiserCampaignRecruitmentPage() {
     <CampaignShell
       eyebrow="광고주 캠페인"
       title="캠페인 작성"
-      description="캠페인 조건을 정리한 뒤, 실제 진행은 계약 작성과 검토 링크 발급으로 이어갑니다."
+      description="모집 조건을 먼저 공개하고, 지원 수락 뒤 같은 조건으로 계약 작성과 검토 링크 발급에 연결합니다."
       backHref="/advertiser/dashboard"
       backLabel="계약 대시보드"
+      metrics={[
+        {
+          label: "작성",
+          value: canSubmit ? "완료" : `${9 - missingFormLabels.length}/9`,
+        },
+        { label: "공개", value: "모집 노출" },
+        { label: "다음", value: "계약 작성" },
+      ]}
       actions={
         <>
           <Link
@@ -292,10 +311,10 @@ export function AdvertiserCampaignRecruitmentPage() {
         </>
       }
     >
-      <section className="grid gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+      <section className="grid gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1.18fr)_minmax(320px,0.82fr)]">
         <form
           onSubmit={handleSubmit}
-          className="rounded-[18px] border border-neutral-200 bg-white p-4 shadow-[0_18px_48px_rgba(15,23,42,0.055)] lg:min-h-0 lg:overflow-y-auto"
+          className="rounded-[18px] border border-neutral-200 bg-white p-4 shadow-[0_18px_48px_rgba(15,23,42,0.055)] sm:p-5 lg:min-h-0 lg:overflow-y-auto"
         >
           <div className="flex items-start justify-between gap-3 border-b border-neutral-200 pb-4">
             <div>
@@ -303,11 +322,14 @@ export function AdvertiserCampaignRecruitmentPage() {
                 캠페인 조건 입력
               </p>
               <h2 className="mt-1 text-[20px] font-extrabold text-neutral-950">
-                새 캠페인
+                캠페인 작성 폼
               </h2>
+              <p className="mt-1 break-keep text-[12px] font-bold leading-5 text-neutral-500">
+                인플루언서가 지원 전에 보는 금액, 산출물, 일정만 빠짐없이 정리합니다.
+              </p>
             </div>
             <span className="inline-flex h-9 items-center rounded-full bg-emerald-50 px-3 text-[12px] font-extrabold text-emerald-700">
-              공개 등록
+              모집 공개
             </span>
           </div>
 
@@ -415,12 +437,12 @@ export function AdvertiserCampaignRecruitmentPage() {
             <CampaignField label="캠페인설명">
               <textarea
                 required
-                rows={5}
+                rows={3}
                 value={form.summary}
                 onChange={(event) =>
                   setForm((current) => ({ ...current, summary: event.target.value }))
                 }
-                placeholder="인플루언서가 바로 판단할 수 있도록 제품, 타깃, 원하는 콘텐츠 톤, 검수 기준을 적어 주세요."
+                placeholder="인플루언서가 바로 판단할 수 있도록 제품, 타깃, 원하는 컨텐츠 톤, 검수 기준을 적어 주세요."
                 className="campaign-input resize-none"
               />
             </CampaignField>
@@ -479,7 +501,7 @@ export function AdvertiserCampaignRecruitmentPage() {
                   className="inline-flex h-12 w-full shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[14px] bg-blue-600 px-5 text-[14px] font-extrabold text-white shadow-[0_14px_34px_rgba(37,99,235,0.22)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:shadow-none sm:w-auto sm:min-w-[148px]"
                 >
                   <Plus className="h-4 w-4" />
-                  {isSubmitting ? "저장 중" : "캠페인 공개"}
+                  {isSubmitting ? "저장 중" : "캠페인 저장"}
                 </button>
               </div>
             </div>
@@ -490,13 +512,13 @@ export function AdvertiserCampaignRecruitmentPage() {
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-[12px] font-extrabold text-neutral-400">
-                공개 중인 캠페인
+                공개 캠페인 상태
               </p>
               <h2 className="mt-1 truncate text-[20px] font-extrabold text-neutral-950">
                 {brand?.displayName ?? "브랜드 프로필 준비 중"}
               </h2>
               <p className="mt-1 text-[13px] font-bold text-neutral-500">
-                인플루언서 캠페인 화면에 노출됩니다.
+                지원 접수와 종료 상태는 계약 대시보드와 분리해 확인합니다.
               </p>
             </div>
             <button
@@ -630,9 +652,20 @@ export function InfluencerCampaignDiscoveryPage() {
     () => ["all", ...Array.from(new Set(campaigns.map((campaign) => campaign.brandCategory))).sort()],
     [campaigns],
   );
+  const activeFilterCount = [
+    query.trim().length > 0,
+    platformFilter !== "all",
+    categoryFilter !== "all",
+    proposalTypeFilter !== "all",
+  ].filter(Boolean).length;
 
   const applyToCampaign = async (campaign: MarketplaceCampaignPost) => {
     if (applyingCampaignId) return;
+
+    const confirmed = window.confirm(
+      `${campaign.title} 캠페인에 신청할까요? 신청 내용은 광고주 메시지함에 전달됩니다.`,
+    );
+    if (!confirmed) return;
 
     setApplyingCampaignId(campaign.id);
     setApplicationNotice({
@@ -692,10 +725,18 @@ export function InfluencerCampaignDiscoveryPage() {
   return (
     <CampaignShell
       eyebrow="인플루언서 캠페인"
-      title="모집 중인 캠페인 확인"
-      description="받은 계약을 우선 확인하고, 필요한 경우 모집 조건을 계약 검토 전 참고 정보로 확인합니다."
+      title="캠페인 탐색"
+      description="모집 조건을 빠르게 비교하고, 관심 있는 캠페인은 신청 후 광고주 수락을 기다립니다."
       backHref="/influencer/dashboard"
       backLabel="계약 대시보드"
+      metrics={[
+        { label: "모집", value: `${visibleCampaigns.length}건` },
+        {
+          label: "필터",
+          value: activeFilterCount > 0 ? `${activeFilterCount}개 적용` : "전체",
+        },
+        { label: "신청", value: "계약 연결" },
+      ]}
       actions={
         <>
           <Link
@@ -803,6 +844,15 @@ export function InfluencerCampaignDiscoveryPage() {
           </div>
         </div>
 
+        <div className="flex flex-col gap-1 border-b border-neutral-200 bg-[#fbfaf7] px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-[12px] font-extrabold text-neutral-700">
+            모집 캠페인 {visibleCampaigns.length}건
+          </p>
+          <p className="break-keep text-[11px] font-bold leading-5 text-neutral-500">
+            내 계약 현황과 분리된 탐색 화면입니다.
+          </p>
+        </div>
+
         {state.status === "loading" ? (
           <PanelState icon={<RefreshCw className="h-5 w-5 animate-spin" />} title="캠페인을 불러오는 중" />
         ) : state.status === "error" ? (
@@ -814,7 +864,7 @@ export function InfluencerCampaignDiscoveryPage() {
             body="검색어를 줄이거나 필터를 전체로 바꿔보세요."
           />
         ) : (
-          <div className="grid gap-3 bg-[#fbfaf7] p-3 lg:min-h-0 lg:flex-1 lg:grid-cols-3 lg:overflow-y-auto">
+          <div className="grid gap-3 bg-[#fbfaf7] p-3 sm:grid-cols-2 lg:min-h-0 lg:flex-1 lg:overflow-y-auto xl:grid-cols-3">
             {applicationNotice ? (
               <p
                 className={`rounded-[12px] border px-3 py-2 text-[12px] font-extrabold lg:col-span-3 ${
@@ -847,6 +897,7 @@ function CampaignShell({
   description,
   backHref,
   backLabel,
+  metrics = defaultCampaignShellMetrics,
   actions,
   children,
 }: {
@@ -855,15 +906,16 @@ function CampaignShell({
   description: string;
   backHref: string;
   backLabel: string;
+  metrics?: CampaignShellMetric[];
   actions?: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <main className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950 lg:flex lg:h-screen lg:flex-col lg:overflow-hidden">
-      <header className="sticky top-0 z-30 border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-[1320px] items-center justify-between px-4 sm:px-6 lg:px-8">
+    <main className="flex h-svh flex-col overflow-hidden bg-[#f7f6f3] font-sans text-neutral-950">
+      <header className="z-30 shrink-0 border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
+        <div className="mx-auto flex h-12 max-w-[1320px] items-center justify-between px-4 sm:h-14 sm:px-6 lg:px-8">
           <Link to="/" className="flex shrink-0 items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-[13px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
+            <span className="flex h-9 w-9 items-center justify-center rounded-[12px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)] sm:h-10 sm:w-10 sm:rounded-[13px]">
               <ShieldCheck className="h-4 w-4" />
             </span>
             <span className="font-neo-heavy hidden text-[19px] leading-none text-neutral-950 sm:inline">
@@ -874,7 +926,7 @@ function CampaignShell({
           <div className="no-scrollbar ml-3 flex min-w-0 items-center gap-2 overflow-x-auto">
             <Link
               to={backHref}
-              className="inline-flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-[12px] border border-neutral-200 bg-white px-3 text-[13px] font-extrabold text-neutral-600 transition hover:border-neutral-300 hover:text-neutral-950"
+              className="inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-[12px] border border-neutral-200 bg-white px-3 text-[12px] font-extrabold text-neutral-600 transition hover:border-neutral-300 hover:text-neutral-950 sm:h-10 sm:text-[13px]"
             >
               <ArrowLeft className="h-4 w-4" />
               <span className="hidden sm:inline">{backLabel}</span>
@@ -884,42 +936,53 @@ function CampaignShell({
         </div>
       </header>
 
-      <section className="border-b border-neutral-200/80 bg-[#f7f6f3] lg:shrink-0">
-        <div className="mx-auto max-w-[1320px] px-4 py-4 sm:px-6 lg:px-8 lg:py-3">
-          <p className="inline-flex items-center gap-2 text-[13px] font-extrabold text-neutral-500">
+      <section className="shrink-0 border-b border-neutral-200/80 bg-[#f7f6f3]">
+        <div className="mx-auto max-w-[1320px] px-4 py-2.5 sm:px-6 sm:py-4 lg:px-8 lg:py-3">
+          <p className="inline-flex items-center gap-2 text-[12px] font-extrabold text-neutral-500 sm:text-[13px]">
             <Megaphone className="h-4 w-4" />
             {eyebrow}
           </p>
-          <div className="mt-2 grid gap-3 lg:grid-cols-[minmax(0,1fr)_330px] lg:items-end">
+          <div className="mt-1.5 grid gap-2 sm:mt-2 sm:gap-3 lg:grid-cols-[minmax(0,1fr)_330px] lg:items-end">
             <div className="min-w-0">
-              <h1 className="font-neo-heavy text-[32px] leading-[1.05] text-neutral-950 sm:text-[42px] sm:leading-none">
+              <h1 className="font-neo-heavy text-[26px] leading-[1.05] text-neutral-950 sm:text-[42px] sm:leading-none">
                 {title}
               </h1>
-              <p className="mt-3 max-w-3xl break-keep text-[13px] font-bold leading-6 text-neutral-600">
+              <p className="mt-1.5 line-clamp-1 max-w-3xl break-keep text-[12px] font-bold leading-5 text-neutral-600 sm:mt-3 sm:line-clamp-none sm:text-[13px] sm:leading-6">
                 {description}
               </p>
             </div>
-            <div className="grid grid-cols-3 gap-2 rounded-[18px] border border-neutral-200 bg-white p-2 shadow-[0_12px_34px_rgba(15,23,42,0.04)]">
-              <ShellMetric label="계약 전" value="조건 정리" />
-              <ShellMetric label="검토" value="상대 확인" />
-              <ShellMetric label="계약" value="작성 연결" />
+            <div className="grid grid-cols-3 gap-1.5 rounded-[14px] border border-neutral-200 bg-white p-1.5 shadow-[0_12px_34px_rgba(15,23,42,0.04)] sm:gap-2 sm:rounded-[18px] sm:p-2">
+              {metrics.map((metric) => (
+                <ShellMetric
+                  key={`${metric.label}-${metric.value}`}
+                  label={metric.label}
+                  value={metric.value}
+                />
+              ))}
             </div>
           </div>
         </div>
       </section>
 
-      <div className="mx-auto flex w-full max-w-[1320px] min-h-0 flex-1 flex-col px-4 py-3 sm:px-6 lg:px-8">
+      <div className="mx-auto flex min-h-0 w-full max-w-[1320px] flex-1 flex-col overflow-y-auto px-4 py-2 sm:px-6 sm:py-3 lg:px-8">
         {children}
       </div>
     </main>
   );
 }
 
-function ShellMetric({ label, value }: { label: string; value: string }) {
+function ShellMetric({
+  label,
+  value,
+}: {
+  key?: string;
+  label: string;
+  value: string;
+}) {
   return (
-    <div className="rounded-[14px] bg-[#f8f7f4] px-3 py-3">
+    <div className="rounded-[12px] bg-[#f8f7f4] px-2.5 py-2 sm:rounded-[14px] sm:px-3 sm:py-3">
       <p className="text-[11px] font-extrabold text-neutral-400">{label}</p>
-      <p className="mt-1 truncate text-[13px] font-extrabold text-neutral-950">
+      <p className="mt-0.5 truncate text-[12px] font-extrabold text-neutral-950 sm:mt-1 sm:text-[13px]">
         {value}
       </p>
     </div>
@@ -1032,9 +1095,9 @@ function CampaignPostCard({
   onApply: (campaign: MarketplaceCampaignPost) => void;
 }) {
   return (
-    <article className="flex min-h-[360px] flex-col rounded-[18px] border border-neutral-200 bg-white p-4 shadow-[0_12px_34px_rgba(15,23,42,0.04)]">
+    <article className="flex min-h-[248px] flex-col rounded-[14px] border border-neutral-200 bg-white p-3 shadow-[0_10px_28px_rgba(15,23,42,0.04)] sm:min-h-[292px] sm:p-3.5">
       <div className="flex items-start gap-3">
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-neutral-950 text-[13px] font-extrabold text-white">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[11px] bg-neutral-950 text-[11px] font-extrabold text-white sm:h-10 sm:w-10 sm:rounded-[12px] sm:text-[12px]">
           {campaign.brandLogoLabel}
         </span>
         <div className="min-w-0 flex-1">
@@ -1050,41 +1113,41 @@ function CampaignPostCard({
         </span>
       </div>
 
-      <div className="mt-4">
+      <div className="mt-3 sm:mt-4">
         <p className="text-[12px] font-extrabold text-neutral-400">
           {campaign.typeLabel}
         </p>
-        <h2 className="mt-1 line-clamp-2 text-[18px] font-extrabold leading-6 text-neutral-950">
+        <h2 className="mt-1 line-clamp-2 text-[15px] font-extrabold leading-5 text-neutral-950 sm:text-[16px] sm:leading-6">
           {campaign.title}
         </h2>
-        <p className="mt-3 line-clamp-3 break-keep text-[13px] font-bold leading-5 text-neutral-600">
+        <p className="mt-1.5 line-clamp-1 break-keep text-[12px] font-bold leading-5 text-neutral-600 sm:mt-2 sm:line-clamp-2 sm:text-[13px]">
           {campaign.summary ?? campaign.brandHeadline}
         </p>
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-2">
+      <div className="mt-3 grid grid-cols-2 gap-2">
         <MiniInfo label="지급" value={campaign.budget} />
         <MiniInfo label="모집마감" value={campaign.deadlineLabel} />
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-1.5">
+      <div className="mt-3 flex flex-wrap gap-1.5">
         {(campaign.platforms ?? []).slice(0, 4).map((platform) => (
           <span
             key={platform}
-            className={`inline-flex h-7 items-center rounded-full border px-2.5 text-[11px] font-extrabold ${getPlatformTone(platform)}`}
+          className={`inline-flex h-6 items-center rounded-full border px-2 text-[10px] font-extrabold sm:h-7 sm:px-2.5 sm:text-[11px] ${getPlatformTone(platform)}`}
           >
             {platformLabels[platform]}
           </span>
         ))}
       </div>
 
-      <div className="mt-auto pt-5">
+      <div className="mt-auto pt-3 sm:pt-4">
         <button
           type="button"
           onClick={() => onApply(campaign)}
           disabled={isApplying}
           aria-busy={isApplying}
-          className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-[12px] bg-neutral-950 px-4 text-[13px] font-extrabold text-white transition hover:bg-neutral-800 disabled:cursor-wait disabled:bg-neutral-300 disabled:text-neutral-500"
+          className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-[12px] bg-neutral-950 px-4 text-[13px] font-extrabold text-white transition hover:bg-neutral-800 disabled:cursor-wait disabled:bg-neutral-300 disabled:text-neutral-500"
         >
           <Send className="h-4 w-4" />
           {isApplying ? "신청 중" : "신청"}

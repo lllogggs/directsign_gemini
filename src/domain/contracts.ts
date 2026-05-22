@@ -6,7 +6,8 @@ export type ContractStatus =
   | "REVIEWING"
   | "NEGOTIATING"
   | "APPROVED"
-  | "SIGNED";
+  | "SIGNED"
+  | "CLOSED";
 export type ClauseStatus =
   | "PENDING_REVIEW"
   | "APPROVED"
@@ -83,6 +84,20 @@ export interface ContractCampaign {
   period?: string;
   platforms?: ContractPlatform[];
   deliverables?: string[];
+  required_hashtags?: string[];
+  brand_account_tags?: string[];
+  content_submission?: {
+    url_required?: boolean;
+    file_required?: boolean;
+    file_examples?: string;
+    review_scope?: string;
+  };
+  content_usage?: {
+    allowed?: boolean;
+    channels?: string[];
+    period?: string;
+    edit_allowed?: boolean;
+  };
 }
 
 export interface ContractEvidence {
@@ -107,6 +122,12 @@ export interface Contract {
   advertiser_id: string;
   campaign_name?: string;
   post_link?: string;
+  deliverable_summary?: {
+    total: number;
+    submitted: number;
+    approved: number;
+    updated_at?: string;
+  };
   advertiser_info?: {
     name: string;
     manager?: string;
@@ -192,7 +213,12 @@ export const createWorkflow = (
     },
     SIGNED: {
       next_actor: "system",
-      next_action: "서명 완료본과 감사 기록을 보관하세요.",
+      next_action: "전자서명 완료 후 컨텐츠 제출을 기다리는 중입니다.",
+      risk_level: "low",
+    },
+    CLOSED: {
+      next_actor: "system",
+      next_action: "광고 계약 마감 완료",
       risk_level: "low",
     },
   };
@@ -335,7 +361,7 @@ export const createDemoContracts = (): Contract[] => {
       clauses: [
         {
           clause_id: "c_101",
-          category: "콘텐츠 업로드",
+          category: "컨텐츠 업로드",
           content: "유튜브 숏츠 1회, 인스타그램 스토리 2회 업로드",
           status: "APPROVED",
           history: [],

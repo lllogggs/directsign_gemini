@@ -144,6 +144,7 @@ const STATUS_ORDER: ContractStatus[] = [
   "NEGOTIATING",
   "APPROVED",
   "SIGNED",
+  "CLOSED",
 ];
 
 const PLATFORM_FILTERS: PlatformFilter[] = [
@@ -225,8 +226,8 @@ const DETAIL_PROGRESS_OPTIONS: Array<{
 }> = [
   { value: "ALL", label: "전체" },
   { value: "SIGN_PENDING", label: "서명대기" },
-  { value: "SIGNED_DONE", label: "서명완료" },
-  { value: "UPLOAD_DONE", label: "업로드완료" },
+  { value: "SIGNED_DONE", label: "전자서명 완료" },
+  { value: "UPLOAD_DONE", label: "컨텐츠 제출" },
 ];
 
 const DETAIL_DEADLINE_OPTIONS: Array<{
@@ -245,8 +246,8 @@ const DETAIL_POST_LINK_OPTIONS: Array<{
   label: string;
 }> = [
   { value: "ALL", label: "전체" },
-  { value: "SUBMITTED", label: "제출됨" },
-  { value: "NOT_SUBMITTED", label: "미제출" },
+  { value: "SUBMITTED", label: "컨텐츠 제출" },
+  { value: "NOT_SUBMITTED", label: "컨텐츠 미제출" },
 ];
 
 const STATUS_META: Record<
@@ -295,10 +296,18 @@ const STATUS_META: Record<
   SIGNED: {
     label: "서명 완료",
     shortLabel: "완료",
-    helper: "서명본 보관 및 콘텐츠 이행 관리",
+    helper: "전자서명 완료 후 컨텐츠 제출 대기",
     tone: "text-neutral-900",
     badge: "border-neutral-300 bg-neutral-100 text-neutral-900",
     icon: <CheckCircle2 className="h-4 w-4" strokeWidth={1.8} />,
+  },
+  CLOSED: {
+    label: "계약 마감",
+    shortLabel: "마감",
+    helper: "컨텐츠 확인 및 검수 완료",
+    tone: "text-emerald-700",
+    badge: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    icon: <CopyCheck className="h-4 w-4" strokeWidth={1.8} />,
   },
 };
 
@@ -739,7 +748,7 @@ export function Dashboard() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
                 <h1 className="truncate text-[17px] font-bold text-[#171a17]">
-                  광고주 대시보드
+                  계약 운영 대시보드
                 </h1>
               </div>
               <span
@@ -1353,6 +1362,9 @@ function CampaignListView({
     value: platform,
     label: formatPlatformFilterLabel(platform),
   }));
+  const operationMetrics = getContractOperationMetrics(
+    campaigns.flatMap((campaign) => campaign.contracts),
+  );
   const dateColumnLabel = lifecycleFilter === "ENDED" ? "종료일" : "마감일";
 
   return (
@@ -1362,6 +1374,7 @@ function CampaignListView({
         counts={lifecycleCounts}
         onChange={onLifecycleFilterChange}
       />
+      <DashboardMetricStrip metrics={operationMetrics} />
       <div className="grid gap-2 border-b border-[#d9e0d9] bg-[#f8faf7] p-2 lg:grid-cols-[minmax(86px,0.18fr)_minmax(92px,0.18fr)_minmax(220px,0.72fr)_minmax(170px,0.46fr)_minmax(150px,0.38fr)_minmax(120px,0.3fr)] lg:items-end">
         <TableFilterSelect
           label="플랫폼"
@@ -1409,6 +1422,30 @@ function CampaignListView({
         )}
       </div>
     </section>
+  );
+}
+
+function DashboardMetricStrip({
+  metrics,
+}: {
+  metrics: Array<{ label: string; value: number }>;
+}) {
+  return (
+    <div className="grid gap-2 border-b border-[#d9e0d9] bg-white p-2 sm:grid-cols-2 lg:grid-cols-7">
+      {metrics.map((metric) => (
+        <div
+          key={metric.label}
+          className="min-w-0 rounded-[8px] border border-[#e1e6e1] bg-[#fbfcfa] px-3 py-2"
+        >
+          <p className="truncate text-[11px] font-extrabold text-[#7d857f]">
+            {metric.label}
+          </p>
+          <p className="mt-1 text-[18px] font-black tabular-nums text-[#171a17]">
+            {metric.value.toLocaleString("ko-KR")}
+          </p>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -1600,8 +1637,8 @@ function CampaignDetailView({
         matchesDetailDeadlineFilter(contract, deadlineFilter) &&
         (postLinkFilter === "ALL" ||
           (postLinkFilter === "SUBMITTED"
-            ? Boolean(contract.post_link)
-            : !contract.post_link))
+            ? isContractContentSubmitted(contract)
+            : !isContractContentSubmitted(contract)))
       );
     });
   }, [
@@ -1698,7 +1735,7 @@ function CampaignDetailView({
           onChange={(value) => setDeadlineFilter(value as DetailDeadlineFilter)}
         />
         <TableFilterSelect
-          label="제출 링크"
+          label="컨텐츠 제출 링크"
           value={postLinkFilter}
           options={DETAIL_POST_LINK_OPTIONS}
           onChange={(value) => setPostLinkFilter(value as DetailPostLinkFilter)}
@@ -1936,6 +1973,11 @@ function CampaignApplicantRow({
   const handleAccept = async () => {
     if (!canAccept || isAccepting) return;
 
+    const confirmed = window.confirm(
+      `${thread.counterpartName || thread.senderName} 지원을 수락할까요? 수락하면 캠페인 조건으로 계약 초안이 생성됩니다.`,
+    );
+    if (!confirmed) return;
+
     setIsAccepting(true);
     setAcceptError(undefined);
     try {
@@ -2075,6 +2117,7 @@ function CampaignInfluencerRow({
   const progress = getCampaignProgressStatus(contract);
   const deadline = formatCampaignDeadline(contract);
   const postLink = contract.post_link;
+  const contentSubmitted = isContractContentSubmitted(contract);
 
   return (
     <div className="grid gap-2 px-3 py-3 lg:min-h-[46px] lg:grid-cols-[minmax(180px,0.7fr)_minmax(130px,0.36fr)_minmax(130px,0.34fr)_minmax(130px,0.34fr)_minmax(160px,0.45fr)] lg:items-center lg:py-2">
@@ -2105,10 +2148,16 @@ function CampaignInfluencerRow({
             className="inline-flex max-w-full items-center gap-1.5 text-[12px] font-semibold text-[#171a17] underline underline-offset-4"
           >
             <ExternalLink className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">제출 링크 열기</span>
+            <span className="truncate">컨텐츠 제출 링크 열기</span>
           </a>
+        ) : contentSubmitted ? (
+          <span className="text-[12px] font-semibold text-[#303630]">
+            컨텐츠 제출
+          </span>
         ) : (
-          <span className="text-[12px] font-semibold text-[#9aa39d]">-</span>
+          <span className="text-[12px] font-semibold text-[#9aa39d]">
+            컨텐츠 미제출
+          </span>
         )}
       </span>
     </div>
@@ -2946,8 +2995,8 @@ function buildCampaignGroups({
       const participantNames = new Set([...acceptedNames, ...applicantNames]);
       const acceptedParticipantCount = acceptedNames.size;
       const participantCount = participantNames.size;
-      const completedCount = group.contracts.filter((contract) =>
-        Boolean(contract.post_link),
+      const completedCount = group.contracts.filter(
+        (contract) => contract.status === "CLOSED",
       ).length;
       const platforms = Array.from(group.platforms);
       const brands = Array.from(group.brands).filter(Boolean).sort(compareText);
@@ -3152,17 +3201,19 @@ function getCampaignActionCounts(campaign: CampaignGroup) {
         (thread.status === "submitted" || thread.status === "reviewed"),
     ).length,
     overdueContracts: campaign.contracts.filter(
-      (contract) => !contract.post_link && isContractDeadlineOverdue(contract),
+      (contract) =>
+        isContractContentMissing(contract) && isContractDeadlineOverdue(contract),
     ).length,
     dueSoonContracts: campaign.contracts.filter(
-      (contract) => !contract.post_link && isContractDeadlineDueSoon(contract),
+      (contract) =>
+        isContractContentMissing(contract) && isContractDeadlineDueSoon(contract),
     ).length,
     draftContracts: campaign.contracts.filter((contract) => contract.status === "DRAFT")
       .length,
     revisionRequests: campaign.contracts.filter(
       (contract) => contract.status === "NEGOTIATING",
     ).length,
-    submittedLinks: campaign.contracts.filter((contract) => Boolean(contract.post_link))
+    submittedLinks: campaign.contracts.filter(isContractContentSubmitted)
       .length,
   };
 }
@@ -3201,7 +3252,7 @@ function buildCampaignAlerts(campaigns: CampaignGroup[]): CampaignAlert[] {
           campaignKey: campaign.key,
           campaignName: campaign.name,
           label: `마감 지남 ${counts.overdueContracts}건`,
-          detail: "제출 링크나 서명 상태가 마감 이후에도 완료되지 않았습니다.",
+          detail: "컨텐츠 제출 링크나 서명 상태가 마감 이후에도 완료되지 않았습니다.",
           tone: "rose",
           priority: 30,
         });
@@ -3223,7 +3274,7 @@ function buildCampaignAlerts(campaigns: CampaignGroup[]): CampaignAlert[] {
           campaignKey: campaign.key,
           campaignName: campaign.name,
           label: `7일 이내 마감 ${counts.dueSoonContracts}건`,
-          detail: "캠페인 마감 전 서명이나 제출 누락 여부를 확인하세요.",
+          detail: "캠페인 마감 전 서명이나 컨텐츠 제출 누락 여부를 확인하세요.",
           tone: "blue",
           priority: 50,
         });
@@ -3371,8 +3422,8 @@ function buildCampaignActivities(campaign: CampaignGroup): CampaignActivity[] {
       id: `${campaign.key}:campaign-created`,
       createdAt: marketplaceCampaign.createdAt,
       actor: "광고주",
-      title: "캠페인 공개",
-      description: "캠페인 모집글이 생성되었습니다.",
+      title: "캠페인 저장",
+      description: "운영 중인 캠페인이 생성되었습니다.",
     });
   }
 
@@ -3432,13 +3483,15 @@ function buildCampaignActivities(campaign: CampaignGroup): CampaignActivity[] {
       });
     }
 
-    if (contract.post_link) {
+    if (isContractContentSubmitted(contract)) {
       campaignEvents.push({
         id: `${contract.id}:post-link`,
         createdAt: contract.updated_at,
         actor: contract.influencer_info.name,
-        title: "콘텐츠 제출",
-        description: "인플루언서가 제출 링크를 등록했습니다.",
+        title: "컨텐츠 제출",
+        description: contract.post_link
+          ? "인플루언서가 컨텐츠 제출 링크를 등록했습니다."
+          : "인플루언서가 컨텐츠 파일을 제출했습니다.",
       });
     }
 
@@ -3474,7 +3527,7 @@ function formatCampaignStatusActionLabel(status?: MarketplaceCampaignStatus) {
 
 function formatCampaignActivityAction(action: string) {
   const labels: Record<string, string> = {
-    campaign_created: "캠페인 공개",
+    campaign_created: "캠페인 저장",
     campaign_status_updated: "상태 변경",
   };
 
@@ -3493,6 +3546,7 @@ function formatCampaignAuditAction(action: string) {
     contract_created: "계약 생성",
     share_link_issued: "검토 링크 발급",
     contract_signed: "계약 서명",
+    contract_closed: "광고 계약 마감",
   };
 
   return labels[action] ?? action.replace(/_/g, " ");
@@ -3619,27 +3673,105 @@ function isPastCampaignDeadline(value?: string) {
   return deadlineStart < todayStart;
 }
 
+function getContractDeliverableSummary(contract: Contract) {
+  return contract.deliverable_summary;
+}
+
+function isContractContentSubmitted(contract: Contract) {
+  const summary = getContractDeliverableSummary(contract);
+  if (summary && summary.total > 0) return summary.submitted > 0;
+  return Boolean(contract.post_link);
+}
+
+function isContractContentMissing(contract: Contract) {
+  if (contract.status !== "SIGNED") return false;
+
+  const summary = getContractDeliverableSummary(contract);
+  if (summary && summary.total > 0) return summary.submitted < summary.total;
+  return !contract.post_link;
+}
+
+function isContractContentReviewNeeded(contract: Contract) {
+  if (contract.status !== "SIGNED") return false;
+
+  const summary = getContractDeliverableSummary(contract);
+  if (summary && summary.total > 0) {
+    return summary.submitted > summary.approved;
+  }
+  return Boolean(contract.post_link);
+}
+
+function getContractOperationMetrics(contracts: Contract[]) {
+  const uniqueContracts = Array.from(
+    new Map(contracts.map((contract) => [contract.id, contract])).values(),
+  );
+
+  return [
+    {
+      label: "계약서 작성",
+      value: uniqueContracts.length,
+    },
+    {
+      label: "전자서명 대기",
+      value: uniqueContracts.filter((contract) => contract.status === "APPROVED")
+        .length,
+    },
+    {
+      label: "전자서명 완료",
+      value: uniqueContracts.filter(
+        (contract) => contract.status === "SIGNED" || contract.status === "CLOSED",
+      ).length,
+    },
+    {
+      label: "컨텐츠 미제출",
+      value: uniqueContracts.filter(isContractContentMissing).length,
+    },
+    {
+      label: "컨텐츠 제출",
+      value: uniqueContracts.filter(
+        (contract) =>
+          contract.status === "SIGNED" && isContractContentSubmitted(contract),
+      ).length,
+    },
+    {
+      label: "광고주 검수 필요",
+      value: uniqueContracts.filter(isContractContentReviewNeeded).length,
+    },
+    {
+      label: "광고 계약 마감",
+      value: uniqueContracts.filter((contract) => contract.status === "CLOSED").length,
+    },
+  ];
+}
+
 function getCampaignProgressStatus(contract: Contract) {
-  if (contract.post_link) {
+  if (contract.status === "CLOSED") {
     return {
-      label: "업로드완료",
+      label: "광고 계약 마감",
       className: "border-emerald-200 bg-emerald-50 text-emerald-700",
     };
   }
-  if (contract.status === "SIGNED") {
+  if (isContractContentSubmitted(contract)) {
     return {
-      label: "서명완료",
+      label: "컨텐츠 제출",
+      className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    };
+  }
+  if (isContractContentMissing(contract)) {
+    return {
+      label: "컨텐츠 미제출",
       className: "border-neutral-300 bg-neutral-100 text-neutral-800",
     };
   }
   return {
-    label: "서명대기",
+    label: "전자서명 대기",
     className: "border-sky-200 bg-sky-50 text-sky-700",
   };
 }
 
 function getCampaignProgressFilterValue(contract: Contract): DetailProgressFilter {
-  if (contract.post_link) return "UPLOAD_DONE";
+  if (contract.status === "CLOSED") return "UPLOAD_DONE";
+  if (isContractContentSubmitted(contract)) return "UPLOAD_DONE";
   if (contract.status === "SIGNED") return "SIGNED_DONE";
   return "SIGN_PENDING";
 }

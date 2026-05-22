@@ -16,4 +16,4 @@ export const PRODUCT_NAME =
     : normalizedProductName;
 
 export const PRODUCT_DESCRIPTION =
-  "광고 계약 검토부터 수정 협의, 전자서명까지 한 흐름으로.";
+  "계약서 중심 인플루언서 협업 운영툴.";

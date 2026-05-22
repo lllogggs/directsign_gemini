@@ -401,7 +401,7 @@ export function SignupPage({ role }: { role: SignupRole }) {
       footer={
         <Link
           to={loginRedirectPath}
-          className="inline-flex min-h-10 items-center text-[13px] font-semibold text-[#59605b] transition hover:text-neutral-950"
+          className="inline-flex min-h-8 items-center text-[13px] font-semibold text-[#59605b] transition hover:text-neutral-950 sm:min-h-10"
         >
           이미 계정이 있으면 로그인하기
         </Link>
@@ -453,9 +453,9 @@ export function SignupPage({ role }: { role: SignupRole }) {
 
 function AdvertiserTeamEmailNotice() {
   return (
-    <span className="flex gap-2 rounded-[12px] border border-blue-200 bg-blue-50 px-3.5 py-3 text-left text-[12px] font-semibold leading-5 text-blue-900">
+    <span className="flex gap-2 rounded-[12px] border border-blue-200 bg-blue-50 px-3 py-2.5 text-left text-[12px] font-semibold leading-5 text-blue-900 sm:px-3.5 sm:py-3">
       <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
-      <span>{ADVERTISER_TEAM_EMAIL_NOTICE}</span>
+      <span className="line-clamp-2 sm:line-clamp-none">{ADVERTISER_TEAM_EMAIL_NOTICE}</span>
     </span>
   );
 }
@@ -476,7 +476,7 @@ function InfluencerSignupReadiness({
   return (
     <section
       aria-live="polite"
-      className={`rounded-[12px] border px-4 py-3 ${
+      className={`rounded-[12px] border px-3 py-2.5 sm:px-4 sm:py-3 ${
         complete
           ? "border-emerald-200 bg-emerald-50/75"
           : "border-amber-200 bg-amber-50/80"
@@ -491,7 +491,7 @@ function InfluencerSignupReadiness({
           ? "가입 필수 선택이 완료되었습니다"
           : "가입하려면 아래 필수 선택을 먼저 완료해 주세요"}
       </p>
-      <div className="mt-2 flex flex-wrap gap-2">
+      <div className="mt-2 flex flex-wrap gap-1.5 sm:gap-2">
         {items.map((item) => (
           <span
             key={item.label}
@@ -537,9 +537,9 @@ function SignupFlowNotice({
         };
 
   return (
-    <section className="rounded-[12px] border border-blue-100 bg-blue-50/70 px-4 py-3">
+    <section className="rounded-[12px] border border-blue-100 bg-blue-50/70 px-3 py-2.5 sm:px-4 sm:py-3">
       <p className="text-[13px] font-semibold text-blue-950">{content.title}</p>
-      <p className="mt-1 text-[12px] font-semibold leading-5 text-blue-800/80">
+      <p className="mt-1 line-clamp-2 text-[12px] font-semibold leading-5 text-blue-800/80 sm:line-clamp-none">
         {content.body}
       </p>
     </section>
@@ -566,11 +566,11 @@ function MultiSelectGroup<T extends string>({
   onToggle: (value: T) => void;
 }) {
   return (
-    <fieldset className="space-y-2">
+    <fieldset className="space-y-1.5 sm:space-y-2">
       <legend className="text-[13px] font-semibold text-[#303630]">
         {label}
       </legend>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-1.5 sm:gap-2">
         {options.map((option) => {
           const selected = selectedValues.includes(option.value);
 
@@ -581,7 +581,7 @@ function MultiSelectGroup<T extends string>({
               aria-pressed={selected}
               disabled={disabled}
               onClick={() => onToggle(option.value)}
-              className={`inline-flex h-10 items-center gap-1.5 rounded-[10px] border px-3 text-[13px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+              className={`inline-flex h-9 items-center gap-1.5 rounded-[10px] border px-2.5 text-[12px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 sm:h-10 sm:px-3 sm:text-[13px] ${
                 selected
                   ? "border-[#2563eb] bg-[#2563eb] text-white"
                   : "border-[#d8ded4] bg-[#fbfcfa] text-[#59605b] hover:border-neutral-400 hover:bg-white hover:text-neutral-950"
@@ -607,7 +607,7 @@ function SignupConsentPanel({
   onToggle: (key: keyof SignupConsents) => void;
 }) {
   return (
-    <section className="rounded-[12px] border border-[#d8ded4] bg-[#fbfcfa] p-4">
+    <section className="rounded-[12px] border border-[#d8ded4] bg-[#fbfcfa] p-3 sm:p-4">
       <div className="flex flex-col items-start gap-2 sm:flex-row sm:justify-between sm:gap-3">
         <div>
           <p className="text-[13px] font-semibold text-[#141714]">
@@ -622,12 +622,12 @@ function SignupConsentPanel({
         </span>
       </div>
 
-      <p className="mt-3 rounded-[10px] border border-[#d8ded4] bg-white px-3 py-2 text-[12px] font-semibold leading-5 text-[#59605b]">
+      <p className="mt-2 line-clamp-2 rounded-[10px] border border-[#d8ded4] bg-white px-3 py-2 text-[12px] font-semibold leading-5 text-[#59605b] sm:mt-3 sm:line-clamp-none">
         현재 가입과 기본 서비스 이용은 무료입니다. 다만 향후 일부 또는 전체
         기능이 유료로 전환될 수 있으며, 전환 전 대상·요금·시행일을 고지합니다.
       </p>
 
-      <div className="mt-4 space-y-3">
+      <div className="mt-3 space-y-2 sm:mt-4 sm:space-y-3">
         <ConsentCheckbox
           checked={consents.terms}
           disabled={disabled}
@@ -671,11 +671,11 @@ function ConsentCheckbox({
   const checkboxId = `signup-consent-${linkTo.replace(/[^a-z0-9]/gi, "-")}`;
 
   return (
-    <div className="flex items-start gap-3 rounded-[10px] border border-[#d8ded4] bg-white p-3 transition hover:border-neutral-400">
+    <div className="flex items-start gap-2.5 rounded-[10px] border border-[#d8ded4] bg-white p-2.5 transition hover:border-neutral-400 sm:gap-3 sm:p-3">
       <input
         id={checkboxId}
         type="checkbox"
-        className="mt-0.5 h-10 w-10 shrink-0 accent-[#2563eb]"
+        className="mt-0.5 h-5 w-5 shrink-0 accent-[#2563eb] sm:h-10 sm:w-10"
         checked={checked}
         disabled={disabled}
         required
@@ -688,13 +688,13 @@ function ConsentCheckbox({
         >
           {title}
         </label>
-        <span className="mt-1 block text-[12px] font-medium leading-5 text-[#7d887f]">
+        <span className="mt-1 block line-clamp-2 text-[12px] font-medium leading-5 text-[#7d887f] sm:line-clamp-none">
           {description}
         </span>
         <Link
           to={linkTo}
           target="_blank"
-          className="mt-2 inline-flex min-h-10 items-center text-[12px] font-semibold text-[#2563eb] underline underline-offset-4"
+          className="mt-1 inline-flex min-h-7 items-center text-[12px] font-semibold text-[#2563eb] underline underline-offset-4 sm:mt-2 sm:min-h-10"
         >
           {linkLabel}
         </Link>

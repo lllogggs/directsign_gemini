@@ -132,7 +132,7 @@ export const marketplaceInfluencers: MarketplaceInfluencerProfile[] = [
     avatarLabel: "ZK",
     categories: ["뷰티", "라이프스타일", "패션"],
     audience: "20-34 여성 중심 · 관심사 기반 구매 전환",
-    audienceTags: ["20대 여성", "데일리 뷰티", "숏폼 반응", "리뷰형 콘텐츠"],
+    audienceTags: ["20대 여성", "데일리 뷰티", "숏폼 반응", "리뷰형 컨텐츠"],
     platforms: [
       {
         platform: "instagram",
@@ -186,12 +186,12 @@ export const marketplaceInfluencers: MarketplaceInfluencerProfile[] = [
     displayName: "민서홈",
     headline: "홈카페, 리빙 소품, 주방 브랜드에 강한 리뷰형 크리에이터",
     bio:
-      "긴 설명보다 실제 배치, 사용 전후, 구매 이유를 차분하게 보여주는 콘텐츠를 만듭니다.",
+      "긴 설명보다 실제 배치, 사용 전후, 구매 이유를 차분하게 보여주는 컨텐츠를 만듭니다.",
     location: "부산 · 원격 협업",
     avatarLabel: "MH",
     categories: ["리빙", "홈카페", "푸드"],
     audience: "25-39 여성 · 리빙/소비재 관심",
-    audienceTags: ["홈카페", "주방용품", "저장형 콘텐츠", "블로그 연계"],
+    audienceTags: ["홈카페", "주방용품", "저장형 컨텐츠", "블로그 연계"],
     platforms: [
       {
         platform: "instagram",
@@ -223,7 +223,7 @@ export const marketplaceInfluencers: MarketplaceInfluencerProfile[] = [
         result: "검색 유입 4,200회",
       },
       {
-        title: "주방 선반 정리 콘텐츠",
+        title: "주방 선반 정리 컨텐츠",
         brand: "오브제스튜디오",
         result: "저장 1,140회",
       },
@@ -288,7 +288,7 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
     category: "뷰티 · 라이프스타일",
     headline: "신제품 런칭과 숏폼 전환을 함께할 크리에이터를 찾습니다",
     description:
-      "사용 장면이 분명한 뷰티/라이프스타일 콘텐츠를 선호합니다. 브랜드 소개와 필수 표현은 가볍게 제공하고, 크리에이터의 자연스러운 사용 경험을 우선합니다.",
+      "사용 장면이 분명한 뷰티/라이프스타일 컨텐츠를 선호합니다. 브랜드 소개와 필수 표현은 가볍게 제공하고, 크리에이터의 자연스러운 사용 경험을 우선합니다.",
     location: "서울 성수",
     logoLabel: "BR",
     preferredPlatforms: ["instagram", "youtube", "tiktok"],
@@ -325,7 +325,7 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
     category: "여행 · 로컬",
     headline: "방문형 리뷰와 브이로그 제안을 열어둔 여행 브랜드",
     description:
-      "숙박, 로컬 체험, 카페 방문 콘텐츠를 찾습니다. 광고 표기와 콘텐츠 사용 기간은 계약에서 명확히 정리합니다.",
+      "숙박, 로컬 체험, 카페 방문 컨텐츠를 찾습니다. 광고 표기와 컨텐츠 사용 기간은 계약에서 명확히 정리합니다.",
     location: "제주 · 강원",
     logoLabel: "MT",
     preferredPlatforms: ["youtube", "instagram", "naver_blog"],
@@ -354,9 +354,9 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
     handle: "object-studio",
     displayName: "오브제스튜디오",
     category: "리빙 · 소품",
-    headline: "저장형 리빙 콘텐츠와 공동구매를 함께할 파트너를 찾습니다",
+    headline: "저장형 리빙 컨텐츠와 공동구매를 함께할 파트너를 찾습니다",
     description:
-      "제품 배치, 공간 전후 비교, 실제 사용 루틴이 보이는 콘텐츠를 선호합니다. 공동구매는 수수료 조건을 계약서에 분리해 기록합니다.",
+      "제품 배치, 공간 전후 비교, 실제 사용 루틴이 보이는 컨텐츠를 선호합니다. 공동구매는 수수료 조건을 계약서에 분리해 기록합니다.",
     location: "온라인 입점",
     logoLabel: "OS",
     preferredPlatforms: ["instagram", "naver_blog", "youtube"],
@@ -364,7 +364,7 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
     budgetRangeLabel: "80만-350만원",
     responseTimeLabel: "당일 확인 가능",
     statusLabel: "입점 브랜드",
-    fitTags: ["리빙 소품", "공동구매", "저장형 콘텐츠"],
+    fitTags: ["리빙 소품", "공동구매", "저장형 컨텐츠"],
     audienceTargets: ["1인 가구", "홈오피스", "신혼 리빙"],
     activeCampaigns: [
       {

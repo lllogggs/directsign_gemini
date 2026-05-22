@@ -103,9 +103,15 @@ const STATUS_META: Record<
   },
   SIGNED: {
     label: "서명 완료",
-    helper: "서명본 보관 및 콘텐츠 이행 관리",
+    helper: "전자서명 완료 후 컨텐츠 제출 대기",
     badge: "border-neutral-200 bg-white text-neutral-700",
     icon: <CheckCircle2 className="h-4 w-4" />,
+  },
+  CLOSED: {
+    label: "계약 마감",
+    helper: "컨텐츠 확인 및 검수 완료",
+    badge: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    icon: <Copy className="h-4 w-4" />,
   },
 };
 
@@ -115,6 +121,7 @@ export function ContractAdminViewer() {
   const getContract = useAppStore((state) => state.getContract);
   const updateClauseStatus = useAppStore((state) => state.updateClauseStatus);
   const updateContract = useAppStore((state) => state.updateContract);
+  const replaceContract = useAppStore((state) => state.replaceContract);
   const isSyncing = useAppStore((state) => state.isSyncing);
   const syncError = useAppStore((state) => state.syncError);
   const resetHydration = useAppStore((state) => state.resetHydration);
@@ -134,6 +141,7 @@ export function ContractAdminViewer() {
   const [isLoadingDeliverables, setIsLoadingDeliverables] = useState(false);
   const [reviewComments, setReviewComments] = useState<Record<string, string>>({});
   const [reviewingDeliverableId, setReviewingDeliverableId] = useState("");
+  const [isClosingContract, setIsClosingContract] = useState(false);
   const { summary: verificationSummary, isLoading: isVerificationLoading } =
     useVerificationSummary({ role: "advertiser" });
   const advertiserVerificationStatus =
@@ -190,18 +198,22 @@ export function ContractAdminViewer() {
   }
 
   const primaryActionLabel =
-    contract.status === "SIGNED"
+    contract.status === "CLOSED"
+      ? "계약 마감"
+      : contract.status === "SIGNED"
       ? "서명 완료"
       : summary.allApproved
         ? isVerificationLoading
           ? "인증 확인 중"
           : isAdvertiserVerified
             ? "공유 링크 활성화"
-            : "광고주 인증 필요"
+          : "광고주 인증 필요"
         : "수정 요청 검토";
+  const isContractSignedOrClosed =
+    contract.status === "SIGNED" || contract.status === "CLOSED";
   const canRequestSignatures =
     summary.allApproved &&
-    contract.status !== "SIGNED" &&
+    !isContractSignedOrClosed &&
     isAdvertiserVerified &&
     !isVerificationLoading;
   const displayContractTitle = formatContractTitleForDisplay(contract.title);
@@ -212,12 +224,22 @@ export function ContractAdminViewer() {
   const signatureData = contract.signature_data;
   const signatureDisplayName =
     signatureData?.signer_name?.trim() || displayInfluencerName;
+  const canCloseContract =
+    contract.status === "SIGNED" &&
+    Boolean(deliverables?.summary) &&
+    (deliverables?.summary.total ?? 0) > 0 &&
+    (deliverables?.summary.approved ?? 0) >= (deliverables?.summary.total ?? 0);
 
   const handleAction = (
     clauseId: string,
     action: ClauseHistory["action"],
     newStatus: "APPROVED" | "MODIFICATION_REQUESTED",
   ) => {
+    if (isContractSignedOrClosed) {
+      setNotice("서명 완료 또는 계약 마감 상태에서는 조항을 수정할 수 없습니다.");
+      return;
+    }
+
     updateClauseStatus(contract.id, clauseId, newStatus, {
       role: "advertiser",
       action,
@@ -243,6 +265,11 @@ export function ContractAdminViewer() {
   };
 
   const saveDraft = () => {
+    if (isContractSignedOrClosed) {
+      setNotice("서명 완료 또는 계약 마감 상태에서는 초안으로 되돌릴 수 없습니다.");
+      return;
+    }
+
     if (summary.activeShare) {
       setDraftConfirmationOpen(true);
       setNotice("초안 저장을 계속하면 현재 공유 링크가 비활성화됩니다.");
@@ -286,6 +313,11 @@ export function ContractAdminViewer() {
   };
 
   const requestSignatures = () => {
+    if (isContractSignedOrClosed) {
+      setNotice("이미 서명 완료 또는 계약 마감 상태입니다.");
+      return;
+    }
+
     if (!isAdvertiserVerified) {
       setNotice(
         `사업자 인증 승인 후 공유 링크를 활성화할 수 있습니다. 현재 상태: ${verificationStatusLabel(
@@ -334,7 +366,7 @@ export function ContractAdminViewer() {
       return;
     }
 
-    if (summary.allApproved && contract.status !== "SIGNED") {
+    if (summary.allApproved && !isContractSignedOrClosed) {
       if (isVerificationLoading) {
         setNotice("사업자 인증 상태를 확인한 뒤 다시 시도해 주세요.");
         return;
@@ -423,7 +455,7 @@ export function ContractAdminViewer() {
       const data = (await response.json()) as DeliverablesResponse;
 
       if (!response.ok) {
-        throw new Error(data.error ?? "콘텐츠 제출 내역을 불러오지 못했습니다.");
+        throw new Error(data.error ?? "컨텐츠 제출 내역을 불러오지 못했습니다.");
       }
 
       setDeliverables(data);
@@ -431,7 +463,7 @@ export function ContractAdminViewer() {
       setDeliverablesError(
         getDeliverableErrorMessage(
           error instanceof Error ? error.message : undefined,
-          "콘텐츠 제출 내역을 불러오지 못했습니다.",
+          "컨텐츠 제출 내역을 불러오지 못했습니다.",
         ),
       );
     } finally {
@@ -456,6 +488,17 @@ export function ContractAdminViewer() {
       setDeliverablesNotice("");
       return;
     }
+
+    const reviewActionLabel =
+      reviewStatus === "approved"
+        ? "컨텐츠 승인"
+        : reviewStatus === "changes_requested"
+          ? "컨텐츠 수정 요청"
+          : "컨텐츠 반려";
+    const confirmed = window.confirm(
+      `${reviewActionLabel} 처리할까요? 처리 결과는 감사 기록에 남고 인플루언서 화면에 표시됩니다.`,
+    );
+    if (!confirmed) return;
 
     setReviewingDeliverableId(deliverableId);
     setDeliverablesError("");
@@ -485,7 +528,7 @@ export function ContractAdminViewer() {
         throw new Error(
           getDeliverableErrorMessage(
             data.error,
-            `콘텐츠 검수 실패 (${response.status})`,
+            `컨텐츠 확인 및 검수 실패 (${response.status})`,
           ),
         );
       }
@@ -494,27 +537,76 @@ export function ContractAdminViewer() {
       setReviewComments((current) => ({ ...current, [deliverableId]: "" }));
       setDeliverablesNotice(
         reviewStatus === "approved"
-          ? "콘텐츠 제출물을 승인했습니다. 모든 항목이 승인되면 계약이 완료 상태로 전환됩니다."
+          ? "컨텐츠를 승인했습니다. 모든 항목이 승인되면 광고 계약을 마감할 수 있습니다."
           : reviewStatus === "changes_requested"
-            ? "인플루언서에게 콘텐츠 수정 요청을 보냈습니다."
-            : "콘텐츠 제출물을 반려했습니다.",
+            ? "인플루언서에게 컨텐츠 수정 요청을 보냈습니다."
+            : "컨텐츠를 반려했습니다.",
       );
       setNotice(
         reviewStatus === "approved"
-          ? "콘텐츠 제출물을 승인했습니다."
+          ? "컨텐츠를 승인했습니다."
           : reviewStatus === "changes_requested"
-            ? "콘텐츠 수정 요청을 보냈습니다."
-            : "콘텐츠 제출물을 반려했습니다.",
+            ? "컨텐츠 수정 요청을 보냈습니다."
+            : "컨텐츠를 반려했습니다.",
       );
     } catch (error) {
       setDeliverablesError(
         getDeliverableErrorMessage(
           error instanceof Error ? error.message : undefined,
-          "콘텐츠 검수에 실패했습니다.",
+          "컨텐츠 확인 및 검수에 실패했습니다.",
         ),
       );
     } finally {
       setReviewingDeliverableId("");
+    }
+  };
+
+  const closeContract = async () => {
+    if (!canCloseContract || isClosingContract) return;
+
+    const confirmed = window.confirm(
+      "광고 계약을 마감할까요? 마감 후에는 인플루언서 추가 제출과 광고주 검수 변경이 차단됩니다.",
+    );
+    if (!confirmed) return;
+
+    setIsClosingContract(true);
+    setDeliverablesError("");
+    setDeliverablesNotice("");
+
+    try {
+      const response = await apiFetch(
+        `/api/contracts/${encodeURIComponent(contract.id)}/close`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { Accept: "application/json" },
+        },
+      );
+      const data = (await response.json().catch(() => ({}))) as {
+        contract?: Contract;
+        error?: string;
+      };
+
+      if (!response.ok || !data.contract) {
+        throw new Error(
+          getDeliverableErrorMessage(
+            data.error,
+            `광고 계약 마감 실패 (${response.status})`,
+          ),
+        );
+      }
+
+      replaceContract(data.contract);
+      setDeliverablesNotice("광고 계약 마감 완료");
+      setNotice("광고 계약 마감 완료");
+    } catch (error) {
+      setDeliverablesError(
+        error instanceof Error
+          ? error.message
+          : "광고 계약 마감에 실패했습니다.",
+      );
+    } finally {
+      setIsClosingContract(false);
     }
   };
   const handleLogout = async () => {
@@ -581,6 +673,7 @@ export function ContractAdminViewer() {
               title={primaryActionLabel}
               disabled={
                 contract.status === "SIGNED" ||
+                contract.status === "CLOSED" ||
                 (summary.allApproved && isVerificationLoading)
               }
               className="inline-flex h-10 w-12 shrink-0 items-center justify-center gap-0 rounded-lg bg-neutral-950 px-0 text-[12px] font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition hover:bg-neutral-800 hover:shadow-[0_14px_30px_rgba(15,23,42,0.18)] disabled:bg-neutral-200 disabled:text-neutral-400 disabled:shadow-none sm:w-auto sm:gap-2 sm:px-4"
@@ -680,12 +773,15 @@ export function ContractAdminViewer() {
           </div>
         )}
 
-        {contract.status === "SIGNED" && (
+        {(contract.status === "SIGNED" || contract.status === "CLOSED") && (
           <AdvertiserDeliverablesPanel
             data={deliverables}
             error={deliverablesError}
             notice={deliverablesNotice}
             isLoading={isLoadingDeliverables}
+            canCloseContract={canCloseContract}
+            isClosed={contract.status === "CLOSED"}
+            isClosingContract={isClosingContract}
             reviewComments={reviewComments}
             reviewingDeliverableId={reviewingDeliverableId}
             onReload={loadDeliverables}
@@ -693,6 +789,7 @@ export function ContractAdminViewer() {
               setReviewComments((current) => ({ ...current, [deliverableId]: value }))
             }
             onReview={reviewDeliverable}
+            onCloseContract={closeContract}
           />
         )}
 
@@ -738,7 +835,7 @@ export function ContractAdminViewer() {
               </div>
             </Panel>
 
-            {contract.status === "SIGNED" && signatureData && (
+            {isContractSignedOrClosed && signatureData && (
               <Panel title="서명 정보">
                 <div className="space-y-4">
                   <PersonLine
@@ -759,14 +856,16 @@ export function ContractAdminViewer() {
               </Panel>
             )}
 
-            <button
-              type="button"
-              onClick={saveDraft}
-              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white text-[13px] font-semibold text-neutral-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-neutral-300 hover:bg-neutral-50"
-            >
-              <Save className="h-4 w-4" />
-              초안으로 저장
-            </button>
+            {!isContractSignedOrClosed && (
+              <button
+                type="button"
+                onClick={saveDraft}
+                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white text-[13px] font-semibold text-neutral-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-neutral-300 hover:bg-neutral-50"
+              >
+                <Save className="h-4 w-4" />
+                초안으로 저장
+              </button>
+            )}
 
             {draftConfirmationOpen && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-[13px] text-amber-900">
@@ -810,7 +909,9 @@ export function ContractAdminViewer() {
               {contract.clauses.map((clause, index) => {
                 const latestHistory = clause.history.at(-1);
                 const needsReview =
-                  clause.status !== "APPROVED" && latestHistory?.role === "influencer";
+                  !isContractSignedOrClosed &&
+                  clause.status !== "APPROVED" &&
+                  latestHistory?.role === "influencer";
 
                 return (
                   <article key={clause.clause_id} className="p-5">
@@ -916,7 +1017,7 @@ export function ContractAdminViewer() {
                   type="button"
                   onClick={handlePrimaryAction}
                   disabled={
-                    contract.status === "SIGNED" ||
+                    isContractSignedOrClosed ||
                     (summary.allApproved && isVerificationLoading)
                   }
                   className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-neutral-950 text-[13px] font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition hover:bg-neutral-800 hover:shadow-[0_14px_30px_rgba(15,23,42,0.18)] disabled:bg-neutral-200 disabled:text-neutral-400 disabled:shadow-none"
@@ -924,7 +1025,7 @@ export function ContractAdminViewer() {
                   <Send className="h-4 w-4" />
                   {primaryActionLabel}
                 </button>
-                {contract.status === "SIGNED" && (
+                {isContractSignedOrClosed && (
                   <a
             href={contract.pdf_url || apiPath(`/api/contracts/${contract.id}/final-pdf`)}
                     target="_blank"
@@ -1067,16 +1168,23 @@ function AdvertiserDeliverablesPanel({
   error,
   notice,
   isLoading,
+  canCloseContract,
+  isClosed,
+  isClosingContract,
   reviewComments,
   reviewingDeliverableId,
   onReload,
   onCommentChange,
   onReview,
+  onCloseContract,
 }: {
   data?: DeliverablesResponse;
   error: string;
   notice: string;
   isLoading: boolean;
+  canCloseContract: boolean;
+  isClosed: boolean;
+  isClosingContract: boolean;
   reviewComments: Record<string, string>;
   reviewingDeliverableId: string;
   onReload: () => void;
@@ -1088,6 +1196,7 @@ function AdvertiserDeliverablesPanel({
       "approved" | "changes_requested" | "rejected"
     >,
   ) => void;
+  onCloseContract: () => void;
 }) {
   useEffect(() => {
     if (!data && !isLoading && !error) {
@@ -1104,27 +1213,60 @@ function AdvertiserDeliverablesPanel({
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
-              콘텐츠 검수
+              컨텐츠 확인 및 검수
             </p>
             <h2 className="mt-1 text-[20px] font-semibold tracking-[-0.02em]">
-              제출 링크와 증빙 확인
+              광고 계약 마감 전 컨텐츠 URL과 파일을 확인하세요
             </h2>
           </div>
-          <button
-            type="button"
-            onClick={onReload}
-            disabled={isLoading}
-            className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-700 transition hover:border-neutral-400 disabled:text-neutral-300"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />
-            새로고침
-          </button>
+          <div className="flex flex-wrap gap-2">
+            {isClosed ? (
+              <span className="inline-flex h-9 items-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-semibold text-emerald-700">
+                광고 계약 마감 완료
+              </span>
+            ) : canCloseContract ? (
+              <button
+                type="button"
+                onClick={onCloseContract}
+                disabled={isClosingContract}
+                className="inline-flex h-9 items-center justify-center rounded-lg bg-neutral-950 px-3 text-xs font-semibold text-white transition hover:bg-neutral-800 disabled:bg-neutral-200 disabled:text-neutral-500"
+              >
+                {isClosingContract ? "마감 중" : "광고 계약 마감"}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={onReload}
+              disabled={isLoading}
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-700 transition hover:border-neutral-400 disabled:text-neutral-300"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />
+              새로고침
+            </button>
+          </div>
         </div>
         {data?.summary && (
           <p className="mt-2 text-[12px] font-semibold text-neutral-500">
             제출 {data.summary.submitted}/{data.summary.total} · 승인 {data.summary.approved}/{data.summary.total}
           </p>
         )}
+        <div className="mt-3 grid gap-2 text-[12px] font-semibold text-neutral-600 sm:grid-cols-2 lg:grid-cols-3">
+          {[
+            "컨텐츠 URL",
+            "광고표시 문구",
+            "필수 해시태그",
+            "브랜드 계정 태그",
+            "게시일",
+            "게시물 유지 조건",
+          ].map((item) => (
+            <span
+              key={item}
+              className="rounded-md border border-neutral-200 bg-white px-2.5 py-1.5"
+            >
+              {item}
+            </span>
+          ))}
+        </div>
       </div>
 
       {error && (
@@ -1146,7 +1288,7 @@ function AdvertiserDeliverablesPanel({
           </div>
         ) : requirements.length === 0 ? (
           <div className="p-5 text-[14px] leading-6 text-neutral-500">
-            아직 제출 또는 요구된 콘텐츠 항목이 없습니다.
+            아직 제출 또는 요구된 컨텐츠 항목이 없습니다.
           </div>
         ) : (
           requirements.map((requirement) => {
@@ -1236,7 +1378,7 @@ function AdvertiserDeliverablesPanel({
                           >
                             <ExternalLink className="h-3.5 w-3.5 shrink-0" />
                             <span className="truncate">
-                              {formatPublicUrlLabel(submission.url, "제출 링크 열기")}
+                              {formatPublicUrlLabel(submission.url, "컨텐츠 제출 링크 열기")}
                             </span>
                           </a>
                         )}
@@ -1250,7 +1392,7 @@ function AdvertiserDeliverablesPanel({
                               >
                                 <FileText className="h-3.5 w-3.5 shrink-0" />
                                 <span className="truncate">
-                                  {file.file_name ?? "증빙 파일"}
+                                  {file.file_name ?? "컨텐츠 파일"}
                                 </span>
                                 {formatFileSize(file.byte_size) && (
                                   <span className="shrink-0 text-neutral-400">
@@ -1272,7 +1414,7 @@ function AdvertiserDeliverablesPanel({
                           </p>
                         )}
 
-                        {!reviewDone && (
+                        {!isClosed && !reviewDone && (
                           <div className="mt-4 grid gap-3">
                             <Textarea
                               className="min-h-[76px] rounded-md border-neutral-200 bg-white text-[13px] shadow-none focus-visible:ring-1 focus-visible:ring-neutral-900"
@@ -1289,7 +1431,7 @@ function AdvertiserDeliverablesPanel({
                                 disabled={isReviewing}
                                 className="h-10 rounded-md bg-neutral-950 text-[13px] font-semibold text-white disabled:bg-neutral-200 disabled:text-neutral-500"
                               >
-                                승인
+                                컨텐츠 승인
                               </button>
                               <button
                                 type="button"
@@ -1305,7 +1447,7 @@ function AdvertiserDeliverablesPanel({
                                 disabled={isReviewing}
                                 className="h-10 rounded-md border border-rose-200 bg-rose-50 text-[13px] font-semibold text-rose-700 disabled:text-rose-300"
                               >
-                                반려
+                                컨텐츠 반려
                               </button>
                             </div>
                           </div>
@@ -1491,7 +1633,8 @@ function formatAuditActionLabel(action: string) {
     contract_signed: "전자서명 완료",
     created: "지원 요청 생성",
     draft_saved: "초안 저장",
-    evidence_downloaded: "증빙 파일 다운로드",
+    evidence_downloaded: "컨텐츠 파일 다운로드",
+    contract_closed: "광고 계약 마감",
     qa_contract_seeded: "계약 생성",
     share_link_issued: "공유 링크 생성",
     signature_requested: "서명 요청",

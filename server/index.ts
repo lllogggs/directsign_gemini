@@ -597,7 +597,14 @@ interface RateLimitBucket {
 
 const publicAuthRateLimitBuckets = new Map<string, RateLimitBucket>();
 
-const contractStatuses = new Set(["DRAFT", "REVIEWING", "NEGOTIATING", "APPROVED", "SIGNED"]);
+const contractStatuses = new Set([
+  "DRAFT",
+  "REVIEWING",
+  "NEGOTIATING",
+  "APPROVED",
+  "SIGNED",
+  "CLOSED",
+]);
 const clauseStatuses = new Set([
   "PENDING_REVIEW",
   "APPROVED",
@@ -5140,7 +5147,8 @@ const legacyContractStatusLabels: Record<Contract["status"], string> = {
   REVIEWING: "검토",
   NEGOTIATING: "수정",
   APPROVED: "서명",
-  SIGNED: "완료",
+  SIGNED: "서명 완료",
+  CLOSED: "계약 마감",
 };
 
 const formatWonCompact = (amount: number) => {
@@ -5172,8 +5180,8 @@ const buildAdminMetrics = async (
 
   return {
     contract_count: contracts.length,
-    active_contract_count: contracts.filter((contract) => contract.status !== "SIGNED").length,
-    completed_contract_count: contracts.filter((contract) => contract.status === "SIGNED").length,
+    active_contract_count: contracts.filter((contract) => contract.status !== "CLOSED").length,
+    completed_contract_count: contracts.filter((contract) => contract.status === "CLOSED").length,
     active_share_link_count: contracts.filter(
       (contract) => contract.evidence?.share_token_status === "active",
     ).length,
@@ -5209,15 +5217,15 @@ const mapContractStatusToV2 = (status: Contract["status"]) => {
     REVIEWING: "negotiating",
     NEGOTIATING: "negotiating",
     APPROVED: "signing",
-    SIGNED: "completed",
+    SIGNED: "active",
+    CLOSED: "completed",
   };
 
   return statuses[status];
 };
 
 const mapContractToV2Status = (contract: Contract) => {
-  if (contract.status !== "SIGNED") return mapContractStatusToV2(contract.status);
-  return (contract.campaign?.deliverables?.length ?? 0) > 0 ? "active" : "completed";
+  return mapContractStatusToV2(contract.status);
 };
 
 const mapClauseStatusToV2 = (status: Contract["clauses"][number]["status"]) => {
@@ -6905,7 +6913,7 @@ const upsertAdvertiserMarketplaceCampaign = async (
     deliverables:
       payload.deliverables.length > 0
         ? payload.deliverables
-        : ["콘텐츠 산출물 협의"],
+        : ["컨텐츠 산출물 협의"],
     status: "open",
     createdAt: now,
     updatedAt: now,
@@ -7575,7 +7583,7 @@ const upsertInfluencerPublicProfile = async ({
         ],
         proposal_hints: [
           "브랜드 소개와 광고 형태를 함께 보내면 검토가 빠릅니다.",
-          "콘텐츠 사용 범위와 희망 일정을 제안에 포함해 주세요.",
+          "컨텐츠 사용 범위와 희망 일정을 제안에 포함해 주세요.",
           "최종 조건은 전자계약 단계에서 다시 확인합니다.",
         ],
         is_published: true,
@@ -8311,7 +8319,7 @@ const syncSupabaseV2Contract = async (contract: Contract) => {
       next_due_at: toIsoDateTime(contract.workflow?.due_at),
       version_no: Math.max(1, (contract.audit_events?.length ?? 0) + 1),
       signed_at:
-        contract.status === "SIGNED"
+        contract.status === "SIGNED" || contract.status === "CLOSED"
           ? toIsoDateTime(contract.signature_data?.signed_at ?? contract.updated_at)
           : undefined,
       completed_at:
@@ -8358,7 +8366,7 @@ const syncSupabaseV2Contract = async (contract: Contract) => {
       is_primary_signer: true,
       invited_at: toIsoDateTime(contract.created_at),
       accepted_at:
-        contract.status === "SIGNED"
+        contract.status === "SIGNED" || contract.status === "CLOSED"
           ? toIsoDateTime(contract.signature_data?.signed_at ?? contract.updated_at)
           : undefined,
     },
@@ -8407,7 +8415,10 @@ const syncSupabaseV2Contract = async (contract: Contract) => {
         clause.status === "APPROVED" && lastHistory
           ? toIsoDateTime(lastHistory.timestamp)
           : undefined,
-      locked_at: contract.status === "SIGNED" ? toIsoDateTime(contract.updated_at) : undefined,
+      locked_at:
+        contract.status === "SIGNED" || contract.status === "CLOSED"
+          ? toIsoDateTime(contract.updated_at)
+          : undefined,
       version_no: Math.max(1, clause.history.length + 1),
       created_at: toIsoDateTime(contract.created_at),
       updated_at: toIsoDateTime(contract.updated_at),
@@ -8794,6 +8805,10 @@ const verifyAdvertiserContractWriteAccess = (
     return "Signed status must be created through the signing endpoint";
   }
 
+  if (incoming.status === "CLOSED" && existing.status !== "CLOSED") {
+    return "Closed status must be created through the contract close endpoint";
+  }
+
   if (!jsonEqual(incoming.signature_data, existing.signature_data)) {
     return "Signature data must be created through the signing endpoint";
   }
@@ -8832,6 +8847,20 @@ const verifyAdvertiserContractWriteAccess = (
 
     if (!jsonEqual(incoming, existing)) {
       return "Signed contracts cannot be modified";
+    }
+  }
+
+  if (existing.status === "CLOSED") {
+    if (incoming.status !== existing.status) {
+      return "Closed contracts cannot be reopened";
+    }
+
+    if (!jsonEqual(incomingAuditEvents, existingAuditEvents)) {
+      return "Closed contract audit history is locked";
+    }
+
+    if (!jsonEqual(incoming, existing)) {
+      return "Closed contracts cannot be modified";
     }
   }
 
@@ -8971,7 +9000,7 @@ const buildMarketplaceCampaignDraftClauses = (
     {
       clause_id: "campaign_application_deliverables",
       category: "산출물 및 플랫폼",
-      content: `인플루언서는 ${platforms} 채널에서 다음 산출물을 제공한다: ${deliverables}. 업로드 마감일은 ${
+      content: `인플루언서는 ${platforms} 채널에서 다음 산출물을 제공한다: ${deliverables}. 컨텐츠 제출 마감일은 ${
         snapshot.uploadDeadline ?? "계약 작성 단계에서 확정"
       } 기준이며, 세부 업로드 수량, 유지 기간, 검수 기준은 광고주가 초안에서 최종 확인한다.`,
       status: "PENDING_REVIEW",
@@ -8988,7 +9017,7 @@ const buildMarketplaceCampaignDraftClauses = (
       clause_id: "campaign_application_review",
       category: "광고 표시 및 검수",
       content:
-        "콘텐츠에는 관계 법령과 플랫폼 정책에 맞는 광고 표시를 포함한다. 광고주는 업로드 전 검수 기준, 수정 가능 횟수, 최종 업로드 기한을 계약서에서 명확히 확정한다.",
+        "컨텐츠에는 관계 법령과 플랫폼 정책에 맞는 광고 표시를 포함한다. 광고주는 업로드 전 검수 기준, 수정 가능 횟수, 최종 컨텐츠 제출 기한을 계약서에서 명확히 확정한다.",
       status: "PENDING_REVIEW",
       history: [],
     },
@@ -10501,14 +10530,15 @@ const formatDashboardActivityAction = (action: string) => {
     contract_created: "계약 생성",
     share_link_issued: "검토 링크 발급",
     contract_signed: "계약 서명",
-    contract_completed: "계약 완료",
-    post_link_submitted: "콘텐츠 제출",
-    deliverable_submitted: "콘텐츠 제출",
-    deliverable_approved: "제출 승인",
+    contract_completed: "계약 마감",
+    contract_closed: "계약 마감",
+    post_link_submitted: "컨텐츠 제출",
+    deliverable_submitted: "컨텐츠 제출",
+    deliverable_approved: "컨텐츠 승인",
     deliverable_changes_requested: "수정 요청",
-    deliverable_rejected: "제출 반려",
+    deliverable_rejected: "컨텐츠 반려",
     signed_pdf_downloaded: "서명본 다운로드",
-    deliverable_file_downloaded: "증빙 다운로드",
+    deliverable_file_downloaded: "컨텐츠 파일 다운로드",
   };
 
   return labels[action] ?? action.replace(/_/g, " ");
@@ -10614,16 +10644,16 @@ const dashboardStageMeta: Record<
     nextAction: "최종본 확인과 플랫폼 계정 인증 승인이 끝나면 전자서명을 완료할 수 있습니다.",
   },
   deliverables_due: {
-    label: "콘텐츠 제출",
-    statusLabel: "콘텐츠 제출 필요",
+    label: "컨텐츠 제출",
+    statusLabel: "컨텐츠 제출 필요",
     actionLabel: "제출하기",
-    nextAction: "서명 완료 후 콘텐츠 링크나 증빙 파일을 제출해 주세요.",
+    nextAction: "서명 완료 후 컨텐츠 URL이나 컨텐츠 파일을 제출해 주세요.",
   },
   deliverables_review: {
-    label: "검수 대기",
+    label: "광고주 검수 필요",
     statusLabel: "광고주 검수 중",
     actionLabel: "제출 내역 보기",
-    nextAction: "제출한 콘텐츠를 광고주가 검수하고 있습니다.",
+    nextAction: "제출한 컨텐츠를 광고주가 확인 및 검수하고 있습니다.",
   },
   signed: {
     label: "완료",
@@ -10633,9 +10663,9 @@ const dashboardStageMeta: Record<
   },
   completed: {
     label: "완료",
-    statusLabel: "계약 완료",
-    actionLabel: "완료 내역 보기",
-    nextAction: "모든 콘텐츠 검수와 계약 증빙이 완료되었습니다.",
+    statusLabel: "계약 마감",
+    actionLabel: "마감 내역 보기",
+    nextAction: "모든 컨텐츠 확인 및 검수가 끝나 광고 계약이 마감되었습니다.",
   },
   waiting: {
     label: "대기",
@@ -10668,6 +10698,7 @@ const inferLegacyDashboardStage = (
     NEGOTIATING: "change_pending",
     APPROVED: "ready_to_sign",
     SIGNED: "signed",
+    CLOSED: "completed",
   };
 
   return stages[status];
@@ -10783,6 +10814,9 @@ const buildV2DashboardContract = ({
   ).length;
   const deliverableSummary = buildDeliverableSummary(deliverableRequirements, deliverables);
   const needsDeliverables = deliverableSummary.total > 0;
+  const hasPendingDeliverableReview = deliverables.some(
+    (deliverable) => normalizeDeliverableStatus(deliverable.review_status) === "submitted",
+  );
   const hasDeliverableRevision = deliverables.some((deliverable) =>
     ["changes_requested", "rejected"].includes(
       normalizeDeliverableStatus(deliverable.review_status),
@@ -10795,7 +10829,9 @@ const buildV2DashboardContract = ({
     stage =
       deliverableSummary.approved >= deliverableSummary.total
         ? "completed"
-        : deliverableSummary.submitted >= deliverableSummary.total && !hasDeliverableRevision
+        : hasPendingDeliverableReview ||
+            (deliverableSummary.submitted >= deliverableSummary.total &&
+              !hasDeliverableRevision)
           ? "deliverables_review"
           : "deliverables_due";
   }
@@ -10888,6 +10924,7 @@ const buildLegacyDashboardContract = (
   const approvedClauses = contract.clauses.filter(
     (clause) => clause.status === "APPROVED",
   ).length;
+  const legacyDeliverableSummary = contract.deliverable_summary;
   const activityEvents = withFallbackDashboardActivity(
     mapLegacyAuditEventsToDashboardActivities(contract.audit_events),
     normalizeDashboardActivityEvent({
@@ -10941,13 +10978,22 @@ const buildLegacyDashboardContract = (
       change_requested: totalClauses - approvedClauses,
     },
     deliverable_summary: {
-      total: contract.campaign?.deliverables?.length ?? 0,
-      submitted: 0,
-      approved: 0,
+      total:
+        legacyDeliverableSummary?.total ??
+        contract.campaign?.deliverables?.length ??
+        0,
+      submitted: legacyDeliverableSummary?.submitted ?? 0,
+      approved: legacyDeliverableSummary?.approved ?? 0,
     },
     record_summary: {
-      status: contract.status === "SIGNED" ? "ready" : "not_ready",
-      label: contract.status === "SIGNED" ? "서명본 보관됨" : "서명 후 보관",
+      status:
+        contract.status === "SIGNED" || contract.status === "CLOSED"
+          ? "ready"
+          : "not_ready",
+      label:
+        contract.status === "SIGNED" || contract.status === "CLOSED"
+          ? "서명본 보관됨"
+          : "서명 후 보관",
     },
     activity_events: activityEvents,
   };
@@ -11124,7 +11170,8 @@ const mapV2StatusToLegacyStatus = (
   status: SupabaseContractV2Row["status"],
   nextActorRole?: string | null,
 ): Contract["status"] => {
-  if (status === "completed" || status === "active") return "SIGNED";
+  if (status === "completed") return "CLOSED";
+  if (status === "active") return "SIGNED";
   if (status === "signing") return "APPROVED";
   if (status === "negotiating") {
     return nextActorRole === "advertiser" ? "NEGOTIATING" : "REVIEWING";
@@ -11231,7 +11278,7 @@ const buildLegacyContractFromV2Rows = ({
           ? "advertiser"
           : contract.next_actor_role === "influencer"
             ? "influencer"
-            : status === "SIGNED"
+            : status === "SIGNED" || status === "CLOSED"
               ? "system"
               : "advertiser",
       next_action:
@@ -11249,8 +11296,13 @@ const buildLegacyContractFromV2Rows = ({
       share_token_status:
         shareLinkActive ? "active" : shareLink?.status === "revoked" ? "revoked" : "not_issued",
       share_token_expires_at: shareLink?.expires_at ?? undefined,
-      audit_ready: status === "APPROVED" || status === "SIGNED",
-      pdf_status: status === "SIGNED" ? "signed_ready" : status === "DRAFT" ? "not_ready" : "draft_ready",
+      audit_ready: status === "APPROVED" || status === "SIGNED" || status === "CLOSED",
+      pdf_status:
+        status === "SIGNED" || status === "CLOSED"
+          ? "signed_ready"
+          : status === "DRAFT"
+            ? "not_ready"
+            : "draft_ready",
     },
     clauses: clauses.length
       ? clauses
@@ -11268,7 +11320,10 @@ const buildLegacyContractFromV2Rows = ({
             clause_id: `${contract.id}:clause:summary`,
             category: "계약 요약",
             content: contract.campaign_summary ?? "계약 세부 조항을 확인하세요.",
-            status: status === "APPROVED" || status === "SIGNED" ? "APPROVED" : "PENDING_REVIEW",
+            status:
+              status === "APPROVED" || status === "SIGNED" || status === "CLOSED"
+                ? "APPROVED"
+                : "PENDING_REVIEW",
             history: [],
           },
         ],
@@ -11329,13 +11384,23 @@ const readSupabaseV2ContractAsLegacy = async (
     ),
   ]);
 
-  return buildLegacyContractFromV2Rows({
+  const legacyContract = buildLegacyContractFromV2Rows({
     contract,
     parties,
     platforms,
     pricingTerm: pricingTerms[0],
     clauses,
     shareLink: shareLinks[0],
+  });
+  const bundle = await readContractDeliverableBundle(legacyContract);
+  const summary = buildDeliverableSummary(bundle.requirements, bundle.deliverables);
+
+  return normalizeContract({
+    ...legacyContract,
+    deliverable_summary: {
+      ...summary,
+      updated_at: contract.updated_at ?? legacyContract.updated_at,
+    },
   });
 };
 
@@ -12067,7 +12132,9 @@ const updateContractDeliverableWorkflow = async (
 ) => {
   if (!useSupabase || !isUuid(contractId)) return;
 
-  const legacyContract = await readSupabaseV2ContractAsLegacy(contractId);
+  const storedLegacyContract = await readSupabaseLegacyContract(contractId);
+  const legacyContract =
+    storedLegacyContract ?? (await readSupabaseV2ContractAsLegacy(contractId));
   if (!legacyContract) return;
 
   const bundle = await readContractDeliverableBundle(legacyContract);
@@ -12077,26 +12144,52 @@ const updateContractDeliverableWorkflow = async (
       normalizeDeliverableStatus(deliverable.review_status),
     ),
   );
-  const hasPendingReview =
-    summary.submitted > summary.approved && !hasRevision;
+  const hasPendingReview = bundle.deliverables.some(
+    (deliverable) => normalizeDeliverableStatus(deliverable.review_status) === "submitted",
+  );
   const completed =
     summary.total > 0 && summary.approved >= summary.total;
   const now = new Date().toISOString();
 
+  const workflow =
+    completed
+      ? {
+          next_actor: "advertiser" as const,
+          next_action: "모든 컨텐츠가 승인되었습니다. 광고 계약 마감을 진행하세요.",
+          risk_level: "low" as const,
+          last_message: "모든 필수 컨텐츠가 승인되었습니다.",
+        }
+      : hasPendingReview
+        ? {
+            next_actor: "advertiser" as const,
+            next_action: "제출된 컨텐츠 URL과 파일을 검수하고 승인 또는 수정 요청을 남기세요.",
+            risk_level: "medium" as const,
+            last_message: "광고주 컨텐츠 확인 및 검수가 필요합니다.",
+          }
+        : {
+            next_actor: "influencer" as const,
+            next_action: hasRevision
+              ? "수정 요청된 컨텐츠를 보완한 뒤 URL이나 파일을 다시 제출하세요."
+              : "컨텐츠 URL과 파일을 제출해 광고주 검수를 요청하세요.",
+            risk_level: hasRevision ? ("medium" as const) : ("low" as const),
+            last_message: hasRevision
+              ? "컨텐츠 수정 요청 또는 반려가 있습니다."
+              : "인플루언서 컨텐츠 제출을 기다리는 중입니다.",
+          };
   const updates = completed
     ? {
-        status: "completed",
-        next_actor_role: null,
-        next_action: "모든 콘텐츠 제출물이 승인되어 계약 이행이 완료되었습니다.",
+        status: "active",
+        next_actor_role: "advertiser",
+        next_action: workflow.next_action,
         next_due_at: null,
-        completed_at: now,
+        completed_at: null,
         updated_at: now,
       }
     : hasPendingReview
       ? {
           status: "active",
           next_actor_role: "advertiser",
-          next_action: "제출된 콘텐츠 링크와 증빙을 검수하고 승인 또는 수정 요청을 남기세요.",
+          next_action: workflow.next_action,
           next_due_at: null,
           completed_at: null,
           updated_at: now,
@@ -12104,9 +12197,7 @@ const updateContractDeliverableWorkflow = async (
       : {
           status: "active",
           next_actor_role: "influencer",
-          next_action: hasRevision
-            ? "수정 요청된 콘텐츠를 보완한 뒤 링크나 증빙 파일을 다시 제출하세요."
-            : "콘텐츠 링크와 증빙 파일을 제출해 광고주 검수를 요청하세요.",
+          next_action: workflow.next_action,
           next_due_at: null,
           completed_at: null,
           updated_at: now,
@@ -12119,12 +12210,43 @@ const updateContractDeliverableWorkflow = async (
     "Supabase contract deliverable workflow update",
   );
 
+  if (storedLegacyContract) {
+    const firstSubmittedUrl = bundle.deliverables.find((deliverable) =>
+      hasText(deliverable.url),
+    )?.url;
+    const updatedLegacyContract = normalizeContract({
+      ...storedLegacyContract,
+      post_link: firstSubmittedUrl ?? storedLegacyContract.post_link,
+      deliverable_summary: {
+        ...summary,
+        updated_at: now,
+      },
+      workflow: {
+        ...(storedLegacyContract.workflow ?? {}),
+        ...workflow,
+      },
+      updated_at: now,
+    });
+
+    await patchSupabaseRecord(
+      supabaseLegacyTable,
+      `?id=eq.${encodeURIComponent(contractId)}`,
+      {
+        contract: updatedLegacyContract,
+        post_link: updatedLegacyContract.post_link ?? null,
+        campaign_name:
+          updatedLegacyContract.campaign_name ?? updatedLegacyContract.title,
+      },
+      "Supabase legacy contract deliverable summary update",
+    );
+  }
+
   if (completed) {
     await insertContractEvent({
       contractId,
       actorRole: "system",
       actorDisplayName: productName,
-      eventType: "contract_completed",
+      eventType: "deliverables_ready_to_close",
       targetType: "contract",
       targetId: contractId,
       payload: { summary },
@@ -12158,7 +12280,7 @@ const resolveInfluencerVerificationContractAccess = async (
       return { ok: false, status: 403, error: "이 계약을 볼 권한이 없습니다." };
     }
 
-    if (legacyContract.status === "SIGNED") {
+    if (legacyContract.status === "SIGNED" || legacyContract.status === "CLOSED") {
       return {
         ok: false,
         status: 409,
@@ -12194,7 +12316,11 @@ const resolveInfluencerVerificationContractAccess = async (
         return { ok: false, status: 403, error: "이 계약을 볼 권한이 없습니다." };
       }
 
-      if (inferDashboardStage(contract.status, contract.next_actor_role) === "signed") {
+      if (
+        ["signed", "completed"].includes(
+          inferDashboardStage(contract.status, contract.next_actor_role),
+        )
+      ) {
         return {
           ok: false,
           status: 409,
@@ -14078,9 +14204,9 @@ app.post("/api/contracts/:id/post-link", async (request, response, next) => {
         next_actor: contract.workflow?.next_actor ?? "system",
         next_action:
           contract.workflow?.next_action ??
-          "서명 완료본과 감사 기록을 보관하세요.",
+          "전자서명 완료 후 컨텐츠 제출을 기다리는 중입니다.",
         risk_level: contract.workflow?.risk_level ?? "low",
-        last_message: "인플루언서가 게시물 링크를 제출했습니다.",
+        last_message: "인플루언서가 컨텐츠 URL을 제출했습니다.",
       },
       audit_events: [
         ...(contract.audit_events ?? []),
@@ -14088,7 +14214,7 @@ app.post("/api/contracts/:id/post-link", async (request, response, next) => {
           id: randomUUID(),
           actor: "influencer",
           action: "post_link_submitted",
-          description: "인플루언서가 캠페인 결과물 링크를 제출했습니다.",
+          description: "인플루언서가 컨텐츠 URL을 제출했습니다.",
           created_at: now,
         },
       ],
@@ -14165,7 +14291,7 @@ app.post("/api/contracts/:id/deliverables", async (request, response, next) => {
     const title =
       normalizeOptionalText(request.body?.title) ??
       requirement?.title ??
-      "콘텐츠 증빙";
+      "컨텐츠";
     const url = normalizeUrlValue(request.body?.url);
     const note = normalizeOptionalText(request.body?.note);
     const evidenceFile = parseEvidenceFile(request.body?.evidence_file);
@@ -14306,6 +14432,12 @@ app.patch("/api/contracts/:id/deliverables/:deliverableId", async (request, resp
       response.status(403).json({ error: "이 계약을 볼 권한이 없습니다." });
       return;
     }
+    if (contract.status !== "SIGNED") {
+      response.status(409).json({
+        error: "Contract must be signed before deliverables can be reviewed",
+      });
+      return;
+    }
 
     const status = normalizeRequiredText(request.body?.review_status) as DeliverableReviewStatus;
     const reviewComment = normalizeOptionalText(request.body?.review_comment);
@@ -14372,6 +14504,114 @@ app.patch("/api/contracts/:id/deliverables/:deliverableId", async (request, resp
     response.json({
       deliverable: updatedDeliverable,
       ...buildDeliverableResponse(contract, updatedBundle),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/contracts/:id/close", async (request, response, next) => {
+  try {
+    const throttle = consumeSensitiveEndpointRateLimit(
+      request,
+      "contract_close",
+      request.params.id,
+    );
+    if (throttle.blocked) {
+      sendSensitiveRateLimitResponse(response, throttle);
+      return;
+    }
+
+    const advertiserAuth = await requireAdvertiserSession(request, response);
+    if (!advertiserAuth) return;
+
+    const {
+      store,
+      existingContract: contract,
+    } = await readContractWriteContext(request.params.id);
+
+    if (!contract) {
+      response.status(404).json({ error: "Contract not found" });
+      return;
+    }
+    if (!canAdvertiserAccessLegacyContract(advertiserAuth, contract)) {
+      response.status(403).json({ error: "이 계약을 볼 권한이 없습니다." });
+      return;
+    }
+    if (contract.status !== "SIGNED") {
+      response.status(409).json({ error: "Contract must be signed before it can be closed" });
+      return;
+    }
+
+    const bundle = await readContractDeliverableBundle(contract);
+    const summary = buildDeliverableSummary(bundle.requirements, bundle.deliverables);
+    if (summary.total <= 0 || summary.approved < summary.total) {
+      response.status(409).json({
+        error: "All required content must be approved before contract close",
+        summary,
+      });
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const updatedContract = normalizeContract({
+      ...contract,
+      status: "CLOSED",
+      deliverable_summary: {
+        ...summary,
+        updated_at: now,
+      },
+      workflow: {
+        next_actor: "system",
+        next_action: "광고 계약 마감 완료",
+        risk_level: "low",
+        last_message: "광고 계약 마감 완료",
+      },
+      audit_events: [
+        ...(contract.audit_events ?? []),
+        {
+          id: randomUUID(),
+          actor: "advertiser",
+          action: "contract_closed",
+          description: "광고주가 모든 필수 컨텐츠 승인 후 광고 계약을 마감했습니다.",
+          created_at: now,
+        },
+      ],
+      updated_at: now,
+    });
+
+    await writeStore(upsertContractIntoStore(store, updatedContract));
+    if (useSupabaseV2 && isUuid(contract.id)) {
+      await patchSupabaseRecord(
+        "contracts",
+        `?id=eq.${encodeURIComponent(contract.id)}`,
+        {
+          status: "completed",
+          next_actor_role: null,
+          next_action: "광고 계약 마감 완료",
+          next_due_at: null,
+          completed_at: now,
+          updated_at: now,
+        },
+        "Supabase contract close update",
+      );
+    }
+    await insertContractEvent({
+      contractId: contract.id,
+      actorProfileId: advertiserAuth.profile.id,
+      actorRole: "advertiser",
+      actorDisplayName: advertiserAuth.profile.name,
+      eventType: "contract_closed",
+      targetType: "contract",
+      targetId: contract.id,
+      payload: { summary },
+      request,
+    });
+
+    response.json({
+      contract: updatedContract,
+      summary,
+      message: "광고 계약 마감 완료",
     });
   } catch (error) {
     next(error);
@@ -14463,7 +14703,7 @@ app.get(
           action: "viewed_pdf",
           actor_role: "admin",
           actor_name: adminOperatorName,
-          description: "운영자가 당사자 요청에 따라 제출 증빙 파일을 내려받았습니다.",
+          description: "운영자가 당사자 요청에 따라 제출된 컨텐츠 파일을 내려받았습니다.",
           ip: getClientIp(request),
           user_agent: request.header("user-agent") ?? "unknown",
         });
@@ -14895,7 +15135,7 @@ app.post("/api/contracts/:id/signatures/influencer", async (request, response, n
       },
       workflow: {
         next_actor: "system",
-        next_action: "서명 완료본과 감사 기록을 보관하세요.",
+        next_action: "전자서명 완료 후 컨텐츠 제출을 기다리는 중입니다.",
         risk_level: "low",
         last_message: "인플루언서 전자서명이 완료되었습니다.",
       },

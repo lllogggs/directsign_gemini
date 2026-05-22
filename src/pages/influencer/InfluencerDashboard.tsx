@@ -181,8 +181,8 @@ const STAGE_META: Record<
     icon: <FileSignature className="h-4 w-4" />,
   },
   deliverables_due: {
-    label: "콘텐츠 제출",
-    helper: "링크/증빙 제출",
+    label: "컨텐츠 제출",
+    helper: "컨텐츠 제출 링크",
     className: "border-amber-200 bg-amber-50 text-amber-800",
     icon: <FileCheck2 className="h-4 w-4" />,
   },
@@ -1406,7 +1406,7 @@ function PublicProfileSettingsDialog({
                 onChange={(event) =>
                   setForm((current) => ({ ...current, bio: event.target.value }))
                 }
-                placeholder="주요 콘텐츠, 잘 맞는 브랜드, 협업 방식 등을 적어 주세요."
+                placeholder="주요 컨텐츠, 잘 맞는 브랜드, 협업 방식 등을 적어 주세요."
                 className="marketplace-input resize-none"
               />
             </ProfileSettingsField>

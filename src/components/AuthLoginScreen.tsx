@@ -55,9 +55,9 @@ export function AuthLoginScreen({
   const errorId = error ? `${title.replace(/\s+/g, "-")}-login-error` : undefined;
 
   return (
-    <main className="min-h-svh bg-[#f7f6f3] px-5 py-3 font-sans text-neutral-950 sm:px-6 sm:py-5">
-      <div className="mx-auto flex min-h-[calc(100svh-24px)] w-full max-w-[1040px] flex-col sm:min-h-[calc(100svh-40px)]">
-        <header className="flex h-12 items-center justify-between sm:h-14">
+    <main className="h-svh overflow-hidden bg-[#f7f6f3] px-4 py-2 font-sans text-neutral-950 sm:px-6 sm:py-5">
+      <div className="mx-auto flex h-full min-h-0 w-full max-w-[1040px] flex-col">
+        <header className="flex h-12 shrink-0 items-center justify-between sm:h-14">
           <Link
             to="/"
             aria-label={`${PRODUCT_NAME} 홈`}
@@ -76,25 +76,25 @@ export function AuthLoginScreen({
           </Link>
         </header>
 
-        <section className="grid flex-1 place-items-center py-3 sm:py-6">
-          <div className="w-full max-w-[460px]">
-            <section className="rounded-[22px] border border-neutral-200/90 bg-white shadow-[0_1px_0_rgba(15,23,42,0.035),0_20px_58px_rgba(15,23,42,0.06)]">
-              <div className="p-5 sm:p-6">
+        <section className="grid min-h-0 flex-1 place-items-center overflow-hidden py-2 sm:py-6">
+          <div className="flex max-h-full min-h-0 w-full max-w-[460px] flex-col">
+            <section className="custom-scrollbar min-h-0 overflow-y-auto rounded-[18px] border border-neutral-200/90 bg-white shadow-[0_1px_0_rgba(15,23,42,0.035),0_20px_58px_rgba(15,23,42,0.06)] sm:rounded-[22px]">
+              <div className="p-4 sm:p-6">
                 <div>
-                  <h1 className="font-neo-heavy text-[28px] leading-tight tracking-[-0.035em] text-neutral-950">
+                  <h1 className="font-neo-heavy text-[25px] leading-tight tracking-[-0.035em] text-neutral-950 sm:text-[28px]">
                     {title}
                   </h1>
                   {description ? (
-                    <p className="mt-2 text-[14px] font-semibold leading-6 text-neutral-500">
+                    <p className="mt-1.5 line-clamp-2 text-[13px] font-semibold leading-5 text-neutral-500 sm:mt-2 sm:line-clamp-none sm:text-[14px] sm:leading-6">
                       {description}
                     </p>
                   ) : null}
                   {trustBadges && trustBadges.length > 0 ? (
-                    <ul className="mt-4 flex flex-wrap gap-2">
+                    <ul className="mt-3 flex flex-wrap gap-1.5 sm:mt-4 sm:gap-2">
                       {trustBadges.map((badge) => (
                         <li
                           key={badge}
-                          className="inline-flex min-h-8 items-center gap-1.5 rounded-full border border-[#d8e2d6] bg-[#f6f8f4] px-3 text-[11px] font-bold leading-4 text-[#3f4a40]"
+                          className="inline-flex min-h-7 items-center gap-1.5 rounded-full border border-[#d8e2d6] bg-[#f6f8f4] px-2.5 text-[10px] font-bold leading-4 text-[#3f4a40] sm:min-h-8 sm:px-3 sm:text-[11px]"
                         >
                           <CheckCircle2 className="h-3.5 w-3.5 text-[#2563eb]" />
                           <span>{badge}</span>
@@ -103,7 +103,7 @@ export function AuthLoginScreen({
                     </ul>
                   ) : null}
                   {processSummary && processSummary.length > 0 ? (
-                    <ol className="mt-5 divide-y divide-neutral-100 border-y border-neutral-100">
+                    <ol className="mt-5 hidden divide-y divide-neutral-100 border-y border-neutral-100 sm:block">
                       {processSummary.map((step, index) => (
                         <li key={step.title} className="flex gap-3 py-3 text-left">
                           <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-neutral-950 text-[10px] font-bold leading-none text-white">
@@ -124,7 +124,7 @@ export function AuthLoginScreen({
                 </div>
 
                 <form
-                  className="mt-5 space-y-3.5"
+                  className="mt-4 space-y-3 sm:mt-5 sm:space-y-3.5"
                   onSubmit={onSubmit}
                   aria-describedby={errorId}
                 >
@@ -134,7 +134,7 @@ export function AuthLoginScreen({
                         {field.label}
                       </span>
                       <input
-                        className="mt-2 h-11 w-full rounded-[12px] border border-neutral-200 bg-[#fbfaf7] px-4 text-[15px] font-semibold text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-blue-600 focus:bg-white focus:shadow-[0_0_0_3px_rgba(37,99,235,0.10)] disabled:bg-neutral-100 disabled:text-neutral-400"
+                        className="mt-1.5 h-10 w-full rounded-[12px] border border-neutral-200 bg-[#fbfaf7] px-3.5 text-[14px] font-semibold text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-blue-600 focus:bg-white focus:shadow-[0_0_0_3px_rgba(37,99,235,0.10)] disabled:bg-neutral-100 disabled:text-neutral-400 sm:mt-2 sm:h-11 sm:px-4 sm:text-[15px]"
                         value={field.value}
                         onChange={(event) => field.onChange(event.target.value)}
                         type={field.type}
@@ -170,7 +170,7 @@ export function AuthLoginScreen({
                   ) : null}
 
                   <button
-                    className="group flex h-11 w-full items-center justify-center gap-2 rounded-[12px] bg-blue-600 px-5 text-[15px] font-bold text-white shadow-[0_14px_34px_rgba(37,99,235,0.24)] transition hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-[0_18px_42px_rgba(37,99,235,0.28)] disabled:cursor-not-allowed disabled:translate-y-0 disabled:bg-neutral-200 disabled:text-neutral-500 disabled:shadow-none"
+                    className="group flex h-10 w-full items-center justify-center gap-2 rounded-[12px] bg-blue-600 px-5 text-[14px] font-bold text-white shadow-[0_14px_34px_rgba(37,99,235,0.24)] transition hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-[0_18px_42px_rgba(37,99,235,0.28)] disabled:cursor-not-allowed disabled:translate-y-0 disabled:bg-neutral-200 disabled:text-neutral-500 disabled:shadow-none sm:h-11 sm:text-[15px]"
                     disabled={isSubmitting || submitDisabled}
                     type="submit"
                   >
@@ -182,7 +182,7 @@ export function AuthLoginScreen({
                 </form>
 
                 {footer ? (
-                  <div className="mt-4 border-t border-neutral-100 pt-3 text-center">
+                  <div className="mt-3 border-t border-neutral-100 pt-3 text-center sm:mt-4">
                     {footer}
                   </div>
                 ) : null}
@@ -191,15 +191,15 @@ export function AuthLoginScreen({
 
             <nav
               aria-label="법적 문서"
-              className="mt-3 flex flex-wrap items-center justify-center gap-2 text-[12px] font-semibold text-neutral-400"
+              className="mt-2 flex shrink-0 flex-wrap items-center justify-center gap-1 text-[12px] font-semibold text-neutral-400 sm:mt-3 sm:gap-2"
             >
-              <Link className="inline-flex min-h-8 items-center px-2 transition hover:text-neutral-950" to="/privacy">
+              <Link className="inline-flex min-h-7 items-center px-2 transition hover:text-neutral-950 sm:min-h-8" to="/privacy">
                 개인정보 처리방침
               </Link>
-              <Link className="inline-flex min-h-8 items-center px-2 transition hover:text-neutral-950" to="/terms">
+              <Link className="inline-flex min-h-7 items-center px-2 transition hover:text-neutral-950 sm:min-h-8" to="/terms">
                 이용약관
               </Link>
-              <Link className="inline-flex min-h-8 items-center px-2 transition hover:text-neutral-950" to="/legal/e-sign-consent">
+              <Link className="inline-flex min-h-7 items-center px-2 transition hover:text-neutral-950 sm:min-h-8" to="/legal/e-sign-consent">
                 전자서명 안내
               </Link>
             </nav>

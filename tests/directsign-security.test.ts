@@ -404,6 +404,37 @@ describe("yeollock.me security regressions", () => {
     assert.match(route, /viewed_pdf/);
   });
 
+  it("locks the post-sign content workflow behind review and close gates", () => {
+    const contracts = read("src/domain/contracts.ts");
+    const server = read("server/index.ts");
+    const advertiserViewer = read("src/pages/marketing/ContractAdminViewer.tsx");
+    const influencerViewer = read("src/pages/influencer/ContractViewer.tsx");
+    const dashboard = read("src/pages/marketing/Dashboard.tsx");
+    const campaignPages = read("src/pages/marketplace/CampaignPages.tsx");
+    const reviewRouteStart = server.indexOf(
+      'app.patch("/api/contracts/:id/deliverables/:deliverableId"',
+    );
+    const closeRouteStart = server.indexOf('app.post("/api/contracts/:id/close"');
+
+    assert.notEqual(reviewRouteStart, -1);
+    assert.notEqual(closeRouteStart, -1);
+
+    const reviewRoute = server.slice(reviewRouteStart, closeRouteStart);
+    const closeRoute = server.slice(closeRouteStart);
+
+    assert.match(contracts, /deliverable_summary\?:/);
+    assert.match(reviewRoute, /contract\.status !== "SIGNED"/);
+    assert.match(reviewRoute, /Contract must be signed before deliverables can be reviewed/);
+    assert.match(closeRoute, /status:\s*"CLOSED"/);
+    assert.match(closeRoute, /contract_closed/);
+    assert.match(advertiserViewer, /window\.confirm/);
+    assert.match(advertiserViewer, /isContractSignedOrClosed/);
+    assert.match(influencerViewer, /!isContractSignedOrClosed/);
+    assert.match(dashboard, /isContractContentSubmitted/);
+    assert.match(dashboard, /contract\.deliverable_summary/);
+    assert.match(campaignPages, /window\.confirm/);
+  });
+
   it("audits evidence and signed PDF downloads on the server", () => {
     const server = read("server/index.ts");
 

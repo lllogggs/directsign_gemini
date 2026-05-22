@@ -1255,7 +1255,7 @@ function InfluencerContactDialog({
                   proposalSummary: event.target.value,
                 }))
               }
-              placeholder="업로드 채널, 희망 일정, 콘텐츠 사용 범위, 예산을 함께 적어 주세요."
+              placeholder="업로드 채널, 희망 일정, 컨텐츠 사용 범위, 예산을 함께 적어 주세요."
               className="marketplace-input resize-none"
             />
           </FormField>
@@ -1410,7 +1410,7 @@ function BrandContactDialog({
                   proposalSummary: event.target.value,
                 }))
               }
-              placeholder="브랜드와 어울리는 콘텐츠 아이디어, 일정, 희망 조건을 적어 주세요."
+              placeholder="브랜드와 어울리는 컨텐츠 아이디어, 일정, 희망 조건을 적어 주세요."
               className="marketplace-input resize-none"
             />
           </FormField>

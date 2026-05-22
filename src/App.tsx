@@ -101,7 +101,7 @@ function SignupLanding() {
               광고주로 가입
             </strong>
             <span className="mt-2 block text-[13px] font-bold leading-5 text-blue-700">
-              계약 작성, 검토 링크 발송, 서명 증빙 관리를 시작합니다.
+              계약서 작성, 전자서명, 컨텐츠 제출 확인을 시작합니다.
             </span>
           </Link>
           <Link
@@ -217,7 +217,7 @@ function getRouteLoadingCopy(pathname: string): LoadingCopy {
   if (pathname === "/intro/advertiser") {
     return {
       label: "계약 시작 화면을 준비하고 있습니다",
-      detail: "사업자 인증, 검토 링크, 서명 증빙 안내를 불러오는 중입니다.",
+      detail: "사업자 인증, 검토 링크, 전자서명 안내를 불러오는 중입니다.",
     };
   }
 
@@ -354,7 +354,7 @@ const seoKeywordList = [
   "광고 제안 관리",
   "크리에이터 전자계약",
   "검토 링크",
-  "전자서명 증빙",
+  "전자서명",
 ];
 const advertiserIntentKeywords = [
   "인플루언서 찾기",
@@ -380,13 +380,13 @@ const seoFeatureList = [
   "검토 링크 발송",
   "수정 협의",
   "전자서명",
-  "서명 증빙 보관",
+  "서명 완료본 보관",
 ];
 const defaultSeoDescription =
-  "광고 조건을 계약서 작성부터 검토 링크, 전자서명 증빙까지 한 흐름으로 정리합니다.";
+  "광고 조건을 계약서 작성부터 전자서명, 컨텐츠 제출 확인까지 한 흐름으로 정리합니다.";
 
 const searchIntentSeoDescription =
-  "연락미는 광고주가 인플루언서를 찾고, 인플루언서가 광고주 제안을 검토할 때 협찬, PPL, 공동구매 조건을 계약서 작성부터 검토 링크, 전자서명 증빙까지 한 흐름으로 정리합니다.";
+  "연락미는 광고주가 인플루언서를 찾고, 인플루언서가 광고주 제안을 검토할 때 협찬, PPL, 공동구매 조건을 계약서 작성부터 전자서명, 컨텐츠 제출 확인까지 한 흐름으로 정리합니다.";
 
 const normalizeSeoPath = (pathname: string) =>
   pathname.replace(/\/+$/, "") || "/";
@@ -511,7 +511,7 @@ const getRouteSeoConfig = (pathname: string): RouteSeoConfig => {
     "/intro/advertiser": {
       title: `광고주 광고 계약 관리 - ${PRODUCT_NAME}`,
       description:
-        "광고 조건 입력, 계약서 작성, 검토 링크 발송, 전자서명 증빙 보관까지 광고주 계약 운영을 한 흐름으로 정리합니다.",
+        "광고 조건 입력, 계약서 작성, 검토 링크 발송, 전자서명, 컨텐츠 제출 확인까지 광고주 계약 운영을 한 흐름으로 정리합니다.",
       canonicalPath: "/intro/advertiser",
       robots: publicRobotsContent,
     },
@@ -1011,7 +1011,7 @@ function NotFoundPage() {
             to="/advertiser/dashboard"
             className="flex h-11 items-center justify-center rounded-lg border border-neutral-200 bg-[#fbfbfc] text-sm font-semibold text-neutral-700 transition hover:border-neutral-400 hover:bg-white"
           >
-            광고주 대시보드
+            계약 운영 대시보드
           </Link>
         </div>
       </section>
