@@ -62,20 +62,34 @@ export function AdvertiserAuthGate({
     };
   }, [cachedSession]);
 
-  const refreshContracts = useCallback(async () => {
-    await hydrateContracts({ force: true });
+  const refreshContracts = useCallback(async (options?: { force?: boolean }) => {
+    await hydrateContracts(options);
   }, [hydrateContracts]);
 
-  const refreshContractsInBackground = useCallback(() => {
-    void refreshContracts().catch((refreshError) => {
-      console.warn("[yeollock.me] advertiser contracts refresh failed", refreshError);
-    });
+  const refreshContractsInBackground = useCallback((options?: { force?: boolean; delayMs?: number }) => {
+    const run = () => {
+      void refreshContracts({ force: options?.force }).catch((refreshError) => {
+        console.warn("[yeollock.me] advertiser contracts refresh failed", refreshError);
+      });
+    };
+    if (options?.delayMs && options.delayMs > 0) {
+      window.setTimeout(run, options.delayMs);
+      return;
+    }
+    run();
   }, [refreshContracts]);
 
-  const preloadVerificationInBackground = useCallback(() => {
-    void preloadVerificationSummary("advertiser").catch((preloadError) => {
-      console.warn("[yeollock.me] advertiser verification preload failed", preloadError);
-    });
+  const preloadVerificationInBackground = useCallback((delayMs = 0) => {
+    const run = () => {
+      void preloadVerificationSummary("advertiser").catch((preloadError) => {
+        console.warn("[yeollock.me] advertiser verification preload failed", preloadError);
+      });
+    };
+    if (delayMs > 0) {
+      window.setTimeout(run, delayMs);
+      return;
+    }
+    run();
   }, []);
 
   useEffect(() => {
@@ -115,10 +129,11 @@ export function AdvertiserAuthGate({
       }
     };
 
-    void checkSession();
+    const timer = window.setTimeout(checkSession, hadCachedSession ? 1200 : 0);
 
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
   }, [preloadVerificationInBackground, refreshContractsInBackground]);
 
@@ -150,8 +165,8 @@ export function AdvertiserAuthGate({
 
       setIsAuthenticated(true);
       rememberAdvertiserSession();
-      refreshContractsInBackground();
-      preloadVerificationInBackground();
+      refreshContractsInBackground({ force: true, delayMs: 150 });
+      preloadVerificationInBackground(650);
       if (redirectAfterLogin) {
         navigate(redirectAfterLogin, { replace: true });
         return;

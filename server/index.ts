@@ -8082,16 +8082,31 @@ const addPlatformInfoToMarketplaceProposals = async (
     ),
   );
 
-  const senderInfluencerProfiles =
+  const senderInfluencerProfilesPromise =
     senderProfileIds.length > 0
-      ? await readSupabaseRows<SupabaseMarketplaceInfluencerProfileRow>(
+      ? readSupabaseRows<SupabaseMarketplaceInfluencerProfileRow>(
           "marketplace_influencer_profiles",
           `?select=id,owner_profile_id&owner_profile_id=in.${postgrestInFilter(
             senderProfileIds,
           )}`,
           "marketplace proposal sender influencer profiles",
         )
-      : [];
+      : Promise.resolve([] as SupabaseMarketplaceInfluencerProfileRow[]);
+  const brandRowsPromise =
+    targetBrandProfileIds.length > 0
+      ? readSupabaseRows<Pick<SupabaseMarketplaceBrandProfileRow, "id" | "preferred_platforms">>(
+          "marketplace_brand_profiles",
+          `?select=id,preferred_platforms&id=in.${postgrestInFilter(
+            targetBrandProfileIds,
+          )}`,
+          "marketplace proposal brand platform preferences",
+        )
+      : Promise.resolve(
+          [] as Array<
+            Pick<SupabaseMarketplaceBrandProfileRow, "id" | "preferred_platforms">
+          >,
+        );
+  const senderInfluencerProfiles = await senderInfluencerProfilesPromise;
   const senderInfluencerProfileIdByOwnerId = new Map(
     senderInfluencerProfiles.map((profile) => [profile.owner_profile_id, profile.id]),
   );
@@ -8101,16 +8116,20 @@ const addPlatformInfoToMarketplaceProposals = async (
       ...senderInfluencerProfiles.map((profile) => profile.id),
     ]),
   );
-  const channelRows =
+  const channelRowsPromise =
     influencerProfileIds.length > 0
-      ? await readSupabaseRows<SupabaseMarketplaceInfluencerChannelRow>(
+      ? readSupabaseRows<SupabaseMarketplaceInfluencerChannelRow>(
           "marketplace_influencer_channels",
           `?select=profile_id,platform,label,handle,url,sort_order&profile_id=in.${postgrestInFilter(
             influencerProfileIds,
           )}&order=sort_order.asc`,
           "marketplace proposal platform channels",
         )
-      : [];
+      : Promise.resolve([] as SupabaseMarketplaceInfluencerChannelRow[]);
+  const [channelRows, brandRows] = await Promise.all([
+    channelRowsPromise,
+    brandRowsPromise,
+  ]);
   const channelsByProfileId = new Map<
     string,
     MarketplaceMessageThread["platforms"]
@@ -8126,16 +8145,6 @@ const addPlatformInfoToMarketplaceProposals = async (
     channelsByProfileId.set(channel.profile_id, channels);
   }
 
-  const brandRows =
-    targetBrandProfileIds.length > 0
-      ? await readSupabaseRows<Pick<SupabaseMarketplaceBrandProfileRow, "id" | "preferred_platforms">>(
-          "marketplace_brand_profiles",
-          `?select=id,preferred_platforms&id=in.${postgrestInFilter(
-            targetBrandProfileIds,
-          )}`,
-          "marketplace proposal brand platform preferences",
-        )
-      : [];
   const brandPlatformsById = new Map(
     brandRows.map((brand) => [
       brand.id,
@@ -8179,6 +8188,12 @@ const readMarketplaceMessagesForAdvertiser = async (
   const messageProposalSelect = options.summaryOnly
     ? "id,direction,status,created_at"
     : "*";
+  const sentRowsPromise = readMarketplaceProposalRows(
+    `?select=${messageProposalSelect}&direction=eq.advertiser_to_influencer&sender_profile_id=eq.${encodeURIComponent(
+      auth.profile.id,
+    )}&order=created_at.desc`,
+    "advertiser marketplace sent proposals",
+  );
   const organization = await readDefaultOrganizationForProfile(auth.profile.id);
   const brandRows =
     useSupabase && organization
@@ -8191,21 +8206,19 @@ const readMarketplaceMessagesForAdvertiser = async (
         )
       : [];
   const brandIds = brandRows.map((row) => row.id).filter(Boolean);
-  const incomingRows =
+  const incomingRowsPromise =
     brandIds.length > 0
-      ? await readMarketplaceProposalRows(
+      ? readMarketplaceProposalRows(
           `?select=${messageProposalSelect}&direction=eq.influencer_to_brand&target_brand_profile_id=in.${postgrestInFilter(
             brandIds,
           )}&order=created_at.desc`,
           "advertiser marketplace incoming proposals",
         )
-      : [];
-  const sentRows = await readMarketplaceProposalRows(
-    `?select=${messageProposalSelect}&direction=eq.advertiser_to_influencer&sender_profile_id=eq.${encodeURIComponent(
-      auth.profile.id,
-    )}&order=created_at.desc`,
-    "advertiser marketplace sent proposals",
-  );
+      : Promise.resolve([] as SupabaseMarketplaceContactProposalRow[]);
+  const [incomingRows, sentRows] = await Promise.all([
+    incomingRowsPromise,
+    sentRowsPromise,
+  ]);
   const rows = uniqueRowsById([...incomingRows, ...sentRows]);
 
   if (options.summaryOnly) {
@@ -8234,31 +8247,36 @@ const readMarketplaceMessagesForInfluencer = async (
   const messageProposalSelect = options.summaryOnly
     ? "id,direction,status,created_at"
     : "*";
-  const profileRows = useSupabase
-    ? await readSupabaseRows<SupabaseMarketplaceInfluencerProfileRow>(
+  const profileRowsPromise = useSupabase
+    ? readSupabaseRows<SupabaseMarketplaceInfluencerProfileRow>(
         "marketplace_influencer_profiles",
         `?select=id,public_handle&owner_profile_id=eq.${encodeURIComponent(
           auth.profile.id,
         )}`,
         "influencer marketplace public profiles",
       )
-    : [];
-  const publicProfileIds = profileRows.map((row) => row.id).filter(Boolean);
-  const incomingRows =
-    publicProfileIds.length > 0
-      ? await readMarketplaceProposalRows(
-          `?select=${messageProposalSelect}&direction=eq.advertiser_to_influencer&target_influencer_profile_id=in.${postgrestInFilter(
-            publicProfileIds,
-          )}&order=created_at.desc`,
-          "influencer marketplace incoming proposals",
-        )
-      : [];
-  const sentRows = await readMarketplaceProposalRows(
+    : Promise.resolve([] as SupabaseMarketplaceInfluencerProfileRow[]);
+  const sentRowsPromise = readMarketplaceProposalRows(
     `?select=${messageProposalSelect}&direction=eq.influencer_to_brand&sender_profile_id=eq.${encodeURIComponent(
       auth.profile.id,
     )}&order=created_at.desc`,
     "influencer marketplace sent proposals",
   );
+  const profileRows = await profileRowsPromise;
+  const publicProfileIds = profileRows.map((row) => row.id).filter(Boolean);
+  const incomingRowsPromise =
+    publicProfileIds.length > 0
+      ? readMarketplaceProposalRows(
+          `?select=${messageProposalSelect}&direction=eq.advertiser_to_influencer&target_influencer_profile_id=in.${postgrestInFilter(
+            publicProfileIds,
+          )}&order=created_at.desc`,
+          "influencer marketplace incoming proposals",
+        )
+      : Promise.resolve([] as SupabaseMarketplaceContactProposalRow[]);
+  const [incomingRows, sentRows] = await Promise.all([
+    incomingRowsPromise,
+    sentRowsPromise,
+  ]);
   const rows = uniqueRowsById([...incomingRows, ...sentRows]);
 
   if (options.summaryOnly) {
