@@ -123,6 +123,28 @@
     --sidebar-accent-foreground: oklch(0.205 0 0);
     --sidebar-border: oklch(0.922 0 0);
     --sidebar-ring: oklch(0.708 0 0);
+    --ds-ambient-page:
+      linear-gradient(145deg, rgba(37, 99, 235, 0.045) 0%, rgba(37, 99, 235, 0) 30%),
+      linear-gradient(215deg, rgba(16, 185, 129, 0.035) 0%, rgba(16, 185, 129, 0) 34%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.68) 0%, rgba(255, 255, 255, 0) 42%);
+    --ds-surface-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.78) inset,
+      0 1px 2px rgba(15, 23, 42, 0.035),
+      0 18px 44px rgba(15, 23, 42, 0.055);
+    --ds-surface-shadow-hover:
+      0 1px 0 rgba(255, 255, 255, 0.86) inset,
+      0 2px 6px rgba(15, 23, 42, 0.045),
+      0 24px 58px rgba(15, 23, 42, 0.075);
+    --ds-panel-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.72) inset,
+      0 14px 34px rgba(15, 23, 42, 0.045);
+    --ds-button-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.18) inset,
+      0 12px 28px rgba(15, 23, 42, 0.12);
+    --ds-button-shadow-blue:
+      0 1px 0 rgba(255, 255, 255, 0.18) inset,
+      0 14px 32px rgba(37, 99, 235, 0.22);
+    --ds-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .dark {
@@ -169,6 +191,12 @@
   html {
     @apply font-sans;
     }
+
+  body {
+    background-color: #f7f6f3;
+    text-rendering: geometricPrecision;
+    -webkit-font-smoothing: antialiased;
+  }
 }
 
 @layer utilities {
@@ -217,11 +245,103 @@
     background: rgba(82, 82, 82, 0.42);
   }
 
+  :where(
+    [class*="bg-[#f7f6f3]"],
+    [class*="bg-[#f5f7f2]"],
+    [class*="bg-[#f4f5f7]"],
+    [class*="bg-[#f6f7f9]"],
+    [class*="bg-[#fafafa]"]
+  ) {
+    background-image: var(--ds-ambient-page);
+    background-attachment: fixed;
+  }
+
+  :where(
+    section,
+    article,
+    aside,
+    form
+  )[class*="rounded"][class*="border"][class*="bg-white"] {
+    box-shadow: var(--ds-panel-shadow);
+  }
+
+  :where(
+    section,
+    article,
+    aside,
+    form,
+    [role="dialog"]
+  )[class*="border"][class*="bg-white"][class*="shadow"],
+  :where(div)[class*="rounded"][class*="border"][class*="bg-white"][class*="shadow"] {
+    box-shadow: var(--ds-surface-shadow);
+  }
+
+  :where(
+    section,
+    article,
+    aside,
+    form,
+    [role="dialog"]
+  )[class*="border"][class*="bg-white"][class*="shadow"]:focus-within,
+  :where(div)[class*="rounded"][class*="border"][class*="bg-white"][class*="shadow"]:focus-within {
+    box-shadow: var(--ds-surface-shadow-hover);
+  }
+
+  :where(header)[class*="border-b"][class*="bg-white"],
+  :where(header)[class*="border-b"][class*="bg-[#fbfaf7]"],
+  :where(header)[class*="border-b"][class*="bg-[#fcfcfa]"] {
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.72) inset,
+      0 10px 26px rgba(15, 23, 42, 0.035);
+  }
+
+  :where(button, a)[class*="bg-blue-600"][class*="shadow"] {
+    box-shadow: var(--ds-button-shadow-blue);
+  }
+
+  :where(button, a)[class*="bg-neutral-950"][class*="shadow"] {
+    box-shadow: var(--ds-button-shadow);
+  }
+
+  :where(input, textarea, select, [data-slot="input"], [data-slot="textarea"], [data-slot="select-trigger"])[class*="border"] {
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.66) inset;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    :where(button, a)[class*="rounded"]:not(:disabled) {
+      transition-duration: 180ms;
+      transition-timing-function: var(--ds-ease-out);
+    }
+
+    :where(button, a)[class*="rounded"][class*="shadow"]:not(:disabled):hover {
+      transform: translateY(-1px);
+    }
+
+    :where(article)[class*="border"][class*="bg-white"],
+    :where(a)[class*="border"][class*="bg-white"][class*="shadow"],
+    :where(button)[class*="border"][class*="bg-white"][class*="shadow"] {
+      transition:
+        border-color 180ms var(--ds-ease-out),
+        box-shadow 180ms var(--ds-ease-out),
+        transform 180ms var(--ds-ease-out),
+        background-color 180ms var(--ds-ease-out),
+        color 180ms var(--ds-ease-out);
+      will-change: transform, box-shadow;
+    }
+
+    :where(article)[class*="border"][class*="bg-white"]:hover,
+    :where(a)[class*="border"][class*="bg-white"][class*="shadow"]:hover,
+    :where(button)[class*="border"][class*="bg-white"][class*="shadow"]:hover {
+      border-color: rgba(163, 163, 163, 0.74);
+      box-shadow: var(--ds-surface-shadow-hover);
+      transform: translateY(-2px);
+    }
+  }
+
   .landing-start-title {
     text-shadow:
-      0 1px 0 rgba(255, 255, 255, 0.9),
-      0 10px 30px rgba(15, 23, 42, 0.13),
-      0 2px 10px rgba(15, 23, 42, 0.08);
+      0 1px 0 rgba(255, 255, 255, 0.82),
+      0 8px 22px rgba(15, 23, 42, 0.08);
   }
 
   .landing-start-copy-line {
@@ -339,6 +459,17 @@
       transform: none;
       animation: none;
       will-change: auto;
+    }
+
+    :where(button, a, article) {
+      transition-duration: 0.01ms !important;
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      scroll-behavior: auto !important;
+    }
+
+    :where(button, a, article):hover {
+      transform: none !important;
     }
   }
 }

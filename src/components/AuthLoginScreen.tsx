@@ -55,8 +55,8 @@ export function AuthLoginScreen({
   const errorId = error ? `${title.replace(/\s+/g, "-")}-login-error` : undefined;
 
   return (
-    <main className="h-svh overflow-hidden bg-[#f7f6f3] px-4 py-2 font-sans text-neutral-950 sm:px-6 sm:py-5">
-      <div className="mx-auto flex h-full min-h-0 w-full max-w-[1040px] flex-col">
+    <main className="min-h-svh bg-[#f7f6f3] px-4 py-2 font-sans text-neutral-950 sm:h-svh sm:overflow-hidden sm:px-6 sm:py-5">
+      <div className="mx-auto flex min-h-svh w-full max-w-[1040px] flex-col sm:h-full sm:min-h-0">
         <header className="flex h-12 shrink-0 items-center justify-between sm:h-14">
           <Link
             to="/"
@@ -76,12 +76,12 @@ export function AuthLoginScreen({
           </Link>
         </header>
 
-        <section className="grid min-h-0 flex-1 place-items-center overflow-hidden py-2 sm:py-6">
-          <div className="flex max-h-full min-h-0 w-full max-w-[460px] flex-col">
-            <section className="custom-scrollbar min-h-0 overflow-y-auto rounded-[18px] border border-neutral-200/90 bg-white shadow-[0_1px_0_rgba(15,23,42,0.035),0_20px_58px_rgba(15,23,42,0.06)] sm:rounded-[22px]">
+        <section className="grid place-items-center overflow-visible py-2 pb-4 sm:min-h-0 sm:flex-1 sm:overflow-hidden sm:py-6">
+          <div className="flex max-h-none w-full max-w-[460px] flex-col sm:min-h-0 sm:max-h-full">
+            <section className="custom-scrollbar overflow-visible rounded-[16px] border border-neutral-200/90 bg-white shadow-[0_1px_0_rgba(15,23,42,0.035),0_16px_44px_rgba(15,23,42,0.05)] sm:min-h-0 sm:max-h-full sm:overflow-y-auto sm:rounded-[18px]">
               <div className="p-4 sm:p-6">
                 <div>
-                  <h1 className="font-neo-heavy text-[25px] leading-tight tracking-[-0.035em] text-neutral-950 sm:text-[28px]">
+                  <h1 className="font-neo-heavy text-[25px] leading-tight tracking-normal text-neutral-950 sm:text-[28px]">
                     {title}
                   </h1>
                   {description ? (
@@ -106,7 +106,7 @@ export function AuthLoginScreen({
                     <ol className="mt-5 hidden divide-y divide-neutral-100 border-y border-neutral-100 sm:block">
                       {processSummary.map((step, index) => (
                         <li key={step.title} className="flex gap-3 py-3 text-left">
-                          <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-neutral-950 text-[10px] font-bold leading-none text-white">
+                          <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-[7px] bg-neutral-950 text-[10px] font-bold leading-none text-white">
                             {index + 1}
                           </span>
                           <span className="min-w-0">
@@ -170,7 +170,7 @@ export function AuthLoginScreen({
                   ) : null}
 
                   <button
-                    className="group flex h-10 w-full items-center justify-center gap-2 rounded-[12px] bg-blue-600 px-5 text-[14px] font-bold text-white shadow-[0_14px_34px_rgba(37,99,235,0.24)] transition hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-[0_18px_42px_rgba(37,99,235,0.28)] disabled:cursor-not-allowed disabled:translate-y-0 disabled:bg-neutral-200 disabled:text-neutral-500 disabled:shadow-none sm:h-11 sm:text-[15px]"
+                    className="group flex h-10 w-full items-center justify-center gap-2 rounded-[12px] bg-blue-600 px-5 text-[14px] font-bold text-white shadow-[0_10px_24px_rgba(37,99,235,0.20)] transition hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-[0_14px_32px_rgba(37,99,235,0.24)] disabled:cursor-not-allowed disabled:translate-y-0 disabled:bg-neutral-200 disabled:text-neutral-500 disabled:shadow-none sm:h-11 sm:text-[15px]"
                     disabled={isSubmitting || submitDisabled}
                     type="submit"
                   >

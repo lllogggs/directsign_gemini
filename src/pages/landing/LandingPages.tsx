@@ -1100,7 +1100,7 @@ const influencerPreviewSlides: InfluencerPreviewSlide[] = [
 export function StartPage() {
   return (
     <main className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950">
-      <div className="mx-auto grid min-h-screen w-full max-w-[880px] content-start grid-rows-[60px_auto_44px] px-5 sm:content-normal sm:grid-rows-[68px_minmax(0,1fr)_58px] sm:px-6 lg:grid-rows-[72px_minmax(0,1fr)_60px]">
+      <div className="mx-auto grid min-h-screen w-full max-w-[920px] content-start grid-rows-[60px_auto_44px] px-5 sm:content-normal sm:grid-rows-[68px_minmax(0,1fr)_58px] sm:px-6 lg:grid-rows-[72px_minmax(0,1fr)_60px]">
         <header className="flex items-center justify-between gap-3">
           <Link
             to="/"
@@ -1120,9 +1120,9 @@ export function StartPage() {
         </header>
 
         <section className="flex min-h-0 items-start justify-center pb-5 pt-[clamp(18px,3.8svh,34px)] sm:items-center sm:py-8 lg:py-0">
-          <div className="w-full max-w-[760px]">
+          <div className="w-full max-w-[720px]">
             <h1
-              className="landing-start-title font-neo-heavy mb-5 text-center text-[31px] leading-[1.1] tracking-normal text-neutral-950 sm:mb-7 sm:text-[46px] sm:leading-[1.05]"
+              className="landing-start-title font-neo-heavy mb-4 text-center text-[30px] leading-[1.1] tracking-normal text-neutral-950 sm:mb-6 sm:text-[42px] sm:leading-[1.05]"
               aria-label="광고 계약은 확실하게"
             >
               <span className="landing-start-copy-line landing-start-copy-line-1 block">
@@ -1132,10 +1132,10 @@ export function StartPage() {
                 확실하게
               </span>
             </h1>
-            <p className="mx-auto max-w-[560px] break-keep text-center text-[14px] font-bold leading-7 text-neutral-600 sm:text-[15px]">
+            <p className="mx-auto max-w-[560px] break-keep text-center text-[14px] font-semibold leading-7 text-neutral-600 sm:text-[15px]">
               계약서 중심 인플루언서 협업 운영툴입니다. 광고 조건을 계약서 작성부터 전자서명 완료, 컨텐츠 제출, 광고 계약 마감까지 한 흐름으로 정리합니다.
             </p>
-            <div className="mt-8 grid gap-4 sm:grid-cols-2 sm:gap-6 lg:mt-10">
+            <div className="mt-7 grid gap-3 sm:grid-cols-2 sm:gap-4 lg:mt-8">
               {roleCards.map((role) => {
                 const tone = getStartRoleTone(role.role);
                 const isAdvertiser = role.role === "advertiser";
@@ -1149,7 +1149,7 @@ export function StartPage() {
                     key={role.role}
                     to={role.href}
                     aria-label={`시작하기 (${role.title})`}
-                    className={`group flex min-h-[176px] flex-col justify-between rounded-[20px] border px-5 py-5 text-left shadow-[0_1px_0_rgba(15,23,42,0.035),0_16px_42px_rgba(15,23,42,0.035)] transition hover:-translate-y-0.5 hover:shadow-[0_1px_0_rgba(15,23,42,0.04),0_22px_58px_rgba(15,23,42,0.06)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:min-h-[214px] sm:px-6 sm:py-6 lg:min-h-[220px] ${tone.card}`}
+                    className={`group flex min-h-[148px] flex-col justify-between rounded-[14px] border px-5 py-5 text-left shadow-[0_1px_0_rgba(15,23,42,0.035),0_12px_30px_rgba(15,23,42,0.028)] transition hover:-translate-y-0.5 hover:shadow-[0_1px_0_rgba(15,23,42,0.04),0_18px_42px_rgba(15,23,42,0.05)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:min-h-[168px] sm:px-5 sm:py-5 lg:min-h-[172px] ${tone.card}`}
                   >
                     <span className="block">
                       <span
@@ -1158,12 +1158,12 @@ export function StartPage() {
                       >
                         <RoleIcon className="h-5 w-5" strokeWidth={2.2} />
                       </span>
-                      <strong className="font-neo-heavy mt-3 block text-[30px] leading-none tracking-[-0.035em] text-neutral-950 sm:text-[38px]">
+                      <strong className="font-neo-heavy mt-3 block text-[29px] leading-none tracking-normal text-neutral-950 sm:text-[33px]">
                         {role.title}
                       </strong>
                     </span>
                     <span className="block">
-                      <span className={`mt-3.5 block border-t pt-3.5 text-[12px] font-bold tracking-[-0.005em] sm:mt-4 sm:pt-4 ${tone.divider} ${tone.detail}`}>
+                      <span className={`mt-3 block border-t pt-3 text-[12px] font-bold tracking-normal sm:mt-3.5 sm:pt-3.5 ${tone.divider} ${tone.detail}`}>
                         {detail}
                       </span>
                       <span className={`mt-3 inline-flex items-center gap-1.5 text-[12px] font-extrabold tracking-normal ${tone.detail}`}>
