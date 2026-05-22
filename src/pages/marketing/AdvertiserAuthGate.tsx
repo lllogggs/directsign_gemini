@@ -48,6 +48,20 @@ export function AdvertiserAuthGate({
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  useEffect(() => {
+    if (cachedSession) return;
+
+    const controller = new AbortController();
+    void apiFetch("/api/auth/warmup", {
+      headers: { Accept: "application/json" },
+      signal: controller.signal,
+    }).catch(() => undefined);
+
+    return () => {
+      controller.abort();
+    };
+  }, [cachedSession]);
+
   const refreshContracts = useCallback(async () => {
     await hydrateContracts({ force: true });
   }, [hydrateContracts]);

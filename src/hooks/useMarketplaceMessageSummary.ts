@@ -12,36 +12,65 @@ type SummaryState = {
   isLoading: boolean;
 };
 
+const MESSAGE_SUMMARY_CACHE_MS = 60 * 1000;
+const messageSummaryCache = new Map<
+  MarketplaceInboxRole,
+  {
+    summary: MarketplaceMessageSummary;
+    cachedAt: number;
+  }
+>();
+
+const getCachedMessageSummary = (role: MarketplaceInboxRole) => {
+  const cache = messageSummaryCache.get(role);
+  if (!cache) return undefined;
+  if (Date.now() - cache.cachedAt > MESSAGE_SUMMARY_CACHE_MS) {
+    messageSummaryCache.delete(role);
+    return undefined;
+  }
+  return cache;
+};
+
 export function useMarketplaceMessageSummary(role: MarketplaceInboxRole): SummaryState {
+  const cached = getCachedMessageSummary(role);
   const [summary, setSummary] = useState<MarketplaceMessageSummary>(
-    emptyMarketplaceMessageSummary,
+    cached?.summary ?? emptyMarketplaceMessageSummary,
   );
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(!cached);
 
   useEffect(() => {
-    let active = true;
+    if (getCachedMessageSummary(role)) return;
 
-    void apiFetch(`/api/marketplace/messages?role=${role}`, {
-      headers: { Accept: "application/json" },
-      credentials: "include",
-    })
-      .then(async (response) => {
-        if (!response.ok) return undefined;
-        return (await response.json()) as MarketplaceMessagesResponse;
+    let active = true;
+    const timer = window.setTimeout(() => {
+      void apiFetch(`/api/marketplace/messages?role=${role}&summary=1`, {
+        headers: { Accept: "application/json" },
+        credentials: "include",
       })
-      .then((data) => {
-        if (!active) return;
-        setSummary(data?.summary ?? emptyMarketplaceMessageSummary);
-      })
-      .catch(() => {
-        if (active) setSummary(emptyMarketplaceMessageSummary);
-      })
-      .finally(() => {
-        if (active) setIsLoading(false);
-      });
+        .then(async (response) => {
+          if (!response.ok) return undefined;
+          return (await response.json()) as MarketplaceMessagesResponse;
+        })
+        .then((data) => {
+          if (!active) return;
+          const nextSummary = data?.summary ?? emptyMarketplaceMessageSummary;
+          messageSummaryCache.set(role, {
+            summary: nextSummary,
+            cachedAt: Date.now(),
+          });
+          setSummary(nextSummary);
+        })
+        .catch(() => {
+          if (active) setSummary(emptyMarketplaceMessageSummary);
+        })
+        .finally(() => {
+          if (active) setIsLoading(false);
+        });
+    }, 650);
 
     return () => {
       active = false;
+      window.clearTimeout(timer);
     };
   }, [role]);
 

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { AuthLoginScreen } from "../../components/AuthLoginScreen";
 import { apiFetch } from "../../domain/api";
@@ -17,6 +17,18 @@ export function InfluencerLoginPage() {
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void apiFetch("/api/auth/warmup", {
+      headers: { Accept: "application/json" },
+      signal: controller.signal,
+    }).catch(() => undefined);
+
+    return () => {
+      controller.abort();
+    };
+  }, []);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();

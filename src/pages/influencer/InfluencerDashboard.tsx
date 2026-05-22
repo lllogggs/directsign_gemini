@@ -418,10 +418,13 @@ export function InfluencerDashboard() {
     );
 
     try {
-      const response = await apiFetch("/api/influencer/dashboard", {
-        headers: { Accept: "application/json" },
-        credentials: "include",
-      });
+      const response = await apiFetch(
+        "/api/influencer/dashboard?includeApplications=false",
+        {
+          headers: { Accept: "application/json" },
+          credentials: "include",
+        },
+      );
 
       if (response.status === 401) {
         const currentPath = `${location.pathname}${location.search}`;
@@ -479,25 +482,71 @@ export function InfluencerDashboard() {
     if (state.status !== "ready") return;
 
     let active = true;
-
-    void apiFetch("/api/influencer/public-profile", {
-      headers: { Accept: "application/json" },
-      credentials: "include",
-    })
-      .then(async (response) => {
-        if (!response.ok) return undefined;
-        return (await response.json()) as InfluencerPublicProfileResponse;
+    const timer = window.setTimeout(() => {
+      void apiFetch("/api/influencer/public-profile", {
+        headers: { Accept: "application/json" },
+        credentials: "include",
       })
-      .then((data) => {
-        if (!active || !data?.profile) return;
-        setPublicProfileOverride(data.profile);
-      })
-      .catch(() => {
-        if (active) setPublicProfileOverride(null);
-      });
+        .then(async (response) => {
+          if (!response.ok) return undefined;
+          return (await response.json()) as InfluencerPublicProfileResponse;
+        })
+        .then((data) => {
+          if (!active || !data?.profile) return;
+          setPublicProfileOverride(data.profile);
+        })
+        .catch(() => {
+          if (active) setPublicProfileOverride(null);
+        });
+    }, 900);
 
     return () => {
       active = false;
+      window.clearTimeout(timer);
+    };
+  }, [readyDashboardUserId, state.status]);
+
+  useEffect(() => {
+    if (state.status !== "ready" || !readyDashboardUserId) return;
+
+    let active = true;
+    const timer = window.setTimeout(() => {
+      void apiFetch("/api/influencer/dashboard/applications", {
+        headers: { Accept: "application/json" },
+        credentials: "include",
+      })
+        .then(async (response) => {
+          if (!response.ok) return undefined;
+          return (await response.json()) as Pick<
+            InfluencerDashboardResponse,
+            "applications"
+          >;
+        })
+        .then((data) => {
+          if (!active || !data?.applications) return;
+          setState((current) => {
+            if (
+              current.status !== "ready" ||
+              current.dashboard.user.id !== readyDashboardUserId
+            ) {
+              return current;
+            }
+
+            return {
+              status: "ready",
+              dashboard: {
+                ...current.dashboard,
+                applications: data.applications,
+              },
+            };
+          });
+        })
+        .catch(() => undefined);
+    }, 500);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
     };
   }, [readyDashboardUserId, state.status]);
 

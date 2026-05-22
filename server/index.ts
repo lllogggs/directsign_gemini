@@ -1222,6 +1222,41 @@ const supabaseAuthUrl = (pathName: string) => {
   return `${supabaseUrl}/auth/v1${pathName}`;
 };
 
+const supabaseAuthWarmupMinIntervalMs = 30 * 1000;
+let supabaseAuthWarmupStartedAt = 0;
+let supabaseAuthWarmupPromise: Promise<void> | undefined;
+
+const warmSupabaseAuthConnection = async () => {
+  if (!supabaseUrl || !supabasePublishableKey) return;
+
+  const now = Date.now();
+  if (supabaseAuthWarmupPromise) {
+    await supabaseAuthWarmupPromise;
+    return;
+  }
+  if (now - supabaseAuthWarmupStartedAt < supabaseAuthWarmupMinIntervalMs) return;
+
+  supabaseAuthWarmupStartedAt = now;
+  supabaseAuthWarmupPromise = fetch(supabaseAuthUrl("/settings"), {
+    headers: supabaseAuthHeaders(),
+    cache: "no-store",
+  })
+    .then(async (warmupResponse) => {
+      if (!warmupResponse.ok) {
+        throw new Error(
+          `Supabase Auth warmup failed (${warmupResponse.status}): ${await parseSupabaseError(
+            warmupResponse,
+          )}`,
+        );
+      }
+    })
+    .finally(() => {
+      supabaseAuthWarmupPromise = undefined;
+    });
+
+  await supabaseAuthWarmupPromise;
+};
+
 const supabaseStorageUrl = (pathName: string) => {
   if (!supabaseUrl) {
     throw new Error("Supabase Storage is not configured");
@@ -1354,12 +1389,28 @@ const insertSupabaseRowsReturning = async <T>(
   return (await response.json()) as T[];
 };
 
+const profileSelectFields = [
+  "id",
+  "role",
+  "name",
+  "email",
+  "company_name",
+  "activity_categories",
+  "activity_platforms",
+  "verification_status",
+  "email_verified_at",
+  "terms_accepted_at",
+  "privacy_policy_accepted_at",
+  "terms_version",
+  "privacy_policy_version",
+].join(",");
+
 const readProfileByUserId = async (userId: string) => {
   if (!useSupabase) return undefined;
 
   const rows = await readSupabaseRows<SupabaseProfileRow>(
     "profiles",
-    `?select=*&id=eq.${encodeURIComponent(userId)}&limit=1`,
+    `?select=${profileSelectFields}&id=eq.${encodeURIComponent(userId)}&limit=1`,
     "profile",
   );
 
@@ -1382,6 +1433,16 @@ const syncProfileEmailVerifiedAt = async (authUser: SupabaseAuthUser) => {
     },
   );
   await assertSupabaseOk(response, "Supabase profile email verification update");
+};
+
+const syncProfileEmailVerifiedAtInBackground = (authUser: SupabaseAuthUser) => {
+  void syncProfileEmailVerifiedAt(authUser).catch((error) => {
+    console.warn(
+      `[${productName}] profile email verification background sync failed: ${
+        error instanceof Error ? error.message : "unknown error"
+      }`,
+    );
+  });
 };
 
 const readDefaultOrganizationForProfile = async (profileId: string) => {
@@ -1412,6 +1473,35 @@ const isAdvertiserRole = (role: SupabaseProfileRow["role"] | undefined) =>
 
 const isInfluencerRole = (role: SupabaseProfileRow["role"] | undefined) =>
   role === "influencer";
+
+const buildInfluencerSessionUser = (
+  authUser: SupabaseAuthUser,
+  profile: SupabaseProfileRow,
+): InfluencerDashboardResponse["user"] => ({
+  id: authUser.id,
+  email: profile.email ?? authUser.email ?? "",
+  name: profile.name ?? authUser.email ?? "인플루언서",
+  role: profile.role,
+  activity_categories: profile.activity_categories ?? [],
+  activity_platforms: profile.activity_platforms ?? [],
+  verification_status:
+    (profile.verification_status as VerificationStatus | undefined) ??
+    "not_submitted",
+  email_verified: Boolean(
+    authUser.email_confirmed_at ??
+      authUser.confirmed_at ??
+      profile.email_verified_at,
+  ),
+});
+
+const buildInfluencerSessionVerification = (
+  profile: SupabaseProfileRow,
+): InfluencerDashboardResponse["verification"] => ({
+  status:
+    (profile.verification_status as VerificationStatus | undefined) ??
+    "not_submitted",
+  approved_platforms: [],
+});
 
 const requireAdvertiserSession = async (
   request: express.Request,
@@ -7811,16 +7901,22 @@ const getMarketplaceCounterpartHref = (
   return undefined;
 };
 
-const mapMarketplaceProposalToMessage = (
-  row: SupabaseMarketplaceContactProposalRow,
+const getMarketplaceMessageBucket = (
   role: MarketplaceInboxRole,
-): MarketplaceMessageThread => {
+  row: SupabaseMarketplaceContactProposalRow,
+): MarketplaceMessageBucket => {
   const isAdvertiserInbox =
     role === "advertiser" && row.direction === "influencer_to_brand";
   const isInfluencerInbox =
     role === "influencer" && row.direction === "advertiser_to_influencer";
-  const bucket: MarketplaceMessageBucket =
-    isAdvertiserInbox || isInfluencerInbox ? "inbox" : "sent";
+  return isAdvertiserInbox || isInfluencerInbox ? "inbox" : "sent";
+};
+
+const mapMarketplaceProposalToMessage = (
+  row: SupabaseMarketplaceContactProposalRow,
+  role: MarketplaceInboxRole,
+): MarketplaceMessageThread => {
+  const bucket = getMarketplaceMessageBucket(role, row);
   const counterpartName = bucket === "inbox" ? row.sender_name : row.target_display_name;
 
   return {
@@ -7848,6 +7944,22 @@ const mapMarketplaceProposalToMessage = (
   };
 };
 
+const buildMarketplaceMessageSummary = (
+  role: MarketplaceInboxRole,
+  rows: SupabaseMarketplaceContactProposalRow[],
+) =>
+  rows.reduce((acc, row) => {
+    const bucket = getMarketplaceMessageBucket(role, row);
+    if (bucket === "inbox") acc.inboxCount += 1;
+    if (bucket === "sent") acc.sentCount += 1;
+    if (bucket === "inbox" && row.status === "submitted") acc.unreadCount += 1;
+    if (row.status === "submitted") acc.submittedCount += 1;
+    if (row.status === "reviewed") acc.reviewedCount += 1;
+    if (row.status === "converted_to_contract") acc.convertedCount += 1;
+    if (row.status === "closed") acc.closedCount += 1;
+    return acc;
+  }, emptyMarketplaceMessageSummary());
+
 const buildMarketplaceMessagesResponse = (
   role: MarketplaceInboxRole,
   rows: SupabaseMarketplaceContactProposalRow[],
@@ -7858,16 +7970,7 @@ const buildMarketplaceMessagesResponse = (
       (a, b) =>
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
     );
-  const summary = threads.reduce((acc, thread) => {
-    if (thread.bucket === "inbox") acc.inboxCount += 1;
-    if (thread.bucket === "sent") acc.sentCount += 1;
-    if (thread.unread) acc.unreadCount += 1;
-    if (thread.status === "submitted") acc.submittedCount += 1;
-    if (thread.status === "reviewed") acc.reviewedCount += 1;
-    if (thread.status === "converted_to_contract") acc.convertedCount += 1;
-    if (thread.status === "closed") acc.closedCount += 1;
-    return acc;
-  }, emptyMarketplaceMessageSummary());
+  const summary = buildMarketplaceMessageSummary(role, rows);
 
   return { role, threads, summary };
 };
@@ -8071,7 +8174,11 @@ const addPlatformInfoToMarketplaceProposals = async (
 
 const readMarketplaceMessagesForAdvertiser = async (
   auth: AdvertiserSession,
+  options: { summaryOnly?: boolean } = {},
 ): Promise<MarketplaceMessagesResponse> => {
+  const messageProposalSelect = options.summaryOnly
+    ? "id,direction,status,created_at"
+    : "*";
   const organization = await readDefaultOrganizationForProfile(auth.profile.id);
   const brandRows =
     useSupabase && organization
@@ -8087,18 +8194,27 @@ const readMarketplaceMessagesForAdvertiser = async (
   const incomingRows =
     brandIds.length > 0
       ? await readMarketplaceProposalRows(
-          `?select=*&direction=eq.influencer_to_brand&target_brand_profile_id=in.${postgrestInFilter(
+          `?select=${messageProposalSelect}&direction=eq.influencer_to_brand&target_brand_profile_id=in.${postgrestInFilter(
             brandIds,
           )}&order=created_at.desc`,
           "advertiser marketplace incoming proposals",
         )
       : [];
   const sentRows = await readMarketplaceProposalRows(
-    `?select=*&direction=eq.advertiser_to_influencer&sender_profile_id=eq.${encodeURIComponent(
+    `?select=${messageProposalSelect}&direction=eq.advertiser_to_influencer&sender_profile_id=eq.${encodeURIComponent(
       auth.profile.id,
     )}&order=created_at.desc`,
     "advertiser marketplace sent proposals",
   );
+  const rows = uniqueRowsById([...incomingRows, ...sentRows]);
+
+  if (options.summaryOnly) {
+    return {
+      role: "advertiser",
+      threads: [],
+      summary: buildMarketplaceMessageSummary("advertiser", rows),
+    };
+  }
 
   return buildMarketplaceMessagesResponse(
     "advertiser",
@@ -8113,7 +8229,11 @@ const readMarketplaceMessagesForAdvertiser = async (
 
 const readMarketplaceMessagesForInfluencer = async (
   auth: InfluencerSession,
+  options: { summaryOnly?: boolean } = {},
 ): Promise<MarketplaceMessagesResponse> => {
+  const messageProposalSelect = options.summaryOnly
+    ? "id,direction,status,created_at"
+    : "*";
   const profileRows = useSupabase
     ? await readSupabaseRows<SupabaseMarketplaceInfluencerProfileRow>(
         "marketplace_influencer_profiles",
@@ -8127,18 +8247,27 @@ const readMarketplaceMessagesForInfluencer = async (
   const incomingRows =
     publicProfileIds.length > 0
       ? await readMarketplaceProposalRows(
-          `?select=*&direction=eq.advertiser_to_influencer&target_influencer_profile_id=in.${postgrestInFilter(
+          `?select=${messageProposalSelect}&direction=eq.advertiser_to_influencer&target_influencer_profile_id=in.${postgrestInFilter(
             publicProfileIds,
           )}&order=created_at.desc`,
           "influencer marketplace incoming proposals",
         )
       : [];
   const sentRows = await readMarketplaceProposalRows(
-    `?select=*&direction=eq.influencer_to_brand&sender_profile_id=eq.${encodeURIComponent(
+    `?select=${messageProposalSelect}&direction=eq.influencer_to_brand&sender_profile_id=eq.${encodeURIComponent(
       auth.profile.id,
     )}&order=created_at.desc`,
     "influencer marketplace sent proposals",
   );
+  const rows = uniqueRowsById([...incomingRows, ...sentRows]);
+
+  if (options.summaryOnly) {
+    return {
+      role: "influencer",
+      threads: [],
+      summary: buildMarketplaceMessageSummary("influencer", rows),
+    };
+  }
 
   return buildMarketplaceMessagesResponse(
     "influencer",
@@ -11487,39 +11616,51 @@ const buildDashboardTasks = (
   return tasks.slice(0, 6);
 };
 
+type InfluencerDashboardBuildOptions = {
+  includeApplications?: boolean;
+};
+
 const buildInfluencerDashboard = async (
   authUser: SupabaseAuthUser,
+  options: InfluencerDashboardBuildOptions = {},
 ): Promise<InfluencerDashboardResponse> => {
   if (!useSupabase) {
     throw new Error("Supabase is required for influencer dashboard");
   }
 
   const userEmail = authUser.email?.trim().toLowerCase() ?? "";
-  const profiles = await readSupabaseRows<SupabaseProfileRow>(
-    "profiles",
-    `?select=*&id=eq.${encodeURIComponent(authUser.id)}&limit=1`,
-    "profile",
-  );
+  const [
+    profiles,
+    profileParties,
+    emailParties,
+    legacyStore,
+  ] = await Promise.all([
+    readSupabaseRows<SupabaseProfileRow>(
+      "profiles",
+      `?select=*&id=eq.${encodeURIComponent(authUser.id)}&limit=1`,
+      "profile",
+    ),
+    readSupabaseRows<SupabaseContractPartyRow>(
+      "contract_parties",
+      `?select=*&party_role=eq.influencer&profile_id=eq.${encodeURIComponent(authUser.id)}`,
+      "influencer parties by profile",
+    ),
+    userEmail
+      ? readSupabaseRows<SupabaseContractPartyRow>(
+          "contract_parties",
+          `?select=*&party_role=eq.influencer&email=eq.${encodeURIComponent(userEmail)}`,
+          "influencer parties by email",
+        )
+      : Promise.resolve([] as SupabaseContractPartyRow[]),
+    readStore(),
+  ]);
   const profile = profiles[0];
 
   if (profile && profile.role !== "influencer") {
     throw new Error("Influencer role is required");
   }
 
-  const profileParties = await readSupabaseRows<SupabaseContractPartyRow>(
-    "contract_parties",
-    `?select=*&party_role=eq.influencer&profile_id=eq.${encodeURIComponent(authUser.id)}`,
-    "influencer parties by profile",
-  );
-  const emailParties = userEmail
-    ? await readSupabaseRows<SupabaseContractPartyRow>(
-        "contract_parties",
-        `?select=*&party_role=eq.influencer&email=eq.${encodeURIComponent(userEmail)}`,
-        "influencer parties by email",
-      )
-    : [];
   const influencerParties = uniqueRowsById([...profileParties, ...emailParties]);
-  const legacyStore = await readStore();
   const legacyContractsForUser = legacyStore.contracts.filter(
     (contract) =>
       userEmail &&
@@ -11627,9 +11768,10 @@ const buildInfluencerDashboard = async (
   dashboardContracts.sort(
     (a, b) => parseDashboardDate(b.updated_at) - parseDashboardDate(a.updated_at),
   );
-  const dashboardApplications = await buildInfluencerDashboardApplications(
-    profile?.id ?? authUser.id,
-  );
+  const dashboardApplications =
+    options.includeApplications === false
+      ? []
+      : await buildInfluencerDashboardApplications(profile?.id ?? authUser.id);
 
   const verificationRequests = (await readVerificationRequests()).filter(
     (request) =>
@@ -12351,6 +12493,20 @@ app.get("/api/health", (_request, response) => {
   });
 });
 
+app.get("/api/auth/warmup", async (_request, response) => {
+  response.setHeader("Cache-Control", "no-store");
+  try {
+    await warmSupabaseAuthConnection();
+  } catch (error) {
+    console.warn(
+      `[${productName}] Supabase Auth warmup failed: ${
+        error instanceof Error ? error.message : "unknown error"
+      }`,
+    );
+  }
+  response.status(204).end();
+});
+
 app.get("/api/admin/session", (request, response) => {
   const token = parseCookies(request.header("cookie")).get(adminSessionCookie);
   response.json({
@@ -12668,7 +12824,6 @@ app.post("/api/advertiser/login", async (request, response) => {
       return;
     }
 
-    await syncProfileEmailVerifiedAt(session.user);
     setAdvertiserSessionCookies(response, session);
     clearPublicAuthRateLimit(request, "advertiser_login", email);
     response.json({
@@ -12682,6 +12837,9 @@ app.post("/api/advertiser/login", async (request, response) => {
         verification_status: profile.verification_status ?? "not_submitted",
       },
     });
+    if (!profile.email_verified_at) {
+      syncProfileEmailVerifiedAtInBackground(session.user);
+    }
   } catch (error) {
     response.status(401).json({
       error: getLoginFailureMessage(error, "광고주 로그인에 실패했습니다."),
@@ -12825,18 +12983,13 @@ app.post("/api/advertiser/logout", async (request, response) => {
 
 app.get("/api/influencer/session", async (request, response, next) => {
   try {
-    const auth = await authenticateInfluencerRequest(request, response);
+    const auth = await requireInfluencerSession(request, response);
+    if (!auth) return;
 
-    if (!auth) {
-      response.status(401).json({ authenticated: false });
-      return;
-    }
-
-    const dashboard = await buildInfluencerDashboard(auth.user);
     response.json({
       authenticated: true,
-      user: dashboard.user,
-      verification: dashboard.verification,
+      user: buildInfluencerSessionUser(auth.user, auth.profile),
+      verification: buildInfluencerSessionVerification(auth.profile),
     });
   } catch (error) {
     next(error);
@@ -12860,23 +13013,25 @@ app.post("/api/influencer/login", async (request, response, _next) => {
     }
 
     const session = await createSupabasePasswordSession(email, password);
-    const dashboard = await buildInfluencerDashboard(session.user);
+    const profile = await readProfileByUserId(session.user.id);
 
-    if (dashboard.user.role !== "influencer") {
+    if (!profile || !isInfluencerRole(profile.role)) {
       response.status(403).json({
         error: "인플루언서 계정 권한이 필요합니다. 인플루언서 계정으로 로그인해 주세요.",
       });
       return;
     }
 
-    await syncProfileEmailVerifiedAt(session.user);
     setInfluencerSessionCookies(response, session);
     clearPublicAuthRateLimit(request, "influencer_login", email);
     response.json({
       authenticated: true,
-      user: dashboard.user,
-      verification: dashboard.verification,
+      user: buildInfluencerSessionUser(session.user, profile),
+      verification: buildInfluencerSessionVerification(profile),
     });
+    if (!profile.email_verified_at) {
+      syncProfileEmailVerifiedAtInBackground(session.user);
+    }
   } catch (error) {
     response.status(401).json({
       error: getLoginFailureMessage(error, "인플루언서 로그인에 실패했습니다."),
@@ -13021,7 +13176,11 @@ app.get("/api/influencer/dashboard", async (request, response, next) => {
       return;
     }
 
-    response.json(await buildInfluencerDashboard(auth.user));
+    const includeApplications =
+      normalizeOptionalText(request.query.includeApplications) !== "false";
+    response.json(
+      await buildInfluencerDashboard(auth.user, { includeApplications }),
+    );
   } catch (error) {
     if (error instanceof Error && error.message === "Influencer role is required") {
       response.status(403).json({
@@ -13507,13 +13666,22 @@ app.post(
 app.get("/api/marketplace/messages", async (request, response, next) => {
   try {
     const role = normalizeOptionalText(request.query.role);
+    const summaryParam = (
+      normalizeOptionalText(request.query.summary) ?? ""
+    ).toLowerCase();
+    const summaryOnly =
+      summaryParam === "1" || summaryParam === "true";
 
     if (role === "advertiser") {
       const advertiserAuth = await requireAdvertiserSession(request, response);
       if (!advertiserAuth) return;
 
       response.setHeader("Cache-Control", "no-store");
-      response.json(await readMarketplaceMessagesForAdvertiser(advertiserAuth));
+      response.json(
+        await readMarketplaceMessagesForAdvertiser(advertiserAuth, {
+          summaryOnly,
+        }),
+      );
       return;
     }
 
@@ -13522,7 +13690,11 @@ app.get("/api/marketplace/messages", async (request, response, next) => {
       if (!influencerAuth) return;
 
       response.setHeader("Cache-Control", "no-store");
-      response.json(await readMarketplaceMessagesForInfluencer(influencerAuth));
+      response.json(
+        await readMarketplaceMessagesForInfluencer(influencerAuth, {
+          summaryOnly,
+        }),
+      );
       return;
     }
 
@@ -14504,6 +14676,19 @@ app.patch("/api/contracts/:id/deliverables/:deliverableId", async (request, resp
     response.json({
       deliverable: updatedDeliverable,
       ...buildDeliverableResponse(contract, updatedBundle),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/influencer/dashboard/applications", async (request, response, next) => {
+  try {
+    const auth = await requireInfluencerSession(request, response);
+    if (!auth) return;
+
+    response.json({
+      applications: await buildInfluencerDashboardApplications(auth.profile.id),
     });
   } catch (error) {
     next(error);
