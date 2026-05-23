@@ -672,7 +672,7 @@ export function InfluencerDashboard() {
 
   return (
     <DashboardShell>
-      <header className="sticky top-0 z-30 border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
+      <header className="sticky top-0 z-30 border-b border-neutral-200/70 bg-white/92 backdrop-blur">
         <div className="mx-auto flex h-12 max-w-[1500px] items-center justify-between px-3 sm:px-5 lg:px-6">
           <button
             type="button"
@@ -737,8 +737,8 @@ export function InfluencerDashboard() {
         </div>
       </header>
 
-      <main className="mx-auto w-full min-w-0 max-w-[1500px] px-3 py-2 sm:px-5 lg:flex lg:h-[calc(100vh-48px)] lg:flex-col lg:overflow-hidden lg:px-6">
-        <section className="min-w-0 overflow-hidden rounded-[12px] border border-neutral-200 bg-[#fdfdfb] shadow-[0_16px_44px_rgba(23,26,23,0.07)] lg:flex lg:h-full lg:flex-col">
+      <main className="mx-auto w-full min-w-0 max-w-[1500px] px-3 py-2.5 sm:px-5 lg:flex lg:h-[calc(100vh-48px)] lg:flex-col lg:overflow-hidden lg:px-6">
+        <section className="min-w-0 overflow-hidden rounded-[10px] border border-neutral-200/90 bg-white shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_18px_46px_rgba(23,26,23,0.055)] lg:flex lg:h-full lg:flex-col">
           <div className="border-b border-[#d9e0d9] bg-white px-4 py-2">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex min-w-0 flex-wrap items-end gap-x-3 gap-y-1">
@@ -854,7 +854,7 @@ export function InfluencerDashboard() {
 
 function DashboardShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950 lg:h-screen lg:overflow-hidden">
+    <div className="min-h-screen bg-[#f4f5f2] font-sans text-neutral-950 lg:h-screen lg:overflow-hidden">
       {children}
     </div>
   );
@@ -1034,15 +1034,23 @@ function InfluencerAccountBanner({
   onEditPublicProfile: () => void;
 }) {
   const verificationApproved = dashboard.verification.status === "approved";
-  const activityPlatforms = Array.from(
-    new Set(dashboard.user.activity_platforms),
-  ).slice(0, 3);
-  const approvedPlatforms = dedupeApprovedPlatforms(
+  const activityPlatforms = Array.from(new Set(dashboard.user.activity_platforms));
+  const approvedPlatformList = dedupeApprovedPlatforms(
     dashboard.verification.approved_platforms,
-  ).slice(0, 2);
+  );
+  const approvedPlatforms = approvedPlatformList.slice(0, 2);
+  const visibleActivityPlatforms = activityPlatforms.slice(0, 2);
+  const platformCount = verificationApproved
+    ? approvedPlatformList.length
+    : activityPlatforms.length;
+  const profileStatusLabel = publicProfile.published
+    ? "공개 프로필 활성"
+    : publicProfile.handle
+      ? "공개 전 프로필"
+      : "프로필 준비 필요";
 
   return (
-    <section className="border-b border-[#d9e0d9] bg-[#fcfcfd] px-4 py-2.5">
+    <section className="border-b border-[#d9e0d9] bg-[#fcfcfd] px-4 py-2">
       <div className="flex flex-row items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-neutral-800 ring-1 ring-neutral-200">
@@ -1050,8 +1058,8 @@ function InfluencerAccountBanner({
           </div>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <p className="text-sm font-semibold text-neutral-950">
-                {showVerificationAction ? "플랫폼 계정 인증" : "활동 정보"}
+              <p className="truncate text-sm font-extrabold text-neutral-950">
+                {removeInternalTestLabel(dashboard.user.name, "인플루언서 계정")}
               </p>
               <span
                 className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
@@ -1062,15 +1070,17 @@ function InfluencerAccountBanner({
               >
                 {showVerificationAction ? verification.label : "체크 완료"}
               </span>
+              <span className="rounded-full border border-neutral-200 bg-white px-2.5 py-0.5 text-xs font-semibold text-neutral-600">
+                {platformCount > 0
+                  ? `${platformCount}개 플랫폼`
+                  : "플랫폼 대기"}
+              </span>
             </div>
             <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[12px] leading-4 text-neutral-500">
-              <span className="max-w-[220px] truncate font-semibold text-neutral-800">
-                {removeInternalTestLabel(dashboard.user.name, "인플루언서 계정")}
-              </span>
               {approvedPlatforms.map((platform) => (
                 <span
                   key={`${platform.platform}:${platform.handle}`}
-                  className="inline-flex max-w-[170px] items-center gap-1.5 truncate rounded-full bg-neutral-100 px-2 py-0.5 font-semibold text-neutral-600"
+                  className="inline-flex max-w-[150px] items-center gap-1.5 truncate rounded-full bg-neutral-100 px-2 py-0.5 font-semibold text-neutral-600"
                 >
                   {PLATFORM_META[platform.platform].icon}
                   <span className="truncate">
@@ -1082,30 +1092,24 @@ function InfluencerAccountBanner({
                 </span>
               ))}
               {approvedPlatforms.length === 0 &&
-                activityPlatforms.map((platform) => (
+                visibleActivityPlatforms.map((platform) => (
                   <span
                     key={platform}
-                    className="inline-flex max-w-[170px] items-center gap-1.5 truncate rounded-full bg-neutral-100 px-2 py-0.5 font-semibold text-neutral-600"
+                    className="inline-flex max-w-[150px] items-center gap-1.5 truncate rounded-full bg-neutral-100 px-2 py-0.5 font-semibold text-neutral-600"
                   >
                     {PLATFORM_META[platform].icon}
                     <span className="truncate">{PLATFORM_META[platform].label}</span>
                   </span>
                 ))}
               <span
-                className={`inline-flex max-w-[260px] items-center gap-1.5 truncate rounded-full px-2 py-0.5 font-semibold ${
+                className={`inline-flex max-w-[190px] items-center gap-1.5 truncate rounded-full px-2 py-0.5 font-semibold ${
                   publicProfile.published
                     ? "bg-neutral-100 text-neutral-700"
                     : "bg-amber-50 text-amber-800"
                 }`}
               >
                 <Globe2 className="h-3.5 w-3.5 shrink-0" />
-                <span className="truncate">
-                  {publicProfile.handle
-                    ? publicProfile.published
-                      ? formatInfluencerPublicProfileUrl(publicProfile.handle)
-                      : `저장 전 · ${formatInfluencerPublicProfileUrl(publicProfile.handle)}`
-                    : "플랫폼 인증 후 자동 생성"}
-                </span>
+                <span className="truncate">{profileStatusLabel}</span>
               </span>
             </div>
           </div>
@@ -1772,13 +1776,13 @@ function ContractTable({
   const dateColumnLabel = getInfluencerDateColumnLabel(lifecycleFilter);
 
   return (
-    <section className="overflow-hidden rounded-[8px] border border-[#d9e0d9] bg-white lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+    <section className="overflow-hidden rounded-[8px] border border-[#d9e0d9] bg-white shadow-[0_1px_0_rgba(255,255,255,0.9)_inset] lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
       <InfluencerLifecycleTabs
         value={lifecycleFilter}
         counts={lifecycleCounts}
         onChange={onLifecycleFilterChange}
       />
-      <div className="border-b border-[#d9e0d9] bg-[#fbfcfa]">
+      <div className="border-b border-[#d9e0d9] bg-[#fbfbf8]">
         <div className="flex min-h-11 items-center justify-between gap-3 px-3 py-2">
           <div className="min-w-0">
             <p className="truncate text-[14px] font-extrabold leading-5 text-[#171a17]">
@@ -1877,7 +1881,7 @@ function ContractTable({
               key={item.id}
               type="button"
               onClick={() => onOpen(item)}
-              className="group grid w-full gap-2 px-3 py-2 text-left transition-colors hover:bg-[#f8faf7] lg:min-h-[46px] lg:grid-cols-[minmax(86px,0.18fr)_minmax(92px,0.18fr)_minmax(220px,0.72fr)_minmax(170px,0.46fr)_minmax(150px,0.38fr)_minmax(120px,0.3fr)] lg:items-center lg:py-1.5"
+              className="group grid w-full gap-2 px-3 py-2 text-left transition-colors hover:bg-[#fafaf7] lg:min-h-[44px] lg:grid-cols-[minmax(78px,0.16fr)_minmax(88px,0.16fr)_minmax(250px,0.78fr)_minmax(170px,0.44fr)_minmax(140px,0.34fr)_minmax(110px,0.25fr)] lg:items-center lg:py-1.5"
             >
               <div className="flex min-w-0 items-center justify-between gap-2 lg:block">
                 <PlatformPills item={item} />
@@ -1931,7 +1935,7 @@ function InfluencerTableHeaderRow({
   onSortChange: (key: SortKey) => void;
 }) {
   return (
-    <div className="hidden border-b border-[#e3e8e3] bg-white px-3 py-2 lg:grid lg:grid-cols-[minmax(86px,0.18fr)_minmax(92px,0.18fr)_minmax(220px,0.72fr)_minmax(170px,0.46fr)_minmax(150px,0.38fr)_minmax(120px,0.3fr)] lg:items-center lg:gap-2">
+    <div className="hidden border-b border-[#e3e8e3] bg-[#fbfbf8] px-3 py-2 lg:grid lg:grid-cols-[minmax(78px,0.16fr)_minmax(88px,0.16fr)_minmax(250px,0.78fr)_minmax(170px,0.44fr)_minmax(140px,0.34fr)_minmax(110px,0.25fr)] lg:items-center lg:gap-2">
       <ColumnHeader
         label="플랫폼"
         sortKey="platform"
@@ -2056,7 +2060,7 @@ function InfluencerLifecycleTabs({
   onChange: (value: InfluencerCampaignLifecycle) => void;
 }) {
   return (
-    <div className="border-b border-[#d9e0d9] bg-[#e6e0d8] px-2 pt-2">
+    <div className="border-b border-[#d9e0d9] bg-[#ecebe5] px-2 pt-2">
       <div className="grid min-w-0 grid-cols-4 items-end gap-0.5">
         {INFLUENCER_LIFECYCLE_TABS.map((tab) => {
           const active = value === tab.value;
@@ -2066,10 +2070,10 @@ function InfluencerLifecycleTabs({
               type="button"
               onClick={() => onChange(tab.value)}
               aria-pressed={active}
-              className={`relative flex h-10 min-w-0 items-center justify-between gap-1.5 rounded-t-[14px] border px-2 text-left transition sm:px-3 ${
+              className={`relative flex h-9 min-w-0 items-center justify-between gap-1.5 rounded-t-[10px] border px-2 text-left transition sm:px-3 ${
                 active
-                  ? "z-10 -mb-px border-[#d9e0d9] border-b-[#f8faf7] bg-[#f8faf7] pb-px text-[#171a17] shadow-[0_-1px_0_rgba(255,255,255,0.9)_inset,0_-8px_20px_rgba(23,26,23,0.05)]"
-                  : "mb-0.5 border-transparent bg-[#d8d1c8] text-[#4f574f] hover:bg-[#e1dbd3] hover:text-[#171a17]"
+                  ? "z-10 -mb-px border-[#d9e0d9] border-b-white bg-white pb-px text-[#171a17] shadow-[0_-1px_0_rgba(255,255,255,0.9)_inset]"
+                  : "mb-0.5 border-transparent bg-transparent text-[#59605b] hover:bg-[#f5f4ee] hover:text-[#171a17]"
               }`}
             >
               <span className="truncate text-[12px] font-extrabold sm:text-[13px]">

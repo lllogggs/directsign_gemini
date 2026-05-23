@@ -19,6 +19,7 @@ import {
 import { useAppStore } from "../../store";
 import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
+import { formatPublicHandleValue } from "../../domain/display";
 import { buildLoginRedirect } from "../../domain/navigation";
 import { translateApiErrorMessage } from "../../domain/userMessages";
 import {
@@ -286,6 +287,10 @@ export function InfluencerVerification() {
   const verifiedHandle =
     selectedApprovedPlatform?.handle ||
     (latestMatchesSelectedPlatform ? latest?.platform_handle : undefined);
+  const displayVerifiedHandle = formatPublicHandleValue(
+    verifiedHandle,
+    "인증된 계정",
+  );
   const verifiedUrl =
     selectedApprovedPlatform?.url ||
     (latestMatchesSelectedPlatform ? latest?.platform_url : undefined);
@@ -497,7 +502,7 @@ export function InfluencerVerification() {
                   </p>
                   <p className="mt-1 text-sm leading-6 text-neutral-500">
                     {approved
-                      ? `${verifiedHandle || "등록된 계정"} 기준으로 인증되어 있습니다. 다른 플랫폼을 추가하거나 계정 정보가 바뀐 경우에만 새 요청을 남기세요.`
+                      ? `${displayVerifiedHandle} 기준으로 인증되어 있습니다. 다른 플랫폼을 추가하거나 계정 정보가 바뀐 경우에만 새 요청을 남기세요.`
                       : "계약 검토는 가능하지만, 서명하려면 계정 소유 인증 승인이 먼저 필요합니다."}
                   </p>
                 </div>
@@ -573,12 +578,14 @@ export function InfluencerVerification() {
                           className="inline-flex h-8 max-w-full items-center truncate rounded-full border border-emerald-200 bg-white px-3 text-xs font-semibold text-emerald-800"
                         >
                           {PLATFORM_META[item.platform]?.label ?? item.platform}
-                          {item.handle ? ` · ${item.handle}` : ""}
+                          {item.handle
+                            ? ` · ${formatPublicHandleValue(item.handle, "인증된 계정")}`
+                            : ""}
                         </span>
                       ))
                     ) : (
                       <span className="inline-flex h-8 items-center rounded-full border border-emerald-200 bg-white px-3 text-xs font-semibold text-emerald-800">
-                        {verifiedHandle || "승인된 계정"}
+                        {displayVerifiedHandle}
                       </span>
                     )}
                     {hiddenApprovedPlatformChipCount > 0 ? (
@@ -879,14 +886,14 @@ export function InfluencerVerification() {
                   />
                 )}
                 {approved && verifiedHandle && (
-                  <InfoRow label="승인 계정" value={verifiedHandle} />
+                  <InfoRow label="승인 계정" value={displayVerifiedHandle} />
                 )}
               </>
             ) : (
               <>
                 <InfoRow label="현재 상태" value="인증 완료" />
                 {verifiedHandle ? (
-                  <InfoRow label="대표 계정" value={verifiedHandle} />
+                  <InfoRow label="대표 계정" value={displayVerifiedHandle} />
                 ) : null}
                 <InfoRow
                   label="추가 인증"

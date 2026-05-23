@@ -369,13 +369,13 @@ const browserRenderRoutes = [
   {
     name: "intro advertiser",
     path: "/intro/advertiser",
-    requiredText: ["광고주", "계약 시작"],
+    requiredText: ["계약 상태를", "모집중", "진행중", "종료"],
     minTextLength: 80,
   },
   {
     name: "intro influencer",
     path: "/intro/influencer",
-    requiredText: ["인플루언서", "계약 수신"],
+    requiredText: ["내 캠페인을", "지원중", "진행중", "미선정"],
     minTextLength: 80,
   },
   {
@@ -859,7 +859,11 @@ const fillLoginAndSubmit = async (client, sessionId, email, password) =>
   await evaluateCdpValue(
     client,
     sessionId,
-    `(() => {
+    `(async () => {
+      const waitFrames = async () => {
+        await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+        await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+      };
       const setValue = (element, value) => {
         const setter = Object.getOwnPropertyDescriptor(
           Object.getPrototypeOf(element),
@@ -867,6 +871,7 @@ const fillLoginAndSubmit = async (client, sessionId, email, password) =>
         )?.set;
         if (setter) setter.call(element, value);
         else element.value = value;
+        element.focus();
         element.dispatchEvent(new Event("input", { bubbles: true }));
         element.dispatchEvent(new Event("change", { bubbles: true }));
       };
@@ -881,6 +886,7 @@ const fillLoginAndSubmit = async (client, sessionId, email, password) =>
       }
       setValue(emailInput, ${JSON.stringify(email)});
       setValue(passwordInput, ${JSON.stringify(password)});
+      await waitFrames();
       submitButton.click();
       return { ok: true };
     })()`,

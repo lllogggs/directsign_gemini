@@ -858,6 +858,26 @@ const getContextualRoutePreloaders = (pathname: string): RouteModuleLoader[] => 
   return [];
 };
 
+const getImmediateRoutePreloaders = (
+  pathname: string,
+  search: string,
+): RouteModuleLoader[] => {
+  if (pathname === "/login/advertiser") {
+    const nextPath = getNextPath(search, "/advertiser/dashboard", ["/advertiser"]);
+    return [loadDashboard, ...getExactRoutePreloaders(nextPath)];
+  }
+
+  if (pathname === "/login/influencer") {
+    const nextPath = getNextPath(search, "/influencer/dashboard", [
+      "/influencer",
+      "/contract",
+    ]);
+    return [loadInfluencerDashboard, ...getExactRoutePreloaders(nextPath)];
+  }
+
+  return getExactRoutePreloaders(pathname);
+};
+
 const scheduleIdlePreload = (callback: () => void, timeout: number) => {
   const idleWindow = window as Window & {
     requestIdleCallback?: (
@@ -942,9 +962,13 @@ function RoutePreloader() {
   }, []);
 
   useEffect(() => {
+    preloadRouteModules(
+      getImmediateRoutePreloaders(location.pathname, location.search),
+    );
+
     const cancelLikelyPreload = scheduleIdlePreload(() => {
       preloadRouteModules(getContextualRoutePreloaders(location.pathname));
-    }, 700);
+    }, location.pathname.startsWith("/login") ? 220 : 700);
 
     const secondaryTimer = window.setTimeout(() => {
       if (location.pathname === "/") {
@@ -956,7 +980,7 @@ function RoutePreloader() {
       cancelLikelyPreload();
       window.clearTimeout(secondaryTimer);
     };
-  }, [location.pathname]);
+  }, [location.pathname, location.search]);
 
   return null;
 }

@@ -823,39 +823,39 @@ export function PublicBrandProfilePage() {
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <section className="border-b border-neutral-200/80 bg-white">
-          <div className="mx-auto grid max-w-[1180px] gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:px-8">
+          <div className="mx-auto grid max-w-[1180px] gap-4 px-4 py-4 sm:px-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:px-8">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <StatusPill icon={<Store className="h-3.5 w-3.5" />} label={brand.statusLabel} />
               <StatusPill icon={<Mail className="h-3.5 w-3.5" />} label={brand.responseTimeLabel} />
             </div>
-            <div className="mt-5 flex flex-col gap-5 sm:flex-row sm:items-start">
+            <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start">
               <AvatarBlock label={brand.logoLabel} size="large" />
               <div className="min-w-0 flex-1">
                 <p className="break-all text-[13px] font-semibold text-neutral-500">
                   yeollock.me/brands/{brand.handle}
                 </p>
-                <h1 className="font-neo-heavy mt-2 text-[34px] leading-tight tracking-[-0.035em] text-neutral-950 sm:text-[44px]">
+                <h1 className="font-neo-heavy mt-2 text-[30px] leading-tight tracking-[-0.035em] text-neutral-950 sm:text-[40px]">
                   {brand.displayName}
                 </h1>
-                <p className="mt-3 max-w-2xl break-keep text-[16px] font-medium leading-7 text-neutral-600">
+                <p className="mt-2 max-w-2xl break-keep text-[15px] font-medium leading-6 text-neutral-600">
                   {formatBrandMarketplaceHeadline(brand)}
                 </p>
-                <p className="mt-4 max-w-3xl break-keep text-[14px] leading-6 text-neutral-600">
+                <p className="mt-2 line-clamp-2 max-w-3xl break-keep text-[13px] leading-5 text-neutral-600">
                   {formatBrandMarketplaceDescription(brand)}
                 </p>
-                <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+                <div className="mt-4 flex flex-col gap-2 sm:flex-row">
                   <button
                     type="button"
                     onClick={() => setShowContact(true)}
-                    className="inline-flex h-11 items-center justify-center gap-2 rounded-[12px] bg-neutral-950 px-4 text-[14px] font-extrabold text-white transition hover:bg-neutral-800"
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-[10px] bg-neutral-950 px-4 text-[13px] font-extrabold text-white transition hover:bg-neutral-800"
                   >
                     <Handshake className="h-4 w-4" />
                     브랜드에 역제안하기
                   </button>
                   <Link
                     to="/influencer/brands"
-                    className="inline-flex h-11 items-center justify-center gap-2 rounded-[12px] border border-neutral-200 bg-white px-4 text-[14px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-[10px] border border-neutral-200 bg-white px-4 text-[13px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
                   >
                     다른 브랜드 보기
                     <ArrowRight className="h-4 w-4" />
@@ -882,27 +882,32 @@ export function PublicBrandProfilePage() {
           </div>
         </section>
 
-        <section className="mx-auto grid max-w-[1180px] gap-4 px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:px-8">
+        <section className="mx-auto grid max-w-[1180px] gap-3 px-4 py-4 sm:px-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:px-8">
         <div className="grid gap-4">
           <ProfileSection title="진행 중인 캠페인">
             <div className="grid gap-3 md:grid-cols-2">
-              {brand.activeCampaigns.map((campaign) => (
+              {brand.activeCampaigns.slice(0, 4).map((campaign) => (
                 <article
                   key={`${campaign.title}-${campaign.type}`}
-                  className="rounded-[14px] border border-neutral-200 bg-white p-4"
+                  className="rounded-[10px] border border-neutral-200 bg-white p-3"
                 >
                   <p className="text-[12px] font-semibold text-neutral-500">
                     {proposalTypeLabels[campaign.type]}
                   </p>
-                  <h2 className="mt-2 text-[15px] font-semibold text-neutral-950">
+                  <h2 className="mt-1.5 truncate text-[14px] font-semibold text-neutral-950">
                     {campaign.title}
                   </h2>
-                  <p className="mt-3 text-[13px] font-medium text-neutral-600">
+                  <p className="mt-2 text-[12px] font-medium text-neutral-600">
                     {campaign.budget}
                   </p>
                 </article>
               ))}
             </div>
+            {brand.activeCampaigns.length > 4 ? (
+              <p className="mt-2 text-[12px] font-semibold text-neutral-500">
+                나머지 {brand.activeCampaigns.length - 4}건은 제안 후 메시지함에서 확인합니다.
+              </p>
+            ) : null}
           </ProfileSection>
 
           <ProfileSection title="선호 플랫폼">
@@ -1009,7 +1014,7 @@ function MarketplaceShell({
         </div>
       </section>
 
-      <div className="mx-4 my-3 flex min-h-0 max-w-[1320px] flex-1 flex-col overflow-hidden rounded-[14px] border border-neutral-200 bg-[#fdfdfb] shadow-[0_18px_44px_rgba(23,26,23,0.055)] sm:mx-6 lg:mx-auto lg:w-full">
+      <div className="yl-panel mx-4 my-3 flex min-h-0 max-w-[1320px] flex-1 flex-col overflow-hidden border sm:mx-6 lg:mx-auto lg:w-full">
         {children}
       </div>
     </main>
@@ -1025,7 +1030,7 @@ function InfluencerDiscoveryCard({
   onContact: () => void;
 }) {
   return (
-    <article className="flex min-h-[360px] w-full min-w-0 flex-col rounded-[18px] border border-neutral-200 bg-white p-4 shadow-[0_12px_34px_rgba(15,23,42,0.035)]">
+    <article className="yl-card flex min-h-[320px] w-full min-w-0 flex-col border p-3.5">
       <div className="flex items-start gap-3">
         <AvatarBlock label={profile.avatarLabel} />
         <div className="min-w-0 flex-1">
@@ -1041,14 +1046,14 @@ function InfluencerDiscoveryCard({
         </div>
       </div>
 
-      <p className="mt-4 line-clamp-2 text-[14px] font-semibold leading-6 text-neutral-800">
+      <p className="mt-3 line-clamp-2 text-[13px] font-semibold leading-5 text-neutral-800">
         {cleanMarketplaceCopy(profile.headline)}
       </p>
-      <p className="mt-2 line-clamp-2 text-[13px] leading-5 text-neutral-600">
+      <p className="mt-1.5 line-clamp-1 text-[12px] leading-5 text-neutral-600">
         {cleanMarketplaceCopy(profile.audience)}
       </p>
 
-      <div className="mt-4 flex flex-wrap gap-1.5">
+      <div className="mt-3 flex flex-wrap gap-1.5">
         {profile.platforms.map((platform) => (
           <PlatformPill
             key={`${profile.id}-${platform.platform}`}
@@ -1058,28 +1063,28 @@ function InfluencerDiscoveryCard({
         ))}
       </div>
 
-      <dl className="mt-4 grid gap-2 text-[12px]">
+      <dl className="mt-3 grid grid-cols-3 gap-1.5 text-[12px]">
         <ProfileFact label="가능 형태" value={formatProposalTypes(profile.collaborationTypes)} />
         <ProfileFact label="예상 단가" value={profile.startingPriceLabel} />
         <ProfileFact label="응답" value={profile.responseTimeLabel} />
       </dl>
 
-      <div className="mt-4">
+      <div className="mt-3">
         <TagList items={profile.brandFit.slice(0, 3).map(cleanMarketplaceCopy)} />
       </div>
 
-      <div className="mt-auto grid grid-cols-2 gap-2 pt-5">
+      <div className="mt-auto grid grid-cols-2 gap-2 pt-4">
         <button
           type="button"
           onClick={onContact}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-[12px] bg-neutral-950 px-3 text-[13px] font-extrabold text-white transition hover:bg-neutral-800"
+          className="yl-primary-action inline-flex h-10 items-center justify-center gap-2 rounded-[8px] px-3 text-[13px] font-extrabold transition"
         >
           <Send className="h-4 w-4" />
           제안
         </button>
         <Link
           to={getInfluencerProfilePath(profile)}
-          className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-[12px] border border-neutral-200 bg-white text-[13px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
+          className="yl-secondary-action inline-flex h-10 w-full items-center justify-center gap-2 rounded-[8px] border text-[13px] font-extrabold transition"
         >
           상세
         </Link>
@@ -1097,7 +1102,7 @@ function BrandDiscoveryCard({
   onContact: () => void;
 }) {
   return (
-    <article className="flex min-h-[360px] w-full min-w-0 flex-col rounded-[18px] border border-neutral-200 bg-white p-4 shadow-[0_12px_34px_rgba(15,23,42,0.035)]">
+    <article className="yl-card flex min-h-[320px] w-full min-w-0 flex-col border p-3.5">
       <div className="flex items-start gap-3">
         <AvatarBlock label={brand.logoLabel} />
         <div className="min-w-0 flex-1">
@@ -1113,14 +1118,14 @@ function BrandDiscoveryCard({
         </div>
       </div>
 
-      <p className="mt-4 line-clamp-2 text-[14px] font-semibold leading-6 text-neutral-800">
+      <p className="mt-3 line-clamp-2 text-[13px] font-semibold leading-5 text-neutral-800">
         {formatBrandMarketplaceHeadline(brand)}
       </p>
-      <p className="mt-2 line-clamp-3 text-[13px] leading-5 text-neutral-600">
+      <p className="mt-1.5 line-clamp-1 text-[12px] leading-5 text-neutral-600">
         {formatBrandMarketplaceDescription(brand)}
       </p>
 
-      <div className="mt-4 flex flex-wrap gap-1.5">
+      <div className="mt-3 flex flex-wrap gap-1.5">
         {brand.preferredPlatforms.map((platform) => (
           <PlatformPill
             key={`${brand.id}-${platform}`}
@@ -1130,28 +1135,28 @@ function BrandDiscoveryCard({
         ))}
       </div>
 
-      <dl className="mt-4 grid gap-2 text-[12px]">
+      <dl className="mt-3 grid grid-cols-3 gap-1.5 text-[12px]">
         <ProfileFact label="제안 가능" value={formatProposalTypes(brand.proposalTypes)} />
         <ProfileFact label="예산" value={brand.budgetRangeLabel} />
         <ProfileFact label="응답" value={brand.responseTimeLabel} />
       </dl>
 
-      <div className="mt-4">
+      <div className="mt-3">
         <TagList items={brand.fitTags.slice(0, 3).map(cleanMarketplaceCopy)} />
       </div>
 
-      <div className="mt-auto grid grid-cols-2 gap-2 pt-5">
+      <div className="mt-auto grid grid-cols-2 gap-2 pt-4">
         <button
           type="button"
           onClick={onContact}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-[12px] bg-neutral-950 px-3 text-[13px] font-extrabold text-white transition hover:bg-neutral-800"
+          className="yl-primary-action inline-flex h-10 items-center justify-center gap-2 rounded-[8px] px-3 text-[13px] font-extrabold transition"
         >
           <Send className="h-4 w-4" />
           역제안
         </button>
         <Link
           to={getBrandProfilePath(brand)}
-          className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-[12px] border border-neutral-200 bg-white text-[13px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
+          className="yl-secondary-action inline-flex h-10 w-full items-center justify-center gap-2 rounded-[8px] border text-[13px] font-extrabold transition"
         >
           브랜드
         </Link>
@@ -1822,7 +1827,7 @@ function PlatformPill({
 }) {
   return (
     <span
-      className={`inline-flex h-7 max-w-full items-center gap-1.5 rounded-md border px-2.5 text-[11px] font-semibold ${getPlatformTone(platform)}`}
+      className={`inline-flex h-7 max-w-full items-center gap-1.5 rounded-[8px] border px-2.5 text-[11px] font-semibold ${getPlatformTone(platform)}`}
     >
       {getPlatformIcon(platform)}
       <span className="truncate">{label}</span>
@@ -1855,9 +1860,9 @@ function ProfileSection({
 
 function ProfileFact({ label, value }: { label: string; value: string }) {
   return (
-    <div className="grid grid-cols-[82px_minmax(0,1fr)] gap-2">
-      <dt className="text-[12px] font-semibold text-neutral-500">{label}</dt>
-      <dd className="min-w-0 text-[12px] font-semibold text-neutral-800">
+    <div className="yl-fact-tile">
+      <dt className="yl-fact-label truncate">{label}</dt>
+      <dd className="yl-fact-value min-w-0 truncate">
         {value}
       </dd>
     </div>
@@ -1870,7 +1875,7 @@ function TagList({ items }: { items: string[] }) {
       {items.map((item) => (
         <span
           key={item}
-          className="inline-flex h-7 max-w-full items-center rounded-md border border-neutral-200 bg-neutral-50 px-2.5 text-[11px] font-semibold text-neutral-600"
+          className="inline-flex h-7 max-w-full items-center rounded-[8px] border border-neutral-200 bg-neutral-50 px-2.5 text-[11px] font-semibold text-neutral-600"
         >
           <span className="truncate">{item}</span>
         </span>
@@ -1888,7 +1893,7 @@ function AvatarBlock({
 }) {
   return (
     <span
-      className={`flex shrink-0 items-center justify-center rounded-[8px] bg-neutral-950 font-semibold text-white ${
+      className={`yl-profile-mark flex shrink-0 items-center justify-center font-semibold ${
         size === "large" ? "h-20 w-20 text-[24px]" : "h-12 w-12 text-[15px]"
       }`}
     >
@@ -1905,7 +1910,7 @@ function StatusPill({
   label: string;
 }) {
   return (
-    <span className="inline-flex h-8 items-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-2.5 text-[12px] font-semibold text-neutral-700">
+    <span className="inline-flex h-8 items-center gap-1.5 rounded-[8px] border border-neutral-200 bg-neutral-50 px-2.5 text-[12px] font-semibold text-neutral-700">
       {icon}
       {label}
     </span>
@@ -1929,9 +1934,9 @@ function FormField({
 
 function MiniMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[14px] bg-[#f8f7f4] px-3 py-3">
-      <p className="text-[11px] font-extrabold text-neutral-400">{label}</p>
-      <p className="mt-1 truncate text-[13px] font-extrabold text-neutral-950">
+    <div className="yl-fact-tile px-3 py-3">
+      <p className="yl-fact-label truncate">{label}</p>
+      <p className="yl-fact-value truncate text-[13px]">
         {value}
       </p>
     </div>

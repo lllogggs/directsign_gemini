@@ -429,7 +429,7 @@ function SignupConsentPanel({
   onToggle: (key: keyof SignupConsents) => void;
 }) {
   return (
-    <section className="space-y-2 rounded-[12px] border border-neutral-200 bg-[#fbfaf7] p-2.5">
+    <section className="grid gap-1 rounded-[10px] border border-neutral-200 bg-[#fbfaf7] px-3 py-2">
       <ConsentCheckbox
         checked={consents.terms}
         disabled={disabled}
@@ -472,31 +472,31 @@ function ConsentCheckbox({
   const checkboxId = `signup-consent-${document}`;
 
   return (
-    <div className="flex min-h-12 items-center gap-2.5 rounded-[10px] border border-neutral-200 bg-white px-3 py-2 transition hover:border-neutral-300">
+    <div className="flex min-h-8 items-center gap-2 rounded-[8px] px-1 py-1 transition hover:bg-white">
       <input
         id={checkboxId}
         type="checkbox"
-        className="h-[18px] w-[18px] shrink-0 accent-[#2563eb]"
+        className="h-4 w-4 shrink-0 accent-[#2563eb]"
         checked={checked}
         disabled={disabled}
         required
         onChange={onToggle}
       />
-      <span className="min-w-0 flex-1">
+      <span className="flex min-w-0 flex-1 items-center gap-1.5">
         <label
           htmlFor={checkboxId}
-          className="block cursor-pointer truncate text-[13px] font-bold text-neutral-900"
+          className="block cursor-pointer truncate text-[12px] font-bold text-neutral-900"
         >
           {title}
         </label>
-        <span className="mt-0.5 block text-[11px] font-semibold text-neutral-400">
+        <span className="shrink-0 text-[10px] font-semibold text-neutral-400">
           v{version}
         </span>
       </span>
       <button
         type="button"
         onClick={() => onOpenDocument(document)}
-        className="inline-flex h-8 shrink-0 items-center rounded-[9px] border border-neutral-200 bg-[#fbfaf7] px-3 text-[12px] font-bold text-neutral-600 transition hover:border-neutral-300 hover:bg-white hover:text-neutral-950"
+        className="inline-flex h-7 shrink-0 items-center rounded-[7px] border border-neutral-200 bg-white px-2.5 text-[11px] font-bold text-neutral-600 transition hover:border-neutral-300 hover:text-neutral-950"
       >
         보기
       </button>

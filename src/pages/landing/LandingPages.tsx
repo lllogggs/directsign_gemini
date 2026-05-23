@@ -79,9 +79,8 @@ const roleCards: RoleCard[] = [
     role: "advertiser",
     title: "광고주",
     icon: FileCheck2,
-    eyebrow: "광고 계약을 확실하게 남기는 팀",
-    description:
-      "합의한 광고 조건을 계약서, 협의 기록, 완료 상태로 정리합니다.",
+    eyebrow: "계약 링크를 보내고 상태를 확인하는 팀",
+    description: "계약별 검토 링크, 수정 요청, 서명, 제출 상태를 봅니다.",
     cta: "시작하기",
     href: "/intro/advertiser",
   },
@@ -116,21 +115,20 @@ function getStartRoleTone(role: IntroRole) {
 }
 
 const roleFeatureKeys: Record<IntroRole, string[]> = {
-  advertiser: ["start", "terms", "review", "evidence"],
+  advertiser: ["recruiting", "progress", "ended"],
   influencer: ["receive", "terms", "request", "archive"],
 };
 
 const introConfig = {
   advertiser: {
-    eyebrow: "광고주 워크스페이스",
-    title: ["계약 초안부터", "서명 증빙까지", "한 화면에서"],
-    description:
-      "광고주와 대행사가 계약 조건을 정리하고, 공유 링크를 보내고, 인플루언서 의견과 서명 완료 상태를 한 화면에서 확인합니다.",
+    eyebrow: "광고주 대시보드",
+    title: ["계약 상태를", "바로 확인"],
+    description: "모집중, 진행중, 종료만 봅니다.",
     primaryLabel: "시작하기",
     primaryHref: "/signup/advertiser",
     secondaryLabel: "광고주 로그인",
     secondaryHref: "/login/advertiser",
-    switchLabel: "인플루언서 화면 보기",
+    switchLabel: "인플루언서 보기",
     switchHref: "/intro/influencer",
     accentText: "text-[#245b51]",
     accentBg: "bg-[#e7efed]",
@@ -240,15 +238,14 @@ const introConfig = {
     proofPoints: ["사업자 인증 후 발송", "수정 요청 이력 보관", "최종본 PDF 확인"],
   },
   influencer: {
-    eyebrow: "인플루언서 워크스페이스",
-    title: ["광고 계약 수신부터", "수정 요청, 서명까지"],
-    description:
-      "크리에이터와 매니저가 광고 조건을 모바일에서도 읽기 쉽게 확인하고, 불리한 조항은 수정 요청한 뒤 안전하게 서명합니다.",
+    eyebrow: "인플루언서 대시보드",
+    title: ["내 캠페인을", "상태별로 확인"],
+    description: "지원중, 진행중, 완료, 미선정만 봅니다.",
     primaryLabel: "시작하기",
     primaryHref: "/signup/influencer",
     secondaryLabel: "인플루언서 로그인",
     secondaryHref: "/login/influencer",
-    switchLabel: "광고주 화면 보기",
+    switchLabel: "광고주 보기",
     switchHref: "/intro/advertiser",
     accentText: "text-[#7a4a2d]",
     accentBg: "bg-[#efe8df]",
@@ -1112,7 +1109,7 @@ export function StartPage() {
           <div className="flex min-w-0 items-center gap-1.5">
             <Link
               to="/login"
-              className="inline-flex min-h-10 shrink-0 items-center rounded-full border border-neutral-200 bg-white/65 px-3 text-[11px] font-bold tracking-[-0.005em] text-neutral-500 shadow-[0_1px_0_rgba(15,23,42,0.02)] transition hover:border-neutral-300 hover:bg-white hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
+              className="yl-secondary-action inline-flex min-h-10 shrink-0 items-center rounded-[8px] border px-3 text-[11px] font-bold text-neutral-500 transition focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
             >
               로그인
             </Link>
@@ -1132,10 +1129,7 @@ export function StartPage() {
                 확실하게
               </span>
             </h1>
-            <p className="mx-auto max-w-[560px] break-keep text-center text-[14px] font-semibold leading-7 text-neutral-600 sm:text-[15px]">
-              계약서 중심 인플루언서 협업 운영툴입니다. 광고 조건을 계약서 작성부터 전자서명 완료, 컨텐츠 제출, 광고 계약 마감까지 한 흐름으로 정리합니다.
-            </p>
-            <div className="mt-7 grid gap-3 sm:grid-cols-2 sm:gap-4 lg:mt-8">
+            <div className="mt-6 grid gap-3 sm:grid-cols-2 sm:gap-4 lg:mt-7">
               {roleCards.map((role) => {
                 const tone = getStartRoleTone(role.role);
                 const isAdvertiser = role.role === "advertiser";
@@ -1149,7 +1143,7 @@ export function StartPage() {
                     key={role.role}
                     to={role.href}
                     aria-label={`시작하기 (${role.title})`}
-                    className={`group flex min-h-[148px] flex-col justify-between rounded-[14px] border px-5 py-5 text-left shadow-[0_1px_0_rgba(15,23,42,0.035),0_12px_30px_rgba(15,23,42,0.028)] transition hover:-translate-y-0.5 hover:shadow-[0_1px_0_rgba(15,23,42,0.04),0_18px_42px_rgba(15,23,42,0.05)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:min-h-[168px] sm:px-5 sm:py-5 lg:min-h-[172px] ${tone.card}`}
+                    className={`yl-card group flex min-h-[148px] flex-col justify-between border px-5 py-5 text-left transition hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:min-h-[168px] sm:px-5 sm:py-5 lg:min-h-[172px] ${tone.card}`}
                   >
                     <span className="block">
                       <span
@@ -1206,7 +1200,7 @@ function BrandLogo() {
 
 function LogoMark() {
   return (
-    <span className="inline-flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[11px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
+    <span className="yl-primary-action inline-flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[8px]">
       <svg
         aria-hidden="true"
         className="h-[23px] w-[23px]"
@@ -1250,7 +1244,10 @@ function RoleFeatureIntroScreen({
   slides: RoleIntroSlide[];
 }) {
   const [searchParams] = useSearchParams();
-  const featureKeys = roleFeatureKeys[role];
+  const featureKeys =
+    role === "advertiser" ? roleFeatureKeys[role].slice(0, 3) : roleFeatureKeys[role];
+  const displaySlides =
+    role === "advertiser" ? slides.slice(0, 3) : slides;
   const requestedFeatureIndex = Math.max(
     0,
     featureKeys.indexOf(searchParams.get("feature") ?? ""),
@@ -1262,16 +1259,16 @@ function RoleFeatureIntroScreen({
   const introCopy =
     role === "advertiser"
       ? {
-          eyebrow: "광고주용",
-          title: ["계약 작성 후", "검토 링크 발송"],
+          eyebrow: "광고주 대시보드",
+          title: ["계약 상태를", "바로 확인"],
           description:
-            "초안 작성, 검토 링크, 서명 증빙까지 광고 계약 진행 상태를 한 화면에서 확인합니다.",
+            "모집중, 진행중, 종료만 봅니다.",
         }
       : {
-          eyebrow: "인플루언서용",
-          title: ["받은 계약을", "확인하고 서명"],
+          eyebrow: "인플루언서 대시보드",
+          title: ["내 캠페인을", "상태별로 확인"],
           description:
-            "계약 조건 확인, 수정 요청, 전자서명을 모바일에서도 막힘 없이 진행합니다.",
+            "지원중, 진행중, 완료, 미선정만 봅니다.",
         };
 
   useEffect(() => {
@@ -1289,7 +1286,7 @@ function RoleFeatureIntroScreen({
   }, [requestedFeatureIndex]);
 
   useEffect(() => {
-    if (slides.length < 2 || hasManualSelection) {
+    if (displaySlides.length < 2 || hasManualSelection) {
       return undefined;
     }
 
@@ -1302,12 +1299,12 @@ function RoleFeatureIntroScreen({
 
     const timer = window.setInterval(() => {
       setActiveIndex((currentIndex) => {
-        return (currentIndex + 1) % slides.length;
+        return (currentIndex + 1) % displaySlides.length;
       });
     }, 4600);
 
     return () => window.clearInterval(timer);
-  }, [hasManualSelection, slides.length]);
+  }, [displaySlides.length, hasManualSelection]);
 
   const roleSwitchItems = [
     { role: "advertiser" as const, label: "광고주", href: "/intro/advertiser" },
@@ -1315,14 +1312,14 @@ function RoleFeatureIntroScreen({
   ];
 
   return (
-    <main className="h-svh overflow-hidden bg-[#f7f6f3] font-sans text-neutral-950">
-      <header className="border-b border-neutral-200/80 bg-[#fbfaf7]/95">
-        <div className="mx-auto flex h-[58px] max-w-[1120px] items-center justify-between gap-3 px-5 sm:px-6 lg:px-8">
+    <main className="h-svh overflow-hidden bg-[#f4f5f2] font-sans text-neutral-950">
+      <header className="border-b border-neutral-200/70 bg-white/92">
+        <div className="mx-auto flex h-[58px] max-w-[1240px] items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
           <BrandLockup />
           <div className="flex min-w-0 items-center gap-2">
             <nav
               aria-label="역할 화면 전환"
-              className="hidden items-center rounded-full border border-neutral-200 bg-white/75 p-1 text-[12px] font-extrabold shadow-[0_1px_0_rgba(15,23,42,0.02)] sm:flex"
+              className="hidden items-center rounded-[8px] border border-neutral-200 bg-white/75 p-1 text-[12px] font-extrabold shadow-[0_1px_0_rgba(15,23,42,0.02)] sm:flex"
             >
               {roleSwitchItems.map((item) => {
                 const selected = item.role === role;
@@ -1331,7 +1328,7 @@ function RoleFeatureIntroScreen({
                   <Link
                     key={item.role}
                     to={item.href}
-                    className={`inline-flex h-8 items-center rounded-full px-3 transition ${
+                    className={`inline-flex h-8 items-center rounded-[7px] px-3 transition ${
                       selected
                         ? "bg-neutral-950 text-white"
                         : "text-neutral-500 hover:bg-neutral-100 hover:text-neutral-950"
@@ -1346,10 +1343,10 @@ function RoleFeatureIntroScreen({
           </div>
         </div>
       </header>
-      <div className="border-b border-neutral-200/80 bg-[#fbfaf7]/95 px-4 py-1.5 sm:hidden">
+      <div className="border-b border-neutral-200/70 bg-white/92 px-4 py-1.5 sm:hidden">
         <nav
           aria-label="모바일 역할 화면 전환"
-          className="mx-auto grid max-w-[420px] grid-cols-2 gap-1 rounded-[12px] border border-neutral-200 bg-white p-1 text-[12px] font-extrabold shadow-[0_8px_20px_rgba(15,23,42,0.04)]"
+          className="mx-auto grid max-w-[420px] grid-cols-2 gap-1 rounded-[8px] border border-neutral-200 bg-white p-1 text-[12px] font-extrabold shadow-[0_8px_20px_rgba(15,23,42,0.04)]"
         >
           {roleSwitchItems.map((item) => {
             const selected = item.role === role;
@@ -1358,7 +1355,7 @@ function RoleFeatureIntroScreen({
               <Link
                 key={item.role}
                 to={item.href}
-                className={`flex h-9 items-center justify-center rounded-[9px] transition ${
+                className={`flex h-9 items-center justify-center rounded-[7px] transition ${
                   selected
                     ? "bg-neutral-950 text-white"
                     : "text-neutral-500 hover:bg-neutral-100 hover:text-neutral-950"
@@ -1372,15 +1369,15 @@ function RoleFeatureIntroScreen({
         </nav>
       </div>
 
-      <section className="mx-auto flex h-[calc(100svh-109px)] min-h-0 w-full max-w-[1180px] overflow-hidden px-4 py-4 sm:h-[calc(100svh-58px)] sm:px-6 sm:py-6 lg:h-[calc(100vh-58px)] lg:px-8">
-        <div className="grid min-h-0 w-full gap-5 lg:grid-cols-[minmax(310px,0.82fr)_minmax(0,1.18fr)] lg:items-center">
-          <aside className="min-w-0 shrink-0 pt-0 lg:flex lg:min-h-0 lg:flex-col lg:justify-center">
-            <p className="inline-flex h-8 items-center rounded-full border border-neutral-200 bg-white px-3 text-[12px] font-extrabold text-neutral-500">
+      <section className="mx-auto flex h-[calc(100svh-109px)] min-h-0 w-full max-w-[1360px] overflow-hidden px-4 py-3 sm:h-[calc(100svh-58px)] sm:px-6 sm:py-5 lg:h-[calc(100vh-58px)] lg:px-8 lg:py-5">
+        <div className="grid h-full min-h-0 w-full gap-5 lg:grid-cols-[minmax(340px,0.54fr)_minmax(0,1.46fr)] lg:items-start">
+          <aside className="min-w-0 shrink-0 pt-0 lg:flex lg:min-h-0 lg:flex-col lg:justify-start lg:pt-6">
+            <p className="w-fit text-[12px] font-extrabold text-neutral-400">
               {introCopy.eyebrow}
             </p>
-            <h1 className="font-neo-heavy mt-3 text-[30px] leading-[1.03] tracking-normal text-neutral-950 sm:text-[48px] lg:text-[54px]">
+            <h1 className="font-neo-heavy mt-2 text-[30px] leading-[1.03] tracking-normal text-neutral-950 sm:text-[48px] lg:text-[52px]">
               {introCopy.title.map((line) => (
-                <span key={line} className="block">
+                <span key={line} className="block whitespace-nowrap">
                   {line}
                 </span>
               ))}
@@ -1390,10 +1387,10 @@ function RoleFeatureIntroScreen({
               {introCopy.description}
             </p>
 
-            <div className="mt-5 flex max-w-[260px]">
+            <div className="mt-5 flex max-w-[240px]">
               <Link
                 to={startHref}
-                className="group inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-[12px] bg-blue-600 px-5 text-[14px] font-extrabold tracking-normal text-white shadow-[0_14px_34px_rgba(37,99,235,0.24)] ring-1 ring-blue-500/20 transition duration-200 hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-[0_18px_42px_rgba(37,99,235,0.28)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700 active:translate-y-0"
+                className="group inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-[8px] bg-blue-600 px-5 text-[14px] font-extrabold tracking-normal text-white shadow-[0_14px_34px_rgba(37,99,235,0.24)] ring-1 ring-blue-500/20 transition duration-200 hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-[0_18px_42px_rgba(37,99,235,0.28)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700 active:translate-y-0"
               >
                 <span>시작하기</span>
                 <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
@@ -1409,9 +1406,9 @@ function RoleFeatureIntroScreen({
           </aside>
 
           <RoleFeaturePreviewCarousel
-            previewIndex={activeIndex}
+            previewIndex={Math.min(activeIndex, displaySlides.length - 1)}
             role={role}
-            slides={slides}
+            slides={displaySlides}
           />
         </div>
 
@@ -1493,38 +1490,19 @@ function RoleFeaturePreviewCarousel({
   return (
     <section
       aria-label="기능별 화면 미리보기"
-      className={`${className} mx-auto flex min-h-0 w-full min-w-0 flex-1 max-w-[calc(100vw-40px)] flex-col overflow-hidden rounded-[18px] border border-neutral-200 bg-[linear-gradient(180deg,#ffffff_0%,#fbfaf7_100%)] shadow-[0_18px_52px_rgba(15,23,42,0.07)] sm:max-w-full sm:rounded-[26px] sm:shadow-[0_24px_70px_rgba(15,23,42,0.08)] lg:max-w-[690px]`}
+      className={`${className} mx-auto flex min-h-0 w-full min-w-0 flex-1 max-w-[calc(100vw-40px)] flex-col overflow-hidden sm:max-w-full lg:h-full lg:max-w-[980px] lg:justify-self-end`}
     >
-      <div className="flex items-center justify-between gap-3 border-b border-neutral-200 bg-white px-3 py-2.5 sm:px-5 sm:py-3">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${activeSlide.accentClass}`} />
-          <div className="min-w-0">
-            <p className="truncate text-[12px] font-extrabold text-neutral-950">
-              {role === "advertiser" ? "광고주 화면" : "인플루언서 화면"}
-            </p>
-            <p className="mt-0.5 truncate text-[10px] font-bold text-neutral-400">
-              {activeSlide.eyebrow}
-            </p>
-          </div>
-        </div>
-        <span className="rounded-full border border-neutral-200 bg-[#fbfaf7] px-2.5 py-1 text-[10px] font-extrabold text-neutral-500">
-          {activeSlide.label}
-        </span>
-      </div>
-
-      <div className="flex min-h-0 flex-1 flex-col p-2 sm:p-4 lg:p-3">
-        <div className="relative min-h-0 flex-1 overflow-hidden sm:min-h-[500px] lg:min-h-0">
-          <div
-            className={`h-full transition duration-300 ease-out ${
-              isFading ? "translate-x-4 opacity-0" : "translate-x-0 opacity-100"
-            }`}
-          >
-            <RolePreviewSlideView
-              panelId={`role-preview-panel-${previewIndex}`}
-              role={role}
-              slide={activeSlide}
-            />
-          </div>
+      <div className="relative min-h-0 flex-1 overflow-hidden sm:min-h-[500px] lg:h-full lg:min-h-0">
+        <div
+          className={`h-full transition duration-300 ease-out ${
+            isFading ? "translate-x-4 opacity-0" : "translate-x-0 opacity-100"
+          }`}
+        >
+          <RolePreviewSlideView
+            panelId={`role-preview-panel-${previewIndex}`}
+            role={role}
+            slide={activeSlide}
+          />
         </div>
       </div>
     </section>
@@ -1598,7 +1576,7 @@ function RolePreviewPanel({
       key={slide.label}
       role="region"
       aria-label={`${slide.label} 미리보기`}
-      className="flex h-full min-h-0 flex-col overflow-hidden rounded-[14px] border border-neutral-200 bg-white sm:min-h-[420px] sm:rounded-[16px] lg:min-h-0"
+      className="yl-card flex h-full min-h-0 flex-col overflow-hidden border sm:min-h-[420px] lg:min-h-0"
     >
       <div className="flex shrink-0 items-center justify-between gap-4 border-b border-neutral-200 px-3 py-2.5 sm:px-5 sm:py-3">
         <div className="min-w-0">
@@ -1825,49 +1803,145 @@ type IntroDashboardRow = {
   note: string;
 };
 
-type IntroDashboardCampaign = {
-  name: string;
+type IntroAdvertiserCampaignRow = {
   platform: string;
   platformClass: string;
-  participants: number;
-  completed: number;
-  status: string;
-  due: string;
+  brand: string;
+  title: string;
+  payment: string;
+  metric: string;
+  metricPercent?: number;
+  date: string;
+};
+
+type IntroDashboardTab = {
+  label: string;
+  count: number;
+};
+
+type IntroDashboardAction = {
+  label: string;
+  value: string;
+  tone: "amber" | "blue" | "neutral";
+};
+
+type IntroDashboardState = {
+  activeTab: string;
+  tabs: IntroDashboardTab[];
+  actions?: IntroDashboardAction[];
+  itemCount: number;
+  rows: IntroAdvertiserCampaignRow[];
+  metricColumnLabel: string;
+  dateColumnLabel: string;
+  emptyTitle: string;
+  emptyMessage: string;
 };
 
 const introDashboardDemoData = {
   advertiser: {
-    accountName: "브래드룸",
+    accountName: "브레드룸",
     accountMeta: "123-**-67890",
     verificationMeta: "",
-    summary: "캠페인 3개 · 진행 계약 18건",
-    campaigns: [
+    states: [
       {
-        name: "오브레 비건 선크림 릴스 캠페인",
-        platform: "인스타",
-        platformClass: "border-pink-200 bg-pink-50 text-pink-700",
-        participants: 6,
-        completed: 2,
-        status: "수정 요청 포함",
-        due: "D+1",
+        activeTab: "모집중",
+        tabs: [
+          { label: "모집중", count: 2 },
+          { label: "진행중", count: 8 },
+          { label: "종료", count: 0 },
+        ],
+        actions: [{ label: "새 지원", value: "1", tone: "amber" }],
+        itemCount: 2,
+        metricColumnLabel: "진도율",
+        dateColumnLabel: "마감일",
+        emptyTitle: "조건에 맞는 계약이 없습니다",
+        emptyMessage: "검색어를 줄이거나 전체로 바꿔보세요.",
+        rows: [
+          {
+            platform: "인스타 외 1",
+            platformClass: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
+            brand: "브레드룸",
+            title: "브레드룸 여름 루틴 캠페인",
+            payment: "-",
+            metric: "1/미정",
+            metricPercent: 12,
+            date: "-",
+          },
+          {
+            platform: "인스타 외 1",
+            platformClass: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
+            brand: "브레드룸",
+            title: "브레드룸 제안 캠페인",
+            payment: "-",
+            metric: "1/미정",
+            metricPercent: 12,
+            date: "-",
+          },
+        ],
       },
       {
-        name: "하우스핏 홈트 챌린지 유튜브 리뷰",
-        platform: "유튜브",
-        platformClass: "border-rose-200 bg-rose-50 text-rose-700",
-        participants: 5,
-        completed: 1,
-        status: "서명 진행",
-        due: "D+2",
+        activeTab: "진행중",
+        tabs: [
+          { label: "모집중", count: 2 },
+          { label: "진행중", count: 8 },
+          { label: "종료", count: 0 },
+        ],
+        actions: [
+          { label: "수정 요청", value: "1", tone: "amber" },
+          { label: "마감 임박", value: "3", tone: "blue" },
+          { label: "계약 초안", value: "2", tone: "neutral" },
+        ],
+        itemCount: 8,
+        metricColumnLabel: "진도율",
+        dateColumnLabel: "마감일",
+        emptyTitle: "조건에 맞는 계약이 없습니다",
+        emptyMessage: "검색어를 줄이거나 전체로 바꿔보세요.",
+        rows: [
+          {
+            platform: "블로그",
+            platformClass: "border-emerald-200 bg-emerald-50 text-emerald-700",
+            brand: "브레드룸",
+            title: "브레드룸 공동구매 파일럿",
+            payment: "수수료 18%",
+            metric: "1/10",
+            metricPercent: 10,
+            date: "05. 28.",
+          },
+          {
+            platform: "유튜브",
+            platformClass: "border-rose-200 bg-rose-50 text-rose-700",
+            brand: "브레드룸",
+            title: "나이트 케어 쇼츠 패키지",
+            payment: "2,800,000원",
+            metric: "1/2",
+            metricPercent: 50,
+            date: "05. 27.",
+          },
+          {
+            platform: "인스타",
+            platformClass: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
+            brand: "브레드룸",
+            title: "브레드룸 여름 루틴 캠페인",
+            payment: "900,000원 + 제품 제공",
+            metric: "1/6",
+            metricPercent: 17,
+            date: "05. 26.",
+          },
+        ],
       },
       {
-        name: "브루잉랩 콜드브루 공동구매 계약",
-        platform: "블로그",
-        platformClass: "border-emerald-200 bg-emerald-50 text-emerald-700",
-        participants: 7,
-        completed: 4,
-        status: "컨텐츠 확인 및 검수",
-        due: "D+4",
+        activeTab: "종료",
+        tabs: [
+          { label: "모집중", count: 2 },
+          { label: "진행중", count: 8 },
+          { label: "종료", count: 0 },
+        ],
+        itemCount: 0,
+        metricColumnLabel: "진도율",
+        dateColumnLabel: "종료일",
+        emptyTitle: "조건에 맞는 계약이 없습니다",
+        emptyMessage: "검색어를 줄이거나 전체로 바꿔보세요.",
+        rows: [],
       },
     ],
     rows: [
@@ -1926,6 +2000,115 @@ const introDashboardDemoData = {
     accountMeta: "@minseo_home · creator@minseo-home.kr",
     verificationMeta: "Instagram · YouTube · Naver Blog 인증 완료",
     summary: "받은 계약 12건 · 이번 주 확인 4건",
+    states: [
+      {
+        activeTab: "지원중",
+        tabs: [
+          { label: "지원중", count: 2 },
+          { label: "진행중", count: 7 },
+          { label: "완료", count: 0 },
+          { label: "미선정", count: 0 },
+        ],
+        itemCount: 2,
+        metricColumnLabel: "내 상태",
+        dateColumnLabel: "응답기한",
+        emptyTitle: "조건에 맞는 캠페인이 없습니다",
+        emptyMessage: "검색어를 줄이거나 전체로 바꿔보세요.",
+        rows: [
+          {
+            platform: "인스타",
+            platformClass: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
+            brand: "브레드룸",
+            title: "브레드룸 여름 루틴 캠페인",
+            payment: "900,000원 + 제품 제공",
+            metric: "지원 접수",
+            date: "5월 26일 마감",
+          },
+          {
+            platform: "인스타 +1",
+            platformClass: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
+            brand: "나이트케어",
+            title: "나이트케어 신제품 언박싱 릴스",
+            payment: "150만-250만원",
+            metric: "지원 접수",
+            date: "6월 3일 마감",
+          },
+        ],
+      },
+      {
+        activeTab: "진행중",
+        tabs: [
+          { label: "지원중", count: 2 },
+          { label: "진행중", count: 7 },
+          { label: "완료", count: 0 },
+          { label: "미선정", count: 0 },
+        ],
+        itemCount: 7,
+        metricColumnLabel: "내 할 일",
+        dateColumnLabel: "마감일",
+        emptyTitle: "조건에 맞는 캠페인이 없습니다",
+        emptyMessage: "검색어를 줄이거나 전체로 바꿔보세요.",
+        rows: [
+          {
+            platform: "블로그",
+            platformClass: "border-emerald-200 bg-emerald-50 text-emerald-700",
+            brand: "브레드룸",
+            title: "공동구매 파일럿 콘텐츠 검수 완료",
+            payment: "수수료 18%",
+            metric: "컨텐츠 제출",
+            date: "5월 28일 마감",
+          },
+          {
+            platform: "유튜브",
+            platformClass: "border-rose-200 bg-rose-50 text-rose-700",
+            brand: "브레드룸",
+            title: "나이트 케어 쇼츠 검수 대기",
+            payment: "2,800,000원",
+            metric: "광고주 검수 필요",
+            date: "5월 27일 마감",
+          },
+          {
+            platform: "인스타",
+            platformClass: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
+            brand: "브레드룸",
+            title: "성수 팝업 방문 릴스 콘텐츠 제출",
+            payment: "2,100,000원",
+            metric: "컨텐츠 제출",
+            date: "5월 25일 마감",
+          },
+        ],
+      },
+      {
+        activeTab: "완료",
+        tabs: [
+          { label: "지원중", count: 2 },
+          { label: "진행중", count: 7 },
+          { label: "완료", count: 0 },
+          { label: "미선정", count: 0 },
+        ],
+        itemCount: 0,
+        metricColumnLabel: "결과",
+        dateColumnLabel: "완료일",
+        emptyTitle: "조건에 맞는 캠페인이 없습니다",
+        emptyMessage: "검색어를 줄이거나 전체로 바꿔보세요.",
+        rows: [],
+      },
+      {
+        activeTab: "미선정",
+        tabs: [
+          { label: "지원중", count: 2 },
+          { label: "진행중", count: 7 },
+          { label: "완료", count: 0 },
+          { label: "미선정", count: 0 },
+        ],
+        itemCount: 0,
+        metricColumnLabel: "결과",
+        dateColumnLabel: "결과일",
+        emptyTitle: "조건에 맞는 캠페인이 없습니다",
+        emptyMessage: "검색어를 줄이거나 전체로 바꿔보세요.",
+        rows: [],
+      },
+    ],
     rows: [
       {
         platform: "인스타",
@@ -1994,8 +2177,7 @@ const introDashboardDemoData = {
     accountName: string;
     accountMeta: string;
     verificationMeta: string;
-    summary: string;
-    campaigns: IntroDashboardCampaign[];
+    states: IntroDashboardState[];
     rows: IntroDashboardRow[];
   };
   influencer: {
@@ -2003,6 +2185,7 @@ const introDashboardDemoData = {
     accountMeta: string;
     verificationMeta: string;
     summary: string;
+    states: IntroDashboardState[];
     rows: IntroDashboardRow[];
   };
 };
@@ -2020,11 +2203,10 @@ function RoleDashboardStylePreview({
   const data = isAdvertiser
     ? introDashboardDemoData.advertiser
     : introDashboardDemoData.influencer;
-  const rows = data.rows;
-  const selectedRowIndex = Math.max(
+  const stateIndex = Math.max(
     0,
     Math.min(
-      rows.length - 1,
+      data.states.length - 1,
       roleIntroSlides[role].findIndex((candidate) => candidate.label === slide.label),
     ),
   );
@@ -2034,133 +2216,113 @@ function RoleDashboardStylePreview({
       id={panelId}
       role="region"
       aria-label={`${slide.label} 미리보기`}
-      className="flex h-full min-h-[380px] flex-col overflow-hidden rounded-[14px] border border-neutral-200 bg-[#f7f6f3] sm:min-h-[420px] sm:rounded-[16px] lg:min-h-0"
+      className="flex h-full min-h-[380px] flex-col overflow-hidden sm:min-h-[420px] lg:min-h-0"
     >
-      <div className="min-h-0 flex-1 overflow-hidden p-2.5">
-        {isAdvertiser ? (
-          <AdvertiserIntroDashboardPreview
-            campaigns={introDashboardDemoData.advertiser.campaigns}
-            data={introDashboardDemoData.advertiser}
-            selectedRowIndex={selectedRowIndex}
-          />
-        ) : (
-          <InfluencerIntroDashboardPreview
-            data={introDashboardDemoData.influencer}
-            rows={rows}
-            selectedRowIndex={selectedRowIndex}
-            slide={slide}
-          />
-        )}
-      </div>
+      {isAdvertiser ? (
+        <AdvertiserIntroDashboardPreview
+          data={introDashboardDemoData.advertiser}
+          stateIndex={stateIndex}
+        />
+      ) : (
+        <InfluencerIntroDashboardPreview
+          data={introDashboardDemoData.influencer}
+          stateIndex={stateIndex}
+        />
+      )}
     </div>
   );
 }
 
 function AdvertiserIntroDashboardPreview({
   data,
-  campaigns,
-  selectedRowIndex,
+  stateIndex,
 }: {
   data: typeof introDashboardDemoData.advertiser;
-  campaigns: IntroDashboardCampaign[];
-  selectedRowIndex: number;
+  stateIndex: number;
 }) {
-  const selectedCampaignIndex = Math.min(selectedRowIndex, campaigns.length - 1);
+  const state = data.states[stateIndex] ?? data.states[0];
 
   return (
-    <section className="min-w-0 overflow-hidden rounded-[12px] border border-neutral-200 bg-[#fdfdfb] shadow-[0_16px_44px_rgba(23,26,23,0.07)]">
-      <IntroDashboardTitleBar
-        title="계약 운영"
-        summary="진행 계약 18건"
-        badge="검토 링크"
-      />
-      <IntroAccountBanner
-        icon={<ShieldCheck className="h-3.5 w-3.5" />}
-        title="사업자 인증"
-        name={data.accountName}
-        meta={data.accountMeta}
-        detail={data.verificationMeta}
-      />
-      <div className="p-2.5">
-        <section className="overflow-hidden rounded-[10px] border border-[#d9e0d9] bg-white">
-          <div className="grid gap-2 border-b border-[#d9e0d9] bg-[#f8faf7] p-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-            <IntroSearchBox label="캠페인명" placeholder="캠페인명으로 검색" />
-            <p className="px-1 pb-2 text-[12px] font-semibold text-[#7d857f] sm:text-right">
-              전체 계약 21건
-            </p>
+    <section className="flex min-w-0 flex-col overflow-hidden rounded-[12px] border border-neutral-200 bg-[#f4f5f2] shadow-[0_18px_48px_rgba(23,26,23,0.08)] lg:h-full">
+      <IntroAppHeader role="advertiser" />
+      <div className="min-h-0 flex-1 p-2">
+        <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[8px] border border-[#d9e0d9] bg-white">
+          <IntroDashboardTitleBar
+            title="계약 운영 대시보드"
+            badge="공유 가능"
+          />
+          <IntroAdvertiserAccountBanner
+            accountMeta={data.accountMeta}
+            accountName={data.accountName}
+          />
+          <div className="min-h-0 flex-1 p-2">
+            <IntroCampaignBoard state={state} />
           </div>
-          <div className="divide-y divide-[#edf1ed]">
-            {campaigns.map((campaign, index) => (
-              <div
-                key={campaign.name}
-                className={`grid gap-2 px-3 py-3 text-left transition-colors sm:grid-cols-[minmax(0,1fr)_86px_78px] sm:items-center ${
-                  index === selectedCampaignIndex ? "bg-blue-50/45" : "bg-white"
-                }`}
-              >
-                <div className="min-w-0">
-                  <div className="mb-1 flex flex-wrap items-center gap-1.5">
-                    <span
-                      className={`inline-flex h-6 items-center rounded-md border px-2 text-[11px] font-semibold ${campaign.platformClass}`}
-                    >
-                      {campaign.platform}
-                    </span>
-                    <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-extrabold text-neutral-600">
-                      {campaign.status}
-                    </span>
-                  </div>
-                  <p className="truncate text-[13px] font-semibold text-[#171a17]">
-                    {campaign.name}
-                  </p>
-                </div>
-                <IntroMetric label="참여" value={`${campaign.participants}명`} />
-                <IntroMetric
-                  label="완료"
-                  value={`${campaign.completed}/${campaign.participants}`}
-                />
-              </div>
-            ))}
-          </div>
-        </section>
+        </div>
       </div>
     </section>
   );
 }
 
+function IntroAppHeader({ role }: { role: IntroRole }) {
+  const isAdvertiser = role === "advertiser";
+  const actions = isAdvertiser
+    ? ["새 계약", "새 캠페인", "메시지함", "인플루언서 찾기", "로그아웃"]
+    : ["내 캠페인", "캠페인 찾기", "메시지함", "로그아웃"];
+
+  return (
+    <div className="border-b border-[#d9e0d9] bg-white px-3 py-2">
+      <div className="flex min-w-0 items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <LogoMark />
+          <span className="truncate text-[15px] font-extrabold text-neutral-950">
+            연락미
+          </span>
+        </div>
+        <div className="hidden min-w-0 items-center gap-1.5 md:flex">
+          {actions.map((action, index) => (
+            <span
+              key={action}
+              className={`inline-flex h-8 items-center rounded-[7px] border px-2.5 text-[11px] font-extrabold ${
+                isAdvertiser && index === 0
+                  ? "border-blue-600 bg-blue-600 text-white"
+                  : !isAdvertiser && index === 0
+                    ? "border-neutral-950 bg-neutral-950 text-white"
+                  : "border-neutral-200 bg-white text-neutral-700"
+              }`}
+            >
+              {action}
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function InfluencerIntroDashboardPreview({
   data,
-  rows,
-  selectedRowIndex,
-  slide,
+  stateIndex,
 }: {
   data: typeof introDashboardDemoData.influencer;
-  rows: IntroDashboardRow[];
-  selectedRowIndex: number;
-  slide: RoleIntroSlide;
+  stateIndex: number;
 }) {
+  const state = data.states[stateIndex] ?? data.states[0];
+
   return (
-    <section className="min-w-0 overflow-hidden rounded-[12px] border border-neutral-200 bg-[#fdfdfb] shadow-[0_16px_44px_rgba(23,26,23,0.07)]">
-      <IntroDashboardTitleBar
-        title="받은 계약"
-        summary={data.summary}
-        badge="검토 가능"
-      />
-      <IntroAccountBanner
-        icon={<ShieldCheck className="h-3.5 w-3.5" />}
-        title="플랫폼 계정 인증"
-        name={data.accountName}
-        meta={data.accountMeta}
-        detail={data.verificationMeta}
-      />
-      <div className="p-2.5">
-        <section className="overflow-hidden rounded-[10px] border border-[#d9e0d9] bg-white">
-          <div className="grid gap-2 border-b border-[#d9e0d9] bg-[#f8faf7] p-2 sm:grid-cols-[minmax(0,1.1fr)_90px_110px_110px]">
-            <IntroSearchBox label="계약명" placeholder="계약명으로 검색" />
-            <IntroFilter label="플랫폼" value="전체" />
-            <IntroFilter label="금액" value="정액·수수료" />
-            <IntroFilter label="현 단계" value={slide.label} />
+    <section className="flex min-w-0 flex-col overflow-hidden rounded-[12px] border border-neutral-200 bg-[#f4f5f2] shadow-[0_18px_48px_rgba(23,26,23,0.08)] lg:h-full">
+      <IntroAppHeader role="influencer" />
+      <div className="min-h-0 flex-1 p-2">
+        <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[8px] border border-[#d9e0d9] bg-white">
+          <IntroDashboardTitleBar
+            title="내 캠페인"
+            badge="인증 완료"
+          />
+          <IntroInfluencerProfileBanner accountName="크리에이터 소라" />
+          <div className="min-h-0 flex-1 p-2">
+            <IntroCampaignBoard state={state} />
           </div>
-          <IntroContractRows rows={rows} selectedRowIndex={selectedRowIndex} />
-        </section>
+        </div>
       </div>
     </section>
   );
@@ -2172,7 +2334,7 @@ function IntroDashboardTitleBar({
   badge,
 }: {
   title: string;
-  summary: string;
+  summary?: string;
   badge: string;
 }) {
   return (
@@ -2182,9 +2344,11 @@ function IntroDashboardTitleBar({
           <h2 className="truncate text-[17px] font-bold text-[#171a17]">
             {title}
           </h2>
-          <p className="pb-0.5 text-[12px] font-semibold text-[#7d857f]">
-            {summary}
-          </p>
+          {summary ? (
+            <p className="pb-0.5 text-[12px] font-semibold text-[#7d857f]">
+              {summary}
+            </p>
+          ) : null}
         </div>
         <span className="inline-flex h-7 items-center rounded-[8px] bg-[#eef0ed] px-2.5 text-[12px] font-semibold text-[#303630]">
           {badge}
@@ -2194,7 +2358,233 @@ function IntroDashboardTitleBar({
   );
 }
 
-function IntroAccountBanner({
+function IntroAdvertiserAccountBanner({
+  accountName,
+  accountMeta,
+}: {
+  accountName: string;
+  accountMeta: string;
+}) {
+  return (
+    <section className="border-b border-neutral-200 bg-[#fbfbf8] px-4 py-2">
+      <div className="flex min-w-0 items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-[15px] font-bold text-neutral-950">
+            {accountName}
+          </p>
+          <p className="mt-0.5 truncate text-[11px] font-semibold text-neutral-500">
+            사업자번호 {accountMeta}
+          </p>
+        </div>
+        <span className="inline-flex h-7 shrink-0 items-center rounded-[8px] border border-neutral-200 bg-white px-2.5 text-[11px] font-semibold text-neutral-700">
+          정보 보기
+        </span>
+      </div>
+    </section>
+  );
+}
+
+function IntroInfluencerProfileBanner({ accountName }: { accountName: string }) {
+  return (
+    <section className="border-b border-neutral-200 bg-[#fbfbf8] px-4 py-2.5">
+      <div className="flex min-w-0 items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-2">
+            <p className="truncate text-[15px] font-bold text-neutral-950">
+              {accountName}
+            </p>
+            <span className="shrink-0 rounded-[6px] border border-neutral-200 bg-white px-2 py-0.5 text-[10px] font-extrabold text-neutral-700">
+              4개 플랫폼
+            </span>
+          </div>
+          <div className="mt-1 flex min-w-0 flex-wrap gap-1.5">
+            {["인스타그램", "유튜브", "공개 프로필 활성"].map((item) => (
+              <span
+                key={item}
+                className="inline-flex h-5 items-center rounded-[5px] bg-white px-1.5 text-[10px] font-bold text-neutral-600 ring-1 ring-neutral-200"
+              >
+                {item}
+              </span>
+            ))}
+          </div>
+        </div>
+        <span className="hidden h-7 shrink-0 items-center rounded-[8px] border border-neutral-200 bg-white px-2.5 text-[11px] font-semibold text-neutral-700 md:inline-flex">
+          프로필 설정
+        </span>
+      </div>
+    </section>
+  );
+}
+
+function IntroCampaignBoard({ state }: { state: IntroDashboardState }) {
+  return (
+    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[8px] border border-[#d9e0d9] bg-white">
+      <div className="border-b border-[#d9e0d9] bg-[#ecebe5] px-2 pt-2">
+        <div className="flex min-w-0 items-end gap-0.5">
+          {state.tabs.map((tab) => {
+            const active = tab.label === state.activeTab;
+
+            return (
+            <div
+              key={tab.label}
+              className={`relative flex h-9 min-w-0 flex-1 items-center justify-between rounded-t-[10px] border px-3 text-[12px] font-extrabold ${
+                active
+                  ? "z-10 -mb-px border-[#d9e0d9] border-b-white bg-white text-[#171a17]"
+                  : "mb-0.5 border-transparent bg-transparent text-[#59605b]"
+              }`}
+            >
+              <span>{tab.label}</span>
+              <span
+                className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 ${
+                  active ? "bg-[#171a17] text-white" : "bg-white/80 text-[#303630]"
+                }`}
+              >
+                {tab.count}
+              </span>
+            </div>
+            );
+          })}
+        </div>
+      </div>
+      {state.actions?.length ? (
+        <div className="flex min-h-10 items-center gap-2 border-b border-[#d9e0d9] bg-white px-3 py-2">
+          <span className="shrink-0 text-[11px] font-extrabold text-[#7d857f]">
+            처리 필요
+          </span>
+          {state.actions.map((action) => (
+            <span
+              key={`${action.label}-${action.value}`}
+              className={`inline-flex h-8 items-center gap-2 rounded-[7px] border px-2.5 text-[11px] font-extrabold ${getIntroActionToneClass(action.tone)}`}
+            >
+              {action.label} <strong className="text-[14px]">{action.value}</strong>
+            </span>
+          ))}
+        </div>
+      ) : null}
+      <div className="border-b border-[#d9e0d9] bg-[#fbfbf8] px-3 py-2">
+        <div className="flex min-h-9 items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="truncate text-[13px] font-extrabold text-[#171a17]">
+              캠페인 목록
+            </p>
+            <p className="mt-0.5 truncate text-[10px] font-semibold text-[#606861]">
+              {state.itemCount}건 표시 · 전체 조건
+            </p>
+          </div>
+          <span className="inline-flex h-8 items-center rounded-[6px] border border-[#e1e6e1] bg-[#fbfcfa] px-2.5 text-[11px] font-bold text-[#606861]">
+            필터
+          </span>
+        </div>
+      </div>
+      <IntroCampaignRows state={state} />
+    </section>
+  );
+}
+
+function getIntroActionToneClass(tone: IntroDashboardAction["tone"]) {
+  if (tone === "amber") return "border-amber-200 bg-amber-50 text-amber-800";
+  if (tone === "blue") return "border-blue-200 bg-blue-50 text-blue-700";
+  return "border-neutral-200 bg-white text-neutral-700";
+}
+
+function IntroCampaignRows({ state }: { state: IntroDashboardState }) {
+  return (
+    <>
+      <div className="hidden grid-cols-[82px_86px_minmax(0,1fr)_88px_86px_46px] gap-2 border-b border-[#e3e8e3] bg-[#fbfbf8] px-3 py-2 text-[10px] font-extrabold text-[#7d857f] md:grid">
+        <span>플랫폼</span>
+        <span>브랜드</span>
+        <span>캠페인명</span>
+        <span>지급내용</span>
+        <span>{state.metricColumnLabel}</span>
+        <span>{state.dateColumnLabel}</span>
+      </div>
+      <div className="hidden min-h-0 flex-1 divide-y divide-[#edf1ed] bg-white md:flex md:flex-col">
+        {state.rows.length > 0 ? state.rows.map((row, index) => (
+          <div
+            key={`${row.platform}-${row.title}-${index}`}
+            className="grid min-h-11 grid-cols-[82px_86px_minmax(0,1fr)_88px_86px_46px] items-center gap-2 bg-white px-3 py-2"
+          >
+            <span
+              className={`inline-flex h-6 w-fit max-w-full items-center truncate rounded-[6px] border px-2 text-[10px] font-extrabold ${row.platformClass}`}
+            >
+              {row.platform}
+            </span>
+            <span className="truncate text-[11px] font-semibold text-neutral-700">
+              {row.brand}
+            </span>
+            <span className="truncate text-[12px] font-extrabold text-neutral-950">
+              {row.title}
+            </span>
+            <span className="truncate text-[11px] font-semibold text-neutral-700">
+              {row.payment}
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate text-[11px] font-extrabold text-neutral-950">
+                {row.metric}
+              </span>
+              {typeof row.metricPercent === "number" ? (
+                <span className="mt-1 block h-1.5 max-w-[70px] overflow-hidden rounded-full bg-[#e6ebe6]">
+                  <span
+                    className="block h-full rounded-full bg-[#171a17]"
+                    style={{ width: `${row.metricPercent}%` }}
+                  />
+                </span>
+              ) : null}
+            </span>
+            <span className="truncate text-[11px] font-semibold text-neutral-700">
+              {row.date}
+            </span>
+          </div>
+        )) : (
+          <div className="flex min-h-[104px] flex-1 flex-col items-center justify-center bg-white px-3 py-6 text-center">
+            <p className="text-[13px] font-extrabold text-neutral-950">
+              {state.emptyTitle}
+            </p>
+            <p className="mt-1 text-[11px] font-semibold text-neutral-500">
+              {state.emptyMessage}
+            </p>
+          </div>
+        )}
+      </div>
+      <div className="grid gap-2 p-2 md:hidden">
+        {state.rows.length > 0 ? state.rows.map((row, index) => (
+          <div
+            key={`${row.platform}-${row.title}-${index}-mobile`}
+            className="rounded-[10px] border border-neutral-200 bg-white p-3"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span
+                className={`inline-flex h-6 max-w-[86px] items-center truncate rounded-[6px] border px-2 text-[10px] font-extrabold ${row.platformClass}`}
+              >
+                {row.platform}
+              </span>
+              <span className="text-[10px] font-extrabold text-neutral-600">
+                {row.metric}
+              </span>
+            </div>
+            <p className="mt-2 truncate text-[12px] font-extrabold text-neutral-950">
+              {row.title}
+            </p>
+            <p className="mt-1 truncate text-[10px] font-bold text-neutral-500">
+              {row.brand} · {row.payment} · {row.date}
+            </p>
+          </div>
+        )) : (
+          <div className="rounded-[10px] border border-neutral-200 bg-white px-3 py-6 text-center">
+            <p className="text-[13px] font-extrabold text-neutral-950">
+              {state.emptyTitle}
+            </p>
+            <p className="mt-1 text-[11px] font-semibold text-neutral-500">
+              {state.emptyMessage}
+            </p>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+function _IntroAccountBanner({
   icon,
   title,
   name,
@@ -2249,7 +2639,7 @@ function IntroAccountBanner({
   );
 }
 
-function IntroSearchBox({
+function _IntroSearchBox({
   label,
   placeholder,
 }: {
@@ -2269,7 +2659,7 @@ function IntroSearchBox({
   );
 }
 
-function IntroFilter({ label, value }: { label: string; value: string }) {
+function _IntroFilter({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0">
       <p className="mb-1 text-[11px] font-extrabold text-[#7d857f]">{label}</p>
@@ -2280,16 +2670,7 @@ function IntroFilter({ label, value }: { label: string; value: string }) {
   );
 }
 
-function IntroMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-0">
-      <p className="text-[10px] font-extrabold text-[#7d857f]">{label}</p>
-      <p className="mt-1 text-[12px] font-semibold text-[#303630]">{value}</p>
-    </div>
-  );
-}
-
-function IntroContractRows({
+function _IntroContractRows({
   rows,
   selectedRowIndex,
 }: {
@@ -2298,17 +2679,17 @@ function IntroContractRows({
 }) {
   return (
     <>
-      <div className="hidden grid-cols-[74px_92px_minmax(0,1fr)_82px] gap-2 border-b border-[#d9e0d9] bg-[#f8faf7] px-3 py-2 text-[10px] font-extrabold text-[#7d857f] md:grid">
+      <div className="hidden grid-cols-[72px_minmax(0,1fr)_94px_58px] gap-2 border-b border-[#d9e0d9] bg-[#f8faf7] px-3 py-2 text-[10px] font-extrabold text-[#7d857f] md:grid">
         <span>플랫폼</span>
-        <span>상대</span>
-        <span>계약명</span>
-        <span>지급</span>
+        <span>계약</span>
+        <span>현 단계</span>
+        <span>마감</span>
       </div>
       <div className="hidden divide-y divide-[#edf1ed] md:block">
         {rows.map((row, index) => (
           <div
             key={`${row.platform}-${row.title}-${row.status}-${index}`}
-            className={`grid grid-cols-[74px_92px_minmax(0,1fr)_82px] items-center gap-2 px-3 py-2.5 ${
+            className={`grid grid-cols-[72px_minmax(0,1fr)_94px_58px] items-center gap-2 px-3 py-2.5 ${
               index === selectedRowIndex ? "bg-blue-50/45" : "bg-white"
             }`}
           >
@@ -2317,14 +2698,16 @@ function IntroContractRows({
             >
               {row.platform}
             </span>
-            <span className="truncate text-[11px] font-semibold text-neutral-600">
-              {row.party}
-            </span>
             <span className="truncate text-[12px] font-extrabold text-neutral-950">
-              {row.title}
+              {row.party} · {row.title}
             </span>
-            <span className="truncate text-[11px] font-extrabold text-neutral-800">
-              {row.amount}
+            <span
+              className={`inline-flex h-6 w-fit max-w-full items-center truncate rounded-[7px] border px-2 text-[10px] font-extrabold ${row.statusClass}`}
+            >
+              {row.status}
+            </span>
+            <span className="truncate text-[11px] font-extrabold text-neutral-700">
+              {row.deadline}
             </span>
           </div>
         ))}

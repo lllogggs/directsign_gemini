@@ -316,7 +316,7 @@ export function AdvertiserCampaignRecruitmentPage() {
       <section className="grid gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1.18fr)_minmax(320px,0.82fr)]">
         <form
           onSubmit={handleSubmit}
-          className="rounded-[18px] border border-neutral-200 bg-white p-4 shadow-[0_18px_48px_rgba(15,23,42,0.055)] sm:p-5 lg:min-h-0 lg:overflow-y-auto"
+          className="yl-card border p-4 sm:p-5 lg:min-h-0 lg:overflow-y-auto"
         >
           <div className="flex items-start justify-between gap-3 border-b border-neutral-200 pb-4">
             <div>
@@ -488,7 +488,7 @@ export function AdvertiserCampaignRecruitmentPage() {
               </p>
             ) : null}
 
-            <div className="mt-4 rounded-[16px] border border-neutral-200 bg-white p-3 shadow-[0_14px_34px_rgba(15,23,42,0.08)]">
+            <div className="yl-panel mt-4 border p-3">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <p
                   className={`break-keep text-[12px] font-extrabold leading-5 ${
@@ -500,7 +500,7 @@ export function AdvertiserCampaignRecruitmentPage() {
                 <button
                   type="submit"
                   disabled={!canSubmit || isSubmitting}
-                  className="inline-flex h-12 w-full shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[14px] bg-blue-600 px-5 text-[14px] font-extrabold text-white shadow-[0_14px_34px_rgba(37,99,235,0.22)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:shadow-none sm:w-auto sm:min-w-[148px]"
+                  className="inline-flex h-12 w-full shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[8px] bg-blue-600 px-5 text-[14px] font-extrabold text-white shadow-[0_14px_34px_rgba(37,99,235,0.22)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:shadow-none sm:w-auto sm:min-w-[148px]"
                 >
                   <Plus className="h-4 w-4" />
                   {isSubmitting ? "저장 중" : "캠페인 저장"}
@@ -510,7 +510,7 @@ export function AdvertiserCampaignRecruitmentPage() {
           </div>
         </form>
 
-        <section className="rounded-[18px] border border-neutral-200 bg-[#fbfaf7] p-4 shadow-[0_18px_48px_rgba(15,23,42,0.04)] lg:min-h-0 lg:overflow-y-auto">
+        <section className="yl-panel border p-4 lg:min-h-0 lg:overflow-y-auto">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-[12px] font-extrabold text-neutral-400">
@@ -546,12 +546,17 @@ export function AdvertiserCampaignRecruitmentPage() {
             />
           ) : (
             <div className="mt-4 grid gap-3">
-              {campaigns.map((campaign) => (
+              {campaigns.slice(0, 2).map((campaign) => (
                 <AdvertiserCampaignCard
                   key={campaign.id ?? `${campaign.title}-${campaign.type}`}
                   campaign={campaign}
                 />
               ))}
+              {campaigns.length > 2 ? (
+                <p className="px-1 text-[12px] font-bold text-neutral-400">
+                  나머지 {campaigns.length - 2}건은 대시보드에서 관리합니다.
+                </p>
+              ) : null}
             </div>
           )}
         </section>
@@ -767,7 +772,7 @@ export function InfluencerCampaignDiscoveryPage() {
         </>
       }
     >
-      <section className="overflow-hidden rounded-[18px] border border-neutral-200 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.055)] lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+      <section className="yl-card overflow-hidden border lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
         <div className="border-b border-neutral-200 bg-white">
           <div className="flex min-h-12 items-center justify-between gap-3 px-3 py-2">
             <div className="min-w-0">
@@ -848,7 +853,7 @@ export function InfluencerCampaignDiscoveryPage() {
             body="검색어나 조건을 줄여보세요."
           />
         ) : (
-          <div className="grid gap-3 bg-[#fbfaf7] p-3 sm:grid-cols-2 lg:min-h-0 lg:flex-1 lg:overflow-y-auto xl:grid-cols-3">
+          <div className="grid gap-x-3 gap-y-5 bg-[#fbfaf7] p-3 sm:grid-cols-2 lg:min-h-0 lg:flex-1 lg:overflow-y-auto xl:grid-cols-3">
             {applicationNotice ? (
               <p
                 className={`rounded-[12px] border px-3 py-2 text-[12px] font-extrabold lg:col-span-3 ${
@@ -935,7 +940,7 @@ function CampaignShell({
                 {description}
               </p>
             </div>
-            <div className="grid grid-cols-3 gap-1.5 rounded-[14px] border border-neutral-200 bg-white p-1.5 shadow-[0_12px_34px_rgba(15,23,42,0.04)] sm:gap-2 sm:rounded-[18px] sm:p-2">
+            <div className="yl-evidence-strip grid-cols-3 sm:gap-2 sm:p-2">
               {metrics.map((metric) => (
                 <ShellMetric
                   key={`${metric.label}-${metric.value}`}
@@ -964,9 +969,9 @@ function ShellMetric({
   value: string;
 }) {
   return (
-    <div className="rounded-[12px] bg-[#f8f7f4] px-2.5 py-2 sm:rounded-[14px] sm:px-3 sm:py-3">
-      <p className="text-[11px] font-extrabold text-neutral-400">{label}</p>
-      <p className="mt-0.5 truncate text-[12px] font-extrabold text-neutral-950 sm:mt-1 sm:text-[13px]">
+    <div className="yl-fact-tile px-2.5 py-2 sm:px-3 sm:py-3">
+      <p className="yl-fact-label truncate">{label}</p>
+      <p className="yl-fact-value truncate text-[12px] sm:text-[13px]">
         {value}
       </p>
     </div>
@@ -997,7 +1002,7 @@ function AdvertiserCampaignCard({
   const statusMeta = getAdvertiserCampaignStatusMeta(campaign);
 
   return (
-    <article className="rounded-[14px] border border-neutral-200 bg-white p-4">
+    <article className="yl-card border p-3.5">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[12px] font-extrabold text-neutral-400">
@@ -1013,9 +1018,6 @@ function AdvertiserCampaignCard({
           {statusMeta.label}
         </span>
       </div>
-      <p className="mt-3 line-clamp-2 text-[13px] font-bold leading-5 text-neutral-600">
-        {campaign.summary ?? "상세 설명은 브랜드 프로필에서 확인합니다."}
-      </p>
       <div className="mt-3 grid grid-cols-2 gap-2">
         <MiniInfo label="지급" value={campaign.budget} />
         <MiniInfo label="모집" value={campaign.applicantLimit ?? "상시"} />
@@ -1028,7 +1030,7 @@ function AdvertiserCampaignCard({
           value={getCampaignDeadlineLabel(campaign.deadline)}
         />
       </div>
-      <div className="mt-3 flex flex-wrap gap-1.5">
+      <div className="mt-2 flex flex-wrap gap-1.5">
         {(campaign.platforms ?? []).map((platform) => (
           <span
             key={platform}
@@ -1079,9 +1081,9 @@ function CampaignPostCard({
   onApply: (campaign: MarketplaceCampaignPost) => void;
 }) {
   return (
-    <article className="flex min-h-[248px] flex-col rounded-[14px] border border-neutral-200 bg-white p-3 shadow-[0_10px_28px_rgba(15,23,42,0.04)] sm:min-h-[292px] sm:p-3.5">
+    <article className="yl-card flex min-h-[258px] flex-col border p-3 sm:p-3.5">
       <div className="flex items-start gap-3">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[11px] bg-neutral-950 text-[11px] font-extrabold text-white sm:h-10 sm:w-10 sm:rounded-[12px] sm:text-[12px]">
+        <span className="yl-profile-mark flex h-9 w-9 shrink-0 items-center justify-center text-[11px] font-extrabold sm:h-10 sm:w-10 sm:text-[12px]">
           {campaign.brandLogoLabel}
         </span>
         <div className="min-w-0 flex-1">
@@ -1092,19 +1094,26 @@ function CampaignPostCard({
             {campaign.brandCategory}
           </p>
         </div>
-        <span className="inline-flex h-7 items-center rounded-full bg-blue-50 px-2.5 text-[10px] font-extrabold text-blue-700">
-          모집 중
-        </span>
+        <button
+          type="button"
+          onClick={() => onApply(campaign)}
+          disabled={isApplying}
+          aria-busy={isApplying}
+          className="yl-primary-action inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-[8px] px-3 text-[11px] font-extrabold transition disabled:cursor-wait disabled:bg-neutral-300 disabled:text-neutral-500"
+        >
+          <Send className="h-3.5 w-3.5" />
+          {isApplying ? "신청 중" : "신청"}
+        </button>
       </div>
 
-      <div className="mt-3 sm:mt-4">
+      <div className="mt-3">
         <p className="text-[12px] font-extrabold text-neutral-400">
           {campaign.typeLabel}
         </p>
         <h2 className="mt-1 line-clamp-2 text-[15px] font-extrabold leading-5 text-neutral-950 sm:text-[16px] sm:leading-6">
           {campaign.title}
         </h2>
-        <p className="mt-1.5 line-clamp-1 break-keep text-[12px] font-bold leading-5 text-neutral-600 sm:mt-2 sm:line-clamp-2 sm:text-[13px]">
+        <p className="mt-1.5 line-clamp-1 break-keep text-[12px] font-bold leading-5 text-neutral-600 sm:text-[13px]">
           {campaign.summary ?? campaign.brandHeadline}
         </p>
       </div>
@@ -1114,7 +1123,7 @@ function CampaignPostCard({
         <MiniInfo label="모집마감" value={campaign.deadlineLabel} />
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-1.5">
+      <div className="mt-2 flex flex-wrap gap-1.5">
         {(campaign.platforms ?? []).slice(0, 4).map((platform) => (
           <span
             key={platform}
@@ -1125,27 +1134,15 @@ function CampaignPostCard({
         ))}
       </div>
 
-      <div className="mt-auto pt-3 sm:pt-4">
-        <button
-          type="button"
-          onClick={() => onApply(campaign)}
-          disabled={isApplying}
-          aria-busy={isApplying}
-          className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-[12px] bg-neutral-950 px-4 text-[13px] font-extrabold text-white transition hover:bg-neutral-800 disabled:cursor-wait disabled:bg-neutral-300 disabled:text-neutral-500"
-        >
-          <Send className="h-4 w-4" />
-          {isApplying ? "신청 중" : "신청"}
-        </button>
-      </div>
     </article>
   );
 }
 
 function MiniInfo({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[12px] bg-[#f8f7f4] px-3 py-2">
-      <p className="text-[10px] font-extrabold text-neutral-400">{label}</p>
-      <p className="mt-1 truncate text-[12px] font-extrabold text-neutral-950">
+    <div className="yl-fact-tile px-3 py-2">
+      <p className="yl-fact-label truncate">{label}</p>
+      <p className="yl-fact-value truncate">
         {value}
       </p>
     </div>
@@ -1196,7 +1193,7 @@ function FilterGroup({
   children: ReactNode;
 }) {
   return (
-    <div className="flex min-w-0 items-center gap-2 rounded-[12px] border border-neutral-200 bg-[#fbfaf7] px-2.5 py-1.5">
+    <div className="flex min-w-0 items-center gap-2 rounded-[8px] border border-neutral-200 bg-[#fbfaf7] px-2.5 py-1.5">
       <span className="shrink-0 text-[12px] font-extrabold text-neutral-500">
         {label}
       </span>

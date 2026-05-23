@@ -119,6 +119,13 @@ type CampaignAlert = {
   tone: CampaignAlertTone;
   priority: number;
 };
+type DashboardActionMetric = {
+  id: string;
+  label: string;
+  value: number;
+  helper: string;
+  tone: CampaignAlertTone;
+};
 type CampaignActivity = {
   id: string;
   createdAt: string;
@@ -661,14 +668,14 @@ export function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950 lg:h-screen lg:overflow-hidden">
+    <div className="min-h-screen bg-[#f4f5f2] font-sans text-neutral-950 lg:h-screen lg:overflow-hidden">
       {isHydrated && contracts.length === 0 ? (
         <ContractFirstExperienceDialog
           content={CONTRACT_FIRST_EXPERIENCE_CONTENT}
           onCreateContract={() => navigate("/advertiser/builder")}
         />
       ) : null}
-      <header className="sticky top-0 z-30 border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
+      <header className="sticky top-0 z-30 border-b border-neutral-200/70 bg-white/92 backdrop-blur">
         <div className="mx-auto flex h-12 max-w-[1500px] items-center justify-between px-3 sm:px-5 lg:px-6">
           <button
             type="button"
@@ -748,8 +755,8 @@ export function Dashboard() {
         </div>
       </header>
 
-      <main className="mx-auto w-full min-w-0 max-w-[1500px] px-3 py-2 sm:px-5 lg:flex lg:h-[calc(100vh-48px)] lg:flex-col lg:overflow-hidden lg:px-6">
-        <section className="min-w-0 overflow-hidden rounded-[12px] border border-neutral-200 bg-[#fdfdfb] shadow-[0_16px_44px_rgba(23,26,23,0.07)] lg:flex lg:h-full lg:flex-col">
+      <main className="mx-auto w-full min-w-0 max-w-[1500px] px-3 py-2.5 sm:px-5 lg:flex lg:h-[calc(100vh-48px)] lg:flex-col lg:overflow-hidden lg:px-6">
+        <section className="min-w-0 overflow-hidden rounded-[10px] border border-neutral-200/90 bg-white shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_18px_46px_rgba(23,26,23,0.055)] lg:flex lg:h-full lg:flex-col">
           <div className="border-b border-[#d9e0d9] bg-white px-4 py-2">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
@@ -774,14 +781,7 @@ export function Dashboard() {
             embedded
           />
 
-          <div className="min-w-0 p-2.5 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
-            {contracts.length === 0 ? (
-              <ContractFirstNotice
-                onCreateCampaign={() => navigate("/advertiser/campaigns")}
-                onCreateContract={() => navigate("/advertiser/builder")}
-              />
-            ) : null}
-
+          <div className="min-w-0 p-2 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
             {syncError && <SyncErrorPanel message={syncError} />}
 
             <CampaignDashboard
@@ -1029,53 +1029,6 @@ function buildSupportMailtoHref({
   return `mailto:${LEGAL_CONTACT_EMAIL}?subject=${encodeURIComponent(
     subject,
   )}&body=${encodeURIComponent(body)}`;
-}
-
-function ContractFirstNotice({
-  onCreateCampaign,
-  onCreateContract,
-}: {
-  onCreateCampaign: () => void;
-  onCreateContract: () => void;
-}) {
-  return (
-    <section className="mb-3 rounded-[10px] border border-blue-100 bg-blue-50/70 px-4 py-3">
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-        <div className="grid gap-2 sm:grid-cols-2">
-          <div className="min-w-0">
-            <p className="text-[13px] font-extrabold text-blue-950">새 계약</p>
-            <p className="mt-1 text-[12px] font-medium leading-5 text-blue-800/80">
-              다른 플랫폼이나 DM에서 이미 협의한 내용을 계약서로 편하게 정리합니다.
-            </p>
-          </div>
-          <div className="min-w-0">
-            <p className="text-[13px] font-extrabold text-blue-950">새 캠페인</p>
-            <p className="mt-1 text-[12px] font-medium leading-5 text-blue-800/80">
-              캠페인 조건을 만들고 매칭된 인플루언서마다 같은 조건으로 계약서를 발송합니다.
-            </p>
-          </div>
-        </div>
-        <div className="flex shrink-0 flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={onCreateContract}
-            className="inline-flex h-9 items-center justify-center gap-2 rounded-[8px] bg-blue-600 px-3 text-[12px] font-extrabold text-white transition hover:bg-blue-700"
-          >
-            <Plus className="h-3.5 w-3.5" strokeWidth={2} />
-            새 계약
-          </button>
-          <button
-            type="button"
-            onClick={onCreateCampaign}
-            className="inline-flex h-9 items-center justify-center gap-2 rounded-[8px] border border-blue-200 bg-white px-3 text-[12px] font-extrabold text-blue-700 transition hover:border-blue-300 hover:bg-blue-50"
-          >
-            <Plus className="h-3.5 w-3.5" strokeWidth={2} />
-            새 캠페인
-          </button>
-        </div>
-      </div>
-    </section>
-  );
 }
 
 function SyncPill({
@@ -1368,9 +1321,7 @@ function CampaignListView({
     value: platform,
     label: formatPlatformFilterLabel(platform),
   }));
-  const operationMetrics = getContractOperationMetrics(
-    campaigns.flatMap((campaign) => campaign.contracts),
-  );
+  const actionMetrics = getDashboardActionMetrics(campaigns);
   const dateColumnLabel = lifecycleFilter === "ENDED" ? "종료일" : "마감일";
   const activeFilters = [
     platformFilter !== "ALL"
@@ -1414,14 +1365,14 @@ function CampaignListView({
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   return (
-    <section className="overflow-hidden rounded-[10px] border border-[#d9e0d9] bg-white lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+    <section className="overflow-hidden rounded-[8px] border border-[#d9e0d9] bg-white shadow-[0_1px_0_rgba(255,255,255,0.9)_inset] lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
       <CampaignLifecycleTabs
         value={lifecycleFilter}
         counts={lifecycleCounts}
         onChange={onLifecycleFilterChange}
       />
-      <DashboardMetricStrip metrics={operationMetrics} />
-      <div className="border-b border-[#d9e0d9] bg-[#fbfcfa]">
+      <DashboardActionStrip metrics={actionMetrics} />
+      <div className="border-b border-[#d9e0d9] bg-[#fbfbf8]">
         <div className="flex min-h-11 items-center justify-between gap-3 px-3 py-2">
           <div className="min-w-0">
             <p className="truncate text-[14px] font-extrabold leading-5 text-[#171a17]">
@@ -1505,7 +1456,7 @@ function CampaignTableHeaderRow({
   dateColumnLabel: string;
 }) {
   return (
-    <div className="hidden border-b border-[#e3e8e3] bg-white px-3 py-2 lg:grid lg:grid-cols-[minmax(86px,0.18fr)_minmax(92px,0.18fr)_minmax(220px,0.72fr)_minmax(170px,0.46fr)_minmax(150px,0.38fr)_minmax(120px,0.3fr)] lg:items-center lg:gap-2">
+    <div className="hidden border-b border-[#e3e8e3] bg-[#fbfbf8] px-3 py-2 lg:grid lg:grid-cols-[minmax(78px,0.16fr)_minmax(88px,0.16fr)_minmax(250px,0.78fr)_minmax(170px,0.44fr)_minmax(140px,0.34fr)_minmax(110px,0.25fr)] lg:items-center lg:gap-2">
       <ColumnHeader label="플랫폼" />
       <ColumnHeader label="브랜드" />
       <ColumnHeader label="캠페인명" />
@@ -1590,22 +1541,27 @@ function DashboardFilterToggleButton({
   );
 }
 
-function DashboardMetricStrip({
+function DashboardActionStrip({
   metrics,
 }: {
-  metrics: Array<{ label: string; value: number }>;
+  metrics: DashboardActionMetric[];
 }) {
+  if (metrics.length === 0) return null;
+
   return (
-    <div className="grid gap-2 border-b border-[#d9e0d9] bg-white p-2 sm:grid-cols-2 lg:grid-cols-7">
+    <div className="flex min-h-10 items-center gap-2 overflow-x-auto border-b border-[#d9e0d9] bg-white px-3 py-2">
+      <span className="shrink-0 text-[11px] font-extrabold text-[#7d857f]">
+        처리 필요
+      </span>
       {metrics.map((metric) => (
         <div
-          key={metric.label}
-          className="min-w-0 rounded-[8px] border border-[#e1e6e1] bg-[#fbfcfa] px-3 py-2"
+          key={metric.id}
+          className={`inline-flex h-8 min-w-0 shrink-0 items-center gap-2 rounded-[7px] border px-2.5 ${getCampaignAlertToneClass(metric.tone)}`}
         >
-          <p className="truncate text-[11px] font-extrabold text-[#7d857f]">
+          <p className="max-w-[150px] truncate text-[11px] font-extrabold">
             {metric.label}
           </p>
-          <p className="mt-1 text-[18px] font-black tabular-nums text-[#171a17]">
+          <p className="shrink-0 text-[14px] font-black tabular-nums">
             {metric.value.toLocaleString("ko-KR")}
           </p>
         </div>
@@ -1624,7 +1580,7 @@ function CampaignLifecycleTabs({
   onChange: (value: CampaignLifecycle) => void;
 }) {
   return (
-    <div className="border-b border-[#d9e0d9] bg-[#e6e0d8] px-2 pt-2">
+    <div className="border-b border-[#d9e0d9] bg-[#ecebe5] px-2 pt-2">
       <div className="flex min-w-0 items-end gap-0.5 overflow-x-auto">
         {CAMPAIGN_LIFECYCLE_TABS.map((tab) => {
           const active = value === tab.value;
@@ -1634,10 +1590,10 @@ function CampaignLifecycleTabs({
               type="button"
               onClick={() => onChange(tab.value)}
               aria-pressed={active}
-              className={`relative flex h-10 min-w-[128px] flex-1 items-center justify-between gap-2 rounded-t-[14px] border px-3 text-left transition ${
+              className={`relative flex h-9 min-w-[128px] flex-1 items-center justify-between gap-2 rounded-t-[10px] border px-3 text-left transition ${
                 active
-                  ? "z-10 -mb-px border-[#d9e0d9] border-b-[#f8faf7] bg-[#f8faf7] pb-px text-[#171a17] shadow-[0_-1px_0_rgba(255,255,255,0.9)_inset,0_-8px_20px_rgba(23,26,23,0.05)]"
-                  : "mb-0.5 border-transparent bg-[#d8d1c8] text-[#4f574f] hover:bg-[#e1dbd3] hover:text-[#171a17]"
+                  ? "z-10 -mb-px border-[#d9e0d9] border-b-white bg-white pb-px text-[#171a17] shadow-[0_-1px_0_rgba(255,255,255,0.9)_inset]"
+                  : "mb-0.5 border-transparent bg-transparent text-[#59605b] hover:bg-[#f5f4ee] hover:text-[#171a17]"
               }`}
             >
               <span className="truncate text-[13px] font-extrabold">
@@ -1718,7 +1674,7 @@ function CampaignRow({
       type="button"
       onClick={onOpen}
       aria-label={`${campaign.name} 캠페인 열기, 지급내용 ${paymentLabel}, 진도율 ${progress.label}, 날짜 ${dateLabel}`}
-      className="group grid w-full gap-2 px-3 py-2 text-left transition-colors hover:bg-[#f8faf7] lg:min-h-[46px] lg:grid-cols-[minmax(86px,0.18fr)_minmax(92px,0.18fr)_minmax(220px,0.72fr)_minmax(170px,0.46fr)_minmax(150px,0.38fr)_minmax(120px,0.3fr)] lg:items-center"
+      className="group grid w-full gap-2 px-3 py-2 text-left transition-colors hover:bg-[#fafaf7] lg:min-h-[44px] lg:grid-cols-[minmax(78px,0.16fr)_minmax(88px,0.16fr)_minmax(250px,0.78fr)_minmax(170px,0.44fr)_minmax(140px,0.34fr)_minmax(110px,0.25fr)] lg:items-center"
     >
       <div className="min-w-0">
         <span
@@ -1741,7 +1697,7 @@ function CampaignRow({
         <p className="whitespace-nowrap text-[13px] font-extrabold text-[#171a17]">
           {progress.label}
         </p>
-        <div className="mt-1 h-1.5 max-w-[128px] overflow-hidden rounded-full bg-[#e6ebe6]">
+        <div className="mt-1 h-1.5 max-w-[108px] overflow-hidden rounded-full bg-[#e6ebe6]">
           <div
             className="h-full rounded-full bg-[#171a17]"
             style={{ width: `${progress.percent}%` }}
@@ -3232,7 +3188,10 @@ function buildCampaignGroups({
   };
 
   for (const campaign of marketplaceCampaigns) {
-    const name = stripCampaignContractSuffix(campaign.title);
+    const name = removeInternalTestLabel(
+      stripCampaignContractSuffix(campaign.title),
+      `${fallbackBrandName} 제안 캠페인`,
+    );
     const key = getMarketplaceCampaignGroupKey(campaign);
     const group = getOrCreateGroup(key, name);
 
@@ -3262,7 +3221,7 @@ function buildCampaignGroups({
   }
 
   for (const thread of getCampaignApplicationThreads(messageThreads)) {
-    const name = getThreadCampaignName(thread);
+    const name = getThreadCampaignName(thread, `${fallbackBrandName} 제안 캠페인`);
     const lookupKey = getCampaignLookupKey(name);
     const key =
       thread.campaignId
@@ -3510,9 +3469,75 @@ function getCampaignActionCounts(campaign: CampaignGroup) {
     revisionRequests: campaign.contracts.filter(
       (contract) => contract.status === "NEGOTIATING",
     ).length,
-    submittedLinks: campaign.contracts.filter(isContractContentSubmitted)
+    submittedLinks: campaign.contracts.filter(isContractContentReviewNeeded)
       .length,
   };
+}
+
+function getDashboardActionMetrics(campaigns: CampaignGroup[]): DashboardActionMetric[] {
+  const totals = campaigns.reduce(
+    (accumulator, campaign) => {
+      const counts = getCampaignActionCounts(campaign);
+
+      return {
+        newApplicants: accumulator.newApplicants + counts.newApplicants,
+        revisionRequests: accumulator.revisionRequests + counts.revisionRequests,
+        dueSoonContracts:
+          accumulator.dueSoonContracts +
+          counts.dueSoonContracts +
+          counts.overdueContracts,
+        submittedLinks: accumulator.submittedLinks + counts.submittedLinks,
+        draftContracts: accumulator.draftContracts + counts.draftContracts,
+      };
+    },
+    {
+      newApplicants: 0,
+      revisionRequests: 0,
+      dueSoonContracts: 0,
+      submittedLinks: 0,
+      draftContracts: 0,
+    },
+  );
+
+  const metrics: DashboardActionMetric[] = [
+    {
+      id: "revision",
+      label: "수정 요청",
+      value: totals.revisionRequests,
+      helper: "조항 확인",
+      tone: "rose",
+    },
+    {
+      id: "applicants",
+      label: "새 지원",
+      value: totals.newApplicants,
+      helper: "수락 검토",
+      tone: "amber",
+    },
+    {
+      id: "due-soon",
+      label: "마감 임박",
+      value: totals.dueSoonContracts,
+      helper: "제출 확인",
+      tone: "blue",
+    },
+    {
+      id: "submitted",
+      label: "제출 확인",
+      value: totals.submittedLinks,
+      helper: "검수 대기",
+      tone: "emerald",
+    },
+    {
+      id: "draft",
+      label: "계약 초안",
+      value: totals.draftContracts,
+      helper: "검토 링크 발송",
+      tone: "neutral",
+    },
+  ];
+
+  return metrics.filter((metric) => metric.value > 0).slice(0, 4);
 }
 
 function buildCampaignAlerts(campaigns: CampaignGroup[]): CampaignAlert[] {
@@ -3905,7 +3930,10 @@ function getCampaignApplicationThreads(threads: MarketplaceMessageThread[]) {
   );
 }
 
-function getThreadCampaignName(thread: MarketplaceMessageThread) {
+function getThreadCampaignName(
+  thread: MarketplaceMessageThread,
+  fallback = "브랜드 제안 캠페인",
+) {
   const title =
     thread.campaignTitle ||
     thread.proposalSummary
@@ -3914,7 +3942,7 @@ function getThreadCampaignName(thread: MarketplaceMessageThread) {
       .trim() ||
     `${thread.targetName || "브랜드"} 캠페인`;
 
-  return stripCampaignContractSuffix(title);
+  return removeInternalTestLabel(stripCampaignContractSuffix(title), fallback);
 }
 
 function stripCampaignContractSuffix(value: string) {
@@ -3996,49 +4024,6 @@ function isContractContentReviewNeeded(contract: Contract) {
     return summary.submitted > summary.approved;
   }
   return Boolean(contract.post_link);
-}
-
-function getContractOperationMetrics(contracts: Contract[]) {
-  const uniqueContracts = Array.from(
-    new Map(contracts.map((contract) => [contract.id, contract])).values(),
-  );
-
-  return [
-    {
-      label: "계약서 작성",
-      value: uniqueContracts.length,
-    },
-    {
-      label: "전자서명 대기",
-      value: uniqueContracts.filter((contract) => contract.status === "APPROVED")
-        .length,
-    },
-    {
-      label: "전자서명 완료",
-      value: uniqueContracts.filter(
-        (contract) => contract.status === "SIGNED" || contract.status === "CLOSED",
-      ).length,
-    },
-    {
-      label: "컨텐츠 미제출",
-      value: uniqueContracts.filter(isContractContentMissing).length,
-    },
-    {
-      label: "컨텐츠 제출",
-      value: uniqueContracts.filter(
-        (contract) =>
-          contract.status === "SIGNED" && isContractContentSubmitted(contract),
-      ).length,
-    },
-    {
-      label: "광고주 검수 필요",
-      value: uniqueContracts.filter(isContractContentReviewNeeded).length,
-    },
-    {
-      label: "광고 계약 마감",
-      value: uniqueContracts.filter((contract) => contract.status === "CLOSED").length,
-    },
-  ];
 }
 
 function getCampaignProgressStatus(contract: Contract) {

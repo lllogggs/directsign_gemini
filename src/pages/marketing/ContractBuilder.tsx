@@ -887,13 +887,13 @@ export function ContractBuilder() {
   };
 
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-[#f7f6f3] font-sans text-neutral-950 lg:h-[100dvh] lg:overflow-hidden">
-      <header className="z-10 flex h-[68px] shrink-0 items-center justify-between border-b border-neutral-200/80 bg-[#f7f6f3]/95 px-5 backdrop-blur md:px-8">
+    <div className="flex min-h-[100dvh] flex-col bg-[#f4f5f2] font-sans text-neutral-950 lg:h-[100dvh] lg:overflow-hidden">
+      <header className="z-10 flex h-[64px] shrink-0 items-center justify-between border-b border-neutral-200/70 bg-white/92 px-5 backdrop-blur md:px-8">
         <div className="flex items-center gap-4">
           <button
             type="button"
             onClick={() => navigate("/advertiser/dashboard")}
-            className="flex h-9 w-9 items-center justify-center rounded-[12px] border border-neutral-200 bg-white/75 text-neutral-500 shadow-[0_1px_0_rgba(15,23,42,0.02)] transition hover:border-neutral-300 hover:bg-white hover:text-neutral-950"
+            className="flex h-9 w-9 items-center justify-center rounded-[9px] border border-neutral-200 bg-white text-neutral-500 shadow-[0_1px_0_rgba(15,23,42,0.02)] transition hover:border-neutral-300 hover:bg-white hover:text-neutral-950"
             aria-label="대시보드로 돌아가기"
           >
             <ArrowLeft strokeWidth={1.5} className="h-5 w-5" />
@@ -910,7 +910,7 @@ export function ContractBuilder() {
         <button
           type="button"
           onClick={handleLogout}
-          className="inline-flex h-10 items-center gap-2 rounded-[12px] border border-neutral-200 bg-white/75 px-3 text-[13px] font-semibold text-neutral-600 shadow-[0_1px_0_rgba(15,23,42,0.02)] transition hover:border-neutral-300 hover:bg-white hover:text-neutral-950"
+          className="inline-flex h-10 items-center gap-2 rounded-[9px] border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-600 shadow-[0_1px_0_rgba(15,23,42,0.02)] transition hover:border-neutral-300 hover:bg-white hover:text-neutral-950"
           aria-label="로그아웃"
         >
           <LogOut className="h-4 w-4" strokeWidth={1.8} />
@@ -918,8 +918,8 @@ export function ContractBuilder() {
         </button>
       </header>
 
-      <main className="grid flex-1 grid-cols-1 lg:min-h-0 lg:grid-cols-[minmax(400px,500px)_minmax(0,1fr)] lg:gap-4 lg:overflow-hidden lg:px-5 lg:pb-5 xl:grid-cols-[200px_minmax(400px,480px)_minmax(460px,1fr)]">
-        <aside className="relative z-10 hidden min-h-0 flex-col gap-10 overflow-y-auto border border-neutral-200/90 bg-white/95 p-5 shadow-[0_1px_0_rgba(15,23,42,0.035),0_18px_46px_rgba(15,23,42,0.05)] xl:mt-5 xl:flex xl:rounded-[16px]">
+      <main className="grid flex-1 grid-cols-1 lg:min-h-0 lg:grid-cols-[minmax(400px,500px)_minmax(0,1fr)] lg:gap-4 lg:overflow-hidden lg:px-5 lg:pb-5 xl:grid-cols-[188px_minmax(400px,480px)_minmax(460px,1fr)]">
+        <aside className="relative z-10 hidden min-h-0 flex-col gap-10 overflow-y-auto border border-neutral-200/90 bg-white p-5 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_18px_46px_rgba(23,26,23,0.05)] xl:mt-5 xl:flex xl:rounded-[10px]">
           <div>
             <h3 className="mb-10 text-[10px] font-medium uppercase tracking-[0.2em] text-neutral-400">
               계약 작성
@@ -972,11 +972,11 @@ export function ContractBuilder() {
                   className="mt-0.5"
                 />
               </div>
-              <p className="mb-6 text-[13px] leading-relaxed text-neutral-500">
-                핵심 조건을 구조화하고 발송 전 체크리스트를 통과한 뒤 공유 링크를 생성합니다.
+              <p className="mb-5 text-[13px] font-semibold leading-5 text-neutral-500">
+                조건 입력 후 검토 링크를 생성합니다.
               </p>
 
-              <div className="mb-5 rounded-[16px] border border-neutral-200/90 bg-white/95 p-3.5 shadow-[0_1px_0_rgba(15,23,42,0.035),0_14px_34px_rgba(15,23,42,0.035)]">
+              <div className="mb-4 rounded-[8px] border border-neutral-200/90 bg-white p-3 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_10px_24px_rgba(23,26,23,0.035)]">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold text-neutral-950">
@@ -998,7 +998,7 @@ export function ContractBuilder() {
                   <button
                     type="button"
                     onClick={() => navigate("/advertiser/verification")}
-                    className="mt-3 h-9 w-full rounded-[12px] border border-neutral-200 bg-[#fbfaf7] text-sm font-semibold text-neutral-700 transition hover:border-neutral-400 hover:bg-white"
+                    className="mt-3 h-9 w-full rounded-[8px] border border-neutral-200 bg-[#fbfbf8] text-sm font-semibold text-neutral-700 transition hover:border-neutral-400 hover:bg-white"
                   >
                     {verificationCopy.actionLabel}
                   </button>
@@ -1806,8 +1806,8 @@ const BuilderReviewPanel: React.FC<{
   return (
     <div
       data-preview-density={density}
-      className={`flex min-h-0 flex-1 flex-col overflow-hidden border border-neutral-200 bg-[#e8e5de] shadow-[inset_0_1px_0_rgba(255,255,255,0.45),0_18px_42px_rgba(15,23,42,0.05)] ${
-        isCompact ? "rounded-[12px] p-2" : "rounded-[18px] p-3"
+      className={`flex min-h-0 flex-1 flex-col overflow-hidden border border-neutral-200 bg-[#e8e9e4] shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_18px_42px_rgba(23,26,23,0.05)] ${
+        isCompact ? "rounded-[10px] p-2" : "rounded-[12px] p-3"
       }`}
     >
       <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">

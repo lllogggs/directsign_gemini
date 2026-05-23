@@ -508,7 +508,13 @@ describe("yeollock.me security regressions", () => {
     assert.match(inbox, /primaryBucketLabel: "보낸 제안"/);
     assert.match(inbox, /platformFilterOptions/);
     assert.match(inbox, /제안 종류/);
-    assert.match(inbox, /function PlatformPills/);
+    assert.doesNotMatch(inbox, /function PlatformPills/);
+    assert.doesNotMatch(inbox, /formatPlatformLabel/);
+    assert.match(
+      inbox,
+      /grid-cols-\[104px_minmax\(170px,0\.75fr\)_minmax\(330px,1\.45fr\)_132px_132px\]/,
+    );
+    assert.match(inbox, /function ProposalSummary/);
     assert.match(server, /addPlatformInfoToMarketplaceProposals/);
     assert.match(server, /marketplace_influencer_channels/);
     assert.match(

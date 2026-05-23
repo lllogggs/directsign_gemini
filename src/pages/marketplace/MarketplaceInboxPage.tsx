@@ -14,8 +14,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
+import { removeInternalTestLabel } from "../../domain/display";
 import {
-  getPlatformTone,
   platformLabels,
   type CampaignProposalType,
 } from "../../domain/marketplace";
@@ -248,35 +248,45 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
     () => data.threads.filter((thread) => thread.bucket === "sent"),
     [data.threads],
   );
-  const sentOpenCount = sentThreads.filter((thread) =>
+  const inboxThreads = useMemo(
+    () => data.threads.filter((thread) => thread.bucket === "inbox"),
+    [data.threads],
+  );
+  const sentCount = sentThreads.length;
+  const inboxCount = inboxThreads.length;
+  const totalCount = data.threads.length;
+  const totalOpenCount = data.threads.filter((thread) =>
     ["submitted", "reviewed"].includes(thread.status),
   ).length;
-  const sentConvertedCount = sentThreads.filter(
+  const totalConvertedCount = data.threads.filter(
     (thread) => thread.status === "converted_to_contract",
   ).length;
-  const inboxOpenCount = data.threads.filter(
+  const inboxOpenCount = inboxThreads.filter(
     (thread) =>
-      thread.bucket === "inbox" && ["submitted", "reviewed"].includes(thread.status),
+      ["submitted", "reviewed"].includes(thread.status),
+  ).length;
+  const inboxUnreadCount = inboxThreads.filter(
+    (thread) => thread.unread,
   ).length;
   const focusMetrics =
     role === "advertiser"
       ? {
-          headingCount: sentOpenCount,
-          primaryLabel: "보낸 제안",
-          primaryValue: data.summary.sentCount,
-          firstLabel: "진행 중",
-          firstValue: sentOpenCount,
+          headingCount: totalOpenCount,
+          primaryLabel: "전체 제안",
+          primaryValue: totalCount,
+          firstLabel: "확인 필요",
+          firstValue: inboxOpenCount,
           secondLabel: "계약 전환",
-          secondValue: sentConvertedCount,
+          secondValue: totalConvertedCount,
         }
       : {
-          headingCount: inboxOpenCount,
-          primaryLabel: "받은 제안",
-          primaryValue: data.summary.inboxCount,
+          headingCount: totalOpenCount,
+          primaryLabel: "전체 제안",
+          primaryValue: totalCount,
           firstLabel: "확인 필요",
-          firstValue: data.summary.unreadCount,
+          firstValue: inboxUnreadCount,
           secondLabel: "진행 중",
-          secondValue: inboxOpenCount,
+          secondValue: totalOpenCount,
         };
   const bucketOptions: Array<{
     id: MarketplaceMessageBucket;
@@ -285,12 +295,12 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
   }> =
     role === "advertiser"
       ? [
-          { id: "sent", label: copy.primaryBucketLabel, count: data.summary.sentCount },
-          { id: "inbox", label: copy.secondaryBucketLabel, count: data.summary.inboxCount },
+          { id: "sent", label: copy.primaryBucketLabel, count: sentCount },
+          { id: "inbox", label: copy.secondaryBucketLabel, count: inboxCount },
         ]
       : [
-          { id: "inbox", label: copy.primaryBucketLabel, count: data.summary.inboxCount },
-          { id: "sent", label: copy.secondaryBucketLabel, count: data.summary.sentCount },
+          { id: "inbox", label: copy.primaryBucketLabel, count: inboxCount },
+          { id: "sent", label: copy.secondaryBucketLabel, count: sentCount },
         ];
   const fallbackBucket = bucketOptions.find((option) => option.count > 0)?.id;
   const bucket = selectedBucket ?? fallbackBucket ?? primaryBucket;
@@ -338,8 +348,12 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
   );
   const headerBadge =
     role === "advertiser"
-      ? `진행 중 ${sentOpenCount.toLocaleString()}건`
-      : `확인 필요 ${data.summary.unreadCount.toLocaleString()}건`;
+      ? inboxOpenCount > 0
+        ? `확인 필요 ${inboxOpenCount.toLocaleString()}건`
+        : `진행 중 ${totalOpenCount.toLocaleString()}건`
+      : inboxUnreadCount > 0
+        ? `확인 필요 ${inboxUnreadCount.toLocaleString()}건`
+        : `진행 중 ${totalOpenCount.toLocaleString()}건`;
   const contractHomeIsPrimary = copy.primaryHref === copy.backHref;
   const activeFilterLabels = [
     query.trim() ? `검색 ${query.trim()}` : null,
@@ -680,12 +694,10 @@ function MessageTable({
 }) {
   return (
     <section className="overflow-hidden rounded-b-[8px] border border-[#d9e0d9] bg-white lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
-      <div className="hidden grid-cols-[104px_minmax(160px,0.85fr)_minmax(166px,0.9fr)_104px_minmax(240px,1.25fr)_122px_104px] border-b border-[#d9e0d9] bg-[#f8faf7] px-4 py-3 text-[11px] font-semibold text-[#7d857f] lg:grid">
+      <div className="hidden grid-cols-[104px_minmax(170px,0.75fr)_minmax(330px,1.45fr)_132px_132px] border-b border-[#d9e0d9] bg-[#f8faf7] px-4 py-3 text-[11px] font-semibold text-[#7d857f] lg:grid">
         <span>상태</span>
         <span>상대</span>
-        <span>플랫폼</span>
-        <span>종류</span>
-        <span>제안 내용</span>
+        <span>제안명</span>
         <span className="text-right">{copy.dateHeader}</span>
         <span className="sr-only">액션</span>
       </div>
@@ -738,14 +750,8 @@ function MessageThreadRow({
         : thread.bucket === "inbox"
           ? "브랜드 보기"
           : "캠페인 보기";
-  const relationshipLabel = getRelationshipLabel(role, thread);
-  const relationshipName =
-    thread.bucket === "sent"
-      ? thread.targetName
-      : thread.senderName;
   const counterpartName = thread.counterpartName;
   const proposalSummary = thread.proposalSummary;
-  const proposalTypeLabel = getProposalTypeLabel(thread);
 
   const acceptAsContract = async () => {
     if (isAccepting) return;
@@ -791,43 +797,25 @@ function MessageThreadRow({
   };
 
   return (
-    <article className="grid gap-3 bg-white px-4 py-3 text-left transition-colors hover:bg-[#f8faf7] lg:grid-cols-[104px_minmax(160px,0.85fr)_minmax(166px,0.9fr)_104px_minmax(240px,1.25fr)_122px_104px] lg:items-center">
+    <article className={`grid gap-3 px-4 py-3 text-left transition-colors hover:bg-[#f8faf7] lg:grid-cols-[104px_minmax(170px,0.75fr)_minmax(330px,1.45fr)_132px_132px] lg:items-center ${
+      thread.unread ? "bg-[#fffdf3]" : "bg-white"
+    }`}>
       <div className="flex min-w-0 items-center gap-2 md:block">
         <span
           className={`inline-flex h-6 shrink-0 items-center rounded-md border px-2 text-[11px] font-semibold ${proposalStatusTone[thread.status]}`}
         >
           {proposalStatusLabels[thread.status]}
         </span>
-        {thread.unread ? (
-          <span className="inline-flex h-6 items-center rounded-md bg-neutral-950 px-2 text-[11px] font-semibold text-white md:mt-1">
-            새 메시지
-          </span>
-        ) : null}
       </div>
 
       <div className="min-w-0">
         <p className="truncate text-[14px] font-semibold text-[#171a17]">
           {counterpartName}
         </p>
-        <p className="mt-0.5 truncate text-[12px] font-medium text-[#7d857f]">
-          {relationshipLabel} · {relationshipName}
-        </p>
       </div>
 
       <div className="min-w-0">
-        <PlatformPills platforms={thread.platforms} />
-      </div>
-
-      <div className="min-w-0">
-        <span className="inline-flex h-6 items-center rounded-[5px] border border-[#d9e0d9] bg-white px-2 text-[11px] font-semibold text-[#59605b]">
-          {proposalTypeLabel}
-        </span>
-      </div>
-
-      <div className="min-w-0">
-        <p className="line-clamp-2 break-keep text-[13px] font-semibold leading-5 text-[#303630]">
-          {proposalSummary}
-        </p>
+        <ProposalSummary summary={proposalSummary} />
         <p className="mt-1 line-clamp-1 text-[12px] font-medium leading-5 text-[#7d857f] lg:hidden">
           {formatMarketplaceMessageDate(thread.createdAt)}
         </p>
@@ -843,7 +831,7 @@ function MessageThreadRow({
             type="button"
             onClick={() => void acceptAsContract()}
             disabled={isAccepting}
-            className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-md bg-blue-600 px-3 text-[12px] font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-neutral-300 lg:w-[104px]"
+            className="inline-flex h-9 w-full items-center justify-center gap-2 whitespace-nowrap rounded-md bg-blue-600 px-3 text-[12px] font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-neutral-300 lg:w-[126px]"
           >
             {isAccepting ? "생성 중" : "수락"}
             <FileSignature className="h-3.5 w-3.5" />
@@ -851,13 +839,13 @@ function MessageThreadRow({
         ) : actionHref ? (
           <Link
             to={actionHref}
-            className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-md border border-neutral-200 bg-white px-3 text-[12px] font-semibold text-neutral-700 transition hover:border-neutral-950 hover:bg-neutral-950 hover:text-white lg:w-[104px]"
+            className="inline-flex h-9 w-full items-center justify-center gap-2 whitespace-nowrap rounded-md border border-neutral-200 bg-white px-3 text-[12px] font-semibold text-neutral-700 transition hover:border-neutral-950 hover:bg-neutral-950 hover:text-white lg:w-[126px]"
           >
             {actionLabel}
             <ArrowRight className="h-3.5 w-3.5" />
           </Link>
         ) : (
-          <span className="inline-flex h-9 w-full items-center justify-center rounded-md border border-neutral-200 text-[12px] font-semibold text-neutral-500 lg:w-[104px]">
+          <span className="inline-flex h-9 w-full items-center justify-center whitespace-nowrap rounded-md border border-neutral-200 text-[12px] font-semibold text-neutral-500 lg:w-[126px]">
             연결 대기
           </span>
         )}
@@ -871,49 +859,91 @@ function MessageThreadRow({
   );
 }
 
-function PlatformPills({ platforms }: { platforms: MessageThread["platforms"] }) {
-  const visiblePlatforms =
-    platforms.length > 0
-      ? platforms
-      : [{ platform: "other" as InfluencerPlatform, label: platformLabels.other }];
-  const visibleCount = Math.min(visiblePlatforms.length, 2);
+function ProposalSummary({ summary }: { summary: string }) {
+  const parsed = parseProposalSummary(summary);
 
   return (
-    <div className="flex min-w-0 flex-wrap gap-1">
-      {visiblePlatforms.slice(0, visibleCount).map((item, index) => (
-        <span
-          key={`${item.platform}-${item.handle ?? item.label}-${index}`}
-          title={item.handle ? `${formatPlatformLabel(item)} · ${item.handle}` : formatPlatformLabel(item)}
-          className={`inline-flex h-6 max-w-full items-center rounded-[5px] border px-2 text-[11px] font-bold ${getPlatformTone(
-            item.platform,
-          )}`}
-        >
-          <span className="truncate">{formatPlatformLabel(item)}</span>
-        </span>
-      ))}
-      {visiblePlatforms.length > visibleCount ? (
-        <span className="inline-flex h-6 items-center rounded-[5px] border border-[#d9e0d9] bg-white px-2 text-[11px] font-bold text-[#7d857f]">
-          +{visiblePlatforms.length - visibleCount}
-        </span>
-      ) : null}
-    </div>
+    <p className="truncate text-[13px] font-extrabold text-[#303630]" title={summary}>
+      {parsed.title}
+    </p>
   );
 }
 
-function formatPlatformLabel(item: MessageThread["platforms"][number]) {
-  return platformLabels[item.platform];
+function parseProposalSummary(summary: string) {
+  const title =
+    extractSummaryField(summary, "캠페인 신청:", [
+      "모집인원:",
+      "지급내용:",
+      "산출물:",
+      "플랫폼:",
+      "업로드 마감일:",
+      "모집마감일:",
+    ]) ?? summary.split(/[.。]/)[0]?.trim() ?? summary;
+  const payment = extractSummaryField(summary, "지급내용:", [
+    "산출물:",
+    "플랫폼:",
+    "업로드 마감일:",
+    "모집마감일:",
+  ]);
+  const deliverable = extractSummaryField(summary, "산출물:", [
+    "플랫폼:",
+    "업로드 마감일:",
+    "모집마감일:",
+  ]);
+  const uploadDeadline = extractSummaryField(summary, "업로드 마감일:", [
+    "모집마감일:",
+  ]);
+  const recruitDeadline = extractSummaryField(summary, "모집마감일:", []);
+  const deadline = uploadDeadline ?? recruitDeadline;
+
+  return {
+    title: formatProposalSummaryTitle(title),
+    payment: payment ? `지급 ${normalizeSummaryText(payment)}` : undefined,
+    deliverable: deliverable ? `산출물 ${normalizeSummaryText(deliverable)}` : undefined,
+    deadline: deadline ? `마감 ${normalizeSummaryText(deadline)}` : undefined,
+  };
+}
+
+function formatProposalSummaryTitle(value: string) {
+  const titleOnly = value.split(/모집\s*설명:/u)[0]?.trim() ?? value;
+  return removeInternalTestLabel(
+    normalizeSummaryText(titleOnly),
+    "캠페인 제안",
+  );
+}
+
+function extractSummaryField(
+  summary: string,
+  startToken: string,
+  stopTokens: string[],
+) {
+  const startIndex = summary.indexOf(startToken);
+  if (startIndex < 0) return undefined;
+
+  const valueStart = startIndex + startToken.length;
+  const nextStopIndex = stopTokens
+    .map((token) => summary.indexOf(token, valueStart))
+    .filter((index) => index >= 0)
+    .sort((a, b) => a - b)[0];
+  const rawValue =
+    nextStopIndex === undefined
+      ? summary.slice(valueStart)
+      : summary.slice(valueStart, nextStopIndex);
+  const value = normalizeSummaryText(rawValue);
+
+  return value || undefined;
+}
+
+function normalizeSummaryText(value: string) {
+  return value
+    .replace(/T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/u, "")
+    .replace(/\s+/g, " ")
+    .replace(/[·|,-]+$/g, "")
+    .trim();
 }
 
 function getProposalTypeLabel(thread: MessageThread) {
   return proposalTypeLabels[thread.proposalType] ?? thread.proposalTypeLabel;
-}
-
-function getRelationshipLabel(role: MarketplaceInboxRole, thread: MessageThread) {
-  if (role === "advertiser") {
-    return thread.bucket === "sent" ? "인플루언서" : "보낸 사람";
-  }
-
-  return thread.bucket === "inbox" ? "브랜드" : "제안 대상";
 }
 
 function LoadingState() {

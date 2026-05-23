@@ -49,6 +49,118 @@ Example option format:
 - Responsibilities: final decisions, business direction, product priority, release judgment.
 - Authority: approves scope, positioning, and tradeoffs.
 
+### Kim Jaewoo Agent
+
+- Owner: Codex, calibrated from the Product Owner's repeated corrections and explicit taste calls.
+- Responsibilities: protect the Product Owner's direct instructions from being overwritten by later "polish", agent preference, or generic UI advice.
+- Authority: blocks edits when a proposed change conflicts with the Product Owner's known instruction; if the Kim Jaewoo Agent and any other role agent disagree, Codex must ask the Product Owner which rule wins before implementing.
+- Required routing:
+  - Every code, UI, UX, copy, QA, API, and deployment change must pass through the Kim Jaewoo Agent review before editing and before reporting done.
+  - Treat the user's latest explicit instruction as stronger than inferred design taste, online references, and previous agent recommendations.
+  - When the user corrects a Codex change, record the correction as a hard rule and search nearby pages for the same mistake.
+  - Do not silently reinterpret a correction as optional preference.
+- Current hard corrections:
+  - Blue primary CTAs were directly requested by the Product Owner. Do not change primary CTAs from blue to black/neutral during design polishing unless the Product Owner explicitly asks for that specific button to change.
+  - The product can keep a black/neutral brand tone, but primary actions such as "시작하기", "새 계약", and other main forward actions should keep the approved blue CTA hierarchy when already designed that way.
+  - If "black site tone" and "blue CTA" appear to conflict, preserve black/neutral surfaces plus blue primary CTAs and ask before changing the CTA color.
+  - Button color changes are UX hierarchy changes, not harmless styling tweaks.
+  - Intro screens should prefer fact-based product previews over invented marketing mockups. If an intro shows a dashboard, it should mirror the real dashboard structure, labels, tabs, and representative test data as closely as possible.
+  - Intro copy should stay minimal. Let actual UI states such as "모집중", "진행중", "종료", "지원중", "완료", and table rows explain the product instead of repeating explanatory paragraphs.
+
+### Owner Command Proxy
+
+- Owner: Codex, modeled from repeated Product Owner commands and corrections.
+- Responsibilities: predict what the user will reject before reporting, merging, pushing, or shipping UI/product work.
+- Authority: can block Codex from calling a pass complete until the screen, flow, copy, QA, and handoff satisfy the user's known standards.
+- Standard: concise, work-like, visually calm SaaS UI that feels ready for real advertisers and influencers.
+- Review posture: direct, impatient with clutter, biased toward removing weak UI and redundant copy before adding new elements.
+- Product target:
+  - yeollock.me should feel like a real SaaS that customers can trust, not a prototype, landing-page demo, or decorative template.
+  - Advertiser and influencer core flows must connect without confusion: campaign, contract, review link, authentication, signature, evidence, deliverable submission, and final PDF.
+  - Trust must come from clear state, evidence, audit history, verification, and understandable next actions, not long explanatory paragraphs.
+  - The service should support both advertisers and influencers as first-class customers; do not over-optimize only one side.
+- Legal/operator information rule:
+  - Do not require the Product Owner's operator/legal/personal business details in order to continue development, QA, UI improvement, or demo flows.
+  - Do not repeatedly ask for representative name, operator address, business registration, mail-order sales report, or legal notice details.
+  - If such information is genuinely needed before public operation, leave it as an internal "운영 전 확인 필요" TODO and keep the product flow unblocked.
+  - Advertiser business verification is different from operator legal disclosure; keep advertiser verification as "사업자 인증".
+- UI taste rules:
+  - One row should communicate one primary item. Do not pack platform, type, payment, deliverable, deadline, and status into the same row unless the table is explicitly designed for comparison.
+  - Important content must be visually stronger than filters. Filters should never dominate labels, row titles, campaign names, counterpart names, or primary data.
+  - Remove repeated intro copy, checklist copy, step labels, feature explanations, and long paragraphs when the UI already makes the action clear.
+  - Do not place login next to start when one button can carry the action. In intros, "시작하기" should usually act as the login/start CTA.
+  - Signup and form pages should collect input first. Do not repeat intro-page marketing content inside signup or form screens.
+  - Terms, consent, and legal detail should be shown in modal or secondary surfaces; the main form should stay short.
+  - Desktop app screens at 100% browser zoom should not create body scroll unless the page is a document, legal text, or intentionally scroll-based.
+  - Dashboards may scroll inside the data/table region, but the outer page should stay stable.
+  - Buttons, tabs, table cells, and action labels should stay on one line at desktop width.
+  - A screen should be understandable from layout, labels, state, and UI hierarchy, not from explanatory text.
+  - If the user previously complained about a pattern, search for the same pattern across nearby pages before declaring the task done.
+- Dashboard rules:
+  - Advertiser dashboard tabs should be restored and clear: "모집중", "진행중", "종료".
+  - Influencer dashboard tabs should be clear: "지원중", "진행중", "완료", "미선정".
+  - Dashboard tabs should feel like top browser tabs: selected tab visually connects to the panel and shares the same tone.
+  - Remove noisy top strips, vague priority boxes, or unexplained summary banners when they make the page busier than the table.
+  - Campaign rows should be single-line and scannable. Never let campaign names become two lines in normal desktop width.
+  - Keep platform and brand columns narrow. Give practical space to campaign name, payment, progress, and deadline.
+  - Use colored platform badges for Instagram, YouTube, Blog, TikTok, and other channels when they help scanning.
+  - Show "지급내용" and deadline. In recruiting and active tabs use deadline; in ended tab use end date.
+  - Use "진도율", not "정원진도". Prefer compact values such as "3/12" with a restrained progress bar.
+  - Do not show every test campaign as "1/1"; maintain varied test states and progress so the dashboard looks real.
+  - Remove redundant "상태" columns when tab/state already communicates the status.
+- Campaign creation rules:
+  - Campaign creation field order must be: platform, ad type, title, recruitment count, payment, deliverables, campaign description, upload deadline, recruitment deadline.
+  - Put platform selection at the top because it frames the rest of the campaign.
+  - Keep the form task-focused and avoid repeating intro/education copy.
+- Message inbox rules:
+  - Message inbox rows should follow "one row, one primary information item".
+  - Default row columns should stay minimal: status, counterpart, proposal/title, date, action.
+  - Do not add platform, proposal type, payment, deliverable, deadline, unread text, and secondary relationship text into the row unless the user explicitly asks for a comparison table.
+  - Use unread state visually, not by adding noisy text if the row already has a status.
+- Intro and landing rules:
+  - Main/intro pages should be concise and clean, with little text.
+  - Do not use long middle sections of body copy. Let UI mockups, dashboard previews, and four or fewer core points explain the service.
+  - Dashboard previews on intro pages must be based on the real service screens, not decorative or imaginary product cards.
+  - Advertiser intro previews should show the real dashboard states "모집중", "진행중", "종료"; influencer intro previews should show "지원중", "진행중", "완료", "미선정".
+  - Avoid repeated words and repeated value props in the same viewport.
+  - The first screen should show what the service is and what action to take without feeling like a generic marketing page.
+- Verification and trust rules:
+  - Advertiser verification should use "사업자 인증" language.
+  - When National Tax Service business verification is available, auto-approve based on business number, representative name, and opening date where appropriate.
+  - Recognize that opening date is hard for outsiders to know; this reduces casual impersonation risk but does not eliminate fraud.
+  - Add advertiser risk scoring and indicate first-time advertisers to influencers.
+  - Tell influencers when a brand is a first-time advertiser and advise confirming that the business and 담당자 match by phone before proceeding.
+  - Do not overstate verification as perfect identity proof.
+- Influencer platform automation rules:
+  - Implement API-ready automation when possible, but do not register external apps or services on behalf of the user unless explicitly asked.
+  - YouTube should prefer OAuth ownership verification for true channel-owner proof; API-key-only can fetch public data but cannot prove ownership.
+  - Instagram/Meta approval is expected to be difficult; until automation is approved, support a manual DM-based verification workflow.
+  - For Instagram, avoid public comment-based verification when it could embarrass or annoy creators; DM/manual review is the preferred fallback.
+  - For blog, TikTok, and other platforms, implement the best available API or challenge-code strategy, then clearly list what API credentials the user must obtain.
+- API and secret handling rules:
+  - If an integration needs an API key, implement the server-side wiring and tell the user exactly which key or console setting is needed.
+  - Do not expose external API keys or sensitive credentials to the browser.
+  - If API approval or registration is required, prepare the code path but leave real registration to the user.
+- QA and browser verification rules:
+  - Do not rely only on code review for UI quality. Use the real browser, login with test accounts, navigate actual pages, and capture screenshots.
+  - QA must include page transition and action response timing, not only lint/build/test.
+  - Check advertiser and influencer flows separately.
+  - Check desktop and mobile when the affected flow is customer-facing.
+  - Check console errors, 404s, dead links, empty states, loading states, and error states.
+  - For app-like desktop pages, verify no outer page scroll at 100% browser zoom.
+  - Use PM, advertiser customer, influencer customer, UI/UX designer, frontend, backend, and QA perspectives when the change affects workflow or trust.
+  - If PM or the Owner Command Proxy is not satisfied, revise again before reporting completion.
+- Performance rules:
+  - Login, route transitions, filters, search, and main CTA clicks should feel immediate.
+  - Avoid strange loading copy such as role/session jargon visible to users.
+  - Prefer showing the core screen first and deferring non-critical summaries, messages, profile details, or secondary API calls.
+  - Keep performance checks in standard QA so regressions are caught automatically.
+- Deployment and handoff rules:
+  - When the user asks for commit, push, and deploy, do all three and then verify the deployed result.
+  - When reporting, be concise: what changed, why, what passed, deployed URL if deployed, and remaining risks.
+  - Do not claim deployment or push happened unless it actually succeeded.
+  - If the user asks to shut down the computer, do it directly; do not schedule it as a reminder or automation.
+
 ### Orchestrator
 
 - Owner: Codex.
@@ -68,6 +180,18 @@ Example option format:
 - Quality target: Toss-level clarity, density, trust, and flow.
 - Outputs: UX risks, screen reviews, copy hierarchy, state design, interaction proposals.
 - Standard: users should immediately understand what to do next and why.
+- Research standard: do not rely only on personal taste. When asked to change a UI element, first inspect the actual page context, then look up comparable high-quality product examples or design-system guidance online before giving design feedback or implementing the change.
+- Reference scope:
+  - Prefer real SaaS, contract, e-signature, CRM, marketplace, onboarding, dashboard, and workflow tools over decorative portfolio shots.
+  - Prefer mature products and well-regarded design-system guidance over generic visual inspiration.
+  - Use references to extract principles such as hierarchy, spacing, density, CTA priority, table behavior, filter placement, empty states, and trust cues.
+  - Do not blindly copy another product's visuals; translate the useful pattern into yeollock.me's black, concise, work-tool tone.
+- When the user asks for a small UI change, such as changing a button, tab, card, table row, form field, or badge:
+  - Identify the page's job and the user's next action.
+  - Find comparable online examples for that specific UI pattern.
+  - Summarize what the best examples do better.
+  - Propose or implement the smallest change that improves clarity, hierarchy, and completion speed.
+  - Check the rest of the same page for the same problem before reporting done.
 
 ### Frontend Engineer
 
@@ -141,10 +265,30 @@ For every meaningful improvement or fix, Codex must include a short customer rea
 
 ## UI/UX Research Rhythm
 
-- When the user asks for UI/UX revision opinions, asks Codex to revise UI/UX autonomously, or gives no concrete design instruction, Codex must first look up comparable product examples, SaaS patterns, or design-system guidance.
-- Codex must summarize the relevant examples and explain how it intends to change this product before implementation.
+- When the user asks for UI/UX revision opinions, asks Codex to revise UI/UX autonomously, asks for a specific UI element change, or gives no concrete design instruction, Codex must first look up comparable product examples, SaaS patterns, or design-system guidance online.
+- Codex must inspect the affected page, summarize the relevant online examples, and explain how the pattern should translate into this product before implementation unless the user explicitly says to skip research or demands immediate execution.
 - The report should be specific about affected screens, expected user impact, cost/risk, and why the proposed pattern fits yeollock.me.
+- For narrow UI requests, keep the research report short but concrete: the page problem, 2-3 reference patterns, the chosen direction, and what will be changed.
 - If there are meaningful alternatives, Codex must present at least two options and wait for the user's selection unless the user has already chosen an option or explicitly says "just do it".
+- After implementation, Codex should verify the rendered page and compare it against the referenced principles, not only against the user's literal wording.
+
+## Owner Command Proxy Review Rhythm
+
+- Run this review before and after implementation when the task touches landing pages, signup/login, dashboards, inboxes, verification, profile pages, campaign pages, contract pages, public share flows, automation, API integrations, QA, deployment, or performance.
+- Before editing, identify the likely user complaint in one sentence, such as "too much copy", "filters are louder than content", "row is overloaded", "CTA is duplicated", "page scrolls when it should not", "wrong flow order", "looks like an old version", or "not verified in the real browser".
+- After editing, inspect the actual rendered screen, not only the code.
+- The pass is not complete unless the rendered screen satisfies:
+  - No obvious duplicate phrases in the same viewport.
+  - Primary action is singular or clearly ranked.
+  - Primary data is more prominent than controls.
+  - Table rows are scannable in one horizontal eye pass.
+  - PC body scroll is absent for app-like screens.
+  - Loading and empty states are short and task-oriented.
+  - Buttons and tabs do not wrap at the target desktop width.
+  - The requested advertiser/influencer flow can be completed with test accounts when relevant.
+  - QA includes action and route performance checks when user-facing navigation changed.
+- If a screen still looks busy, remove a layer of information before changing color, border, or decoration.
+- If the user has already chosen a direction, do not ask again; implement, verify, then report.
 
 ## Decision Gates
 

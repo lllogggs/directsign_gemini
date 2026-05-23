@@ -3,6 +3,7 @@ export const removeInternalTestLabel = (value?: string | null, fallback = "") =>
   if (!text) return fallback;
 
   if (isInternalTestContact(text)) return fallback;
+  if (/^qa\s*e2e\b/i.test(text)) return fallback;
 
   const cleaned = text
     .replace(/^테스트브랜드$/g, "브랜드")
