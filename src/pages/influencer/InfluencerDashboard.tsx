@@ -30,6 +30,7 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   UserCheck,
+  X,
   Youtube,
 } from "lucide-react";
 import { apiFetch } from "../../domain/api";
@@ -117,6 +118,11 @@ type SortDirection = "asc" | "desc";
 type ContractSort = {
   key: SortKey;
   direction: SortDirection;
+};
+type AppliedFilter = {
+  id: string;
+  label: string;
+  onRemove: () => void;
 };
 type InfluencerAccountSummary = {
   name: string;
@@ -1701,26 +1707,62 @@ function ContractTable({
     value: deadline,
     label: formatDeadlineFilterLabel(deadline),
   }));
-  const activeFilterLabels = [
+  const activeFilters = [
     platformFilter !== "all"
-      ? platformOptions.find((option) => option.value === platformFilter)?.label
+      ? {
+          id: "platform",
+          label:
+            platformOptions.find((option) => option.value === platformFilter)?.label ??
+            platformFilter,
+          onRemove: () => onPlatformFilterChange("all"),
+        }
       : null,
     brandFilter !== "all"
-      ? brandOptions.find((option) => option.value === brandFilter)?.label
+      ? {
+          id: "brand",
+          label:
+            brandOptions.find((option) => option.value === brandFilter)?.label ??
+            brandFilter,
+          onRemove: () => onBrandFilterChange("all"),
+        }
       : null,
     amountFilter !== "all"
-      ? amountOptions.find((option) => option.value === amountFilter)?.label
+      ? {
+          id: "amount",
+          label:
+            amountOptions.find((option) => option.value === amountFilter)?.label ??
+            amountFilter,
+          onRemove: () => onAmountFilterChange("all"),
+        }
       : null,
     detailStageFilter !== "all"
-      ? stageOptions.find((option) => option.value === detailStageFilter)?.label
+      ? {
+          id: "stage",
+          label:
+            stageOptions.find((option) => option.value === detailStageFilter)?.label ??
+            detailStageFilter,
+          onRemove: () => onDetailStageFilterChange("all"),
+        }
       : null,
     deadlineFilter !== "all"
-      ? deadlineOptions.find((option) => option.value === deadlineFilter)?.label
+      ? {
+          id: "deadline",
+          label:
+            deadlineOptions.find((option) => option.value === deadlineFilter)?.label ??
+            deadlineFilter,
+          onRemove: () => onDeadlineFilterChange("all"),
+        }
       : null,
-    query.trim() ? `검색 ${query.trim()}` : null,
-  ].filter((label): label is string => Boolean(label));
+    query.trim()
+      ? {
+          id: "query",
+          label: `검색 ${query.trim()}`,
+          onRemove: () => onQueryChange(""),
+        }
+      : null,
+  ].filter(isAppliedFilter);
   const filterSummary =
-    activeFilterLabels.length > 0 ? activeFilterLabels.join(" · ") : "전체 조건";
+    activeFilters.length > 0 ? `${activeFilters.length}개 조건 적용` : "전체 조건";
   const [filtersOpen, setFiltersOpen] = useState(false);
   const displayItems = collapseInternalDuplicateContracts(
     items,
@@ -1739,7 +1781,7 @@ function ContractTable({
       <div className="border-b border-[#d9e0d9] bg-[#fbfcfa]">
         <div className="flex min-h-11 items-center justify-between gap-3 px-3 py-2">
           <div className="min-w-0">
-            <p className="truncate text-[12px] font-extrabold text-[#171a17]">
+            <p className="truncate text-[14px] font-extrabold leading-5 text-[#171a17]">
               캠페인 목록
             </p>
             <p className="mt-0.5 truncate text-[11px] font-semibold text-[#606861]">
@@ -1748,11 +1790,22 @@ function ContractTable({
           </div>
           <InfluencerFilterToggleButton
             open={filtersOpen}
-            activeCount={activeFilterLabels.length}
+            activeCount={activeFilters.length}
             onClick={() => setFiltersOpen((current) => !current)}
             controlsId="influencer-contract-filters"
           />
         </div>
+        <InfluencerAppliedFilterBar
+          filters={activeFilters}
+          onClearAll={() => {
+            onPlatformFilterChange("all");
+            onBrandFilterChange("all");
+            onAmountFilterChange("all");
+            onDetailStageFilterChange("all");
+            onDeadlineFilterChange("all");
+            onQueryChange("");
+          }}
+        />
         {filtersOpen ? (
           <div
             id="influencer-contract-filters"
@@ -1919,6 +1972,44 @@ function InfluencerTableHeaderRow({
   );
 }
 
+function isAppliedFilter(filter: AppliedFilter | null): filter is AppliedFilter {
+  return Boolean(filter);
+}
+
+function InfluencerAppliedFilterBar({
+  filters,
+  onClearAll,
+}: {
+  filters: AppliedFilter[];
+  onClearAll: () => void;
+}) {
+  if (filters.length === 0) return null;
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 border-t border-[#edf1ed] bg-white px-3 py-2">
+      {filters.map((filter) => (
+        <button
+          key={filter.id}
+          type="button"
+          onClick={filter.onRemove}
+          aria-label={`${filter.label} 필터 해제`}
+          className="inline-flex h-8 max-w-full items-center gap-1.5 rounded-full border border-[#d9e0d9] bg-[#fbfcfa] pl-2.5 pr-2 text-[11px] font-bold text-[#303630] transition hover:border-[#bcc8bd] hover:bg-white"
+        >
+          <span className="max-w-[180px] truncate">{filter.label}</span>
+          <X className="h-3 w-3 shrink-0 text-[#7d857f]" strokeWidth={2.2} />
+        </button>
+      ))}
+      <button
+        type="button"
+        onClick={onClearAll}
+        className="inline-flex h-8 shrink-0 items-center rounded-full px-2 text-[11px] font-extrabold text-[#606861] transition hover:bg-[#eef2ee] hover:text-[#303630]"
+      >
+        초기화
+      </button>
+    </div>
+  );
+}
+
 function InfluencerFilterToggleButton({
   open,
   activeCount,
@@ -1936,7 +2027,7 @@ function InfluencerFilterToggleButton({
       onClick={onClick}
       aria-expanded={open}
       aria-controls={controlsId}
-      className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[6px] border border-[#d9e0d9] bg-white px-2.5 text-[12px] font-extrabold text-[#303630] transition-colors hover:border-[#cbd5cc]"
+      className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[6px] border border-[#e1e6e1] bg-[#fbfcfa] px-2.5 text-[11px] font-bold text-[#606861] transition-colors hover:border-[#cbd5cc] hover:text-[#303630]"
     >
       <SlidersHorizontal className="h-3.5 w-3.5 text-[#606861]" strokeWidth={2} />
       <span>필터</span>
@@ -1966,7 +2057,7 @@ function InfluencerLifecycleTabs({
 }) {
   return (
     <div className="border-b border-[#d9e0d9] bg-[#e6e0d8] px-2 pt-2">
-      <div className="flex min-w-0 items-end gap-0.5 overflow-x-auto">
+      <div className="grid min-w-0 grid-cols-4 items-end gap-0.5">
         {INFLUENCER_LIFECYCLE_TABS.map((tab) => {
           const active = value === tab.value;
           return (
@@ -1975,13 +2066,13 @@ function InfluencerLifecycleTabs({
               type="button"
               onClick={() => onChange(tab.value)}
               aria-pressed={active}
-              className={`relative flex h-10 min-w-[128px] flex-1 items-center justify-between gap-2 rounded-t-[14px] border px-3 text-left transition ${
+              className={`relative flex h-10 min-w-0 items-center justify-between gap-1.5 rounded-t-[14px] border px-2 text-left transition sm:px-3 ${
                 active
                   ? "z-10 -mb-px border-[#d9e0d9] border-b-[#f8faf7] bg-[#f8faf7] pb-px text-[#171a17] shadow-[0_-1px_0_rgba(255,255,255,0.9)_inset,0_-8px_20px_rgba(23,26,23,0.05)]"
                   : "mb-0.5 border-transparent bg-[#d8d1c8] text-[#4f574f] hover:bg-[#e1dbd3] hover:text-[#171a17]"
               }`}
             >
-              <span className="truncate text-[13px] font-extrabold">
+              <span className="truncate text-[12px] font-extrabold sm:text-[13px]">
                 {tab.label}
               </span>
               <span

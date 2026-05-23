@@ -139,6 +139,13 @@ For every meaningful improvement or fix, Codex must include a short customer rea
 7. Verify with type checks, build, browser checks, or focused manual checks as appropriate.
 8. Report what changed, what was verified, and what decision remains.
 
+## UI/UX Research Rhythm
+
+- When the user asks for UI/UX revision opinions, asks Codex to revise UI/UX autonomously, or gives no concrete design instruction, Codex must first look up comparable product examples, SaaS patterns, or design-system guidance.
+- Codex must summarize the relevant examples and explain how it intends to change this product before implementation.
+- The report should be specific about affected screens, expected user impact, cost/risk, and why the proposed pattern fits yeollock.me.
+- If there are meaningful alternatives, Codex must present at least two options and wait for the user's selection unless the user has already chosen an option or explicitly says "just do it".
+
 ## Decision Gates
 
 Ask the user before implementing these changes:

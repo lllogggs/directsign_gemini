@@ -839,10 +839,10 @@ export function PublicBrandProfilePage() {
                   {brand.displayName}
                 </h1>
                 <p className="mt-3 max-w-2xl break-keep text-[16px] font-medium leading-7 text-neutral-600">
-                  {cleanMarketplaceCopy(brand.headline)}
+                  {formatBrandMarketplaceHeadline(brand)}
                 </p>
                 <p className="mt-4 max-w-3xl break-keep text-[14px] leading-6 text-neutral-600">
-                  {cleanMarketplaceCopy(brand.description)}
+                  {formatBrandMarketplaceDescription(brand)}
                 </p>
                 <div className="mt-5 flex flex-col gap-2 sm:flex-row">
                   <button
@@ -1114,10 +1114,10 @@ function BrandDiscoveryCard({
       </div>
 
       <p className="mt-4 line-clamp-2 text-[14px] font-semibold leading-6 text-neutral-800">
-        {cleanMarketplaceCopy(brand.headline)}
+        {formatBrandMarketplaceHeadline(brand)}
       </p>
       <p className="mt-2 line-clamp-3 text-[13px] leading-5 text-neutral-600">
-        {cleanMarketplaceCopy(brand.description)}
+        {formatBrandMarketplaceDescription(brand)}
       </p>
 
       <div className="mt-4 flex flex-wrap gap-1.5">
@@ -1753,6 +1753,46 @@ function cleanMarketplaceCopy(value: string) {
     .replace(/\bQA\b/gi, "")
     .replace(/\s{2,}/g, " ")
     .trim();
+}
+
+const genericBrandDescriptionCopies = new Set([
+  "브랜드 컨택과 전자계약 전환에 적합한 공개 프로필입니다.",
+  "브랜드 컨택과 전자계약 협업에 적합한 공개 프로필입니다.",
+  "인플루언서가 브랜드 정보와 제안 조건을 빠르게 확인할 수 있는 공개 프로필입니다.",
+]);
+
+function isGenericBrandMarketplaceCopy(value: string) {
+  return (
+    Array.from(genericBrandDescriptionCopies).some(
+      (copy) => value === copy || value.startsWith(`${copy} `),
+    ) || value.includes("공개 프로필에서 바로 보이도록 구성했습니다")
+  );
+}
+
+function formatBrandMarketplaceHeadline(brand: MarketplaceBrandProfile) {
+  const cleaned = cleanMarketplaceCopy(brand.headline);
+  if (!isGenericBrandMarketplaceCopy(cleaned)) return cleaned;
+
+  const campaignTitle = brand.activeCampaigns[0]?.title ?? "협업 제안";
+  return `${brand.displayName}의 ${campaignTitle}을 함께할 크리에이터를 찾습니다`;
+}
+
+function formatBrandMarketplaceDescription(brand: MarketplaceBrandProfile) {
+  const cleaned = cleanMarketplaceCopy(brand.description);
+  if (!isGenericBrandMarketplaceCopy(cleaned)) return cleaned;
+
+  const campaignTitle = brand.activeCampaigns[0]?.title ?? brand.category;
+  const targetLabel = brand.audienceTargets.slice(0, 2).join(", ");
+  const platformLabel = brand.preferredPlatforms
+    .slice(0, 2)
+    .map((platform) => platformLabels[platform])
+    .join(", ");
+  const audienceClause = targetLabel
+    ? `${targetLabel} 고객 반응을 보며`
+    : `${brand.category} 맥락에 맞춰`;
+  const platformClause = platformLabel ? `${platformLabel} 컨텐츠로` : "컨텐츠로";
+
+  return `${audienceClause} ${campaignTitle} 제안을 검토합니다. ${platformClause} 예산, 일정, 사용 범위를 계약 전 단계에서 확인합니다.`;
 }
 
 function dedupeBrandsByDisplayIdentity(brands: MarketplaceBrandProfile[]) {
