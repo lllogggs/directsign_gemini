@@ -123,7 +123,7 @@ const introConfig = {
   advertiser: {
     eyebrow: "광고주 대시보드",
     title: ["계약 상태를", "바로 확인"],
-    description: "모집중, 진행중, 종료만 봅니다.",
+    description: "모집부터 종료까지 계약 흐름을 한 화면에서 확인합니다.",
     primaryLabel: "시작하기",
     primaryHref: "/signup/advertiser",
     secondaryLabel: "광고주 로그인",
@@ -240,7 +240,7 @@ const introConfig = {
   influencer: {
     eyebrow: "인플루언서 대시보드",
     title: ["내 캠페인을", "상태별로 확인"],
-    description: "지원중, 진행중, 완료, 미선정만 봅니다.",
+    description: "지원부터 완료까지 필요한 일을 바로 확인합니다.",
     primaryLabel: "시작하기",
     primaryHref: "/signup/influencer",
     secondaryLabel: "인플루언서 로그인",
@@ -1262,13 +1262,13 @@ function RoleFeatureIntroScreen({
           eyebrow: "광고주 대시보드",
           title: ["계약 상태를", "바로 확인"],
           description:
-            "모집중, 진행중, 종료만 봅니다.",
+            "모집부터 종료까지 계약 흐름을 한 화면에서 확인합니다.",
         }
       : {
           eyebrow: "인플루언서 대시보드",
           title: ["내 캠페인을", "상태별로 확인"],
           description:
-            "지원중, 진행중, 완료, 미선정만 봅니다.",
+            "지원부터 완료까지 필요한 일을 바로 확인합니다.",
         };
 
   useEffect(() => {
@@ -1314,7 +1314,7 @@ function RoleFeatureIntroScreen({
   return (
     <main className="h-svh overflow-hidden bg-[#f4f5f2] font-sans text-neutral-950">
       <header className="border-b border-neutral-200/70 bg-white/92">
-        <div className="mx-auto flex h-[58px] max-w-[1240px] items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto flex h-[58px] max-w-[1300px] items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
           <BrandLockup />
           <div className="flex min-w-0 items-center gap-2">
             <nav
@@ -1369,9 +1369,9 @@ function RoleFeatureIntroScreen({
         </nav>
       </div>
 
-      <section className="mx-auto flex h-[calc(100svh-109px)] min-h-0 w-full max-w-[1360px] overflow-hidden px-4 py-3 sm:h-[calc(100svh-58px)] sm:px-6 sm:py-5 lg:h-[calc(100vh-58px)] lg:px-8 lg:py-5">
-        <div className="grid h-full min-h-0 w-full gap-5 lg:grid-cols-[minmax(340px,0.54fr)_minmax(0,1.46fr)] lg:items-start">
-          <aside className="min-w-0 shrink-0 pt-0 lg:flex lg:min-h-0 lg:flex-col lg:justify-start lg:pt-6">
+      <section className="mx-auto flex h-[calc(100svh-109px)] min-h-0 w-full max-w-[1300px] overflow-hidden px-4 py-3 sm:h-[calc(100svh-58px)] sm:px-6 sm:py-5 lg:h-[calc(100vh-58px)] lg:px-8 lg:py-5">
+        <div className="grid h-full min-h-0 w-full gap-5 lg:grid-cols-[minmax(330px,0.52fr)_minmax(0,1.48fr)] lg:items-start">
+          <aside className="min-w-0 shrink-0 pt-0 lg:flex lg:min-h-0 lg:flex-col lg:justify-start lg:pt-2">
             <p className="w-fit text-[12px] font-extrabold text-neutral-400">
               {introCopy.eyebrow}
             </p>

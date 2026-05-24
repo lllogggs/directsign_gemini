@@ -28,23 +28,21 @@ function getRoleTone(role: (typeof loginRoles)[number]["role"]) {
   if (role === "advertiser") {
     return {
       card:
-        "border-[#bfdbfe] bg-[linear-gradient(180deg,#eff6ff_0%,#ffffff_54%)] hover:border-[#93c5fd]",
-      icon: "border-[#bfdbfe] bg-[#eff6ff] text-[#2563eb] group-hover:border-[#2563eb] group-hover:bg-[#2563eb] group-hover:text-white",
+        "border-neutral-200 bg-white hover:border-blue-300 hover:bg-blue-50/35",
+      icon: "border-[#bfdbfe] bg-[#eff6ff] text-[#2563eb]",
       arrow:
-        "border-[#bfdbfe] bg-white text-[#2563eb]/55 group-hover:border-[#2563eb] group-hover:bg-[#2563eb] group-hover:text-white",
-      divider: "border-[#bfdbfe]/75",
-      detail: "text-[#2563eb]",
+        "border-[#bfdbfe] bg-white text-[#2563eb] group-hover:border-[#2563eb] group-hover:bg-[#2563eb] group-hover:text-white",
+      detail: "text-neutral-500",
     };
   }
 
   return {
     card:
-      "border-[#a7f3d0] bg-[linear-gradient(180deg,#ecfdf5_0%,#ffffff_54%)] hover:border-[#6ee7b7]",
-    icon: "border-[#a7f3d0] bg-[#ecfdf5] text-[#059669] group-hover:border-[#059669] group-hover:bg-[#059669] group-hover:text-white",
+      "border-neutral-200 bg-white hover:border-emerald-300 hover:bg-emerald-50/35",
+    icon: "border-[#a7f3d0] bg-[#ecfdf5] text-[#059669]",
     arrow:
-      "border-[#a7f3d0] bg-white text-[#059669]/55 group-hover:border-[#059669] group-hover:bg-[#059669] group-hover:text-white",
-    divider: "border-[#a7f3d0]/75",
-    detail: "text-[#059669]",
+      "border-[#a7f3d0] bg-white text-[#059669] group-hover:border-[#059669] group-hover:bg-[#059669] group-hover:text-white",
+    detail: "text-neutral-500",
   };
 }
 
@@ -53,9 +51,9 @@ export function LoginLanding() {
   const requestedNext = new URLSearchParams(location.search).get("next");
 
   return (
-    <main className="h-svh overflow-hidden bg-[#f7f6f3] font-sans text-neutral-950">
-      <div className="mx-auto grid h-svh w-full max-w-[760px] grid-rows-[56px_minmax(0,1fr)_34px] px-5 sm:grid-rows-[60px_minmax(0,1fr)_38px] sm:px-6">
-        <header className="flex items-center justify-between">
+    <main className="h-svh overflow-hidden bg-[#f4f5f2] font-sans text-neutral-950">
+      <div className="mx-auto grid h-svh w-full max-w-[1300px] grid-rows-[58px_minmax(0,1fr)_38px] px-4 sm:px-6 lg:px-8">
+        <header className="flex items-center justify-between border-b border-transparent">
           <Link
             to="/"
             className="-ml-1 flex min-w-0 items-center gap-2.5 rounded-[12px] px-1 py-1 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
@@ -65,21 +63,16 @@ export function LoginLanding() {
           </Link>
           <Link
             to="/"
-            className="inline-flex min-h-8 items-center rounded-full border border-neutral-200 bg-white/65 px-3 text-[11px] font-bold tracking-[-0.005em] text-neutral-500 shadow-[0_1px_0_rgba(15,23,42,0.02)] transition hover:border-neutral-300 hover:bg-white hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
+            className="inline-flex h-9 items-center rounded-[8px] border border-neutral-200 bg-white px-3 text-[12px] font-extrabold text-neutral-600 shadow-[0_1px_0_rgba(15,23,42,0.02)] transition hover:border-neutral-300 hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
           >
             처음으로
           </Link>
         </header>
 
-        <section className="flex min-h-0 items-center justify-center py-2">
-          <div className="w-full max-w-[500px]">
+        <section className="flex min-h-0 items-start justify-center pt-[10vh] sm:pt-[11vh]">
+          <div className="w-full max-w-[520px]">
             <h1 className="sr-only">{PRODUCT_NAME} 로그인</h1>
-            <div className="mb-3 text-center">
-              <p className="text-[13px] font-bold leading-5 text-neutral-600">
-                로그인할 역할을 선택하세요.
-              </p>
-            </div>
-            <div className="grid gap-2.5 sm:gap-3">
+            <div className="grid gap-2.5">
               {loginRoles.map((role) => {
                 const Icon = role.icon;
                 const tone = getRoleTone(role.role);
@@ -99,24 +92,22 @@ export function LoginLanding() {
                     key={role.href}
                     to={href}
                     aria-label={role.title}
-                    className={`group flex min-h-[112px] flex-col rounded-[18px] border px-4 py-4 text-left shadow-[0_1px_0_rgba(15,23,42,0.035),0_16px_42px_rgba(15,23,42,0.035)] transition hover:-translate-y-0.5 hover:shadow-[0_1px_0_rgba(15,23,42,0.04),0_22px_58px_rgba(15,23,42,0.06)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:min-h-[124px] sm:px-5 sm:py-5 ${tone.card}`}
+                    className={`group flex h-[76px] items-center gap-4 rounded-[10px] border px-4 text-left shadow-[0_1px_0_rgba(15,23,42,0.03),0_10px_28px_rgba(15,23,42,0.035)] transition hover:-translate-y-0.5 hover:shadow-[0_1px_0_rgba(15,23,42,0.04),0_14px_34px_rgba(15,23,42,0.055)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:h-[80px] sm:px-5 ${tone.card}`}
                   >
-                    <span className="flex items-center justify-between">
-                      <span className={`flex h-9 w-9 items-center justify-center rounded-[12px] border transition ${tone.icon}`}>
-                        <Icon className="h-[17px] w-[17px]" />
-                      </span>
-                      <span className={`flex h-8 w-8 items-center justify-center rounded-full border transition ${tone.arrow}`}>
-                        <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
-                      </span>
+                    <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] border ${tone.icon}`}>
+                      <Icon className="h-[18px] w-[18px]" />
                     </span>
 
-                    <span className="mt-auto block">
-                      <strong className="font-neo-heavy block text-[25px] leading-none tracking-[-0.035em] text-neutral-950 sm:text-[30px]">
+                    <span className="min-w-0 flex-1">
+                      <strong className="block truncate text-[20px] font-extrabold leading-6 text-neutral-950 sm:text-[22px]">
                         {role.title}
                       </strong>
-                      <span className={`mt-3 block border-t pt-3 text-[12px] font-bold tracking-[-0.005em] ${tone.divider} ${tone.detail}`}>
+                      <span className={`mt-1 block truncate text-[12px] font-bold leading-5 ${tone.detail}`}>
                         {role.detail}
                       </span>
+                    </span>
+                    <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] border transition ${tone.arrow}`}>
+                      <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
                     </span>
                   </Link>
                 );

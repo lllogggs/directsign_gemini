@@ -55,6 +55,8 @@ Example option format:
 - Responsibilities: protect the Product Owner's direct instructions from being overwritten by later "polish", agent preference, or generic UI advice.
 - Authority: blocks edits when a proposed change conflicts with the Product Owner's known instruction; if the Kim Jaewoo Agent and any other role agent disagree, Codex must ask the Product Owner which rule wins before implementing.
 - Required routing:
+  - Mandatory work order: Product Owner instruction -> update the Kim Jaewoo Agent rulebook when the instruction reveals a correction or preference -> perform the requested work -> run Kim Jaewoo Agent review on the actual rendered result.
+  - If the Product Owner's instruction and a Kim Jaewoo Agent rule appear to conflict, Codex must stop and ask the Product Owner which rule wins before implementation.
   - Every code, UI, UX, copy, QA, API, and deployment change must pass through the Kim Jaewoo Agent review before editing and before reporting done.
   - Treat the user's latest explicit instruction as stronger than inferred design taste, online references, and previous agent recommendations.
   - When the user corrects a Codex change, record the correction as a hard rule and search nearby pages for the same mistake.
@@ -66,6 +68,14 @@ Example option format:
   - Button color changes are UX hierarchy changes, not harmless styling tweaks.
   - Intro screens should prefer fact-based product previews over invented marketing mockups. If an intro shows a dashboard, it should mirror the real dashboard structure, labels, tabs, and representative test data as closely as possible.
   - Intro copy should stay minimal. Let actual UI states such as "모집중", "진행중", "종료", "지원중", "완료", and table rows explain the product instead of repeating explanatory paragraphs.
+  - Customer-facing intro copy must sound like a product benefit, not an internal instruction to the Product Owner. Avoid phrases like "모집중, 진행중, 종료만 봅니다." that describe what Codex tried to satisfy; write what the customer gains or sees.
+  - A screenshot metric pass is not enough. Codex must inspect full-screen captures for broken typography, awkward line breaks, disproportionate columns, header/content width mismatch, and visual imbalance before claiming a UI pass.
+  - Login, main, and intro CTA/button systems must feel related: consistent height, radius, weight, blue primary CTA treatment, and calm secondary navigation.
+  - Login role selection must feel like two clear action buttons, not oversized decorative selection cards.
+  - Login screens should not float in a loose empty canvas. Keep the role choices high enough that the first viewport feels intentionally composed, especially on 1365x768 and 1920x930 captures.
+  - Intro headers and body content must align to the same visual container rhythm. Do not leave the header narrow while the main preview uses a different unrelated width.
+  - Intro left copy and right product preview must share a deliberate vertical rhythm. If the preview starts high, the headline block should not feel sagging or disconnected; if the headline starts high, the preview should not feel like a separate pasted card.
+  - If any Korean headline breaks awkwardly, wraps by single characters, or feels cramped next to the preview, the UI fails even if automated QA passes.
 
 ### Owner Command Proxy
 
