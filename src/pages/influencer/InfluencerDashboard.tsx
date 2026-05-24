@@ -1786,7 +1786,7 @@ function ContractTable({
         <div className="flex min-h-11 items-center justify-between gap-3 px-3 py-2">
           <div className="min-w-0">
             <p className="truncate text-[14px] font-extrabold leading-5 text-[#171a17]">
-              캠페인 목록
+              계약 목록
             </p>
             <p className="mt-0.5 truncate text-[11px] font-semibold text-[#606861]">
               {displayItems.length.toLocaleString("ko-KR")}건 표시 · {filterSummary}
@@ -1949,7 +1949,7 @@ function InfluencerTableHeaderRow({
         onSortChange={onSortChange}
       />
       <ColumnHeader
-        label="캠페인명"
+        label="계약명"
         sortKey="title"
         sortState={sortState}
         onSortChange={onSortChange}
@@ -2061,7 +2061,7 @@ function InfluencerLifecycleTabs({
 }) {
   return (
     <div className="border-b border-[#d9e0d9] bg-[#ecebe5] px-2 pt-2">
-      <div className="grid min-w-0 grid-cols-4 items-end gap-0.5">
+      <div className="grid min-w-0 grid-cols-4 items-end gap-1">
         {INFLUENCER_LIFECYCLE_TABS.map((tab) => {
           const active = value === tab.value;
           return (
@@ -2070,10 +2070,10 @@ function InfluencerLifecycleTabs({
               type="button"
               onClick={() => onChange(tab.value)}
               aria-pressed={active}
-              className={`relative flex h-9 min-w-0 items-center justify-between gap-0.5 rounded-t-[10px] border px-1 text-left transition focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-neutral-950 sm:gap-1.5 sm:px-3 ${
+              className={`relative flex h-10 min-w-0 items-center justify-between gap-0.5 rounded-t-[10px] border px-1 text-left transition focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-neutral-950 sm:gap-1.5 sm:px-3 ${
                 active
                   ? "z-10 -mb-px border-[#d9e0d9] border-b-white bg-white pb-px text-[#171a17] shadow-[0_-1px_0_rgba(255,255,255,0.9)_inset]"
-                  : "mb-0.5 border-transparent bg-transparent text-[#59605b] hover:bg-[#f5f4ee] hover:text-[#171a17]"
+                  : "mb-1 border-transparent bg-[#e5e3dc] text-[#59605b] hover:bg-[#f5f4ee] hover:text-[#171a17]"
               }`}
             >
               <span className="shrink-0 whitespace-nowrap text-[10px] font-extrabold sm:text-[13px]">
@@ -2572,14 +2572,11 @@ function matchesDeadlineFilter(
 }
 
 function formatDeadlineDisplay(item: InfluencerCampaignWorkItem) {
-  const label = item.deadline_label?.trim();
-  if (label) return label;
-  if (!Number.isFinite(getDueTime(item))) return "마감 없음";
+  if (Number.isFinite(getDueTime(item))) {
+    return formatInfluencerDateWithDday(item.due_at);
+  }
 
-  return new Intl.DateTimeFormat("ko-KR", {
-    month: "numeric",
-    day: "numeric",
-  }).format(new Date(item.due_at as string));
+  return item.deadline_label?.trim() || "마감 없음";
 }
 
 function getInfluencerMetricColumnLabel(lifecycle: InfluencerCampaignLifecycle) {
@@ -2617,14 +2614,30 @@ function getInfluencerMetricTone(item: InfluencerCampaignWorkItem) {
 }
 
 function formatInfluencerListDate(value?: string) {
+  return formatInfluencerDateWithDday(value);
+}
+
+function formatInfluencerDateWithDday(value?: string) {
   if (!value) return "-";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
 
-  return new Intl.DateTimeFormat("ko-KR", {
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
+  const dateLabel = [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join(".");
+  const today = new Date();
+  const todayStart = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate(),
+  );
+  const dateStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const diff = Math.round((dateStart.getTime() - todayStart.getTime()) / 86_400_000);
+  const dday = diff > 0 ? `D-${diff}` : diff === 0 ? "D-day" : `D+${Math.abs(diff)}`;
+
+  return `${dateLabel} / ${dday}`;
 }
 
 function getSubmissionStatusMeta(item: InfluencerCampaignWorkItem) {

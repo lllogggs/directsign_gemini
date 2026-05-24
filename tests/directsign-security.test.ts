@@ -427,6 +427,8 @@ describe("yeollock.me security regressions", () => {
     assert.match(reviewRoute, /Contract must be signed before deliverables can be reviewed/);
     assert.match(closeRoute, /status:\s*"CLOSED"/);
     assert.match(closeRoute, /contract_closed/);
+    assert.match(server, /toLegacySupabaseStatus/);
+    assert.match(server, /status === "CLOSED" \? "SIGNED" : status/);
     assert.match(advertiserViewer, /window\.confirm/);
     assert.match(advertiserViewer, /isContractSignedOrClosed/);
     assert.match(influencerViewer, /!isContractSignedOrClosed/);

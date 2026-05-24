@@ -1306,6 +1306,9 @@ const restoreLegacyContractFromSupabase = (
   };
 };
 
+const toLegacySupabaseStatus = (status: Contract["status"]) =>
+  status === "CLOSED" ? "SIGNED" : status;
+
 const toSupabaseRow = (contract: Contract): SupabaseContractRow => {
   const normalizedContract = normalizeContract(contract);
   const protectedContract = protectLegacyContractForSupabase(normalizedContract);
@@ -1316,7 +1319,7 @@ const toSupabaseRow = (contract: Contract): SupabaseContractRow => {
     campaign_name: normalizedContract.campaign_name ?? normalizedContract.title,
     post_link: normalizedContract.post_link ?? null,
     title: normalizedContract.title,
-    status: normalizedContract.status,
+    status: toLegacySupabaseStatus(normalizedContract.status),
     influencer_name: normalizedContract.influencer_info?.name,
     share_token:
       encryptShareTokenForLegacyStore(normalizedContract.evidence?.share_token) ??

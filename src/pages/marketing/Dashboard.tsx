@@ -78,7 +78,14 @@ type CampaignStatusAction = Extract<MarketplaceCampaignStatus, "open" | "closed"
 type DetailProgressFilter = "ALL" | "UPLOAD_DONE" | "SIGNED_DONE" | "SIGN_PENDING";
 type DetailDeadlineFilter = "ALL" | "OVERDUE" | "THIS_WEEK" | "LATER" | "NO_DATE";
 type DetailPostLinkFilter = "ALL" | "SUBMITTED" | "NOT_SUBMITTED";
-type SortKey = "updated" | "platform" | "type" | "title" | "amount" | "status";
+type SortKey =
+  | "updated"
+  | "platform"
+  | "type"
+  | "title"
+  | "amount"
+  | "deadline"
+  | "status";
 type SortDirection = "asc" | "desc";
 type ContractSort = {
   key: SortKey;
@@ -386,11 +393,20 @@ export function Dashboard() {
   const [query, setQuery] = useState("");
   const [campaignPlatformFilter, setCampaignPlatformFilter] =
     useState<PlatformFilter>("ALL");
-  const [campaignBrandFilter, setCampaignBrandFilter] = useState("ALL");
-  const [campaignParticipantFilter, setCampaignParticipantFilter] =
+  const [campaignBrandFilter, _setCampaignBrandFilter] = useState("ALL");
+  const [campaignParticipantFilter, _setCampaignParticipantFilter] =
     useState<CampaignParticipantFilter>("ALL");
   const [campaignLifecycleFilter, setCampaignLifecycleFilter] =
     useState<CampaignLifecycle>("RECRUITING");
+  const [contractTypeFilter, setContractTypeFilter] =
+    useState<ContractTypeFilter>("ALL");
+  const [amountFilter, setAmountFilter] = useState<AmountFilter>("ALL");
+  const [detailStatusFilter, setDetailStatusFilter] =
+    useState<DetailStatusFilter>("ALL");
+  const [contractSort, setContractSort] = useState<ContractSort>({
+    key: "updated",
+    direction: "desc",
+  });
   const [marketplaceState, setMarketplaceState] =
     useState<MarketplaceDashboardState>({
       status: "loading",
@@ -406,10 +422,6 @@ export function Dashboard() {
   } = useMarketplaceMessageSummary("advertiser");
   const advertiserVerificationStatus =
     verificationSummary?.advertiser.status ?? "not_submitted";
-  const readinessBadge = getAdvertiserReadinessBadge(
-    advertiserVerificationStatus,
-    isVerificationLoading,
-  );
   const advertiserAccount = useMemo<AdvertiserAccountSummary>(() => {
     const advertiser = verificationSummary?.advertiser;
     const latest = advertiser?.latest_request;
@@ -524,11 +536,11 @@ export function Dashboard() {
       marketplaceState.threads,
     ],
   );
-  const campaignTabCounts = useMemo(
+  const _campaignTabCounts = useMemo(
     () => getCampaignLifecycleCounts(campaignGroups),
     [campaignGroups],
   );
-  const campaignBrandOptions = useMemo<FilterOption[]>(() => {
+  const _campaignBrandOptions = useMemo<FilterOption[]>(() => {
     const brands = Array.from(
       new Set(campaignGroups.flatMap((campaign) => campaign.brands)),
     ).sort(compareText);
@@ -538,7 +550,7 @@ export function Dashboard() {
       ...brands.map((brand) => ({ value: brand, label: brand })),
     ];
   }, [campaignGroups]);
-  const filteredCampaigns = useMemo(() => {
+  const _filteredCampaigns = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
 
     return campaignGroups.filter((campaign) =>
@@ -559,8 +571,49 @@ export function Dashboard() {
     campaignPlatformFilter,
     query,
   ]);
+  const dashboardContracts = useMemo(
+    () => collapseInternalDuplicateContracts(contracts, getDashboardContractCollapseKey),
+    [contracts],
+  );
+  const contractLifecycleCounts = useMemo(
+    () => getContractLifecycleCounts(dashboardContracts),
+    [dashboardContracts],
+  );
+  const visibleContracts = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+
+    return dashboardContracts
+      .filter(
+        (contract) =>
+          getDashboardContractLifecycle(contract) === campaignLifecycleFilter &&
+          matchesContractDashboardQuery(contract, normalizedQuery) &&
+          (campaignPlatformFilter === "ALL" ||
+            getContractPlatforms(contract).includes(campaignPlatformFilter)) &&
+          (contractTypeFilter === "ALL" || contract.type === contractTypeFilter) &&
+          (amountFilter === "ALL" ||
+            getAmountFilterKind(contract.campaign?.budget) === amountFilter) &&
+          (detailStatusFilter === "ALL" || contract.status === detailStatusFilter),
+      )
+      .sort((a, b) => _compareContractsBySort(a, b, contractSort));
+  }, [
+    amountFilter,
+    campaignLifecycleFilter,
+    campaignPlatformFilter,
+    contractSort,
+    contractTypeFilter,
+    dashboardContracts,
+    detailStatusFilter,
+    query,
+  ]);
+  const handleContractSortChange = useCallback((key: SortKey) => {
+    setContractSort((current) => ({
+      key,
+      direction:
+        current.key === key && current.direction === "asc" ? "desc" : "asc",
+    }));
+  }, []);
   const selectedCampaignKey = searchParams.get("campaign") ?? undefined;
-  const selectedCampaign = selectedCampaignKey
+  const _selectedCampaign = selectedCampaignKey
     ? campaignGroups.find((campaign) => campaign.key === selectedCampaignKey)
     : undefined;
   const openContract = (contract: Contract) =>
@@ -573,10 +626,10 @@ export function Dashboard() {
       return next;
     });
   };
-  const openCampaign = (campaign: CampaignGroup) =>
+  const _openCampaign = (campaign: CampaignGroup) =>
     setCampaignQueryParam(campaign.key);
-  const closeCampaign = () => setCampaignQueryParam();
-  const updateCampaignStatus = useCallback(
+  const _closeCampaign = () => setCampaignQueryParam();
+  const _updateCampaignStatus = useCallback(
     async (campaign: CampaignGroup, status: CampaignStatusAction) => {
       if (!campaign.campaignId) {
         throw new Error("저장된 캠페인 ID가 없어 상태를 변경할 수 없습니다.");
@@ -618,7 +671,7 @@ export function Dashboard() {
     },
     [navigate],
   );
-  const acceptCampaignApplication = useCallback(
+  const _acceptCampaignApplication = useCallback(
     async (thread: MarketplaceMessageThread) => {
       const response = await apiFetch(
         `/api/advertiser/marketplace/proposals/${encodeURIComponent(thread.id)}/accept`,
@@ -650,7 +703,6 @@ export function Dashboard() {
     },
     [navigate],
   );
-  const visibleCampaigns = filteredCampaigns;
   const handleLogout = async () => {
     try {
       await apiFetch("/api/advertiser/logout", {
@@ -764,11 +816,6 @@ export function Dashboard() {
                   계약 운영 대시보드
                 </h1>
               </div>
-              <span
-                className={`inline-flex h-7 items-center rounded-[8px] px-2.5 text-[12px] font-semibold ${readinessBadge.className}`}
-              >
-                {readinessBadge.label}
-              </span>
             </div>
           </div>
 
@@ -784,29 +831,30 @@ export function Dashboard() {
           <div className="min-w-0 p-2 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
             {syncError && <SyncErrorPanel message={syncError} />}
 
-            <CampaignDashboard
-              campaigns={visibleCampaigns}
-              totalContracts={contracts.length}
+            <ContractTable
               lifecycleFilter={campaignLifecycleFilter}
-              onLifecycleFilterChange={setCampaignLifecycleFilter}
-              lifecycleCounts={campaignTabCounts}
+              lifecycleTabs={
+                <CampaignLifecycleTabs
+                  value={campaignLifecycleFilter}
+                  counts={contractLifecycleCounts}
+                  onChange={setCampaignLifecycleFilter}
+                />
+              }
+              contracts={visibleContracts}
+              totalContracts={dashboardContracts.length}
               query={query}
               onQueryChange={setQuery}
               platformFilter={campaignPlatformFilter}
               onPlatformFilterChange={setCampaignPlatformFilter}
-              brandFilter={campaignBrandFilter}
-              onBrandFilterChange={setCampaignBrandFilter}
-              brandOptions={campaignBrandOptions}
-              participantFilter={campaignParticipantFilter}
-              onParticipantFilterChange={setCampaignParticipantFilter}
-              selectedCampaign={selectedCampaign}
-              onOpenCampaign={openCampaign}
-              onBack={closeCampaign}
-              onOpenContract={openContract}
-              onAcceptApplication={acceptCampaignApplication}
-              onUpdateCampaignStatus={updateCampaignStatus}
-              marketplaceStatus={marketplaceState.status}
-              marketplaceError={marketplaceState.error}
+              contractTypeFilter={contractTypeFilter}
+              onContractTypeFilterChange={setContractTypeFilter}
+              amountFilter={amountFilter}
+              onAmountFilterChange={setAmountFilter}
+              detailStatusFilter={detailStatusFilter}
+              onDetailStatusFilterChange={setDetailStatusFilter}
+              sortState={contractSort}
+              onSortChange={handleContractSortChange}
+              onOpen={openContract}
             />
           </div>
         </section>
@@ -1118,39 +1166,6 @@ function formatPlatformFilterLabel(platform: PlatformFilter) {
   return PLATFORM_META[platform].shortLabel;
 }
 
-function getAdvertiserReadinessBadge(
-  status: VerificationStatus,
-  isLoading: boolean,
-) {
-  if (isLoading) {
-    return {
-      label: "상태 확인 중",
-      className: "bg-neutral-100 text-neutral-600",
-    };
-  }
-
-  const badges: Record<VerificationStatus, { label: string; className: string }> = {
-    approved: {
-      label: "공유 가능",
-      className: "bg-[#eef0ed] text-[#303630]",
-    },
-    pending: {
-      label: "검수 중",
-      className: "bg-amber-50 text-amber-800",
-    },
-    rejected: {
-      label: "재제출 필요",
-      className: "bg-rose-50 text-rose-700",
-    },
-    not_submitted: {
-      label: "인증 제출 필요",
-      className: "bg-amber-50 text-amber-800",
-    },
-  };
-
-  return badges[status];
-}
-
 function getAdvertiserVerificationBannerCopy(
   status: VerificationStatus,
   isLoading: boolean,
@@ -1199,7 +1214,7 @@ function getAdvertiserVerificationBannerCopy(
   return copies[status];
 }
 
-function CampaignDashboard({
+function _CampaignDashboard({
   campaigns,
   totalContracts,
   lifecycleFilter,
@@ -1321,7 +1336,6 @@ function CampaignListView({
     value: platform,
     label: formatPlatformFilterLabel(platform),
   }));
-  const actionMetrics = getDashboardActionMetrics(campaigns);
   const dateColumnLabel = lifecycleFilter === "ENDED" ? "종료일" : "마감일";
   const activeFilters = [
     platformFilter !== "ALL"
@@ -1371,12 +1385,11 @@ function CampaignListView({
         counts={lifecycleCounts}
         onChange={onLifecycleFilterChange}
       />
-      <DashboardActionStrip metrics={actionMetrics} />
       <div className="border-b border-[#d9e0d9] bg-[#fbfbf8]">
         <div className="flex min-h-11 items-center justify-between gap-3 px-3 py-2">
           <div className="min-w-0">
             <p className="truncate text-[14px] font-extrabold leading-5 text-[#171a17]">
-              캠페인 목록
+              계약 목록
             </p>
             <p className="mt-0.5 truncate text-[11px] font-semibold text-[#606861]">
               {campaigns.length.toLocaleString("ko-KR")}건 표시 · {filterSummary}
@@ -1459,7 +1472,7 @@ function CampaignTableHeaderRow({
     <div className="hidden border-b border-[#e3e8e3] bg-[#fbfbf8] px-3 py-2 lg:grid lg:grid-cols-[minmax(104px,0.2fr)_minmax(82px,0.14fr)_minmax(250px,0.78fr)_minmax(160px,0.4fr)_minmax(132px,0.32fr)_minmax(104px,0.23fr)] lg:items-center lg:gap-2">
       <ColumnHeader label="플랫폼" />
       <ColumnHeader label="브랜드" />
-      <ColumnHeader label="캠페인명" />
+      <ColumnHeader label="계약명" />
       <ColumnHeader label="지급내용" />
       <ColumnHeader label="진도율" />
       <ColumnHeader label={dateColumnLabel} />
@@ -1541,33 +1554,12 @@ function DashboardFilterToggleButton({
   );
 }
 
-function DashboardActionStrip({
-  metrics,
+function _DashboardActionStrip({
+  metrics: _metrics,
 }: {
   metrics: DashboardActionMetric[];
 }) {
-  if (metrics.length === 0) return null;
-
-  return (
-    <div className="flex min-h-10 items-center gap-2 overflow-x-auto border-b border-[#d9e0d9] bg-white px-3 py-2">
-      <span className="shrink-0 text-[11px] font-extrabold text-[#7d857f]">
-        처리 필요
-      </span>
-      {metrics.map((metric) => (
-        <div
-          key={metric.id}
-          className={`inline-flex h-8 min-w-0 shrink-0 items-center gap-2 rounded-[7px] border px-2.5 ${getCampaignAlertToneClass(metric.tone)}`}
-        >
-          <p className="max-w-[150px] truncate text-[11px] font-extrabold">
-            {metric.label}
-          </p>
-          <p className="shrink-0 text-[14px] font-black tabular-nums">
-            {metric.value.toLocaleString("ko-KR")}
-          </p>
-        </div>
-      ))}
-    </div>
-  );
+  return null;
 }
 
 function CampaignLifecycleTabs({
@@ -1581,7 +1573,7 @@ function CampaignLifecycleTabs({
 }) {
   return (
     <div className="border-b border-[#d9e0d9] bg-[#ecebe5] px-2 pt-2">
-      <div className="flex min-w-0 items-end gap-0.5 overflow-x-auto">
+      <div className="flex min-w-0 items-end gap-1 overflow-x-auto">
         {CAMPAIGN_LIFECYCLE_TABS.map((tab) => {
           const active = value === tab.value;
           return (
@@ -1590,10 +1582,10 @@ function CampaignLifecycleTabs({
               type="button"
               onClick={() => onChange(tab.value)}
               aria-pressed={active}
-              className={`relative flex h-9 min-w-[128px] flex-1 items-center justify-between gap-2 rounded-t-[10px] border px-3 text-left transition focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-neutral-950 ${
+              className={`relative flex h-10 min-w-[128px] flex-1 items-center justify-between gap-2 rounded-t-[10px] border px-3 text-left transition focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-neutral-950 ${
                 active
                   ? "z-10 -mb-px border-[#d9e0d9] border-b-white bg-white pb-px text-[#171a17] shadow-[0_-1px_0_rgba(255,255,255,0.9)_inset]"
-                  : "mb-0.5 border-transparent bg-transparent text-[#59605b] hover:bg-[#f5f4ee] hover:text-[#171a17]"
+                  : "mb-1 border-transparent bg-[#e5e3dc] text-[#59605b] hover:bg-[#f5f4ee] hover:text-[#171a17]"
               }`}
             >
               <span className="truncate text-[13px] font-extrabold">
@@ -1619,8 +1611,8 @@ function CampaignLifecycleTabs({
 function CampaignSearch({
   value,
   onChange,
-  label = "캠페인명",
-  placeholder = "캠페인명으로 검색",
+  label = "계약명",
+  placeholder = "계약명으로 검색",
   ariaLabel,
   compact = false,
 }: {
@@ -1838,7 +1830,7 @@ function CampaignDetailView({
           className="mb-3 inline-flex h-8 items-center gap-1.5 rounded-[7px] border border-[#d9e0d9] bg-white px-2.5 text-[12px] font-extrabold text-[#303630] transition hover:border-[#cbd5cc]"
         >
           <ArrowLeft className="h-3.5 w-3.5" strokeWidth={2} />
-          캠페인 목록
+          계약 목록
         </button>
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_260px] lg:items-end">
           <div className="min-w-0">
@@ -2395,8 +2387,9 @@ function CampaignInfluencerRow({
   );
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function ContractTable({
+  lifecycleFilter,
+  lifecycleTabs,
   contracts,
   totalContracts,
   query,
@@ -2413,6 +2406,8 @@ function ContractTable({
   onSortChange,
   onOpen,
 }: {
+  lifecycleFilter: CampaignLifecycle;
+  lifecycleTabs?: React.ReactNode;
   contracts: Contract[];
   totalContracts: number;
   query: string;
@@ -2497,9 +2492,11 @@ function ContractTable({
     contracts,
     getDashboardContractCollapseKey,
   );
+  const dateColumnLabel = lifecycleFilter === "ENDED" ? "종료일" : "마감일";
 
   return (
     <section className="overflow-hidden rounded-[8px] border border-[#d9e0d9] bg-white lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+      {lifecycleTabs}
       <div className="border-b border-[#d9e0d9] bg-[#fbfcfa]">
         <div className="flex min-h-11 items-center justify-between gap-3 px-3 py-2">
           <div className="min-w-0">
@@ -2555,7 +2552,7 @@ function ContractTable({
               compact
             />
             <TableFilterSelect
-              label="금액"
+              label="지급내용"
               value={amountFilter}
               options={amountOptions}
               onChange={(value) => onAmountFilterChange(value as AmountFilter)}
@@ -2571,7 +2568,11 @@ function ContractTable({
           </div>
         ) : null}
       </div>
-      <ContractTableHeaderRow sortState={sortState} onSortChange={onSortChange} />
+      <ContractTableHeaderRow
+        dateColumnLabel={dateColumnLabel}
+        sortState={sortState}
+        onSortChange={onSortChange}
+      />
 
       <div className="max-h-[620px] divide-y divide-[#edf1ed] overflow-y-auto lg:max-h-none lg:min-h-0 lg:flex-1">
         {displayContracts.length > 0 ? (
@@ -2579,6 +2580,7 @@ function ContractTable({
             <React.Fragment key={contract.id}>
               <ContractRow
                 contract={contract}
+                lifecycleFilter={lifecycleFilter}
                 onOpen={() => onOpen(contract)}
               />
             </React.Fragment>
@@ -2592,14 +2594,16 @@ function ContractTable({
 }
 
 function ContractTableHeaderRow({
+  dateColumnLabel,
   sortState,
   onSortChange,
 }: {
+  dateColumnLabel: string;
   sortState: ContractSort;
   onSortChange: (key: SortKey) => void;
 }) {
   return (
-    <div className="hidden border-b border-[#e3e8e3] bg-white px-3 py-2 lg:grid lg:grid-cols-[minmax(155px,0.46fr)_minmax(120px,0.36fr)_minmax(320px,1fr)_minmax(145px,0.42fr)_minmax(124px,0.36fr)] lg:items-center lg:gap-2">
+    <div className="hidden border-b border-[#e3e8e3] bg-white px-3 py-2 lg:grid lg:grid-cols-[minmax(132px,0.34fr)_minmax(108px,0.26fr)_minmax(300px,1fr)_minmax(132px,0.34fr)_minmax(146px,0.38fr)_minmax(112px,0.3fr)] lg:items-center lg:gap-2">
       <ColumnHeader
         label="플랫폼"
         sortKey="platform"
@@ -2619,8 +2623,14 @@ function ContractTableHeaderRow({
         onSortChange={onSortChange}
       />
       <ColumnHeader
-        label="금액"
+        label="지급내용"
         sortKey="amount"
+        sortState={sortState}
+        onSortChange={onSortChange}
+      />
+      <ColumnHeader
+        label={dateColumnLabel}
+        sortKey="deadline"
         sortState={sortState}
         onSortChange={onSortChange}
       />
@@ -2741,9 +2751,17 @@ function ColumnHeader({
   sortState?: ContractSort;
   onSortChange?: (key: SortKey) => void;
 }) {
+  const active = Boolean(sortKey && sortState?.key === sortKey);
+
   return (
-    <div className="flex h-6 items-center gap-1">
-      <span className="block text-[11px] font-extrabold text-[#606861]">{label}</span>
+    <div className="flex h-6 min-w-0 items-center gap-1">
+      <span
+        className={`block truncate text-[11px] font-extrabold ${
+          active ? "text-[#171a17]" : "text-[#606861]"
+        }`}
+      >
+        {label}
+      </span>
       {sortKey && sortState && onSortChange ? (
         <SortButton
           label={label}
@@ -2782,7 +2800,7 @@ function SortButton({
       onClick={() => onSortChange(sortKey)}
       aria-label={`${label} ${nextDirection} 정렬`}
       title={`${label} ${nextDirection} 정렬`}
-      className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[6px] transition-colors ${
+      className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] transition-colors ${
         active
           ? "bg-[#171a17] text-white"
           : "text-[#9aa39d] hover:bg-[#eef0ed] hover:text-[#303630]"
@@ -2795,19 +2813,22 @@ function SortButton({
 
 function ContractRow({
   contract,
+  lifecycleFilter,
   onOpen,
 }: {
   contract: Contract;
+  lifecycleFilter: CampaignLifecycle;
   onOpen: () => void;
 }) {
   const typeLabel = formatContractTypeLabel(contract.type);
   const amountLabel = formatDashboardAmountLabel(contract.campaign?.budget);
+  const dateLabel = formatDashboardContractDateLabel(contract, lifecycleFilter);
 
   return (
     <button
       type="button"
       onClick={onOpen}
-      className="group grid w-full gap-2 px-3 py-2 text-left transition-colors hover:bg-[#f8faf7] lg:min-h-[38px] lg:grid-cols-[minmax(155px,0.46fr)_minmax(120px,0.36fr)_minmax(320px,1fr)_minmax(145px,0.42fr)_minmax(124px,0.36fr)] lg:items-center lg:py-1.5"
+      className="group grid w-full gap-2 px-3 py-2 text-left transition-colors hover:bg-[#f8faf7] lg:min-h-[38px] lg:grid-cols-[minmax(132px,0.34fr)_minmax(108px,0.26fr)_minmax(300px,1fr)_minmax(132px,0.34fr)_minmax(146px,0.38fr)_minmax(112px,0.3fr)] lg:items-center lg:py-1.5"
     >
       <div className="flex min-w-0 items-center justify-between gap-2 lg:block">
         <PlatformPills contract={contract} />
@@ -2827,12 +2848,18 @@ function ContractRow({
           {formatDashboardContractTitle(contract.title)}
         </p>
         <p className="mt-1 min-w-0 truncate text-[11px] font-semibold text-[#606861] lg:hidden">
-          {typeLabel} · {amountLabel}
+          {typeLabel} · {amountLabel} · {dateLabel}
         </p>
       </div>
 
       <div className="hidden min-w-0 lg:block">
         <AmountCell value={contract.campaign?.budget} />
+      </div>
+
+      <div className="hidden min-w-0 lg:block">
+        <p className="truncate text-[12px] font-semibold tabular-nums text-[#303630]">
+          {dateLabel}
+        </p>
       </div>
 
       <StatusTiming contract={contract} />
@@ -2991,6 +3018,12 @@ function _compareContractsBySort(a: Contract, b: Contract, sort: ContractSort) {
     case "amount":
       result = compareAmountValues(a.campaign?.budget, b.campaign?.budget);
       break;
+    case "deadline":
+      result = compareOptionalDateValues(
+        getDashboardContractDateValue(a, getDashboardContractLifecycle(a)),
+        getDashboardContractDateValue(b, getDashboardContractLifecycle(b)),
+      );
+      break;
     case "status":
       result = STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status);
       break;
@@ -3034,6 +3067,18 @@ function compareAmountValues(a?: string | null, b?: string | null) {
   if (Number.isFinite(amountA.value)) return -1;
   if (Number.isFinite(amountB.value)) return 1;
   return compareText(amountA.label, amountB.label);
+}
+
+function compareOptionalDateValues(a?: string, b?: string) {
+  const timeA = a ? new Date(a).getTime() : Number.NaN;
+  const timeB = b ? new Date(b).getTime() : Number.NaN;
+  const validA = Number.isFinite(timeA);
+  const validB = Number.isFinite(timeB);
+
+  if (!validA && !validB) return 0;
+  if (!validA) return 1;
+  if (!validB) return -1;
+  return timeA - timeB;
 }
 
 function getAmountSortMeta(value?: string | null) {
@@ -3114,6 +3159,44 @@ function getDashboardContractCollapseKey(contract: Contract) {
   ].join("|");
 }
 
+function getContractLifecycleCounts(contracts: Contract[]) {
+  return contracts.reduce<Record<CampaignLifecycle, number>>(
+    (counts, contract) => {
+      counts[getDashboardContractLifecycle(contract)] += 1;
+      return counts;
+    },
+    { RECRUITING: 0, IN_PROGRESS: 0, ENDED: 0 },
+  );
+}
+
+function getDashboardContractLifecycle(contract: Contract): CampaignLifecycle {
+  if (contract.status === "CLOSED") return "ENDED";
+  if (contract.status === "APPROVED" || contract.status === "SIGNED") {
+    return "IN_PROGRESS";
+  }
+  return "RECRUITING";
+}
+
+function matchesContractDashboardQuery(contract: Contract, normalizedQuery: string) {
+  if (!normalizedQuery) return true;
+
+  const haystack = [
+    formatDashboardContractTitle(contract.title),
+    contract.campaign_name,
+    contract.influencer_info.name,
+    contract.advertiser_info?.name,
+    contract.advertiser_trust?.business_name,
+    formatContractTypeLabel(contract.type),
+    formatDashboardAmountLabel(contract.campaign?.budget),
+    ...getContractPlatforms(contract).map((platform) => PLATFORM_META[platform].label),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return haystack.includes(normalizedQuery);
+}
+
 function matchesCampaignParticipantFilter(
   campaign: CampaignGroup,
   filter: CampaignParticipantFilter,
@@ -3138,7 +3221,7 @@ function getContractBrandName(contract: Contract) {
 function getContractCampaignName(contract: Contract) {
   const displayTitle = formatContractTitleForDisplay(
     (contract.campaign_name ?? contract.title).replace(/^\[[^\]]+\]\s*/, "").trim(),
-    "캠페인명 미정",
+    "계약명 미정",
   );
 
   return stripCampaignContractSuffix(displayTitle);
@@ -3365,7 +3448,7 @@ function getCampaignListDateLabel(campaign: CampaignGroup) {
       ? getCampaignEndedDateValue(campaign)
       : getCampaignDeadlineValue(campaign);
 
-  return formatCampaignListDate(value);
+  return formatDashboardDateWithDday(value);
 }
 
 function getCampaignDeadlineValue(campaign: CampaignGroup) {
@@ -3408,17 +3491,6 @@ function getCampaignEndedDateValue(campaign: CampaignGroup) {
     contractDates[0] ??
     campaign.latestUpdatedAt
   );
-}
-
-function formatCampaignListDate(value?: string) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-
-  return new Intl.DateTimeFormat("ko-KR", {
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
 }
 
 function getCampaignLifecycle(campaign: CampaignGroup): CampaignLifecycle {
@@ -3474,7 +3546,7 @@ function getCampaignActionCounts(campaign: CampaignGroup) {
   };
 }
 
-function getDashboardActionMetrics(campaigns: CampaignGroup[]): DashboardActionMetric[] {
+function _getDashboardActionMetrics(campaigns: CampaignGroup[]): DashboardActionMetric[] {
   const totals = campaigns.reduce(
     (accumulator, campaign) => {
       const counts = getCampaignActionCounts(campaign);
@@ -4100,21 +4172,71 @@ function getCampaignDeadlineDate(contract: Contract) {
   return Number.isNaN(date.getTime()) ? undefined : date;
 }
 
+function getDashboardContractDateValue(
+  contract: Contract,
+  lifecycle: CampaignLifecycle,
+) {
+  if (lifecycle === "ENDED") {
+    return (
+      contract.signature_data?.signed_at ??
+      contract.campaign?.end_date ??
+      contract.updated_at
+    );
+  }
+
+  return (
+    contract.workflow?.due_at ??
+    contract.campaign?.upload_due_at ??
+    contract.campaign?.deadline ??
+    contract.campaign?.end_date
+  );
+}
+
+function formatDashboardContractDateLabel(
+  contract: Contract,
+  lifecycle: CampaignLifecycle,
+) {
+  return formatDashboardDateWithDday(
+    getDashboardContractDateValue(contract, lifecycle),
+  );
+}
+
 function formatCampaignDeadline(contract: Contract) {
   const value =
     contract.campaign?.upload_due_at ??
     contract.campaign?.deadline ??
     contract.campaign?.end_date;
-  if (!value) return "-";
 
+  return formatDashboardDateWithDday(value);
+}
+
+function formatDashboardDateWithDday(value?: string) {
+  if (!value) return "-";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
 
-  return date.toLocaleDateString("ko-KR", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
+  const dateLabel = [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join(".");
+  const dayDiff = getDayDiffFromToday(date);
+  const dday =
+    dayDiff > 0 ? `D-${dayDiff}` : dayDiff === 0 ? "D-day" : `D+${Math.abs(dayDiff)}`;
+
+  return `${dateLabel} / ${dday}`;
+}
+
+function getDayDiffFromToday(date: Date) {
+  const today = new Date();
+  const todayStart = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate(),
+  );
+  const dateStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+  return Math.round((dateStart.getTime() - todayStart.getTime()) / 86_400_000);
 }
 
 function getDateMs(value?: string) {

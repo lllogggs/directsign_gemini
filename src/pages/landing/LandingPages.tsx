@@ -1,16 +1,20 @@
 import {
   ArrowRight,
+  BookOpen,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
   ClipboardCheck,
-  FileCheck2,
   FileSignature,
   FileText,
+  Instagram,
+  Megaphone,
   MessageSquareText,
+  Music2,
   PenLine,
   Search,
   ShieldCheck,
+  Youtube,
   type LucideIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
@@ -24,10 +28,8 @@ const LANDING_BRAND_NAME = "연락미";
 type RoleCard = {
   role: IntroRole;
   title: string;
-  icon: LucideIcon;
   eyebrow: string;
   description: string;
-  cta: string;
   href: string;
 };
 
@@ -78,20 +80,16 @@ const roleCards: RoleCard[] = [
   {
     role: "advertiser",
     title: "광고주",
-    icon: FileCheck2,
     eyebrow: "계약 링크를 보내고 상태를 확인하는 팀",
     description: "계약별 검토 링크, 수정 요청, 서명, 제출 상태를 봅니다.",
-    cta: "시작하기",
     href: "/intro/advertiser",
   },
   {
     role: "influencer",
     title: "인플루언서",
-    icon: PenLine,
     eyebrow: "받은 광고 조건을 안전하게 확인하는 크리에이터",
     description:
       `${PRODUCT_NAME} 계약 링크에서 조건을 확인하고 수정 요청과 서명을 진행합니다.`,
-    cta: "시작하기",
     href: "/intro/influencer",
   },
 ];
@@ -118,6 +116,71 @@ const roleFeatureKeys: Record<IntroRole, string[]> = {
   advertiser: ["recruiting", "progress", "ended"],
   influencer: ["receive", "terms", "request", "archive"],
 };
+
+function RoleIconCluster({ role }: { role: IntroRole }) {
+  const icons =
+    role === "advertiser"
+      ? [
+          {
+            label: "캠페인",
+            className: "border-blue-200 bg-blue-50 text-blue-700",
+            icon: <Megaphone className="h-3.5 w-3.5" strokeWidth={2.1} />,
+          },
+          {
+            label: "계약서",
+            className: "border-neutral-200 bg-white text-neutral-700",
+            icon: <FileText className="h-3.5 w-3.5" strokeWidth={2.1} />,
+          },
+          {
+            label: "서명",
+            className: "border-amber-200 bg-amber-50 text-amber-700",
+            icon: <FileSignature className="h-3.5 w-3.5" strokeWidth={2.1} />,
+          },
+          {
+            label: "검증",
+            className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+            icon: <ShieldCheck className="h-3.5 w-3.5" strokeWidth={2.1} />,
+          },
+        ]
+      : [
+          {
+            label: "인스타",
+            className: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
+            icon: <Instagram className="h-3.5 w-3.5" strokeWidth={2.1} />,
+          },
+          {
+            label: "유튜브",
+            className: "border-red-200 bg-red-50 text-red-700",
+            icon: <Youtube className="h-3.5 w-3.5" strokeWidth={2.1} />,
+          },
+          {
+            label: "블로그",
+            className: "border-neutral-200 bg-white text-neutral-700",
+            icon: <BookOpen className="h-3.5 w-3.5" strokeWidth={2.1} />,
+          },
+          {
+            label: "틱톡",
+            className: "border-neutral-800 bg-neutral-950 text-white",
+            icon: <Music2 className="h-3.5 w-3.5" strokeWidth={2.1} />,
+          },
+        ];
+
+  return (
+    <span
+      className="inline-flex h-10 items-center gap-1 rounded-[10px] border border-neutral-200 bg-white/85 px-1.5 text-neutral-950 shadow-[0_1px_0_rgba(15,23,42,0.025)]"
+      aria-hidden="true"
+    >
+      {icons.map((item) => (
+        <span
+          key={item.label}
+          className={`flex h-6 w-6 items-center justify-center rounded-[6px] border ${item.className}`}
+        >
+          {item.icon}
+        </span>
+      ))}
+    </span>
+  );
+}
 
 
 type RolePreviewProfile = {
@@ -250,7 +313,7 @@ const roleIntroSlides = {
         targetLabel: "계약 대상",
         targetName: "소라핏 · Instagram/TikTok",
         fields: [
-          { label: "계약명", value: "러닝 챌린지 릴스 캠페인" },
+          { label: "계약명", value: "러닝 챌린지 릴스 계약" },
           { label: "플랫폼", value: "Instagram · TikTok" },
           { label: "금액", value: "320만원" },
           { label: "기간", value: "2026.06.01-06.20" },
@@ -318,7 +381,7 @@ const roleIntroSlides = {
         rows: [
           {
             name: "소라핏",
-            title: "러닝 챌린지 릴스 캠페인",
+            title: "러닝 챌린지 릴스 계약",
             status: "검토 링크 발송",
             statusClass: "bg-blue-50 text-blue-700",
             due: "오늘 18:00",
@@ -547,7 +610,7 @@ const advertiserPreviewSlides: AdvertiserPreviewSlide[] = [
     tabMeta: "초안",
     accentClass: "bg-blue-600",
     fields: [
-      { label: "캠페인명", value: "신제품 언박싱 릴스" },
+      { label: "계약명", value: "신제품 언박싱 계약" },
       { label: "계약 유형", value: "제품 협찬 + 제작비" },
       { label: "금액", value: "2,800,000원" },
       { label: "업로드", value: "6월 12일 18:00" },
@@ -897,7 +960,6 @@ export function StartPage() {
               {roleCards.map((role) => {
                 const tone = getStartRoleTone(role.role);
                 const isAdvertiser = role.role === "advertiser";
-                const RoleIcon = role.icon;
                 const detail = isAdvertiser
                   ? "계약 작성 · 전자서명 완료 · 검수"
                   : "계약 확인 · 전자서명 완료 · 제출";
@@ -906,16 +968,11 @@ export function StartPage() {
                   <Link
                     key={role.role}
                     to={role.href}
-                    aria-label={`시작하기 (${role.title})`}
-                    className={`yl-card group flex min-h-[148px] flex-col justify-between border px-5 py-5 text-left transition hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:min-h-[168px] sm:px-5 sm:py-5 lg:min-h-[172px] ${tone.card}`}
+                    aria-label={`${role.title} 선택`}
+                    className={`yl-card group flex min-h-[132px] flex-col justify-between border px-5 py-5 text-left transition hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:min-h-[150px] sm:px-5 sm:py-5 lg:min-h-[154px] ${tone.card}`}
                   >
                     <span className="block">
-                      <span
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-[10px] border border-neutral-200 bg-white/80 text-neutral-950 shadow-[0_1px_0_rgba(15,23,42,0.025)] sm:h-10 sm:w-10"
-                        aria-hidden="true"
-                      >
-                        <RoleIcon className="h-5 w-5" strokeWidth={2.2} />
-                      </span>
+                      <RoleIconCluster role={role.role} />
                       <strong className="font-neo-heavy mt-3 block text-[29px] leading-none tracking-normal text-neutral-950 sm:text-[33px]">
                         {role.title}
                       </strong>
@@ -923,10 +980,6 @@ export function StartPage() {
                     <span className="block">
                       <span className={`mt-3 block border-t pt-3 text-[12px] font-bold tracking-normal sm:mt-3.5 sm:pt-3.5 ${tone.divider} ${tone.detail}`}>
                         {detail}
-                      </span>
-                      <span className={`mt-3 inline-flex items-center gap-1.5 text-[12px] font-extrabold tracking-normal ${tone.detail}`}>
-                        {role.cta}
-                        <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5" />
                       </span>
                     </span>
                   </Link>
@@ -1567,18 +1620,13 @@ type IntroDashboardTab = {
   count: number;
 };
 
-type IntroDashboardAction = {
-  label: string;
-  value: string;
-  tone: "amber" | "blue" | "neutral";
-};
-
 type IntroDashboardState = {
   activeTab: string;
   tabs: IntroDashboardTab[];
-  actions?: IntroDashboardAction[];
   itemCount: number;
   rows: IntroAdvertiserCampaignRow[];
+  secondaryColumnLabel?: string;
+  paymentColumnLabel?: string;
   metricColumnLabel: string;
   dateColumnLabel: string;
   emptyTitle: string;
@@ -1595,12 +1643,13 @@ const introDashboardDemoData = {
         activeTab: "모집중",
         tabs: [
           { label: "모집중", count: 2 },
-          { label: "진행중", count: 8 },
-          { label: "종료", count: 0 },
+          { label: "진행중", count: 3 },
+          { label: "종료", count: 2 },
         ],
-        actions: [{ label: "새 지원", value: "1", tone: "amber" }],
         itemCount: 2,
-        metricColumnLabel: "진도율",
+        secondaryColumnLabel: "종류",
+        paymentColumnLabel: "지급내용",
+        metricColumnLabel: "현 단계",
         dateColumnLabel: "마감일",
         emptyTitle: "조건에 맞는 계약이 없습니다",
         emptyMessage: "검색어를 줄이거나 전체로 바꿔보세요.",
@@ -1608,22 +1657,20 @@ const introDashboardDemoData = {
           {
             platform: "인스타 외 1",
             platformClass: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
-            brand: "브레드룸",
-            title: "브레드룸 여름 루틴 캠페인",
+            brand: "협찬",
+            title: "민서홈 릴스 협찬 계약",
             payment: "-",
-            metric: "1/미정",
-            metricPercent: 12,
-            date: "-",
+            metric: "검토 대기",
+            date: "2026.05.29 / D-5",
           },
           {
             platform: "인스타 외 1",
             platformClass: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
-            brand: "브레드룸",
-            title: "브레드룸 제안 캠페인",
+            brand: "공동구매",
+            title: "루나데이 공동구매 계약",
             payment: "-",
-            metric: "1/미정",
-            metricPercent: 12,
-            date: "-",
+            metric: "초안 작성",
+            date: "2026.05.31 / D-7",
           },
         ],
       },
@@ -1631,16 +1678,13 @@ const introDashboardDemoData = {
         activeTab: "진행중",
         tabs: [
           { label: "모집중", count: 2 },
-          { label: "진행중", count: 8 },
-          { label: "종료", count: 0 },
+          { label: "진행중", count: 3 },
+          { label: "종료", count: 2 },
         ],
-        actions: [
-          { label: "수정 요청", value: "1", tone: "amber" },
-          { label: "마감 임박", value: "3", tone: "blue" },
-          { label: "계약 초안", value: "2", tone: "neutral" },
-        ],
-        itemCount: 8,
-        metricColumnLabel: "진도율",
+        itemCount: 3,
+        secondaryColumnLabel: "종류",
+        paymentColumnLabel: "지급내용",
+        metricColumnLabel: "현 단계",
         dateColumnLabel: "마감일",
         emptyTitle: "조건에 맞는 계약이 없습니다",
         emptyMessage: "검색어를 줄이거나 전체로 바꿔보세요.",
@@ -1648,32 +1692,32 @@ const introDashboardDemoData = {
           {
             platform: "블로그",
             platformClass: "border-emerald-200 bg-emerald-50 text-emerald-700",
-            brand: "브레드룸",
-            title: "브레드룸 공동구매 파일럿",
+            brand: "공동구매",
+            title: "지유로그 공동구매 계약",
             payment: "수수료 18%",
-            metric: "1/10",
-            metricPercent: 10,
-            date: "05. 28.",
+            metric: "서명 완료",
+            metricPercent: 70,
+            date: "2026.05.28 / D-4",
           },
           {
             platform: "유튜브",
             platformClass: "border-rose-200 bg-rose-50 text-rose-700",
-            brand: "브레드룸",
-            title: "나이트 케어 쇼츠 패키지",
+            brand: "PPL",
+            title: "하루핏 쇼츠 PPL 계약",
             payment: "2,800,000원",
-            metric: "1/2",
+            metric: "검수 대기",
             metricPercent: 50,
-            date: "05. 27.",
+            date: "2026.05.27 / D-3",
           },
           {
             platform: "인스타",
             platformClass: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
-            brand: "브레드룸",
-            title: "브레드룸 여름 루틴 캠페인",
+            brand: "협찬",
+            title: "성수 팝업 릴스 계약",
             payment: "900,000원 + 제품 제공",
-            metric: "1/6",
-            metricPercent: 17,
-            date: "05. 26.",
+            metric: "콘텐츠 제출",
+            metricPercent: 85,
+            date: "2026.05.26 / D-2",
           },
         ],
       },
@@ -1681,15 +1725,38 @@ const introDashboardDemoData = {
         activeTab: "종료",
         tabs: [
           { label: "모집중", count: 2 },
-          { label: "진행중", count: 8 },
-          { label: "종료", count: 0 },
+          { label: "진행중", count: 3 },
+          { label: "종료", count: 2 },
         ],
-        itemCount: 0,
-        metricColumnLabel: "진도율",
+        itemCount: 2,
+        secondaryColumnLabel: "종류",
+        paymentColumnLabel: "지급내용",
+        metricColumnLabel: "현 단계",
         dateColumnLabel: "종료일",
         emptyTitle: "조건에 맞는 계약이 없습니다",
         emptyMessage: "검색어를 줄이거나 전체로 바꿔보세요.",
-        rows: [],
+        rows: [
+          {
+            platform: "인스타",
+            platformClass: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
+            brand: "협찬",
+            title: "오브레 릴스 캠페인 정산 완료",
+            payment: "1,800,000원",
+            metric: "보관 완료",
+            metricPercent: 100,
+            date: "2026.05.21 / D+3",
+          },
+          {
+            platform: "블로그",
+            platformClass: "border-emerald-200 bg-emerald-50 text-emerald-700",
+            brand: "공동구매",
+            title: "브루잉랩 공동구매 계약 종료",
+            payment: "수수료 18%",
+            metric: "검수 완료",
+            metricPercent: 100,
+            date: "2026.05.19 / D+5",
+          },
+        ],
       },
     ],
     rows: [
@@ -1698,7 +1765,7 @@ const introDashboardDemoData = {
         platformClass: "border-pink-200 bg-pink-50 text-pink-700",
         kind: "협찬",
         party: "민서홈",
-        title: "오브레 비건 선크림 릴스 캠페인",
+        title: "오브레 비건 선크림 릴스 계약",
         amount: "180만원",
         status: "검토 필요",
         statusClass: "border-amber-200 bg-amber-50 text-amber-800",
@@ -1710,7 +1777,7 @@ const introDashboardDemoData = {
         platformClass: "border-pink-200 bg-pink-50 text-pink-700",
         kind: "협찬",
         party: "루나데이",
-        title: "오브레 비건 선크림 릴스 캠페인",
+        title: "오브레 비건 선크림 릴스 계약",
         amount: "180만원",
         status: "수정 요청",
         statusClass: "border-amber-200 bg-amber-50 text-amber-800",
@@ -1753,33 +1820,33 @@ const introDashboardDemoData = {
         activeTab: "지원중",
         tabs: [
           { label: "지원중", count: 2 },
-          { label: "진행중", count: 7 },
-          { label: "완료", count: 0 },
-          { label: "미선정", count: 0 },
+          { label: "진행중", count: 3 },
+          { label: "완료", count: 1 },
+          { label: "미선정", count: 1 },
         ],
         itemCount: 2,
         metricColumnLabel: "내 상태",
         dateColumnLabel: "응답기한",
-        emptyTitle: "조건에 맞는 캠페인이 없습니다",
+        emptyTitle: "조건에 맞는 계약이 없습니다",
         emptyMessage: "검색어를 줄이거나 전체로 바꿔보세요.",
         rows: [
           {
             platform: "인스타",
             platformClass: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
             brand: "브레드룸",
-            title: "브레드룸 여름 루틴 캠페인",
+            title: "브레드룸 릴스 협찬 계약",
             payment: "900,000원 + 제품 제공",
             metric: "지원 접수",
-            date: "5월 26일 마감",
+            date: "2026.05.26 / D-2",
           },
           {
             platform: "인스타 +1",
             platformClass: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
             brand: "나이트케어",
-            title: "나이트케어 신제품 언박싱 릴스",
+            title: "나이트케어 언박싱 계약",
             payment: "150만-250만원",
             metric: "지원 접수",
-            date: "6월 3일 마감",
+            date: "2026.06.03 / D-10",
           },
         ],
       },
@@ -1787,42 +1854,42 @@ const introDashboardDemoData = {
         activeTab: "진행중",
         tabs: [
           { label: "지원중", count: 2 },
-          { label: "진행중", count: 7 },
-          { label: "완료", count: 0 },
-          { label: "미선정", count: 0 },
+          { label: "진행중", count: 3 },
+          { label: "완료", count: 1 },
+          { label: "미선정", count: 1 },
         ],
-        itemCount: 7,
+        itemCount: 3,
         metricColumnLabel: "내 할 일",
         dateColumnLabel: "마감일",
-        emptyTitle: "조건에 맞는 캠페인이 없습니다",
+        emptyTitle: "조건에 맞는 계약이 없습니다",
         emptyMessage: "검색어를 줄이거나 전체로 바꿔보세요.",
         rows: [
           {
             platform: "블로그",
             platformClass: "border-emerald-200 bg-emerald-50 text-emerald-700",
             brand: "브레드룸",
-            title: "공동구매 파일럿 콘텐츠 검수 완료",
+            title: "공동구매 파일럿 계약",
             payment: "수수료 18%",
             metric: "컨텐츠 제출",
-            date: "5월 28일 마감",
+            date: "2026.05.28 / D-4",
           },
           {
             platform: "유튜브",
             platformClass: "border-rose-200 bg-rose-50 text-rose-700",
             brand: "브레드룸",
-            title: "나이트 케어 쇼츠 검수 대기",
+            title: "나이트 케어 쇼츠 계약",
             payment: "2,800,000원",
             metric: "광고주 검수 필요",
-            date: "5월 27일 마감",
+            date: "2026.05.27 / D-3",
           },
           {
             platform: "인스타",
             platformClass: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
             brand: "브레드룸",
-            title: "성수 팝업 방문 릴스 콘텐츠 제출",
+            title: "성수 팝업 릴스 계약",
             payment: "2,100,000원",
             metric: "컨텐츠 제출",
-            date: "5월 25일 마감",
+            date: "2026.05.25 / D-1",
           },
         ],
       },
@@ -1830,31 +1897,51 @@ const introDashboardDemoData = {
         activeTab: "완료",
         tabs: [
           { label: "지원중", count: 2 },
-          { label: "진행중", count: 7 },
-          { label: "완료", count: 0 },
-          { label: "미선정", count: 0 },
+          { label: "진행중", count: 3 },
+          { label: "완료", count: 1 },
+          { label: "미선정", count: 1 },
         ],
-        itemCount: 0,
+        itemCount: 1,
         metricColumnLabel: "결과",
         dateColumnLabel: "완료일",
-        emptyTitle: "조건에 맞는 캠페인이 없습니다",
+        emptyTitle: "조건에 맞는 계약이 없습니다",
         emptyMessage: "검색어를 줄이거나 전체로 바꿔보세요.",
-        rows: [],
+        rows: [
+          {
+            platform: "블로그",
+            platformClass: "border-emerald-200 bg-emerald-50 text-emerald-700",
+            brand: "브레드룸",
+            title: "공동구매 파일럿 계약",
+            payment: "수수료 18%",
+            metric: "정산 보관",
+            date: "2026.05.21 / D+3",
+          },
+        ],
       },
       {
         activeTab: "미선정",
         tabs: [
           { label: "지원중", count: 2 },
-          { label: "진행중", count: 7 },
-          { label: "완료", count: 0 },
-          { label: "미선정", count: 0 },
+          { label: "진행중", count: 3 },
+          { label: "완료", count: 1 },
+          { label: "미선정", count: 1 },
         ],
-        itemCount: 0,
+        itemCount: 1,
         metricColumnLabel: "결과",
         dateColumnLabel: "결과일",
-        emptyTitle: "조건에 맞는 캠페인이 없습니다",
+        emptyTitle: "조건에 맞는 계약이 없습니다",
         emptyMessage: "검색어를 줄이거나 전체로 바꿔보세요.",
-        rows: [],
+        rows: [
+          {
+            platform: "인스타",
+            platformClass: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
+            brand: "나이트케어",
+            title: "언박싱 릴스 제안",
+            payment: "150만-250만원",
+            metric: "미선정",
+            date: "2026.05.20 / D+4",
+          },
+        ],
       },
     ],
     rows: [
@@ -1863,7 +1950,7 @@ const introDashboardDemoData = {
         platformClass: "border-pink-200 bg-pink-50 text-pink-700",
         kind: "협찬",
         party: "오브레 스튜디오",
-        title: "오브레 비건 선크림 릴스 캠페인",
+        title: "오브레 비건 선크림 릴스 계약",
         amount: "180만원",
         status: "검토 필요",
         statusClass: "border-amber-200 bg-amber-50 text-amber-800",
@@ -1875,7 +1962,7 @@ const introDashboardDemoData = {
         platformClass: "border-pink-200 bg-pink-50 text-pink-700",
         kind: "협찬",
         party: "오브레 스튜디오",
-        title: "오브레 비건 선크림 릴스 캠페인",
+        title: "오브레 비건 선크림 릴스 계약",
         amount: "180만원",
         status: "수정 협의",
         statusClass: "border-amber-200 bg-amber-50 text-amber-800",
@@ -1997,14 +2084,13 @@ function AdvertiserIntroDashboardPreview({
         <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[8px] border border-[#d9e0d9] bg-white">
           <IntroDashboardTitleBar
             title="계약 운영 대시보드"
-            badge="공유 가능"
           />
           <IntroAdvertiserAccountBanner
             accountMeta={data.accountMeta}
             accountName={data.accountName}
           />
           <div className="min-h-0 flex-1 p-2">
-            <IntroCampaignBoard state={state} />
+            <IntroContractBoard state={state} />
           </div>
         </div>
       </div>
@@ -2019,21 +2105,25 @@ function IntroAppHeader({ role }: { role: IntroRole }) {
     : ["내 캠페인", "캠페인 찾기", "메시지함", "로그아웃"];
 
   return (
-    <div className="border-b border-[#d9e0d9] bg-white px-3 py-2">
-      <div className="flex min-w-0 items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <LogoMark />
-          <span className="truncate text-[15px] font-extrabold text-neutral-950">
-            연락미
+    <div className="border-b border-[#d9e0d9] bg-white">
+      <div className="flex h-12 min-w-0 items-center justify-between gap-3 px-3">
+        <div className="flex h-10 min-w-0 items-center gap-2">
+          <span className="flex h-9 w-9 items-center justify-center rounded-[11px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
+            <ShieldCheck className="h-4 w-4" strokeWidth={2} />
+          </span>
+          <span className="font-neo-heavy truncate text-[18px] leading-none text-neutral-950">
+            {PRODUCT_NAME}
           </span>
         </div>
         <div className="hidden min-w-0 items-center gap-1.5 md:flex">
           {actions.map((action, index) => (
             <span
               key={action}
-              className={`inline-flex h-8 items-center rounded-[7px] border px-2.5 text-[11px] font-extrabold ${
+              className={`inline-flex h-10 items-center rounded-[9px] border px-2.5 text-[11px] font-extrabold ${
                 isAdvertiser && index === 0
                   ? "border-blue-600 bg-blue-600 text-white"
+                  : isAdvertiser && index === 1
+                    ? "border-blue-200 bg-white text-blue-700"
                   : !isAdvertiser && index === 0
                     ? "border-neutral-950 bg-neutral-950 text-white"
                   : "border-neutral-200 bg-white text-neutral-700"
@@ -2064,11 +2154,10 @@ function InfluencerIntroDashboardPreview({
         <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[8px] border border-[#d9e0d9] bg-white">
           <IntroDashboardTitleBar
             title="내 캠페인"
-            badge="인증 완료"
           />
           <IntroInfluencerProfileBanner accountName="크리에이터 소라" />
           <div className="min-h-0 flex-1 p-2">
-            <IntroCampaignBoard state={state} />
+            <IntroContractBoard state={state} />
           </div>
         </div>
       </div>
@@ -2079,11 +2168,9 @@ function InfluencerIntroDashboardPreview({
 function IntroDashboardTitleBar({
   title,
   summary,
-  badge,
 }: {
   title: string;
   summary?: string;
-  badge: string;
 }) {
   return (
     <div className="border-b border-[#d9e0d9] bg-white px-4 py-2">
@@ -2098,9 +2185,6 @@ function IntroDashboardTitleBar({
             </p>
           ) : null}
         </div>
-        <span className="inline-flex h-7 items-center rounded-[8px] bg-[#eef0ed] px-2.5 text-[12px] font-semibold text-[#303630]">
-          {badge}
-        </span>
       </div>
     </div>
   );
@@ -2164,21 +2248,21 @@ function IntroInfluencerProfileBanner({ accountName }: { accountName: string }) 
   );
 }
 
-function IntroCampaignBoard({ state }: { state: IntroDashboardState }) {
+function IntroContractBoard({ state }: { state: IntroDashboardState }) {
   return (
     <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[8px] border border-[#d9e0d9] bg-white">
       <div className="border-b border-[#d9e0d9] bg-[#ecebe5] px-2 pt-2">
-        <div className="flex min-w-0 items-end gap-0.5">
+        <div className="flex min-w-0 items-end gap-1">
           {state.tabs.map((tab) => {
             const active = tab.label === state.activeTab;
 
             return (
             <div
               key={tab.label}
-              className={`relative flex h-9 min-w-0 flex-1 items-center justify-between gap-0.5 rounded-t-[10px] border px-1 text-[10px] font-extrabold sm:gap-1 sm:px-3 sm:text-[12px] ${
+              className={`relative flex h-10 min-w-0 flex-1 items-center justify-between gap-0.5 rounded-t-[10px] border px-1 text-[10px] font-extrabold sm:gap-1 sm:px-3 sm:text-[12px] ${
                 active
                   ? "z-10 -mb-px border-[#d9e0d9] border-b-white bg-white text-[#171a17]"
-                  : "mb-0.5 border-transparent bg-transparent text-[#59605b]"
+                  : "mb-1 border-transparent bg-[#e5e3dc] text-[#59605b]"
               }`}
             >
               <span className="shrink-0 whitespace-nowrap">{tab.label}</span>
@@ -2194,29 +2278,14 @@ function IntroCampaignBoard({ state }: { state: IntroDashboardState }) {
           })}
         </div>
       </div>
-      {state.actions?.length ? (
-        <div className="flex min-h-10 items-center gap-2 border-b border-[#d9e0d9] bg-white px-3 py-2">
-          <span className="shrink-0 text-[11px] font-extrabold text-[#7d857f]">
-            처리 필요
-          </span>
-          {state.actions.map((action) => (
-            <span
-              key={`${action.label}-${action.value}`}
-              className={`inline-flex h-8 items-center gap-2 rounded-[7px] border px-2.5 text-[11px] font-extrabold ${getIntroActionToneClass(action.tone)}`}
-            >
-              {action.label} <strong className="text-[14px]">{action.value}</strong>
-            </span>
-          ))}
-        </div>
-      ) : null}
       <div className="border-b border-[#d9e0d9] bg-[#fbfbf8] px-3 py-2">
         <div className="flex min-h-9 items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="truncate text-[13px] font-extrabold text-[#171a17]">
-              캠페인 목록
+              계약 목록
             </p>
             <p className="mt-0.5 truncate text-[10px] font-semibold text-[#606861]">
-              {state.itemCount}건 표시 · 전체 조건
+              {state.rows.length}건 표시 · 전체 조건
             </p>
           </div>
           <span className="inline-flex h-8 items-center rounded-[6px] border border-[#e1e6e1] bg-[#fbfcfa] px-2.5 text-[11px] font-bold text-[#606861]">
@@ -2224,25 +2293,19 @@ function IntroCampaignBoard({ state }: { state: IntroDashboardState }) {
           </span>
         </div>
       </div>
-      <IntroCampaignRows state={state} />
+      <IntroContractRows state={state} />
     </section>
   );
 }
 
-function getIntroActionToneClass(tone: IntroDashboardAction["tone"]) {
-  if (tone === "amber") return "border-amber-200 bg-amber-50 text-amber-800";
-  if (tone === "blue") return "border-blue-200 bg-blue-50 text-blue-700";
-  return "border-neutral-200 bg-white text-neutral-700";
-}
-
-function IntroCampaignRows({ state }: { state: IntroDashboardState }) {
+function IntroContractRows({ state }: { state: IntroDashboardState }) {
   return (
     <>
-      <div className="hidden grid-cols-[82px_86px_minmax(0,1fr)_88px_86px_46px] gap-2 border-b border-[#e3e8e3] bg-[#fbfbf8] px-3 py-2 text-[10px] font-extrabold text-[#7d857f] md:grid">
+      <div className="hidden grid-cols-[72px_70px_minmax(0,1fr)_88px_82px_122px] gap-2 border-b border-[#e3e8e3] bg-[#fbfbf8] px-3 py-2 text-[10px] font-extrabold text-[#7d857f] md:grid">
         <span>플랫폼</span>
-        <span>브랜드</span>
-        <span>캠페인명</span>
-        <span>지급내용</span>
+        <span>{state.secondaryColumnLabel ?? "브랜드"}</span>
+        <span>계약명</span>
+        <span>{state.paymentColumnLabel ?? "지급내용"}</span>
         <span>{state.metricColumnLabel}</span>
         <span>{state.dateColumnLabel}</span>
       </div>
@@ -2250,7 +2313,7 @@ function IntroCampaignRows({ state }: { state: IntroDashboardState }) {
         {state.rows.length > 0 ? state.rows.map((row, index) => (
           <div
             key={`${row.platform}-${row.title}-${index}`}
-            className="grid min-h-11 grid-cols-[82px_86px_minmax(0,1fr)_88px_86px_46px] items-center gap-2 bg-white px-3 py-2"
+            className="grid min-h-11 grid-cols-[72px_70px_minmax(0,1fr)_88px_82px_122px] items-center gap-2 bg-white px-3 py-2"
           >
             <span
               className={`inline-flex h-6 w-fit max-w-full items-center truncate rounded-[6px] border px-2 text-[10px] font-extrabold ${row.platformClass}`}
@@ -2279,7 +2342,7 @@ function IntroCampaignRows({ state }: { state: IntroDashboardState }) {
                 </span>
               ) : null}
             </span>
-            <span className="truncate text-[11px] font-semibold text-neutral-700">
+            <span className="truncate text-[10px] font-bold tabular-nums text-neutral-700">
               {row.date}
             </span>
           </div>
@@ -2314,7 +2377,10 @@ function IntroCampaignRows({ state }: { state: IntroDashboardState }) {
               {row.title}
             </p>
             <p className="mt-1 truncate text-[10px] font-bold text-neutral-500">
-              {row.brand} · {row.payment} · {row.date}
+              {row.brand} · {row.payment}
+            </p>
+            <p className="mt-1 truncate text-[10px] font-bold tabular-nums text-neutral-500">
+              {state.dateColumnLabel} {row.date}
             </p>
           </div>
         )) : (

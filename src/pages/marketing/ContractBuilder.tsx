@@ -496,7 +496,7 @@ function getAdvertiserVerificationBuilderCopy(
   if (isLoading) {
     return {
       label: "상태 확인 중",
-      helper: "사업자 인증 상태를 확인한 뒤 공유 가능 여부를 표시합니다.",
+      helper: "사업자 인증 상태를 확인하고 있습니다.",
       actionLabel: "인증 상태 보기",
     };
   }

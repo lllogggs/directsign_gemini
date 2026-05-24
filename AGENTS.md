@@ -65,6 +65,19 @@ Example option format:
   - When the user corrects a Codex change, record the correction as a hard rule and search nearby pages for the same mistake.
   - Do not silently reinterpret a correction as optional preference.
 - Current hard corrections:
+  - Product Owner behavioral model:
+    - The Product Owner prefers blunt, practical product judgment over polite but shallow agreement. Treat frustration, sarcasm, and repeated complaints as high-signal requirements, not emotional noise.
+    - The Product Owner is trying to make yeollock.me feel like a real premium SaaS with human polish, not an MVP, demo, template, or generic landing page.
+    - The Product Owner's default taste is concise, dense enough to be useful, visually calm, and work-tool-like. The preferred move is usually to remove duplicate layers, weak copy, and noisy decoration before adding a new component.
+    - The Product Owner strongly dislikes redundancy. If a role, state, action, value prop, or instruction is already visible through layout, tabs, header, CTA, or table state, do not repeat it in copy.
+    - The Product Owner expects Codex to infer nearby cleanup from a correction. When corrected on one screen, inspect adjacent screens, mirrored advertiser/influencer flows, intro/login variants, and similar components for the same pattern.
+    - The Product Owner values actual rendered output over implementation claims. A change is not persuasive until the real browser screen looks right at target viewport sizes.
+    - The Product Owner does not want to be asked about already-settled preferences. Ask only when there is a genuine conflict between the latest instruction, a hard rule, product direction, data/security, or external-service scope.
+    - The Product Owner expects end-to-end execution when a direction is chosen: implement, verify, commit/push/deploy when requested, then report briefly with evidence.
+    - The Product Owner cares about pace and perceived responsiveness. Avoid making simple user-facing actions feel like a long process, and avoid loading language that exposes internal session, role, or backend concepts.
+    - The Product Owner wants research-backed design decisions for UI/layout work, but does not want generic inspiration copied into the product. Extract the principle, apply it to the current screen, and keep yeollock.me's black/neutral work-tool tone with blue primary CTAs.
+    - The Product Owner prefers business-trust clarity over legalistic clutter. Show concrete verification, risk, audit, deadline, signature, and evidence state; do not pad screens with long explanations.
+    - The Product Owner's likely rejection triggers include: duplicate CTAs, repeated role labels, long middle copy, decorative cards around cards, filters louder than content, table rows wrapping, inconsistent header/body width, body scroll on app screens, fake dashboard previews, old test data that looks unrealistic, and customer-facing copy that sounds like an internal instruction.
   - A one-time request for the Kim Jaewoo Agent to walk the full service is temporary unless the Product Owner explicitly says to make it permanent. For unrelated future work, review only the modified or improved scope.
   - Blue primary CTAs were directly requested by the Product Owner. Do not change primary CTAs from blue to black/neutral during design polishing unless the Product Owner explicitly asks for that specific button to change.
   - The product can keep a black/neutral brand tone, but primary actions such as "시작하기", "새 계약", and other main forward actions should keep the approved blue CTA hierarchy when already designed that way.
@@ -90,6 +103,15 @@ Example option format:
   - Design/proportion changes must cite comparable online references or design-system guidance, then explain the applied principle to the Kim Jaewoo Agent before asking for approval.
   - When using online references for layout or spacing, cite the principle being applied, not just the source name. The Kim Jaewoo Agent should reject changes whose reason is only "looks cleaner" without a reference-backed hierarchy or spacing rationale.
   - If OpenDesign/Figma is unavailable because of authentication, timeout, or connector failure, do not pretend it was used. Record the failure, use browser captures plus coordinate/spacing measurement as the fallback, and mention the fallback in the review handoff.
+  - The product is contract-centered. Dashboard and intro dashboard previews must default to contract lists, not campaign lists, unless the Product Owner explicitly asks for a campaign-management surface.
+  - When the real dashboard header, title, tabs, list label, columns, or representative rows change, update the intro dashboard preview in the same task without waiting for the Product Owner to repeat it.
+  - Intro dashboard preview counts must match the rows currently shown, or the UI must clearly state that only a subset is visible. Do not leave tab counts, list counts, and visible rows contradicting each other.
+  - Do not add vague "처리 필요" strips or summary bars above dashboard lists unless the Product Owner explicitly approves that exact information layer.
+  - Do not label dashboard readiness as "공유 가능". It is vague and reads like internal permission logic; use concrete business verification state only where needed, or remove the badge.
+  - Dashboard lifecycle tabs must visually connect to the table/panel below like browser tabs: the selected tab shares the panel surface and its bottom border disappears into the content.
+  - Dashboard table headers should provide clear ascending/descending sorting where the data benefits from comparison.
+  - Dashboard deadline/end-date cells must include the year and a D-day label such as "2026.05.28 / D-4" or "2026.05.21 / D+3".
+  - Ended/closed contract states need representative test rows, and intro previews must reflect those rows and counts immediately.
 
 ### Owner Command Proxy
 
@@ -124,11 +146,18 @@ Example option format:
   - Advertiser dashboard tabs should be restored and clear: "모집중", "진행중", "종료".
   - Influencer dashboard tabs should be clear: "지원중", "진행중", "완료", "미선정".
   - Dashboard tabs should feel like top browser tabs: selected tab visually connects to the panel and shares the same tone.
+  - The advertiser dashboard's default visible list should be "계약 목록", not "캠페인 목록". Campaign creation or campaign management can exist as secondary flows, but the dashboard must read as a contract workspace first.
+  - Influencer dashboards should also use contract-centered list labels such as "계약 목록" unless the screen is explicitly a campaign discovery or campaign creation surface.
   - Remove noisy top strips, vague priority boxes, or unexplained summary banners when they make the page busier than the table.
+  - Remove "처리 필요" dashboard strips when the table, tabs, or status cells already communicate the next work.
   - Campaign rows should be single-line and scannable. Never let campaign names become two lines in normal desktop width.
+  - Contract rows should be single-line and scannable. Never let contract names become two lines in normal desktop width.
   - Keep platform and brand columns narrow. Give practical space to campaign name, payment, progress, and deadline.
+  - In contract-centered dashboard tables, use "계약명" rather than "캠페인명" for the primary title column.
   - Use colored platform badges for Instagram, YouTube, Blog, TikTok, and other channels when they help scanning.
   - Show "지급내용" and deadline. In recruiting and active tabs use deadline; in ended tab use end date.
+  - Deadline/end-date values should include year and D-day notation, not month/day only.
+  - Table column labels should support obvious ascending/descending sorting when sortable.
   - Use "진도율", not "정원진도". Prefer compact values such as "3/12" with a restrained progress bar.
   - Do not show every test campaign as "1/1"; maintain varied test states and progress so the dashboard looks real.
   - Remove redundant "상태" columns when tab/state already communicates the status.
@@ -145,6 +174,7 @@ Example option format:
   - Main/intro pages should be concise and clean, with little text.
   - Do not use long middle sections of body copy. Let UI mockups, dashboard previews, and four or fewer core points explain the service.
   - Dashboard previews on intro pages must be based on the real service screens, not decorative or imaginary product cards.
+  - Intro dashboard previews must mirror the real dashboard header and table labels immediately after dashboard changes. If the real dashboard says "계약 목록", the intro preview must not still say "캠페인 목록".
   - Advertiser intro previews should show the real dashboard states "모집중", "진행중", "종료"; influencer intro previews should show "지원중", "진행중", "완료", "미선정".
   - Avoid repeated words and repeated value props in the same viewport.
   - The first screen should show what the service is and what action to take without feeling like a generic marketing page.

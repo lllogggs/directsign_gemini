@@ -944,6 +944,54 @@ const showcaseScenarios = [
     submitDeliverable: true,
     approveDeliverable: true,
   },
+  {
+    key: "closed-reels",
+    title: "오브레 릴스 캠페인 정산 완료",
+    campaignName: "오브레 릴스 캠페인",
+    influencerName: accounts.influencer.name,
+    influencerContact: accounts.influencer.email,
+    channelUrl: "https://instagram.com/creator.sora",
+    type: "협찬",
+    status: "APPROVED",
+    nextActor: "system",
+    nextAction: "계약 종료 후 서명본과 검수 기록을 보관합니다.",
+    budget: "1,800,000원",
+    platforms: ["INSTAGRAM"],
+    deliverables: ["인스타그램 릴스 1건", "스토리 2건"],
+    dueDays: -7,
+    endDays: -3,
+    completedDays: -3,
+    risk: "low",
+    clauses: "approved",
+    sign: true,
+    submitDeliverable: true,
+    approveDeliverable: true,
+    closeContract: true,
+  },
+  {
+    key: "closed-blog",
+    title: "브루잉랩 공동구매 계약 종료",
+    campaignName: "브루잉랩 공동구매 파일럿",
+    influencerName: "지유로그",
+    influencerContact: "jiyu.blog@example.com",
+    channelUrl: "https://blog.naver.com/jiyu-log",
+    type: "공동구매",
+    status: "APPROVED",
+    nextActor: "system",
+    nextAction: "계약 종료 후 정산 증빙을 보관합니다.",
+    budget: "수수료 18%",
+    platforms: ["NAVER_BLOG"],
+    deliverables: ["네이버 블로그 리뷰 1건", "공동구매 링크 1건"],
+    dueDays: -10,
+    endDays: -5,
+    completedDays: -5,
+    risk: "low",
+    clauses: "approved",
+    sign: true,
+    submitDeliverable: true,
+    approveDeliverable: true,
+    closeContract: true,
+  },
 ];
 
 const clauseStatusFor = (scenario, index) => {
@@ -993,9 +1041,16 @@ const buildShowcaseClauses = (scenario) =>
   }));
 
 const buildShowcaseContract = (scenario, advertiserId) => {
-  const activeShare = scenario.status !== "DRAFT";
+  const activeShare = scenario.status !== "DRAFT" && scenario.status !== "CLOSED";
   const createdAt = addDays(-4);
-  const updatedAt = addDays(scenario.key === "draft-minseo" ? -2 : 0);
+  const completedAt =
+    typeof scenario.completedDays === "number"
+      ? addDays(scenario.completedDays)
+      : undefined;
+  const updatedAt =
+    completedAt ?? addDays(scenario.key === "draft-minseo" ? -2 : 0);
+  const campaignEndDate = dateOnly(scenario.endDays ?? 21);
+  const isClosed = scenario.status === "CLOSED";
 
   return {
     id: stableUuid(`${showcaseBatch}:${scenario.key}`),
@@ -1016,30 +1071,30 @@ const buildShowcaseContract = (scenario, advertiserId) => {
     campaign: {
       budget: scenario.budget,
       start_date: dateOnly(1),
-      end_date: dateOnly(21),
+      end_date: campaignEndDate,
       deadline: dateOnly(scenario.dueDays),
       upload_due_at: dateOnly(scenario.dueDays),
       review_due_at: dateOnly(scenario.dueDays + 2),
       revision_limit: "2",
       disclosure_text: "#광고 #협찬",
       tracking_link: `${PUBLIC_SITE_URL}/qa/showcase/${scenario.key}`,
-      period: `${dateOnly(1)} - ${dateOnly(21)}`,
+      period: `${dateOnly(1)} - ${campaignEndDate}`,
       platforms: scenario.platforms,
       deliverables: scenario.deliverables,
     },
     workflow: {
       next_actor: scenario.nextActor,
       next_action: scenario.nextAction,
-      due_at: addDays(scenario.dueDays),
+      due_at: isClosed ? undefined : addDays(scenario.dueDays),
       last_message: scenario.lastMessage,
       risk_level: scenario.risk,
     },
     evidence: {
-      share_token_status: activeShare ? "active" : "not_issued",
+      share_token_status: isClosed ? "revoked" : activeShare ? "active" : "not_issued",
       share_token: activeShare ? shareToken() : undefined,
       share_token_expires_at: activeShare ? addDays(14) : undefined,
-      audit_ready: activeShare,
-      pdf_status: activeShare ? "draft_ready" : "not_ready",
+      audit_ready: activeShare || isClosed,
+      pdf_status: isClosed ? "signed_ready" : activeShare ? "draft_ready" : "not_ready",
     },
     audit_events: [
       {
@@ -1052,8 +1107,37 @@ const buildShowcaseContract = (scenario, advertiserId) => {
             : "광고주가 검토 링크를 발송했습니다.",
         created_at: createdAt,
       },
+      ...(isClosed
+        ? [
+            {
+              id: crypto.randomUUID(),
+              actor: "system",
+              action: "contract_closed",
+              description: "계약 종료 후 서명본과 검수 기록이 보관되었습니다.",
+              created_at: completedAt ?? updatedAt,
+            },
+          ]
+        : []),
     ],
     clauses: buildShowcaseClauses(scenario),
+    ...(isClosed
+      ? {
+          signature_data: {
+            adv_sign: "",
+            inf_sign: "",
+            signed_at: completedAt ?? updatedAt,
+            ip: "127.0.0.1",
+            user_agent: "QA 시드",
+            signer_name: scenario.influencerName,
+            signer_email: scenario.influencerContact,
+            consent_text: "전자서명 동의가 완료되었습니다.",
+            consent_text_version: "qa-2026-05-24",
+            contract_hash: stableServerUuid(`showcase:closed:contract:${scenario.key}`),
+            signature_hash: stableServerUuid(`showcase:closed:signature:${scenario.key}`),
+          },
+          pdf_url: `/api/contracts/${stableUuid(`${showcaseBatch}:${scenario.key}`)}/final-pdf`,
+        }
+      : {}),
     created_at: createdAt,
     updated_at: updatedAt,
   };
@@ -1148,6 +1232,23 @@ const approveDeliverable = async (contractId, deliverableId, advertiserCookie) =
   return JSON.parse(body).deliverable;
 };
 
+const closeContract = async (contractId, advertiserCookie) => {
+  const response = await fetch(
+    `${DASHBOARD_BASE_URL}/api/contracts/${encodeURIComponent(contractId)}/close`,
+    {
+      method: "POST",
+      headers: { Accept: "application/json", Cookie: advertiserCookie },
+    },
+  );
+  const body = await response.text();
+  if (!response.ok) {
+    throw new Error(
+      `close contract ${contractId} failed (${response.status}): ${body.slice(0, 700)}`,
+    );
+  }
+  return JSON.parse(body).contract;
+};
+
 const seedDashboardShowcase = async ({ advertiser, influencer, marketplace }) => {
   const advertiserSession = await login("/api/advertiser/login", advertiser.email);
   const influencerSession = await login("/api/influencer/login", influencer.email);
@@ -1183,6 +1284,9 @@ const seedDashboardShowcase = async ({ advertiser, influencer, marketplace }) =>
         deliverable.id,
         advertiserSession.cookie,
       );
+    }
+    if (scenario.closeContract) {
+      contract = await closeContract(contract.id, advertiserSession.cookie);
     }
 
     created.push({
