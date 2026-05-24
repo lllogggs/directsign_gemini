@@ -673,13 +673,13 @@ export function InfluencerDashboard() {
   return (
     <DashboardShell>
       <header className="sticky top-0 z-30 border-b border-neutral-200/70 bg-white/92 backdrop-blur">
-        <div className="mx-auto flex h-12 max-w-[1500px] items-center justify-between px-3 sm:px-5 lg:px-6">
+        <div className="mx-auto flex h-14 max-w-[1500px] items-center justify-between px-3 sm:px-5 lg:px-6">
           <button
             type="button"
             onClick={() => navigate("/influencer/dashboard")}
-            className="flex h-10 min-w-10 shrink-0 items-center gap-3"
+            className="yl-brand-action -ml-1 flex h-10 min-w-10 shrink-0 items-center gap-3 rounded-[12px] px-1 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
           >
-            <span className="flex h-9 w-9 items-center justify-center rounded-[11px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
+            <span className="flex h-[34px] w-[34px] items-center justify-center rounded-[11px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
               <ShieldCheck className="h-4 w-4" strokeWidth={2} />
             </span>
             <span className="font-neo-heavy hidden text-[18px] leading-none sm:inline">{PRODUCT_NAME}</span>
@@ -737,7 +737,7 @@ export function InfluencerDashboard() {
         </div>
       </header>
 
-      <main className="mx-auto w-full min-w-0 max-w-[1500px] px-3 py-2.5 sm:px-5 lg:flex lg:h-[calc(100vh-48px)] lg:flex-col lg:overflow-hidden lg:px-6">
+      <main className="mx-auto w-full min-w-0 max-w-[1500px] px-3 py-2.5 sm:px-5 lg:flex lg:h-[calc(100vh-56px)] lg:flex-col lg:overflow-hidden lg:px-6">
         <section className="min-w-0 overflow-hidden rounded-[10px] border border-neutral-200/90 bg-white shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_18px_46px_rgba(23,26,23,0.055)] lg:flex lg:h-full lg:flex-col">
           <div className="border-b border-[#d9e0d9] bg-white px-4 py-2">
             <div className="flex flex-wrap items-center justify-between gap-3">

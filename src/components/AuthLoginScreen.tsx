@@ -59,13 +59,13 @@ export function AuthLoginScreen({
   const errorId = error ? `${title.replace(/\s+/g, "-")}-login-error` : undefined;
 
   return (
-    <main className="h-svh overflow-hidden bg-[#f7f6f3] px-4 py-2 font-sans text-neutral-950 sm:px-6 sm:py-5">
-      <div className="mx-auto flex h-full min-h-0 w-full max-w-[1040px] flex-col">
-        <header className="flex h-12 shrink-0 items-center justify-between sm:h-14">
+    <main className="h-svh overflow-hidden bg-[#f7f6f3] px-4 pb-2 pt-0 font-sans text-neutral-950 sm:px-6 sm:pb-5 sm:pt-0">
+      <div className="mx-auto flex h-full min-h-0 w-full max-w-[1500px] flex-col">
+        <header className="flex h-[58px] shrink-0 items-center justify-between 2xl:px-6">
           <Link
             to="/"
             aria-label={`${PRODUCT_NAME} 홈`}
-            className="inline-flex min-h-10 items-center gap-2.5"
+            className="yl-brand-action -ml-1 inline-flex min-h-10 items-center gap-2.5 rounded-[12px] px-1 py-1 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
           >
             <AuthLogoMark />
             <span className="font-neo-heavy text-[18px] leading-none tracking-[-0.045em] text-neutral-950">

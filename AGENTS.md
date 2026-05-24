@@ -66,18 +66,13 @@ Example option format:
   - Do not silently reinterpret a correction as optional preference.
 - Current hard corrections:
   - Product Owner behavioral model:
-    - The Product Owner prefers blunt, practical product judgment over polite but shallow agreement. Treat frustration, sarcasm, and repeated complaints as high-signal requirements, not emotional noise.
-    - The Product Owner is trying to make yeollock.me feel like a real premium SaaS with human polish, not an MVP, demo, template, or generic landing page.
-    - The Product Owner's default taste is concise, dense enough to be useful, visually calm, and work-tool-like. The preferred move is usually to remove duplicate layers, weak copy, and noisy decoration before adding a new component.
-    - The Product Owner strongly dislikes redundancy. If a role, state, action, value prop, or instruction is already visible through layout, tabs, header, CTA, or table state, do not repeat it in copy.
-    - The Product Owner expects Codex to infer nearby cleanup from a correction. When corrected on one screen, inspect adjacent screens, mirrored advertiser/influencer flows, intro/login variants, and similar components for the same pattern.
-    - The Product Owner values actual rendered output over implementation claims. A change is not persuasive until the real browser screen looks right at target viewport sizes.
-    - The Product Owner does not want to be asked about already-settled preferences. Ask only when there is a genuine conflict between the latest instruction, a hard rule, product direction, data/security, or external-service scope.
-    - The Product Owner expects end-to-end execution when a direction is chosen: implement, verify, commit/push/deploy when requested, then report briefly with evidence.
-    - The Product Owner cares about pace and perceived responsiveness. Avoid making simple user-facing actions feel like a long process, and avoid loading language that exposes internal session, role, or backend concepts.
-    - The Product Owner wants research-backed design decisions for UI/layout work, but does not want generic inspiration copied into the product. Extract the principle, apply it to the current screen, and keep yeollock.me's black/neutral work-tool tone with blue primary CTAs.
-    - The Product Owner prefers business-trust clarity over legalistic clutter. Show concrete verification, risk, audit, deadline, signature, and evidence state; do not pad screens with long explanations.
-    - The Product Owner's likely rejection triggers include: duplicate CTAs, repeated role labels, long middle copy, decorative cards around cards, filters louder than content, table rows wrapping, inconsistent header/body width, body scroll on app screens, fake dashboard previews, old test data that looks unrealistic, and customer-facing copy that sounds like an internal instruction.
+    - Prefer distilled behavioral tendencies over long lists of literal one-off instructions when updating this agent.
+    - The Product Owner values concise, premium, real-product judgment and rejects MVP-like clutter, redundancy, and shallow decorative polish.
+    - The Product Owner trusts actual rendered product experience more than explanations, screenshots without judgment, or automated QA alone.
+    - The Product Owner expects corrections to generalize to similar nearby screens, but not to expand into unrelated service-wide churn unless explicitly requested.
+    - The Product Owner wants decisive execution after a direction is clear, with questions reserved for real conflicts in product direction, security, data, or settled preferences.
+    - The Product Owner prefers trust to be shown through clear state, evidence, verification, timing, and workflow clarity rather than long copy or legalistic filler.
+    - The Product Owner values product-wide consistency. Persistent brand/navigation elements should keep stable placement, sizing, affordance, and cursor behavior across pages unless there is a deliberate layout reason.
   - A one-time request for the Kim Jaewoo Agent to walk the full service is temporary unless the Product Owner explicitly says to make it permanent. For unrelated future work, review only the modified or improved scope.
   - Blue primary CTAs were directly requested by the Product Owner. Do not change primary CTAs from blue to black/neutral during design polishing unless the Product Owner explicitly asks for that specific button to change.
   - The product can keep a black/neutral brand tone, but primary actions such as "시작하기", "새 계약", and other main forward actions should keep the approved blue CTA hierarchy when already designed that way.

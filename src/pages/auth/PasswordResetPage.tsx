@@ -153,10 +153,14 @@ export function PasswordResetPage() {
   };
 
   return (
-    <main className="min-h-screen bg-[#f7f6f3] px-5 py-5 font-sans text-neutral-950 sm:px-6">
-      <div className="mx-auto flex min-h-[calc(100vh-40px)] w-full max-w-[1040px] flex-col">
-        <header className="flex h-14 items-center justify-between">
-          <Link to="/" className="inline-flex items-center gap-2.5" aria-label={`${PRODUCT_NAME} 홈`}>
+    <main className="min-h-screen bg-[#f7f6f3] px-5 pb-5 pt-0 font-sans text-neutral-950 sm:px-6">
+      <div className="mx-auto flex min-h-[calc(100vh-20px)] w-full max-w-[1500px] flex-col">
+        <header className="flex h-[58px] items-center justify-between 2xl:px-6">
+          <Link
+            to="/"
+            className="yl-brand-action -ml-1 inline-flex items-center gap-2.5 rounded-[12px] px-1 py-1 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
+            aria-label={`${PRODUCT_NAME} 홈`}
+          >
             <span className="inline-flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[11px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
               <KeyRound className="h-4 w-4" />
             </span>

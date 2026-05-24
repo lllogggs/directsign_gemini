@@ -98,7 +98,7 @@ function getStartRoleTone(role: IntroRole) {
   if (role === "advertiser") {
     return {
       card:
-        "border-[#bfdbfe] bg-[linear-gradient(180deg,#eff6ff_0%,#ffffff_54%)] hover:border-[#93c5fd]",
+        "border-[#d8e5ff] bg-white hover:border-[#93c5fd] hover:bg-[#eff6ff]",
       divider: "border-[#bfdbfe]/75",
       detail: "text-[#2563eb]",
     };
@@ -106,7 +106,7 @@ function getStartRoleTone(role: IntroRole) {
 
   return {
     card:
-      "border-[#a7f3d0] bg-[linear-gradient(180deg,#ecfdf5_0%,#ffffff_54%)] hover:border-[#6ee7b7]",
+      "border-[#c8f0dc] bg-white hover:border-[#6ee7b7] hover:bg-[#ecfdf5]",
     divider: "border-[#a7f3d0]/75",
     detail: "text-[#059669]",
   };
@@ -123,57 +123,57 @@ function RoleIconCluster({ role }: { role: IntroRole }) {
       ? [
           {
             label: "캠페인",
-            className: "border-blue-200 bg-blue-50 text-blue-700",
+            className: "text-blue-700",
             icon: <Megaphone className="h-3.5 w-3.5" strokeWidth={2.1} />,
           },
           {
             label: "계약서",
-            className: "border-neutral-200 bg-white text-neutral-700",
+            className: "text-neutral-700",
             icon: <FileText className="h-3.5 w-3.5" strokeWidth={2.1} />,
           },
           {
             label: "서명",
-            className: "border-amber-200 bg-amber-50 text-amber-700",
+            className: "text-amber-700",
             icon: <FileSignature className="h-3.5 w-3.5" strokeWidth={2.1} />,
           },
           {
             label: "검증",
-            className: "border-emerald-200 bg-emerald-50 text-emerald-700",
+            className: "text-emerald-700",
             icon: <ShieldCheck className="h-3.5 w-3.5" strokeWidth={2.1} />,
           },
         ]
       : [
           {
             label: "인스타",
-            className: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
+            className: "text-fuchsia-700",
             icon: <Instagram className="h-3.5 w-3.5" strokeWidth={2.1} />,
           },
           {
             label: "유튜브",
-            className: "border-red-200 bg-red-50 text-red-700",
+            className: "text-red-700",
             icon: <Youtube className="h-3.5 w-3.5" strokeWidth={2.1} />,
           },
           {
             label: "블로그",
-            className: "border-neutral-200 bg-white text-neutral-700",
+            className: "text-neutral-700",
             icon: <BookOpen className="h-3.5 w-3.5" strokeWidth={2.1} />,
           },
           {
             label: "틱톡",
-            className: "border-neutral-800 bg-neutral-950 text-white",
+            className: "text-neutral-950",
             icon: <Music2 className="h-3.5 w-3.5" strokeWidth={2.1} />,
           },
         ];
 
   return (
     <span
-      className="inline-flex h-10 items-center gap-1 rounded-[10px] border border-neutral-200 bg-white/85 px-1.5 text-neutral-950 shadow-[0_1px_0_rgba(15,23,42,0.025)]"
+      className="inline-flex h-6 items-center gap-2 border-0 bg-transparent text-neutral-950 shadow-none"
       aria-hidden="true"
     >
       {icons.map((item) => (
         <span
           key={item.label}
-          className={`flex h-6 w-6 items-center justify-center rounded-[6px] border ${item.className}`}
+          className={`inline-flex h-4 w-4 items-center justify-center border-0 bg-transparent ${item.className}`}
         >
           {item.icon}
         </span>
@@ -924,11 +924,11 @@ const influencerPreviewSlides: InfluencerPreviewSlide[] = [
 export function StartPage() {
   return (
     <main className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950">
-      <div className="mx-auto grid min-h-screen w-full max-w-[920px] content-start grid-rows-[60px_auto_44px] px-5 sm:content-normal sm:grid-rows-[68px_minmax(0,1fr)_58px] sm:px-6 lg:grid-rows-[72px_minmax(0,1fr)_60px]">
-        <header className="flex items-center justify-between gap-3">
+      <div className="mx-auto grid min-h-screen w-full max-w-[1500px] content-start grid-rows-[60px_auto_44px] px-5 sm:content-normal sm:grid-rows-[68px_minmax(0,1fr)_58px] sm:px-6 lg:grid-rows-[72px_minmax(0,1fr)_60px]">
+        <header className="flex items-start justify-between gap-3 pt-2">
           <Link
             to="/"
-            className="-ml-1 flex min-w-0 items-center gap-2.5 rounded-[12px] px-1 py-1 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
+            className="yl-brand-action -ml-1 flex min-w-0 items-center gap-2.5 rounded-[12px] px-1 py-1 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
             aria-label={`${LANDING_BRAND_NAME} 홈`}
           >
             <BrandLogo />
@@ -1124,7 +1124,7 @@ function RoleFeatureIntroScreen({
   return (
     <main className="h-svh overflow-hidden bg-[#f4f5f2] font-sans text-neutral-950">
       <header className="border-b border-neutral-200/70 bg-white/92">
-        <div className="mx-auto flex h-[58px] max-w-[1300px] items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto flex h-[58px] max-w-[1500px] items-center justify-between gap-3 px-4 sm:px-6 lg:px-6">
           <BrandLockup />
           <div className="flex min-w-0 items-center gap-2">
             <nav
@@ -1179,7 +1179,7 @@ function RoleFeatureIntroScreen({
         </nav>
       </div>
 
-      <section className="mx-auto flex h-[calc(100svh-109px)] min-h-0 w-full max-w-[1300px] overflow-hidden px-4 py-3 sm:h-[calc(100svh-58px)] sm:px-6 sm:py-5 lg:h-[calc(100vh-58px)] lg:px-8 lg:py-5">
+      <section className="mx-auto flex h-[calc(100svh-109px)] min-h-0 w-full max-w-[1500px] overflow-hidden px-4 py-3 sm:h-[calc(100svh-58px)] sm:px-6 sm:py-5 lg:h-[calc(100vh-58px)] lg:px-6 lg:py-5">
         <div className="grid h-full min-h-0 w-full gap-6 lg:grid-cols-[minmax(330px,0.52fr)_minmax(0,1.48fr)] lg:items-start">
           <aside className="min-w-0 shrink-0 pt-0 lg:flex lg:min-h-0 lg:flex-col lg:justify-start lg:pt-6 xl:pt-7">
             <h1 className="font-neo-heavy mt-0 text-[30px] leading-[1.03] tracking-normal text-neutral-950 sm:text-[48px] lg:text-[52px]">
@@ -3757,7 +3757,7 @@ function BrandLockup() {
   return (
     <Link
       to="/"
-      className="-ml-1 flex min-h-10 min-w-10 items-center gap-3 rounded-[12px] px-1 py-1 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#171a17]"
+      className="yl-brand-action -ml-1 flex min-h-10 min-w-10 items-center gap-3 rounded-[12px] px-1 py-1 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#171a17]"
       aria-label={`${LANDING_BRAND_NAME} 홈`}
     >
       <BrandLogo />

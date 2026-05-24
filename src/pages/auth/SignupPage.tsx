@@ -210,13 +210,13 @@ export function SignupPage({ role }: { role: SignupRole }) {
 
   if (confirmationEmail) {
     return (
-      <main className="min-h-screen bg-[#f5f7f2] px-5 py-5 font-sans text-[#141714] sm:px-6">
-        <div className="mx-auto flex min-h-[calc(100vh-40px)] w-full max-w-[1040px] flex-col">
-          <header className="flex h-14 items-center justify-between">
+      <main className="min-h-screen bg-[#f5f7f2] px-5 pb-5 pt-0 font-sans text-[#141714] sm:px-6">
+        <div className="mx-auto flex min-h-[calc(100vh-20px)] w-full max-w-[1500px] flex-col">
+          <header className="flex h-[58px] items-center justify-between 2xl:px-6">
             <Link
               to="/"
               aria-label={`${PRODUCT_NAME} 홈`}
-              className="inline-flex items-center gap-2.5"
+              className="yl-brand-action -ml-1 inline-flex items-center gap-2.5 rounded-[12px] px-1 py-1 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
             >
               <SignupLogoMark />
               <span className="font-neo-heavy text-[18px] leading-none tracking-[-0.045em] text-neutral-950">

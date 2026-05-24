@@ -229,12 +229,14 @@
 @layer utilities {
   @keyframes landing-start-copy-in {
     from {
-      opacity: 1;
-      transform: translateY(6px);
+      opacity: 0;
+      filter: blur(5px);
+      transform: translateY(14px);
     }
 
     to {
       opacity: 1;
+      filter: blur(0);
       transform: translateY(0);
     }
   }
@@ -446,6 +448,13 @@
     background-color: var(--yl-surface-soft);
   }
 
+  .yl-brand-action {
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    text-decoration: none;
+  }
+
   .yl-profile-mark {
     position: relative;
     overflow: hidden;
@@ -516,10 +525,10 @@
   }
 
   .landing-start-copy-line {
-    opacity: 1;
-    transform: translateY(6px);
-    animation: landing-start-copy-in 560ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
-    will-change: opacity, transform;
+    opacity: 0;
+    transform: translateY(14px);
+    animation: landing-start-copy-in 720ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    will-change: opacity, filter, transform;
   }
 
   .landing-start-copy-line-1 {
@@ -527,7 +536,7 @@
   }
 
   .landing-start-copy-line-2 {
-    animation-delay: 80ms;
+    animation-delay: 140ms;
   }
 
   .contract-builder-surface [data-slot="input"],
@@ -627,6 +636,7 @@
   @media (prefers-reduced-motion: reduce) {
     .landing-start-copy-line {
       opacity: 1;
+      filter: none;
       transform: none;
       animation: none;
       will-change: auto;
