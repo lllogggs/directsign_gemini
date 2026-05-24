@@ -119,7 +119,7 @@ const roleFeatureKeys: Record<IntroRole, string[]> = {
   influencer: ["receive", "terms", "request", "archive"],
 };
 
-const introConfig = {
+const _introConfig = {
   advertiser: {
     eyebrow: "광고주 대시보드",
     title: ["계약 상태를", "바로 확인"],
@@ -1223,11 +1223,8 @@ function LogoMark() {
 }
 
 export function RoleIntroPage({ role }: { role: IntroRole }) {
-  const config = introConfig[role];
-
   return (
     <RoleFeatureIntroScreen
-      config={config}
       role={role}
       slides={roleIntroSlides[role]}
     />
@@ -1236,11 +1233,9 @@ export function RoleIntroPage({ role }: { role: IntroRole }) {
 
 function RoleFeatureIntroScreen({
   role,
-  config,
   slides,
 }: {
   role: IntroRole;
-  config: IntroConfig;
   slides: RoleIntroSlide[];
 }) {
   const [searchParams] = useSearchParams();
@@ -1259,16 +1254,14 @@ function RoleFeatureIntroScreen({
   const introCopy =
     role === "advertiser"
       ? {
-          eyebrow: "광고주 대시보드",
-          title: ["계약 상태를", "바로 확인"],
+          title: ["계약 흐름을", "한눈에 관리"],
           description:
-            "모집부터 종료까지 계약 흐름을 한 화면에서 확인합니다.",
+            "작성, 검토 링크, 서명 증빙까지 끊기지 않게 이어집니다.",
         }
       : {
-          eyebrow: "인플루언서 대시보드",
-          title: ["내 캠페인을", "상태별로 확인"],
+          title: ["받은 캠페인을", "빠르게 정리"],
           description:
-            "지원부터 완료까지 필요한 일을 바로 확인합니다.",
+            "검토, 수정 요청, 제출, 서명까지 필요한 일만 먼저 보입니다.",
         };
 
   useEffect(() => {
@@ -1370,12 +1363,9 @@ function RoleFeatureIntroScreen({
       </div>
 
       <section className="mx-auto flex h-[calc(100svh-109px)] min-h-0 w-full max-w-[1300px] overflow-hidden px-4 py-3 sm:h-[calc(100svh-58px)] sm:px-6 sm:py-5 lg:h-[calc(100vh-58px)] lg:px-8 lg:py-5">
-        <div className="grid h-full min-h-0 w-full gap-5 lg:grid-cols-[minmax(330px,0.52fr)_minmax(0,1.48fr)] lg:items-start">
-          <aside className="min-w-0 shrink-0 pt-0 lg:flex lg:min-h-0 lg:flex-col lg:justify-start lg:pt-2">
-            <p className="w-fit text-[12px] font-extrabold text-neutral-400">
-              {introCopy.eyebrow}
-            </p>
-            <h1 className="font-neo-heavy mt-2 text-[30px] leading-[1.03] tracking-normal text-neutral-950 sm:text-[48px] lg:text-[52px]">
+        <div className="grid h-full min-h-0 w-full gap-6 lg:grid-cols-[minmax(330px,0.52fr)_minmax(0,1.48fr)] lg:items-start">
+          <aside className="min-w-0 shrink-0 pt-0 lg:flex lg:min-h-0 lg:flex-col lg:justify-start lg:pt-6 xl:pt-7">
+            <h1 className="font-neo-heavy mt-0 text-[30px] leading-[1.03] tracking-normal text-neutral-950 sm:text-[48px] lg:text-[52px]">
               {introCopy.title.map((line) => (
                 <span key={line} className="block whitespace-nowrap">
                   {line}
@@ -1383,11 +1373,11 @@ function RoleFeatureIntroScreen({
               ))}
             </h1>
 
-            <p className="mt-3 max-w-[430px] break-keep text-[14px] font-bold leading-6 text-neutral-600 sm:mt-4 sm:text-[16px] sm:leading-7">
+            <p className="mt-8 max-w-[430px] break-keep text-[14px] font-bold leading-6 text-neutral-600 sm:mt-9 sm:text-[16px] sm:leading-7">
               {introCopy.description}
             </p>
 
-            <div className="mt-5 flex max-w-[240px]">
+            <div className="mt-7 flex max-w-[240px]">
               <Link
                 to={startHref}
                 className="group inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-[8px] bg-blue-600 px-5 text-[14px] font-extrabold tracking-normal text-white shadow-[0_14px_34px_rgba(37,99,235,0.24)] ring-1 ring-blue-500/20 transition duration-200 hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-[0_18px_42px_rgba(37,99,235,0.28)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700 active:translate-y-0"
@@ -1397,12 +1387,6 @@ function RoleFeatureIntroScreen({
               </Link>
             </div>
 
-            <Link
-              to={config.switchHref}
-              className="mt-3 hidden min-h-9 items-center text-[12px] font-bold text-neutral-400 transition hover:text-neutral-700 sm:inline-flex"
-            >
-              {config.switchLabel}
-            </Link>
           </aside>
 
           <RoleFeaturePreviewCarousel

@@ -69,6 +69,11 @@ Example option format:
   - Intro screens should prefer fact-based product previews over invented marketing mockups. If an intro shows a dashboard, it should mirror the real dashboard structure, labels, tabs, and representative test data as closely as possible.
   - Intro copy should stay minimal. Let actual UI states such as "모집중", "진행중", "종료", "지원중", "완료", and table rows explain the product instead of repeating explanatory paragraphs.
   - Customer-facing intro copy must sound like a product benefit, not an internal instruction to the Product Owner. Avoid phrases like "모집중, 진행중, 종료만 봅니다." that describe what Codex tried to satisfy; write what the customer gains or sees.
+  - Intro pages must not repeat role-switching controls in multiple places. If the header already lets users switch between "광고주" and "인플루언서", do not add role labels like "광고주 대시보드" above the hero copy or secondary links like "인플루언서 보기" below the CTA.
+  - Remove role labels, helper links, eyebrow text, and secondary copy when they duplicate a visible control or state already present in the same viewport.
+  - In intro first viewports, role identity belongs in the top role switcher only. Do not repeat "광고주", "인플루언서", "대시보드", or "화면 보기" as hero eyebrow, helper link, or CTA-adjacent copy when the header already communicates the role.
+  - Intro hero copy should express the customer's outcome, not Codex's implementation detail or the Product Owner's requested checklist. Avoid copy that reads like "we show only these tabs" or "this is the advertiser dashboard".
+  - Hero copy spacing must be intentionally composed. Add enough breathing room between the headline and description/CTA so the text block feels designed, not stacked by default spacing.
   - A screenshot metric pass is not enough. Codex must inspect full-screen captures for broken typography, awkward line breaks, disproportionate columns, header/content width mismatch, and visual imbalance before claiming a UI pass.
   - Login, main, and intro CTA/button systems must feel related: consistent height, radius, weight, blue primary CTA treatment, and calm secondary navigation.
   - Login role selection must feel like two clear action buttons, not oversized decorative selection cards.
@@ -76,6 +81,10 @@ Example option format:
   - Intro headers and body content must align to the same visual container rhythm. Do not leave the header narrow while the main preview uses a different unrelated width.
   - Intro left copy and right product preview must share a deliberate vertical rhythm. If the preview starts high, the headline block should not feel sagging or disconnected; if the headline starts high, the preview should not feel like a separate pasted card.
   - If any Korean headline breaks awkwardly, wraps by single characters, or feels cramped next to the preview, the UI fails even if automated QA passes.
+  - For design, proportion, spacing, and layout changes, Codex must use OpenDesign/Figma capture or an equivalent design-review surface before implementation or final judgment, even when the Product Owner does not explicitly repeat it.
+  - Design/proportion changes must cite comparable online references or design-system guidance, then explain the applied principle to the Kim Jaewoo Agent before asking for approval.
+  - When using online references for layout or spacing, cite the principle being applied, not just the source name. The Kim Jaewoo Agent should reject changes whose reason is only "looks cleaner" without a reference-backed hierarchy or spacing rationale.
+  - If OpenDesign/Figma is unavailable because of authentication, timeout, or connector failure, do not pretend it was used. Record the failure, use browser captures plus coordinate/spacing measurement as the fallback, and mention the fallback in the review handoff.
 
 ### Owner Command Proxy
 
