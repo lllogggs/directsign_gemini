@@ -489,7 +489,13 @@ export function InfluencerVerification() {
       </header>
 
       <main className="mx-auto grid h-[calc(100vh-64px)] max-w-5xl gap-3 overflow-hidden px-5 py-4 sm:px-8 lg:grid-cols-[minmax(0,1fr)_260px]">
-        <section className="min-h-0 overflow-y-auto rounded-lg border border-neutral-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)] sm:p-5">
+        <section
+          className={`overflow-y-auto rounded-lg border border-neutral-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)] sm:p-5 ${
+            approved && !showRequestForm && !rejectionGuidance
+              ? "self-start"
+              : "min-h-0"
+          }`}
+        >
           <div className="mb-4 rounded-lg border border-neutral-200 bg-[#fbfbfc] p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-start gap-3">

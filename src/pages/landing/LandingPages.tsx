@@ -2175,15 +2175,15 @@ function IntroCampaignBoard({ state }: { state: IntroDashboardState }) {
             return (
             <div
               key={tab.label}
-              className={`relative flex h-9 min-w-0 flex-1 items-center justify-between rounded-t-[10px] border px-3 text-[12px] font-extrabold ${
+              className={`relative flex h-9 min-w-0 flex-1 items-center justify-between gap-0.5 rounded-t-[10px] border px-1 text-[10px] font-extrabold sm:gap-1 sm:px-3 sm:text-[12px] ${
                 active
                   ? "z-10 -mb-px border-[#d9e0d9] border-b-white bg-white text-[#171a17]"
                   : "mb-0.5 border-transparent bg-transparent text-[#59605b]"
               }`}
             >
-              <span>{tab.label}</span>
+              <span className="shrink-0 whitespace-nowrap">{tab.label}</span>
               <span
-                className={`inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 ${
+                className={`inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1 text-[11px] sm:h-6 sm:min-w-6 sm:px-1.5 sm:text-[12px] ${
                   active ? "bg-[#171a17] text-white" : "bg-white/80 text-[#303630]"
                 }`}
               >

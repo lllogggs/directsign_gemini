@@ -58,10 +58,14 @@ Example option format:
   - Mandatory work order: Product Owner instruction -> update the Kim Jaewoo Agent rulebook when the instruction reveals a correction or preference -> perform the requested work -> run Kim Jaewoo Agent review on the actual rendered result.
   - If the Product Owner's instruction and a Kim Jaewoo Agent rule appear to conflict, Codex must stop and ask the Product Owner which rule wins before implementation.
   - Every code, UI, UX, copy, QA, API, and deployment change must pass through the Kim Jaewoo Agent review before editing and before reporting done.
+  - For ordinary work, the Kim Jaewoo Agent review scope is the changed or improved screens, flows, code paths, copy, API boundaries, and QA evidence relevant to the task.
+  - A full-service end-to-end walkthrough is required only when the Product Owner explicitly asks for a full-service or entire-service review, or when the approved scope itself changes service-wide navigation, workflow, permissions, or customer-facing behavior. A one-time full-service instruction must not be converted into a standing requirement.
+  - The Kim Jaewoo Agent review must be based on actual rendered behavior and action results, not only static screenshots, code inspection, or partial page checks.
   - Treat the user's latest explicit instruction as stronger than inferred design taste, online references, and previous agent recommendations.
   - When the user corrects a Codex change, record the correction as a hard rule and search nearby pages for the same mistake.
   - Do not silently reinterpret a correction as optional preference.
 - Current hard corrections:
+  - A one-time request for the Kim Jaewoo Agent to walk the full service is temporary unless the Product Owner explicitly says to make it permanent. For unrelated future work, review only the modified or improved scope.
   - Blue primary CTAs were directly requested by the Product Owner. Do not change primary CTAs from blue to black/neutral during design polishing unless the Product Owner explicitly asks for that specific button to change.
   - The product can keep a black/neutral brand tone, but primary actions such as "시작하기", "새 계약", and other main forward actions should keep the approved blue CTA hierarchy when already designed that way.
   - If "black site tone" and "blue CTA" appear to conflict, preserve black/neutral surfaces plus blue primary CTAs and ask before changing the CTA color.
@@ -75,6 +79,7 @@ Example option format:
   - Intro hero copy should express the customer's outcome, not Codex's implementation detail or the Product Owner's requested checklist. Avoid copy that reads like "we show only these tabs" or "this is the advertiser dashboard".
   - Hero copy spacing must be intentionally composed. Add enough breathing room between the headline and description/CTA so the text block feels designed, not stacked by default spacing.
   - A screenshot metric pass is not enough. Codex must inspect full-screen captures for broken typography, awkward line breaks, disproportionate columns, header/content width mismatch, and visual imbalance before claiming a UI pass.
+  - A design check request is not a standard QA request. Do not substitute `npm run qa` or pass/fail automation for design review; inspect actual rendered screens end-to-end and report UI/UX judgment separately.
   - Login, main, and intro CTA/button systems must feel related: consistent height, radius, weight, blue primary CTA treatment, and calm secondary navigation.
   - Login role selection must feel like two clear action buttons, not oversized decorative selection cards.
   - Login screens should not float in a loose empty canvas. Keep the role choices high enough that the first viewport feels intentionally composed, especially on 1365x768 and 1920x930 captures.
@@ -162,6 +167,7 @@ Example option format:
   - If API approval or registration is required, prepare the code path but leave real registration to the user.
 - QA and browser verification rules:
   - Do not rely only on code review for UI quality. Use the real browser, login with test accounts, navigate actual pages, and capture screenshots.
+  - For service-wide work or when the Product Owner asks for full review, QA must cover the entire service: all screens, all reachable buttons/links/forms/tabs/filters/modals, advertiser and influencer journeys, and both happy paths and obvious error/empty states.
   - QA must include page transition and action response timing, not only lint/build/test.
   - Check advertiser and influencer flows separately.
   - Check desktop and mobile when the affected flow is customer-facing.
@@ -305,6 +311,7 @@ For every meaningful improvement or fix, Codex must include a short customer rea
   - Loading and empty states are short and task-oriented.
   - Buttons and tabs do not wrap at the target desktop width.
   - The requested advertiser/influencer flow can be completed with test accounts when relevant.
+  - For explicit full-service review requests or approved service-wide changes, the Kim Jaewoo Agent has actually walked every reachable service screen and action before completion is reported.
   - QA includes action and route performance checks when user-facing navigation changed.
 - If a screen still looks busy, remove a layer of information before changing color, border, or decoration.
 - If the user has already chosen a direction, do not ask again; implement, verify, then report.

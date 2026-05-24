@@ -1881,7 +1881,7 @@ function ContractTable({
               key={item.id}
               type="button"
               onClick={() => onOpen(item)}
-              className="group grid w-full gap-2 px-3 py-2 text-left transition-colors hover:bg-[#fafaf7] lg:min-h-[44px] lg:grid-cols-[minmax(78px,0.16fr)_minmax(88px,0.16fr)_minmax(250px,0.78fr)_minmax(170px,0.44fr)_minmax(140px,0.34fr)_minmax(110px,0.25fr)] lg:items-center lg:py-1.5"
+              className="group grid w-full gap-2 px-3 py-2 text-left transition-colors hover:bg-[#fafaf7] lg:min-h-[44px] lg:grid-cols-[minmax(104px,0.2fr)_minmax(82px,0.14fr)_minmax(250px,0.78fr)_minmax(160px,0.4fr)_minmax(132px,0.32fr)_minmax(104px,0.23fr)] lg:items-center lg:py-1.5"
             >
               <div className="flex min-w-0 items-center justify-between gap-2 lg:block">
                 <PlatformPills item={item} />
@@ -1935,7 +1935,7 @@ function InfluencerTableHeaderRow({
   onSortChange: (key: SortKey) => void;
 }) {
   return (
-    <div className="hidden border-b border-[#e3e8e3] bg-[#fbfbf8] px-3 py-2 lg:grid lg:grid-cols-[minmax(78px,0.16fr)_minmax(88px,0.16fr)_minmax(250px,0.78fr)_minmax(170px,0.44fr)_minmax(140px,0.34fr)_minmax(110px,0.25fr)] lg:items-center lg:gap-2">
+    <div className="hidden border-b border-[#e3e8e3] bg-[#fbfbf8] px-3 py-2 lg:grid lg:grid-cols-[minmax(104px,0.2fr)_minmax(82px,0.14fr)_minmax(250px,0.78fr)_minmax(160px,0.4fr)_minmax(132px,0.32fr)_minmax(104px,0.23fr)] lg:items-center lg:gap-2">
       <ColumnHeader
         label="플랫폼"
         sortKey="platform"
@@ -2070,17 +2070,17 @@ function InfluencerLifecycleTabs({
               type="button"
               onClick={() => onChange(tab.value)}
               aria-pressed={active}
-              className={`relative flex h-9 min-w-0 items-center justify-between gap-1.5 rounded-t-[10px] border px-2 text-left transition sm:px-3 ${
+              className={`relative flex h-9 min-w-0 items-center justify-between gap-0.5 rounded-t-[10px] border px-1 text-left transition focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-neutral-950 sm:gap-1.5 sm:px-3 ${
                 active
                   ? "z-10 -mb-px border-[#d9e0d9] border-b-white bg-white pb-px text-[#171a17] shadow-[0_-1px_0_rgba(255,255,255,0.9)_inset]"
                   : "mb-0.5 border-transparent bg-transparent text-[#59605b] hover:bg-[#f5f4ee] hover:text-[#171a17]"
               }`}
             >
-              <span className="truncate text-[12px] font-extrabold sm:text-[13px]">
+              <span className="shrink-0 whitespace-nowrap text-[10px] font-extrabold sm:text-[13px]">
                 {tab.label}
               </span>
               <span
-                className={`inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full px-1.5 text-[12px] font-extrabold ${
+                className={`inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1 text-[11px] font-extrabold sm:h-6 sm:min-w-6 sm:px-1.5 sm:text-[12px] ${
                   active
                     ? "bg-[#171a17] text-white"
                     : "bg-white/80 text-[#303630]"
@@ -2344,7 +2344,7 @@ function PlatformPills({ item }: { item: InfluencerCampaignWorkItem }) {
       {primaryPlatform ? (
         <span
           key={`${primaryPlatform.platform}-${primaryPlatform.label}`}
-          className={`inline-flex h-6 min-w-0 max-w-full items-center gap-1 rounded-[5px] border px-2 text-[11px] font-semibold ${PLATFORM_META[primaryPlatform.platform].className}`}
+          className={`inline-flex h-6 min-w-0 max-w-full items-center gap-1 rounded-[5px] border px-2 text-[11px] font-semibold whitespace-nowrap ${PLATFORM_META[primaryPlatform.platform].className}`}
           title={
             primaryPlatform.accountId === "계정 미입력"
               ? primaryPlatform.label
@@ -2352,7 +2352,7 @@ function PlatformPills({ item }: { item: InfluencerCampaignWorkItem }) {
           }
         >
           <span className="shrink-0">{PLATFORM_META[primaryPlatform.platform].icon}</span>
-          <span className="truncate">{primaryPlatform.label}</span>
+          <span className="min-w-0 truncate whitespace-nowrap">{primaryPlatform.label}</span>
         </span>
       ) : null}
       {items.length > 1 && (

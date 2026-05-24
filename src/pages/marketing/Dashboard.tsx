@@ -1097,11 +1097,11 @@ function PlatformPills({ contract }: { contract: Contract }) {
       {items.slice(0, 3).map((item) => (
         <span
           key={`${item.platform}-${item.label}`}
-          className={`inline-flex h-5 max-w-full items-center gap-1 rounded-[5px] border px-1.5 text-[10px] font-semibold ${PLATFORM_META[item.platform].className}`}
+          className={`inline-flex h-5 max-w-full items-center gap-1 rounded-[5px] border px-1.5 text-[10px] font-semibold whitespace-nowrap ${PLATFORM_META[item.platform].className}`}
           title={item.title}
         >
           <span className="shrink-0">{PLATFORM_META[item.platform].mark}</span>
-          <span className="truncate">{item.label}</span>
+          <span className="min-w-0 truncate whitespace-nowrap">{item.label}</span>
         </span>
       ))}
       {items.length > 3 && (
@@ -1456,7 +1456,7 @@ function CampaignTableHeaderRow({
   dateColumnLabel: string;
 }) {
   return (
-    <div className="hidden border-b border-[#e3e8e3] bg-[#fbfbf8] px-3 py-2 lg:grid lg:grid-cols-[minmax(78px,0.16fr)_minmax(88px,0.16fr)_minmax(250px,0.78fr)_minmax(170px,0.44fr)_minmax(140px,0.34fr)_minmax(110px,0.25fr)] lg:items-center lg:gap-2">
+    <div className="hidden border-b border-[#e3e8e3] bg-[#fbfbf8] px-3 py-2 lg:grid lg:grid-cols-[minmax(104px,0.2fr)_minmax(82px,0.14fr)_minmax(250px,0.78fr)_minmax(160px,0.4fr)_minmax(132px,0.32fr)_minmax(104px,0.23fr)] lg:items-center lg:gap-2">
       <ColumnHeader label="플랫폼" />
       <ColumnHeader label="브랜드" />
       <ColumnHeader label="캠페인명" />
@@ -1590,7 +1590,7 @@ function CampaignLifecycleTabs({
               type="button"
               onClick={() => onChange(tab.value)}
               aria-pressed={active}
-              className={`relative flex h-9 min-w-[128px] flex-1 items-center justify-between gap-2 rounded-t-[10px] border px-3 text-left transition ${
+              className={`relative flex h-9 min-w-[128px] flex-1 items-center justify-between gap-2 rounded-t-[10px] border px-3 text-left transition focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-neutral-950 ${
                 active
                   ? "z-10 -mb-px border-[#d9e0d9] border-b-white bg-white pb-px text-[#171a17] shadow-[0_-1px_0_rgba(255,255,255,0.9)_inset]"
                   : "mb-0.5 border-transparent bg-transparent text-[#59605b] hover:bg-[#f5f4ee] hover:text-[#171a17]"
@@ -1674,14 +1674,14 @@ function CampaignRow({
       type="button"
       onClick={onOpen}
       aria-label={`${campaign.name} 캠페인 열기, 지급내용 ${paymentLabel}, 진도율 ${progress.label}, 날짜 ${dateLabel}`}
-      className="group grid w-full gap-2 px-3 py-2 text-left transition-colors hover:bg-[#fafaf7] lg:min-h-[44px] lg:grid-cols-[minmax(78px,0.16fr)_minmax(88px,0.16fr)_minmax(250px,0.78fr)_minmax(170px,0.44fr)_minmax(140px,0.34fr)_minmax(110px,0.25fr)] lg:items-center"
+      className="group grid w-full gap-2 px-3 py-2 text-left transition-colors hover:bg-[#fafaf7] lg:min-h-[44px] lg:grid-cols-[minmax(104px,0.2fr)_minmax(82px,0.14fr)_minmax(250px,0.78fr)_minmax(160px,0.4fr)_minmax(132px,0.32fr)_minmax(104px,0.23fr)] lg:items-center"
     >
       <div className="min-w-0">
         <span
-          className={`inline-flex h-7 max-w-full items-center gap-1 rounded-md border px-2 text-[12px] font-extrabold ${platformMeta.className}`}
+          className={`inline-flex h-7 max-w-full items-center gap-1 rounded-md border px-2 text-[12px] font-extrabold whitespace-nowrap ${platformMeta.className}`}
         >
           <span className="shrink-0">{platformMeta.mark}</span>
-          <span className="truncate">{platformLabel}</span>
+          <span className="min-w-0 truncate whitespace-nowrap">{platformLabel}</span>
         </span>
       </div>
       <p className="min-w-0 truncate whitespace-nowrap text-[12px] font-semibold text-[#303630]">
