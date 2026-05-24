@@ -44,6 +44,10 @@ import type {
   InfluencerDashboardContractStage,
   InfluencerDashboardResponse,
 } from "../../domain/influencerDashboard";
+import {
+  clearInfluencerDashboardPreload,
+  consumeInfluencerDashboardPreload,
+} from "../../domain/influencerDashboardPreload";
 import { buildLoginRedirect } from "../../domain/navigation";
 import {
   formatContractTitleForDisplay,
@@ -424,6 +428,18 @@ export function InfluencerDashboard() {
     );
 
     try {
+      const preloadedDashboard = consumeInfluencerDashboardPreload();
+
+      if (preloadedDashboard) {
+        try {
+          const data = await preloadedDashboard;
+          setState({ status: "ready", dashboard: data });
+          return;
+        } catch {
+          clearInfluencerDashboardPreload();
+        }
+      }
+
       const response = await apiFetch(
         "/api/influencer/dashboard?includeApplications=false",
         {
@@ -684,7 +700,7 @@ export function InfluencerDashboard() {
             </span>
             <span className="font-neo-heavy hidden text-[18px] leading-none sm:inline">{PRODUCT_NAME}</span>
             <span className="max-w-[104px] truncate text-[12px] font-extrabold leading-none text-neutral-700 sm:hidden">
-              인플루언서 · 내 캠페인
+              인플루언서 · 내 계약
             </span>
           </button>
 
@@ -693,11 +709,11 @@ export function InfluencerDashboard() {
               type="button"
               onClick={() => navigate("/influencer/dashboard")}
               className="inline-flex h-10 w-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] bg-neutral-950 px-0 text-[12px] font-extrabold text-white shadow-[0_10px_24px_rgba(23,26,23,0.14)] transition hover:bg-neutral-800 sm:w-auto sm:px-3"
-              aria-label="내 캠페인"
-              title="내 캠페인"
+              aria-label="내 계약"
+              title="내 계약"
             >
               <FileText className="h-3.5 w-3.5" strokeWidth={2} />
-              <span className="hidden sm:inline">내 캠페인</span>
+              <span className="hidden sm:inline">내 계약</span>
             </button>
             <button
               type="button"
@@ -743,7 +759,7 @@ export function InfluencerDashboard() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex min-w-0 flex-wrap items-end gap-x-3 gap-y-1">
                 <h1 className="truncate text-[17px] font-bold text-[#171a17]">
-                  내 캠페인
+                  내 계약
                 </h1>
               </div>
               <span className={`inline-flex h-8 items-center rounded-[8px] border px-3 text-[12px] font-semibold ${verification.className}`}>
@@ -1639,7 +1655,7 @@ function EmptyContracts({ hasQuery }: { hasQuery: boolean }) {
         <FileText className="h-5 w-5" strokeWidth={1.7} />
       </div>
       <h2 className="mt-3 text-[14px] font-semibold text-[#171a17]">
-        {hasQuery ? "조건에 맞는 캠페인이 없습니다" : "아직 내 캠페인이 없습니다"}
+        {hasQuery ? "조건에 맞는 계약이 없습니다" : "아직 내 계약이 없습니다"}
       </h2>
       <p className="mt-1 max-w-md text-[12px] leading-5 text-[#7d857f]">
         {hasQuery
@@ -1782,7 +1798,7 @@ function ContractTable({
         counts={lifecycleCounts}
         onChange={onLifecycleFilterChange}
       />
-      <div className="border-y border-[#d9e0d9] bg-[#fbfbf8]">
+      <div className="border-b border-[#d9e0d9] bg-white">
         <div className="flex min-h-11 items-center justify-between gap-3 px-3 py-2">
           <div className="min-w-0">
             <p className="truncate text-[14px] font-extrabold leading-5 text-[#171a17]">
@@ -2062,7 +2078,10 @@ function InfluencerLifecycleTabs({
 }) {
   return (
     <div className="bg-[#ecebe5] px-2 pt-2">
-      <div className="grid min-w-0 grid-cols-4 items-end gap-0 overflow-hidden">
+      <div
+        role="tablist"
+        className="grid min-w-0 grid-cols-4 items-end gap-0 overflow-visible"
+      >
         {INFLUENCER_LIFECYCLE_TABS.map((tab) => {
           const active = value === tab.value;
           return (
@@ -2070,11 +2089,12 @@ function InfluencerLifecycleTabs({
               key={tab.value}
               type="button"
               onClick={() => onChange(tab.value)}
-              aria-pressed={active}
+              role="tab"
+              aria-selected={active}
               className={`relative flex h-10 min-w-0 items-center justify-between gap-0.5 rounded-t-[10px] border px-1 text-left transition focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-neutral-950 sm:gap-1.5 sm:px-3 ${
                 active
-                  ? "z-10 -mb-px border-[#d9e0d9] border-b-white bg-white pb-px text-[#171a17] shadow-[0_-1px_0_rgba(255,255,255,0.9)_inset]"
-                  : "mb-1 border-transparent bg-[#dedbd2] text-[#59605b] hover:bg-[#f5f4ee] hover:text-[#171a17]"
+                  ? "z-10 border-[#d9e0d9] border-b-white bg-white text-[#171a17] after:absolute after:inset-x-0 after:-bottom-px after:h-px after:bg-white"
+                  : "border-transparent bg-transparent text-[#59605b] hover:bg-white/35 hover:text-[#171a17]"
               }`}
             >
               <span className="shrink-0 whitespace-nowrap text-[10px] font-extrabold sm:text-[13px]">

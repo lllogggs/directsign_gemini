@@ -108,6 +108,24 @@ export interface ContractEvidence {
   pdf_status: PdfStatus;
 }
 
+export interface ContractSettlementInquiry {
+  id: string;
+  status: "open" | "resolved";
+  message: string;
+  requested_at: string;
+  requested_by_profile_id?: string;
+  requested_by_name?: string;
+}
+
+export interface ContractSettlement {
+  advertiser_confirmed_paid?: boolean;
+  advertiser_confirmed_at?: string;
+  advertiser_confirmed_by_profile_id?: string;
+  advertiser_confirmed_by_name?: string;
+  status?: "confirmed_paid" | "unpaid_inquiry";
+  inquiries?: ContractSettlementInquiry[];
+}
+
 export interface AuditEvent {
   id: string;
   actor: ContractActor;
@@ -142,6 +160,7 @@ export interface Contract {
     contact: string;
   };
   campaign?: ContractCampaign;
+  settlement?: ContractSettlement;
   workflow?: ContractWorkflow;
   evidence?: ContractEvidence;
   audit_events?: AuditEvent[];

@@ -1382,7 +1382,7 @@ function CampaignListView({
         counts={lifecycleCounts}
         onChange={onLifecycleFilterChange}
       />
-      <div className="border-y border-[#d9e0d9] bg-[#fbfbf8]">
+      <div className="border-b border-[#d9e0d9] bg-white">
         <div className="flex min-h-11 items-center justify-between gap-3 px-3 py-2">
           <div className="min-w-0">
             <p className="truncate text-[14px] font-extrabold leading-5 text-[#171a17]">
@@ -1570,7 +1570,10 @@ function CampaignLifecycleTabs({
 }) {
   return (
     <div className="bg-[#ecebe5] px-2 pt-2">
-      <div className="grid min-w-0 grid-cols-3 items-end gap-0 overflow-hidden">
+      <div
+        role="tablist"
+        className="grid min-w-0 grid-cols-3 items-end gap-0 overflow-visible"
+      >
         {CAMPAIGN_LIFECYCLE_TABS.map((tab) => {
           const active = value === tab.value;
           return (
@@ -1578,11 +1581,12 @@ function CampaignLifecycleTabs({
               key={tab.value}
               type="button"
               onClick={() => onChange(tab.value)}
-              aria-pressed={active}
+              role="tab"
+              aria-selected={active}
               className={`relative flex h-10 min-w-0 flex-1 items-center justify-between gap-2 rounded-t-[10px] border px-3 text-left transition focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-neutral-950 ${
                 active
-                  ? "z-10 -mb-px border-[#d9e0d9] border-b-white bg-white pb-px text-[#171a17] shadow-[0_-1px_0_rgba(255,255,255,0.9)_inset]"
-                  : "mb-1 border-transparent bg-[#dedbd2] text-[#59605b] hover:bg-[#f5f4ee] hover:text-[#171a17]"
+                  ? "z-10 border-[#d9e0d9] border-b-white bg-white text-[#171a17] after:absolute after:inset-x-0 after:-bottom-px after:h-px after:bg-white"
+                  : "border-transparent bg-transparent text-[#59605b] hover:bg-white/35 hover:text-[#171a17]"
               }`}
             >
               <span className="truncate text-[13px] font-extrabold">
@@ -2211,22 +2215,26 @@ function CampaignApplicantRow({
     }
   };
 
+  const applicantName = thread.counterpartName || thread.senderName;
+  const initial = applicantName.trim().slice(0, 1) || "인";
+
   return (
-    <div className="grid gap-2 px-3 py-3 lg:grid-cols-[minmax(150px,0.48fr)_minmax(150px,0.5fr)_minmax(220px,1fr)_116px_minmax(176px,0.6fr)] lg:items-center">
-      <div className="min-w-0">
-        <p className="truncate text-[13px] font-semibold text-[#171a17]">
-          {thread.counterpartName || thread.senderName}
-        </p>
-        <p className="mt-0.5 truncate text-[12px] font-medium text-[#7d857f]">
-          {formatMarketplaceMessageDate(thread.createdAt)}
-        </p>
+    <div className="grid gap-2 px-3 py-2.5 lg:min-h-[48px] lg:grid-cols-[minmax(190px,0.62fr)_minmax(280px,0.9fr)_104px_minmax(170px,0.48fr)] lg:items-center">
+      <div className="flex min-w-0 items-center gap-2.5">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#171a17] text-[12px] font-extrabold text-white">
+          {initial}
+        </span>
+        <div className="min-w-0">
+          <p className="truncate text-[13px] font-extrabold text-[#171a17]">
+            {applicantName}
+          </p>
+          <p className="mt-0.5 truncate text-[11px] font-semibold text-[#7d857f]">
+            {formatMarketplaceMessageDate(thread.createdAt)}
+          </p>
+        </div>
       </div>
 
       <ApplicantPlatformLinks platforms={thread.platforms} />
-
-      <p className="line-clamp-2 min-w-0 break-keep text-[12px] font-semibold leading-5 text-[#303630]">
-        {thread.proposalSummary}
-      </p>
 
       <span
         className={`inline-flex w-fit items-center rounded-md border px-2 py-1 text-[11px] font-semibold ${statusMeta.className}`}
@@ -2290,6 +2298,7 @@ function ApplicantPlatformLinks({
     <div className="flex min-w-0 flex-wrap gap-1">
       {visiblePlatforms.slice(0, 3).map((item, index) => {
         const label = platformLabels[item.platform] ?? item.label;
+        const text = item.followersLabel ? `${label} ${item.followersLabel}` : label;
         const key = `${item.platform}-${item.handle ?? item.url ?? index}`;
 
         if (item.url) {
@@ -2300,9 +2309,9 @@ function ApplicantPlatformLinks({
               target="_blank"
               rel="noreferrer noopener"
               className="inline-flex h-7 max-w-full items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 text-[11px] font-extrabold text-blue-700 transition hover:border-blue-300 hover:bg-blue-100"
-              title={item.handle ? `${label} · ${item.handle}` : label}
+              title={item.handle ? `${text} · ${item.handle}` : text}
             >
-              <span className="truncate">{label}</span>
+              <span className="truncate">{text}</span>
               <ExternalLink className="h-3 w-3 shrink-0" />
             </a>
           );
@@ -2312,9 +2321,9 @@ function ApplicantPlatformLinks({
           <span
             key={key}
             className="inline-flex h-7 max-w-full items-center rounded-md border border-[#d9e0d9] bg-[#f8faf7] px-2 text-[11px] font-extrabold text-[#59605b]"
-            title={item.handle ? `${label} · ${item.handle}` : label}
+            title={item.handle ? `${text} · ${item.handle}` : text}
           >
-            <span className="truncate">{label}</span>
+            <span className="truncate">{text}</span>
           </span>
         );
       })}
@@ -2494,7 +2503,7 @@ function ContractTable({
   return (
     <section className="overflow-hidden rounded-[8px] border border-[#d9e0d9] bg-white lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
       {lifecycleTabs}
-      <div className="border-y border-[#d9e0d9] bg-[#fbfcfa]">
+      <div className="border-b border-[#d9e0d9] bg-white">
         <div className="flex min-h-11 items-center justify-between gap-3 px-3 py-2">
           <div className="min-w-0">
             <p className="truncate text-[12px] font-extrabold text-[#171a17]">

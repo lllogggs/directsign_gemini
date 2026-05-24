@@ -620,7 +620,6 @@ export function PublicInfluencerProfilePage() {
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <StatusPill icon={<BadgeCheck className="h-3.5 w-3.5" />} label={profile.verifiedLabel} />
-                <StatusPill icon={<Mail className="h-3.5 w-3.5" />} label={profile.responseTimeLabel} />
               </div>
               <div className="mt-4 flex flex-col gap-5 sm:flex-row sm:items-start">
                 <AvatarBlock label={profile.avatarLabel} size="large" />
@@ -631,11 +630,8 @@ export function PublicInfluencerProfilePage() {
                   <h1 className="font-neo-heavy mt-2 text-[32px] leading-tight tracking-[-0.035em] text-neutral-950 sm:text-[40px]">
                     {profile.displayName}
                   </h1>
-                  <p className="mt-3 max-w-2xl break-keep text-[16px] font-medium leading-7 text-neutral-600">
-                    {cleanMarketplaceCopy(profile.headline)}
-                  </p>
-                  <p className="mt-3 max-w-3xl break-keep text-[14px] leading-6 text-neutral-600">
-                    {cleanMarketplaceCopy(profile.bio)}
+                  <p className="mt-3 max-w-2xl truncate text-[15px] font-semibold leading-6 text-neutral-600">
+                    {cleanMarketplaceCopy(profile.bio || profile.headline)}
                   </p>
                   <div className="mt-4 flex flex-col gap-2 sm:flex-row">
                     <button
@@ -659,24 +655,33 @@ export function PublicInfluencerProfilePage() {
             </div>
 
             <aside className="rounded-[12px] border border-neutral-200 bg-[#fbfaf7] p-4">
-              <p className="text-[12px] font-semibold text-neutral-500">컨택 기준</p>
-              <dl className="mt-3 grid gap-2">
-                <ProfileFact label="활동 지역" value={profile.location} />
-                <ProfileFact label="주요 타깃" value={profile.audience} />
-                <ProfileFact label="협업 단가" value={profile.startingPriceLabel} />
-                <ProfileFact
-                  label="가능 형태"
-                  value={formatProposalTypes(profile.collaborationTypes)}
-                />
-              </dl>
+              <p className="text-[12px] font-semibold text-neutral-500">채널</p>
+              <div className="mt-3 grid gap-2">
+                {profile.platforms.slice(0, 4).map((platform) => (
+                  <a
+                    key={`${platform.platform}-${platform.handle}`}
+                    href={platform.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex min-w-0 items-center justify-between gap-3 rounded-[8px] border border-neutral-200 bg-white px-3 py-2 transition hover:border-neutral-300"
+                  >
+                    <span className="min-w-0 truncate text-[13px] font-extrabold text-neutral-900">
+                      {platformLabels[platform.platform] ?? platform.label}
+                    </span>
+                    <span className="shrink-0 text-[12px] font-semibold text-neutral-500">
+                      {platform.followersLabel}
+                    </span>
+                  </a>
+                ))}
+              </div>
             </aside>
           </div>
         </section>
 
-        <section className="mx-auto grid max-w-[1120px] gap-4 px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_300px] lg:px-8">
+        <section className="mx-auto max-w-[1120px] px-4 py-5 sm:px-6 lg:px-8">
           <section className="rounded-[12px] border border-neutral-200 bg-white p-5">
             <h2 className="text-[16px] font-semibold text-neutral-950">핵심 정보</h2>
-            <div className="mt-4 grid gap-4 lg:grid-cols-2">
+            <div className="mt-4 grid gap-5 lg:grid-cols-[minmax(0,1fr)_260px]">
               <div>
                 <p className="mb-2 text-[12px] font-semibold text-neutral-500">활동 채널</p>
                 <div className="grid gap-2">
@@ -686,7 +691,7 @@ export function PublicInfluencerProfilePage() {
                       href={platform.url}
                       target="_blank"
                       rel="noreferrer"
-                      className="flex items-center justify-between gap-3 rounded-[10px] border border-neutral-200 bg-[#fbfaf7] px-3 py-3 transition hover:border-neutral-300"
+                      className="flex items-center justify-between gap-3 rounded-[8px] border border-neutral-200 bg-[#fbfaf7] px-3 py-3 transition hover:border-neutral-300"
                     >
                       <div className="min-w-0">
                         <PlatformPill platform={platform.platform} label={platform.label} />
@@ -694,10 +699,8 @@ export function PublicInfluencerProfilePage() {
                           {platform.handle}
                         </p>
                       </div>
-                      <p className="shrink-0 text-right text-[12px] font-semibold leading-5 text-neutral-500">
+                      <p className="shrink-0 text-right text-[12px] font-extrabold leading-5 text-neutral-700">
                         {platform.followersLabel}
-                        <br />
-                        {platform.performanceLabel}
                       </p>
                     </a>
                   ))}
@@ -705,48 +708,20 @@ export function PublicInfluencerProfilePage() {
               </div>
 
               <div>
-                <p className="mb-2 text-[12px] font-semibold text-neutral-500">최근 성과</p>
-                <div className="grid gap-2">
-                  {profile.portfolio.slice(0, 3).map((item) => (
-                    <article
-                      key={`${item.brand}-${item.title}`}
-                      className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 rounded-[10px] border border-neutral-200 bg-[#fbfaf7] px-3 py-3"
+                <p className="mb-2 text-[12px] font-semibold text-neutral-500">카테고리</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {profile.categories.slice(0, 5).map((category) => (
+                    <span
+                      key={category}
+                      className="inline-flex h-8 items-center rounded-[8px] border border-neutral-200 bg-[#fbfaf7] px-2.5 text-[12px] font-extrabold text-neutral-700"
                     >
-                      <div className="min-w-0">
-                        <p className="truncate text-[13px] font-semibold text-neutral-950">
-                          {item.title}
-                        </p>
-                        <p className="mt-1 text-[12px] font-semibold text-neutral-500">
-                          {item.brand}
-                        </p>
-                      </div>
-                      <p className="shrink-0 text-right text-[12px] font-semibold text-neutral-700">
-                        {cleanMarketplaceCopy(item.result)}
-                      </p>
-                    </article>
+                      {cleanMarketplaceCopy(category)}
+                    </span>
                   ))}
                 </div>
               </div>
             </div>
           </section>
-
-          <aside className="rounded-[12px] border border-neutral-200 bg-white p-5">
-            <h2 className="text-[16px] font-semibold text-neutral-950">제안 기준</h2>
-            <div className="mt-4">
-              <TagList items={profile.brandFit.map(cleanMarketplaceCopy)} />
-            </div>
-            <ul className="mt-4 grid gap-2 border-t border-neutral-100 pt-4">
-              {profile.proposalHints.slice(0, 3).map((hint) => (
-                <li
-                  key={hint}
-                  className="flex gap-2 text-[13px] font-medium leading-5 text-neutral-600"
-                >
-                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-neutral-700" />
-                  <span>{cleanMarketplaceCopy(hint)}</span>
-                </li>
-              ))}
-            </ul>
-          </aside>
         </section>
       </div>
 
@@ -1030,7 +1005,7 @@ function InfluencerDiscoveryCard({
   onContact: () => void;
 }) {
   return (
-    <article className="yl-card flex min-h-[320px] w-full min-w-0 flex-col border p-3.5">
+    <article className="yl-card flex min-h-[250px] w-full min-w-0 flex-col border p-3.5">
       <div className="flex items-start gap-3">
         <AvatarBlock label={profile.avatarLabel} />
         <div className="min-w-0 flex-1">
@@ -1047,10 +1022,7 @@ function InfluencerDiscoveryCard({
       </div>
 
       <p className="mt-3 line-clamp-2 text-[13px] font-semibold leading-5 text-neutral-800">
-        {cleanMarketplaceCopy(profile.headline)}
-      </p>
-      <p className="mt-1.5 line-clamp-1 text-[12px] leading-5 text-neutral-600">
-        {cleanMarketplaceCopy(profile.audience)}
+        {cleanMarketplaceCopy(profile.bio || profile.headline)}
       </p>
 
       <div className="mt-3 flex flex-wrap gap-1.5">
@@ -1063,17 +1035,18 @@ function InfluencerDiscoveryCard({
         ))}
       </div>
 
-      <dl className="mt-3 grid grid-cols-3 gap-1.5 text-[12px]">
-        <ProfileFact label="가능 형태" value={formatProposalTypes(profile.collaborationTypes)} />
-        <ProfileFact label="예상 단가" value={profile.startingPriceLabel} />
-        <ProfileFact label="응답" value={profile.responseTimeLabel} />
-      </dl>
-
-      <div className="mt-3">
-        <TagList items={profile.brandFit.slice(0, 3).map(cleanMarketplaceCopy)} />
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {profile.categories.slice(0, 3).map((category) => (
+          <span
+            key={`${profile.id}-${category}`}
+            className="inline-flex h-7 items-center rounded-md border border-neutral-200 bg-[#fbfaf7] px-2 text-[11px] font-extrabold text-neutral-600"
+          >
+            {cleanMarketplaceCopy(category)}
+          </span>
+        ))}
       </div>
 
-      <div className="mt-auto grid grid-cols-2 gap-2 pt-4">
+      <div className="mt-auto grid grid-cols-2 gap-2 pt-3">
         <button
           type="button"
           onClick={onContact}

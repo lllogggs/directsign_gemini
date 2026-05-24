@@ -32,6 +32,7 @@ export type MarketplaceMessageThread = {
     label: string;
     handle?: string;
     url?: string;
+    followersLabel?: string;
   }>;
   proposalType: CampaignProposalType;
   proposalTypeLabel: string;

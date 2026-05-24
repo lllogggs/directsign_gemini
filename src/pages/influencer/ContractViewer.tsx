@@ -287,6 +287,10 @@ export function ContractViewer() {
   const [consentAccepted, setConsentAccepted] = useState(false);
   const [signError, setSignError] = useState("");
   const [signNotice, setSignNotice] = useState("");
+  const [isSendingSettlementInquiry, setIsSendingSettlementInquiry] =
+    useState(false);
+  const [settlementInquiryNotice, setSettlementInquiryNotice] = useState("");
+  const [settlementInquiryError, setSettlementInquiryError] = useState("");
 
   const shareToken = searchParams.get("token") ?? "";
   const supportAccessRequestId = searchParams.get("support") ?? "";
@@ -1397,6 +1401,61 @@ export function ContractViewer() {
     }
   };
 
+  const requestSettlementInquiry = async () => {
+    if (!contract || isSendingSettlementInquiry) return;
+
+    if (!hasAuthenticatedContractAccess || serverAccessRole !== "influencer") {
+      navigate(loginForVerificationPath, { replace: true });
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "정산 미지급 문의를 남길까요? 광고주에게 종료된 계약의 정산 확인 요청이 전달됩니다.",
+    );
+    if (!confirmed) return;
+
+    setIsSendingSettlementInquiry(true);
+    setSettlementInquiryNotice("");
+    setSettlementInquiryError("");
+
+    try {
+      const response = await apiFetch(
+        `/api/contracts/${encodeURIComponent(contract.id)}/settlement-inquiry`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            message: "계약 종료 후 정산 미지급 문의",
+          }),
+        },
+      );
+      const data = (await response.json().catch(() => ({}))) as {
+        contract?: Contract;
+        error?: string;
+        message?: string;
+      };
+
+      if (!response.ok || !data.contract) {
+        throw new Error(data.error ?? "정산 문의를 남기지 못했습니다.");
+      }
+
+      replaceContract(data.contract);
+      setSettlementInquiryNotice(data.message ?? "정산 미지급 문의를 남겼습니다.");
+    } catch (error) {
+      setSettlementInquiryError(
+        error instanceof Error
+          ? translateApiErrorMessage(error.message, "정산 문의를 남기지 못했습니다.")
+          : "정산 문의를 남기지 못했습니다.",
+      );
+    } finally {
+      setIsSendingSettlementInquiry(false);
+    }
+  };
+
   return (
     <div className="flex min-h-[100dvh] flex-col bg-[#f7f6f3] text-neutral-950">
       {!isOperatorSupportView && selection?.showTooltip && (
@@ -1794,6 +1853,40 @@ export function ContractViewer() {
                 }
                 isClosed={isContractClosed}
               />
+              {isContractClosed ? (
+                <section className="rounded-lg border border-neutral-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <h2 className="text-sm font-semibold text-neutral-950">
+                        정산 확인
+                      </h2>
+                      <p className="mt-1 text-xs leading-5 text-neutral-500">
+                        종료된 계약의 미지급 건만 광고주에게 문의할 수 있습니다.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void requestSettlementInquiry()}
+                      disabled={isSendingSettlementInquiry}
+                      className="inline-flex h-10 shrink-0 items-center justify-center rounded-lg border border-neutral-200 bg-white px-3 text-[13px] font-extrabold text-neutral-800 transition hover:border-neutral-300 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:text-neutral-400"
+                    >
+                      {isSendingSettlementInquiry
+                        ? "문의 남기는 중"
+                        : "정산 미지급 문의"}
+                    </button>
+                  </div>
+                  {settlementInquiryNotice ? (
+                    <p className="mt-3 rounded-md bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
+                      {settlementInquiryNotice}
+                    </p>
+                  ) : null}
+                  {settlementInquiryError ? (
+                    <p className="mt-3 rounded-md bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+                      {settlementInquiryError}
+                    </p>
+                  ) : null}
+                </section>
+              ) : null}
             </>
           )}
         </section>

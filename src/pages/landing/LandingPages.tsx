@@ -943,10 +943,10 @@ export function StartPage() {
           </div>
         </header>
 
-        <section className="flex min-h-0 items-start justify-center pb-5 pt-[clamp(18px,3.8svh,34px)] sm:items-center sm:py-8 lg:py-0">
+        <section className="flex min-h-0 items-start justify-center pb-5 pt-[clamp(72px,14svh,128px)] sm:pt-[clamp(96px,16svh,150px)] lg:pt-[clamp(116px,17svh,166px)]">
           <div className="w-full max-w-[720px]">
             <h1
-              className="landing-start-title font-neo-heavy mb-4 text-center text-[30px] leading-[1.1] tracking-normal text-neutral-950 sm:mb-6 sm:text-[42px] sm:leading-[1.05]"
+              className="landing-start-title font-neo-heavy mb-0 text-center text-[30px] leading-[1.1] tracking-normal text-neutral-950 sm:text-[42px] sm:leading-[1.05]"
               aria-label="광고 계약은 확실하게"
             >
               <span className="landing-start-copy-line landing-start-copy-line-1 block">
@@ -956,7 +956,7 @@ export function StartPage() {
                 확실하게
               </span>
             </h1>
-            <div className="mt-6 grid gap-3 sm:grid-cols-2 sm:gap-4 lg:mt-7">
+            <div className="mt-9 grid gap-3 sm:mt-10 sm:grid-cols-2 sm:gap-4 lg:mt-11">
               {roleCards.map((role) => {
                 const tone = getStartRoleTone(role.role);
                 const isAdvertiser = role.role === "advertiser";
@@ -969,7 +969,7 @@ export function StartPage() {
                     key={role.role}
                     to={role.href}
                     aria-label={`${role.title} 선택`}
-                    className={`yl-card group flex min-h-[132px] flex-col justify-between border px-5 py-5 text-left transition hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:min-h-[150px] sm:px-5 sm:py-5 lg:min-h-[154px] ${tone.card}`}
+                    className={`yl-card group flex min-h-[144px] flex-col justify-between border px-5 py-5 text-left transition hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:min-h-[166px] sm:px-5 sm:py-6 lg:min-h-[176px] ${tone.card}`}
                   >
                     <span className="block">
                       <RoleIconCluster role={role.role} />
@@ -2102,7 +2102,7 @@ function IntroAppHeader({ role }: { role: IntroRole }) {
   const isAdvertiser = role === "advertiser";
   const actions = isAdvertiser
     ? ["새 계약", "새 캠페인", "메시지함", "인플루언서 찾기", "로그아웃"]
-    : ["내 캠페인", "캠페인 찾기", "메시지함", "로그아웃"];
+    : ["내 계약", "캠페인 찾기", "메시지함", "로그아웃"];
 
   return (
     <div className="border-b border-[#d9e0d9] bg-white">
@@ -2153,7 +2153,7 @@ function InfluencerIntroDashboardPreview({
       <div className="min-h-0 flex-1 p-2">
         <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[8px] border border-[#d9e0d9] bg-white">
           <IntroDashboardTitleBar
-            title="내 캠페인"
+            title="내 계약"
           />
           <IntroInfluencerProfileBanner accountName="크리에이터 소라" />
           <div className="min-h-0 flex-1 p-2">

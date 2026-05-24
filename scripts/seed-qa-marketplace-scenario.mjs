@@ -107,6 +107,29 @@ const removeRows = async (table, query, label = table) => {
   );
 };
 
+const findByPublicHandle = async (table, handle, label = table) => {
+  const rows = await rest(
+    table,
+    `?select=id&public_handle=eq.${encodeURIComponent(handle)}&limit=1`,
+    {},
+    `${label} select`,
+  );
+  return Array.isArray(rows) ? rows[0] : null;
+};
+
+const patchById = async (table, id, row, label = table) => {
+  await rest(
+    table,
+    `?id=eq.${encodeURIComponent(id)}`,
+    {
+      method: "PATCH",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify(row),
+    },
+    `${label} update`,
+  );
+};
+
 const listAuthUsers = async () => {
   const users = [];
   for (let page = 1; page <= 20; page += 1) {
@@ -192,43 +215,41 @@ const ensureAuthUser = async ({ email, role, name, companyName }) => {
 
 const advertisers = Array.from({ length: ACCOUNT_COUNT }, (_, index) => {
   const number = index + 1;
-  const suffix = pad(number);
   const samples = [
-    { companyName: "브래드룸", manager: "브래드룸 매니저", category: "식품 · 라이프스타일" },
-    { companyName: "오브레", manager: "오브레 마케팅", category: "뷰티 · 라이프스타일" },
-    { companyName: "하우스핏", manager: "하우스핏 캠페인팀", category: "운동 · 헬스" },
-    { companyName: "브루잉랩", manager: "브루잉랩 브랜드팀", category: "카페 · 식품" },
-    { companyName: "나이트케어", manager: "나이트케어 마케터", category: "뷰티 · 헬스케어" },
+    { companyName: "브래드룸", manager: "브래드룸 매니저", category: "식품 · 라이프스타일", handle: "breadroom" },
+    { companyName: "오브레", manager: "오브레 마케팅", category: "뷰티 · 라이프스타일", handle: "obre-beauty" },
+    { companyName: "하우스핏", manager: "하우스핏 캠페인팀", category: "운동 · 헬스", handle: "housefit" },
+    { companyName: "브루잉랩", manager: "브루잉랩 브랜드팀", category: "카페 · 식품", handle: "brewinglab" },
+    { companyName: "나이트케어", manager: "나이트케어 마케터", category: "뷰티 · 헬스케어", handle: "nightcare" },
   ];
   const sample = samples[index];
   return {
     number,
-    email: `qa.advertiser${suffix}@yeollock.me`,
+    email: `${sample.handle}@yeollock.me`,
     role: "marketer",
     name: sample.manager,
     companyName: sample.companyName,
-    handle: `qa-brand-${suffix}`,
+    handle: sample.handle,
     category: sample.category,
   };
 });
 
 const influencers = Array.from({ length: ACCOUNT_COUNT }, (_, index) => {
   const number = index + 1;
-  const suffix = pad(number);
   const samples = [
-    { name: "민서홈", categories: ["lifestyle", "mukbang", "beauty"] },
-    { name: "오늘의취향", categories: ["travel", "lifestyle", "mukbang"] },
-    { name: "하루핏", categories: ["fitness", "lifestyle", "beauty"] },
-    { name: "지유로그", categories: ["beauty", "fashion", "lifestyle"] },
-    { name: "루나데이", categories: ["tech", "education", "game"] },
+    { name: "민서홈", handle: "minseo.home", categories: ["lifestyle", "mukbang", "beauty"] },
+    { name: "오늘의취향", handle: "today.taste", categories: ["travel", "lifestyle", "mukbang"] },
+    { name: "하루핏", handle: "haru.fit", categories: ["fitness", "lifestyle", "beauty"] },
+    { name: "지유로그", handle: "ziyu.log", categories: ["beauty", "fashion", "lifestyle"] },
+    { name: "루나데이", handle: "luna.day", categories: ["tech", "education", "game"] },
   ];
   const sample = samples[index];
   return {
     number,
-    email: `qa.influencer${suffix}@yeollock.me`,
+    email: `${sample.handle}@yeollock.me`,
     role: "influencer",
     name: sample.name,
-    handle: `qa-creator-${suffix}`,
+    handle: sample.handle,
     categories: sample.categories,
   };
 });
@@ -311,11 +332,11 @@ const ensureAdvertiserProfile = async (account, user) => {
         representative_name: `${account.companyName} 대표`,
         evidence_snapshot_json: {
           seeded: true,
-          source: "seed-qa-marketplace-scenario",
+          source: "marketplace-showcase-seed",
         },
         ownership_check_status: "not_run",
-        note: "QA advertiser verification seed",
-        reviewed_by_name: "QA 운영자",
+        note: "사업자 인증 승인 데이터",
+        reviewed_by_name: "운영자",
         reviewed_at: timestamp,
         created_at: timestamp,
         updated_at: timestamp,
@@ -401,17 +422,17 @@ const ensureInfluencerProfile = async (account, user) => {
         platform_url: url,
         ownership_verification_method:
           platform === "youtube" ? "channel_description_code" : "profile_bio_code",
-        ownership_challenge_code: `DS-QA${pad(account.number)}-${platformChallengeCodes[platform]}`,
+        ownership_challenge_code: `DS-C${pad(account.number)}A-${platformChallengeCodes[platform]}`,
         ownership_challenge_url: url,
         ownership_check_status: "matched",
         ownership_checked_at: timestamp,
         evidence_snapshot_json: {
           seeded: true,
-          source: "seed-qa-marketplace-scenario",
+          source: "marketplace-showcase-seed",
           platform,
         },
-        note: "QA influencer platform verification seed",
-        reviewed_by_name: "QA 운영자",
+        note: "플랫폼 계정 인증 승인 데이터",
+        reviewed_by_name: "운영자",
         reviewed_at: timestamp,
         created_at: timestamp,
         updated_at: timestamp,
@@ -431,7 +452,7 @@ const ensureInfluencerProfile = async (account, user) => {
 
 const buildCampaigns = (advertiser) => [
   {
-    id: `qa-campaign-${pad(advertiser.number)}-01`,
+    id: `showcase-campaign-${pad(advertiser.number)}-01`,
     title: `${advertiser.companyName} 신제품 언박싱 릴스`,
     type: "sponsored_post",
     budget: "150만-250만원",
@@ -456,7 +477,7 @@ const buildCampaigns = (advertiser) => [
     ],
   },
   {
-    id: `qa-campaign-${pad(advertiser.number)}-02`,
+    id: `showcase-campaign-${pad(advertiser.number)}-02`,
     title: `${advertiser.companyName} 제품 체험 리뷰`,
     type: "product_seeding",
     budget: "제품 제공 + 80만원",
@@ -481,7 +502,7 @@ const buildCampaigns = (advertiser) => [
     ],
   },
   {
-    id: `qa-campaign-${pad(advertiser.number)}-03`,
+    id: `showcase-campaign-${pad(advertiser.number)}-03`,
     title: `${advertiser.companyName} 선정 크리에이터 계약`,
     type: advertiser.number % 2 === 0 ? "ppl" : "sponsored_post",
     budget: "200만-320만원",
@@ -514,12 +535,12 @@ const buildCampaigns = (advertiser) => [
     ],
   },
   {
-    id: `qa-campaign-${pad(advertiser.number)}-04`,
+    id: `showcase-campaign-${pad(advertiser.number)}-04`,
     title: `${advertiser.companyName} 완료 보관 캠페인`,
     type: "visit_review",
     budget: "120만원",
     applicantLimit: "1명",
-    summary: "완료된 캠페인과 계약 증빙 보관 상태를 확인하기 위한 데모 캠페인입니다.",
+    summary: "방문 리뷰 완료 후 계약 증빙을 보관하는 캠페인입니다.",
     deadline: addDays(-2),
     platforms: ["instagram", "naver_blog"],
     deliverables: ["방문 리뷰 1건", "증빙 링크 1건"],
@@ -549,15 +570,17 @@ const buildCampaigns = (advertiser) => [
 ];
 
 const ensureBrandProfile = async (advertiser) => {
-  const brandProfileId = stableUuid(
-    `qa:scenario:brand:${advertiser.organizationId}`,
+  const existingBrandProfile = await findByPublicHandle(
+    "marketplace_brand_profiles",
+    advertiser.handle,
+    "marketplace brand profile",
   );
+  const brandProfileId =
+    existingBrandProfile?.id ??
+    stableUuid(`qa:scenario:brand:${advertiser.organizationId}`);
   const campaigns = buildCampaigns(advertiser);
 
-  await upsert(
-    "marketplace_brand_profiles",
-    [
-      {
+  const brandProfileRow = {
         id: brandProfileId,
         organization_id: advertiser.organizationId,
         public_handle: advertiser.handle,
@@ -565,7 +588,7 @@ const ensureBrandProfile = async (advertiser) => {
         category: advertiser.category,
         headline: `${advertiser.companyName} 광고 캠페인 보드`,
         description:
-          "인플루언서 모집, 지원자 검토, 계약 전환, 완료 보관 흐름을 확인하는 데모 브랜드 프로필입니다.",
+          "인플루언서 모집부터 계약 전환까지 한 화면에서 운영합니다.",
         location: "서울",
         logo_label: advertiser.companyName.slice(0, 1),
         preferred_platforms: ["instagram", "youtube", "naver_blog"],
@@ -584,31 +607,45 @@ const ensureBrandProfile = async (advertiser) => {
         recent_creators: influencers.map((item) => item.name).slice(0, 3),
         is_published: true,
         updated_at: timestamp,
-      },
-    ],
-    "organization_id",
-    "marketplace brand profile",
-  );
+      };
+
+  if (existingBrandProfile) {
+    await patchById(
+      "marketplace_brand_profiles",
+      brandProfileId,
+      brandProfileRow,
+      "marketplace brand profile",
+    );
+  } else {
+    await upsert(
+      "marketplace_brand_profiles",
+      [brandProfileRow],
+      "organization_id",
+      "marketplace brand profile",
+    );
+  }
 
   return { ...advertiser, brandProfileId, campaigns };
 };
 
 const ensureMarketplaceInfluencer = async (influencer) => {
-  const influencerProfileId = stableUuid(
-    `qa:scenario:marketplace-influencer:${influencer.user.id}`,
-  );
-
-  await upsert(
+  const existingInfluencerProfile = await findByPublicHandle(
     "marketplace_influencer_profiles",
-    [
-      {
+    influencer.handle,
+    "marketplace influencer profile",
+  );
+  const influencerProfileId =
+    existingInfluencerProfile?.id ??
+    stableUuid(`qa:scenario:marketplace-influencer:${influencer.user.id}`);
+
+  const influencerProfileRow = {
         id: influencerProfileId,
         owner_profile_id: influencer.user.id,
         public_handle: influencer.handle,
         display_name: influencer.name,
         headline: `${influencer.name} 인증 크리에이터`,
         bio:
-          "캠페인 탐색, 지원, 플랫폼 인증, 계약 진행 흐름을 확인하는 데모 크리에이터 프로필입니다.",
+          "생활 속 제품을 자연스럽게 소개하는 리뷰 콘텐츠를 만듭니다.",
         location: "서울",
         avatar_label: influencer.name.slice(0, 1),
         categories: influencer.categories,
@@ -638,11 +675,23 @@ const ensureMarketplaceInfluencer = async (influencer) => {
         ],
         is_published: true,
         updated_at: timestamp,
-      },
-    ],
-    "owner_profile_id",
-    "marketplace influencer profile",
-  );
+      };
+
+  if (existingInfluencerProfile) {
+    await patchById(
+      "marketplace_influencer_profiles",
+      influencerProfileId,
+      influencerProfileRow,
+      "marketplace influencer profile",
+    );
+  } else {
+    await upsert(
+      "marketplace_influencer_profiles",
+      [influencerProfileRow],
+      "owner_profile_id",
+      "marketplace influencer profile",
+    );
+  }
 
   await removeRows(
     "marketplace_influencer_channels",
@@ -737,11 +786,16 @@ const buildWorkflow = (status, dueAt) => {
       next_action: "서명 완료 계약입니다. 산출물 증빙을 검토할 수 있습니다.",
       risk_level: "low",
     },
+    CLOSED: {
+      next_actor: "system",
+      next_action: "계약 종료 후 증빙과 정산 확인 기록을 보관합니다.",
+      risk_level: "low",
+    },
   }[status];
 
   return {
     ...meta,
-    due_at: status === "SIGNED" ? undefined : dueAt,
+    due_at: status === "SIGNED" || status === "CLOSED" ? undefined : dueAt,
     last_message: meta.next_action,
   };
 };
@@ -755,7 +809,7 @@ const buildEvidence = (status, seed) => {
     };
   }
 
-  if (status === "SIGNED") {
+  if (status === "SIGNED" || status === "CLOSED") {
     return {
       share_token_status: "revoked",
       audit_ready: true,
@@ -812,11 +866,12 @@ const buildClauses = (status, seed) => {
 
 const buildContract = ({ brand, campaign, influencer, status, seed }) => {
   const contractId = stableUuid(`qa:scenario:contract:${seed}`);
-  const createdAt = addDays(status === "SIGNED" ? -14 : -3);
-  const updatedAt = status === "SIGNED" ? addDays(-2) : timestamp;
+  const finalStatus = status === "SIGNED" || status === "CLOSED";
+  const createdAt = addDays(finalStatus ? -14 : -3);
+  const updatedAt = finalStatus ? addDays(status === "CLOSED" ? -1 : -2) : timestamp;
   const shareEvidence = buildEvidence(status, seed);
   const postLink =
-    status === "SIGNED"
+    finalStatus
       ? `https://instagram.com/p/${brand.handle}-${influencer.handle}`
       : undefined;
 
@@ -863,7 +918,7 @@ const buildContract = ({ brand, campaign, influencer, status, seed }) => {
         description: "광고주가 캠페인 지원을 수락했습니다.",
         created_at: createdAt,
       },
-      ...(status === "SIGNED"
+      ...(finalStatus
         ? [
             {
               id: stableUuid(`qa:scenario:audit:signed:${seed}`),
@@ -874,20 +929,41 @@ const buildContract = ({ brand, campaign, influencer, status, seed }) => {
             },
           ]
         : []),
+      ...(status === "CLOSED"
+        ? [
+            {
+              id: stableUuid(`qa:scenario:audit:closed:${seed}`),
+              actor: "advertiser",
+              action: "contract_closed",
+              description: "광고주가 정산 완료를 확인하고 계약을 종료했습니다.",
+              created_at: updatedAt,
+            },
+          ]
+        : []),
     ],
     clauses: buildClauses(status, seed),
-    ...(status === "SIGNED"
+    ...(finalStatus
       ? {
+          settlement:
+            status === "CLOSED"
+              ? {
+                  advertiser_confirmed_paid: true,
+                  advertiser_confirmed_at: updatedAt,
+                  advertiser_confirmed_by_profile_id: brand.user.id,
+                  advertiser_confirmed_by_name: brand.name,
+                  status: "confirmed_paid",
+                }
+              : undefined,
           signature_data: {
             adv_sign: "",
             inf_sign: "",
             signed_at: updatedAt,
             ip: "127.0.0.1",
-            user_agent: "QA 시드",
+            user_agent: "쇼케이스 시드",
             signer_name: influencer.name,
             signer_email: influencer.email,
             consent_text: "전자서명 동의가 완료되었습니다.",
-            consent_text_version: "qa-2026-05-21",
+            consent_text_version: "showcase-2026-05-21",
             contract_hash: stableToken(`qa:scenario:contract-hash:${seed}`),
             signature_hash: stableToken(`qa:scenario:signature:${seed}`),
           },
@@ -947,7 +1023,7 @@ const buildScenarioRows = (brands, creators) => {
         campaignIndex: 3,
         creatorIndex: (brandIndex + 4) % creators.length,
         status: "converted_to_contract",
-        contractStatus: brandIndex % 2 === 0 ? "APPROVED" : "SIGNED",
+        contractStatus: brandIndex % 2 === 0 ? "CLOSED" : "SIGNED",
       },
     ];
 

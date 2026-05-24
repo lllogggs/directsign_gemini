@@ -565,7 +565,7 @@ export function ContractAdminViewer() {
     if (!canCloseContract || isClosingContract) return;
 
     const confirmed = window.confirm(
-      "광고 계약을 마감할까요? 마감 후에는 인플루언서 추가 제출과 광고주 검수 변경이 차단됩니다.",
+      "정산이 완료된 계약인가요? 확인 후 계약을 종료하면 인플루언서 추가 제출과 광고주 검수 변경이 차단됩니다.",
     );
     if (!confirmed) return;
 
@@ -579,7 +579,11 @@ export function ContractAdminViewer() {
         {
           method: "POST",
           credentials: "include",
-          headers: { Accept: "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({ settlement_confirmed: true }),
         },
       );
       const data = (await response.json().catch(() => ({}))) as {

@@ -422,8 +422,8 @@ const browserRenderViewports = [
 ];
 
 const qaCredentials = {
-  advertiserEmail: process.env.QA_ADVERTISER_EMAIL || "test.advertiser@yeollock.me",
-  influencerEmail: process.env.QA_INFLUENCER_EMAIL || "test.influencer@yeollock.me",
+  advertiserEmail: process.env.QA_ADVERTISER_EMAIL || "breadroom.manager@yeollock.me",
+  influencerEmail: process.env.QA_INFLUENCER_EMAIL || "creator.sora@yeollock.me",
   password: process.env.QA_TEST_PASSWORD || "YeollockTest!2026",
 };
 

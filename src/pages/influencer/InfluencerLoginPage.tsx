@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { AuthLoginScreen } from "../../components/AuthLoginScreen";
 import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
+import { preloadInfluencerDashboard } from "../../domain/influencerDashboardPreload";
 import { getNextPath } from "../../domain/navigation";
 import { translateApiErrorMessage } from "../../domain/userMessages";
 
@@ -56,6 +57,7 @@ export function InfluencerLoginPage() {
         );
       }
 
+      void preloadInfluencerDashboard().catch(() => undefined);
       navigate(nextPath, { replace: true });
     } catch (loginError) {
       setError(

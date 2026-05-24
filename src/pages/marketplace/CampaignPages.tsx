@@ -453,7 +453,10 @@ export function AdvertiserCampaignRecruitmentPage() {
               <CampaignField label="업로드 마감일">
                 <input
                   required
-                  type="date"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}"
+                  maxLength={10}
                   value={form.uploadDeadline}
                   onChange={(event) =>
                     setForm((current) => ({
@@ -461,17 +464,22 @@ export function AdvertiserCampaignRecruitmentPage() {
                       uploadDeadline: event.target.value,
                     }))
                   }
+                  placeholder="예: 2026-06-04"
                   className="campaign-input"
                 />
               </CampaignField>
               <CampaignField label="모집마감일">
                 <input
                   required
-                  type="date"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}"
+                  maxLength={10}
                   value={form.deadline}
                   onChange={(event) =>
                     setForm((current) => ({ ...current, deadline: event.target.value }))
                   }
+                  placeholder="예: 2026-05-28"
                   className="campaign-input"
                 />
               </CampaignField>

@@ -1223,8 +1223,14 @@ const supabaseAuthUrl = (pathName: string) => {
 };
 
 const supabaseAuthWarmupMinIntervalMs = 30 * 1000;
+const supabaseRequestTimeoutMs = parsePositiveNumberEnv(
+  process.env.SUPABASE_REQUEST_TIMEOUT_MS,
+  8,
+) * 1000;
 let supabaseAuthWarmupStartedAt = 0;
 let supabaseAuthWarmupPromise: Promise<void> | undefined;
+
+const createSupabaseTimeoutSignal = () => AbortSignal.timeout(supabaseRequestTimeoutMs);
 
 const warmSupabaseAuthConnection = async () => {
   if (!supabaseUrl || !supabasePublishableKey) return;
@@ -1240,6 +1246,7 @@ const warmSupabaseAuthConnection = async () => {
   supabaseAuthWarmupPromise = fetch(supabaseAuthUrl("/settings"), {
     headers: supabaseAuthHeaders(),
     cache: "no-store",
+    signal: createSupabaseTimeoutSignal(),
   })
     .then(async (warmupResponse) => {
       if (!warmupResponse.ok) {
@@ -1354,6 +1361,7 @@ type SupabaseRequestInit = Omit<RequestInit, "headers"> & {
 const fetchSupabase = (table: string, query = "", init: SupabaseRequestInit = {}) =>
   fetch(supabaseRestUrl(table, query), {
     ...init,
+    signal: init.signal ?? createSupabaseTimeoutSignal(),
     headers: {
       ...supabaseHeaders(),
       ...(init.headers ?? {}),
@@ -1408,8 +1416,80 @@ const profileSelectFields = [
   "privacy_policy_version",
 ].join(",");
 
+const recentSessionCacheTtlMs = parsePositiveNumberEnv(
+  process.env.SUPABASE_RECENT_SESSION_CACHE_SECONDS,
+  8,
+) * 1000;
+const profileCacheTtlMs = parsePositiveNumberEnv(
+  process.env.SUPABASE_PROFILE_CACHE_SECONDS,
+  8,
+) * 1000;
+const recentAuthSessionCache = new Map<
+  string,
+  { user: SupabaseAuthUser; cachedAt: number }
+>();
+const profileCache = new Map<
+  string,
+  { profile: SupabaseProfileRow; cachedAt: number }
+>();
+
+const getTokenCacheKey = (accessToken: string) =>
+  createHash("sha256").update(accessToken).digest("hex");
+
+const readRecentAuthSession = (accessToken: string | undefined) => {
+  if (!accessToken) return undefined;
+  const key = getTokenCacheKey(accessToken);
+  const cache = recentAuthSessionCache.get(key);
+  if (!cache) return undefined;
+  if (Date.now() - cache.cachedAt > recentSessionCacheTtlMs) {
+    recentAuthSessionCache.delete(key);
+    return undefined;
+  }
+  return cache.user;
+};
+
+const rememberRecentAuthSession = (
+  accessToken: string | undefined,
+  user: SupabaseAuthUser | undefined,
+) => {
+  if (!accessToken || !user?.id) return;
+  recentAuthSessionCache.set(getTokenCacheKey(accessToken), {
+    user,
+    cachedAt: Date.now(),
+  });
+};
+
+const forgetRecentAuthSession = (accessToken: string | undefined) => {
+  if (!accessToken) return;
+  recentAuthSessionCache.delete(getTokenCacheKey(accessToken));
+};
+
+const readProfileFromCache = (userId: string) => {
+  const cache = profileCache.get(userId);
+  if (!cache) return undefined;
+  if (Date.now() - cache.cachedAt > profileCacheTtlMs) {
+    profileCache.delete(userId);
+    return undefined;
+  }
+  return cache.profile;
+};
+
+const rememberProfile = (profile: SupabaseProfileRow | undefined) => {
+  if (!profile?.id) return;
+  profileCache.set(profile.id, {
+    profile,
+    cachedAt: Date.now(),
+  });
+};
+
+const forgetProfile = (userId: string | undefined) => {
+  if (userId) profileCache.delete(userId);
+};
+
 const readProfileByUserId = async (userId: string) => {
   if (!useSupabase) return undefined;
+  const cachedProfile = readProfileFromCache(userId);
+  if (cachedProfile) return cachedProfile;
 
   const rows = await readSupabaseRows<SupabaseProfileRow>(
     "profiles",
@@ -1417,7 +1497,9 @@ const readProfileByUserId = async (userId: string) => {
     "profile",
   );
 
-  return rows[0];
+  const profile = rows[0];
+  rememberProfile(profile);
+  return profile;
 };
 
 const syncProfileEmailVerifiedAt = async (authUser: SupabaseAuthUser) => {
@@ -2614,6 +2696,7 @@ const requireCronRequest = (
 const fetchSupabaseAuthUser = async (accessToken: string) => {
   const response = await fetch(supabaseAuthUrl("/user"), {
     headers: supabaseAuthHeaders(accessToken),
+    signal: createSupabaseTimeoutSignal(),
   });
 
   if (!response.ok) {
@@ -2632,6 +2715,7 @@ const createSupabasePasswordSession = async (
     {
       method: "POST",
       headers: supabaseAuthHeaders(),
+      signal: createSupabaseTimeoutSignal(),
       body: JSON.stringify({ email, password }),
     },
   );
@@ -2868,12 +2952,16 @@ const revokeSessionFromRequest = async (
   const accessToken = bearerToken ?? cookieAccessToken;
 
   if (hasText(accessToken)) {
+    forgetProfile(readRecentAuthSession(accessToken)?.id);
+    forgetRecentAuthSession(accessToken);
     await revokeSupabaseSession(accessToken);
     return;
   }
 
   if (hasText(refreshToken)) {
     const session = await refreshSupabaseSession(refreshToken);
+    forgetProfile(session.user.id);
+    forgetRecentAuthSession(session.access_token);
     await revokeSupabaseSession(session.access_token);
   }
 };
@@ -2889,9 +2977,16 @@ const authenticateInfluencerRequest = async (
   const accessToken = bearerToken ?? cookieAccessToken;
 
   if (accessToken) {
+    const cachedUser = readRecentAuthSession(accessToken);
+    if (cachedUser) {
+      return { user: cachedUser, accessToken };
+    }
+
     try {
+      const user = await fetchSupabaseAuthUser(accessToken);
+      rememberRecentAuthSession(accessToken, user);
       return {
-        user: await fetchSupabaseAuthUser(accessToken),
+        user,
         accessToken,
       };
     } catch {
@@ -2905,6 +3000,7 @@ const authenticateInfluencerRequest = async (
       if (response) {
         setInfluencerSessionCookies(response, session);
       }
+      rememberRecentAuthSession(session.access_token, session.user);
       return {
         user: session.user,
         accessToken: session.access_token,
@@ -2930,9 +3026,16 @@ const authenticateAdvertiserRequest = async (
   const accessToken = bearerToken ?? cookieAccessToken;
 
   if (accessToken) {
+    const cachedUser = readRecentAuthSession(accessToken);
+    if (cachedUser) {
+      return { user: cachedUser, accessToken };
+    }
+
     try {
+      const user = await fetchSupabaseAuthUser(accessToken);
+      rememberRecentAuthSession(accessToken, user);
       return {
-        user: await fetchSupabaseAuthUser(accessToken),
+        user,
         accessToken,
       };
     } catch {
@@ -2946,6 +3049,7 @@ const authenticateAdvertiserRequest = async (
       if (response) {
         setAdvertiserSessionCookies(response, session);
       }
+      rememberRecentAuthSession(session.access_token, session.user);
       return {
         user: session.user,
         accessToken: session.access_token,
@@ -8123,7 +8227,7 @@ const addPlatformInfoToMarketplaceProposals = async (
     influencerProfileIds.length > 0
       ? readSupabaseRows<SupabaseMarketplaceInfluencerChannelRow>(
           "marketplace_influencer_channels",
-          `?select=profile_id,platform,label,handle,url,sort_order&profile_id=in.${postgrestInFilter(
+          `?select=profile_id,platform,label,handle,url,followers_label,sort_order&profile_id=in.${postgrestInFilter(
             influencerProfileIds,
           )}&order=sort_order.asc`,
           "marketplace proposal platform channels",
@@ -8144,6 +8248,7 @@ const addPlatformInfoToMarketplaceProposals = async (
       label: channel.label || platformLabels[channel.platform],
       handle: channel.handle,
       url: channel.url ?? undefined,
+      followersLabel: channel.followers_label ?? undefined,
     });
     channelsByProfileId.set(channel.profile_id, channels);
   }
@@ -12845,6 +12950,8 @@ app.post("/api/advertiser/login", async (request, response) => {
       return;
     }
 
+    rememberRecentAuthSession(session.access_token, session.user);
+    rememberProfile(profile);
     setAdvertiserSessionCookies(response, session);
     clearPublicAuthRateLimit(request, "advertiser_login", email);
     response.json({
@@ -13043,6 +13150,8 @@ app.post("/api/influencer/login", async (request, response, _next) => {
       return;
     }
 
+    rememberRecentAuthSession(session.access_token, session.user);
+    rememberProfile(profile);
     setInfluencerSessionCookies(response, session);
     clearPublicAuthRateLimit(request, "influencer_login", email);
     response.json({
@@ -14748,6 +14857,15 @@ app.post("/api/contracts/:id/close", async (request, response, next) => {
       response.status(409).json({ error: "Contract must be signed before it can be closed" });
       return;
     }
+    const settlementConfirmed =
+      request.body?.settlement_confirmed === true ||
+      request.body?.settlementConfirmed === true;
+    if (!settlementConfirmed) {
+      response.status(422).json({
+        error: "정산 완료 확인 후 계약을 종료할 수 있습니다.",
+      });
+      return;
+    }
 
     const bundle = await readContractDeliverableBundle(contract);
     const summary = buildDeliverableSummary(bundle.requirements, bundle.deliverables);
@@ -14763,6 +14881,14 @@ app.post("/api/contracts/:id/close", async (request, response, next) => {
     const updatedContract = normalizeContract({
       ...contract,
       status: "CLOSED",
+      settlement: {
+        ...(contract.settlement ?? {}),
+        advertiser_confirmed_paid: true,
+        advertiser_confirmed_at: now,
+        advertiser_confirmed_by_profile_id: advertiserAuth.profile.id,
+        advertiser_confirmed_by_name: advertiserAuth.profile.name,
+        status: "confirmed_paid",
+      },
       deliverable_summary: {
         ...summary,
         updated_at: now,
@@ -14779,7 +14905,8 @@ app.post("/api/contracts/:id/close", async (request, response, next) => {
           id: randomUUID(),
           actor: "advertiser",
           action: "contract_closed",
-          description: "광고주가 모든 필수 컨텐츠 승인 후 광고 계약을 마감했습니다.",
+          description:
+            "광고주가 필수 컨텐츠 승인과 정산 완료를 확인한 뒤 광고 계약을 마감했습니다.",
           created_at: now,
         },
       ],
@@ -14810,7 +14937,7 @@ app.post("/api/contracts/:id/close", async (request, response, next) => {
       eventType: "contract_closed",
       targetType: "contract",
       targetId: contract.id,
-      payload: { summary },
+      payload: { summary, settlement_confirmed: true },
       request,
     });
 
@@ -14818,6 +14945,107 @@ app.post("/api/contracts/:id/close", async (request, response, next) => {
       contract: updatedContract,
       summary,
       message: "광고 계약 마감 완료",
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/contracts/:id/settlement-inquiry", async (request, response, next) => {
+  try {
+    const throttle = consumeSensitiveEndpointRateLimit(
+      request,
+      "contract_settlement_inquiry",
+      request.params.id,
+    );
+    if (throttle.blocked) {
+      sendSensitiveRateLimitResponse(response, throttle);
+      return;
+    }
+
+    const influencerAuth = await requireInfluencerSession(request, response);
+    if (!influencerAuth) return;
+
+    const {
+      store,
+      existingContract: contract,
+    } = await readContractWriteContext(request.params.id);
+
+    if (!contract) {
+      response.status(404).json({ error: "Contract not found" });
+      return;
+    }
+    if (!canInfluencerAccessLegacyContract(influencerAuth, contract)) {
+      response.status(403).json({ error: "이 계약을 볼 권한이 없습니다." });
+      return;
+    }
+    if (contract.status !== "CLOSED") {
+      response.status(409).json({
+        error: "종료된 계약에서만 정산 미지급 문의를 남길 수 있습니다.",
+      });
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const message =
+      normalizeOptionalText(request.body?.message) ??
+      "계약 종료 후 정산 미지급 문의";
+    const inquiry = {
+      id: randomUUID(),
+      status: "open" as const,
+      message,
+      requested_at: now,
+      requested_by_profile_id: influencerAuth.profile.id,
+      requested_by_name: influencerAuth.profile.name,
+    };
+    const updatedContract = normalizeContract({
+      ...contract,
+      settlement: {
+        ...(contract.settlement ?? {}),
+        status: "unpaid_inquiry",
+        inquiries: [...(contract.settlement?.inquiries ?? []), inquiry],
+      },
+      workflow: {
+        ...(contract.workflow ?? {
+          next_actor: "advertiser",
+          next_action: "정산 미지급 문의 확인",
+          risk_level: "medium",
+        }),
+        next_actor: "advertiser",
+        next_action: "정산 미지급 문의 확인",
+        last_message: "인플루언서가 정산 미지급 문의를 남겼습니다.",
+        risk_level: "medium",
+      },
+      audit_events: [
+        ...(contract.audit_events ?? []),
+        {
+          id: randomUUID(),
+          actor: "influencer",
+          action: "settlement_unpaid_inquiry",
+          description: "인플루언서가 종료된 계약의 정산 미지급 문의를 남겼습니다.",
+          created_at: now,
+        },
+      ],
+      updated_at: now,
+    });
+
+    await writeStore(upsertContractIntoStore(store, updatedContract));
+    await insertContractEvent({
+      contractId: contract.id,
+      actorProfileId: influencerAuth.profile.id,
+      actorRole: "influencer",
+      actorDisplayName: influencerAuth.profile.name,
+      eventType: "settlement_unpaid_inquiry",
+      targetType: "contract",
+      targetId: contract.id,
+      payload: { inquiry },
+      request,
+    });
+
+    response.json({
+      contract: updatedContract,
+      inquiry,
+      message: "정산 미지급 문의를 남겼습니다.",
     });
   } catch (error) {
     next(error);

@@ -815,14 +815,9 @@ const getContextualRoutePreloaders = (pathname: string): RouteModuleLoader[] => 
     return [loadLoginLanding, loadSignupPage];
   }
 
-  if (pathname.startsWith("/login")) {
-    return [
-      loadDashboard,
-      loadInfluencerDashboard,
-      loadMarketplacePages,
-      loadMarketplaceInboxPage,
-    ];
-  }
+  if (pathname === "/login/advertiser") return [loadDashboard];
+  if (pathname === "/login/influencer") return [loadInfluencerDashboard];
+  if (pathname === "/login") return [loadLoginLanding];
 
   if (pathname.startsWith("/signup")) {
     return [loadLoginLanding, loadDashboard, loadInfluencerDashboard];
@@ -878,7 +873,11 @@ const getImmediateRoutePreloaders = (
   return getExactRoutePreloaders(pathname);
 };
 
-const scheduleIdlePreload = (callback: () => void, timeout: number) => {
+const scheduleIdlePreload = (
+  callback: () => void,
+  timeout: number,
+  delayMs = 0,
+) => {
   const idleWindow = window as Window & {
     requestIdleCallback?: (
       callback: IdleRequestCallback,
@@ -887,13 +886,22 @@ const scheduleIdlePreload = (callback: () => void, timeout: number) => {
     cancelIdleCallback?: (handle: number) => void;
   };
 
-  if (idleWindow.requestIdleCallback) {
-    const handle = idleWindow.requestIdleCallback(callback, { timeout });
-    return () => idleWindow.cancelIdleCallback?.(handle);
-  }
+  let cancelIdle: (() => void) | undefined;
+  const timer = window.setTimeout(() => {
+    if (idleWindow.requestIdleCallback) {
+      const handle = idleWindow.requestIdleCallback(callback, { timeout });
+      cancelIdle = () => idleWindow.cancelIdleCallback?.(handle);
+      return;
+    }
 
-  const timer = window.setTimeout(callback, Math.min(timeout, 900));
-  return () => window.clearTimeout(timer);
+    const fallbackTimer = window.setTimeout(callback, Math.min(timeout, 900));
+    cancelIdle = () => window.clearTimeout(fallbackTimer);
+  }, delayMs);
+
+  return () => {
+    window.clearTimeout(timer);
+    cancelIdle?.();
+  };
 };
 
 function RouteSeoMeta() {
@@ -968,7 +976,7 @@ function RoutePreloader() {
 
     const cancelLikelyPreload = scheduleIdlePreload(() => {
       preloadRouteModules(getContextualRoutePreloaders(location.pathname));
-    }, location.pathname.startsWith("/login") ? 220 : 700);
+    }, 900, location.pathname.startsWith("/login") ? 40 : 850);
 
     const secondaryTimer = window.setTimeout(() => {
       if (location.pathname === "/") {

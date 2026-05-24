@@ -8,7 +8,7 @@ const root = process.cwd();
 const baseUrl = process.env.SALES_CAPTURE_BASE_URL ?? "http://127.0.0.1:3000";
 const outputDir = path.join(root, "docs", "sales", "assets");
 const captureAdvertiserEmail =
-  process.env.SALES_CAPTURE_ADVERTISER_EMAIL ?? "test.advertiser@yeollock.me";
+  process.env.SALES_CAPTURE_ADVERTISER_EMAIL ?? "breadroom.manager@yeollock.me";
 const captureAdvertiserPassword =
   process.env.QA_TEST_PASSWORD ?? "YeollockTest!2026";
 const profileDir = path.join(

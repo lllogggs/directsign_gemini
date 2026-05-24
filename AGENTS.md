@@ -55,12 +55,13 @@ Example option format:
 - Responsibilities: protect the Product Owner's direct instructions from being overwritten by later "polish", agent preference, or generic UI advice.
 - Authority: blocks edits when a proposed change conflicts with the Product Owner's known instruction; if the Kim Jaewoo Agent and any other role agent disagree, Codex must ask the Product Owner which rule wins before implementing.
 - Required routing:
-  - Mandatory work order: Product Owner instruction -> update the Kim Jaewoo Agent rulebook when the instruction reveals a correction or preference -> perform the requested work -> run Kim Jaewoo Agent review on the actual rendered result.
-  - For service, product, design, UI, UX, copy, QA, API, deployment, and performance work, the standing loop is: Product Owner work instruction -> check for conflict with existing Kim Jaewoo Agent rules and update the rulebook when the instruction reveals a reusable preference -> perform the work -> run Kim Jaewoo Agent review -> report to the Product Owner.
+  - Kim Jaewoo Agent conflict checks, rulebook updates, and review loops are required for code changes and design/UI/UX/copy improvements or modifications.
+  - Pure operational tasks such as commit, push, deploy, status checks, or reporting do not require the Kim Jaewoo Agent loop unless they include code/design modification or reveal a reusable Product Owner correction.
+  - Mandatory work order for code/design modification: Product Owner instruction -> check for conflict with existing Kim Jaewoo Agent rules and update the rulebook when the instruction reveals a reusable preference -> perform the work -> run Kim Jaewoo Agent review on the actual rendered result or changed behavior -> report to the Product Owner.
   - If the Product Owner's instruction and a Kim Jaewoo Agent rule appear to conflict, Codex must stop and ask the Product Owner which rule wins before implementation.
   - If Kim Jaewoo Agent review fails, Codex must gather the Kim Jaewoo Agent's specific feedback, revise the work, rerun Kim Jaewoo Agent review, and only report completion after it passes or after a remaining blocker is clearly reported to the Product Owner.
-  - Every code, UI, UX, copy, QA, API, and deployment change must pass through the Kim Jaewoo Agent review before editing and before reporting done.
-  - For ordinary work, the Kim Jaewoo Agent review scope is the changed or improved screens, flows, code paths, copy, API boundaries, and QA evidence relevant to the task.
+  - Every code, UI, UX, and copy modification must pass through the Kim Jaewoo Agent review before editing and before reporting done.
+  - For ordinary code/design work, the Kim Jaewoo Agent review scope is the changed or improved screens, flows, code paths, copy, and QA evidence relevant to the task.
   - A full-service end-to-end walkthrough is required only when the Product Owner explicitly asks for a full-service or entire-service review, or when the approved scope itself changes service-wide navigation, workflow, permissions, or customer-facing behavior. A one-time full-service instruction must not be converted into a standing requirement.
   - The Kim Jaewoo Agent review must be based on actual rendered behavior and action results, not only static screenshots, code inspection, or partial page checks.
   - Treat the user's latest explicit instruction as stronger than inferred design taste, online references, and previous agent recommendations.
@@ -76,6 +77,13 @@ Example option format:
     - The Product Owner prefers trust to be shown through clear state, evidence, verification, timing, and workflow clarity rather than long copy or legalistic filler.
     - The Product Owner values product-wide consistency. Persistent brand/navigation elements should keep stable placement, sizing, affordance, and cursor behavior across pages unless there is a deliberate layout reason.
     - The Product Owner values seamless app surfaces. Tabs should feel physically connected to their panel, and dashboards should avoid visible UI artifacts such as unnecessary scrollbars, divider seams, and transient loading banners when stable account or verification information can be shown immediately.
+  - The Product Owner expects browser-tab style dashboard tabs to share one baseline. The selected tab must not look lower, sunken, or offset from inactive tabs; avoid visible divider lines, gaps, or tab seams when the requested reference is Chrome-like tabs.
+  - For Chrome/Google-like dashboard tabs, do not draw every tab as an individual boxed segment. Inactive tabs should sit quietly on the tab strip, while only the active tab visually becomes the connected surface of the content panel below.
+    - The Product Owner dislikes first screens that feel like a cluster floating in the exact center of a large empty canvas. Main role-selection screens should have deliberate upper-weighted vertical rhythm with enough breathing room, not a lonely center pile.
+    - Sparse first screens should use scale, width, and composition to feel intentionally occupied. Do not leave a huge empty lower half that makes the product look unfinished.
+    - When the Product Owner asks to adjust placement or spacing, preserve the existing screen structure unless they explicitly ask for a structural redesign. Do not turn a centered headline-plus-card layout into a split layout just to solve spacing.
+    - For spacing complaints, first tune vertical gap, component height, and spacing scale inside the existing layout before changing composition or copy.
+    - When realistic test data is requested, do not use obvious QA prefixes such as `qa-`, `test`, or placeholder-looking labels in customer-facing seed data. Use plausible fake brand names, creator names, products, campaign titles, and contract names that make dashboards feel like a real pilot workspace.
     - The Product Owner treats broken customer-facing text as a release blocker. Rendered screens must not show mojibake, `???` placeholders, corrupted Korean, or seed-data artifacts; fix the source data or sanitize the display before calling a UI pass complete.
   - A one-time request for the Kim Jaewoo Agent to walk the full service is temporary unless the Product Owner explicitly says to make it permanent. For unrelated future work, review only the modified or improved scope.
   - Blue primary CTAs were directly requested by the Product Owner. Do not change primary CTAs from blue to black/neutral during design polishing unless the Product Owner explicitly asks for that specific button to change.
@@ -159,6 +167,7 @@ Example option format:
   - Table column labels should support obvious ascending/descending sorting when sortable.
   - Use "진도율", not "정원진도". Prefer compact values such as "3/12" with a restrained progress bar.
   - Do not show every test campaign as "1/1"; maintain varied test states and progress so the dashboard looks real.
+  - Dashboard and seed data must cover 1:1 contracts and one-to-many campaign contracts across recruiting, active, ended/completed, rejected, revision, signature, content, and review states.
   - Remove redundant "상태" columns when tab/state already communicates the status.
 - Campaign creation rules:
   - Campaign creation field order must be: platform, ad type, title, recruitment count, payment, deliverables, campaign description, upload deadline, recruitment deadline.
@@ -172,12 +181,15 @@ Example option format:
 - Intro and landing rules:
   - Main/intro pages should be concise and clean, with little text.
   - Do not use long middle sections of body copy. Let UI mockups, dashboard previews, and four or fewer core points explain the service.
+  - The root main role-selection page should not show actual contract status previews or dashboard snippets. Product/state previews belong on the advertiser/influencer intro pages, so avoid duplicating them on the first role-selection screen.
   - Dashboard previews on intro pages must be based on the real service screens, not decorative or imaginary product cards.
   - Intro dashboard previews must mirror the real dashboard header and table labels immediately after dashboard changes. If the real dashboard says "계약 목록", the intro preview must not still say "캠페인 목록".
   - Advertiser intro previews should show the real dashboard states "모집중", "진행중", "종료"; influencer intro previews should show "지원중", "진행중", "완료", "미선정".
   - Avoid repeated words and repeated value props in the same viewport.
   - The first screen should show what the service is and what action to take without feeling like a generic marketing page.
 - Verification and trust rules:
+  - Advertisers should not end or complete a contract without being asked whether settlement/payment is complete. If the settlement system is not implemented yet, preserve a confirmation/audit flow and make the settlement state clear.
+  - Ended/completed influencer contract views should provide a concise "정산 미지급 문의" action so creators are not trapped after closure when payment is unresolved.
   - Advertiser verification should use "사업자 인증" language.
   - When National Tax Service business verification is available, auto-approve based on business number, representative name, and opening date where appropriate.
   - Recognize that opening date is hard for outsiders to know; this reduces casual impersonation risk but does not eliminate fraud.
@@ -194,6 +206,7 @@ Example option format:
   - If an integration needs an API key, implement the server-side wiring and tell the user exactly which key or console setting is needed.
   - Do not expose external API keys or sensitive credentials to the browser.
   - If API approval or registration is required, prepare the code path but leave real registration to the user.
+  - When the Product Owner approves a service-flow change, Supabase schema, seed data, and server data access may be changed as needed to make the real product behavior work. Still stop and ask before changing authentication/security policy or sensitive personal-data handling.
 - QA and browser verification rules:
   - Do not rely only on code review for UI quality. Use the real browser, login with test accounts, navigate actual pages, and capture screenshots.
   - For service-wide work or when the Product Owner asks for full review, QA must cover the entire service: all screens, all reachable buttons/links/forms/tabs/filters/modals, advertiser and influencer journeys, and both happy paths and obvious error/empty states.
@@ -328,7 +341,7 @@ For every meaningful improvement or fix, Codex must include a short customer rea
 
 ## Owner Command Proxy Review Rhythm
 
-- Run this review before and after implementation when the task touches landing pages, signup/login, dashboards, inboxes, verification, profile pages, campaign pages, contract pages, public share flows, automation, API integrations, QA, deployment, or performance.
+- Run this review before and after implementation only when the task includes code changes or design/UI/UX/copy improvements or modifications. Pure commit, push, deploy, status check, or report-only work does not need this loop.
 - Before editing, identify the likely user complaint in one sentence, such as "too much copy", "filters are louder than content", "row is overloaded", "CTA is duplicated", "page scrolls when it should not", "wrong flow order", "looks like an old version", or "not verified in the real browser".
 - After editing, inspect the actual rendered screen, not only the code.
 - The pass is not complete unless the rendered screen satisfies:

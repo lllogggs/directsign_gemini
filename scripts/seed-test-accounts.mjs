@@ -26,13 +26,13 @@ const timestamp = new Date().toISOString();
 
 const accounts = {
   advertiser: {
-    email: "test.advertiser@yeollock.me",
+    email: "breadroom.manager@yeollock.me",
     role: "marketer",
     name: "광고주 매니저",
     company_name: "브레드룸",
   },
   influencer: {
-    email: "test.influencer@yeollock.me",
+    email: "creator.sora@yeollock.me",
     role: "influencer",
     name: "크리에이터 소라",
   },
@@ -134,6 +134,29 @@ const removeRows = async (table, query, label = table) => {
       headers: { Prefer: "return=minimal" },
     },
     `${label} delete`,
+  );
+};
+
+const findByPublicHandle = async (table, handle, label = table) => {
+  const rows = await rest(
+    table,
+    `?select=id&public_handle=eq.${encodeURIComponent(handle)}&limit=1`,
+    {},
+    `${label} select`,
+  );
+  return Array.isArray(rows) ? rows[0] : null;
+};
+
+const patchById = async (table, id, row, label = table) => {
+  await rest(
+    table,
+    `?id=eq.${encodeURIComponent(id)}`,
+    {
+      method: "PATCH",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify(row),
+    },
+    `${label} update`,
   );
 };
 
@@ -339,7 +362,7 @@ const ensureVerificationRecords = async ({ advertiser, influencer, organizationI
         platform_handle: "creator.sora",
         platform_url: "https://instagram.com/creator.sora",
         ownership_verification_method: "profile_bio_code",
-        ownership_challenge_code: "DS-QA26-SORA",
+        ownership_challenge_code: "DS-SORA-0526",
         ownership_challenge_url: "https://instagram.com/creator.sora",
         ownership_check_status: "matched",
         ownership_checked_at: timestamp,
@@ -363,7 +386,7 @@ const ensureVerificationRecords = async ({ advertiser, influencer, organizationI
         platform_handle: "@creator_sora",
         platform_url: "https://youtube.com/@creator_sora",
         ownership_verification_method: "channel_description_code",
-        ownership_challenge_code: "DS-QA26-SORA",
+        ownership_challenge_code: "DS-SORA-0526",
         ownership_challenge_url: "https://youtube.com/@creator_sora",
         ownership_check_status: "matched",
         ownership_checked_at: timestamp,
@@ -387,7 +410,7 @@ const ensureVerificationRecords = async ({ advertiser, influencer, organizationI
         platform_handle: "@creator.sora",
         platform_url: "https://www.tiktok.com/@creator.sora",
         ownership_verification_method: "profile_bio_code",
-        ownership_challenge_code: "DS-QA26-SORA",
+        ownership_challenge_code: "DS-SORA-0526",
         ownership_challenge_url: "https://www.tiktok.com/@creator.sora",
         ownership_check_status: "matched",
         ownership_checked_at: timestamp,
@@ -411,7 +434,7 @@ const ensureVerificationRecords = async ({ advertiser, influencer, organizationI
         platform_handle: "creator_sora",
         platform_url: "https://blog.naver.com/creator_sora",
         ownership_verification_method: "profile_bio_code",
-        ownership_challenge_code: "DS-QA26-SORA",
+        ownership_challenge_code: "DS-SORA-0526",
         ownership_challenge_url: "https://blog.naver.com/creator_sora",
         ownership_check_status: "matched",
         ownership_checked_at: timestamp,
@@ -449,15 +472,23 @@ const ensureVerificationRecords = async ({ advertiser, influencer, organizationI
 };
 
 const ensureMarketplaceProfiles = async ({ influencer, organizationId }) => {
-  const influencerProfileId = stableServerUuid(
-    `marketplace:influencer:${influencer.id}`,
-  );
-  const brandProfileId = stableUuid(`qa:marketplace:brand:${organizationId}`);
-
-  await upsert(
+  const existingInfluencerProfile = await findByPublicHandle(
     "marketplace_influencer_profiles",
-    [
-      {
+    testHandles.influencer,
+    "marketplace influencer profile",
+  );
+  const existingBrandProfile = await findByPublicHandle(
+    "marketplace_brand_profiles",
+    testHandles.brand,
+    "marketplace brand profile",
+  );
+  const influencerProfileId =
+    existingInfluencerProfile?.id ??
+    stableServerUuid(`marketplace:influencer:${influencer.id}`);
+  const brandProfileId =
+    existingBrandProfile?.id ?? stableUuid(`qa:marketplace:brand:${organizationId}`);
+
+  const influencerProfileRow = {
         id: influencerProfileId,
         owner_profile_id: influencer.id,
         public_handle: testHandles.influencer,
@@ -495,11 +526,23 @@ const ensureMarketplaceProfiles = async ({ influencer, organizationId }) => {
         ],
         is_published: true,
         updated_at: timestamp,
-      },
-    ],
-    "owner_profile_id",
-    "marketplace influencer profile",
-  );
+      };
+
+  if (existingInfluencerProfile) {
+    await patchById(
+      "marketplace_influencer_profiles",
+      influencerProfileId,
+      influencerProfileRow,
+      "marketplace influencer profile",
+    );
+  } else {
+    await upsert(
+      "marketplace_influencer_profiles",
+      [influencerProfileRow],
+      "owner_profile_id",
+      "marketplace influencer profile",
+    );
+  }
 
   await removeRows(
     "marketplace_influencer_channels",
@@ -539,10 +582,7 @@ const ensureMarketplaceProfiles = async ({ influencer, organizationId }) => {
     "marketplace influencer channels",
   );
 
-  await upsert(
-    "marketplace_brand_profiles",
-    [
-      {
+  const brandProfileRow = {
         id: brandProfileId,
         organization_id: organizationId,
         public_handle: testHandles.brand,
@@ -642,11 +682,23 @@ const ensureMarketplaceProfiles = async ({ influencer, organizationId }) => {
         recent_creators: ["크리에이터 소라", "제우", "민서홈"],
         is_published: true,
         updated_at: timestamp,
-      },
-    ],
-    "organization_id",
-    "marketplace brand profile",
-  );
+      };
+
+  if (existingBrandProfile) {
+    await patchById(
+      "marketplace_brand_profiles",
+      brandProfileId,
+      brandProfileRow,
+      "marketplace brand profile",
+    );
+  } else {
+    await upsert(
+      "marketplace_brand_profiles",
+      [brandProfileRow],
+      "organization_id",
+      "marketplace brand profile",
+    );
+  }
 
   return {
     influencerProfileId,
@@ -972,9 +1024,9 @@ const showcaseScenarios = [
     key: "closed-blog",
     title: "브루잉랩 공동구매 계약 종료",
     campaignName: "브루잉랩 공동구매 파일럿",
-    influencerName: "지유로그",
-    influencerContact: "jiyu.blog@example.com",
-    channelUrl: "https://blog.naver.com/jiyu-log",
+    influencerName: accounts.influencer.name,
+    influencerContact: accounts.influencer.email,
+    channelUrl: "https://blog.naver.com/creator_sora",
     type: "공동구매",
     status: "APPROVED",
     nextActor: "system",
@@ -1050,7 +1102,16 @@ const buildShowcaseContract = (scenario, advertiserId) => {
   const updatedAt =
     completedAt ?? addDays(scenario.key === "draft-minseo" ? -2 : 0);
   const campaignEndDate = dateOnly(scenario.endDays ?? 21);
+  const campaignStartDate = dateOnly(
+    scenario.startDays ??
+      (typeof scenario.endDays === "number" && scenario.endDays < 0
+        ? scenario.endDays - 21
+        : 1),
+  );
   const isClosed = scenario.status === "CLOSED";
+  const contractDeliverables = isClosed
+    ? [scenario.deliverables[0] ?? "콘텐츠 증빙 1건"]
+    : scenario.deliverables;
 
   return {
     id: stableUuid(`${showcaseBatch}:${scenario.key}`),
@@ -1070,17 +1131,17 @@ const buildShowcaseContract = (scenario, advertiserId) => {
     },
     campaign: {
       budget: scenario.budget,
-      start_date: dateOnly(1),
+      start_date: campaignStartDate,
       end_date: campaignEndDate,
       deadline: dateOnly(scenario.dueDays),
       upload_due_at: dateOnly(scenario.dueDays),
       review_due_at: dateOnly(scenario.dueDays + 2),
       revision_limit: "2",
       disclosure_text: "#광고 #협찬",
-      tracking_link: `${PUBLIC_SITE_URL}/qa/showcase/${scenario.key}`,
-      period: `${dateOnly(1)} - ${campaignEndDate}`,
+      tracking_link: `${PUBLIC_SITE_URL}/showcase/${scenario.key}`,
+      period: `${campaignStartDate} - ${campaignEndDate}`,
       platforms: scenario.platforms,
-      deliverables: scenario.deliverables,
+      deliverables: contractDeliverables,
     },
     workflow: {
       next_actor: scenario.nextActor,
@@ -1119,7 +1180,10 @@ const buildShowcaseContract = (scenario, advertiserId) => {
           ]
         : []),
     ],
-    clauses: buildShowcaseClauses(scenario),
+    clauses: buildShowcaseClauses({
+      ...scenario,
+      deliverables: contractDeliverables,
+    }),
     ...(isClosed
       ? {
           signature_data: {
@@ -1127,11 +1191,11 @@ const buildShowcaseContract = (scenario, advertiserId) => {
             inf_sign: "",
             signed_at: completedAt ?? updatedAt,
             ip: "127.0.0.1",
-            user_agent: "QA 시드",
+            user_agent: "쇼케이스 시드",
             signer_name: scenario.influencerName,
             signer_email: scenario.influencerContact,
             consent_text: "전자서명 동의가 완료되었습니다.",
-            consent_text_version: "qa-2026-05-24",
+            consent_text_version: "showcase-2026-05-24",
             contract_hash: stableServerUuid(`showcase:closed:contract:${scenario.key}`),
             signature_hash: stableServerUuid(`showcase:closed:signature:${scenario.key}`),
           },
@@ -1187,14 +1251,38 @@ const signContract = async (contractId, influencerCookie) => {
   return JSON.parse(body).contract;
 };
 
-const submitDeliverable = async (contractId, scenario, influencerCookie) => {
+const loadDeliverableBundle = async (contractId, cookie) => {
+  const response = await fetch(
+    `${DASHBOARD_BASE_URL}/api/contracts/${encodeURIComponent(contractId)}/deliverables`,
+    {
+      headers: { Accept: "application/json", Cookie: cookie },
+    },
+  );
+  const body = await response.text();
+  if (!response.ok) {
+    throw new Error(
+      `load deliverables ${contractId} failed (${response.status}): ${body.slice(0, 700)}`,
+    );
+  }
+  return JSON.parse(body);
+};
+
+const submitDeliverable = async (
+  contractId,
+  scenario,
+  influencerCookie,
+  requirement,
+  index = 0,
+) => {
+  const title = requirement?.title ?? scenario.deliverables[index] ?? "콘텐츠 증빙";
   const response = await fetch(
     `${DASHBOARD_BASE_URL}/api/contracts/${encodeURIComponent(contractId)}/deliverables`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json", Cookie: influencerCookie },
       body: JSON.stringify({
-        title: scenario.deliverables[0] ?? "콘텐츠 증빙",
+        requirement_id: requirement?.id,
+        title,
         url: `${scenario.channelUrl.replace(/\/$/, "")}/showcase-${scenario.key}`,
         note: "쇼케이스 대시보드용 제출 링크입니다.",
       }),
@@ -1207,6 +1295,26 @@ const submitDeliverable = async (contractId, scenario, influencerCookie) => {
     );
   }
   return JSON.parse(body).deliverable;
+};
+
+const submitPostLink = async (contractId, scenario, influencerCookie) => {
+  const response = await fetch(
+    `${DASHBOARD_BASE_URL}/api/contracts/${encodeURIComponent(contractId)}/post-link`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: influencerCookie },
+      body: JSON.stringify({
+        post_link: `${scenario.channelUrl.replace(/\/$/, "")}/showcase-${scenario.key}`,
+      }),
+    },
+  );
+  const body = await response.text();
+  if (!response.ok) {
+    throw new Error(
+      `submit post link ${contractId} failed (${response.status}): ${body.slice(0, 700)}`,
+    );
+  }
+  return JSON.parse(body).contract;
 };
 
 const approveDeliverable = async (contractId, deliverableId, advertiserCookie) => {
@@ -1237,7 +1345,12 @@ const closeContract = async (contractId, advertiserCookie) => {
     `${DASHBOARD_BASE_URL}/api/contracts/${encodeURIComponent(contractId)}/close`,
     {
       method: "POST",
-      headers: { Accept: "application/json", Cookie: advertiserCookie },
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        Cookie: advertiserCookie,
+      },
+      body: JSON.stringify({ settlement_confirmed: true }),
     },
   );
   const body = await response.text();
@@ -1269,21 +1382,57 @@ const seedDashboardShowcase = async ({ advertiser, influencer, marketplace }) =>
     if (scenario.sign) {
       contract = await signContract(contract.id, influencerSession.cookie);
     }
-
-    let deliverable;
     if (scenario.submitDeliverable) {
-      deliverable = await submitDeliverable(
+      contract = await submitPostLink(
         contract.id,
         scenario,
         influencerSession.cookie,
       );
     }
-    if (scenario.approveDeliverable && deliverable?.id) {
-      await approveDeliverable(
+
+    const submittedDeliverables = [];
+    if (scenario.submitDeliverable) {
+      const bundle = await loadDeliverableBundle(
         contract.id,
-        deliverable.id,
-        advertiserSession.cookie,
+        influencerSession.cookie,
       );
+      const requirements = Array.isArray(bundle.requirements)
+        ? bundle.requirements
+        : [];
+      const requirementsToSubmit = scenario.closeContract
+        ? requirements
+        : requirements.slice(0, 1);
+      const targets =
+        requirementsToSubmit.length > 0 ? requirementsToSubmit : [undefined];
+
+      let submissionIndex = 0;
+      for (const requirement of targets) {
+        const quantity = scenario.closeContract
+          ? Math.max(1, Number(requirement?.quantity) || 1)
+          : 1;
+        for (let count = 0; count < quantity; count += 1) {
+          submittedDeliverables.push(
+            await submitDeliverable(
+              contract.id,
+              scenario,
+              influencerSession.cookie,
+              requirement,
+              submissionIndex,
+            ),
+          );
+          submissionIndex += 1;
+        }
+      }
+    }
+    if (scenario.approveDeliverable && submittedDeliverables.length > 0) {
+      for (const deliverable of submittedDeliverables) {
+        if (!deliverable?.id) continue;
+        await approveDeliverable(
+          contract.id,
+          deliverable.id,
+          advertiserSession.cookie,
+        );
+      }
     }
     if (scenario.closeContract) {
       contract = await closeContract(contract.id, advertiserSession.cookie);
