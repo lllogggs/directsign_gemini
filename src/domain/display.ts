@@ -1,6 +1,15 @@
+export const hasBrokenDisplayText = (value?: string | null) => {
+  const text = value?.trim();
+  if (!text) return false;
+
+  const repeatedQuestionMarks = text.match(/\?{2,}/g)?.join("") ?? "";
+  return text.includes("\uFFFD") || repeatedQuestionMarks.length >= 3;
+};
+
 export const removeInternalTestLabel = (value?: string | null, fallback = "") => {
   const text = value?.trim();
   if (!text) return fallback;
+  if (hasBrokenDisplayText(text)) return fallback;
 
   if (isInternalTestContact(text)) return fallback;
   if (/^qa\s*e2e\b/i.test(text)) return fallback;
@@ -18,6 +27,8 @@ export const removeInternalTestLabel = (value?: string | null, fallback = "") =>
     .replace(/\s+Test$/i, "")
     .replace(/\s+테스트$/g, "")
     .trim();
+
+  if (hasBrokenDisplayText(cleaned)) return fallback;
 
   return cleaned || fallback || text;
 };
@@ -45,7 +56,7 @@ export const formatContractTitleForDisplay = (
     .replace(/^\[[^\]]+\]\s*/, "")
     .replace(/\s+/g, " ")
     .trim();
-  if (!cleaned) return fallback;
+  if (!cleaned || hasBrokenDisplayText(cleaned)) return fallback;
 
   const parts = cleaned.split("/").map((part) => part.trim()).filter(Boolean);
   if (parts.length >= 2) {

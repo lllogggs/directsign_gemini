@@ -1782,7 +1782,7 @@ function ContractTable({
         counts={lifecycleCounts}
         onChange={onLifecycleFilterChange}
       />
-      <div className="border-b border-[#d9e0d9] bg-[#fbfbf8]">
+      <div className="border-y border-[#d9e0d9] bg-[#fbfbf8]">
         <div className="flex min-h-11 items-center justify-between gap-3 px-3 py-2">
           <div className="min-w-0">
             <p className="truncate text-[14px] font-extrabold leading-5 text-[#171a17]">
@@ -1867,7 +1867,7 @@ function ContractTable({
         sortState={sortState}
         onSortChange={onSortChange}
       />
-      <div className="max-h-[620px] divide-y divide-[#edf1ed] overflow-y-auto lg:max-h-none lg:min-h-0 lg:flex-1">
+      <div className="no-scrollbar max-h-[620px] divide-y divide-[#edf1ed] overflow-y-auto overscroll-contain lg:max-h-none lg:min-h-0 lg:flex-1">
         {displayItems.length > 0 ? (
           displayItems.map((item) => {
             const advertiserName = removeInternalTestLabel(
@@ -1875,6 +1875,7 @@ function ContractTable({
               "광고주",
             );
             const amountLabel = formatDashboardAmountLabel(item.fee_label);
+            const titleLabel = formatInfluencerDashboardItemTitle(item);
 
             return (
             <button
@@ -1896,7 +1897,7 @@ function ContractTable({
               </div>
               <div className="min-w-0">
                 <p className="min-w-0 truncate text-[13px] font-semibold text-[#171a17]">
-                  {formatDashboardContractTitle(item.title)}
+                  {titleLabel}
                 </p>
                 <p className="mt-1 min-w-0 truncate text-[11px] font-semibold text-[#606861] lg:hidden">
                   {advertiserName} · {amountLabel} · {formatDeadlineDisplay(item)}
@@ -2060,8 +2061,8 @@ function InfluencerLifecycleTabs({
   onChange: (value: InfluencerCampaignLifecycle) => void;
 }) {
   return (
-    <div className="border-b border-[#d9e0d9] bg-[#ecebe5] px-2 pt-2">
-      <div className="grid min-w-0 grid-cols-4 items-end gap-1">
+    <div className="bg-[#ecebe5] px-2 pt-2">
+      <div className="grid min-w-0 grid-cols-4 items-end gap-0 overflow-hidden">
         {INFLUENCER_LIFECYCLE_TABS.map((tab) => {
           const active = value === tab.value;
           return (
@@ -2073,7 +2074,7 @@ function InfluencerLifecycleTabs({
               className={`relative flex h-10 min-w-0 items-center justify-between gap-0.5 rounded-t-[10px] border px-1 text-left transition focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-neutral-950 sm:gap-1.5 sm:px-3 ${
                 active
                   ? "z-10 -mb-px border-[#d9e0d9] border-b-white bg-white pb-px text-[#171a17] shadow-[0_-1px_0_rgba(255,255,255,0.9)_inset]"
-                  : "mb-1 border-transparent bg-[#e5e3dc] text-[#59605b] hover:bg-[#f5f4ee] hover:text-[#171a17]"
+                  : "mb-1 border-transparent bg-[#dedbd2] text-[#59605b] hover:bg-[#f5f4ee] hover:text-[#171a17]"
               }`}
             >
               <span className="shrink-0 whitespace-nowrap text-[10px] font-extrabold sm:text-[13px]">
@@ -2813,9 +2814,30 @@ function getAmountSortMeta(value?: string | null) {
   };
 }
 
-function formatDashboardContractTitle(title: string) {
+function formatInfluencerDashboardItemTitle(item: InfluencerCampaignWorkItem) {
+  return formatDashboardContractTitle(
+    item.title,
+    buildInfluencerDashboardTitleFallback(item),
+  );
+}
+
+function buildInfluencerDashboardTitleFallback(item: InfluencerCampaignWorkItem) {
+  const advertiserName = removeInternalTestLabel(item.advertiser_name, "브랜드");
+  const lifecycleLabel =
+    item.lifecycle === "COMPLETED"
+      ? "완료 캠페인"
+      : item.lifecycle === "IN_PROGRESS"
+        ? "진행 캠페인"
+        : item.lifecycle === "REJECTED"
+          ? "미선정 캠페인"
+          : "지원 캠페인";
+
+  return `${advertiserName} ${lifecycleLabel}`;
+}
+
+function formatDashboardContractTitle(title: string, fallback = "캠페인명 미정") {
   const cleaned = title.replace(/^\[[^\]]+\]\s*/, "").trim();
-  return formatContractTitleForDisplay(cleaned || title, "캠페인명 미정");
+  return formatContractTitleForDisplay(cleaned || title, fallback);
 }
 
 function collapseInternalDuplicateContracts<T extends { title: string }>(

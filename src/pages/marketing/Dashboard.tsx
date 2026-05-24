@@ -153,7 +153,7 @@ type CampaignStatusUpdateResponse = {
 };
 type AdvertiserAccountSummary = {
   name: string;
-  meta: string;
+  meta?: string;
   email?: string;
   businessNumber?: string;
 };
@@ -444,7 +444,7 @@ export function Dashboard() {
 
     return {
       name,
-      meta: meta || "인증 전 계정 정보 확인 예정",
+      meta: meta || undefined,
       email: email || undefined,
       businessNumber:
         latest?.business_registration_number || account?.business_registration_number,
@@ -948,13 +948,14 @@ function VerificationBanner({
   embedded?: boolean;
 }) {
   const approved = status === "approved";
+  const showCompactAccount = approved || (isLoading && !latest);
   const rejected = status === "rejected";
-  const copy = getAdvertiserVerificationBannerCopy(status, isLoading, latest);
+  const copy = getAdvertiserVerificationBannerCopy(status, latest);
   const businessNumber = account.businessNumber
     ? formatBusinessRegistrationNumber(account.businessNumber)
     : undefined;
 
-  if (approved) {
+  if (showCompactAccount) {
     return (
       <section
         className={
@@ -1035,10 +1036,14 @@ function VerificationBanner({
             <span className="max-w-[180px] truncate text-[12px] font-semibold text-neutral-800">
               {account.name}
             </span>
-            <span className="hidden h-3 w-px bg-neutral-200 sm:inline-block" />
-            <span className="max-w-[300px] truncate text-[12px] text-neutral-500">
-              {account.meta}
-            </span>
+            {account.meta ? (
+              <>
+                <span className="hidden h-3 w-px bg-neutral-200 sm:inline-block" />
+                <span className="max-w-[300px] truncate text-[12px] text-neutral-500">
+                  {account.meta}
+                </span>
+              </>
+            ) : null}
             {businessNumber && (
               <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-semibold text-neutral-600">
                 사업자 {businessNumber}
@@ -1168,16 +1173,8 @@ function formatPlatformFilterLabel(platform: PlatformFilter) {
 
 function getAdvertiserVerificationBannerCopy(
   status: VerificationStatus,
-  isLoading: boolean,
   latest?: VerificationRequest,
 ) {
-  if (isLoading) {
-    return {
-      statusLabel: "상태 확인 중",
-      helper: "계정의 사업자 인증 상태를 확인하고 있습니다.",
-      actionLabel: "인증 상태 보기",
-    };
-  }
   const rejectionGuidance =
     status === "rejected"
       ? getVerificationRejectionGuidance(latest, "advertiser_organization")
@@ -1385,7 +1382,7 @@ function CampaignListView({
         counts={lifecycleCounts}
         onChange={onLifecycleFilterChange}
       />
-      <div className="border-b border-[#d9e0d9] bg-[#fbfbf8]">
+      <div className="border-y border-[#d9e0d9] bg-[#fbfbf8]">
         <div className="flex min-h-11 items-center justify-between gap-3 px-3 py-2">
           <div className="min-w-0">
             <p className="truncate text-[14px] font-extrabold leading-5 text-[#171a17]">
@@ -1445,7 +1442,7 @@ function CampaignListView({
       </div>
       <CampaignTableHeaderRow dateColumnLabel={dateColumnLabel} />
 
-      <div className="max-h-[620px] divide-y divide-[#edf1ed] overflow-y-auto lg:max-h-none lg:min-h-0 lg:flex-1">
+      <div className="no-scrollbar max-h-[620px] divide-y divide-[#edf1ed] overflow-y-auto overscroll-contain lg:max-h-none lg:min-h-0 lg:flex-1">
         {campaigns.length > 0 ? (
           campaigns.map((campaign) => (
             <React.Fragment key={campaign.key}>
@@ -1572,8 +1569,8 @@ function CampaignLifecycleTabs({
   onChange: (value: CampaignLifecycle) => void;
 }) {
   return (
-    <div className="border-b border-[#d9e0d9] bg-[#ecebe5] px-2 pt-2">
-      <div className="flex min-w-0 items-end gap-1 overflow-x-auto">
+    <div className="bg-[#ecebe5] px-2 pt-2">
+      <div className="grid min-w-0 grid-cols-3 items-end gap-0 overflow-hidden">
         {CAMPAIGN_LIFECYCLE_TABS.map((tab) => {
           const active = value === tab.value;
           return (
@@ -1582,10 +1579,10 @@ function CampaignLifecycleTabs({
               type="button"
               onClick={() => onChange(tab.value)}
               aria-pressed={active}
-              className={`relative flex h-10 min-w-[128px] flex-1 items-center justify-between gap-2 rounded-t-[10px] border px-3 text-left transition focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-neutral-950 ${
+              className={`relative flex h-10 min-w-0 flex-1 items-center justify-between gap-2 rounded-t-[10px] border px-3 text-left transition focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-neutral-950 ${
                 active
                   ? "z-10 -mb-px border-[#d9e0d9] border-b-white bg-white pb-px text-[#171a17] shadow-[0_-1px_0_rgba(255,255,255,0.9)_inset]"
-                  : "mb-1 border-transparent bg-[#e5e3dc] text-[#59605b] hover:bg-[#f5f4ee] hover:text-[#171a17]"
+                  : "mb-1 border-transparent bg-[#dedbd2] text-[#59605b] hover:bg-[#f5f4ee] hover:text-[#171a17]"
               }`}
             >
               <span className="truncate text-[13px] font-extrabold">
@@ -1953,7 +1950,7 @@ function CampaignDetailView({
       </div>
       <CampaignInfluencerTableHeaderRow />
 
-      <div className="max-h-[620px] divide-y divide-[#edf1ed] overflow-y-auto lg:max-h-none lg:min-h-0 lg:flex-1">
+      <div className="no-scrollbar max-h-[620px] divide-y divide-[#edf1ed] overflow-y-auto overscroll-contain lg:max-h-none lg:min-h-0 lg:flex-1">
         {filteredContracts.length > 0 ? (
           filteredContracts.map((contract) => (
             <React.Fragment key={contract.id}>
@@ -2497,7 +2494,7 @@ function ContractTable({
   return (
     <section className="overflow-hidden rounded-[8px] border border-[#d9e0d9] bg-white lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
       {lifecycleTabs}
-      <div className="border-b border-[#d9e0d9] bg-[#fbfcfa]">
+      <div className="border-y border-[#d9e0d9] bg-[#fbfcfa]">
         <div className="flex min-h-11 items-center justify-between gap-3 px-3 py-2">
           <div className="min-w-0">
             <p className="truncate text-[12px] font-extrabold text-[#171a17]">
@@ -2574,7 +2571,7 @@ function ContractTable({
         onSortChange={onSortChange}
       />
 
-      <div className="max-h-[620px] divide-y divide-[#edf1ed] overflow-y-auto lg:max-h-none lg:min-h-0 lg:flex-1">
+      <div className="no-scrollbar max-h-[620px] divide-y divide-[#edf1ed] overflow-y-auto overscroll-contain lg:max-h-none lg:min-h-0 lg:flex-1">
         {displayContracts.length > 0 ? (
           displayContracts.map((contract) => (
             <React.Fragment key={contract.id}>

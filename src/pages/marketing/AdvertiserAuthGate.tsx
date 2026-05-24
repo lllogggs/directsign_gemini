@@ -165,8 +165,8 @@ export function AdvertiserAuthGate({
 
       setIsAuthenticated(true);
       rememberAdvertiserSession();
-      refreshContractsInBackground({ force: true, delayMs: 150 });
-      preloadVerificationInBackground(650);
+      preloadVerificationInBackground();
+      refreshContractsInBackground({ force: true, delayMs: 50 });
       if (redirectAfterLogin) {
         navigate(redirectAfterLogin, { replace: true });
         return;
