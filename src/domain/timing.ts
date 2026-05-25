@@ -40,6 +40,6 @@ export const formatUploadDueLabel = (
   const days = Math.ceil((startOfDay(time) - startOfDay(currentTime)) / DAY_MS);
 
   if (days > 0) return `${prefix} D-${days}`;
-  if (days === 0) return `${prefix} D-day`;
+  if (days === 0) return `${prefix} D-0`;
   return `${prefix} D+${Math.abs(days)}`;
 };

@@ -133,6 +133,9 @@ export function AdvertiserAuthGate({
 
         if (!cancelled && response.ok && data.authenticated === true) {
           rememberAdvertiserSession(data.user);
+          if (location.pathname === "/advertiser/verification") {
+            await waitSoft(preloadVerificationSummary("advertiser"), 900);
+          }
           setIsAuthenticated(true);
           setIsChecking(false);
           preloadDashboardInBackground();
@@ -172,6 +175,7 @@ export function AdvertiserAuthGate({
       window.clearTimeout(timer);
     };
   }, [
+    location.pathname,
     preloadDashboardInBackground,
     shouldShowLoginImmediately,
   ]);
@@ -292,7 +296,7 @@ export function AdvertiserAuthGate({
     return (
       <AuthLoginScreen
         title="광고주 로그인"
-        description="광고주 대시보드로 이동합니다."
+        description="계약 업무를 계속하려면 로그인하세요."
         fields={[
           {
             id: "email",

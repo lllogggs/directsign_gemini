@@ -12,6 +12,7 @@ import {
   type ContractStatus,
 } from "../../store";
 import { apiFetch, apiPath } from "../../domain/api";
+import { isFixedCampaignContract } from "../../domain/contracts";
 import { useVerificationSummary } from "../../hooks/useVerificationSummary";
 import { buildLoginRedirect } from "../../domain/navigation";
 import {
@@ -35,6 +36,7 @@ import {
 } from "../../domain/deliverables";
 import {
   formatContractTitleForDisplay,
+  formatCustomerContractText,
   formatMoneyLabel,
   formatOperationalText,
   formatPublicUrlLabel,
@@ -256,7 +258,7 @@ export function ContractViewer() {
     error: verificationStatusError,
     refresh: refreshVerificationSummary,
     statusCode: verificationStatusCode,
-  } = useVerificationSummary({ role: "influencer" });
+  } = useVerificationSummary({ role: "influencer", enabled: Boolean(contract) });
 
   const [selection, setSelection] = useState<{
     text: string;
@@ -696,9 +698,7 @@ export function ContractViewer() {
         contractId: data.contract.id,
         value: data.contract.post_link ?? postLink,
       });
-      setPostLinkNotice(
-        "컨텐츠 URL을 제출했습니다. 광고주 대시보드에는 컨텐츠 제출로 표시됩니다.",
-      );
+      setPostLinkNotice("컨텐츠 URL을 제출했습니다. 광고주에게 제출 완료로 표시됩니다.");
     } catch (error) {
       setPostLinkError(
         error instanceof Error
@@ -1001,6 +1001,7 @@ export function ContractViewer() {
     );
   }
 
+  const isFixedCampaign = isFixedCampaignContract(contract);
   const allApproved = contract.clauses.every(
     (clause) => clause.status === "APPROVED",
   );
@@ -1107,7 +1108,9 @@ export function ContractViewer() {
     isContractSignableState &&
     isContractPlatformVerificationApproved;
   const signButtonLabel = !allApproved
-    ? "조항 승인 필요"
+    ? isFixedCampaign
+      ? "내용 확인 필요"
+      : "조항 승인 필요"
     : !isContractSignableState
       ? "광고주 서명 요청 대기"
       : isVerificationLoading
@@ -1120,7 +1123,9 @@ export function ContractViewer() {
               ? "인증 후 서명하기"
               : "동의 후 서명하기";
   const signStatusMessage = !allApproved
-    ? "서명 전에 남은 조항 요청을 먼저 정리해야 합니다."
+    ? isFixedCampaign
+      ? "서명 전에 계약 내용을 확인해 주세요."
+      : "서명 전에 남은 조항 요청을 먼저 정리해야 합니다."
     : !isContractSignableState
       ? "광고주가 최종본을 승인하고 서명 링크를 활성화하면 서명할 수 있습니다."
       : isVerificationLoading
@@ -1131,11 +1136,19 @@ export function ContractViewer() {
               ? "계정이 없으면 가입 후 이 계약으로 돌아와 인증과 서명을 이어갈 수 있습니다."
             : !isContractPlatformVerificationApproved
               ? isInfluencerVerificationApproved
-                ? "모든 조항은 준비됐지만, 이 계약에 쓰는 채널 인증을 추가해야 서명할 수 있습니다."
-                : `모든 조항은 준비됐지만, 이 계약 플랫폼의 계정 인증 승인이 필요합니다. 현재 상태: ${verificationStatusLabel(
-                    influencerVerificationStatus,
-                  )}`
-              : "모든 조항과 계정 인증이 완료되어 서명할 수 있습니다.";
+                ? isFixedCampaign
+                  ? "계약 내용은 확인됐지만, 이 계약에 쓰는 채널 인증을 추가해야 서명할 수 있습니다."
+                  : "모든 조항은 준비됐지만, 이 계약에 쓰는 채널 인증을 추가해야 서명할 수 있습니다."
+                : isFixedCampaign
+                  ? `계약 내용은 확인됐지만, 이 계약 플랫폼의 계정 인증 승인이 필요합니다. 현재 상태: ${verificationStatusLabel(
+                      influencerVerificationStatus,
+                    )}`
+                  : `모든 조항은 준비됐지만, 이 계약 플랫폼의 계정 인증 승인이 필요합니다. 현재 상태: ${verificationStatusLabel(
+                      influencerVerificationStatus,
+                    )}`
+              : isFixedCampaign
+                ? "계약 내용과 계정 인증이 완료되어 서명할 수 있습니다."
+                : "모든 조항과 계정 인증이 완료되어 서명할 수 있습니다.";
   const heroTitle =
     isContractClosed
       ? "광고 계약이 마감되었습니다"
@@ -1148,11 +1161,19 @@ export function ContractViewer() {
       : contract.status === "SIGNED"
         ? "서명본은 저장되었습니다. 남은 컨텐츠는 URL이나 파일로 제출하고 광고주 확인 및 검수 결과를 확인하세요."
       : needsInfluencerAccountSession
-        ? "보안 링크로 계약 내용은 먼저 확인할 수 있습니다. 조항 승인, 수정 요청, 서명은 가입 또는 로그인 후 이 계약으로 돌아와 진행합니다."
-        : "핵심 조건을 먼저 확인하고, 수정이 필요한 조항은 해당 문구를 선택해 요청을 남기세요. 조항과 계정 인증이 모두 준비되면 서명할 수 있습니다.";
+        ? isFixedCampaign
+          ? "계약 내용은 먼저 확인할 수 있습니다. 가입 또는 로그인 후 이 계약으로 돌아와 서명합니다."
+          : "보안 링크로 계약 내용은 먼저 확인할 수 있습니다. 조항 승인, 수정 요청, 서명은 가입 또는 로그인 후 이 계약으로 돌아와 진행합니다."
+        : isFixedCampaign
+          ? "계약 내용을 확인하고 계정 인증이 끝나면 바로 서명합니다."
+          : "핵심 조건을 먼저 확인하고, 수정이 필요한 조항은 해당 문구를 선택해 요청을 남기세요. 조항과 계정 인증이 모두 준비되면 서명할 수 있습니다.";
   const clauseChecklistLabel = allApproved
-    ? "모든 조항 승인 완료"
-    : `조항 승인 ${approvedClauses}/${contract.clauses.length}`;
+    ? isFixedCampaign
+      ? "계약 내용 확인 완료"
+      : "모든 조항 승인 완료"
+    : isFixedCampaign
+      ? `내용 확인 ${approvedClauses}/${contract.clauses.length}`
+      : `조항 승인 ${approvedClauses}/${contract.clauses.length}`;
   const signatureChecklistChecked =
     isContractSignedOrClosed || canOpenSignModal;
   const signatureChecklistLabel =
@@ -1161,7 +1182,9 @@ export function ContractViewer() {
       : contract.status === "SIGNED"
       ? "서명 완료"
       : !allApproved
-        ? "조항 승인 후 서명 가능"
+        ? isFixedCampaign
+          ? "내용 확인 후 서명 가능"
+          : "조항 승인 후 서명 가능"
         : !isContractSignableState
           ? "광고주 서명 요청 대기"
           : isVerificationLoading
@@ -1169,7 +1192,7 @@ export function ContractViewer() {
             : hasVerificationStatusError
               ? "인증 상태 확인 필요"
               : needsInfluencerAccountSession
-                ? "가입/로그인 후 서명 조건 확인"
+                ? "가입/로그인 후 서명 준비"
                 : !isContractPlatformVerificationApproved
                   ? "계정 인증 후 서명 가능"
                   : "서명 가능";
@@ -1181,7 +1204,9 @@ export function ContractViewer() {
         ? "계약 채널 인증 필요"
         : "서명 전 계정 인증 필요";
   const verificationPanelDescription = isContractPlatformVerificationApproved
-    ? "계정 인증은 확인되었습니다. 서명 가능 여부는 조항 승인과 광고주 서명 요청 상태에 따라 열립니다."
+    ? isFixedCampaign
+      ? "계정 인증은 확인되었습니다. 서명 가능 여부는 계약 내용 확인과 광고주 서명 요청 상태에 따라 열립니다."
+      : "계정 인증은 확인되었습니다. 서명 가능 여부는 조항 승인과 광고주 서명 요청 상태에 따라 열립니다."
     : influencerRejectionGuidance
       ? `계약 검토는 가능하지만 서명은 제한됩니다. 반려 사유: ${influencerRejectionGuidance.reviewerNote}`
       : isInfluencerVerificationApproved
@@ -1263,6 +1288,11 @@ export function ContractViewer() {
     clause: Contract["clauses"][number],
     type: "MODIFICATION_REQUESTED" | "DELETION_REQUESTED",
   ) => {
+    if (isFixedCampaign) {
+      setFeedbackError("이 계약에서는 수정 요청을 보낼 수 없습니다.");
+      return;
+    }
+
     setFeedbackModal({
       isOpen: true,
       type,
@@ -1303,6 +1333,10 @@ export function ContractViewer() {
 
   const handleFeedbackSubmit = () => {
     if (!feedbackModal) return;
+    if (isFixedCampaign) {
+      setFeedbackError("이 계약에서는 수정 요청을 보낼 수 없습니다.");
+      return;
+    }
     if (!canSubmitClauseReview) {
       setFeedbackError(
         "조항 의견을 남기려면 인플루언서 계정으로 로그인해야 합니다.",
@@ -1458,7 +1492,7 @@ export function ContractViewer() {
 
   return (
     <div className="flex min-h-[100dvh] flex-col bg-[#f7f6f3] text-neutral-950">
-      {!isOperatorSupportView && selection?.showTooltip && (
+      {!isOperatorSupportView && !isFixedCampaign && selection?.showTooltip && (
         <div
           className="fixed z-50 -translate-x-1/2 -translate-y-full pb-3 animate-in fade-in zoom-in-95 slide-in-from-bottom-1 duration-150"
           style={{
@@ -1559,7 +1593,7 @@ export function ContractViewer() {
               </div>
               <div className="grid grid-cols-2 gap-2 md:w-64">
                 <MetricCard
-                  label="승인"
+                  label={isFixedCampaign ? "확인" : "승인"}
                   value={`${approvedClauses}/${contract.clauses.length}`}
                 />
                 <MetricCard
@@ -1620,10 +1654,10 @@ export function ContractViewer() {
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.14em] text-neutral-500">
-                    계약 조항
+                    {isFixedCampaign ? "계약 내용" : "계약 조항"}
                   </p>
                   <h2 className="mt-1 text-lg font-semibold text-neutral-950">
-                    조항별 검토
+                    {isFixedCampaign ? "내용 확인" : "조항별 검토"}
                   </h2>
                 </div>
                 <div
@@ -1635,8 +1669,12 @@ export function ContractViewer() {
                     <AlertTriangle className="h-4 w-4" />
                   )}
                   {allApproved
-                    ? "조항 승인 완료"
-                    : `${pendingClauses}개 조항 확인 필요`}
+                    ? isFixedCampaign
+                      ? "내용 확인 완료"
+                      : "조항 승인 완료"
+                    : isFixedCampaign
+                      ? `${pendingClauses}개 내용 확인 필요`
+                      : `${pendingClauses}개 조항 확인 필요`}
                 </div>
               </div>
             </div>
@@ -1668,10 +1706,11 @@ export function ContractViewer() {
                           <h3 className="text-base font-semibold text-neutral-950">
                             {formatOperationalText(clause.category)}
                           </h3>
-                          <p className="mt-1 text-xs text-neutral-500">
-                            아래 문구를 정확히 선택하면 수정이나 삭제 요청을
-                            보낼 수 있습니다.
-                          </p>
+                          {!isFixedCampaign && (
+                            <p className="mt-1 text-xs text-neutral-500">
+                              아래 문구를 정확히 선택하면 수정이나 삭제 요청을 보낼 수 있습니다.
+                            </p>
+                          )}
                         </div>
                       </div>
                       <span
@@ -1687,49 +1726,71 @@ export function ContractViewer() {
                           <Clock3 className="h-3.5 w-3.5" />
                         )}
                         {isApproved
-                          ? "승인 완료"
+                          ? isFixedCampaign
+                            ? "확인 완료"
+                            : "승인 완료"
                           : clause.status === "PENDING_REVIEW"
-                            ? "검토 대기"
-                            : "수정 요청 중"}
+                            ? isFixedCampaign
+                              ? "확인 대기"
+                              : "검토 대기"
+                            : isFixedCampaign
+                              ? "확인 필요"
+                              : "수정 요청 중"}
                       </span>
                     </div>
 
                     <div className="mt-5 rounded-lg border border-neutral-200 bg-white p-4 text-[15px] leading-7 text-neutral-800 selection:bg-neutral-200 selection:text-neutral-950 sm:p-5">
                       <p className="whitespace-pre-wrap">
-                        {formatOperationalText(clause.content)}
+                        {isFixedCampaign
+                          ? formatCustomerContractText(clause.content)
+                          : formatOperationalText(clause.content)}
                       </p>
                     </div>
 
                     {!isOperatorSupportView && !isContractSignedOrClosed && (
-                      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                      <div
+                        className={`mt-3 grid gap-2 ${
+                          isFixedCampaign ? "sm:grid-cols-1" : "sm:grid-cols-3"
+                        }`}
+                      >
                         <button
                           type="button"
                           onClick={() => approveClause(clause)}
                           disabled={isApproved || !canSubmitClauseReview}
                           className="h-11 rounded-lg border border-neutral-200 bg-white text-sm font-semibold text-neutral-800 transition hover:border-neutral-400 hover:bg-[#fbfbfc] disabled:cursor-not-allowed disabled:border-neutral-100 disabled:bg-neutral-100 disabled:text-neutral-400"
                         >
-                          {isApproved ? "승인 완료" : "이 조항 승인"}
+                          {isApproved
+                            ? isFixedCampaign
+                              ? "확인 완료"
+                              : "승인 완료"
+                            : isFixedCampaign
+                              ? "이 내용 확인"
+                              : "이 조항 승인"}
                         </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            openClauseFeedback(clause, "MODIFICATION_REQUESTED")
-                          }
-                          disabled={!canSubmitClauseReview}
-                          className="h-11 rounded-lg border border-amber-200 bg-amber-50 text-sm font-semibold text-amber-800 transition hover:border-amber-300 hover:bg-amber-100 disabled:cursor-not-allowed disabled:border-neutral-100 disabled:bg-neutral-100 disabled:text-neutral-400"
-                        >
-                          수정 요청
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            openClauseFeedback(clause, "DELETION_REQUESTED")
-                          }
-                          disabled={!canSubmitClauseReview}
-                          className="h-11 rounded-lg border border-rose-200 bg-rose-50 text-sm font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:border-neutral-100 disabled:bg-neutral-100 disabled:text-neutral-400"
-                        >
-                          삭제 요청
-                        </button>
+                        {!isFixedCampaign && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openClauseFeedback(clause, "MODIFICATION_REQUESTED")
+                              }
+                              disabled={!canSubmitClauseReview}
+                              className="h-11 rounded-lg border border-amber-200 bg-amber-50 text-sm font-semibold text-amber-800 transition hover:border-amber-300 hover:bg-amber-100 disabled:cursor-not-allowed disabled:border-neutral-100 disabled:bg-neutral-100 disabled:text-neutral-400"
+                            >
+                              수정 요청
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openClauseFeedback(clause, "DELETION_REQUESTED")
+                              }
+                              disabled={!canSubmitClauseReview}
+                              className="h-11 rounded-lg border border-rose-200 bg-rose-50 text-sm font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:border-neutral-100 disabled:bg-neutral-100 disabled:text-neutral-400"
+                            >
+                              삭제 요청
+                            </button>
+                          </>
+                        )}
                       </div>
                     )}
 
@@ -1738,8 +1799,9 @@ export function ContractViewer() {
                       !canSubmitClauseReview && (
                         <div className="mt-3 rounded-lg border border-neutral-200 bg-[#fbfbfc] px-4 py-3 text-xs leading-5 text-neutral-600">
                           <p>
-                            계정 생성 또는 로그인 후 이 계약으로 돌아와 의견
-                            제출과 조항 승인을 진행할 수 있습니다.
+                            {isFixedCampaign
+                              ? "계정 생성 또는 로그인 후 이 계약으로 돌아와 내용 확인과 서명을 진행할 수 있습니다."
+                              : "계정 생성 또는 로그인 후 이 계약으로 돌아와 의견 제출과 조항 승인을 진행할 수 있습니다."}
                           </p>
                           <div className="mt-2 flex flex-wrap gap-2">
                             <Link
@@ -2406,16 +2468,18 @@ export function ContractViewer() {
                 동의 후 서명
               </DialogTitle>
               <DialogDescription className="pt-2 text-sm leading-6 text-neutral-600">
-                서명은 승인된 모든 조항을 확인하고 동의했다는 증빙으로 남습니다.
-                완료 후 서명본 PDF가 생성됩니다.
+                {isFixedCampaign
+                  ? "서명은 계약 내용을 확인하고 동의했다는 증빙으로 남습니다. 완료 후 서명본 PDF가 생성됩니다."
+                  : "서명은 승인된 모든 조항을 확인하고 동의했다는 증빙으로 남습니다. 완료 후 서명본 PDF가 생성됩니다."}
               </DialogDescription>
             </DialogHeader>
           </div>
 
           <div className="space-y-4 p-6">
             <div className="rounded-[16px] border border-neutral-200 bg-[#fbfaf7] p-4 text-sm leading-6 text-neutral-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
-              모든 조항이 승인되었습니다. 서명자 이름과 동의 여부는 감사 기록에
-              함께 저장됩니다.
+              {isFixedCampaign
+                ? "계약 내용 확인이 완료되었습니다. 서명자 이름과 동의 여부는 감사 기록에 함께 저장됩니다."
+                : "모든 조항이 승인되었습니다. 서명자 이름과 동의 여부는 감사 기록에 함께 저장됩니다."}
             </div>
             <label className="block">
               <span className="text-[13px] font-semibold text-neutral-800">
@@ -2522,7 +2586,11 @@ export function ContractViewer() {
                 }}
                 className="mt-1 h-4 w-4 accent-neutral-950"
               />
-              <span>계약 조항을 확인했고 전자서명에 동의합니다.</span>
+              <span>
+                {isFixedCampaign
+                  ? "계약 내용을 확인했고 전자서명에 동의합니다."
+                  : "계약 조항을 확인했고 전자서명에 동의합니다."}
+              </span>
             </label>
             {signError && (
               <p

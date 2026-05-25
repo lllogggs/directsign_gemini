@@ -70,7 +70,6 @@ import {
   type MarketplaceCampaignStatus,
 } from "../../domain/marketplace";
 import {
-  formatMarketplaceMessageDate,
   type MarketplaceMessageThread,
   type MarketplaceMessagesResponse,
   type MarketplaceProposalStatus,
@@ -791,7 +790,7 @@ export function Dashboard() {
             <button
               type="button"
               onClick={() => navigate("/advertiser/builder")}
-              className="inline-flex h-10 w-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] bg-blue-600 px-0 text-[12px] font-extrabold text-white shadow-[0_10px_24px_rgba(37,99,235,0.18)] transition hover:bg-blue-700 sm:w-auto sm:px-3"
+              className="yl-header-action yl-header-action-primary"
               aria-label="새 계약"
               title="새 계약: 다른 플랫폼 혹은 DM에서 협의된 내용을 계약서로 정리"
             >
@@ -801,7 +800,7 @@ export function Dashboard() {
             <button
               type="button"
               onClick={() => navigate("/advertiser/campaigns")}
-              className="inline-flex h-10 w-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] border border-blue-200 bg-white px-0 text-[12px] font-extrabold text-blue-700 shadow-[0_10px_24px_rgba(37,99,235,0.08)] transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-800 sm:w-auto sm:px-3"
+              className="yl-header-action yl-header-action-blue-secondary"
               aria-label="새 캠페인"
               title="새 캠페인: 캠페인 조건을 만들고 매칭된 인플루언서별로 같은 조건의 계약서를 발송"
             >
@@ -816,7 +815,7 @@ export function Dashboard() {
             <button
               type="button"
               onClick={() => navigate("/advertiser/discover")}
-              className="inline-flex h-10 w-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-0 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950 sm:w-auto sm:px-2.5"
+              className="yl-header-action yl-header-action-secondary"
               aria-label="인플루언서 찾기"
               title="인플루언서 찾기"
             >
@@ -826,7 +825,7 @@ export function Dashboard() {
             <button
               type="button"
               onClick={handleLogout}
-              className="inline-flex h-10 w-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-0 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950 sm:w-auto sm:px-2.5"
+              className="yl-header-action yl-header-action-secondary"
               aria-label="로그아웃"
               title="로그아웃"
             >
@@ -934,7 +933,7 @@ function AccountSettingsMenu({
         aria-label="계정 설정"
         title="계정 설정"
         aria-expanded={open}
-        className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[9px] border border-neutral-200 bg-white text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
+        className="yl-header-icon-action"
       >
         <Settings className="h-3.5 w-3.5" strokeWidth={2} />
       </button>
@@ -1165,7 +1164,7 @@ function MessageCenterButton({
     <button
       type="button"
       onClick={onClick}
-      className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-0 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950 sm:w-auto sm:px-2.5"
+      className="yl-header-action yl-header-action-secondary relative"
       aria-label="메시지함"
       title="메시지함"
     >
@@ -1912,8 +1911,6 @@ function CampaignDetailView({
         </div>
       </div>
 
-      <CampaignWorkflowPanel campaign={campaign} />
-
       <CampaignApplicantsPanel
         campaign={campaign}
         marketplaceStatus={marketplaceStatus}
@@ -2089,7 +2086,7 @@ function CampaignStatusActions({
   );
 }
 
-function CampaignWorkflowPanel({ campaign }: { campaign: CampaignGroup }) {
+function _CampaignWorkflowPanel({ campaign }: { campaign: CampaignGroup }) {
   const alerts = buildCampaignAlerts([campaign]);
   const activities = buildCampaignActivities(campaign);
 
@@ -2182,11 +2179,8 @@ function CampaignApplicantsPanel({
     <div className="border-b border-[#d9e0d9] bg-white">
       <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5">
         <div className="min-w-0">
-          <p className="text-[11px] font-extrabold text-[#7d857f]">
+          <p className="truncate text-[14px] font-extrabold text-[#171a17]">
             지원자
-          </p>
-          <p className="mt-0.5 text-[13px] font-semibold text-[#303630]">
-            프사, 인증 플랫폼, 팔로워를 보고 선정합니다.
           </p>
         </div>
         <span className="inline-flex h-7 items-center rounded-md border border-[#d9e0d9] bg-[#f8faf7] px-2.5 text-[12px] font-extrabold text-[#303630]">
@@ -2238,7 +2232,7 @@ function CampaignApplicantRow({
     if (!canAccept || isAccepting) return;
 
     const confirmed = window.confirm(
-      `${thread.counterpartName || thread.senderName} 지원을 수락할까요? 수락하면 캠페인 조건으로 계약 초안이 생성됩니다.`,
+      `${thread.counterpartName || thread.senderName}을 선정할까요? 선정하면 계약이 생성됩니다.`,
     );
     if (!confirmed) return;
 
@@ -2248,7 +2242,7 @@ function CampaignApplicantRow({
       await onAcceptApplication(thread);
     } catch (error) {
       setAcceptError(
-        error instanceof Error ? error.message : "지원 수락에 실패했습니다.",
+        error instanceof Error ? error.message : "선정에 실패했습니다.",
       );
     } finally {
       setIsAccepting(false);
@@ -2258,58 +2252,53 @@ function CampaignApplicantRow({
   const applicantName = thread.counterpartName || thread.senderName;
   const initial = applicantName.trim().slice(0, 1) || "인";
   const intro =
-    thread.senderIntro || thread.proposalSummary || "프로필을 열어 세부 정보를 확인하세요.";
-  const platformCountLabel =
-    thread.platforms.length > 0
-      ? `인증 플랫폼 ${thread.platforms.length}개`
-      : "플랫폼 확인 필요";
+    thread.senderIntro || thread.proposalSummary || "소개가 아직 없습니다.";
+  const firstPlatform = thread.platforms[0];
+  const primaryHandle =
+    firstPlatform?.handle ||
+    firstPlatform?.followersLabel ||
+    (firstPlatform ? platformLabels[firstPlatform.platform] : "채널 확인");
 
   return (
-    <div className="grid gap-2 px-3 py-2.5 lg:min-h-[54px] lg:grid-cols-[minmax(220px,0.72fr)_minmax(260px,0.78fr)_minmax(180px,0.54fr)_minmax(170px,0.48fr)] lg:items-center">
+    <div className="grid gap-3 px-3 py-3 lg:min-h-[64px] lg:grid-cols-[minmax(260px,0.88fr)_minmax(260px,0.74fr)_minmax(132px,0.28fr)] lg:items-center">
       <div className="flex min-w-0 items-center gap-3">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#171a17] text-[13px] font-extrabold text-white">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#171a17] text-[15px] font-extrabold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.14)]">
           {initial}
         </span>
         <div className="min-w-0">
           <div className="flex min-w-0 items-center gap-1.5">
-            <p className="truncate text-[13px] font-extrabold text-[#171a17]">
+            <p className="truncate text-[14px] font-extrabold text-[#171a17]">
               {applicantName}
             </p>
             <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
           </div>
-          <p className="mt-0.5 truncate text-[11px] font-semibold text-[#7d857f]">
-            {platformCountLabel} · {formatMarketplaceMessageDate(thread.createdAt)}
+          <p className="mt-0.5 truncate text-[12px] font-semibold text-[#606861]">
+            {primaryHandle}
           </p>
         </div>
       </div>
 
-      <ApplicantPlatformLinks platforms={thread.platforms} />
-
       <div className="min-w-0">
-        <p className="truncate text-[12px] font-semibold text-[#303630]">
+        <ApplicantPlatformLinks platforms={thread.platforms} />
+        <p className="mt-1 truncate text-[12px] font-semibold text-[#606861]">
           {intro}
         </p>
-        <span
-          className={`mt-1 inline-flex w-fit items-center rounded-md border px-2 py-1 text-[11px] font-semibold ${statusMeta.className}`}
-        >
-          {statusMeta.label}
-        </span>
       </div>
 
-      <div className="grid gap-1 sm:flex sm:flex-wrap sm:justify-end">
+      <div className="grid gap-1.5 sm:flex sm:flex-wrap sm:justify-end">
         {thread.counterpartHref ? (
           <a
             href={thread.counterpartHref}
-            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-[#d9e0d9] bg-white px-2.5 text-[12px] font-extrabold text-[#303630] transition hover:border-[#171a17] hover:text-[#171a17]"
+            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-[#d9e0d9] bg-white px-3 text-[12px] font-extrabold text-[#303630] transition hover:border-[#171a17] hover:text-[#171a17]"
           >
-            프로필 보기
+            프로필
             <ExternalLink className="h-3.5 w-3.5" />
           </a>
         ) : null}
         {thread.convertedContractId ? (
           <a
             href={`/advertiser/contract/${thread.convertedContractId}`}
-            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md bg-[#171a17] px-2.5 text-[12px] font-extrabold text-white transition hover:bg-black"
+            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md bg-[#171a17] px-3 text-[12px] font-extrabold text-white transition hover:bg-black"
           >
             계약 보기
           </a>
@@ -2318,11 +2307,17 @@ function CampaignApplicantRow({
             type="button"
             onClick={() => void handleAccept()}
             disabled={isAccepting}
-            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md bg-blue-600 px-2.5 text-[12px] font-extrabold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-neutral-300"
+            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md bg-blue-600 px-3 text-[12px] font-extrabold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-neutral-300"
           >
-            {isAccepting ? "수락 중" : "지원 수락"}
+            {isAccepting ? "선정 중" : "선정"}
           </button>
-        ) : null}
+        ) : (
+          <span
+            className={`inline-flex h-9 items-center justify-center rounded-md border px-3 text-[12px] font-extrabold ${statusMeta.className}`}
+          >
+            {statusMeta.label}
+          </span>
+        )}
         {acceptError ? (
           <p className="basis-full text-[11px] font-semibold text-rose-700 sm:text-right">
             {acceptError}
@@ -3952,7 +3947,7 @@ function buildCampaignActivities(campaign: CampaignGroup): CampaignActivity[] {
         createdAt: thread.updatedAt,
         actor: "광고주",
         title: "지원 수락",
-        description: "지원이 수락되어 계약 초안이 생성되었습니다.",
+        description: "지원이 수락되어 계약이 생성되었습니다.",
       });
     }
   }
@@ -3962,7 +3957,7 @@ function buildCampaignActivities(campaign: CampaignGroup): CampaignActivity[] {
       id: `${contract.id}:created`,
       createdAt: contract.created_at,
       actor: "광고주",
-      title: "계약 초안 생성",
+      title: "계약 생성",
       description: `${removeInternalTestLabel(contract.influencer_info.name, "인플루언서")} 계약이 생성되었습니다.`,
     });
 
@@ -4321,9 +4316,9 @@ function formatDashboardDateWithDday(value?: string) {
   ].join(".");
   const dayDiff = getDayDiffFromToday(date);
   const dday =
-    dayDiff > 0 ? `D-${dayDiff}` : dayDiff === 0 ? "D-day" : `D+${Math.abs(dayDiff)}`;
+    dayDiff > 0 ? `D-${dayDiff}` : dayDiff === 0 ? "D-0" : `D+${Math.abs(dayDiff)}`;
 
-  return `${dateLabel} / ${dday}`;
+  return `${dday} / ${dateLabel}`;
 }
 
 function getDayDiffFromToday(date: Date) {

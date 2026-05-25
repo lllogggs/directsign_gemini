@@ -3,12 +3,14 @@ import {
   ArrowRight,
   ChevronDown,
   FileSignature,
+  LogOut,
   MessageSquareText,
   RefreshCw,
   Search,
   Send,
   ShieldCheck,
   SlidersHorizontal,
+  Settings,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -107,9 +109,9 @@ const roleCopy = {
     discoverLabel: "인플루언서 찾기",
     primaryHref: "/advertiser/builder",
     primaryLabel: "계약 작성",
-    emptyInbox: "아직 받은 역제안이 없습니다",
+    emptyInbox: "아직 받은 1:1 제안이 없습니다",
     emptySent: "아직 보낸 컨택 제안이 없습니다",
-    emptyInboxBody: "공개 프로필이나 탐색 화면에서 들어온 역제안이 여기에 쌓입니다.",
+    emptyInboxBody: "인플루언서가 직접 보낸 1:1 계약 제안만 여기에 정리됩니다.",
     emptySentBody: "인플루언서를 찾아 제안을 보내면 진행 상태가 여기에 정리됩니다.",
     emptyInboxActionLabel: "인플루언서 찾기",
     emptyInboxActionHref: "/advertiser/discover",
@@ -129,7 +131,7 @@ const roleCopy = {
         : "받은 제안과 역제안 관리",
     summaryHint: "브랜드 제안과 내가 보낸 역제안을 계약 검토 흐름으로 정리합니다.",
     backHref: "/influencer/dashboard",
-    backLabel: "계약 대시보드",
+    backLabel: "내 계약",
     discoverHref: "/influencer/brands",
     discoverLabel: "브랜드 찾기",
     primaryHref: "/influencer/dashboard",
@@ -235,6 +237,21 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
     return () => window.clearTimeout(timer);
   }, [loadMessages]);
 
+  const handleLogout = async () => {
+    try {
+      await apiFetch(`/api/${role}/logout`, {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch (error) {
+      console.warn(`[${PRODUCT_NAME}] ${role} logout request failed`, error);
+    } finally {
+      navigate(role === "advertiser" ? "/login/advertiser" : "/login/influencer", {
+        replace: true,
+      });
+    }
+  };
+
   const data =
     state.status === "ready"
       ? state.data
@@ -244,21 +261,25 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
           summary: emptyMarketplaceMessageSummary,
         };
   const normalizedQuery = query.trim().toLowerCase();
-  const sentThreads = useMemo(
-    () => data.threads.filter((thread) => thread.bucket === "sent"),
+  const messageThreads = useMemo(
+    () => data.threads.filter(isOneToOneMessageThread),
     [data.threads],
   );
+  const sentThreads = useMemo(
+    () => messageThreads.filter((thread) => thread.bucket === "sent"),
+    [messageThreads],
+  );
   const inboxThreads = useMemo(
-    () => data.threads.filter((thread) => thread.bucket === "inbox"),
-    [data.threads],
+    () => messageThreads.filter((thread) => thread.bucket === "inbox"),
+    [messageThreads],
   );
   const sentCount = sentThreads.length;
   const inboxCount = inboxThreads.length;
-  const totalCount = data.threads.length;
-  const totalOpenCount = data.threads.filter((thread) =>
+  const totalCount = messageThreads.length;
+  const totalOpenCount = messageThreads.filter((thread) =>
     ["submitted", "reviewed"].includes(thread.status),
   ).length;
-  const totalConvertedCount = data.threads.filter(
+  const totalConvertedCount = messageThreads.filter(
     (thread) => thread.status === "converted_to_contract",
   ).length;
   const inboxOpenCount = inboxThreads.filter(
@@ -305,8 +326,8 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
   const fallbackBucket = bucketOptions.find((option) => option.count > 0)?.id;
   const bucket = selectedBucket ?? fallbackBucket ?? primaryBucket;
   const bucketThreads = useMemo(
-    () => data.threads.filter((thread) => thread.bucket === bucket),
-    [bucket, data.threads],
+    () => messageThreads.filter((thread) => thread.bucket === bucket),
+    [bucket, messageThreads],
   );
   const visibleThreads = useMemo(
     () =>
@@ -386,18 +407,18 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
             {!contractHomeIsPrimary ? (
               <Link
                 to={copy.primaryHref}
-                className="inline-flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-[12px] bg-blue-600 px-3 text-[13px] font-extrabold text-white shadow-[0_14px_34px_rgba(37,99,235,0.20)] transition hover:bg-blue-700"
+                className="yl-header-action yl-header-action-primary"
               >
                 <FileSignature className="h-4 w-4" />
-                {copy.primaryLabel}
+                <span className="hidden sm:inline">{copy.primaryLabel}</span>
               </Link>
             ) : null}
             <Link
               to={copy.backHref}
-              className={`inline-flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-[12px] px-3 text-[13px] font-extrabold transition ${
+              className={`yl-header-action ${
                 contractHomeIsPrimary
-                  ? "bg-blue-600 text-white shadow-[0_14px_34px_rgba(37,99,235,0.20)] hover:bg-blue-700"
-                  : "border border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300 hover:text-neutral-950"
+                  ? "yl-header-action-primary"
+                  : "yl-header-action-secondary"
               }`}
             >
               {contractHomeIsPrimary ? (
@@ -410,11 +431,32 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
             <button
               type="button"
               onClick={() => void loadMessages()}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] border border-neutral-200 bg-white text-neutral-600 transition hover:border-neutral-300 hover:text-neutral-950"
+              className="yl-header-icon-action"
               aria-label="새로고침"
               title="새로고침"
             >
               <RefreshCw className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="yl-header-action yl-header-action-secondary"
+              aria-label="로그아웃"
+              title="로그아웃"
+            >
+              <LogOut className="h-4 w-4" />
+              <span className="hidden sm:inline">로그아웃</span>
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                navigate(`/reset-password?role=${role}`, { replace: false })
+              }
+              className="yl-header-icon-action"
+              aria-label="계정 설정"
+              title="계정 설정"
+            >
+              <Settings className="h-4 w-4" />
             </button>
           </div>
         </div>
@@ -902,6 +944,13 @@ function parseProposalSummary(summary: string) {
     deliverable: deliverable ? `산출물 ${normalizeSummaryText(deliverable)}` : undefined,
     deadline: deadline ? `마감 ${normalizeSummaryText(deadline)}` : undefined,
   };
+}
+
+function isOneToOneMessageThread(thread: MessageThread) {
+  return !(
+    thread.direction === "influencer_to_brand" &&
+    Boolean(thread.campaignId)
+  );
 }
 
 function formatProposalSummaryTitle(value: string) {

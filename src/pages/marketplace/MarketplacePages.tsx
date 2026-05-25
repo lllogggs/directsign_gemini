@@ -9,6 +9,7 @@ import {
   Globe2,
   Handshake,
   Instagram,
+  LogOut,
   Mail,
   Megaphone,
   MessageSquareText,
@@ -17,6 +18,7 @@ import {
   Send,
   ShieldCheck,
   SlidersHorizontal,
+  Settings,
   Store,
   UserRound,
   Youtube,
@@ -345,7 +347,7 @@ export function AdvertiserInfluencerDiscoveryPage() {
     <MarketplaceShell
       eyebrow="광고주 탐색"
       title="인플루언서 둘러보기"
-      description="계약 작성 전 상대 정보를 확인하고, 필요한 컨택 내용을 계약 작성 흐름으로 이어갑니다."
+      description="프로필과 채널 규모를 보고 바로 컨택합니다."
       backHref="/advertiser/dashboard"
       backLabel="계약 대시보드"
       profileCount={profiles.length}
@@ -355,18 +357,18 @@ export function AdvertiserInfluencerDiscoveryPage() {
           <button
             type="button"
             onClick={() => navigate("/advertiser/builder")}
-            className="inline-flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-[12px] bg-blue-600 px-3 text-[13px] font-extrabold text-white shadow-[0_14px_34px_rgba(37,99,235,0.20)] transition hover:bg-blue-700"
+            className="yl-header-action yl-header-action-primary"
           >
             <FileText className="h-4 w-4" />
-            새 계약
+            <span className="hidden sm:inline">새 계약</span>
           </button>
           <button
             type="button"
             onClick={() => navigate("/advertiser/campaigns")}
-            className="hidden h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-[12px] border border-neutral-200 bg-white px-3 text-[13px] font-extrabold text-neutral-600 transition hover:border-neutral-300 hover:text-neutral-950 sm:inline-flex"
+            className="yl-header-action yl-header-action-secondary hidden sm:inline-flex"
           >
             <Megaphone className="h-4 w-4" />
-            캠페인
+            <span className="hidden sm:inline">캠페인</span>
           </button>
         </div>
       }
@@ -472,9 +474,9 @@ export function InfluencerBrandDiscoveryPage() {
     <MarketplaceShell
       eyebrow="인플루언서 탐색"
       title="입점 브랜드 둘러보기"
-      description="받은 계약을 우선 확인하고, 필요할 때 브랜드 정보와 컨택 내용을 계약 검토 전 단계로 정리합니다."
+      description="브랜드의 모집 채널과 응답 속도를 확인합니다."
       backHref="/influencer/dashboard"
-      backLabel="계약 대시보드"
+      backLabel="내 계약"
       profileCount={profiles.length}
       brandCount={displayBrands.length}
       actions={
@@ -482,26 +484,28 @@ export function InfluencerBrandDiscoveryPage() {
           <button
             type="button"
             onClick={() => navigate("/influencer/dashboard")}
-            className="inline-flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-[12px] bg-blue-600 px-3 text-[13px] font-extrabold text-white shadow-[0_14px_34px_rgba(37,99,235,0.20)] transition hover:bg-blue-700"
+            className="yl-header-action yl-header-action-primary"
           >
             <FileText className="h-4 w-4" />
-            받은 계약
+            <span className="hidden sm:inline">받은 계약</span>
           </button>
           <button
             type="button"
             onClick={() => navigate("/influencer/campaigns")}
-            className="hidden h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-[12px] border border-neutral-200 bg-white px-3 text-[13px] font-extrabold text-neutral-600 transition hover:border-neutral-300 hover:text-neutral-950 sm:inline-flex"
+            className="yl-header-action yl-header-action-secondary hidden sm:inline-flex"
           >
             <Megaphone className="h-4 w-4" />
-            캠페인 보기
+            <span className="hidden sm:inline">캠페인</span>
           </button>
           <button
             type="button"
             onClick={() => navigate(publicProfilePath ?? "/influencer/dashboard")}
-            className="hidden h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-[12px] border border-neutral-200 bg-white px-3 text-[13px] font-extrabold text-neutral-600 transition hover:border-neutral-300 hover:text-neutral-950 sm:inline-flex"
+            className="yl-header-action yl-header-action-secondary hidden sm:inline-flex"
           >
             <UserRound className="h-4 w-4" />
-            {publicProfilePath ? "내 공개 프로필" : "프로필 설정"}
+            <span className="hidden sm:inline">
+              {publicProfilePath ? "공개 프로필" : "프로필 설정"}
+            </span>
           </button>
         </div>
       }
@@ -880,7 +884,7 @@ export function PublicBrandProfilePage() {
             </div>
             {brand.activeCampaigns.length > 4 ? (
               <p className="mt-2 text-[12px] font-semibold text-neutral-500">
-                나머지 {brand.activeCampaigns.length - 4}건은 제안 후 메시지함에서 확인합니다.
+                나머지 {brand.activeCampaigns.length - 4}건도 브랜드 조건에 맞춰 검토할 수 있습니다.
               </p>
             ) : null}
           </ProfileSection>
@@ -943,6 +947,23 @@ function MarketplaceShell({
   showMetrics?: boolean;
   children: ReactNode;
 }) {
+  const navigate = useNavigate();
+  const role = backHref.startsWith("/influencer") ? "influencer" : "advertiser";
+  const handleLogout = async () => {
+    try {
+      await apiFetch(`/api/${role}/logout`, {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch (error) {
+      console.warn(`[${PRODUCT_NAME}] ${role} logout request failed`, error);
+    } finally {
+      navigate(role === "advertiser" ? "/login/advertiser" : "/login/influencer", {
+        replace: true,
+      });
+    }
+  };
+
   return (
     <main className="flex h-svh flex-col overflow-hidden bg-[#f7f6f3] font-sans text-neutral-950">
       <header className="z-30 shrink-0 border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
@@ -956,12 +977,33 @@ function MarketplaceShell({
           <div className="no-scrollbar ml-3 flex min-w-0 items-center gap-2 overflow-x-auto">
             <Link
               to={backHref}
-              className="inline-flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-[12px] border border-neutral-200 bg-white px-3 text-[13px] font-extrabold text-neutral-600 transition hover:border-neutral-300 hover:text-neutral-950"
+              className="yl-header-action yl-header-action-secondary"
             >
               <ArrowLeft className="h-4 w-4" />
               <span className="hidden sm:inline">{backLabel}</span>
             </Link>
             {actions}
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="yl-header-action yl-header-action-secondary"
+              aria-label="로그아웃"
+              title="로그아웃"
+            >
+              <LogOut className="h-4 w-4" />
+              <span className="hidden sm:inline">로그아웃</span>
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                navigate(`/reset-password?role=${role}`, { replace: false })
+              }
+              className="yl-header-icon-action"
+              aria-label="계정 설정"
+              title="계정 설정"
+            >
+              <Settings className="h-4 w-4" />
+            </button>
           </div>
         </div>
       </header>
@@ -982,7 +1024,7 @@ function MarketplaceShell({
               <div className="grid grid-cols-3 gap-1.5 rounded-[14px] border border-neutral-200 bg-white p-1.5 shadow-[0_10px_26px_rgba(15,23,42,0.035)] sm:w-[360px]">
                 <MiniMetric label="공개 프로필" value={(profileCount ?? marketplaceInfluencers.length).toString()} />
                 <MiniMetric label="입점 브랜드" value={(brandCount ?? marketplaceBrands.length).toString()} />
-                <MiniMetric label="계약 연결" value="검토 뒤" />
+                <MiniMetric label="계약 연결" value="요청 가능" />
               </div>
             ) : null}
           </div>
@@ -1005,7 +1047,7 @@ function InfluencerDiscoveryCard({
   onContact: () => void;
 }) {
   return (
-    <article className="yl-card flex min-h-[250px] w-full min-w-0 flex-col border p-3.5">
+    <article className="yl-card flex min-h-[218px] w-full min-w-0 flex-col border p-3.5">
       <div className="flex items-start gap-3">
         <AvatarBlock label={profile.avatarLabel} />
         <div className="min-w-0 flex-1">
@@ -1015,25 +1057,12 @@ function InfluencerDiscoveryCard({
             </h2>
             <BadgeCheck className="h-4 w-4 shrink-0 text-neutral-700" />
           </div>
-          <p className="mt-1 truncate text-[12px] font-semibold text-neutral-500">
-            {formatInfluencerPublicProfileUrl(profile.handle)}
-          </p>
         </div>
       </div>
 
-      <p className="mt-3 line-clamp-2 text-[13px] font-semibold leading-5 text-neutral-800">
+      <p className="mt-3 line-clamp-1 text-[13px] font-semibold leading-5 text-neutral-700">
         {cleanMarketplaceCopy(profile.bio || profile.headline)}
       </p>
-
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        {profile.platforms.map((platform) => (
-          <PlatformPill
-            key={`${profile.id}-${platform.platform}`}
-            platform={platform.platform}
-            label={`${platformLabels[platform.platform]} ${platform.followersLabel}`}
-          />
-        ))}
-      </div>
 
       <div className="mt-3 flex flex-wrap gap-1.5">
         {profile.categories.slice(0, 3).map((category) => (
@@ -1043,6 +1072,16 @@ function InfluencerDiscoveryCard({
           >
             {cleanMarketplaceCopy(category)}
           </span>
+        ))}
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {profile.platforms.slice(0, 3).map((platform) => (
+          <PlatformPill
+            key={`${profile.id}-${platform.platform}`}
+            platform={platform.platform}
+            label={`${platformLabels[platform.platform]} ${platform.followersLabel}`}
+          />
         ))}
       </div>
 
@@ -1075,7 +1114,7 @@ function BrandDiscoveryCard({
   onContact: () => void;
 }) {
   return (
-    <article className="yl-card flex min-h-[320px] w-full min-w-0 flex-col border p-3.5">
+    <article className="yl-card flex min-h-[258px] w-full min-w-0 flex-col border p-3.5">
       <div className="flex items-start gap-3">
         <AvatarBlock label={brand.logoLabel} />
         <div className="min-w-0 flex-1">
@@ -1091,11 +1130,8 @@ function BrandDiscoveryCard({
         </div>
       </div>
 
-      <p className="mt-3 line-clamp-2 text-[13px] font-semibold leading-5 text-neutral-800">
+      <p className="mt-3 line-clamp-1 text-[13px] font-semibold leading-5 text-neutral-800">
         {formatBrandMarketplaceHeadline(brand)}
-      </p>
-      <p className="mt-1.5 line-clamp-1 text-[12px] leading-5 text-neutral-600">
-        {formatBrandMarketplaceDescription(brand)}
       </p>
 
       <div className="mt-3 flex flex-wrap gap-1.5">
@@ -1108,17 +1144,12 @@ function BrandDiscoveryCard({
         ))}
       </div>
 
-      <dl className="mt-3 grid grid-cols-3 gap-1.5 text-[12px]">
+      <dl className="mt-3 grid grid-cols-2 gap-1.5 text-[12px]">
         <ProfileFact label="제안 가능" value={formatProposalTypes(brand.proposalTypes)} />
-        <ProfileFact label="예산" value={brand.budgetRangeLabel} />
         <ProfileFact label="응답" value={brand.responseTimeLabel} />
       </dl>
 
-      <div className="mt-3">
-        <TagList items={brand.fitTags.slice(0, 3).map(cleanMarketplaceCopy)} />
-      </div>
-
-      <div className="mt-auto grid grid-cols-2 gap-2 pt-4">
+      <div className="mt-auto grid grid-cols-2 gap-2 pt-3">
         <button
           type="button"
           onClick={onContact}
@@ -1200,7 +1231,7 @@ function InfluencerContactDialog({
       {submitted ? (
         <ProposalSubmitted
           title="제안이 저장됐습니다"
-          body="브랜드 소개와 광고 형태가 메시지함에 저장됐습니다. 계약으로 진행할 제안인지 검토한 뒤 계약 작성 흐름으로 넘길 수 있습니다."
+          body="브랜드 소개와 광고 형태가 메시지함에 저장됐습니다."
           actionHref="/advertiser/messages"
           actionLabel="메시지함 보기"
           onClose={onClose}
@@ -1352,7 +1383,7 @@ function BrandContactDialog({
       {submitted ? (
         <ProposalSubmitted
           title="역제안이 저장됐습니다"
-          body="내 채널 소개와 광고 형태가 메시지함에 저장됐습니다. 브랜드가 검토할 조건과 이후 계약 전환 상태를 같은 화면에서 확인할 수 있습니다."
+          body="내 채널 소개와 광고 형태가 저장됐습니다. 이후 상태는 메시지함에서 확인할 수 있습니다."
           actionHref="/influencer/messages"
           actionLabel="메시지함 보기"
           onClose={onClose}

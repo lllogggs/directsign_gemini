@@ -502,7 +502,9 @@ describe("yeollock.me security regressions", () => {
 
   it("keeps advertiser marketplace messages focused on sent proposals", () => {
     const inbox = read("src/pages/marketplace/MarketplaceInboxPage.tsx");
+    const campaignPages = read("src/pages/marketplace/CampaignPages.tsx");
     const server = read("server/index.ts");
+    const agents = read("AGENTS.md");
 
     assert.match(inbox, /role === "advertiser" \? "sent" : "inbox"/);
     assert.match(inbox, /summaryTitle:\s*\(openCount: number\) =>/);
@@ -524,6 +526,15 @@ describe("yeollock.me security regressions", () => {
       /role === "advertiser"[\s\S]+id: "sent", label: copy\.primaryBucketLabel/,
     );
     assert.match(inbox, /function MessageThreadRow/);
+    assert.match(inbox, /function isOneToOneMessageThread/);
+    assert.match(inbox, /thread\.direction === "influencer_to_brand"[\s\S]+Boolean\(thread\.campaignId\)/);
+    assert.doesNotMatch(inbox, /지원자 목록/);
+    assert.doesNotMatch(inbox, /function ApplicantSelectionRow/);
+    assert.match(campaignPages, /function AdvertiserCampaignApplicantList/);
+    assert.match(campaignPages, /function isCampaignApplicationThread/);
+    assert.match(server, /isOneToOneMarketplaceMessageProposal/);
+    assert.match(server, /rows\.filter\(isOneToOneMarketplaceMessageProposal\)/);
+    assert.match(agents, /Message inboxes are only for 1:1 contract proposals/);
     assert.doesNotMatch(inbox, /function NotificationPanel/);
   });
 
@@ -762,5 +773,20 @@ describe("yeollock.me security regressions", () => {
     assert.match(influencerVerification, /Instagram DM 인증/);
     assert.match(influencerVerification, /OFFICIAL_INSTAGRAM_HANDLE/);
     assert.match(adminDashboard, /Instagram DM 수동 확인/);
+  });
+
+  it("keeps Kim Jaewoo UI guardrails aligned with rendered copy", () => {
+    const agents = read("AGENTS.md");
+    const landing = read("src/pages/landing/LandingPages.tsx");
+    const qaStandard = read("scripts/qa-standard.mjs");
+    const marketplace = read("src/pages/marketplace/MarketplacePages.tsx");
+
+    assert.match(agents, /Kim Jaewoo Agent must be strict/);
+    assert.match(landing, /계약과 신청을/);
+    assert.match(qaStandard, /계약과 신청을/);
+    assert.doesNotMatch(landing, /받은 캠페인을/);
+    assert.doesNotMatch(marketplace, /제안 후 메시지함/);
+    assert.doesNotMatch(landing, /2026\.05\.\d{2} \/ D[-+]\d+/);
+    assert.match(landing, /D-5 \/ 2026\.05\.29/);
   });
 });

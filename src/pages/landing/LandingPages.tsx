@@ -14,6 +14,7 @@ import {
   PenLine,
   Search,
   ShieldCheck,
+  Settings,
   Youtube,
   type LucideIcon,
 } from "lucide-react";
@@ -943,8 +944,8 @@ export function StartPage() {
           </div>
         </header>
 
-        <section className="flex min-h-0 items-start justify-center pb-5 pt-[clamp(72px,14svh,128px)] sm:pt-[clamp(96px,16svh,150px)] lg:pt-[clamp(116px,17svh,166px)]">
-          <div className="w-full max-w-[720px]">
+        <section className="flex min-h-0 items-start justify-center pb-8 pt-[clamp(34px,7svh,62px)] sm:pt-[clamp(48px,8svh,76px)] lg:pt-[clamp(56px,8.5svh,86px)]">
+          <div className="w-full max-w-[820px]">
             <h1
               className="landing-start-title font-neo-heavy mb-0 text-center text-[30px] leading-[1.1] tracking-normal text-neutral-950 sm:text-[42px] sm:leading-[1.05]"
               aria-label="광고 계약은 확실하게"
@@ -956,7 +957,7 @@ export function StartPage() {
                 확실하게
               </span>
             </h1>
-            <div className="mt-9 grid gap-3 sm:mt-10 sm:grid-cols-2 sm:gap-4 lg:mt-11">
+            <div className="mt-11 grid gap-3 sm:mt-12 sm:grid-cols-2 sm:gap-4 lg:mt-14">
               {roleCards.map((role) => {
                 const tone = getStartRoleTone(role.role);
                 const isAdvertiser = role.role === "advertiser";
@@ -969,7 +970,7 @@ export function StartPage() {
                     key={role.role}
                     to={role.href}
                     aria-label={`${role.title} 선택`}
-                    className={`yl-card group flex min-h-[144px] flex-col justify-between border px-5 py-5 text-left transition hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:min-h-[166px] sm:px-5 sm:py-6 lg:min-h-[176px] ${tone.card}`}
+                    className={`yl-card group flex min-h-[184px] flex-col justify-between border px-5 py-5 text-left transition hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:min-h-[224px] sm:px-7 sm:py-7 lg:min-h-[248px] ${tone.card}`}
                   >
                     <span className="block">
                       <RoleIconCluster role={role.role} />
@@ -1076,9 +1077,9 @@ function RoleFeatureIntroScreen({
             "작성, 검토 링크, 서명 증빙까지 끊기지 않게 이어집니다.",
         }
       : {
-          title: ["받은 캠페인을", "빠르게 정리"],
+          title: ["계약과 신청을", "나눠 확인"],
           description:
-            "검토, 수정 요청, 제출, 서명까지 필요한 일만 먼저 보입니다.",
+            "받은 제안, 신청한 캠페인, 진행 계약을 헷갈리지 않게 구분합니다.",
         };
 
   useEffect(() => {
@@ -1661,7 +1662,7 @@ const introDashboardDemoData = {
             title: "민서홈 릴스 협찬 계약",
             payment: "-",
             metric: "검토 대기",
-            date: "2026.05.29 / D-5",
+            date: "D-5 / 2026.05.29",
           },
           {
             platform: "인스타 외 1",
@@ -1670,7 +1671,7 @@ const introDashboardDemoData = {
             title: "루나데이 공동구매 계약",
             payment: "-",
             metric: "초안 작성",
-            date: "2026.05.31 / D-7",
+            date: "D-7 / 2026.05.31",
           },
         ],
       },
@@ -1697,7 +1698,7 @@ const introDashboardDemoData = {
             payment: "수수료 18%",
             metric: "서명 완료",
             metricPercent: 70,
-            date: "2026.05.28 / D-4",
+            date: "D-4 / 2026.05.28",
           },
           {
             platform: "유튜브",
@@ -1707,7 +1708,7 @@ const introDashboardDemoData = {
             payment: "2,800,000원",
             metric: "검수 대기",
             metricPercent: 50,
-            date: "2026.05.27 / D-3",
+            date: "D-3 / 2026.05.27",
           },
           {
             platform: "인스타",
@@ -1717,7 +1718,7 @@ const introDashboardDemoData = {
             payment: "900,000원 + 제품 제공",
             metric: "콘텐츠 제출",
             metricPercent: 85,
-            date: "2026.05.26 / D-2",
+            date: "D-2 / 2026.05.26",
           },
         ],
       },
@@ -1744,7 +1745,7 @@ const introDashboardDemoData = {
             payment: "1,800,000원",
             metric: "보관 완료",
             metricPercent: 100,
-            date: "2026.05.21 / D+3",
+            date: "D+3 / 2026.05.21",
           },
           {
             platform: "블로그",
@@ -1754,7 +1755,7 @@ const introDashboardDemoData = {
             payment: "수수료 18%",
             metric: "검수 완료",
             metricPercent: 100,
-            date: "2026.05.19 / D+5",
+            date: "D+5 / 2026.05.19",
           },
         ],
       },
@@ -1837,7 +1838,7 @@ const introDashboardDemoData = {
             title: "브레드룸 릴스 협찬 계약",
             payment: "900,000원 + 제품 제공",
             metric: "지원 접수",
-            date: "2026.05.26 / D-2",
+            date: "D-2 / 2026.05.26",
           },
           {
             platform: "인스타 +1",
@@ -1846,7 +1847,7 @@ const introDashboardDemoData = {
             title: "나이트케어 언박싱 계약",
             payment: "150만-250만원",
             metric: "지원 접수",
-            date: "2026.06.03 / D-10",
+            date: "D-10 / 2026.06.03",
           },
         ],
       },
@@ -1871,7 +1872,7 @@ const introDashboardDemoData = {
             title: "공동구매 파일럿 계약",
             payment: "수수료 18%",
             metric: "컨텐츠 제출",
-            date: "2026.05.28 / D-4",
+            date: "D-4 / 2026.05.28",
           },
           {
             platform: "유튜브",
@@ -1880,7 +1881,7 @@ const introDashboardDemoData = {
             title: "나이트 케어 쇼츠 계약",
             payment: "2,800,000원",
             metric: "광고주 검수 필요",
-            date: "2026.05.27 / D-3",
+            date: "D-3 / 2026.05.27",
           },
           {
             platform: "인스타",
@@ -1889,7 +1890,7 @@ const introDashboardDemoData = {
             title: "성수 팝업 릴스 계약",
             payment: "2,100,000원",
             metric: "컨텐츠 제출",
-            date: "2026.05.25 / D-1",
+            date: "D-1 / 2026.05.25",
           },
         ],
       },
@@ -1914,7 +1915,7 @@ const introDashboardDemoData = {
             title: "공동구매 파일럿 계약",
             payment: "수수료 18%",
             metric: "정산 보관",
-            date: "2026.05.21 / D+3",
+            date: "D+3 / 2026.05.21",
           },
         ],
       },
@@ -1939,7 +1940,7 @@ const introDashboardDemoData = {
             title: "언박싱 릴스 제안",
             payment: "150만-250만원",
             metric: "미선정",
-            date: "2026.05.20 / D+4",
+            date: "D+4 / 2026.05.20",
           },
         ],
       },
@@ -2132,6 +2133,9 @@ function IntroAppHeader({ role }: { role: IntroRole }) {
               {action}
             </span>
           ))}
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[9px] border border-neutral-200 bg-white text-neutral-700">
+            <Settings className="h-3.5 w-3.5" strokeWidth={2} />
+          </span>
         </div>
       </div>
     </div>
@@ -2301,19 +2305,19 @@ function IntroContractBoard({ state }: { state: IntroDashboardState }) {
 function IntroContractRows({ state }: { state: IntroDashboardState }) {
   return (
     <>
-      <div className="hidden grid-cols-[72px_70px_minmax(0,1fr)_88px_82px_122px] gap-2 border-b border-[#e3e8e3] bg-[#fbfbf8] px-3 py-2 text-[10px] font-extrabold text-[#7d857f] md:grid">
+      <div className="hidden grid-cols-[72px_70px_minmax(0,1fr)_88px_122px_82px] gap-2 border-b border-[#e3e8e3] bg-[#fbfbf8] px-3 py-2 text-[10px] font-extrabold text-[#7d857f] md:grid">
         <span>플랫폼</span>
         <span>{state.secondaryColumnLabel ?? "브랜드"}</span>
         <span>계약명</span>
         <span>{state.paymentColumnLabel ?? "지급내용"}</span>
-        <span>{state.metricColumnLabel}</span>
         <span>{state.dateColumnLabel}</span>
+        <span>{state.metricColumnLabel}</span>
       </div>
       <div className="hidden min-h-0 flex-1 divide-y divide-[#edf1ed] bg-white md:flex md:flex-col">
         {state.rows.length > 0 ? state.rows.map((row, index) => (
           <div
             key={`${row.platform}-${row.title}-${index}`}
-            className="grid min-h-11 grid-cols-[72px_70px_minmax(0,1fr)_88px_82px_122px] items-center gap-2 bg-white px-3 py-2"
+            className="grid min-h-11 grid-cols-[72px_70px_minmax(0,1fr)_88px_122px_82px] items-center gap-2 bg-white px-3 py-2"
           >
             <span
               className={`inline-flex h-6 w-fit max-w-full items-center truncate rounded-[6px] border px-2 text-[10px] font-extrabold ${row.platformClass}`}
@@ -2329,6 +2333,9 @@ function IntroContractRows({ state }: { state: IntroDashboardState }) {
             <span className="truncate text-[11px] font-semibold text-neutral-700">
               {row.payment}
             </span>
+            <span className="truncate text-[10px] font-bold tabular-nums text-neutral-700">
+              {row.date}
+            </span>
             <span className="min-w-0">
               <span className="block truncate text-[11px] font-extrabold text-neutral-950">
                 {row.metric}
@@ -2341,9 +2348,6 @@ function IntroContractRows({ state }: { state: IntroDashboardState }) {
                   />
                 </span>
               ) : null}
-            </span>
-            <span className="truncate text-[10px] font-bold tabular-nums text-neutral-700">
-              {row.date}
             </span>
           </div>
         )) : (

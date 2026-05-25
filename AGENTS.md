@@ -54,7 +54,7 @@ Example option format:
 - Owner: Codex, calibrated from the Product Owner's repeated corrections and explicit taste calls.
 - Responsibilities: protect the Product Owner's direct instructions from being overwritten by later "polish", agent preference, or generic UI advice.
 - Authority: blocks edits when a proposed change conflicts with the Product Owner's known instruction; if the Kim Jaewoo Agent and any other role agent disagree, Codex must ask the Product Owner which rule wins before implementing.
-- Required routing:
+  - Required routing:
   - Kim Jaewoo Agent conflict checks, rulebook updates, and review loops are required for code changes and design/UI/UX/copy improvements or modifications.
   - Pure operational tasks such as commit, push, deploy, status checks, or reporting do not require the Kim Jaewoo Agent loop unless they include code/design modification or reveal a reusable Product Owner correction.
   - Mandatory work order for code/design modification: Product Owner instruction -> check for conflict with existing Kim Jaewoo Agent rules and update the rulebook when the instruction reveals a reusable preference -> perform the work -> run Kim Jaewoo Agent review on the actual rendered result or changed behavior -> report to the Product Owner.
@@ -67,8 +67,14 @@ Example option format:
   - Treat the user's latest explicit instruction as stronger than inferred design taste, online references, and previous agent recommendations.
   - When the user corrects a Codex change, record the correction as a hard rule and search nearby pages for the same mistake.
   - Do not silently reinterpret a correction as optional preference.
-- Current hard corrections:
-  - Product Owner behavioral model:
+  - Current hard corrections:
+  - Kim Jaewoo review standard:
+    - The Kim Jaewoo Agent must be strict, not polite. It should actively search for anything the Product Owner would reject before Codex reports completion.
+    - After every code, UI, UX, or copy change, rerun the relevant Kim Jaewoo checklist against the actual rendered pages/actions, not only the files that were edited.
+    - If any known Product Owner rule is unmet, Kim Jaewoo must fail the review, produce concrete feedback, and require another edit-and-review loop before completion.
+    - A changed dashboard, campaign, message, contract, or application surface must trigger a matching intro-preview consistency check in the same review.
+    - Product Owner behavioral model:
+    - The Product Owner's highest UI/product virtue is redundancy removal: one concept, one place, one action. Duplicate labels, duplicate CTAs, repeated role/state copy, repeated data values, and repeated explanatory text are product-quality bugs, not cosmetic nitpicks.
     - Prefer distilled behavioral tendencies over long lists of literal one-off instructions when updating this agent.
     - The Product Owner values concise, premium, real-product judgment and rejects MVP-like clutter, redundancy, and shallow decorative polish.
     - The Product Owner trusts actual rendered product experience more than explanations, screenshots without judgment, or automated QA alone.
@@ -85,10 +91,24 @@ Example option format:
     - The Product Owner wants page-level navigation such as returning to the dashboard to live in the fixed app header when it is a persistent app action. Avoid awkward floating back buttons inside form content unless they are clearly local step navigation.
     - In contract writing flows, do not show advertiser verification banners before they are actionable. If the advertiser is already verified, hide the verification state; if not verified, surface the blocker at the send/share step where the user can act on it.
     - Contract preview panes should distinguish the preview label from the PDF-like document itself. Use a small outside title such as "계약서 초안", then let the document begin cleanly without redundant "전자계약서 초안" header text inside the paper.
+    - Header fixes must be applied as a product-wide app-frame rule, not as one-off page patches. Related advertiser/influencer pages should keep the same brand placement, action order, button height, text-button width, icon-button width, and hover affordance.
+    - Header text buttons with different widths make the app look unfinished. Standardize persistent header text actions to a shared width at desktop sizes unless the Product Owner explicitly requests a special action to stand out.
+    - Contract detail headers must not duplicate the page's primary task CTA when the same action already appears in the contract action panel. Keep contract detail headers to navigation and stable utilities; put state-specific actions in the content area where their context is visible.
+    - Contract detail pages should start from the key state, next action, counterpart, deadline, and evidence. Do not let metadata, long audit history, clause text, support panels, and secondary explanations compete with the primary contract state.
+    - Contract detail pages must follow one-information-one-place. If a value is already shown in the hero summary, do not repeat it as a separate card, side panel, or action panel label unless that second location enables a different action.
+    - Contract management should combine visible process progress with a quiet document-first body. Show lifecycle progress near the top, keep the contract text clean like a document, and keep the current task/action in a single right-side action area.
+    - Contract management writing/reply controls should stay on the left side to match the contract creation mental model: left is where the advertiser writes or decides, right is where the contract/document is read.
+    - Campaign recruitment contracts are not 1:1 negotiation contracts. When an influencer applies to a campaign and the advertiser selects them, the campaign terms are fixed from the recruitment post; remove clause-level condition negotiation, modification requests, deletion requests, and counterproposal UI from that campaign-contract path.
+    - Detail pages must not show "not found" or empty-result messages while authoritative data is still hydrating. Show a quiet loading shell first, then show missing-state copy only after the data source has been checked.
     - The Product Owner prioritizes login and route-transition immediacy strongly enough to permit authentication strategy changes when the change is justified and security is preserved. Prefer verified JWT/session claims, short-lived server caches, route shells, and deferred non-critical data over repeated auth-server round trips on every first render.
     - The Product Owner accepts optimistic, non-sensitive destination shells during login when they reduce perceived wait, but private data, mutations, contracts, signatures, and role authorization must still wait for authoritative server validation.
   - The Product Owner expects browser-tab style dashboard tabs to share one baseline. The selected tab must not look lower, sunken, or offset from inactive tabs; avoid visible divider lines, gaps, or tab seams when the requested reference is Chrome-like tabs.
   - For Chrome/Google-like dashboard tabs, do not draw every tab as an individual boxed segment. Inactive tabs should sit quietly on the tab strip, while only the active tab visually becomes the connected surface of the content panel below.
+    - Separate Product Owner/operator reasoning from customer-facing copy. Internal concepts such as fixed terms, no negotiation, why a campaign applicant became a contract, or what process Codex implemented should be recorded in rules, audit logic, and reports, not shown as explanatory UI text to advertisers or influencers.
+    - Customer-facing contract screens should show only the next useful action and necessary contract facts. Remove labels like "모집 조건 고정", "조건 조율 없이", "고정 조건 계약", or "신청해 선정된 계약" when they explain internal workflow rather than helping the customer finish the contract.
+    - Advertiser campaign application management should borrow only the influencer-selection pattern from Tagby-like products: photo/avatar, creator name, verified platform handles/followers, one-line intro, profile check, and selection action. Do not import unrelated campaign-condition explanation or broader workflow copy from references.
+    - Influencer campaign applications are not "messages" from the influencer's mental model. A creator who applied to a campaign should see that application in a campaign/application surface such as "신청한 캠페인" or the dashboard "지원중" flow. Message inboxes should not be the primary place for tracking campaign applications, because that makes the product structure feel confused.
+    - Product-wide consistency and concision are primary Product Owner values. Repeated UI patterns such as platform badges, buttons, tabs, filters, table rows, headers, status pills, action labels, and empty states must reuse the same product language, sizing, color, radius, density, wording style, and interaction behavior across nearby screens. Do not invent page-specific variants or extra labels when an established pattern already exists; if a variant seems necessary, treat it as a design decision and justify it before implementation.
     - The Product Owner dislikes first screens that feel like a cluster floating in the exact center of a large empty canvas. Main role-selection screens should have deliberate upper-weighted vertical rhythm with enough breathing room, not a lonely center pile.
     - Sparse first screens should use scale, width, and composition to feel intentionally occupied. Do not leave a huge empty lower half that makes the product look unfinished.
     - When the Product Owner asks to adjust placement or spacing, preserve the existing screen structure unless they explicitly ask for a structural redesign. Do not turn a centered headline-plus-card layout into a split layout just to solve spacing.
@@ -184,6 +204,7 @@ Example option format:
   - Put platform selection at the top because it frames the rest of the campaign.
   - Keep the form task-focused and avoid repeating intro/education copy.
 - Message inbox rules:
+  - Message inboxes are only for 1:1 contract proposals and proposal conversations. Campaign applications, recruiting, applicant selection, and campaign-to-contract conversion belong in campaign/application surfaces, not in the message inbox.
   - Message inbox rows should follow "one row, one primary information item".
   - Default row columns should stay minimal: status, counterpart, proposal/title, date, action.
   - Do not add platform, proposal type, payment, deliverable, deadline, unread text, and secondary relationship text into the row unless the user explicitly asks for a comparison table.
@@ -194,6 +215,7 @@ Example option format:
   - The root main role-selection page should not show actual contract status previews or dashboard snippets. Product/state previews belong on the advertiser/influencer intro pages, so avoid duplicating them on the first role-selection screen.
   - Dashboard previews on intro pages must be based on the real service screens, not decorative or imaginary product cards.
   - Intro dashboard previews must mirror the real dashboard header and table labels immediately after dashboard changes. If the real dashboard says "계약 목록", the intro preview must not still say "캠페인 목록".
+  - When dashboard, campaign, message, contract, or application structures change, intro previews and intro copy must be checked in the same task. Stale previews, stale counts, stale buttons, or old flow labels are Kim Jaewoo review failures.
   - Advertiser intro previews should show the real dashboard states "모집중", "진행중", "종료"; influencer intro previews should show "지원중", "진행중", "완료", "미선정".
   - Avoid repeated words and repeated value props in the same viewport.
   - The first screen should show what the service is and what action to take without feeling like a generic marketing page.

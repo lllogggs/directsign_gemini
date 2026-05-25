@@ -82,7 +82,7 @@ export function AuthLoginScreen({
           ) : null}
         </header>
 
-        <section className="grid min-h-0 flex-1 place-items-center overflow-hidden py-2 pb-3 sm:py-6">
+        <section className="grid min-h-0 flex-1 place-items-center overflow-hidden py-2 pb-3 sm:py-2">
           <div className="flex max-h-none w-full max-w-[460px] flex-col sm:min-h-0 sm:max-h-full">
             <section className="custom-scrollbar overflow-visible rounded-[16px] border border-neutral-200/90 bg-white shadow-[0_1px_0_rgba(15,23,42,0.035),0_16px_44px_rgba(15,23,42,0.05)] sm:min-h-0 sm:max-h-full sm:overflow-y-auto sm:rounded-[18px]">
               <div className="p-4 sm:p-6">

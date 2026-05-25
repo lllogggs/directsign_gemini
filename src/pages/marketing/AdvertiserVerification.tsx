@@ -6,6 +6,8 @@ import {
   Building2,
   CheckCircle2,
   FileUp,
+  LogOut,
+  Settings,
   ShieldCheck,
 } from "lucide-react";
 import {
@@ -143,6 +145,14 @@ export function AdvertiserVerification() {
     hasEditedForm || submitted ? form : withVerificationDefaults(form, latest, account);
   const showVerificationForm = !approved || showUpdateForm;
 
+  const handleLogout = async () => {
+    await apiFetch("/api/advertiser/logout", {
+      method: "POST",
+      credentials: "include",
+    }).catch(() => undefined);
+    navigate("/login/advertiser", { replace: true });
+  };
+
   const updateForm = (updates: Partial<AdvertiserVerificationForm>) => {
     setForm({ ...visibleForm, ...updates });
     setHasEditedForm(true);
@@ -217,28 +227,51 @@ export function AdvertiserVerification() {
   return (
     <div className="fixed inset-0 overflow-hidden bg-[#f4f5f7] font-sans text-neutral-950">
       <header className="border-b border-neutral-200/80 bg-white shadow-[0_1px_0_rgba(15,23,42,0.04)]">
-        <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-5 sm:px-8">
-          <button
-            type="button"
-            onClick={() => navigate("/advertiser/dashboard")}
-            className="flex items-center gap-3 text-sm font-semibold text-neutral-700 transition hover:text-neutral-950"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            대시보드
-          </button>
+        <div className="mx-auto flex h-14 max-w-[1500px] items-center justify-between px-3 sm:px-5">
+          <div className="flex min-w-0 items-center gap-3">
+            <button
+              type="button"
+              onClick={() => navigate("/advertiser/dashboard")}
+              className="yl-brand-action group flex min-w-0 items-center gap-3 rounded-lg text-neutral-950 transition hover:text-neutral-700"
+              aria-label={PRODUCT_NAME}
+            >
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-neutral-950 text-white shadow-[0_10px_22px_rgba(15,23,42,0.16)]">
+                <ShieldCheck className="h-4 w-4" />
+              </span>
+              <span className="truncate text-lg font-extrabold">{PRODUCT_NAME}</span>
+            </button>
+          </div>
           <div className="flex items-center gap-2">
-            <span className="hidden text-sm font-semibold text-neutral-950 sm:inline">
-              {PRODUCT_NAME}
-            </span>
-            <span className="flex items-center gap-2 rounded-full border border-neutral-200 bg-[#fbfbfc] px-3 py-1.5 text-xs font-semibold text-neutral-600">
-              <ShieldCheck className="h-4 w-4" />
-              수기 심사
-            </span>
+            <button
+              type="button"
+              onClick={() => navigate("/advertiser/dashboard")}
+              className="yl-header-action yl-header-action-secondary"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              <span className="hidden sm:inline">대시보드</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="yl-header-action yl-header-action-secondary"
+            >
+              <LogOut className="h-4 w-4" />
+              <span className="hidden sm:inline">로그아웃</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate("/reset-password?role=advertiser")}
+              className="yl-header-icon-action"
+              aria-label="설정"
+              title="설정"
+            >
+              <Settings className="h-4 w-4" />
+            </button>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto grid h-[calc(100vh-64px)] max-w-5xl gap-3 overflow-hidden px-5 py-4 sm:px-8 lg:grid-cols-[minmax(0,1fr)_260px]">
+      <main className="mx-auto grid h-[calc(100vh-56px)] max-w-5xl gap-3 overflow-hidden px-5 py-4 sm:px-8 lg:grid-cols-[minmax(0,1fr)_260px]">
         <section
           className={`overflow-y-auto rounded-lg border border-neutral-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)] sm:p-5 ${
             approved && !showVerificationForm && !rejectionGuidance
@@ -377,7 +410,8 @@ export function AdvertiserVerification() {
                   />
                   <TextField
                     label="개업일자"
-                    type="date"
+                    type="text"
+                    placeholder="예: 20260517"
                     value={visibleForm.business_start_date}
                     onChange={(value) => updateForm({ business_start_date: value })}
                   />
@@ -414,7 +448,8 @@ export function AdvertiserVerification() {
                   />
                   <TextField
                     label="문서 발급일"
-                    type="date"
+                    type="text"
+                    placeholder="예: 20260517"
                     value={visibleForm.document_issue_date}
                     onChange={(value) =>
                       updateForm({ document_issue_date: value })
@@ -517,7 +552,7 @@ export function AdvertiserVerification() {
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-neutral-950">
-                    제출 전 확인
+                    {approved ? "인증 정보" : "제출 전 확인"}
                   </p>
                 </div>
               </div>
@@ -549,20 +584,22 @@ export function AdvertiserVerification() {
                 )}
               </div>
             ) : null}
-            <ul className="mt-4 space-y-2 border-t border-neutral-100 pt-4 text-xs leading-5 text-neutral-600">
-              <li className="flex gap-2">
-                <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-500" />
-                사업자번호와 대표자명을 확인합니다.
-              </li>
-              <li className="flex gap-2">
-                <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-500" />
-                파일은 10MB 이하 PDF/이미지만 받습니다.
-              </li>
-              <li className="flex gap-2">
-                <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-500" />
-                보통 1영업일 내 확인합니다.
-              </li>
-            </ul>
+            {!approved && (
+              <ul className="mt-4 space-y-2 border-t border-neutral-100 pt-4 text-xs leading-5 text-neutral-600">
+                <li className="flex gap-2">
+                  <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-500" />
+                  사업자번호와 대표자명을 확인합니다.
+                </li>
+                <li className="flex gap-2">
+                  <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-500" />
+                  파일은 10MB 이하 PDF/이미지만 받습니다.
+                </li>
+                <li className="flex gap-2">
+                  <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-500" />
+                  보통 1영업일 내 확인합니다.
+                </li>
+              </ul>
+            )}
           </section>
         </aside>
       </main>

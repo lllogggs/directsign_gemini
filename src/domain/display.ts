@@ -172,6 +172,22 @@ export const formatOperationalText = (
     .replace(/\bKRW\b/gi, "원");
 };
 
+export const formatCustomerContractText = (
+  value?: string | null,
+  fallback = "",
+) =>
+  formatOperationalText(value, fallback)
+    .split(/\r?\n/)
+    .filter((line) => {
+      const trimmed = line.trim();
+      return (
+        trimmed.length > 0 &&
+        !trimmed.startsWith("진행 방식:") &&
+        !trimmed.includes("공개 모집 조건에 신청했고")
+      );
+    })
+    .join("\n");
+
 const isInternalTestContact = (value: string) =>
   /^(qa|test)[._-][^\s@]+@/i.test(value) ||
   /@example\./i.test(value);

@@ -72,6 +72,11 @@ export interface ContractWorkflow {
 }
 
 export interface ContractCampaign {
+  source?: "direct" | "marketplace_campaign";
+  fixed_terms?: boolean;
+  marketplace_campaign_id?: string;
+  source_application_id?: string;
+  applicant_limit?: string;
   budget?: string;
   start_date?: string;
   end_date?: string;
@@ -192,6 +197,30 @@ export interface Contract {
   created_at: string;
   updated_at: string;
 }
+
+export const isFixedCampaignContract = (
+  contract:
+    | Pick<Contract, "campaign" | "clauses" | "audit_events">
+    | undefined
+    | null,
+) => {
+  if (!contract) return false;
+  if (
+    contract.campaign?.fixed_terms === true ||
+    contract.campaign?.source === "marketplace_campaign"
+  ) {
+    return true;
+  }
+
+  return (
+    contract.clauses.some((clause) =>
+      clause.clause_id.startsWith("campaign_application_"),
+    ) ||
+    (contract.audit_events ?? []).some(
+      (event) => event.action === "campaign_application_accepted",
+    )
+  );
+};
 
 export const addDays = (days: number) => {
   const date = new Date();

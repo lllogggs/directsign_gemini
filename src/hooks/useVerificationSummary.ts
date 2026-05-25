@@ -10,6 +10,7 @@ import type { VerificationSummary } from "../domain/verification";
 
 type VerificationSummaryOptions = {
   role?: "advertiser" | "influencer";
+  enabled?: boolean;
 };
 
 const VERIFICATION_SUMMARY_CACHE_MS = 2 * 60 * 1000;
@@ -203,17 +204,23 @@ const getVerificationSummaryErrorMessage = (message?: string) => {
 
 export function useVerificationSummary(options?: VerificationSummaryOptions) {
   const role = options?.role;
-  const cached = getCachedVerificationSummary(role);
+  const enabled = options?.enabled ?? true;
+  const cached = enabled ? getCachedVerificationSummary(role) : undefined;
   const [summary, setSummary] = useState<VerificationSummary | null>(
     cached?.summary ?? null,
   );
-  const [isLoading, setIsLoading] = useState(!cached);
+  const [isLoading, setIsLoading] = useState(enabled && !cached);
   const [error, setError] = useState<string | undefined>();
   const [statusCode, setStatusCode] = useState<number | undefined>(
     cached?.statusCode,
   );
 
   const load = useCallback(async (signal?: AbortSignal, silent = false) => {
+    if (!enabled) {
+      setIsLoading(false);
+      setError(undefined);
+      return;
+    }
     if (!silent) setIsLoading(true);
     setError(undefined);
     if (!silent) setStatusCode(undefined);
@@ -234,13 +241,17 @@ export function useVerificationSummary(options?: VerificationSummaryOptions) {
     } finally {
       if (!signal?.aborted) setIsLoading(false);
     }
-  }, [role]);
+  }, [enabled, role]);
 
   const refresh = async () => {
     await load();
   };
 
   useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+
     if (getCachedVerificationSummary(role)) {
       return;
     }
@@ -263,7 +274,13 @@ export function useVerificationSummary(options?: VerificationSummaryOptions) {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [load, role]);
+  }, [enabled, load, role]);
 
-  return { summary, isLoading, error, refresh, statusCode };
+  return {
+    summary: enabled ? summary : null,
+    isLoading: enabled ? isLoading : false,
+    error: enabled ? error : undefined,
+    refresh,
+    statusCode: enabled ? statusCode : undefined,
+  };
 }

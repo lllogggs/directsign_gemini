@@ -375,7 +375,7 @@ const browserRenderRoutes = [
   {
     name: "intro influencer",
     path: "/intro/influencer",
-    requiredText: ["받은 캠페인을", "빠르게 정리", "지원중", "진행중", "미선정"],
+    requiredText: ["계약과 신청을", "나눠 확인", "지원중", "진행중", "완료", "미선정"],
     minTextLength: 80,
   },
   {

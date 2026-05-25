@@ -22,6 +22,7 @@ import {
   createEvidence,
   createShareToken,
   createWorkflow,
+  isFixedCampaignContract,
 } from "../src/domain/contracts.js";
 import type { Contract } from "../src/domain/contracts.js";
 import type {
@@ -1149,6 +1150,9 @@ interface SupabaseMarketplaceContactProposalRow {
   sender_organization_id?: string | null;
   sender_brand_handle?: string | null;
   sender_influencer_handle?: string | null;
+  sender_influencer_avatar_label?: string | null;
+  sender_influencer_display_name?: string | null;
+  sender_influencer_headline?: string | null;
   sender_name: string;
   sender_intro: string;
   proposal_type: CampaignProposalType;
@@ -7457,7 +7461,7 @@ const buildAdvertiserBrandProfileFromAuth = (
     category: "캠페인 모집",
     headline: "인플루언서 협업 캠페인을 모집합니다",
     description:
-      "모집글을 등록하면 인플루언서가 캠페인 조건을 확인하고 브랜드에 역제안할 수 있습니다.",
+      "모집글을 등록하면 인플루언서가 캠페인 조건을 확인하고 신청할 수 있습니다.",
     location: "운영 지역 미입력",
     logoLabel: buildMarketplaceAvatarLabel(name, "BR"),
     preferredPlatforms: [],
@@ -7960,7 +7964,7 @@ const submitMarketplaceCampaignApplication = async (
   const senderIntro =
     publicProfile?.headline ||
     auth.profile.activity_categories?.join(", ") ||
-    "캠페인 조건을 확인하고 신청했습니다.";
+    "캠페인을 확인하고 신청했습니다.";
   const now = new Date().toISOString();
   const proposalId = randomUUID();
   const rows = await insertSupabaseRowsReturning<SupabaseMarketplaceContactProposalRow>(
@@ -8498,7 +8502,14 @@ const mapMarketplaceProposalToMessage = (
   role: MarketplaceInboxRole,
 ): MarketplaceMessageThread => {
   const bucket = getMarketplaceMessageBucket(role, row);
-  const counterpartName = bucket === "inbox" ? row.sender_name : row.target_display_name;
+  const isAdvertiserApplicant =
+    role === "advertiser" && row.direction === "influencer_to_brand";
+  const counterpartName =
+    bucket === "inbox"
+      ? isAdvertiserApplicant
+        ? row.sender_influencer_display_name ?? row.sender_name
+        : row.sender_name
+      : row.target_display_name;
 
   return {
     id: row.id,
@@ -8511,6 +8522,12 @@ const mapMarketplaceProposalToMessage = (
     targetName: row.target_display_name,
     targetHandle: row.target_handle,
     counterpartName,
+    counterpartAvatarLabel: isAdvertiserApplicant
+      ? row.sender_influencer_avatar_label ?? undefined
+      : undefined,
+    counterpartIntro: isAdvertiserApplicant
+      ? row.sender_influencer_headline ?? row.sender_intro
+      : row.sender_intro,
     counterpartHref: getMarketplaceCounterpartHref(role, row, bucket),
     platforms: row.marketplace_platforms ?? [],
     proposalType: row.proposal_type,
@@ -8540,6 +8557,14 @@ const buildMarketplaceMessageSummary = (
     if (row.status === "closed") acc.closedCount += 1;
     return acc;
   }, emptyMarketplaceMessageSummary());
+
+const isOneToOneMarketplaceMessageProposal = (
+  row: SupabaseMarketplaceContactProposalRow,
+) =>
+  !(
+    row.direction === "influencer_to_brand" &&
+    hasText(row.campaign_id ?? undefined)
+  );
 
 const buildMarketplaceMessagesResponse = (
   role: MarketplaceInboxRole,
@@ -8584,19 +8609,28 @@ const addSenderInfluencerHandlesToMarketplaceProposals = async (
 
   const profileRows = await readSupabaseRows<SupabaseMarketplaceInfluencerProfileRow>(
     "marketplace_influencer_profiles",
-    `?select=owner_profile_id,public_handle&owner_profile_id=in.${postgrestInFilter(
+    `?select=owner_profile_id,public_handle,avatar_label,display_name,headline&owner_profile_id=in.${postgrestInFilter(
       senderProfileIds,
     )}`,
     "sender influencer public profile handles",
   );
-  const handleByOwnerId = new Map(
-    profileRows.map((profile) => [profile.owner_profile_id, profile.public_handle]),
+  const profileByOwnerId = new Map(
+    profileRows.map((profile) => [profile.owner_profile_id, profile]),
   );
 
   return rows.map((row) => ({
     ...row,
     sender_influencer_handle: row.sender_profile_id
-      ? handleByOwnerId.get(row.sender_profile_id) ?? null
+      ? profileByOwnerId.get(row.sender_profile_id)?.public_handle ?? null
+      : null,
+    sender_influencer_avatar_label: row.sender_profile_id
+      ? profileByOwnerId.get(row.sender_profile_id)?.avatar_label ?? null
+      : null,
+    sender_influencer_display_name: row.sender_profile_id
+      ? profileByOwnerId.get(row.sender_profile_id)?.display_name ?? null
+      : null,
+    sender_influencer_headline: row.sender_profile_id
+      ? profileByOwnerId.get(row.sender_profile_id)?.headline ?? null
       : null,
   }));
 };
@@ -8768,7 +8802,7 @@ const readMarketplaceMessagesForAdvertiser = async (
   options: { summaryOnly?: boolean } = {},
 ): Promise<MarketplaceMessagesResponse> => {
   const messageProposalSelect = options.summaryOnly
-    ? "id,direction,status,created_at"
+    ? "id,direction,status,campaign_id,created_at"
     : "*";
   const sentRowsPromise = readMarketplaceProposalRows(
     `?select=${messageProposalSelect}&direction=eq.advertiser_to_influencer&sender_profile_id=eq.${encodeURIComponent(
@@ -8807,7 +8841,10 @@ const readMarketplaceMessagesForAdvertiser = async (
     return {
       role: "advertiser",
       threads: [],
-      summary: buildMarketplaceMessageSummary("advertiser", rows),
+      summary: buildMarketplaceMessageSummary(
+        "advertiser",
+        rows.filter(isOneToOneMarketplaceMessageProposal),
+      ),
     };
   }
 
@@ -8827,7 +8864,7 @@ const readMarketplaceMessagesForInfluencer = async (
   options: { summaryOnly?: boolean } = {},
 ): Promise<MarketplaceMessagesResponse> => {
   const messageProposalSelect = options.summaryOnly
-    ? "id,direction,status,created_at"
+    ? "id,direction,status,campaign_id,created_at"
     : "*";
   const profileRowsPromise = useSupabase
     ? readSupabaseRows<SupabaseMarketplaceInfluencerProfileRow>(
@@ -8865,7 +8902,10 @@ const readMarketplaceMessagesForInfluencer = async (
     return {
       role: "influencer",
       threads: [],
-      summary: buildMarketplaceMessageSummary("influencer", rows),
+      summary: buildMarketplaceMessageSummary(
+        "influencer",
+        rows.filter(isOneToOneMarketplaceMessageProposal),
+      ),
     };
   }
 
@@ -9504,6 +9544,37 @@ const verifyInfluencerContractWriteAccess = (
     return "Influencer signatures must be submitted through the signing endpoint";
   }
 
+  if (isFixedCampaignContract(existing)) {
+    if (incoming.status === "NEGOTIATING") {
+      return "Campaign recruitment contracts cannot enter negotiation";
+    }
+
+    if (
+      incoming.clauses.some(
+        (clause) =>
+          clause.status === "MODIFICATION_REQUESTED" ||
+          clause.status === "DELETION_REQUESTED",
+      )
+    ) {
+      return "Campaign recruitment terms are fixed and cannot be modified by request";
+    }
+
+    const appendedEvents = (incoming.audit_events ?? []).slice(
+      existing?.audit_events?.length ?? 0,
+    );
+    if (
+      appendedEvents.some(
+        (event) =>
+          event.action.includes("수정") ||
+          event.action.includes("삭제") ||
+          event.description.includes("수정") ||
+          event.description.includes("삭제"),
+      )
+    ) {
+      return "Campaign recruitment contracts only allow term confirmation, not negotiation";
+    }
+  }
+
   if (incoming.advertiser_id !== existing.advertiser_id) {
     return "Advertiser ownership cannot be changed";
   }
@@ -9806,14 +9877,14 @@ const safeMarketplaceProposalChannelUrl = (
 
 const buildMarketplaceCampaignDraftClauses = (
   snapshot: MarketplaceCampaignSnapshot,
-  row: SupabaseMarketplaceContactProposalRow,
+  _row: SupabaseMarketplaceContactProposalRow,
 ): Contract["clauses"] => {
   const platforms =
     snapshot.platforms?.map((platform) => platformLabels[platform]).join(", ") ||
-    "계약 작성 단계에서 확정";
+    "모집글 조건";
   const deliverables =
     snapshot.deliverables?.filter(hasText).join(", ") ||
-    "계약 작성 단계에서 확정";
+    "모집글 조건";
 
   return [
     {
@@ -9828,35 +9899,34 @@ const buildMarketplaceCampaignDraftClauses = (
           ? `업로드 마감일: ${snapshot.uploadDeadline}`
           : undefined,
         `브랜드: ${snapshot.brandName}`,
-        `신청 내용: ${row.proposal_summary}`,
       ]
         .filter((line): line is string => Boolean(line))
         .join("\n"),
-      status: "PENDING_REVIEW",
+      status: "APPROVED",
       history: [],
     },
     {
       clause_id: "campaign_application_deliverables",
       category: "산출물 및 플랫폼",
       content: `인플루언서는 ${platforms} 채널에서 다음 산출물을 제공한다: ${deliverables}. 컨텐츠 제출 마감일은 ${
-        snapshot.uploadDeadline ?? "계약 작성 단계에서 확정"
-      } 기준이며, 세부 업로드 수량, 유지 기간, 검수 기준은 광고주가 초안에서 최종 확인한다.`,
-      status: "PENDING_REVIEW",
+        snapshot.uploadDeadline ?? "모집글 조건"
+      } 기준으로 한다.`,
+      status: "APPROVED",
       history: [],
     },
     {
       clause_id: "campaign_application_payment",
       category: "지급 조건",
-      content: `본 캠페인의 예산 또는 지급 조건은 "${snapshot.budget}"을 기준으로 하며, 세금계산서, 원천징수, 지급일 등 세부 조건은 계약서 확정 전 확인한다.`,
-      status: "PENDING_REVIEW",
+      content: `본 캠페인의 예산 또는 지급 조건은 "${snapshot.budget}"을 기준으로 한다.`,
+      status: "APPROVED",
       history: [],
     },
     {
       clause_id: "campaign_application_review",
       category: "광고 표시 및 검수",
       content:
-        "컨텐츠에는 관계 법령과 플랫폼 정책에 맞는 광고 표시를 포함한다. 광고주는 업로드 전 검수 기준, 수정 가능 횟수, 최종 컨텐츠 제출 기한을 계약서에서 명확히 확정한다.",
-      status: "PENDING_REVIEW",
+        "컨텐츠에는 관계 법령과 플랫폼 정책에 맞는 광고 표시를 포함한다. 광고주는 모집글에 명시한 산출물과 제출 기한을 기준으로 컨텐츠를 검수한다.",
+      status: "APPROVED",
       history: [],
     },
   ];
@@ -9981,7 +10051,7 @@ const createDraftContractFromMarketplaceApplication = async (
     return {
       ok: false as const,
       status: 409,
-      error: "종료된 신청은 계약 초안으로 전환할 수 없습니다.",
+      error: "종료된 신청은 계약으로 전환할 수 없습니다.",
     };
   }
 
@@ -10029,6 +10099,11 @@ const createDraftContractFromMarketplaceApplication = async (
       contact: influencerContact,
     },
     campaign: {
+      source: "marketplace_campaign",
+      fixed_terms: true,
+      marketplace_campaign_id: snapshot.id,
+      source_application_id: proposal.id,
+      applicant_limit: snapshot.applicantLimit,
       budget: snapshot.budget,
       deadline: snapshot.deadline,
       upload_due_at: snapshot.uploadDeadline ?? snapshot.deadline,
@@ -10040,7 +10115,7 @@ const createDraftContractFromMarketplaceApplication = async (
     },
     workflow: createWorkflow("DRAFT", {
       last_message:
-        "캠페인 신청 수락으로 계약 초안이 생성되었습니다. 광고주가 세부 조건을 확인한 뒤 검토 링크를 발급해야 합니다.",
+        "계약이 생성되었습니다. 공유 링크를 발급하고 서명을 요청하세요.",
     }),
     evidence: createEvidence({
       share_token_status: "not_issued",
@@ -10052,8 +10127,7 @@ const createDraftContractFromMarketplaceApplication = async (
         id: randomUUID(),
         actor: "advertiser",
         action: "campaign_application_accepted",
-        description:
-          "광고주가 캠페인 신청을 수락했고, 캠페인 조건을 기반으로 계약 초안이 생성되었습니다.",
+        description: "광고주가 캠페인 신청을 수락해 계약이 생성되었습니다.",
         created_at: now,
       },
     ],
@@ -11914,7 +11988,7 @@ const applicationStageMeta: Record<
   accepted: {
     label: "수락 완료",
     actionLabel: "계약 보기",
-    nextAction: "지원이 수락되었습니다. 생성된 계약 초안을 확인하세요.",
+    nextAction: "지원이 수락되었습니다. 생성된 계약을 확인하세요.",
   },
   closed: {
     label: "종료",
@@ -11966,7 +12040,7 @@ const buildApplicationActivityEvents = (
         id: `${row.id}:accepted`,
         actor: brandName,
         action: "campaign_application_accepted",
-        description: "지원이 수락되어 계약 초안이 생성되었습니다.",
+        description: "지원이 수락되어 계약이 생성되었습니다.",
         createdAt: row.updated_at,
       }),
     );

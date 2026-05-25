@@ -709,7 +709,7 @@ export function InfluencerDashboard() {
             <button
               type="button"
               onClick={() => navigate("/influencer/dashboard")}
-              className="inline-flex h-10 w-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] bg-neutral-950 px-0 text-[12px] font-extrabold text-white shadow-[0_10px_24px_rgba(23,26,23,0.14)] transition hover:bg-neutral-800 sm:w-auto sm:px-3"
+              className="yl-header-action yl-header-action-dark"
               aria-label="내 계약"
               title="내 계약"
             >
@@ -719,7 +719,7 @@ export function InfluencerDashboard() {
             <button
               type="button"
               onClick={() => navigate("/influencer/campaigns")}
-              className="inline-flex h-10 w-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-0 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950 sm:w-auto sm:px-2.5"
+              className="yl-header-action yl-header-action-secondary"
               aria-label="캠페인 찾기"
               title="캠페인 찾기"
             >
@@ -734,7 +734,7 @@ export function InfluencerDashboard() {
             <button
               type="button"
               onClick={handleLogout}
-              className="inline-flex h-10 w-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-0 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950 sm:w-auto sm:px-2.5"
+              className="yl-header-action yl-header-action-secondary"
               aria-label="로그아웃"
               title="로그아웃"
             >
@@ -892,7 +892,7 @@ function MessageCenterButton({
     <button
       type="button"
       onClick={onClick}
-      className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-0 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950 sm:w-auto sm:px-2.5"
+      className="yl-header-action yl-header-action-secondary relative"
       aria-label="메시지함"
       title="메시지함"
     >
@@ -940,7 +940,7 @@ function InfluencerAccountSettingsMenu({
         aria-label="계정 설정"
         title="계정 설정"
         aria-expanded={open}
-        className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[9px] border border-neutral-200 bg-white text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
+        className="yl-header-icon-action"
       >
         <Settings className="h-3.5 w-3.5" strokeWidth={2} />
       </button>
@@ -2743,9 +2743,9 @@ function formatInfluencerDateWithDday(value?: string) {
   );
   const dateStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   const diff = Math.round((dateStart.getTime() - todayStart.getTime()) / 86_400_000);
-  const dday = diff > 0 ? `D-${diff}` : diff === 0 ? "D-day" : `D+${Math.abs(diff)}`;
+  const dday = diff > 0 ? `D-${diff}` : diff === 0 ? "D-0" : `D+${Math.abs(diff)}`;
 
-  return `${dateLabel} / ${dday}`;
+  return `${dday} / ${dateLabel}`;
 }
 
 function getSubmissionStatusMeta(item: InfluencerCampaignWorkItem) {

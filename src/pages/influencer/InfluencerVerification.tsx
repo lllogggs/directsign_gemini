@@ -11,8 +11,10 @@ import {
   FileImage,
   Globe2,
   Instagram,
+  LogOut,
   Music2,
   RefreshCw,
+  Settings,
   ShieldCheck,
   Youtube,
 } from "lucide-react";
@@ -224,7 +226,7 @@ export function InfluencerVerification() {
         token ? `?token=${encodeURIComponent(token)}` : ""
       }`
     : "/influencer/dashboard";
-  const returnLabel = contractId ? "계약으로 돌아가기" : "대시보드로 돌아가기";
+  const returnLabel = contractId ? "계약" : "내 계약";
   const contract = useAppStore((state) =>
     contractId ? state.getContract(contractId) : undefined,
   );
@@ -310,6 +312,14 @@ export function InfluencerVerification() {
   const sidebarClassName = showRequestForm
     ? selectedPlatform.className
     : "border-emerald-200 bg-emerald-50 text-emerald-700";
+
+  const handleLogout = async () => {
+    await apiFetch("/api/influencer/logout", {
+      method: "POST",
+      credentials: "include",
+    }).catch(() => undefined);
+    navigate("/login/influencer", { replace: true });
+  };
 
   useEffect(() => {
     if (verificationStatusCode !== 401) return;
@@ -472,23 +482,51 @@ export function InfluencerVerification() {
   return (
     <div className="fixed inset-0 overflow-hidden bg-[#f4f5f7] font-sans text-neutral-950">
       <header className="border-b border-neutral-200/80 bg-white shadow-[0_1px_0_rgba(15,23,42,0.04)]">
-        <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-5 sm:px-8">
-          <button
-            type="button"
-            onClick={() => navigate(returnPath)}
-            className="flex items-center gap-3 text-sm font-semibold text-neutral-700 transition hover:text-neutral-950"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            {returnLabel}
-          </button>
-          <div className="flex items-center gap-2 rounded-full border border-neutral-200 bg-[#fbfbfc] px-3 py-1.5 text-xs font-semibold text-neutral-600">
-            <ShieldCheck className="h-4 w-4" />
-            계정 소유 확인
+        <div className="mx-auto flex h-14 max-w-[1500px] items-center justify-between px-3 sm:px-5">
+          <div className="flex min-w-0 items-center gap-3">
+            <button
+              type="button"
+              onClick={() => navigate(returnPath)}
+              className="yl-brand-action group flex min-w-0 items-center gap-3 rounded-lg text-neutral-950 transition hover:text-neutral-700"
+              aria-label={PRODUCT_NAME}
+            >
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-neutral-950 text-white shadow-[0_10px_22px_rgba(15,23,42,0.16)]">
+                <ShieldCheck className="h-4 w-4" />
+              </span>
+              <span className="truncate text-lg font-extrabold">{PRODUCT_NAME}</span>
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => navigate(returnPath)}
+              className="yl-header-action yl-header-action-secondary"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              <span className="hidden sm:inline">{returnLabel}</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="yl-header-action yl-header-action-secondary"
+            >
+              <LogOut className="h-4 w-4" />
+              <span className="hidden sm:inline">로그아웃</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate("/reset-password?role=influencer")}
+              className="yl-header-icon-action"
+              aria-label="설정"
+              title="설정"
+            >
+              <Settings className="h-4 w-4" />
+            </button>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto grid h-[calc(100vh-64px)] max-w-5xl gap-3 overflow-hidden px-5 py-4 sm:px-8 lg:grid-cols-[minmax(0,1fr)_260px]">
+      <main className="mx-auto grid h-[calc(100vh-56px)] max-w-5xl gap-3 overflow-hidden px-5 py-4 sm:px-8 lg:grid-cols-[minmax(0,1fr)_260px]">
         <section
           className={`overflow-y-auto rounded-lg border border-neutral-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)] sm:p-5 ${
             approved && !showRequestForm && !rejectionGuidance
@@ -496,6 +534,7 @@ export function InfluencerVerification() {
               : "min-h-0"
           }`}
         >
+          {(!approved || showRequestForm) && (
           <div className="mb-4 rounded-lg border border-neutral-200 bg-[#fbfbfc] p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-start gap-3">
@@ -524,6 +563,7 @@ export function InfluencerVerification() {
               </span>
             </div>
           </div>
+          )}
 
           {rejectionGuidance && (
             <div className="mb-5 rounded-lg border border-rose-200 bg-rose-50 p-4 shadow-[inset_3px_0_0_rgba(190,18,60,0.22)]">
@@ -554,6 +594,7 @@ export function InfluencerVerification() {
             </div>
           )}
 
+          {(!approved || showRequestForm) && (
           <div className="mb-5">
             <h1 className="text-[24px] font-semibold tracking-tight">
               {approved ? "플랫폼 인증 관리" : "플랫폼 계정 소유 인증"}
@@ -564,6 +605,7 @@ export function InfluencerVerification() {
                 : "계약에 쓰는 채널이 본인 계정인지 코드, DM, URL 중 가능한 방식으로 확인합니다."}
             </p>
           </div>
+          )}
 
           {approved && !showRequestForm ? (
             <section className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
@@ -571,10 +613,10 @@ export function InfluencerVerification() {
                 <div className="min-w-0">
                   <p className="flex items-center gap-2 text-sm font-semibold text-emerald-900">
                     <CheckCircle2 className="h-4 w-4" />
-                    서명에 사용할 플랫폼 인증이 준비되었습니다
+                    플랫폼 인증 완료
                   </p>
                   <p className="mt-2 max-w-2xl break-keep text-sm leading-6 text-emerald-800/80">
-                    기존 인증은 유지됩니다. 새 플랫폼을 추가하거나 계정 URL이 바뀐 경우에만 추가 요청을 남기세요.
+                    승인된 플랫폼으로 계약 검토와 전자서명을 진행할 수 있습니다.
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {visibleApprovedPlatformChips.length > 0 ? (
@@ -871,7 +913,9 @@ export function InfluencerVerification() {
                 {sidebarIcon}
               </div>
               <div>
-                <p className="text-xs font-semibold text-neutral-400">현재 선택</p>
+                <p className="text-xs font-semibold text-neutral-400">
+                  {showRequestForm ? "현재 선택" : "인증 정보"}
+                </p>
                 <p className="text-sm font-semibold text-neutral-950">
                   {sidebarPlatformLabel}
                 </p>
@@ -909,26 +953,30 @@ export function InfluencerVerification() {
             )}
           </section>
 
-          <section className="rounded-lg border border-neutral-200/80 bg-white p-4 text-sm leading-6 text-neutral-600 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_14px_34px_rgba(15,23,42,0.05)]">
-            <p className="font-semibold text-neutral-950">서명 조건</p>
-            <p className="mt-1">
-              계약 검토는 계속 가능하고, 전자서명은 플랫폼 인증 승인 뒤 진행됩니다.
-            </p>
-          </section>
-          {sidebarEvidenceHref ? (
-            <a
-              href={sidebarEvidenceHref}
-              target="_blank"
-              rel="noreferrer"
-              className="flex h-11 items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white text-sm font-semibold text-neutral-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-neutral-400 hover:shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
-            >
-              <ExternalLink className="h-4 w-4" />
-              증빙 URL 열기
-            </a>
-          ) : (
-            <div className="flex min-h-11 items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50 px-3 text-center text-sm font-semibold text-neutral-400">
-              증빙 URL 입력 후 열기 가능
-            </div>
+          {showRequestForm && (
+            <>
+              <section className="rounded-lg border border-neutral-200/80 bg-white p-4 text-sm leading-6 text-neutral-600 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_14px_34px_rgba(15,23,42,0.05)]">
+                <p className="font-semibold text-neutral-950">서명 조건</p>
+                <p className="mt-1">
+                  계약 검토는 계속 가능하고, 전자서명은 플랫폼 인증 승인 뒤 진행됩니다.
+                </p>
+              </section>
+              {sidebarEvidenceHref ? (
+                <a
+                  href={sidebarEvidenceHref}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex h-11 items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white text-sm font-semibold text-neutral-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-neutral-400 hover:shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  증빙 URL 열기
+                </a>
+              ) : (
+                <div className="flex min-h-11 items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50 px-3 text-center text-sm font-semibold text-neutral-400">
+                  증빙 URL 입력 후 열기 가능
+                </div>
+              )}
+            </>
           )}
         </aside>
       </main>

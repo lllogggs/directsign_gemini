@@ -928,7 +928,7 @@ export function ContractBuilder() {
             <button
               type="button"
               onClick={() => navigate("/advertiser/dashboard")}
-              className="inline-flex h-10 w-10 shrink-0 items-center justify-center whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-0 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950 sm:w-auto sm:px-2.5"
+              className="yl-header-action yl-header-action-secondary"
               aria-label="대시보드"
               title="대시보드"
             >
@@ -938,7 +938,7 @@ export function ContractBuilder() {
             <button
               type="button"
               onClick={handleLogout}
-              className="inline-flex h-10 w-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-0 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950 sm:w-auto sm:px-2.5"
+              className="yl-header-action yl-header-action-secondary"
               aria-label="로그아웃"
               title="로그아웃"
             >
@@ -1858,7 +1858,7 @@ function BuilderAccountSettingsMenu({
         aria-label="계정 설정"
         title="계정 설정"
         aria-expanded={open}
-        className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[9px] border border-neutral-200 bg-white text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
+        className="yl-header-icon-action"
       >
         <Settings className="h-3.5 w-3.5" strokeWidth={2} />
       </button>
