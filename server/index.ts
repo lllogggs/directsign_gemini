@@ -1570,6 +1570,10 @@ const readProfileFromEmailCache = (email: string) => {
 const cloneContractStore = (store: ContractStoreFile): ContractStoreFile =>
   normalizeStore({ contracts: [...store.contracts] });
 
+type SupabaseLegacyContractProjection =
+  Pick<SupabaseContractRow, "id" | "contract" | "share_token"> &
+    Partial<Pick<SupabaseContractRow, "campaign_name" | "post_link">>;
+
 const rememberSupabaseContractStoreCache = (store: ContractStoreFile) => {
   supabaseContractStoreCache = {
     store: cloneContractStore(store),
@@ -1957,8 +1961,14 @@ const canAdvertiserAccessLegacyContract = (
 
 async function buildAdvertiserLoginDashboardBootstrap(auth: AdvertiserSession) {
   try {
-    const [store, verification, messageSummary] = await Promise.all([
-      readStore(),
+    const [contracts, verification, messageSummary] = await Promise.all([
+      readAdvertiserScopedSupabaseContracts(auth).then(async (scopedContracts) => {
+        if (scopedContracts) return scopedContracts;
+        const store = await readStore();
+        return store.contracts.filter((contract) =>
+          canAdvertiserAccessLegacyContract(auth, contract),
+        );
+      }),
       buildAdvertiserScopedVerificationSummary(auth),
       readMarketplaceMessagesForAdvertiser(auth, { summaryOnly: true })
         .then((data) => data.summary)
@@ -1971,9 +1981,6 @@ async function buildAdvertiserLoginDashboardBootstrap(auth: AdvertiserSession) {
           return emptyMarketplaceMessageSummary();
         }),
     ]);
-    const contracts = store.contracts.filter((contract) =>
-      canAdvertiserAccessLegacyContract(auth, contract),
-    );
 
     return {
       contracts,
@@ -8873,37 +8880,87 @@ const readMarketplaceMessagesForInfluencer = async (
   );
 };
 
-const readSupabaseStoreFromRemote = async (): Promise<ContractStoreFile> => {
+const readSupabaseLegacyContractRows = async (
+  querySuffix: string,
+  label: string,
+): Promise<SupabaseLegacyContractProjection[]> => {
   let response = await fetchSupabase(
     supabaseLegacyTable,
-    "?select=contract,share_token,campaign_name,post_link&order=updated_at.desc",
+    `?select=id,contract,share_token,campaign_name,post_link${querySuffix}`,
   );
 
   if (!response.ok) {
     const errorMessage = await parseSupabaseError(response);
     if (!isMissingLegacyCampaignColumnError(errorMessage)) {
       throw new Error(
-        `Supabase legacy read failed (${response.status}): ${errorMessage}`,
+        `Supabase ${label} read failed (${response.status}): ${errorMessage}`,
       );
     }
     response = await fetchSupabase(
       supabaseLegacyTable,
-      "?select=contract,share_token&order=updated_at.desc",
+      `?select=id,contract,share_token${querySuffix}`,
     );
   }
 
-  await assertSupabaseOk(response, "Supabase legacy read");
+  await assertSupabaseOk(response, `Supabase ${label} read`);
 
-  const rows = (await response.json()) as Array<
-    Pick<SupabaseContractRow, "contract" | "share_token"> &
-      Partial<Pick<SupabaseContractRow, "campaign_name" | "post_link">>
-  >;
+  return (await response.json()) as SupabaseLegacyContractProjection[];
+};
 
+const restoreSupabaseLegacyContractRows = (
+  rows: SupabaseLegacyContractProjection[],
+) =>
+  rows
+    .map(restoreLegacyContractFromSupabase)
+    .filter((contract): contract is Contract => Boolean(contract?.id));
+
+const readSupabaseStoreFromRemote = async (): Promise<ContractStoreFile> => {
+  const rows = await readSupabaseLegacyContractRows(
+    "&order=updated_at.desc",
+    "legacy",
+  );
   return normalizeStore({
-    contracts: rows
-      .map(restoreLegacyContractFromSupabase)
-      .filter((contract): contract is Contract => Boolean(contract?.id)),
+    contracts: restoreSupabaseLegacyContractRows(rows),
   });
+};
+
+const readAdvertiserScopedSupabaseContracts = async (
+  auth: AdvertiserSession,
+): Promise<Contract[] | undefined> => {
+  if (!useSupabase) return undefined;
+
+  const profileEmail = normalizeEmail(auth.profile.email ?? auth.user.email ?? "");
+  const rowsByAdvertiserIdPromise = readSupabaseLegacyContractRows(
+    `&advertiser_id=eq.${encodeURIComponent(
+      auth.profile.id,
+    )}&order=updated_at.desc`,
+    "advertiser scoped legacy",
+  );
+  const rowsByManagerEmailPromise = hasText(profileEmail)
+    ? readSupabaseLegacyContractRows(
+        `&contract->advertiser_info->>manager=eq.${encodeURIComponent(
+          profileEmail,
+        )}&order=updated_at.desc`,
+        "advertiser manager legacy",
+      )
+    : Promise.resolve([] as SupabaseLegacyContractProjection[]);
+
+  try {
+    const rows = uniqueRowsById([
+      ...(await rowsByAdvertiserIdPromise),
+      ...(await rowsByManagerEmailPromise),
+    ]);
+    return restoreSupabaseLegacyContractRows(rows).filter((contract) =>
+      canAdvertiserAccessLegacyContract(auth, contract),
+    );
+  } catch (error) {
+    console.warn(
+      `[${productName}] advertiser scoped contract read fell back to full store: ${
+        error instanceof Error ? error.message : "unknown error"
+      }`,
+    );
+    return undefined;
+  }
 };
 
 const readSupabaseStore = async (): Promise<ContractStoreFile> => {
@@ -10735,12 +10792,64 @@ const buildAdvertiserVerificationContext = async (auth: AdvertiserSession) => {
   };
 };
 
+type AdvertiserVerificationContext = Awaited<
+  ReturnType<typeof buildAdvertiserVerificationContext>
+>;
+
+const readAdvertiserScopedVerificationRequests = async (
+  auth: AdvertiserSession,
+  context: AdvertiserVerificationContext,
+) => {
+  if (!useSupabase) return readVerificationRequests();
+
+  const organization = context.organization;
+  const targetIds = Array.from(
+    new Set(
+      [
+        context.targetId,
+        auth.profile.id,
+        organization?.id,
+      ].filter((value): value is string => hasText(value)),
+    ),
+  );
+  const orFilters = [
+    targetIds.length > 0
+      ? `target_id.in.${postgrestInFilter(targetIds)}`
+      : undefined,
+    `profile_id.eq.${encodeURIComponent(auth.profile.id)}`,
+    hasText(organization?.id)
+      ? `organization_id.eq.${encodeURIComponent(organization.id)}`
+      : undefined,
+    hasText(organization?.business_verification_request_id)
+      ? `id.eq.${encodeURIComponent(organization.business_verification_request_id)}`
+      : undefined,
+  ].filter((value): value is string => hasText(value));
+
+  try {
+    const rows = await readSupabaseRows<VerificationRequestRecord>(
+      "verification_requests",
+      `?select=*&target_type=eq.advertiser_organization&verification_type=eq.business_registration_certificate&or=(${orFilters.join(
+        ",",
+      )})&order=created_at.desc`,
+      "advertiser scoped verification requests",
+    );
+    return rows.map(normalizeVerificationRequest);
+  } catch (error) {
+    console.warn(
+      `[${productName}] advertiser scoped verification read fell back to full store: ${
+        error instanceof Error ? error.message : "unknown error"
+      }`,
+    );
+    return readVerificationRequests();
+  }
+};
+
 const buildAdvertiserScopedVerificationSummary = async (
   auth: AdvertiserSession,
 ) => {
   const context = await buildAdvertiserVerificationContext(auth);
   const organization = context.organization;
-  const requests = await readVerificationRequests();
+  const requests = await readAdvertiserScopedVerificationRequests(auth, context);
   const targetIds = Array.from(
     new Set(
       [
