@@ -155,7 +155,7 @@ export function PasswordResetPage() {
   return (
     <main className="min-h-screen bg-[#f7f6f3] px-5 pb-5 pt-0 font-sans text-neutral-950 sm:px-6">
       <div className="mx-auto flex min-h-[calc(100vh-20px)] w-full max-w-[1500px] flex-col">
-        <header className="flex h-[58px] items-center justify-between 2xl:px-6">
+        <header className="flex h-14 items-center justify-between 2xl:px-6">
           <Link
             to="/"
             className="yl-brand-action -ml-1 inline-flex items-center gap-2.5 rounded-[12px] px-1 py-1 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"

@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "../domain/api";
+import {
+  isFastLoginTransitionPending,
+  waitForFastLoginTransition,
+  type FastLoginRole,
+} from "../domain/fastLoginTransition";
 import { translateApiErrorMessage } from "../domain/userMessages";
 import type { VerificationSummary } from "../domain/verification";
 
@@ -16,9 +21,11 @@ const verificationSummaryCache = new Map<
     cachedAt: number;
   }
 >();
-type VerificationSummaryCacheEntry = NonNullable<
-  ReturnType<typeof getCachedVerificationSummary>
->;
+type VerificationSummaryCacheEntry = {
+  summary: VerificationSummary;
+  statusCode: number;
+  cachedAt: number;
+};
 const verificationSummaryInflight = new Map<
   string,
   Promise<VerificationSummaryCacheEntry | undefined>
@@ -34,13 +41,86 @@ const buildVerificationStatusUrl = (role?: VerificationSummaryOptions["role"]) =
 const getVerificationCacheKey = (role?: VerificationSummaryOptions["role"]) =>
   role ?? "all";
 
+const getFastLoginRole = (
+  role?: VerificationSummaryOptions["role"],
+): FastLoginRole | undefined =>
+  role === "advertiser" || role === "influencer" ? role : undefined;
+
+const getVerificationStorageKey = (role?: VerificationSummaryOptions["role"]) =>
+  `yeollock-verification-summary:${getVerificationCacheKey(role)}`;
+
+function readStoredVerificationSummary(role?: VerificationSummaryOptions["role"]) {
+  if (typeof window === "undefined") return undefined;
+
+  try {
+    const raw = window.sessionStorage.getItem(getVerificationStorageKey(role));
+    if (!raw) return undefined;
+    const parsed = JSON.parse(raw) as {
+      summary?: VerificationSummary;
+      statusCode?: number;
+      cachedAt?: number;
+    };
+    if (!parsed.summary || typeof parsed.cachedAt !== "number") return undefined;
+    if (Date.now() - parsed.cachedAt > VERIFICATION_SUMMARY_CACHE_MS) {
+      window.sessionStorage.removeItem(getVerificationStorageKey(role));
+      return undefined;
+    }
+    return {
+      summary: parsed.summary,
+      statusCode: parsed.statusCode ?? 200,
+      cachedAt: parsed.cachedAt,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function writeStoredVerificationSummary(
+  role: VerificationSummaryOptions["role"] | undefined,
+  entry: VerificationSummaryCacheEntry,
+) {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.sessionStorage.setItem(
+      getVerificationStorageKey(role),
+      JSON.stringify(entry),
+    );
+  } catch {
+    // Keep the in-memory cache even if sessionStorage is unavailable.
+  }
+}
+
+export function primeVerificationSummary(
+  role: VerificationSummaryOptions["role"] | undefined,
+  summary: VerificationSummary,
+  statusCode = 200,
+) {
+  const entry = {
+    summary,
+    statusCode,
+    cachedAt: Date.now(),
+  };
+  verificationSummaryCache.set(getVerificationCacheKey(role), entry);
+  writeStoredVerificationSummary(role, entry);
+}
+
 export function getCachedVerificationSummary(
   role?: VerificationSummaryOptions["role"],
 ) {
   const cache = verificationSummaryCache.get(getVerificationCacheKey(role));
-  if (!cache) return undefined;
+  if (!cache) {
+    const stored = readStoredVerificationSummary(role);
+    if (stored) {
+      verificationSummaryCache.set(getVerificationCacheKey(role), stored);
+    }
+    return stored;
+  }
   if (Date.now() - cache.cachedAt > VERIFICATION_SUMMARY_CACHE_MS) {
     verificationSummaryCache.delete(getVerificationCacheKey(role));
+    if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem(getVerificationStorageKey(role));
+    }
     return undefined;
   }
   return cache;
@@ -52,10 +132,20 @@ export function clearVerificationSummaryCache(
   if (role) {
     verificationSummaryCache.delete(getVerificationCacheKey(role));
     verificationSummaryInflight.delete(getVerificationCacheKey(role));
+    if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem(getVerificationStorageKey(role));
+    }
     return;
   }
   verificationSummaryCache.clear();
   verificationSummaryInflight.clear();
+  if (typeof window !== "undefined") {
+    for (const key of Object.keys(window.sessionStorage)) {
+      if (key.startsWith("yeollock-verification-summary:")) {
+        window.sessionStorage.removeItem(key);
+      }
+    }
+  }
 }
 
 async function fetchVerificationSummary(
@@ -84,6 +174,7 @@ async function fetchVerificationSummary(
       cachedAt: Date.now(),
     };
     verificationSummaryCache.set(cacheKey, entry);
+    writeStoredVerificationSummary(role, entry);
     return entry;
   })().finally(() => {
     verificationSummaryInflight.delete(cacheKey);
@@ -155,8 +246,17 @@ export function useVerificationSummary(options?: VerificationSummaryOptions) {
     }
 
     const controller = new AbortController();
+    const fastRole = getFastLoginRole(role);
     const timer = window.setTimeout(() => {
-      void load(controller.signal);
+      const run = async () => {
+        if (fastRole && isFastLoginTransitionPending(fastRole)) {
+          await waitForFastLoginTransition(fastRole, 2_500);
+        }
+        if (!controller.signal.aborted) {
+          void load(controller.signal);
+        }
+      };
+      void run();
     }, 0);
 
     return () => {

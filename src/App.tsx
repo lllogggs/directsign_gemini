@@ -8,15 +8,18 @@ import {
   Link,
 } from "react-router-dom";
 import { Component, lazy, Suspense, useEffect, type ErrorInfo, type ReactNode } from "react";
+import { ShieldCheck } from "lucide-react";
 import { AdvertiserAuthGate } from "./pages/marketing/AdvertiserAuthGate";
 import { RoleIntroPage, StartPage } from "./pages/landing/LandingPages";
+import { Dashboard as AdvertiserDashboard } from "./pages/marketing/Dashboard";
+import { InfluencerDashboard as InfluencerDashboardPage } from "./pages/influencer/InfluencerDashboard";
 import { getNextPath } from "./domain/navigation";
 import { PRODUCT_DESCRIPTION, PRODUCT_NAME } from "./domain/brand";
 import { LEGAL_CONTACT_EMAIL } from "./domain/legalEntity";
 
 type RouteModuleLoader = () => Promise<unknown>;
 
-const loadDashboard = () => import("./pages/marketing/Dashboard");
+const loadDashboard = () => Promise.resolve({ Dashboard: AdvertiserDashboard });
 const loadContractBuilder = () => import("./pages/marketing/ContractBuilder");
 const loadContractAdminViewer = () =>
   import("./pages/marketing/ContractAdminViewer");
@@ -29,7 +32,7 @@ const loadAdvertiserVerification = () =>
 const loadInfluencerVerification = () =>
   import("./pages/influencer/InfluencerVerification");
 const loadInfluencerDashboard = () =>
-  import("./pages/influencer/InfluencerDashboard");
+  Promise.resolve({ InfluencerDashboard: InfluencerDashboardPage });
 const loadInfluencerLoginPage = () =>
   import("./pages/influencer/InfluencerLoginPage");
 const loadSystemAdminDashboard = () =>
@@ -40,11 +43,7 @@ const loadMarketplaceInboxPage = () =>
   import("./pages/marketplace/MarketplaceInboxPage");
 const loadCampaignPages = () => import("./pages/marketplace/CampaignPages");
 
-const Dashboard = lazy(() =>
-  loadDashboard().then((module) => ({
-    default: module.Dashboard,
-  })),
-);
+const Dashboard = AdvertiserDashboard;
 const ContractBuilder = lazy(() =>
   loadContractBuilder().then((module) => ({
     default: module.ContractBuilder,
@@ -147,11 +146,7 @@ const InfluencerVerification = lazy(() =>
     default: module.InfluencerVerification,
   })),
 );
-const InfluencerDashboard = lazy(() =>
-  loadInfluencerDashboard().then((module) => ({
-    default: module.InfluencerDashboard,
-  })),
-);
+const InfluencerDashboard = InfluencerDashboardPage;
 const InfluencerLoginPage = lazy(() =>
   loadInfluencerLoginPage().then((module) => ({
     default: module.InfluencerLoginPage,
@@ -211,6 +206,9 @@ const InfluencerCampaignDiscoveryPage = lazy(() =>
 type LoadingCopy = {
   label: string;
   detail?: string;
+  listTitle?: string;
+  tabs?: string[];
+  variant?: "app" | "plain";
 };
 
 function getRouteLoadingCopy(pathname: string): LoadingCopy {
@@ -228,30 +226,148 @@ function getRouteLoadingCopy(pathname: string): LoadingCopy {
     };
   }
 
+  if (pathname.startsWith("/influencer")) {
+    return {
+      label: "내 계약",
+      listTitle: "계약 목록",
+      tabs: ["지원중", "진행중", "완료", "미선정"],
+      variant: "app",
+    };
+  }
+
+  if (pathname.startsWith("/advertiser")) {
+    return {
+      label: "계약 운영",
+      listTitle: "계약 목록",
+      tabs: ["모집중", "진행중", "종료"],
+      variant: "app",
+    };
+  }
+
   return { label: "화면을 불러오는 중입니다" };
 }
 
 function AppLoading({
   label = "계약 데이터를 불러오는 중입니다",
   detail,
+  listTitle = "계약 목록",
+  tabs = ["모집중", "진행중", "종료"],
+  variant = "plain",
 }: LoadingCopy) {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-[#FAFAFA] font-sans text-neutral-500">
-      <div className="mx-5 w-full max-w-[360px] border border-neutral-200 bg-white px-6 py-5 text-center shadow-[0_8px_32px_rgba(0,0,0,0.04)]">
-        <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-neutral-400">
-          {PRODUCT_NAME}
+  if (variant !== "app") {
+    return (
+      <div className="min-h-screen bg-[#f4f5f2] font-sans text-neutral-950">
+        <p className="sr-only">
+          {label}
+          {detail ? ` ${detail}` : ""}
         </p>
-        <p className="mt-2 text-sm font-medium text-neutral-900">{label}</p>
-        {detail ? (
-          <p className="mt-2 text-[12px] font-semibold leading-5 text-neutral-500">
-            {detail}
-          </p>
-        ) : null}
-        <div className="mt-4 space-y-2" aria-hidden="true">
-          <span className="block h-2.5 w-full rounded-full bg-neutral-100" />
-          <span className="mx-auto block h-2.5 w-4/5 rounded-full bg-neutral-100" />
-        </div>
+        <header className="sticky top-0 z-30 border-b border-neutral-200/70 bg-white/92 backdrop-blur">
+          <div className="mx-auto flex h-14 max-w-[1500px] items-center justify-between px-3 sm:px-5 lg:px-6">
+            <div className="yl-brand-action -ml-1 flex h-10 min-w-10 shrink-0 items-center gap-3 rounded-[12px] px-1">
+              <span className="flex h-[34px] w-[34px] items-center justify-center rounded-[11px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
+                <ShieldCheck className="h-4 w-4" strokeWidth={2} />
+              </span>
+              <span className="font-neo-heavy hidden text-[18px] leading-none sm:inline">
+                {PRODUCT_NAME}
+              </span>
+            </div>
+            <span className="h-9 w-20 rounded-[9px] bg-white shadow-[inset_0_0_0_1px_rgba(23,26,23,0.08)]" />
+          </div>
+        </header>
+        <main className="mx-auto flex min-h-[calc(100vh-56px)] max-w-[1500px] items-center justify-center px-5">
+          <div className="grid w-full max-w-[280px] gap-3">
+            <span className="h-3 w-24 rounded-full bg-neutral-200" />
+            <span className="h-3 w-full rounded-full bg-neutral-100" />
+            <span className="h-3 w-4/5 rounded-full bg-neutral-100" />
+          </div>
+        </main>
       </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-[#f4f5f2] font-sans text-neutral-950 lg:h-screen lg:overflow-hidden">
+      <p className="sr-only">
+        {label}
+        {detail ? ` ${detail}` : ""}
+      </p>
+      <header className="sticky top-0 z-30 border-b border-neutral-200/70 bg-white/92 backdrop-blur">
+        <div className="mx-auto flex h-14 max-w-[1500px] items-center justify-between px-3 sm:px-5 lg:px-6">
+          <div className="yl-brand-action -ml-1 flex h-10 min-w-10 shrink-0 items-center gap-3 rounded-[12px] px-1">
+            <span className="flex h-[34px] w-[34px] items-center justify-center rounded-[11px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
+              <ShieldCheck className="h-4 w-4" strokeWidth={2} />
+            </span>
+            <span className="font-neo-heavy hidden text-[18px] leading-none sm:inline">
+              {PRODUCT_NAME}
+            </span>
+          </div>
+          <span className="h-9 w-24 rounded-[9px] bg-white shadow-[inset_0_0_0_1px_rgba(23,26,23,0.08)]" />
+        </div>
+      </header>
+      <main className="mx-auto w-full min-w-0 max-w-[1500px] px-3 py-2.5 sm:px-5 lg:flex lg:h-[calc(100vh-56px)] lg:flex-col lg:overflow-hidden lg:px-6">
+        <section className="yl-panel min-h-0 flex-1 overflow-hidden border border-[#d9e0d9] bg-[#fdfdfb]">
+          <div className="flex h-10 items-center border-b border-[#d9e0d9] bg-white px-4 text-[15px] font-bold text-neutral-950">
+            {label}
+          </div>
+          <div
+            className="grid gap-0 bg-[#ecebe5] px-2 pt-2 text-[13px] font-extrabold text-neutral-600"
+            style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}
+          >
+            {tabs.map((tab, index) => (
+              <span
+                key={tab}
+                className={`flex h-10 items-center px-3 ${
+                  index === 0 ? "rounded-t-[10px] bg-white text-neutral-950" : ""
+                }`}
+              >
+                {tab}
+              </span>
+            ))}
+          </div>
+          <div className="space-y-3 px-3 py-4">
+            <span className="block text-[13px] font-extrabold text-neutral-950">
+              {listTitle}
+            </span>
+            <div className="grid gap-2 sm:grid-cols-[minmax(220px,1fr)_150px]">
+              <input
+                type="search"
+                aria-label="계약 검색"
+                placeholder="계약명으로 검색"
+                className="h-10 min-w-0 rounded-[9px] border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-700 outline-none"
+              />
+              <select
+                aria-label="플랫폼 필터"
+                className="h-10 rounded-[9px] border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-700 outline-none"
+                defaultValue="all"
+              >
+                <option value="all">전체</option>
+                <option value="instagram">인스타</option>
+                <option value="youtube">유튜브</option>
+              </select>
+            </div>
+            <div className="grid grid-cols-[80px_90px_110px_minmax(180px,1fr)_130px_110px_110px] gap-2 text-[12px] font-semibold text-neutral-500">
+              <span>플랫폼</span>
+              <span>종류</span>
+              <span>브랜드</span>
+              <span>계약명</span>
+              <span>지급내용</span>
+              <span>마감일</span>
+              <span>현 단계</span>
+            </div>
+            <div className="flex flex-wrap gap-2 text-[11px] font-bold text-neutral-400">
+              <span>검색</span>
+              <span>필터</span>
+              <span>서명</span>
+              <span>제출</span>
+              <span>검수</span>
+              <span>정산</span>
+            </div>
+            <span className="block h-9 w-full rounded-md bg-neutral-100" />
+            <span className="block h-9 w-full rounded-md bg-neutral-100" />
+            <span className="block h-9 w-5/6 rounded-md bg-neutral-100" />
+          </div>
+        </section>
+      </main>
     </div>
   );
 }

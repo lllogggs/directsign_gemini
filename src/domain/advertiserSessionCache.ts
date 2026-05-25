@@ -1,10 +1,20 @@
 const ADVERTISER_SESSION_CACHE_MS = 60 * 1000;
 const ADVERTISER_SESSION_CACHE_KEY = "yeollock.advertiser.session";
 
+export type AdvertiserSessionUserSnapshot = {
+  id: string;
+  email?: string;
+  name?: string;
+  role?: string;
+  company_name?: string | null;
+  verification_status?: string;
+};
+
 let advertiserSessionCache:
   | {
       authenticated: true;
       cachedAt: number;
+      user?: AdvertiserSessionUserSnapshot;
     }
   | undefined;
 
@@ -14,26 +24,34 @@ const readStoredAdvertiserSessionCache = () => {
   try {
     const raw = window.sessionStorage.getItem(ADVERTISER_SESSION_CACHE_KEY);
     if (!raw) return undefined;
-    const parsed = JSON.parse(raw) as { authenticated?: unknown; cachedAt?: unknown };
+    const parsed = JSON.parse(raw) as {
+      authenticated?: unknown;
+      cachedAt?: unknown;
+      user?: AdvertiserSessionUserSnapshot;
+    };
     if (parsed.authenticated !== true || typeof parsed.cachedAt !== "number") {
       return undefined;
     }
     return {
       authenticated: true as const,
       cachedAt: parsed.cachedAt,
+      user: parsed.user,
     };
   } catch {
     return undefined;
   }
 };
 
-const writeStoredAdvertiserSessionCache = (cachedAt: number) => {
+const writeStoredAdvertiserSessionCache = (
+  cachedAt: number,
+  user?: AdvertiserSessionUserSnapshot,
+) => {
   if (typeof window === "undefined") return;
 
   try {
     window.sessionStorage.setItem(
       ADVERTISER_SESSION_CACHE_KEY,
-      JSON.stringify({ authenticated: true, cachedAt }),
+      JSON.stringify({ authenticated: true, cachedAt, user }),
     );
   } catch {
     // Session cache only improves perceived speed; failing closed is fine.
@@ -61,13 +79,14 @@ export function getAdvertiserSessionCache() {
   return advertiserSessionCache;
 }
 
-export function rememberAdvertiserSession() {
+export function rememberAdvertiserSession(user?: AdvertiserSessionUserSnapshot) {
   const cachedAt = Date.now();
   advertiserSessionCache = {
     authenticated: true,
     cachedAt,
+    user: user ?? advertiserSessionCache?.user,
   };
-  writeStoredAdvertiserSessionCache(cachedAt);
+  writeStoredAdvertiserSessionCache(cachedAt, advertiserSessionCache.user);
 }
 
 export function clearAdvertiserSessionCache() {

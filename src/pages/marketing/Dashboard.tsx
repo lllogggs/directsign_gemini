@@ -49,10 +49,19 @@ import {
   useVerificationSummary,
 } from "../../hooks/useVerificationSummary";
 import { useMarketplaceMessageSummary } from "../../hooks/useMarketplaceMessageSummary";
-import { clearAdvertiserSessionCache } from "../../domain/advertiserSessionCache";
+import {
+  clearAdvertiserSessionCache,
+  getAdvertiserSessionCache,
+} from "../../domain/advertiserSessionCache";
+import { clearAdvertiserDashboardBootstrapPreload } from "../../domain/advertiserDashboardPreload";
 import { PRODUCT_NAME } from "../../domain/brand";
 import { LEGAL_CONTACT_EMAIL } from "../../domain/legalEntity";
 import { apiFetch } from "../../domain/api";
+import {
+  isFastLoginTransitionPending,
+  subscribeFastLoginTransition,
+  waitForFastLoginTransition,
+} from "../../domain/fastLoginTransition";
 import { ContractFirstExperienceDialog } from "../../components/ScreenHelp";
 import { CONTRACT_FIRST_EXPERIENCE_CONTENT } from "../../domain/screenHelp";
 import {
@@ -414,12 +423,16 @@ export function Dashboard() {
       threads: [],
     });
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [isLoginTransitionPending, setIsLoginTransitionPending] = useState(() =>
+    isFastLoginTransitionPending("advertiser"),
+  );
   const { summary: verificationSummary, isLoading: isVerificationLoading } =
     useVerificationSummary({ role: "advertiser" });
   const {
     summary: messageSummary,
     isLoading: isMessageSummaryLoading,
   } = useMarketplaceMessageSummary("advertiser");
+  const cachedAdvertiserUser = getAdvertiserSessionCache()?.user;
   const advertiserVerificationStatus =
     verificationSummary?.advertiser.status ?? "not_submitted";
   const advertiserAccount = useMemo<AdvertiserAccountSummary>(() => {
@@ -431,14 +444,20 @@ export function Dashboard() {
         contract.advertiser_info?.name || contract.advertiser_info?.manager,
     )?.advertiser_info;
     const name = removeInternalTestLabel(
-      latest?.subject_name || account?.company_name || contractAdvertiser?.name,
+      latest?.subject_name ||
+        account?.company_name ||
+        cachedAdvertiserUser?.company_name ||
+        contractAdvertiser?.name,
       "광고주 계정",
     );
     const manager = removeInternalTestLabel(
-      latest?.submitted_by_name || account?.name || contractAdvertiser?.manager,
+      latest?.submitted_by_name ||
+        account?.name ||
+        cachedAdvertiserUser?.name ||
+        contractAdvertiser?.manager,
     );
     const email = formatPublicContactValue(
-      latest?.submitted_by_email || account?.email,
+      latest?.submitted_by_email || account?.email || cachedAdvertiserUser?.email,
     );
     const meta = [manager, email].filter(Boolean).join(" · ");
 
@@ -449,7 +468,7 @@ export function Dashboard() {
       businessNumber:
         latest?.business_registration_number || account?.business_registration_number,
     };
-  }, [contracts, verificationSummary]);
+  }, [cachedAdvertiserUser, contracts, verificationSummary]);
 
   const loadMarketplaceCampaignData = useCallback(async () => {
     setMarketplaceState((current) =>
@@ -515,8 +534,18 @@ export function Dashboard() {
   }, [navigate]);
 
   useEffect(() => {
+    const syncLoginTransition = () => {
+      setIsLoginTransitionPending(isFastLoginTransitionPending("advertiser"));
+    };
+    syncLoginTransition();
+    return subscribeFastLoginTransition(syncLoginTransition);
+  }, []);
+
+  useEffect(() => {
     const timer = window.setTimeout(() => {
-      void loadMarketplaceCampaignData();
+      void waitForFastLoginTransition("advertiser").then(() => {
+        void loadMarketplaceCampaignData();
+      });
     }, 0);
     return () => window.clearTimeout(timer);
   }, [loadMarketplaceCampaignData]);
@@ -713,6 +742,7 @@ export function Dashboard() {
       console.warn(`[${PRODUCT_NAME}] advertiser logout request failed`, error);
     } finally {
       clearAdvertiserSessionCache();
+      clearAdvertiserDashboardBootstrapPreload();
       clearVerificationSummaryCache("advertiser");
       resetHydration();
       navigate("/login/advertiser", { replace: true });
@@ -854,6 +884,7 @@ export function Dashboard() {
               onDetailStatusFilterChange={setDetailStatusFilter}
               sortState={contractSort}
               onSortChange={handleContractSortChange}
+              isDataPending={isLoginTransitionPending || (!isHydrated && !syncError)}
               onOpen={openContract}
             />
           </div>
@@ -2143,10 +2174,10 @@ function CampaignApplicantsPanel({
       <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5">
         <div className="min-w-0">
           <p className="text-[11px] font-extrabold text-[#7d857f]">
-            지원 인플루언서
+            지원자
           </p>
           <p className="mt-0.5 text-[13px] font-semibold text-[#303630]">
-            캠페인에 지원한 인플루언서의 플랫폼을 확인하고 마음에 들면 지원을 수락합니다.
+            프사, 인증 플랫폼, 팔로워를 보고 선정합니다.
           </p>
         </div>
         <span className="inline-flex h-7 items-center rounded-md border border-[#d9e0d9] bg-[#f8faf7] px-2.5 text-[12px] font-extrabold text-[#303630]">
@@ -2217,30 +2248,44 @@ function CampaignApplicantRow({
 
   const applicantName = thread.counterpartName || thread.senderName;
   const initial = applicantName.trim().slice(0, 1) || "인";
+  const intro =
+    thread.senderIntro || thread.proposalSummary || "프로필을 열어 세부 정보를 확인하세요.";
+  const platformCountLabel =
+    thread.platforms.length > 0
+      ? `인증 플랫폼 ${thread.platforms.length}개`
+      : "플랫폼 확인 필요";
 
   return (
-    <div className="grid gap-2 px-3 py-2.5 lg:min-h-[48px] lg:grid-cols-[minmax(190px,0.62fr)_minmax(280px,0.9fr)_104px_minmax(170px,0.48fr)] lg:items-center">
-      <div className="flex min-w-0 items-center gap-2.5">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#171a17] text-[12px] font-extrabold text-white">
+    <div className="grid gap-2 px-3 py-2.5 lg:min-h-[54px] lg:grid-cols-[minmax(220px,0.72fr)_minmax(260px,0.78fr)_minmax(180px,0.54fr)_minmax(170px,0.48fr)] lg:items-center">
+      <div className="flex min-w-0 items-center gap-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#171a17] text-[13px] font-extrabold text-white">
           {initial}
         </span>
         <div className="min-w-0">
-          <p className="truncate text-[13px] font-extrabold text-[#171a17]">
-            {applicantName}
-          </p>
+          <div className="flex min-w-0 items-center gap-1.5">
+            <p className="truncate text-[13px] font-extrabold text-[#171a17]">
+              {applicantName}
+            </p>
+            <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+          </div>
           <p className="mt-0.5 truncate text-[11px] font-semibold text-[#7d857f]">
-            {formatMarketplaceMessageDate(thread.createdAt)}
+            {platformCountLabel} · {formatMarketplaceMessageDate(thread.createdAt)}
           </p>
         </div>
       </div>
 
       <ApplicantPlatformLinks platforms={thread.platforms} />
 
-      <span
-        className={`inline-flex w-fit items-center rounded-md border px-2 py-1 text-[11px] font-semibold ${statusMeta.className}`}
-      >
-        {statusMeta.label}
-      </span>
+      <div className="min-w-0">
+        <p className="truncate text-[12px] font-semibold text-[#303630]">
+          {intro}
+        </p>
+        <span
+          className={`mt-1 inline-flex w-fit items-center rounded-md border px-2 py-1 text-[11px] font-semibold ${statusMeta.className}`}
+        >
+          {statusMeta.label}
+        </span>
+      </div>
 
       <div className="grid gap-1 sm:flex sm:flex-wrap sm:justify-end">
         {thread.counterpartHref ? (
@@ -2300,6 +2345,14 @@ function ApplicantPlatformLinks({
         const label = platformLabels[item.platform] ?? item.label;
         const text = item.followersLabel ? `${label} ${item.followersLabel}` : label;
         const key = `${item.platform}-${item.handle ?? item.url ?? index}`;
+        const platformMeta =
+          PLATFORM_META[marketplacePlatformToContractPlatform(item.platform)];
+        const content = (
+          <>
+            <span className="shrink-0">{platformMeta.mark}</span>
+            <span className="truncate">{text}</span>
+          </>
+        );
 
         if (item.url) {
           return (
@@ -2308,10 +2361,10 @@ function ApplicantPlatformLinks({
               href={item.url}
               target="_blank"
               rel="noreferrer noopener"
-              className="inline-flex h-7 max-w-full items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 text-[11px] font-extrabold text-blue-700 transition hover:border-blue-300 hover:bg-blue-100"
+              className={`inline-flex h-7 max-w-full items-center gap-1 rounded-md border px-2 text-[11px] font-extrabold transition hover:brightness-[0.98] ${platformMeta.className}`}
               title={item.handle ? `${text} · ${item.handle}` : text}
             >
-              <span className="truncate">{text}</span>
+              {content}
               <ExternalLink className="h-3 w-3 shrink-0" />
             </a>
           );
@@ -2320,10 +2373,10 @@ function ApplicantPlatformLinks({
         return (
           <span
             key={key}
-            className="inline-flex h-7 max-w-full items-center rounded-md border border-[#d9e0d9] bg-[#f8faf7] px-2 text-[11px] font-extrabold text-[#59605b]"
+            className={`inline-flex h-7 max-w-full items-center gap-1 rounded-md border px-2 text-[11px] font-extrabold ${platformMeta.className}`}
             title={item.handle ? `${text} · ${item.handle}` : text}
           >
-            <span className="truncate">{text}</span>
+            {content}
           </span>
         );
       })}
@@ -2410,6 +2463,7 @@ function ContractTable({
   onDetailStatusFilterChange,
   sortState,
   onSortChange,
+  isDataPending = false,
   onOpen,
 }: {
   lifecycleFilter: CampaignLifecycle;
@@ -2428,6 +2482,7 @@ function ContractTable({
   onDetailStatusFilterChange: (value: DetailStatusFilter) => void;
   sortState: ContractSort;
   onSortChange: (key: SortKey) => void;
+  isDataPending?: boolean;
   onOpen: (contract: Contract) => void;
 }) {
   const platformOptions = PLATFORM_FILTERS.map((platform) => ({
@@ -2509,9 +2564,16 @@ function ContractTable({
             <p className="truncate text-[12px] font-extrabold text-[#171a17]">
               계약 목록
             </p>
-            <p className="mt-0.5 truncate text-[11px] font-semibold text-[#606861]">
-              {displayContracts.length.toLocaleString("ko-KR")}건 표시 · {filterSummary}
-            </p>
+            {isDataPending ? (
+              <span
+                className="mt-1 block h-3 w-24 rounded-full bg-neutral-100"
+                aria-hidden="true"
+              />
+            ) : (
+              <p className="mt-0.5 truncate text-[11px] font-semibold text-[#606861]">
+                {displayContracts.length.toLocaleString("ko-KR")}건 표시 · {filterSummary}
+              </p>
+            )}
           </div>
           <DashboardFilterToggleButton
             open={filtersOpen}
@@ -2581,7 +2643,9 @@ function ContractTable({
       />
 
       <div className="no-scrollbar max-h-[620px] divide-y divide-[#edf1ed] overflow-y-auto overscroll-contain lg:max-h-none lg:min-h-0 lg:flex-1">
-        {displayContracts.length > 0 ? (
+        {isDataPending ? (
+          <ContractTableSkeletonRows />
+        ) : displayContracts.length > 0 ? (
           displayContracts.map((contract) => (
             <React.Fragment key={contract.id}>
               <ContractRow
@@ -2596,6 +2660,26 @@ function ContractTable({
         )}
       </div>
     </section>
+  );
+}
+
+function ContractTableSkeletonRows() {
+  return (
+    <div className="divide-y divide-[#edf1ed]" aria-hidden="true">
+      {Array.from({ length: 5 }, (_, index) => (
+        <div
+          key={index}
+          className="grid min-h-[56px] grid-cols-[88px_minmax(0,1fr)] items-center gap-2 px-3 py-2 lg:grid-cols-[minmax(132px,0.34fr)_minmax(108px,0.26fr)_minmax(300px,1fr)_minmax(132px,0.34fr)_minmax(146px,0.38fr)_minmax(112px,0.3fr)]"
+        >
+          <span className="h-6 w-20 rounded-md bg-neutral-100" />
+          <span className="h-3 w-16 rounded-full bg-neutral-100" />
+          <span className="h-4 w-4/5 rounded-full bg-neutral-100" />
+          <span className="h-3 w-24 rounded-full bg-neutral-100" />
+          <span className="h-3 w-28 rounded-full bg-neutral-100" />
+          <span className="h-6 w-20 rounded-md bg-neutral-100" />
+        </div>
+      ))}
+    </div>
   );
 }
 

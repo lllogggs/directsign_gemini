@@ -250,6 +250,7 @@ interface AppState {
   syncError?: string;
   sessionEpoch: number;
   hydrateContracts: (options?: HydrateOptions) => Promise<void>;
+  primeContracts: (response: ContractsResponse) => void;
   resetHydration: () => void;
   addContract: (
     contract: Omit<Contract, "id" | "created_at" | "updated_at">,
@@ -337,6 +338,21 @@ export const useAppStore = create<AppState>()(
             };
           });
         }
+      },
+
+      primeContracts: (response) => {
+        const remoteContracts = Array.isArray(response.contracts)
+          ? response.contracts
+          : [];
+        set((state) => ({
+          contracts: mergeContracts(state.contracts, remoteContracts, {
+            allowLocalMerge: response.allow_local_merge === true,
+          }),
+          isHydrated: true,
+          isSyncing: false,
+          syncOperationIds: {},
+          syncError: undefined,
+        }));
       },
 
       resetHydration: () => {

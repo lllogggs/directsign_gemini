@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../domain/api";
+import { waitForFastLoginTransition } from "../domain/fastLoginTransition";
 import {
   emptyMarketplaceMessageSummary,
   type MarketplaceInboxRole,
@@ -43,10 +44,13 @@ export function useMarketplaceMessageSummary(role: MarketplaceInboxRole): Summar
 
     let active = true;
     const timer = window.setTimeout(() => {
-      void apiFetch(`/api/marketplace/messages?role=${role}&summary=1`, {
-        headers: { Accept: "application/json" },
-        credentials: "include",
-      })
+      void waitForFastLoginTransition(role, 2_500)
+        .then(() =>
+          apiFetch(`/api/marketplace/messages?role=${role}&summary=1`, {
+            headers: { Accept: "application/json" },
+            credentials: "include",
+          }),
+        )
         .then(async (response) => {
           if (!response.ok) return undefined;
           return (await response.json()) as MarketplaceMessagesResponse;
@@ -66,7 +70,7 @@ export function useMarketplaceMessageSummary(role: MarketplaceInboxRole): Summar
         .finally(() => {
           if (active) setIsLoading(false);
         });
-    }, 650);
+    }, 120);
 
     return () => {
       active = false;

@@ -3,7 +3,15 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { AuthLoginScreen } from "../../components/AuthLoginScreen";
 import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
-import { preloadInfluencerDashboard } from "../../domain/influencerDashboardPreload";
+import {
+  finishFastLoginTransition,
+  startFastLoginTransition,
+} from "../../domain/fastLoginTransition";
+import type { InfluencerDashboardResponse } from "../../domain/influencerDashboard";
+import {
+  preloadInfluencerDashboard,
+  primeInfluencerDashboard,
+} from "../../domain/influencerDashboardPreload";
 import { getNextPath } from "../../domain/navigation";
 import { translateApiErrorMessage } from "../../domain/userMessages";
 
@@ -14,10 +22,15 @@ export function InfluencerLoginPage() {
     "/influencer",
     "/contract",
   ]);
+  const initialLoginError =
+    typeof (location.state as { loginError?: unknown } | null)?.loginError ===
+    "string"
+      ? ((location.state as { loginError: string }).loginError)
+      : "";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(initialLoginError);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -35,9 +48,10 @@ export function InfluencerLoginPage() {
     event.preventDefault();
     setIsSubmitting(true);
     setError("");
+    let navigatedOptimistically = false;
 
     try {
-      const response = await apiFetch("/api/influencer/login", {
+      const loginPromise = apiFetch("/api/influencer/login", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -46,8 +60,14 @@ export function InfluencerLoginPage() {
         credentials: "include",
         body: JSON.stringify({ email, password }),
       });
+
+      navigatedOptimistically = true;
+      startFastLoginTransition("influencer");
+      navigate(nextPath, { replace: true });
+
+      const response = await loginPromise;
       const data = (await response.json()) as
-        | { authenticated: true }
+        | { authenticated: true; dashboard?: InfluencerDashboardResponse }
         | { error?: string };
 
       if (!response.ok || !("authenticated" in data)) {
@@ -57,18 +77,46 @@ export function InfluencerLoginPage() {
         );
       }
 
-      void preloadInfluencerDashboard().catch(() => undefined);
-      navigate(nextPath, { replace: true });
+      if ("dashboard" in data && data.dashboard) {
+        primeInfluencerDashboard(data.dashboard);
+      }
+      const dashboardPreload =
+        "dashboard" in data && data.dashboard
+          ? undefined
+          : preloadInfluencerDashboard().catch(() => undefined);
+      finishFastLoginTransition("influencer");
+      if (dashboardPreload) void dashboardPreload;
+      if (!navigatedOptimistically) {
+        navigate(nextPath, { replace: true });
+      }
     } catch (loginError) {
-      setError(
+      finishFastLoginTransition("influencer");
+      const message =
         loginError instanceof Error
           ? translateApiErrorMessage(loginError.message, "로그인에 실패했습니다.")
-          : "로그인에 실패했습니다.",
-      );
+          : "로그인에 실패했습니다.";
+      if (navigatedOptimistically) {
+        navigate(`/login/influencer?next=${encodeURIComponent(nextPath)}`, {
+          replace: true,
+          state: { loginError: message },
+        });
+        return;
+      }
+      setError(message);
     } finally {
-      setIsSubmitting(false);
+      if (!navigatedOptimistically) {
+        setIsSubmitting(false);
+      }
     }
   };
+
+  useEffect(() => {
+    if (!initialLoginError) return;
+    navigate(`${location.pathname}${location.search}`, {
+      replace: true,
+      state: null,
+    });
+  }, [initialLoginError, location.pathname, location.search, navigate]);
 
   return (
     <AuthLoginScreen

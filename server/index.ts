@@ -370,6 +370,13 @@ const adminSessionSecret = resolveServerSecret({
   requiredInProduction: isProductionRuntime || Boolean(adminAccessCode),
   generateLocal: Boolean(adminAccessCode) || !isProductionRuntime,
 });
+const userSessionFastPathSecret =
+  resolveServerSecret({
+    name: "USER_SESSION_FAST_PATH_SECRET",
+    purpose: "signing short-lived advertiser and influencer fast session cookies",
+    requiredInProduction: false,
+    generateLocal: false,
+  }) ?? adminSessionSecret;
 
 if (isProductionRuntime && !demoMode && !adminAccessCode?.trim()) {
   throw new Error("Production requires ADMIN_ACCESS_CODE for operator access.");
@@ -382,11 +389,14 @@ const adminSessionCookie = "directsign_admin_session";
 const adminSessionMaxAgeSeconds = 60 * 60 * 8;
 const advertiserAccessCookie = "directsign_advertiser_access";
 const advertiserRefreshCookie = "directsign_advertiser_refresh";
+const advertiserFastSessionCookie = "directsign_advertiser_fast";
 const influencerAccessCookie = "directsign_influencer_access";
 const influencerRefreshCookie = "directsign_influencer_refresh";
+const influencerFastSessionCookie = "directsign_influencer_fast";
 const signedPdfAccessCookie = "yeollock_signed_pdf_access";
 const influencerAccessMaxAgeSeconds = 60 * 60;
 const influencerRefreshMaxAgeSeconds = 60 * 60 * 24 * 14;
+const userFastSessionMaxAgeSeconds = 60 * 10;
 const signedPdfAccessMaxAgeSeconds = 60 * 10;
 const defaultAdvertiserTargetId =
   process.env.DIRECTSIGN_DEFAULT_ADVERTISER_ID ?? "adv_1";
@@ -1424,6 +1434,17 @@ const profileCacheTtlMs = parsePositiveNumberEnv(
   process.env.SUPABASE_PROFILE_CACHE_SECONDS,
   8,
 ) * 1000;
+const supabaseContractStoreCacheTtlMs =
+  parsePositiveNumberEnv(process.env.SUPABASE_CONTRACT_STORE_CACHE_SECONDS, 20) *
+  1000;
+const supabaseVerificationRequestCacheTtlMs =
+  parsePositiveNumberEnv(
+    process.env.SUPABASE_VERIFICATION_REQUEST_CACHE_SECONDS,
+    20,
+  ) * 1000;
+const organizationCacheTtlMs =
+  parsePositiveNumberEnv(process.env.SUPABASE_ORGANIZATION_CACHE_SECONDS, 60) *
+  1000;
 const recentAuthSessionCache = new Map<
   string,
   { user: SupabaseAuthUser; cachedAt: number }
@@ -1431,6 +1452,35 @@ const recentAuthSessionCache = new Map<
 const profileCache = new Map<
   string,
   { profile: SupabaseProfileRow; cachedAt: number }
+>();
+const profileEmailCache = new Map<
+  string,
+  { profile: SupabaseProfileRow; cachedAt: number }
+>();
+let supabaseContractStoreCache:
+  | { store: ContractStoreFile; cachedAt: number }
+  | undefined;
+let supabaseContractStoreInflight: Promise<ContractStoreFile> | undefined;
+let supabaseVerificationRequestCache:
+  | { requests: VerificationRequestRecord[]; cachedAt: number }
+  | undefined;
+let supabaseVerificationRequestInflight:
+  | Promise<VerificationRequestRecord[]>
+  | undefined;
+const organizationCache = new Map<
+  string,
+  { organization?: SupabaseOrganizationRow; cachedAt: number }
+>();
+const influencerDashboardCacheTtlMs =
+  parsePositiveNumberEnv(process.env.SUPABASE_INFLUENCER_DASHBOARD_CACHE_SECONDS, 15) *
+  1000;
+const influencerDashboardCache = new Map<
+  string,
+  { dashboard: InfluencerDashboardResponse; cachedAt: number }
+>();
+const influencerDashboardInflight = new Map<
+  string,
+  Promise<InfluencerDashboardResponse>
 >();
 
 const getTokenCacheKey = (accessToken: string) =>
@@ -1480,10 +1530,149 @@ const rememberProfile = (profile: SupabaseProfileRow | undefined) => {
     profile,
     cachedAt: Date.now(),
   });
+  if (profile.email) {
+    profileEmailCache.set(normalizeEmail(profile.email), {
+      profile,
+      cachedAt: Date.now(),
+    });
+  }
 };
 
 const forgetProfile = (userId: string | undefined) => {
-  if (userId) profileCache.delete(userId);
+  if (!userId) return;
+  profileCache.delete(userId);
+  for (const [email, cache] of profileEmailCache.entries()) {
+    if (cache.profile.id === userId) {
+      profileEmailCache.delete(email);
+    }
+  }
+};
+
+const readProfileFromEmailCache = (email: string) => {
+  const cache = profileEmailCache.get(normalizeEmail(email));
+  if (!cache) return undefined;
+  if (Date.now() - cache.cachedAt > profileCacheTtlMs) {
+    profileEmailCache.delete(normalizeEmail(email));
+    return undefined;
+  }
+  return cache.profile;
+};
+
+const cloneContractStore = (store: ContractStoreFile): ContractStoreFile =>
+  normalizeStore({ contracts: [...store.contracts] });
+
+const rememberSupabaseContractStoreCache = (store: ContractStoreFile) => {
+  supabaseContractStoreCache = {
+    store: cloneContractStore(store),
+    cachedAt: Date.now(),
+  };
+};
+
+const readSupabaseContractStoreCache = () => {
+  if (!supabaseContractStoreCache) return undefined;
+  if (
+    Date.now() - supabaseContractStoreCache.cachedAt >
+    supabaseContractStoreCacheTtlMs
+  ) {
+    supabaseContractStoreCache = undefined;
+    return undefined;
+  }
+  return cloneContractStore(supabaseContractStoreCache.store);
+};
+
+const invalidateSupabaseContractStoreCache = () => {
+  supabaseContractStoreCache = undefined;
+  supabaseContractStoreInflight = undefined;
+};
+
+const cloneVerificationRequests = (requests: VerificationRequestRecord[]) =>
+  requests.map(normalizeVerificationRequest);
+
+const rememberSupabaseVerificationRequestCache = (
+  requests: VerificationRequestRecord[],
+) => {
+  supabaseVerificationRequestCache = {
+    requests: cloneVerificationRequests(requests),
+    cachedAt: Date.now(),
+  };
+};
+
+const readSupabaseVerificationRequestCache = () => {
+  if (!supabaseVerificationRequestCache) return undefined;
+  if (
+    Date.now() - supabaseVerificationRequestCache.cachedAt >
+    supabaseVerificationRequestCacheTtlMs
+  ) {
+    supabaseVerificationRequestCache = undefined;
+    return undefined;
+  }
+  return cloneVerificationRequests(supabaseVerificationRequestCache.requests);
+};
+
+const invalidateSupabaseVerificationRequestCache = () => {
+  supabaseVerificationRequestCache = undefined;
+  supabaseVerificationRequestInflight = undefined;
+};
+
+const readOrganizationFromCache = (profileId: string) => {
+  const cache = organizationCache.get(profileId);
+  if (!cache) return undefined;
+  if (Date.now() - cache.cachedAt > organizationCacheTtlMs) {
+    organizationCache.delete(profileId);
+    return undefined;
+  }
+  return cache.organization;
+};
+
+const rememberOrganizationCache = (
+  profileId: string,
+  organization: SupabaseOrganizationRow | undefined,
+) => {
+  organizationCache.set(profileId, { organization, cachedAt: Date.now() });
+};
+
+const invalidateOrganizationCache = () => {
+  organizationCache.clear();
+};
+
+const cloneInfluencerDashboard = (
+  dashboard: InfluencerDashboardResponse,
+): InfluencerDashboardResponse =>
+  JSON.parse(JSON.stringify(dashboard)) as InfluencerDashboardResponse;
+
+const getInfluencerDashboardCacheKey = (
+  userId: string,
+  options: InfluencerDashboardBuildOptions = {},
+) => `${userId}:${options.includeApplications === false ? "lite" : "full"}`;
+
+const readInfluencerDashboardCache = (
+  userId: string,
+  options: InfluencerDashboardBuildOptions = {},
+) => {
+  const key = getInfluencerDashboardCacheKey(userId, options);
+  const cache = influencerDashboardCache.get(key);
+  if (!cache) return undefined;
+  if (Date.now() - cache.cachedAt > influencerDashboardCacheTtlMs) {
+    influencerDashboardCache.delete(key);
+    return undefined;
+  }
+  return cloneInfluencerDashboard(cache.dashboard);
+};
+
+const rememberInfluencerDashboardCache = (
+  userId: string,
+  options: InfluencerDashboardBuildOptions,
+  dashboard: InfluencerDashboardResponse,
+) => {
+  influencerDashboardCache.set(getInfluencerDashboardCacheKey(userId, options), {
+    dashboard: cloneInfluencerDashboard(dashboard),
+    cachedAt: Date.now(),
+  });
+};
+
+const invalidateInfluencerDashboardCache = () => {
+  influencerDashboardCache.clear();
+  influencerDashboardInflight.clear();
 };
 
 const readProfileByUserId = async (userId: string) => {
@@ -1500,6 +1689,33 @@ const readProfileByUserId = async (userId: string) => {
   const profile = rows[0];
   rememberProfile(profile);
   return profile;
+};
+
+const readProfileByEmail = async (email: string) => {
+  if (!useSupabase || !email) return undefined;
+  const cachedProfile = readProfileFromEmailCache(email);
+  if (cachedProfile) return cachedProfile;
+
+  const rows = await readSupabaseRows<SupabaseProfileRow>(
+    "profiles",
+    `?select=${profileSelectFields}&email=eq.${encodeURIComponent(email)}&limit=1`,
+    "profile by email",
+  );
+
+  const profile = rows[0];
+  rememberProfile(profile);
+  return profile;
+};
+
+const readProfileByEmailWithSoftTimeout = async (
+  email: string,
+  timeoutMs = 80,
+) => {
+  const profilePromise = readProfileByEmail(email).catch(() => undefined);
+  const timeoutPromise = new Promise<undefined>((resolve) => {
+    setTimeout(() => resolve(undefined), timeoutMs);
+  });
+  return Promise.race([profilePromise, timeoutPromise]);
 };
 
 const syncProfileEmailVerifiedAt = async (authUser: SupabaseAuthUser) => {
@@ -1532,6 +1748,10 @@ const syncProfileEmailVerifiedAtInBackground = (authUser: SupabaseAuthUser) => {
 
 const readDefaultOrganizationForProfile = async (profileId: string) => {
   if (!useSupabase) return undefined;
+  const cachedOrganization = readOrganizationFromCache(profileId);
+  if (cachedOrganization !== undefined || organizationCache.has(profileId)) {
+    return cachedOrganization;
+  }
 
   const memberships = await readSupabaseRows<SupabaseOrganizationMemberRow>(
     "organization_members",
@@ -1550,7 +1770,9 @@ const readDefaultOrganizationForProfile = async (profileId: string) => {
     "organization",
   );
 
-  return organizations[0];
+  const organization = organizations[0];
+  rememberOrganizationCache(profileId, organization);
+  return organization;
 };
 
 const isAdvertiserRole = (role: SupabaseProfileRow["role"] | undefined) =>
@@ -1599,13 +1821,25 @@ const requireAdvertiserSession = async (
     return undefined;
   }
 
-  const profile = await readProfileByUserId(auth.user.id);
+  const profile = auth.profile ?? (await readProfileByUserId(auth.user.id));
 
   if (!isAdvertiserRole(profile?.role)) {
     response.status(403).json({
       error: "광고주 계정 권한이 필요합니다. 광고주 계정으로 로그인해 주세요.",
     });
     return undefined;
+  }
+
+  if (!auth.fastSession) {
+    const fastToken = createUserFastSessionToken(auth.user, profile, "marketer");
+    if (fastToken) {
+      response.append(
+        "Set-Cookie",
+        `${advertiserFastSessionCookie}=${encodeURIComponent(
+          fastToken,
+        )}; ${advertiserCookieOptions(userFastSessionMaxAgeSeconds)}`,
+      );
+    }
   }
 
   return { ...auth, profile };
@@ -1622,13 +1856,25 @@ const requireInfluencerSession = async (
     return undefined;
   }
 
-  const profile = await readProfileByUserId(auth.user.id);
+  const profile = auth.profile ?? (await readProfileByUserId(auth.user.id));
 
   if (!isInfluencerRole(profile?.role)) {
     response.status(403).json({
       error: "인플루언서 계정 권한이 필요합니다. 인플루언서 계정으로 로그인해 주세요.",
     });
     return undefined;
+  }
+
+  if (!auth.fastSession) {
+    const fastToken = createUserFastSessionToken(auth.user, profile, "influencer");
+    if (fastToken) {
+      response.append(
+        "Set-Cookie",
+        `${influencerFastSessionCookie}=${encodeURIComponent(
+          fastToken,
+        )}; ${influencerCookieOptions(userFastSessionMaxAgeSeconds)}`,
+      );
+    }
   }
 
   return { ...auth, profile };
@@ -1658,6 +1904,47 @@ const canAdvertiserAccessLegacyContract = (
 
   return isBoundToProfile || isLegacyManagerEmailMatch;
 };
+
+async function buildAdvertiserLoginDashboardBootstrap(auth: AdvertiserSession) {
+  try {
+    const [store, verification] = await Promise.all([
+      readStore(),
+      buildAdvertiserScopedVerificationSummary(auth),
+    ]);
+    const contracts = store.contracts.filter((contract) =>
+      canAdvertiserAccessLegacyContract(auth, contract),
+    );
+
+    return {
+      contracts,
+      verification,
+      source: useSupabase ? "supabase" : "file",
+      allow_local_merge: !useSupabase,
+      demo_mode: demoMode,
+    };
+  } catch (error) {
+    console.warn(
+      `[${productName}] advertiser login dashboard bootstrap failed: ${
+        error instanceof Error ? error.message : "unknown error"
+      }`,
+    );
+    return undefined;
+  }
+}
+
+function buildAdvertiserCachedDashboardBootstrap(auth: AdvertiserSession) {
+  const store = useSupabase ? readSupabaseContractStoreCache() : undefined;
+  if (!store) return undefined;
+
+  return {
+    contracts: store.contracts.filter((contract) =>
+      canAdvertiserAccessLegacyContract(auth, contract),
+    ),
+    source: "supabase" as const,
+    allow_local_merge: false,
+    demo_mode: demoMode,
+  };
+}
 
 const canInfluencerAccessLegacyContract = (
   auth: InfluencerSession,
@@ -2227,6 +2514,82 @@ const parseCookies = (cookieHeader: string | undefined) => {
   );
 };
 
+type UserFastSessionPayload = {
+  v: 1;
+  role: "marketer" | "influencer";
+  exp: number;
+  user: SupabaseAuthUser;
+  profile: SupabaseProfileRow;
+};
+
+const userFastSessionHmac = (payload: string) => {
+  if (!userSessionFastPathSecret) return "";
+  return createHmac("sha256", userSessionFastPathSecret)
+    .update(payload)
+    .digest("hex");
+};
+
+const createUserFastSessionToken = (
+  user: SupabaseAuthUser,
+  profile: SupabaseProfileRow,
+  role: UserFastSessionPayload["role"],
+) => {
+  if (!userSessionFastPathSecret) return undefined;
+
+  const payload = Buffer.from(
+    JSON.stringify({
+      v: 1,
+      role,
+      exp: Date.now() + userFastSessionMaxAgeSeconds * 1000,
+      user: {
+        id: user.id,
+        email: user.email ?? profile.email,
+        email_confirmed_at:
+          user.email_confirmed_at ?? profile.email_verified_at ?? undefined,
+        confirmed_at: user.confirmed_at ?? profile.email_verified_at ?? undefined,
+      },
+      profile,
+    } satisfies UserFastSessionPayload),
+    "utf8",
+  ).toString("base64url");
+  const signature = userFastSessionHmac(payload);
+  return `${payload}.${signature}`;
+};
+
+const verifyUserFastSessionToken = (
+  token: string | undefined,
+  expectedRole: UserFastSessionPayload["role"],
+) => {
+  if (!token || !userSessionFastPathSecret) return undefined;
+
+  const [payload, signature] = token.split(".");
+  if (!payload || !signature) return undefined;
+  if (!safeEqual(signature, userFastSessionHmac(payload))) return undefined;
+
+  try {
+    const parsed = JSON.parse(
+      Buffer.from(payload, "base64url").toString("utf8"),
+    ) as Partial<UserFastSessionPayload>;
+
+    if (parsed.v !== 1 || parsed.role !== expectedRole) return undefined;
+    if (typeof parsed.exp !== "number" || parsed.exp < Date.now()) {
+      return undefined;
+    }
+    if (!parsed.user?.id || !parsed.profile?.id) return undefined;
+    if (parsed.user.id !== parsed.profile.id) return undefined;
+    if (parsed.profile.role !== expectedRole) return undefined;
+
+    return parsed as UserFastSessionPayload;
+  } catch {
+    return undefined;
+  }
+};
+
+const shouldUseUserFastSession = (
+  request: express.Request,
+  bearerToken: string | undefined,
+) => !bearerToken && (request.method === "GET" || request.method === "HEAD");
+
 const signedPdfCookieOptions = (maxAgeSeconds = signedPdfAccessMaxAgeSeconds) =>
   [
     "HttpOnly",
@@ -2390,6 +2753,7 @@ const clearAdvertiserCookieOptions = () =>
 const setAdvertiserSessionCookies = (
   response: express.Response,
   session: SupabaseAuthSession,
+  profile?: SupabaseProfileRow,
 ) => {
   const cookies = [
     `${advertiserAccessCookie}=${encodeURIComponent(
@@ -2410,6 +2774,17 @@ const setAdvertiserSessionCookies = (
     );
   }
 
+  if (profile && isAdvertiserRole(profile.role)) {
+    const fastToken = createUserFastSessionToken(session.user, profile, "marketer");
+    if (fastToken) {
+      cookies.push(
+        `${advertiserFastSessionCookie}=${encodeURIComponent(
+          fastToken,
+        )}; ${advertiserCookieOptions(userFastSessionMaxAgeSeconds)}`,
+      );
+    }
+  }
+
   response.setHeader("Set-Cookie", cookies);
 };
 
@@ -2417,6 +2792,7 @@ const clearAdvertiserSessionCookies = (response: express.Response) => {
   response.setHeader("Set-Cookie", [
     `${advertiserAccessCookie}=; ${clearAdvertiserCookieOptions()}`,
     `${advertiserRefreshCookie}=; ${clearAdvertiserCookieOptions()}`,
+    `${advertiserFastSessionCookie}=; ${clearAdvertiserCookieOptions()}`,
     `${signedPdfAccessCookie}=; ${signedPdfCookieOptions(0)}`,
   ]);
 };
@@ -2424,6 +2800,7 @@ const clearAdvertiserSessionCookies = (response: express.Response) => {
 const setInfluencerSessionCookies = (
   response: express.Response,
   session: SupabaseAuthSession,
+  profile?: SupabaseProfileRow,
 ) => {
   const cookies = [
     `${influencerAccessCookie}=${encodeURIComponent(
@@ -2444,6 +2821,17 @@ const setInfluencerSessionCookies = (
     );
   }
 
+  if (profile && isInfluencerRole(profile.role)) {
+    const fastToken = createUserFastSessionToken(session.user, profile, "influencer");
+    if (fastToken) {
+      cookies.push(
+        `${influencerFastSessionCookie}=${encodeURIComponent(
+          fastToken,
+        )}; ${influencerCookieOptions(userFastSessionMaxAgeSeconds)}`,
+      );
+    }
+  }
+
   response.setHeader("Set-Cookie", cookies);
 };
 
@@ -2451,6 +2839,7 @@ const clearInfluencerSessionCookies = (response: express.Response) => {
   response.setHeader("Set-Cookie", [
     `${influencerAccessCookie}=; ${clearInfluencerCookieOptions()}`,
     `${influencerRefreshCookie}=; ${clearInfluencerCookieOptions()}`,
+    `${influencerFastSessionCookie}=; ${clearInfluencerCookieOptions()}`,
     `${signedPdfAccessCookie}=; ${signedPdfCookieOptions(0)}`,
   ]);
 };
@@ -2974,7 +3363,24 @@ const authenticateInfluencerRequest = async (
   const bearerToken = getBearerToken(request);
   const cookieAccessToken = cookies.get(influencerAccessCookie);
   const refreshToken = cookies.get(influencerRefreshCookie);
+  const fastSessionToken = cookies.get(influencerFastSessionCookie);
   const accessToken = bearerToken ?? cookieAccessToken;
+
+  if (shouldUseUserFastSession(request, bearerToken)) {
+    const fastSession = verifyUserFastSessionToken(
+      fastSessionToken,
+      "influencer",
+    );
+    if (fastSession) {
+      rememberProfile(fastSession.profile);
+      return {
+        user: fastSession.user,
+        accessToken: accessToken ?? "",
+        profile: fastSession.profile,
+        fastSession: true,
+      };
+    }
+  }
 
   if (accessToken) {
     const cachedUser = readRecentAuthSession(accessToken);
@@ -3023,7 +3429,21 @@ const authenticateAdvertiserRequest = async (
   const bearerToken = getBearerToken(request);
   const cookieAccessToken = cookies.get(advertiserAccessCookie);
   const refreshToken = cookies.get(advertiserRefreshCookie);
+  const fastSessionToken = cookies.get(advertiserFastSessionCookie);
   const accessToken = bearerToken ?? cookieAccessToken;
+
+  if (shouldUseUserFastSession(request, bearerToken)) {
+    const fastSession = verifyUserFastSessionToken(fastSessionToken, "marketer");
+    if (fastSession) {
+      rememberProfile(fastSession.profile);
+      return {
+        user: fastSession.user,
+        accessToken: accessToken ?? "",
+        profile: fastSession.profile,
+        fastSession: true,
+      };
+    }
+  }
 
   if (accessToken) {
     const cachedUser = readRecentAuthSession(accessToken);
@@ -8406,7 +8826,7 @@ const readMarketplaceMessagesForInfluencer = async (
   );
 };
 
-const readSupabaseStore = async (): Promise<ContractStoreFile> => {
+const readSupabaseStoreFromRemote = async (): Promise<ContractStoreFile> => {
   let response = await fetchSupabase(
     supabaseLegacyTable,
     "?select=contract,share_token,campaign_name,post_link&order=updated_at.desc",
@@ -8437,6 +8857,24 @@ const readSupabaseStore = async (): Promise<ContractStoreFile> => {
       .map(restoreLegacyContractFromSupabase)
       .filter((contract): contract is Contract => Boolean(contract?.id)),
   });
+};
+
+const readSupabaseStore = async (): Promise<ContractStoreFile> => {
+  const cachedStore = readSupabaseContractStoreCache();
+  if (cachedStore) return cachedStore;
+
+  if (supabaseContractStoreInflight) return supabaseContractStoreInflight;
+
+  supabaseContractStoreInflight = readSupabaseStoreFromRemote()
+    .then((store) => {
+      rememberSupabaseContractStoreCache(store);
+      return cloneContractStore(store);
+    })
+    .finally(() => {
+      supabaseContractStoreInflight = undefined;
+    });
+
+  return supabaseContractStoreInflight;
 };
 
 const readSupabaseLegacyContract = async (
@@ -9157,7 +9595,7 @@ const normalizeVerificationRequest = (
   evidence_snapshot_json: record.evidence_snapshot_json ?? {},
 });
 
-const readSupabaseVerificationRequests = async () => {
+const readSupabaseVerificationRequestsFromRemote = async () => {
   const response = await fetchSupabase(
     "verification_requests",
     "?select=*&order=created_at.desc",
@@ -9167,6 +9605,26 @@ const readSupabaseVerificationRequests = async () => {
 
   const rows = (await response.json()) as VerificationRequestRecord[];
   return rows.map(normalizeVerificationRequest);
+};
+
+const readSupabaseVerificationRequests = async () => {
+  const cachedRequests = readSupabaseVerificationRequestCache();
+  if (cachedRequests) return cachedRequests;
+
+  if (supabaseVerificationRequestInflight) {
+    return supabaseVerificationRequestInflight;
+  }
+
+  supabaseVerificationRequestInflight = readSupabaseVerificationRequestsFromRemote()
+    .then((requests) => {
+      rememberSupabaseVerificationRequestCache(requests);
+      return cloneVerificationRequests(requests);
+    })
+    .finally(() => {
+      supabaseVerificationRequestInflight = undefined;
+    });
+
+  return supabaseVerificationRequestInflight;
 };
 
 const patchSupabaseRecord = async (
@@ -9184,6 +9642,24 @@ const patchSupabaseRecord = async (
   });
 
   await assertSupabaseOk(response, label);
+
+  if (table === supabaseLegacyTable) {
+    invalidateSupabaseContractStoreCache();
+  }
+  if (table === "verification_requests") {
+    invalidateSupabaseVerificationRequestCache();
+  }
+  if (table === "organizations" || table === "organization_members") {
+    invalidateOrganizationCache();
+  }
+  if (
+    table === "contracts" ||
+    table.startsWith("contract_") ||
+    table.startsWith("deliverable") ||
+    table === "verification_requests"
+  ) {
+    invalidateInfluencerDashboardCache();
+  }
 };
 
 const marketplacePlatformToContractPlatform = (
@@ -9670,6 +10146,7 @@ const insertVerificationRequest = async (record: VerificationRequestRecord) => {
     await assertSupabaseOk(response, "Supabase verification insert");
     const rows = (await response.json()) as VerificationRequestRecord[];
     const insertedRecord = normalizeVerificationRequest(rows[0] ?? normalizedRecord);
+    invalidateSupabaseVerificationRequestCache();
     await applyVerificationStatusSideEffects(insertedRecord);
     return insertedRecord;
   }
@@ -9713,6 +10190,7 @@ const updateVerificationRequestReview = async ({
     await assertSupabaseOk(response, "Supabase verification update");
     const rows = (await response.json()) as VerificationRequestRecord[];
     const updatedRecord = rows[0] ? normalizeVerificationRequest(rows[0]) : undefined;
+    invalidateSupabaseVerificationRequestCache();
     if (updatedRecord) {
       await applyVerificationStatusSideEffects(updatedRecord);
     }
@@ -9755,6 +10233,7 @@ const updateVerificationRequestAutomation = async (
     await assertSupabaseOk(response, "Supabase verification automation update");
     const rows = (await response.json()) as VerificationRequestRecord[];
     const savedRecord = rows[0] ? normalizeVerificationRequest(rows[0]) : updatedRecord;
+    invalidateSupabaseVerificationRequestCache();
     await applyVerificationStatusSideEffects(savedRecord);
     return savedRecord;
   }
@@ -10198,6 +10677,7 @@ const buildAdvertiserVerificationContext = async (auth: AdvertiserSession) => {
     targetId: organization?.id ?? auth.profile.id,
     profileId: auth.profile.id,
     organizationId: organization?.id,
+    organization,
     subjectName:
       organization?.name ??
       auth.profile.company_name ??
@@ -10212,7 +10692,7 @@ const buildAdvertiserScopedVerificationSummary = async (
   auth: AdvertiserSession,
 ) => {
   const context = await buildAdvertiserVerificationContext(auth);
-  const organization = await readDefaultOrganizationForProfile(auth.profile.id);
+  const organization = context.organization;
   const requests = await readVerificationRequests();
   const targetIds = Array.from(
     new Set(
@@ -11746,7 +12226,7 @@ type InfluencerDashboardBuildOptions = {
   includeApplications?: boolean;
 };
 
-const buildInfluencerDashboard = async (
+const buildInfluencerDashboardFromRemote = async (
   authUser: SupabaseAuthUser,
   options: InfluencerDashboardBuildOptions = {},
 ): Promise<InfluencerDashboardResponse> => {
@@ -11988,6 +12468,29 @@ const buildInfluencerDashboard = async (
   };
 };
 
+const buildInfluencerDashboard = async (
+  authUser: SupabaseAuthUser,
+  options: InfluencerDashboardBuildOptions = {},
+): Promise<InfluencerDashboardResponse> => {
+  const cachedDashboard = readInfluencerDashboardCache(authUser.id, options);
+  if (cachedDashboard) return cachedDashboard;
+
+  const key = getInfluencerDashboardCacheKey(authUser.id, options);
+  const inflight = influencerDashboardInflight.get(key);
+  if (inflight) return inflight.then(cloneInfluencerDashboard);
+
+  const dashboardPromise = buildInfluencerDashboardFromRemote(authUser, options)
+    .then((dashboard) => {
+      rememberInfluencerDashboardCache(authUser.id, options, dashboard);
+      return cloneInfluencerDashboard(dashboard);
+    })
+    .finally(() => {
+      influencerDashboardInflight.delete(key);
+    });
+  influencerDashboardInflight.set(key, dashboardPromise);
+  return dashboardPromise;
+};
+
 const writeStore = async (store: ContractStoreFile) => {
   if (useSupabase) {
     const normalizedContracts = normalizeStore(store).contracts;
@@ -11995,6 +12498,8 @@ const writeStore = async (store: ContractStoreFile) => {
       await syncSupabaseV2Contracts(normalizedContracts);
     }
     await upsertSupabaseContracts(normalizedContracts);
+    rememberSupabaseContractStoreCache({ contracts: normalizedContracts });
+    invalidateInfluencerDashboardCache();
     return;
   }
 
@@ -12033,6 +12538,29 @@ const readStore = async (): Promise<ContractStoreFile> => {
     await writeStore(initialStore);
     return initialStore;
   }
+};
+
+const warmDashboardDataCachesInBackground = (reason: string) => {
+  if (!useSupabase) return;
+
+  void Promise.allSettled([
+    readSupabaseStore(),
+    readSupabaseVerificationRequests(),
+  ]).then((results) => {
+    const rejected = results.filter(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+    if (rejected.length === 0) return;
+    console.warn(
+      `[${productName}] dashboard data cache warmup failed (${reason}): ${
+        rejected
+          .map((result) =>
+            result.reason instanceof Error ? result.reason.message : "unknown error",
+          )
+          .join("; ")
+      }`,
+    );
+  });
 };
 
 const readContractWriteContext = async (contractId: string) => {
@@ -12621,6 +13149,7 @@ app.get("/api/health", (_request, response) => {
 
 app.get("/api/auth/warmup", async (_request, response) => {
   response.setHeader("Cache-Control", "no-store");
+  warmDashboardDataCachesInBackground("auth-warmup");
   try {
     await warmSupabaseAuthConnection();
   } catch (error) {
@@ -12810,7 +13339,7 @@ app.get("/api/advertiser/session", async (request, response, next) => {
       return;
     }
 
-    const profile = await readProfileByUserId(auth.user.id);
+    const profile = auth.profile ?? (await readProfileByUserId(auth.user.id));
 
     if (!isAdvertiserRole(profile?.role)) {
       response.status(403).json({ authenticated: false });
@@ -12828,6 +13357,26 @@ app.get("/api/advertiser/session", async (request, response, next) => {
         verification_status: profile.verification_status ?? "not_submitted",
       },
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/advertiser/dashboard/bootstrap", async (request, response, next) => {
+  try {
+    response.setHeader("Cache-Control", "no-store");
+    const auth = await requireAdvertiserSession(request, response);
+    if (!auth) return;
+
+    const dashboard = await buildAdvertiserLoginDashboardBootstrap(auth);
+    if (!dashboard) {
+      response.status(503).json({
+        error: "Dashboard data is warming up. Please try again.",
+      });
+      return;
+    }
+
+    response.json(dashboard);
   } catch (error) {
     next(error);
   }
@@ -12940,8 +13489,13 @@ app.post("/api/advertiser/login", async (request, response) => {
       return;
     }
 
+    const profileByEmailPromise = readProfileByEmailWithSoftTimeout(email);
     const session = await createSupabasePasswordSession(email, password);
-    const profile = await readProfileByUserId(session.user.id);
+    const profileByEmail = await profileByEmailPromise;
+    const profile =
+      profileByEmail?.id === session.user.id
+        ? profileByEmail
+        : await readProfileByUserId(session.user.id);
 
     if (!isAdvertiserRole(profile?.role)) {
       response.status(403).json({
@@ -12952,8 +13506,15 @@ app.post("/api/advertiser/login", async (request, response) => {
 
     rememberRecentAuthSession(session.access_token, session.user);
     rememberProfile(profile);
-    setAdvertiserSessionCookies(response, session);
+    setAdvertiserSessionCookies(response, session, profile);
     clearPublicAuthRateLimit(request, "advertiser_login", email);
+    const advertiserSession = {
+      user: session.user,
+      accessToken: session.access_token,
+      profile,
+    } satisfies AdvertiserSession;
+    const dashboard = buildAdvertiserCachedDashboardBootstrap(advertiserSession);
+    void buildAdvertiserLoginDashboardBootstrap(advertiserSession);
     response.json({
       authenticated: true,
       user: {
@@ -12964,6 +13525,7 @@ app.post("/api/advertiser/login", async (request, response) => {
         company_name: profile.company_name,
         verification_status: profile.verification_status ?? "not_submitted",
       },
+      dashboard,
     });
     if (!profile.email_verified_at) {
       syncProfileEmailVerifiedAtInBackground(session.user);
@@ -13140,8 +13702,13 @@ app.post("/api/influencer/login", async (request, response, _next) => {
       return;
     }
 
+    const profileByEmailPromise = readProfileByEmailWithSoftTimeout(email);
     const session = await createSupabasePasswordSession(email, password);
-    const profile = await readProfileByUserId(session.user.id);
+    const profileByEmail = await profileByEmailPromise;
+    const profile =
+      profileByEmail?.id === session.user.id
+        ? profileByEmail
+        : await readProfileByUserId(session.user.id);
 
     if (!profile || !isInfluencerRole(profile.role)) {
       response.status(403).json({
@@ -13152,8 +13719,18 @@ app.post("/api/influencer/login", async (request, response, _next) => {
 
     rememberRecentAuthSession(session.access_token, session.user);
     rememberProfile(profile);
-    setInfluencerSessionCookies(response, session);
+    setInfluencerSessionCookies(response, session, profile);
     clearPublicAuthRateLimit(request, "influencer_login", email);
+    void buildInfluencerDashboard(session.user, {
+      includeApplications: false,
+    }).catch((error) => {
+      console.warn(
+        `[${productName}] influencer login dashboard bootstrap failed: ${
+          error instanceof Error ? error.message : "unknown error"
+        }`,
+      );
+      return undefined;
+    });
     response.json({
       authenticated: true,
       user: buildInfluencerSessionUser(session.user, profile),
@@ -13890,7 +14467,8 @@ app.get("/api/verification/status", async (request, response, next) => {
       const influencerAuth = await authenticateInfluencerRequest(request, response);
 
       if (influencerAuth) {
-        const profile = await readProfileByUserId(influencerAuth.user.id);
+        const profile =
+          influencerAuth.profile ?? (await readProfileByUserId(influencerAuth.user.id));
 
         if (isInfluencerRole(profile?.role)) {
           response.json(
@@ -13908,7 +14486,8 @@ app.get("/api/verification/status", async (request, response, next) => {
       const advertiserAuth = await authenticateAdvertiserRequest(request, response);
 
       if (advertiserAuth) {
-        const profile = await readProfileByUserId(advertiserAuth.user.id);
+        const profile =
+          advertiserAuth.profile ?? (await readProfileByUserId(advertiserAuth.user.id));
 
         if (isAdvertiserRole(profile?.role)) {
           response.json(
@@ -15782,6 +16361,8 @@ app.use(
 );
 
 const isVercelFunction = isHostedRuntime;
+
+warmDashboardDataCachesInBackground("startup");
 
 if (!isVercelFunction) {
   const httpServer = createHttpServer(app);

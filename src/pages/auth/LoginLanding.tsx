@@ -52,7 +52,7 @@ export function LoginLanding() {
 
   return (
     <main className="h-svh overflow-hidden bg-[#f4f5f2] font-sans text-neutral-950">
-      <div className="mx-auto grid h-svh w-full max-w-[1500px] grid-rows-[58px_minmax(0,1fr)_38px] px-4 sm:px-6 lg:px-6">
+      <div className="mx-auto grid h-svh w-full max-w-[1500px] grid-rows-[56px_minmax(0,1fr)_38px] px-4 sm:px-6 lg:px-6">
         <header className="flex items-center justify-between border-b border-transparent">
           <Link
             to="/"

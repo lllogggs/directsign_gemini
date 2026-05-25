@@ -946,7 +946,7 @@ function MarketplaceShell({
   return (
     <main className="flex h-svh flex-col overflow-hidden bg-[#f7f6f3] font-sans text-neutral-950">
       <header className="z-30 shrink-0 border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
-        <div className="mx-auto flex h-[68px] max-w-[1320px] items-center justify-between px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto flex h-14 max-w-[1500px] items-center justify-between px-3 sm:px-5 lg:px-6">
           <Link to="/" className="flex shrink-0 items-center gap-3">
             <span className="flex h-10 w-10 items-center justify-center rounded-[13px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
               <ShieldCheck className="h-4 w-4" />
@@ -967,7 +967,7 @@ function MarketplaceShell({
       </header>
 
       <section className="shrink-0 border-b border-neutral-200/80 bg-[#f7f6f3]">
-        <div className="mx-auto max-w-[1320px] px-4 py-3 sm:px-6 sm:py-4 lg:px-8">
+        <div className="mx-auto max-w-[1500px] px-3 py-3 sm:px-5 sm:py-4 lg:px-6">
           <p className="text-[13px] font-extrabold text-neutral-500">{eyebrow}</p>
           <div className="mt-1.5 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div className="min-w-0">
@@ -989,7 +989,7 @@ function MarketplaceShell({
         </div>
       </section>
 
-      <div className="yl-panel mx-4 my-3 flex min-h-0 max-w-[1320px] flex-1 flex-col overflow-hidden border sm:mx-6 lg:mx-auto lg:w-full">
+      <div className="yl-panel mx-3 my-3 flex min-h-0 max-w-[1500px] flex-1 flex-col overflow-hidden border sm:mx-5 lg:mx-auto lg:w-full">
         {children}
       </div>
     </main>

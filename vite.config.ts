@@ -45,10 +45,18 @@ export default defineConfig(({mode}) => {
         '@': path.resolve(configDir, '.'),
       },
     },
+    build: {
+      // Dashboards are intentionally kept in the first app chunk so login-to-workspace
+      // transitions do not wait on another lazy route request.
+      chunkSizeWarningLimit: 650,
+    },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
+      watch: {
+        ignored: ['**/dist/**', '**/tmp/**', '**/.tmp/**', '**/qa-artifacts/**'],
+      },
     },
   };
 });

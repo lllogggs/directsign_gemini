@@ -77,6 +77,10 @@ Example option format:
     - The Product Owner prefers trust to be shown through clear state, evidence, verification, timing, and workflow clarity rather than long copy or legalistic filler.
     - The Product Owner values product-wide consistency. Persistent brand/navigation elements should keep stable placement, sizing, affordance, and cursor behavior across pages unless there is a deliberate layout reason.
     - The Product Owner values seamless app surfaces. Tabs should feel physically connected to their panel, and dashboards should avoid visible UI artifacts such as unnecessary scrollbars, divider seams, and transient loading banners when stable account or verification information can be shown immediately.
+    - When performance blocks real use, the Product Owner expects Codex to research proven patterns, change the architecture if needed, and preserve existing behavior instead of stopping at permission or platform-limit explanations.
+    - The Product Owner expects app headers to behave like a fixed product frame. Keep logo, top navigation, action button height, and horizontal container rhythm stable across pages; solve page balance by arranging the content below the header, not by moving the header.
+    - The Product Owner prioritizes login and route-transition immediacy strongly enough to permit authentication strategy changes when the change is justified and security is preserved. Prefer verified JWT/session claims, short-lived server caches, route shells, and deferred non-critical data over repeated auth-server round trips on every first render.
+    - The Product Owner accepts optimistic, non-sensitive destination shells during login when they reduce perceived wait, but private data, mutations, contracts, signatures, and role authorization must still wait for authoritative server validation.
   - The Product Owner expects browser-tab style dashboard tabs to share one baseline. The selected tab must not look lower, sunken, or offset from inactive tabs; avoid visible divider lines, gaps, or tab seams when the requested reference is Chrome-like tabs.
   - For Chrome/Google-like dashboard tabs, do not draw every tab as an individual boxed segment. Inactive tabs should sit quietly on the tab strip, while only the active tab visually becomes the connected surface of the content panel below.
     - The Product Owner dislikes first screens that feel like a cluster floating in the exact center of a large empty canvas. Main role-selection screens should have deliberate upper-weighted vertical rhythm with enough breathing room, not a lonely center pile.
@@ -221,6 +225,9 @@ Example option format:
   - Login, route transitions, filters, search, and main CTA clicks should feel immediate.
   - Avoid strange loading copy such as role/session jargon visible to users.
   - Prefer showing the core screen first and deferring non-critical summaries, messages, profile details, or secondary API calls.
+  - Authentication checks should not block the visible dashboard shell when a valid recent session or verified token claim can establish the role safely enough for initial rendering.
+  - Sensitive writes and contract/signature mutations still need authoritative session checks; fast-path auth is for read/navigation UX, not for weakening permissions.
+  - Performance QA must separate "screen shell visible" from "real account/list data populated." Do not call login or dashboard performance solved if the shell is fast but account, verification, counts, or contract rows arrive much later or briefly show false empty/negative states.
   - Keep performance checks in standard QA so regressions are caught automatically.
 - Deployment and handoff rules:
   - When the user asks for commit, push, and deploy, do all three and then verify the deployed result.
@@ -338,6 +345,35 @@ For every meaningful improvement or fix, Codex must include a short customer rea
 - For narrow UI requests, keep the research report short but concrete: the page problem, 2-3 reference patterns, the chosen direction, and what will be changed.
 - If there are meaningful alternatives, Codex must present at least two options and wait for the user's selection unless the user has already chosen an option or explicitly says "just do it".
 - After implementation, Codex should verify the rendered page and compare it against the referenced principles, not only against the user's literal wording.
+
+## OpenDesign Environment Manual
+
+- OpenDesign is a separate local daemon/web app workflow, not the Figma connector. Do not confuse Figma reauthentication failures with OpenDesign availability.
+- The local OpenDesign repo is `C:\Users\wkeoo93\Desktop\codexs\open-design`.
+- OpenDesign requires Node `~24` and pnpm `10.33.x`. On this machine, use the bundled Node 24 path before running OpenDesign commands:
+
+```powershell
+$env:PATH='C:\Users\wkeoo93\Desktop\codexs\.tools\node-v24.15.0-win-x64;' + $env:PATH
+cd C:\Users\wkeoo93\Desktop\codexs\open-design
+corepack pnpm tools-dev start web --daemon-port 17456 --web-port 17573
+```
+
+- Check status with:
+
+```powershell
+$env:PATH='C:\Users\wkeoo93\Desktop\codexs\.tools\node-v24.15.0-win-x64;' + $env:PATH
+cd C:\Users\wkeoo93\Desktop\codexs\open-design
+corepack pnpm tools-dev status --json
+```
+
+- Expected URLs:
+  - OpenDesign web: `http://127.0.0.1:17573`
+  - OpenDesign daemon: `http://127.0.0.1:17456`
+  - Yeollock design project: `http://127.0.0.1:17573/projects/7f90c226-ecdb-4168-8045-e4663d9837fa`
+- If pnpm is not on PATH, use `corepack pnpm`; do not assume global pnpm is installed.
+- If Docker is unavailable, use the local source workflow above. Docker is optional for OpenDesign and is not required on this machine.
+- To fetch the current MCP install snippet for Codex or another MCP-compatible client, start OpenDesign and call `http://127.0.0.1:17456/api/mcp/install-info`. The returned command should point to the bundled Node 24 executable and `apps/daemon/dist/cli.js mcp`.
+- If OpenDesign/Figma is unavailable during a design task, state the failure plainly, then fall back to browser captures plus coordinate/spacing measurement. Do not claim OpenDesign was used unless this local web/daemon or another actual design-review surface was opened and checked.
 
 ## Owner Command Proxy Review Rhythm
 

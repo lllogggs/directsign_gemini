@@ -374,7 +374,7 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
   return (
     <div className="flex h-svh flex-col overflow-hidden bg-[#f7f6f3] font-sans text-neutral-950">
       <header className="z-30 shrink-0 border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
-        <div className="mx-auto flex h-[68px] max-w-[1320px] items-center justify-between px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto flex h-14 max-w-[1500px] items-center justify-between px-3 sm:px-5 lg:px-6">
           <Link to="/" className="flex shrink-0 items-center gap-3">
             <span className="flex h-10 w-10 items-center justify-center rounded-[13px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
               <ShieldCheck className="h-4 w-4" />
@@ -420,7 +420,7 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
         </div>
       </header>
 
-      <main className="mx-auto flex min-h-0 w-full min-w-0 max-w-[1320px] flex-1 flex-col px-4 py-3 sm:px-6 lg:px-8">
+      <main className="mx-auto flex min-h-0 w-full min-w-0 max-w-[1500px] flex-1 flex-col px-3 py-3 sm:px-5 lg:px-6">
         <section className="min-w-0 overflow-hidden rounded-[14px] border border-neutral-200 bg-[#fdfdfb] shadow-[0_18px_44px_rgba(23,26,23,0.07)] lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
           <div className="shrink-0 border-b border-[#d9e0d9] bg-white px-4 py-3">
             <div className="flex flex-wrap items-center justify-between gap-3">

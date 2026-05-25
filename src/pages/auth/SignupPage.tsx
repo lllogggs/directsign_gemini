@@ -212,7 +212,7 @@ export function SignupPage({ role }: { role: SignupRole }) {
     return (
       <main className="min-h-screen bg-[#f5f7f2] px-5 pb-5 pt-0 font-sans text-[#141714] sm:px-6">
         <div className="mx-auto flex min-h-[calc(100vh-20px)] w-full max-w-[1500px] flex-col">
-          <header className="flex h-[58px] items-center justify-between 2xl:px-6">
+          <header className="flex h-14 items-center justify-between 2xl:px-6">
             <Link
               to="/"
               aria-label={`${PRODUCT_NAME} 홈`}

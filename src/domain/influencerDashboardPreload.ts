@@ -33,6 +33,10 @@ export const preloadInfluencerDashboard = () => {
   return influencerDashboardPreload;
 };
 
+export const primeInfluencerDashboard = (dashboard: InfluencerDashboardResponse) => {
+  influencerDashboardPreload = Promise.resolve(dashboard);
+};
+
 export const consumeInfluencerDashboardPreload = () => {
   const current = influencerDashboardPreload;
   influencerDashboardPreload = undefined;

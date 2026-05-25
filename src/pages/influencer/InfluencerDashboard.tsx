@@ -22,7 +22,6 @@ import {
   Megaphone,
   MessageSquareText,
   Music2,
-  RefreshCw,
   Save,
   Search,
   Settings,
@@ -48,6 +47,7 @@ import {
   clearInfluencerDashboardPreload,
   consumeInfluencerDashboardPreload,
 } from "../../domain/influencerDashboardPreload";
+import { waitForFastLoginTransition } from "../../domain/fastLoginTransition";
 import { buildLoginRedirect } from "../../domain/navigation";
 import {
   formatContractTitleForDisplay,
@@ -428,6 +428,7 @@ export function InfluencerDashboard() {
     );
 
     try {
+      await waitForFastLoginTransition("influencer");
       const preloadedDashboard = consumeInfluencerDashboardPreload();
 
       if (preloadedDashboard) {
@@ -979,16 +980,102 @@ function InfluencerAccountSettingsMenu({
 
 function LoadingView() {
   return (
-    <div className="flex min-h-screen items-center justify-center px-5">
-      <div className="w-full max-w-sm rounded-lg border border-neutral-200/80 bg-white p-6 text-center shadow-[0_1px_2px_rgba(15,23,42,0.04),0_22px_60px_rgba(15,23,42,0.08)]">
-        <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-lg bg-neutral-950 text-white shadow-[0_8px_24px_rgba(15,23,42,0.16)]">
-          <RefreshCw className="h-5 w-5 animate-spin" />
+    <>
+      <header className="sticky top-0 z-30 border-b border-neutral-200/70 bg-white/92 backdrop-blur">
+        <div className="mx-auto flex h-14 max-w-[1500px] items-center justify-between px-3 sm:px-5 lg:px-6">
+          <div className="flex h-10 min-w-10 shrink-0 items-center gap-3 rounded-[12px] px-1">
+            <span className="flex h-[34px] w-[34px] items-center justify-center rounded-[11px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
+              <ShieldCheck className="h-4 w-4" strokeWidth={2} />
+            </span>
+            <span className="font-neo-heavy hidden text-[18px] leading-none sm:inline">
+              {PRODUCT_NAME}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="h-10 w-20 rounded-[9px] bg-neutral-950" />
+            <span className="hidden h-10 w-24 rounded-[9px] border border-neutral-200 bg-white sm:block" />
+            <span className="hidden h-10 w-24 rounded-[9px] border border-neutral-200 bg-white sm:block" />
+          </div>
         </div>
-        <p className="mt-4 text-sm font-semibold text-neutral-950">
-          인플루언서 대시보드를 불러오는 중
-        </p>
-      </div>
-    </div>
+      </header>
+
+      <main className="mx-auto w-full min-w-0 max-w-[1500px] px-3 py-2.5 sm:px-5 lg:flex lg:h-[calc(100vh-56px)] lg:flex-col lg:overflow-hidden lg:px-6">
+        <section className="min-w-0 overflow-hidden rounded-[10px] border border-neutral-200/90 bg-white shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_18px_46px_rgba(23,26,23,0.055)] lg:flex lg:h-full lg:flex-col">
+          <div className="border-b border-[#d9e0d9] bg-white px-4 py-2">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h1 className="truncate text-[17px] font-bold text-[#171a17]">
+                내 계약
+              </h1>
+              <span className="h-8 w-24 rounded-[8px] border border-neutral-200 bg-neutral-50" />
+            </div>
+          </div>
+          <div className="min-w-0 p-2.5 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+            <div className="rounded-[10px] border border-neutral-200 bg-white">
+              <div className="grid grid-cols-4 rounded-t-[10px] bg-[#e8e5df] text-[13px] font-extrabold text-neutral-700">
+                {["지원중", "진행중", "완료", "미선정"].map((label, index) => (
+                  <div
+                    key={label}
+                    className={`flex h-11 items-center px-3 ${
+                      index === 0 ? "bg-white text-neutral-950" : ""
+                    }`}
+                  >
+                    {label}
+                  </div>
+                ))}
+              </div>
+              <div className="border-b border-neutral-100 px-3 py-2">
+                <p className="text-[13px] font-extrabold text-neutral-950">
+                  계약 목록
+                </p>
+                <p className="mt-0.5 text-[12px] font-semibold text-neutral-500">
+                  플랫폼, 브랜드, 계약명, 지급내용, 마감일, 현 단계
+                </p>
+              </div>
+              <div className="grid gap-2 border-b border-neutral-100 px-3 py-2 sm:grid-cols-[minmax(220px,1fr)_150px]">
+                <input
+                  type="search"
+                  aria-label="계약 검색"
+                  placeholder="계약명으로 검색"
+                  className="h-10 min-w-0 rounded-[9px] border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-700 outline-none"
+                />
+                <select
+                  aria-label="플랫폼 필터"
+                  className="h-10 rounded-[9px] border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-700 outline-none"
+                  defaultValue="all"
+                >
+                  <option value="all">전체</option>
+                  <option value="instagram">인스타</option>
+                  <option value="youtube">유튜브</option>
+                </select>
+              </div>
+              <div className="grid grid-cols-[90px_120px_minmax(180px,1fr)_150px_130px_120px] border-b border-neutral-100 px-3 py-2 text-[12px] font-bold text-neutral-500">
+                <span>플랫폼</span>
+                <span>브랜드</span>
+                <span>계약명</span>
+                <span>지급내용</span>
+                <span>마감일</span>
+                <span>현 단계</span>
+              </div>
+              <div className="space-y-2 px-3 py-4">
+                {[0, 1, 2].map((item) => (
+                  <div
+                    key={item}
+                    className="grid grid-cols-[90px_120px_minmax(180px,1fr)_150px_130px_120px] items-center gap-0"
+                  >
+                    <span className="h-7 w-16 rounded-[7px] bg-neutral-100" />
+                    <span className="h-4 w-20 rounded bg-neutral-100" />
+                    <span className="h-4 w-44 rounded bg-neutral-100" />
+                    <span className="h-4 w-24 rounded bg-neutral-100" />
+                    <span className="h-4 w-20 rounded bg-neutral-100" />
+                    <span className="h-7 w-20 rounded-[7px] bg-neutral-100" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </>
   );
 }
 

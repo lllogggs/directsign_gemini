@@ -910,7 +910,7 @@ function CampaignShell({
   return (
     <main className="flex h-svh flex-col overflow-hidden bg-[#f7f6f3] font-sans text-neutral-950">
       <header className="z-30 shrink-0 border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
-        <div className="mx-auto flex h-12 max-w-[1320px] items-center justify-between px-4 sm:h-14 sm:px-6 lg:px-8">
+        <div className="mx-auto flex h-14 max-w-[1500px] items-center justify-between px-3 sm:px-5 lg:px-6">
           <Link to="/" className="flex shrink-0 items-center gap-3">
             <span className="flex h-9 w-9 items-center justify-center rounded-[12px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)] sm:h-10 sm:w-10 sm:rounded-[13px]">
               <ShieldCheck className="h-4 w-4" />
@@ -934,7 +934,7 @@ function CampaignShell({
       </header>
 
       <section className="shrink-0 border-b border-neutral-200/80 bg-[#f7f6f3]">
-        <div className="mx-auto max-w-[1320px] px-4 py-2.5 sm:px-6 sm:py-3 lg:px-8">
+        <div className="mx-auto max-w-[1500px] px-3 py-2.5 sm:px-5 sm:py-3 lg:px-6">
           <p className="inline-flex items-center gap-2 text-[12px] font-extrabold text-neutral-500 sm:text-[13px]">
             <Megaphone className="h-4 w-4" />
             {eyebrow}
@@ -961,7 +961,7 @@ function CampaignShell({
         </div>
       </section>
 
-      <div className="mx-auto flex min-h-0 w-full max-w-[1320px] flex-1 flex-col overflow-y-auto px-4 py-2 sm:px-6 sm:py-3 lg:px-8">
+      <div className="mx-auto flex min-h-0 w-full max-w-[1500px] flex-1 flex-col overflow-y-auto px-3 py-2 sm:px-5 sm:py-3 lg:px-6">
         {children}
       </div>
     </main>

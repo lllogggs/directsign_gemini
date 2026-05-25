@@ -61,7 +61,7 @@ export function AuthLoginScreen({
   return (
     <main className="h-svh overflow-hidden bg-[#f7f6f3] px-4 pb-2 pt-0 font-sans text-neutral-950 sm:px-6 sm:pb-5 sm:pt-0">
       <div className="mx-auto flex h-full min-h-0 w-full max-w-[1500px] flex-col">
-        <header className="flex h-[58px] shrink-0 items-center justify-between 2xl:px-6">
+        <header className="flex h-14 shrink-0 items-center justify-between 2xl:px-6">
           <Link
             to="/"
             aria-label={`${PRODUCT_NAME} 홈`}

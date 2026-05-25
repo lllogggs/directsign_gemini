@@ -888,7 +888,8 @@ export function ContractBuilder() {
 
   return (
     <div className="flex min-h-[100dvh] flex-col bg-[#f4f5f2] font-sans text-neutral-950 lg:h-[100dvh] lg:overflow-hidden">
-      <header className="z-10 flex h-[64px] shrink-0 items-center justify-between border-b border-neutral-200/70 bg-white/92 px-5 backdrop-blur md:px-8">
+      <header className="z-10 shrink-0 border-b border-neutral-200/70 bg-white/92 backdrop-blur">
+        <div className="mx-auto flex h-14 w-full max-w-[1500px] items-center justify-between px-3 sm:px-5 lg:px-6">
         <div className="flex items-center gap-4">
           <button
             type="button"
@@ -916,9 +917,10 @@ export function ContractBuilder() {
           <LogOut className="h-4 w-4" strokeWidth={1.8} />
           <span className="hidden sm:inline">로그아웃</span>
         </button>
+        </div>
       </header>
 
-      <main className="grid flex-1 grid-cols-1 lg:min-h-0 lg:grid-cols-[minmax(400px,500px)_minmax(0,1fr)] lg:gap-4 lg:overflow-hidden lg:px-5 lg:pb-5 xl:grid-cols-[188px_minmax(400px,480px)_minmax(460px,1fr)]">
+      <main className="mx-auto grid w-full max-w-[1500px] flex-1 grid-cols-1 px-3 pb-3 sm:px-5 lg:min-h-0 lg:grid-cols-[minmax(400px,500px)_minmax(0,1fr)] lg:gap-4 lg:overflow-hidden lg:px-6 lg:pb-5 xl:grid-cols-[188px_minmax(400px,480px)_minmax(460px,1fr)]">
         <aside className="relative z-10 hidden min-h-0 flex-col gap-10 overflow-y-auto border border-neutral-200/90 bg-white p-5 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_18px_46px_rgba(23,26,23,0.05)] xl:mt-5 xl:flex xl:rounded-[10px]">
           <div>
             <h3 className="mb-10 text-[10px] font-medium uppercase tracking-[0.2em] text-neutral-400">

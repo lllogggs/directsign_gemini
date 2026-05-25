@@ -3,17 +3,29 @@ import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { AuthLoginScreen } from "../../components/AuthLoginScreen";
 import { apiFetch } from "../../domain/api";
 import {
+  preloadAdvertiserDashboardBootstrap,
+  primeAdvertiserDashboardBootstrap,
+} from "../../domain/advertiserDashboardPreload";
+import {
   clearAdvertiserSessionCache,
   getAdvertiserSessionCache,
   rememberAdvertiserSession,
 } from "../../domain/advertiserSessionCache";
+import {
+  finishFastLoginTransition,
+  isFastLoginTransitionPending,
+  startFastLoginTransition,
+  waitForFastLoginTransition,
+} from "../../domain/fastLoginTransition";
 import { buildLoginRedirect } from "../../domain/navigation";
 import { translateApiErrorMessage } from "../../domain/userMessages";
 import {
   clearVerificationSummaryCache,
+  primeVerificationSummary,
   preloadVerificationSummary,
 } from "../../hooks/useVerificationSummary";
-import { useAppStore } from "../../store";
+import { type Contract, useAppStore } from "../../store";
+import type { VerificationSummary } from "../../domain/verification";
 
 type AdvertiserSessionResponse = {
   authenticated?: boolean;
@@ -25,7 +37,21 @@ type AdvertiserSessionResponse = {
     company_name?: string | null;
     verification_status?: string;
   };
+  dashboard?: {
+    contracts?: Contract[];
+    verification?: VerificationSummary;
+    source?: "supabase" | "file";
+    allow_local_merge?: boolean;
+    demo_mode?: boolean;
+  };
   error?: string;
+};
+
+const waitSoft = async <T,>(promise: Promise<T>, timeoutMs: number) => {
+  await Promise.race([
+    promise.then(() => undefined).catch(() => undefined),
+    new Promise<void>((resolve) => window.setTimeout(resolve, timeoutMs)),
+  ]);
 };
 
 export function AdvertiserAuthGate({
@@ -41,11 +67,20 @@ export function AdvertiserAuthGate({
   const location = useLocation();
   const navigate = useNavigate();
   const cachedSession = getAdvertiserSessionCache();
-  const [isChecking, setIsChecking] = useState(!cachedSession);
+  const initialLoginError =
+    typeof (location.state as { loginError?: unknown } | null)?.loginError ===
+    "string"
+      ? ((location.state as { loginError: string }).loginError)
+      : "";
+  const shouldShowLoginImmediately =
+    Boolean(redirectAfterLogin) && !redirectUnauthenticated;
+  const [isChecking, setIsChecking] = useState(
+    !cachedSession && !shouldShowLoginImmediately,
+  );
   const [isAuthenticated, setIsAuthenticated] = useState(Boolean(cachedSession));
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useState(initialLoginError);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -66,35 +101,38 @@ export function AdvertiserAuthGate({
     await hydrateContracts(options);
   }, [hydrateContracts]);
 
-  const refreshContractsInBackground = useCallback((options?: { force?: boolean; delayMs?: number }) => {
-    const run = () => {
-      void refreshContracts({ force: options?.force }).catch((refreshError) => {
-        console.warn("[yeollock.me] advertiser contracts refresh failed", refreshError);
-      });
-    };
-    if (options?.delayMs && options.delayMs > 0) {
-      window.setTimeout(run, options.delayMs);
-      return;
+  const preloadDashboard = useCallback(async () => {
+    try {
+      await preloadAdvertiserDashboardBootstrap();
+    } catch (preloadError) {
+      console.warn("[yeollock.me] advertiser dashboard preload failed", preloadError);
+      await Promise.allSettled([
+        preloadVerificationSummary("advertiser"),
+        refreshContracts({ force: true }),
+      ]);
     }
-    run();
   }, [refreshContracts]);
 
-  const preloadVerificationInBackground = useCallback((delayMs = 0) => {
+  const preloadDashboardInBackground = useCallback((delayMs = 0) => {
     const run = () => {
-      void preloadVerificationSummary("advertiser").catch((preloadError) => {
-        console.warn("[yeollock.me] advertiser verification preload failed", preloadError);
-      });
+      void preloadDashboard();
     };
     if (delayMs > 0) {
       window.setTimeout(run, delayMs);
       return;
     }
     run();
-  }, []);
+  }, [preloadDashboard]);
 
   useEffect(() => {
     let cancelled = false;
     const hadCachedSession = Boolean(getAdvertiserSessionCache());
+
+    if (shouldShowLoginImmediately && !hadCachedSession) {
+      return () => {
+        cancelled = true;
+      };
+    }
 
     const checkSession = async () => {
       try {
@@ -105,11 +143,10 @@ export function AdvertiserAuthGate({
         const data = (await response.json()) as AdvertiserSessionResponse;
 
         if (!cancelled && response.ok && data.authenticated === true) {
-          rememberAdvertiserSession();
+          rememberAdvertiserSession(data.user);
           setIsAuthenticated(true);
           setIsChecking(false);
-          refreshContractsInBackground();
-          preloadVerificationInBackground();
+          preloadDashboardInBackground();
           return;
         }
 
@@ -129,21 +166,35 @@ export function AdvertiserAuthGate({
       }
     };
 
-    const timer = window.setTimeout(checkSession, hadCachedSession ? 1200 : 0);
+    const timer = window.setTimeout(() => {
+      const run = async () => {
+        if (isFastLoginTransitionPending("advertiser")) {
+          await waitForFastLoginTransition("advertiser", 2_500);
+        }
+        if (!cancelled) {
+          await checkSession();
+        }
+      };
+      void run();
+    }, 0);
 
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [preloadVerificationInBackground, refreshContractsInBackground]);
+  }, [
+    preloadDashboardInBackground,
+    shouldShowLoginImmediately,
+  ]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setIsSubmitting(true);
     setError("");
+    let navigatedOptimistically = false;
 
     try {
-      const response = await apiFetch("/api/advertiser/login", {
+      const loginPromise = apiFetch("/api/advertiser/login", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -152,6 +203,15 @@ export function AdvertiserAuthGate({
         credentials: "include",
         body: JSON.stringify({ email, password }),
       });
+
+      if (redirectAfterLogin) {
+        navigatedOptimistically = true;
+        startFastLoginTransition("advertiser");
+        rememberAdvertiserSession();
+        navigate(redirectAfterLogin, { replace: true });
+      }
+
+      const response = await loginPromise;
       const data = (await response.json()) as AdvertiserSessionResponse;
 
       if (!response.ok || data.authenticated !== true) {
@@ -164,32 +224,82 @@ export function AdvertiserAuthGate({
       }
 
       setIsAuthenticated(true);
-      rememberAdvertiserSession();
-      preloadVerificationInBackground();
-      refreshContractsInBackground({ force: true, delayMs: 50 });
-      if (redirectAfterLogin) {
+      rememberAdvertiserSession(data.user);
+      if (data.dashboard?.verification) {
+        primeVerificationSummary("advertiser", data.dashboard.verification);
+      }
+      if (Array.isArray(data.dashboard?.contracts)) {
+        primeAdvertiserDashboardBootstrap(data.dashboard);
+      }
+      const dashboardPreload = Array.isArray(data.dashboard?.contracts)
+        ? undefined
+        : preloadDashboard();
+      if (dashboardPreload) {
+        await waitSoft(dashboardPreload, 260);
+      }
+      finishFastLoginTransition("advertiser");
+      if (dashboardPreload) void dashboardPreload;
+      if (redirectAfterLogin && !navigatedOptimistically) {
         navigate(redirectAfterLogin, { replace: true });
         return;
       }
     } catch (loginError) {
-      setError(
+      finishFastLoginTransition("advertiser");
+      clearAdvertiserSessionCache();
+      const message =
         loginError instanceof Error
           ? translateApiErrorMessage(
-              loginError.message,
-              "광고주 계정으로 로그인할 수 없습니다.",
-            )
-          : "광고주 계정으로 로그인할 수 없습니다.",
-      );
+            loginError.message,
+            "광고주 계정으로 로그인할 수 없습니다.",
+          )
+          : "광고주 계정으로 로그인할 수 없습니다.";
+      if (navigatedOptimistically) {
+        navigate(
+          buildLoginRedirect(
+            "/login/advertiser",
+            redirectAfterLogin ?? "/advertiser/dashboard",
+            "/advertiser/dashboard",
+            ["/advertiser"],
+          ),
+          { replace: true, state: { loginError: message } },
+        );
+        return;
+      }
+      setError(message);
     } finally {
-      setIsSubmitting(false);
+      if (!navigatedOptimistically) {
+        setIsSubmitting(false);
+      }
     }
   };
 
+  useEffect(() => {
+    if (!initialLoginError) return;
+    navigate(`${location.pathname}${location.search}`, {
+      replace: true,
+      state: null,
+    });
+  }, [initialLoginError, location.pathname, location.search, navigate]);
+
   if (isChecking) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#f6f7f9] font-sans">
-        <div className="rounded-lg border border-neutral-200 bg-white px-5 py-4 text-[14px] font-semibold text-neutral-900 shadow-sm">
-          접속 확인 중
+      <div className="min-h-screen bg-[#f4f5f2] px-4 py-3 font-sans text-neutral-950">
+        <div className="mx-auto flex h-14 max-w-[1500px] items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="h-[34px] w-[34px] rounded-[11px] bg-neutral-950 shadow-[0_8px_18px_rgba(15,23,42,0.12)]" />
+            <span className="h-5 w-14 rounded bg-neutral-200" />
+          </div>
+          <span className="h-10 w-20 rounded-[10px] bg-white" />
+        </div>
+        <div className="mx-auto mt-4 max-w-[1500px] rounded-[12px] border border-neutral-200 bg-white p-4 shadow-[0_1px_0_rgba(15,23,42,0.035)]">
+          <span className="sr-only">화면 준비 중</span>
+          <div className="h-6 w-44 rounded bg-neutral-200" />
+          <div className="mt-4 grid gap-2 sm:grid-cols-3">
+            <div className="h-12 rounded-[10px] bg-neutral-100" />
+            <div className="h-12 rounded-[10px] bg-neutral-100" />
+            <div className="h-12 rounded-[10px] bg-neutral-100" />
+          </div>
+          <div className="mt-4 h-[55vh] rounded-[10px] bg-neutral-50" />
         </div>
       </div>
     );
