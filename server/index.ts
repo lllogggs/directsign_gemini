@@ -8930,26 +8930,29 @@ const readAdvertiserScopedSupabaseContracts = async (
   if (!useSupabase) return undefined;
 
   const profileEmail = normalizeEmail(auth.profile.email ?? auth.user.email ?? "");
-  const rowsByAdvertiserIdPromise = readSupabaseLegacyContractRows(
-    `&advertiser_id=eq.${encodeURIComponent(
-      auth.profile.id,
-    )}&order=updated_at.desc`,
-    "advertiser scoped legacy",
-  );
-  const rowsByManagerEmailPromise = hasText(profileEmail)
-    ? readSupabaseLegacyContractRows(
+
+  try {
+    const rowsByAdvertiserId = await readSupabaseLegacyContractRows(
+      `&advertiser_id=eq.${encodeURIComponent(
+        auth.profile.id,
+      )}&order=updated_at.desc`,
+      "advertiser scoped legacy",
+    );
+
+    if (rowsByAdvertiserId.length > 0 || !hasText(profileEmail)) {
+      return restoreSupabaseLegacyContractRows(rowsByAdvertiserId).filter(
+        (contract) => canAdvertiserAccessLegacyContract(auth, contract),
+      );
+    }
+
+    const rows = uniqueRowsById(
+      await readSupabaseLegacyContractRows(
         `&contract->advertiser_info->>manager=eq.${encodeURIComponent(
           profileEmail,
         )}&order=updated_at.desc`,
         "advertiser manager legacy",
-      )
-    : Promise.resolve([] as SupabaseLegacyContractProjection[]);
-
-  try {
-    const rows = uniqueRowsById([
-      ...(await rowsByAdvertiserIdPromise),
-      ...(await rowsByManagerEmailPromise),
-    ]);
+      ),
+    );
     return restoreSupabaseLegacyContractRows(rows).filter((contract) =>
       canAdvertiserAccessLegacyContract(auth, contract),
     );
@@ -16507,7 +16510,9 @@ app.use(
 
 const isVercelFunction = isHostedRuntime;
 
-warmDashboardDataCachesInBackground("startup");
+if (!isVercelFunction) {
+  warmDashboardDataCachesInBackground("startup");
+}
 
 if (!isVercelFunction) {
   const httpServer = createHttpServer(app);

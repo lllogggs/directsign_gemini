@@ -229,6 +229,7 @@ Example option format:
   - Authentication checks should not block the visible dashboard shell when a valid recent session or verified token claim can establish the role safely enough for initial rendering.
   - Sensitive writes and contract/signature mutations still need authoritative session checks; fast-path auth is for read/navigation UX, not for weakening permissions.
   - Performance QA must separate "screen shell visible" from "real account/list data populated." Do not call login or dashboard performance solved if the shell is fast but account, verification, counts, or contract rows arrive much later or briefly show false empty/negative states.
+  - Before adding workaround loading behavior for production latency, check deployment/data-source geography. Server functions should run close to the database and primary users when authentication and dashboard data depend on several server-side reads.
   - Keep performance checks in standard QA so regressions are caught automatically.
 - Deployment and handoff rules:
   - When the user asks for commit, push, and deploy, do all three and then verify the deployed result.

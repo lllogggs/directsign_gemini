@@ -4,6 +4,9 @@
   "functions": {
     "api/index.ts": {
       "maxDuration": 30,
+      "regions": [
+        "icn1"
+      ],
       "includeFiles": "public/fonts/**",
       "excludeFiles": "data/**"
     }
