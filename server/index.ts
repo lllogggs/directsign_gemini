@@ -13643,6 +13643,29 @@ app.post("/api/advertiser/login", async (request, response) => {
     }
 
     const profileByEmailPromise = readProfileByEmail(email).catch(() => undefined);
+    const prefetchedOrganizationPromise = profileByEmailPromise.then((profile) =>
+      isAdvertiserRole(profile?.role)
+        ? readDefaultOrganizationForProfile(profile.id)
+        : undefined,
+    );
+    const prefetchedDashboardPromise = profileByEmailPromise
+      .then((profile) =>
+        isAdvertiserRole(profile?.role)
+          ? buildAdvertiserLoginDashboardBootstrap({
+              user: { id: profile.id, email: profile.email },
+              accessToken: "",
+              profile,
+            })
+          : undefined,
+      )
+      .catch((error) => {
+        console.warn(
+          `[${productName}] advertiser login prefetch failed: ${
+            error instanceof Error ? error.message : "unknown error"
+          }`,
+        );
+        return undefined;
+      });
     const session = await createSupabasePasswordSession(email, password);
     const profileByEmail = await profileByEmailPromise;
     const profile =
@@ -13666,13 +13689,21 @@ app.post("/api/advertiser/login", async (request, response) => {
       accessToken: session.access_token,
       profile,
     } satisfies AdvertiserSession;
-    const [organization, dashboard] = await Promise.all([
-      readDefaultOrganizationForProfile(profile.id),
-      buildAdvertiserLoginDashboardBootstrap(advertiserSession),
+    const canUsePrefetch = profileByEmail?.id === profile.id;
+    const [organization, prefetchedDashboard] = canUsePrefetch
+      ? await Promise.all([
+          prefetchedOrganizationPromise,
+          prefetchedDashboardPromise,
+        ])
+      : [undefined, undefined];
+    const [resolvedOrganization, dashboard] = await Promise.all([
+      organization ?? readDefaultOrganizationForProfile(profile.id),
+      prefetchedDashboard ??
+        buildAdvertiserLoginDashboardBootstrap(advertiserSession),
     ]);
     response.json({
       authenticated: true,
-      user: buildAdvertiserSessionUser(session.user, profile, organization),
+      user: buildAdvertiserSessionUser(session.user, profile, resolvedOrganization),
       dashboard,
     });
     if (!profile.email_verified_at) {
