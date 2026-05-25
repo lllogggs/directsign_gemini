@@ -1717,17 +1717,6 @@ const readProfileByEmail = async (email: string) => {
   return profile;
 };
 
-const readProfileByEmailWithSoftTimeout = async (
-  email: string,
-  timeoutMs = 80,
-) => {
-  const profilePromise = readProfileByEmail(email).catch(() => undefined);
-  const timeoutPromise = new Promise<undefined>((resolve) => {
-    setTimeout(() => resolve(undefined), timeoutMs);
-  });
-  return Promise.race([profilePromise, timeoutPromise]);
-};
-
 const syncProfileEmailVerifiedAt = async (authUser: SupabaseAuthUser) => {
   const verifiedAt = authUser.email_confirmed_at ?? authUser.confirmed_at;
   if (!useSupabase || !authUser.id || !verifiedAt) return;
@@ -13541,7 +13530,7 @@ app.post("/api/advertiser/login", async (request, response) => {
       return;
     }
 
-    const profileByEmailPromise = readProfileByEmailWithSoftTimeout(email);
+    const profileByEmailPromise = readProfileByEmail(email).catch(() => undefined);
     const session = await createSupabasePasswordSession(email, password);
     const profileByEmail = await profileByEmailPromise;
     const profile =
@@ -13749,7 +13738,7 @@ app.post("/api/influencer/login", async (request, response, _next) => {
       return;
     }
 
-    const profileByEmailPromise = readProfileByEmailWithSoftTimeout(email);
+    const profileByEmailPromise = readProfileByEmail(email).catch(() => undefined);
     const session = await createSupabasePasswordSession(email, password);
     const profileByEmail = await profileByEmailPromise;
     const profile =
