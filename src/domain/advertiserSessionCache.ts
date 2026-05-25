@@ -8,6 +8,7 @@ export type AdvertiserSessionUserSnapshot = {
   role?: string;
   company_name?: string | null;
   verification_status?: string;
+  business_registration_number?: string | null;
 };
 
 let advertiserSessionCache:

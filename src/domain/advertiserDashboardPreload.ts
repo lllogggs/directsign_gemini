@@ -1,11 +1,14 @@
 import { apiFetch } from "./api.js";
 import { primeVerificationSummary } from "../hooks/useVerificationSummary.js";
+import { primeMarketplaceMessageSummary } from "../hooks/useMarketplaceMessageSummary.js";
 import { useAppStore, type Contract } from "../store.js";
+import type { MarketplaceMessageSummary } from "./marketplaceInbox.js";
 import type { VerificationSummary } from "./verification.js";
 
 export type AdvertiserDashboardBootstrap = {
   contracts?: Contract[];
   verification?: VerificationSummary;
+  message_summary?: MarketplaceMessageSummary;
   source?: "supabase" | "file";
   allow_local_merge?: boolean;
   demo_mode?: boolean;
@@ -20,6 +23,9 @@ const applyAdvertiserDashboardBootstrap = (
 ) => {
   if (dashboard.verification) {
     primeVerificationSummary("advertiser", dashboard.verification);
+  }
+  if (dashboard.message_summary) {
+    primeMarketplaceMessageSummary("advertiser", dashboard.message_summary);
   }
   if (Array.isArray(dashboard.contracts)) {
     useAppStore.getState().primeContracts({

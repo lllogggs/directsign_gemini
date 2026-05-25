@@ -224,7 +224,8 @@ Example option format:
 - Performance rules:
   - Login, route transitions, filters, search, and main CTA clicks should feel immediate.
   - Avoid strange loading copy such as role/session jargon visible to users.
-  - Prefer showing the core screen first and deferring non-critical summaries, messages, profile details, or secondary API calls.
+  - Do not treat delayed or partial data as a real performance fix. Critical account, verification, contract list, counts, and visible dashboard state should arrive together through a consolidated fast path.
+  - Defer only genuinely non-visible secondary data. Do not hide a slow authentication or verification path behind optimistic UI when the Product Owner asked for the full information to appear quickly at once.
   - Authentication checks should not block the visible dashboard shell when a valid recent session or verified token claim can establish the role safely enough for initial rendering.
   - Sensitive writes and contract/signature mutations still need authoritative session checks; fast-path auth is for read/navigation UX, not for weakening permissions.
   - Performance QA must separate "screen shell visible" from "real account/list data populated." Do not call login or dashboard performance solved if the shell is fast but account, verification, counts, or contract rows arrive much later or briefly show false empty/negative states.

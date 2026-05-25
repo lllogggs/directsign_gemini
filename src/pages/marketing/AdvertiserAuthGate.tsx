@@ -26,6 +26,7 @@ import {
 } from "../../hooks/useVerificationSummary";
 import { type Contract, useAppStore } from "../../store";
 import type { VerificationSummary } from "../../domain/verification";
+import type { MarketplaceMessageSummary } from "../../domain/marketplaceInbox";
 
 type AdvertiserSessionResponse = {
   authenticated?: boolean;
@@ -36,10 +37,12 @@ type AdvertiserSessionResponse = {
     role?: string;
     company_name?: string | null;
     verification_status?: string;
+    business_registration_number?: string | null;
   };
   dashboard?: {
     contracts?: Contract[];
     verification?: VerificationSummary;
+    message_summary?: MarketplaceMessageSummary;
     source?: "supabase" | "file";
     allow_local_merge?: boolean;
     demo_mode?: boolean;
@@ -191,7 +194,6 @@ export function AdvertiserAuthGate({
     event.preventDefault();
     setIsSubmitting(true);
     setError("");
-    let navigatedOptimistically = false;
 
     try {
       const loginPromise = apiFetch("/api/advertiser/login", {
@@ -205,10 +207,7 @@ export function AdvertiserAuthGate({
       });
 
       if (redirectAfterLogin) {
-        navigatedOptimistically = true;
         startFastLoginTransition("advertiser");
-        rememberAdvertiserSession();
-        navigate(redirectAfterLogin, { replace: true });
       }
 
       const response = await loginPromise;
@@ -239,7 +238,7 @@ export function AdvertiserAuthGate({
       }
       finishFastLoginTransition("advertiser");
       if (dashboardPreload) void dashboardPreload;
-      if (redirectAfterLogin && !navigatedOptimistically) {
+      if (redirectAfterLogin) {
         navigate(redirectAfterLogin, { replace: true });
         return;
       }
@@ -253,23 +252,9 @@ export function AdvertiserAuthGate({
             "광고주 계정으로 로그인할 수 없습니다.",
           )
           : "광고주 계정으로 로그인할 수 없습니다.";
-      if (navigatedOptimistically) {
-        navigate(
-          buildLoginRedirect(
-            "/login/advertiser",
-            redirectAfterLogin ?? "/advertiser/dashboard",
-            "/advertiser/dashboard",
-            ["/advertiser"],
-          ),
-          { replace: true, state: { loginError: message } },
-        );
-        return;
-      }
       setError(message);
     } finally {
-      if (!navigatedOptimistically) {
-        setIsSubmitting(false);
-      }
+      setIsSubmitting(false);
     }
   };
 

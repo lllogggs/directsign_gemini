@@ -852,6 +852,11 @@ interface SupabaseOrganizationMemberRow {
   is_default?: boolean | null;
 }
 
+type SupabaseOrganizationMemberWithOrganizationRow =
+  SupabaseOrganizationMemberRow & {
+    organizations?: SupabaseOrganizationRow | SupabaseOrganizationRow[] | null;
+  };
+
 interface StoredPrivateFile {
   provider: "supabase_storage" | "local_file";
   bucket: string;
@@ -1471,6 +1476,10 @@ const organizationCache = new Map<
   string,
   { organization?: SupabaseOrganizationRow; cachedAt: number }
 >();
+const organizationInflight = new Map<
+  string,
+  Promise<SupabaseOrganizationRow | undefined>
+>();
 const influencerDashboardCacheTtlMs =
   parsePositiveNumberEnv(process.env.SUPABASE_INFLUENCER_DASHBOARD_CACHE_SECONDS, 15) *
   1000;
@@ -1633,6 +1642,7 @@ const rememberOrganizationCache = (
 
 const invalidateOrganizationCache = () => {
   organizationCache.clear();
+  organizationInflight.clear();
 };
 
 const cloneInfluencerDashboard = (
@@ -1752,28 +1762,79 @@ const readDefaultOrganizationForProfile = async (profileId: string) => {
   if (cachedOrganization !== undefined || organizationCache.has(profileId)) {
     return cachedOrganization;
   }
+  const inflight = organizationInflight.get(profileId);
+  if (inflight) return inflight;
 
-  const memberships = await readSupabaseRows<SupabaseOrganizationMemberRow>(
-    "organization_members",
-    `?select=organization_id,profile_id,role,is_default&profile_id=eq.${encodeURIComponent(
-      profileId,
-    )}&order=is_default.desc&limit=1`,
-    "organization membership",
-  );
-  const organizationId = memberships[0]?.organization_id;
+  const request = (async () => {
+    let memberships: SupabaseOrganizationMemberWithOrganizationRow[];
+    try {
+      memberships =
+        await readSupabaseRows<SupabaseOrganizationMemberWithOrganizationRow>(
+          "organization_members",
+          `?select=organization_id,profile_id,role,is_default,organizations(*)&profile_id=eq.${encodeURIComponent(
+            profileId,
+          )}&order=is_default.desc&limit=1`,
+          "organization membership with organization",
+        );
+    } catch {
+      memberships = await readSupabaseRows<SupabaseOrganizationMemberRow>(
+        "organization_members",
+        `?select=organization_id,profile_id,role,is_default&profile_id=eq.${encodeURIComponent(
+          profileId,
+        )}&order=is_default.desc&limit=1`,
+        "organization membership",
+      );
+    }
 
-  if (!organizationId) return undefined;
+    const organizationId = memberships[0]?.organization_id;
+    const embeddedOrganization = Array.isArray(memberships[0]?.organizations)
+      ? memberships[0]?.organizations?.[0]
+      : memberships[0]?.organizations;
 
-  const organizations = await readSupabaseRows<SupabaseOrganizationRow>(
-    "organizations",
-    `?select=*&id=eq.${encodeURIComponent(organizationId)}&limit=1`,
-    "organization",
-  );
+    if (!organizationId) {
+      rememberOrganizationCache(profileId, undefined);
+      return undefined;
+    }
 
-  const organization = organizations[0];
-  rememberOrganizationCache(profileId, organization);
-  return organization;
+    if (embeddedOrganization?.id) {
+      rememberOrganizationCache(profileId, embeddedOrganization);
+      return embeddedOrganization;
+    }
+
+    const organizations = await readSupabaseRows<SupabaseOrganizationRow>(
+      "organizations",
+      `?select=*&id=eq.${encodeURIComponent(organizationId)}&limit=1`,
+      "organization",
+    );
+
+    const organization = organizations[0];
+    rememberOrganizationCache(profileId, organization);
+    return organization;
+  })().finally(() => {
+    organizationInflight.delete(profileId);
+  });
+
+  organizationInflight.set(profileId, request);
+  return request;
 };
+
+const buildAdvertiserSessionUser = (
+  authUser: SupabaseAuthUser,
+  profile: SupabaseProfileRow,
+  organization?: SupabaseOrganizationRow,
+) => ({
+  id: profile.id,
+  email: profile.email ?? authUser.email,
+  name: profile.name,
+  role: profile.role,
+  company_name: organization?.name ?? profile.company_name,
+  verification_status:
+    organization?.business_verification_status ??
+    profile.verification_status ??
+    "not_submitted",
+  business_registration_number:
+    organization?.business_registration_number ?? undefined,
+});
 
 const isAdvertiserRole = (role: SupabaseProfileRow["role"] | undefined) =>
   role === "marketer";
@@ -1907,9 +1968,19 @@ const canAdvertiserAccessLegacyContract = (
 
 async function buildAdvertiserLoginDashboardBootstrap(auth: AdvertiserSession) {
   try {
-    const [store, verification] = await Promise.all([
+    const [store, verification, messageSummary] = await Promise.all([
       readStore(),
       buildAdvertiserScopedVerificationSummary(auth),
+      readMarketplaceMessagesForAdvertiser(auth, { summaryOnly: true })
+        .then((data) => data.summary)
+        .catch((error) => {
+          console.warn(
+            `[${productName}] advertiser message summary bootstrap failed: ${
+              error instanceof Error ? error.message : "unknown error"
+            }`,
+          );
+          return emptyMarketplaceMessageSummary();
+        }),
     ]);
     const contracts = store.contracts.filter((contract) =>
       canAdvertiserAccessLegacyContract(auth, contract),
@@ -1918,6 +1989,7 @@ async function buildAdvertiserLoginDashboardBootstrap(auth: AdvertiserSession) {
     return {
       contracts,
       verification,
+      message_summary: messageSummary,
       source: useSupabase ? "supabase" : "file",
       allow_local_merge: !useSupabase,
       demo_mode: demoMode,
@@ -1930,20 +2002,6 @@ async function buildAdvertiserLoginDashboardBootstrap(auth: AdvertiserSession) {
     );
     return undefined;
   }
-}
-
-function buildAdvertiserCachedDashboardBootstrap(auth: AdvertiserSession) {
-  const store = useSupabase ? readSupabaseContractStoreCache() : undefined;
-  if (!store) return undefined;
-
-  return {
-    contracts: store.contracts.filter((contract) =>
-      canAdvertiserAccessLegacyContract(auth, contract),
-    ),
-    source: "supabase" as const,
-    allow_local_merge: false,
-    demo_mode: demoMode,
-  };
 }
 
 const canInfluencerAccessLegacyContract = (
@@ -13345,17 +13403,11 @@ app.get("/api/advertiser/session", async (request, response, next) => {
       response.status(403).json({ authenticated: false });
       return;
     }
+    const organization = await readDefaultOrganizationForProfile(profile.id);
 
     response.json({
       authenticated: true,
-      user: {
-        id: profile.id,
-        email: profile.email ?? auth.user.email,
-        name: profile.name,
-        role: profile.role,
-        company_name: profile.company_name,
-        verification_status: profile.verification_status ?? "not_submitted",
-      },
+      user: buildAdvertiserSessionUser(auth.user, profile, organization),
     });
   } catch (error) {
     next(error);
@@ -13513,18 +13565,13 @@ app.post("/api/advertiser/login", async (request, response) => {
       accessToken: session.access_token,
       profile,
     } satisfies AdvertiserSession;
-    const dashboard = buildAdvertiserCachedDashboardBootstrap(advertiserSession);
-    void buildAdvertiserLoginDashboardBootstrap(advertiserSession);
+    const [organization, dashboard] = await Promise.all([
+      readDefaultOrganizationForProfile(profile.id),
+      buildAdvertiserLoginDashboardBootstrap(advertiserSession),
+    ]);
     response.json({
       authenticated: true,
-      user: {
-        id: profile.id,
-        email: profile.email ?? session.user.email,
-        name: profile.name,
-        role: profile.role,
-        company_name: profile.company_name,
-        verification_status: profile.verification_status ?? "not_submitted",
-      },
+      user: buildAdvertiserSessionUser(session.user, profile, organization),
       dashboard,
     });
     if (!profile.email_verified_at) {

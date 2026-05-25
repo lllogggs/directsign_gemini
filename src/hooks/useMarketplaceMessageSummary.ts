@@ -32,6 +32,16 @@ const getCachedMessageSummary = (role: MarketplaceInboxRole) => {
   return cache;
 };
 
+export function primeMarketplaceMessageSummary(
+  role: MarketplaceInboxRole,
+  summary: MarketplaceMessageSummary,
+) {
+  messageSummaryCache.set(role, {
+    summary,
+    cachedAt: Date.now(),
+  });
+}
+
 export function useMarketplaceMessageSummary(role: MarketplaceInboxRole): SummaryState {
   const cached = getCachedMessageSummary(role);
   const [summary, setSummary] = useState<MarketplaceMessageSummary>(

@@ -466,7 +466,10 @@ export function Dashboard() {
       meta: meta || undefined,
       email: email || undefined,
       businessNumber:
-        latest?.business_registration_number || account?.business_registration_number,
+        latest?.business_registration_number ||
+        account?.business_registration_number ||
+        cachedAdvertiserUser?.business_registration_number ||
+        undefined,
     };
   }, [cachedAdvertiserUser, contracts, verificationSummary]);
 
@@ -542,13 +545,19 @@ export function Dashboard() {
   }, []);
 
   useEffect(() => {
+    if (!searchParams.get("campaign")) return;
+    let active = true;
     const timer = window.setTimeout(() => {
       void waitForFastLoginTransition("advertiser").then(() => {
+        if (!active) return;
         void loadMarketplaceCampaignData();
       });
     }, 0);
-    return () => window.clearTimeout(timer);
-  }, [loadMarketplaceCampaignData]);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [loadMarketplaceCampaignData, searchParams]);
 
   const campaignGroups = useMemo(
     () =>
