@@ -2,6 +2,18 @@
   "version": 2,
   "outputDirectory": "dist",
   "functions": {
+    "api/advertiser/login.ts": {
+      "maxDuration": 10,
+      "regions": [
+        "icn1"
+      ]
+    },
+    "api/influencer/login.ts": {
+      "maxDuration": 10,
+      "regions": [
+        "icn1"
+      ]
+    },
     "api/index.ts": {
       "maxDuration": 30,
       "regions": [
