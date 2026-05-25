@@ -32,18 +32,6 @@ export function InfluencerLoginPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState(initialLoginError);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    void apiFetch("/api/auth/warmup", {
-      headers: { Accept: "application/json" },
-      signal: controller.signal,
-    }).catch(() => undefined);
-
-    return () => {
-      controller.abort();
-    };
-  }, []);
-
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setIsSubmitting(true);
