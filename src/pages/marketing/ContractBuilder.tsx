@@ -23,6 +23,7 @@ import {
 } from "../../hooks/useVerificationSummary";
 import { clearAdvertiserSessionCache } from "../../domain/advertiserSessionCache";
 import { PRODUCT_NAME } from "../../domain/brand";
+import { LEGAL_CONTACT_EMAIL } from "../../domain/legalEntity";
 import { ScreenHelpButton } from "../../components/ScreenHelp";
 import { SCREEN_HELP_CONTENT } from "../../domain/screenHelp";
 import { Button } from "@/components/ui/button";
@@ -49,8 +50,11 @@ import {
   CheckCircle2,
   Copy,
   FileText,
+  KeyRound,
   LogOut,
+  Mail,
   Plus,
+  Settings,
   ShieldCheck,
   Trash2,
 } from "lucide-react";
@@ -536,6 +540,18 @@ function getAdvertiserVerificationBuilderCopy(
   return copies[status];
 }
 
+const buildBuilderSupportMailtoHref = ({
+  subject,
+  body,
+}: {
+  subject: string;
+  body: string;
+}) => {
+  return `mailto:${LEGAL_CONTACT_EMAIL}?subject=${encodeURIComponent(
+    subject,
+  )}&body=${encodeURIComponent(body)}`;
+};
+
 export function ContractBuilder() {
   const navigate = useNavigate();
   const addContract = useAppStore((state) => state.addContract);
@@ -563,12 +579,19 @@ export function ContractBuilder() {
     advertiserDefaults?.latest_request?.submitted_by_name ||
       advertiserDefaults?.account?.name,
   );
+  const advertiserAccountForHeader = {
+    name: defaultAdvertiserName || "광고주 계정",
+    email:
+      advertiserDefaults?.latest_request?.submitted_by_email ||
+      advertiserDefaults?.account?.email,
+  };
 
   const [step, setStep] = useState<StepId>(1);
   const [draft, setDraft] = useState<ContractDraft>(INITIAL_DRAFT);
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   const [savedContractId, setSavedContractId] = useState("");
   const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [editedAdvertiserFields, setEditedAdvertiserFields] = useState({
     name: false,
     manager: false,
@@ -890,33 +913,39 @@ export function ContractBuilder() {
     <div className="flex min-h-[100dvh] flex-col bg-[#f4f5f2] font-sans text-neutral-950 lg:h-[100dvh] lg:overflow-hidden">
       <header className="z-10 shrink-0 border-b border-neutral-200/70 bg-white/92 backdrop-blur">
         <div className="mx-auto flex h-14 w-full max-w-[1500px] items-center justify-between px-3 sm:px-5 lg:px-6">
-        <div className="flex items-center gap-4">
           <button
             type="button"
             onClick={() => navigate("/advertiser/dashboard")}
-            className="flex h-9 w-9 items-center justify-center rounded-[9px] border border-neutral-200 bg-white text-neutral-500 shadow-[0_1px_0_rgba(15,23,42,0.02)] transition hover:border-neutral-300 hover:bg-white hover:text-neutral-950"
-            aria-label="대시보드로 돌아가기"
+            className="yl-brand-action -ml-1 flex h-10 min-w-10 shrink-0 items-center gap-3 rounded-[12px] px-1 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
           >
-            <ArrowLeft strokeWidth={1.5} className="h-5 w-5" />
-          </button>
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-[11px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
+            <span className="flex h-[34px] w-[34px] items-center justify-center rounded-[11px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
               <ShieldCheck className="h-4 w-4" strokeWidth={2} />
-            </div>
-            <span className="font-neo-heavy text-[18px] leading-none text-neutral-950">
+            </span>
+            <span className="font-neo-heavy hidden text-[18px] leading-none text-neutral-950 sm:inline">
               {PRODUCT_NAME}
             </span>
+          </button>
+          <div className="ml-2 flex min-w-0 items-center justify-end gap-1.5 sm:ml-3 sm:gap-2">
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[9px] border border-neutral-200 bg-white px-0 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950 sm:w-auto sm:px-2.5"
+              aria-label="로그아웃"
+              title="로그아웃"
+            >
+              <LogOut className="h-3.5 w-3.5" strokeWidth={2} />
+              <span className="hidden sm:inline">로그아웃</span>
+            </button>
+            <BuilderAccountSettingsMenu
+              account={advertiserAccountForHeader}
+              open={accountMenuOpen}
+              onToggle={() => setAccountMenuOpen((current) => !current)}
+              onChangePassword={() => {
+                setAccountMenuOpen(false);
+                navigate("/reset-password?role=advertiser");
+              }}
+            />
           </div>
-        </div>
-        <button
-          type="button"
-          onClick={handleLogout}
-          className="inline-flex h-10 items-center gap-2 rounded-[9px] border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-600 shadow-[0_1px_0_rgba(15,23,42,0.02)] transition hover:border-neutral-300 hover:bg-white hover:text-neutral-950"
-          aria-label="로그아웃"
-        >
-          <LogOut className="h-4 w-4" strokeWidth={1.8} />
-          <span className="hidden sm:inline">로그아웃</span>
-        </button>
         </div>
       </header>
 
@@ -962,6 +991,14 @@ export function ContractBuilder() {
         <section className="contract-builder-surface relative z-0 min-h-0 w-full bg-transparent lg:overflow-hidden">
           <div className="mx-auto flex h-full max-w-[520px] flex-col p-6 md:p-10 lg:px-1 lg:py-5">
             <div className="custom-scrollbar min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-2">
+              <button
+                type="button"
+                onClick={() => navigate("/advertiser/dashboard")}
+                className="mb-5 inline-flex h-9 items-center gap-2 rounded-[9px] border border-neutral-200 bg-white px-3 text-[12px] font-extrabold text-neutral-600 shadow-[0_1px_0_rgba(15,23,42,0.02)] transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" strokeWidth={2} />
+                계약 대시보드
+              </button>
               <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
                 {step} / 5 단계
               </p>
@@ -1793,13 +1830,79 @@ export function ContractBuilder() {
   );
 }
 
+function BuilderAccountSettingsMenu({
+  account,
+  open,
+  onToggle,
+  onChangePassword,
+}: {
+  account: { name: string; email?: string };
+  open: boolean;
+  onToggle: () => void;
+  onChangePassword: () => void;
+}) {
+  const emailChangeHref = buildBuilderSupportMailtoHref({
+    subject: "광고주 계정 이메일 변경 요청",
+    body: [
+      "광고주 계정 이메일 변경을 요청합니다.",
+      "",
+      `현재 표시 이메일: ${account.email ?? "확인 필요"}`,
+      `회사/브랜드명: ${account.name}`,
+      "변경할 이메일:",
+      "요청 사유:",
+    ].join("\n"),
+  });
+
+  return (
+    <div className="relative shrink-0">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-label="계정 설정"
+        title="계정 설정"
+        aria-expanded={open}
+        className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[9px] border border-neutral-200 bg-white text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
+      >
+        <Settings className="h-3.5 w-3.5" strokeWidth={2} />
+      </button>
+
+      {open ? (
+        <div className="absolute right-0 top-[calc(100%+8px)] z-40 w-[260px] overflow-hidden rounded-[12px] border border-neutral-200 bg-white text-left shadow-[0_18px_50px_rgba(15,23,42,0.14)]">
+          <div className="border-b border-neutral-100 px-4 py-3">
+            <p className="text-[13px] font-extrabold text-neutral-950">계정 설정</p>
+            {account.email ? (
+              <p className="mt-1 truncate text-[12px] font-semibold text-neutral-500">
+                {account.email}
+              </p>
+            ) : null}
+          </div>
+          <a
+            href={emailChangeHref}
+            className="flex h-11 items-center gap-2 px-4 text-[12px] font-extrabold text-neutral-700 transition hover:bg-neutral-50 hover:text-neutral-950"
+          >
+            <Mail className="h-3.5 w-3.5" />
+            이메일 변경
+          </a>
+          <button
+            type="button"
+            onClick={onChangePassword}
+            className="flex h-11 w-full items-center gap-2 px-4 text-left text-[12px] font-extrabold text-neutral-700 transition hover:bg-neutral-50 hover:text-neutral-950"
+          >
+            <KeyRound className="h-3.5 w-3.5" />
+            비밀번호 변경
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 const BuilderReviewPanel: React.FC<{
   draft: ContractDraft;
   clauses: Clause[];
   density?: "regular" | "compact";
 }> = ({ draft, clauses, density = "regular" }) => {
   const isCompact = density === "compact";
-  const hasDeliverables = getDeliverableRows(draft).some((row) => row.channel);
   const deliverables = getDeliverableRows(draft).filter(
     (row) => row.channel || row.postCount || row.duration,
   );
@@ -1813,62 +1916,10 @@ const BuilderReviewPanel: React.FC<{
       }`}
     >
       <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
-        <div
-          data-preview-summary
-          className={`mx-auto w-full max-w-[760px] border border-neutral-200 bg-white/95 text-neutral-950 ${
-            isCompact
-              ? "rounded-[10px] px-3 py-2 shadow-[0_1px_0_rgba(15,23,42,0.04)]"
-              : "sticky top-0 z-10 rounded-[12px] p-3 shadow-[0_10px_28px_rgba(15,23,42,0.08)] backdrop-blur"
-          }`}
-        >
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex min-w-0 items-center gap-3">
-              <div
-                className={`flex shrink-0 items-center justify-center border border-neutral-200 bg-neutral-50 text-neutral-700 ${
-                  isCompact ? "h-8 w-8 rounded-[9px]" : "h-9 w-9 rounded-[10px]"
-                }`}
-              >
-                <FileText className={isCompact ? "h-3.5 w-3.5" : "h-4 w-4"} strokeWidth={1.8} />
-              </div>
-              <div className="min-w-0">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
-                  문서 미리보기
-                </p>
-                <h2
-                  className={`mt-0.5 truncate font-semibold ${
-                    isCompact ? "text-[15px]" : "text-[18px]"
-                  }`}
-                >
-                  {draft.title || DEFAULT_CONTRACT_TITLE_EXAMPLE}
-                </h2>
-              </div>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <span className="rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1 text-[12px] font-semibold text-neutral-600">
-                A4
-              </span>
-              {!isCompact && (
-                <span className="rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1 text-[12px] font-semibold text-neutral-600">
-                  {previewDate}
-                </span>
-              )}
-            </div>
-          </div>
-          {!isCompact && (
-            <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
-              <ChecklistLine checked={!isBlank(draft.title)} label="계약명" />
-              <ChecklistLine checked={!isBlank(draft.influencerName)} label="상대방" />
-              <ChecklistLine checked={hasDeliverables} label="플랫폼" />
-              <ChecklistLine checked={!isBlank(draft.payment)} label="지급" />
-              <ChecklistLine checked={clauses.length > 0} label="조항" />
-            </div>
-          )}
-        </div>
-
         <article
           data-preview-document
           className={`mx-auto min-h-[1080px] w-full max-w-[680px] rounded-[3px] border border-neutral-300 bg-white shadow-[0_1px_0_rgba(15,23,42,0.05),0_20px_46px_rgba(15,23,42,0.18)] sm:px-10 sm:py-10 ${
-            isCompact ? "mt-2 px-4 py-6" : "mt-3 px-5 py-8"
+            isCompact ? "px-4 py-6" : "px-5 py-8"
           }`}
         >
           <header className="border-b border-neutral-200 pb-7 text-center">
@@ -2056,30 +2107,6 @@ const formatDateRange = (start?: string, end?: string) => {
   if (!start && !end) return "입력 필요";
   return `${start || "시작일 입력 필요"} - ${end || "종료일 입력 필요"}`;
 };
-
-const ChecklistLine: React.FC<{ checked: boolean; label: string }> = ({
-  checked,
-  label,
-}) => (
-  <div className="flex items-center gap-2 rounded-lg bg-neutral-100 px-2.5 py-2">
-    <span
-      className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full ${
-        checked ? "bg-neutral-950 text-white" : "bg-white text-neutral-400"
-      }`}
-    >
-      <Check className="h-2.5 w-2.5" strokeWidth={3} />
-    </span>
-    <span
-      className={
-        checked
-          ? "truncate text-[12px] font-semibold text-neutral-950"
-          : "truncate text-[12px] text-neutral-500"
-      }
-    >
-      {label}
-    </span>
-  </div>
-);
 
 const ValidationSummary: React.FC<{ errors: ValidationError[] }> = ({ errors }) => (
   <div className="mb-6 rounded-[16px] border border-amber-200 bg-amber-50 p-4 text-[13px] text-amber-800">
