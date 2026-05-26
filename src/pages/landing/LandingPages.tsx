@@ -1123,7 +1123,7 @@ function RoleFeatureIntroScreen({
   ];
 
   return (
-    <main className="h-svh overflow-hidden bg-[#f4f5f2] font-sans text-neutral-950">
+    <main className="min-h-svh overflow-x-hidden bg-[#f4f5f2] font-sans text-neutral-950 lg:h-svh lg:overflow-hidden">
       <header className="border-b border-neutral-200/70 bg-white/92">
         <div className="mx-auto flex h-[58px] max-w-[1500px] items-center justify-between gap-3 px-4 sm:px-6 lg:px-6">
           <BrandLockup />
@@ -1180,8 +1180,8 @@ function RoleFeatureIntroScreen({
         </nav>
       </div>
 
-      <section className="mx-auto flex h-[calc(100svh-109px)] min-h-0 w-full max-w-[1500px] overflow-hidden px-4 py-3 sm:h-[calc(100svh-58px)] sm:px-6 sm:py-5 lg:h-[calc(100vh-58px)] lg:px-6 lg:py-5">
-        <div className="grid h-full min-h-0 w-full gap-6 lg:grid-cols-[minmax(330px,0.52fr)_minmax(0,1.48fr)] lg:items-start">
+      <section className="mx-auto flex min-h-[calc(100svh-109px)] w-full max-w-[1500px] overflow-visible px-4 py-3 pb-8 sm:min-h-[calc(100svh-58px)] sm:px-6 sm:py-5 lg:h-[calc(100vh-58px)] lg:min-h-0 lg:overflow-hidden lg:px-6 lg:py-5">
+        <div className="grid w-full gap-6 lg:h-full lg:min-h-0 lg:grid-cols-[minmax(330px,0.52fr)_minmax(0,1.48fr)] lg:items-start">
           <aside className="min-w-0 shrink-0 pt-0 lg:flex lg:min-h-0 lg:flex-col lg:justify-start lg:pt-6 xl:pt-7">
             <h1 className="font-neo-heavy mt-0 text-[30px] leading-[1.03] tracking-normal text-neutral-950 sm:text-[48px] lg:text-[52px]">
               {introCopy.title.map((line) => (
@@ -1292,11 +1292,11 @@ function RoleFeaturePreviewCarousel({
   return (
     <section
       aria-label="기능별 화면 미리보기"
-      className={`${className} mx-auto flex min-h-0 w-full min-w-0 flex-1 max-w-[calc(100vw-40px)] flex-col overflow-hidden sm:max-w-full lg:h-full lg:max-w-[980px] lg:justify-self-end`}
+      className={`${className} mx-auto flex min-h-[420px] w-full min-w-0 flex-1 max-w-[calc(100vw-40px)] flex-col overflow-visible sm:min-h-[500px] sm:max-w-full lg:h-full lg:min-h-0 lg:max-w-[980px] lg:justify-self-end lg:overflow-hidden`}
     >
-      <div className="relative min-h-0 flex-1 overflow-hidden sm:min-h-[500px] lg:h-full lg:min-h-0">
+      <div className="relative min-h-[420px] flex-1 overflow-visible sm:min-h-[500px] lg:h-full lg:min-h-0 lg:overflow-hidden">
         <div
-          className={`h-full transition duration-300 ease-out ${
+          className={`h-auto transition duration-300 ease-out lg:h-full ${
             isFading ? "translate-x-4 opacity-0" : "translate-x-0 opacity-100"
           }`}
         >
@@ -1662,7 +1662,7 @@ const introDashboardDemoData = {
             title: "민서홈 릴스 협찬 계약",
             payment: "-",
             metric: "검토 대기",
-            date: "D-5 / 2026.05.29",
+            date: "2026.05.29 / D-5",
           },
           {
             platform: "인스타 외 1",
@@ -1671,7 +1671,7 @@ const introDashboardDemoData = {
             title: "루나데이 공동구매 계약",
             payment: "-",
             metric: "초안 작성",
-            date: "D-7 / 2026.05.31",
+            date: "2026.05.31 / D-7",
           },
         ],
       },
@@ -1698,7 +1698,7 @@ const introDashboardDemoData = {
             payment: "수수료 18%",
             metric: "서명 완료",
             metricPercent: 70,
-            date: "D-4 / 2026.05.28",
+            date: "2026.05.28 / D-4",
           },
           {
             platform: "유튜브",
@@ -1708,7 +1708,7 @@ const introDashboardDemoData = {
             payment: "2,800,000원",
             metric: "검수 대기",
             metricPercent: 50,
-            date: "D-3 / 2026.05.27",
+            date: "2026.05.27 / D-3",
           },
           {
             platform: "인스타",
@@ -1718,7 +1718,7 @@ const introDashboardDemoData = {
             payment: "900,000원 + 제품 제공",
             metric: "콘텐츠 제출",
             metricPercent: 85,
-            date: "D-2 / 2026.05.26",
+            date: "2026.05.26 / D-2",
           },
         ],
       },
@@ -1741,11 +1741,11 @@ const introDashboardDemoData = {
             platform: "인스타",
             platformClass: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
             brand: "협찬",
-            title: "오브레 릴스 캠페인 정산 완료",
+            title: "오브레 릴스 정산 완료 계약",
             payment: "1,800,000원",
             metric: "보관 완료",
             metricPercent: 100,
-            date: "D+3 / 2026.05.21",
+            date: "2026.05.21 / D+3",
           },
           {
             platform: "블로그",
@@ -1755,7 +1755,7 @@ const introDashboardDemoData = {
             payment: "수수료 18%",
             metric: "검수 완료",
             metricPercent: 100,
-            date: "D+5 / 2026.05.19",
+            date: "2026.05.19 / D+5",
           },
         ],
       },
@@ -1838,7 +1838,7 @@ const introDashboardDemoData = {
             title: "브레드룸 릴스 협찬 계약",
             payment: "900,000원 + 제품 제공",
             metric: "지원 접수",
-            date: "D-2 / 2026.05.26",
+            date: "2026.05.26 / D-2",
           },
           {
             platform: "인스타 +1",
@@ -1847,7 +1847,7 @@ const introDashboardDemoData = {
             title: "나이트케어 언박싱 계약",
             payment: "150만-250만원",
             metric: "지원 접수",
-            date: "D-10 / 2026.06.03",
+            date: "2026.06.03 / D-10",
           },
         ],
       },
@@ -1872,7 +1872,7 @@ const introDashboardDemoData = {
             title: "공동구매 파일럿 계약",
             payment: "수수료 18%",
             metric: "컨텐츠 제출",
-            date: "D-4 / 2026.05.28",
+            date: "2026.05.28 / D-4",
           },
           {
             platform: "유튜브",
@@ -1881,7 +1881,7 @@ const introDashboardDemoData = {
             title: "나이트 케어 쇼츠 계약",
             payment: "2,800,000원",
             metric: "광고주 검수 필요",
-            date: "D-3 / 2026.05.27",
+            date: "2026.05.27 / D-3",
           },
           {
             platform: "인스타",
@@ -1890,7 +1890,7 @@ const introDashboardDemoData = {
             title: "성수 팝업 릴스 계약",
             payment: "2,100,000원",
             metric: "컨텐츠 제출",
-            date: "D-1 / 2026.05.25",
+            date: "2026.05.25 / D-1",
           },
         ],
       },
@@ -1915,7 +1915,7 @@ const introDashboardDemoData = {
             title: "공동구매 파일럿 계약",
             payment: "수수료 18%",
             metric: "정산 보관",
-            date: "D+3 / 2026.05.21",
+            date: "2026.05.21 / D+3",
           },
         ],
       },
@@ -1940,7 +1940,7 @@ const introDashboardDemoData = {
             title: "언박싱 릴스 제안",
             payment: "150만-250만원",
             metric: "미선정",
-            date: "D+4 / 2026.05.20",
+            date: "2026.05.20 / D+4",
           },
         ],
       },
@@ -2052,7 +2052,7 @@ function RoleDashboardStylePreview({
       id={panelId}
       role="region"
       aria-label={`${slide.label} 미리보기`}
-      className="flex h-full min-h-[380px] flex-col overflow-hidden sm:min-h-[420px] lg:min-h-0"
+      className="flex h-auto min-h-0 flex-col overflow-visible sm:min-h-[420px] lg:h-full lg:min-h-0 lg:overflow-hidden"
     >
       {isAdvertiser ? (
         <AdvertiserIntroDashboardPreview

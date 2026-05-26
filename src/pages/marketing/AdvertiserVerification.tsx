@@ -556,13 +556,15 @@ export function AdvertiserVerification() {
                   </p>
                 </div>
               </div>
-              <span
-                className={`rounded-full border px-3 py-1 text-xs font-semibold ${verificationStatusTone(
-                  status,
-                )}`}
-              >
-                {isLoading ? "정보 확인 중" : verificationStatusLabel(status)}
-              </span>
+              {!approved && (
+                <span
+                  className={`rounded-full border px-3 py-1 text-xs font-semibold ${verificationStatusTone(
+                    status,
+                  )}`}
+                >
+                  {isLoading ? "정보 확인 중" : verificationStatusLabel(status)}
+                </span>
+              )}
             </div>
 
             {(latest || account) ? (

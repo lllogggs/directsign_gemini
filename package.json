@@ -10,6 +10,7 @@
     "clean": "rm -rf dist",
     "lint": "eslint . && tsc --noEmit",
     "test": "tsx --test tests/directsign-security.test.ts",
+    "guardrails:kim": "node scripts/kim-jaewoo-guardrails.mjs",
     "qa": "node scripts/qa-standard.mjs",
     "qa:discord": "npm run qa",
     "seed:qa-marketplace": "node scripts/seed-qa-marketplace-scenario.mjs",

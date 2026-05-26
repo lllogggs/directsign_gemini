@@ -2,6 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { formatContractTitleForDisplay } from "../src/domain/display";
 
 const root = process.cwd();
 const read = (path: string) => readFileSync(join(root, path), "utf8");
@@ -779,14 +780,47 @@ describe("yeollock.me security regressions", () => {
     const agents = read("AGENTS.md");
     const landing = read("src/pages/landing/LandingPages.tsx");
     const qaStandard = read("scripts/qa-standard.mjs");
+    const kimGuardrails = read("scripts/kim-jaewoo-guardrails.mjs");
+    const authLoginScreen = read("src/components/AuthLoginScreen.tsx");
+    const advertiserVerification = read("src/pages/marketing/AdvertiserVerification.tsx");
+    const influencerVerification = read("src/pages/influencer/InfluencerVerification.tsx");
+    const seedAccounts = read("scripts/seed-test-accounts.mjs");
+    const packageJson = JSON.parse(read("package.json")) as {
+      scripts?: Record<string, string>;
+    };
     const marketplace = read("src/pages/marketplace/MarketplacePages.tsx");
 
     assert.match(agents, /Kim Jaewoo Agent must be strict/);
+    assert.match(agents, /Repeated Product Owner corrections must become executable guardrails/);
+    assert.equal(
+      packageJson.scripts?.["guardrails:kim"],
+      "node scripts/kim-jaewoo-guardrails.mjs",
+    );
+    assert.match(qaStandard, /guardrails:kim/);
+    assert.match(kimGuardrails, /캠페인 목록/);
+    assert.match(kimGuardrails, /공유 가능/);
+    assert.match(kimGuardrails, /influencer verification state is shown in one place/);
+    assert.match(kimGuardrails, /influencer verification approved state is shown in one place/);
+    assert.match(kimGuardrails, /advertiser verification approved state is shown in one place/);
+    assert.match(kimGuardrails, /disabled auth CTA is visibly disabled/);
+    assert.match(kimGuardrails, /fallback titles stay contract-centered/);
+    assert.match(kimGuardrails, /row titles stay contract-centered/);
+    assert.match(kimGuardrails, /live stale settlement titles are normalized/);
+    assert.match(kimGuardrails, /OpenDesign is a separate local daemon\/web app workflow/);
     assert.match(landing, /계약과 신청을/);
     assert.match(qaStandard, /계약과 신청을/);
     assert.doesNotMatch(landing, /받은 캠페인을/);
+    assert.doesNotMatch(landing, /캠페인 정산 완료/);
+    assert.doesNotMatch(seedAccounts, /캠페인 정산 완료/);
+    assert.equal(
+      formatContractTitleForDisplay("오브레 릴스 캠페인 정산 완료"),
+      "오브레 릴스 정산 완료 계약",
+    );
+    assert.match(authLoginScreen, /disabled:!bg-neutral-200/);
+    assert.match(advertiserVerification, /\{!approved && \(/);
+    assert.doesNotMatch(influencerVerification, /InfoRow\s+label="현재 상태"\s+value="인증 완료"/);
     assert.doesNotMatch(marketplace, /제안 후 메시지함/);
-    assert.doesNotMatch(landing, /2026\.05\.\d{2} \/ D[-+]\d+/);
-    assert.match(landing, /D-5 \/ 2026\.05\.29/);
+    assert.match(landing, /2026\.05\.29 \/ D-5/);
+    assert.doesNotMatch(landing, /D-5 \/ 2026\.05\.29/);
   });
 });

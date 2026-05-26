@@ -176,7 +176,7 @@ export function AuthLoginScreen({
                   ) : null}
 
                   <button
-                    className="group flex h-10 w-full items-center justify-center gap-2 rounded-[12px] bg-blue-600 px-5 text-[14px] font-bold text-white shadow-[0_10px_24px_rgba(37,99,235,0.20)] transition hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-[0_14px_32px_rgba(37,99,235,0.24)] disabled:cursor-not-allowed disabled:translate-y-0 disabled:bg-neutral-200 disabled:text-neutral-500 disabled:shadow-none sm:h-11 sm:text-[15px]"
+                    className="group flex h-10 w-full items-center justify-center gap-2 rounded-[12px] bg-blue-600 px-5 text-[14px] font-bold text-white shadow-[0_10px_24px_rgba(37,99,235,0.20)] transition hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-[0_14px_32px_rgba(37,99,235,0.24)] disabled:cursor-not-allowed disabled:translate-y-0 disabled:!bg-neutral-200 disabled:text-neutral-500 disabled:shadow-none sm:h-11 sm:text-[15px]"
                     disabled={isSubmitting || submitDisabled}
                     type="submit"
                   >

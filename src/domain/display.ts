@@ -77,7 +77,11 @@ export const formatContractTitleForDisplay = (
 };
 
 const normalizeContractTitleWords = (value: string) =>
-  value.replace(/계약\s+계약/g, "계약").replace(/\s+/g, " ").trim();
+  value
+    .replace(/\s*캠페인\s+정산\s+완료(?:\s+계약)?$/g, " 정산 완료 계약")
+    .replace(/계약\s+계약/g, "계약")
+    .replace(/\s+/g, " ")
+    .trim();
 
 export const formatMoneyLabel = (
   value?: string | null,

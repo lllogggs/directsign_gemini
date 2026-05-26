@@ -998,7 +998,7 @@ const showcaseScenarios = [
   },
   {
     key: "closed-reels",
-    title: "오브레 릴스 캠페인 정산 완료",
+    title: "오브레 릴스 정산 완료 계약",
     campaignName: "오브레 릴스 캠페인",
     influencerName: accounts.influencer.name,
     influencerContact: accounts.influencer.email,

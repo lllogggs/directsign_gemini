@@ -763,9 +763,6 @@ export function InfluencerDashboard() {
                   내 계약
                 </h1>
               </div>
-              <span className={`inline-flex h-8 items-center rounded-[8px] border px-3 text-[12px] font-semibold ${verification.className}`}>
-                {verification.label}
-              </span>
             </div>
           </div>
 
@@ -2279,7 +2276,7 @@ function ContractNameSearch({
       }
     >
       <ColumnHeader
-        label="캠페인명"
+        label="계약명"
         sortKey={sortKey}
         sortState={sortState}
         onSortChange={onSortChange}
@@ -2289,8 +2286,8 @@ function ContractNameSearch({
         <input
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          aria-label="캠페인명 검색"
-          placeholder="캠페인명으로 검색"
+          aria-label="계약명 검색"
+          placeholder="계약명으로 검색"
           className="h-9 w-full max-w-full rounded-[6px] border border-[#d9e0d9] bg-white pl-7 pr-2 text-[12px] font-semibold text-[#303630] outline-none transition-colors placeholder:text-[#8b938d] hover:border-[#cbd5cc] focus:border-[#171a17]"
         />
       </span>
@@ -2745,7 +2742,7 @@ function formatInfluencerDateWithDday(value?: string) {
   const diff = Math.round((dateStart.getTime() - todayStart.getTime()) / 86_400_000);
   const dday = diff > 0 ? `D-${diff}` : diff === 0 ? "D-0" : `D+${Math.abs(diff)}`;
 
-  return `${dday} / ${dateLabel}`;
+  return `${dateLabel} / ${dday}`;
 }
 
 function getSubmissionStatusMeta(item: InfluencerCampaignWorkItem) {
@@ -2932,17 +2929,17 @@ function buildInfluencerDashboardTitleFallback(item: InfluencerCampaignWorkItem)
   const advertiserName = removeInternalTestLabel(item.advertiser_name, "브랜드");
   const lifecycleLabel =
     item.lifecycle === "COMPLETED"
-      ? "완료 캠페인"
+      ? "완료 계약"
       : item.lifecycle === "IN_PROGRESS"
-        ? "진행 캠페인"
+        ? "진행 계약"
         : item.lifecycle === "REJECTED"
-          ? "미선정 캠페인"
-          : "지원 캠페인";
+          ? "미선정 계약"
+          : "지원 계약";
 
   return `${advertiserName} ${lifecycleLabel}`;
 }
 
-function formatDashboardContractTitle(title: string, fallback = "캠페인명 미정") {
+function formatDashboardContractTitle(title: string, fallback = "계약명 미정") {
   const cleaned = title.replace(/^\[[^\]]+\]\s*/, "").trim();
   return formatContractTitleForDisplay(cleaned || title, fallback);
 }

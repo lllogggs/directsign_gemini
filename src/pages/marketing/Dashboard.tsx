@@ -4318,7 +4318,7 @@ function formatDashboardDateWithDday(value?: string) {
   const dday =
     dayDiff > 0 ? `D-${dayDiff}` : dayDiff === 0 ? "D-0" : `D+${Math.abs(dayDiff)}`;
 
-  return `${dday} / ${dateLabel}`;
+  return `${dateLabel} / ${dday}`;
 }
 
 function getDayDiffFromToday(date: Date) {

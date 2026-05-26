@@ -1308,6 +1308,7 @@ const main = async () => {
   console.log(`root: ${root}`);
 
   const requiredChecks = [
+    await runCommand("Kim Jaewoo guardrails", npmCommand, ["run", "guardrails:kim"]),
     await runCommand("npm test", npmCommand, ["test"]),
     await runCommand("npm run lint", npmCommand, ["run", "lint"]),
     await runCommand("npm run build", npmCommand, ["run", "build"]),

@@ -941,7 +941,6 @@ export function InfluencerVerification() {
               </>
             ) : (
               <>
-                <InfoRow label="현재 상태" value="인증 완료" />
                 {verifiedHandle ? (
                   <InfoRow label="대표 계정" value={displayVerifiedHandle} />
                 ) : null}

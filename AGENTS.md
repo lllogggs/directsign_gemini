@@ -115,6 +115,7 @@ Example option format:
     - For spacing complaints, first tune vertical gap, component height, and spacing scale inside the existing layout before changing composition or copy.
     - When realistic test data is requested, do not use obvious QA prefixes such as `qa-`, `test`, or placeholder-looking labels in customer-facing seed data. Use plausible fake brand names, creator names, products, campaign titles, and contract names that make dashboards feel like a real pilot workspace.
     - The Product Owner treats broken customer-facing text as a release blocker. Rendered screens must not show mojibake, `???` placeholders, corrupted Korean, or seed-data artifacts; fix the source data or sanitize the display before calling a UI pass complete.
+    - Repeated Product Owner corrections must become executable guardrails when feasible. Updating `AGENTS.md` alone is not enough for repeatable UI text, dashboard, intro-preview, date, OpenDesign, or QA-process rules; wire them into standard QA so regressions fail before handoff.
   - A one-time request for the Kim Jaewoo Agent to walk the full service is temporary unless the Product Owner explicitly says to make it permanent. For unrelated future work, review only the modified or improved scope.
   - Blue primary CTAs were directly requested by the Product Owner. Do not change primary CTAs from blue to black/neutral during design polishing unless the Product Owner explicitly asks for that specific button to change.
   - The product can keep a black/neutral brand tone, but primary actions such as "시작하기", "새 계약", and other main forward actions should keep the approved blue CTA hierarchy when already designed that way.
@@ -136,10 +137,13 @@ Example option format:
   - Intro headers and body content must align to the same visual container rhythm. Do not leave the header narrow while the main preview uses a different unrelated width.
   - Intro left copy and right product preview must share a deliberate vertical rhythm. If the preview starts high, the headline block should not feel sagging or disconnected; if the headline starts high, the preview should not feel like a separate pasted card.
   - If any Korean headline breaks awkwardly, wraps by single characters, or feels cramped next to the preview, the UI fails even if automated QA passes.
+  - Mobile intro pages must never lock the page to one viewport with hidden overflow when the dashboard preview is taller than the screen. At 390px-wide mobile sizes, all intro content and preview rows must remain reachable through vertical scrolling.
   - For design, proportion, spacing, and layout changes, Codex must use OpenDesign/Figma capture or an equivalent design-review surface before implementation or final judgment, even when the Product Owner does not explicitly repeat it.
   - Design/proportion changes must cite comparable online references or design-system guidance, then explain the applied principle to the Kim Jaewoo Agent before asking for approval.
   - When using online references for layout or spacing, cite the principle being applied, not just the source name. The Kim Jaewoo Agent should reject changes whose reason is only "looks cleaner" without a reference-backed hierarchy or spacing rationale.
-  - If OpenDesign/Figma is unavailable because of authentication, timeout, or connector failure, do not pretend it was used. Record the failure, use browser captures plus coordinate/spacing measurement as the fallback, and mention the fallback in the review handoff.
+  - OpenDesign is available through its local CLI/daemon/web workflow, not only through an MCP or Figma connector. Never stop or report that OpenDesign/Figma connector tools are unavailable until the OpenDesign CLI/daemon/launcher workflow has been started or repaired.
+  - If a Figma connector or MCP bridge fails, treat that as a connector issue only. Continue with the OpenDesign CLI, daemon health URL, project URL, launcher script, and browser captures before using any fallback.
+  - Only report OpenDesign as blocked after concrete CLI/daemon/launcher repair attempts fail. In that case, report the attempted commands/status URLs and then use browser captures plus coordinate/spacing measurement as the fallback.
   - The product is contract-centered. Dashboard and intro dashboard previews must default to contract lists, not campaign lists, unless the Product Owner explicitly asks for a campaign-management surface.
   - When the real dashboard header, title, tabs, list label, columns, or representative rows change, update the intro dashboard preview in the same task without waiting for the Product Owner to repeat it.
   - Intro dashboard preview counts must match the rows currently shown, or the UI must clearly state that only a subset is visible. Do not leave tab counts, list counts, and visible rows contradicting each other.
@@ -260,6 +264,7 @@ Example option format:
   - Before adding workaround loading behavior for production latency, check deployment/data-source geography. Server functions should run close to the database and primary users when authentication and dashboard data depend on several server-side reads.
   - When cold start is the bottleneck, reduce the actual server entrypoint and bundle loaded by the critical route before adding cosmetic loading states or user-visible delay masking.
   - Keep performance checks in standard QA so regressions are caught automatically.
+  - Keep repeatable Kim Jaewoo corrections in `scripts/kim-jaewoo-guardrails.mjs` and run them through `npm run qa`; do not report completion when a known repeatable correction is only documented and not executable.
 - Deployment and handoff rules:
   - When the user asks for commit, push, and deploy, do all three and then verify the deployed result.
   - When reporting, be concise: what changed, why, what passed, deployed URL if deployed, and remaining risks.
@@ -404,7 +409,9 @@ corepack pnpm tools-dev status --json
 - If pnpm is not on PATH, use `corepack pnpm`; do not assume global pnpm is installed.
 - If Docker is unavailable, use the local source workflow above. Docker is optional for OpenDesign and is not required on this machine.
 - To fetch the current MCP install snippet for Codex or another MCP-compatible client, start OpenDesign and call `http://127.0.0.1:17456/api/mcp/install-info`. The returned command should point to the bundled Node 24 executable and `apps/daemon/dist/cli.js mcp`.
-- If OpenDesign/Figma is unavailable during a design task, state the failure plainly, then fall back to browser captures plus coordinate/spacing measurement. Do not claim OpenDesign was used unless this local web/daemon or another actual design-review surface was opened and checked.
+- Do not tell the Product Owner that OpenDesign/Figma connector tools are missing or unavailable as the reason design review cannot proceed. OpenDesign must be operated through the local CLI/daemon/web workflow above when connector tooling is absent, expired, or unauthenticated.
+- If the OpenDesign web app or daemon is down, start or repair it with the local CLI/launcher first. A Figma connector failure is not an OpenDesign failure.
+- Only fall back to browser captures plus coordinate/spacing measurement after concrete OpenDesign CLI/daemon/launcher repair attempts fail. Report the attempted commands/status URLs, not a generic connector-unavailable explanation.
 
 ## Owner Command Proxy Review Rhythm
 
