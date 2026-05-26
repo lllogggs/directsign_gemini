@@ -797,6 +797,8 @@ describe("yeollock.me security regressions", () => {
 
     assert.match(agents, /Kim Jaewoo Agent must be strict/);
     assert.match(agents, /Repeated Product Owner corrections must become executable guardrails/);
+    assert.match(agents, /Mobile customer-facing list surfaces must keep every row\/card reachable/);
+    assert.match(agents, /Dashboard cells must not show raw placeholder values/);
     assert.equal(
       packageJson.scripts?.["guardrails:kim"],
       "node scripts/kim-jaewoo-guardrails.mjs",
@@ -813,10 +815,13 @@ describe("yeollock.me security regressions", () => {
     assert.match(kimGuardrails, /live stale settlement titles are normalized/);
     assert.match(kimGuardrails, /mobile contract and campaign surfaces are explicit/);
     assert.match(kimGuardrails, /advertiser campaign tab opens dashboard before creation/);
+    assert.match(kimGuardrails, /mobile influencer campaign lists are scrollable/);
+    assert.match(kimGuardrails, /advertiser campaign dashboard avoids placeholder campaign values/);
     assert.match(kimGuardrails, /mobile advertiser header avoids duplicate surface label/);
     assert.match(kimGuardrails, /mobile influencer header avoids duplicate surface label/);
     assert.match(kimGuardrails, /influencer mobile rows do not repeat deadline values/);
     assert.match(kimGuardrails, /OpenDesign is a separate local daemon\/web app workflow/);
+    assert.match(kimGuardrails, /mobile clipped list corrections are recorded/);
     assert.match(mobileSurfaceSwitch, /data-mobile-surface-switch/);
     assert.match(mobileSurfaceSwitch, /\/advertiser\/campaigns/);
     assert.match(mobileSurfaceSwitch, /\/influencer\/campaigns/);
@@ -828,6 +833,13 @@ describe("yeollock.me security regressions", () => {
     assert.match(advertiserDashboard, /to="\/advertiser\/campaigns\/new"/);
     assert.match(campaignPages, /backHref="\/advertiser\/campaigns"/);
     assert.match(campaignPages, /backLabel="캠페인 대시보드"/);
+    assert.match(campaignPages, /data-campaign-scroll-region="open"/);
+    assert.match(campaignPages, /grid min-h-0 flex-1 auto-rows-max/);
+    assert.match(qaStandard, /Browser mobile influencer campaigns scroll/);
+    assert.doesNotMatch(advertiserDashboard, /\/미정/);
+    assert.match(advertiserDashboard, /명 신청/);
+    assert.match(advertiserDashboard, /계약 조건 확인/);
+    assert.match(advertiserDashboard, /extractCampaignSummaryField/);
     assert.ok(
       (influencerDashboard.match(/MobileSurfaceSwitch role="influencer" active="contracts"/g) ?? [])
         .length >= 2,

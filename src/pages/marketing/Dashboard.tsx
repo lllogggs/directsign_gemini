@@ -3603,7 +3603,7 @@ function getCampaignRosterProgress(campaign: CampaignGroup) {
   const capacity = getCampaignCapacity(campaign);
   if (!capacity) {
     return {
-      label: current > 0 ? `${current.toLocaleString()}/미정` : "0/미정",
+      label: `${current.toLocaleString()}명 신청`,
       percent: current > 0 ? 12 : 0,
     };
   }
@@ -3617,7 +3617,15 @@ function getCampaignRosterProgress(campaign: CampaignGroup) {
 }
 
 function getCampaignCapacity(campaign: CampaignGroup) {
-  const raw = campaign.marketplaceCampaign?.applicantLimit;
+  const raw =
+    campaign.marketplaceCampaign?.applicantLimit ??
+    extractCampaignSummaryField(campaign, "모집인원:", [
+      "지급내용:",
+      "산출물:",
+      "플랫폼:",
+      "업로드 마감일:",
+      "모집마감일:",
+    ]);
   if (!raw) return undefined;
 
   const values = raw
@@ -3640,7 +3648,15 @@ function formatCampaignPlatformSummary(platforms: ContractPlatform[]) {
 function getCampaignPaymentLabel(campaign: CampaignGroup) {
   const value =
     campaign.marketplaceCampaign?.budget ??
-    campaign.contracts.find((contract) => contract.campaign?.budget)?.campaign?.budget;
+    campaign.contracts.find((contract) => contract.campaign?.budget)?.campaign?.budget ??
+    extractCampaignSummaryField(campaign, "지급내용:", [
+      "산출물:",
+      "플랫폼:",
+      "업로드 마감일:",
+      "모집마감일:",
+    ]);
+
+  if (!value?.trim()) return "계약 조건 확인";
 
   return formatDashboardAmountLabel(value);
 }
@@ -3650,6 +3666,11 @@ function getCampaignListDateLabel(campaign: CampaignGroup) {
     campaign.lifecycle === "ENDED"
       ? getCampaignEndedDateValue(campaign)
       : getCampaignDeadlineValue(campaign);
+  if (!value) {
+    if (campaign.lifecycle === "RECRUITING") return "상시 모집";
+    if (campaign.lifecycle === "IN_PROGRESS") return "마감일 확인";
+    return "종료일 확인";
+  }
 
   return formatDashboardDateWithDday(value);
 }
@@ -3673,8 +3694,53 @@ function getCampaignDeadlineValue(campaign: CampaignGroup) {
   return (
     campaign.marketplaceCampaign?.deadline ??
     campaign.marketplaceCampaign?.uploadDeadline ??
+    extractCampaignSummaryField(campaign, "모집마감일:", []) ??
+    extractCampaignSummaryField(campaign, "업로드 마감일:", ["모집마감일:"]) ??
     contractDates[0]
   );
+}
+
+function extractCampaignSummaryField(
+  campaign: CampaignGroup,
+  startToken: string,
+  stopTokens: string[],
+) {
+  for (const thread of campaign.applicants) {
+    const value = extractSummaryField(thread.proposalSummary, startToken, stopTokens);
+    if (value) return value;
+  }
+
+  return undefined;
+}
+
+function extractSummaryField(
+  summary: string,
+  startToken: string,
+  stopTokens: string[],
+) {
+  const startIndex = summary.indexOf(startToken);
+  if (startIndex < 0) return undefined;
+
+  const valueStart = startIndex + startToken.length;
+  const nextStopIndex = stopTokens
+    .map((token) => summary.indexOf(token, valueStart))
+    .filter((index) => index >= 0)
+    .sort((a, b) => a - b)[0];
+  const rawValue =
+    nextStopIndex === undefined
+      ? summary.slice(valueStart)
+      : summary.slice(valueStart, nextStopIndex);
+  const value = normalizeCampaignSummaryText(rawValue);
+
+  return value || undefined;
+}
+
+function normalizeCampaignSummaryText(value: string) {
+  return value
+    .replace(/T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/u, "")
+    .replace(/\s+/g, " ")
+    .replace(/[·|,-]+$/g, "")
+    .trim();
 }
 
 function getCampaignEndedDateValue(campaign: CampaignGroup) {

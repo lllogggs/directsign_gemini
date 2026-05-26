@@ -1014,7 +1014,7 @@ export function InfluencerCampaignDiscoveryPage() {
         </>
       }
     >
-      <section className="yl-card overflow-hidden border lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+      <section className="yl-card flex min-h-0 flex-1 flex-col overflow-hidden border">
         <div className="border-b border-neutral-200 bg-white">
           <div className="flex min-h-12 items-center justify-between gap-3 px-3 py-2">
             <div className="min-w-0">
@@ -1127,7 +1127,10 @@ export function InfluencerCampaignDiscoveryPage() {
             body="검색어나 조건을 줄여보세요."
           />
         ) : (
-          <div className="grid gap-x-3 gap-y-5 bg-[#fbfaf7] p-3 sm:grid-cols-2 lg:min-h-0 lg:flex-1 lg:overflow-y-auto xl:grid-cols-3">
+          <div
+            data-campaign-scroll-region="open"
+            className="grid min-h-0 flex-1 auto-rows-max gap-x-3 gap-y-5 overflow-y-auto overscroll-contain bg-[#fbfaf7] p-3 sm:grid-cols-2 xl:grid-cols-3"
+          >
             {applicationNotice ? (
               <p
                 className={`rounded-[12px] border px-3 py-2 text-[12px] font-extrabold lg:col-span-3 ${
@@ -1722,7 +1725,7 @@ function AppliedCampaignList({
   applications: MarketplaceMessageThread[];
 }) {
   return (
-    <section className="overflow-hidden bg-white lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+    <section className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
       <div className="hidden grid-cols-[minmax(170px,0.48fr)_minmax(320px,1fr)_132px_132px_132px] border-b border-neutral-200 bg-[#f8faf7] px-4 py-3 text-[11px] font-semibold text-neutral-500 lg:grid">
         <span>브랜드</span>
         <span>캠페인</span>
@@ -1730,7 +1733,10 @@ function AppliedCampaignList({
         <span className="text-right">신청일</span>
         <span className="sr-only">액션</span>
       </div>
-      <div className="divide-y divide-neutral-100 overflow-y-auto lg:min-h-0 lg:flex-1">
+      <div
+        data-campaign-scroll-region="applied"
+        className="min-h-0 flex-1 divide-y divide-neutral-100 overflow-y-auto overscroll-contain"
+      >
         {applications.map((application) => (
           <div key={application.id}>
             <AppliedCampaignRow application={application} />

@@ -970,6 +970,92 @@ const measureBrowserRouteTransition = async (
   return ok;
 };
 
+const checkInfluencerCampaignMobileScroll = async (client, sessionId, baseUrl) => {
+  try {
+    await client.send(
+      "Emulation.setDeviceMetricsOverride",
+      {
+        width: 390,
+        height: 844,
+        deviceScaleFactor: 1,
+        mobile: true,
+      },
+      sessionId,
+    );
+    await client.send(
+      "Emulation.setTouchEmulationEnabled",
+      { enabled: true },
+      sessionId,
+    );
+    await client.send(
+      "Page.navigate",
+      { url: new URL("/influencer/campaigns", baseUrl).toString() },
+      sessionId,
+    );
+    await waitForRouteReady(client, sessionId, "/influencer/campaigns", {
+      minTextLength: 100,
+      timeoutMs: 15000,
+    });
+
+    const result = await evaluateCdpValue(
+      client,
+      sessionId,
+      `(async () => {
+        const waitFrames = async () => {
+          await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+          await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+        };
+        const region = document.querySelector('[data-campaign-scroll-region="open"]');
+        if (!region) {
+          return { ok: false, detail: "open campaign scroll region missing" };
+        }
+        const pageText = document.body?.innerText || "";
+        if (!pageText.includes("모집 캠페인")) {
+          return { ok: false, detail: "campaign list header missing" };
+        }
+        const overflowY = getComputedStyle(region).overflowY;
+        const scrollHeight = region.scrollHeight;
+        const clientHeight = region.clientHeight;
+        const maxScroll = scrollHeight - clientHeight;
+        if (maxScroll < 40) {
+          return {
+            ok: false,
+            detail: \`not enough vertical overflow: scrollHeight \${scrollHeight}, clientHeight \${clientHeight}\`,
+          };
+        }
+        const before = region.scrollTop;
+        region.scrollTop = Math.min(260, maxScroll);
+        await waitFrames();
+        const after = region.scrollTop;
+        return {
+          ok: /auto|scroll/i.test(overflowY) && after > before,
+          overflowY,
+          scrollTop: Math.round(after),
+          scrollHeight: Math.round(scrollHeight),
+          clientHeight: Math.round(clientHeight),
+        };
+      })()`,
+    );
+
+    const ok = Boolean(result?.ok);
+    record(
+      "Browser mobile influencer campaigns scroll",
+      ok ? "pass" : "fail",
+      ok
+        ? `scrollTop ${result.scrollTop}px, region ${result.clientHeight}/${result.scrollHeight}px`
+        : result?.detail || "scroll region did not move",
+    );
+    return ok;
+  } catch (error) {
+    record(
+      "Browser mobile influencer campaigns scroll",
+      "fail",
+      error instanceof Error ? error.message : String(error),
+    );
+    return false;
+  }
+};
+
 const measureBrowserInputAction = async (client, sessionId, label) => {
   const result = await evaluateCdpValue(
     client,
@@ -1212,6 +1298,9 @@ const checkBrowserPerformance = async (baseUrl) => {
           await measureBrowserRouteTransition(client, sessionId, baseUrl, route, label),
         );
       }
+      checkResults.push(
+        await checkInfluencerCampaignMobileScroll(client, sessionId, baseUrl),
+      );
     } finally {
       if (targetId) {
         try {

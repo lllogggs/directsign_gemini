@@ -180,6 +180,7 @@ Example option format:
   - Terms, consent, and legal detail should be shown in modal or secondary surfaces; the main form should stay short.
   - Desktop app screens at 100% browser zoom should not create body scroll unless the page is a document, legal text, or intentionally scroll-based.
   - Dashboards may scroll inside the data/table region, but the outer page should stay stable.
+  - Mobile customer-facing list surfaces must keep every row/card reachable through vertical scrolling. Fixed-height app frames with hidden overflow that clip cards are blockers.
   - Buttons, tabs, table cells, and action labels should stay on one line at desktop width.
   - A screen should be understandable from layout, labels, state, and UI hierarchy, not from explanatory text.
   - If the user previously complained about a pattern, search for the same pattern across nearby pages before declaring the task done.
@@ -198,6 +199,7 @@ Example option format:
   - Use colored platform badges for Instagram, YouTube, Blog, TikTok, and other channels when they help scanning.
   - Show "지급내용" and deadline. In recruiting and active tabs use deadline; in ended tab use end date.
   - Deadline/end-date values should include year and D-day notation, not month/day only.
+  - Dashboard cells must not show raw placeholder values such as `-` or `/미정` when summary data, seed data, or a clear business fallback can communicate meaning.
   - Table column labels should support obvious ascending/descending sorting when sortable.
   - Use "진도율", not "정원진도". Prefer compact values such as "3/12" with a restrained progress bar.
   - Do not show every test campaign as "1/1"; maintain varied test states and progress so the dashboard looks real.

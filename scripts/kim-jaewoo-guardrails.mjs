@@ -183,6 +183,13 @@ check(
   "AGENTS.md must force CLI/daemon/web recovery instead of connector-unavailable reporting",
 );
 
+check(
+  "mobile clipped list corrections are recorded",
+  agents.includes("Mobile customer-facing list surfaces must keep every row/card reachable") &&
+    agents.includes("Dashboard cells must not show raw placeholder values"),
+  "Reusable campaign dashboard/mobile list corrections must remain in AGENTS.md and executable guardrails",
+);
+
 for (const [text, reason] of [
   ["공유 가능", "Vague readiness badges are banned from customer-facing UI"],
   ["처리 필요", "Vague dashboard priority strips are banned unless explicitly approved"],
@@ -341,6 +348,24 @@ check(
     campaignPages.includes('backLabel="캠페인 대시보드"') &&
     qaStandard.includes('"/advertiser/campaigns/new"'),
   "The advertiser campaign surface must open a dashboard first, with campaign creation as a secondary page",
+);
+
+check(
+  "mobile influencer campaign lists are scrollable",
+  campaignPages.includes('data-campaign-scroll-region="open"') &&
+    campaignPages.includes('grid min-h-0 flex-1 auto-rows-max') &&
+    campaignPages.includes("overflow-y-auto overscroll-contain") &&
+    qaStandard.includes("Browser mobile influencer campaigns scroll"),
+  "The influencer campaign discovery list must remain reachable on mobile, with rendered scroll behavior covered by standard QA",
+);
+
+check(
+  "advertiser campaign dashboard avoids placeholder campaign values",
+  !advertiserDashboard.includes("/미정") &&
+    advertiserDashboard.includes("명 신청") &&
+    advertiserDashboard.includes("계약 조건 확인") &&
+    advertiserDashboard.includes("extractCampaignSummaryField"),
+  "Advertiser campaign rows must not show '-' or '/미정' when summary or safer fallback copy can communicate meaning",
 );
 
 check(
