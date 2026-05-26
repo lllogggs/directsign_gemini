@@ -6389,6 +6389,18 @@ type PublicMarketplaceCacheEntry<T> = {
   refresh?: Promise<T>;
 };
 
+type PublicMarketplaceCacheOptions<T> = {
+  fallback?: () => T;
+};
+
+const fallbackMarketplaceInfluencerProfiles = () =>
+  mergeMarketplaceInfluencerProfiles();
+
+const fallbackMarketplaceBrandProfiles = () => mergeMarketplaceBrandProfiles();
+
+const fallbackMarketplaceCampaignPosts = () =>
+  buildMarketplaceCampaignPosts(fallbackMarketplaceBrandProfiles());
+
 const publicMarketplaceCache = new Map<
   PublicMarketplaceCacheKey,
   PublicMarketplaceCacheEntry<unknown>
@@ -6414,6 +6426,7 @@ const refreshPublicMarketplaceCache = async <T,>(
 const readPublicMarketplaceCache = async <T,>(
   key: PublicMarketplaceCacheKey,
   loader: () => Promise<T>,
+  options: PublicMarketplaceCacheOptions<T> = {},
 ) => {
   const now = Date.now();
   const cached = publicMarketplaceCache.get(
@@ -6446,7 +6459,28 @@ const readPublicMarketplaceCache = async <T,>(
 
   if (cached?.refresh) return cached.refresh;
 
-  const refresh = refreshPublicMarketplaceCache(key, loader);
+  const refresh = refreshPublicMarketplaceCache(key, loader).catch((error) => {
+    publicMarketplaceCache.delete(key);
+    if (cached?.value !== undefined) return cached.value;
+    if (!options.fallback) throw error;
+
+    const value = options.fallback();
+    const fallbackNow = Date.now();
+    publicMarketplaceCache.set(key, {
+      value,
+      expiresAt: fallbackNow + publicMarketplaceCacheMaxAgeSeconds * 1000,
+      staleUntil:
+        fallbackNow +
+        (publicMarketplaceCacheMaxAgeSeconds + publicMarketplaceCacheStaleSeconds) *
+          1000,
+    });
+    console.warn(
+      `[${productName}] public marketplace cache cold fallback for ${key}: ${
+        error instanceof Error ? error.message : "unknown error"
+      }`,
+    );
+    return value;
+  });
   publicMarketplaceCache.set(key, {
     value: cached?.value,
     expiresAt: cached?.expiresAt ?? 0,
@@ -6476,12 +6510,19 @@ const warmPublicMarketplaceCache = () => {
       readPublicMarketplaceCache(
         "marketplace-influencers",
         readMarketplaceInfluencerProfiles,
+        { fallback: fallbackMarketplaceInfluencerProfiles },
       ),
-      readPublicMarketplaceCache("marketplace-brands", readMarketplaceBrandProfiles),
+      readPublicMarketplaceCache(
+        "marketplace-brands",
+        readMarketplaceBrandProfiles,
+        { fallback: fallbackMarketplaceBrandProfiles },
+      ),
     ])
       .then(([, brands]) =>
-        readPublicMarketplaceCache("marketplace-campaigns", async () =>
-          buildMarketplaceCampaignPosts(brands),
+        readPublicMarketplaceCache(
+          "marketplace-campaigns",
+          async () => buildMarketplaceCampaignPosts(brands),
+          { fallback: fallbackMarketplaceCampaignPosts },
         ),
       )
       .catch((error) => {
@@ -14215,6 +14256,7 @@ app.get("/api/marketplace/influencers", async (_request, response, next) => {
     const profiles = await readPublicMarketplaceCache(
       "marketplace-influencers",
       readMarketplaceInfluencerProfiles,
+      { fallback: fallbackMarketplaceInfluencerProfiles },
     );
     sendPublicMarketplaceJson(response, { profiles });
   } catch (error) {
@@ -14229,6 +14271,7 @@ app.get("/api/marketplace/influencers/:handle", async (request, response, next) 
       await readPublicMarketplaceCache(
         "marketplace-influencers",
         readMarketplaceInfluencerProfiles,
+        { fallback: fallbackMarketplaceInfluencerProfiles },
       ),
     );
 
@@ -14248,6 +14291,7 @@ app.get("/api/marketplace/brands", async (_request, response, next) => {
     const brands = await readPublicMarketplaceCache(
       "marketplace-brands",
       readMarketplaceBrandProfiles,
+      { fallback: fallbackMarketplaceBrandProfiles },
     );
     sendPublicMarketplaceJson(response, { brands });
   } catch (error) {
@@ -14262,6 +14306,7 @@ app.get("/api/marketplace/brands/:handle", async (request, response, next) => {
       await readPublicMarketplaceCache(
         "marketplace-brands",
         readMarketplaceBrandProfiles,
+        { fallback: fallbackMarketplaceBrandProfiles },
       ),
     );
 
@@ -14285,8 +14330,10 @@ app.get("/api/marketplace/campaigns", async (_request, response, next) => {
           await readPublicMarketplaceCache(
             "marketplace-brands",
             readMarketplaceBrandProfiles,
+            { fallback: fallbackMarketplaceBrandProfiles },
           ),
         ),
+      { fallback: fallbackMarketplaceCampaignPosts },
     );
     sendPublicMarketplaceJson(response, { campaigns });
   } catch (error) {

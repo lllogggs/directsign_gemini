@@ -412,6 +412,17 @@ check(
 );
 
 check(
+  "public marketplace cache falls back after cold Supabase timeout",
+  server.includes("PublicMarketplaceCacheOptions") &&
+    server.includes("fallbackMarketplaceInfluencerProfiles") &&
+    server.includes("fallbackMarketplaceBrandProfiles") &&
+    server.includes("fallbackMarketplaceCampaignPosts") &&
+    server.includes("publicMarketplaceCache.delete(key)") &&
+    server.includes("public marketplace cache cold fallback"),
+  "Public marketplace APIs must not keep returning 500 when a cold Supabase read times out; clear the failed refresh and serve the safe public fallback while retrying later",
+);
+
+check(
   "mobile contract and campaign surfaces are explicit",
   mobileSurfaceSwitch.includes("data-mobile-surface-switch") &&
     mobileSurfaceSwitch.includes("계약") &&

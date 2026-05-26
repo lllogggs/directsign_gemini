@@ -918,6 +918,7 @@ describe("yeollock.me security regressions", () => {
     assert.match(kimGuardrails, /signature consent copy is shared between UI and server/);
     assert.match(kimGuardrails, /support access consent is enforced server-side and linked from both parties/);
     assert.match(kimGuardrails, /analytics tracking avoids sensitive contract data/);
+    assert.match(kimGuardrails, /public marketplace cache falls back after cold Supabase timeout/);
     assert.match(kimGuardrails, /mobile advertiser header avoids duplicate surface label/);
     assert.match(kimGuardrails, /mobile influencer header avoids duplicate surface label/);
     assert.match(kimGuardrails, /influencer mobile rows do not repeat deadline values/);
@@ -944,6 +945,9 @@ describe("yeollock.me security regressions", () => {
     assert.match(server, /미션 불이행/);
     assert.match(supportersCampaignMigration, /'supporters'/);
     assert.match(seedAccounts, /type: "supporters"/);
+    assert.match(server, /fallbackMarketplaceCampaignPosts/);
+    assert.match(server, /public marketplace cache cold fallback/);
+    assert.match(server, /publicMarketplaceCache\.delete\(key\)/);
     assert.match(campaignPages, /data-campaign-scroll-region="open"/);
     assert.match(campaignPages, /grid min-h-0 flex-1 auto-rows-max/);
     assert.match(qaStandard, /Browser mobile influencer campaigns scroll/);
