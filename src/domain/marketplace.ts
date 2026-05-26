@@ -3,9 +3,19 @@ import type { InfluencerPlatform } from "./verification.js";
 export type CampaignProposalType =
   | "sponsored_post"
   | "product_seeding"
+  | "supporters"
   | "ppl"
   | "group_buy"
   | "visit_review";
+
+export const campaignProposalTypeOptions: CampaignProposalType[] = [
+  "sponsored_post",
+  "product_seeding",
+  "supporters",
+  "ppl",
+  "group_buy",
+  "visit_review",
+];
 
 export type MarketplaceCampaignStatus = "open" | "draft" | "closed" | "ended";
 
@@ -107,6 +117,7 @@ export type MarketplaceCampaignPost = MarketplaceBrandCampaign & {
 export const proposalTypeLabels: Record<CampaignProposalType, string> = {
   sponsored_post: "유료 광고",
   product_seeding: "제품 협찬",
+  supporters: "서포터즈",
   ppl: "PPL",
   group_buy: "공동구매",
   visit_review: "방문 리뷰",
@@ -151,7 +162,7 @@ export const marketplaceInfluencers: MarketplaceInfluencerProfile[] = [
         performanceLabel: "완주율 42%",
       },
     ],
-    collaborationTypes: ["sponsored_post", "product_seeding", "ppl"],
+    collaborationTypes: ["sponsored_post", "product_seeding", "supporters", "ppl"],
     startingPriceLabel: "150만원부터",
     responseTimeLabel: "보통 1영업일 내 응답",
     verifiedLabel: "플랫폼 인증 완료",
@@ -292,7 +303,7 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
     location: "서울 성수",
     logoLabel: "BR",
     preferredPlatforms: ["instagram", "youtube", "tiktok"],
-    proposalTypes: ["sponsored_post", "product_seeding", "ppl"],
+    proposalTypes: ["sponsored_post", "product_seeding", "supporters", "ppl"],
     budgetRangeLabel: "100만-450만원",
     responseTimeLabel: "1영업일 내 확인",
     statusLabel: "입점 브랜드",
@@ -309,11 +320,12 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
       },
       {
         title: "파우치 필수템 리뷰",
-        type: "product_seeding",
+        type: "supporters",
         applicantLimit: "8명",
-        budget: "제품 제공 + 제작비",
+        budget: "제품 제공(소비자가 89,000원 상당)",
         deadline: "2026-06-14",
         uploadDeadline: "2026-06-28",
+        deliverables: ["네이버 블로그 후기 1건", "인스타그램 피드 1건"],
       },
     ],
     recentCreators: ["제우", "민서홈"],

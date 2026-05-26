@@ -64,6 +64,7 @@ const categoryLabels: Record<InfluencerActivityCategory, string> = {
 const collaborationTypeFallbacks: CampaignProposalType[] = [
   "sponsored_post",
   "product_seeding",
+  "supporters",
 ];
 
 export function normalizePublicProfileHandle(value: string) {

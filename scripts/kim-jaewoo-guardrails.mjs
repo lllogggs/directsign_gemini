@@ -141,6 +141,7 @@ const app = read("src/App.tsx");
 const advertiserDashboard = read("src/pages/marketing/Dashboard.tsx");
 const influencerDashboard = read("src/pages/influencer/InfluencerDashboard.tsx");
 const campaignPages = read("src/pages/marketplace/CampaignPages.tsx");
+const marketplace = read("src/domain/marketplace.ts");
 const server = read("server/index.ts");
 const signupPage = read("src/pages/auth/SignupPage.tsx");
 const contractAdminViewer = read("src/pages/marketing/ContractAdminViewer.tsx");
@@ -158,6 +159,9 @@ const packageJson = JSON.parse(read("package.json"));
 const qaStandard = read("scripts/qa-standard.mjs");
 const seedTestAccounts = read("scripts/seed-test-accounts.mjs");
 const seedQaMarketplaceScenario = read("scripts/seed-qa-marketplace-scenario.mjs");
+const supportersCampaignMigration = read(
+  "supabase/migrations/20260526093000_allow_supporters_campaign_type.sql",
+);
 
 const dashboardAndIntroFiles = [
   "src/pages/marketing/Dashboard.tsx",
@@ -453,6 +457,24 @@ check(
     advertiserDashboard.includes("계약 조건 확인") &&
     advertiserDashboard.includes("extractCampaignSummaryField"),
   "Advertiser campaign rows must not show '-' or '/미정', and progress must use compact 신청/모집 ratios instead of repeating 신청 copy",
+);
+
+check(
+  "supporters campaign type creates product-mission contract guardrails",
+  marketplace.includes('| "supporters"') &&
+    marketplace.includes('supporters: "서포터즈"') &&
+    campaignPages.includes("campaignProposalTypeOptions") &&
+    campaignPages.includes("제품 제공(소비자가 89,000원 상당)") &&
+    server.includes('snapshot.type === "supporters"') &&
+    server.includes("campaign_supporters_resale_ban") &&
+    server.includes("재판매 또는 그 시도가 확인되면 서포터즈 활동 자격은 자동 박탈") &&
+    server.includes("campaign_supporters_posting_mission") &&
+    server.includes("미션 불이행") &&
+    supportersCampaignMigration.includes("'supporters'") &&
+    seedTestAccounts.includes('type: "supporters"') &&
+    seedQaMarketplaceScenario.includes('type: "supporters"') &&
+    agents.includes("서포터즈 캠페인은 제품 제공을 전제로"),
+  "Supporters must be a real persisted campaign type with UI entry, DB allowance, realistic seed data, and contract clauses for resale, posting maintenance, and mission non-performance",
 );
 
 check(

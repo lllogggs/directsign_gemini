@@ -212,6 +212,8 @@ Example option format:
   - Campaign creation field order must be: platform, ad type, title, recruitment count, payment, deliverables, campaign description, upload deadline, recruitment deadline.
   - Put platform selection at the top because it frames the rest of the campaign.
   - Keep the form task-focused and avoid repeating intro/education copy.
+  - 서포터즈 캠페인은 제품 제공을 전제로 글/게시 미션을 수행하는 캠페인 유형이다. 계약 초안에는 제품 재판매 금지, 재판매 적발 시 서포터즈 활동 자동 박탈 및 제품 제공비 청구, 컨텐츠 게시 유지, 미션 불이행 시 제품 제공비 청구 가능 조항이 포함되어야 한다.
+  - 서포터즈의 재판매/미션 불이행 규칙은 고객이 완료해야 할 계약 조항으로 처리한다. 대시보드나 모집 목록에 내부 설명성 배지를 추가해 화면을 복잡하게 만들지 않는다.
 - Message inbox rules:
   - Message inboxes are only for 1:1 contract proposals and proposal conversations. Campaign applications, recruiting, applicant selection, and campaign-to-contract conversion belong in campaign/application surfaces, not in the message inbox.
   - Message inbox rows should follow "one row, one primary information item".

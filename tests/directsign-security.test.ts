@@ -878,10 +878,14 @@ describe("yeollock.me security regressions", () => {
     const influencerDashboard = read("src/pages/influencer/InfluencerDashboard.tsx");
     const campaignPages = read("src/pages/marketplace/CampaignPages.tsx");
     const app = read("src/App.tsx");
+    const marketplaceDomain = read("src/domain/marketplace.ts");
     const packageJson = JSON.parse(read("package.json")) as {
       scripts?: Record<string, string>;
     };
     const marketplace = read("src/pages/marketplace/MarketplacePages.tsx");
+    const supportersCampaignMigration = read(
+      "supabase/migrations/20260526093000_allow_supporters_campaign_type.sql",
+    );
 
     assert.match(agents, /Kim Jaewoo Agent must be strict/);
     assert.match(agents, /Repeated Product Owner corrections must become executable guardrails/);
@@ -909,6 +913,7 @@ describe("yeollock.me security regressions", () => {
     assert.match(kimGuardrails, /advertiser campaign dashboard date formatter returns D-day before date/);
     assert.match(kimGuardrails, /advertiser campaign dashboard urgent D-day segment is red/);
     assert.match(kimGuardrails, /test advertiser campaign dashboard seed covers varied lifecycle cases/);
+    assert.match(kimGuardrails, /supporters campaign type creates product-mission contract guardrails/);
     assert.match(kimGuardrails, /signup consent records version and operation contact/);
     assert.match(kimGuardrails, /signature consent copy is shared between UI and server/);
     assert.match(kimGuardrails, /support access consent is enforced server-side and linked from both parties/);
@@ -929,6 +934,16 @@ describe("yeollock.me security regressions", () => {
     assert.match(advertiserDashboard, /to="\/advertiser\/campaigns\/new"/);
     assert.match(campaignPages, /backHref="\/advertiser\/campaigns"/);
     assert.match(campaignPages, /backLabel="캠페인 대시보드"/);
+    assert.match(marketplaceDomain, /\| "supporters"/);
+    assert.match(marketplaceDomain, /supporters: "서포터즈"/);
+    assert.match(campaignPages, /제품 제공\(소비자가 89,000원 상당\)/);
+    assert.match(marketplace, /campaignProposalTypeOptions/);
+    assert.match(server, /campaign_supporters_resale_ban/);
+    assert.match(server, /서포터즈 활동 자격은 자동 박탈/);
+    assert.match(server, /campaign_supporters_posting_mission/);
+    assert.match(server, /미션 불이행/);
+    assert.match(supportersCampaignMigration, /'supporters'/);
+    assert.match(seedAccounts, /type: "supporters"/);
     assert.match(campaignPages, /data-campaign-scroll-region="open"/);
     assert.match(campaignPages, /grid min-h-0 flex-1 auto-rows-max/);
     assert.match(qaStandard, /Browser mobile influencer campaigns scroll/);

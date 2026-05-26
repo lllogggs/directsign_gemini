@@ -26,6 +26,7 @@ import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
 import {
   buildMarketplaceCampaignPosts,
+  campaignProposalTypeOptions,
   getCampaignDeadlineLabel,
   getPlatformTone,
   marketplaceBrands,
@@ -74,13 +75,7 @@ const platformOptions: PlatformFilter[] = [
   "other",
 ];
 
-const proposalTypeOptions: CampaignProposalType[] = [
-  "sponsored_post",
-  "product_seeding",
-  "ppl",
-  "group_buy",
-  "visit_review",
-];
+const proposalTypeOptions = campaignProposalTypeOptions;
 
 const proposalTypeFilterOptions: ProposalTypeFilter[] = ["all", ...proposalTypeOptions];
 
@@ -374,6 +369,16 @@ export function AdvertiserCampaignRecruitmentPage() {
   const brand = state.status === "ready" ? state.brand : null;
   const campaignApplications =
     applicationsState.status === "ready" ? applicationsState.applications : [];
+  const isSupportersCampaign = form.type === "supporters";
+  const budgetPlaceholder = isSupportersCampaign
+    ? "예: 제품 제공(소비자가 89,000원 상당)"
+    : "예: 150만-300만원";
+  const deliverablesPlaceholder = isSupportersCampaign
+    ? "예: 네이버 블로그 후기 1건, 인스타 피드 1건"
+    : "예: 릴스 1건, 스토리 2건";
+  const summaryPlaceholder = isSupportersCampaign
+    ? "제품, 작성 미션, 게시 유지 조건, 제품 제공비 기준을 적어 주세요."
+    : "인플루언서가 바로 판단할 수 있도록 제품, 타깃, 원하는 컨텐츠 톤, 검수 기준을 적어 주세요.";
 
   const selectCampaignApplicant = async (application: MarketplaceMessageThread) => {
     if (
@@ -566,7 +571,7 @@ export function AdvertiserCampaignRecruitmentPage() {
                   onChange={(event) =>
                     setForm((current) => ({ ...current, budget: event.target.value }))
                   }
-                  placeholder="예: 150만-300만원"
+                  placeholder={budgetPlaceholder}
                   className="campaign-input"
                 />
               </CampaignField>
@@ -582,7 +587,7 @@ export function AdvertiserCampaignRecruitmentPage() {
                     deliverables: event.target.value,
                   }))
                 }
-                placeholder="예: 릴스 1건, 스토리 2건"
+                placeholder={deliverablesPlaceholder}
                 className="campaign-input"
               />
             </CampaignField>
@@ -595,7 +600,7 @@ export function AdvertiserCampaignRecruitmentPage() {
                 onChange={(event) =>
                   setForm((current) => ({ ...current, summary: event.target.value }))
                 }
-                placeholder="인플루언서가 바로 판단할 수 있도록 제품, 타깃, 원하는 컨텐츠 톤, 검수 기준을 적어 주세요."
+                placeholder={summaryPlaceholder}
                 className="campaign-input resize-none"
               />
             </CampaignField>

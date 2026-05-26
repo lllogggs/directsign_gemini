@@ -19,6 +19,8 @@ import { PRODUCT_NAME } from "../../domain/brand";
 import { removeInternalTestLabel } from "../../domain/display";
 import {
   platformLabels,
+  proposalTypeLabels,
+  campaignProposalTypeOptions,
   type CampaignProposalType,
 } from "../../domain/marketplace";
 import {
@@ -58,11 +60,7 @@ const platformFilterOptions: PlatformFilter[] = [
 ];
 const proposalTypeFilterOptions: ProposalTypeFilter[] = [
   "all",
-  "sponsored_post",
-  "product_seeding",
-  "ppl",
-  "group_buy",
-  "visit_review",
+  ...campaignProposalTypeOptions,
 ];
 const proposalStatusFilterOptions: ProposalStatusFilter[] = [
   "all",
@@ -71,14 +69,6 @@ const proposalStatusFilterOptions: ProposalStatusFilter[] = [
   "converted_to_contract",
   "closed",
 ];
-
-const proposalTypeLabels: Record<CampaignProposalType, string> = {
-  sponsored_post: "유료 광고",
-  product_seeding: "제품 협찬",
-  ppl: "PPL",
-  group_buy: "공동구매",
-  visit_review: "방문 리뷰",
-};
 
 const proposalStatusLabels: Record<MarketplaceProposalStatus, string> = {
   submitted: "제안 전송",

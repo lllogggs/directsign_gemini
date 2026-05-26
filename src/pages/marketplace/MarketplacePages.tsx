@@ -36,6 +36,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
 import {
+  campaignProposalTypeOptions,
   formatProposalTypes,
   getBrandProfilePath,
   getInfluencerProfilePath,
@@ -67,13 +68,7 @@ const platformFilterOptions: PlatformFilter[] = [
   "other",
 ];
 
-const proposalTypeOptions: CampaignProposalType[] = [
-  "sponsored_post",
-  "product_seeding",
-  "ppl",
-  "group_buy",
-  "visit_review",
-];
+const proposalTypeOptions = campaignProposalTypeOptions;
 
 const demoInfluencerProfileAliases: Record<string, string> = {
   "creator-sora": "zeu_k",

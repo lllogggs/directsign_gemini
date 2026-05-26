@@ -35,6 +35,7 @@ import type {
 } from "../src/domain/influencerDashboard";
 import {
   buildMarketplaceCampaignPosts,
+  campaignProposalTypeOptions,
   findBrandProfileByHandle,
   findInfluencerProfileByHandle,
   mergeMarketplaceBrandProfiles,
@@ -6011,13 +6012,9 @@ const insertSupabaseV2RowsIgnoringDuplicates = async (
   await assertSupabaseOk(response, `Supabase ${table} insert`);
 };
 
-const campaignProposalTypes = new Set<CampaignProposalType>([
-  "sponsored_post",
-  "product_seeding",
-  "ppl",
-  "group_buy",
-  "visit_review",
-]);
+const campaignProposalTypes = new Set<CampaignProposalType>(
+  campaignProposalTypeOptions,
+);
 
 const normalizeStringArrayForStorage = (
   value: unknown,
@@ -7470,7 +7467,7 @@ const buildAdvertiserBrandProfileFromAuth = (
     location: "운영 지역 미입력",
     logoLabel: buildMarketplaceAvatarLabel(name, "BR"),
     preferredPlatforms: [],
-    proposalTypes: ["sponsored_post", "product_seeding"],
+    proposalTypes: ["sponsored_post", "product_seeding", "supporters"],
     budgetRangeLabel: "협의 가능",
     responseTimeLabel: "제안 확인 후 응답",
     statusLabel: "모집 준비",
@@ -9890,6 +9887,34 @@ const buildMarketplaceCampaignDraftClauses = (
   const deliverables =
     snapshot.deliverables?.filter(hasText).join(", ") ||
     "모집글 조건";
+  const supportersClauses: Contract["clauses"] =
+    snapshot.type === "supporters"
+      ? [
+          {
+            clause_id: "campaign_supporters_product_mission",
+            category: "제품 제공 및 미션",
+            content: `광고주는 서포터즈 활동을 위해 "${snapshot.budget}"에 기재된 제품 또는 제품 제공 조건을 제공한다. 인플루언서는 제공 제품을 직접 사용한 뒤 다음 산출물을 기한 내 게시 또는 제출한다: ${deliverables}.`,
+            status: "APPROVED",
+            history: [],
+          },
+          {
+            clause_id: "campaign_supporters_resale_ban",
+            category: "재판매 금지",
+            content:
+              "인플루언서는 제공받은 제품을 재판매, 양도, 교환, 환불 신청, 현금화 등 캠페인 목적 외로 처분할 수 없다. 재판매 또는 그 시도가 확인되면 서포터즈 활동 자격은 자동 박탈되며 광고주는 모집글 또는 계약서에 기재된 제품 제공비를 청구할 수 있다.",
+            status: "APPROVED",
+            history: [],
+          },
+          {
+            clause_id: "campaign_supporters_posting_mission",
+            category: "게시 유지 및 미션 이행",
+            content:
+              "인플루언서는 게시한 컨텐츠를 모집글 또는 계약서에 기재된 유지 기간 동안 공개 상태로 유지한다. 유지 기간이 별도로 기재되지 않은 경우 삭제, 비공개 전환, 주요 내용 수정은 광고주와 사전에 합의한다. 미션 불이행, 무단 삭제, 광고 표시 누락 등으로 캠페인 목적 달성이 어려운 경우 광고주는 제품 제공비 청구를 요청할 수 있다.",
+            status: "APPROVED",
+            history: [],
+          },
+        ]
+      : [];
 
   return [
     {
@@ -9922,10 +9947,14 @@ const buildMarketplaceCampaignDraftClauses = (
     {
       clause_id: "campaign_application_payment",
       category: "지급 조건",
-      content: `본 캠페인의 예산 또는 지급 조건은 "${snapshot.budget}"을 기준으로 한다.`,
+      content:
+        snapshot.type === "supporters"
+          ? `본 서포터즈 캠페인의 지급 조건은 "${snapshot.budget}"을 기준으로 한다. 제품 제공은 캠페인 미션 이행을 전제로 한다.`
+          : `본 캠페인의 예산 또는 지급 조건은 "${snapshot.budget}"을 기준으로 한다.`,
       status: "APPROVED",
       history: [],
     },
+    ...supportersClauses,
     {
       clause_id: "campaign_application_review",
       category: "광고 표시 및 검수",
