@@ -73,6 +73,7 @@ import {
 } from "../../domain/publicInfluencerProfile";
 import { translateApiErrorMessage } from "../../domain/userMessages";
 import type { InfluencerPlatform, VerificationStatus } from "../../domain/verification";
+import { MobileSurfaceSwitch } from "../../components/MobileSurfaceSwitch";
 import { useMarketplaceMessageSummary } from "../../hooks/useMarketplaceMessageSummary";
 
 type DashboardState =
@@ -701,7 +702,7 @@ export function InfluencerDashboard() {
             </span>
             <span className="font-neo-heavy hidden text-[18px] leading-none sm:inline">{PRODUCT_NAME}</span>
             <span className="max-w-[104px] truncate text-[12px] font-extrabold leading-none text-neutral-700 sm:hidden">
-              인플루언서 · 내 계약
+              인플루언서
             </span>
           </button>
 
@@ -753,6 +754,8 @@ export function InfluencerDashboard() {
           </div>
         </div>
       </header>
+
+      <MobileSurfaceSwitch role="influencer" active="contracts" />
 
       <main className="mx-auto w-full min-w-0 max-w-[1500px] px-3 py-2.5 sm:px-5 lg:flex lg:h-[calc(100vh-56px)] lg:flex-col lg:overflow-hidden lg:px-6">
         <section className="min-w-0 overflow-hidden rounded-[10px] border border-neutral-200/90 bg-white shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_18px_46px_rgba(23,26,23,0.055)] lg:flex lg:h-full lg:flex-col">
@@ -995,6 +998,8 @@ function LoadingView() {
           </div>
         </div>
       </header>
+
+      <MobileSurfaceSwitch role="influencer" active="contracts" />
 
       <main className="mx-auto w-full min-w-0 max-w-[1500px] px-3 py-2.5 sm:px-5 lg:flex lg:h-[calc(100vh-56px)] lg:flex-col lg:overflow-hidden lg:px-6">
         <section className="min-w-0 overflow-hidden rounded-[10px] border border-neutral-200/90 bg-white shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_18px_46px_rgba(23,26,23,0.055)] lg:flex lg:h-full lg:flex-col">
@@ -2246,7 +2251,7 @@ function InfluencerDateCell({
       : formatDeadlineDisplay(item);
 
   return (
-    <p className="min-w-0 truncate whitespace-nowrap text-[12px] font-semibold text-[#303630]">
+    <p className="hidden min-w-0 truncate whitespace-nowrap text-[12px] font-semibold text-[#303630] lg:block">
       {value}
     </p>
   );

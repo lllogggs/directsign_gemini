@@ -139,6 +139,8 @@ const evaluateLiteralObject = (source, marker) => {
 const landing = read("src/pages/landing/LandingPages.tsx");
 const advertiserDashboard = read("src/pages/marketing/Dashboard.tsx");
 const influencerDashboard = read("src/pages/influencer/InfluencerDashboard.tsx");
+const campaignPages = read("src/pages/marketplace/CampaignPages.tsx");
+const mobileSurfaceSwitch = read("src/components/MobileSurfaceSwitch.tsx");
 const authLoginScreen = read("src/components/AuthLoginScreen.tsx");
 const advertiserVerification = read("src/pages/marketing/AdvertiserVerification.tsx");
 const influencerVerification = read("src/pages/influencer/InfluencerVerification.tsx");
@@ -228,6 +230,20 @@ assertNoRegex(
   "Influencer dashboard fallback row titles must say 계약, not 캠페인",
 );
 
+assertNoText(
+  "mobile advertiser header avoids duplicate surface label",
+  ["src/pages/marketing/Dashboard.tsx"],
+  "광고주 · 계약",
+  "The mobile surface switch owns the contract/campaign distinction; the app header should not repeat or truncate it",
+);
+
+assertNoText(
+  "mobile influencer header avoids duplicate surface label",
+  ["src/pages/influencer/InfluencerDashboard.tsx"],
+  "인플루언서 · 내 계약",
+  "The mobile surface switch owns the contract/campaign distinction; the app header should not repeat or truncate it",
+);
+
 assertNoRegex(
   "dashboard/intro date order is YYYY.MM.DD / D-day",
   dashboardAndIntroFiles,
@@ -245,6 +261,14 @@ check(
   "influencer dashboard date formatter returns date before D-day",
   influencerDashboard.includes("return `${dateLabel} / ${dday}`;"),
   "formatInfluencerDateWithDday must render YYYY.MM.DD / D±N",
+);
+
+check(
+  "influencer mobile rows do not repeat deadline values",
+  influencerDashboard.includes(
+    'className="hidden min-w-0 truncate whitespace-nowrap text-[12px] font-semibold text-[#303630] lg:block"',
+  ),
+  "mobile influencer rows already include the deadline in the meta line, so the separate date cell must be desktop-only",
 );
 
 check(
@@ -287,6 +311,23 @@ check(
   authLoginScreen.includes("disabled:!bg-neutral-200") &&
     authLoginScreen.includes("disabled:text-neutral-500"),
   "signup/login disabled primary CTA must not stay blue with muted text",
+);
+
+check(
+  "mobile contract and campaign surfaces are explicit",
+  mobileSurfaceSwitch.includes("data-mobile-surface-switch") &&
+    mobileSurfaceSwitch.includes("계약") &&
+    mobileSurfaceSwitch.includes("내 계약") &&
+    mobileSurfaceSwitch.includes("캠페인") &&
+    mobileSurfaceSwitch.includes("/advertiser/dashboard") &&
+    mobileSurfaceSwitch.includes("/advertiser/campaigns") &&
+    mobileSurfaceSwitch.includes("/influencer/dashboard") &&
+    mobileSurfaceSwitch.includes("/influencer/campaigns") &&
+    advertiserDashboard.includes('<MobileSurfaceSwitch role="advertiser" active="contracts" />') &&
+    (influencerDashboard.match(/<MobileSurfaceSwitch role="influencer" active="contracts" \/>/g) ??
+      []).length >= 2 &&
+    campaignPages.includes('<MobileSurfaceSwitch role={role} active="campaigns" />'),
+  "mobile users must see the contract/campaign surface split instead of relying on icon-only header actions",
 );
 
 check(

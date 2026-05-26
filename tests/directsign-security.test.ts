@@ -785,6 +785,10 @@ describe("yeollock.me security regressions", () => {
     const advertiserVerification = read("src/pages/marketing/AdvertiserVerification.tsx");
     const influencerVerification = read("src/pages/influencer/InfluencerVerification.tsx");
     const seedAccounts = read("scripts/seed-test-accounts.mjs");
+    const mobileSurfaceSwitch = read("src/components/MobileSurfaceSwitch.tsx");
+    const advertiserDashboard = read("src/pages/marketing/Dashboard.tsx");
+    const influencerDashboard = read("src/pages/influencer/InfluencerDashboard.tsx");
+    const campaignPages = read("src/pages/marketplace/CampaignPages.tsx");
     const packageJson = JSON.parse(read("package.json")) as {
       scripts?: Record<string, string>;
     };
@@ -806,7 +810,23 @@ describe("yeollock.me security regressions", () => {
     assert.match(kimGuardrails, /fallback titles stay contract-centered/);
     assert.match(kimGuardrails, /row titles stay contract-centered/);
     assert.match(kimGuardrails, /live stale settlement titles are normalized/);
+    assert.match(kimGuardrails, /mobile contract and campaign surfaces are explicit/);
+    assert.match(kimGuardrails, /mobile advertiser header avoids duplicate surface label/);
+    assert.match(kimGuardrails, /mobile influencer header avoids duplicate surface label/);
+    assert.match(kimGuardrails, /influencer mobile rows do not repeat deadline values/);
     assert.match(kimGuardrails, /OpenDesign is a separate local daemon\/web app workflow/);
+    assert.match(mobileSurfaceSwitch, /data-mobile-surface-switch/);
+    assert.match(mobileSurfaceSwitch, /\/advertiser\/campaigns/);
+    assert.match(mobileSurfaceSwitch, /\/influencer\/campaigns/);
+    assert.match(advertiserDashboard, /MobileSurfaceSwitch role="advertiser" active="contracts"/);
+    assert.ok(
+      (influencerDashboard.match(/MobileSurfaceSwitch role="influencer" active="contracts"/g) ?? [])
+        .length >= 2,
+    );
+    assert.match(campaignPages, /MobileSurfaceSwitch role=\{role\} active="campaigns"/);
+    assert.doesNotMatch(advertiserDashboard, /광고주 · 계약/);
+    assert.doesNotMatch(influencerDashboard, /인플루언서 · 내 계약/);
+    assert.match(influencerDashboard, /hidden min-w-0 truncate whitespace-nowrap text-\[12px\] font-semibold text-\[#303630\] lg:block/);
     assert.match(landing, /계약과 신청을/);
     assert.match(qaStandard, /계약과 신청을/);
     assert.doesNotMatch(landing, /받은 캠페인을/);
