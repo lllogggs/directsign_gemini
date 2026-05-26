@@ -6504,6 +6504,7 @@ const sendPublicMarketplaceJson = <T,>(
 
 const warmPublicMarketplaceCache = () => {
   if (process.env.DISABLE_PUBLIC_MARKETPLACE_CACHE_WARMUP === "1") return;
+  if (process.env.VERCEL === "1") return;
 
   setTimeout(() => {
     void Promise.all([

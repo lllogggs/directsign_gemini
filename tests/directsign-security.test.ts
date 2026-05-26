@@ -948,6 +948,7 @@ describe("yeollock.me security regressions", () => {
     assert.match(server, /fallbackMarketplaceCampaignPosts/);
     assert.match(server, /public marketplace cache cold fallback/);
     assert.match(server, /publicMarketplaceCache\.delete\(key\)/);
+    assert.match(server, /process\.env\.VERCEL === "1"/);
     assert.match(campaignPages, /data-campaign-scroll-region="open"/);
     assert.match(campaignPages, /grid min-h-0 flex-1 auto-rows-max/);
     assert.match(qaStandard, /Browser mobile influencer campaigns scroll/);

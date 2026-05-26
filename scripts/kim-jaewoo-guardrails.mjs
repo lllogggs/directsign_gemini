@@ -418,8 +418,9 @@ check(
     server.includes("fallbackMarketplaceBrandProfiles") &&
     server.includes("fallbackMarketplaceCampaignPosts") &&
     server.includes("publicMarketplaceCache.delete(key)") &&
+    server.includes('process.env.VERCEL === "1"') &&
     server.includes("public marketplace cache cold fallback"),
-  "Public marketplace APIs must not keep returning 500 when a cold Supabase read times out; clear the failed refresh and serve the safe public fallback while retrying later",
+  "Public marketplace APIs must not keep returning 500 when a cold Supabase read times out; skip serverless background warmup, clear the failed refresh, and serve the safe public fallback while retrying later",
 );
 
 check(
