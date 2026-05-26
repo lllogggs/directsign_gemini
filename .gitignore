@@ -4,6 +4,7 @@ dist/
 coverage/
 qa-artifacts/*
 !qa-artifacts/seed-dashboard-matrix.mjs
+tmp/
 .tmp/
 .codex-logs/
 data/
