@@ -75,7 +75,6 @@ import {
   type MarketplaceMessagesResponse,
   type MarketplaceProposalStatus,
 } from "../../domain/marketplaceInbox";
-import { MobileSurfaceSwitch } from "../../components/MobileSurfaceSwitch";
 
 type PlatformFilter = "ALL" | ContractPlatform;
 type ContractTypeFilter = "ALL" | Contract["type"];
@@ -784,13 +783,14 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
           <button
             type="button"
             onClick={() => navigate("/advertiser/dashboard")}
+            aria-label={PRODUCT_NAME}
             className="yl-brand-action -ml-1 flex h-10 min-w-10 shrink-0 items-center gap-3 rounded-[12px] px-1 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
           >
             <span className="flex h-[34px] w-[34px] items-center justify-center rounded-[11px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
               <ShieldCheck className="h-4 w-4" strokeWidth={2} />
             </span>
             <span className="font-neo-heavy hidden text-[18px] leading-none sm:inline">{PRODUCT_NAME}</span>
-            <span className="max-w-[92px] truncate text-[12px] font-extrabold leading-none text-neutral-700 sm:hidden">
+            <span className="sr-only sm:hidden">
               광고주
             </span>
           </button>
@@ -801,26 +801,7 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
                 <SyncPill isSyncing={isSyncing} syncError={syncError} />
               </div>
             ) : null}
-            <button
-              type="button"
-              onClick={() => navigate("/advertiser/builder")}
-              className="yl-header-action yl-header-action-primary"
-              aria-label="새 계약"
-              title="새 계약: 다른 플랫폼 혹은 DM에서 협의된 내용을 계약서로 정리"
-            >
-              <Plus className="h-3.5 w-3.5" strokeWidth={2} />
-              <span className="hidden sm:inline">새 계약</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate("/advertiser/campaigns")}
-              className="yl-header-action yl-header-action-blue-secondary"
-              aria-label="캠페인 대시보드"
-              title="캠페인 대시보드"
-            >
-              <Megaphone className="h-3.5 w-3.5" strokeWidth={2} />
-              <span className="hidden sm:inline">캠페인</span>
-            </button>
+            <AdvertiserDashboardSurfaceSwitch active={surface} />
             <MessageCenterButton
               unreadCount={messageSummary.unreadCount}
               isLoading={isMessageSummaryLoading}
@@ -859,11 +840,6 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
         </div>
       </header>
 
-      <MobileSurfaceSwitch
-        role="advertiser"
-        active={isCampaignSurface ? "campaigns" : "contracts"}
-      />
-
       <main className="mx-auto w-full min-w-0 max-w-[1500px] px-3 py-2.5 sm:px-5 lg:flex lg:h-[calc(100vh-56px)] lg:flex-col lg:overflow-hidden lg:px-6">
         <section className="min-w-0 overflow-hidden rounded-[10px] border border-neutral-200/90 bg-white shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_18px_46px_rgba(23,26,23,0.055)] lg:flex lg:h-full lg:flex-col">
           <div className="border-b border-[#d9e0d9] bg-white px-4 py-2">
@@ -877,27 +853,36 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
                 <Link
                   to="/advertiser/campaigns/new"
                   className="yl-header-action yl-header-action-primary"
-                  aria-label="캠페인 작성"
-                  title="캠페인 작성"
+                  aria-label="새 캠페인"
+                  title="새 캠페인"
                 >
                   <Plus className="h-3.5 w-3.5" strokeWidth={2} />
-                  <span className="sm:hidden">작성</span>
-                  <span className="hidden sm:inline">캠페인 작성</span>
+                  <span className="sm:hidden">캠페인</span>
+                  <span className="hidden sm:inline">새 캠페인</span>
                 </Link>
-              ) : null}
+              ) : (
+                <Link
+                  to="/advertiser/builder"
+                  className="yl-header-action yl-header-action-primary"
+                  aria-label="새 계약"
+                  title="새 계약"
+                >
+                  <Plus className="h-3.5 w-3.5" strokeWidth={2} />
+                  <span className="sm:hidden">계약</span>
+                  <span className="hidden sm:inline">새 계약</span>
+                </Link>
+              )}
             </div>
           </div>
 
-          {!isCampaignSurface ? (
-            <VerificationBanner
-              status={advertiserVerificationStatus}
-              account={advertiserAccount}
-              isLoading={isVerificationLoading}
-              latest={verificationSummary?.advertiser.latest_request}
-              onOpen={() => navigate("/advertiser/verification")}
-              embedded
-            />
-          ) : null}
+          <VerificationBanner
+            status={advertiserVerificationStatus}
+            account={advertiserAccount}
+            isLoading={isVerificationLoading}
+            latest={verificationSummary?.advertiser.latest_request}
+            onOpen={() => navigate("/advertiser/verification")}
+            embedded
+          />
 
           <div className="min-w-0 p-2 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
             {isCampaignSurface ? (
@@ -1250,6 +1235,35 @@ function MessageCenterButton({
         <span className="absolute right-0 top-0 h-2.5 w-2.5 rounded-full bg-neutral-300 ring-2 ring-white" />
       ) : null}
     </button>
+  );
+}
+
+function AdvertiserDashboardSurfaceSwitch({
+  active,
+}: {
+  active: DashboardProps["surface"];
+}) {
+  return (
+    <nav className="yl-dashboard-surface-switch" aria-label="광고주 대시보드 전환">
+      <Link
+        to="/advertiser/dashboard"
+        className={`yl-dashboard-surface-link ${
+          active === "contracts" ? "yl-dashboard-surface-link-active" : ""
+        }`}
+        aria-current={active === "contracts" ? "page" : undefined}
+      >
+        계약
+      </Link>
+      <Link
+        to="/advertiser/campaigns"
+        className={`yl-dashboard-surface-link ${
+          active === "campaigns" ? "yl-dashboard-surface-link-active" : ""
+        }`}
+        aria-current={active === "campaigns" ? "page" : undefined}
+      >
+        캠페인
+      </Link>
+    </nav>
   );
 }
 
@@ -1680,7 +1694,7 @@ function CampaignLifecycleTabs({
   onChange: (value: CampaignLifecycle) => void;
 }) {
   return (
-    <div className="bg-[#ecebe5] px-2 pt-2">
+    <div className="yl-dashboard-lifecycle-strip bg-[#ecebe5] px-2 pt-2">
       <div
         role="tablist"
         className="grid min-w-0 grid-cols-3 items-end gap-0 overflow-visible"
@@ -1694,9 +1708,9 @@ function CampaignLifecycleTabs({
               onClick={() => onChange(tab.value)}
               role="tab"
               aria-selected={active}
-              className={`relative flex h-10 min-w-0 flex-1 items-center justify-between gap-2 rounded-t-[10px] border px-3 text-left transition focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-neutral-950 ${
+              className={`relative flex h-10 min-w-0 flex-1 items-center justify-between gap-2 overflow-visible rounded-t-[10px] border px-3 text-left transition focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-neutral-950 ${
                 active
-                  ? "z-10 border-[#d9e0d9] border-b-white bg-white text-[#171a17] after:absolute after:inset-x-0 after:-bottom-px after:h-px after:bg-white"
+                  ? "yl-dashboard-lifecycle-tab-active z-10 border-[#d9e0d9] border-b-white bg-white text-[#171a17]"
                   : "border-transparent bg-transparent text-[#59605b] hover:bg-white/35 hover:text-[#171a17]"
               }`}
             >
@@ -3645,6 +3659,8 @@ function getCampaignRosterProgress(campaign: CampaignGroup) {
 function getCampaignCapacity(campaign: CampaignGroup) {
   const raw =
     campaign.marketplaceCampaign?.applicantLimit ??
+    campaign.contracts.find((contract) => contract.campaign?.applicant_limit)
+      ?.campaign?.applicant_limit ??
     extractCampaignSummaryField(campaign, "모집인원:", [
       "지급내용:",
       "산출물:",

@@ -433,11 +433,15 @@ check(
     mobileSurfaceSwitch.includes("/advertiser/campaigns") &&
     mobileSurfaceSwitch.includes("/influencer/dashboard") &&
     mobileSurfaceSwitch.includes("/influencer/campaigns") &&
-    advertiserDashboard.includes('active={isCampaignSurface ? "campaigns" : "contracts"}') &&
+    advertiserDashboard.includes("<AdvertiserDashboardSurfaceSwitch active={surface} />") &&
+    advertiserDashboard.includes("function AdvertiserDashboardSurfaceSwitch") &&
+    advertiserDashboard.includes('to="/advertiser/dashboard"') &&
+    advertiserDashboard.includes('to="/advertiser/campaigns"') &&
+    !advertiserDashboard.includes('<MobileSurfaceSwitch role="advertiser"') &&
     (influencerDashboard.match(/<MobileSurfaceSwitch role="influencer" active="contracts" \/>/g) ??
       []).length >= 2 &&
     campaignPages.includes('<MobileSurfaceSwitch role={role} active="campaigns" />'),
-  "mobile users must see the contract/campaign surface split instead of relying on icon-only header actions",
+  "mobile users must see the contract/campaign surface split without duplicating the same switch in both the header and body",
 );
 
 check(

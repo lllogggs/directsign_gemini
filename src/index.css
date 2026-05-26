@@ -553,6 +553,88 @@
     color: #171717;
   }
 
+  .yl-dashboard-surface-switch {
+    display: inline-flex;
+    height: 2.5rem;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 0.125rem;
+    border-radius: 9px;
+    border: 1px solid #e5e5e5;
+    background: #ffffff;
+    padding: 0.125rem;
+    box-shadow: 0 10px 24px rgba(23, 26, 23, 0.055);
+  }
+
+  .yl-dashboard-surface-link {
+    display: inline-flex;
+    height: 2.125rem;
+    min-width: 3.5rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 7px;
+    padding-inline: 0.625rem;
+    font-size: 12px;
+    font-weight: 850;
+    line-height: 1;
+    color: #525252;
+    text-decoration: none;
+    transition:
+      background-color 160ms ease,
+      color 160ms ease,
+      box-shadow 160ms ease;
+  }
+
+  .yl-dashboard-surface-link:hover {
+    background: #f5f5f5;
+    color: #171717;
+  }
+
+  .yl-dashboard-surface-link-active {
+    background: #171717;
+    color: #ffffff;
+    box-shadow: 0 8px 18px rgba(23, 26, 23, 0.14);
+  }
+
+  .yl-dashboard-surface-link-active:hover {
+    background: #171717;
+    color: #ffffff;
+  }
+
+  .yl-dashboard-lifecycle-strip {
+    --yl-dashboard-tab-rail: #ecebe5;
+    --yl-dashboard-tab-surface: #ffffff;
+    border-radius: 12px 12px 0 0;
+  }
+
+  .yl-dashboard-lifecycle-tab-active {
+    isolation: isolate;
+  }
+
+  .yl-dashboard-lifecycle-tab-active::before,
+  .yl-dashboard-lifecycle-tab-active::after {
+    pointer-events: none;
+    content: "";
+    position: absolute;
+    bottom: -1px;
+    z-index: 0;
+    width: 12px;
+    height: 12px;
+    background: var(--yl-dashboard-tab-rail);
+  }
+
+  .yl-dashboard-lifecycle-tab-active::before {
+    left: -12px;
+    border-bottom-right-radius: 12px;
+    box-shadow: 6px 6px 0 5px var(--yl-dashboard-tab-surface);
+  }
+
+  .yl-dashboard-lifecycle-tab-active::after {
+    right: -12px;
+    border-bottom-left-radius: 12px;
+    box-shadow: -6px 6px 0 5px var(--yl-dashboard-tab-surface);
+  }
+
   @media (min-width: 640px) {
     .yl-header-action {
       width: 112px;
