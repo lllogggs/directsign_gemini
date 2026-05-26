@@ -192,7 +192,7 @@ const InfluencerMessagesPage = lazy(() =>
     default: () => <module.MarketplaceInboxPage role="influencer" />,
   })),
 );
-const AdvertiserCampaignRecruitmentPage = lazy(() =>
+const AdvertiserCampaignCreationPage = lazy(() =>
   loadCampaignPages().then((module) => ({
     default: module.AdvertiserCampaignRecruitmentPage,
   })),
@@ -906,7 +906,8 @@ const getExactRoutePreloaders = (pathname: string): RouteModuleLoader[] => {
   if (pathname === "/advertiser/dashboard") return [loadDashboard];
   if (pathname === "/advertiser/builder") return [loadContractBuilder];
   if (pathname === "/advertiser/discover") return [loadMarketplacePages];
-  if (pathname === "/advertiser/campaigns") return [loadCampaignPages];
+  if (pathname === "/advertiser/campaigns") return [loadDashboard];
+  if (pathname === "/advertiser/campaigns/new") return [loadCampaignPages];
   if (pathname === "/advertiser/messages") return [loadMarketplaceInboxPage];
   if (pathname === "/advertiser/verification") return [loadAdvertiserVerification];
   if (pathname.startsWith("/advertiser/contract/")) {
@@ -1228,7 +1229,15 @@ function AppRoutes() {
             path="/advertiser/campaigns"
             element={
               <AdvertiserAuthGate redirectUnauthenticated>
-                <AdvertiserCampaignRecruitmentPage />
+                <Dashboard surface="campaigns" />
+              </AdvertiserAuthGate>
+            }
+          />
+          <Route
+            path="/advertiser/campaigns/new"
+            element={
+              <AdvertiserAuthGate redirectUnauthenticated>
+                <AdvertiserCampaignCreationPage />
               </AdvertiserAuthGate>
             }
           />

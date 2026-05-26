@@ -360,6 +360,7 @@ export function AdvertiserCampaignRecruitmentPage() {
         uploadDeadline: "",
         deliverables: "",
       }));
+      navigate("/advertiser/campaigns");
     } catch (error) {
       setSubmitError(
         error instanceof Error ? error.message : "캠페인을 저장하지 못했습니다.",
@@ -434,8 +435,8 @@ export function AdvertiserCampaignRecruitmentPage() {
       eyebrow="광고주 캠페인"
       title="캠페인 작성"
       description="모집 조건을 공개하고 지원자를 한곳에서 확인합니다."
-      backHref="/advertiser/dashboard"
-      backLabel="계약 대시보드"
+      backHref="/advertiser/campaigns"
+      backLabel="캠페인 대시보드"
       metrics={[
         {
           label: "작성",

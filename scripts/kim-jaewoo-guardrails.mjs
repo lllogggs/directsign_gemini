@@ -137,6 +137,7 @@ const evaluateLiteralObject = (source, marker) => {
 };
 
 const landing = read("src/pages/landing/LandingPages.tsx");
+const app = read("src/App.tsx");
 const advertiserDashboard = read("src/pages/marketing/Dashboard.tsx");
 const influencerDashboard = read("src/pages/influencer/InfluencerDashboard.tsx");
 const campaignPages = read("src/pages/marketplace/CampaignPages.tsx");
@@ -323,11 +324,23 @@ check(
     mobileSurfaceSwitch.includes("/advertiser/campaigns") &&
     mobileSurfaceSwitch.includes("/influencer/dashboard") &&
     mobileSurfaceSwitch.includes("/influencer/campaigns") &&
-    advertiserDashboard.includes('<MobileSurfaceSwitch role="advertiser" active="contracts" />') &&
+    advertiserDashboard.includes('active={isCampaignSurface ? "campaigns" : "contracts"}') &&
     (influencerDashboard.match(/<MobileSurfaceSwitch role="influencer" active="contracts" \/>/g) ??
       []).length >= 2 &&
     campaignPages.includes('<MobileSurfaceSwitch role={role} active="campaigns" />'),
   "mobile users must see the contract/campaign surface split instead of relying on icon-only header actions",
+);
+
+check(
+  "advertiser campaign tab opens dashboard before creation",
+  app.includes('path="/advertiser/campaigns"') &&
+    app.includes('<Dashboard surface="campaigns" />') &&
+    app.includes('path="/advertiser/campaigns/new"') &&
+    advertiserDashboard.includes('to="/advertiser/campaigns/new"') &&
+    campaignPages.includes('backHref="/advertiser/campaigns"') &&
+    campaignPages.includes('backLabel="캠페인 대시보드"') &&
+    qaStandard.includes('"/advertiser/campaigns/new"'),
+  "The advertiser campaign surface must open a dashboard first, with campaign creation as a secondary page",
 );
 
 check(

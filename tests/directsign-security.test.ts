@@ -789,6 +789,7 @@ describe("yeollock.me security regressions", () => {
     const advertiserDashboard = read("src/pages/marketing/Dashboard.tsx");
     const influencerDashboard = read("src/pages/influencer/InfluencerDashboard.tsx");
     const campaignPages = read("src/pages/marketplace/CampaignPages.tsx");
+    const app = read("src/App.tsx");
     const packageJson = JSON.parse(read("package.json")) as {
       scripts?: Record<string, string>;
     };
@@ -811,6 +812,7 @@ describe("yeollock.me security regressions", () => {
     assert.match(kimGuardrails, /row titles stay contract-centered/);
     assert.match(kimGuardrails, /live stale settlement titles are normalized/);
     assert.match(kimGuardrails, /mobile contract and campaign surfaces are explicit/);
+    assert.match(kimGuardrails, /advertiser campaign tab opens dashboard before creation/);
     assert.match(kimGuardrails, /mobile advertiser header avoids duplicate surface label/);
     assert.match(kimGuardrails, /mobile influencer header avoids duplicate surface label/);
     assert.match(kimGuardrails, /influencer mobile rows do not repeat deadline values/);
@@ -818,7 +820,14 @@ describe("yeollock.me security regressions", () => {
     assert.match(mobileSurfaceSwitch, /data-mobile-surface-switch/);
     assert.match(mobileSurfaceSwitch, /\/advertiser\/campaigns/);
     assert.match(mobileSurfaceSwitch, /\/influencer\/campaigns/);
-    assert.match(advertiserDashboard, /MobileSurfaceSwitch role="advertiser" active="contracts"/);
+    assert.match(advertiserDashboard, /active=\{isCampaignSurface \? "campaigns" : "contracts"\}/);
+    assert.match(app, /path="\/advertiser\/campaigns"/);
+    assert.match(app, /<Dashboard surface="campaigns" \/>/);
+    assert.match(app, /path="\/advertiser\/campaigns\/new"/);
+    assert.match(qaStandard, /"\/advertiser\/campaigns\/new"/);
+    assert.match(advertiserDashboard, /to="\/advertiser\/campaigns\/new"/);
+    assert.match(campaignPages, /backHref="\/advertiser\/campaigns"/);
+    assert.match(campaignPages, /backLabel="캠페인 대시보드"/);
     assert.ok(
       (influencerDashboard.match(/MobileSurfaceSwitch role="influencer" active="contracts"/g) ?? [])
         .length >= 2,

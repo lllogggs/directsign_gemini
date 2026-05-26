@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   AlertCircle,
   ArrowLeft,
@@ -15,6 +15,7 @@ import {
   KeyRound,
   LogOut,
   Mail,
+  Megaphone,
   MessageSquareText,
   MoreHorizontal,
   PenLine,
@@ -166,6 +167,11 @@ type AdvertiserAccountSummary = {
   email?: string;
   businessNumber?: string;
 };
+type DashboardSurface = "contracts" | "campaigns";
+
+interface DashboardProps {
+  surface?: DashboardSurface;
+}
 
 const STATUS_ORDER: ContractStatus[] = [
   "DRAFT",
@@ -391,8 +397,9 @@ const PLATFORM_META: Record<
   },
 };
 
-export function Dashboard() {
+export function Dashboard({ surface = "contracts" }: DashboardProps) {
   const navigate = useNavigate();
+  const isCampaignSurface = surface === "campaigns";
   const contracts = useAppStore((state) => state.contracts);
   const isHydrated = useAppStore((state) => state.isHydrated);
   const isSyncing = useAppStore((state) => state.isSyncing);
@@ -402,8 +409,8 @@ export function Dashboard() {
   const [query, setQuery] = useState("");
   const [campaignPlatformFilter, setCampaignPlatformFilter] =
     useState<PlatformFilter>("ALL");
-  const [campaignBrandFilter, _setCampaignBrandFilter] = useState("ALL");
-  const [campaignParticipantFilter, _setCampaignParticipantFilter] =
+  const [campaignBrandFilter, setCampaignBrandFilter] = useState("ALL");
+  const [campaignParticipantFilter, setCampaignParticipantFilter] =
     useState<CampaignParticipantFilter>("ALL");
   const [campaignLifecycleFilter, setCampaignLifecycleFilter] =
     useState<CampaignLifecycle>("RECRUITING");
@@ -545,7 +552,7 @@ export function Dashboard() {
   }, []);
 
   useEffect(() => {
-    if (!searchParams.get("campaign")) return;
+    if (!isCampaignSurface && !searchParams.get("campaign")) return;
     let active = true;
     const timer = window.setTimeout(() => {
       void waitForFastLoginTransition("advertiser").then(() => {
@@ -557,7 +564,7 @@ export function Dashboard() {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [loadMarketplaceCampaignData, searchParams]);
+  }, [isCampaignSurface, loadMarketplaceCampaignData, searchParams]);
 
   const campaignGroups = useMemo(
     () =>
@@ -574,11 +581,11 @@ export function Dashboard() {
       marketplaceState.threads,
     ],
   );
-  const _campaignTabCounts = useMemo(
+  const campaignTabCounts = useMemo(
     () => getCampaignLifecycleCounts(campaignGroups),
     [campaignGroups],
   );
-  const _campaignBrandOptions = useMemo<FilterOption[]>(() => {
+  const campaignBrandOptions = useMemo<FilterOption[]>(() => {
     const brands = Array.from(
       new Set(campaignGroups.flatMap((campaign) => campaign.brands)),
     ).sort(compareText);
@@ -588,7 +595,7 @@ export function Dashboard() {
       ...brands.map((brand) => ({ value: brand, label: brand })),
     ];
   }, [campaignGroups]);
-  const _filteredCampaigns = useMemo(() => {
+  const filteredCampaigns = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
 
     return campaignGroups.filter((campaign) =>
@@ -651,7 +658,7 @@ export function Dashboard() {
     }));
   }, []);
   const selectedCampaignKey = searchParams.get("campaign") ?? undefined;
-  const _selectedCampaign = selectedCampaignKey
+  const selectedCampaign = selectedCampaignKey
     ? campaignGroups.find((campaign) => campaign.key === selectedCampaignKey)
     : undefined;
   const openContract = (contract: Contract) =>
@@ -664,10 +671,10 @@ export function Dashboard() {
       return next;
     });
   };
-  const _openCampaign = (campaign: CampaignGroup) =>
+  const openCampaign = (campaign: CampaignGroup) =>
     setCampaignQueryParam(campaign.key);
-  const _closeCampaign = () => setCampaignQueryParam();
-  const _updateCampaignStatus = useCallback(
+  const closeCampaign = () => setCampaignQueryParam();
+  const updateCampaignStatus = useCallback(
     async (campaign: CampaignGroup, status: CampaignStatusAction) => {
       if (!campaign.campaignId) {
         throw new Error("저장된 캠페인 ID가 없어 상태를 변경할 수 없습니다.");
@@ -709,7 +716,7 @@ export function Dashboard() {
     },
     [navigate],
   );
-  const _acceptCampaignApplication = useCallback(
+  const acceptCampaignApplication = useCallback(
     async (thread: MarketplaceMessageThread) => {
       const response = await apiFetch(
         `/api/advertiser/marketplace/proposals/${encodeURIComponent(thread.id)}/accept`,
@@ -760,7 +767,7 @@ export function Dashboard() {
 
   return (
     <div className="min-h-screen bg-[#f4f5f2] font-sans text-neutral-950 lg:h-screen lg:overflow-hidden">
-      {isHydrated && contracts.length === 0 ? (
+      {!isCampaignSurface && isHydrated && contracts.length === 0 ? (
         <ContractFirstExperienceDialog
           content={CONTRACT_FIRST_EXPERIENCE_CONTENT}
           onCreateContract={() => navigate("/advertiser/builder")}
@@ -802,11 +809,11 @@ export function Dashboard() {
               type="button"
               onClick={() => navigate("/advertiser/campaigns")}
               className="yl-header-action yl-header-action-blue-secondary"
-              aria-label="새 캠페인"
-              title="새 캠페인: 캠페인 조건을 만들고 매칭된 인플루언서별로 같은 조건의 계약서를 발송"
+              aria-label="캠페인 대시보드"
+              title="캠페인 대시보드"
             >
-              <Plus className="h-3.5 w-3.5" strokeWidth={2} />
-              <span className="hidden sm:inline">새 캠페인</span>
+              <Megaphone className="h-3.5 w-3.5" strokeWidth={2} />
+              <span className="hidden sm:inline">캠페인</span>
             </button>
             <MessageCenterButton
               unreadCount={messageSummary.unreadCount}
@@ -846,7 +853,10 @@ export function Dashboard() {
         </div>
       </header>
 
-      <MobileSurfaceSwitch role="advertiser" active="contracts" />
+      <MobileSurfaceSwitch
+        role="advertiser"
+        active={isCampaignSurface ? "campaigns" : "contracts"}
+      />
 
       <main className="mx-auto w-full min-w-0 max-w-[1500px] px-3 py-2.5 sm:px-5 lg:flex lg:h-[calc(100vh-56px)] lg:flex-col lg:overflow-hidden lg:px-6">
         <section className="min-w-0 overflow-hidden rounded-[10px] border border-neutral-200/90 bg-white shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_18px_46px_rgba(23,26,23,0.055)] lg:flex lg:h-full lg:flex-col">
@@ -854,50 +864,103 @@ export function Dashboard() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
                 <h1 className="truncate text-[17px] font-bold text-[#171a17]">
-                  계약 운영 대시보드
+                  {isCampaignSurface ? "캠페인 운영 대시보드" : "계약 운영 대시보드"}
                 </h1>
               </div>
+              {isCampaignSurface ? (
+                <Link
+                  to="/advertiser/campaigns/new"
+                  className="yl-header-action yl-header-action-primary"
+                  aria-label="캠페인 작성"
+                  title="캠페인 작성"
+                >
+                  <Plus className="h-3.5 w-3.5" strokeWidth={2} />
+                  <span className="sm:hidden">작성</span>
+                  <span className="hidden sm:inline">캠페인 작성</span>
+                </Link>
+              ) : null}
             </div>
           </div>
 
-          <VerificationBanner
-            status={advertiserVerificationStatus}
-            account={advertiserAccount}
-            isLoading={isVerificationLoading}
-            latest={verificationSummary?.advertiser.latest_request}
-            onOpen={() => navigate("/advertiser/verification")}
-            embedded
-          />
+          {!isCampaignSurface ? (
+            <VerificationBanner
+              status={advertiserVerificationStatus}
+              account={advertiserAccount}
+              isLoading={isVerificationLoading}
+              latest={verificationSummary?.advertiser.latest_request}
+              onOpen={() => navigate("/advertiser/verification")}
+              embedded
+            />
+          ) : null}
 
           <div className="min-w-0 p-2 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
-            {syncError && <SyncErrorPanel message={syncError} />}
+            {isCampaignSurface ? (
+              <>
+                {marketplaceState.status === "error" && marketplaceState.error ? (
+                  <CampaignDataErrorPanel message={marketplaceState.error} />
+                ) : null}
+                {marketplaceState.status === "loading" &&
+                campaignGroups.length === 0 ? (
+                  <CampaignLoadingState />
+                ) : (
+                  <CampaignDashboard
+                    campaigns={filteredCampaigns}
+                    totalCampaigns={campaignGroups.length}
+                    lifecycleFilter={campaignLifecycleFilter}
+                    onLifecycleFilterChange={setCampaignLifecycleFilter}
+                    lifecycleCounts={campaignTabCounts}
+                    query={query}
+                    onQueryChange={setQuery}
+                    platformFilter={campaignPlatformFilter}
+                    onPlatformFilterChange={setCampaignPlatformFilter}
+                    brandFilter={campaignBrandFilter}
+                    onBrandFilterChange={setCampaignBrandFilter}
+                    brandOptions={campaignBrandOptions}
+                    participantFilter={campaignParticipantFilter}
+                    onParticipantFilterChange={setCampaignParticipantFilter}
+                    selectedCampaign={selectedCampaign}
+                    onOpenCampaign={openCampaign}
+                    onBack={closeCampaign}
+                    onOpenContract={openContract}
+                    onAcceptApplication={acceptCampaignApplication}
+                    onUpdateCampaignStatus={updateCampaignStatus}
+                    marketplaceStatus={marketplaceState.status}
+                    marketplaceError={marketplaceState.error}
+                  />
+                )}
+              </>
+            ) : (
+              <>
+                {syncError && <SyncErrorPanel message={syncError} />}
 
-            <ContractTable
-              lifecycleFilter={campaignLifecycleFilter}
-              lifecycleTabs={
-                <CampaignLifecycleTabs
-                  value={campaignLifecycleFilter}
-                  counts={contractLifecycleCounts}
-                  onChange={setCampaignLifecycleFilter}
+                <ContractTable
+                  lifecycleFilter={campaignLifecycleFilter}
+                  lifecycleTabs={
+                    <CampaignLifecycleTabs
+                      value={campaignLifecycleFilter}
+                      counts={contractLifecycleCounts}
+                      onChange={setCampaignLifecycleFilter}
+                    />
+                  }
+                  contracts={visibleContracts}
+                  totalContracts={dashboardContracts.length}
+                  query={query}
+                  onQueryChange={setQuery}
+                  platformFilter={campaignPlatformFilter}
+                  onPlatformFilterChange={setCampaignPlatformFilter}
+                  contractTypeFilter={contractTypeFilter}
+                  onContractTypeFilterChange={setContractTypeFilter}
+                  amountFilter={amountFilter}
+                  onAmountFilterChange={setAmountFilter}
+                  detailStatusFilter={detailStatusFilter}
+                  onDetailStatusFilterChange={setDetailStatusFilter}
+                  sortState={contractSort}
+                  onSortChange={handleContractSortChange}
+                  isDataPending={isLoginTransitionPending || (!isHydrated && !syncError)}
+                  onOpen={openContract}
                 />
-              }
-              contracts={visibleContracts}
-              totalContracts={dashboardContracts.length}
-              query={query}
-              onQueryChange={setQuery}
-              platformFilter={campaignPlatformFilter}
-              onPlatformFilterChange={setCampaignPlatformFilter}
-              contractTypeFilter={contractTypeFilter}
-              onContractTypeFilterChange={setContractTypeFilter}
-              amountFilter={amountFilter}
-              onAmountFilterChange={setAmountFilter}
-              detailStatusFilter={detailStatusFilter}
-              onDetailStatusFilterChange={setDetailStatusFilter}
-              sortState={contractSort}
-              onSortChange={handleContractSortChange}
-              isDataPending={isLoginTransitionPending || (!isHydrated && !syncError)}
-              onOpen={openContract}
-            />
+              </>
+            )}
           </div>
         </section>
       </main>
@@ -1253,9 +1316,9 @@ function getAdvertiserVerificationBannerCopy(
   return copies[status];
 }
 
-function _CampaignDashboard({
+function CampaignDashboard({
   campaigns,
-  totalContracts,
+  totalCampaigns,
   lifecycleFilter,
   onLifecycleFilterChange,
   lifecycleCounts,
@@ -1278,7 +1341,7 @@ function _CampaignDashboard({
   marketplaceError,
 }: {
   campaigns: CampaignGroup[];
-  totalContracts: number;
+  totalCampaigns: number;
   lifecycleFilter: CampaignLifecycle;
   onLifecycleFilterChange: (value: CampaignLifecycle) => void;
   lifecycleCounts: Record<CampaignLifecycle, number>;
@@ -1320,7 +1383,7 @@ function _CampaignDashboard({
   return (
     <CampaignListView
       campaigns={campaigns}
-      totalContracts={totalContracts}
+      totalCampaigns={totalCampaigns}
       lifecycleFilter={lifecycleFilter}
       onLifecycleFilterChange={onLifecycleFilterChange}
       lifecycleCounts={lifecycleCounts}
@@ -1340,7 +1403,7 @@ function _CampaignDashboard({
 
 function CampaignListView({
   campaigns,
-  totalContracts,
+  totalCampaigns,
   lifecycleFilter,
   onLifecycleFilterChange,
   lifecycleCounts,
@@ -1356,7 +1419,7 @@ function CampaignListView({
   onOpenCampaign,
 }: {
   campaigns: CampaignGroup[];
-  totalContracts: number;
+  totalCampaigns: number;
   lifecycleFilter: CampaignLifecycle;
   onLifecycleFilterChange: (value: CampaignLifecycle) => void;
   lifecycleCounts: Record<CampaignLifecycle, number>;
@@ -1428,7 +1491,7 @@ function CampaignListView({
         <div className="flex min-h-11 items-center justify-between gap-3 px-3 py-2">
           <div className="min-w-0">
             <p className="truncate text-[14px] font-extrabold leading-5 text-[#171a17]">
-              계약 목록
+              모집 현황
             </p>
             <p className="mt-0.5 truncate text-[11px] font-semibold text-[#606861]">
               {campaigns.length.toLocaleString("ko-KR")}건 표시 · {filterSummary}
@@ -1495,7 +1558,7 @@ function CampaignListView({
             </React.Fragment>
           ))
         ) : (
-          <EmptyState isInitialEmpty={totalContracts === 0} />
+          <CampaignEmptyState isInitialEmpty={totalCampaigns === 0} />
         )}
       </div>
     </section>
@@ -1511,7 +1574,7 @@ function CampaignTableHeaderRow({
     <div className="hidden border-b border-[#e3e8e3] bg-[#fbfbf8] px-3 py-2 lg:grid lg:grid-cols-[minmax(104px,0.2fr)_minmax(82px,0.14fr)_minmax(250px,0.78fr)_minmax(160px,0.4fr)_minmax(132px,0.32fr)_minmax(104px,0.23fr)] lg:items-center lg:gap-2">
       <ColumnHeader label="플랫폼" />
       <ColumnHeader label="브랜드" />
-      <ColumnHeader label="계약명" />
+      <ColumnHeader label="캠페인" />
       <ColumnHeader label="지급내용" />
       <ColumnHeader label="진도율" />
       <ColumnHeader label={dateColumnLabel} />
@@ -3026,6 +3089,49 @@ function EmptyState({ isInitialEmpty }: { isInitialEmpty: boolean }) {
           ? "상대 정보와 합의 조건을 입력해 새 계약을 만들고 바로 관리할 수 있습니다."
           : "검색어를 줄이거나 전체로 바꿔보세요."}
       </p>
+    </section>
+  );
+}
+
+function CampaignLoadingState() {
+  return (
+    <section className="flex min-h-[280px] flex-col items-center justify-center rounded-[8px] border border-[#d9e0d9] bg-white px-6 text-center">
+      <div className="flex h-10 w-10 items-center justify-center rounded-[8px] bg-[#f8faf7] text-[#aeb7b0] ring-1 ring-[#d9e0d9]">
+        <Clock3 className="h-5 w-5" strokeWidth={1.7} />
+      </div>
+      <h2 className="mt-3 text-[14px] font-semibold text-[#171a17]">
+        캠페인 현황을 불러오는 중
+      </h2>
+    </section>
+  );
+}
+
+function CampaignEmptyState({ isInitialEmpty }: { isInitialEmpty: boolean }) {
+  return (
+    <section className="flex min-h-[190px] flex-col items-center justify-center bg-white px-6 text-center">
+      <div className="flex h-10 w-10 items-center justify-center rounded-[8px] bg-[#f8faf7] text-[#aeb7b0] ring-1 ring-[#d9e0d9]">
+        <Megaphone className="h-5 w-5" strokeWidth={1.7} />
+      </div>
+      <h2 className="mt-3 text-[14px] font-semibold text-[#171a17]">
+        {isInitialEmpty ? "아직 캠페인이 없습니다" : "조건에 맞는 캠페인이 없습니다"}
+      </h2>
+      <p className="mt-1 max-w-md text-[12px] leading-5 text-[#7d857f]">
+        {isInitialEmpty
+          ? "캠페인 작성에서 모집 조건을 만들면 이곳에서 지원자와 계약 전환을 관리합니다."
+          : "검색어를 줄이거나 전체로 바꿔보세요."}
+      </p>
+    </section>
+  );
+}
+
+function CampaignDataErrorPanel({ message }: { message: string }) {
+  return (
+    <section className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] leading-5 text-amber-800">
+      <p className="font-semibold">캠페인 현황을 최신 상태로 불러오지 못했습니다.</p>
+      <p className="mt-1 text-amber-700">
+        현재 화면은 비어 있는 데이터가 아니라 실패 상태일 수 있습니다.
+      </p>
+      <p className="mt-2 font-mono text-[11px] text-amber-700">{message}</p>
     </section>
   );
 }

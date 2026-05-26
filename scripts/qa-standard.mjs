@@ -1398,6 +1398,7 @@ const main = async () => {
       await smokeAppShellRoute(server.baseUrl, "/advertiser/dashboard"),
       await smokeAppShellRoute(server.baseUrl, "/advertiser/discover"),
       await smokeAppShellRoute(server.baseUrl, "/advertiser/campaigns"),
+      await smokeAppShellRoute(server.baseUrl, "/advertiser/campaigns/new"),
       await smokeAppShellRoute(server.baseUrl, "/advertiser/messages"),
       await smokeAppShellRoute(server.baseUrl, "/influencer/dashboard"),
       await smokeAppShellRoute(server.baseUrl, "/influencer/brands"),
