@@ -151,7 +151,8 @@ Example option format:
   - Do not label dashboard readiness as "공유 가능". It is vague and reads like internal permission logic; use concrete business verification state only where needed, or remove the badge.
   - Dashboard lifecycle tabs must visually connect to the table/panel below like browser tabs: the selected tab shares the panel surface and its bottom border disappears into the content.
   - Dashboard table headers should provide clear ascending/descending sorting where the data benefits from comparison.
-  - Dashboard deadline/end-date cells must include the year and a D-day label such as "2026.05.28 / D-4" or "2026.05.21 / D+3".
+  - Campaign dashboard deadline/end-date cells must lead with the D-day label, then the full date, such as "D-4 / 2026.05.28" or "D+3 / 2026.05.21".
+  - In campaign dashboard deadline/end-date cells, the D-day segment for D-0 through D-3 must be red while the date remains neutral.
   - Ended/closed contract states need representative test rows, and intro previews must reflect those rows and counts immediately.
 
 ### Owner Command Proxy
@@ -171,6 +172,7 @@ Example option format:
   - Do not repeatedly ask for representative name, operator address, business registration, mail-order sales report, or legal notice details.
   - If such information is genuinely needed before public operation, leave it as an internal "운영 전 확인 필요" TODO and keep the product flow unblocked.
   - Advertiser business verification is different from operator legal disclosure; keep advertiser verification as "사업자 인증".
+  - External analytics must never expose contract share tokens, support access IDs, contract IDs, signatures, business verification evidence, admin screens, or private dashboards. Google Analytics may receive only sanitized route labels, and Clarity/session recording must stay limited to public information pages unless the Product Owner explicitly approves private-screen recording with masking.
 - UI taste rules:
   - One row should communicate one primary item. Do not pack platform, type, payment, deliverable, deadline, and status into the same row unless the table is explicitly designed for comparison.
   - Important content must be visually stronger than filters. Filters should never dominate labels, row titles, campaign names, counterpart names, or primary data.
@@ -199,10 +201,11 @@ Example option format:
   - Use colored platform badges for Instagram, YouTube, Blog, TikTok, and other channels when they help scanning.
   - Show "지급내용" and deadline. In recruiting and active tabs use deadline; in ended tab use end date.
   - Deadline/end-date values should include year and D-day notation, not month/day only.
+  - Campaign dashboard date values should render as `D-N / YYYY.MM.DD`; D-0 through D-3 must make only the D-day segment red.
   - Dashboard cells must not show raw placeholder values such as `-` or `/미정` when summary data, seed data, or a clear business fallback can communicate meaning.
   - Table column labels should support obvious ascending/descending sorting when sortable.
-  - Use "진도율", not "정원진도". Prefer compact values such as "3/12" with a restrained progress bar.
-  - Do not show every test campaign as "1/1"; maintain varied test states and progress so the dashboard looks real.
+  - Use "신청/모집 인원" for campaign dashboard progress. The cell should be compact ratio data such as "3/10", not repeated copy like "3명 신청".
+  - Do not show every test campaign as "1/1" or "1명 신청"; maintain varied test states and progress so the dashboard looks real.
   - Dashboard and seed data must cover 1:1 contracts and one-to-many campaign contracts across recruiting, active, ended/completed, rejected, revision, signature, content, and review states.
   - Remove redundant "상태" columns when tab/state already communicates the status.
 - Campaign creation rules:

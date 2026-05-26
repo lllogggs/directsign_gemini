@@ -43,6 +43,10 @@ import {
   removeInternalTestLabel,
 } from "../../domain/display";
 import { translateApiErrorMessage } from "../../domain/userMessages";
+import {
+  SIGNATURE_CONSENT_TEXT,
+  SUPPORT_ACCESS_CONSENT_TEXT,
+} from "../../domain/legalConsent";
 import { ScreenHelpButton } from "../../components/ScreenHelp";
 import { SCREEN_HELP_CONTENT } from "../../domain/screenHelp";
 import { Textarea } from "@/components/ui/textarea";
@@ -1402,7 +1406,11 @@ export function ContractViewer() {
             Accept: "application/json",
             ...(shareToken ? { "X-Yeollock-Share-Token": shareToken } : {}),
           },
-          body: JSON.stringify({ reason, scope: supportScope }),
+          body: JSON.stringify({
+            reason,
+            scope: supportScope,
+            support_consent_accepted: supportConsentAccepted,
+          }),
         },
       );
       const data = (await response.json()) as {
@@ -2186,8 +2194,16 @@ export function ContractViewer() {
                       className="mt-0.5 h-10 w-10 shrink-0 rounded border-neutral-300 text-neutral-950 accent-neutral-950"
                     />
                     <span>
-                      선택한 범위의 계약 자료를 운영자가 24시간 확인하고, 열람
-                      기록이 감사 로그에 남는 것에 동의합니다.
+                      {SUPPORT_ACCESS_CONSENT_TEXT}{" "}
+                      <a
+                        href="/privacy"
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={(event) => event.stopPropagation()}
+                        className="font-semibold text-neutral-800 underline underline-offset-4 hover:text-neutral-950"
+                      >
+                        개인정보 처리방침 보기
+                      </a>
                     </span>
                   </label>
                   {supportNotice && (
@@ -2587,9 +2603,16 @@ export function ContractViewer() {
                 className="mt-1 h-4 w-4 accent-neutral-950"
               />
               <span>
-                {isFixedCampaign
-                  ? "계약 내용을 확인했고 전자서명에 동의합니다."
-                  : "계약 조항을 확인했고 전자서명에 동의합니다."}
+                {SIGNATURE_CONSENT_TEXT}{" "}
+                <Link
+                  to="/legal/e-sign-consent"
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(event) => event.stopPropagation()}
+                  className="font-semibold text-neutral-800 underline underline-offset-4 hover:text-neutral-950"
+                >
+                  전자서명 안내 보기
+                </Link>
               </span>
             </label>
             {signError && (

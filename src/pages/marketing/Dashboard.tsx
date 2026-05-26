@@ -110,6 +110,12 @@ type AppliedFilter = {
   label: string;
   onRemove: () => void;
 };
+type DashboardDateParts = {
+  label: string;
+  dday?: string;
+  dateLabel?: string;
+  isUrgent?: boolean;
+};
 type CampaignGroup = {
   key: string;
   campaignId?: string;
@@ -1576,7 +1582,7 @@ function CampaignTableHeaderRow({
       <ColumnHeader label="브랜드" />
       <ColumnHeader label="캠페인" />
       <ColumnHeader label="지급내용" />
-      <ColumnHeader label="진도율" />
+      <ColumnHeader label="신청/모집 인원" />
       <ColumnHeader label={dateColumnLabel} />
     </div>
   );
@@ -1765,13 +1771,13 @@ function CampaignRow({
   const platformMeta = PLATFORM_META[primaryPlatform];
   const platformLabel = formatCampaignPlatformSummary(campaign.platforms);
   const paymentLabel = getCampaignPaymentLabel(campaign);
-  const dateLabel = getCampaignListDateLabel(campaign);
+  const dateParts = getCampaignListDateParts(campaign);
 
   return (
     <button
       type="button"
       onClick={onOpen}
-      aria-label={`${campaign.name} 캠페인 열기, 지급내용 ${paymentLabel}, 진도율 ${progress.label}, 날짜 ${dateLabel}`}
+      aria-label={`${campaign.name} 캠페인 열기, 지급내용 ${paymentLabel}, 신청/모집 인원 ${progress.label}, 날짜 ${dateParts.label}`}
       className="group grid w-full gap-2 px-3 py-2 text-left transition-colors hover:bg-[#fafaf7] lg:min-h-[44px] lg:grid-cols-[minmax(104px,0.2fr)_minmax(82px,0.14fr)_minmax(250px,0.78fr)_minmax(160px,0.4fr)_minmax(132px,0.32fr)_minmax(104px,0.23fr)] lg:items-center"
     >
       <div className="min-w-0">
@@ -1802,10 +1808,30 @@ function CampaignRow({
           />
         </div>
       </div>
-      <p className="min-w-0 truncate whitespace-nowrap text-[12px] font-semibold text-[#303630]">
-        {dateLabel}
-      </p>
+      <CampaignDateText parts={dateParts} />
     </button>
+  );
+}
+
+function CampaignDateText({ parts }: { parts: DashboardDateParts }) {
+  if (!parts.dday || !parts.dateLabel) {
+    return (
+      <p className="min-w-0 truncate whitespace-nowrap text-[12px] font-semibold text-[#303630]">
+        {parts.label}
+      </p>
+    );
+  }
+
+  return (
+    <p className="min-w-0 truncate whitespace-nowrap text-[12px] font-semibold tabular-nums text-[#303630]">
+      <span
+        className={parts.isUrgent ? "font-extrabold text-[#dc2626]" : "text-[#303630]"}
+      >
+        {parts.dday}
+      </span>
+      <span className="text-[#9aa39d]">{" / "}</span>
+      <span>{parts.dateLabel}</span>
+    </p>
   );
 }
 
@@ -3603,7 +3629,7 @@ function getCampaignRosterProgress(campaign: CampaignGroup) {
   const capacity = getCampaignCapacity(campaign);
   if (!capacity) {
     return {
-      label: `${current.toLocaleString()}명 신청`,
+      label: `${current.toLocaleString()}/확인중`,
       percent: current > 0 ? 12 : 0,
     };
   }
@@ -3661,18 +3687,40 @@ function getCampaignPaymentLabel(campaign: CampaignGroup) {
   return formatDashboardAmountLabel(value);
 }
 
-function getCampaignListDateLabel(campaign: CampaignGroup) {
+function getCampaignListDateParts(campaign: CampaignGroup): DashboardDateParts {
   const value =
     campaign.lifecycle === "ENDED"
       ? getCampaignEndedDateValue(campaign)
       : getCampaignDeadlineValue(campaign);
   if (!value) {
-    if (campaign.lifecycle === "RECRUITING") return "상시 모집";
-    if (campaign.lifecycle === "IN_PROGRESS") return "마감일 확인";
-    return "종료일 확인";
+    if (campaign.lifecycle === "RECRUITING") return { label: "상시 모집" };
+    if (campaign.lifecycle === "IN_PROGRESS") return { label: "마감일 확인" };
+    return { label: "종료일 확인" };
   }
 
-  return formatDashboardDateWithDday(value);
+  return formatCampaignDashboardDateWithDday(value);
+}
+
+function formatCampaignDashboardDateWithDday(value?: string): DashboardDateParts {
+  if (!value) return { label: "마감일 확인" };
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return { label: value };
+
+  const dateLabel = [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join(".");
+  const dayDiff = getDayDiffFromToday(date);
+  const dday =
+    dayDiff > 0 ? `D-${dayDiff}` : dayDiff === 0 ? "D-0" : `D+${Math.abs(dayDiff)}`;
+
+  return {
+    label: `${dday} / ${dateLabel}`,
+    dday,
+    dateLabel,
+    isUrgent: dayDiff >= 0 && dayDiff <= 3,
+  };
 }
 
 function getCampaignDeadlineValue(campaign: CampaignGroup) {

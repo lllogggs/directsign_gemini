@@ -141,6 +141,13 @@ const app = read("src/App.tsx");
 const advertiserDashboard = read("src/pages/marketing/Dashboard.tsx");
 const influencerDashboard = read("src/pages/influencer/InfluencerDashboard.tsx");
 const campaignPages = read("src/pages/marketplace/CampaignPages.tsx");
+const server = read("server/index.ts");
+const signupPage = read("src/pages/auth/SignupPage.tsx");
+const contractAdminViewer = read("src/pages/marketing/ContractAdminViewer.tsx");
+const contractViewer = read("src/pages/influencer/ContractViewer.tsx");
+const legalConsent = read("src/domain/legalConsent.ts");
+const analytics = read("src/domain/analytics.ts");
+const legalDocumentPage = read("src/pages/legal/LegalDocumentPage.tsx");
 const mobileSurfaceSwitch = read("src/components/MobileSurfaceSwitch.tsx");
 const authLoginScreen = read("src/components/AuthLoginScreen.tsx");
 const advertiserVerification = read("src/pages/marketing/AdvertiserVerification.tsx");
@@ -149,6 +156,8 @@ const display = read("src/domain/display.ts");
 const agents = read("AGENTS.md");
 const packageJson = JSON.parse(read("package.json"));
 const qaStandard = read("scripts/qa-standard.mjs");
+const seedTestAccounts = read("scripts/seed-test-accounts.mjs");
+const seedQaMarketplaceScenario = read("scripts/seed-qa-marketplace-scenario.mjs");
 
 const dashboardAndIntroFiles = [
   "src/pages/marketing/Dashboard.tsx",
@@ -253,16 +262,31 @@ assertNoText(
 );
 
 assertNoRegex(
-  "dashboard/intro date order is YYYY.MM.DD / D-day",
+  "contract dashboard/intro date order is YYYY.MM.DD / D-day",
   dashboardAndIntroFiles,
   /D[-+]\d+\s*\/\s*20\d{2}\.\d{2}\.\d{2}/,
-  "D-day must follow the full date, not lead it",
+  "contract and intro previews keep date-first D-day notation; campaign dashboard has a separate D-day-first guardrail",
 );
 
 check(
   "advertiser dashboard date formatter returns date before D-day",
   advertiserDashboard.includes("return `${dateLabel} / ${dday}`;"),
   "formatDashboardDateWithDday must render YYYY.MM.DD / D±N",
+);
+
+check(
+  "advertiser campaign dashboard date formatter returns D-day before date",
+  advertiserDashboard.includes("function formatCampaignDashboardDateWithDday") &&
+    advertiserDashboard.includes("label: `${dday} / ${dateLabel}`") &&
+    advertiserDashboard.includes("isUrgent: dayDiff >= 0 && dayDiff <= 3"),
+  "campaign dashboard dates must render D±N / YYYY.MM.DD and mark D-0 through D-3 as urgent",
+);
+
+check(
+  "advertiser campaign dashboard urgent D-day segment is red",
+  advertiserDashboard.includes("font-extrabold text-[#dc2626]") &&
+    advertiserDashboard.includes("<CampaignDateText parts={dateParts} />"),
+  "campaign dashboard must color only the imminent D-day segment red",
 );
 
 check(
@@ -322,6 +346,68 @@ check(
 );
 
 check(
+  "signup consent records version and operation contact",
+  signupPage.includes("동의 일시와 문서 버전이 저장됩니다") &&
+    signupPage.includes("LEGAL_CONTACT_EMAIL") &&
+    signupPage.includes("TERMS_DOCUMENT_VERSION") &&
+    signupPage.includes("PRIVACY_POLICY_DOCUMENT_VERSION"),
+  "public signup must keep consent version storage and operation contact visible at the consent point",
+);
+
+check(
+  "signature consent copy is shared between UI and server",
+  legalConsent.includes("SIGNATURE_CONSENT_TEXT") &&
+    server.includes("const signatureConsentText = SIGNATURE_CONSENT_TEXT") &&
+    contractViewer.includes("SIGNATURE_CONSENT_TEXT") &&
+    contractViewer.includes("/legal/e-sign-consent"),
+  "the influencer must see the same electronic signature consent text that the server records",
+);
+
+check(
+  "support access consent is enforced server-side and linked from both parties",
+  legalConsent.includes("SUPPORT_ACCESS_CONSENT_TEXT") &&
+    server.includes("request.body?.support_consent_accepted !== true") &&
+    server.includes("Support access consent is required") &&
+    contractAdminViewer.includes("support_consent_accepted: supportConsentAccepted") &&
+    contractViewer.includes("support_consent_accepted: supportConsentAccepted") &&
+    contractAdminViewer.includes("SUPPORT_ACCESS_CONSENT_TEXT") &&
+    contractViewer.includes("SUPPORT_ACCESS_CONSENT_TEXT") &&
+    contractAdminViewer.includes("개인정보 처리방침 보기") &&
+    contractViewer.includes("개인정보 처리방침 보기"),
+  "operation support access must not rely on client-only UI consent or hide privacy policy access",
+);
+
+const clarityPathsStart = analytics.indexOf("const clarityPublicPaths");
+const clarityPathsEnd = analytics.indexOf("let installed", clarityPathsStart);
+const clarityPathAllowlist = analytics.slice(clarityPathsStart, clarityPathsEnd);
+
+check(
+  "analytics tracking avoids sensitive contract data",
+  analytics.includes("G-PDTVNFRD1W") &&
+    analytics.includes("wx0bvf6bl5") &&
+    analytics.includes("allow_google_signals: false") &&
+    analytics.includes("allow_ad_personalization_signals: false") &&
+    analytics.includes('ad_storage: "denied"') &&
+    analytics.includes('ad_user_data: "denied"') &&
+    analytics.includes('ad_personalization: "denied"') &&
+    analytics.includes('return "/contract/:id"') &&
+    analytics.includes('return "/advertiser/contract/:id"') &&
+    analytics.includes("data-clarity-mask") &&
+    analytics.includes('win.clarity?.("stop")') &&
+    !analytics.includes('safeParams.set("token"') &&
+    !analytics.includes('safeParams.set("support"') &&
+    !analytics.includes("page_location: `${window.location.href") &&
+    !clarityPathAllowlist.includes('"/contract/') &&
+    !clarityPathAllowlist.includes('"/advertiser/dashboard"') &&
+    !clarityPathAllowlist.includes('"/influencer/dashboard"') &&
+    agents.includes("External analytics must never expose contract share tokens") &&
+    legalDocumentPage.includes("Google Analytics(G-PDTVNFRD1W)") &&
+    legalDocumentPage.includes("Microsoft Clarity(wx0bvf6bl5)") &&
+    legalDocumentPage.includes("공유 토큰"),
+  "analytics/Clarity must not leak share tokens, contract IDs, signatures, dashboards, or admin screens to external tools",
+);
+
+check(
   "mobile contract and campaign surfaces are explicit",
   mobileSurfaceSwitch.includes("data-mobile-surface-switch") &&
     mobileSurfaceSwitch.includes("계약") &&
@@ -362,10 +448,27 @@ check(
 check(
   "advertiser campaign dashboard avoids placeholder campaign values",
   !advertiserDashboard.includes("/미정") &&
-    advertiserDashboard.includes("명 신청") &&
+    !advertiserDashboard.includes("명 신청") &&
+    advertiserDashboard.includes("신청/모집 인원") &&
     advertiserDashboard.includes("계약 조건 확인") &&
     advertiserDashboard.includes("extractCampaignSummaryField"),
-  "Advertiser campaign rows must not show '-' or '/미정' when summary or safer fallback copy can communicate meaning",
+  "Advertiser campaign rows must not show '-' or '/미정', and progress must use compact 신청/모집 ratios instead of repeating 신청 copy",
+);
+
+check(
+  "test advertiser campaign dashboard seed covers varied lifecycle cases",
+  seedTestAccounts.includes("campaignDashboardApplicationFixtures") &&
+    seedTestAccounts.includes("브레드룸 선케어 릴스 모집") &&
+    seedTestAccounts.includes("status: \"ended\"") &&
+    seedTestAccounts.includes("contractsByCampaignName") &&
+    seedTestAccounts.includes("seeded_campaign_applications") &&
+    seedTestAccounts.includes("applicantCount: 9") &&
+    seedTestAccounts.includes('applicantLimit: "10명"') &&
+    server.includes("maxItems = 20") &&
+    server.includes("normalizeBrandCampaigns(activeCampaigns, 20)") &&
+    !seedTestAccounts.includes('applicantLimit: "1명"') &&
+    !seedQaMarketplaceScenario.includes('applicantLimit: "1명"'),
+  "test advertiser campaign dashboard data must show 모집중/진행중/종료 with varied n/10 application counts, not one-person placeholder rows",
 );
 
 check(

@@ -69,6 +69,11 @@ import {
   normalizePublicProfileHandle,
   type InfluencerPublicProfileSettings,
 } from "../src/domain/publicInfluencerProfile.js";
+import {
+  SIGNATURE_CONSENT_TEXT,
+  SIGNATURE_CONSENT_VERSION,
+  SUPPORT_ACCESS_CONSENT_TEXT,
+} from "../src/domain/legalConsent.js";
 
 dotenv.config({ path: ".env.local" });
 dotenv.config();
@@ -411,9 +416,9 @@ const allowLocalPrivateFileFallback =
   demoMode ||
   (!isProductionRuntime &&
     process.env.DIRECTSIGN_ALLOW_LOCAL_PRIVATE_FILE_FALLBACK === "true");
-const signatureConsentVersion = "directsign-signature-consent-v1";
-const signatureConsentText =
-  "계약 최종본, 모든 조항, 서명 증빙 보관 기준, 전자서명 안내 문서를 확인했고 전자서명에 동의합니다.";
+const signatureConsentVersion = SIGNATURE_CONSENT_VERSION;
+const signatureConsentText = SIGNATURE_CONSENT_TEXT;
+const supportAccessConsentText = SUPPORT_ACCESS_CONSENT_TEXT;
 const productName = process.env.PRODUCT_NAME ?? process.env.VITE_PRODUCT_NAME ?? "yeollock.me";
 const adminOperatorName = configuredAdminOperatorName ?? `${productName} 운영자`;
 const signupTermsVersion = "2026-05-19";
@@ -577,11 +582,11 @@ app.use((_request, response, next) => {
         "object-src 'none'",
         "frame-ancestors 'none'",
         "form-action 'self'",
-        "img-src 'self' data: blob:",
+        "img-src 'self' data: blob: https://*.google-analytics.com https://*.googletagmanager.com https://*.clarity.ms https://c.bing.com",
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
         "font-src 'self' https://fonts.gstatic.com",
-        "script-src 'self'",
-        "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
+        "script-src 'self' https://*.googletagmanager.com https://*.clarity.ms",
+        "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com https://*.clarity.ms https://c.bing.com",
       ].join("; "),
     );
   }
@@ -6117,7 +6122,7 @@ const normalizeBrandCampaignActivityEvents = (
 
 const normalizeBrandCampaigns = (
   value: unknown,
-  maxItems = 8,
+  maxItems = 20,
 ): MarketplaceBrandProfile["activeCampaigns"] => {
   if (!Array.isArray(value)) return [];
 
@@ -7770,7 +7775,7 @@ const updateAdvertiserMarketplaceCampaignStatus = async (
   const activeCampaigns = currentBrand.activeCampaigns.map((campaign, index) =>
     index === campaignIndex ? updatedCampaign : campaign,
   );
-  const campaigns = normalizeBrandCampaigns(activeCampaigns, 8);
+  const campaigns = normalizeBrandCampaigns(activeCampaigns, 20);
 
   await patchSupabaseRecord(
     "marketplace_brand_profiles",
@@ -16031,6 +16036,13 @@ app.post("/api/contracts/:id/support-access-requests", async (request, response,
       return;
     }
 
+    if (request.body?.support_consent_accepted !== true) {
+      response.status(422).json({
+        error: "Support access consent is required",
+      });
+      return;
+    }
+
     const requestedScope = normalizeOptionalText(request.body?.scope);
     const scope: SupportAccessScope =
       requestedScope === "contract_and_pdf" ? "contract_and_pdf" : "contract";
@@ -16090,8 +16102,7 @@ app.post("/api/contracts/:id/support-access-requests", async (request, response,
           action: "created",
           actor_role: requesterRole,
           actor_name: requesterName,
-          description:
-            "계약 당사자가 운영자 확인 요청을 열어 24시간 지원 열람을 허용했습니다.",
+          description: `계약 당사자가 "${supportAccessConsentText}"에 동의하고 24시간 지원 열람을 허용했습니다.`,
           ip: getClientIp(request),
           user_agent: request.header("user-agent") ?? "unknown",
           created_at: now,

@@ -602,84 +602,153 @@ const ensureMarketplaceProfiles = async ({ influencer, organizationId }) => {
         audience_targets: ["20-34 뷰티 관심 고객", "데일리 루틴", "선물 구매층"],
         active_campaigns: [
           {
-            title: "브레드룸 여름 루틴 캠페인",
+            id: stableUuid("qa:campaign:breadroom:suncare-reels-recruiting"),
+            title: "브레드룸 선케어 릴스 모집",
             type: "sponsored_post",
-            applicantLimit: "6명",
-            budget: "900,000원 + 제품 제공",
-            deadline: "2026-05-26",
-            uploadDeadline: "2026-06-04",
-            platforms: ["instagram"],
-            deliverables: ["인스타그램 릴스 1건"],
-            status: "open",
-          },
-          {
-            title: "브레드룸 신제품 언박싱 릴스",
-            type: "sponsored_post",
-            applicantLimit: "4명",
-            budget: "2,400,000원",
-            deadline: "2026-05-23",
-            uploadDeadline: "2026-06-02",
+            applicantLimit: "10명",
+            budget: "1,500,000원 + 제품 제공",
+            deadline: dateOnly(2),
+            uploadDeadline: dateOnly(9),
             platforms: ["instagram"],
             deliverables: ["인스타그램 릴스 1건", "스토리 2건"],
             status: "open",
           },
           {
+            id: stableUuid("qa:campaign:breadroom:seongsu-popup-recruiting"),
+            title: "성수 팝업 숏폼 모집",
+            type: "visit_review",
+            applicantLimit: "10명",
+            budget: "2,200,000원",
+            deadline: dateOnly(5),
+            uploadDeadline: dateOnly(12),
+            platforms: ["instagram", "tiktok"],
+            deliverables: ["인스타그램 릴스 1건", "틱톡 숏폼 1건"],
+            status: "open",
+          },
+          {
+            id: stableUuid("qa:campaign:breadroom:homecare-blog-recruiting"),
+            title: "홈케어 블로그 리뷰 모집",
+            type: "product_seeding",
+            applicantLimit: "10명",
+            budget: "제품 제공 + 700,000원",
+            deadline: dateOnly(12),
+            uploadDeadline: dateOnly(19),
+            platforms: ["naver_blog"],
+            deliverables: ["네이버 블로그 리뷰 1건"],
+            status: "open",
+          },
+          {
+            id: stableUuid("qa:campaign:breadroom:summer-routine"),
+            title: "브레드룸 여름 루틴 캠페인",
+            type: "sponsored_post",
+            applicantLimit: "10명",
+            budget: "900,000원 + 제품 제공",
+            deadline: dateOnly(5),
+            uploadDeadline: dateOnly(14),
+            platforms: ["instagram"],
+            deliverables: ["인스타그램 릴스 1건"],
+            status: "open",
+          },
+          {
+            id: stableUuid("qa:campaign:breadroom:unboxing-reels"),
+            title: "브레드룸 신제품 언박싱 릴스",
+            type: "sponsored_post",
+            applicantLimit: "10명",
+            budget: "2,400,000원",
+            deadline: dateOnly(2),
+            uploadDeadline: dateOnly(12),
+            platforms: ["instagram"],
+            deliverables: ["인스타그램 릴스 1건", "스토리 2건"],
+            status: "open",
+          },
+          {
+            id: stableUuid("qa:campaign:breadroom:pouch-shorts"),
             title: "파우치 필수템 쇼츠 리뷰",
             type: "ppl",
-            applicantLimit: "8명",
+            applicantLimit: "10명",
             budget: "3,200,000원",
-            deadline: "2026-05-22",
-            uploadDeadline: "2026-06-01",
+            deadline: dateOnly(1),
+            uploadDeadline: dateOnly(11),
             platforms: ["youtube", "instagram"],
             deliverables: ["유튜브 쇼츠 1건", "인스타그램 스토리 2건"],
             status: "open",
           },
           {
+            id: stableUuid("qa:campaign:breadroom:daily-routine-blog"),
             title: "데일리 루틴 블로그 리뷰",
             type: "product_seeding",
-            applicantLimit: "3명",
+            applicantLimit: "10명",
             budget: "1,800,000원",
-            deadline: "2026-05-24",
-            uploadDeadline: "2026-06-05",
+            deadline: dateOnly(3),
+            uploadDeadline: dateOnly(13),
             platforms: ["naver_blog"],
             deliverables: ["네이버 블로그 상세 리뷰 1건"],
             status: "open",
           },
           {
+            id: stableUuid("qa:campaign:breadroom:seongsu-popup-visit"),
             title: "성수 팝업 방문 릴스",
             type: "visit_review",
-            applicantLimit: "5명",
+            applicantLimit: "10명",
             budget: "2,100,000원",
-            deadline: "2026-05-25",
-            uploadDeadline: "2026-06-03",
+            deadline: dateOnly(4),
+            uploadDeadline: dateOnly(12),
             platforms: ["instagram"],
             deliverables: ["인스타그램 릴스 1건", "틱톡 숏폼 1건"],
             status: "open",
           },
           {
+            id: stableUuid("qa:campaign:breadroom:night-care-shorts"),
             title: "나이트 케어 쇼츠 패키지",
             type: "ppl",
-            applicantLimit: "2명",
+            applicantLimit: "10명",
             budget: "2,800,000원",
-            deadline: "2026-05-27",
-            uploadDeadline: "2026-06-06",
+            deadline: dateOnly(6),
+            uploadDeadline: dateOnly(15),
             platforms: ["youtube"],
             deliverables: ["유튜브 쇼츠 1건"],
             status: "open",
           },
           {
+            id: stableUuid("qa:campaign:breadroom:groupbuy-pilot"),
             title: "브레드룸 공동구매 파일럿",
             type: "group_buy",
             applicantLimit: "10명",
             budget: "수수료 18%",
-            deadline: "2026-05-28",
-            uploadDeadline: "2026-06-08",
+            deadline: dateOnly(7),
+            uploadDeadline: dateOnly(17),
             platforms: ["naver_blog"],
             deliverables: ["네이버 블로그 리뷰 1건", "인스타그램 스토리 2건"],
             status: "open",
           },
+          {
+            id: stableUuid("qa:campaign:obre:reels-ended"),
+            title: "오브레 릴스 캠페인",
+            type: "sponsored_post",
+            applicantLimit: "10명",
+            budget: "1,800,000원",
+            deadline: dateOnly(-7),
+            uploadDeadline: dateOnly(-3),
+            platforms: ["instagram"],
+            deliverables: ["인스타그램 릴스 1건", "스토리 2건"],
+            status: "ended",
+            endedAt: dateOnly(-3),
+          },
+          {
+            id: stableUuid("qa:campaign:brewinglab:groupbuy-ended"),
+            title: "브루잉랩 공동구매 파일럿",
+            type: "group_buy",
+            applicantLimit: "10명",
+            budget: "수수료 18%",
+            deadline: dateOnly(-10),
+            uploadDeadline: dateOnly(-5),
+            platforms: ["naver_blog"],
+            deliverables: ["네이버 블로그 리뷰 1건", "공동구매 링크 1건"],
+            status: "ended",
+            endedAt: dateOnly(-5),
+          },
         ],
-        recent_creators: ["크리에이터 소라", "제우", "민서홈"],
+        recent_creators: ["크리에이터 소라", "민서홈", "유나뷰티", "리뷰제이"],
         is_published: true,
         updated_at: timestamp,
       };
@@ -703,6 +772,7 @@ const ensureMarketplaceProfiles = async ({ influencer, organizationId }) => {
   return {
     influencerProfileId,
     brandProfileId,
+    campaigns: brandProfileRow.active_campaigns,
     links: {
       influencer_profile: `${PUBLIC_SITE_URL}/${testHandles.influencer}`,
       advertiser_brand_profile: `${PUBLIC_SITE_URL}/brands/${testHandles.brand}`,
@@ -1046,6 +1116,113 @@ const showcaseScenarios = [
   },
 ];
 
+const seedPlatformLabels = {
+  instagram: "인스타",
+  youtube: "유튜브",
+  tiktok: "틱톡",
+  naver_blog: "블로그",
+  other: "기타",
+};
+
+const campaignDashboardApplicantPool = [
+  "유나뷰티",
+  "리뷰제이",
+  "온리루틴",
+  "하린로그",
+  "모아리뷰",
+  "수아픽",
+  "라온뷰티",
+  "지안홈",
+  "세린데일리",
+  "나래숏폼",
+  "로미리뷰",
+  "소담픽",
+];
+
+const campaignDashboardApplicationFixtures = [
+  {
+    campaignTitle: "브레드룸 선케어 릴스 모집",
+    applicantCount: 4,
+    statuses: ["submitted", "submitted", "reviewed", "submitted"],
+    ageDays: 1,
+  },
+  {
+    campaignTitle: "성수 팝업 숏폼 모집",
+    applicantCount: 7,
+    statuses: ["submitted", "reviewed", "submitted", "submitted", "reviewed"],
+    ageDays: 3,
+  },
+  {
+    campaignTitle: "홈케어 블로그 리뷰 모집",
+    applicantCount: 2,
+    statuses: ["submitted", "submitted"],
+    ageDays: 5,
+  },
+  {
+    campaignTitle: "브레드룸 여름 루틴 캠페인",
+    applicantCount: 4,
+    convertedName: "민서홈",
+    statuses: ["converted_to_contract", "submitted", "reviewed", "submitted"],
+    ageDays: 6,
+  },
+  {
+    campaignTitle: "브레드룸 신제품 언박싱 릴스",
+    applicantCount: 6,
+    convertedName: accounts.influencer.name,
+    statuses: ["converted_to_contract", "submitted", "submitted", "reviewed", "submitted"],
+    ageDays: 7,
+  },
+  {
+    campaignTitle: "파우치 필수템 쇼츠 리뷰",
+    applicantCount: 8,
+    convertedName: accounts.influencer.name,
+    statuses: ["converted_to_contract", "reviewed", "submitted", "submitted"],
+    ageDays: 8,
+  },
+  {
+    campaignTitle: "데일리 루틴 블로그 리뷰",
+    applicantCount: 3,
+    convertedName: accounts.influencer.name,
+    statuses: ["converted_to_contract", "submitted", "reviewed"],
+    ageDays: 9,
+  },
+  {
+    campaignTitle: "성수 팝업 방문 릴스",
+    applicantCount: 5,
+    convertedName: accounts.influencer.name,
+    statuses: ["converted_to_contract", "submitted", "submitted", "reviewed"],
+    ageDays: 10,
+  },
+  {
+    campaignTitle: "나이트 케어 쇼츠 패키지",
+    applicantCount: 2,
+    convertedName: accounts.influencer.name,
+    statuses: ["converted_to_contract", "submitted"],
+    ageDays: 11,
+  },
+  {
+    campaignTitle: "브레드룸 공동구매 파일럿",
+    applicantCount: 9,
+    convertedName: accounts.influencer.name,
+    statuses: ["converted_to_contract", "reviewed", "submitted", "submitted", "reviewed"],
+    ageDays: 12,
+  },
+  {
+    campaignTitle: "오브레 릴스 캠페인",
+    applicantCount: 5,
+    convertedName: accounts.influencer.name,
+    statuses: ["closed", "closed", "closed", "reviewed", "submitted"],
+    ageDays: 18,
+  },
+  {
+    campaignTitle: "브루잉랩 공동구매 파일럿",
+    applicantCount: 3,
+    convertedName: accounts.influencer.name,
+    statuses: ["closed", "closed", "reviewed"],
+    ageDays: 22,
+  },
+];
+
 const clauseStatusFor = (scenario, index) => {
   if (scenario.clauses === "approved") return "APPROVED";
   if (scenario.clauses === "change" && index === 2) return "MODIFICATION_REQUESTED";
@@ -1362,6 +1539,105 @@ const closeContract = async (contractId, advertiserCookie) => {
   return JSON.parse(body).contract;
 };
 
+const buildSeedCampaignSnapshot = (campaign, marketplace) => ({
+  id: campaign.id,
+  title: campaign.title,
+  type: campaign.type,
+  budget: campaign.budget,
+  applicantLimit: campaign.applicantLimit,
+  summary: campaign.summary,
+  deadline: campaign.deadline,
+  uploadDeadline: campaign.uploadDeadline,
+  platforms: campaign.platforms,
+  deliverables: campaign.deliverables,
+  brandId: marketplace.brandProfileId,
+  brandHandle: testHandles.brand,
+  brandName: accounts.advertiser.company_name,
+  brandCategory: "뷰티 · 라이프스타일",
+});
+
+const buildSeedCampaignApplicationSummary = (campaign) =>
+  [
+    `캠페인 신청: ${campaign.title}`,
+    campaign.summary ? `모집 설명: ${campaign.summary}` : undefined,
+    campaign.applicantLimit ? `모집인원: ${campaign.applicantLimit}` : undefined,
+    `지급내용: ${campaign.budget}`,
+    campaign.deliverables?.length
+      ? `산출물: ${campaign.deliverables.join(", ")}`
+      : undefined,
+    campaign.platforms?.length
+      ? `플랫폼: ${campaign.platforms.map((platform) => seedPlatformLabels[platform] ?? "기타").join(", ")}`
+      : undefined,
+    campaign.uploadDeadline ? `업로드 마감일: ${campaign.uploadDeadline}` : undefined,
+    campaign.deadline ? `모집마감일: ${campaign.deadline}` : undefined,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+const seedCampaignDashboardApplications = async ({
+  marketplace,
+  contractsByCampaignName,
+}) => {
+  const campaignsByTitle = new Map(
+    marketplace.campaigns.map((campaign) => [campaign.title, campaign]),
+  );
+  const rows = [];
+
+  for (const fixture of campaignDashboardApplicationFixtures) {
+    const campaign = campaignsByTitle.get(fixture.campaignTitle);
+    if (!campaign?.id) continue;
+
+    const convertedContract = contractsByCampaignName.get(fixture.campaignTitle);
+    const applicantNames = [
+      ...(fixture.convertedName ? [fixture.convertedName] : []),
+      ...campaignDashboardApplicantPool,
+    ];
+
+    for (let index = 0; index < fixture.applicantCount; index += 1) {
+      const senderName = applicantNames[index % applicantNames.length];
+      const status =
+        fixture.statuses[index % fixture.statuses.length] ?? "submitted";
+      const convertedContractId =
+        (status === "converted_to_contract" || status === "closed") &&
+        convertedContract &&
+        senderName === fixture.convertedName
+          ? convertedContract.id
+          : undefined;
+      const createdAt = addDays(-(fixture.ageDays + index));
+
+      rows.push({
+        id: stableUuid(
+          `qa:campaign-dashboard-application:${campaign.id}:${senderName}:${index}`,
+        ),
+        direction: "influencer_to_brand",
+        target_brand_profile_id: marketplace.brandProfileId,
+        target_handle: testHandles.brand,
+        target_display_name: accounts.advertiser.company_name,
+        sender_profile_id: null,
+        sender_name: senderName,
+        sender_intro: `${senderName} 캠페인 지원 데이터입니다.`,
+        proposal_type: campaign.type,
+        proposal_summary: buildSeedCampaignApplicationSummary(campaign),
+        campaign_id: campaign.id,
+        campaign_snapshot: buildSeedCampaignSnapshot(campaign, marketplace),
+        converted_contract_id: convertedContractId,
+        status,
+        created_at: createdAt,
+        updated_at: createdAt,
+      });
+    }
+  }
+
+  await upsert(
+    "marketplace_contact_proposals",
+    rows,
+    "id",
+    "campaign dashboard application fixtures",
+  );
+
+  return rows.length;
+};
+
 const seedDashboardShowcase = async ({ advertiser, influencer, marketplace }) => {
   const advertiserSession = await login("/api/advertiser/login", advertiser.email);
   const influencerSession = await login("/api/influencer/login", influencer.email);
@@ -1372,6 +1648,7 @@ const seedDashboardShowcase = async ({ advertiser, influencer, marketplace }) =>
     advertiserCookie: advertiserSession.cookie,
   });
   const created = [];
+  const contractsByCampaignName = new Map();
 
   for (const scenario of showcaseScenarios) {
     let contract = await putContract(
@@ -1441,10 +1718,20 @@ const seedDashboardShowcase = async ({ advertiser, influencer, marketplace }) =>
     created.push({
       id: contract.id,
       title: scenario.title,
+      campaignName: scenario.campaignName,
       status: contract.status,
       influencer: scenario.influencerName,
     });
+    contractsByCampaignName.set(scenario.campaignName, {
+      id: contract.id,
+      influencer: scenario.influencerName,
+    });
   }
+
+  const seededApplications = await seedCampaignDashboardApplications({
+    marketplace,
+    contractsByCampaignName,
+  });
 
   const advertiserContractsResponse = await appJson(
     "/api/contracts",
@@ -1461,6 +1748,7 @@ const seedDashboardShowcase = async ({ advertiser, influencer, marketplace }) =>
     base_url: DASHBOARD_BASE_URL,
     archived_contracts: cleanup.archivedContracts,
     created_contracts: created.length,
+    seeded_campaign_applications: seededApplications,
     advertiser_visible_contracts: advertiserContractsResponse.contracts?.length ?? 0,
     influencer_visible_contracts: influencerDashboard.contracts?.length ?? 0,
     influencer_visible_applications: influencerDashboard.applications?.length ?? 0,

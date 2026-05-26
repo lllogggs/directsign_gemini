@@ -98,6 +98,7 @@ const exactApiErrorMessages: Record<string, string> = {
   "Valid verification status is required": "인증 처리 상태를 다시 선택해 주세요.",
   "Valid support access status is required": "지원 열람 상태를 다시 선택해 주세요.",
   "Support access request not found": "지원 열람 요청을 찾을 수 없습니다.",
+  "Support access consent is required": "운영자 열람 동의가 필요합니다.",
   "Active support access request id is required":
     "활성화된 지원 열람 요청 정보가 필요합니다.",
   "Active support access request is required":

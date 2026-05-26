@@ -27,6 +27,7 @@ import { createShareToken, isFixedCampaignContract } from "../../domain/contract
 import { buildContractShareUrl } from "../../domain/links";
 import { PRODUCT_NAME } from "../../domain/brand";
 import { LEGAL_CONTACT_EMAIL } from "../../domain/legalEntity";
+import { SUPPORT_ACCESS_CONSENT_TEXT } from "../../domain/legalConsent";
 import { verificationStatusLabel } from "../../domain/verification";
 import {
   clearVerificationSummaryCache,
@@ -537,7 +538,11 @@ export function ContractAdminViewer() {
             "Content-Type": "application/json",
             Accept: "application/json",
           },
-          body: JSON.stringify({ reason, scope: supportScope }),
+          body: JSON.stringify({
+            reason,
+            scope: supportScope,
+            support_consent_accepted: supportConsentAccepted,
+          }),
         },
       );
       const data = (await response.json()) as {
@@ -1128,8 +1133,16 @@ export function ContractAdminViewer() {
                     className="mt-0.5 h-4 w-4 rounded border-neutral-300 text-neutral-950 accent-neutral-950"
                   />
                   <span>
-                    선택한 범위의 계약 자료를 운영자가 24시간 확인하고, 열람 기록이
-                    감사 로그에 남는 것에 동의합니다.
+                    {SUPPORT_ACCESS_CONSENT_TEXT}{" "}
+                    <a
+                      href="/privacy"
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={(event) => event.stopPropagation()}
+                      className="font-semibold text-neutral-800 underline underline-offset-4 hover:text-neutral-950"
+                    >
+                      개인정보 처리방침 보기
+                    </a>
                   </span>
                 </label>
                 <button

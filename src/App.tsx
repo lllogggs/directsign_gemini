@@ -16,6 +16,7 @@ import { InfluencerDashboard as InfluencerDashboardPage } from "./pages/influenc
 import { getNextPath } from "./domain/navigation";
 import { PRODUCT_DESCRIPTION, PRODUCT_NAME } from "./domain/brand";
 import { LEGAL_CONTACT_EMAIL } from "./domain/legalEntity";
+import { syncAnalyticsRoute } from "./domain/analytics";
 
 type RouteModuleLoader = () => Promise<unknown>;
 
@@ -1049,6 +1050,16 @@ function RouteSeoMeta() {
   return null;
 }
 
+function RouteAnalytics() {
+  const location = useLocation();
+
+  useEffect(() => {
+    syncAnalyticsRoute(location.pathname, location.search);
+  }, [location.pathname, location.search]);
+
+  return null;
+}
+
 function RoutePreloader() {
   const location = useLocation();
 
@@ -1175,6 +1186,7 @@ function AppRoutes() {
   return (
     <>
       <RouteSeoMeta />
+      <RouteAnalytics />
       <RoutePreloader />
       <RouteErrorBoundary key={location.key}>
       <Suspense fallback={<AppLoading {...loadingCopy} />}>

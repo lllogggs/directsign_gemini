@@ -4,6 +4,7 @@ import { ArrowRight, MailCheck, X } from "lucide-react";
 import { AuthLoginScreen } from "../../components/AuthLoginScreen";
 import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
+import { LEGAL_CONTACT_EMAIL } from "../../domain/legalEntity";
 import { getNextPath } from "../../domain/navigation";
 import { translateApiErrorMessage } from "../../domain/userMessages";
 
@@ -448,6 +449,15 @@ function SignupConsentPanel({
         onOpenDocument={onOpenDocument}
         onToggle={() => onToggle("privacy")}
       />
+      <p className="border-t border-neutral-200/80 pt-2 text-[11px] font-semibold leading-5 text-neutral-500">
+        동의 일시와 문서 버전이 저장됩니다. 문의:{" "}
+        <a
+          href={`mailto:${LEGAL_CONTACT_EMAIL}`}
+          className="text-neutral-700 underline underline-offset-4 hover:text-neutral-950"
+        >
+          {LEGAL_CONTACT_EMAIL}
+        </a>
+      </p>
     </section>
   );
 }
