@@ -143,6 +143,7 @@ const influencerDashboard = read("src/pages/influencer/InfluencerDashboard.tsx")
 const campaignPages = read("src/pages/marketplace/CampaignPages.tsx");
 const marketplace = read("src/domain/marketplace.ts");
 const server = read("server/index.ts");
+const fastAuth = read("lib/fast-auth.ts");
 const signupPage = read("src/pages/auth/SignupPage.tsx");
 const contractAdminViewer = read("src/pages/marketing/ContractAdminViewer.tsx");
 const contractViewer = read("src/pages/influencer/ContractViewer.tsx");
@@ -357,7 +358,7 @@ check(
 
 check(
   "login and route transition budgets stay strict",
-  qaStandard.includes("loginMs: Number(process.env.QA_LOGIN_BUDGET_MS || 3000)") &&
+  qaStandard.includes("loginMs: Number(process.env.QA_LOGIN_BUDGET_MS || 1200)") &&
     qaStandard.includes(
       "routeMs: Number(process.env.QA_ROUTE_TRANSITION_BUDGET_MS || 1500)",
     ) &&
@@ -365,6 +366,18 @@ check(
     advertiserAuthGate.includes("activateVerifiedCachedSession") &&
     advertiserAuthGate.includes("navigate(redirectAfterLogin, { replace: true });"),
   "Login and route transitions must keep strict QA budgets and advertiser login must not wait on a second route before showing the destination shell",
+);
+
+check(
+  "advertiser login critical path excludes message summary",
+  !fastAuth
+    .slice(
+      fastAuth.indexOf("async function handleAdvertiserLogin"),
+      fastAuth.indexOf("async function handleInfluencerLogin"),
+    )
+    .includes("readAdvertiserMessageSummary") &&
+    server.includes("includeMessageSummary: false"),
+  "Advertiser login must deliver auth, contract rows, and verification first; marketplace message summary is secondary and must load after the dashboard can render",
 );
 
 check(

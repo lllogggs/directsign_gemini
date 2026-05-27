@@ -107,27 +107,6 @@ interface VerificationRequestRecord {
   [key: string]: unknown;
 }
 
-type MarketplaceProposalDirection =
-  | "advertiser_to_influencer"
-  | "influencer_to_brand";
-type MarketplaceProposalStatus =
-  | "submitted"
-  | "reviewed"
-  | "converted_to_contract"
-  | "closed";
-
-interface SupabaseMarketplaceProposalRow {
-  id: string;
-  direction: MarketplaceProposalDirection;
-  status: MarketplaceProposalStatus;
-  created_at: string;
-}
-
-interface SupabaseMarketplaceBrandProfileRow {
-  id: string;
-  public_handle?: string | null;
-}
-
 const supabaseUrl = process.env.SUPABASE_URL?.replace(/\/$/, "");
 const supabaseServiceRoleKey =
   process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SECRET_KEY;
@@ -606,73 +585,6 @@ async function readAdvertiserVerification(
   };
 }
 
-function emptyMessageSummary() {
-  return {
-    inboxCount: 0,
-    sentCount: 0,
-    unreadCount: 0,
-    submittedCount: 0,
-    reviewedCount: 0,
-    convertedCount: 0,
-    closedCount: 0,
-  };
-}
-
-function buildMessageSummary(
-  role: "advertiser" | "influencer",
-  rows: SupabaseMarketplaceProposalRow[],
-) {
-  return rows.reduce((acc, row) => {
-    const isInbox =
-      (role === "advertiser" && row.direction === "influencer_to_brand") ||
-      (role === "influencer" && row.direction === "advertiser_to_influencer");
-    if (isInbox) acc.inboxCount += 1;
-    if (!isInbox) acc.sentCount += 1;
-    if (isInbox && row.status === "submitted") acc.unreadCount += 1;
-    if (row.status === "submitted") acc.submittedCount += 1;
-    if (row.status === "reviewed") acc.reviewedCount += 1;
-    if (row.status === "converted_to_contract") acc.convertedCount += 1;
-    if (row.status === "closed") acc.closedCount += 1;
-    return acc;
-  }, emptyMessageSummary());
-}
-
-async function readAdvertiserMessageSummary(
-  profile: SupabaseProfileRow,
-  organization?: SupabaseOrganizationRow,
-) {
-  const sentPromise = readSupabaseRows<SupabaseMarketplaceProposalRow>(
-    "marketplace_contact_proposals",
-    `?select=id,direction,status&direction=eq.advertiser_to_influencer&sender_profile_id=eq.${encodeURIComponent(
-      profile.id,
-    )}`,
-    "advertiser sent proposals",
-  );
-  const brandRows =
-    organization?.id
-      ? await readSupabaseRows<SupabaseMarketplaceBrandProfileRow>(
-          "marketplace_brand_profiles",
-          `?select=id,public_handle&organization_id=eq.${encodeURIComponent(
-            organization.id,
-          )}`,
-          "advertiser brand profiles",
-        )
-      : [];
-  const brandIds = brandRows.map((row) => row.id).filter(hasText);
-  const incomingPromise =
-    brandIds.length > 0
-      ? readSupabaseRows<SupabaseMarketplaceProposalRow>(
-          "marketplace_contact_proposals",
-          `?select=id,direction,status&direction=eq.influencer_to_brand&target_brand_profile_id=in.${postgrestInFilter(
-            brandIds,
-          )}`,
-          "advertiser incoming proposals",
-        )
-      : Promise.resolve([] as SupabaseMarketplaceProposalRow[]);
-  const rows = [...(await sentPromise), ...(await incomingPromise)];
-  return buildMessageSummary("advertiser", rows);
-}
-
 function buildAdvertiserUser(
   user: SupabaseAuthUser,
   profile: SupabaseProfileRow,
@@ -751,27 +663,18 @@ async function handleAdvertiserLogin(request: RequestLike, response: ResponseLik
         : undefined,
     )
     .catch(() => undefined);
-  const messageSummaryPromise = Promise.all([profilePromise, organizationPromise])
-    .then(([profile, organization]) =>
-      profile?.role === "marketer"
-        ? readAdvertiserMessageSummary(profile, organization)
-        : emptyMessageSummary(),
-    )
-    .catch(() => emptyMessageSummary());
   const dashboardPromise = Promise.all([
     profilePromise,
     contractsPromise,
     verificationPromise,
-    messageSummaryPromise,
   ])
-    .then(([profile, contracts, verification, messageSummary]) => {
+    .then(([profile, contracts, verification]) => {
       if (profile?.role !== "marketer" || !contracts || !verification) {
         return undefined;
       }
       return {
         contracts,
         verification,
-        message_summary: messageSummary,
         source: "supabase",
         allow_local_merge: false,
         demo_mode: false,
@@ -796,14 +699,9 @@ async function handleAdvertiserLogin(request: RequestLike, response: ResponseLik
       await Promise.all([
         readAdvertiserContracts(profile),
         readAdvertiserVerification(profile, resolvedOrganization),
-        readAdvertiserMessageSummary(
-          profile,
-          resolvedOrganization,
-        ).catch(() => emptyMessageSummary()),
-      ]).then(([contracts, verification, messageSummary]) => ({
+      ]).then(([contracts, verification]) => ({
         contracts,
         verification,
-        message_summary: messageSummary,
       }))
     ),
     source: "supabase",

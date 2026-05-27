@@ -1970,8 +1970,12 @@ const canAdvertiserAccessLegacyContract = (
   return isBoundToProfile || isLegacyManagerEmailMatch;
 };
 
-async function buildAdvertiserLoginDashboardBootstrap(auth: AdvertiserSession) {
+async function buildAdvertiserLoginDashboardBootstrap(
+  auth: AdvertiserSession,
+  options: { includeMessageSummary?: boolean } = {},
+) {
   try {
+    const includeMessageSummary = options.includeMessageSummary ?? true;
     const [contracts, verification, messageSummary] = await Promise.all([
       readAdvertiserScopedSupabaseContracts(auth).then(async (scopedContracts) => {
         if (scopedContracts) return scopedContracts;
@@ -1981,22 +1985,24 @@ async function buildAdvertiserLoginDashboardBootstrap(auth: AdvertiserSession) {
         );
       }),
       buildAdvertiserScopedVerificationSummary(auth),
-      readMarketplaceMessagesForAdvertiser(auth, { summaryOnly: true })
-        .then((data) => data.summary)
-        .catch((error) => {
-          console.warn(
-            `[${productName}] advertiser message summary bootstrap failed: ${
-              error instanceof Error ? error.message : "unknown error"
-            }`,
-          );
-          return emptyMarketplaceMessageSummary();
-        }),
+      includeMessageSummary
+        ? readMarketplaceMessagesForAdvertiser(auth, { summaryOnly: true })
+            .then((data) => data.summary)
+            .catch((error) => {
+              console.warn(
+                `[${productName}] advertiser message summary bootstrap failed: ${
+                  error instanceof Error ? error.message : "unknown error"
+                }`,
+              );
+              return emptyMarketplaceMessageSummary();
+            })
+        : Promise.resolve(undefined),
     ]);
 
     return {
       contracts,
       verification,
-      message_summary: messageSummary,
+      ...(messageSummary ? { message_summary: messageSummary } : {}),
       source: useSupabase ? "supabase" : "file",
       allow_local_merge: !useSupabase,
       demo_mode: demoMode,
@@ -13806,7 +13812,7 @@ app.post("/api/advertiser/login", async (request, response) => {
               user: { id: profile.id, email: profile.email },
               accessToken: "",
               profile,
-            })
+            }, { includeMessageSummary: false })
           : undefined,
       )
       .catch((error) => {
@@ -13850,7 +13856,9 @@ app.post("/api/advertiser/login", async (request, response) => {
     const [resolvedOrganization, dashboard] = await Promise.all([
       organization ?? readDefaultOrganizationForProfile(profile.id),
       prefetchedDashboard ??
-        buildAdvertiserLoginDashboardBootstrap(advertiserSession),
+        buildAdvertiserLoginDashboardBootstrap(advertiserSession, {
+          includeMessageSummary: false,
+        }),
     ]);
     response.json({
       authenticated: true,

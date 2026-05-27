@@ -661,6 +661,8 @@ describe("yeollock.me security regressions", () => {
     const app = read("src/App.tsx");
     const advertiserAuthGate = read("src/pages/marketing/AdvertiserAuthGate.tsx");
     const loginLanding = read("src/pages/auth/LoginLanding.tsx");
+    const fastAuth = read("lib/fast-auth.ts");
+    const server = read("server/index.ts");
     const loginStartIndex = advertiserAuthGate.indexOf(
       'const loginPromise = apiFetch("/api/advertiser/login"',
     );
@@ -685,6 +687,13 @@ describe("yeollock.me security regressions", () => {
     assert.match(advertiserAuthGate, /if \(!navigatedOptimistically\) \{/);
     assert.match(loginLanding, /const href = next[\s\S]+\? `\$\{role\.href\}\?next=/);
     assert.match(loginLanding, /: role\.href/);
+
+    const fastAuthAdvertiserLogin = fastAuth.slice(
+      fastAuth.indexOf("async function handleAdvertiserLogin"),
+      fastAuth.indexOf("async function handleInfluencerLogin"),
+    );
+    assert.doesNotMatch(fastAuthAdvertiserLogin, /readAdvertiserMessageSummary/);
+    assert.match(server, /includeMessageSummary: false/);
   });
 
   it("keeps advertiser marketplace messages focused on sent proposals", () => {
