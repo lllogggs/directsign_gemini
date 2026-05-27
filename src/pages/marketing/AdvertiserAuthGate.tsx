@@ -57,6 +57,18 @@ const waitSoft = async <T,>(promise: Promise<T>, timeoutMs: number) => {
   ]);
 };
 
+let advertiserLoginWarmupStarted = false;
+
+const prewarmAdvertiserLoginEndpoint = () => {
+  if (advertiserLoginWarmupStarted || typeof window === "undefined") return;
+  advertiserLoginWarmupStarted = true;
+  void apiFetch("/api/advertiser/login", {
+    method: "GET",
+    headers: { Accept: "application/json" },
+    credentials: "include",
+  }).catch(() => undefined);
+};
+
 export function AdvertiserAuthGate({
   children,
   redirectUnauthenticated = false,
@@ -112,6 +124,11 @@ export function AdvertiserAuthGate({
     }
     run();
   }, [preloadDashboard]);
+
+  useEffect(() => {
+    if (!shouldShowLoginImmediately || cachedSession) return;
+    prewarmAdvertiserLoginEndpoint();
+  }, [cachedSession, shouldShowLoginImmediately]);
 
   useEffect(() => {
     let cancelled = false;

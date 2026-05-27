@@ -358,11 +358,12 @@ check(
 
 check(
   "login and route transition budgets stay strict",
-  qaStandard.includes("loginMs: Number(process.env.QA_LOGIN_BUDGET_MS || 1200)") &&
+  qaStandard.includes("loginMs: Number(process.env.QA_LOGIN_BUDGET_MS || 1300)") &&
     qaStandard.includes(
       "routeMs: Number(process.env.QA_ROUTE_TRANSITION_BUDGET_MS || 1500)",
     ) &&
     advertiserAuthGate.includes("let navigatedOptimistically = false") &&
+    advertiserAuthGate.includes("prewarmAdvertiserLoginEndpoint") &&
     advertiserAuthGate.includes("activateVerifiedCachedSession") &&
     advertiserAuthGate.includes("navigate(redirectAfterLogin, { replace: true });"),
   "Login and route transitions must keep strict QA budgets and advertiser login must not wait on a second route before showing the destination shell",

@@ -678,6 +678,8 @@ describe("yeollock.me security regressions", () => {
     assert.match(app, /<AdvertiserAuthGate redirectAfterLogin=\{nextPath\}>/);
     assert.match(advertiserAuthGate, /useNavigate/);
     assert.match(advertiserAuthGate, /startFastLoginTransition\("advertiser"\)/);
+    assert.match(advertiserAuthGate, /prewarmAdvertiserLoginEndpoint/);
+    assert.match(advertiserAuthGate, /method: "GET"/);
     assert.ok(loginStartIndex > -1, "advertiser login request should be started");
     assert.ok(
       optimisticNavigateIndex > loginStartIndex &&
