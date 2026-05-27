@@ -534,6 +534,17 @@ async function readAdvertiserVerification(
   profile: SupabaseProfileRow,
   organization?: SupabaseOrganizationRow,
 ) {
+  return buildAdvertiserVerification(
+    profile,
+    organization,
+    await readAdvertiserVerificationRequests(profile, organization),
+  );
+}
+
+async function readAdvertiserVerificationRequests(
+  profile: SupabaseProfileRow,
+  organization?: SupabaseOrganizationRow,
+) {
   const targetId = organization?.id ?? profile.id;
   const targetIds = Array.from(
     new Set([targetId, profile.id, organization?.id].filter(hasText)),
@@ -550,13 +561,21 @@ async function readAdvertiserVerification(
       ? `id.eq.${encodeURIComponent(organization.business_verification_request_id)}`
       : undefined,
   ].filter(hasText);
-  const requests = await readSupabaseRows<VerificationRequestRecord>(
+  return await readSupabaseRows<VerificationRequestRecord>(
     "verification_requests",
     `?select=id,target_type,target_id,verification_type,status,profile_id,organization_id,subject_name,submitted_by_name,submitted_by_email,business_registration_number,representative_name,reviewed_at,created_at,updated_at&target_type=eq.advertiser_organization&verification_type=eq.business_registration_certificate&or=(${orFilters.join(
       ",",
     )})&order=created_at.desc`,
     "advertiser verification",
   );
+}
+
+function buildAdvertiserVerification(
+  profile: SupabaseProfileRow,
+  organization: SupabaseOrganizationRow | undefined,
+  requests: VerificationRequestRecord[],
+) {
+  const targetId = organization?.id ?? profile.id;
   const latest = requests[0];
   const status =
     latest?.status === "approved" && !hasText(latest.reviewed_at)
@@ -649,6 +668,13 @@ async function handleAdvertiserLogin(request: RequestLike, response: ResponseLik
   const organizationPromise = profilePromise.then((profile) =>
     profile?.role === "marketer" ? readDefaultOrganization(profile.id) : undefined,
   );
+  const verificationRequestsPromise = profilePromise
+    .then((profile) =>
+      profile?.role === "marketer"
+        ? readAdvertiserVerificationRequests(profile)
+        : undefined,
+    )
+    .catch(() => undefined);
   const contractsPromise = profilePromise
     .then((profile) =>
       profile?.role === "marketer"
@@ -656,10 +682,14 @@ async function handleAdvertiserLogin(request: RequestLike, response: ResponseLik
         : undefined,
     )
     .catch(() => undefined);
-  const verificationPromise = Promise.all([profilePromise, organizationPromise])
-    .then(([profile, organization]) =>
-      profile?.role === "marketer"
-        ? readAdvertiserVerification(profile, organization)
+  const verificationPromise = Promise.all([
+    profilePromise,
+    organizationPromise,
+    verificationRequestsPromise,
+  ])
+    .then(([profile, organization, requests]) =>
+      profile?.role === "marketer" && requests
+        ? buildAdvertiserVerification(profile, organization, requests)
         : undefined,
     )
     .catch(() => undefined);
