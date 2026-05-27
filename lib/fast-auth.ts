@@ -140,6 +140,14 @@ const publicAuthAttempts = new Map<
   string,
   { count: number; resetAt: number }
 >();
+const fastAuthWarmupTtlMs = 20_000;
+const fastAuthWarmupTimeoutMs = 1_500;
+let fastAuthWarmup:
+  | {
+      startedAt: number;
+      promise: Promise<void>;
+    }
+  | undefined;
 
 const profileSelectFields = [
   "id",
@@ -186,6 +194,60 @@ function supabaseRestUrl(table: string, query = "") {
 function supabaseAuthUrl(pathName: string) {
   const { url } = requireSupabaseConfig();
   return `${url}/auth/v1${pathName}`;
+}
+
+async function fetchWarmupTarget(url: string, headers: Record<string, string>) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), fastAuthWarmupTimeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      headers,
+      signal: controller.signal,
+    });
+    await response.arrayBuffer().catch(() => undefined);
+  } catch {
+    // Warmup should never change login availability.
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function warmFastAuthDependencies() {
+  if (!supabaseUrl || !supabaseServiceRoleKey) return;
+
+  try {
+    const headers = supabaseHeaders();
+    await Promise.allSettled([
+      fetchWarmupTarget(supabaseAuthUrl("/settings"), headers),
+      fetchWarmupTarget(
+        supabaseRestUrl("profiles", "?select=id&limit=1"),
+        headers,
+      ),
+    ]);
+  } catch {
+    // Missing or temporarily unavailable Supabase config should not block login.
+  }
+}
+
+function startFastAuthWarmup() {
+  const now = Date.now();
+  if (fastAuthWarmup && now - fastAuthWarmup.startedAt < fastAuthWarmupTtlMs) {
+    return fastAuthWarmup.promise;
+  }
+
+  fastAuthWarmup = {
+    startedAt: now,
+    promise: warmFastAuthDependencies().finally(() => {
+      if (
+        fastAuthWarmup &&
+        Date.now() - fastAuthWarmup.startedAt >= fastAuthWarmupTtlMs
+      ) {
+        fastAuthWarmup = undefined;
+      }
+    }),
+  };
+  return fastAuthWarmup.promise;
 }
 
 async function parseSupabaseError(response: Response) {
@@ -785,6 +847,16 @@ function withFastAuthHandler(
   handler: (request: RequestLike, response: ResponseLike) => Promise<void>,
 ) {
   return async function fastAuthHandler(request: RequestLike, response: ResponseLike) {
+    response.setHeader("X-Yeollock-Auth-Entrypoint", `fast-${role}`);
+
+    if (request.method === "GET" || request.method === "HEAD") {
+      response.setHeader("Cache-Control", "no-store");
+      await startFastAuthWarmup();
+      response.statusCode = 204;
+      response.end();
+      return;
+    }
+
     if (request.method !== "POST") {
       response.setHeader("Allow", "POST");
       sendJson(response, 405, { error: "Method not allowed" });
@@ -794,7 +866,6 @@ function withFastAuthHandler(
       sendJson(response, 403, { error: "허용되지 않은 요청입니다." });
       return;
     }
-    response.setHeader("X-Yeollock-Auth-Entrypoint", `fast-${role}`);
     try {
       await handler(request, response);
     } catch (error) {

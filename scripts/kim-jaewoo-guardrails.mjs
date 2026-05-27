@@ -364,9 +364,13 @@ check(
     ) &&
     advertiserAuthGate.includes("let navigatedOptimistically = false") &&
     advertiserAuthGate.includes("prewarmAdvertiserLoginEndpoint") &&
+    fastAuth.includes("warmFastAuthDependencies") &&
+    fastAuth.includes('request.method === "GET" || request.method === "HEAD"') &&
+    fastAuth.includes('supabaseAuthUrl("/settings")') &&
+    fastAuth.includes('supabaseRestUrl("profiles", "?select=id&limit=1")') &&
     advertiserAuthGate.includes("activateVerifiedCachedSession") &&
     advertiserAuthGate.includes("navigate(redirectAfterLogin, { replace: true });"),
-  "Login and route transitions must keep strict QA budgets and advertiser login must not wait on a second route before showing the destination shell",
+  "Login and route transitions must keep strict QA budgets, warm Supabase before submit, and advertiser login must not wait on a second route before showing the destination shell",
 );
 
 check(

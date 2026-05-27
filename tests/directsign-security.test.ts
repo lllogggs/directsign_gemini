@@ -680,6 +680,10 @@ describe("yeollock.me security regressions", () => {
     assert.match(advertiserAuthGate, /startFastLoginTransition\("advertiser"\)/);
     assert.match(advertiserAuthGate, /prewarmAdvertiserLoginEndpoint/);
     assert.match(advertiserAuthGate, /method: "GET"/);
+    assert.match(fastAuth, /warmFastAuthDependencies/);
+    assert.match(fastAuth, /request\.method === "GET" \|\| request\.method === "HEAD"/);
+    assert.match(fastAuth, /supabaseAuthUrl\("\/settings"\)/);
+    assert.match(fastAuth, /supabaseRestUrl\("profiles", "\?select=id&limit=1"\)/);
     assert.ok(loginStartIndex > -1, "advertiser login request should be started");
     assert.ok(
       optimisticNavigateIndex > loginStartIndex &&
