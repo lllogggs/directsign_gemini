@@ -158,14 +158,28 @@ export function AdvertiserAuthGate({
       }
     };
 
+    const activateVerifiedCachedSession = () => {
+      const latestCachedSession = getAdvertiserSessionCache();
+      if (!latestCachedSession || cancelled) return false;
+      setIsAuthenticated(true);
+      setIsChecking(false);
+      preloadDashboardInBackground();
+      return true;
+    };
+
     const timer = window.setTimeout(() => {
       const run = async () => {
         if (isFastLoginTransitionPending("advertiser")) {
           await waitForFastLoginTransition("advertiser", 2_500);
         }
-        if (!cancelled) {
-          await checkSession();
+        if (cancelled) return;
+
+        if (activateVerifiedCachedSession()) {
+          void checkSession();
+          return;
         }
+
+        await checkSession();
       };
       void run();
     }, 0);
@@ -184,6 +198,7 @@ export function AdvertiserAuthGate({
     event.preventDefault();
     setIsSubmitting(true);
     setError("");
+    let navigatedOptimistically = false;
 
     try {
       const loginPromise = apiFetch("/api/advertiser/login", {
@@ -198,6 +213,8 @@ export function AdvertiserAuthGate({
 
       if (redirectAfterLogin) {
         startFastLoginTransition("advertiser");
+        navigatedOptimistically = true;
+        navigate(redirectAfterLogin, { replace: true });
       }
 
       const response = await loginPromise;
@@ -212,7 +229,7 @@ export function AdvertiserAuthGate({
         );
       }
 
-      setIsAuthenticated(true);
+      if (!navigatedOptimistically) setIsAuthenticated(true);
       rememberAdvertiserSession(data.user);
       if (data.dashboard?.verification) {
         primeVerificationSummary("advertiser", data.dashboard.verification);
@@ -223,12 +240,12 @@ export function AdvertiserAuthGate({
       const dashboardPreload = Array.isArray(data.dashboard?.contracts)
         ? undefined
         : preloadDashboard();
-      if (dashboardPreload) {
+      if (dashboardPreload && !navigatedOptimistically) {
         await waitSoft(dashboardPreload, 260);
       }
       finishFastLoginTransition("advertiser");
       if (dashboardPreload) void dashboardPreload;
-      if (redirectAfterLogin) {
+      if (redirectAfterLogin && !navigatedOptimistically) {
         navigate(redirectAfterLogin, { replace: true });
         return;
       }
@@ -242,9 +259,18 @@ export function AdvertiserAuthGate({
             "광고주 계정으로 로그인할 수 없습니다.",
           )
           : "광고주 계정으로 로그인할 수 없습니다.";
+      if (navigatedOptimistically && redirectAfterLogin) {
+        navigate(`/login/advertiser?next=${encodeURIComponent(redirectAfterLogin)}`, {
+          replace: true,
+          state: { loginError: message },
+        });
+        return;
+      }
       setError(message);
     } finally {
-      setIsSubmitting(false);
+      if (!navigatedOptimistically) {
+        setIsSubmitting(false);
+      }
     }
   };
 

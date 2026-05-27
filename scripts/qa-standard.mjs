@@ -428,8 +428,8 @@ const qaCredentials = {
 };
 
 const browserPerformanceBudgets = {
-  loginMs: Number(process.env.QA_LOGIN_BUDGET_MS || 5000),
-  routeMs: Number(process.env.QA_ROUTE_TRANSITION_BUDGET_MS || 3500),
+  loginMs: Number(process.env.QA_LOGIN_BUDGET_MS || 3000),
+  routeMs: Number(process.env.QA_ROUTE_TRANSITION_BUDGET_MS || 1500),
   actionMs: Number(process.env.QA_ACTION_BUDGET_MS || 250),
 };
 

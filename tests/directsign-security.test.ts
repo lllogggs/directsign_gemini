@@ -657,14 +657,32 @@ describe("yeollock.me security regressions", () => {
     }
   });
 
-  it("redirects advertiser login immediately after successful authentication", () => {
+  it("moves advertiser login to the destination shell before waiting for authentication response", () => {
     const app = read("src/App.tsx");
     const advertiserAuthGate = read("src/pages/marketing/AdvertiserAuthGate.tsx");
     const loginLanding = read("src/pages/auth/LoginLanding.tsx");
+    const loginStartIndex = advertiserAuthGate.indexOf(
+      'const loginPromise = apiFetch("/api/advertiser/login"',
+    );
+    const optimisticNavigateIndex = advertiserAuthGate.indexOf(
+      "navigate(redirectAfterLogin, { replace: true });",
+      loginStartIndex,
+    );
+    const awaitLoginIndex = advertiserAuthGate.indexOf(
+      "const response = await loginPromise;",
+      loginStartIndex,
+    );
 
     assert.match(app, /<AdvertiserAuthGate redirectAfterLogin=\{nextPath\}>/);
     assert.match(advertiserAuthGate, /useNavigate/);
-    assert.match(advertiserAuthGate, /navigate\(redirectAfterLogin, \{ replace: true \}\)/);
+    assert.match(advertiserAuthGate, /startFastLoginTransition\("advertiser"\)/);
+    assert.ok(loginStartIndex > -1, "advertiser login request should be started");
+    assert.ok(
+      optimisticNavigateIndex > loginStartIndex &&
+        optimisticNavigateIndex < awaitLoginIndex,
+      "advertiser login should move to the destination shell before waiting for the API response",
+    );
+    assert.match(advertiserAuthGate, /if \(!navigatedOptimistically\) \{/);
     assert.match(loginLanding, /const href = next[\s\S]+\? `\$\{role\.href\}\?next=/);
     assert.match(loginLanding, /: role\.href/);
   });
