@@ -363,8 +363,8 @@ const browserRenderRoutes = [
   {
     name: "home",
     path: "/",
-    requiredText: ["광고 계약은", "전자서명 완료"],
-    minTextLength: 80,
+    requiredText: ["광고 계약은", "계약 만들기", "계약 확인하기"],
+    minTextLength: 50,
   },
   {
     name: "intro advertiser",
@@ -1005,7 +1005,12 @@ const checkInfluencerCampaignMobileScroll = async (client, sessionId, baseUrl) =
           await new Promise((resolve) => requestAnimationFrame(() => resolve()));
           await new Promise((resolve) => requestAnimationFrame(() => resolve()));
         };
-        const region = document.querySelector('[data-campaign-scroll-region="open"]');
+        let region = null;
+        for (let attempt = 0; attempt < 80; attempt += 1) {
+          region = document.querySelector('[data-campaign-scroll-region="open"]');
+          if (region) break;
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
         if (!region) {
           return { ok: false, detail: "open campaign scroll region missing" };
         }

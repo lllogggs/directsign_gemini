@@ -75,54 +75,57 @@ function InfluencerIntroPage() {
 
 function SignupLanding() {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#f7f7f4] px-4 py-10">
-      <section className="w-full max-w-[520px] rounded-[18px] border border-neutral-200 bg-white p-6 shadow-[0_24px_70px_rgba(15,23,42,0.08)]">
+    <main className="relative min-h-screen overflow-hidden bg-[#f7f7f4] px-5 py-4 font-sans text-neutral-950 sm:px-6">
+      <div
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-[34svh] border-t border-neutral-200/60 bg-[#eef0ec]"
+        aria-hidden="true"
+      />
+      <div className="relative mx-auto grid min-h-[calc(100vh-32px)] w-full max-w-[1500px] grid-rows-[48px_auto]">
         <Link
           to="/"
-          className="inline-flex items-center gap-2 text-[13px] font-extrabold text-neutral-500 transition hover:text-neutral-950"
+          className="inline-flex h-10 w-fit items-center gap-2 rounded-[10px] px-1 text-[13px] font-extrabold text-neutral-500 transition hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
         >
           연락미 홈
         </Link>
-        <p className="mt-8 text-[12px] font-extrabold uppercase tracking-[0.16em] text-neutral-400">
-          계정 만들기
-        </p>
-        <h1 className="mt-3 text-[28px] font-bold leading-tight text-neutral-950">
-          어떤 역할로 시작할까요?
-        </h1>
-        <p className="mt-3 text-[14px] font-semibold leading-6 text-neutral-600">
-          광고 계약을 만들 광고주인지, 받은 계약을 검토할 인플루언서인지 선택해 주세요.
-        </p>
-        <div className="mt-7 grid gap-3">
-          <Link
-            to="/signup/advertiser"
-            className="rounded-[14px] border border-blue-200 bg-blue-50 p-4 text-left transition hover:border-blue-300 hover:bg-blue-100"
-          >
-            <strong className="block text-[18px] font-extrabold text-blue-950">
-              광고주로 가입
-            </strong>
-            <span className="mt-2 block text-[13px] font-bold leading-5 text-blue-700">
-              계약서 작성, 전자서명, 컨텐츠 제출 확인을 시작합니다.
-            </span>
-          </Link>
-          <Link
-            to="/signup/influencer"
-            className="rounded-[14px] border border-emerald-200 bg-emerald-50 p-4 text-left transition hover:border-emerald-300 hover:bg-emerald-100"
-          >
-            <strong className="block text-[18px] font-extrabold text-emerald-950">
-              인플루언서로 가입
-            </strong>
-            <span className="mt-2 block text-[13px] font-bold leading-5 text-emerald-700">
-              받은 계약 검토, 수정 요청, 전자서명을 이어갑니다.
-            </span>
-          </Link>
-        </div>
-        <Link
-          to="/login"
-          className="mt-5 inline-flex h-10 items-center justify-center rounded-[10px] border border-neutral-200 px-3 text-[13px] font-extrabold text-neutral-600 transition hover:border-neutral-300 hover:text-neutral-950"
-        >
-          이미 계정이 있어요
-        </Link>
-      </section>
+        <section className="flex justify-center pt-[clamp(64px,10svh,104px)]">
+          <div className="w-full max-w-[520px]">
+            <p className="text-[12px] font-extrabold uppercase tracking-[0.14em] text-neutral-400">
+              계정 만들기
+            </p>
+            <h1 className="mt-3 text-[30px] font-extrabold leading-tight text-neutral-950">
+              역할을 선택하세요
+            </h1>
+            <div className="mt-7 grid gap-3">
+              <Link
+                to="/signup/advertiser"
+                data-signup-role-action="advertiser"
+                className="flex min-h-[64px] items-center justify-between gap-4 rounded-[12px] border border-blue-200 bg-white px-4 py-3 text-left text-blue-700 shadow-[0_14px_36px_rgba(15,23,42,0.07)] transition hover:border-blue-500 hover:bg-blue-50 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
+              >
+                <strong className="block text-[18px] font-extrabold text-neutral-950">
+                  광고주로 가입
+                </strong>
+                <span className="text-[13px] font-extrabold">계약 만들기</span>
+              </Link>
+              <Link
+                to="/signup/influencer"
+                data-signup-role-action="influencer"
+                className="flex min-h-[64px] items-center justify-between gap-4 rounded-[12px] border border-emerald-200 bg-white px-4 py-3 text-left text-emerald-700 shadow-[0_14px_36px_rgba(15,23,42,0.07)] transition hover:border-emerald-500 hover:bg-emerald-50 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
+              >
+                <strong className="block text-[18px] font-extrabold text-neutral-950">
+                  인플루언서로 가입
+                </strong>
+                <span className="text-[13px] font-extrabold">계약 확인하기</span>
+              </Link>
+            </div>
+            <Link
+              to="/login"
+              className="mt-5 inline-flex h-10 items-center justify-center rounded-[10px] border border-neutral-200 bg-white px-3 text-[13px] font-extrabold text-neutral-600 transition hover:border-neutral-300 hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
+            >
+              이미 계정이 있어요
+            </Link>
+          </div>
+        </section>
+      </div>
     </main>
   );
 }

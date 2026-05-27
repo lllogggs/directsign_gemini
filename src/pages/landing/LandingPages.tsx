@@ -99,7 +99,7 @@ function getStartRoleTone(role: IntroRole) {
   if (role === "advertiser") {
     return {
       card:
-        "border-[#d8e5ff] bg-white hover:border-[#93c5fd] hover:bg-[#eff6ff]",
+        "border-[#b9d4ff] bg-white text-[#1d4ed8] hover:border-[#2563eb] hover:bg-[#eff6ff]",
       divider: "border-[#bfdbfe]/75",
       detail: "text-[#2563eb]",
     };
@@ -107,7 +107,7 @@ function getStartRoleTone(role: IntroRole) {
 
   return {
     card:
-      "border-[#c8f0dc] bg-white hover:border-[#6ee7b7] hover:bg-[#ecfdf5]",
+      "border-[#b8ead2] bg-white text-[#047857] hover:border-[#059669] hover:bg-[#ecfdf5]",
     divider: "border-[#a7f3d0]/75",
     detail: "text-[#059669]",
   };
@@ -924,8 +924,12 @@ const influencerPreviewSlides: InfluencerPreviewSlide[] = [
 
 export function StartPage() {
   return (
-    <main className="min-h-screen bg-[#f7f6f3] font-sans text-neutral-950">
-      <div className="mx-auto grid min-h-screen w-full max-w-[1500px] content-start grid-rows-[60px_auto_44px] px-5 sm:content-normal sm:grid-rows-[68px_minmax(0,1fr)_58px] sm:px-6 lg:grid-rows-[72px_minmax(0,1fr)_60px]">
+    <main className="relative min-h-screen overflow-hidden bg-[#f7f6f3] font-sans text-neutral-950">
+      <div
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-[32svh] border-t border-neutral-200/60 bg-[#eef0ec]"
+        aria-hidden="true"
+      />
+      <div className="relative mx-auto grid min-h-screen w-full max-w-[1500px] content-start grid-rows-[60px_auto_44px] px-5 sm:content-normal sm:grid-rows-[68px_minmax(0,1fr)_58px] sm:px-6 lg:grid-rows-[72px_minmax(0,1fr)_60px]">
         <header className="flex items-start justify-between gap-3 pt-2">
           <Link
             to="/"
@@ -944,8 +948,8 @@ export function StartPage() {
           </div>
         </header>
 
-        <section className="flex min-h-0 items-start justify-center pb-8 pt-[clamp(34px,7svh,62px)] sm:pt-[clamp(48px,8svh,76px)] lg:pt-[clamp(56px,8.5svh,86px)]">
-          <div className="w-full max-w-[820px]">
+        <section className="flex min-h-0 items-start justify-center pb-8 pt-[clamp(46px,8svh,68px)] sm:pt-[clamp(60px,9svh,90px)] lg:pt-[clamp(70px,10svh,112px)]">
+          <div className="w-full max-w-[760px]">
             <h1
               className="landing-start-title font-neo-heavy mb-0 text-center text-[30px] leading-[1.1] tracking-normal text-neutral-950 sm:text-[42px] sm:leading-[1.05]"
               aria-label="광고 계약은 확실하게"
@@ -957,31 +961,38 @@ export function StartPage() {
                 확실하게
               </span>
             </h1>
-            <div className="mt-11 grid gap-3 sm:mt-12 sm:grid-cols-2 sm:gap-4 lg:mt-14">
+            <div className="mt-10 grid gap-3 sm:mt-12 sm:grid-cols-2 sm:gap-3.5">
               {roleCards.map((role) => {
                 const tone = getStartRoleTone(role.role);
                 const isAdvertiser = role.role === "advertiser";
                 const detail = isAdvertiser
-                  ? "계약 작성 · 전자서명 완료 · 검수"
-                  : "계약 확인 · 전자서명 완료 · 제출";
+                  ? "계약 만들기"
+                  : "계약 확인하기";
 
                 return (
                   <Link
                     key={role.role}
                     to={role.href}
                     aria-label={`${role.title} 선택`}
-                    className={`yl-card group flex min-h-[184px] flex-col justify-between border px-5 py-5 text-left transition hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:min-h-[224px] sm:px-7 sm:py-7 lg:min-h-[248px] ${tone.card}`}
+                    data-start-role-action={role.role}
+                    className={`group flex min-h-[76px] items-center justify-between gap-4 rounded-[12px] border px-4 py-3 text-left shadow-[0_16px_44px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:min-h-[84px] sm:px-5 ${tone.card}`}
                   >
-                    <span className="block">
-                      <RoleIconCluster role={role.role} />
-                      <strong className="font-neo-heavy mt-3 block text-[29px] leading-none tracking-normal text-neutral-950 sm:text-[33px]">
-                        {role.title}
-                      </strong>
-                    </span>
-                    <span className="block">
-                      <span className={`mt-3 block border-t pt-3 text-[12px] font-bold tracking-normal sm:mt-3.5 sm:pt-3.5 ${tone.divider} ${tone.detail}`}>
+                    <span className="min-w-0">
+                      <span className="flex items-center gap-2">
+                        <RoleIconCluster role={role.role} />
+                        <strong className="font-neo-heavy block text-[24px] leading-none tracking-normal text-neutral-950 sm:text-[28px]">
+                          {role.title}
+                        </strong>
+                      </span>
+                      <span className={`mt-2 block text-[12px] font-extrabold tracking-normal ${tone.detail}`}>
                         {detail}
                       </span>
+                    </span>
+                    <span
+                      className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border bg-white/80 transition group-hover:translate-x-0.5 ${tone.divider}`}
+                      aria-hidden="true"
+                    >
+                      <ArrowRight className="h-4 w-4" strokeWidth={2.2} />
                     </span>
                   </Link>
                 );

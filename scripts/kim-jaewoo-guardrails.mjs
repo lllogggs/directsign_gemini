@@ -350,6 +350,15 @@ check(
 );
 
 check(
+  "first role selection uses action buttons",
+  landing.includes("data-start-role-action") &&
+    !landing.includes("min-h-[248px]") &&
+    app.includes("data-signup-role-action") &&
+    !app.includes("광고 계약을 만들 광고주인지, 받은 계약을 검토할 인플루언서인지 선택해 주세요."),
+  "First role-selection screens must use clear action buttons and avoid oversized explanatory role cards",
+);
+
+check(
   "signup consent records version and operation contact",
   signupPage.includes("동의 일시와 문서 버전이 저장됩니다") &&
     signupPage.includes("LEGAL_CONTACT_EMAIL") &&

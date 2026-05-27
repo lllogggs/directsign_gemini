@@ -924,10 +924,18 @@ describe("yeollock.me security regressions", () => {
     assert.match(kimGuardrails, /influencer mobile rows do not repeat deadline values/);
     assert.match(kimGuardrails, /OpenDesign is a separate local daemon\/web app workflow/);
     assert.match(kimGuardrails, /mobile clipped list corrections are recorded/);
+    assert.match(kimGuardrails, /first role selection uses action buttons/);
+    assert.match(landing, /data-start-role-action/);
+    assert.doesNotMatch(landing, /min-h-\[248px\]/);
+    assert.match(app, /data-signup-role-action/);
+    assert.doesNotMatch(
+      app,
+      /광고 계약을 만들 광고주인지, 받은 계약을 검토할 인플루언서인지 선택해 주세요/,
+    );
     assert.match(mobileSurfaceSwitch, /data-mobile-surface-switch/);
     assert.match(mobileSurfaceSwitch, /\/advertiser\/campaigns/);
     assert.match(mobileSurfaceSwitch, /\/influencer\/campaigns/);
-    assert.match(advertiserDashboard, /active=\{isCampaignSurface \? "campaigns" : "contracts"\}/);
+    assert.match(advertiserDashboard, /<AdvertiserDashboardSurfaceSwitch active=\{surface\} \/>/);
     assert.match(app, /path="\/advertiser\/campaigns"/);
     assert.match(app, /<Dashboard surface="campaigns" \/>/);
     assert.match(app, /path="\/advertiser\/campaigns\/new"/);
