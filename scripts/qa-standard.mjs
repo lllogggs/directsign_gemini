@@ -610,6 +610,9 @@ const evaluateRenderedPage = async (client, sessionId) => {
             bodyText.includes("[plugin:vite") ||
             bodyText.includes("vite-error-overlay") ||
             Boolean(document.querySelector("vite-error-overlay")),
+          hasRouteErrorBoundary:
+            bodyText.includes("화면을 다시 불러와야 합니다") ||
+            bodyText.includes("일시적인 화면 오류가 발생했습니다"),
           stillLoading:
             bodyText.includes("화면을 불러오는 중입니다") && bodyText.length < 100,
           documentWidth: document.documentElement.scrollWidth,
@@ -669,6 +672,7 @@ const checkRenderedRoute = async (client, baseUrl, route, viewport) => {
         Number(lastMetrics.rootChildCount ?? 0) > 0 &&
         Number(lastMetrics.rootHeight ?? 0) >= Math.min(300, viewport.height * 0.6) &&
         !lastMetrics.hasViteError &&
+        !lastMetrics.hasRouteErrorBoundary &&
         !lastMetrics.stillLoading &&
         hasRequiredText;
 
@@ -753,7 +757,9 @@ const checkBrowserRenderedRoutes = async (baseUrl) => {
           ? `text ${textLength}, root ${rootHeight}px`
           : `text ${textLength}, root ${rootHeight}px, required ${
               hasRequiredText ? "yes" : "no"
-            }, loading ${result.metrics.stillLoading ? "yes" : "no"}, sample "${
+            }, errorBoundary ${result.metrics.hasRouteErrorBoundary ? "yes" : "no"}, loading ${
+              result.metrics.stillLoading ? "yes" : "no"
+            }, sample "${
               result.metrics.bodyText?.slice(0, 48) || "empty"
             }"`;
 
@@ -1018,6 +1024,25 @@ const checkInfluencerCampaignMobileScroll = async (client, sessionId, baseUrl) =
         if (!pageText.includes("모집 캠페인")) {
           return { ok: false, detail: "campaign list header missing" };
         }
+        const filterButton = document.querySelector(
+          '[aria-controls="influencer-campaign-filters"]',
+        );
+        if (!filterButton) {
+          return { ok: false, detail: "campaign filter button missing" };
+        }
+        const filterRect = filterButton.getBoundingClientRect();
+        const filterFits =
+          filterRect.left >= 0 &&
+          filterRect.right <= window.innerWidth &&
+          document.documentElement.scrollWidth <= document.documentElement.clientWidth;
+        if (!filterFits) {
+          return {
+            ok: false,
+            detail: \`filter button overflow: left \${Math.round(filterRect.left)}, right \${Math.round(
+              filterRect.right,
+            )}, viewport \${window.innerWidth}, scrollWidth \${document.documentElement.scrollWidth}\`,
+          };
+        }
         const overflowY = getComputedStyle(region).overflowY;
         const scrollHeight = region.scrollHeight;
         const clientHeight = region.clientHeight;
@@ -1038,6 +1063,7 @@ const checkInfluencerCampaignMobileScroll = async (client, sessionId, baseUrl) =
           scrollTop: Math.round(after),
           scrollHeight: Math.round(scrollHeight),
           clientHeight: Math.round(clientHeight),
+          filterRight: Math.round(filterRect.right),
         };
       })()`,
     );
@@ -1047,7 +1073,7 @@ const checkInfluencerCampaignMobileScroll = async (client, sessionId, baseUrl) =
       "Browser mobile influencer campaigns scroll",
       ok ? "pass" : "fail",
       ok
-        ? `scrollTop ${result.scrollTop}px, region ${result.clientHeight}/${result.scrollHeight}px`
+        ? `scrollTop ${result.scrollTop}px, region ${result.clientHeight}/${result.scrollHeight}px, filter right ${result.filterRight}px`
         : result?.detail || "scroll region did not move",
     );
     return ok;

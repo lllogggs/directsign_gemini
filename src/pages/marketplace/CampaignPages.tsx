@@ -1021,8 +1021,8 @@ export function InfluencerCampaignDiscoveryPage() {
     >
       <section className="yl-card flex min-h-0 flex-1 flex-col overflow-hidden border">
         <div className="border-b border-neutral-200 bg-white">
-          <div className="flex min-h-12 items-center justify-between gap-3 px-3 py-2">
-            <div className="min-w-0">
+          <div className="flex min-h-12 flex-col gap-2 px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+            <div className="min-w-0 sm:flex-1">
               <p className="truncate text-[13px] font-extrabold text-neutral-950">
                 {activeView === "open" ? "모집 캠페인" : "신청한 캠페인"}
               </p>
@@ -1032,7 +1032,7 @@ export function InfluencerCampaignDiscoveryPage() {
                   : `${applications.length.toLocaleString()}건 표시`}
               </p>
             </div>
-            <div className="flex min-w-0 items-center gap-2">
+            <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
               <CampaignViewTabs
                 value={activeView}
                 openCount={visibleCampaigns.length}
@@ -1692,7 +1692,7 @@ function CampaignViewTabs({
 
   return (
     <div
-      className="grid min-w-[250px] grid-cols-2 gap-1 overflow-hidden rounded-full bg-neutral-100 p-1 lg:w-[320px]"
+      className="grid min-w-0 flex-1 grid-cols-2 gap-1 overflow-hidden rounded-full bg-neutral-100 p-1 sm:min-w-[250px] lg:w-[320px]"
       role="tablist"
       aria-label="캠페인 보기"
     >
@@ -1705,7 +1705,7 @@ function CampaignViewTabs({
             role="tab"
             aria-selected={active}
             onClick={() => onChange(tab.id)}
-            className={`h-9 min-w-0 rounded-full px-2 text-[12px] font-extrabold transition ${
+            className={`h-9 min-w-0 rounded-full px-1.5 text-[11px] font-extrabold transition sm:px-2 sm:text-[12px] ${
               active
                 ? "bg-white text-neutral-950 shadow-[0_1px_0_rgba(15,23,42,0.04)]"
                 : "text-neutral-500 hover:text-neutral-800"

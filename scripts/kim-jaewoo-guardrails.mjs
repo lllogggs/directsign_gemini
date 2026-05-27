@@ -382,6 +382,17 @@ check(
 );
 
 check(
+  "public route error recovery does not force login",
+  app.includes("function isPrivateApplicationPath") &&
+    app.includes('import { LegalDocumentPage } from "./pages/legal/LegalDocumentPage";') &&
+    app.includes('label: "처음으로 이동"') &&
+    app.includes('label: "로그인으로 이동"') &&
+    app.includes("recoveryHref={routeErrorRecovery.href}") &&
+    qaStandard.includes("hasRouteErrorBoundary"),
+  "Public pages such as privacy, terms, and intro pages must recover to the public home, while private app errors can still offer login",
+);
+
+check(
   "signup consent records version and operation contact",
   signupPage.includes("동의 일시와 문서 버전이 저장됩니다") &&
     signupPage.includes("LEGAL_CONTACT_EMAIL") &&
@@ -491,10 +502,14 @@ check(
 check(
   "mobile influencer campaign lists are scrollable",
   campaignPages.includes('data-campaign-scroll-region="open"') &&
+    campaignPages.includes("sm:flex-row sm:items-center sm:justify-between") &&
+    campaignPages.includes("grid min-w-0 flex-1 grid-cols-2") &&
     campaignPages.includes('grid min-h-0 flex-1 auto-rows-max') &&
     campaignPages.includes("overflow-y-auto overscroll-contain") &&
+    qaStandard.includes("campaign filter button missing") &&
+    qaStandard.includes("filter button overflow") &&
     qaStandard.includes("Browser mobile influencer campaigns scroll"),
-  "The influencer campaign discovery list must remain reachable on mobile, with rendered scroll behavior covered by standard QA",
+  "The influencer campaign discovery list and its header controls must remain reachable on mobile, with rendered scroll and overflow behavior covered by standard QA",
 );
 
 check(

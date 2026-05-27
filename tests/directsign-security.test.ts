@@ -1008,6 +1008,7 @@ describe("yeollock.me security regressions", () => {
     assert.match(kimGuardrails, /support access consent is enforced server-side and linked from both parties/);
     assert.match(kimGuardrails, /analytics tracking avoids sensitive contract data/);
     assert.match(kimGuardrails, /public marketplace cache falls back after cold Supabase timeout/);
+    assert.match(kimGuardrails, /public route error recovery does not force login/);
     assert.match(kimGuardrails, /mobile advertiser header avoids duplicate surface label/);
     assert.match(kimGuardrails, /mobile influencer header avoids duplicate surface label/);
     assert.match(kimGuardrails, /influencer mobile rows do not repeat deadline values/);
@@ -1028,7 +1029,12 @@ describe("yeollock.me security regressions", () => {
     assert.match(app, /path="\/advertiser\/campaigns"/);
     assert.match(app, /<Dashboard surface="campaigns" \/>/);
     assert.match(app, /path="\/advertiser\/campaigns\/new"/);
+    assert.match(app, /function isPrivateApplicationPath/);
+    assert.match(app, /import \{ LegalDocumentPage \} from "\.\/pages\/legal\/LegalDocumentPage"/);
+    assert.match(app, /label: "처음으로 이동"/);
+    assert.match(app, /recoveryHref=\{routeErrorRecovery\.href\}/);
     assert.match(qaStandard, /"\/advertiser\/campaigns\/new"/);
+    assert.match(qaStandard, /hasRouteErrorBoundary/);
     assert.match(advertiserDashboard, /to="\/advertiser\/campaigns\/new"/);
     assert.match(campaignPages, /backHref="\/advertiser\/campaigns"/);
     assert.match(campaignPages, /backLabel="캠페인 대시보드"/);
@@ -1047,8 +1053,11 @@ describe("yeollock.me security regressions", () => {
     assert.match(server, /publicMarketplaceCache\.delete\(key\)/);
     assert.match(server, /process\.env\.VERCEL === "1"/);
     assert.match(campaignPages, /data-campaign-scroll-region="open"/);
+    assert.match(campaignPages, /sm:flex-row sm:items-center sm:justify-between/);
+    assert.match(campaignPages, /grid min-w-0 flex-1 grid-cols-2/);
     assert.match(campaignPages, /grid min-h-0 flex-1 auto-rows-max/);
     assert.match(qaStandard, /Browser mobile influencer campaigns scroll/);
+    assert.match(qaStandard, /filter button overflow/);
     assert.doesNotMatch(advertiserDashboard, /\/미정/);
     assert.doesNotMatch(advertiserDashboard, /명 신청/);
     assert.match(advertiserDashboard, /신청\/모집 인원/);

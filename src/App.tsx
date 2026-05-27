@@ -13,6 +13,7 @@ import { AdvertiserAuthGate } from "./pages/marketing/AdvertiserAuthGate";
 import { RoleIntroPage, StartPage } from "./pages/landing/LandingPages";
 import { Dashboard as AdvertiserDashboard } from "./pages/marketing/Dashboard";
 import { InfluencerDashboard as InfluencerDashboardPage } from "./pages/influencer/InfluencerDashboard";
+import { LegalDocumentPage } from "./pages/legal/LegalDocumentPage";
 import { getNextPath } from "./domain/navigation";
 import { PRODUCT_DESCRIPTION, PRODUCT_NAME } from "./domain/brand";
 import { LEGAL_CONTACT_EMAIL } from "./domain/legalEntity";
@@ -38,7 +39,7 @@ const loadInfluencerLoginPage = () =>
   import("./pages/influencer/InfluencerLoginPage");
 const loadSystemAdminDashboard = () =>
   import("./pages/admin/SystemAdminDashboard");
-const loadLegalDocumentPage = () => import("./pages/legal/LegalDocumentPage");
+const loadLegalDocumentPage = () => Promise.resolve({ LegalDocumentPage });
 const loadMarketplacePages = () => import("./pages/marketplace/MarketplacePages");
 const loadMarketplaceInboxPage = () =>
   import("./pages/marketplace/MarketplaceInboxPage");
@@ -159,11 +160,6 @@ const InfluencerLoginPage = lazy(() =>
 const SystemAdminDashboard = lazy(() =>
   loadSystemAdminDashboard().then((module) => ({
     default: module.SystemAdminDashboard,
-  })),
-);
-const LegalDocumentPage = lazy(() =>
-  loadLegalDocumentPage().then((module) => ({
-    default: module.LegalDocumentPage,
   })),
 );
 const AdvertiserInfluencerDiscoveryPage = lazy(() =>
@@ -379,6 +375,8 @@ function AppLoading({
 type RouteErrorBoundaryProps = {
   children: ReactNode;
   key?: string;
+  recoveryHref: string;
+  recoveryLabel: string;
 };
 
 class RouteErrorBoundary extends Component<
@@ -422,10 +420,10 @@ class RouteErrorBoundary extends Component<
               새로고침
             </button>
             <Link
-              to="/login"
+              to={this.props.recoveryHref}
               className="flex h-11 items-center justify-center rounded-lg border border-neutral-200 bg-[#fbfbfc] text-sm font-semibold text-neutral-700 transition hover:border-neutral-400 hover:bg-white"
             >
-              로그인으로 이동
+              {this.props.recoveryLabel}
             </Link>
           </div>
         </section>
@@ -441,6 +439,10 @@ const privateRoutePrefixes = [
   "/influencer",
   "/marketing",
 ];
+
+function isPrivateApplicationPath(pathname: string) {
+  return privateRoutePrefixes.some((prefix) => pathname.startsWith(prefix));
+}
 
 const utilityNoIndexPrefixes = ["/login", "/signup", "/reset-password"];
 const readPublicEnv = (name: string) => {
@@ -1195,13 +1197,20 @@ function NotFoundPage() {
 function AppRoutes() {
   const location = useLocation();
   const loadingCopy = getRouteLoadingCopy(location.pathname);
+  const routeErrorRecovery = isPrivateApplicationPath(location.pathname)
+    ? { href: "/login", label: "로그인으로 이동" }
+    : { href: "/", label: "처음으로 이동" };
 
   return (
     <>
       <RouteSeoMeta />
       <RouteAnalytics />
       <RoutePreloader />
-      <RouteErrorBoundary key={location.key}>
+      <RouteErrorBoundary
+        key={location.key}
+        recoveryHref={routeErrorRecovery.href}
+        recoveryLabel={routeErrorRecovery.label}
+      >
       <Suspense fallback={<AppLoading {...loadingCopy} />}>
         <Routes>
           <Route
