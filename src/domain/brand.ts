@@ -1,5 +1,5 @@
 const configuredProductName =
-  (typeof import.meta !== "undefined" && import.meta.env.VITE_PRODUCT_NAME) ||
+  (typeof import.meta !== "undefined" && import.meta.env?.VITE_PRODUCT_NAME) ||
   "연락미";
 
 const normalizedProductName = configuredProductName

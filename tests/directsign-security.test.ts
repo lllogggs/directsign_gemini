@@ -3,6 +3,11 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { formatContractTitleForDisplay } from "../src/domain/display";
+import {
+  buildCanonicalUrl,
+  getIntentAwareRouteSeoConfig,
+  staticSeoRoutePaths,
+} from "../src/domain/seo";
 
 const root = process.cwd();
 const read = (path: string) => readFileSync(join(root, path), "utf8");
@@ -27,6 +32,90 @@ describe("yeollock.me security regressions", () => {
     ]) {
       assert.match(robots, new RegExp(`Disallow:\\s*${route}`));
     }
+  });
+
+  it("keeps public SEO routes prerendered with unique canonical metadata", () => {
+    const packageJson = JSON.parse(read("package.json")) as {
+      scripts?: Record<string, string>;
+    };
+    const vercelConfig = JSON.parse(read("vercel.json")) as {
+      rewrites?: Array<{ source?: string; destination?: string }>;
+      headers?: Array<{
+        source?: string;
+        headers?: Array<{ key?: string; value?: string }>;
+      }>;
+    };
+    const envExample = read(".env.example");
+    const robots = read("public/robots.txt");
+    const sitemap = read("public/sitemap.xml");
+    const prerender = read("scripts/prerender-seo-html.ts");
+    const seoSource = read("src/domain/seo.ts");
+    const appSource = read("src/App.tsx");
+    const rewriteBySource = new Map(
+      vercelConfig.rewrites?.map((rewrite) => [
+        rewrite.source,
+        rewrite.destination,
+      ]),
+    );
+    const headerBySource = new Map(
+      vercelConfig.headers?.map((headerConfig) => [
+        headerConfig.source,
+        new Map(
+          headerConfig.headers?.map((header) => [header.key, header.value]),
+        ),
+      ]),
+    );
+    const routeTitles = new Set<string>();
+    const routeDescriptions = new Set<string>();
+    const maxNaverTitleLength = 40;
+    const maxNaverDescriptionLength = 80;
+
+    assert.match(
+      packageJson.scripts?.build ?? "",
+      /scripts\/prerender-seo-html\.ts/,
+    );
+    assert.match(seoSource, /VITE_PUBLIC_SITE_URL/);
+    assert.match(appSource, /VITE_PUBLIC_SITE_URL/);
+    assert.match(prerender, /NAVER_SITE_VERIFICATION/);
+    assert.match(prerender, /naver-site-verification/);
+    assert.match(envExample, /NAVER_SITE_VERIFICATION=""/);
+    assert.match(envExample, /VITE_NAVER_SITE_VERIFICATION=""/);
+    assert.match(robots, /User-agent:\s*Yeti/);
+    assert.match(robots, /Sitemap:\s*https:\/\/yeollock\.me\/sitemap\.xml/);
+    assert.equal(
+      headerBySource.get("/robots.txt")?.get("Content-Type"),
+      "text/plain; charset=utf-8",
+    );
+    assert.equal(
+      headerBySource.get("/sitemap.xml")?.get("Content-Type"),
+      "application/xml; charset=utf-8",
+    );
+
+    for (const routePath of staticSeoRoutePaths) {
+      const seo = getIntentAwareRouteSeoConfig(routePath);
+      const canonicalUrl = buildCanonicalUrl(routePath);
+
+      assert.equal(seo.canonicalPath, routePath);
+      assert.match(seo.robots, /^index,follow/);
+      assert.match(sitemap, new RegExp(`<loc>${canonicalUrl}</loc>`));
+      assert.ok([...seo.title].length <= maxNaverTitleLength, seo.title);
+      assert.ok(
+        [...seo.description].length <= maxNaverDescriptionLength,
+        seo.description,
+      );
+      routeTitles.add(seo.title);
+      routeDescriptions.add(seo.description);
+
+      if (routePath !== "/") {
+        assert.equal(
+          rewriteBySource.get(routePath),
+          `${routePath}/index.html`,
+        );
+      }
+    }
+
+    assert.equal(routeTitles.size, staticSeoRoutePaths.length);
+    assert.equal(routeDescriptions.size, staticSeoRoutePaths.length);
   });
 
   it("applies baseline security headers to Vercel static and API routes", () => {

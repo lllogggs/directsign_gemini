@@ -443,15 +443,25 @@ const privateRoutePrefixes = [
 ];
 
 const utilityNoIndexPrefixes = ["/login", "/signup", "/reset-password"];
+const readPublicEnv = (name: string) => {
+  const value =
+    typeof import.meta !== "undefined"
+      ? (import.meta.env?.[name] as string | undefined)
+      : undefined;
+  return value?.trim().replace(/\/$/, "") || undefined;
+};
+
 const publicSiteOrigin =
-  (import.meta.env.VITE_SITE_URL as string | undefined)?.trim().replace(/\/$/, "") ||
+  readPublicEnv("VITE_PUBLIC_SITE_URL") ??
+  readPublicEnv("VITE_SITE_URL") ??
+  readPublicEnv("VITE_APP_URL") ??
   "https://yeollock.me";
 const officialInstagramHandle =
   String(import.meta.env.VITE_INSTAGRAM_OFFICIAL_HANDLE ?? "yeollockme")
     .trim()
     .replace(/^@+/, "") || "yeollockme";
 const publicSameAsUrls = [`https://www.instagram.com/${officialInstagramHandle}/`];
-const seoDateModified = "2026-05-19";
+const seoDateModified = "2026-05-27";
 
 type RouteSeoConfig = {
   title: string;
@@ -503,10 +513,10 @@ const seoFeatureList = [
   "서명 완료본 보관",
 ];
 const defaultSeoDescription =
-  "광고 조건을 계약서 작성부터 전자서명, 컨텐츠 제출 확인까지 한 흐름으로 정리합니다.";
+  "협찬, PPL, 공동구매 계약을 작성, 검토, 전자서명까지 관리합니다.";
 
 const searchIntentSeoDescription =
-  "연락미는 광고주가 인플루언서를 찾고, 인플루언서가 광고주 제안을 검토할 때 협찬, PPL, 공동구매 조건을 계약서 작성부터 전자서명, 컨텐츠 제출 확인까지 한 흐름으로 정리합니다.";
+  "광고주와 인플루언서가 협찬, PPL, 공동구매 계약을 작성, 검토, 전자서명까지 관리합니다.";
 
 const normalizeSeoPath = (pathname: string) =>
   pathname.replace(/\/+$/, "") || "/";
@@ -623,7 +633,7 @@ const getRouteSeoConfig = (pathname: string): RouteSeoConfig => {
 
   const knownPages: Record<string, Omit<RouteSeoConfig, "structuredData">> = {
     "/": {
-      title: `${PRODUCT_NAME} - 광고 계약은 확실하게`,
+      title: `${PRODUCT_NAME} - 인플루언서 광고 계약 관리`,
       description: defaultSeoDescription,
       canonicalPath: "/",
       robots: publicRobotsContent,
@@ -657,7 +667,7 @@ const getRouteSeoConfig = (pathname: string): RouteSeoConfig => {
       robots: publicRobotsContent,
     },
     "/legal/e-sign-consent": {
-      title: `전자서명 안내 - ${PRODUCT_NAME}`,
+      title: `전자서명 안내 및 동의 - ${PRODUCT_NAME}`,
       description:
         "연락미에서 전자서명을 진행할 때 고정되는 최종본, 서명 의사표시, 감사 증빙 보관 기준입니다.",
       canonicalPath: "/legal/e-sign-consent",
@@ -718,24 +728,24 @@ const buildPublicSeoConfig = (config: IntentAwareSeoCopy): RouteSeoConfig => ({
 
 const publicSearchIntentPages: Record<string, IntentAwareSeoCopy> = {
   "/": {
-    title: `${PRODUCT_NAME} - 광고 계약은 확실하게`,
+    title: `${PRODUCT_NAME} - 인플루언서 광고 계약 관리`,
     description: searchIntentSeoDescription,
     canonicalPath: "/",
     robots: publicRobotsContent,
     keywords: seoKeywordList,
   },
   "/intro/advertiser": {
-    title: `광고주 인플루언서 찾기와 광고 계약 관리 - ${PRODUCT_NAME}`,
+    title: `광고주 인플루언서 계약 관리 - ${PRODUCT_NAME}`,
     description:
-      "광고주, 브랜드, 광고대행사가 인스타그램, 유튜브, 틱톡, 블로그 인플루언서에게 보낼 협찬, PPL, 공동구매 제안을 계약서와 전자서명까지 관리합니다.",
+      "브랜드 협찬, PPL, 공동구매 제안을 계약서 작성, 검토 링크, 전자서명까지 관리합니다.",
     canonicalPath: "/intro/advertiser",
     robots: publicRobotsContent,
     keywords: advertiserIntentKeywords,
   },
   "/intro/influencer": {
-    title: `인플루언서 광고주 제안 검토와 계약 서명 - ${PRODUCT_NAME}`,
+    title: `인플루언서 광고 계약 검토 - ${PRODUCT_NAME}`,
     description:
-      "인플루언서와 크리에이터가 광고주나 브랜드가 보낸 협찬, PPL, 공동구매 제안을 확인하고 수정 요청과 전자서명을 진행합니다.",
+      "받은 협찬, PPL, 공동구매 제안을 확인하고 수정 요청과 전자서명을 진행합니다.",
     canonicalPath: "/intro/influencer",
     robots: publicRobotsContent,
     keywords: influencerIntentKeywords,
@@ -743,7 +753,7 @@ const publicSearchIntentPages: Record<string, IntentAwareSeoCopy> = {
   "/privacy": {
     title: `개인정보 처리방침 - ${PRODUCT_NAME}`,
     description:
-      "광고 계약, 계정 인증, 검토 링크, 전자서명 증빙 보관에 필요한 개인정보 처리 기준을 안내합니다.",
+      "계정 인증, 광고 계약, 검토 링크, 전자서명 증빙에 필요한 개인정보 처리 기준입니다.",
     canonicalPath: "/privacy",
     robots: publicRobotsContent,
     keywords: ["광고 계약 개인정보", "전자서명 개인정보", "계약 서비스 개인정보"],
@@ -751,15 +761,15 @@ const publicSearchIntentPages: Record<string, IntentAwareSeoCopy> = {
   "/terms": {
     title: `이용약관 - ${PRODUCT_NAME}`,
     description:
-      "광고주와 인플루언서가 연락미에서 광고 계약과 전자서명 기능을 이용할 때 적용되는 서비스 이용 조건입니다.",
+      "광고주와 인플루언서가 연락미 계약 서비스를 이용할 때 적용되는 조건입니다.",
     canonicalPath: "/terms",
     robots: publicRobotsContent,
     keywords: ["광고 계약 서비스 약관", "인플루언서 계약 약관", "전자계약 약관"],
   },
   "/legal/e-sign-consent": {
-    title: `전자서명 안내 - ${PRODUCT_NAME}`,
+    title: `전자서명 안내 및 동의 - ${PRODUCT_NAME}`,
     description:
-      "광고 계약에서 전자서명을 진행하고 최종본, 서명 의사표시, 감사 증빙을 보관하는 기준을 안내합니다.",
+      "광고 계약 전자서명의 최종본 확정, 서명 의사표시, 감사 증빙 보관 기준입니다.",
     canonicalPath: "/legal/e-sign-consent",
     robots: publicRobotsContent,
     keywords: ["광고 계약 전자서명", "인플루언서 계약 서명", "전자서명 증빙"],

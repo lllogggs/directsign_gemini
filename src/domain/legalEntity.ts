@@ -1,7 +1,7 @@
 const readPublicEnv = (name: string) => {
   const value =
     typeof import.meta !== "undefined"
-      ? (import.meta.env[name] as string | undefined)
+      ? (import.meta.env?.[name] as string | undefined)
       : undefined;
   return value?.trim() || undefined;
 };

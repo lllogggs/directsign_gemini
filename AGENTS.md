@@ -173,6 +173,11 @@ Example option format:
   - If such information is genuinely needed before public operation, leave it as an internal "운영 전 확인 필요" TODO and keep the product flow unblocked.
   - Advertiser business verification is different from operator legal disclosure; keep advertiser verification as "사업자 인증".
   - External analytics must never expose contract share tokens, support access IDs, contract IDs, signatures, business verification evidence, admin screens, or private dashboards. Google Analytics may receive only sanitized route labels, and Clarity/session recording must stay limited to public information pages unless the Product Owner explicitly approves private-screen recording with masking.
+- Search/SEO rule:
+  - Google/Naver public SEO pages must work from the initial HTML response, not only from client-side head mutation.
+  - Naver-friendly SEO means page-specific title, description, canonical, robots, sitemap, and optional `naver-site-verification` meta are present before JavaScript runs.
+  - Keep public SEO titles/descriptions concise and unique enough for Naver Search Advisor simple checks; avoid keyword-stuffed or repeated metadata.
+  - Private dashboards, contracts, admin, login, and signup routes must stay noindex in both metadata and HTTP headers.
 - UI taste rules:
   - One row should communicate one primary item. Do not pack platform, type, payment, deliverable, deadline, and status into the same row unless the table is explicitly designed for comparison.
   - Important content must be visually stronger than filters. Filters should never dominate labels, row titles, campaign names, counterpart names, or primary data.

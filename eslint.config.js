@@ -50,6 +50,7 @@ export default tseslint.config(
       "server/**/*.ts",
       "tests/**/*.ts",
       "vite.config.ts",
+      "scripts/**/*.ts",
       "scripts/**/*.mjs",
     ],
     languageOptions: {

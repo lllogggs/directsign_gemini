@@ -75,6 +75,7 @@ import {
   SIGNATURE_CONSENT_VERSION,
   SUPPORT_ACCESS_CONSENT_TEXT,
 } from "../src/domain/legalConsent.js";
+import { normalizeSeoPath, staticSeoRoutePaths } from "../src/domain/seo.js";
 
 dotenv.config({ path: ".env.local" });
 dotenv.config();
@@ -16702,6 +16703,24 @@ app.use(
 );
 
 const isVercelFunction = isHostedRuntime;
+const staticSeoRoutePathSet = new Set<string>(staticSeoRoutePaths);
+
+const resolvePreviewHtmlPath = (distDir: string, requestPath: string) => {
+  const normalizedPath = normalizeSeoPath(requestPath);
+
+  if (!staticSeoRoutePathSet.has(normalizedPath)) {
+    return path.join(distDir, "index.html");
+  }
+
+  const routeHtmlPath =
+    normalizedPath === "/"
+      ? path.join(distDir, "index.html")
+      : path.join(distDir, ...normalizedPath.split("/").filter(Boolean), "index.html");
+
+  return fsSync.existsSync(routeHtmlPath)
+    ? routeHtmlPath
+    : path.join(distDir, "index.html");
+};
 
 if (!isVercelFunction) {
   warmDashboardDataCachesInBackground("startup");
@@ -16716,6 +16735,7 @@ if (!isVercelFunction) {
       express.static(distDir, {
         immutable: true,
         maxAge: "1y",
+        redirect: false,
         setHeaders: (response, filePath) => {
           if (filePath.endsWith("index.html")) {
             response.setHeader("Cache-Control", "no-cache");
@@ -16723,9 +16743,9 @@ if (!isVercelFunction) {
         },
       }),
     );
-    app.get("*", (_request, response) => {
+    app.get("*", (request, response) => {
       response.setHeader("Cache-Control", "no-cache");
-      response.sendFile(path.join(distDir, "index.html"));
+      response.sendFile(resolvePreviewHtmlPath(distDir, request.path));
     });
   } else {
     const { createServer: createViteServer } = await import("vite");

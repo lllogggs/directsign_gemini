@@ -154,8 +154,13 @@ const authLoginScreen = read("src/components/AuthLoginScreen.tsx");
 const advertiserVerification = read("src/pages/marketing/AdvertiserVerification.tsx");
 const influencerVerification = read("src/pages/influencer/InfluencerVerification.tsx");
 const display = read("src/domain/display.ts");
+const seo = read("src/domain/seo.ts");
 const agents = read("AGENTS.md");
 const packageJson = JSON.parse(read("package.json"));
+const vercelConfig = read("vercel.json");
+const prerenderSeoHtml = read("scripts/prerender-seo-html.ts");
+const robotsTxt = read("public/robots.txt");
+const envExample = read(".env.example");
 const qaStandard = read("scripts/qa-standard.mjs");
 const seedTestAccounts = read("scripts/seed-test-accounts.mjs");
 const seedQaMarketplaceScenario = read("scripts/seed-qa-marketplace-scenario.mjs");
@@ -356,6 +361,24 @@ check(
     app.includes("data-signup-role-action") &&
     !app.includes("광고 계약을 만들 광고주인지, 받은 계약을 검토할 인플루언서인지 선택해 주세요."),
   "First role-selection screens must use clear action buttons and avoid oversized explanatory role cards",
+);
+
+check(
+  "public SEO routes use route-specific initial HTML",
+  seo.includes("staticSeoRoutePaths") &&
+    seo.includes("VITE_PUBLIC_SITE_URL") &&
+    app.includes("VITE_PUBLIC_SITE_URL") &&
+    packageJson.scripts?.build?.includes("scripts/prerender-seo-html.ts") &&
+    prerenderSeoHtml.includes("replaceCanonicalLink") &&
+    prerenderSeoHtml.includes("replaceStructuredData") &&
+    prerenderSeoHtml.includes("naver-site-verification") &&
+    envExample.includes("VITE_NAVER_SITE_VERIFICATION") &&
+    robotsTxt.includes("User-agent: Yeti") &&
+    robotsTxt.includes("Sitemap: https://yeollock.me/sitemap.xml") &&
+    vercelConfig.includes("/intro/advertiser/index.html") &&
+    vercelConfig.includes("/legal/e-sign-consent/index.html") &&
+    server.includes("resolvePreviewHtmlPath"),
+  "Google/Naver public routes must not depend only on client-side head mutation, and Naver Yeti/verification support must stay wired",
 );
 
 check(
