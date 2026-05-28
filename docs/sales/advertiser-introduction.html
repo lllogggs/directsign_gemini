@@ -46,9 +46,9 @@
         --amber-soft: #fff7ed;
         --red: #b42318;
         --red-soft: #fff1f2;
-        --focus: #2563eb;
-        --focus-soft: #eff6ff;
-        --focus-line: #93b4ff;
+        --focus: #b42318;
+        --focus-soft: #fff1f2;
+        --focus-line: #fca5a5;
       }
 
       * {
@@ -205,41 +205,12 @@
         padding-top: 16mm;
       }
 
-      .cover-proof {
-        display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 8px;
-        margin-top: 18px;
-      }
-
-      .proof-card,
       .card,
       .note,
       .table-card {
         border: 1px solid var(--line);
         border-radius: 8px;
         background: var(--panel);
-      }
-
-      .proof-card {
-        min-height: 62px;
-        padding: 12px;
-      }
-
-      .proof-card strong {
-        display: block;
-        color: var(--ink);
-        font-size: 14px;
-        font-weight: 900;
-      }
-
-      .proof-card span {
-        display: block;
-        margin-top: 6px;
-        color: var(--muted);
-        font-size: 10px;
-        font-weight: 700;
-        line-height: 1.45;
       }
 
       .screen-frame {
@@ -283,13 +254,13 @@
       .spotlight {
         position: absolute;
         z-index: 2;
-        border: 1.35px solid var(--focus);
-        border-radius: 7px;
-        background: rgba(37, 99, 235, 0.018);
+        border: 2px solid var(--focus);
+        border-radius: 6px;
+        background: rgba(180, 35, 24, 0.006);
         box-shadow:
-          inset 0 0 0 1px rgba(255, 255, 255, 0.78),
-          0 0 0 2px rgba(37, 99, 235, 0.045),
-          0 8px 20px rgba(37, 99, 235, 0.09);
+          inset 0 0 0 1px rgba(255, 255, 255, 0.68),
+          0 0 0 1px rgba(180, 35, 24, 0.08),
+          0 7px 16px rgba(180, 35, 24, 0.08);
       }
 
       .spotlight > span {
@@ -310,7 +281,7 @@
         font-weight: 900;
         line-height: 1;
         white-space: nowrap;
-        box-shadow: 0 3px 9px rgba(37, 99, 235, 0.22);
+        box-shadow: 0 3px 9px rgba(180, 35, 24, 0.25);
       }
 
       .spotlight[data-note]::after {
@@ -361,6 +332,25 @@
         max-width: max-content;
       }
 
+      .value-line {
+        display: flex;
+        width: fit-content;
+        max-width: 100%;
+        align-items: center;
+        border: 1px solid #c7d8ff;
+        border-radius: 8px;
+        background: #ffffff;
+        color: var(--blue);
+        padding: 9px 12px;
+        font-size: 11px;
+        font-weight: 900;
+        line-height: 1.35;
+      }
+
+      .cover .value-line {
+        margin-top: 13px;
+      }
+
       .screen-frame.actual img {
         height: auto;
         max-height: 145mm;
@@ -393,61 +383,42 @@
         object-fit: cover;
       }
 
-      .screen-caption {
-        display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 8px;
-        margin-top: 12px;
-      }
-
-      .screen-caption.before {
-        margin-top: 12px;
-        margin-bottom: 2px;
-      }
-
-      .screen-callouts {
+      .image-notes {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 7px;
+        gap: 8px;
         margin-top: 8px;
       }
 
-      .screen-callouts.before {
-        margin-top: 12px;
-        margin-bottom: 2px;
+      .image-notes.single {
+        grid-template-columns: minmax(0, 1fr);
       }
 
-      .screen-callouts.three {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-      }
-
-      .screen-callout,
-      .caption-card.callout {
+      .image-note {
         display: grid;
         grid-template-columns: 19px 1fr;
         gap: 7px;
         min-width: 0;
-        border: 1px solid #d8e4ff;
+        border: 1px solid #f3b8b4;
         border-radius: 8px;
-        background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+        background: #ffffff;
         padding: 8px;
       }
 
-      .callout-index {
+      .note-index {
         display: inline-flex;
         width: 19px;
         height: 19px;
         align-items: center;
         justify-content: center;
-        border-radius: 6px;
-        background: var(--focus-soft);
-        color: #1d4ed8;
+        border-radius: 999px;
+        background: var(--focus);
+        color: #ffffff;
         font-size: 8px;
         font-weight: 900;
       }
 
-      .screen-callout strong,
-      .caption-card.callout strong {
+      .image-note strong {
         display: block;
         color: var(--ink);
         font-size: 9.5px;
@@ -455,324 +426,17 @@
         line-height: 1.32;
       }
 
-      .screen-callout span,
-      .caption-card.callout span {
+      .image-note span {
         display: block;
         margin-top: 3px;
         color: var(--muted);
         font-size: 8.5px;
         font-weight: 700;
         line-height: 1.35;
-      }
-
-      .caption-card {
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: #ffffff;
-        padding: 10px;
-      }
-
-      .caption-card strong {
-        display: block;
-        color: var(--ink);
-        font-size: 11px;
-        font-weight: 900;
-        line-height: 1.35;
-      }
-
-      .caption-card span {
-        display: block;
-        margin-top: 5px;
-        color: var(--muted);
-        font-size: 9px;
-        font-weight: 700;
-        line-height: 1.4;
-      }
-
-      .completed-contract-layout {
-        display: grid;
-        grid-template-columns: minmax(0, 0.88fr) minmax(0, 1.12fr);
-        gap: 12px;
-        align-items: start;
-        margin-top: 11px;
-      }
-
-      .completed-contract-layout .screen-frame {
-        margin-top: 0;
-      }
-
-      .completed-side {
-        display: grid;
-        gap: 8px;
-      }
-
-      .document-frame .screen-shot {
-        padding: 8px 10px 12px;
-        background:
-          linear-gradient(180deg, #eef1f4 0%, #dfe4e8 100%);
-      }
-
-      .document-toolbar {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 8px;
-        margin-bottom: 8px;
-        border: 1px solid #cfd6df;
-        border-radius: 7px;
-        background: #f8fafc;
-        padding: 6px 8px;
-        color: #64748b;
-        font-size: 7.2px;
-        font-weight: 900;
-      }
-
-      .document-toolbar strong {
-        color: #1f2937;
-        font-size: 8px;
-      }
-
-      .pdf-badge {
-        display: inline-flex;
-        height: 16px;
-        align-items: center;
-        border-radius: 4px;
-        background: #b42318;
-        color: #ffffff;
-        padding: 0 6px;
-        font-size: 7px;
-        font-weight: 900;
-      }
-
-      .contract-paper {
-        position: relative;
-        min-height: 116mm;
-        overflow: hidden;
-        border: 1px solid #c8d0da;
-        border-radius: 2px;
-        background: #ffffff;
-        padding: 26px 24px 24px;
-        box-shadow:
-          0 1px 1px rgba(15, 23, 42, 0.08),
-          0 12px 30px rgba(15, 23, 42, 0.18);
-      }
-
-      .contract-paper::after {
-        content: "1 / 1";
-        position: absolute;
-        right: 24px;
-        bottom: 12px;
-        color: #9aa4b2;
-        font-size: 6.8px;
-        font-weight: 700;
-      }
-
-      .contract-paper-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        border-bottom: 1.5px solid #111827;
-        padding-bottom: 7px;
-        color: #374151;
-        font-size: 7px;
-        font-weight: 900;
-      }
-
-      .contract-paper-title {
-        margin-top: 10px;
-        text-align: center;
-      }
-
-      .contract-paper-title h3 {
-        font-size: 13px;
-        line-height: 1.35;
-      }
-
-      .contract-paper-title p {
-        margin-top: 4px;
-        color: var(--muted);
-        font-size: 7.8px;
-        font-weight: 700;
-      }
-
-      .contract-doc-note {
-        margin-top: 8px;
-        color: #4b5563;
-        font-size: 7.1px;
-        font-weight: 700;
-        line-height: 1.55;
-        text-align: left;
-      }
-
-      .contract-meta-grid {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 0;
-        margin-top: 9px;
-        border: 1px solid #cfd6df;
-      }
-
-      .contract-meta-grid div {
-        border-right: 1px solid #cfd6df;
-        border-bottom: 1px solid #cfd6df;
-        border-radius: 0;
-        background: #ffffff;
-        padding: 5px 6px;
-      }
-
-      .contract-meta-grid div:nth-child(2n) {
-        border-right: 0;
-      }
-
-      .contract-meta-grid div:nth-last-child(-n + 2) {
-        border-bottom: 0;
-      }
-
-      .contract-meta-grid span {
-        display: block;
-        color: #6b7280;
-        font-size: 6.4px;
-        font-weight: 900;
-      }
-
-      .contract-meta-grid strong {
-        display: block;
-        margin-top: 3px;
-        color: var(--ink);
-        font-size: 8px;
-        font-weight: 900;
-        line-height: 1.35;
-      }
-
-      .contract-section {
-        margin-top: 9px;
-        border-top: 1px solid #d7dde5;
-        padding-top: 8px;
-      }
-
-      .contract-section h4 {
-        margin: 0 0 5px;
-        color: var(--ink);
-        font-size: 8.5px;
-        font-weight: 900;
-      }
-
-      .contract-section ol {
-        display: grid;
-        gap: 4px;
-        margin: 0;
-        padding-left: 15px;
-        color: #374151;
-        font-size: 7.2px;
-        font-weight: 700;
-        line-height: 1.45;
-      }
-
-      .contract-section li strong {
-        color: var(--ink);
-        font-weight: 900;
-      }
-
-      .contract-signatures {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 8px;
-        margin-top: 10px;
-      }
-
-      .contract-signatures div {
-        position: relative;
-        min-height: 20mm;
-        border: 1px solid #cfd6df;
-        border-radius: 0;
-        padding: 7px;
-      }
-
-      .contract-signatures span {
-        display: block;
-        color: var(--subtle);
-        font-size: 6.8px;
-        font-weight: 900;
-      }
-
-      .contract-signatures strong {
-        display: block;
-        margin-top: 7px;
-        color: var(--ink);
-        font-size: 8px;
-        font-weight: 900;
-      }
-
-      .signature-name-mark {
-        position: absolute;
-        right: 7px;
-        bottom: 6px;
-        min-width: 34mm;
-        border-bottom: 1px solid #111827;
-        color: #111827;
-        font-family: "Nanum Square Neo", "Noto Sans KR", sans-serif;
-        font-size: 9.5px;
-        font-style: normal;
-        font-weight: 900;
-        letter-spacing: 0;
-        line-height: 1.3;
-        padding-bottom: 2px;
-        text-align: center;
       }
 
       .completed-admin-frame img {
-        max-height: 82mm;
-      }
-
-      .completed-proof {
-        display: grid;
-        gap: 7px;
-        margin-top: 8px;
-      }
-
-      .completed-proof div {
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: #ffffff;
-        padding: 9px;
-      }
-
-      .completed-proof strong {
-        display: block;
-        color: var(--ink);
-        font-size: 10px;
-        font-weight: 900;
-      }
-
-      .completed-proof span {
-        display: block;
-        margin-top: 5px;
-        color: var(--muted);
-        font-size: 8.5px;
-        font-weight: 700;
-        line-height: 1.4;
-      }
-
-      .completed-summary {
-        border-radius: 8px;
-        background: var(--ink);
-        color: #ffffff;
-        padding: 11px 12px;
-      }
-
-      .completed-summary strong {
-        display: block;
-        font-size: 11px;
-        font-weight: 900;
-      }
-
-      .completed-summary span {
-        display: block;
-        margin-top: 6px;
-        color: rgba(255, 255, 255, 0.76);
-        font-size: 8.8px;
-        font-weight: 700;
-        line-height: 1.45;
+        max-height: 152mm;
       }
 
       .closing-layout {
@@ -784,9 +448,7 @@
 
       .pilot-layout {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) 52mm;
         gap: 10px;
-        align-items: start;
         margin-top: 12px;
       }
 
@@ -794,8 +456,9 @@
         max-height: 104mm;
       }
 
-      .pilot-sidebar {
+      .pilot-actions {
         display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
         gap: 8px;
       }
 
@@ -826,29 +489,34 @@
         font-weight: 900;
       }
 
-      .pilot-note + .pilot-note {
-        background: var(--green-soft);
-        border-color: #b7ead3;
-      }
-
-      .pilot-sidebar .contact-card {
+      .pilot-actions .contact-card {
         min-height: auto;
         padding: 12px;
       }
 
-      .pilot-sidebar .contact-card h3 {
+      .pilot-actions .contact-card h3 {
         font-size: 15px;
       }
 
-      .pilot-sidebar .contact-card p {
+      .pilot-actions .contact-card p {
         margin-top: 8px;
         font-size: 9.8px;
         line-height: 1.55;
       }
 
-      .pilot-sidebar .contact-card .contact-bottom {
+      .pilot-actions .contact-card .contact-bottom {
         margin-top: 12px;
         padding-top: 10px;
+      }
+
+      .pilot-actions .contact-card .contact-bottom p {
+        color: #ffffff;
+        font-size: 10.6px;
+        line-height: 1.58;
+      }
+
+      .pilot-actions .contact-card .contact-bottom a {
+        font-weight: 900;
       }
 
       .pilot-mini {
@@ -1188,9 +856,14 @@
 
       .operation-layout {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) 52mm;
-        gap: 10px;
+        justify-items: center;
         margin-top: 14px;
+      }
+
+      .screen-frame.actual.mobile {
+        width: 74mm;
+        margin-right: auto;
+        margin-left: auto;
       }
 
       .timeline {
@@ -1394,58 +1067,42 @@
           <p class="lead">
             연락미는 인플루언서 광고 조건을 계약서로 정리하고, 수정 요청과 전자서명 증빙까지 한 화면에서 관리합니다.
           </p>
-
-          <div class="cover-proof">
-            <div class="proof-card">
-              <strong>쉽게 작성</strong>
-              <span>상대, 금액, 일정, 산출물을 순서대로 입력</span>
-            </div>
-            <div class="proof-card">
-              <strong>바로 발송</strong>
-              <span>발송 전 확인 후 검토 링크 생성</span>
-            </div>
-            <div class="proof-card">
-              <strong>수정 기록</strong>
-              <span>조항별 요청과 답변을 계약 안에 보관</span>
-            </div>
-            <div class="proof-card">
-              <strong>서명 증빙</strong>
-              <span>최종본, 서명, PDF 상태를 확인</span>
-            </div>
-          </div>
-
-          <div class="screen-callouts before">
-            <div class="screen-callout">
-              <b class="callout-index">01</b>
-              <p><strong>계약 전체 현황 확인</strong><span>먼저 계약 수, 검색 결과, 진행 중 계약 포함 여부를 확인합니다.</span></p>
-            </div>
-            <div class="screen-callout">
-              <b class="callout-index">02</b>
-              <p><strong>다음 액션 바로 파악</strong><span>그다음 검토 요청, 서명 대기, 완료 여부를 빠르게 구분합니다.</span></p>
-            </div>
-          </div>
+          <div class="value-line">기존 DM 합의 → 계약 링크 · 서명본 · PDF 증빙</div>
 
           <figure class="screen-frame actual">
             <div class="screen-top">
               <span>실제 광고주 대시보드</span>
-              <span>계약 목록 · 상태 · 다음 액션</span>
+              <span>계약 목록 · 지급내용 · 마감일</span>
             </div>
             <div class="screen-shot">
               <img src="./assets/yeollock-advertiser-dashboard.png" alt="연락미 광고주 대시보드 화면" />
               <span
                 class="spotlight pin-outside"
-                style="left: 1.6%; top: 6.5%; width: 43.5%; height: 4.8%; --pin-left: -11px; --pin-top: -11px;"
+                data-visual-target="dashboard-contract-table"
+                style="left: 2.4%; top: 26.6%; width: 80.7%; height: 22.2%; --pin-left: -11px; --pin-top: -11px;"
               >
                 <span>01</span>
               </span>
               <span
                 class="spotlight pin-right"
-                style="left: 84.1%; top: 36.7%; width: 7.6%; height: 60.8%; --pin-right: -11px; --pin-top: -11px;"
+                data-visual-target="dashboard-next-status"
+                style="left: 85.8%; top: 31.2%; width: 8%; height: 17.6%; --pin-right: -11px; --pin-top: -11px;"
               >
                 <span>02</span>
               </span>
             </div>
           </figure>
+
+          <div class="image-notes">
+            <div class="image-note">
+              <b class="note-index">01</b>
+              <p><strong>계약 목록 중심</strong><span>계약명, 지급내용, 마감일을 한 줄에서 확인합니다.</span></p>
+            </div>
+            <div class="image-note">
+              <b class="note-index">02</b>
+              <p><strong>다음 상태 확인</strong><span>D-day, 수정 요청, 검토 대기 상태를 표에서 구분합니다.</span></p>
+            </div>
+          </div>
         </div>
 
         <div class="page-footer">
@@ -1467,21 +1124,6 @@
             복잡한 법률 문서부터 시작하지 않고, 캠페인 운영에 필요한 조건만 채우면 됩니다.
           </p>
 
-          <div class="screen-callouts three before">
-            <div class="screen-callout">
-              <b class="callout-index">01</b>
-              <p><strong>조건 입력만으로 초안 완성</strong><span>브랜드, 보상, 일정, 산출물을 한 화면에서 채웁니다.</span></p>
-            </div>
-            <div class="screen-callout">
-              <b class="callout-index">02</b>
-              <p><strong>작성 즉시 문서 미리보기</strong><span>입력값이 계약서 형태로 바로 반영됩니다.</span></p>
-            </div>
-            <div class="screen-callout">
-              <b class="callout-index">03</b>
-              <p><strong>검토 링크 발송</strong><span>발송 전 확인 후 상대방에게 링크를 보냅니다.</span></p>
-            </div>
-          </div>
-
           <figure class="screen-frame actual">
             <div class="screen-top">
               <span>새 전자계약서 작성</span>
@@ -1492,30 +1134,36 @@
               <span
                 class="spotlight pin-outside"
                 data-note="조건 입력으로 초안 완성"
-                style="left: 16.7%; top: 22.7%; width: 32.2%; height: 66.5%; --pin-left: -12px; --pin-top: -11px;"
+                data-visual-target="builder-input-column"
+                style="left: 16.1%; top: 20.8%; width: 32.8%; height: 75%; --pin-left: -12px; --pin-top: -11px;"
               >
                 <span>01</span>
               </span>
               <span
                 class="spotlight pin-right"
-                data-note="작성 즉시 문서 미리보기"
-                style="left: 51.7%; top: 11.1%; width: 45.8%; height: 85.7%; --pin-right: -11px; --pin-top: -11px;"
+                data-note="미리보기와 발송"
+                data-visual-target="builder-document-preview"
+                style="left: 51.5%; top: 10.9%; width: 45.9%; height: 86.1%; --pin-right: -11px; --pin-top: -11px;"
               >
                 <span>02</span>
               </span>
-              <span
-                class="spotlight pin-right"
-                data-note="검토 링크 발송"
-                style="left: 36.7%; top: 90.8%; width: 12.9%; height: 4.9%; --pin-right: -20px; --pin-top: -18px;"
-              >
-                <span>03</span>
-              </span>
             </div>
           </figure>
+
+          <div class="image-notes">
+            <div class="image-note">
+              <b class="note-index">01</b>
+              <p><strong>조건 입력</strong><span>브랜드, 지급내용, 일정, 산출물을 순서대로 채웁니다.</span></p>
+            </div>
+            <div class="image-note">
+              <b class="note-index">02</b>
+              <p><strong>초안 확인 후 발송</strong><span>오른쪽 문서 미리보기로 확인하고 검토 링크를 보냅니다.</span></p>
+            </div>
+          </div>
         </div>
 
         <div class="page-footer">
-          <span>핵심: 조건 입력, 미리보기, 발송이 한 화면에 이어집니다.</span>
+          <span>핵심: 조건을 입력하면 계약서 초안과 발송 흐름이 이어집니다.</span>
           <span>2 / 6</span>
         </div>
       </section>
@@ -1523,69 +1171,56 @@
       <section class="page">
         <div class="page-header">
           <span class="brand"><span class="brand-mark">연</span> 연락미</span>
-          <span>계약 발송 후 관리</span>
+          <span>계약 상세 화면</span>
         </div>
 
         <div class="page-body">
           <p class="kicker">Send & Manage</p>
-          <h2>링크 발송 뒤에는<br />계약별 워크스페이스에서 관리합니다</h2>
+          <h2>링크 발송 뒤에는<br />계약 상세에서 상태를 관리합니다</h2>
           <p class="section-intro">
-            수정 요청, 최종본 승인, 전자서명, 제출물 검수를 한 계약 안에서 따라갑니다.
+            진행 단계, 조항 검토, 전자서명, 콘텐츠 제출 상태를 한 계약 안에서 따라갑니다.
           </p>
-
-          <div class="screen-caption before">
-            <div class="caption-card callout">
-              <b class="callout-index">01</b>
-              <p><strong>다음 액션</strong><span>지금 처리할 일과 승인 단계를 먼저 표시합니다.</span></p>
-            </div>
-            <div class="caption-card callout">
-              <b class="callout-index">02</b>
-              <p><strong>조항별 의견</strong><span>수정 요청과 답변을 계약 안에 보관합니다.</span></p>
-            </div>
-            <div class="caption-card callout">
-              <b class="callout-index">03</b>
-              <p><strong>서명 진행</strong><span>공유 링크와 최종 승인, 서명 상태를 확인합니다.</span></p>
-            </div>
-            <div class="caption-card">
-              <strong>PDF 증빙</strong>
-              <span>완료 후 계약 기록 확인</span>
-            </div>
-          </div>
 
           <figure class="screen-frame actual">
             <div class="screen-top">
-              <span>광고주 계약 워크스페이스</span>
-              <span>수정 요청 · 서명 상태 · 증빙</span>
+              <span>광고주 계약 상세</span>
+              <span>진행 단계 · 조항 검토 · 증빙</span>
             </div>
             <div class="screen-shot">
               <img src="./assets/yeollock-contract-admin.png" alt="연락미 광고주 계약 상세 화면" />
               <span
                 class="spotlight pin-outside"
                 data-note="계약 상태 먼저 확인"
-                style="left: 2.8%; top: 11.4%; width: 31.8%; height: 19.8%; --pin-left: -11px; --pin-top: -11px;"
+                data-visual-target="contract-state-hero"
+                style="left: 1.7%; top: 7.4%; width: 96.6%; height: 18.8%; --pin-left: -11px; --pin-top: -11px;"
               >
                 <span>01</span>
               </span>
               <span
                 class="spotlight pin-outside"
-                data-note="조항별 검토 이력 보관"
-                style="left: 25%; top: 50.2%; width: 45.8%; height: 49.4%; --pin-left: -12px; --pin-top: -11px;"
+                data-note="검토 이력과 증빙"
+                data-visual-target="contract-document-body"
+                style="left: 26.9%; top: 37.3%; width: 71.4%; height: 61.5%; --pin-left: -12px; --pin-top: -11px;"
               >
                 <span>02</span>
               </span>
-              <span
-                class="spotlight pin-right"
-                data-note="공유 링크와 서명 관리"
-                style="left: 72.2%; top: 50.2%; width: 25%; height: 28.8%; --pin-right: -11px; --pin-top: -11px;"
-              >
-                <span>03</span>
-              </span>
             </div>
           </figure>
+
+          <div class="image-notes">
+            <div class="image-note">
+              <b class="note-index">01</b>
+              <p><strong>현재 상태 먼저</strong><span>승인, 검토, 서명 대기 상태를 계약 상단에서 확인합니다.</span></p>
+            </div>
+            <div class="image-note">
+              <b class="note-index">02</b>
+              <p><strong>검토 이력 보관</strong><span>조항 의견, 링크, 감사 기록을 같은 계약 화면에 남깁니다.</span></p>
+            </div>
+          </div>
         </div>
 
         <div class="page-footer">
-          <span>광고주는 계약별 상태와 증빙을 다시 찾기 쉬워집니다.</span>
+          <span>광고주는 계약별 상태와 검토 기록을 다시 찾기 쉬워집니다.</span>
           <span>3 / 6</span>
         </div>
       </section>
@@ -1614,34 +1249,32 @@
                 <span
                   class="spotlight pin-outside"
                   data-note="상대방이 조건을 바로 이해"
-                  style="left: 4.2%; top: 9.7%; width: 91.7%; height: 37.9%; --pin-left: -11px; --pin-top: -11px;"
+                  data-visual-target="mobile-contract-summary"
+                  style="left: 4.1%; top: 9.7%; width: 92%; height: 38%; --pin-left: -11px; --pin-top: -11px;"
                 >
                   <span>01</span>
                 </span>
                 <span
                   class="spotlight pin-right"
-                  style="left: 4.1%; top: 79.3%; width: 91.8%; height: 11.9%; --pin-right: -11px; --pin-top: -11px;"
+                  data-visual-target="mobile-sign-action"
+                  style="left: 4.1%; top: 80.2%; width: 91.8%; height: 17.7%; --pin-right: -11px; --pin-top: -11px;"
                 >
                   <span>02</span>
-                </span>
-                <span
-                  class="spotlight pin-outside"
-                  style="left: 4.1%; top: 93.2%; width: 91.8%; height: 4.6%; --pin-left: -11px; --pin-top: -15px;"
-                >
-                  <span>03</span>
                 </span>
               </div>
             </figure>
 
-            <aside class="side-panel">
-              <span class="tag green">광고주가 얻는 효과</span>
-              <ul>
-                <li><strong><b class="callout-index">01</b>조건 이해</strong><span>상대방이 금액, 일정, 산출물을 모바일에서 바로 확인합니다.</span></li>
-                <li><strong><b class="callout-index">02</b>최종 안내</strong><span>서명 전 승인 상태와 주의 문구를 한 번 더 확인하게 합니다.</span></li>
-                <li><strong><b class="callout-index">03</b>서명 흐름</strong><span>광고주 승인 뒤 전자서명으로 넘어가는 순서를 분명히 보여줍니다.</span></li>
-                <li><strong>링크만 전달</strong><span>DM, 메일, 카톡에는 검토 링크만 보내면 됩니다.</span></li>
-              </ul>
-            </aside>
+          </div>
+
+          <div class="image-notes">
+            <div class="image-note">
+              <b class="note-index">01</b>
+              <p><strong>조건을 먼저 확인</strong><span>금액, 일정, 산출물, 사용 범위를 모바일에서 바로 읽습니다.</span></p>
+            </div>
+            <div class="image-note">
+              <b class="note-index">02</b>
+              <p><strong>서명까지 같은 링크</strong><span>검토가 끝나면 같은 화면에서 전자서명으로 이어집니다.</span></p>
+            </div>
           </div>
         </div>
 
@@ -1654,123 +1287,54 @@
       <section class="page">
         <div class="page-header">
           <span class="brand"><span class="brand-mark">연</span> 연락미</span>
-          <span>계약 완료 후 조회</span>
+          <span>서명 후 콘텐츠 검수</span>
         </div>
 
         <div class="page-body">
-          <p class="kicker">Completed Contract</p>
-          <h2>서명 완료 후에는<br />계약 본문과 PDF를 다시 확인합니다</h2>
+          <p class="kicker">Signed Contract</p>
+          <h2>서명 뒤에는<br />콘텐츠 검수와 PDF 증빙을 확인합니다</h2>
           <p class="section-intro">
-            완료된 계약을 다시 열면 실제 조항, 서명 상태, 서명본 PDF 내려받기 버튼까지 한 화면에서 확인합니다.
+            서명 완료 후 컨텐츠 URL과 파일 제출, 검수 상태, 서명본 PDF 보관 흐름을 같은 계약에서 확인합니다.
           </p>
 
-          <div class="screen-callouts three before">
-            <div class="screen-callout">
-              <b class="callout-index">01</b>
-              <p><strong>실제 계약서 본문</strong><span>광고 조건, 조항, 서명란이 문서 형태로 보입니다.</span></p>
+          <figure class="screen-frame actual completed-admin-frame">
+            <div class="screen-top">
+              <span>서명 완료 계약 조회</span>
+              <span>콘텐츠 검수 · 완료 상태</span>
             </div>
-            <div class="screen-callout">
-              <b class="callout-index">02</b>
-              <p><strong>완료 상태로 재조회</strong><span>서명 완료 후에도 같은 계약 화면에서 다시 엽니다.</span></p>
+            <div class="screen-shot">
+              <img src="./assets/yeollock-contract-completed-admin.png" alt="연락미 완료 계약 조회 및 PDF 다운로드 화면" />
+              <span
+                class="spotlight pin-outside"
+                data-visual-target="completed-deliverables-panel"
+                style="left: 1.7%; top: 37.3%; width: 96.6%; height: 59.5%; --pin-left: -11px; --pin-top: -11px;"
+              >
+                <span>01</span>
+              </span>
+              <span
+                class="spotlight pin-outside"
+                data-visual-target="completed-state-hero"
+                style="left: 1.7%; top: 7.4%; width: 96.6%; height: 18.8%; --pin-left: -11px; --pin-top: -11px;"
+              >
+                <span>02</span>
+              </span>
             </div>
-            <div class="screen-callout">
-              <b class="callout-index">03</b>
-              <p><strong>서명본 PDF 다운로드</strong><span>필요할 때 최종본을 내려받아 내부 보관합니다.</span></p>
-            </div>
-          </div>
+          </figure>
 
-          <div class="completed-contract-layout">
-            <figure class="screen-frame document-frame">
-              <div class="screen-top">
-                <span>서명본 PDF 미리보기</span>
-                <span>계약서_서명본.pdf</span>
-              </div>
-              <div class="screen-shot">
-                <div class="document-toolbar">
-                  <span class="pdf-badge">PDF</span>
-                  <strong>DS-2026-001_서명본.pdf</strong>
-                  <span>100% · 1쪽</span>
-                </div>
-                <div class="contract-paper" aria-label="연락미 실제 계약서 본문 예시">
-                  <div class="contract-paper-header">
-                    <span>연락미 전자계약서</span>
-                    <span>문서번호 DS-2026-001 · 2026.06.12</span>
-                  </div>
-                  <div class="contract-paper-title">
-                    <h3>인플루언서 광고 콘텐츠 제작 및 게재 계약서</h3>
-                    <p>블루셀룸 뷰티 캠페인 · 전자서명 완료본</p>
-                  </div>
-                  <p class="contract-doc-note">
-                    본 계약은 광고주와 인플루언서가 아래 캠페인 조건, 콘텐츠 납품 범위, 보상 지급 조건에 합의하여 체결합니다.
-                  </p>
-                  <div class="contract-meta-grid">
-                    <div><span>광고주</span><strong>블루셀룸 / 김마케팅 매니저</strong></div>
-                    <div><span>인플루언서</span><strong>뷰티온에어</strong></div>
-                    <div><span>계약 금액</span><strong>총 1,200,000원</strong></div>
-                    <div><span>캠페인 기간</span><strong>2026.06.01 - 2026.06.30</strong></div>
-                  </div>
-                  <div class="contract-section">
-                    <h4>주요 계약 조항</h4>
-                    <ol>
-                      <li><strong>콘텐츠 제작</strong> 인플루언서는 인스타그램 릴스 1건을 제작하고 2026.06.12까지 게재합니다.</li>
-                      <li><strong>보상 지급</strong> 광고주는 업로드 확인 후 7영업일 이내에 계약 금액을 지급합니다.</li>
-                      <li><strong>수정 요청</strong> 광고주는 초안 제출 후 최대 2회까지 합리적인 수정 요청을 할 수 있습니다.</li>
-                      <li><strong>사용 범위</strong> 브랜드 공식 채널 재게시 30일을 허용하며, 2차 광고 소재 사용은 별도 동의가 필요합니다.</li>
-                      <li><strong>증빙 보관</strong> 최종 승인, 전자서명, PDF 생성 기록은 계약 이력에 보관됩니다.</li>
-                    </ol>
-                  </div>
-                  <div class="contract-signatures">
-                    <div><span>광고주 확인</span><strong>블루셀룸 김마케팅</strong></div>
-                    <div><span>인플루언서 전자서명</span><strong>뷰티온에어</strong><i class="signature-name-mark">뷰티온에어</i></div>
-                  </div>
-                  <span
-                    class="spotlight pin-outside"
-                    style="left: 5.2%; top: 48.7%; width: 89.6%; height: 29.5%; --pin-left: -11px; --pin-top: -11px;"
-                  >
-                    <span>01</span>
-                  </span>
-                </div>
-              </div>
-            </figure>
-
-            <div class="completed-side">
-              <figure class="screen-frame actual completed-admin-frame">
-                <div class="screen-top">
-                  <span>완료 계약 조회 / PDF 다운로드</span>
-                  <span>상태 · 다운로드 버튼</span>
-                </div>
-                <div class="screen-shot">
-                  <img src="./assets/yeollock-contract-completed-admin.png" alt="연락미 완료 계약 조회 및 PDF 다운로드 화면" />
-                  <span
-                    class="spotlight pin-right"
-                    data-note="서명 완료 상태"
-                    style="left: 82.7%; top: 1.7%; width: 7.2%; height: 4.3%; --pin-right: -11px; --pin-top: -10px;"
-                  >
-                    <span>02</span>
-                  </span>
-                  <span
-                    class="spotlight pin-right"
-                    data-note="PDF 내려받기"
-                    style="left: 73.6%; top: 75.2%; width: 22.2%; height: 4.8%; --pin-right: -11px; --pin-top: -13px;"
-                  >
-                    <span>03</span>
-                  </span>
-                </div>
-              </figure>
-              <div class="completed-proof">
-                <div><strong>완료 후 다시 열람</strong><span>광고주가 계약 화면에서 최종 상태와 본문을 재확인합니다.</span></div>
-                <div><strong>PDF 증빙 보관</strong><span>내부 공유나 정산 확인이 필요할 때 서명본을 내려받습니다.</span></div>
-              </div>
-              <div class="completed-summary">
-                <strong>완료 후 남는 증빙</strong>
-                <span>계약 본문, 서명자 이름, PDF 파일, 생성 기록이 같은 계약 화면에 남아 내부 공유와 정산 확인에 씁니다.</span>
-              </div>
+          <div class="image-notes">
+            <div class="image-note">
+              <b class="note-index">01</b>
+              <p><strong>콘텐츠 검수 기록</strong><span>제출 URL, 파일, 승인 상태를 계약 안에 남깁니다.</span></p>
+            </div>
+            <div class="image-note">
+              <b class="note-index">02</b>
+              <p><strong>서명 완료 상태</strong><span>완료 계약에서 서명본과 검수 기록을 함께 찾습니다.</span></p>
             </div>
           </div>
         </div>
 
         <div class="page-footer">
-          <span>광고주는 완료된 계약 본문과 PDF 증빙을 같은 계약 화면에서 다시 찾습니다.</span>
+          <span>광고주는 서명본과 콘텐츠 검수 기록을 같은 계약 화면에서 다시 찾습니다.</span>
           <span>5 / 6</span>
         </div>
       </section>
@@ -1788,16 +1352,7 @@
             기존 DM 합의를 계약서 초안으로 옮기고, 검토 링크 발송부터 완료 계약 조회와 PDF 보관까지 비교하면 됩니다.
           </p>
 
-          <div class="screen-callouts before">
-            <div class="screen-callout">
-              <b class="callout-index">01</b>
-              <p><strong>처음 쓰는 광고주도 흐름 이해</strong><span>컨택에서 계약서 작성까지 시작 경로가 보입니다.</span></p>
-            </div>
-            <div class="screen-callout">
-              <b class="callout-index">02</b>
-              <p><strong>계약 운영 화면을 미리 확인</strong><span>실제 관리 화면을 보고 파일럿 도입을 판단합니다.</span></p>
-            </div>
-          </div>
+          <div class="value-line">15분 화면 공유 · 기존 DM 조건 1건만 있으면 바로 확인</div>
 
           <div class="pilot-layout">
             <figure class="screen-frame actual pilot-screen">
@@ -1807,37 +1362,18 @@
               </div>
               <div class="screen-shot">
                 <img src="./assets/yeollock-advertiser-screen.png" alt="연락미 광고주 시작 화면" />
-                <span
-                  class="spotlight pin-outside"
-                  data-note="처음 쓰는 광고주도 흐름 이해"
-                  style="left: 11.1%; top: 42.9%; width: 23.4%; height: 35.6%; --pin-left: -11px; --pin-top: -11px;"
-                >
-                  <span>01</span>
-                </span>
-                <span
-                  class="spotlight pin-right"
-                  data-note="계약 운영 화면 미리 확인"
-                  style="left: 36.8%; top: 18.2%; width: 52%; height: 71.8%; --pin-right: -11px; --pin-top: -11px;"
-                >
-                  <span>02</span>
-                </span>
               </div>
             </figure>
 
-            <aside class="pilot-sidebar">
+            <div class="pilot-actions">
               <div class="pilot-note">
                 <strong>파일럿 기준</strong>
-                <h3>캠페인 1건으로 화면과 흐름을 먼저 확인</h3>
-                <p>기존 DM 합의를 계약서 초안으로 옮기고, 링크 발송과 완료 계약 조회까지 실제 운영 화면에서 비교합니다.</p>
-              </div>
-              <div class="pilot-note">
-                <strong>적용 범위</strong>
-                <h3>계약 기록과 전자서명 증빙 도구</h3>
-                <p>법률 자문, 정산 대행, 성과 보증은 별도 영역으로 두고 계약 운영 흐름을 먼저 정리합니다.</p>
+                <h3>진행 중인 광고 조건 1건</h3>
+                <p>브랜드명, 지급내용, 일정, 산출물만 있으면 계약 작성과 검토 링크를 바로 확인할 수 있습니다.</p>
               </div>
               <div class="contact-card">
                 <h3>광고주 문의</h3>
-                <p>파일럿 캠페인 기준으로 계약 작성과 링크 발송 흐름을 안내합니다.</p>
+                <p>파일럿 캠페인 기준으로 계약 작성, 링크 발송, 서명본 보관 흐름을 안내합니다.</p>
                 <div class="contact-bottom">
                   <p>
                     담당자 김재우<br />
@@ -1847,7 +1383,7 @@
                   </p>
                 </div>
               </div>
-            </aside>
+            </div>
           </div>
         </div>
 

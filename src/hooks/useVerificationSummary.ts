@@ -202,6 +202,11 @@ const getVerificationSummaryErrorMessage = (message?: string) => {
   );
 };
 
+const getStatusCodeFromVerificationError = (message?: string) => {
+  const match = message?.match(/\((\d{3})\)/);
+  return match ? Number(match[1]) : undefined;
+};
+
 export function useVerificationSummary(options?: VerificationSummaryOptions) {
   const role = options?.role;
   const enabled = options?.enabled ?? true;
@@ -232,10 +237,13 @@ export function useVerificationSummary(options?: VerificationSummaryOptions) {
       setSummary(next.summary);
     } catch (requestError) {
       if (signal?.aborted) return;
+      const message =
+        requestError instanceof Error ? requestError.message : undefined;
+      setStatusCode(getStatusCodeFromVerificationError(message));
       setSummary((current) => current ?? null);
       setError(
-        requestError instanceof Error
-          ? getVerificationSummaryErrorMessage(requestError.message)
+        message
+          ? getVerificationSummaryErrorMessage(message)
           : "인증 상태를 불러오지 못했습니다.",
       );
     } finally {

@@ -257,6 +257,8 @@ Example option format:
   - When the Product Owner approves a service-flow change, Supabase schema, seed data, and server data access may be changed as needed to make the real product behavior work. Still stop and ask before changing authentication/security policy or sensitive personal-data handling.
 - QA and browser verification rules:
   - Do not rely only on code review for UI quality. Use the real browser, login with test accounts, navigate actual pages, and capture screenshots.
+  - Sales PDFs that use red highlight boxes must be reviewed visually against the rendered capture images before handoff. Do not place boxes by unchecked coordinates only; each box must hug the actual UI row, panel, card, or action it explains, avoid empty whitespace, and never point to a different element than the caption describes.
+  - Sales PDF screen explanations must keep a consistent page rhythm. When repeated screenshot pages use red numbered highlights, put the matching explanation cards in the same location and orientation page-to-page, preferably directly below the screenshot, instead of mixing horizontal and vertical side explanations.
   - For service-wide work or when the Product Owner asks for full review, QA must cover the entire service: all screens, all reachable buttons/links/forms/tabs/filters/modals, advertiser and influencer journeys, and both happy paths and obvious error/empty states.
   - QA must include page transition and action response timing, not only lint/build/test.
   - Check advertiser and influencer flows separately.

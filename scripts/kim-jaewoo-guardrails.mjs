@@ -164,6 +164,7 @@ const prerenderSeoHtml = read("scripts/prerender-seo-html.ts");
 const robotsTxt = read("public/robots.txt");
 const envExample = read(".env.example");
 const qaStandard = read("scripts/qa-standard.mjs");
+const salesAdvertiserIntroduction = read("docs/sales/advertiser-introduction.html");
 const seedTestAccounts = read("scripts/seed-test-accounts.mjs");
 const seedQaMarketplaceScenario = read("scripts/seed-qa-marketplace-scenario.mjs");
 const supportersCampaignMigration = read(
@@ -595,12 +596,88 @@ check(
   "intro previews must mirror the contract dashboard labels",
 );
 
+const salesSpotlightTags =
+  salesAdvertiserIntroduction.match(/<span\b(?=[^>]*class="spotlight)[^>]*>/g) ?? [];
+const expectedSalesSpotlightTargets = [
+  "dashboard-contract-table",
+  "dashboard-next-status",
+  "builder-input-column",
+  "builder-document-preview",
+  "contract-state-hero",
+  "contract-document-body",
+  "mobile-contract-summary",
+  "mobile-sign-action",
+  "completed-deliverables-panel",
+  "completed-state-hero",
+];
+
+check(
+  "advertiser sales PDF red boxes have visual target labels",
+  salesSpotlightTags.length === expectedSalesSpotlightTargets.length &&
+    expectedSalesSpotlightTargets.every((target) =>
+      salesAdvertiserIntroduction.includes(`data-visual-target="${target}"`),
+    ),
+  "Sales PDF red highlights must be tied to reviewed visual UI targets, not anonymous coordinate boxes",
+);
+
+const salesImageNoteGroups =
+  salesAdvertiserIntroduction.match(/<div class="image-notes">\s*<div class="image-note">/g) ??
+  [];
+
+check(
+  "advertiser sales PDF explanation cards keep one rhythm",
+  salesImageNoteGroups.length === 5 &&
+    !salesAdvertiserIntroduction.includes('class="image-notes single"') &&
+    !salesAdvertiserIntroduction.includes('<aside class="side-panel">') &&
+    !salesAdvertiserIntroduction.includes("pilot-sidebar"),
+  "Sales PDF screenshot explanations must use the same below-image horizontal card pattern instead of mixing side and bottom explanations",
+);
+
+check(
+  "advertiser sales PDF avoids false PDF callout",
+  !salesAdvertiserIntroduction.includes("<strong>서명본 PDF 보관</strong>") &&
+    !salesAdvertiserIntroduction.includes("완료된 계약서는 필요할 때 바로 내려받습니다."),
+  "Do not label a red box as a PDF download area unless the rendered capture actually shows that PDF action",
+);
+
 const demoData = evaluateLiteralObject(landing, "const introDashboardDemoData =");
 const expectedTabs = {
   advertiser: ["모집중", "진행중", "종료"],
   influencer: ["지원중", "진행중", "완료", "미선정"],
 };
 const datePattern = /^20\d{2}\.\d{2}\.\d{2} \/ D(?:-\d+|\+\d+)$/;
+
+check(
+  "intro advertiser header mirrors real dashboard switch",
+  landing.includes('aria-label="광고주 대시보드 전환 미리보기"') &&
+    !landing.includes('? ["새 계약", "새 캠페인", "메시지함", "인플루언서 찾기", "로그아웃"]'),
+  "Advertiser intro preview must show the real dashboard 계약/캠페인 header switch, not put 새 계약/새 캠페인 in the global header",
+);
+
+check(
+  "intro advertiser primary action stays in title bar",
+  landing.includes('actionLabel="새 계약"') &&
+    landing.includes("function IntroDashboardTitleBar"),
+  "Advertiser intro preview must mirror the real dashboard by keeping 새 계약 in the dashboard title bar",
+);
+
+check(
+  "intro advertiser account strip mirrors real dashboard",
+  landing.includes("function IntroAdvertiserAccountBanner") &&
+    landing.includes("사업자번호") &&
+    landing.includes("정보 보기") &&
+    !landing.includes("function IntroAdvertiserVerificationBanner"),
+  "Advertiser intro preview must use the real dashboard compact approved-account strip, not duplicate approved verification labels",
+);
+
+check(
+  "intro influencer header mirrors real dashboard actions",
+  landing.includes('label="내 계약"') &&
+    landing.includes('label="캠페인 찾기"') &&
+    landing.includes('label="메시지함"') &&
+    landing.includes('label="로그아웃"'),
+  "Influencer intro preview header must mirror the real dashboard action order",
+);
 
 for (const role of ["advertiser", "influencer"]) {
   const states = demoData[role]?.states ?? [];
@@ -634,6 +711,19 @@ for (const role of ["advertiser", "influencer"]) {
     );
   }
 }
+
+check(
+  "intro influencer table order mirrors real dashboard",
+  (demoData.influencer?.states ?? []).every((state) => state.metricBeforeDate === true) &&
+    landing.includes("state.metricBeforeDate"),
+  "Influencer intro preview table must keep 현 단계/내 할 일 before 마감일 like the real influencer dashboard",
+);
+
+check(
+  "intro advertiser table order mirrors real dashboard",
+  (demoData.advertiser?.states ?? []).every((state) => state.metricBeforeDate !== true),
+  "Advertiser intro preview table must keep 마감일/종료일 before 현 단계 like the real advertiser dashboard",
+);
 
 console.log("\nSummary");
 console.log(`- passed: ${passes.length}`);

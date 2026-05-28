@@ -198,7 +198,7 @@ const openPage = async (client, url, viewport) => {
     const value = result.result?.value ?? {};
     if (
       value.ready === "complete" &&
-      String(value.text).length > 120 &&
+      String(value.text).length > 40 &&
       !value.hasViteError
     ) {
       await client.send(
@@ -530,7 +530,7 @@ try {
     `${baseUrl}/advertiser/contract/${encodeURIComponent(salesContract.id)}`,
     { width: 1440, height: 940 },
   );
-  await waitForBodyText(client, adminContractPage, "계약 워크스페이스");
+  await waitForBodyText(client, adminContractPage, "계약서 본문");
   await capturePng(client, adminContractPage, "yeollock-contract-admin.png");
   await closePage(client, adminContractPage);
 
@@ -540,7 +540,7 @@ try {
       `${baseUrl}/advertiser/contract/${encodeURIComponent(signedContract.id)}`,
       { width: 1440, height: 940 },
     );
-    await waitForBodyText(client, completedContractPage, "서명본 PDF 내려받기");
+    await waitForBodyText(client, completedContractPage, "계약서 본문");
     await scrollToText(client, completedContractPage, "서명본 PDF 내려받기", -180);
     await capturePng(
       client,

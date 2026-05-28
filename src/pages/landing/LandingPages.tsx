@@ -7,14 +7,19 @@ import {
   ClipboardCheck,
   FileSignature,
   FileText,
+  Globe2,
   Instagram,
+  LogOut,
   Megaphone,
   MessageSquareText,
   Music2,
   PenLine,
+  Plus,
   Search,
   ShieldCheck,
   Settings,
+  Settings2,
+  UserCheck,
   Youtube,
   type LucideIcon,
 } from "lucide-react";
@@ -1641,6 +1646,7 @@ type IntroDashboardState = {
   paymentColumnLabel?: string;
   metricColumnLabel: string;
   dateColumnLabel: string;
+  metricBeforeDate?: boolean;
   emptyTitle: string;
   emptyMessage: string;
 };
@@ -1671,7 +1677,7 @@ const introDashboardDemoData = {
             platformClass: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
             brand: "협찬",
             title: "민서홈 릴스 협찬 계약",
-            payment: "-",
+            payment: "900,000원 + 제품 제공",
             metric: "검토 대기",
             date: "2026.05.29 / D-5",
           },
@@ -1680,7 +1686,7 @@ const introDashboardDemoData = {
             platformClass: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
             brand: "공동구매",
             title: "루나데이 공동구매 계약",
-            payment: "-",
+            payment: "수수료 18%",
             metric: "초안 작성",
             date: "2026.05.31 / D-7",
           },
@@ -1839,6 +1845,7 @@ const introDashboardDemoData = {
         itemCount: 2,
         metricColumnLabel: "내 상태",
         dateColumnLabel: "응답기한",
+        metricBeforeDate: true,
         emptyTitle: "조건에 맞는 계약이 없습니다",
         emptyMessage: "검색어를 줄이거나 전체로 바꿔보세요.",
         rows: [
@@ -1873,6 +1880,7 @@ const introDashboardDemoData = {
         itemCount: 3,
         metricColumnLabel: "내 할 일",
         dateColumnLabel: "마감일",
+        metricBeforeDate: true,
         emptyTitle: "조건에 맞는 계약이 없습니다",
         emptyMessage: "검색어를 줄이거나 전체로 바꿔보세요.",
         rows: [
@@ -1916,6 +1924,7 @@ const introDashboardDemoData = {
         itemCount: 1,
         metricColumnLabel: "결과",
         dateColumnLabel: "완료일",
+        metricBeforeDate: true,
         emptyTitle: "조건에 맞는 계약이 없습니다",
         emptyMessage: "검색어를 줄이거나 전체로 바꿔보세요.",
         rows: [
@@ -1941,6 +1950,7 @@ const introDashboardDemoData = {
         itemCount: 1,
         metricColumnLabel: "결과",
         dateColumnLabel: "결과일",
+        metricBeforeDate: true,
         emptyTitle: "조건에 맞는 계약이 없습니다",
         emptyMessage: "검색어를 줄이거나 전체로 바꿔보세요.",
         rows: [
@@ -2096,6 +2106,7 @@ function AdvertiserIntroDashboardPreview({
         <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[8px] border border-[#d9e0d9] bg-white">
           <IntroDashboardTitleBar
             title="계약 운영 대시보드"
+            actionLabel="새 계약"
           />
           <IntroAdvertiserAccountBanner
             accountMeta={data.accountMeta}
@@ -2112,9 +2123,6 @@ function AdvertiserIntroDashboardPreview({
 
 function IntroAppHeader({ role }: { role: IntroRole }) {
   const isAdvertiser = role === "advertiser";
-  const actions = isAdvertiser
-    ? ["새 계약", "새 캠페인", "메시지함", "인플루언서 찾기", "로그아웃"]
-    : ["내 계약", "캠페인 찾기", "메시지함", "로그아웃"];
 
   return (
     <div className="border-b border-[#d9e0d9] bg-white">
@@ -2128,28 +2136,80 @@ function IntroAppHeader({ role }: { role: IntroRole }) {
           </span>
         </div>
         <div className="hidden min-w-0 items-center gap-1.5 md:flex">
-          {actions.map((action, index) => (
-            <span
-              key={action}
-              className={`inline-flex h-10 items-center rounded-[9px] border px-2.5 text-[11px] font-extrabold ${
-                isAdvertiser && index === 0
-                  ? "border-blue-600 bg-blue-600 text-white"
-                  : isAdvertiser && index === 1
-                    ? "border-blue-200 bg-white text-blue-700"
-                  : !isAdvertiser && index === 0
-                    ? "border-neutral-950 bg-neutral-950 text-white"
-                  : "border-neutral-200 bg-white text-neutral-700"
-              }`}
+          {isAdvertiser ? (
+            <nav
+              aria-label="광고주 대시보드 전환 미리보기"
+              className="inline-flex h-10 items-center overflow-hidden rounded-[9px] border border-neutral-200 bg-white p-0.5"
             >
-              {action}
-            </span>
-          ))}
+              {["계약", "캠페인"].map((action, index) => (
+                <span
+                  key={action}
+                  className={`inline-flex h-8 w-12 items-center justify-center rounded-[7px] text-[11px] font-extrabold ${
+                    index === 0
+                      ? "bg-neutral-950 text-white"
+                      : "text-neutral-600"
+                  }`}
+                >
+                  {action}
+                </span>
+              ))}
+            </nav>
+          ) : (
+            <>
+              <IntroHeaderAction
+                active
+                icon={<FileText className="h-3.5 w-3.5" strokeWidth={2} />}
+                label="내 계약"
+              />
+              <IntroHeaderAction
+                icon={<Megaphone className="h-3.5 w-3.5" strokeWidth={2} />}
+                label="캠페인 찾기"
+              />
+            </>
+          )}
+          <IntroHeaderAction
+            icon={<MessageSquareText className="h-3.5 w-3.5" strokeWidth={2} />}
+            label="메시지함"
+          />
+          {isAdvertiser ? (
+            <IntroHeaderAction
+              icon={<Search className="h-3.5 w-3.5" strokeWidth={2} />}
+              label="인플루언서 찾기"
+            />
+          ) : null}
+          <IntroHeaderAction
+            icon={<LogOut className="h-3.5 w-3.5" strokeWidth={2} />}
+            label="로그아웃"
+          />
           <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[9px] border border-neutral-200 bg-white text-neutral-700">
             <Settings className="h-3.5 w-3.5" strokeWidth={2} />
           </span>
         </div>
       </div>
     </div>
+  );
+}
+
+function IntroHeaderAction({
+  active = false,
+  icon,
+  label,
+}: {
+  active?: boolean;
+  icon: ReactNode;
+  label: string;
+}) {
+  return (
+    <span
+      className={`inline-flex h-10 items-center gap-1.5 rounded-[9px] border px-2.5 text-[11px] font-extrabold ${
+        active
+          ? "border-neutral-950 bg-neutral-950 text-white"
+          : "border-neutral-200 bg-white text-neutral-700"
+      }`}
+    >
+      {icon}
+      <span>{label}</span>
+    </span>
   );
 }
 
@@ -2181,9 +2241,11 @@ function InfluencerIntroDashboardPreview({
 }
 
 function IntroDashboardTitleBar({
+  actionLabel,
   title,
   summary,
 }: {
+  actionLabel?: string;
   title: string;
   summary?: string;
 }) {
@@ -2200,6 +2262,12 @@ function IntroDashboardTitleBar({
             </p>
           ) : null}
         </div>
+        {actionLabel ? (
+          <span className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-[9px] border border-blue-600 bg-blue-600 px-3 text-[12px] font-extrabold text-white">
+            <Plus className="h-3.5 w-3.5" strokeWidth={2} />
+            {actionLabel}
+          </span>
+        ) : null}
       </div>
     </div>
   );
@@ -2219,11 +2287,11 @@ function IntroAdvertiserAccountBanner({
           <p className="truncate text-[15px] font-bold text-neutral-950">
             {accountName}
           </p>
-          <p className="mt-0.5 truncate text-[11px] font-semibold text-neutral-500">
+          <p className="mt-0.5 truncate text-[12px] font-semibold text-neutral-500">
             사업자번호 {accountMeta}
           </p>
         </div>
-        <span className="inline-flex h-7 shrink-0 items-center rounded-[8px] border border-neutral-200 bg-white px-2.5 text-[11px] font-semibold text-neutral-700">
+        <span className="inline-flex h-10 shrink-0 items-center rounded-md border border-neutral-200 bg-white px-3 text-[12px] font-semibold text-neutral-800">
           정보 보기
         </span>
       </div>
@@ -2233,29 +2301,44 @@ function IntroAdvertiserAccountBanner({
 
 function IntroInfluencerProfileBanner({ accountName }: { accountName: string }) {
   return (
-    <section className="border-b border-neutral-200 bg-[#fbfbf8] px-4 py-2.5">
+    <section className="border-b border-neutral-200 bg-[#fcfcfd] px-4 py-2">
       <div className="flex min-w-0 items-center justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex min-w-0 items-center gap-2">
-            <p className="truncate text-[15px] font-bold text-neutral-950">
-              {accountName}
-            </p>
-            <span className="shrink-0 rounded-[6px] border border-neutral-200 bg-white px-2 py-0.5 text-[10px] font-extrabold text-neutral-700">
-              4개 플랫폼
-            </span>
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-neutral-800 ring-1 ring-neutral-200">
+            <UserCheck className="h-4 w-4" strokeWidth={2} />
           </div>
-          <div className="mt-1 flex min-w-0 flex-wrap gap-1.5">
-            {["인스타그램", "유튜브", "공개 프로필 활성"].map((item) => (
-              <span
-                key={item}
-                className="inline-flex h-5 items-center rounded-[5px] bg-white px-1.5 text-[10px] font-bold text-neutral-600 ring-1 ring-neutral-200"
-              >
-                {item}
+          <div className="min-w-0">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <p className="truncate text-[14px] font-extrabold text-neutral-950">
+                {accountName}
+              </p>
+              <span className="shrink-0 rounded-full border border-neutral-200 bg-white px-2.5 py-0.5 text-[11px] font-semibold text-neutral-700">
+                체크 완료
               </span>
-            ))}
+              <span className="shrink-0 rounded-full border border-neutral-200 bg-white px-2.5 py-0.5 text-[11px] font-semibold text-neutral-600">
+                4개 플랫폼
+              </span>
+            </div>
+            <div className="mt-1 flex min-w-0 flex-wrap gap-1.5">
+              {["인스타그램", "유튜브"].map((item) => (
+                <span
+                  key={item}
+                  className="inline-flex h-5 max-w-[150px] items-center rounded-full bg-neutral-100 px-2 text-[10px] font-bold text-neutral-600"
+                >
+                  {item}
+                </span>
+              ))}
+              <span
+                className="inline-flex h-5 max-w-[190px] items-center gap-1 rounded-full bg-neutral-100 px-2 text-[10px] font-bold text-neutral-700"
+              >
+                <Globe2 className="h-3 w-3" strokeWidth={2} />
+                공개 프로필 활성
+              </span>
+            </div>
           </div>
         </div>
-        <span className="hidden h-7 shrink-0 items-center rounded-[8px] border border-neutral-200 bg-white px-2.5 text-[11px] font-semibold text-neutral-700 md:inline-flex">
+        <span className="hidden h-10 shrink-0 items-center gap-1.5 rounded-[9px] border border-neutral-200 bg-white px-3 text-[12px] font-extrabold text-neutral-700 md:inline-flex">
+          <Settings2 className="h-3.5 w-3.5" strokeWidth={2} />
           프로필 설정
         </span>
       </div>
@@ -2314,39 +2397,32 @@ function IntroContractBoard({ state }: { state: IntroDashboardState }) {
 }
 
 function IntroContractRows({ state }: { state: IntroDashboardState }) {
+  const contractRowsGridClass = state.metricBeforeDate
+    ? "grid-cols-[72px_70px_minmax(0,1fr)_88px_96px_108px]"
+    : "grid-cols-[72px_70px_minmax(0,1fr)_88px_122px_82px]";
+
   return (
     <>
-      <div className="hidden grid-cols-[72px_70px_minmax(0,1fr)_88px_122px_82px] gap-2 border-b border-[#e3e8e3] bg-[#fbfbf8] px-3 py-2 text-[10px] font-extrabold text-[#7d857f] md:grid">
+      <div className={`hidden ${contractRowsGridClass} gap-2 border-b border-[#e3e8e3] bg-[#fbfbf8] px-3 py-2 text-[10px] font-extrabold text-[#7d857f] md:grid`}>
         <span>플랫폼</span>
         <span>{state.secondaryColumnLabel ?? "브랜드"}</span>
         <span>계약명</span>
         <span>{state.paymentColumnLabel ?? "지급내용"}</span>
-        <span>{state.dateColumnLabel}</span>
-        <span>{state.metricColumnLabel}</span>
+        {state.metricBeforeDate ? (
+          <>
+            <span>{state.metricColumnLabel}</span>
+            <span>{state.dateColumnLabel}</span>
+          </>
+        ) : (
+          <>
+            <span>{state.dateColumnLabel}</span>
+            <span>{state.metricColumnLabel}</span>
+          </>
+        )}
       </div>
       <div className="hidden min-h-0 flex-1 divide-y divide-[#edf1ed] bg-white md:flex md:flex-col">
-        {state.rows.length > 0 ? state.rows.map((row, index) => (
-          <div
-            key={`${row.platform}-${row.title}-${index}`}
-            className="grid min-h-11 grid-cols-[72px_70px_minmax(0,1fr)_88px_122px_82px] items-center gap-2 bg-white px-3 py-2"
-          >
-            <span
-              className={`inline-flex h-6 w-fit max-w-full items-center truncate rounded-[6px] border px-2 text-[10px] font-extrabold ${row.platformClass}`}
-            >
-              {row.platform}
-            </span>
-            <span className="truncate text-[11px] font-semibold text-neutral-700">
-              {row.brand}
-            </span>
-            <span className="truncate text-[12px] font-extrabold text-neutral-950">
-              {row.title}
-            </span>
-            <span className="truncate text-[11px] font-semibold text-neutral-700">
-              {row.payment}
-            </span>
-            <span className="truncate text-[10px] font-bold tabular-nums text-neutral-700">
-              {row.date}
-            </span>
+        {state.rows.length > 0 ? state.rows.map((row, index) => {
+          const metricCell = (
             <span className="min-w-0">
               <span className="block truncate text-[11px] font-extrabold text-neutral-950">
                 {row.metric}
@@ -2360,8 +2436,46 @@ function IntroContractRows({ state }: { state: IntroDashboardState }) {
                 </span>
               ) : null}
             </span>
-          </div>
-        )) : (
+          );
+          const dateCell = (
+            <span className="truncate text-[10px] font-bold tabular-nums text-neutral-700">
+              {row.date}
+            </span>
+          );
+
+          return (
+            <div
+              key={`${row.platform}-${row.title}-${index}`}
+              className={`grid min-h-11 ${contractRowsGridClass} items-center gap-2 bg-white px-3 py-2`}
+            >
+              <span
+                className={`inline-flex h-6 w-fit max-w-full items-center truncate rounded-[6px] border px-2 text-[10px] font-extrabold ${row.platformClass}`}
+              >
+                {row.platform}
+              </span>
+              <span className="truncate text-[11px] font-semibold text-neutral-700">
+                {row.brand}
+              </span>
+              <span className="truncate text-[12px] font-extrabold text-neutral-950">
+                {row.title}
+              </span>
+              <span className="truncate text-[11px] font-semibold text-neutral-700">
+                {row.payment}
+              </span>
+              {state.metricBeforeDate ? (
+                <>
+                  {metricCell}
+                  {dateCell}
+                </>
+              ) : (
+                <>
+                  {dateCell}
+                  {metricCell}
+                </>
+              )}
+            </div>
+          );
+        }) : (
           <div className="flex min-h-[104px] flex-1 flex-col items-center justify-center bg-white px-3 py-6 text-center">
             <p className="text-[13px] font-extrabold text-neutral-950">
               {state.emptyTitle}
