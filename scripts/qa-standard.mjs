@@ -363,7 +363,11 @@ const browserRenderRoutes = [
   {
     name: "home",
     path: "/",
-    requiredText: ["광고 계약은", "계약 만들기", "계약 확인하기"],
+    requiredText: [
+      "광고 계약은",
+      "브랜드 · 광고대행사",
+      "크리에이터 · 유튜버",
+    ],
     minTextLength: 50,
   },
   {

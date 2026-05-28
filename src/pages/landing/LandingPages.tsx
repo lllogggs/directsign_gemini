@@ -130,56 +130,56 @@ function RoleIconCluster({ role }: { role: IntroRole }) {
           {
             label: "캠페인",
             className: "text-blue-700",
-            icon: <Megaphone className="h-3.5 w-3.5" strokeWidth={2.1} />,
+            icon: <Megaphone className="h-6 w-6" strokeWidth={2.15} />,
           },
           {
             label: "계약서",
             className: "text-neutral-700",
-            icon: <FileText className="h-3.5 w-3.5" strokeWidth={2.1} />,
+            icon: <FileText className="h-6 w-6" strokeWidth={2.15} />,
           },
           {
             label: "서명",
             className: "text-amber-700",
-            icon: <FileSignature className="h-3.5 w-3.5" strokeWidth={2.1} />,
+            icon: <FileSignature className="h-6 w-6" strokeWidth={2.15} />,
           },
           {
             label: "검증",
             className: "text-emerald-700",
-            icon: <ShieldCheck className="h-3.5 w-3.5" strokeWidth={2.1} />,
+            icon: <ShieldCheck className="h-6 w-6" strokeWidth={2.15} />,
           },
         ]
       : [
           {
             label: "인스타",
             className: "text-fuchsia-700",
-            icon: <Instagram className="h-3.5 w-3.5" strokeWidth={2.1} />,
+            icon: <Instagram className="h-6 w-6" strokeWidth={2.15} />,
           },
           {
             label: "유튜브",
             className: "text-red-700",
-            icon: <Youtube className="h-3.5 w-3.5" strokeWidth={2.1} />,
+            icon: <Youtube className="h-6 w-6" strokeWidth={2.15} />,
           },
           {
             label: "블로그",
             className: "text-neutral-700",
-            icon: <BookOpen className="h-3.5 w-3.5" strokeWidth={2.1} />,
+            icon: <BookOpen className="h-6 w-6" strokeWidth={2.15} />,
           },
           {
             label: "틱톡",
             className: "text-neutral-950",
-            icon: <Music2 className="h-3.5 w-3.5" strokeWidth={2.1} />,
+            icon: <Music2 className="h-6 w-6" strokeWidth={2.15} />,
           },
         ];
 
   return (
     <span
-      className="inline-flex h-6 items-center gap-2 border-0 bg-transparent text-neutral-950 shadow-none"
+      className="inline-flex h-9 items-center gap-3 border-0 bg-transparent text-neutral-950 shadow-none"
       aria-hidden="true"
     >
       {icons.map((item) => (
         <span
           key={item.label}
-          className={`inline-flex h-4 w-4 items-center justify-center border-0 bg-transparent ${item.className}`}
+          className={`inline-flex h-7 w-7 items-center justify-center border-0 bg-transparent ${item.className}`}
         >
           {item.icon}
         </span>
@@ -954,7 +954,7 @@ export function StartPage() {
         </header>
 
         <section className="flex min-h-0 items-start justify-center pb-8 pt-[clamp(46px,8svh,68px)] sm:pt-[clamp(60px,9svh,90px)] lg:pt-[clamp(70px,10svh,112px)]">
-          <div className="w-full max-w-[760px]">
+          <div className="w-full max-w-[820px]">
             <h1
               className="landing-start-title font-neo-heavy mb-0 text-center text-[30px] leading-[1.1] tracking-normal text-neutral-950 sm:text-[42px] sm:leading-[1.05]"
               aria-label="광고 계약은 확실하게"
@@ -966,13 +966,13 @@ export function StartPage() {
                 확실하게
               </span>
             </h1>
-            <div className="mt-10 grid gap-3 sm:mt-12 sm:grid-cols-2 sm:gap-3.5">
+            <div className="mt-10 grid gap-4 sm:mt-12 sm:grid-cols-2 sm:gap-4">
               {roleCards.map((role) => {
                 const tone = getStartRoleTone(role.role);
                 const isAdvertiser = role.role === "advertiser";
                 const detail = isAdvertiser
-                  ? "계약 만들기"
-                  : "계약 확인하기";
+                  ? "브랜드 · 광고대행사 · 쇼핑몰 · 로컬매장"
+                  : "크리에이터 · 유튜버 · 틱톡커 · 블로거 · 스트리머";
 
                 return (
                   <Link
@@ -980,24 +980,20 @@ export function StartPage() {
                     to={role.href}
                     aria-label={`${role.title} 선택`}
                     data-start-role-action={role.role}
-                    className={`group flex min-h-[76px] items-center justify-between gap-4 rounded-[12px] border px-4 py-3 text-left shadow-[0_16px_44px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:min-h-[84px] sm:px-5 ${tone.card}`}
+                    className={`yl-card group flex min-h-[184px] flex-col border px-5 pb-4 pt-6 text-left transition hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:min-h-[224px] sm:px-7 sm:pb-5 sm:pt-8 lg:min-h-[248px] ${tone.card}`}
                   >
-                    <span className="min-w-0">
-                      <span className="flex items-center gap-2">
-                        <RoleIconCluster role={role.role} />
-                        <strong className="font-neo-heavy block text-[24px] leading-none tracking-normal text-neutral-950 sm:text-[28px]">
-                          {role.title}
-                        </strong>
-                      </span>
-                      <span className={`mt-2 block text-[12px] font-extrabold tracking-normal ${tone.detail}`}>
+                    <span className="block min-w-0">
+                      <RoleIconCluster role={role.role} />
+                    </span>
+                    <span className="mt-auto block min-w-0">
+                      <strong className="font-neo-heavy block text-[41px] leading-none tracking-normal text-neutral-950 sm:text-[47px]">
+                        {role.title}
+                      </strong>
+                      <span
+                        className={`mt-3 block border-t pt-3 text-[12px] font-bold leading-none tracking-normal text-neutral-500 sm:mt-3.5 sm:pt-3.5 ${tone.divider}`}
+                      >
                         {detail}
                       </span>
-                    </span>
-                    <span
-                      className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border bg-white/80 transition group-hover:translate-x-0.5 ${tone.divider}`}
-                      aria-hidden="true"
-                    >
-                      <ArrowRight className="h-4 w-4" strokeWidth={2.2} />
                     </span>
                   </Link>
                 );

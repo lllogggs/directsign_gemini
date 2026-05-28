@@ -1049,7 +1049,11 @@ describe("yeollock.me security regressions", () => {
     assert.match(kimGuardrails, /mobile clipped list corrections are recorded/);
     assert.match(kimGuardrails, /first role selection uses action buttons/);
     assert.match(landing, /data-start-role-action/);
-    assert.doesNotMatch(landing, /min-h-\[248px\]/);
+    assert.match(landing, /min-h-\[248px\]/);
+    assert.match(landing, /mt-auto block min-w-0/);
+    assert.match(landing, /mt-3 block border-t/);
+    assert.match(landing, /브랜드 · 광고대행사 · 쇼핑몰 · 로컬매장/);
+    assert.match(landing, /크리에이터 · 유튜버 · 틱톡커 · 블로거 · 스트리머/);
     assert.match(app, /data-signup-role-action/);
     assert.doesNotMatch(
       app,

@@ -389,10 +389,14 @@ check(
 check(
   "first role selection uses action buttons",
   landing.includes("data-start-role-action") &&
-    !landing.includes("min-h-[248px]") &&
+    landing.includes("min-h-[248px]") &&
+    landing.includes("mt-auto block min-w-0") &&
+    landing.includes("mt-3 block border-t") &&
+    landing.includes("브랜드 · 광고대행사 · 쇼핑몰 · 로컬매장") &&
+    landing.includes("크리에이터 · 유튜버 · 틱톡커 · 블로거 · 스트리머") &&
     app.includes("data-signup-role-action") &&
     !app.includes("광고 계약을 만들 광고주인지, 받은 계약을 검토할 인플루언서인지 선택해 주세요."),
-  "First role-selection screens must use clear action buttons and avoid oversized explanatory role cards",
+  "First role-selection screens must keep the approved large action-button scale, avoid explanatory card copy, and anchor the secondary line near the bottom divider",
 );
 
 check(
