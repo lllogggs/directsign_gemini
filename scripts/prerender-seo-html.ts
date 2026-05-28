@@ -13,11 +13,12 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const distDir = path.join(root, "dist");
 const indexPath = path.join(distDir, "index.html");
 const seoScriptId = "yeollock-seo-jsonld";
+const defaultNaverSiteVerification =
+  "eea8ff877c8abe42deb35a15e6dbb3e202ee178e";
 const naverSiteVerification =
-  (process.env.NAVER_SITE_VERIFICATION ??
-    process.env.VITE_NAVER_SITE_VERIFICATION ??
-    "")
-    .trim();
+  process.env.NAVER_SITE_VERIFICATION?.trim() ||
+  process.env.VITE_NAVER_SITE_VERIFICATION?.trim() ||
+  defaultNaverSiteVerification;
 
 const routeLabels: Record<(typeof staticSeoRoutePaths)[number], string> = {
   "/": "홈",
