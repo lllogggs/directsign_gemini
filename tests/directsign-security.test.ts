@@ -299,6 +299,67 @@ describe("yeollock.me security regressions", () => {
     assert.match(launchReadiness, /20260507224346_allow_revoked_support_access_event\.sql/);
     assert.match(launchReadiness, /20260507230025_lock_reserved_settlement_tables\.sql/);
     assert.match(launchReadiness, /20260518044009_add_marketplace_follower_sync\.sql/);
+    assert.match(launchReadiness, /20260528135700_create_operational_support_tickets\.sql/);
+    assert.match(launchReadiness, /20260528144856_extend_operational_support_tickets\.sql/);
+  });
+
+  it("separates production data from test seeds and centralizes support tickets", () => {
+    const server = read("server/index.ts");
+    const app = read("src/App.tsx");
+    const supportPage = read("src/pages/support/SupportPage.tsx");
+    const supportDomain = read("src/domain/support.ts");
+    const advertiserViewer = read("src/pages/marketing/ContractAdminViewer.tsx");
+    const influencerViewer = read("src/pages/influencer/ContractViewer.tsx");
+    const adminDashboard = read("src/pages/admin/SystemAdminDashboard.tsx");
+    const legalEntity = read("src/domain/legalEntity.ts");
+    const envExample = read(".env.example");
+    const seedAccounts = read("scripts/seed-test-accounts.mjs");
+    const seedMarketplace = read("scripts/seed-qa-marketplace-scenario.mjs");
+    const migration = read(
+      "supabase/migrations/20260528135700_create_operational_support_tickets.sql",
+    );
+    const extensionMigration = read(
+      "supabase/migrations/20260528144856_extend_operational_support_tickets.sql",
+    );
+
+    assert.match(envExample, /YEOLLOCK_ALLOW_PRODUCTION_TEST_DATA="false"/);
+    assert.match(envExample, /VITE_LEGAL_OPERATOR_NAME=""/);
+    assert.doesNotMatch(envExample, /VITE_LEGAL_OPERATOR_NAME="김재우"/);
+    assert.doesNotMatch(legalEntity, /defaultLegalOperatorName = "김재우"/);
+    assert.match(legalEntity, /`\$\{PRODUCT_NAME\} 운영팀`/);
+    assert.match(seedAccounts, /YEOLLOCK_ALLOW_PRODUCTION_TEST_DATA/);
+    assert.match(seedAccounts, /Production test data seeding is blocked/);
+    assert.match(seedMarketplace, /YEOLLOCK_ALLOW_PRODUCTION_TEST_DATA/);
+    assert.match(seedMarketplace, /Production test data seeding is blocked/);
+
+    assert.match(server, /app\.post\("\/api\/support\/tickets"/);
+    assert.match(server, /app\.get\("\/api\/admin\/support-tickets"/);
+    assert.match(server, /operational_support_tickets/);
+    assert.match(server, /sanitizeSupportContextUrl/);
+    assert.match(server, /contract_id: contractId/);
+    assert.match(server, /browser_context: browserContext/);
+    assert.match(app, /path="\/support"/);
+    assert.match(supportDomain, /buildSupportTicketPath/);
+    assert.match(supportPage, /정산, 지급대행, 에스크로, 세금 처리는 연락미가 직접 처리하지/);
+    assert.match(supportPage, /contract_id: contractId/);
+    assert.match(supportPage, /browser_context/);
+    assert.match(advertiserViewer, /buildSupportTicketPath/);
+    assert.match(influencerViewer, /buildSupportTicketPath/);
+    assert.match(adminDashboard, /고객 문의/);
+    assert.match(adminDashboard, /ticketCategoryFilter/);
+    assert.match(adminDashboard, /계약 열기/);
+
+    assert.match(migration, /create table if not exists public\.operational_support_tickets/);
+    assert.match(migration, /enable row level security/);
+    assert.match(
+      migration,
+      /revoke all on public\.operational_support_tickets from public, anon, authenticated/,
+    );
+    assert.match(migration, /to service_role/);
+    assert.match(extensionMigration, /contract_id text/);
+    assert.match(extensionMigration, /browser_context jsonb/);
+    assert.match(extensionMigration, /operational_support_tickets_contract_created_idx/);
+    assert.match(extensionMigration, /Public share tokens and signatures must not be stored/);
   });
 
   it("blocks authenticated Data API writes for security-sensitive tables", () => {
@@ -910,9 +971,9 @@ describe("yeollock.me security regressions", () => {
     assert.match(legalEntity, /required: isRegisteredBusiness/);
     assert.match(
       launchReadiness,
-      /business number, mail-order\s+registration, address, and phone are not required/,
+      /operator personal\/business fields can remain\s+blank during development, QA, and early validation/,
     );
-    assert.match(ownerMemo, /free_individual[\s\S]+사업자등록번호, 주소, 전화번호/);
+    assert.match(ownerMemo, /free_individual[\s\S]+공개 문의 이메일 중심/);
     assert.doesNotMatch(legalPage, /출시 전 입력 필요/);
     assert.doesNotMatch(legalPage, /미설정/);
     assert.doesNotMatch(launchReadiness, /출시 전 입력 필요/);

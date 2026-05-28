@@ -202,6 +202,10 @@
       "destination": "/legal/e-sign-consent/index.html"
     },
     {
+      "source": "/support",
+      "destination": "/support/index.html"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

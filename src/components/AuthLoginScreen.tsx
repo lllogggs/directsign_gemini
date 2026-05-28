@@ -209,6 +209,9 @@ export function AuthLoginScreen({
                 <Link className="inline-flex min-h-7 items-center px-2 transition hover:text-neutral-950 sm:min-h-8" to="/legal/e-sign-consent">
                   전자서명 안내
                 </Link>
+                <Link className="inline-flex min-h-7 items-center px-2 transition hover:text-neutral-950 sm:min-h-8" to="/support">
+                  문의
+                </Link>
               </nav>
             ) : null}
           </div>

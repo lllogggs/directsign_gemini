@@ -43,7 +43,7 @@ const officialInstagramHandle =
     .replace(/^@+/, "") || "yeollockme";
 
 const publicSameAsUrls = [`https://www.instagram.com/${officialInstagramHandle}/`];
-const seoDateModified = "2026-05-27";
+const seoDateModified = "2026-05-28";
 
 export const publicRobotsContent =
   "index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1";
@@ -56,6 +56,7 @@ export const staticSeoRoutePaths = [
   "/privacy",
   "/terms",
   "/legal/e-sign-consent",
+  "/support",
 ] as const;
 
 const seoKeywordList = [
@@ -261,6 +262,13 @@ const getRouteSeoConfig = (pathname: string): RouteSeoConfig => {
       canonicalPath: "/legal/e-sign-consent",
       robots: publicRobotsContent,
     },
+    "/support": {
+      title: `고객지원 - ${PRODUCT_NAME}`,
+      description:
+        "연락미 장애, 계정, 계약 흐름, 개인정보 문의를 접수하는 고객지원 채널입니다.",
+      canonicalPath: "/support",
+      robots: publicRobotsContent,
+    },
   };
 
   const knownPage = knownPages[normalizedPath];
@@ -357,6 +365,14 @@ const publicSearchIntentPages: Record<string, IntentAwareSeoCopy> = {
     canonicalPath: "/legal/e-sign-consent",
     robots: publicRobotsContent,
     keywords: ["광고 계약 전자서명", "인플루언서 계약 서명", "전자서명 증빙"],
+  },
+  "/support": {
+    title: `고객지원 - ${PRODUCT_NAME}`,
+    description:
+      "연락미 장애, 계정, 계약 흐름, 개인정보 문의를 접수합니다.",
+    canonicalPath: "/support",
+    robots: publicRobotsContent,
+    keywords: ["연락미 문의", "광고 계약 오류 문의", "전자계약 고객지원"],
   },
 };
 

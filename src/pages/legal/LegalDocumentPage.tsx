@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { ArrowLeft, ShieldCheck } from "lucide-react";
 import { PRODUCT_NAME } from "../../domain/brand";
 import {
@@ -407,6 +407,12 @@ export function LegalDocumentPage({
                 </div>
               ))}
             </dl>
+            <Link
+              to="/support"
+              className="mt-5 inline-flex h-10 items-center justify-center rounded-lg border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-700 transition hover:border-neutral-400 hover:text-neutral-950"
+            >
+              고객지원 문의하기
+            </Link>
           </section>
 
           <div className="mt-7 space-y-8">

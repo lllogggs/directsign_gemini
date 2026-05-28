@@ -1,3 +1,5 @@
+import { PRODUCT_NAME } from "./brand.js";
+
 const readPublicEnv = (name: string) => {
   const value =
     typeof import.meta !== "undefined"
@@ -22,14 +24,14 @@ export const LEGAL_CONTACT_EMAIL =
 export const LEGAL_OPERATING_MODE = readLegalOperatingMode();
 
 const isRegisteredBusiness = LEGAL_OPERATING_MODE === "registered_business";
-const defaultLegalOperatorName = "김재우";
-const defaultLegalRepresentativeName = "김재우";
-
 const configuredLegalOperatorName = readPublicEnv("VITE_LEGAL_OPERATOR_NAME");
 const configuredLegalRepresentativeName = readPublicEnv(
   "VITE_LEGAL_REPRESENTATIVE_NAME",
 );
 const configuredLegalContactEmail = readPublicEnv("VITE_LEGAL_CONTACT_EMAIL");
+const publicOperatorName =
+  configuredLegalOperatorName ??
+  (isRegisteredBusiness ? undefined : `${PRODUCT_NAME} 운영팀`);
 
 const LEGAL_OPERATING_MODE_LABELS: Record<LegalOperatingMode, string> = {
   free_individual: "무료 개인 운영 서비스",
@@ -38,8 +40,8 @@ const LEGAL_OPERATING_MODE_LABELS: Record<LegalOperatingMode, string> = {
 
 export const LEGAL_OPERATOR = {
   operatingMode: LEGAL_OPERATING_MODE,
-  name: configuredLegalOperatorName ?? defaultLegalOperatorName,
-  representative: configuredLegalRepresentativeName ?? defaultLegalRepresentativeName,
+  name: publicOperatorName,
+  representative: configuredLegalRepresentativeName,
   businessRegistrationNumber: readPublicEnv(
     "VITE_LEGAL_BUSINESS_REGISTRATION_NUMBER",
   ),
@@ -63,12 +65,16 @@ export const LEGAL_OPERATOR_FIELDS = [
     value: LEGAL_OPERATING_MODE_LABELS[LEGAL_OPERATOR.operatingMode],
     required: true,
   },
-  { label: "서비스 운영자", value: LEGAL_OPERATOR.name, required: true },
-  {
-    label: "대표자/개인정보 보호책임자",
-    value: LEGAL_OPERATOR.representative,
-    required: true,
-  },
+  { label: "서비스 운영자", value: LEGAL_OPERATOR.name, required: isRegisteredBusiness },
+  ...(isRegisteredBusiness
+    ? [
+        {
+          label: "대표자/개인정보 보호책임자",
+          value: LEGAL_OPERATOR.representative,
+          required: true,
+        },
+      ]
+    : []),
   {
     label: "사업자등록번호",
     value: isRegisteredBusiness
@@ -109,6 +115,7 @@ export const missingLegalOperatorFields = LEGAL_OPERATOR_FIELDS.filter(
 );
 
 export const hasConfiguredLegalOperator =
+  isRegisteredBusiness &&
   missingLegalOperatorFields.length === 0 &&
   Boolean(configuredLegalOperatorName) &&
   Boolean(configuredLegalRepresentativeName) &&

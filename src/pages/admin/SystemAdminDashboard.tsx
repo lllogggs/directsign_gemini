@@ -43,6 +43,10 @@ type AdminMetrics = {
     pending_count: number;
     total_count: number;
   };
+  support_tickets?: {
+    open_count: number;
+    total_count: number;
+  };
   source: "supabase" | "file";
   demo_mode: boolean;
 };
@@ -69,6 +73,32 @@ type SupportAccessRequest = {
   }>;
 };
 
+type OperationalSupportTicket = {
+  id: string;
+  category:
+    | "service_error"
+    | "account_access"
+    | "contract_flow"
+    | "settlement_question"
+    | "privacy_request"
+    | "other";
+  requester_role: "advertiser" | "influencer" | "operator" | "other";
+  requester_name?: string;
+  requester_email: string;
+  subject: string;
+  message: string;
+  context_url?: string;
+  contract_id?: string;
+  contract_title?: string;
+  page_path?: string;
+  browser_context?: Record<string, unknown>;
+  severity: "low" | "normal" | "high" | "urgent";
+  status: "open" | "reviewing" | "resolved" | "closed";
+  admin_note?: string;
+  created_at: string;
+  updated_at: string;
+};
+
 const emptyMetrics: AdminMetrics = {
   contract_count: 0,
   active_contract_count: 0,
@@ -83,6 +113,10 @@ const emptyMetrics: AdminMetrics = {
   },
   verification: {
     pending_count: 0,
+    total_count: 0,
+  },
+  support_tickets: {
+    open_count: 0,
     total_count: 0,
   },
   source: "file",
@@ -104,12 +138,20 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
   const [error, setError] = useState("");
   const [metrics, setMetrics] = useState<AdminMetrics>(emptyMetrics);
   const [supportRequests, setSupportRequests] = useState<SupportAccessRequest[]>([]);
+  const [supportTickets, setSupportTickets] = useState<OperationalSupportTicket[]>([]);
   const [verificationRequests, setVerificationRequests] = useState<VerificationRequest[]>([]);
   const [dataError, setDataError] = useState("");
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [reviewingVerificationId, setReviewingVerificationId] = useState("");
   const [checkingVerificationId, setCheckingVerificationId] = useState("");
   const [closingSupportId, setClosingSupportId] = useState("");
+  const [updatingTicketId, setUpdatingTicketId] = useState("");
+  const [ticketCategoryFilter, setTicketCategoryFilter] = useState<
+    OperationalSupportTicket["category"] | "all"
+  >("all");
+  const [ticketStatusFilter, setTicketStatusFilter] = useState<
+    OperationalSupportTicket["status"] | "active" | "all"
+  >("active");
 
   const activeSupportRequests = useMemo(
     () => supportRequests.filter((request) => request.is_active),
@@ -119,6 +161,27 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
     () => verificationRequests.filter((request) => request.status === "pending"),
     [verificationRequests],
   );
+  const activeSupportTickets = useMemo(
+    () =>
+      supportTickets.filter(
+        (ticket) => ticket.status === "open" || ticket.status === "reviewing",
+      ),
+    [supportTickets],
+  );
+  const visibleSupportTickets = useMemo(() => {
+    return supportTickets
+      .filter((ticket) => {
+        const categoryMatches =
+          ticketCategoryFilter === "all" || ticket.category === ticketCategoryFilter;
+        const statusMatches =
+          ticketStatusFilter === "all" ||
+          (ticketStatusFilter === "active"
+            ? ticket.status === "open" || ticket.status === "reviewing"
+            : ticket.status === ticketStatusFilter);
+        return categoryMatches && statusMatches;
+      })
+      .slice(0, 8);
+  }, [supportTickets, ticketCategoryFilter, ticketStatusFilter]);
 
   useEffect(() => {
     let cancelled = false;
@@ -161,10 +224,13 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
     setDataError("");
 
     try {
-      const [metricsResult, supportResult, verificationResult] =
+      const [metricsResult, supportResult, ticketResult, verificationResult] =
         await Promise.allSettled([
           apiFetch("/api/admin/metrics", { headers: { Accept: "application/json" } }),
           apiFetch("/api/admin/support-access-requests", {
+            headers: { Accept: "application/json" },
+          }),
+          apiFetch("/api/admin/support-tickets", {
             headers: { Accept: "application/json" },
           }),
           apiFetch("/api/admin/verification-requests", {
@@ -204,6 +270,22 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
         }
       } else {
         failedSections.push("지원 열람 요청");
+      }
+
+      if (ticketResult.status === "fulfilled") {
+        const ticketData = (await ticketResult.value.json()) as {
+          support_tickets?: OperationalSupportTicket[];
+          error?: string;
+        };
+        if (ticketResult.value.ok) {
+          setSupportTickets(ticketData.support_tickets ?? []);
+        } else {
+          failedSections.push(
+            translateApiErrorMessage(ticketData.error, "고객 문의"),
+          );
+        }
+      } else {
+        failedSections.push("고객 문의");
       }
 
       if (verificationResult.status === "fulfilled") {
@@ -302,6 +384,7 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
       setIsAuthenticated(false);
       setMetrics(emptyMetrics);
       setSupportRequests([]);
+      setSupportTickets([]);
       setVerificationRequests([]);
     }
   };
@@ -436,6 +519,48 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
     }
   };
 
+  const updateSupportTicketStatus = async (
+    id: string,
+    status: OperationalSupportTicket["status"],
+  ) => {
+    setUpdatingTicketId(id);
+    setDataError("");
+
+    try {
+      const response = await apiFetch(`/api/admin/support-tickets/${id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ status }),
+      });
+      const data = (await response.json()) as {
+        ticket?: OperationalSupportTicket;
+        error?: string;
+      };
+
+      if (!response.ok || !data.ticket) {
+        throw new Error(
+          translateApiErrorMessage(data.error, "문의 상태를 변경하지 못했습니다."),
+        );
+      }
+
+      await loadAdminData();
+    } catch (requestError) {
+      setDataError(
+        requestError instanceof Error
+          ? translateApiErrorMessage(
+              requestError.message,
+              "문의 상태를 변경하지 못했습니다.",
+            )
+          : "문의 상태를 변경하지 못했습니다.",
+      );
+    } finally {
+      setUpdatingTicketId("");
+    }
+  };
+
   if (isCheckingSession) {
     return (
       <div className="flex h-screen items-center justify-center bg-[#f6f7f9] font-sans">
@@ -566,9 +691,9 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
             icon={<Lock className="h-4 w-4" />}
           />
           <MetricCard
-            label="지원 열람"
-            value={String(metrics.support_access.active_count)}
-            helper={`누적 요청 ${metrics.support_access.total_count}`}
+            label="고객 문의"
+            value={String(metrics.support_tickets?.open_count ?? activeSupportTickets.length)}
+            helper={`누적 ${metrics.support_tickets?.total_count ?? supportTickets.length}`}
             icon={<Clock3 className="h-4 w-4" />}
           />
           <MetricCard
@@ -609,31 +734,45 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
             <section className="rounded-lg border border-neutral-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)]">
               <div className="mb-4 flex items-center justify-between gap-4">
                 <h2 className="text-[18px] font-semibold tracking-[-0.02em]">
-                  접근 정책
+                  운영 기준
                 </h2>
                 <Lock className="h-4 w-4 text-neutral-400" />
               </div>
               <div className="grid gap-3 text-sm leading-6 text-neutral-700 sm:grid-cols-3">
                 <PolicyStep
                   number="01"
-                  title="기본 차단"
-                  body="운영자는 계약 목록, 본문, 서명본 PDF를 기본적으로 볼 수 없습니다."
+                  title="운영/테스트 분리"
+                  body="운영 DB에는 테스트 데이터를 기본 주입하지 않습니다. 시드는 별도 승인 환경에서만 실행합니다."
                 />
                 <PolicyStep
                   number="02"
-                  title="당사자 요청"
-                  body="광고주나 인플루언서가 사유를 남기면 24시간 지원 열람권이 열립니다."
+                  title="정산 비취급"
+                  body="연락미는 계약 조건과 증빙을 보관하지만 지급대행, 에스크로, 세금 처리는 하지 않습니다."
                 />
                 <PolicyStep
                   number="03"
-                  title="열람 기록"
-                  body="운영자가 본문이나 PDF를 열 때마다 지원 요청 감사 기록에 남깁니다."
+                  title="문의 집중"
+                  body="장애, 계정, 계약 흐름 문의는 고객지원 접수 후 이 대시보드에서 상태를 처리합니다."
                 />
               </div>
             </section>
           </div>
 
           <div className="space-y-4">
+            <SupportTicketPanel
+              tickets={visibleSupportTickets}
+              totalCount={supportTickets.length}
+              categoryFilter={ticketCategoryFilter}
+              statusFilter={ticketStatusFilter}
+              onCategoryFilterChange={setTicketCategoryFilter}
+              onStatusFilterChange={setTicketStatusFilter}
+              updatingId={updatingTicketId}
+              onStatusChange={updateSupportTicketStatus}
+              onOpenContract={(contractId) =>
+                navigate(`/advertiser/contract/${encodeURIComponent(contractId)}`)
+              }
+            />
+
             <SupportAccessPanel
               requests={activeSupportRequests}
               closingId={closingSupportId}
@@ -727,6 +866,197 @@ function PolicyStep({
       <p className="mt-2 font-semibold text-neutral-950">{title}</p>
       <p className="mt-2 text-[13px] text-neutral-500">{body}</p>
     </div>
+  );
+}
+
+function SupportTicketPanel({
+  tickets,
+  totalCount,
+  categoryFilter,
+  statusFilter,
+  onCategoryFilterChange,
+  onStatusFilterChange,
+  updatingId,
+  onStatusChange,
+  onOpenContract,
+}: {
+  tickets: OperationalSupportTicket[];
+  totalCount: number;
+  categoryFilter: OperationalSupportTicket["category"] | "all";
+  statusFilter: OperationalSupportTicket["status"] | "active" | "all";
+  onCategoryFilterChange: (
+    category: OperationalSupportTicket["category"] | "all",
+  ) => void;
+  onStatusFilterChange: (
+    status: OperationalSupportTicket["status"] | "active" | "all",
+  ) => void;
+  updatingId: string;
+  onStatusChange: (
+    id: string,
+    status: OperationalSupportTicket["status"],
+  ) => void;
+  onOpenContract: (contractId: string) => void;
+}) {
+  const categoryFilters: Array<{
+    value: OperationalSupportTicket["category"] | "all";
+    label: string;
+  }> = [
+    { value: "all", label: "전체" },
+    { value: "contract_flow", label: "계약" },
+    { value: "service_error", label: "오류" },
+    { value: "account_access", label: "계정" },
+    { value: "privacy_request", label: "개인정보" },
+    { value: "settlement_question", label: "정산" },
+  ];
+  const statusFilters: Array<{
+    value: OperationalSupportTicket["status"] | "active" | "all";
+    label: string;
+  }> = [
+    { value: "active", label: "열린 문의" },
+    { value: "open", label: "새 문의" },
+    { value: "reviewing", label: "확인 중" },
+    { value: "resolved", label: "해결" },
+    { value: "all", label: "전체" },
+  ];
+
+  return (
+    <section className="rounded-lg border border-neutral-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)]">
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-[18px] font-semibold tracking-[-0.02em]">
+          고객 문의
+        </h2>
+        <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-600">
+          {tickets.length}/{totalCount}건
+        </span>
+      </div>
+
+      <div className="mb-4 space-y-2">
+        <div className="flex flex-wrap gap-1.5">
+          {categoryFilters.map((filter) => (
+            <button
+              key={filter.value}
+              type="button"
+              onClick={() => onCategoryFilterChange(filter.value)}
+              className={`h-8 rounded-lg px-3 text-xs font-semibold transition ${
+                categoryFilter === filter.value
+                  ? "bg-neutral-950 text-white"
+                  : "border border-neutral-200 bg-white text-neutral-600 hover:border-neutral-400 hover:text-neutral-950"
+              }`}
+            >
+              {filter.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {statusFilters.map((filter) => (
+            <button
+              key={filter.value}
+              type="button"
+              onClick={() => onStatusFilterChange(filter.value)}
+              className={`h-8 rounded-lg px-3 text-xs font-semibold transition ${
+                statusFilter === filter.value
+                  ? "bg-neutral-100 text-neutral-950 ring-1 ring-neutral-300"
+                  : "bg-transparent text-neutral-500 hover:bg-neutral-50 hover:text-neutral-900"
+              }`}
+            >
+              {filter.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {tickets.map((ticket) => (
+          <article
+            key={ticket.id}
+            className="rounded-lg border border-neutral-200 bg-neutral-50 p-4"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-neutral-950">
+                  {ticket.subject}
+                </p>
+                <p className="mt-1 truncate text-xs font-medium text-neutral-500">
+                  {supportTicketCategoryLabel(ticket.category)} ·{" "}
+                  {requesterRoleLabel(ticket.requester_role)} ·{" "}
+                  {ticket.requester_email}
+                </p>
+              </div>
+              <span
+                className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${supportTicketStatusTone(
+                  ticket.status,
+                )}`}
+              >
+                {supportTicketStatusLabel(ticket.status)}
+              </span>
+            </div>
+
+            <p className="mt-3 line-clamp-3 text-sm leading-6 text-neutral-700">
+              {ticket.message}
+            </p>
+            {ticket.contract_id && (
+              <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs">
+                <div className="min-w-0">
+                  <p className="font-semibold text-neutral-950">
+                    {ticket.contract_title || "계약 문의"}
+                  </p>
+                  <p className="mt-0.5 truncate font-medium text-neutral-400">
+                    {ticket.contract_id}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onOpenContract(ticket.contract_id!)}
+                  className="h-8 shrink-0 rounded-md border border-neutral-200 bg-[#fbfbfc] px-2.5 font-semibold text-neutral-700 transition hover:border-neutral-400 hover:bg-white"
+                >
+                  계약 열기
+                </button>
+              </div>
+            )}
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-medium text-neutral-500">
+              <span>{formatDateTime(ticket.created_at)}</span>
+              {(ticket.page_path || ticket.context_url) && (
+                <>
+                  <span>·</span>
+                  <span className="max-w-[240px] truncate">
+                    {ticket.page_path || ticket.context_url}
+                  </span>
+                </>
+              )}
+              <span>·</span>
+              <span>{supportTicketSeverityLabel(ticket.severity)}</span>
+            </div>
+
+            <div className="mt-4 flex gap-2">
+              {ticket.status === "open" && (
+                <button
+                  type="button"
+                  disabled={updatingId === ticket.id}
+                  onClick={() => onStatusChange(ticket.id, "reviewing")}
+                  className="h-9 rounded-lg bg-neutral-950 px-3 text-xs font-semibold text-white transition hover:bg-neutral-800 disabled:opacity-50"
+                >
+                  검토 시작
+                </button>
+              )}
+              {(ticket.status === "open" || ticket.status === "reviewing") && (
+                <button
+                  type="button"
+                  disabled={updatingId === ticket.id}
+                  onClick={() => onStatusChange(ticket.id, "resolved")}
+                  className="h-9 rounded-lg border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-700 transition hover:border-neutral-400 disabled:text-neutral-300"
+                >
+                  해결 완료
+                </button>
+              )}
+            </div>
+          </article>
+        ))}
+
+        {tickets.length === 0 && (
+          <EmptyState text="접수된 고객 문의가 없습니다." />
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -1004,8 +1334,63 @@ function EmptyState({ text }: { text: string }) {
   );
 }
 
-function requesterRoleLabel(role: SupportAccessRequest["requester_role"]) {
-  return role === "advertiser" ? "광고주" : "인플루언서";
+function requesterRoleLabel(
+  role: SupportAccessRequest["requester_role"] | OperationalSupportTicket["requester_role"],
+) {
+  if (role === "advertiser") return "광고주";
+  if (role === "influencer") return "인플루언서";
+  if (role === "operator") return "운영";
+  return "기타";
+}
+
+function supportTicketCategoryLabel(
+  category: OperationalSupportTicket["category"],
+) {
+  const labels: Record<OperationalSupportTicket["category"], string> = {
+    service_error: "장애/오류",
+    account_access: "계정",
+    contract_flow: "계약 흐름",
+    settlement_question: "정산 문의",
+    privacy_request: "개인정보",
+    other: "기타",
+  };
+
+  return labels[category];
+}
+
+function supportTicketStatusLabel(status: OperationalSupportTicket["status"]) {
+  const labels: Record<OperationalSupportTicket["status"], string> = {
+    open: "접수",
+    reviewing: "검토",
+    resolved: "해결",
+    closed: "종료",
+  };
+
+  return labels[status];
+}
+
+function supportTicketStatusTone(status: OperationalSupportTicket["status"]) {
+  const tones: Record<OperationalSupportTicket["status"], string> = {
+    open: "bg-amber-50 text-amber-800",
+    reviewing: "bg-blue-50 text-blue-700",
+    resolved: "bg-emerald-50 text-emerald-700",
+    closed: "bg-neutral-200 text-neutral-600",
+  };
+
+  return tones[status];
+}
+
+function supportTicketSeverityLabel(
+  severity: OperationalSupportTicket["severity"],
+) {
+  const labels: Record<OperationalSupportTicket["severity"], string> = {
+    low: "낮음",
+    normal: "보통",
+    high: "높음",
+    urgent: "긴급",
+  };
+
+  return labels[severity];
 }
 
 function supportStatusLabel(request: SupportAccessRequest) {

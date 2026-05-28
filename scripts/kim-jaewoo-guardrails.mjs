@@ -147,9 +147,12 @@ const fastAuth = read("lib/fast-auth.ts");
 const signupPage = read("src/pages/auth/SignupPage.tsx");
 const contractAdminViewer = read("src/pages/marketing/ContractAdminViewer.tsx");
 const contractViewer = read("src/pages/influencer/ContractViewer.tsx");
+const adminDashboard = read("src/pages/admin/SystemAdminDashboard.tsx");
 const legalConsent = read("src/domain/legalConsent.ts");
 const analytics = read("src/domain/analytics.ts");
 const legalDocumentPage = read("src/pages/legal/LegalDocumentPage.tsx");
+const legalEntity = read("src/domain/legalEntity.ts");
+const supportPage = read("src/pages/support/SupportPage.tsx");
 const mobileSurfaceSwitch = read("src/components/MobileSurfaceSwitch.tsx");
 const authLoginScreen = read("src/components/AuthLoginScreen.tsx");
 const advertiserAuthGate = read("src/pages/marketing/AdvertiserAuthGate.tsx");
@@ -169,6 +172,12 @@ const seedTestAccounts = read("scripts/seed-test-accounts.mjs");
 const seedQaMarketplaceScenario = read("scripts/seed-qa-marketplace-scenario.mjs");
 const supportersCampaignMigration = read(
   "supabase/migrations/20260526093000_allow_supporters_campaign_type.sql",
+);
+const operationalSupportTicketsMigration = read(
+  "supabase/migrations/20260528135700_create_operational_support_tickets.sql",
+);
+const operationalSupportTicketsExtensionMigration = read(
+  "supabase/migrations/20260528144856_extend_operational_support_tickets.sql",
 );
 
 const dashboardAndIntroFiles = [
@@ -488,6 +497,36 @@ check(
     legalDocumentPage.includes("Microsoft Clarity(wx0bvf6bl5)") &&
     legalDocumentPage.includes("공유 토큰"),
   "analytics/Clarity must not leak share tokens, contract IDs, signatures, dashboards, or admin screens to external tools",
+);
+
+check(
+  "operation support and production test data are separated",
+  server.includes('app.post("/api/support/tickets"') &&
+    server.includes('app.get("/api/admin/support-tickets"') &&
+    server.includes("operational_support_tickets") &&
+    server.includes("sanitizeSupportContextUrl") &&
+    server.includes("contract_id: contractId") &&
+    server.includes("browser_context: browserContext") &&
+    supportPage.includes("정산, 지급대행, 에스크로, 세금 처리는 연락미가 직접 처리하지") &&
+    supportPage.includes("contract_id: contractId") &&
+    supportPage.includes("browser_context") &&
+    contractAdminViewer.includes("buildSupportTicketPath") &&
+    contractViewer.includes("buildSupportTicketPath") &&
+    adminDashboard.includes("ticketCategoryFilter") &&
+    adminDashboard.includes("계약 열기") &&
+    qaStandard.includes("support contract context") &&
+    legalDocumentPage.includes("고객지원 문의하기") &&
+    legalEntity.includes('`${PRODUCT_NAME} 운영팀`') &&
+    !legalEntity.includes('defaultLegalOperatorName = "김재우"') &&
+    !envExample.includes('VITE_LEGAL_OPERATOR_NAME="김재우"') &&
+    seedTestAccounts.includes("YEOLLOCK_ALLOW_PRODUCTION_TEST_DATA") &&
+    seedQaMarketplaceScenario.includes("YEOLLOCK_ALLOW_PRODUCTION_TEST_DATA") &&
+    operationalSupportTicketsMigration.includes("alter table public.operational_support_tickets enable row level security") &&
+    operationalSupportTicketsMigration.includes("revoke all on public.operational_support_tickets from public, anon, authenticated") &&
+    operationalSupportTicketsExtensionMigration.includes("contract_id text") &&
+    operationalSupportTicketsExtensionMigration.includes("browser_context jsonb") &&
+    agents.includes("operation/test separation"),
+  "운영 문의는 관리자 대시보드에서 처리하고, 계약 문의/버그 제보는 안전한 계약·화면 맥락을 갖고 접수되어야 하며, 운영 DB에는 테스트 데이터를 기본 주입하지 않아야 합니다.",
 );
 
 check(

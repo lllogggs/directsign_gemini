@@ -28,6 +28,7 @@ import { buildContractShareUrl } from "../../domain/links";
 import { PRODUCT_NAME } from "../../domain/brand";
 import { LEGAL_CONTACT_EMAIL } from "../../domain/legalEntity";
 import { SUPPORT_ACCESS_CONSENT_TEXT } from "../../domain/legalConsent";
+import { buildSupportTicketPath } from "../../domain/support";
 import { verificationStatusLabel } from "../../domain/verification";
 import {
   clearVerificationSummaryCache,
@@ -216,6 +217,18 @@ export function ContractAdminViewer() {
   const isContractSignedOrClosed =
     contract?.status === "SIGNED" || contract?.status === "CLOSED";
   const isFixedCampaign = isFixedCampaignContract(contract);
+  const contractSupportPath = useMemo(
+    () =>
+      contract
+        ? buildSupportTicketPath({
+            category: "contract_flow",
+            role: "advertiser",
+            contractId: contract.id,
+            contractTitle: formatContractTitleForDisplay(contract.title),
+          })
+        : "/support",
+    [contract],
+  );
   const reviewableClauses = useMemo(() => {
     if (!contract || isContractSignedOrClosed || isFixedCampaign) return [];
 
@@ -1067,6 +1080,15 @@ export function ContractAdminViewer() {
                 </div>
               </div>
             </details>
+
+            <button
+              type="button"
+              onClick={() => navigate(contractSupportPath)}
+              className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white text-[13px] font-semibold text-neutral-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-neutral-300 hover:bg-neutral-50"
+            >
+              <LifeBuoy className="h-4 w-4" />
+              계약 문의
+            </button>
 
             <details className="group overflow-hidden rounded-lg border border-neutral-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04),0_14px_36px_rgba(15,23,42,0.05)]">
               <summary className="flex h-11 cursor-pointer list-none items-center justify-between px-4 text-[14px] font-semibold text-neutral-950 [&::-webkit-details-marker]:hidden">

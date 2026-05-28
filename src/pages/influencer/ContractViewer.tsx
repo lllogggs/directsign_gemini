@@ -47,6 +47,7 @@ import {
   SIGNATURE_CONSENT_TEXT,
   SUPPORT_ACCESS_CONSENT_TEXT,
 } from "../../domain/legalConsent";
+import { buildSupportTicketPath } from "../../domain/support";
 import { ScreenHelpButton } from "../../components/ScreenHelp";
 import { SCREEN_HELP_CONTENT } from "../../domain/screenHelp";
 import { Textarea } from "@/components/ui/textarea";
@@ -1018,6 +1019,12 @@ export function ContractViewer() {
     ? format(new Date(contract.campaign.deadline), "yyyy.MM.dd")
     : contract.campaign?.end_date || contract.campaign?.period || "미지정";
   const displayContractTitle = formatContractTitleForDisplay(contract.title);
+  const contractSupportPath = buildSupportTicketPath({
+    category: "contract_flow",
+    role: "influencer",
+    contractId: contract.id,
+    contractTitle: displayContractTitle,
+  });
   const displayInfluencerName = removeInternalTestLabel(
     contract.influencer_info.name,
     "인플루언서",
@@ -2102,6 +2109,15 @@ export function ContractViewer() {
               </button>
             </div>
           )}
+
+          <button
+            type="button"
+            onClick={() => navigate(contractSupportPath)}
+            className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white text-[13px] font-semibold text-neutral-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-neutral-300 hover:bg-neutral-50"
+          >
+            <LifeBuoy className="h-4 w-4" />
+            계약 문의
+          </button>
 
           <div className="rounded-lg border border-neutral-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_14px_36px_rgba(15,23,42,0.05)]">
             {isOperatorSupportView ? (

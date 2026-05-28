@@ -27,6 +27,7 @@ const routeLabels: Record<(typeof staticSeoRoutePaths)[number], string> = {
   "/privacy": "개인정보 처리방침",
   "/terms": "이용약관",
   "/legal/e-sign-consent": "전자서명 안내",
+  "/support": "고객지원",
 };
 
 const escapeRegex = (value: string) =>

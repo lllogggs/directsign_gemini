@@ -40,6 +40,7 @@ const loadInfluencerLoginPage = () =>
 const loadSystemAdminDashboard = () =>
   import("./pages/admin/SystemAdminDashboard");
 const loadLegalDocumentPage = () => Promise.resolve({ LegalDocumentPage });
+const loadSupportPage = () => import("./pages/support/SupportPage");
 const loadMarketplacePages = () => import("./pages/marketplace/MarketplacePages");
 const loadMarketplaceInboxPage = () =>
   import("./pages/marketplace/MarketplaceInboxPage");
@@ -160,6 +161,11 @@ const InfluencerLoginPage = lazy(() =>
 const SystemAdminDashboard = lazy(() =>
   loadSystemAdminDashboard().then((module) => ({
     default: module.SystemAdminDashboard,
+  })),
+);
+const SupportPage = lazy(() =>
+  loadSupportPage().then((module) => ({
+    default: module.SupportPage,
   })),
 );
 const AdvertiserInfluencerDiscoveryPage = lazy(() =>
@@ -463,7 +469,7 @@ const officialInstagramHandle =
     .trim()
     .replace(/^@+/, "") || "yeollockme";
 const publicSameAsUrls = [`https://www.instagram.com/${officialInstagramHandle}/`];
-const seoDateModified = "2026-05-27";
+const seoDateModified = "2026-05-28";
 
 type RouteSeoConfig = {
   title: string;
@@ -675,6 +681,13 @@ const getRouteSeoConfig = (pathname: string): RouteSeoConfig => {
       canonicalPath: "/legal/e-sign-consent",
       robots: publicRobotsContent,
     },
+    "/support": {
+      title: `고객지원 - ${PRODUCT_NAME}`,
+      description:
+        "연락미 장애, 계정, 계약 흐름, 개인정보 문의를 접수하는 고객지원 채널입니다.",
+      canonicalPath: "/support",
+      robots: publicRobotsContent,
+    },
   };
 
   const knownPage = knownPages[normalizedPath];
@@ -775,6 +788,14 @@ const publicSearchIntentPages: Record<string, IntentAwareSeoCopy> = {
     canonicalPath: "/legal/e-sign-consent",
     robots: publicRobotsContent,
     keywords: ["광고 계약 전자서명", "인플루언서 계약 서명", "전자서명 증빙"],
+  },
+  "/support": {
+    title: `고객지원 - ${PRODUCT_NAME}`,
+    description:
+      "연락미 장애, 계정, 계약 흐름, 개인정보 문의를 접수합니다.",
+    canonicalPath: "/support",
+    robots: publicRobotsContent,
+    keywords: ["연락미 문의", "광고 계약 오류 문의", "전자계약 고객지원"],
   },
 };
 
@@ -919,6 +940,7 @@ const getExactRoutePreloaders = (pathname: string): RouteModuleLoader[] => {
   ) {
     return [loadLegalDocumentPage];
   }
+  if (pathname === "/support") return [loadSupportPage];
   if (pathname === "/advertiser/dashboard") return [loadDashboard];
   if (pathname === "/advertiser/builder") return [loadContractBuilder];
   if (pathname === "/advertiser/discover") return [loadMarketplacePages];
@@ -1232,6 +1254,7 @@ function AppRoutes() {
             path="/legal/e-sign-consent"
             element={<LegalDocumentPage documentType="eSignConsent" />}
           />
+          <Route path="/support" element={<SupportPage />} />
           <Route path="/admin/login" element={<SystemAdminDashboard loginOnly />} />
           <Route path="/admin" element={<SystemAdminDashboard />} />
           <Route path="/marketing/*" element={<LegacyMarketingRedirect />} />

@@ -14,6 +14,17 @@ const PUBLIC_SITE_URL = (
   process.env.VITE_PUBLIC_SITE_URL ??
   "https://yeollock.me"
 ).replace(/\/$/, "");
+const ALLOW_PRODUCTION_TEST_DATA =
+  process.env.YEOLLOCK_ALLOW_PRODUCTION_TEST_DATA === "true";
+
+const isProductionHost = (value) =>
+  /^https:\/\/(www\.)?yeollock\.me$/i.test(value);
+
+if (!ALLOW_PRODUCTION_TEST_DATA && isProductionHost(PUBLIC_SITE_URL)) {
+  throw new Error(
+    "Production test data seeding is blocked. Set PUBLIC_SITE_URL to a non-production target, or set YEOLLOCK_ALLOW_PRODUCTION_TEST_DATA=true for an approved one-time run.",
+  );
+}
 
 const ACCOUNT_COUNT = 5;
 const timestamp = new Date().toISOString();

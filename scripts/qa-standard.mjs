@@ -418,6 +418,18 @@ const browserRenderRoutes = [
     requiredText: ["전자서명 안내"],
     minTextLength: 120,
   },
+  {
+    name: "support",
+    path: "/support",
+    requiredText: ["문의 접수", "정산, 지급대행", "yeollockme@gmail.com"],
+    minTextLength: 120,
+  },
+  {
+    name: "support contract context",
+    path: "/support?category=contract_flow&role=advertiser&contract_id=demo-contract-001&contract_title=%EB%B8%8C%EB%A0%88%EB%93%9C%EB%A3%B8%20%EA%B3%84%EC%95%BD%20%EB%AC%B8%EC%9D%98",
+    requiredText: ["문의 접수", "브레드룸 계약 문의", "demo-contract-001"],
+    minTextLength: 120,
+  },
 ];
 
 const browserRenderViewports = [
@@ -1488,6 +1500,13 @@ const main = async () => {
       await smokeMethodRoute(
         server.baseUrl,
         "POST",
+        "/api/support/tickets",
+        [422],
+        { requester_email: "invalid", subject: "x", message: "short" },
+      ),
+      await smokeMethodRoute(
+        server.baseUrl,
+        "POST",
         "/api/contracts/nonexistent/signatures/influencer",
         [400],
         {},
@@ -1534,6 +1553,7 @@ const main = async () => {
       await smokeRoute(server.baseUrl, "/privacy", [200]),
       await smokeRoute(server.baseUrl, "/terms", [200]),
       await smokeRoute(server.baseUrl, "/legal/e-sign-consent", [200]),
+      await smokeRoute(server.baseUrl, "/support", [200]),
     );
     requiredChecks.push(await checkBrowserRenderedRoutes(server.baseUrl));
     requiredChecks.push(await checkBrowserPerformance(server.baseUrl));

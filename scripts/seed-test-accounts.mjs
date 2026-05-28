@@ -21,6 +21,20 @@ const DASHBOARD_BASE_URL = (
 ).replace(/\/$/, "");
 const LEGACY_CONTRACTS_TABLE =
   process.env.SUPABASE_CONTRACTS_TABLE ?? "directsign_contracts";
+const ALLOW_PRODUCTION_TEST_DATA =
+  process.env.YEOLLOCK_ALLOW_PRODUCTION_TEST_DATA === "true";
+
+const isProductionHost = (value) =>
+  /^https:\/\/(www\.)?yeollock\.me$/i.test(value);
+
+if (
+  !ALLOW_PRODUCTION_TEST_DATA &&
+  (isProductionHost(PUBLIC_SITE_URL) || isProductionHost(DASHBOARD_BASE_URL))
+) {
+  throw new Error(
+    "Production test data seeding is blocked. Set QA_BASE_URL/DASHBOARD_BASE_URL to a non-production target, or set YEOLLOCK_ALLOW_PRODUCTION_TEST_DATA=true for an approved one-time run.",
+  );
+}
 
 const timestamp = new Date().toISOString();
 

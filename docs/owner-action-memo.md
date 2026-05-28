@@ -17,7 +17,7 @@
 - 실제 광고주 계정 1개로 사업자 인증부터 계약 작성, 공유 링크 발송까지 테스트합니다.
 - 실제 인플루언서 계정 1개로 계약 링크 열기, 가입/로그인 후 복귀, 인스타 DM 인증 요청, 관리자 승인, 서명까지 테스트합니다.
 - 아직 받지 않은 외부 API는 우선순위를 정합니다: Naver Search API, Meta App/OAuth/Webhook, TikTok Developer App. Meta는 승인 전까지 필수로 보지 말고 DM 수동 인증으로 운영합니다.
-- 공개 법적 고지에는 운영자명 `김재우`, 문의 이메일 `yeollockme@gmail.com`을 사용합니다. 사업자번호, 주소, 전화번호는 유료화 또는 사업자 명의 운영 전 별도 검토로 둡니다.
+- 공개 법적 고지는 초기 검증 단계에서 문의 이메일 `yeollockme@gmail.com` 중심으로 둡니다. 운영자 개인명, 사업자번호, 주소, 전화번호는 유료화 또는 사업자 명의 운영 전 별도 검토로 둡니다.
 
 ## 1. 가입 플로우 직접 확인
 
@@ -30,12 +30,12 @@
 
 ## 2. Vercel Production legal env 확인
 
-현재는 `free_individual` 운영으로 두고, 공개 담당자명과 문의 이메일만 표시합니다. 유료화하거나 사업자 명의 운영으로 전환할 때만 사업자 정보 값을 실제 정보로 바꿉니다.
+현재는 `free_individual` 운영으로 두고, 공개 문의 이메일 중심으로 표시합니다. 유료화하거나 사업자 명의 운영으로 전환할 때만 운영자 개인명과 사업자 정보 값을 실제 정보로 바꿉니다.
 
 ```env
 VITE_LEGAL_OPERATING_MODE="free_individual"
-VITE_LEGAL_OPERATOR_NAME="김재우"
-VITE_LEGAL_REPRESENTATIVE_NAME="김재우"
+VITE_LEGAL_OPERATOR_NAME=""
+VITE_LEGAL_REPRESENTATIVE_NAME=""
 VITE_LEGAL_CONTACT_EMAIL="yeollockme@gmail.com"
 VITE_LEGAL_CONTACT_PHONE=""
 VITE_LEGAL_BUSINESS_REGISTRATION_NUMBER=""
@@ -45,7 +45,7 @@ VITE_LEGAL_ADDRESS=""
 
 `free_individual`에서는 사업자등록번호, 주소, 전화번호, 통신판매업 신고번호 입력을 요구하지 않습니다. 이 항목들은 운영 전 확인 TODO로만 남기고, 현재 개발·QA 흐름을 막지 않습니다.
 
-설정 후 production을 다시 배포하고 아래 문서가 placeholder 없이 `김재우`와 `yeollockme@gmail.com`으로 표시되는지 확인합니다.
+설정 후 production을 다시 배포하고 아래 문서가 placeholder 없이 `yeollockme@gmail.com` 문의 채널을 표시하는지 확인합니다.
 
 - `https://yeollock.me/privacy`
 - `https://yeollock.me/terms`

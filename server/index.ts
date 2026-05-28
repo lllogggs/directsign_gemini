@@ -207,6 +207,52 @@ interface SupportAccessStoreFile {
   support_access_requests: SupportAccessRequestRecord[];
 }
 
+type OperationalSupportTicketCategory =
+  | "service_error"
+  | "account_access"
+  | "contract_flow"
+  | "settlement_question"
+  | "privacy_request"
+  | "other";
+type OperationalSupportTicketRequesterRole =
+  | "advertiser"
+  | "influencer"
+  | "operator"
+  | "other";
+type OperationalSupportTicketSeverity = "low" | "normal" | "high" | "urgent";
+type OperationalSupportTicketStatus =
+  | "open"
+  | "reviewing"
+  | "resolved"
+  | "closed";
+
+interface OperationalSupportTicketRecord {
+  id: string;
+  category: OperationalSupportTicketCategory;
+  requester_role: OperationalSupportTicketRequesterRole;
+  requester_name?: string;
+  requester_email: string;
+  subject: string;
+  message: string;
+  context_url?: string;
+  contract_id?: string;
+  contract_title?: string;
+  page_path?: string;
+  browser_context?: Record<string, unknown>;
+  severity: OperationalSupportTicketSeverity;
+  status: OperationalSupportTicketStatus;
+  admin_note?: string;
+  source: string;
+  ip_hash?: string;
+  user_agent?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface OperationalSupportTicketStoreFile {
+  support_tickets: OperationalSupportTicketRecord[];
+}
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..");
 const localDataDirName = ["da", "ta"].join("");
@@ -216,6 +262,7 @@ const dataDir = process.env.DATA_DIR
 const dataFile = path.join(dataDir, "contracts.json");
 const verificationDataFile = path.join(dataDir, "verification-requests.json");
 const supportAccessDataFile = path.join(dataDir, "support-access-requests.json");
+const supportTicketDataFile = path.join(dataDir, "support-tickets.json");
 const port = Number(process.env.PORT ?? 3000);
 const isHostedRuntime =
   Boolean(process.env.VERCEL) ||
@@ -2386,6 +2433,257 @@ const appendSupportAccessAuditEvent = async (
 
   await appendSupportAccessEventRow(updated, auditEvent);
   return updated;
+};
+
+const supportTicketTable = "operational_support_tickets";
+let supportTicketReadFallbackWarned = false;
+let supportTicketWriteFallbackWarned = false;
+const allowLocalSupportTicketStore = !useSupabase || demoMode;
+
+const supportTicketCategories = new Set<OperationalSupportTicketCategory>([
+  "service_error",
+  "account_access",
+  "contract_flow",
+  "settlement_question",
+  "privacy_request",
+  "other",
+]);
+const supportTicketRequesterRoles = new Set<OperationalSupportTicketRequesterRole>([
+  "advertiser",
+  "influencer",
+  "operator",
+  "other",
+]);
+const supportTicketSeverities = new Set<OperationalSupportTicketSeverity>([
+  "low",
+  "normal",
+  "high",
+  "urgent",
+]);
+const supportTicketStatuses = new Set<OperationalSupportTicketStatus>([
+  "open",
+  "reviewing",
+  "resolved",
+  "closed",
+]);
+
+const sanitizeSupportContextUrl = (value: unknown) => {
+  const normalized = normalizeOptionalText(value);
+  if (!normalized) return undefined;
+
+  try {
+    const parsed = normalized.startsWith("/")
+      ? new URL(normalized, "https://yeollock.me")
+      : new URL(normalized);
+    return parsed.origin === "https://yeollock.me"
+      ? parsed.pathname
+      : `${parsed.origin}${parsed.pathname}`.slice(0, 500);
+  } catch {
+    return normalized.startsWith("/") ? normalized.split("?")[0]?.slice(0, 500) : undefined;
+  }
+};
+
+const normalizeSupportTicketContractId = (value: unknown) => {
+  const normalized = normalizeOptionalText(value);
+  if (!normalized) return undefined;
+  const cleaned = normalized.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 80);
+  return cleaned || undefined;
+};
+
+const normalizeSupportBrowserContext = (value: unknown) => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const source = value as Record<string, unknown>;
+  const context: Record<string, unknown> = {};
+
+  for (const key of ["viewport", "devicePixelRatio", "timezone", "language"]) {
+    const item = source[key];
+    if (typeof item === "string") context[key] = item.slice(0, 120);
+    if (typeof item === "number" && Number.isFinite(item)) context[key] = item;
+  }
+
+  return context;
+};
+
+const createMissingSupportTicketStoreError = () =>
+  new Error(
+    "Supabase operational_support_tickets table is required when Supabase storage is enabled.",
+  );
+
+const isMissingSupabaseSupportTicketTableError = (error: unknown) =>
+  error instanceof Error &&
+  (error.message.includes("operational_support_tickets") ||
+    error.message.includes("schema cache") ||
+    error.message.includes("Could not find the table") ||
+    error.message.includes("relation")) &&
+  (error.message.includes("404") ||
+    error.message.includes("400") ||
+    error.message.includes("PGRST205") ||
+    error.message.includes("does not exist") ||
+    error.message.includes("schema cache"));
+
+const normalizeSupportTicket = (
+  row: OperationalSupportTicketRecord,
+): OperationalSupportTicketRecord => ({
+  id: row.id,
+  category: supportTicketCategories.has(row.category) ? row.category : "other",
+  requester_role: supportTicketRequesterRoles.has(row.requester_role)
+    ? row.requester_role
+    : "other",
+  requester_name: row.requester_name ?? undefined,
+  requester_email: row.requester_email,
+  subject: row.subject,
+  message: row.message,
+  context_url: row.context_url ?? undefined,
+  contract_id: row.contract_id ?? undefined,
+  contract_title: row.contract_title ?? undefined,
+  page_path: row.page_path ?? undefined,
+  browser_context:
+    row.browser_context && typeof row.browser_context === "object"
+      ? row.browser_context
+      : {},
+  severity: supportTicketSeverities.has(row.severity) ? row.severity : "normal",
+  status: supportTicketStatuses.has(row.status) ? row.status : "open",
+  admin_note: row.admin_note ?? undefined,
+  source: row.source ?? "support_page",
+  ip_hash: row.ip_hash ?? undefined,
+  user_agent: row.user_agent ?? undefined,
+  created_at: row.created_at,
+  updated_at: row.updated_at,
+});
+
+const readSupportTicketsFromFile = async () => {
+  try {
+    const contents = await fs.readFile(supportTicketDataFile, "utf8");
+    const parsed = JSON.parse(contents) as OperationalSupportTicketStoreFile;
+
+    if (!Array.isArray(parsed.support_tickets)) {
+      throw new Error("Invalid support ticket store");
+    }
+
+    return parsed.support_tickets.map(normalizeSupportTicket);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code && code !== "ENOENT") {
+      console.warn(`[yeollock.me] resetting invalid support ticket store: ${code}`);
+    }
+    return [];
+  }
+};
+
+const writeSupportTicketsToFile = async (
+  records: OperationalSupportTicketRecord[],
+) => {
+  await fs.mkdir(dataDir, { recursive: true });
+  const tempFile = `${supportTicketDataFile}.tmp`;
+  await fs.writeFile(
+    tempFile,
+    JSON.stringify({ support_tickets: records }, null, 2),
+    "utf8",
+  );
+  await fs.rename(tempFile, supportTicketDataFile);
+};
+
+const readSupportTickets = async () => {
+  if (useSupabase) {
+    try {
+      const rows = await readSupabaseRows<OperationalSupportTicketRecord>(
+        supportTicketTable,
+        "?select=*&order=created_at.desc",
+        "operational support tickets",
+      );
+      return rows.map(normalizeSupportTicket);
+    } catch (error) {
+      if (!isMissingSupabaseSupportTicketTableError(error)) {
+        throw error;
+      }
+      if (!allowLocalSupportTicketStore) {
+        throw createMissingSupportTicketStoreError();
+      }
+      if (!supportTicketReadFallbackWarned) {
+        console.warn(
+          "[yeollock.me] operational_support_tickets table is not available; using local support ticket store.",
+        );
+        supportTicketReadFallbackWarned = true;
+      }
+    }
+  }
+
+  return readSupportTicketsFromFile();
+};
+
+const insertSupportTicket = async (
+  record: OperationalSupportTicketRecord,
+) => {
+  if (useSupabase) {
+    try {
+      const [inserted] =
+        await insertSupabaseRowsReturning<OperationalSupportTicketRecord>(
+          supportTicketTable,
+          [record as unknown as Record<string, unknown>],
+          "operational support ticket",
+        );
+      if (inserted) return normalizeSupportTicket(inserted);
+    } catch (error) {
+      if (!isMissingSupabaseSupportTicketTableError(error)) {
+        throw error;
+      }
+      if (!allowLocalSupportTicketStore) {
+        throw createMissingSupportTicketStoreError();
+      }
+      if (!supportTicketWriteFallbackWarned) {
+        console.warn(
+          "[yeollock.me] operational_support_tickets table is not available; writing support tickets locally.",
+        );
+        supportTicketWriteFallbackWarned = true;
+      }
+    }
+  }
+
+  const current = await readSupportTicketsFromFile();
+  const next = [record, ...current.filter((item) => item.id !== record.id)];
+  await writeSupportTicketsToFile(next);
+  return record;
+};
+
+const updateSupportTicket = async (
+  record: OperationalSupportTicketRecord,
+) => {
+  const updatedRecord = {
+    ...record,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (useSupabase) {
+    try {
+      const response = await fetchSupabase(
+        supportTicketTable,
+        `?id=eq.${encodeURIComponent(record.id)}`,
+        {
+          method: "PATCH",
+          headers: { Prefer: "return=representation" },
+          body: JSON.stringify(updatedRecord),
+        },
+      );
+      await assertSupabaseOk(response, "Supabase operational support ticket update");
+      const [updated] =
+        (await response.json()) as OperationalSupportTicketRecord[];
+      if (updated) return normalizeSupportTicket(updated);
+    } catch (error) {
+      if (!isMissingSupabaseSupportTicketTableError(error)) {
+        throw error;
+      }
+      if (!allowLocalSupportTicketStore) {
+        throw createMissingSupportTicketStoreError();
+      }
+    }
+  }
+
+  const current = await readSupportTicketsFromFile();
+  const next = current.map((item) =>
+    item.id === updatedRecord.id ? updatedRecord : item,
+  );
+  await writeSupportTicketsToFile(next);
+  return updatedRecord;
 };
 
 const bindContractToAdvertiser = async (
@@ -13478,6 +13776,110 @@ app.get("/api/auth/warmup", async (_request, response) => {
   response.status(204).end();
 });
 
+app.post("/api/support/tickets", async (request, response, next) => {
+  try {
+    const requesterEmail = normalizeEmail(request.body?.requester_email);
+    const throttle = consumeSensitiveEndpointRateLimit(
+      request,
+      "operational_support_ticket",
+      requesterEmail || getClientIp(request),
+    );
+    if (throttle.blocked) {
+      sendSensitiveRateLimitResponse(response, throttle);
+      return;
+    }
+
+    if (!isValidEmail(requesterEmail)) {
+      response.status(422).json({ error: "문의 받을 이메일을 확인해 주세요." });
+      return;
+    }
+
+    const categoryInput = normalizeRequiredText(request.body?.category);
+    const requesterRoleInput = normalizeRequiredText(request.body?.requester_role);
+    const severityInput = normalizeRequiredText(request.body?.severity);
+    const subject = normalizeRequiredText(request.body?.subject);
+    const message = normalizeRequiredText(request.body?.message);
+    const requesterName = normalizeOptionalText(request.body?.requester_name);
+    const contextUrl = sanitizeSupportContextUrl(request.body?.context_url);
+    const pagePath = sanitizeSupportContextUrl(
+      request.body?.page_path ?? request.body?.context_url,
+    );
+    const contractId = normalizeSupportTicketContractId(request.body?.contract_id);
+    const contractTitle = normalizeOptionalText(request.body?.contract_title)?.slice(
+      0,
+      120,
+    );
+    const browserContext = normalizeSupportBrowserContext(
+      request.body?.browser_context,
+    );
+
+    if (subject.length < 2 || subject.length > 120) {
+      response.status(422).json({ error: "문의 제목은 2~120자로 입력해 주세요." });
+      return;
+    }
+
+    if (message.length < 10 || message.length > 2000) {
+      response.status(422).json({ error: "문의 내용은 10~2000자로 입력해 주세요." });
+      return;
+    }
+
+    if (
+      contextUrl &&
+      !contextUrl.startsWith("/") &&
+      !/^https?:\/\//i.test(contextUrl)
+    ) {
+      response.status(422).json({ error: "화면 주소 형식이 올바르지 않습니다." });
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const ticket = await insertSupportTicket({
+      id: randomUUID(),
+      category: supportTicketCategories.has(
+        categoryInput as OperationalSupportTicketCategory,
+      )
+        ? (categoryInput as OperationalSupportTicketCategory)
+        : "other",
+      requester_role: supportTicketRequesterRoles.has(
+        requesterRoleInput as OperationalSupportTicketRequesterRole,
+      )
+        ? (requesterRoleInput as OperationalSupportTicketRequesterRole)
+        : "other",
+      requester_name: requesterName,
+      requester_email: requesterEmail,
+      subject,
+      message,
+      context_url: contextUrl,
+      contract_id: contractId,
+      contract_title: contractTitle,
+      page_path: pagePath,
+      browser_context: browserContext,
+      severity: supportTicketSeverities.has(
+        severityInput as OperationalSupportTicketSeverity,
+      )
+        ? (severityInput as OperationalSupportTicketSeverity)
+        : "normal",
+      status: "open",
+      source: "support_page",
+      ip_hash: sha256Hex(`support-ticket:${getClientIp(request)}`),
+      user_agent: request.header("user-agent")?.slice(0, 500),
+      created_at: now,
+      updated_at: now,
+    });
+
+    response.status(201).json({
+      ticket: {
+        id: ticket.id,
+        status: ticket.status,
+        created_at: ticket.created_at,
+      },
+      message: "문의가 접수되었습니다.",
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.get("/api/admin/session", (request, response) => {
   const token = parseCookies(request.header("cookie")).get(adminSessionCookie);
   response.json({
@@ -13539,10 +13941,16 @@ app.get("/api/admin/metrics", async (request, response, next) => {
   try {
     if (!requireAdminSession(request, response)) return;
 
-    const [store, supportAccessRequests, verificationRequests] = await Promise.all([
+    const [
+      store,
+      supportAccessRequests,
+      verificationRequests,
+      supportTickets,
+    ] = await Promise.all([
       readStore(),
       readSupportAccessRequests(),
       readVerificationRequests(),
+      readSupportTickets(),
     ]);
     const metrics = await buildAdminMetrics(
       store.contracts,
@@ -13558,8 +13966,68 @@ app.get("/api/admin/metrics", async (request, response, next) => {
           ).length,
           total_count: verificationRequests.length,
         },
+        support_tickets: {
+          open_count: supportTickets.filter(
+            (ticket) => ticket.status === "open" || ticket.status === "reviewing",
+          ).length,
+          total_count: supportTickets.length,
+        },
       },
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/admin/support-tickets", async (request, response, next) => {
+  try {
+    if (!requireAdminSession(request, response)) return;
+
+    response.json({
+      support_tickets: await readSupportTickets(),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch("/api/admin/support-tickets/:id", async (request, response, next) => {
+  try {
+    const throttle = consumeSensitiveEndpointRateLimit(
+      request,
+      "admin_support_ticket_update",
+      request.params.id,
+    );
+    if (throttle.blocked) {
+      sendSensitiveRateLimitResponse(response, throttle);
+      return;
+    }
+
+    if (!requireAdminSession(request, response)) return;
+
+    const status = normalizeRequiredText(request.body?.status);
+    const adminNote = normalizeOptionalText(request.body?.admin_note);
+
+    if (!supportTicketStatuses.has(status as OperationalSupportTicketStatus)) {
+      response.status(422).json({ error: "문의 상태를 다시 선택해 주세요." });
+      return;
+    }
+
+    const tickets = await readSupportTickets();
+    const ticket = tickets.find((item) => item.id === request.params.id);
+
+    if (!ticket) {
+      response.status(404).json({ error: "문의 내역을 찾을 수 없습니다." });
+      return;
+    }
+
+    const updated = await updateSupportTicket({
+      ...ticket,
+      status: status as OperationalSupportTicketStatus,
+      admin_note: adminNote,
+    });
+
+    response.json({ ticket: updated });
   } catch (error) {
     next(error);
   }

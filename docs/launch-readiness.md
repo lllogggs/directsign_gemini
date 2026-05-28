@@ -1,6 +1,6 @@
 # yeollock.me Launch Readiness
 
-Last reviewed: 2026-05-04
+Last reviewed: 2026-05-28
 
 ## Current Scope
 
@@ -13,16 +13,23 @@ issuance, withholding, refund processing, or collection services. Contract
 payment terms can be recorded as clauses, but actual payment and tax handling
 remain between the contract parties.
 
+Operational support is centralized through `/support` and `/admin`. Customer
+error, account, contract-flow, privacy, and settlement-boundary questions are
+stored in `operational_support_tickets`; operators review and close them from
+the admin dashboard. Email fallback remains `yeollockme@gmail.com`, while
+contract-screen and bug-report entries should create structured tickets with
+safe contract/page context.
+
 ## Must Before Public Launch
 
 Owner-only checklist: see [`owner-action-memo.md`](owner-action-memo.md).
 
 - Keep `/privacy`, `/terms`, and `/legal/e-sign-consent` free of placeholder
   launch text. For the initial free individual service, keep
-  `VITE_LEGAL_OPERATING_MODE="free_individual"` and show the public operator
-  contact as `김재우` / `yeollockme@gmail.com`; business number, mail-order
-  registration, address, and phone are not required for development, QA, or
-  early validation. Before paid or registered-business use, switch to
+  `VITE_LEGAL_OPERATING_MODE="free_individual"` and use the public inquiry
+  channel `yeollockme@gmail.com`; operator personal/business fields can remain
+  blank during development, QA, and early validation. Before paid or
+  registered-business use, switch to
   `VITE_LEGAL_OPERATING_MODE="registered_business"` and add the business
   number, mail-order registration if applicable, address, and phone.
 - Confirm the privacy policy against the current PIPC privacy policy guide.
@@ -63,6 +70,16 @@ Owner-only checklist: see [`owner-action-memo.md`](owner-action-memo.md).
   what is accepted, rejection reason templates, and support SLA.
 - Confirm support access operations: party request required, 24-hour access
   window, audit log review, and PDF access scope.
+- Keep operating data and test/demo data separated. Production seed scripts are
+  blocked unless `YEOLLOCK_ALLOW_PRODUCTION_TEST_DATA=true` is explicitly set
+  for an approved one-time run, and QA seeds should normally target localhost or
+  preview URLs only.
+- Apply `20260528135700_create_operational_support_tickets.sql` before public
+  operation so customer inquiries are stored separately from contracts,
+  verification evidence, and audited support-access requests.
+- Apply `20260528144856_extend_operational_support_tickets.sql` so operator
+  triage can see safe contract ids, display titles, page paths, and non-sensitive
+  browser context for bug reports without storing share tokens or signatures.
 - Confirm e-signature UX and evidence. 전자서명법 제3조 recognizes that an
   electronic signature is not denied effect only because it is electronic:
   https://law.go.kr/lsLinkProc.do?chrClsCd=010202&datClsCd=010102&gubun=admRul&joNo=000300000&lsId=33982&lsNm=%EC%A0%84%EC%9E%90%EC%84%9C%EB%AA%85%EB%B2%95&mode=10
