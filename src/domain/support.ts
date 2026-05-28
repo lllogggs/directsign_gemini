@@ -2,7 +2,6 @@ export type SupportTicketCategory =
   | "service_error"
   | "account_access"
   | "contract_flow"
-  | "settlement_question"
   | "privacy_request"
   | "other";
 

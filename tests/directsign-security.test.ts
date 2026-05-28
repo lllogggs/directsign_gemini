@@ -301,6 +301,7 @@ describe("yeollock.me security regressions", () => {
     assert.match(launchReadiness, /20260518044009_add_marketplace_follower_sync\.sql/);
     assert.match(launchReadiness, /20260528135700_create_operational_support_tickets\.sql/);
     assert.match(launchReadiness, /20260528144856_extend_operational_support_tickets\.sql/);
+    assert.match(launchReadiness, /20260529090000_remove_settlement_support_ticket_category\.sql/);
   });
 
   it("separates production data from test seeds and centralizes support tickets", () => {
@@ -320,6 +321,9 @@ describe("yeollock.me security regressions", () => {
     );
     const extensionMigration = read(
       "supabase/migrations/20260528144856_extend_operational_support_tickets.sql",
+    );
+    const settlementCategoryRemovalMigration = read(
+      "supabase/migrations/20260529090000_remove_settlement_support_ticket_category.sql",
     );
 
     assert.match(envExample, /YEOLLOCK_ALLOW_PRODUCTION_TEST_DATA="false"/);
@@ -341,6 +345,12 @@ describe("yeollock.me security regressions", () => {
     assert.match(app, /path="\/support"/);
     assert.match(supportDomain, /buildSupportTicketPath/);
     assert.match(supportPage, /정산, 지급대행, 에스크로, 세금 처리는 연락미가 직접 처리하지/);
+    assert.doesNotMatch(server, /settlement_question/);
+    assert.doesNotMatch(server, /settlement-inquiry/);
+    assert.doesNotMatch(supportDomain, /settlement_question/);
+    assert.doesNotMatch(supportPage, /settlement_question|정산 문의/);
+    assert.doesNotMatch(influencerViewer, /settlement-inquiry|정산 미지급 문의|정산 문의/);
+    assert.doesNotMatch(adminDashboard, /settlement_question|정산 문의/);
     assert.match(supportPage, /contract_id: contractId/);
     assert.match(supportPage, /browser_context/);
     assert.match(advertiserViewer, /buildSupportTicketPath/);
@@ -360,6 +370,12 @@ describe("yeollock.me security regressions", () => {
     assert.match(extensionMigration, /browser_context jsonb/);
     assert.match(extensionMigration, /operational_support_tickets_contract_created_idx/);
     assert.match(extensionMigration, /Public share tokens and signatures must not be stored/);
+    assert.match(settlementCategoryRemovalMigration, /where category = 'settlement_question'/);
+    assert.match(settlementCategoryRemovalMigration, /drop constraint if exists operational_support_tickets_category/);
+    assert.doesNotMatch(
+      settlementCategoryRemovalMigration.replace(/where category = 'settlement_question'/g, ""),
+      /'settlement_question'/,
+    );
   });
 
   it("blocks authenticated Data API writes for security-sensitive tables", () => {

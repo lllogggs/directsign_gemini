@@ -366,7 +366,7 @@ function AppLoading({
               <span>서명</span>
               <span>제출</span>
               <span>검수</span>
-              <span>정산</span>
+              <span>증빙</span>
             </div>
             <span className="block h-9 w-full rounded-md bg-neutral-100" />
             <span className="block h-9 w-full rounded-md bg-neutral-100" />

@@ -211,7 +211,6 @@ type OperationalSupportTicketCategory =
   | "service_error"
   | "account_access"
   | "contract_flow"
-  | "settlement_question"
   | "privacy_request"
   | "other";
 type OperationalSupportTicketRequesterRole =
@@ -2444,7 +2443,6 @@ const supportTicketCategories = new Set<OperationalSupportTicketCategory>([
   "service_error",
   "account_access",
   "contract_flow",
-  "settlement_question",
   "privacy_request",
   "other",
 ]);
@@ -16336,107 +16334,6 @@ app.post("/api/contracts/:id/close", async (request, response, next) => {
       contract: updatedContract,
       summary,
       message: "광고 계약 마감 완료",
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.post("/api/contracts/:id/settlement-inquiry", async (request, response, next) => {
-  try {
-    const throttle = consumeSensitiveEndpointRateLimit(
-      request,
-      "contract_settlement_inquiry",
-      request.params.id,
-    );
-    if (throttle.blocked) {
-      sendSensitiveRateLimitResponse(response, throttle);
-      return;
-    }
-
-    const influencerAuth = await requireInfluencerSession(request, response);
-    if (!influencerAuth) return;
-
-    const {
-      store,
-      existingContract: contract,
-    } = await readContractWriteContext(request.params.id);
-
-    if (!contract) {
-      response.status(404).json({ error: "Contract not found" });
-      return;
-    }
-    if (!canInfluencerAccessLegacyContract(influencerAuth, contract)) {
-      response.status(403).json({ error: "이 계약을 볼 권한이 없습니다." });
-      return;
-    }
-    if (contract.status !== "CLOSED") {
-      response.status(409).json({
-        error: "종료된 계약에서만 정산 미지급 문의를 남길 수 있습니다.",
-      });
-      return;
-    }
-
-    const now = new Date().toISOString();
-    const message =
-      normalizeOptionalText(request.body?.message) ??
-      "계약 종료 후 정산 미지급 문의";
-    const inquiry = {
-      id: randomUUID(),
-      status: "open" as const,
-      message,
-      requested_at: now,
-      requested_by_profile_id: influencerAuth.profile.id,
-      requested_by_name: influencerAuth.profile.name,
-    };
-    const updatedContract = normalizeContract({
-      ...contract,
-      settlement: {
-        ...(contract.settlement ?? {}),
-        status: "unpaid_inquiry",
-        inquiries: [...(contract.settlement?.inquiries ?? []), inquiry],
-      },
-      workflow: {
-        ...(contract.workflow ?? {
-          next_actor: "advertiser",
-          next_action: "정산 미지급 문의 확인",
-          risk_level: "medium",
-        }),
-        next_actor: "advertiser",
-        next_action: "정산 미지급 문의 확인",
-        last_message: "인플루언서가 정산 미지급 문의를 남겼습니다.",
-        risk_level: "medium",
-      },
-      audit_events: [
-        ...(contract.audit_events ?? []),
-        {
-          id: randomUUID(),
-          actor: "influencer",
-          action: "settlement_unpaid_inquiry",
-          description: "인플루언서가 종료된 계약의 정산 미지급 문의를 남겼습니다.",
-          created_at: now,
-        },
-      ],
-      updated_at: now,
-    });
-
-    await writeStore(upsertContractIntoStore(store, updatedContract));
-    await insertContractEvent({
-      contractId: contract.id,
-      actorProfileId: influencerAuth.profile.id,
-      actorRole: "influencer",
-      actorDisplayName: influencerAuth.profile.name,
-      eventType: "settlement_unpaid_inquiry",
-      targetType: "contract",
-      targetId: contract.id,
-      payload: { inquiry },
-      request,
-    });
-
-    response.json({
-      contract: updatedContract,
-      inquiry,
-      message: "정산 미지급 문의를 남겼습니다.",
     });
   } catch (error) {
     next(error);

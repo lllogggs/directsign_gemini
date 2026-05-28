@@ -422,12 +422,14 @@ const browserRenderRoutes = [
     name: "support",
     path: "/support",
     requiredText: ["문의 접수", "정산, 지급대행", "yeollockme@gmail.com"],
+    forbiddenText: ["정산 문의"],
     minTextLength: 120,
   },
   {
     name: "support contract context",
     path: "/support?category=contract_flow&role=advertiser&contract_id=demo-contract-001&contract_title=%EB%B8%8C%EB%A0%88%EB%93%9C%EB%A3%B8%20%EA%B3%84%EC%95%BD%20%EB%AC%B8%EC%9D%98",
     requiredText: ["문의 접수", "브레드룸 계약 문의", "demo-contract-001"],
+    forbiddenText: ["정산 문의"],
     minTextLength: 120,
   },
 ];
@@ -683,6 +685,9 @@ const checkRenderedRoute = async (client, baseUrl, route, viewport) => {
       const hasRequiredText = route.requiredText.every((text) =>
         lastMetrics.bodyText?.includes(text),
       );
+      const hasForbiddenText = (route.forbiddenText ?? []).some((text) =>
+        lastMetrics.bodyText?.includes(text),
+      );
       const rendered =
         Number(lastMetrics.bodyTextLength ?? 0) >= route.minTextLength &&
         Number(lastMetrics.rootChildCount ?? 0) > 0 &&
@@ -690,7 +695,8 @@ const checkRenderedRoute = async (client, baseUrl, route, viewport) => {
         !lastMetrics.hasViteError &&
         !lastMetrics.hasRouteErrorBoundary &&
         !lastMetrics.stillLoading &&
-        hasRequiredText;
+        hasRequiredText &&
+        !hasForbiddenText;
 
       if (rendered) return { ok: true, metrics: lastMetrics };
       if (lastMetrics.hasViteError) break;
@@ -769,10 +775,15 @@ const checkBrowserRenderedRoutes = async (baseUrl) => {
         const hasRequiredText = route.requiredText.every((text) =>
           result.metrics.bodyText?.includes(text),
         );
+        const hasForbiddenText = (route.forbiddenText ?? []).some((text) =>
+          result.metrics.bodyText?.includes(text),
+        );
         const detail = result.ok
           ? `text ${textLength}, root ${rootHeight}px`
           : `text ${textLength}, root ${rootHeight}px, required ${
               hasRequiredText ? "yes" : "no"
+            }, forbidden ${
+              hasForbiddenText ? "yes" : "no"
             }, errorBoundary ${result.metrics.hasRouteErrorBoundary ? "yes" : "no"}, loading ${
               result.metrics.stillLoading ? "yes" : "no"
             }, sample "${

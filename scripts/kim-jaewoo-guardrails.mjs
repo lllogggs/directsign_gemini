@@ -179,6 +179,9 @@ const operationalSupportTicketsMigration = read(
 const operationalSupportTicketsExtensionMigration = read(
   "supabase/migrations/20260528144856_extend_operational_support_tickets.sql",
 );
+const operationalSupportTicketsSettlementRemovalMigration = read(
+  "supabase/migrations/20260529090000_remove_settlement_support_ticket_category.sql",
+);
 
 const dashboardAndIntroFiles = [
   "src/pages/marketing/Dashboard.tsx",
@@ -507,13 +510,22 @@ check(
     server.includes("sanitizeSupportContextUrl") &&
     server.includes("contract_id: contractId") &&
     server.includes("browser_context: browserContext") &&
+    !server.includes("settlement_question") &&
+    !server.includes("settlement-inquiry") &&
     supportPage.includes("정산, 지급대행, 에스크로, 세금 처리는 연락미가 직접 처리하지") &&
+    !supportPage.includes("settlement_question") &&
+    !supportPage.includes("정산 문의") &&
     supportPage.includes("contract_id: contractId") &&
     supportPage.includes("browser_context") &&
     contractAdminViewer.includes("buildSupportTicketPath") &&
     contractViewer.includes("buildSupportTicketPath") &&
+    !contractViewer.includes("settlement-inquiry") &&
+    !contractViewer.includes("정산 미지급 문의") &&
+    !contractViewer.includes("정산 문의") &&
     adminDashboard.includes("ticketCategoryFilter") &&
     adminDashboard.includes("계약 열기") &&
+    !adminDashboard.includes("settlement_question") &&
+    !adminDashboard.includes("정산 문의") &&
     qaStandard.includes("support contract context") &&
     legalDocumentPage.includes("고객지원 문의하기") &&
     legalEntity.includes('`${PRODUCT_NAME} 운영팀`') &&
@@ -525,8 +537,10 @@ check(
     operationalSupportTicketsMigration.includes("revoke all on public.operational_support_tickets from public, anon, authenticated") &&
     operationalSupportTicketsExtensionMigration.includes("contract_id text") &&
     operationalSupportTicketsExtensionMigration.includes("browser_context jsonb") &&
+    operationalSupportTicketsSettlementRemovalMigration.includes("where category = 'settlement_question'") &&
+    operationalSupportTicketsSettlementRemovalMigration.includes("drop constraint if exists operational_support_tickets_category") &&
     agents.includes("operation/test separation"),
-  "운영 문의는 관리자 대시보드에서 처리하고, 계약 문의/버그 제보는 안전한 계약·화면 맥락을 갖고 접수되어야 하며, 운영 DB에는 테스트 데이터를 기본 주입하지 않아야 합니다.",
+  "운영 문의는 관리자 대시보드에서 처리하되 정산 문의는 받지 말아야 합니다. 계약 문의/버그 제보만 안전한 계약·화면 맥락을 갖고 접수되어야 하며, 운영 DB에는 테스트 데이터를 기본 주입하지 않아야 합니다.",
 );
 
 check(

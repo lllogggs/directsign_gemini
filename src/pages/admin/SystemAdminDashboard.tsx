@@ -79,7 +79,6 @@ type OperationalSupportTicket = {
     | "service_error"
     | "account_access"
     | "contract_flow"
-    | "settlement_question"
     | "privacy_request"
     | "other";
   requester_role: "advertiser" | "influencer" | "operator" | "other";
@@ -906,7 +905,6 @@ function SupportTicketPanel({
     { value: "service_error", label: "오류" },
     { value: "account_access", label: "계정" },
     { value: "privacy_request", label: "개인정보" },
-    { value: "settlement_question", label: "정산" },
   ];
   const statusFilters: Array<{
     value: OperationalSupportTicket["status"] | "active" | "all";
@@ -1350,7 +1348,6 @@ function supportTicketCategoryLabel(
     service_error: "장애/오류",
     account_access: "계정",
     contract_flow: "계약 흐름",
-    settlement_question: "정산 문의",
     privacy_request: "개인정보",
     other: "기타",
   };

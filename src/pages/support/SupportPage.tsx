@@ -9,7 +9,6 @@ type SupportCategory =
   | "service_error"
   | "account_access"
   | "contract_flow"
-  | "settlement_question"
   | "privacy_request"
   | "other";
 type SupportRole = "advertiser" | "influencer" | "other";
@@ -18,7 +17,6 @@ const categoryOptions: Array<{ value: SupportCategory; label: string }> = [
   { value: "service_error", label: "장애/오류" },
   { value: "account_access", label: "계정" },
   { value: "contract_flow", label: "계약 흐름" },
-  { value: "settlement_question", label: "정산 문의" },
   { value: "privacy_request", label: "개인정보" },
   { value: "other", label: "기타" },
 ];

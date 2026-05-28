@@ -14,11 +14,13 @@ payment terms can be recorded as clauses, but actual payment and tax handling
 remain between the contract parties.
 
 Operational support is centralized through `/support` and `/admin`. Customer
-error, account, contract-flow, privacy, and settlement-boundary questions are
-stored in `operational_support_tickets`; operators review and close them from
-the admin dashboard. Email fallback remains `yeollockme@gmail.com`, while
-contract-screen and bug-report entries should create structured tickets with
-safe contract/page context.
+error, account, contract-flow, and privacy questions are stored in
+`operational_support_tickets`; operators review and close them from the admin
+dashboard. Email fallback remains `yeollockme@gmail.com`. Settlement, payout,
+escrow, tax, refund, and collection questions are outside the service scope and
+must not be accepted as support-ticket categories. Contract-screen and
+bug-report entries should create structured tickets with safe contract/page
+context.
 
 ## Must Before Public Launch
 
@@ -80,6 +82,8 @@ Owner-only checklist: see [`owner-action-memo.md`](owner-action-memo.md).
 - Apply `20260528144856_extend_operational_support_tickets.sql` so operator
   triage can see safe contract ids, display titles, page paths, and non-sensitive
   browser context for bug reports without storing share tokens or signatures.
+- Apply `20260529090000_remove_settlement_support_ticket_category.sql` so
+  support tickets cannot be categorized as settlement inquiries.
 - Confirm e-signature UX and evidence. 전자서명법 제3조 recognizes that an
   electronic signature is not denied effect only because it is electronic:
   https://law.go.kr/lsLinkProc.do?chrClsCd=010202&datClsCd=010102&gubun=admRul&joNo=000300000&lsId=33982&lsNm=%EC%A0%84%EC%9E%90%EC%84%9C%EB%AA%85%EB%B2%95&mode=10

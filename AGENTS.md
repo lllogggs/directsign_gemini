@@ -82,7 +82,7 @@ Example option format:
     - The Product Owner wants decisive execution after a direction is clear, with questions reserved for real conflicts in product direction, security, data, or settled preferences.
     - The Product Owner prefers trust to be shown through clear state, evidence, verification, timing, and workflow clarity rather than long copy or legalistic filler.
     - The Product Owner treats operation/test separation as a launch-readiness rule. Production must not be seeded with test/demo data unless an explicit override is set for a controlled run, and customer-facing test labels must never leak into operating screens.
-    - The Product Owner wants support and responsibility boundaries to be short, visible, and operationally actionable. Terms/privacy/support copy should state the service scope and settlement boundary clearly, while actual error or customer inquiries should land in an operator dashboard rather than scattered email-only notes.
+    - The Product Owner wants support and responsibility boundaries to be short, visible, and operationally actionable. Terms/privacy/support copy should state that yeollock.me does not handle settlement, payout, escrow, tax, refund, or collection, but the product must not accept "정산 문의" as a support category or present payment disputes as something the service will mediate.
     - Email can remain as a fallback support channel, but product-originated contract inquiries and bug reports should create structured operator-dashboard tickets with safe contract/page context so the Product Owner can triage them without hunting through email.
     - The Product Owner values product-wide consistency. Persistent brand/navigation elements should keep stable placement, sizing, affordance, and cursor behavior across pages unless there is a deliberate layout reason.
     - The Product Owner values seamless app surfaces. Tabs should feel physically connected to their panel, and dashboards should avoid visible UI artifacts such as unnecessary scrollbars, divider seams, and transient loading banners when stable account or verification information can be shown immediately.
@@ -241,7 +241,7 @@ Example option format:
   - The first screen should show what the service is and what action to take without feeling like a generic marketing page.
 - Verification and trust rules:
   - Advertisers should not end or complete a contract without being asked whether settlement/payment is complete. If the settlement system is not implemented yet, preserve a confirmation/audit flow and make the settlement state clear.
-  - Ended/completed influencer contract views should provide a concise "정산 미지급 문의" action so creators are not trapped after closure when payment is unresolved.
+  - Ended/completed influencer contract views must not provide "정산 문의" or "정산 미지급 문의" actions. If payment is unresolved, the product may show a short responsibility-boundary note, but it must not collect or route settlement disputes as operational support.
   - Advertiser verification should use "사업자 인증" language.
   - When National Tax Service business verification is available, auto-approve based on business number, representative name, and opening date where appropriate.
   - Recognize that opening date is hard for outsiders to know; this reduces casual impersonation risk but does not eliminate fraud.
