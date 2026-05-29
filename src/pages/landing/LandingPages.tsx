@@ -986,7 +986,7 @@ export function StartPage() {
                       <RoleIconCluster role={role.role} />
                     </span>
                     <span className="mt-auto block min-w-0">
-                      <strong className="font-neo-heavy block text-[41px] leading-none tracking-normal text-neutral-950 sm:text-[47px]">
+                      <strong className="font-neo-heavy block text-[36px] leading-none tracking-normal text-neutral-950 sm:text-[47px]">
                         {role.title}
                       </strong>
                       <span

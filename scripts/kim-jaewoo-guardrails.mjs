@@ -412,6 +412,16 @@ check(
 );
 
 check(
+  "mobile main role title stays compact",
+  /font-neo-heavy block text-\[36px\] leading-none tracking-normal text-neutral-950 sm:text-\[47px\]/.test(
+    landing,
+  ) &&
+    agents.includes("mobile main role-selection screen") &&
+    agents.includes("Material `displaySmall` range"),
+  "Mobile main role labels must not return to oversized display typography while desktop hierarchy stays intact",
+);
+
+check(
   "public SEO routes use route-specific initial HTML",
   seo.includes("staticSeoRoutePaths") &&
     seo.includes("VITE_PUBLIC_SITE_URL") &&

@@ -1125,8 +1125,10 @@ describe("yeollock.me security regressions", () => {
     assert.match(kimGuardrails, /OpenDesign is a separate local daemon\/web app workflow/);
     assert.match(kimGuardrails, /mobile clipped list corrections are recorded/);
     assert.match(kimGuardrails, /first role selection uses action buttons/);
+    assert.match(kimGuardrails, /mobile main role title stays compact/);
     assert.match(landing, /data-start-role-action/);
     assert.match(landing, /min-h-\[248px\]/);
+    assert.match(landing, /text-\[36px\] leading-none tracking-normal text-neutral-950 sm:text-\[47px\]/);
     assert.match(landing, /mt-auto block min-w-0/);
     assert.match(landing, /mt-3 block border-t/);
     assert.match(landing, /브랜드 · 광고대행사 · 쇼핑몰 · 로컬매장/);
