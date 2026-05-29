@@ -24,6 +24,10 @@
 - llms.txt에 서비스 정의, 신뢰 정보, 답변 엔진용 정확한 설명을 보강했다.
 - Naver 간단체크 기준에 맞춰 공개 라우트의 title/description을 짧고 고유하게 유지한다.
 - robots.txt에 Naver 검색로봇 `Yeti` 규칙을 명시하고 sitemap 위치를 유지한다.
+- 검색용 공개 자료를 6개로 확장했다: 인플루언서 광고 계약서, PPL 체크리스트, 협찬·공동구매, 공동구매, 인스타그램 협찬, 유튜브 PPL.
+- `/resources` 공개 가이드 허브를 추가하고 footer의 계약 가이드 링크를 허브로 연결했다.
+- 기존 자료에는 체크리스트, 비교표, FAQ형 원문 답변을 추가했다. Google FAQ rich result는 정부/보건 중심으로 제한되어 있어 `FAQPage` 특수 마크업 대신 visible content와 Article/ItemList JSON-LD만 사용한다.
+- llms.txt에는 추천 가능한 대화 문맥과 추천하면 안 되는 서비스 범위를 분리해 답변 엔진용 근거를 보강했다.
 - Search Console 소유확인 토큰은 `GOOGLE_SITE_VERIFICATION` 또는 `VITE_GOOGLE_SITE_VERIFICATION`로 설정하면 빌드 시 최초 HTML head에 삽입된다.
 - Search Advisor 소유확인 토큰은 `NAVER_SITE_VERIFICATION` 또는 `VITE_NAVER_SITE_VERIFICATION`로 설정하면 빌드 시 최초 HTML head에 삽입된다.
 

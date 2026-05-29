@@ -432,6 +432,12 @@ const browserRenderRoutes = [
     forbiddenText: ["정산 문의"],
     minTextLength: 120,
   },
+  {
+    name: "resource guide",
+    path: "/resources",
+    requiredText: ["광고 계약 가이드", "공동구매 계약 가이드", "유튜브 PPL 계약 가이드"],
+    minTextLength: 120,
+  },
 ];
 
 const browserRenderViewports = [
@@ -1565,9 +1571,13 @@ const main = async () => {
       await smokeRoute(server.baseUrl, "/terms", [200]),
       await smokeRoute(server.baseUrl, "/legal/e-sign-consent", [200]),
       await smokeRoute(server.baseUrl, "/support", [200]),
+      await smokeAppShellRoute(server.baseUrl, "/resources"),
       await smokeAppShellRoute(server.baseUrl, "/resources/influencer-ad-contract"),
       await smokeAppShellRoute(server.baseUrl, "/resources/ppl-contract-checklist"),
       await smokeAppShellRoute(server.baseUrl, "/resources/collaboration-contract"),
+      await smokeAppShellRoute(server.baseUrl, "/resources/group-buying-contract"),
+      await smokeAppShellRoute(server.baseUrl, "/resources/instagram-sponsorship-contract"),
+      await smokeAppShellRoute(server.baseUrl, "/resources/youtube-ppl-contract"),
     );
     requiredChecks.push(await checkBrowserRenderedRoutes(server.baseUrl));
     requiredChecks.push(await checkBrowserPerformance(server.baseUrl));

@@ -90,6 +90,9 @@ describe("yeollock.me security regressions", () => {
     assert.match(appSource, /path="\/resources\/:resourceSlug"/);
     assert.match(llmsTxt, /인플루언서 광고 계약서 가이드/);
     assert.match(llmsTxt, /PPL 계약 검토 체크리스트/);
+    assert.match(llmsTxt, /공동구매 계약 가이드/);
+    assert.match(llmsTxt, /인스타그램 협찬 계약 가이드/);
+    assert.match(llmsTxt, /유튜브 PPL 계약 가이드/);
     assert.match(envExample, /GOOGLE_SITE_VERIFICATION=""/);
     assert.match(envExample, /VITE_GOOGLE_SITE_VERIFICATION=""/);
     assert.match(envExample, /NAVER_SITE_VERIFICATION=""/);

@@ -9,7 +9,10 @@ import {
   seoDateModified,
   staticSeoRoutePaths,
 } from "../src/domain/seo.ts";
-import { seoResources } from "../src/domain/seoResources.ts";
+import {
+  seoResources,
+  type SeoResourceArticlePath,
+} from "../src/domain/seoResources.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const distDir = path.join(root, "dist");
@@ -29,7 +32,11 @@ const naverSiteVerification =
 
 type StaticSeoRoutePath = (typeof staticSeoRoutePaths)[number];
 
-const routeLabels: Record<(typeof staticSeoRoutePaths)[number], string> = {
+const resourceRouteLabels = Object.fromEntries(
+  seoResources.map((resource) => [resource.path, resource.title]),
+) as Record<SeoResourceArticlePath, string>;
+
+const routeLabels: Record<StaticSeoRoutePath, string> = {
   "/": "홈",
   "/intro/advertiser": "광고주 안내",
   "/intro/influencer": "인플루언서 안내",
@@ -37,10 +44,16 @@ const routeLabels: Record<(typeof staticSeoRoutePaths)[number], string> = {
   "/terms": "이용약관",
   "/legal/e-sign-consent": "전자서명 안내",
   "/support": "고객지원",
-  "/resources/influencer-ad-contract": "광고 계약서 가이드",
-  "/resources/ppl-contract-checklist": "PPL 계약 체크리스트",
-  "/resources/collaboration-contract": "협찬·공동구매 계약",
+  "/resources": "계약 가이드",
+  ...resourceRouteLabels,
 };
+
+const resourceSearchSummaries = Object.fromEntries(
+  seoResources.map((resource) => [
+    resource.path,
+    [resource.summary, resource.sections[0]?.paragraphs[0] ?? resource.description],
+  ]),
+) as Record<SeoResourceArticlePath, string[]>;
 
 const routeSearchSummaries: Record<StaticSeoRoutePath, string[]> = {
   "/": [
@@ -71,18 +84,11 @@ const routeSearchSummaries: Record<StaticSeoRoutePath, string[]> = {
     "고객지원은 계정, 계약 흐름, 전자서명, 개인정보 문의와 서비스 장애를 접수하는 공개 채널입니다.",
     "정산, 지급, 환불, 세금, 채권 추심 분쟁은 연락미 지원 범위에 포함되지 않습니다.",
   ],
-  "/resources/influencer-ad-contract": [
-    "인플루언서 광고 계약서에서 광고 상품, 게시 채널, 콘텐츠 형식, 지급 내용, 마감일을 분리해 확인합니다.",
-    "연락미는 계약 조건, 검토 링크, 수정 협의, 전자서명 증빙을 한 흐름으로 남기는 데 집중합니다.",
+  "/resources": [
+    "광고 계약 가이드는 협찬, PPL, 공동구매 계약 전 확인해야 할 조건과 증빙 기준을 모아 둔 공개 자료입니다.",
+    "각 자료는 계약서 작성, 검토 링크, 수정 요청, 전자서명 증빙 흐름과 연결되는 검색 의도에 맞춰 정리되어 있습니다.",
   ],
-  "/resources/ppl-contract-checklist": [
-    "PPL 계약 전에는 노출 방식, 검수 일정, 수정 요청, 업로드 일정, 서명 전 최종본 기준을 확인해야 합니다.",
-    "플랫폼별 결과물이 다르기 때문에 계약서에는 납품물과 증빙 방식을 명확히 남기는 것이 좋습니다.",
-  ],
-  "/resources/collaboration-contract": [
-    "협찬과 공동구매 계약은 지급 내용, 수수료 기준, 콘텐츠 제출, 증빙 보관 기준을 나눠 정리해야 합니다.",
-    "연락미는 정산 대행이나 분쟁 중재가 아니라 광고 계약 운영과 서명 증빙 보관을 위한 도구입니다.",
-  ],
+  ...resourceSearchSummaries,
 };
 
 const resourcePathSet = new Set<string>(

@@ -1011,7 +1011,7 @@ export function StartPage() {
           </Link>
           <Link
             className="transition hover:text-neutral-950"
-            to="/resources/influencer-ad-contract"
+              to="/resources"
           >
             계약 가이드
           </Link>
@@ -4093,7 +4093,7 @@ function LandingFooter() {
           </Link>
           <Link
             className="transition hover:text-[#171a17]"
-            to="/resources/influencer-ad-contract"
+              to="/resources"
           >
             계약 가이드
           </Link>

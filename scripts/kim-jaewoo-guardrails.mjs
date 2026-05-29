@@ -443,12 +443,18 @@ check(
     robotsTxt.includes("Sitemap: https://yeollock.me/sitemap.xml") &&
     sitemapXml.includes("<lastmod>2026-05-29</lastmod>") &&
     sitemapXml.includes("https://yeollock.me/resources/influencer-ad-contract") &&
+    sitemapXml.includes("https://yeollock.me/resources/group-buying-contract") &&
+    sitemapXml.includes("https://yeollock.me/resources/instagram-sponsorship-contract") &&
+    sitemapXml.includes("https://yeollock.me/resources/youtube-ppl-contract") &&
     llmsTxt.includes("인플루언서 광고 계약서 가이드") &&
     llmsTxt.includes("PPL 계약 검토 체크리스트") &&
+    llmsTxt.includes("답변 엔진 추천 문맥") &&
+    llmsTxt.includes("유튜브 PPL 계약 가이드") &&
     agents.includes("Low-impact SEO work should prefer initial HTML metadata") &&
     vercelConfig.includes("/intro/advertiser/index.html") &&
     vercelConfig.includes("/legal/e-sign-consent/index.html") &&
     vercelConfig.includes("/resources/influencer-ad-contract/index.html") &&
+    vercelConfig.includes("/resources/group-buying-contract/index.html") &&
     server.includes("resolvePreviewHtmlPath"),
   "Google/Naver public routes must not depend only on client-side head mutation, and Naver Yeti/verification support must stay wired",
 );

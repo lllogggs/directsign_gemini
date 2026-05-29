@@ -14,12 +14,17 @@ import { RoleIntroPage, StartPage } from "./pages/landing/LandingPages";
 import { Dashboard as AdvertiserDashboard } from "./pages/marketing/Dashboard";
 import { InfluencerDashboard as InfluencerDashboardPage } from "./pages/influencer/InfluencerDashboard";
 import { LegalDocumentPage } from "./pages/legal/LegalDocumentPage";
-import { SeoResourcePage } from "./pages/seo/SeoResourcePage";
+import { SeoResourcePage, SeoResourcesIndexPage } from "./pages/seo/SeoResourcePage";
 import { getNextPath } from "./domain/navigation";
 import { PRODUCT_DESCRIPTION, PRODUCT_NAME } from "./domain/brand";
 import { LEGAL_CONTACT_EMAIL } from "./domain/legalEntity";
 import { syncAnalyticsRoute } from "./domain/analytics";
-import { getSeoResourceByPath } from "./domain/seoResources";
+import {
+  getSeoResourceByPath,
+  seoResourceIndexPath,
+  seoResources,
+  type SeoResourcePage as SeoResourceConfig,
+} from "./domain/seoResources";
 
 type RouteModuleLoader = () => Promise<unknown>;
 
@@ -539,85 +544,120 @@ const buildStructuredData = ({
   description,
   canonicalPath,
   keywords = seoKeywordList,
+  resource,
+  resourceList,
 }: Pick<RouteSeoConfig, "title" | "description" | "canonicalPath"> & {
   keywords?: string[];
+  resource?: SeoResourceConfig;
+  resourceList?: SeoResourceConfig[];
 }) => {
   const url = buildCanonicalUrl(canonicalPath);
   const keywordText = keywords.join(", ");
+  const graph: unknown[] = [
+    {
+      "@type": "Organization",
+      "@id": `${publicSiteOrigin}/#organization`,
+      name: PRODUCT_NAME,
+      alternateName: "yeollock.me",
+      url: `${publicSiteOrigin}/`,
+      logo: `${publicSiteOrigin}/favicon.svg`,
+      email: LEGAL_CONTACT_EMAIL,
+      contactPoint: [
+        {
+          "@type": "ContactPoint",
+          contactType: "customer support",
+          email: LEGAL_CONTACT_EMAIL,
+          availableLanguage: ["ko-KR"],
+        },
+      ],
+      sameAs: publicSameAsUrls,
+      knowsAbout: seoKeywordList,
+    },
+    {
+      "@type": "WebSite",
+      "@id": `${publicSiteOrigin}/#website`,
+      name: PRODUCT_NAME,
+      url: `${publicSiteOrigin}/`,
+      description: searchIntentSeoDescription,
+      inLanguage: "ko-KR",
+      publisher: { "@id": `${publicSiteOrigin}/#organization` },
+    },
+    {
+      "@type": "WebApplication",
+      "@id": `${publicSiteOrigin}/#app`,
+      name: PRODUCT_NAME,
+      url: `${publicSiteOrigin}/`,
+      applicationCategory: "BusinessApplication",
+      operatingSystem: "Web",
+      inLanguage: "ko-KR",
+      description: searchIntentSeoDescription,
+      keywords: seoKeywordList.join(", "),
+      featureList: seoFeatureList,
+      isAccessibleForFree: true,
+      offers: {
+        "@type": "Offer",
+        price: "0",
+        priceCurrency: "KRW",
+        availability: "https://schema.org/InStock",
+      },
+      audience: [
+        {
+          "@type": "BusinessAudience",
+          audienceType: "광고주, 브랜드, 광고대행사, 마케팅팀",
+        },
+        {
+          "@type": "Audience",
+          audienceType: "인플루언서, 크리에이터, 스트리머, MCN",
+        },
+      ],
+    },
+    {
+      "@type": "WebPage",
+      "@id": `${url}#webpage`,
+      url,
+      name: title,
+      description,
+      keywords: keywordText,
+      inLanguage: "ko-KR",
+      dateModified: seoDateModified,
+      isPartOf: { "@id": `${publicSiteOrigin}/#website` },
+      about: { "@id": `${publicSiteOrigin}/#app` },
+    },
+  ];
+
+  if (resource) {
+    graph.push({
+      "@type": "Article",
+      "@id": `${url}#article`,
+      headline: title,
+      description,
+      mainEntityOfPage: { "@id": `${url}#webpage` },
+      author: { "@id": `${publicSiteOrigin}/#organization` },
+      publisher: { "@id": `${publicSiteOrigin}/#organization` },
+      dateModified: seoDateModified,
+      inLanguage: "ko-KR",
+      keywords: keywordText,
+      articleSection: resource.sections.map((section) => section.heading),
+    });
+  }
+
+  if (resourceList) {
+    graph.push({
+      "@type": "ItemList",
+      "@id": `${url}#resources`,
+      name: "광고 계약 가이드",
+      itemListElement: resourceList.map((item, index) => ({
+        "@type": "ListItem",
+        position: index + 1,
+        name: item.title,
+        url: buildCanonicalUrl(item.path),
+      })),
+    });
+  }
 
   return {
     "@context": "https://schema.org",
-    "@graph": [
-      {
-        "@type": "Organization",
-        "@id": `${publicSiteOrigin}/#organization`,
-        name: PRODUCT_NAME,
-        alternateName: "yeollock.me",
-        url: `${publicSiteOrigin}/`,
-        logo: `${publicSiteOrigin}/favicon.svg`,
-        email: LEGAL_CONTACT_EMAIL,
-        contactPoint: [
-          {
-            "@type": "ContactPoint",
-            contactType: "customer support",
-            email: LEGAL_CONTACT_EMAIL,
-            availableLanguage: ["ko-KR"],
-          },
-        ],
-        sameAs: publicSameAsUrls,
-        knowsAbout: seoKeywordList,
-      },
-      {
-        "@type": "WebSite",
-        "@id": `${publicSiteOrigin}/#website`,
-        name: PRODUCT_NAME,
-        url: `${publicSiteOrigin}/`,
-        description: searchIntentSeoDescription,
-        inLanguage: "ko-KR",
-        publisher: { "@id": `${publicSiteOrigin}/#organization` },
-      },
-      {
-        "@type": "WebApplication",
-        "@id": `${publicSiteOrigin}/#app`,
-        name: PRODUCT_NAME,
-        url: `${publicSiteOrigin}/`,
-        applicationCategory: "BusinessApplication",
-        operatingSystem: "Web",
-        inLanguage: "ko-KR",
-        description: searchIntentSeoDescription,
-        keywords: seoKeywordList.join(", "),
-        featureList: seoFeatureList,
-        isAccessibleForFree: true,
-        offers: {
-          "@type": "Offer",
-          price: "0",
-          priceCurrency: "KRW",
-          availability: "https://schema.org/InStock",
-        },
-        audience: [
-          {
-            "@type": "BusinessAudience",
-            audienceType: "광고주, 브랜드, 광고대행사, 마케팅팀",
-          },
-          {
-            "@type": "Audience",
-            audienceType: "인플루언서, 크리에이터, 스트리머, MCN",
-          },
-        ],
-      },
-      {
-        "@type": "WebPage",
-        "@id": `${url}#webpage`,
-        url,
-        name: title,
-        description,
-        keywords: keywordText,
-        inLanguage: "ko-KR",
-        dateModified: seoDateModified,
-        isPartOf: { "@id": `${publicSiteOrigin}/#website` },
-        about: { "@id": `${publicSiteOrigin}/#app` },
-      },
-    ],
+    "@graph": graph,
   };
 };
 
@@ -690,6 +730,13 @@ const getRouteSeoConfig = (pathname: string): RouteSeoConfig => {
       canonicalPath: "/support",
       robots: publicRobotsContent,
     },
+    [seoResourceIndexPath]: {
+      title: `광고 계약 가이드 - ${PRODUCT_NAME}`,
+      description:
+        "협찬, PPL, 공동구매 계약 전 조건과 서명 증빙을 확인하는 공개 자료입니다.",
+      canonicalPath: seoResourceIndexPath,
+      robots: publicRobotsContent,
+    },
   };
 
   const knownPage = knownPages[normalizedPath];
@@ -713,6 +760,7 @@ const getRouteSeoConfig = (pathname: string): RouteSeoConfig => {
       structuredData: buildStructuredData({
         ...config,
         keywords: resourcePage.keywords,
+        resource: resourcePage,
       }),
     };
   }
@@ -753,6 +801,8 @@ const getRouteSeoConfig = (pathname: string): RouteSeoConfig => {
 
 type IntentAwareSeoCopy = Omit<RouteSeoConfig, "structuredData"> & {
   keywords?: string[];
+  resource?: SeoResourceConfig;
+  resourceList?: SeoResourceConfig[];
 };
 
 const buildPublicSeoConfig = (config: IntentAwareSeoCopy): RouteSeoConfig => ({
@@ -816,6 +866,14 @@ const publicSearchIntentPages: Record<string, IntentAwareSeoCopy> = {
     robots: publicRobotsContent,
     keywords: ["연락미 문의", "광고 계약 오류 문의", "전자계약 고객지원"],
   },
+  [seoResourceIndexPath]: {
+    title: `광고 계약 가이드 - ${PRODUCT_NAME}`,
+    description:
+      "협찬, PPL, 공동구매 계약 전 조건과 서명 증빙을 확인하는 공개 자료입니다.",
+    canonicalPath: seoResourceIndexPath,
+    robots: publicRobotsContent,
+    keywords: ["광고 계약 가이드", "인플루언서 계약서", "PPL 계약 체크리스트"],
+  },
 };
 
 const isNoIndexRoute = (normalizedPath: string) =>
@@ -838,7 +896,13 @@ const getIntentAwareRouteSeoConfig = (pathname: string): RouteSeoConfig => {
   }
 
   const publicPage = publicSearchIntentPages[normalizedPath];
-  if (publicPage) return buildPublicSeoConfig(publicPage);
+  if (publicPage) {
+    return buildPublicSeoConfig({
+      ...publicPage,
+      resourceList:
+        normalizedPath === seoResourceIndexPath ? seoResources : undefined,
+    });
+  }
 
   const resourcePage = getSeoResourceByPath(normalizedPath);
   if (resourcePage) {
@@ -848,6 +912,7 @@ const getIntentAwareRouteSeoConfig = (pathname: string): RouteSeoConfig => {
       canonicalPath: resourcePage.path,
       robots: publicRobotsContent,
       keywords: resourcePage.keywords,
+      resource: resourcePage,
     });
   }
 
@@ -988,7 +1053,7 @@ const getExactRoutePreloaders = (pathname: string): RouteModuleLoader[] => {
   if (pathname === "/influencer/messages") return [loadMarketplaceInboxPage];
   if (pathname === "/influencer/verification") return [loadInfluencerVerification];
   if (pathname.startsWith("/brands/")) return [loadMarketplacePages];
-  if (pathname.startsWith("/resources/")) return [];
+  if (pathname === "/resources" || pathname.startsWith("/resources/")) return [];
   if (pathname !== "/" && pathname.split("/").filter(Boolean).length === 1) {
     return [loadMarketplacePages];
   }
@@ -1286,6 +1351,7 @@ function AppRoutes() {
             element={<LegalDocumentPage documentType="eSignConsent" />}
           />
           <Route path="/support" element={<SupportPage />} />
+          <Route path="/resources" element={<SeoResourcesIndexPage />} />
           <Route path="/resources/:resourceSlug" element={<SeoResourcePage />} />
           <Route path="/admin/login" element={<SystemAdminDashboard loginOnly />} />
           <Route path="/admin" element={<SystemAdminDashboard />} />

@@ -206,6 +206,10 @@
       "destination": "/support/index.html"
     },
     {
+      "source": "/resources",
+      "destination": "/resources/index.html"
+    },
+    {
       "source": "/resources/influencer-ad-contract",
       "destination": "/resources/influencer-ad-contract/index.html"
     },
@@ -216,6 +220,18 @@
     {
       "source": "/resources/collaboration-contract",
       "destination": "/resources/collaboration-contract/index.html"
+    },
+    {
+      "source": "/resources/group-buying-contract",
+      "destination": "/resources/group-buying-contract/index.html"
+    },
+    {
+      "source": "/resources/instagram-sponsorship-contract",
+      "destination": "/resources/instagram-sponsorship-contract/index.html"
+    },
+    {
+      "source": "/resources/youtube-ppl-contract",
+      "destination": "/resources/youtube-ppl-contract/index.html"
     },
     {
       "source": "/(.*)",
