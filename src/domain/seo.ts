@@ -43,7 +43,7 @@ const officialInstagramHandle =
     .replace(/^@+/, "") || "yeollockme";
 
 const publicSameAsUrls = [`https://www.instagram.com/${officialInstagramHandle}/`];
-const seoDateModified = "2026-05-28";
+export const seoDateModified = "2026-05-29";
 
 export const publicRobotsContent =
   "index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1";

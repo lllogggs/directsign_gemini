@@ -165,6 +165,7 @@ const packageJson = JSON.parse(read("package.json"));
 const vercelConfig = read("vercel.json");
 const prerenderSeoHtml = read("scripts/prerender-seo-html.ts");
 const robotsTxt = read("public/robots.txt");
+const sitemapXml = read("public/sitemap.xml");
 const envExample = read(".env.example");
 const qaStandard = read("scripts/qa-standard.mjs");
 const salesAdvertiserIntroduction = read("docs/sales/advertiser-introduction.html");
@@ -429,10 +430,16 @@ check(
     packageJson.scripts?.build?.includes("scripts/prerender-seo-html.ts") &&
     prerenderSeoHtml.includes("replaceCanonicalLink") &&
     prerenderSeoHtml.includes("replaceStructuredData") &&
+    prerenderSeoHtml.includes("google-site-verification") &&
     prerenderSeoHtml.includes("naver-site-verification") &&
+    prerenderSeoHtml.includes("renderSitemap") &&
+    prerenderSeoHtml.includes("routeSearchSummaries") &&
+    envExample.includes("VITE_GOOGLE_SITE_VERIFICATION") &&
     envExample.includes("VITE_NAVER_SITE_VERIFICATION") &&
     robotsTxt.includes("User-agent: Yeti") &&
     robotsTxt.includes("Sitemap: https://yeollock.me/sitemap.xml") &&
+    sitemapXml.includes("<lastmod>2026-05-29</lastmod>") &&
+    agents.includes("Low-impact SEO work should prefer initial HTML metadata") &&
     vercelConfig.includes("/intro/advertiser/index.html") &&
     vercelConfig.includes("/legal/e-sign-consent/index.html") &&
     server.includes("resolvePreviewHtmlPath"),

@@ -14,14 +14,17 @@
 
 ## 이번 변경
 
-- 홈 하단에 광고주/인플루언서/비제공 범위를 설명하는 공개 콘텐츠를 추가했다.
+- A 전략: Google Search Console과 Naver Search Advisor 소유확인 메타를 빌드 단계에서 초기 HTML에 반영하고, sitemap.xml을 공개 SEO 라우트 설정에서 다시 생성한다.
+- B 전략: 현재 서비스 화면을 바꾸지 않고 공개 라우트의 noscript 초기 HTML에 라우트별 서비스 설명을 보강한다.
+- 홈 하단에 광고주/인플루언서/비제공 범위를 설명하는 공개 콘텐츠를 유지한다.
 - 홈 정적 HTML head와 React 라우트 SEO JSON-LD에 Organization, WebSite, WebApplication, WebPage 정보를 보강했다.
 - 운영자 연락 이메일과 공식 인스타그램 URL을 구조화 데이터에 반영했다.
-- sitemap.xml lastmod를 2026-05-27로 갱신했다.
+- sitemap.xml lastmod를 2026-05-29로 갱신했다.
 - robots.txt에 공개 페이지 allow와 비공개 업무 화면 disallow를 명확히 적었다.
 - llms.txt에 서비스 정의, 신뢰 정보, 답변 엔진용 정확한 설명을 보강했다.
 - Naver 간단체크 기준에 맞춰 공개 라우트의 title/description을 짧고 고유하게 유지한다.
 - robots.txt에 Naver 검색로봇 `Yeti` 규칙을 명시하고 sitemap 위치를 유지한다.
+- Search Console 소유확인 토큰은 `GOOGLE_SITE_VERIFICATION` 또는 `VITE_GOOGLE_SITE_VERIFICATION`로 설정하면 빌드 시 최초 HTML head에 삽입된다.
 - Search Advisor 소유확인 토큰은 `NAVER_SITE_VERIFICATION` 또는 `VITE_NAVER_SITE_VERIFICATION`로 설정하면 빌드 시 최초 HTML head에 삽입된다.
 
 ## 배포 후 해야 할 일

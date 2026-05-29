@@ -6,6 +6,7 @@ import { PRODUCT_NAME } from "../src/domain/brand.ts";
 import {
   buildCanonicalUrl,
   getIntentAwareRouteSeoConfig,
+  seoDateModified,
   staticSeoRoutePaths,
 } from "../src/domain/seo.ts";
 
@@ -13,12 +14,19 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const distDir = path.join(root, "dist");
 const indexPath = path.join(distDir, "index.html");
 const seoScriptId = "yeollock-seo-jsonld";
+const defaultGoogleSiteVerification = "google2387249b6e5a1a3d.html";
 const defaultNaverSiteVerification =
   "eea8ff877c8abe42deb35a15e6dbb3e202ee178e";
+const googleSiteVerification =
+  process.env.GOOGLE_SITE_VERIFICATION?.trim() ||
+  process.env.VITE_GOOGLE_SITE_VERIFICATION?.trim() ||
+  defaultGoogleSiteVerification;
 const naverSiteVerification =
   process.env.NAVER_SITE_VERIFICATION?.trim() ||
   process.env.VITE_NAVER_SITE_VERIFICATION?.trim() ||
   defaultNaverSiteVerification;
+
+type StaticSeoRoutePath = (typeof staticSeoRoutePaths)[number];
 
 const routeLabels: Record<(typeof staticSeoRoutePaths)[number], string> = {
   "/": "홈",
@@ -28,6 +36,37 @@ const routeLabels: Record<(typeof staticSeoRoutePaths)[number], string> = {
   "/terms": "이용약관",
   "/legal/e-sign-consent": "전자서명 안내",
   "/support": "고객지원",
+};
+
+const routeSearchSummaries: Record<StaticSeoRoutePath, string[]> = {
+  "/": [
+    "연락미는 광고주와 인플루언서가 협찬, PPL, 공동구매 조건을 계약서 작성, 검토 링크, 수정 협의, 전자서명 증빙까지 한 흐름으로 정리하는 한국어 광고 계약 워크스페이스입니다.",
+    "정산 대행, 에스크로, 세무 대행, 광고 성과 보증은 제공하지 않으며 계약 상태와 서명 증빙을 명확하게 남기는 데 집중합니다.",
+  ],
+  "/intro/advertiser": [
+    "광고주, 브랜드, 광고대행사는 광고 조건을 입력하고 계약서를 작성한 뒤 인플루언서에게 검토 링크를 보낼 수 있습니다.",
+    "계약 진행 상태, 수정 요청, 전자서명, 컨텐츠 제출 확인을 계약 중심 대시보드에서 관리합니다.",
+  ],
+  "/intro/influencer": [
+    "인플루언서는 광고주가 보낸 협찬, PPL, 공동구매 계약 조건을 확인하고 필요한 수정 요청을 남길 수 있습니다.",
+    "최종 조건이 확정되면 전자서명과 서명 증빙 보관까지 같은 흐름에서 진행합니다.",
+  ],
+  "/privacy": [
+    "연락미는 계정 인증, 광고 계약 작성, 검토 링크, 전자서명 증빙 보관에 필요한 개인정보 처리 기준을 안내합니다.",
+    "계약 본문과 서명 증빙 같은 비공개 업무 정보는 권한이 있는 사용자에게만 제공하는 것을 원칙으로 합니다.",
+  ],
+  "/terms": [
+    "이용약관은 광고주와 인플루언서가 연락미 계약 서비스를 사용할 때 적용되는 조건, 책임 범위, 데이터 보관 기준을 설명합니다.",
+    "연락미는 정산, 지급, 환불, 세금, 채권 추심, 법률 자문을 대행하지 않습니다.",
+  ],
+  "/legal/e-sign-consent": [
+    "전자서명 안내는 광고 계약 최종본 확정, 서명 의사표시, 감사 증빙 보관 기준을 설명합니다.",
+    "서명 전에 계약 내용을 확인하고 전자서명 진행에 동의하는 절차를 고지합니다.",
+  ],
+  "/support": [
+    "고객지원은 계정, 계약 흐름, 전자서명, 개인정보 문의와 서비스 장애를 접수하는 공개 채널입니다.",
+    "정산, 지급, 환불, 세금, 채권 추심 분쟁은 연락미 지원 범위에 포함되지 않습니다.",
+  ],
 };
 
 const escapeRegex = (value: string) =>
@@ -64,7 +103,7 @@ const replaceMetaName = (html: string, name: string, content: string) =>
 
 const replaceOptionalMetaName = (html: string, name: string, content: string) => {
   const pattern = new RegExp(
-    `<meta\\s+(?=[^>]*\\bname=["']${escapeRegex(name)}["'])[^>]*>\\s*`,
+    `<meta\\s+(?=[^>]*\\bname=["']${escapeRegex(name)}["'])[^>]*>`,
     "i",
   );
 
@@ -123,18 +162,31 @@ const replaceStructuredData = (html: string, structuredData?: unknown) => {
   return replaceOrInsert(html, pattern, tag);
 };
 
-const renderNoscript = (title: string, description: string) => {
+const renderNoscript = (
+  title: string,
+  description: string,
+  routePath: StaticSeoRoutePath,
+) => {
   const navLinks = staticSeoRoutePaths
     .map((route) => {
       const href = route === "/" ? "/" : route;
       return `<a href="${escapeHtml(href)}">${escapeHtml(routeLabels[route])}</a>`;
     })
     .join("\n          ");
+  const searchSummary = routeSearchSummaries[routePath]
+    .map(
+      (paragraph) =>
+        `<p style="margin: 0 0 12px;">${escapeHtml(paragraph)}</p>`,
+    )
+    .join("\n        ");
 
   return `<noscript>
       <main lang="ko" style="max-width: 720px; margin: 48px auto; padding: 0 20px; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.7; color: #171717;">
         <h1 style="font-size: 28px; line-height: 1.2; margin: 0 0 12px;">${escapeHtml(title)}</h1>
         <p style="margin: 0 0 16px;">${escapeHtml(description)}</p>
+        <section aria-label="서비스 설명" style="margin: 0 0 18px;">
+          ${searchSummary}
+        </section>
         <nav aria-label="공개 페이지" style="display: flex; flex-wrap: wrap; gap: 10px;">
           ${navLinks}
         </nav>
@@ -142,12 +194,23 @@ const renderNoscript = (title: string, description: string) => {
     </noscript>`;
 };
 
-const replaceNoscript = (html: string, title: string, description: string) =>
+const replaceNoscript = (
+  html: string,
+  title: string,
+  description: string,
+  routePath: StaticSeoRoutePath,
+) =>
   /<noscript>[\s\S]*?<\/noscript>/i.test(html)
-    ? html.replace(/<noscript>[\s\S]*?<\/noscript>/i, renderNoscript(title, description))
-    : html.replace(/<body>/i, `<body>\n    ${renderNoscript(title, description)}`);
+    ? html.replace(
+        /<noscript>[\s\S]*?<\/noscript>/i,
+        renderNoscript(title, description, routePath),
+      )
+    : html.replace(
+        /<body>/i,
+        `<body>\n    ${renderNoscript(title, description, routePath)}`,
+      );
 
-const renderSeoHtml = (template: string, routePath: string) => {
+const renderSeoHtml = (template: string, routePath: StaticSeoRoutePath) => {
   const seo = getIntentAwareRouteSeoConfig(routePath);
   const canonicalUrl = buildCanonicalUrl(seo.canonicalPath);
   let html = template;
@@ -155,6 +218,11 @@ const renderSeoHtml = (template: string, routePath: string) => {
   html = html.replace(/<title>[\s\S]*?<\/title>/i, `<title>${escapeHtml(seo.title)}</title>`);
   html = replaceMetaName(html, "description", seo.description);
   html = replaceMetaName(html, "robots", seo.robots);
+  html = replaceOptionalMetaName(
+    html,
+    "google-site-verification",
+    googleSiteVerification,
+  );
   html = replaceOptionalMetaName(
     html,
     "naver-site-verification",
@@ -175,7 +243,7 @@ const renderSeoHtml = (template: string, routePath: string) => {
   html = replaceMetaName(html, "twitter:title", seo.title);
   html = replaceMetaName(html, "twitter:description", seo.description);
   html = replaceStructuredData(html, seo.structuredData);
-  return replaceNoscript(html, seo.title, seo.description);
+  return replaceNoscript(html, seo.title, seo.description, routePath);
 };
 
 const routeOutputPath = (routePath: string) => {
@@ -187,6 +255,24 @@ const routeOutputPath = (routePath: string) => {
   );
 };
 
+const renderSitemap = () => {
+  const urls = staticSeoRoutePaths
+    .map((routePath) => {
+      const seo = getIntentAwareRouteSeoConfig(routePath);
+      return `  <url>
+    <loc>${escapeHtml(buildCanonicalUrl(seo.canonicalPath))}</loc>
+    <lastmod>${seoDateModified}</lastmod>
+  </url>`;
+    })
+    .join("\n");
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${urls}
+</urlset>
+`;
+};
+
 const main = async () => {
   const template = await fs.readFile(indexPath, "utf8");
 
@@ -196,8 +282,10 @@ const main = async () => {
     await fs.writeFile(outputPath, renderSeoHtml(template, routePath), "utf8");
   }
 
+  await fs.writeFile(path.join(distDir, "sitemap.xml"), renderSitemap(), "utf8");
+
   console.log(
-    `prerendered SEO HTML for ${staticSeoRoutePaths.length} public routes`,
+    `prerendered SEO HTML and sitemap for ${staticSeoRoutePaths.length} public routes`,
   );
 };
 

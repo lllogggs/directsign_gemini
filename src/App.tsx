@@ -469,7 +469,7 @@ const officialInstagramHandle =
     .trim()
     .replace(/^@+/, "") || "yeollockme";
 const publicSameAsUrls = [`https://www.instagram.com/${officialInstagramHandle}/`];
-const seoDateModified = "2026-05-28";
+const seoDateModified = "2026-05-29";
 
 type RouteSeoConfig = {
   title: string;

@@ -11,6 +11,8 @@ import {
 
 const root = process.cwd();
 const read = (path: string) => readFileSync(join(root, path), "utf8");
+const escapeRegExp = (value: string) =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 describe("yeollock.me security regressions", () => {
   it("does not inject the server-only Gemini API key into the Vite client bundle", () => {
@@ -46,6 +48,7 @@ describe("yeollock.me security regressions", () => {
       }>;
     };
     const envExample = read(".env.example");
+    const indexHtml = read("index.html");
     const robots = read("public/robots.txt");
     const sitemap = read("public/sitemap.xml");
     const prerender = read("scripts/prerender-seo-html.ts");
@@ -76,10 +79,17 @@ describe("yeollock.me security regressions", () => {
     );
     assert.match(seoSource, /VITE_PUBLIC_SITE_URL/);
     assert.match(appSource, /VITE_PUBLIC_SITE_URL/);
+    assert.match(prerender, /GOOGLE_SITE_VERIFICATION/);
+    assert.match(prerender, /google-site-verification/);
     assert.match(prerender, /NAVER_SITE_VERIFICATION/);
     assert.match(prerender, /naver-site-verification/);
+    assert.match(prerender, /routeSearchSummaries/);
+    assert.match(prerender, /renderSitemap/);
+    assert.match(envExample, /GOOGLE_SITE_VERIFICATION=""/);
+    assert.match(envExample, /VITE_GOOGLE_SITE_VERIFICATION=""/);
     assert.match(envExample, /NAVER_SITE_VERIFICATION=""/);
     assert.match(envExample, /VITE_NAVER_SITE_VERIFICATION=""/);
+    assert.match(indexHtml, /google-site-verification/);
     assert.match(robots, /User-agent:\s*Yeti/);
     assert.match(robots, /Sitemap:\s*https:\/\/yeollock\.me\/sitemap\.xml/);
     assert.equal(
@@ -97,7 +107,12 @@ describe("yeollock.me security regressions", () => {
 
       assert.equal(seo.canonicalPath, routePath);
       assert.match(seo.robots, /^index,follow/);
-      assert.match(sitemap, new RegExp(`<loc>${canonicalUrl}</loc>`));
+      assert.match(
+        sitemap,
+        new RegExp(
+          `<loc>${escapeRegExp(canonicalUrl)}</loc>\\s*<lastmod>2026-05-29</lastmod>`,
+        ),
+      );
       assert.ok([...seo.title].length <= maxNaverTitleLength, seo.title);
       assert.ok(
         [...seo.description].length <= maxNaverDescriptionLength,
