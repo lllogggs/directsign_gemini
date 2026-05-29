@@ -206,6 +206,18 @@
       "destination": "/support/index.html"
     },
     {
+      "source": "/resources/influencer-ad-contract",
+      "destination": "/resources/influencer-ad-contract/index.html"
+    },
+    {
+      "source": "/resources/ppl-contract-checklist",
+      "destination": "/resources/ppl-contract-checklist/index.html"
+    },
+    {
+      "source": "/resources/collaboration-contract",
+      "destination": "/resources/collaboration-contract/index.html"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

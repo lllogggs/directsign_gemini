@@ -1,5 +1,6 @@
 import { PRODUCT_DESCRIPTION, PRODUCT_NAME } from "./brand.js";
 import { LEGAL_CONTACT_EMAIL } from "./legalEntity.js";
+import { getSeoResourceByPath, seoResourcePaths } from "./seoResources.js";
 
 export type RouteSeoConfig = {
   title: string;
@@ -57,6 +58,7 @@ export const staticSeoRoutePaths = [
   "/terms",
   "/legal/e-sign-consent",
   "/support",
+  ...seoResourcePaths,
 ] as const;
 
 const seoKeywordList = [
@@ -279,6 +281,23 @@ const getRouteSeoConfig = (pathname: string): RouteSeoConfig => {
     };
   }
 
+  const resourcePage = getSeoResourceByPath(normalizedPath);
+  if (resourcePage) {
+    const config = {
+      title: `${resourcePage.title} - ${PRODUCT_NAME}`,
+      description: resourcePage.description,
+      canonicalPath: resourcePage.path,
+      robots: publicRobotsContent,
+    };
+    return {
+      ...config,
+      structuredData: buildStructuredData({
+        ...config,
+        keywords: resourcePage.keywords,
+      }),
+    };
+  }
+
   if (normalizedPath.startsWith("/brands/")) {
     const brandHandle = decodeURIComponent(
       normalizedPath.split("/").filter(Boolean).at(1) ?? "브랜드",
@@ -397,6 +416,17 @@ export const getIntentAwareRouteSeoConfig = (pathname: string): RouteSeoConfig =
 
   const publicPage = publicSearchIntentPages[normalizedPath];
   if (publicPage) return buildPublicSeoConfig(publicPage);
+
+  const resourcePage = getSeoResourceByPath(normalizedPath);
+  if (resourcePage) {
+    return buildPublicSeoConfig({
+      title: `${resourcePage.title} - ${PRODUCT_NAME}`,
+      description: resourcePage.description,
+      canonicalPath: resourcePage.path,
+      robots: publicRobotsContent,
+      keywords: resourcePage.keywords,
+    });
+  }
 
   if (normalizedPath.startsWith("/brands/")) {
     const brandHandle = decodeURIComponent(

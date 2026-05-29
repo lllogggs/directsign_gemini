@@ -1009,6 +1009,12 @@ export function StartPage() {
           <Link className="transition hover:text-neutral-950" to="/terms">
             이용약관
           </Link>
+          <Link
+            className="transition hover:text-neutral-950"
+            to="/resources/influencer-ad-contract"
+          >
+            계약 가이드
+          </Link>
           <Link className="transition hover:text-neutral-950" to="/support">
             문의
           </Link>
@@ -4084,6 +4090,12 @@ function LandingFooter() {
             to="/legal/e-sign-consent"
           >
             전자서명 안내
+          </Link>
+          <Link
+            className="transition hover:text-[#171a17]"
+            to="/resources/influencer-ad-contract"
+          >
+            계약 가이드
           </Link>
           <Link className="transition hover:text-[#171a17]" to="/support">
             문의

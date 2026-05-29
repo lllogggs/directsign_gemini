@@ -1565,6 +1565,9 @@ const main = async () => {
       await smokeRoute(server.baseUrl, "/terms", [200]),
       await smokeRoute(server.baseUrl, "/legal/e-sign-consent", [200]),
       await smokeRoute(server.baseUrl, "/support", [200]),
+      await smokeAppShellRoute(server.baseUrl, "/resources/influencer-ad-contract"),
+      await smokeAppShellRoute(server.baseUrl, "/resources/ppl-contract-checklist"),
+      await smokeAppShellRoute(server.baseUrl, "/resources/collaboration-contract"),
     );
     requiredChecks.push(await checkBrowserRenderedRoutes(server.baseUrl));
     requiredChecks.push(await checkBrowserPerformance(server.baseUrl));

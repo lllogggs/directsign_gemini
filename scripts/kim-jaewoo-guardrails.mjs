@@ -166,6 +166,7 @@ const vercelConfig = read("vercel.json");
 const prerenderSeoHtml = read("scripts/prerender-seo-html.ts");
 const robotsTxt = read("public/robots.txt");
 const sitemapXml = read("public/sitemap.xml");
+const llmsTxt = read("public/llms.txt");
 const envExample = read(".env.example");
 const qaStandard = read("scripts/qa-standard.mjs");
 const salesAdvertiserIntroduction = read("docs/sales/advertiser-introduction.html");
@@ -425,8 +426,10 @@ check(
 check(
   "public SEO routes use route-specific initial HTML",
   seo.includes("staticSeoRoutePaths") &&
+    seo.includes("seoResourcePaths") &&
     seo.includes("VITE_PUBLIC_SITE_URL") &&
     app.includes("VITE_PUBLIC_SITE_URL") &&
+    app.includes('path="/resources/:resourceSlug"') &&
     packageJson.scripts?.build?.includes("scripts/prerender-seo-html.ts") &&
     prerenderSeoHtml.includes("replaceCanonicalLink") &&
     prerenderSeoHtml.includes("replaceStructuredData") &&
@@ -439,9 +442,13 @@ check(
     robotsTxt.includes("User-agent: Yeti") &&
     robotsTxt.includes("Sitemap: https://yeollock.me/sitemap.xml") &&
     sitemapXml.includes("<lastmod>2026-05-29</lastmod>") &&
+    sitemapXml.includes("https://yeollock.me/resources/influencer-ad-contract") &&
+    llmsTxt.includes("인플루언서 광고 계약서 가이드") &&
+    llmsTxt.includes("PPL 계약 검토 체크리스트") &&
     agents.includes("Low-impact SEO work should prefer initial HTML metadata") &&
     vercelConfig.includes("/intro/advertiser/index.html") &&
     vercelConfig.includes("/legal/e-sign-consent/index.html") &&
+    vercelConfig.includes("/resources/influencer-ad-contract/index.html") &&
     server.includes("resolvePreviewHtmlPath"),
   "Google/Naver public routes must not depend only on client-side head mutation, and Naver Yeti/verification support must stay wired",
 );

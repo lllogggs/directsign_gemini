@@ -14,10 +14,12 @@ import { RoleIntroPage, StartPage } from "./pages/landing/LandingPages";
 import { Dashboard as AdvertiserDashboard } from "./pages/marketing/Dashboard";
 import { InfluencerDashboard as InfluencerDashboardPage } from "./pages/influencer/InfluencerDashboard";
 import { LegalDocumentPage } from "./pages/legal/LegalDocumentPage";
+import { SeoResourcePage } from "./pages/seo/SeoResourcePage";
 import { getNextPath } from "./domain/navigation";
 import { PRODUCT_DESCRIPTION, PRODUCT_NAME } from "./domain/brand";
 import { LEGAL_CONTACT_EMAIL } from "./domain/legalEntity";
 import { syncAnalyticsRoute } from "./domain/analytics";
+import { getSeoResourceByPath } from "./domain/seoResources";
 
 type RouteModuleLoader = () => Promise<unknown>;
 
@@ -698,6 +700,23 @@ const getRouteSeoConfig = (pathname: string): RouteSeoConfig => {
     };
   }
 
+  const resourcePage = getSeoResourceByPath(normalizedPath);
+  if (resourcePage) {
+    const config = {
+      title: `${resourcePage.title} - ${PRODUCT_NAME}`,
+      description: resourcePage.description,
+      canonicalPath: resourcePage.path,
+      robots: publicRobotsContent,
+    };
+    return {
+      ...config,
+      structuredData: buildStructuredData({
+        ...config,
+        keywords: resourcePage.keywords,
+      }),
+    };
+  }
+
   if (normalizedPath.startsWith("/brands/")) {
     const brandHandle = decodeURIComponent(
       normalizedPath.split("/").filter(Boolean).at(1) ?? "브랜드",
@@ -820,6 +839,17 @@ const getIntentAwareRouteSeoConfig = (pathname: string): RouteSeoConfig => {
 
   const publicPage = publicSearchIntentPages[normalizedPath];
   if (publicPage) return buildPublicSeoConfig(publicPage);
+
+  const resourcePage = getSeoResourceByPath(normalizedPath);
+  if (resourcePage) {
+    return buildPublicSeoConfig({
+      title: `${resourcePage.title} - ${PRODUCT_NAME}`,
+      description: resourcePage.description,
+      canonicalPath: resourcePage.path,
+      robots: publicRobotsContent,
+      keywords: resourcePage.keywords,
+    });
+  }
 
   if (normalizedPath.startsWith("/brands/")) {
     const brandHandle = decodeURIComponent(
@@ -958,6 +988,7 @@ const getExactRoutePreloaders = (pathname: string): RouteModuleLoader[] => {
   if (pathname === "/influencer/messages") return [loadMarketplaceInboxPage];
   if (pathname === "/influencer/verification") return [loadInfluencerVerification];
   if (pathname.startsWith("/brands/")) return [loadMarketplacePages];
+  if (pathname.startsWith("/resources/")) return [];
   if (pathname !== "/" && pathname.split("/").filter(Boolean).length === 1) {
     return [loadMarketplacePages];
   }
@@ -1255,6 +1286,7 @@ function AppRoutes() {
             element={<LegalDocumentPage documentType="eSignConsent" />}
           />
           <Route path="/support" element={<SupportPage />} />
+          <Route path="/resources/:resourceSlug" element={<SeoResourcePage />} />
           <Route path="/admin/login" element={<SystemAdminDashboard loginOnly />} />
           <Route path="/admin" element={<SystemAdminDashboard />} />
           <Route path="/marketing/*" element={<LegacyMarketingRedirect />} />

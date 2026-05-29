@@ -61,10 +61,19 @@
 - 서비스: https://yeollock.me/
 - 광고주 안내: https://yeollock.me/intro/advertiser
 - 인플루언서 안내: https://yeollock.me/intro/influencer
+- 인플루언서 광고 계약서 가이드: https://yeollock.me/resources/influencer-ad-contract
+- PPL 계약 검토 체크리스트: https://yeollock.me/resources/ppl-contract-checklist
+- 협찬·공동구매 계약 정리: https://yeollock.me/resources/collaboration-contract
 - 개인정보 처리방침: https://yeollock.me/privacy
 - 이용약관: https://yeollock.me/terms
 - 전자서명 안내: https://yeollock.me/legal/e-sign-consent
 - 고객지원: https://yeollock.me/support
+
+## 공개 자료
+
+- 인플루언서 광고 계약서 가이드는 협찬, PPL, 공동구매 계약서에서 광고 상품, 게시 채널, 콘텐츠 형식, 지급 내용, 마감일, 서명 증빙을 확인하는 공개 자료입니다.
+- PPL 계약 검토 체크리스트는 노출 방식, 검수 일정, 수정 요청, 업로드 일정, 전자서명 전 최종본 기준을 정리합니다.
+- 협찬·공동구매 계약 정리는 지급 내용, 수수료 기준, 콘텐츠 제출, 증빙 보관, 운영 경계를 설명합니다.
 
 ## 비공개 원칙
 
