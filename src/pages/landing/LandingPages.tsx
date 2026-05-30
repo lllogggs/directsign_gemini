@@ -7,7 +7,6 @@ import {
   ClipboardCheck,
   FileSignature,
   FileText,
-  Globe2,
   Instagram,
   LogOut,
   Megaphone,
@@ -18,7 +17,6 @@ import {
   Search,
   ShieldCheck,
   Settings,
-  Settings2,
   UserCheck,
   Youtube,
   type LucideIcon,
@@ -1861,7 +1859,7 @@ const introDashboardDemoData = {
             title: "브레드룸 릴스 협찬 계약",
             payment: "900,000원 + 제품 제공",
             metric: "지원 접수",
-            date: "2026.05.26 / D-2",
+            date: "D-2 / 2026.05.26",
           },
           {
             platform: "인스타 +1",
@@ -1870,7 +1868,7 @@ const introDashboardDemoData = {
             title: "나이트케어 언박싱 계약",
             payment: "150만-250만원",
             metric: "지원 접수",
-            date: "2026.06.03 / D-10",
+            date: "D-10 / 2026.06.03",
           },
         ],
       },
@@ -1896,7 +1894,7 @@ const introDashboardDemoData = {
             title: "공동구매 파일럿 계약",
             payment: "수수료 18%",
             metric: "컨텐츠 제출",
-            date: "2026.05.28 / D-4",
+            date: "D-4 / 2026.05.28",
           },
           {
             platform: "유튜브",
@@ -1905,7 +1903,7 @@ const introDashboardDemoData = {
             title: "나이트 케어 쇼츠 계약",
             payment: "2,800,000원",
             metric: "광고주 검수 필요",
-            date: "2026.05.27 / D-3",
+            date: "D-3 / 2026.05.27",
           },
           {
             platform: "인스타",
@@ -1914,7 +1912,7 @@ const introDashboardDemoData = {
             title: "성수 팝업 릴스 계약",
             payment: "2,100,000원",
             metric: "컨텐츠 제출",
-            date: "2026.05.25 / D-1",
+            date: "D-1 / 2026.05.25",
           },
         ],
       },
@@ -1940,7 +1938,7 @@ const introDashboardDemoData = {
             title: "공동구매 파일럿 계약",
             payment: "수수료 18%",
             metric: "정산 보관",
-            date: "2026.05.21 / D+3",
+            date: "D+3 / 2026.05.21",
           },
         ],
       },
@@ -1966,7 +1964,7 @@ const introDashboardDemoData = {
             title: "언박싱 릴스 제안",
             payment: "150만-250만원",
             metric: "미선정",
-            date: "2026.05.20 / D+4",
+            date: "D+4 / 2026.05.20",
           },
         ],
       },
@@ -2305,47 +2303,39 @@ function IntroAdvertiserAccountBanner({
 }
 
 function IntroInfluencerProfileBanner({ accountName }: { accountName: string }) {
+  const verifiedPlatforms = [
+    { label: "인스타", handle: "@creator_sora", icon: <Instagram className="h-3 w-3" /> },
+    { label: "유튜브", handle: "@creator_sora", icon: <Youtube className="h-3 w-3" /> },
+  ];
+
   return (
     <section className="border-b border-neutral-200 bg-[#fcfcfd] px-4 py-2">
-      <div className="flex min-w-0 items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-neutral-800 ring-1 ring-neutral-200">
-            <UserCheck className="h-4 w-4" strokeWidth={2} />
+      <div className="flex min-w-0 items-center gap-2">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-neutral-800 ring-1 ring-neutral-200">
+          <UserCheck className="h-4 w-4" strokeWidth={2} />
+        </div>
+        <div className="min-w-0">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <p className="truncate text-[14px] font-extrabold text-neutral-950">
+              {accountName}
+            </p>
+            <span className="shrink-0 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-[11px] font-extrabold text-blue-700">
+              인증 완료
+            </span>
           </div>
-          <div className="min-w-0">
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <p className="truncate text-[14px] font-extrabold text-neutral-950">
-                {accountName}
-              </p>
-              <span className="shrink-0 rounded-full border border-neutral-200 bg-white px-2.5 py-0.5 text-[11px] font-semibold text-neutral-700">
-                체크 완료
-              </span>
-              <span className="shrink-0 rounded-full border border-neutral-200 bg-white px-2.5 py-0.5 text-[11px] font-semibold text-neutral-600">
-                4개 플랫폼
-              </span>
-            </div>
-            <div className="mt-1 flex min-w-0 flex-wrap gap-1.5">
-              {["인스타그램", "유튜브"].map((item) => (
-                <span
-                  key={item}
-                  className="inline-flex h-5 max-w-[150px] items-center rounded-full bg-neutral-100 px-2 text-[10px] font-bold text-neutral-600"
-                >
-                  {item}
-                </span>
-              ))}
+          <div className="mt-1 flex min-w-0 flex-wrap gap-1.5">
+            {verifiedPlatforms.map((platform) => (
               <span
-                className="inline-flex h-5 max-w-[190px] items-center gap-1 rounded-full bg-neutral-100 px-2 text-[10px] font-bold text-neutral-700"
+                key={`${platform.label}:${platform.handle}`}
+                className="inline-flex h-5 max-w-[170px] items-center gap-1 rounded-full border border-neutral-200 bg-white px-2 text-[10px] font-bold text-neutral-700"
               >
-                <Globe2 className="h-3 w-3" strokeWidth={2} />
-                공개 프로필 활성
+                {platform.icon}
+                <span className="shrink-0">{platform.label}</span>
+                <span className="truncate">{platform.handle}</span>
               </span>
-            </div>
+            ))}
           </div>
         </div>
-        <span className="hidden h-10 shrink-0 items-center gap-1.5 rounded-[9px] border border-neutral-200 bg-white px-3 text-[12px] font-extrabold text-neutral-700 md:inline-flex">
-          <Settings2 className="h-3.5 w-3.5" strokeWidth={2} />
-          프로필 설정
-        </span>
       </div>
     </section>
   );
@@ -2442,7 +2432,22 @@ function IntroContractRows({ state }: { state: IntroDashboardState }) {
               ) : null}
             </span>
           );
-          const dateCell = (
+          const dateParts = getIntroDateRenderParts(row.date);
+          const dateCell = dateParts.dday && dateParts.dateLabel ? (
+            <span className="truncate text-[10px] font-bold tabular-nums text-neutral-700">
+              <span
+                className={
+                  dateParts.isUrgent
+                    ? "font-extrabold text-[#dc2626]"
+                    : "text-neutral-700"
+                }
+              >
+                {dateParts.dday}
+              </span>
+              <span className="text-neutral-400">{" / "}</span>
+              <span>{dateParts.dateLabel}</span>
+            </span>
+          ) : (
             <span className="truncate text-[10px] font-bold tabular-nums text-neutral-700">
               {row.date}
             </span>
@@ -2492,32 +2497,53 @@ function IntroContractRows({ state }: { state: IntroDashboardState }) {
         )}
       </div>
       <div className="grid gap-2 p-2 md:hidden">
-        {state.rows.length > 0 ? state.rows.map((row, index) => (
-          <div
-            key={`${row.platform}-${row.title}-${index}-mobile`}
-            className="rounded-[10px] border border-neutral-200 bg-white p-3"
-          >
-            <div className="flex items-center justify-between gap-2">
-              <span
-                className={`inline-flex h-6 max-w-[86px] items-center truncate rounded-[6px] border px-2 text-[10px] font-extrabold ${row.platformClass}`}
-              >
-                {row.platform}
-              </span>
-              <span className="text-[10px] font-extrabold text-neutral-600">
-                {row.metric}
-              </span>
+        {state.rows.length > 0 ? state.rows.map((row, index) => {
+          const dateParts = getIntroDateRenderParts(row.date);
+
+          return (
+            <div
+              key={`${row.platform}-${row.title}-${index}-mobile`}
+              className="rounded-[10px] border border-neutral-200 bg-white p-3"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span
+                  className={`inline-flex h-6 max-w-[86px] items-center truncate rounded-[6px] border px-2 text-[10px] font-extrabold ${row.platformClass}`}
+                >
+                  {row.platform}
+                </span>
+                <span className="text-[10px] font-extrabold text-neutral-600">
+                  {row.metric}
+                </span>
+              </div>
+              <p className="mt-2 truncate text-[12px] font-extrabold text-neutral-950">
+                {row.title}
+              </p>
+              <p className="mt-1 truncate text-[10px] font-bold text-neutral-500">
+                {row.brand} · {row.payment}
+              </p>
+              <p className="mt-1 truncate text-[10px] font-bold tabular-nums text-neutral-500">
+                {state.dateColumnLabel}{" "}
+                {dateParts.dday && dateParts.dateLabel ? (
+                  <>
+                    <span
+                      className={
+                        dateParts.isUrgent
+                          ? "font-extrabold text-[#dc2626]"
+                          : "text-neutral-600"
+                      }
+                    >
+                      {dateParts.dday}
+                    </span>
+                    <span className="text-neutral-400">{" / "}</span>
+                    <span>{dateParts.dateLabel}</span>
+                  </>
+                ) : (
+                  row.date
+                )}
+              </p>
             </div>
-            <p className="mt-2 truncate text-[12px] font-extrabold text-neutral-950">
-              {row.title}
-            </p>
-            <p className="mt-1 truncate text-[10px] font-bold text-neutral-500">
-              {row.brand} · {row.payment}
-            </p>
-            <p className="mt-1 truncate text-[10px] font-bold tabular-nums text-neutral-500">
-              {state.dateColumnLabel} {row.date}
-            </p>
-          </div>
-        )) : (
+          );
+        }) : (
           <div className="rounded-[10px] border border-neutral-200 bg-white px-3 py-6 text-center">
             <p className="text-[13px] font-extrabold text-neutral-950">
               {state.emptyTitle}
@@ -2530,6 +2556,22 @@ function IntroContractRows({ state }: { state: IntroDashboardState }) {
       </div>
     </>
   );
+}
+
+function getIntroDateRenderParts(value: string) {
+  const match = /^(D(?:-\d+|\+\d+)) \/ (20\d{2}\.\d{2}\.\d{2})$/.exec(value);
+  if (!match) return { label: value };
+
+  const [, dday, dateLabel] = match;
+  const urgentMatch = /^D-(\d+)$/.exec(dday);
+  const urgentDays = urgentMatch ? Number(urgentMatch[1]) : Number.POSITIVE_INFINITY;
+
+  return {
+    label: value,
+    dday,
+    dateLabel,
+    isUrgent: Number.isFinite(urgentDays) && urgentDays >= 0 && urgentDays <= 3,
+  };
 }
 
 function _IntroAccountBanner({

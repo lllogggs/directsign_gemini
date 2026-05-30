@@ -815,7 +815,7 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
               title="인플루언서 찾기"
             >
               <Search className="h-3.5 w-3.5" strokeWidth={2} />
-              <span className="hidden sm:inline">인플루언서 찾기</span>
+              <span className="hidden sm:inline">인플루언서</span>
             </button>
             <button
               type="button"

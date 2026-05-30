@@ -225,6 +225,13 @@ check(
   "Reusable campaign dashboard/mobile list corrections must remain in AGENTS.md and executable guardrails",
 );
 
+check(
+  "paired advertiser/influencer dashboard rule is recorded",
+  agents.includes("Advertiser and influencer dashboards are paired product surfaces") &&
+    agents.includes("Codex must check the matching surface on the other side"),
+  "AGENTS.md must require matching influencer-dashboard review when advertiser-dashboard UI rules change, and vice versa",
+);
+
 for (const [text, reason] of [
   ["공유 가능", "Vague readiness badges are banned from customer-facing UI"],
   ["처리 필요", "Vague dashboard priority strips are banned unless explicitly approved"],
@@ -287,13 +294,6 @@ assertNoText(
   "The mobile surface switch owns the contract/campaign distinction; the app header should not repeat or truncate it",
 );
 
-assertNoRegex(
-  "contract dashboard/intro date order is YYYY.MM.DD / D-day",
-  dashboardAndIntroFiles,
-  /D[-+]\d+\s*\/\s*20\d{2}\.\d{2}\.\d{2}/,
-  "contract and intro previews keep date-first D-day notation; campaign dashboard has a separate D-day-first guardrail",
-);
-
 check(
   "advertiser dashboard date formatter returns date before D-day",
   advertiserDashboard.includes("return `${dateLabel} / ${dday}`;"),
@@ -316,9 +316,17 @@ check(
 );
 
 check(
-  "influencer dashboard date formatter returns date before D-day",
-  influencerDashboard.includes("return `${dateLabel} / ${dday}`;"),
-  "formatInfluencerDateWithDday must render YYYY.MM.DD / D±N",
+  "influencer dashboard date formatter returns D-day before date",
+  influencerDashboard.includes("label: `${dday} / ${dateLabel}`") &&
+    influencerDashboard.includes("isUrgent: diff >= 0 && diff <= 3"),
+  "formatInfluencerDateWithDday must render D±N / YYYY.MM.DD and mark D-0 through D-3 as urgent",
+);
+
+check(
+  "influencer dashboard urgent D-day segment is red",
+  influencerDashboard.includes("font-extrabold text-[#dc2626]") &&
+    influencerDashboard.includes("<InfluencerDateText parts={parts} />"),
+  "influencer dashboard must color only the imminent D-day segment red",
 );
 
 check(
@@ -346,9 +354,14 @@ check(
 );
 
 check(
-  "influencer verification state is shown in one place",
-  (influencerDashboard.match(/verification\.label/g) ?? []).length === 1,
-  "influencer dashboard must not repeat the same verification state in the page header and profile banner",
+  "influencer account strip shows verified accounts directly",
+  influencerDashboard.includes("border-blue-200 bg-blue-50") &&
+    influencerDashboard.includes("dashboard.verification.approved_platforms.filter") &&
+    influencerDashboard.includes("formatInfluencerPlatformShortLabel(platform.platform)") &&
+    !influencerDashboard.includes("dedupeApprovedPlatforms") &&
+    !influencerDashboard.includes("개 플랫폼") &&
+    !influencerDashboard.includes("서명 인증 관리"),
+  "influencer account strip should use one blue approved badge and list each verified platform handle without abstract counts or management CTAs",
 );
 
 check(
@@ -738,7 +751,10 @@ const expectedTabs = {
   advertiser: ["모집중", "진행중", "종료"],
   influencer: ["지원중", "진행중", "완료", "미선정"],
 };
-const datePattern = /^20\d{2}\.\d{2}\.\d{2} \/ D(?:-\d+|\+\d+)$/;
+const introDatePatterns = {
+  advertiser: /^20\d{2}\.\d{2}\.\d{2} \/ D(?:-\d+|\+\d+)$/,
+  influencer: /^D(?:-\d+|\+\d+) \/ 20\d{2}\.\d{2}\.\d{2}$/,
+};
 
 check(
   "intro advertiser header mirrors real dashboard switch",
@@ -793,8 +809,8 @@ for (const role of ["advertiser", "influencer"]) {
 
     check(
       `intro ${role} ${state.activeTab} dates include year and D-day`,
-      state.rows.every((row) => datePattern.test(row.date)),
-      `${role} ${state.activeTab}: every visible row date must match YYYY.MM.DD / D±N`,
+      state.rows.every((row) => introDatePatterns[role].test(row.date)),
+      `${role} ${state.activeTab}: every visible row date must match the role-specific D-day/date order`,
     );
 
     check(

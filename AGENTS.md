@@ -96,6 +96,8 @@ Example option format:
     - Contract preview panes should distinguish the preview label from the PDF-like document itself. Use a small outside title such as "계약서 초안", then let the document begin cleanly without redundant "전자계약서 초안" header text inside the paper.
     - Header fixes must be applied as a product-wide app-frame rule, not as one-off page patches. Related advertiser/influencer pages should keep the same brand placement, action order, button height, text-button width, icon-button width, and hover affordance.
     - Header text buttons with different widths make the app look unfinished. Standardize persistent header text actions to a shared width at desktop sizes unless the Product Owner explicitly requests a special action to stand out.
+    - Header action labels must fit cleanly inside the fixed button system. If a label with an icon feels clipped or crowded, shorten the visible label while preserving the fuller action meaning in `aria-label` and `title`.
+    - Influencer account summary strips should show real verified platform accounts, not abstract platform counts or unrelated profile/signature management actions. Use a clear blue approved badge, then list each approved platform handle directly; preserve multiple approved accounts on the same platform instead of deduplicating them away.
     - Contract detail headers must not duplicate the page's primary task CTA when the same action already appears in the contract action panel. Keep contract detail headers to navigation and stable utilities; put state-specific actions in the content area where their context is visible.
     - Contract detail pages should start from the key state, next action, counterpart, deadline, and evidence. Do not let metadata, long audit history, clause text, support panels, and secondary explanations compete with the primary contract state.
     - Contract detail pages must follow one-information-one-place. If a value is already shown in the hero summary, do not repeat it as a separate card, side panel, or action panel label unless that second location enables a different action.
@@ -150,14 +152,15 @@ Example option format:
   - If a Figma connector or MCP bridge fails, treat that as a connector issue only. Continue with the OpenDesign CLI, daemon health URL, project URL, launcher script, and browser captures before using any fallback.
   - Only report OpenDesign as blocked after concrete CLI/daemon/launcher repair attempts fail. In that case, report the attempted commands/status URLs and then use browser captures plus coordinate/spacing measurement as the fallback.
   - The product is contract-centered. Dashboard and intro dashboard previews must default to contract lists, not campaign lists, unless the Product Owner explicitly asks for a campaign-management surface.
+  - Advertiser and influencer dashboards are paired product surfaces. When a dashboard column, date format, tab behavior, badge style, header action, empty state, or list density changes on one side, Codex must check the matching surface on the other side and either apply the same product rule or explicitly report why it should not apply.
   - When the real dashboard header, title, tabs, list label, columns, or representative rows change, update the intro dashboard preview in the same task without waiting for the Product Owner to repeat it.
   - Intro dashboard preview counts must match the rows currently shown, or the UI must clearly state that only a subset is visible. Do not leave tab counts, list counts, and visible rows contradicting each other.
   - Do not add vague "처리 필요" strips or summary bars above dashboard lists unless the Product Owner explicitly approves that exact information layer.
   - Do not label dashboard readiness as "공유 가능". It is vague and reads like internal permission logic; use concrete business verification state only where needed, or remove the badge.
   - Dashboard lifecycle tabs must visually connect to the table/panel below like browser tabs: the selected tab shares the panel surface and its bottom border disappears into the content.
   - Dashboard table headers should provide clear ascending/descending sorting where the data benefits from comparison.
-  - Campaign dashboard deadline/end-date cells must lead with the D-day label, then the full date, such as "D-4 / 2026.05.28" or "D+3 / 2026.05.21".
-  - In campaign dashboard deadline/end-date cells, the D-day segment for D-0 through D-3 must be red while the date remains neutral.
+  - Campaign dashboard and influencer dashboard deadline/end-date cells must lead with the D-day label, then the full date, such as "D-4 / 2026.05.28" or "D+3 / 2026.05.21".
+  - In campaign dashboard and influencer dashboard deadline/end-date cells, the D-day segment for D-0 through D-3 must be red while the date remains neutral.
   - Ended/closed contract states need representative test rows, and intro previews must reflect those rows and counts immediately.
 
 ### Owner Command Proxy
@@ -221,7 +224,7 @@ Example option format:
   - Use colored platform badges for Instagram, YouTube, Blog, TikTok, and other channels when they help scanning.
   - Show "지급내용" and deadline. In recruiting and active tabs use deadline; in ended tab use end date.
   - Deadline/end-date values should include year and D-day notation, not month/day only.
-  - Campaign dashboard date values should render as `D-N / YYYY.MM.DD`; D-0 through D-3 must make only the D-day segment red.
+  - Campaign dashboard and influencer dashboard date values should render as `D-N / YYYY.MM.DD`; D-0 through D-3 must make only the D-day segment red.
   - Dashboard cells must not show raw placeholder values such as `-` or `/미정` when summary data, seed data, or a clear business fallback can communicate meaning.
   - Table column labels should support obvious ascending/descending sorting when sortable.
   - Use "신청/모집 인원" for campaign dashboard progress. The cell should be compact ratio data such as "3/10", not repeated copy like "3명 신청".

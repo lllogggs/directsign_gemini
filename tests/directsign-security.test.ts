@@ -855,7 +855,6 @@ describe("yeollock.me security regressions", () => {
     const publicProfile = read("src/domain/publicInfluencerProfile.ts");
     const marketplace = read("src/domain/marketplace.ts");
     const marketplacePages = read("src/pages/marketplace/MarketplacePages.tsx");
-    const influencerDashboard = read("src/pages/influencer/InfluencerDashboard.tsx");
     const server = read("server/index.ts");
 
     assert.match(
@@ -868,18 +867,13 @@ describe("yeollock.me security regressions", () => {
     assert.match(publicProfile, /return clean \? `yeollock\.me\/\$\{clean\}` : "yeollock\.me"/);
     assert.match(marketplace, /return `\/\$\{normalizeMarketplaceHandle\(profile\.handle\)\}`/);
     assert.match(marketplacePages, /formatInfluencerPublicProfileUrl\(profile\.handle\)/);
-    assert.match(
-      influencerDashboard,
-      /navigate\(getInfluencerPublicProfilePath\(publicProfile\.handle\)\)/,
-    );
     assert.match(server, /getInfluencerPublicProfilePath\(row\.target_handle\)/);
     assert.match(server, /getInfluencerPublicProfilePath\(row\.sender_influencer_handle\)/);
     assert.doesNotMatch(marketplacePages, /yeollock\.me\/\{profile\.handle\}/);
   });
 
-  it("derives influencer public profile handles from the first registered platform", () => {
+  it("derives influencer public profile handles from the first registered platform outside the dashboard strip", () => {
     const publicProfile = read("src/domain/publicInfluencerProfile.ts");
-    const influencerDashboard = read("src/pages/influencer/InfluencerDashboard.tsx");
     const server = read("server/index.ts");
     const migration = read(
       "supabase/migrations/20260514012437_allow_dot_in_influencer_public_handles.sql",
@@ -889,10 +883,6 @@ describe("yeollock.me security regressions", () => {
     assert.match(publicProfile, /const firstPlatformHandle = platforms\?\.\[0\]\?\.handle/);
     assert.match(publicProfile, /handle: defaults\.handle/);
     assert.match(publicProfile, /\[a-z0-9_\.-\]/);
-    assert.match(influencerDashboard, /getAutomaticPublicProfileHandle\(approvedPlatforms\)/);
-    assert.match(influencerDashboard, /첫 등록 플랫폼 ID 기준/);
-    assert.doesNotMatch(influencerDashboard, /value=\{form\.handle\}/);
-    assert.doesNotMatch(influencerDashboard, /handle: initialProfile\.handle/);
     assert.match(server, /const automaticHandle = getAutomaticPublicProfileHandle\(approvedPlatforms\) \?\? ""/);
     assert.match(server, /buildApprovedInfluencerPlatforms\(verificationRequests\)/);
     assert.match(server, /parseDateAscending\(a\.created_at, b\.created_at\)/);
@@ -902,7 +892,6 @@ describe("yeollock.me security regressions", () => {
   });
 
   it("opens manual influencer public handles only after conflicts and queues appeals", () => {
-    const influencerDashboard = read("src/pages/influencer/InfluencerDashboard.tsx");
     const adminDashboard = read("src/pages/admin/SystemAdminDashboard.tsx");
     const server = read("server/index.ts");
 
@@ -912,9 +901,6 @@ describe("yeollock.me security regressions", () => {
     assert.doesNotMatch(server, /body\.handle/);
     assert.match(server, /app\.post\("\/api\/influencer\/public-profile\/handle-appeal"/);
     assert.match(server, /request_type: "public_profile_handle_claim"/);
-    assert.match(influencerDashboard, /manualHandleAllowed/);
-    assert.match(influencerDashboard, /alternateHandle: normalizedManualHandle/);
-    assert.match(influencerDashboard, /이의신청하기/);
     assert.match(adminDashboard, /public_profile_handle_claim/);
     assert.match(adminDashboard, /공개 주소 소유권 이의신청/);
   });
@@ -1131,7 +1117,7 @@ describe("yeollock.me security regressions", () => {
     assert.match(qaStandard, /guardrails:kim/);
     assert.match(kimGuardrails, /캠페인 목록/);
     assert.match(kimGuardrails, /공유 가능/);
-    assert.match(kimGuardrails, /influencer verification state is shown in one place/);
+    assert.match(kimGuardrails, /influencer account strip shows verified accounts directly/);
     assert.match(kimGuardrails, /influencer verification approved state is shown in one place/);
     assert.match(kimGuardrails, /advertiser verification approved state is shown in one place/);
     assert.match(kimGuardrails, /disabled auth CTA is visibly disabled/);
@@ -1144,6 +1130,8 @@ describe("yeollock.me security regressions", () => {
     assert.match(kimGuardrails, /advertiser campaign dashboard avoids placeholder campaign values/);
     assert.match(kimGuardrails, /advertiser campaign dashboard date formatter returns D-day before date/);
     assert.match(kimGuardrails, /advertiser campaign dashboard urgent D-day segment is red/);
+    assert.match(kimGuardrails, /influencer dashboard date formatter returns D-day before date/);
+    assert.match(kimGuardrails, /influencer dashboard urgent D-day segment is red/);
     assert.match(kimGuardrails, /test advertiser campaign dashboard seed covers varied lifecycle cases/);
     assert.match(kimGuardrails, /supporters campaign type creates product-mission contract guardrails/);
     assert.match(kimGuardrails, /signup consent records version and operation contact/);
@@ -1157,6 +1145,7 @@ describe("yeollock.me security regressions", () => {
     assert.match(kimGuardrails, /influencer mobile rows do not repeat deadline values/);
     assert.match(kimGuardrails, /OpenDesign is a separate local daemon\/web app workflow/);
     assert.match(kimGuardrails, /mobile clipped list corrections are recorded/);
+    assert.match(kimGuardrails, /paired advertiser\/influencer dashboard rule is recorded/);
     assert.match(kimGuardrails, /first role selection uses action buttons/);
     assert.match(kimGuardrails, /mobile main role title stays compact/);
     assert.match(landing, /data-start-role-action/);
@@ -1212,6 +1201,8 @@ describe("yeollock.me security regressions", () => {
     assert.match(advertiserDashboard, /신청\/모집 인원/);
     assert.match(advertiserDashboard, /label: `\$\{dday\} \/ \$\{dateLabel\}`/);
     assert.match(advertiserDashboard, /font-extrabold text-\[#dc2626\]/);
+    assert.match(influencerDashboard, /label: `\$\{dday\} \/ \$\{dateLabel\}`/);
+    assert.match(influencerDashboard, /<InfluencerDateText parts=\{parts\} \/>/);
     assert.match(advertiserDashboard, /계약 조건 확인/);
     assert.match(advertiserDashboard, /extractCampaignSummaryField/);
     assert.match(seedAccounts, /campaignDashboardApplicationFixtures/);
