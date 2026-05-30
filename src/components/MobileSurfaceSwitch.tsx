@@ -25,7 +25,7 @@ const surfaceCopy: Record<
   influencer: {
     ariaLabel: "인플루언서 모바일 대시보드 전환",
     items: [
-      { id: "contracts", label: "내 계약", href: "/influencer/dashboard" },
+      { id: "contracts", label: "계약", href: "/influencer/dashboard" },
       { id: "campaigns", label: "캠페인", href: "/influencer/campaigns" },
     ],
   },

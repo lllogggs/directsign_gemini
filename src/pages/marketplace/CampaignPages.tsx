@@ -1,5 +1,4 @@
 import {
-  ArrowLeft,
   ChevronDown,
   FileSignature,
   FileText,
@@ -44,6 +43,7 @@ import {
   type MarketplaceProposalStatus,
 } from "../../domain/marketplaceInbox";
 import type { InfluencerPlatform } from "../../domain/verification";
+import { DashboardSurfaceSwitch } from "../../components/DashboardSurfaceSwitch";
 import { MobileSurfaceSwitch } from "../../components/MobileSurfaceSwitch";
 
 type CampaignState =
@@ -441,7 +441,6 @@ export function AdvertiserCampaignRecruitmentPage() {
       title="캠페인 작성"
       description="모집 조건을 공개하고 지원자를 한곳에서 확인합니다."
       backHref="/advertiser/campaigns"
-      backLabel="캠페인 대시보드"
       metrics={[
         {
           label: "작성",
@@ -991,7 +990,6 @@ export function InfluencerCampaignDiscoveryPage() {
       title="캠페인 탐색"
       description="모집 조건을 빠르게 비교하고, 관심 있는 캠페인은 신청 후 광고주 수락을 기다립니다."
       backHref="/influencer/dashboard"
-      backLabel="내 계약"
       metrics={[
         { label: "모집", value: `${visibleCampaigns.length}건` },
         {
@@ -1002,13 +1000,6 @@ export function InfluencerCampaignDiscoveryPage() {
       ]}
       actions={
         <>
-          <Link
-            to="/influencer/dashboard"
-            className="yl-header-action yl-header-action-primary"
-          >
-            <FileSignature className="h-4 w-4" />
-            <span className="hidden sm:inline">받은 계약</span>
-          </Link>
           <Link
             to="/influencer/messages"
             className="yl-header-action yl-header-action-secondary hidden sm:inline-flex"
@@ -1049,6 +1040,13 @@ export function InfluencerCampaignDiscoveryPage() {
               ) : null}
             </div>
           </div>
+          {activeView === "open" ? (
+            <CampaignCategoryStrip
+              value={categoryFilter}
+              categories={categoryOptions}
+              onChange={setCategoryFilter}
+            />
+          ) : null}
           {activeView === "open" && filtersOpen ? (
             <div
               id="influencer-campaign-filters"
@@ -1064,7 +1062,7 @@ export function InfluencerCampaignDiscoveryPage() {
                   className="h-9 w-full rounded-[8px] border border-neutral-200 bg-white pl-10 pr-3 text-[12px] font-bold text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950"
                 />
               </div>
-              <div className="grid min-w-0 gap-2 lg:grid-cols-3">
+              <div className="grid min-w-0 gap-2 lg:grid-cols-2">
                 <FilterGroup label="플랫폼">
                   {platformOptions.map((platform) => (
                     <FilterButton
@@ -1073,16 +1071,6 @@ export function InfluencerCampaignDiscoveryPage() {
                       label={platform === "all" ? "전체" : platformLabels[platform]}
                       onClick={() => setPlatformFilter(platform)}
                       tone={platform === "all" ? undefined : getPlatformTone(platform)}
-                    />
-                  ))}
-                </FilterGroup>
-                <FilterGroup label="카테고리">
-                  {categoryOptions.map((category) => (
-                    <FilterButton
-                      key={category}
-                      active={categoryFilter === category}
-                      label={category === "all" ? "전체" : category}
-                      onClick={() => setCategoryFilter(category)}
                     />
                   ))}
                 </FilterGroup>
@@ -1167,7 +1155,6 @@ function CampaignShell({
   title,
   description,
   backHref,
-  backLabel,
   metrics = defaultCampaignShellMetrics,
   actions,
   children,
@@ -1176,7 +1163,6 @@ function CampaignShell({
   title: string;
   description: string;
   backHref: string;
-  backLabel: string;
   metrics?: CampaignShellMetric[];
   actions?: ReactNode;
   children: ReactNode;
@@ -1212,13 +1198,7 @@ function CampaignShell({
           </Link>
 
           <div className="no-scrollbar ml-3 flex min-w-0 items-center gap-2 overflow-x-auto">
-            <Link
-              to={backHref}
-              className="yl-header-action yl-header-action-secondary"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              <span className="hidden sm:inline">{backLabel}</span>
-            </Link>
+            <DashboardSurfaceSwitch role={role} active="campaigns" />
             {actions}
             <button
               type="button"
@@ -1879,6 +1859,45 @@ function CampaignFilterToggleButton({
         strokeWidth={2}
       />
     </button>
+  );
+}
+
+function CampaignCategoryStrip({
+  value,
+  categories,
+  onChange,
+}: {
+  value: CategoryFilter;
+  categories: CategoryFilter[];
+  onChange: (value: CategoryFilter) => void;
+}) {
+  return (
+    <div className="border-t border-neutral-100 bg-white px-3 py-2">
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="shrink-0 text-[12px] font-extrabold text-neutral-500">
+          카테고리
+        </span>
+        <div className="no-scrollbar flex min-w-0 flex-1 gap-1.5 overflow-x-auto">
+          {categories.map((category) => {
+            const active = value === category;
+            return (
+              <button
+                key={category}
+                type="button"
+                onClick={() => onChange(category)}
+                className={`inline-flex h-8 shrink-0 items-center rounded-md border px-2.5 text-[12px] font-extrabold transition ${
+                  active
+                    ? "border-neutral-950 bg-neutral-950 text-white"
+                    : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300 hover:text-neutral-950"
+                }`}
+              >
+                {category === "all" ? "전체" : category}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
   );
 }
 

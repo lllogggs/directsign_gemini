@@ -17,7 +17,6 @@ import {
   KeyRound,
   LogOut,
   Mail,
-  Megaphone,
   MessageSquareText,
   Music2,
   Search,
@@ -54,6 +53,7 @@ import {
 } from "../../domain/display";
 import { translateApiErrorMessage } from "../../domain/userMessages";
 import type { InfluencerPlatform } from "../../domain/verification";
+import { DashboardSurfaceSwitch } from "../../components/DashboardSurfaceSwitch";
 import { MobileSurfaceSwitch } from "../../components/MobileSurfaceSwitch";
 import { useMarketplaceMessageSummary } from "../../hooks/useMarketplaceMessageSummary";
 
@@ -602,26 +602,7 @@ export function InfluencerDashboard() {
           </button>
 
           <div className="ml-2 flex min-w-0 items-center justify-end gap-1.5 sm:ml-3 sm:gap-2">
-            <button
-              type="button"
-              onClick={() => navigate("/influencer/dashboard")}
-              className="yl-header-action yl-header-action-dark"
-              aria-label="내 계약"
-              title="내 계약"
-            >
-              <FileText className="h-3.5 w-3.5" strokeWidth={2} />
-              <span className="hidden sm:inline">내 계약</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate("/influencer/campaigns")}
-              className="yl-header-action yl-header-action-secondary"
-              aria-label="캠페인 찾기"
-              title="캠페인 찾기"
-            >
-              <Megaphone className="h-3.5 w-3.5" strokeWidth={2} />
-              <span className="hidden sm:inline">캠페인 찾기</span>
-            </button>
+            <DashboardSurfaceSwitch role="influencer" active="contracts" />
             <MessageCenterButton
               unreadCount={messageSummary.unreadCount}
               isLoading={isMessageSummaryLoading}

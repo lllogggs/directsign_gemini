@@ -64,6 +64,7 @@ import {
   waitForFastLoginTransition,
 } from "../../domain/fastLoginTransition";
 import { ContractFirstExperienceDialog } from "../../components/ScreenHelp";
+import { DashboardSurfaceSwitch } from "../../components/DashboardSurfaceSwitch";
 import { CONTRACT_FIRST_EXPERIENCE_CONTENT } from "../../domain/screenHelp";
 import {
   platformLabels,
@@ -801,7 +802,7 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
                 <SyncPill isSyncing={isSyncing} syncError={syncError} />
               </div>
             ) : null}
-            <AdvertiserDashboardSurfaceSwitch active={surface} />
+            <DashboardSurfaceSwitch role="advertiser" active={surface} />
             <MessageCenterButton
               unreadCount={messageSummary.unreadCount}
               isLoading={isMessageSummaryLoading}
@@ -1235,35 +1236,6 @@ function MessageCenterButton({
         <span className="absolute right-0 top-0 h-2.5 w-2.5 rounded-full bg-neutral-300 ring-2 ring-white" />
       ) : null}
     </button>
-  );
-}
-
-function AdvertiserDashboardSurfaceSwitch({
-  active,
-}: {
-  active: DashboardProps["surface"];
-}) {
-  return (
-    <nav className="yl-dashboard-surface-switch" aria-label="광고주 대시보드 전환">
-      <Link
-        to="/advertiser/dashboard"
-        className={`yl-dashboard-surface-link ${
-          active === "contracts" ? "yl-dashboard-surface-link-active" : ""
-        }`}
-        aria-current={active === "contracts" ? "page" : undefined}
-      >
-        계약
-      </Link>
-      <Link
-        to="/advertiser/campaigns"
-        className={`yl-dashboard-surface-link ${
-          active === "campaigns" ? "yl-dashboard-surface-link-active" : ""
-        }`}
-        aria-current={active === "campaigns" ? "page" : undefined}
-      >
-        캠페인
-      </Link>
-    </nav>
   );
 }
 

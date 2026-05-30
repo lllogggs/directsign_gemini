@@ -141,6 +141,7 @@ const app = read("src/App.tsx");
 const advertiserDashboard = read("src/pages/marketing/Dashboard.tsx");
 const influencerDashboard = read("src/pages/influencer/InfluencerDashboard.tsx");
 const campaignPages = read("src/pages/marketplace/CampaignPages.tsx");
+const marketplacePages = read("src/pages/marketplace/MarketplacePages.tsx");
 const marketplace = read("src/domain/marketplace.ts");
 const server = read("server/index.ts");
 const fastAuth = read("lib/fast-auth.ts");
@@ -153,6 +154,7 @@ const analytics = read("src/domain/analytics.ts");
 const legalDocumentPage = read("src/pages/legal/LegalDocumentPage.tsx");
 const legalEntity = read("src/domain/legalEntity.ts");
 const supportPage = read("src/pages/support/SupportPage.tsx");
+const dashboardSurfaceSwitch = read("src/components/DashboardSurfaceSwitch.tsx");
 const mobileSurfaceSwitch = read("src/components/MobileSurfaceSwitch.tsx");
 const authLoginScreen = read("src/components/AuthLoginScreen.tsx");
 const advertiserAuthGate = read("src/pages/marketing/AdvertiserAuthGate.tsx");
@@ -228,7 +230,8 @@ check(
 check(
   "paired advertiser/influencer dashboard rule is recorded",
   agents.includes("Advertiser and influencer dashboards are paired product surfaces") &&
-    agents.includes("Codex must check the matching surface on the other side"),
+    agents.includes("Codex must check the matching surface on the other side") &&
+    agents.includes("same contract/campaign dashboard split"),
   "AGENTS.md must require matching influencer-dashboard review when advertiser-dashboard UI rules change, and vice versa",
 );
 
@@ -608,21 +611,55 @@ check(
   "mobile contract and campaign surfaces are explicit",
   mobileSurfaceSwitch.includes("data-mobile-surface-switch") &&
     mobileSurfaceSwitch.includes("계약") &&
-    mobileSurfaceSwitch.includes("내 계약") &&
     mobileSurfaceSwitch.includes("캠페인") &&
     mobileSurfaceSwitch.includes("/advertiser/dashboard") &&
     mobileSurfaceSwitch.includes("/advertiser/campaigns") &&
     mobileSurfaceSwitch.includes("/influencer/dashboard") &&
     mobileSurfaceSwitch.includes("/influencer/campaigns") &&
-    advertiserDashboard.includes("<AdvertiserDashboardSurfaceSwitch active={surface} />") &&
-    advertiserDashboard.includes("function AdvertiserDashboardSurfaceSwitch") &&
-    advertiserDashboard.includes('to="/advertiser/dashboard"') &&
-    advertiserDashboard.includes('to="/advertiser/campaigns"') &&
     !advertiserDashboard.includes('<MobileSurfaceSwitch role="advertiser"') &&
     (influencerDashboard.match(/<MobileSurfaceSwitch role="influencer" active="contracts" \/>/g) ??
       []).length >= 2 &&
     campaignPages.includes('<MobileSurfaceSwitch role={role} active="campaigns" />'),
   "mobile users must see the contract/campaign surface split without duplicating the same switch in both the header and body",
+);
+
+check(
+  "desktop dashboard surface switch is shared by advertiser and influencer",
+  dashboardSurfaceSwitch.includes("data-dashboard-surface-switch") &&
+    dashboardSurfaceSwitch.includes("data-dashboard-surface-active") &&
+    dashboardSurfaceSwitch.includes('ariaLabel: "광고주 대시보드 전환"') &&
+    dashboardSurfaceSwitch.includes('ariaLabel: "인플루언서 대시보드 전환"') &&
+    dashboardSurfaceSwitch.includes('label: "계약"') &&
+    dashboardSurfaceSwitch.includes('label: "캠페인"') &&
+    dashboardSurfaceSwitch.includes('href: "/advertiser/dashboard"') &&
+    dashboardSurfaceSwitch.includes('href: "/advertiser/campaigns"') &&
+    dashboardSurfaceSwitch.includes('href: "/influencer/dashboard"') &&
+    dashboardSurfaceSwitch.includes('href: "/influencer/campaigns"') &&
+    advertiserDashboard.includes('<DashboardSurfaceSwitch role="advertiser" active={surface} />') &&
+    influencerDashboard.includes('<DashboardSurfaceSwitch role="influencer" active="contracts" />') &&
+    campaignPages.includes('<DashboardSurfaceSwitch role={role} active="campaigns" />') &&
+    !influencerDashboard.includes('aria-label="캠페인 찾기"') &&
+    !campaignPages.includes("받은 계약"),
+  "Advertiser and influencer desktop app frames must use the same 계약/캠페인 dashboard switch instead of page-specific back or find buttons",
+);
+
+  check(
+    "marketplace discovery separates platform and category filters",
+    agents.includes("Platform and category are separate discovery axes") &&
+      marketplacePages.includes("const [categoryFilter, setCategoryFilter]") &&
+      marketplacePages.includes("hasCategory(profile.categories, categoryFilter)") &&
+      marketplacePages.includes("function getCategoryFilterKey") &&
+      marketplacePages.includes("const categoryKeyAliases") &&
+      marketplacePages.includes("const categoryDisplayLabels") &&
+      agents.includes("Category chips and filters must use customer-facing Korean labels") &&
+      marketplacePages.includes("function CategoryFilterBar") &&
+      marketplacePages.includes("FilterChipGroup label=\"플랫폼\"") &&
+      marketplacePages.includes("FilterChipGroup label=\"카테고리\"") &&
+    campaignPages.includes("function CampaignCategoryStrip") &&
+    campaignPages.includes("<CampaignCategoryStrip") &&
+    campaignPages.includes("categoryFilter !== \"all\" && campaign.brandCategory !== categoryFilter") &&
+    !campaignPages.includes('<FilterGroup label="카테고리">'),
+  "Advertiser discovery must filter creators by platform and category separately, while influencer campaign discovery must expose campaign categories as a visible strip without duplicating the same filter inside the hidden filter panel",
 );
 
 check(
@@ -632,7 +669,7 @@ check(
     app.includes('path="/advertiser/campaigns/new"') &&
     advertiserDashboard.includes('to="/advertiser/campaigns/new"') &&
     campaignPages.includes('backHref="/advertiser/campaigns"') &&
-    campaignPages.includes('backLabel="캠페인 대시보드"') &&
+    campaignPages.includes('<DashboardSurfaceSwitch role={role} active="campaigns" />') &&
     qaStandard.includes('"/advertiser/campaigns/new"'),
   "The advertiser campaign surface must open a dashboard first, with campaign creation as a secondary page",
 );

@@ -1091,10 +1091,12 @@ describe("yeollock.me security regressions", () => {
     const influencerVerification = read("src/pages/influencer/InfluencerVerification.tsx");
     const seedAccounts = read("scripts/seed-test-accounts.mjs");
     const server = read("server/index.ts");
+    const dashboardSurfaceSwitch = read("src/components/DashboardSurfaceSwitch.tsx");
     const mobileSurfaceSwitch = read("src/components/MobileSurfaceSwitch.tsx");
     const advertiserDashboard = read("src/pages/marketing/Dashboard.tsx");
     const influencerDashboard = read("src/pages/influencer/InfluencerDashboard.tsx");
     const campaignPages = read("src/pages/marketplace/CampaignPages.tsx");
+    const marketplacePages = read("src/pages/marketplace/MarketplacePages.tsx");
     const app = read("src/App.tsx");
     const marketplaceDomain = read("src/domain/marketplace.ts");
     const packageJson = JSON.parse(read("package.json")) as {
@@ -1163,7 +1165,25 @@ describe("yeollock.me security regressions", () => {
     assert.match(mobileSurfaceSwitch, /data-mobile-surface-switch/);
     assert.match(mobileSurfaceSwitch, /\/advertiser\/campaigns/);
     assert.match(mobileSurfaceSwitch, /\/influencer\/campaigns/);
-    assert.match(advertiserDashboard, /<AdvertiserDashboardSurfaceSwitch active=\{surface\} \/>/);
+    assert.match(dashboardSurfaceSwitch, /data-dashboard-surface-switch/);
+    assert.match(dashboardSurfaceSwitch, /data-dashboard-surface-active/);
+    assert.match(dashboardSurfaceSwitch, /인플루언서 대시보드 전환/);
+    assert.match(dashboardSurfaceSwitch, /href: "\/influencer\/dashboard"/);
+    assert.match(dashboardSurfaceSwitch, /href: "\/influencer\/campaigns"/);
+    assert.match(advertiserDashboard, /<DashboardSurfaceSwitch role="advertiser" active=\{surface\} \/>/);
+    assert.match(influencerDashboard, /<DashboardSurfaceSwitch role="influencer" active="contracts" \/>/);
+    assert.match(campaignPages, /<DashboardSurfaceSwitch role=\{role\} active="campaigns" \/>/);
+    assert.match(kimGuardrails, /marketplace discovery separates platform and category filters/);
+    assert.match(agents, /Platform and category are separate discovery axes/);
+    assert.match(agents, /Category chips and filters must use customer-facing Korean labels/);
+    assert.match(marketplacePages, /const \[categoryFilter, setCategoryFilter\]/);
+    assert.match(marketplacePages, /hasCategory\(profile\.categories, categoryFilter\)/);
+    assert.match(marketplacePages, /function getCategoryFilterKey/);
+    assert.match(marketplacePages, /const categoryDisplayLabels/);
+    assert.match(marketplacePages, /function CategoryFilterBar/);
+    assert.match(marketplacePages, /FilterChipGroup label="카테고리"/);
+    assert.match(campaignPages, /function CampaignCategoryStrip/);
+    assert.match(campaignPages, /<CampaignCategoryStrip/);
     assert.match(app, /path="\/advertiser\/campaigns"/);
     assert.match(app, /<Dashboard surface="campaigns" \/>/);
     assert.match(app, /path="\/advertiser\/campaigns\/new"/);
@@ -1175,7 +1195,7 @@ describe("yeollock.me security regressions", () => {
     assert.match(qaStandard, /hasRouteErrorBoundary/);
     assert.match(advertiserDashboard, /to="\/advertiser\/campaigns\/new"/);
     assert.match(campaignPages, /backHref="\/advertiser\/campaigns"/);
-    assert.match(campaignPages, /backLabel="캠페인 대시보드"/);
+    assert.doesNotMatch(campaignPages, /받은 계약/);
     assert.match(marketplaceDomain, /\| "supporters"/);
     assert.match(marketplaceDomain, /supporters: "서포터즈"/);
     assert.match(campaignPages, /제품 제공\(소비자가 89,000원 상당\)/);

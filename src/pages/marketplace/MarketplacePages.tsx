@@ -58,6 +58,7 @@ import {
 import type { InfluencerPlatform } from "../../domain/verification";
 
 type PlatformFilter = "all" | InfluencerPlatform;
+type CategoryFilter = "all" | string;
 
 const platformFilterOptions: PlatformFilter[] = [
   "all",
@@ -68,11 +69,78 @@ const platformFilterOptions: PlatformFilter[] = [
   "other",
 ];
 
+const categoryKeyAliases: Record<string, string> = {
+  beauty: "beauty",
+  "뷰티": "beauty",
+  tech: "tech",
+  "테크": "tech",
+  lifestyle: "lifestyle",
+  "라이프스타일": "lifestyle",
+  fashion: "fashion",
+  "패션": "fashion",
+  education: "education",
+  "교육": "education",
+  fitness: "fitness",
+  "피트니스": "fitness",
+  game: "game",
+  "게임": "game",
+  mukbang: "food",
+  food: "food",
+  "푸드": "food",
+  travel: "travel",
+  "여행": "travel",
+  living: "living",
+  "리빙": "living",
+  homecafe: "homecafe",
+  "홈카페": "homecafe",
+  parenting: "parenting",
+  "육아": "parenting",
+};
+
+const categoryDisplayLabels: Record<string, string> = {
+  beauty: "뷰티",
+  tech: "테크",
+  lifestyle: "라이프스타일",
+  fashion: "패션",
+  education: "교육",
+  fitness: "피트니스",
+  game: "게임",
+  food: "푸드",
+  travel: "여행",
+  living: "리빙",
+  homecafe: "홈카페",
+  parenting: "육아",
+};
+
 const proposalTypeOptions = campaignProposalTypeOptions;
 
 const demoInfluencerProfileAliases: Record<string, string> = {
   "creator-sora": "zeu_k",
 };
+
+function getCategoryFilterKey(category: string) {
+  const normalized = category.trim().toLowerCase();
+  return categoryKeyAliases[normalized] ?? normalized;
+}
+
+function getCategoryLabel(category: string) {
+  const key = getCategoryFilterKey(category);
+  return categoryDisplayLabels[key] ?? cleanMarketplaceCopy(category);
+}
+
+function getCategoryLabels(categories: string[], limit: number) {
+  const labelsByKey = new Map<string, string>();
+  for (const category of categories) {
+    const key = getCategoryFilterKey(category);
+    if (!labelsByKey.has(key)) labelsByKey.set(key, getCategoryLabel(category));
+  }
+  return Array.from(labelsByKey.values()).slice(0, limit);
+}
+
+function hasCategory(categories: string[], filter: CategoryFilter) {
+  if (filter === "all") return true;
+  return categories.some((category) => getCategoryFilterKey(category) === filter);
+}
 
 type MarketplaceInfluencersResponse = {
   profiles: MarketplaceInfluencerProfile[];
@@ -298,6 +366,7 @@ export function AdvertiserInfluencerDiscoveryPage() {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [platformFilter, setPlatformFilter] = useState<PlatformFilter>("all");
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectedProfile, setSelectedProfile] =
     useState<MarketplaceInfluencerProfile | null>(null);
@@ -312,6 +381,7 @@ export function AdvertiserInfluencerDiscoveryPage() {
         platformFilter === "all" ||
         profile.platforms.some((platform) => platform.platform === platformFilter);
       if (!matchesPlatform) return false;
+      if (!hasCategory(profile.categories, categoryFilter)) return false;
       if (!normalizedQuery) return true;
 
       return [
@@ -330,10 +400,26 @@ export function AdvertiserInfluencerDiscoveryPage() {
         .toLowerCase()
         .includes(normalizedQuery);
     });
-  }, [platformFilter, profiles, query]);
+  }, [categoryFilter, platformFilter, profiles, query]);
+  const influencerCategoryOptions = useMemo(
+    () => [
+      "all",
+      ...Array.from(
+        new Set<string>(
+          profiles.flatMap((profile) =>
+            profile.categories.map((category) => getCategoryFilterKey(category)),
+          ),
+        ),
+      ).sort((left, right) =>
+        getCategoryLabel(left).localeCompare(getCategoryLabel(right), "ko"),
+      ),
+    ],
+    [profiles],
+  );
   const activeFilterLabels = [
     query.trim() ? `검색 ${query.trim()}` : null,
     platformFilter !== "all" ? platformLabels[platformFilter] : null,
+    categoryFilter !== "all" ? getCategoryLabel(categoryFilter) : null,
   ].filter((label): label is string => Boolean(label));
   const filterSummary =
     activeFilterLabels.length > 0 ? activeFilterLabels.join(" · ") : "전체 조건";
@@ -383,7 +469,18 @@ export function AdvertiserInfluencerDiscoveryPage() {
           label="인플루언서 검색"
           placeholder="이름, 핸들, 카테고리, 브랜드 적합도 검색"
         />
-        <PlatformFilterBar value={platformFilter} onChange={setPlatformFilter} />
+        <div className="grid min-w-0 gap-2 lg:min-w-[560px]">
+          <FilterChipGroup label="플랫폼">
+            <PlatformFilterBar value={platformFilter} onChange={setPlatformFilter} />
+          </FilterChipGroup>
+          <FilterChipGroup label="카테고리">
+            <CategoryFilterBar
+              value={categoryFilter}
+              categories={influencerCategoryOptions}
+              onChange={setCategoryFilter}
+            />
+          </FilterChipGroup>
+        </div>
       </DiscoveryControls>
 
       {isLoading ? (
@@ -709,12 +806,12 @@ export function PublicInfluencerProfilePage() {
               <div>
                 <p className="mb-2 text-[12px] font-semibold text-neutral-500">카테고리</p>
                 <div className="flex flex-wrap gap-1.5">
-                  {profile.categories.slice(0, 5).map((category) => (
+                  {getCategoryLabels(profile.categories, 5).map((category) => (
                     <span
                       key={category}
                       className="inline-flex h-8 items-center rounded-[8px] border border-neutral-200 bg-[#fbfaf7] px-2.5 text-[12px] font-extrabold text-neutral-700"
                     >
-                      {cleanMarketplaceCopy(category)}
+                      {category}
                     </span>
                   ))}
                 </div>
@@ -1060,12 +1157,12 @@ function InfluencerDiscoveryCard({
       </p>
 
       <div className="mt-3 flex flex-wrap gap-1.5">
-        {profile.categories.slice(0, 3).map((category) => (
+        {getCategoryLabels(profile.categories, 3).map((category) => (
           <span
             key={`${profile.id}-${category}`}
             className="inline-flex h-7 items-center rounded-md border border-neutral-200 bg-[#fbfaf7] px-2 text-[11px] font-extrabold text-neutral-600"
           >
-            {cleanMarketplaceCopy(category)}
+            {category}
           </span>
         ))}
       </div>
@@ -1715,7 +1812,7 @@ function PlatformFilterBar({
   onChange: (value: PlatformFilter) => void;
 }) {
   return (
-    <div className="flex flex-wrap gap-1.5 lg:no-scrollbar lg:max-w-[560px] lg:flex-nowrap lg:overflow-x-auto">
+    <div className="flex min-w-0 flex-wrap gap-1.5 lg:no-scrollbar lg:flex-nowrap lg:overflow-x-auto">
       {platformFilterOptions.map((platform) => {
         const active = value === platform;
         const label = platform === "all" ? "전체" : platformLabels[platform];
@@ -1735,6 +1832,57 @@ function PlatformFilterBar({
           </button>
         );
       })}
+    </div>
+  );
+}
+
+function CategoryFilterBar({
+  value,
+  categories,
+  onChange,
+}: {
+  value: CategoryFilter;
+  categories: CategoryFilter[];
+  onChange: (value: CategoryFilter) => void;
+}) {
+  return (
+    <div className="flex min-w-0 flex-wrap gap-1.5 lg:no-scrollbar lg:flex-nowrap lg:overflow-x-auto">
+      {categories.map((category) => {
+        const active = value === category;
+        const label = category === "all" ? "전체" : getCategoryLabel(category);
+
+        return (
+          <button
+            key={category}
+            type="button"
+            onClick={() => onChange(category)}
+            className={`inline-flex h-8 shrink-0 items-center rounded-md border px-2.5 text-[12px] font-semibold transition ${
+              active
+                ? "border-neutral-950 bg-neutral-950 text-white"
+                : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300 hover:text-neutral-950"
+            }`}
+          >
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function FilterChipGroup({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-2 rounded-[8px] border border-neutral-200 bg-[#fbfaf7] px-2.5 py-1.5">
+      <span className="shrink-0 text-[12px] font-extrabold text-neutral-500">
+        {label}
+      </span>
+      <div className="min-w-0 flex-1">{children}</div>
     </div>
   );
 }
