@@ -118,15 +118,25 @@ describe("yeollock.me security regressions", () => {
     for (const routePath of staticSeoRoutePaths) {
       const seo = getIntentAwareRouteSeoConfig(routePath);
       const canonicalUrl = buildCanonicalUrl(routePath);
+      const isLegalNoIndexRoute = [
+        "/privacy",
+        "/terms",
+        "/legal/e-sign-consent",
+      ].includes(routePath);
 
       assert.equal(seo.canonicalPath, routePath);
-      assert.match(seo.robots, /^index,follow/);
-      assert.match(
-        sitemap,
-        new RegExp(
-          `<loc>${escapeRegExp(canonicalUrl)}</loc>\\s*<lastmod>2026-05-30</lastmod>`,
-        ),
-      );
+      if (isLegalNoIndexRoute) {
+        assert.equal(seo.robots, "noindex,follow");
+        assert.doesNotMatch(sitemap, new RegExp(`<loc>${escapeRegExp(canonicalUrl)}</loc>`));
+      } else {
+        assert.match(seo.robots, /^index,follow/);
+        assert.match(
+          sitemap,
+          new RegExp(
+            `<loc>${escapeRegExp(canonicalUrl)}</loc>\\s*<lastmod>2026-05-31</lastmod>`,
+          ),
+        );
+      }
       assert.equal(seo.ogImageUrl, defaultOgImageUrl);
       assert.equal(seo.ogImageAlt?.length ? true : false, true);
       assert.ok([...seo.title].length <= maxNaverTitleLength, seo.title);
@@ -1148,6 +1158,8 @@ describe("yeollock.me security regressions", () => {
     assert.match(kimGuardrails, /OpenDesign is a separate local daemon\/web app workflow/);
     assert.match(kimGuardrails, /mobile clipped list corrections are recorded/);
     assert.match(kimGuardrails, /paired advertiser\/influencer dashboard rule is recorded/);
+    assert.match(kimGuardrails, /dashboard and inbox column headers stay stronger than filters/);
+    assert.match(agents, /Table and list headers are navigation anchors, not helper text/);
     assert.match(kimGuardrails, /first role selection uses action buttons/);
     assert.match(kimGuardrails, /mobile main role title stays compact/);
     assert.match(landing, /data-start-role-action/);
@@ -1219,6 +1231,16 @@ describe("yeollock.me security regressions", () => {
     assert.doesNotMatch(advertiserDashboard, /\/미정/);
     assert.doesNotMatch(advertiserDashboard, /명 신청/);
     assert.match(advertiserDashboard, /신청\/모집 인원/);
+    assert.match(agents, /Paired advertiser\/influencer dashboard surfaces must keep interaction parity/);
+    assert.match(advertiserDashboard, /compareCampaignGroupsBySort/);
+    assert.match(advertiserDashboard, /sortKey="participants"/);
+    assert.match(advertiserDashboard, /handleCampaignSortChange/);
+    assert.match(campaignPages, /function CampaignSortSelect/);
+    assert.match(campaignPages, /compareMarketplaceCampaignPostsBySort/);
+    assert.match(campaignPages, /compareAppliedCampaignApplicationsBySort/);
+    assert.match(campaignPages, /function AppliedCampaignFilters/);
+    assert.match(campaignPages, /appliedStatusFilter/);
+    assert.match(campaignPages, /CampaignColumnHeader/);
     assert.match(advertiserDashboard, /label: `\$\{dday\} \/ \$\{dateLabel\}`/);
     assert.match(advertiserDashboard, /font-extrabold text-\[#dc2626\]/);
     assert.match(influencerDashboard, /label: `\$\{dday\} \/ \$\{dateLabel\}`/);

@@ -1303,7 +1303,7 @@ function InfluencerTableHeaderRow({
   onSortChange: (key: SortKey) => void;
 }) {
   return (
-    <div className="hidden border-b border-[#e3e8e3] bg-[#fbfbf8] px-3 py-2 lg:grid lg:grid-cols-[minmax(104px,0.2fr)_minmax(82px,0.14fr)_minmax(250px,0.78fr)_minmax(160px,0.4fr)_minmax(132px,0.32fr)_minmax(104px,0.23fr)] lg:items-center lg:gap-2">
+    <div className="hidden border-b border-[#d7ddd7] bg-[#f7f8f4] px-3 py-2.5 lg:grid lg:grid-cols-[minmax(104px,0.2fr)_minmax(82px,0.14fr)_minmax(250px,0.78fr)_minmax(160px,0.4fr)_minmax(132px,0.32fr)_minmax(104px,0.23fr)] lg:items-center lg:gap-2">
       <ColumnHeader
         label="플랫폼"
         sortKey="platform"
@@ -1645,8 +1645,8 @@ function ColumnHeader({
   onSortChange?: (key: SortKey) => void;
 }) {
   return (
-    <div className="flex h-6 items-center gap-1">
-      <span className="block text-[11px] font-extrabold text-[#7d857f]">{label}</span>
+    <div className="flex h-7 min-w-0 items-center gap-1.5">
+      <span className="block truncate text-[12px] font-black tracking-[-0.01em] text-[#303630]">{label}</span>
       {sortKey && sortState && onSortChange ? (
         <SortButton
           label={label}

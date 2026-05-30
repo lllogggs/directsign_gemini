@@ -308,6 +308,10 @@ const routeOutputPath = (routePath: string) => {
 
 const renderSitemap = () => {
   const urls = staticSeoRoutePaths
+    .filter((routePath) => {
+      const seo = getIntentAwareRouteSeoConfig(routePath);
+      return !seo.robots.includes("noindex");
+    })
     .map((routePath) => {
       const seo = getIntentAwareRouteSeoConfig(routePath);
       return `  <url>

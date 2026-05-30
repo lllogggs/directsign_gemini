@@ -202,6 +202,7 @@ Example option format:
 - UI taste rules:
   - One row should communicate one primary item. Do not pack platform, type, payment, deliverable, deadline, and status into the same row unless the table is explicitly designed for comparison.
   - Important content must be visually stronger than filters. Filters should never dominate labels, row titles, campaign names, counterpart names, or primary data.
+  - Table and list headers are navigation anchors, not helper text. Column headers and section titles must have enough contrast, weight, and size to be read before filters/search controls, while still staying compact enough for one-line dashboard rows.
   - Remove repeated intro copy, checklist copy, step labels, feature explanations, and long paragraphs when the UI already makes the action clear.
   - Do not place login next to start when one button can carry the action. In intros, "시작하기" should usually act as the login/start CTA.
   - Signup and form pages should collect input first. Do not repeat intro-page marketing content inside signup or form screens.
@@ -234,6 +235,7 @@ Example option format:
   - Do not show every test campaign as "1/1" or "1명 신청"; maintain varied test states and progress so the dashboard looks real.
   - Dashboard and seed data must cover 1:1 contracts and one-to-many campaign contracts across recruiting, active, ended/completed, rejected, revision, signature, content, and review states.
   - Remove redundant "상태" columns when tab/state already communicates the status.
+  - Paired advertiser/influencer dashboard surfaces must keep interaction parity. If one side has search, filters, sorting, lifecycle tabs, or drill-in actions for contracts or campaigns, the other side needs a role-appropriate equivalent unless the Product Owner explicitly approves an asymmetry.
 - Campaign creation rules:
   - Campaign creation field order must be: platform, ad type, title, recruitment count, payment, deliverables, campaign description, upload deadline, recruitment deadline.
   - Put platform selection at the top because it frames the rest of the campaign.

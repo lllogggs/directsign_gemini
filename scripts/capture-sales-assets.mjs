@@ -135,7 +135,7 @@ class CdpClient {
 
 const readDevToolsEndpoint = async () => {
   const activePortFile = path.join(profileDir, "DevToolsActivePort");
-  const deadline = Date.now() + 15000;
+  const deadline = Date.now() + 45000;
 
   while (Date.now() < deadline) {
     try {
@@ -515,6 +515,19 @@ try {
   await capturePng(client, dashboardPage, "yeollock-advertiser-dashboard.png");
   await closePage(client, dashboardPage);
 
+  const campaignDashboardPage = await openPage(
+    client,
+    `${baseUrl}/advertiser/campaigns`,
+    { width: 1440, height: 940 },
+  );
+  await waitForBodyText(client, campaignDashboardPage, "캠페인 운영");
+  await capturePng(
+    client,
+    campaignDashboardPage,
+    "yeollock-advertiser-campaign-dashboard.png",
+  );
+  await closePage(client, campaignDashboardPage);
+
   const builderPage = await openPage(
     client,
     `${baseUrl}/advertiser/builder`,
@@ -610,6 +623,7 @@ try {
         baseUrl,
         outputs: [
           "docs/sales/assets/yeollock-advertiser-dashboard.png",
+          "docs/sales/assets/yeollock-advertiser-campaign-dashboard.png",
           "docs/sales/assets/yeollock-contract-builder.png",
           "docs/sales/assets/yeollock-contract-admin.png",
           "docs/sales/assets/yeollock-contract-completed-admin.png",

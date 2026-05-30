@@ -54,10 +54,11 @@ const officialInstagramHandle =
     .replace(/^@+/, "") || "yeollockme";
 
 const publicSameAsUrls = [`https://www.instagram.com/${officialInstagramHandle}/`];
-export const seoDateModified = "2026-05-30";
+export const seoDateModified = "2026-05-31";
 
 export const publicRobotsContent =
   "index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1";
+export const legalRobotsContent = "noindex,follow";
 export const privateRobotsContent = "noindex,nofollow";
 
 export const staticSeoRoutePaths = [
@@ -316,21 +317,21 @@ const getRouteSeoConfig = (pathname: string): RouteSeoConfig => {
       description:
         "연락미의 회원가입, 계정 인증, 계약 작성, 전자서명 증빙 보관에 필요한 개인정보 처리 기준입니다.",
       canonicalPath: "/privacy",
-      robots: publicRobotsContent,
+      robots: legalRobotsContent,
     },
     "/terms": {
       title: `이용약관 - ${PRODUCT_NAME}`,
       description:
         "연락미 광고 계약 워크스페이스 이용 조건, 책임 범위, 데이터 보관 기준을 안내합니다.",
       canonicalPath: "/terms",
-      robots: publicRobotsContent,
+      robots: legalRobotsContent,
     },
     "/legal/e-sign-consent": {
       title: `전자서명 안내 및 동의 - ${PRODUCT_NAME}`,
       description:
         "연락미에서 전자서명을 진행할 때 고정되는 최종본, 서명 의사표시, 감사 증빙 보관 기준입니다.",
       canonicalPath: "/legal/e-sign-consent",
-      robots: publicRobotsContent,
+      robots: legalRobotsContent,
     },
     "/support": {
       title: `고객지원 - ${PRODUCT_NAME}`,
@@ -448,7 +449,7 @@ const publicSearchIntentPages: Record<string, IntentAwareSeoCopy> = {
     description:
       "계정 인증, 광고 계약, 검토 링크, 전자서명 증빙에 필요한 개인정보 처리 기준입니다.",
     canonicalPath: "/privacy",
-    robots: publicRobotsContent,
+    robots: legalRobotsContent,
     keywords: ["광고 계약 개인정보", "전자서명 개인정보", "계약 서비스 개인정보"],
   },
   "/terms": {
@@ -456,7 +457,7 @@ const publicSearchIntentPages: Record<string, IntentAwareSeoCopy> = {
     description:
       "광고주와 인플루언서가 연락미 계약 서비스를 이용할 때 적용되는 조건입니다.",
     canonicalPath: "/terms",
-    robots: publicRobotsContent,
+    robots: legalRobotsContent,
     keywords: ["광고 계약 서비스 약관", "인플루언서 계약 약관", "전자계약 약관"],
   },
   "/legal/e-sign-consent": {
@@ -464,7 +465,7 @@ const publicSearchIntentPages: Record<string, IntentAwareSeoCopy> = {
     description:
       "광고 계약 전자서명의 최종본 확정, 서명 의사표시, 감사 증빙 보관 기준입니다.",
     canonicalPath: "/legal/e-sign-consent",
-    robots: publicRobotsContent,
+    robots: legalRobotsContent,
     keywords: ["광고 계약 전자서명", "인플루언서 계약 서명", "전자서명 증빙"],
   },
   "/support": {

@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>연락미 광고주 영업 매뉴얼</title>
+    <title>연락미 광고주 대시보드 제안서</title>
     <style>
       @page {
-        size: A4;
+        size: A4 landscape;
         margin: 0;
       }
 
@@ -32,23 +32,14 @@
       }
 
       :root {
-        --ink: #171a17;
-        --muted: #59605b;
-        --subtle: #7d857f;
-        --line: #d9e0d9;
+        --ink: #121412;
+        --muted: #5f6761;
+        --line: #dce3dc;
         --paper: #fbfaf7;
         --panel: #ffffff;
         --blue: #2563eb;
-        --blue-soft: #eff6ff;
-        --green: #0f766e;
-        --green-soft: #ecfdf5;
-        --amber: #b45309;
-        --amber-soft: #fff7ed;
-        --red: #b42318;
+        --red: #e11d48;
         --red-soft: #fff1f2;
-        --focus: #b42318;
-        --focus-soft: #fff1f2;
-        --focus-line: #fca5a5;
       }
 
       * {
@@ -59,7 +50,7 @@
       body {
         margin: 0;
         min-height: 100%;
-        background: #e8ece7;
+        background: #e9ede8;
         color: var(--ink);
         font-family:
           "NanumSquareNeo", "Noto Sans KR", "Apple SD Gothic Neo",
@@ -68,25 +59,23 @@
       }
 
       body {
-        padding: 24px 0;
+        padding: 18px 0;
       }
 
       .deck {
         display: grid;
-        gap: 24px;
+        gap: 18px;
         justify-content: center;
       }
 
       .page {
         position: relative;
-        display: flex;
-        flex-direction: column;
-        width: 210mm;
-        height: 297mm;
+        width: 297mm;
+        height: 210mm;
         overflow: hidden;
-        padding: 15mm 16mm 13mm;
+        padding: 13mm 15mm 11mm;
         background: var(--paper);
-        box-shadow: 0 24px 70px rgba(15, 23, 42, 0.14);
+        box-shadow: 0 22px 70px rgba(15, 23, 42, 0.14);
         page-break-after: always;
       }
 
@@ -94,34 +83,27 @@
         page-break-after: auto;
       }
 
-      .cover {
-        padding: 14mm 16mm 13mm;
-        background:
-          linear-gradient(180deg, rgba(239, 246, 255, 0.72), rgba(251, 250, 247, 0) 42%),
-          var(--paper);
-      }
-
-      .page-header,
-      .page-footer {
+      .header,
+      .footer {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 12px;
-        color: var(--subtle);
+        color: #7b837d;
         font-size: 9px;
         font-weight: 700;
       }
 
-      .page-header {
-        min-height: 24px;
-        border-bottom: 1px solid var(--line);
-        padding-bottom: 8px;
+      .header {
+        height: 24px;
       }
 
-      .page-footer {
-        margin-top: auto;
+      .footer {
+        position: absolute;
+        right: 15mm;
+        bottom: 8mm;
+        left: 15mm;
         border-top: 1px solid var(--line);
-        padding-top: 8px;
+        padding-top: 7px;
       }
 
       .brand {
@@ -134,1263 +116,420 @@
 
       .brand-mark {
         display: inline-flex;
-        width: 24px;
-        height: 24px;
+        width: 25px;
+        height: 25px;
         align-items: center;
         justify-content: center;
-        border-radius: 7px;
-        background: var(--ink);
-        color: #ffffff;
-        font-size: 11px;
-        font-weight: 900;
+        overflow: hidden;
+        border-radius: 8px;
       }
 
-      .kicker {
-        margin: 0;
-        color: var(--blue);
-        font-size: 11px;
-        font-weight: 900;
+      .brand-mark img {
+        display: block;
+        width: 25px;
+        height: 25px;
       }
 
       h1,
       h2,
-      h3,
       p {
         margin: 0;
       }
 
       h1 {
-        max-width: 150mm;
-        font-size: 43px;
+        max-width: 760px;
+        font-size: 42px;
         font-weight: 900;
-        line-height: 1.12;
+        letter-spacing: 0;
+        line-height: 1.08;
       }
 
       h2 {
-        margin-top: 14px;
-        max-width: 148mm;
-        font-size: 30px;
+        font-size: 28px;
         font-weight: 900;
-        line-height: 1.22;
+        line-height: 1.16;
       }
 
-      h3 {
-        font-size: 15px;
-        font-weight: 900;
-        line-height: 1.42;
+      .cover {
+        display: grid;
+        align-content: center;
+        background:
+          radial-gradient(circle at 50% 42%, rgba(37, 99, 235, 0.09), transparent 34%),
+          var(--paper);
       }
 
-      .lead {
-        margin-top: 14px;
-        max-width: 150mm;
+      .cover-lockup {
+        margin: 0 auto;
+        display: grid;
+        width: 760px;
+        justify-items: center;
+        gap: 28px;
+        text-align: center;
+      }
+
+      .cover .logo {
+        display: inline-flex;
+        align-items: center;
+        gap: 24px;
+      }
+
+      .cover .logo-mark {
+        display: inline-flex;
+        width: 104px;
+        height: 104px;
+        align-items: center;
+        justify-content: center;
+        border-radius: 28px;
+        box-shadow: 0 22px 56px rgba(15, 23, 42, 0.18);
+      }
+
+      .cover .logo-mark img {
+        display: block;
+        width: 104px;
+        height: 104px;
+      }
+
+      .cover .logo-text {
+        font-size: 74px;
+        font-weight: 900;
+        letter-spacing: 0;
+      }
+
+      .cover-title {
+        display: grid;
+        gap: 12px;
+      }
+
+      .cover-title p {
         color: var(--muted);
-        font-size: 15px;
+        font-size: 17px;
         font-weight: 700;
-        line-height: 1.72;
       }
 
-      .section-intro {
-        margin-top: 10px;
-        max-width: 145mm;
+      .headline {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 24px;
+        margin-top: 6mm;
+      }
+
+      .headline p {
+        max-width: 420px;
         color: var(--muted);
-        font-size: 12px;
+        font-size: 14px;
         font-weight: 700;
         line-height: 1.7;
       }
 
-      .cover-main {
+      .shot-layout {
         display: grid;
-        grid-template-columns: minmax(0, 1fr);
-        gap: 14px;
-        padding-top: 16mm;
+        grid-template-rows: auto 1fr auto;
+        height: 156mm;
+        gap: 8mm;
+        margin-top: 8mm;
       }
 
-      .card,
-      .note,
-      .table-card {
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: var(--panel);
-      }
-
-      .screen-frame {
-        overflow: hidden;
-        margin-top: 14px;
-        border: 1px solid #cfd8d0;
-        border-radius: 8px;
-        background: #ffffff;
-        box-shadow: 0 18px 42px rgba(15, 23, 42, 0.12);
-      }
-
-      .screen-top {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        border-bottom: 1px solid var(--line);
-        padding: 8px 10px;
-        color: var(--subtle);
-        font-size: 9px;
-        font-weight: 900;
-      }
-
-      .screen-top span:first-child {
-        color: var(--ink);
-      }
-
-      .screen-frame img {
-        display: block;
-        width: 100%;
-        height: 103mm;
-        object-fit: cover;
-        object-position: top center;
-      }
-
-      .screen-shot {
+      .shot-wrap {
         position: relative;
         overflow: hidden;
-        background: #f8faf7;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fff;
+        box-shadow: 0 18px 46px rgba(15, 23, 42, 0.1);
       }
 
-      .spotlight {
-        position: absolute;
-        z-index: 2;
-        border: 2px solid var(--focus);
-        border-radius: 6px;
-        background: rgba(180, 35, 24, 0.006);
-        box-shadow:
-          inset 0 0 0 1px rgba(255, 255, 255, 0.68),
-          0 0 0 1px rgba(180, 35, 24, 0.08),
-          0 7px 16px rgba(180, 35, 24, 0.08);
-      }
-
-      .spotlight > span {
-        position: absolute;
-        left: var(--pin-left, 6px);
-        top: var(--pin-top, 6px);
-        display: inline-flex;
-        width: 17px;
-        height: 17px;
-        align-items: center;
-        justify-content: center;
-        border-radius: 999px;
-        border: 2px solid rgba(255, 255, 255, 0.98);
-        background: var(--focus);
-        color: #ffffff;
-        padding: 0;
-        font-size: 7.5px;
-        font-weight: 900;
-        line-height: 1;
-        white-space: nowrap;
-        box-shadow: 0 3px 9px rgba(180, 35, 24, 0.25);
-      }
-
-      .spotlight[data-note]::after {
-        content: none;
-      }
-
-      .spotlight.pin-outside > span {
-        left: var(--pin-left, -11px);
-        top: var(--pin-top, -11px);
-      }
-
-      .spotlight.pin-right > span {
-        right: var(--pin-right, -11px);
-        left: auto;
-        top: var(--pin-top, -11px);
-      }
-
-      .spotlight.bottom > span {
-        top: auto;
-        bottom: 6px;
-      }
-
-      .spotlight.right > span {
-        right: 6px;
-        left: auto;
-      }
-
-      .spotlight.note-right::after {
-        right: var(--note-right, 30px);
-        left: auto;
-      }
-
-      .spotlight.note-bottom::after {
-        top: auto;
-        bottom: var(--note-bottom, 6px);
-      }
-
-      .spotlight.note-outside-top::after {
-        top: -25px;
-        left: var(--note-left, 0);
-        max-width: max-content;
-      }
-
-      .spotlight.note-outside-bottom::after {
-        top: auto;
-        bottom: -25px;
-        left: var(--note-left, 0);
-        max-width: max-content;
-      }
-
-      .value-line {
-        display: flex;
-        width: fit-content;
-        max-width: 100%;
-        align-items: center;
-        border: 1px solid #c7d8ff;
-        border-radius: 8px;
-        background: #ffffff;
-        color: var(--blue);
-        padding: 9px 12px;
-        font-size: 11px;
-        font-weight: 900;
-        line-height: 1.35;
-      }
-
-      .cover .value-line {
-        margin-top: 13px;
-      }
-
-      .screen-frame.actual img {
-        height: auto;
-        max-height: 145mm;
-        background: #f8faf7;
-        object-fit: contain;
-      }
-
-      .cover .screen-frame.actual img {
-        max-height: 136mm;
-      }
-
-      .screen-frame.actual.short img {
-        max-height: 112mm;
-      }
-
-      .screen-frame.actual.mobile img {
-        height: 150mm;
-        max-height: 150mm;
-      }
-
-      .screen-frame.actual.mobile .screen-shot {
-        width: 69.3mm;
-        max-width: 100%;
-        margin: 0 auto;
-      }
-
-      .screen-frame.actual.mobile .screen-shot img {
+      .shot-wrap img {
+        display: block;
         width: 100%;
-        height: 150mm;
+        height: 100%;
         object-fit: cover;
+        object-position: top left;
       }
 
-      .image-notes {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 8px;
-        margin-top: 8px;
+      .contract-shot {
+        height: 112mm;
       }
 
-      .image-notes.single {
-        grid-template-columns: minmax(0, 1fr);
+      .campaign-shot {
+        height: 112mm;
       }
 
-      .image-note {
-        display: grid;
-        grid-template-columns: 19px 1fr;
-        gap: 7px;
-        min-width: 0;
-        border: 1px solid #f3b8b4;
-        border-radius: 8px;
-        background: #ffffff;
-        padding: 8px;
+      .red-box {
+        position: absolute;
+        border: 3px solid var(--red);
+        border-radius: 9px;
+        box-shadow:
+          0 0 0 3px rgba(255, 255, 255, 0.75),
+          0 8px 26px rgba(225, 29, 72, 0.13);
       }
 
-      .note-index {
+      .badge {
+        position: absolute;
         display: inline-flex;
-        width: 19px;
-        height: 19px;
+        min-width: 24px;
+        height: 24px;
         align-items: center;
         justify-content: center;
         border-radius: 999px;
-        background: var(--focus);
-        color: #ffffff;
-        font-size: 8px;
-        font-weight: 900;
-      }
-
-      .image-note strong {
-        display: block;
-        color: var(--ink);
-        font-size: 9.5px;
-        font-weight: 900;
-        line-height: 1.32;
-      }
-
-      .image-note span {
-        display: block;
-        margin-top: 3px;
-        color: var(--muted);
-        font-size: 8.5px;
-        font-weight: 700;
-        line-height: 1.35;
-      }
-
-      .completed-admin-frame img {
-        max-height: 152mm;
-      }
-
-      .closing-layout {
-        display: grid;
-        grid-template-columns: 1fr 54mm;
-        gap: 12px;
-        margin-top: 14px;
-      }
-
-      .pilot-layout {
-        display: grid;
-        gap: 10px;
-        margin-top: 12px;
-      }
-
-      .screen-frame.actual.pilot-screen img {
-        max-height: 104mm;
-      }
-
-      .pilot-actions {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-        gap: 8px;
-      }
-
-      .pilot-note {
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: #ffffff;
-        padding: 11px;
-      }
-
-      .pilot-note h3 {
-        color: var(--ink);
-        font-size: 12.5px;
-      }
-
-      .pilot-note p {
-        margin-top: 6px;
-        color: var(--muted);
-        font-size: 9.5px;
-        font-weight: 700;
-        line-height: 1.5;
-      }
-
-      .pilot-note strong {
-        display: block;
-        color: var(--blue);
-        font-size: 9px;
-        font-weight: 900;
-      }
-
-      .pilot-actions .contact-card {
-        min-height: auto;
-        padding: 12px;
-      }
-
-      .pilot-actions .contact-card h3 {
-        font-size: 15px;
-      }
-
-      .pilot-actions .contact-card p {
-        margin-top: 8px;
-        font-size: 9.8px;
-        line-height: 1.55;
-      }
-
-      .pilot-actions .contact-card .contact-bottom {
-        margin-top: 12px;
-        padding-top: 10px;
-      }
-
-      .pilot-actions .contact-card .contact-bottom p {
-        color: #ffffff;
-        font-size: 10.6px;
-        line-height: 1.58;
-      }
-
-      .pilot-actions .contact-card .contact-bottom a {
-        font-weight: 900;
-      }
-
-      .pilot-mini {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 8px;
-        margin-top: 12px;
-      }
-
-      .pilot-mini div {
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: #ffffff;
-        padding: 10px;
-      }
-
-      .pilot-mini strong {
-        display: block;
-        color: var(--ink);
-        font-size: 11px;
-        font-weight: 900;
-      }
-
-      .pilot-mini span {
-        display: block;
-        margin-top: 5px;
-        color: var(--muted);
-        font-size: 9px;
-        font-weight: 700;
-        line-height: 1.4;
-      }
-
-      .page-body {
-        padding-top: 12mm;
-      }
-
-      .grid-2 {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 10px;
-      }
-
-      .grid-3 {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 9px;
-      }
-
-      .grid-4 {
-        display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 8px;
-      }
-
-      .card {
-        min-width: 0;
-        padding: 13px;
-      }
-
-      .card.compact {
-        padding: 10px;
-      }
-
-      .card p,
-      .note p {
-        color: var(--muted);
-        font-size: 11px;
-        font-weight: 700;
-        line-height: 1.62;
-      }
-
-      .tag {
-        display: inline-flex;
-        min-height: 22px;
-        align-items: center;
-        border-radius: 999px;
-        padding: 0 9px;
-        color: #ffffff;
-        font-size: 9px;
-        font-weight: 900;
-      }
-
-      .tag.blue {
-        background: var(--blue);
-      }
-
-      .tag.green {
-        background: var(--green);
-      }
-
-      .tag.amber {
-        background: var(--amber);
-      }
-
-      .tag.red {
         background: var(--red);
+        color: #fff;
+        font-size: 12px;
+        font-weight: 900;
+        transform: translate(-42%, -42%);
       }
 
-      .pain-grid {
+      .notes {
         display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 10px;
-        margin-top: 15px;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
       }
 
-      .pain-card {
-        display: grid;
-        grid-template-columns: 31px 1fr;
-        gap: 11px;
-        min-height: 114px;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: #ffffff;
-        padding: 12px;
-      }
-
-      .pain-index {
-        display: flex;
-        width: 31px;
-        height: 31px;
-        align-items: center;
-        justify-content: center;
-        border-radius: 8px;
+      .note {
+        min-height: 52px;
+        border: 1px solid #fecdd3;
+        border-radius: 9px;
         background: var(--red-soft);
+        padding: 10px 11px;
+      }
+
+      .note strong {
+        display: block;
         color: var(--red);
         font-size: 12px;
         font-weight: 900;
       }
 
-      .pain-card h3 {
-        margin-top: 1px;
-      }
-
-      .pain-card p {
-        margin-top: 7px;
-        color: var(--muted);
-        font-size: 10.5px;
+      .note span {
+        display: block;
+        margin-top: 4px;
+        color: #4b5563;
+        font-size: 11px;
         font-weight: 700;
-        line-height: 1.58;
-      }
-
-      .solve {
-        margin-top: 7px;
-        border-left: 3px solid var(--green);
-        padding-left: 8px;
-        color: var(--green);
-        font-size: 10px;
-        font-weight: 900;
         line-height: 1.45;
       }
 
-      .fit-strip {
+      .split-page {
         display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 8px;
-        margin-top: 12px;
+        align-content: center;
+        height: 164mm;
+        gap: 14mm;
       }
 
-      .fit-strip div {
-        border: 1px solid #bfdbfe;
-        border-radius: 8px;
-        background: var(--blue-soft);
-        padding: 10px;
-      }
-
-      .fit-strip strong {
-        display: block;
-        color: var(--blue);
-        font-size: 11px;
-        font-weight: 900;
-      }
-
-      .fit-strip span {
-        display: block;
-        margin-top: 5px;
-        color: #315783;
-        font-size: 9.5px;
-        font-weight: 700;
-        line-height: 1.42;
-      }
-
-      .menu-map {
+      .split-map {
         display: grid;
-        gap: 7px;
-        margin-top: 14px;
+        grid-template-columns: 1fr 1fr;
+        gap: 14mm;
       }
 
-      .menu-row {
-        display: grid;
-        grid-template-columns: 34mm 1fr 41mm;
-        gap: 8px;
-        align-items: stretch;
+      .flow-card {
+        position: relative;
+        min-height: 92mm;
         border: 1px solid var(--line);
-        border-radius: 8px;
-        background: #ffffff;
-        padding: 9px;
+        border-radius: 14px;
+        background: #fff;
+        padding: 14mm;
+        box-shadow: 0 18px 44px rgba(15, 23, 42, 0.08);
       }
 
-      .menu-row strong {
-        color: var(--ink);
-        font-size: 11px;
-        font-weight: 900;
-        line-height: 1.35;
+      .flow-card h2 {
+        margin-bottom: 11mm;
       }
 
-      .menu-row p {
-        color: var(--muted);
-        font-size: 10px;
-        font-weight: 700;
-        line-height: 1.48;
+      .flow-list {
+        display: grid;
+        gap: 11px;
       }
 
-      .menu-row span {
+      .flow-row {
         display: flex;
+        min-height: 38px;
         align-items: center;
-        justify-content: center;
-        border-radius: 7px;
-        background: #f8faf7;
-        color: var(--subtle);
-        font-size: 9px;
-        font-weight: 900;
-        text-align: center;
-        line-height: 1.35;
-      }
-
-      .manual-flow {
-        display: grid;
-        gap: 8px;
-        margin-top: 14px;
-      }
-
-      .step {
-        display: grid;
-        grid-template-columns: 22mm 1fr 40mm;
-        gap: 9px;
-        align-items: center;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: #ffffff;
-        padding: 10px;
-      }
-
-      .step-number {
-        display: flex;
-        width: 17mm;
-        height: 17mm;
-        align-items: center;
-        justify-content: center;
-        border-radius: 8px;
-        background: var(--ink);
-        color: #ffffff;
-        font-size: 16px;
-        font-weight: 900;
-      }
-
-      .step h3 {
-        font-size: 13px;
-      }
-
-      .step p {
-        margin-top: 4px;
-        color: var(--muted);
-        font-size: 10px;
-        font-weight: 700;
-        line-height: 1.5;
-      }
-
-      .step small {
-        border-radius: 7px;
-        background: var(--green-soft);
-        color: var(--green);
-        padding: 8px;
-        font-size: 9px;
-        font-weight: 900;
-        line-height: 1.45;
-      }
-
-      .note {
-        margin-top: 12px;
-        padding: 12px;
-      }
-
-      .note h3 {
-        color: var(--ink);
-        font-size: 13px;
-      }
-
-      .note p {
-        margin-top: 7px;
-      }
-
-      .checklist-grid {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 8px;
-        margin-top: 14px;
-      }
-
-      .check-item {
-        display: grid;
-        grid-template-columns: 23px 1fr;
-        gap: 9px;
-        min-height: 72px;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: #ffffff;
-        padding: 10px;
-      }
-
-      .check-mark {
-        display: flex;
-        width: 22px;
-        height: 22px;
-        align-items: center;
-        justify-content: center;
-        border-radius: 6px;
-        background: var(--blue-soft);
-        color: var(--blue);
-        font-size: 12px;
-        font-weight: 900;
-      }
-
-      .check-item strong {
-        color: var(--ink);
-        font-size: 11.5px;
-        font-weight: 900;
-        line-height: 1.35;
-      }
-
-      .check-item p {
-        margin-top: 4px;
-        color: var(--muted);
-        font-size: 9.5px;
-        font-weight: 700;
-        line-height: 1.42;
-      }
-
-      .operation-layout {
-        display: grid;
-        justify-items: center;
-        margin-top: 14px;
-      }
-
-      .screen-frame.actual.mobile {
-        width: 74mm;
-        margin-right: auto;
-        margin-left: auto;
-      }
-
-      .timeline {
-        display: grid;
-        gap: 8px;
-      }
-
-      .timeline-item {
-        display: grid;
-        grid-template-columns: 28mm 1fr;
-        gap: 9px;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: #ffffff;
-        padding: 10px;
-      }
-
-      .timeline-item strong {
-        color: var(--green);
-        font-size: 11px;
-        font-weight: 900;
-      }
-
-      .timeline-item p {
-        color: var(--muted);
-        font-size: 10px;
-        font-weight: 700;
-        line-height: 1.5;
-      }
-
-      .side-panel {
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: #ffffff;
-        padding: 12px;
-      }
-
-      .side-panel ul {
-        display: grid;
-        gap: 8px;
-        margin: 11px 0 0;
-        padding: 0;
-        list-style: none;
-      }
-
-      .side-panel li {
+        justify-content: space-between;
         border-bottom: 1px solid #edf1ed;
-        padding-bottom: 8px;
-        color: var(--muted);
-        font-size: 10px;
-        font-weight: 700;
-        line-height: 1.48;
-      }
-
-      .side-panel li:last-child {
-        border-bottom: 0;
-        padding-bottom: 0;
-      }
-
-      .side-panel li strong {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        color: var(--ink);
-        font-size: 10px;
+        color: #29302b;
+        font-size: 15px;
         font-weight: 900;
       }
 
-      .side-panel li span {
-        display: block;
-        margin-top: 4px;
+      .flow-row small {
+        color: #7b837d;
+        font-size: 11px;
+        font-weight: 700;
       }
 
-      .pilot-grid {
+      .blue {
+        color: var(--blue);
+      }
+
+      .closing-grid {
         display: grid;
         grid-template-columns: 1.05fr 0.95fr;
-        gap: 10px;
-        margin-top: 14px;
+        align-items: center;
+        gap: 18mm;
+        height: 160mm;
       }
 
-      .pilot-list {
+      .closing-points {
         display: grid;
-        gap: 8px;
+        gap: 10px;
       }
 
-      .pilot-list div {
+      .closing-point {
         border: 1px solid var(--line);
-        border-radius: 8px;
-        background: #ffffff;
-        padding: 11px;
+        border-radius: 10px;
+        background: #fff;
+        padding: 14px 16px;
       }
 
-      .pilot-list strong {
-        color: var(--ink);
-        font-size: 12px;
+      .closing-point strong {
+        display: block;
+        font-size: 17px;
         font-weight: 900;
       }
 
-      .pilot-list p {
+      .closing-point span {
+        display: block;
         margin-top: 5px;
         color: var(--muted);
-        font-size: 10px;
+        font-size: 12px;
         font-weight: 700;
-        line-height: 1.48;
-      }
-
-      .contact-card {
-        display: flex;
-        flex-direction: column;
-        min-height: 100%;
-        border-radius: 8px;
-        background: var(--ink);
-        color: #ffffff;
-        padding: 14px;
-      }
-
-      .contact-card h3 {
-        color: #ffffff;
-        font-size: 18px;
-      }
-
-      .contact-card p {
-        margin-top: 10px;
-        color: rgba(255, 255, 255, 0.75);
-        font-size: 11px;
-        font-weight: 700;
-        line-height: 1.65;
-      }
-
-      .contact-card a {
-        color: #ffffff;
-        text-decoration: none;
-      }
-
-      .contact-card .contact-bottom {
-        margin-top: auto;
-        border-top: 1px solid rgba(255, 255, 255, 0.18);
-        padding-top: 12px;
-      }
-
-      .mini-table {
-        display: grid;
-        gap: 7px;
-        margin-top: 12px;
-      }
-
-      .mini-table div {
-        display: grid;
-        grid-template-columns: 26mm 1fr;
-        gap: 8px;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: #ffffff;
-        padding: 9px;
-      }
-
-      .mini-table strong {
-        color: var(--amber);
-        font-size: 10px;
-        font-weight: 900;
-      }
-
-      .mini-table p {
-        color: var(--muted);
-        font-size: 10px;
-        font-weight: 700;
-        line-height: 1.45;
-      }
-
-      @media print {
-        html,
-        body {
-          background: #ffffff;
-        }
-
-        body {
-          padding: 0;
-        }
-
-        .deck {
-          display: block;
-        }
-
-        .page {
-          box-shadow: none;
-        }
+        line-height: 1.55;
       }
     </style>
   </head>
   <body>
     <main class="deck">
       <section class="page cover">
-        <div class="page-header">
-          <span class="brand"><span class="brand-mark">연</span> 연락미</span>
-          <span>광고주용 화면 중심 소개서 · yeollock.me</span>
-        </div>
-
-        <div class="cover-main">
-          <p class="kicker">광고주 · 브랜드 · 대행사용</p>
-          <h1>계약서 만들고,<br />검토 링크로 바로 발송</h1>
-          <p class="lead">
-            연락미는 인플루언서 광고 조건을 계약서로 정리하고, 수정 요청과 전자서명 증빙까지 한 화면에서 관리합니다.
-          </p>
-          <div class="value-line">기존 DM 합의 → 계약 링크 · 서명본 · PDF 증빙</div>
-
-          <figure class="screen-frame actual">
-            <div class="screen-top">
-              <span>실제 광고주 대시보드</span>
-              <span>계약 목록 · 지급내용 · 마감일</span>
-            </div>
-            <div class="screen-shot">
-              <img src="./assets/yeollock-advertiser-dashboard.png" alt="연락미 광고주 대시보드 화면" />
-              <span
-                class="spotlight pin-outside"
-                data-visual-target="dashboard-contract-table"
-                style="left: 2.4%; top: 26.6%; width: 80.7%; height: 22.2%; --pin-left: -11px; --pin-top: -11px;"
-              >
-                <span>01</span>
-              </span>
-              <span
-                class="spotlight pin-right"
-                data-visual-target="dashboard-next-status"
-                style="left: 85.8%; top: 31.2%; width: 8%; height: 17.6%; --pin-right: -11px; --pin-top: -11px;"
-              >
-                <span>02</span>
-              </span>
-            </div>
-          </figure>
-
-          <div class="image-notes">
-            <div class="image-note">
-              <b class="note-index">01</b>
-              <p><strong>계약 목록 중심</strong><span>계약명, 지급내용, 마감일을 한 줄에서 확인합니다.</span></p>
-            </div>
-            <div class="image-note">
-              <b class="note-index">02</b>
-              <p><strong>다음 상태 확인</strong><span>D-day, 수정 요청, 검토 대기 상태를 표에서 구분합니다.</span></p>
-            </div>
+        <div class="cover-lockup">
+          <div class="logo" aria-label="연락미">
+            <span class="logo-mark"><img src="../../public/favicon.svg" alt="" /></span>
+            <span class="logo-text">연락미</span>
           </div>
-        </div>
-
-        <div class="page-footer">
-          <span>한 줄 메시지: DM 합의를 계약 링크로 바꿉니다.</span>
-          <span>1 / 6</span>
+          <div class="cover-title">
+            <h1>광고 계약은<br />확실하게</h1>
+            <p>계약서와 캠페인을 분리해 운영하는 광고주 대시보드</p>
+          </div>
         </div>
       </section>
 
       <section class="page">
-        <div class="page-header">
-          <span class="brand"><span class="brand-mark">연</span> 연락미</span>
-          <span>계약서 작성 화면</span>
+        <div class="header">
+          <span class="brand"><span class="brand-mark"><img src="../../public/favicon.svg" alt="" /></span>연락미</span>
+          <span>계약 대시보드</span>
         </div>
-
-        <div class="page-body">
-          <p class="kicker">Contract Builder</p>
-          <h2>광고 조건을 입력하면<br />계약서 초안이 만들어집니다</h2>
-          <p class="section-intro">
-            복잡한 법률 문서부터 시작하지 않고, 캠페인 운영에 필요한 조건만 채우면 됩니다.
-          </p>
-
-          <figure class="screen-frame actual">
-            <div class="screen-top">
-              <span>새 전자계약서 작성</span>
-              <span>입력값이 오른쪽 초안에 즉시 반영</span>
-            </div>
-            <div class="screen-shot">
-              <img src="./assets/yeollock-contract-builder.png" alt="연락미 계약서 작성 화면" />
-              <span
-                class="spotlight pin-outside"
-                data-note="조건 입력으로 초안 완성"
-                data-visual-target="builder-input-column"
-                style="left: 16.1%; top: 20.8%; width: 32.8%; height: 75%; --pin-left: -12px; --pin-top: -11px;"
-              >
-                <span>01</span>
-              </span>
-              <span
-                class="spotlight pin-right"
-                data-note="미리보기와 발송"
-                data-visual-target="builder-document-preview"
-                style="left: 51.5%; top: 10.9%; width: 45.9%; height: 86.1%; --pin-right: -11px; --pin-top: -11px;"
-              >
-                <span>02</span>
-              </span>
-            </div>
-          </figure>
-
-          <div class="image-notes">
-            <div class="image-note">
-              <b class="note-index">01</b>
-              <p><strong>조건 입력</strong><span>브랜드, 지급내용, 일정, 산출물을 순서대로 채웁니다.</span></p>
-            </div>
-            <div class="image-note">
-              <b class="note-index">02</b>
-              <p><strong>초안 확인 후 발송</strong><span>오른쪽 문서 미리보기로 확인하고 검토 링크를 보냅니다.</span></p>
-            </div>
+        <div class="headline">
+          <h1>계약은 상태별로 바로 확인</h1>
+          <p>계약 목록에서 모집중, 진행중, 종료 상태를 나누고 필요한 항목만 정렬합니다.</p>
+        </div>
+        <div class="shot-layout">
+          <div class="shot-wrap contract-shot">
+            <img src="assets/yeollock-advertiser-dashboard.png" alt="연락미 계약 대시보드" />
+            <span class="red-box" data-visual-target="contract-surface-switch" style="left: 61.4%; top: 0.8%; width: 8.8%; height: 4.8%;"></span>
+            <span class="badge" style="left: 61.4%; top: 0.8%;">1</span>
+            <span class="red-box" data-visual-target="contract-lifecycle-tabs" style="left: 1.8%; top: 20.8%; width: 96.4%; height: 5.8%;"></span>
+            <span class="badge" style="left: 1.8%; top: 20.8%;">2</span>
+            <span class="red-box" data-visual-target="contract-sortable-table" style="left: 1.8%; top: 31.4%; width: 96.4%; height: 18.8%;"></span>
+            <span class="badge" style="left: 1.8%; top: 31.4%;">3</span>
+          </div>
+          <div class="notes">
+            <div class="note"><strong>1. 계약/캠페인 분리</strong><span>한 헤더에서 두 운영 화면을 전환합니다.</span></div>
+            <div class="note"><strong>2. 상태 탭</strong><span>모집중, 진행중, 종료를 한 화면에서 전환합니다.</span></div>
+            <div class="note"><strong>3. 정렬·필터</strong><span>플랫폼, 금액, 마감일을 표 안에서 바로 정리합니다.</span></div>
           </div>
         </div>
-
-        <div class="page-footer">
-          <span>핵심: 조건을 입력하면 계약서 초안과 발송 흐름이 이어집니다.</span>
-          <span>2 / 6</span>
-        </div>
+        <div class="footer"><span>광고주 제안서</span><span>02</span></div>
       </section>
 
       <section class="page">
-        <div class="page-header">
-          <span class="brand"><span class="brand-mark">연</span> 연락미</span>
-          <span>계약 상세 화면</span>
+        <div class="header">
+          <span class="brand"><span class="brand-mark"><img src="../../public/favicon.svg" alt="" /></span>연락미</span>
+          <span>캠페인 대시보드</span>
         </div>
-
-        <div class="page-body">
-          <p class="kicker">Send & Manage</p>
-          <h2>링크 발송 뒤에는<br />계약 상세에서 상태를 관리합니다</h2>
-          <p class="section-intro">
-            진행 단계, 조항 검토, 전자서명, 콘텐츠 제출 상태를 한 계약 안에서 따라갑니다.
-          </p>
-
-          <figure class="screen-frame actual">
-            <div class="screen-top">
-              <span>광고주 계약 상세</span>
-              <span>진행 단계 · 조항 검토 · 증빙</span>
-            </div>
-            <div class="screen-shot">
-              <img src="./assets/yeollock-contract-admin.png" alt="연락미 광고주 계약 상세 화면" />
-              <span
-                class="spotlight pin-outside"
-                data-note="계약 상태 먼저 확인"
-                data-visual-target="contract-state-hero"
-                style="left: 1.7%; top: 7.4%; width: 96.6%; height: 18.8%; --pin-left: -11px; --pin-top: -11px;"
-              >
-                <span>01</span>
-              </span>
-              <span
-                class="spotlight pin-outside"
-                data-note="검토 이력과 증빙"
-                data-visual-target="contract-document-body"
-                style="left: 26.9%; top: 37.3%; width: 71.4%; height: 61.5%; --pin-left: -12px; --pin-top: -11px;"
-              >
-                <span>02</span>
-              </span>
-            </div>
-          </figure>
-
-          <div class="image-notes">
-            <div class="image-note">
-              <b class="note-index">01</b>
-              <p><strong>현재 상태 먼저</strong><span>승인, 검토, 서명 대기 상태를 계약 상단에서 확인합니다.</span></p>
-            </div>
-            <div class="image-note">
-              <b class="note-index">02</b>
-              <p><strong>검토 이력 보관</strong><span>조항 의견, 링크, 감사 기록을 같은 계약 화면에 남깁니다.</span></p>
-            </div>
+        <div class="headline">
+          <h1>캠페인은 모집과 선정을 분리</h1>
+          <p>지원자를 보고 고른 뒤, 선정된 인플루언서만 계약 흐름으로 이어갑니다.</p>
+        </div>
+        <div class="shot-layout">
+          <div class="shot-wrap campaign-shot">
+            <img src="assets/yeollock-advertiser-campaign-dashboard.png" alt="연락미 캠페인 대시보드" />
+            <span class="red-box" data-visual-target="campaign-surface-switch" style="left: 61.4%; top: 0.8%; width: 8.8%; height: 4.8%;"></span>
+            <span class="badge" style="left: 61.4%; top: 0.8%;">1</span>
+            <span class="red-box" data-visual-target="campaign-lifecycle-tabs" style="left: 1.8%; top: 20.8%; width: 96.4%; height: 5.8%;"></span>
+            <span class="badge" style="left: 1.8%; top: 20.8%;">2</span>
+            <span class="red-box" data-visual-target="campaign-roster-table" style="left: 1.8%; top: 31.4%; width: 96.4%; height: 16.4%;"></span>
+            <span class="badge" style="left: 1.8%; top: 31.4%;">3</span>
+          </div>
+          <div class="notes">
+            <div class="note"><strong>1. 같은 전환 구조</strong><span>계약과 캠페인이 헤더에서 같은 규칙으로 이동합니다.</span></div>
+            <div class="note"><strong>2. 모집/진행/종료</strong><span>캠페인 운영 상태도 계약과 같은 축으로 봅니다.</span></div>
+            <div class="note"><strong>3. 신청/모집 인원</strong><span>지원 규모와 마감일을 한 줄에서 비교합니다.</span></div>
           </div>
         </div>
-
-        <div class="page-footer">
-          <span>광고주는 계약별 상태와 검토 기록을 다시 찾기 쉬워집니다.</span>
-          <span>3 / 6</span>
-        </div>
+        <div class="footer"><span>광고주 제안서</span><span>03</span></div>
       </section>
 
       <section class="page">
-        <div class="page-header">
-          <span class="brand"><span class="brand-mark">연</span> 연락미</span>
-          <span>인플루언서 검토 화면</span>
+        <div class="header">
+          <span class="brand"><span class="brand-mark"><img src="../../public/favicon.svg" alt="" /></span>연락미</span>
+          <span>운영 구조</span>
         </div>
-
-        <div class="page-body">
-          <p class="kicker">Influencer Review</p>
-          <h2>인플루언서는 모바일 링크에서<br />검토하고 서명합니다</h2>
-          <p class="section-intro">
-            광고주가 보낸 링크에서 금액, 일정, 산출물, 사용 범위를 확인하고 필요한 조항만 수정 요청합니다.
-          </p>
-
-          <div class="operation-layout">
-            <figure class="screen-frame actual mobile">
-              <div class="screen-top">
-                <span>모바일 계약 검토</span>
-                <span>링크 열람 · 의견 · 서명</span>
-              </div>
-              <div class="screen-shot">
-                <img src="./assets/yeollock-influencer-contract.png" alt="연락미 인플루언서 계약 검토 화면" />
-                <span
-                  class="spotlight pin-outside"
-                  data-note="상대방이 조건을 바로 이해"
-                  data-visual-target="mobile-contract-summary"
-                  style="left: 4.1%; top: 9.7%; width: 92%; height: 38%; --pin-left: -11px; --pin-top: -11px;"
-                >
-                  <span>01</span>
-                </span>
-                <span
-                  class="spotlight pin-right"
-                  data-visual-target="mobile-sign-action"
-                  style="left: 4.1%; top: 80.2%; width: 91.8%; height: 17.7%; --pin-right: -11px; --pin-top: -11px;"
-                >
-                  <span>02</span>
-                </span>
-              </div>
-            </figure>
-
+        <div class="split-page">
+          <div class="headline">
+            <h1>계약서와 캠페인을 나눠서 운영</h1>
+            <p>1:1 계약은 바로 문서로, 모집형 캠페인은 신청자 선정 후 계약으로 연결합니다.</p>
           </div>
-
-          <div class="image-notes">
-            <div class="image-note">
-              <b class="note-index">01</b>
-              <p><strong>조건을 먼저 확인</strong><span>금액, 일정, 산출물, 사용 범위를 모바일에서 바로 읽습니다.</span></p>
+          <div class="split-map">
+            <div class="flow-card">
+              <span class="red-box" data-visual-target="structure-contract-flow" style="left: 7%; top: 11%; width: 86%; height: 18%;"></span>
+              <span class="badge" style="left: 7%; top: 11%;">1</span>
+              <h2>계약서</h2>
+              <div class="flow-list">
+                <div class="flow-row"><span>조건 입력</span><small>1:1 계약</small></div>
+                <div class="flow-row"><span>검토 링크</span><small>인플루언서 확인</small></div>
+                <div class="flow-row"><span>전자서명</span><small>증빙 보관</small></div>
+              </div>
             </div>
-            <div class="image-note">
-              <b class="note-index">02</b>
-              <p><strong>서명까지 같은 링크</strong><span>검토가 끝나면 같은 화면에서 전자서명으로 이어집니다.</span></p>
+            <div class="flow-card">
+              <span class="red-box" data-visual-target="structure-campaign-flow" style="left: 7%; top: 11%; width: 86%; height: 18%;"></span>
+              <span class="badge" style="left: 7%; top: 11%;">2</span>
+              <h2>캠페인</h2>
+              <div class="flow-list">
+                <div class="flow-row"><span>모집 조건</span><small>공개 모집</small></div>
+                <div class="flow-row"><span>지원자 선택</span><small>프로필 확인</small></div>
+                <div class="flow-row"><span>계약 전환</span><small>선정자만 진행</small></div>
+              </div>
             </div>
           </div>
         </div>
-
-        <div class="page-footer">
-          <span>인플루언서에게도 읽기 쉬운 계약 검토 경험을 제공합니다.</span>
-          <span>4 / 6</span>
-        </div>
+        <div class="footer"><span>광고주 제안서</span><span>04</span></div>
       </section>
 
       <section class="page">
-        <div class="page-header">
-          <span class="brand"><span class="brand-mark">연</span> 연락미</span>
-          <span>서명 후 콘텐츠 검수</span>
+        <div class="header">
+          <span class="brand"><span class="brand-mark"><img src="../../public/favicon.svg" alt="" /></span>연락미</span>
+          <span>도입 포인트</span>
         </div>
-
-        <div class="page-body">
-          <p class="kicker">Signed Contract</p>
-          <h2>서명 뒤에는<br />콘텐츠 검수와 PDF 증빙을 확인합니다</h2>
-          <p class="section-intro">
-            서명 완료 후 컨텐츠 URL과 파일 제출, 검수 상태, 서명본 PDF 보관 흐름을 같은 계약에서 확인합니다.
-          </p>
-
-          <figure class="screen-frame actual completed-admin-frame">
-            <div class="screen-top">
-              <span>서명 완료 계약 조회</span>
-              <span>콘텐츠 검수 · 완료 상태</span>
+        <div class="closing-grid">
+          <div>
+            <h1>광고 계약 운영을<br />한 화면에서 정리</h1>
+          </div>
+          <div class="closing-points">
+            <div class="closing-point">
+              <strong>계약 중심</strong>
+              <span>초안, 검토 링크, 서명, 증빙 보관을 계약 목록에서 확인합니다.</span>
             </div>
-            <div class="screen-shot">
-              <img src="./assets/yeollock-contract-completed-admin.png" alt="연락미 완료 계약 조회 및 PDF 다운로드 화면" />
-              <span
-                class="spotlight pin-outside"
-                data-visual-target="completed-deliverables-panel"
-                style="left: 1.7%; top: 37.3%; width: 96.6%; height: 59.5%; --pin-left: -11px; --pin-top: -11px;"
-              >
-                <span>01</span>
-              </span>
-              <span
-                class="spotlight pin-outside"
-                data-visual-target="completed-state-hero"
-                style="left: 1.7%; top: 7.4%; width: 96.6%; height: 18.8%; --pin-left: -11px; --pin-top: -11px;"
-              >
-                <span>02</span>
-              </span>
+            <div class="closing-point">
+              <strong>캠페인 분리</strong>
+              <span>모집형 업무는 별도 대시보드에서 지원자 중심으로 처리합니다.</span>
             </div>
-          </figure>
-
-          <div class="image-notes">
-            <div class="image-note">
-              <b class="note-index">01</b>
-              <p><strong>콘텐츠 검수 기록</strong><span>제출 URL, 파일, 승인 상태를 계약 안에 남깁니다.</span></p>
-            </div>
-            <div class="image-note">
-              <b class="note-index">02</b>
-              <p><strong>서명 완료 상태</strong><span>완료 계약에서 서명본과 검수 기록을 함께 찾습니다.</span></p>
+            <div class="closing-point">
+              <strong>상태와 증빙</strong>
+              <span>진행 상태, 마감일, 서명본 PDF를 남겨 분쟁 가능성을 줄입니다.</span>
             </div>
           </div>
         </div>
-
-        <div class="page-footer">
-          <span>광고주는 서명본과 콘텐츠 검수 기록을 같은 계약 화면에서 다시 찾습니다.</span>
-          <span>5 / 6</span>
-        </div>
-      </section>
-
-      <section class="page">
-        <div class="page-header">
-          <span class="brand"><span class="brand-mark">연</span> 연락미</span>
-          <span>도입 제안과 문의</span>
-        </div>
-
-        <div class="page-body">
-          <p class="kicker">Pilot</p>
-          <h2>처음에는 캠페인 1건만<br />연락미로 발송해 보세요</h2>
-          <p class="section-intro">
-            기존 DM 합의를 계약서 초안으로 옮기고, 검토 링크 발송부터 완료 계약 조회와 PDF 보관까지 비교하면 됩니다.
-          </p>
-
-          <div class="value-line">15분 화면 공유 · 기존 DM 조건 1건만 있으면 바로 확인</div>
-
-          <div class="pilot-layout">
-            <figure class="screen-frame actual pilot-screen">
-              <div class="screen-top">
-                <span>광고주 시작 화면</span>
-                <span>간편한 컨택 · 계약서 작성 · 전자계약</span>
-              </div>
-              <div class="screen-shot">
-                <img src="./assets/yeollock-advertiser-screen.png" alt="연락미 광고주 시작 화면" />
-              </div>
-            </figure>
-
-            <div class="pilot-actions">
-              <div class="pilot-note">
-                <strong>파일럿 기준</strong>
-                <h3>진행 중인 광고 조건 1건</h3>
-                <p>브랜드명, 지급내용, 일정, 산출물만 있으면 계약 작성과 검토 링크를 바로 확인할 수 있습니다.</p>
-              </div>
-              <div class="contact-card">
-                <h3>광고주 문의</h3>
-                <p>파일럿 캠페인 기준으로 계약 작성, 링크 발송, 서명본 보관 흐름을 안내합니다.</p>
-                <div class="contact-bottom">
-                  <p>
-                    담당자 김재우<br />
-                    이메일 <a href="mailto:yeollockme@gmail.com">yeollockme@gmail.com</a><br />
-                    인스타그램 <a href="https://www.instagram.com/yeollockme">@yeollockme</a><br />
-                    사이트 yeollock.me
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="page-footer">
-          <span>문의: yeollockme@gmail.com · @yeollockme</span>
-          <span>6 / 6</span>
-        </div>
+        <div class="footer"><span>yeollock.me</span><span>05</span></div>
       </section>
     </main>
   </body>

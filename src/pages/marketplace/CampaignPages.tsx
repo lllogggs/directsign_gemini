@@ -1,4 +1,7 @@
 import {
+  ArrowDownWideNarrow,
+  ArrowUpDown,
+  ArrowUpWideNarrow,
   ChevronDown,
   FileSignature,
   FileText,
@@ -11,6 +14,7 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Settings,
+  X,
 } from "lucide-react";
 import {
   type FormEvent,
@@ -65,6 +69,21 @@ type ProposalTypeFilter = "all" | CampaignProposalType;
 type CategoryFilter = "all" | string;
 type InfluencerCampaignView = "open" | "applied";
 type AdvertiserCampaignView = "applicants" | "campaigns";
+type CampaignSortDirection = "asc" | "desc";
+type CampaignSortKey =
+  | "deadline"
+  | "brand"
+  | "title"
+  | "payment"
+  | "platform"
+  | "type"
+  | "status"
+  | "appliedAt";
+type CampaignSort = {
+  key: CampaignSortKey;
+  direction: CampaignSortDirection;
+};
+type ApplicationStatusFilter = "all" | MarketplaceProposalStatus;
 
 const platformOptions: PlatformFilter[] = [
   "all",
@@ -78,6 +97,27 @@ const platformOptions: PlatformFilter[] = [
 const proposalTypeOptions = campaignProposalTypeOptions;
 
 const proposalTypeFilterOptions: ProposalTypeFilter[] = ["all", ...proposalTypeOptions];
+const applicationStatusFilterOptions: ApplicationStatusFilter[] = [
+  "all",
+  "submitted",
+  "reviewed",
+  "converted_to_contract",
+  "closed",
+];
+const openCampaignSortOptions: Array<{ label: string; value: CampaignSort }> = [
+  { label: "마감 임박순", value: { key: "deadline", direction: "asc" } },
+  { label: "마감 여유순", value: { key: "deadline", direction: "desc" } },
+  { label: "브랜드순", value: { key: "brand", direction: "asc" } },
+  { label: "지급 높은순", value: { key: "payment", direction: "desc" } },
+  { label: "플랫폼순", value: { key: "platform", direction: "asc" } },
+];
+const appliedCampaignSortOptions: Array<{ label: string; value: CampaignSort }> = [
+  { label: "최근 신청순", value: { key: "appliedAt", direction: "desc" } },
+  { label: "오래된 신청순", value: { key: "appliedAt", direction: "asc" } },
+  { label: "상태순", value: { key: "status", direction: "asc" } },
+  { label: "브랜드순", value: { key: "brand", direction: "asc" } },
+  { label: "캠페인순", value: { key: "title", direction: "asc" } },
+];
 
 type MarketplaceCampaignsResponse = {
   campaigns: MarketplaceCampaignPost[];
@@ -768,6 +808,17 @@ export function InfluencerCampaignDiscoveryPage() {
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
   const [proposalTypeFilter, setProposalTypeFilter] =
     useState<ProposalTypeFilter>("all");
+  const [openCampaignSort, setOpenCampaignSort] = useState<CampaignSort>({
+    key: "deadline",
+    direction: "asc",
+  });
+  const [appliedQuery, setAppliedQuery] = useState("");
+  const [appliedStatusFilter, setAppliedStatusFilter] =
+    useState<ApplicationStatusFilter>("all");
+  const [appliedCampaignSort, setAppliedCampaignSort] = useState<CampaignSort>({
+    key: "appliedAt",
+    direction: "desc",
+  });
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [applyingCampaignId, setApplyingCampaignId] = useState<string | undefined>();
   const [applicationNotice, setApplicationNotice] = useState<
@@ -867,38 +918,80 @@ export function InfluencerCampaignDiscoveryPage() {
   const visibleCampaigns = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
 
-    return campaigns.filter((campaign) => {
-      if (
-        platformFilter !== "all" &&
-        !(campaign.platforms ?? []).includes(platformFilter)
-      ) {
-        return false;
-      }
-      if (proposalTypeFilter !== "all" && campaign.type !== proposalTypeFilter) {
-        return false;
-      }
-      if (categoryFilter !== "all" && campaign.brandCategory !== categoryFilter) {
-        return false;
-      }
-      if (!normalizedQuery) return true;
+    return campaigns
+      .filter((campaign) => {
+        if (
+          platformFilter !== "all" &&
+          !(campaign.platforms ?? []).includes(platformFilter)
+        ) {
+          return false;
+        }
+        if (proposalTypeFilter !== "all" && campaign.type !== proposalTypeFilter) {
+          return false;
+        }
+        if (categoryFilter !== "all" && campaign.brandCategory !== categoryFilter) {
+          return false;
+        }
+        if (!normalizedQuery) return true;
 
-      return [
-        campaign.brandName,
-        campaign.brandCategory,
-        campaign.title,
-        campaign.summary ?? "",
-        campaign.budget,
-        campaign.typeLabel,
-        ...campaign.platformLabels,
-        ...(campaign.deliverables ?? []),
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(normalizedQuery);
-    });
-  }, [campaigns, categoryFilter, platformFilter, proposalTypeFilter, query]);
-  const applications =
-    applicationsState.status === "ready" ? applicationsState.applications : [];
+        return [
+          campaign.brandName,
+          campaign.brandCategory,
+          campaign.title,
+          campaign.summary ?? "",
+          campaign.budget,
+          campaign.typeLabel,
+          ...campaign.platformLabels,
+          ...(campaign.deliverables ?? []),
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedQuery);
+      })
+      .sort((a, b) => compareMarketplaceCampaignPostsBySort(a, b, openCampaignSort));
+  }, [
+    campaigns,
+    categoryFilter,
+    openCampaignSort,
+    platformFilter,
+    proposalTypeFilter,
+    query,
+  ]);
+  const applications = useMemo(
+    () =>
+      applicationsState.status === "ready"
+        ? applicationsState.applications
+        : [],
+    [applicationsState],
+  );
+  const visibleApplications = useMemo(() => {
+    const normalizedQuery = appliedQuery.trim().toLowerCase();
+
+    return applications
+      .filter((application) => {
+        if (
+          appliedStatusFilter !== "all" &&
+          application.status !== appliedStatusFilter
+        ) {
+          return false;
+        }
+        if (!normalizedQuery) return true;
+
+        return [
+          application.targetName,
+          application.counterpartName,
+          application.campaignTitle ?? "",
+          formatAppliedCampaignTitle(application),
+          application.proposalTypeLabel,
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedQuery);
+      })
+      .sort((a, b) =>
+        compareAppliedCampaignApplicationsBySort(a, b, appliedCampaignSort),
+      );
+  }, [applications, appliedCampaignSort, appliedQuery, appliedStatusFilter]);
 
   const categoryOptions = useMemo(
     () => ["all", ...Array.from(new Set(campaigns.map((campaign) => campaign.brandCategory))).sort()],
@@ -916,8 +1009,22 @@ export function InfluencerCampaignDiscoveryPage() {
     categoryFilter !== "all" ? categoryFilter : null,
     proposalTypeFilter !== "all" ? proposalTypeLabels[proposalTypeFilter] : null,
   ].filter((label): label is string => Boolean(label));
+  const appliedActiveFilterLabels = [
+    appliedQuery.trim() ? `검색 ${appliedQuery.trim()}` : null,
+    appliedStatusFilter !== "all"
+      ? applicationStatusMeta[appliedStatusFilter].label
+      : null,
+  ].filter((label): label is string => Boolean(label));
   const filterSummary =
     activeFilterLabels.length > 0 ? activeFilterLabels.join(" · ") : "전체 조건";
+  const appliedFilterSummary =
+    appliedActiveFilterLabels.length > 0
+      ? appliedActiveFilterLabels.join(" · ")
+      : "전체 조건";
+  const toolbarFilterCount =
+    activeView === "open"
+      ? activeFilterLabels.length
+      : appliedActiveFilterLabels.length;
 
   const applyToCampaign = async (campaign: MarketplaceCampaignPost) => {
     if (applyingCampaignId) return;
@@ -1020,7 +1127,7 @@ export function InfluencerCampaignDiscoveryPage() {
               <p className="mt-0.5 truncate text-[11px] font-bold text-neutral-500">
                 {activeView === "open"
                   ? `${visibleCampaigns.length.toLocaleString()}건 표시 · ${filterSummary}`
-                  : `${applications.length.toLocaleString()}건 표시`}
+                  : `${visibleApplications.length.toLocaleString()}건 표시 · ${appliedFilterSummary}`}
               </p>
             </div>
             <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
@@ -1030,14 +1137,31 @@ export function InfluencerCampaignDiscoveryPage() {
                 appliedCount={applications.length}
                 onChange={setActiveView}
               />
-              {activeView === "open" ? (
-                <CampaignFilterToggleButton
-                  open={filtersOpen}
-                  activeCount={activeFilterLabels.length}
-                  controlsId="influencer-campaign-filters"
-                  onClick={() => setFiltersOpen((current) => !current)}
-                />
-              ) : null}
+              <CampaignSortSelect
+                value={
+                  activeView === "open" ? openCampaignSort : appliedCampaignSort
+                }
+                options={
+                  activeView === "open"
+                    ? openCampaignSortOptions
+                    : appliedCampaignSortOptions
+                }
+                onChange={
+                  activeView === "open"
+                    ? setOpenCampaignSort
+                    : setAppliedCampaignSort
+                }
+              />
+              <CampaignFilterToggleButton
+                open={filtersOpen}
+                activeCount={toolbarFilterCount}
+                controlsId={
+                  activeView === "open"
+                    ? "influencer-campaign-filters"
+                    : "influencer-applied-campaign-filters"
+                }
+                onClick={() => setFiltersOpen((current) => !current)}
+              />
             </div>
           </div>
           {activeView === "open" ? (
@@ -1047,45 +1171,58 @@ export function InfluencerCampaignDiscoveryPage() {
               onChange={setCategoryFilter}
             />
           ) : null}
-          {activeView === "open" && filtersOpen ? (
-            <div
-              id="influencer-campaign-filters"
-              className="grid gap-2 border-t border-neutral-200 bg-[#fbfaf7] p-3 lg:grid-cols-[280px_minmax(0,1fr)] lg:items-start"
-            >
-              <div className="relative min-w-0">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
-                <input
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  aria-label="캠페인 검색"
-                  placeholder="브랜드, 캠페인, 플랫폼, 산출물 검색"
-                  className="h-9 w-full rounded-[8px] border border-neutral-200 bg-white pl-10 pr-3 text-[12px] font-bold text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950"
-                />
+          {filtersOpen ? (
+            activeView === "open" ? (
+              <div
+                id="influencer-campaign-filters"
+                className="grid gap-2 border-t border-neutral-200 bg-[#fbfaf7] p-3 lg:grid-cols-[280px_minmax(0,1fr)] lg:items-start"
+              >
+                <div className="relative min-w-0">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+                  <input
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    aria-label="캠페인 검색"
+                    placeholder="브랜드, 캠페인, 플랫폼, 산출물 검색"
+                    className="h-9 w-full rounded-[8px] border border-neutral-200 bg-white pl-10 pr-3 text-[12px] font-bold text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950"
+                  />
+                </div>
+                <div className="grid min-w-0 gap-2 lg:grid-cols-2">
+                  <FilterGroup label="플랫폼">
+                    {platformOptions.map((platform) => (
+                      <FilterButton
+                        key={platform}
+                        active={platformFilter === platform}
+                        label={platform === "all" ? "전체" : platformLabels[platform]}
+                        onClick={() => setPlatformFilter(platform)}
+                        tone={platform === "all" ? undefined : getPlatformTone(platform)}
+                      />
+                    ))}
+                  </FilterGroup>
+                  <FilterGroup label="형태">
+                    {proposalTypeFilterOptions.map((type) => (
+                      <FilterButton
+                        key={type}
+                        active={proposalTypeFilter === type}
+                        label={type === "all" ? "전체" : proposalTypeLabels[type]}
+                        onClick={() => setProposalTypeFilter(type)}
+                      />
+                    ))}
+                  </FilterGroup>
+                </div>
               </div>
-              <div className="grid min-w-0 gap-2 lg:grid-cols-2">
-                <FilterGroup label="플랫폼">
-                  {platformOptions.map((platform) => (
-                    <FilterButton
-                      key={platform}
-                      active={platformFilter === platform}
-                      label={platform === "all" ? "전체" : platformLabels[platform]}
-                      onClick={() => setPlatformFilter(platform)}
-                      tone={platform === "all" ? undefined : getPlatformTone(platform)}
-                    />
-                  ))}
-                </FilterGroup>
-                <FilterGroup label="형태">
-                  {proposalTypeFilterOptions.map((type) => (
-                    <FilterButton
-                      key={type}
-                      active={proposalTypeFilter === type}
-                      label={type === "all" ? "전체" : proposalTypeLabels[type]}
-                      onClick={() => setProposalTypeFilter(type)}
-                    />
-                  ))}
-                </FilterGroup>
-              </div>
-            </div>
+            ) : (
+              <AppliedCampaignFilters
+                query={appliedQuery}
+                statusFilter={appliedStatusFilter}
+                onQueryChange={setAppliedQuery}
+                onStatusFilterChange={setAppliedStatusFilter}
+                onClear={() => {
+                  setAppliedQuery("");
+                  setAppliedStatusFilter("all");
+                }}
+              />
+            )
           ) : null}
         </div>
 
@@ -1106,8 +1243,18 @@ export function InfluencerCampaignDiscoveryPage() {
               title="아직 신청한 캠페인이 없습니다"
               body="관심 있는 캠페인을 신청하면 이곳에서 진행 상태를 확인합니다."
             />
+          ) : visibleApplications.length === 0 ? (
+            <PanelState
+              icon={<Send className="h-5 w-5" />}
+              title="조건에 맞는 캠페인이 없습니다"
+              body="검색어나 상태 조건을 줄여보세요."
+            />
           ) : (
-            <AppliedCampaignList applications={applications} />
+            <AppliedCampaignList
+              applications={visibleApplications}
+              sortState={appliedCampaignSort}
+              onSortChange={setAppliedCampaignSort}
+            />
           )
         ) : state.status === "loading" ? (
           <PanelState icon={<RefreshCw className="h-5 w-5 animate-spin" />} title="캠페인을 불러오는 중" />
@@ -1704,18 +1851,131 @@ function CampaignViewTabs({
   );
 }
 
+function CampaignSortSelect({
+  value,
+  options,
+  onChange,
+}: {
+  value: CampaignSort;
+  options: Array<{ label: string; value: CampaignSort }>;
+  onChange: (value: CampaignSort) => void;
+}) {
+  return (
+    <label className="inline-flex shrink-0 items-center gap-1.5 rounded-[8px] border border-neutral-200 bg-white px-2 py-1">
+      <ArrowUpDown className="h-3.5 w-3.5 text-neutral-500" strokeWidth={2} />
+      <span className="sr-only">정렬</span>
+      <select
+        value={serializeCampaignSort(value)}
+        onChange={(event) =>
+          onChange(parseCampaignSort(event.target.value, value))
+        }
+        aria-label="캠페인 정렬"
+        className="h-7 min-w-[94px] bg-transparent text-[11px] font-extrabold text-neutral-700 outline-none"
+      >
+        {options.map((option) => (
+          <option
+            key={serializeCampaignSort(option.value)}
+            value={serializeCampaignSort(option.value)}
+          >
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function AppliedCampaignFilters({
+  query,
+  statusFilter,
+  onQueryChange,
+  onStatusFilterChange,
+  onClear,
+}: {
+  query: string;
+  statusFilter: ApplicationStatusFilter;
+  onQueryChange: (value: string) => void;
+  onStatusFilterChange: (value: ApplicationStatusFilter) => void;
+  onClear: () => void;
+}) {
+  const hasFilters = query.trim().length > 0 || statusFilter !== "all";
+
+  return (
+    <div
+      id="influencer-applied-campaign-filters"
+      className="grid gap-2 border-t border-neutral-200 bg-[#fbfaf7] p-3 lg:grid-cols-[280px_minmax(0,1fr)_auto] lg:items-center"
+    >
+      <div className="relative min-w-0">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+        <input
+          value={query}
+          onChange={(event) => onQueryChange(event.target.value)}
+          aria-label="신청한 캠페인 검색"
+          placeholder="브랜드, 캠페인 검색"
+          className="h-9 w-full rounded-[8px] border border-neutral-200 bg-white pl-10 pr-3 text-[12px] font-bold text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950"
+        />
+      </div>
+      <FilterGroup label="상태">
+        {applicationStatusFilterOptions.map((status) => (
+          <FilterButton
+            key={status}
+            active={statusFilter === status}
+            label={status === "all" ? "전체" : applicationStatusMeta[status].label}
+            onClick={() => onStatusFilterChange(status)}
+          />
+        ))}
+      </FilterGroup>
+      {hasFilters ? (
+        <button
+          type="button"
+          onClick={onClear}
+          className="inline-flex h-8 w-fit items-center gap-1.5 rounded-[8px] px-2.5 text-[11px] font-extrabold text-neutral-500 transition hover:bg-white hover:text-neutral-950"
+        >
+          <X className="h-3.5 w-3.5" strokeWidth={2} />
+          초기화
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 function AppliedCampaignList({
   applications,
+  sortState,
+  onSortChange,
 }: {
   applications: MarketplaceMessageThread[];
+  sortState: CampaignSort;
+  onSortChange: (value: CampaignSort) => void;
 }) {
   return (
     <section className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
-      <div className="hidden grid-cols-[minmax(170px,0.48fr)_minmax(320px,1fr)_132px_132px_132px] border-b border-neutral-200 bg-[#f8faf7] px-4 py-3 text-[11px] font-semibold text-neutral-500 lg:grid">
-        <span>브랜드</span>
-        <span>캠페인</span>
-        <span>상태</span>
-        <span className="text-right">신청일</span>
+      <div className="hidden grid-cols-[minmax(170px,0.48fr)_minmax(320px,1fr)_132px_132px_132px] border-b border-neutral-200 bg-[#f8faf7] px-4 py-3 lg:grid">
+        <CampaignColumnHeader
+          label="브랜드"
+          sortKey="brand"
+          sortState={sortState}
+          onSortChange={onSortChange}
+        />
+        <CampaignColumnHeader
+          label="캠페인"
+          sortKey="title"
+          sortState={sortState}
+          onSortChange={onSortChange}
+        />
+        <CampaignColumnHeader
+          label="상태"
+          sortKey="status"
+          sortState={sortState}
+          onSortChange={onSortChange}
+        />
+        <CampaignColumnHeader
+          label="신청일"
+          sortKey="appliedAt"
+          sortState={sortState}
+          onSortChange={onSortChange}
+          align="right"
+        />
         <span className="sr-only">액션</span>
       </div>
       <div
@@ -1729,6 +1989,64 @@ function AppliedCampaignList({
         ))}
       </div>
     </section>
+  );
+}
+
+function CampaignColumnHeader({
+  label,
+  sortKey,
+  sortState,
+  onSortChange,
+  align = "left",
+}: {
+  label: string;
+  sortKey: CampaignSortKey;
+  sortState: CampaignSort;
+  onSortChange: (value: CampaignSort) => void;
+  align?: "left" | "right";
+}) {
+  const active = sortState.key === sortKey;
+  const Icon = active
+    ? sortState.direction === "asc"
+      ? ArrowUpWideNarrow
+      : ArrowDownWideNarrow
+    : ArrowUpDown;
+  const nextDirection =
+    active && sortState.direction === "asc" ? "내림차순" : "오름차순";
+
+  return (
+    <div
+      className={`flex h-7 min-w-0 items-center gap-1.5 ${
+        align === "right" ? "justify-end" : "justify-start"
+      }`}
+    >
+      <span
+        className={`truncate text-[12px] font-black tracking-[-0.01em] ${
+          active ? "text-neutral-950" : "text-neutral-700"
+        }`}
+      >
+        {label}
+      </span>
+      <button
+        type="button"
+        onClick={() =>
+          onSortChange({
+            key: sortKey,
+            direction:
+              active && sortState.direction === "asc" ? "desc" : "asc",
+          })
+        }
+        aria-label={`${label} ${nextDirection} 정렬`}
+        title={`${label} ${nextDirection} 정렬`}
+        className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] transition-colors ${
+          active
+            ? "bg-neutral-950 text-white"
+            : "text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
+        }`}
+      >
+        <Icon className="h-3.5 w-3.5" strokeWidth={2.2} />
+      </button>
+    </div>
   );
 }
 
@@ -1813,6 +2131,189 @@ function formatAppliedCampaignTitle(application: MarketplaceMessageThread) {
       : summary.slice(valueStart, nextStopIndex);
 
   return raw.replace(/\s+/g, " ").trim() || "캠페인";
+}
+
+function serializeCampaignSort(sort: CampaignSort) {
+  return `${sort.key}:${sort.direction}`;
+}
+
+function parseCampaignSort(value: string, fallback: CampaignSort): CampaignSort {
+  const [key, direction] = value.split(":");
+  if (!isCampaignSortKey(key) || !isCampaignSortDirection(direction)) {
+    return fallback;
+  }
+
+  return { key, direction };
+}
+
+function isCampaignSortKey(value: string | undefined): value is CampaignSortKey {
+  return [
+    "deadline",
+    "brand",
+    "title",
+    "payment",
+    "platform",
+    "type",
+    "status",
+    "appliedAt",
+  ].includes(value ?? "");
+}
+
+function isCampaignSortDirection(
+  value: string | undefined,
+): value is CampaignSortDirection {
+  return value === "asc" || value === "desc";
+}
+
+function compareMarketplaceCampaignPostsBySort(
+  a: MarketplaceCampaignPost,
+  b: MarketplaceCampaignPost,
+  sort: CampaignSort,
+) {
+  let result: number;
+
+  switch (sort.key) {
+    case "deadline":
+      result = compareOptionalDateValues(a.deadline, b.deadline);
+      break;
+    case "brand":
+      result = compareText(a.brandName, b.brandName);
+      break;
+    case "title":
+      result = compareText(a.title, b.title);
+      break;
+    case "payment":
+      result = compareAmountValues(a.budget, b.budget);
+      break;
+    case "platform":
+      result = compareText(
+        (a.platforms ?? []).map((platform) => platformLabels[platform]).join(" "),
+        (b.platforms ?? []).map((platform) => platformLabels[platform]).join(" "),
+      );
+      break;
+    case "type":
+      result = compareText(a.typeLabel, b.typeLabel);
+      break;
+    default:
+      result = compareOptionalDateValues(a.updatedAt, b.updatedAt);
+      break;
+  }
+
+  if (result === 0) result = compareText(a.title, b.title);
+
+  return sort.direction === "asc" ? result : -result;
+}
+
+function compareAppliedCampaignApplicationsBySort(
+  a: MarketplaceMessageThread,
+  b: MarketplaceMessageThread,
+  sort: CampaignSort,
+) {
+  let result: number;
+
+  switch (sort.key) {
+    case "brand":
+      result = compareText(
+        a.targetName || a.counterpartName,
+        b.targetName || b.counterpartName,
+      );
+      break;
+    case "title":
+      result = compareText(formatAppliedCampaignTitle(a), formatAppliedCampaignTitle(b));
+      break;
+    case "status":
+      result =
+        applicationStatusFilterOptions.indexOf(a.status) -
+        applicationStatusFilterOptions.indexOf(b.status);
+      break;
+    case "appliedAt":
+    default:
+      result = compareOptionalDateValues(a.createdAt, b.createdAt);
+      break;
+  }
+
+  if (result === 0) {
+    result = compareText(formatAppliedCampaignTitle(a), formatAppliedCampaignTitle(b));
+  }
+
+  return sort.direction === "asc" ? result : -result;
+}
+
+function compareText(a: string, b: string) {
+  return a.localeCompare(b, "ko-KR", {
+    numeric: true,
+    sensitivity: "base",
+  });
+}
+
+function compareOptionalDateValues(a?: string, b?: string) {
+  const timeA = a ? new Date(a).getTime() : Number.NaN;
+  const timeB = b ? new Date(b).getTime() : Number.NaN;
+  const validA = Number.isFinite(timeA);
+  const validB = Number.isFinite(timeB);
+
+  if (!validA && !validB) return 0;
+  if (!validA) return 1;
+  if (!validB) return -1;
+  return timeA - timeB;
+}
+
+function compareAmountValues(a?: string | null, b?: string | null) {
+  const amountA = getAmountSortMeta(a);
+  const amountB = getAmountSortMeta(b);
+
+  if (amountA.kind !== amountB.kind) {
+    return amountA.kind === "fixed" ? -1 : 1;
+  }
+
+  if (Number.isFinite(amountA.value) && Number.isFinite(amountB.value)) {
+    return amountA.value - amountB.value;
+  }
+  if (Number.isFinite(amountA.value)) return -1;
+  if (Number.isFinite(amountB.value)) return 1;
+  return compareText(amountA.label, amountB.label);
+}
+
+function getAmountSortMeta(value?: string | null) {
+  const label = value?.trim() || "";
+  const raw = label.replace(/,/g, "").toLowerCase();
+  const kind = /%|commission|수수료|판매\s*수익/.test(raw)
+    ? "commission"
+    : "fixed";
+  const percentMatch = raw.match(/(\d+(?:\.\d+)?)\s*%/);
+
+  if (kind === "commission") {
+    return {
+      kind,
+      label,
+      value: percentMatch ? Number(percentMatch[1]) : Number.NaN,
+    };
+  }
+
+  const manWonMatch = raw.match(/(\d+(?:\.\d+)?)\s*만/);
+  if (manWonMatch) {
+    return {
+      kind,
+      label,
+      value: Number(manWonMatch[1]) * 10000,
+    };
+  }
+
+  const wonMatch = raw.match(/(\d{4,})\s*(?:원|krw)?/i);
+  if (wonMatch) {
+    return {
+      kind,
+      label,
+      value: Number(wonMatch[1]),
+    };
+  }
+
+  const fallbackMatch = raw.match(/(\d+(?:\.\d+)?)/);
+  return {
+    kind,
+    label,
+    value: fallbackMatch ? Number(fallbackMatch[1]) : Number.NaN,
+  };
 }
 
 function MiniInfo({ label, value }: { label: string; value: string }) {

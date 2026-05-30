@@ -142,6 +142,7 @@ const advertiserDashboard = read("src/pages/marketing/Dashboard.tsx");
 const influencerDashboard = read("src/pages/influencer/InfluencerDashboard.tsx");
 const campaignPages = read("src/pages/marketplace/CampaignPages.tsx");
 const marketplacePages = read("src/pages/marketplace/MarketplacePages.tsx");
+const marketplaceInboxPage = read("src/pages/marketplace/MarketplaceInboxPage.tsx");
 const marketplace = read("src/domain/marketplace.ts");
 const server = read("server/index.ts");
 const fastAuth = read("lib/fast-auth.ts");
@@ -357,6 +358,20 @@ check(
 );
 
 check(
+  "dashboard and inbox column headers stay stronger than filters",
+  agents.includes("Table and list headers are navigation anchors, not helper text") &&
+    advertiserDashboard.includes("text-[12px] font-black tracking-[-0.01em]") &&
+    advertiserDashboard.includes("bg-[#f7f8f4] px-3 py-2.5") &&
+    advertiserDashboard.includes("text-[14px] font-extrabold leading-5 text-[#171a17]") &&
+    influencerDashboard.includes("text-[12px] font-black tracking-[-0.01em] text-[#303630]") &&
+    influencerDashboard.includes("bg-[#f7f8f4] px-3 py-2.5") &&
+    marketplaceInboxPage.includes("text-[14px] font-extrabold leading-5 text-[#171a17]") &&
+    marketplaceInboxPage.includes("text-[12px] font-extrabold tracking-[-0.01em] text-[#303630]") &&
+    landing.includes("text-[11px] font-black tracking-[-0.01em] text-[#303630]"),
+  "Table/list headers must not regress into faint helper text; affected dashboard, inbox, and intro-preview surfaces need stronger compact headers",
+);
+
+check(
   "influencer account strip shows verified accounts directly",
   influencerDashboard.includes("border-blue-200 bg-blue-50") &&
     influencerDashboard.includes("dashboard.verification.approved_platforms.filter") &&
@@ -459,7 +474,12 @@ check(
     envExample.includes("VITE_NAVER_SITE_VERIFICATION") &&
     robotsTxt.includes("User-agent: Yeti") &&
     robotsTxt.includes("Sitemap: https://yeollock.me/sitemap.xml") &&
-    sitemapXml.includes("<lastmod>2026-05-30</lastmod>") &&
+    seo.includes('export const legalRobotsContent = "noindex,follow"') &&
+    prerenderSeoHtml.includes('return !seo.robots.includes("noindex")') &&
+    sitemapXml.includes("<lastmod>2026-05-31</lastmod>") &&
+    !sitemapXml.includes("https://yeollock.me/privacy") &&
+    !sitemapXml.includes("https://yeollock.me/terms") &&
+    !sitemapXml.includes("https://yeollock.me/legal/e-sign-consent") &&
     seo.includes("defaultOgImagePath") &&
     seo.includes("ogImageWidth = 1200") &&
     seo.includes("ogImageHeight = 630") &&
@@ -698,6 +718,21 @@ check(
 );
 
 check(
+  "campaign dashboard interaction parity covers sorting and applied filters",
+  agents.includes("Paired advertiser/influencer dashboard surfaces must keep interaction parity") &&
+    advertiserDashboard.includes("compareCampaignGroupsBySort") &&
+    advertiserDashboard.includes('sortKey="participants"') &&
+    advertiserDashboard.includes("handleCampaignSortChange") &&
+    campaignPages.includes("function CampaignSortSelect") &&
+    campaignPages.includes("compareMarketplaceCampaignPostsBySort") &&
+    campaignPages.includes("compareAppliedCampaignApplicationsBySort") &&
+    campaignPages.includes("function AppliedCampaignFilters") &&
+    campaignPages.includes("appliedStatusFilter") &&
+    campaignPages.includes("CampaignColumnHeader"),
+  "Campaign surfaces on advertiser and influencer sides must both provide role-appropriate sorting/filtering instead of leaving influencer applications as a passive list",
+);
+
+check(
   "supporters campaign type creates product-mission contract guardrails",
   marketplace.includes('| "supporters"') &&
     marketplace.includes('supporters: "서포터즈"') &&
@@ -740,18 +775,17 @@ check(
 );
 
 const salesSpotlightTags =
-  salesAdvertiserIntroduction.match(/<span\b(?=[^>]*class="spotlight)[^>]*>/g) ?? [];
+  salesAdvertiserIntroduction.match(/<span\b(?=[^>]*class="red-box")[^>]*>/g) ??
+  [];
 const expectedSalesSpotlightTargets = [
-  "dashboard-contract-table",
-  "dashboard-next-status",
-  "builder-input-column",
-  "builder-document-preview",
-  "contract-state-hero",
-  "contract-document-body",
-  "mobile-contract-summary",
-  "mobile-sign-action",
-  "completed-deliverables-panel",
-  "completed-state-hero",
+  "contract-surface-switch",
+  "contract-lifecycle-tabs",
+  "contract-sortable-table",
+  "campaign-surface-switch",
+  "campaign-lifecycle-tabs",
+  "campaign-roster-table",
+  "structure-contract-flow",
+  "structure-campaign-flow",
 ];
 
 check(
@@ -764,12 +798,12 @@ check(
 );
 
 const salesImageNoteGroups =
-  salesAdvertiserIntroduction.match(/<div class="image-notes">\s*<div class="image-note">/g) ??
+  salesAdvertiserIntroduction.match(/<div class="notes">\s*<div class="note">/g) ??
   [];
 
 check(
   "advertiser sales PDF explanation cards keep one rhythm",
-  salesImageNoteGroups.length === 5 &&
+  salesImageNoteGroups.length === 2 &&
     !salesAdvertiserIntroduction.includes('class="image-notes single"') &&
     !salesAdvertiserIntroduction.includes('<aside class="side-panel">') &&
     !salesAdvertiserIntroduction.includes("pilot-sidebar"),

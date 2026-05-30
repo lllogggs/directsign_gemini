@@ -91,9 +91,11 @@ type DetailPostLinkFilter = "ALL" | "SUBMITTED" | "NOT_SUBMITTED";
 type SortKey =
   | "updated"
   | "platform"
+  | "brand"
   | "type"
   | "title"
   | "amount"
+  | "participants"
   | "deadline"
   | "status";
 type SortDirection = "asc" | "desc";
@@ -429,6 +431,10 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
     key: "updated",
     direction: "desc",
   });
+  const [campaignSort, setCampaignSort] = useState<ContractSort>({
+    key: "deadline",
+    direction: "asc",
+  });
   const [marketplaceState, setMarketplaceState] =
     useState<MarketplaceDashboardState>({
       status: "loading",
@@ -604,22 +610,25 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
   const filteredCampaigns = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
 
-    return campaignGroups.filter((campaign) =>
-      (!normalizedQuery ||
-        campaign.name.toLowerCase().includes(normalizedQuery)) &&
-      (campaignPlatformFilter === "ALL" ||
-        campaign.platforms.includes(campaignPlatformFilter)) &&
-      (campaignBrandFilter === "ALL" ||
-        campaign.brands.includes(campaignBrandFilter)) &&
-      matchesCampaignParticipantFilter(campaign, campaignParticipantFilter) &&
-      campaign.lifecycle === campaignLifecycleFilter,
-    );
+    return campaignGroups
+      .filter((campaign) =>
+        (!normalizedQuery ||
+          campaign.name.toLowerCase().includes(normalizedQuery)) &&
+        (campaignPlatformFilter === "ALL" ||
+          campaign.platforms.includes(campaignPlatformFilter)) &&
+        (campaignBrandFilter === "ALL" ||
+          campaign.brands.includes(campaignBrandFilter)) &&
+        matchesCampaignParticipantFilter(campaign, campaignParticipantFilter) &&
+        campaign.lifecycle === campaignLifecycleFilter,
+      )
+      .sort((a, b) => compareCampaignGroupsBySort(a, b, campaignSort));
   }, [
     campaignBrandFilter,
     campaignGroups,
     campaignLifecycleFilter,
     campaignParticipantFilter,
     campaignPlatformFilter,
+    campaignSort,
     query,
   ]);
   const dashboardContracts = useMemo(
@@ -658,6 +667,13 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
   ]);
   const handleContractSortChange = useCallback((key: SortKey) => {
     setContractSort((current) => ({
+      key,
+      direction:
+        current.key === key && current.direction === "asc" ? "desc" : "asc",
+    }));
+  }, []);
+  const handleCampaignSortChange = useCallback((key: SortKey) => {
+    setCampaignSort((current) => ({
       key,
       direction:
         current.key === key && current.direction === "asc" ? "desc" : "asc",
@@ -910,6 +926,8 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
                     brandOptions={campaignBrandOptions}
                     participantFilter={campaignParticipantFilter}
                     onParticipantFilterChange={setCampaignParticipantFilter}
+                    sortState={campaignSort}
+                    onSortChange={handleCampaignSortChange}
                     selectedCampaign={selectedCampaign}
                     onOpenCampaign={openCampaign}
                     onBack={closeCampaign}
@@ -1323,6 +1341,8 @@ function CampaignDashboard({
   brandOptions,
   participantFilter,
   onParticipantFilterChange,
+  sortState,
+  onSortChange,
   selectedCampaign,
   onOpenCampaign,
   onBack,
@@ -1346,6 +1366,8 @@ function CampaignDashboard({
   brandOptions: FilterOption[];
   participantFilter: CampaignParticipantFilter;
   onParticipantFilterChange: (value: CampaignParticipantFilter) => void;
+  sortState: ContractSort;
+  onSortChange: (key: SortKey) => void;
   selectedCampaign?: CampaignGroup;
   onOpenCampaign: (campaign: CampaignGroup) => void;
   onBack: () => void;
@@ -1388,6 +1410,8 @@ function CampaignDashboard({
       brandOptions={brandOptions}
       participantFilter={participantFilter}
       onParticipantFilterChange={onParticipantFilterChange}
+      sortState={sortState}
+      onSortChange={onSortChange}
       onOpenCampaign={onOpenCampaign}
     />
   );
@@ -1408,6 +1432,8 @@ function CampaignListView({
   brandOptions,
   participantFilter,
   onParticipantFilterChange,
+  sortState,
+  onSortChange,
   onOpenCampaign,
 }: {
   campaigns: CampaignGroup[];
@@ -1424,6 +1450,8 @@ function CampaignListView({
   brandOptions: FilterOption[];
   participantFilter: CampaignParticipantFilter;
   onParticipantFilterChange: (value: CampaignParticipantFilter) => void;
+  sortState: ContractSort;
+  onSortChange: (key: SortKey) => void;
   onOpenCampaign: (campaign: CampaignGroup) => void;
 }) {
   const platformOptions = PLATFORM_FILTERS.map((platform) => ({
@@ -1537,7 +1565,11 @@ function CampaignListView({
           </div>
         ) : null}
       </div>
-      <CampaignTableHeaderRow dateColumnLabel={dateColumnLabel} />
+      <CampaignTableHeaderRow
+        dateColumnLabel={dateColumnLabel}
+        sortState={sortState}
+        onSortChange={onSortChange}
+      />
 
       <div className="no-scrollbar max-h-[620px] divide-y divide-[#edf1ed] overflow-y-auto overscroll-contain lg:max-h-none lg:min-h-0 lg:flex-1">
         {campaigns.length > 0 ? (
@@ -1559,17 +1591,51 @@ function CampaignListView({
 
 function CampaignTableHeaderRow({
   dateColumnLabel,
+  sortState,
+  onSortChange,
 }: {
   dateColumnLabel: string;
+  sortState: ContractSort;
+  onSortChange: (key: SortKey) => void;
 }) {
   return (
-    <div className="hidden border-b border-[#e3e8e3] bg-[#fbfbf8] px-3 py-2 lg:grid lg:grid-cols-[minmax(104px,0.2fr)_minmax(82px,0.14fr)_minmax(250px,0.78fr)_minmax(160px,0.4fr)_minmax(132px,0.32fr)_minmax(104px,0.23fr)] lg:items-center lg:gap-2">
-      <ColumnHeader label="플랫폼" />
-      <ColumnHeader label="브랜드" />
-      <ColumnHeader label="캠페인" />
-      <ColumnHeader label="지급내용" />
-      <ColumnHeader label="신청/모집 인원" />
-      <ColumnHeader label={dateColumnLabel} />
+    <div className="hidden border-b border-[#d7ddd7] bg-[#f7f8f4] px-3 py-2.5 lg:grid lg:grid-cols-[minmax(104px,0.2fr)_minmax(82px,0.14fr)_minmax(250px,0.78fr)_minmax(160px,0.4fr)_minmax(132px,0.32fr)_minmax(104px,0.23fr)] lg:items-center lg:gap-2">
+      <ColumnHeader
+        label="플랫폼"
+        sortKey="platform"
+        sortState={sortState}
+        onSortChange={onSortChange}
+      />
+      <ColumnHeader
+        label="브랜드"
+        sortKey="brand"
+        sortState={sortState}
+        onSortChange={onSortChange}
+      />
+      <ColumnHeader
+        label="캠페인"
+        sortKey="title"
+        sortState={sortState}
+        onSortChange={onSortChange}
+      />
+      <ColumnHeader
+        label="지급내용"
+        sortKey="amount"
+        sortState={sortState}
+        onSortChange={onSortChange}
+      />
+      <ColumnHeader
+        label="신청/모집 인원"
+        sortKey="participants"
+        sortState={sortState}
+        onSortChange={onSortChange}
+      />
+      <ColumnHeader
+        label={dateColumnLabel}
+        sortKey="deadline"
+        sortState={sortState}
+        onSortChange={onSortChange}
+      />
     </div>
   );
 }
@@ -2643,7 +2709,7 @@ function ContractTable({
       <div className="border-b border-[#d9e0d9] bg-white">
         <div className="flex min-h-11 items-center justify-between gap-3 px-3 py-2">
           <div className="min-w-0">
-            <p className="truncate text-[12px] font-extrabold text-[#171a17]">
+            <p className="truncate text-[14px] font-extrabold leading-5 text-[#171a17]">
               계약 목록
             </p>
             {isDataPending ? (
@@ -2775,7 +2841,7 @@ function ContractTableHeaderRow({
   onSortChange: (key: SortKey) => void;
 }) {
   return (
-    <div className="hidden border-b border-[#e3e8e3] bg-white px-3 py-2 lg:grid lg:grid-cols-[minmax(132px,0.34fr)_minmax(108px,0.26fr)_minmax(300px,1fr)_minmax(132px,0.34fr)_minmax(146px,0.38fr)_minmax(112px,0.3fr)] lg:items-center lg:gap-2">
+    <div className="hidden border-b border-[#d7ddd7] bg-[#f7f8f4] px-3 py-2.5 lg:grid lg:grid-cols-[minmax(132px,0.34fr)_minmax(108px,0.26fr)_minmax(300px,1fr)_minmax(132px,0.34fr)_minmax(146px,0.38fr)_minmax(112px,0.3fr)] lg:items-center lg:gap-2">
       <ColumnHeader
         label="플랫폼"
         sortKey="platform"
@@ -2926,10 +2992,10 @@ function ColumnHeader({
   const active = Boolean(sortKey && sortState?.key === sortKey);
 
   return (
-    <div className="flex h-6 min-w-0 items-center gap-1">
+    <div className="flex h-7 min-w-0 items-center gap-1.5">
       <span
-        className={`block truncate text-[11px] font-extrabold ${
-          active ? "text-[#171a17]" : "text-[#606861]"
+        className={`block truncate text-[12px] font-black tracking-[-0.01em] ${
+          active ? "text-[#171a17]" : "text-[#303630]"
         }`}
       >
         {label}
@@ -3253,6 +3319,74 @@ function _compareContractsBySort(a: Contract, b: Contract, sort: ContractSort) {
   }
 
   return sort.direction === "asc" ? result : -result;
+}
+
+function compareCampaignGroupsBySort(
+  a: CampaignGroup,
+  b: CampaignGroup,
+  sort: ContractSort,
+) {
+  let result: number;
+
+  switch (sort.key) {
+    case "platform":
+      result = compareText(
+        formatCampaignPlatformSummary(a.platforms),
+        formatCampaignPlatformSummary(b.platforms),
+      );
+      break;
+    case "brand":
+      result = compareText(a.brands.join(" "), b.brands.join(" "));
+      break;
+    case "title":
+      result = compareText(a.name, b.name);
+      break;
+    case "amount":
+      result = compareAmountValues(
+        getCampaignPaymentLabel(a),
+        getCampaignPaymentLabel(b),
+      );
+      break;
+    case "participants":
+      result = compareCampaignParticipantValues(a, b);
+      break;
+    case "deadline":
+      result = compareOptionalDateValues(
+        getCampaignListDateSortValue(a),
+        getCampaignListDateSortValue(b),
+      );
+      break;
+    case "updated":
+    default:
+      result = parseDate(a.latestUpdatedAt) - parseDate(b.latestUpdatedAt);
+      break;
+  }
+
+  if (result === 0) result = compareText(a.name, b.name);
+
+  return sort.direction === "asc" ? result : -result;
+}
+
+function compareCampaignParticipantValues(a: CampaignGroup, b: CampaignGroup) {
+  const currentA = getCampaignDisplayParticipantCount(a);
+  const currentB = getCampaignDisplayParticipantCount(b);
+  const capacityA = getCampaignCapacity(a);
+  const capacityB = getCampaignCapacity(b);
+  const ratioA = capacityA ? currentA / capacityA : currentA > 0 ? 0.01 : 0;
+  const ratioB = capacityB ? currentB / capacityB : currentB > 0 ? 0.01 : 0;
+
+  return (
+    ratioA - ratioB ||
+    currentA - currentB ||
+    (capacityA ?? Number.POSITIVE_INFINITY) -
+      (capacityB ?? Number.POSITIVE_INFINITY)
+  );
+}
+
+function getCampaignListDateSortValue(campaign: CampaignGroup) {
+  return campaign.lifecycle === "ENDED"
+    ? getCampaignEndedDateValue(campaign)
+    : getCampaignDeadlineValue(campaign);
 }
 
 function getPlatformSortLabel(contract: Contract) {

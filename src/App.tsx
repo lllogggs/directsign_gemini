@@ -358,7 +358,7 @@ function AppLoading({
                 <option value="youtube">유튜브</option>
               </select>
             </div>
-            <div className="grid grid-cols-[80px_90px_110px_minmax(180px,1fr)_130px_110px_110px] gap-2 text-[12px] font-semibold text-neutral-500">
+            <div className="grid grid-cols-[80px_90px_110px_minmax(180px,1fr)_130px_110px_110px] gap-2 text-[12px] font-extrabold tracking-[-0.01em] text-neutral-700">
               <span>플랫폼</span>
               <span>종류</span>
               <span>브랜드</span>

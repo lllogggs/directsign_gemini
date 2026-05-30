@@ -2398,7 +2398,7 @@ function IntroContractRows({ state }: { state: IntroDashboardState }) {
 
   return (
     <>
-      <div className={`hidden ${contractRowsGridClass} gap-2 border-b border-[#e3e8e3] bg-[#fbfbf8] px-3 py-2 text-[10px] font-extrabold text-[#7d857f] md:grid`}>
+      <div className={`hidden ${contractRowsGridClass} gap-2 border-b border-[#d7ddd7] bg-[#f7f8f4] px-3 py-2 text-[11px] font-black tracking-[-0.01em] text-[#303630] md:grid`}>
         <span>플랫폼</span>
         <span>{state.secondaryColumnLabel ?? "브랜드"}</span>
         <span>계약명</span>
@@ -3166,7 +3166,7 @@ function InfluencerPreviewSlideView({
       </div>
 
       <div className="space-y-2.5 bg-[#fbfaf7] p-3 sm:space-y-0 sm:bg-white sm:p-0">
-        <div className="hidden grid-cols-[minmax(0,0.82fr)_minmax(0,0.9fr)_minmax(0,1.08fr)_104px] gap-3 border-b border-neutral-200 bg-[#fbfaf7] px-4 py-2.5 text-[10px] font-extrabold text-neutral-400 sm:grid sm:px-5">
+        <div className="hidden grid-cols-[minmax(0,0.82fr)_minmax(0,0.9fr)_minmax(0,1.08fr)_104px] gap-3 border-b border-neutral-200 bg-[#f7f8f4] px-4 py-2.5 text-[11px] font-black tracking-[-0.01em] text-neutral-700 sm:grid sm:px-5">
           <span>브랜드</span>
           <span>계약</span>
           <span>플랫폼</span>
@@ -3640,7 +3640,7 @@ function AdvertiserPreviewSlideView({
       </div>
 
       <div className="space-y-2.5 bg-[#fbfaf7] p-3 sm:space-y-0 sm:bg-white sm:p-0">
-        <div className="hidden grid-cols-[minmax(0,1.55fr)_minmax(0,0.95fr)_104px] gap-3 border-b border-neutral-200 bg-[#fbfaf7] px-4 py-2.5 text-[10px] font-extrabold text-neutral-400 sm:grid sm:px-5">
+        <div className="hidden grid-cols-[minmax(0,1.55fr)_minmax(0,0.95fr)_104px] gap-3 border-b border-neutral-200 bg-[#f7f8f4] px-4 py-2.5 text-[11px] font-black tracking-[-0.01em] text-neutral-700 sm:grid sm:px-5">
           <span>계약</span>
           <span>인플루언서</span>
           <span>{slide.dueHeader}</span>

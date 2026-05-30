@@ -486,7 +486,7 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
             <section className="rounded-t-[8px] border border-b-0 border-[#d9e0d9] bg-white p-3">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div className="min-w-0">
-                  <p className="truncate text-[13px] font-extrabold text-[#171a17]">
+                  <p className="truncate text-[14px] font-extrabold leading-5 text-[#171a17]">
                     제안 목록
                   </p>
                   <p className="mt-0.5 truncate text-[11px] font-semibold text-[#606861]">
@@ -726,7 +726,7 @@ function MessageTable({
 }) {
   return (
     <section className="overflow-hidden rounded-b-[8px] border border-[#d9e0d9] bg-white lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
-      <div className="hidden grid-cols-[104px_minmax(170px,0.75fr)_minmax(330px,1.45fr)_132px_132px] border-b border-[#d9e0d9] bg-[#f8faf7] px-4 py-3 text-[11px] font-semibold text-[#7d857f] lg:grid">
+      <div className="hidden grid-cols-[104px_minmax(170px,0.75fr)_minmax(330px,1.45fr)_132px_132px] border-b border-[#d7ddd7] bg-[#f7f8f4] px-4 py-3 text-[12px] font-extrabold tracking-[-0.01em] text-[#303630] lg:grid">
         <span>상태</span>
         <span>상대</span>
         <span>제안명</span>
