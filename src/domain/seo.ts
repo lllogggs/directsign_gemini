@@ -13,6 +13,8 @@ export type RouteSeoConfig = {
   description: string;
   canonicalPath: string;
   robots: string;
+  ogImageUrl?: string;
+  ogImageAlt?: string;
   structuredData?: unknown;
 };
 
@@ -52,7 +54,7 @@ const officialInstagramHandle =
     .replace(/^@+/, "") || "yeollockme";
 
 const publicSameAsUrls = [`https://www.instagram.com/${officialInstagramHandle}/`];
-export const seoDateModified = "2026-05-29";
+export const seoDateModified = "2026-05-30";
 
 export const publicRobotsContent =
   "index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1";
@@ -112,10 +114,10 @@ const seoFeatureList = [
 ];
 
 const defaultSeoDescription =
-  "협찬, PPL, 공동구매 계약을 작성, 검토, 전자서명까지 관리합니다.";
+  "협찬, PPL, 공동구매 계약을 작성부터 검토 링크, 전자서명, 증빙 보관까지 관리합니다.";
 
 const searchIntentSeoDescription =
-  "광고주와 인플루언서가 협찬, PPL, 공동구매 계약을 작성, 검토, 전자서명까지 관리합니다.";
+  "광고주와 인플루언서가 협찬, PPL, 공동구매 계약을 작성부터 검토 링크, 전자서명, 증빙 보관까지 관리합니다.";
 
 export const normalizeSeoPath = (pathname: string) =>
   pathname.replace(/\/+$/, "") || "/";
@@ -123,14 +125,26 @@ export const normalizeSeoPath = (pathname: string) =>
 export const buildCanonicalUrl = (pathname: string) =>
   `${publicSiteOrigin}${pathname === "/" ? "/" : pathname}`;
 
+export const defaultOgImagePath = "/og/yeollock-og.png";
+export const defaultOgImageUrl = buildCanonicalUrl(defaultOgImagePath);
+export const defaultOgImageAlt =
+  "연락미 인플루언서 광고 계약 관리 화면 미리보기";
+export const ogImageWidth = 1200;
+export const ogImageHeight = 630;
+
 const buildStructuredData = ({
   title,
   description,
   canonicalPath,
+  ogImageUrl = defaultOgImageUrl,
+  ogImageAlt = defaultOgImageAlt,
   keywords = seoKeywordList,
   resource,
   resourceList,
-}: Pick<RouteSeoConfig, "title" | "description" | "canonicalPath"> & {
+}: Pick<
+  RouteSeoConfig,
+  "title" | "description" | "canonicalPath" | "ogImageUrl" | "ogImageAlt"
+> & {
   keywords?: string[];
   resource?: SeoResourcePage;
   resourceList?: SeoResourcePage[];
@@ -145,6 +159,7 @@ const buildStructuredData = ({
       alternateName: "yeollock.me",
       url: `${publicSiteOrigin}/`,
       logo: `${publicSiteOrigin}/favicon.svg`,
+      image: ogImageUrl,
       email: LEGAL_CONTACT_EMAIL,
       contactPoint: [
         {
@@ -163,6 +178,7 @@ const buildStructuredData = ({
       name: PRODUCT_NAME,
       url: `${publicSiteOrigin}/`,
       description: searchIntentSeoDescription,
+      image: ogImageUrl,
       inLanguage: "ko-KR",
       publisher: { "@id": `${publicSiteOrigin}/#organization` },
     },
@@ -177,6 +193,7 @@ const buildStructuredData = ({
       description: searchIntentSeoDescription,
       keywords: seoKeywordList.join(", "),
       featureList: seoFeatureList,
+      image: ogImageUrl,
       isAccessibleForFree: true,
       offers: {
         "@type": "Offer",
@@ -204,6 +221,13 @@ const buildStructuredData = ({
       keywords: keywordText,
       inLanguage: "ko-KR",
       dateModified: seoDateModified,
+      primaryImageOfPage: {
+        "@type": "ImageObject",
+        url: ogImageUrl,
+        width: ogImageWidth,
+        height: ogImageHeight,
+        caption: ogImageAlt,
+      },
       isPartOf: { "@id": `${publicSiteOrigin}/#website` },
       about: { "@id": `${publicSiteOrigin}/#app` },
     },
@@ -218,6 +242,7 @@ const buildStructuredData = ({
       mainEntityOfPage: { "@id": `${url}#webpage` },
       author: { "@id": `${publicSiteOrigin}/#organization` },
       publisher: { "@id": `${publicSiteOrigin}/#organization` },
+      image: ogImageUrl,
       dateModified: seoDateModified,
       inLanguage: "ko-KR",
       keywords: keywordText,
@@ -385,29 +410,35 @@ const getRouteSeoConfig = (pathname: string): RouteSeoConfig => {
 
 const buildPublicSeoConfig = (config: IntentAwareSeoCopy): RouteSeoConfig => ({
   ...config,
-  structuredData: buildStructuredData(config),
+  ogImageUrl: config.ogImageUrl ?? defaultOgImageUrl,
+  ogImageAlt: config.ogImageAlt ?? defaultOgImageAlt,
+  structuredData: buildStructuredData({
+    ...config,
+    ogImageUrl: config.ogImageUrl ?? defaultOgImageUrl,
+    ogImageAlt: config.ogImageAlt ?? defaultOgImageAlt,
+  }),
 });
 
 const publicSearchIntentPages: Record<string, IntentAwareSeoCopy> = {
   "/": {
-    title: `${PRODUCT_NAME} - 인플루언서 광고 계약 관리`,
+    title: `${PRODUCT_NAME} | 인플루언서 광고 계약·전자서명 관리`,
     description: searchIntentSeoDescription,
     canonicalPath: "/",
     robots: publicRobotsContent,
     keywords: seoKeywordList,
   },
   "/intro/advertiser": {
-    title: `광고주 인플루언서 계약 관리 - ${PRODUCT_NAME}`,
+    title: `광고주 인플루언서 계약 관리 | ${PRODUCT_NAME}`,
     description:
-      "브랜드 협찬, PPL, 공동구매 제안을 계약서 작성, 검토 링크, 전자서명까지 관리합니다.",
+      "브랜드 협찬, PPL, 공동구매 제안을 계약서 작성, 검토 링크, 전자서명, 증빙 보관까지 관리합니다.",
     canonicalPath: "/intro/advertiser",
     robots: publicRobotsContent,
     keywords: advertiserIntentKeywords,
   },
   "/intro/influencer": {
-    title: `인플루언서 광고 계약 검토 - ${PRODUCT_NAME}`,
+    title: `인플루언서 광고 계약 검토·전자서명 | ${PRODUCT_NAME}`,
     description:
-      "받은 협찬, PPL, 공동구매 제안을 확인하고 수정 요청과 전자서명을 진행합니다.",
+      "받은 협찬, PPL, 공동구매 계약을 확인하고 수정 요청, 전자서명, 제출 상태를 관리합니다.",
     canonicalPath: "/intro/influencer",
     robots: publicRobotsContent,
     keywords: influencerIntentKeywords,

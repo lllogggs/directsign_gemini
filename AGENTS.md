@@ -184,6 +184,15 @@ Example option format:
   - Keep public SEO titles/descriptions concise and unique enough for Naver Search Advisor simple checks; avoid keyword-stuffed or repeated metadata.
   - Private dashboards, contracts, admin, login, and signup routes must stay noindex in both metadata and HTTP headers.
   - Low-impact SEO work should prefer initial HTML metadata, sitemap/robots/llms.txt, noscript public summaries, and verification tooling; do not change private app screens, auth flow, dashboard labels, or marketplace/profile indexing scope unless the Product Owner approves that broader strategy.
+  - OG images should behave like share/search thumbnails, not explanatory banners. Prefer visual-first brand or product context with almost no copy; let `title`, `description`, and page content carry the explanation. If referencing Naver, Naver Map, or Toss-like cards, keep the image simple, memorable, and thumbnail-readable.
+  - For the main yeollock.me OG direction, favor a large 연락미 logo lockup with the concise homepage line "광고 계약은 확실하게" beneath it. Avoid adding secondary explanation unless the Product Owner asks for it.
+  - The main OG slogan should be calm and secondary, not a hero headline. Center the logo lockup first, then place "광고 계약은 확실하게" underneath as smaller supporting type with generous spacing.
+  - In the main OG image, the slogan must be visually subordinate to the logo lockup. Its perceived size, weight, contrast, and width should all read smaller than the 연락미 logo, not merely use a smaller CSS font-size.
+  - For the main OG image, the logo itself must sit on the exact visual center of the canvas. Do not center the combined logo-plus-slogan group; place the slogan below the centered logo as a very small caption.
+  - If the Product Owner asks for "로고만" on OG, remove every caption, slogan, helper label, decorative object, and product UI. Only the 연락미 logo lockup should remain at the exact horizontal and vertical center.
+  - When the Product Owner asks to restore a small OG caption under the logo, it must remain visibly readable in the rendered 1200x630 preview. Small means subordinate to the logo, not so faint that it disappears.
+  - In the final main OG, "logo width" means the full visual logo lockup width, including both the icon and the "연락미" wordmark. The caption "광고 계약은 확실하게" should span roughly 90% of that full lockup width, not the square icon width or a hidden container width.
+  - OG artwork typography should use the same local product font family as the site. For yeollock.me, generate OG text with the bundled NanumSquareNeo files instead of default system Korean fonts.
 - UI taste rules:
   - One row should communicate one primary item. Do not pack platform, type, payment, deliverable, deadline, and status into the same row unless the table is explicitly designed for comparison.
   - Important content must be visually stronger than filters. Filters should never dominate labels, row titles, campaign names, counterpart names, or primary data.

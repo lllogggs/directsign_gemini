@@ -5,7 +5,11 @@ import { fileURLToPath } from "node:url";
 import { PRODUCT_NAME } from "../src/domain/brand.ts";
 import {
   buildCanonicalUrl,
+  defaultOgImageAlt,
+  defaultOgImageUrl,
   getIntentAwareRouteSeoConfig,
+  ogImageHeight,
+  ogImageWidth,
   seoDateModified,
   staticSeoRoutePaths,
 } from "../src/domain/seo.ts";
@@ -266,9 +270,29 @@ const renderSeoHtml = (template: string, routePath: StaticSeoRoutePath) => {
   html = replaceMetaProperty(html, "og:url", canonicalUrl);
   html = replaceMetaProperty(html, "og:title", seo.title);
   html = replaceMetaProperty(html, "og:description", seo.description);
-  html = replaceMetaName(html, "twitter:card", "summary");
+  html = replaceMetaProperty(html, "og:image", seo.ogImageUrl ?? defaultOgImageUrl);
+  html = replaceMetaProperty(
+    html,
+    "og:image:secure_url",
+    seo.ogImageUrl ?? defaultOgImageUrl,
+  );
+  html = replaceMetaProperty(html, "og:image:type", "image/png");
+  html = replaceMetaProperty(html, "og:image:width", String(ogImageWidth));
+  html = replaceMetaProperty(html, "og:image:height", String(ogImageHeight));
+  html = replaceMetaProperty(
+    html,
+    "og:image:alt",
+    seo.ogImageAlt ?? defaultOgImageAlt,
+  );
+  html = replaceMetaName(html, "twitter:card", "summary_large_image");
   html = replaceMetaName(html, "twitter:title", seo.title);
   html = replaceMetaName(html, "twitter:description", seo.description);
+  html = replaceMetaName(html, "twitter:image", seo.ogImageUrl ?? defaultOgImageUrl);
+  html = replaceMetaName(
+    html,
+    "twitter:image:alt",
+    seo.ogImageAlt ?? defaultOgImageAlt,
+  );
   html = replaceStructuredData(html, seo.structuredData);
   return replaceNoscript(html, seo.title, seo.description, routePath);
 };

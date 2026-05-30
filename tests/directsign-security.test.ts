@@ -6,6 +6,9 @@ import { formatContractTitleForDisplay } from "../src/domain/display";
 import {
   buildCanonicalUrl,
   getIntentAwareRouteSeoConfig,
+  defaultOgImageUrl,
+  ogImageHeight,
+  ogImageWidth,
   staticSeoRoutePaths,
 } from "../src/domain/seo";
 
@@ -86,6 +89,9 @@ describe("yeollock.me security regressions", () => {
     assert.match(prerender, /naver-site-verification/);
     assert.match(prerender, /routeSearchSummaries/);
     assert.match(prerender, /renderSitemap/);
+    assert.match(prerender, /summary_large_image/);
+    assert.match(indexHtml, /og:image/);
+    assert.match(indexHtml, /twitter:image/);
     assert.match(seoSource, /seoResourcePaths/);
     assert.match(appSource, /path="\/resources\/:resourceSlug"/);
     assert.match(llmsTxt, /인플루언서 광고 계약서 가이드/);
@@ -118,9 +124,11 @@ describe("yeollock.me security regressions", () => {
       assert.match(
         sitemap,
         new RegExp(
-          `<loc>${escapeRegExp(canonicalUrl)}</loc>\\s*<lastmod>2026-05-29</lastmod>`,
+          `<loc>${escapeRegExp(canonicalUrl)}</loc>\\s*<lastmod>2026-05-30</lastmod>`,
         ),
       );
+      assert.equal(seo.ogImageUrl, defaultOgImageUrl);
+      assert.equal(seo.ogImageAlt?.length ? true : false, true);
       assert.ok([...seo.title].length <= maxNaverTitleLength, seo.title);
       assert.ok(
         [...seo.description].length <= maxNaverDescriptionLength,
@@ -139,6 +147,8 @@ describe("yeollock.me security regressions", () => {
 
     assert.equal(routeTitles.size, staticSeoRoutePaths.length);
     assert.equal(routeDescriptions.size, staticSeoRoutePaths.length);
+    assert.equal(ogImageWidth, 1200);
+    assert.equal(ogImageHeight, 630);
   });
 
   it("applies baseline security headers to Vercel static and API routes", () => {

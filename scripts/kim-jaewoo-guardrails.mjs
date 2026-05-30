@@ -433,6 +433,8 @@ check(
     packageJson.scripts?.build?.includes("scripts/prerender-seo-html.ts") &&
     prerenderSeoHtml.includes("replaceCanonicalLink") &&
     prerenderSeoHtml.includes("replaceStructuredData") &&
+    prerenderSeoHtml.includes("summary_large_image") &&
+    prerenderSeoHtml.includes("og:image") &&
     prerenderSeoHtml.includes("google-site-verification") &&
     prerenderSeoHtml.includes("naver-site-verification") &&
     prerenderSeoHtml.includes("renderSitemap") &&
@@ -441,7 +443,11 @@ check(
     envExample.includes("VITE_NAVER_SITE_VERIFICATION") &&
     robotsTxt.includes("User-agent: Yeti") &&
     robotsTxt.includes("Sitemap: https://yeollock.me/sitemap.xml") &&
-    sitemapXml.includes("<lastmod>2026-05-29</lastmod>") &&
+    sitemapXml.includes("<lastmod>2026-05-30</lastmod>") &&
+    seo.includes("defaultOgImagePath") &&
+    seo.includes("ogImageWidth = 1200") &&
+    seo.includes("ogImageHeight = 630") &&
+    fs.existsSync(path.join(root, "public", "og", "yeollock-og.png")) &&
     sitemapXml.includes("https://yeollock.me/resources/influencer-ad-contract") &&
     sitemapXml.includes("https://yeollock.me/resources/group-buying-contract") &&
     sitemapXml.includes("https://yeollock.me/resources/instagram-sponsorship-contract") &&

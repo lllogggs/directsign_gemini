@@ -476,13 +476,15 @@ const officialInstagramHandle =
     .trim()
     .replace(/^@+/, "") || "yeollockme";
 const publicSameAsUrls = [`https://www.instagram.com/${officialInstagramHandle}/`];
-const seoDateModified = "2026-05-29";
+const seoDateModified = "2026-05-30";
 
 type RouteSeoConfig = {
   title: string;
   description: string;
   canonicalPath: string;
   robots: string;
+  ogImageUrl?: string;
+  ogImageAlt?: string;
   structuredData?: unknown;
 };
 
@@ -528,10 +530,10 @@ const seoFeatureList = [
   "서명 완료본 보관",
 ];
 const defaultSeoDescription =
-  "협찬, PPL, 공동구매 계약을 작성, 검토, 전자서명까지 관리합니다.";
+  "협찬, PPL, 공동구매 계약을 작성부터 검토 링크, 전자서명, 증빙 보관까지 관리합니다.";
 
 const searchIntentSeoDescription =
-  "광고주와 인플루언서가 협찬, PPL, 공동구매 계약을 작성, 검토, 전자서명까지 관리합니다.";
+  "광고주와 인플루언서가 협찬, PPL, 공동구매 계약을 작성부터 검토 링크, 전자서명, 증빙 보관까지 관리합니다.";
 
 const normalizeSeoPath = (pathname: string) =>
   pathname.replace(/\/+$/, "") || "/";
@@ -539,14 +541,25 @@ const normalizeSeoPath = (pathname: string) =>
 const buildCanonicalUrl = (pathname: string) =>
   `${publicSiteOrigin}${pathname === "/" ? "/" : pathname}`;
 
+const defaultOgImagePath = "/og/yeollock-og.png";
+const defaultOgImageUrl = buildCanonicalUrl(defaultOgImagePath);
+const defaultOgImageAlt = "연락미 인플루언서 광고 계약 관리 화면 미리보기";
+const ogImageWidth = 1200;
+const ogImageHeight = 630;
+
 const buildStructuredData = ({
   title,
   description,
   canonicalPath,
+  ogImageUrl = defaultOgImageUrl,
+  ogImageAlt = defaultOgImageAlt,
   keywords = seoKeywordList,
   resource,
   resourceList,
-}: Pick<RouteSeoConfig, "title" | "description" | "canonicalPath"> & {
+}: Pick<
+  RouteSeoConfig,
+  "title" | "description" | "canonicalPath" | "ogImageUrl" | "ogImageAlt"
+> & {
   keywords?: string[];
   resource?: SeoResourceConfig;
   resourceList?: SeoResourceConfig[];
@@ -561,6 +574,7 @@ const buildStructuredData = ({
       alternateName: "yeollock.me",
       url: `${publicSiteOrigin}/`,
       logo: `${publicSiteOrigin}/favicon.svg`,
+      image: ogImageUrl,
       email: LEGAL_CONTACT_EMAIL,
       contactPoint: [
         {
@@ -579,6 +593,7 @@ const buildStructuredData = ({
       name: PRODUCT_NAME,
       url: `${publicSiteOrigin}/`,
       description: searchIntentSeoDescription,
+      image: ogImageUrl,
       inLanguage: "ko-KR",
       publisher: { "@id": `${publicSiteOrigin}/#organization` },
     },
@@ -593,6 +608,7 @@ const buildStructuredData = ({
       description: searchIntentSeoDescription,
       keywords: seoKeywordList.join(", "),
       featureList: seoFeatureList,
+      image: ogImageUrl,
       isAccessibleForFree: true,
       offers: {
         "@type": "Offer",
@@ -620,6 +636,13 @@ const buildStructuredData = ({
       keywords: keywordText,
       inLanguage: "ko-KR",
       dateModified: seoDateModified,
+      primaryImageOfPage: {
+        "@type": "ImageObject",
+        url: ogImageUrl,
+        width: ogImageWidth,
+        height: ogImageHeight,
+        caption: ogImageAlt,
+      },
       isPartOf: { "@id": `${publicSiteOrigin}/#website` },
       about: { "@id": `${publicSiteOrigin}/#app` },
     },
@@ -634,6 +657,7 @@ const buildStructuredData = ({
       mainEntityOfPage: { "@id": `${url}#webpage` },
       author: { "@id": `${publicSiteOrigin}/#organization` },
       publisher: { "@id": `${publicSiteOrigin}/#organization` },
+      image: ogImageUrl,
       dateModified: seoDateModified,
       inLanguage: "ko-KR",
       keywords: keywordText,
@@ -807,29 +831,35 @@ type IntentAwareSeoCopy = Omit<RouteSeoConfig, "structuredData"> & {
 
 const buildPublicSeoConfig = (config: IntentAwareSeoCopy): RouteSeoConfig => ({
   ...config,
-  structuredData: buildStructuredData(config),
+  ogImageUrl: config.ogImageUrl ?? defaultOgImageUrl,
+  ogImageAlt: config.ogImageAlt ?? defaultOgImageAlt,
+  structuredData: buildStructuredData({
+    ...config,
+    ogImageUrl: config.ogImageUrl ?? defaultOgImageUrl,
+    ogImageAlt: config.ogImageAlt ?? defaultOgImageAlt,
+  }),
 });
 
 const publicSearchIntentPages: Record<string, IntentAwareSeoCopy> = {
   "/": {
-    title: `${PRODUCT_NAME} - 인플루언서 광고 계약 관리`,
+    title: `${PRODUCT_NAME} | 인플루언서 광고 계약·전자서명 관리`,
     description: searchIntentSeoDescription,
     canonicalPath: "/",
     robots: publicRobotsContent,
     keywords: seoKeywordList,
   },
   "/intro/advertiser": {
-    title: `광고주 인플루언서 계약 관리 - ${PRODUCT_NAME}`,
+    title: `광고주 인플루언서 계약 관리 | ${PRODUCT_NAME}`,
     description:
-      "브랜드 협찬, PPL, 공동구매 제안을 계약서 작성, 검토 링크, 전자서명까지 관리합니다.",
+      "브랜드 협찬, PPL, 공동구매 제안을 계약서 작성, 검토 링크, 전자서명, 증빙 보관까지 관리합니다.",
     canonicalPath: "/intro/advertiser",
     robots: publicRobotsContent,
     keywords: advertiserIntentKeywords,
   },
   "/intro/influencer": {
-    title: `인플루언서 광고 계약 검토 - ${PRODUCT_NAME}`,
+    title: `인플루언서 광고 계약 검토·전자서명 | ${PRODUCT_NAME}`,
     description:
-      "받은 협찬, PPL, 공동구매 제안을 확인하고 수정 요청과 전자서명을 진행합니다.",
+      "받은 협찬, PPL, 공동구매 계약을 확인하고 수정 요청, 전자서명, 제출 상태를 관리합니다.",
     canonicalPath: "/intro/influencer",
     robots: publicRobotsContent,
     keywords: influencerIntentKeywords,
@@ -1174,9 +1204,17 @@ function RouteSeoMeta() {
     upsertMetaByProperty("og:url", canonicalUrl);
     upsertMetaByProperty("og:title", seo.title);
     upsertMetaByProperty("og:description", seo.description);
-    upsertMetaByName("twitter:card", "summary");
+    upsertMetaByProperty("og:image", seo.ogImageUrl ?? defaultOgImageUrl);
+    upsertMetaByProperty("og:image:secure_url", seo.ogImageUrl ?? defaultOgImageUrl);
+    upsertMetaByProperty("og:image:type", "image/png");
+    upsertMetaByProperty("og:image:width", String(ogImageWidth));
+    upsertMetaByProperty("og:image:height", String(ogImageHeight));
+    upsertMetaByProperty("og:image:alt", seo.ogImageAlt ?? defaultOgImageAlt);
+    upsertMetaByName("twitter:card", "summary_large_image");
     upsertMetaByName("twitter:title", seo.title);
     upsertMetaByName("twitter:description", seo.description);
+    upsertMetaByName("twitter:image", seo.ogImageUrl ?? defaultOgImageUrl);
+    upsertMetaByName("twitter:image:alt", seo.ogImageAlt ?? defaultOgImageAlt);
     upsertStructuredData(seo.structuredData);
   }, [location.pathname]);
 
