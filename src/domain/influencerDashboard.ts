@@ -46,6 +46,7 @@ export interface InfluencerDashboardUser {
   id: string;
   email: string;
   name: string;
+  avatar_url?: string;
   role: "marketer" | "influencer" | "admin";
   activity_categories: InfluencerActivityCategory[];
   activity_platforms: InfluencerPlatform[];

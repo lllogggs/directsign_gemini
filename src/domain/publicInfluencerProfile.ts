@@ -18,6 +18,7 @@ export type InfluencerPublicProfileSettings = {
   location: string;
   audience: string;
   avatarLabel: string;
+  avatarUrl?: string;
   categories: string[];
   brandFit: string[];
   collaborationTypes: CampaignProposalType[];
@@ -146,6 +147,7 @@ export function buildDefaultPublicProfileSettings(
         ? `${categories.join(", ")} 관심 고객`
         : "관심사 기반 팔로워",
     avatarLabel: buildAvatarLabel(dashboard.user.name),
+    avatarUrl: dashboard.user.avatar_url,
     categories: categories.length > 0 ? categories : ["라이프스타일"],
     brandFit: ["브랜드 소개 확인", "광고 형태 협의", "계약 전 조건 확인"],
     collaborationTypes: collaborationTypeFallbacks,
@@ -210,6 +212,7 @@ export function createMarketplaceProfileFromPublicSettings(
     bio: settings.bio,
     location: settings.location,
     avatarLabel: settings.avatarLabel,
+    avatarUrl: settings.avatarUrl,
     categories: settings.categories,
     audience: settings.audience,
     audienceTags: settings.categories,

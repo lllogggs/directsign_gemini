@@ -1100,6 +1100,27 @@ const getContextualRoutePreloaders = (pathname: string): RouteModuleLoader[] => 
   if (pathname === "/login/influencer") return [loadInfluencerDashboard];
   if (pathname === "/login") return [loadLoginLanding];
 
+  if (pathname === "/advertiser/dashboard") {
+    return [
+      loadDashboard,
+      loadContractBuilder,
+      loadMarketplacePages,
+      loadCampaignPages,
+      loadMarketplaceInboxPage,
+      loadAdvertiserVerification,
+    ];
+  }
+
+  if (pathname === "/influencer/dashboard") {
+    return [
+      loadInfluencerDashboard,
+      loadCampaignPages,
+      loadMarketplacePages,
+      loadMarketplaceInboxPage,
+      loadInfluencerVerification,
+    ];
+  }
+
   if (pathname.startsWith("/signup")) {
     return [loadLoginLanding, loadDashboard, loadInfluencerDashboard];
   }

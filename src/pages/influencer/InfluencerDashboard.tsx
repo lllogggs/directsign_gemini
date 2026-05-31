@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   AlertCircle,
@@ -354,6 +354,9 @@ export function InfluencerDashboard() {
     direction: "desc",
   });
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | undefined>();
+  const [avatarUploadError, setAvatarUploadError] = useState<string | undefined>();
+  const [isAvatarUploading, setIsAvatarUploading] = useState(false);
   const {
     summary: messageSummary,
     isLoading: isMessageSummaryLoading,
@@ -483,6 +486,76 @@ export function InfluencerDashboard() {
       window.clearTimeout(timer);
     };
   }, [readyDashboardUserId, state.status]);
+
+  const handleAvatarSelect = async (file: File | undefined) => {
+    if (!file || isAvatarUploading) return;
+
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      setAvatarUploadError("PNG, JPG, WebP 이미지만 올릴 수 있습니다.");
+      return;
+    }
+    if (file.size > 3 * 1024 * 1024) {
+      setAvatarUploadError("이미지는 3MB 이하로 올려주세요.");
+      return;
+    }
+
+    setIsAvatarUploading(true);
+    setAvatarUploadError(undefined);
+
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      setAvatarPreviewUrl(dataUrl);
+      const response = await apiFetch("/api/influencer/public-profile/avatar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          file: {
+            name: file.name,
+            type: file.type,
+            size: file.size,
+            data_url: dataUrl,
+          },
+        }),
+      });
+
+      if (response.status === 401) {
+        navigate("/login/influencer", { replace: true });
+        return;
+      }
+
+      const data = (await response.json().catch(() => ({}))) as {
+        image_url?: string;
+        error?: string;
+      };
+      if (!response.ok || !data.image_url) {
+        throw new Error(data.error ?? "이미지를 저장하지 못했습니다.");
+      }
+
+      setState((current) =>
+        current.status === "ready"
+          ? {
+              status: "ready",
+              dashboard: {
+                ...current.dashboard,
+                user: {
+                  ...current.dashboard.user,
+                  avatar_url: data.image_url,
+                },
+              },
+            }
+          : current,
+      );
+      setAvatarPreviewUrl(undefined);
+    } catch (error) {
+      setAvatarUploadError(
+        error instanceof Error ? error.message : "이미지를 저장하지 못했습니다.",
+      );
+      setAvatarPreviewUrl(undefined);
+    } finally {
+      setIsAvatarUploading(false);
+    }
+  };
 
   if (state.status === "loading") {
     return <DashboardShell><LoadingView /></DashboardShell>;
@@ -645,7 +718,13 @@ export function InfluencerDashboard() {
             </div>
           </div>
 
-          <InfluencerAccountBanner dashboard={dashboard} />
+          <InfluencerAccountBanner
+            dashboard={dashboard}
+            avatarPreviewUrl={avatarPreviewUrl}
+            avatarUploadError={avatarUploadError}
+            isAvatarUploading={isAvatarUploading}
+            onAvatarSelect={handleAvatarSelect}
+          />
 
           <div className="min-w-0 p-2.5 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
             <ContractTable
@@ -937,24 +1016,47 @@ function ErrorView({
 
 function InfluencerAccountBanner({
   dashboard,
+  avatarPreviewUrl,
+  avatarUploadError,
+  isAvatarUploading,
+  onAvatarSelect,
 }: {
   dashboard: InfluencerDashboardResponse;
+  avatarPreviewUrl?: string;
+  avatarUploadError?: string;
+  isAvatarUploading: boolean;
+  onAvatarSelect: (file: File | undefined) => void;
 }) {
+  const inputRef = useRef<HTMLInputElement>(null);
   const verificationApproved = dashboard.verification.status === "approved";
   const approvedPlatforms = dashboard.verification.approved_platforms.filter(
     (platform) => platform.handle.trim().length > 0,
   );
+  const avatarUrl = avatarPreviewUrl ?? dashboard.user.avatar_url;
+  const displayName = removeInternalTestLabel(
+    dashboard.user.name,
+    "인플루언서 계정",
+  );
 
   return (
     <section className="border-b border-[#d9e0d9] bg-[#fcfcfd] px-4 py-2">
-      <div className="flex min-w-0 items-center gap-2">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-neutral-800 ring-1 ring-neutral-200">
-          <UserCheck className="h-4 w-4" />
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white text-[12px] font-extrabold text-neutral-800 ring-1 ring-neutral-200">
+          {avatarUrl ? (
+            <img
+              src={avatarUrl}
+              alt={`${displayName} profile`}
+              className="h-full w-full object-cover"
+              loading="lazy"
+            />
+          ) : (
+            <UserCheck className="h-4 w-4" />
+          )}
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <p className="truncate text-sm font-extrabold text-neutral-950">
-              {removeInternalTestLabel(dashboard.user.name, "인플루언서 계정")}
+              {displayName}
             </p>
             <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-xs font-extrabold text-blue-700">
               {verificationApproved ? "인증 완료" : "인증 전"}
@@ -982,7 +1084,30 @@ function InfluencerAccountBanner({
             ) : null}
           </div>
         </div>
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={isAvatarUploading}
+          className="inline-flex h-8 shrink-0 items-center rounded-[8px] border border-neutral-200 bg-white px-2.5 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 disabled:cursor-wait disabled:text-neutral-400"
+        >
+          {isAvatarUploading ? "업로드 중" : "이미지 변경"}
+        </button>
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          className="hidden"
+          onChange={(event) => {
+            onAvatarSelect(event.currentTarget.files?.[0]);
+            event.currentTarget.value = "";
+          }}
+        />
       </div>
+      {avatarUploadError ? (
+        <p className="mt-2 rounded-[8px] border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-[12px] font-extrabold text-rose-700">
+          {avatarUploadError}
+        </p>
+      ) : null}
     </section>
   );
 }
@@ -2335,4 +2460,19 @@ function formatInfluencerAccountId(url: string | undefined, platform: Influencer
     const clean = url.replace(/^https?:\/\//, "").replace(/^@/, "").split(/[/?#]/)[0];
     return platform === "naver_blog" ? clean : `@${clean}`;
   }
+}
+
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+        return;
+      }
+      reject(new Error("File could not be read"));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("File could not be read"));
+    reader.readAsDataURL(file);
+  });
 }

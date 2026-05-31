@@ -55,6 +55,7 @@ export type MarketplaceInfluencerProfile = {
   bio: string;
   location: string;
   avatarLabel: string;
+  avatarUrl?: string;
   categories: string[];
   audience: string;
   audienceTags: string[];
@@ -89,6 +90,7 @@ export type MarketplaceBrandProfile = {
   description: string;
   location: string;
   logoLabel: string;
+  logoUrl?: string;
   preferredPlatforms: InfluencerPlatform[];
   proposalTypes: CampaignProposalType[];
   budgetRangeLabel: string;
@@ -108,6 +110,7 @@ export type MarketplaceCampaignPost = MarketplaceBrandCampaign & {
   brandCategory: string;
   brandHeadline: string;
   brandLogoLabel: string;
+  brandLogoUrl?: string;
   brandHref: string;
   typeLabel: string;
   platformLabels: string[];
@@ -302,6 +305,7 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
       "사용 장면이 분명한 뷰티/라이프스타일 컨텐츠를 선호합니다. 브랜드 소개와 필수 표현은 가볍게 제공하고, 크리에이터의 자연스러운 사용 경험을 우선합니다.",
     location: "서울 성수",
     logoLabel: "BR",
+    logoUrl: "/images/brands/breadroom-logo.png",
     preferredPlatforms: ["instagram", "youtube", "tiktok"],
     proposalTypes: ["sponsored_post", "product_seeding", "supporters", "ppl"],
     budgetRangeLabel: "100만-450만원",
@@ -340,6 +344,7 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
       "숙박, 로컬 체험, 카페 방문 컨텐츠를 찾습니다. 광고 표기와 컨텐츠 사용 기간은 계약에서 명확히 정리합니다.",
     location: "제주 · 강원",
     logoLabel: "MT",
+    logoUrl: "/images/brands/monotrip-logo.png",
     preferredPlatforms: ["youtube", "instagram", "naver_blog"],
     proposalTypes: ["visit_review", "ppl", "sponsored_post"],
     budgetRangeLabel: "150만-600만원",
@@ -377,6 +382,7 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
       "제품 배치, 공간 전후 비교, 실제 사용 루틴이 보이는 컨텐츠를 선호합니다. 공동구매는 수수료 조건을 계약서에 분리해 기록합니다.",
     location: "온라인 입점",
     logoLabel: "OS",
+    logoUrl: "/images/brands/object-studio-logo.png",
     preferredPlatforms: ["instagram", "naver_blog", "youtube"],
     proposalTypes: ["product_seeding", "group_buy", "sponsored_post"],
     budgetRangeLabel: "80만-350만원",
@@ -508,6 +514,7 @@ export function buildMarketplaceCampaignPosts(
           brandCategory: brand.category,
           brandHeadline: brand.headline,
           brandLogoLabel: brand.logoLabel,
+          brandLogoUrl: brand.logoUrl,
           brandHref: getBrandProfilePath(brand),
           typeLabel: proposalTypeLabels[campaign.type],
           platformLabels: platforms.map((platform) => platformLabels[platform]),

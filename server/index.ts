@@ -459,11 +459,19 @@ const defaultInfluencerTargetId =
 const privateStorageBucket =
   process.env.DIRECTSIGN_PRIVATE_STORAGE_BUCKET ?? "directsign-private";
 const privateFilesDir = path.join(dataDir, "private-files");
+const marketplacePublicStorageBucket =
+  process.env.MARKETPLACE_PUBLIC_STORAGE_BUCKET ?? "yeollock-marketplace-public";
+const marketplacePublicFilesDir = path.join(dataDir, "marketplace-public");
 const allowLocalPrivateFileFallback =
   (!isProductionRuntime && !useSupabase) ||
   demoMode ||
   (!isProductionRuntime &&
     process.env.DIRECTSIGN_ALLOW_LOCAL_PRIVATE_FILE_FALLBACK === "true");
+const allowLocalMarketplacePublicFileFallback =
+  (!isProductionRuntime && !useSupabase) ||
+  demoMode ||
+  (!isProductionRuntime &&
+    process.env.MARKETPLACE_ALLOW_LOCAL_PUBLIC_FILE_FALLBACK === "true");
 const signatureConsentVersion = SIGNATURE_CONSENT_VERSION;
 const signatureConsentText = SIGNATURE_CONSENT_TEXT;
 const supportAccessConsentText = SUPPORT_ACCESS_CONSENT_TEXT;
@@ -630,7 +638,7 @@ app.use((_request, response, next) => {
         "object-src 'none'",
         "frame-ancestors 'none'",
         "form-action 'self'",
-        "img-src 'self' data: blob: https://*.google-analytics.com https://*.googletagmanager.com https://*.clarity.ms https://c.bing.com",
+        "img-src 'self' data: blob: https://*.supabase.co https://*.google-analytics.com https://*.googletagmanager.com https://*.clarity.ms https://c.bing.com",
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
         "font-src 'self' https://fonts.gstatic.com",
         "script-src 'self' https://*.googletagmanager.com https://*.clarity.ms",
@@ -645,6 +653,15 @@ app.get("/favicon.ico", (_request, response) => {
   response.type("image/x-icon");
   response.sendFile(path.join(root, "public", "favicon.ico"));
 });
+
+app.use(
+  "/marketplace-assets",
+  express.static(marketplacePublicFilesDir, {
+    immutable: true,
+    maxAge: "30d",
+    redirect: false,
+  }),
+);
 
 interface AdminLoginAttempt {
   failures: number;
@@ -729,6 +746,8 @@ const signatureImageMimeTypes = new Set([
   "image/webp",
 ]);
 const maxSignatureImageSize = 1 * 1024 * 1024;
+const marketplaceImageMimeTypes = signatureImageMimeTypes;
+const maxMarketplaceImageSize = 3 * 1024 * 1024;
 const maxOwnershipCheckBytes = 256 * 1024;
 const deliverableReviewStatuses = new Set<DeliverableReviewStatus>([
   "draft",
@@ -878,6 +897,7 @@ interface SupabaseProfileRow {
   role: "marketer" | "influencer" | "admin";
   name: string;
   email: string;
+  avatar_url?: string | null;
   company_name?: string | null;
   activity_categories?: InfluencerActivityCategory[] | null;
   activity_platforms?: InfluencerPlatform[] | null;
@@ -1099,6 +1119,7 @@ interface SupabaseMarketplaceInfluencerProfileRow {
   bio: string;
   location: string;
   avatar_label: string;
+  avatar_url?: string | null;
   categories?: string[] | null;
   audience: string;
   audience_tags?: string[] | null;
@@ -1178,6 +1199,7 @@ interface SupabaseMarketplaceBrandProfileRow {
   description: string;
   location: string;
   logo_label: string;
+  logo_url?: string | null;
   preferred_platforms?: InfluencerPlatform[] | null;
   proposal_types?: CampaignProposalType[] | null;
   budget_range_label: string;
@@ -1204,6 +1226,7 @@ interface SupabaseMarketplaceContactProposalRow {
   sender_brand_handle?: string | null;
   sender_influencer_handle?: string | null;
   sender_influencer_avatar_label?: string | null;
+  sender_influencer_avatar_url?: string | null;
   sender_influencer_display_name?: string | null;
   sender_influencer_headline?: string | null;
   sender_name: string;
@@ -1899,6 +1922,7 @@ const buildInfluencerSessionUser = (
   id: authUser.id,
   email: profile.email ?? authUser.email ?? "",
   name: profile.name ?? authUser.email ?? "인플루언서",
+  avatar_url: profile.avatar_url ?? undefined,
   role: profile.role,
   activity_categories: profile.activity_categories ?? [],
   activity_platforms: profile.activity_platforms ?? [],
@@ -5885,6 +5909,194 @@ const storeEvidenceFile = async ({
   });
 };
 
+const validateMarketplaceImageFile = (
+  file: ReturnType<typeof parseEvidenceFile> | undefined,
+) => {
+  if (!file) return "Image file is required";
+  if (!marketplaceImageMimeTypes.has(file.type)) {
+    return "Only PNG, JPG, or WebP images are allowed";
+  }
+  if (file.size <= 0 || file.size > maxMarketplaceImageSize) {
+    return "Image file must be 3MB or smaller";
+  }
+  if (!file.data_url.startsWith("data:")) {
+    return "Image file is invalid";
+  }
+
+  return undefined;
+};
+
+const buildMarketplacePublicStoragePath = ({
+  area,
+  ownerId,
+  fileId,
+  fileName,
+  mimeType,
+}: {
+  area: string;
+  ownerId: string;
+  fileId: string;
+  fileName: string;
+  mimeType: string;
+}) => {
+  const extension = extensionForMimeType(mimeType);
+  const baseName = sanitizeStorageSegment(fileName.replace(/\.[^.]+$/, ""));
+  return `${sanitizeStorageSegment(area)}/${sanitizeStorageSegment(
+    ownerId,
+  )}/${sanitizeStorageSegment(fileId)}-${baseName}.${extension}`;
+};
+
+const marketplacePublicObjectUrl = (objectPath: string) => {
+  if (!supabaseUrl) return undefined;
+  const encodedPath = objectPath.split("/").map(encodeURIComponent).join("/");
+  return `${supabaseUrl}/storage/v1/object/public/${encodeURIComponent(
+    marketplacePublicStorageBucket,
+  )}/${encodedPath}`;
+};
+
+const ensureMarketplacePublicStorageBucket = async () => {
+  if (!useSupabase) return;
+
+  const checkResponse = await fetch(
+    supabaseStorageUrl(
+      `/bucket/${encodeURIComponent(marketplacePublicStorageBucket)}`,
+    ),
+    { headers: supabaseStorageHeaders() },
+  );
+
+  if (checkResponse.ok) return;
+  const checkBody = await checkResponse.text();
+  const bucketMissing =
+    checkResponse.status === 404 ||
+    (checkResponse.status === 400 &&
+      (checkBody.includes('"statusCode":"404"') ||
+        checkBody.toLowerCase().includes("bucket not found")));
+
+  if (!bucketMissing) {
+    throw new Error(
+      `Supabase public storage bucket check failed (${checkResponse.status}): ${checkBody}`,
+    );
+  }
+
+  const createResponse = await fetch(supabaseStorageUrl("/bucket"), {
+    method: "POST",
+    headers: supabaseStorageHeaders("application/json"),
+    body: JSON.stringify({
+      id: marketplacePublicStorageBucket,
+      name: marketplacePublicStorageBucket,
+      public: true,
+      file_size_limit: maxMarketplaceImageSize,
+      allowed_mime_types: Array.from(marketplaceImageMimeTypes),
+    }),
+  });
+
+  if (!createResponse.ok && createResponse.status !== 409) {
+    throw new Error(
+      `Supabase public storage bucket create failed (${createResponse.status}): ${await createResponse.text()}`,
+    );
+  }
+};
+
+const uploadSupabaseMarketplacePublicImage = async ({
+  objectPath,
+  contentType,
+  buffer,
+}: {
+  objectPath: string;
+  contentType: string;
+  buffer: Buffer;
+}) => {
+  await ensureMarketplacePublicStorageBucket();
+
+  const response = await fetch(
+    supabaseStorageUrl(
+      `/object/${encodeURIComponent(marketplacePublicStorageBucket)}/${objectPath}`,
+    ),
+    {
+      method: "POST",
+      headers: {
+        ...supabaseStorageHeaders(contentType),
+        "x-upsert": "true",
+      },
+      body: buffer,
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      `Supabase public storage upload failed (${response.status}): ${await response.text()}`,
+    );
+  }
+};
+
+const storeMarketplacePublicImage = async ({
+  area,
+  ownerId,
+  file,
+}: {
+  area: string;
+  ownerId: string;
+  file: NonNullable<ReturnType<typeof parseEvidenceFile>>;
+}) => {
+  const { contentType, buffer } = dataUrlToBuffer(file.data_url);
+
+  if (
+    contentType !== file.type ||
+    !assertDeclaredMimeMatchesContent(contentType, buffer, marketplaceImageMimeTypes)
+  ) {
+    throw new Error("Image file content type is invalid");
+  }
+  if (buffer.byteLength <= 0 || buffer.byteLength > maxMarketplaceImageSize) {
+    throw new Error("Image file size is invalid");
+  }
+
+  const objectPath = buildMarketplacePublicStoragePath({
+    area,
+    ownerId,
+    fileId: randomUUID(),
+    fileName: file.name,
+    mimeType: contentType,
+  });
+
+  if (useSupabase) {
+    try {
+      await uploadSupabaseMarketplacePublicImage({
+        objectPath,
+        contentType,
+        buffer,
+      });
+      const publicUrl = marketplacePublicObjectUrl(objectPath);
+      if (publicUrl) return publicUrl;
+    } catch (error) {
+      if (!allowLocalMarketplacePublicFileFallback) {
+        throw error;
+      }
+      console.warn(
+        `[${productName}] Supabase public storage unavailable, storing marketplace image locally: ${
+          error instanceof Error ? error.message : "unknown error"
+        }`,
+      );
+    }
+  }
+
+  if (!allowLocalMarketplacePublicFileFallback) {
+    throw new Error("Marketplace image storage requires Supabase Storage.");
+  }
+
+  const absolutePath = path.resolve(marketplacePublicFilesDir, objectPath);
+  if (!absolutePath.startsWith(path.resolve(marketplacePublicFilesDir))) {
+    throw new Error("Marketplace image path is invalid");
+  }
+
+  await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+  await fs.writeFile(absolutePath, buffer);
+
+  return `/marketplace-assets/${objectPath
+    .split("/")
+    .map(encodeURIComponent)
+    .join("/")}`;
+};
+
 const readStoredPrivateFile = async (storedFile: StoredPrivateFile) => {
   if (storedFile.provider === "supabase_storage") {
     const response = await fetch(
@@ -6497,6 +6709,12 @@ const buildMarketplaceAvatarLabel = (name: string, fallback = "IN") => {
   return normalized.slice(0, 2).toUpperCase();
 };
 
+const normalizeMarketplacePublicImageUrl = (value: unknown) => {
+  const clean = normalizeOptionalText(value);
+  if (!clean || clean.length > 2048) return undefined;
+  return /^(https?:\/\/|\/)/i.test(clean) ? clean : undefined;
+};
+
 const formatStoredMarketplacePlatformHandle = (
   handle: string,
   platform: InfluencerPlatform,
@@ -6549,6 +6767,7 @@ const mapInfluencerProfileRowToPublicSettings = (
   location: row.location,
   audience: row.audience,
   avatarLabel: row.avatar_label,
+  avatarUrl: row.avatar_url ?? undefined,
   categories: row.categories ?? [],
   brandFit: row.brand_fit ?? [],
   collaborationTypes: normalizeCampaignProposalTypes(row.collaboration_types),
@@ -6581,6 +6800,7 @@ const mapInfluencerProfileRowToMarketplaceProfile = (
   return {
     ...base,
     id: row.id,
+    avatarUrl: row.avatar_url ?? base.avatarUrl,
     audienceTags: row.audience_tags ?? settings.categories,
     platforms: mappedChannels.length > 0 ? mappedChannels : base.platforms,
     verifiedLabel: row.verified_label,
@@ -6605,6 +6825,7 @@ const mapBrandProfileRowToMarketplaceProfile = (
   description: row.description,
   location: row.location,
   logoLabel: row.logo_label,
+  logoUrl: row.logo_url ?? undefined,
   preferredPlatforms: row.preferred_platforms ?? [],
   proposalTypes: normalizeCampaignProposalTypes(row.proposal_types),
   budgetRangeLabel: row.budget_range_label,
@@ -7843,6 +8064,82 @@ const readAdvertiserCampaignBoard = async (auth: AdvertiserSession) => {
   };
 };
 
+const saveAdvertiserMarketplaceBrandImage = async (
+  auth: AdvertiserSession,
+  file: NonNullable<ReturnType<typeof parseEvidenceFile>>,
+) => {
+  if (!useSupabase) {
+    return {
+      ok: false as const,
+      status: 503,
+      error: "Supabase is required for brand image upload",
+    };
+  }
+
+  const organization = await readDefaultOrganizationForProfile(auth.profile.id);
+  if (!organization) {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "Advertiser organization is required",
+    };
+  }
+
+  const imageUrl = await storeMarketplacePublicImage({
+    area: "brand-logos",
+    ownerId: organization.id,
+    file,
+  });
+  const existing = await readAdvertiserMarketplaceBrandRow(organization.id);
+  const currentBrand = buildAdvertiserBrandProfileFromAuth(
+    auth,
+    organization,
+    existing,
+  );
+  const now = new Date().toISOString();
+  const rowId = existing?.id ?? stableUuid(`marketplace:brand:${organization.id}`);
+  const displayName = currentBrand.displayName || organization.name;
+
+  await upsertSupabaseV2Rows(
+    "marketplace_brand_profiles",
+    [
+      {
+        id: rowId,
+        organization_id: organization.id,
+        public_handle:
+          existing?.public_handle ?? buildMarketplaceBrandHandle(organization, auth.profile),
+        display_name: displayName,
+        category: currentBrand.category,
+        headline: currentBrand.headline,
+        description: currentBrand.description,
+        location: currentBrand.location,
+        logo_label: currentBrand.logoLabel || buildMarketplaceAvatarLabel(displayName, "BR"),
+        logo_url: imageUrl,
+        preferred_platforms: currentBrand.preferredPlatforms,
+        proposal_types: currentBrand.proposalTypes,
+        budget_range_label: currentBrand.budgetRangeLabel,
+        response_time_label: currentBrand.responseTimeLabel,
+        status_label: currentBrand.statusLabel,
+        fit_tags: currentBrand.fitTags,
+        audience_targets: currentBrand.audienceTargets,
+        active_campaigns: currentBrand.activeCampaigns,
+        recent_creators: currentBrand.recentCreators,
+        is_published: existing?.is_published ?? currentBrand.activeCampaigns.length > 0,
+        updated_at: now,
+      },
+    ],
+    "organization_id",
+  );
+  clearPublicMarketplaceCache();
+
+  const savedRow = await readAdvertiserMarketplaceBrandRow(organization.id);
+  return {
+    ok: true as const,
+    image_url: imageUrl,
+    brand: buildAdvertiserBrandProfileFromAuth(auth, organization, savedRow),
+  };
+};
+
 const validateMarketplaceCampaignInput = (body: Record<string, unknown>) => {
   const title = normalizeRequiredText(body.title);
   const type = normalizeRequiredText(body.type) as CampaignProposalType;
@@ -7985,6 +8282,7 @@ const upsertAdvertiserMarketplaceCampaign = async (
         description: payload.summary,
         location: currentBrand.location || "운영 지역 미입력",
         logo_label: currentBrand.logoLabel || buildMarketplaceAvatarLabel(displayName, "BR"),
+        logo_url: currentBrand.logoUrl ?? null,
         preferred_platforms: preferredPlatforms,
         proposal_types: proposalTypes,
         budget_range_label: payload.budget,
@@ -8345,6 +8643,54 @@ const submitMarketplaceCampaignApplication = async (
   };
 };
 
+const saveInfluencerMarketplaceAvatar = async (
+  auth: InfluencerSession,
+  file: NonNullable<ReturnType<typeof parseEvidenceFile>>,
+) => {
+  if (!useSupabase) {
+    return {
+      ok: false as const,
+      status: 503,
+      error: "Supabase is required for influencer image upload",
+    };
+  }
+
+  const imageUrl = await storeMarketplacePublicImage({
+    area: "influencer-avatars",
+    ownerId: auth.profile.id,
+    file,
+  });
+
+  await patchSupabaseRecord(
+    "profiles",
+    `?id=eq.${encodeURIComponent(auth.profile.id)}`,
+    { avatar_url: imageUrl },
+    "Supabase influencer avatar update",
+  );
+
+  const { profiles } = await readMarketplaceInfluencerRows(
+    `?select=*&owner_profile_id=eq.${encodeURIComponent(auth.profile.id)}&limit=1`,
+  );
+  const publicProfile = profiles[0];
+
+  if (publicProfile) {
+    await patchSupabaseRecord(
+      "marketplace_influencer_profiles",
+      `?id=eq.${encodeURIComponent(publicProfile.id)}`,
+      { avatar_url: imageUrl, updated_at: new Date().toISOString() },
+      "Supabase influencer marketplace avatar update",
+    );
+  }
+
+  clearPublicMarketplaceCache();
+  invalidateInfluencerDashboardCache();
+
+  return {
+    ok: true as const,
+    image_url: imageUrl,
+  };
+};
+
 const readStoredInfluencerPublicProfile = async (ownerProfileId: string) => {
   if (!useSupabase) return undefined;
 
@@ -8542,6 +8888,12 @@ const upsertInfluencerPublicProfile = async ({
     body.collaborationTypes,
     defaults.collaborationTypes,
   );
+  const existingProfile = await readStoredInfluencerPublicProfile(profile.id);
+  const avatarUrl =
+    normalizeMarketplacePublicImageUrl(body.avatarUrl ?? body.avatar_url) ??
+    existingProfile?.avatarUrl ??
+    profile.avatar_url ??
+    defaults.avatarUrl;
   const savedProfile: InfluencerPublicProfileSettings = {
     ...defaults,
     ownerId: profile.id,
@@ -8554,6 +8906,7 @@ const upsertInfluencerPublicProfile = async ({
     avatarLabel:
       normalizeRequiredText(body.avatarLabel) ||
       buildMarketplaceAvatarLabel(displayName),
+    ...(avatarUrl ? { avatarUrl } : {}),
     categories,
     brandFit,
     collaborationTypes,
@@ -8584,6 +8937,7 @@ const upsertInfluencerPublicProfile = async ({
         bio: savedProfile.bio,
         location: savedProfile.location,
         avatar_label: savedProfile.avatarLabel,
+        avatar_url: savedProfile.avatarUrl ?? null,
         categories: savedProfile.categories,
         audience: savedProfile.audience,
         audience_tags: savedProfile.categories,
@@ -8872,6 +9226,9 @@ const mapMarketplaceProposalToMessage = (
     counterpartAvatarLabel: isAdvertiserApplicant
       ? row.sender_influencer_avatar_label ?? undefined
       : undefined,
+    counterpartAvatarUrl: isAdvertiserApplicant
+      ? row.sender_influencer_avatar_url ?? undefined
+      : undefined,
     counterpartIntro: isAdvertiserApplicant
       ? row.sender_influencer_headline ?? row.sender_intro
       : row.sender_intro,
@@ -8956,7 +9313,7 @@ const addSenderInfluencerHandlesToMarketplaceProposals = async (
 
   const profileRows = await readSupabaseRows<SupabaseMarketplaceInfluencerProfileRow>(
     "marketplace_influencer_profiles",
-    `?select=owner_profile_id,public_handle,avatar_label,display_name,headline&owner_profile_id=in.${postgrestInFilter(
+    `?select=owner_profile_id,public_handle,avatar_label,avatar_url,display_name,headline&owner_profile_id=in.${postgrestInFilter(
       senderProfileIds,
     )}`,
     "sender influencer public profile handles",
@@ -8972,6 +9329,9 @@ const addSenderInfluencerHandlesToMarketplaceProposals = async (
       : null,
     sender_influencer_avatar_label: row.sender_profile_id
       ? profileByOwnerId.get(row.sender_profile_id)?.avatar_label ?? null
+      : null,
+    sender_influencer_avatar_url: row.sender_profile_id
+      ? profileByOwnerId.get(row.sender_profile_id)?.avatar_url ?? null
       : null,
     sender_influencer_display_name: row.sender_profile_id
       ? profileByOwnerId.get(row.sender_profile_id)?.display_name ?? null
@@ -10176,6 +10536,14 @@ const patchSupabaseRecord = async (
   }
   if (table === "organizations" || table === "organization_members") {
     invalidateOrganizationCache();
+  }
+  if (
+    table === "profiles" ||
+    table === "marketplace_influencer_profiles" ||
+    table === "marketplace_brand_profiles"
+  ) {
+    clearPublicMarketplaceCache();
+    invalidateInfluencerDashboardCache();
   }
   if (
     table === "contracts" ||
@@ -13058,6 +13426,7 @@ const buildInfluencerDashboardFromRemote = async (
       id: authUser.id,
       email: profile?.email ?? authUser.email ?? "",
       name: profile?.name ?? authUser.email ?? "인플루언서",
+      avatar_url: profile?.avatar_url ?? undefined,
       role: profile?.role ?? "influencer",
       activity_categories: profile?.activity_categories ?? [],
       activity_platforms: profile?.activity_platforms ?? [],
@@ -14876,6 +15245,46 @@ app.get("/api/advertiser/campaigns", async (request, response, next) => {
   }
 });
 
+app.post("/api/advertiser/brand-image", async (request, response, next) => {
+  try {
+    const advertiserAuth = await requireAdvertiserSession(request, response);
+    if (!advertiserAuth) return;
+
+    const throttle = consumeSensitiveEndpointRateLimit(
+      request,
+      "advertiser_brand_image_upload",
+      advertiserAuth.profile.id,
+    );
+    if (throttle.blocked) {
+      sendSensitiveRateLimitResponse(response, throttle);
+      return;
+    }
+
+    const file = parseEvidenceFile(request.body?.file ?? request.body?.image);
+    const fileError = validateMarketplaceImageFile(file);
+    if (fileError || !file) {
+      response.status(422).json({ error: fileError ?? "Image file is invalid" });
+      return;
+    }
+
+    const result = await saveAdvertiserMarketplaceBrandImage(
+      advertiserAuth,
+      file,
+    );
+    if (!result.ok) {
+      response.status(result.status).json({ error: result.error });
+      return;
+    }
+
+    response.json({
+      image_url: result.image_url,
+      brand: result.brand,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post("/api/advertiser/campaigns", async (request, response, next) => {
   try {
     const advertiserAuth = await requireAdvertiserSession(request, response);
@@ -14977,6 +15386,40 @@ app.get("/api/influencer/public-profile", async (request, response, next) => {
     response.json({
       profile: await readStoredInfluencerPublicProfile(influencerAuth.profile.id),
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/influencer/public-profile/avatar", async (request, response, next) => {
+  try {
+    const influencerAuth = await requireInfluencerSession(request, response);
+    if (!influencerAuth) return;
+
+    const throttle = consumeSensitiveEndpointRateLimit(
+      request,
+      "influencer_avatar_upload",
+      influencerAuth.profile.id,
+    );
+    if (throttle.blocked) {
+      sendSensitiveRateLimitResponse(response, throttle);
+      return;
+    }
+
+    const file = parseEvidenceFile(request.body?.file ?? request.body?.image);
+    const fileError = validateMarketplaceImageFile(file);
+    if (fileError || !file) {
+      response.status(422).json({ error: fileError ?? "Image file is invalid" });
+      return;
+    }
+
+    const result = await saveInfluencerMarketplaceAvatar(influencerAuth, file);
+    if (!result.ok) {
+      response.status(result.status).json({ error: result.error });
+      return;
+    }
+
+    response.json({ image_url: result.image_url });
   } catch (error) {
     next(error);
   }

@@ -122,7 +122,7 @@ class CdpClient {
       const timer = setTimeout(() => {
         this.pending.delete(id);
         reject(new Error(`${method} timed out`));
-      }, 20000);
+      }, 90000);
       this.pending.set(id, { resolve, reject, timer });
       this.socket.send(JSON.stringify(payload));
     });
@@ -233,20 +233,22 @@ const capturePng = async (client, page, fileName) => {
   await fs.writeFile(path.join(outputDir, fileName), Buffer.from(screenshot.data, "base64"));
 };
 
-const printPdf = async (client, page, filePath) => {
-  const pdf = await client.send(
-    "Page.printToPDF",
-    {
+const printHtmlPdf = async (htmlPath, pdfPath) => {
+  const { chromium } = await import("playwright");
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1240, height: 900 } });
+    await page.goto(pathToFileURL(htmlPath).href, { waitUntil: "networkidle" });
+    await page.pdf({
+      path: pdfPath,
       printBackground: true,
       preferCSSPageSize: true,
-      marginTop: 0,
-      marginRight: 0,
-      marginBottom: 0,
-      marginLeft: 0,
-    },
-    page.sessionId,
-  );
-  await fs.writeFile(filePath, Buffer.from(pdf.data, "base64"));
+      margin: { top: 0, right: 0, bottom: 0, left: 0 },
+    });
+    await page.close();
+  } finally {
+    await browser.close();
+  }
 };
 
 const closePage = async (client, page) => {
@@ -528,12 +530,25 @@ try {
   );
   await closePage(client, campaignDashboardPage);
 
+  const campaignBuilderPage = await openPage(
+    client,
+    `${baseUrl}/advertiser/campaigns/new`,
+    { width: 1440, height: 940 },
+  );
+  await waitForBodyText(client, campaignBuilderPage, "유나뷰티", 45000);
+  await capturePng(
+    client,
+    campaignBuilderPage,
+    "yeollock-campaign-builder-main.png",
+  );
+  await closePage(client, campaignBuilderPage);
+
   const builderPage = await openPage(
     client,
     `${baseUrl}/advertiser/builder`,
     { width: 1440, height: 940 },
   );
-  await waitForBodyText(client, builderPage, "새 전자계약서 작성");
+  await waitForBodyText(client, builderPage, "새 전자계약서 작성", 45000);
   await prepareBuilderForCapture(client, builderPage);
   await capturePng(client, builderPage, "yeollock-contract-builder.png");
   await closePage(client, builderPage);
@@ -592,29 +607,15 @@ try {
   await capturePng(client, influencerPage, "yeollock-influencer-screen.png");
   await closePage(client, influencerPage);
 
-  const advertiserDoc = await openPage(
-    client,
-    pathToFileURL(path.join(root, "docs", "sales", "advertiser-introduction.html")).href,
-    { width: 1240, height: 900 },
-  );
-  await printPdf(
-    client,
-    advertiserDoc,
+  await printHtmlPdf(
+    path.join(root, "docs", "sales", "advertiser-introduction.html"),
     path.join(root, "docs", "sales", "advertiser-introduction.pdf"),
   );
-  await closePage(client, advertiserDoc);
 
-  const influencerDoc = await openPage(
-    client,
-    pathToFileURL(path.join(root, "docs", "sales", "influencer-introduction.html")).href,
-    { width: 1240, height: 900 },
-  );
-  await printPdf(
-    client,
-    influencerDoc,
+  await printHtmlPdf(
+    path.join(root, "docs", "sales", "influencer-introduction.html"),
     path.join(root, "docs", "sales", "influencer-introduction.pdf"),
   );
-  await closePage(client, influencerDoc);
 
   console.log(
     JSON.stringify(
@@ -624,6 +625,7 @@ try {
         outputs: [
           "docs/sales/assets/yeollock-advertiser-dashboard.png",
           "docs/sales/assets/yeollock-advertiser-campaign-dashboard.png",
+          "docs/sales/assets/yeollock-campaign-builder-main.png",
           "docs/sales/assets/yeollock-contract-builder.png",
           "docs/sales/assets/yeollock-contract-admin.png",
           "docs/sales/assets/yeollock-contract-completed-admin.png",

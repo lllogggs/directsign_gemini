@@ -227,11 +227,41 @@ const ensureAuthUser = async ({ email, role, name, companyName }) => {
 const advertisers = Array.from({ length: ACCOUNT_COUNT }, (_, index) => {
   const number = index + 1;
   const samples = [
-    { companyName: "브래드룸", manager: "브래드룸 매니저", category: "식품 · 라이프스타일", handle: "breadroom" },
-    { companyName: "오브레", manager: "오브레 마케팅", category: "뷰티 · 라이프스타일", handle: "obre-beauty" },
-    { companyName: "하우스핏", manager: "하우스핏 캠페인팀", category: "운동 · 헬스", handle: "housefit" },
-    { companyName: "브루잉랩", manager: "브루잉랩 브랜드팀", category: "카페 · 식품", handle: "brewinglab" },
-    { companyName: "나이트케어", manager: "나이트케어 마케터", category: "뷰티 · 헬스케어", handle: "nightcare" },
+    {
+      companyName: "브래드룸",
+      manager: "브래드룸 매니저",
+      category: "식품 · 라이프스타일",
+      handle: "breadroom",
+      logoUrl: "/images/brands/breadroom-logo.png",
+    },
+    {
+      companyName: "오브레",
+      manager: "오브레 마케팅",
+      category: "뷰티 · 라이프스타일",
+      handle: "obre-beauty",
+      logoUrl: "/images/brands/obre-beauty-logo.png",
+    },
+    {
+      companyName: "하우스핏",
+      manager: "하우스핏 캠페인팀",
+      category: "운동 · 헬스",
+      handle: "housefit",
+      logoUrl: "/images/brands/housefit-logo.png",
+    },
+    {
+      companyName: "브루잉랩",
+      manager: "브루잉랩 브랜드팀",
+      category: "카페 · 식품",
+      handle: "brewinglab",
+      logoUrl: "/images/brands/brewinglab-logo.png",
+    },
+    {
+      companyName: "나이트케어",
+      manager: "나이트케어 마케터",
+      category: "뷰티 · 헬스케어",
+      handle: "nightcare",
+      logoUrl: "/images/brands/nightcare-logo.png",
+    },
   ];
   const sample = samples[index];
   return {
@@ -248,11 +278,11 @@ const advertisers = Array.from({ length: ACCOUNT_COUNT }, (_, index) => {
 const influencers = Array.from({ length: ACCOUNT_COUNT }, (_, index) => {
   const number = index + 1;
   const samples = [
-    { name: "민서홈", handle: "minseo.home", categories: ["lifestyle", "mukbang", "beauty"] },
-    { name: "오늘의취향", handle: "today.taste", categories: ["travel", "lifestyle", "mukbang"] },
-    { name: "하루핏", handle: "haru.fit", categories: ["fitness", "lifestyle", "beauty"] },
-    { name: "지유로그", handle: "ziyu.log", categories: ["beauty", "fashion", "lifestyle"] },
-    { name: "루나데이", handle: "luna.day", categories: ["tech", "education", "game"] },
+    { name: "민서홈", handle: "minseo.home", categories: ["lifestyle", "mukbang", "beauty"], avatarUrl: "/images/influencers/minseo-home.png" },
+    { name: "오늘의취향", handle: "today.taste", categories: ["travel", "lifestyle", "mukbang"], avatarUrl: "/images/influencers/today-taste.png" },
+    { name: "하루핏", handle: "haru.fit", categories: ["fitness", "lifestyle", "beauty"], avatarUrl: "/images/influencers/haru-fit.png" },
+    { name: "지유로그", handle: "ziyu.log", categories: ["beauty", "fashion", "lifestyle"], avatarUrl: "/images/influencers/ziyu-log.png" },
+    { name: "루나데이", handle: "luna.day", categories: ["tech", "education", "game"], avatarUrl: "/images/influencers/luna-day.png" },
   ];
   const sample = samples[index];
   return {
@@ -261,6 +291,7 @@ const influencers = Array.from({ length: ACCOUNT_COUNT }, (_, index) => {
     role: "influencer",
     name: sample.name,
     handle: sample.handle,
+    avatarUrl: sample.avatarUrl,
     categories: sample.categories,
   };
 });
@@ -389,6 +420,7 @@ const ensureInfluencerProfile = async (account, user) => {
         role: "influencer",
         name: account.name,
         email: user.email,
+        avatar_url: account.avatarUrl,
         company_name: null,
         activity_categories: account.categories,
         activity_platforms: ["instagram", "youtube", "naver_blog"],
@@ -602,6 +634,7 @@ const ensureBrandProfile = async (advertiser) => {
           "인플루언서 모집부터 계약 전환까지 한 화면에서 운영합니다.",
         location: "서울",
         logo_label: advertiser.companyName.slice(0, 1),
+        logo_url: advertiser.logoUrl,
         preferred_platforms: ["instagram", "youtube", "naver_blog"],
         proposal_types: [
           "sponsored_post",
@@ -660,6 +693,7 @@ const ensureMarketplaceInfluencer = async (influencer) => {
           "생활 속 제품을 자연스럽게 소개하는 리뷰 콘텐츠를 만듭니다.",
         location: "서울",
         avatar_label: influencer.name.slice(0, 1),
+        avatar_url: influencer.avatarUrl,
         categories: influencer.categories,
         audience: "라이프스타일 관심 팔로워",
         audience_tags: ["라이프스타일", "리뷰", "계약 가능"],

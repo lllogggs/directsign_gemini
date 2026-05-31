@@ -76,6 +76,7 @@ import {
   type MarketplaceMessagesResponse,
   type MarketplaceProposalStatus,
 } from "../../domain/marketplaceInbox";
+import { getMarketplaceInfluencerAvatarUrlFromHref } from "../../domain/marketplaceAvatars";
 
 type PlatformFilter = "ALL" | ContractPlatform;
 type ContractTypeFilter = "ALL" | Contract["type"];
@@ -2395,6 +2396,10 @@ function CampaignApplicantRow({
 
   const applicantName = thread.counterpartName || thread.senderName;
   const initial = applicantName.trim().slice(0, 1) || "인";
+  const avatarUrl = getMarketplaceInfluencerAvatarUrlFromHref(
+    thread.counterpartHref,
+    thread.counterpartAvatarUrl,
+  );
   const intro =
     thread.senderIntro || thread.proposalSummary || "소개가 아직 없습니다.";
   const firstPlatform = thread.platforms[0];
@@ -2406,8 +2411,17 @@ function CampaignApplicantRow({
   return (
     <div className="grid gap-3 px-3 py-3 lg:min-h-[64px] lg:grid-cols-[minmax(260px,0.88fr)_minmax(260px,0.74fr)_minmax(132px,0.28fr)] lg:items-center">
       <div className="flex min-w-0 items-center gap-3">
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#171a17] text-[15px] font-extrabold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.14)]">
-          {initial}
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#171a17] text-[15px] font-extrabold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.14)]">
+          {avatarUrl ? (
+            <img
+              src={avatarUrl}
+              alt={`${applicantName} profile`}
+              className="h-full w-full object-cover"
+              loading="lazy"
+            />
+          ) : (
+            initial
+          )}
         </span>
         <div className="min-w-0">
           <div className="flex min-w-0 items-center gap-1.5">

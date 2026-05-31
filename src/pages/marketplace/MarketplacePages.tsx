@@ -55,6 +55,7 @@ import {
   normalizePublicProfileHandle,
   type InfluencerPublicProfileResponse,
 } from "../../domain/publicInfluencerProfile";
+import { getMarketplaceInfluencerAvatarUrl } from "../../domain/marketplaceAvatars";
 import type { InfluencerPlatform } from "../../domain/verification";
 
 type PlatformFilter = "all" | InfluencerPlatform;
@@ -718,7 +719,12 @@ export function PublicInfluencerProfilePage() {
                 <StatusPill icon={<BadgeCheck className="h-3.5 w-3.5" />} label={profile.verifiedLabel} />
               </div>
               <div className="mt-4 flex flex-col gap-5 sm:flex-row sm:items-start">
-                <AvatarBlock label={profile.avatarLabel} size="large" />
+                <AvatarBlock
+                  label={profile.avatarLabel}
+                  src={getMarketplaceInfluencerAvatarUrl(profile)}
+                  alt={profile.displayName}
+                  size="large"
+                />
                 <div className="min-w-0 flex-1">
                   <p className="break-all text-[13px] font-semibold text-neutral-500">
                     {formatInfluencerPublicProfileUrl(profile.handle)}
@@ -901,7 +907,12 @@ export function PublicBrandProfilePage() {
               <StatusPill icon={<Mail className="h-3.5 w-3.5" />} label={brand.responseTimeLabel} />
             </div>
             <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start">
-              <AvatarBlock label={brand.logoLabel} size="large" />
+              <AvatarBlock
+                label={brand.logoLabel}
+                src={brand.logoUrl}
+                alt={brand.displayName}
+                size="large"
+              />
               <div className="min-w-0 flex-1">
                 <p className="break-all text-[13px] font-semibold text-neutral-500">
                   yeollock.me/brands/{brand.handle}
@@ -1141,7 +1152,11 @@ function InfluencerDiscoveryCard({
   return (
     <article className="yl-card flex min-h-[218px] w-full min-w-0 flex-col border p-3.5">
       <div className="flex items-start gap-3">
-        <AvatarBlock label={profile.avatarLabel} />
+        <AvatarBlock
+          label={profile.avatarLabel}
+          src={getMarketplaceInfluencerAvatarUrl(profile)}
+          alt={profile.displayName}
+        />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h2 className="truncate text-[17px] font-semibold text-neutral-950">
@@ -1208,7 +1223,11 @@ function BrandDiscoveryCard({
   return (
     <article className="yl-card flex min-h-[258px] w-full min-w-0 flex-col border p-3.5">
       <div className="flex items-start gap-3">
-        <AvatarBlock label={brand.logoLabel} />
+        <AvatarBlock
+          label={brand.logoLabel}
+          src={brand.logoUrl}
+          alt={brand.displayName}
+        />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h2 className="truncate text-[17px] font-semibold text-neutral-950">
@@ -2033,18 +2052,31 @@ function TagList({ items }: { items: string[] }) {
 
 function AvatarBlock({
   label,
+  src,
+  alt,
   size = "default",
 }: {
   label: string;
+  src?: string;
+  alt?: string;
   size?: "default" | "large";
 }) {
   return (
     <span
-      className={`yl-profile-mark flex shrink-0 items-center justify-center font-semibold ${
+      className={`yl-profile-mark flex shrink-0 items-center justify-center overflow-hidden font-semibold ${
         size === "large" ? "h-20 w-20 text-[24px]" : "h-12 w-12 text-[15px]"
       }`}
     >
-      {label}
+      {src ? (
+        <img
+          src={src}
+          alt={alt ?? ""}
+          className="h-full w-full object-cover"
+          loading="lazy"
+        />
+      ) : (
+        label
+      )}
     </span>
   );
 }

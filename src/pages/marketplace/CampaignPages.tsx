@@ -22,6 +22,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -46,6 +47,7 @@ import {
   type MarketplaceMessagesResponse,
   type MarketplaceProposalStatus,
 } from "../../domain/marketplaceInbox";
+import { getMarketplaceInfluencerAvatarUrlFromHref } from "../../domain/marketplaceAvatars";
 import type { InfluencerPlatform } from "../../domain/verification";
 import { DashboardSurfaceSwitch } from "../../components/DashboardSurfaceSwitch";
 import { MobileSurfaceSwitch } from "../../components/MobileSurfaceSwitch";
@@ -128,6 +130,12 @@ type AdvertiserCampaignsResponse = {
   campaigns: MarketplaceBrandCampaign[];
 };
 
+type BrandImageUploadResponse = {
+  image_url?: string;
+  brand?: MarketplaceBrandProfile;
+  error?: string;
+};
+
 type CampaignApplicationResponse = {
   proposal?: {
     id: string;
@@ -206,6 +214,9 @@ export function AdvertiserCampaignRecruitmentPage() {
   const [activeCampaignView, setActiveCampaignView] =
     useState<AdvertiserCampaignView>("applicants");
   const [selectingApplicantId, setSelectingApplicantId] = useState<string | undefined>();
+  const [brandImagePreview, setBrandImagePreview] = useState<string | undefined>();
+  const [brandImageError, setBrandImageError] = useState<string | undefined>();
+  const [isBrandImageUploading, setIsBrandImageUploading] = useState(false);
 
   const loadCampaigns = useCallback(async () => {
     setState((current) =>
@@ -337,6 +348,64 @@ export function AdvertiserCampaignRecruitmentPage() {
           : [...current.platforms, platform],
       };
     });
+  };
+
+  const handleBrandImageSelect = async (file: File | undefined) => {
+    if (!file || isBrandImageUploading) return;
+
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      setBrandImageError("PNG, JPG, WebP 이미지만 올릴 수 있습니다.");
+      return;
+    }
+    if (file.size > 3 * 1024 * 1024) {
+      setBrandImageError("이미지는 3MB 이하로 올려주세요.");
+      return;
+    }
+
+    setIsBrandImageUploading(true);
+    setBrandImageError(undefined);
+
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      setBrandImagePreview(dataUrl);
+      const response = await apiFetch("/api/advertiser/brand-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          file: {
+            name: file.name,
+            type: file.type,
+            size: file.size,
+            data_url: dataUrl,
+          },
+        }),
+      });
+
+      if (response.status === 401) {
+        navigate("/login/advertiser", { replace: true });
+        return;
+      }
+
+      const data = (await response.json().catch(() => ({}))) as BrandImageUploadResponse;
+      if (!response.ok || !data.brand) {
+        throw new Error(data.error ?? "브랜드 이미지를 저장하지 못했습니다.");
+      }
+
+      setState((current) =>
+        current.status === "ready"
+          ? { ...current, brand: data.brand ?? current.brand }
+          : current,
+      );
+      setBrandImagePreview(undefined);
+    } catch (error) {
+      setBrandImageError(
+        error instanceof Error ? error.message : "브랜드 이미지를 저장하지 못했습니다.",
+      );
+      setBrandImagePreview(undefined);
+    } finally {
+      setIsBrandImageUploading(false);
+    }
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -525,10 +594,18 @@ export function AdvertiserCampaignRecruitmentPage() {
                 인플루언서가 지원 전에 보는 금액, 산출물, 일정만 빠짐없이 정리합니다.
               </p>
             </div>
-            <span className="inline-flex h-9 items-center rounded-full bg-emerald-50 px-3 text-[12px] font-extrabold text-emerald-700">
-              모집 공개
-            </span>
+            <BrandImageUpload
+              brand={brand}
+              previewUrl={brandImagePreview}
+              disabled={isBrandImageUploading}
+              onSelect={handleBrandImageSelect}
+            />
           </div>
+          {brandImageError ? (
+            <p className="mt-3 rounded-[10px] border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] font-extrabold text-rose-700">
+              {brandImageError}
+            </p>
+          ) : null}
 
           <div className="mt-4 grid gap-4">
             <CampaignField label="플랫폼">
@@ -1569,6 +1646,58 @@ function AdvertiserCampaignViewTabs({
   );
 }
 
+function BrandImageUpload({
+  brand,
+  previewUrl,
+  disabled,
+  onSelect,
+}: {
+  brand: MarketplaceBrandProfile | null;
+  previewUrl?: string;
+  disabled: boolean;
+  onSelect: (file: File | undefined) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const imageUrl = previewUrl ?? brand?.logoUrl;
+  const label = brand?.logoLabel ?? "BR";
+  const name = brand?.displayName ?? "브랜드";
+
+  return (
+    <div className="flex shrink-0 items-center gap-2">
+      <span className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-[12px] border border-neutral-200 bg-white text-[12px] font-extrabold text-neutral-800">
+        {imageUrl ? (
+          <img
+            src={imageUrl}
+            alt={`${name} logo`}
+            className="h-full w-full object-cover"
+            loading="lazy"
+          />
+        ) : (
+          label
+        )}
+      </span>
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        disabled={disabled}
+        className="inline-flex h-9 items-center rounded-full border border-neutral-200 bg-white px-3 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 disabled:cursor-wait disabled:text-neutral-400"
+      >
+        {disabled ? "업로드 중" : "로고 업로드"}
+      </button>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        className="hidden"
+        onChange={(event) => {
+          onSelect(event.currentTarget.files?.[0]);
+          event.currentTarget.value = "";
+        }}
+      />
+    </div>
+  );
+}
+
 function AdvertiserCampaignApplicantList({
   applications,
   selectingApplicantId,
@@ -1613,6 +1742,10 @@ function AdvertiserCampaignApplicantRow({
     application.counterpartAvatarLabel,
     applicantName,
   );
+  const avatarUrl = getMarketplaceInfluencerAvatarUrlFromHref(
+    application.counterpartHref,
+    application.counterpartAvatarUrl,
+  );
   const canSelect =
     !application.convertedContractId &&
     application.status !== "converted_to_contract" &&
@@ -1622,8 +1755,17 @@ function AdvertiserCampaignApplicantRow({
     <article className="rounded-[10px] border border-neutral-100 bg-white p-3 transition hover:bg-[#f8faf7]">
       <div className="flex min-w-0 items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2.5">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-950 text-[12px] font-extrabold text-white">
-            {avatarLabel}
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-neutral-950 text-[12px] font-extrabold text-white">
+            {avatarUrl ? (
+              <img
+                src={avatarUrl}
+                alt={`${applicantName} profile`}
+                className="h-full w-full object-cover"
+                loading="lazy"
+              />
+            ) : (
+              avatarLabel
+            )}
           </span>
           <div className="min-w-0">
             {application.counterpartHref ? (
@@ -1747,7 +1889,16 @@ function CampaignPostCard({
     <article className="yl-card flex min-h-[258px] flex-col border p-3 sm:p-3.5">
       <div className="flex items-start gap-3">
         <span className="yl-profile-mark flex h-9 w-9 shrink-0 items-center justify-center text-[11px] font-extrabold sm:h-10 sm:w-10 sm:text-[12px]">
-          {campaign.brandLogoLabel}
+          {campaign.brandLogoUrl ? (
+            <img
+              src={campaign.brandLogoUrl}
+              alt={`${campaign.brandName} logo`}
+              className="h-full w-full object-cover"
+              loading="lazy"
+            />
+          ) : (
+            campaign.brandLogoLabel
+          )}
         </span>
         <div className="min-w-0 flex-1">
           <p className="truncate text-[16px] font-extrabold text-neutral-950">
@@ -2466,6 +2617,21 @@ function dedupeCampaignsByBrandIdentity(campaigns: MarketplaceCampaignPost[]) {
     }
 
     return firstBrandHandle === campaign.brandHandle;
+  });
+}
+
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+        return;
+      }
+      reject(new Error("File could not be read"));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("File could not be read"));
+    reader.readAsDataURL(file);
   });
 }
 

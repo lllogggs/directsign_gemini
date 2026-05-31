@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), "utf8");
+const exists = (relativePath) => fs.existsSync(path.join(root, relativePath));
 const toDisplayPath = (relativePath) => relativePath.replaceAll(path.sep, "/");
 
 const failures = [];
@@ -144,6 +145,7 @@ const campaignPages = read("src/pages/marketplace/CampaignPages.tsx");
 const marketplacePages = read("src/pages/marketplace/MarketplacePages.tsx");
 const marketplaceInboxPage = read("src/pages/marketplace/MarketplaceInboxPage.tsx");
 const marketplace = read("src/domain/marketplace.ts");
+const marketplaceAvatars = read("src/domain/marketplaceAvatars.ts");
 const server = read("server/index.ts");
 const fastAuth = read("lib/fast-auth.ts");
 const signupPage = read("src/pages/auth/SignupPage.tsx");
@@ -173,6 +175,10 @@ const llmsTxt = read("public/llms.txt");
 const envExample = read(".env.example");
 const qaStandard = read("scripts/qa-standard.mjs");
 const salesAdvertiserIntroduction = read("docs/sales/advertiser-introduction.html");
+const salesAdvertiserPdf = fs.readFileSync(
+  path.join(root, "docs/sales/advertiser-introduction.pdf"),
+  "latin1",
+);
 const seedTestAccounts = read("scripts/seed-test-accounts.mjs");
 const seedQaMarketplaceScenario = read("scripts/seed-qa-marketplace-scenario.mjs");
 const supportersCampaignMigration = read(
@@ -767,6 +773,72 @@ check(
 );
 
 check(
+  "test influencer surfaces use generated avatar photos",
+  agents.includes("use plausible generated avatar photos for seeded creators") &&
+    agents.includes("plausible real creator profile photos") &&
+    marketplaceAvatars.includes("/images/influencers/creator-sora.png") &&
+    marketplaceAvatars.includes("/images/influencers/minseo-home.png") &&
+    marketplacePages.includes("getMarketplaceInfluencerAvatarUrl(profile)") &&
+    marketplacePages.includes("src={src}") &&
+    campaignPages.includes("getMarketplaceInfluencerAvatarUrlFromHref(") &&
+    advertiserDashboard.includes("getMarketplaceInfluencerAvatarUrlFromHref("),
+  "Seeded influencer discovery, public profiles, and applicant rows must use generated profile photos instead of initials-only placeholders",
+);
+
+check(
+  "campaign applicant fixtures are real creator profiles",
+  seedTestAccounts.includes("campaignDashboardApplicantProfiles") &&
+    seedTestAccounts.includes('avatarUrl: "/images/influencers/minseo-home.png"') &&
+    seedTestAccounts.includes("ensureCampaignDashboardApplicantProfiles") &&
+    seedTestAccounts.includes("applicantProfileByName") &&
+    seedTestAccounts.includes("Missing campaign applicant profile") &&
+    seedTestAccounts.includes("sender_profile_id: applicantProfile.ownerProfileId"),
+  "Campaign applicant fixtures must attach to seeded influencer profiles with avatar URLs, not anonymous name-only rows that render as initials",
+);
+
+check(
+  "creator and advertiser images are persisted product data",
+  agents.includes("Creator and advertiser identity images are real product data") &&
+    server.includes("MARKETPLACE_PUBLIC_STORAGE_BUCKET") &&
+    server.includes('"/api/influencer/public-profile/avatar"') &&
+    server.includes('"/api/advertiser/brand-image"') &&
+    server.includes("avatar_url: savedProfile.avatarUrl ?? null") &&
+    server.includes("logo_url: currentBrand.logoUrl ?? null") &&
+    influencerDashboard.includes("onAvatarSelect") &&
+    influencerDashboard.includes("dashboard.user.avatar_url") &&
+    campaignPages.includes("BrandImageUpload") &&
+    campaignPages.includes("/api/advertiser/brand-image") &&
+    marketplacePages.includes("src={brand.logoUrl}") &&
+    marketplace.includes("avatarUrl?: string") &&
+    marketplace.includes("logoUrl?: string") &&
+    read("supabase/migrations/20260531135050_add_marketplace_influencer_avatar_url.sql").includes("logo_url"),
+  "Influencer avatars and advertiser brand images must upload, persist, and render from stored profile data before falling back to initials",
+);
+
+const distinctBrandLogoFiles = [
+  "breadroom-logo.png",
+  "obre-beauty-logo.png",
+  "housefit-logo.png",
+  "brewinglab-logo.png",
+  "nightcare-logo.png",
+  "monotrip-logo.png",
+  "object-studio-logo.png",
+];
+
+check(
+  "seeded brand images are distinctive real-brand marks",
+  agents.includes("Seeded brand images should feel like distinct real brands") &&
+    distinctBrandLogoFiles.every((file) => exists(`public/images/brands/${file}`)) &&
+    marketplace.includes('logoUrl: "/images/brands/breadroom-logo.png"') &&
+    marketplace.includes('logoUrl: "/images/brands/monotrip-logo.png"') &&
+    marketplace.includes('logoUrl: "/images/brands/object-studio-logo.png"') &&
+    seedTestAccounts.includes('logo_url: "/images/brands/breadroom-logo.png"') &&
+    seedQaMarketplaceScenario.includes('logoUrl: "/images/brands/obre-beauty-logo.png"') &&
+    seedQaMarketplaceScenario.includes('logo_url: advertiser.logoUrl'),
+  "Seeded brand profiles must use category-specific logo images in fallback data and seed data, not initials-only generic marks",
+);
+
+check(
   "intro preview remains contract-centered",
   landing.includes("계약 목록") &&
     landing.includes("계약명") &&
@@ -774,40 +846,84 @@ check(
   "intro previews must mirror the contract dashboard labels",
 );
 
-const salesSpotlightTags =
-  salesAdvertiserIntroduction.match(/<span\b(?=[^>]*class="red-box")[^>]*>/g) ??
-  [];
-const expectedSalesSpotlightTargets = [
-  "contract-surface-switch",
-  "contract-lifecycle-tabs",
-  "contract-sortable-table",
-  "campaign-surface-switch",
-  "campaign-lifecycle-tabs",
-  "campaign-roster-table",
-  "structure-contract-flow",
-  "structure-campaign-flow",
-];
-
 check(
-  "advertiser sales PDF red boxes have visual target labels",
-  salesSpotlightTags.length === expectedSalesSpotlightTargets.length &&
-    expectedSalesSpotlightTargets.every((target) =>
-      salesAdvertiserIntroduction.includes(`data-visual-target="${target}"`),
-    ),
-  "Sales PDF red highlights must be tied to reviewed visual UI targets, not anonymous coordinate boxes",
+  "advertiser sales PDF keeps dashboard explanation quiet",
+  salesAdvertiserIntroduction.includes("yeollock-advertiser-dashboard.png") &&
+    salesAdvertiserIntroduction.includes("yeollock-campaign-builder-main.png") &&
+    !salesAdvertiserIntroduction.includes('class="red-box"') &&
+    !salesAdvertiserIntroduction.includes('class="notes"') &&
+    !salesAdvertiserIntroduction.includes('class="pain-grid"') &&
+    !salesAdvertiserIntroduction.includes('class="process-line"'),
+  "Sales PDF should explain with dashboard screenshots and concise copy, not floating red boxes, bottom button-like lists, or repeated feature card grids",
 );
 
-const salesImageNoteGroups =
-  salesAdvertiserIntroduction.match(/<div class="notes">\s*<div class="note">/g) ??
-  [];
+const advertiserSalesUnifiedGridCount =
+  salesAdvertiserIntroduction.match(/class="slide-content"/g)?.length ?? 0;
+
+const advertiserSalesPainPointSection = salesAdvertiserIntroduction.slice(
+  salesAdvertiserIntroduction.indexOf('data-stage="pain-point"'),
+  salesAdvertiserIntroduction.indexOf('data-stage="strength"'),
+);
 
 check(
-  "advertiser sales PDF explanation cards keep one rhythm",
-  salesImageNoteGroups.length === 2 &&
-    !salesAdvertiserIntroduction.includes('class="image-notes single"') &&
+  "advertiser sales PDF uses one consistent layout grid",
+  advertiserSalesUnifiedGridCount === 5 &&
+    agents.includes("Advertiser sales proposals must use one consistent slide grid"),
+  "Advertiser sales PDF pages must not mix unrelated layout systems; use the same left-message/right-product rhythm across the deck",
+);
+
+check(
+  "advertiser sales PDF pain point uses no-contract risk examples before dashboard",
+  advertiserSalesPainPointSection.includes("광고비 먹튀") &&
+    advertiserSalesPainPointSection.includes("협찬품 미반환") &&
+    advertiserSalesPainPointSection.includes("각종 분쟁") &&
+    advertiserSalesPainPointSection.includes("콘텐츠 수정 거부") &&
+    advertiserSalesPainPointSection.indexOf("콘텐츠 수정 거부") <
+      advertiserSalesPainPointSection.indexOf("각종 분쟁") &&
+    advertiserSalesPainPointSection.includes("인플루언서<br />광고 계약") &&
+    advertiserSalesPainPointSection.includes("계약서<br />없는 약속은<br />위험합니다.") &&
+    !advertiserSalesPainPointSection.includes("광고비 · 협찬") &&
+    salesAdvertiserIntroduction.includes(".pain-context") &&
+    salesAdvertiserIntroduction.includes("color: #2456d6;") &&
+    salesAdvertiserIntroduction.includes("font-size: 28px;") &&
+    advertiserSalesPainPointSection.includes("risk-generated-missed-contact.png") &&
+    advertiserSalesPainPointSection.includes("risk-generated-product-held.png") &&
+    advertiserSalesPainPointSection.includes("risk-generated-general-dispute.png") &&
+    advertiserSalesPainPointSection.includes("risk-generated-revision-refusal.png") &&
+    !advertiserSalesPainPointSection.includes("업로드 · 마감 · 지급 조건") &&
+    !advertiserSalesPainPointSection.includes('class="support"') &&
+    !advertiserSalesPainPointSection.includes("risk-visual") &&
+    !advertiserSalesPainPointSection.includes("yeollock-advertiser-dashboard.png") &&
+    agents.includes("pain-point slide should not lead with the dashboard"),
+  "Advertiser proposal pain point must show contract-missing risks first with custom situation image cards and no support subline; do not lead with a dashboard screenshot",
+);
+
+check(
+  "advertiser sales PDF left message block is inset and upper-weighted",
+  salesAdvertiserIntroduction.includes("align-content: start;") &&
+    salesAdvertiserIntroduction.includes("padding: 32mm 0 0 8mm;") &&
+    agents.includes("upper-weighted alignment"),
+  "Advertiser sales proposal copy should have deliberate left inset and upper alignment rather than edge-hugging, center-sunk placement",
+);
+
+const salesAdvertiserPdfPageCount =
+  salesAdvertiserPdf.match(/\/Type\s*\/Page\b/g)?.length ?? 0;
+
+check(
+  "advertiser sales PDF exports without blank pages",
+  salesAdvertiserPdfPageCount === 5 &&
+    salesAdvertiserIntroduction.includes("@media print") &&
+    salesAdvertiserIntroduction.includes("body {\n          padding: 0;") &&
+    salesAdvertiserIntroduction.includes(".deck {\n          display: block;"),
+  "Sales PDF must render as the intended five pages without print padding/grid gaps that create blank pages",
+);
+
+check(
+  "advertiser sales PDF avoids mixed explanation chrome",
+  !salesAdvertiserIntroduction.includes('class="image-notes single"') &&
     !salesAdvertiserIntroduction.includes('<aside class="side-panel">') &&
     !salesAdvertiserIntroduction.includes("pilot-sidebar"),
-  "Sales PDF screenshot explanations must use the same below-image horizontal card pattern instead of mixing side and bottom explanations",
+  "Sales PDF must not mix side panels, bottom explanations, and extra chrome around screenshots",
 );
 
 check(
@@ -815,6 +931,73 @@ check(
   !salesAdvertiserIntroduction.includes("<strong>서명본 PDF 보관</strong>") &&
     !salesAdvertiserIntroduction.includes("완료된 계약서는 필요할 때 바로 내려받습니다."),
   "Do not label a red box as a PDF download area unless the rendered capture actually shows that PDF action",
+);
+
+const bannedAdvertiserSalesPhrases = [
+  "한 헤더",
+  "두 운영 화면",
+  "같은 전환 구조",
+  "같은 규칙",
+  "같은 축",
+  "계약과 캠페인이 헤더",
+];
+
+check(
+  "advertiser sales PDF copy speaks to advertiser value",
+  bannedAdvertiserSalesPhrases.every(
+    (phrase) => !salesAdvertiserIntroduction.includes(phrase),
+  ) &&
+    salesAdvertiserIntroduction.includes("광고비") &&
+    salesAdvertiserIntroduction.includes("협찬") &&
+    salesAdvertiserIntroduction.includes("계약서<br />없는 약속은<br />위험합니다.") &&
+    !salesAdvertiserIntroduction.includes("먹튀를<br />막아야 합니다") &&
+    salesAdvertiserIntroduction.includes("광고비 먹튀") &&
+    salesAdvertiserIntroduction.includes("각종 분쟁") &&
+    salesAdvertiserIntroduction.includes("서명") &&
+    salesAdvertiserIntroduction.includes("기한") &&
+    salesAdvertiserIntroduction.includes("검수") &&
+    salesAdvertiserIntroduction.includes("선정") &&
+    !salesAdvertiserIntroduction.includes("광고주 제안서</span>"),
+  "Advertiser PDF must explain buying value, not product implementation mechanics",
+);
+
+check(
+  "advertiser sales PDF solution says contract writing directly",
+  salesAdvertiserIntroduction.includes("계약서를<br />씁니다") &&
+    !salesAdvertiserIntroduction.includes("약속을<br />남깁니다") &&
+    agents.includes("say \"계약서를 씁니다\""),
+  "Advertiser sales proposal solution copy must say that the advertiser writes a contract, not a softened promise phrase",
+);
+
+check(
+  "advertiser sales PDF leads with contract-risk prevention",
+  salesAdvertiserIntroduction.indexOf("계약서<br />없는 약속은<br />위험합니다.") >=
+    0 &&
+    salesAdvertiserIntroduction.indexOf(
+      "계약서<br />없는 약속은<br />위험합니다.",
+    ) <
+      salesAdvertiserIntroduction.indexOf("계약으로") &&
+    agents.includes(
+      "primary differentiation is risk prevention around sponsorship, ad fees",
+    ) &&
+    agents.includes("Customer-facing advertiser proposal copy should express"),
+  "Advertiser sales PDF must lead with sponsorship/ad-fee non-performance risk in polished buyer language before presenting dashboard consolidation",
+);
+
+const advertiserSalesStageOrder = [
+  'data-stage="pain-point"',
+  'data-stage="strength"',
+  'data-stage="service-explanation"',
+  'data-stage="cta"',
+].map((marker) => salesAdvertiserIntroduction.indexOf(marker));
+
+check(
+  "advertiser sales PDF persuades before explaining",
+  advertiserSalesStageOrder.every((index) => index >= 0) &&
+    advertiserSalesStageOrder[0] < advertiserSalesStageOrder[1] &&
+    advertiserSalesStageOrder[1] < advertiserSalesStageOrder[2] &&
+    advertiserSalesStageOrder[2] < advertiserSalesStageOrder[3],
+  "Advertiser PDF must follow pain point -> yeollock strength -> service/dashboard explanation -> CTA",
 );
 
 const demoData = evaluateLiteralObject(landing, "const introDashboardDemoData =");

@@ -49,6 +49,7 @@ const accounts = {
     email: "creator.sora@yeollock.me",
     role: "influencer",
     name: "크리에이터 소라",
+    avatar_url: "/images/influencers/creator-sora.png",
   },
 };
 
@@ -274,6 +275,7 @@ const ensureProfilesAndOrganization = async (advertiser, influencer) => {
         role: accounts.influencer.role,
         name: accounts.influencer.name,
         email: influencer.email,
+        avatar_url: accounts.influencer.avatar_url,
         company_name: null,
         activity_categories: ["lifestyle", "beauty", "tech"],
         activity_platforms: ["instagram", "youtube", "tiktok", "naver_blog"],
@@ -512,6 +514,7 @@ const ensureMarketplaceProfiles = async ({ influencer, organizationId }) => {
           "광고주 컨택, 제안 저장, 전자계약 전환 흐름을 검증하기 위한 공개 프로필입니다. 릴스와 쇼츠 중심으로 제품 사용 장면과 조건 확인을 명확히 보여줍니다.",
         location: "서울 · 원격 협업",
         avatar_label: "QS",
+        avatar_url: accounts.influencer.avatar_url,
         categories: ["뷰티", "테크", "라이프스타일"],
         audience: "20-34 실사용 후기 관심 고객",
         audience_tags: ["숏폼 리뷰", "신제품 검증", "구매 전환", "계약 전환"],
@@ -607,6 +610,7 @@ const ensureMarketplaceProfiles = async ({ influencer, organizationId }) => {
           "인플루언서가 입점 브랜드를 둘러보고 역제안할 수 있도록 구성한 광고주 프로필입니다. 브랜드 소개, 광고 형태, 예산 범위가 공개 프로필에서 바로 보이도록 구성했습니다.",
         location: "서울 성수 · 온라인",
         logo_label: "BQ",
+        logo_url: "/images/brands/breadroom-logo.png",
         preferred_platforms: ["instagram", "youtube", "naver_blog"],
         proposal_types: ["sponsored_post", "product_seeding", "supporters", "ppl"],
         budget_range_label: "100만-450만원",
@@ -1138,20 +1142,124 @@ const seedPlatformLabels = {
   other: "기타",
 };
 
-const campaignDashboardApplicantPool = [
-  "유나뷰티",
-  "리뷰제이",
-  "온리루틴",
-  "하린로그",
-  "모아리뷰",
-  "수아픽",
-  "라온뷰티",
-  "지안홈",
-  "세린데일리",
-  "나래숏폼",
-  "로미리뷰",
-  "소담픽",
+const campaignDashboardApplicantProfiles = [
+  {
+    name: "유나뷰티",
+    handle: "yuna-beauty",
+    email: "yuna.beauty@yeollock.me",
+    avatarUrl: "/images/influencers/minseo-home.png",
+    headline: "뷰티 릴스와 사용감 리뷰를 만드는 크리에이터",
+    categories: ["뷰티", "라이프스타일"],
+    followersLabel: "8.7만",
+  },
+  {
+    name: "리뷰제이",
+    handle: "review-j",
+    email: "review.j@yeollock.me",
+    avatarUrl: "/images/influencers/today-taste.png",
+    headline: "제품 비교와 블로그 후기를 함께 운영하는 리뷰어",
+    categories: ["리뷰", "라이프스타일"],
+    followersLabel: "5.9만",
+  },
+  {
+    name: "온리루틴",
+    handle: "only-routine",
+    email: "only.routine@yeollock.me",
+    avatarUrl: "/images/influencers/haru-fit.png",
+    headline: "데일리 루틴과 숏폼 챌린지에 강한 크리에이터",
+    categories: ["라이프스타일", "뷰티"],
+    followersLabel: "7.1만",
+  },
+  {
+    name: "하린로그",
+    handle: "harin-log",
+    email: "harin.log@yeollock.me",
+    avatarUrl: "/images/influencers/ziyu-log.png",
+    headline: "브랜드 톤을 살린 릴스와 브이로그를 제작합니다",
+    categories: ["뷰티", "패션"],
+    followersLabel: "6.4만",
+  },
+  {
+    name: "모아리뷰",
+    handle: "moa-review",
+    email: "moa.review@yeollock.me",
+    avatarUrl: "/images/influencers/luna-day.png",
+    headline: "생활 제품의 장단점을 간결하게 정리하는 리뷰어",
+    categories: ["리빙", "리뷰"],
+    followersLabel: "4.8만",
+  },
+  {
+    name: "수아픽",
+    handle: "sua-pick",
+    email: "sua.pick@yeollock.me",
+    avatarUrl: "/images/influencers/rooday.png",
+    headline: "감도 있는 제품 컷과 피드 콘텐츠를 제작합니다",
+    categories: ["뷰티", "패션"],
+    followersLabel: "9.2만",
+  },
+  {
+    name: "라온뷰티",
+    handle: "raon-beauty",
+    email: "raon.beauty@yeollock.me",
+    avatarUrl: "/images/influencers/zeu-k.png",
+    headline: "선케어와 메이크업 제품 리뷰에 집중합니다",
+    categories: ["뷰티"],
+    followersLabel: "6.8만",
+  },
+  {
+    name: "지안홈",
+    handle: "jian-home",
+    email: "jian.home@yeollock.me",
+    avatarUrl: "/images/influencers/channel-ove.png",
+    headline: "홈케어와 리빙 제품을 자연스럽게 소개합니다",
+    categories: ["리빙", "라이프스타일"],
+    followersLabel: "3.9만",
+  },
+  {
+    name: "세린데일리",
+    handle: "serin-daily",
+    email: "serin.daily@yeollock.me",
+    avatarUrl: "/images/influencers/minseo-home.png",
+    headline: "일상 속 사용 장면을 안정적으로 담는 크리에이터",
+    categories: ["라이프스타일", "뷰티"],
+    followersLabel: "5.2만",
+  },
+  {
+    name: "나래숏폼",
+    handle: "narae-shorts",
+    email: "narae.shorts@yeollock.me",
+    avatarUrl: "/images/influencers/today-taste.png",
+    headline: "짧고 빠른 숏폼 전환 콘텐츠를 제작합니다",
+    categories: ["숏폼", "뷰티"],
+    followersLabel: "11.4만",
+  },
+  {
+    name: "로미리뷰",
+    handle: "romi-review",
+    email: "romi.review@yeollock.me",
+    avatarUrl: "/images/influencers/haru-fit.png",
+    headline: "제품 체험 후기를 설득력 있게 풀어냅니다",
+    categories: ["리뷰", "뷰티"],
+    followersLabel: "4.5만",
+  },
+  {
+    name: "소담픽",
+    handle: "sodam-pick",
+    email: "sodam.pick@yeollock.me",
+    avatarUrl: "/images/influencers/ziyu-log.png",
+    headline: "선물 추천과 데일리 제품 큐레이션을 운영합니다",
+    categories: ["라이프스타일", "리빙"],
+    followersLabel: "5.6만",
+  },
 ];
+
+const campaignDashboardApplicantPool = campaignDashboardApplicantProfiles.map(
+  (profile) => profile.name,
+);
+
+const campaignDashboardApplicantProfileByName = new Map(
+  campaignDashboardApplicantProfiles.map((profile) => [profile.name, profile]),
+);
 
 const campaignDashboardApplicationFixtures = [
   {
@@ -1588,9 +1696,146 @@ const buildSeedCampaignApplicationSummary = (campaign) =>
     .filter(Boolean)
     .join("\n");
 
+const ensureCampaignDashboardApplicantProfiles = async () => {
+  const authUsers = [];
+  for (const profile of campaignDashboardApplicantProfiles) {
+    const user = await ensureAuthUser({
+      email: profile.email,
+      role: "influencer",
+      name: profile.name,
+    });
+    authUsers.push({ ...profile, user });
+  }
+
+  await upsert(
+    "profiles",
+    authUsers.map((profile) => ({
+      id: profile.user.id,
+      role: "influencer",
+      name: profile.name,
+      email: profile.user.email,
+      avatar_url: profile.avatarUrl,
+      company_name: null,
+      activity_categories: profile.categories,
+      activity_platforms: ["instagram", "youtube", "naver_blog"],
+      verification_status: "approved",
+      email_verified_at: timestamp,
+      updated_at: timestamp,
+    })),
+    "id",
+    "campaign applicant profiles",
+  );
+
+  const publicProfiles = [];
+  for (const profile of authUsers) {
+    const existingProfile = await findByPublicHandle(
+      "marketplace_influencer_profiles",
+      profile.handle,
+      "campaign applicant marketplace profile",
+    );
+    const marketplaceProfileId =
+      existingProfile?.id ??
+      stableServerUuid(`marketplace:campaign-applicant:${profile.user.id}`);
+
+    publicProfiles.push({
+      ...profile,
+      marketplaceProfileId,
+      ownerProfileId: profile.user.id,
+    });
+  }
+
+  await upsert(
+    "marketplace_influencer_profiles",
+    publicProfiles.map((profile) => ({
+      id: profile.marketplaceProfileId,
+      owner_profile_id: profile.ownerProfileId,
+      public_handle: profile.handle,
+      display_name: profile.name,
+      headline: profile.headline,
+      bio: `${profile.name} 캠페인 지원 화면을 실제 인플루언서 계정처럼 검수하기 위한 공개 프로필입니다.`,
+      location: "서울 · 원격 협업",
+      avatar_label: profile.name.slice(0, 1),
+      avatar_url: profile.avatarUrl,
+      categories: profile.categories,
+      audience: "20-34 관심 팔로워",
+      audience_tags: profile.categories,
+      collaboration_types: ["sponsored_post", "product_seeding", "ppl"],
+      starting_price_label: "협의 가능",
+      response_time_label: "당일 응답",
+      verified_label: "플랫폼 인증 완료",
+      brand_fit: ["캠페인 지원", "콘텐츠 제작", "계약 전환"],
+      recent_brands: ["브레드룸", "오브레"],
+      portfolio: [
+        {
+          title: "브랜드 캠페인 리뷰",
+          brand: "브레드룸",
+          result: "캠페인 지원자 화면 검수용 프로필",
+        },
+      ],
+      proposal_hints: ["캠페인 조건 확인 후 신청합니다."],
+      is_published: true,
+      updated_at: timestamp,
+    })),
+    "owner_profile_id",
+    "campaign applicant marketplace profiles",
+  );
+
+  for (const profile of publicProfiles) {
+    await removeRows(
+      "marketplace_influencer_channels",
+      `?profile_id=eq.${encodeURIComponent(profile.marketplaceProfileId)}`,
+      "campaign applicant marketplace channels",
+    );
+  }
+
+  await upsert(
+    "marketplace_influencer_channels",
+    publicProfiles.flatMap((profile, index) => [
+      {
+        id: stableUuid(`qa:campaign-applicant-channel:instagram:${profile.handle}`),
+        profile_id: profile.marketplaceProfileId,
+        platform: "instagram",
+        label: "인스타",
+        handle: `@${profile.handle.replaceAll("-", "_")}`,
+        url: `https://instagram.com/${profile.handle.replaceAll("-", "_")}`,
+        followers_label: profile.followersLabel,
+        performance_label: "캠페인 지원 가능",
+        sort_order: index * 2 + 1,
+        updated_at: timestamp,
+      },
+      {
+        id: stableUuid(`qa:campaign-applicant-channel:youtube:${profile.handle}`),
+        profile_id: profile.marketplaceProfileId,
+        platform: "youtube",
+        label: "유튜브",
+        handle: `@${profile.handle.replaceAll("-", "")}`,
+        url: `https://youtube.com/@${profile.handle.replaceAll("-", "")}`,
+        followers_label: profile.followersLabel,
+        performance_label: "캠페인 지원 가능",
+        sort_order: index * 2 + 2,
+        updated_at: timestamp,
+      },
+    ]),
+    "id",
+    "campaign applicant marketplace channels",
+  );
+
+  return new Map(
+    publicProfiles.map((profile) => [
+      profile.name,
+      {
+        ownerProfileId: profile.ownerProfileId,
+        publicHandle: profile.handle,
+        avatarUrl: profile.avatarUrl,
+      },
+    ]),
+  );
+};
+
 const seedCampaignDashboardApplications = async ({
   marketplace,
   contractsByCampaignName,
+  applicantProfileByName,
 }) => {
   const campaignsByTitle = new Map(
     marketplace.campaigns.map((campaign) => [campaign.title, campaign]),
@@ -1601,11 +1846,11 @@ const seedCampaignDashboardApplications = async ({
     const campaign = campaignsByTitle.get(fixture.campaignTitle);
     if (!campaign?.id) continue;
 
-    const convertedContract = contractsByCampaignName.get(fixture.campaignTitle);
-    const applicantNames = [
-      ...(fixture.convertedName ? [fixture.convertedName] : []),
-      ...campaignDashboardApplicantPool,
-    ];
+      const convertedContract = contractsByCampaignName.get(fixture.campaignTitle);
+      const applicantNames = [
+        ...(fixture.convertedName ? [fixture.convertedName] : []),
+        ...campaignDashboardApplicantPool,
+      ];
 
     for (let index = 0; index < fixture.applicantCount; index += 1) {
       const senderName = applicantNames[index % applicantNames.length];
@@ -1618,6 +1863,10 @@ const seedCampaignDashboardApplications = async ({
           ? convertedContract.id
           : undefined;
       const createdAt = addDays(-(fixture.ageDays + index));
+      const applicantProfile = applicantProfileByName.get(senderName);
+      if (!applicantProfile) {
+        throw new Error(`Missing campaign applicant profile: ${senderName}`);
+      }
 
       rows.push({
         id: stableUuid(
@@ -1627,9 +1876,11 @@ const seedCampaignDashboardApplications = async ({
         target_brand_profile_id: marketplace.brandProfileId,
         target_handle: testHandles.brand,
         target_display_name: accounts.advertiser.company_name,
-        sender_profile_id: null,
+        sender_profile_id: applicantProfile.ownerProfileId,
         sender_name: senderName,
-        sender_intro: `${senderName} 캠페인 지원 데이터입니다.`,
+        sender_intro:
+          campaignDashboardApplicantProfileByName.get(senderName)?.headline ??
+          `${senderName} 캠페인 지원 데이터입니다.`,
         proposal_type: campaign.type,
         proposal_summary: buildSeedCampaignApplicationSummary(campaign),
         campaign_id: campaign.id,
@@ -1661,6 +1912,7 @@ const seedDashboardShowcase = async ({ advertiser, influencer, marketplace }) =>
     marketplace,
     advertiserCookie: advertiserSession.cookie,
   });
+  const applicantProfileByName = await ensureCampaignDashboardApplicantProfiles();
   const created = [];
   const contractsByCampaignName = new Map();
 
@@ -1745,6 +1997,7 @@ const seedDashboardShowcase = async ({ advertiser, influencer, marketplace }) =>
   const seededApplications = await seedCampaignDashboardApplications({
     marketplace,
     contractsByCampaignName,
+    applicantProfileByName,
   });
 
   const advertiserContractsResponse = await appJson(
