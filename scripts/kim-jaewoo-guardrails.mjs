@@ -27,6 +27,9 @@ const check = (name, condition, detail) => {
   else fail(name, detail);
 };
 
+const filesUnderBytes = (files, maxBytes) =>
+  files.every((file) => exists(file) && fs.statSync(path.join(root, file)).size <= maxBytes);
+
 const collectFiles = (relativeDir, predicate) => {
   const absoluteDir = path.join(root, relativeDir);
   const files = [];
@@ -783,6 +786,25 @@ check(
     campaignPages.includes("getMarketplaceInfluencerAvatarUrlFromHref(") &&
     advertiserDashboard.includes("getMarketplaceInfluencerAvatarUrlFromHref("),
   "Seeded influencer discovery, public profiles, and applicant rows must use generated profile photos instead of initials-only placeholders",
+);
+
+const shippedInfluencerAvatarFiles = [
+  "public/images/influencers/channel-ove.png",
+  "public/images/influencers/creator-sora.png",
+  "public/images/influencers/haru-fit.png",
+  "public/images/influencers/luna-day.png",
+  "public/images/influencers/minseo-home.png",
+  "public/images/influencers/rooday.png",
+  "public/images/influencers/today-taste.png",
+  "public/images/influencers/zeu-k.png",
+  "public/images/influencers/ziyu-log.png",
+];
+
+check(
+  "shipped influencer avatars stay performance-sized",
+  agents.includes("Avatar/profile thumbnails should not ship as multi-hundred-kilobyte originals") &&
+    filesUnderBytes(shippedInfluencerAvatarFiles, 120_000),
+  "Generated influencer avatar assets should stay under 120KB each so applicant and discovery screens do not load several megabytes of thumbnails",
 );
 
 check(
