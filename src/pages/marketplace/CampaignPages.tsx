@@ -3,6 +3,7 @@ import {
   ArrowUpDown,
   ArrowUpWideNarrow,
   ChevronDown,
+  ExternalLink,
   FileSignature,
   FileText,
   LogOut,
@@ -31,7 +32,11 @@ import { PRODUCT_NAME } from "../../domain/brand";
 import {
   buildMarketplaceCampaignPosts,
   campaignProposalTypeOptions,
+  compareChannelAudienceValues,
+  findInfluencerProfileByDisplayName,
   getCampaignDeadlineLabel,
+  getChannelAudienceSortValue,
+  getInfluencerProfilePath,
   getPlatformTone,
   marketplaceBrands,
   platformLabels,
@@ -40,6 +45,7 @@ import {
   type MarketplaceBrandCampaign,
   type MarketplaceBrandProfile,
   type MarketplaceCampaignPost,
+  type MarketplaceInfluencerProfile,
 } from "../../domain/marketplace";
 import {
   formatMarketplaceMessageDate,
@@ -76,10 +82,12 @@ type CampaignSortKey =
   | "deadline"
   | "brand"
   | "title"
+  | "applicant"
   | "payment"
   | "platform"
   | "type"
   | "status"
+  | "followers"
   | "appliedAt";
 type CampaignSort = {
   key: CampaignSortKey;
@@ -119,6 +127,13 @@ const appliedCampaignSortOptions: Array<{ label: string; value: CampaignSort }> 
   { label: "상태순", value: { key: "status", direction: "asc" } },
   { label: "브랜드순", value: { key: "brand", direction: "asc" } },
   { label: "캠페인순", value: { key: "title", direction: "asc" } },
+];
+const advertiserApplicantSortOptions: Array<{ label: string; value: CampaignSort }> = [
+  { label: "구독자·팔로워 많은순", value: { key: "followers", direction: "desc" } },
+  { label: "구독자·팔로워 적은순", value: { key: "followers", direction: "asc" } },
+  { label: "최근 지원순", value: { key: "appliedAt", direction: "desc" } },
+  { label: "이름순", value: { key: "applicant", direction: "asc" } },
+  { label: "상태순", value: { key: "status", direction: "asc" } },
 ];
 
 type MarketplaceCampaignsResponse = {
@@ -214,6 +229,16 @@ export function AdvertiserCampaignRecruitmentPage() {
   const [activeCampaignView, setActiveCampaignView] =
     useState<AdvertiserCampaignView>("applicants");
   const [selectingApplicantId, setSelectingApplicantId] = useState<string | undefined>();
+  const [applicantQuery, setApplicantQuery] = useState("");
+  const [applicantPlatformFilter, setApplicantPlatformFilter] =
+    useState<PlatformFilter>("all");
+  const [applicantStatusFilter, setApplicantStatusFilter] =
+    useState<ApplicationStatusFilter>("all");
+  const [applicantSort, setApplicantSort] = useState<CampaignSort>({
+    key: "followers",
+    direction: "desc",
+  });
+  const [applicantFiltersOpen, setApplicantFiltersOpen] = useState(false);
   const [brandImagePreview, setBrandImagePreview] = useState<string | undefined>();
   const [brandImageError, setBrandImageError] = useState<string | undefined>();
   const [isBrandImageUploading, setIsBrandImageUploading] = useState(false);
@@ -476,8 +501,71 @@ export function AdvertiserCampaignRecruitmentPage() {
 
   const campaigns = state.status === "ready" ? state.campaigns : [];
   const brand = state.status === "ready" ? state.brand : null;
-  const campaignApplications =
-    applicationsState.status === "ready" ? applicationsState.applications : [];
+  const campaignApplications = useMemo(
+    () =>
+      applicationsState.status === "ready" ? applicationsState.applications : [],
+    [applicationsState],
+  );
+  const visibleCampaignApplications = useMemo(() => {
+    const normalizedQuery = applicantQuery.trim().toLowerCase();
+
+    return campaignApplications
+      .filter((application) => {
+        if (
+          applicantStatusFilter !== "all" &&
+          application.status !== applicantStatusFilter
+        ) {
+          return false;
+        }
+        if (
+          applicantPlatformFilter !== "all" &&
+          !application.platforms.some(
+            (platform) => platform.platform === applicantPlatformFilter,
+          )
+        ) {
+          return false;
+        }
+        if (!normalizedQuery) return true;
+
+        return [
+          application.counterpartName,
+          application.senderName,
+          application.counterpartIntro ?? "",
+          application.senderIntro,
+          application.campaignTitle ?? "",
+          formatAppliedCampaignTitle(application),
+          application.proposalTypeLabel,
+          ...application.platforms.flatMap((platform) => [
+            platform.label,
+            platform.handle ?? "",
+            platform.followersLabel ?? "",
+          ]),
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedQuery);
+      })
+      .sort((a, b) => compareCampaignApplicantsBySort(a, b, applicantSort));
+  }, [
+    applicantPlatformFilter,
+    applicantQuery,
+    applicantSort,
+    applicantStatusFilter,
+    campaignApplications,
+  ]);
+  const applicantActiveFilterLabels = [
+    applicantQuery.trim() ? `검색 ${applicantQuery.trim()}` : null,
+    applicantPlatformFilter !== "all"
+      ? platformLabels[applicantPlatformFilter]
+      : null,
+    applicantStatusFilter !== "all"
+      ? applicationStatusMeta[applicantStatusFilter].label
+      : null,
+  ].filter((label): label is string => Boolean(label));
+  const applicantFilterSummary =
+    applicantActiveFilterLabels.length > 0
+      ? applicantActiveFilterLabels.join(" · ")
+      : "전체 조건";
   const isSupportersCampaign = form.type === "supporters";
   const budgetPlaceholder = isSupportersCampaign
     ? "예: 제품 제공(소비자가 89,000원 상당)"
@@ -839,11 +927,44 @@ export function AdvertiserCampaignRecruitmentPage() {
                 body="지원이 들어오면 캠페인별로 바로 확인할 수 있습니다."
               />
             ) : (
-              <AdvertiserCampaignApplicantList
-                applications={campaignApplications}
-                selectingApplicantId={selectingApplicantId}
-                onSelect={selectCampaignApplicant}
-              />
+              <>
+                <AdvertiserCampaignApplicantControls
+                  visibleCount={visibleCampaignApplications.length}
+                  totalCount={campaignApplications.length}
+                  summary={applicantFilterSummary}
+                  filtersOpen={applicantFiltersOpen}
+                  activeFilterCount={applicantActiveFilterLabels.length}
+                  sortState={applicantSort}
+                  query={applicantQuery}
+                  platformFilter={applicantPlatformFilter}
+                  statusFilter={applicantStatusFilter}
+                  onSortChange={setApplicantSort}
+                  onToggleFilters={() =>
+                    setApplicantFiltersOpen((current) => !current)
+                  }
+                  onQueryChange={setApplicantQuery}
+                  onPlatformFilterChange={setApplicantPlatformFilter}
+                  onStatusFilterChange={setApplicantStatusFilter}
+                  onClear={() => {
+                    setApplicantQuery("");
+                    setApplicantPlatformFilter("all");
+                    setApplicantStatusFilter("all");
+                  }}
+                />
+                {visibleCampaignApplications.length === 0 ? (
+                  <PanelState
+                    icon={<Megaphone className="h-5 w-5" />}
+                    title="조건에 맞는 지원자가 없습니다"
+                    body="검색어나 필터 조건을 줄여보세요."
+                  />
+                ) : (
+                  <AdvertiserCampaignApplicantList
+                    applications={visibleCampaignApplications}
+                    selectingApplicantId={selectingApplicantId}
+                    onSelect={selectCampaignApplicant}
+                  />
+                )}
+              </>
             )
           ) : state.status === "loading" ? (
             <PanelState
@@ -1698,6 +1819,122 @@ function BrandImageUpload({
   );
 }
 
+function AdvertiserCampaignApplicantControls({
+  visibleCount,
+  totalCount,
+  summary,
+  filtersOpen,
+  activeFilterCount,
+  sortState,
+  query,
+  platformFilter,
+  statusFilter,
+  onSortChange,
+  onToggleFilters,
+  onQueryChange,
+  onPlatformFilterChange,
+  onStatusFilterChange,
+  onClear,
+}: {
+  visibleCount: number;
+  totalCount: number;
+  summary: string;
+  filtersOpen: boolean;
+  activeFilterCount: number;
+  sortState: CampaignSort;
+  query: string;
+  platformFilter: PlatformFilter;
+  statusFilter: ApplicationStatusFilter;
+  onSortChange: (value: CampaignSort) => void;
+  onToggleFilters: () => void;
+  onQueryChange: (value: string) => void;
+  onPlatformFilterChange: (value: PlatformFilter) => void;
+  onStatusFilterChange: (value: ApplicationStatusFilter) => void;
+  onClear: () => void;
+}) {
+  const hasFilters =
+    query.trim().length > 0 || platformFilter !== "all" || statusFilter !== "all";
+
+  return (
+    <section className="mt-4 overflow-hidden rounded-[12px] border border-neutral-200 bg-white">
+      <div className="flex min-h-12 flex-col gap-2 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <p className="truncate text-[13px] font-extrabold text-neutral-950">
+            지원자 목록
+          </p>
+          <p className="mt-0.5 truncate text-[11px] font-bold text-neutral-500">
+            {visibleCount.toLocaleString()}명 표시 / {totalCount.toLocaleString()}명 · {summary}
+          </p>
+        </div>
+        <div className="flex min-w-0 items-center gap-2">
+          <CampaignSortSelect
+            value={sortState}
+            options={advertiserApplicantSortOptions}
+            ariaLabel="지원자 정렬"
+            onChange={onSortChange}
+          />
+          <CampaignFilterToggleButton
+            open={filtersOpen}
+            activeCount={activeFilterCount}
+            controlsId="advertiser-campaign-applicant-filters"
+            onClick={onToggleFilters}
+          />
+        </div>
+      </div>
+      {filtersOpen ? (
+        <div
+          id="advertiser-campaign-applicant-filters"
+          className="grid gap-2 border-t border-neutral-200 bg-[#fbfaf7] p-3 lg:grid-cols-[minmax(220px,280px)_minmax(0,1fr)_auto] lg:items-center"
+        >
+          <div className="relative min-w-0">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+            <input
+              value={query}
+              onChange={(event) => onQueryChange(event.target.value)}
+              aria-label="지원자 검색"
+              placeholder="이름, 캠페인, 채널 검색"
+              className="h-9 w-full rounded-[8px] border border-neutral-200 bg-white pl-10 pr-3 text-[12px] font-bold text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950"
+            />
+          </div>
+          <div className="grid min-w-0 gap-2 lg:grid-cols-2">
+            <FilterGroup label="플랫폼">
+              {platformOptions.map((platform) => (
+                <FilterButton
+                  key={platform}
+                  active={platformFilter === platform}
+                  label={platform === "all" ? "전체" : platformLabels[platform]}
+                  onClick={() => onPlatformFilterChange(platform)}
+                  tone={platform === "all" ? undefined : getPlatformTone(platform)}
+                />
+              ))}
+            </FilterGroup>
+            <FilterGroup label="상태">
+              {applicationStatusFilterOptions.map((status) => (
+                <FilterButton
+                  key={status}
+                  active={statusFilter === status}
+                  label={status === "all" ? "전체" : applicationStatusMeta[status].label}
+                  onClick={() => onStatusFilterChange(status)}
+                />
+              ))}
+            </FilterGroup>
+          </div>
+          {hasFilters ? (
+            <button
+              type="button"
+              onClick={onClear}
+              className="inline-flex h-8 w-fit items-center gap-1.5 rounded-[8px] px-2.5 text-[11px] font-extrabold text-neutral-500 transition hover:bg-white hover:text-neutral-950"
+            >
+              <X className="h-3.5 w-3.5" strokeWidth={2} />
+              초기화
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function AdvertiserCampaignApplicantList({
   applications,
   selectingApplicantId,
@@ -1708,7 +1945,7 @@ function AdvertiserCampaignApplicantList({
   onSelect: (application: MarketplaceMessageThread) => void;
 }) {
   return (
-    <section className="mt-4 rounded-[12px] border border-neutral-200 bg-white p-2">
+    <section className="mt-2 rounded-[12px] border border-neutral-200 bg-white p-2">
       <div className="grid gap-2">
         {applications.map((application) => (
           <AdvertiserCampaignApplicantRow
@@ -1742,37 +1979,41 @@ function AdvertiserCampaignApplicantRow({
     application.counterpartAvatarLabel,
     applicantName,
   );
+  const fallbackProfile = findInfluencerProfileByDisplayName(applicantName);
+  const displayPlatforms = getCampaignApplicantDisplayPlatforms(
+    application,
+    fallbackProfile,
+  );
+  const profileHref =
+    application.counterpartHref ||
+    (fallbackProfile ? getInfluencerProfilePath(fallbackProfile) : undefined);
   const avatarUrl = getMarketplaceInfluencerAvatarUrlFromHref(
-    application.counterpartHref,
+    profileHref,
     application.counterpartAvatarUrl,
   );
   const canSelect =
     !application.convertedContractId &&
     application.status !== "converted_to_contract" &&
     application.status !== "closed";
+  const hasProfileAction = Boolean(profileHref);
+  const primaryActionSpan = hasProfileAction ? "" : "col-span-2";
 
   return (
     <article className="rounded-[10px] border border-neutral-100 bg-white p-3 transition hover:bg-[#f8faf7]">
-      <div className="flex min-w-0 items-start justify-between gap-3">
+      <div className="grid min-w-0 gap-3 sm:grid-cols-[minmax(0,1fr)_188px] sm:items-start">
         <div className="flex min-w-0 items-center gap-2.5">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-neutral-950 text-[12px] font-extrabold text-white">
-            {avatarUrl ? (
-              <img
-                src={avatarUrl}
-                alt={`${applicantName} profile`}
-                className="h-full w-full object-cover"
-                loading="lazy"
-              />
-            ) : (
-              avatarLabel
-            )}
-          </span>
+          <ProfileAvatarLink
+            href={profileHref}
+            label={avatarLabel}
+            src={avatarUrl}
+            name={applicantName}
+          />
           <div className="min-w-0">
-            {application.counterpartHref ? (
+            {profileHref ? (
               <Link
-                to={application.counterpartHref}
+                to={profileHref}
                 className="block truncate text-[13px] font-extrabold text-neutral-950 hover:underline"
-                title={applicantName}
+                title={`${applicantName} 프로필 보기`}
               >
                 {applicantName}
               </Link>
@@ -1784,13 +2025,36 @@ function AdvertiserCampaignApplicantRow({
             <p className="mt-0.5 truncate text-[11px] font-semibold text-neutral-500">
               {intro}
             </p>
+            <div className="mt-2 flex min-w-0 flex-wrap gap-1.5">
+              <span
+                className={`inline-flex h-6 items-center rounded-md border px-2 text-[11px] font-extrabold ${applicationStatusMeta[application.status].className}`}
+              >
+                {applicationStatusMeta[application.status].label}
+              </span>
+              <span className="inline-flex h-6 items-center rounded-md border border-neutral-200 bg-white px-2 text-[11px] font-bold text-neutral-500">
+                지원 {formatMarketplaceMessageDate(application.createdAt)}
+              </span>
+              <span className="inline-flex h-6 items-center rounded-md border border-neutral-200 bg-white px-2 text-[11px] font-bold text-neutral-500">
+                {application.proposalTypeLabel}
+              </span>
+            </div>
           </div>
         </div>
 
+        <div className="grid w-full grid-cols-2 gap-1.5 sm:w-[188px]">
+          {profileHref ? (
+            <Link
+              to={profileHref}
+              className="inline-flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-md border border-neutral-200 bg-white px-2 text-[12px] font-semibold text-neutral-700 transition hover:border-neutral-950 hover:text-neutral-950"
+            >
+              프로필
+              <ExternalLink className="h-3.5 w-3.5" />
+            </Link>
+          ) : null}
         {application.convertedContractId ? (
           <Link
             to={`/advertiser/contract/${application.convertedContractId}`}
-            className="inline-flex h-9 w-[88px] items-center justify-center rounded-md bg-neutral-950 text-[12px] font-semibold text-white transition hover:bg-black"
+            className={`${primaryActionSpan} inline-flex h-9 min-w-0 items-center justify-center rounded-md bg-neutral-950 px-2 text-[12px] font-semibold text-white transition hover:bg-black`}
           >
             계약 보기
           </Link>
@@ -1799,17 +2063,18 @@ function AdvertiserCampaignApplicantRow({
             type="button"
             onClick={() => onSelect(application)}
             disabled={isSelecting}
-            className="inline-flex h-9 w-[88px] items-center justify-center rounded-md bg-blue-600 text-[12px] font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-neutral-300"
+            className={`${primaryActionSpan} inline-flex h-9 min-w-0 items-center justify-center rounded-md bg-blue-600 px-2 text-[12px] font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-neutral-300`}
           >
             {isSelecting ? "선정 중" : "선정"}
           </button>
         ) : (
           <span
-            className={`inline-flex h-9 w-[88px] items-center justify-center rounded-md border text-[12px] font-semibold ${applicationStatusMeta[application.status].className}`}
+            className={`${primaryActionSpan} inline-flex h-9 min-w-0 items-center justify-center rounded-md border px-2 text-[12px] font-semibold ${applicationStatusMeta[application.status].className}`}
           >
             {applicationStatusMeta[application.status].label}
           </span>
         )}
+        </div>
       </div>
 
       <p className="mt-3 truncate text-[13px] font-bold text-neutral-800" title={title}>
@@ -1817,10 +2082,60 @@ function AdvertiserCampaignApplicantRow({
       </p>
 
       <div className="mt-2">
-        <CampaignApplicantPlatformPills platforms={application.platforms} />
+        <CampaignApplicantPlatformPills platforms={displayPlatforms} />
       </div>
     </article>
   );
+}
+
+function ProfileAvatarLink({
+  href,
+  label,
+  src,
+  name,
+}: {
+  href?: string;
+  label: string;
+  src?: string;
+  name: string;
+}) {
+  const avatar = (
+    <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-neutral-950 text-[12px] font-extrabold text-white">
+      {src ? (
+        <img
+          src={src}
+          alt={`${name} profile`}
+          className="h-full w-full object-cover"
+          loading="lazy"
+        />
+      ) : (
+        label
+      )}
+    </span>
+  );
+
+  return href ? (
+    <Link
+      to={href}
+      className="shrink-0 rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950"
+      aria-label={`${name} 프로필 보기`}
+    >
+      {avatar}
+    </Link>
+  ) : (
+    avatar
+  );
+}
+
+function getCampaignApplicantDisplayPlatforms(
+  application: MarketplaceMessageThread,
+  fallbackProfile?: MarketplaceInfluencerProfile,
+) {
+  if (!application.counterpartHref && fallbackProfile?.platforms.length) {
+    return fallbackProfile.platforms;
+  }
+
+  return application.platforms;
 }
 
 function CampaignApplicantPlatformPills({
@@ -2005,10 +2320,12 @@ function CampaignViewTabs({
 function CampaignSortSelect({
   value,
   options,
+  ariaLabel = "캠페인 정렬",
   onChange,
 }: {
   value: CampaignSort;
   options: Array<{ label: string; value: CampaignSort }>;
+  ariaLabel?: string;
   onChange: (value: CampaignSort) => void;
 }) {
   return (
@@ -2020,8 +2337,8 @@ function CampaignSortSelect({
         onChange={(event) =>
           onChange(parseCampaignSort(event.target.value, value))
         }
-        aria-label="캠페인 정렬"
-        className="h-7 min-w-[94px] bg-transparent text-[11px] font-extrabold text-neutral-700 outline-none"
+        aria-label={ariaLabel}
+        className="h-7 min-w-[94px] max-w-[156px] bg-transparent text-[11px] font-extrabold text-neutral-700 outline-none"
       >
         {options.map((option) => (
           <option
@@ -2302,10 +2619,12 @@ function isCampaignSortKey(value: string | undefined): value is CampaignSortKey 
     "deadline",
     "brand",
     "title",
+    "applicant",
     "payment",
     "platform",
     "type",
     "status",
+    "followers",
     "appliedAt",
   ].includes(value ?? "");
 }
@@ -2353,6 +2672,63 @@ function compareMarketplaceCampaignPostsBySort(
   if (result === 0) result = compareText(a.title, b.title);
 
   return sort.direction === "asc" ? result : -result;
+}
+
+function compareCampaignApplicantsBySort(
+  a: MarketplaceMessageThread,
+  b: MarketplaceMessageThread,
+  sort: CampaignSort,
+) {
+  let result: number;
+
+  switch (sort.key) {
+    case "followers":
+      result = compareChannelAudienceValues(
+        getChannelAudienceSortValue(getCampaignApplicantDisplayPlatforms(a)),
+        getChannelAudienceSortValue(getCampaignApplicantDisplayPlatforms(b)),
+        sort.direction,
+      );
+      break;
+    case "applicant":
+    case "brand":
+      result = compareText(
+        a.counterpartName || a.senderName,
+        b.counterpartName || b.senderName,
+      );
+      break;
+    case "title":
+      result = compareText(formatAppliedCampaignTitle(a), formatAppliedCampaignTitle(b));
+      break;
+    case "status":
+      result =
+        applicationStatusFilterOptions.indexOf(a.status) -
+        applicationStatusFilterOptions.indexOf(b.status);
+      break;
+    case "platform":
+      result = compareText(
+        a.platforms
+          .map((platform) => `${platformLabels[platform.platform]} ${platform.handle ?? ""}`)
+          .join(" "),
+        b.platforms
+          .map((platform) => `${platformLabels[platform.platform]} ${platform.handle ?? ""}`)
+          .join(" "),
+      );
+      break;
+    case "appliedAt":
+    default:
+      result = compareOptionalDateValues(a.createdAt, b.createdAt);
+      break;
+  }
+
+  if (result === 0) {
+    result = compareText(a.counterpartName || a.senderName, b.counterpartName || b.senderName);
+  }
+
+  return sort.key === "followers"
+    ? result
+    : sort.direction === "asc"
+      ? result
+      : -result;
 }
 
 function compareAppliedCampaignApplicationsBySort(

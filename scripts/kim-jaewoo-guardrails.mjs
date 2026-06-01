@@ -624,6 +624,17 @@ check(
     server.includes("readOperationalAdminVerificationRequests") &&
     server.includes("readOperationalAdminSupportTickets") &&
     server.includes("if (!useSupabase) return [] as Contract[];") &&
+    server.includes("operationalTestEmailLocals") &&
+    server.includes("isOperationalTestContract") &&
+    server.includes("isOperationalTestSupportAccessRequest") &&
+    server.includes("isOperationalTestSupportTicket") &&
+    server.includes("isOperationalTestVerificationRequest") &&
+    server.includes("store.contracts.filter((contract) => !isOperationalTestContract(contract))") &&
+    server.includes("!isOperationalTestSupportAccessRequest(request)") &&
+    server.includes("!isOperationalTestSupportTicket(ticket)") &&
+    server.includes("!isOperationalTestVerificationRequest(request)") &&
+    server.includes("breadroom.manager") &&
+    server.includes("creator.sora") &&
     qaStandard.includes("support contract context") &&
     legalDocumentPage.includes("고객지원 문의하기") &&
     legalEntity.includes('`${PRODUCT_NAME} 운영팀`') &&
@@ -639,6 +650,7 @@ check(
     operationalSupportTicketsSettlementRemovalMigration.includes("drop constraint if exists operational_support_tickets_category") &&
     agents.includes("operation/test separation") &&
     agents.includes("Operator dashboards must never present local demo/test file data") &&
+    agents.includes("Operator dashboards must also exclude seeded Supabase records") &&
     agents.includes("Manual verification belongs in its own operator-dashboard surface"),
   "운영 문의는 관리자 대시보드에서 처리하되 정산 문의는 받지 말아야 합니다. 계약 문의/버그 제보만 안전한 계약·화면 맥락을 갖고 접수되어야 하며, 운영 DB에는 테스트 데이터를 기본 주입하거나 운영 기준 같은 정책 filler를 보여주지 않아야 합니다.",
 );
@@ -691,8 +703,8 @@ check(
   "Advertiser and influencer desktop app frames must use the same 계약/캠페인 dashboard switch instead of page-specific back or find buttons",
 );
 
-  check(
-    "marketplace discovery separates platform and category filters",
+check(
+  "marketplace discovery separates platform and category filters",
     agents.includes("Platform and category are separate discovery axes") &&
       marketplacePages.includes("const [categoryFilter, setCategoryFilter]") &&
       marketplacePages.includes("hasCategory(profile.categories, categoryFilter)") &&
@@ -708,6 +720,60 @@ check(
     campaignPages.includes("categoryFilter !== \"all\" && campaign.brandCategory !== categoryFilter") &&
     !campaignPages.includes('<FilterGroup label="카테고리">'),
   "Advertiser discovery must filter creators by platform and category separately, while influencer campaign discovery must expose campaign categories as a visible strip without duplicating the same filter inside the hidden filter panel",
+);
+
+check(
+  "advertiser creator discovery and applicant selection support follower sorting and profile links",
+  agents.includes("channel-size sorting by subscribers/followers") &&
+    agents.includes("Campaign applicant action areas must keep the same total width") &&
+    marketplace.includes("getChannelAudienceSortValue") &&
+    marketplace.includes("compareChannelAudienceValues") &&
+    marketplacePages.includes("InfluencerSortSelect") &&
+    marketplacePages.includes("audience_desc") &&
+    marketplacePages.includes("compareInfluencerProfilesBySort") &&
+    marketplacePages.includes("구독자·팔로워 많은순") &&
+    marketplacePages.includes("getInfluencerProfilePath(profile)") &&
+    campaignPages.includes("AdvertiserCampaignApplicantControls") &&
+    campaignPages.includes('ariaLabel="지원자 정렬"') &&
+    campaignPages.includes("compareCampaignApplicantsBySort") &&
+    campaignPages.includes(
+      "getChannelAudienceSortValue(getCampaignApplicantDisplayPlatforms(a))",
+    ) &&
+    campaignPages.includes("ProfileAvatarLink") &&
+    campaignPages.includes('controlsId="advertiser-campaign-applicant-filters"') &&
+    advertiserDashboard.includes("APPLICANT_SORT_OPTIONS") &&
+    advertiserDashboard.includes('aria-label="지원자 정렬"') &&
+    advertiserDashboard.includes("compareCampaignApplicantsBySort") &&
+    advertiserDashboard.includes(
+      "getChannelAudienceSortValue(getCampaignApplicantDisplayPlatforms(a))",
+    ) &&
+    advertiserDashboard.includes('controlsId="campaign-applicant-filters"') &&
+    marketplace.includes("getInfluencerProfilePathByDisplayName") &&
+    marketplace.includes('handle: "creator-sora"') &&
+    marketplace.includes('displayName: "크리에이터 소라"') &&
+    !marketplacePages.includes('"creator-sora": "zeu_k"') &&
+    advertiserDashboard.includes("findInfluencerProfileByDisplayName(applicantName)") &&
+    advertiserDashboard.includes("const displayPlatforms = getCampaignApplicantDisplayPlatforms(") &&
+    advertiserDashboard.includes("<ApplicantPlatformLinks platforms={displayPlatforms} />") &&
+    campaignPages.includes("findInfluencerProfileByDisplayName(applicantName)") &&
+    campaignPages.includes("const displayPlatforms = getCampaignApplicantDisplayPlatforms(") &&
+    campaignPages.includes("<CampaignApplicantPlatformPills platforms={displayPlatforms} />") &&
+    campaignPages.includes(
+      "getChannelAudienceSortValue(getCampaignApplicantDisplayPlatforms(a))",
+    ) &&
+    advertiserDashboard.includes("grid w-full grid-cols-2 gap-1.5 sm:w-[190px]") &&
+    advertiserDashboard.includes(
+      "no-scrollbar overflow-x-hidden overflow-y-auto overscroll-contain rounded-[10px]",
+    ) &&
+    advertiserDashboard.includes(
+      "lg:grid-cols-[minmax(260px,0.82fr)_minmax(280px,0.78fr)_190px]",
+    ) &&
+    advertiserDashboard.includes('primaryActionSpan = hasProfileAction ? "" : "col-span-2"') &&
+    advertiserDashboard.includes("formatCampaignActivityDate(thread.createdAt)") &&
+    campaignPages.includes("grid w-full grid-cols-2 gap-1.5 sm:w-[188px]") &&
+    campaignPages.includes("formatMarketplaceMessageDate(application.createdAt)") &&
+    advertiserDashboard.includes("프로필 보기"),
+  "Advertiser creator discovery and campaign applicant selection must sort by subscriber/follower scale, keep fixed-width action groups across states, and make creator profile browsing directly reachable from names, avatars, or row actions",
 );
 
 check(
@@ -829,6 +895,9 @@ check(
 check(
   "campaign applicant fixtures are real creator profiles",
   seedTestAccounts.includes("campaignDashboardApplicantProfiles") &&
+    seedTestAccounts.includes('handle: "creator-sora"') &&
+    seedTestAccounts.includes('email: "creator.sora@yeollock.me"') &&
+    seedTestAccounts.includes("const applicantNames = [...new Set") &&
     seedTestAccounts.includes('avatarUrl: "/images/influencers/minseo-home.png"') &&
     seedTestAccounts.includes("ensureCampaignDashboardApplicantProfiles") &&
     seedTestAccounts.includes("applicantProfileByName") &&
@@ -955,27 +1024,36 @@ check(
 );
 
 check(
-  "advertiser sales PDF left message block is inset and upper-weighted",
-  salesAdvertiserIntroduction.includes("align-content: start;") &&
-    salesAdvertiserIntroduction.includes("padding: var(--sales-copy-start) 0 0 8mm;") &&
-    agents.includes("upper-weighted alignment"),
-  "Advertiser sales proposal copy should have deliberate left inset and upper alignment rather than edge-hugging, center-sunk placement",
+  "advertiser sales PDF left message block aligns to right visual center",
+  salesAdvertiserIntroduction.includes("align-content: center;") &&
+    salesAdvertiserIntroduction.includes("height: var(--sales-copy-visual-height);") &&
+    salesAdvertiserIntroduction.includes("margin-top: var(--sales-content-start);") &&
+    salesAdvertiserIntroduction.includes("padding: 0 0 0 8mm;") &&
+    agents.includes("left message block should feel intentionally aligned with the right visual"),
+  "Advertiser sales proposal copy should keep its left inset while centering vertically against the approved right visual height",
 );
 
 const advertiserSalesContentStartCount =
   salesAdvertiserIntroduction.match(/var\(--sales-content-start\)/g)?.length ?? 0;
 
 check(
-  "advertiser sales PDF keeps right visuals fixed while lowering left copy",
+  "advertiser sales PDF keeps right visuals fixed while centering left copy",
   salesAdvertiserIntroduction.includes("--sales-content-start: 10mm;") &&
-    salesAdvertiserIntroduction.includes("--sales-copy-start: 14mm;") &&
+    salesAdvertiserIntroduction.includes("--sales-copy-visual-height: 128mm;") &&
+    salesAdvertiserIntroduction.includes("--sales-copy-visual-height: 136mm;") &&
+    salesAdvertiserIntroduction.includes("--sales-copy-visual-height: 119.6mm;") &&
+    salesAdvertiserIntroduction.includes("--sales-copy-visual-height: 141mm;") &&
+    salesAdvertiserIntroduction.includes("--sales-copy-visual-height: 117.8mm;") &&
     advertiserSalesContentStartCount >= 4 &&
-    salesAdvertiserIntroduction.includes("padding: var(--sales-copy-start) 0 0 8mm;") &&
+    salesAdvertiserIntroduction.includes("height: var(--sales-copy-visual-height);") &&
+    salesAdvertiserIntroduction.includes("padding: 0 0 0 8mm;") &&
     salesAdvertiserIntroduction.includes("margin-top: var(--sales-content-start);") &&
     salesAdvertiserIntroduction.includes('height: 128mm;') &&
-    agents.includes("right visual/dashboard area across all pages") &&
-    agents.includes("move only the left copy block"),
-  "Advertiser sales PDF must keep the right visual/dashboard start fixed while the left text block is lowered independently",
+    agents.includes("right dashboard/image area at the approved fixed top height") &&
+    agents.includes("right image/dashboard height is approved") &&
+    agents.includes("move the left text until its center sits on the right visual's vertical middle line") &&
+    agents.includes("align the left text block to the vertical center of that right visual"),
+  "Advertiser sales PDF must keep the right visual/dashboard start fixed while centering the left text block to the right visual",
 );
 
 check(

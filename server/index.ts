@@ -3918,6 +3918,156 @@ const normalizeRequiredText = (value: unknown) =>
 const normalizeEmail = (value: unknown) =>
   normalizeRequiredText(value).toLowerCase();
 
+const operationalTestEmailLocals = new Set([
+  "breadroom.manager",
+  "creator.sora",
+  "breadroom",
+  "obre-beauty",
+  "housefit",
+  "brewinglab",
+  "nightcare",
+  "minseo.home",
+  "today.taste",
+  "haru.fit",
+  "ziyu.log",
+  "luna.day",
+  "yuna.beauty",
+  "review.j",
+  "only.routine",
+  "harin.log",
+  "moa.review",
+  "sua.pick",
+  "raon.beauty",
+  "jian.home",
+  "serin.daily",
+  "narae.shorts",
+  "romi.review",
+  "sodam.pick",
+]);
+
+const operationalTestTextPattern =
+  /\b(?:qa|test|demo|seed|showcase|dummy)\b|테스트|데모|시드|쇼케이스/i;
+
+const extractEmails = (value: unknown) =>
+  hasText(value)
+    ? (value.match(/[^\s<>()"']+@[^\s<>()"']+\.[^\s<>()"']+/g) ?? [])
+    : [];
+
+const isOperationalTestEmail = (value: unknown) => {
+  const email = normalizeEmail(value);
+  if (!email.includes("@")) return false;
+
+  const [local = "", domain = ""] = email.split("@");
+  if (
+    domain === "directsign.app" ||
+    domain === "example.com" ||
+    domain === "example.net" ||
+    domain === "example.org" ||
+    domain.endsWith(".test") ||
+    domain === "test"
+  ) {
+    return true;
+  }
+
+  if (
+    /^(qa|test|demo|seed)[._-]/i.test(local) ||
+    /[._-](qa|test|demo|seed)([._-]|$)/i.test(local)
+  ) {
+    return true;
+  }
+
+  return domain === "yeollock.me" && operationalTestEmailLocals.has(local);
+};
+
+const hasOperationalTestEmail = (values: unknown[]) =>
+  values.some((value) => extractEmails(value).some(isOperationalTestEmail));
+
+const hasOperationalTestMarker = (value: unknown, depth = 0): boolean => {
+  if (!value || depth > 4) return false;
+
+  if (typeof value === "string") {
+    return hasOperationalTestEmail([value]);
+  }
+
+  if (Array.isArray(value)) {
+    return value.some((item) => hasOperationalTestMarker(item, depth + 1));
+  }
+
+  if (typeof value !== "object") return false;
+
+  return Object.entries(value as Record<string, unknown>).some(([key, item]) => {
+    if (
+      (key === "seeded" || key === "is_test" || key === "test_data") &&
+      item === true
+    ) {
+      return true;
+    }
+
+    if (
+      (key === "source" ||
+        key === "configured_by" ||
+        key === "user_agent" ||
+        key === "note") &&
+      hasText(item) &&
+      operationalTestTextPattern.test(item)
+    ) {
+      return true;
+    }
+
+    return hasOperationalTestMarker(item, depth + 1);
+  });
+};
+
+const isOperationalTestContractId = (value: unknown) =>
+  hasText(value) && /^(demo-contract|qa-|test-|seed-)/i.test(value.trim());
+
+const isOperationalTestContract = (contract: Contract) =>
+  isOperationalTestContractId(contract.id) ||
+  hasOperationalTestEmail([
+    contract.advertiser_info?.manager,
+    contract.influencer_info?.contact,
+    contract.signature_data?.signer_email,
+  ]) ||
+  hasOperationalTestMarker({
+    advertiser_id: contract.advertiser_id,
+    evidence: contract.evidence,
+    signature_data: contract.signature_data,
+    audit_events: contract.audit_events,
+  });
+
+const isOperationalTestSupportAccessRequest = (
+  request: SupportAccessRequestRecord,
+) =>
+  isOperationalTestContractId(request.contract_id) ||
+  hasOperationalTestEmail([request.requester_email]) ||
+  hasOperationalTestMarker({
+    reviewed_by_name: request.reviewed_by_name,
+    audit_events: request.audit_events,
+  });
+
+const isOperationalTestSupportTicket = (ticket: OperationalSupportTicketRecord) =>
+  isOperationalTestContractId(ticket.contract_id) ||
+  hasOperationalTestEmail([ticket.requester_email]) ||
+  hasOperationalTestMarker({
+    source: ticket.source,
+    subject: ticket.subject,
+    message: ticket.message,
+    browser_context: ticket.browser_context,
+  });
+
+const isOperationalTestVerificationRequest = (
+  request: VerificationRequestRecord,
+) =>
+  hasOperationalTestEmail([request.submitted_by_email]) ||
+  hasOperationalTestMarker({
+    evidence_snapshot_json: request.evidence_snapshot_json,
+    subject_name: request.subject_name,
+    platform_handle: request.platform_handle,
+    platform_url: request.platform_url,
+    ownership_challenge_url: request.ownership_challenge_url,
+    note: request.note,
+  });
+
 const normalizeSelectedValues = <T extends string>(
   value: unknown,
   allowedValues: ReadonlySet<T>,
@@ -6396,7 +6546,7 @@ const buildAdminMetrics = async (
 const readOperationalAdminContracts = async () => {
   if (!useSupabase) return [] as Contract[];
   const store = await readStore();
-  return store.contracts;
+  return store.contracts.filter((contract) => !isOperationalTestContract(contract));
 };
 
 const readOperationalAdminSupportAccessRequests = async () => {
@@ -6406,7 +6556,12 @@ const readOperationalAdminSupportAccessRequests = async () => {
     "?select=*&order=created_at.desc",
     "operational admin support access requests",
   );
-  return attachSupportAccessEvents(rows.map(normalizeSupportAccessRequest));
+  const supportAccessRequests = await attachSupportAccessEvents(
+    rows.map(normalizeSupportAccessRequest),
+  );
+  return supportAccessRequests.filter(
+    (request) => !isOperationalTestSupportAccessRequest(request),
+  );
 };
 
 const readOperationalAdminSupportTickets = async () => {
@@ -6416,12 +6571,17 @@ const readOperationalAdminSupportTickets = async () => {
     "?select=*&order=created_at.desc",
     "operational admin support tickets",
   );
-  return rows.map(normalizeSupportTicket);
+  return rows
+    .map(normalizeSupportTicket)
+    .filter((ticket) => !isOperationalTestSupportTicket(ticket));
 };
 
 const readOperationalAdminVerificationRequests = async () => {
   if (!useSupabase) return [] as VerificationRequestRecord[];
-  return readSupabaseVerificationRequests();
+  const requests = await readSupabaseVerificationRequests();
+  return requests.filter(
+    (request) => !isOperationalTestVerificationRequest(request),
+  );
 };
 
 const parseCommissionBps = (value: string | undefined) => {

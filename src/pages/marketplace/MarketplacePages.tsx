@@ -1,6 +1,7 @@
 import {
   ArrowLeft,
   ArrowRight,
+  ArrowUpDown,
   BadgeCheck,
   BookOpen,
   ChevronDown,
@@ -37,8 +38,10 @@ import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
 import {
   campaignProposalTypeOptions,
+  compareChannelAudienceValues,
   formatProposalTypes,
   getBrandProfilePath,
+  getChannelAudienceSortValue,
   getInfluencerProfilePath,
   getPlatformTone,
   marketplaceBrands,
@@ -60,6 +63,7 @@ import type { InfluencerPlatform } from "../../domain/verification";
 
 type PlatformFilter = "all" | InfluencerPlatform;
 type CategoryFilter = "all" | string;
+type InfluencerSortValue = "audience_desc" | "audience_asc" | "name_asc";
 
 const platformFilterOptions: PlatformFilter[] = [
   "all",
@@ -114,10 +118,13 @@ const categoryDisplayLabels: Record<string, string> = {
 };
 
 const proposalTypeOptions = campaignProposalTypeOptions;
+const influencerSortOptions: Array<{ label: string; value: InfluencerSortValue }> = [
+  { label: "구독자·팔로워 많은순", value: "audience_desc" },
+  { label: "구독자·팔로워 적은순", value: "audience_asc" },
+  { label: "이름순", value: "name_asc" },
+];
 
-const demoInfluencerProfileAliases: Record<string, string> = {
-  "creator-sora": "zeu_k",
-};
+const demoInfluencerProfileAliases: Record<string, string> = {};
 
 function getCategoryFilterKey(category: string) {
   const normalized = category.trim().toLowerCase();
@@ -368,6 +375,8 @@ export function AdvertiserInfluencerDiscoveryPage() {
   const [query, setQuery] = useState("");
   const [platformFilter, setPlatformFilter] = useState<PlatformFilter>("all");
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
+  const [influencerSort, setInfluencerSort] =
+    useState<InfluencerSortValue>("audience_desc");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectedProfile, setSelectedProfile] =
     useState<MarketplaceInfluencerProfile | null>(null);
@@ -377,31 +386,33 @@ export function AdvertiserInfluencerDiscoveryPage() {
   const filteredProfiles = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
 
-    return profiles.filter((profile) => {
-      const matchesPlatform =
-        platformFilter === "all" ||
-        profile.platforms.some((platform) => platform.platform === platformFilter);
-      if (!matchesPlatform) return false;
-      if (!hasCategory(profile.categories, categoryFilter)) return false;
-      if (!normalizedQuery) return true;
+    return profiles
+      .filter((profile) => {
+        const matchesPlatform =
+          platformFilter === "all" ||
+          profile.platforms.some((platform) => platform.platform === platformFilter);
+        if (!matchesPlatform) return false;
+        if (!hasCategory(profile.categories, categoryFilter)) return false;
+        if (!normalizedQuery) return true;
 
-      return [
-        profile.displayName,
-        profile.handle,
-        profile.headline,
-        profile.bio,
-        profile.location,
-        profile.audience,
-        ...profile.categories,
-        ...profile.brandFit,
-        ...profile.recentBrands,
-        ...profile.platforms.map((platform) => platform.handle),
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(normalizedQuery);
-    });
-  }, [categoryFilter, platformFilter, profiles, query]);
+        return [
+          profile.displayName,
+          profile.handle,
+          profile.headline,
+          profile.bio,
+          profile.location,
+          profile.audience,
+          ...profile.categories,
+          ...profile.brandFit,
+          ...profile.recentBrands,
+          ...profile.platforms.map((platform) => platform.handle),
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedQuery);
+      })
+      .sort((a, b) => compareInfluencerProfilesBySort(a, b, influencerSort));
+  }, [categoryFilter, influencerSort, platformFilter, profiles, query]);
   const influencerCategoryOptions = useMemo(
     () => [
       "all",
@@ -462,6 +473,12 @@ export function AdvertiserInfluencerDiscoveryPage() {
         open={filtersOpen}
         activeCount={activeFilterLabels.length}
         controlsId="advertiser-influencer-filters"
+        toolbar={
+          <InfluencerSortSelect
+            value={influencerSort}
+            onChange={setInfluencerSort}
+          />
+        }
         onToggle={() => setFiltersOpen((current) => !current)}
       >
         <SearchBox
@@ -1152,16 +1169,28 @@ function InfluencerDiscoveryCard({
   return (
     <article className="yl-card flex min-h-[218px] w-full min-w-0 flex-col border p-3.5">
       <div className="flex items-start gap-3">
-        <AvatarBlock
-          label={profile.avatarLabel}
-          src={getMarketplaceInfluencerAvatarUrl(profile)}
-          alt={profile.displayName}
-        />
+        <Link
+          to={getInfluencerProfilePath(profile)}
+          className="shrink-0 rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950"
+          aria-label={`${profile.displayName} 프로필 보기`}
+        >
+          <AvatarBlock
+            label={profile.avatarLabel}
+            src={getMarketplaceInfluencerAvatarUrl(profile)}
+            alt={profile.displayName}
+          />
+        </Link>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <h2 className="truncate text-[17px] font-semibold text-neutral-950">
+            <Link
+              to={getInfluencerProfilePath(profile)}
+              className="min-w-0 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950"
+              title={`${profile.displayName} 프로필 보기`}
+            >
+              <h2 className="truncate text-[17px] font-semibold text-neutral-950">
               {profile.displayName}
-            </h2>
+              </h2>
+            </Link>
             <BadgeCheck className="h-4 w-4 shrink-0 text-neutral-700" />
           </div>
         </div>
@@ -1205,7 +1234,7 @@ function InfluencerDiscoveryCard({
           to={getInfluencerProfilePath(profile)}
           className="yl-secondary-action inline-flex h-10 w-full items-center justify-center gap-2 rounded-[8px] border text-[13px] font-extrabold transition"
         >
-          상세
+          프로필
         </Link>
       </div>
     </article>
@@ -1766,6 +1795,7 @@ function DiscoveryControls({
   open,
   activeCount,
   controlsId,
+  toolbar,
   onToggle,
   children,
 }: {
@@ -1775,6 +1805,7 @@ function DiscoveryControls({
   open: boolean;
   activeCount: number;
   controlsId: string;
+  toolbar?: ReactNode;
   onToggle: () => void;
   children: ReactNode;
 }) {
@@ -1789,27 +1820,30 @@ function DiscoveryControls({
             {count.toLocaleString()}건 표시 · {summary}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-expanded={open}
-          aria-controls={controlsId}
-          className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[8px] border border-neutral-200 bg-white px-2.5 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:text-neutral-950"
-        >
-          <SlidersHorizontal className="h-3.5 w-3.5 text-neutral-500" strokeWidth={2} />
-          <span>필터</span>
-          {activeCount > 0 ? (
-            <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-neutral-950 px-1 text-[11px] font-extrabold text-white">
-              {activeCount}
-            </span>
-          ) : null}
-          <ChevronDown
-            className={`h-3.5 w-3.5 text-neutral-500 transition-transform ${
-              open ? "rotate-180" : ""
-            }`}
-            strokeWidth={2}
-          />
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          {toolbar}
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={open}
+            aria-controls={controlsId}
+            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[8px] border border-neutral-200 bg-white px-2.5 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:text-neutral-950"
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5 text-neutral-500" strokeWidth={2} />
+            <span>필터</span>
+            {activeCount > 0 ? (
+              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-neutral-950 px-1 text-[11px] font-extrabold text-white">
+                {activeCount}
+              </span>
+            ) : null}
+            <ChevronDown
+              className={`h-3.5 w-3.5 text-neutral-500 transition-transform ${
+                open ? "rotate-180" : ""
+              }`}
+              strokeWidth={2}
+            />
+          </button>
+        </div>
       </div>
       {open ? (
         <div
@@ -1889,6 +1923,33 @@ function CategoryFilterBar({
   );
 }
 
+function InfluencerSortSelect({
+  value,
+  onChange,
+}: {
+  value: InfluencerSortValue;
+  onChange: (value: InfluencerSortValue) => void;
+}) {
+  return (
+    <label className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[8px] border border-neutral-200 bg-white px-2 text-neutral-700">
+      <ArrowUpDown className="h-3.5 w-3.5 text-neutral-500" strokeWidth={2} />
+      <span className="sr-only">인플루언서 정렬</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value as InfluencerSortValue)}
+        aria-label="인플루언서 정렬"
+        className="h-7 min-w-[138px] bg-transparent text-[11px] font-extrabold text-neutral-700 outline-none"
+      >
+        {influencerSortOptions.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function FilterChipGroup({
   label,
   children,
@@ -1904,6 +1965,31 @@ function FilterChipGroup({
       <div className="min-w-0 flex-1">{children}</div>
     </div>
   );
+}
+
+function compareInfluencerProfilesBySort(
+  a: MarketplaceInfluencerProfile,
+  b: MarketplaceInfluencerProfile,
+  sort: InfluencerSortValue,
+) {
+  if (sort === "name_asc") {
+    return compareMarketplaceText(a.displayName, b.displayName);
+  }
+
+  const result = compareChannelAudienceValues(
+    getChannelAudienceSortValue(a.platforms),
+    getChannelAudienceSortValue(b.platforms),
+    sort === "audience_asc" ? "asc" : "desc",
+  );
+
+  return result || compareMarketplaceText(a.displayName, b.displayName);
+}
+
+function compareMarketplaceText(a: string, b: string) {
+  return a.localeCompare(b, "ko-KR", {
+    numeric: true,
+    sensitivity: "base",
+  });
 }
 
 function cleanMarketplaceCopy(value: string) {

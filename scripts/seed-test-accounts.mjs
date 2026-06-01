@@ -509,37 +509,31 @@ const ensureMarketplaceProfiles = async ({ influencer, organizationId }) => {
         owner_profile_id: influencer.id,
         public_handle: testHandles.influencer,
         display_name: "크리에이터 소라",
-        headline: "뷰티와 테크 라이프스타일 제품을 빠르게 검증하는 인플루언서",
+        headline: "릴스와 쇼츠 중심으로 제품 사용 장면을 만드는 크리에이터",
         bio:
-          "광고주 컨택, 제안 저장, 전자계약 전환 흐름을 검증하기 위한 공개 프로필입니다. 릴스와 쇼츠 중심으로 제품 사용 장면과 조건 확인을 명확히 보여줍니다.",
+          "뷰티와 라이프스타일 제품의 실제 사용 장면을 릴스와 쇼츠로 자연스럽게 보여줍니다. 초안 검토와 수정 요청을 계약 안에서 정리하는 협업을 선호합니다.",
         location: "서울 · 원격 협업",
-        avatar_label: "QS",
+        avatar_label: "소",
         avatar_url: accounts.influencer.avatar_url,
-        categories: ["뷰티", "테크", "라이프스타일"],
+        categories: ["뷰티", "라이프스타일"],
         audience: "20-34 실사용 후기 관심 고객",
-        audience_tags: ["숏폼 리뷰", "신제품 검증", "구매 전환", "계약 전환"],
-        collaboration_types: ["sponsored_post", "product_seeding", "supporters", "ppl"],
-        starting_price_label: "120만원부터",
+        audience_tags: ["숏폼 리뷰", "신제품 사용감", "구매 전환"],
+        collaboration_types: ["sponsored_post", "product_seeding", "ppl"],
+        starting_price_label: "협의 가능",
         response_time_label: "당일 응답",
         verified_label: "플랫폼 인증 완료",
-        brand_fit: ["신제품 런칭", "릴스/쇼츠 리뷰", "사용감 중심", "계약 전환"],
-        recent_brands: ["브레드룸", "오브제스튜디오", "모노트립"],
+        brand_fit: ["캠페인 지원", "릴스/쇼츠 리뷰", "사용감 중심"],
+        recent_brands: ["브레드룸", "오브레"],
         portfolio: [
           {
             title: "신제품 숏폼 리뷰",
             brand: "브레드룸",
-            result: "제안 저장과 계약 생성 흐름 검증",
-          },
-          {
-            title: "테크 소품 사용 후기",
-            brand: "채널랩",
-            result: "콘텐츠 조건 확인 체크리스트 정리",
+            result: "제품 사용 장면 중심의 릴스 콘텐츠 제작",
           },
         ],
         proposal_hints: [
-          "브랜드 소개와 광고 형태를 함께 보내면 제안 저장이 가능합니다.",
-          "업로드 채널, 희망 일정, 콘텐츠 사용 범위를 포함해 주세요.",
-          "최종 조건은 전자계약 단계에서 다시 확인합니다.",
+          "캠페인 조건과 업로드 일정을 확인한 뒤 신청합니다.",
+          "콘텐츠 사용 범위와 검수 일정을 계약서에 함께 정리합니다.",
         ],
         is_published: true,
         updated_at: timestamp,
@@ -574,11 +568,11 @@ const ensureMarketplaceProfiles = async ({ influencer, organizationId }) => {
         id: stableUuid(`qa:marketplace:channel:instagram:${influencerProfileId}`),
         profile_id: influencerProfileId,
         platform: "instagram",
-        label: "릴스",
-        handle: "creator.sora",
+        label: "인스타",
+        handle: "@creator_sora",
         url: "https://instagram.com/creator.sora",
         followers_label: "8.1만",
-        performance_label: "평균 조회 2.9만",
+        performance_label: "캠페인 지원 가능",
         sort_order: 0,
         updated_at: timestamp,
       },
@@ -586,11 +580,11 @@ const ensureMarketplaceProfiles = async ({ influencer, organizationId }) => {
         id: stableUuid(`qa:marketplace:channel:youtube:${influencerProfileId}`),
         profile_id: influencerProfileId,
         platform: "youtube",
-        label: "쇼츠",
+        label: "유튜브",
         handle: "@creator_sora",
         url: "https://youtube.com/@creator_sora",
-        followers_label: "2.4만",
-        performance_label: "완주율 41%",
+        followers_label: "8.1만",
+        performance_label: "캠페인 지원 가능",
         sort_order: 1,
         updated_at: timestamp,
       },
@@ -1143,6 +1137,24 @@ const seedPlatformLabels = {
 };
 
 const campaignDashboardApplicantProfiles = [
+  {
+    name: "크리에이터 소라",
+    handle: "creator-sora",
+    email: "creator.sora@yeollock.me",
+    avatarUrl: "/images/influencers/creator-sora.png",
+    headline: "릴스와 쇼츠 중심으로 제품 사용 장면을 만드는 크리에이터",
+    categories: ["뷰티", "라이프스타일"],
+    followersLabel: "8.1만",
+  },
+  {
+    name: "민서홈",
+    handle: "minseo-home",
+    email: "minseo.home@yeollock.me",
+    avatarUrl: "/images/influencers/minseo-home.png",
+    headline: "홈케어와 리빙 제품을 자연스럽게 소개합니다",
+    categories: ["리빙", "라이프스타일"],
+    followersLabel: "6.3만",
+  },
   {
     name: "유나뷰티",
     handle: "yuna-beauty",
@@ -1847,10 +1859,10 @@ const seedCampaignDashboardApplications = async ({
     if (!campaign?.id) continue;
 
       const convertedContract = contractsByCampaignName.get(fixture.campaignTitle);
-      const applicantNames = [
+      const applicantNames = [...new Set([
         ...(fixture.convertedName ? [fixture.convertedName] : []),
         ...campaignDashboardApplicantPool,
-      ];
+      ])];
 
     for (let index = 0; index < fixture.applicantCount; index += 1) {
       const senderName = applicantNames[index % applicantNames.length];

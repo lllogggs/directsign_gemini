@@ -40,7 +40,7 @@
         --blue-deep: #1d4ed8;
         --red: #e11d48;
         --sales-content-start: 10mm;
-        --sales-copy-start: 14mm;
+        --sales-copy-visual-height: 128mm;
         --shadow-soft: 0 28px 86px rgba(15, 23, 42, 0.13);
         --shadow-screen: 0 26px 74px rgba(15, 23, 42, 0.12);
       }
@@ -169,10 +169,28 @@
 
       .slide-copy {
         display: grid;
-        align-content: start;
-        min-height: 144mm;
+        align-content: center;
+        align-self: start;
+        height: var(--sales-copy-visual-height);
         gap: 20px;
-        padding: var(--sales-copy-start) 0 0 8mm;
+        margin-top: var(--sales-content-start);
+        padding: 0 0 0 8mm;
+      }
+
+      .deck > .page:nth-of-type(2) {
+        --sales-copy-visual-height: 136mm;
+      }
+
+      .deck > .page:nth-of-type(3) {
+        --sales-copy-visual-height: 119.6mm;
+      }
+
+      .deck > .page:nth-of-type(4) {
+        --sales-copy-visual-height: 141mm;
+      }
+
+      .deck > .page:nth-of-type(5) {
+        --sales-copy-visual-height: 117.8mm;
       }
 
       .slide-copy.compact-title h1 {

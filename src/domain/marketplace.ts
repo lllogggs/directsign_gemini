@@ -195,6 +195,66 @@ export const marketplaceInfluencers: MarketplaceInfluencerProfile[] = [
     ],
   },
   {
+    id: "inf-creator-sora",
+    handle: "creator-sora",
+    displayName: "크리에이터 소라",
+    headline: "릴스와 쇼츠 중심으로 제품 사용 장면을 만드는 크리에이터",
+    bio:
+      "뷰티와 라이프스타일 제품을 직접 사용하는 장면 위주로 구성합니다. 제품 첫인상, 사용 루틴, 구매 전 확인 포인트를 짧고 선명하게 정리합니다.",
+    location: "서울 · 원격 협업",
+    avatarLabel: "CS",
+    avatarUrl: "/images/influencers/creator-sora.png",
+    categories: ["뷰티", "라이프스타일"],
+    audience: "20-34 여성 중심 · 뷰티/라이프스타일 관심",
+    audienceTags: ["릴스", "쇼츠", "사용 장면", "리뷰형 컨텐츠"],
+    platforms: [
+      {
+        platform: "instagram",
+        label: "인스타",
+        handle: "@creator_sora",
+        url: "https://instagram.com/creator_sora",
+        followersLabel: "8.1만",
+        performanceLabel: "캠페인 지원 가능",
+      },
+      {
+        platform: "youtube",
+        label: "유튜브",
+        handle: "@creator.sora",
+        url: "https://youtube.com/@creator.sora",
+        followersLabel: "8.1만",
+        performanceLabel: "캠페인 지원 가능",
+      },
+    ],
+    collaborationTypes: ["sponsored_post", "product_seeding", "supporters"],
+    startingPriceLabel: "협의 가능",
+    responseTimeLabel: "보통 1영업일 내 응답",
+    verifiedLabel: "플랫폼 인증 완료",
+    brandFit: ["신제품 사용 리뷰", "릴스 1건", "쇼츠 1건"],
+    recentBrands: ["브레드룸", "오브레", "하우스핏"],
+    portfolio: [
+      {
+        title: "선케어 사용 루틴 릴스",
+        brand: "브레드룸",
+        result: "저장과 문의 중심 반응",
+      },
+      {
+        title: "파우치 필수템 쇼츠",
+        brand: "오브레",
+        result: "댓글 문의 증가",
+      },
+      {
+        title: "홈케어 제품 리뷰",
+        brand: "하우스핏",
+        result: "제품 사용 장면 중심 구성",
+      },
+    ],
+    proposalHints: [
+      "필수 노출 장면과 금지 표현을 먼저 알려 주세요.",
+      "제품 수령일과 업로드 마감일을 함께 보내면 일정 조율이 빠릅니다.",
+      "릴스, 쇼츠, 스토리 중 필요한 결과물을 구분해 주세요.",
+    ],
+  },
+  {
     id: "inf-minseo-home",
     handle: "minseo_home",
     displayName: "민서홈",
@@ -460,6 +520,17 @@ export function findInfluencerProfileByHandle(
   );
 }
 
+export function findInfluencerProfileByDisplayName(
+  displayName: string | undefined,
+  accountProfiles: MarketplaceInfluencerProfile[] = [],
+) {
+  const normalizedName = displayName?.trim().replace(/\s+/g, " ");
+  if (!normalizedName) return undefined;
+  return mergeMarketplaceInfluencerProfiles(accountProfiles).find(
+    (profile) => profile.displayName.trim().replace(/\s+/g, " ") === normalizedName,
+  );
+}
+
 export function findBrandProfileByHandle(
   handle: string | undefined,
   accountProfiles: MarketplaceBrandProfile[] = [],
@@ -473,6 +544,66 @@ export function findBrandProfileByHandle(
 
 export function getInfluencerProfilePath(profile: MarketplaceInfluencerProfile) {
   return `/${normalizeMarketplaceHandle(profile.handle)}`;
+}
+
+export function getInfluencerProfilePathByDisplayName(displayName: string | undefined) {
+  const profile = findInfluencerProfileByDisplayName(displayName);
+  return profile ? getInfluencerProfilePath(profile) : undefined;
+}
+
+export function getChannelAudienceSortValue(
+  platforms: Array<{ followersLabel?: string }> = [],
+) {
+  const values = platforms
+    .map((platform) => parseAudienceCountLabel(platform.followersLabel))
+    .filter((value) => Number.isFinite(value));
+
+  return values.length > 0 ? Math.max(...values) : Number.NaN;
+}
+
+export function compareChannelAudienceValues(
+  valueA: number,
+  valueB: number,
+  direction: "asc" | "desc" = "desc",
+) {
+  const validA = Number.isFinite(valueA);
+  const validB = Number.isFinite(valueB);
+
+  if (!validA && !validB) return 0;
+  if (!validA) return 1;
+  if (!validB) return -1;
+
+  return direction === "asc" ? valueA - valueB : valueB - valueA;
+}
+
+function parseAudienceCountLabel(value: string | undefined) {
+  if (!value) return Number.NaN;
+
+  const normalized = value.replace(/,/g, "").trim().toLowerCase();
+  const matches = Array.from(
+    normalized.matchAll(/(\d+(?:\.\d+)?)\s*(억|만|천|k|m)?/g),
+  );
+
+  if (matches.length === 0) return Number.NaN;
+
+  return Math.max(
+    ...matches.map((match) => {
+      const amount = Number(match[1]);
+      const unit = match[2];
+      const multiplier =
+        unit === "억"
+          ? 100_000_000
+          : unit === "만"
+            ? 10_000
+            : unit === "천" || unit === "k"
+              ? 1_000
+              : unit === "m"
+                ? 1_000_000
+                : 1;
+
+      return amount * multiplier;
+    }),
+  );
 }
 
 export function getBrandProfilePath(profile: MarketplaceBrandProfile) {

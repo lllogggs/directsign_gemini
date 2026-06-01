@@ -67,9 +67,14 @@ import { ContractFirstExperienceDialog } from "../../components/ScreenHelp";
 import { DashboardSurfaceSwitch } from "../../components/DashboardSurfaceSwitch";
 import { CONTRACT_FIRST_EXPERIENCE_CONTENT } from "../../domain/screenHelp";
 import {
+  compareChannelAudienceValues,
+  findInfluencerProfileByDisplayName,
+  getChannelAudienceSortValue,
+  getInfluencerProfilePath,
   platformLabels,
   type MarketplaceBrandCampaign,
   type MarketplaceCampaignStatus,
+  type MarketplaceInfluencerProfile,
 } from "../../domain/marketplace";
 import {
   type MarketplaceMessageThread,
@@ -89,6 +94,13 @@ type CampaignStatusAction = Extract<MarketplaceCampaignStatus, "open" | "closed"
 type DetailProgressFilter = "ALL" | "UPLOAD_DONE" | "SIGNED_DONE" | "SIGN_PENDING";
 type DetailDeadlineFilter = "ALL" | "OVERDUE" | "THIS_WEEK" | "LATER" | "NO_DATE";
 type DetailPostLinkFilter = "ALL" | "SUBMITTED" | "NOT_SUBMITTED";
+type ApplicantPlatformFilter = "ALL" | InfluencerPlatform;
+type ApplicantStatusFilter = "ALL" | MarketplaceProposalStatus;
+type ApplicantSortValue =
+  | "audience_desc"
+  | "audience_asc"
+  | "recent"
+  | "name_asc";
 type SortKey =
   | "updated"
   | "platform"
@@ -263,6 +275,33 @@ const APPLICANT_STATUS_META: Record<
     className: "border-neutral-200 bg-neutral-100 text-neutral-600",
   },
 };
+
+const APPLICANT_PLATFORM_FILTERS: ApplicantPlatformFilter[] = [
+  "ALL",
+  "instagram",
+  "youtube",
+  "tiktok",
+  "naver_blog",
+  "other",
+];
+
+const APPLICANT_STATUS_FILTERS: ApplicantStatusFilter[] = [
+  "ALL",
+  "submitted",
+  "reviewed",
+  "converted_to_contract",
+  "closed",
+];
+
+const APPLICANT_SORT_OPTIONS: Array<{
+  value: ApplicantSortValue;
+  label: string;
+}> = [
+  { value: "audience_desc", label: "구독자·팔로워 많은순" },
+  { value: "audience_asc", label: "구독자·팔로워 적은순" },
+  { value: "recent", label: "최근 지원순" },
+  { value: "name_asc", label: "이름순" },
+];
 
 const DETAIL_PROGRESS_OPTIONS: Array<{
   value: DetailProgressFilter;
@@ -2007,7 +2046,7 @@ function CampaignDetailView({
   ]);
 
   return (
-    <section className="overflow-hidden rounded-[10px] border border-[#d9e0d9] bg-white lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+    <section className="no-scrollbar overflow-x-hidden overflow-y-auto overscroll-contain rounded-[10px] border border-[#d9e0d9] bg-white lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
       <div className="border-b border-[#d9e0d9] bg-[#f8faf7] px-3 py-3">
         <button
           type="button"
@@ -2319,6 +2358,73 @@ function CampaignApplicantsPanel({
   onAcceptApplication: (thread: MarketplaceMessageThread) => Promise<void>;
 }) {
   const applicants = campaign.applicants;
+  const [query, setQuery] = useState("");
+  const [platformFilter, setPlatformFilter] =
+    useState<ApplicantPlatformFilter>("ALL");
+  const [statusFilter, setStatusFilter] = useState<ApplicantStatusFilter>("ALL");
+  const [sortValue, setSortValue] =
+    useState<ApplicantSortValue>("audience_desc");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+
+  const visibleApplicants = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+
+    return applicants
+      .filter((thread) => {
+        const searchableText = [
+          getCampaignApplicantDisplayName(thread),
+          thread.counterpartIntro,
+          thread.senderIntro,
+          thread.campaignTitle,
+          ...thread.platforms.flatMap((platform) => [
+            platform.label,
+            platform.handle,
+            platform.followersLabel,
+          ]),
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+
+        return (
+          (!normalizedQuery || searchableText.includes(normalizedQuery)) &&
+          (platformFilter === "ALL" ||
+            thread.platforms.some(
+              (platform) => platform.platform === platformFilter,
+            )) &&
+          (statusFilter === "ALL" || thread.status === statusFilter)
+        );
+      })
+      .sort((a, b) => compareCampaignApplicantsBySort(a, b, sortValue));
+  }, [applicants, platformFilter, query, sortValue, statusFilter]);
+
+  const activeFilters = useMemo(
+    () =>
+      [
+        query.trim()
+          ? {
+              id: "applicant-query",
+              label: `검색 ${query.trim()}`,
+              onRemove: () => setQuery(""),
+            }
+          : null,
+        platformFilter !== "ALL"
+          ? {
+              id: "applicant-platform",
+              label: platformLabels[platformFilter],
+              onRemove: () => setPlatformFilter("ALL"),
+            }
+          : null,
+        statusFilter !== "ALL"
+          ? {
+              id: "applicant-status",
+              label: APPLICANT_STATUS_META[statusFilter].label,
+              onRemove: () => setStatusFilter("ALL"),
+            }
+          : null,
+      ].filter(isAppliedFilter),
+    [platformFilter, query, statusFilter],
+  );
 
   return (
     <div className="border-b border-[#d9e0d9] bg-white">
@@ -2327,11 +2433,80 @@ function CampaignApplicantsPanel({
           <p className="truncate text-[14px] font-extrabold text-[#171a17]">
             지원자
           </p>
+          <p className="mt-0.5 truncate text-[11px] font-semibold text-[#606861]">
+            {visibleApplicants.length.toLocaleString("ko-KR")}명 표시 · 전체{" "}
+            {applicants.length.toLocaleString("ko-KR")}명
+          </p>
         </div>
-        <span className="inline-flex h-7 items-center rounded-md border border-[#d9e0d9] bg-[#f8faf7] px-2.5 text-[12px] font-extrabold text-[#303630]">
-          {applicants.length.toLocaleString()}명
-        </span>
+        <div className="flex min-w-0 items-center gap-2">
+          <select
+            value={sortValue}
+            onChange={(event) =>
+              setSortValue(event.target.value as ApplicantSortValue)
+            }
+            aria-label="지원자 정렬"
+            className="h-8 max-w-[180px] rounded-[6px] border border-[#d9e0d9] bg-white px-2 text-[11px] font-bold text-[#303630] outline-none transition-colors hover:border-[#cbd5cc] focus:border-[#171a17]"
+          >
+            {APPLICANT_SORT_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <DashboardFilterToggleButton
+            open={filtersOpen}
+            activeCount={activeFilters.length}
+            controlsId="campaign-applicant-filters"
+            onClick={() => setFiltersOpen((current) => !current)}
+          />
+        </div>
       </div>
+      <DashboardAppliedFilterBar
+        filters={activeFilters}
+        onClearAll={() => {
+          setQuery("");
+          setPlatformFilter("ALL");
+          setStatusFilter("ALL");
+        }}
+      />
+      {filtersOpen ? (
+        <div
+          id="campaign-applicant-filters"
+          className="grid gap-2 border-t border-[#edf1ed] bg-[#f8faf7] p-2 lg:grid-cols-[minmax(220px,0.8fr)_minmax(130px,0.4fr)_minmax(130px,0.4fr)]"
+        >
+          <CampaignSearch
+            label="이름"
+            placeholder="이름, 채널 검색"
+            ariaLabel="지원자 검색"
+            value={query}
+            onChange={setQuery}
+            compact
+          />
+          <TableFilterSelect
+            label="플랫폼"
+            value={platformFilter}
+            options={APPLICANT_PLATFORM_FILTERS.map((platform) => ({
+              value: platform,
+              label: platform === "ALL" ? "전체" : platformLabels[platform],
+            }))}
+            onChange={(value) =>
+              setPlatformFilter(value as ApplicantPlatformFilter)
+            }
+            compact
+          />
+          <TableFilterSelect
+            label="상태"
+            value={statusFilter}
+            options={APPLICANT_STATUS_FILTERS.map((status) => ({
+              value: status,
+              label:
+                status === "ALL" ? "전체" : APPLICANT_STATUS_META[status].label,
+            }))}
+            onChange={(value) => setStatusFilter(value as ApplicantStatusFilter)}
+            compact
+          />
+        </div>
+      ) : null}
 
       {marketplaceStatus === "error" ? (
         <p className="border-t border-[#edf1ed] px-3 py-2 text-[12px] font-semibold text-rose-700">
@@ -2339,14 +2514,20 @@ function CampaignApplicantsPanel({
         </p>
       ) : applicants.length > 0 ? (
         <div className="divide-y divide-[#edf1ed] border-t border-[#edf1ed]">
-          {applicants.map((thread) => (
-            <React.Fragment key={thread.id}>
-              <CampaignApplicantRow
-                thread={thread}
-                onAcceptApplication={onAcceptApplication}
-              />
-            </React.Fragment>
-          ))}
+          {visibleApplicants.length > 0 ? (
+            visibleApplicants.map((thread) => (
+              <React.Fragment key={thread.id}>
+                <CampaignApplicantRow
+                  thread={thread}
+                  onAcceptApplication={onAcceptApplication}
+                />
+              </React.Fragment>
+            ))
+          ) : (
+            <div className="px-3 py-4 text-[12px] font-semibold text-[#7d857f]">
+              조건에 맞는 지원자가 없습니다.
+            </div>
+          )}
         </div>
       ) : (
         <div className="border-t border-[#edf1ed] px-3 py-4 text-[12px] font-semibold text-[#7d857f]">
@@ -2356,6 +2537,41 @@ function CampaignApplicantsPanel({
         </div>
       )}
     </div>
+  );
+}
+
+function compareCampaignApplicantsBySort(
+  a: MarketplaceMessageThread,
+  b: MarketplaceMessageThread,
+  sortValue: ApplicantSortValue,
+) {
+  if (sortValue === "audience_desc" || sortValue === "audience_asc") {
+    const audienceCompare = compareChannelAudienceValues(
+      getChannelAudienceSortValue(getCampaignApplicantDisplayPlatforms(a)),
+      getChannelAudienceSortValue(getCampaignApplicantDisplayPlatforms(b)),
+      sortValue === "audience_asc" ? "asc" : "desc",
+    );
+    if (audienceCompare !== 0) return audienceCompare;
+  }
+
+  if (sortValue === "recent") {
+    const recentCompare =
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    if (Number.isFinite(recentCompare) && recentCompare !== 0) {
+      return recentCompare;
+    }
+  }
+
+  return getCampaignApplicantDisplayName(a).localeCompare(
+    getCampaignApplicantDisplayName(b),
+    "ko-KR",
+  );
+}
+
+function getCampaignApplicantDisplayName(thread: MarketplaceMessageThread) {
+  return removeInternalTestLabel(
+    thread.counterpartName || thread.senderName,
+    "인플루언서",
   );
 }
 
@@ -2394,41 +2610,75 @@ function CampaignApplicantRow({
     }
   };
 
-  const applicantName = thread.counterpartName || thread.senderName;
+  const applicantName = getCampaignApplicantDisplayName(thread);
+  const fallbackProfile = findInfluencerProfileByDisplayName(applicantName);
+  const displayPlatforms = getCampaignApplicantDisplayPlatforms(
+    thread,
+    fallbackProfile,
+  );
   const initial = applicantName.trim().slice(0, 1) || "인";
+  const profileHref =
+    thread.counterpartHref ||
+    (fallbackProfile ? getInfluencerProfilePath(fallbackProfile) : undefined);
   const avatarUrl = getMarketplaceInfluencerAvatarUrlFromHref(
-    thread.counterpartHref,
+    profileHref,
     thread.counterpartAvatarUrl,
   );
   const rawIntro = thread.senderIntro || thread.proposalSummary || "";
   const intro =
     rawIntro && !isGenericCampaignApplicantIntro(rawIntro) ? rawIntro : "";
-  const firstPlatform = thread.platforms[0];
+  const firstPlatform = displayPlatforms[0];
   const primaryHandle =
     firstPlatform?.handle ||
     firstPlatform?.followersLabel ||
     (firstPlatform ? platformLabels[firstPlatform.platform] : "채널 확인");
+  const avatarMark = (
+    <span className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#171a17] text-[15px] font-extrabold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.14)]">
+      {avatarUrl ? (
+        <img
+          src={avatarUrl}
+          alt={`${applicantName} profile`}
+          className="h-full w-full object-cover"
+          loading="lazy"
+        />
+      ) : (
+        initial
+      )}
+    </span>
+  );
+
+  const hasProfileAction = Boolean(profileHref);
+  const primaryActionSpan = hasProfileAction ? "" : "col-span-2";
 
   return (
-    <div className="grid gap-3 px-3 py-3 lg:min-h-[64px] lg:grid-cols-[minmax(260px,0.88fr)_minmax(260px,0.74fr)_minmax(132px,0.28fr)] lg:items-center">
+    <div className="grid gap-3 px-3 py-3 lg:min-h-[64px] lg:grid-cols-[minmax(260px,0.82fr)_minmax(280px,0.78fr)_190px] lg:items-center">
       <div className="flex min-w-0 items-center gap-3">
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#171a17] text-[15px] font-extrabold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.14)]">
-          {avatarUrl ? (
-            <img
-              src={avatarUrl}
-              alt={`${applicantName} profile`}
-              className="h-full w-full object-cover"
-              loading="lazy"
-            />
-          ) : (
-            initial
-          )}
-        </span>
+        {profileHref ? (
+          <Link
+            to={profileHref}
+            className="shrink-0 rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#171a17]"
+            aria-label={`${applicantName} 프로필 보기`}
+          >
+            {avatarMark}
+          </Link>
+        ) : (
+          avatarMark
+        )}
         <div className="min-w-0">
           <div className="flex min-w-0 items-center gap-1.5">
-            <p className="truncate text-[14px] font-extrabold text-[#171a17]">
-              {applicantName}
-            </p>
+            {profileHref ? (
+              <Link
+                to={profileHref}
+                className="truncate text-[14px] font-extrabold text-[#171a17] hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#171a17]"
+                title={`${applicantName} 프로필 보기`}
+              >
+                {applicantName}
+              </Link>
+            ) : (
+              <p className="truncate text-[14px] font-extrabold text-[#171a17]">
+                {applicantName}
+              </p>
+            )}
             <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
           </div>
           <p className="mt-0.5 truncate text-[12px] font-semibold text-[#606861]">
@@ -2438,28 +2688,41 @@ function CampaignApplicantRow({
       </div>
 
       <div className="min-w-0">
-        <ApplicantPlatformLinks platforms={thread.platforms} />
+        <ApplicantPlatformLinks platforms={displayPlatforms} />
         {intro ? (
           <p className="mt-1 truncate text-[12px] font-semibold text-[#606861]">
             {intro}
           </p>
         ) : null}
+        <div className="mt-2 flex min-w-0 flex-wrap gap-1.5">
+          <span
+            className={`inline-flex h-6 items-center rounded-md border px-2 text-[11px] font-extrabold ${statusMeta.className}`}
+          >
+            {statusMeta.label}
+          </span>
+          <span className="inline-flex h-6 items-center rounded-md border border-[#d9e0d9] bg-white px-2 text-[11px] font-bold text-[#606861]">
+            지원 {formatCampaignActivityDate(thread.createdAt)}
+          </span>
+          <span className="inline-flex h-6 items-center rounded-md border border-[#d9e0d9] bg-white px-2 text-[11px] font-bold text-[#606861]">
+            {thread.proposalTypeLabel}
+          </span>
+        </div>
       </div>
 
-      <div className="grid gap-1.5 sm:flex sm:flex-wrap sm:justify-end">
-        {thread.counterpartHref ? (
-          <a
-            href={thread.counterpartHref}
-            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-[#d9e0d9] bg-white px-3 text-[12px] font-extrabold text-[#303630] transition hover:border-[#171a17] hover:text-[#171a17]"
+      <div className="grid w-full grid-cols-2 gap-1.5 sm:w-[190px] sm:justify-self-end">
+        {profileHref ? (
+          <Link
+            to={profileHref}
+            className="inline-flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-md border border-[#d9e0d9] bg-white px-2 text-[12px] font-extrabold text-[#303630] transition hover:border-[#171a17] hover:text-[#171a17]"
           >
             프로필
             <ExternalLink className="h-3.5 w-3.5" />
-          </a>
+          </Link>
         ) : null}
         {thread.convertedContractId ? (
           <a
             href={`/advertiser/contract/${thread.convertedContractId}`}
-            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md bg-[#171a17] px-3 text-[12px] font-extrabold text-white transition hover:bg-black"
+            className={`${primaryActionSpan} inline-flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-md bg-[#171a17] px-2 text-[12px] font-extrabold text-white transition hover:bg-black`}
           >
             계약 보기
           </a>
@@ -2468,19 +2731,19 @@ function CampaignApplicantRow({
             type="button"
             onClick={() => void handleAccept()}
             disabled={isAccepting}
-            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md bg-blue-600 px-3 text-[12px] font-extrabold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-neutral-300"
+            className={`${primaryActionSpan} inline-flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-md bg-blue-600 px-2 text-[12px] font-extrabold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-neutral-300`}
           >
             {isAccepting ? "선정 중" : "선정"}
           </button>
         ) : (
           <span
-            className={`inline-flex h-9 items-center justify-center rounded-md border px-3 text-[12px] font-extrabold ${statusMeta.className}`}
+            className={`${primaryActionSpan} inline-flex h-9 min-w-0 items-center justify-center rounded-md border px-2 text-[12px] font-extrabold ${statusMeta.className}`}
           >
             {statusMeta.label}
           </span>
         )}
         {acceptError ? (
-          <p className="basis-full text-[11px] font-semibold text-rose-700 sm:text-right">
+          <p className="col-span-2 text-[11px] font-semibold text-rose-700 sm:text-right">
             {acceptError}
           </p>
         ) : null}
@@ -2495,6 +2758,17 @@ function isGenericCampaignApplicantIntro(value: string) {
     normalized.length === 0 ||
     /캠페인\s*지원\s*데이터입니다\.?$/.test(normalized)
   );
+}
+
+function getCampaignApplicantDisplayPlatforms(
+  thread: MarketplaceMessageThread,
+  fallbackProfile?: MarketplaceInfluencerProfile,
+) {
+  if (!thread.counterpartHref && fallbackProfile?.platforms.length) {
+    return fallbackProfile.platforms;
+  }
+
+  return thread.platforms;
 }
 
 function ApplicantPlatformLinks({

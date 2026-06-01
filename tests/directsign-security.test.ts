@@ -414,6 +414,17 @@ describe("yeollock.me security regressions", () => {
     assert.match(server, /readOperationalAdminVerificationRequests/);
     assert.match(server, /readOperationalAdminSupportTickets/);
     assert.match(server, /if \(!useSupabase\) return \[\] as Contract\[\];/);
+    assert.match(server, /operationalTestEmailLocals/);
+    assert.match(server, /isOperationalTestContract/);
+    assert.match(server, /isOperationalTestSupportAccessRequest/);
+    assert.match(server, /isOperationalTestSupportTicket/);
+    assert.match(server, /isOperationalTestVerificationRequest/);
+    assert.match(server, /store\.contracts\.filter\(\(contract\) => !isOperationalTestContract\(contract\)\)/);
+    assert.match(server, /!isOperationalTestSupportAccessRequest\(request\)/);
+    assert.match(server, /!isOperationalTestSupportTicket\(ticket\)/);
+    assert.match(server, /!isOperationalTestVerificationRequest\(request\)/);
+    assert.match(server, /breadroom\.manager/);
+    assert.match(server, /creator\.sora/);
 
     assert.match(migration, /create table if not exists public\.operational_support_tickets/);
     assert.match(migration, /enable row level security/);
@@ -1175,6 +1186,7 @@ describe("yeollock.me security regressions", () => {
     assert.match(agents, /Table and list headers are navigation anchors, not helper text/);
     assert.match(kimGuardrails, /first role selection uses action buttons/);
     assert.match(kimGuardrails, /mobile main role title stays compact/);
+    assert.match(kimGuardrails, /advertiser creator discovery and applicant selection support follower sorting/);
     assert.match(landing, /data-start-role-action/);
     assert.match(landing, /min-h-\[248px\]/);
     assert.match(landing, /text-\[36px\] leading-none tracking-normal text-neutral-950 sm:text-\[47px\]/);
@@ -1201,12 +1213,19 @@ describe("yeollock.me security regressions", () => {
     assert.match(kimGuardrails, /marketplace discovery separates platform and category filters/);
     assert.match(agents, /Platform and category are separate discovery axes/);
     assert.match(agents, /Category chips and filters must use customer-facing Korean labels/);
+    assert.match(agents, /channel-size sorting by subscribers\/followers/);
     assert.match(marketplacePages, /const \[categoryFilter, setCategoryFilter\]/);
     assert.match(marketplacePages, /hasCategory\(profile\.categories, categoryFilter\)/);
     assert.match(marketplacePages, /function getCategoryFilterKey/);
     assert.match(marketplacePages, /const categoryDisplayLabels/);
     assert.match(marketplacePages, /function CategoryFilterBar/);
     assert.match(marketplacePages, /FilterChipGroup label="카테고리"/);
+    assert.match(marketplacePages, /function InfluencerSortSelect/);
+    assert.match(marketplacePages, /audience_desc/);
+    assert.match(marketplacePages, /compareInfluencerProfilesBySort/);
+    assert.match(marketplacePages, /구독자·팔로워 많은순/);
+    assert.match(marketplaceDomain, /function getChannelAudienceSortValue/);
+    assert.match(marketplaceDomain, /function compareChannelAudienceValues/);
     assert.match(campaignPages, /function CampaignCategoryStrip/);
     assert.match(campaignPages, /<CampaignCategoryStrip/);
     assert.match(app, /path="\/advertiser\/campaigns"/);
@@ -1251,6 +1270,50 @@ describe("yeollock.me security regressions", () => {
     assert.match(campaignPages, /function CampaignSortSelect/);
     assert.match(campaignPages, /compareMarketplaceCampaignPostsBySort/);
     assert.match(campaignPages, /compareAppliedCampaignApplicationsBySort/);
+    assert.match(campaignPages, /advertiserApplicantSortOptions/);
+    assert.match(campaignPages, /function AdvertiserCampaignApplicantControls/);
+    assert.match(campaignPages, /compareCampaignApplicantsBySort/);
+    assert.match(campaignPages, /ProfileAvatarLink/);
+    assert.match(campaignPages, /ariaLabel="지원자 정렬"/);
+    assert.match(advertiserDashboard, /APPLICANT_SORT_OPTIONS/);
+    assert.match(advertiserDashboard, /compareCampaignApplicantsBySort/);
+    assert.match(
+      advertiserDashboard,
+      /getChannelAudienceSortValue\(getCampaignApplicantDisplayPlatforms\(a\)\)/,
+    );
+    assert.match(
+      campaignPages,
+      /getChannelAudienceSortValue\(getCampaignApplicantDisplayPlatforms\(a\)\)/,
+    );
+    assert.match(advertiserDashboard, /aria-label="지원자 정렬"/);
+    assert.match(advertiserDashboard, /controlsId="campaign-applicant-filters"/);
+    assert.match(marketplaceDomain, /getInfluencerProfilePathByDisplayName/);
+    assert.match(marketplaceDomain, /handle: "creator-sora"/);
+    assert.match(marketplaceDomain, /displayName: "크리에이터 소라"/);
+    assert.doesNotMatch(marketplacePages, /"creator-sora": "zeu_k"/);
+    assert.match(
+      advertiserDashboard,
+      /findInfluencerProfileByDisplayName\(applicantName\)/,
+    );
+    assert.match(advertiserDashboard, /getCampaignApplicantDisplayPlatforms\(\s*thread,/);
+    assert.match(advertiserDashboard, /<ApplicantPlatformLinks platforms=\{displayPlatforms\} \/>/);
+    assert.match(
+      campaignPages,
+      /findInfluencerProfileByDisplayName\(applicantName\)/,
+    );
+    assert.match(campaignPages, /getCampaignApplicantDisplayPlatforms\(\s*application,/);
+    assert.match(campaignPages, /<CampaignApplicantPlatformPills platforms=\{displayPlatforms\} \/>/);
+    assert.match(advertiserDashboard, /grid w-full grid-cols-2 gap-1\.5 sm:w-\[190px\]/);
+    assert.match(
+      advertiserDashboard,
+      /no-scrollbar overflow-x-hidden overflow-y-auto overscroll-contain rounded-\[10px\]/,
+    );
+    assert.match(advertiserDashboard, /lg:grid-cols-\[minmax\(260px,0\.82fr\)_minmax\(280px,0\.78fr\)_190px\]/);
+    assert.match(advertiserDashboard, /primaryActionSpan = hasProfileAction \? "" : "col-span-2"/);
+    assert.match(advertiserDashboard, /formatCampaignActivityDate\(thread\.createdAt\)/);
+    assert.match(campaignPages, /grid w-full grid-cols-2 gap-1\.5 sm:w-\[188px\]/);
+    assert.match(campaignPages, /formatMarketplaceMessageDate\(application\.createdAt\)/);
+    assert.match(advertiserDashboard, /프로필 보기/);
     assert.match(campaignPages, /function AppliedCampaignFilters/);
     assert.match(campaignPages, /appliedStatusFilter/);
     assert.match(campaignPages, /CampaignColumnHeader/);
@@ -1261,6 +1324,9 @@ describe("yeollock.me security regressions", () => {
     assert.match(advertiserDashboard, /계약 조건 확인/);
     assert.match(advertiserDashboard, /extractCampaignSummaryField/);
     assert.match(seedAccounts, /campaignDashboardApplicationFixtures/);
+    assert.match(seedAccounts, /handle: "creator-sora"/);
+    assert.match(seedAccounts, /email: "creator\.sora@yeollock\.me"/);
+    assert.match(seedAccounts, /const applicantNames = \[\.\.\.new Set/);
     assert.match(seedAccounts, /seeded_campaign_applications/);
     assert.match(server, /maxItems = 20/);
     assert.match(server, /normalizeBrandCampaigns\(activeCampaigns, 20\)/);
