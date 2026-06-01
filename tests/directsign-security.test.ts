@@ -1264,6 +1264,7 @@ describe("yeollock.me security regressions", () => {
     assert.doesNotMatch(advertiserDashboard, /명 신청/);
     assert.match(advertiserDashboard, /신청\/모집 인원/);
     assert.match(agents, /Paired advertiser\/influencer dashboard surfaces must keep interaction parity/);
+    assert.match(agents, /Campaign applicant middle columns must stay compact and single-line/);
     assert.match(advertiserDashboard, /compareCampaignGroupsBySort/);
     assert.match(advertiserDashboard, /sortKey="participants"/);
     assert.match(advertiserDashboard, /handleCampaignSortChange/);
@@ -1293,16 +1294,42 @@ describe("yeollock.me security regressions", () => {
     assert.doesNotMatch(marketplacePages, /"creator-sora": "zeu_k"/);
     assert.match(
       advertiserDashboard,
+      /findInfluencerProfileByHandle\(thread\.counterpartHref\)/,
+    );
+    assert.match(
+      advertiserDashboard,
       /findInfluencerProfileByDisplayName\(applicantName\)/,
     );
     assert.match(advertiserDashboard, /getCampaignApplicantDisplayPlatforms\(\s*thread,/);
     assert.match(advertiserDashboard, /<ApplicantPlatformLinks platforms=\{displayPlatforms\} \/>/);
+    assert.match(advertiserDashboard, /thread\.counterpartCategories/);
+    assert.match(advertiserDashboard, /getCampaignApplicantMainCategory\(\s*thread\.counterpartCategories,\s*applicantProfile,/);
+    assert.match(advertiserDashboard, /<ApplicantCategoryPill category=\{mainCategory\} \/>/);
+    assert.match(advertiserDashboard, /visiblePlatforms\.slice\(0, 1\)/);
+    assert.doesNotMatch(advertiserDashboard, /formatCampaignActivityDate\(thread\.createdAt\)/);
+    assert.match(
+      campaignPages,
+      /findInfluencerProfileByHandle\(application\.counterpartHref\)/,
+    );
     assert.match(
       campaignPages,
       /findInfluencerProfileByDisplayName\(applicantName\)/,
     );
     assert.match(campaignPages, /getCampaignApplicantDisplayPlatforms\(\s*application,/);
-    assert.match(campaignPages, /<CampaignApplicantPlatformPills platforms=\{displayPlatforms\} \/>/);
+    assert.match(campaignPages, /application\.counterpartCategories/);
+    assert.match(campaignPages, /getCampaignApplicantMainCategory\(\s*application\.counterpartCategories,\s*applicantProfile,/);
+    assert.match(
+      campaignPages,
+      /<CampaignApplicantPlatformPills\s+platforms=\{displayPlatforms\}\s+category=\{mainCategory\}\s+\/>/,
+    );
+    assert.match(campaignPages, /flex-nowrap items-center gap-1 overflow-hidden/);
+    assert.match(campaignPages, /visiblePlatforms\.slice\(0, 1\)/);
+    assert.doesNotMatch(
+      campaignPages,
+      /지원 \{formatMarketplaceMessageDate\(application\.createdAt\)\}/,
+    );
+    assert.match(server, /sender_influencer_categories/);
+    assert.match(server, /display_name,headline,categories/);
     assert.match(advertiserDashboard, /grid w-full grid-cols-2 gap-1\.5 sm:w-\[190px\]/);
     assert.match(
       advertiserDashboard,
@@ -1310,9 +1337,7 @@ describe("yeollock.me security regressions", () => {
     );
     assert.match(advertiserDashboard, /lg:grid-cols-\[minmax\(260px,0\.82fr\)_minmax\(280px,0\.78fr\)_190px\]/);
     assert.match(advertiserDashboard, /primaryActionSpan = hasProfileAction \? "" : "col-span-2"/);
-    assert.match(advertiserDashboard, /formatCampaignActivityDate\(thread\.createdAt\)/);
     assert.match(campaignPages, /grid w-full grid-cols-2 gap-1\.5 sm:w-\[188px\]/);
-    assert.match(campaignPages, /formatMarketplaceMessageDate\(application\.createdAt\)/);
     assert.match(advertiserDashboard, /프로필 보기/);
     assert.match(campaignPages, /function AppliedCampaignFilters/);
     assert.match(campaignPages, /appliedStatusFilter/);

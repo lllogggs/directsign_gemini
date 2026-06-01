@@ -69,6 +69,7 @@ import { CONTRACT_FIRST_EXPERIENCE_CONTENT } from "../../domain/screenHelp";
 import {
   compareChannelAudienceValues,
   findInfluencerProfileByDisplayName,
+  findInfluencerProfileByHandle,
   getChannelAudienceSortValue,
   getInfluencerProfilePath,
   platformLabels,
@@ -2611,22 +2612,23 @@ function CampaignApplicantRow({
   };
 
   const applicantName = getCampaignApplicantDisplayName(thread);
-  const fallbackProfile = findInfluencerProfileByDisplayName(applicantName);
+  const applicantProfile = getCampaignApplicantProfile(thread, applicantName);
   const displayPlatforms = getCampaignApplicantDisplayPlatforms(
     thread,
-    fallbackProfile,
+    applicantProfile,
+  );
+  const mainCategory = getCampaignApplicantMainCategory(
+    thread.counterpartCategories,
+    applicantProfile,
   );
   const initial = applicantName.trim().slice(0, 1) || "인";
   const profileHref =
     thread.counterpartHref ||
-    (fallbackProfile ? getInfluencerProfilePath(fallbackProfile) : undefined);
+    (applicantProfile ? getInfluencerProfilePath(applicantProfile) : undefined);
   const avatarUrl = getMarketplaceInfluencerAvatarUrlFromHref(
     profileHref,
     thread.counterpartAvatarUrl,
   );
-  const rawIntro = thread.senderIntro || thread.proposalSummary || "";
-  const intro =
-    rawIntro && !isGenericCampaignApplicantIntro(rawIntro) ? rawIntro : "";
   const firstPlatform = displayPlatforms[0];
   const primaryHandle =
     firstPlatform?.handle ||
@@ -2688,24 +2690,9 @@ function CampaignApplicantRow({
       </div>
 
       <div className="min-w-0">
-        <ApplicantPlatformLinks platforms={displayPlatforms} />
-        {intro ? (
-          <p className="mt-1 truncate text-[12px] font-semibold text-[#606861]">
-            {intro}
-          </p>
-        ) : null}
-        <div className="mt-2 flex min-w-0 flex-wrap gap-1.5">
-          <span
-            className={`inline-flex h-6 items-center rounded-md border px-2 text-[11px] font-extrabold ${statusMeta.className}`}
-          >
-            {statusMeta.label}
-          </span>
-          <span className="inline-flex h-6 items-center rounded-md border border-[#d9e0d9] bg-white px-2 text-[11px] font-bold text-[#606861]">
-            지원 {formatCampaignActivityDate(thread.createdAt)}
-          </span>
-          <span className="inline-flex h-6 items-center rounded-md border border-[#d9e0d9] bg-white px-2 text-[11px] font-bold text-[#606861]">
-            {thread.proposalTypeLabel}
-          </span>
+        <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
+          <ApplicantPlatformLinks platforms={displayPlatforms} />
+          <ApplicantCategoryPill category={mainCategory} />
         </div>
       </div>
 
@@ -2752,11 +2739,13 @@ function CampaignApplicantRow({
   );
 }
 
-function isGenericCampaignApplicantIntro(value: string) {
-  const normalized = value.replace(/\s+/g, " ").trim();
+function getCampaignApplicantProfile(
+  thread: MarketplaceMessageThread,
+  applicantName: string,
+) {
   return (
-    normalized.length === 0 ||
-    /캠페인\s*지원\s*데이터입니다\.?$/.test(normalized)
+    findInfluencerProfileByHandle(thread.counterpartHref) ??
+    findInfluencerProfileByDisplayName(applicantName)
   );
 }
 
@@ -2769,6 +2758,15 @@ function getCampaignApplicantDisplayPlatforms(
   }
 
   return thread.platforms;
+}
+
+function getCampaignApplicantMainCategory(
+  categories?: string[],
+  profile?: MarketplaceInfluencerProfile,
+) {
+  return [...(categories ?? []), ...(profile?.categories ?? [])].find(
+    (category) => category.trim().length > 0,
+  );
 }
 
 function ApplicantPlatformLinks({
@@ -2787,8 +2785,8 @@ function ApplicantPlatformLinks({
         ];
 
   return (
-    <div className="flex min-w-0 flex-wrap gap-1">
-      {visiblePlatforms.slice(0, 3).map((item, index) => {
+    <div className="flex min-w-0 shrink items-center gap-1 overflow-hidden">
+      {visiblePlatforms.slice(0, 1).map((item, index) => {
         const label = platformLabels[item.platform] ?? item.label;
         const text = item.followersLabel ? `${label} ${item.followersLabel}` : label;
         const key = `${item.platform}-${item.handle ?? item.url ?? index}`;
@@ -2827,12 +2825,20 @@ function ApplicantPlatformLinks({
           </span>
         );
       })}
-      {visiblePlatforms.length > 3 ? (
-        <span className="inline-flex h-7 items-center rounded-md border border-[#d9e0d9] bg-white px-2 text-[11px] font-extrabold text-[#7d857f]">
-          +{visiblePlatforms.length - 3}
-        </span>
-      ) : null}
     </div>
+  );
+}
+
+function ApplicantCategoryPill({ category }: { category?: string }) {
+  if (!category) return null;
+
+  return (
+    <span
+      className="inline-flex h-7 shrink-0 items-center rounded-md border border-[#d9e0d9] bg-[#fbfaf7] px-2 text-[11px] font-extrabold text-[#303630]"
+      title={`메인 카테고리 ${category}`}
+    >
+      {category}
+    </span>
   );
 }
 

@@ -726,6 +726,7 @@ check(
   "advertiser creator discovery and applicant selection support follower sorting and profile links",
   agents.includes("channel-size sorting by subscribers/followers") &&
     agents.includes("Campaign applicant action areas must keep the same total width") &&
+    agents.includes("Campaign applicant middle columns must stay compact and single-line") &&
     marketplace.includes("getChannelAudienceSortValue") &&
     marketplace.includes("compareChannelAudienceValues") &&
     marketplacePages.includes("InfluencerSortSelect") &&
@@ -752,12 +753,26 @@ check(
     marketplace.includes('handle: "creator-sora"') &&
     marketplace.includes('displayName: "크리에이터 소라"') &&
     !marketplacePages.includes('"creator-sora": "zeu_k"') &&
+    advertiserDashboard.includes("findInfluencerProfileByHandle(thread.counterpartHref)") &&
     advertiserDashboard.includes("findInfluencerProfileByDisplayName(applicantName)") &&
     advertiserDashboard.includes("const displayPlatforms = getCampaignApplicantDisplayPlatforms(") &&
     advertiserDashboard.includes("<ApplicantPlatformLinks platforms={displayPlatforms} />") &&
+    advertiserDashboard.includes("thread.counterpartCategories") &&
+    advertiserDashboard.includes("applicantProfile,") &&
+    advertiserDashboard.includes("<ApplicantCategoryPill category={mainCategory} />") &&
+    advertiserDashboard.includes("visiblePlatforms.slice(0, 1)") &&
+    !advertiserDashboard.includes("formatCampaignActivityDate(thread.createdAt)") &&
+    campaignPages.includes("findInfluencerProfileByHandle(application.counterpartHref)") &&
     campaignPages.includes("findInfluencerProfileByDisplayName(applicantName)") &&
     campaignPages.includes("const displayPlatforms = getCampaignApplicantDisplayPlatforms(") &&
-    campaignPages.includes("<CampaignApplicantPlatformPills platforms={displayPlatforms} />") &&
+    campaignPages.includes("application.counterpartCategories") &&
+    campaignPages.includes("applicantProfile,") &&
+    campaignPages.includes("category={mainCategory}") &&
+    campaignPages.includes("flex-nowrap items-center gap-1 overflow-hidden") &&
+    campaignPages.includes("visiblePlatforms.slice(0, 1)") &&
+    !campaignPages.includes("지원 {formatMarketplaceMessageDate(application.createdAt)}") &&
+    server.includes("sender_influencer_categories") &&
+    server.includes("display_name,headline,categories") &&
     campaignPages.includes(
       "getChannelAudienceSortValue(getCampaignApplicantDisplayPlatforms(a))",
     ) &&
@@ -769,9 +784,7 @@ check(
       "lg:grid-cols-[minmax(260px,0.82fr)_minmax(280px,0.78fr)_190px]",
     ) &&
     advertiserDashboard.includes('primaryActionSpan = hasProfileAction ? "" : "col-span-2"') &&
-    advertiserDashboard.includes("formatCampaignActivityDate(thread.createdAt)") &&
     campaignPages.includes("grid w-full grid-cols-2 gap-1.5 sm:w-[188px]") &&
-    campaignPages.includes("formatMarketplaceMessageDate(application.createdAt)") &&
     advertiserDashboard.includes("프로필 보기"),
   "Advertiser creator discovery and campaign applicant selection must sort by subscriber/follower scale, keep fixed-width action groups across states, and make creator profile browsing directly reachable from names, avatars, or row actions",
 );
@@ -1095,8 +1108,11 @@ check(
   "campaign applicant rows avoid repeated filler copy",
   !advertiserDashboard.includes("캠페인 지원 데이터입니다") &&
     !seedTestAccounts.includes("캠페인 지원 데이터입니다") &&
-    advertiserDashboard.includes("isGenericCampaignApplicantIntro") &&
-    advertiserDashboard.includes("!isGenericCampaignApplicantIntro(rawIntro)") &&
+    !advertiserDashboard.includes("isGenericCampaignApplicantIntro") &&
+    !advertiserDashboard.includes("const rawIntro") &&
+    !campaignPages.includes("const intro =") &&
+    advertiserDashboard.includes("<ApplicantCategoryPill category={mainCategory} />") &&
+    campaignPages.includes("category={mainCategory}") &&
     agents.includes("Campaign applicant dashboards must not show repeated filler sentences"),
   "Campaign applicant dashboard rows must remove generic repeated support text such as 캠페인 지원 데이터입니다",
 );

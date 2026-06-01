@@ -1229,6 +1229,7 @@ interface SupabaseMarketplaceContactProposalRow {
   sender_influencer_avatar_url?: string | null;
   sender_influencer_display_name?: string | null;
   sender_influencer_headline?: string | null;
+  sender_influencer_categories?: string[] | null;
   sender_name: string;
   sender_intro: string;
   proposal_type: CampaignProposalType;
@@ -9424,6 +9425,9 @@ const mapMarketplaceProposalToMessage = (
       ? row.sender_influencer_headline ?? row.sender_intro
       : row.sender_intro,
     counterpartHref: getMarketplaceCounterpartHref(role, row, bucket),
+    counterpartCategories: isAdvertiserApplicant
+      ? row.sender_influencer_categories ?? undefined
+      : undefined,
     platforms: row.marketplace_platforms ?? [],
     proposalType: row.proposal_type,
     proposalTypeLabel: getProposalTypeLabel(row.proposal_type),
@@ -9504,7 +9508,7 @@ const addSenderInfluencerHandlesToMarketplaceProposals = async (
 
   const profileRows = await readSupabaseRows<SupabaseMarketplaceInfluencerProfileRow>(
     "marketplace_influencer_profiles",
-    `?select=owner_profile_id,public_handle,avatar_label,avatar_url,display_name,headline&owner_profile_id=in.${postgrestInFilter(
+    `?select=owner_profile_id,public_handle,avatar_label,avatar_url,display_name,headline,categories&owner_profile_id=in.${postgrestInFilter(
       senderProfileIds,
     )}`,
     "sender influencer public profile handles",
@@ -9529,6 +9533,9 @@ const addSenderInfluencerHandlesToMarketplaceProposals = async (
       : null,
     sender_influencer_headline: row.sender_profile_id
       ? profileByOwnerId.get(row.sender_profile_id)?.headline ?? null
+      : null,
+    sender_influencer_categories: row.sender_profile_id
+      ? profileByOwnerId.get(row.sender_profile_id)?.categories ?? null
       : null,
   }));
 };

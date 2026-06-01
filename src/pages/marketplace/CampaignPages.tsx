@@ -34,6 +34,7 @@ import {
   campaignProposalTypeOptions,
   compareChannelAudienceValues,
   findInfluencerProfileByDisplayName,
+  findInfluencerProfileByHandle,
   getCampaignDeadlineLabel,
   getChannelAudienceSortValue,
   getInfluencerProfilePath,
@@ -1973,20 +1974,22 @@ function AdvertiserCampaignApplicantRow({
   const title = formatAppliedCampaignTitle(application);
   const applicantName =
     application.counterpartName || application.senderName || "인플루언서";
-  const intro =
-    application.counterpartIntro || application.senderIntro || "소개가 아직 없습니다.";
   const avatarLabel = buildCampaignApplicantAvatarLabel(
     application.counterpartAvatarLabel,
     applicantName,
   );
-  const fallbackProfile = findInfluencerProfileByDisplayName(applicantName);
+  const applicantProfile = getCampaignApplicantProfile(application, applicantName);
   const displayPlatforms = getCampaignApplicantDisplayPlatforms(
     application,
-    fallbackProfile,
+    applicantProfile,
+  );
+  const mainCategory = getCampaignApplicantMainCategory(
+    application.counterpartCategories,
+    applicantProfile,
   );
   const profileHref =
     application.counterpartHref ||
-    (fallbackProfile ? getInfluencerProfilePath(fallbackProfile) : undefined);
+    (applicantProfile ? getInfluencerProfilePath(applicantProfile) : undefined);
   const avatarUrl = getMarketplaceInfluencerAvatarUrlFromHref(
     profileHref,
     application.counterpartAvatarUrl,
@@ -2022,21 +2025,11 @@ function AdvertiserCampaignApplicantRow({
                 {applicantName}
               </p>
             )}
-            <p className="mt-0.5 truncate text-[11px] font-semibold text-neutral-500">
-              {intro}
-            </p>
-            <div className="mt-2 flex min-w-0 flex-wrap gap-1.5">
-              <span
-                className={`inline-flex h-6 items-center rounded-md border px-2 text-[11px] font-extrabold ${applicationStatusMeta[application.status].className}`}
-              >
-                {applicationStatusMeta[application.status].label}
-              </span>
-              <span className="inline-flex h-6 items-center rounded-md border border-neutral-200 bg-white px-2 text-[11px] font-bold text-neutral-500">
-                지원 {formatMarketplaceMessageDate(application.createdAt)}
-              </span>
-              <span className="inline-flex h-6 items-center rounded-md border border-neutral-200 bg-white px-2 text-[11px] font-bold text-neutral-500">
-                {application.proposalTypeLabel}
-              </span>
+            <div className="mt-1.5">
+              <CampaignApplicantPlatformPills
+                platforms={displayPlatforms}
+                category={mainCategory}
+              />
             </div>
           </div>
         </div>
@@ -2081,9 +2074,6 @@ function AdvertiserCampaignApplicantRow({
         {title}
       </p>
 
-      <div className="mt-2">
-        <CampaignApplicantPlatformPills platforms={displayPlatforms} />
-      </div>
     </article>
   );
 }
@@ -2127,6 +2117,16 @@ function ProfileAvatarLink({
   );
 }
 
+function getCampaignApplicantProfile(
+  application: MarketplaceMessageThread,
+  applicantName: string,
+) {
+  return (
+    findInfluencerProfileByHandle(application.counterpartHref) ??
+    findInfluencerProfileByDisplayName(applicantName)
+  );
+}
+
 function getCampaignApplicantDisplayPlatforms(
   application: MarketplaceMessageThread,
   fallbackProfile?: MarketplaceInfluencerProfile,
@@ -2138,10 +2138,21 @@ function getCampaignApplicantDisplayPlatforms(
   return application.platforms;
 }
 
+function getCampaignApplicantMainCategory(
+  categories?: string[],
+  profile?: MarketplaceInfluencerProfile,
+) {
+  return [...(categories ?? []), ...(profile?.categories ?? [])].find(
+    (category) => category.trim().length > 0,
+  );
+}
+
 function CampaignApplicantPlatformPills({
   platforms,
+  category,
 }: {
   platforms: MarketplaceMessageThread["platforms"];
+  category?: string;
 }) {
   const visiblePlatforms =
     platforms.length > 0
@@ -2149,8 +2160,8 @@ function CampaignApplicantPlatformPills({
       : [{ platform: "other" as InfluencerPlatform, label: platformLabels.other }];
 
   return (
-    <div className="flex min-w-0 flex-wrap gap-1">
-      {visiblePlatforms.slice(0, 2).map((item, index) => {
+    <div className="flex min-w-0 flex-nowrap items-center gap-1 overflow-hidden">
+      {visiblePlatforms.slice(0, 1).map((item, index) => {
         const label = platformLabels[item.platform] ?? item.label;
         const text = item.followersLabel
           ? `${label} ${item.followersLabel}`
@@ -2159,16 +2170,19 @@ function CampaignApplicantPlatformPills({
         return (
           <span
             key={`${item.platform}-${item.handle ?? index}`}
-            className={`inline-flex h-7 max-w-full items-center rounded-full border px-2 text-[11px] font-extrabold ${getPlatformTone(item.platform)}`}
+            className={`inline-flex h-7 min-w-0 shrink items-center rounded-md border px-2 text-[11px] font-extrabold ${getPlatformTone(item.platform)}`}
             title={text}
           >
             <span className="truncate">{text}</span>
           </span>
         );
       })}
-      {visiblePlatforms.length > 2 ? (
-        <span className="inline-flex h-7 items-center rounded-full border border-neutral-200 bg-white px-2 text-[11px] font-extrabold text-neutral-500">
-          +{visiblePlatforms.length - 2}
+      {category ? (
+        <span
+          className="inline-flex h-7 shrink-0 items-center rounded-md border border-neutral-200 bg-[#fbfaf7] px-2 text-[11px] font-extrabold text-neutral-700"
+          title={category}
+        >
+          {category}
         </span>
       ) : null}
     </div>

@@ -30,6 +30,7 @@ export type MarketplaceMessageThread = {
   counterpartAvatarUrl?: string;
   counterpartIntro?: string;
   counterpartHref?: string;
+  counterpartCategories?: string[];
   platforms: Array<{
     platform: InfluencerPlatform;
     label: string;
