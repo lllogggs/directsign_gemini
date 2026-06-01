@@ -2400,8 +2400,9 @@ function CampaignApplicantRow({
     thread.counterpartHref,
     thread.counterpartAvatarUrl,
   );
+  const rawIntro = thread.senderIntro || thread.proposalSummary || "";
   const intro =
-    thread.senderIntro || thread.proposalSummary || "소개가 아직 없습니다.";
+    rawIntro && !isGenericCampaignApplicantIntro(rawIntro) ? rawIntro : "";
   const firstPlatform = thread.platforms[0];
   const primaryHandle =
     firstPlatform?.handle ||
@@ -2438,9 +2439,11 @@ function CampaignApplicantRow({
 
       <div className="min-w-0">
         <ApplicantPlatformLinks platforms={thread.platforms} />
-        <p className="mt-1 truncate text-[12px] font-semibold text-[#606861]">
-          {intro}
-        </p>
+        {intro ? (
+          <p className="mt-1 truncate text-[12px] font-semibold text-[#606861]">
+            {intro}
+          </p>
+        ) : null}
       </div>
 
       <div className="grid gap-1.5 sm:flex sm:flex-wrap sm:justify-end">
@@ -2483,6 +2486,14 @@ function CampaignApplicantRow({
         ) : null}
       </div>
     </div>
+  );
+}
+
+function isGenericCampaignApplicantIntro(value: string) {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  return (
+    normalized.length === 0 ||
+    /캠페인\s*지원\s*데이터입니다\.?$/.test(normalized)
   );
 }
 

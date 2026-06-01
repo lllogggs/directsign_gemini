@@ -178,6 +178,7 @@ const llmsTxt = read("public/llms.txt");
 const envExample = read(".env.example");
 const qaStandard = read("scripts/qa-standard.mjs");
 const salesAdvertiserIntroduction = read("docs/sales/advertiser-introduction.html");
+const captureSalesAssets = read("scripts/capture-sales-assets.mjs");
 const salesAdvertiserPdf = fs.readFileSync(
   path.join(root, "docs/sales/advertiser-introduction.pdf"),
   "latin1",
@@ -605,8 +606,24 @@ check(
     !contractViewer.includes("정산 문의") &&
     adminDashboard.includes("ticketCategoryFilter") &&
     adminDashboard.includes("계약 열기") &&
+    adminDashboard.includes("AdminSectionTabs") &&
+    adminDashboard.includes("manual_verification") &&
+    adminDashboard.includes("data-admin-section") &&
+    adminDashboard.includes("data-verification-tab") &&
+    adminDashboard.includes("bg-red-500") &&
+    adminDashboard.includes("인증 요청") &&
+    adminDashboard.includes("인증 완료") &&
+    adminDashboard.includes("formatBadgeCount") &&
+    !adminDashboard.includes("운영 기준") &&
+    !adminDashboard.includes("운영/테스트 분리") &&
+    !adminDashboard.includes("metrics.source ===") &&
     !adminDashboard.includes("settlement_question") &&
     !adminDashboard.includes("정산 문의") &&
+    server.includes("readOperationalAdminContracts") &&
+    server.includes("readOperationalAdminSupportAccessRequests") &&
+    server.includes("readOperationalAdminVerificationRequests") &&
+    server.includes("readOperationalAdminSupportTickets") &&
+    server.includes("if (!useSupabase) return [] as Contract[];") &&
     qaStandard.includes("support contract context") &&
     legalDocumentPage.includes("고객지원 문의하기") &&
     legalEntity.includes('`${PRODUCT_NAME} 운영팀`') &&
@@ -620,8 +637,10 @@ check(
     operationalSupportTicketsExtensionMigration.includes("browser_context jsonb") &&
     operationalSupportTicketsSettlementRemovalMigration.includes("where category = 'settlement_question'") &&
     operationalSupportTicketsSettlementRemovalMigration.includes("drop constraint if exists operational_support_tickets_category") &&
-    agents.includes("operation/test separation"),
-  "운영 문의는 관리자 대시보드에서 처리하되 정산 문의는 받지 말아야 합니다. 계약 문의/버그 제보만 안전한 계약·화면 맥락을 갖고 접수되어야 하며, 운영 DB에는 테스트 데이터를 기본 주입하지 않아야 합니다.",
+    agents.includes("operation/test separation") &&
+    agents.includes("Operator dashboards must never present local demo/test file data") &&
+    agents.includes("Manual verification belongs in its own operator-dashboard surface"),
+  "운영 문의는 관리자 대시보드에서 처리하되 정산 문의는 받지 말아야 합니다. 계약 문의/버그 제보만 안전한 계약·화면 맥락을 갖고 접수되어야 하며, 운영 DB에는 테스트 데이터를 기본 주입하거나 운영 기준 같은 정책 filler를 보여주지 않아야 합니다.",
 );
 
 check(
@@ -870,12 +889,18 @@ check(
 
 check(
   "advertiser sales PDF keeps dashboard explanation quiet",
-  salesAdvertiserIntroduction.includes("yeollock-advertiser-dashboard.png") &&
-    salesAdvertiserIntroduction.includes("yeollock-campaign-builder-main.png") &&
+    salesAdvertiserIntroduction.includes("yeollock-contract-builder-first-screen.png") &&
+    salesAdvertiserIntroduction.includes("yeollock-advertiser-dashboard.png") &&
+    salesAdvertiserIntroduction.includes("yeollock-campaign-applicants-dashboard.png") &&
+    salesAdvertiserIntroduction.includes("yeollock-contract-handshake.png") &&
+    !salesAdvertiserIntroduction.includes("-tight.png") &&
     !salesAdvertiserIntroduction.includes('class="red-box"') &&
     !salesAdvertiserIntroduction.includes('class="notes"') &&
     !salesAdvertiserIntroduction.includes('class="pain-grid"') &&
-    !salesAdvertiserIntroduction.includes('class="process-line"'),
+    !salesAdvertiserIntroduction.includes('class="process-line"') &&
+    !salesAdvertiserIntroduction.includes('class="eyebrow"') &&
+    !salesAdvertiserIntroduction.includes("window-bar") &&
+    salesAdvertiserIntroduction.includes('class="product-shot product-shot-form"'),
   "Sales PDF should explain with dashboard screenshots and concise copy, not floating red boxes, bottom button-like lists, or repeated feature card grids",
 );
 
@@ -902,12 +927,21 @@ check(
     advertiserSalesPainPointSection.includes("콘텐츠 수정 거부") &&
     advertiserSalesPainPointSection.indexOf("콘텐츠 수정 거부") <
       advertiserSalesPainPointSection.indexOf("각종 분쟁") &&
-    advertiserSalesPainPointSection.includes("인플루언서<br />광고 계약") &&
-    advertiserSalesPainPointSection.includes("계약서<br />없는 약속은<br />위험합니다.") &&
+    advertiserSalesPainPointSection.includes("인플루언서<br />광고</p>") &&
+    !advertiserSalesPainPointSection.includes("인플루언서<br />광고 계약") &&
+    !["사례 1", "사례 2", "사례 3", "사례 4"].some((text) =>
+      advertiserSalesPainPointSection.includes(text),
+    ) &&
+    advertiserSalesPainPointSection.includes('class="headline-emphasis">계약서') &&
+    advertiserSalesPainPointSection.includes('class="headline-emphasis">약속') &&
+    advertiserSalesPainPointSection.includes('class="headline-emphasis headline-danger"') &&
+    advertiserSalesPainPointSection.includes(">위험</strong") &&
     !advertiserSalesPainPointSection.includes("광고비 · 협찬") &&
     salesAdvertiserIntroduction.includes(".pain-context") &&
-    salesAdvertiserIntroduction.includes("color: #2456d6;") &&
-    salesAdvertiserIntroduction.includes("font-size: 28px;") &&
+    salesAdvertiserIntroduction.includes("background: linear-gradient(135deg, #0f172a 0%, #2456d6 82%);") &&
+    salesAdvertiserIntroduction.includes("filter: drop-shadow(0 12px 22px rgba(36, 86, 214, 0.14));") &&
+    salesAdvertiserIntroduction.includes("font-size: 48px;") &&
+    salesAdvertiserIntroduction.includes(".pain-context::after") &&
     advertiserSalesPainPointSection.includes("risk-generated-missed-contact.png") &&
     advertiserSalesPainPointSection.includes("risk-generated-product-held.png") &&
     advertiserSalesPainPointSection.includes("risk-generated-general-dispute.png") &&
@@ -923,13 +957,76 @@ check(
 check(
   "advertiser sales PDF left message block is inset and upper-weighted",
   salesAdvertiserIntroduction.includes("align-content: start;") &&
-    salesAdvertiserIntroduction.includes("padding: 32mm 0 0 8mm;") &&
+    salesAdvertiserIntroduction.includes("padding: var(--sales-copy-start) 0 0 8mm;") &&
     agents.includes("upper-weighted alignment"),
   "Advertiser sales proposal copy should have deliberate left inset and upper alignment rather than edge-hugging, center-sunk placement",
 );
 
+const advertiserSalesContentStartCount =
+  salesAdvertiserIntroduction.match(/var\(--sales-content-start\)/g)?.length ?? 0;
+
+check(
+  "advertiser sales PDF keeps right visuals fixed while lowering left copy",
+  salesAdvertiserIntroduction.includes("--sales-content-start: 10mm;") &&
+    salesAdvertiserIntroduction.includes("--sales-copy-start: 14mm;") &&
+    advertiserSalesContentStartCount >= 4 &&
+    salesAdvertiserIntroduction.includes("padding: var(--sales-copy-start) 0 0 8mm;") &&
+    salesAdvertiserIntroduction.includes("margin-top: var(--sales-content-start);") &&
+    salesAdvertiserIntroduction.includes('height: 128mm;') &&
+    agents.includes("right visual/dashboard area across all pages") &&
+    agents.includes("move only the left copy block"),
+  "Advertiser sales PDF must keep the right visual/dashboard start fixed while the left text block is lowered independently",
+);
+
+check(
+  "advertiser sales PDF uses selective emphasis instead of all-bold copy",
+  salesAdvertiserIntroduction.includes("h1 {\n        font-size: 48px;\n        font-weight: 700;") &&
+    salesAdvertiserIntroduction.includes(".pain-context {\n        display: inline-block;") &&
+    salesAdvertiserIntroduction.includes("font-weight: 900;") &&
+    salesAdvertiserIntroduction.includes(".support {\n        color: var(--muted);\n        font-size: 18px;\n        font-weight: 400;") &&
+    salesAdvertiserIntroduction.includes(".headline-emphasis") &&
+    salesAdvertiserIntroduction.includes(".headline-danger") &&
+    agents.includes("Advertiser sales PDF text must not read as all-bold"),
+  "Sales PDF copy must keep headline weight strong while using regular-weight body text and selective bold/color emphasis",
+);
+
+check(
+  "advertiser sales PDF uses premium product-screen treatment without chrome",
+  salesAdvertiserIntroduction.includes("--shadow-screen") &&
+    salesAdvertiserIntroduction.includes("product-shot-dashboard") &&
+    salesAdvertiserIntroduction.includes("product-shot-campaign") &&
+    salesAdvertiserIntroduction.includes("product-shot-final") &&
+    exists("docs/sales/assets/yeollock-contract-builder-first-screen.png") &&
+    exists("docs/sales/assets/yeollock-advertiser-dashboard.png") &&
+    exists("docs/sales/assets/yeollock-campaign-applicants-dashboard.png") &&
+    exists("docs/sales/assets/yeollock-contract-content-review.png") &&
+    exists("docs/sales/assets/yeollock-contract-handshake.png") &&
+    !exists("docs/sales/assets/yeollock-advertiser-dashboard-tight.png") &&
+    !exists("docs/sales/assets/yeollock-advertiser-campaign-dashboard-tight.png") &&
+    !exists("docs/sales/assets/yeollock-contract-completed-tight.png") &&
+    agents.includes("delete stale dashboard capture files first") &&
+    agents.includes("content confirmation and revision-request workflow") &&
+    captureSalesAssets.includes("yeollock-contract-builder-first-screen.png") &&
+    captureSalesAssets.includes("yeollock-campaign-applicants-dashboard.png") &&
+    captureSalesAssets.includes("yeollock-contract-content-review.png") &&
+    captureSalesAssets.includes("clickVisibleButtonByText(client, dashboardPage, \"필터\")"),
+  "Sales PDF screenshots should use newly captured real product surfaces and no stale tight/dashboard captures",
+);
+
+check(
+  "campaign applicant rows avoid repeated filler copy",
+  !advertiserDashboard.includes("캠페인 지원 데이터입니다") &&
+    !seedTestAccounts.includes("캠페인 지원 데이터입니다") &&
+    advertiserDashboard.includes("isGenericCampaignApplicantIntro") &&
+    advertiserDashboard.includes("!isGenericCampaignApplicantIntro(rawIntro)") &&
+    agents.includes("Campaign applicant dashboards must not show repeated filler sentences"),
+  "Campaign applicant dashboard rows must remove generic repeated support text such as 캠페인 지원 데이터입니다",
+);
+
 const salesAdvertiserPdfPageCount =
   salesAdvertiserPdf.match(/\/Type\s*\/Page\b/g)?.length ?? 0;
+const salesAdvertiserPageNumberCount =
+  salesAdvertiserIntroduction.match(/class="page-no"/g)?.length ?? 0;
 
 check(
   "advertiser sales PDF exports without blank pages",
@@ -941,10 +1038,26 @@ check(
 );
 
 check(
+  "advertiser sales PDF has unified logo and page numbers",
+  salesAdvertiserPageNumberCount === 5 &&
+    ["01", "02", "03", "04", "05"].every((pageNo) =>
+      salesAdvertiserIntroduction.includes(`<span class="page-no">${pageNo}</span>`),
+    ) &&
+    salesAdvertiserIntroduction.includes("width: 54px;") &&
+    salesAdvertiserIntroduction.includes("height: 54px;") &&
+    agents.includes("page numbering consistent on every page") &&
+    agents.includes("requested logo scaling"),
+  "Advertiser sales PDF must use the requested larger logo and the same page-number treatment on all five pages",
+);
+
+check(
   "advertiser sales PDF avoids mixed explanation chrome",
   !salesAdvertiserIntroduction.includes('class="image-notes single"') &&
     !salesAdvertiserIntroduction.includes('<aside class="side-panel">') &&
-    !salesAdvertiserIntroduction.includes("pilot-sidebar"),
+    !salesAdvertiserIntroduction.includes("pilot-sidebar") &&
+    !salesAdvertiserIntroduction.includes("window-dot") &&
+    !salesAdvertiserIntroduction.includes("product-window") &&
+    agents.includes("Advertiser sales PDF screenshot pages should avoid tiny top labels"),
   "Sales PDF must not mix side panels, bottom explanations, and extra chrome around screenshots",
 );
 
@@ -971,34 +1084,71 @@ check(
   ) &&
     salesAdvertiserIntroduction.includes("광고비") &&
     salesAdvertiserIntroduction.includes("협찬") &&
-    salesAdvertiserIntroduction.includes("계약서<br />없는 약속은<br />위험합니다.") &&
+    salesAdvertiserIntroduction.includes('class="headline-emphasis">계약서') &&
+    salesAdvertiserIntroduction.includes('class="headline-emphasis">약속') &&
+    salesAdvertiserIntroduction.includes('class="headline-emphasis headline-danger"') &&
     !salesAdvertiserIntroduction.includes("먹튀를<br />막아야 합니다") &&
     salesAdvertiserIntroduction.includes("광고비 먹튀") &&
     salesAdvertiserIntroduction.includes("각종 분쟁") &&
-    salesAdvertiserIntroduction.includes("서명") &&
-    salesAdvertiserIntroduction.includes("기한") &&
-    salesAdvertiserIntroduction.includes("검수") &&
-    salesAdvertiserIntroduction.includes("선정") &&
+    salesAdvertiserIntroduction.includes("PDF 계약서") &&
+    salesAdvertiserIntroduction.includes("간단히 필요 항목만 입력하면") &&
+    salesAdvertiserIntroduction.includes('<span class="nowrap"><strong>PDF 계약서</strong>가 바로 생성됩니다</span>') &&
+    salesAdvertiserIntroduction.includes("계약 관리를") &&
+    salesAdvertiserIntroduction.includes("효율적으로") &&
+    salesAdvertiserIntroduction.includes("진행과정 관리") &&
+    !salesAdvertiserIntroduction.includes("<strong>진행과정</strong>") &&
+    salesAdvertiserIntroduction.includes("<strong>플랫폼별</strong> 관리") &&
+    salesAdvertiserIntroduction.includes("<strong>콘텐츠 확인</strong>") &&
+    salesAdvertiserIntroduction.includes("<strong>수정요청</strong>") &&
+    salesAdvertiserIntroduction.includes("캠페인 모집도") &&
+    salesAdvertiserIntroduction.includes("캠페인에 지원한") &&
+    salesAdvertiserIntroduction.includes("<strong>인플루언서 쉽게 확인, 선정</strong>") &&
+    salesAdvertiserIntroduction.includes("1대多 계약서 자동 생성") &&
+    salesAdvertiserIntroduction.includes("서로에게") &&
+    salesAdvertiserIntroduction.includes("안전한 광고") &&
+    salesAdvertiserIntroduction.includes("문의 이메일") &&
+    salesAdvertiserIntroduction.includes("yeollockme@gmail.com") &&
     !salesAdvertiserIntroduction.includes("광고주 제안서</span>"),
   "Advertiser PDF must explain buying value, not product implementation mechanics",
 );
 
 check(
   "advertiser sales PDF solution says contract writing directly",
-  salesAdvertiserIntroduction.includes("계약서를<br />씁니다") &&
+  salesAdvertiserIntroduction.includes("간편한<br />") &&
+    salesAdvertiserIntroduction.includes("계약서 작성") &&
+    salesAdvertiserIntroduction.includes('<span class="nowrap"><strong>PDF 계약서</strong>가 바로 생성됩니다</span>') &&
     !salesAdvertiserIntroduction.includes("약속을<br />남깁니다") &&
-    agents.includes("say \"계약서를 씁니다\""),
-  "Advertiser sales proposal solution copy must say that the advertiser writes a contract, not a softened promise phrase",
+    agents.includes("Advertiser sales proposal solution copy must say the product action directly"),
+  "Advertiser sales proposal solution copy must say contract writing and PDF output directly, not use a softened promise phrase",
+);
+
+check(
+  "advertiser sales PDF reflects latest slide copy",
+  salesAdvertiserIntroduction.includes("계약 관리를") &&
+    salesAdvertiserIntroduction.includes("효율적으로") &&
+    salesAdvertiserIntroduction.includes("진행과정 관리") &&
+    !salesAdvertiserIntroduction.includes("<strong>진행과정</strong>") &&
+    salesAdvertiserIntroduction.includes("<strong>플랫폼별</strong> 관리") &&
+    salesAdvertiserIntroduction.includes("<strong>콘텐츠 확인</strong>") &&
+    salesAdvertiserIntroduction.includes("<strong>수정요청</strong>") &&
+    salesAdvertiserIntroduction.includes("캠페인 모집도") &&
+    salesAdvertiserIntroduction.includes("편리하게!") &&
+    salesAdvertiserIntroduction.includes("캠페인에 지원한") &&
+    salesAdvertiserIntroduction.includes("<strong>인플루언서 쉽게 확인, 선정</strong>") &&
+    salesAdvertiserIntroduction.includes("1대多 계약서 자동 생성") &&
+    salesAdvertiserIntroduction.includes("서로에게") &&
+    salesAdvertiserIntroduction.includes("안전한 광고") &&
+    salesAdvertiserIntroduction.includes("연락미에서 시작하세요") &&
+    salesAdvertiserIntroduction.includes("문의 이메일"),
+  "Advertiser sales PDF must keep the owner-approved five-page headline sequence",
 );
 
 check(
   "advertiser sales PDF leads with contract-risk prevention",
-  salesAdvertiserIntroduction.indexOf("계약서<br />없는 약속은<br />위험합니다.") >=
+  salesAdvertiserIntroduction.indexOf('class="headline-emphasis">계약서') >=
     0 &&
-    salesAdvertiserIntroduction.indexOf(
-      "계약서<br />없는 약속은<br />위험합니다.",
-    ) <
-      salesAdvertiserIntroduction.indexOf("계약으로") &&
+    salesAdvertiserIntroduction.indexOf('class="headline-emphasis">계약서') <
+      salesAdvertiserIntroduction.indexOf("간편한") &&
     agents.includes(
       "primary differentiation is risk prevention around sponsorship, ad fees",
     ) &&
@@ -1007,10 +1157,10 @@ check(
 );
 
 const advertiserSalesStageOrder = [
-  'data-stage="pain-point"',
-  'data-stage="strength"',
-  'data-stage="service-explanation"',
-  'data-stage="cta"',
+  '<section class="page" data-stage="pain-point">',
+  '<section class="page" data-stage="strength">',
+  '<section class="page" data-stage="service-explanation">',
+  '<section class="page" data-stage="cta">',
 ].map((marker) => salesAdvertiserIntroduction.indexOf(marker));
 
 check(

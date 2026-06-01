@@ -6393,6 +6393,37 @@ const buildAdminMetrics = async (
   };
 };
 
+const readOperationalAdminContracts = async () => {
+  if (!useSupabase) return [] as Contract[];
+  const store = await readStore();
+  return store.contracts;
+};
+
+const readOperationalAdminSupportAccessRequests = async () => {
+  if (!useSupabase) return [] as SupportAccessRequestRecord[];
+  const rows = await readSupabaseRows<SupabaseSupportAccessRequestRow>(
+    supportAccessTable,
+    "?select=*&order=created_at.desc",
+    "operational admin support access requests",
+  );
+  return attachSupportAccessEvents(rows.map(normalizeSupportAccessRequest));
+};
+
+const readOperationalAdminSupportTickets = async () => {
+  if (!useSupabase) return [] as OperationalSupportTicketRecord[];
+  const rows = await readSupabaseRows<OperationalSupportTicketRecord>(
+    supportTicketTable,
+    "?select=*&order=created_at.desc",
+    "operational admin support tickets",
+  );
+  return rows.map(normalizeSupportTicket);
+};
+
+const readOperationalAdminVerificationRequests = async () => {
+  if (!useSupabase) return [] as VerificationRequestRecord[];
+  return readSupabaseVerificationRequests();
+};
+
 const parseCommissionBps = (value: string | undefined) => {
   if (!hasText(value)) return undefined;
   const match = value.match(/(\d+(?:\.\d+)?)\s*%/);
@@ -14309,18 +14340,18 @@ app.get("/api/admin/metrics", async (request, response, next) => {
     if (!requireAdminSession(request, response)) return;
 
     const [
-      store,
+      contracts,
       supportAccessRequests,
       verificationRequests,
       supportTickets,
     ] = await Promise.all([
-      readStore(),
-      readSupportAccessRequests(),
-      readVerificationRequests(),
-      readSupportTickets(),
+      readOperationalAdminContracts(),
+      readOperationalAdminSupportAccessRequests(),
+      readOperationalAdminVerificationRequests(),
+      readOperationalAdminSupportTickets(),
     ]);
     const metrics = await buildAdminMetrics(
-      store.contracts,
+      contracts,
       supportAccessRequests,
     );
 
@@ -14351,7 +14382,7 @@ app.get("/api/admin/support-tickets", async (request, response, next) => {
     if (!requireAdminSession(request, response)) return;
 
     response.json({
-      support_tickets: await readSupportTickets(),
+      support_tickets: await readOperationalAdminSupportTickets(),
     });
   } catch (error) {
     next(error);
@@ -14404,7 +14435,7 @@ app.get("/api/admin/support-access-requests", async (request, response, next) =>
   try {
     if (!requireAdminSession(request, response)) return;
 
-    const supportAccessRequests = await readSupportAccessRequests();
+    const supportAccessRequests = await readOperationalAdminSupportAccessRequests();
     response.json({
       support_access_requests: supportAccessRequests
         .map((record) => ({
@@ -16083,7 +16114,7 @@ app.get("/api/admin/verification-requests", async (request, response, next) => {
   try {
     if (!requireAdminSession(request, response)) return;
     response.json({
-      verification_requests: await readVerificationRequests(),
+      verification_requests: await readOperationalAdminVerificationRequests(),
     });
   } catch (error) {
     next(error);

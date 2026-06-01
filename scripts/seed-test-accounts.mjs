@@ -1880,7 +1880,7 @@ const seedCampaignDashboardApplications = async ({
         sender_name: senderName,
         sender_intro:
           campaignDashboardApplicantProfileByName.get(senderName)?.headline ??
-          `${senderName} 캠페인 지원 데이터입니다.`,
+          `${senderName}의 채널 톤과 제작 일정에 맞춰 지원합니다.`,
         proposal_type: campaign.type,
         proposal_summary: buildSeedCampaignApplicationSummary(campaign),
         campaign_id: campaign.id,

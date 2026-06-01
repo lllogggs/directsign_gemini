@@ -37,7 +37,12 @@
         --line: #dce4dd;
         --paper: #fbfaf7;
         --blue: #2563eb;
+        --blue-deep: #1d4ed8;
         --red: #e11d48;
+        --sales-content-start: 10mm;
+        --sales-copy-start: 14mm;
+        --shadow-soft: 0 28px 86px rgba(15, 23, 42, 0.13);
+        --shadow-screen: 0 26px 74px rgba(15, 23, 42, 0.12);
       }
 
       * {
@@ -73,10 +78,19 @@
         overflow: hidden;
         padding: 11mm 13mm 10mm;
         background:
-          radial-gradient(circle at 78% 28%, rgba(37, 99, 235, 0.07), transparent 29%),
+          linear-gradient(112deg, transparent 0 61%, rgba(37, 99, 235, 0.045) 61% 100%),
           linear-gradient(135deg, #fbfaf7 0%, #f4f6f2 100%);
-        box-shadow: 0 22px 70px rgba(15, 23, 42, 0.14);
+        box-shadow: var(--shadow-soft);
         page-break-after: always;
+      }
+
+      .page::before {
+        content: "";
+        position: absolute;
+        inset: 11mm 13mm 10mm;
+        border: 1px solid rgba(17, 20, 18, 0.045);
+        border-radius: 20px;
+        pointer-events: none;
       }
 
       .page:last-child {
@@ -90,26 +104,26 @@
         z-index: 3;
         display: inline-flex;
         align-items: center;
-        gap: 8px;
+        gap: 10px;
         color: var(--ink);
-        font-size: 14px;
-        font-weight: 900;
+        font-size: 18px;
+        font-weight: 700;
       }
 
       .brand-mark {
         display: inline-flex;
-        width: 25px;
-        height: 25px;
+        width: 54px;
+        height: 54px;
         align-items: center;
         justify-content: center;
         overflow: hidden;
-        border-radius: 8px;
+        border-radius: 16px;
       }
 
       .brand-mark img {
         display: block;
-        width: 25px;
-        height: 25px;
+        width: 54px;
+        height: 54px;
       }
 
       .page-no {
@@ -117,8 +131,10 @@
         right: 13mm;
         bottom: 9mm;
         color: #88918b;
-        font-size: 9px;
+        font-size: 10px;
         font-weight: 700;
+        letter-spacing: 0;
+        font-variant-numeric: tabular-nums;
       }
 
       h1,
@@ -128,9 +144,18 @@
 
       h1 {
         font-size: 48px;
-        font-weight: 900;
+        font-weight: 700;
         letter-spacing: 0;
-        line-height: 1.04;
+        line-height: 1.05;
+      }
+
+      .slide-copy h1,
+      .pain-context,
+      .support,
+      .cta {
+        font-family:
+          "NanumSquareNeo", "Noto Sans KR", "Apple SD Gothic Neo",
+          "Malgun Gothic", Arial, sans-serif;
       }
 
       .slide-content {
@@ -146,8 +171,8 @@
         display: grid;
         align-content: start;
         min-height: 144mm;
-        gap: 18px;
-        padding: 32mm 0 0 8mm;
+        gap: 20px;
+        padding: var(--sales-copy-start) 0 0 8mm;
       }
 
       .slide-copy.compact-title h1 {
@@ -155,77 +180,145 @@
         line-height: 1.08;
       }
 
-      .eyebrow {
-        color: var(--red);
-        font-size: 12px;
+      .pain-context {
+        display: inline-block;
+        width: max-content;
+        background: linear-gradient(135deg, #0f172a 0%, #2456d6 82%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+        filter: drop-shadow(0 12px 22px rgba(36, 86, 214, 0.14));
+        font-size: 48px;
+        line-height: 1.02;
         font-weight: 900;
+        letter-spacing: 0;
       }
 
-      .pain-context {
-        color: #2456d6;
-        font-size: 28px;
-        line-height: 1.08;
-        font-weight: 900;
+      .pain-context::after {
+        content: "";
+        display: block;
+        width: 36px;
+        height: 4px;
+        margin-top: 14px;
+        border-radius: 999px;
+        background: var(--blue);
+        box-shadow: 0 12px 26px rgba(36, 86, 214, 0.24);
       }
 
       .support {
         color: var(--muted);
         font-size: 18px;
-        font-weight: 900;
+        font-weight: 400;
         letter-spacing: 0;
+        line-height: 1.48;
+        max-width: 240px;
+        border-left: 3px solid rgba(37, 99, 235, 0.22);
+        padding-left: 14px;
+      }
+
+      .support-stack {
+        display: grid;
+        gap: 14px;
+      }
+
+      .nowrap {
+        white-space: nowrap;
       }
 
       .support.blue {
         color: var(--blue);
       }
 
-      .window {
+      .headline-emphasis,
+      .support strong {
+        font-weight: 900;
+      }
+
+      .headline-blue {
+        display: inline-block;
+        background: linear-gradient(135deg, var(--blue-deep) 0%, #2f6df6 82%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+
+      .support strong {
+        color: var(--blue);
+      }
+
+      .headline-danger {
+        color: var(--red);
+      }
+
+      .product-shot {
+        margin-top: var(--sales-content-start);
         overflow: hidden;
-        border: 1px solid var(--line);
-        border-radius: 18px;
+        border: 1px solid rgba(17, 20, 18, 0.07);
+        border-radius: 12px;
         background: #fff;
-        box-shadow: 0 26px 72px rgba(15, 23, 42, 0.14);
+        box-shadow: var(--shadow-screen);
       }
 
-      .window-bar {
-        display: flex;
-        height: 9mm;
-        align-items: center;
-        gap: 5px;
-        border-bottom: 1px solid var(--line);
-        padding: 0 14px;
-        background: #f7faf7;
-      }
-
-      .window-dot {
-        width: 7px;
-        height: 7px;
-        border-radius: 50%;
-        background: #c5cfc8;
-      }
-
-      .window img {
+      .product-shot img {
         display: block;
         width: 100%;
-        height: 137mm;
-        object-fit: contain;
+        height: auto;
+      }
+
+      .product-shot.product-shot-dashboard,
+      .product-shot.product-shot-campaign {
+        margin-top: var(--sales-content-start);
+      }
+
+      .product-stack {
+        display: grid;
+        gap: 10px;
+        margin-top: var(--sales-content-start);
+      }
+
+      .product-stack .product-shot {
+        margin-top: 0;
+      }
+
+      .product-stack .product-shot img {
+        height: 58mm;
+        object-fit: cover;
         object-position: top center;
       }
 
-      .product-window {
-        height: 146mm;
+      .product-stack .product-shot-review img {
+        object-position: bottom center;
+      }
+
+      .product-shot.product-shot-dashboard img,
+      .product-shot.product-shot-campaign img {
+        width: 100%;
+        max-width: none;
+      }
+
+      .product-shot.product-shot-final {
+        margin-top: var(--sales-content-start);
+      }
+
+      .product-shot.product-shot-final img {
+        aspect-ratio: 16 / 10;
+        height: auto;
+        object-fit: cover;
+        width: 100%;
+        max-width: none;
       }
 
       .risk-panel {
         display: grid;
         grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 8px;
-        height: 146mm;
+        height: 128mm;
+        margin-top: var(--sales-content-start);
         border: 1px solid var(--line);
-        border-radius: 18px;
-        background: rgba(255, 255, 255, 0.72);
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.82);
         padding: 12mm;
-        box-shadow: 0 26px 72px rgba(15, 23, 42, 0.12);
+        box-shadow: var(--shadow-screen);
       }
 
       .risk-card {
@@ -234,9 +327,9 @@
         flex-direction: column;
         overflow: hidden;
         border: 1px solid #e1e7e2;
-        border-radius: 14px;
+        border-radius: 16px;
         background: #fff;
-        box-shadow: 0 18px 34px rgba(15, 23, 42, 0.07);
+        box-shadow: 0 18px 34px rgba(15, 23, 42, 0.06);
       }
 
       .risk-card img {
@@ -250,23 +343,21 @@
       }
 
       .risk-caption {
+        display: flex;
         min-height: 22mm;
-        padding: 8px 8px 9px;
-      }
-
-      .risk-caption span {
-        display: block;
-        color: var(--muted);
-        font-size: 10px;
-        font-weight: 900;
+        align-items: center;
+        justify-content: center;
+        padding: 9px 10px 10px;
+        background: linear-gradient(180deg, #fff 0%, #fbfcfa 100%);
+        text-align: center;
       }
 
       .risk-caption strong {
         display: block;
-        margin-top: 3px;
+        width: 100%;
         color: var(--ink);
-        font-size: 13px;
-        line-height: 1.15;
+        font-size: 17px;
+        line-height: 1.18;
         letter-spacing: 0;
         font-weight: 900;
       }
@@ -280,8 +371,35 @@
         color: #fff;
         padding: 15px 24px;
         font-size: 14px;
-        font-weight: 900;
+        font-weight: 800;
         box-shadow: 0 18px 42px rgba(37, 99, 235, 0.22);
+      }
+
+      .page[data-stage="cta"] .support {
+        border-left: 0;
+        padding-left: 0;
+      }
+
+      .email-line {
+        display: grid;
+        width: fit-content;
+        gap: 4px;
+        margin-top: 2px;
+        border-left: 3px solid rgba(37, 99, 235, 0.22);
+        padding-left: 14px;
+        color: #303630;
+      }
+
+      .email-line span {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      .email-line strong {
+        color: var(--ink);
+        font-size: 14px;
+        font-weight: 800;
       }
 
       @media print {
@@ -323,28 +441,35 @@
         </div>
         <div class="slide-content">
           <div class="slide-copy compact-title">
-            <p class="pain-context">인플루언서<br />광고 계약</p>
-            <h1>계약서<br />없는 약속은<br />위험합니다.</h1>
+            <p class="pain-context">인플루언서<br />광고</p>
+            <h1>
+              <strong class="headline-emphasis">계약서</strong><br />없는
+              <strong class="headline-emphasis">약속</strong>은<br /><strong
+                class="headline-emphasis headline-danger"
+                >위험</strong
+              >합니다.
+            </h1>
           </div>
           <div class="risk-panel" aria-label="계약서 없이 생길 수 있는 리스크 사례">
             <article class="risk-card">
               <img src="assets/risk-generated-missed-contact.png" alt="광고비 선지급 후 연락이 닿지 않는 상황" />
-              <p class="risk-caption"><span>사례 1</span><strong>광고비 먹튀</strong></p>
+              <p class="risk-caption"><strong>광고비 먹튀</strong></p>
             </article>
             <article class="risk-card">
               <img src="assets/risk-generated-product-held.png" alt="협찬 제품을 품에 안고 반환을 꺼리는 상황" />
-              <p class="risk-caption"><span>사례 2</span><strong>협찬품 미반환</strong></p>
+              <p class="risk-caption"><strong>협찬품 미반환</strong></p>
             </article>
             <article class="risk-card">
               <img src="assets/risk-generated-revision-refusal.png" alt="콘텐츠 수정 요청이 거부되는 상황" />
-              <p class="risk-caption"><span>사례 3</span><strong>콘텐츠 수정 거부</strong></p>
+              <p class="risk-caption"><strong>콘텐츠 수정 거부</strong></p>
             </article>
             <article class="risk-card">
               <img src="assets/risk-generated-general-dispute.png" alt="계약 조건이 불분명해 양측이 분쟁 중인 상황" />
-              <p class="risk-caption"><span>사례 4</span><strong>각종 분쟁</strong></p>
+              <p class="risk-caption"><strong>각종 분쟁</strong></p>
             </article>
           </div>
         </div>
+        <span class="page-no">01</span>
       </section>
 
       <section class="page" data-stage="strength">
@@ -354,17 +479,13 @@
         </div>
         <div class="slide-content">
           <div class="slide-copy">
-            <p class="eyebrow">계약화</p>
-            <h1>계약서를<br />씁니다</h1>
-            <p class="support blue">조건 · 기한 · 산출물</p>
+            <h1>간편한<br /><strong class="headline-emphasis headline-blue">계약서 작성</strong></h1>
+            <p class="support">
+              간단히 필요 항목만 입력하면<br /><span class="nowrap"><strong>PDF 계약서</strong>가 바로 생성됩니다</span>
+            </p>
           </div>
-          <div class="window product-window">
-            <div class="window-bar">
-              <span class="window-dot"></span>
-              <span class="window-dot"></span>
-              <span class="window-dot"></span>
-            </div>
-            <img src="assets/yeollock-contract-builder.png" alt="연락미 계약 작성 화면" />
+          <div class="product-shot product-shot-form">
+            <img src="assets/yeollock-contract-builder-first-screen.png" alt="연락미 계약서 작성 첫 화면" />
           </div>
         </div>
         <span class="page-no">02</span>
@@ -377,17 +498,16 @@
         </div>
         <div class="slide-content">
           <div class="slide-copy">
-            <p class="eyebrow">진행 증빙</p>
-            <h1>이행을<br />확인합니다</h1>
-            <p class="support">서명 · 제출 · 검수</p>
+            <h1>계약 관리를<br /><strong class="headline-emphasis headline-blue">효율적으로</strong></h1>
+            <p class="support">진행과정 관리,<br /><strong>플랫폼별</strong> 관리<br /><strong>콘텐츠 확인</strong><br /><strong>수정요청</strong></p>
           </div>
-          <div class="window product-window">
-            <div class="window-bar">
-              <span class="window-dot"></span>
-              <span class="window-dot"></span>
-              <span class="window-dot"></span>
+          <div class="product-stack" aria-label="연락미 계약 관리 화면">
+            <div class="product-shot product-shot-dashboard">
+              <img src="assets/yeollock-advertiser-dashboard.png" alt="연락미 계약 대시보드" />
             </div>
-            <img src="assets/yeollock-advertiser-dashboard.png" alt="연락미 계약 대시보드" />
+            <div class="product-shot product-shot-review">
+              <img src="assets/yeollock-contract-content-review.png" alt="연락미 콘텐츠 확인 및 수정 요청 화면" />
+            </div>
           </div>
         </div>
         <span class="page-no">03</span>
@@ -400,17 +520,14 @@
         </div>
         <div class="slide-content">
           <div class="slide-copy">
-            <p class="eyebrow">모집 계약</p>
-            <h1>선정 전<br />확인합니다</h1>
-            <p class="support">프로필 · 채널 · 조건</p>
-          </div>
-          <div class="window product-window">
-            <div class="window-bar">
-              <span class="window-dot"></span>
-              <span class="window-dot"></span>
-              <span class="window-dot"></span>
+            <h1>캠페인 모집도<br /><strong class="headline-emphasis headline-blue">편리하게!</strong></h1>
+            <div class="support-stack">
+              <p class="support">캠페인에 지원한<br /><strong>인플루언서 쉽게 확인, 선정</strong></p>
+              <p class="support">광고주와 인플루언서간<br /><strong>1대多 계약서 자동 생성</strong>으로<br />인플루언서에게 책임감 부여</p>
             </div>
-            <img src="assets/yeollock-campaign-builder-main.png" alt="연락미 캠페인 지원자 확인 화면" />
+          </div>
+          <div class="product-shot product-shot-campaign">
+            <img src="assets/yeollock-campaign-applicants-dashboard.png" alt="연락미 캠페인 지원자 목록 대시보드" />
           </div>
         </div>
         <span class="page-no">04</span>
@@ -423,18 +540,13 @@
         </div>
         <div class="slide-content">
           <div class="slide-copy">
-            <p class="eyebrow">다음 광고</p>
-            <h1>말 대신<br />계약으로</h1>
-            <p class="support">광고 계약은 확실하게</p>
+            <h1>서로에게<br /><strong class="headline-emphasis">안전한 광고</strong></h1>
+            <p class="support"><strong>연락미에서 시작하세요</strong></p>
             <span class="cta">yeollock.me</span>
+            <span class="email-line"><span>문의 이메일</span><strong>yeollockme@gmail.com</strong></span>
           </div>
-          <div class="window product-window">
-            <div class="window-bar">
-              <span class="window-dot"></span>
-              <span class="window-dot"></span>
-              <span class="window-dot"></span>
-            </div>
-            <img src="assets/yeollock-advertiser-dashboard.png" alt="연락미 계약 대시보드 요약" />
+          <div class="product-shot product-shot-final">
+            <img src="assets/yeollock-contract-handshake.png" alt="광고주와 인플루언서가 계약서 서명 후 악수하는 장면" />
           </div>
         </div>
         <span class="page-no">05</span>

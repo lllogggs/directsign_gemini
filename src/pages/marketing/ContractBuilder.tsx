@@ -1003,7 +1003,7 @@ export function ContractBuilder() {
                 {step} / 5 단계
               </p>
               <div className="mb-3 flex items-start justify-between gap-3">
-                <h1 className="font-neo-heavy text-[28px] leading-tight text-neutral-950 lg:text-[30px]">
+                <h1 className="font-neo-heavy text-[28px] leading-[1.18] text-neutral-950 lg:text-[30px]">
                   새 전자계약서 작성
                 </h1>
                 <ScreenHelpButton

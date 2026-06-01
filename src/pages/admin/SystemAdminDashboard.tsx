@@ -98,6 +98,14 @@ type OperationalSupportTicket = {
   updated_at: string;
 };
 
+type AdminDashboardSection =
+  | "overview"
+  | "support_tickets"
+  | "support_access"
+  | "manual_verification";
+
+type VerificationReviewTab = "pending" | "approved";
+
 const emptyMetrics: AdminMetrics = {
   contract_count: 0,
   active_contract_count: 0,
@@ -151,6 +159,10 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
   const [ticketStatusFilter, setTicketStatusFilter] = useState<
     OperationalSupportTicket["status"] | "active" | "all"
   >("active");
+  const [activeSection, setActiveSection] =
+    useState<AdminDashboardSection>("overview");
+  const [verificationReviewTab, setVerificationReviewTab] =
+    useState<VerificationReviewTab>("pending");
 
   const activeSupportRequests = useMemo(
     () => supportRequests.filter((request) => request.is_active),
@@ -159,6 +171,21 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
   const pendingVerificationRequests = useMemo(
     () => verificationRequests.filter((request) => request.status === "pending"),
     [verificationRequests],
+  );
+  const approvedVerificationRequests = useMemo(
+    () => verificationRequests.filter((request) => request.status === "approved"),
+    [verificationRequests],
+  );
+  const visibleVerificationRequests = useMemo(
+    () =>
+      verificationReviewTab === "pending"
+        ? pendingVerificationRequests
+        : approvedVerificationRequests,
+    [
+      approvedVerificationRequests,
+      pendingVerificationRequests,
+      verificationReviewTab,
+    ],
   );
   const activeSupportTickets = useMemo(
     () =>
@@ -696,23 +723,28 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
             icon={<Clock3 className="h-4 w-4" />}
           />
           <MetricCard
-            label="수기 인증"
+            label="수기인증"
             value={String(metrics.verification.pending_count)}
             helper={`누적 요청 ${metrics.verification.total_count}`}
             icon={<UserRoundCheck className="h-4 w-4" />}
           />
         </section>
 
-        <section className="grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(420px,1.05fr)]">
-          <div className="space-y-4">
+        <AdminSectionTabs
+          activeSection={activeSection}
+          pendingVerificationCount={pendingVerificationRequests.length}
+          supportTicketCount={activeSupportTickets.length}
+          supportAccessCount={activeSupportRequests.length}
+          onChange={setActiveSection}
+        />
+
+        <div className="mt-4">
+          {activeSection === "overview" && (
             <section className="rounded-lg border border-neutral-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)]">
               <div className="mb-4 flex items-center justify-between gap-4">
                 <h2 className="text-[18px] font-semibold tracking-[-0.02em]">
                   상태별 계약 수
                 </h2>
-                <span className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-600">
-                  {metrics.source === "supabase" ? "Supabase" : "File"}
-                </span>
               </div>
               <div className="space-y-3">
                 {metrics.status_counts.map((status) => (
@@ -729,35 +761,9 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
                 )}
               </div>
             </section>
+          )}
 
-            <section className="rounded-lg border border-neutral-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)]">
-              <div className="mb-4 flex items-center justify-between gap-4">
-                <h2 className="text-[18px] font-semibold tracking-[-0.02em]">
-                  운영 기준
-                </h2>
-                <Lock className="h-4 w-4 text-neutral-400" />
-              </div>
-              <div className="grid gap-3 text-sm leading-6 text-neutral-700 sm:grid-cols-3">
-                <PolicyStep
-                  number="01"
-                  title="운영/테스트 분리"
-                  body="운영 DB에는 테스트 데이터를 기본 주입하지 않습니다. 시드는 별도 승인 환경에서만 실행합니다."
-                />
-                <PolicyStep
-                  number="02"
-                  title="정산 비취급"
-                  body="연락미는 계약 조건과 증빙을 보관하지만 지급대행, 에스크로, 세금 처리는 하지 않습니다."
-                />
-                <PolicyStep
-                  number="03"
-                  title="문의 집중"
-                  body="장애, 계정, 계약 흐름 문의는 고객지원 접수 후 이 대시보드에서 상태를 처리합니다."
-                />
-              </div>
-            </section>
-          </div>
-
-          <div className="space-y-4">
+          {activeSection === "support_tickets" && (
             <SupportTicketPanel
               tickets={visibleSupportTickets}
               totalCount={supportTickets.length}
@@ -771,7 +777,9 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
                 navigate(`/advertiser/contract/${encodeURIComponent(contractId)}`)
               }
             />
+          )}
 
+          {activeSection === "support_access" && (
             <SupportAccessPanel
               requests={activeSupportRequests}
               closingId={closingSupportId}
@@ -780,21 +788,23 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
               }
               onClose={closeSupportAccess}
             />
+          )}
 
+          {activeSection === "manual_verification" && (
             <VerificationReviewPanel
-              requests={
-                pendingVerificationRequests.length > 0
-                  ? pendingVerificationRequests
-                  : verificationRequests.slice(0, 5)
-              }
+              requests={visibleVerificationRequests}
+              activeTab={verificationReviewTab}
+              pendingCount={pendingVerificationRequests.length}
+              approvedCount={approvedVerificationRequests.length}
               reviewingId={reviewingVerificationId}
               checkingId={checkingVerificationId}
+              onTabChange={setVerificationReviewTab}
               onApprove={(id) => reviewVerificationRequest(id, "approved")}
               onReject={(id) => reviewVerificationRequest(id, "rejected")}
               onRecheck={rerunVerificationAutomation}
             />
-          </div>
-        </section>
+          )}
+        </div>
       </main>
     </div>
   );
@@ -827,6 +837,89 @@ function MetricCard({
   );
 }
 
+function AdminSectionTabs({
+  activeSection,
+  pendingVerificationCount,
+  supportTicketCount,
+  supportAccessCount,
+  onChange,
+}: {
+  activeSection: AdminDashboardSection;
+  pendingVerificationCount: number;
+  supportTicketCount: number;
+  supportAccessCount: number;
+  onChange: (section: AdminDashboardSection) => void;
+}) {
+  const items: Array<{
+    id: AdminDashboardSection;
+    label: string;
+    count?: number;
+    urgentBadge?: number;
+  }> = [
+    { id: "overview", label: "운영 현황" },
+    { id: "support_tickets", label: "고객 문의", count: supportTicketCount },
+    { id: "support_access", label: "지원 열람", count: supportAccessCount },
+    {
+      id: "manual_verification",
+      label: "수기인증",
+      count: pendingVerificationCount,
+      urgentBadge: pendingVerificationCount,
+    },
+  ];
+
+  return (
+    <nav
+      aria-label="운영 대시보드 화면 전환"
+      className="rounded-lg border border-neutral-200/80 bg-white p-1.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+    >
+      <div className="flex flex-wrap gap-1">
+        {items.map((item) => {
+          const selected = activeSection === item.id;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              data-admin-section={item.id}
+              onClick={() => onChange(item.id)}
+              className={`relative h-10 rounded-md px-4 text-[13px] font-semibold transition ${
+                selected
+                  ? "bg-neutral-950 text-white"
+                  : "text-neutral-500 hover:bg-neutral-50 hover:text-neutral-950"
+              }`}
+            >
+              <span className="inline-flex items-center gap-2">
+                {item.label}
+                {item.count !== undefined &&
+                item.count > 0 &&
+                item.urgentBadge === undefined ? (
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                      selected
+                        ? "bg-white/15 text-white"
+                        : "bg-neutral-100 text-neutral-600"
+                    }`}
+                  >
+                    {formatBadgeCount(item.count)}
+                  </span>
+                ) : null}
+              </span>
+              {item.urgentBadge !== undefined && item.urgentBadge > 0 && (
+                <span className="absolute -right-1.5 -top-1.5 min-w-5 rounded-full bg-red-500 px-1.5 py-0.5 text-center text-[11px] font-bold leading-4 text-white shadow-[0_4px_12px_rgba(239,68,68,0.4)] ring-2 ring-white">
+                  {formatBadgeCount(item.urgentBadge)}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}
+
+function formatBadgeCount(count: number) {
+  return count > 99 ? "99+" : String(count);
+}
+
 function StatusBar({
   label,
   count,
@@ -846,24 +939,6 @@ function StatusBar({
         />
       </div>
       <span className="text-right font-mono text-sm text-neutral-500">{count}</span>
-    </div>
-  );
-}
-
-function PolicyStep({
-  number,
-  title,
-  body,
-}: {
-  number: string;
-  title: string;
-  body: string;
-}) {
-  return (
-    <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4">
-      <p className="font-mono text-xs font-semibold text-neutral-400">{number}</p>
-      <p className="mt-2 font-semibold text-neutral-950">{title}</p>
-      <p className="mt-2 text-[13px] text-neutral-500">{body}</p>
     </div>
   );
 }
@@ -1150,26 +1225,73 @@ function SupportAccessPanel({
 
 function VerificationReviewPanel({
   requests,
+  activeTab,
+  pendingCount,
+  approvedCount,
   reviewingId,
   checkingId,
+  onTabChange,
   onApprove,
   onReject,
   onRecheck,
 }: {
   requests: VerificationRequest[];
+  activeTab: VerificationReviewTab;
+  pendingCount: number;
+  approvedCount: number;
   reviewingId: string;
   checkingId: string;
+  onTabChange: (tab: VerificationReviewTab) => void;
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
   onRecheck: (id: string) => void;
 }) {
+  const tabs: Array<{
+    id: VerificationReviewTab;
+    label: string;
+    count: number;
+  }> = [
+    { id: "pending", label: "인증 요청", count: pendingCount },
+    { id: "approved", label: "인증 완료", count: approvedCount },
+  ];
+
   return (
     <section className="rounded-lg border border-neutral-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)]">
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-[18px] font-semibold tracking-[-0.02em]">
-          수기 인증
+          수기인증
         </h2>
         <UserRoundCheck className="h-4 w-4 text-neutral-400" />
+      </div>
+
+      <div className="mb-4 flex rounded-lg bg-neutral-100 p-1">
+        {tabs.map((tab) => {
+          const selected = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              data-verification-tab={tab.id}
+              onClick={() => onTabChange(tab.id)}
+              className={`h-9 flex-1 rounded-md text-xs font-semibold transition ${
+                selected
+                  ? "bg-white text-neutral-950 shadow-[0_1px_2px_rgba(15,23,42,0.08)]"
+                  : "text-neutral-500 hover:text-neutral-900"
+              }`}
+            >
+              {tab.label}
+              <span
+                className={`ml-2 rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                  selected
+                    ? "bg-neutral-950 text-white"
+                    : "bg-white text-neutral-500"
+                }`}
+              >
+                {formatBadgeCount(tab.count)}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       <div className="space-y-3">
@@ -1284,17 +1406,17 @@ function VerificationReviewPanel({
                     문서 보기
                   </a>
                 )}
-                <button
-                  type="button"
-                  disabled={checkingId === request.id}
-                  title={automationSummary || undefined}
-                  onClick={() => onRecheck(request.id)}
-                  className="inline-flex h-9 items-center rounded-lg border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-700 transition hover:border-neutral-400 disabled:opacity-50"
-                >
-                  {checkingId === request.id ? "자동 확인 중" : "자동 확인"}
-                </button>
                 {isPending && (
                   <>
+                    <button
+                      type="button"
+                      disabled={checkingId === request.id}
+                      title={automationSummary || undefined}
+                      onClick={() => onRecheck(request.id)}
+                      className="inline-flex h-9 items-center rounded-lg border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-700 transition hover:border-neutral-400 disabled:opacity-50"
+                    >
+                      {checkingId === request.id ? "자동 확인 중" : "자동 확인"}
+                    </button>
                     <button
                       type="button"
                       disabled={reviewingId === request.id}
@@ -1313,12 +1435,25 @@ function VerificationReviewPanel({
                     </button>
                   </>
                 )}
+                {!isPending && (
+                  <span className="inline-flex h-9 items-center rounded-lg border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-500">
+                    처리 {formatDateTime(request.reviewed_at ?? request.updated_at)}
+                  </span>
+                )}
               </div>
             </article>
           );
         })}
 
-        {requests.length === 0 && <EmptyState text="처리할 인증 요청이 없습니다." />}
+        {requests.length === 0 && (
+          <EmptyState
+            text={
+              activeTab === "pending"
+                ? "처리할 인증 요청이 없습니다."
+                : "완료된 인증이 없습니다."
+            }
+          />
+        )}
       </div>
     </section>
   );

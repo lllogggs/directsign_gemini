@@ -401,6 +401,19 @@ describe("yeollock.me security regressions", () => {
     assert.match(adminDashboard, /고객 문의/);
     assert.match(adminDashboard, /ticketCategoryFilter/);
     assert.match(adminDashboard, /계약 열기/);
+    assert.match(adminDashboard, /AdminSectionTabs/);
+    assert.match(adminDashboard, /manual_verification/);
+    assert.match(adminDashboard, /data-admin-section/);
+    assert.match(adminDashboard, /data-verification-tab/);
+    assert.match(adminDashboard, /bg-red-500/);
+    assert.match(adminDashboard, /인증 요청/);
+    assert.match(adminDashboard, /인증 완료/);
+    assert.doesNotMatch(adminDashboard, /운영 기준|운영\/테스트 분리|metrics\.source ===/);
+    assert.match(server, /readOperationalAdminContracts/);
+    assert.match(server, /readOperationalAdminSupportAccessRequests/);
+    assert.match(server, /readOperationalAdminVerificationRequests/);
+    assert.match(server, /readOperationalAdminSupportTickets/);
+    assert.match(server, /if \(!useSupabase\) return \[\] as Contract\[\];/);
 
     assert.match(migration, /create table if not exists public\.operational_support_tickets/);
     assert.match(migration, /enable row level security/);

@@ -366,6 +366,59 @@ const getSalesContractsForCapture = async (client, page) => {
   return contracts;
 };
 
+const getContentReviewContractForCapture = async (client, page) => {
+  const reviewContract = await evaluate(
+    client,
+    page,
+    `new Promise(async (resolve) => {
+      const contractsResponse = await fetch("/api/contracts", {
+        headers: { Accept: "application/json" },
+        credentials: "include"
+      }).catch(() => null);
+      if (!contractsResponse?.ok) {
+        resolve(null);
+        return;
+      }
+
+      const data = await contractsResponse.json().catch(() => ({}));
+      const contracts = Array.isArray(data.contracts) ? data.contracts : [];
+      for (const contract of contracts) {
+        if (!contract?.id) continue;
+        const deliverablesResponse = await fetch(
+          "/api/contracts/" + encodeURIComponent(contract.id) + "/deliverables",
+          {
+            headers: { Accept: "application/json" },
+            credentials: "include"
+          }
+        ).catch(() => null);
+        if (!deliverablesResponse?.ok) continue;
+        const deliverables = await deliverablesResponse.json().catch(() => ({}));
+        const requirements = Array.isArray(deliverables.requirements)
+          ? deliverables.requirements
+          : [];
+        const hasSubmittedContent = requirements.some((requirement) =>
+          Array.isArray(requirement.submissions) &&
+          requirement.submissions.some((submission) =>
+            submission?.review_status === "submitted" &&
+            (submission?.url || (Array.isArray(submission?.files) && submission.files.length > 0))
+          )
+        );
+        if (hasSubmittedContent) {
+          resolve({ id: contract.id });
+          return;
+        }
+      }
+      resolve(null);
+    })`,
+  );
+
+  if (!reviewContract?.id) {
+    throw new Error("No submitted content review contract was available for sales capture");
+  }
+
+  return reviewContract;
+};
+
 const scrollToText = async (client, page, text, offset = 0) => {
   await evaluate(
     client,
@@ -473,6 +526,153 @@ const prepareBuilderForCapture = async (client, page) => {
   }
 };
 
+const clickVisibleButtonByText = async (client, page, text) => {
+  const clicked = await evaluate(
+    client,
+    page,
+    `(() => {
+      const button = Array.from(document.querySelectorAll("button")).find(
+        (item) => item.textContent?.includes(${JSON.stringify(text)}) && !item.disabled
+      );
+      if (!button) return false;
+      button.click();
+      return true;
+    })()`,
+  );
+  await sleep(500);
+  return Boolean(clicked);
+};
+
+const scrollToFirstTextarea = async (client, page) => {
+  await evaluate(
+    client,
+    page,
+    `(() => {
+      const target = document.querySelector("textarea");
+      if (!target) return false;
+      target.scrollIntoView({ block: "center", inline: "nearest" });
+      const scrollables = Array.from(document.querySelectorAll("*")).filter((element) => {
+        const style = getComputedStyle(element);
+        return /(auto|scroll)/.test(style.overflowY) && element.scrollHeight > element.clientHeight;
+      });
+      for (const element of scrollables) {
+        const box = target.getBoundingClientRect();
+        if (box.top < 120 || box.bottom > window.innerHeight - 80) {
+          element.scrollTop += box.top - window.innerHeight / 2 + 80;
+        }
+      }
+      return true;
+    })()`,
+  );
+  await sleep(500);
+};
+
+const fillBuilderFirstStepForCapture = async (client, page) => {
+  const result = await evaluate(
+    client,
+    page,
+    `new Promise(async (resolve, reject) => {
+      const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
+      const setNativeValue = (element, value) => {
+        const prototype = Object.getPrototypeOf(element);
+        const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
+        if (descriptor?.set) descriptor.set.call(element, value);
+        else element.value = value;
+        element.dispatchEvent(new Event("input", { bubbles: true }));
+        element.dispatchEvent(new Event("change", { bubbles: true }));
+      };
+      const byLabel = (labelText) => {
+        const label = Array.from(document.querySelectorAll("label")).find((item) =>
+          item.textContent?.trim().includes(labelText)
+        );
+        const container = label?.parentElement;
+        return container?.querySelector("input, textarea");
+      };
+      const setByLabel = async (labelText, value) => {
+        const field = byLabel(labelText);
+        if (!field) throw new Error("Field not found: " + labelText);
+        field.focus();
+        setNativeValue(field, value);
+        await sleep(80);
+      };
+
+      try {
+        await setByLabel("광고주/브랜드명", "브레드룸");
+        await setByLabel("담당자명", "김마케팅 매니저");
+        await setByLabel("계약 건명", "신제품 선크림 릴스 광고 계약");
+        await setByLabel("성명 또는 채널명", "유나뷰티");
+        await setByLabel("메인 채널 URL", "https://instagram.com/yuna_beauty");
+        await setByLabel("연락처", "creator@example.com");
+        await sleep(450);
+
+        resolve({
+          ok: document.body.innerText.includes("브레드룸") &&
+            document.body.innerText.includes("유나뷰티") &&
+            document.body.innerText.includes("신제품 선크림 릴스 광고 계약")
+        });
+      } catch (error) {
+        reject(error);
+      }
+    })`,
+  );
+
+  if (!result?.ok) {
+    throw new Error("Contract builder first-screen capture was not prepared");
+  }
+};
+
+const getApplicantCampaignKeyForCapture = async (client, page) => {
+  const campaignKey = await evaluate(
+    client,
+    page,
+    `Promise.all([
+      fetch("/api/advertiser/campaigns", {
+        headers: { Accept: "application/json" },
+        credentials: "include"
+      }).then(async (response) => response.ok ? response.json() : null),
+      fetch("/api/marketplace/messages?role=advertiser", {
+        headers: { Accept: "application/json" },
+        credentials: "include"
+      }).then(async (response) => response.ok ? response.json() : null)
+    ]).then(([campaignData, messageData]) => {
+      const campaigns = Array.isArray(campaignData?.campaigns) ? campaignData.campaigns : [];
+      const campaignById = new Map(campaigns.map((campaign) => [campaign.id, campaign]));
+      const threads = Array.isArray(messageData?.threads) ? messageData.threads : [];
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const isOpenRecruiting = (thread) => {
+        const campaign = campaignById.get(thread?.campaignId);
+        if (!campaign || campaign.status !== "open") return false;
+        if (!campaign.deadline) return true;
+        const deadline = new Date(campaign.deadline + "T00:00:00");
+        return Number.isFinite(deadline.getTime()) && deadline >= today;
+      };
+      const hasSelectableApplicant = (thread) =>
+        thread?.campaignId &&
+        (thread?.status === "submitted" || thread?.status === "reviewed");
+      const grouped = new Map();
+      for (const thread of threads) {
+        if (!thread?.campaignId || !hasSelectableApplicant(thread) || !isOpenRecruiting(thread)) continue;
+        const current = grouped.get(thread.campaignId) ?? { campaignId: thread.campaignId, count: 0 };
+        current.count += 1;
+        grouped.set(thread.campaignId, current);
+      }
+      const best = Array.from(grouped.values()).sort((a, b) => b.count - a.count)[0];
+      const fallback = threads.find((item) => hasSelectableApplicant(item) && isOpenRecruiting(item)) ||
+        threads.find((item) => item?.campaignId && isOpenRecruiting(item)) ||
+        threads.find((item) => hasSelectableApplicant(item)) ||
+        threads.find((item) => item?.campaignId);
+      return best?.campaignId ? "campaign:" + best.campaignId : fallback?.campaignId ? "campaign:" + fallback.campaignId : null;
+    })`,
+  );
+
+  if (!campaignKey) {
+    throw new Error("No campaign applicant list was available for sales capture");
+  }
+
+  return campaignKey;
+};
+
 await fs.mkdir(outputDir, { recursive: true });
 await fs.mkdir(profileDir, { recursive: true });
 
@@ -506,21 +706,26 @@ try {
   const authPage = await loginAdvertiser(client);
   const { active: salesContract, signed: signedContract } =
     await getSalesContractsForCapture(client, authPage);
+  const contentReviewContract = await getContentReviewContractForCapture(
+    client,
+    authPage,
+  );
   await closePage(client, authPage);
 
   const dashboardPage = await openPage(
     client,
     `${baseUrl}/advertiser/dashboard`,
-    { width: 1440, height: 940 },
+    { width: 1440, height: 720 },
   );
   await waitForBodyText(client, dashboardPage, "계약 운영");
+  await clickVisibleButtonByText(client, dashboardPage, "필터");
   await capturePng(client, dashboardPage, "yeollock-advertiser-dashboard.png");
   await closePage(client, dashboardPage);
 
   const campaignDashboardPage = await openPage(
     client,
     `${baseUrl}/advertiser/campaigns`,
-    { width: 1440, height: 940 },
+    { width: 1440, height: 720 },
   );
   await waitForBodyText(client, campaignDashboardPage, "캠페인 운영");
   await capturePng(
@@ -528,7 +733,24 @@ try {
     campaignDashboardPage,
     "yeollock-advertiser-campaign-dashboard.png",
   );
+  const applicantCampaignKey = await getApplicantCampaignKeyForCapture(
+    client,
+    campaignDashboardPage,
+  );
   await closePage(client, campaignDashboardPage);
+
+  const campaignApplicantsPage = await openPage(
+    client,
+    `${baseUrl}/advertiser/campaigns?campaign=${encodeURIComponent(applicantCampaignKey)}`,
+    { width: 1440, height: 1080 },
+  );
+  await waitForBodyText(client, campaignApplicantsPage, "지원자", 45000);
+  await capturePng(
+    client,
+    campaignApplicantsPage,
+    "yeollock-campaign-applicants-dashboard.png",
+  );
+  await closePage(client, campaignApplicantsPage);
 
   const campaignBuilderPage = await openPage(
     client,
@@ -546,9 +768,15 @@ try {
   const builderPage = await openPage(
     client,
     `${baseUrl}/advertiser/builder`,
-    { width: 1440, height: 940 },
+    { width: 1440, height: 1040 },
   );
   await waitForBodyText(client, builderPage, "새 전자계약서 작성", 45000);
+  await fillBuilderFirstStepForCapture(client, builderPage);
+  await capturePng(
+    client,
+    builderPage,
+    "yeollock-contract-builder-first-screen.png",
+  );
   await prepareBuilderForCapture(client, builderPage);
   await capturePng(client, builderPage, "yeollock-contract-builder.png");
   await closePage(client, builderPage);
@@ -561,6 +789,20 @@ try {
   await waitForBodyText(client, adminContractPage, "계약서 본문");
   await capturePng(client, adminContractPage, "yeollock-contract-admin.png");
   await closePage(client, adminContractPage);
+
+  const contentReviewPage = await openPage(
+    client,
+    `${baseUrl}/advertiser/contract/${encodeURIComponent(contentReviewContract.id)}`,
+    { width: 1440, height: 620 },
+  );
+  await waitForBodyText(client, contentReviewPage, "수정 요청", 45000);
+  await scrollToFirstTextarea(client, contentReviewPage);
+  await capturePng(
+    client,
+    contentReviewPage,
+    "yeollock-contract-content-review.png",
+  );
+  await closePage(client, contentReviewPage);
 
   if (signedContract?.id) {
     const completedContractPage = await openPage(
@@ -625,9 +867,12 @@ try {
         outputs: [
           "docs/sales/assets/yeollock-advertiser-dashboard.png",
           "docs/sales/assets/yeollock-advertiser-campaign-dashboard.png",
+          "docs/sales/assets/yeollock-campaign-applicants-dashboard.png",
           "docs/sales/assets/yeollock-campaign-builder-main.png",
+          "docs/sales/assets/yeollock-contract-builder-first-screen.png",
           "docs/sales/assets/yeollock-contract-builder.png",
           "docs/sales/assets/yeollock-contract-admin.png",
+          "docs/sales/assets/yeollock-contract-content-review.png",
           "docs/sales/assets/yeollock-contract-completed-admin.png",
           "docs/sales/assets/yeollock-influencer-contract.png",
           "docs/sales/assets/yeollock-advertiser-screen.png",
