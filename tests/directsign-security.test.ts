@@ -378,6 +378,17 @@ describe("yeollock.me security regressions", () => {
     assert.match(seedAccounts, /Production test data seeding is blocked/);
     assert.match(seedMarketplace, /YEOLLOCK_ALLOW_PRODUCTION_TEST_DATA/);
     assert.match(seedMarketplace, /Production test data seeding is blocked/);
+    assert.match(server, /const allowProductionTestData/);
+    assert.match(server, /const allowMarketplaceSeedData/);
+    assert.match(server, /const filterOperationalMarketplaceTestData/);
+    assert.match(server, /demoMode \|\| !isProductionRuntime \|\| allowProductionTestData/);
+    assert.match(server, /!filterOperationalMarketplaceTestData \|\|[\s\S]+!hasOperationalTestMarker\(profile\)/);
+    assert.match(server, /allowMarketplaceSeedData\s+\?\s+mergeMarketplaceInfluencerProfiles/);
+    assert.match(server, /allowMarketplaceSeedData\s+\?\s+mergeMarketplaceBrandProfiles/);
+    assert.match(server, /allowMarketplaceSeedData\s+\?\s+marketplaceBrands\s+:\s+\[\]/);
+    assert.match(server, /const profiles = await readPublicMarketplaceCache\(\s*"marketplace-influencers"/);
+    assert.match(server, /normalizeMarketplaceHandle\(item\.handle\) === normalizedHandle/);
+    assert.match(server, /const brands = await readPublicMarketplaceCache\(\s*"marketplace-brands"/);
 
     assert.match(server, /app\.post\("\/api\/support\/tickets"/);
     assert.match(server, /app\.get\("\/api\/admin\/support-tickets"/);

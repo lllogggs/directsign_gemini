@@ -41,6 +41,7 @@ import {
   mergeMarketplaceBrandProfiles,
   mergeMarketplaceInfluencerProfiles,
   marketplaceBrands,
+  normalizeMarketplaceHandle,
   platformLabels,
   type CampaignProposalType,
   type MarketplaceBrandCampaign,
@@ -472,6 +473,12 @@ const allowLocalMarketplacePublicFileFallback =
   demoMode ||
   (!isProductionRuntime &&
     process.env.MARKETPLACE_ALLOW_LOCAL_PUBLIC_FILE_FALLBACK === "true");
+const allowProductionTestData =
+  process.env.YEOLLOCK_ALLOW_PRODUCTION_TEST_DATA === "true";
+const allowMarketplaceSeedData =
+  demoMode || !isProductionRuntime || allowProductionTestData;
+const filterOperationalMarketplaceTestData =
+  isProductionRuntime && !demoMode && !allowProductionTestData;
 const signatureConsentVersion = SIGNATURE_CONSENT_VERSION;
 const signatureConsentText = SIGNATURE_CONSENT_TEXT;
 const supportAccessConsentText = SUPPORT_ACCESS_CONSENT_TEXT;
@@ -7183,18 +7190,26 @@ const readMarketplaceInfluencerProfiles = async () => {
   const { profiles, channels } = await readMarketplaceInfluencerRows(
     "?select=*&is_published=eq.true&order=updated_at.desc",
   );
-  const dbProfiles = profiles.map((profile) =>
-    mapInfluencerProfileRowToMarketplaceProfile(
-      profile,
-      channels.get(profile.id) ?? [],
-    ),
-  );
+  const dbProfiles = profiles
+    .map((profile) =>
+      mapInfluencerProfileRowToMarketplaceProfile(
+        profile,
+        channels.get(profile.id) ?? [],
+      ),
+    )
+    .filter(
+      (profile) =>
+        !filterOperationalMarketplaceTestData ||
+        !hasOperationalTestMarker(profile),
+    );
 
-  return mergeMarketplaceInfluencerProfiles(dbProfiles);
+  return allowMarketplaceSeedData
+    ? mergeMarketplaceInfluencerProfiles(dbProfiles)
+    : dbProfiles;
 };
 
 const readMarketplaceBrandProfiles = async () => {
-  if (!useSupabase) return marketplaceBrands;
+  if (!useSupabase) return allowMarketplaceSeedData ? marketplaceBrands : [];
 
   const rows = await readSupabaseRows<SupabaseMarketplaceBrandProfileRow>(
     "marketplace_brand_profiles",
@@ -7202,7 +7217,14 @@ const readMarketplaceBrandProfiles = async () => {
     "marketplace brand profiles",
   );
 
-  return mergeMarketplaceBrandProfiles(rows.map(mapBrandProfileRowToMarketplaceProfile));
+  const dbProfiles = rows.map(mapBrandProfileRowToMarketplaceProfile);
+  const visibleDbProfiles = dbProfiles.filter(
+    (profile) =>
+      !filterOperationalMarketplaceTestData || !hasOperationalTestMarker(profile),
+  );
+  return allowMarketplaceSeedData
+    ? mergeMarketplaceBrandProfiles(visibleDbProfiles)
+    : visibleDbProfiles;
 };
 
 const publicMarketplaceCacheMaxAgeSeconds = 60;
@@ -7226,9 +7248,10 @@ type PublicMarketplaceCacheOptions<T> = {
 };
 
 const fallbackMarketplaceInfluencerProfiles = () =>
-  mergeMarketplaceInfluencerProfiles();
+  allowMarketplaceSeedData ? mergeMarketplaceInfluencerProfiles() : [];
 
-const fallbackMarketplaceBrandProfiles = () => mergeMarketplaceBrandProfiles();
+const fallbackMarketplaceBrandProfiles = () =>
+  allowMarketplaceSeedData ? mergeMarketplaceBrandProfiles() : [];
 
 const fallbackMarketplaceCampaignPosts = () =>
   buildMarketplaceCampaignPosts(fallbackMarketplaceBrandProfiles());
@@ -15425,13 +15448,14 @@ app.get("/api/marketplace/influencers", async (_request, response, next) => {
 
 app.get("/api/marketplace/influencers/:handle", async (request, response, next) => {
   try {
-    const profile = findInfluencerProfileByHandle(
-      request.params.handle,
-      await readPublicMarketplaceCache(
-        "marketplace-influencers",
-        readMarketplaceInfluencerProfiles,
-        { fallback: fallbackMarketplaceInfluencerProfiles },
-      ),
+    const normalizedHandle = normalizeMarketplaceHandle(request.params.handle);
+    const profiles = await readPublicMarketplaceCache(
+      "marketplace-influencers",
+      readMarketplaceInfluencerProfiles,
+      { fallback: fallbackMarketplaceInfluencerProfiles },
+    );
+    const profile = profiles.find(
+      (item) => normalizeMarketplaceHandle(item.handle) === normalizedHandle,
     );
 
     if (!profile) {
@@ -15460,13 +15484,14 @@ app.get("/api/marketplace/brands", async (_request, response, next) => {
 
 app.get("/api/marketplace/brands/:handle", async (request, response, next) => {
   try {
-    const brand = findBrandProfileByHandle(
-      request.params.handle,
-      await readPublicMarketplaceCache(
-        "marketplace-brands",
-        readMarketplaceBrandProfiles,
-        { fallback: fallbackMarketplaceBrandProfiles },
-      ),
+    const normalizedHandle = normalizeMarketplaceHandle(request.params.handle);
+    const brands = await readPublicMarketplaceCache(
+      "marketplace-brands",
+      readMarketplaceBrandProfiles,
+      { fallback: fallbackMarketplaceBrandProfiles },
+    );
+    const brand = brands.find(
+      (item) => normalizeMarketplaceHandle(item.handle) === normalizedHandle,
     );
 
     if (!brand) {
