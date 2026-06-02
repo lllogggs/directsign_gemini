@@ -477,8 +477,8 @@ const signatureConsentText = SIGNATURE_CONSENT_TEXT;
 const supportAccessConsentText = SUPPORT_ACCESS_CONSENT_TEXT;
 const productName = process.env.PRODUCT_NAME ?? process.env.VITE_PRODUCT_NAME ?? "yeollock.me";
 const adminOperatorName = configuredAdminOperatorName ?? `${productName} 운영자`;
-const signupTermsVersion = "2026-05-19";
-const signupPrivacyPolicyVersion = "2026-05-06";
+const signupTermsVersion = "2026-06-02";
+const signupPrivacyPolicyVersion = "2026-06-02";
 const signedPdfFontCandidates = [
   process.env.SIGNED_PDF_FONT_PATH,
   path.join(root, "assets", "fonts", "NotoSansKR-Regular.ttf"),
@@ -3921,8 +3921,10 @@ const normalizeEmail = (value: unknown) =>
 
 const operationalTestEmailLocals = new Set([
   "breadroom.manager",
+  "test.influencer",
   "creator.sora",
   "breadroom",
+  "breadroom-partner",
   "obre-beauty",
   "housefit",
   "brewinglab",
@@ -3948,6 +3950,104 @@ const operationalTestEmailLocals = new Set([
 
 const operationalTestTextPattern =
   /\b(?:qa|test|demo|seed|showcase|dummy)\b|테스트|데모|시드|쇼케이스/i;
+
+const normalizeOperationalTestText = (value: string) =>
+  value.toLowerCase().replace(/\s+/g, " ").trim();
+
+const operationalTestSeedTextValues = new Set(
+  [
+    "광고주 매니저",
+    "브레드룸",
+    "브래드룸",
+    "breadroom",
+    "breadroom-partner",
+    "오브레",
+    "obre",
+    "하우스핏",
+    "housefit",
+    "브루잉랩",
+    "brewinglab",
+    "나이트케어",
+    "nightcare",
+    "크리에이터 소라",
+    "creator-sora",
+    "creator.sora",
+    "creator_sora",
+    "민서홈",
+    "minseo-home",
+    "minseo.home",
+    "오늘의취향",
+    "today-taste",
+    "today.taste",
+    "하루핏",
+    "haru-fit",
+    "haru.fit",
+    "지유로그",
+    "ziyu-log",
+    "ziyu.log",
+    "루나데이",
+    "luna-day",
+    "luna.day",
+    "유나뷰티",
+    "yuna-beauty",
+    "yuna.beauty",
+    "리뷰제이",
+    "review-j",
+    "review.j",
+    "온리루틴",
+    "only-routine",
+    "only.routine",
+    "하린로그",
+    "harin-log",
+    "harin.log",
+    "모아리뷰",
+    "moa-review",
+    "moa.review",
+    "수아픽",
+    "sua-pick",
+    "sua.pick",
+    "라온뷰티",
+    "raon-beauty",
+    "raon.beauty",
+    "지안홈",
+    "jian-home",
+    "jian.home",
+    "세린데일리",
+    "serin-daily",
+    "serin.daily",
+    "나래숏폼",
+    "narae-shorts",
+    "narae.shorts",
+    "로미리뷰",
+    "romi-review",
+    "romi.review",
+    "소담픽",
+    "sodam-pick",
+    "sodam.pick",
+    "선정 크리에이터 계약",
+    "완료 보관 캠페인",
+    "브레드룸 여름 루틴",
+    "브레드룸 신제품 언박싱",
+    "파우치 필수템 쇼츠",
+    "데일리 루틴 블로그",
+    "성수 팝업",
+    "나이트 케어 쇼츠",
+    "공동구매 파일럿",
+    "오브레 릴스",
+    "브루잉랩 공동구매",
+  ].map(normalizeOperationalTestText),
+);
+
+const hasOperationalTestText = (value: unknown) => {
+  if (!hasText(value)) return false;
+  const normalized = normalizeOperationalTestText(value);
+  return (
+    operationalTestTextPattern.test(normalized) ||
+    [...operationalTestSeedTextValues].some((marker) =>
+      normalized.includes(marker),
+    )
+  );
+};
 
 const extractEmails = (value: unknown) =>
   hasText(value)
@@ -3987,7 +4087,7 @@ const hasOperationalTestMarker = (value: unknown, depth = 0): boolean => {
   if (!value || depth > 4) return false;
 
   if (typeof value === "string") {
-    return hasOperationalTestEmail([value]);
+    return hasOperationalTestEmail([value]) || hasOperationalTestText(value);
   }
 
   if (Array.isArray(value)) {
@@ -4025,12 +4125,22 @@ const isOperationalTestContractId = (value: unknown) =>
 const isOperationalTestContract = (contract: Contract) =>
   isOperationalTestContractId(contract.id) ||
   hasOperationalTestEmail([
+    contract.advertiser_info?.name,
     contract.advertiser_info?.manager,
+    contract.influencer_info?.name,
     contract.influencer_info?.contact,
     contract.signature_data?.signer_email,
   ]) ||
   hasOperationalTestMarker({
+    title: contract.title,
+    campaign_name: contract.campaign_name,
+    post_link: contract.post_link,
     advertiser_id: contract.advertiser_id,
+    advertiser_info: contract.advertiser_info,
+    influencer_info: contract.influencer_info,
+    campaign: contract.campaign,
+    workflow: contract.workflow,
+    settlement: contract.settlement,
     evidence: contract.evidence,
     signature_data: contract.signature_data,
     audit_events: contract.audit_events,
@@ -4040,19 +4150,25 @@ const isOperationalTestSupportAccessRequest = (
   request: SupportAccessRequestRecord,
 ) =>
   isOperationalTestContractId(request.contract_id) ||
-  hasOperationalTestEmail([request.requester_email]) ||
+  hasOperationalTestEmail([request.requester_name, request.requester_email]) ||
   hasOperationalTestMarker({
+    requester_name: request.requester_name,
+    reason: request.reason,
     reviewed_by_name: request.reviewed_by_name,
     audit_events: request.audit_events,
   });
 
 const isOperationalTestSupportTicket = (ticket: OperationalSupportTicketRecord) =>
   isOperationalTestContractId(ticket.contract_id) ||
-  hasOperationalTestEmail([ticket.requester_email]) ||
+  hasOperationalTestEmail([ticket.requester_name, ticket.requester_email]) ||
   hasOperationalTestMarker({
     source: ticket.source,
+    requester_name: ticket.requester_name,
     subject: ticket.subject,
     message: ticket.message,
+    contract_title: ticket.contract_title,
+    page_path: ticket.page_path,
+    context_url: ticket.context_url,
     browser_context: ticket.browser_context,
   });
 

@@ -8,8 +8,8 @@ import { LEGAL_CONTACT_EMAIL } from "../../domain/legalEntity";
 import { getNextPath } from "../../domain/navigation";
 import { translateApiErrorMessage } from "../../domain/userMessages";
 
-const TERMS_DOCUMENT_VERSION = "2026-05-19";
-const PRIVACY_POLICY_DOCUMENT_VERSION = "2026-05-06";
+const TERMS_DOCUMENT_VERSION = "2026-06-02";
+const PRIVACY_POLICY_DOCUMENT_VERSION = "2026-06-02";
 
 type SignupRole = "advertiser" | "influencer";
 

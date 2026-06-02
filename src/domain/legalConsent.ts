@@ -1,4 +1,4 @@
-export const SIGNATURE_CONSENT_VERSION = "directsign-signature-consent-v1";
+export const SIGNATURE_CONSENT_VERSION = "directsign-signature-consent-v2";
 
 export const SIGNATURE_CONSENT_TEXT =
   "계약 최종본, 모든 조항, 서명 증빙 보관 기준, 전자서명 안내 문서를 확인했고 전자서명에 동의합니다.";

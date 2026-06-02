@@ -419,12 +419,19 @@ describe("yeollock.me security regressions", () => {
     assert.match(server, /isOperationalTestSupportAccessRequest/);
     assert.match(server, /isOperationalTestSupportTicket/);
     assert.match(server, /isOperationalTestVerificationRequest/);
+    assert.match(server, /operationalTestSeedTextValues/);
+    assert.match(server, /hasOperationalTestText/);
     assert.match(server, /store\.contracts\.filter\(\(contract\) => !isOperationalTestContract\(contract\)\)/);
     assert.match(server, /!isOperationalTestSupportAccessRequest\(request\)/);
     assert.match(server, /!isOperationalTestSupportTicket\(ticket\)/);
     assert.match(server, /!isOperationalTestVerificationRequest\(request\)/);
     assert.match(server, /breadroom\.manager/);
+    assert.match(server, /test\.influencer/);
     assert.match(server, /creator\.sora/);
+    assert.match(server, /광고주 매니저/);
+    assert.match(server, /브레드룸 신제품 언박싱/);
+    assert.match(server, /title: contract\.title/);
+    assert.match(server, /contract_title: ticket\.contract_title/);
 
     assert.match(migration, /create table if not exists public\.operational_support_tickets/);
     assert.match(migration, /enable row level security/);
@@ -972,6 +979,7 @@ describe("yeollock.me security regressions", () => {
     assert.match(authHeaders, /const key = supabasePublishableKey/);
     assert.doesNotMatch(authHeaders, /supabaseServiceRoleKey/);
     assert.match(legalConsent, /SIGNATURE_CONSENT_TEXT/);
+    assert.match(legalConsent, /directsign-signature-consent-v2/);
     assert.match(legalConsent, /전자서명 안내 문서를 확인했고 전자서명에 동의합니다/);
     assert.match(server, /const signatureConsentText\s*=\s*SIGNATURE_CONSENT_TEXT/);
     assert.match(viewer, /SIGNATURE_CONSENT_TEXT/);
@@ -1056,15 +1064,23 @@ describe("yeollock.me security regressions", () => {
     const signupPage = read("src/pages/auth/SignupPage.tsx");
     const server = read("server/index.ts");
 
-    assert.match(server, /const signupTermsVersion = "2026-05-19"/);
-    assert.match(signupPage, /const TERMS_DOCUMENT_VERSION = "2026-05-19"/);
+    assert.match(server, /const signupTermsVersion = "2026-06-02"/);
+    assert.match(server, /const signupPrivacyPolicyVersion = "2026-06-02"/);
+    assert.match(signupPage, /const TERMS_DOCUMENT_VERSION = "2026-06-02"/);
+    assert.match(signupPage, /const PRIVACY_POLICY_DOCUMENT_VERSION = "2026-06-02"/);
     assert.match(signupPage, /LEGAL_CONTACT_EMAIL/);
     assert.match(signupPage, /동의 일시와 문서 버전이 저장됩니다/);
     assert.match(signupPage, /현재 가입과 기본 서비스 이용은 무료입니다/);
     assert.match(signupPage, /향후 일부 또는 전체\s+기능이 유료로 전환될 수 있으며/);
-    assert.match(legalPage, /effectiveDate: "2026-05-19"/);
+    assert.match(legalPage, /effectiveDate: "2026-06-02"/);
     assert.match(legalPage, /향후 일부 또는 전체 기능이 유료로 전환될 수 있으며/);
     assert.match(legalPage, /전환 전 별도 고지/);
+    assert.match(legalPage, /처리위탁 및 국외 처리/);
+    assert.match(legalPage, /Vercel\(호스팅·서버 실행\)/);
+    assert.match(legalPage, /Supabase\(인증·데이터베이스·스토리지\)/);
+    assert.match(legalPage, /계약 본문, 공유 토큰, 전자서명, 사업자 증빙, 운영자 화면/);
+    assert.match(legalPage, /전자적 형태라는 이유만으로 효력이 부인되지/);
+    assert.match(legalPage, /별도 서면, 공증, 인감, 원본 제출/);
   });
 
   it("keeps verification automation optional until provider registration", () => {
