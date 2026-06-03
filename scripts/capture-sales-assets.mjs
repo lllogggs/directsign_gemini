@@ -784,7 +784,7 @@ try {
   const adminContractPage = await openPage(
     client,
     `${baseUrl}/advertiser/contract/${encodeURIComponent(salesContract.id)}`,
-    { width: 1440, height: 940 },
+    { width: 1180, height: 884 },
   );
   await waitForBodyText(client, adminContractPage, "계약서 본문");
   await capturePng(client, adminContractPage, "yeollock-contract-admin.png");

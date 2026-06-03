@@ -554,6 +554,110 @@ check(
   "operation support access must not rely on client-only UI consent or hide privacy policy access",
 );
 
+const influencerShareSummaryRowsStart = contractViewer.indexOf(
+  "const contractSummaryRows",
+);
+const influencerShareSummaryRowsEnd = contractViewer.indexOf(
+  "const campaignPeriod",
+  influencerShareSummaryRowsStart,
+);
+const influencerShareSummaryRows =
+  influencerShareSummaryRowsStart >= 0 && influencerShareSummaryRowsEnd >= 0
+    ? contractViewer.slice(
+        influencerShareSummaryRowsStart,
+        influencerShareSummaryRowsEnd,
+      )
+    : "";
+
+check(
+  "influencer contract share-link first screen stays contract-centered",
+    agents.includes("Influencer contract share-link first screens must be contract-centered") &&
+    agents.includes("polished document review surface") &&
+    agents.includes("separate advertiser-check cards") &&
+    agents.includes("산출물 summaries should surface advertiser-entered values") &&
+    agents.includes('do not use "산출물" as a parent row') &&
+    agents.includes('conditional "특약" row on the first summary') &&
+    agents.includes('"특약사항" detail row') &&
+    agents.includes('first show "계약서 확인하기"') &&
+    agents.includes("first screens should show only the top contract summary") &&
+    agents.includes('helper checklist labels such as "PDF 계약서 확인"') &&
+    agents.includes("available vertical viewport deliberately") &&
+    agents.includes("show the PDF contract file immediately") &&
+    agents.includes("do not require local clause checks before signing") &&
+    contractViewer.includes('      : "계약 내용 확인";') &&
+    contractViewer.includes("조건을 먼저 보고, 로그인 후 바로 서명합니다.") &&
+    contractViewer.includes("contractSummaryRows") &&
+    contractViewer.includes("DeliverableSummaryValue") &&
+    contractViewer.includes("DeliverablePart") &&
+    contractViewer.includes("parseDeliverableSummary") &&
+    contractViewer.includes("getDeliverableFactValues") &&
+    contractViewer.includes("deliverableSummaryFacts") &&
+    contractViewer.includes("getAdvertiserSpecialTerms") &&
+    contractViewer.includes("getSpecialTermCategoryLabel") &&
+    contractViewer.includes("specialTermsSummary") &&
+    influencerShareSummaryRows.includes('label: "플랫폼"') &&
+    influencerShareSummaryRows.includes('label: "컨텐츠"') &&
+    influencerShareSummaryRows.includes('label: "수량"') &&
+    influencerShareSummaryRows.includes('label: "특약"') &&
+    influencerShareSummaryRows.includes("deliverableSummaryFacts.platform") &&
+    influencerShareSummaryRows.includes("deliverableSummaryFacts.content") &&
+    influencerShareSummaryRows.includes("deliverableSummaryFacts.quantity") &&
+    influencerShareSummaryRows.includes("specialTermsSummary") &&
+    !influencerShareSummaryRows.includes('label: "산출물"') &&
+    contractViewer.includes('label="플랫폼"') &&
+    contractViewer.includes('label="컨텐츠"') &&
+    contractViewer.includes('label="수량"') &&
+    contractViewer.includes("hasViewedContractDocument") &&
+    contractViewer.includes("shouldShowContractReviewCta") &&
+    contractViewer.includes("shouldShowContractDocument") &&
+    contractViewer.includes("shouldShowPdfReview") &&
+    contractViewer.includes("function PdfContractPreview") &&
+    contractViewer.includes('aria-label="계약서 PDF 1페이지 미리보기"') &&
+    contractViewer.includes("pdfjsLib.getDocument") &&
+    contractViewer.includes("<PdfContractPreview href={reviewPdfHref} />") &&
+    contractViewer.includes("contractDetailRows") &&
+    contractViewer.includes('label: "특약사항"') &&
+    contractViewer.includes("reviewPdfHref") &&
+    contractViewer.includes("/review-pdf") &&
+    contractViewer.includes("PDF 계약서와 계정 인증이 확인되어 서명할 수 있습니다.") &&
+    contractViewer.includes("PDF 계약서 확인이 완료되었습니다.") &&
+    contractViewer.includes('? "계약서 확인하기"') &&
+    contractViewer.includes('scrollIntoView({') &&
+    contractViewer.includes(': "서명하기";') &&
+    contractViewer.includes("summaryListClassName") &&
+    contractViewer.includes("h-[calc(100dvh-57px)]") &&
+    contractViewer.includes("grid h-full min-h-0") &&
+    contractViewer.includes("BusinessVerificationBadge") &&
+    contractViewer.includes('aria-label="사업자 인증 완료"') &&
+    contractViewer.includes('role="tooltip"') &&
+    contractViewer.includes("bg-blue-50 px-1.5") &&
+    contractViewer.includes('buttonClassName="hidden h-9 w-9 rounded-lg sm:inline-flex"') &&
+    contractViewer.includes("bg-blue-600 text-white") &&
+    !contractViewer.includes("summaryChecklistClassName") &&
+    !contractViewer.includes("확인 후 서명하기") &&
+    !contractViewer.includes("checkedClauseIdsByContract") &&
+    !contractViewer.includes("toggleClauseConfirmation") &&
+    !contractViewer.includes('"확인 체크"') &&
+    !contractViewer.includes("계약서 조항을 모두 체크하면 서명할 수 있습니다.") &&
+    !contractViewer.includes("canSubmitClauseReview") &&
+    !contractViewer.includes("조항별 검토") &&
+    !contractViewer.includes("mt-4 grid grid-cols-2 gap-2") &&
+    !contractViewer.includes("AdvertiserTrustNotice") &&
+    !contractViewer.includes("광고주 확인 정보") &&
+    !contractViewer.includes("위험점수") &&
+    !contractViewer.includes('contract.campaign?.deliverables?.join(", ")') &&
+    !contractViewer.includes("divide-y divide-neutral-200/80 px-4") &&
+    !contractViewer.includes("false &&") &&
+    !contractViewer.includes("!canSubmitClauseReview && (") &&
+    !contractViewer.includes("보안 계약 검토") &&
+    !contractViewer.includes("보안 링크 확인됨") &&
+    !contractViewer.includes("보안 링크로 계약 내용은 먼저 확인할 수 있습니다") &&
+    !contractViewer.includes("안전한 계약 의견") &&
+    !contractViewer.includes("안전 저장소") &&
+    !contractViewer.includes("function MetricCard"),
+  "Influencer share-link landing must lead with contract title/core terms/next action, not security-review copy, visible risk blocks, or duplicate metric cards",
+);
+
 const clarityPathsStart = analytics.indexOf("const clarityPublicPaths");
 const clarityPathsEnd = analytics.indexOf("let installed", clarityPathsStart);
 const clarityPathAllowlist = analytics.slice(clarityPathsStart, clarityPathsEnd);
@@ -972,9 +1076,16 @@ check(
 check(
   "advertiser sales PDF keeps dashboard explanation quiet",
     salesAdvertiserIntroduction.includes("yeollock-contract-builder-first-screen.png") &&
-    salesAdvertiserIntroduction.includes("yeollock-advertiser-dashboard.png") &&
+    salesAdvertiserIntroduction.includes("yeollock-contract-admin.png") &&
+    salesAdvertiserIntroduction.includes("yeollock-influencer-contract.png") &&
     salesAdvertiserIntroduction.includes("yeollock-campaign-applicants-dashboard.png") &&
     salesAdvertiserIntroduction.includes("yeollock-contract-handshake.png") &&
+    salesAdvertiserIntroduction.includes('data-stage="link-signature"') &&
+    salesAdvertiserIntroduction.includes('class="link-flow-visual"') &&
+    salesAdvertiserIntroduction.includes('class="product-shot product-shot-contract-hero"') &&
+    salesAdvertiserIntroduction.includes(".product-shot-contract-hero img") &&
+    captureSalesAssets.includes("{ width: 1180, height: 884 }") &&
+    !salesAdvertiserIntroduction.includes('class="product-stack"') &&
     !salesAdvertiserIntroduction.includes("-tight.png") &&
     !salesAdvertiserIntroduction.includes('class="red-box"') &&
     !salesAdvertiserIntroduction.includes('class="notes"') &&
@@ -996,7 +1107,7 @@ const advertiserSalesPainPointSection = salesAdvertiserIntroduction.slice(
 
 check(
   "advertiser sales PDF uses one consistent layout grid",
-  advertiserSalesUnifiedGridCount === 5 &&
+  advertiserSalesUnifiedGridCount === 6 &&
     agents.includes("Advertiser sales proposals must use one consistent slide grid"),
   "Advertiser sales PDF pages must not mix unrelated layout systems; use the same left-message/right-product rhythm across the deck",
 );
@@ -1051,12 +1162,14 @@ const advertiserSalesContentStartCount =
 
 check(
   "advertiser sales PDF keeps right visuals fixed while centering left copy",
-  salesAdvertiserIntroduction.includes("--sales-content-start: 10mm;") &&
+    salesAdvertiserIntroduction.includes("--sales-content-start: 10mm;") &&
     salesAdvertiserIntroduction.includes("--sales-copy-visual-height: 128mm;") &&
     salesAdvertiserIntroduction.includes("--sales-copy-visual-height: 136mm;") &&
-    salesAdvertiserIntroduction.includes("--sales-copy-visual-height: 119.6mm;") &&
     salesAdvertiserIntroduction.includes("--sales-copy-visual-height: 141mm;") &&
     salesAdvertiserIntroduction.includes("--sales-copy-visual-height: 117.8mm;") &&
+    salesAdvertiserIntroduction.includes(".deck > .page:nth-of-type(3) {\n        --sales-copy-visual-height: 128mm;") &&
+    salesAdvertiserIntroduction.includes(".deck > .page:nth-of-type(4) {\n        --sales-copy-visual-height: 141mm;") &&
+    salesAdvertiserIntroduction.includes(".deck > .page:nth-of-type(6) {\n        --sales-copy-visual-height: 117.8mm;") &&
     advertiserSalesContentStartCount >= 4 &&
     salesAdvertiserIntroduction.includes("height: var(--sales-copy-visual-height);") &&
     salesAdvertiserIntroduction.includes("padding: 0 0 0 8mm;") &&
@@ -1087,10 +1200,12 @@ check(
     salesAdvertiserIntroduction.includes("product-shot-dashboard") &&
     salesAdvertiserIntroduction.includes("product-shot-campaign") &&
     salesAdvertiserIntroduction.includes("product-shot-final") &&
+    salesAdvertiserIntroduction.includes("link-flow-visual") &&
     exists("docs/sales/assets/yeollock-contract-builder-first-screen.png") &&
     exists("docs/sales/assets/yeollock-advertiser-dashboard.png") &&
     exists("docs/sales/assets/yeollock-campaign-applicants-dashboard.png") &&
     exists("docs/sales/assets/yeollock-contract-content-review.png") &&
+    exists("docs/sales/assets/yeollock-influencer-contract.png") &&
     exists("docs/sales/assets/yeollock-contract-handshake.png") &&
     !exists("docs/sales/assets/yeollock-advertiser-dashboard-tight.png") &&
     !exists("docs/sales/assets/yeollock-advertiser-campaign-dashboard-tight.png") &&
@@ -1124,24 +1239,24 @@ const salesAdvertiserPageNumberCount =
 
 check(
   "advertiser sales PDF exports without blank pages",
-  salesAdvertiserPdfPageCount === 5 &&
+  salesAdvertiserPdfPageCount === 6 &&
     salesAdvertiserIntroduction.includes("@media print") &&
     salesAdvertiserIntroduction.includes("body {\n          padding: 0;") &&
     salesAdvertiserIntroduction.includes(".deck {\n          display: block;"),
-  "Sales PDF must render as the intended five pages without print padding/grid gaps that create blank pages",
+  "Sales PDF must render as the intended six pages without print padding/grid gaps that create blank pages",
 );
 
 check(
   "advertiser sales PDF has unified logo and page numbers",
-  salesAdvertiserPageNumberCount === 5 &&
-    ["01", "02", "03", "04", "05"].every((pageNo) =>
+  salesAdvertiserPageNumberCount === 6 &&
+    ["01", "02", "03", "04", "05", "06"].every((pageNo) =>
       salesAdvertiserIntroduction.includes(`<span class="page-no">${pageNo}</span>`),
     ) &&
     salesAdvertiserIntroduction.includes("width: 54px;") &&
     salesAdvertiserIntroduction.includes("height: 54px;") &&
     agents.includes("page numbering consistent on every page") &&
     agents.includes("requested logo scaling"),
-  "Advertiser sales PDF must use the requested larger logo and the same page-number treatment on all five pages",
+  "Advertiser sales PDF must use the requested larger logo and the same page-number treatment on all six pages",
 );
 
 check(
@@ -1187,13 +1302,17 @@ check(
     salesAdvertiserIntroduction.includes("PDF 계약서") &&
     salesAdvertiserIntroduction.includes("간단히 필요 항목만 입력하면") &&
     salesAdvertiserIntroduction.includes('<span class="nowrap"><strong>PDF 계약서</strong>가 바로 생성됩니다</span>') &&
+    salesAdvertiserIntroduction.includes("계약서<br /><strong class=\"headline-emphasis headline-blue\">링크 공유</strong>") &&
+    salesAdvertiserIntroduction.includes("작성한 계약서를 링크로 전달하면") &&
+    salesAdvertiserIntroduction.includes("<strong>인플루언서</strong>가 확인 후 <strong>서명</strong>합니다") &&
+    salesAdvertiserIntroduction.includes("yeollock-influencer-contract.png") &&
     salesAdvertiserIntroduction.includes("계약 관리를") &&
     salesAdvertiserIntroduction.includes("효율적으로") &&
     salesAdvertiserIntroduction.includes("진행과정 관리") &&
     !salesAdvertiserIntroduction.includes("<strong>진행과정</strong>") &&
     salesAdvertiserIntroduction.includes("<strong>플랫폼별</strong> 관리") &&
-    salesAdvertiserIntroduction.includes("<strong>콘텐츠 확인</strong>") &&
-    salesAdvertiserIntroduction.includes("<strong>수정요청</strong>") &&
+    salesAdvertiserIntroduction.includes("<strong>조항 검토</strong>") &&
+    salesAdvertiserIntroduction.includes("<strong>서명 관리</strong>") &&
     salesAdvertiserIntroduction.includes("캠페인 모집도") &&
     salesAdvertiserIntroduction.includes("캠페인에 지원한") &&
     salesAdvertiserIntroduction.includes("<strong>인플루언서 쉽게 확인, 선정</strong>") &&
@@ -1218,13 +1337,16 @@ check(
 
 check(
   "advertiser sales PDF reflects latest slide copy",
-  salesAdvertiserIntroduction.includes("계약 관리를") &&
+    salesAdvertiserIntroduction.includes("계약 관리를") &&
     salesAdvertiserIntroduction.includes("효율적으로") &&
     salesAdvertiserIntroduction.includes("진행과정 관리") &&
+    salesAdvertiserIntroduction.includes("계약서<br /><strong class=\"headline-emphasis headline-blue\">링크 공유</strong>") &&
+    salesAdvertiserIntroduction.includes("작성한 계약서를 링크로 전달하면") &&
+    salesAdvertiserIntroduction.includes("<strong>인플루언서</strong>가 확인 후 <strong>서명</strong>합니다") &&
     !salesAdvertiserIntroduction.includes("<strong>진행과정</strong>") &&
     salesAdvertiserIntroduction.includes("<strong>플랫폼별</strong> 관리") &&
-    salesAdvertiserIntroduction.includes("<strong>콘텐츠 확인</strong>") &&
-    salesAdvertiserIntroduction.includes("<strong>수정요청</strong>") &&
+    salesAdvertiserIntroduction.includes("<strong>조항 검토</strong>") &&
+    salesAdvertiserIntroduction.includes("<strong>서명 관리</strong>") &&
     salesAdvertiserIntroduction.includes("캠페인 모집도") &&
     salesAdvertiserIntroduction.includes("편리하게!") &&
     salesAdvertiserIntroduction.includes("캠페인에 지원한") &&
@@ -1234,7 +1356,7 @@ check(
     salesAdvertiserIntroduction.includes("안전한 광고") &&
     salesAdvertiserIntroduction.includes("연락미에서 시작하세요") &&
     salesAdvertiserIntroduction.includes("문의 이메일"),
-  "Advertiser sales PDF must keep the owner-approved five-page headline sequence",
+  "Advertiser sales PDF must keep the owner-approved six-page headline sequence",
 );
 
 check(
@@ -1253,6 +1375,7 @@ check(
 const advertiserSalesStageOrder = [
   '<section class="page" data-stage="pain-point">',
   '<section class="page" data-stage="strength">',
+  '<section class="page" data-stage="link-signature">',
   '<section class="page" data-stage="service-explanation">',
   '<section class="page" data-stage="cta">',
 ].map((marker) => salesAdvertiserIntroduction.indexOf(marker));
@@ -1262,8 +1385,9 @@ check(
   advertiserSalesStageOrder.every((index) => index >= 0) &&
     advertiserSalesStageOrder[0] < advertiserSalesStageOrder[1] &&
     advertiserSalesStageOrder[1] < advertiserSalesStageOrder[2] &&
-    advertiserSalesStageOrder[2] < advertiserSalesStageOrder[3],
-  "Advertiser PDF must follow pain point -> yeollock strength -> service/dashboard explanation -> CTA",
+    advertiserSalesStageOrder[2] < advertiserSalesStageOrder[3] &&
+    advertiserSalesStageOrder[3] < advertiserSalesStageOrder[4],
+  "Advertiser PDF must follow pain point -> yeollock strength -> link signature flow -> service/dashboard explanation -> CTA",
 );
 
 const demoData = evaluateLiteralObject(landing, "const introDashboardDemoData =");

@@ -630,6 +630,12 @@ describe("yeollock.me security regressions", () => {
   it("blocks bearer share tokens from signed PDF downloads", () => {
     const server = read("server/index.ts");
     const viewer = read("src/pages/influencer/ContractViewer.tsx");
+    const reviewPdfRouteStart = server.indexOf('app.get("/api/contracts/:id/review-pdf"');
+    const reviewPdfRouteEnd = server.indexOf(
+      'app.get("/api/contracts/:id/final-pdf"',
+      reviewPdfRouteStart,
+    );
+    const reviewPdfRoute = server.slice(reviewPdfRouteStart, reviewPdfRouteEnd);
     const finalPdfRouteStart = server.indexOf('app.get("/api/contracts/:id/final-pdf"');
     const finalPdfRouteEnd = server.indexOf(
       'app.post("/api/contracts/:id/signatures/influencer"',
@@ -643,16 +649,24 @@ describe("yeollock.me security regressions", () => {
     );
     const contractGetRoute = server.slice(contractGetRouteStart, contractGetRouteEnd);
     const finalPdfHrefStart = viewer.indexOf("const finalPdfHref =");
-    const finalPdfHrefEnd = viewer.indexOf("const signatureEvidenceRows", finalPdfHrefStart);
+    const finalPdfHrefEnd = viewer.indexOf(
+      "const reviewPdfBaseHref",
+      finalPdfHrefStart,
+    );
     const finalPdfHrefBuilder = viewer.slice(finalPdfHrefStart, finalPdfHrefEnd);
     const pdfDownloadStart = viewer.indexOf("const pdfResponse = await fetch(");
     const pdfDownloadEnd = viewer.indexOf("if (!pdfResponse.ok)", pdfDownloadStart);
     const pdfDownloadBlock = viewer.slice(pdfDownloadStart, pdfDownloadEnd);
 
+    assert.notEqual(reviewPdfRouteStart, -1);
+    assert.notEqual(reviewPdfRouteEnd, -1);
     assert.notEqual(finalPdfRouteStart, -1);
     assert.notEqual(finalPdfRouteEnd, -1);
     assert.notEqual(contractGetRouteStart, -1);
     assert.notEqual(contractGetRouteEnd, -1);
+    assert.match(reviewPdfRoute, /buildContractReviewPdf/);
+    assert.match(reviewPdfRoute, /Content-Type", "application\/pdf"/);
+    assert.doesNotMatch(reviewPdfRoute, /allowShareToken:\s*false/);
     assert.match(finalPdfRoute, /allowShareToken:\s*false/);
     assert.match(finalPdfRoute, /hasSignedPdfCookieAccess/);
     assert.doesNotMatch(contractGetRoute, /allowShareToken:\s*false/);
@@ -957,17 +971,25 @@ describe("yeollock.me security regressions", () => {
     assert.match(adminDashboard, /공개 주소 소유권 이의신청/);
   });
 
-  it("starts generated clauses as pending review and exposes mobile clause actions", () => {
+  it("starts generated clauses as pending review and moves influencer signing through PDF review", () => {
     const builder = read("src/pages/marketing/ContractBuilder.tsx");
     const viewer = read("src/pages/influencer/ContractViewer.tsx");
     const adminViewer = read("src/pages/marketing/ContractAdminViewer.tsx");
 
     assert.match(builder, /status:\s*"PENDING_REVIEW"/);
     assert.match(builder, /influencerContact[\s\S]+서명 계정 확인/);
-    assert.match(viewer, /const approveClause = \(/);
-    assert.match(viewer, /canSubmitClauseReview/);
-    assert.match(viewer, /이 조항 승인/);
-    assert.match(viewer, /수정 요청/);
+    assert.match(viewer, /shouldShowPdfReview/);
+    assert.match(viewer, /function PdfContractPreview/);
+    assert.match(viewer, /pdfjsLib\.getDocument/);
+    assert.match(viewer, /aria-label="계약서 PDF 1페이지 미리보기"/);
+    assert.match(viewer, /PDF 계약서와 계정 인증이 확인되어 서명할 수 있습니다/);
+    assert.doesNotMatch(viewer, /checkedClauseIdsByContract/);
+    assert.doesNotMatch(viewer, /toggleClauseConfirmation/);
+    assert.doesNotMatch(viewer, /확인 체크/);
+    assert.doesNotMatch(viewer, /계약서 조항을 모두 체크하면 서명할 수 있습니다/);
+    assert.doesNotMatch(viewer, /canSubmitClauseReview/);
+    assert.doesNotMatch(viewer, /const approveClause = \(/);
+    assert.doesNotMatch(viewer, /이 조항 승인/);
     assert.match(adminViewer, /검토 대기/);
   });
 
@@ -1001,7 +1023,7 @@ describe("yeollock.me security regressions", () => {
     assert.match(server, /buildServerAuthoredContract/);
   });
 
-  it("server-authors advertiser trust risk for influencer review links", () => {
+  it("server-authors advertiser trust and surfaces only a compact verification badge", () => {
     const server = read("server/index.ts");
     const contracts = read("src/domain/contracts.ts");
     const viewer = read("src/pages/influencer/ContractViewer.tsx");
@@ -1010,8 +1032,10 @@ describe("yeollock.me security regressions", () => {
     assert.match(server, /buildAdvertiserTrustSnapshot/);
     assert.match(server, /first_contract_on_yeollock/);
     assert.match(server, /Advertiser trust metadata cannot be changed by influencer/);
-    assert.match(viewer, /AdvertiserTrustNotice/);
-    assert.match(viewer, /유선 또는 공식 채널/);
+    assert.match(viewer, /BusinessVerificationBadge/);
+    assert.match(viewer, /사업자 인증 완료/);
+    assert.doesNotMatch(viewer, /AdvertiserTrustNotice/);
+    assert.doesNotMatch(viewer, /위험점수/);
   });
 
   it("keeps legacy share token decrypt warnings opt-in and deduplicated", () => {

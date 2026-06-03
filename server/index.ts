@@ -6621,6 +6621,93 @@ const legacyContractStatusLabels: Record<Contract["status"], string> = {
   CLOSED: "계약 마감",
 };
 
+const buildContractReviewPdf = async (contract: Contract) => {
+  const { jsPDF } = await import("jspdf");
+  const pdf = new jsPDF({ unit: "pt", format: "a4" });
+  const signedPdfFont = await loadSignedPdfFont();
+  const fontFamily = signedPdfFont?.familyName ?? "helvetica";
+  if (signedPdfFont) {
+    pdf.addFileToVFS(signedPdfFont.fileName, signedPdfFont.base64);
+    pdf.addFont(signedPdfFont.fileName, signedPdfFont.familyName, "normal");
+  }
+
+  const margin = 40;
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  let y = 48;
+
+  const ensureSpace = (height: number) => {
+    if (y + height <= pageHeight - margin) return;
+    pdf.addPage();
+    y = margin;
+  };
+  const addHeading = (text: string) => {
+    ensureSpace(28);
+    pdf.setFont(fontFamily, signedPdfFont ? "normal" : "bold");
+    pdf.setFontSize(13);
+    pdf.text(text, margin, y);
+    y += 22;
+  };
+  const addLine = (text: string, indent = 0) => {
+    const chunks = pdf.splitTextToSize(
+      text,
+      pageWidth - margin * 2 - indent,
+    ) as string[];
+    chunks.forEach((chunk) => {
+      ensureSpace(17);
+      pdf.setFont(fontFamily, "normal");
+      pdf.setFontSize(10);
+      pdf.text(chunk, margin + indent, y);
+      y += 15;
+    });
+  };
+
+  const campaign = contract.campaign ?? {};
+  pdf.setFont(fontFamily, signedPdfFont ? "normal" : "bold");
+  pdf.setFontSize(17);
+  pdf.text("계약서 전체보기", margin, y);
+  y += 26;
+  pdf.setFont(fontFamily, "normal");
+  pdf.setFontSize(11);
+  pdf.text(contract.title, margin, y);
+  y += 26;
+
+  addHeading("계약 기본 정보");
+  [
+    `계약 상태: ${legacyContractStatusLabels[contract.status] ?? contract.status}`,
+    `광고주: ${contract.advertiser_info?.name ?? contract.advertiser_id}`,
+    `담당자: ${contract.advertiser_info?.manager ?? "-"}`,
+    `인플루언서: ${contract.influencer_info.name}`,
+    `연락처: ${contract.influencer_info.contact}`,
+    `채널: ${contract.influencer_info.channel_url}`,
+  ].forEach((line) => addLine(line));
+
+  addHeading("캠페인 세부내용");
+  [
+    `보상: ${campaign.budget ?? "-"}`,
+    `기간: ${campaign.period ?? ([campaign.start_date, campaign.end_date].filter(Boolean).join(" - ") || "-")}`,
+    `업로드 마감: ${campaign.upload_due_at ?? campaign.deadline ?? "-"}`,
+    `검수 마감: ${campaign.review_due_at ?? "-"}`,
+    `수정 가능 횟수: ${campaign.revision_limit ?? "-"}`,
+    `표기 문구: ${campaign.disclosure_text ?? "-"}`,
+    `플랫폼: ${(campaign.platforms ?? []).join(", ") || "-"}`,
+    `산출물: ${(campaign.deliverables ?? []).join(", ") || "-"}`,
+  ].forEach((line) => addLine(line));
+
+  addHeading("계약 조항");
+  contract.clauses.forEach((clause, index) => {
+    addLine(`${index + 1}. ${clause.category}`, 0);
+    addLine(clause.content, 12);
+  });
+
+  addHeading("확인 안내");
+  addLine(
+    "이 문서는 서명 전 계약 검토를 위한 전체보기 PDF입니다. 전자서명 완료 후에는 별도의 서명본 PDF가 생성되어 증빙으로 저장됩니다.",
+  );
+
+  return Buffer.from(pdf.output("arraybuffer"));
+};
+
 const formatWonCompact = (amount: number) => {
   if (!amount || amount <= 0) return "-";
   if (amount >= 100000000) {
@@ -17385,6 +17472,61 @@ app.get("/api/contracts/:id", async (request, response, next) => {
 
     response.setHeader("Cache-Control", "no-store");
     response.json({ contract, access_role: access.role });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/contracts/:id/review-pdf", async (request, response, next) => {
+  try {
+    const throttle = consumeSensitiveEndpointRateLimit(
+      request,
+      "contract_review_pdf",
+      request.params.id,
+    );
+    if (throttle.blocked) {
+      sendSensitiveRateLimitResponse(response, throttle);
+      return;
+    }
+
+    const contract = await readContractById(request.params.id);
+
+    if (!contract) {
+      response.status(404).json({ error: "Contract not found" });
+      return;
+    }
+
+    const access = await resolveLegacyContractAccess(request, response, contract);
+    if (!access) {
+      return;
+    }
+
+    if (access.role === "admin") {
+      if (access.supportAccess.scope !== "contract_and_pdf") {
+        response.status(403).json({
+          error: "This support access request does not include PDF access",
+        });
+        return;
+      }
+
+      await appendSupportAccessAuditEvent(access.supportAccess.id, {
+        action: "viewed_pdf",
+        actor_role: "admin",
+        actor_name: adminOperatorName,
+        description: "운영자가 당사자 요청에 따라 계약서 전체보기 PDF를 열람했습니다.",
+        ip: getClientIp(request),
+        user_agent: request.header("user-agent") ?? "unknown",
+      });
+    }
+
+    const pdfBuffer = await buildContractReviewPdf(contract);
+    response.setHeader("Content-Type", "application/pdf");
+    response.setHeader("Cache-Control", "no-store");
+    response.setHeader(
+      "Content-Disposition",
+      `inline; filename="${contract.id}-review-contract.pdf"`,
+    );
+    response.send(pdfBuffer);
   } catch (error) {
     next(error);
   }

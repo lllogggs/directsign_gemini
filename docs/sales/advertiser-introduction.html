@@ -182,7 +182,7 @@
       }
 
       .deck > .page:nth-of-type(3) {
-        --sales-copy-visual-height: 119.6mm;
+        --sales-copy-visual-height: 128mm;
       }
 
       .deck > .page:nth-of-type(4) {
@@ -190,6 +190,10 @@
       }
 
       .deck > .page:nth-of-type(5) {
+        --sales-copy-visual-height: 141mm;
+      }
+
+      .deck > .page:nth-of-type(6) {
         --sales-copy-visual-height: 117.8mm;
       }
 
@@ -288,45 +292,16 @@
         margin-top: var(--sales-content-start);
       }
 
-      .product-stack {
-        display: grid;
-        gap: 10px;
-        margin-top: var(--sales-content-start);
-      }
-
-      .product-stack .product-shot {
-        margin-top: 0;
-      }
-
-      .product-stack .product-shot img {
-        height: 58mm;
-        object-fit: cover;
-        object-position: top center;
-      }
-
-      .product-stack .product-shot-review img {
-        object-position: bottom center;
-      }
-
-      .deck > .page:nth-of-type(3) .product-stack {
-        gap: 7mm;
-      }
-
-      .deck > .page:nth-of-type(3) .product-shot {
+      .deck > .page:nth-of-type(4) .product-shot {
         box-shadow: 0 18px 46px rgba(15, 23, 42, 0.1);
       }
 
-      .deck > .page:nth-of-type(3) .product-shot-dashboard img {
-        height: 45mm;
-        object-fit: cover;
-        object-position: top center;
+      .product-shot-contract-hero {
+        margin-top: var(--sales-content-start);
       }
 
-      .deck > .page:nth-of-type(3) .product-shot-review img {
-        height: 64mm;
+      .product-shot-contract-hero img {
         background: #f5f7f4;
-        object-fit: contain;
-        object-position: center center;
       }
 
       .product-shot.product-shot-dashboard img,
@@ -345,6 +320,106 @@
         object-fit: cover;
         width: 100%;
         max-width: none;
+      }
+
+      .link-flow-visual {
+        position: relative;
+        height: 128mm;
+        margin-top: var(--sales-content-start);
+        overflow: hidden;
+        border: 1px solid rgba(17, 20, 18, 0.07);
+        border-radius: 20px;
+        background:
+          radial-gradient(circle at 74% 26%, rgba(37, 99, 235, 0.12), transparent 30%),
+          linear-gradient(135deg, #f8faf7 0%, #eef3ef 100%);
+        box-shadow: var(--shadow-screen);
+      }
+
+      .link-flow-desktop,
+      .link-flow-mobile {
+        position: absolute;
+        overflow: hidden;
+        background: #fff;
+      }
+
+      .link-flow-desktop {
+        left: 13mm;
+        top: 17mm;
+        z-index: 1;
+        width: 112mm;
+        height: 91mm;
+        border: 1px solid rgba(17, 20, 18, 0.08);
+        border-radius: 16px;
+        box-shadow: 0 22px 54px rgba(15, 23, 42, 0.13);
+      }
+
+      .link-flow-desktop img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: top center;
+      }
+
+      .link-flow-mobile {
+        right: 7mm;
+        top: 10mm;
+        z-index: 3;
+        width: 49mm;
+        height: 112mm;
+        border: 6px solid #121512;
+        border-radius: 24px;
+        box-shadow: 0 28px 68px rgba(15, 23, 42, 0.24);
+      }
+
+      .link-flow-mobile img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: top center;
+      }
+
+      .link-flow-arrow {
+        position: absolute;
+        left: 111mm;
+        top: 69mm;
+        z-index: 2;
+        width: 20mm;
+        height: 1px;
+        border-radius: 999px;
+        background: linear-gradient(90deg, rgba(37, 99, 235, 0.12), rgba(37, 99, 235, 0.82));
+        box-shadow: 0 12px 26px rgba(37, 99, 235, 0.24);
+      }
+
+      .link-flow-arrow::before {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 9mm;
+        height: 9mm;
+        transform: translate(-50%, -50%);
+        border: 1px solid rgba(37, 99, 235, 0.24);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.86);
+        box-shadow:
+          0 14px 30px rgba(15, 23, 42, 0.12),
+          inset 0 0 0 3px rgba(37, 99, 235, 0.07);
+      }
+
+      .link-flow-arrow::after {
+        content: "";
+        position: absolute;
+        right: 0;
+        top: 50%;
+        width: 5mm;
+        height: 5mm;
+        transform: translateY(-50%) rotate(45deg);
+        border-top: 2.5px solid var(--blue);
+        border-right: 2.5px solid var(--blue);
+        border-radius: 1px;
+        filter: drop-shadow(0 7px 14px rgba(37, 99, 235, 0.22));
       }
 
       .risk-panel {
@@ -530,6 +605,31 @@
         <span class="page-no">02</span>
       </section>
 
+      <section class="page" data-stage="link-signature">
+        <div class="brand">
+          <span class="brand-mark"><img src="../../public/favicon.svg" alt="" /></span>
+          연락미
+        </div>
+        <div class="slide-content">
+          <div class="slide-copy">
+            <h1>계약서<br /><strong class="headline-emphasis headline-blue">링크 공유</strong></h1>
+            <p class="support">
+              작성한 계약서를 링크로 전달하면<br /><strong>인플루언서</strong>가 확인 후 <strong>서명</strong>합니다
+            </p>
+          </div>
+          <div class="link-flow-visual" aria-label="연락미 계약 링크 공유와 인플루언서 서명 화면">
+            <div class="link-flow-desktop">
+              <img src="assets/yeollock-contract-admin.png" alt="연락미 계약 링크 복사 화면" />
+            </div>
+            <span class="link-flow-arrow" aria-hidden="true"></span>
+            <div class="link-flow-mobile">
+              <img src="assets/yeollock-influencer-contract.png" alt="인플루언서 계약 확인 및 서명 화면" />
+            </div>
+          </div>
+        </div>
+        <span class="page-no">03</span>
+      </section>
+
       <section class="page" data-stage="service-explanation">
         <div class="brand">
           <span class="brand-mark"><img src="../../public/favicon.svg" alt="" /></span>
@@ -538,18 +638,13 @@
         <div class="slide-content">
           <div class="slide-copy">
             <h1>계약 관리를<br /><strong class="headline-emphasis headline-blue">효율적으로</strong></h1>
-            <p class="support">진행과정 관리,<br /><strong>플랫폼별</strong> 관리<br /><strong>콘텐츠 확인</strong><br /><strong>수정요청</strong></p>
+            <p class="support">진행과정 관리,<br /><strong>플랫폼별</strong> 관리<br /><strong>조항 검토</strong><br /><strong>서명 관리</strong></p>
           </div>
-          <div class="product-stack" aria-label="연락미 계약 관리 화면">
-            <div class="product-shot product-shot-dashboard">
-              <img src="assets/yeollock-advertiser-dashboard.png" alt="연락미 계약 대시보드" />
-            </div>
-            <div class="product-shot product-shot-review">
-              <img src="assets/yeollock-contract-content-review.png" alt="연락미 콘텐츠 확인 및 수정 요청 화면" />
-            </div>
+          <div class="product-shot product-shot-contract-hero" aria-label="연락미 계약 진행 및 조항 검토 화면">
+            <img src="assets/yeollock-contract-admin.png" alt="연락미 계약 진행 및 조항 검토 화면" />
           </div>
         </div>
-        <span class="page-no">03</span>
+        <span class="page-no">04</span>
       </section>
 
       <section class="page" data-stage="service-explanation">
@@ -569,7 +664,7 @@
             <img src="assets/yeollock-campaign-applicants-dashboard.png" alt="연락미 캠페인 지원자 목록 대시보드" />
           </div>
         </div>
-        <span class="page-no">04</span>
+        <span class="page-no">05</span>
       </section>
 
       <section class="page" data-stage="cta">
@@ -588,7 +683,7 @@
             <img src="assets/yeollock-contract-handshake.png" alt="광고주와 인플루언서가 계약서 서명 후 악수하는 장면" />
           </div>
         </div>
-        <span class="page-no">05</span>
+        <span class="page-no">06</span>
       </section>
     </main>
   </body>
