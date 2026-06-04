@@ -29,6 +29,25 @@ type IntroRole = "advertiser" | "influencer";
 
 const LANDING_BRAND_NAME = "연락미";
 
+const advertiserProposalAssetUrls = {
+  contractBuilder: new URL(
+    "../../../docs/sales/assets/yeollock-contract-builder-first-screen.png",
+    import.meta.url,
+  ).href,
+  influencerContract: new URL(
+    "../../../docs/sales/assets/yeollock-influencer-contract.png",
+    import.meta.url,
+  ).href,
+  contractAdmin: new URL(
+    "../../../docs/sales/assets/yeollock-contract-admin.png",
+    import.meta.url,
+  ).href,
+  campaignApplicants: new URL(
+    "../../../docs/sales/assets/yeollock-campaign-applicants-dashboard.png",
+    import.meta.url,
+  ).href,
+};
+
 type RoleCard = {
   role: IntroRole;
   title: string;
@@ -260,6 +279,106 @@ type RoleIntroSlide = {
   cardClass: string;
   preview: RolePreview;
 };
+
+type AdvertiserProposalFact = {
+  label: string;
+  value: string;
+  tone?: "blue" | "red" | "neutral";
+};
+
+type AdvertiserProposalSlide = {
+  label: string;
+  title: ReactNode;
+  description: string;
+  facts?: AdvertiserProposalFact[];
+  imageSrc?: string;
+  imageAlt?: string;
+  riskItems?: string[];
+};
+
+const advertiserProposalSlides: AdvertiserProposalSlide[] = [
+  {
+    label: "01 문제",
+    title: (
+      <>
+        계약서 없는 약속은{" "}
+        <span className="text-[#dc2626]">위험합니다.</span>
+      </>
+    ),
+    description:
+      "광고비, 협찬품, 콘텐츠 수정, 분쟁 증거가 흩어지면 광고주가 먼저 손해를 봅니다.",
+    facts: [
+      { label: "광고비", value: "선지급 후 미업로드", tone: "red" },
+      { label: "협찬품", value: "제품 미반환", tone: "red" },
+      { label: "콘텐츠", value: "수정 거부", tone: "red" },
+      { label: "분쟁", value: "증거 부족", tone: "red" },
+    ],
+    riskItems: ["광고비 먹튀", "협찬품 미반환", "콘텐츠 수정 거부", "각종 분쟁"],
+  },
+  {
+    label: "02 작성",
+    title: "간편한 계약서 작성",
+    description:
+      "필요 항목만 입력하면 우측에서 PDF 계약서 초안이 바로 만들어집니다.",
+    facts: [
+      { label: "입력", value: "브랜드, 기간, 보상", tone: "neutral" },
+      { label: "출력", value: "PDF 계약서", tone: "blue" },
+      { label: "다음", value: "검토 링크 발송", tone: "blue" },
+    ],
+    imageSrc: advertiserProposalAssetUrls.contractBuilder,
+    imageAlt: "계약서 작성 화면과 PDF 계약서 초안 미리보기",
+  },
+  {
+    label: "03 링크",
+    title: "작성한 계약서를 링크로 전달",
+    description:
+      "인플루언서는 광고주가 작성한 계약서 원문을 열어보고 바로 서명 흐름으로 이동합니다.",
+    facts: [
+      { label: "전달", value: "계약서 링크", tone: "blue" },
+      { label: "확인", value: "PDF 계약서 원문", tone: "blue" },
+      { label: "서명", value: "전자서명 진행", tone: "neutral" },
+    ],
+    imageSrc: advertiserProposalAssetUrls.influencerContract,
+    imageAlt: "인플루언서 계약서 링크 확인 화면",
+  },
+  {
+    label: "04 관리",
+    title: "계약 관리를 효율적으로",
+    description:
+      "계약 상태, 플랫폼, 콘텐츠 확인과 수정요청을 한 화면에서 관리합니다.",
+    facts: [
+      { label: "상태", value: "진행과정 관리", tone: "blue" },
+      { label: "채널", value: "플랫폼별 관리", tone: "blue" },
+      { label: "검수", value: "콘텐츠 확인 · 수정요청", tone: "blue" },
+    ],
+    imageSrc: advertiserProposalAssetUrls.contractAdmin,
+    imageAlt: "광고주 계약 관리 대시보드",
+  },
+  {
+    label: "05 선정",
+    title: "캠페인 모집도 편리하게",
+    description:
+      "지원한 인플루언서를 목록으로 비교하고, 선정 후 계약서 생성까지 이어갑니다.",
+    facts: [
+      { label: "확인", value: "지원자 목록", tone: "blue" },
+      { label: "비교", value: "플랫폼 · 팔로워 · 카테고리", tone: "neutral" },
+      { label: "선정", value: "1대多 계약서 자동 생성", tone: "blue" },
+    ],
+    imageSrc: advertiserProposalAssetUrls.campaignApplicants,
+    imageAlt: "캠페인 지원 인플루언서 목록 화면",
+  },
+  {
+    label: "06 시작",
+    title: "서로에게 안전한 광고",
+    description:
+      "조건, 서명, 증빙이 한 흐름에 남아 광고주와 인플루언서 모두 안심할 수 있습니다.",
+    facts: [
+      { label: "계약", value: "조건 불일치 방지", tone: "blue" },
+      { label: "서명", value: "책임 있는 진행", tone: "blue" },
+      { label: "증빙", value: "완료 PDF 보관", tone: "neutral" },
+    ],
+  },
+];
 
 const roleIntroSlides = {
   advertiser: [
@@ -1116,7 +1235,7 @@ function RoleFeatureIntroScreen({
   }, [requestedFeatureIndex]);
 
   useEffect(() => {
-    if (displaySlides.length < 2 || hasManualSelection) {
+    if (role === "advertiser" || displaySlides.length < 2 || hasManualSelection) {
       return undefined;
     }
 
@@ -1134,7 +1253,7 @@ function RoleFeatureIntroScreen({
     }, 4600);
 
     return () => window.clearInterval(timer);
-  }, [displaySlides.length, hasManualSelection]);
+  }, [displaySlides.length, hasManualSelection, role]);
 
   const roleSwitchItems = [
     { role: "advertiser" as const, label: "광고주", href: "/intro/advertiser" },
@@ -1249,6 +1368,31 @@ function RoleFeaturePreviewCarousel({
   role: IntroRole;
   className?: string;
 }) {
+  if (role === "advertiser") {
+    return <AdvertiserProposalIntroCarousel className={className} />;
+  }
+
+  return (
+    <RoleFeaturePreviewRotator
+      className={className}
+      previewIndex={previewIndex}
+      role={role}
+      slides={slides}
+    />
+  );
+}
+
+function RoleFeaturePreviewRotator({
+  slides,
+  previewIndex,
+  role,
+  className = "",
+}: {
+  slides: RoleIntroSlide[];
+  previewIndex: number;
+  role: IntroRole;
+  className?: string;
+}) {
   const [displayIndex, setDisplayIndex] = useState(previewIndex);
   const [isFading, setIsFading] = useState(false);
   const displayIndexRef = useRef(previewIndex);
@@ -1328,6 +1472,198 @@ function RoleFeaturePreviewCarousel({
       </div>
     </section>
   );
+}
+
+function AdvertiserProposalIntroCarousel({ className = "" }: { className?: string }) {
+  const [slideIndex, setSlideIndex] = useState(0);
+  const activeSlide = advertiserProposalSlides[slideIndex] ?? advertiserProposalSlides[0];
+
+  const showPrevious = useCallback(() => {
+    setSlideIndex((currentIndex) =>
+      currentIndex === 0 ? advertiserProposalSlides.length - 1 : currentIndex - 1,
+    );
+  }, []);
+
+  const showNext = useCallback(() => {
+    setSlideIndex((currentIndex) => (currentIndex + 1) % advertiserProposalSlides.length);
+  }, []);
+
+  return (
+    <section
+      aria-label="광고주 제안서 화면 슬라이드"
+      className={`${className} mx-auto flex min-h-[420px] w-full min-w-0 flex-1 max-w-[calc(100vw-40px)] flex-col overflow-visible sm:min-h-[500px] sm:max-w-full lg:h-full lg:min-h-0 lg:max-w-[980px] lg:justify-self-end lg:overflow-hidden`}
+    >
+      <div className="relative flex min-h-[420px] flex-1 overflow-hidden rounded-[14px] border border-neutral-200 bg-white shadow-[0_18px_48px_rgba(23,26,23,0.08)] sm:min-h-[500px] lg:h-full lg:min-h-0">
+        <button
+          type="button"
+          aria-label="이전 제안서 화면"
+          aria-controls={`advertiser-proposal-slide-${slideIndex}`}
+          title="이전 제안서 화면"
+          onClick={showPrevious}
+          className="absolute bottom-4 left-4 z-20 flex h-9 w-9 items-center justify-center rounded-full border border-neutral-200/75 bg-white/70 text-neutral-500 shadow-[0_10px_24px_rgba(15,23,42,0.08)] backdrop-blur transition hover:bg-white hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 sm:bottom-auto sm:left-3 sm:top-1/2 sm:h-10 sm:w-10 sm:-translate-y-1/2"
+        >
+          <ChevronLeft className="h-5 w-5" strokeWidth={2} />
+        </button>
+        <button
+          type="button"
+          aria-label="다음 제안서 화면"
+          aria-controls={`advertiser-proposal-slide-${slideIndex}`}
+          title="다음 제안서 화면"
+          onClick={showNext}
+          className="absolute bottom-4 right-4 z-20 flex h-9 w-9 items-center justify-center rounded-full border border-neutral-200/75 bg-white/70 text-neutral-500 shadow-[0_10px_24px_rgba(15,23,42,0.08)] backdrop-blur transition hover:bg-white hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 sm:bottom-auto sm:right-3 sm:top-1/2 sm:h-10 sm:w-10 sm:-translate-y-1/2"
+        >
+          <ChevronRight className="h-5 w-5" strokeWidth={2} />
+        </button>
+
+        <div
+          id={`advertiser-proposal-slide-${slideIndex}`}
+          role="group"
+          aria-roledescription="slide"
+          aria-label={`${slideIndex + 1} / ${advertiserProposalSlides.length} ${activeSlide.label}`}
+          aria-live="polite"
+          className="flex h-full min-h-[420px] w-full flex-col bg-[#fbfcf8] px-5 py-4 sm:min-h-[500px] sm:px-6 sm:py-5 lg:min-h-0"
+        >
+          <div className="flex shrink-0 items-center justify-between gap-3">
+            <span className="text-[11px] font-extrabold leading-none tracking-normal text-neutral-500">
+              {activeSlide.label}
+            </span>
+            <span className="text-[11px] font-bold leading-none tracking-normal text-neutral-400">
+              {slideIndex + 1}/{advertiserProposalSlides.length}
+            </span>
+          </div>
+
+          <AdvertiserProposalSlideView slide={activeSlide} />
+
+          <div className="mt-3 flex shrink-0 items-center justify-center gap-2">
+            {advertiserProposalSlides.map((slide, index) => {
+              const selected = index === slideIndex;
+
+              return (
+                <button
+                  key={slide.label}
+                  type="button"
+                  aria-label={`${index + 1}번 제안서 화면 보기`}
+                  aria-current={selected ? "true" : undefined}
+                  onClick={() => setSlideIndex(index)}
+                  className={`h-2 rounded-full transition ${
+                    selected
+                      ? "w-6 bg-neutral-950"
+                      : "w-2 bg-neutral-300 hover:bg-neutral-500"
+                  }`}
+                />
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function AdvertiserProposalSlideView({ slide }: { slide: AdvertiserProposalSlide }) {
+  return (
+    <div className="grid min-h-0 flex-1 gap-4 pt-4 lg:grid-cols-[minmax(245px,0.38fr)_minmax(0,0.62fr)] lg:pt-5">
+      <div className="flex min-h-0 flex-col justify-center px-2 sm:px-5 lg:px-6">
+        <h2 className="font-neo-heavy break-keep text-[28px] leading-[1.08] tracking-normal text-neutral-950 sm:text-[38px] lg:text-[42px]">
+          {slide.title}
+        </h2>
+        <p className="mt-5 max-w-[430px] break-keep text-[14px] font-bold leading-6 tracking-normal text-neutral-600 sm:text-[15px] sm:leading-7">
+          {slide.description}
+        </p>
+        {slide.facts ? (
+          <div className="mt-6 divide-y divide-neutral-200 overflow-hidden rounded-[10px] border border-neutral-200 bg-white/82">
+            {slide.facts.map((fact) => (
+              <div
+                key={`${fact.label}-${fact.value}`}
+                className="flex min-h-12 items-center justify-between gap-4 px-4 py-2.5"
+              >
+                <span className="shrink-0 text-[12px] font-extrabold tracking-normal text-neutral-500">
+                  {fact.label}
+                </span>
+                <span
+                  className={`min-w-0 text-right text-[14px] font-black leading-5 tracking-normal ${advertiserProposalFactToneClass(
+                    fact.tone,
+                  )}`}
+                >
+                  {fact.value}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </div>
+
+      <AdvertiserProposalVisual slide={slide} />
+    </div>
+  );
+}
+
+function AdvertiserProposalVisual({ slide }: { slide: AdvertiserProposalSlide }) {
+  if (slide.imageSrc) {
+    return (
+      <div className="flex min-h-[260px] items-center justify-center overflow-hidden rounded-[12px] border border-neutral-200 bg-[#f4f5f2] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] sm:min-h-[330px] lg:min-h-0">
+        <img
+          src={slide.imageSrc}
+          alt={slide.imageAlt ?? ""}
+          className="h-full max-h-[430px] w-full rounded-[8px] object-contain object-top lg:max-h-full"
+          loading="eager"
+        />
+      </div>
+    );
+  }
+
+  if (slide.riskItems) {
+    return (
+      <div className="grid min-h-[260px] grid-cols-2 gap-2 sm:min-h-[330px] sm:gap-3 lg:min-h-0 lg:content-center">
+        {slide.riskItems.map((item, index) => (
+          <div
+            key={item}
+            className="flex min-h-[112px] flex-col justify-between rounded-[12px] border border-neutral-200 bg-white p-4 shadow-[0_14px_30px_rgba(23,26,23,0.06)]"
+          >
+            <span className="text-[12px] font-black tracking-normal text-[#dc2626]">
+              0{index + 1}
+            </span>
+            <strong className="break-keep text-[18px] font-black leading-6 tracking-normal text-neutral-950 sm:text-[21px]">
+              {item}
+            </strong>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-h-[260px] flex-col justify-center overflow-hidden rounded-[12px] border border-neutral-200 bg-neutral-950 px-8 py-8 text-white shadow-[0_18px_44px_rgba(15,23,42,0.14)] sm:min-h-[330px] lg:min-h-0">
+      <div className="h-1.5 w-16 rounded-full bg-blue-500" />
+      <p className="font-neo-heavy mt-9 break-keep text-[34px] leading-[1.08] tracking-normal sm:text-[46px]">
+        연락미에서
+        <span className="block text-blue-300">시작하세요</span>
+      </p>
+      <div className="mt-10 divide-y divide-white/14 border-y border-white/14">
+        {["조건 정리", "서명 확인", "증빙 보관"].map((item) => (
+          <div
+            key={item}
+            className="flex items-center justify-between py-3 text-[14px] font-extrabold tracking-normal text-white/86"
+          >
+            <span>{item}</span>
+            <CheckCircle2 className="h-4 w-4 text-blue-300" strokeWidth={2} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function advertiserProposalFactToneClass(tone: AdvertiserProposalFact["tone"]) {
+  if (tone === "blue") {
+    return "text-blue-700";
+  }
+
+  if (tone === "red") {
+    return "text-[#dc2626]";
+  }
+
+  return "text-neutral-950";
 }
 
 function RolePreviewSlideView({

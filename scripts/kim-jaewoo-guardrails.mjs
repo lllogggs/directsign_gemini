@@ -214,6 +214,33 @@ const advertiserDashboardExportSource = advertiserDashboard.slice(
   advertiserDashboardExportStart,
   advertiserDashboardExportEnd,
 );
+const advertiserContractFilterStart = advertiserDashboard.indexOf(
+  'id="advertiser-contract-filters"',
+);
+const advertiserContractFilterEnd = advertiserDashboard.indexOf(
+  "<ContractTableHeaderRow",
+  advertiserContractFilterStart,
+);
+const advertiserContractFilterPanel =
+  advertiserContractFilterStart >= 0 && advertiserContractFilterEnd >= 0
+    ? advertiserDashboard.slice(advertiserContractFilterStart, advertiserContractFilterEnd)
+    : "";
+const advertiserContractTableGrid =
+  "lg:grid-cols-[minmax(132px,0.34fr)_minmax(108px,0.26fr)_minmax(300px,1fr)_minmax(132px,0.34fr)_minmax(146px,0.38fr)_minmax(112px,0.3fr)]";
+const advertiserContractFilterOrder = [
+  'label="플랫폼"',
+  'label="종류"',
+  "<ContractNameSearch",
+  'label="지급내용"',
+  "<DashboardDateRangeFilter",
+  'label="현 단계"',
+].map((marker) => advertiserContractFilterPanel.indexOf(marker));
+const hasAdvertiserContractFilterTableOrder =
+  advertiserContractFilterOrder.every((index) => index >= 0) &&
+  advertiserContractFilterOrder.every(
+    (index, orderIndex) =>
+      orderIndex === 0 || index > advertiserContractFilterOrder[orderIndex - 1],
+  );
 const influencerDashboardExportStart = influencerDashboard.indexOf(
   "function buildInfluencerDashboardExportSheet",
 );
@@ -867,7 +894,10 @@ check(
 check(
   "dashboard excel export stays quiet and excludes sensitive fields",
   packageJson.dependencies.fflate &&
-    dashboardDownloadButton.includes('aria-label="엑셀 다운로드"') &&
+    dashboardDownloadButton.includes('aria-label="엑셀 내보내기"') &&
+    dashboardDownloadButton.includes('title="엑셀 내보내기"') &&
+    dashboardDownloadButton.includes(">내보내기</span>") &&
+    !dashboardDownloadButton.includes(">다운로드</span>") &&
     dashboardDownloadButton.includes("hidden sm:inline") &&
     xlsxExport.includes("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") &&
     advertiserDashboard.includes("handleDownloadDashboard") &&
@@ -876,11 +906,32 @@ check(
     advertiserDashboard.includes("displayContracts.slice(pageStartIndex, pageEndIndex)") &&
     advertiserDashboard.includes("<ContractPagination") &&
     advertiserDashboard.includes("<DashboardDownloadButton onClick={handleDownloadDashboard} />") &&
+    advertiserDashboard.includes("gap-x-3 gap-y-1") &&
+    advertiserDashboard.includes("const [contractDateFromFilter, setContractDateFromFilter]") &&
+    advertiserDashboard.includes("const [contractDateToFilter, setContractDateToFilter]") &&
+    advertiserDashboard.includes("matchesDashboardDateRange") &&
+    advertiserDashboard.includes("function DashboardDateRangeFilter") &&
+    advertiserDashboard.includes("function DashboardDateInput") &&
+    advertiserDashboard.includes('type="date"') &&
+    advertiserDashboard.includes("aria-label={`${label} 시작일 필터`}") &&
+    advertiserDashboard.includes("aria-label={`${label} 종료일 필터`}") &&
+    advertiserDashboard.includes('placeholderLabel="시작일"') &&
+    advertiserDashboard.includes('placeholderLabel="종료일"') &&
+    advertiserDashboard.includes("onDateFromFilterChange(\"\")") &&
+    advertiserDashboard.includes("Boolean(contractDateFromFilter)") &&
+    advertiserDashboard.includes("Boolean(contractDateToFilter)") &&
     advertiserDashboard.includes("hasContractDashboardFilters") &&
     advertiserDashboard.includes("contractDownloadContracts") &&
     advertiserDashboard.includes("? visibleContracts") &&
     advertiserDashboard.includes(": [...dashboardContracts]") &&
     advertiserDashboard.includes("contractDownloadContracts.length > DASHBOARD_CONTRACT_EXPORT_LIMIT") &&
+    advertiserContractFilterPanel.includes(advertiserContractTableGrid) &&
+    hasAdvertiserContractFilterTableOrder &&
+    agents.includes('visible Korean copy "내보내기"') &&
+    agents.includes('accessible/title copy "엑셀 내보내기"') &&
+    agents.includes("Excel export should sit immediately beside the dashboard title") &&
+    agents.includes("Date filtering belongs inside the dashboard filter panel") &&
+    agents.includes("same visible column order as the table") &&
     advertiserDashboardExportSource.includes("buildAdvertiserContractExportSheet") &&
     advertiserDashboardExportSource.includes('"구분"') &&
     advertiserDashboardExportSource.includes('"기준일"') &&
@@ -904,7 +955,7 @@ check(
     !/share_token|shareToken|pdf_url|signature_data|evidence_file|storage_path|supportAccess|download_url/.test(
       influencerDashboardExportSource,
     ) &&
-    agents.includes("Dashboard data exports should use one quiet top-right download action") &&
+    agents.includes("Dashboard data exports should use one quiet top-right export action") &&
     agents.includes("whole dashboard contract set across lifecycle tabs") &&
     agents.includes("paginate at 20 rows per page") &&
     agents.includes("more than 5,000 rows") &&
@@ -1109,7 +1160,7 @@ check(
     seedTestAccounts.includes("status: \"ended\"") &&
     seedTestAccounts.includes("contractsByCampaignName") &&
     seedTestAccounts.includes("seeded_campaign_applications") &&
-    seedTestAccounts.includes("applicantCount: 9") &&
+    seedTestAccounts.includes("applicantCount: 12") &&
     seedTestAccounts.includes('applicantLimit: "10명"') &&
     server.includes("maxItems = 20") &&
     server.includes("normalizeBrandCampaigns(activeCampaigns, 20)") &&
@@ -1214,9 +1265,45 @@ check(
   "intro previews must mirror the contract dashboard labels",
 );
 
+const advertiserProposalCarouselStart = landing.indexOf(
+  "function AdvertiserProposalIntroCarousel",
+);
+const advertiserProposalCarouselEnd = landing.indexOf(
+  "function RolePreviewSlideView",
+  advertiserProposalCarouselStart,
+);
+const advertiserProposalCarousel =
+  advertiserProposalCarouselStart >= 0 && advertiserProposalCarouselEnd >= 0
+    ? landing.slice(advertiserProposalCarouselStart, advertiserProposalCarouselEnd)
+    : "";
+
+check(
+  "advertiser intro exposes sales proposal carousel",
+  landing.includes("const advertiserProposalSlides") &&
+    landing.includes("const advertiserProposalAssetUrls") &&
+    landing.includes("yeollock-contract-builder-first-screen.png") &&
+    landing.includes("yeollock-influencer-contract.png") &&
+    landing.includes("yeollock-contract-admin.png") &&
+    landing.includes("yeollock-campaign-applicants-dashboard.png") &&
+    landing.includes('aria-label="광고주 제안서 화면 슬라이드"') &&
+    advertiserProposalCarousel.includes('aria-label="이전 제안서 화면"') &&
+    advertiserProposalCarousel.includes('aria-label="다음 제안서 화면"') &&
+    advertiserProposalCarousel.includes('aria-roledescription="slide"') &&
+    advertiserProposalCarousel.includes("setSlideIndex(index)") &&
+    landing.includes('role === "advertiser" || displaySlides.length < 2') &&
+    qaStandard.includes('"계약서 없는 약속은"') &&
+    qaStandard.includes('"광고비 먹튀"') &&
+    !qaStandard.includes('requiredText: ["계약 흐름을", "한눈에 관리", "작성중", "진행중", "종료"]') &&
+    agents.includes("sales/PDF proposal flow as a manual carousel") &&
+    agents.includes("subtle left/right controls") &&
+    agents.includes('Do not duplicate the main "시작하기" CTA inside the preview carousel') &&
+    !advertiserProposalCarousel.includes('to={startHref}'),
+  "Advertiser intro should show the sales/PDF proposal flow as a manual carousel with subtle left/right controls and no duplicate start CTA inside the preview",
+);
+
 check(
   "advertiser sales PDF keeps dashboard explanation quiet",
-    salesAdvertiserIntroduction.includes("yeollock-contract-builder-first-screen.png") &&
+  salesAdvertiserIntroduction.includes("yeollock-contract-builder-first-screen.png") &&
     salesAdvertiserIntroduction.includes("yeollock-contract-admin.png") &&
     salesAdvertiserIntroduction.includes("yeollock-influencer-contract.png") &&
     salesAdvertiserIntroduction.includes("yeollock-campaign-applicants-dashboard.png") &&
@@ -1377,12 +1464,19 @@ check(
   "advertiser sales PDF campaign applicant capture feels full",
   captureSalesAssets.includes("openCount: 0") &&
     captureSalesAssets.includes("activeOpenCount: 0") &&
-    captureSalesAssets.includes("{ width: 1180, height: 900 }") &&
+    captureSalesAssets.includes("{ width: 1440, height: 1250 }") &&
     captureSalesAssets.includes("b.count - a.count") &&
     captureSalesAssets.includes("b.openCount - a.openCount") &&
     captureSalesAssets.includes("b.activeOpenCount - a.activeOpenCount") &&
+    captureSalesAssets.includes("fillCampaignApplicantsForSalesCapture") &&
+    captureSalesAssets.includes("rowCount: rows.length") &&
+    captureSalesAssets.includes("rows.length < 12") &&
+    captureSalesAssets.includes('count + "명 표시 · 전체 " + count + "명"') &&
+    seedTestAccounts.includes("applicantCount: 12") &&
     agents.includes("choose the campaign with the most visible selectable influencer rows first") &&
-    agents.includes("do not use a sparse one- or two-row applicant list"),
+    agents.includes("do not use a sparse one- or two-row applicant list") &&
+    agents.includes("12 or more applicants for proposal captures") &&
+    agents.includes("not zooming or enlarging the screenshot"),
   "Advertiser proposal capture must prioritize the fullest influencer applicant list so the PDF does not look empty",
 );
 

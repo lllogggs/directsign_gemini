@@ -1288,10 +1288,33 @@ describe("yeollock.me security regressions", () => {
     assert.match(kimGuardrails, /mobile main role title stays compact/);
     assert.match(kimGuardrails, /advertiser creator discovery and applicant selection support follower sorting/);
     assert.match(kimGuardrails, /advertiser sales PDF campaign applicant capture feels full/);
+    assert.match(kimGuardrails, /advertiser intro exposes sales proposal carousel/);
+    assert.match(agents, /sales\/PDF proposal flow as a manual carousel/);
+    assert.match(agents, /subtle left\/right controls/);
+    assert.match(landing, /const advertiserProposalSlides/);
+    assert.match(landing, /function AdvertiserProposalIntroCarousel/);
+    assert.match(landing, /aria-label="광고주 제안서 화면 슬라이드"/);
+    assert.match(landing, /aria-label="이전 제안서 화면"/);
+    assert.match(landing, /aria-label="다음 제안서 화면"/);
+    assert.match(landing, /yeollock-contract-builder-first-screen\.png/);
+    assert.match(landing, /yeollock-influencer-contract\.png/);
+    assert.match(landing, /yeollock-campaign-applicants-dashboard\.png/);
+    assert.match(qaStandard, /계약서 없는 약속은/);
+    assert.match(qaStandard, /광고비 먹튀/);
+    assert.doesNotMatch(
+      qaStandard,
+      /requiredText: \["계약 흐름을", "한눈에 관리", "작성중", "진행중", "종료"\]/,
+    );
     assert.match(agents, /choose the campaign with the most visible selectable influencer rows first/);
+    assert.match(agents, /12 or more applicants for proposal captures/);
+    assert.match(agents, /not zooming or enlarging the screenshot/);
+    assert.match(seedAccounts, /applicantCount: 12/);
     assert.match(captureSalesAssets, /openCount: 0/);
     assert.match(captureSalesAssets, /activeOpenCount: 0/);
-    assert.match(captureSalesAssets, /\{ width: 1180, height: 900 \}/);
+    assert.match(captureSalesAssets, /\{ width: 1440, height: 1250 \}/);
+    assert.match(captureSalesAssets, /fillCampaignApplicantsForSalesCapture/);
+    assert.match(captureSalesAssets, /rows\.length < 12/);
+    assert.match(captureSalesAssets, /count \+ "명 표시 · 전체 " \+ count \+ "명"/);
     assert.match(captureSalesAssets, /b\.count - a\.count/);
     assert.match(captureSalesAssets, /b\.openCount - a\.openCount/);
     assert.match(captureSalesAssets, /b\.activeOpenCount - a\.activeOpenCount/);
@@ -1568,9 +1591,27 @@ describe("yeollock.me security regressions", () => {
         influencerDashboard.indexOf("function buildInfluencerDashboardExportSheet"),
       ),
     );
+    const advertiserFilterStart = advertiserDashboard.indexOf(
+      'id="advertiser-contract-filters"',
+    );
+    const advertiserFilterPanel = advertiserDashboard.slice(
+      advertiserFilterStart,
+      advertiserDashboard.indexOf("<ContractTableHeaderRow", advertiserFilterStart),
+    );
+    const advertiserFilterOrder = [
+      'label="플랫폼"',
+      'label="종류"',
+      "<ContractNameSearch",
+      'label="지급내용"',
+      "<DashboardDateRangeFilter",
+      'label="현 단계"',
+    ].map((marker) => advertiserFilterPanel.indexOf(marker));
 
     assert.ok(packageJson.dependencies?.fflate);
-    assert.match(dashboardDownloadButton, /aria-label="엑셀 다운로드"/);
+    assert.match(dashboardDownloadButton, /aria-label="엑셀 내보내기"/);
+    assert.match(dashboardDownloadButton, /title="엑셀 내보내기"/);
+    assert.match(dashboardDownloadButton, />내보내기<\/span>/);
+    assert.doesNotMatch(dashboardDownloadButton, />다운로드<\/span>/);
     assert.match(dashboardDownloadButton, /hidden sm:inline/);
     assert.match(xlsxExport, /application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet/);
     assert.match(advertiserDashboard, /const CONTRACTS_PER_PAGE = 20/);
@@ -1578,10 +1619,37 @@ describe("yeollock.me security regressions", () => {
     assert.match(advertiserDashboard, /displayContracts\.slice\(pageStartIndex, pageEndIndex\)/);
     assert.match(advertiserDashboard, /<ContractPagination/);
     assert.match(advertiserDashboard, /<DashboardDownloadButton onClick=\{handleDownloadDashboard\} \/>/);
+    assert.match(advertiserDashboard, /gap-x-3 gap-y-1/);
+    assert.match(advertiserDashboard, /const \[contractDateFromFilter, setContractDateFromFilter\]/);
+    assert.match(advertiserDashboard, /const \[contractDateToFilter, setContractDateToFilter\]/);
+    assert.match(advertiserDashboard, /function DashboardDateRangeFilter/);
+    assert.match(advertiserDashboard, /function DashboardDateInput/);
+    assert.match(advertiserDashboard, /type="date"/);
+    assert.match(advertiserDashboard, /placeholderLabel="시작일"/);
+    assert.match(advertiserDashboard, /placeholderLabel="종료일"/);
+    assert.match(advertiserDashboard, /matchesDashboardDateRange/);
+    assert.match(advertiserDashboard, /Boolean\(contractDateFromFilter\)/);
+    assert.match(advertiserDashboard, /Boolean\(contractDateToFilter\)/);
     assert.match(advertiserDashboard, /hasContractDashboardFilters/);
     assert.match(advertiserDashboard, /contractDownloadContracts/);
     assert.match(advertiserDashboard, /\? visibleContracts\s*:\s*\[\.\.\.dashboardContracts\]/);
     assert.match(advertiserDashboard, /contractDownloadContracts\.length > DASHBOARD_CONTRACT_EXPORT_LIMIT/);
+    assert.match(
+      advertiserFilterPanel,
+      /lg:grid-cols-\[minmax\(132px,0\.34fr\)_minmax\(108px,0\.26fr\)_minmax\(300px,1fr\)_minmax\(132px,0\.34fr\)_minmax\(146px,0\.38fr\)_minmax\(112px,0\.3fr\)\]/,
+    );
+    assert.ok(advertiserFilterOrder.every((index) => index >= 0));
+    assert.ok(
+      advertiserFilterOrder.every(
+        (index, orderIndex) =>
+          orderIndex === 0 || index > advertiserFilterOrder[orderIndex - 1],
+      ),
+    );
+    assert.match(agents, /visible Korean copy "내보내기"/);
+    assert.match(agents, /accessible\/title copy "엑셀 내보내기"/);
+    assert.match(agents, /Excel export should sit immediately beside the dashboard title/);
+    assert.match(agents, /Date filtering belongs inside the dashboard filter panel/);
+    assert.match(agents, /same visible column order as the table/);
     assert.match(influencerDashboard, /<DashboardDownloadButton onClick=\{handleDownloadDashboard\} \/>/);
     assert.match(advertiserExportSource, /buildAdvertiserContractExportSheet/);
     assert.match(advertiserExportSource, /CONTRACT_LIFECYCLE_EXPORT_LABELS\[lifecycle\]/);
@@ -1612,7 +1680,7 @@ describe("yeollock.me security regressions", () => {
     }
     assert.match(
       agents,
-      /Dashboard data exports should use one quiet top-right download action/,
+      /Dashboard data exports should use one quiet top-right export action/,
     );
     assert.match(
       agents,

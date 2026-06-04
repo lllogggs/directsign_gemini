@@ -15,11 +15,11 @@ export function DashboardDownloadButton({
       onClick={onClick}
       disabled={disabled}
       className="yl-header-action yl-header-action-secondary disabled:pointer-events-none disabled:border-neutral-200 disabled:bg-neutral-50 disabled:text-neutral-300 disabled:shadow-none"
-      aria-label="엑셀 다운로드"
-      title="엑셀 다운로드"
+      aria-label="엑셀 내보내기"
+      title="엑셀 내보내기"
     >
       <Download className="h-3.5 w-3.5" strokeWidth={2} />
-      <span className="hidden sm:inline">다운로드</span>
+      <span className="hidden sm:inline">내보내기</span>
     </button>
   );
 }

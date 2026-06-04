@@ -493,6 +493,8 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
   const [amountFilter, setAmountFilter] = useState<AmountFilter>("ALL");
   const [detailStatusFilter, setDetailStatusFilter] =
     useState<DetailStatusFilter>("ALL");
+  const [contractDateFromFilter, setContractDateFromFilter] = useState("");
+  const [contractDateToFilter, setContractDateToFilter] = useState("");
   const [contractSort, setContractSort] = useState<ContractSort>({
     key: "updated",
     direction: "desc",
@@ -718,11 +720,19 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
           (contractTypeFilter === "ALL" || contract.type === contractTypeFilter) &&
           (amountFilter === "ALL" ||
             getAmountFilterKind(contract.campaign?.budget) === amountFilter) &&
-          (detailStatusFilter === "ALL" || contract.status === detailStatusFilter),
+          (detailStatusFilter === "ALL" || contract.status === detailStatusFilter) &&
+          matchesDashboardDateRange(
+            contract,
+            campaignLifecycleFilter,
+            contractDateFromFilter,
+            contractDateToFilter,
+          ),
       )
       .sort((a, b) => _compareContractsBySort(a, b, contractSort));
   }, [
     amountFilter,
+    contractDateFromFilter,
+    contractDateToFilter,
     campaignLifecycleFilter,
     campaignPlatformFilter,
     contractSort,
@@ -736,7 +746,9 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
     campaignPlatformFilter !== "ALL" ||
     contractTypeFilter !== "ALL" ||
     amountFilter !== "ALL" ||
-    detailStatusFilter !== "ALL";
+    detailStatusFilter !== "ALL" ||
+    Boolean(contractDateFromFilter) ||
+    Boolean(contractDateToFilter);
   const contractDownloadContracts = useMemo(
     () =>
       hasContractDashboardFilters
@@ -896,7 +908,7 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
 
     if (contractDownloadContracts.length > DASHBOARD_CONTRACT_EXPORT_LIMIT) {
       window.alert(
-        `엑셀 다운로드는 최대 ${DASHBOARD_CONTRACT_EXPORT_LIMIT.toLocaleString("ko-KR")}건까지 가능합니다. 필터나 검색 조건을 좁혀 주세요.`,
+        `엑셀 내보내기는 최대 ${DASHBOARD_CONTRACT_EXPORT_LIMIT.toLocaleString("ko-KR")}건까지 가능합니다. 필터나 검색 조건을 좁혀 주세요.`,
       );
       return;
     }
@@ -992,9 +1004,9 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
                 <h1 className="truncate text-[17px] font-bold text-[#171a17]">
                   {isCampaignSurface ? "캠페인 운영 대시보드" : "계약 운영 대시보드"}
                 </h1>
+                <DashboardDownloadButton onClick={handleDownloadDashboard} />
               </div>
               <div className="flex shrink-0 items-center gap-1.5">
-                <DashboardDownloadButton onClick={handleDownloadDashboard} />
                 {isCampaignSurface ? (
                   <Link
                     to="/advertiser/campaigns/new"
@@ -1095,6 +1107,10 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
                   onAmountFilterChange={setAmountFilter}
                   detailStatusFilter={detailStatusFilter}
                   onDetailStatusFilterChange={setDetailStatusFilter}
+                  dateFromFilter={contractDateFromFilter}
+                  onDateFromFilterChange={setContractDateFromFilter}
+                  dateToFilter={contractDateToFilter}
+                  onDateToFilterChange={setContractDateToFilter}
                   sortState={contractSort}
                   onSortChange={handleContractSortChange}
                   isDataPending={isLoginTransitionPending || (!isHydrated && !syncError)}
@@ -3009,6 +3025,10 @@ function ContractTable({
   onAmountFilterChange,
   detailStatusFilter,
   onDetailStatusFilterChange,
+  dateFromFilter,
+  onDateFromFilterChange,
+  dateToFilter,
+  onDateToFilterChange,
   sortState,
   onSortChange,
   isDataPending = false,
@@ -3028,6 +3048,10 @@ function ContractTable({
   onAmountFilterChange: (value: AmountFilter) => void;
   detailStatusFilter: DetailStatusFilter;
   onDetailStatusFilterChange: (value: DetailStatusFilter) => void;
+  dateFromFilter: string;
+  onDateFromFilterChange: (value: string) => void;
+  dateToFilter: string;
+  onDateToFilterChange: (value: string) => void;
   sortState: ContractSort;
   onSortChange: (key: SortKey) => void;
   isDataPending?: boolean;
@@ -3049,6 +3073,7 @@ function ContractTable({
     value: amount,
     label: formatAmountFilterLabel(amount),
   }));
+  const dateColumnLabel = lifecycleFilter === "ENDED" ? "종료일" : "마감일";
   const activeFilters = [
     platformFilter !== "ALL"
       ? {
@@ -3086,6 +3111,20 @@ function ContractTable({
           onRemove: () => onDetailStatusFilterChange("ALL"),
         }
       : null,
+    dateFromFilter
+      ? {
+          id: "date-from",
+          label: `${dateColumnLabel} ${formatDateFilterLabel(dateFromFilter)} 이후`,
+          onRemove: () => onDateFromFilterChange(""),
+        }
+      : null,
+    dateToFilter
+      ? {
+          id: "date-to",
+          label: `${dateColumnLabel} ${formatDateFilterLabel(dateToFilter)} 이전`,
+          onRemove: () => onDateToFilterChange(""),
+        }
+      : null,
     query.trim()
       ? {
           id: "query",
@@ -3101,10 +3140,11 @@ function ContractTable({
     contracts,
     getDashboardContractCollapseKey,
   );
-  const dateColumnLabel = lifecycleFilter === "ENDED" ? "종료일" : "마감일";
   const paginationScopeKey = [
     amountFilter,
     contractTypeFilter,
+    dateFromFilter,
+    dateToFilter,
     detailStatusFilter,
     lifecycleFilter,
     platformFilter,
@@ -3173,27 +3213,27 @@ function ContractTable({
             onContractTypeFilterChange("ALL");
             onAmountFilterChange("ALL");
             onDetailStatusFilterChange("ALL");
+            onDateFromFilterChange("");
+            onDateToFilterChange("");
             onQueryChange("");
           }}
         />
         {filtersOpen ? (
           <div
             id="advertiser-contract-filters"
-            className="grid gap-2 border-t border-[#edf1ed] bg-[#f8faf7] p-2 lg:grid-cols-[minmax(130px,0.32fr)_minmax(120px,0.28fr)_minmax(260px,0.7fr)_minmax(120px,0.28fr)_minmax(130px,0.3fr)]"
+            className="grid gap-2.5 border-t border-[#d9e0d9] bg-[#f4f5f2] px-3 py-3 sm:grid-cols-2 lg:grid-cols-[minmax(132px,0.34fr)_minmax(108px,0.26fr)_minmax(300px,1fr)_minmax(132px,0.34fr)_minmax(146px,0.38fr)_minmax(112px,0.3fr)] lg:items-end lg:gap-2"
           >
             <TableFilterSelect
               label="플랫폼"
               value={platformFilter}
               options={platformOptions}
               onChange={(value) => onPlatformFilterChange(value as PlatformFilter)}
-              compact
             />
             <TableFilterSelect
               label="종류"
               value={contractTypeFilter}
               options={contractTypeOptions}
               onChange={(value) => onContractTypeFilterChange(value as ContractTypeFilter)}
-              compact
             />
             <ContractNameSearch
               value={query}
@@ -3201,21 +3241,25 @@ function ContractTable({
               sortKey="title"
               sortState={sortState}
               onSortChange={onSortChange}
-              compact
             />
             <TableFilterSelect
               label="지급내용"
               value={amountFilter}
               options={amountOptions}
               onChange={(value) => onAmountFilterChange(value as AmountFilter)}
-              compact
+            />
+            <DashboardDateRangeFilter
+              label={dateColumnLabel}
+              fromValue={dateFromFilter}
+              toValue={dateToFilter}
+              onFromChange={onDateFromFilterChange}
+              onToChange={onDateToFilterChange}
             />
             <TableFilterSelect
               label="현 단계"
               value={detailStatusFilter}
               options={statusOptions}
               onChange={(value) => onDetailStatusFilterChange(value as DetailStatusFilter)}
-              compact
             />
           </div>
         ) : null}
@@ -3449,7 +3493,7 @@ function ContractNameSearch({
       className={
         compact
           ? "grid min-w-0 grid-cols-[70px_minmax(0,1fr)] items-center gap-2"
-          : "block min-w-0 lg:w-[90%]"
+          : "block min-w-0"
       }
     >
       <ColumnHeader
@@ -3469,6 +3513,82 @@ function ContractNameSearch({
         />
       </span>
     </div>
+  );
+}
+
+function DashboardDateRangeFilter({
+  label,
+  fromValue,
+  toValue,
+  onFromChange,
+  onToChange,
+}: {
+  label: string;
+  fromValue: string;
+  toValue: string;
+  onFromChange: (value: string) => void;
+  onToChange: (value: string) => void;
+}) {
+  return (
+    <div className="block min-w-0">
+      <ColumnHeader label={label} />
+      <div className="mt-1 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1.5">
+        <DashboardDateInput
+          value={fromValue}
+          max={toValue || undefined}
+          aria-label={`${label} 시작일 필터`}
+          placeholderLabel="시작일"
+          onChange={onFromChange}
+        />
+        <span className="text-[12px] font-extrabold text-[#8b938d]" aria-hidden="true">
+          -
+        </span>
+        <DashboardDateInput
+          value={toValue}
+          min={fromValue || undefined}
+          aria-label={`${label} 종료일 필터`}
+          placeholderLabel="종료일"
+          onChange={onToChange}
+        />
+      </div>
+    </div>
+  );
+}
+
+function DashboardDateInput({
+  value,
+  min,
+  max,
+  "aria-label": ariaLabel,
+  placeholderLabel,
+  onChange,
+}: {
+  value: string;
+  min?: string;
+  max?: string;
+  "aria-label": string;
+  placeholderLabel: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <span className="relative block min-w-0">
+      {!value ? (
+        <span className="pointer-events-none absolute left-2 top-1/2 z-10 -translate-y-1/2 text-[12px] font-bold text-[#8b938d]">
+          {placeholderLabel}
+        </span>
+      ) : null}
+      <input
+        type="date"
+        value={value}
+        min={min}
+        max={max}
+        onChange={(event) => onChange(event.target.value)}
+        aria-label={ariaLabel}
+        className={`h-10 w-full min-w-0 rounded-[6px] border border-[#d9e0d9] bg-white px-2 text-[12px] font-bold tabular-nums outline-none transition-colors hover:border-[#cbd5cc] focus:border-[#171a17] ${
+          value ? "text-[#303630]" : "text-transparent"
+        }`}
+      />
+    </span>
   );
 }
 
@@ -5176,6 +5296,50 @@ function getDashboardContractDateValue(
     contract.campaign?.deadline ??
     contract.campaign?.end_date
   );
+}
+
+function matchesDashboardDateRange(
+  contract: Contract,
+  lifecycle: CampaignLifecycle,
+  fromValue: string,
+  toValue: string,
+) {
+  if (!fromValue && !toValue) return true;
+
+  const dateValue = getDashboardContractDateInputValue(contract, lifecycle);
+  if (!dateValue) return false;
+
+  return (!fromValue || dateValue >= fromValue) && (!toValue || dateValue <= toValue);
+}
+
+function getDashboardContractDateInputValue(
+  contract: Contract,
+  lifecycle: CampaignLifecycle,
+) {
+  const value = getDashboardContractDateValue(contract, lifecycle);
+  if (!value) return "";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  return toDateInputValue(date);
+}
+
+function toDateInputValue(date: Date) {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+function formatDateFilterLabel(value: string) {
+  if (!value) return "";
+
+  const [year, month, day] = value.split("-");
+  if (!year || !month || !day) return value;
+
+  return `${year}.${month}.${day}`;
 }
 
 function formatDashboardContractDateLabel(

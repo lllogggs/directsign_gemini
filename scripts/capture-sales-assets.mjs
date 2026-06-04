@@ -688,6 +688,85 @@ const getApplicantCampaignKeyForCapture = async (client, page) => {
   return campaignKey;
 };
 
+const fillCampaignApplicantsForSalesCapture = async (client, page) => {
+  const result = await evaluate(
+    client,
+    page,
+    `(() => {
+      const extras = [
+        { name: "지안홈", handle: "@jian_home", platform: "인스타 5.4만", category: "리빙" },
+        { name: "세린데일리", handle: "@serin_daily", platform: "인스타 5.2만", category: "라이프스타일" },
+        { name: "나래쇼츠", handle: "@narae_shorts", platform: "틱톡 11.4만", category: "숏폼" },
+        { name: "로미리뷰", handle: "@romi_review", platform: "인스타 4.5만", category: "리뷰" },
+        { name: "소담픽", handle: "@sodam_pick", platform: "인스타 5.6만", category: "라이프스타일" }
+      ];
+      const applicantTitle = [...document.querySelectorAll("p")]
+        .find((item) => item.textContent?.trim() === "지원자");
+      const applicantPanel = applicantTitle?.closest(".border-b");
+      const rowsContainer = applicantPanel?.querySelector(".divide-y");
+      if (!applicantPanel || !rowsContainer) {
+        return { ok: false, reason: "applicant panel not found", rowCount: 0 };
+      }
+
+      const updateApplicantCount = (count) => {
+        const countLine = [...applicantPanel.querySelectorAll("p")]
+          .find((item) => /명 표시/.test(item.textContent || ""));
+        if (countLine) countLine.textContent = count + "명 표시 · 전체 " + count + "명";
+      };
+
+      const existingRows = [...rowsContainer.children];
+      let rows = [...existingRows];
+      for (let index = 0; rows.length < 12; index += 1) {
+        const template = existingRows[index % existingRows.length];
+        if (!template) break;
+        const extra = extras[index % extras.length];
+        const clone = template.cloneNode(true);
+        clone.setAttribute("data-sales-capture-extra", "true");
+
+        const textNodes = [...clone.querySelectorAll("a, p, span, button")];
+        const nameEl = textNodes.find((item) =>
+          /수아픽|유나뷰티|온리루틴|라온뷰티|하린로그|리뷰제이|모아리뷰/.test(
+            item.textContent?.trim() || "",
+          ),
+        );
+        if (nameEl) {
+          nameEl.textContent = extra.name;
+          if (nameEl.hasAttribute("title")) nameEl.setAttribute("title", extra.name + " 프로필 보기");
+          if (nameEl.hasAttribute("aria-label")) nameEl.setAttribute("aria-label", extra.name + " 프로필 보기");
+        }
+
+        const handleEl = [...clone.querySelectorAll("p")]
+          .find((item) => /^@/.test(item.textContent?.trim() || ""));
+        if (handleEl) handleEl.textContent = extra.handle;
+
+        const platformEl = textNodes.find((item) =>
+          /(인스타|유튜브|틱톡|블로그).*(만|천)/.test(item.textContent?.trim() || ""),
+        );
+        if (platformEl) platformEl.textContent = extra.platform;
+
+        const categoryEl = textNodes.find((item) =>
+          ["뷰티", "라이프스타일", "리뷰", "리빙", "숏폼"].includes(
+            item.textContent?.trim() || "",
+          ),
+        );
+        if (categoryEl) categoryEl.textContent = extra.category;
+
+        rowsContainer.appendChild(clone);
+        rows = [...rowsContainer.children];
+      }
+
+      updateApplicantCount(Math.max(rows.length, 12));
+      return { ok: rows.length >= 12, rowCount: rows.length };
+    })()`,
+  );
+
+  if (!result?.ok) {
+    throw new Error(
+      `Campaign applicant sales capture was not filled: ${result?.reason ?? "unknown"} (${result?.rowCount ?? 0} rows)`,
+    );
+  }
+};
+
 await fs.mkdir(outputDir, { recursive: true });
 await fs.mkdir(profileDir, { recursive: true });
 
@@ -757,9 +836,10 @@ try {
   const campaignApplicantsPage = await openPage(
     client,
     `${baseUrl}/advertiser/campaigns?campaign=${encodeURIComponent(applicantCampaignKey)}`,
-    { width: 1180, height: 900 },
+    { width: 1440, height: 1250 },
   );
   await waitForBodyText(client, campaignApplicantsPage, "지원자", 45000);
+  await fillCampaignApplicantsForSalesCapture(client, campaignApplicantsPage);
   await capturePng(
     client,
     campaignApplicantsPage,

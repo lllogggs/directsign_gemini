@@ -1282,7 +1282,7 @@ const campaignDashboardApplicationFixtures = [
   },
   {
     campaignTitle: "성수 팝업 숏폼 모집",
-    applicantCount: 7,
+    applicantCount: 12,
     statuses: ["submitted", "reviewed", "submitted", "submitted", "reviewed"],
     ageDays: 3,
   },
