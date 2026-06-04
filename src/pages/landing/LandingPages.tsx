@@ -280,23 +280,24 @@ type RoleIntroSlide = {
   preview: RolePreview;
 };
 
-type AdvertiserProposalFact = {
+type IntroProposalFact = {
   label: string;
   value: string;
   tone?: "blue" | "red" | "neutral";
 };
 
-type AdvertiserProposalSlide = {
+type IntroProposalSlide = {
   label: string;
   title: ReactNode;
   description: string;
-  facts?: AdvertiserProposalFact[];
+  facts?: IntroProposalFact[];
   imageSrc?: string;
   imageAlt?: string;
   riskItems?: string[];
+  visualFacts?: IntroProposalFact[];
 };
 
-const advertiserProposalSlides: AdvertiserProposalSlide[] = [
+const advertiserProposalSlides: IntroProposalSlide[] = [
   {
     label: "01 문제",
     title: (
@@ -376,6 +377,100 @@ const advertiserProposalSlides: AdvertiserProposalSlide[] = [
       { label: "계약", value: "조건 불일치 방지", tone: "blue" },
       { label: "서명", value: "책임 있는 진행", tone: "blue" },
       { label: "증빙", value: "완료 PDF 보관", tone: "neutral" },
+    ],
+  },
+];
+
+const influencerProposalSlides: IntroProposalSlide[] = [
+  {
+    label: "01 조건",
+    title: (
+      <>
+        흩어진 광고 조건은{" "}
+        <span className="text-[#dc2626]">놓치기 쉽습니다.</span>
+      </>
+    ),
+    description:
+      "메일과 카톡에 흩어진 금액, 일정, 산출물, 사용 권한을 계약서에서 한 번에 확인합니다.",
+    facts: [
+      { label: "금액", value: "지급 조건 먼저 확인", tone: "blue" },
+      { label: "일정", value: "업로드·검수 기한 확인", tone: "blue" },
+      { label: "산출물", value: "플랫폼·컨텐츠·수량 확인", tone: "blue" },
+      { label: "권한", value: "2차 활용 범위 확인", tone: "red" },
+    ],
+    riskItems: ["금액 확인 누락", "일정 착오", "산출물 불명확", "활용 권한 과다"],
+  },
+  {
+    label: "02 링크",
+    title: "계약 링크에서 핵심 조건 확인",
+    description:
+      "광고주가 보낸 계약 링크를 열면 브랜드, 보상, 마감, 산출물이 먼저 보입니다.",
+    facts: [
+      { label: "전달", value: "계약서 링크", tone: "blue" },
+      { label: "확인", value: "핵심 조건", tone: "blue" },
+      { label: "다음", value: "PDF 원문 확인", tone: "neutral" },
+    ],
+    imageSrc: advertiserProposalAssetUrls.influencerContract,
+    imageAlt: "인플루언서 계약서 링크 확인 화면",
+  },
+  {
+    label: "03 원문",
+    title: "PDF 계약서 원문을 보고 서명",
+    description:
+      "요약만 보고 넘기지 않고 광고주가 작성한 PDF 계약서를 확인한 뒤 서명합니다.",
+    facts: [
+      { label: "원문", value: "PDF 계약서", tone: "blue" },
+      { label: "확인", value: "광고주 작성 조건", tone: "neutral" },
+      { label: "서명", value: "전자서명 진행", tone: "blue" },
+    ],
+    visualFacts: [
+      { label: "계약서", value: "원문 확인", tone: "blue" },
+      { label: "조건", value: "광고주 입력값 그대로", tone: "neutral" },
+      { label: "서명", value: "확인 후 진행", tone: "blue" },
+    ],
+  },
+  {
+    label: "04 요청",
+    title: "애매한 조건은 기록으로 요청",
+    description:
+      "활용 기간, 검수 기준, 업로드 일정처럼 애매한 조건은 서명 전에 수정 요청으로 남깁니다.",
+    facts: [
+      { label: "요청", value: "수정 사유 기록", tone: "blue" },
+      { label: "답변", value: "광고주 답변 확인", tone: "neutral" },
+      { label: "최종", value: "수정본 확인", tone: "blue" },
+    ],
+    visualFacts: [
+      { label: "활용 기간", value: "12개월 -> 3개월 요청", tone: "blue" },
+      { label: "검수 기준", value: "수정 가능 범위 확인", tone: "neutral" },
+      { label: "답변 상태", value: "광고주 확인 중", tone: "blue" },
+    ],
+  },
+  {
+    label: "05 관리",
+    title: "계약별 할 일을 한눈에 관리",
+    description:
+      "지원, 진행, 완료, 미선정 상태를 분리해 다음에 해야 할 일을 바로 확인합니다.",
+    facts: [
+      { label: "지원", value: "지원 접수 확인", tone: "neutral" },
+      { label: "진행", value: "제출·검수 상태", tone: "blue" },
+      { label: "완료", value: "서명본 보관", tone: "blue" },
+    ],
+    visualFacts: [
+      { label: "지원중", value: "2건", tone: "neutral" },
+      { label: "진행중", value: "3건", tone: "blue" },
+      { label: "완료", value: "1건", tone: "blue" },
+      { label: "미선정", value: "1건", tone: "neutral" },
+    ],
+  },
+  {
+    label: "06 시작",
+    title: "서명 전 확인부터 완료 보관까지",
+    description:
+      "받은 계약을 확인하고, 필요한 요청과 서명 기록을 한 흐름에 남깁니다.",
+    facts: [
+      { label: "확인", value: "금액·일정 먼저 확인", tone: "blue" },
+      { label: "요청", value: "수정 요청 기록", tone: "blue" },
+      { label: "보관", value: "서명본 자동 보관", tone: "neutral" },
     ],
   },
 ];
@@ -1219,7 +1314,7 @@ function RoleFeatureIntroScreen({
           title: ["광고 조건을", "놓치지 않게"],
           description:
             "메일함을 뒤지지 않고 금액, 일정, 산출물, 사용 권한을 확인하고 수정 요청과 서명본까지 한 곳에 남깁니다.",
-          proofPoints: ["금액·일정 먼저 확인", "수정 요청 기록", "서명본 자동 보관"],
+          proofPoints: [],
         };
 
   useEffect(() => {
@@ -1374,8 +1469,8 @@ function RoleFeatureIntroScreen({
 }
 
 function RoleFeaturePreviewCarousel({
-  slides,
-  previewIndex,
+  slides: _slides,
+  previewIndex: _previewIndex,
   role,
   className = "",
 }: {
@@ -1385,15 +1480,22 @@ function RoleFeaturePreviewCarousel({
   className?: string;
 }) {
   if (role === "advertiser") {
-    return <AdvertiserProposalIntroCarousel className={className} />;
+    return (
+      <ProposalIntroCarousel
+        ariaLabel="광고주 제안서 화면 슬라이드"
+        className={className}
+        controlLabel="제안서 화면"
+        slides={advertiserProposalSlides}
+      />
+    );
   }
 
   return (
-    <RoleFeaturePreviewRotator
+    <ProposalIntroCarousel
+      ariaLabel="인플루언서 제안서 화면 슬라이드"
       className={className}
-      previewIndex={previewIndex}
-      role={role}
-      slides={slides}
+      controlLabel="인플루언서 화면"
+      slides={influencerProposalSlides}
     />
   );
 }
@@ -1490,31 +1592,43 @@ function RoleFeaturePreviewRotator({
   );
 }
 
-function AdvertiserProposalIntroCarousel({ className = "" }: { className?: string }) {
+void RoleFeaturePreviewRotator;
+
+function ProposalIntroCarousel({
+  ariaLabel,
+  className = "",
+  controlLabel,
+  slides,
+}: {
+  ariaLabel: string;
+  className?: string;
+  controlLabel: string;
+  slides: IntroProposalSlide[];
+}) {
   const [slideIndex, setSlideIndex] = useState(0);
-  const activeSlide = advertiserProposalSlides[slideIndex] ?? advertiserProposalSlides[0];
+  const activeSlide = slides[slideIndex] ?? slides[0];
 
   const showPrevious = useCallback(() => {
     setSlideIndex((currentIndex) =>
-      currentIndex === 0 ? advertiserProposalSlides.length - 1 : currentIndex - 1,
+      currentIndex === 0 ? slides.length - 1 : currentIndex - 1,
     );
-  }, []);
+  }, [slides.length]);
 
   const showNext = useCallback(() => {
-    setSlideIndex((currentIndex) => (currentIndex + 1) % advertiserProposalSlides.length);
-  }, []);
+    setSlideIndex((currentIndex) => (currentIndex + 1) % slides.length);
+  }, [slides.length]);
 
   return (
     <section
-      aria-label="광고주 제안서 화면 슬라이드"
+      aria-label={ariaLabel}
       className={`${className} mx-auto flex min-h-[420px] w-full min-w-0 flex-1 max-w-[calc(100vw-40px)] flex-col overflow-visible sm:min-h-[500px] sm:max-w-full lg:h-full lg:min-h-0 lg:max-w-[980px] lg:justify-self-end lg:overflow-hidden`}
     >
       <div className="relative flex min-h-[420px] flex-1 overflow-hidden rounded-[14px] border border-neutral-200 bg-white shadow-[0_18px_48px_rgba(23,26,23,0.08)] sm:min-h-[500px] lg:h-full lg:min-h-0">
         <button
           type="button"
-          aria-label="이전 제안서 화면"
+          aria-label={`이전 ${controlLabel}`}
           aria-controls={`advertiser-proposal-slide-${slideIndex}`}
-          title="이전 제안서 화면"
+          title={`이전 ${controlLabel}`}
           onClick={showPrevious}
           className="absolute bottom-4 left-4 z-20 flex h-9 w-9 items-center justify-center rounded-full border border-neutral-200/75 bg-white/70 text-neutral-500 shadow-[0_10px_24px_rgba(15,23,42,0.08)] backdrop-blur transition hover:bg-white hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 sm:bottom-auto sm:left-3 sm:top-1/2 sm:h-10 sm:w-10 sm:-translate-y-1/2"
         >
@@ -1522,9 +1636,9 @@ function AdvertiserProposalIntroCarousel({ className = "" }: { className?: strin
         </button>
         <button
           type="button"
-          aria-label="다음 제안서 화면"
+          aria-label={`다음 ${controlLabel}`}
           aria-controls={`advertiser-proposal-slide-${slideIndex}`}
-          title="다음 제안서 화면"
+          title={`다음 ${controlLabel}`}
           onClick={showNext}
           className="absolute bottom-4 right-4 z-20 flex h-9 w-9 items-center justify-center rounded-full border border-neutral-200/75 bg-white/70 text-neutral-500 shadow-[0_10px_24px_rgba(15,23,42,0.08)] backdrop-blur transition hover:bg-white hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 sm:bottom-auto sm:right-3 sm:top-1/2 sm:h-10 sm:w-10 sm:-translate-y-1/2"
         >
@@ -1535,7 +1649,7 @@ function AdvertiserProposalIntroCarousel({ className = "" }: { className?: strin
           id={`advertiser-proposal-slide-${slideIndex}`}
           role="group"
           aria-roledescription="slide"
-          aria-label={`${slideIndex + 1} / ${advertiserProposalSlides.length} ${activeSlide.label}`}
+          aria-label={`${slideIndex + 1} / ${slides.length} ${activeSlide.label}`}
           aria-live="polite"
           className="flex h-full min-h-[420px] w-full flex-col bg-[#fbfcf8] px-5 py-4 sm:min-h-[500px] sm:px-6 sm:py-5 lg:min-h-0"
         >
@@ -1544,14 +1658,14 @@ function AdvertiserProposalIntroCarousel({ className = "" }: { className?: strin
               {activeSlide.label}
             </span>
             <span className="text-[11px] font-bold leading-none tracking-normal text-neutral-400">
-              {slideIndex + 1}/{advertiserProposalSlides.length}
+              {slideIndex + 1}/{slides.length}
             </span>
           </div>
 
-          <AdvertiserProposalSlideView slide={activeSlide} />
+          <ProposalSlideView slide={activeSlide} />
 
           <div className="mt-3 flex shrink-0 items-center justify-center gap-2">
-            {advertiserProposalSlides.map((slide, index) => {
+            {slides.map((slide, index) => {
               const selected = index === slideIndex;
 
               return (
@@ -1576,7 +1690,7 @@ function AdvertiserProposalIntroCarousel({ className = "" }: { className?: strin
   );
 }
 
-function AdvertiserProposalSlideView({ slide }: { slide: AdvertiserProposalSlide }) {
+function ProposalSlideView({ slide }: { slide: IntroProposalSlide }) {
   return (
     <div className="grid min-h-0 flex-1 gap-4 pt-4 lg:grid-cols-[minmax(245px,0.38fr)_minmax(0,0.62fr)] lg:pt-5">
       <div className="flex min-h-0 flex-col justify-center px-2 sm:px-5 lg:px-6">
@@ -1609,12 +1723,12 @@ function AdvertiserProposalSlideView({ slide }: { slide: AdvertiserProposalSlide
         ) : null}
       </div>
 
-      <AdvertiserProposalVisual slide={slide} />
+      <ProposalVisual slide={slide} />
     </div>
   );
 }
 
-function AdvertiserProposalVisual({ slide }: { slide: AdvertiserProposalSlide }) {
+function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
   if (slide.imageSrc) {
     return (
       <div className="flex min-h-[260px] items-center justify-center overflow-hidden rounded-[12px] border border-neutral-200 bg-[#f4f5f2] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] sm:min-h-[330px] lg:min-h-0">
@@ -1648,6 +1762,35 @@ function AdvertiserProposalVisual({ slide }: { slide: AdvertiserProposalSlide })
     );
   }
 
+  if (slide.visualFacts) {
+    return (
+      <div className="grid min-h-[260px] gap-2 sm:min-h-[330px] sm:gap-3 lg:min-h-0 lg:content-center">
+        {slide.visualFacts.map((fact, index) => (
+          <div
+            key={`${fact.label}-${fact.value}`}
+            className="flex min-h-[78px] items-center justify-between gap-4 rounded-[12px] border border-neutral-200 bg-white px-5 py-4 shadow-[0_14px_30px_rgba(23,26,23,0.05)]"
+          >
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-950 text-[11px] font-black text-white">
+                {index + 1}
+              </span>
+              <span className="truncate text-[13px] font-extrabold tracking-normal text-neutral-500">
+                {fact.label}
+              </span>
+            </div>
+            <strong
+              className={`min-w-0 text-right text-[18px] font-black leading-6 tracking-normal sm:text-[20px] ${advertiserProposalFactToneClass(
+                fact.tone,
+              )}`}
+            >
+              {fact.value}
+            </strong>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-[260px] flex-col justify-center overflow-hidden rounded-[12px] border border-neutral-200 bg-neutral-950 px-8 py-8 text-white shadow-[0_18px_44px_rgba(15,23,42,0.14)] sm:min-h-[330px] lg:min-h-0">
       <div className="h-1.5 w-16 rounded-full bg-blue-500" />
@@ -1670,7 +1813,7 @@ function AdvertiserProposalVisual({ slide }: { slide: AdvertiserProposalSlide })
   );
 }
 
-function advertiserProposalFactToneClass(tone: AdvertiserProposalFact["tone"]) {
+function advertiserProposalFactToneClass(tone: IntroProposalFact["tone"]) {
   if (tone === "blue") {
     return "text-blue-700";
   }

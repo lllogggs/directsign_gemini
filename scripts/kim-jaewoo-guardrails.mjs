@@ -1437,7 +1437,7 @@ check(
 );
 
 const advertiserProposalCarouselStart = landing.indexOf(
-  "function AdvertiserProposalIntroCarousel",
+  "function ProposalIntroCarousel",
 );
 const advertiserProposalCarouselEnd = landing.indexOf(
   "function RolePreviewSlideView",
@@ -1451,14 +1451,16 @@ const advertiserProposalCarousel =
 check(
   "advertiser intro exposes sales proposal carousel",
   landing.includes("const advertiserProposalSlides") &&
+    landing.includes("const influencerProposalSlides") &&
     landing.includes("const advertiserProposalAssetUrls") &&
     landing.includes("yeollock-contract-builder-first-screen.png") &&
     landing.includes("yeollock-influencer-contract.png") &&
     landing.includes("yeollock-contract-admin.png") &&
     landing.includes("yeollock-campaign-applicants-dashboard.png") &&
-    landing.includes('aria-label="광고주 제안서 화면 슬라이드"') &&
-    advertiserProposalCarousel.includes('aria-label="이전 제안서 화면"') &&
-    advertiserProposalCarousel.includes('aria-label="다음 제안서 화면"') &&
+    landing.includes('ariaLabel="광고주 제안서 화면 슬라이드"') &&
+    landing.includes('ariaLabel="인플루언서 제안서 화면 슬라이드"') &&
+    advertiserProposalCarousel.includes("aria-label={`이전 ${controlLabel}`}") &&
+    advertiserProposalCarousel.includes("aria-label={`다음 ${controlLabel}`}") &&
     advertiserProposalCarousel.includes('aria-roledescription="slide"') &&
     advertiserProposalCarousel.includes("setSlideIndex(index)") &&
     landing.includes('role === "advertiser" || displaySlides.length < 2') &&
@@ -1729,9 +1731,11 @@ check(
     salesAdvertiserIntroduction.includes("효율적으로") &&
     salesAdvertiserIntroduction.includes("진행과정 관리") &&
     !salesAdvertiserIntroduction.includes("<strong>진행과정</strong>") &&
-    salesAdvertiserIntroduction.includes("<strong>플랫폼별</strong> 관리") &&
-    salesAdvertiserIntroduction.includes("<strong>조항 검토</strong>") &&
-    salesAdvertiserIntroduction.includes("<strong>서명 관리</strong>") &&
+    salesAdvertiserIntroduction.includes("플랫폼별 관리") &&
+    salesAdvertiserIntroduction.includes("<strong>콘텐츠 확인</strong>") &&
+    salesAdvertiserIntroduction.includes("<strong>수정요청</strong>") &&
+    salesAdvertiserIntroduction.includes("서명 관리") &&
+    salesAdvertiserIntroduction.includes("yeollock-contract-content-review.png") &&
     salesAdvertiserIntroduction.includes("캠페인 모집도") &&
     salesAdvertiserIntroduction.includes("캠페인에 지원한") &&
     salesAdvertiserIntroduction.includes("<strong>인플루언서 쉽게 확인, 선정</strong>") &&
@@ -1763,9 +1767,11 @@ check(
     salesAdvertiserIntroduction.includes("작성한 계약서를 링크로 전달하면") &&
     salesAdvertiserIntroduction.includes("<strong>인플루언서</strong>가 확인 후 <strong>서명</strong>합니다") &&
     !salesAdvertiserIntroduction.includes("<strong>진행과정</strong>") &&
-    salesAdvertiserIntroduction.includes("<strong>플랫폼별</strong> 관리") &&
-    salesAdvertiserIntroduction.includes("<strong>조항 검토</strong>") &&
-    salesAdvertiserIntroduction.includes("<strong>서명 관리</strong>") &&
+    salesAdvertiserIntroduction.includes("플랫폼별 관리") &&
+    salesAdvertiserIntroduction.includes("<strong>콘텐츠 확인</strong>") &&
+    salesAdvertiserIntroduction.includes("<strong>수정요청</strong>") &&
+    salesAdvertiserIntroduction.includes("서명 관리") &&
+    salesAdvertiserIntroduction.includes("yeollock-contract-content-review.png") &&
     salesAdvertiserIntroduction.includes("캠페인 모집도") &&
     salesAdvertiserIntroduction.includes("편리하게!") &&
     salesAdvertiserIntroduction.includes("캠페인에 지원한") &&
@@ -1855,11 +1861,17 @@ check(
   "intro influencer explains why not email",
   landing.includes('title: ["광고 조건을", "놓치지 않게"]') &&
     landing.includes("메일함을 뒤지지 않고") &&
-    landing.includes("금액·일정 먼저 확인") &&
+    landing.includes("const influencerProposalSlides") &&
+    landing.includes("메일과 카톡에 흩어진") &&
+    landing.includes("금액 확인 누락") &&
+    landing.includes("일정 착오") &&
+    landing.includes("산출물 불명확") &&
+    landing.includes("활용 권한 과다") &&
+    landing.includes("PDF 계약서 원문을 보고 서명") &&
     landing.includes("수정 요청 기록") &&
     landing.includes("서명본 자동 보관") &&
     qaStandard.includes('"광고 조건을"') &&
-    qaStandard.includes('"금액·일정 먼저 확인"') &&
+    qaStandard.includes('"금액 확인 누락"') &&
     agents.includes("instead of email or Kakao"),
   "Influencer intro first viewport must make the email/Kakao replacement value concrete before dashboard taxonomy copy",
 );

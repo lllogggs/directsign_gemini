@@ -888,7 +888,7 @@ try {
   const contentReviewPage = await openPage(
     client,
     `${baseUrl}/advertiser/contract/${encodeURIComponent(contentReviewContract.id)}`,
-    { width: 1440, height: 620 },
+    { width: 1440, height: 884 },
   );
   await waitForBodyText(client, contentReviewPage, "수정 요청", 45000);
   await scrollToFirstTextarea(client, contentReviewPage);
