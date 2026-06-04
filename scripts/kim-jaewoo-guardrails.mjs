@@ -157,10 +157,12 @@ const contractViewer = read("src/pages/influencer/ContractViewer.tsx");
 const adminDashboard = read("src/pages/admin/SystemAdminDashboard.tsx");
 const legalConsent = read("src/domain/legalConsent.ts");
 const analytics = read("src/domain/analytics.ts");
+const xlsxExport = read("src/domain/xlsxExport.ts");
 const legalDocumentPage = read("src/pages/legal/LegalDocumentPage.tsx");
 const legalEntity = read("src/domain/legalEntity.ts");
 const supportPage = read("src/pages/support/SupportPage.tsx");
 const dashboardSurfaceSwitch = read("src/components/DashboardSurfaceSwitch.tsx");
+const dashboardDownloadButton = read("src/components/DashboardDownloadButton.tsx");
 const mobileSurfaceSwitch = read("src/components/MobileSurfaceSwitch.tsx");
 const authLoginScreen = read("src/components/AuthLoginScreen.tsx");
 const advertiserAuthGate = read("src/pages/marketing/AdvertiserAuthGate.tsx");
@@ -168,6 +170,7 @@ const advertiserVerification = read("src/pages/marketing/AdvertiserVerification.
 const influencerVerification = read("src/pages/influencer/InfluencerVerification.tsx");
 const display = read("src/domain/display.ts");
 const seo = read("src/domain/seo.ts");
+const marketplaceMessageSummaryHook = read("src/hooks/useMarketplaceMessageSummary.ts");
 const agents = read("AGENTS.md");
 const packageJson = JSON.parse(read("package.json"));
 const vercelConfig = read("vercel.json");
@@ -196,6 +199,31 @@ const operationalSupportTicketsExtensionMigration = read(
 );
 const operationalSupportTicketsSettlementRemovalMigration = read(
   "supabase/migrations/20260529090000_remove_settlement_support_ticket_category.sql",
+);
+const cacheQueryOptimizationMigration = read(
+  "supabase/migrations/20260604012714_optimize_cache_query_paths.sql",
+);
+const advertiserDashboardExportStart = advertiserDashboard.indexOf(
+  "function buildAdvertiserContractExportSheet",
+);
+const advertiserDashboardExportEnd = advertiserDashboard.indexOf(
+  "function parseDate",
+  advertiserDashboardExportStart,
+);
+const advertiserDashboardExportSource = advertiserDashboard.slice(
+  advertiserDashboardExportStart,
+  advertiserDashboardExportEnd,
+);
+const influencerDashboardExportStart = influencerDashboard.indexOf(
+  "function buildInfluencerDashboardExportSheet",
+);
+const influencerDashboardExportEnd = influencerDashboard.indexOf(
+  "function parseDate",
+  influencerDashboardExportStart,
+);
+const influencerDashboardExportSource = influencerDashboard.slice(
+  influencerDashboardExportStart,
+  influencerDashboardExportEnd,
 );
 
 const dashboardAndIntroFiles = [
@@ -684,6 +712,21 @@ const clarityPathsEnd = analytics.indexOf("let installed", clarityPathsStart);
 const clarityPathAllowlist = analytics.slice(clarityPathsStart, clarityPathsEnd);
 
 check(
+  "advertiser contract detail keeps one state-specific PDF download action",
+  agents.includes("Contract detail pages should expose PDF downloads inside the detail action area") &&
+    contractAdminViewer.includes("apiPath(`/api/contracts/${contract.id}/review-pdf`)") &&
+    contractAdminViewer.includes(
+      "contract.pdf_url || apiPath(`/api/contracts/${contract.id}/final-pdf`)",
+    ) &&
+    contractAdminViewer.includes("contractPdfDownloadName") &&
+    contractAdminViewer.includes("download={contractPdfDownloadName}") &&
+    contractAdminViewer.includes("isContractSignedOrClosed ?") &&
+    !advertiserDashboard.includes("review-pdf") &&
+    !advertiserDashboard.includes("final-pdf"),
+  "Advertiser contract PDFs must live in the contract detail action area: review PDF before signing, final signed PDF after signing, without dashboard-row PDF actions",
+);
+
+check(
   "analytics tracking avoids sensitive contract data",
   analytics.includes("G-PDTVNFRD1W") &&
     analytics.includes("wx0bvf6bl5") &&
@@ -790,6 +833,83 @@ check(
     server.includes('process.env.VERCEL === "1"') &&
     server.includes("public marketplace cache cold fallback"),
   "Public marketplace APIs must not keep returning 500 when a cold Supabase read times out; skip serverless background warmup, clear the failed refresh, and serve the safe public fallback while retrying later",
+);
+
+check(
+  "cache optimization keeps public and sensitive data separated",
+  packageJson.dependencies["@vercel/functions"] &&
+    server.includes("getVercelRuntimeCache") &&
+    server.includes("publicMarketplaceCacheTags") &&
+    server.includes("writePublicMarketplaceRuntimeCache") &&
+    server.includes("value === null ? undefined : value") &&
+    server.includes("invalidateByTag") &&
+    server.includes('"Vercel-CDN-Cache-Control"') &&
+    server.includes('"Vercel-Cache-Tag"') &&
+    server.includes('response.setHeader("Cache-Control", "no-store")') &&
+    server.includes("advertiserDashboardCache") &&
+    server.includes("invalidateAdvertiserDashboardCache") &&
+    marketplaceMessageSummaryHook.includes("messageSummaryInflight") &&
+    cacheQueryOptimizationMigration.includes(
+      "directsign_contracts_advertiser_status_updated_idx",
+    ) &&
+    cacheQueryOptimizationMigration.includes(
+      "marketplace_contact_proposals_campaign_status_created_idx",
+    ) &&
+    cacheQueryOptimizationMigration.includes(
+      "contract_parties_profile_role_contract_idx",
+    ) &&
+    agents.includes("Cache optimization must classify data before implementation") &&
+    agents.includes("contract share tokens") &&
+    agents.includes("Keep sensitive HTTP responses `no-store`"),
+  "Cache changes must speed up public/catalog and repeated private reads without putting contract/PDF/signature/admin data into public CDN or Runtime Cache",
+);
+
+check(
+  "dashboard excel export stays quiet and excludes sensitive fields",
+  packageJson.dependencies.fflate &&
+    dashboardDownloadButton.includes('aria-label="엑셀 다운로드"') &&
+    dashboardDownloadButton.includes("hidden sm:inline") &&
+    xlsxExport.includes("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") &&
+    advertiserDashboard.includes("handleDownloadDashboard") &&
+    advertiserDashboard.includes("const CONTRACTS_PER_PAGE = 20") &&
+    advertiserDashboard.includes("const DASHBOARD_CONTRACT_EXPORT_LIMIT = 5000") &&
+    advertiserDashboard.includes("displayContracts.slice(pageStartIndex, pageEndIndex)") &&
+    advertiserDashboard.includes("<ContractPagination") &&
+    advertiserDashboard.includes("<DashboardDownloadButton onClick={handleDownloadDashboard} />") &&
+    advertiserDashboard.includes("hasContractDashboardFilters") &&
+    advertiserDashboard.includes("contractDownloadContracts") &&
+    advertiserDashboard.includes("? visibleContracts") &&
+    advertiserDashboard.includes(": [...dashboardContracts]") &&
+    advertiserDashboard.includes("contractDownloadContracts.length > DASHBOARD_CONTRACT_EXPORT_LIMIT") &&
+    advertiserDashboardExportSource.includes("buildAdvertiserContractExportSheet") &&
+    advertiserDashboardExportSource.includes('"구분"') &&
+    advertiserDashboardExportSource.includes('"기준일"') &&
+    advertiserDashboardExportSource.includes('"계약 최초작성일"') &&
+    advertiserDashboardExportSource.includes('"서명일"') &&
+    advertiserDashboardExportSource.includes('"크리에이터명"') &&
+    advertiserDashboardExportSource.includes('"크리에이터 계정명"') &&
+    advertiserDashboardExportSource.includes('"구독자/팔로워수"') &&
+    advertiserDashboardExportSource.includes('"콘텐츠 수량"') &&
+    advertiserDashboardExportSource.includes('"마감일"') &&
+    advertiserDashboardExportSource.includes('"조항 수"') &&
+    advertiserDashboardExportSource.includes("CONTRACT_LIFECYCLE_EXPORT_LABELS[lifecycle]") &&
+    advertiserDashboardExportSource.includes("buildAdvertiserCampaignExportSheet") &&
+    advertiserDashboardExportSource.includes("buildAdvertiserCampaignApplicantExportSheet") &&
+    influencerDashboard.includes("handleDownloadDashboard") &&
+    influencerDashboard.includes("<DashboardDownloadButton onClick={handleDownloadDashboard} />") &&
+    influencerDashboardExportSource.includes("buildInfluencerDashboardExportSheet") &&
+    !/share_token|shareToken|pdf_url|signature_data|evidence_file|storage_path|supportAccess|download_url/.test(
+      advertiserDashboardExportSource,
+    ) &&
+    !/share_token|shareToken|pdf_url|signature_data|evidence_file|storage_path|supportAccess|download_url/.test(
+      influencerDashboardExportSource,
+    ) &&
+    agents.includes("Dashboard data exports should use one quiet top-right download action") &&
+    agents.includes("whole dashboard contract set across lifecycle tabs") &&
+    agents.includes("paginate at 20 rows per page") &&
+    agents.includes("more than 5,000 rows") &&
+    agents.includes("detailed operational extracts"),
+  "Dashboard exports must use one consistent top-right action and keep share tokens, PDFs, signatures, evidence files, storage paths, and support access data out of spreadsheet rows",
 );
 
 check(
@@ -1253,6 +1373,19 @@ check(
   "Campaign applicant dashboard rows must remove generic repeated support text such as 캠페인 지원 데이터입니다",
 );
 
+check(
+  "advertiser sales PDF campaign applicant capture feels full",
+  captureSalesAssets.includes("openCount: 0") &&
+    captureSalesAssets.includes("activeOpenCount: 0") &&
+    captureSalesAssets.includes("{ width: 1180, height: 900 }") &&
+    captureSalesAssets.includes("b.count - a.count") &&
+    captureSalesAssets.includes("b.openCount - a.openCount") &&
+    captureSalesAssets.includes("b.activeOpenCount - a.activeOpenCount") &&
+    agents.includes("choose the campaign with the most visible selectable influencer rows first") &&
+    agents.includes("do not use a sparse one- or two-row applicant list"),
+  "Advertiser proposal capture must prioritize the fullest influencer applicant list so the PDF does not look empty",
+);
+
 const salesAdvertiserPdfPageCount =
   salesAdvertiserPdf.match(/\/Type\s*\/Page\b/g)?.length ?? 0;
 const salesAdvertiserPageNumberCount =
@@ -1413,7 +1546,7 @@ check(
 
 const demoData = evaluateLiteralObject(landing, "const introDashboardDemoData =");
 const expectedTabs = {
-  advertiser: ["모집중", "진행중", "종료"],
+  advertiser: ["작성중", "진행중", "종료"],
   influencer: ["지원중", "진행중", "완료", "미선정"],
 };
 const introDatePatterns = {

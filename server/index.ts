@@ -2030,6 +2030,77 @@ type InfluencerSession = NonNullable<
   Awaited<ReturnType<typeof requireInfluencerSession>>
 >;
 
+type AdvertiserDashboardBootstrapPayload = {
+  contracts: Contract[];
+  verification: Awaited<ReturnType<typeof buildAdvertiserScopedVerificationSummary>>;
+  message_summary?: MarketplaceMessageSummary;
+  source: "supabase" | "file";
+  allow_local_merge: boolean;
+  demo_mode: boolean;
+};
+
+const advertiserDashboardCacheTtlMs =
+  parsePositiveNumberEnv(
+    process.env.SUPABASE_ADVERTISER_DASHBOARD_CACHE_SECONDS,
+    10,
+  ) * 1000;
+const advertiserDashboardCache = new Map<
+  string,
+  { dashboard: AdvertiserDashboardBootstrapPayload; cachedAt: number }
+>();
+const advertiserDashboardInflight = new Map<
+  string,
+  Promise<AdvertiserDashboardBootstrapPayload | undefined>
+>();
+
+const cloneAdvertiserDashboardBootstrap = (
+  dashboard: AdvertiserDashboardBootstrapPayload,
+): AdvertiserDashboardBootstrapPayload =>
+  JSON.parse(JSON.stringify(dashboard)) as AdvertiserDashboardBootstrapPayload;
+
+const getAdvertiserDashboardCacheKey = (
+  auth: AdvertiserSession,
+  includeMessageSummary: boolean,
+) => `${auth.profile.id}:${includeMessageSummary ? "full" : "lite"}`;
+
+const canUseAdvertiserDashboardCache = (auth: AdvertiserSession) =>
+  hasText(auth.accessToken) || auth.fastSession === true;
+
+const readAdvertiserDashboardCache = (
+  auth: AdvertiserSession,
+  includeMessageSummary: boolean,
+) => {
+  if (!canUseAdvertiserDashboardCache(auth)) return undefined;
+  const key = getAdvertiserDashboardCacheKey(auth, includeMessageSummary);
+  const cache = advertiserDashboardCache.get(key);
+  if (!cache) return undefined;
+  if (Date.now() - cache.cachedAt > advertiserDashboardCacheTtlMs) {
+    advertiserDashboardCache.delete(key);
+    return undefined;
+  }
+  return cloneAdvertiserDashboardBootstrap(cache.dashboard);
+};
+
+const rememberAdvertiserDashboardCache = (
+  auth: AdvertiserSession,
+  includeMessageSummary: boolean,
+  dashboard: AdvertiserDashboardBootstrapPayload,
+) => {
+  if (!canUseAdvertiserDashboardCache(auth)) return;
+  advertiserDashboardCache.set(
+    getAdvertiserDashboardCacheKey(auth, includeMessageSummary),
+    {
+      dashboard: cloneAdvertiserDashboardBootstrap(dashboard),
+      cachedAt: Date.now(),
+    },
+  );
+};
+
+const invalidateAdvertiserDashboardCache = () => {
+  advertiserDashboardCache.clear();
+  advertiserDashboardInflight.clear();
+};
+
 const canAdvertiserAccessLegacyContract = (
   auth: AdvertiserSession,
   contract: Contract,
@@ -2054,37 +2125,61 @@ async function buildAdvertiserLoginDashboardBootstrap(
 ) {
   try {
     const includeMessageSummary = options.includeMessageSummary ?? true;
-    const [contracts, verification, messageSummary] = await Promise.all([
-      readAdvertiserScopedSupabaseContracts(auth).then(async (scopedContracts) => {
-        if (scopedContracts) return scopedContracts;
-        const store = await readStore();
-        return store.contracts.filter((contract) =>
-          canAdvertiserAccessLegacyContract(auth, contract),
-        );
-      }),
-      buildAdvertiserScopedVerificationSummary(auth),
-      includeMessageSummary
-        ? readMarketplaceMessagesForAdvertiser(auth, { summaryOnly: true })
-            .then((data) => data.summary)
-            .catch((error) => {
-              console.warn(
-                `[${productName}] advertiser message summary bootstrap failed: ${
-                  error instanceof Error ? error.message : "unknown error"
-                }`,
-              );
-              return emptyMarketplaceMessageSummary();
-            })
-        : Promise.resolve(undefined),
-    ]);
+    const useDashboardCache = canUseAdvertiserDashboardCache(auth);
+    const cachedDashboard = readAdvertiserDashboardCache(
+      auth,
+      includeMessageSummary,
+    );
+    if (cachedDashboard) return cachedDashboard;
 
-    return {
-      contracts,
-      verification,
-      ...(messageSummary ? { message_summary: messageSummary } : {}),
-      source: useSupabase ? "supabase" : "file",
-      allow_local_merge: !useSupabase,
-      demo_mode: demoMode,
-    };
+    const key = getAdvertiserDashboardCacheKey(auth, includeMessageSummary);
+    const inflight = useDashboardCache
+      ? advertiserDashboardInflight.get(key)
+      : undefined;
+    if (inflight) {
+      const dashboard = await inflight;
+      return dashboard ? cloneAdvertiserDashboardBootstrap(dashboard) : undefined;
+    }
+
+    const dashboardPromise = (async () => {
+      const [contracts, verification, messageSummary] = await Promise.all([
+        readAdvertiserScopedSupabaseContracts(auth).then(async (scopedContracts) => {
+          if (scopedContracts) return scopedContracts;
+          const store = await readStore();
+          return store.contracts.filter((contract) =>
+            canAdvertiserAccessLegacyContract(auth, contract),
+          );
+        }),
+        buildAdvertiserScopedVerificationSummary(auth),
+        includeMessageSummary
+          ? readMarketplaceMessagesForAdvertiser(auth, { summaryOnly: true })
+              .then((data) => data.summary)
+              .catch((error) => {
+                console.warn(
+                  `[${productName}] advertiser message summary bootstrap failed: ${
+                    error instanceof Error ? error.message : "unknown error"
+                  }`,
+                );
+                return emptyMarketplaceMessageSummary();
+              })
+          : Promise.resolve(undefined),
+      ]);
+
+      const dashboard = {
+        contracts,
+        verification,
+        ...(messageSummary ? { message_summary: messageSummary } : {}),
+        source: useSupabase ? "supabase" : "file",
+        allow_local_merge: !useSupabase,
+        demo_mode: demoMode,
+      } satisfies AdvertiserDashboardBootstrapPayload;
+      rememberAdvertiserDashboardCache(auth, includeMessageSummary, dashboard);
+      return cloneAdvertiserDashboardBootstrap(dashboard);
+    })().finally(() => {
+      advertiserDashboardInflight.delete(key);
+    });
+    if (useDashboardCache) advertiserDashboardInflight.set(key, dashboardPromise);
+    return dashboardPromise;
   } catch (error) {
     console.warn(
       `[${productName}] advertiser login dashboard bootstrap failed: ${
@@ -7479,12 +7574,29 @@ const readMarketplaceBrandProfiles = async () => {
 
 const publicMarketplaceCacheMaxAgeSeconds = 60;
 const publicMarketplaceCacheStaleSeconds = 300;
+const publicMarketplaceRuntimeCacheSeconds =
+  publicMarketplaceCacheMaxAgeSeconds + publicMarketplaceCacheStaleSeconds;
 const publicMarketplaceCacheControl = `public, max-age=${publicMarketplaceCacheMaxAgeSeconds}, stale-while-revalidate=${publicMarketplaceCacheStaleSeconds}`;
+const publicMarketplaceCdnCacheControl = `public, s-maxage=${publicMarketplaceCacheMaxAgeSeconds}, stale-while-revalidate=${publicMarketplaceCacheStaleSeconds}`;
 
 type PublicMarketplaceCacheKey =
   | "marketplace-influencers"
   | "marketplace-brands"
   | "marketplace-campaigns";
+
+type RuntimeCacheClient = {
+  get: <T>(key: string) => Promise<T | undefined>;
+  set: <T>(
+    key: string,
+    value: T,
+    options?: { ttl?: number; tags?: string[]; name?: string },
+  ) => Promise<void>;
+  delete: (key: string) => Promise<void>;
+  expireTag: (tag: string | string[]) => Promise<void>;
+};
+type RuntimeCachePurgeModule = {
+  invalidateByTag?: (tag: string | string[]) => Promise<void>;
+};
 
 type PublicMarketplaceCacheEntry<T> = {
   value?: T;
@@ -7511,19 +7623,112 @@ const publicMarketplaceCache = new Map<
   PublicMarketplaceCacheEntry<unknown>
 >();
 
-const refreshPublicMarketplaceCache = async <T,>(
+const publicMarketplaceCacheTags: Record<PublicMarketplaceCacheKey, string[]> = {
+  "marketplace-influencers": ["marketplace", "marketplace:influencers"],
+  "marketplace-brands": ["marketplace", "marketplace:brands"],
+  "marketplace-campaigns": [
+    "marketplace",
+    "marketplace:campaigns",
+    "marketplace:brands",
+  ],
+};
+const publicMarketplaceAllTags = Array.from(
+  new Set(Object.values(publicMarketplaceCacheTags).flat()),
+);
+let runtimeCachePromise: Promise<RuntimeCacheClient | undefined> | undefined;
+
+const getPublicMarketplaceRuntimeCacheKey = (key: PublicMarketplaceCacheKey) =>
+  `public-marketplace:${key}:v1`;
+
+const getVercelRuntimeCache = async () => {
+  if (process.env.DISABLE_VERCEL_RUNTIME_CACHE === "1") return undefined;
+  runtimeCachePromise ??= import("@vercel/functions")
+    .then(({ getCache }) =>
+      getCache({
+        namespace: "yeollock-api-v1",
+      }) as RuntimeCacheClient,
+    )
+    .catch((error) => {
+      console.warn(
+        `[${productName}] Vercel runtime cache unavailable: ${
+          error instanceof Error ? error.message : "unknown error"
+        }`,
+      );
+      return undefined;
+    });
+  return runtimeCachePromise;
+};
+
+const readPublicMarketplaceRuntimeCache = async <T,>(
   key: PublicMarketplaceCacheKey,
-  loader: () => Promise<T>,
 ) => {
-  const value = await loader();
+  const cache = await getVercelRuntimeCache();
+  if (!cache) return undefined;
+  const value = await cache.get<T | null>(getPublicMarketplaceRuntimeCacheKey(key));
+  return value === null ? undefined : value;
+};
+
+const writePublicMarketplaceRuntimeCache = async <T,>(
+  key: PublicMarketplaceCacheKey,
+  value: T,
+) => {
+  const cache = await getVercelRuntimeCache();
+  if (!cache) return;
+  await cache.set(getPublicMarketplaceRuntimeCacheKey(key), value, {
+    ttl: publicMarketplaceRuntimeCacheSeconds,
+    tags: publicMarketplaceCacheTags[key],
+    name: key,
+  });
+};
+
+const expirePublicMarketplaceRuntimeCache = async (tags = publicMarketplaceAllTags) => {
+  if (process.env.DISABLE_VERCEL_RUNTIME_CACHE === "1") return;
+  const cache = await getVercelRuntimeCache();
+  await cache?.expireTag(tags).catch((error) => {
+    console.warn(
+      `[${productName}] public marketplace runtime cache invalidation failed: ${
+        error instanceof Error ? error.message : "unknown error"
+      }`,
+    );
+  });
+  await import("@vercel/functions")
+    .then((module: RuntimeCachePurgeModule) => module.invalidateByTag?.(tags))
+    .catch((error) => {
+      console.warn(
+        `[${productName}] public marketplace CDN cache invalidation failed: ${
+          error instanceof Error ? error.message : "unknown error"
+        }`,
+      );
+    });
+};
+
+const rememberPublicMarketplaceMemoryCache = <T,>(
+  key: PublicMarketplaceCacheKey,
+  value: T,
+) => {
   const now = Date.now();
   publicMarketplaceCache.set(key, {
     value,
     expiresAt: now + publicMarketplaceCacheMaxAgeSeconds * 1000,
     staleUntil:
       now +
-      (publicMarketplaceCacheMaxAgeSeconds + publicMarketplaceCacheStaleSeconds) *
+      publicMarketplaceRuntimeCacheSeconds *
         1000,
+  });
+};
+
+const refreshPublicMarketplaceCache = async <T,>(
+  key: PublicMarketplaceCacheKey,
+  loader: () => Promise<T>,
+) => {
+  const value = await loader();
+  rememberPublicMarketplaceMemoryCache(key, value);
+  void writePublicMarketplaceRuntimeCache(key, value).catch((error) => {
+    console.warn(
+      `[${productName}] public marketplace runtime cache write failed: ${
+        error instanceof Error ? error.message : "unknown error"
+      }`,
+    );
   });
   return value;
 };
@@ -7562,6 +7767,21 @@ const readPublicMarketplaceCache = async <T,>(
     return cached.value;
   }
 
+  const runtimeCached = await readPublicMarketplaceRuntimeCache<T>(key).catch(
+    (error) => {
+      console.warn(
+        `[${productName}] public marketplace runtime cache read failed: ${
+          error instanceof Error ? error.message : "unknown error"
+        }`,
+      );
+      return undefined;
+    },
+  );
+  if (runtimeCached !== undefined) {
+    rememberPublicMarketplaceMemoryCache(key, runtimeCached);
+    return runtimeCached;
+  }
+
   if (cached?.refresh) return cached.refresh;
 
   const refresh = refreshPublicMarketplaceCache(key, loader).catch((error) => {
@@ -7570,15 +7790,7 @@ const readPublicMarketplaceCache = async <T,>(
     if (!options.fallback) throw error;
 
     const value = options.fallback();
-    const fallbackNow = Date.now();
-    publicMarketplaceCache.set(key, {
-      value,
-      expiresAt: fallbackNow + publicMarketplaceCacheMaxAgeSeconds * 1000,
-      staleUntil:
-        fallbackNow +
-        (publicMarketplaceCacheMaxAgeSeconds + publicMarketplaceCacheStaleSeconds) *
-          1000,
-    });
+    rememberPublicMarketplaceMemoryCache(key, value);
     console.warn(
       `[${productName}] public marketplace cache cold fallback for ${key}: ${
         error instanceof Error ? error.message : "unknown error"
@@ -7597,13 +7809,24 @@ const readPublicMarketplaceCache = async <T,>(
 
 const clearPublicMarketplaceCache = () => {
   publicMarketplaceCache.clear();
+  void expirePublicMarketplaceRuntimeCache().catch((error) => {
+    console.warn(
+      `[${productName}] public marketplace runtime cache invalidation failed: ${
+        error instanceof Error ? error.message : "unknown error"
+      }`,
+    );
+  });
 };
 
 const sendPublicMarketplaceJson = <T,>(
   response: express.Response,
   payload: T,
+  key: PublicMarketplaceCacheKey,
 ) => {
   response.setHeader("Cache-Control", publicMarketplaceCacheControl);
+  response.setHeader("CDN-Cache-Control", publicMarketplaceCdnCacheControl);
+  response.setHeader("Vercel-CDN-Cache-Control", publicMarketplaceCdnCacheControl);
+  response.setHeader("Vercel-Cache-Tag", publicMarketplaceCacheTags[key].join(","));
   response.json(payload);
 };
 
@@ -9216,6 +9439,8 @@ const submitMarketplaceCampaignApplication = async (
     ],
     "marketplace campaign application",
   );
+  invalidateAdvertiserDashboardCache();
+  invalidateInfluencerDashboardCache();
 
   return {
     ok: true as const,
@@ -11117,12 +11342,15 @@ const patchSupabaseRecord = async (
 
   if (table === supabaseLegacyTable) {
     invalidateSupabaseContractStoreCache();
+    invalidateAdvertiserDashboardCache();
   }
   if (table === "verification_requests") {
     invalidateSupabaseVerificationRequestCache();
+    invalidateAdvertiserDashboardCache();
   }
   if (table === "organizations" || table === "organization_members") {
     invalidateOrganizationCache();
+    invalidateAdvertiserDashboardCache();
   }
   if (
     table === "profiles" ||
@@ -11130,14 +11358,17 @@ const patchSupabaseRecord = async (
     table === "marketplace_brand_profiles"
   ) {
     clearPublicMarketplaceCache();
+    invalidateAdvertiserDashboardCache();
     invalidateInfluencerDashboardCache();
   }
   if (
     table === "contracts" ||
     table.startsWith("contract_") ||
     table.startsWith("deliverable") ||
-    table === "verification_requests"
+    table === "verification_requests" ||
+    table === "marketplace_contact_proposals"
   ) {
+    invalidateAdvertiserDashboardCache();
     invalidateInfluencerDashboardCache();
   }
 };
@@ -11662,6 +11893,8 @@ const insertVerificationRequest = async (record: VerificationRequestRecord) => {
     const rows = (await response.json()) as VerificationRequestRecord[];
     const insertedRecord = normalizeVerificationRequest(rows[0] ?? normalizedRecord);
     invalidateSupabaseVerificationRequestCache();
+    invalidateAdvertiserDashboardCache();
+    invalidateInfluencerDashboardCache();
     await applyVerificationStatusSideEffects(insertedRecord);
     return insertedRecord;
   }
@@ -11706,6 +11939,8 @@ const updateVerificationRequestReview = async ({
     const rows = (await response.json()) as VerificationRequestRecord[];
     const updatedRecord = rows[0] ? normalizeVerificationRequest(rows[0]) : undefined;
     invalidateSupabaseVerificationRequestCache();
+    invalidateAdvertiserDashboardCache();
+    invalidateInfluencerDashboardCache();
     if (updatedRecord) {
       await applyVerificationStatusSideEffects(updatedRecord);
     }
@@ -11749,6 +11984,8 @@ const updateVerificationRequestAutomation = async (
     const rows = (await response.json()) as VerificationRequestRecord[];
     const savedRecord = rows[0] ? normalizeVerificationRequest(rows[0]) : updatedRecord;
     invalidateSupabaseVerificationRequestCache();
+    invalidateAdvertiserDashboardCache();
+    invalidateInfluencerDashboardCache();
     await applyVerificationStatusSideEffects(savedRecord);
     return savedRecord;
   }
@@ -14067,6 +14304,7 @@ const writeStore = async (store: ContractStoreFile) => {
     }
     await upsertSupabaseContracts(normalizedContracts);
     rememberSupabaseContractStoreCache({ contracts: normalizedContracts });
+    invalidateAdvertiserDashboardCache();
     invalidateInfluencerDashboardCache();
     return;
   }
@@ -15690,7 +15928,7 @@ app.get("/api/marketplace/influencers", async (_request, response, next) => {
       readMarketplaceInfluencerProfiles,
       { fallback: fallbackMarketplaceInfluencerProfiles },
     );
-    sendPublicMarketplaceJson(response, { profiles });
+    sendPublicMarketplaceJson(response, { profiles }, "marketplace-influencers");
   } catch (error) {
     next(error);
   }
@@ -15713,7 +15951,7 @@ app.get("/api/marketplace/influencers/:handle", async (request, response, next) 
       return;
     }
 
-    sendPublicMarketplaceJson(response, { profile });
+    sendPublicMarketplaceJson(response, { profile }, "marketplace-influencers");
   } catch (error) {
     next(error);
   }
@@ -15726,7 +15964,7 @@ app.get("/api/marketplace/brands", async (_request, response, next) => {
       readMarketplaceBrandProfiles,
       { fallback: fallbackMarketplaceBrandProfiles },
     );
-    sendPublicMarketplaceJson(response, { brands });
+    sendPublicMarketplaceJson(response, { brands }, "marketplace-brands");
   } catch (error) {
     next(error);
   }
@@ -15749,7 +15987,7 @@ app.get("/api/marketplace/brands/:handle", async (request, response, next) => {
       return;
     }
 
-    sendPublicMarketplaceJson(response, { brand });
+    sendPublicMarketplaceJson(response, { brand }, "marketplace-brands");
   } catch (error) {
     next(error);
   }
@@ -15769,7 +16007,7 @@ app.get("/api/marketplace/campaigns", async (_request, response, next) => {
         ),
       { fallback: fallbackMarketplaceCampaignPosts },
     );
-    sendPublicMarketplaceJson(response, { campaigns });
+    sendPublicMarketplaceJson(response, { campaigns }, "marketplace-campaigns");
   } catch (error) {
     next(error);
   }
@@ -16134,6 +16372,8 @@ app.post(
         ],
         "marketplace contact proposal",
       );
+      invalidateAdvertiserDashboardCache();
+      invalidateInfluencerDashboardCache();
 
       response.status(201).json({
         proposal: {
@@ -16198,6 +16438,8 @@ app.post(
         ],
         "marketplace contact proposal",
       );
+      invalidateAdvertiserDashboardCache();
+      invalidateInfluencerDashboardCache();
 
       response.status(201).json({
         proposal: {

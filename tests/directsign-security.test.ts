@@ -814,6 +814,29 @@ describe("yeollock.me security regressions", () => {
     assert.match(server, /signed_pdf_downloaded/);
   });
 
+  it("keeps advertiser contract PDF downloads in the contract detail action area", () => {
+    const agents = read("AGENTS.md");
+    const adminViewer = read("src/pages/marketing/ContractAdminViewer.tsx");
+    const dashboard = read("src/pages/marketing/Dashboard.tsx");
+
+    assert.match(
+      agents,
+      /Contract detail pages should expose PDF downloads inside the detail action area/,
+    );
+    assert.match(
+      adminViewer,
+      /apiPath\(`\/api\/contracts\/\$\{contract\.id\}\/review-pdf`\)/,
+    );
+    assert.match(
+      adminViewer,
+      /contract\.pdf_url \|\| apiPath\(`\/api\/contracts\/\$\{contract\.id\}\/final-pdf`\)/,
+    );
+    assert.match(adminViewer, /isContractSignedOrClosed\s*\?/);
+    assert.match(adminViewer, /contractPdfDownloadName/);
+    assert.match(adminViewer, /download=\{contractPdfDownloadName\}/);
+    assert.doesNotMatch(dashboard, /review-pdf|final-pdf/);
+  });
+
   it("keeps file limits aligned at 10MB for verification and proof evidence", () => {
     const server = read("server/index.ts");
     const deliverables = read("src/domain/deliverables.ts");
@@ -1194,6 +1217,7 @@ describe("yeollock.me security regressions", () => {
     const landing = read("src/pages/landing/LandingPages.tsx");
     const qaStandard = read("scripts/qa-standard.mjs");
     const kimGuardrails = read("scripts/kim-jaewoo-guardrails.mjs");
+    const captureSalesAssets = read("scripts/capture-sales-assets.mjs");
     const authLoginScreen = read("src/components/AuthLoginScreen.tsx");
     const advertiserVerification = read("src/pages/marketing/AdvertiserVerification.tsx");
     const influencerVerification = read("src/pages/influencer/InfluencerVerification.tsx");
@@ -1249,6 +1273,8 @@ describe("yeollock.me security regressions", () => {
     assert.match(kimGuardrails, /support access consent is enforced server-side and linked from both parties/);
     assert.match(kimGuardrails, /analytics tracking avoids sensitive contract data/);
     assert.match(kimGuardrails, /public marketplace cache falls back after cold Supabase timeout/);
+    assert.match(kimGuardrails, /cache optimization keeps public and sensitive data separated/);
+    assert.match(kimGuardrails, /advertiser contract detail keeps one state-specific PDF download action/);
     assert.match(kimGuardrails, /public route error recovery does not force login/);
     assert.match(kimGuardrails, /mobile advertiser header avoids duplicate surface label/);
     assert.match(kimGuardrails, /mobile influencer header avoids duplicate surface label/);
@@ -1261,6 +1287,14 @@ describe("yeollock.me security regressions", () => {
     assert.match(kimGuardrails, /first role selection uses action buttons/);
     assert.match(kimGuardrails, /mobile main role title stays compact/);
     assert.match(kimGuardrails, /advertiser creator discovery and applicant selection support follower sorting/);
+    assert.match(kimGuardrails, /advertiser sales PDF campaign applicant capture feels full/);
+    assert.match(agents, /choose the campaign with the most visible selectable influencer rows first/);
+    assert.match(captureSalesAssets, /openCount: 0/);
+    assert.match(captureSalesAssets, /activeOpenCount: 0/);
+    assert.match(captureSalesAssets, /\{ width: 1180, height: 900 \}/);
+    assert.match(captureSalesAssets, /b\.count - a\.count/);
+    assert.match(captureSalesAssets, /b\.openCount - a\.openCount/);
+    assert.match(captureSalesAssets, /b\.activeOpenCount - a\.activeOpenCount/);
     assert.match(landing, /data-start-role-action/);
     assert.match(landing, /min-h-\[248px\]/);
     assert.match(landing, /text-\[36px\] leading-none tracking-normal text-neutral-950 sm:text-\[47px\]/);
@@ -1453,5 +1487,139 @@ describe("yeollock.me security regressions", () => {
     assert.doesNotMatch(marketplace, /제안 후 메시지함/);
     assert.match(landing, /2026\.05\.29 \/ D-5/);
     assert.doesNotMatch(landing, /D-5 \/ 2026\.05\.29/);
+  });
+
+  it("separates public cache optimization from sensitive contract data", () => {
+    const server = read("server/index.ts");
+    const packageJson = JSON.parse(read("package.json")) as {
+      dependencies?: Record<string, string>;
+    };
+    const messageSummaryHook = read("src/hooks/useMarketplaceMessageSummary.ts");
+    const migration = read(
+      "supabase/migrations/20260604012714_optimize_cache_query_paths.sql",
+    );
+    const agents = read("AGENTS.md");
+
+    assert.ok(packageJson.dependencies?.["@vercel/functions"]);
+    assert.match(server, /const getVercelRuntimeCache = async/);
+    assert.match(server, /publicMarketplaceCacheTags/);
+    assert.match(server, /writePublicMarketplaceRuntimeCache/);
+    assert.match(server, /value === null \? undefined : value/);
+    assert.match(server, /invalidateByTag/);
+    assert.match(server, /Vercel-CDN-Cache-Control/);
+    assert.match(server, /Vercel-Cache-Tag/);
+    assert.match(
+      server,
+      /sendPublicMarketplaceJson\(response, \{ profiles \}, "marketplace-influencers"\)/,
+    );
+    assert.match(
+      server,
+      /sendPublicMarketplaceJson\(response, \{ campaigns \}, "marketplace-campaigns"\)/,
+    );
+
+    for (const route of [
+      '"/api/advertiser/dashboard/bootstrap"',
+      '"/api/marketplace/messages"',
+      '"/api/contracts/:id"',
+      '"/api/contracts/:id/review-pdf"',
+      '"/api/contracts/:id/final-pdf"',
+    ]) {
+      const routeIndex = server.indexOf(route);
+      assert.notEqual(routeIndex, -1, `${route} route must exist`);
+      const routeSlice = server.slice(routeIndex, routeIndex + 4500);
+      assert.match(routeSlice, /Cache-Control", "no-store"/);
+      assert.doesNotMatch(routeSlice, /sendPublicMarketplaceJson/);
+      assert.doesNotMatch(routeSlice, /writePublicMarketplaceRuntimeCache/);
+    }
+
+    assert.match(server, /const advertiserDashboardCache = new Map/);
+    assert.match(server, /invalidateAdvertiserDashboardCache\(\)/);
+    assert.match(messageSummaryHook, /messageSummaryInflight/);
+    assert.match(migration, /directsign_contracts_advertiser_status_updated_idx/);
+    assert.match(
+      migration,
+      /marketplace_contact_proposals_campaign_status_created_idx/,
+    );
+    assert.match(migration, /contract_parties_profile_role_contract_idx/);
+    assert.match(agents, /Cache optimization must classify data before implementation/);
+    assert.match(agents, /Keep sensitive HTTP responses `no-store`/);
+  });
+
+  it("keeps dashboard Excel exports scoped to operational list data", () => {
+    const advertiserDashboard = read("src/pages/marketing/Dashboard.tsx");
+    const influencerDashboard = read("src/pages/influencer/InfluencerDashboard.tsx");
+    const dashboardDownloadButton = read("src/components/DashboardDownloadButton.tsx");
+    const xlsxExport = read("src/domain/xlsxExport.ts");
+    const packageJson = JSON.parse(read("package.json")) as {
+      dependencies?: Record<string, string>;
+    };
+    const agents = read("AGENTS.md");
+    const advertiserExportSource = advertiserDashboard.slice(
+      advertiserDashboard.indexOf("function buildAdvertiserContractExportSheet"),
+      advertiserDashboard.indexOf(
+        "function parseDate",
+        advertiserDashboard.indexOf("function buildAdvertiserContractExportSheet"),
+      ),
+    );
+    const influencerExportSource = influencerDashboard.slice(
+      influencerDashboard.indexOf("function buildInfluencerDashboardExportSheet"),
+      influencerDashboard.indexOf(
+        "function parseDate",
+        influencerDashboard.indexOf("function buildInfluencerDashboardExportSheet"),
+      ),
+    );
+
+    assert.ok(packageJson.dependencies?.fflate);
+    assert.match(dashboardDownloadButton, /aria-label="엑셀 다운로드"/);
+    assert.match(dashboardDownloadButton, /hidden sm:inline/);
+    assert.match(xlsxExport, /application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet/);
+    assert.match(advertiserDashboard, /const CONTRACTS_PER_PAGE = 20/);
+    assert.match(advertiserDashboard, /const DASHBOARD_CONTRACT_EXPORT_LIMIT = 5000/);
+    assert.match(advertiserDashboard, /displayContracts\.slice\(pageStartIndex, pageEndIndex\)/);
+    assert.match(advertiserDashboard, /<ContractPagination/);
+    assert.match(advertiserDashboard, /<DashboardDownloadButton onClick=\{handleDownloadDashboard\} \/>/);
+    assert.match(advertiserDashboard, /hasContractDashboardFilters/);
+    assert.match(advertiserDashboard, /contractDownloadContracts/);
+    assert.match(advertiserDashboard, /\? visibleContracts\s*:\s*\[\.\.\.dashboardContracts\]/);
+    assert.match(advertiserDashboard, /contractDownloadContracts\.length > DASHBOARD_CONTRACT_EXPORT_LIMIT/);
+    assert.match(influencerDashboard, /<DashboardDownloadButton onClick=\{handleDownloadDashboard\} \/>/);
+    assert.match(advertiserExportSource, /buildAdvertiserContractExportSheet/);
+    assert.match(advertiserExportSource, /CONTRACT_LIFECYCLE_EXPORT_LABELS\[lifecycle\]/);
+    assert.match(advertiserExportSource, /"구분"/);
+    assert.match(advertiserExportSource, /"기준일"/);
+    assert.match(advertiserExportSource, /"계약 최초작성일"/);
+    assert.match(advertiserExportSource, /"서명일"/);
+    assert.match(advertiserExportSource, /"크리에이터명"/);
+    assert.match(advertiserExportSource, /"크리에이터 계정명"/);
+    assert.match(advertiserExportSource, /"구독자\/팔로워수"/);
+    assert.match(advertiserExportSource, /"콘텐츠 수량"/);
+    assert.match(advertiserExportSource, /"마감일"/);
+    assert.match(advertiserExportSource, /"조항 수"/);
+    assert.match(advertiserExportSource, /buildAdvertiserCampaignExportSheet/);
+    assert.match(advertiserExportSource, /buildAdvertiserCampaignApplicantExportSheet/);
+    assert.match(influencerExportSource, /buildInfluencerDashboardExportSheet/);
+    for (const sensitivePattern of [
+      /share_token|shareToken/,
+      /pdf_url/,
+      /signature_data/,
+      /evidence_file/,
+      /storage_path/,
+      /supportAccess/,
+      /download_url/,
+    ]) {
+      assert.doesNotMatch(advertiserExportSource, sensitivePattern);
+      assert.doesNotMatch(influencerExportSource, sensitivePattern);
+    }
+    assert.match(
+      agents,
+      /Dashboard data exports should use one quiet top-right download action/,
+    );
+    assert.match(
+      agents,
+      /whole dashboard contract set across lifecycle tabs/,
+    );
+    assert.match(agents, /paginate at 20 rows per page/);
+    assert.match(agents, /more than 5,000 rows/);
+    assert.match(agents, /detailed operational extracts/);
   });
 });

@@ -373,7 +373,7 @@ const browserRenderRoutes = [
   {
     name: "intro advertiser",
     path: "/intro/advertiser",
-    requiredText: ["계약 흐름을", "한눈에 관리", "모집중", "진행중", "종료"],
+    requiredText: ["계약 흐름을", "한눈에 관리", "작성중", "진행중", "종료"],
     minTextLength: 80,
   },
   {

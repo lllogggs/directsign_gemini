@@ -54,8 +54,10 @@ import {
 import { translateApiErrorMessage } from "../../domain/userMessages";
 import type { InfluencerPlatform } from "../../domain/verification";
 import { DashboardSurfaceSwitch } from "../../components/DashboardSurfaceSwitch";
+import { DashboardDownloadButton } from "../../components/DashboardDownloadButton";
 import { MobileSurfaceSwitch } from "../../components/MobileSurfaceSwitch";
 import { useMarketplaceMessageSummary } from "../../hooks/useMarketplaceMessageSummary";
+import { downloadXlsx, type XlsxSheet } from "../../domain/xlsxExport";
 
 type DashboardState =
   | { status: "loading" }
@@ -642,6 +644,17 @@ export function InfluencerDashboard() {
         current.key === key && current.direction === "asc" ? "desc" : "asc",
     }));
   };
+  const handleDownloadDashboard = () => {
+    downloadXlsx({
+      fileName: `연락미-인플루언서-대시보드-${getDashboardExportTimestamp()}.xlsx`,
+      sheets: [
+        buildInfluencerDashboardExportSheet(
+          filteredCampaignItems,
+          campaignLifecycleFilter,
+        ),
+      ],
+    });
+  };
 
   const handleLogout = async () => {
     try {
@@ -710,12 +723,13 @@ export function InfluencerDashboard() {
         <section className="min-w-0 overflow-hidden rounded-[10px] border border-neutral-200/90 bg-white shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_18px_46px_rgba(23,26,23,0.055)] lg:flex lg:h-full lg:flex-col">
           <div className="border-b border-[#d9e0d9] bg-white px-4 py-2">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex min-w-0 flex-wrap items-end gap-x-3 gap-y-1">
-                <h1 className="truncate text-[17px] font-bold text-[#171a17]">
-                  내 계약
-                </h1>
-              </div>
+            <div className="flex min-w-0 flex-wrap items-end gap-x-3 gap-y-1">
+              <h1 className="truncate text-[17px] font-bold text-[#171a17]">
+                내 계약
+              </h1>
             </div>
+            <DashboardDownloadButton onClick={handleDownloadDashboard} />
+          </div>
           </div>
 
           <InfluencerAccountBanner
@@ -2405,6 +2419,81 @@ function getInfluencerDashboardItemCollapseKey(
     formatDashboardAmountLabel(item.fee_label),
     getInfluencerCampaignItemPlatforms(item).join(","),
   ].join("|");
+}
+
+const INFLUENCER_LIFECYCLE_EXPORT_LABELS: Record<
+  InfluencerCampaignLifecycle,
+  string
+> = {
+  APPLIED: "지원중",
+  IN_PROGRESS: "진행중",
+  COMPLETED: "완료",
+  REJECTED: "미선정",
+};
+
+function getDashboardExportTimestamp() {
+  const now = new Date();
+  return [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0"),
+    "-",
+    String(now.getHours()).padStart(2, "0"),
+    String(now.getMinutes()).padStart(2, "0"),
+  ].join("");
+}
+
+function formatExportDate(value?: string) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join(".");
+}
+
+function joinExportValues(values: Array<string | undefined | null>) {
+  return values
+    .map((value) => value?.trim())
+    .filter((value): value is string => Boolean(value))
+    .join(", ");
+}
+
+function buildInfluencerDashboardExportSheet(
+  items: InfluencerCampaignWorkItem[],
+  lifecycleFilter: InfluencerCampaignLifecycle,
+): XlsxSheet {
+  return {
+    name: "계약",
+    columns: [
+      "계약명",
+      "브랜드",
+      "상태",
+      "구분",
+      "플랫폼",
+      "지급조건",
+      "마감일",
+      "최종수정일",
+    ],
+    rows: items.map((item) => [
+      formatDashboardContractTitle(item.title),
+      removeInternalTestLabel(item.advertiser_name, ""),
+      item.stage_label,
+      INFLUENCER_LIFECYCLE_EXPORT_LABELS[item.lifecycle] ??
+        INFLUENCER_LIFECYCLE_EXPORT_LABELS[lifecycleFilter],
+      joinExportValues(
+        getInfluencerCampaignItemPlatforms(item).map(
+          (platform) => PLATFORM_META[platform].label,
+        ),
+      ),
+      formatDashboardAmountLabel(item.fee_label),
+      getDeadlineDisplayParts(item).label,
+      formatExportDate(item.updated_at),
+    ]),
+  };
 }
 
 function parseDate(value?: string) {

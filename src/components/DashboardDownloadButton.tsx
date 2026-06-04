@@ -1,0 +1,25 @@
+import { Download } from "lucide-react";
+
+type DashboardDownloadButtonProps = {
+  onClick: () => void;
+  disabled?: boolean;
+};
+
+export function DashboardDownloadButton({
+  onClick,
+  disabled = false,
+}: DashboardDownloadButtonProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="yl-header-action yl-header-action-secondary disabled:pointer-events-none disabled:border-neutral-200 disabled:bg-neutral-50 disabled:text-neutral-300 disabled:shadow-none"
+      aria-label="엑셀 다운로드"
+      title="엑셀 다운로드"
+    >
+      <Download className="h-3.5 w-3.5" strokeWidth={2} />
+      <span className="hidden sm:inline">다운로드</span>
+    </button>
+  );
+}

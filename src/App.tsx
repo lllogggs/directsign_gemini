@@ -252,7 +252,7 @@ function getRouteLoadingCopy(pathname: string): LoadingCopy {
     return {
       label: "계약 운영",
       listTitle: "계약 목록",
-      tabs: ["모집중", "진행중", "종료"],
+      tabs: ["작성중", "진행중", "종료"],
       variant: "app",
     };
   }
@@ -264,7 +264,7 @@ function AppLoading({
   label = "계약 데이터를 불러오는 중입니다",
   detail,
   listTitle = "계약 목록",
-  tabs = ["모집중", "진행중", "종료"],
+  tabs = ["작성중", "진행중", "종료"],
   variant = "plain",
 }: LoadingCopy) {
   if (variant !== "app") {

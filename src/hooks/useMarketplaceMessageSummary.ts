@@ -21,6 +21,10 @@ const messageSummaryCache = new Map<
     cachedAt: number;
   }
 >();
+const messageSummaryInflight = new Map<
+  MarketplaceInboxRole,
+  Promise<MarketplaceMessageSummary | undefined>
+>();
 
 const getCachedMessageSummary = (role: MarketplaceInboxRole) => {
   const cache = messageSummaryCache.get(role);
@@ -36,6 +40,7 @@ export function primeMarketplaceMessageSummary(
   role: MarketplaceInboxRole,
   summary: MarketplaceMessageSummary,
 ) {
+  messageSummaryInflight.delete(role);
   messageSummaryCache.set(role, {
     summary,
     cachedAt: Date.now(),
@@ -54,28 +59,35 @@ export function useMarketplaceMessageSummary(role: MarketplaceInboxRole): Summar
 
     let active = true;
     const timer = window.setTimeout(() => {
-      void waitForFastLoginTransition(role, 2_500)
-        .then(() =>
-          apiFetch(`/api/marketplace/messages?role=${role}&summary=1`, {
-            headers: { Accept: "application/json" },
-            credentials: "include",
-          }),
-        )
-        .then(async (response) => {
-          if (!response.ok) return undefined;
-          return (await response.json()) as MarketplaceMessagesResponse;
-        })
-        .then((data) => {
-          if (!active) return;
-          const nextSummary = data?.summary ?? emptyMarketplaceMessageSummary;
-          messageSummaryCache.set(role, {
-            summary: nextSummary,
-            cachedAt: Date.now(),
+      const inflight =
+        messageSummaryInflight.get(role) ??
+        waitForFastLoginTransition(role, 2_500)
+          .then(() =>
+            apiFetch(`/api/marketplace/messages?role=${role}&summary=1`, {
+              headers: { Accept: "application/json" },
+              credentials: "include",
+            }),
+          )
+          .then(async (response) => {
+            if (!response.ok) return undefined;
+            const data = (await response.json()) as MarketplaceMessagesResponse;
+            const nextSummary = data.summary ?? emptyMarketplaceMessageSummary;
+            messageSummaryCache.set(role, {
+              summary: nextSummary,
+              cachedAt: Date.now(),
+            });
+            return nextSummary;
+          })
+          .catch(() => emptyMarketplaceMessageSummary)
+          .finally(() => {
+            messageSummaryInflight.delete(role);
           });
-          setSummary(nextSummary);
-        })
-        .catch(() => {
-          if (active) setSummary(emptyMarketplaceMessageSummary);
+      messageSummaryInflight.set(role, inflight);
+
+      void inflight
+        .then((nextSummary) => {
+          if (!active) return;
+          setSummary(nextSummary ?? emptyMarketplaceMessageSummary);
         })
         .finally(() => {
           if (active) setIsLoading(false);

@@ -1661,9 +1661,9 @@ const introDashboardDemoData = {
     verificationMeta: "",
     states: [
       {
-        activeTab: "모집중",
+        activeTab: "작성중",
         tabs: [
-          { label: "모집중", count: 2 },
+          { label: "작성중", count: 2 },
           { label: "진행중", count: 3 },
           { label: "종료", count: 2 },
         ],
@@ -1698,7 +1698,7 @@ const introDashboardDemoData = {
       {
         activeTab: "진행중",
         tabs: [
-          { label: "모집중", count: 2 },
+          { label: "작성중", count: 2 },
           { label: "진행중", count: 3 },
           { label: "종료", count: 2 },
         ],
@@ -1745,7 +1745,7 @@ const introDashboardDemoData = {
       {
         activeTab: "종료",
         tabs: [
-          { label: "모집중", count: 2 },
+          { label: "작성중", count: 2 },
           { label: "진행중", count: 3 },
           { label: "종료", count: 2 },
         ],

@@ -7,6 +7,8 @@ import {
   ArrowUpDown,
   ArrowUpWideNarrow,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   CheckCircle2,
   Clock3,
   CopyCheck,
@@ -64,6 +66,7 @@ import {
   waitForFastLoginTransition,
 } from "../../domain/fastLoginTransition";
 import { ContractFirstExperienceDialog } from "../../components/ScreenHelp";
+import { DashboardDownloadButton } from "../../components/DashboardDownloadButton";
 import { DashboardSurfaceSwitch } from "../../components/DashboardSurfaceSwitch";
 import { CONTRACT_FIRST_EXPERIENCE_CONTENT } from "../../domain/screenHelp";
 import {
@@ -83,6 +86,7 @@ import {
   type MarketplaceProposalStatus,
 } from "../../domain/marketplaceInbox";
 import { getMarketplaceInfluencerAvatarUrlFromHref } from "../../domain/marketplaceAvatars";
+import { downloadXlsx, type XlsxSheet } from "../../domain/xlsxExport";
 
 type PlatformFilter = "ALL" | ContractPlatform;
 type ContractTypeFilter = "ALL" | Contract["type"];
@@ -117,6 +121,9 @@ type ContractSort = {
   key: SortKey;
   direction: SortDirection;
 };
+
+const CONTRACTS_PER_PAGE = 20;
+const DASHBOARD_CONTRACT_EXPORT_LIMIT = 5000;
 type FilterOption = {
   value: string;
   label: string;
@@ -244,6 +251,24 @@ const CAMPAIGN_LIFECYCLE_TABS: Array<{
   {
     value: "RECRUITING",
     label: "모집중",
+  },
+  {
+    value: "IN_PROGRESS",
+    label: "진행중",
+  },
+  {
+    value: "ENDED",
+    label: "종료",
+  },
+];
+
+const CONTRACT_LIFECYCLE_TABS: Array<{
+  value: CampaignLifecycle;
+  label: string;
+}> = [
+  {
+    value: "RECRUITING",
+    label: "작성중",
   },
   {
     value: "IN_PROGRESS",
@@ -706,6 +731,26 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
     detailStatusFilter,
     query,
   ]);
+  const hasContractDashboardFilters =
+    query.trim().length > 0 ||
+    campaignPlatformFilter !== "ALL" ||
+    contractTypeFilter !== "ALL" ||
+    amountFilter !== "ALL" ||
+    detailStatusFilter !== "ALL";
+  const contractDownloadContracts = useMemo(
+    () =>
+      hasContractDashboardFilters
+        ? visibleContracts
+        : [...dashboardContracts].sort((a, b) =>
+            _compareContractsBySort(a, b, contractSort),
+          ),
+    [
+      contractSort,
+      dashboardContracts,
+      hasContractDashboardFilters,
+      visibleContracts,
+    ],
+  );
   const handleContractSortChange = useCallback((key: SortKey) => {
     setContractSort((current) => ({
       key,
@@ -827,6 +872,47 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
       navigate("/login/advertiser", { replace: true });
     }
   };
+  const handleDownloadDashboard = useCallback(() => {
+    const timestamp = getDashboardExportTimestamp();
+
+    if (isCampaignSurface) {
+      if (selectedCampaign) {
+        downloadXlsx({
+          fileName: `연락미-캠페인-${selectedCampaign.name}-${timestamp}.xlsx`,
+          sheets: [
+            buildAdvertiserCampaignApplicantExportSheet(selectedCampaign.applicants),
+            buildAdvertiserContractExportSheet(selectedCampaign.contracts),
+          ],
+        });
+        return;
+      }
+
+      downloadXlsx({
+        fileName: `연락미-캠페인-대시보드-${timestamp}.xlsx`,
+        sheets: [buildAdvertiserCampaignExportSheet(filteredCampaigns)],
+      });
+      return;
+    }
+
+    if (contractDownloadContracts.length > DASHBOARD_CONTRACT_EXPORT_LIMIT) {
+      window.alert(
+        `엑셀 다운로드는 최대 ${DASHBOARD_CONTRACT_EXPORT_LIMIT.toLocaleString("ko-KR")}건까지 가능합니다. 필터나 검색 조건을 좁혀 주세요.`,
+      );
+      return;
+    }
+
+    downloadXlsx({
+      fileName: `연락미-계약-대시보드-${timestamp}.xlsx`,
+      sheets: [
+        buildAdvertiserContractExportSheet(contractDownloadContracts),
+      ],
+    });
+  }, [
+    contractDownloadContracts,
+    filteredCampaigns,
+    isCampaignSurface,
+    selectedCampaign,
+  ]);
 
   return (
     <div className="min-h-screen bg-[#f4f5f2] font-sans text-neutral-950 lg:h-screen lg:overflow-hidden">
@@ -907,29 +993,32 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
                   {isCampaignSurface ? "캠페인 운영 대시보드" : "계약 운영 대시보드"}
                 </h1>
               </div>
-              {isCampaignSurface ? (
-                <Link
-                  to="/advertiser/campaigns/new"
-                  className="yl-header-action yl-header-action-primary"
-                  aria-label="새 캠페인"
-                  title="새 캠페인"
-                >
-                  <Plus className="h-3.5 w-3.5" strokeWidth={2} />
-                  <span className="sm:hidden">캠페인</span>
-                  <span className="hidden sm:inline">새 캠페인</span>
-                </Link>
-              ) : (
-                <Link
-                  to="/advertiser/builder"
-                  className="yl-header-action yl-header-action-primary"
-                  aria-label="새 계약"
-                  title="새 계약"
-                >
-                  <Plus className="h-3.5 w-3.5" strokeWidth={2} />
-                  <span className="sm:hidden">계약</span>
-                  <span className="hidden sm:inline">새 계약</span>
-                </Link>
-              )}
+              <div className="flex shrink-0 items-center gap-1.5">
+                <DashboardDownloadButton onClick={handleDownloadDashboard} />
+                {isCampaignSurface ? (
+                  <Link
+                    to="/advertiser/campaigns/new"
+                    className="yl-header-action yl-header-action-primary"
+                    aria-label="새 캠페인"
+                    title="새 캠페인"
+                  >
+                    <Plus className="h-3.5 w-3.5" strokeWidth={2} />
+                    <span className="sm:hidden">캠페인</span>
+                    <span className="hidden sm:inline">새 캠페인</span>
+                  </Link>
+                ) : (
+                  <Link
+                    to="/advertiser/builder"
+                    className="yl-header-action yl-header-action-primary"
+                    aria-label="새 계약"
+                    title="새 계약"
+                  >
+                    <Plus className="h-3.5 w-3.5" strokeWidth={2} />
+                    <span className="sm:hidden">계약</span>
+                    <span className="hidden sm:inline">새 계약</span>
+                  </Link>
+                )}
+              </div>
             </div>
           </div>
 
@@ -991,6 +1080,7 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
                       value={campaignLifecycleFilter}
                       counts={contractLifecycleCounts}
                       onChange={setCampaignLifecycleFilter}
+                      tabs={CONTRACT_LIFECYCLE_TABS}
                     />
                   }
                   contracts={visibleContracts}
@@ -1767,10 +1857,15 @@ function CampaignLifecycleTabs({
   value,
   counts,
   onChange,
+  tabs = CAMPAIGN_LIFECYCLE_TABS,
 }: {
   value: CampaignLifecycle;
   counts: Record<CampaignLifecycle, number>;
   onChange: (value: CampaignLifecycle) => void;
+  tabs?: Array<{
+    value: CampaignLifecycle;
+    label: string;
+  }>;
 }) {
   return (
     <div className="yl-dashboard-lifecycle-strip bg-[#ecebe5] px-2 pt-2">
@@ -1778,7 +1873,7 @@ function CampaignLifecycleTabs({
         role="tablist"
         className="grid min-w-0 grid-cols-3 items-end gap-0 overflow-visible"
       >
-        {CAMPAIGN_LIFECYCLE_TABS.map((tab) => {
+        {tabs.map((tab) => {
           const active = value === tab.value;
           return (
             <button
@@ -3007,6 +3102,39 @@ function ContractTable({
     getDashboardContractCollapseKey,
   );
   const dateColumnLabel = lifecycleFilter === "ENDED" ? "종료일" : "마감일";
+  const paginationScopeKey = [
+    amountFilter,
+    contractTypeFilter,
+    detailStatusFilter,
+    lifecycleFilter,
+    platformFilter,
+    query,
+    sortState.direction,
+    sortState.key,
+  ].join("|");
+  const [paginationState, setPaginationState] = useState({
+    page: 1,
+    scopeKey: paginationScopeKey,
+  });
+  const totalPages = Math.max(
+    1,
+    Math.ceil(displayContracts.length / CONTRACTS_PER_PAGE),
+  );
+  const currentPage =
+    paginationState.scopeKey === paginationScopeKey ? paginationState.page : 1;
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const pageStartIndex = (safeCurrentPage - 1) * CONTRACTS_PER_PAGE;
+  const pageEndIndex = Math.min(
+    pageStartIndex + CONTRACTS_PER_PAGE,
+    displayContracts.length,
+  );
+  const paginatedContracts = displayContracts.slice(pageStartIndex, pageEndIndex);
+  const shouldShowPagination = displayContracts.length > CONTRACTS_PER_PAGE;
+  const handlePageChange = (page: number) =>
+    setPaginationState({
+      page,
+      scopeKey: paginationScopeKey,
+    });
 
   return (
     <section className="overflow-hidden rounded-[8px] border border-[#d9e0d9] bg-white lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
@@ -3024,7 +3152,10 @@ function ContractTable({
               />
             ) : (
               <p className="mt-0.5 truncate text-[11px] font-semibold text-[#606861]">
-                {displayContracts.length.toLocaleString("ko-KR")}건 표시 · {filterSummary}
+                {shouldShowPagination
+                  ? `${(pageStartIndex + 1).toLocaleString("ko-KR")}-${pageEndIndex.toLocaleString("ko-KR")} / ${displayContracts.length.toLocaleString("ko-KR")}건`
+                  : `${displayContracts.length.toLocaleString("ko-KR")}건 표시`}{" "}
+                · {filterSummary}
               </p>
             )}
           </div>
@@ -3099,7 +3230,7 @@ function ContractTable({
         {isDataPending ? (
           <ContractTableSkeletonRows />
         ) : displayContracts.length > 0 ? (
-          displayContracts.map((contract) => (
+          paginatedContracts.map((contract) => (
             <React.Fragment key={contract.id}>
               <ContractRow
                 contract={contract}
@@ -3112,8 +3243,119 @@ function ContractTable({
           <EmptyState isInitialEmpty={totalContracts === 0} />
         )}
       </div>
+      {!isDataPending && shouldShowPagination ? (
+        <ContractPagination
+          currentPage={safeCurrentPage}
+          totalPages={totalPages}
+          pageStartIndex={pageStartIndex}
+          pageEndIndex={pageEndIndex}
+          totalItems={displayContracts.length}
+          onPageChange={handlePageChange}
+        />
+      ) : null}
     </section>
   );
+}
+
+function ContractPagination({
+  currentPage,
+  totalPages,
+  pageStartIndex,
+  pageEndIndex,
+  totalItems,
+  onPageChange,
+}: {
+  currentPage: number;
+  totalPages: number;
+  pageStartIndex: number;
+  pageEndIndex: number;
+  totalItems: number;
+  onPageChange: (page: number) => void;
+}) {
+  const pages = getPaginationPages(currentPage, totalPages);
+
+  return (
+    <div className="flex flex-col gap-2 border-t border-[#edf1ed] bg-white px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+      <p className="text-[11px] font-semibold text-[#606861]">
+        {(pageStartIndex + 1).toLocaleString("ko-KR")}-
+        {pageEndIndex.toLocaleString("ko-KR")} /{" "}
+        {totalItems.toLocaleString("ko-KR")}건
+      </p>
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+          disabled={currentPage === 1}
+          aria-label="이전 페이지"
+          title="이전 페이지"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[#d9e0d9] bg-white text-[#303630] transition hover:border-[#171a17] hover:text-[#171a17] disabled:pointer-events-none disabled:border-neutral-200 disabled:bg-neutral-50 disabled:text-neutral-300"
+        >
+          <ChevronLeft className="h-3.5 w-3.5" strokeWidth={2.2} />
+        </button>
+        {pages.map((page, index) =>
+          page === "gap" ? (
+            <span
+              key={`gap-${index}`}
+              className="inline-flex h-8 w-6 items-center justify-center text-[11px] font-bold text-[#8b938d]"
+            >
+              ...
+            </span>
+          ) : (
+            <button
+              key={page}
+              type="button"
+              onClick={() => onPageChange(page)}
+              aria-current={page === currentPage ? "page" : undefined}
+              style={
+                page === currentPage
+                  ? {
+                      backgroundColor: "#ffffff",
+                      borderColor: "#171a17",
+                      color: "#171a17",
+                      boxShadow: "inset 0 0 0 1px #171a17",
+                    }
+                  : undefined
+              }
+              className={`inline-flex h-8 min-w-8 items-center justify-center rounded-md border px-2 text-[13px] font-black tabular-nums transition ${
+                page === currentPage
+                  ? "border-[#171a17] bg-white text-[#171a17] shadow-[inset_0_0_0_1px_#171a17]"
+                  : "border border-[#d9e0d9] bg-white text-[#303630] hover:border-[#171a17] hover:text-[#171a17]"
+              }`}
+            >
+              {page}
+            </button>
+          ),
+        )}
+        <button
+          type="button"
+          onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+          disabled={currentPage === totalPages}
+          aria-label="다음 페이지"
+          title="다음 페이지"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-[#d9e0d9] bg-white text-[#303630] transition hover:border-[#171a17] hover:text-[#171a17] disabled:pointer-events-none disabled:border-neutral-200 disabled:bg-neutral-50 disabled:text-neutral-300"
+        >
+          <ChevronRight className="h-3.5 w-3.5" strokeWidth={2.2} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function getPaginationPages(currentPage: number, totalPages: number) {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, index) => index + 1);
+  }
+
+  const pages = new Set([1, totalPages, currentPage]);
+  if (currentPage > 2) pages.add(currentPage - 1);
+  if (currentPage < totalPages - 1) pages.add(currentPage + 1);
+
+  return [...pages]
+    .sort((a, b) => a - b)
+    .flatMap<(number | "gap")>((page, index, sortedPages) => {
+      if (index === 0) return [page];
+      return page - sortedPages[index - 1] > 1 ? ["gap", page] : [page];
+    });
 }
 
 function ContractTableSkeletonRows() {
@@ -4994,6 +5236,442 @@ function getContractPlatformDisplayItems(contract: Contract) {
     label: PLATFORM_META[platform].shortLabel,
     title: PLATFORM_META[platform].label,
   }));
+}
+
+const CONTRACT_STATUS_EXPORT_LABELS: Record<ContractStatus, string> = {
+  DRAFT: "초안",
+  REVIEWING: "검토중",
+  NEGOTIATING: "수정중",
+  APPROVED: "서명대기",
+  SIGNED: "서명완료",
+  CLOSED: "종료",
+};
+
+const CAMPAIGN_LIFECYCLE_EXPORT_LABELS: Record<CampaignLifecycle, string> = {
+  RECRUITING: "모집중",
+  IN_PROGRESS: "진행중",
+  ENDED: "종료",
+};
+
+const CONTRACT_LIFECYCLE_EXPORT_LABELS: Record<CampaignLifecycle, string> = {
+  RECRUITING: "작성중",
+  IN_PROGRESS: "진행중",
+  ENDED: "종료",
+};
+
+function getDashboardExportTimestamp() {
+  const now = new Date();
+  return [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0"),
+    "-",
+    String(now.getHours()).padStart(2, "0"),
+    String(now.getMinutes()).padStart(2, "0"),
+  ].join("");
+}
+
+function formatExportDate(value?: string) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join(".");
+}
+
+function formatExportDateTime(value?: string) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return `${formatExportDate(value)} ${[
+    String(date.getHours()).padStart(2, "0"),
+    String(date.getMinutes()).padStart(2, "0"),
+  ].join(":")}`;
+}
+
+function formatExportBoolean(value?: boolean) {
+  if (value === undefined) return "";
+  return value ? "예" : "아니오";
+}
+
+function joinExportValues(values: Array<string | undefined | null>) {
+  return values
+    .map((value) => value?.trim())
+    .filter((value): value is string => Boolean(value))
+    .join(", ");
+}
+
+function getContractPlatformExportLabel(contract: Contract) {
+  return joinExportValues(
+    getContractPlatformDisplayItems(contract).map((item) => item.title),
+  );
+}
+
+function getContractCreatorExportProfile(contract: Contract) {
+  return (
+    findInfluencerProfileByHandle(contract.influencer_info?.channel_url) ??
+    findInfluencerProfileByDisplayName(contract.influencer_info?.name)
+  );
+}
+
+function getContractCreatorAccountLabel(
+  contract: Contract,
+  profile?: MarketplaceInfluencerProfile,
+) {
+  if (profile?.platforms.length) {
+    return joinExportValues(
+      profile.platforms.map((platform) =>
+        joinExportValues([platformLabels[platform.platform], platform.handle]),
+      ),
+    );
+  }
+
+  return contract.influencer_info?.channel_url ?? "";
+}
+
+function getContractCreatorAudienceLabel(profile?: MarketplaceInfluencerProfile) {
+  if (!profile?.platforms.length) return "";
+
+  return joinExportValues(
+    profile.platforms.map((platform) =>
+      joinExportValues([
+        platformLabels[platform.platform],
+        platform.followersLabel,
+      ]),
+    ),
+  );
+}
+
+function formatCampaignSourceLabel(source?: Contract["campaign"]["source"]) {
+  if (source === "marketplace_campaign") return "캠페인 모집";
+  if (source === "direct") return "직접 계약";
+  return "";
+}
+
+function getContractDeliverableCount(contract: Contract) {
+  if (typeof contract.deliverable_summary?.total === "number") {
+    return contract.deliverable_summary.total;
+  }
+
+  return contract.campaign?.deliverables?.length ?? "";
+}
+
+function getContractBusinessVerificationLabel(contract: Contract) {
+  const status = contract.advertiser_trust?.business_verification_status;
+  if (status === "approved") return "인증완료";
+  if (status === "pending") return "심사중";
+  if (status === "rejected") return "반려";
+  if (status === "not_submitted") return "미제출";
+  return contract.advertiser_trust?.business_verification_label ?? "";
+}
+
+function getContractWorkflowActorLabel(actor?: Contract["workflow"]["next_actor"]) {
+  if (actor === "advertiser") return "광고주";
+  if (actor === "influencer") return "인플루언서";
+  if (actor === "system") return "시스템";
+  return "";
+}
+
+function getContractRiskLevelLabel(level?: Contract["workflow"]["risk_level"]) {
+  if (level === "high") return "높음";
+  if (level === "medium") return "주의";
+  if (level === "low") return "낮음";
+  return "";
+}
+
+function getContractPdfStatusLabel(status?: Contract["evidence"]["pdf_status"]) {
+  if (status === "signed_ready") return "서명본 준비";
+  if (status === "draft_ready") return "초안 준비";
+  if (status === "not_ready") return "미준비";
+  return "";
+}
+
+function getContractSignatureExportInfo(contract: Contract) {
+  const data = contract.signature_data;
+
+  return {
+    signedAt: data?.signed_at,
+    signerName: data?.signer_name,
+    signerEmail: data?.signer_email,
+  };
+}
+
+function getSettlementExportStatus(contract: Contract) {
+  if (
+    contract.settlement?.status === "confirmed_paid" ||
+    contract.settlement?.advertiser_confirmed_paid
+  ) {
+    return "지급 확인";
+  }
+
+  if (contract.settlement?.status === "unpaid_inquiry") return "미지급 문의";
+  return "";
+}
+
+function getContractClauseExportCounts(contract: Contract) {
+  return contract.clauses.reduce(
+    (counts, clause) => {
+      counts.total += 1;
+      if (clause.status === "APPROVED") counts.approved += 1;
+      if (clause.status === "MODIFICATION_REQUESTED") counts.changeRequested += 1;
+      if (clause.status === "DELETION_REQUESTED") counts.deleteRequested += 1;
+      return counts;
+    },
+    {
+      total: 0,
+      approved: 0,
+      changeRequested: 0,
+      deleteRequested: 0,
+    },
+  );
+}
+
+function getContractAuditExportSummary(contract: Contract) {
+  const events = [...(contract.audit_events ?? [])].sort(
+    (a, b) => getDateMs(a.created_at) - getDateMs(b.created_at),
+  );
+
+  return {
+    count: events.length,
+    firstAt: events[0]?.created_at,
+    latestAt: events.at(-1)?.created_at,
+  };
+}
+
+function buildAdvertiserContractExportSheet(contracts: Contract[]): XlsxSheet {
+  return {
+    name: "계약",
+    columns: [
+      "계약명",
+      "모집명",
+      "구분",
+      "상태",
+      "유형",
+      "광고주",
+      "광고주 담당자",
+      "사업자명",
+      "사업자 인증상태",
+      "사업자 인증일",
+      "사업자번호(마스킹)",
+      "대표자명",
+      "크리에이터명",
+      "크리에이터 계정명",
+      "크리에이터 연락처",
+      "구독자/팔로워수",
+      "플랫폼",
+      "콘텐츠 형식",
+      "콘텐츠 수량",
+      "콘텐츠 제출 총수",
+      "콘텐츠 제출",
+      "콘텐츠 승인",
+      "콘텐츠 제출 업데이트",
+      "게시 링크",
+      "광고비/조건",
+      "캠페인 출처",
+      "모집 인원",
+      "캠페인 기간",
+      "시작일",
+      "마감일",
+      "업로드 마감일",
+      "검수 마감일",
+      "종료일",
+      "수정 가능 횟수",
+      "광고 고지 문구",
+      "필수 해시태그",
+      "브랜드 계정 태그",
+      "추적 링크",
+      "URL 제출 필요",
+      "파일 제출 필요",
+      "파일 예시",
+      "검수 범위",
+      "2차 활용 허용",
+      "활용 채널",
+      "활용 기간",
+      "편집 허용",
+      "다음 담당",
+      "다음 액션",
+      "워크플로 마감일",
+      "리스크 수준",
+      "PDF 상태",
+      "감사 준비",
+      "서명일",
+      "서명자 이름",
+      "서명자 이메일",
+      "정산 상태",
+      "정산 확인일",
+      "정산 문의수",
+      "조항 수",
+      "승인 조항 수",
+      "수정요청 조항 수",
+      "삭제요청 조항 수",
+      "감사 이벤트 수",
+      "최초 감사일",
+      "최근 감사일",
+      "기준일",
+      "계약 최초작성일",
+      "최종수정일",
+    ],
+    rows: contracts.map((contract) => {
+      const lifecycle = getDashboardContractLifecycle(contract);
+      const creatorProfile = getContractCreatorExportProfile(contract);
+      const signature = getContractSignatureExportInfo(contract);
+      const clauseCounts = getContractClauseExportCounts(contract);
+      const auditSummary = getContractAuditExportSummary(contract);
+
+      return [
+        formatDashboardContractTitle(contract.title),
+        contract.campaign_name ?? "",
+        CONTRACT_LIFECYCLE_EXPORT_LABELS[lifecycle],
+        CONTRACT_STATUS_EXPORT_LABELS[contract.status],
+        formatContractTypeLabel(contract.type),
+        removeInternalTestLabel(contract.advertiser_info?.name, ""),
+        removeInternalTestLabel(contract.advertiser_info?.manager, ""),
+        removeInternalTestLabel(contract.advertiser_trust?.business_name, ""),
+        getContractBusinessVerificationLabel(contract),
+        formatExportDateTime(contract.advertiser_trust?.business_verified_at),
+        contract.advertiser_trust?.business_registration_number_masked ?? "",
+        removeInternalTestLabel(contract.advertiser_trust?.representative_name, ""),
+        removeInternalTestLabel(contract.influencer_info?.name, ""),
+        getContractCreatorAccountLabel(contract, creatorProfile),
+        formatPublicContactValue(contract.influencer_info?.contact),
+        getContractCreatorAudienceLabel(creatorProfile),
+        getContractPlatformExportLabel(contract),
+        joinExportValues(contract.campaign?.deliverables ?? []),
+        getContractDeliverableCount(contract),
+        contract.deliverable_summary?.total ?? "",
+        contract.deliverable_summary?.submitted ?? "",
+        contract.deliverable_summary?.approved ?? "",
+        formatExportDateTime(contract.deliverable_summary?.updated_at),
+        contract.post_link ?? "",
+        formatDashboardAmountLabel(contract.campaign?.budget),
+        formatCampaignSourceLabel(contract.campaign?.source),
+        contract.campaign?.applicant_limit ?? "",
+        contract.campaign?.period ?? "",
+        formatExportDate(contract.campaign?.start_date),
+        formatExportDate(contract.campaign?.deadline),
+        formatExportDate(contract.campaign?.upload_due_at),
+        formatExportDate(contract.campaign?.review_due_at),
+        formatExportDate(contract.campaign?.end_date),
+        contract.campaign?.revision_limit ?? "",
+        contract.campaign?.disclosure_text ?? "",
+        joinExportValues(contract.campaign?.required_hashtags ?? []),
+        joinExportValues(contract.campaign?.brand_account_tags ?? []),
+        contract.campaign?.tracking_link ?? "",
+        formatExportBoolean(contract.campaign?.content_submission?.url_required),
+        formatExportBoolean(contract.campaign?.content_submission?.file_required),
+        contract.campaign?.content_submission?.file_examples ?? "",
+        contract.campaign?.content_submission?.review_scope ?? "",
+        formatExportBoolean(contract.campaign?.content_usage?.allowed),
+        joinExportValues(contract.campaign?.content_usage?.channels ?? []),
+        contract.campaign?.content_usage?.period ?? "",
+        formatExportBoolean(contract.campaign?.content_usage?.edit_allowed),
+        getContractWorkflowActorLabel(contract.workflow?.next_actor),
+        contract.workflow?.next_action ?? "",
+        formatExportDateTime(contract.workflow?.due_at),
+        getContractRiskLevelLabel(contract.workflow?.risk_level),
+        getContractPdfStatusLabel(contract.evidence?.pdf_status),
+        formatExportBoolean(contract.evidence?.audit_ready),
+        formatExportDateTime(signature.signedAt),
+        removeInternalTestLabel(signature.signerName, ""),
+        formatPublicContactValue(signature.signerEmail),
+        getSettlementExportStatus(contract),
+        formatExportDateTime(contract.settlement?.advertiser_confirmed_at),
+        contract.settlement?.inquiries?.length ?? "",
+        clauseCounts.total,
+        clauseCounts.approved,
+        clauseCounts.changeRequested,
+        clauseCounts.deleteRequested,
+        auditSummary.count,
+        formatExportDateTime(auditSummary.firstAt),
+        formatExportDateTime(auditSummary.latestAt),
+        formatDashboardContractDateLabel(contract, lifecycle),
+        formatExportDateTime(contract.created_at),
+        formatExportDateTime(contract.updated_at),
+      ];
+    }),
+  };
+}
+
+function buildAdvertiserCampaignExportSheet(campaigns: CampaignGroup[]): XlsxSheet {
+  return {
+    name: "캠페인",
+    columns: [
+      "계약명",
+      "상태",
+      "브랜드",
+      "플랫폼",
+      "지급조건",
+      "지원자",
+      "선정",
+      "완료",
+      "마감일",
+      "최종수정일",
+    ],
+    rows: campaigns.map((campaign) => [
+      campaign.name,
+      CAMPAIGN_LIFECYCLE_EXPORT_LABELS[campaign.lifecycle],
+      joinExportValues(campaign.brands),
+      joinExportValues(
+        campaign.platforms.map((platform) => PLATFORM_META[platform].label),
+      ),
+      getCampaignPaymentLabel(campaign),
+      campaign.applicantCount,
+      campaign.acceptedParticipantCount,
+      campaign.completedCount,
+      getCampaignListDateParts(campaign).label,
+      formatExportDate(campaign.latestUpdatedAt),
+    ]),
+  };
+}
+
+function buildAdvertiserCampaignApplicantExportSheet(
+  applicants: MarketplaceMessageThread[],
+): XlsxSheet {
+  return {
+    name: "지원자",
+    columns: [
+      "이름",
+      "상태",
+      "플랫폼",
+      "대표 카테고리",
+      "소개",
+      "신청일",
+    ],
+    rows: applicants.map((thread) => {
+      const applicantName = getCampaignApplicantDisplayName(thread);
+      const applicantProfile = getCampaignApplicantProfile(thread, applicantName);
+      const displayPlatforms = getCampaignApplicantDisplayPlatforms(
+        thread,
+        applicantProfile,
+      );
+      const mainCategory = getCampaignApplicantMainCategory(
+        thread.counterpartCategories,
+        applicantProfile,
+      );
+
+      return [
+        applicantName,
+        APPLICANT_STATUS_META[thread.status].label,
+        joinExportValues(
+          displayPlatforms.map((platform) =>
+            joinExportValues([
+              platformLabels[platform.platform],
+              platform.handle,
+              platform.followersLabel,
+            ]),
+          ),
+        ),
+        mainCategory,
+        thread.counterpartIntro || thread.senderIntro,
+        formatExportDate(thread.createdAt),
+      ];
+    }),
+  };
 }
 
 function parseDate(value?: string) {

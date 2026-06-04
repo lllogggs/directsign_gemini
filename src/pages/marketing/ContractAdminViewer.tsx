@@ -217,6 +217,16 @@ export function ContractAdminViewer() {
   const isContractSignedOrClosed =
     contract?.status === "SIGNED" || contract?.status === "CLOSED";
   const isFixedCampaign = isFixedCampaignContract(contract);
+  const contractPdfHref = contract
+    ? isContractSignedOrClosed
+      ? contract.pdf_url || apiPath(`/api/contracts/${contract.id}/final-pdf`)
+      : apiPath(`/api/contracts/${contract.id}/review-pdf`)
+    : "";
+  const contractPdfDownloadName = contract
+    ? isContractSignedOrClosed
+      ? `${contract.id}-signed-record.pdf`
+      : `${contract.id}-review-contract.pdf`
+    : "contract.pdf";
   const contractSupportPath = useMemo(
     () =>
       contract
@@ -987,17 +997,14 @@ export function ContractAdminViewer() {
                     </button>
                   </>
                 )}
-                {isContractSignedOrClosed && (
-                  <a
-                    href={contract.pdf_url || apiPath(`/api/contracts/${contract.id}/final-pdf`)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white text-[13px] font-semibold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
-                  >
-                    <FileText className="h-4 w-4" />
-                    서명본 PDF 내려받기
-                  </a>
-                )}
+                <a
+                  href={contractPdfHref}
+                  download={contractPdfDownloadName}
+                  className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white text-[13px] font-semibold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
+                >
+                  <FileText className="h-4 w-4" />
+                  {isContractSignedOrClosed ? "서명본 PDF 내려받기" : "계약서 PDF 내려받기"}
+                </a>
                 {!summary.allApproved && (
                   <p className="text-center text-[12px] font-semibold text-amber-700">
                     {isFixedCampaign

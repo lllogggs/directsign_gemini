@@ -640,6 +640,10 @@ const getApplicantCampaignKeyForCapture = async (client, page) => {
       const threads = Array.isArray(messageData?.threads) ? messageData.threads : [];
       const today = new Date();
       today.setHours(0, 0, 0, 0);
+      const isOpenCampaign = (thread) => {
+        const campaign = campaignById.get(thread?.campaignId);
+        return Boolean(campaign && campaign.status === "open");
+      };
       const isOpenRecruiting = (thread) => {
         const campaign = campaignById.get(thread?.campaignId);
         if (!campaign || campaign.status !== "open") return false;
@@ -652,12 +656,23 @@ const getApplicantCampaignKeyForCapture = async (client, page) => {
         (thread?.status === "submitted" || thread?.status === "reviewed");
       const grouped = new Map();
       for (const thread of threads) {
-        if (!thread?.campaignId || !hasSelectableApplicant(thread) || !isOpenRecruiting(thread)) continue;
-        const current = grouped.get(thread.campaignId) ?? { campaignId: thread.campaignId, count: 0 };
+        if (!thread?.campaignId || !hasSelectableApplicant(thread)) continue;
+        const current = grouped.get(thread.campaignId) ?? {
+          campaignId: thread.campaignId,
+          count: 0,
+          openCount: 0,
+          activeOpenCount: 0,
+        };
         current.count += 1;
+        if (isOpenCampaign(thread)) current.openCount += 1;
+        if (isOpenRecruiting(thread)) current.activeOpenCount += 1;
         grouped.set(thread.campaignId, current);
       }
-      const best = Array.from(grouped.values()).sort((a, b) => b.count - a.count)[0];
+      const best = Array.from(grouped.values()).sort((a, b) =>
+        b.count - a.count ||
+        b.openCount - a.openCount ||
+        b.activeOpenCount - a.activeOpenCount
+      )[0];
       const fallback = threads.find((item) => hasSelectableApplicant(item) && isOpenRecruiting(item)) ||
         threads.find((item) => item?.campaignId && isOpenRecruiting(item)) ||
         threads.find((item) => hasSelectableApplicant(item)) ||
@@ -742,7 +757,7 @@ try {
   const campaignApplicantsPage = await openPage(
     client,
     `${baseUrl}/advertiser/campaigns?campaign=${encodeURIComponent(applicantCampaignKey)}`,
-    { width: 1440, height: 1080 },
+    { width: 1180, height: 900 },
   );
   await waitForBodyText(client, campaignApplicantsPage, "지원자", 45000);
   await capturePng(
