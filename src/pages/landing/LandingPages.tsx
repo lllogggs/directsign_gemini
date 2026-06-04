@@ -532,10 +532,10 @@ const roleIntroSlides = {
     {
       label: "계약 확인",
       eyebrow: "계약 수신",
-      title: ["받은 계약을", "먼저 확인"],
+      title: ["광고 조건을", "놓치지 않게"],
       description:
-        "광고주가 보낸 링크에서 금액, 업로드 일정, 산출물, 사용 범위를 먼저 확인합니다.",
-      helper: "금액·일정·범위 먼저 확인",
+        "메일함을 뒤지지 않고 금액, 일정, 산출물, 사용 권한을 먼저 확인합니다.",
+      helper: "메일 대신 조건과 기록 정리",
       primaryLabel: "시작하기",
       primaryHref: "/signup/influencer",
       secondaryLabel: "인플루언서 로그인",
@@ -1213,11 +1213,13 @@ function RoleFeatureIntroScreen({
           title: ["계약 흐름을", "한눈에 관리"],
           description:
             "작성, 검토 링크, 서명 증빙까지 끊기지 않게 이어집니다.",
+          proofPoints: [],
         }
       : {
-          title: ["계약과 신청을", "나눠 확인"],
+          title: ["광고 조건을", "놓치지 않게"],
           description:
-            "받은 제안, 신청한 캠페인, 진행 계약을 헷갈리지 않게 구분합니다.",
+            "메일함을 뒤지지 않고 금액, 일정, 산출물, 사용 권한을 확인하고 수정 요청과 서명본까지 한 곳에 남깁니다.",
+          proofPoints: ["금액·일정 먼저 확인", "수정 요청 기록", "서명본 자동 보관"],
         };
 
   useEffect(() => {
@@ -1342,6 +1344,20 @@ function RoleFeatureIntroScreen({
                 <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
               </Link>
             </div>
+
+            {introCopy.proofPoints.length > 0 ? (
+              <div className="mt-5 grid max-w-[380px] gap-2 sm:mt-6">
+                {introCopy.proofPoints.map((point) => (
+                  <div
+                    key={point}
+                    className="inline-flex min-h-10 items-center gap-2 rounded-[8px] border border-neutral-200 bg-white/82 px-3 text-[12px] font-extrabold text-neutral-700 shadow-[0_8px_22px_rgba(15,23,42,0.04)]"
+                  >
+                    <CheckCircle2 className="h-4 w-4 shrink-0 text-blue-600" />
+                    <span>{point}</span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
 
           </aside>
 

@@ -58,6 +58,8 @@ import { getMarketplaceInfluencerAvatarUrlFromHref } from "../../domain/marketpl
 import type { InfluencerPlatform } from "../../domain/verification";
 import { DashboardSurfaceSwitch } from "../../components/DashboardSurfaceSwitch";
 import { MobileSurfaceSwitch } from "../../components/MobileSurfaceSwitch";
+import { PlatformBrandMark } from "../../components/PlatformBrandMark";
+import { getPlatformDisplayName } from "../../domain/platformDisplay";
 
 type CampaignState =
   | { status: "loading" }
@@ -2162,17 +2164,17 @@ function CampaignApplicantPlatformPills({
   return (
     <div className="flex min-w-0 flex-nowrap items-center gap-1 overflow-hidden">
       {visiblePlatforms.slice(0, 1).map((item, index) => {
-        const label = platformLabels[item.platform] ?? item.label;
-        const text = item.followersLabel
-          ? `${label} ${item.followersLabel}`
-          : label;
+        const label = getPlatformDisplayName(item.platform);
+        const text = item.followersLabel ?? label;
+        const title = item.followersLabel ? `${label} ${item.followersLabel}` : label;
 
         return (
           <span
             key={`${item.platform}-${item.handle ?? index}`}
-            className={`inline-flex h-7 min-w-0 shrink items-center rounded-md border px-2 text-[11px] font-extrabold ${getPlatformTone(item.platform)}`}
-            title={text}
+            className="inline-flex min-w-0 shrink items-center gap-1.5 text-[11px] font-extrabold text-neutral-800"
+            title={title}
           >
+            <PlatformBrandMark platform={item.platform} size="sm" />
             <span className="truncate">{text}</span>
           </span>
         );

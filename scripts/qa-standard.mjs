@@ -385,7 +385,17 @@ const browserRenderRoutes = [
   {
     name: "intro influencer",
     path: "/intro/influencer",
-    requiredText: ["계약과 신청을", "나눠 확인", "지원중", "진행중", "완료", "미선정"],
+    requiredText: [
+      "광고 조건을",
+      "놓치지 않게",
+      "금액·일정 먼저 확인",
+      "수정 요청 기록",
+      "서명본 자동 보관",
+      "지원중",
+      "진행중",
+      "완료",
+      "미선정",
+    ],
     minTextLength: 80,
   },
   {

@@ -3,18 +3,15 @@ import {
   ArrowRight,
   ArrowUpDown,
   BadgeCheck,
-  BookOpen,
   ChevronDown,
   CheckCircle2,
+  ExternalLink,
   FileText,
-  Globe2,
   Handshake,
-  Instagram,
   LogOut,
   Mail,
   Megaphone,
   MessageSquareText,
-  Music2,
   Search,
   Send,
   ShieldCheck,
@@ -22,7 +19,6 @@ import {
   Settings,
   Store,
   UserRound,
-  Youtube,
 } from "lucide-react";
 import {
   type FormEvent,
@@ -34,6 +30,7 @@ import {
   useState,
 } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { PlatformBrandMark } from "../../components/PlatformBrandMark";
 import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
 import {
@@ -43,7 +40,6 @@ import {
   getBrandProfilePath,
   getChannelAudienceSortValue,
   getInfluencerProfilePath,
-  getPlatformTone,
   marketplaceBrands,
   marketplaceInfluencers,
   platformLabels,
@@ -52,8 +48,8 @@ import {
   type MarketplaceBrandProfile,
   type MarketplaceInfluencerProfile,
 } from "../../domain/marketplace";
+import { getPlatformDisplayName } from "../../domain/platformDisplay";
 import {
-  formatInfluencerPublicProfileUrl,
   getInfluencerPublicProfilePath,
   normalizePublicProfileHandle,
   type InfluencerPublicProfileResponse,
@@ -709,9 +705,44 @@ export function PublicInfluencerProfilePage() {
     );
   }
 
+  const categoryLabels = getCategoryLabels(profile.categories, 4);
+  const channelSummaries = profile.platforms.slice(0, 4);
+  const platformCount = Math.min(Math.max(channelSummaries.length, 1), 4);
+  const hasFeaturedPlatformLayout = platformCount <= 2;
+  const platformRowsClassName =
+    platformCount === 1
+      ? "grid gap-1 lg:grid-cols-[minmax(0,1fr)]"
+      : platformCount === 2
+        ? "grid gap-1 lg:grid-cols-[repeat(2,minmax(0,1fr))] lg:gap-x-8"
+        : platformCount === 3
+          ? "grid gap-1 lg:grid-cols-[repeat(3,minmax(150px,1fr))] lg:gap-x-9"
+          : "grid gap-1 lg:grid-cols-[repeat(4,minmax(116px,1fr))] lg:gap-x-5";
+  const platformLinkClassName = [
+    "group relative grid min-h-[50px] min-w-0 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 border-b border-neutral-100 py-2.5 transition last:border-b-0 hover:text-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 sm:min-h-[54px] lg:flex lg:flex-col lg:border-b-0 lg:py-0",
+    hasFeaturedPlatformLayout
+      ? "lg:min-h-[118px] lg:items-center lg:justify-center"
+      : "lg:min-h-[90px] lg:items-start lg:justify-start",
+  ].join(" ");
+  const platformLabelClassName = [
+    "flex min-w-0 items-center gap-2.5",
+    hasFeaturedPlatformLayout
+      ? "lg:w-full lg:justify-center lg:gap-3 lg:pr-8"
+      : "lg:w-full lg:pr-7",
+  ].join(" ");
+  const platformNameClassName = [
+    "truncate text-[15px] font-black leading-5 text-neutral-950",
+    hasFeaturedPlatformLayout ? "lg:text-[17px] lg:leading-6" : "",
+  ].join(" ");
+  const platformFollowerClassName = [
+    "text-right text-[22px] font-black leading-none text-neutral-950 tabular-nums sm:text-[24px]",
+    hasFeaturedPlatformLayout
+      ? "lg:mt-4 lg:text-center lg:text-[48px]"
+      : "lg:mt-3 lg:text-left lg:text-[36px]",
+  ].join(" ");
+
   return (
-    <main className="flex h-svh flex-col overflow-hidden bg-[#f7f6f3] font-sans text-neutral-950">
-      <header className="shrink-0 border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
+    <main className="min-h-svh bg-[#f4f7fb] font-sans text-neutral-950">
+      <header className="border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-[1180px] items-center justify-between px-4 sm:px-6 lg:px-8">
           <Link to="/" className="flex min-h-10 min-w-10 items-center gap-3">
             <span className="flex h-9 w-9 items-center justify-center rounded-[12px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
@@ -720,129 +751,122 @@ export function PublicInfluencerProfilePage() {
             <span className="font-neo-heavy text-[18px] leading-none tracking-[-0.045em]">{PRODUCT_NAME}</span>
           </Link>
           <Link
+            to="/advertiser/discover"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-[12px] border border-neutral-200 bg-white text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 sm:hidden"
+            aria-label="인플루언서 목록으로 돌아가기"
+            title="인플루언서 목록으로 돌아가기"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+          <Link
             to="/intro/advertiser"
-            className="inline-flex h-10 items-center rounded-[12px] border border-neutral-200 bg-white px-3 text-[13px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
+            className="hidden h-10 items-center rounded-[12px] border border-neutral-200 bg-white px-3 text-[13px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 sm:inline-flex"
           >
             광고주 시작하기
           </Link>
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <section className="border-b border-neutral-200/80 bg-white">
-          <div className="mx-auto grid max-w-[1120px] gap-5 px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_300px] lg:px-8">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <StatusPill icon={<BadgeCheck className="h-3.5 w-3.5" />} label={profile.verifiedLabel} />
+      <section className="px-4 py-4 sm:px-6 sm:py-8 lg:px-8 lg:pt-14">
+        <article
+          data-profile-layout="creator-media-kit"
+          className="mx-auto max-w-[1080px] overflow-hidden rounded-[28px] border border-neutral-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.1)]"
+        >
+          <div className="grid lg:grid-cols-[320px_minmax(0,1fr)]">
+            <div className="relative bg-neutral-950 p-1.5 sm:p-2.5">
+              <img
+                src={getMarketplaceInfluencerAvatarUrl(profile)}
+                alt={profile.displayName}
+                className="h-[200px] w-full rounded-[20px] object-cover shadow-[0_18px_42px_rgba(15,23,42,0.12)] sm:h-[320px] sm:rounded-[22px] lg:h-full lg:min-h-[360px]"
+              />
+              <span className="absolute bottom-5 left-5 inline-flex h-8 items-center gap-1.5 rounded-full border border-white/80 bg-white/90 px-3 text-[12px] font-extrabold text-blue-700 shadow-[0_10px_24px_rgba(15,23,42,0.12)] backdrop-blur sm:bottom-7 sm:left-7">
+                <BadgeCheck className="h-3.5 w-3.5" />
+                플랫폼 인증
+              </span>
+            </div>
+
+            <div className="flex min-w-0 flex-col p-4 sm:p-7 lg:p-8">
+              <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_156px] lg:items-start">
+                <div className="min-w-0">
+              <p className="break-keep text-[13px] font-extrabold text-neutral-500 sm:text-[14px]">
+                {categoryLabels.join(" · ")}
+              </p>
+
+              <h1 className="font-neo-heavy mt-4 text-[33px] leading-[0.98] tracking-normal text-neutral-950 sm:mt-5 sm:text-[56px]">
+                {profile.displayName}
+              </h1>
+              <p className="mt-3 max-w-xl break-keep text-[15px] font-extrabold leading-6 text-neutral-800 sm:mt-4 sm:text-[19px] sm:leading-8">
+                {cleanMarketplaceCopy(profile.headline)}
+              </p>
+
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowContact(true)}
+                  className="hidden h-12 w-[156px] items-center justify-center gap-2 rounded-[12px] bg-blue-600 px-4 text-[14px] font-extrabold text-white shadow-[0_14px_34px_rgba(37,99,235,0.24)] transition hover:bg-blue-700 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700 lg:inline-flex"
+                >
+                  <Handshake className="h-4 w-4" />
+                  제안하기
+                </button>
               </div>
-              <div className="mt-4 flex flex-col gap-5 sm:flex-row sm:items-start">
-                <AvatarBlock
-                  label={profile.avatarLabel}
-                  src={getMarketplaceInfluencerAvatarUrl(profile)}
-                  alt={profile.displayName}
-                  size="large"
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="break-all text-[13px] font-semibold text-neutral-500">
-                    {formatInfluencerPublicProfileUrl(profile.handle)}
-                  </p>
-                  <h1 className="font-neo-heavy mt-2 text-[32px] leading-tight tracking-[-0.035em] text-neutral-950 sm:text-[40px]">
-                    {profile.displayName}
-                  </h1>
-                  <p className="mt-3 max-w-2xl truncate text-[15px] font-semibold leading-6 text-neutral-600">
-                    {cleanMarketplaceCopy(profile.bio || profile.headline)}
-                  </p>
-                  <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-                    <button
-                      type="button"
-                      onClick={() => setShowContact(true)}
-                      className="inline-flex h-11 items-center justify-center gap-2 rounded-[12px] bg-neutral-950 px-4 text-[14px] font-extrabold text-white transition hover:bg-neutral-800"
-                    >
-                      <Handshake className="h-4 w-4" />
-                      인플루언서에게 제안하기
-                    </button>
-                    <Link
-                      to="/advertiser/discover"
-                      className="inline-flex h-11 items-center justify-center gap-2 rounded-[12px] border border-neutral-200 bg-white px-4 text-[14px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
-                    >
-                      다른 인플루언서 보기
-                      <ArrowRight className="h-4 w-4" />
-                    </Link>
+
+              <div className="mt-auto pt-5 sm:pt-7">
+                <div
+                  data-profile-platform-strip
+                  className="border-t border-neutral-200 pt-4"
+                >
+                  <div className="grid gap-4">
+                    <div className={platformRowsClassName}>
+                      {channelSummaries.map((platform) => (
+                        <a
+                          key={`${platform.platform}-${platform.handle}`}
+                          href={platform.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          aria-label={`${getPlatformDisplayName(platform.platform)} ${platform.handle} 계정 보기`}
+                          title={`${getPlatformDisplayName(platform.platform)} ${platform.handle}`}
+                          className={platformLinkClassName}
+                        >
+                          <div className={platformLabelClassName}>
+                            <PlatformBrandMark platform={platform.platform} />
+                            <div className="min-w-0">
+                              <p className={platformNameClassName}>
+                                {getPlatformDisplayName(platform.platform)}
+                              </p>
+                            </div>
+                          </div>
+                          <p className={platformFollowerClassName}>
+                            {platform.followersLabel}
+                          </p>
+                          <span
+                            aria-hidden="true"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-[10px] text-neutral-400 transition group-hover:bg-blue-50 group-hover:text-blue-700 lg:absolute lg:right-0 lg:top-0 lg:h-7 lg:w-7"
+                          >
+                            <ExternalLink className="h-4 w-4" />
+                          </span>
+                        </a>
+                      ))}
+                    </div>
+
+                    <aside className="flex min-h-[52px] min-w-0 items-center justify-center lg:hidden">
+                      <button
+                        type="button"
+                        onClick={() => setShowContact(true)}
+                        className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-[12px] bg-blue-600 px-4 text-[14px] font-extrabold text-white shadow-[0_14px_34px_rgba(37,99,235,0.24)] transition hover:bg-blue-700 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700"
+                      >
+                        <Handshake className="h-4 w-4" />
+                        제안하기
+                      </button>
+                    </aside>
                   </div>
                 </div>
+
               </div>
             </div>
-
-            <aside className="rounded-[12px] border border-neutral-200 bg-[#fbfaf7] p-4">
-              <p className="text-[12px] font-semibold text-neutral-500">채널</p>
-              <div className="mt-3 grid gap-2">
-                {profile.platforms.slice(0, 4).map((platform) => (
-                  <a
-                    key={`${platform.platform}-${platform.handle}`}
-                    href={platform.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex min-w-0 items-center justify-between gap-3 rounded-[8px] border border-neutral-200 bg-white px-3 py-2 transition hover:border-neutral-300"
-                  >
-                    <span className="min-w-0 truncate text-[13px] font-extrabold text-neutral-900">
-                      {platformLabels[platform.platform] ?? platform.label}
-                    </span>
-                    <span className="shrink-0 text-[12px] font-semibold text-neutral-500">
-                      {platform.followersLabel}
-                    </span>
-                  </a>
-                ))}
-              </div>
-            </aside>
           </div>
-        </section>
-
-        <section className="mx-auto max-w-[1120px] px-4 py-5 sm:px-6 lg:px-8">
-          <section className="rounded-[12px] border border-neutral-200 bg-white p-5">
-            <h2 className="text-[16px] font-semibold text-neutral-950">핵심 정보</h2>
-            <div className="mt-4 grid gap-5 lg:grid-cols-[minmax(0,1fr)_260px]">
-              <div>
-                <p className="mb-2 text-[12px] font-semibold text-neutral-500">활동 채널</p>
-                <div className="grid gap-2">
-                  {profile.platforms.map((platform) => (
-                    <a
-                      key={`${platform.platform}-${platform.handle}`}
-                      href={platform.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex items-center justify-between gap-3 rounded-[8px] border border-neutral-200 bg-[#fbfaf7] px-3 py-3 transition hover:border-neutral-300"
-                    >
-                      <div className="min-w-0">
-                        <PlatformPill platform={platform.platform} label={platform.label} />
-                        <p className="mt-2 truncate text-[13px] font-semibold text-neutral-950">
-                          {platform.handle}
-                        </p>
-                      </div>
-                      <p className="shrink-0 text-right text-[12px] font-extrabold leading-5 text-neutral-700">
-                        {platform.followersLabel}
-                      </p>
-                    </a>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <p className="mb-2 text-[12px] font-semibold text-neutral-500">카테고리</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {getCategoryLabels(profile.categories, 5).map((category) => (
-                    <span
-                      key={category}
-                      className="inline-flex h-8 items-center rounded-[8px] border border-neutral-200 bg-[#fbfaf7] px-2.5 text-[12px] font-extrabold text-neutral-700"
-                    >
-                      {category}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </section>
-        </section>
-      </div>
+        </article>
+      </section>
 
       {showContact ? (
         <InfluencerContactDialog
@@ -2079,20 +2103,12 @@ function PlatformPill({
 }) {
   return (
     <span
-      className={`inline-flex h-7 max-w-full items-center gap-1.5 rounded-[8px] border px-2.5 text-[11px] font-semibold ${getPlatformTone(platform)}`}
+      className="inline-flex max-w-full items-center gap-1.5 text-[11px] font-extrabold text-neutral-800"
     >
-      {getPlatformIcon(platform)}
+      <PlatformBrandMark platform={platform} size="sm" />
       <span className="truncate">{label}</span>
     </span>
   );
-}
-
-function getPlatformIcon(platform: InfluencerPlatform) {
-  if (platform === "instagram") return <Instagram className="h-3.5 w-3.5" />;
-  if (platform === "youtube") return <Youtube className="h-3.5 w-3.5" />;
-  if (platform === "tiktok") return <Music2 className="h-3.5 w-3.5" />;
-  if (platform === "naver_blog") return <BookOpen className="h-3.5 w-3.5" />;
-  return <Globe2 className="h-3.5 w-3.5" />;
 }
 
 function ProfileSection({
@@ -2145,13 +2161,18 @@ function AvatarBlock({
   label: string;
   src?: string;
   alt?: string;
-  size?: "default" | "large";
+  size?: "default" | "large" | "hero";
 }) {
+  const sizeClass =
+    size === "hero"
+      ? "h-28 w-28 text-[30px]"
+      : size === "large"
+        ? "h-20 w-20 text-[24px]"
+        : "h-12 w-12 text-[15px]";
+
   return (
     <span
-      className={`yl-profile-mark flex shrink-0 items-center justify-center overflow-hidden font-semibold ${
-        size === "large" ? "h-20 w-20 text-[24px]" : "h-12 w-12 text-[15px]"
-      }`}
+      className={`yl-profile-mark flex shrink-0 items-center justify-center overflow-hidden font-semibold ${sizeClass}`}
     >
       {src ? (
         <img

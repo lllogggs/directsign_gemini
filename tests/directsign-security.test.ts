@@ -968,6 +968,16 @@ describe("yeollock.me security regressions", () => {
     const marketplace = read("src/domain/marketplace.ts");
     const marketplacePages = read("src/pages/marketplace/MarketplacePages.tsx");
     const server = read("server/index.ts");
+    const agents = read("AGENTS.md");
+    const indexCss = read("src/index.css");
+    const platformBrandMark = read("src/components/PlatformBrandMark.tsx");
+    const platformDisplay = read("src/domain/platformDisplay.ts");
+    const advertiserDashboard = read("src/pages/marketing/Dashboard.tsx");
+    const campaignPages = read("src/pages/marketplace/CampaignPages.tsx");
+    const influencerPublicProfileSource = marketplacePages.slice(
+      marketplacePages.indexOf("export function PublicInfluencerProfilePage"),
+      marketplacePages.indexOf("export function PublicBrandProfilePage"),
+    );
 
     assert.match(
       app,
@@ -978,10 +988,149 @@ describe("yeollock.me security regressions", () => {
     assert.match(publicProfile, /export function formatInfluencerPublicProfileUrl/);
     assert.match(publicProfile, /return clean \? `yeollock\.me\/\$\{clean\}` : "yeollock\.me"/);
     assert.match(marketplace, /return `\/\$\{normalizeMarketplaceHandle\(profile\.handle\)\}`/);
-    assert.match(marketplacePages, /formatInfluencerPublicProfileUrl\(profile\.handle\)/);
     assert.match(server, /getInfluencerPublicProfilePath\(row\.target_handle\)/);
     assert.match(server, /getInfluencerPublicProfilePath\(row\.sender_influencer_handle\)/);
     assert.doesNotMatch(marketplacePages, /yeollock\.me\/\{profile\.handle\}/);
+    assert.doesNotMatch(influencerPublicProfileSource, /formatInfluencerPublicProfileUrl/);
+    assert.match(agents, /Blue primary CTAs were directly requested by the Product Owner as a product-wide rule/);
+    assert.match(indexCss, /--yl-primary: #2563eb/);
+    assert.match(influencerPublicProfileSource, /data-profile-layout="creator-media-kit"/);
+    assert.match(influencerPublicProfileSource, /getMarketplaceInfluencerAvatarUrl\(profile\)/);
+    assert.match(influencerPublicProfileSource, /channelSummaries = profile\.platforms\.slice\(0, 4\)/);
+    assert.match(influencerPublicProfileSource, /href=\{platform\.url\}/);
+    assert.match(influencerPublicProfileSource, /to="\/advertiser\/discover"/);
+    assert.match(influencerPublicProfileSource, /sm:hidden/);
+    assert.match(influencerPublicProfileSource, /bg-blue-600/);
+    assert.match(influencerPublicProfileSource, /제안하기/);
+    assert.match(agents, /first screens should not show money/);
+    assert.match(agents, /proposal areas should show only the blue "제안하기" button/);
+    assert.match(agents, /account for one, two, three, and four verified platforms/);
+    assert.match(
+      agents,
+      /Remove explanatory labels such as "플랫폼 \/ 팔로워", "팔로워", "구독자", or "이웃"/,
+    );
+    assert.match(agents, /categories should read as simple premium text/);
+    assert.match(influencerPublicProfileSource, /lg:pt-14/);
+    assert.doesNotMatch(influencerPublicProfileSource, /profile\.responseTimeLabel/);
+    assert.doesNotMatch(influencerPublicProfileSource, /startingPriceLabel/);
+    assert.doesNotMatch(
+      influencerPublicProfileSource,
+      /플랫폼 \/ 팔로워|다른 인플루언서 보기|profile\.location/,
+    );
+    assert.match(agents, /platform and follower\/subscriber metrics are primary decision data/);
+    assert.match(agents, /recognizable official-brand platform marks/);
+    assert.match(agents, /shared with dashboard platform pills/);
+    assert.match(agents, /extra bordered or white rounded wrapper/);
+    assert.match(agents, /around a 28px raw brand mark/);
+    assert.match(
+      agents,
+      /Remove explanatory labels such as/,
+    );
+    assert.match(agents, /visually bind the platform name\/logo to its audience number/);
+    assert.match(agents, /tall `justify-between` stat tiles/);
+    assert.match(agents, /On mobile only, render each verified platform as one horizontal row/);
+    assert.match(agents, /On desktop, keep the platform area block-like/);
+    assert.match(agents, /upper profile action area/);
+    assert.match(agents, /larger representative channel blocks/);
+    assert.match(agents, /one platform uses the full strip/);
+    assert.match(agents, /two platforms split the strip evenly/);
+    assert.match(agents, /existing compact external-link icon/);
+    assert.match(agents, /Do not show a text tooltip or visible text button/);
+    assert.match(agents, /image bezels should stay present but restrained/);
+    assert.match(agents, /hiding nonessential handles/);
+    assert.match(platformBrandMark, /export function PlatformBrandMark/);
+    assert.doesNotMatch(platformBrandMark, /export function getPlatformDisplayName/);
+    assert.match(platformDisplay, /export function getPlatformDisplayName/);
+    assert.match(platformBrandMark, /md: "h-7 w-7"/);
+    assert.doesNotMatch(platformBrandMark, /border border-neutral-200 bg-white/);
+    assert.match(platformDisplay, /platform === "instagram"/);
+    assert.match(platformDisplay, /platform === "naver_blog"/);
+    assert.match(marketplacePages, /from "\.\.\/\.\.\/components\/PlatformBrandMark"/);
+    assert.match(marketplacePages, /from "\.\.\/\.\.\/domain\/platformDisplay"/);
+    assert.match(influencerPublicProfileSource, /PlatformBrandMark platform=\{platform\.platform\}/);
+    assert.match(influencerPublicProfileSource, /getPlatformDisplayName\(platform\.platform\)/);
+    assert.match(influencerPublicProfileSource, /platformCount === 1/);
+    assert.match(influencerPublicProfileSource, /platformCount === 2/);
+    assert.match(influencerPublicProfileSource, /platformCount === 3/);
+    assert.match(influencerPublicProfileSource, /hasFeaturedPlatformLayout = platformCount <= 2/);
+    assert.match(influencerPublicProfileSource, /grid-cols-\[minmax\(0,1fr\)_auto_auto\]/);
+    assert.match(influencerPublicProfileSource, /lg:grid-cols-\[minmax\(0,1fr\)_156px\]/);
+    assert.match(influencerPublicProfileSource, /lg:grid-cols-\[minmax\(0,1fr\)\]/);
+    assert.match(influencerPublicProfileSource, /lg:grid-cols-\[repeat\(2,minmax\(0,1fr\)\)\]/);
+    assert.match(influencerPublicProfileSource, /lg:grid-cols-\[repeat\(3,minmax\(150px,1fr\)\)\]/);
+    assert.match(influencerPublicProfileSource, /lg:grid-cols-\[repeat\(4,minmax\(116px,1fr\)\)\]/);
+    assert.match(influencerPublicProfileSource, /lg:gap-x-5/);
+    assert.match(influencerPublicProfileSource, /lg:flex lg:flex-col/);
+    assert.match(influencerPublicProfileSource, /lg:min-h-\[118px\]/);
+    assert.match(influencerPublicProfileSource, /lg:items-center lg:justify-center/);
+    assert.match(influencerPublicProfileSource, /lg:text-\[48px\]/);
+    assert.match(influencerPublicProfileSource, /lg:inline-flex/);
+    assert.match(influencerPublicProfileSource, /lg:hidden/);
+    assert.match(influencerPublicProfileSource, /ExternalLink/);
+    assert.match(influencerPublicProfileSource, /h-\[200px\]/);
+    assert.match(influencerPublicProfileSource, /p-1\.5 sm:p-2\.5/);
+    assert.match(influencerPublicProfileSource, /text-\[22px\]/);
+    assert.match(influencerPublicProfileSource, /sm:text-\[24px\]/);
+    assert.match(influencerPublicProfileSource, /lg:mt-3/);
+    assert.match(influencerPublicProfileSource, /lg:text-\[36px\]/);
+    assert.match(influencerPublicProfileSource, /lg:absolute lg:right-0 lg:top-0/);
+    assert.doesNotMatch(influencerPublicProfileSource, /인플루언서 계정으로 이동/);
+    assert.doesNotMatch(influencerPublicProfileSource, /group-hover:opacity-100/);
+    assert.doesNotMatch(influencerPublicProfileSource, /group-focus-visible:opacity-100/);
+    assert.doesNotMatch(influencerPublicProfileSource, />계정 보기</);
+    assert.doesNotMatch(influencerPublicProfileSource, /연결하기/);
+    assert.doesNotMatch(influencerPublicProfileSource, /p-3 sm:p-5/);
+    assert.doesNotMatch(influencerPublicProfileSource, /flex-col justify-between/);
+    assert.doesNotMatch(influencerPublicProfileSource, /hidden truncate text-\[13px\]/);
+    assert.doesNotMatch(influencerPublicProfileSource, /getPlatformAudienceMetricLabel/);
+    assert.doesNotMatch(influencerPublicProfileSource, /getPlatformIcon\(platform\.platform/);
+    assert.doesNotMatch(influencerPublicProfileSource, /text-\[32px\]|text-\[42px\]/);
+    assert.doesNotMatch(influencerPublicProfileSource, /lg:grid-cols-\[minmax\(0,1fr\)_184px\]/);
+    assert.doesNotMatch(influencerPublicProfileSource, /lg:w-\[184px\]/);
+    assert.doesNotMatch(influencerPublicProfileSource, /lg:grid-cols-\[minmax\(220px,260px\)\]/);
+    assert.doesNotMatch(influencerPublicProfileSource, /lg:max-w-\[520px\]/);
+    assert.match(
+      influencerPublicProfileSource,
+      /aria-label=\{`\$\{getPlatformDisplayName\(platform\.platform\)\} \$\{platform\.handle\}/,
+    );
+    assert.match(agents, /proposal panels must not stretch into tall empty cards/);
+    assert.match(agents, /polished creator media-kit first page/);
+    assert.match(agents, /awkward stretched CTAs/);
+    assert.match(agents, /Desktop proposal CTAs should be separated into the upper profile action area/);
+    assert.match(influencerPublicProfileSource, /data-profile-platform-strip/);
+    assert.match(influencerPublicProfileSource, /lg:grid-cols-\[minmax\(0,1fr\)_156px\]/);
+    assert.match(influencerPublicProfileSource, /w-\[156px\]/);
+    assert.match(influencerPublicProfileSource, /lg:inline-flex/);
+    assert.match(influencerPublicProfileSource, /lg:hidden/);
+    assert.match(influencerPublicProfileSource, /min-h-\[52px\]/);
+    assert.doesNotMatch(influencerPublicProfileSource, /lg:grid-cols-\[minmax\(0,1fr\)_184px\]/);
+    assert.doesNotMatch(influencerPublicProfileSource, /lg:w-\[184px\]/);
+    assert.match(influencerPublicProfileSource, /rounded-\[28px\]/);
+    assert.match(advertiserDashboard, /from "\.\.\/\.\.\/components\/PlatformBrandMark"/);
+    assert.match(advertiserDashboard, /<PlatformBrandMark platform="youtube" size="sm" \/>/);
+    assert.match(advertiserDashboard, /<PlatformBrandMark platform="instagram" size="sm" \/>/);
+    assert.match(agents, /Dashboard platform columns should show platform logos only/);
+    assert.match(advertiserDashboard, /aria-label=\{`플랫폼 \$\{items\.map\(\(item\) => item\.title\)\.join\(", "\)\}`\}/);
+    assert.match(advertiserDashboard, /function CampaignPlatformMarks/);
+    assert.match(advertiserDashboard, /<CampaignPlatformMarks platforms=\{campaign\.platforms\} title=\{platformLabel\} \/>/);
+    assert.doesNotMatch(advertiserDashboard, />\{item\.label\}<\/span>/);
+    assert.match(campaignPages, /from "\.\.\/\.\.\/components\/PlatformBrandMark"/);
+    assert.match(campaignPages, /from "\.\.\/\.\.\/domain\/platformDisplay"/);
+    assert.match(campaignPages, /<PlatformBrandMark platform=\{item\.platform\} size="sm" \/>/);
+    assert.match(campaignPages, /getPlatformDisplayName\(item\.platform\)/);
+    assert.match(campaignPages, /const text = item\.followersLabel \?\? label/);
+    assert.match(
+      campaignPages,
+      /inline-flex min-w-0 shrink items-center gap-1\.5 text-\[11px\] font-extrabold text-neutral-800/,
+    );
+    assert.match(
+      marketplacePages,
+      /inline-flex max-w-full items-center gap-1\.5 text-\[11px\] font-extrabold text-neutral-800/,
+    );
+    assert.doesNotMatch(
+      influencerPublicProfileSource,
+      /대표 콘텐츠|플랫폼 \/ 팔로워|다른 인플루언서 보기|profile\.location|portfolioItems|profile\.portfolio|ProfileInfoRow/,
+    );
   });
 
   it("derives influencer public profile handles from the first registered platform outside the dashboard strip", () => {
@@ -1495,8 +1644,13 @@ describe("yeollock.me security regressions", () => {
     assert.doesNotMatch(advertiserDashboard, /광고주 · 계약/);
     assert.doesNotMatch(influencerDashboard, /인플루언서 · 내 계약/);
     assert.match(influencerDashboard, /hidden min-w-0 truncate whitespace-nowrap text-\[12px\] font-semibold text-\[#303630\] lg:block/);
-    assert.match(landing, /계약과 신청을/);
-    assert.match(qaStandard, /계약과 신청을/);
+    assert.match(landing, /광고 조건을/);
+    assert.match(landing, /메일함을 뒤지지 않고/);
+    assert.match(landing, /금액·일정 먼저 확인/);
+    assert.match(landing, /수정 요청 기록/);
+    assert.match(landing, /서명본 자동 보관/);
+    assert.match(qaStandard, /광고 조건을/);
+    assert.match(qaStandard, /금액·일정 먼저 확인/);
     assert.doesNotMatch(landing, /받은 캠페인을/);
     assert.doesNotMatch(landing, /캠페인 정산 완료/);
     assert.doesNotMatch(seedAccounts, /캠페인 정산 완료/);

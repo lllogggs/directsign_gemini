@@ -134,8 +134,8 @@
     --yl-faint: #9aa29f;
     --yl-border: rgba(22, 28, 26, 0.11);
     --yl-border-strong: rgba(22, 28, 26, 0.19);
-    --yl-primary: #17231f;
-    --yl-primary-hover: #26332f;
+    --yl-primary: #2563eb;
+    --yl-primary-hover: #1d4ed8;
     --yl-action: #2457c5;
     --yl-action-hover: #1d48a4;
     --yl-accent: #266b5f;
@@ -159,7 +159,7 @@
       0 12px 34px rgba(15, 23, 42, 0.04);
     --yl-shadow-button:
       0 1px 0 rgba(255, 255, 255, 0.16) inset,
-      0 10px 24px rgba(15, 23, 42, 0.13);
+      0 10px 24px rgba(37, 99, 235, 0.2);
     --yl-shadow-action:
       0 1px 0 rgba(255, 255, 255, 0.18) inset,
       0 12px 28px rgba(36, 87, 197, 0.2);

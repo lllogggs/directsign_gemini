@@ -68,6 +68,7 @@ import {
 import { ContractFirstExperienceDialog } from "../../components/ScreenHelp";
 import { DashboardDownloadButton } from "../../components/DashboardDownloadButton";
 import { DashboardSurfaceSwitch } from "../../components/DashboardSurfaceSwitch";
+import { PlatformBrandMark } from "../../components/PlatformBrandMark";
 import { CONTRACT_FIRST_EXPERIENCE_CONTENT } from "../../domain/screenHelp";
 import {
   compareChannelAudienceValues,
@@ -432,41 +433,31 @@ const PLATFORM_META: Record<
   NAVER_BLOG: {
     label: "네이버 블로그",
     shortLabel: "블로그",
-    className: "border-emerald-200 bg-emerald-50 text-emerald-700",
-    mark: <span className="text-[10px] font-black">B</span>,
+    className: "text-[#303630]",
+    mark: <PlatformBrandMark platform="naver_blog" size="sm" />,
   },
   YOUTUBE: {
     label: "유튜브",
     shortLabel: "유튜브",
-    className: "border-rose-200 bg-rose-50 text-rose-700",
-    mark: (
-      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-current">
-        <path d="M21.6 7.2a2.8 2.8 0 0 0-2-2C17.9 4.8 12 4.8 12 4.8s-5.9 0-7.6.4a2.8 2.8 0 0 0-2 2A29 29 0 0 0 2 12a29 29 0 0 0 .4 4.8 2.8 2.8 0 0 0 2 2c1.7.4 7.6.4 7.6.4s5.9 0 7.6-.4a2.8 2.8 0 0 0 2-2A29 29 0 0 0 22 12a29 29 0 0 0-.4-4.8ZM10 14.9V9.1l5.2 2.9L10 14.9Z" />
-      </svg>
-    ),
+    className: "text-[#303630]",
+    mark: <PlatformBrandMark platform="youtube" size="sm" />,
   },
   INSTAGRAM: {
     label: "인스타그램",
     shortLabel: "인스타",
-    className: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
-    mark: (
-      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-none stroke-current">
-        <rect x="5" y="5" width="14" height="14" rx="4" strokeWidth="2" />
-        <circle cx="12" cy="12" r="3" strokeWidth="2" />
-        <circle cx="16.5" cy="7.5" r="1" className="fill-current stroke-0" />
-      </svg>
-    ),
+    className: "text-[#303630]",
+    mark: <PlatformBrandMark platform="instagram" size="sm" />,
   },
   TIKTOK: {
     label: "틱톡",
     shortLabel: "틱톡",
-    className: "border-cyan-200 bg-cyan-50 text-cyan-700",
-    mark: <span className="text-[12px] font-black">♪</span>,
+    className: "text-[#303630]",
+    mark: <PlatformBrandMark platform="tiktok" size="sm" />,
   },
   OTHER: {
     label: "기타",
     shortLabel: "기타",
-    className: "border-neutral-200 bg-white text-neutral-600",
+    className: "text-neutral-600",
     mark: <MoreHorizontal className="h-3.5 w-3.5" strokeWidth={2} />,
   },
 };
@@ -1408,23 +1399,58 @@ function PlatformPills({ contract }: { contract: Contract }) {
   const items = getContractPlatformDisplayItems(contract);
 
   return (
-    <div className="flex min-w-0 flex-wrap gap-1">
+    <div
+      className="flex min-w-0 flex-wrap items-center gap-1.5"
+      aria-label={`플랫폼 ${items.map((item) => item.title).join(", ")}`}
+    >
       {items.slice(0, 3).map((item) => (
         <span
           key={`${item.platform}-${item.label}`}
-          className={`inline-flex h-5 max-w-full items-center gap-1 rounded-[5px] border px-1.5 text-[10px] font-semibold whitespace-nowrap ${PLATFORM_META[item.platform].className}`}
+          className={`inline-flex items-center ${PLATFORM_META[item.platform].className}`}
           title={item.title}
+          aria-label={item.title}
         >
-          <span className="shrink-0">{PLATFORM_META[item.platform].mark}</span>
-          <span className="min-w-0 truncate whitespace-nowrap">{item.label}</span>
+          {PLATFORM_META[item.platform].mark}
         </span>
       ))}
       {items.length > 3 && (
-        <span className="inline-flex h-5 items-center rounded-[5px] border border-neutral-200 bg-white px-1.5 text-[10px] font-semibold text-neutral-500">
+        <span className="inline-flex items-center text-[11px] font-extrabold text-neutral-500">
           +{items.length - 3}
         </span>
       )}
     </div>
+  );
+}
+
+function CampaignPlatformMarks({
+  platforms,
+  title,
+}: {
+  platforms: ContractPlatform[];
+  title: string;
+}) {
+  const items = platforms.length > 0 ? platforms : (["OTHER"] as ContractPlatform[]);
+
+  return (
+    <span
+      className="inline-flex min-w-0 items-center gap-1.5"
+      title={title}
+      aria-label={`플랫폼 ${title}`}
+    >
+      {items.slice(0, 3).map((platform) => (
+        <span
+          key={platform}
+          className={`inline-flex items-center ${PLATFORM_META[platform].className}`}
+          title={PLATFORM_META[platform].label}
+          aria-label={PLATFORM_META[platform].label}
+        >
+          {PLATFORM_META[platform].mark}
+        </span>
+      ))}
+      {items.length > 3 ? (
+        <span className="text-[11px] font-extrabold text-neutral-500">+{items.length - 3}</span>
+      ) : null}
+    </span>
   );
 }
 
@@ -1971,8 +1997,6 @@ function CampaignRow({
 }) {
   const brandLabel = campaign.brands.join(", ");
   const progress = getCampaignRosterProgress(campaign);
-  const primaryPlatform = campaign.platforms[0] ?? "OTHER";
-  const platformMeta = PLATFORM_META[primaryPlatform];
   const platformLabel = formatCampaignPlatformSummary(campaign.platforms);
   const paymentLabel = getCampaignPaymentLabel(campaign);
   const dateParts = getCampaignListDateParts(campaign);
@@ -1985,12 +2009,7 @@ function CampaignRow({
       className="group grid w-full gap-2 px-3 py-2 text-left transition-colors hover:bg-[#fafaf7] lg:min-h-[44px] lg:grid-cols-[minmax(104px,0.2fr)_minmax(82px,0.14fr)_minmax(250px,0.78fr)_minmax(160px,0.4fr)_minmax(132px,0.32fr)_minmax(104px,0.23fr)] lg:items-center"
     >
       <div className="min-w-0">
-        <span
-          className={`inline-flex h-7 max-w-full items-center gap-1 rounded-md border px-2 text-[12px] font-extrabold whitespace-nowrap ${platformMeta.className}`}
-        >
-          <span className="shrink-0">{platformMeta.mark}</span>
-          <span className="min-w-0 truncate whitespace-nowrap">{platformLabel}</span>
-        </span>
+        <CampaignPlatformMarks platforms={campaign.platforms} title={platformLabel} />
       </div>
       <p className="min-w-0 truncate whitespace-nowrap text-[12px] font-semibold text-[#303630]">
         {brandLabel}
@@ -2899,7 +2918,8 @@ function ApplicantPlatformLinks({
     <div className="flex min-w-0 shrink items-center gap-1 overflow-hidden">
       {visiblePlatforms.slice(0, 1).map((item, index) => {
         const label = platformLabels[item.platform] ?? item.label;
-        const text = item.followersLabel ? `${label} ${item.followersLabel}` : label;
+        const text = item.followersLabel ?? label;
+        const title = item.followersLabel ? `${label} ${item.followersLabel}` : label;
         const key = `${item.platform}-${item.handle ?? item.url ?? index}`;
         const platformMeta =
           PLATFORM_META[marketplacePlatformToContractPlatform(item.platform)];
@@ -2917,8 +2937,8 @@ function ApplicantPlatformLinks({
               href={item.url}
               target="_blank"
               rel="noreferrer noopener"
-              className={`inline-flex h-7 max-w-full items-center gap-1 rounded-md border px-2 text-[11px] font-extrabold transition hover:brightness-[0.98] ${platformMeta.className}`}
-              title={item.handle ? `${text} · ${item.handle}` : text}
+            className={`inline-flex max-w-full items-center gap-1.5 text-[11px] font-extrabold transition hover:text-[#171a17] ${platformMeta.className}`}
+              title={item.handle ? `${title} · ${item.handle}` : title}
             >
               {content}
               <ExternalLink className="h-3 w-3 shrink-0" />
@@ -2929,8 +2949,8 @@ function ApplicantPlatformLinks({
         return (
           <span
             key={key}
-            className={`inline-flex h-7 max-w-full items-center gap-1 rounded-md border px-2 text-[11px] font-extrabold ${platformMeta.className}`}
-            title={item.handle ? `${text} · ${item.handle}` : text}
+            className={`inline-flex max-w-full items-center gap-1.5 text-[11px] font-extrabold ${platformMeta.className}`}
+            title={item.handle ? `${title} · ${item.handle}` : title}
           >
             {content}
           </span>

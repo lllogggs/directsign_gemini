@@ -165,6 +165,9 @@ const dashboardSurfaceSwitch = read("src/components/DashboardSurfaceSwitch.tsx")
 const dashboardDownloadButton = read("src/components/DashboardDownloadButton.tsx");
 const mobileSurfaceSwitch = read("src/components/MobileSurfaceSwitch.tsx");
 const authLoginScreen = read("src/components/AuthLoginScreen.tsx");
+const platformBrandMark = read("src/components/PlatformBrandMark.tsx");
+const platformDisplay = read("src/domain/platformDisplay.ts");
+const indexCss = read("src/index.css");
 const advertiserAuthGate = read("src/pages/marketing/AdvertiserAuthGate.tsx");
 const advertiserVerification = read("src/pages/marketing/AdvertiserVerification.tsx");
 const influencerVerification = read("src/pages/influencer/InfluencerVerification.tsx");
@@ -1182,6 +1185,174 @@ check(
   "Seeded influencer discovery, public profiles, and applicant rows must use generated profile photos instead of initials-only placeholders",
 );
 
+check(
+  "primary CTA token stays product-wide blue",
+  agents.includes("Blue primary CTAs were directly requested by the Product Owner as a product-wide rule") &&
+    indexCss.includes("--yl-primary: #2563eb") &&
+    indexCss.includes("--yl-primary-hover: #1d4ed8") &&
+    indexCss.includes("rgba(37, 99, 235, 0.2)") &&
+    indexCss.includes(".yl-primary-action"),
+  "Product-wide primary CTA tokens must stay blue instead of black/neutral",
+);
+
+const influencerPublicProfileStart = marketplacePages.indexOf(
+  "export function PublicInfluencerProfilePage",
+);
+const influencerPublicProfileEnd = marketplacePages.indexOf(
+  "export function PublicBrandProfilePage",
+  influencerPublicProfileStart,
+);
+const influencerPublicProfileSource =
+  influencerPublicProfileStart >= 0 && influencerPublicProfileEnd > influencerPublicProfileStart
+    ? marketplacePages.slice(influencerPublicProfileStart, influencerPublicProfileEnd)
+    : "";
+
+check(
+  "influencer public profile stays simple and account-forward",
+  agents.includes("Influencer public profile pages should stay simple and account-forward") &&
+    influencerPublicProfileSource.includes('data-profile-layout="creator-media-kit"') &&
+    influencerPublicProfileSource.includes("getMarketplaceInfluencerAvatarUrl(profile)") &&
+    influencerPublicProfileSource.includes("channelSummaries = profile.platforms.slice(0, 4)") &&
+    influencerPublicProfileSource.includes("href={platform.url}") &&
+    influencerPublicProfileSource.includes('target="_blank"') &&
+    influencerPublicProfileSource.includes("bg-blue-600") &&
+    influencerPublicProfileSource.includes("제안하기") &&
+    influencerPublicProfileSource.includes('to="/advertiser/discover"') &&
+    influencerPublicProfileSource.includes("sm:hidden") &&
+    agents.includes("first screens should not show money") &&
+    agents.includes('proposal areas should show only the blue "제안하기" button') &&
+    agents.includes("account for one, two, three, and four verified platforms") &&
+    agents.includes('Remove explanatory labels such as "플랫폼 / 팔로워", "팔로워", "구독자", or "이웃"') &&
+    agents.includes("categories should read as simple premium text") &&
+    influencerPublicProfileSource.includes("lg:pt-14") &&
+    !influencerPublicProfileSource.includes("profile.responseTimeLabel") &&
+    !influencerPublicProfileSource.includes("startingPriceLabel") &&
+    !influencerPublicProfileSource.includes("대표 콘텐츠") &&
+    !influencerPublicProfileSource.includes("플랫폼 / 팔로워") &&
+    !influencerPublicProfileSource.includes("다른 인플루언서 보기") &&
+    !influencerPublicProfileSource.includes("profile.location") &&
+    !influencerPublicProfileSource.includes("portfolioItems") &&
+    !influencerPublicProfileSource.includes("profile.portfolio") &&
+    !influencerPublicProfileSource.includes("ProfileInfoRow"),
+  "Influencer public profile must show account buttons and a blue proposal CTA without portfolio/media-kit sections or repeated channel blocks",
+);
+
+check(
+  "influencer public profile makes platform metrics prominent",
+    agents.includes("platform and follower/subscriber metrics are primary decision data") &&
+    agents.includes("recognizable official-brand platform marks") &&
+    agents.includes("shared with dashboard platform pills") &&
+    agents.includes("extra bordered or white rounded wrapper") &&
+    agents.includes("around a 28px raw brand mark") &&
+    agents.includes("Remove explanatory labels such as") &&
+    agents.includes("visually bind the platform name/logo to its audience number") &&
+    agents.includes("tall `justify-between` stat tiles") &&
+    agents.includes("On mobile only, render each verified platform as one horizontal row") &&
+    agents.includes("On desktop, keep the platform area block-like") &&
+    agents.includes("upper profile action area") &&
+    agents.includes("larger representative channel blocks") &&
+    agents.includes("one platform uses the full strip") &&
+    agents.includes("two platforms split the strip evenly") &&
+    agents.includes("existing compact external-link icon") &&
+    agents.includes("Do not show a text tooltip or visible text button") &&
+    agents.includes("image bezels should stay present but restrained") &&
+    agents.includes("hiding nonessential handles") &&
+    platformBrandMark.includes("export function PlatformBrandMark") &&
+    !platformBrandMark.includes("export function getPlatformDisplayName") &&
+    platformDisplay.includes("export function getPlatformDisplayName") &&
+    platformBrandMark.includes('md: "h-7 w-7"') &&
+    !platformBrandMark.includes("border border-neutral-200 bg-white") &&
+    platformDisplay.includes('platform === "instagram"') &&
+    platformDisplay.includes('platform === "naver_blog"') &&
+    marketplacePages.includes('from "../../components/PlatformBrandMark"') &&
+    marketplacePages.includes('from "../../domain/platformDisplay"') &&
+    influencerPublicProfileSource.includes("PlatformBrandMark platform={platform.platform}") &&
+    influencerPublicProfileSource.includes("getPlatformDisplayName(platform.platform)") &&
+    influencerPublicProfileSource.includes("platformCount === 1") &&
+    influencerPublicProfileSource.includes("platformCount === 2") &&
+    influencerPublicProfileSource.includes("platformCount === 3") &&
+    influencerPublicProfileSource.includes("hasFeaturedPlatformLayout = platformCount <= 2") &&
+    influencerPublicProfileSource.includes("grid-cols-[minmax(0,1fr)_auto_auto]") &&
+    influencerPublicProfileSource.includes("lg:grid-cols-[minmax(0,1fr)_156px]") &&
+    influencerPublicProfileSource.includes("lg:grid-cols-[minmax(0,1fr)]") &&
+    influencerPublicProfileSource.includes("lg:grid-cols-[repeat(2,minmax(0,1fr))]") &&
+    influencerPublicProfileSource.includes("lg:grid-cols-[repeat(3,minmax(150px,1fr))]") &&
+    influencerPublicProfileSource.includes("lg:grid-cols-[repeat(4,minmax(116px,1fr))]") &&
+    influencerPublicProfileSource.includes("lg:gap-x-5") &&
+    influencerPublicProfileSource.includes("lg:flex lg:flex-col") &&
+    influencerPublicProfileSource.includes("lg:min-h-[118px]") &&
+    influencerPublicProfileSource.includes("lg:items-center lg:justify-center") &&
+    influencerPublicProfileSource.includes("lg:text-[48px]") &&
+    influencerPublicProfileSource.includes("lg:inline-flex") &&
+    influencerPublicProfileSource.includes("lg:hidden") &&
+    influencerPublicProfileSource.includes("ExternalLink") &&
+    influencerPublicProfileSource.includes("h-[200px]") &&
+    influencerPublicProfileSource.includes("p-1.5 sm:p-2.5") &&
+    influencerPublicProfileSource.includes("text-[22px]") &&
+    influencerPublicProfileSource.includes("sm:text-[24px]") &&
+    influencerPublicProfileSource.includes("lg:mt-3") &&
+    influencerPublicProfileSource.includes("lg:text-[36px]") &&
+    influencerPublicProfileSource.includes("lg:absolute lg:right-0 lg:top-0") &&
+    !influencerPublicProfileSource.includes("인플루언서 계정으로 이동") &&
+    !influencerPublicProfileSource.includes("group-hover:opacity-100") &&
+    !influencerPublicProfileSource.includes("group-focus-visible:opacity-100") &&
+    !influencerPublicProfileSource.includes(">계정 보기<") &&
+    !influencerPublicProfileSource.includes("연결하기") &&
+    !influencerPublicProfileSource.includes("p-3 sm:p-5") &&
+    !influencerPublicProfileSource.includes("flex-col justify-between") &&
+    !influencerPublicProfileSource.includes("hidden truncate text-[13px]") &&
+    !influencerPublicProfileSource.includes("getPlatformAudienceMetricLabel") &&
+    !influencerPublicProfileSource.includes("getPlatformIcon(platform.platform") &&
+    !influencerPublicProfileSource.includes("lg:grid-cols-[minmax(0,1fr)_184px]") &&
+    !influencerPublicProfileSource.includes("lg:w-[184px]") &&
+    !influencerPublicProfileSource.includes("lg:grid-cols-[minmax(220px,260px)]") &&
+    !influencerPublicProfileSource.includes("lg:max-w-[520px]") &&
+    influencerPublicProfileSource.includes("aria-label={`${getPlatformDisplayName(platform.platform)} ${platform.handle}"),
+  "Influencer public profile platform buttons must make platform names and follower/subscriber counts large and scannable",
+);
+
+check(
+  "influencer public profile proposal card stays content-sized",
+    agents.includes("proposal panels must not stretch into tall empty cards") &&
+    agents.includes("polished creator media-kit first page") &&
+    agents.includes("awkward stretched CTAs") &&
+    agents.includes("Desktop proposal CTAs should be separated into the upper profile action area") &&
+    influencerPublicProfileSource.includes("data-profile-platform-strip") &&
+    influencerPublicProfileSource.includes("lg:grid-cols-[minmax(0,1fr)_156px]") &&
+    influencerPublicProfileSource.includes("w-[156px]") &&
+    influencerPublicProfileSource.includes("lg:inline-flex") &&
+    influencerPublicProfileSource.includes("lg:hidden") &&
+    influencerPublicProfileSource.includes("min-h-[52px]") &&
+    !influencerPublicProfileSource.includes("lg:grid-cols-[minmax(0,1fr)_184px]") &&
+    !influencerPublicProfileSource.includes("lg:w-[184px]") &&
+    influencerPublicProfileSource.includes("rounded-[28px]"),
+  "Influencer public profile proposal panels must not stretch to match left content when that creates an empty card",
+);
+
+check(
+  "dashboard platform columns use logo-only official marks",
+  advertiserDashboard.includes('from "../../components/PlatformBrandMark"') &&
+    advertiserDashboard.includes('<PlatformBrandMark platform="youtube" size="sm" />') &&
+    advertiserDashboard.includes('<PlatformBrandMark platform="instagram" size="sm" />') &&
+    agents.includes("Dashboard platform columns should show platform logos only") &&
+    advertiserDashboard.includes('aria-label={`플랫폼 ${items.map((item) => item.title).join(", ")}`}') &&
+    advertiserDashboard.includes("function CampaignPlatformMarks") &&
+    advertiserDashboard.includes("<CampaignPlatformMarks platforms={campaign.platforms} title={platformLabel} />") &&
+    !advertiserDashboard.includes(">{item.label}</span>") &&
+    campaignPages.includes('from "../../components/PlatformBrandMark"') &&
+    campaignPages.includes('from "../../domain/platformDisplay"') &&
+    campaignPages.includes('<PlatformBrandMark platform={item.platform} size="sm" />') &&
+    campaignPages.includes("getPlatformDisplayName(item.platform)") &&
+    campaignPages.includes("const text = item.followersLabel ?? label") &&
+    campaignPages.includes(
+      "inline-flex min-w-0 shrink items-center gap-1.5 text-[11px] font-extrabold text-neutral-800",
+    ) &&
+    marketplacePages.includes(
+      "inline-flex max-w-full items-center gap-1.5 text-[11px] font-extrabold text-neutral-800",
+    ),
+  "Dashboard platform columns should avoid repeating visible platform text inside dense rows",
+);
+
 const shippedInfluencerAvatarFiles = [
   "public/images/influencers/channel-ove.png",
   "public/images/influencers/creator-sora.png",
@@ -1678,6 +1849,19 @@ check(
     landing.includes('label="메시지함"') &&
     landing.includes('label="로그아웃"'),
   "Influencer intro preview header must mirror the real dashboard action order",
+);
+
+check(
+  "intro influencer explains why not email",
+  landing.includes('title: ["광고 조건을", "놓치지 않게"]') &&
+    landing.includes("메일함을 뒤지지 않고") &&
+    landing.includes("금액·일정 먼저 확인") &&
+    landing.includes("수정 요청 기록") &&
+    landing.includes("서명본 자동 보관") &&
+    qaStandard.includes('"광고 조건을"') &&
+    qaStandard.includes('"금액·일정 먼저 확인"') &&
+    agents.includes("instead of email or Kakao"),
+  "Influencer intro first viewport must make the email/Kakao replacement value concrete before dashboard taxonomy copy",
 );
 
 for (const role of ["advertiser", "influencer"]) {
