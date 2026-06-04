@@ -568,6 +568,18 @@ const influencerShareSummaryRows =
         influencerShareSummaryRowsEnd,
       )
     : "";
+const reviewPdfBuilderStart = server.indexOf("const buildContractReviewPdf");
+const reviewPdfBuilderEnd = server.indexOf("const formatWonCompact", reviewPdfBuilderStart);
+const reviewPdfBuilder =
+  reviewPdfBuilderStart >= 0 && reviewPdfBuilderEnd >= 0
+    ? server.slice(reviewPdfBuilderStart, reviewPdfBuilderEnd)
+    : "";
+const signedPdfBuilderStart = server.indexOf("const buildSignedContractPdf");
+const signedPdfBuilderEnd = server.indexOf("const stableUuid", signedPdfBuilderStart);
+const signedPdfBuilder =
+  signedPdfBuilderStart >= 0 && signedPdfBuilderEnd >= 0
+    ? server.slice(signedPdfBuilderStart, signedPdfBuilderEnd)
+    : "";
 
 check(
   "influencer contract share-link first screen stays contract-centered",
@@ -584,6 +596,15 @@ check(
     agents.includes("available vertical viewport deliberately") &&
     agents.includes("show the PDF contract file immediately") &&
     agents.includes("do not require local clause checks before signing") &&
+    agents.includes("advertiser-authored contract document body") &&
+    agents.includes("pre-sign review PDF and post-sign final PDF should share the same contract document generator") &&
+    server.includes("const buildContractDocumentPdf") &&
+    server.includes("특약 및 자동 생성 조항") &&
+    reviewPdfBuilder.includes("buildContractDocumentPdf({ contract })") &&
+    signedPdfBuilder.includes("buildContractDocumentPdf({") &&
+    !server.includes('pdf.text("계약서 전체보기"') &&
+    !server.includes("Signed Contract") &&
+    !server.includes("확인 안내") &&
     contractViewer.includes('      : "계약 내용 확인";') &&
     contractViewer.includes("조건을 먼저 보고, 로그인 후 바로 서명합니다.") &&
     contractViewer.includes("contractSummaryRows") &&

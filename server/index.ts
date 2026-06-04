@@ -24,7 +24,7 @@ import {
   createWorkflow,
   isFixedCampaignContract,
 } from "../src/domain/contracts.js";
-import type { Contract } from "../src/domain/contracts.js";
+import type { Contract, ContractPlatform } from "../src/domain/contracts.js";
 import type {
   InfluencerDashboardActivityEvent,
   InfluencerDashboardApplication,
@@ -6449,6 +6449,342 @@ const loadSignedPdfFont = async () => {
   return undefined;
 };
 
+type ContractDocumentSignatureEvidence = {
+  signedAt: string;
+  contractHash: string;
+  signatureHash: string;
+  signatureDataUrl?: string;
+  signatureContentType?: string;
+  signerName: string;
+  signerEmail: string;
+  clientIp: string;
+  consentText?: string;
+};
+
+const pdfPlatformLabels: Record<ContractPlatform, string> = {
+  INSTAGRAM: "인스타그램",
+  YOUTUBE: "유튜브",
+  NAVER_BLOG: "네이버 블로그",
+  TIKTOK: "틱톡",
+  OTHER: "기타",
+};
+
+const formatPdfValue = (value: unknown, fallback = "-") => {
+  if (Array.isArray(value)) {
+    const normalized = value
+      .map((item) => String(item ?? "").trim())
+      .filter(Boolean)
+      .join(", ");
+    return normalized || fallback;
+  }
+  const normalized = String(value ?? "").trim();
+  return normalized || fallback;
+};
+
+const formatContractPdfDate = (value: string | undefined) => {
+  if (!hasText(value)) return "-";
+  const dateOnly = toDateOnly(value);
+  return dateOnly ?? value;
+};
+
+const buildContractDocumentPdf = async ({
+  contract,
+  signatureEvidence,
+}: {
+  contract: Contract;
+  signatureEvidence?: ContractDocumentSignatureEvidence;
+}) => {
+  const { jsPDF } = await import("jspdf");
+  const pdf = new jsPDF({ unit: "pt", format: "a4" });
+  const signedPdfFont = await loadSignedPdfFont();
+  const fontFamily = signedPdfFont?.familyName ?? "helvetica";
+  if (signedPdfFont) {
+    pdf.addFileToVFS(signedPdfFont.fileName, signedPdfFont.base64);
+    pdf.addFont(signedPdfFont.fileName, signedPdfFont.familyName, "normal");
+  }
+  const margin = 40;
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const contentWidth = pageWidth - margin * 2;
+  let y = 48;
+
+  const ensureSpace = (height: number) => {
+    if (y + height <= pageHeight - margin) return;
+    pdf.addPage();
+    y = margin;
+  };
+
+  const setTextColor = (color: number) => {
+    pdf.setTextColor(color, color, color);
+  };
+
+  const addHeading = (text: string, top = 28) => {
+    ensureSpace(top + 24);
+    y += top;
+    pdf.setDrawColor(226, 226, 226);
+    pdf.line(margin, y - 13, pageWidth - margin, y - 13);
+    pdf.setFont(fontFamily, signedPdfFont ? "normal" : "bold");
+    pdf.setFontSize(13);
+    setTextColor(18);
+    pdf.text(text, margin, y);
+    y += 18;
+  };
+
+  const addLine = (text: string, indent = 0) => {
+    const chunks = pdf.splitTextToSize(
+      formatPdfValue(text),
+      contentWidth - indent,
+    ) as string[];
+    chunks.forEach((chunk) => {
+      ensureSpace(16);
+      pdf.setFont(fontFamily, "normal");
+      pdf.setFontSize(10);
+      setTextColor(70);
+      pdf.text(chunk, margin + indent, y);
+      y += 14;
+    });
+  };
+
+  const addParagraph = (text: string, fallback = "-") => {
+    const chunks = pdf.splitTextToSize(formatPdfValue(text, fallback), contentWidth) as string[];
+    chunks.forEach((chunk) => {
+      ensureSpace(16);
+      pdf.setFont(fontFamily, "normal");
+      pdf.setFontSize(10);
+      setTextColor(70);
+      pdf.text(chunk, margin, y);
+      y += 14;
+    });
+  };
+
+  const addRows = (rows: Array<[string, string]>) => {
+    const labelWidth = 118;
+    rows.forEach(([label, value]) => {
+      const valueLines = pdf.splitTextToSize(
+        formatPdfValue(value),
+        contentWidth - labelWidth - 22,
+      ) as string[];
+      const rowHeight = Math.max(32, valueLines.length * 13 + 18);
+      ensureSpace(rowHeight);
+
+      pdf.setDrawColor(220, 220, 220);
+      pdf.setFillColor(248, 248, 248);
+      pdf.rect(margin, y, labelWidth, rowHeight, "FD");
+      pdf.rect(margin + labelWidth, y, contentWidth - labelWidth, rowHeight, "S");
+
+      pdf.setFont(fontFamily, "normal");
+      pdf.setFontSize(9);
+      setTextColor(90);
+      pdf.text(label, margin + 10, y + 20);
+
+      pdf.setFont(fontFamily, signedPdfFont ? "normal" : "bold");
+      pdf.setFontSize(10);
+      setTextColor(24);
+      valueLines.forEach((line, index) => {
+        pdf.text(line, margin + labelWidth + 12, y + 20 + index * 13);
+      });
+      y += rowHeight;
+    });
+    y += 4;
+  };
+
+  const addBoxedItems = (items: string[], emptyText: string) => {
+    if (!items.length) {
+      addParagraph(emptyText);
+      return;
+    }
+
+    items.forEach((item) => {
+      const lines = pdf.splitTextToSize(formatPdfValue(item), contentWidth - 24) as string[];
+      const boxHeight = Math.max(38, lines.length * 14 + 20);
+      ensureSpace(boxHeight + 6);
+      pdf.setDrawColor(226, 226, 226);
+      pdf.setFillColor(250, 250, 250);
+      pdf.rect(margin, y, contentWidth, boxHeight, "FD");
+      pdf.setFont(fontFamily, signedPdfFont ? "normal" : "bold");
+      pdf.setFontSize(10);
+      setTextColor(24);
+      lines.forEach((line, index) => {
+        pdf.text(line, margin + 12, y + 21 + index * 14);
+      });
+      y += boxHeight + 6;
+    });
+  };
+
+  const addSignatureBoxes = () => {
+    const gap = 14;
+    const boxWidth = (contentWidth - gap) / 2;
+    const boxHeight = 74;
+    ensureSpace(boxHeight + 8);
+
+    const boxes: Array<[string, string]> = [
+      ["광고주", formatPdfValue(contract.advertiser_info?.name ?? contract.advertiser_id)],
+      [
+        "인플루언서",
+        formatPdfValue(signatureEvidence?.signerName ?? contract.influencer_info.name, "서명 전"),
+      ],
+    ];
+
+    boxes.forEach(([label, value], index) => {
+      const x = margin + index * (boxWidth + gap);
+      pdf.setDrawColor(220, 220, 220);
+      pdf.rect(x, y, boxWidth, boxHeight, "S");
+      pdf.setFont(fontFamily, "normal");
+      pdf.setFontSize(9);
+      setTextColor(120);
+      pdf.text(label, x + 12, y + 18);
+      pdf.setDrawColor(232, 232, 232);
+      pdf.line(x + 12, y + 50, x + boxWidth - 12, y + 50);
+      pdf.setFont(fontFamily, signedPdfFont ? "normal" : "bold");
+      pdf.setFontSize(10);
+      setTextColor(42);
+      pdf.text(value, x + 12, y + 64);
+    });
+
+    y += boxHeight + 4;
+  };
+
+  const campaign = contract.campaign ?? {};
+  pdf.setFont(fontFamily, signedPdfFont ? "normal" : "bold");
+  pdf.setFontSize(20);
+  setTextColor(18);
+  const titleLines = pdf.splitTextToSize(
+    formatPdfValue(contract.title, "계약서 초안"),
+    contentWidth,
+  ) as string[];
+  titleLines.forEach((line) => {
+    ensureSpace(26);
+    pdf.text(line, margin, y);
+    y += 24;
+  });
+  pdf.setFont(fontFamily, "normal");
+  pdf.setFontSize(10);
+  setTextColor(110);
+  pdf.text(`작성일 ${formatContractPdfDate(contract.created_at)}`, margin, y + 3);
+  y += 16;
+
+  addHeading("계약 개요", 26);
+  addRows([
+    ["계약 종류", formatPdfValue(contract.type)],
+    ["광고주", formatPdfValue(contract.advertiser_info?.name ?? contract.advertiser_id)],
+    ["광고주 담당자", formatPdfValue(contract.advertiser_info?.manager)],
+    ["인플루언서", formatPdfValue(contract.influencer_info.name)],
+    ["연락처", formatPdfValue(contract.influencer_info.contact)],
+    ["대표 채널", formatPdfValue(contract.influencer_info.channel_url)],
+  ]);
+
+  addHeading("제1조 제공 매체 및 컨텐츠 조건");
+  addBoxedItems(
+    (campaign.deliverables ?? []).map((item) => formatPdfValue(item)).filter((item) => item !== "-"),
+    "제공 매체와 컨텐츠 조건이 입력되지 않았습니다.",
+  );
+  addRows([
+    [
+      "플랫폼",
+      formatPdfValue(
+        (campaign.platforms ?? []).map((platform) => pdfPlatformLabels[platform] ?? platform),
+      ),
+    ],
+  ]);
+
+  addHeading("제2조 일정 및 검수");
+  addRows([
+    [
+      "캠페인 기간",
+      formatPdfValue(
+        campaign.period ??
+          [formatContractPdfDate(campaign.start_date), formatContractPdfDate(campaign.end_date)]
+            .filter((value) => value !== "-")
+            .join(" - "),
+      ),
+    ],
+    ["업로드 마감일", formatPdfValue(campaign.upload_due_at ?? campaign.deadline)],
+    ["광고주 검수 회신", formatPdfValue(campaign.review_due_at)],
+    ["수정 가능 횟수", formatPdfValue(campaign.revision_limit)],
+  ]);
+
+  addHeading("제3조 광고 표시 및 추적");
+  addParagraph(
+    formatPdfValue(
+      campaign.disclosure_text,
+      "광고 표시 조건이 입력되지 않았습니다.",
+    ),
+  );
+  if (hasText(campaign.tracking_link)) {
+    addRows([["추적 링크", campaign.tracking_link]]);
+  }
+  if ((campaign.required_hashtags ?? []).length || (campaign.brand_account_tags ?? []).length) {
+    addRows([
+      ["필수 해시태그", formatPdfValue(campaign.required_hashtags)],
+      ["브랜드 태그", formatPdfValue(campaign.brand_account_tags)],
+    ]);
+  }
+
+  addHeading("제4조 지급 조건");
+  addParagraph(formatPdfValue(campaign.budget, "지급 조건이 입력되지 않았습니다."));
+
+  addHeading("특약 및 자동 생성 조항");
+  if (contract.clauses.length > 0) {
+    contract.clauses.forEach((clause, index) => {
+      ensureSpace(48);
+      pdf.setFont(fontFamily, "normal");
+      pdf.setFontSize(9);
+      setTextColor(150);
+      pdf.text(String(index + 1).padStart(2, "0"), margin, y);
+      pdf.setFont(fontFamily, signedPdfFont ? "normal" : "bold");
+      pdf.setFontSize(10);
+      setTextColor(24);
+      pdf.text(formatPdfValue(clause.category), margin + 28, y);
+      y += 16;
+      addLine(clause.content, 28);
+      y += 4;
+    });
+  } else {
+    addParagraph("계약 조항이 입력되지 않았습니다.");
+  }
+
+  addHeading("서명란");
+  addSignatureBoxes();
+
+  if (signatureEvidence) {
+    addHeading("전자서명 증빙");
+    addRows([
+      ["서명자", signatureEvidence.signerName],
+      ["서명자 이메일", signatureEvidence.signerEmail],
+      ["서명 시각", signatureEvidence.signedAt],
+      ["서명 IP", signatureEvidence.clientIp],
+      ["계약 해시", signatureEvidence.contractHash],
+      ["서명 이미지 해시", signatureEvidence.signatureHash],
+      ["동의 문구 버전", signatureConsentVersion],
+      [
+        "동의 문구",
+        signatureEvidence.consentText ||
+          "서명자는 계약 내용을 확인하고 전자서명에 동의했습니다.",
+      ],
+    ]);
+
+    if (signatureEvidence.signatureDataUrl && signatureEvidence.signatureContentType) {
+    try {
+      const imageType =
+          signatureEvidence.signatureContentType === "image/png"
+          ? "PNG"
+            : signatureEvidence.signatureContentType === "image/jpeg"
+            ? "JPEG"
+            : undefined;
+      if (imageType) {
+        ensureSpace(70);
+          pdf.addImage(signatureEvidence.signatureDataUrl, imageType, margin, y, 160, 48);
+        y += 60;
+      }
+    } catch {
+        addLine("서명 이미지는 별도 저장되었고 해시로 검증됩니다.");
+      }
+    }
+  }
+
+  return Buffer.from(pdf.output("arraybuffer"));
+};
+
 const buildSignedContractPdf = async ({
   contract,
   signedAt,
@@ -6471,110 +6807,21 @@ const buildSignedContractPdf = async ({
   signerEmail: string;
   clientIp: string;
   consentText?: string;
-}) => {
-  const { jsPDF } = await import("jspdf");
-  const pdf = new jsPDF({ unit: "pt", format: "a4" });
-  const signedPdfFont = await loadSignedPdfFont();
-  const fontFamily = signedPdfFont?.familyName ?? "helvetica";
-  if (signedPdfFont) {
-    pdf.addFileToVFS(signedPdfFont.fileName, signedPdfFont.base64);
-    pdf.addFont(signedPdfFont.fileName, signedPdfFont.familyName, "normal");
-  }
-  const margin = 40;
-  const pageWidth = pdf.internal.pageSize.getWidth();
-  const pageHeight = pdf.internal.pageSize.getHeight();
-  let y = 48;
-
-  const ensureSpace = (height: number) => {
-    if (y + height <= pageHeight - margin) return;
-    pdf.addPage();
-    y = margin;
-  };
-  const addHeading = (text: string) => {
-    ensureSpace(30);
-    pdf.setFont(fontFamily, signedPdfFont ? "normal" : "bold");
-    pdf.setFontSize(14);
-    pdf.text(text, margin, y);
-    y += 22;
-  };
-  const addLine = (text: string, indent = 0) => {
-    const chunks = pdf.splitTextToSize(text, pageWidth - margin * 2 - indent) as string[];
-    chunks.forEach((chunk) => {
-      ensureSpace(16);
-      pdf.setFont(fontFamily, "normal");
-      pdf.setFontSize(9);
-      pdf.text(chunk, margin + indent, y);
-      y += 14;
-    });
-  };
-
-  const campaign = contract.campaign ?? {};
-  pdf.setFont(fontFamily, signedPdfFont ? "normal" : "bold");
-  pdf.setFontSize(16);
-  pdf.text(`${productName} Signed Contract`, margin, y);
-  y += 28;
-
-  addHeading("Parties and campaign");
-  [
-    `Contract ID: ${contract.id}`,
-    `Title: ${contract.title}`,
-    `Status at signing: ${contract.status}`,
-    `Advertiser: ${contract.advertiser_info?.name ?? contract.advertiser_id}`,
-    `Advertiser manager: ${contract.advertiser_info?.manager ?? "-"}`,
-    `Influencer: ${contract.influencer_info.name}`,
-    `Influencer contact: ${contract.influencer_info.contact}`,
-    `Influencer channel: ${contract.influencer_info.channel_url}`,
-    `Compensation: ${campaign.budget ?? "-"}`,
-    `Period: ${campaign.period ?? ([campaign.start_date, campaign.end_date].filter(Boolean).join(" - ") || "-")}`,
-    `Upload deadline: ${campaign.upload_due_at ?? campaign.deadline ?? "-"}`,
-    `Review deadline: ${campaign.review_due_at ?? "-"}`,
-    `Revision limit: ${campaign.revision_limit ?? "-"}`,
-    `Disclosure text: ${campaign.disclosure_text ?? "-"}`,
-    `Platforms: ${(campaign.platforms ?? []).join(", ") || "-"}`,
-    `Deliverables: ${(campaign.deliverables ?? []).join(", ") || "-"}`,
-  ].forEach((line) => addLine(line));
-
-  addHeading("Clauses");
-  contract.clauses.forEach((clause, index) => {
-    addLine(`${index + 1}. [${clause.status}] ${clause.category}`, 0);
-    addLine(clause.content, 12);
+}) =>
+  buildContractDocumentPdf({
+    contract,
+    signatureEvidence: {
+      signedAt,
+      contractHash,
+      signatureHash,
+      signatureDataUrl,
+      signatureContentType,
+      signerName,
+      signerEmail,
+      clientIp,
+      consentText,
+    },
   });
-
-  addHeading("Consent and signature evidence");
-  [
-    `Signer: ${signerName}`,
-    `Signer email: ${signerEmail}`,
-    `Signed at: ${signedAt}`,
-    `Signed IP: ${clientIp}`,
-    `Contract hash: ${contractHash}`,
-    `Signature image hash: ${signatureHash}`,
-    `Consent version: ${signatureConsentVersion}`,
-    `Consent text: ${consentText || "The signer confirmed the contract terms and agreed to electronic signature."}`,
-  ].forEach((line) => addLine(line));
-
-  addHeading("Displayed signature");
-  addLine(`Influencer signature name: ${signerName}`);
-
-  if (signatureDataUrl && signatureContentType) {
-    try {
-      const imageType =
-        signatureContentType === "image/png"
-          ? "PNG"
-          : signatureContentType === "image/jpeg"
-            ? "JPEG"
-            : undefined;
-      if (imageType) {
-        ensureSpace(70);
-        pdf.addImage(signatureDataUrl, imageType, margin, y, 160, 48);
-        y += 60;
-      }
-    } catch {
-      addLine("Signature image was stored separately and verified by hash.");
-    }
-  }
-
-  return Buffer.from(pdf.output("arraybuffer"));
-};
 
 const stableUuid = (seed: string) => {
   const chars = sha256Hex(seed).slice(0, 32).split("");
@@ -6621,92 +6868,8 @@ const legacyContractStatusLabels: Record<Contract["status"], string> = {
   CLOSED: "계약 마감",
 };
 
-const buildContractReviewPdf = async (contract: Contract) => {
-  const { jsPDF } = await import("jspdf");
-  const pdf = new jsPDF({ unit: "pt", format: "a4" });
-  const signedPdfFont = await loadSignedPdfFont();
-  const fontFamily = signedPdfFont?.familyName ?? "helvetica";
-  if (signedPdfFont) {
-    pdf.addFileToVFS(signedPdfFont.fileName, signedPdfFont.base64);
-    pdf.addFont(signedPdfFont.fileName, signedPdfFont.familyName, "normal");
-  }
-
-  const margin = 40;
-  const pageWidth = pdf.internal.pageSize.getWidth();
-  const pageHeight = pdf.internal.pageSize.getHeight();
-  let y = 48;
-
-  const ensureSpace = (height: number) => {
-    if (y + height <= pageHeight - margin) return;
-    pdf.addPage();
-    y = margin;
-  };
-  const addHeading = (text: string) => {
-    ensureSpace(28);
-    pdf.setFont(fontFamily, signedPdfFont ? "normal" : "bold");
-    pdf.setFontSize(13);
-    pdf.text(text, margin, y);
-    y += 22;
-  };
-  const addLine = (text: string, indent = 0) => {
-    const chunks = pdf.splitTextToSize(
-      text,
-      pageWidth - margin * 2 - indent,
-    ) as string[];
-    chunks.forEach((chunk) => {
-      ensureSpace(17);
-      pdf.setFont(fontFamily, "normal");
-      pdf.setFontSize(10);
-      pdf.text(chunk, margin + indent, y);
-      y += 15;
-    });
-  };
-
-  const campaign = contract.campaign ?? {};
-  pdf.setFont(fontFamily, signedPdfFont ? "normal" : "bold");
-  pdf.setFontSize(17);
-  pdf.text("계약서 전체보기", margin, y);
-  y += 26;
-  pdf.setFont(fontFamily, "normal");
-  pdf.setFontSize(11);
-  pdf.text(contract.title, margin, y);
-  y += 26;
-
-  addHeading("계약 기본 정보");
-  [
-    `계약 상태: ${legacyContractStatusLabels[contract.status] ?? contract.status}`,
-    `광고주: ${contract.advertiser_info?.name ?? contract.advertiser_id}`,
-    `담당자: ${contract.advertiser_info?.manager ?? "-"}`,
-    `인플루언서: ${contract.influencer_info.name}`,
-    `연락처: ${contract.influencer_info.contact}`,
-    `채널: ${contract.influencer_info.channel_url}`,
-  ].forEach((line) => addLine(line));
-
-  addHeading("캠페인 세부내용");
-  [
-    `보상: ${campaign.budget ?? "-"}`,
-    `기간: ${campaign.period ?? ([campaign.start_date, campaign.end_date].filter(Boolean).join(" - ") || "-")}`,
-    `업로드 마감: ${campaign.upload_due_at ?? campaign.deadline ?? "-"}`,
-    `검수 마감: ${campaign.review_due_at ?? "-"}`,
-    `수정 가능 횟수: ${campaign.revision_limit ?? "-"}`,
-    `표기 문구: ${campaign.disclosure_text ?? "-"}`,
-    `플랫폼: ${(campaign.platforms ?? []).join(", ") || "-"}`,
-    `산출물: ${(campaign.deliverables ?? []).join(", ") || "-"}`,
-  ].forEach((line) => addLine(line));
-
-  addHeading("계약 조항");
-  contract.clauses.forEach((clause, index) => {
-    addLine(`${index + 1}. ${clause.category}`, 0);
-    addLine(clause.content, 12);
-  });
-
-  addHeading("확인 안내");
-  addLine(
-    "이 문서는 서명 전 계약 검토를 위한 전체보기 PDF입니다. 전자서명 완료 후에는 별도의 서명본 PDF가 생성되어 증빙으로 저장됩니다.",
-  );
-
-  return Buffer.from(pdf.output("arraybuffer"));
-};
+const buildContractReviewPdf = async (contract: Contract) =>
+  buildContractDocumentPdf({ contract });
 
 const formatWonCompact = (amount: number) => {
   if (!amount || amount <= 0) return "-";

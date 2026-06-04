@@ -654,6 +654,18 @@ describe("yeollock.me security regressions", () => {
       finalPdfHrefStart,
     );
     const finalPdfHrefBuilder = viewer.slice(finalPdfHrefStart, finalPdfHrefEnd);
+    const contractDocumentPdfStart = server.indexOf("const buildContractDocumentPdf");
+    const contractDocumentPdfEnd = server.indexOf(
+      "const buildSignedContractPdf",
+      contractDocumentPdfStart,
+    );
+    const contractDocumentPdfBuilder = server.slice(
+      contractDocumentPdfStart,
+      contractDocumentPdfEnd,
+    );
+    const signedPdfBuilderStart = server.indexOf("const buildSignedContractPdf");
+    const signedPdfBuilderEnd = server.indexOf("const stableUuid", signedPdfBuilderStart);
+    const signedPdfBuilder = server.slice(signedPdfBuilderStart, signedPdfBuilderEnd);
     const pdfDownloadStart = viewer.indexOf("const pdfResponse = await fetch(");
     const pdfDownloadEnd = viewer.indexOf("if (!pdfResponse.ok)", pdfDownloadStart);
     const pdfDownloadBlock = viewer.slice(pdfDownloadStart, pdfDownloadEnd);
@@ -664,8 +676,19 @@ describe("yeollock.me security regressions", () => {
     assert.notEqual(finalPdfRouteEnd, -1);
     assert.notEqual(contractGetRouteStart, -1);
     assert.notEqual(contractGetRouteEnd, -1);
+    assert.notEqual(contractDocumentPdfStart, -1);
+    assert.notEqual(contractDocumentPdfEnd, -1);
+    assert.notEqual(signedPdfBuilderStart, -1);
+    assert.notEqual(signedPdfBuilderEnd, -1);
     assert.match(reviewPdfRoute, /buildContractReviewPdf/);
     assert.match(reviewPdfRoute, /Content-Type", "application\/pdf"/);
+    assert.match(contractDocumentPdfBuilder, /계약 개요/);
+    assert.match(contractDocumentPdfBuilder, /특약 및 자동 생성 조항/);
+    assert.match(reviewPdfRoute, /buildContractReviewPdf/);
+    assert.match(server, /const buildContractReviewPdf = async \(contract: Contract\) =>\s*buildContractDocumentPdf\(\{ contract \}\);/);
+    assert.match(signedPdfBuilder, /buildContractDocumentPdf\(\{/);
+    assert.doesNotMatch(contractDocumentPdfBuilder, /확인 안내/);
+    assert.doesNotMatch(contractDocumentPdfBuilder, /Signed Contract/);
     assert.doesNotMatch(reviewPdfRoute, /allowShareToken:\s*false/);
     assert.match(finalPdfRoute, /allowShareToken:\s*false/);
     assert.match(finalPdfRoute, /hasSignedPdfCookieAccess/);
