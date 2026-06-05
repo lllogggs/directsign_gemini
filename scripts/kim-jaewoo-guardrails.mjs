@@ -483,7 +483,9 @@ check(
   "influencer account strip shows verified accounts directly",
   influencerDashboard.includes("border-blue-200 bg-blue-50") &&
     influencerDashboard.includes("dashboard.verification.approved_platforms.filter") &&
-    influencerDashboard.includes("formatInfluencerPlatformShortLabel(platform.platform)") &&
+    influencerDashboard.includes("PLATFORM_META[platform.platform].icon") &&
+    influencerDashboard.includes("formatInfluencerVerifiedHandle(platform)") &&
+    !influencerDashboard.includes("formatInfluencerPlatformShortLabel(platform.platform)\n                </span>") &&
     !influencerDashboard.includes("dedupeApprovedPlatforms") &&
     !influencerDashboard.includes("개 플랫폼") &&
     !influencerDashboard.includes("서명 인증 관리"),
@@ -1045,20 +1047,30 @@ check(
 check(
   "marketplace discovery separates platform and category filters",
     agents.includes("Platform and category are separate discovery axes") &&
-      marketplacePages.includes("const [categoryFilter, setCategoryFilter]") &&
-      marketplacePages.includes("hasCategory(profile.categories, categoryFilter)") &&
+      agents.includes("Category filters that have many options should not be an always-visible chip strip on mobile") &&
+      agents.includes("allow multiple category selections") &&
+      marketplacePages.includes("const [categoryFilters, setCategoryFilters] = useState<string[]>([])") &&
+      marketplacePages.includes("hasAnyCategory(profile.categories, categoryFilters)") &&
       marketplacePages.includes("function getCategoryFilterKey") &&
       marketplacePages.includes("const categoryKeyAliases") &&
       marketplacePages.includes("const categoryDisplayLabels") &&
       agents.includes("Category chips and filters must use customer-facing Korean labels") &&
-      marketplacePages.includes("function CategoryFilterBar") &&
+      marketplacePages.includes("function CategoryChecklist") &&
+      marketplacePages.includes("type=\"checkbox\"") &&
+      marketplacePages.includes("values={categoryFilters}") &&
+      marketplacePages.includes('getCategoryLabels(profile.categories, 3).join(" · ")') &&
       marketplacePages.includes("FilterChipGroup label=\"플랫폼\"") &&
-      marketplacePages.includes("FilterChipGroup label=\"카테고리\"") &&
-    campaignPages.includes("function CampaignCategoryStrip") &&
-    campaignPages.includes("<CampaignCategoryStrip") &&
-    campaignPages.includes("categoryFilter !== \"all\" && campaign.brandCategory !== categoryFilter") &&
+      !marketplacePages.includes("function CategoryFilterBar") &&
+      !marketplacePages.includes("FilterChipGroup label=\"카테고리\"") &&
+    campaignPages.includes("const [categoryFilters, setCategoryFilters] = useState<string[]>([])") &&
+    campaignPages.includes("function CategoryCheckboxList") &&
+    campaignPages.includes("formatCampaignCategoryFilterSummary(categoryFilters)") &&
+    campaignPages.includes("!categoryFilters.includes(campaign.brandCategory)") &&
+    campaignPages.includes("values={categoryFilters}") &&
+    !campaignPages.includes("function CampaignCategoryStrip") &&
+    !campaignPages.includes("<CampaignCategoryStrip") &&
     !campaignPages.includes('<FilterGroup label="카테고리">'),
-  "Advertiser discovery must filter creators by platform and category separately, while influencer campaign discovery must expose campaign categories as a visible strip without duplicating the same filter inside the hidden filter panel",
+  "Advertiser discovery and influencer campaign discovery must keep platform and category separate, with category handled as compact multi-select checkboxes instead of mobile-eating chip strips",
 );
 
 check(
@@ -1142,8 +1154,10 @@ check(
 
 check(
   "mobile influencer campaign lists are scrollable",
-  campaignPages.includes('data-campaign-scroll-region="open"') &&
+    campaignPages.includes('data-campaign-scroll-region="open"') &&
     campaignPages.includes("sm:flex-row sm:items-center sm:justify-between") &&
+    campaignPages.includes('mobileLabel: "모집"') &&
+    campaignPages.includes('mobileLabel: "신청"') &&
     campaignPages.includes("grid min-w-0 flex-1 grid-cols-2") &&
     campaignPages.includes('grid min-h-0 flex-1 auto-rows-max') &&
     campaignPages.includes("overflow-y-auto overscroll-contain") &&
@@ -1383,7 +1397,7 @@ check(
     campaignPages.includes('from "../../domain/platformDisplay"') &&
     campaignPages.includes('<PlatformBrandMark platform={item.platform} size="sm" />') &&
     campaignPages.includes("getPlatformDisplayName(item.platform)") &&
-    campaignPages.includes("const text = item.followersLabel ?? label") &&
+    campaignPages.includes("const text = item.followersLabel") &&
     campaignPages.includes(
       "inline-flex min-w-0 shrink items-center gap-1.5 text-[11px] font-extrabold text-neutral-800",
     ) &&
@@ -1391,6 +1405,42 @@ check(
     marketplacePages.includes('const hasMetric = Boolean(value)') &&
     marketplacePages.includes('PlatformBrandMark platform={platform} size={hasMetric ? "xs" : "sm"}'),
   "Dashboard platform columns should avoid repeating visible platform text inside dense rows",
+);
+
+check(
+  "mobile intro screenshots use contained image areas",
+  agents.includes("Intro carousel mobile image areas must not crop product screenshots") &&
+    agents.includes("Influencer mobile intro pages must stay product-screen and dashboard centered") &&
+    landing.includes("object-contain object-center sm:object-cover sm:object-top") &&
+    landing.includes("object-contain object-top sm:object-cover") &&
+    landing.includes('productPreview: "influencerPdf"') &&
+    landing.includes('productPreview: "influencerRevision"') &&
+    landing.includes('productPreview: "influencerDashboard"') &&
+    landing.includes("function InfluencerProposalProductPreview") &&
+    landing.includes("function InfluencerContractPdfPreview") &&
+    landing.includes("function InfluencerRevisionRequestPreview") &&
+    landing.includes("<InfluencerIntroDashboardPreview") &&
+    landing.includes('slide.stage === "final"') &&
+    landing.includes('"h-[clamp(220px,34svh,278px)] rounded-[16px]"') &&
+    landing.includes('slide.stage === "final" ? "object-cover object-center" : "object-contain object-center"'),
+  "Intro mobile slides should avoid severe product screenshot cropping and influencer middle slides must use real product/dashboard previews rather than sparse fact rows",
+);
+
+check(
+  "dashboard and campaign platform marks stay logo-only",
+  agents.includes("Dashboard and campaign card platform indicators should use official platform logo marks") &&
+    platformBrandMark.includes('xs: "h-4 w-4"') &&
+    platformBrandMark.includes("rounded-[4px]") &&
+    platformBrandMark.includes("rounded-[3px]") &&
+    influencerDashboard.includes('import { PlatformBrandMark } from "../../components/PlatformBrandMark"') &&
+    influencerDashboard.includes('icon: <PlatformBrandMark platform="instagram" size="xs" />') &&
+    influencerDashboard.includes('className="inline-flex h-6 w-6 shrink-0 items-center justify-center"') &&
+    influencerDashboard.includes("<PlatformBrandMark platform={primaryPlatform.platform} size=\"sm\" />") &&
+    !influencerDashboard.includes('<span className="min-w-0 truncate whitespace-nowrap">{primaryPlatform.label}</span>') &&
+    campaignPages.includes("function CampaignPlatformLogoMarks") &&
+    campaignPages.includes('<PlatformBrandMark platform={platform} size="sm" />') &&
+    !campaignPages.includes("{platformLabels[platform]}\n          </span>\n        ))}"),
+  "Dashboard and campaign card platform indicators should show rounded official logos, not mixed Korean platform-name chips",
 );
 
 const shippedInfluencerAvatarFiles = [

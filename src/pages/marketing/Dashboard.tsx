@@ -2946,7 +2946,7 @@ function ApplicantPlatformLinks({
     <div className="flex min-w-0 shrink items-center gap-1 overflow-hidden">
       {visiblePlatforms.slice(0, 1).map((item, index) => {
         const label = platformLabels[item.platform] ?? item.label;
-        const text = item.followersLabel ?? label;
+        const text = item.followersLabel;
         const title = item.followersLabel ? `${label} ${item.followersLabel}` : label;
         const key = `${item.platform}-${item.handle ?? item.url ?? index}`;
         const platformMeta =
@@ -2954,7 +2954,7 @@ function ApplicantPlatformLinks({
         const content = (
           <>
             <span className="shrink-0">{platformMeta.mark}</span>
-            <span className="truncate">{text}</span>
+            {text ? <span className="truncate">{text}</span> : null}
           </>
         );
 
@@ -2993,7 +2993,7 @@ function ApplicantCategoryPill({ category }: { category?: string }) {
 
   return (
     <span
-      className="inline-flex h-7 shrink-0 items-center rounded-md border border-[#d9e0d9] bg-[#fbfaf7] px-2 text-[11px] font-extrabold text-[#303630]"
+      className="inline-flex shrink-0 items-center text-[11px] font-extrabold text-[#606861]"
       title={`메인 카테고리 ${category}`}
     >
       {category}

@@ -78,7 +78,6 @@ type AdvertiserCampaignState =
 
 type PlatformFilter = "all" | InfluencerPlatform;
 type ProposalTypeFilter = "all" | CampaignProposalType;
-type CategoryFilter = "all" | string;
 type InfluencerCampaignView = "open" | "applied";
 type AdvertiserCampaignView = "applicants" | "campaigns";
 type CampaignSortDirection = "asc" | "desc";
@@ -1007,7 +1006,7 @@ export function InfluencerCampaignDiscoveryPage() {
   const [activeView, setActiveView] = useState<InfluencerCampaignView>("open");
   const [query, setQuery] = useState("");
   const [platformFilter, setPlatformFilter] = useState<PlatformFilter>("all");
-  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
+  const [categoryFilters, setCategoryFilters] = useState<string[]>([]);
   const [proposalTypeFilter, setProposalTypeFilter] =
     useState<ProposalTypeFilter>("all");
   const [openCampaignSort, setOpenCampaignSort] = useState<CampaignSort>({
@@ -1131,7 +1130,10 @@ export function InfluencerCampaignDiscoveryPage() {
         if (proposalTypeFilter !== "all" && campaign.type !== proposalTypeFilter) {
           return false;
         }
-        if (categoryFilter !== "all" && campaign.brandCategory !== categoryFilter) {
+        if (
+          categoryFilters.length > 0 &&
+          !categoryFilters.includes(campaign.brandCategory)
+        ) {
           return false;
         }
         if (!normalizedQuery) return true;
@@ -1155,7 +1157,7 @@ export function InfluencerCampaignDiscoveryPage() {
     return distributeCampaignsByBrand(sortedCampaigns);
   }, [
     campaigns,
-    categoryFilter,
+    categoryFilters,
     openCampaignSort,
     platformFilter,
     proposalTypeFilter,
@@ -1198,19 +1200,19 @@ export function InfluencerCampaignDiscoveryPage() {
   }, [applications, appliedCampaignSort, appliedQuery, appliedStatusFilter]);
 
   const categoryOptions = useMemo(
-    () => ["all", ...Array.from(new Set(campaigns.map((campaign) => campaign.brandCategory))).sort()],
+    () => Array.from(new Set(campaigns.map((campaign) => campaign.brandCategory))).sort(),
     [campaigns],
   );
   const activeFilterCount = [
     query.trim().length > 0,
     platformFilter !== "all",
-    categoryFilter !== "all",
+    categoryFilters.length > 0,
     proposalTypeFilter !== "all",
   ].filter(Boolean).length;
   const activeFilterLabels = [
     query.trim() ? `검색 ${query.trim()}` : null,
     platformFilter !== "all" ? platformLabels[platformFilter] : null,
-    categoryFilter !== "all" ? categoryFilter : null,
+    categoryFilters.length > 0 ? formatCampaignCategoryFilterSummary(categoryFilters) : null,
     proposalTypeFilter !== "all" ? proposalTypeLabels[proposalTypeFilter] : null,
   ].filter((label): label is string => Boolean(label));
   const appliedActiveFilterLabels = [
@@ -1300,7 +1302,7 @@ export function InfluencerCampaignDiscoveryPage() {
     <CampaignShell
       eyebrow="인플루언서 캠페인"
       title="캠페인 탐색"
-      description="모집 조건을 빠르게 비교하고, 관심 있는 캠페인은 신청 후 광고주 수락을 기다립니다."
+      description="모집 조건을 비교하고 바로 신청합니다."
       backHref="/influencer/dashboard"
       metrics={[
         { label: "모집", value: `${visibleCampaigns.length}건` },
@@ -1369,18 +1371,11 @@ export function InfluencerCampaignDiscoveryPage() {
               />
             </div>
           </div>
-          {activeView === "open" ? (
-            <CampaignCategoryStrip
-              value={categoryFilter}
-              categories={categoryOptions}
-              onChange={setCategoryFilter}
-            />
-          ) : null}
           {filtersOpen ? (
             activeView === "open" ? (
               <div
                 id="influencer-campaign-filters"
-                className="grid gap-2 border-t border-neutral-200 bg-[#fbfaf7] p-3 lg:grid-cols-[280px_minmax(0,1fr)] lg:items-start"
+                className="grid gap-3 border-t border-neutral-200 bg-[#fbfaf7] p-3 lg:grid-cols-[280px_minmax(0,1fr)] lg:items-start"
               >
                 <div className="relative min-w-0">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
@@ -1392,7 +1387,7 @@ export function InfluencerCampaignDiscoveryPage() {
                     className="h-9 w-full rounded-[8px] border border-neutral-200 bg-white pl-10 pr-3 text-[12px] font-bold text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950"
                   />
                 </div>
-                <div className="grid min-w-0 gap-2 lg:grid-cols-2">
+                <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(160px,0.7fr)_minmax(160px,0.7fr)_minmax(220px,1fr)]">
                   <FilterGroup label="플랫폼">
                     {platformOptions.map((platform) => (
                       <FilterButton
@@ -1414,6 +1409,11 @@ export function InfluencerCampaignDiscoveryPage() {
                       />
                     ))}
                   </FilterGroup>
+                  <CategoryCheckboxList
+                    values={categoryFilters}
+                    categories={categoryOptions}
+                    onChange={setCategoryFilters}
+                  />
                 </div>
               </div>
             ) : (
@@ -1684,16 +1684,7 @@ function AdvertiserCampaignCard({
           value={getCampaignDeadlineLabel(campaign.deadline)}
         />
       </div>
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        {(campaign.platforms ?? []).map((platform) => (
-          <span
-            key={platform}
-            className={`inline-flex h-7 items-center rounded-full border px-2.5 text-[11px] font-extrabold ${getPlatformTone(platform)}`}
-          >
-            {platformLabels[platform]}
-          </span>
-        ))}
-      </div>
+      <CampaignPlatformLogoMarks platforms={campaign.platforms ?? []} />
     </article>
   );
 }
@@ -2169,7 +2160,7 @@ function CampaignApplicantPlatformPills({
     <div className="flex min-w-0 flex-nowrap items-center gap-1 overflow-hidden">
       {visiblePlatforms.slice(0, 1).map((item, index) => {
         const label = getPlatformDisplayName(item.platform);
-        const text = item.followersLabel ?? label;
+        const text = item.followersLabel;
         const title = item.followersLabel ? `${label} ${item.followersLabel}` : label;
 
         return (
@@ -2179,13 +2170,13 @@ function CampaignApplicantPlatformPills({
             title={title}
           >
             <PlatformBrandMark platform={item.platform} size="sm" />
-            <span className="truncate">{text}</span>
+            {text ? <span className="truncate">{text}</span> : null}
           </span>
         );
       })}
       {category ? (
         <span
-          className="inline-flex h-7 shrink-0 items-center rounded-md border border-neutral-200 bg-[#fbfaf7] px-2 text-[11px] font-extrabold text-neutral-700"
+          className="inline-flex shrink-0 items-center text-[11px] font-extrabold text-neutral-600"
           title={category}
         >
           {category}
@@ -2320,18 +2311,46 @@ function CampaignPostCard({
         <MiniInfo label="모집마감" value={campaign.deadlineLabel} />
       </div>
 
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        {(campaign.platforms ?? []).slice(0, 4).map((platform) => (
-          <span
-            key={platform}
-          className={`inline-flex h-6 items-center rounded-full border px-2 text-[10px] font-extrabold sm:h-7 sm:px-2.5 sm:text-[11px] ${getPlatformTone(platform)}`}
-          >
-            {platformLabels[platform]}
-          </span>
-        ))}
-      </div>
+      <CampaignPlatformLogoMarks platforms={campaign.platforms ?? []} compact />
 
     </article>
+  );
+}
+
+function CampaignPlatformLogoMarks({
+  platforms,
+  compact = false,
+}: {
+  platforms: InfluencerPlatform[];
+  compact?: boolean;
+}) {
+  if (platforms.length === 0) return null;
+
+  const visiblePlatforms = platforms.slice(0, 4);
+  const label = visiblePlatforms
+    .map((platform) => getPlatformDisplayName(platform))
+    .join(", ");
+
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5" aria-label={`플랫폼 ${label}`}>
+      {visiblePlatforms.map((platform) => (
+        <span
+          key={platform}
+          className={`inline-flex shrink-0 items-center justify-center ${
+            compact ? "h-6 w-7" : "h-7 w-8"
+          }`}
+          title={getPlatformDisplayName(platform)}
+          aria-label={getPlatformDisplayName(platform)}
+        >
+          <PlatformBrandMark platform={platform} size="sm" />
+        </span>
+      ))}
+      {platforms.length > visiblePlatforms.length ? (
+        <span className="inline-flex h-6 shrink-0 items-center text-[10px] font-extrabold text-neutral-500">
+          +{platforms.length - visiblePlatforms.length}
+        </span>
+      ) : null}
+    </div>
   );
 }
 
@@ -2346,9 +2365,14 @@ function CampaignViewTabs({
   appliedCount: number;
   onChange: (value: InfluencerCampaignView) => void;
 }) {
-  const tabs: Array<{ id: InfluencerCampaignView; label: string; count: number }> = [
-    { id: "open", label: "모집 캠페인", count: openCount },
-    { id: "applied", label: "신청한 캠페인", count: appliedCount },
+  const tabs: Array<{
+    id: InfluencerCampaignView;
+    label: string;
+    mobileLabel: string;
+    count: number;
+  }> = [
+    { id: "open", label: "모집 캠페인", mobileLabel: "모집", count: openCount },
+    { id: "applied", label: "신청한 캠페인", mobileLabel: "신청", count: appliedCount },
   ];
 
   return (
@@ -2373,7 +2397,8 @@ function CampaignViewTabs({
             }`}
           >
             <span className="inline-flex max-w-full items-center justify-center gap-1 overflow-hidden whitespace-nowrap">
-              {tab.label}
+              <span className="sm:hidden">{tab.mobileLabel}</span>
+              <span className="hidden sm:inline">{tab.label}</span>
               <span className={active ? "text-neutral-500" : "text-neutral-400"}>
                 {tab.count}
               </span>
@@ -2994,42 +3019,52 @@ function CampaignFilterToggleButton({
   );
 }
 
-function CampaignCategoryStrip({
-  value,
+function formatCampaignCategoryFilterSummary(categories: string[]) {
+  return categories.length <= 2 ? categories.join(", ") : `카테고리 ${categories.length}개`;
+}
+
+function CategoryCheckboxList({
+  values,
   categories,
   onChange,
 }: {
-  value: CategoryFilter;
-  categories: CategoryFilter[];
-  onChange: (value: CategoryFilter) => void;
+  values: string[];
+  categories: string[];
+  onChange: (value: string[]) => void;
 }) {
+  const selected = new Set(values);
+
   return (
-    <div className="overflow-hidden border-t border-neutral-100 bg-white px-3 py-2">
-      <div className="grid min-w-0 gap-2 sm:flex sm:items-center">
-        <span className="shrink-0 text-[12px] font-extrabold text-neutral-500">
-          카테고리
-        </span>
-        <div className="flex min-w-0 flex-wrap gap-1.5 overflow-hidden sm:no-scrollbar sm:flex-1 sm:flex-nowrap sm:overflow-x-auto">
-          {categories.map((category) => {
-            const active = value === category;
-            return (
-              <button
-                key={category}
-                type="button"
-                onClick={() => onChange(category)}
-                className={`inline-flex h-8 max-w-full shrink-0 items-center rounded-md border px-2.5 text-[12px] font-extrabold transition ${
-                  active
-                    ? "border-neutral-950 bg-neutral-950 text-white"
-                    : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300 hover:text-neutral-950"
-                }`}
-              >
-                <span className="truncate">{category === "all" ? "전체" : category}</span>
-              </button>
-            );
-          })}
-        </div>
+    <fieldset className="min-w-0">
+      <legend className="text-[12px] font-extrabold text-neutral-500">
+        카테고리
+      </legend>
+      <div className="mt-1.5 grid max-h-28 min-w-0 grid-cols-2 gap-x-3 gap-y-1.5 overflow-y-auto pr-1 sm:grid-cols-3 lg:max-h-24">
+        {categories.map((category) => {
+          const checked = selected.has(category);
+          return (
+            <label
+              key={category}
+              className="flex min-w-0 items-center gap-2 text-[12px] font-bold text-neutral-700"
+            >
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={() =>
+                  onChange(
+                    checked
+                      ? values.filter((value) => value !== category)
+                      : [...values, category],
+                  )
+                }
+                className="h-4 w-4 shrink-0 accent-neutral-950"
+              />
+              <span className="truncate">{category}</span>
+            </label>
+          );
+        })}
       </div>
-    </div>
+    </fieldset>
   );
 }
 
@@ -3041,8 +3076,8 @@ function FilterGroup({
   children: ReactNode;
 }) {
   return (
-    <div className="flex min-w-0 items-center gap-2 rounded-[8px] border border-neutral-200 bg-[#fbfaf7] px-2.5 py-1.5">
-      <span className="shrink-0 text-[12px] font-extrabold text-neutral-500">
+    <div className="grid min-w-0 gap-1.5">
+      <span className="text-[12px] font-extrabold text-neutral-500">
         {label}
       </span>
       <div className="flex min-w-0 flex-wrap gap-1.5">{children}</div>

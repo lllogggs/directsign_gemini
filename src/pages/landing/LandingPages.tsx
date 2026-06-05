@@ -24,7 +24,9 @@ import {
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { BrandLogo, LogoMark } from "../../components/BrandLogo";
+import { PlatformBrandMark } from "../../components/PlatformBrandMark";
 import { PRODUCT_NAME } from "../../domain/brand";
+import type { InfluencerPlatform } from "../../domain/verification";
 
 type IntroRole = "advertiser" | "influencer";
 
@@ -324,6 +326,7 @@ type IntroProposalSlide = {
   imageFit?: "cover" | "contain";
   riskItems?: IntroProposalRiskItem[];
   visualFacts?: IntroProposalFact[];
+  productPreview?: "influencerPdf" | "influencerRevision" | "influencerDashboard";
 };
 
 const preloadedIntroImageSources = new Set<string>();
@@ -639,11 +642,7 @@ const influencerProposalSlides: IntroProposalSlide[] = [
         <strong>광고주가 작성한 계약서 원문</strong>을 확인합니다
       </>
     ),
-    visualFacts: [
-      { label: "계약서", value: "원문 확인", tone: "blue" },
-      { label: "조건", value: "광고주 입력값 그대로", tone: "neutral" },
-      { label: "서명", value: "확인 후 진행", tone: "blue" },
-    ],
+    productPreview: "influencerPdf",
   },
   {
     label: "요청",
@@ -667,11 +666,7 @@ const influencerProposalSlides: IntroProposalSlide[] = [
         애매한 조건은 <strong>수정 요청</strong>으로 남깁니다
       </>
     ),
-    visualFacts: [
-      { label: "활용 기간", value: "12개월에서 3개월 요청", tone: "blue" },
-      { label: "검수 기준", value: "수정 가능 범위 확인", tone: "neutral" },
-      { label: "답변 상태", value: "광고주 확인 중", tone: "blue" },
-    ],
+    productPreview: "influencerRevision",
   },
   {
     label: "보관",
@@ -695,12 +690,7 @@ const influencerProposalSlides: IntroProposalSlide[] = [
         다음 할 일을 바로 확인합니다
       </>
     ),
-    visualFacts: [
-      { label: "지원중", value: "2건", tone: "neutral" },
-      { label: "진행중", value: "3건", tone: "blue" },
-      { label: "완료", value: "1건", tone: "blue" },
-      { label: "미선정", value: "1건", tone: "neutral" },
-    ],
+    productPreview: "influencerDashboard",
   },
   {
     label: "시작",
@@ -1881,11 +1871,11 @@ function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
   if (slide.stage === "link") {
     return (
       <div className="relative h-full min-h-0 overflow-visible sm:h-auto sm:min-h-0 lg:h-full">
-        <div className="absolute left-[2%] top-[3%] z-[1] h-[72%] w-[70%] overflow-hidden rounded-[14px] border border-[rgba(17,20,18,0.08)] bg-white shadow-[0_18px_44px_rgba(15,23,42,0.12)] sm:left-[7%] sm:top-[14%] sm:h-[70%] sm:w-[68%]">
+        <div className="absolute left-[2%] top-[19%] z-[1] h-[52%] w-[64%] overflow-hidden rounded-[14px] border border-[rgba(17,20,18,0.08)] bg-white shadow-[0_18px_44px_rgba(15,23,42,0.12)] sm:left-[7%] sm:top-[14%] sm:h-[70%] sm:w-[68%]">
           <img
             src={advertiserProposalAssetUrls.contractAdmin}
             alt="광고주 계약 링크 복사 화면"
-            className="h-full w-full object-cover object-top"
+            className="h-full w-full object-contain object-center sm:object-cover sm:object-top"
             loading="eager"
           />
         </div>
@@ -1893,11 +1883,11 @@ function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
           aria-hidden="true"
           className="absolute left-[60%] top-[56%] z-[2] h-px w-[16%] rounded-full bg-gradient-to-r from-blue-600/15 to-blue-600/85 shadow-[0_12px_26px_rgba(37,99,235,0.24)] before:absolute before:left-1/2 before:top-1/2 before:h-9 before:w-9 before:-translate-x-1/2 before:-translate-y-1/2 before:rounded-full before:border before:border-blue-600/25 before:bg-white/90 before:shadow-[0_14px_30px_rgba(15,23,42,0.12),inset_0_0_0_5px_rgba(37,99,235,0.07)] after:absolute after:right-0 after:top-1/2 after:h-3.5 after:w-3.5 after:-translate-y-1/2 after:rotate-45 after:rounded-[1px] after:border-r-[3px] after:border-t-[3px] after:border-blue-600"
         />
-        <div className="absolute right-[1%] top-[1%] z-[3] h-[84%] w-[30%] overflow-hidden rounded-[18px] border-[4px] border-[#121512] bg-white shadow-[0_22px_54px_rgba(15,23,42,0.22)] sm:right-[4%] sm:top-[8%] sm:w-[28%] sm:rounded-[22px] sm:border-[5px] sm:shadow-[0_28px_68px_rgba(15,23,42,0.24)]">
+        <div className="absolute right-[1%] top-[8%] z-[3] h-[74%] w-[34%] overflow-hidden rounded-[18px] border-[4px] border-[#121512] bg-white shadow-[0_22px_54px_rgba(15,23,42,0.22)] sm:right-[4%] sm:top-[8%] sm:h-[84%] sm:w-[28%] sm:rounded-[22px] sm:border-[5px] sm:shadow-[0_28px_68px_rgba(15,23,42,0.24)]">
           <img
             src={advertiserProposalAssetUrls.influencerContract}
             alt="인플루언서 계약 확인 및 서명 화면"
-            className="h-full w-full object-cover object-top"
+            className="h-full w-full object-contain object-top sm:object-cover"
             loading="eager"
           />
         </div>
@@ -1943,6 +1933,10 @@ function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
     );
   }
 
+  if (slide.productPreview) {
+    return <InfluencerProposalProductPreview kind={slide.productPreview} />;
+  }
+
   if (slide.visualFacts) {
     return (
       <div className="grid h-full min-h-0 content-center gap-2.5 sm:h-auto sm:min-h-0 sm:gap-3 sm:p-[clamp(20px,3vw,42px)]">
@@ -1975,14 +1969,18 @@ function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
   if (slide.imageSrc) {
     return (
       <div
-        className={`h-full min-h-0 overflow-hidden rounded-[12px] sm:h-auto sm:min-h-0 ${
-          slide.stage === "final" ? "rounded-[16px]" : ""
+        className={`min-h-0 self-center overflow-hidden rounded-[12px] bg-transparent sm:h-auto sm:min-h-0 ${
+          slide.stage === "final"
+            ? "h-[clamp(220px,34svh,278px)] rounded-[16px]"
+            : "h-full"
         }`}
       >
         <img
           src={slide.imageSrc}
           alt={slide.imageAlt ?? ""}
-          className={`h-full w-full object-cover object-top ${
+          className={`h-full w-full ${
+            slide.stage === "final" ? "object-cover object-center" : "object-contain object-center"
+          } ${
             slide.imageFit === "cover" ? "sm:object-cover" : "sm:object-contain"
           } ${slide.stage === "final" ? "aspect-[16/10]" : ""}`}
           loading="eager"
@@ -1994,6 +1992,269 @@ function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
   return (
     <div className="h-full min-h-0 sm:h-auto sm:min-h-0" />
   );
+}
+
+function InfluencerProposalProductPreview({
+  kind,
+}: {
+  kind: NonNullable<IntroProposalSlide["productPreview"]>;
+}) {
+  if (kind === "influencerDashboard") {
+    return (
+      <div className="h-full min-h-0 overflow-hidden rounded-[16px]">
+        <InfluencerCompactDashboardProductPreview />
+      </div>
+    );
+  }
+
+  return (
+    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[16px] border border-neutral-200 bg-[#f4f5f2] shadow-[0_18px_48px_rgba(23,26,23,0.08)]">
+      <IntroAppHeader role="influencer" />
+      <div className="min-h-0 flex-1 p-2">
+        <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[10px] border border-[#d9e0d9] bg-white">
+          {kind === "influencerPdf" ? (
+            <InfluencerContractPdfPreview />
+          ) : (
+            <InfluencerRevisionRequestPreview />
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function InfluencerContractPdfPreview() {
+  return (
+    <>
+      <div className="border-b border-neutral-200 bg-white px-3 py-2">
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="truncate text-[12px] font-extrabold text-neutral-500">
+              브레드룸
+            </p>
+            <h3 className="truncate text-[15px] font-black text-neutral-950">
+              공동구매 파일럿 계약서
+            </h3>
+          </div>
+          <span className="inline-flex h-8 shrink-0 items-center rounded-[8px] bg-blue-600 px-3 text-[11px] font-extrabold text-white">
+            PDF 원문
+          </span>
+        </div>
+      </div>
+      <div className="grid min-h-0 flex-1 grid-cols-[minmax(104px,0.42fr)_minmax(0,0.58fr)] gap-2 bg-[#fbfcfa] p-2">
+        <div className="flex min-h-0 flex-col gap-2">
+          {[
+            ["브랜드", "브레드룸"],
+            ["플랫폼", "인스타 · 블로그"],
+            ["지급", "판매 수수료 18%"],
+            ["마감", "2026.05.28"],
+          ].map(([label, value]) => (
+            <div
+              key={label}
+              className="rounded-[9px] border border-neutral-200 bg-white px-2.5 py-2"
+            >
+              <p className="text-[10px] font-extrabold text-neutral-500">{label}</p>
+              <p className="mt-1 truncate text-[11px] font-black text-neutral-950">
+                {value}
+              </p>
+            </div>
+          ))}
+        </div>
+        <div className="min-h-0 overflow-hidden rounded-[10px] border border-neutral-200 bg-white p-2 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
+          <div className="mx-auto h-full max-w-[190px] rounded-[4px] border border-neutral-200 bg-white px-3 py-3">
+            <p className="text-center text-[12px] font-black text-neutral-950">
+              광고 계약서
+            </p>
+            <div className="mt-3 grid gap-1.5">
+              {[
+                "제1조 계약 목적",
+                "제2조 산출물 및 일정",
+                "제3조 지급 조건",
+                "제4조 콘텐츠 활용",
+              ].map((title, index) => (
+                <div key={title} className="rounded-[5px] bg-neutral-100 px-2 py-1.5">
+                  <p className="text-[9px] font-extrabold text-neutral-700">
+                    {title}
+                  </p>
+                  <div className="mt-1 h-1.5 rounded-full bg-neutral-200" />
+                  <div
+                    className={`mt-1 h-1.5 rounded-full bg-neutral-200 ${
+                      index % 2 === 0 ? "w-4/5" : "w-2/3"
+                    }`}
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 flex justify-between text-[9px] font-black text-neutral-500">
+              <span>광고주</span>
+              <span>인플루언서</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function InfluencerRevisionRequestPreview() {
+  return (
+    <>
+      <div className="border-b border-neutral-200 bg-white px-3 py-2">
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="truncate text-[12px] font-extrabold text-neutral-500">
+              브레드룸 공동구매
+            </p>
+            <h3 className="truncate text-[15px] font-black text-neutral-950">
+              수정 요청 작성
+            </h3>
+          </div>
+          <span className="inline-flex h-8 shrink-0 items-center rounded-[8px] border border-amber-200 bg-amber-50 px-3 text-[11px] font-extrabold text-amber-800">
+            서명 전
+          </span>
+        </div>
+      </div>
+      <div className="grid min-h-0 flex-1 gap-2 bg-[#fbfcfa] p-2">
+        <div className="grid grid-cols-2 gap-2">
+          <div className="rounded-[10px] border border-neutral-200 bg-white px-3 py-2">
+            <p className="text-[10px] font-extrabold text-neutral-500">
+              문제 조항
+            </p>
+            <p className="mt-1 truncate text-[12px] font-black text-neutral-950">
+              2차 콘텐츠 활용
+            </p>
+          </div>
+          <div className="rounded-[10px] border border-neutral-200 bg-white px-3 py-2">
+            <p className="text-[10px] font-extrabold text-neutral-500">
+              답변 상태
+            </p>
+            <p className="mt-1 truncate text-[12px] font-black text-blue-700">
+              광고주 확인 중
+            </p>
+          </div>
+        </div>
+        <div className="min-h-0 rounded-[10px] border border-neutral-200 bg-white p-3">
+          <div className="rounded-[8px] border border-amber-200 bg-amber-50 px-3 py-2">
+            <p className="text-[11px] font-black text-amber-900">
+              12개월 활용 기간
+            </p>
+            <p className="mt-1 text-[10px] font-bold leading-4 text-amber-800">
+              브랜드는 업로드 콘텐츠를 광고 소재로 12개월 동안 활용할 수 있습니다.
+            </p>
+          </div>
+          <div className="mt-2 rounded-[8px] border border-blue-200 bg-blue-50 px-3 py-2">
+            <p className="text-[10px] font-extrabold text-blue-700">
+              요청 내용
+            </p>
+            <p className="mt-1 text-[12px] font-black leading-4 text-neutral-950">
+              3개월로 줄이고 추가 활용은 별도 동의로 진행해주세요.
+            </p>
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-1.5">
+          {["조항 선택", "요청 작성", "답변 대기"].map((label, index) => (
+            <div
+              key={label}
+              className="flex h-9 items-center justify-center rounded-[8px] bg-white text-[10px] font-black text-neutral-700 ring-1 ring-neutral-200"
+            >
+              {index + 1}. {label}
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+}
+
+function InfluencerCompactDashboardProductPreview() {
+  const state = introDashboardDemoData.influencer.states[1];
+
+  return (
+    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[16px] border border-neutral-200 bg-white shadow-[0_18px_48px_rgba(23,26,23,0.08)]">
+      <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-neutral-200 px-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <LogoMark className="h-8 w-8" />
+          <div className="min-w-0">
+            <p className="truncate text-[15px] font-black text-neutral-950">
+              내 계약
+            </p>
+            <p className="truncate text-[10px] font-extrabold text-neutral-500">
+              크리에이터 소라 · 인증 완료
+            </p>
+          </div>
+        </div>
+        <span className="inline-flex h-8 shrink-0 items-center rounded-[8px] border border-neutral-200 bg-white px-2.5 text-[11px] font-extrabold text-neutral-700">
+          필터
+        </span>
+      </div>
+      <div className="border-b border-neutral-200 bg-[#ecebe5] px-2 pt-2">
+        <div className="flex min-w-0 items-end gap-1">
+          {state.tabs.map((tab) => {
+            const active = tab.label === state.activeTab;
+
+            return (
+              <div
+                key={tab.label}
+                className={`relative flex h-10 min-w-0 flex-1 items-center justify-between gap-0.5 rounded-t-[10px] border px-1 text-[10px] font-extrabold ${
+                  active
+                    ? "z-10 -mb-px border-[#d9e0d9] border-b-white bg-white text-[#171a17]"
+                    : "mb-1 border-transparent bg-[#e5e3dc] text-[#59605b]"
+                }`}
+              >
+                <span className="shrink-0 whitespace-nowrap">{tab.label}</span>
+                <span
+                  className={`inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1 text-[11px] ${
+                    active ? "bg-[#171a17] text-white" : "bg-white/80 text-[#303630]"
+                  }`}
+                >
+                  {tab.count}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col bg-[#fbfcfa]">
+        <div className="shrink-0 border-b border-neutral-200 bg-white px-3 py-2">
+          <p className="text-[13px] font-black text-neutral-950">계약 목록</p>
+          <p className="mt-0.5 text-[10px] font-extrabold text-neutral-500">
+            {state.rows.length}건 표시 · 전체 조건
+          </p>
+        </div>
+        <div className="grid min-h-0 flex-1 grid-rows-3 divide-y divide-neutral-200 overflow-hidden">
+          {state.rows.map((row) => (
+            <div key={row.title} className="grid grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-2 bg-white px-3 py-2.5">
+              <PlatformBrandMark platform={getIntroInfluencerPlatform(row.platform)} size="xs" />
+              <div className="min-w-0">
+                <p className="truncate text-[12px] font-black text-neutral-950">
+                  {row.title}
+                </p>
+                <p className="mt-0.5 truncate text-[10px] font-bold text-neutral-500">
+                  {row.brand} · {row.payment}
+                </p>
+              </div>
+              <div className="min-w-[68px] text-right">
+                <p className="truncate text-[10px] font-black text-blue-700">
+                  {row.metric}
+                </p>
+                <p className="mt-0.5 truncate text-[10px] font-bold text-neutral-500">
+                  {row.date.split(" / ")[0]}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function getIntroInfluencerPlatform(platform: string): InfluencerPlatform {
+  if (platform.includes("인스타")) return "instagram";
+  if (platform.includes("유튜브")) return "youtube";
+  if (platform.includes("틱톡")) return "tiktok";
+  if (platform.includes("블로그")) return "naver_blog";
+  return "other";
 }
 
 function advertiserProposalFactToneClass(tone: IntroProposalFact["tone"]) {
@@ -2781,7 +3042,7 @@ function AdvertiserIntroDashboardPreview({
   const state = data.states[stateIndex] ?? data.states[0];
 
   return (
-    <section className="flex min-w-0 flex-col overflow-hidden rounded-[12px] border border-neutral-200 bg-[#f4f5f2] shadow-[0_18px_48px_rgba(23,26,23,0.08)] lg:h-full">
+    <section className="flex h-full min-w-0 flex-col overflow-hidden rounded-[12px] border border-neutral-200 bg-[#f4f5f2] shadow-[0_18px_48px_rgba(23,26,23,0.08)]">
       <IntroAppHeader role="advertiser" />
       <div className="min-h-0 flex-1 p-2">
         <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[8px] border border-[#d9e0d9] bg-white">
@@ -2902,7 +3163,7 @@ function InfluencerIntroDashboardPreview({
   const state = data.states[stateIndex] ?? data.states[0];
 
   return (
-    <section className="flex min-w-0 flex-col overflow-hidden rounded-[12px] border border-neutral-200 bg-[#f4f5f2] shadow-[0_18px_48px_rgba(23,26,23,0.08)] lg:h-full">
+    <section className="flex h-full min-w-0 flex-col overflow-hidden rounded-[12px] border border-neutral-200 bg-[#f4f5f2] shadow-[0_18px_48px_rgba(23,26,23,0.08)]">
       <IntroAppHeader role="influencer" />
       <div className="min-h-0 flex-1 p-2">
         <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[8px] border border-[#d9e0d9] bg-white">

@@ -5,26 +5,21 @@ import {
   ArrowDownWideNarrow,
   ArrowUpDown,
   ArrowUpWideNarrow,
-  BookOpen,
   ChevronDown,
   CheckCircle2,
   Clock3,
   FileCheck2,
   FileSignature,
   FileText,
-  Globe2,
-  Instagram,
   KeyRound,
   LogOut,
   Mail,
   MessageSquareText,
-  Music2,
   Search,
   Settings,
   SlidersHorizontal,
   UserCheck,
   X,
-  Youtube,
 } from "lucide-react";
 import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
@@ -56,6 +51,7 @@ import { DashboardSurfaceSwitch } from "../../components/DashboardSurfaceSwitch"
 import { DashboardDownloadButton } from "../../components/DashboardDownloadButton";
 import { MobileSurfaceSwitch } from "../../components/MobileSurfaceSwitch";
 import { LogoMark } from "../../components/BrandLogo";
+import { PlatformBrandMark } from "../../components/PlatformBrandMark";
 import { useMarketplaceMessageSummary } from "../../hooks/useMarketplaceMessageSummary";
 import { downloadXlsx, type XlsxSheet } from "../../domain/xlsxExport";
 
@@ -307,27 +303,27 @@ const PLATFORM_META: Record<
   instagram: {
     label: "인스타그램",
     className: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
-    icon: <Instagram className="h-3.5 w-3.5" />,
+    icon: <PlatformBrandMark platform="instagram" size="xs" />,
   },
   youtube: {
     label: "유튜브",
     className: "border-red-200 bg-red-50 text-red-700",
-    icon: <Youtube className="h-3.5 w-3.5" />,
+    icon: <PlatformBrandMark platform="youtube" size="xs" />,
   },
   tiktok: {
     label: "틱톡",
     className: "border-neutral-800 bg-neutral-950 text-white",
-    icon: <Music2 className="h-3.5 w-3.5" />,
+    icon: <PlatformBrandMark platform="tiktok" size="xs" />,
   },
   naver_blog: {
     label: "네이버 블로그",
     className: "border-neutral-200 bg-white text-neutral-700",
-    icon: <BookOpen className="h-3.5 w-3.5" />,
+    icon: <PlatformBrandMark platform="naver_blog" size="xs" />,
   },
   other: {
     label: "기타",
     className: "border-neutral-200 bg-white text-neutral-600",
-    icon: <Globe2 className="h-3.5 w-3.5" />,
+    icon: <PlatformBrandMark platform="other" size="xs" />,
   },
 };
 
@@ -1078,12 +1074,11 @@ function InfluencerAccountBanner({
             {approvedPlatforms.map((platform, index) => (
               <span
                 key={`${platform.platform}:${platform.handle}:${platform.url ?? ""}:${index}`}
-                className={`inline-flex max-w-[220px] items-center gap-1.5 truncate rounded-full border px-2 py-0.5 font-semibold ${PLATFORM_META[platform.platform].className}`}
+                className="inline-flex max-w-[220px] items-center gap-1.5 truncate rounded-full border border-neutral-200 bg-white px-2 py-0.5 font-semibold text-neutral-700"
+                title={`${PLATFORM_META[platform.platform].label} ${formatInfluencerVerifiedHandle(platform)}`}
+                aria-label={`${PLATFORM_META[platform.platform].label} ${formatInfluencerVerifiedHandle(platform)}`}
               >
                 {PLATFORM_META[platform.platform].icon}
-                <span className="shrink-0">
-                  {formatInfluencerPlatformShortLabel(platform.platform)}
-                </span>
                 <span className="truncate">
                   {formatInfluencerVerifiedHandle(platform)}
                 </span>
@@ -1867,19 +1862,22 @@ function PlatformPills({ item }: { item: InfluencerCampaignWorkItem }) {
   const [primaryPlatform] = items;
 
   return (
-    <div className="flex w-full min-w-0 gap-1 overflow-hidden">
+    <div
+      className="flex w-full min-w-0 gap-1 overflow-hidden"
+      aria-label={`플랫폼 ${items.map((item) => item.label).join(", ")}`}
+    >
       {primaryPlatform ? (
         <span
           key={`${primaryPlatform.platform}-${primaryPlatform.label}`}
-          className={`inline-flex h-6 min-w-0 max-w-full items-center gap-1 rounded-[5px] border px-2 text-[11px] font-semibold whitespace-nowrap ${PLATFORM_META[primaryPlatform.platform].className}`}
+          className="inline-flex h-6 w-6 shrink-0 items-center justify-center"
           title={
             primaryPlatform.accountId === "계정 미입력"
               ? primaryPlatform.label
               : `${primaryPlatform.label} · ${primaryPlatform.accountId}`
           }
+          aria-label={primaryPlatform.label}
         >
-          <span className="shrink-0">{PLATFORM_META[primaryPlatform.platform].icon}</span>
-          <span className="min-w-0 truncate whitespace-nowrap">{primaryPlatform.label}</span>
+          <PlatformBrandMark platform={primaryPlatform.platform} size="sm" />
         </span>
       ) : null}
       {items.length > 1 && (

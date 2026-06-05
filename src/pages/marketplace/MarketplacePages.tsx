@@ -59,7 +59,6 @@ import { getMarketplaceInfluencerAvatarUrl } from "../../domain/marketplaceAvata
 import type { InfluencerPlatform } from "../../domain/verification";
 
 type PlatformFilter = "all" | InfluencerPlatform;
-type CategoryFilter = "all" | string;
 type InfluencerSortValue = "audience_desc" | "audience_asc" | "name_asc";
 
 const platformFilterOptions: PlatformFilter[] = [
@@ -142,9 +141,16 @@ function getCategoryLabels(categories: string[], limit: number) {
   return Array.from(labelsByKey.values()).slice(0, limit);
 }
 
-function hasCategory(categories: string[], filter: CategoryFilter) {
-  if (filter === "all") return true;
-  return categories.some((category) => getCategoryFilterKey(category) === filter);
+function hasAnyCategory(categories: string[], filters: string[]) {
+  if (filters.length === 0) return true;
+  const selectedKeys = new Set(filters);
+  return categories.some((category) => selectedKeys.has(getCategoryFilterKey(category)));
+}
+
+function formatSelectedCategorySummary(categories: string[]) {
+  if (categories.length === 0) return "";
+  const labels = categories.map((category) => getCategoryLabel(category));
+  return labels.length <= 2 ? labels.join(", ") : `카테고리 ${labels.length}개`;
 }
 
 type MarketplaceInfluencersResponse = {
@@ -371,7 +377,7 @@ export function AdvertiserInfluencerDiscoveryPage() {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [platformFilter, setPlatformFilter] = useState<PlatformFilter>("all");
-  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
+  const [categoryFilters, setCategoryFilters] = useState<string[]>([]);
   const [influencerSort, setInfluencerSort] =
     useState<InfluencerSortValue>("audience_desc");
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -389,7 +395,7 @@ export function AdvertiserInfluencerDiscoveryPage() {
           platformFilter === "all" ||
           profile.platforms.some((platform) => platform.platform === platformFilter);
         if (!matchesPlatform) return false;
-        if (!hasCategory(profile.categories, categoryFilter)) return false;
+        if (!hasAnyCategory(profile.categories, categoryFilters)) return false;
         if (!normalizedQuery) return true;
 
         return [
@@ -409,11 +415,10 @@ export function AdvertiserInfluencerDiscoveryPage() {
           .includes(normalizedQuery);
       })
       .sort((a, b) => compareInfluencerProfilesBySort(a, b, influencerSort));
-  }, [categoryFilter, influencerSort, platformFilter, profiles, query]);
+  }, [categoryFilters, influencerSort, platformFilter, profiles, query]);
   const influencerCategoryOptions = useMemo(
-    () => [
-      "all",
-      ...Array.from(
+    () =>
+      Array.from(
         new Set<string>(
           profiles.flatMap((profile) =>
             profile.categories.map((category) => getCategoryFilterKey(category)),
@@ -422,13 +427,12 @@ export function AdvertiserInfluencerDiscoveryPage() {
       ).sort((left, right) =>
         getCategoryLabel(left).localeCompare(getCategoryLabel(right), "ko"),
       ),
-    ],
     [profiles],
   );
   const activeFilterLabels = [
     query.trim() ? `검색 ${query.trim()}` : null,
     platformFilter !== "all" ? platformLabels[platformFilter] : null,
-    categoryFilter !== "all" ? getCategoryLabel(categoryFilter) : null,
+    categoryFilters.length > 0 ? formatSelectedCategorySummary(categoryFilters) : null,
   ].filter((label): label is string => Boolean(label));
   const filterSummary =
     activeFilterLabels.length > 0 ? activeFilterLabels.join(" · ") : "전체 조건";
@@ -484,17 +488,15 @@ export function AdvertiserInfluencerDiscoveryPage() {
           label="인플루언서 검색"
           placeholder="이름, 핸들, 카테고리, 브랜드 적합도 검색"
         />
-        <div className="grid min-w-0 gap-2 lg:min-w-[560px]">
+        <div className="grid min-w-0 gap-3 lg:min-w-[600px] lg:grid-cols-[minmax(210px,0.42fr)_minmax(280px,0.58fr)]">
           <FilterChipGroup label="플랫폼">
             <PlatformFilterBar value={platformFilter} onChange={setPlatformFilter} />
           </FilterChipGroup>
-          <FilterChipGroup label="카테고리">
-            <CategoryFilterBar
-              value={categoryFilter}
-              categories={influencerCategoryOptions}
-              onChange={setCategoryFilter}
-            />
-          </FilterChipGroup>
+          <CategoryChecklist
+            values={categoryFilters}
+            categories={influencerCategoryOptions}
+            onChange={setCategoryFilters}
+          />
         </div>
       </DiscoveryControls>
 
@@ -1218,16 +1220,9 @@ function InfluencerDiscoveryCard({
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        {getCategoryLabels(profile.categories, 3).map((category) => (
-          <span
-            key={`${profile.id}-${category}`}
-            className="inline-flex h-7 items-center rounded-md border border-neutral-200 bg-[#fbfaf7] px-2 text-[11px] font-extrabold text-neutral-600"
-          >
-            {category}
-          </span>
-        ))}
-      </div>
+      <p className="mt-3 truncate text-[12px] font-extrabold text-neutral-600">
+        {getCategoryLabels(profile.categories, 3).join(" · ")}
+      </p>
 
       <div className="mt-3 flex flex-wrap gap-1.5">
         {profile.platforms.slice(0, 3).map((platform) => (
@@ -1908,37 +1903,50 @@ function PlatformFilterBar({
   );
 }
 
-function CategoryFilterBar({
-  value,
+function CategoryChecklist({
+  values,
   categories,
   onChange,
 }: {
-  value: CategoryFilter;
-  categories: CategoryFilter[];
-  onChange: (value: CategoryFilter) => void;
+  values: string[];
+  categories: string[];
+  onChange: (value: string[]) => void;
 }) {
+  const selected = new Set(values);
+
   return (
-    <div className="flex min-w-0 flex-wrap gap-1.5 lg:no-scrollbar lg:flex-nowrap lg:overflow-x-auto">
+    <fieldset className="min-w-0">
+      <legend className="text-[12px] font-extrabold text-neutral-500">
+        카테고리
+      </legend>
+      <div className="mt-1.5 grid max-h-28 min-w-0 grid-cols-2 gap-x-3 gap-y-1.5 overflow-y-auto pr-1 sm:grid-cols-3 lg:max-h-24">
       {categories.map((category) => {
-        const active = value === category;
-        const label = category === "all" ? "전체" : getCategoryLabel(category);
+        const checked = selected.has(category);
+        const label = getCategoryLabel(category);
 
         return (
-          <button
+          <label
             key={category}
-            type="button"
-            onClick={() => onChange(category)}
-            className={`inline-flex h-8 shrink-0 items-center rounded-md border px-2.5 text-[12px] font-semibold transition ${
-              active
-                ? "border-neutral-950 bg-neutral-950 text-white"
-                : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300 hover:text-neutral-950"
-            }`}
+            className="flex min-w-0 items-center gap-2 text-[12px] font-bold text-neutral-700"
           >
-            {label}
-          </button>
+            <input
+              type="checkbox"
+              checked={checked}
+              onChange={() =>
+                onChange(
+                  checked
+                    ? values.filter((value) => value !== category)
+                    : [...values, category],
+                )
+              }
+              className="h-4 w-4 shrink-0 accent-neutral-950"
+            />
+            <span className="truncate">{label}</span>
+          </label>
         );
       })}
-    </div>
+      </div>
+    </fieldset>
   );
 }
 
@@ -1977,8 +1985,8 @@ function FilterChipGroup({
   children: ReactNode;
 }) {
   return (
-    <div className="flex min-w-0 items-center gap-2 rounded-[8px] border border-neutral-200 bg-[#fbfaf7] px-2.5 py-1.5">
-      <span className="shrink-0 text-[12px] font-extrabold text-neutral-500">
+    <div className="grid min-w-0 gap-1.5">
+      <span className="text-[12px] font-extrabold text-neutral-500">
         {label}
       </span>
       <div className="min-w-0 flex-1">{children}</div>
@@ -2129,12 +2137,13 @@ function PlatformPill({
     <span
       className={`inline-flex max-w-full items-center gap-1.5 text-[12px] font-extrabold ${
         hasMetric
-          ? "h-7 rounded-[7px] bg-neutral-50 px-2 text-neutral-900"
-          : "text-neutral-800"
+          ? "h-7 text-neutral-900"
+          : "h-6 text-neutral-800"
       }`}
+      title={value ? `${label} ${value}` : label}
+      aria-label={value ? `${label} ${value}` : label}
     >
       <PlatformBrandMark platform={platform} size={hasMetric ? "xs" : "sm"} />
-      <span className="shrink-0 text-neutral-600">{label}</span>
       {value ? <span className="truncate text-neutral-950">{value}</span> : null}
     </span>
   );
