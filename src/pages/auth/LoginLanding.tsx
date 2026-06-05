@@ -70,7 +70,7 @@ export function LoginLanding() {
           </Link>
         </header>
 
-        <section className="flex min-h-0 items-start justify-center pt-[13vh] sm:pt-[12vh]">
+        <section className="flex min-h-0 items-start justify-center pt-[16vh] sm:pt-[17vh]">
           <div className="w-full max-w-[520px]">
             <h1 className="sr-only">{PRODUCT_NAME} 로그인</h1>
             <div className="grid gap-3">
@@ -93,7 +93,7 @@ export function LoginLanding() {
                     key={role.href}
                     to={href}
                     aria-label={role.title}
-                    className={`group flex h-[96px] items-center gap-4 rounded-[10px] border px-5 text-left shadow-[0_1px_0_rgba(15,23,42,0.03),0_10px_28px_rgba(15,23,42,0.035)] transition hover:-translate-y-0.5 hover:shadow-[0_1px_0_rgba(15,23,42,0.04),0_14px_34px_rgba(15,23,42,0.055)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:h-[92px] sm:px-5 ${tone.card}`}
+                    className={`group flex h-[104px] items-center gap-4 rounded-[10px] border px-5 text-left shadow-[0_1px_0_rgba(15,23,42,0.03),0_10px_28px_rgba(15,23,42,0.035)] transition hover:-translate-y-0.5 hover:shadow-[0_1px_0_rgba(15,23,42,0.04),0_14px_34px_rgba(15,23,42,0.055)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:h-[104px] sm:px-5 ${tone.card}`}
                   >
                     <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] border ${tone.icon}`}>
                       <Icon className="h-5 w-5" />
