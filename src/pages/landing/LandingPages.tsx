@@ -1730,7 +1730,7 @@ function ProposalIntroCarousel({
           aria-label={`${slideIndex + 1} / ${slides.length} ${activeSlide.label}`}
           aria-live="polite"
           data-intro-pdf-slide
-          className="relative isolate flex w-full flex-col overflow-visible px-0 py-0 sm:px-2 lg:h-[min(690px,calc(100vh-98px))]"
+          className="relative isolate flex h-[calc(100svh-134px)] min-h-0 w-full flex-col overflow-hidden px-0 py-0 sm:h-auto sm:overflow-visible sm:px-2 lg:h-[min(690px,calc(100vh-98px))]"
         >
           <ProposalSlideView slide={activeSlide} />
 
@@ -1740,7 +1740,7 @@ function ProposalIntroCarousel({
 
           <div
             data-intro-mobile-controls
-            className="z-20 mt-2 grid h-10 grid-cols-[40px_minmax(0,1fr)_40px] items-center gap-3 sm:hidden"
+            className="absolute bottom-[78px] left-0 right-0 z-20 grid h-10 grid-cols-[40px_minmax(0,1fr)_40px] items-center gap-3 px-4 sm:hidden"
           >
             <button
               type="button"
@@ -1826,10 +1826,10 @@ function ProposalSlideView({ slide }: { slide: IntroProposalSlide }) {
 
   return (
     <div
-      className={`relative z-10 grid min-h-0 flex-1 gap-1 pt-0 sm:grid-rows-none sm:grid-cols-[minmax(205px,0.34fr)_minmax(0,1fr)] sm:items-center sm:gap-[clamp(32px,4vw,56px)] lg:h-full ${
+      className={`relative z-10 grid h-full min-h-0 flex-1 gap-1 pb-[152px] pt-0 sm:h-auto sm:pb-0 sm:grid-rows-none sm:grid-cols-[minmax(205px,0.34fr)_minmax(0,1fr)] sm:items-center sm:gap-[clamp(32px,4vw,56px)] lg:h-full ${
         isAdvertiserProductSlide
-          ? "grid-rows-[126px_clamp(320px,52svh,430px)]"
-          : "grid-rows-[150px_clamp(286px,46svh,398px)]"
+          ? "grid-rows-[126px_minmax(0,1fr)]"
+          : "grid-rows-[150px_minmax(0,1fr)]"
       }`}
     >
         <div
@@ -1882,7 +1882,8 @@ function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
   if (slide.stage === "link") {
     return (
       <div className="relative h-full min-h-0 overflow-visible sm:h-auto sm:min-h-0 lg:h-full">
-        <div className="absolute left-[2%] top-[19%] z-[1] h-[52%] w-[64%] overflow-hidden rounded-[14px] border border-[rgba(17,20,18,0.08)] bg-white shadow-[0_18px_44px_rgba(15,23,42,0.12)] sm:left-[7%] sm:top-[14%] sm:h-[70%] sm:w-[68%]">
+        <AdvertiserMobileLinkPreview />
+        <div className="absolute left-[2%] top-[19%] z-[1] hidden h-[52%] w-[64%] overflow-hidden rounded-[14px] border border-[rgba(17,20,18,0.08)] bg-white shadow-[0_18px_44px_rgba(15,23,42,0.12)] sm:block sm:left-[7%] sm:top-[14%] sm:h-[70%] sm:w-[68%]">
           <img
             src={advertiserProposalAssetUrls.contractAdmin}
             alt="광고주 계약 링크 복사 화면"
@@ -1892,9 +1893,9 @@ function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
         </div>
         <span
           aria-hidden="true"
-          className="absolute left-[60%] top-[56%] z-[2] h-px w-[16%] rounded-full bg-gradient-to-r from-blue-600/15 to-blue-600/85 shadow-[0_12px_26px_rgba(37,99,235,0.24)] before:absolute before:left-1/2 before:top-1/2 before:h-9 before:w-9 before:-translate-x-1/2 before:-translate-y-1/2 before:rounded-full before:border before:border-blue-600/25 before:bg-white/90 before:shadow-[0_14px_30px_rgba(15,23,42,0.12),inset_0_0_0_5px_rgba(37,99,235,0.07)] after:absolute after:right-0 after:top-1/2 after:h-3.5 after:w-3.5 after:-translate-y-1/2 after:rotate-45 after:rounded-[1px] after:border-r-[3px] after:border-t-[3px] after:border-blue-600"
+          className="absolute left-[60%] top-[56%] z-[2] hidden h-px w-[16%] rounded-full bg-gradient-to-r from-blue-600/15 to-blue-600/85 shadow-[0_12px_26px_rgba(37,99,235,0.24)] before:absolute before:left-1/2 before:top-1/2 before:h-9 before:w-9 before:-translate-x-1/2 before:-translate-y-1/2 before:rounded-full before:border before:border-blue-600/25 before:bg-white/90 before:shadow-[0_14px_30px_rgba(15,23,42,0.12),inset_0_0_0_5px_rgba(37,99,235,0.07)] after:absolute after:right-0 after:top-1/2 after:h-3.5 after:w-3.5 after:-translate-y-1/2 after:rotate-45 after:rounded-[1px] after:border-r-[3px] after:border-t-[3px] after:border-blue-600 sm:block"
         />
-        <div className="absolute right-[1%] top-[8%] z-[3] h-[74%] w-[34%] overflow-hidden rounded-[18px] border-[4px] border-[#121512] bg-white shadow-[0_22px_54px_rgba(15,23,42,0.22)] sm:right-[4%] sm:top-[8%] sm:h-[84%] sm:w-[28%] sm:rounded-[22px] sm:border-[5px] sm:shadow-[0_28px_68px_rgba(15,23,42,0.24)]">
+        <div className="absolute right-[1%] top-[8%] z-[3] hidden h-[74%] w-[34%] overflow-hidden rounded-[18px] border-[4px] border-[#121512] bg-white shadow-[0_22px_54px_rgba(15,23,42,0.22)] sm:block sm:right-[4%] sm:top-[8%] sm:h-[84%] sm:w-[28%] sm:rounded-[22px] sm:border-[5px] sm:shadow-[0_28px_68px_rgba(15,23,42,0.24)]">
           <img
             src={advertiserProposalAssetUrls.influencerContract}
             alt="인플루언서 계약 확인 및 서명 화면"
@@ -2007,6 +2008,76 @@ function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
 
   return (
     <div className="h-full min-h-0 sm:h-auto sm:min-h-0" />
+  );
+}
+
+function AdvertiserMobileLinkPreview() {
+  return (
+    <div className="relative h-full min-h-0 sm:hidden">
+      <div className="absolute left-2 top-[18%] z-[1] w-[58%] overflow-hidden rounded-[18px] border border-neutral-200 bg-white shadow-[0_18px_44px_rgba(15,23,42,0.11)]">
+        <div className="flex h-10 items-center gap-2 border-b border-neutral-200 px-3">
+          <LogoMark className="h-6 w-6" />
+          <span className="text-[12px] font-black text-neutral-950">계약 링크</span>
+        </div>
+        <div className="grid gap-2.5 p-3">
+          <div>
+            <p className="text-[10px] font-extrabold text-neutral-500">인플루언서</p>
+            <p className="mt-0.5 truncate text-[13px] font-black text-neutral-950">
+              세라 블로그
+            </p>
+          </div>
+          <div className="rounded-[10px] border border-neutral-200 bg-[#fbfcfa] px-2.5 py-2">
+            <p className="truncate text-[10px] font-bold text-neutral-500">
+              yeollock.me/c/ser...
+            </p>
+          </div>
+          <button
+            type="button"
+            tabIndex={-1}
+            className="h-8 rounded-[9px] bg-blue-600 text-[11px] font-black text-white shadow-[0_12px_24px_rgba(37,99,235,0.18)]"
+          >
+            링크 복사
+          </button>
+        </div>
+      </div>
+      <span
+        aria-hidden="true"
+        className="absolute left-[55%] top-[48%] z-[2] h-px w-[18%] rounded-full bg-gradient-to-r from-blue-600/15 to-blue-600/90 shadow-[0_12px_26px_rgba(37,99,235,0.24)] after:absolute after:right-0 after:top-1/2 after:h-3 after:w-3 after:-translate-y-1/2 after:rotate-45 after:border-r-[3px] after:border-t-[3px] after:border-blue-600"
+      />
+      <div className="absolute right-2 top-[7%] z-[3] h-[82%] w-[35%] overflow-hidden rounded-[22px] border-[5px] border-[#111411] bg-white shadow-[0_24px_54px_rgba(15,23,42,0.22)]">
+        <div className="h-full bg-[#f8faf7]">
+          <div className="border-b border-neutral-200 bg-white px-2 py-2">
+            <p className="truncate text-[8px] font-extrabold text-neutral-500">
+              데일리 루틴 블로그
+            </p>
+            <p className="mt-0.5 truncate text-[10px] font-black text-neutral-950">
+              계약 확인
+            </p>
+          </div>
+          <div className="grid gap-1.5 p-2">
+            {[
+              ["보상", "1,800,000원"],
+              ["마감", "2026.05.29"],
+              ["플랫폼", "블로그"],
+              ["수량", "1건"],
+            ].map(([label, value]) => (
+              <div
+                key={label}
+                className="flex items-center justify-between gap-1 border-b border-neutral-200 pb-1.5 last:border-b-0"
+              >
+                <span className="text-[8px] font-bold text-neutral-500">{label}</span>
+                <strong className="truncate text-[8px] font-black text-neutral-950">
+                  {value}
+                </strong>
+              </div>
+            ))}
+          </div>
+          <div className="absolute bottom-2 left-2 right-2 h-7 rounded-[8px] bg-blue-600 text-center text-[8px] font-black leading-7 text-white">
+            계약서 확인하기
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
