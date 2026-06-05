@@ -1822,41 +1822,43 @@ function ProposalIntroCarousel({
 }
 
 function ProposalSlideView({ slide }: { slide: IntroProposalSlide }) {
+  const hasMobileContext = Boolean(slide.context);
   const desktopSupport = slide.support || slide.description;
-  const mobileSupport =
-    desktopSupport ||
-    (slide.riskItems ? (
-      <>
-        계약서 없이 생기는
-        <br />
-        <strong>분쟁을 먼저 줄입니다</strong>
-      </>
-    ) : null);
 
   return (
     <div className="relative z-10 grid min-h-0 flex-1 grid-rows-[136px_clamp(292px,47svh,406px)] gap-2 pt-1 sm:grid-rows-none sm:grid-cols-[minmax(205px,0.34fr)_minmax(0,1fr)] sm:items-center sm:gap-[clamp(32px,4vw,56px)] sm:pt-0 lg:h-full">
-        <div className="mx-auto grid h-full min-h-0 w-full max-w-[360px] grid-cols-[minmax(0,0.94fr)_1px_minmax(0,1fr)] items-center gap-3 px-1 text-left sm:mx-0 sm:flex sm:max-w-none sm:flex-col sm:items-start sm:justify-center sm:gap-0 sm:px-0 sm:pl-[clamp(8px,2.2vw,34px)]">
+        <div
+          className={`mx-auto grid h-full min-h-0 w-full max-w-[360px] items-center gap-3 px-1 sm:mx-0 sm:flex sm:max-w-none sm:flex-col sm:items-start sm:justify-center sm:gap-0 sm:px-0 sm:pl-[clamp(8px,2.2vw,34px)] ${
+            hasMobileContext
+              ? "grid-cols-[minmax(0,0.88fr)_1px_minmax(0,1.08fr)] text-left"
+              : "grid-cols-1 justify-items-center text-center"
+          }`}
+        >
           <div className="min-w-0 text-right sm:text-left">
             {slide.context ? (
-              <p className="mb-1.5 inline-block max-w-full bg-gradient-to-br from-[#0f172a] to-[#2f6df6] bg-clip-text font-neo-heavy text-[21px] font-black leading-[1.01] tracking-normal text-transparent drop-shadow-[0_12px_22px_rgba(36,86,214,0.14)] after:ml-auto after:mt-1.5 after:block after:h-1 after:w-8 after:rounded-full after:bg-blue-600 after:shadow-[0_12px_26px_rgba(36,86,214,0.24)] sm:mb-5 sm:text-[clamp(38px,4.2vw,50px)] sm:after:ml-0">
+              <p className="inline-block max-w-full bg-gradient-to-br from-[#0f172a] to-[#2f6df6] bg-clip-text font-neo-heavy text-[23px] font-black leading-[1.01] tracking-normal text-transparent drop-shadow-[0_12px_22px_rgba(36,86,214,0.14)] after:ml-auto after:mt-1.5 after:block after:h-1 after:w-8 after:rounded-full after:bg-blue-600 after:shadow-[0_12px_26px_rgba(36,86,214,0.24)] sm:mb-5 sm:text-[clamp(38px,4.2vw,50px)] sm:after:ml-0">
                 {slide.context}
               </p>
             ) : null}
-            <h2 className="ml-auto max-w-[178px] break-keep font-neo-heavy text-[20px] leading-[1.04] tracking-normal text-neutral-950 sm:ml-0 sm:max-w-none sm:text-[clamp(38px,4.4vw,50px)] sm:leading-[1.07]">
+            <h2
+              className={`max-w-[240px] break-keep font-neo-heavy text-[22px] leading-[1.04] tracking-normal text-neutral-950 sm:ml-0 sm:max-w-none sm:text-[clamp(38px,4.4vw,50px)] sm:leading-[1.07] ${
+                hasMobileContext ? "hidden sm:block" : "mx-auto"
+              }`}
+            >
               {slide.title}
             </h2>
           </div>
-          <span
-            aria-hidden="true"
-            className="h-[86px] w-px rounded-full bg-gradient-to-b from-transparent via-blue-600/50 to-transparent sm:hidden"
-          />
-          {mobileSupport ? (
-            <div className="max-h-[88px] min-w-0 overflow-hidden text-[11.5px] font-normal leading-[1.36] tracking-normal text-[#58625c] sm:hidden [&_.support-stack]:grid [&_.support-stack]:gap-1 [&_strong]:font-black [&_strong]:text-blue-600">
-              {mobileSupport}
-            </div>
-          ) : (
-            <div className="hidden sm:block" />
-          )}
+          {hasMobileContext ? (
+            <>
+              <span
+                aria-hidden="true"
+                className="h-[86px] w-px rounded-full bg-gradient-to-b from-transparent via-blue-600/50 to-transparent sm:hidden"
+              />
+              <h2 className="max-w-[188px] break-keep font-neo-heavy text-[20px] leading-[1.04] tracking-normal text-neutral-950 sm:hidden">
+                {slide.title}
+              </h2>
+            </>
+          ) : null}
           {desktopSupport ? (
             <div className="hidden sm:mx-0 sm:mt-6 sm:block sm:max-h-none sm:max-w-[300px] sm:border-l-[3px] sm:border-blue-600/20 sm:pl-3.5 sm:text-[clamp(16px,1.55vw,19px)] sm:font-normal sm:leading-[1.45] sm:tracking-normal sm:text-[#58625c] sm:[&_.support-stack]:grid sm:[&_.support-stack]:gap-3.5 [&_strong]:font-black [&_strong]:text-blue-600">
               {desktopSupport}
