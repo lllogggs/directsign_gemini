@@ -15671,13 +15671,24 @@ app.post("/api/advertiser/logout", async (request, response) => {
 
 app.get("/api/influencer/session", async (request, response, next) => {
   try {
-    const auth = await requireInfluencerSession(request, response);
-    if (!auth) return;
+    const auth = await authenticateInfluencerRequest(request, response);
+
+    if (!auth) {
+      response.json({ authenticated: false });
+      return;
+    }
+
+    const profile = auth.profile ?? (await readProfileByUserId(auth.user.id));
+
+    if (!profile || !isInfluencerRole(profile.role)) {
+      response.status(403).json({ authenticated: false });
+      return;
+    }
 
     response.json({
       authenticated: true,
-      user: buildInfluencerSessionUser(auth.user, auth.profile),
-      verification: buildInfluencerSessionVerification(auth.profile),
+      user: buildInfluencerSessionUser(auth.user, profile),
+      verification: buildInfluencerSessionVerification(profile),
     });
   } catch (error) {
     next(error);
@@ -15877,7 +15888,7 @@ app.get("/api/influencer/dashboard", async (request, response, next) => {
     const auth = await authenticateInfluencerRequest(request, response);
 
     if (!auth) {
-      response.status(401).json({ authenticated: false });
+      response.json({ authenticated: false });
       return;
     }
 
@@ -16206,12 +16217,25 @@ app.post(
 
 app.get("/api/influencer/public-profile", async (request, response, next) => {
   try {
-    const influencerAuth = await requireInfluencerSession(request, response);
-    if (!influencerAuth) return;
-
     response.setHeader("Cache-Control", "no-store");
+    const influencerAuth = await authenticateInfluencerRequest(request, response);
+
+    if (!influencerAuth) {
+      response.json({ authenticated: false, profile: null });
+      return;
+    }
+
+    const profile =
+      influencerAuth.profile ?? (await readProfileByUserId(influencerAuth.user.id));
+
+    if (!profile || !isInfluencerRole(profile.role)) {
+      response.status(403).json({ authenticated: false, profile: null });
+      return;
+    }
+
     response.json({
-      profile: await readStoredInfluencerPublicProfile(influencerAuth.profile.id),
+      authenticated: true,
+      profile: await readStoredInfluencerPublicProfile(profile.id),
     });
   } catch (error) {
     next(error);

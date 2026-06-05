@@ -13,6 +13,10 @@ type SummaryState = {
   isLoading: boolean;
 };
 
+type MessageSummaryOptions = {
+  enabled?: boolean;
+};
+
 const MESSAGE_SUMMARY_CACHE_MS = 60 * 1000;
 const messageSummaryCache = new Map<
   MarketplaceInboxRole,
@@ -47,18 +51,32 @@ export function primeMarketplaceMessageSummary(
   });
 }
 
-export function useMarketplaceMessageSummary(role: MarketplaceInboxRole): SummaryState {
+export function useMarketplaceMessageSummary(
+  role: MarketplaceInboxRole,
+  options: MessageSummaryOptions = {},
+): SummaryState {
+  const enabled = options.enabled ?? true;
   const cached = getCachedMessageSummary(role);
   const [summary, setSummary] = useState<MarketplaceMessageSummary>(
     cached?.summary ?? emptyMarketplaceMessageSummary,
   );
-  const [isLoading, setIsLoading] = useState(!cached);
+  const [isLoading, setIsLoading] = useState(enabled && !cached);
 
   useEffect(() => {
-    if (getCachedMessageSummary(role)) return;
+    if (!enabled) return;
 
     let active = true;
     const timer = window.setTimeout(() => {
+      const latestCached = getCachedMessageSummary(role);
+      if (latestCached) {
+        if (active) {
+          setSummary(latestCached.summary);
+          setIsLoading(false);
+        }
+        return;
+      }
+
+      if (active) setIsLoading(true);
       const inflight =
         messageSummaryInflight.get(role) ??
         waitForFastLoginTransition(role, 2_500)
@@ -98,7 +116,7 @@ export function useMarketplaceMessageSummary(role: MarketplaceInboxRole): Summar
       active = false;
       window.clearTimeout(timer);
     };
-  }, [role]);
+  }, [enabled, role]);
 
   return { summary, isLoading };
 }

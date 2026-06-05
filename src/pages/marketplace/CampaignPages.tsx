@@ -168,6 +168,9 @@ type CampaignApplicationsState =
   | { status: "loading" }
   | { status: "ready"; applications: MarketplaceMessageThread[] }
   | { status: "error"; message: string };
+type InfluencerSessionStatusResponse = {
+  authenticated?: boolean;
+};
 
 type CampaignApplicantAcceptResponse = {
   contract?: {
@@ -1071,6 +1074,18 @@ export function InfluencerCampaignDiscoveryPage() {
     );
 
     try {
+      const sessionResponse = await apiFetch("/api/influencer/session", {
+        headers: { Accept: "application/json" },
+        credentials: "include",
+      });
+      const sessionData = (await sessionResponse.json().catch(() => ({}))) as
+        InfluencerSessionStatusResponse;
+
+      if (!sessionResponse.ok || sessionData.authenticated !== true) {
+        setApplicationsState({ status: "ready", applications: [] });
+        return;
+      }
+
       const response = await apiFetch("/api/marketplace/messages?role=influencer", {
         headers: { Accept: "application/json" },
         credentials: "include",

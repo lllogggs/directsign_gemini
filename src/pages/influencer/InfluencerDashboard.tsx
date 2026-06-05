@@ -358,7 +358,9 @@ export function InfluencerDashboard() {
   const {
     summary: messageSummary,
     isLoading: isMessageSummaryLoading,
-  } = useMarketplaceMessageSummary("influencer");
+  } = useMarketplaceMessageSummary("influencer", {
+    enabled: state.status === "ready",
+  });
   const readyDashboardUserId =
     state.status === "ready" ? state.dashboard.user.id : undefined;
 

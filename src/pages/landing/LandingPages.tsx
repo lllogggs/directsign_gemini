@@ -1818,9 +1818,20 @@ function ProposalIntroCarousel({
 function ProposalSlideView({ slide }: { slide: IntroProposalSlide }) {
   const hasMobileContext = Boolean(slide.context);
   const desktopSupport = slide.support || slide.description;
+  const isAdvertiserProductSlide =
+    slide.stage === "product" &&
+    Boolean(slide.imageSrc) &&
+    !slide.productPreview &&
+    !slide.visualFacts;
 
   return (
-    <div className="relative z-10 grid min-h-0 flex-1 grid-rows-[150px_clamp(286px,46svh,398px)] gap-1 pt-0 sm:grid-rows-none sm:grid-cols-[minmax(205px,0.34fr)_minmax(0,1fr)] sm:items-center sm:gap-[clamp(32px,4vw,56px)] lg:h-full">
+    <div
+      className={`relative z-10 grid min-h-0 flex-1 gap-1 pt-0 sm:grid-rows-none sm:grid-cols-[minmax(205px,0.34fr)_minmax(0,1fr)] sm:items-center sm:gap-[clamp(32px,4vw,56px)] lg:h-full ${
+        isAdvertiserProductSlide
+          ? "grid-rows-[126px_clamp(320px,52svh,430px)]"
+          : "grid-rows-[150px_clamp(286px,46svh,398px)]"
+      }`}
+    >
         <div
           className={`mx-auto grid h-full min-h-0 w-full max-w-[330px] place-items-center gap-2 px-2 sm:mx-0 sm:flex sm:max-w-none sm:flex-col sm:items-start sm:justify-center sm:gap-0 sm:px-0 sm:pl-[clamp(8px,2.2vw,34px)] ${
             hasMobileContext
@@ -1967,20 +1978,25 @@ function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
   }
 
   if (slide.imageSrc) {
+    const baseImageFitClass =
+      slide.stage === "final" ? "object-cover object-center" : "object-contain object-center";
+    const mobileProductImageFitClass =
+      slide.stage === "product" ? "object-top sm:object-center" : "";
+
     return (
       <div
         className={`min-h-0 self-center overflow-hidden rounded-[12px] bg-transparent sm:h-auto sm:min-h-0 ${
           slide.stage === "final"
             ? "h-[clamp(220px,34svh,278px)] rounded-[16px]"
+            : slide.stage === "product"
+              ? "h-full w-full self-start"
             : "h-full"
         }`}
       >
         <img
           src={slide.imageSrc}
           alt={slide.imageAlt ?? ""}
-          className={`h-full w-full ${
-            slide.stage === "final" ? "object-cover object-center" : "object-contain object-center"
-          } ${
+          className={`h-full w-full ${baseImageFitClass} ${mobileProductImageFitClass} ${
             slide.imageFit === "cover" ? "sm:object-cover" : "sm:object-contain"
           } ${slide.stage === "final" ? "aspect-[16/10]" : ""}`}
           loading="eager"
