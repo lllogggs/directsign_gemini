@@ -66,8 +66,10 @@ import {
   waitForFastLoginTransition,
 } from "../../domain/fastLoginTransition";
 import { ContractFirstExperienceDialog } from "../../components/ScreenHelp";
+import { LogoMark } from "../../components/BrandLogo";
 import { DashboardDownloadButton } from "../../components/DashboardDownloadButton";
 import { DashboardSurfaceSwitch } from "../../components/DashboardSurfaceSwitch";
+import { MobileSurfaceSwitch } from "../../components/MobileSurfaceSwitch";
 import { PlatformBrandMark } from "../../components/PlatformBrandMark";
 import { CONTRACT_FIRST_EXPERIENCE_CONTENT } from "../../domain/screenHelp";
 import {
@@ -962,13 +964,8 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
             aria-label={PRODUCT_NAME}
             className="yl-brand-action -ml-1 flex h-10 min-w-10 shrink-0 items-center gap-3 rounded-[12px] px-1 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
           >
-            <span className="flex h-[34px] w-[34px] items-center justify-center rounded-[11px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
-              <ShieldCheck className="h-4 w-4" strokeWidth={2} />
-            </span>
-            <span className="font-neo-heavy hidden text-[18px] leading-none sm:inline">{PRODUCT_NAME}</span>
-            <span className="sr-only sm:hidden">
-              광고주
-            </span>
+            <LogoMark />
+            <span className="font-neo-heavy text-[18px] leading-none">{PRODUCT_NAME}</span>
           </button>
 
           <div className="ml-2 flex min-w-0 items-center justify-end gap-1.5 sm:ml-3 sm:gap-2">
@@ -977,7 +974,9 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
                 <SyncPill isSyncing={isSyncing} syncError={syncError} />
               </div>
             ) : null}
-            <DashboardSurfaceSwitch role="advertiser" active={surface} />
+            <div className="hidden sm:block">
+              <DashboardSurfaceSwitch role="advertiser" active={surface} />
+            </div>
             <MessageCenterButton
               unreadCount={messageSummary.unreadCount}
               isLoading={isMessageSummaryLoading}
@@ -1016,6 +1015,8 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
         </div>
       </header>
 
+      <MobileSurfaceSwitch role="advertiser" active={surface} />
+
       <main className="mx-auto w-full min-w-0 max-w-[1500px] px-3 py-2.5 sm:px-5 lg:flex lg:h-[calc(100vh-56px)] lg:flex-col lg:overflow-hidden lg:px-6">
         <section className="min-w-0 overflow-hidden rounded-[10px] border border-neutral-200/90 bg-white shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_18px_46px_rgba(23,26,23,0.055)] lg:flex lg:h-full lg:flex-col">
           <div className="border-b border-[#d9e0d9] bg-white px-4 py-2">
@@ -1030,24 +1031,22 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
                 {isCampaignSurface ? (
                   <Link
                     to="/advertiser/campaigns/new"
-                    className="yl-header-action yl-header-action-primary"
+                    className="yl-primary-action inline-flex h-10 min-w-[112px] shrink-0 items-center justify-center gap-1.5 rounded-[9px] px-3 text-[13px] font-extrabold leading-none transition"
                     aria-label="새 캠페인"
                     title="새 캠페인"
                   >
                     <Plus className="h-3.5 w-3.5" strokeWidth={2} />
-                    <span className="sm:hidden">캠페인</span>
-                    <span className="hidden sm:inline">새 캠페인</span>
+                    <span>캠페인 작성</span>
                   </Link>
                 ) : (
                   <Link
                     to="/advertiser/builder"
-                    className="yl-header-action yl-header-action-primary"
-                    aria-label="새 계약"
-                    title="새 계약"
+                    className="yl-primary-action inline-flex h-10 min-w-[112px] shrink-0 items-center justify-center gap-1.5 rounded-[9px] px-3 text-[13px] font-extrabold leading-none transition"
+                    aria-label="계약서 작성"
+                    title="계약서 작성"
                   >
                     <Plus className="h-3.5 w-3.5" strokeWidth={2} />
-                    <span className="sm:hidden">계약</span>
-                    <span className="hidden sm:inline">새 계약</span>
+                    <span>계약서 작성</span>
                   </Link>
                 )}
               </div>

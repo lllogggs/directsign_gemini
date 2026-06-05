@@ -12,7 +12,6 @@ import {
   RefreshCw,
   Search,
   Send,
-  ShieldCheck,
   SlidersHorizontal,
   Settings,
   X,
@@ -59,6 +58,7 @@ import { getMarketplaceInfluencerAvatarUrlFromHref } from "../../domain/marketpl
 import type { InfluencerPlatform } from "../../domain/verification";
 import { DashboardSurfaceSwitch } from "../../components/DashboardSurfaceSwitch";
 import { MobileSurfaceSwitch } from "../../components/MobileSurfaceSwitch";
+import { LogoMark } from "../../components/BrandLogo";
 import { PlatformBrandMark } from "../../components/PlatformBrandMark";
 import { getPlatformDisplayName } from "../../domain/platformDisplay";
 
@@ -1322,10 +1322,10 @@ export function InfluencerCampaignDiscoveryPage() {
         </>
       }
     >
-      <section className="yl-card flex min-h-0 flex-1 flex-col overflow-hidden border">
-        <div className="border-b border-neutral-200 bg-white">
-          <div className="flex min-h-12 flex-col gap-2 px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-            <div className="min-w-0 sm:flex-1">
+    <section className="yl-card flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border">
+      <div className="border-b border-neutral-200 bg-white">
+        <div className="flex min-h-12 flex-col gap-2 px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+          <div className="min-w-0 sm:flex-1">
               <p className="truncate text-[13px] font-extrabold text-neutral-950">
                 {activeView === "open" ? "모집 캠페인" : "신청한 캠페인"}
               </p>
@@ -1335,7 +1335,7 @@ export function InfluencerCampaignDiscoveryPage() {
                   : `${visibleApplications.length.toLocaleString()}건 표시 · ${appliedFilterSummary}`}
               </p>
             </div>
-            <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
+            <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_minmax(116px,auto)_auto] items-center gap-2 sm:flex sm:w-auto">
               <CampaignViewTabs
                 value={activeView}
                 openCount={visibleCampaigns.length}
@@ -1541,16 +1541,16 @@ function CampaignShell({
       <header className="z-30 shrink-0 border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-[1500px] items-center justify-between px-3 sm:px-5 lg:px-6">
           <Link to="/" className="flex shrink-0 items-center gap-3">
-            <span className="flex h-9 w-9 items-center justify-center rounded-[12px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)] sm:h-10 sm:w-10 sm:rounded-[13px]">
-              <ShieldCheck className="h-4 w-4" />
-            </span>
-            <span className="font-neo-heavy hidden text-[19px] leading-none text-neutral-950 sm:inline">
+            <LogoMark />
+            <span className="font-neo-heavy text-[18px] leading-none text-neutral-950 sm:text-[19px]">
               {PRODUCT_NAME}
             </span>
           </Link>
 
           <div className="no-scrollbar ml-3 flex min-w-0 items-center gap-2 overflow-x-auto">
-            <DashboardSurfaceSwitch role={role} active="campaigns" />
+            <div className="hidden sm:block">
+              <DashboardSurfaceSwitch role={role} active="campaigns" />
+            </div>
             {actions}
             <button
               type="button"
@@ -3004,12 +3004,12 @@ function CampaignCategoryStrip({
   onChange: (value: CategoryFilter) => void;
 }) {
   return (
-    <div className="border-t border-neutral-100 bg-white px-3 py-2">
-      <div className="flex min-w-0 items-center gap-2">
+    <div className="overflow-hidden border-t border-neutral-100 bg-white px-3 py-2">
+      <div className="grid min-w-0 gap-2 sm:flex sm:items-center">
         <span className="shrink-0 text-[12px] font-extrabold text-neutral-500">
           카테고리
         </span>
-        <div className="no-scrollbar flex min-w-0 flex-1 gap-1.5 overflow-x-auto">
+        <div className="flex min-w-0 flex-wrap gap-1.5 overflow-hidden sm:no-scrollbar sm:flex-1 sm:flex-nowrap sm:overflow-x-auto">
           {categories.map((category) => {
             const active = value === category;
             return (
@@ -3017,13 +3017,13 @@ function CampaignCategoryStrip({
                 key={category}
                 type="button"
                 onClick={() => onChange(category)}
-                className={`inline-flex h-8 shrink-0 items-center rounded-md border px-2.5 text-[12px] font-extrabold transition ${
+                className={`inline-flex h-8 max-w-full shrink-0 items-center rounded-md border px-2.5 text-[12px] font-extrabold transition ${
                   active
                     ? "border-neutral-950 bg-neutral-950 text-white"
                     : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300 hover:text-neutral-950"
                 }`}
               >
-                {category === "all" ? "전체" : category}
+                <span className="truncate">{category === "all" ? "전체" : category}</span>
               </button>
             );
           })}

@@ -14,7 +14,6 @@ import {
   MessageSquareText,
   Search,
   Send,
-  ShieldCheck,
   SlidersHorizontal,
   Settings,
   Store,
@@ -30,6 +29,7 @@ import {
   useState,
 } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { LogoMark } from "../../components/BrandLogo";
 import { PlatformBrandMark } from "../../components/PlatformBrandMark";
 import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
@@ -746,9 +746,7 @@ export function PublicInfluencerProfilePage() {
       <header className="border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-[1180px] items-center justify-between px-4 sm:px-6 lg:px-8">
           <Link to="/" className="flex min-h-10 min-w-10 items-center gap-3">
-            <span className="flex h-9 w-9 items-center justify-center rounded-[12px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
-              <ShieldCheck className="h-4 w-4" />
-            </span>
+            <LogoMark />
             <span className="font-neo-heavy text-[18px] leading-none tracking-[-0.045em]">{PRODUCT_NAME}</span>
           </Link>
           <Link
@@ -926,9 +924,7 @@ export function PublicBrandProfilePage() {
       <header className="shrink-0 border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-[1180px] items-center justify-between px-4 sm:px-6 lg:px-8">
           <Link to="/" className="flex items-center gap-3">
-            <span className="flex h-9 w-9 items-center justify-center rounded-[12px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
-              <ShieldCheck className="h-4 w-4" />
-            </span>
+            <LogoMark />
             <span className="font-neo-heavy text-[18px] leading-none tracking-[-0.045em]">{PRODUCT_NAME}</span>
           </Link>
           <Link
@@ -1114,10 +1110,8 @@ function MarketplaceShell({
       <header className="z-30 shrink-0 border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-[1500px] items-center justify-between px-3 sm:px-5 lg:px-6">
           <Link to="/" className="flex shrink-0 items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-[13px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
-              <ShieldCheck className="h-4 w-4" />
-            </span>
-            <span className="font-neo-heavy hidden text-[19px] leading-none sm:inline">{PRODUCT_NAME}</span>
+            <LogoMark />
+            <span className="font-neo-heavy text-[18px] leading-none sm:text-[19px]">{PRODUCT_NAME}</span>
           </Link>
           <div className="no-scrollbar ml-3 flex min-w-0 items-center gap-2 overflow-x-auto">
             <Link
@@ -1192,7 +1186,7 @@ function InfluencerDiscoveryCard({
   onContact: () => void;
 }) {
   return (
-    <article className="yl-card flex min-h-[218px] w-full min-w-0 flex-col border p-3.5">
+    <article className="yl-card flex min-h-[236px] w-full min-w-0 flex-col border p-4">
       <div className="flex items-start gap-3">
         <Link
           to={getInfluencerProfilePath(profile)}
@@ -1213,17 +1207,16 @@ function InfluencerDiscoveryCard({
               title={`${profile.displayName} 프로필 보기`}
             >
               <h2 className="truncate text-[17px] font-semibold text-neutral-950">
-              {profile.displayName}
+                {profile.displayName}
               </h2>
             </Link>
             <BadgeCheck className="h-4 w-4 shrink-0 text-neutral-700" />
           </div>
+          <p className="mt-1 line-clamp-2 text-[12px] font-semibold leading-5 text-neutral-600">
+            {cleanMarketplaceCopy(profile.bio || profile.headline)}
+          </p>
         </div>
       </div>
-
-      <p className="mt-3 line-clamp-1 text-[13px] font-semibold leading-5 text-neutral-700">
-        {cleanMarketplaceCopy(profile.bio || profile.headline)}
-      </p>
 
       <div className="mt-3 flex flex-wrap gap-1.5">
         {getCategoryLabels(profile.categories, 3).map((category) => (
@@ -1241,12 +1234,13 @@ function InfluencerDiscoveryCard({
           <PlatformPill
             key={`${profile.id}-${platform.platform}`}
             platform={platform.platform}
-            label={`${platformLabels[platform.platform]} ${platform.followersLabel}`}
+            label={platformLabels[platform.platform]}
+            value={platform.followersLabel}
           />
         ))}
       </div>
 
-      <div className="mt-auto grid grid-cols-2 gap-2 pt-3">
+      <div className="mt-auto grid grid-cols-2 gap-2 pt-4">
         <button
           type="button"
           onClick={onContact}
@@ -1836,23 +1830,23 @@ function DiscoveryControls({
 }) {
   return (
     <section className="border-b border-[#d9e0d9] bg-white">
-      <div className="flex min-h-12 items-center justify-between gap-3 px-4 py-2">
+      <div className="grid min-h-12 gap-2 px-4 py-3 sm:flex sm:items-center sm:justify-between sm:gap-3 sm:py-2">
         <div className="min-w-0">
-          <p className="truncate text-[13px] font-extrabold text-neutral-950">
+          <p className="text-[14px] font-extrabold leading-tight text-neutral-950 sm:truncate sm:text-[13px]">
             {title}
           </p>
-          <p className="mt-0.5 truncate text-[11px] font-bold text-neutral-500">
+          <p className="mt-0.5 text-[11px] font-bold leading-tight text-neutral-500 sm:truncate">
             {count.toLocaleString()}건 표시 · {summary}
           </p>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:flex sm:shrink-0">
           {toolbar}
           <button
             type="button"
             onClick={onToggle}
             aria-expanded={open}
             aria-controls={controlsId}
-            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[8px] border border-neutral-200 bg-white px-2.5 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:text-neutral-950"
+            className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-[8px] border border-neutral-200 bg-white px-3 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:text-neutral-950 sm:h-8 sm:px-2.5"
           >
             <SlidersHorizontal className="h-3.5 w-3.5 text-neutral-500" strokeWidth={2} />
             <span>필터</span>
@@ -1956,14 +1950,14 @@ function InfluencerSortSelect({
   onChange: (value: InfluencerSortValue) => void;
 }) {
   return (
-    <label className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[8px] border border-neutral-200 bg-white px-2 text-neutral-700">
+    <label className="inline-flex h-9 min-w-0 items-center gap-1.5 rounded-[8px] border border-neutral-200 bg-white px-2.5 text-neutral-700 sm:h-8 sm:shrink-0 sm:px-2">
       <ArrowUpDown className="h-3.5 w-3.5 text-neutral-500" strokeWidth={2} />
       <span className="sr-only">인플루언서 정렬</span>
       <select
         value={value}
         onChange={(event) => onChange(event.target.value as InfluencerSortValue)}
         aria-label="인플루언서 정렬"
-        className="h-7 min-w-[138px] bg-transparent text-[11px] font-extrabold text-neutral-700 outline-none"
+        className="h-8 min-w-0 flex-1 bg-transparent text-[12px] font-extrabold text-neutral-700 outline-none sm:h-7 sm:min-w-[138px] sm:flex-none sm:text-[11px]"
       >
         {influencerSortOptions.map((option) => (
           <option key={option.value} value={option.value}>
@@ -2026,6 +2020,10 @@ function cleanMarketplaceCopy(value: string) {
     .replace(
       "인플루언서가 입점 브랜드를 둘러보고 역제안할 수 있도록 구성한 광고주 프로필입니다.",
       "인플루언서가 브랜드 정보와 제안 조건을 빠르게 확인할 수 있는 공개 프로필입니다.",
+    )
+    .replace(
+      "캠페인 지원 화면을 실제 인플루언서 계정처럼 검수하기 위한 공개 프로필입니다.",
+      "숏폼 콘텐츠와 브랜드 협업 일정을 안정적으로 운영하는 크리에이터입니다.",
     )
     .replace("뷰티와 테크 라이프스타일 제품을 빠르게 검증하는 인플루언서", "뷰티와 테크 라이프스타일 제품을 선명하게 소개하는 인플루언서")
     .replace("빠르게 검증하는", "선명하게 소개하는")
@@ -2118,17 +2116,26 @@ function dedupeBrandsByDisplayIdentity(brands: MarketplaceBrandProfile[]) {
 function PlatformPill({
   platform,
   label,
+  value,
 }: {
   key?: string;
   platform: InfluencerPlatform;
   label: string;
+  value?: string;
 }) {
+  const hasMetric = Boolean(value);
+
   return (
     <span
-      className="inline-flex max-w-full items-center gap-1.5 text-[11px] font-extrabold text-neutral-800"
+      className={`inline-flex max-w-full items-center gap-1.5 text-[12px] font-extrabold ${
+        hasMetric
+          ? "h-7 rounded-[7px] bg-neutral-50 px-2 text-neutral-900"
+          : "text-neutral-800"
+      }`}
     >
-      <PlatformBrandMark platform={platform} size="sm" />
-      <span className="truncate">{label}</span>
+      <PlatformBrandMark platform={platform} size={hasMetric ? "xs" : "sm"} />
+      <span className="shrink-0 text-neutral-600">{label}</span>
+      {value ? <span className="truncate text-neutral-950">{value}</span> : null}
     </span>
   );
 }

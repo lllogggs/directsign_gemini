@@ -1,5 +1,6 @@
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, ArrowRight, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight } from "lucide-react";
+import { LogoMark } from "../../components/BrandLogo";
 import { PRODUCT_NAME } from "../../domain/brand";
 import { seoResources, seoResourcesBySlug } from "../../domain/seoResources";
 
@@ -11,9 +12,7 @@ function ResourceHeader({ ctaPath = "/intro/advertiser" }: { ctaPath?: string })
           to="/"
           className="inline-flex h-10 items-center gap-2 rounded-[10px] text-[13px] font-extrabold text-neutral-700 transition hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
         >
-          <span className="flex h-[32px] w-[32px] items-center justify-center rounded-[9px] bg-neutral-950 text-white">
-            <ShieldCheck className="h-4 w-4" strokeWidth={2} />
-          </span>
+          <LogoMark className="h-[32px] w-[32px] rounded-[9px] [&_svg]:h-[21px] [&_svg]:w-[21px]" />
           {PRODUCT_NAME}
         </Link>
         <Link

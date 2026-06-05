@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ArrowLeft, ShieldCheck } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
+import { LogoMark } from "../../components/BrandLogo";
 import { PRODUCT_NAME } from "../../domain/brand";
 import {
   LEGAL_CONTACT_EMAIL,
@@ -383,9 +384,7 @@ export function LegalDocumentPage({
 
         <section className="mt-4 min-h-0 flex-1 overflow-y-auto rounded-lg border border-neutral-200 bg-white p-5 shadow-[0_18px_55px_rgba(15,23,42,0.06)] sm:p-7">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-neutral-950 text-white">
-              <ShieldCheck className="h-4 w-4" />
-            </div>
+            <LogoMark />
             <div>
               <p className="text-[13px] font-semibold text-neutral-500">
                 {PRODUCT_NAME}

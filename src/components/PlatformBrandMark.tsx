@@ -1,14 +1,16 @@
 import { Globe2 } from "lucide-react";
 import type { InfluencerPlatform } from "../domain/verification";
 
-type PlatformBrandMarkSize = "sm" | "md";
+type PlatformBrandMarkSize = "xs" | "sm" | "md";
 
 const brandMarkSizeClasses: Record<PlatformBrandMarkSize, string> = {
+  xs: "h-4 w-4",
   sm: "h-5 w-5",
   md: "h-7 w-7",
 };
 
 const brandIconSizeClasses: Record<PlatformBrandMarkSize, string> = {
+  xs: "h-3 w-3",
   sm: "h-3.5 w-3.5",
   md: "h-[17px] w-[17px]",
 };
@@ -26,7 +28,7 @@ export function PlatformBrandMark({
   if (platform === "instagram") {
     return (
       <span
-        className={`flex shrink-0 items-center justify-center overflow-hidden ${markClassName}`}
+        className={`flex shrink-0 items-center justify-center overflow-hidden rounded-[4px] ${markClassName}`}
         style={{
           background:
             "radial-gradient(circle at 30% 110%, #fdf497 0%, #fdf497 16%, #fd5949 42%, #d6249f 68%, #285aeb 100%)",
@@ -94,11 +96,15 @@ export function PlatformBrandMark({
   if (platform === "naver_blog") {
     return (
       <span
-        className={`flex shrink-0 items-center justify-center ${markClassName}`}
+        className={`flex shrink-0 items-center justify-center rounded-[3px] ${markClassName}`}
         style={{ backgroundColor: "#03C75A" }}
         aria-hidden="true"
       >
-        <svg className={size === "sm" ? "h-4 w-4" : "h-5 w-5"} viewBox="0 0 48 48" role="img">
+        <svg
+          className={size === "xs" ? "h-3.5 w-3.5" : size === "sm" ? "h-4 w-4" : "h-5 w-5"}
+          viewBox="0 0 48 48"
+          role="img"
+        >
           <path d="M10 11h9.2l9.6 13.7V11H38v26h-9.2l-9.6-13.7V37H10V11z" fill="#FFFFFF" />
         </svg>
       </span>

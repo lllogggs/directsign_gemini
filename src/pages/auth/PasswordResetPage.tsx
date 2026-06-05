@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { ArrowLeft, ArrowRight, CheckCircle2, KeyRound, MailCheck } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
+import { BrandLogo } from "../../components/BrandLogo";
 import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
 import { translateApiErrorMessage } from "../../domain/userMessages";
@@ -161,12 +162,7 @@ export function PasswordResetPage() {
             className="yl-brand-action -ml-1 inline-flex items-center gap-2.5 rounded-[12px] px-1 py-1 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
             aria-label={`${PRODUCT_NAME} 홈`}
           >
-            <span className="inline-flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[11px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
-              <KeyRound className="h-4 w-4" />
-            </span>
-            <span className="font-neo-heavy text-[18px] leading-none tracking-[-0.045em]">
-              {PRODUCT_NAME}
-            </span>
+            <BrandLogo />
           </Link>
           <Link
             to={copy.loginHref}

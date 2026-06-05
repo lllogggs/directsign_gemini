@@ -23,11 +23,10 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { BrandLogo, LogoMark } from "../../components/BrandLogo";
 import { PRODUCT_NAME } from "../../domain/brand";
 
 type IntroRole = "advertiser" | "influencer";
-
-const LANDING_BRAND_NAME = "연락미";
 
 const advertiserProposalAssetUrls = {
   contractBuilder: new URL(
@@ -326,6 +325,44 @@ type IntroProposalSlide = {
   riskItems?: IntroProposalRiskItem[];
   visualFacts?: IntroProposalFact[];
 };
+
+const preloadedIntroImageSources = new Set<string>();
+
+function collectIntroProposalImageSources(slides: IntroProposalSlide[]) {
+  const sources = new Set<string>();
+
+  slides.forEach((slide) => {
+    if (slide.imageSrc) sources.add(slide.imageSrc);
+    slide.riskItems?.forEach((item) => {
+      if (item.imageSrc) sources.add(item.imageSrc);
+    });
+    if (slide.stage === "link") {
+      sources.add(advertiserProposalAssetUrls.contractBuilder);
+      sources.add(advertiserProposalAssetUrls.influencerContract);
+    }
+  });
+
+  return Array.from(sources);
+}
+
+function preloadIntroImages(sources: string[]) {
+  if (typeof window === "undefined") return;
+
+  sources.forEach((source) => {
+    if (preloadedIntroImageSources.has(source)) return;
+    preloadedIntroImageSources.add(source);
+
+    const link = document.createElement("link");
+    link.rel = "preload";
+    link.as = "image";
+    link.href = source;
+    document.head.appendChild(link);
+
+    const image = new Image();
+    image.decoding = "async";
+    image.src = source;
+  });
+}
 
 const advertiserProposalSlides: IntroProposalSlide[] = [
   {
@@ -1360,7 +1397,7 @@ export function StartPage() {
           <Link
             to="/"
             className="yl-brand-action -ml-1 flex min-w-0 items-center gap-2.5 rounded-[12px] px-1 py-1 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
-            aria-label={`${LANDING_BRAND_NAME} 홈`}
+            aria-label={`${PRODUCT_NAME} 홈`}
           >
             <BrandLogo />
           </Link>
@@ -1442,43 +1479,6 @@ export function StartPage() {
         </footer>
       </div>
     </main>
-  );
-}
-
-function BrandLogo() {
-  return (
-    <span className="inline-flex items-center gap-2.5" aria-hidden="true">
-      <LogoMark />
-      <span className="flex items-center">
-        <span className="font-neo-heavy text-[18px] leading-none tracking-[-0.045em] text-neutral-950 sm:text-[19px]">
-          {LANDING_BRAND_NAME}
-        </span>
-      </span>
-    </span>
-  );
-}
-
-function LogoMark() {
-  return (
-    <span className="inline-flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[11px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
-      <svg
-        aria-hidden="true"
-        className="h-[23px] w-[23px]"
-        fill="none"
-        viewBox="0 0 32 32"
-      >
-        <circle cx="9.8" cy="11.2" r="3" fill="currentColor" opacity="0.96" />
-        <circle cx="22.2" cy="11.2" r="3" fill="currentColor" opacity="0.96" />
-        <circle cx="16" cy="22" r="3" fill="currentColor" opacity="0.96" />
-        <path
-          d="M12.1 12.8 16 19.1l3.9-6.3"
-          stroke="currentColor"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth="2.1"
-        />
-      </svg>
-    </span>
   );
 }
 
@@ -1691,6 +1691,10 @@ function ProposalIntroCarousel({
   const [slideIndex, setSlideIndex] = useState(0);
   const activeSlide = slides[slideIndex] ?? slides[0];
 
+  useEffect(() => {
+    preloadIntroImages(collectIntroProposalImageSources(slides));
+  }, [slides]);
+
   const showPrevious = useCallback(() => {
     setSlideIndex((currentIndex) =>
       currentIndex === 0 ? slides.length - 1 : currentIndex - 1,
@@ -1830,13 +1834,13 @@ function ProposalSlideView({ slide }: { slide: IntroProposalSlide }) {
         <div
           className={`mx-auto grid h-full min-h-0 w-full max-w-[360px] items-center gap-3 px-1 sm:mx-0 sm:flex sm:max-w-none sm:flex-col sm:items-start sm:justify-center sm:gap-0 sm:px-0 sm:pl-[clamp(8px,2.2vw,34px)] ${
             hasMobileContext
-              ? "grid-cols-[minmax(0,0.88fr)_1px_minmax(0,1.08fr)] text-left"
+              ? "grid-cols-1 justify-items-center text-center sm:justify-items-start sm:text-left"
               : "grid-cols-1 justify-items-center text-center"
           }`}
         >
-          <div className="min-w-0 text-right sm:text-left">
+          <div className="min-w-0 text-center sm:text-left">
             {slide.context ? (
-              <p className="inline-block max-w-full bg-gradient-to-br from-[#0f172a] to-[#2f6df6] bg-clip-text font-neo-heavy text-[23px] font-black leading-[1.01] tracking-normal text-transparent drop-shadow-[0_12px_22px_rgba(36,86,214,0.14)] after:ml-auto after:mt-1.5 after:block after:h-1 after:w-8 after:rounded-full after:bg-blue-600 after:shadow-[0_12px_26px_rgba(36,86,214,0.24)] sm:mb-5 sm:text-[clamp(38px,4.2vw,50px)] sm:after:ml-0">
+              <p className="inline-block max-w-full bg-gradient-to-br from-[#0f172a] to-[#2f6df6] bg-clip-text font-neo-heavy text-[28px] font-black leading-[0.98] tracking-normal text-transparent drop-shadow-[0_12px_22px_rgba(36,86,214,0.14)] after:mx-auto after:mt-2 after:block after:h-1 after:w-9 after:rounded-full after:bg-blue-600 after:shadow-[0_12px_26px_rgba(36,86,214,0.24)] sm:mb-5 sm:text-[clamp(38px,4.2vw,50px)] sm:after:mx-0">
                 {slide.context}
               </p>
             ) : null}
@@ -1848,17 +1852,6 @@ function ProposalSlideView({ slide }: { slide: IntroProposalSlide }) {
               {slide.title}
             </h2>
           </div>
-          {hasMobileContext ? (
-            <>
-              <span
-                aria-hidden="true"
-                className="h-[86px] w-px rounded-full bg-gradient-to-b from-transparent via-blue-600/50 to-transparent sm:hidden"
-              />
-              <h2 className="max-w-[188px] break-keep font-neo-heavy text-[20px] leading-[1.04] tracking-normal text-neutral-950 sm:hidden">
-                {slide.title}
-              </h2>
-            </>
-          ) : null}
           {desktopSupport ? (
             <div className="hidden sm:mx-0 sm:mt-6 sm:block sm:max-h-none sm:max-w-[300px] sm:border-l-[3px] sm:border-blue-600/20 sm:pl-3.5 sm:text-[clamp(16px,1.55vw,19px)] sm:font-normal sm:leading-[1.45] sm:tracking-normal sm:text-[#58625c] sm:[&_.support-stack]:grid sm:[&_.support-stack]:gap-3.5 [&_strong]:font-black [&_strong]:text-blue-600">
               {desktopSupport}
@@ -2816,9 +2809,7 @@ function IntroAppHeader({ role }: { role: IntroRole }) {
     <div className="border-b border-[#d9e0d9] bg-white">
       <div className="flex h-12 min-w-0 items-center justify-between gap-3 px-3">
         <div className="flex h-10 min-w-0 items-center gap-2">
-          <span className="flex h-9 w-9 items-center justify-center rounded-[11px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
-            <ShieldCheck className="h-4 w-4" strokeWidth={2} />
-          </span>
+          <LogoMark className="h-9 w-9" />
           <span className="font-neo-heavy truncate text-[18px] leading-none text-neutral-950">
             {PRODUCT_NAME}
           </span>
@@ -4619,7 +4610,7 @@ function BrandLockup() {
     <Link
       to="/"
       className="yl-brand-action -ml-1 flex min-h-10 min-w-10 items-center gap-3 rounded-[12px] px-1 py-1 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#171a17]"
-      aria-label={`${LANDING_BRAND_NAME} 홈`}
+      aria-label={`${PRODUCT_NAME} 홈`}
     >
       <BrandLogo />
     </Link>

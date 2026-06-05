@@ -8,12 +8,12 @@ import {
   RefreshCw,
   Search,
   Send,
-  ShieldCheck,
   SlidersHorizontal,
   Settings,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { LogoMark } from "../../components/BrandLogo";
 import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
 import { removeInternalTestLabel } from "../../domain/display";
@@ -387,10 +387,8 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
       <header className="z-30 shrink-0 border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-[1500px] items-center justify-between px-3 sm:px-5 lg:px-6">
           <Link to="/" className="flex shrink-0 items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-[13px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
-              <ShieldCheck className="h-4 w-4" />
-            </span>
-            <span className="font-neo-heavy hidden text-[19px] leading-none sm:inline">{PRODUCT_NAME}</span>
+            <LogoMark />
+            <span className="font-neo-heavy text-[18px] leading-none sm:text-[19px]">{PRODUCT_NAME}</span>
           </Link>
 
           <div className="no-scrollbar ml-3 flex min-w-0 items-center gap-2 overflow-x-auto">

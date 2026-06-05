@@ -10,6 +10,7 @@ import {
   Settings,
   ShieldCheck,
 } from "lucide-react";
+import { LogoMark } from "../../components/BrandLogo";
 import {
   type VerificationAccountInfo,
   type VerificationRequest,
@@ -235,9 +236,7 @@ export function AdvertiserVerification() {
               className="yl-brand-action group flex min-w-0 items-center gap-3 rounded-lg text-neutral-950 transition hover:text-neutral-700"
               aria-label={PRODUCT_NAME}
             >
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-neutral-950 text-white shadow-[0_10px_22px_rgba(15,23,42,0.16)]">
-                <ShieldCheck className="h-4 w-4" />
-              </span>
+              <LogoMark />
               <span className="truncate text-lg font-extrabold">{PRODUCT_NAME}</span>
             </button>
           </div>

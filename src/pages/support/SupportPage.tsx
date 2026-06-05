@@ -1,6 +1,7 @@
 import { type FormEvent, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { ArrowLeft, CheckCircle2, ShieldCheck } from "lucide-react";
+import { ArrowLeft, CheckCircle2 } from "lucide-react";
+import { LogoMark } from "../../components/BrandLogo";
 import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
 import { LEGAL_CONTACT_EMAIL } from "../../domain/legalEntity";
@@ -131,9 +132,7 @@ export function SupportPage() {
             to="/"
             className="inline-flex h-10 items-center gap-3 rounded-[10px] px-1 text-[15px] font-extrabold text-neutral-950 transition hover:bg-neutral-100"
           >
-            <span className="flex h-[34px] w-[34px] items-center justify-center rounded-[11px] bg-neutral-950 text-white">
-              <ShieldCheck className="h-4 w-4" />
-            </span>
+            <LogoMark />
             {PRODUCT_NAME}
           </Link>
           <Link

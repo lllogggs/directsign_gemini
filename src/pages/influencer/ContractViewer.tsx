@@ -1371,7 +1371,7 @@ export function ContractViewer() {
     : !allApproved || isVerificationLoading || !isContractSignableState;
   const primaryCtaIsBlue = shouldShowContractReviewCta || canUseSignatureCta;
   const mainClassName = shouldShowContractReviewCta
-    ? "mx-auto flex h-[calc(100dvh-57px)] w-full max-w-2xl flex-1 items-stretch px-4 pb-20 pt-3 sm:px-6 sm:pb-24"
+    ? "mx-auto flex h-[calc(100dvh-57px)] w-full max-w-5xl flex-1 items-stretch px-4 pb-20 pt-4 sm:px-6 sm:pb-24 lg:px-8"
     : shouldShowPdfReview
       ? "mx-auto flex w-full max-w-5xl flex-1 px-0 pb-24 pt-0 sm:px-6 sm:pb-28 sm:pt-4 lg:px-8"
     : "mx-auto grid w-full max-w-6xl flex-1 gap-4 px-4 pb-36 pt-4 sm:px-6 sm:pb-32 lg:grid-cols-[minmax(0,1fr)_340px] lg:px-8";
@@ -1381,10 +1381,10 @@ export function ContractViewer() {
       ? "w-full"
     : "space-y-3 sm:space-y-4";
   const summaryCardClassName = shouldShowContractReviewCta
-    ? "grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-4 rounded-xl border border-neutral-200/80 bg-white px-5 py-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_24px_70px_rgba(15,23,42,0.08)] sm:px-8 sm:py-6"
+    ? "grid h-full min-h-0 w-full grid-rows-[auto_minmax(0,1fr)] gap-5 rounded-xl border border-neutral-200/80 bg-white px-5 py-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_24px_70px_rgba(15,23,42,0.08)] sm:grid-cols-[minmax(0,0.8fr)_minmax(340px,1fr)] sm:grid-rows-none sm:items-center sm:gap-8 sm:px-8 sm:py-7 lg:px-10 lg:py-8"
     : "rounded-lg border border-neutral-200/80 bg-white px-4 py-4 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_42px_rgba(15,23,42,0.055)] sm:px-6 sm:py-5";
   const summaryTitleClassName = shouldShowContractReviewCta
-    ? "mt-4 break-keep text-[28px] font-semibold leading-tight text-neutral-950 sm:text-[34px]"
+    ? "mt-4 break-keep text-[28px] font-semibold leading-tight text-neutral-950 sm:text-[38px]"
     : "mt-3 break-keep text-[25px] font-semibold leading-tight text-neutral-950 sm:text-3xl";
   const summaryListClassName = shouldShowContractReviewCta
     ? "flex h-full min-h-0 flex-col justify-center gap-2.5 rounded-xl border border-neutral-200 bg-[#fbfbfc] p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]"

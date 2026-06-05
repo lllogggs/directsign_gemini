@@ -8,7 +8,6 @@ import {
   Lock,
   LogOut,
   RefreshCw,
-  ShieldCheck,
   UserRoundCheck,
   X,
 } from "lucide-react";
@@ -18,6 +17,7 @@ import {
   type VerificationRequest,
 } from "../../domain/verification";
 import { AuthLoginScreen } from "../../components/AuthLoginScreen";
+import { LogoMark } from "../../components/BrandLogo";
 import { apiFetch } from "../../domain/api";
 import { buildLoginRedirect, getNextPath } from "../../domain/navigation";
 import { PRODUCT_NAME } from "../../domain/brand";
@@ -655,36 +655,38 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
   return (
     <div className="min-h-screen bg-[#f4f5f7] font-sans text-neutral-950">
       <header className="sticky top-0 z-20 border-b border-neutral-200/80 bg-white/95 shadow-[0_1px_0_rgba(15,23,42,0.04)] backdrop-blur">
-        <div className="mx-auto flex h-[72px] max-w-[1480px] items-center justify-between px-5 sm:px-8 lg:px-10">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-950 text-white shadow-[0_8px_24px_rgba(15,23,42,0.16)]">
-              <ShieldCheck className="h-5 w-5" />
-            </div>
-            <div>
-              <h1 className="text-[18px] font-semibold tracking-[-0.02em]">
+        <div className="mx-auto flex h-[72px] max-w-[1480px] items-center justify-between gap-3 px-5 sm:px-8 lg:px-10">
+          <div className="flex min-w-0 items-center gap-3">
+            <LogoMark />
+            <div className="min-w-0">
+              <h1 className="truncate text-[18px] font-semibold tracking-[-0.02em]">
                 {PRODUCT_NAME} 운영
               </h1>
-              <p className="text-xs font-medium text-neutral-500">
+              <p className="hidden text-xs font-medium text-neutral-500 sm:block">
                 계약 본문은 당사자 지원 요청이 있을 때만 열립니다.
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             <button
               type="button"
               onClick={loadAdminData}
-              className="inline-flex h-10 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-700 transition hover:border-neutral-400"
+              aria-label="새로고침"
+              title="새로고침"
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white text-[13px] font-semibold text-neutral-700 transition hover:border-neutral-400 sm:w-auto sm:px-3"
             >
               <RefreshCw className={`h-4 w-4 ${isLoadingData ? "animate-spin" : ""}`} />
-              새로고침
+              <span className="hidden whitespace-nowrap sm:inline">새로고침</span>
             </button>
             <button
               type="button"
               onClick={handleLogout}
-              className="inline-flex h-10 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-700 transition hover:border-neutral-400"
+              aria-label="로그아웃"
+              title="로그아웃"
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white text-[13px] font-semibold text-neutral-700 transition hover:border-neutral-400 sm:w-auto sm:px-3"
             >
               <LogOut className="h-4 w-4" />
-              로그아웃
+              <span className="hidden whitespace-nowrap sm:inline">로그아웃</span>
             </button>
           </div>
         </div>

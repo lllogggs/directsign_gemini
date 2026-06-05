@@ -24,6 +24,7 @@ import { clearAdvertiserSessionCache } from "../../domain/advertiserSessionCache
 import { PRODUCT_NAME } from "../../domain/brand";
 import { LEGAL_CONTACT_EMAIL } from "../../domain/legalEntity";
 import { ScreenHelpButton } from "../../components/ScreenHelp";
+import { LogoMark } from "../../components/BrandLogo";
 import { SCREEN_HELP_CONTENT } from "../../domain/screenHelp";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -917,10 +918,8 @@ export function ContractBuilder() {
             onClick={() => navigate("/advertiser/dashboard")}
             className="yl-brand-action -ml-1 flex h-10 min-w-10 shrink-0 items-center gap-3 rounded-[12px] px-1 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
           >
-            <span className="flex h-[34px] w-[34px] items-center justify-center rounded-[11px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
-              <ShieldCheck className="h-4 w-4" strokeWidth={2} />
-            </span>
-            <span className="font-neo-heavy hidden text-[18px] leading-none text-neutral-950 sm:inline">
+            <LogoMark />
+            <span className="font-neo-heavy text-[18px] leading-none text-neutral-950">
               {PRODUCT_NAME}
             </span>
           </button>

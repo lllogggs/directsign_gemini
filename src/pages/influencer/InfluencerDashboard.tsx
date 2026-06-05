@@ -21,7 +21,6 @@ import {
   Music2,
   Search,
   Settings,
-  ShieldCheck,
   SlidersHorizontal,
   UserCheck,
   X,
@@ -56,6 +55,7 @@ import type { InfluencerPlatform } from "../../domain/verification";
 import { DashboardSurfaceSwitch } from "../../components/DashboardSurfaceSwitch";
 import { DashboardDownloadButton } from "../../components/DashboardDownloadButton";
 import { MobileSurfaceSwitch } from "../../components/MobileSurfaceSwitch";
+import { LogoMark } from "../../components/BrandLogo";
 import { useMarketplaceMessageSummary } from "../../hooks/useMarketplaceMessageSummary";
 import { downloadXlsx, type XlsxSheet } from "../../domain/xlsxExport";
 
@@ -678,17 +678,14 @@ export function InfluencerDashboard() {
             onClick={() => navigate("/influencer/dashboard")}
             className="yl-brand-action -ml-1 flex h-10 min-w-10 shrink-0 items-center gap-3 rounded-[12px] px-1 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
           >
-            <span className="flex h-[34px] w-[34px] items-center justify-center rounded-[11px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
-              <ShieldCheck className="h-4 w-4" strokeWidth={2} />
-            </span>
-            <span className="font-neo-heavy hidden text-[18px] leading-none sm:inline">{PRODUCT_NAME}</span>
-            <span className="max-w-[104px] truncate text-[12px] font-extrabold leading-none text-neutral-700 sm:hidden">
-              인플루언서
-            </span>
+            <LogoMark />
+            <span className="font-neo-heavy text-[18px] leading-none">{PRODUCT_NAME}</span>
           </button>
 
           <div className="ml-2 flex min-w-0 items-center justify-end gap-1.5 sm:ml-3 sm:gap-2">
-            <DashboardSurfaceSwitch role="influencer" active="contracts" />
+            <div className="hidden sm:block">
+              <DashboardSurfaceSwitch role="influencer" active="contracts" />
+            </div>
             <MessageCenterButton
               unreadCount={messageSummary.unreadCount}
               isLoading={isMessageSummaryLoading}
@@ -891,10 +888,8 @@ function LoadingView() {
       <header className="sticky top-0 z-30 border-b border-neutral-200/70 bg-white/92 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-[1500px] items-center justify-between px-3 sm:px-5 lg:px-6">
           <div className="flex h-10 min-w-10 shrink-0 items-center gap-3 rounded-[12px] px-1">
-            <span className="flex h-[34px] w-[34px] items-center justify-center rounded-[11px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
-              <ShieldCheck className="h-4 w-4" strokeWidth={2} />
-            </span>
-            <span className="font-neo-heavy hidden text-[18px] leading-none sm:inline">
+            <LogoMark />
+            <span className="font-neo-heavy text-[18px] leading-none">
               {PRODUCT_NAME}
             </span>
           </div>

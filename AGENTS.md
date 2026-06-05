@@ -68,6 +68,8 @@ Example option format:
   - When the user corrects a Codex change, record the correction as a hard rule and search nearby pages for the same mistake.
   - Do not silently reinterpret a correction as optional preference.
   - Current hard corrections:
+  - The main-page upper-left Yeollock logo is the product-wide logo source of truth. Do not use a shield-check, key, file, or other feature icon as a brand/logo mark in headers, login screens, admin screens, marketplace pages, intro pages, legal/support pages, or loading shells; use the shared brand logo/mark instead.
+  - Mobile visual QA must reject text-fit and icon-polish failures even when automated overflow metrics pass. Contract-writing CTAs need enough width for the visible Korean label, and influencer discovery/list cards must keep platform marks and audience numbers visually bound, legible, and consistent with the official platform-mark treatment.
   - Kim Jaewoo review standard:
     - The Kim Jaewoo Agent must be strict, not polite. It should actively search for anything the Product Owner would reject before Codex reports completion.
     - After every code, UI, UX, or copy change, rerun the relevant Kim Jaewoo checklist against the actual rendered pages/actions, not only the files that were edited.

@@ -17,7 +17,6 @@ import {
   Save,
   Send,
   Settings,
-  ShieldCheck,
 } from "lucide-react";
 import { format } from "date-fns";
 import { Textarea } from "@/components/ui/textarea";
@@ -29,6 +28,7 @@ import { PRODUCT_NAME } from "../../domain/brand";
 import { LEGAL_CONTACT_EMAIL } from "../../domain/legalEntity";
 import { SUPPORT_ACCESS_CONSENT_TEXT } from "../../domain/legalConsent";
 import { buildSupportTicketPath } from "../../domain/support";
+import { BrandLogo, LogoMark } from "../../components/BrandLogo";
 import { verificationStatusLabel } from "../../domain/verification";
 import {
   clearVerificationSummaryCache,
@@ -797,10 +797,8 @@ export function ContractAdminViewer() {
             onClick={() => navigate("/advertiser/dashboard")}
             className="yl-brand-action -ml-1 flex h-10 min-w-10 shrink-0 items-center gap-3 rounded-[12px] px-1 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
           >
-            <span className="flex h-[34px] w-[34px] items-center justify-center rounded-[11px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
-              <ShieldCheck className="h-4 w-4" strokeWidth={2} />
-            </span>
-            <span className="font-neo-heavy hidden text-[18px] leading-none text-neutral-950 sm:inline">
+            <LogoMark />
+            <span className="font-neo-heavy text-[18px] leading-none text-neutral-950">
               {PRODUCT_NAME}
             </span>
           </button>
@@ -1306,14 +1304,7 @@ function ContractAdminLoadingShell() {
     <div className="min-h-screen bg-[#f4f5f2] font-sans text-neutral-950">
       <header className="border-b border-neutral-200/80 bg-white/92 shadow-[0_1px_0_rgba(15,23,42,0.04)] backdrop-blur">
         <div className="mx-auto flex h-14 w-full max-w-[1500px] items-center justify-between px-3 sm:px-5 lg:px-6">
-          <span className="yl-brand-action -ml-1 inline-flex min-h-10 items-center gap-2.5 rounded-[12px] px-1 py-1">
-            <span className="inline-flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[11px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
-              <ShieldCheck className="h-4 w-4" />
-            </span>
-            <span className="font-neo-heavy text-[18px] leading-none tracking-[-0.045em] text-neutral-950">
-              {PRODUCT_NAME}
-            </span>
-          </span>
+          <BrandLogo className="yl-brand-action -ml-1 inline-flex min-h-10 items-center gap-2.5 rounded-[12px] px-1 py-1" />
           <span className="hidden h-10 w-[112px] rounded-[9px] bg-neutral-100 sm:block" />
         </div>
       </header>

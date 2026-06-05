@@ -165,6 +165,10 @@ const dashboardSurfaceSwitch = read("src/components/DashboardSurfaceSwitch.tsx")
 const dashboardDownloadButton = read("src/components/DashboardDownloadButton.tsx");
 const mobileSurfaceSwitch = read("src/components/MobileSurfaceSwitch.tsx");
 const authLoginScreen = read("src/components/AuthLoginScreen.tsx");
+const loginLanding = read("src/pages/auth/LoginLanding.tsx");
+const passwordResetPage = read("src/pages/auth/PasswordResetPage.tsx");
+const contractBuilder = read("src/pages/marketing/ContractBuilder.tsx");
+const brandLogo = read("src/components/BrandLogo.tsx");
 const platformBrandMark = read("src/components/PlatformBrandMark.tsx");
 const platformDisplay = read("src/domain/platformDisplay.ts");
 const indexCss = read("src/index.css");
@@ -364,6 +368,42 @@ assertNoText(
   ["src/pages/influencer/InfluencerDashboard.tsx"],
   "인플루언서 · 내 계약",
   "The mobile surface switch owns the contract/campaign distinction; the app header should not repeat or truncate it",
+);
+
+const sharedBrandLogoConsumers = [
+  app,
+  landing,
+  authLoginScreen,
+  loginLanding,
+  signupPage,
+  passwordResetPage,
+  adminDashboard,
+  advertiserDashboard,
+  influencerDashboard,
+  campaignPages,
+  marketplacePages,
+  marketplaceInboxPage,
+  contractBuilder,
+  contractAdminViewer,
+  advertiserVerification,
+  influencerVerification,
+  legalDocumentPage,
+  supportPage,
+];
+
+check(
+  "product headers use the shared Yeollock logo mark",
+  brandLogo.includes('viewBox="0 0 32 32"') &&
+    brandLogo.includes("LogoMark") &&
+    brandLogo.includes("BrandLogo") &&
+    sharedBrandLogoConsumers.every(
+      (source) => source.includes("LogoMark") || source.includes("BrandLogo"),
+    ) &&
+    !sharedBrandLogoConsumers.some((source) =>
+      /yl-brand-action[\s\S]{0,520}<ShieldCheck/.test(source),
+    ) &&
+    agents.includes("product-wide logo source of truth"),
+  "Header/login/admin/marketplace/legal/support brand slots must use the same main-page logo, not shield-check or feature icons",
 );
 
 check(
@@ -975,7 +1015,7 @@ check(
     mobileSurfaceSwitch.includes("/advertiser/campaigns") &&
     mobileSurfaceSwitch.includes("/influencer/dashboard") &&
     mobileSurfaceSwitch.includes("/influencer/campaigns") &&
-    !advertiserDashboard.includes('<MobileSurfaceSwitch role="advertiser"') &&
+    advertiserDashboard.includes('<MobileSurfaceSwitch role="advertiser" active={surface} />') &&
     (influencerDashboard.match(/<MobileSurfaceSwitch role="influencer" active="contracts" \/>/g) ??
       []).length >= 2 &&
     campaignPages.includes('<MobileSurfaceSwitch role={role} active="campaigns" />'),
@@ -1335,7 +1375,7 @@ check(
     advertiserDashboard.includes('<PlatformBrandMark platform="youtube" size="sm" />') &&
     advertiserDashboard.includes('<PlatformBrandMark platform="instagram" size="sm" />') &&
     agents.includes("Dashboard platform columns should show platform logos only") &&
-    advertiserDashboard.includes('aria-label={`플랫폼 ${items.map((item) => item.title).join(", ")}`}') &&
+    advertiserDashboard.includes('items.map((item) => item.title).join(", ")') &&
     advertiserDashboard.includes("function CampaignPlatformMarks") &&
     advertiserDashboard.includes("<CampaignPlatformMarks platforms={campaign.platforms} title={platformLabel} />") &&
     !advertiserDashboard.includes(">{item.label}</span>") &&
@@ -1347,9 +1387,9 @@ check(
     campaignPages.includes(
       "inline-flex min-w-0 shrink items-center gap-1.5 text-[11px] font-extrabold text-neutral-800",
     ) &&
-    marketplacePages.includes(
-      "inline-flex max-w-full items-center gap-1.5 text-[11px] font-extrabold text-neutral-800",
-    ),
+    marketplacePages.includes('value={platform.followersLabel}') &&
+    marketplacePages.includes('const hasMetric = Boolean(value)') &&
+    marketplacePages.includes('PlatformBrandMark platform={platform} size={hasMetric ? "xs" : "sm"}'),
   "Dashboard platform columns should avoid repeating visible platform text inside dense rows",
 );
 
@@ -1468,7 +1508,9 @@ check(
     !landing.includes("linear-gradient(112deg,transparent_0_61%") &&
     !landing.includes("pointer-events-none absolute inset-3") &&
     !landing.includes("yl-primary-action inline-flex h-[34px]") &&
-    landing.includes("bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]") &&
+    landing.includes("LogoMark") &&
+    brandLogo.includes("bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]") &&
+    brandLogo.includes('viewBox="0 0 32 32"') &&
     !landing.includes("function ProposalSlideBrand") &&
     !landing.includes("<ProposalSlideBrand") &&
     landing.includes("pageNo: \"01\"") &&

@@ -8,7 +8,7 @@ import {
   Link,
 } from "react-router-dom";
 import { Component, lazy, Suspense, useEffect, type ErrorInfo, type ReactNode } from "react";
-import { ShieldCheck } from "lucide-react";
+import { BrandLogo } from "./components/BrandLogo";
 import { AdvertiserAuthGate } from "./pages/marketing/AdvertiserAuthGate";
 import { RoleIntroPage, StartPage } from "./pages/landing/LandingPages";
 import { Dashboard as AdvertiserDashboard } from "./pages/marketing/Dashboard";
@@ -276,14 +276,10 @@ function AppLoading({
         </p>
         <header className="sticky top-0 z-30 border-b border-neutral-200/70 bg-white/92 backdrop-blur">
           <div className="mx-auto flex h-14 max-w-[1500px] items-center justify-between px-3 sm:px-5 lg:px-6">
-            <div className="yl-brand-action -ml-1 flex h-10 min-w-10 shrink-0 items-center gap-3 rounded-[12px] px-1">
-              <span className="flex h-[34px] w-[34px] items-center justify-center rounded-[11px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
-                <ShieldCheck className="h-4 w-4" strokeWidth={2} />
-              </span>
-              <span className="font-neo-heavy hidden text-[18px] leading-none sm:inline">
-                {PRODUCT_NAME}
-              </span>
-            </div>
+            <BrandLogo
+              className="yl-brand-action -ml-1 flex h-10 min-w-10 shrink-0 items-center gap-3 rounded-[12px] px-1"
+              textClassName="font-neo-heavy text-[18px] leading-none"
+            />
             <span className="h-9 w-20 rounded-[9px] bg-white shadow-[inset_0_0_0_1px_rgba(23,26,23,0.08)]" />
           </div>
         </header>
@@ -306,14 +302,10 @@ function AppLoading({
       </p>
       <header className="sticky top-0 z-30 border-b border-neutral-200/70 bg-white/92 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-[1500px] items-center justify-between px-3 sm:px-5 lg:px-6">
-          <div className="yl-brand-action -ml-1 flex h-10 min-w-10 shrink-0 items-center gap-3 rounded-[12px] px-1">
-            <span className="flex h-[34px] w-[34px] items-center justify-center rounded-[11px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
-              <ShieldCheck className="h-4 w-4" strokeWidth={2} />
-            </span>
-            <span className="font-neo-heavy hidden text-[18px] leading-none sm:inline">
-              {PRODUCT_NAME}
-            </span>
-          </div>
+          <BrandLogo
+            className="yl-brand-action -ml-1 flex h-10 min-w-10 shrink-0 items-center gap-3 rounded-[12px] px-1"
+            textClassName="font-neo-heavy text-[18px] leading-none"
+          />
           <span className="h-9 w-24 rounded-[9px] bg-white shadow-[inset_0_0_0_1px_rgba(23,26,23,0.08)]" />
         </div>
       </header>
