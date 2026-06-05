@@ -181,6 +181,7 @@ describe("yeollock.me security regressions", () => {
     assert.match(byKey.get("Permissions-Policy") ?? "", /camera=\(\)/);
     assert.match(byKey.get("Strict-Transport-Security") ?? "", /includeSubDomains/);
     assert.match(byKey.get("Content-Security-Policy") ?? "", /frame-ancestors 'none'/);
+    assert.match(byKey.get("Content-Security-Policy") ?? "", /img-src 'self' data: blob: https:\/\/\*\.supabase\.co/);
     assert.match(byKey.get("Content-Security-Policy") ?? "", /connect-src 'self' https:\/\/\*\.supabase\.co wss:\/\/\*\.supabase\.co/);
     assert.match(byKey.get("Content-Security-Policy") ?? "", /script-src 'self' https:\/\/\*\.googletagmanager\.com https:\/\/\*\.clarity\.ms/);
     assert.match(byKey.get("Content-Security-Policy") ?? "", /https:\/\/\*\.google-analytics\.com/);
@@ -227,6 +228,7 @@ describe("yeollock.me security regressions", () => {
     assert.doesNotMatch(clarityPathAllowlist, /"\/influencer\/dashboard"/);
 
     assert.match(server, /script-src 'self' https:\/\/\*\.googletagmanager\.com https:\/\/\*\.clarity\.ms/);
+    assert.match(server, /img-src 'self' data: blob: https:\/\/\*\.supabase\.co/);
     assert.match(server, /connect-src 'self' https:\/\/\*\.supabase\.co wss:\/\/\*\.supabase\.co https:\/\/\*\.google-analytics\.com/);
     assert.match(envExample, /VITE_GOOGLE_ANALYTICS_ID="G-PDTVNFRD1W"/);
     assert.match(envExample, /VITE_MICROSOFT_CLARITY_ID="wx0bvf6bl5"/);
