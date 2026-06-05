@@ -1820,22 +1820,22 @@ function ProposalSlideView({ slide }: { slide: IntroProposalSlide }) {
   const desktopSupport = slide.support || slide.description;
 
   return (
-    <div className="relative z-10 grid min-h-0 flex-1 grid-rows-[136px_clamp(292px,47svh,406px)] gap-2 pt-1 sm:grid-rows-none sm:grid-cols-[minmax(205px,0.34fr)_minmax(0,1fr)] sm:items-center sm:gap-[clamp(32px,4vw,56px)] sm:pt-0 lg:h-full">
+    <div className="relative z-10 grid min-h-0 flex-1 grid-rows-[150px_clamp(286px,46svh,398px)] gap-1 pt-0 sm:grid-rows-none sm:grid-cols-[minmax(205px,0.34fr)_minmax(0,1fr)] sm:items-center sm:gap-[clamp(32px,4vw,56px)] lg:h-full">
         <div
-          className={`mx-auto grid h-full min-h-0 w-full max-w-[360px] items-center gap-3 px-1 sm:mx-0 sm:flex sm:max-w-none sm:flex-col sm:items-start sm:justify-center sm:gap-0 sm:px-0 sm:pl-[clamp(8px,2.2vw,34px)] ${
+          className={`mx-auto grid h-full min-h-0 w-full max-w-[330px] place-items-center gap-2 px-2 sm:mx-0 sm:flex sm:max-w-none sm:flex-col sm:items-start sm:justify-center sm:gap-0 sm:px-0 sm:pl-[clamp(8px,2.2vw,34px)] ${
             hasMobileContext
               ? "grid-cols-1 justify-items-center text-center sm:justify-items-start sm:text-left"
               : "grid-cols-1 justify-items-center text-center"
           }`}
         >
-          <div className="min-w-0 text-center sm:text-left">
+          <div className="mx-auto grid min-w-0 place-items-center text-center sm:mx-0 sm:block sm:text-left">
             {slide.context ? (
-              <p className="inline-block max-w-full bg-gradient-to-br from-[#0f172a] to-[#2f6df6] bg-clip-text font-neo-heavy text-[28px] font-black leading-[0.98] tracking-normal text-transparent drop-shadow-[0_12px_22px_rgba(36,86,214,0.14)] after:mx-auto after:mt-2 after:block after:h-1 after:w-9 after:rounded-full after:bg-blue-600 after:shadow-[0_12px_26px_rgba(36,86,214,0.24)] sm:mb-5 sm:text-[clamp(38px,4.2vw,50px)] sm:after:mx-0">
+              <p className="block max-w-[310px] bg-gradient-to-br from-[#0f172a] to-[#2f6df6] bg-clip-text text-center font-neo-heavy text-[31px] font-black leading-[0.94] tracking-normal text-transparent drop-shadow-[0_12px_22px_rgba(36,86,214,0.14)] after:mx-auto after:mt-2.5 after:block after:h-1 after:w-10 after:rounded-full after:bg-blue-600 after:shadow-[0_12px_26px_rgba(36,86,214,0.24)] sm:mb-5 sm:max-w-none sm:text-left sm:text-[clamp(38px,4.2vw,50px)] sm:after:mx-0">
                 {slide.context}
               </p>
             ) : null}
             <h2
-              className={`max-w-[240px] break-keep font-neo-heavy text-[22px] leading-[1.04] tracking-normal text-neutral-950 sm:ml-0 sm:max-w-none sm:text-[clamp(38px,4.4vw,50px)] sm:leading-[1.07] ${
+              className={`max-w-[300px] break-keep text-center font-neo-heavy text-[27px] leading-[1] tracking-normal text-neutral-950 sm:ml-0 sm:max-w-none sm:text-left sm:text-[clamp(38px,4.4vw,50px)] sm:leading-[1.07] ${
                 hasMobileContext ? "hidden sm:block" : "mx-auto"
               }`}
             >
