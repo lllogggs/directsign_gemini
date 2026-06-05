@@ -485,6 +485,12 @@
       box-shadow 160ms ease;
   }
 
+  @media (max-width: 639px) {
+    .yl-header-action.hidden {
+      display: none !important;
+    }
+  }
+
   .yl-header-action-primary {
     background: #2563eb;
     color: white;

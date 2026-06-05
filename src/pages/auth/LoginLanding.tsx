@@ -70,10 +70,10 @@ export function LoginLanding() {
           </Link>
         </header>
 
-        <section className="flex min-h-0 items-start justify-center pt-[10vh] sm:pt-[11vh]">
+        <section className="flex min-h-0 items-start justify-center pt-[13vh] sm:pt-[12vh]">
           <div className="w-full max-w-[520px]">
             <h1 className="sr-only">{PRODUCT_NAME} 로그인</h1>
-            <div className="grid gap-2.5">
+            <div className="grid gap-3">
               {loginRoles.map((role) => {
                 const Icon = role.icon;
                 const tone = getRoleTone(role.role);
@@ -93,21 +93,21 @@ export function LoginLanding() {
                     key={role.href}
                     to={href}
                     aria-label={role.title}
-                    className={`group flex h-[76px] items-center gap-4 rounded-[10px] border px-4 text-left shadow-[0_1px_0_rgba(15,23,42,0.03),0_10px_28px_rgba(15,23,42,0.035)] transition hover:-translate-y-0.5 hover:shadow-[0_1px_0_rgba(15,23,42,0.04),0_14px_34px_rgba(15,23,42,0.055)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:h-[80px] sm:px-5 ${tone.card}`}
+                    className={`group flex h-[96px] items-center gap-4 rounded-[10px] border px-5 text-left shadow-[0_1px_0_rgba(15,23,42,0.03),0_10px_28px_rgba(15,23,42,0.035)] transition hover:-translate-y-0.5 hover:shadow-[0_1px_0_rgba(15,23,42,0.04),0_14px_34px_rgba(15,23,42,0.055)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:h-[92px] sm:px-5 ${tone.card}`}
                   >
-                    <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] border ${tone.icon}`}>
-                      <Icon className="h-[18px] w-[18px]" />
+                    <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] border ${tone.icon}`}>
+                      <Icon className="h-5 w-5" />
                     </span>
 
                     <span className="min-w-0 flex-1">
-                      <strong className="block truncate text-[20px] font-extrabold leading-6 text-neutral-950 sm:text-[22px]">
+                      <strong className="block truncate text-[22px] font-extrabold leading-7 text-neutral-950 sm:text-[23px]">
                         {role.title}
                       </strong>
-                      <span className={`mt-1 block truncate text-[12px] font-bold leading-5 ${tone.detail}`}>
+                      <span className={`mt-1.5 block truncate text-[13px] font-bold leading-5 ${tone.detail}`}>
                         {role.detail}
                       </span>
                     </span>
-                    <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] border transition ${tone.arrow}`}>
+                    <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] border transition ${tone.arrow}`}>
                       <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
                     </span>
                   </Link>
