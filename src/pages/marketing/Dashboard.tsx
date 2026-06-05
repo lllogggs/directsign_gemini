@@ -479,6 +479,7 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
     useState<CampaignParticipantFilter>("ALL");
   const [campaignLifecycleFilter, setCampaignLifecycleFilter] =
     useState<CampaignLifecycle>("RECRUITING");
+  const [campaignLifecycleTouched, setCampaignLifecycleTouched] = useState(false);
   const [contractTypeFilter, setContractTypeFilter] =
     useState<ContractTypeFilter>("ALL");
   const [amountFilter, setAmountFilter] = useState<AmountFilter>("ALL");
@@ -656,6 +657,27 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
     () => getCampaignLifecycleCounts(campaignGroups),
     [campaignGroups],
   );
+  const preferredCampaignLifecycle = useMemo(
+    () => getPreferredCampaignLifecycle(campaignTabCounts),
+    [campaignTabCounts],
+  );
+  const campaignFiltersPristine =
+    query.trim().length === 0 &&
+    campaignPlatformFilter === "ALL" &&
+    campaignBrandFilter === "ALL" &&
+    campaignParticipantFilter === "ALL";
+  const shouldUsePreferredCampaignLifecycle =
+    isCampaignSurface &&
+    !campaignLifecycleTouched &&
+    !searchParams.get("campaign") &&
+    campaignFiltersPristine &&
+    campaignGroups.length > 0 &&
+    preferredCampaignLifecycle !== campaignLifecycleFilter &&
+    campaignTabCounts[preferredCampaignLifecycle] >
+      campaignTabCounts[campaignLifecycleFilter];
+  const activeCampaignLifecycleFilter = shouldUsePreferredCampaignLifecycle
+    ? preferredCampaignLifecycle
+    : campaignLifecycleFilter;
   const campaignBrandOptions = useMemo<FilterOption[]>(() => {
     const brands = Array.from(
       new Set(campaignGroups.flatMap((campaign) => campaign.brands)),
@@ -678,13 +700,13 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
         (campaignBrandFilter === "ALL" ||
           campaign.brands.includes(campaignBrandFilter)) &&
         matchesCampaignParticipantFilter(campaign, campaignParticipantFilter) &&
-        campaign.lifecycle === campaignLifecycleFilter,
+        campaign.lifecycle === activeCampaignLifecycleFilter,
       )
       .sort((a, b) => compareCampaignGroupsBySort(a, b, campaignSort));
   }, [
+    activeCampaignLifecycleFilter,
     campaignBrandFilter,
     campaignGroups,
-    campaignLifecycleFilter,
     campaignParticipantFilter,
     campaignPlatformFilter,
     campaignSort,
@@ -768,6 +790,13 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
         current.key === key && current.direction === "asc" ? "desc" : "asc",
     }));
   }, []);
+  const handleCampaignLifecycleFilterChange = useCallback(
+    (value: CampaignLifecycle) => {
+      setCampaignLifecycleTouched(true);
+      setCampaignLifecycleFilter(value);
+    },
+    [],
+  );
   const selectedCampaignKey = searchParams.get("campaign") ?? undefined;
   const selectedCampaign = selectedCampaignKey
     ? campaignGroups.find((campaign) => campaign.key === selectedCampaignKey)
@@ -1047,8 +1076,8 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
                   <CampaignDashboard
                     campaigns={filteredCampaigns}
                     totalCampaigns={campaignGroups.length}
-                    lifecycleFilter={campaignLifecycleFilter}
-                    onLifecycleFilterChange={setCampaignLifecycleFilter}
+                    lifecycleFilter={activeCampaignLifecycleFilter}
+                    onLifecycleFilterChange={handleCampaignLifecycleFilterChange}
                     lifecycleCounts={campaignTabCounts}
                     query={query}
                     onQueryChange={setQuery}
@@ -4428,6 +4457,15 @@ function getCampaignLifecycleCounts(campaigns: CampaignGroup[]) {
       return counts;
     },
     { RECRUITING: 0, IN_PROGRESS: 0, ENDED: 0 },
+  );
+}
+
+function getPreferredCampaignLifecycle(
+  counts: Record<CampaignLifecycle, number>,
+): CampaignLifecycle {
+  return (["IN_PROGRESS", "RECRUITING", "ENDED"] as CampaignLifecycle[]).reduce(
+    (best, item) => (counts[item] > counts[best] ? item : best),
+    "RECRUITING",
   );
 }
 

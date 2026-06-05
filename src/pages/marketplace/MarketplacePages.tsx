@@ -40,6 +40,7 @@ import {
   getBrandProfilePath,
   getChannelAudienceSortValue,
   getInfluencerProfilePath,
+  getMarketplaceBrandDisplayFamilyKey,
   marketplaceBrands,
   marketplaceInfluencers,
   platformLabels,
@@ -2050,8 +2051,26 @@ function isGenericBrandMarketplaceCopy(value: string) {
   );
 }
 
+const generatedBrandMarketplaceHeadlines: Record<string, string> = {
+  nightcare: "밤 루틴과 수면 케어 콘텐츠를 함께 만듭니다",
+  brewinglab: "홈카페 레시피와 공동구매 제안을 검토합니다",
+  housefit: "집에서 따라하는 운동 루틴 콘텐츠를 찾습니다",
+  "obre-beauty": "저자극 스킨케어 사용 후기를 찾습니다",
+  "breadroom-family": "신제품 런칭과 숏폼 전환을 함께할 브랜드",
+};
+
 function formatBrandMarketplaceHeadline(brand: MarketplaceBrandProfile) {
   const cleaned = cleanMarketplaceCopy(brand.headline);
+  const familyKey = getMarketplaceBrandDisplayFamilyKey({
+    handle: brand.handle,
+    displayName: brand.displayName,
+  });
+  const generatedHeadline = generatedBrandMarketplaceHeadlines[familyKey];
+
+  if (generatedHeadline && /광고 캠페인 보드/.test(cleaned)) {
+    return generatedHeadline;
+  }
+
   if (!isGenericBrandMarketplaceCopy(cleaned)) return cleaned;
 
   const campaignTitle = brand.activeCampaigns[0]?.title ?? "협업 제안";
@@ -2080,13 +2099,16 @@ function dedupeBrandsByDisplayIdentity(brands: MarketplaceBrandProfile[]) {
   const seen = new Set<string>();
 
   return brands.filter((brand) => {
-    const key = [
-      brand.displayName,
-      brand.category,
-      brand.statusLabel,
-    ]
-      .map((value) => value.trim().toLowerCase().replace(/\s+/g, " "))
-      .join("|");
+    const familyKey = getMarketplaceBrandDisplayFamilyKey({
+      handle: brand.handle,
+      displayName: brand.displayName,
+    });
+    const key =
+      familyKey === "breadroom-family"
+        ? familyKey
+        : [familyKey, brand.category, brand.statusLabel]
+            .map((value) => value.trim().toLowerCase().replace(/\s+/g, " "))
+            .join("|");
     if (seen.has(key)) return false;
     seen.add(key);
     return true;

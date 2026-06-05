@@ -382,15 +382,6 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
         deadline: "2026-06-10",
         uploadDeadline: "2026-06-24",
       },
-      {
-        title: "파우치 필수템 리뷰",
-        type: "supporters",
-        applicantLimit: "8명",
-        budget: "제품 제공(소비자가 89,000원 상당)",
-        deadline: "2026-06-14",
-        uploadDeadline: "2026-06-28",
-        deliverables: ["네이버 블로그 후기 1건", "인스타그램 피드 1건"],
-      },
     ],
     recentCreators: ["제우", "민서홈"],
   },
@@ -420,14 +411,6 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
         budget: "300만-500만원",
         deadline: "2026-06-18",
         uploadDeadline: "2026-07-02",
-      },
-      {
-        title: "여행 코스 블로그 리뷰",
-        type: "sponsored_post",
-        applicantLimit: "10명",
-        budget: "120만-220만원",
-        deadline: "2026-06-20",
-        uploadDeadline: "2026-07-05",
       },
     ],
     recentCreators: ["채널오브", "민서홈"],
@@ -459,16 +442,98 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
         deadline: "2026-06-12",
         uploadDeadline: "2026-06-26",
       },
-      {
-        title: "공동구매 파일럿",
-        type: "group_buy",
-        applicantLimit: "5명",
-        budget: "판매 수수료 협의",
-        deadline: "2026-06-19",
-        uploadDeadline: "2026-07-03",
-      },
     ],
     recentCreators: ["제우", "민서홈"],
+  },
+  {
+    id: "brand-obre-beauty",
+    handle: "obre-beauty",
+    displayName: "오브레뷰티",
+    category: "뷰티 · 스킨케어",
+    headline: "저자극 스킨케어 사용 후기를 자연스럽게 전할 크리에이터를 찾습니다",
+    description:
+      "민감 피부 루틴, 성분 비교, 아침저녁 사용감을 섬세하게 보여줄 수 있는 컨텐츠를 선호합니다.",
+    location: "서울 강남",
+    logoLabel: "OB",
+    logoUrl: "/images/brands/obre-beauty-logo.png",
+    preferredPlatforms: ["instagram", "youtube"],
+    proposalTypes: ["product_seeding", "sponsored_post", "supporters"],
+    budgetRangeLabel: "120만-380만원",
+    responseTimeLabel: "1영업일 내 확인",
+    statusLabel: "입점 브랜드",
+    fitTags: ["스킨케어", "사용 후기", "성분 비교"],
+    audienceTargets: ["민감 피부", "뷰티 루틴", "20-30 여성"],
+    activeCampaigns: [
+      {
+        title: "진정 세럼 2주 루틴 리뷰",
+        type: "product_seeding",
+        applicantLimit: "9명",
+        budget: "제품 제공 + 160만원",
+        deadline: "2026-06-16",
+        uploadDeadline: "2026-06-30",
+      },
+    ],
+    recentCreators: ["유나뷰티", "리뷰제이"],
+  },
+  {
+    id: "brand-housefit",
+    handle: "housefit",
+    displayName: "하우스핏",
+    category: "헬스 · 홈트",
+    headline: "집에서 따라할 수 있는 운동 루틴 컨텐츠를 함께 만듭니다",
+    description:
+      "운동 초보도 이해하기 쉬운 루틴, 자세 설명, 짧은 챌린지형 컨텐츠를 우선 검토합니다.",
+    location: "온라인 입점",
+    logoLabel: "HF",
+    logoUrl: "/images/brands/housefit-logo.png",
+    preferredPlatforms: ["youtube", "instagram", "tiktok"],
+    proposalTypes: ["ppl", "sponsored_post", "supporters"],
+    budgetRangeLabel: "200만-700만원",
+    responseTimeLabel: "2영업일 내 확인",
+    statusLabel: "입점 브랜드",
+    fitTags: ["홈트 루틴", "챌린지", "운동 초보"],
+    audienceTargets: ["직장인 운동", "다이어트", "홈트 입문"],
+    activeCampaigns: [
+      {
+        title: "10분 홈트 챌린지 쇼츠",
+        type: "ppl",
+        applicantLimit: "10명",
+        budget: "250만-450만원",
+        deadline: "2026-06-21",
+        uploadDeadline: "2026-07-04",
+      },
+    ],
+    recentCreators: ["하루핏", "지유로그"],
+  },
+  {
+    id: "brand-brewinglab",
+    handle: "brewinglab",
+    displayName: "브루잉랩",
+    category: "푸드 · 홈카페",
+    headline: "홈카페 레시피와 공동구매를 연결할 파트너를 찾습니다",
+    description:
+      "원두, 드립백, 홈카페 도구를 실제 루틴 안에서 보여주는 컨텐츠와 공동구매 제안을 검토합니다.",
+    location: "부산 · 온라인",
+    logoLabel: "BL",
+    logoUrl: "/images/brands/brewinglab-logo.png",
+    preferredPlatforms: ["instagram", "naver_blog", "youtube"],
+    proposalTypes: ["group_buy", "product_seeding", "sponsored_post"],
+    budgetRangeLabel: "제품 제공-500만원",
+    responseTimeLabel: "당일 확인 가능",
+    statusLabel: "입점 브랜드",
+    fitTags: ["홈카페", "레시피", "공동구매"],
+    audienceTargets: ["홈카페", "커피 입문", "선물 구매"],
+    activeCampaigns: [
+      {
+        title: "홈카페 드립백 공동구매",
+        type: "group_buy",
+        applicantLimit: "8명",
+        budget: "판매 수수료 + 제품 제공",
+        deadline: "2026-06-24",
+        uploadDeadline: "2026-07-08",
+      },
+    ],
+    recentCreators: ["오늘의취향", "민서홈"],
   },
 ];
 
@@ -481,6 +546,30 @@ export function normalizeMarketplaceHandle(handle: string) {
     .replace(/^\//, "")
     .split(/[/?#]/)[0]
     .toLowerCase();
+}
+
+const marketplaceBrandDisplayFamilyAliases = new Map([
+  ["breadroom", "breadroom-family"],
+  ["breadroom-partner", "breadroom-family"],
+  ["브레드룸", "breadroom-family"],
+  ["브래드룸", "breadroom-family"],
+]);
+
+export function getMarketplaceBrandDisplayFamilyKey({
+  handle,
+  displayName,
+}: {
+  handle?: string;
+  displayName: string;
+}) {
+  const normalizedHandle = handle ? normalizeMarketplaceHandle(handle) : "";
+  const normalizedName = displayName.trim().toLowerCase().replace(/\s+/g, "");
+
+  return (
+    marketplaceBrandDisplayFamilyAliases.get(normalizedHandle) ??
+    marketplaceBrandDisplayFamilyAliases.get(normalizedName) ??
+    (normalizedHandle || normalizedName)
+  );
 }
 
 export function mergeMarketplaceInfluencerProfiles(

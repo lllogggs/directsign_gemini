@@ -1047,6 +1047,8 @@ function InfluencerAccountBanner({
     (platform) => platform.handle.trim().length > 0,
   );
   const avatarUrl = avatarPreviewUrl ?? dashboard.user.avatar_url;
+  const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | undefined>();
+  const shouldShowAvatar = Boolean(avatarUrl && failedAvatarUrl !== avatarUrl);
   const displayName = removeInternalTestLabel(
     dashboard.user.name,
     "인플루언서 계정",
@@ -1056,12 +1058,13 @@ function InfluencerAccountBanner({
     <section className="border-b border-[#d9e0d9] bg-[#fcfcfd] px-4 py-2">
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white text-[12px] font-extrabold text-neutral-800 ring-1 ring-neutral-200">
-          {avatarUrl ? (
+          {shouldShowAvatar ? (
             <img
               src={avatarUrl}
               alt={`${displayName} profile`}
               className="h-full w-full object-cover"
               loading="lazy"
+              onError={() => setFailedAvatarUrl(avatarUrl)}
             />
           ) : (
             <UserCheck className="h-4 w-4" />

@@ -38,6 +38,7 @@ import {
   getCampaignDeadlineLabel,
   getChannelAudienceSortValue,
   getInfluencerProfilePath,
+  getMarketplaceBrandDisplayFamilyKey,
   getPlatformTone,
   marketplaceBrands,
   platformLabels,
@@ -1119,7 +1120,7 @@ export function InfluencerCampaignDiscoveryPage() {
   const visibleCampaigns = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
 
-    return campaigns
+    const sortedCampaigns = campaigns
       .filter((campaign) => {
         if (
           platformFilter !== "all" &&
@@ -1150,6 +1151,8 @@ export function InfluencerCampaignDiscoveryPage() {
           .includes(normalizedQuery);
       })
       .sort((a, b) => compareMarketplaceCampaignPostsBySort(a, b, openCampaignSort));
+
+    return distributeCampaignsByBrand(sortedCampaigns);
   }, [
     campaigns,
     categoryFilter,
@@ -1229,9 +1232,10 @@ export function InfluencerCampaignDiscoveryPage() {
 
   const applyToCampaign = async (campaign: MarketplaceCampaignPost) => {
     if (applyingCampaignId) return;
+    const campaignCopy = getCampaignDisplayCopy(campaign);
 
     const confirmed = window.confirm(
-      `${campaign.title} 캠페인에 신청할까요? 신청 내역은 신청한 캠페인에 표시됩니다.`,
+      `${campaignCopy.title} 캠페인에 신청할까요? 신청 내역은 신청한 캠페인에 표시됩니다.`,
     );
     if (!confirmed) return;
 
@@ -1239,7 +1243,7 @@ export function InfluencerCampaignDiscoveryPage() {
     setApplicationNotice({
       campaignId: campaign.id,
       tone: "success",
-      message: `${campaign.title} 신청을 전송 중입니다.`,
+      message: `${campaignCopy.title} 신청을 전송 중입니다.`,
     });
 
     try {
@@ -2206,6 +2210,52 @@ function buildCampaignApplicantAvatarLabel(
   return compact.slice(0, 2);
 }
 
+const generatedCampaignDisplayCopies: Record<
+  string,
+  { title: string; summary: string }
+> = {
+  "obre-beauty": {
+    title: "진정 세럼 2주 루틴 리뷰",
+    summary: "민감 피부 루틴과 사용감을 릴스 중심으로 보여줄 크리에이터를 찾습니다.",
+  },
+  housefit: {
+    title: "10분 홈트 챌린지 쇼츠",
+    summary: "집에서 따라할 수 있는 짧은 운동 루틴을 숏폼으로 소개합니다.",
+  },
+  brewinglab: {
+    title: "홈카페 드립백 공동구매",
+    summary: "드립백 사용 장면과 홈카페 레시피를 자연스럽게 연결합니다.",
+  },
+  nightcare: {
+    title: "수면 루틴 쇼츠 패키지",
+    summary: "밤 루틴과 제품 사용감을 짧은 영상으로 설득력 있게 보여줍니다.",
+  },
+  "breadroom-family": {
+    title: "파우치 필수템 쇼츠 리뷰",
+    summary: "신제품 런칭과 숏폼 전환을 함께할 크리에이터를 찾습니다.",
+  },
+};
+
+function getCampaignDisplayCopy(campaign: MarketplaceCampaignPost) {
+  const familyKey = getMarketplaceBrandDisplayFamilyKey({
+    handle: campaign.brandHandle,
+    displayName: campaign.brandName,
+  });
+  const generatedCopy = generatedCampaignDisplayCopies[familyKey];
+  const rawSummary = campaign.summary ?? campaign.brandHeadline;
+  const hasGeneratedTitle =
+    /신제품 언박싱 릴스|제품 체험 리뷰/.test(campaign.title) &&
+    Boolean(generatedCopy);
+  const hasGeneratedSummary =
+    /신제품 사용 장면을 릴스와 스토리로|광고 캠페인 보드/.test(rawSummary) &&
+    Boolean(generatedCopy);
+
+  return {
+    title: hasGeneratedTitle ? generatedCopy.title : campaign.title,
+    summary: hasGeneratedSummary ? generatedCopy.summary : rawSummary,
+  };
+}
+
 function CampaignPostCard({
   campaign,
   isApplying,
@@ -2216,6 +2266,8 @@ function CampaignPostCard({
   isApplying: boolean;
   onApply: (campaign: MarketplaceCampaignPost) => void;
 }) {
+  const campaignCopy = getCampaignDisplayCopy(campaign);
+
   return (
     <article className="yl-card flex min-h-[258px] flex-col border p-3 sm:p-3.5">
       <div className="flex items-start gap-3">
@@ -2256,10 +2308,10 @@ function CampaignPostCard({
           {campaign.typeLabel}
         </p>
         <h2 className="mt-1 line-clamp-2 text-[15px] font-extrabold leading-5 text-neutral-950 sm:text-[16px] sm:leading-6">
-          {campaign.title}
+          {campaignCopy.title}
         </h2>
         <p className="mt-1.5 line-clamp-1 break-keep text-[12px] font-bold leading-5 text-neutral-600 sm:text-[13px]">
-          {campaign.summary ?? campaign.brandHeadline}
+          {campaignCopy.summary}
         </p>
       </div>
 
@@ -2688,6 +2740,42 @@ function compareMarketplaceCampaignPostsBySort(
   if (result === 0) result = compareText(a.title, b.title);
 
   return sort.direction === "asc" ? result : -result;
+}
+
+function distributeCampaignsByBrand(campaigns: MarketplaceCampaignPost[]) {
+  const brandQueues = new Map<string, MarketplaceCampaignPost[]>();
+  const brandOrder: string[] = [];
+
+  for (const campaign of campaigns) {
+    const key = getMarketplaceBrandDisplayFamilyKey({
+      handle: campaign.brandHandle,
+      displayName: campaign.brandName,
+    });
+    const queue = brandQueues.get(key);
+    if (queue) {
+      queue.push(campaign);
+      continue;
+    }
+
+    brandQueues.set(key, [campaign]);
+    brandOrder.push(key);
+  }
+
+  const distributed: MarketplaceCampaignPost[] = [];
+  let hasRemaining = true;
+
+  while (hasRemaining) {
+    hasRemaining = false;
+
+    for (const brand of brandOrder) {
+      const nextCampaign = brandQueues.get(brand)?.shift();
+      if (!nextCampaign) continue;
+      distributed.push(nextCampaign);
+      hasRemaining = true;
+    }
+  }
+
+  return distributed;
 }
 
 function compareCampaignApplicantsBySort(
