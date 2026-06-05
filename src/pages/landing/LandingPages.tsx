@@ -22,7 +22,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { PRODUCT_NAME } from "../../domain/brand";
 
 type IntroRole = "advertiser" | "influencer";
@@ -44,6 +44,30 @@ const advertiserProposalAssetUrls = {
   ).href,
   campaignApplicants: new URL(
     "../../../docs/sales/assets/yeollock-campaign-applicants-dashboard.png",
+    import.meta.url,
+  ).href,
+  contractContentReview: new URL(
+    "../../../docs/sales/assets/yeollock-contract-content-review.png",
+    import.meta.url,
+  ).href,
+  contractHandshake: new URL(
+    "../../../docs/sales/assets/yeollock-contract-handshake.png",
+    import.meta.url,
+  ).href,
+  riskMissedContact: new URL(
+    "../../../docs/sales/assets/risk-generated-missed-contact.png",
+    import.meta.url,
+  ).href,
+  riskProductHeld: new URL(
+    "../../../docs/sales/assets/risk-generated-product-held.png",
+    import.meta.url,
+  ).href,
+  riskRevisionRefusal: new URL(
+    "../../../docs/sales/assets/risk-generated-revision-refusal.png",
+    import.meta.url,
+  ).href,
+  riskGeneralDispute: new URL(
+    "../../../docs/sales/assets/risk-generated-general-dispute.png",
     import.meta.url,
   ).href,
 };
@@ -134,11 +158,6 @@ function getStartRoleTone(role: IntroRole) {
     detail: "text-[#059669]",
   };
 }
-
-const roleFeatureKeys: Record<IntroRole, string[]> = {
-  advertiser: ["recruiting", "progress", "ended"],
-  influencer: ["receive", "terms", "request", "archive"],
-};
 
 function RoleIconCluster({ role }: { role: IntroRole }) {
   const icons =
@@ -286,143 +305,303 @@ type IntroProposalFact = {
   tone?: "blue" | "red" | "neutral";
 };
 
+type IntroProposalRiskItem = {
+  label: string;
+  imageSrc?: string;
+  imageAlt?: string;
+};
+
 type IntroProposalSlide = {
   label: string;
+  pageNo: string;
+  stage: "pain" | "product" | "link" | "facts" | "final";
+  context?: ReactNode;
   title: ReactNode;
   description: string;
+  support?: ReactNode;
   facts?: IntroProposalFact[];
   imageSrc?: string;
   imageAlt?: string;
-  riskItems?: string[];
+  imageFit?: "cover" | "contain";
+  riskItems?: IntroProposalRiskItem[];
   visualFacts?: IntroProposalFact[];
 };
 
 const advertiserProposalSlides: IntroProposalSlide[] = [
   {
-    label: "01 문제",
+    label: "문제",
+    pageNo: "01",
+    stage: "pain",
+    context: (
+      <>
+        인플루언서
+        <br />
+        광고
+      </>
+    ),
     title: (
       <>
-        계약서 없는 약속은{" "}
-        <span className="text-[#dc2626]">위험합니다.</span>
+        <strong className="font-black">계약서</strong>
+        <br />
+        없는 <strong className="font-black">약속</strong>은
+        <br />
+        <strong className="font-black text-[#e11d48]">위험</strong>합니다.
+      </>
+    ),
+    description: "",
+    riskItems: [
+      {
+        label: "광고비 먹튀",
+        imageSrc: advertiserProposalAssetUrls.riskMissedContact,
+        imageAlt: "광고비 선지급 후 연락이 닿지 않는 상황",
+      },
+      {
+        label: "협찬품 미반환",
+        imageSrc: advertiserProposalAssetUrls.riskProductHeld,
+        imageAlt: "협찬 제품 반환을 꺼리는 상황",
+      },
+      {
+        label: "콘텐츠 수정 거부",
+        imageSrc: advertiserProposalAssetUrls.riskRevisionRefusal,
+        imageAlt: "콘텐츠 수정 요청이 거부되는 상황",
+      },
+      {
+        label: "각종 분쟁",
+        imageSrc: advertiserProposalAssetUrls.riskGeneralDispute,
+        imageAlt: "계약 조건이 불분명해 분쟁 중인 상황",
+      },
+    ],
+  },
+  {
+    label: "작성",
+    pageNo: "02",
+    stage: "product",
+    title: (
+      <>
+        간편한
+        <br />
+        <strong className="inline-block bg-gradient-to-br from-[#1d4ed8] to-[#2f6df6] bg-clip-text font-black text-transparent">
+          계약서 작성
+        </strong>
+      </>
+    ),
+    description: "간단히 필요 항목만 입력하면 PDF 계약서가 바로 생성됩니다",
+    support: (
+      <>
+        간단히 필요 항목만 입력하면
+        <br />
+        <span className="whitespace-nowrap">
+          <strong>PDF 계약서</strong>가 바로 생성됩니다
+        </span>
+      </>
+    ),
+    imageSrc: advertiserProposalAssetUrls.contractBuilder,
+    imageAlt: "계약서 작성 화면과 PDF 계약서 초안 미리보기",
+    imageFit: "contain",
+  },
+  {
+    label: "공유",
+    pageNo: "03",
+    stage: "link",
+    title: (
+      <>
+        계약서
+        <br />
+        <strong className="inline-block bg-gradient-to-br from-[#1d4ed8] to-[#2f6df6] bg-clip-text font-black text-transparent">
+          링크 공유
+        </strong>
       </>
     ),
     description:
-      "광고비, 협찬품, 콘텐츠 수정, 분쟁 증거가 흩어지면 광고주가 먼저 손해를 봅니다.",
-    facts: [
-      { label: "광고비", value: "선지급 후 미업로드", tone: "red" },
-      { label: "협찬품", value: "제품 미반환", tone: "red" },
-      { label: "콘텐츠", value: "수정 거부", tone: "red" },
-      { label: "분쟁", value: "증거 부족", tone: "red" },
-    ],
-    riskItems: ["광고비 먹튀", "협찬품 미반환", "콘텐츠 수정 거부", "각종 분쟁"],
+      "작성한 계약서를 링크로 전달하면 인플루언서가 확인 후 서명합니다",
+    support: (
+      <>
+        작성한 계약서를 링크로 전달하면
+        <br />
+        <strong>인플루언서</strong>가 확인 후 <strong>서명</strong>합니다
+      </>
+    ),
   },
   {
-    label: "02 작성",
-    title: "간편한 계약서 작성",
+    label: "관리",
+    pageNo: "04",
+    stage: "product",
+    title: (
+      <>
+        계약 관리를
+        <br />
+        <strong className="inline-block bg-gradient-to-br from-[#1d4ed8] to-[#2f6df6] bg-clip-text font-black text-transparent">
+          효율적으로
+        </strong>
+      </>
+    ),
     description:
-      "필요 항목만 입력하면 우측에서 PDF 계약서 초안이 바로 만들어집니다.",
-    facts: [
-      { label: "입력", value: "브랜드, 기간, 보상", tone: "neutral" },
-      { label: "출력", value: "PDF 계약서", tone: "blue" },
-      { label: "다음", value: "검토 링크 발송", tone: "blue" },
-    ],
-    imageSrc: advertiserProposalAssetUrls.contractBuilder,
-    imageAlt: "계약서 작성 화면과 PDF 계약서 초안 미리보기",
+      "진행과정 관리, 플랫폼별 관리, 콘텐츠 확인, 수정요청, 서명 관리",
+    support: (
+      <>
+        진행과정 관리,
+        <br />
+        플랫폼별 관리
+        <br />
+        <strong>콘텐츠 확인</strong>
+        <br />
+        <strong>수정요청</strong>
+        <br />
+        서명 관리
+      </>
+    ),
+    imageSrc: advertiserProposalAssetUrls.contractContentReview,
+    imageAlt: "연락미 계약 콘텐츠 검수 및 수정 요청 화면",
+    imageFit: "contain",
   },
   {
-    label: "03 링크",
-    title: "작성한 계약서를 링크로 전달",
+    label: "모집",
+    pageNo: "05",
+    stage: "product",
+    title: (
+      <>
+        캠페인 모집도
+        <br />
+        <strong className="inline-block bg-gradient-to-br from-[#1d4ed8] to-[#2f6df6] bg-clip-text font-black text-transparent">
+          편리하게!
+        </strong>
+      </>
+    ),
     description:
-      "인플루언서는 광고주가 작성한 계약서 원문을 열어보고 바로 서명 흐름으로 이동합니다.",
-    facts: [
-      { label: "전달", value: "계약서 링크", tone: "blue" },
-      { label: "확인", value: "PDF 계약서 원문", tone: "blue" },
-      { label: "서명", value: "전자서명 진행", tone: "neutral" },
-    ],
-    imageSrc: advertiserProposalAssetUrls.influencerContract,
-    imageAlt: "인플루언서 계약서 링크 확인 화면",
-  },
-  {
-    label: "04 관리",
-    title: "계약 관리를 효율적으로",
-    description:
-      "계약 상태, 플랫폼, 콘텐츠 확인과 수정요청을 한 화면에서 관리합니다.",
-    facts: [
-      { label: "상태", value: "진행과정 관리", tone: "blue" },
-      { label: "채널", value: "플랫폼별 관리", tone: "blue" },
-      { label: "검수", value: "콘텐츠 확인 · 수정요청", tone: "blue" },
-    ],
-    imageSrc: advertiserProposalAssetUrls.contractAdmin,
-    imageAlt: "광고주 계약 관리 대시보드",
-  },
-  {
-    label: "05 선정",
-    title: "캠페인 모집도 편리하게",
-    description:
-      "지원한 인플루언서를 목록으로 비교하고, 선정 후 계약서 생성까지 이어갑니다.",
-    facts: [
-      { label: "확인", value: "지원자 목록", tone: "blue" },
-      { label: "비교", value: "플랫폼 · 팔로워 · 카테고리", tone: "neutral" },
-      { label: "선정", value: "1대多 계약서 자동 생성", tone: "blue" },
-    ],
+      "캠페인에 지원한 인플루언서 쉽게 확인, 선정하고 1대多 계약서를 자동 생성합니다",
+    support: (
+      <span className="support-stack">
+        <span>
+          캠페인에 지원한
+          <br />
+          <strong>인플루언서 쉽게 확인, 선정</strong>
+        </span>
+        <span>
+          광고주와 인플루언서간
+          <br />
+          <strong>1대多 계약서 자동 생성</strong>으로
+          <br />
+          인플루언서에게 책임감 부여
+        </span>
+      </span>
+    ),
     imageSrc: advertiserProposalAssetUrls.campaignApplicants,
     imageAlt: "캠페인 지원 인플루언서 목록 화면",
+    imageFit: "contain",
   },
   {
-    label: "06 시작",
-    title: "서로에게 안전한 광고",
-    description:
-      "조건, 서명, 증빙이 한 흐름에 남아 광고주와 인플루언서 모두 안심할 수 있습니다.",
-    facts: [
-      { label: "계약", value: "조건 불일치 방지", tone: "blue" },
-      { label: "서명", value: "책임 있는 진행", tone: "blue" },
-      { label: "증빙", value: "완료 PDF 보관", tone: "neutral" },
-    ],
+    label: "시작",
+    pageNo: "06",
+    stage: "final",
+    title: (
+      <>
+        서로에게
+        <br />
+        <strong className="font-black">안전한 광고</strong>
+      </>
+    ),
+    description: "연락미에서 시작하세요",
+    support: <strong>연락미에서 시작하세요</strong>,
+    imageSrc: advertiserProposalAssetUrls.contractHandshake,
+    imageAlt: "광고주와 인플루언서가 계약서 서명 후 악수하는 장면",
+    imageFit: "cover",
   },
 ];
 
 const influencerProposalSlides: IntroProposalSlide[] = [
   {
-    label: "01 조건",
+    label: "조건",
+    pageNo: "01",
+    stage: "pain",
+    context: (
+      <>
+        받은 광고
+        <br />
+        계약
+      </>
+    ),
     title: (
       <>
-        흩어진 광고 조건은{" "}
-        <span className="text-[#dc2626]">놓치기 쉽습니다.</span>
+        흩어진 광고
+        <br />
+        조건은 <strong className="font-black text-[#e11d48]">놓치기</strong>
+        <br />
+        쉽습니다.
       </>
     ),
     description:
       "메일과 카톡에 흩어진 금액, 일정, 산출물, 사용 권한을 계약서에서 한 번에 확인합니다.",
-    facts: [
-      { label: "금액", value: "지급 조건 먼저 확인", tone: "blue" },
-      { label: "일정", value: "업로드·검수 기한 확인", tone: "blue" },
-      { label: "산출물", value: "플랫폼·컨텐츠·수량 확인", tone: "blue" },
-      { label: "권한", value: "2차 활용 범위 확인", tone: "red" },
+    riskItems: [
+      {
+        label: "금액 확인 누락",
+        imageSrc: advertiserProposalAssetUrls.riskMissedContact,
+        imageAlt: "금액 조건을 확인하지 못한 상황",
+      },
+      {
+        label: "일정 착오",
+        imageSrc: advertiserProposalAssetUrls.riskProductHeld,
+        imageAlt: "일정 착오로 광고 진행이 막힌 상황",
+      },
+      {
+        label: "산출물 불명확",
+        imageSrc: advertiserProposalAssetUrls.riskRevisionRefusal,
+        imageAlt: "산출물 기준이 불명확한 상황",
+      },
+      {
+        label: "활용 권한 과다",
+        imageSrc: advertiserProposalAssetUrls.riskGeneralDispute,
+        imageAlt: "콘텐츠 활용 권한 조건으로 분쟁이 생긴 상황",
+      },
     ],
-    riskItems: ["금액 확인 누락", "일정 착오", "산출물 불명확", "활용 권한 과다"],
   },
   {
-    label: "02 링크",
-    title: "계약 링크에서 핵심 조건 확인",
+    label: "링크",
+    pageNo: "02",
+    stage: "product",
+    title: (
+      <>
+        계약 링크에서
+        <br />
+        <strong className="inline-block bg-gradient-to-br from-[#1d4ed8] to-[#2f6df6] bg-clip-text font-black text-transparent">
+          핵심 조건 확인
+        </strong>
+      </>
+    ),
     description:
       "광고주가 보낸 계약 링크를 열면 브랜드, 보상, 마감, 산출물이 먼저 보입니다.",
-    facts: [
-      { label: "전달", value: "계약서 링크", tone: "blue" },
-      { label: "확인", value: "핵심 조건", tone: "blue" },
-      { label: "다음", value: "PDF 원문 확인", tone: "neutral" },
-    ],
+    support: (
+      <>
+        광고주가 보낸 계약 링크에서
+        <br />
+        <strong>브랜드, 보상, 마감, 산출물</strong>을 먼저 확인합니다
+      </>
+    ),
     imageSrc: advertiserProposalAssetUrls.influencerContract,
     imageAlt: "인플루언서 계약서 링크 확인 화면",
+    imageFit: "contain",
   },
   {
-    label: "03 원문",
-    title: "PDF 계약서 원문을 보고 서명",
+    label: "원문",
+    pageNo: "03",
+    stage: "facts",
+    title: (
+      <>
+        PDF 계약서
+        <br />
+        <strong className="inline-block bg-gradient-to-br from-[#1d4ed8] to-[#2f6df6] bg-clip-text font-black text-transparent">
+          원문 확인
+        </strong>
+      </>
+    ),
     description:
       "요약만 보고 넘기지 않고 광고주가 작성한 PDF 계약서를 확인한 뒤 서명합니다.",
-    facts: [
-      { label: "원문", value: "PDF 계약서", tone: "blue" },
-      { label: "확인", value: "광고주 작성 조건", tone: "neutral" },
-      { label: "서명", value: "전자서명 진행", tone: "blue" },
-    ],
+    support: (
+      <>
+        요약만 보고 넘기지 않고
+        <br />
+        <strong>광고주가 작성한 계약서 원문</strong>을 확인합니다
+      </>
+    ),
     visualFacts: [
       { label: "계약서", value: "원문 확인", tone: "blue" },
       { label: "조건", value: "광고주 입력값 그대로", tone: "neutral" },
@@ -430,31 +609,55 @@ const influencerProposalSlides: IntroProposalSlide[] = [
     ],
   },
   {
-    label: "04 요청",
-    title: "애매한 조건은 기록으로 요청",
+    label: "요청",
+    pageNo: "04",
+    stage: "facts",
+    title: (
+      <>
+        애매한 조건은
+        <br />
+        <strong className="inline-block bg-gradient-to-br from-[#1d4ed8] to-[#2f6df6] bg-clip-text font-black text-transparent">
+          기록으로 요청
+        </strong>
+      </>
+    ),
     description:
       "활용 기간, 검수 기준, 업로드 일정처럼 애매한 조건은 서명 전에 수정 요청으로 남깁니다.",
-    facts: [
-      { label: "요청", value: "수정 사유 기록", tone: "blue" },
-      { label: "답변", value: "광고주 답변 확인", tone: "neutral" },
-      { label: "최종", value: "수정본 확인", tone: "blue" },
-    ],
+    support: (
+      <>
+        활용 기간, 검수 기준, 업로드 일정처럼
+        <br />
+        애매한 조건은 <strong>수정 요청</strong>으로 남깁니다
+      </>
+    ),
     visualFacts: [
-      { label: "활용 기간", value: "12개월 -> 3개월 요청", tone: "blue" },
+      { label: "활용 기간", value: "12개월에서 3개월 요청", tone: "blue" },
       { label: "검수 기준", value: "수정 가능 범위 확인", tone: "neutral" },
       { label: "답변 상태", value: "광고주 확인 중", tone: "blue" },
     ],
   },
   {
-    label: "05 관리",
-    title: "계약별 할 일을 한눈에 관리",
+    label: "보관",
+    pageNo: "05",
+    stage: "facts",
+    title: (
+      <>
+        계약별 할 일을
+        <br />
+        <strong className="inline-block bg-gradient-to-br from-[#1d4ed8] to-[#2f6df6] bg-clip-text font-black text-transparent">
+          한눈에 관리
+        </strong>
+      </>
+    ),
     description:
       "지원, 진행, 완료, 미선정 상태를 분리해 다음에 해야 할 일을 바로 확인합니다.",
-    facts: [
-      { label: "지원", value: "지원 접수 확인", tone: "neutral" },
-      { label: "진행", value: "제출·검수 상태", tone: "blue" },
-      { label: "완료", value: "서명본 보관", tone: "blue" },
-    ],
+    support: (
+      <>
+        받은 계약과 서명 완료본을 계약별로 보관하고
+        <br />
+        다음 할 일을 바로 확인합니다
+      </>
+    ),
     visualFacts: [
       { label: "지원중", value: "2건", tone: "neutral" },
       { label: "진행중", value: "3건", tone: "blue" },
@@ -463,15 +666,21 @@ const influencerProposalSlides: IntroProposalSlide[] = [
     ],
   },
   {
-    label: "06 시작",
-    title: "서명 전 확인부터 완료 보관까지",
-    description:
-      "받은 계약을 확인하고, 필요한 요청과 서명 기록을 한 흐름에 남깁니다.",
-    facts: [
-      { label: "확인", value: "금액·일정 먼저 확인", tone: "blue" },
-      { label: "요청", value: "수정 요청 기록", tone: "blue" },
-      { label: "보관", value: "서명본 자동 보관", tone: "neutral" },
-    ],
+    label: "시작",
+    pageNo: "06",
+    stage: "final",
+    title: (
+      <>
+        안전한
+        <br />
+        <strong className="font-black">광고 참여</strong>
+      </>
+    ),
+    description: "확인부터 서명본 보관까지 연락미에서 시작하세요",
+    support: <strong>확인부터 서명본 보관까지</strong>,
+    imageSrc: advertiserProposalAssetUrls.contractHandshake,
+    imageAlt: "계약서 서명 후 광고주와 인플루언서가 악수하는 장면",
+    imageFit: "cover",
   },
 ];
 
@@ -1251,7 +1460,7 @@ function BrandLogo() {
 
 function LogoMark() {
   return (
-    <span className="yl-primary-action inline-flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[8px]">
+    <span className="inline-flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[11px] bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]">
       <svg
         aria-hidden="true"
         className="h-[23px] w-[23px]"
@@ -1284,73 +1493,11 @@ export function RoleIntroPage({ role }: { role: IntroRole }) {
 
 function RoleFeatureIntroScreen({
   role,
-  slides,
 }: {
   role: IntroRole;
   slides: RoleIntroSlide[];
 }) {
-  const [searchParams] = useSearchParams();
-  const featureKeys =
-    role === "advertiser" ? roleFeatureKeys[role].slice(0, 3) : roleFeatureKeys[role];
-  const displaySlides =
-    role === "advertiser" ? slides.slice(0, 3) : slides;
-  const requestedFeatureIndex = Math.max(
-    0,
-    featureKeys.indexOf(searchParams.get("feature") ?? ""),
-  );
-  const [activeIndex, setActiveIndex] = useState(requestedFeatureIndex);
-  const [hasManualSelection, setHasManualSelection] = useState(false);
-  const requestedFeatureIndexRef = useRef(requestedFeatureIndex);
   const startHref = role === "advertiser" ? "/login/advertiser" : "/login/influencer";
-  const introCopy =
-    role === "advertiser"
-      ? {
-          title: ["계약 흐름을", "한눈에 관리"],
-          description:
-            "작성, 검토 링크, 서명 증빙까지 끊기지 않게 이어집니다.",
-          proofPoints: [],
-        }
-      : {
-          title: ["광고 조건을", "놓치지 않게"],
-          description:
-            "메일함을 뒤지지 않고 금액, 일정, 산출물, 사용 권한을 확인하고 수정 요청과 서명본까지 한 곳에 남깁니다.",
-          proofPoints: [],
-        };
-
-  useEffect(() => {
-    if (requestedFeatureIndexRef.current === requestedFeatureIndex) {
-      return undefined;
-    }
-
-    requestedFeatureIndexRef.current = requestedFeatureIndex;
-    const syncTimer = window.setTimeout(() => {
-      setHasManualSelection(true);
-      setActiveIndex(requestedFeatureIndex);
-    }, 0);
-
-    return () => window.clearTimeout(syncTimer);
-  }, [requestedFeatureIndex]);
-
-  useEffect(() => {
-    if (role === "advertiser" || displaySlides.length < 2 || hasManualSelection) {
-      return undefined;
-    }
-
-    if (
-      typeof window !== "undefined" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches
-    ) {
-      return undefined;
-    }
-
-    const timer = window.setInterval(() => {
-      setActiveIndex((currentIndex) => {
-        return (currentIndex + 1) % displaySlides.length;
-      });
-    }, 4600);
-
-    return () => window.clearInterval(timer);
-  }, [displaySlides.length, hasManualSelection, role]);
 
   const roleSwitchItems = [
     { role: "advertiser" as const, label: "광고주", href: "/intro/advertiser" },
@@ -1358,7 +1505,7 @@ function RoleFeatureIntroScreen({
   ];
 
   return (
-    <main className="min-h-svh overflow-x-hidden bg-[#f4f5f2] font-sans text-neutral-950 lg:h-svh lg:overflow-hidden">
+    <main className="min-h-svh overflow-x-hidden bg-[#e9ede8] font-sans text-neutral-950 lg:h-svh lg:overflow-hidden">
       <header className="border-b border-neutral-200/70 bg-white/92">
         <div className="mx-auto flex h-[58px] max-w-[1500px] items-center justify-between gap-3 px-4 sm:px-6 lg:px-6">
           <BrandLockup />
@@ -1386,6 +1533,12 @@ function RoleFeatureIntroScreen({
                 );
               })}
             </nav>
+            <Link
+              to={startHref}
+              className="inline-flex h-9 w-[104px] shrink-0 items-center justify-center rounded-[8px] bg-blue-600 px-3 text-[12px] font-extrabold text-white shadow-[0_12px_28px_rgba(37,99,235,0.22)] ring-1 ring-blue-500/20 transition hover:bg-blue-700 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-blue-700"
+            >
+              시작하기
+            </Link>
           </div>
         </div>
       </header>
@@ -1415,88 +1568,20 @@ function RoleFeatureIntroScreen({
         </nav>
       </div>
 
-      <section className="mx-auto flex min-h-[calc(100svh-109px)] w-full max-w-[1500px] overflow-visible px-4 py-3 pb-8 sm:min-h-[calc(100svh-58px)] sm:px-6 sm:py-5 lg:h-[calc(100vh-58px)] lg:min-h-0 lg:overflow-hidden lg:px-6 lg:py-5">
-        <div className="grid w-full gap-6 lg:h-full lg:min-h-0 lg:grid-cols-[minmax(330px,0.52fr)_minmax(0,1.48fr)] lg:items-start">
-          <aside className="min-w-0 shrink-0 pt-0 lg:flex lg:min-h-0 lg:flex-col lg:justify-start lg:pt-6 xl:pt-7">
-            <h1 className="font-neo-heavy mt-0 text-[30px] leading-[1.03] tracking-normal text-neutral-950 sm:text-[48px] lg:text-[52px]">
-              {introCopy.title.map((line) => (
-                <span key={line} className="block whitespace-nowrap">
-                  {line}
-                </span>
-              ))}
-            </h1>
-
-            <p className="mt-8 max-w-[430px] break-keep text-[14px] font-bold leading-6 text-neutral-600 sm:mt-9 sm:text-[16px] sm:leading-7">
-              {introCopy.description}
-            </p>
-
-            <div className="mt-7 flex max-w-[240px]">
-              <Link
-                to={startHref}
-                className="group inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-[8px] bg-blue-600 px-5 text-[14px] font-extrabold tracking-normal text-white shadow-[0_14px_34px_rgba(37,99,235,0.24)] ring-1 ring-blue-500/20 transition duration-200 hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-[0_18px_42px_rgba(37,99,235,0.28)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700 active:translate-y-0"
-              >
-                <span>시작하기</span>
-                <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
-              </Link>
-            </div>
-
-            {introCopy.proofPoints.length > 0 ? (
-              <div className="mt-5 grid max-w-[380px] gap-2 sm:mt-6">
-                {introCopy.proofPoints.map((point) => (
-                  <div
-                    key={point}
-                    className="inline-flex min-h-10 items-center gap-2 rounded-[8px] border border-neutral-200 bg-white/82 px-3 text-[12px] font-extrabold text-neutral-700 shadow-[0_8px_22px_rgba(15,23,42,0.04)]"
-                  >
-                    <CheckCircle2 className="h-4 w-4 shrink-0 text-blue-600" />
-                    <span>{point}</span>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-
-          </aside>
-
-          <RoleFeaturePreviewCarousel
-            previewIndex={Math.min(activeIndex, displaySlides.length - 1)}
-            role={role}
-            slides={displaySlides}
-          />
-        </div>
-
+      <section className="mx-auto flex min-h-[calc(100svh-109px)] w-full max-w-[1500px] items-start justify-center px-4 py-3 pb-5 sm:min-h-[calc(100svh-58px)] sm:items-center sm:px-6 sm:py-5 lg:h-[calc(100vh-58px)] lg:min-h-0 lg:overflow-hidden">
+        <ProposalIntroCarousel
+          ariaLabel={
+            role === "advertiser"
+              ? "광고주 PDF 제안서형 인트로 슬라이드"
+              : "인플루언서 PDF 제안서형 인트로 슬라이드"
+          }
+          controlLabel="제안서 화면"
+          slides={
+            role === "advertiser" ? advertiserProposalSlides : influencerProposalSlides
+          }
+        />
       </section>
     </main>
-  );
-}
-
-function RoleFeaturePreviewCarousel({
-  slides: _slides,
-  previewIndex: _previewIndex,
-  role,
-  className = "",
-}: {
-  slides: RoleIntroSlide[];
-  previewIndex: number;
-  role: IntroRole;
-  className?: string;
-}) {
-  if (role === "advertiser") {
-    return (
-      <ProposalIntroCarousel
-        ariaLabel="광고주 제안서 화면 슬라이드"
-        className={className}
-        controlLabel="제안서 화면"
-        slides={advertiserProposalSlides}
-      />
-    );
-  }
-
-  return (
-    <ProposalIntroCarousel
-      ariaLabel="인플루언서 제안서 화면 슬라이드"
-      className={className}
-      controlLabel="인플루언서 화면"
-      slides={influencerProposalSlides}
-    />
   );
 }
 
@@ -1596,12 +1681,10 @@ void RoleFeaturePreviewRotator;
 
 function ProposalIntroCarousel({
   ariaLabel,
-  className = "",
   controlLabel,
   slides,
 }: {
   ariaLabel: string;
-  className?: string;
   controlLabel: string;
   slides: IntroProposalSlide[];
 }) {
@@ -1621,50 +1704,47 @@ function ProposalIntroCarousel({
   return (
     <section
       aria-label={ariaLabel}
-      className={`${className} mx-auto flex min-h-[420px] w-full min-w-0 flex-1 max-w-[calc(100vw-40px)] flex-col overflow-visible sm:min-h-[500px] sm:max-w-full lg:h-full lg:min-h-0 lg:max-w-[980px] lg:justify-self-end lg:overflow-hidden`}
+      data-intro-pdf-carousel
+      className="mx-auto flex w-full min-w-0 justify-center"
     >
-      <div className="relative flex min-h-[420px] flex-1 overflow-hidden rounded-[14px] border border-neutral-200 bg-white shadow-[0_18px_48px_rgba(23,26,23,0.08)] sm:min-h-[500px] lg:h-full lg:min-h-0">
+      <div className="relative w-full min-w-0 max-w-[1280px]">
         <button
           type="button"
           aria-label={`이전 ${controlLabel}`}
-          aria-controls={`advertiser-proposal-slide-${slideIndex}`}
+          aria-controls={`intro-proposal-slide-${slideIndex}`}
           title={`이전 ${controlLabel}`}
           onClick={showPrevious}
-          className="absolute bottom-4 left-4 z-20 flex h-9 w-9 items-center justify-center rounded-full border border-neutral-200/75 bg-white/70 text-neutral-500 shadow-[0_10px_24px_rgba(15,23,42,0.08)] backdrop-blur transition hover:bg-white hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 sm:bottom-auto sm:left-3 sm:top-1/2 sm:h-10 sm:w-10 sm:-translate-y-1/2"
+          className="absolute bottom-4 left-4 z-20 flex h-9 w-9 items-center justify-center rounded-full border border-neutral-200/75 bg-white/72 text-neutral-500 shadow-[0_14px_34px_rgba(15,23,42,0.12)] backdrop-blur transition hover:bg-white hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 sm:bottom-auto sm:left-3 sm:top-1/2 sm:h-10 sm:w-10 sm:-translate-y-1/2 lg:-left-5"
         >
           <ChevronLeft className="h-5 w-5" strokeWidth={2} />
         </button>
         <button
           type="button"
           aria-label={`다음 ${controlLabel}`}
-          aria-controls={`advertiser-proposal-slide-${slideIndex}`}
+          aria-controls={`intro-proposal-slide-${slideIndex}`}
           title={`다음 ${controlLabel}`}
           onClick={showNext}
-          className="absolute bottom-4 right-4 z-20 flex h-9 w-9 items-center justify-center rounded-full border border-neutral-200/75 bg-white/70 text-neutral-500 shadow-[0_10px_24px_rgba(15,23,42,0.08)] backdrop-blur transition hover:bg-white hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 sm:bottom-auto sm:right-3 sm:top-1/2 sm:h-10 sm:w-10 sm:-translate-y-1/2"
+          className="absolute bottom-4 right-4 z-20 flex h-9 w-9 items-center justify-center rounded-full border border-neutral-200/75 bg-white/72 text-neutral-500 shadow-[0_14px_34px_rgba(15,23,42,0.12)] backdrop-blur transition hover:bg-white hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 sm:bottom-auto sm:right-3 sm:top-1/2 sm:h-10 sm:w-10 sm:-translate-y-1/2 lg:-right-5"
         >
           <ChevronRight className="h-5 w-5" strokeWidth={2} />
         </button>
 
         <div
-          id={`advertiser-proposal-slide-${slideIndex}`}
+          id={`intro-proposal-slide-${slideIndex}`}
           role="group"
           aria-roledescription="slide"
           aria-label={`${slideIndex + 1} / ${slides.length} ${activeSlide.label}`}
           aria-live="polite"
-          className="flex h-full min-h-[420px] w-full flex-col bg-[#fbfcf8] px-5 py-4 sm:min-h-[500px] sm:px-6 sm:py-5 lg:min-h-0"
+          data-intro-pdf-slide
+          className="relative isolate flex w-full flex-col overflow-visible px-0 py-0 sm:px-2 lg:h-[min(690px,calc(100vh-98px))]"
         >
-          <div className="flex shrink-0 items-center justify-between gap-3">
-            <span className="text-[11px] font-extrabold leading-none tracking-normal text-neutral-500">
-              {activeSlide.label}
-            </span>
-            <span className="text-[11px] font-bold leading-none tracking-normal text-neutral-400">
-              {slideIndex + 1}/{slides.length}
-            </span>
-          </div>
-
           <ProposalSlideView slide={activeSlide} />
 
-          <div className="mt-3 flex shrink-0 items-center justify-center gap-2">
+          <span className="z-10 mt-2 self-end text-[10px] font-bold tabular-nums leading-none tracking-normal text-[#88918b] sm:mt-3 lg:absolute lg:bottom-0 lg:right-2 lg:mt-0">
+            {activeSlide.pageNo}
+          </span>
+
+          <div className="z-20 mt-2 flex items-center justify-center gap-2 sm:mt-3 lg:absolute lg:bottom-0 lg:left-1/2 lg:mt-0 lg:-translate-x-1/2">
             {slides.map((slide, index) => {
               const selected = index === slideIndex;
 
@@ -1692,71 +1772,102 @@ function ProposalIntroCarousel({
 
 function ProposalSlideView({ slide }: { slide: IntroProposalSlide }) {
   return (
-    <div className="grid min-h-0 flex-1 gap-4 pt-4 lg:grid-cols-[minmax(245px,0.38fr)_minmax(0,0.62fr)] lg:pt-5">
-      <div className="flex min-h-0 flex-col justify-center px-2 sm:px-5 lg:px-6">
-        <h2 className="font-neo-heavy break-keep text-[28px] leading-[1.08] tracking-normal text-neutral-950 sm:text-[38px] lg:text-[42px]">
-          {slide.title}
-        </h2>
-        <p className="mt-5 max-w-[430px] break-keep text-[14px] font-bold leading-6 tracking-normal text-neutral-600 sm:text-[15px] sm:leading-7">
-          {slide.description}
-        </p>
-        {slide.facts ? (
-          <div className="mt-6 divide-y divide-neutral-200 overflow-hidden rounded-[10px] border border-neutral-200 bg-white/82">
-            {slide.facts.map((fact) => (
-              <div
-                key={`${fact.label}-${fact.value}`}
-                className="flex min-h-12 items-center justify-between gap-4 px-4 py-2.5"
-              >
-                <span className="shrink-0 text-[12px] font-extrabold tracking-normal text-neutral-500">
-                  {fact.label}
-                </span>
-                <span
-                  className={`min-w-0 text-right text-[14px] font-black leading-5 tracking-normal ${advertiserProposalFactToneClass(
-                    fact.tone,
-                  )}`}
-                >
-                  {fact.value}
-                </span>
-              </div>
-            ))}
-          </div>
-        ) : null}
-      </div>
+    <div className="relative z-10 grid min-h-0 flex-1 gap-4 pt-1 sm:grid-cols-[minmax(205px,0.34fr)_minmax(0,1fr)] sm:items-center sm:gap-[clamp(32px,4vw,56px)] sm:pt-0 lg:h-full">
+        <div className="flex min-h-0 flex-col justify-center pl-0 sm:pl-[clamp(8px,2.2vw,34px)]">
+          {slide.context ? (
+            <p className="mb-3 inline-block w-max bg-gradient-to-br from-[#0f172a] to-[#2f6df6] bg-clip-text font-neo-heavy text-[28px] font-black leading-[1.02] tracking-normal text-transparent drop-shadow-[0_12px_22px_rgba(36,86,214,0.14)] after:mt-2.5 after:block after:h-1 after:w-8 after:rounded-full after:bg-blue-600 after:shadow-[0_12px_26px_rgba(36,86,214,0.24)] sm:mb-5 sm:text-[clamp(38px,4.2vw,50px)]">
+              {slide.context}
+            </p>
+          ) : null}
+          <h2 className="font-neo-heavy break-keep text-[25px] leading-[1.12] tracking-normal text-neutral-950 sm:text-[clamp(38px,4.4vw,50px)] sm:leading-[1.07]">
+            {slide.title}
+          </h2>
+          {slide.support || slide.description ? (
+            <div className="mt-3 max-w-[280px] border-l-[3px] border-blue-600/20 pl-3 text-[13px] font-normal leading-[1.45] tracking-normal text-[#58625c] sm:mt-6 sm:max-w-[300px] sm:pl-3.5 sm:text-[clamp(16px,1.55vw,19px)] [&_.support-stack]:grid [&_.support-stack]:gap-2.5 sm:[&_.support-stack]:gap-3.5 [&_strong]:font-black [&_strong]:text-blue-600">
+              {slide.support ?? slide.description}
+            </div>
+          ) : null}
+          {slide.stage === "final" ? (
+            <div className="mt-4 grid w-fit gap-2 sm:mt-5">
+              <span className="inline-flex w-fit rounded-full bg-blue-600 px-4 py-2.5 text-[12px] font-extrabold text-white shadow-[0_18px_42px_rgba(37,99,235,0.22)] sm:px-5 sm:py-3 sm:text-[13px]">
+                yeollock.me
+              </span>
+              <span className="grid gap-1 text-[12px] font-bold leading-none text-[#69736c]">
+                <span>문의 이메일</span>
+                <strong className="text-[15px] font-black text-neutral-950">
+                  yeollockme@gmail.com
+                </strong>
+              </span>
+            </div>
+          ) : null}
+        </div>
 
-      <ProposalVisual slide={slide} />
-    </div>
+        <ProposalVisual slide={slide} />
+      </div>
   );
 }
 
 function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
-  if (slide.imageSrc) {
+  if (slide.stage === "link") {
     return (
-      <div className="flex min-h-[260px] items-center justify-center overflow-hidden rounded-[12px] border border-neutral-200 bg-[#f4f5f2] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] sm:min-h-[330px] lg:min-h-0">
-        <img
-          src={slide.imageSrc}
-          alt={slide.imageAlt ?? ""}
-          className="h-full max-h-[430px] w-full rounded-[8px] object-contain object-top lg:max-h-full"
-          loading="eager"
+      <div className="relative min-h-[240px] overflow-visible sm:min-h-0 lg:h-full">
+        <div className="absolute left-[2%] top-[13%] z-[1] h-[72%] w-[70%] overflow-hidden rounded-[14px] border border-[rgba(17,20,18,0.08)] bg-white shadow-[0_18px_44px_rgba(15,23,42,0.12)] sm:left-[7%] sm:top-[14%] sm:h-[70%] sm:w-[68%]">
+          <img
+            src={advertiserProposalAssetUrls.contractAdmin}
+            alt="광고주 계약 링크 복사 화면"
+            className="h-full w-full object-cover object-top"
+            loading="eager"
+          />
+        </div>
+        <span
+          aria-hidden="true"
+          className="absolute left-[60%] top-[56%] z-[2] h-px w-[16%] rounded-full bg-gradient-to-r from-blue-600/15 to-blue-600/85 shadow-[0_12px_26px_rgba(37,99,235,0.24)] before:absolute before:left-1/2 before:top-1/2 before:h-9 before:w-9 before:-translate-x-1/2 before:-translate-y-1/2 before:rounded-full before:border before:border-blue-600/25 before:bg-white/90 before:shadow-[0_14px_30px_rgba(15,23,42,0.12),inset_0_0_0_5px_rgba(37,99,235,0.07)] after:absolute after:right-0 after:top-1/2 after:h-3.5 after:w-3.5 after:-translate-y-1/2 after:rotate-45 after:rounded-[1px] after:border-r-[3px] after:border-t-[3px] after:border-blue-600"
         />
+        <div className="absolute right-[1%] top-[7%] z-[3] h-[84%] w-[30%] overflow-hidden rounded-[18px] border-[4px] border-[#121512] bg-white shadow-[0_22px_54px_rgba(15,23,42,0.22)] sm:right-[4%] sm:top-[8%] sm:w-[28%] sm:rounded-[22px] sm:border-[5px] sm:shadow-[0_28px_68px_rgba(15,23,42,0.24)]">
+          <img
+            src={advertiserProposalAssetUrls.influencerContract}
+            alt="인플루언서 계약 확인 및 서명 화면"
+            className="h-full w-full object-cover object-top"
+            loading="eager"
+          />
+        </div>
       </div>
     );
   }
 
   if (slide.riskItems) {
     return (
-      <div className="grid min-h-[260px] grid-cols-2 gap-2 sm:min-h-[330px] sm:gap-3 lg:min-h-0 lg:content-center">
+      <div className="grid min-h-0 grid-cols-2 gap-2 sm:h-full sm:grid-cols-4 sm:content-center sm:gap-2.5">
         {slide.riskItems.map((item, index) => (
-          <div
-            key={item}
-            className="flex min-h-[112px] flex-col justify-between rounded-[12px] border border-neutral-200 bg-white p-4 shadow-[0_14px_30px_rgba(23,26,23,0.06)]"
+          <article
+            key={item.label}
+            className="flex min-w-0 flex-col overflow-hidden rounded-[14px] border border-[#e1e7e2] bg-white shadow-[0_14px_28px_rgba(15,23,42,0.055)] sm:rounded-[16px] sm:shadow-[0_18px_34px_rgba(15,23,42,0.06)]"
           >
-            <span className="text-[12px] font-black tracking-normal text-[#dc2626]">
-              0{index + 1}
-            </span>
-            <strong className="break-keep text-[18px] font-black leading-6 tracking-normal text-neutral-950 sm:text-[21px]">
-              {item}
-            </strong>
-          </div>
+            {item.imageSrc ? (
+              <>
+                <img
+                  src={item.imageSrc}
+                  alt={item.imageAlt ?? ""}
+                  className="h-[92px] min-h-0 w-full object-cover object-center sm:h-auto sm:flex-1"
+                  loading="eager"
+                />
+                <p className="flex min-h-[42px] items-center justify-center bg-[linear-gradient(180deg,#fff_0%,#fbfcfa_100%)] px-2 py-2 text-center sm:min-h-[72px] sm:px-2.5 sm:py-3">
+                  <strong className="break-keep text-[13px] font-black leading-[1.14] tracking-normal text-neutral-950 sm:text-[clamp(15px,1.45vw,18px)]">
+                    {item.label}
+                  </strong>
+                </p>
+              </>
+            ) : (
+              <div className="relative flex min-h-[170px] flex-1 items-center justify-center overflow-hidden bg-[linear-gradient(135deg,#f8faf7_0%,#eef3ef_100%)] p-4 text-center sm:min-h-0">
+                <span className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-[58%] font-neo-heavy text-[64px] leading-none text-blue-600/16 sm:text-[76px]">
+                  0{index + 1}
+                </span>
+                <strong className="relative z-[1] break-keep text-[18px] font-black leading-[1.22] tracking-normal text-neutral-950 sm:text-[clamp(17px,1.7vw,22px)]">
+                  {item.label}
+                </strong>
+              </div>
+            )}
+          </article>
         ))}
       </div>
     );
@@ -1764,22 +1875,22 @@ function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
 
   if (slide.visualFacts) {
     return (
-      <div className="grid min-h-[260px] gap-2 sm:min-h-[330px] sm:gap-3 lg:min-h-0 lg:content-center">
+      <div className="grid min-h-[240px] content-center gap-2.5 sm:min-h-0 sm:gap-3 sm:p-[clamp(20px,3vw,42px)]">
         {slide.visualFacts.map((fact, index) => (
           <div
             key={`${fact.label}-${fact.value}`}
-            className="flex min-h-[78px] items-center justify-between gap-4 rounded-[12px] border border-neutral-200 bg-white px-5 py-4 shadow-[0_14px_30px_rgba(23,26,23,0.05)]"
+            className="flex min-h-[58px] items-center justify-between gap-3 rounded-[12px] border border-neutral-200 bg-white px-3 py-2.5 shadow-[0_12px_24px_rgba(23,26,23,0.05)] sm:min-h-[84px] sm:gap-4 sm:rounded-[14px] sm:px-5 sm:py-4 sm:shadow-[0_14px_30px_rgba(23,26,23,0.055)]"
           >
             <div className="flex min-w-0 items-center gap-3">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-950 text-[11px] font-black text-white">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-950 text-[11px] font-black text-white sm:h-9 sm:w-9">
                 {index + 1}
               </span>
-              <span className="truncate text-[13px] font-extrabold tracking-normal text-neutral-500">
+              <span className="truncate text-[13px] font-extrabold tracking-normal text-neutral-500 sm:text-[14px]">
                 {fact.label}
               </span>
             </div>
             <strong
-              className={`min-w-0 text-right text-[18px] font-black leading-6 tracking-normal sm:text-[20px] ${advertiserProposalFactToneClass(
+              className={`min-w-0 text-right text-[18px] font-black leading-6 tracking-normal sm:text-[clamp(19px,2vw,24px)] ${advertiserProposalFactToneClass(
                 fact.tone,
               )}`}
             >
@@ -1791,25 +1902,27 @@ function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
     );
   }
 
-  return (
-    <div className="flex min-h-[260px] flex-col justify-center overflow-hidden rounded-[12px] border border-neutral-200 bg-neutral-950 px-8 py-8 text-white shadow-[0_18px_44px_rgba(15,23,42,0.14)] sm:min-h-[330px] lg:min-h-0">
-      <div className="h-1.5 w-16 rounded-full bg-blue-500" />
-      <p className="font-neo-heavy mt-9 break-keep text-[34px] leading-[1.08] tracking-normal sm:text-[46px]">
-        연락미에서
-        <span className="block text-blue-300">시작하세요</span>
-      </p>
-      <div className="mt-10 divide-y divide-white/14 border-y border-white/14">
-        {["조건 정리", "서명 확인", "증빙 보관"].map((item) => (
-          <div
-            key={item}
-            className="flex items-center justify-between py-3 text-[14px] font-extrabold tracking-normal text-white/86"
-          >
-            <span>{item}</span>
-            <CheckCircle2 className="h-4 w-4 text-blue-300" strokeWidth={2} />
-          </div>
-        ))}
+  if (slide.imageSrc) {
+    return (
+      <div
+        className={`min-h-[240px] overflow-hidden rounded-[12px] sm:min-h-0 ${
+          slide.stage === "final" ? "rounded-[16px]" : ""
+        }`}
+      >
+        <img
+          src={slide.imageSrc}
+          alt={slide.imageAlt ?? ""}
+          className={`h-full w-full object-top ${
+            slide.imageFit === "cover" ? "object-cover" : "object-contain"
+          } ${slide.stage === "final" ? "aspect-[16/10]" : ""}`}
+          loading="eager"
+        />
       </div>
-    </div>
+    );
+  }
+
+  return (
+    <div className="min-h-[240px] sm:min-h-0" />
   );
 }
 

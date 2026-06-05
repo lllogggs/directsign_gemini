@@ -1449,7 +1449,7 @@ const advertiserProposalCarousel =
     : "";
 
 check(
-  "advertiser intro exposes sales proposal carousel",
+  "intro pages use the PDF proposal slide frame",
   landing.includes("const advertiserProposalSlides") &&
     landing.includes("const influencerProposalSlides") &&
     landing.includes("const advertiserProposalAssetUrls") &&
@@ -1457,21 +1457,39 @@ check(
     landing.includes("yeollock-influencer-contract.png") &&
     landing.includes("yeollock-contract-admin.png") &&
     landing.includes("yeollock-campaign-applicants-dashboard.png") &&
-    landing.includes('ariaLabel="광고주 제안서 화면 슬라이드"') &&
-    landing.includes('ariaLabel="인플루언서 제안서 화면 슬라이드"') &&
+    landing.includes("yeollock-contract-content-review.png") &&
+    landing.includes("yeollock-contract-handshake.png") &&
+    landing.includes("risk-generated-missed-contact.png") &&
+    landing.includes("광고주 PDF 제안서형 인트로 슬라이드") &&
+    landing.includes("인플루언서 PDF 제안서형 인트로 슬라이드") &&
+    landing.includes("data-intro-pdf-carousel") &&
+    landing.includes("data-intro-pdf-slide") &&
+    !landing.includes("shadow-[0_28px_86px") &&
+    !landing.includes("linear-gradient(112deg,transparent_0_61%") &&
+    !landing.includes("pointer-events-none absolute inset-3") &&
+    !landing.includes("yl-primary-action inline-flex h-[34px]") &&
+    landing.includes("bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]") &&
+    !landing.includes("function ProposalSlideBrand") &&
+    !landing.includes("<ProposalSlideBrand") &&
+    landing.includes("pageNo: \"01\"") &&
+    landing.includes("stage: \"link\"") &&
     advertiserProposalCarousel.includes("aria-label={`이전 ${controlLabel}`}") &&
     advertiserProposalCarousel.includes("aria-label={`다음 ${controlLabel}`}") &&
     advertiserProposalCarousel.includes('aria-roledescription="slide"') &&
     advertiserProposalCarousel.includes("setSlideIndex(index)") &&
-    landing.includes('role === "advertiser" || displaySlides.length < 2') &&
+    !landing.includes("const [searchParams] = useSearchParams") &&
+    !landing.includes("lg:grid-cols-[minmax(330px,0.52fr)_minmax(0,1.48fr)]") &&
     qaStandard.includes('"계약서 없는 약속은"') &&
     qaStandard.includes('"광고비 먹튀"') &&
     !qaStandard.includes('requiredText: ["계약 흐름을", "한눈에 관리", "작성중", "진행중", "종료"]') &&
     agents.includes("sales/PDF proposal flow as a manual carousel") &&
+    agents.includes("same PDF slide-page composition") &&
     agents.includes("subtle left/right controls") &&
-    agents.includes('Do not duplicate the main "시작하기" CTA inside the preview carousel') &&
-    !advertiserProposalCarousel.includes('to={startHref}'),
-  "Advertiser intro should show the sales/PDF proposal flow as a manual carousel with subtle left/right controls and no duplicate start CTA inside the preview",
+    agents.includes("Do not duplicate the PDF's internal brand/header") &&
+    agents.includes("do not place the intro content inside a white/card-like screen wrapper") &&
+    agents.includes("brand marks and brand text should stay black/neutral") &&
+    !advertiserProposalCarousel.includes("to={startHref}"),
+  "Intro pages must mirror the sales/PDF proposal composition without duplicate headers, white wrapper frames, or blue logo lockups",
 );
 
 check(
@@ -1859,18 +1877,19 @@ check(
 
 check(
   "intro influencer explains why not email",
-  landing.includes('title: ["광고 조건을", "놓치지 않게"]') &&
-    landing.includes("메일함을 뒤지지 않고") &&
+  landing.includes("받은 광고") &&
+    landing.includes("흩어진 광고") &&
     landing.includes("const influencerProposalSlides") &&
     landing.includes("메일과 카톡에 흩어진") &&
     landing.includes("금액 확인 누락") &&
     landing.includes("일정 착오") &&
     landing.includes("산출물 불명확") &&
     landing.includes("활용 권한 과다") &&
-    landing.includes("PDF 계약서 원문을 보고 서명") &&
-    landing.includes("수정 요청 기록") &&
-    landing.includes("서명본 자동 보관") &&
-    qaStandard.includes('"광고 조건을"') &&
+    landing.includes("PDF 계약서") &&
+    landing.includes("원문 확인") &&
+    landing.includes("수정 요청") &&
+    landing.includes("서명 완료본") &&
+    qaStandard.includes('"받은 광고"') &&
     qaStandard.includes('"금액 확인 누락"') &&
     agents.includes("instead of email or Kakao"),
   "Influencer intro first viewport must make the email/Kakao replacement value concrete before dashboard taxonomy copy",

@@ -185,6 +185,8 @@ Example option format:
   - Login role selection must feel like two clear action buttons, not oversized decorative selection cards.
   - Login screens should not float in a loose empty canvas. Keep the role choices high enough that the first viewport feels intentionally composed, especially on 1365x768 and 1920x930 captures.
   - Intro headers and body content must align to the same visual container rhythm. Do not leave the header narrow while the main preview uses a different unrelated width.
+  - Intro pages that mirror the sales/PDF proposal must use the same PDF slide-page composition adapted for the web: left copy, right visual, page number, selective emphasis, and subtle manual navigation. Do not duplicate the PDF's internal brand/header when the actual app header already shows the logo, role switch, and primary CTA, and do not place the intro content inside a white/card-like screen wrapper just to imitate a PDF page.
+  - Product header brand marks and brand text should stay black/neutral across the service. Keep blue for primary CTAs and selected emphasis, not for the 연락미 logo lockup.
   - Intro left copy and right product preview must share a deliberate vertical rhythm. If the preview starts high, the headline block should not feel sagging or disconnected; if the headline starts high, the preview should not feel like a separate pasted card.
   - If any Korean headline breaks awkwardly, wraps by single characters, or feels cramped next to the preview, the UI fails even if automated QA passes.
   - Mobile intro pages must never lock the page to one viewport with hidden overflow when the dashboard preview is taller than the screen. At 390px-wide mobile sizes, all intro content and preview rows must remain reachable through vertical scrolling.
