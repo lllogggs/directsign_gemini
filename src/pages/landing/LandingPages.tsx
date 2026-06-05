@@ -1568,7 +1568,7 @@ function RoleFeatureIntroScreen({
         </nav>
       </div>
 
-      <section className="mx-auto flex min-h-[calc(100svh-109px)] w-full max-w-[1500px] items-start justify-center px-4 py-3 pb-5 sm:min-h-[calc(100svh-58px)] sm:items-center sm:px-6 sm:py-5 lg:h-[calc(100vh-58px)] lg:min-h-0 lg:overflow-hidden">
+      <section className="mx-auto flex min-h-[calc(100svh-118px)] w-full max-w-[1500px] items-start justify-center px-4 py-2 pb-2 sm:min-h-[calc(100svh-58px)] sm:items-center sm:px-6 sm:py-5 lg:h-[calc(100vh-58px)] lg:min-h-0 lg:overflow-hidden">
         <ProposalIntroCarousel
           ariaLabel={
             role === "advertiser"
@@ -1714,7 +1714,7 @@ function ProposalIntroCarousel({
           aria-controls={`intro-proposal-slide-${slideIndex}`}
           title={`이전 ${controlLabel}`}
           onClick={showPrevious}
-          className="absolute bottom-4 left-4 z-20 flex h-9 w-9 items-center justify-center rounded-full border border-neutral-200/75 bg-white/72 text-neutral-500 shadow-[0_14px_34px_rgba(15,23,42,0.12)] backdrop-blur transition hover:bg-white hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 sm:bottom-auto sm:left-3 sm:top-1/2 sm:h-10 sm:w-10 sm:-translate-y-1/2 lg:-left-5"
+          className="absolute z-20 hidden h-10 w-10 items-center justify-center rounded-full border border-neutral-200/75 bg-white/72 text-neutral-500 shadow-[0_14px_34px_rgba(15,23,42,0.12)] backdrop-blur transition hover:bg-white hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 sm:left-3 sm:top-1/2 sm:flex sm:-translate-y-1/2 lg:-left-5"
         >
           <ChevronLeft className="h-5 w-5" strokeWidth={2} />
         </button>
@@ -1724,7 +1724,7 @@ function ProposalIntroCarousel({
           aria-controls={`intro-proposal-slide-${slideIndex}`}
           title={`다음 ${controlLabel}`}
           onClick={showNext}
-          className="absolute bottom-4 right-4 z-20 flex h-9 w-9 items-center justify-center rounded-full border border-neutral-200/75 bg-white/72 text-neutral-500 shadow-[0_14px_34px_rgba(15,23,42,0.12)] backdrop-blur transition hover:bg-white hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 sm:bottom-auto sm:right-3 sm:top-1/2 sm:h-10 sm:w-10 sm:-translate-y-1/2 lg:-right-5"
+          className="absolute z-20 hidden h-10 w-10 items-center justify-center rounded-full border border-neutral-200/75 bg-white/72 text-neutral-500 shadow-[0_14px_34px_rgba(15,23,42,0.12)] backdrop-blur transition hover:bg-white hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 sm:right-3 sm:top-1/2 sm:flex sm:-translate-y-1/2 lg:-right-5"
         >
           <ChevronRight className="h-5 w-5" strokeWidth={2} />
         </button>
@@ -1740,11 +1740,62 @@ function ProposalIntroCarousel({
         >
           <ProposalSlideView slide={activeSlide} />
 
-          <span className="z-10 mt-2 self-end text-[10px] font-bold tabular-nums leading-none tracking-normal text-[#88918b] sm:mt-3 lg:absolute lg:bottom-0 lg:right-2 lg:mt-0">
+          <span className="z-10 mt-2 hidden self-end text-[10px] font-bold tabular-nums leading-none tracking-normal text-[#88918b] sm:mt-3 sm:block lg:absolute lg:bottom-0 lg:right-2 lg:mt-0">
             {activeSlide.pageNo}
           </span>
 
-          <div className="z-20 mt-2 flex items-center justify-center gap-2 sm:mt-3 lg:absolute lg:bottom-0 lg:left-1/2 lg:mt-0 lg:-translate-x-1/2">
+          <div
+            data-intro-mobile-controls
+            className="z-20 mt-2 grid h-10 grid-cols-[40px_minmax(0,1fr)_40px] items-center gap-3 sm:hidden"
+          >
+            <button
+              type="button"
+              aria-label={`이전 ${controlLabel}`}
+              aria-controls={`intro-proposal-slide-${slideIndex}`}
+              title={`이전 ${controlLabel}`}
+              onClick={showPrevious}
+              className="flex h-10 w-10 items-center justify-center self-center justify-self-start rounded-full border border-neutral-200/75 bg-white/82 text-neutral-500 shadow-[0_14px_34px_rgba(15,23,42,0.12)] backdrop-blur transition hover:bg-white hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700"
+            >
+              <ChevronLeft className="h-5 w-5" strokeWidth={2} />
+            </button>
+            <div className="flex min-w-0 items-center justify-center gap-3">
+              <div className="flex items-center justify-center gap-2">
+                {slides.map((slide, index) => {
+                  const selected = index === slideIndex;
+
+                  return (
+                    <button
+                      key={slide.label}
+                      type="button"
+                      aria-label={`${index + 1}번째 ${controlLabel} 보기`}
+                      aria-current={selected ? "true" : undefined}
+                      onClick={() => setSlideIndex(index)}
+                      className={`h-2 rounded-full transition ${
+                        selected
+                          ? "w-6 bg-neutral-950"
+                          : "w-2 bg-neutral-300 hover:bg-neutral-500"
+                      }`}
+                    />
+                  );
+                })}
+              </div>
+              <span className="text-[10px] font-bold tabular-nums leading-none tracking-normal text-[#88918b]">
+                {activeSlide.pageNo}
+              </span>
+            </div>
+            <button
+              type="button"
+              aria-label={`다음 ${controlLabel}`}
+              aria-controls={`intro-proposal-slide-${slideIndex}`}
+              title={`다음 ${controlLabel}`}
+              onClick={showNext}
+              className="flex h-10 w-10 items-center justify-center self-center justify-self-end rounded-full border border-neutral-200/75 bg-white/82 text-neutral-500 shadow-[0_14px_34px_rgba(15,23,42,0.12)] backdrop-blur transition hover:bg-white hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700"
+            >
+              <ChevronRight className="h-5 w-5" strokeWidth={2} />
+            </button>
+          </div>
+
+          <div className="z-20 mt-2 hidden items-center justify-center gap-2 sm:mt-3 sm:flex lg:absolute lg:bottom-0 lg:left-1/2 lg:mt-0 lg:-translate-x-1/2">
             {slides.map((slide, index) => {
               const selected = index === slideIndex;
 
@@ -1771,24 +1822,48 @@ function ProposalIntroCarousel({
 }
 
 function ProposalSlideView({ slide }: { slide: IntroProposalSlide }) {
+  const desktopSupport = slide.support || slide.description;
+  const mobileSupport =
+    desktopSupport ||
+    (slide.riskItems ? (
+      <>
+        계약서 없이 생기는
+        <br />
+        <strong>분쟁을 먼저 줄입니다</strong>
+      </>
+    ) : null);
+
   return (
-    <div className="relative z-10 grid min-h-0 flex-1 gap-4 pt-1 sm:grid-cols-[minmax(205px,0.34fr)_minmax(0,1fr)] sm:items-center sm:gap-[clamp(32px,4vw,56px)] sm:pt-0 lg:h-full">
-        <div className="flex min-h-0 flex-col justify-center pl-0 sm:pl-[clamp(8px,2.2vw,34px)]">
-          {slide.context ? (
-            <p className="mb-3 inline-block w-max bg-gradient-to-br from-[#0f172a] to-[#2f6df6] bg-clip-text font-neo-heavy text-[28px] font-black leading-[1.02] tracking-normal text-transparent drop-shadow-[0_12px_22px_rgba(36,86,214,0.14)] after:mt-2.5 after:block after:h-1 after:w-8 after:rounded-full after:bg-blue-600 after:shadow-[0_12px_26px_rgba(36,86,214,0.24)] sm:mb-5 sm:text-[clamp(38px,4.2vw,50px)]">
-              {slide.context}
-            </p>
-          ) : null}
-          <h2 className="font-neo-heavy break-keep text-[25px] leading-[1.12] tracking-normal text-neutral-950 sm:text-[clamp(38px,4.4vw,50px)] sm:leading-[1.07]">
-            {slide.title}
-          </h2>
-          {slide.support || slide.description ? (
-            <div className="mt-3 max-w-[280px] border-l-[3px] border-blue-600/20 pl-3 text-[13px] font-normal leading-[1.45] tracking-normal text-[#58625c] sm:mt-6 sm:max-w-[300px] sm:pl-3.5 sm:text-[clamp(16px,1.55vw,19px)] [&_.support-stack]:grid [&_.support-stack]:gap-2.5 sm:[&_.support-stack]:gap-3.5 [&_strong]:font-black [&_strong]:text-blue-600">
-              {slide.support ?? slide.description}
+    <div className="relative z-10 grid min-h-0 flex-1 grid-rows-[136px_clamp(292px,47svh,406px)] gap-2 pt-1 sm:grid-rows-none sm:grid-cols-[minmax(205px,0.34fr)_minmax(0,1fr)] sm:items-center sm:gap-[clamp(32px,4vw,56px)] sm:pt-0 lg:h-full">
+        <div className="mx-auto grid h-full min-h-0 w-full max-w-[360px] grid-cols-[minmax(0,0.94fr)_1px_minmax(0,1fr)] items-center gap-3 px-1 text-left sm:mx-0 sm:flex sm:max-w-none sm:flex-col sm:items-start sm:justify-center sm:gap-0 sm:px-0 sm:pl-[clamp(8px,2.2vw,34px)]">
+          <div className="min-w-0 text-right sm:text-left">
+            {slide.context ? (
+              <p className="mb-1.5 inline-block max-w-full bg-gradient-to-br from-[#0f172a] to-[#2f6df6] bg-clip-text font-neo-heavy text-[21px] font-black leading-[1.01] tracking-normal text-transparent drop-shadow-[0_12px_22px_rgba(36,86,214,0.14)] after:ml-auto after:mt-1.5 after:block after:h-1 after:w-8 after:rounded-full after:bg-blue-600 after:shadow-[0_12px_26px_rgba(36,86,214,0.24)] sm:mb-5 sm:text-[clamp(38px,4.2vw,50px)] sm:after:ml-0">
+                {slide.context}
+              </p>
+            ) : null}
+            <h2 className="ml-auto max-w-[178px] break-keep font-neo-heavy text-[20px] leading-[1.04] tracking-normal text-neutral-950 sm:ml-0 sm:max-w-none sm:text-[clamp(38px,4.4vw,50px)] sm:leading-[1.07]">
+              {slide.title}
+            </h2>
+          </div>
+          <span
+            aria-hidden="true"
+            className="h-[86px] w-px rounded-full bg-gradient-to-b from-transparent via-blue-600/50 to-transparent sm:hidden"
+          />
+          {mobileSupport ? (
+            <div className="max-h-[88px] min-w-0 overflow-hidden text-[11.5px] font-normal leading-[1.36] tracking-normal text-[#58625c] sm:hidden [&_.support-stack]:grid [&_.support-stack]:gap-1 [&_strong]:font-black [&_strong]:text-blue-600">
+              {mobileSupport}
+            </div>
+          ) : (
+            <div className="hidden sm:block" />
+          )}
+          {desktopSupport ? (
+            <div className="hidden sm:mx-0 sm:mt-6 sm:block sm:max-h-none sm:max-w-[300px] sm:border-l-[3px] sm:border-blue-600/20 sm:pl-3.5 sm:text-[clamp(16px,1.55vw,19px)] sm:font-normal sm:leading-[1.45] sm:tracking-normal sm:text-[#58625c] sm:[&_.support-stack]:grid sm:[&_.support-stack]:gap-3.5 [&_strong]:font-black [&_strong]:text-blue-600">
+              {desktopSupport}
             </div>
           ) : null}
           {slide.stage === "final" ? (
-            <div className="mt-4 grid w-fit gap-2 sm:mt-5">
+            <div className="mt-4 hidden w-fit gap-2 sm:mt-5 sm:grid">
               <span className="inline-flex w-fit rounded-full bg-blue-600 px-4 py-2.5 text-[12px] font-extrabold text-white shadow-[0_18px_42px_rgba(37,99,235,0.22)] sm:px-5 sm:py-3 sm:text-[13px]">
                 yeollock.me
               </span>
@@ -1810,8 +1885,8 @@ function ProposalSlideView({ slide }: { slide: IntroProposalSlide }) {
 function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
   if (slide.stage === "link") {
     return (
-      <div className="relative min-h-[240px] overflow-visible sm:min-h-0 lg:h-full">
-        <div className="absolute left-[2%] top-[13%] z-[1] h-[72%] w-[70%] overflow-hidden rounded-[14px] border border-[rgba(17,20,18,0.08)] bg-white shadow-[0_18px_44px_rgba(15,23,42,0.12)] sm:left-[7%] sm:top-[14%] sm:h-[70%] sm:w-[68%]">
+      <div className="relative h-full min-h-0 overflow-visible sm:h-auto sm:min-h-0 lg:h-full">
+        <div className="absolute left-[2%] top-[3%] z-[1] h-[72%] w-[70%] overflow-hidden rounded-[14px] border border-[rgba(17,20,18,0.08)] bg-white shadow-[0_18px_44px_rgba(15,23,42,0.12)] sm:left-[7%] sm:top-[14%] sm:h-[70%] sm:w-[68%]">
           <img
             src={advertiserProposalAssetUrls.contractAdmin}
             alt="광고주 계약 링크 복사 화면"
@@ -1823,7 +1898,7 @@ function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
           aria-hidden="true"
           className="absolute left-[60%] top-[56%] z-[2] h-px w-[16%] rounded-full bg-gradient-to-r from-blue-600/15 to-blue-600/85 shadow-[0_12px_26px_rgba(37,99,235,0.24)] before:absolute before:left-1/2 before:top-1/2 before:h-9 before:w-9 before:-translate-x-1/2 before:-translate-y-1/2 before:rounded-full before:border before:border-blue-600/25 before:bg-white/90 before:shadow-[0_14px_30px_rgba(15,23,42,0.12),inset_0_0_0_5px_rgba(37,99,235,0.07)] after:absolute after:right-0 after:top-1/2 after:h-3.5 after:w-3.5 after:-translate-y-1/2 after:rotate-45 after:rounded-[1px] after:border-r-[3px] after:border-t-[3px] after:border-blue-600"
         />
-        <div className="absolute right-[1%] top-[7%] z-[3] h-[84%] w-[30%] overflow-hidden rounded-[18px] border-[4px] border-[#121512] bg-white shadow-[0_22px_54px_rgba(15,23,42,0.22)] sm:right-[4%] sm:top-[8%] sm:w-[28%] sm:rounded-[22px] sm:border-[5px] sm:shadow-[0_28px_68px_rgba(15,23,42,0.24)]">
+        <div className="absolute right-[1%] top-[1%] z-[3] h-[84%] w-[30%] overflow-hidden rounded-[18px] border-[4px] border-[#121512] bg-white shadow-[0_22px_54px_rgba(15,23,42,0.22)] sm:right-[4%] sm:top-[8%] sm:w-[28%] sm:rounded-[22px] sm:border-[5px] sm:shadow-[0_28px_68px_rgba(15,23,42,0.24)]">
           <img
             src={advertiserProposalAssetUrls.influencerContract}
             alt="인플루언서 계약 확인 및 서명 화면"
@@ -1837,7 +1912,7 @@ function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
 
   if (slide.riskItems) {
     return (
-      <div className="grid min-h-0 grid-cols-2 gap-2 sm:h-full sm:grid-cols-4 sm:content-center sm:gap-2.5">
+      <div className="grid h-full min-h-0 grid-cols-2 grid-rows-2 gap-2 sm:h-full sm:grid-cols-4 sm:grid-rows-none sm:content-center sm:gap-2.5">
         {slide.riskItems.map((item, index) => (
           <article
             key={item.label}
@@ -1848,7 +1923,7 @@ function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
                 <img
                   src={item.imageSrc}
                   alt={item.imageAlt ?? ""}
-                  className="h-[92px] min-h-0 w-full object-cover object-center sm:h-auto sm:flex-1"
+                  className="min-h-0 w-full flex-1 object-cover object-center sm:h-auto"
                   loading="eager"
                 />
                 <p className="flex min-h-[42px] items-center justify-center bg-[linear-gradient(180deg,#fff_0%,#fbfcfa_100%)] px-2 py-2 text-center sm:min-h-[72px] sm:px-2.5 sm:py-3">
@@ -1875,7 +1950,7 @@ function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
 
   if (slide.visualFacts) {
     return (
-      <div className="grid min-h-[240px] content-center gap-2.5 sm:min-h-0 sm:gap-3 sm:p-[clamp(20px,3vw,42px)]">
+      <div className="grid h-full min-h-0 content-center gap-2.5 sm:h-auto sm:min-h-0 sm:gap-3 sm:p-[clamp(20px,3vw,42px)]">
         {slide.visualFacts.map((fact, index) => (
           <div
             key={`${fact.label}-${fact.value}`}
@@ -1905,15 +1980,15 @@ function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
   if (slide.imageSrc) {
     return (
       <div
-        className={`min-h-[240px] overflow-hidden rounded-[12px] sm:min-h-0 ${
+        className={`h-full min-h-0 overflow-hidden rounded-[12px] sm:h-auto sm:min-h-0 ${
           slide.stage === "final" ? "rounded-[16px]" : ""
         }`}
       >
         <img
           src={slide.imageSrc}
           alt={slide.imageAlt ?? ""}
-          className={`h-full w-full object-top ${
-            slide.imageFit === "cover" ? "object-cover" : "object-contain"
+          className={`h-full w-full object-cover object-top ${
+            slide.imageFit === "cover" ? "sm:object-cover" : "sm:object-contain"
           } ${slide.stage === "final" ? "aspect-[16/10]" : ""}`}
           loading="eager"
         />
@@ -1922,7 +1997,7 @@ function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
   }
 
   return (
-    <div className="min-h-[240px] sm:min-h-0" />
+    <div className="h-full min-h-0 sm:h-auto sm:min-h-0" />
   );
 }
 
