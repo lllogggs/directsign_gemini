@@ -40,7 +40,6 @@ import {
   findInfluencerProfileByHandle,
   mergeMarketplaceBrandProfiles,
   mergeMarketplaceInfluencerProfiles,
-  normalizeMarketplaceHandle,
   platformLabels,
   type CampaignProposalType,
   type MarketplaceBrandCampaign,
@@ -16076,15 +16075,12 @@ app.get("/api/marketplace/influencers", async (_request, response, next) => {
 
 app.get("/api/marketplace/influencers/:handle", async (request, response, next) => {
   try {
-    const normalizedHandle = normalizeMarketplaceHandle(request.params.handle);
     const profiles = await readPublicMarketplaceCache(
       "marketplace-influencers",
       readMarketplaceInfluencerProfiles,
       { fallback: fallbackMarketplaceInfluencerProfiles },
     );
-    const profile = profiles.find(
-      (item) => normalizeMarketplaceHandle(item.handle) === normalizedHandle,
-    );
+    const profile = findInfluencerProfileByHandle(request.params.handle, profiles);
 
     if (!profile) {
       response.status(404).json({ error: "Influencer profile not found" });
@@ -16112,15 +16108,12 @@ app.get("/api/marketplace/brands", async (_request, response, next) => {
 
 app.get("/api/marketplace/brands/:handle", async (request, response, next) => {
   try {
-    const normalizedHandle = normalizeMarketplaceHandle(request.params.handle);
     const brands = await readPublicMarketplaceCache(
       "marketplace-brands",
       readMarketplaceBrandProfiles,
       { fallback: fallbackMarketplaceBrandProfiles },
     );
-    const brand = brands.find(
-      (item) => normalizeMarketplaceHandle(item.handle) === normalizedHandle,
-    );
+    const brand = findBrandProfileByHandle(request.params.handle, brands);
 
     if (!brand) {
       response.status(404).json({ error: "Brand profile not found" });

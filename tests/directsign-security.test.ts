@@ -390,8 +390,9 @@ describe("yeollock.me security regressions", () => {
     assert.match(server, /if \(allowMarketplaceSeedData\) return mergeMarketplaceBrandProfiles\(visibleDbProfiles\)/);
     assert.match(server, /if \(!useSupabase\) return fallbackMarketplaceBrandProfiles\(\)/);
     assert.match(server, /const profiles = await readPublicMarketplaceCache\(\s*"marketplace-influencers"/);
-    assert.match(server, /normalizeMarketplaceHandle\(item\.handle\) === normalizedHandle/);
+    assert.match(server, /findInfluencerProfileByHandle\(request\.params\.handle, profiles\)/);
     assert.match(server, /const brands = await readPublicMarketplaceCache\(\s*"marketplace-brands"/);
+    assert.match(server, /findBrandProfileByHandle\(request\.params\.handle, brands\)/);
 
     assert.match(server, /app\.post\("\/api\/support\/tickets"/);
     assert.match(server, /app\.get\("\/api\/admin\/support-tickets"/);
