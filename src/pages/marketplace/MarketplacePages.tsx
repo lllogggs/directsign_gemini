@@ -1,6 +1,5 @@
 import {
   ArrowLeft,
-  ArrowRight,
   ArrowUpDown,
   BadgeCheck,
   ChevronDown,
@@ -975,13 +974,6 @@ export function PublicBrandProfilePage() {
                     <Handshake className="h-4 w-4" />
                     브랜드에 역제안하기
                   </button>
-                  <Link
-                    to="/influencer/brands"
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-[10px] border border-neutral-200 bg-white px-4 text-[13px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
-                  >
-                    다른 브랜드 보기
-                    <ArrowRight className="h-4 w-4" />
-                  </Link>
                 </div>
               </div>
             </div>

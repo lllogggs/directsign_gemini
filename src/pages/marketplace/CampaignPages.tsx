@@ -2415,6 +2415,7 @@ function CampaignViewTabs({
             type="button"
             role="tab"
             aria-selected={active}
+            aria-label={`${tab.label} ${tab.count}건`}
             onClick={() => onChange(tab.id)}
             className={`h-9 min-w-0 rounded-full px-1.5 text-[11px] font-extrabold transition sm:px-2 sm:text-[12px] ${
               active
@@ -2425,7 +2426,7 @@ function CampaignViewTabs({
             <span className="inline-flex max-w-full items-center justify-center gap-1 overflow-hidden whitespace-nowrap">
               <span className="sm:hidden">{tab.mobileLabel}</span>
               <span className="hidden sm:inline">{tab.label}</span>
-              <span className={active ? "text-neutral-500" : "text-neutral-400"}>
+              <span className={`${active ? "text-neutral-500" : "text-neutral-400"} hidden sm:inline`}>
                 {tab.count}
               </span>
             </span>
