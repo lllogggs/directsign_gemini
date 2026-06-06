@@ -1,24 +1,20 @@
 import {
   ArrowRight,
-  BookOpen,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
   ClipboardCheck,
   FileSignature,
   FileText,
-  Instagram,
   LogOut,
   Megaphone,
   MessageSquareText,
-  Music2,
   PenLine,
   Plus,
   Search,
   ShieldCheck,
   Settings,
   UserCheck,
-  Youtube,
   type LucideIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
@@ -188,23 +184,23 @@ function RoleIconCluster({ role }: { role: IntroRole }) {
       : [
           {
             label: "인스타",
-            className: "text-fuchsia-700",
-            icon: <Instagram className="h-6 w-6" strokeWidth={2.15} />,
+            className: "",
+            icon: <PlatformBrandMark platform="instagram" size="md" />,
           },
           {
             label: "유튜브",
-            className: "text-red-700",
-            icon: <Youtube className="h-6 w-6" strokeWidth={2.15} />,
+            className: "",
+            icon: <PlatformBrandMark platform="youtube" size="md" />,
           },
           {
             label: "블로그",
-            className: "text-neutral-700",
-            icon: <BookOpen className="h-6 w-6" strokeWidth={2.15} />,
+            className: "",
+            icon: <PlatformBrandMark platform="naver_blog" size="md" />,
           },
           {
             label: "틱톡",
-            className: "text-neutral-950",
-            icon: <Music2 className="h-6 w-6" strokeWidth={2.15} />,
+            className: "",
+            icon: <PlatformBrandMark platform="tiktok" size="md" />,
           },
         ];
 
@@ -1740,7 +1736,7 @@ function ProposalIntroCarousel({
 
           <div
             data-intro-mobile-controls
-            className="absolute bottom-[38px] left-0 right-0 z-20 grid h-10 grid-cols-[40px_minmax(0,1fr)_40px] items-center gap-3 px-4 sm:hidden"
+            className="absolute bottom-[58px] left-0 right-0 z-20 grid h-10 grid-cols-[40px_minmax(0,1fr)_40px] items-center gap-3 px-4 sm:hidden"
           >
             <button
               type="button"
@@ -1974,18 +1970,23 @@ function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
   }
 
   if (slide.imageSrc) {
+    if (slide.stage === "final") {
+      return (
+        <FinalHandshakeVisual
+          imageAlt={slide.imageAlt}
+          imageSrc={slide.imageSrc}
+        />
+      );
+    }
+
     const baseImageFitClass =
-      slide.stage === "final"
-        ? "object-cover object-center"
-        : "object-contain object-center";
+      "object-contain object-center";
 
     return (
       <div
         data-intro-visual
         className={`flex min-h-0 w-full items-center justify-center self-center overflow-hidden rounded-[12px] bg-transparent sm:h-auto sm:min-h-0 ${
-          slide.stage === "final"
-            ? "h-auto aspect-[16/10] rounded-[16px]"
-            : slide.stage === "product"
+          slide.stage === "product"
               ? "h-full self-center"
             : "h-full"
         }`}
@@ -2004,6 +2005,37 @@ function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
 
   return (
     <div className="h-full min-h-0 sm:h-auto sm:min-h-0" />
+  );
+}
+
+function FinalHandshakeVisual({
+  imageAlt,
+  imageSrc,
+}: {
+  imageAlt?: string;
+  imageSrc: string;
+}) {
+  return (
+    <div
+      data-intro-visual
+      className="flex h-full min-h-0 items-stretch pt-1 sm:h-auto sm:min-h-0 sm:items-center sm:justify-center sm:pt-0"
+    >
+      <div className="relative h-full min-h-0 w-full overflow-hidden rounded-[16px] bg-[#eef3ef] shadow-[0_18px_44px_rgba(15,23,42,0.1)] sm:aspect-[16/10] sm:h-auto sm:shadow-[0_24px_64px_rgba(15,23,42,0.12)]">
+        <img
+          src={imageSrc}
+          alt=""
+          aria-hidden="true"
+          className="absolute inset-0 h-full w-full scale-110 object-cover object-[52%_center] opacity-28 blur-md sm:hidden"
+          loading="eager"
+        />
+        <img
+          src={imageSrc}
+          alt={imageAlt ?? ""}
+          className="absolute left-0 top-1/2 h-auto w-full -translate-y-1/2 object-cover object-center sm:static sm:h-full sm:translate-y-0"
+          loading="eager"
+        />
+      </div>
+    </div>
   );
 }
 
@@ -2237,8 +2269,12 @@ function AdvertiserContractReviewProductPreview() {
                       <p className="truncate text-[11px] font-black text-neutral-950">
                         {name}
                       </p>
-                      <p className="mt-0.5 truncate text-[9px] font-bold text-neutral-500">
-                        인스타 · 릴스 1건
+                      <p
+                        className="mt-0.5 flex min-w-0 items-center gap-1 truncate text-[9px] font-bold text-neutral-500"
+                        title="인스타 릴스 1건"
+                      >
+                        <IntroPlatformMarks platform="인스타 릴스" />
+                        <span className="truncate">릴스 1건</span>
                       </p>
                     </div>
                     <div className="text-right">
@@ -2328,6 +2364,13 @@ function AdvertiserApplicantsProductPreview() {
 }
 
 function InfluencerContractPdfPreview() {
+  const contractFacts = [
+    { label: "브랜드", value: "브레드룸" },
+    { label: "플랫폼", platform: "인스타 · 블로그" },
+    { label: "지급", value: "판매 수수료 18%" },
+    { label: "마감", value: "2026.05.28" },
+  ];
+
   return (
     <>
       <div className="border-b border-neutral-200 bg-white px-3 py-2">
@@ -2347,22 +2390,23 @@ function InfluencerContractPdfPreview() {
       </div>
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(104px,0.42fr)_minmax(0,0.58fr)] gap-2 bg-[#fbfcfa] p-2">
         <div className="flex min-h-0 flex-col gap-2">
-          {[
-            ["브랜드", "브레드룸"],
-            ["플랫폼", "인스타 · 블로그"],
-            ["지급", "판매 수수료 18%"],
-            ["마감", "2026.05.28"],
-          ].map(([label, value], index) => (
+          {contractFacts.map((fact, index) => (
             <div
-              key={label}
+              key={fact.label}
               className={`rounded-[9px] border border-neutral-200 bg-white px-2.5 py-2 ${
                 index > 2 ? "max-[380px]:hidden" : ""
               }`}
             >
-              <p className="text-[10px] font-extrabold text-neutral-500">{label}</p>
-              <p className="mt-1 truncate text-[11px] font-black text-neutral-950">
-                {value}
-              </p>
+              <p className="text-[10px] font-extrabold text-neutral-500">{fact.label}</p>
+              {fact.platform ? (
+                <div className="mt-1 flex h-4 items-center">
+                  <IntroPlatformMarks platform={fact.platform} />
+                </div>
+              ) : (
+                <p className="mt-1 truncate text-[11px] font-black text-neutral-950">
+                  {fact.value}
+                </p>
+              )}
             </div>
           ))}
         </div>
@@ -2545,11 +2589,62 @@ function InfluencerCompactDashboardProductPreview() {
 }
 
 function getIntroInfluencerPlatform(platform: string): InfluencerPlatform {
-  if (platform.includes("인스타")) return "instagram";
-  if (platform.includes("유튜브")) return "youtube";
-  if (platform.includes("틱톡")) return "tiktok";
-  if (platform.includes("블로그")) return "naver_blog";
+  const normalized = platform.toLowerCase();
+  if (platform.includes("인스타") || platform.includes("릴스") || normalized.includes("instagram") || normalized.includes("reels")) return "instagram";
+  if (platform.includes("유튜브") || normalized.includes("youtube")) return "youtube";
+  if (platform.includes("틱톡") || normalized.includes("tiktok")) return "tiktok";
+  if (platform.includes("블로그") || normalized.includes("blog") || normalized.includes("naver")) return "naver_blog";
   return "other";
+}
+
+function getIntroPlatformMarks(platform: string): InfluencerPlatform[] {
+  const normalized = platform.toLowerCase();
+  const marks: InfluencerPlatform[] = [];
+  const add = (mark: InfluencerPlatform) => {
+    if (!marks.includes(mark)) marks.push(mark);
+  };
+
+  if (platform.includes("인스타") || platform.includes("릴스") || normalized.includes("instagram") || normalized.includes("reels")) {
+    add("instagram");
+  }
+  if (platform.includes("유튜브") || normalized.includes("youtube")) {
+    add("youtube");
+  }
+  if (platform.includes("틱톡") || normalized.includes("tiktok")) {
+    add("tiktok");
+  }
+  if (platform.includes("블로그") || normalized.includes("blog") || normalized.includes("naver")) {
+    add("naver_blog");
+  }
+  if ((platform.includes("외 1") || platform.includes("+1")) && marks.length === 1) {
+    add(marks[0] === "instagram" ? "naver_blog" : "instagram");
+  }
+
+  return marks.length > 0 ? marks : [getIntroInfluencerPlatform(platform)];
+}
+
+function IntroPlatformMarks({
+  platform,
+  size = "xs",
+  className = "",
+}: {
+  platform: string;
+  size?: "xs" | "sm" | "md";
+  className?: string;
+}) {
+  return (
+    <span
+      aria-label={platform}
+      className={`inline-flex min-w-0 items-center gap-1.5 ${className}`}
+      title={platform}
+    >
+      {getIntroPlatformMarks(platform).map((mark) => (
+        <span key={`${platform}:${mark}`} className="inline-flex">
+          <PlatformBrandMark platform={mark} size={size} />
+        </span>
+      ))}
+    </span>
+  );
 }
 
 function advertiserProposalFactToneClass(tone: IntroProposalFact["tone"]) {
@@ -3533,8 +3628,8 @@ function IntroAdvertiserAccountBanner({
 
 function IntroInfluencerProfileBanner({ accountName }: { accountName: string }) {
   const verifiedPlatforms = [
-    { label: "인스타", handle: "@creator_sora", icon: <Instagram className="h-3 w-3" /> },
-    { label: "유튜브", handle: "@creator_sora", icon: <Youtube className="h-3 w-3" /> },
+    { label: "인스타", platform: "instagram" as const, handle: "@creator_sora" },
+    { label: "유튜브", platform: "youtube" as const, handle: "@creator_sora" },
   ];
 
   return (
@@ -3557,9 +3652,9 @@ function IntroInfluencerProfileBanner({ accountName }: { accountName: string }) 
               <span
                 key={`${platform.label}:${platform.handle}`}
                 className="inline-flex h-5 max-w-[170px] items-center gap-1 rounded-full border border-neutral-200 bg-white px-2 text-[10px] font-bold text-neutral-700"
+                title={`${platform.label} ${platform.handle}`}
               >
-                {platform.icon}
-                <span className="shrink-0">{platform.label}</span>
+                <PlatformBrandMark platform={platform.platform} size="xs" />
                 <span className="truncate">{platform.handle}</span>
               </span>
             ))}
@@ -3687,11 +3782,7 @@ function IntroContractRows({ state }: { state: IntroDashboardState }) {
               key={`${row.platform}-${row.title}-${index}`}
               className={`grid min-h-11 ${contractRowsGridClass} items-center gap-2 bg-white px-3 py-2`}
             >
-              <span
-                className={`inline-flex h-6 w-fit max-w-full items-center truncate rounded-[6px] border px-2 text-[10px] font-extrabold ${row.platformClass}`}
-              >
-                {row.platform}
-              </span>
+              <IntroPlatformMarks platform={row.platform} className="h-6" />
               <span className="truncate text-[11px] font-semibold text-neutral-700">
                 {row.brand}
               </span>
@@ -3735,11 +3826,7 @@ function IntroContractRows({ state }: { state: IntroDashboardState }) {
               className="rounded-[10px] border border-neutral-200 bg-white p-3"
             >
               <div className="flex items-center justify-between gap-2">
-                <span
-                  className={`inline-flex h-6 max-w-[86px] items-center truncate rounded-[6px] border px-2 text-[10px] font-extrabold ${row.platformClass}`}
-                >
-                  {row.platform}
-                </span>
+                <IntroPlatformMarks platform={row.platform} className="h-6 shrink-0" />
                 <span className="text-[10px] font-extrabold text-neutral-600">
                   {row.metric}
                 </span>
@@ -3912,11 +3999,7 @@ function _IntroContractRows({
               index === selectedRowIndex ? "bg-blue-50/45" : "bg-white"
             }`}
           >
-            <span
-              className={`inline-flex h-6 w-fit max-w-full items-center truncate rounded-[6px] border px-2 text-[10px] font-extrabold ${row.platformClass}`}
-            >
-              {row.platform}
-            </span>
+            <IntroPlatformMarks platform={row.platform} className="h-6" />
             <span className="truncate text-[12px] font-extrabold text-neutral-950">
               {row.party} · {row.title}
             </span>
@@ -3940,11 +4023,7 @@ function _IntroContractRows({
             }`}
           >
             <div className="flex items-center justify-between gap-2">
-              <span
-                className={`inline-flex h-6 max-w-[78px] items-center truncate rounded-[6px] border px-2 text-[10px] font-extrabold ${row.platformClass}`}
-              >
-                {row.platform}
-              </span>
+              <IntroPlatformMarks platform={row.platform} className="h-6 shrink-0" />
               <span
                 className={`inline-flex h-6 max-w-[92px] items-center truncate rounded-[7px] border px-2 text-[10px] font-extrabold ${row.statusClass}`}
               >
@@ -4425,10 +4504,9 @@ function InfluencerPreviewSlideView({
                 <MobilePreviewMeta label="마감" value={item.due} />
               </div>
               <div className="mt-2">
-                <MobilePreviewMeta
-                  label="플랫폼"
-                  value={item.platform}
+                <MobilePreviewPlatformMeta
                   detail={`${item.accountName} / ${item.accountId}`}
+                  platform={item.platform}
                 />
               </div>
             </div>
@@ -4441,10 +4519,8 @@ function InfluencerPreviewSlideView({
               {item.contract}
             </p>
             <div className="hidden min-w-0 sm:block">
-              <p className="truncate text-[13px] font-extrabold tracking-[-0.01em] text-neutral-950">
-                {item.platform}
-              </p>
-              <p className="mt-1 truncate text-[10px] font-bold tracking-[-0.005em] text-neutral-400">
+              <IntroPlatformMarks platform={item.platform} className="h-5" />
+              <p className="mt-1.5 truncate text-[10px] font-bold tracking-[-0.005em] text-neutral-400">
                 {item.accountName} / {item.accountId}
               </p>
             </div>
@@ -5124,6 +5200,26 @@ function MobilePreviewMeta({
   );
 }
 
+function MobilePreviewPlatformMeta({
+  platform,
+  detail,
+}: {
+  platform: string;
+  detail: string;
+}) {
+  return (
+    <div className="min-w-0 rounded-[6px] bg-[#f8f7f4] px-3 py-2">
+      <p className="text-[10px] font-extrabold text-neutral-400">플랫폼</p>
+      <div className="mt-1 flex h-5 items-center">
+        <IntroPlatformMarks platform={platform} />
+      </div>
+      <p className="mt-0.5 truncate text-[10px] font-bold text-neutral-400">
+        {detail}
+      </p>
+    </div>
+  );
+}
+
 function LandingHeader() {
   return (
     <header className="border-b border-[#d9e0d9] bg-[#fcfcfa]/95">
@@ -5252,9 +5348,10 @@ function RoleDashboardPreview({ config }: { config: IntroConfig }) {
                   <p className="truncate text-[14px] font-semibold text-[#171a17]">
                     {row.title}
                   </p>
-                  <p className="mt-1 truncate text-[12px] text-[#7d857f]">
-                    {row.platform} · {row.due}
-                  </p>
+                  <div className="mt-1 flex min-w-0 items-center gap-1.5 text-[12px] text-[#7d857f]">
+                    <IntroPlatformMarks platform={row.platform} />
+                    <span className="truncate">{row.due}</span>
+                  </div>
                 </div>
                 <PreviewText label="상대" value={row.party} />
                 <PreviewText label="금액" value={row.amount} />

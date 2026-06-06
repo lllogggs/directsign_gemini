@@ -1426,10 +1426,12 @@ check(
     landing.includes("function InfluencerRevisionRequestPreview") &&
     landing.includes("function InfluencerCompactDashboardProductPreview") &&
     landing.includes('slide.stage === "final"') &&
-    landing.includes('"h-auto aspect-[16/10] rounded-[16px]"') &&
-    landing.includes('"object-cover object-center"') &&
+    landing.includes("function FinalHandshakeVisual") &&
+    landing.includes("bottom-[58px]") &&
+    landing.includes("object-[52%_center]") &&
     salesAdvertiserIntroduction.includes(".product-shot.product-shot-final img") &&
-    salesAdvertiserIntroduction.includes("object-fit: contain;"),
+    salesAdvertiserIntroduction.includes("object-fit: cover;") &&
+    salesAdvertiserIntroduction.includes("object-position: center;"),
   "Intro mobile slides should use real product/dashboard previews, avoid duplicate inner headers, and keep final imagery contained in the shared visual frame",
 );
 
@@ -1448,6 +1450,23 @@ check(
     campaignPages.includes('<PlatformBrandMark platform={platform} size="sm" />') &&
     !campaignPages.includes("{platformLabels[platform]}\n          </span>\n        ))}"),
   "Dashboard and campaign card platform indicators should show rounded official logos, not mixed Korean platform-name chips",
+);
+
+check(
+  "intro preview platform rows stay logo-only",
+  landing.includes("function IntroPlatformMarks") &&
+    landing.includes("function getIntroPlatformMarks") &&
+    landing.includes('<PlatformBrandMark platform="instagram" size="md" />') &&
+    landing.includes('<PlatformBrandMark platform="youtube" size="md" />') &&
+    landing.includes('<PlatformBrandMark platform="naver_blog" size="md" />') &&
+    landing.includes('<PlatformBrandMark platform="tiktok" size="md" />') &&
+    landing.includes("<IntroPlatformMarks platform={row.platform}") &&
+    landing.includes("<IntroPlatformMarks platform={item.platform}") &&
+    landing.includes("function MobilePreviewPlatformMeta") &&
+    !landing.includes("{row.platform}\n              </span>") &&
+    !landing.includes("{item.platform}\n              </p>") &&
+    !landing.includes("{row.platform} · {row.due}"),
+  "Intro dashboard/list rows should show official platform marks instead of visible platform-name chips",
 );
 
 const shippedInfluencerAvatarFiles = [
