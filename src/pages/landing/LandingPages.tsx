@@ -1982,27 +1982,6 @@ function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
     const baseImageFitClass =
       "object-contain object-center";
 
-    if (slide.imageSrc === advertiserProposalAssetUrls.influencerContract) {
-      return (
-        <div
-          data-intro-visual
-          className="flex h-full min-h-0 w-full items-center justify-center self-center overflow-hidden rounded-[12px] bg-transparent sm:h-auto sm:min-h-0"
-        >
-          <div className="h-full w-full sm:hidden">
-            <InfluencerContractLinkMobilePreview />
-          </div>
-          <img
-            src={slide.imageSrc}
-            alt={slide.imageAlt ?? ""}
-            className={`hidden h-full w-full sm:block ${baseImageFitClass} ${
-              slide.imageFit === "cover" ? "sm:object-cover" : "sm:object-contain"
-            }`}
-            loading="eager"
-          />
-        </div>
-      );
-    }
-
     return (
       <div
         data-intro-visual
@@ -2012,10 +1991,19 @@ function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
             : "h-full"
         }`}
       >
+        {slide.imageSrc === advertiserProposalAssetUrls.influencerContract ? (
+          <div className="h-full w-full sm:hidden">
+            <InfluencerContractLinkMobilePreview />
+          </div>
+        ) : null}
         <img
           src={slide.imageSrc}
           alt={slide.imageAlt ?? ""}
-          className={`h-full w-full ${baseImageFitClass} ${
+          className={`${
+            slide.imageSrc === advertiserProposalAssetUrls.influencerContract
+              ? "hidden sm:block "
+              : ""
+          }h-full w-full ${baseImageFitClass} ${
             slide.imageFit === "cover" ? "sm:object-cover" : "sm:object-contain"
           }`}
           loading="eager"
