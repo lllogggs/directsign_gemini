@@ -1975,14 +1975,16 @@ function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
 
   if (slide.imageSrc) {
     const baseImageFitClass =
-      slide.stage === "final" ? "object-cover object-center" : "object-contain object-center";
+      slide.stage === "final"
+        ? "object-cover object-center"
+        : "object-contain object-center";
 
     return (
       <div
         data-intro-visual
         className={`flex min-h-0 w-full items-center justify-center self-center overflow-hidden rounded-[12px] bg-transparent sm:h-auto sm:min-h-0 ${
           slide.stage === "final"
-            ? "h-full rounded-[16px]"
+            ? "h-auto aspect-[16/10] rounded-[16px]"
             : slide.stage === "product"
               ? "h-full self-center"
             : "h-full"
@@ -1993,7 +1995,7 @@ function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
           alt={slide.imageAlt ?? ""}
           className={`h-full w-full ${baseImageFitClass} ${
             slide.imageFit === "cover" ? "sm:object-cover" : "sm:object-contain"
-          } ${slide.stage === "final" ? "aspect-[16/10]" : ""}`}
+          }`}
           loading="eager"
         />
       </div>

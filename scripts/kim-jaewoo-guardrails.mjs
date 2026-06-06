@@ -1426,8 +1426,10 @@ check(
     landing.includes("function InfluencerRevisionRequestPreview") &&
     landing.includes("function InfluencerCompactDashboardProductPreview") &&
     landing.includes('slide.stage === "final"') &&
-    landing.includes('"h-full rounded-[16px]"') &&
-    landing.includes('slide.stage === "final" ? "object-cover object-center" : "object-contain object-center"'),
+    landing.includes('"h-auto aspect-[16/10] rounded-[16px]"') &&
+    landing.includes('"object-cover object-center"') &&
+    salesAdvertiserIntroduction.includes(".product-shot.product-shot-final img") &&
+    salesAdvertiserIntroduction.includes("object-fit: contain;"),
   "Intro mobile slides should use real product/dashboard previews, avoid duplicate inner headers, and keep final imagery contained in the shared visual frame",
 );
 
