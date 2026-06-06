@@ -1137,7 +1137,11 @@ function MarketplaceShell({
         </div>
       </header>
 
-      <section className="shrink-0 border-b border-neutral-200/80 bg-[#f7f6f3]">
+      <section
+        className={`shrink-0 bg-[#f7f6f3] ${
+          showHeroCopy ? "border-b border-neutral-200/80" : ""
+        }`}
+      >
         <div className="mx-auto max-w-[1500px] px-3 py-3 sm:px-5 sm:py-4 lg:px-6">
           {showHeroCopy ? (
             <p className="text-[13px] font-extrabold text-neutral-500">{eyebrow}</p>

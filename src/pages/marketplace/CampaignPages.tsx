@@ -1585,7 +1585,11 @@ function CampaignShell({
 
       <MobileSurfaceSwitch role={role} active="campaigns" />
 
-      <section className="shrink-0 border-b border-neutral-200/80 bg-[#f7f6f3]">
+      <section
+        className={`shrink-0 bg-[#f7f6f3] ${
+          showHeroCopy ? "border-b border-neutral-200/80" : ""
+        }`}
+      >
         <div className="mx-auto max-w-[1500px] px-3 py-2.5 sm:px-5 sm:py-3 lg:px-6">
           {showHeroCopy ? (
             <p className="inline-flex items-center gap-2 text-[12px] font-extrabold text-neutral-500 sm:text-[13px]">
