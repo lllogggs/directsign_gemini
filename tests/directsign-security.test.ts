@@ -1704,6 +1704,9 @@ describe("yeollock.me security regressions", () => {
     assert.match(server, /publicMarketplaceCacheTags/);
     assert.match(server, /writePublicMarketplaceRuntimeCache/);
     assert.match(server, /value === null \? undefined : value/);
+    assert.match(server, /isEmptyPublicMarketplaceValue/);
+    assert.match(server, /applyPublicMarketplaceFallback/);
+    assert.match(server, /applyPublicMarketplaceFallback\(await loader\(\), options\)/);
     assert.match(server, /invalidateByTag/);
     assert.match(server, /Vercel-CDN-Cache-Control/);
     assert.match(server, /Vercel-Cache-Tag/);

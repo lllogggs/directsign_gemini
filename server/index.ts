@@ -7618,6 +7618,18 @@ const fallbackMarketplaceBrandProfiles = () =>
 const fallbackMarketplaceCampaignPosts = () =>
   buildMarketplaceCampaignPosts(fallbackMarketplaceBrandProfiles());
 
+const isEmptyPublicMarketplaceValue = (value: unknown) =>
+  Array.isArray(value) && value.length === 0;
+
+const applyPublicMarketplaceFallback = <T,>(
+  value: T,
+  options: PublicMarketplaceCacheOptions<T>,
+) => {
+  if (!isEmptyPublicMarketplaceValue(value) || !options.fallback) return value;
+  const fallbackValue = options.fallback();
+  return isEmptyPublicMarketplaceValue(fallbackValue) ? value : fallbackValue;
+};
+
 const publicMarketplaceCache = new Map<
   PublicMarketplaceCacheKey,
   PublicMarketplaceCacheEntry<unknown>
@@ -7720,8 +7732,9 @@ const rememberPublicMarketplaceMemoryCache = <T,>(
 const refreshPublicMarketplaceCache = async <T,>(
   key: PublicMarketplaceCacheKey,
   loader: () => Promise<T>,
+  options: PublicMarketplaceCacheOptions<T> = {},
 ) => {
-  const value = await loader();
+  const value = applyPublicMarketplaceFallback(await loader(), options);
   rememberPublicMarketplaceMemoryCache(key, value);
   void writePublicMarketplaceRuntimeCache(key, value).catch((error) => {
     console.warn(
@@ -7749,7 +7762,7 @@ const readPublicMarketplaceCache = async <T,>(
 
   if (cached?.value !== undefined && cached.staleUntil > now) {
     if (!cached.refresh) {
-      cached.refresh = refreshPublicMarketplaceCache(key, loader)
+      cached.refresh = refreshPublicMarketplaceCache(key, loader, options)
         .catch((error) => {
           console.warn(
             `[${productName}] public marketplace cache refresh failed: ${
@@ -7778,13 +7791,14 @@ const readPublicMarketplaceCache = async <T,>(
     },
   );
   if (runtimeCached !== undefined) {
-    rememberPublicMarketplaceMemoryCache(key, runtimeCached);
-    return runtimeCached;
+    const value = applyPublicMarketplaceFallback(runtimeCached, options);
+    rememberPublicMarketplaceMemoryCache(key, value);
+    return value;
   }
 
   if (cached?.refresh) return cached.refresh;
 
-  const refresh = refreshPublicMarketplaceCache(key, loader).catch((error) => {
+  const refresh = refreshPublicMarketplaceCache(key, loader, options).catch((error) => {
     publicMarketplaceCache.delete(key);
     if (cached?.value !== undefined) return cached.value;
     if (!options.fallback) throw error;
