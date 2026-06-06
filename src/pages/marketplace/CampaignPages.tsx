@@ -644,6 +644,7 @@ export function AdvertiserCampaignRecruitmentPage() {
       title="캠페인 작성"
       description="모집 조건을 공개하고 지원자를 한곳에서 확인합니다."
       backHref="/advertiser/campaigns"
+      showHeroCopy={false}
       metrics={[
         {
           label: "작성",
@@ -1218,12 +1219,6 @@ export function InfluencerCampaignDiscoveryPage() {
     () => Array.from(new Set(campaigns.map((campaign) => campaign.brandCategory))).sort(),
     [campaigns],
   );
-  const activeFilterCount = [
-    query.trim().length > 0,
-    platformFilter !== "all",
-    categoryFilters.length > 0,
-    proposalTypeFilter !== "all",
-  ].filter(Boolean).length;
   const activeFilterLabels = [
     query.trim() ? `검색 ${query.trim()}` : null,
     platformFilter !== "all" ? platformLabels[platformFilter] : null,
@@ -1319,14 +1314,8 @@ export function InfluencerCampaignDiscoveryPage() {
       title="캠페인 탐색"
       description="모집 조건을 비교하고 바로 신청합니다."
       backHref="/influencer/dashboard"
-      metrics={[
-        { label: "모집", value: `${visibleCampaigns.length}건` },
-        {
-          label: "조건",
-          value: activeFilterCount > 0 ? `${activeFilterCount}개 적용` : "전체",
-        },
-        { label: "신청", value: `${applications.length}건` },
-      ]}
+      metrics={[]}
+      showHeroCopy={false}
       actions={
         <>
           <Link
@@ -1524,6 +1513,7 @@ function CampaignShell({
   backHref,
   metrics = defaultCampaignShellMetrics,
   actions,
+  showHeroCopy = true,
   children,
 }: {
   eyebrow: string;
@@ -1532,6 +1522,7 @@ function CampaignShell({
   backHref: string;
   metrics?: CampaignShellMetric[];
   actions?: ReactNode;
+  showHeroCopy?: boolean;
   children: ReactNode;
 }) {
   const navigate = useNavigate();
@@ -1596,28 +1587,40 @@ function CampaignShell({
 
       <section className="shrink-0 border-b border-neutral-200/80 bg-[#f7f6f3]">
         <div className="mx-auto max-w-[1500px] px-3 py-2.5 sm:px-5 sm:py-3 lg:px-6">
-          <p className="inline-flex items-center gap-2 text-[12px] font-extrabold text-neutral-500 sm:text-[13px]">
-            <Megaphone className="h-4 w-4" />
-            {eyebrow}
-          </p>
-          <div className="mt-1.5 grid gap-2 sm:mt-2 sm:gap-3 lg:grid-cols-[minmax(0,1fr)_330px] lg:items-end">
+          {showHeroCopy ? (
+            <p className="inline-flex items-center gap-2 text-[12px] font-extrabold text-neutral-500 sm:text-[13px]">
+              <Megaphone className="h-4 w-4" />
+              {eyebrow}
+            </p>
+          ) : null}
+          <div
+            className={`${showHeroCopy ? "mt-1.5 sm:mt-2" : ""} grid gap-2 sm:gap-3 ${
+              metrics.length > 0
+                ? "lg:grid-cols-[minmax(0,1fr)_330px] lg:items-end"
+                : ""
+            }`}
+          >
             <div className="min-w-0">
               <h1 className="font-neo-heavy text-[26px] leading-[1.05] text-neutral-950 sm:text-[34px] sm:leading-none">
                 {title}
               </h1>
-              <p className="mt-1.5 line-clamp-1 max-w-3xl break-keep text-[12px] font-bold leading-5 text-neutral-600 sm:mt-3 sm:line-clamp-none sm:text-[13px] sm:leading-6">
-                {description}
-              </p>
+              {showHeroCopy ? (
+                <p className="mt-1.5 line-clamp-1 max-w-3xl break-keep text-[12px] font-bold leading-5 text-neutral-600 sm:mt-3 sm:line-clamp-none sm:text-[13px] sm:leading-6">
+                  {description}
+                </p>
+              ) : null}
             </div>
-            <div className="yl-evidence-strip grid-cols-3 sm:gap-2 sm:p-2">
-              {metrics.map((metric) => (
-                <ShellMetric
-                  key={`${metric.label}-${metric.value}`}
-                  label={metric.label}
-                  value={metric.value}
-                />
-              ))}
-            </div>
+            {metrics.length > 0 ? (
+              <div className="yl-evidence-strip grid-cols-3 sm:gap-2 sm:p-2">
+                {metrics.map((metric) => (
+                  <ShellMetric
+                    key={`${metric.label}-${metric.value}`}
+                    label={metric.label}
+                    value={metric.value}
+                  />
+                ))}
+              </div>
+            ) : null}
           </div>
         </div>
       </section>
@@ -1687,7 +1690,7 @@ function AdvertiserCampaignCard({
           {statusMeta.label}
         </span>
       </div>
-      <div className="mt-3 grid grid-cols-2 gap-2">
+      <div className="mt-3 grid gap-0 border-y border-neutral-100 py-1 sm:grid-cols-2 sm:gap-2 sm:border-y-0 sm:py-0">
         <MiniInfo label="지급" value={campaign.budget} />
         <MiniInfo label="모집" value={campaign.applicantLimit ?? "상시"} />
         <MiniInfo
@@ -2321,7 +2324,7 @@ function CampaignPostCard({
         </p>
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-2">
+      <div className="mt-3 grid gap-0 border-y border-neutral-100 py-1 sm:grid-cols-2 sm:gap-2 sm:border-y-0 sm:py-0">
         <MiniInfo label="지급" value={campaign.budget} />
         <MiniInfo label="모집마감" value={campaign.deadlineLabel} />
       </div>
@@ -2989,7 +2992,7 @@ function getAmountSortMeta(value?: string | null) {
 
 function MiniInfo({ label, value }: { label: string; value: string }) {
   return (
-    <div className="yl-fact-tile px-3 py-2">
+    <div className="yl-fact-tile yl-mobile-inline-fact sm:px-3 sm:py-2">
       <p className="yl-fact-label truncate">{label}</p>
       <p className="yl-fact-value truncate">
         {value}

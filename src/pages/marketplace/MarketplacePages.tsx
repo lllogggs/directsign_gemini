@@ -9,7 +9,6 @@ import {
   FileText,
   Handshake,
   LogOut,
-  Mail,
   Megaphone,
   MessageSquareText,
   Search,
@@ -441,12 +440,14 @@ export function AdvertiserInfluencerDiscoveryPage() {
   return (
     <MarketplaceShell
       eyebrow="광고주 탐색"
-      title="인플루언서 둘러보기"
+      title="인플루언서 찾기"
       description="프로필과 채널 규모를 보고 바로 컨택합니다."
       backHref="/advertiser/dashboard"
       backLabel="계약 대시보드"
       profileCount={profiles.length}
       brandCount={brands.length}
+      showMetrics={false}
+      showHeroCopy={false}
       actions={
         <div className="flex items-center gap-2">
           <button
@@ -583,12 +584,14 @@ export function InfluencerBrandDiscoveryPage() {
   return (
     <MarketplaceShell
       eyebrow="인플루언서 탐색"
-      title="입점 브랜드 둘러보기"
-      description="브랜드의 모집 채널과 응답 속도를 확인합니다."
+      title="브랜드 찾기"
+      description="브랜드 정보를 확인하고 바로 역제안합니다."
       backHref="/influencer/dashboard"
       backLabel="내 계약"
       profileCount={profiles.length}
       brandCount={displayBrands.length}
+      showMetrics={false}
+      showHeroCopy={false}
       actions={
         <div className="flex items-center gap-2">
           <button
@@ -943,11 +946,7 @@ export function PublicBrandProfilePage() {
         <section className="border-b border-neutral-200/80 bg-white">
           <div className="mx-auto grid max-w-[1180px] gap-4 px-4 py-4 sm:px-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:px-8">
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <StatusPill icon={<Store className="h-3.5 w-3.5" />} label={brand.statusLabel} />
-              <StatusPill icon={<Mail className="h-3.5 w-3.5" />} label={brand.responseTimeLabel} />
-            </div>
-            <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
               <AvatarBlock
                 label={brand.logoLabel}
                 src={brand.logoUrl}
@@ -988,20 +987,6 @@ export function PublicBrandProfilePage() {
             </div>
           </div>
 
-          <aside className="rounded-[14px] border border-neutral-200 bg-[#fbfaf7] p-4">
-            <p className="text-[12px] font-semibold text-neutral-500">
-              제안 시작 정보
-            </p>
-            <dl className="mt-3 grid gap-2">
-              <ProfileFact label="카테고리" value={brand.category} />
-              <ProfileFact label="운영 지역" value={brand.location} />
-              <ProfileFact label="예산" value={brand.budgetRangeLabel} />
-              <ProfileFact
-                label="모집 형태"
-                value={formatProposalTypes(brand.proposalTypes)}
-              />
-            </dl>
-          </aside>
           </div>
         </section>
 
@@ -1078,6 +1063,7 @@ function MarketplaceShell({
   brandCount,
   actions,
   showMetrics = true,
+  showHeroCopy = true,
   children,
 }: {
   eyebrow: string;
@@ -1089,6 +1075,7 @@ function MarketplaceShell({
   brandCount?: number;
   actions?: ReactNode;
   showMetrics?: boolean;
+  showHeroCopy?: boolean;
   children: ReactNode;
 }) {
   const navigate = useNavigate();
@@ -1152,15 +1139,19 @@ function MarketplaceShell({
 
       <section className="shrink-0 border-b border-neutral-200/80 bg-[#f7f6f3]">
         <div className="mx-auto max-w-[1500px] px-3 py-3 sm:px-5 sm:py-4 lg:px-6">
-          <p className="text-[13px] font-extrabold text-neutral-500">{eyebrow}</p>
-          <div className="mt-1.5 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          {showHeroCopy ? (
+            <p className="text-[13px] font-extrabold text-neutral-500">{eyebrow}</p>
+          ) : null}
+          <div className={`${showHeroCopy ? "mt-1.5" : ""} flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between`}>
             <div className="min-w-0">
               <h1 className="font-neo-heavy text-[28px] leading-[1.05] text-neutral-950 sm:text-[36px] sm:leading-none">
                 {title}
               </h1>
-              <p className="mt-2 line-clamp-1 max-w-3xl break-keep text-[13px] font-bold leading-5 text-neutral-600">
-                {description}
-              </p>
+              {showHeroCopy ? (
+                <p className="mt-2 line-clamp-1 max-w-3xl break-keep text-[13px] font-bold leading-5 text-neutral-600">
+                  {description}
+                </p>
+              ) : null}
             </div>
             {showMetrics ? (
               <div className="grid grid-cols-3 gap-1.5 rounded-[14px] border border-neutral-200 bg-white p-1.5 shadow-[0_10px_26px_rgba(15,23,42,0.035)] sm:w-[360px]">
@@ -1299,9 +1290,8 @@ function BrandDiscoveryCard({
         ))}
       </div>
 
-      <dl className="mt-3 grid grid-cols-2 gap-1.5 text-[12px]">
+      <dl className="mt-3 grid gap-0 border-y border-neutral-100 py-1 text-[12px] sm:border-y-0 sm:py-0">
         <ProfileFact label="제안 가능" value={formatProposalTypes(brand.proposalTypes)} />
-        <ProfileFact label="응답" value={brand.responseTimeLabel} />
       </dl>
 
       <div className="mt-auto grid grid-cols-2 gap-2 pt-3">
@@ -1824,39 +1814,61 @@ function DiscoveryControls({
   onToggle: () => void;
   children: ReactNode;
 }) {
+  const filterButtonClassName =
+    "inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-[8px] border border-neutral-200 bg-white px-3 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:text-neutral-950 sm:h-8 sm:px-2.5";
+  const filterButtonContent = (
+    <>
+      <SlidersHorizontal className="h-3.5 w-3.5 text-neutral-500" strokeWidth={2} />
+      <span>필터</span>
+      {activeCount > 0 ? (
+        <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-neutral-950 px-1 text-[11px] font-extrabold text-white">
+          {activeCount}
+        </span>
+      ) : null}
+      <ChevronDown
+        className={`h-3.5 w-3.5 text-neutral-500 transition-transform ${
+          open ? "rotate-180" : ""
+        }`}
+        strokeWidth={2}
+      />
+    </>
+  );
+
   return (
     <section className="border-b border-[#d9e0d9] bg-white">
-      <div className="grid min-h-12 gap-2 px-4 py-3 sm:flex sm:items-center sm:justify-between sm:gap-3 sm:py-2">
-        <div className="min-w-0">
-          <p className="text-[14px] font-extrabold leading-tight text-neutral-950 sm:truncate sm:text-[13px]">
-            {title}
-          </p>
-          <p className="mt-0.5 text-[11px] font-bold leading-tight text-neutral-500 sm:truncate">
-            {count.toLocaleString()}건 표시 · {summary}
-          </p>
+      <div className="flex min-h-12 items-start justify-between gap-3 px-4 py-3 sm:items-center sm:py-2">
+        <div className="flex min-w-0 flex-1 items-start gap-2 sm:block">
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={open}
+            aria-controls={controlsId}
+            className={`${filterButtonClassName} sm:hidden`}
+          >
+            {filterButtonContent}
+          </button>
+          <div className="min-w-0">
+            <p className="text-[14px] font-extrabold leading-tight text-neutral-950 sm:truncate sm:text-[13px]">
+              {title}
+            </p>
+            <p className="mt-0.5 text-[11px] font-bold leading-tight text-neutral-500 sm:truncate">
+              {count.toLocaleString()}건 표시 · {summary}
+            </p>
+          </div>
         </div>
-        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:flex sm:shrink-0">
+        <div className="flex min-w-0 shrink-0 items-center gap-2 sm:hidden">
+          {toolbar}
+        </div>
+        <div className="hidden min-w-0 shrink-0 items-center gap-2 sm:flex">
           {toolbar}
           <button
             type="button"
             onClick={onToggle}
             aria-expanded={open}
             aria-controls={controlsId}
-            className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-[8px] border border-neutral-200 bg-white px-3 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:text-neutral-950 sm:h-8 sm:px-2.5"
+            className={filterButtonClassName}
           >
-            <SlidersHorizontal className="h-3.5 w-3.5 text-neutral-500" strokeWidth={2} />
-            <span>필터</span>
-            {activeCount > 0 ? (
-              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-neutral-950 px-1 text-[11px] font-extrabold text-white">
-                {activeCount}
-              </span>
-            ) : null}
-            <ChevronDown
-              className={`h-3.5 w-3.5 text-neutral-500 transition-transform ${
-                open ? "rotate-180" : ""
-              }`}
-              strokeWidth={2}
-            />
+            {filterButtonContent}
           </button>
         </div>
       </div>
@@ -2167,7 +2179,7 @@ function ProfileSection({
 
 function ProfileFact({ label, value }: { label: string; value: string }) {
   return (
-    <div className="yl-fact-tile">
+    <div className="yl-fact-tile yl-mobile-inline-fact">
       <dt className="yl-fact-label truncate">{label}</dt>
       <dd className="yl-fact-value min-w-0 truncate">
         {value}
@@ -2223,21 +2235,6 @@ function AvatarBlock({
       ) : (
         label
       )}
-    </span>
-  );
-}
-
-function StatusPill({
-  icon,
-  label,
-}: {
-  icon: ReactNode;
-  label: string;
-}) {
-  return (
-    <span className="inline-flex h-8 items-center gap-1.5 rounded-[8px] border border-neutral-200 bg-neutral-50 px-2.5 text-[12px] font-semibold text-neutral-700">
-      {icon}
-      {label}
     </span>
   );
 }

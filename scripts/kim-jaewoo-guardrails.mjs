@@ -1384,6 +1384,33 @@ check(
 );
 
 check(
+  "mobile marketplace facts avoid nested tiles",
+  agents.includes("Mobile marketplace brand and campaign cards should keep only the main outer card") &&
+    agents.includes("mobile headers must not show dashboard-like status panels") &&
+    agents.includes("Marketplace and dashboard-like list headers should avoid grey helper/eyebrow copy") &&
+    indexCss.includes(".yl-mobile-inline-fact") &&
+    indexCss.includes("@media (max-width: 639px)") &&
+    indexCss.includes("border-radius: 0;") &&
+    marketplacePages.includes("yl-fact-tile yl-mobile-inline-fact") &&
+    marketplacePages.includes("showMetrics={false}") &&
+    (marketplacePages.match(/showMetrics=\{false\}/g)?.length ?? 0) >= 4 &&
+    (marketplacePages.match(/showHeroCopy=\{false\}/g)?.length ?? 0) >= 2 &&
+    !marketplacePages.includes("제안 시작 정보") &&
+    !marketplacePages.includes("brand.responseTimeLabel") &&
+    !marketplacePages.includes('label="응답"') &&
+    marketplacePages.includes("grid gap-0 border-y border-neutral-100 py-1 text-[12px] sm:border-y-0 sm:py-0") &&
+    marketplacePages.includes("flex min-h-12 items-start justify-between gap-3 px-4 py-3") &&
+    marketplacePages.includes("flex min-w-0 flex-1 items-start gap-2 sm:block") &&
+    marketplacePages.includes("className={`${filterButtonClassName} sm:hidden`}") &&
+    marketplacePages.includes("hidden min-w-0 shrink-0 items-center gap-2 sm:flex") &&
+    campaignPages.includes("metrics={[]}") &&
+    (campaignPages.match(/showHeroCopy=\{false\}/g)?.length ?? 0) >= 2 &&
+    campaignPages.includes("yl-fact-tile yl-mobile-inline-fact sm:px-3 sm:py-2") &&
+    campaignPages.includes("grid gap-0 border-y border-neutral-100 py-1 sm:grid-cols-2"),
+  "Mobile brand/campaign pages should avoid fake response claims, top status panels, and boxed fact tiles inside cards",
+);
+
+check(
   "dashboard platform columns use logo-only official marks",
   advertiserDashboard.includes('from "../../components/PlatformBrandMark"') &&
     advertiserDashboard.includes('<PlatformBrandMark platform="youtube" size="sm" />') &&
