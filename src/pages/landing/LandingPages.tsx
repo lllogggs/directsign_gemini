@@ -36,7 +36,7 @@ const advertiserProposalAssetUrls = {
     import.meta.url,
   ).href,
   contractAdmin: new URL(
-    "../../../docs/sales/assets/yeollock-contract-admin.png",
+    "../../../docs/sales/assets/yeollock-contract-admin-no-header.png",
     import.meta.url,
   ).href,
   campaignApplicants: new URL(
@@ -1841,7 +1841,7 @@ function ProposalSlideView({ slide }: { slide: IntroProposalSlide }) {
             </h2>
           </div>
           {desktopSupport ? (
-            <div className="hidden sm:mx-0 sm:mt-6 sm:block sm:max-h-none sm:max-w-[300px] sm:border-l-[3px] sm:border-blue-600/20 sm:pl-3.5 sm:text-[clamp(16px,1.55vw,19px)] sm:font-normal sm:leading-[1.45] sm:tracking-normal sm:text-[#58625c] sm:[&_.support-stack]:grid sm:[&_.support-stack]:gap-3.5 [&_strong]:font-black [&_strong]:text-blue-600">
+            <div className="hidden sm:mx-0 sm:mt-6 sm:block sm:max-h-none sm:max-w-[380px] sm:break-keep sm:border-l-[3px] sm:border-blue-600/20 sm:pl-3.5 sm:text-[clamp(16px,1.45vw,18px)] sm:font-normal sm:leading-[1.45] sm:tracking-normal sm:text-[#58625c] sm:[&_.support-stack]:grid sm:[&_.support-stack]:gap-3.5 [&_strong]:font-black [&_strong]:text-blue-600">
               {desktopSupport}
             </div>
           ) : null}
@@ -1874,7 +1874,7 @@ function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
           <img
             src={advertiserProposalAssetUrls.contractAdmin}
             alt="광고주 계약 링크 복사 화면"
-            className="h-full w-full object-contain object-center sm:object-cover sm:object-top"
+            className="h-full w-full object-cover object-left-top"
             loading="eager"
           />
         </div>
@@ -1886,7 +1886,7 @@ function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
           <img
             src={advertiserProposalAssetUrls.influencerContract}
             alt="인플루언서 계약 확인 및 서명 화면"
-            className="h-full w-full object-contain object-top sm:object-cover"
+            className="h-full w-full -translate-y-[4%] scale-[1.08] object-cover object-top"
             loading="eager"
           />
         </div>
@@ -1992,22 +1992,19 @@ function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
         }`}
       >
         {slide.imageSrc === advertiserProposalAssetUrls.influencerContract ? (
-          <div className="h-full w-full sm:hidden">
+          <div className="mx-auto h-full w-full sm:flex sm:max-w-[430px] sm:items-stretch sm:justify-center [&>section]:w-full">
             <InfluencerContractLinkMobilePreview />
           </div>
-        ) : null}
-        <img
-          src={slide.imageSrc}
-          alt={slide.imageAlt ?? ""}
-          className={`${
-            slide.imageSrc === advertiserProposalAssetUrls.influencerContract
-              ? "hidden sm:block "
-              : ""
-          }h-full w-full ${baseImageFitClass} ${
-            slide.imageFit === "cover" ? "sm:object-cover" : "sm:object-contain"
-          }`}
-          loading="eager"
-        />
+        ) : (
+          <img
+            src={slide.imageSrc}
+            alt={slide.imageAlt ?? ""}
+            className={`h-full w-full ${baseImageFitClass} ${
+              slide.imageFit === "cover" ? "sm:object-cover" : "sm:object-contain"
+            }`}
+            loading="eager"
+          />
+        )}
       </div>
     );
   }

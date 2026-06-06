@@ -1571,7 +1571,7 @@ check(
     landing.includes("const advertiserProposalAssetUrls") &&
     landing.includes("yeollock-contract-builder-first-screen.png") &&
     landing.includes("yeollock-influencer-contract.png") &&
-    landing.includes("yeollock-contract-admin.png") &&
+    landing.includes("yeollock-contract-admin-no-header.png") &&
     landing.includes("yeollock-campaign-applicants-dashboard.png") &&
     landing.includes("yeollock-contract-content-review.png") &&
     landing.includes("yeollock-contract-handshake.png") &&
