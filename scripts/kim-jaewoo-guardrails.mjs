@@ -539,6 +539,16 @@ check(
 );
 
 check(
+  "email verification skip is QA-process only",
+  agents.includes("skip email verification during a QA/deployment process") &&
+    signupPage.includes("confirmation_required") &&
+    server.includes("confirmation_required: true") &&
+    !signupPage.includes("skipEmailVerification") &&
+    !server.includes("skipEmailVerification"),
+  "Skipping email verification during QA must not turn into a permanent product-code bypass for signup confirmation",
+);
+
+check(
   "login and route transition budgets stay strict",
   qaStandard.includes("loginMs: Number(process.env.QA_LOGIN_BUDGET_MS || 1300)") &&
     qaStandard.includes(
@@ -924,13 +934,16 @@ check(
 check(
   "public marketplace cache falls back after cold Supabase timeout",
   server.includes("PublicMarketplaceCacheOptions") &&
+    server.includes("allowPublicMarketplaceCatalogFallback") &&
+    server.includes("applyPublicMarketplaceFallback") &&
     server.includes("fallbackMarketplaceInfluencerProfiles") &&
     server.includes("fallbackMarketplaceBrandProfiles") &&
     server.includes("fallbackMarketplaceCampaignPosts") &&
+    server.includes("dbProfiles.length > 0 ? dbProfiles : fallbackMarketplaceInfluencerProfiles()") &&
     server.includes("publicMarketplaceCache.delete(key)") &&
     server.includes('process.env.VERCEL === "1"') &&
     server.includes("public marketplace cache cold fallback"),
-  "Public marketplace APIs must not keep returning 500 when a cold Supabase read times out; skip serverless background warmup, clear the failed refresh, and serve the safe public fallback while retrying later",
+  "Public marketplace APIs must not keep returning 500 or empty catalog responses when a cold Supabase read times out or returns no public rows; skip serverless background warmup, clear the failed refresh, and serve the safe public fallback while retrying later",
 );
 
 check(

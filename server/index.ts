@@ -40,7 +40,6 @@ import {
   findInfluencerProfileByHandle,
   mergeMarketplaceBrandProfiles,
   mergeMarketplaceInfluencerProfiles,
-  marketplaceBrands,
   normalizeMarketplaceHandle,
   platformLabels,
   type CampaignProposalType,
@@ -477,6 +476,8 @@ const allowProductionTestData =
   process.env.YEOLLOCK_ALLOW_PRODUCTION_TEST_DATA === "true";
 const allowMarketplaceSeedData =
   demoMode || !isProductionRuntime || allowProductionTestData;
+const allowPublicMarketplaceCatalogFallback =
+  process.env.DISABLE_PUBLIC_MARKETPLACE_CATALOG_FALLBACK !== "1";
 const filterOperationalMarketplaceTestData =
   isProductionRuntime && !demoMode && !allowProductionTestData;
 const signatureConsentVersion = SIGNATURE_CONSENT_VERSION;
@@ -7548,13 +7549,12 @@ const readMarketplaceInfluencerProfiles = async () => {
         !hasOperationalTestMarker(profile),
     );
 
-  return allowMarketplaceSeedData
-    ? mergeMarketplaceInfluencerProfiles(dbProfiles)
-    : dbProfiles;
+  if (allowMarketplaceSeedData) return mergeMarketplaceInfluencerProfiles(dbProfiles);
+  return dbProfiles.length > 0 ? dbProfiles : fallbackMarketplaceInfluencerProfiles();
 };
 
 const readMarketplaceBrandProfiles = async () => {
-  if (!useSupabase) return allowMarketplaceSeedData ? marketplaceBrands : [];
+  if (!useSupabase) return fallbackMarketplaceBrandProfiles();
 
   const rows = await readSupabaseRows<SupabaseMarketplaceBrandProfileRow>(
     "marketplace_brand_profiles",
@@ -7567,9 +7567,10 @@ const readMarketplaceBrandProfiles = async () => {
     (profile) =>
       !filterOperationalMarketplaceTestData || !hasOperationalTestMarker(profile),
   );
-  return allowMarketplaceSeedData
-    ? mergeMarketplaceBrandProfiles(visibleDbProfiles)
-    : visibleDbProfiles;
+  if (allowMarketplaceSeedData) return mergeMarketplaceBrandProfiles(visibleDbProfiles);
+  return visibleDbProfiles.length > 0
+    ? visibleDbProfiles
+    : fallbackMarketplaceBrandProfiles();
 };
 
 const publicMarketplaceCacheMaxAgeSeconds = 60;
@@ -7610,10 +7611,10 @@ type PublicMarketplaceCacheOptions<T> = {
 };
 
 const fallbackMarketplaceInfluencerProfiles = () =>
-  allowMarketplaceSeedData ? mergeMarketplaceInfluencerProfiles() : [];
+  allowPublicMarketplaceCatalogFallback ? mergeMarketplaceInfluencerProfiles() : [];
 
 const fallbackMarketplaceBrandProfiles = () =>
-  allowMarketplaceSeedData ? mergeMarketplaceBrandProfiles() : [];
+  allowPublicMarketplaceCatalogFallback ? mergeMarketplaceBrandProfiles() : [];
 
 const fallbackMarketplaceCampaignPosts = () =>
   buildMarketplaceCampaignPosts(fallbackMarketplaceBrandProfiles());
