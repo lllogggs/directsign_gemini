@@ -1772,7 +1772,7 @@ function CampaignListView({
         onSortChange={onSortChange}
       />
 
-      <div className="no-scrollbar max-h-[620px] overflow-y-auto overscroll-contain lg:max-h-none lg:min-h-0 lg:flex-1">
+      <div className="no-scrollbar max-h-[620px] divide-y divide-[#edf1ed] overflow-y-auto overscroll-contain lg:max-h-none lg:min-h-0 lg:flex-1 lg:divide-y-0">
         {campaigns.length > 0 ? (
           campaigns.map((campaign) => (
             <React.Fragment key={campaign.key}>
@@ -2334,7 +2334,7 @@ function CampaignDetailView({
       </div>
       <CampaignInfluencerTableHeaderRow />
 
-      <div className="no-scrollbar max-h-[620px] overflow-y-auto overscroll-contain lg:max-h-none lg:min-h-0 lg:flex-1">
+      <div className="no-scrollbar max-h-[620px] divide-y divide-[#edf1ed] overflow-y-auto overscroll-contain lg:max-h-none lg:min-h-0 lg:flex-1 lg:divide-y-0">
         {filteredContracts.length > 0 ? (
           filteredContracts.map((contract) => (
             <React.Fragment key={contract.id}>
@@ -2672,7 +2672,7 @@ function CampaignApplicantsPanel({
           {marketplaceError ?? "지원자 목록을 불러오지 못했습니다."}
         </p>
       ) : applicants.length > 0 ? (
-        <div className="border-t border-[#edf1ed]">
+        <div className="divide-y divide-[#edf1ed] border-t border-[#edf1ed] lg:divide-y-0">
           {visibleApplicants.length > 0 ? (
             visibleApplicants.map((thread) => (
               <React.Fragment key={thread.id}>
@@ -3318,7 +3318,7 @@ function ContractTable({
         onSortChange={onSortChange}
       />
 
-      <div className="no-scrollbar max-h-[620px] overflow-y-auto overscroll-contain lg:max-h-none lg:min-h-0 lg:flex-1">
+      <div className="no-scrollbar max-h-[620px] divide-y divide-[#edf1ed] overflow-y-auto overscroll-contain lg:max-h-none lg:min-h-0 lg:flex-1 lg:divide-y-0">
         {isDataPending ? (
           <ContractTableSkeletonRows />
         ) : displayContracts.length > 0 ? (
@@ -3452,7 +3452,7 @@ function getPaginationPages(currentPage: number, totalPages: number) {
 
 function ContractTableSkeletonRows() {
   return (
-    <div aria-hidden="true">
+    <div className="divide-y divide-[#edf1ed] lg:divide-y-0" aria-hidden="true">
       {Array.from({ length: 5 }, (_, index) => (
         <div
           key={index}

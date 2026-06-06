@@ -308,19 +308,30 @@ check(
   "AGENTS.md must require matching influencer-dashboard review when advertiser-dashboard UI rules change, and vice versa",
 );
 
+const dashboardMobileDividerBodyPattern =
+  /max-h-\[620px\][^"]*divide-y[^"]*lg:divide-y-0/g;
+const dashboardMaxHeightClassPattern = /className="([^"]*max-h-\[620px\][^"]*)"/g;
+const hasOnlyMobileDashboardDividers = (source) =>
+  Array.from(source.matchAll(dashboardMaxHeightClassPattern)).every(([, className]) =>
+    !className.includes("divide-y") || className.includes("lg:divide-y-0"),
+  );
+
 check(
-  "dashboard row dividers stay removed",
-  agents.includes("Dashboard data rows should avoid visible row-by-row divider lines and gray hover/shaded row backgrounds") &&
-    !advertiserDashboard.includes("max-h-[620px] divide-y") &&
-    !influencerDashboard.includes("max-h-[620px] divide-y") &&
-    !advertiserDashboard.includes("divide-y divide-[#edf1ed] border-t border-[#edf1ed]") &&
+  "dashboard row dividers are mobile only",
+  agents.includes("Desktop dashboard data rows should avoid visible row-by-row divider lines") &&
+    agents.includes("mobile dashboard rows should keep clear row separators") &&
+    (advertiserDashboard.match(dashboardMobileDividerBodyPattern)?.length ?? 0) >= 3 &&
+    (influencerDashboard.match(dashboardMobileDividerBodyPattern)?.length ?? 0) >= 1 &&
+    advertiserDashboard.includes("divide-y divide-[#edf1ed] border-t border-[#edf1ed] lg:divide-y-0") &&
+    hasOnlyMobileDashboardDividers(advertiserDashboard) &&
+    hasOnlyMobileDashboardDividers(influencerDashboard) &&
     !advertiserDashboard.includes("hover:bg-[#fafaf7]") &&
     !advertiserDashboard.includes("hover:bg-[#f8faf7]") &&
     !influencerDashboard.includes("hover:bg-[#fafaf7]") &&
     !influencerDashboard.includes("hover:bg-[#f8faf7]") &&
     (advertiserDashboard.match(/hover:bg-blue-50\/45/g)?.length ?? 0) >= 2 &&
     influencerDashboard.includes("hover:bg-blue-50/45"),
-  "Dashboard row bodies must not restore divide-y row separators or gray hover shading; preserve fixed blank space instead",
+  "Dashboard row bodies must keep mobile separators, suppress desktop separators, and avoid gray hover shading",
 );
 
 for (const [text, reason] of [

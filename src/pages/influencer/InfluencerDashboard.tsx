@@ -1368,7 +1368,7 @@ function ContractTable({
         sortState={sortState}
         onSortChange={onSortChange}
       />
-      <div className="no-scrollbar max-h-[620px] overflow-y-auto overscroll-contain lg:max-h-none lg:min-h-0 lg:flex-1">
+      <div className="no-scrollbar max-h-[620px] divide-y divide-[#edf1ed] overflow-y-auto overscroll-contain lg:max-h-none lg:min-h-0 lg:flex-1 lg:divide-y-0">
         {displayItems.length > 0 ? (
           displayItems.map((item) => {
             const advertiserName = removeInternalTestLabel(
