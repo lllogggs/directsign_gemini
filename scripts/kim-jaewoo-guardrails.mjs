@@ -1612,6 +1612,19 @@ check(
 );
 
 check(
+  "mobile contract builder intro uses actual product screenshot",
+  agents.includes("Mobile intro product previews must not become card-in-card mockups") &&
+    landing.includes("function ActualContractBuilderMobilePreview") &&
+    landing.includes("<ActualContractBuilderMobilePreview />") &&
+    landing.includes("src={advertiserProposalAssetUrls.contractBuilder}") &&
+    landing.includes("top-[-5.7%]") &&
+    landing.includes("w-[203%]") &&
+    landing.includes("sm:hidden") &&
+    !landing.includes("function AdvertiserBuilderMobileProductPreview"),
+  "Mobile contract builder intro must show a cropped actual product screen, not a nested input/PDF mockup",
+);
+
+check(
   "advertiser sales PDF keeps dashboard explanation quiet",
   salesAdvertiserIntroduction.includes("yeollock-contract-builder-first-screen.png") &&
     salesAdvertiserIntroduction.includes("yeollock-contract-admin.png") &&

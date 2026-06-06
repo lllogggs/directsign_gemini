@@ -2250,7 +2250,7 @@ function IntroProposalProductPreview({
 }
 
 function AdvertiserBuilderProductPreview() {
-  const fields = [
+  const fields: Array<[string, string]> = [
     ["계약 유형", "협찬"],
     ["광고주", "브랜드룸"],
     ["인플루언서", "유나뷰티"],
@@ -2258,7 +2258,9 @@ function AdvertiserBuilderProductPreview() {
   ];
 
   return (
-    <section className="grid h-full min-h-0 grid-cols-[minmax(0,0.45fr)_minmax(0,0.55fr)] items-stretch gap-2 overflow-hidden rounded-[16px] border border-neutral-200 bg-[#f4f5f2] p-2 shadow-[0_18px_48px_rgba(23,26,23,0.08)]">
+    <>
+      <ActualContractBuilderMobilePreview />
+      <section className="hidden h-full min-h-0 grid-cols-[minmax(0,0.45fr)_minmax(0,0.55fr)] items-stretch gap-2 overflow-hidden rounded-[16px] border border-neutral-200 bg-[#f4f5f2] p-2 shadow-[0_18px_48px_rgba(23,26,23,0.08)] sm:grid">
         <div className="flex max-h-full min-h-0 flex-col overflow-hidden rounded-[10px] border border-neutral-200 bg-white">
           <div className="border-b border-neutral-200 px-3 py-2">
             <p className="text-[10px] font-extrabold text-neutral-500">1 / 5 단계</p>
@@ -2330,6 +2332,22 @@ function AdvertiserBuilderProductPreview() {
             </div>
           </div>
         </div>
+      </section>
+    </>
+  );
+}
+
+function ActualContractBuilderMobilePreview() {
+  return (
+    <section className="relative h-full min-h-0 overflow-hidden rounded-[16px] bg-white shadow-[0_18px_48px_rgba(23,26,23,0.1)] sm:hidden">
+      <div className="absolute inset-0 overflow-hidden">
+        <img
+          src={advertiserProposalAssetUrls.contractBuilder}
+          alt="새 전자계약서 작성 화면"
+          className="absolute left-0 top-[-5.7%] h-auto w-[203%] max-w-none"
+          loading="eager"
+        />
+      </div>
     </section>
   );
 }
