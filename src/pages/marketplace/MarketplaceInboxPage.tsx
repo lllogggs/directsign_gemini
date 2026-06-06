@@ -1027,7 +1027,7 @@ function ErrorState({
         <button
           type="button"
           onClick={onRetry}
-          className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-md bg-neutral-950 px-4 text-[13px] font-semibold text-white transition hover:bg-neutral-800"
+          className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-md bg-blue-600 px-4 text-[13px] font-semibold text-white shadow-[0_12px_24px_rgba(37,99,235,0.16)] transition hover:bg-blue-700"
         >
           <RefreshCw className="h-4 w-4" />
           다시 시도
@@ -1060,7 +1060,7 @@ function EmptyState({
         </p>
         <Link
           to={actionHref}
-          className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-md bg-neutral-950 px-4 text-[13px] font-semibold text-white transition hover:bg-neutral-800"
+          className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-md bg-blue-600 px-4 text-[13px] font-semibold text-white shadow-[0_12px_24px_rgba(37,99,235,0.16)] transition hover:bg-blue-700"
         >
           {actionLabel}
           <ArrowRight className="h-4 w-4" />

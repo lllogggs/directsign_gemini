@@ -626,8 +626,21 @@ export function findBrandProfileByHandle(
 ) {
   if (!handle) return undefined;
   const normalized = normalizeMarketplaceHandle(handle);
-  return mergeMarketplaceBrandProfiles(accountProfiles).find(
+  const profiles = mergeMarketplaceBrandProfiles(accountProfiles);
+  const exactMatch = profiles.find(
     (profile) => normalizeMarketplaceHandle(profile.handle) === normalized,
+  );
+  if (exactMatch) return exactMatch;
+
+  const familyKey = marketplaceBrandDisplayFamilyAliases.get(normalized);
+  if (!familyKey) return undefined;
+
+  return profiles.find(
+    (profile) =>
+      getMarketplaceBrandDisplayFamilyKey({
+        handle: profile.handle,
+        displayName: profile.displayName,
+      }) === familyKey,
   );
 }
 

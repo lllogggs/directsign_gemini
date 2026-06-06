@@ -14030,6 +14030,117 @@ type InfluencerDashboardBuildOptions = {
   includeApplications?: boolean;
 };
 
+const buildInfluencerDashboardFromLocal = async (
+  authUser: SupabaseAuthUser,
+  options: InfluencerDashboardBuildOptions = {},
+  profile?: SupabaseProfileRow,
+): Promise<InfluencerDashboardResponse> => {
+  const userEmail = normalizeEmail(profile?.email ?? authUser.email ?? "");
+  const store = await readStore();
+  const dashboardContracts = store.contracts
+    .filter((contract) => {
+      const contactEmail = normalizeEmail(contract.influencer_info?.contact ?? "");
+      return hasText(userEmail) && contactEmail === userEmail;
+    })
+    .map(buildLegacyDashboardContract)
+    .sort(
+      (a, b) => parseDashboardDate(b.updated_at) - parseDashboardDate(a.updated_at),
+    );
+  const dashboardApplications =
+    options.includeApplications === false ? [] : [];
+
+  const verificationRequests = (await readVerificationRequests()).filter(
+    (request) =>
+      request.target_type === "influencer_account" &&
+      (request.profile_id === authUser.id ||
+        request.submitted_by_email?.trim().toLowerCase() === userEmail),
+  );
+  const latestVerification = [...verificationRequests]
+    .sort((a, b) => parseDateDescending(a.created_at, b.created_at))[0];
+  const latestVerificationForResponse =
+    latestVerification?.status === "not_submitted"
+      ? undefined
+      : (latestVerification as InfluencerDashboardResponse["verification"]["latest_request"]);
+  const verificationStatus = deriveVerificationStatus(
+    verificationRequests,
+    (profile?.verification_status as VerificationStatus | undefined) ??
+      "not_submitted",
+  );
+  const approvedPlatforms = buildApprovedInfluencerPlatforms(verificationRequests);
+  const nextDeadline = dashboardContracts
+    .map((contract) => contract.due_at)
+    .filter((value): value is string => hasText(value))
+    .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())[0];
+  const fixedFeeTotal = dashboardContracts.reduce((total, contract) => {
+    const amount = parseMoneyAmount(contract.fee_label);
+    return total + (amount ?? 0);
+  }, 0);
+  const hasActiveContract = dashboardContracts.some((contract) => contract.stage !== "signed");
+  const hasActiveContractRequiringVerification = dashboardContracts.some(
+    (contract) =>
+      contract.stage !== "signed" &&
+      (contract.platform_accounts.length > 0
+        ? contract.platform_accounts
+        : contract.platforms.map((platform) => ({ platform, url: undefined }))).some(
+        (account) =>
+          !verificationRequests.some((request) =>
+            verificationMatchesPlatformAccount(
+              request,
+              account.platform,
+              account.url,
+            ),
+          ),
+      ),
+  );
+
+  return {
+    authenticated: true,
+    user: {
+      id: authUser.id,
+      email: profile?.email ?? authUser.email ?? "",
+      name: profile?.name ?? authUser.email ?? "인플루언서",
+      avatar_url: profile?.avatar_url ?? undefined,
+      role: profile?.role ?? "influencer",
+      activity_categories: profile?.activity_categories ?? [],
+      activity_platforms: profile?.activity_platforms ?? [],
+      verification_status: verificationStatus,
+      email_verified: Boolean(
+        authUser.email_confirmed_at ??
+          authUser.confirmed_at ??
+          profile?.email_verified_at,
+      ),
+    },
+    verification: {
+      status: verificationStatus,
+      latest_request: latestVerificationForResponse,
+      approved_platforms: approvedPlatforms,
+    },
+    summary: {
+      total_contracts: dashboardContracts.length,
+      review_needed: dashboardContracts.filter((contract) => contract.stage === "review_needed").length,
+      change_pending: dashboardContracts.filter((contract) => contract.stage === "change_pending").length,
+      ready_to_sign: dashboardContracts.filter((contract) => contract.stage === "ready_to_sign").length,
+      signed: dashboardContracts.filter((contract) =>
+        ["signed", "deliverables_due", "deliverables_review", "completed"].includes(
+          contract.stage,
+        ),
+      ).length,
+      verification_needed:
+        hasActiveContract &&
+        (verificationStatus !== "approved" || hasActiveContractRequiringVerification),
+      next_deadline: nextDeadline,
+      total_fixed_fee_label: formatWonAmount(fixedFeeTotal),
+    },
+    tasks: buildDashboardTasks(
+      dashboardContracts,
+      verificationStatus,
+      verificationRequests,
+    ),
+    contracts: dashboardContracts,
+    applications: dashboardApplications,
+  };
+};
+
 const buildInfluencerDashboardFromRemote = async (
   authUser: SupabaseAuthUser,
   options: InfluencerDashboardBuildOptions = {},
@@ -14276,6 +14387,7 @@ const buildInfluencerDashboardFromRemote = async (
 const buildInfluencerDashboard = async (
   authUser: SupabaseAuthUser,
   options: InfluencerDashboardBuildOptions = {},
+  profile?: SupabaseProfileRow,
 ): Promise<InfluencerDashboardResponse> => {
   const cachedDashboard = readInfluencerDashboardCache(authUser.id, options);
   if (cachedDashboard) return cachedDashboard;
@@ -14284,7 +14396,9 @@ const buildInfluencerDashboard = async (
   const inflight = influencerDashboardInflight.get(key);
   if (inflight) return inflight.then(cloneInfluencerDashboard);
 
-  const dashboardPromise = buildInfluencerDashboardFromRemote(authUser, options)
+  const dashboardPromise = (useSupabase
+    ? buildInfluencerDashboardFromRemote(authUser, options)
+    : buildInfluencerDashboardFromLocal(authUser, options, profile))
     .then((dashboard) => {
       rememberInfluencerDashboardCache(authUser.id, options, dashboard);
       return cloneInfluencerDashboard(dashboard);
@@ -15895,7 +16009,7 @@ app.get("/api/influencer/dashboard", async (request, response, next) => {
     const includeApplications =
       normalizeOptionalText(request.query.includeApplications) !== "false";
     response.json(
-      await buildInfluencerDashboard(auth.user, { includeApplications }),
+      await buildInfluencerDashboard(auth.user, { includeApplications }, auth.profile),
     );
   } catch (error) {
     if (error instanceof Error && error.message === "Influencer role is required") {

@@ -70,7 +70,7 @@ export function LoginLanding() {
           </Link>
         </header>
 
-        <section className="flex min-h-0 items-start justify-center pt-[16vh] sm:pt-[17vh]">
+        <section className="flex min-h-0 items-start justify-center pt-[10vh] sm:pt-[13vh] lg:pt-[14vh]">
           <div className="w-full max-w-[520px]">
             <h1 className="sr-only">{PRODUCT_NAME} 로그인</h1>
             <div className="grid gap-3">

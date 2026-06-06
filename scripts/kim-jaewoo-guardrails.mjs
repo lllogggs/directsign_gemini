@@ -1411,19 +1411,24 @@ check(
   "mobile intro screenshots use contained image areas",
   agents.includes("Intro carousel mobile image areas must not crop product screenshots") &&
     agents.includes("Influencer mobile intro pages must stay product-screen and dashboard centered") &&
-    landing.includes("object-contain object-center sm:object-cover sm:object-top") &&
-    landing.includes("object-contain object-top sm:object-cover") &&
+    landing.includes("data-intro-visual") &&
+    landing.includes('productPreview: "advertiserBuilder"') &&
+    landing.includes('productPreview: "advertiserContractReview"') &&
+    landing.includes('productPreview: "advertiserApplicants"') &&
     landing.includes('productPreview: "influencerPdf"') &&
     landing.includes('productPreview: "influencerRevision"') &&
     landing.includes('productPreview: "influencerDashboard"') &&
-    landing.includes("function InfluencerProposalProductPreview") &&
+    landing.includes("function IntroProposalProductPreview") &&
+    landing.includes("function AdvertiserBuilderProductPreview") &&
+    landing.includes("function AdvertiserContractReviewProductPreview") &&
+    landing.includes("function AdvertiserApplicantsProductPreview") &&
     landing.includes("function InfluencerContractPdfPreview") &&
     landing.includes("function InfluencerRevisionRequestPreview") &&
-    landing.includes("<InfluencerIntroDashboardPreview") &&
+    landing.includes("function InfluencerCompactDashboardProductPreview") &&
     landing.includes('slide.stage === "final"') &&
-    landing.includes('"h-[clamp(220px,34svh,278px)] rounded-[16px]"') &&
+    landing.includes('"h-full rounded-[16px]"') &&
     landing.includes('slide.stage === "final" ? "object-cover object-center" : "object-contain object-center"'),
-  "Intro mobile slides should avoid severe product screenshot cropping and influencer middle slides must use real product/dashboard previews rather than sparse fact rows",
+  "Intro mobile slides should use real product/dashboard previews, avoid duplicate inner headers, and keep final imagery contained in the shared visual frame",
 );
 
 check(
@@ -1558,7 +1563,8 @@ check(
     !landing.includes("linear-gradient(112deg,transparent_0_61%") &&
     !landing.includes("pointer-events-none absolute inset-3") &&
     !landing.includes("yl-primary-action inline-flex h-[34px]") &&
-    landing.includes("LogoMark") &&
+    landing.includes("BrandLogo") &&
+    !landing.includes("<LogoMark") &&
     brandLogo.includes("bg-neutral-950 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_8px_18px_rgba(15,23,42,0.12)]") &&
     brandLogo.includes('viewBox="0 0 32 32"') &&
     !landing.includes("function ProposalSlideBrand") &&

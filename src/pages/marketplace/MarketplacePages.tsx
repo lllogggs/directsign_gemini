@@ -41,6 +41,7 @@ import {
   getChannelAudienceSortValue,
   getInfluencerProfilePath,
   getMarketplaceBrandDisplayFamilyKey,
+  findBrandProfileByHandle,
   marketplaceBrands,
   marketplaceInfluencers,
   platformLabels,
@@ -298,7 +299,7 @@ function useMarketplaceInfluencerProfile(handle: string | undefined) {
 
 function useMarketplaceBrandProfile(handle: string | undefined) {
   const fallbackBrand = useMemo(
-    () => (handle ? marketplaceBrands.find((item) => item.handle === handle) ?? null : null),
+    () => (handle ? findBrandProfileByHandle(handle) ?? null : null),
     [handle],
   );
   const [remoteResult, setRemoteResult] = useState<{
@@ -970,7 +971,7 @@ export function PublicBrandProfilePage() {
                   <button
                     type="button"
                     onClick={() => setShowContact(true)}
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-[10px] bg-neutral-950 px-4 text-[13px] font-extrabold text-white transition hover:bg-neutral-800"
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-[10px] bg-blue-600 px-4 text-[13px] font-extrabold text-white shadow-[0_14px_30px_rgba(37,99,235,0.18)] transition hover:bg-blue-700 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700"
                   >
                     <Handshake className="h-4 w-4" />
                     브랜드에 역제안하기
@@ -1464,7 +1465,7 @@ function InfluencerContactDialog({
           <button
             type="submit"
             disabled={!canSubmit || isSubmitting}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-neutral-950 px-4 text-[14px] font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-300"
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-blue-600 px-4 text-[14px] font-semibold text-white shadow-[0_14px_30px_rgba(37,99,235,0.18)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:shadow-none"
           >
             <Send className="h-4 w-4" />
             {isSubmitting ? "저장 중" : "제안 저장"}
@@ -1619,7 +1620,7 @@ function BrandContactDialog({
           <button
             type="submit"
             disabled={!canSubmit || isSubmitting}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-neutral-950 px-4 text-[14px] font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-300"
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-blue-600 px-4 text-[14px] font-semibold text-white shadow-[0_14px_30px_rgba(37,99,235,0.18)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:shadow-none"
           >
             <Send className="h-4 w-4" />
             {isSubmitting ? "저장 중" : "역제안 저장"}
@@ -2296,7 +2297,7 @@ function EmptyMarketplaceState({
           {primaryHref && primaryLabel ? (
             <Link
               to={primaryHref}
-              className="inline-flex h-10 items-center justify-center rounded-md bg-neutral-950 px-4 text-[13px] font-semibold text-white transition hover:bg-neutral-800"
+              className="inline-flex h-10 items-center justify-center rounded-md bg-blue-600 px-4 text-[13px] font-semibold text-white shadow-[0_12px_24px_rgba(37,99,235,0.16)] transition hover:bg-blue-700"
             >
               {primaryLabel}
             </Link>

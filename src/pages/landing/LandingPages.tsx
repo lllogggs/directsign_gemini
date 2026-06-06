@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { BrandLogo, LogoMark } from "../../components/BrandLogo";
+import { BrandLogo } from "../../components/BrandLogo";
 import { PlatformBrandMark } from "../../components/PlatformBrandMark";
 import { PRODUCT_NAME } from "../../domain/brand";
 import type { InfluencerPlatform } from "../../domain/verification";
@@ -326,7 +326,13 @@ type IntroProposalSlide = {
   imageFit?: "cover" | "contain";
   riskItems?: IntroProposalRiskItem[];
   visualFacts?: IntroProposalFact[];
-  productPreview?: "influencerPdf" | "influencerRevision" | "influencerDashboard";
+  productPreview?:
+    | "advertiserBuilder"
+    | "advertiserContractReview"
+    | "advertiserApplicants"
+    | "influencerPdf"
+    | "influencerRevision"
+    | "influencerDashboard";
 };
 
 const preloadedIntroImageSources = new Set<string>();
@@ -435,9 +441,7 @@ const advertiserProposalSlides: IntroProposalSlide[] = [
         </span>
       </>
     ),
-    imageSrc: advertiserProposalAssetUrls.contractBuilder,
-    imageAlt: "계약서 작성 화면과 PDF 계약서 초안 미리보기",
-    imageFit: "contain",
+    productPreview: "advertiserBuilder",
   },
   {
     label: "공유",
@@ -490,9 +494,7 @@ const advertiserProposalSlides: IntroProposalSlide[] = [
         서명 관리
       </>
     ),
-    imageSrc: advertiserProposalAssetUrls.contractContentReview,
-    imageAlt: "연락미 계약 콘텐츠 검수 및 수정 요청 화면",
-    imageFit: "contain",
+    productPreview: "advertiserContractReview",
   },
   {
     label: "모집",
@@ -525,9 +527,7 @@ const advertiserProposalSlides: IntroProposalSlide[] = [
         </span>
       </span>
     ),
-    imageSrc: advertiserProposalAssetUrls.campaignApplicants,
-    imageAlt: "캠페인 지원 인플루언서 목록 화면",
-    imageFit: "contain",
+    productPreview: "advertiserApplicants",
   },
   {
     label: "시작",
@@ -1558,7 +1558,7 @@ function RoleFeatureIntroScreen({
         </nav>
       </div>
 
-      <section className="mx-auto flex min-h-[calc(100svh-118px)] w-full max-w-[1500px] items-start justify-center px-4 py-2 pb-2 sm:min-h-[calc(100svh-58px)] sm:items-center sm:px-6 sm:py-5 lg:h-[calc(100vh-58px)] lg:min-h-0 lg:overflow-hidden">
+      <section className="mx-auto flex min-h-[calc(100svh-118px)] w-full max-w-[1500px] items-start justify-center px-4 py-1.5 pb-1.5 sm:min-h-[calc(100svh-58px)] sm:items-center sm:px-6 sm:py-5 lg:h-[calc(100vh-58px)] lg:min-h-0 lg:overflow-hidden">
         <ProposalIntroCarousel
           ariaLabel={
             role === "advertiser"
@@ -1730,7 +1730,7 @@ function ProposalIntroCarousel({
           aria-label={`${slideIndex + 1} / ${slides.length} ${activeSlide.label}`}
           aria-live="polite"
           data-intro-pdf-slide
-          className="relative isolate flex h-[calc(100svh-134px)] min-h-0 w-full flex-col overflow-hidden px-0 py-0 sm:h-auto sm:overflow-visible sm:px-2 lg:h-[min(690px,calc(100vh-98px))]"
+          className="relative isolate flex h-[calc(100svh-130px)] min-h-0 w-full flex-col overflow-hidden px-0 py-0 sm:h-auto sm:overflow-visible sm:px-2 lg:h-[min(690px,calc(100vh-98px))]"
         >
           <ProposalSlideView slide={activeSlide} />
 
@@ -1740,7 +1740,7 @@ function ProposalIntroCarousel({
 
           <div
             data-intro-mobile-controls
-            className="absolute bottom-[78px] left-0 right-0 z-20 grid h-10 grid-cols-[40px_minmax(0,1fr)_40px] items-center gap-3 px-4 sm:hidden"
+            className="absolute bottom-[38px] left-0 right-0 z-20 grid h-10 grid-cols-[40px_minmax(0,1fr)_40px] items-center gap-3 px-4 sm:hidden"
           >
             <button
               type="button"
@@ -1818,19 +1818,10 @@ function ProposalIntroCarousel({
 function ProposalSlideView({ slide }: { slide: IntroProposalSlide }) {
   const hasMobileContext = Boolean(slide.context);
   const desktopSupport = slide.support || slide.description;
-  const isAdvertiserProductSlide =
-    slide.stage === "product" &&
-    Boolean(slide.imageSrc) &&
-    !slide.productPreview &&
-    !slide.visualFacts;
 
   return (
     <div
-      className={`relative z-10 grid h-full min-h-0 flex-1 gap-1 pb-[152px] pt-0 sm:h-auto sm:pb-0 sm:grid-rows-none sm:grid-cols-[minmax(205px,0.34fr)_minmax(0,1fr)] sm:items-center sm:gap-[clamp(32px,4vw,56px)] lg:h-full ${
-        isAdvertiserProductSlide
-          ? "grid-rows-[126px_minmax(0,1fr)]"
-          : "grid-rows-[150px_minmax(0,1fr)]"
-      }`}
+      className="relative z-10 grid h-full min-h-0 flex-1 grid-rows-[118px_minmax(0,1fr)] gap-1 pb-[104px] pt-0 sm:h-auto sm:pb-0 sm:grid-rows-none sm:grid-cols-[minmax(205px,0.34fr)_minmax(0,1fr)] sm:items-center sm:gap-[clamp(32px,4vw,56px)] lg:h-full"
     >
         <div
           className={`mx-auto grid h-full min-h-0 w-full max-w-[330px] place-items-center gap-2 px-2 sm:mx-0 sm:flex sm:max-w-none sm:flex-col sm:items-start sm:justify-center sm:gap-0 sm:px-0 sm:pl-[clamp(8px,2.2vw,34px)] ${
@@ -1841,12 +1832,12 @@ function ProposalSlideView({ slide }: { slide: IntroProposalSlide }) {
         >
           <div className="mx-auto grid min-w-0 place-items-center text-center sm:mx-0 sm:block sm:text-left">
             {slide.context ? (
-              <p className="block max-w-[310px] bg-gradient-to-br from-[#0f172a] to-[#2f6df6] bg-clip-text text-center font-neo-heavy text-[31px] font-black leading-[0.94] tracking-normal text-transparent drop-shadow-[0_12px_22px_rgba(36,86,214,0.14)] after:mx-auto after:mt-2.5 after:block after:h-1 after:w-10 after:rounded-full after:bg-blue-600 after:shadow-[0_12px_26px_rgba(36,86,214,0.24)] sm:mb-5 sm:max-w-none sm:text-left sm:text-[clamp(38px,4.2vw,50px)] sm:after:mx-0">
+              <p className="block max-w-[310px] bg-gradient-to-br from-[#0f172a] to-[#2f6df6] bg-clip-text text-center font-neo-heavy text-[29px] font-black leading-[0.94] tracking-normal text-transparent drop-shadow-[0_12px_22px_rgba(36,86,214,0.14)] after:mx-auto after:mt-2 after:block after:h-1 after:w-10 after:rounded-full after:bg-blue-600 after:shadow-[0_12px_26px_rgba(36,86,214,0.24)] sm:mb-5 sm:max-w-none sm:text-left sm:text-[clamp(38px,4.2vw,50px)] sm:after:mx-0">
                 {slide.context}
               </p>
             ) : null}
             <h2
-              className={`max-w-[300px] break-keep text-center font-neo-heavy text-[27px] leading-[1] tracking-normal text-neutral-950 sm:ml-0 sm:max-w-none sm:text-left sm:text-[clamp(38px,4.4vw,50px)] sm:leading-[1.07] ${
+              className={`max-w-[300px] break-keep text-center font-neo-heavy text-[26px] leading-[1] tracking-normal text-neutral-950 sm:ml-0 sm:max-w-none sm:text-left sm:text-[clamp(38px,4.4vw,50px)] sm:leading-[1.07] ${
                 hasMobileContext ? "hidden sm:block" : "mx-auto"
               }`}
             >
@@ -1881,7 +1872,7 @@ function ProposalSlideView({ slide }: { slide: IntroProposalSlide }) {
 function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
   if (slide.stage === "link") {
     return (
-      <div className="relative h-full min-h-0 overflow-visible sm:h-auto sm:min-h-0 lg:h-full">
+      <div data-intro-visual className="relative h-full min-h-0 overflow-visible sm:h-auto sm:min-h-0 lg:h-full">
         <AdvertiserMobileLinkPreview />
         <div className="absolute left-[2%] top-[19%] z-[1] hidden h-[52%] w-[64%] overflow-hidden rounded-[14px] border border-[rgba(17,20,18,0.08)] bg-white shadow-[0_18px_44px_rgba(15,23,42,0.12)] sm:block sm:left-[7%] sm:top-[14%] sm:h-[70%] sm:w-[68%]">
           <img
@@ -1909,7 +1900,7 @@ function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
 
   if (slide.riskItems) {
     return (
-      <div className="grid h-full min-h-0 grid-cols-2 grid-rows-2 gap-2 sm:h-full sm:grid-cols-4 sm:grid-rows-none sm:content-center sm:gap-2.5">
+      <div data-intro-visual className="grid h-full min-h-0 grid-cols-2 grid-rows-2 gap-2 sm:h-full sm:grid-cols-4 sm:grid-rows-none sm:content-center sm:gap-2.5">
         {slide.riskItems.map((item, index) => (
           <article
             key={item.label}
@@ -1946,12 +1937,16 @@ function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
   }
 
   if (slide.productPreview) {
-    return <InfluencerProposalProductPreview kind={slide.productPreview} />;
+    return (
+      <div data-intro-visual className="h-full min-h-0">
+        <IntroProposalProductPreview kind={slide.productPreview} />
+      </div>
+    );
   }
 
   if (slide.visualFacts) {
     return (
-      <div className="grid h-full min-h-0 content-center gap-2.5 sm:h-auto sm:min-h-0 sm:gap-3 sm:p-[clamp(20px,3vw,42px)]">
+      <div data-intro-visual className="grid h-full min-h-0 content-center gap-2.5 sm:h-auto sm:min-h-0 sm:gap-3 sm:p-[clamp(20px,3vw,42px)]">
         {slide.visualFacts.map((fact, index) => (
           <div
             key={`${fact.label}-${fact.value}`}
@@ -1981,23 +1976,22 @@ function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
   if (slide.imageSrc) {
     const baseImageFitClass =
       slide.stage === "final" ? "object-cover object-center" : "object-contain object-center";
-    const mobileProductImageFitClass =
-      slide.stage === "product" ? "object-top sm:object-center" : "";
 
     return (
       <div
-        className={`min-h-0 self-center overflow-hidden rounded-[12px] bg-transparent sm:h-auto sm:min-h-0 ${
+        data-intro-visual
+        className={`flex min-h-0 w-full items-center justify-center self-center overflow-hidden rounded-[12px] bg-transparent sm:h-auto sm:min-h-0 ${
           slide.stage === "final"
-            ? "h-[clamp(220px,34svh,278px)] rounded-[16px]"
+            ? "h-full rounded-[16px]"
             : slide.stage === "product"
-              ? "h-full w-full self-start"
+              ? "h-full self-center"
             : "h-full"
         }`}
       >
         <img
           src={slide.imageSrc}
           alt={slide.imageAlt ?? ""}
-          className={`h-full w-full ${baseImageFitClass} ${mobileProductImageFitClass} ${
+          className={`h-full w-full ${baseImageFitClass} ${
             slide.imageFit === "cover" ? "sm:object-cover" : "sm:object-contain"
           } ${slide.stage === "final" ? "aspect-[16/10]" : ""}`}
           loading="eager"
@@ -2016,7 +2010,6 @@ function AdvertiserMobileLinkPreview() {
     <div className="relative h-full min-h-0 sm:hidden">
       <div className="absolute left-2 top-[18%] z-[1] w-[58%] overflow-hidden rounded-[18px] border border-neutral-200 bg-white shadow-[0_18px_44px_rgba(15,23,42,0.11)]">
         <div className="flex h-10 items-center gap-2 border-b border-neutral-200 px-3">
-          <LogoMark className="h-6 w-6" />
           <span className="text-[12px] font-black text-neutral-950">계약 링크</span>
         </div>
         <div className="grid gap-2.5 p-3">
@@ -2081,11 +2074,23 @@ function AdvertiserMobileLinkPreview() {
   );
 }
 
-function InfluencerProposalProductPreview({
+function IntroProposalProductPreview({
   kind,
 }: {
   kind: NonNullable<IntroProposalSlide["productPreview"]>;
 }) {
+  if (kind === "advertiserBuilder") {
+    return <AdvertiserBuilderProductPreview />;
+  }
+
+  if (kind === "advertiserContractReview") {
+    return <AdvertiserContractReviewProductPreview />;
+  }
+
+  if (kind === "advertiserApplicants") {
+    return <AdvertiserApplicantsProductPreview />;
+  }
+
   if (kind === "influencerDashboard") {
     return (
       <div className="h-full min-h-0 overflow-hidden rounded-[16px]">
@@ -2095,15 +2100,225 @@ function InfluencerProposalProductPreview({
   }
 
   return (
-    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[16px] border border-neutral-200 bg-[#f4f5f2] shadow-[0_18px_48px_rgba(23,26,23,0.08)]">
-      <IntroAppHeader role="influencer" />
-      <div className="min-h-0 flex-1 p-2">
+    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[16px] border border-neutral-200 bg-[#f4f5f2] p-2 shadow-[0_18px_48px_rgba(23,26,23,0.08)]">
+      <div className="min-h-0 flex-1">
         <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[10px] border border-[#d9e0d9] bg-white">
           {kind === "influencerPdf" ? (
             <InfluencerContractPdfPreview />
           ) : (
             <InfluencerRevisionRequestPreview />
           )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function AdvertiserBuilderProductPreview() {
+  const fields = [
+    ["계약 유형", "협찬"],
+    ["광고주", "브랜드룸"],
+    ["인플루언서", "유나뷰티"],
+    ["계약명", "선크림 릴스 광고"],
+  ];
+
+  return (
+    <section className="grid h-full min-h-0 grid-cols-[minmax(0,0.45fr)_minmax(0,0.55fr)] items-stretch gap-2 overflow-hidden rounded-[16px] border border-neutral-200 bg-[#f4f5f2] p-2 shadow-[0_18px_48px_rgba(23,26,23,0.08)]">
+        <div className="flex max-h-full min-h-0 flex-col overflow-hidden rounded-[10px] border border-neutral-200 bg-white">
+          <div className="border-b border-neutral-200 px-3 py-2">
+            <p className="text-[10px] font-extrabold text-neutral-500">1 / 5 단계</p>
+            <h3 className="mt-0.5 truncate text-[13px] font-black text-neutral-950 sm:text-[15px]">
+              새 전자계약서 작성
+            </h3>
+          </div>
+          <div className="grid min-h-0 flex-1 content-start gap-1.5 p-2">
+            {fields.map(([label, value], index) => (
+              <div
+                key={label}
+                className={`rounded-[8px] border border-neutral-200 bg-[#fbfcfa] px-2.5 py-1.5 ${
+                  index === fields.length - 1 ? "max-[380px]:hidden" : ""
+                }`}
+              >
+                <p className="text-[8px] font-extrabold text-neutral-500 sm:text-[9px]">
+                  {label}
+                </p>
+                <p className="mt-0.5 truncate text-[10px] font-black text-neutral-950 sm:text-[11px]">
+                  {value}
+                </p>
+              </div>
+            ))}
+            <div className="mt-auto h-7 rounded-[8px] bg-blue-600 text-center text-[10px] font-black leading-7 text-white sm:h-8 sm:leading-8">
+              다음
+            </div>
+          </div>
+        </div>
+        <div className="flex max-h-full min-h-0 flex-col overflow-hidden rounded-[10px] border border-neutral-200 bg-white p-2 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
+          <div className="mx-auto flex h-full w-full max-w-[230px] flex-col rounded-[5px] border border-neutral-200 bg-white px-3 py-2">
+            <p className="text-center text-[12px] font-black text-neutral-950 sm:text-[14px]">
+              신제품 선크림 릴스 광고 계약
+            </p>
+            <p className="mt-1 text-center text-[8px] font-bold text-neutral-400">
+              작성일 2026-06-04
+            </p>
+            <div className="mt-2 grid gap-1.5">
+              {[
+                ["브랜드", "브랜드룸"],
+                ["담당자", "김마케팅 매니저"],
+                ["인플루언서", "유나뷰티"],
+                ["대표채널", "instagram.com/yuna_beauty"],
+              ].map(([label, value]) => (
+                <div key={label} className="grid grid-cols-[54px_minmax(0,1fr)] border border-neutral-200 text-[8px] sm:text-[9px]">
+                  <span className="bg-neutral-50 px-1.5 py-1 font-bold text-neutral-500">
+                    {label}
+                  </span>
+                  <strong className="truncate px-1.5 py-1 font-black text-neutral-800">
+                    {value}
+                  </strong>
+                </div>
+              ))}
+            </div>
+            <div className="mt-2 grid gap-1.5">
+              {["제1조 제품 제공 및 콘텐츠 조건", "제2조 일정 및 검수", "제3조 지급 조건"].map((title, index) => (
+                <div
+                  key={title}
+                  className={`rounded-[5px] bg-neutral-100 px-2 py-1.5 ${
+                    index > 0 ? "max-[380px]:hidden" : ""
+                  }`}
+                >
+                  <p className="text-[8px] font-extrabold text-neutral-700 sm:text-[9px]">
+                    {title}
+                  </p>
+                  <div className="mt-1 h-1 rounded-full bg-neutral-200" />
+                  <div className="mt-1 h-1 w-2/3 rounded-full bg-neutral-200" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+    </section>
+  );
+}
+
+function AdvertiserContractReviewProductPreview() {
+  const rows = [
+    ["유나뷰티", "콘텐츠 확인", "D-2"],
+    ["소라로그", "수정요청", "오늘"],
+    ["혜린픽", "서명 대기", "D-4"],
+  ];
+
+  return (
+    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[16px] border border-neutral-200 bg-[#f4f5f2] p-2 shadow-[0_18px_48px_rgba(23,26,23,0.08)]">
+      <div className="min-h-0 flex-1">
+        <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[10px] border border-neutral-200 bg-white">
+          <div className="flex h-11 shrink-0 items-center justify-between border-b border-neutral-200 px-3">
+            <div>
+              <p className="text-[13px] font-black text-neutral-950">계약 운영 대시보드</p>
+              <p className="text-[9px] font-extrabold text-neutral-500">
+                진행과정 · 플랫폼 · 검수 상태
+              </p>
+            </div>
+            <span className="rounded-[8px] bg-blue-600 px-2.5 py-1.5 text-[10px] font-black text-white">
+              새 계약
+            </span>
+          </div>
+          <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,0.52fr)_minmax(0,0.48fr)] gap-2 bg-[#fbfcfa] p-2">
+            <div className="flex min-h-0 flex-col overflow-hidden rounded-[9px] border border-neutral-200 bg-white">
+              <div className="grid grid-cols-3 border-b border-neutral-200 bg-[#ecebe5] p-1 text-center text-[9px] font-black text-neutral-600">
+                <span className="rounded-[7px] bg-white py-1 text-neutral-950">진행중 3</span>
+                <span className="py-1">검수 2</span>
+                <span className="py-1">완료 5</span>
+              </div>
+              <div className="grid min-h-0 flex-1 grid-rows-3 divide-y divide-neutral-200">
+                {rows.map(([name, state, due]) => (
+                  <div key={name} className="grid grid-cols-[minmax(0,1fr)_58px] items-center gap-2 px-3 py-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-[11px] font-black text-neutral-950">
+                        {name}
+                      </p>
+                      <p className="mt-0.5 truncate text-[9px] font-bold text-neutral-500">
+                        인스타 · 릴스 1건
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="truncate text-[9px] font-black text-blue-700">{state}</p>
+                      <p className="mt-0.5 text-[9px] font-bold text-neutral-500">{due}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="flex min-h-0 flex-col rounded-[9px] border border-blue-100 bg-blue-50 p-3">
+              <p className="text-[11px] font-black text-blue-700">콘텐츠 확인</p>
+              <p className="mt-1 text-[13px] font-black leading-tight text-neutral-950">
+                수정요청을 계약별로 남깁니다
+              </p>
+              <div className="mt-3 rounded-[8px] bg-white p-2 text-[10px] font-bold leading-4 text-neutral-700 shadow-[0_10px_22px_rgba(37,99,235,0.08)]">
+                제품 노출 컷을 3초 이상 유지해주세요.
+              </div>
+              <div className="mt-auto grid grid-cols-2 gap-1.5">
+                <span className="rounded-[7px] bg-white px-2 py-2 text-center text-[9px] font-black text-neutral-700">
+                  승인
+                </span>
+                <span className="rounded-[7px] bg-blue-600 px-2 py-2 text-center text-[9px] font-black text-white">
+                  요청
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function AdvertiserApplicantsProductPreview() {
+  const applicants = [
+    ["유나뷰티", "인스타", "8.1만"],
+    ["소라로그", "블로그", "3.4만"],
+    ["혜린픽", "유튜브", "2.7만"],
+    ["민지테이블", "틱톡", "6.2만"],
+  ];
+
+  return (
+    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[16px] border border-neutral-200 bg-[#f4f5f2] p-2 shadow-[0_18px_48px_rgba(23,26,23,0.08)]">
+      <div className="min-h-0 flex-1">
+        <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[10px] border border-neutral-200 bg-white">
+          <div className="flex h-11 shrink-0 items-center justify-between border-b border-neutral-200 px-3">
+            <div>
+              <p className="text-[13px] font-black text-neutral-950">지원 인플루언서</p>
+              <p className="text-[9px] font-extrabold text-neutral-500">
+                캠페인 지원자 12명
+              </p>
+            </div>
+            <span className="rounded-[8px] border border-neutral-200 px-2.5 py-1.5 text-[10px] font-black text-neutral-700">
+              팔로워순
+            </span>
+          </div>
+          <div className="grid min-h-0 flex-1 grid-rows-4 divide-y divide-neutral-200">
+            {applicants.map(([name, platform, audience], index) => (
+              <div key={name} className="grid grid-cols-[34px_minmax(0,1fr)_64px] items-center gap-2 px-3 py-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-neutral-100 text-[11px] font-black text-neutral-800">
+                  {index + 1}
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-[12px] font-black text-neutral-950">
+                    {name}
+                  </p>
+                  <p className="mt-0.5 flex items-center gap-1 text-[9px] font-bold text-neutral-500">
+                    <PlatformBrandMark
+                      platform={getIntroInfluencerPlatform(platform)}
+                      size="xs"
+                    />
+                    <span>{audience}</span>
+                    <span>· 뷰티</span>
+                  </p>
+                </div>
+                <span className="rounded-[8px] bg-blue-600 px-2 py-2 text-center text-[9px] font-black text-white">
+                  선정
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </section>
@@ -2135,10 +2350,12 @@ function InfluencerContractPdfPreview() {
             ["플랫폼", "인스타 · 블로그"],
             ["지급", "판매 수수료 18%"],
             ["마감", "2026.05.28"],
-          ].map(([label, value]) => (
+          ].map(([label, value], index) => (
             <div
               key={label}
-              className="rounded-[9px] border border-neutral-200 bg-white px-2.5 py-2"
+              className={`rounded-[9px] border border-neutral-200 bg-white px-2.5 py-2 ${
+                index > 2 ? "max-[380px]:hidden" : ""
+              }`}
             >
               <p className="text-[10px] font-extrabold text-neutral-500">{label}</p>
               <p className="mt-1 truncate text-[11px] font-black text-neutral-950">
@@ -2159,7 +2376,12 @@ function InfluencerContractPdfPreview() {
                 "제3조 지급 조건",
                 "제4조 콘텐츠 활용",
               ].map((title, index) => (
-                <div key={title} className="rounded-[5px] bg-neutral-100 px-2 py-1.5">
+                <div
+                  key={title}
+                  className={`rounded-[5px] bg-neutral-100 px-2 py-1.5 ${
+                    index > 1 ? "max-[380px]:hidden" : ""
+                  }`}
+                >
                   <p className="text-[9px] font-extrabold text-neutral-700">
                     {title}
                   </p>
@@ -2172,7 +2394,7 @@ function InfluencerContractPdfPreview() {
                 </div>
               ))}
             </div>
-            <div className="mt-3 flex justify-between text-[9px] font-black text-neutral-500">
+            <div className="mt-3 flex justify-between text-[9px] font-black text-neutral-500 max-[380px]:hidden">
               <span>광고주</span>
               <span>인플루언서</span>
             </div>
@@ -2225,7 +2447,7 @@ function InfluencerRevisionRequestPreview() {
             <p className="text-[11px] font-black text-amber-900">
               12개월 활용 기간
             </p>
-            <p className="mt-1 text-[10px] font-bold leading-4 text-amber-800">
+            <p className="mt-1 text-[10px] font-bold leading-4 text-amber-800 max-[380px]:hidden">
               브랜드는 업로드 콘텐츠를 광고 소재로 12개월 동안 활용할 수 있습니다.
             </p>
           </div>
@@ -2233,12 +2455,12 @@ function InfluencerRevisionRequestPreview() {
             <p className="text-[10px] font-extrabold text-blue-700">
               요청 내용
             </p>
-            <p className="mt-1 text-[12px] font-black leading-4 text-neutral-950">
+            <p className="mt-1 truncate text-[11px] font-black leading-4 text-neutral-950 sm:text-[12px]">
               3개월로 줄이고 추가 활용은 별도 동의로 진행해주세요.
             </p>
           </div>
         </div>
-        <div className="grid grid-cols-3 gap-1.5">
+        <div className="grid grid-cols-3 gap-1.5 max-[380px]:hidden">
           {["조항 선택", "요청 작성", "답변 대기"].map((label, index) => (
             <div
               key={label}
@@ -2258,23 +2480,7 @@ function InfluencerCompactDashboardProductPreview() {
 
   return (
     <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[16px] border border-neutral-200 bg-white shadow-[0_18px_48px_rgba(23,26,23,0.08)]">
-      <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-neutral-200 px-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <LogoMark className="h-8 w-8" />
-          <div className="min-w-0">
-            <p className="truncate text-[15px] font-black text-neutral-950">
-              내 계약
-            </p>
-            <p className="truncate text-[10px] font-extrabold text-neutral-500">
-              크리에이터 소라 · 인증 완료
-            </p>
-          </div>
-        </div>
-        <span className="inline-flex h-8 shrink-0 items-center rounded-[8px] border border-neutral-200 bg-white px-2.5 text-[11px] font-extrabold text-neutral-700">
-          필터
-        </span>
-      </div>
-      <div className="border-b border-neutral-200 bg-[#ecebe5] px-2 pt-2">
+      <div className="border-b border-neutral-200 bg-[#ecebe5] px-2 pt-1.5 sm:pt-2">
         <div className="flex min-w-0 items-end gap-1">
           {state.tabs.map((tab) => {
             const active = tab.label === state.activeTab;
@@ -2282,7 +2488,7 @@ function InfluencerCompactDashboardProductPreview() {
             return (
               <div
                 key={tab.label}
-                className={`relative flex h-10 min-w-0 flex-1 items-center justify-between gap-0.5 rounded-t-[10px] border px-1 text-[10px] font-extrabold ${
+                className={`relative flex h-8 min-w-0 flex-1 items-center justify-between gap-0.5 rounded-t-[10px] border px-1 text-[9px] font-extrabold sm:h-10 sm:text-[10px] ${
                   active
                     ? "z-10 -mb-px border-[#d9e0d9] border-b-white bg-white text-[#171a17]"
                     : "mb-1 border-transparent bg-[#e5e3dc] text-[#59605b]"
@@ -2290,7 +2496,7 @@ function InfluencerCompactDashboardProductPreview() {
               >
                 <span className="shrink-0 whitespace-nowrap">{tab.label}</span>
                 <span
-                  className={`inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1 text-[11px] ${
+                  className={`inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full px-1 text-[10px] sm:h-5 sm:min-w-5 sm:text-[11px] ${
                     active ? "bg-[#171a17] text-white" : "bg-white/80 text-[#303630]"
                   }`}
                 >
@@ -2302,29 +2508,29 @@ function InfluencerCompactDashboardProductPreview() {
         </div>
       </div>
       <div className="flex min-h-0 flex-1 flex-col bg-[#fbfcfa]">
-        <div className="shrink-0 border-b border-neutral-200 bg-white px-3 py-2">
-          <p className="text-[13px] font-black text-neutral-950">계약 목록</p>
-          <p className="mt-0.5 text-[10px] font-extrabold text-neutral-500">
+        <div className="shrink-0 border-b border-neutral-200 bg-white px-3 py-1.5 sm:py-2">
+          <p className="text-[12px] font-black text-neutral-950 sm:text-[13px]">계약 목록</p>
+          <p className="mt-0.5 text-[9px] font-extrabold text-neutral-500 sm:text-[10px]">
             {state.rows.length}건 표시 · 전체 조건
           </p>
         </div>
         <div className="grid min-h-0 flex-1 grid-rows-3 divide-y divide-neutral-200 overflow-hidden">
           {state.rows.map((row) => (
-            <div key={row.title} className="grid grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-2 bg-white px-3 py-2.5">
+            <div key={row.title} className="grid grid-cols-[22px_minmax(0,1fr)_auto] items-center gap-2 bg-white px-3 py-1.5 sm:grid-cols-[24px_minmax(0,1fr)_auto] sm:py-2.5">
               <PlatformBrandMark platform={getIntroInfluencerPlatform(row.platform)} size="xs" />
               <div className="min-w-0">
-                <p className="truncate text-[12px] font-black text-neutral-950">
+                <p className="truncate text-[11px] font-black text-neutral-950 sm:text-[12px]">
                   {row.title}
                 </p>
-                <p className="mt-0.5 truncate text-[10px] font-bold text-neutral-500">
+                <p className="mt-0.5 truncate text-[9px] font-bold text-neutral-500 sm:text-[10px]">
                   {row.brand} · {row.payment}
                 </p>
               </div>
-              <div className="min-w-[68px] text-right">
-                <p className="truncate text-[10px] font-black text-blue-700">
+              <div className="min-w-[62px] text-right sm:min-w-[68px]">
+                <p className="truncate text-[9px] font-black text-blue-700 sm:text-[10px]">
                   {row.metric}
                 </p>
-                <p className="mt-0.5 truncate text-[10px] font-bold text-neutral-500">
+                <p className="mt-0.5 truncate text-[9px] font-bold text-neutral-500 sm:text-[10px]">
                   {row.date.split(" / ")[0]}
                 </p>
               </div>
@@ -3130,7 +3336,6 @@ function AdvertiserIntroDashboardPreview({
 
   return (
     <section className="flex h-full min-w-0 flex-col overflow-hidden rounded-[12px] border border-neutral-200 bg-[#f4f5f2] shadow-[0_18px_48px_rgba(23,26,23,0.08)]">
-      <IntroAppHeader role="advertiser" />
       <div className="min-h-0 flex-1 p-2">
         <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[8px] border border-[#d9e0d9] bg-white">
           <IntroDashboardTitleBar
@@ -3150,15 +3355,14 @@ function AdvertiserIntroDashboardPreview({
   );
 }
 
-function IntroAppHeader({ role }: { role: IntroRole }) {
+function _IntroAppHeader({ role }: { role: IntroRole }) {
   const isAdvertiser = role === "advertiser";
 
   return (
     <div className="border-b border-[#d9e0d9] bg-white">
       <div className="flex h-12 min-w-0 items-center justify-between gap-3 px-3">
-        <div className="flex h-10 min-w-0 items-center gap-2">
-          <LogoMark className="h-9 w-9" />
-          <span className="font-neo-heavy truncate text-[18px] leading-none text-neutral-950">
+        <div className="sr-only">
+          <span>
             {PRODUCT_NAME}
           </span>
         </div>
@@ -3251,7 +3455,6 @@ function InfluencerIntroDashboardPreview({
 
   return (
     <section className="flex h-full min-w-0 flex-col overflow-hidden rounded-[12px] border border-neutral-200 bg-[#f4f5f2] shadow-[0_18px_48px_rgba(23,26,23,0.08)]">
-      <IntroAppHeader role="influencer" />
       <div className="min-h-0 flex-1 p-2">
         <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[8px] border border-[#d9e0d9] bg-white">
           <IntroDashboardTitleBar
