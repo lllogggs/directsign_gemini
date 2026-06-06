@@ -1592,7 +1592,7 @@ function CampaignShell({
       >
         <div
           className={`mx-auto max-w-[1500px] px-3 sm:px-5 lg:px-6 ${
-            showHeroCopy ? "py-2.5 sm:py-3" : "pb-2.5 pt-4 sm:py-3"
+            showHeroCopy ? "py-2.5 sm:py-3" : "pb-2.5 pt-7 sm:py-3"
           }`}
         >
           {showHeroCopy ? (

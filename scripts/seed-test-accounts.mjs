@@ -1708,6 +1708,32 @@ const buildSeedCampaignApplicationSummary = (campaign) =>
     .filter(Boolean)
     .join("\n");
 
+const seedActivityCategoryMap = new Map([
+  ["먹방", "mukbang"],
+  ["여행", "travel"],
+  ["뷰티", "beauty"],
+  ["패션", "fashion"],
+  ["피트니스", "fitness"],
+  ["테크", "tech"],
+  ["게임", "game"],
+  ["교육", "education"],
+  ["라이프스타일", "lifestyle"],
+  ["금융", "finance"],
+  ["리빙", "lifestyle"],
+  ["리뷰", "lifestyle"],
+  ["숏폼", "lifestyle"],
+]);
+
+const allowedSeedActivityCategories = new Set(seedActivityCategoryMap.values());
+
+const normalizeSeedActivityCategories = (categories = []) => {
+  const normalized = categories
+    .map((category) => seedActivityCategoryMap.get(category) ?? category)
+    .filter((category) => allowedSeedActivityCategories.has(category));
+
+  return Array.from(new Set(normalized));
+};
+
 const ensureCampaignDashboardApplicantProfiles = async () => {
   const authUsers = [];
   for (const profile of campaignDashboardApplicantProfiles) {
@@ -1728,7 +1754,7 @@ const ensureCampaignDashboardApplicantProfiles = async () => {
       email: profile.user.email,
       avatar_url: profile.avatarUrl,
       company_name: null,
-      activity_categories: profile.categories,
+      activity_categories: normalizeSeedActivityCategories(profile.categories),
       activity_platforms: ["instagram", "youtube", "naver_blog"],
       verification_status: "approved",
       email_verified_at: timestamp,

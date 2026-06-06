@@ -101,8 +101,6 @@ const roleCopy = {
     primaryLabel: "계약 작성",
     emptyInbox: "아직 받은 1:1 제안이 없습니다",
     emptySent: "아직 보낸 컨택 제안이 없습니다",
-    emptyInboxBody: "인플루언서가 직접 보낸 1:1 계약 제안만 여기에 정리됩니다.",
-    emptySentBody: "인플루언서를 찾아 제안을 보내면 진행 상태가 여기에 정리됩니다.",
     emptyInboxActionLabel: "인플루언서 찾기",
     emptyInboxActionHref: "/advertiser/discover",
     emptySentActionLabel: "인플루언서 찾기",
@@ -128,8 +126,6 @@ const roleCopy = {
     primaryLabel: "계약 검토",
     emptyInbox: "아직 받은 브랜드 제안이 없습니다",
     emptySent: "아직 보낸 역제안이 없습니다",
-    emptyInboxBody: "브랜드가 보낸 컨택 제안이 도착하면 이 화면에서 확인할 수 있습니다.",
-    emptySentBody: "브랜드에 보낸 역제안의 진행 상태가 여기에 정리됩니다.",
     emptyInboxActionLabel: "브랜드 찾기",
     emptyInboxActionHref: "/influencer/brands",
     emptySentActionLabel: "브랜드 찾기",
@@ -154,8 +150,6 @@ const roleCopy = {
     primaryLabel: string;
     emptyInbox: string;
     emptySent: string;
-    emptyInboxBody: string;
-    emptySentBody: string;
     emptyInboxActionLabel: string;
     emptyInboxActionHref: string;
     emptySentActionLabel: string;
@@ -451,7 +445,7 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
       </header>
 
       <main className="mx-auto flex min-h-0 w-full min-w-0 max-w-[1500px] flex-1 flex-col px-3 py-3 sm:px-5 lg:px-6">
-        <section className="min-w-0 overflow-hidden rounded-[14px] border border-neutral-200 bg-[#fdfdfb] shadow-[0_18px_44px_rgba(23,26,23,0.07)] lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+        <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[14px] border border-neutral-200 bg-[#fdfdfb] shadow-[0_18px_44px_rgba(23,26,23,0.07)]">
           <div className="shrink-0 border-b border-[#d9e0d9] bg-white px-4 py-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0">
@@ -480,7 +474,7 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
             <SummaryMetric label={focusMetrics.secondLabel} value={focusMetrics.secondValue} />
           </div>
 
-          <div className="min-w-0 p-3 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col p-3">
             <section className="rounded-t-[8px] border border-b-0 border-[#d9e0d9] bg-white p-3">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div className="min-w-0">
@@ -573,7 +567,6 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
             ) : visibleThreads.length === 0 ? (
               <EmptyState
                 title={bucket === "inbox" ? copy.emptyInbox : copy.emptySent}
-                body={bucket === "inbox" ? copy.emptyInboxBody : copy.emptySentBody}
                 actionLabel={
                   bucket === "inbox"
                     ? copy.emptyInboxActionLabel
@@ -1039,25 +1032,20 @@ function ErrorState({
 
 function EmptyState({
   title,
-  body,
   actionLabel,
   actionHref,
 }: {
   title: string;
-  body: string;
   actionLabel: string;
   actionHref: string;
 }) {
   return (
-    <section className="flex min-h-[190px] flex-col items-center justify-center rounded-b-[8px] border border-[#d9e0d9] bg-white px-6 py-10 text-center">
-      <div className="max-w-md">
+    <section className="flex min-h-[360px] flex-1 flex-col items-center justify-center rounded-b-[8px] border border-[#d9e0d9] bg-white px-6 py-12 text-center">
+      <div className="grid max-w-md justify-items-center">
         <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-[8px] bg-[#f8faf7] text-[#aeb7b0] ring-1 ring-[#d9e0d9]">
           <Send className="h-5 w-5" />
         </div>
         <h2 className="mt-3 text-[14px] font-semibold text-[#171a17]">{title}</h2>
-        <p className="mt-1 max-w-md text-[12px] leading-5 text-[#7d857f]">
-          {body}
-        </p>
         <Link
           to={actionHref}
           className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-md bg-blue-600 px-4 text-[13px] font-semibold text-white shadow-[0_12px_24px_rgba(37,99,235,0.16)] transition hover:bg-blue-700"

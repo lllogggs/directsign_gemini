@@ -308,6 +308,21 @@ check(
   "AGENTS.md must require matching influencer-dashboard review when advertiser-dashboard UI rules change, and vice versa",
 );
 
+check(
+  "dashboard row dividers stay removed",
+  agents.includes("Dashboard data rows should avoid visible row-by-row divider lines and gray hover/shaded row backgrounds") &&
+    !advertiserDashboard.includes("max-h-[620px] divide-y") &&
+    !influencerDashboard.includes("max-h-[620px] divide-y") &&
+    !advertiserDashboard.includes("divide-y divide-[#edf1ed] border-t border-[#edf1ed]") &&
+    !advertiserDashboard.includes("hover:bg-[#fafaf7]") &&
+    !advertiserDashboard.includes("hover:bg-[#f8faf7]") &&
+    !influencerDashboard.includes("hover:bg-[#fafaf7]") &&
+    !influencerDashboard.includes("hover:bg-[#f8faf7]") &&
+    (advertiserDashboard.match(/hover:bg-blue-50\/45/g)?.length ?? 0) >= 2 &&
+    influencerDashboard.includes("hover:bg-blue-50/45"),
+  "Dashboard row bodies must not restore divide-y row separators or gray hover shading; preserve fixed blank space instead",
+);
+
 for (const [text, reason] of [
   ["공유 가능", "Vague readiness badges are banned from customer-facing UI"],
   ["처리 필요", "Vague dashboard priority strips are banned unless explicitly approved"],
@@ -1386,34 +1401,39 @@ check(
 check(
   "mobile marketplace facts avoid nested tiles",
     agents.includes("Mobile marketplace brand and campaign cards should keep only the main outer card") &&
+    agents.includes('Do not add generic proposal-type rows such as "제안 가능"') &&
+    agents.includes("right side of the list title/summary") &&
     agents.includes("mobile headers must not show dashboard-like status panels") &&
     agents.includes("Marketplace and dashboard-like list headers should avoid grey helper/eyebrow copy") &&
     agents.includes("do not add a separate divider line under the title section") &&
     agents.includes("Removing duplicate dividers must not collapse the title rhythm") &&
+    agents.includes("titles such as \"브랜드 찾기\" and \"캠페인 탐색\"") &&
     agents.includes("one primary proposal CTA") &&
     agents.includes("Mobile campaign discovery tabs should not repeat list counts") &&
     indexCss.includes(".yl-mobile-inline-fact") &&
     indexCss.includes("@media (max-width: 639px)") &&
     indexCss.includes("border-radius: 0;") &&
-    marketplacePages.includes("yl-fact-tile yl-mobile-inline-fact") &&
     marketplacePages.includes("showMetrics={false}") &&
     (marketplacePages.match(/showMetrics=\{false\}/g)?.length ?? 0) >= 4 &&
     (marketplacePages.match(/showHeroCopy=\{false\}/g)?.length ?? 0) >= 2 &&
     marketplacePages.includes('showHeroCopy ? "border-b border-neutral-200/80" : ""') &&
-    marketplacePages.includes('showHeroCopy ? "py-3 sm:py-4" : "pb-3 pt-5 sm:py-4"') &&
+    marketplacePages.includes('showHeroCopy ? "py-3 sm:py-4" : "pb-3 pt-8 sm:py-4"') &&
+    !marketplacePages.includes("formatProposalTypes") &&
+    !marketplacePages.includes("function ProfileFact") &&
     !marketplacePages.includes("제안 시작 정보") &&
     !marketplacePages.includes("다른 브랜드 보기") &&
     !marketplacePages.includes("brand.responseTimeLabel") &&
     !marketplacePages.includes('label="응답"') &&
-    marketplacePages.includes("grid gap-0 border-y border-neutral-100 py-1 text-[12px] sm:border-y-0 sm:py-0") &&
-    marketplacePages.includes("flex min-h-12 items-start justify-between gap-3 px-4 py-3") &&
-    marketplacePages.includes("flex min-w-0 flex-1 items-start gap-2 sm:block") &&
+    marketplacePages.includes("flex min-h-12 flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:py-2") &&
+    marketplacePages.includes("flex w-full min-w-0 items-start justify-between gap-3 sm:block sm:flex-1") &&
+    marketplacePages.includes('className="min-w-0 flex-1"') &&
+    marketplacePages.includes('className="w-full min-w-0 sm:hidden"') &&
     marketplacePages.includes("className={`${filterButtonClassName} sm:hidden`}") &&
     marketplacePages.includes("hidden min-w-0 shrink-0 items-center gap-2 sm:flex") &&
     campaignPages.includes("metrics={[]}") &&
     (campaignPages.match(/showHeroCopy=\{false\}/g)?.length ?? 0) >= 2 &&
     campaignPages.includes('showHeroCopy ? "border-b border-neutral-200/80" : ""') &&
-    campaignPages.includes('showHeroCopy ? "py-2.5 sm:py-3" : "pb-2.5 pt-4 sm:py-3"') &&
+    campaignPages.includes('showHeroCopy ? "py-2.5 sm:py-3" : "pb-2.5 pt-7 sm:py-3"') &&
     campaignPages.includes('aria-label={`${tab.label} ${tab.count}건`}') &&
     campaignPages.includes('hidden sm:inline') &&
     campaignPages.includes("yl-fact-tile yl-mobile-inline-fact sm:px-3 sm:py-2") &&

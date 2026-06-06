@@ -1772,7 +1772,7 @@ function CampaignListView({
         onSortChange={onSortChange}
       />
 
-      <div className="no-scrollbar max-h-[620px] divide-y divide-[#edf1ed] overflow-y-auto overscroll-contain lg:max-h-none lg:min-h-0 lg:flex-1">
+      <div className="no-scrollbar max-h-[620px] overflow-y-auto overscroll-contain lg:max-h-none lg:min-h-0 lg:flex-1">
         {campaigns.length > 0 ? (
           campaigns.map((campaign) => (
             <React.Fragment key={campaign.key}>
@@ -2034,7 +2034,7 @@ function CampaignRow({
       type="button"
       onClick={onOpen}
       aria-label={`${campaign.name} 캠페인 열기, 지급내용 ${paymentLabel}, 신청/모집 인원 ${progress.label}, 날짜 ${dateParts.label}`}
-      className="group grid w-full gap-2 px-3 py-2 text-left transition-colors hover:bg-[#fafaf7] lg:min-h-[44px] lg:grid-cols-[minmax(104px,0.2fr)_minmax(82px,0.14fr)_minmax(250px,0.78fr)_minmax(160px,0.4fr)_minmax(132px,0.32fr)_minmax(104px,0.23fr)] lg:items-center"
+      className="group grid w-full gap-2 px-3 py-2 text-left transition-colors hover:bg-blue-50/45 lg:min-h-[44px] lg:grid-cols-[minmax(104px,0.2fr)_minmax(82px,0.14fr)_minmax(250px,0.78fr)_minmax(160px,0.4fr)_minmax(132px,0.32fr)_minmax(104px,0.23fr)] lg:items-center"
     >
       <div className="min-w-0">
         <CampaignPlatformMarks platforms={campaign.platforms} title={platformLabel} />
@@ -2334,7 +2334,7 @@ function CampaignDetailView({
       </div>
       <CampaignInfluencerTableHeaderRow />
 
-      <div className="no-scrollbar max-h-[620px] divide-y divide-[#edf1ed] overflow-y-auto overscroll-contain lg:max-h-none lg:min-h-0 lg:flex-1">
+      <div className="no-scrollbar max-h-[620px] overflow-y-auto overscroll-contain lg:max-h-none lg:min-h-0 lg:flex-1">
         {filteredContracts.length > 0 ? (
           filteredContracts.map((contract) => (
             <React.Fragment key={contract.id}>
@@ -2672,7 +2672,7 @@ function CampaignApplicantsPanel({
           {marketplaceError ?? "지원자 목록을 불러오지 못했습니다."}
         </p>
       ) : applicants.length > 0 ? (
-        <div className="divide-y divide-[#edf1ed] border-t border-[#edf1ed]">
+        <div className="border-t border-[#edf1ed]">
           {visibleApplicants.length > 0 ? (
             visibleApplicants.map((thread) => (
               <React.Fragment key={thread.id}>
@@ -3318,7 +3318,7 @@ function ContractTable({
         onSortChange={onSortChange}
       />
 
-      <div className="no-scrollbar max-h-[620px] divide-y divide-[#edf1ed] overflow-y-auto overscroll-contain lg:max-h-none lg:min-h-0 lg:flex-1">
+      <div className="no-scrollbar max-h-[620px] overflow-y-auto overscroll-contain lg:max-h-none lg:min-h-0 lg:flex-1">
         {isDataPending ? (
           <ContractTableSkeletonRows />
         ) : displayContracts.length > 0 ? (
@@ -3452,7 +3452,7 @@ function getPaginationPages(currentPage: number, totalPages: number) {
 
 function ContractTableSkeletonRows() {
   return (
-    <div className="divide-y divide-[#edf1ed]" aria-hidden="true">
+    <div aria-hidden="true">
       {Array.from({ length: 5 }, (_, index) => (
         <div
           key={index}
@@ -3781,7 +3781,7 @@ function ContractRow({
     <button
       type="button"
       onClick={onOpen}
-      className="group grid w-full gap-2 px-3 py-2 text-left transition-colors hover:bg-[#f8faf7] lg:min-h-[38px] lg:grid-cols-[minmax(132px,0.34fr)_minmax(108px,0.26fr)_minmax(300px,1fr)_minmax(132px,0.34fr)_minmax(146px,0.38fr)_minmax(112px,0.3fr)] lg:items-center lg:py-1.5"
+      className="group grid w-full gap-2 px-3 py-2 text-left transition-colors hover:bg-blue-50/45 lg:min-h-[38px] lg:grid-cols-[minmax(132px,0.34fr)_minmax(108px,0.26fr)_minmax(300px,1fr)_minmax(132px,0.34fr)_minmax(146px,0.38fr)_minmax(112px,0.3fr)] lg:items-center lg:py-1.5"
     >
       <div className="flex min-w-0 items-center justify-between gap-2 lg:block">
         <PlatformPills contract={contract} />

@@ -34,7 +34,6 @@ import { PRODUCT_NAME } from "../../domain/brand";
 import {
   campaignProposalTypeOptions,
   compareChannelAudienceValues,
-  formatProposalTypes,
   getBrandProfilePath,
   getChannelAudienceSortValue,
   getInfluencerProfilePath,
@@ -1136,7 +1135,7 @@ function MarketplaceShell({
       >
         <div
           className={`mx-auto max-w-[1500px] px-3 sm:px-5 lg:px-6 ${
-            showHeroCopy ? "py-3 sm:py-4" : "pb-3 pt-5 sm:py-4"
+            showHeroCopy ? "py-3 sm:py-4" : "pb-3 pt-8 sm:py-4"
           }`}
         >
           {showHeroCopy ? (
@@ -1289,10 +1288,6 @@ function BrandDiscoveryCard({
           />
         ))}
       </div>
-
-      <dl className="mt-3 grid gap-0 border-y border-neutral-100 py-1 text-[12px] sm:border-y-0 sm:py-0">
-        <ProfileFact label="제안 가능" value={formatProposalTypes(brand.proposalTypes)} />
-      </dl>
 
       <div className="mt-auto grid grid-cols-2 gap-2 pt-3">
         <button
@@ -1836,8 +1831,16 @@ function DiscoveryControls({
 
   return (
     <section className="border-b border-[#d9e0d9] bg-white">
-      <div className="flex min-h-12 items-start justify-between gap-3 px-4 py-3 sm:items-center sm:py-2">
-        <div className="flex min-w-0 flex-1 items-start gap-2 sm:block">
+      <div className="flex min-h-12 flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:py-2">
+        <div className="flex w-full min-w-0 items-start justify-between gap-3 sm:block sm:flex-1">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[14px] font-extrabold leading-tight text-neutral-950 sm:text-[13px]">
+              {title}
+            </p>
+            <p className="mt-0.5 truncate text-[11px] font-bold leading-tight text-neutral-500">
+              {count.toLocaleString()}건 표시 · {summary}
+            </p>
+          </div>
           <button
             type="button"
             onClick={onToggle}
@@ -1847,18 +1850,10 @@ function DiscoveryControls({
           >
             {filterButtonContent}
           </button>
-          <div className="min-w-0">
-            <p className="text-[14px] font-extrabold leading-tight text-neutral-950 sm:truncate sm:text-[13px]">
-              {title}
-            </p>
-            <p className="mt-0.5 text-[11px] font-bold leading-tight text-neutral-500 sm:truncate">
-              {count.toLocaleString()}건 표시 · {summary}
-            </p>
-          </div>
         </div>
-        <div className="flex min-w-0 shrink-0 items-center gap-2 sm:hidden">
-          {toolbar}
-        </div>
+        {toolbar ? (
+          <div className="w-full min-w-0 sm:hidden">{toolbar}</div>
+        ) : null}
         <div className="hidden min-w-0 shrink-0 items-center gap-2 sm:flex">
           {toolbar}
           <button
@@ -1971,8 +1966,8 @@ function InfluencerSortSelect({
   onChange: (value: InfluencerSortValue) => void;
 }) {
   return (
-    <label className="inline-flex h-9 min-w-0 items-center gap-1.5 rounded-[8px] border border-neutral-200 bg-white px-2.5 text-neutral-700 sm:h-8 sm:shrink-0 sm:px-2">
-      <ArrowUpDown className="h-3.5 w-3.5 text-neutral-500" strokeWidth={2} />
+    <label className="inline-flex h-9 w-full min-w-0 items-center gap-1.5 rounded-[8px] border border-neutral-200 bg-white px-2.5 text-neutral-700 sm:h-8 sm:w-auto sm:shrink-0 sm:px-2">
+      <ArrowUpDown className="h-3.5 w-3.5 shrink-0 text-neutral-500" strokeWidth={2} />
       <span className="sr-only">인플루언서 정렬</span>
       <select
         value={value}
@@ -2174,17 +2169,6 @@ function ProfileSection({
       <h2 className="text-[15px] font-semibold text-neutral-950">{title}</h2>
       <div className="mt-3">{children}</div>
     </section>
-  );
-}
-
-function ProfileFact({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="yl-fact-tile yl-mobile-inline-fact">
-      <dt className="yl-fact-label truncate">{label}</dt>
-      <dd className="yl-fact-value min-w-0 truncate">
-        {value}
-      </dd>
-    </div>
   );
 }
 

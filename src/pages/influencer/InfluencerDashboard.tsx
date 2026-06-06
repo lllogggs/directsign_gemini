@@ -1368,7 +1368,7 @@ function ContractTable({
         sortState={sortState}
         onSortChange={onSortChange}
       />
-      <div className="no-scrollbar max-h-[620px] divide-y divide-[#edf1ed] overflow-y-auto overscroll-contain lg:max-h-none lg:min-h-0 lg:flex-1">
+      <div className="no-scrollbar max-h-[620px] overflow-y-auto overscroll-contain lg:max-h-none lg:min-h-0 lg:flex-1">
         {displayItems.length > 0 ? (
           displayItems.map((item) => {
             const advertiserName = removeInternalTestLabel(
@@ -1383,7 +1383,7 @@ function ContractTable({
               key={item.id}
               type="button"
               onClick={() => onOpen(item)}
-              className="group grid w-full gap-2 px-3 py-2 text-left transition-colors hover:bg-[#fafaf7] lg:min-h-[44px] lg:grid-cols-[minmax(104px,0.2fr)_minmax(82px,0.14fr)_minmax(250px,0.78fr)_minmax(160px,0.4fr)_minmax(132px,0.32fr)_minmax(104px,0.23fr)] lg:items-center lg:py-1.5"
+              className="group grid w-full gap-2 px-3 py-2 text-left transition-colors hover:bg-blue-50/45 lg:min-h-[44px] lg:grid-cols-[minmax(104px,0.2fr)_minmax(82px,0.14fr)_minmax(250px,0.78fr)_minmax(160px,0.4fr)_minmax(132px,0.32fr)_minmax(104px,0.23fr)] lg:items-center lg:py-1.5"
             >
               <div className="flex min-w-0 items-center justify-between gap-2 lg:block">
                 <PlatformPills item={item} />
