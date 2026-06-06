@@ -1120,14 +1120,14 @@ describe("yeollock.me security regressions", () => {
     assert.match(campaignPages, /from "\.\.\/\.\.\/domain\/platformDisplay"/);
     assert.match(campaignPages, /<PlatformBrandMark platform=\{item\.platform\} size="sm" \/>/);
     assert.match(campaignPages, /getPlatformDisplayName\(item\.platform\)/);
-    assert.match(campaignPages, /const text = item\.followersLabel \?\? label/);
+    assert.match(campaignPages, /const text = item\.followersLabel;/);
     assert.match(
       campaignPages,
       /inline-flex min-w-0 shrink items-center gap-1\.5 text-\[11px\] font-extrabold text-neutral-800/,
     );
     assert.match(
       marketplacePages,
-      /inline-flex max-w-full items-center gap-1\.5 text-\[11px\] font-extrabold text-neutral-800/,
+      /inline-flex max-w-full items-center gap-1\.5 text-\[12px\] font-extrabold/,
     );
     assert.doesNotMatch(
       influencerPublicProfileSource,
@@ -1457,7 +1457,7 @@ describe("yeollock.me security regressions", () => {
     assert.doesNotMatch(landing, /linear-gradient\(112deg,transparent_0_61%/);
     assert.doesNotMatch(landing, /pointer-events-none absolute inset-3/);
     assert.doesNotMatch(landing, /yl-primary-action inline-flex h-\[34px\]/);
-    assert.match(landing, /bg-neutral-950 text-white shadow-\[inset_0_1px_0_rgba\(255,255,255,0\.16\),0_8px_18px_rgba\(15,23,42,0\.12\)\]/);
+    assert.match(landing, /inline-flex h-9 items-center gap-3 border-0 bg-transparent text-neutral-950 shadow-none/);
     assert.doesNotMatch(landing, /function ProposalSlideBrand/);
     assert.doesNotMatch(landing, /<ProposalSlideBrand/);
     assert.match(landing, /aria-label=\{`이전 \$\{controlLabel\}`\}/);
@@ -1467,8 +1467,8 @@ describe("yeollock.me security regressions", () => {
     assert.match(landing, /yeollock-contract-content-review\.png/);
     assert.match(landing, /yeollock-contract-handshake\.png/);
     assert.match(landing, /yeollock-campaign-applicants-dashboard\.png/);
-    assert.match(qaStandard, /계약서 없는 약속은/);
     assert.match(qaStandard, /광고비 먹튀/);
+    assert.match(qaStandard, /협찬품 미반환/);
     assert.doesNotMatch(
       qaStandard,
       /requiredText: \["계약 흐름을", "한눈에 관리", "작성중", "진행중", "종료"\]/,
@@ -1513,20 +1513,21 @@ describe("yeollock.me security regressions", () => {
     assert.match(agents, /Platform and category are separate discovery axes/);
     assert.match(agents, /Category chips and filters must use customer-facing Korean labels/);
     assert.match(agents, /channel-size sorting by subscribers\/followers/);
-    assert.match(marketplacePages, /const \[categoryFilter, setCategoryFilter\]/);
-    assert.match(marketplacePages, /hasCategory\(profile\.categories, categoryFilter\)/);
+    assert.match(marketplacePages, /const \[categoryFilters, setCategoryFilters\]/);
+    assert.match(marketplacePages, /hasAnyCategory\(profile\.categories, categoryFilters\)/);
     assert.match(marketplacePages, /function getCategoryFilterKey/);
     assert.match(marketplacePages, /const categoryDisplayLabels/);
-    assert.match(marketplacePages, /function CategoryFilterBar/);
-    assert.match(marketplacePages, /FilterChipGroup label="카테고리"/);
+    assert.match(marketplacePages, /function CategoryChecklist/);
+    assert.match(marketplacePages, /<CategoryChecklist/);
+    assert.match(marketplacePages, /values=\{categoryFilters\}/);
     assert.match(marketplacePages, /function InfluencerSortSelect/);
     assert.match(marketplacePages, /audience_desc/);
     assert.match(marketplacePages, /compareInfluencerProfilesBySort/);
     assert.match(marketplacePages, /구독자·팔로워 많은순/);
     assert.match(marketplaceDomain, /function getChannelAudienceSortValue/);
     assert.match(marketplaceDomain, /function compareChannelAudienceValues/);
-    assert.match(campaignPages, /function CampaignCategoryStrip/);
-    assert.match(campaignPages, /<CampaignCategoryStrip/);
+    assert.match(campaignPages, /function CategoryCheckboxList/);
+    assert.match(campaignPages, /<CategoryCheckboxList/);
     assert.match(app, /path="\/advertiser\/campaigns"/);
     assert.match(app, /<Dashboard surface="campaigns" \/>/);
     assert.match(app, /path="\/advertiser\/campaigns\/new"/);

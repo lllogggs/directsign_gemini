@@ -179,6 +179,37 @@ const smokeRoute = async (baseUrl, route, expectedStatuses) => {
   }
 };
 
+const smokeJsonRoute = async (baseUrl, route, expectedStatuses, expectedShape = {}) => {
+  try {
+    const response = await fetchWithTimeout(`${baseUrl}${route}`);
+    let data = null;
+
+    try {
+      data = await response.json();
+    } catch {
+      data = null;
+    }
+
+    const matchesShape = Object.entries(expectedShape).every(
+      ([key, value]) => data?.[key] === value,
+    );
+    const expected = expectedStatuses.includes(response.status) && matchesShape;
+    const shapeSummary =
+      Object.keys(expectedShape).length > 0
+        ? `, expected body ${JSON.stringify(expectedShape)}`
+        : "";
+    record(
+      `HTTP ${route}`,
+      expected ? "pass" : "fail",
+      `status ${response.status}, expected ${expectedStatuses.join("/")}${shapeSummary}`,
+    );
+    return expected;
+  } catch (error) {
+    record(`HTTP ${route}`, "fail", error instanceof Error ? error.message : String(error));
+    return false;
+  }
+};
+
 const smokeAppShellRoute = async (baseUrl, route) => {
   try {
     const response = await fetchWithTimeout(`${baseUrl}${route}`, {
@@ -380,7 +411,16 @@ const browserRenderRoutes = [
       "위험합니다.",
       "광고비 먹튀",
     ],
+    mobileRequiredText: [
+      "인플루언서",
+      "광고",
+      "광고비 먹튀",
+      "협찬품 미반환",
+      "콘텐츠 수정 거부",
+      "각종 분쟁",
+    ],
     minTextLength: 70,
+    mobileMinTextLength: 55,
   },
   {
     name: "intro influencer",
@@ -394,7 +434,16 @@ const browserRenderRoutes = [
       "산출물 불명확",
       "활용 권한 과다",
     ],
+    mobileRequiredText: [
+      "받은 광고",
+      "계약",
+      "금액 확인 누락",
+      "일정 착오",
+      "산출물 불명확",
+      "활용 권한 과다",
+    ],
     minTextLength: 80,
+    mobileMinTextLength: 55,
   },
   {
     name: "login",
@@ -458,6 +507,12 @@ const browserRenderViewports = [
   { name: "desktop", width: 1365, height: 900, mobile: false },
   { name: "mobile", width: 375, height: 812, mobile: true },
 ];
+
+const getRenderRequiredText = (route, viewport) =>
+  viewport.mobile ? route.mobileRequiredText ?? route.requiredText : route.requiredText;
+
+const getRenderMinTextLength = (route, viewport) =>
+  viewport.mobile ? route.mobileMinTextLength ?? route.minTextLength : route.minTextLength;
 
 const qaCredentials = {
   advertiserEmail: process.env.QA_ADVERTISER_EMAIL || "breadroom.manager@yeollock.me",
@@ -702,14 +757,16 @@ const checkRenderedRoute = async (client, baseUrl, route, viewport) => {
     const deadline = Date.now() + 10000;
     while (Date.now() < deadline) {
       lastMetrics = await evaluateRenderedPage(client, sessionId);
-      const hasRequiredText = route.requiredText.every((text) =>
+      const requiredText = getRenderRequiredText(route, viewport);
+      const minTextLength = getRenderMinTextLength(route, viewport);
+      const hasRequiredText = requiredText.every((text) =>
         lastMetrics.bodyText?.includes(text),
       );
       const hasForbiddenText = (route.forbiddenText ?? []).some((text) =>
         lastMetrics.bodyText?.includes(text),
       );
       const rendered =
-        Number(lastMetrics.bodyTextLength ?? 0) >= route.minTextLength &&
+        Number(lastMetrics.bodyTextLength ?? 0) >= minTextLength &&
         Number(lastMetrics.rootChildCount ?? 0) > 0 &&
         Number(lastMetrics.rootHeight ?? 0) >= Math.min(300, viewport.height * 0.6) &&
         !lastMetrics.hasViteError &&
@@ -792,7 +849,8 @@ const checkBrowserRenderedRoutes = async (baseUrl) => {
         checkResults.push(result.ok);
         const textLength = result.metrics.bodyTextLength ?? 0;
         const rootHeight = Math.round(result.metrics.rootHeight ?? 0);
-        const hasRequiredText = route.requiredText.every((text) =>
+        const requiredText = getRenderRequiredText(route, viewport);
+        const hasRequiredText = requiredText.every((text) =>
           result.metrics.bodyText?.includes(text),
         );
         const hasForbiddenText = (route.forbiddenText ?? []).some((text) =>
@@ -1507,7 +1565,9 @@ const main = async () => {
     requiredChecks.push(
       await smokeRoute(server.baseUrl, "/api/contracts", [401]),
       await smokeRoute(server.baseUrl, "/api/admin/metrics", [401]),
-      await smokeRoute(server.baseUrl, "/api/influencer/dashboard", [401]),
+      await smokeJsonRoute(server.baseUrl, "/api/influencer/dashboard", [200], {
+        authenticated: false,
+      }),
       await smokeRoute(server.baseUrl, "/api/marketplace/messages?role=advertiser", [401]),
       await smokeRoute(server.baseUrl, "/api/marketplace/messages?role=influencer", [401]),
       await smokeRoute(server.baseUrl, "/api/cron/sync-marketplace-followers", [401, 503]),

@@ -221,7 +221,7 @@ export const marketplaceInfluencers: MarketplaceInfluencerProfile[] = [
         label: "유튜브",
         handle: "@creator.sora",
         url: "https://youtube.com/@creator.sora",
-        followersLabel: "8.1만",
+        followersLabel: "2.4만",
         performanceLabel: "캠페인 지원 가능",
       },
     ],

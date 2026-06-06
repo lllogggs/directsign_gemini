@@ -1982,6 +1982,27 @@ function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
     const baseImageFitClass =
       "object-contain object-center";
 
+    if (slide.imageSrc === advertiserProposalAssetUrls.influencerContract) {
+      return (
+        <div
+          data-intro-visual
+          className="flex h-full min-h-0 w-full items-center justify-center self-center overflow-hidden rounded-[12px] bg-transparent sm:h-auto sm:min-h-0"
+        >
+          <div className="h-full w-full sm:hidden">
+            <InfluencerContractLinkMobilePreview />
+          </div>
+          <img
+            src={slide.imageSrc}
+            alt={slide.imageAlt ?? ""}
+            className={`hidden h-full w-full sm:block ${baseImageFitClass} ${
+              slide.imageFit === "cover" ? "sm:object-cover" : "sm:object-contain"
+            }`}
+            loading="eager"
+          />
+        </div>
+      );
+    }
+
     return (
       <div
         data-intro-visual
@@ -2039,21 +2060,112 @@ function FinalHandshakeVisual({
   );
 }
 
+function InfluencerContractLinkMobilePreview() {
+  const facts = [
+    { label: "광고주", value: "브레드룸", badge: "인증" },
+    { label: "보상", value: "1,800,000원" },
+    { label: "마감", value: "2026.05.29" },
+    { label: "플랫폼", value: "네이버 블로그", platform: "블로그" },
+    { label: "콘텐츠", value: "상세 리뷰" },
+    { label: "수량", value: "1건" },
+  ];
+
+  return (
+    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[18px] border border-neutral-200 bg-white shadow-[0_18px_44px_rgba(15,23,42,0.1)]">
+      <div className="flex h-12 shrink-0 items-center justify-between border-b border-neutral-200 px-3.5">
+        <div className="min-w-0">
+          <p className="truncate text-[11px] font-extrabold text-neutral-500">
+            데일리 루틴 블로그
+          </p>
+          <p className="truncate text-[13px] font-black text-neutral-950">
+            계약 링크 도착
+          </p>
+        </div>
+        <span className="inline-flex h-7 shrink-0 items-center rounded-full bg-neutral-950 px-3 text-[10px] font-black text-white">
+          서명 전
+        </span>
+      </div>
+
+      <div className="flex min-h-0 flex-1 flex-col bg-[#fbfcfa] p-3">
+        <div className="rounded-[14px] border border-neutral-200 bg-white px-3.5 py-3 shadow-[0_12px_26px_rgba(15,23,42,0.045)]">
+          <p className="text-[10px] font-extrabold text-blue-700">
+            핵심 조건
+          </p>
+          <h3 className="mt-1 text-[20px] font-black leading-tight text-neutral-950">
+            계약 내용 확인
+          </h3>
+        </div>
+
+        <dl className="mt-2 min-h-0 flex-1 divide-y divide-neutral-200 overflow-hidden rounded-[14px] border border-neutral-200 bg-white">
+          {facts.map((fact) => (
+            <div
+              key={fact.label}
+              className="flex min-h-0 items-center justify-between gap-3 px-3.5 py-2.5"
+            >
+              <dt className="shrink-0 text-[10px] font-extrabold text-neutral-500">
+                {fact.label}
+              </dt>
+              <dd className="min-w-0 text-right text-[13px] font-black text-neutral-950">
+                {fact.badge ? (
+                  <span className="inline-flex min-w-0 items-center gap-1.5">
+                    <span className="truncate">{fact.value}</span>
+                    <span className="rounded-full border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[9px] font-black text-blue-700">
+                      {fact.badge}
+                    </span>
+                  </span>
+                ) : fact.platform ? (
+                  <span className="inline-flex min-w-0 items-center justify-end gap-1.5">
+                    <IntroPlatformMarks platform={fact.platform} />
+                    <span className="truncate">{fact.value}</span>
+                  </span>
+                ) : (
+                  <span className="truncate">{fact.value}</span>
+                )}
+              </dd>
+            </div>
+          ))}
+        </dl>
+
+        <div className="mt-2 h-10 shrink-0 rounded-[10px] bg-blue-600 text-center text-[12px] font-black leading-10 text-white shadow-[0_14px_28px_rgba(37,99,235,0.22)]">
+          계약서 확인하기
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function AdvertiserMobileLinkPreview() {
   return (
-    <div className="relative h-full min-h-0 sm:hidden">
-      <div className="absolute left-2 top-[18%] z-[1] w-[58%] overflow-hidden rounded-[18px] border border-neutral-200 bg-white shadow-[0_18px_44px_rgba(15,23,42,0.11)]">
-        <div className="flex h-10 items-center gap-2 border-b border-neutral-200 px-3">
-          <span className="text-[12px] font-black text-neutral-950">계약 링크</span>
+    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[18px] border border-neutral-200 bg-white shadow-[0_18px_44px_rgba(15,23,42,0.1)] sm:hidden">
+      <div className="flex h-12 shrink-0 items-center justify-between border-b border-neutral-200 px-3.5">
+        <div className="min-w-0">
+          <p className="truncate text-[11px] font-extrabold text-neutral-500">
+            선크림 릴스 광고
+          </p>
+          <p className="truncate text-[13px] font-black text-neutral-950">
+            계약 링크 공유
+          </p>
         </div>
-        <div className="grid gap-2.5 p-3">
+        <span className="inline-flex h-7 shrink-0 items-center rounded-full bg-blue-600 px-3 text-[10px] font-black text-white">
+          작성 완료
+        </span>
+      </div>
+
+      <div className="flex min-h-0 flex-1 flex-col bg-[#fbfcfa] p-3">
+        <div className="rounded-[14px] border border-neutral-200 bg-white p-3 shadow-[0_12px_26px_rgba(15,23,42,0.045)]">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-[12px] font-black text-neutral-950">계약 링크</p>
+            <span className="text-[10px] font-extrabold text-neutral-500">
+              광고주 화면
+            </span>
+          </div>
           <div>
-            <p className="text-[10px] font-extrabold text-neutral-500">인플루언서</p>
+            <p className="mt-3 text-[10px] font-extrabold text-neutral-500">인플루언서</p>
             <p className="mt-0.5 truncate text-[13px] font-black text-neutral-950">
               세라 블로그
             </p>
           </div>
-          <div className="rounded-[10px] border border-neutral-200 bg-[#fbfcfa] px-2.5 py-2">
+          <div className="mt-2 rounded-[10px] border border-neutral-200 bg-[#fbfcfa] px-2.5 py-2">
             <p className="truncate text-[10px] font-bold text-neutral-500">
               yeollock.me/c/ser...
             </p>
@@ -2061,50 +2173,54 @@ function AdvertiserMobileLinkPreview() {
           <button
             type="button"
             tabIndex={-1}
-            className="h-8 rounded-[9px] bg-blue-600 text-[11px] font-black text-white shadow-[0_12px_24px_rgba(37,99,235,0.18)]"
+            className="mt-2 h-8 w-full rounded-[9px] bg-blue-600 text-[11px] font-black text-white shadow-[0_12px_24px_rgba(37,99,235,0.18)]"
           >
             링크 복사
           </button>
         </div>
-      </div>
-      <span
-        aria-hidden="true"
-        className="absolute left-[55%] top-[48%] z-[2] h-px w-[18%] rounded-full bg-gradient-to-r from-blue-600/15 to-blue-600/90 shadow-[0_12px_26px_rgba(37,99,235,0.24)] after:absolute after:right-0 after:top-1/2 after:h-3 after:w-3 after:-translate-y-1/2 after:rotate-45 after:border-r-[3px] after:border-t-[3px] after:border-blue-600"
-      />
-      <div className="absolute right-2 top-[7%] z-[3] h-[82%] w-[35%] overflow-hidden rounded-[22px] border-[5px] border-[#111411] bg-white shadow-[0_24px_54px_rgba(15,23,42,0.22)]">
-        <div className="h-full bg-[#f8faf7]">
-          <div className="border-b border-neutral-200 bg-white px-2 py-2">
-            <p className="truncate text-[8px] font-extrabold text-neutral-500">
-              데일리 루틴 블로그
-            </p>
-            <p className="mt-0.5 truncate text-[10px] font-black text-neutral-950">
-              계약 확인
-            </p>
+
+        <div className="flex h-10 shrink-0 items-center justify-center">
+          <span
+            aria-hidden="true"
+            className="flex h-7 w-7 items-center justify-center rounded-full border border-blue-200 bg-white text-blue-600 shadow-[0_12px_24px_rgba(37,99,235,0.14)]"
+          >
+            <ArrowRight className="h-3.5 w-3.5 rotate-90" strokeWidth={2.4} />
+          </span>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-hidden rounded-[14px] border border-neutral-200 bg-white shadow-[0_12px_26px_rgba(15,23,42,0.045)]">
+          <div className="flex h-10 items-center justify-between border-b border-neutral-200 px-3">
+            <div className="min-w-0">
+              <p className="truncate text-[10px] font-extrabold text-neutral-500">
+                데일리 루틴 블로그
+              </p>
+              <p className="truncate text-[12px] font-black text-neutral-950">
+                계약 확인
+              </p>
+            </div>
+            <span className="rounded-full bg-neutral-950 px-2 py-1 text-[9px] font-black text-white">
+              서명 전
+            </span>
           </div>
-          <div className="grid gap-1.5 p-2">
+          <div className="grid gap-0 divide-y divide-neutral-200 px-3 pb-2">
             {[
               ["보상", "1,800,000원"],
               ["마감", "2026.05.29"],
               ["플랫폼", "블로그"],
               ["수량", "1건"],
             ].map(([label, value]) => (
-              <div
-                key={label}
-                className="flex items-center justify-between gap-1 border-b border-neutral-200 pb-1.5 last:border-b-0"
-              >
-                <span className="text-[8px] font-bold text-neutral-500">{label}</span>
-                <strong className="truncate text-[8px] font-black text-neutral-950">
-                  {value}
+              <div key={label} className="flex min-h-[34px] items-center justify-between gap-2">
+                <span className="text-[10px] font-extrabold text-neutral-500">{label}</span>
+                <strong className="flex min-w-0 items-center justify-end gap-1.5 truncate text-[12px] font-black text-neutral-950">
+                  {label === "플랫폼" ? <IntroPlatformMarks platform={value} /> : null}
+                  <span className="truncate">{value}</span>
                 </strong>
               </div>
             ))}
           </div>
-          <div className="absolute bottom-2 left-2 right-2 h-7 rounded-[8px] bg-blue-600 text-center text-[8px] font-black leading-7 text-white">
-            계약서 확인하기
-          </div>
         </div>
       </div>
-    </div>
+    </section>
   );
 }
 
