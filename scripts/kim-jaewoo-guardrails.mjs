@@ -1389,6 +1389,7 @@ check(
     agents.includes("mobile headers must not show dashboard-like status panels") &&
     agents.includes("Marketplace and dashboard-like list headers should avoid grey helper/eyebrow copy") &&
     agents.includes("do not add a separate divider line under the title section") &&
+    agents.includes("Removing duplicate dividers must not collapse the title rhythm") &&
     indexCss.includes(".yl-mobile-inline-fact") &&
     indexCss.includes("@media (max-width: 639px)") &&
     indexCss.includes("border-radius: 0;") &&
@@ -1397,6 +1398,7 @@ check(
     (marketplacePages.match(/showMetrics=\{false\}/g)?.length ?? 0) >= 4 &&
     (marketplacePages.match(/showHeroCopy=\{false\}/g)?.length ?? 0) >= 2 &&
     marketplacePages.includes('showHeroCopy ? "border-b border-neutral-200/80" : ""') &&
+    marketplacePages.includes('showHeroCopy ? "py-3 sm:py-4" : "pb-3 pt-5 sm:py-4"') &&
     !marketplacePages.includes("제안 시작 정보") &&
     !marketplacePages.includes("brand.responseTimeLabel") &&
     !marketplacePages.includes('label="응답"') &&
@@ -1408,6 +1410,7 @@ check(
     campaignPages.includes("metrics={[]}") &&
     (campaignPages.match(/showHeroCopy=\{false\}/g)?.length ?? 0) >= 2 &&
     campaignPages.includes('showHeroCopy ? "border-b border-neutral-200/80" : ""') &&
+    campaignPages.includes('showHeroCopy ? "py-2.5 sm:py-3" : "pb-2.5 pt-4 sm:py-3"') &&
     campaignPages.includes("yl-fact-tile yl-mobile-inline-fact sm:px-3 sm:py-2") &&
     campaignPages.includes("grid gap-0 border-y border-neutral-100 py-1 sm:grid-cols-2"),
   "Mobile brand/campaign pages should avoid fake response claims, top status panels, and boxed fact tiles inside cards",

@@ -1142,7 +1142,11 @@ function MarketplaceShell({
           showHeroCopy ? "border-b border-neutral-200/80" : ""
         }`}
       >
-        <div className="mx-auto max-w-[1500px] px-3 py-3 sm:px-5 sm:py-4 lg:px-6">
+        <div
+          className={`mx-auto max-w-[1500px] px-3 sm:px-5 lg:px-6 ${
+            showHeroCopy ? "py-3 sm:py-4" : "pb-3 pt-5 sm:py-4"
+          }`}
+        >
           {showHeroCopy ? (
             <p className="text-[13px] font-extrabold text-neutral-500">{eyebrow}</p>
           ) : null}
