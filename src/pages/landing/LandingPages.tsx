@@ -2118,11 +2118,7 @@ function IntroProposalProductPreview({
   }
 
   if (kind === "advertiserContractReview") {
-    return (
-      <div className="flex h-full min-h-0 items-center">
-        <AdvertiserContractReviewProductPreview />
-      </div>
-    );
+    return <AdvertiserContractReviewProductPreview />;
   }
 
   if (kind === "advertiserApplicants") {
@@ -2239,15 +2235,13 @@ function AdvertiserBuilderProductPreview() {
 
 function AdvertiserContractReviewProductPreview() {
   const rows = [
-    { name: "유나뷰티", platform: "인스타 릴스", deliverable: "릴스 1건", state: "콘텐츠 확인", due: "D-2" },
-    { name: "소라로그", platform: "인스타 릴스", deliverable: "릴스 1건", state: "수정요청", due: "오늘" },
-    { name: "혜린픽", platform: "인스타 릴스", deliverable: "릴스 1건", state: "서명 대기", due: "D-4" },
-    { name: "민지테이블", platform: "유튜브", deliverable: "리뷰 1건", state: "검수 중", due: "D-5" },
-    { name: "지유로그", platform: "블로그", deliverable: "리뷰 1건", state: "제출 완료", due: "D-6" },
+    ["유나뷰티", "콘텐츠 확인", "D-2"],
+    ["소라로그", "수정요청", "오늘"],
+    ["혜린픽", "서명 대기", "D-4"],
   ];
 
   return (
-    <section className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-[16px] border border-neutral-200 bg-[#f4f5f2] p-2 shadow-[0_18px_48px_rgba(23,26,23,0.08)] md:h-[76%]">
+    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[16px] border border-neutral-200 bg-[#f4f5f2] p-2 shadow-[0_18px_48px_rgba(23,26,23,0.08)]">
       <div className="min-h-0 flex-1">
         <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[10px] border border-neutral-200 bg-white">
           <div className="flex h-11 shrink-0 items-center justify-between border-b border-neutral-200 px-3">
@@ -2268,27 +2262,24 @@ function AdvertiserContractReviewProductPreview() {
                 <span className="py-1">검수 2</span>
                 <span className="py-1">완료 5</span>
               </div>
-              <div className="grid min-h-0 flex-1 grid-rows-3 divide-y divide-neutral-200 md:grid-rows-5">
-                {rows.map((row, index) => (
-                  <div
-                    key={row.name}
-                    className={`${index > 2 ? "hidden md:grid" : "grid"} grid-cols-[minmax(0,1fr)_58px] items-center gap-2 px-3 py-2`}
-                  >
+              <div className="grid min-h-0 flex-1 grid-rows-3 divide-y divide-neutral-200">
+                {rows.map(([name, state, due]) => (
+                  <div key={name} className="grid grid-cols-[minmax(0,1fr)_58px] items-center gap-2 px-3 py-2">
                     <div className="min-w-0">
                       <p className="truncate text-[11px] font-black text-neutral-950">
-                        {row.name}
+                        {name}
                       </p>
                       <p
                         className="mt-0.5 flex min-w-0 items-center gap-1 truncate text-[9px] font-bold text-neutral-500"
-                        title={`${row.platform} ${row.deliverable}`}
+                        title="인스타 릴스 1건"
                       >
-                        <IntroPlatformMarks platform={row.platform} />
-                        <span className="truncate">{row.deliverable}</span>
+                        <IntroPlatformMarks platform="인스타 릴스" />
+                        <span className="truncate">릴스 1건</span>
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="truncate text-[9px] font-black text-blue-700">{row.state}</p>
-                      <p className="mt-0.5 text-[9px] font-bold text-neutral-500">{row.due}</p>
+                      <p className="truncate text-[9px] font-black text-blue-700">{state}</p>
+                      <p className="mt-0.5 text-[9px] font-bold text-neutral-500">{due}</p>
                     </div>
                   </div>
                 ))}
@@ -2299,14 +2290,6 @@ function AdvertiserContractReviewProductPreview() {
               <p className="mt-1 text-[13px] font-black leading-tight text-neutral-950">
                 수정요청을 계약별로 남깁니다
               </p>
-              <div className="mt-3 grid gap-1.5 text-[10px] font-bold text-neutral-700">
-                <div className="rounded-[8px] bg-white px-2 py-1.5">
-                  유나뷰티 · 릴스 초안
-                </div>
-                <div className="rounded-[8px] bg-white px-2 py-1.5">
-                  노출 컷 3초 유지 확인
-                </div>
-              </div>
               <div className="mt-3 rounded-[8px] bg-white p-2 text-[10px] font-bold leading-4 text-neutral-700 shadow-[0_10px_22px_rgba(37,99,235,0.08)]">
                 제품 노출 컷을 3초 이상 유지해주세요.
               </div>
@@ -2332,10 +2315,6 @@ function AdvertiserApplicantsProductPreview() {
     ["소라로그", "블로그", "3.4만"],
     ["혜린픽", "유튜브", "2.7만"],
     ["민지테이블", "틱톡", "6.2만"],
-    ["지유로그", "인스타", "5.9만"],
-    ["하루핏", "유튜브", "4.8만"],
-    ["오늘맛", "블로그", "2.1만"],
-    ["루나데이", "인스타", "7.4만"],
   ];
 
   return (
@@ -2353,17 +2332,14 @@ function AdvertiserApplicantsProductPreview() {
               팔로워순
             </span>
           </div>
-          <div className="grid min-h-0 flex-1 grid-rows-4 divide-y divide-neutral-200 md:grid-rows-8">
+          <div className="grid min-h-0 flex-1 grid-rows-4 divide-y divide-neutral-200">
             {applicants.map(([name, platform, audience], index) => (
-              <div
-                key={name}
-                className={`${index > 3 ? "hidden md:grid" : "grid"} grid-cols-[34px_minmax(0,1fr)_64px] items-center gap-2 px-3 py-2`}
-              >
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-neutral-100 text-[11px] font-black text-neutral-800 md:h-7 md:w-7 md:text-[10px]">
+              <div key={name} className="grid grid-cols-[34px_minmax(0,1fr)_64px] items-center gap-2 px-3 py-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-neutral-100 text-[11px] font-black text-neutral-800">
                   {index + 1}
                 </div>
                 <div className="min-w-0">
-                  <p className="truncate text-[12px] font-black text-neutral-950 md:text-[11px]">
+                  <p className="truncate text-[12px] font-black text-neutral-950">
                     {name}
                   </p>
                   <p className="mt-0.5 flex items-center gap-1 text-[9px] font-bold text-neutral-500">
@@ -2375,7 +2351,7 @@ function AdvertiserApplicantsProductPreview() {
                     <span>· 뷰티</span>
                   </p>
                 </div>
-                <span className="rounded-[8px] bg-blue-600 px-2 py-2 text-center text-[9px] font-black text-white md:py-1.5">
+                <span className="rounded-[8px] bg-blue-600 px-2 py-2 text-center text-[9px] font-black text-white">
                   선정
                 </span>
               </div>
