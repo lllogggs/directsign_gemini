@@ -1465,10 +1465,12 @@ describe("yeollock.me security regressions", () => {
     assert.match(landing, /aria-label=\{`이전 \$\{controlLabel\}`\}/);
     assert.match(landing, /aria-label=\{`다음 \$\{controlLabel\}`\}/);
     assert.match(landing, /yeollock-contract-builder-first-screen\.png/);
+    assert.match(landing, /yeollock-intro-contract-builder-focused\.png/);
+    assert.match(landing, /yeollock-intro-contract-share-focused\.png/);
     assert.match(landing, /yeollock-influencer-contract\.png/);
-    assert.match(landing, /yeollock-contract-content-review\.png/);
+    assert.match(landing, /yeollock-intro-content-review-focused\.png/);
     assert.match(landing, /yeollock-contract-handshake\.png/);
-    assert.match(landing, /yeollock-campaign-applicants-dashboard\.png/);
+    assert.match(landing, /yeollock-intro-campaign-applicants-focused\.png/);
     assert.match(qaStandard, /광고비 먹튀/);
     assert.match(qaStandard, /협찬품 미반환/);
     assert.doesNotMatch(

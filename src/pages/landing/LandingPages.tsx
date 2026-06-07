@@ -31,24 +31,24 @@ const advertiserProposalAssetUrls = {
     "../../../docs/sales/assets/yeollock-contract-builder-first-screen.png",
     import.meta.url,
   ).href,
+  introContractBuilder: new URL(
+    "../../../docs/sales/assets/yeollock-intro-contract-builder-focused.png",
+    import.meta.url,
+  ).href,
+  introContractShare: new URL(
+    "../../../docs/sales/assets/yeollock-intro-contract-share-focused.png",
+    import.meta.url,
+  ).href,
   influencerContract: new URL(
     "../../../docs/sales/assets/yeollock-influencer-contract.png",
     import.meta.url,
   ).href,
-  contractAdmin: new URL(
-    "../../../docs/sales/assets/yeollock-contract-admin-no-header.png",
+  introCampaignApplicants: new URL(
+    "../../../docs/sales/assets/yeollock-intro-campaign-applicants-focused.png",
     import.meta.url,
   ).href,
-  campaignApplicants: new URL(
-    "../../../docs/sales/assets/yeollock-campaign-applicants-dashboard.png",
-    import.meta.url,
-  ).href,
-  contractContentReview: new URL(
-    "../../../docs/sales/assets/yeollock-contract-content-review.png",
-    import.meta.url,
-  ).href,
-  contractContentCompleted: new URL(
-    "../../../docs/sales/assets/yeollock-contract-completed-admin.png",
+  introContentReview: new URL(
+    "../../../docs/sales/assets/yeollock-intro-content-review-focused.png",
     import.meta.url,
   ).href,
   contractHandshake: new URL(
@@ -340,25 +340,25 @@ const preloadedIntroImageSources = new Set<string>();
 function collectIntroProposalImageSources(slides: IntroProposalSlide[]) {
   const sources = new Set<string>();
 
-    slides.forEach((slide) => {
-      if (slide.imageSrc) sources.add(slide.imageSrc);
-      slide.riskItems?.forEach((item) => {
-        if (item.imageSrc) sources.add(item.imageSrc);
-      });
-      if (slide.stage === "link") {
-        sources.add(advertiserProposalAssetUrls.contractAdmin);
-        sources.add(advertiserProposalAssetUrls.influencerContract);
-      }
-      if (slide.productPreview === "advertiserBuilder") {
-        sources.add(advertiserProposalAssetUrls.contractBuilder);
-      }
-      if (slide.productPreview === "advertiserContractReview") {
-        sources.add(advertiserProposalAssetUrls.contractContentCompleted);
-      }
-      if (slide.productPreview === "advertiserApplicants") {
-        sources.add(advertiserProposalAssetUrls.campaignApplicants);
-      }
+  slides.forEach((slide) => {
+    if (slide.imageSrc) sources.add(slide.imageSrc);
+    slide.riskItems?.forEach((item) => {
+      if (item.imageSrc) sources.add(item.imageSrc);
     });
+    if (slide.stage === "link") {
+      sources.add(advertiserProposalAssetUrls.introContractShare);
+    }
+    if (slide.productPreview === "advertiserBuilder") {
+      sources.add(advertiserProposalAssetUrls.contractBuilder);
+      sources.add(advertiserProposalAssetUrls.introContractBuilder);
+    }
+    if (slide.productPreview === "advertiserContractReview") {
+      sources.add(advertiserProposalAssetUrls.introContentReview);
+    }
+    if (slide.productPreview === "advertiserApplicants") {
+      sources.add(advertiserProposalAssetUrls.introCampaignApplicants);
+    }
+  });
 
   return Array.from(sources);
 }
@@ -1881,28 +1881,14 @@ function ProposalSlideView({ slide }: { slide: IntroProposalSlide }) {
 function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
   if (slide.stage === "link") {
     return (
-      <div data-intro-visual className="relative h-full min-h-0 overflow-visible sm:h-auto sm:min-h-0 lg:h-full">
+      <div data-intro-visual className="h-full min-h-0">
         <AdvertiserMobileLinkPreview />
-        <div className="absolute left-[2%] top-[19%] z-[1] hidden h-[52%] w-[64%] overflow-hidden rounded-[14px] border border-[rgba(17,20,18,0.08)] bg-white shadow-[0_18px_44px_rgba(15,23,42,0.12)] sm:block sm:left-[7%] sm:top-[14%] sm:h-[70%] sm:w-[68%]">
-          <img
-            src={advertiserProposalAssetUrls.contractAdmin}
-            alt="광고주 계약 링크 복사 화면"
-            className="h-full w-full object-cover object-left-top"
-            loading="eager"
-          />
-        </div>
-        <span
-          aria-hidden="true"
-          className="absolute left-[60%] top-[56%] z-[2] hidden h-px w-[16%] rounded-full bg-gradient-to-r from-blue-600/15 to-blue-600/85 shadow-[0_12px_26px_rgba(37,99,235,0.24)] before:absolute before:left-1/2 before:top-1/2 before:h-9 before:w-9 before:-translate-x-1/2 before:-translate-y-1/2 before:rounded-full before:border before:border-blue-600/25 before:bg-white/90 before:shadow-[0_14px_30px_rgba(15,23,42,0.12),inset_0_0_0_5px_rgba(37,99,235,0.07)] after:absolute after:right-0 after:top-1/2 after:h-3.5 after:w-3.5 after:-translate-y-1/2 after:rotate-45 after:rounded-[1px] after:border-r-[3px] after:border-t-[3px] after:border-blue-600 sm:block"
+        <IntroDesktopServiceCapture
+          desktopOnly
+          imageAlt="실제 광고주 계약서 공유 링크 생성 화면"
+          imageSrc={advertiserProposalAssetUrls.introContractShare}
+          imageClassName="object-cover object-left-top"
         />
-        <div className="absolute right-[1%] top-[8%] z-[3] hidden h-[74%] w-[34%] overflow-hidden rounded-[18px] border-[4px] border-[#121512] bg-white shadow-[0_22px_54px_rgba(15,23,42,0.22)] sm:block sm:right-[4%] sm:top-[8%] sm:h-[84%] sm:w-[28%] sm:rounded-[22px] sm:border-[5px] sm:shadow-[0_28px_68px_rgba(15,23,42,0.24)]">
-          <img
-            src={advertiserProposalAssetUrls.influencerContract}
-            alt="인플루언서 계약 확인 및 서명 화면"
-            className="h-full w-full -translate-y-[4%] scale-[1.08] object-cover object-top"
-            loading="eager"
-          />
-        </div>
       </div>
     );
   }
@@ -2276,6 +2262,7 @@ function IntroDesktopServiceCapture({
   return (
     <section
       data-intro-real-service-capture
+      data-intro-headerless-service-capture
       className={`${desktopOnly ? "hidden sm:block" : "block"} h-full min-h-0 overflow-hidden rounded-[16px] border border-neutral-200 bg-white shadow-[0_18px_48px_rgba(23,26,23,0.08)]`}
     >
       <img
@@ -2295,7 +2282,7 @@ function AdvertiserBuilderProductPreview() {
       <IntroDesktopServiceCapture
         desktopOnly
         imageAlt="실제 광고주 전자계약서 작성 화면"
-        imageSrc={advertiserProposalAssetUrls.contractBuilder}
+        imageSrc={advertiserProposalAssetUrls.introContractBuilder}
         imageClassName="object-cover object-left-top"
       />
     </>
@@ -2321,8 +2308,8 @@ function AdvertiserContractReviewProductPreview() {
   return (
     <IntroDesktopServiceCapture
       imageAlt="실제 광고주 콘텐츠 검수 대시보드 화면"
-      imageSrc={advertiserProposalAssetUrls.contractContentCompleted}
-      imageClassName="object-contain object-center"
+      imageSrc={advertiserProposalAssetUrls.introContentReview}
+      imageClassName="object-cover object-left-top"
     />
   );
 }
@@ -2331,8 +2318,8 @@ function AdvertiserApplicantsProductPreview() {
   return (
     <IntroDesktopServiceCapture
       imageAlt="실제 광고주 캠페인 지원 인플루언서 대시보드 화면"
-      imageSrc={advertiserProposalAssetUrls.campaignApplicants}
-      imageClassName="object-contain object-center"
+      imageSrc={advertiserProposalAssetUrls.introCampaignApplicants}
+      imageClassName="object-cover object-left-top"
     />
   );
 }

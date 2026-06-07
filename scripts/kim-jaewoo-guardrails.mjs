@@ -1520,21 +1520,38 @@ check(
 check(
   "advertiser intro PC proposal previews stay dense",
   agents.includes("Advertiser intro PC proposal pages after the first slide must preserve the approved dense") &&
-    agents.includes("Use actual service capture assets for the PC writing, full content-review/contract-management, and campaign-applicant previews") &&
-    agents.includes("avoid sparse one-submission review captures") &&
+    agents.includes("Use headerless, focused actual service capture assets for the PC writing, link-share, content-review/contract-management, and campaign-applicant previews") &&
+    agents.includes('The link-share preview must show the actual "공유 링크 생성" action') &&
     landing.includes("function IntroDesktopServiceCapture") &&
     landing.includes("data-intro-real-service-capture") &&
+    landing.includes("data-intro-headerless-service-capture") &&
+    landing.includes("yeollock-intro-contract-builder-focused.png") &&
+    landing.includes("yeollock-intro-contract-share-focused.png") &&
+    landing.includes("yeollock-intro-content-review-focused.png") &&
+    landing.includes("yeollock-intro-campaign-applicants-focused.png") &&
     landing.includes("advertiserProposalAssetUrls.contractBuilder") &&
-    landing.includes("advertiserProposalAssetUrls.contractContentCompleted") &&
-    landing.includes("imageSrc={advertiserProposalAssetUrls.contractContentCompleted}") &&
-    landing.includes("advertiserProposalAssetUrls.campaignApplicants") &&
-    landing.includes("sources.add(advertiserProposalAssetUrls.contractAdmin)") &&
-    landing.includes("sources.add(advertiserProposalAssetUrls.contractContentCompleted)") &&
-    landing.includes("sources.add(advertiserProposalAssetUrls.campaignApplicants)") &&
+    landing.includes("imageSrc={advertiserProposalAssetUrls.introContractBuilder}") &&
+    landing.includes("imageSrc={advertiserProposalAssetUrls.introContractShare}") &&
+    landing.includes("imageSrc={advertiserProposalAssetUrls.introContentReview}") &&
+    landing.includes("imageSrc={advertiserProposalAssetUrls.introCampaignApplicants}") &&
+    landing.includes("sources.add(advertiserProposalAssetUrls.introContractShare)") &&
+    landing.includes("sources.add(advertiserProposalAssetUrls.introContentReview)") &&
+    landing.includes("sources.add(advertiserProposalAssetUrls.introCampaignApplicants)") &&
+    !landing.includes("advertiserProposalAssetUrls.contractAdmin") &&
+    !landing.includes("advertiserProposalAssetUrls.contractContentCompleted") &&
+    !landing.includes("advertiserProposalAssetUrls.campaignApplicants") &&
+    !landing.includes("left-[60%] top-[56%]") &&
     !landing.includes("const advertiserIntroApplicantRows") &&
     !landing.includes("data-intro-applicant-card") &&
     landing.includes("sm:text-left sm:text-[clamp(16px,1.45vw,18px)]"),
-  "Advertiser intro PC pages 2-5 must use actual full service capture assets, left-aligned support copy, and the real 12-applicant campaign capture instead of sparse or hand-built mock dashboards",
+  "Advertiser intro PC pages 2-5 must use headerless focused actual captures, left-aligned support copy, and the real 12-applicant campaign capture instead of sparse, montage, or hand-built mock dashboards",
+);
+
+check(
+  "shutdown requests stay one-time operations",
+  agents.includes("A one-time shutdown request must not become a standing completion routine") &&
+    agents.includes("Only schedule computer shutdown when the Product Owner explicitly asks for shutdown in that current work moment"),
+  "Computer shutdown should not become a standing after-completion operation",
 );
 
 check(
@@ -1672,10 +1689,11 @@ check(
     landing.includes("const influencerProposalSlides") &&
     landing.includes("const advertiserProposalAssetUrls") &&
     landing.includes("yeollock-contract-builder-first-screen.png") &&
+    landing.includes("yeollock-intro-contract-builder-focused.png") &&
+    landing.includes("yeollock-intro-contract-share-focused.png") &&
     landing.includes("yeollock-influencer-contract.png") &&
-    landing.includes("yeollock-contract-admin-no-header.png") &&
-    landing.includes("yeollock-campaign-applicants-dashboard.png") &&
-    landing.includes("yeollock-contract-content-review.png") &&
+    landing.includes("yeollock-intro-campaign-applicants-focused.png") &&
+    landing.includes("yeollock-intro-content-review-focused.png") &&
     landing.includes("yeollock-contract-handshake.png") &&
     landing.includes("risk-generated-missed-contact.png") &&
     landing.includes("광고주 PDF 제안서형 인트로 슬라이드") &&
