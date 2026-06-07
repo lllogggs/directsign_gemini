@@ -486,7 +486,7 @@ export function AdvertiserInfluencerDiscoveryPage() {
           value={query}
           onChange={setQuery}
           label="인플루언서 검색"
-          placeholder="이름, 핸들, 카테고리, 브랜드 적합도 검색"
+          placeholder="이름, 핸들, 카테고리 검색"
         />
         <div className="grid min-w-0 gap-3 lg:min-w-[600px] lg:grid-cols-[minmax(210px,0.42fr)_minmax(280px,0.58fr)]">
           <FilterChipGroup label="플랫폼">
@@ -508,7 +508,7 @@ export function AdvertiserInfluencerDiscoveryPage() {
           body="검색어나 조건을 줄여보세요."
         />
       ) : (
-        <section className="grid min-h-0 flex-1 gap-3 overflow-y-auto p-3 lg:grid-cols-3 lg:p-4">
+        <section className="grid min-h-0 flex-1 items-start gap-3 overflow-y-auto p-3 lg:grid-cols-3 lg:p-4">
           {filteredProfiles.map((profile) => (
             <InfluencerDiscoveryCard
               key={profile.id}
@@ -634,7 +634,7 @@ export function InfluencerBrandDiscoveryPage() {
           value={query}
           onChange={setQuery}
           label="브랜드 검색"
-          placeholder="브랜드, 카테고리, 캠페인, 타깃 검색"
+          placeholder="브랜드, 카테고리 검색"
         />
         <PlatformFilterBar value={platformFilter} onChange={setPlatformFilter} />
       </DiscoveryControls>
@@ -647,7 +647,7 @@ export function InfluencerBrandDiscoveryPage() {
           body="검색어나 조건을 줄여보세요."
         />
       ) : (
-        <section className="grid min-h-0 flex-1 gap-3 overflow-y-auto p-3 lg:grid-cols-3 lg:p-4">
+        <section className="grid min-h-0 flex-1 items-start gap-3 overflow-y-auto p-3 lg:grid-cols-3 lg:p-4">
           {filteredBrands.map((brand) => (
             <BrandDiscoveryCard
               key={brand.id}
