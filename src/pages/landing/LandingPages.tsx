@@ -340,16 +340,25 @@ const preloadedIntroImageSources = new Set<string>();
 function collectIntroProposalImageSources(slides: IntroProposalSlide[]) {
   const sources = new Set<string>();
 
-  slides.forEach((slide) => {
-    if (slide.imageSrc) sources.add(slide.imageSrc);
-    slide.riskItems?.forEach((item) => {
-      if (item.imageSrc) sources.add(item.imageSrc);
+    slides.forEach((slide) => {
+      if (slide.imageSrc) sources.add(slide.imageSrc);
+      slide.riskItems?.forEach((item) => {
+        if (item.imageSrc) sources.add(item.imageSrc);
+      });
+      if (slide.stage === "link") {
+        sources.add(advertiserProposalAssetUrls.contractAdmin);
+        sources.add(advertiserProposalAssetUrls.influencerContract);
+      }
+      if (slide.productPreview === "advertiserBuilder") {
+        sources.add(advertiserProposalAssetUrls.contractBuilder);
+      }
+      if (slide.productPreview === "advertiserContractReview") {
+        sources.add(advertiserProposalAssetUrls.contractContentCompleted);
+      }
+      if (slide.productPreview === "advertiserApplicants") {
+        sources.add(advertiserProposalAssetUrls.campaignApplicants);
+      }
     });
-    if (slide.stage === "link") {
-      sources.add(advertiserProposalAssetUrls.contractBuilder);
-      sources.add(advertiserProposalAssetUrls.influencerContract);
-    }
-  });
 
   return Array.from(sources);
 }

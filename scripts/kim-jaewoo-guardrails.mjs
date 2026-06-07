@@ -1528,6 +1528,9 @@ check(
     landing.includes("advertiserProposalAssetUrls.contractContentCompleted") &&
     landing.includes("imageSrc={advertiserProposalAssetUrls.contractContentCompleted}") &&
     landing.includes("advertiserProposalAssetUrls.campaignApplicants") &&
+    landing.includes("sources.add(advertiserProposalAssetUrls.contractAdmin)") &&
+    landing.includes("sources.add(advertiserProposalAssetUrls.contractContentCompleted)") &&
+    landing.includes("sources.add(advertiserProposalAssetUrls.campaignApplicants)") &&
     !landing.includes("const advertiserIntroApplicantRows") &&
     !landing.includes("data-intro-applicant-card") &&
     landing.includes("sm:text-left sm:text-[clamp(16px,1.45vw,18px)]"),
