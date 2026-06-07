@@ -1533,8 +1533,13 @@ check(
     landing.includes("advertiserProposalAssetUrls.contractBuilder") &&
     landing.includes("imageSrc={advertiserProposalAssetUrls.introContractBuilder}") &&
     landing.includes("imageSrc={advertiserProposalAssetUrls.introContractShare}") &&
+    landing.includes('imageClassName="object-contain object-center"') &&
     landing.includes("imageSrc={advertiserProposalAssetUrls.introContentReview}") &&
     landing.includes("imageSrc={advertiserProposalAssetUrls.introCampaignApplicants}") &&
+    !landing.includes('imageSrc={advertiserProposalAssetUrls.introContractBuilder}\n        imageClassName="object-cover') &&
+    !landing.includes('imageSrc={advertiserProposalAssetUrls.introContractShare}\n          imageClassName="object-cover') &&
+    !landing.includes('imageSrc={advertiserProposalAssetUrls.introContentReview}\n      imageClassName="object-cover') &&
+    !landing.includes('imageSrc={advertiserProposalAssetUrls.introCampaignApplicants}\n      imageClassName="object-cover') &&
     landing.includes("sources.add(advertiserProposalAssetUrls.introContractShare)") &&
     landing.includes("sources.add(advertiserProposalAssetUrls.introContentReview)") &&
     landing.includes("sources.add(advertiserProposalAssetUrls.introCampaignApplicants)") &&

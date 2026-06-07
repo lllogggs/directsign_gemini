@@ -1887,7 +1887,7 @@ function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
           desktopOnly
           imageAlt="실제 광고주 계약서 공유 링크 생성 화면"
           imageSrc={advertiserProposalAssetUrls.introContractShare}
-          imageClassName="object-cover object-left-top"
+          imageClassName="object-contain object-center"
         />
       </div>
     );
@@ -2283,7 +2283,7 @@ function AdvertiserBuilderProductPreview() {
         desktopOnly
         imageAlt="실제 광고주 전자계약서 작성 화면"
         imageSrc={advertiserProposalAssetUrls.introContractBuilder}
-        imageClassName="object-cover object-left-top"
+        imageClassName="object-contain object-center"
       />
     </>
   );
@@ -2309,7 +2309,7 @@ function AdvertiserContractReviewProductPreview() {
     <IntroDesktopServiceCapture
       imageAlt="실제 광고주 콘텐츠 검수 대시보드 화면"
       imageSrc={advertiserProposalAssetUrls.introContentReview}
-      imageClassName="object-cover object-left-top"
+      imageClassName="object-contain object-center"
     />
   );
 }
@@ -2319,7 +2319,7 @@ function AdvertiserApplicantsProductPreview() {
     <IntroDesktopServiceCapture
       imageAlt="실제 광고주 캠페인 지원 인플루언서 대시보드 화면"
       imageSrc={advertiserProposalAssetUrls.introCampaignApplicants}
-      imageClassName="object-cover object-left-top"
+      imageClassName="object-contain object-center"
     />
   );
 }
