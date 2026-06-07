@@ -5,8 +5,10 @@ import {
   ArrowLeft,
   Building2,
   CheckCircle2,
+  FileText,
   FileUp,
   LogOut,
+  Megaphone,
   Settings,
   ShieldCheck,
 } from "lucide-react";
@@ -145,6 +147,8 @@ export function AdvertiserVerification() {
   const visibleForm =
     hasEditedForm || submitted ? form : withVerificationDefaults(form, latest, account);
   const showVerificationForm = !approved || showUpdateForm;
+  const showApprovedOverview =
+    approved && !showVerificationForm && !rejectionGuidance;
 
   const handleLogout = async () => {
     await apiFetch("/api/advertiser/logout", {
@@ -270,11 +274,17 @@ export function AdvertiserVerification() {
         </div>
       </header>
 
-      <main className="mx-auto grid h-[calc(100vh-56px)] max-w-5xl gap-3 overflow-hidden px-5 py-4 sm:px-8 lg:grid-cols-[minmax(0,1fr)_260px]">
+      <main
+        className={`mx-auto grid h-[calc(100vh-56px)] gap-3 overflow-hidden px-5 py-4 sm:px-8 ${
+          showApprovedOverview
+            ? "max-w-4xl lg:grid-cols-1"
+            : "max-w-5xl lg:grid-cols-[minmax(0,1fr)_260px]"
+        }`}
+      >
         <section
           className={`overflow-y-auto rounded-lg border border-neutral-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)] sm:p-5 ${
-            approved && !showVerificationForm && !rejectionGuidance
-              ? "self-start"
+            showApprovedOverview
+              ? "min-h-[420px]"
               : "min-h-0"
           }`}
         >
@@ -301,6 +311,36 @@ export function AdvertiserVerification() {
                   >
                     인증 정보 갱신 요청
                   </button>
+              </div>
+              <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                <InfoRow label="회사" value={displayCompany} compact />
+                <InfoRow label="담당" value={displayManager} compact />
+                <InfoRow label="이메일" value={displayEmail} compact />
+                <InfoRow label="사업자" value={displayBusinessNumber} compact />
+              </div>
+              {latest ? (
+                <div className="mt-3 rounded-md border border-emerald-200 bg-white px-3 py-2 text-xs font-semibold leading-5 text-emerald-900">
+                  제출일 {new Intl.DateTimeFormat("ko-KR").format(new Date(latest.created_at))}
+                  {latest.reviewer_note ? ` · 검토 메모 ${latest.reviewer_note}` : ""}
+                </div>
+              ) : null}
+              <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => navigate("/advertiser/builder")}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-neutral-950 px-4 text-sm font-semibold text-white transition hover:bg-neutral-800"
+                >
+                  <FileText className="h-4 w-4" />
+                  새 계약 작성
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate("/advertiser/campaigns/new")}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-white px-4 text-sm font-semibold text-emerald-900 transition hover:border-emerald-300 hover:bg-emerald-50"
+                >
+                  <Megaphone className="h-4 w-4" />
+                  캠페인 작성
+                </button>
               </div>
             </div>
           )}
@@ -542,6 +582,7 @@ export function AdvertiserVerification() {
           )}
         </section>
 
+        {!showApprovedOverview ? (
         <aside className="min-h-0 space-y-3 overflow-y-auto">
           <section className="rounded-lg border border-neutral-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_14px_34px_rgba(15,23,42,0.05)]">
             <div className="flex items-center justify-between gap-3">
@@ -603,6 +644,7 @@ export function AdvertiserVerification() {
             )}
           </section>
         </aside>
+        ) : null}
       </main>
     </div>
   );

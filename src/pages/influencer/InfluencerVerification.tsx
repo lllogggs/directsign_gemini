@@ -259,9 +259,7 @@ export function InfluencerVerification() {
   const latest = verification?.latest_request;
   const approved = verificationStatus === "approved";
   const approvedPlatforms = verification?.approved_platforms ?? [];
-  const approvedPlatformChips = approvedPlatforms.filter((item, index, items) => {
-    return items.findIndex((candidate) => candidate.platform === item.platform) === index;
-  });
+  const approvedPlatformChips = approvedPlatforms;
   const visibleApprovedPlatformChips = approvedPlatformChips.slice(0, 4);
   const hiddenApprovedPlatformChipCount =
     approvedPlatformChips.length - visibleApprovedPlatformChips.length;
@@ -281,6 +279,8 @@ export function InfluencerVerification() {
     verificationStatus === "rejected"
       ? getVerificationRejectionGuidance(latest, "influencer_account")
       : undefined;
+  const showApprovedOverview =
+    approved && !showRequestForm && !rejectionGuidance;
   const selectedApprovedPlatform = approvedPlatforms.find(
     (item) => item.platform === platform,
   );
@@ -524,11 +524,17 @@ export function InfluencerVerification() {
         </div>
       </header>
 
-      <main className="mx-auto grid h-[calc(100vh-56px)] max-w-5xl gap-3 overflow-hidden px-5 py-4 sm:px-8 lg:grid-cols-[minmax(0,1fr)_260px]">
+      <main
+        className={`mx-auto grid h-[calc(100vh-56px)] gap-3 overflow-hidden px-5 py-4 sm:px-8 ${
+          showApprovedOverview
+            ? "max-w-4xl lg:grid-cols-1"
+            : "max-w-5xl lg:grid-cols-[minmax(0,1fr)_260px]"
+        }`}
+      >
         <section
           className={`overflow-y-auto rounded-lg border border-neutral-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)] sm:p-5 ${
-            approved && !showRequestForm && !rejectionGuidance
-              ? "self-start"
+            showApprovedOverview
+              ? "min-h-[420px]"
               : "min-h-0"
           }`}
         >
@@ -616,28 +622,37 @@ export function InfluencerVerification() {
                   <p className="mt-2 max-w-2xl break-keep text-sm leading-6 text-emerald-800/80">
                     승인된 플랫폼으로 계약 검토와 전자서명을 진행할 수 있습니다.
                   </p>
-                  <div className="mt-3 flex flex-wrap gap-2">
+                  <div className="mt-4 grid gap-2 sm:grid-cols-2">
                     {visibleApprovedPlatformChips.length > 0 ? (
                       visibleApprovedPlatformChips.map((item) => (
-                        <span
+                        <div
                           key={`${item.platform}-${item.handle ?? item.url ?? "approved"}`}
-                          className="inline-flex h-8 max-w-full items-center truncate rounded-full border border-emerald-200 bg-white px-3 text-xs font-semibold text-emerald-800"
+                          className="min-w-0 rounded-lg border border-emerald-200 bg-white px-3 py-2.5"
                         >
-                          {PLATFORM_META[item.platform]?.label ?? item.platform}
-                          {item.handle
-                            ? ` · ${formatPublicHandleValue(item.handle, "인증된 계정")}`
-                            : ""}
-                        </span>
+                          <p className="text-[11px] font-semibold text-emerald-700">
+                            {PLATFORM_META[item.platform]?.label ?? item.platform}
+                          </p>
+                          <p className="mt-1 truncate text-sm font-semibold text-neutral-950">
+                            {item.handle
+                              ? formatPublicHandleValue(item.handle, "인증된 계정")
+                              : item.url ?? "인증된 계정"}
+                          </p>
+                        </div>
                       ))
                     ) : (
-                      <span className="inline-flex h-8 items-center rounded-full border border-emerald-200 bg-white px-3 text-xs font-semibold text-emerald-800">
-                        {displayVerifiedHandle}
-                      </span>
+                      <div className="rounded-lg border border-emerald-200 bg-white px-3 py-2.5">
+                        <p className="text-[11px] font-semibold text-emerald-700">
+                          대표 계정
+                        </p>
+                        <p className="mt-1 truncate text-sm font-semibold text-neutral-950">
+                          {displayVerifiedHandle}
+                        </p>
+                      </div>
                     )}
                     {hiddenApprovedPlatformChipCount > 0 ? (
-                      <span className="inline-flex h-8 items-center rounded-full border border-emerald-200 bg-white px-3 text-xs font-semibold text-emerald-800">
+                      <div className="rounded-lg border border-emerald-200 bg-white px-3 py-2.5 text-sm font-semibold text-emerald-800">
                         외 {hiddenApprovedPlatformChipCount}개
-                      </span>
+                      </div>
                     ) : null}
                   </div>
                 </div>
@@ -647,6 +662,24 @@ export function InfluencerVerification() {
                   className="inline-flex h-10 shrink-0 items-center justify-center rounded-lg bg-neutral-950 px-4 text-sm font-semibold text-white transition hover:bg-neutral-800"
                 >
                   다른 플랫폼 인증 추가
+                </button>
+              </div>
+              <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => navigate("/influencer/dashboard")}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-neutral-950 px-4 text-sm font-semibold text-white transition hover:bg-neutral-800"
+                >
+                  <BookOpen className="h-4 w-4" />
+                  받은 계약 보기
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate("/influencer/brands")}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-white px-4 text-sm font-semibold text-emerald-900 transition hover:border-emerald-300 hover:bg-emerald-50"
+                >
+                  <Globe2 className="h-4 w-4" />
+                  브랜드 찾기
                 </button>
               </div>
             </section>
@@ -902,6 +935,7 @@ export function InfluencerVerification() {
           ) : null}
         </section>
 
+        {!showApprovedOverview ? (
         <aside className="min-h-0 space-y-3 overflow-y-auto">
           <section className="rounded-lg border border-neutral-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_14px_34px_rgba(15,23,42,0.05)]">
             <div className="mb-4 flex items-center gap-3">
@@ -976,6 +1010,7 @@ export function InfluencerVerification() {
             </>
           )}
         </aside>
+        ) : null}
       </main>
     </div>
   );

@@ -1381,7 +1381,7 @@ export function ContractViewer() {
       ? "w-full"
     : "space-y-3 sm:space-y-4";
   const summaryCardClassName = shouldShowContractReviewCta
-    ? "grid h-full min-h-0 w-full grid-rows-[auto_minmax(0,1fr)] gap-5 rounded-xl border border-neutral-200/80 bg-white px-5 py-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_24px_70px_rgba(15,23,42,0.08)] sm:grid-cols-[minmax(0,0.8fr)_minmax(340px,1fr)] sm:grid-rows-none sm:items-center sm:gap-8 sm:px-8 sm:py-7 lg:px-10 lg:py-8"
+    ? "grid h-full min-h-0 w-full grid-rows-[auto_minmax(0,1fr)] gap-5 rounded-xl border border-neutral-200/80 bg-white px-5 py-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_24px_70px_rgba(15,23,42,0.08)] sm:grid-cols-[minmax(0,0.88fr)_minmax(340px,1fr)] sm:grid-rows-none sm:items-stretch sm:gap-8 sm:px-8 sm:py-7 lg:px-10 lg:py-8"
     : "rounded-lg border border-neutral-200/80 bg-white px-4 py-4 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_42px_rgba(15,23,42,0.055)] sm:px-6 sm:py-5";
   const summaryTitleClassName = shouldShowContractReviewCta
     ? "mt-4 break-keep text-[28px] font-semibold leading-tight text-neutral-950 sm:text-[38px]"
@@ -1738,7 +1738,13 @@ export function ContractViewer() {
         <section className={contentSectionClassName}>
           {!shouldShowPdfReview && (
             <div className={summaryCardClassName}>
-            <div>
+            <div
+              className={
+                shouldShowContractReviewCta
+                  ? "flex min-h-0 flex-col justify-center gap-5"
+                  : undefined
+              }
+            >
               <div className="flex items-center justify-between gap-3">
                 <span className="inline-flex min-w-0 items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-neutral-600 shadow-[0_1px_0_rgba(15,23,42,0.03)]">
                   <FileText className="h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
@@ -1754,6 +1760,23 @@ export function ContractViewer() {
               <p className="mt-2 max-w-xl break-keep text-[14px] leading-6 text-neutral-600">
                 {heroDescription}
               </p>
+              {shouldShowContractReviewCta ? (
+                <dl className="grid gap-2 rounded-xl bg-[#f7f8fa] p-3">
+                  {contractDetailRows.slice(0, 3).map((row) => (
+                    <div
+                      key={row.label}
+                      className="grid grid-cols-[76px_minmax(0,1fr)] items-center gap-3"
+                    >
+                      <dt className="text-[12px] font-semibold text-neutral-500">
+                        {row.label}
+                      </dt>
+                      <dd className="min-w-0 truncate text-right text-[14px] font-semibold text-neutral-900">
+                        {row.value}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : null}
             </div>
 
             <dl className={summaryListClassName}>

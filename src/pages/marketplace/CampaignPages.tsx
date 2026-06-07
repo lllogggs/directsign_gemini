@@ -507,6 +507,20 @@ export function AdvertiserCampaignRecruitmentPage() {
 
   const campaigns = state.status === "ready" ? state.campaigns : [];
   const brand = state.status === "ready" ? state.brand : null;
+  const draftSummaryRows = [
+    { label: "제목", value: form.title.trim() || "미입력" },
+    {
+      label: "플랫폼",
+      value:
+        form.platforms
+          .map((platform) => platformLabels[platform] ?? platform)
+          .join(", ") || "미입력",
+    },
+    { label: "모집", value: form.applicantLimit.trim() || "미입력" },
+    { label: "지급", value: form.budget.trim() || "미입력" },
+    { label: "산출물", value: form.deliverables.trim() || "미입력" },
+    { label: "마감", value: form.deadline.trim() || "미입력" },
+  ];
   const campaignApplications = useMemo(
     () =>
       applicationsState.status === "ready" ? applicationsState.applications : [],
@@ -895,7 +909,7 @@ export function AdvertiserCampaignRecruitmentPage() {
                 {brand?.displayName ?? "브랜드 프로필 준비 중"}
               </h2>
               <p className="mt-1 text-[13px] font-bold text-neutral-500">
-                지원자 정보를 확인하고 선정합니다.
+                작성한 조건과 공개 캠페인을 확인합니다.
               </p>
             </div>
             <button
@@ -928,11 +942,45 @@ export function AdvertiserCampaignRecruitmentPage() {
                 title={applicationsState.message}
               />
             ) : campaignApplications.length === 0 ? (
-              <PanelState
-                icon={<Megaphone className="h-5 w-5" />}
-                title="아직 지원자가 없습니다"
-                body="지원이 들어오면 캠페인별로 바로 확인할 수 있습니다."
-              />
+              <section className="mt-4 rounded-[16px] border border-neutral-200 bg-[#fbfbfc] p-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-[12px] bg-white text-neutral-700 ring-1 ring-neutral-200">
+                    <FileText className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[12px] font-extrabold text-neutral-400">
+                      저장 전
+                    </p>
+                    <h3 className="truncate text-[16px] font-extrabold text-neutral-950">
+                      작성 중인 캠페인 조건
+                    </h3>
+                  </div>
+                </div>
+                <dl className="mt-4 grid gap-2">
+                  {draftSummaryRows.map((row) => (
+                    <div
+                      key={row.label}
+                      className="grid grid-cols-[58px_minmax(0,1fr)] items-center gap-3 rounded-[10px] bg-white px-3 py-2"
+                    >
+                      <dt className="text-[11px] font-extrabold text-neutral-400">
+                        {row.label}
+                      </dt>
+                      <dd className="truncate text-right text-[13px] font-extrabold text-neutral-900">
+                        {row.value}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+                <p
+                  className={`mt-3 rounded-[10px] px-3 py-2 text-[12px] font-extrabold leading-5 ${
+                    canSubmit
+                      ? "bg-emerald-50 text-emerald-700"
+                      : "bg-white text-neutral-500"
+                  }`}
+                >
+                  {submitHelperText}
+                </p>
+              </section>
             ) : (
               <>
                 <AdvertiserCampaignApplicantControls

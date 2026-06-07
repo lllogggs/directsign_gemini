@@ -670,9 +670,11 @@ export function InfluencerBrandDiscoveryPage() {
 }
 
 export function PublicInfluencerProfilePage() {
+  const navigate = useNavigate();
   const { profileHandle } = useParams<{ profileHandle: string }>();
   const [showContact, setShowContact] = useState(false);
   const { profile, isLoading } = useMarketplaceInfluencerProfile(profileHandle);
+  const currentProfilePath = useInfluencerPublicProfilePath();
 
   if (isLoading) {
     return (
@@ -744,6 +746,26 @@ export function PublicInfluencerProfilePage() {
       ? "lg:mt-4 lg:text-center lg:text-[48px]"
       : "lg:mt-3 lg:text-left lg:text-[36px]",
   ].join(" ");
+  const isOwnPublishedProfile = Boolean(
+    currentProfilePath &&
+      normalizePublicProfileHandle(currentProfilePath) ===
+        normalizePublicProfileHandle(profile.handle),
+  );
+  const primaryProfileActionLabel = isOwnPublishedProfile
+    ? "프로필 관리"
+    : "제안하기";
+  const primaryProfileActionIcon = isOwnPublishedProfile ? (
+    <Settings className="h-4 w-4" />
+  ) : (
+    <Handshake className="h-4 w-4" />
+  );
+  const handlePrimaryProfileAction = () => {
+    if (isOwnPublishedProfile) {
+      navigate("/influencer/dashboard");
+      return;
+    }
+    setShowContact(true);
+  };
 
   return (
     <main className="min-h-svh bg-[#f4f7fb] font-sans text-neutral-950">
@@ -806,11 +828,11 @@ export function PublicInfluencerProfilePage() {
 
                 <button
                   type="button"
-                  onClick={() => setShowContact(true)}
+                  onClick={handlePrimaryProfileAction}
                   className="hidden h-12 w-[156px] items-center justify-center gap-2 rounded-[12px] bg-blue-600 px-4 text-[14px] font-extrabold text-white shadow-[0_14px_34px_rgba(37,99,235,0.24)] transition hover:bg-blue-700 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700 lg:inline-flex"
                 >
-                  <Handshake className="h-4 w-4" />
-                  제안하기
+                  {primaryProfileActionIcon}
+                  {primaryProfileActionLabel}
                 </button>
               </div>
 
@@ -855,11 +877,11 @@ export function PublicInfluencerProfilePage() {
                     <aside className="flex min-h-[52px] min-w-0 items-center justify-center lg:hidden">
                       <button
                         type="button"
-                        onClick={() => setShowContact(true)}
+                        onClick={handlePrimaryProfileAction}
                         className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-[12px] bg-blue-600 px-4 text-[14px] font-extrabold text-white shadow-[0_14px_34px_rgba(37,99,235,0.24)] transition hover:bg-blue-700 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700"
                       >
-                        <Handshake className="h-4 w-4" />
-                        제안하기
+                        {primaryProfileActionIcon}
+                        {primaryProfileActionLabel}
                       </button>
                     </aside>
                   </div>
@@ -871,7 +893,7 @@ export function PublicInfluencerProfilePage() {
         </article>
       </section>
 
-      {showContact ? (
+      {showContact && !isOwnPublishedProfile ? (
         <InfluencerContactDialog
           key={profile.id}
           profile={profile}
@@ -1179,7 +1201,7 @@ function InfluencerDiscoveryCard({
   onContact: () => void;
 }) {
   return (
-    <article className="yl-card flex min-h-[236px] w-full min-w-0 flex-col border p-4">
+    <article className="yl-card flex min-h-[204px] w-full min-w-0 flex-col border p-3.5">
       <div className="flex items-start gap-3">
         <Link
           to={getInfluencerProfilePath(profile)}
@@ -1215,7 +1237,7 @@ function InfluencerDiscoveryCard({
         {getCategoryLabels(profile.categories, 3).join(" · ")}
       </p>
 
-      <div className="mt-3 flex flex-wrap gap-1.5">
+      <div className="mt-2.5 flex flex-wrap gap-1.5">
         {profile.platforms.slice(0, 3).map((platform) => (
           <PlatformPill
             key={`${profile.id}-${platform.platform}`}
@@ -1226,7 +1248,7 @@ function InfluencerDiscoveryCard({
         ))}
       </div>
 
-      <div className="mt-auto grid grid-cols-2 gap-2 pt-4">
+      <div className="mt-auto grid grid-cols-2 gap-2 pt-3">
         <button
           type="button"
           onClick={onContact}
@@ -1255,7 +1277,7 @@ function BrandDiscoveryCard({
   onContact: () => void;
 }) {
   return (
-    <article className="yl-card flex min-h-[258px] w-full min-w-0 flex-col border p-3.5">
+    <article className="yl-card flex min-h-[166px] w-full min-w-0 flex-col border p-3">
       <div className="flex items-start gap-3">
         <AvatarBlock
           label={brand.logoLabel}
@@ -1275,11 +1297,11 @@ function BrandDiscoveryCard({
         </div>
       </div>
 
-      <p className="mt-3 line-clamp-1 text-[13px] font-semibold leading-5 text-neutral-800">
+      <p className="mt-2.5 line-clamp-1 text-[13px] font-semibold leading-5 text-neutral-800">
         {formatBrandMarketplaceHeadline(brand)}
       </p>
 
-      <div className="mt-3 flex flex-wrap gap-1.5">
+      <div className="mt-2 flex flex-wrap gap-1.5">
         {brand.preferredPlatforms.map((platform) => (
           <PlatformPill
             key={`${brand.id}-${platform}`}
@@ -1289,7 +1311,7 @@ function BrandDiscoveryCard({
         ))}
       </div>
 
-      <div className="mt-auto grid grid-cols-2 gap-2 pt-3">
+      <div className="mt-2.5 grid grid-cols-2 gap-2">
         <button
           type="button"
           onClick={onContact}
@@ -1301,8 +1323,10 @@ function BrandDiscoveryCard({
         <Link
           to={getBrandProfilePath(brand)}
           className="yl-secondary-action inline-flex h-10 w-full items-center justify-center gap-2 rounded-[8px] border text-[13px] font-extrabold transition"
+          aria-label={`${brand.displayName} 브랜드 정보 보기`}
+          title={`${brand.displayName} 브랜드 정보 보기`}
         >
-          브랜드
+          정보
         </Link>
       </div>
     </article>
