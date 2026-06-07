@@ -1517,6 +1517,34 @@ check(
   "Intro mobile slides should use real product/dashboard previews, avoid duplicate inner headers, and keep final imagery contained in the shared visual frame",
 );
 
+const advertiserIntroApplicantRowsStart = landing.indexOf(
+  "const advertiserIntroApplicantRows",
+);
+const advertiserIntroApplicantRowsEnd = landing.indexOf(
+  "function AdvertiserApplicantsProductPreview",
+  advertiserIntroApplicantRowsStart,
+);
+const advertiserIntroApplicantRowsSource =
+  advertiserIntroApplicantRowsStart >= 0 && advertiserIntroApplicantRowsEnd >= 0
+    ? landing.slice(advertiserIntroApplicantRowsStart, advertiserIntroApplicantRowsEnd)
+    : "";
+const advertiserIntroApplicantCount =
+  advertiserIntroApplicantRowsSource.match(/name: "/g)?.length ?? 0;
+
+check(
+  "advertiser intro PC proposal previews stay dense",
+  agents.includes("Advertiser intro PC proposal pages after the first slide must preserve the approved dense") &&
+    advertiserIntroApplicantCount === 12 &&
+    landing.includes("advertiserIntroApplicantRows.slice(0, 4)") &&
+    landing.includes("grid-rows-[26px_repeat(12,minmax(0,1fr))]") &&
+    landing.includes("data-intro-applicant-card") &&
+    landing.includes("documentRows: Array<[string, string]>") &&
+    landing.includes("const clauses = [") &&
+    landing.includes("sm:grid-rows-8") &&
+    landing.includes("sm:text-left sm:text-[clamp(16px,1.45vw,18px)]"),
+  "Advertiser intro PC pages 2-5 must keep dense real-service previews, left-aligned support copy, and a 12-applicant PC board",
+);
+
 check(
   "dashboard and campaign platform marks stay logo-only",
   agents.includes("Dashboard and campaign card platform indicators should use official platform logo marks") &&

@@ -1823,7 +1823,7 @@ function ProposalSlideView({ slide }: { slide: IntroProposalSlide }) {
           className={`mx-auto grid h-full min-h-0 w-full max-w-[330px] place-items-center gap-2 px-2 sm:mx-0 sm:flex sm:max-w-none sm:flex-col sm:items-start sm:justify-center sm:gap-0 sm:px-0 sm:pl-[clamp(8px,2.2vw,34px)] ${
             hasMobileContext
               ? "grid-cols-1 justify-items-center text-center sm:justify-items-start sm:text-left"
-              : "grid-cols-1 justify-items-center text-center"
+              : "grid-cols-1 justify-items-center text-center sm:justify-items-start sm:text-left"
           }`}
         >
           <div className="mx-auto grid min-w-0 place-items-center text-center sm:mx-0 sm:block sm:text-left">
@@ -1834,14 +1834,14 @@ function ProposalSlideView({ slide }: { slide: IntroProposalSlide }) {
             ) : null}
             <h2
               className={`max-w-[300px] break-keep text-center font-neo-heavy text-[26px] leading-[1] tracking-normal text-neutral-950 sm:ml-0 sm:max-w-none sm:text-left sm:text-[clamp(38px,4.4vw,50px)] sm:leading-[1.07] ${
-                hasMobileContext ? "hidden sm:block" : "mx-auto"
+                hasMobileContext ? "hidden sm:block" : "mx-auto sm:mx-0"
               }`}
             >
               {slide.title}
             </h2>
           </div>
           {desktopSupport ? (
-            <div className="hidden sm:mx-0 sm:mt-6 sm:block sm:max-h-none sm:max-w-[380px] sm:break-keep sm:border-l-[3px] sm:border-blue-600/20 sm:pl-3.5 sm:text-[clamp(16px,1.45vw,18px)] sm:font-normal sm:leading-[1.45] sm:tracking-normal sm:text-[#58625c] sm:[&_.support-stack]:grid sm:[&_.support-stack]:gap-3.5 [&_strong]:font-black [&_strong]:text-blue-600">
+            <div className="hidden sm:mx-0 sm:mt-6 sm:block sm:max-h-none sm:max-w-[380px] sm:break-keep sm:border-l-[3px] sm:border-blue-600/20 sm:pl-3.5 sm:text-left sm:text-[clamp(16px,1.45vw,18px)] sm:font-normal sm:leading-[1.45] sm:tracking-normal sm:text-[#58625c] sm:[&_.support-stack]:grid sm:[&_.support-stack]:gap-3.5 [&_strong]:font-black [&_strong]:text-blue-600">
               {desktopSupport}
             </div>
           ) : null}
@@ -2255,6 +2255,22 @@ function AdvertiserBuilderProductPreview() {
     ["광고주", "브랜드룸"],
     ["인플루언서", "유나뷰티"],
     ["계약명", "선크림 릴스 광고"],
+    ["콘텐츠", "릴스 1건 · 스토리 2컷"],
+    ["마감일", "2026.06.20"],
+  ];
+  const documentRows: Array<[string, string]> = [
+    ["브랜드", "브랜드룸"],
+    ["담당자", "김마케팅 매니저"],
+    ["인플루언서", "유나뷰티"],
+    ["대표채널", "instagram.com/yuna_beauty"],
+    ["제공", "신제품 선크림 2종"],
+    ["보상", "600,000원"],
+  ];
+  const clauses = [
+    "제품 제공 및 콘텐츠 조건",
+    "업로드 일정 및 검수",
+    "수정요청 및 증빙",
+    "지급 조건",
   ];
 
   return (
@@ -2268,43 +2284,73 @@ function AdvertiserBuilderProductPreview() {
               새 전자계약서 작성
             </h3>
           </div>
-          <div className="grid min-h-0 flex-1 content-start gap-1.5 p-2">
-            {fields.map(([label, value], index) => (
-              <div
-                key={label}
-                className={`rounded-[8px] border border-neutral-200 bg-[#fbfcfa] px-2.5 py-1.5 ${
-                  index === fields.length - 1 ? "max-[380px]:hidden" : ""
-                }`}
-              >
-                <p className="text-[8px] font-extrabold text-neutral-500 sm:text-[9px]">
+          <div className="flex min-h-0 flex-1 flex-col gap-2 p-2">
+            <div className="grid h-8 shrink-0 grid-cols-5 gap-1 text-center text-[8px] font-black text-neutral-500">
+              {["기본", "채널", "일정", "특약", "발송"].map((label, index) => (
+                <div
+                  key={label}
+                  className={`flex items-center justify-center rounded-[7px] border ${
+                    index === 0
+                      ? "border-neutral-950 bg-neutral-950 text-white"
+                      : "border-neutral-200 bg-white"
+                  }`}
+                >
+                  {index + 1}. {label}
+                </div>
+              ))}
+            </div>
+            <div className="grid shrink-0 gap-1.5">
+              {fields.map(([label, value]) => (
+                <div
+                  key={label}
+                  className="rounded-[8px] border border-neutral-200 bg-[#fbfcfa] px-2.5 py-1.5"
+                >
+                  <p className="text-[8px] font-extrabold text-neutral-500 sm:text-[9px]">
+                    {label}
+                  </p>
+                  <p className="mt-0.5 truncate text-[10px] font-black text-neutral-950 sm:text-[11px]">
+                    {value}
+                  </p>
+                </div>
+              ))}
+            </div>
+            <div className="grid min-h-0 flex-1 grid-cols-2 gap-1.5">
+              {["제공 조건", "검수 기준"].map((label) => (
+                <div key={label} className="rounded-[8px] border border-neutral-200 bg-white px-2.5 py-2">
+                  <p className="text-[9px] font-black text-neutral-800">{label}</p>
+                  <div className="mt-2 grid gap-1">
+                    <div className="h-1 rounded-full bg-neutral-200" />
+                    <div className="h-1 w-4/5 rounded-full bg-neutral-200" />
+                    <div className="h-1 w-2/3 rounded-full bg-neutral-200" />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="grid h-9 shrink-0 grid-cols-3 overflow-hidden rounded-[8px] border border-blue-100 bg-blue-50 text-center text-[9px] font-black text-blue-700">
+              {["입력", "PDF", "공유"].map((label, index) => (
+                <div
+                  key={label}
+                  className={`flex items-center justify-center ${
+                    index === 1 ? "border-x border-blue-100 bg-white" : ""
+                  }`}
+                >
                   {label}
-                </p>
-                <p className="mt-0.5 truncate text-[10px] font-black text-neutral-950 sm:text-[11px]">
-                  {value}
-                </p>
-              </div>
-            ))}
-            <div className="mt-auto h-7 rounded-[8px] bg-blue-600 text-center text-[10px] font-black leading-7 text-white sm:h-8 sm:leading-8">
-              다음
+                </div>
+              ))}
             </div>
           </div>
         </div>
         <div className="flex max-h-full min-h-0 flex-col overflow-hidden rounded-[10px] border border-neutral-200 bg-white p-2 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
-          <div className="mx-auto flex h-full w-full max-w-[230px] flex-col rounded-[5px] border border-neutral-200 bg-white px-3 py-2">
+          <div className="mx-auto flex h-full w-full flex-col rounded-[5px] border border-neutral-200 bg-white px-3 py-2">
             <p className="text-center text-[12px] font-black text-neutral-950 sm:text-[14px]">
               신제품 선크림 릴스 광고 계약
             </p>
             <p className="mt-1 text-center text-[8px] font-bold text-neutral-400">
               작성일 2026-06-04
             </p>
-            <div className="mt-2 grid gap-1.5">
-              {[
-                ["브랜드", "브랜드룸"],
-                ["담당자", "김마케팅 매니저"],
-                ["인플루언서", "유나뷰티"],
-                ["대표채널", "instagram.com/yuna_beauty"],
-              ].map(([label, value]) => (
-                <div key={label} className="grid grid-cols-[54px_minmax(0,1fr)] border border-neutral-200 text-[8px] sm:text-[9px]">
+            <div className="mt-2 grid grid-cols-2 gap-1.5">
+              {documentRows.map(([label, value]) => (
+                <div key={label} className="grid grid-cols-[48px_minmax(0,1fr)] border border-neutral-200 text-[8px] sm:text-[9px]">
                   <span className="bg-neutral-50 px-1.5 py-1 font-bold text-neutral-500">
                     {label}
                   </span>
@@ -2314,19 +2360,25 @@ function AdvertiserBuilderProductPreview() {
                 </div>
               ))}
             </div>
-            <div className="mt-2 grid gap-1.5">
-              {["제1조 제품 제공 및 콘텐츠 조건", "제2조 일정 및 검수", "제3조 지급 조건"].map((title, index) => (
+            <div className="mt-2 grid min-h-0 flex-1 grid-cols-2 gap-1.5">
+              {clauses.map((title, index) => (
                 <div
                   key={title}
-                  className={`rounded-[5px] bg-neutral-100 px-2 py-1.5 ${
-                    index > 0 ? "max-[380px]:hidden" : ""
-                  }`}
+                  className="min-h-0 rounded-[5px] bg-neutral-100 px-2 py-1.5"
                 >
                   <p className="text-[8px] font-extrabold text-neutral-700 sm:text-[9px]">
-                    {title}
+                    제{index + 1}조 {title}
                   </p>
-                  <div className="mt-1 h-1 rounded-full bg-neutral-200" />
-                  <div className="mt-1 h-1 w-2/3 rounded-full bg-neutral-200" />
+                  <div className="mt-2 grid gap-1">
+                    <div className="h-1 rounded-full bg-neutral-200" />
+                    <div className="h-1 w-11/12 rounded-full bg-neutral-200" />
+                    <div className="h-1 w-4/5 rounded-full bg-neutral-200" />
+                    <div className="h-1 w-5/6 rounded-full bg-neutral-200" />
+                  </div>
+                  <div className="mt-3 grid gap-1">
+                    <div className="h-1 w-3/4 rounded-full bg-neutral-200" />
+                    <div className="h-1 w-2/3 rounded-full bg-neutral-200" />
+                  </div>
                 </div>
               ))}
             </div>
@@ -2354,9 +2406,14 @@ function ActualContractBuilderMobilePreview() {
 
 function AdvertiserContractReviewProductPreview() {
   const rows = [
-    ["유나뷰티", "콘텐츠 확인", "D-2"],
-    ["소라로그", "수정요청", "오늘"],
-    ["혜린픽", "서명 대기", "D-4"],
+    { name: "유나뷰티", platform: "인스타 릴스", deliverable: "릴스 1건", state: "콘텐츠 확인", due: "D-2" },
+    { name: "소라로그", platform: "인스타 릴스", deliverable: "릴스 1건", state: "수정요청", due: "오늘" },
+    { name: "혜린픽", platform: "인스타 릴스", deliverable: "릴스 1건", state: "서명 대기", due: "D-4" },
+    { name: "민지테이블", platform: "유튜브", deliverable: "리뷰 1건", state: "검수 중", due: "D-5" },
+    { name: "지유로그", platform: "블로그", deliverable: "리뷰 1건", state: "제출 완료", due: "D-6" },
+    { name: "다솜리뷰", platform: "틱톡", deliverable: "숏폼 2건", state: "초안 제출", due: "D-7" },
+    { name: "아린픽", platform: "인스타 릴스", deliverable: "릴스 2건", state: "확인 필요", due: "D-8" },
+    { name: "로운홈", platform: "블로그", deliverable: "리뷰 1건", state: "서명 완료", due: "D-9" },
   ];
 
   return (
@@ -2377,42 +2434,70 @@ function AdvertiserContractReviewProductPreview() {
           <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,0.52fr)_minmax(0,0.48fr)] gap-2 bg-[#fbfcfa] p-2">
             <div className="flex min-h-0 flex-col overflow-hidden rounded-[9px] border border-neutral-200 bg-white">
               <div className="grid grid-cols-3 border-b border-neutral-200 bg-[#ecebe5] p-1 text-center text-[9px] font-black text-neutral-600">
-                <span className="rounded-[7px] bg-white py-1 text-neutral-950">진행중 3</span>
-                <span className="py-1">검수 2</span>
+                <span className="rounded-[7px] bg-white py-1 text-neutral-950">진행중 4</span>
+                <span className="py-1">검수 3</span>
                 <span className="py-1">완료 5</span>
               </div>
-              <div className="grid min-h-0 flex-1 grid-rows-3 divide-y divide-neutral-200">
-                {rows.map(([name, state, due]) => (
-                  <div key={name} className="grid grid-cols-[minmax(0,1fr)_58px] items-center gap-2 px-3 py-2">
+              <div className="grid min-h-0 flex-1 grid-rows-3 divide-y divide-neutral-200 sm:grid-rows-8">
+                {rows.map((row, index) => (
+                  <div
+                    key={row.name}
+                    className={`${index > 2 ? "hidden sm:grid" : "grid"} grid-cols-[minmax(0,1fr)_58px] items-center gap-2 px-3 py-2`}
+                  >
                     <div className="min-w-0">
                       <p className="truncate text-[11px] font-black text-neutral-950">
-                        {name}
+                        {row.name}
                       </p>
                       <p
                         className="mt-0.5 flex min-w-0 items-center gap-1 truncate text-[9px] font-bold text-neutral-500"
-                        title="인스타 릴스 1건"
+                        title={`${row.platform} ${row.deliverable}`}
                       >
-                        <IntroPlatformMarks platform="인스타 릴스" />
-                        <span className="truncate">릴스 1건</span>
+                        <IntroPlatformMarks platform={row.platform} />
+                        <span className="truncate">{row.deliverable}</span>
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="truncate text-[9px] font-black text-blue-700">{state}</p>
-                      <p className="mt-0.5 text-[9px] font-bold text-neutral-500">{due}</p>
+                      <p className="truncate text-[9px] font-black text-blue-700">{row.state}</p>
+                      <p className="mt-0.5 text-[9px] font-bold text-neutral-500">{row.due}</p>
                     </div>
                   </div>
                 ))}
               </div>
             </div>
-            <div className="flex min-h-0 flex-col rounded-[9px] border border-blue-100 bg-blue-50 p-3">
+            <div className="flex min-h-0 flex-col overflow-hidden rounded-[9px] border border-blue-100 bg-blue-50 p-3">
               <p className="text-[11px] font-black text-blue-700">콘텐츠 확인</p>
               <p className="mt-1 text-[13px] font-black leading-tight text-neutral-950">
                 수정요청을 계약별로 남깁니다
               </p>
-              <div className="mt-3 rounded-[8px] bg-white p-2 text-[10px] font-bold leading-4 text-neutral-700 shadow-[0_10px_22px_rgba(37,99,235,0.08)]">
+              <div className="mt-3 grid grid-cols-2 gap-1.5 text-center text-[10px] font-black text-blue-700">
+                <div className="rounded-[8px] bg-white px-2 py-2">
+                  확인 6건
+                </div>
+                <div className="rounded-[8px] bg-white px-2 py-2">
+                  요청 2건
+                </div>
+              </div>
+              <div className="mt-2 grid min-h-0 flex-1 grid-rows-6 gap-1.5 text-[10px] font-bold text-neutral-700">
+                {[
+                  "유나뷰티 · 릴스 초안",
+                  "노출 컷 3초 유지 확인",
+                  "썸네일 문구 2차 수정",
+                  "다솜리뷰 · 숏폼 제출",
+                  "아린픽 · 확인 필요",
+                  "로운홈 · 서명 완료",
+                ].map((label) => (
+                  <div
+                    key={label}
+                    className="flex min-h-0 items-center rounded-[8px] bg-white px-2"
+                  >
+                    {label}
+                  </div>
+                ))}
+              </div>
+              <div className="mt-2 rounded-[8px] bg-white p-2 text-[10px] font-bold leading-4 text-neutral-700 shadow-[0_10px_22px_rgba(37,99,235,0.08)]">
                 제품 노출 컷을 3초 이상 유지해주세요.
               </div>
-              <div className="mt-auto grid grid-cols-2 gap-1.5">
+              <div className="mt-2 grid grid-cols-2 gap-1.5">
                 <span className="rounded-[7px] bg-white px-2 py-2 text-center text-[9px] font-black text-neutral-700">
                   승인
                 </span>
@@ -2428,14 +2513,27 @@ function AdvertiserContractReviewProductPreview() {
   );
 }
 
-function AdvertiserApplicantsProductPreview() {
-  const applicants = [
-    ["유나뷰티", "인스타", "8.1만"],
-    ["소라로그", "블로그", "3.4만"],
-    ["혜린픽", "유튜브", "2.7만"],
-    ["민지테이블", "틱톡", "6.2만"],
-  ];
+const advertiserIntroApplicantRows: Array<{
+  name: string;
+  platform: string;
+  audience: string;
+  category: string;
+}> = [
+  { name: "유나뷰티", platform: "인스타", audience: "8.1만", category: "뷰티" },
+  { name: "소라로그", platform: "블로그", audience: "3.4만", category: "라이프" },
+  { name: "혜린픽", platform: "유튜브", audience: "2.7만", category: "리뷰" },
+  { name: "민지테이블", platform: "틱톡", audience: "6.2만", category: "푸드" },
+  { name: "지유로그", platform: "인스타", audience: "5.9만", category: "뷰티" },
+  { name: "하루핏", platform: "유튜브", audience: "4.8만", category: "헬스" },
+  { name: "오늘맛", platform: "블로그", audience: "2.1만", category: "푸드" },
+  { name: "루나데이", platform: "인스타", audience: "7.4만", category: "패션" },
+  { name: "모아리뷰", platform: "블로그", audience: "4.2만", category: "리뷰" },
+  { name: "세아홈", platform: "인스타", audience: "3.8만", category: "리빙" },
+  { name: "리오캠", platform: "유튜브", audience: "5.1만", category: "여행" },
+  { name: "나린숏", platform: "틱톡", audience: "6.8만", category: "뷰티" },
+];
 
+function AdvertiserApplicantsProductPreview() {
   return (
     <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[16px] border border-neutral-200 bg-[#f4f5f2] p-2 shadow-[0_18px_48px_rgba(23,26,23,0.08)]">
       <div className="min-h-0 flex-1">
@@ -2451,23 +2549,23 @@ function AdvertiserApplicantsProductPreview() {
               팔로워순
             </span>
           </div>
-          <div className="grid min-h-0 flex-1 grid-rows-4 divide-y divide-neutral-200">
-            {applicants.map(([name, platform, audience], index) => (
-              <div key={name} className="grid grid-cols-[34px_minmax(0,1fr)_64px] items-center gap-2 px-3 py-2">
+          <div className="grid min-h-0 flex-1 grid-rows-4 divide-y divide-neutral-200 sm:hidden">
+            {advertiserIntroApplicantRows.slice(0, 4).map((row, index) => (
+              <div key={row.name} className="grid grid-cols-[34px_minmax(0,1fr)_64px] items-center gap-2 px-3 py-2">
                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-neutral-100 text-[11px] font-black text-neutral-800">
                   {index + 1}
                 </div>
                 <div className="min-w-0">
                   <p className="truncate text-[12px] font-black text-neutral-950">
-                    {name}
+                    {row.name}
                   </p>
                   <p className="mt-0.5 flex items-center gap-1 text-[9px] font-bold text-neutral-500">
                     <PlatformBrandMark
-                      platform={getIntroInfluencerPlatform(platform)}
+                      platform={getIntroInfluencerPlatform(row.platform)}
                       size="xs"
                     />
-                    <span>{audience}</span>
-                    <span>· 뷰티</span>
+                    <span>{row.audience}</span>
+                    <span>· {row.category}</span>
                   </p>
                 </div>
                 <span className="rounded-[8px] bg-blue-600 px-2 py-2 text-center text-[9px] font-black text-white">
@@ -2475,6 +2573,50 @@ function AdvertiserApplicantsProductPreview() {
                 </span>
               </div>
             ))}
+          </div>
+          <div className="hidden min-h-0 flex-1 bg-[#fbfcfa] p-2 sm:block">
+            <div className="grid h-full min-h-0 grid-rows-[26px_repeat(12,minmax(0,1fr))] overflow-hidden rounded-[9px] border border-neutral-200 bg-white">
+              <div className="grid grid-cols-[36px_minmax(0,1.1fr)_72px_76px_72px_52px] items-center gap-2 border-b border-neutral-200 bg-[#ecebe5] px-2 text-[9px] font-black text-neutral-600">
+                <span>순위</span>
+                <span>인플루언서</span>
+                <span>플랫폼</span>
+                <span>구독자</span>
+                <span>분야</span>
+                <span className="text-center">선정</span>
+              </div>
+              {advertiserIntroApplicantRows.map((row, index) => (
+                <div
+                  key={row.name}
+                  data-intro-applicant-card
+                  className="grid min-h-0 grid-cols-[36px_minmax(0,1.1fr)_72px_76px_72px_52px] items-center gap-2 border-b border-neutral-100 px-2 text-[10px] last:border-b-0"
+                >
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-neutral-100 text-[9px] font-black text-neutral-800">
+                    {index + 1}
+                  </div>
+                  <p className="min-w-0 truncate font-black text-neutral-950">
+                    {row.name}
+                  </p>
+                  <span className="flex min-w-0 items-center gap-1">
+                    <PlatformBrandMark
+                      platform={getIntroInfluencerPlatform(row.platform)}
+                      size="xs"
+                    />
+                    <span className="truncate text-[9px] font-bold text-neutral-500">
+                      {row.platform}
+                    </span>
+                  </span>
+                  <span className="truncate font-black text-neutral-800">
+                    {row.audience}
+                  </span>
+                  <span className="truncate font-bold text-neutral-500">
+                    {row.category}
+                  </span>
+                  <span className="rounded-[7px] bg-blue-600 px-1.5 py-1 text-center text-[8px] font-black text-white">
+                    선정
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
