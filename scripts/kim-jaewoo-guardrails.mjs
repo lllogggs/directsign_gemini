@@ -1521,6 +1521,7 @@ check(
   "advertiser intro PC proposal previews stay dense",
   agents.includes("Advertiser intro PC proposal pages after the first slide must preserve the approved dense") &&
     agents.includes("Use headerless, focused actual service capture assets for the PC writing, link-share, content-review/contract-management, and campaign-applicant previews") &&
+    agents.includes("Focused capture crops must keep sidebars and action panels fully visible") &&
     agents.includes('The link-share preview must show the actual "공유 링크 생성" action') &&
     landing.includes("function IntroDesktopServiceCapture") &&
     landing.includes("data-intro-real-service-capture") &&
