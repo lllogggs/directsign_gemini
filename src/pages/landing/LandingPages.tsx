@@ -1689,6 +1689,7 @@ function ProposalIntroCarousel({
 }) {
   const [slideIndex, setSlideIndex] = useState(0);
   const activeSlide = slides[slideIndex] ?? slides[0];
+  const slidePanelId = `intro-proposal-slide-${slideIndex}`;
 
   useEffect(() => {
     preloadIntroImages(collectIntroProposalImageSources(slides));
@@ -1710,113 +1711,68 @@ function ProposalIntroCarousel({
       data-intro-pdf-carousel
       className="mx-auto flex w-full min-w-0 justify-center"
     >
-      <div className="relative w-full min-w-0 max-w-[1280px]">
-        <button
-          type="button"
-          aria-label={`이전 ${controlLabel}`}
-          aria-controls={`intro-proposal-slide-${slideIndex}`}
-          title={`이전 ${controlLabel}`}
-          onClick={showPrevious}
-          className="absolute z-20 hidden h-10 w-10 items-center justify-center rounded-full border border-neutral-200/75 bg-white/72 text-neutral-500 shadow-[0_14px_34px_rgba(15,23,42,0.12)] backdrop-blur transition hover:bg-white hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 sm:left-3 sm:top-1/2 sm:flex sm:-translate-y-1/2 lg:-left-5"
-        >
-          <ChevronLeft className="h-5 w-5" strokeWidth={2} />
-        </button>
-        <button
-          type="button"
-          aria-label={`다음 ${controlLabel}`}
-          aria-controls={`intro-proposal-slide-${slideIndex}`}
-          title={`다음 ${controlLabel}`}
-          onClick={showNext}
-          className="absolute z-20 hidden h-10 w-10 items-center justify-center rounded-full border border-neutral-200/75 bg-white/72 text-neutral-500 shadow-[0_14px_34px_rgba(15,23,42,0.12)] backdrop-blur transition hover:bg-white hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 sm:right-3 sm:top-1/2 sm:flex sm:-translate-y-1/2 lg:-right-5"
-        >
-          <ChevronRight className="h-5 w-5" strokeWidth={2} />
-        </button>
-
+      <div className="relative flex w-full min-w-0 max-w-[1280px] flex-col items-center">
         <div
-          id={`intro-proposal-slide-${slideIndex}`}
+          id={slidePanelId}
           role="group"
           aria-roledescription="slide"
           aria-label={`${slideIndex + 1} / ${slides.length} ${activeSlide.label}`}
           aria-live="polite"
           data-intro-pdf-slide
-          className="relative isolate flex h-[calc(100svh-130px)] min-h-0 w-full flex-col overflow-hidden px-0 py-0 sm:h-auto sm:overflow-visible sm:px-2 lg:h-[min(690px,calc(100vh-98px))]"
+          className="relative isolate flex h-[calc(100svh-180px)] min-h-0 w-full flex-col overflow-hidden px-0 py-0 sm:h-auto sm:overflow-visible sm:px-2 lg:h-[min(690px,calc(100vh-150px))]"
         >
           <ProposalSlideView slide={activeSlide} />
 
           <span className="z-10 mt-2 hidden self-end text-[10px] font-bold tabular-nums leading-none tracking-normal text-[#88918b] sm:mt-3 sm:block lg:absolute lg:bottom-0 lg:right-2 lg:mt-0">
             {activeSlide.pageNo}
           </span>
+        </div>
 
-          <div
-            data-intro-mobile-controls
-            className="absolute bottom-[58px] left-0 right-0 z-20 grid h-10 grid-cols-[40px_minmax(0,1fr)_40px] items-center gap-3 px-4 sm:hidden"
-          >
+        <div
+          data-intro-carousel-controls
+          className="z-20 mt-2 flex w-full items-center justify-center sm:mt-3"
+        >
+          <div className="inline-flex h-10 items-center justify-center gap-2 rounded-full border border-neutral-200/75 bg-white/80 px-1.5 shadow-[0_14px_34px_rgba(15,23,42,0.12)] backdrop-blur">
             <button
               type="button"
               aria-label={`이전 ${controlLabel}`}
-              aria-controls={`intro-proposal-slide-${slideIndex}`}
+              aria-controls={slidePanelId}
               title={`이전 ${controlLabel}`}
               onClick={showPrevious}
-              className="flex h-10 w-10 items-center justify-center self-center justify-self-start rounded-full border border-neutral-200/75 bg-white/82 text-neutral-500 shadow-[0_14px_34px_rgba(15,23,42,0.12)] backdrop-blur transition hover:bg-white hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700"
+              className="flex h-8 w-8 items-center justify-center rounded-full text-neutral-500 transition hover:bg-white hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700"
             >
               <ChevronLeft className="h-5 w-5" strokeWidth={2} />
             </button>
-            <div className="flex min-w-0 items-center justify-center gap-3">
-              <div className="flex items-center justify-center gap-2">
-                {slides.map((slide, index) => {
-                  const selected = index === slideIndex;
+            <div className="flex h-8 items-center justify-center gap-2 px-1.5">
+              {slides.map((slide, index) => {
+                const selected = index === slideIndex;
 
-                  return (
-                    <button
-                      key={slide.label}
-                      type="button"
-                      aria-label={`${index + 1}번째 ${controlLabel} 보기`}
-                      aria-current={selected ? "true" : undefined}
-                      onClick={() => setSlideIndex(index)}
-                      className={`h-2 rounded-full transition ${
-                        selected
-                          ? "w-6 bg-neutral-950"
-                          : "w-2 bg-neutral-300 hover:bg-neutral-500"
-                      }`}
-                    />
-                  );
-                })}
-              </div>
-              <span className="text-[10px] font-bold tabular-nums leading-none tracking-normal text-[#88918b]">
-                {activeSlide.pageNo}
-              </span>
+                return (
+                  <button
+                    key={slide.label}
+                    type="button"
+                    aria-label={`${index + 1}번째 ${controlLabel} 보기`}
+                    aria-current={selected ? "true" : undefined}
+                    onClick={() => setSlideIndex(index)}
+                    className={`h-2 rounded-full transition ${
+                      selected
+                        ? "w-6 bg-neutral-950"
+                        : "w-2 bg-neutral-300 hover:bg-neutral-500"
+                    }`}
+                  />
+                );
+              })}
             </div>
             <button
               type="button"
               aria-label={`다음 ${controlLabel}`}
-              aria-controls={`intro-proposal-slide-${slideIndex}`}
+              aria-controls={slidePanelId}
               title={`다음 ${controlLabel}`}
               onClick={showNext}
-              className="flex h-10 w-10 items-center justify-center self-center justify-self-end rounded-full border border-neutral-200/75 bg-white/82 text-neutral-500 shadow-[0_14px_34px_rgba(15,23,42,0.12)] backdrop-blur transition hover:bg-white hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700"
+              className="flex h-8 w-8 items-center justify-center rounded-full text-neutral-500 transition hover:bg-white hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700"
             >
               <ChevronRight className="h-5 w-5" strokeWidth={2} />
             </button>
-          </div>
-
-          <div className="z-20 mt-2 hidden items-center justify-center gap-2 sm:mt-3 sm:flex lg:absolute lg:bottom-0 lg:left-1/2 lg:mt-0 lg:-translate-x-1/2">
-            {slides.map((slide, index) => {
-              const selected = index === slideIndex;
-
-              return (
-                <button
-                  key={slide.label}
-                  type="button"
-                  aria-label={`${index + 1}번 제안서 화면 보기`}
-                  aria-current={selected ? "true" : undefined}
-                  onClick={() => setSlideIndex(index)}
-                  className={`h-2 rounded-full transition ${
-                    selected
-                      ? "w-6 bg-neutral-950"
-                      : "w-2 bg-neutral-300 hover:bg-neutral-500"
-                  }`}
-                />
-              );
-            })}
           </div>
         </div>
       </div>
@@ -1830,7 +1786,7 @@ function ProposalSlideView({ slide }: { slide: IntroProposalSlide }) {
 
   return (
     <div
-      className="relative z-10 grid h-full min-h-0 flex-1 grid-rows-[118px_minmax(0,1fr)] gap-1 pb-[104px] pt-0 sm:h-auto sm:pb-0 sm:grid-rows-none sm:grid-cols-[minmax(205px,0.34fr)_minmax(0,1fr)] sm:items-center sm:gap-[clamp(32px,4vw,56px)] lg:h-full"
+      className="relative z-10 grid h-full min-h-0 flex-1 grid-rows-[118px_minmax(0,1fr)] gap-1 pb-0 pt-0 sm:h-auto sm:grid-rows-none sm:grid-cols-[minmax(205px,0.34fr)_minmax(0,1fr)] sm:items-center sm:gap-[clamp(32px,4vw,56px)] lg:h-full"
     >
         <div
           className={`mx-auto grid h-full min-h-0 w-full max-w-[330px] place-items-center gap-2 px-2 sm:mx-0 sm:flex sm:max-w-none sm:flex-col sm:items-start sm:justify-center sm:gap-0 sm:px-0 sm:pl-[clamp(8px,2.2vw,34px)] ${
@@ -2263,7 +2219,7 @@ function IntroDesktopServiceCapture({
     <section
       data-intro-real-service-capture
       data-intro-headerless-service-capture
-      className={`${desktopOnly ? "hidden sm:block" : "block"} h-full min-h-0 overflow-hidden rounded-[16px] border border-neutral-200 bg-white shadow-[0_18px_48px_rgba(23,26,23,0.08)]`}
+      className={`${desktopOnly ? "hidden sm:block" : "block"} h-full min-h-0 overflow-hidden rounded-[16px] border border-neutral-200 bg-[#e9ede8] shadow-[0_18px_48px_rgba(23,26,23,0.08)]`}
     >
       <img
         src={imageSrc}

@@ -1509,7 +1509,8 @@ check(
     landing.includes("function InfluencerCompactDashboardProductPreview") &&
     landing.includes('slide.stage === "final"') &&
     landing.includes("function FinalHandshakeVisual") &&
-    landing.includes("bottom-[58px]") &&
+    landing.includes("data-intro-carousel-controls") &&
+    !landing.includes("data-intro-mobile-controls") &&
     landing.includes("object-[52%_center]") &&
     salesAdvertiserIntroduction.includes(".product-shot.product-shot-final img") &&
     salesAdvertiserIntroduction.includes("object-fit: cover;") &&
@@ -1520,12 +1521,19 @@ check(
 check(
   "advertiser intro PC proposal previews stay dense",
   agents.includes("Advertiser intro PC proposal pages after the first slide must preserve the approved dense") &&
+    agents.includes("Intro carousel controls should sit together as one page-level bottom-center cluster") &&
     agents.includes("Use headerless, focused actual service capture assets for the PC writing, link-share, content-review/contract-management, and campaign-applicant previews") &&
     agents.includes("Focused capture crops must keep sidebars and action panels fully visible") &&
+    agents.includes("use the neutral gray intro background behind it rather than white top/bottom letterbox bands") &&
     agents.includes('The link-share preview must show the actual "공유 링크 생성" action') &&
     landing.includes("function IntroDesktopServiceCapture") &&
+    landing.includes("data-intro-carousel-controls") &&
+    !landing.includes("sm:left-3 sm:top-1/2") &&
+    !landing.includes("sm:right-3 sm:top-1/2") &&
     landing.includes("data-intro-real-service-capture") &&
     landing.includes("data-intro-headerless-service-capture") &&
+    landing.includes("bg-[#e9ede8]") &&
+    !landing.includes("data-intro-headerless-service-capture\n      className={`${desktopOnly ? \"hidden sm:block\" : \"block\"} h-full min-h-0 overflow-hidden rounded-[16px] border border-neutral-200 bg-white") &&
     landing.includes("yeollock-intro-contract-builder-focused.png") &&
     landing.includes("yeollock-intro-contract-share-focused.png") &&
     landing.includes("yeollock-intro-content-review-focused.png") &&
