@@ -1947,8 +1947,13 @@ function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
         }`}
       >
         {slide.imageSrc === advertiserProposalAssetUrls.influencerContract ? (
-          <div className="mx-auto h-full w-full sm:flex sm:max-w-[430px] sm:items-stretch sm:justify-center [&>section]:w-full">
-            <InfluencerContractLinkMobilePreview />
+          <div className="mx-auto h-full w-full">
+            <div className="hidden h-full sm:block">
+              <InfluencerContractLinkDesktopPreview />
+            </div>
+            <div className="h-full sm:hidden">
+              <InfluencerContractLinkMobilePreview />
+            </div>
           </div>
         ) : (
           <img
@@ -1997,6 +2002,118 @@ function FinalHandshakeVisual({
         />
       </div>
     </div>
+  );
+}
+
+function InfluencerContractLinkDesktopPreview() {
+  const facts = [
+    { label: "광고주", value: "브레드룸", badge: "인증" },
+    { label: "보상", value: "1,800,000원" },
+    { label: "마감", value: "2026.05.29" },
+    { label: "플랫폼", value: "네이버 블로그", platform: "블로그" },
+    { label: "콘텐츠", value: "상세 리뷰" },
+    { label: "수량", value: "1건" },
+  ];
+
+  return (
+    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[16px] border border-neutral-200 bg-white shadow-[0_18px_48px_rgba(23,26,23,0.08)]">
+      <div className="shrink-0 border-b border-neutral-200 bg-white px-4 py-3">
+        <div className="flex min-w-0 items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="truncate text-[12px] font-extrabold text-neutral-500">
+              데일리 루틴 블로그
+            </p>
+            <h3 className="truncate text-[18px] font-black text-neutral-950">
+              계약 링크 도착
+            </h3>
+          </div>
+          <span className="inline-flex h-9 shrink-0 items-center rounded-[9px] bg-neutral-950 px-4 text-[12px] font-black text-white">
+            서명 전
+          </span>
+        </div>
+      </div>
+
+      <div className="grid min-h-0 flex-1 grid-cols-[minmax(260px,0.42fr)_minmax(0,0.58fr)] gap-3 bg-[#fbfcfa] p-3">
+        <div className="flex min-h-0 flex-col gap-3">
+          <div className="rounded-[14px] border border-neutral-200 bg-white px-4 py-4 shadow-[0_12px_26px_rgba(15,23,42,0.045)]">
+            <p className="text-[11px] font-extrabold text-blue-700">
+              핵심 조건
+            </p>
+            <h4 className="mt-1 text-[24px] font-black leading-tight text-neutral-950">
+              계약 내용 확인
+            </h4>
+            <p className="mt-2 break-keep text-[12px] font-semibold leading-5 text-neutral-500">
+              브랜드, 보상, 마감, 산출물을 먼저 확인하고 계약서 원문으로 넘어갑니다.
+            </p>
+          </div>
+
+          <dl className="grid gap-2">
+            {facts.map((fact) => (
+              <div
+                key={fact.label}
+                className="grid min-h-10 grid-cols-[76px_minmax(0,1fr)] items-center gap-3 rounded-[10px] border border-neutral-200 bg-white px-3 py-2"
+              >
+                <dt className="text-[11px] font-extrabold text-neutral-500">
+                  {fact.label}
+                </dt>
+                <dd className="flex min-w-0 items-center justify-end gap-2 text-right text-[13px] font-black text-neutral-950">
+                  {fact.platform ? <IntroPlatformMarks platform={fact.platform} /> : null}
+                  <span className="truncate">{fact.value}</span>
+                  {fact.badge ? (
+                    <span className="shrink-0 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-extrabold text-blue-700">
+                      {fact.badge}
+                    </span>
+                  ) : null}
+                </dd>
+              </div>
+            ))}
+          </dl>
+
+          <span className="mt-auto inline-flex h-11 items-center justify-center rounded-[10px] bg-blue-600 text-[13px] font-black text-white shadow-[0_16px_34px_rgba(37,99,235,0.18)]">
+            계약서 확인하기
+          </span>
+        </div>
+
+        <div className="flex min-h-0 items-stretch overflow-hidden rounded-[14px] border border-neutral-200 bg-white shadow-[0_12px_28px_rgba(15,23,42,0.055)]">
+          <div className="flex min-h-0 w-full flex-col p-4">
+            <div className="flex items-center justify-between border-b border-neutral-200 pb-3">
+              <div>
+                <p className="text-[11px] font-extrabold text-neutral-500">
+                  브레드룸
+                </p>
+                <p className="mt-1 text-[16px] font-black text-neutral-950">
+                  공동구매 파일럿 계약서
+                </p>
+              </div>
+              <span className="rounded-full border border-neutral-200 px-3 py-1 text-[11px] font-extrabold text-neutral-700">
+                PDF 원문
+              </span>
+            </div>
+            <div className="grid min-h-0 flex-1 gap-3 py-4">
+              {[
+                ["제1조 계약 목적", "브랜드 공동구매 파일럿 콘텐츠 제작과 게시"],
+                ["제2조 산출물 및 일정", "네이버 블로그 상세 리뷰 1건, 2026.05.29 마감"],
+                ["제3조 지급 조건", "콘텐츠 확인 후 7영업일 내 1,800,000원 지급"],
+                ["제4조 콘텐츠 활용", "브랜드 채널과 랜딩 페이지 활용 범위 확인"],
+              ].map(([title, body]) => (
+                <div key={title} className="rounded-[10px] bg-neutral-50 px-3 py-3">
+                  <p className="text-[12px] font-black text-neutral-950">
+                    {title}
+                  </p>
+                  <p className="mt-1 truncate text-[11px] font-semibold text-neutral-500">
+                    {body}
+                  </p>
+                </div>
+              ))}
+            </div>
+            <div className="grid grid-cols-2 gap-3 border-t border-neutral-200 pt-3 text-[11px] font-black text-neutral-500">
+              <span>광고주 브레드룸</span>
+              <span className="text-right">인플루언서 크리에이터 소라</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -2184,7 +2301,10 @@ function IntroProposalProductPreview({
   if (kind === "influencerDashboard") {
     return (
       <div className="h-full min-h-0 overflow-hidden rounded-[16px]">
-        <InfluencerCompactDashboardProductPreview />
+        <InfluencerIntroDashboardPreview
+          data={introDashboardDemoData.influencer}
+          stateIndex={1}
+        />
       </div>
     );
   }
@@ -2287,6 +2407,18 @@ function InfluencerContractPdfPreview() {
     { label: "지급", value: "판매 수수료 18%" },
     { label: "마감", value: "2026.05.28" },
   ];
+  const reviewRows = [
+    ["원문 상태", "광고주 작성본"],
+    ["확인 항목", "5개 조항"],
+    ["다음 할 일", "서명 전 최종 확인"],
+  ];
+  const clauses = [
+    ["제1조 계약 목적", "공동구매 파일럿 콘텐츠 제작과 게시를 목적으로 합니다."],
+    ["제2조 산출물 및 일정", "릴스 1건과 블로그 리뷰 1건을 지정 일정 안에 업로드합니다."],
+    ["제3조 지급 조건", "판매 수수료 18%를 정산 기준에 따라 지급합니다."],
+    ["제4조 콘텐츠 활용", "브랜드 채널 활용 범위와 기간을 계약서 원문으로 확인합니다."],
+    ["제5조 검수 기준", "초안 검토와 수정 요청은 계약 화면 안에서 기록합니다."],
+  ];
 
   return (
     <>
@@ -2305,59 +2437,75 @@ function InfluencerContractPdfPreview() {
           </span>
         </div>
       </div>
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(104px,0.42fr)_minmax(0,0.58fr)] gap-2 bg-[#fbfcfa] p-2">
+      <div className="grid min-h-0 flex-1 gap-2 bg-[#fbfcfa] p-2 sm:grid-cols-[minmax(220px,0.38fr)_minmax(0,0.62fr)]">
         <div className="flex min-h-0 flex-col gap-2">
-          {contractFacts.map((fact, index) => (
-            <div
-              key={fact.label}
-              className={`rounded-[9px] border border-neutral-200 bg-white px-2.5 py-2 ${
-                index > 2 ? "max-[380px]:hidden" : ""
-              }`}
-            >
-              <p className="text-[10px] font-extrabold text-neutral-500">{fact.label}</p>
-              {fact.platform ? (
-                <div className="mt-1 flex h-4 items-center">
-                  <IntroPlatformMarks platform={fact.platform} />
-                </div>
-              ) : (
-                <p className="mt-1 truncate text-[11px] font-black text-neutral-950">
-                  {fact.value}
-                </p>
-              )}
-            </div>
-          ))}
+          <div className="grid grid-cols-2 gap-2">
+            {contractFacts.map((fact) => (
+              <div
+                key={fact.label}
+                className="min-h-[70px] rounded-[9px] border border-neutral-200 bg-white px-3 py-2.5"
+              >
+                <p className="text-[10px] font-extrabold text-neutral-500">{fact.label}</p>
+                {fact.platform ? (
+                  <div className="mt-2 flex h-5 items-center">
+                    <IntroPlatformMarks platform={fact.platform} />
+                  </div>
+                ) : (
+                  <p className="mt-2 truncate text-[12px] font-black text-neutral-950">
+                    {fact.value}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="rounded-[10px] border border-blue-200 bg-blue-50 px-3 py-3">
+            <p className="text-[11px] font-black text-blue-700">서명 준비</p>
+            <p className="mt-1 break-keep text-[12px] font-bold leading-5 text-neutral-700">
+              핵심 조건과 원문 조항을 같은 화면에서 확인합니다.
+            </p>
+          </div>
+          <div className="grid min-h-0 flex-1 gap-2 overflow-hidden rounded-[10px] border border-neutral-200 bg-white p-2">
+            {reviewRows.map(([label, value]) => (
+              <div
+                key={label}
+                className="grid grid-cols-[78px_minmax(0,1fr)] items-center gap-3 rounded-[8px] bg-neutral-50 px-3 py-2"
+              >
+                <span className="text-[10px] font-extrabold text-neutral-500">
+                  {label}
+                </span>
+                <span className="truncate text-right text-[12px] font-black text-neutral-950">
+                  {value}
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="hidden grid-cols-2 gap-2 sm:grid">
+            <span className="inline-flex h-9 items-center justify-center rounded-[8px] border border-neutral-200 bg-white text-[11px] font-black text-neutral-700">
+              수정 요청
+            </span>
+            <span className="inline-flex h-9 items-center justify-center rounded-[8px] bg-blue-600 text-[11px] font-black text-white">
+              서명하기
+            </span>
+          </div>
         </div>
         <div className="min-h-0 overflow-hidden rounded-[10px] border border-neutral-200 bg-white p-2 shadow-[0_12px_28px_rgba(15,23,42,0.06)]">
-          <div className="mx-auto h-full max-w-[190px] rounded-[4px] border border-neutral-200 bg-white px-3 py-3">
-            <p className="text-center text-[12px] font-black text-neutral-950">
+          <div className="mx-auto flex h-full w-full flex-col rounded-[6px] border border-neutral-200 bg-white px-4 py-4">
+            <p className="text-center text-[15px] font-black text-neutral-950">
               광고 계약서
             </p>
-            <div className="mt-3 grid gap-1.5">
-              {[
-                "제1조 계약 목적",
-                "제2조 산출물 및 일정",
-                "제3조 지급 조건",
-                "제4조 콘텐츠 활용",
-              ].map((title, index) => (
-                <div
-                  key={title}
-                  className={`rounded-[5px] bg-neutral-100 px-2 py-1.5 ${
-                    index > 1 ? "max-[380px]:hidden" : ""
-                  }`}
-                >
-                  <p className="text-[9px] font-extrabold text-neutral-700">
+            <div className="mt-4 grid min-h-0 flex-1 gap-2 overflow-hidden">
+              {clauses.map(([title, body]) => (
+                <div key={title} className="rounded-[7px] bg-neutral-100 px-3 py-2">
+                  <p className="text-[11px] font-extrabold text-neutral-800">
                     {title}
                   </p>
-                  <div className="mt-1 h-1.5 rounded-full bg-neutral-200" />
-                  <div
-                    className={`mt-1 h-1.5 rounded-full bg-neutral-200 ${
-                      index % 2 === 0 ? "w-4/5" : "w-2/3"
-                    }`}
-                  />
+                  <p className="mt-1 line-clamp-1 text-[10px] font-bold text-neutral-500">
+                    {body}
+                  </p>
                 </div>
               ))}
             </div>
-            <div className="mt-3 flex justify-between text-[9px] font-black text-neutral-500 max-[380px]:hidden">
+            <div className="mt-4 flex justify-between border-t border-neutral-200 pt-3 text-[10px] font-black text-neutral-500 max-[380px]:hidden">
               <span>광고주</span>
               <span>인플루언서</span>
             </div>
@@ -2369,6 +2517,17 @@ function InfluencerContractPdfPreview() {
 }
 
 function InfluencerRevisionRequestPreview() {
+  const clauseRows = [
+    ["제2조", "콘텐츠 업로드 일정"],
+    ["제4조", "2차 콘텐츠 활용"],
+    ["제5조", "검수 및 수정 기준"],
+  ];
+  const responseRows = [
+    ["요청 생성", "2026.05.22"],
+    ["광고주 확인", "진행중"],
+    ["서명 상태", "대기"],
+  ];
+
   return (
     <>
       <div className="border-b border-neutral-200 bg-white px-3 py-2">
@@ -2386,122 +2545,114 @@ function InfluencerRevisionRequestPreview() {
           </span>
         </div>
       </div>
-      <div className="grid min-h-0 flex-1 gap-2 bg-[#fbfcfa] p-2">
-        <div className="grid grid-cols-2 gap-2">
-          <div className="rounded-[10px] border border-neutral-200 bg-white px-3 py-2">
-            <p className="text-[10px] font-extrabold text-neutral-500">
-              문제 조항
-            </p>
-            <p className="mt-1 truncate text-[12px] font-black text-neutral-950">
-              2차 콘텐츠 활용
-            </p>
+      <div className="grid min-h-0 flex-1 gap-2 bg-[#fbfcfa] p-2 sm:grid-cols-[minmax(260px,0.42fr)_minmax(0,0.58fr)]">
+        <div className="flex min-h-0 flex-col gap-2">
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-[10px] border border-neutral-200 bg-white px-3 py-2.5">
+              <p className="text-[10px] font-extrabold text-neutral-500">
+                문제 조항
+              </p>
+              <p className="mt-1 truncate text-[12px] font-black text-neutral-950">
+                2차 콘텐츠 활용
+              </p>
+            </div>
+            <div className="rounded-[10px] border border-neutral-200 bg-white px-3 py-2.5">
+              <p className="text-[10px] font-extrabold text-neutral-500">
+                답변 상태
+              </p>
+              <p className="mt-1 truncate text-[12px] font-black text-blue-700">
+                광고주 확인 중
+              </p>
+            </div>
           </div>
-          <div className="rounded-[10px] border border-neutral-200 bg-white px-3 py-2">
-            <p className="text-[10px] font-extrabold text-neutral-500">
-              답변 상태
-            </p>
-            <p className="mt-1 truncate text-[12px] font-black text-blue-700">
-              광고주 확인 중
-            </p>
-          </div>
-        </div>
-        <div className="min-h-0 rounded-[10px] border border-neutral-200 bg-white p-3">
-          <div className="rounded-[8px] border border-amber-200 bg-amber-50 px-3 py-2">
+          <div className="rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-3">
             <p className="text-[11px] font-black text-amber-900">
               12개월 활용 기간
             </p>
-            <p className="mt-1 text-[10px] font-bold leading-4 text-amber-800 max-[380px]:hidden">
+            <p className="mt-1 text-[11px] font-bold leading-5 text-amber-800 max-[380px]:hidden">
               브랜드는 업로드 콘텐츠를 광고 소재로 12개월 동안 활용할 수 있습니다.
             </p>
           </div>
-          <div className="mt-2 rounded-[8px] border border-blue-200 bg-blue-50 px-3 py-2">
+          <div className="grid min-h-0 flex-1 gap-2 overflow-hidden rounded-[10px] border border-neutral-200 bg-white p-2">
+            {clauseRows.map(([label, value], index) => (
+              <div
+                key={label}
+                className={`grid grid-cols-[44px_minmax(0,1fr)] items-center gap-3 rounded-[8px] px-3 py-2 ${
+                  index === 1
+                    ? "bg-blue-50 text-blue-800"
+                    : "bg-neutral-50 text-neutral-800"
+                }`}
+              >
+                <span className="text-[10px] font-black">{label}</span>
+                <span className="truncate text-[11px] font-extrabold">{value}</span>
+              </div>
+            ))}
+          </div>
+          <div className="hidden grid-cols-3 gap-1.5 sm:grid">
+            {responseRows.map(([label, value]) => (
+              <div
+                key={label}
+                className="rounded-[8px] bg-white px-2 py-2 text-center ring-1 ring-neutral-200"
+              >
+                <p className="text-[9px] font-extrabold text-neutral-500">{label}</p>
+                <p className="mt-0.5 truncate text-[10px] font-black text-neutral-900">
+                  {value}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex min-h-0 flex-col rounded-[10px] border border-neutral-200 bg-white p-3">
+          <div className="rounded-[8px] border border-blue-200 bg-blue-50 px-3 py-2">
             <p className="text-[10px] font-extrabold text-blue-700">
               요청 내용
             </p>
-            <p className="mt-1 truncate text-[11px] font-black leading-4 text-neutral-950 sm:text-[12px]">
+            <p className="mt-1 break-keep text-[12px] font-black leading-5 text-neutral-950">
               3개월로 줄이고 추가 활용은 별도 동의로 진행해주세요.
             </p>
           </div>
-        </div>
-        <div className="grid grid-cols-3 gap-1.5 max-[380px]:hidden">
-          {["조항 선택", "요청 작성", "답변 대기"].map((label, index) => (
-            <div
-              key={label}
-              className="flex h-9 items-center justify-center rounded-[8px] bg-white text-[10px] font-black text-neutral-700 ring-1 ring-neutral-200"
-            >
-              {index + 1}. {label}
+          <div className="mt-2 grid min-h-0 flex-1 grid-rows-[auto_auto_1fr_auto] rounded-[8px] border border-neutral-200 bg-white">
+            <div className="border-b border-neutral-200 px-3 py-2">
+              <p className="text-[11px] font-black text-neutral-950">
+                수정 요청 메모
+              </p>
             </div>
-          ))}
+            <div className="border-b border-neutral-200 bg-neutral-50 px-3 py-2">
+              <p className="text-[10px] font-extrabold text-neutral-500">
+                선택 조항
+              </p>
+              <p className="mt-1 truncate text-[12px] font-black text-neutral-950">
+                제4조 콘텐츠 활용 범위
+              </p>
+            </div>
+            <div className="min-h-0 px-3 py-3">
+              <p className="break-keep text-[12px] font-semibold leading-5 text-neutral-600">
+                광고 소재 활용 기간이 길어 추가 노출 범위가 불명확합니다. 계약 기간 내 게시물 유지와 별도 2차 활용 동의를 분리해주세요.
+              </p>
+              <div className="mt-3 grid gap-2">
+                {["활용 기간 3개월", "추가 사용 시 사전 동의", "블로그 원문 링크 유지"].map((label) => (
+                  <span
+                    key={label}
+                    className="rounded-[7px] bg-neutral-100 px-3 py-2 text-[11px] font-black text-neutral-700"
+                  >
+                    {label}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 border-t border-neutral-200 p-2">
+              <span className="inline-flex h-9 items-center justify-center rounded-[8px] border border-neutral-200 text-[11px] font-black text-neutral-700">
+                임시저장
+              </span>
+              <span className="inline-flex h-9 items-center justify-center rounded-[8px] bg-blue-600 text-[11px] font-black text-white">
+                요청 보내기
+              </span>
+            </div>
+          </div>
         </div>
       </div>
     </>
-  );
-}
-
-function InfluencerCompactDashboardProductPreview() {
-  const state = introDashboardDemoData.influencer.states[1];
-
-  return (
-    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[16px] border border-neutral-200 bg-white shadow-[0_18px_48px_rgba(23,26,23,0.08)]">
-      <div className="border-b border-neutral-200 bg-[#ecebe5] px-2 pt-1.5 sm:pt-2">
-        <div className="flex min-w-0 items-end gap-1">
-          {state.tabs.map((tab) => {
-            const active = tab.label === state.activeTab;
-
-            return (
-              <div
-                key={tab.label}
-                className={`relative flex h-8 min-w-0 flex-1 items-center justify-between gap-0.5 rounded-t-[10px] border px-1 text-[9px] font-extrabold sm:h-10 sm:text-[10px] ${
-                  active
-                    ? "z-10 -mb-px border-[#d9e0d9] border-b-white bg-white text-[#171a17]"
-                    : "mb-1 border-transparent bg-[#e5e3dc] text-[#59605b]"
-                }`}
-              >
-                <span className="shrink-0 whitespace-nowrap">{tab.label}</span>
-                <span
-                  className={`inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full px-1 text-[10px] sm:h-5 sm:min-w-5 sm:text-[11px] ${
-                    active ? "bg-[#171a17] text-white" : "bg-white/80 text-[#303630]"
-                  }`}
-                >
-                  {tab.count}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-      <div className="flex min-h-0 flex-1 flex-col bg-[#fbfcfa]">
-        <div className="shrink-0 border-b border-neutral-200 bg-white px-3 py-1.5 sm:py-2">
-          <p className="text-[12px] font-black text-neutral-950 sm:text-[13px]">계약 목록</p>
-          <p className="mt-0.5 text-[9px] font-extrabold text-neutral-500 sm:text-[10px]">
-            {state.rows.length}건 표시 · 전체 조건
-          </p>
-        </div>
-        <div className="grid min-h-0 flex-1 grid-rows-3 divide-y divide-neutral-200 overflow-hidden">
-          {state.rows.map((row) => (
-            <div key={row.title} className="grid grid-cols-[22px_minmax(0,1fr)_auto] items-center gap-2 bg-white px-3 py-1.5 sm:grid-cols-[24px_minmax(0,1fr)_auto] sm:py-2.5">
-              <PlatformBrandMark platform={getIntroInfluencerPlatform(row.platform)} size="xs" />
-              <div className="min-w-0">
-                <p className="truncate text-[11px] font-black text-neutral-950 sm:text-[12px]">
-                  {row.title}
-                </p>
-                <p className="mt-0.5 truncate text-[9px] font-bold text-neutral-500 sm:text-[10px]">
-                  {row.brand} · {row.payment}
-                </p>
-              </div>
-              <div className="min-w-[62px] text-right sm:min-w-[68px]">
-                <p className="truncate text-[9px] font-black text-blue-700 sm:text-[10px]">
-                  {row.metric}
-                </p>
-                <p className="mt-0.5 truncate text-[9px] font-bold text-neutral-500 sm:text-[10px]">
-                  {row.date.split(" / ")[0]}
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
   );
 }
 
@@ -3087,7 +3238,7 @@ const introDashboardDemoData = {
         activeTab: "지원중",
         tabs: [
           { label: "지원중", count: 2 },
-          { label: "진행중", count: 3 },
+          { label: "진행중", count: 6 },
           { label: "완료", count: 1 },
           { label: "미선정", count: 1 },
         ],
@@ -3122,11 +3273,11 @@ const introDashboardDemoData = {
         activeTab: "진행중",
         tabs: [
           { label: "지원중", count: 2 },
-          { label: "진행중", count: 3 },
+          { label: "진행중", count: 6 },
           { label: "완료", count: 1 },
           { label: "미선정", count: 1 },
         ],
-        itemCount: 3,
+        itemCount: 6,
         metricColumnLabel: "내 할 일",
         dateColumnLabel: "마감일",
         metricBeforeDate: true,
@@ -3160,13 +3311,40 @@ const introDashboardDemoData = {
             metric: "컨텐츠 제출",
             date: "D-1 / 2026.05.25",
           },
+          {
+            platform: "틱톡",
+            platformClass: "border-rose-200 bg-rose-50 text-rose-700",
+            brand: "나이트케어",
+            title: "밤 루틴 숏폼 검수",
+            payment: "1,600,000원",
+            metric: "초안 제출",
+            date: "D-5 / 2026.05.29",
+          },
+          {
+            platform: "블로그",
+            platformClass: "border-emerald-200 bg-emerald-50 text-emerald-700",
+            brand: "브루잉랩",
+            title: "홈카페 리뷰 계약",
+            payment: "판매 수수료 15%",
+            metric: "게시 준비",
+            date: "D-6 / 2026.05.30",
+          },
+          {
+            platform: "인스타 +1",
+            platformClass: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
+            brand: "오브레",
+            title: "스킨케어 루틴 공동구매",
+            payment: "1,400,000원",
+            metric: "광고주 검수",
+            date: "D-8 / 2026.06.01",
+          },
         ],
       },
       {
         activeTab: "완료",
         tabs: [
           { label: "지원중", count: 2 },
-          { label: "진행중", count: 3 },
+          { label: "진행중", count: 6 },
           { label: "완료", count: 1 },
           { label: "미선정", count: 1 },
         ],
@@ -3192,7 +3370,7 @@ const introDashboardDemoData = {
         activeTab: "미선정",
         tabs: [
           { label: "지원중", count: 2 },
-          { label: "진행중", count: 3 },
+          { label: "진행중", count: 6 },
           { label: "완료", count: 1 },
           { label: "미선정", count: 1 },
         ],

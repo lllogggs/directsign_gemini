@@ -1506,7 +1506,7 @@ check(
     landing.includes("function AdvertiserApplicantsProductPreview") &&
     landing.includes("function InfluencerContractPdfPreview") &&
     landing.includes("function InfluencerRevisionRequestPreview") &&
-    landing.includes("function InfluencerCompactDashboardProductPreview") &&
+    landing.includes("function InfluencerIntroDashboardPreview") &&
     landing.includes('slide.stage === "final"') &&
     landing.includes("function FinalHandshakeVisual") &&
     landing.includes("data-intro-carousel-controls") &&
