@@ -107,8 +107,8 @@ interface ValidationError {
 }
 
 const STEPS: Array<{ s: StepId; label: string }> = [
-  { s: 1, label: "기본 정보" },
-  { s: 2, label: "채널 조건" },
+  { s: 1, label: "플랫폼 선택" },
+  { s: 2, label: "기본 정보" },
   { s: 3, label: "일정 및 지급" },
   { s: 4, label: "특약 사항" },
   { s: 5, label: "발송 전 확인" },
@@ -380,18 +380,18 @@ const validateContractDraft = (draft: ContractDraft): ValidationError[] => {
     if (isBlank(value)) errors.push({ step, field, message });
   };
 
-  requireField(1, "advertiserName", draft.advertiserName, "광고주/브랜드명을 입력하세요.");
-  requireField(1, "title", draft.title, "계약 건명을 입력하세요.");
-  requireField(1, "influencerName", draft.influencerName, "인플루언서명 또는 채널명을 입력하세요.");
-  requireField(1, "influencerUrl", draft.influencerUrl, "메인 채널 URL을 입력하세요.");
-  requireField(1, "influencerContact", draft.influencerContact, "연락처를 입력하세요.");
+  requireField(2, "advertiserName", draft.advertiserName, "광고주/브랜드명을 입력하세요.");
+  requireField(2, "title", draft.title, "계약 건명을 입력하세요.");
+  requireField(2, "influencerName", draft.influencerName, "인플루언서명 또는 채널명을 입력하세요.");
+  requireField(2, "influencerUrl", draft.influencerUrl, "메인 채널 URL을 입력하세요.");
+  requireField(2, "influencerContact", draft.influencerContact, "연락처를 입력하세요.");
 
   if (
     !isBlank(draft.influencerContact) &&
     !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(draft.influencerContact.trim())
   ) {
     errors.push({
-      step: 1,
+      step: 2,
       field: "influencerContact",
       message: "서명 계정 확인을 위해 인플루언서 이메일을 입력하세요.",
     });
@@ -399,7 +399,7 @@ const validateContractDraft = (draft: ContractDraft): ValidationError[] => {
 
   if (!isBlank(draft.influencerUrl) && !isHttpUrl(draft.influencerUrl)) {
     errors.push({
-      step: 1,
+      step: 2,
       field: "influencerUrl",
       message: "메인 채널 URL은 http 또는 https 주소여야 합니다.",
     });
@@ -416,7 +416,7 @@ const validateContractDraft = (draft: ContractDraft): ValidationError[] => {
   const deliverables = getDeliverableRows(draft);
   if (deliverables.length === 0) {
     errors.push({
-      step: 2,
+      step: 1,
       field: "channels",
       message: "계약에 포함할 플랫폼을 최소 1개 선택하세요.",
     });
@@ -424,14 +424,14 @@ const validateContractDraft = (draft: ContractDraft): ValidationError[] => {
 
   draft.channels.forEach((channel) => {
     const details = draft.channelDetails[channel];
-    requireField(2, `${channel}.postCount`, details?.postCount ?? "", `${channel} 업로드 건수를 입력하세요.`);
-    requireField(2, `${channel}.duration`, details?.duration ?? "", `${channel} 게시물 유지 기간을 입력하세요.`);
+    requireField(1, `${channel}.postCount`, details?.postCount ?? "", `${channel} 업로드 건수를 입력하세요.`);
+    requireField(1, `${channel}.duration`, details?.duration ?? "", `${channel} 게시물 유지 기간을 입력하세요.`);
   });
 
   if (draft.hasOtherChannel) {
-    requireField(2, "otherChannel", draft.otherChannel, "기타 매체명을 입력하세요.");
-    requireField(2, "otherChannel.postCount", draft.otherChannelDetails.postCount, "기타 매체 업로드 건수를 입력하세요.");
-    requireField(2, "otherChannel.duration", draft.otherChannelDetails.duration, "기타 매체 게시물 유지 기간을 입력하세요.");
+    requireField(1, "otherChannel", draft.otherChannel, "기타 매체명을 입력하세요.");
+    requireField(1, "otherChannel.postCount", draft.otherChannelDetails.postCount, "기타 매체 업로드 건수를 입력하세요.");
+    requireField(1, "otherChannel.duration", draft.otherChannelDetails.duration, "기타 매체 게시물 유지 기간을 입력하세요.");
   }
 
   requireField(3, "campaignStart", draft.campaignStart, "캠페인 시작일을 입력하세요.");
@@ -1017,7 +1017,7 @@ export function ContractBuilder() {
               {stepErrors.length > 0 && <ValidationSummary errors={stepErrors} />}
 
               <div className="space-y-5">
-              {step === 1 && (
+              {step === 2 && (
                 <section className="animate-in fade-in slide-in-from-right-4 space-y-4">
                   <div>
                     <Label>계약 유형</Label>
@@ -1121,7 +1121,7 @@ export function ContractBuilder() {
                 </section>
               )}
 
-              {step === 2 && (
+              {step === 1 && (
                 <section className="animate-in fade-in slide-in-from-right-4 space-y-6">
                   <div>
                     <Label className="mb-3 block">대상 플랫폼 및 컨텐츠 포맷</Label>
