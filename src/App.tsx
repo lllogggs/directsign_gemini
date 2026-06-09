@@ -7,6 +7,7 @@ import {
   useParams,
   Link,
 } from "react-router-dom";
+import { ArrowRight } from "lucide-react";
 import { Component, lazy, Suspense, useEffect, type ErrorInfo, type ReactNode } from "react";
 import { BrandLogo } from "./components/BrandLogo";
 import { AdvertiserAuthGate } from "./pages/marketing/AdvertiserAuthGate";
@@ -84,46 +85,61 @@ function InfluencerIntroPage() {
 
 function SignupLanding() {
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#f7f7f4] px-5 py-4 font-sans text-neutral-950 sm:px-6">
+    <main className="relative min-h-screen overflow-hidden bg-[#f7f7f4] px-4 py-4 font-sans text-neutral-950 sm:px-6">
       <div
         className="pointer-events-none absolute inset-x-0 bottom-0 h-[34svh] border-t border-neutral-200/60 bg-[#eef0ec]"
         aria-hidden="true"
       />
-      <div className="relative mx-auto grid min-h-[calc(100vh-32px)] w-full max-w-[1500px] grid-rows-[48px_auto]">
+      <div className="relative mx-auto grid min-h-[calc(100vh-32px)] w-full max-w-[1500px] grid-rows-[56px_auto]">
         <Link
           to="/"
-          className="inline-flex h-10 w-fit items-center gap-2 rounded-[10px] px-1 text-[13px] font-extrabold text-neutral-500 transition hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
+          className="yl-brand-action -ml-1 flex h-10 w-fit min-w-0 items-center gap-2.5 rounded-[12px] px-1 py-1 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
+          aria-label={`${PRODUCT_NAME} 홈`}
         >
-          연락미 홈
+          <BrandLogo />
         </Link>
-        <section className="flex justify-center pt-[clamp(64px,10svh,104px)]">
-          <div className="w-full max-w-[520px]">
-            <p className="text-[12px] font-extrabold uppercase tracking-[0.14em] text-neutral-400">
+        <section className="flex justify-center pt-[clamp(52px,8.5svh,88px)]">
+          <div className="w-full max-w-[640px]">
+            <p className="text-[12px] font-extrabold uppercase tracking-normal text-neutral-400">
               계정 만들기
             </p>
-            <h1 className="mt-3 text-[30px] font-extrabold leading-tight text-neutral-950">
+            <h1 className="mt-3 text-[32px] font-extrabold leading-tight text-neutral-950 sm:text-[36px]">
               역할을 선택하세요
             </h1>
-            <div className="mt-7 grid gap-3">
+            <div className="mt-7 grid gap-3.5">
               <Link
                 to="/signup/advertiser"
                 data-signup-role-action="advertiser"
-                className="flex min-h-[64px] items-center justify-between gap-4 rounded-[12px] border border-blue-200 bg-white px-4 py-3 text-left text-blue-700 shadow-[0_14px_36px_rgba(15,23,42,0.07)] transition hover:border-blue-500 hover:bg-blue-50 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
+                className="flex min-h-[112px] items-center justify-between gap-4 rounded-[10px] border border-blue-200 bg-white px-5 py-4 text-left text-blue-700 shadow-[0_1px_0_rgba(15,23,42,0.03),0_10px_28px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:border-blue-500 hover:bg-blue-50 hover:shadow-[0_1px_0_rgba(15,23,42,0.04),0_14px_34px_rgba(15,23,42,0.06)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:min-h-[124px] sm:px-6"
               >
-                <strong className="block text-[18px] font-extrabold text-neutral-950">
-                  광고주로 가입
-                </strong>
-                <span className="text-[13px] font-extrabold">계약 만들기</span>
+                <span className="min-w-0">
+                  <strong className="block truncate text-[23px] font-extrabold leading-7 text-neutral-950 sm:text-[25px]">
+                    광고주로 가입
+                  </strong>
+                  <span className="mt-2 block truncate text-[13px] font-extrabold text-blue-700 sm:text-[14px]">
+                    계약 만들기
+                  </span>
+                </span>
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] border border-blue-200 bg-white text-blue-700 transition sm:h-11 sm:w-11">
+                  <ArrowRight className="h-4 w-4" />
+                </span>
               </Link>
               <Link
                 to="/signup/influencer"
                 data-signup-role-action="influencer"
-                className="flex min-h-[64px] items-center justify-between gap-4 rounded-[12px] border border-emerald-200 bg-white px-4 py-3 text-left text-emerald-700 shadow-[0_14px_36px_rgba(15,23,42,0.07)] transition hover:border-emerald-500 hover:bg-emerald-50 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
+                className="flex min-h-[112px] items-center justify-between gap-4 rounded-[10px] border border-emerald-200 bg-white px-5 py-4 text-left text-emerald-700 shadow-[0_1px_0_rgba(15,23,42,0.03),0_10px_28px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:border-emerald-500 hover:bg-emerald-50 hover:shadow-[0_1px_0_rgba(15,23,42,0.04),0_14px_34px_rgba(15,23,42,0.06)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:min-h-[124px] sm:px-6"
               >
-                <strong className="block text-[18px] font-extrabold text-neutral-950">
-                  인플루언서로 가입
-                </strong>
-                <span className="text-[13px] font-extrabold">계약 확인하기</span>
+                <span className="min-w-0">
+                  <strong className="block truncate text-[23px] font-extrabold leading-7 text-neutral-950 sm:text-[25px]">
+                    인플루언서로 가입
+                  </strong>
+                  <span className="mt-2 block truncate text-[13px] font-extrabold text-emerald-700 sm:text-[14px]">
+                    계약 확인하기
+                  </span>
+                </span>
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] border border-emerald-200 bg-white text-emerald-700 transition sm:h-11 sm:w-11">
+                  <ArrowRight className="h-4 w-4" />
+                </span>
               </Link>
             </div>
             <Link

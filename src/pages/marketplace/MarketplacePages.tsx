@@ -41,6 +41,8 @@ import {
   findBrandProfileByHandle,
   marketplaceBrands,
   marketplaceInfluencers,
+  mergeMarketplaceBrandProfiles,
+  mergeMarketplaceInfluencerProfiles,
   platformLabels,
   proposalTypeLabels,
   type CampaignProposalType,
@@ -184,7 +186,11 @@ function useMarketplaceInfluencers() {
       })
       .then((data) => {
         if (!active) return;
-        setProfiles(data.profiles.length > 0 ? data.profiles : marketplaceInfluencers);
+        setProfiles(
+          data.profiles.length > 0
+            ? mergeMarketplaceInfluencerProfiles(data.profiles)
+            : marketplaceInfluencers,
+        );
       })
       .catch(() => {
         if (active) setProfiles(marketplaceInfluencers);
@@ -218,7 +224,11 @@ function useMarketplaceBrands() {
       })
       .then((data) => {
         if (!active) return;
-        setBrands(data.brands.length > 0 ? data.brands : marketplaceBrands);
+        setBrands(
+          data.brands.length > 0
+            ? mergeMarketplaceBrandProfiles(data.brands)
+            : marketplaceBrands,
+        );
       })
       .catch(() => {
         if (active) setBrands(marketplaceBrands);
@@ -964,94 +974,117 @@ export function PublicBrandProfilePage() {
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <section className="border-b border-neutral-200/80 bg-white">
-          <div className="mx-auto grid max-w-[1180px] gap-4 px-4 py-4 sm:px-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:px-8">
-          <div className="min-w-0">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
-              <AvatarBlock
-                label={brand.logoLabel}
-                src={brand.logoUrl}
-                alt={brand.displayName}
-                size="large"
-              />
-              <div className="min-w-0 flex-1">
-                <p className="break-all text-[13px] font-semibold text-neutral-500">
-                  yeollock.me/brands/{brand.handle}
-                </p>
-                <h1 className="font-neo-heavy mt-2 text-[30px] leading-tight tracking-[-0.035em] text-neutral-950 sm:text-[40px]">
-                  {brand.displayName}
-                </h1>
-                <p className="mt-2 max-w-2xl break-keep text-[15px] font-medium leading-6 text-neutral-600">
-                  {formatBrandMarketplaceHeadline(brand)}
-                </p>
-                <p className="mt-2 line-clamp-2 max-w-3xl break-keep text-[13px] leading-5 text-neutral-600">
-                  {formatBrandMarketplaceDescription(brand)}
-                </p>
-                <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-                  <button
-                    type="button"
-                    onClick={() => setShowContact(true)}
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-[10px] bg-blue-600 px-4 text-[13px] font-extrabold text-white shadow-[0_14px_30px_rgba(37,99,235,0.18)] transition hover:bg-blue-700 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700"
-                  >
-                    <Handshake className="h-4 w-4" />
-                    브랜드에 역제안하기
-                  </button>
+          <div className="mx-auto grid max-w-[1180px] gap-4 px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:px-8">
+            <div className="min-w-0">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                <AvatarBlock
+                  label={brand.logoLabel}
+                  src={brand.logoUrl}
+                  alt={brand.displayName}
+                  size="large"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="break-all text-[13px] font-semibold text-neutral-500">
+                    yeollock.me/brands/{brand.handle}
+                  </p>
+                  <h1 className="font-neo-heavy mt-2 text-[30px] leading-tight tracking-[-0.035em] text-neutral-950 sm:text-[40px]">
+                    {brand.displayName}
+                  </h1>
+                  <p className="mt-2 max-w-2xl break-keep text-[15px] font-medium leading-6 text-neutral-600">
+                    {formatBrandMarketplaceHeadline(brand)}
+                  </p>
+                  <p className="mt-2 line-clamp-2 max-w-3xl break-keep text-[13px] leading-5 text-neutral-600">
+                    {formatBrandMarketplaceDescription(brand)}
+                  </p>
+                  <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                    <button
+                      type="button"
+                      onClick={() => setShowContact(true)}
+                      className="inline-flex h-10 items-center justify-center gap-2 rounded-[10px] bg-blue-600 px-4 text-[13px] font-extrabold text-white shadow-[0_14px_30px_rgba(37,99,235,0.18)] transition hover:bg-blue-700 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700"
+                    >
+                      <Handshake className="h-4 w-4" />
+                      브랜드에 역제안하기
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
 
+            <aside className="grid gap-2 rounded-[14px] border border-neutral-200 bg-[#fbfaf7] p-3 shadow-[0_12px_30px_rgba(15,23,42,0.035)]">
+              <MiniMetric label="제안 가능" value={brand.responseTimeLabel} />
+              <MiniMetric label="예산 범위" value={brand.budgetRangeLabel} />
+              <MiniMetric label="위치" value={brand.location} />
+              <div className="rounded-[10px] border border-neutral-200 bg-white px-3 py-3">
+                <p className="yl-fact-label">선호 플랫폼</p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {brand.preferredPlatforms.map((platform) => (
+                    <PlatformPill
+                      key={`${brand.id}-summary-${platform}`}
+                      platform={platform}
+                      label={platformLabels[platform]}
+                    />
+                  ))}
+                </div>
+              </div>
+            </aside>
           </div>
         </section>
 
-        <section className="mx-auto grid max-w-[1180px] gap-3 px-4 py-4 sm:px-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:px-8">
-        <div className="grid gap-4">
-          <ProfileSection title="진행 중인 캠페인">
-            <div className="grid gap-3 md:grid-cols-2">
-              {brand.activeCampaigns.slice(0, 4).map((campaign) => (
-                <article
-                  key={`${campaign.title}-${campaign.type}`}
-                  className="rounded-[10px] border border-neutral-200 bg-white p-3"
-                >
-                  <p className="text-[12px] font-semibold text-neutral-500">
-                    {proposalTypeLabels[campaign.type]}
-                  </p>
-                  <h2 className="mt-1.5 truncate text-[14px] font-semibold text-neutral-950">
-                    {campaign.title}
-                  </h2>
-                  <p className="mt-2 text-[12px] font-medium text-neutral-600">
-                    {campaign.budget}
-                  </p>
-                </article>
-              ))}
-            </div>
-            {brand.activeCampaigns.length > 4 ? (
-              <p className="mt-2 text-[12px] font-semibold text-neutral-500">
-                나머지 {brand.activeCampaigns.length - 4}건도 브랜드 조건에 맞춰 검토할 수 있습니다.
-              </p>
-            ) : null}
-          </ProfileSection>
+        <section className="mx-auto grid max-w-[1180px] gap-3 px-4 py-3 sm:px-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:px-8">
+          <div className="grid gap-4">
+            <ProfileSection title="진행 중인 캠페인">
+              <div className="grid gap-3 md:grid-cols-2">
+                {brand.activeCampaigns.slice(0, 4).map((campaign) => (
+                  <article
+                    key={`${campaign.title}-${campaign.type}`}
+                    className="rounded-[10px] border border-neutral-200 bg-white p-4"
+                  >
+                    <p className="text-[12px] font-semibold text-neutral-500">
+                      {proposalTypeLabels[campaign.type]}
+                    </p>
+                    <h2 className="mt-1.5 truncate text-[14px] font-semibold text-neutral-950">
+                      {campaign.title}
+                    </h2>
+                    <dl className="mt-3 grid gap-2 text-[12px] font-semibold text-neutral-600">
+                      <div className="flex items-center justify-between gap-3">
+                        <dt className="text-neutral-400">예산</dt>
+                        <dd className="text-right text-neutral-800">{campaign.budget}</dd>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <dt className="text-neutral-400">모집</dt>
+                        <dd className="text-right text-neutral-800">
+                          {campaign.applicantLimit}
+                        </dd>
+                      </div>
+                    </dl>
+                  </article>
+                ))}
+              </div>
+              {brand.activeCampaigns.length > 4 ? (
+                <p className="mt-2 text-[12px] font-semibold text-neutral-500">
+                  나머지 {brand.activeCampaigns.length - 4}건도 브랜드 조건에 맞춰 검토할 수 있습니다.
+                </p>
+              ) : null}
+            </ProfileSection>
 
-          <ProfileSection title="선호 플랫폼">
-            <div className="flex flex-wrap gap-1.5">
-              {brand.preferredPlatforms.map((platform) => (
-                <PlatformPill
-                  key={`${brand.id}-${platform}`}
-                  platform={platform}
-                  label={platformLabels[platform]}
-                />
-              ))}
-            </div>
-          </ProfileSection>
-        </div>
+            <ProfileSection title="협업 방식">
+              <TagList
+                items={brand.proposalTypes.map((type) => proposalTypeLabels[type])}
+              />
+            </ProfileSection>
+          </div>
 
-        <aside className="grid gap-4">
-          <ProfileSection title="잘 맞는 크리에이터">
-            <TagList items={brand.fitTags.map(cleanMarketplaceCopy)} />
-          </ProfileSection>
-          <ProfileSection title="타깃 고객">
-            <TagList items={brand.audienceTargets.map(cleanMarketplaceCopy)} />
-          </ProfileSection>
-        </aside>
+          <aside className="grid gap-4">
+            <ProfileSection title="잘 맞는 크리에이터">
+              <TagList items={brand.fitTags.map(cleanMarketplaceCopy)} />
+            </ProfileSection>
+            <ProfileSection title="타깃 고객">
+              <TagList items={brand.audienceTargets.map(cleanMarketplaceCopy)} />
+            </ProfileSection>
+            <ProfileSection title="최근 협업 크리에이터">
+              <TagList items={brand.recentCreators.map(cleanMarketplaceCopy)} />
+            </ProfileSection>
+          </aside>
         </section>
       </div>
 

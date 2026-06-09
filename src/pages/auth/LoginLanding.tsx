@@ -70,10 +70,15 @@ export function LoginLanding() {
           </Link>
         </header>
 
-        <section className="flex min-h-0 items-start justify-center pt-[10vh] sm:pt-[13vh] lg:pt-[14vh]">
-          <div className="w-full max-w-[520px]">
-            <h1 className="sr-only">{PRODUCT_NAME} 로그인</h1>
-            <div className="grid gap-3">
+        <section className="flex min-h-0 items-start justify-center pt-[clamp(52px,8.5svh,88px)]">
+          <div className="w-full max-w-[640px]">
+            <p className="text-[12px] font-extrabold uppercase tracking-normal text-neutral-400">
+              로그인
+            </p>
+            <h1 className="mt-3 text-[32px] font-extrabold leading-tight text-neutral-950 sm:text-[36px]">
+              역할을 선택하세요
+            </h1>
+            <div className="mt-7 grid gap-3.5">
               {loginRoles.map((role) => {
                 const Icon = role.icon;
                 const tone = getRoleTone(role.role);
@@ -93,21 +98,21 @@ export function LoginLanding() {
                     key={role.href}
                     to={href}
                     aria-label={role.title}
-                    className={`group flex h-[104px] items-center gap-4 rounded-[10px] border px-5 text-left shadow-[0_1px_0_rgba(15,23,42,0.03),0_10px_28px_rgba(15,23,42,0.035)] transition hover:-translate-y-0.5 hover:shadow-[0_1px_0_rgba(15,23,42,0.04),0_14px_34px_rgba(15,23,42,0.055)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:h-[104px] sm:px-5 ${tone.card}`}
+                    className={`group flex h-[112px] items-center gap-4 rounded-[10px] border px-5 text-left shadow-[0_1px_0_rgba(15,23,42,0.03),0_10px_28px_rgba(15,23,42,0.035)] transition hover:-translate-y-0.5 hover:shadow-[0_1px_0_rgba(15,23,42,0.04),0_14px_34px_rgba(15,23,42,0.055)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:h-[124px] sm:px-6 ${tone.card}`}
                   >
-                    <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] border ${tone.icon}`}>
-                      <Icon className="h-5 w-5" />
+                    <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-[10px] border sm:h-14 sm:w-14 ${tone.icon}`}>
+                      <Icon className="h-5 w-5 sm:h-6 sm:w-6" />
                     </span>
 
                     <span className="min-w-0 flex-1">
-                      <strong className="block truncate text-[22px] font-extrabold leading-7 text-neutral-950 sm:text-[23px]">
+                      <strong className="block truncate text-[23px] font-extrabold leading-7 text-neutral-950 sm:text-[25px]">
                         {role.title}
                       </strong>
-                      <span className={`mt-1.5 block truncate text-[13px] font-bold leading-5 ${tone.detail}`}>
+                      <span className={`mt-2 block truncate text-[13px] font-bold leading-5 sm:text-[14px] ${tone.detail}`}>
                         {role.detail}
                       </span>
                     </span>
-                    <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] border transition ${tone.arrow}`}>
+                    <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] border transition sm:h-11 sm:w-11 ${tone.arrow}`}>
                       <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
                     </span>
                   </Link>
