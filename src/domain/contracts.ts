@@ -24,6 +24,37 @@ export type ContractPlatform =
   | "TIKTOK"
   | "OTHER";
 
+export type ContractDeliverableContentType =
+  | "instagram_feed"
+  | "instagram_reels"
+  | "instagram_story"
+  | "youtube_shorts"
+  | "youtube_longform"
+  | "tiktok_shortform"
+  | "naver_blog_review"
+  | "other";
+
+export interface ContractDeliverableRequirementDetail {
+  videoLength?: string;
+  photoCount?: string;
+  frameCount?: string;
+  wordCount?: string;
+  maintainPeriod?: string;
+  platformName?: string;
+  contentName?: string;
+  note?: string;
+}
+
+export interface ContractDeliverableItem {
+  id: string;
+  platform: ContractPlatform;
+  platformLabel: string;
+  contentType: ContractDeliverableContentType;
+  contentLabel: string;
+  requirementText: string;
+  requirements: ContractDeliverableRequirementDetail;
+}
+
 export interface AdvertiserTrustFlag {
   code: string;
   label: string;
@@ -89,6 +120,7 @@ export interface ContractCampaign {
   period?: string;
   platforms?: ContractPlatform[];
   deliverables?: string[];
+  deliverable_items?: ContractDeliverableItem[];
   required_hashtags?: string[];
   brand_account_tags?: string[];
   content_submission?: {

@@ -32,9 +32,12 @@ export interface DeliverableSubmission {
 export interface DeliverableRequirement {
   id: string;
   contract_id: string;
+  platform_id?: string | null;
   deliverable_type: string;
   title: string;
   description?: string | null;
+  content_format?: string | null;
+  requirement_json?: Record<string, unknown> | null;
   quantity: number;
   due_at?: string | null;
   review_required: boolean;

@@ -9,6 +9,11 @@ import {
   Clause,
 } from "../../store";
 import { createShareToken } from "../../domain/contracts";
+import type {
+  ContractDeliverableContentType,
+  ContractDeliverableItem,
+  ContractDeliverableRequirementDetail,
+} from "../../domain/contracts";
 import { buildContractShareUrl } from "../../domain/links";
 import {
   getVerificationRejectionGuidance,
@@ -71,14 +76,10 @@ interface ContractDraft {
   influencerName: string;
   influencerUrl: string;
   influencerContact: string;
-  channels: string[];
-  channelDetails: Record<string, { postCount: string; duration: string }>;
-  hasOtherChannel: boolean;
-  otherChannel: string;
-  otherChannelDetails: {
-    postCount: string;
-    duration: string;
-  };
+  selectedDeliverables: ContractDeliverableContentType[];
+  deliverableRequirements: Partial<
+    Record<ContractDeliverableContentType, ContractDeliverableRequirementDetail>
+  >;
   campaignStart: string;
   campaignEnd: string;
   uploadDueDate: string;
@@ -114,15 +115,174 @@ const STEPS: Array<{ s: StepId; label: string }> = [
   { s: 5, label: "발송 전 확인" },
 ];
 
-const CHANNEL_OPTIONS = [
-  "인스타그램 피드",
-  "인스타그램 릴스",
-  "인스타그램 스토리",
-  "유튜브 숏츠",
-  "유튜브 일반영상",
-  "네이버 블로그",
-  "틱톡",
-  "기타 커뮤니티",
+type DeliverableRequirementField = keyof ContractDeliverableRequirementDetail;
+
+interface DeliverableFieldConfig {
+  key: DeliverableRequirementField;
+  label: string;
+  placeholder: string;
+  fullWidth?: boolean;
+}
+
+interface DeliverableOption {
+  platform: ContractPlatform;
+  platformLabel: string;
+  contentType: ContractDeliverableContentType;
+  label: string;
+  caption: string;
+  fields: DeliverableFieldConfig[];
+  requiredFields: DeliverableRequirementField[];
+}
+
+const PLATFORM_CONTENT_GROUPS: Array<{
+  platform: ContractPlatform;
+  label: string;
+  items: DeliverableOption[];
+}> = [
+  {
+    platform: "INSTAGRAM",
+    label: "인스타그램",
+    items: [
+      {
+        platform: "INSTAGRAM",
+        platformLabel: "인스타그램",
+        contentType: "instagram_reels",
+        label: "릴스",
+        caption: "세로 숏폼",
+        requiredFields: ["videoLength"],
+        fields: [
+          { key: "videoLength", label: "영상 길이", placeholder: "예: 30초 이상" },
+          { key: "maintainPeriod", label: "게시 유지", placeholder: "예: 30일" },
+        ],
+      },
+      {
+        platform: "INSTAGRAM",
+        platformLabel: "인스타그램",
+        contentType: "instagram_story",
+        label: "스토리",
+        caption: "컷 단위 노출",
+        requiredFields: ["frameCount"],
+        fields: [
+          { key: "frameCount", label: "컷 수", placeholder: "예: 3컷 이상" },
+          { key: "maintainPeriod", label: "게시 유지", placeholder: "예: 24시간" },
+        ],
+      },
+      {
+        platform: "INSTAGRAM",
+        platformLabel: "인스타그램",
+        contentType: "instagram_feed",
+        label: "피드",
+        caption: "이미지/캐러셀",
+        requiredFields: ["photoCount"],
+        fields: [
+          { key: "photoCount", label: "사진 수", placeholder: "예: 5장 이상" },
+          { key: "maintainPeriod", label: "게시 유지", placeholder: "예: 3개월" },
+        ],
+      },
+    ],
+  },
+  {
+    platform: "YOUTUBE",
+    label: "유튜브",
+    items: [
+      {
+        platform: "YOUTUBE",
+        platformLabel: "유튜브",
+        contentType: "youtube_shorts",
+        label: "쇼츠",
+        caption: "세로 숏폼",
+        requiredFields: ["videoLength"],
+        fields: [
+          { key: "videoLength", label: "영상 길이", placeholder: "예: 45초 이상" },
+          { key: "maintainPeriod", label: "게시 유지", placeholder: "예: 3개월" },
+        ],
+      },
+      {
+        platform: "YOUTUBE",
+        platformLabel: "유튜브",
+        contentType: "youtube_longform",
+        label: "롱폼",
+        caption: "일반 영상",
+        requiredFields: ["videoLength"],
+        fields: [
+          { key: "videoLength", label: "영상 길이", placeholder: "예: 5분 이상" },
+          { key: "maintainPeriod", label: "게시 유지", placeholder: "예: 6개월" },
+        ],
+      },
+    ],
+  },
+  {
+    platform: "TIKTOK",
+    label: "틱톡",
+    items: [
+      {
+        platform: "TIKTOK",
+        platformLabel: "틱톡",
+        contentType: "tiktok_shortform",
+        label: "숏폼",
+        caption: "세로 영상",
+        requiredFields: ["videoLength"],
+        fields: [
+          { key: "videoLength", label: "영상 길이", placeholder: "예: 30초 이상" },
+          { key: "maintainPeriod", label: "게시 유지", placeholder: "예: 30일" },
+        ],
+      },
+    ],
+  },
+  {
+    platform: "NAVER_BLOG",
+    label: "네이버 블로그",
+    items: [
+      {
+        platform: "NAVER_BLOG",
+        platformLabel: "네이버 블로그",
+        contentType: "naver_blog_review",
+        label: "원고",
+        caption: "텍스트/사진 리뷰",
+        requiredFields: ["wordCount", "photoCount"],
+        fields: [
+          { key: "wordCount", label: "글자수", placeholder: "예: 1,500자 이상" },
+          { key: "photoCount", label: "사진 수", placeholder: "예: 8장 이상" },
+          {
+            key: "maintainPeriod",
+            label: "게시 유지",
+            placeholder: "예: 6개월",
+            fullWidth: true,
+          },
+        ],
+      },
+    ],
+  },
+  {
+    platform: "OTHER",
+    label: "기타",
+    items: [
+      {
+        platform: "OTHER",
+        platformLabel: "기타",
+        contentType: "other",
+        label: "직접 입력",
+        caption: "플랫폼/컨텐츠 직접 지정",
+        requiredFields: ["platformName", "contentName", "note"],
+        fields: [
+          { key: "platformName", label: "플랫폼", placeholder: "예: 커뮤니티" },
+          { key: "contentName", label: "컨텐츠", placeholder: "예: 게시글" },
+          {
+            key: "note",
+            label: "조건",
+            placeholder: "예: 본문 800자 이상, 이미지 3장",
+            fullWidth: true,
+          },
+          {
+            key: "maintainPeriod",
+            label: "게시 유지",
+            placeholder: "예: 30일",
+            fullWidth: true,
+          },
+        ],
+      },
+    ],
+  },
 ];
 
 const INITIAL_DRAFT: ContractDraft = {
@@ -133,14 +293,8 @@ const INITIAL_DRAFT: ContractDraft = {
   influencerName: "",
   influencerUrl: "",
   influencerContact: "",
-  channels: [],
-  channelDetails: {},
-  hasOtherChannel: false,
-  otherChannel: "",
-  otherChannelDetails: {
-    postCount: "",
-    duration: "",
-  },
+  selectedDeliverables: [],
+  deliverableRequirements: {},
   campaignStart: "",
   campaignEnd: "",
   uploadDueDate: "",
@@ -189,69 +343,75 @@ const addDays = (days: number) => {
   return date.toISOString();
 };
 
-const getDeliverableRows = (draft: ContractDraft) => {
-  const selectedRows = draft.channels.map((channel) => ({
-    channel,
-    postCount: draft.channelDetails[channel]?.postCount ?? "",
-    duration: draft.channelDetails[channel]?.duration ?? "",
-  }));
+const ALL_DELIVERABLE_OPTIONS = PLATFORM_CONTENT_GROUPS.flatMap((group) => group.items);
 
-  if (draft.hasOtherChannel) {
-    selectedRows.push({
-      channel: draft.otherChannel.trim(),
-      postCount: draft.otherChannelDetails.postCount,
-      duration: draft.otherChannelDetails.duration,
-    });
-  }
+const getDeliverableOption = (contentType: ContractDeliverableContentType) =>
+  ALL_DELIVERABLE_OPTIONS.find((option) => option.contentType === contentType);
 
-  return selectedRows;
+const getSelectedDeliverableOptions = (draft: ContractDraft) =>
+  draft.selectedDeliverables
+    .map((contentType) => getDeliverableOption(contentType))
+    .filter((option): option is DeliverableOption => Boolean(option));
+
+const getRequirementValue = (
+  requirements: ContractDeliverableRequirementDetail | undefined,
+  key: DeliverableRequirementField,
+) => requirements?.[key]?.trim() ?? "";
+
+const buildRequirementText = (
+  option: DeliverableOption,
+  requirements: ContractDeliverableRequirementDetail | undefined,
+) => {
+  const parts = option.fields
+    .filter((field) => field.key !== "platformName" && field.key !== "contentName")
+    .map((field) => {
+      const value = getRequirementValue(requirements, field.key);
+      return value ? `${field.label} ${value}` : "";
+    })
+    .filter(Boolean);
+
+  return parts.join(", ");
 };
 
-const getSelectedPlatforms = (draft: ContractDraft): ContractPlatform[] => {
-  const platforms = new Set<ContractPlatform>();
-  const allChannels = [
-    ...draft.channels,
-    draft.hasOtherChannel ? draft.otherChannel : "",
-    draft.influencerUrl,
-  ].map((channel) => channel.toLowerCase());
+const getDeliverableItems = (draft: ContractDraft): ContractDeliverableItem[] =>
+  getSelectedDeliverableOptions(draft).map((option, index) => {
+    const requirements = draft.deliverableRequirements[option.contentType] ?? {};
+    const customPlatform = getRequirementValue(requirements, "platformName");
+    const customContent = getRequirementValue(requirements, "contentName");
+    const platformLabel =
+      option.platform === "OTHER" && customPlatform ? customPlatform : option.platformLabel;
+    const contentLabel =
+      option.contentType === "other" && customContent ? customContent : option.label;
 
-  allChannels.forEach((channel) => {
-    if (channel.includes("인스타") || channel.includes("instagram")) {
-      platforms.add("INSTAGRAM");
-    } else if (channel.includes("유튜브") || channel.includes("youtube")) {
-      platforms.add("YOUTUBE");
-    } else if (channel.includes("틱톡") || channel.includes("tiktok")) {
-      platforms.add("TIKTOK");
-    } else if (
-      channel.includes("블로그") ||
-      channel.includes("blog") ||
-      channel.includes("naver")
-    ) {
-      platforms.add("NAVER_BLOG");
-    } else if (channel.trim()) {
-      platforms.add("OTHER");
-    }
+    return {
+      id: `${option.platform}:${option.contentType}:${index + 1}`,
+      platform: option.platform,
+      platformLabel,
+      contentType: option.contentType,
+      contentLabel,
+      requirements,
+      requirementText: buildRequirementText(option, requirements),
+    };
   });
 
-  return Array.from(platforms);
-};
+const getSelectedPlatforms = (draft: ContractDraft): ContractPlatform[] =>
+  Array.from(new Set(getDeliverableItems(draft).map((item) => item.platform)));
 
 const buildContractClauses = (draft: ContractDraft): Clause[] => {
   const clauses: Clause[] = [];
-  const deliverables = getDeliverableRows(draft)
-    .filter((row) => row.channel)
+  const deliverables = getDeliverableItems(draft)
     .map(
-      (row) =>
-        `- ${row.channel}: 업로드 ${row.postCount || "입력 필요"}, 유지기간 ${
-          row.duration || "입력 필요"
+      (item) =>
+        `- ${item.platformLabel} ${item.contentLabel}: ${
+          item.requirementText || "조건 입력 필요"
         }`,
     );
 
   if (deliverables.length > 0) {
     clauses.push({
       clause_id: "draft_deliverables",
-      category: "제공 매체 및 업로드 조건",
-      content: `본 계약에 따라 인플루언서는 다음 매체에 정해진 건수의 컨텐츠를 업로드하고 지정된 기간 동안 유지해야 한다:\n${deliverables.join(
+      category: "플랫폼 및 컨텐츠 조건",
+      content: `본 계약에 따라 인플루언서는 다음 플랫폼과 컨텐츠 조건에 맞춰 제작 및 게시해야 한다:\n${deliverables.join(
         "\n",
       )}`,
       status: "PENDING_REVIEW",
@@ -303,7 +463,7 @@ const buildContractClauses = (draft: ContractDraft): Clause[] => {
     clause_id: "draft_content_submission_review",
     category: "컨텐츠 제출 및 검수 조건",
     content: [
-      "인플루언서는 컨텐츠 게시 후 광고주가 확인할 수 있는 컨텐츠 URL을 제출해야 한다. 광고주가 요구한 경우 게시물 캡처, 블로그 PDF, 스토리 캡처 등 파일을 함께 제출해야 한다. 광고주는 컨텐츠 URL, 광고표시 문구, 필수 해시태그, 브랜드 계정 태그, 게시일, 게시물 유지 조건을 확인할 수 있다. 제출된 컨텐츠에 누락 또는 오류가 있는 경우 광고주는 수정 요청 또는 반려를 할 수 있다. 광고주가 컨텐츠를 승인하면 해당 광고 계약은 마감 처리할 수 있다.",
+      "인플루언서는 컨텐츠 게시 후 광고주가 확인할 수 있는 컨텐츠 URL을 제출해야 한다. 광고주가 요구한 경우 게시물 캡처, 블로그 PDF, 스토리 캡처 등 파일을 함께 제출해야 한다. 광고주는 컨텐츠 URL, 광고표시 문구, 필수 해시태그, 브랜드 계정 태그, 게시일, 컨텐츠 형식별 조건을 확인할 수 있다. 제출된 컨텐츠에 누락 또는 오류가 있는 경우 광고주는 수정 요청 또는 반려를 할 수 있다. 광고주가 컨텐츠를 승인하면 해당 광고 계약은 마감 처리할 수 있다.",
       draft.requiredHashtags.trim()
         ? `필수 해시태그: ${splitCommaSeparated(draft.requiredHashtags).join(", ")}`
         : "",
@@ -413,26 +573,28 @@ const validateContractDraft = (draft: ContractDraft): ValidationError[] => {
     });
   }
 
-  const deliverables = getDeliverableRows(draft);
+  const deliverables = getDeliverableItems(draft);
   if (deliverables.length === 0) {
     errors.push({
       step: 1,
-      field: "channels",
-      message: "계약에 포함할 플랫폼을 최소 1개 선택하세요.",
+      field: "selectedDeliverables",
+      message: "계약에 포함할 플랫폼과 컨텐츠를 최소 1개 선택하세요.",
     });
   }
 
-  draft.channels.forEach((channel) => {
-    const details = draft.channelDetails[channel];
-    requireField(1, `${channel}.postCount`, details?.postCount ?? "", `${channel} 업로드 건수를 입력하세요.`);
-    requireField(1, `${channel}.duration`, details?.duration ?? "", `${channel} 게시물 유지 기간을 입력하세요.`);
+  getSelectedDeliverableOptions(draft).forEach((option) => {
+    const requirements = draft.deliverableRequirements[option.contentType];
+    option.requiredFields.forEach((field) => {
+      const fieldLabel =
+        option.fields.find((item) => item.key === field)?.label ?? "조건";
+      requireField(
+        1,
+        `${option.contentType}.${field}`,
+        getRequirementValue(requirements, field),
+        `${option.platformLabel} ${option.label} ${fieldLabel}을 입력하세요.`,
+      );
+    });
   });
-
-  if (draft.hasOtherChannel) {
-    requireField(1, "otherChannel", draft.otherChannel, "기타 매체명을 입력하세요.");
-    requireField(1, "otherChannel.postCount", draft.otherChannelDetails.postCount, "기타 매체 업로드 건수를 입력하세요.");
-    requireField(1, "otherChannel.duration", draft.otherChannelDetails.duration, "기타 매체 게시물 유지 기간을 입력하세요.");
-  }
 
   requireField(3, "campaignStart", draft.campaignStart, "캠페인 시작일을 입력하세요.");
   requireField(3, "campaignEnd", draft.campaignEnd, "캠페인 종료일을 입력하세요.");
@@ -592,6 +754,9 @@ export function ContractBuilder() {
   const [savedContractId, setSavedContractId] = useState("");
   const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [isAddingPlatform, setIsAddingPlatform] = useState(false);
+  const [addingContentPlatform, setAddingContentPlatform] = useState<ContractPlatform | "">("");
+  const [pendingPlatform, setPendingPlatform] = useState<ContractPlatform | "">("");
   const [editedAdvertiserFields, setEditedAdvertiserFields] = useState({
     name: false,
     manager: false,
@@ -647,44 +812,58 @@ export function ContractBuilder() {
     setResult((current) => (current?.mode === "share" ? { ...current, stale: true } : current));
   };
 
-  const handleChannelToggle = (channel: string) => {
+  const handleDeliverableSelect = (contentType: ContractDeliverableContentType) => {
     updateDraft((current) => {
-      if (current.channels.includes(channel)) {
-        const nextChannels = current.channels.filter((item) => item !== channel);
-        const nextDetails = { ...current.channelDetails };
-        delete nextDetails[channel];
-        return { ...current, channels: nextChannels, channelDetails: nextDetails };
-      }
+      if (current.selectedDeliverables.includes(contentType)) return current;
 
-      return { ...current, channels: [...current.channels, channel] };
+      return {
+        ...current,
+        selectedDeliverables: [...current.selectedDeliverables, contentType],
+        deliverableRequirements: {
+          ...current.deliverableRequirements,
+          [contentType]: current.deliverableRequirements[contentType] ?? {},
+        },
+      };
     });
+    setIsAddingPlatform(false);
+    setAddingContentPlatform("");
+    setPendingPlatform("");
   };
 
-  const handleChannelDetailChange = (
-    channel: string,
-    field: "postCount" | "duration",
+  const handleDeliverableRemove = (contentType: ContractDeliverableContentType) => {
+    updateDraft((current) => {
+      const nextRequirements = { ...current.deliverableRequirements };
+      delete nextRequirements[contentType];
+      const selectedDeliverables = current.selectedDeliverables.filter(
+        (item) => item !== contentType,
+      );
+
+      return {
+        ...current,
+        selectedDeliverables,
+        deliverableRequirements: nextRequirements,
+      };
+    });
+    const removedOption = getDeliverableOption(contentType);
+    setAddingContentPlatform((current) =>
+      current && current === removedOption?.platform ? "" : current,
+    );
+  };
+
+  const handleDeliverableRequirementChange = (
+    contentType: ContractDeliverableContentType,
+    field: DeliverableRequirementField,
     value: string,
   ) => {
     updateDraft((current) => ({
       ...current,
-      channelDetails: {
-        ...current.channelDetails,
-        [channel]: {
-          ...current.channelDetails[channel],
+      deliverableRequirements: {
+        ...current.deliverableRequirements,
+        [contentType]: {
+          ...current.deliverableRequirements[contentType],
           [field]: value,
         },
       },
-    }));
-  };
-
-  const handleOtherChannelToggle = (checked: boolean) => {
-    updateDraft((current) => ({
-      ...current,
-      hasOtherChannel: checked,
-      otherChannel: checked ? current.otherChannel : "",
-      otherChannelDetails: checked
-        ? current.otherChannelDetails
-        : { postCount: "", duration: "" },
     }));
   };
 
@@ -762,6 +941,7 @@ export function ContractBuilder() {
     shareToken?: string,
   ): Omit<Contract, "id" | "created_at" | "updated_at"> => {
     const draft = sourceDraft;
+    const deliverableItems = getDeliverableItems(draft);
 
     return {
       advertiser_id: "adv_1",
@@ -792,9 +972,13 @@ export function ContractBuilder() {
             ? `${draft.campaignStart} - ${draft.campaignEnd}`
             : undefined,
         platforms: getSelectedPlatforms(draft),
-        deliverables: getDeliverableRows(draft)
-          .filter((row) => row.channel)
-          .map((row) => `${row.channel} ${row.postCount} / ${row.duration}`),
+        deliverable_items: deliverableItems,
+        deliverables: deliverableItems.map(
+          (item) =>
+            `${item.platformLabel} ${item.contentLabel}${
+              item.requirementText ? ` / ${item.requirementText}` : ""
+            }`,
+        ),
         required_hashtags: splitCommaSeparated(draft.requiredHashtags),
         brand_account_tags: splitCommaSeparated(draft.brandAccountTags),
         content_submission: {
@@ -802,7 +986,7 @@ export function ContractBuilder() {
           file_required: Boolean(draft.contentFileRequirement.trim()),
           file_examples: draft.contentFileRequirement.trim() || undefined,
           review_scope:
-            "컨텐츠 URL, 광고표시 문구, 필수 해시태그, 브랜드 계정 태그, 게시일, 게시물 유지 조건",
+            "컨텐츠 URL, 광고표시 문구, 필수 해시태그, 브랜드 계정 태그, 게시일, 컨텐츠 형식별 조건",
         },
         content_usage: {
           allowed: draft.contentUsageAllowed,
@@ -908,9 +1092,35 @@ export function ContractBuilder() {
       navigate("/login/advertiser", { replace: true });
     }
   };
+  const selectedDeliverableSet = new Set(draft.selectedDeliverables);
+  const selectedPlatformGroups = PLATFORM_CONTENT_GROUPS.map((group) => ({
+    ...group,
+    selectedItems: group.items.filter((item) =>
+      selectedDeliverableSet.has(item.contentType),
+    ),
+    remainingItems: group.items.filter(
+      (item) => !selectedDeliverableSet.has(item.contentType),
+    ),
+  })).filter((group) => group.selectedItems.length > 0);
+  const selectedPlatformSet = new Set(
+    selectedPlatformGroups.map((group) => group.platform),
+  );
+  const availablePlatformGroups = PLATFORM_CONTENT_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => !selectedDeliverableSet.has(item.contentType)),
+  })).filter((group) => {
+    if (selectedPlatformSet.has(group.platform)) return false;
+    return group.items.length > 0;
+  });
+  const pendingContentOptions =
+    availablePlatformGroups.find((group) => group.platform === pendingPlatform)
+      ?.items ?? [];
+  const showAddPlatformForm =
+    draft.selectedDeliverables.length === 0 || isAddingPlatform;
+  const canAddPlatform = availablePlatformGroups.length > 0;
 
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-[#f4f5f2] font-sans text-neutral-950 lg:h-[100dvh] lg:overflow-hidden">
+    <div className="flex h-[100dvh] flex-col overflow-hidden bg-[#f4f5f2] font-sans text-neutral-950">
       <header className="z-10 shrink-0 border-b border-neutral-200/70 bg-white/92 backdrop-blur">
         <div className="mx-auto flex h-14 w-full max-w-[1500px] items-center justify-between px-3 sm:px-5 lg:px-6">
           <button
@@ -957,7 +1167,7 @@ export function ContractBuilder() {
         </div>
       </header>
 
-      <main className="mx-auto grid w-full max-w-[1500px] flex-1 grid-cols-1 px-3 pb-3 sm:px-5 lg:min-h-0 lg:grid-cols-[minmax(400px,500px)_minmax(0,1fr)] lg:gap-4 lg:overflow-hidden lg:px-6 lg:pb-5 xl:grid-cols-[188px_minmax(400px,480px)_minmax(460px,1fr)]">
+      <main className="mx-auto grid min-h-0 w-full max-w-[1500px] flex-1 grid-cols-1 overflow-hidden px-3 pb-3 sm:px-5 lg:grid-cols-[minmax(400px,500px)_minmax(0,1fr)] lg:gap-4 lg:px-6 lg:pb-5 xl:grid-cols-[188px_minmax(400px,480px)_minmax(460px,1fr)]">
         <aside className="relative z-10 hidden min-h-0 flex-col gap-8 overflow-y-auto border border-neutral-200/90 bg-white p-4 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_18px_46px_rgba(23,26,23,0.05)] xl:mt-5 xl:flex xl:rounded-[10px]">
           <div>
             <h3 className="mb-5 px-2 text-[11px] font-extrabold text-neutral-950">
@@ -995,9 +1205,9 @@ export function ContractBuilder() {
           </div>
         </aside>
 
-        <section className="contract-builder-surface relative z-0 min-h-0 w-full bg-transparent lg:overflow-hidden">
+        <section className="contract-builder-surface relative z-0 min-h-0 w-full overflow-hidden bg-transparent">
           <div className="mx-auto flex h-full max-w-[520px] flex-col p-6 md:p-10 lg:px-1 lg:py-5">
-            <div className="custom-scrollbar min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-2">
+            <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto scroll-pb-28 pb-4 pr-1 lg:scroll-pb-10 lg:pb-2 lg:pr-2">
               <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
                 {step} / 5 단계
               </p>
@@ -1124,140 +1334,235 @@ export function ContractBuilder() {
               {step === 1 && (
                 <section className="animate-in fade-in slide-in-from-right-4 space-y-6">
                   <div>
-                    <Label className="mb-3 block">대상 플랫폼 및 컨텐츠 포맷</Label>
-                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                      {CHANNEL_OPTIONS.map((channel) => (
+                    <Label className="mb-3 block">대상 플랫폼 및 컨텐츠</Label>
+                    <div className="space-y-3">
+                      {selectedPlatformGroups.map((group) => (
                         <div
-                          key={channel}
-                          className={`rounded-[14px] border transition-colors ${
-                            draft.channels.includes(channel)
-                              ? "border-neutral-900 bg-white shadow-[0_10px_24px_rgba(15,23,42,0.04)]"
-                              : "border-neutral-200 bg-white/75"
-                          }`}
+                          key={group.platform}
+                          className="rounded-[14px] border border-neutral-900 bg-white shadow-[0_10px_24px_rgba(15,23,42,0.04)]"
                         >
-                          <label className="flex cursor-pointer items-start p-3">
-                            <input
-                              type="checkbox"
-                              className="mt-0.5 h-4 w-4 rounded border-neutral-300 text-neutral-900"
-                              checked={draft.channels.includes(channel)}
-                              onChange={() => handleChannelToggle(channel)}
-                            />
-                            <span className="ml-3 text-sm font-medium">{channel}</span>
-                          </label>
-                          {draft.channels.includes(channel) && (
-                            <div className="ml-7 grid grid-cols-1 gap-2 px-3 pb-3">
-                              <div>
-                                <Label className="text-xs text-neutral-500">
-                                  업로드 건수
-                                </Label>
-                                <Input
-                                  className="mt-1 h-8 bg-white text-xs"
-                                  placeholder="예: 2회"
-                                  value={draft.channelDetails[channel]?.postCount || ""}
-                                  onChange={(event) =>
-                                    handleChannelDetailChange(
-                                      channel,
-                                      "postCount",
-                                      event.target.value,
-                                    )
-                                  }
-                                />
+                          <div className="flex min-h-12 items-center justify-between gap-3 px-3 py-2.5">
+                            <p className="text-sm font-extrabold text-neutral-950">
+                              {group.label}
+                            </p>
+                            <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-neutral-950 px-2 text-[11px] font-extrabold text-white">
+                              {group.selectedItems.length}
+                            </span>
+                          </div>
+
+                          <div className="space-y-2 border-t border-neutral-200 px-3 pb-3 pt-3">
+                            {group.selectedItems.map((item, itemIndex) => {
+                              const requirement =
+                                draft.deliverableRequirements[item.contentType];
+
+                              return (
+                                <div
+                                  key={item.contentType}
+                                  className="rounded-[10px] border border-neutral-200 bg-neutral-50/70"
+                                >
+                                  <div className="flex min-h-11 items-center justify-between gap-3 px-3 py-2">
+                                    <div className="min-w-0">
+                                      <p className="text-[13px] font-extrabold text-neutral-950">
+                                        {item.label}
+                                      </p>
+                                      <p className="mt-0.5 text-[11px] font-semibold text-neutral-500">
+                                        {item.caption}
+                                      </p>
+                                    </div>
+                                    <div className="flex shrink-0 items-center gap-2">
+                                      <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-white px-2 text-[11px] font-extrabold text-neutral-900">
+                                        {itemIndex + 1}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        className="flex h-8 w-8 items-center justify-center rounded-[10px] border border-neutral-200 bg-white text-neutral-500 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-900"
+                                        aria-label={`${item.platformLabel} ${item.label} 삭제`}
+                                        title="삭제"
+                                        onClick={() =>
+                                          handleDeliverableRemove(item.contentType)
+                                        }
+                                      >
+                                        <Trash2
+                                          className="h-3.5 w-3.5"
+                                          strokeWidth={1.9}
+                                        />
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  <div className="grid grid-cols-2 gap-2 border-t border-neutral-200 px-3 pb-3 pt-3">
+                                    {item.fields.map((field) => (
+                                      <div
+                                        key={`${item.contentType}-${field.key}`}
+                                        className={field.fullWidth ? "col-span-2" : ""}
+                                      >
+                                        <Label className="text-xs text-neutral-500">
+                                          {field.label}
+                                        </Label>
+                                        <Input
+                                          className="mt-1 h-8 scroll-mb-36 bg-white text-xs lg:scroll-mb-0"
+                                          placeholder={field.placeholder}
+                                          value={getRequirementValue(
+                                            requirement,
+                                            field.key,
+                                          )}
+                                          onChange={(event) =>
+                                            handleDeliverableRequirementChange(
+                                              item.contentType,
+                                              field.key,
+                                              event.target.value,
+                                            )
+                                          }
+                                        />
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            })}
+
+                            {addingContentPlatform === group.platform &&
+                            group.remainingItems.length > 0 ? (
+                              <div className="rounded-[10px] border border-neutral-200 bg-white p-3">
+                                <Label className="text-xs text-neutral-500">컨텐츠</Label>
+                                <Select
+                                  onValueChange={(value) => {
+                                    const option = group.remainingItems.find(
+                                      (item) => item.label === value,
+                                    );
+                                    if (option) {
+                                      handleDeliverableSelect(option.contentType);
+                                    }
+                                  }}
+                                >
+                                  <SelectTrigger className="mt-1 h-10">
+                                    <SelectValue placeholder="컨텐츠 선택" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {group.remainingItems.map((option) => (
+                                      <SelectItem
+                                        key={option.contentType}
+                                        value={option.label}
+                                      >
+                                        {option.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
                               </div>
-                              <div>
-                                <Label className="text-xs text-neutral-500">
-                                  게시물 유지 기간
-                                </Label>
-                                <Input
-                                  className="mt-1 h-8 bg-white text-xs"
-                                  placeholder="예: 3개월"
-                                  value={draft.channelDetails[channel]?.duration || ""}
-                                  onChange={(event) =>
-                                    handleChannelDetailChange(
-                                      channel,
-                                      "duration",
-                                      event.target.value,
-                                    )
-                                  }
+                            ) : null}
+
+                            {addingContentPlatform !== group.platform &&
+                            group.remainingItems.length > 0 ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="h-10 w-full rounded-[12px] border-neutral-200 bg-white text-[12px] font-bold text-neutral-700 hover:bg-neutral-50"
+                                onClick={() => {
+                                  setAddingContentPlatform(group.platform);
+                                  setIsAddingPlatform(false);
+                                  setPendingPlatform("");
+                                }}
+                              >
+                                <Plus
+                                  className="mr-2 h-3.5 w-3.5"
+                                  strokeWidth={1.8}
                                 />
-                              </div>
-                            </div>
-                          )}
+                                컨텐츠 추가
+                              </Button>
+                            ) : null}
+                          </div>
                         </div>
                       ))}
-                    </div>
-                  </div>
 
-                  <div
-                    className={`rounded-[14px] border bg-white transition-colors ${
-                      draft.hasOtherChannel
-                        ? "border-neutral-900 shadow-[0_10px_24px_rgba(15,23,42,0.04)]"
-                        : "border-neutral-200"
-                    }`}
-                  >
-                    <label className="flex cursor-pointer items-start p-3">
-                      <input
-                        type="checkbox"
-                        className="mt-0.5 h-4 w-4 rounded border-neutral-300 text-neutral-900"
-                        checked={draft.hasOtherChannel}
-                        onChange={(event) => handleOtherChannelToggle(event.target.checked)}
-                      />
-                      <span className="ml-3 text-sm font-medium">기타 매체 직접 입력</span>
-                    </label>
-                    {draft.hasOtherChannel && (
-                      <div className="ml-7 grid grid-cols-1 gap-3 px-3 pb-3">
-                        <div>
-                          <Label className="text-xs text-neutral-500">매체명</Label>
-                          <Input
-                            className="mt-1 h-8 bg-white text-xs"
-                            placeholder="예: 네이버 카페, 커뮤니티"
-                            value={draft.otherChannel}
-                            onChange={(event) =>
-                              updateDraft({ otherChannel: event.target.value })
-                            }
-                          />
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <Label className="text-xs text-neutral-500">
-                              업로드 건수
-                            </Label>
-                            <Input
-                              className="mt-1 h-8 bg-white text-xs"
-                              placeholder="예: 1회"
-                              value={draft.otherChannelDetails.postCount}
-                              onChange={(event) =>
-                                updateDraft((current) => ({
-                                  ...current,
-                                  otherChannelDetails: {
-                                    ...current.otherChannelDetails,
-                                    postCount: event.target.value,
-                                  },
-                                }))
-                              }
-                            />
+                      {showAddPlatformForm && canAddPlatform ? (
+                        <div className="rounded-[14px] border border-neutral-200 bg-white p-3 shadow-[0_8px_22px_rgba(15,23,42,0.035)]">
+                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <div>
+                              <Label className="text-xs text-neutral-500">플랫폼</Label>
+                              <Select
+                                value={
+                                  pendingPlatform
+                                    ? PLATFORM_CONTENT_GROUPS.find(
+                                        (group) => group.platform === pendingPlatform,
+                                      )?.label ?? ""
+                                    : ""
+                                }
+                                onValueChange={(value) => {
+                                  const group = PLATFORM_CONTENT_GROUPS.find(
+                                    (item) => item.label === value,
+                                  );
+                                  setPendingPlatform(group?.platform ?? "");
+                                }}
+                              >
+                                <SelectTrigger className="mt-1 h-10">
+                                  <SelectValue placeholder="플랫폼 선택" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {availablePlatformGroups.map((group) => (
+                                    <SelectItem key={group.platform} value={group.label}>
+                                      {group.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <Label className="text-xs text-neutral-500">컨텐츠</Label>
+                              <Select
+                                disabled={!pendingPlatform || pendingContentOptions.length === 0}
+                                onValueChange={(value) =>
+                                  {
+                                    const option = pendingContentOptions.find(
+                                      (item) => item.label === value,
+                                    );
+                                    if (option) {
+                                      handleDeliverableSelect(option.contentType);
+                                    }
+                                  }
+                                }
+                              >
+                                <SelectTrigger className="mt-1 h-10">
+                                  <SelectValue
+                                    placeholder={
+                                      pendingPlatform
+                                        ? "컨텐츠 선택"
+                                        : "플랫폼 먼저 선택"
+                                    }
+                                  />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {pendingContentOptions.map((option) => (
+                                    <SelectItem
+                                      key={option.contentType}
+                                      value={option.label}
+                                    >
+                                      {option.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
                           </div>
-                          <div>
-                            <Label className="text-xs text-neutral-500">
-                              게시물 유지 기간
-                            </Label>
-                            <Input
-                              className="mt-1 h-8 bg-white text-xs"
-                              placeholder="예: 6개월"
-                              value={draft.otherChannelDetails.duration}
-                              onChange={(event) =>
-                                updateDraft((current) => ({
-                                  ...current,
-                                  otherChannelDetails: {
-                                    ...current.otherChannelDetails,
-                                    duration: event.target.value,
-                                  },
-                                }))
-                              }
-                            />
-                          </div>
                         </div>
-                      </div>
-                    )}
+                      ) : null}
+
+                      {!showAddPlatformForm && canAddPlatform ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-11 w-full rounded-[12px] border-neutral-200 bg-white text-[13px] font-bold text-neutral-700 hover:bg-neutral-50"
+                          onClick={() => {
+                            setIsAddingPlatform(true);
+                            setAddingContentPlatform("");
+                            setPendingPlatform("");
+                          }}
+                        >
+                          <Plus className="mr-2 h-4 w-4" strokeWidth={1.8} />
+                          플랫폼 추가
+                        </Button>
+                      ) : null}
+                    </div>
                   </div>
                 </section>
               )}
@@ -1720,7 +2025,7 @@ export function ContractBuilder() {
               )}
             </div>
 
-            <div className="sticky bottom-0 z-20 -mx-6 mt-4 flex shrink-0 flex-col gap-3 border-t border-neutral-200 bg-[#f7f6f3]/95 px-6 pb-4 pt-4 shadow-[0_-18px_36px_rgba(15,23,42,0.08)] backdrop-blur md:-mx-10 md:px-10 lg:static lg:mx-0 lg:bg-[#f7f6f3] lg:px-0 lg:pb-0 lg:shadow-none lg:backdrop-blur-none">
+            <div className="relative z-20 -mx-6 mt-4 flex shrink-0 flex-col gap-3 border-t border-neutral-200 bg-[#f7f6f3]/95 px-6 pb-4 pt-4 shadow-[0_-18px_36px_rgba(15,23,42,0.08)] backdrop-blur md:-mx-10 md:px-10 lg:mx-0 lg:bg-[#f7f6f3] lg:px-0 lg:pb-0 lg:shadow-none lg:backdrop-blur-none">
               <Button
                 type="button"
                 variant="outline"
@@ -1899,9 +2204,7 @@ const BuilderReviewPanel: React.FC<{
   density?: "regular" | "compact";
 }> = ({ draft, clauses, density = "regular" }) => {
   const isCompact = density === "compact";
-  const deliverables = getDeliverableRows(draft).filter(
-    (row) => row.channel || row.postCount || row.duration,
-  );
+  const deliverables = getDeliverableItems(draft);
   const previewDate = new Date().toISOString().split("T")[0];
 
   return (
@@ -1950,21 +2253,20 @@ const BuilderReviewPanel: React.FC<{
               <div className="space-y-2">
                 {deliverables.map((row, index) => (
                   <div
-                    key={`${row.channel}-${index}`}
+                    key={`${row.contentType}-${index}`}
                     className="border border-neutral-200 bg-neutral-50/60 px-4 py-3"
                   >
                     <p className="text-[13px] font-semibold text-neutral-950">
-                      {row.channel || "매체명 입력 필요"}
+                      {row.platformLabel} · {row.contentLabel}
                     </p>
                     <p className="mt-1 text-[12px] leading-5 text-neutral-600">
-                      업로드 {row.postCount || "입력 필요"} · 유지기간{" "}
-                      {row.duration || "입력 필요"}
+                      {row.requirementText || "조건 입력 필요"}
                     </p>
                   </div>
                 ))}
               </div>
             ) : (
-              <DocumentEmpty text="채널 조건을 선택하면 제공 컨텐츠 조건이 여기에 작성됩니다." />
+              <DocumentEmpty text="플랫폼과 컨텐츠 조건을 선택하면 계약서에 반영됩니다." />
             )}
           </ContractDocumentSection>
 

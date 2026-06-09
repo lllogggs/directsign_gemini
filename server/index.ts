@@ -24,7 +24,11 @@ import {
   createWorkflow,
   isFixedCampaignContract,
 } from "../src/domain/contracts.js";
-import type { Contract, ContractPlatform } from "../src/domain/contracts.js";
+import type {
+  Contract,
+  ContractDeliverableItem,
+  ContractPlatform,
+} from "../src/domain/contracts.js";
 import type {
   InfluencerDashboardActivityEvent,
   InfluencerDashboardApplication,
@@ -1038,11 +1042,15 @@ type DeliverableReviewStatus =
 interface SupabaseDeliverableRequirementRow {
   id: string;
   contract_id: string;
+  platform_id?: string | null;
   deliverable_type: string;
   title: string;
   description?: string | null;
   quantity?: number | null;
   due_at?: string | null;
+  retention_days?: number | null;
+  content_format?: string | null;
+  requirement_json?: Record<string, unknown> | null;
   review_required?: boolean | null;
   evidence_required?: boolean | null;
   order_no?: number | null;
@@ -7127,6 +7135,112 @@ const inferDeliverableType = (text: string) => {
   return "post";
 };
 
+const deliverableRequirementLabels: Record<string, string> = {
+  videoLength: "영상 길이",
+  photoCount: "사진 수",
+  frameCount: "컷 수",
+  wordCount: "글자수",
+  maintainPeriod: "게시 유지",
+  note: "조건",
+};
+
+const normalizeRequirementJson = (
+  requirements: ContractDeliverableItem["requirements"] | undefined,
+) => {
+  if (!requirements || typeof requirements !== "object") return {};
+
+  return Object.fromEntries(
+    Object.entries(requirements)
+      .map(([key, value]) => [key, typeof value === "string" ? value.trim() : value])
+      .filter(([, value]) => (typeof value === "string" ? hasText(value) : value !== undefined)),
+  );
+};
+
+const summarizeRequirementJson = (requirements: Record<string, unknown>) =>
+  Object.entries(requirements)
+    .filter(([key]) => key !== "platformName" && key !== "contentName")
+    .map(([key, value]) => {
+      if (!hasText(value)) return "";
+      const label = deliverableRequirementLabels[key] ?? key;
+      return `${label} ${value.trim()}`;
+    })
+    .filter(Boolean)
+    .join(", ");
+
+const normalizeContractDeliverableItems = (contract: Contract) =>
+  Array.isArray(contract.campaign?.deliverable_items)
+    ? contract.campaign.deliverable_items.filter(
+        (item): item is ContractDeliverableItem =>
+          Boolean(item) &&
+          hasText(item.contentType) &&
+          hasText(item.contentLabel) &&
+          hasText(item.platform),
+      )
+    : [];
+
+const buildContractDeliverableRequirementRows = (
+  contract: Contract,
+  options: { platformIdByPlatform?: Map<string, string> } = {},
+): SupabaseDeliverableRequirementRow[] => {
+  const dueAt = toIsoDateTime(contract.campaign?.upload_due_at ?? contract.campaign?.deadline);
+  const structuredItems = normalizeContractDeliverableItems(contract);
+
+  if (structuredItems.length > 0) {
+    return structuredItems.map((item, index) => {
+      const requirementJson = normalizeRequirementJson(item.requirements);
+      const requirementSummary =
+        hasText(item.requirementText)
+          ? item.requirementText.trim()
+          : summarizeRequirementJson(requirementJson);
+      const platformLabel = hasText(item.platformLabel)
+        ? item.platformLabel.trim()
+        : item.platform;
+      const contentLabel = item.contentLabel.trim();
+      const title = `${platformLabel} ${contentLabel}`.trim();
+
+      return {
+        id: stableUuid(
+          `${contract.id}:deliverable-requirement:${index}:${item.platform}:${item.contentType}:${item.id}`,
+        ),
+        contract_id: contract.id,
+        platform_id: options.platformIdByPlatform?.get(mapPlatformToV2(item.platform)),
+        deliverable_type: inferDeliverableType(`${item.contentType} ${contentLabel}`),
+        title,
+        description: requirementSummary || title,
+        quantity: 1,
+        due_at: dueAt,
+        content_format: item.contentType,
+        requirement_json: requirementJson,
+        review_required: true,
+        evidence_required: true,
+        order_no: index + 1,
+        created_at: contract.created_at,
+        updated_at: contract.updated_at,
+      };
+    });
+  }
+
+  return (contract.campaign?.deliverables ?? []).map((deliverable, index) => {
+    const quantityMatch = deliverable.match(/(\d+)/);
+    const quantity = quantityMatch ? Math.max(1, Number(quantityMatch[1])) : 1;
+
+    return {
+      id: stableUuid(`${contract.id}:deliverable-requirement:${index}:${deliverable}`),
+      contract_id: contract.id,
+      deliverable_type: inferDeliverableType(deliverable),
+      title: deliverable,
+      description: deliverable,
+      quantity,
+      due_at: dueAt,
+      review_required: true,
+      evidence_required: true,
+      order_no: index + 1,
+      created_at: contract.created_at,
+      updated_at: contract.updated_at,
+    };
+  });
+};
+
 const deleteSupabaseV2Rows = async (table: string, query: string) => {
   const response = await fetchSupabase(table, query, {
     method: "DELETE",
@@ -10752,6 +10866,9 @@ const syncSupabaseV2Contract = async (contract: Contract) => {
     url: index === 0 ? contract.influencer_info.channel_url : undefined,
     is_primary: index === 0,
   }));
+  const platformIdByPlatform = new Map(
+    platformRows.map((row) => [row.platform, row.id] as const),
+  );
 
   await upsertSupabaseV2Rows("contract_platforms", platformRows);
 
@@ -10826,26 +10943,14 @@ const syncSupabaseV2Contract = async (contract: Contract) => {
 
   await upsertSupabaseV2Rows("clause_threads", threadRows);
 
-  const deliverableRows = (contract.campaign?.deliverables ?? []).map((deliverable, index) => {
-    const quantityMatch = deliverable.match(/(\d+)/);
-    const quantity = quantityMatch ? Math.max(1, Number(quantityMatch[1])) : 1;
-
-    return {
-      id: stableUuid(`${contract.id}:deliverable-requirement:${index}:${deliverable}`),
-      contract_id: contract.id,
-      platform_id: platformRows[0]?.id,
-      deliverable_type: inferDeliverableType(deliverable),
-      title: deliverable,
-      description: deliverable,
-      quantity,
-      due_at: toIsoDateTime(contract.campaign?.upload_due_at ?? contract.campaign?.deadline),
-      review_required: true,
-      evidence_required: true,
-      order_no: index + 1,
-    };
+  const deliverableRows = buildContractDeliverableRequirementRows(contract, {
+    platformIdByPlatform,
   });
 
-  await upsertSupabaseV2Rows("deliverable_requirements", deliverableRows);
+  await upsertSupabaseV2Rows(
+    "deliverable_requirements",
+    deliverableRows.map((row) => ({ ...row })) as Array<Record<string, unknown>>,
+  );
 
   if (
     contract.evidence?.share_token &&
@@ -13752,6 +13857,65 @@ const mapV2ClauseStatusToLegacy = (
   return "MODIFICATION_REQUESTED";
 };
 
+const contractPlatformDisplayLabels: Record<ContractPlatformValue, string> = {
+  INSTAGRAM: "인스타그램",
+  YOUTUBE: "유튜브",
+  TIKTOK: "틱톡",
+  NAVER_BLOG: "네이버 블로그",
+  OTHER: "기타",
+};
+
+const getRequirementRecord = (requirement: SupabaseDeliverableRequirementRow) =>
+  requirement.requirement_json && typeof requirement.requirement_json === "object"
+    ? requirement.requirement_json
+    : {};
+
+const summarizeDeliverableRequirementRow = (
+  requirement: SupabaseDeliverableRequirementRow,
+) => {
+  if (hasText(requirement.description)) return requirement.description.trim();
+  const summary = summarizeRequirementJson(getRequirementRecord(requirement));
+  return summary || requirement.title;
+};
+
+const buildLegacyDeliverableItemsFromRows = (
+  requirements: SupabaseDeliverableRequirementRow[],
+  platforms: SupabaseContractPlatformRow[],
+): ContractDeliverableItem[] => {
+  const platformById = new Map(platforms.map((platform) => [platform.id, platform]));
+
+  return requirements.map((requirement) => {
+    const requirementRecord = getRequirementRecord(requirement);
+    const platformRow = requirement.platform_id
+      ? platformById.get(requirement.platform_id)
+      : undefined;
+    const platform = platformRow
+      ? mapV2PlatformToLegacy(normalizeInfluencerPlatform(platformRow.platform))
+      : "OTHER";
+    const defaultPlatformLabel = contractPlatformDisplayLabels[platform];
+    const platformLabel = hasText(requirementRecord.platformName)
+      ? requirementRecord.platformName.trim()
+      : defaultPlatformLabel;
+    const inferredContentLabel =
+      requirement.title.startsWith(platformLabel)
+        ? requirement.title.slice(platformLabel.length).trim()
+        : requirement.title;
+    const contentLabel = hasText(requirementRecord.contentName)
+      ? requirementRecord.contentName.trim()
+      : inferredContentLabel || requirement.title;
+
+    return {
+      id: requirement.id,
+      platform,
+      platformLabel,
+      contentType: (requirement.content_format ?? "other") as ContractDeliverableItem["contentType"],
+      contentLabel,
+      requirementText: summarizeDeliverableRequirementRow(requirement),
+      requirements: requirementRecord as ContractDeliverableItem["requirements"],
+    };
+  });
+};
+
 const buildLegacyContractFromV2Rows = ({
   contract,
   parties,
@@ -13947,9 +14111,22 @@ const readSupabaseV2ContractAsLegacy = async (
   });
   const bundle = await readContractDeliverableBundle(legacyContract);
   const summary = buildDeliverableSummary(bundle.requirements, bundle.deliverables);
+  const deliverableItems = buildLegacyDeliverableItemsFromRows(
+    bundle.requirements,
+    platforms,
+  );
+  const deliverableSummaries =
+    bundle.requirements.length > 0
+      ? bundle.requirements.map(summarizeDeliverableRequirementRow)
+      : legacyContract.campaign?.deliverables;
 
   return normalizeContract({
     ...legacyContract,
+    campaign: {
+      ...legacyContract.campaign,
+      deliverables: deliverableSummaries,
+      ...(deliverableItems.length ? { deliverable_items: deliverableItems } : {}),
+    },
     deliverable_summary: {
       ...summary,
       updated_at: contract.updated_at ?? legacyContract.updated_at,
@@ -14585,20 +14762,7 @@ const normalizeDeliverableQuantity = (value: number | null | undefined) =>
 const buildLegacyDeliverableRequirementRows = (
   contract: Contract,
 ): SupabaseDeliverableRequirementRow[] =>
-  (contract.campaign?.deliverables ?? []).map((deliverable, index) => ({
-    id: stableUuid(`${contract.id}:deliverable-requirement:${index}:${deliverable}`),
-    contract_id: contract.id,
-    deliverable_type: inferDeliverableType(deliverable),
-    title: deliverable,
-    description: deliverable,
-    quantity: 1,
-    due_at: toIsoDateTime(contract.campaign?.upload_due_at ?? contract.campaign?.deadline),
-    review_required: true,
-    evidence_required: true,
-    order_no: index + 1,
-    created_at: contract.created_at,
-    updated_at: contract.updated_at,
-  }));
+  buildContractDeliverableRequirementRows(contract);
 
 const readContractDeliverableBundle = async (
   contract: Contract,
@@ -14752,6 +14916,9 @@ const buildDeliverableResponse = (
       deliverable_type: requirement.deliverable_type,
       title: requirement.title,
       description: requirement.description,
+      platform_id: requirement.platform_id,
+      content_format: requirement.content_format,
+      requirement_json: requirement.requirement_json ?? {},
       quantity: normalizeDeliverableQuantity(requirement.quantity),
       due_at: requirement.due_at,
       review_required: requirement.review_required !== false,
