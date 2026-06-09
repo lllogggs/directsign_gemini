@@ -35,6 +35,10 @@ const advertiserProposalAssetUrls = {
     "../../../docs/sales/assets/yeollock-intro-contract-builder-focused.png",
     import.meta.url,
   ).href,
+  introContractBuilderMobile: new URL(
+    "../../../docs/sales/assets/yeollock-intro-contract-builder-mobile.png",
+    import.meta.url,
+  ).href,
   introContractShare: new URL(
     "../../../docs/sales/assets/yeollock-intro-contract-share-focused.png",
     import.meta.url,
@@ -49,6 +53,18 @@ const advertiserProposalAssetUrls = {
   ).href,
   introContentReview: new URL(
     "../../../docs/sales/assets/yeollock-intro-content-review-focused.png",
+    import.meta.url,
+  ).href,
+  introContentReviewMobile: new URL(
+    "../../../docs/sales/assets/yeollock-intro-content-review-mobile.png",
+    import.meta.url,
+  ).href,
+  introCampaignsMobile: new URL(
+    "../../../docs/sales/assets/yeollock-intro-campaigns-mobile.png",
+    import.meta.url,
+  ).href,
+  introInfluencerDashboardMobile: new URL(
+    "../../../docs/sales/assets/yeollock-intro-influencer-dashboard-mobile.png",
     import.meta.url,
   ).href,
   contractHandshake: new URL(
@@ -351,12 +367,18 @@ function collectIntroProposalImageSources(slides: IntroProposalSlide[]) {
     if (slide.productPreview === "advertiserBuilder") {
       sources.add(advertiserProposalAssetUrls.contractBuilder);
       sources.add(advertiserProposalAssetUrls.introContractBuilder);
+      sources.add(advertiserProposalAssetUrls.introContractBuilderMobile);
     }
     if (slide.productPreview === "advertiserContractReview") {
       sources.add(advertiserProposalAssetUrls.introContentReview);
+      sources.add(advertiserProposalAssetUrls.introContentReviewMobile);
     }
     if (slide.productPreview === "advertiserApplicants") {
       sources.add(advertiserProposalAssetUrls.introCampaignApplicants);
+      sources.add(advertiserProposalAssetUrls.introCampaignsMobile);
+    }
+    if (slide.productPreview === "influencerDashboard") {
+      sources.add(advertiserProposalAssetUrls.introInfluencerDashboardMobile);
     }
   });
 
@@ -2300,12 +2322,18 @@ function IntroProposalProductPreview({
 
   if (kind === "influencerDashboard") {
     return (
-      <div className="h-full min-h-0 overflow-hidden rounded-[16px]">
-        <InfluencerIntroDashboardPreview
-          data={introDashboardDemoData.influencer}
-          stateIndex={1}
+      <>
+        <IntroMobileServiceCapture
+          imageAlt="실제 모바일 인플루언서 계약 대시보드 화면"
+          imageSrc={advertiserProposalAssetUrls.introInfluencerDashboardMobile}
         />
-      </div>
+        <div className="hidden h-full min-h-0 overflow-hidden rounded-[16px] sm:block">
+          <InfluencerIntroDashboardPreview
+            data={introDashboardDemoData.influencer}
+            stateIndex={1}
+          />
+        </div>
+      </>
     );
   }
 
@@ -2351,6 +2379,29 @@ function IntroDesktopServiceCapture({
   );
 }
 
+function IntroMobileServiceCapture({
+  imageAlt,
+  imageSrc,
+}: {
+  imageAlt: string;
+  imageSrc: string;
+}) {
+  return (
+    <section
+      data-intro-real-service-capture
+      data-intro-headerless-service-capture
+      className="flex h-full min-h-0 items-center justify-center overflow-hidden rounded-[16px] bg-[#e9ede8] p-2 sm:hidden"
+    >
+      <img
+        src={imageSrc}
+        alt={imageAlt}
+        className="h-auto max-h-[min(100%,560px)] w-auto max-w-[300px] object-contain object-center"
+        loading="eager"
+      />
+    </section>
+  );
+}
+
 function AdvertiserBuilderProductPreview() {
   return (
     <>
@@ -2367,36 +2418,44 @@ function AdvertiserBuilderProductPreview() {
 
 function ActualContractBuilderMobilePreview() {
   return (
-    <section className="relative h-full min-h-0 overflow-hidden rounded-[16px] bg-white shadow-[0_18px_48px_rgba(23,26,23,0.1)] sm:hidden">
-      <div className="absolute inset-0 overflow-hidden">
-        <img
-          src={advertiserProposalAssetUrls.contractBuilder}
-          alt="새 전자계약서 작성 화면"
-          className="absolute left-0 top-[-5.7%] h-auto w-[203%] max-w-none"
-          loading="eager"
-        />
-      </div>
-    </section>
+    <IntroMobileServiceCapture
+      imageAlt="실제 모바일 광고주 전자계약서 작성 화면"
+      imageSrc={advertiserProposalAssetUrls.introContractBuilderMobile}
+    />
   );
 }
 
 function AdvertiserContractReviewProductPreview() {
   return (
-    <IntroDesktopServiceCapture
-      imageAlt="실제 광고주 콘텐츠 검수 대시보드 화면"
-      imageSrc={advertiserProposalAssetUrls.introContentReview}
-      imageClassName="object-contain object-center"
-    />
+    <>
+      <IntroMobileServiceCapture
+        imageAlt="실제 모바일 광고주 계약 관리 화면"
+        imageSrc={advertiserProposalAssetUrls.introContentReviewMobile}
+      />
+      <IntroDesktopServiceCapture
+        desktopOnly
+        imageAlt="실제 광고주 콘텐츠 검수 대시보드 화면"
+        imageSrc={advertiserProposalAssetUrls.introContentReview}
+        imageClassName="object-contain object-center"
+      />
+    </>
   );
 }
 
 function AdvertiserApplicantsProductPreview() {
   return (
-    <IntroDesktopServiceCapture
-      imageAlt="실제 광고주 캠페인 지원 인플루언서 대시보드 화면"
-      imageSrc={advertiserProposalAssetUrls.introCampaignApplicants}
-      imageClassName="object-contain object-center"
-    />
+    <>
+      <IntroMobileServiceCapture
+        imageAlt="실제 모바일 광고주 캠페인 운영 화면"
+        imageSrc={advertiserProposalAssetUrls.introCampaignsMobile}
+      />
+      <IntroDesktopServiceCapture
+        desktopOnly
+        imageAlt="실제 광고주 캠페인 지원 인플루언서 대시보드 화면"
+        imageSrc={advertiserProposalAssetUrls.introCampaignApplicants}
+        imageClassName="object-contain object-center"
+      />
+    </>
   );
 }
 
