@@ -1520,40 +1520,12 @@ function RoleFeatureIntroScreen({
 }) {
   const startHref = role === "advertiser" ? "/login/advertiser" : "/login/influencer";
 
-  const roleSwitchItems = [
-    { role: "advertiser" as const, label: "광고주", href: "/intro/advertiser" },
-    { role: "influencer" as const, label: "인플루언서", href: "/intro/influencer" },
-  ];
-
   return (
     <main className="min-h-svh overflow-x-hidden bg-[#e9ede8] font-sans text-neutral-950 lg:h-svh lg:overflow-hidden">
       <header className="border-b border-neutral-200/70 bg-white/92">
         <div className="mx-auto flex h-[58px] max-w-[1500px] items-center justify-between gap-3 px-4 sm:px-6 lg:px-6">
           <BrandLockup />
-          <div className="flex min-w-0 items-center gap-2">
-            <nav
-              aria-label="역할 화면 전환"
-              className="hidden items-center rounded-[8px] border border-neutral-200 bg-white/75 p-1 text-[12px] font-extrabold shadow-[0_1px_0_rgba(15,23,42,0.02)] sm:flex"
-            >
-              {roleSwitchItems.map((item) => {
-                const selected = item.role === role;
-
-                return (
-                  <Link
-                    key={item.role}
-                    to={item.href}
-                    className={`inline-flex h-8 items-center rounded-[7px] px-3 transition ${
-                      selected
-                        ? "bg-neutral-950 text-white"
-                        : "text-neutral-500 hover:bg-neutral-100 hover:text-neutral-950"
-                    }`}
-                    aria-current={selected ? "page" : undefined}
-                  >
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </nav>
+          <div className="flex min-w-0 items-center">
             <Link
               to={startHref}
               className="inline-flex h-9 w-[104px] shrink-0 items-center justify-center rounded-[8px] bg-blue-600 px-3 text-[12px] font-extrabold text-white shadow-[0_12px_28px_rgba(37,99,235,0.22)] ring-1 ring-blue-500/20 transition hover:bg-blue-700 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-blue-700"
