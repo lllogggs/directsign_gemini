@@ -1563,33 +1563,7 @@ function RoleFeatureIntroScreen({
           </div>
         </div>
       </header>
-      <div className="border-b border-neutral-200/70 bg-white/92 px-4 py-1.5 sm:hidden">
-        <nav
-          aria-label="모바일 역할 화면 전환"
-          className="mx-auto grid max-w-[420px] grid-cols-2 gap-1 rounded-[8px] border border-neutral-200 bg-white p-1 text-[12px] font-extrabold shadow-[0_8px_20px_rgba(15,23,42,0.04)]"
-        >
-          {roleSwitchItems.map((item) => {
-            const selected = item.role === role;
-
-            return (
-              <Link
-                key={item.role}
-                to={item.href}
-                className={`flex h-9 items-center justify-center rounded-[7px] transition ${
-                  selected
-                    ? "bg-neutral-950 text-white"
-                    : "text-neutral-500 hover:bg-neutral-100 hover:text-neutral-950"
-                }`}
-                aria-current={selected ? "page" : undefined}
-              >
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-      </div>
-
-      <section className="mx-auto flex min-h-[calc(100svh-118px)] w-full max-w-[1500px] items-start justify-center px-4 py-1.5 pb-1.5 sm:min-h-[calc(100svh-58px)] sm:items-center sm:px-6 sm:py-5 lg:h-[calc(100vh-58px)] lg:min-h-0 lg:overflow-hidden">
+      <section className="mx-auto flex min-h-[calc(100svh-60px)] w-full max-w-[1500px] items-start justify-center px-4 py-1.5 pb-1.5 sm:min-h-[calc(100svh-58px)] sm:items-center sm:px-6 sm:py-5 lg:h-[calc(100vh-58px)] lg:min-h-0 lg:overflow-hidden">
         <ProposalIntroCarousel
           ariaLabel={
             role === "advertiser"
@@ -1741,7 +1715,7 @@ function ProposalIntroCarousel({
           aria-label={`${slideIndex + 1} / ${slides.length} ${activeSlide.label}`}
           aria-live="polite"
           data-intro-pdf-slide
-          className="relative isolate flex h-[calc(100svh-180px)] min-h-0 w-full flex-col overflow-hidden px-0 py-0 sm:h-auto sm:overflow-visible sm:px-2 lg:h-[min(690px,calc(100vh-150px))]"
+          className="relative isolate flex h-[calc(100svh-120px)] min-h-0 w-full flex-col overflow-hidden px-0 py-0 sm:h-auto sm:overflow-visible sm:px-2 lg:h-[min(690px,calc(100vh-150px))]"
         >
           <ProposalSlideView slide={activeSlide} />
 
