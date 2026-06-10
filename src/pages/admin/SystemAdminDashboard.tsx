@@ -3,6 +3,8 @@ import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
   ArrowUpRight,
+  Bell,
+  CheckCircle2,
   Clock3,
   FileText,
   Lock,
@@ -98,6 +100,27 @@ type OperationalSupportTicket = {
   updated_at: string;
 };
 
+type OperationalAlert = {
+  id: string;
+  kind: "verification_request" | "support_ticket" | "support_access";
+  action: "auto_approved" | "needs_review" | "mobile_action";
+  severity: "info" | "normal" | "high" | "urgent";
+  status: "queued" | "sent" | "failed" | "muted";
+  subject_type: string;
+  subject_id: string;
+  title: string;
+  body: string;
+  mobile_path: string;
+  dashboard_path?: string;
+  dedupe_key: string;
+  decision_reason?: string;
+  metadata_json?: Record<string, unknown>;
+  sent_at?: string;
+  error_message?: string;
+  created_at: string;
+  updated_at: string;
+};
+
 type AdminDashboardSection =
   | "overview"
   | "support_tickets"
@@ -130,12 +153,19 @@ const emptyMetrics: AdminMetrics = {
   demo_mode: false,
 };
 
-export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolean } = {}) {
+export function SystemAdminDashboard({
+  loginOnly = false,
+  mobileOnly = false,
+}: {
+  loginOnly?: boolean;
+  mobileOnly?: boolean;
+} = {}) {
   const navigate = useNavigate();
   const location = useLocation();
-  const requestedNextPath = getNextPath(location.search, "/admin", ["/admin"]);
+  const adminFallbackPath = mobileOnly ? "/admin/mobile" : "/admin";
+  const requestedNextPath = getNextPath(location.search, adminFallbackPath, ["/admin"]);
   const nextPath = requestedNextPath.startsWith("/admin/login")
-    ? "/admin"
+    ? adminFallbackPath
     : requestedNextPath;
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
@@ -147,6 +177,8 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
   const [supportRequests, setSupportRequests] = useState<SupportAccessRequest[]>([]);
   const [supportTickets, setSupportTickets] = useState<OperationalSupportTicket[]>([]);
   const [verificationRequests, setVerificationRequests] = useState<VerificationRequest[]>([]);
+  const [operationalAlerts, setOperationalAlerts] = useState<OperationalAlert[]>([]);
+  const [isDiscordConfigured, setIsDiscordConfigured] = useState(false);
   const [dataError, setDataError] = useState("");
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [reviewingVerificationId, setReviewingVerificationId] = useState("");
@@ -250,7 +282,13 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
     setDataError("");
 
     try {
-      const [metricsResult, supportResult, ticketResult, verificationResult] =
+      const [
+        metricsResult,
+        supportResult,
+        ticketResult,
+        verificationResult,
+        alertResult,
+      ] =
         await Promise.allSettled([
           apiFetch("/api/admin/metrics", { headers: { Accept: "application/json" } }),
           apiFetch("/api/admin/support-access-requests", {
@@ -260,6 +298,9 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
             headers: { Accept: "application/json" },
           }),
           apiFetch("/api/admin/verification-requests", {
+            headers: { Accept: "application/json" },
+          }),
+          apiFetch("/api/admin/operational-alerts", {
             headers: { Accept: "application/json" },
           }),
         ]);
@@ -328,6 +369,17 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
         }
       } else {
         failedSections.push("인증 대기열");
+      }
+
+      if (alertResult.status === "fulfilled") {
+        const alertData = (await alertResult.value.json()) as {
+          operational_alerts?: OperationalAlert[];
+          discord_configured?: boolean;
+        };
+        if (alertResult.value.ok) {
+          setOperationalAlerts(alertData.operational_alerts ?? []);
+          setIsDiscordConfigured(alertData.discord_configured === true);
+        }
       }
 
       if (failedSections.length > 0) {
@@ -412,6 +464,8 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
       setSupportRequests([]);
       setSupportTickets([]);
       setVerificationRequests([]);
+      setOperationalAlerts([]);
+      setIsDiscordConfigured(false);
     }
   };
 
@@ -652,6 +706,45 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
     return <Navigate to={nextPath} replace />;
   }
 
+  if (mobileOnly) {
+    return (
+      <MobileAdminOperations
+        activeSupportRequests={activeSupportRequests}
+        activeSupportTickets={activeSupportTickets}
+        checkingVerificationId={checkingVerificationId}
+        closingSupportId={closingSupportId}
+        dataError={dataError}
+        isDiscordConfigured={isDiscordConfigured}
+        isLoadingData={isLoadingData}
+        locationSearch={location.search}
+        operationalAlerts={operationalAlerts}
+        pendingVerificationRequests={pendingVerificationRequests}
+        reviewingVerificationId={reviewingVerificationId}
+        updatingTicketId={updatingTicketId}
+        verificationRequests={verificationRequests}
+        onApproveVerification={(id) => reviewVerificationRequest(id, "approved")}
+        onClearError={() => setDataError("")}
+        onCloseSupportAccess={closeSupportAccess}
+        onLogout={handleLogout}
+        onOpenContract={(contractId) =>
+          navigate(`/advertiser/contract/${encodeURIComponent(contractId)}`)
+        }
+        onOpenSupportAccess={(request) =>
+          navigate(`/contract/${encodeURIComponent(request.contract_id)}?support=${request.id}`)
+        }
+        onRefresh={loadAdminData}
+        onRejectVerification={(id) => reviewVerificationRequest(id, "rejected")}
+        onRecheckVerification={rerunVerificationAutomation}
+        onSelectItem={(itemKey) =>
+          navigate(`/admin/mobile?item=${encodeURIComponent(itemKey)}`, {
+            replace: false,
+          })
+        }
+        onUpdateTicketStatus={updateSupportTicketStatus}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#f4f5f7] font-sans text-neutral-950">
       <header className="sticky top-0 z-20 border-b border-neutral-200/80 bg-white/95 shadow-[0_1px_0_rgba(15,23,42,0.04)] backdrop-blur">
@@ -810,6 +903,666 @@ export function SystemAdminDashboard({ loginOnly = false }: { loginOnly?: boolea
       </main>
     </div>
   );
+}
+
+type MobileOperationKind = "all" | "verification" | "support_ticket" | "support_access";
+
+type MobileOperationItem = {
+  key: string;
+  id: string;
+  kind: Exclude<MobileOperationKind, "all">;
+  title: string;
+  eyebrow: string;
+  description: string;
+  statusLabel: string;
+  createdAt: string;
+  tone: "info" | "normal" | "high" | "urgent";
+};
+
+function MobileAdminOperations({
+  activeSupportRequests,
+  activeSupportTickets,
+  checkingVerificationId,
+  closingSupportId,
+  dataError,
+  isDiscordConfigured,
+  isLoadingData,
+  locationSearch,
+  operationalAlerts,
+  pendingVerificationRequests,
+  reviewingVerificationId,
+  updatingTicketId,
+  verificationRequests,
+  onApproveVerification,
+  onClearError,
+  onCloseSupportAccess,
+  onLogout,
+  onOpenContract,
+  onOpenSupportAccess,
+  onRefresh,
+  onRejectVerification,
+  onRecheckVerification,
+  onSelectItem,
+  onUpdateTicketStatus,
+}: {
+  activeSupportRequests: SupportAccessRequest[];
+  activeSupportTickets: OperationalSupportTicket[];
+  checkingVerificationId: string;
+  closingSupportId: string;
+  dataError: string;
+  isDiscordConfigured: boolean;
+  isLoadingData: boolean;
+  locationSearch: string;
+  operationalAlerts: OperationalAlert[];
+  pendingVerificationRequests: VerificationRequest[];
+  reviewingVerificationId: string;
+  updatingTicketId: string;
+  verificationRequests: VerificationRequest[];
+  onApproveVerification: (id: string) => void;
+  onClearError: () => void;
+  onCloseSupportAccess: (id: string) => void;
+  onLogout: () => void;
+  onOpenContract: (contractId: string) => void;
+  onOpenSupportAccess: (request: SupportAccessRequest) => void;
+  onRefresh: () => void;
+  onRejectVerification: (id: string) => void;
+  onRecheckVerification: (id: string) => void;
+  onSelectItem: (itemKey: string) => void;
+  onUpdateTicketStatus: (
+    id: string,
+    status: OperationalSupportTicket["status"],
+  ) => void;
+}) {
+  const [kindFilter, setKindFilter] = useState<MobileOperationKind>("all");
+  const selectedItemKey = useMemo(
+    () => new URLSearchParams(locationSearch).get("item") ?? "",
+    [locationSearch],
+  );
+  const items = useMemo(
+    () =>
+      buildMobileOperationItems({
+        activeSupportRequests,
+        activeSupportTickets,
+        operationalAlerts,
+        pendingVerificationRequests,
+        verificationRequests,
+      }),
+    [
+      activeSupportRequests,
+      activeSupportTickets,
+      operationalAlerts,
+      pendingVerificationRequests,
+      verificationRequests,
+    ],
+  );
+  const visibleItems = useMemo(
+    () =>
+      kindFilter === "all"
+        ? items
+        : items.filter((item) => item.kind === kindFilter),
+    [items, kindFilter],
+  );
+  const selectedItem =
+    visibleItems.find((item) => item.key === selectedItemKey) ??
+    visibleItems[0] ??
+    items[0];
+  const pendingAlertCount = operationalAlerts.filter(
+    (alert) => alert.status === "queued" || alert.status === "failed",
+  ).length;
+  const filters: Array<{ id: MobileOperationKind; label: string; count: number }> = [
+    { id: "all", label: "전체", count: items.length },
+    {
+      id: "verification",
+      label: "인증",
+      count: items.filter((item) => item.kind === "verification").length,
+    },
+    {
+      id: "support_ticket",
+      label: "문의",
+      count: items.filter((item) => item.kind === "support_ticket").length,
+    },
+    {
+      id: "support_access",
+      label: "지원",
+      count: items.filter((item) => item.kind === "support_access").length,
+    },
+  ];
+
+  return (
+    <div className="min-h-screen bg-[#f4f5f7] font-sans text-neutral-950">
+      <header className="sticky top-0 z-20 border-b border-neutral-200/80 bg-white/95 backdrop-blur">
+        <div className="mx-auto flex h-16 max-w-[560px] items-center justify-between gap-3 px-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <LogoMark />
+            <div className="min-w-0">
+              <h1 className="truncate text-[17px] font-semibold tracking-[-0.02em]">
+                모바일 운영
+              </h1>
+              <p className="text-xs font-medium text-neutral-500">
+                확인 {items.length.toLocaleString("ko-KR")}건
+              </p>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={onRefresh}
+              aria-label="새로고침"
+              title="새로고침"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-700 transition hover:border-neutral-400"
+            >
+              <RefreshCw className={`h-4 w-4 ${isLoadingData ? "animate-spin" : ""}`} />
+            </button>
+            <button
+              type="button"
+              onClick={onLogout}
+              aria-label="로그아웃"
+              title="로그아웃"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-neutral-200 bg-white text-neutral-700 transition hover:border-neutral-400"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-[560px] px-4 py-4">
+        {dataError && (
+          <div className="mb-3 flex items-start justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-3 text-sm font-semibold text-rose-700">
+            <span className="flex min-w-0 items-start gap-2">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{dataError}</span>
+            </span>
+            <button type="button" onClick={onClearError} aria-label="닫기">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+
+        <section className="mb-3 grid grid-cols-2 gap-2">
+          <div className="rounded-lg border border-neutral-200 bg-white px-3 py-3">
+            <p className="text-xs font-semibold text-neutral-500">처리 대기</p>
+            <p className="mt-1 text-2xl font-semibold tracking-[-0.03em]">
+              {items.length.toLocaleString("ko-KR")}
+            </p>
+          </div>
+          <div className="rounded-lg border border-neutral-200 bg-white px-3 py-3">
+            <p className="text-xs font-semibold text-neutral-500">폰 알림</p>
+            <p className="mt-1 flex items-center gap-2 text-sm font-semibold">
+              {isDiscordConfigured ? (
+                <>
+                  <CheckCircle2 className="h-4 w-4 text-blue-600" />
+                  Discord 연결
+                </>
+              ) : (
+                <>
+                  <Bell className="h-4 w-4 text-amber-600" />
+                  Discord 미설정
+                </>
+              )}
+            </p>
+            {pendingAlertCount > 0 && (
+              <p className="mt-1 text-xs font-medium text-neutral-500">
+                재시도 {pendingAlertCount}건
+              </p>
+            )}
+          </div>
+        </section>
+
+        <nav className="mb-3 flex gap-1 rounded-lg bg-white p-1 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+          {filters.map((filter) => {
+            const selected = kindFilter === filter.id;
+            return (
+              <button
+                key={filter.id}
+                type="button"
+                onClick={() => setKindFilter(filter.id)}
+                className={`h-9 flex-1 rounded-md text-xs font-semibold transition ${
+                  selected
+                    ? "bg-neutral-950 text-white"
+                    : "text-neutral-500 hover:bg-neutral-50 hover:text-neutral-950"
+                }`}
+              >
+                {filter.label}
+                {filter.count > 0 && (
+                  <span className={selected ? "ml-1 text-white/80" : "ml-1 text-neutral-400"}>
+                    {formatBadgeCount(filter.count)}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </nav>
+
+        <section className="mb-3 space-y-2">
+          {visibleItems.map((item) => {
+            const selected = selectedItem?.key === item.key;
+            return (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => onSelectItem(item.key)}
+                className={`w-full rounded-lg border px-3 py-3 text-left transition ${
+                  selected
+                    ? "border-neutral-950 bg-white shadow-[0_6px_20px_rgba(15,23,42,0.08)]"
+                    : "border-neutral-200 bg-white hover:border-neutral-400"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-neutral-500">
+                      {item.eyebrow}
+                    </p>
+                    <p className="mt-1 truncate text-sm font-semibold text-neutral-950">
+                      {item.title}
+                    </p>
+                  </div>
+                  <span
+                    className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-bold ${mobileToneClass(
+                      item.tone,
+                    )}`}
+                  >
+                    {item.statusLabel}
+                  </span>
+                </div>
+                <p className="mt-2 line-clamp-2 text-xs leading-5 text-neutral-500">
+                  {item.description}
+                </p>
+              </button>
+            );
+          })}
+
+          {visibleItems.length === 0 && (
+            <div className="rounded-lg border border-dashed border-neutral-200 bg-white px-4 py-10 text-center">
+              <p className="text-sm font-semibold text-neutral-400">
+                확인할 항목이 없습니다.
+              </p>
+              <button
+                type="button"
+                onClick={onRefresh}
+                className="mt-4 h-10 rounded-lg bg-neutral-950 px-4 text-sm font-semibold text-white"
+              >
+                새로고침
+              </button>
+            </div>
+          )}
+        </section>
+
+        <MobileOperationDetail
+          checkingVerificationId={checkingVerificationId}
+          closingSupportId={closingSupportId}
+          item={selectedItem}
+          reviewingVerificationId={reviewingVerificationId}
+          supportAccessRequests={activeSupportRequests}
+          supportTickets={activeSupportTickets}
+          updatingTicketId={updatingTicketId}
+          verificationRequests={verificationRequests}
+          onApproveVerification={onApproveVerification}
+          onCloseSupportAccess={onCloseSupportAccess}
+          onOpenContract={onOpenContract}
+          onOpenSupportAccess={onOpenSupportAccess}
+          onRejectVerification={onRejectVerification}
+          onRecheckVerification={onRecheckVerification}
+          onUpdateTicketStatus={onUpdateTicketStatus}
+        />
+      </main>
+    </div>
+  );
+}
+
+function buildMobileOperationItems({
+  activeSupportRequests,
+  activeSupportTickets,
+  operationalAlerts,
+  pendingVerificationRequests,
+  verificationRequests,
+}: {
+  activeSupportRequests: SupportAccessRequest[];
+  activeSupportTickets: OperationalSupportTicket[];
+  operationalAlerts: OperationalAlert[];
+  pendingVerificationRequests: VerificationRequest[];
+  verificationRequests: VerificationRequest[];
+}) {
+  const autoApprovedVerificationIds = new Set(
+    operationalAlerts
+      .filter(
+        (alert) =>
+          alert.kind === "verification_request" &&
+          alert.action === "auto_approved",
+      )
+      .map((alert) => alert.subject_id),
+  );
+  const pendingIds = new Set(pendingVerificationRequests.map((request) => request.id));
+  const autoApprovedRequests = verificationRequests.filter(
+    (request) =>
+      request.status === "approved" &&
+      autoApprovedVerificationIds.has(request.id) &&
+      !pendingIds.has(request.id),
+  );
+
+  return [
+    ...pendingVerificationRequests.map((request) => ({
+      key: `verification:${request.id}`,
+      id: request.id,
+      kind: "verification" as const,
+      title: request.subject_name,
+      eyebrow: verificationTypeLabel(request),
+      description:
+        request.platform_handle ??
+        request.business_registration_number ??
+        formatDateTime(request.created_at),
+      statusLabel: "확인 필요",
+      createdAt: request.created_at,
+      tone: "high" as const,
+    })),
+    ...autoApprovedRequests.map((request) => ({
+      key: `verification:${request.id}`,
+      id: request.id,
+      kind: "verification" as const,
+      title: request.subject_name,
+      eyebrow: verificationTypeLabel(request),
+      description: request.reviewer_note ?? "자동 승인 완료",
+      statusLabel: "자동 승인",
+      createdAt: request.reviewed_at ?? request.updated_at,
+      tone: "info" as const,
+    })),
+    ...activeSupportTickets.map((ticket) => ({
+      key: `support_ticket:${ticket.id}`,
+      id: ticket.id,
+      kind: "support_ticket" as const,
+      title: ticket.subject,
+      eyebrow: supportTicketCategoryLabel(ticket.category),
+      description: ticket.message,
+      statusLabel: supportTicketStatusLabel(ticket.status),
+      createdAt: ticket.created_at,
+      tone: ticket.severity === "urgent" ? ("urgent" as const) : ticket.severity === "high" ? ("high" as const) : ("normal" as const),
+    })),
+    ...activeSupportRequests.map((request) => ({
+      key: `support_access:${request.id}`,
+      id: request.id,
+      kind: "support_access" as const,
+      title: `${requesterRoleLabel(request.requester_role)} 지원 열람`,
+      eyebrow: `계약 ${shortId(request.contract_id)}`,
+      description: request.reason,
+      statusLabel: supportStatusLabel(request),
+      createdAt: request.created_at,
+      tone: "normal" as const,
+    })),
+  ].sort(
+    (a, b) =>
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  );
+}
+
+function MobileOperationDetail({
+  checkingVerificationId,
+  closingSupportId,
+  item,
+  reviewingVerificationId,
+  supportAccessRequests,
+  supportTickets,
+  updatingTicketId,
+  verificationRequests,
+  onApproveVerification,
+  onCloseSupportAccess,
+  onOpenContract,
+  onOpenSupportAccess,
+  onRejectVerification,
+  onRecheckVerification,
+  onUpdateTicketStatus,
+}: {
+  checkingVerificationId: string;
+  closingSupportId: string;
+  item?: MobileOperationItem;
+  reviewingVerificationId: string;
+  supportAccessRequests: SupportAccessRequest[];
+  supportTickets: OperationalSupportTicket[];
+  updatingTicketId: string;
+  verificationRequests: VerificationRequest[];
+  onApproveVerification: (id: string) => void;
+  onCloseSupportAccess: (id: string) => void;
+  onOpenContract: (contractId: string) => void;
+  onOpenSupportAccess: (request: SupportAccessRequest) => void;
+  onRejectVerification: (id: string) => void;
+  onRecheckVerification: (id: string) => void;
+  onUpdateTicketStatus: (
+    id: string,
+    status: OperationalSupportTicket["status"],
+  ) => void;
+}) {
+  if (!item) return null;
+
+  if (item.kind === "verification") {
+    const request = verificationRequests.find((record) => record.id === item.id);
+    if (!request) return null;
+    const evidenceUrl = getVerificationEvidenceUrl(request);
+    const proofUrl = request.ownership_challenge_url ?? request.platform_url;
+    const isPending = request.status === "pending";
+
+    return (
+      <section className="rounded-lg border border-neutral-200 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-neutral-500">
+              {verificationTypeLabel(request)}
+            </p>
+            <h2 className="mt-1 text-lg font-semibold tracking-[-0.02em]">
+              {request.subject_name}
+            </h2>
+          </div>
+          <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${verificationStatusTone(request.status)}`}>
+            {verificationStatusLabel(request.status)}
+          </span>
+        </div>
+
+        <div className="mt-4 space-y-2 text-sm text-neutral-700">
+          {request.platform_handle && <p>핸들 {request.platform_handle}</p>}
+          {request.business_registration_number && (
+            <p>사업자번호 {request.business_registration_number}</p>
+          )}
+          {request.ownership_challenge_code && (
+            <p className="font-mono">코드 {request.ownership_challenge_code}</p>
+          )}
+          <p className="text-xs font-medium text-neutral-500">
+            접수 {formatDateTime(request.created_at)}
+          </p>
+          {request.reviewer_note && (
+            <p className="rounded-lg bg-neutral-50 px-3 py-2 text-xs leading-5 text-neutral-600">
+              {request.reviewer_note}
+            </p>
+          )}
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          {proofUrl && (
+            <a
+              href={proofUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex h-10 items-center justify-center rounded-lg border border-neutral-200 bg-white text-sm font-semibold text-neutral-700"
+            >
+              URL 확인
+            </a>
+          )}
+          {evidenceUrl && (
+            <a
+              href={evidenceUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex h-10 items-center justify-center rounded-lg border border-neutral-200 bg-white text-sm font-semibold text-neutral-700"
+            >
+              증빙 보기
+            </a>
+          )}
+        </div>
+
+        {isPending ? (
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            <button
+              type="button"
+              disabled={checkingVerificationId === request.id}
+              onClick={() => onRecheckVerification(request.id)}
+              className="h-10 rounded-lg border border-neutral-200 bg-white text-sm font-semibold text-neutral-700 disabled:opacity-50"
+            >
+              재확인
+            </button>
+            <button
+              type="button"
+              disabled={reviewingVerificationId === request.id}
+              onClick={() => onApproveVerification(request.id)}
+              className="h-10 rounded-lg bg-neutral-950 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              승인
+            </button>
+            <button
+              type="button"
+              disabled={reviewingVerificationId === request.id}
+              onClick={() => onRejectVerification(request.id)}
+              className="h-10 rounded-lg border border-rose-200 bg-rose-50 text-sm font-semibold text-rose-700 disabled:opacity-50"
+            >
+              반려
+            </button>
+          </div>
+        ) : (
+          <p className="mt-4 rounded-lg bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700">
+            처리 {formatDateTime(request.reviewed_at ?? request.updated_at)}
+          </p>
+        )}
+      </section>
+    );
+  }
+
+  if (item.kind === "support_ticket") {
+    const ticket = supportTickets.find((record) => record.id === item.id);
+    if (!ticket) return null;
+
+    return (
+      <section className="rounded-lg border border-neutral-200 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-neutral-500">
+              {supportTicketCategoryLabel(ticket.category)}
+            </p>
+            <h2 className="mt-1 text-lg font-semibold tracking-[-0.02em]">
+              {ticket.subject}
+            </h2>
+          </div>
+          <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${supportTicketStatusTone(ticket.status)}`}>
+            {supportTicketStatusLabel(ticket.status)}
+          </span>
+        </div>
+
+        <p className="mt-4 whitespace-pre-line text-sm leading-6 text-neutral-700">
+          {ticket.message}
+        </p>
+        <p className="mt-3 text-xs font-medium text-neutral-500">
+          {requesterRoleLabel(ticket.requester_role)} · {formatDateTime(ticket.created_at)}
+        </p>
+
+        <div className="mt-4 grid gap-2">
+          {ticket.contract_id && (
+            <button
+              type="button"
+              onClick={() => onOpenContract(ticket.contract_id!)}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white text-sm font-semibold text-neutral-700"
+            >
+              계약 열기
+              <ArrowUpRight className="h-4 w-4" />
+            </button>
+          )}
+          {ticket.status === "open" && (
+            <button
+              type="button"
+              disabled={updatingTicketId === ticket.id}
+              onClick={() => onUpdateTicketStatus(ticket.id, "reviewing")}
+              className="h-10 rounded-lg bg-neutral-950 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              검토 시작
+            </button>
+          )}
+          {(ticket.status === "open" || ticket.status === "reviewing") && (
+            <button
+              type="button"
+              disabled={updatingTicketId === ticket.id}
+              onClick={() => onUpdateTicketStatus(ticket.id, "resolved")}
+              className="h-10 rounded-lg border border-neutral-200 bg-white text-sm font-semibold text-neutral-700 disabled:opacity-50"
+            >
+              해결 완료
+            </button>
+          )}
+        </div>
+      </section>
+    );
+  }
+
+  const request = supportAccessRequests.find((record) => record.id === item.id);
+  if (!request) return null;
+
+  return (
+    <section className="rounded-lg border border-neutral-200 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold text-neutral-500">
+            계약 {shortId(request.contract_id)}
+          </p>
+          <h2 className="mt-1 text-lg font-semibold tracking-[-0.02em]">
+            {requesterRoleLabel(request.requester_role)} 지원 열람
+          </h2>
+        </div>
+        <span className="rounded-full bg-neutral-950 px-2.5 py-1 text-[11px] font-semibold text-white">
+          {supportStatusLabel(request)}
+        </span>
+      </div>
+
+      <p className="mt-4 whitespace-pre-line text-sm leading-6 text-neutral-700">
+        {request.reason}
+      </p>
+      <p className="mt-3 text-xs font-medium text-neutral-500">
+        {formatRemaining(request.expires_at)} · {formatDateTime(request.created_at)}
+      </p>
+
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          disabled={!request.is_active}
+          onClick={() => onOpenSupportAccess(request)}
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-neutral-950 text-sm font-semibold text-white disabled:bg-neutral-200 disabled:text-neutral-500"
+        >
+          열람
+          <ArrowUpRight className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          disabled={!request.is_active || closingSupportId === request.id}
+          onClick={() => onCloseSupportAccess(request.id)}
+          className="h-10 rounded-lg border border-neutral-200 bg-white text-sm font-semibold text-neutral-700 disabled:text-neutral-300"
+        >
+          종료
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function getVerificationEvidenceUrl(request: VerificationRequest) {
+  if (typeof request.evidence_snapshot_json?.evidence_file?.download_path === "string") {
+    return request.evidence_snapshot_json.evidence_file.download_path;
+  }
+  if (typeof request.evidence_snapshot_json?.file_data_url === "string") {
+    return request.evidence_snapshot_json.file_data_url;
+  }
+  return undefined;
+}
+
+function mobileToneClass(tone: MobileOperationItem["tone"]) {
+  const tones: Record<MobileOperationItem["tone"], string> = {
+    info: "bg-blue-50 text-blue-700",
+    normal: "bg-neutral-100 text-neutral-700",
+    high: "bg-amber-50 text-amber-800",
+    urgent: "bg-rose-50 text-rose-700",
+  };
+
+  return tones[tone];
 }
 
 function MetricCard({

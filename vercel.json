@@ -25,6 +25,10 @@
   },
   "crons": [
     {
+      "path": "/api/cron/ops-alerts",
+      "schedule": "0 17 * * *"
+    },
+    {
       "path": "/api/cron/sync-marketplace-followers",
       "schedule": "0 18 * * *"
     }

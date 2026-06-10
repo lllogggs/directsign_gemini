@@ -255,6 +255,42 @@ interface OperationalSupportTicketStoreFile {
   support_tickets: OperationalSupportTicketRecord[];
 }
 
+type OperationalAlertKind =
+  | "verification_request"
+  | "support_ticket"
+  | "support_access";
+type OperationalAlertAction =
+  | "auto_approved"
+  | "needs_review"
+  | "mobile_action";
+type OperationalAlertSeverity = "info" | "normal" | "high" | "urgent";
+type OperationalAlertStatus = "queued" | "sent" | "failed" | "muted";
+
+interface OperationalAlertRecord {
+  id: string;
+  kind: OperationalAlertKind;
+  action: OperationalAlertAction;
+  severity: OperationalAlertSeverity;
+  status: OperationalAlertStatus;
+  subject_type: string;
+  subject_id: string;
+  title: string;
+  body: string;
+  mobile_path: string;
+  dashboard_path?: string;
+  dedupe_key: string;
+  decision_reason?: string;
+  metadata_json: Record<string, unknown>;
+  sent_at?: string;
+  error_message?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface OperationalAlertStoreFile {
+  operational_alerts: OperationalAlertRecord[];
+}
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..");
 const localDataDirName = ["da", "ta"].join("");
@@ -265,6 +301,7 @@ const dataFile = path.join(dataDir, "contracts.json");
 const verificationDataFile = path.join(dataDir, "verification-requests.json");
 const supportAccessDataFile = path.join(dataDir, "support-access-requests.json");
 const supportTicketDataFile = path.join(dataDir, "support-tickets.json");
+const operationalAlertDataFile = path.join(dataDir, "operational-alerts.json");
 const port = Number(process.env.PORT ?? 3000);
 const isHostedRuntime =
   Boolean(process.env.VERCEL) ||
@@ -421,6 +458,9 @@ const resolveServerSecret = ({
 const adminAccessCode = readConfiguredServerSecret("ADMIN_ACCESS_CODE");
 const configuredAdminOperatorName = readConfiguredServerSecret("ADMIN_OPERATOR_NAME");
 const cronSecret = readConfiguredServerSecret("CRON_SECRET");
+const discordOperationsWebhookUrl =
+  readConfiguredServerSecret("DISCORD_OPERATIONS_WEBHOOK_URL") ??
+  readConfiguredServerSecret("OPERATIONS_DISCORD_WEBHOOK_URL");
 const adminSessionSecret = resolveServerSecret({
   name: "ADMIN_SESSION_SECRET",
   purpose: "signing admin session cookies",
@@ -2817,6 +2857,555 @@ const updateSupportTicket = async (
   );
   await writeSupportTicketsToFile(next);
   return updatedRecord;
+};
+
+const operationalAlertTable = "operational_alert_events";
+let operationalAlertReadFallbackWarned = false;
+let operationalAlertWriteFallbackWarned = false;
+const allowLocalOperationalAlertStore = !useSupabase || demoMode;
+
+const operationalAlertKinds = new Set<OperationalAlertKind>([
+  "verification_request",
+  "support_ticket",
+  "support_access",
+]);
+const operationalAlertActions = new Set<OperationalAlertAction>([
+  "auto_approved",
+  "needs_review",
+  "mobile_action",
+]);
+const operationalAlertSeverities = new Set<OperationalAlertSeverity>([
+  "info",
+  "normal",
+  "high",
+  "urgent",
+]);
+const operationalAlertStatuses = new Set<OperationalAlertStatus>([
+  "queued",
+  "sent",
+  "failed",
+  "muted",
+]);
+
+const createMissingOperationalAlertStoreError = () =>
+  new Error(
+    "Supabase operational_alert_events table is required when Supabase storage is enabled.",
+  );
+
+const isMissingSupabaseOperationalAlertTableError = (error: unknown) =>
+  error instanceof Error &&
+  (error.message.includes("operational_alert_events") ||
+    error.message.includes("schema cache") ||
+    error.message.includes("Could not find the table") ||
+    error.message.includes("relation")) &&
+  (error.message.includes("404") ||
+    error.message.includes("400") ||
+    error.message.includes("PGRST205") ||
+    error.message.includes("does not exist") ||
+    error.message.includes("schema cache"));
+
+const isDuplicateOperationalAlertError = (error: unknown) =>
+  error instanceof Error &&
+  (error.message.includes("duplicate key") ||
+    error.message.includes("23505") ||
+    error.message.includes("409"));
+
+const normalizeOperationalAlert = (
+  row: OperationalAlertRecord,
+): OperationalAlertRecord => ({
+  id: row.id,
+  kind: operationalAlertKinds.has(row.kind) ? row.kind : "support_ticket",
+  action: operationalAlertActions.has(row.action) ? row.action : "needs_review",
+  severity: operationalAlertSeverities.has(row.severity) ? row.severity : "normal",
+  status: operationalAlertStatuses.has(row.status) ? row.status : "queued",
+  subject_type: row.subject_type,
+  subject_id: row.subject_id,
+  title: row.title,
+  body: row.body,
+  mobile_path: row.mobile_path,
+  dashboard_path: row.dashboard_path ?? undefined,
+  dedupe_key: row.dedupe_key,
+  decision_reason: row.decision_reason ?? undefined,
+  metadata_json:
+    row.metadata_json && typeof row.metadata_json === "object"
+      ? row.metadata_json
+      : {},
+  sent_at: row.sent_at ?? undefined,
+  error_message: row.error_message ?? undefined,
+  created_at: row.created_at,
+  updated_at: row.updated_at,
+});
+
+const readOperationalAlertsFromFile = async () => {
+  try {
+    const contents = await fs.readFile(operationalAlertDataFile, "utf8");
+    const parsed = JSON.parse(contents) as OperationalAlertStoreFile;
+
+    if (!Array.isArray(parsed.operational_alerts)) {
+      throw new Error("Invalid operational alert store");
+    }
+
+    return parsed.operational_alerts.map(normalizeOperationalAlert);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code && code !== "ENOENT") {
+      console.warn(`[yeollock.me] resetting invalid operational alert store: ${code}`);
+    }
+    return [];
+  }
+};
+
+const writeOperationalAlertsToFile = async (
+  records: OperationalAlertRecord[],
+) => {
+  await fs.mkdir(dataDir, { recursive: true });
+  const tempFile = `${operationalAlertDataFile}.tmp`;
+  await fs.writeFile(
+    tempFile,
+    JSON.stringify({ operational_alerts: records }, null, 2),
+    "utf8",
+  );
+  await fs.rename(tempFile, operationalAlertDataFile);
+};
+
+const readOperationalAlerts = async () => {
+  if (useSupabase) {
+    try {
+      const rows = await readSupabaseRows<OperationalAlertRecord>(
+        operationalAlertTable,
+        "?select=*&order=created_at.desc&limit=100",
+        "operational alert events",
+      );
+      return rows.map(normalizeOperationalAlert);
+    } catch (error) {
+      if (!isMissingSupabaseOperationalAlertTableError(error)) {
+        throw error;
+      }
+      if (!allowLocalOperationalAlertStore) {
+        throw createMissingOperationalAlertStoreError();
+      }
+      if (!operationalAlertReadFallbackWarned) {
+        console.warn(
+          "[yeollock.me] operational_alert_events table is not available; using local operational alert store.",
+        );
+        operationalAlertReadFallbackWarned = true;
+      }
+    }
+  }
+
+  return readOperationalAlertsFromFile();
+};
+
+const readOperationalAlertByDedupeKey = async (dedupeKey: string) => {
+  if (useSupabase) {
+    try {
+      const rows = await readSupabaseRows<OperationalAlertRecord>(
+        operationalAlertTable,
+        `?select=*&dedupe_key=eq.${encodeURIComponent(dedupeKey)}&limit=1`,
+        "operational alert event",
+      );
+      return rows[0] ? normalizeOperationalAlert(rows[0]) : undefined;
+    } catch (error) {
+      if (!isMissingSupabaseOperationalAlertTableError(error)) {
+        throw error;
+      }
+      if (!allowLocalOperationalAlertStore) {
+        throw createMissingOperationalAlertStoreError();
+      }
+    }
+  }
+
+  const current = await readOperationalAlertsFromFile();
+  return current.find((item) => item.dedupe_key === dedupeKey);
+};
+
+const insertOperationalAlert = async (
+  record: OperationalAlertRecord,
+) => {
+  const normalizedRecord = normalizeOperationalAlert(record);
+
+  if (useSupabase) {
+    try {
+      const [inserted] = await insertSupabaseRowsReturning<OperationalAlertRecord>(
+        operationalAlertTable,
+        [normalizedRecord as unknown as Record<string, unknown>],
+        "operational alert event",
+      );
+      if (inserted) return normalizeOperationalAlert(inserted);
+    } catch (error) {
+      if (isDuplicateOperationalAlertError(error)) {
+        const existing = await readOperationalAlertByDedupeKey(
+          normalizedRecord.dedupe_key,
+        );
+        if (existing) return existing;
+        throw error;
+      }
+      if (!isMissingSupabaseOperationalAlertTableError(error)) {
+        throw error;
+      }
+      if (!allowLocalOperationalAlertStore) {
+        throw createMissingOperationalAlertStoreError();
+      }
+      if (!operationalAlertWriteFallbackWarned) {
+        console.warn(
+          "[yeollock.me] operational_alert_events table is not available; writing operational alerts locally.",
+        );
+        operationalAlertWriteFallbackWarned = true;
+      }
+    }
+  }
+
+  const current = await readOperationalAlertsFromFile();
+  const existing = current.find((item) => item.dedupe_key === normalizedRecord.dedupe_key);
+  if (existing) return existing;
+  const next = [normalizedRecord, ...current.filter((item) => item.id !== normalizedRecord.id)];
+  await writeOperationalAlertsToFile(next);
+  return normalizedRecord;
+};
+
+const updateOperationalAlert = async (
+  record: OperationalAlertRecord,
+  updates: Partial<OperationalAlertRecord>,
+) => {
+  const updatedRecord = normalizeOperationalAlert({
+    ...record,
+    ...updates,
+    updated_at: updates.updated_at ?? new Date().toISOString(),
+  });
+
+  if (useSupabase) {
+    try {
+      const response = await fetchSupabase(
+        operationalAlertTable,
+        `?id=eq.${encodeURIComponent(record.id)}`,
+        {
+          method: "PATCH",
+          headers: { Prefer: "return=representation" },
+          body: JSON.stringify(updatedRecord),
+        },
+      );
+      await assertSupabaseOk(response, "Supabase operational alert update");
+      const [updated] = (await response.json()) as OperationalAlertRecord[];
+      if (updated) return normalizeOperationalAlert(updated);
+    } catch (error) {
+      if (!isMissingSupabaseOperationalAlertTableError(error)) {
+        throw error;
+      }
+      if (!allowLocalOperationalAlertStore) {
+        throw createMissingOperationalAlertStoreError();
+      }
+    }
+  }
+
+  const current = await readOperationalAlertsFromFile();
+  const next = current.map((item) =>
+    item.id === updatedRecord.id ? updatedRecord : item,
+  );
+  await writeOperationalAlertsToFile(next);
+  return updatedRecord;
+};
+
+const buildOperationalAlertUrl = (mobilePath: string) => {
+  const configured = process.env.APP_URL?.trim().replace(/\/$/, "");
+  const baseUrl = configured || (isProductionRuntime ? "https://yeollock.me" : `http://localhost:${port}`);
+  return new URL(mobilePath, `${baseUrl}/`).toString();
+};
+
+const operationalAlertSeverityLabel = (severity: OperationalAlertSeverity) => {
+  const labels: Record<OperationalAlertSeverity, string> = {
+    info: "자동 처리",
+    normal: "운영 확인",
+    high: "확인 필요",
+    urgent: "긴급 확인",
+  };
+
+  return labels[severity];
+};
+
+const operationalAlertDiscordColor = (severity: OperationalAlertSeverity) => {
+  const colors: Record<OperationalAlertSeverity, number> = {
+    info: 0x2563eb,
+    normal: 0x171717,
+    high: 0xf59e0b,
+    urgent: 0xdc2626,
+  };
+
+  return colors[severity];
+};
+
+const sendDiscordOperationalAlert = async (alert: OperationalAlertRecord) => {
+  if (!discordOperationsWebhookUrl) return alert;
+  if (!isSafeHttpUrl(discordOperationsWebhookUrl)) {
+    throw new Error("DISCORD_OPERATIONS_WEBHOOK_URL must be an https URL");
+  }
+
+  const mobileUrl = buildOperationalAlertUrl(alert.mobile_path);
+  const payload = {
+    username: `${productName} 운영`,
+    content: `${operationalAlertSeverityLabel(alert.severity)} · ${alert.title}`,
+    embeds: [
+      {
+        title: alert.title,
+        description: `${alert.body}\n\n[모바일 운영 상세](${mobileUrl})`,
+        color: operationalAlertDiscordColor(alert.severity),
+        fields: [
+          {
+            name: "상태",
+            value: operationalAlertSeverityLabel(alert.severity),
+            inline: true,
+          },
+          {
+            name: "항목",
+            value: alert.subject_type,
+            inline: true,
+          },
+        ],
+        timestamp: alert.created_at,
+      },
+    ],
+    allowed_mentions: { parse: [] },
+  };
+
+  const response = await fetch(discordOperationsWebhookUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "User-Agent": `${productName} operations notifier`,
+    },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(8000),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Discord webhook failed (${response.status})`);
+  }
+
+  return updateOperationalAlert(alert, {
+    status: "sent",
+    sent_at: new Date().toISOString(),
+    error_message: undefined,
+  });
+};
+
+const dispatchOperationalAlert = async (alert: OperationalAlertRecord) => {
+  if (alert.status === "sent" || alert.status === "muted") return alert;
+  if (!discordOperationsWebhookUrl) return alert;
+
+  try {
+    return await sendDiscordOperationalAlert(alert);
+  } catch (error) {
+    return updateOperationalAlert(alert, {
+      status: "failed",
+      error_message:
+        error instanceof Error ? error.message.slice(0, 500) : "Discord webhook failed",
+    });
+  }
+};
+
+const enqueueOperationalAlert = async (
+  input: Omit<OperationalAlertRecord, "id" | "status" | "created_at" | "updated_at">,
+) => {
+  const now = new Date().toISOString();
+  const existing = await readOperationalAlertByDedupeKey(input.dedupe_key);
+  const alert =
+    existing ??
+    (await insertOperationalAlert({
+      id: randomUUID(),
+      status: "queued",
+      created_at: now,
+      updated_at: now,
+      ...input,
+    }));
+  return dispatchOperationalAlert(alert);
+};
+
+const supportTicketSeverityToAlertSeverity = (
+  severity: OperationalSupportTicketSeverity,
+): OperationalAlertSeverity => {
+  if (severity === "urgent") return "urgent";
+  if (severity === "high") return "high";
+  return "normal";
+};
+
+const verificationAlertSubjectType = (record: VerificationRequestRecord) =>
+  record.target_type === "advertiser_organization"
+    ? "광고주 사업자 인증"
+    : "인플루언서 계정 인증";
+
+const enqueueVerificationOperationalAlert = async (
+  record: VerificationRequestRecord,
+) => {
+  if (isOperationalTestVerificationRequest(record)) return undefined;
+
+  const isAutomationApproval =
+    record.status === "approved" &&
+    normalizeRequiredText(record.reviewed_by_name).includes("automation");
+  const needsReview = record.status === "pending";
+
+  if (!isAutomationApproval && !needsReview) return undefined;
+
+  const action: OperationalAlertAction = isAutomationApproval
+    ? "auto_approved"
+    : "needs_review";
+  const title = isAutomationApproval ? "인증 자동 승인" : "인증 확인 필요";
+  const body = `${verificationAlertSubjectType(record)} · ${record.subject_name}`;
+
+  return enqueueOperationalAlert({
+    kind: "verification_request",
+    action,
+    severity: isAutomationApproval ? "info" : "high",
+    subject_type: verificationAlertSubjectType(record),
+    subject_id: record.id,
+    title,
+    body,
+    mobile_path: `/admin/mobile?item=verification:${encodeURIComponent(record.id)}`,
+    dashboard_path: "/admin",
+    dedupe_key: `verification_request:${record.id}:${action}`,
+    decision_reason: record.reviewer_note,
+    metadata_json: {
+      target_type: record.target_type,
+      verification_type: record.verification_type,
+      status: record.status,
+    },
+  });
+};
+
+const enqueueSupportTicketOperationalAlert = async (
+  ticket: OperationalSupportTicketRecord,
+) => {
+  if (isOperationalTestSupportTicket(ticket)) return undefined;
+  if (ticket.status !== "open" && ticket.status !== "reviewing") return undefined;
+
+  return enqueueOperationalAlert({
+    kind: "support_ticket",
+    action: "needs_review",
+    severity: supportTicketSeverityToAlertSeverity(ticket.severity),
+    subject_type: "고객 문의",
+    subject_id: ticket.id,
+    title: "고객 문의 접수",
+    body: `${supportTicketCategoryLabelForAlert(ticket.category)} · ${supportTicketSeverityLabelForAlert(ticket.severity)} · ${ticket.subject.slice(0, 80)}`,
+    mobile_path: `/admin/mobile?item=support_ticket:${encodeURIComponent(ticket.id)}`,
+    dashboard_path: "/admin",
+    dedupe_key: `support_ticket:${ticket.id}:active`,
+    decision_reason: ticket.admin_note,
+    metadata_json: {
+      category: ticket.category,
+      status: ticket.status,
+      severity: ticket.severity,
+      contract_id: ticket.contract_id,
+    },
+  });
+};
+
+const enqueueSupportAccessOperationalAlert = async (
+  requestRecord: SupportAccessRequestRecord,
+) => {
+  if (isOperationalTestSupportAccessRequest(requestRecord)) return undefined;
+  if (!isSupportAccessActive(requestRecord)) return undefined;
+
+  return enqueueOperationalAlert({
+    kind: "support_access",
+    action: "needs_review",
+    severity: "normal",
+    subject_type: "지원 열람",
+    subject_id: requestRecord.id,
+    title: "지원 열람 요청",
+    body: `${requesterRoleLabelForAlert(requestRecord.requester_role)} · 계약 ${requestRecord.contract_id.slice(0, 12)}`,
+    mobile_path: `/admin/mobile?item=support_access:${encodeURIComponent(requestRecord.id)}`,
+    dashboard_path: "/admin",
+    dedupe_key: `support_access:${requestRecord.id}:active`,
+    decision_reason: requestRecord.reason.slice(0, 300),
+    metadata_json: {
+      contract_id: requestRecord.contract_id,
+      requester_role: requestRecord.requester_role,
+      scope: requestRecord.scope,
+      status: requestRecord.status,
+    },
+  });
+};
+
+const supportTicketCategoryLabelForAlert = (
+  category: OperationalSupportTicketCategory,
+) => {
+  const labels: Record<OperationalSupportTicketCategory, string> = {
+    service_error: "장애",
+    account_access: "계정",
+    contract_flow: "계약",
+    privacy_request: "개인정보",
+    other: "기타",
+  };
+
+  return labels[category];
+};
+
+const supportTicketSeverityLabelForAlert = (
+  severity: OperationalSupportTicketSeverity,
+) => {
+  const labels: Record<OperationalSupportTicketSeverity, string> = {
+    low: "낮음",
+    normal: "보통",
+    high: "높음",
+    urgent: "긴급",
+  };
+
+  return labels[severity];
+};
+
+const requesterRoleLabelForAlert = (
+  role: SupportAccessRequestRecord["requester_role"],
+) => (role === "advertiser" ? "광고주" : "인플루언서");
+
+const dispatchQueuedOperationalAlerts = async (limit = 20) => {
+  const alerts = (await readOperationalAlerts())
+    .filter((alert) => alert.status === "queued" || alert.status === "failed")
+    .sort((a, b) => parseDateAscending(a.created_at, b.created_at))
+    .slice(0, limit);
+
+  let sentCount = 0;
+  let failedCount = 0;
+
+  for (const alert of alerts) {
+    const updated = await dispatchOperationalAlert(alert);
+    if (updated.status === "sent") sentCount += 1;
+    if (updated.status === "failed") failedCount += 1;
+  }
+
+  return {
+    attempted_count: alerts.length,
+    sent_count: sentCount,
+    failed_count: failedCount,
+    discord_configured: Boolean(discordOperationsWebhookUrl),
+  };
+};
+
+const runOperationalAlertSweep = async () => {
+  const [verificationRequests, supportTickets, supportAccessRequests] =
+    await Promise.all([
+      readOperationalAdminVerificationRequests(),
+      readOperationalAdminSupportTickets(),
+      readOperationalAdminSupportAccessRequests(),
+    ]);
+
+  for (const record of verificationRequests) {
+    if (record.status === "pending" || record.status === "approved") {
+      await enqueueVerificationOperationalAlert(record);
+    }
+  }
+  for (const ticket of supportTickets) {
+    await enqueueSupportTicketOperationalAlert(ticket);
+  }
+  for (const requestRecord of supportAccessRequests) {
+    await enqueueSupportAccessOperationalAlert(requestRecord);
+  }
+
+  const dispatch = await dispatchQueuedOperationalAlerts();
+
+  return {
+    verification_count: verificationRequests.length,
+    support_ticket_count: supportTickets.length,
+    support_access_count: supportAccessRequests.length,
+    dispatch,
+  };
 };
 
 const bindContractToAdvertiser = async (
@@ -12015,11 +12604,13 @@ const insertVerificationRequest = async (record: VerificationRequestRecord) => {
     invalidateAdvertiserDashboardCache();
     invalidateInfluencerDashboardCache();
     await applyVerificationStatusSideEffects(insertedRecord);
+    await enqueueVerificationOperationalAlert(insertedRecord);
     return insertedRecord;
   }
 
   const verificationRequests = await readVerificationRequests();
   await writeVerificationRequests([normalizedRecord, ...verificationRequests]);
+  await enqueueVerificationOperationalAlert(normalizedRecord);
   return normalizedRecord;
 };
 
@@ -12106,6 +12697,7 @@ const updateVerificationRequestAutomation = async (
     invalidateAdvertiserDashboardCache();
     invalidateInfluencerDashboardCache();
     await applyVerificationStatusSideEffects(savedRecord);
+    await enqueueVerificationOperationalAlert(savedRecord);
     return savedRecord;
   }
 
@@ -12115,6 +12707,7 @@ const updateVerificationRequestAutomation = async (
       item.id === record.id ? updatedRecord : item,
     ),
   );
+  await enqueueVerificationOperationalAlert(updatedRecord);
   return updatedRecord;
 };
 
@@ -15354,6 +15947,8 @@ app.post("/api/support/tickets", async (request, response, next) => {
       updated_at: now,
     });
 
+    await enqueueSupportTicketOperationalAlert(ticket);
+
     response.status(201).json({
       ticket: {
         id: ticket.id,
@@ -15460,6 +16055,19 @@ app.get("/api/admin/metrics", async (request, response, next) => {
           total_count: supportTickets.length,
         },
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/admin/operational-alerts", async (request, response, next) => {
+  try {
+    if (!requireAdminSession(request, response)) return;
+
+    response.json({
+      operational_alerts: await readOperationalAlerts(),
+      discord_configured: Boolean(discordOperationsWebhookUrl),
     });
   } catch (error) {
     next(error);
@@ -16226,6 +16834,16 @@ app.get(
     }
   },
 );
+
+app.get("/api/cron/ops-alerts", async (request, response, next) => {
+  if (!requireCronRequest(request, response)) return;
+
+  try {
+    response.json(await runOperationalAlertSweep());
+  } catch (error) {
+    next(error);
+  }
+});
 
 app.get("/api/marketplace/influencers", async (_request, response, next) => {
   try {
@@ -18153,6 +18771,8 @@ app.post("/api/contracts/:id/support-access-requests", async (request, response,
     if (createdAuditEvent) {
       await appendSupportAccessEventRow(record, createdAuditEvent);
     }
+
+    await enqueueSupportAccessOperationalAlert(record);
 
     response.status(201).json({
       request: record,

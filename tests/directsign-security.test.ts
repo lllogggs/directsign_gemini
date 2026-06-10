@@ -298,6 +298,58 @@ describe("yeollock.me security regressions", () => {
     assert.doesNotMatch(migration, /grant[\s\S]+to anon;/);
   });
 
+  it("keeps mobile operations alerts server-only and Discord-ready", () => {
+    const server = read("server/index.ts");
+    const app = read("src/App.tsx");
+    const adminDashboard = read("src/pages/admin/SystemAdminDashboard.tsx");
+    const envExample = read(".env.example");
+    const migration = read(
+      "supabase/migrations/20260610003213_create_operational_alert_events.sql",
+    );
+    const vercelConfig = JSON.parse(read("vercel.json")) as {
+      crons?: Array<{ path?: string; schedule?: string }>;
+    };
+
+    assert.ok(
+      vercelConfig.crons?.some(
+        (cron) =>
+          cron.path === "/api/cron/ops-alerts" &&
+          cron.schedule === "0 17 * * *",
+      ),
+    );
+    assert.match(envExample, /DISCORD_OPERATIONS_WEBHOOK_URL=""/);
+    assert.doesNotMatch(envExample, /VITE_DISCORD/);
+    assert.match(server, /discordOperationsWebhookUrl/);
+    assert.match(server, /DISCORD_OPERATIONS_WEBHOOK_URL/);
+    assert.match(server, /operational_alert_events/);
+    assert.match(server, /sendDiscordOperationalAlert/);
+    assert.match(server, /allowed_mentions: \{ parse: \[\] \}/);
+    assert.match(server, /enqueueVerificationOperationalAlert/);
+    assert.match(server, /enqueueSupportTicketOperationalAlert/);
+    assert.match(server, /enqueueSupportAccessOperationalAlert/);
+    assert.match(server, /runOperationalAlertSweep/);
+    assert.match(server, /\/api\/cron\/ops-alerts/);
+    assert.match(server, /\/api\/admin\/operational-alerts/);
+    assert.match(app, /path="\/admin\/mobile"/);
+    assert.match(adminDashboard, /mobileOnly/);
+    assert.match(adminDashboard, /function MobileAdminOperations/);
+    assert.match(adminDashboard, /onApproveVerification/);
+    assert.match(adminDashboard, /onUpdateTicketStatus/);
+    assert.match(migration, /create table if not exists public\.operational_alert_events/);
+    assert.match(migration, /alter table public\.operational_alert_events enable row level security/);
+    assert.match(
+      migration,
+      /revoke all on public\.operational_alert_events from public, anon, authenticated/,
+    );
+    assert.match(
+      migration,
+      /grant select, insert, update on public\.operational_alert_events to service_role/,
+    );
+    assert.match(migration, /mobile_path = '\/admin\/mobile'/);
+    assert.doesNotMatch(migration, /grant[\s\S]+to anon;/);
+    assert.doesNotMatch(adminDashboard, /DISCORD_OPERATIONS_WEBHOOK_URL/);
+  });
+
   it("keeps server-loaded domain imports compatible with Vercel ESM runtime", () => {
     const domainDir = join(root, "src/domain");
     const domainFiles = readdirSync(domainDir).filter((file) => file.endsWith(".ts"));

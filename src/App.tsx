@@ -1421,6 +1421,7 @@ function AppRoutes() {
           <Route path="/resources" element={<SeoResourcesIndexPage />} />
           <Route path="/resources/:resourceSlug" element={<SeoResourcePage />} />
           <Route path="/admin/login" element={<SystemAdminDashboard loginOnly />} />
+          <Route path="/admin/mobile" element={<SystemAdminDashboard mobileOnly />} />
           <Route path="/admin" element={<SystemAdminDashboard />} />
           <Route path="/marketing/*" element={<LegacyMarketingRedirect />} />
           <Route
