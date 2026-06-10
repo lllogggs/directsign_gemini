@@ -467,6 +467,7 @@ const discordOperationsBotToken =
 const discordOperationsChannelId =
   readConfiguredServerSecret("DISCORD_OPERATIONS_CHANNEL_ID") ??
   readConfiguredServerSecret("OPERATIONS_DISCORD_CHANNEL_ID");
+const discordOperationsUserAgent = "yeollock-operations-notifier/1.0";
 const adminSessionSecret = resolveServerSecret({
   name: "ADMIN_SESSION_SECRET",
   purpose: "signing admin session cookies",
@@ -3186,7 +3187,7 @@ const sendDiscordOperationalAlert = async (alert: OperationalAlertRecord) => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "User-Agent": `${productName} operations notifier`,
+        "User-Agent": discordOperationsUserAgent,
       },
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(8000),
@@ -3208,7 +3209,7 @@ const sendDiscordOperationalAlert = async (alert: OperationalAlertRecord) => {
         headers: {
           Authorization: `Bot ${discordOperationsBotToken}`,
           "Content-Type": "application/json",
-          "User-Agent": `${productName} operations notifier`,
+          "User-Agent": discordOperationsUserAgent,
         },
         body: JSON.stringify(messagePayload),
         signal: AbortSignal.timeout(8000),
