@@ -318,9 +318,16 @@ describe("yeollock.me security regressions", () => {
       ),
     );
     assert.match(envExample, /DISCORD_OPERATIONS_WEBHOOK_URL=""/);
+    assert.match(envExample, /DISCORD_OPERATIONS_BOT_TOKEN=""/);
+    assert.match(envExample, /DISCORD_OPERATIONS_CHANNEL_ID=""/);
     assert.doesNotMatch(envExample, /VITE_DISCORD/);
     assert.match(server, /discordOperationsWebhookUrl/);
+    assert.match(server, /discordOperationsBotToken/);
+    assert.match(server, /discordOperationsChannelId/);
+    assert.match(server, /hasDiscordOperationsTarget/);
     assert.match(server, /DISCORD_OPERATIONS_WEBHOOK_URL/);
+    assert.match(server, /DISCORD_OPERATIONS_BOT_TOKEN/);
+    assert.match(server, /DISCORD_OPERATIONS_CHANNEL_ID/);
     assert.match(server, /operational_alert_events/);
     assert.match(server, /sendDiscordOperationalAlert/);
     assert.match(server, /allowed_mentions: \{ parse: \[\] \}/);

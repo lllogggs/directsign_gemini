@@ -461,6 +461,12 @@ const cronSecret = readConfiguredServerSecret("CRON_SECRET");
 const discordOperationsWebhookUrl =
   readConfiguredServerSecret("DISCORD_OPERATIONS_WEBHOOK_URL") ??
   readConfiguredServerSecret("OPERATIONS_DISCORD_WEBHOOK_URL");
+const discordOperationsBotToken =
+  readConfiguredServerSecret("DISCORD_OPERATIONS_BOT_TOKEN") ??
+  readConfiguredServerSecret("OPERATIONS_DISCORD_BOT_TOKEN");
+const discordOperationsChannelId =
+  readConfiguredServerSecret("DISCORD_OPERATIONS_CHANNEL_ID") ??
+  readConfiguredServerSecret("OPERATIONS_DISCORD_CHANNEL_ID");
 const adminSessionSecret = resolveServerSecret({
   name: "ADMIN_SESSION_SECRET",
   purpose: "signing admin session cookies",
@@ -3133,14 +3139,15 @@ const operationalAlertDiscordColor = (severity: OperationalAlertSeverity) => {
   return colors[severity];
 };
 
-const sendDiscordOperationalAlert = async (alert: OperationalAlertRecord) => {
-  if (!discordOperationsWebhookUrl) return alert;
-  if (!isSafeHttpUrl(discordOperationsWebhookUrl)) {
-    throw new Error("DISCORD_OPERATIONS_WEBHOOK_URL must be an https URL");
-  }
+const hasDiscordOperationsTarget = () =>
+  Boolean(
+    discordOperationsWebhookUrl ||
+      (discordOperationsBotToken && discordOperationsChannelId),
+  );
 
+const buildDiscordOperationalAlertPayload = (alert: OperationalAlertRecord) => {
   const mobileUrl = buildOperationalAlertUrl(alert.mobile_path);
-  const payload = {
+  return {
     username: `${productName} 운영`,
     content: `${operationalAlertSeverityLabel(alert.severity)} · ${alert.title}`,
     embeds: [
@@ -3165,19 +3172,54 @@ const sendDiscordOperationalAlert = async (alert: OperationalAlertRecord) => {
     ],
     allowed_mentions: { parse: [] },
   };
+};
 
-  const response = await fetch(discordOperationsWebhookUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "User-Agent": `${productName} operations notifier`,
-    },
-    body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(8000),
-  });
+const sendDiscordOperationalAlert = async (alert: OperationalAlertRecord) => {
+  const payload = buildDiscordOperationalAlertPayload(alert);
 
-  if (!response.ok) {
-    throw new Error(`Discord webhook failed (${response.status})`);
+  if (discordOperationsWebhookUrl) {
+    if (!isSafeHttpUrl(discordOperationsWebhookUrl)) {
+      throw new Error("DISCORD_OPERATIONS_WEBHOOK_URL must be an https URL");
+    }
+
+    const response = await fetch(discordOperationsWebhookUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "User-Agent": `${productName} operations notifier`,
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(8000),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Discord webhook failed (${response.status})`);
+    }
+  } else if (discordOperationsBotToken && discordOperationsChannelId) {
+    if (!/^\d+$/.test(discordOperationsChannelId)) {
+      throw new Error("DISCORD_OPERATIONS_CHANNEL_ID must be a Discord channel id");
+    }
+
+    const { username: _username, ...messagePayload } = payload;
+    const response = await fetch(
+      `https://discord.com/api/v10/channels/${discordOperationsChannelId}/messages`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bot ${discordOperationsBotToken}`,
+          "Content-Type": "application/json",
+          "User-Agent": `${productName} operations notifier`,
+        },
+        body: JSON.stringify(messagePayload),
+        signal: AbortSignal.timeout(8000),
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error(`Discord bot message failed (${response.status})`);
+    }
+  } else {
+    return alert;
   }
 
   return updateOperationalAlert(alert, {
@@ -3189,7 +3231,7 @@ const sendDiscordOperationalAlert = async (alert: OperationalAlertRecord) => {
 
 const dispatchOperationalAlert = async (alert: OperationalAlertRecord) => {
   if (alert.status === "sent" || alert.status === "muted") return alert;
-  if (!discordOperationsWebhookUrl) return alert;
+  if (!hasDiscordOperationsTarget()) return alert;
 
   try {
     return await sendDiscordOperationalAlert(alert);
@@ -3197,7 +3239,7 @@ const dispatchOperationalAlert = async (alert: OperationalAlertRecord) => {
     return updateOperationalAlert(alert, {
       status: "failed",
       error_message:
-        error instanceof Error ? error.message.slice(0, 500) : "Discord webhook failed",
+        error instanceof Error ? error.message.slice(0, 500) : "Discord alert failed",
     });
   }
 };
@@ -3374,7 +3416,7 @@ const dispatchQueuedOperationalAlerts = async (limit = 20) => {
     attempted_count: alerts.length,
     sent_count: sentCount,
     failed_count: failedCount,
-    discord_configured: Boolean(discordOperationsWebhookUrl),
+    discord_configured: hasDiscordOperationsTarget(),
   };
 };
 
@@ -16067,7 +16109,7 @@ app.get("/api/admin/operational-alerts", async (request, response, next) => {
 
     response.json({
       operational_alerts: await readOperationalAlerts(),
-      discord_configured: Boolean(discordOperationsWebhookUrl),
+      discord_configured: hasDiscordOperationsTarget(),
     });
   } catch (error) {
     next(error);
