@@ -2364,15 +2364,17 @@ function IntroMobileServiceCapture({
     <section
       data-intro-real-service-capture
       data-intro-headerless-service-capture
-      className="flex h-full min-h-0 items-center justify-center overflow-hidden rounded-[16px] bg-[#e9ede8] sm:hidden"
+      className="flex h-full min-h-0 w-full items-center justify-center overflow-hidden rounded-[16px] bg-[#e9ede8] sm:hidden"
     >
-      <div className="h-full max-h-[606px] w-full max-w-[316px] overflow-hidden rounded-[10px] bg-white shadow-[0_16px_34px_rgba(15,23,42,0.08)] ring-1 ring-neutral-200/85 [@media(max-height:760px)]:aspect-[390/788] [@media(max-height:760px)]:w-auto [@media(max-height:760px)]:max-w-none">
-        <img
-          src={imageSrc}
-          alt={imageAlt}
-          className="h-full w-full object-cover object-top"
-          loading="eager"
-        />
+      <div className="flex h-full max-h-[606px] w-full max-w-[344px] items-center justify-center overflow-hidden rounded-[16px] bg-[#f1f4f1] shadow-[0_16px_34px_rgba(15,23,42,0.08)] ring-1 ring-neutral-200/80 [@media(max-height:760px)]:aspect-[430/788] [@media(max-height:760px)]:w-auto [@media(max-height:760px)]:max-w-full">
+        <div className="h-full max-h-[606px] w-full max-w-[316px] overflow-hidden rounded-[10px] bg-white shadow-[0_10px_24px_rgba(15,23,42,0.07)] ring-1 ring-neutral-200/85 [@media(max-height:760px)]:aspect-[390/788] [@media(max-height:760px)]:w-auto [@media(max-height:760px)]:max-w-none">
+          <img
+            src={imageSrc}
+            alt={imageAlt}
+            className="h-full w-full object-cover object-top"
+            loading="eager"
+          />
+        </div>
       </div>
     </section>
   );
