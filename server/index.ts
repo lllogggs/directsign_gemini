@@ -282,7 +282,7 @@ interface OperationalAlertRecord {
   decision_reason?: string;
   metadata_json: Record<string, unknown>;
   sent_at?: string;
-  error_message?: string;
+  error_message?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -3082,13 +3082,19 @@ const updateOperationalAlert = async (
 
   if (useSupabase) {
     try {
+      const updatePayload = {
+        ...updatedRecord,
+        ...(Object.prototype.hasOwnProperty.call(updates, "error_message")
+          ? { error_message: updates.error_message ?? null }
+          : {}),
+      };
       const response = await fetchSupabase(
         operationalAlertTable,
         `?id=eq.${encodeURIComponent(record.id)}`,
         {
           method: "PATCH",
           headers: { Prefer: "return=representation" },
-          body: JSON.stringify(updatedRecord),
+          body: JSON.stringify(updatePayload),
         },
       );
       await assertSupabaseOk(response, "Supabase operational alert update");
@@ -3226,7 +3232,7 @@ const sendDiscordOperationalAlert = async (alert: OperationalAlertRecord) => {
   return updateOperationalAlert(alert, {
     status: "sent",
     sent_at: new Date().toISOString(),
-    error_message: undefined,
+    error_message: null,
   });
 };
 
