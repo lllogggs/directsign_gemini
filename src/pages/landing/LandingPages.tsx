@@ -2366,7 +2366,7 @@ function IntroMobileServiceCapture({
       data-intro-headerless-service-capture
       className="flex h-full min-h-0 items-center justify-center overflow-hidden rounded-[16px] bg-[#e9ede8] sm:hidden"
     >
-      <div className="aspect-[390/788] h-full max-h-[606px] overflow-hidden rounded-[10px] bg-white shadow-[0_16px_34px_rgba(15,23,42,0.08)] ring-1 ring-neutral-200/85">
+      <div className="h-full max-h-[606px] w-full max-w-[316px] overflow-hidden rounded-[10px] bg-white shadow-[0_16px_34px_rgba(15,23,42,0.08)] ring-1 ring-neutral-200/85 [@media(max-height:760px)]:aspect-[390/788] [@media(max-height:760px)]:w-auto [@media(max-height:760px)]:max-w-none">
         <img
           src={imageSrc}
           alt={imageAlt}
