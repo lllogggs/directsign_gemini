@@ -407,7 +407,8 @@ const browserRenderRoutes = [
     requiredText: [
       "인플루언서",
       "광고",
-      "계약서 없는 약속은",
+      "계약서",
+      "없는 약속은",
       "위험합니다.",
       "광고비 먹튀",
     ],
@@ -419,7 +420,7 @@ const browserRenderRoutes = [
       "콘텐츠 수정 거부",
       "각종 분쟁",
     ],
-    minTextLength: 70,
+    minTextLength: 65,
     mobileMinTextLength: 55,
   },
   {

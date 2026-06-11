@@ -420,9 +420,7 @@ const advertiserProposalSlides: IntroProposalSlide[] = [
     stage: "pain",
     context: (
       <>
-        인플루언서
-        <br />
-        광고
+        인플루언서 광고
       </>
     ),
     title: (
@@ -595,9 +593,7 @@ const influencerProposalSlides: IntroProposalSlide[] = [
     stage: "product",
     context: (
       <>
-        받은 광고
-        <br />
-        계약
+        받은 광고 계약
       </>
     ),
     title: (
@@ -1876,36 +1872,30 @@ function ProposalSlideView({
   role: IntroRole;
   slide: IntroProposalSlide;
 }) {
-  const hasMobileContext = Boolean(slide.context);
   const desktopSupport = slide.support || slide.description;
 
   return (
     <div
-      className="relative z-10 grid h-full min-h-0 flex-1 grid-rows-[118px_minmax(0,1fr)] gap-1 pb-0 pt-0 sm:h-auto sm:grid-rows-none sm:grid-cols-[minmax(205px,0.34fr)_minmax(0,1fr)] sm:items-center sm:gap-[clamp(32px,4vw,56px)] lg:h-full"
+      className="relative z-10 grid h-full min-h-0 flex-1 grid-rows-[144px_minmax(0,1fr)] gap-1 pb-0 pt-0 sm:h-auto sm:grid-rows-none sm:grid-cols-[minmax(220px,0.32fr)_minmax(0,0.68fr)] sm:items-center sm:gap-[clamp(30px,3.6vw,52px)] lg:h-full"
     >
         <div
-          className={`mx-auto grid h-full min-h-0 w-full max-w-[330px] place-items-center gap-2 px-2 sm:mx-0 sm:flex sm:max-w-none sm:flex-col sm:items-start sm:justify-center sm:gap-0 sm:px-0 sm:pl-[clamp(8px,2.2vw,34px)] ${
-            hasMobileContext
-              ? "grid-cols-1 justify-items-center text-center sm:justify-items-start sm:text-left"
-              : "grid-cols-1 justify-items-center text-center sm:justify-items-start sm:text-left"
-          }`}
+          data-intro-copy
+          className="mx-auto flex h-full min-h-0 w-full max-w-[330px] flex-col items-center justify-center px-2 text-center sm:mx-0 sm:max-w-none sm:items-start sm:px-0 sm:pl-[clamp(8px,2.2vw,34px)] sm:text-left"
         >
-          <div className="mx-auto grid min-w-0 place-items-center text-center sm:mx-0 sm:block sm:text-left">
+          <div className="mx-auto min-w-0 text-center sm:mx-0 sm:text-left">
             {slide.context ? (
-              <p className="block max-w-[310px] bg-gradient-to-br from-[#0f172a] to-[#2f6df6] bg-clip-text text-center font-neo-heavy text-[29px] font-black leading-[0.94] tracking-normal text-transparent drop-shadow-[0_12px_22px_rgba(36,86,214,0.14)] after:mx-auto after:mt-2 after:block after:h-1 after:w-10 after:rounded-full after:bg-blue-600 after:shadow-[0_12px_26px_rgba(36,86,214,0.24)] sm:mb-5 sm:max-w-none sm:text-left sm:text-[clamp(38px,4.2vw,50px)] sm:after:mx-0">
+              <p className="mx-auto mb-2 inline-flex max-w-[260px] items-center justify-center rounded-full border border-blue-200/70 bg-white/75 px-2.5 py-1 text-center text-[11px] font-black leading-none tracking-normal text-blue-700 shadow-[0_10px_24px_rgba(37,99,235,0.08)] sm:mx-0 sm:mb-3 sm:max-w-none sm:justify-start sm:px-3 sm:text-left sm:text-[12px]">
                 {slide.context}
               </p>
             ) : null}
             <h2
-              className={`max-w-[300px] break-keep text-center font-neo-heavy text-[26px] leading-[1] tracking-normal text-neutral-950 sm:ml-0 sm:max-w-none sm:text-left sm:text-[clamp(38px,4.4vw,50px)] sm:leading-[1.07] ${
-                hasMobileContext ? "hidden sm:block" : "mx-auto sm:mx-0"
-              }`}
+              className="mx-auto max-w-[310px] break-keep text-center font-neo-heavy text-[24px] leading-[1.06] tracking-normal text-neutral-950 sm:mx-0 sm:max-w-none sm:text-left sm:text-[clamp(38px,4.15vw,48px)] sm:leading-[1.07]"
             >
               {slide.title}
             </h2>
           </div>
           {desktopSupport ? (
-            <div className="hidden sm:mx-0 sm:mt-6 sm:block sm:max-h-none sm:max-w-[380px] sm:break-keep sm:border-l-[3px] sm:border-blue-600/20 sm:pl-3.5 sm:text-left sm:text-[clamp(16px,1.45vw,18px)] sm:font-normal sm:leading-[1.45] sm:tracking-normal sm:text-[#58625c] sm:[&_.support-stack]:grid sm:[&_.support-stack]:gap-3.5 [&_strong]:font-black [&_strong]:text-blue-600">
+            <div className="hidden sm:mx-0 sm:mt-5 sm:block sm:min-h-[72px] sm:max-w-[380px] sm:break-keep sm:border-l-[3px] sm:border-blue-600/20 sm:pl-3.5 sm:text-left sm:text-[clamp(15px,1.35vw,17px)] sm:font-normal sm:leading-[1.45] sm:tracking-normal sm:text-[#58625c] sm:[&_.support-stack]:grid sm:[&_.support-stack]:gap-3 [&_strong]:font-black [&_strong]:text-blue-600">
               {desktopSupport}
             </div>
           ) : null}
@@ -1917,10 +1907,13 @@ function ProposalSlideView({
   );
 }
 
+const introVisualFrameClass =
+  "h-full min-h-0 w-full overflow-hidden rounded-[16px] bg-[#e9ede8]";
+
 function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
   if (slide.stage === "link") {
     return (
-      <div data-intro-visual className="h-full min-h-0">
+      <div data-intro-visual className={introVisualFrameClass}>
         <AdvertiserMobileLinkPreview />
         <IntroDesktopServiceCapture
           desktopOnly
@@ -1934,7 +1927,7 @@ function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
 
   if (slide.riskItems) {
     return (
-      <div data-intro-visual className="grid h-full min-h-0 grid-cols-2 grid-rows-2 gap-2 sm:h-full sm:grid-cols-4 sm:grid-rows-none sm:content-center sm:gap-2.5">
+      <div data-intro-visual className={`${introVisualFrameClass} grid grid-cols-2 grid-rows-2 gap-2 sm:grid-cols-4 sm:grid-rows-none sm:content-center sm:gap-2.5 sm:bg-transparent`}>
         {slide.riskItems.map((item, index) => (
           <article
             key={item.label}
@@ -1972,7 +1965,7 @@ function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
 
   if (slide.productPreview) {
     return (
-      <div data-intro-visual className="h-full min-h-0">
+      <div data-intro-visual className={introVisualFrameClass}>
         <IntroProposalProductPreview kind={slide.productPreview} />
       </div>
     );
@@ -1980,7 +1973,7 @@ function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
 
   if (slide.visualFacts) {
     return (
-      <div data-intro-visual className="grid h-full min-h-0 content-center gap-2.5 sm:h-auto sm:min-h-0 sm:gap-3 sm:p-[clamp(20px,3vw,42px)]">
+      <div data-intro-visual className={`${introVisualFrameClass} grid content-center gap-2.5 sm:gap-3 sm:p-[clamp(20px,3vw,42px)]`}>
         {slide.visualFacts.map((fact, index) => (
           <div
             key={`${fact.label}-${fact.value}`}
@@ -2023,7 +2016,7 @@ function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
     return (
       <div
         data-intro-visual
-        className={`flex min-h-0 w-full items-center justify-center self-center overflow-hidden rounded-[12px] bg-transparent sm:h-auto sm:min-h-0 ${
+        className={`${introVisualFrameClass} flex items-center justify-center self-center ${
           slide.stage === "product"
               ? "h-full self-center"
             : "h-full"
@@ -2067,9 +2060,9 @@ function FinalHandshakeVisual({
   return (
     <div
       data-intro-visual
-      className="flex h-full min-h-0 items-start justify-center pt-1 sm:h-auto sm:min-h-0 sm:items-center sm:pt-0"
+      className={`${introVisualFrameClass} flex items-center justify-center`}
     >
-      <div className="relative h-[min(61svh,520px)] min-h-0 w-full overflow-hidden rounded-[16px] bg-[#eef3ef] shadow-[0_18px_44px_rgba(15,23,42,0.1)] sm:aspect-[16/10] sm:h-auto sm:shadow-[0_24px_64px_rgba(15,23,42,0.12)]">
+      <div className="relative h-full min-h-0 w-full overflow-hidden rounded-[16px] bg-[#eef3ef] shadow-[0_18px_44px_rgba(15,23,42,0.1)] sm:shadow-[0_24px_64px_rgba(15,23,42,0.12)]">
         <img
           src={imageSrc}
           alt=""
@@ -2080,7 +2073,7 @@ function FinalHandshakeVisual({
         <img
           src={imageSrc}
           alt={imageAlt ?? ""}
-          className="absolute left-0 top-[39%] h-auto w-full -translate-y-1/2 object-contain object-center sm:static sm:h-full sm:translate-y-0 sm:object-cover"
+          className="absolute inset-0 h-full w-full object-contain object-center sm:object-cover"
           loading="eager"
         />
       </div>

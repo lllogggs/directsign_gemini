@@ -180,6 +180,200 @@ const renderBoardHtml = async (title, items) => {
 </html>`;
 };
 
+const groupTitle = (key) => {
+  const titles = {
+    "pc-public": "PC 공개/인트로",
+    "pc-advertiser": "PC 광고주",
+    "pc-influencer": "PC 인플루언서",
+    "mobile-public": "모바일 공개/인트로",
+    "mobile-advertiser": "모바일 광고주",
+    "mobile-influencer": "모바일 인플루언서",
+  };
+  return titles[key] ?? key;
+};
+
+const chunkItems = (items, size) => {
+  const chunks = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
+};
+
+const formatCreatedAt = (value) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("ko-KR", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+};
+
+const renderCombinedBoardHtml = (groups) => {
+  const sections = Array.from(groups.entries())
+    .map(([key, items]) => {
+      const isMobile = key.startsWith("mobile-");
+      const columnsClass = isMobile ? "mobile" : "pc";
+      const chunkSize = isMobile ? 5 : 6;
+      const chunks = chunkItems(items, chunkSize);
+
+      return chunks
+        .map((chunk, chunkIndex) => {
+          const cards = chunk
+            .map((item) => `<article class="card ${columnsClass}">
+              <h2>${escapeHtml(item.label)}</h2>
+              <div class="shot">
+                <img src="../${escapeHtml(item.screenshot)}" alt="${escapeHtml(item.label)}" />
+              </div>
+            </article>`)
+            .join("");
+
+          const start = chunkIndex * chunkSize + 1;
+          const end = start + chunk.length - 1;
+          const title =
+            chunks.length > 1
+              ? `${groupTitle(key)} ${chunkIndex + 1}/${chunks.length}`
+              : groupTitle(key);
+
+          return `<section class="section ${columnsClass}">
+            <header class="section-head">
+              <h1>${escapeHtml(title)}</h1>
+              <span>${start}-${end} / ${items.length}개 화면</span>
+            </header>
+            <div class="grid ${columnsClass}">
+              ${cards}
+            </div>
+          </section>`;
+        })
+        .join("");
+    })
+    .join("");
+
+  return `<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <title>연락미 전체 캡쳐보드</title>
+    <style>
+      * { box-sizing: border-box; }
+      @page { size: A3 landscape; margin: 12mm; }
+      body {
+        margin: 0;
+        background: #f3f4f1;
+        color: #101410;
+        font-family: Arial, "Malgun Gothic", "Noto Sans CJK KR", sans-serif;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .cover {
+        page-break-after: always;
+        min-height: 260px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: 24px 10px 34px;
+      }
+      h1 {
+        margin: 0;
+        font-size: 34px;
+        letter-spacing: 0;
+      }
+      .cover p {
+        margin: 12px 0 0;
+        color: #5b645d;
+        font-size: 15px;
+        font-weight: 800;
+      }
+      .section {
+        page-break-before: always;
+        break-before: page;
+      }
+      .section:first-of-type {
+        page-break-before: auto;
+        break-before: auto;
+      }
+      .section-head {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 16px;
+        margin: 0 0 12px;
+        padding: 0 2px;
+      }
+      .section-head h1 {
+        margin: 0;
+        font-size: 24px;
+        letter-spacing: 0;
+      }
+      .section-head span {
+        color: #6a736c;
+        font-size: 12px;
+        font-weight: 900;
+      }
+      .grid {
+        display: grid;
+        gap: 10px;
+        align-items: start;
+      }
+      .grid.pc {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+      .grid.mobile {
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+      }
+      .card {
+        overflow: hidden;
+        border: 1px solid #dfe3dd;
+        border-radius: 8px;
+        background: #fff;
+        break-inside: avoid;
+        page-break-inside: avoid;
+        box-shadow: 0 8px 22px rgba(20, 26, 20, 0.05);
+      }
+      .card h2 {
+        margin: 0;
+        min-height: 34px;
+        display: flex;
+        align-items: center;
+        padding: 7px 9px;
+        border-bottom: 1px solid #e7eae5;
+        color: #111411;
+        font-size: 11px;
+        font-weight: 900;
+        letter-spacing: 0;
+        line-height: 1.25;
+      }
+      .card.mobile h2 {
+        min-height: 32px;
+        font-size: 10px;
+        padding: 6px 8px;
+      }
+      .shot {
+        overflow: hidden;
+        background: #edf0ea;
+      }
+      img {
+        display: block;
+        width: 100%;
+        height: auto;
+        background: #edf0ea;
+      }
+    </style>
+  </head>
+  <body>
+    <section class="cover">
+      <h1>연락미 전체 캡쳐보드</h1>
+      <p>기준 URL: ${escapeHtml(data.baseUrl)} / 생성: ${escapeHtml(formatCreatedAt(data.createdAt))} / 총 ${results.length}개 화면</p>
+    </section>
+    ${sections}
+  </body>
+</html>`;
+};
+
 const browser = await launchBrowser();
 try {
   const page = await browser.newPage({ viewport: { width: 1600, height: 1200 }, deviceScaleFactor: 1 });
@@ -198,6 +392,22 @@ try {
   }
 
   await fs.writeFile(path.join(boardDir, "index.json"), JSON.stringify(indexEntries, null, 2), "utf8");
+  const combinedHtml = renderCombinedBoardHtml(groups);
+  const combinedHtmlPath = path.join(boardDir, "full-capture-board.html");
+  const combinedPdfPath = path.join(boardDir, "full-capture-board.pdf");
+  const combinedPreviewPath = path.join(boardDir, "full-capture-board-preview.png");
+  await fs.writeFile(combinedHtmlPath, combinedHtml, "utf8");
+  await page.goto(`file://${combinedHtmlPath.replace(/\\/g, "/")}`, { waitUntil: "load" });
+  await page.waitForTimeout(800);
+  await page.screenshot({ path: combinedPreviewPath, fullPage: false });
+  await page.emulateMedia({ media: "screen" });
+  await page.pdf({
+    path: combinedPdfPath,
+    format: "A3",
+    landscape: true,
+    printBackground: true,
+    preferCSSPageSize: true,
+  });
   console.log(JSON.stringify(indexEntries, null, 2));
 } finally {
   await browser.close();

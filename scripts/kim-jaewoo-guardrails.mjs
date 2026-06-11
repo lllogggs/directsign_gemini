@@ -1568,7 +1568,10 @@ check(
     !landing.includes("left-[60%] top-[56%]") &&
     !landing.includes("const advertiserIntroApplicantRows") &&
     !landing.includes("data-intro-applicant-card") &&
-    landing.includes("sm:text-left sm:text-[clamp(16px,1.45vw,18px)]"),
+    landing.includes("data-intro-copy") &&
+    landing.includes("sm:text-left sm:text-[clamp(15px,1.35vw,17px)]") &&
+    landing.includes("const introVisualFrameClass") &&
+    landing.includes("sm:grid-cols-[minmax(220px,0.32fr)_minmax(0,0.68fr)]"),
   "Advertiser intro PC pages 2-5 must use headerless focused actual captures, left-aligned support copy, and the real 12-applicant campaign capture instead of sparse, montage, or hand-built mock dashboards",
 );
 
@@ -1743,7 +1746,8 @@ check(
     advertiserProposalCarousel.includes("setSlideIndex(index)") &&
     !landing.includes("const [searchParams] = useSearchParams") &&
     !landing.includes("lg:grid-cols-[minmax(330px,0.52fr)_minmax(0,1.48fr)]") &&
-    qaStandard.includes('"계약서 없는 약속은"') &&
+    qaStandard.includes('"계약서"') &&
+    qaStandard.includes('"없는 약속은"') &&
     qaStandard.includes('"광고비 먹튀"') &&
     !qaStandard.includes('requiredText: ["계약 흐름을", "한눈에 관리", "작성중", "진행중", "종료"]') &&
     agents.includes("sales/PDF proposal flow as a manual carousel") &&
