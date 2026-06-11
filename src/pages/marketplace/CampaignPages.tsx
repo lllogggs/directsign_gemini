@@ -1819,6 +1819,7 @@ function AdvertiserCampaignViewTabs({
             type="button"
             role="tab"
             aria-selected={active}
+            aria-label={`${tab.label} ${tab.count}건`}
             onClick={() => onChange(tab.id)}
             className={`h-9 min-w-0 rounded-full px-2 text-[12px] font-extrabold transition ${
               active

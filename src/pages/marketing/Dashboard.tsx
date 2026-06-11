@@ -68,6 +68,7 @@ import {
 import { ContractFirstExperienceDialog } from "../../components/ScreenHelp";
 import { LogoMark } from "../../components/BrandLogo";
 import { DashboardDownloadButton } from "../../components/DashboardDownloadButton";
+import { DashboardExportDialog } from "../../components/DashboardExportDialog";
 import { DashboardSurfaceSwitch } from "../../components/DashboardSurfaceSwitch";
 import { MobileSurfaceSwitch } from "../../components/MobileSurfaceSwitch";
 import { PlatformBrandMark } from "../../components/PlatformBrandMark";
@@ -89,7 +90,10 @@ import {
   type MarketplaceProposalStatus,
 } from "../../domain/marketplaceInbox";
 import { getMarketplaceInfluencerAvatarUrlFromHref } from "../../domain/marketplaceAvatars";
-import { downloadXlsx, type XlsxSheet } from "../../domain/xlsxExport";
+import {
+  exportWorkbookToGoogleSheets,
+} from "../../domain/googleWorkspaceExport";
+import { downloadXlsx, type XlsxSheet, type XlsxWorkbook } from "../../domain/xlsxExport";
 
 type PlatformFilter = "ALL" | ContractPlatform;
 type ContractTypeFilter = "ALL" | Contract["type"];
@@ -504,6 +508,10 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
       threads: [],
     });
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [googleSheetsUrl, setGoogleSheetsUrl] = useState<string | undefined>();
+  const [googleSheetsError, setGoogleSheetsError] = useState<string | undefined>();
+  const [isGoogleSheetsExporting, setIsGoogleSheetsExporting] = useState(false);
   const [isLoginTransitionPending, setIsLoginTransitionPending] = useState(() =>
     isFastLoginTransitionPending("advertiser"),
   );
@@ -906,47 +914,88 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
       navigate("/login/advertiser", { replace: true });
     }
   };
-  const handleDownloadDashboard = useCallback(() => {
+  const buildDashboardExportWorkbook = useCallback((): XlsxWorkbook | undefined => {
     const timestamp = getDashboardExportTimestamp();
 
     if (isCampaignSurface) {
       if (selectedCampaign) {
-        downloadXlsx({
+        return {
           fileName: `연락미-캠페인-${selectedCampaign.name}-${timestamp}.xlsx`,
           sheets: [
             buildAdvertiserCampaignApplicantExportSheet(selectedCampaign.applicants),
             buildAdvertiserContractExportSheet(selectedCampaign.contracts),
           ],
-        });
-        return;
+        };
       }
 
-      downloadXlsx({
+      return {
         fileName: `연락미-캠페인-대시보드-${timestamp}.xlsx`,
         sheets: [buildAdvertiserCampaignExportSheet(filteredCampaigns)],
-      });
-      return;
+      };
     }
 
     if (contractDownloadContracts.length > DASHBOARD_CONTRACT_EXPORT_LIMIT) {
       window.alert(
         `엑셀 내보내기는 최대 ${DASHBOARD_CONTRACT_EXPORT_LIMIT.toLocaleString("ko-KR")}건까지 가능합니다. 필터나 검색 조건을 좁혀 주세요.`,
       );
-      return;
+      return undefined;
     }
 
-    downloadXlsx({
+    return {
       fileName: `연락미-계약-대시보드-${timestamp}.xlsx`,
       sheets: [
         buildAdvertiserContractExportSheet(contractDownloadContracts),
       ],
-    });
+    };
   }, [
     contractDownloadContracts,
     filteredCampaigns,
     isCampaignSurface,
     selectedCampaign,
   ]);
+  const handleDownloadDashboard = useCallback(() => {
+    setGoogleSheetsUrl(undefined);
+    setGoogleSheetsError(undefined);
+    setExportDialogOpen(true);
+  }, []);
+  const handleExportExcel = useCallback(() => {
+    const workbook = buildDashboardExportWorkbook();
+    if (!workbook) return;
+    downloadXlsx(workbook);
+    setExportDialogOpen(false);
+  }, [buildDashboardExportWorkbook]);
+  const handleExportGoogleSheets = useCallback(async () => {
+    const workbook = buildDashboardExportWorkbook();
+    if (!workbook) return;
+
+    setIsGoogleSheetsExporting(true);
+    setGoogleSheetsError(undefined);
+    setGoogleSheetsUrl(undefined);
+
+    try {
+      const returnPath = `${window.location.pathname}${window.location.search}`;
+      const result = await exportWorkbookToGoogleSheets({
+        role: "advertiser",
+        workbook,
+        returnPath,
+      });
+
+      if (result.status === "connection_required") {
+        window.location.assign(result.authorization_url);
+        return;
+      }
+
+      setGoogleSheetsUrl(result.spreadsheet_url);
+    } catch (error) {
+      setGoogleSheetsError(
+        error instanceof Error
+          ? error.message
+          : "Google 스프레드시트 내보내기에 실패했습니다.",
+      );
+    } finally {
+      setIsGoogleSheetsExporting(false);
+    }
+  }, [buildDashboardExportWorkbook]);
 
   return (
     <div className="min-h-screen bg-[#f4f5f2] font-sans text-neutral-950 lg:h-screen lg:overflow-hidden">
@@ -956,6 +1005,15 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
           onCreateContract={() => navigate("/advertiser/builder")}
         />
       ) : null}
+      <DashboardExportDialog
+        open={exportDialogOpen}
+        onClose={() => setExportDialogOpen(false)}
+        onExcel={handleExportExcel}
+        onGoogleSheets={handleExportGoogleSheets}
+        googleSheetsUrl={googleSheetsUrl}
+        googleSheetsError={googleSheetsError}
+        isGoogleSheetsPending={isGoogleSheetsExporting}
+      />
       <header className="sticky top-0 z-30 border-b border-neutral-200/70 bg-white/92 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-[1500px] items-center justify-between px-3 sm:px-5 lg:px-6">
           <button

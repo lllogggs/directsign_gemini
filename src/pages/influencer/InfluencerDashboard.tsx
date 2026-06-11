@@ -49,11 +49,13 @@ import { translateApiErrorMessage } from "../../domain/userMessages";
 import type { InfluencerPlatform } from "../../domain/verification";
 import { DashboardSurfaceSwitch } from "../../components/DashboardSurfaceSwitch";
 import { DashboardDownloadButton } from "../../components/DashboardDownloadButton";
+import { DashboardExportDialog } from "../../components/DashboardExportDialog";
 import { MobileSurfaceSwitch } from "../../components/MobileSurfaceSwitch";
 import { LogoMark } from "../../components/BrandLogo";
 import { PlatformBrandMark } from "../../components/PlatformBrandMark";
 import { useMarketplaceMessageSummary } from "../../hooks/useMarketplaceMessageSummary";
-import { downloadXlsx, type XlsxSheet } from "../../domain/xlsxExport";
+import { exportWorkbookToGoogleSheets } from "../../domain/googleWorkspaceExport";
+import { downloadXlsx, type XlsxSheet, type XlsxWorkbook } from "../../domain/xlsxExport";
 
 type DashboardState =
   | { status: "loading" }
@@ -352,6 +354,10 @@ export function InfluencerDashboard() {
     direction: "desc",
   });
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [googleSheetsUrl, setGoogleSheetsUrl] = useState<string | undefined>();
+  const [googleSheetsError, setGoogleSheetsError] = useState<string | undefined>();
+  const [isGoogleSheetsExporting, setIsGoogleSheetsExporting] = useState(false);
   const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | undefined>();
   const [avatarUploadError, setAvatarUploadError] = useState<string | undefined>();
   const [isAvatarUploading, setIsAvatarUploading] = useState(false);
@@ -642,8 +648,7 @@ export function InfluencerDashboard() {
         current.key === key && current.direction === "asc" ? "desc" : "asc",
     }));
   };
-  const handleDownloadDashboard = () => {
-    downloadXlsx({
+  const buildDashboardExportWorkbook = (): XlsxWorkbook => ({
       fileName: `연락미-인플루언서-대시보드-${getDashboardExportTimestamp()}.xlsx`,
       sheets: [
         buildInfluencerDashboardExportSheet(
@@ -652,6 +657,42 @@ export function InfluencerDashboard() {
         ),
       ],
     });
+  const handleDownloadDashboard = () => {
+    setGoogleSheetsUrl(undefined);
+    setGoogleSheetsError(undefined);
+    setExportDialogOpen(true);
+  };
+  const handleExportExcel = () => {
+    downloadXlsx(buildDashboardExportWorkbook());
+    setExportDialogOpen(false);
+  };
+  const handleExportGoogleSheets = async () => {
+    setIsGoogleSheetsExporting(true);
+    setGoogleSheetsUrl(undefined);
+    setGoogleSheetsError(undefined);
+
+    try {
+      const result = await exportWorkbookToGoogleSheets({
+        role: "influencer",
+        workbook: buildDashboardExportWorkbook(),
+        returnPath: `${location.pathname}${location.search}`,
+      });
+
+      if (result.status === "connection_required") {
+        window.location.assign(result.authorization_url);
+        return;
+      }
+
+      setGoogleSheetsUrl(result.spreadsheet_url);
+    } catch (error) {
+      setGoogleSheetsError(
+        error instanceof Error
+          ? error.message
+          : "Google 스프레드시트 내보내기에 실패했습니다.",
+      );
+    } finally {
+      setIsGoogleSheetsExporting(false);
+    }
   };
 
   const handleLogout = async () => {
@@ -669,6 +710,15 @@ export function InfluencerDashboard() {
 
   return (
     <DashboardShell>
+      <DashboardExportDialog
+        open={exportDialogOpen}
+        onClose={() => setExportDialogOpen(false)}
+        onExcel={handleExportExcel}
+        onGoogleSheets={handleExportGoogleSheets}
+        googleSheetsUrl={googleSheetsUrl}
+        googleSheetsError={googleSheetsError}
+        isGoogleSheetsPending={isGoogleSheetsExporting}
+      />
       <header className="sticky top-0 z-30 border-b border-neutral-200/70 bg-white/92 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-[1500px] items-center justify-between px-3 sm:px-5 lg:px-6">
           <button

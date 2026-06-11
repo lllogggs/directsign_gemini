@@ -1011,7 +1011,6 @@ export function PublicBrandProfilePage() {
             </div>
 
             <aside className="grid gap-2 rounded-[14px] border border-neutral-200 bg-[#fbfaf7] p-3 shadow-[0_12px_30px_rgba(15,23,42,0.035)]">
-              <MiniMetric label="제안 가능" value={brand.responseTimeLabel} />
               <MiniMetric label="예산 범위" value={brand.budgetRangeLabel} />
               <MiniMetric label="위치" value={brand.location} />
               <div className="rounded-[10px] border border-neutral-200 bg-white px-3 py-3">

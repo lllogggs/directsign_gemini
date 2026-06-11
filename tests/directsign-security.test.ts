@@ -243,12 +243,14 @@ describe("yeollock.me security regressions", () => {
       functions?: Record<string, { includeFiles?: string }>;
     };
 
-    assert.match(server, /public", "fonts", "NanumGothic-Regular\.ttf"/);
+    assert.match(server, /public", "fonts", "NanumMyeongjo-Regular\.ttf"/);
+    assert.match(server, /public", "fonts", "NanumMyeongjo-Bold\.ttf"/);
     assert.equal(
       vercelConfig.functions?.["api/index.ts"]?.includeFiles,
       "public/fonts/**",
     );
-    assert.ok(statSync(join(root, "public/fonts/NanumGothic-Regular.ttf")).size > 1_000_000);
+    assert.ok(statSync(join(root, "public/fonts/NanumMyeongjo-Regular.ttf")).size > 1_000_000);
+    assert.ok(statSync(join(root, "public/fonts/NanumMyeongjo-Bold.ttf")).size > 1_000_000);
   });
 
   it("protects marketplace follower sync with cron auth and server-only logs", () => {
@@ -745,8 +747,12 @@ describe("yeollock.me security regressions", () => {
     assert.notEqual(signedPdfBuilderEnd, -1);
     assert.match(reviewPdfRoute, /buildContractReviewPdf/);
     assert.match(reviewPdfRoute, /Content-Type", "application\/pdf"/);
-    assert.match(contractDocumentPdfBuilder, /계약 개요/);
-    assert.match(contractDocumentPdfBuilder, /특약 및 자동 생성 조항/);
+    assert.match(contractDocumentPdfBuilder, /광고 계약서/);
+    assert.match(contractDocumentPdfBuilder, /제1조 계약 당사자/);
+    assert.match(contractDocumentPdfBuilder, /제3조 플랫폼 및 컨텐츠/);
+    assert.match(contractDocumentPdfBuilder, /제7조 특약 및 추가 조항/);
+    assert.doesNotMatch(contractDocumentPdfBuilder, /계약 개요/);
+    assert.doesNotMatch(contractDocumentPdfBuilder, /자동 생성 조항/);
     assert.match(reviewPdfRoute, /buildContractReviewPdf/);
     assert.match(server, /const buildContractReviewPdf = async \(contract: Contract\) =>\s*buildContractDocumentPdf\(\{ contract \}\);/);
     assert.match(signedPdfBuilder, /buildContractDocumentPdf\(\{/);
@@ -1853,11 +1859,15 @@ describe("yeollock.me security regressions", () => {
     ].map((marker) => advertiserFilterPanel.indexOf(marker));
 
     assert.ok(packageJson.dependencies?.fflate);
-    assert.match(dashboardDownloadButton, /aria-label="엑셀 내보내기"/);
-    assert.match(dashboardDownloadButton, /title="엑셀 내보내기"/);
+    assert.match(dashboardDownloadButton, /aria-label="내보내기"/);
+    assert.match(dashboardDownloadButton, /title="내보내기"/);
     assert.match(dashboardDownloadButton, />내보내기<\/span>/);
     assert.doesNotMatch(dashboardDownloadButton, />다운로드<\/span>/);
     assert.match(dashboardDownloadButton, /hidden sm:inline/);
+    assert.match(advertiserDashboard, /<DashboardExportDialog/);
+    assert.match(influencerDashboard, /<DashboardExportDialog/);
+    assert.match(advertiserDashboard, /exportWorkbookToGoogleSheets/);
+    assert.match(influencerDashboard, /exportWorkbookToGoogleSheets/);
     assert.match(xlsxExport, /application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet/);
     assert.match(advertiserDashboard, /const CONTRACTS_PER_PAGE = 20/);
     assert.match(advertiserDashboard, /const DASHBOARD_CONTRACT_EXPORT_LIMIT = 5000/);
@@ -1891,7 +1901,7 @@ describe("yeollock.me security regressions", () => {
       ),
     );
     assert.match(agents, /visible Korean copy "내보내기"/);
-    assert.match(agents, /accessible\/title copy "엑셀 내보내기"/);
+    assert.match(agents, /accessible\/title copy "내보내기"/);
     assert.match(agents, /Excel export should sit immediately beside the dashboard title/);
     assert.match(agents, /Date filtering belongs inside the dashboard filter panel/);
     assert.match(agents, /same visible column order as the table/);

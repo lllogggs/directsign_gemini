@@ -468,6 +468,24 @@ const discordOperationsChannelId =
   readConfiguredServerSecret("DISCORD_OPERATIONS_CHANNEL_ID") ??
   readConfiguredServerSecret("OPERATIONS_DISCORD_CHANNEL_ID");
 const discordOperationsUserAgent = "yeollock-operations-notifier/1.0";
+const googleWorkspaceOAuthClientId =
+  readConfiguredServerSecret("GOOGLE_WORKSPACE_OAUTH_CLIENT_ID") ??
+  readConfiguredServerSecret("GOOGLE_SHEETS_OAUTH_CLIENT_ID") ??
+  readConfiguredServerSecret("GOOGLE_OAUTH_CLIENT_ID");
+const googleWorkspaceOAuthClientSecret =
+  readConfiguredServerSecret("GOOGLE_WORKSPACE_OAUTH_CLIENT_SECRET") ??
+  readConfiguredServerSecret("GOOGLE_SHEETS_OAUTH_CLIENT_SECRET") ??
+  readConfiguredServerSecret("GOOGLE_OAUTH_CLIENT_SECRET");
+const googleWorkspaceOAuthConfigured = Boolean(
+  googleWorkspaceOAuthClientId && googleWorkspaceOAuthClientSecret,
+);
+const googleWorkspaceTokenSecret = resolveServerSecret({
+  name: "GOOGLE_WORKSPACE_TOKEN_ENCRYPTION_SECRET",
+  purpose: "encrypting Google Workspace OAuth tokens at rest",
+  requiredInProduction:
+    googleWorkspaceOAuthConfigured && isProductionRuntime && !demoMode,
+  generateLocal: googleWorkspaceOAuthConfigured && !isProductionRuntime,
+});
 const adminSessionSecret = resolveServerSecret({
   name: "ADMIN_SESSION_SECRET",
   purpose: "signing admin session cookies",
@@ -539,14 +557,26 @@ const signupTermsVersion = "2026-06-02";
 const signupPrivacyPolicyVersion = "2026-06-02";
 const signedPdfFontCandidates = [
   process.env.SIGNED_PDF_FONT_PATH,
+  path.join(root, "public", "fonts", "NanumMyeongjo-Regular.ttf"),
   path.join(root, "assets", "fonts", "NotoSansKR-Regular.ttf"),
   path.join(root, "public", "fonts", "NotoSansKR-Regular.ttf"),
   path.join(root, "public", "fonts", "NanumGothic-Regular.ttf"),
   "C:\\Windows\\Fonts\\malgun.ttf",
+  "C:\\Windows\\Fonts\\batang.ttc",
   "/usr/share/fonts/truetype/noto/NotoSansKR-Regular.ttf",
+  "/usr/share/fonts/truetype/nanum/NanumMyeongjo.ttf",
   "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
 ].filter((candidate): candidate is string => Boolean(candidate));
+const signedPdfBoldFontCandidates = [
+  process.env.SIGNED_PDF_BOLD_FONT_PATH,
+  path.join(root, "public", "fonts", "NanumMyeongjo-Bold.ttf"),
+  "C:\\Windows\\Fonts\\batang.ttc",
+  "/usr/share/fonts/truetype/nanum/NanumMyeongjoBold.ttf",
+].filter((candidate): candidate is string => Boolean(candidate));
 let signedPdfFontCache:
+  | { fileName: string; familyName: string; base64: string }
+  | undefined;
+let signedPdfBoldFontCache:
   | { fileName: string; familyName: string; base64: string }
   | undefined;
 const parsePositiveNumberEnv = (value: string | undefined, fallback: number) => {
@@ -882,6 +912,54 @@ const decryptShareTokenFromLegacyStore = (value: string | undefined | null) => {
   }
 };
 
+const googleTokenCipherPrefix = "gws:v1:";
+
+const getGoogleWorkspaceCipherKey = () => {
+  const secret =
+    googleWorkspaceTokenSecret ?? adminSessionSecret ?? shareTokenEncryptionSecret;
+  return secret ? createHash("sha256").update(secret).digest() : undefined;
+};
+
+const encryptGoogleWorkspaceToken = (value: string | undefined | null) => {
+  if (!hasText(value)) return undefined;
+  if (value.startsWith(googleTokenCipherPrefix)) return value;
+
+  const key = getGoogleWorkspaceCipherKey();
+  if (!key) return undefined;
+
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  const ciphertext = Buffer.concat([
+    cipher.update(value, "utf8"),
+    cipher.final(),
+  ]);
+  const payload = Buffer.concat([iv, cipher.getAuthTag(), ciphertext]);
+  return `${googleTokenCipherPrefix}${payload.toString("base64url")}`;
+};
+
+const decryptGoogleWorkspaceToken = (value: string | undefined | null) => {
+  if (!hasText(value)) return undefined;
+  if (!value.startsWith(googleTokenCipherPrefix)) return undefined;
+
+  const key = getGoogleWorkspaceCipherKey();
+  if (!key) return undefined;
+
+  try {
+    const payload = Buffer.from(value.slice(googleTokenCipherPrefix.length), "base64url");
+    const iv = payload.subarray(0, 12);
+    const authTag = payload.subarray(12, 28);
+    const ciphertext = payload.subarray(28);
+    const decipher = createDecipheriv("aes-256-gcm", key, iv);
+    decipher.setAuthTag(authTag);
+    return Buffer.concat([
+      decipher.update(ciphertext),
+      decipher.final(),
+    ]).toString("utf8");
+  } catch {
+    return undefined;
+  }
+};
+
 const normalizeContract = (contract: Contract): Contract => {
   const normalizedContract: Contract = {
     ...contract,
@@ -965,6 +1043,22 @@ interface SupabaseProfileRow {
   privacy_policy_accepted_at?: string | null;
   terms_version?: string | null;
   privacy_policy_version?: string | null;
+}
+
+interface GoogleWorkspaceConnectionRow {
+  id: string;
+  profile_id: string;
+  google_account_email?: string | null;
+  google_account_id?: string | null;
+  access_token_ciphertext?: string | null;
+  refresh_token_ciphertext?: string | null;
+  scopes?: string[] | null;
+  expires_at?: string | null;
+  connected_at?: string | null;
+  last_used_at?: string | null;
+  revoked_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
 }
 
 interface SupabaseOrganizationRow {
@@ -5026,6 +5120,609 @@ const isSafeHttpUrl = (value: string | undefined) => {
   }
 };
 
+type GoogleWorkspaceRole = "advertiser" | "influencer";
+type GoogleWorkspaceFeature = "sheets" | "calendar";
+type GoogleSheetCellValue = string | number | boolean | null | undefined;
+
+interface GoogleExportSheet {
+  name: string;
+  columns: string[];
+  rows: GoogleSheetCellValue[][];
+}
+
+interface GoogleExportWorkbook {
+  fileName: string;
+  sheets: GoogleExportSheet[];
+}
+
+interface GoogleOAuthState {
+  profileId: string;
+  role: GoogleWorkspaceRole;
+  feature: GoogleWorkspaceFeature;
+  returnPath: string;
+  scopes: string[];
+  nonce: string;
+  expiresAt: number;
+}
+
+interface GoogleOAuthTokenPayload {
+  access_token?: string;
+  refresh_token?: string;
+  expires_in?: number;
+  scope?: string;
+  token_type?: string;
+  id_token?: string;
+  error?: string;
+  error_description?: string;
+}
+
+interface GoogleUserInfoPayload {
+  sub?: string;
+  email?: string;
+}
+
+interface GoogleSpreadsheetCreateResponse {
+  spreadsheetId?: string;
+  spreadsheetUrl?: string;
+  sheets?: Array<{
+    properties?: {
+      sheetId?: number;
+      title?: string;
+    };
+  }>;
+}
+
+const googleIdentityScopes = ["openid", "email"];
+const googleSheetsScope = "https://www.googleapis.com/auth/drive.file";
+const googleCalendarScope = "https://www.googleapis.com/auth/calendar.app.created";
+const googleWorkspaceFeatureScopes: Record<GoogleWorkspaceFeature, string[]> = {
+  sheets: [googleSheetsScope],
+  calendar: [googleCalendarScope],
+};
+const googleWorkspaceRoles = new Set<GoogleWorkspaceRole>([
+  "advertiser",
+  "influencer",
+]);
+const googleWorkspaceFeatures = new Set<GoogleWorkspaceFeature>([
+  "sheets",
+  "calendar",
+]);
+const googleExportMaxSheets = 6;
+const googleExportMaxRowsPerSheet = 5000;
+const googleExportMaxCells = 120000;
+
+const normalizeGoogleWorkspaceRole = (
+  value: unknown,
+): GoogleWorkspaceRole | undefined => {
+  const normalized = normalizeRequiredText(value);
+  return googleWorkspaceRoles.has(normalized as GoogleWorkspaceRole)
+    ? (normalized as GoogleWorkspaceRole)
+    : undefined;
+};
+
+const normalizeGoogleWorkspaceFeature = (
+  value: unknown,
+): GoogleWorkspaceFeature | undefined => {
+  const normalized = normalizeRequiredText(value);
+  return googleWorkspaceFeatures.has(normalized as GoogleWorkspaceFeature)
+    ? (normalized as GoogleWorkspaceFeature)
+    : undefined;
+};
+
+const normalizeGoogleReturnPath = (
+  value: unknown,
+  fallback: string,
+) => {
+  const normalized = normalizeOptionalText(value);
+  if (!normalized || !normalized.startsWith("/") || normalized.startsWith("//")) {
+    return fallback;
+  }
+
+  try {
+    const url = new URL(normalized, "https://yeollock.local");
+    return `${url.pathname}${url.search}${url.hash}`.slice(0, 700);
+  } catch {
+    return fallback;
+  }
+};
+
+const getGoogleOAuthStateSecret = () =>
+  adminSessionSecret ?? googleWorkspaceTokenSecret ?? shareTokenEncryptionSecret;
+
+const encodeGoogleOAuthState = (state: GoogleOAuthState) => {
+  const secret = getGoogleOAuthStateSecret();
+  if (!secret) throw new Error("Google OAuth state secret is not configured");
+
+  const payload = Buffer.from(JSON.stringify(state), "utf8").toString("base64url");
+  const signature = createHmac("sha256", secret).update(payload).digest("base64url");
+  return `${payload}.${signature}`;
+};
+
+const decodeGoogleOAuthState = (value: unknown): GoogleOAuthState | undefined => {
+  const secret = getGoogleOAuthStateSecret();
+  const raw = normalizeRequiredText(value);
+  const [payload, signature] = raw.split(".");
+  if (!secret || !payload || !signature) return undefined;
+
+  const expected = createHmac("sha256", secret).update(payload).digest("base64url");
+  const left = Buffer.from(signature);
+  const right = Buffer.from(expected);
+  if (left.length !== right.length || !timingSafeEqual(left, right)) {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(
+      Buffer.from(payload, "base64url").toString("utf8"),
+    ) as GoogleOAuthState;
+    if (
+      !hasText(parsed.profileId) ||
+      !googleWorkspaceRoles.has(parsed.role) ||
+      !googleWorkspaceFeatures.has(parsed.feature) ||
+      !Array.isArray(parsed.scopes) ||
+      Date.now() > parsed.expiresAt
+    ) {
+      return undefined;
+    }
+    return parsed;
+  } catch {
+    return undefined;
+  }
+};
+
+const getGoogleWorkspaceScopes = (feature: GoogleWorkspaceFeature) => [
+  ...googleIdentityScopes,
+  ...googleWorkspaceFeatureScopes[feature],
+];
+
+const getGoogleWorkspaceRedirectUri = (request: express.Request) =>
+  `${getAppBaseUrl(request)}/api/google/oauth/callback`;
+
+const requireGoogleWorkspaceConfig = () => {
+  if (
+    !googleWorkspaceOAuthClientId ||
+    !googleWorkspaceOAuthClientSecret ||
+    !googleWorkspaceTokenSecret
+  ) {
+    throw new Error("Google Workspace integration is not configured");
+  }
+
+  return {
+    clientId: googleWorkspaceOAuthClientId,
+    clientSecret: googleWorkspaceOAuthClientSecret,
+  };
+};
+
+const googleWorkspaceConfigMessage =
+  "Google \uc5f0\uacb0 \uc124\uc815\uc774 \uc544\uc9c1 \uc644\ub8cc\ub418\uc9c0 \uc54a\uc558\uc2b5\ub2c8\ub2e4.";
+
+const googleWorkspaceStorageNotReadyMessage =
+  "Google \uc2a4\ud504\ub808\ub4dc\uc2dc\ud2b8 \uc5f0\uacb0 \uc900\ube44\uac00 \uc544\uc9c1 \uc644\ub8cc\ub418\uc9c0 \uc54a\uc558\uc2b5\ub2c8\ub2e4. \uad00\ub9ac\uc790 \uc124\uc815 \ud6c4 \ub2e4\uc2dc \uc2dc\ub3c4\ud574 \uc8fc\uc138\uc694.";
+
+const isGoogleWorkspaceStorageNotReadyError = (error: unknown) =>
+  error instanceof Error &&
+  error.message.includes("Supabase Google Workspace connection") &&
+  (error.message.includes("Could not find the table") ||
+    error.message.includes("schema cache") ||
+    error.message.includes("(404)"));
+
+const buildGoogleWorkspaceAuthorizationUrl = ({
+  request,
+  profileId,
+  role,
+  feature,
+  returnPath,
+}: {
+  request: express.Request;
+  profileId: string;
+  role: GoogleWorkspaceRole;
+  feature: GoogleWorkspaceFeature;
+  returnPath: string;
+}) => {
+  const { clientId } = requireGoogleWorkspaceConfig();
+  const scopes = getGoogleWorkspaceScopes(feature);
+  const state = encodeGoogleOAuthState({
+    profileId,
+    role,
+    feature,
+    returnPath,
+    scopes,
+    nonce: randomBytes(16).toString("base64url"),
+    expiresAt: Date.now() + 10 * 60 * 1000,
+  });
+  const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+
+  url.searchParams.set("client_id", clientId);
+  url.searchParams.set("redirect_uri", getGoogleWorkspaceRedirectUri(request));
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("scope", scopes.join(" "));
+  url.searchParams.set("state", state);
+  url.searchParams.set("access_type", "offline");
+  url.searchParams.set("include_granted_scopes", "true");
+  url.searchParams.set("prompt", "consent");
+  return url.toString();
+};
+
+const parseGoogleScopeList = (value: string | undefined, fallback: string[]) => {
+  const scopes = normalizeRequiredText(value)
+    .split(/\s+/)
+    .map((scope) => scope.trim())
+    .filter(hasText);
+  return Array.from(new Set([...fallback, ...scopes]));
+};
+
+const readGoogleWorkspaceConnection = async (profileId: string) => {
+  if (!useSupabase) return undefined;
+  const rows = await readSupabaseRows<GoogleWorkspaceConnectionRow>(
+    "google_workspace_connections",
+    `?profile_id=eq.${encodeURIComponent(profileId)}&revoked_at=is.null&limit=1`,
+    "Google Workspace connection",
+  );
+  return rows[0];
+};
+
+const upsertGoogleWorkspaceConnection = async (
+  row: Record<string, unknown>,
+) => {
+  const response = await fetchSupabase(
+    "google_workspace_connections",
+    "?on_conflict=profile_id",
+    {
+      method: "POST",
+      headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+      body: JSON.stringify(normalizeRowsForPostgrest([row])),
+    },
+  );
+  await assertSupabaseOk(response, "Supabase Google Workspace connection upsert");
+  const rows = (await response.json()) as GoogleWorkspaceConnectionRow[];
+  return rows[0];
+};
+
+const patchGoogleWorkspaceConnection = async (
+  id: string,
+  updates: Record<string, unknown>,
+) => {
+  const response = await fetchSupabase(
+    "google_workspace_connections",
+    `?id=eq.${encodeURIComponent(id)}`,
+    {
+      method: "PATCH",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify(normalizeRowsForPostgrest([updates])[0]),
+    },
+  );
+  await assertSupabaseOk(response, "Supabase Google Workspace connection update");
+  const rows = (await response.json()) as GoogleWorkspaceConnectionRow[];
+  return rows[0];
+};
+
+const exchangeGoogleOAuthToken = async (
+  request: express.Request,
+  params: Record<string, string>,
+) => {
+  const { clientId, clientSecret } = requireGoogleWorkspaceConfig();
+  const body = new URLSearchParams({
+    client_id: clientId,
+    client_secret: clientSecret,
+    redirect_uri: getGoogleWorkspaceRedirectUri(request),
+    ...params,
+  });
+  const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body,
+    signal: createSupabaseTimeoutSignal(),
+  });
+  const payload = (await tokenResponse.json()) as GoogleOAuthTokenPayload;
+  if (!tokenResponse.ok || payload.error) {
+    throw new Error(
+      payload.error_description ??
+        payload.error ??
+        `Google OAuth token exchange failed (${tokenResponse.status})`,
+    );
+  }
+  return payload;
+};
+
+const readGoogleUserInfo = async (accessToken: string) => {
+  const userResponse = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    signal: createSupabaseTimeoutSignal(),
+  });
+  if (!userResponse.ok) return {} as GoogleUserInfoPayload;
+  return (await userResponse.json()) as GoogleUserInfoPayload;
+};
+
+const storeGoogleOAuthConnection = async ({
+  profileId,
+  requestedScopes,
+  tokenPayload,
+  userInfo,
+}: {
+  profileId: string;
+  requestedScopes: string[];
+  tokenPayload: GoogleOAuthTokenPayload;
+  userInfo: GoogleUserInfoPayload;
+}) => {
+  if (!useSupabase) {
+    throw new Error("Supabase is required for Google Workspace connections");
+  }
+  if (!hasText(tokenPayload.access_token)) {
+    throw new Error("Google OAuth did not return an access token");
+  }
+
+  const existing = await readGoogleWorkspaceConnection(profileId);
+  const encryptedAccessToken = encryptGoogleWorkspaceToken(tokenPayload.access_token);
+  const encryptedRefreshToken =
+    encryptGoogleWorkspaceToken(tokenPayload.refresh_token) ??
+    existing?.refresh_token_ciphertext;
+
+  if (!encryptedAccessToken || !encryptedRefreshToken) {
+    throw new Error("Google OAuth refresh token is required");
+  }
+
+  const scopes = Array.from(
+    new Set([
+      ...(existing?.scopes ?? []),
+      ...parseGoogleScopeList(tokenPayload.scope, requestedScopes),
+    ]),
+  );
+  const expiresIn = Number(tokenPayload.expires_in ?? 3600);
+  const now = new Date();
+
+  return upsertGoogleWorkspaceConnection({
+    profile_id: profileId,
+    google_account_email: userInfo.email ?? existing?.google_account_email ?? null,
+    google_account_id: userInfo.sub ?? existing?.google_account_id ?? null,
+    access_token_ciphertext: encryptedAccessToken,
+    refresh_token_ciphertext: encryptedRefreshToken,
+    scopes,
+    expires_at: new Date(now.getTime() + Math.max(60, expiresIn) * 1000).toISOString(),
+    connected_at: existing?.connected_at ?? now.toISOString(),
+    last_used_at: now.toISOString(),
+    revoked_at: null,
+    updated_at: now.toISOString(),
+  });
+};
+
+const connectionHasScopes = (
+  connection: GoogleWorkspaceConnectionRow | undefined,
+  scopes: string[],
+) => scopes.every((scope) => connection?.scopes?.includes(scope));
+
+const refreshGoogleWorkspaceAccessToken = async (
+  request: express.Request,
+  connection: GoogleWorkspaceConnectionRow,
+) => {
+  const refreshToken = decryptGoogleWorkspaceToken(connection.refresh_token_ciphertext);
+  if (!refreshToken) return undefined;
+
+  const payload = await exchangeGoogleOAuthToken(request, {
+    grant_type: "refresh_token",
+    refresh_token: refreshToken,
+  });
+  if (!hasText(payload.access_token)) return undefined;
+
+  const encryptedAccessToken = encryptGoogleWorkspaceToken(payload.access_token);
+  if (!encryptedAccessToken) return undefined;
+
+  const expiresIn = Number(payload.expires_in ?? 3600);
+  await patchGoogleWorkspaceConnection(connection.id, {
+    access_token_ciphertext: encryptedAccessToken,
+    expires_at: new Date(Date.now() + Math.max(60, expiresIn) * 1000).toISOString(),
+    last_used_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  });
+
+  return payload.access_token;
+};
+
+const sanitizeGoogleSheetTitle = (value: string, fallback: string) => {
+  const cleaned = value
+    .replace(/[\\/?*:[\]]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return (cleaned || fallback).slice(0, 90);
+};
+
+const sanitizeGoogleSpreadsheetTitle = (value: string) =>
+  value
+    .replace(/\.xlsx$/i, "")
+    .replace(/[\\/:*?"<>|]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 160) || "연락미 대시보드";
+
+const quoteGoogleSheetRangeName = (name: string) =>
+  `'${name.replace(/'/g, "''")}'`;
+
+const normalizeGoogleSheetCell = (value: GoogleSheetCellValue) => {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return value;
+  }
+  return String(value);
+};
+
+const parseGoogleExportWorkbook = (body: unknown): GoogleExportWorkbook => {
+  const payload = body as Record<string, unknown> | undefined;
+  const rawSheets = Array.isArray(payload?.sheets) ? payload.sheets : [];
+  const sheets = rawSheets.slice(0, googleExportMaxSheets).map((sheet, index) => {
+    const sheetPayload = sheet as Record<string, unknown>;
+    const columns = Array.isArray(sheetPayload.columns)
+      ? sheetPayload.columns.map((column) => normalizeRequiredText(column).slice(0, 120))
+      : [];
+    const rows = Array.isArray(sheetPayload.rows)
+      ? sheetPayload.rows.slice(0, googleExportMaxRowsPerSheet).map((row) =>
+          Array.isArray(row)
+            ? row.slice(0, columns.length).map(normalizeGoogleSheetCell)
+            : [],
+        )
+      : [];
+    return {
+      name: sanitizeGoogleSheetTitle(
+        normalizeRequiredText(sheetPayload.name),
+        `Sheet ${index + 1}`,
+      ),
+      columns,
+      rows,
+    };
+  });
+  const cellCount = sheets.reduce(
+    (total, sheet) => total + (sheet.rows.length + 1) * Math.max(sheet.columns.length, 1),
+    0,
+  );
+
+  if (sheets.length === 0 || sheets.some((sheet) => sheet.columns.length === 0)) {
+    throw new Error("Export sheets are required");
+  }
+  if (cellCount > googleExportMaxCells) {
+    throw new Error("Export data is too large for Google Sheets export");
+  }
+
+  return {
+    fileName: sanitizeGoogleSpreadsheetTitle(
+      normalizeRequiredText(payload?.fileName),
+    ),
+    sheets,
+  };
+};
+
+const postGoogleJson = async <T>(
+  url: string,
+  accessToken: string,
+  body: Record<string, unknown>,
+  label: string,
+) => {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+    signal: createSupabaseTimeoutSignal(),
+  });
+  const payload = (await response.json()) as T & {
+    error?: { message?: string };
+  };
+  if (!response.ok) {
+    throw new Error(payload.error?.message ?? `${label} failed (${response.status})`);
+  }
+  return payload as T;
+};
+
+const createGoogleSpreadsheet = async (
+  accessToken: string,
+  workbook: GoogleExportWorkbook,
+) => {
+  const spreadsheet = await postGoogleJson<GoogleSpreadsheetCreateResponse>(
+    "https://sheets.googleapis.com/v4/spreadsheets",
+    accessToken,
+    {
+      properties: { title: workbook.fileName },
+      sheets: workbook.sheets.map((sheet) => ({
+        properties: {
+          title: sheet.name,
+          gridProperties: {
+            frozenRowCount: 1,
+            rowCount: Math.max(sheet.rows.length + 1, 20),
+            columnCount: Math.max(sheet.columns.length, 1),
+          },
+        },
+      })),
+    },
+    "Google Sheets create",
+  );
+
+  if (!spreadsheet.spreadsheetId) {
+    throw new Error("Google Sheets did not return a spreadsheet id");
+  }
+
+  await postGoogleJson<Record<string, unknown>>(
+    `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(
+      spreadsheet.spreadsheetId,
+    )}/values:batchUpdate`,
+    accessToken,
+    {
+      valueInputOption: "RAW",
+      data: workbook.sheets.map((sheet) => ({
+        range: `${quoteGoogleSheetRangeName(sheet.name)}!A1`,
+        values: [sheet.columns, ...sheet.rows].map((row) =>
+          row.map(normalizeGoogleSheetCell),
+        ),
+      })),
+    },
+    "Google Sheets values update",
+  );
+
+  const sheetProperties = spreadsheet.sheets
+    ?.map((sheet, index) => ({
+      sheetId: sheet.properties?.sheetId,
+      columns: workbook.sheets[index]?.columns.length ?? 0,
+    }))
+    .filter(
+      (sheet): sheet is { sheetId: number; columns: number } =>
+        typeof sheet.sheetId === "number",
+    );
+
+  if (sheetProperties?.length) {
+    await postGoogleJson<Record<string, unknown>>(
+      `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(
+        spreadsheet.spreadsheetId,
+      )}:batchUpdate`,
+      accessToken,
+      {
+        requests: sheetProperties.flatMap((sheet) => [
+          {
+            repeatCell: {
+              range: {
+                sheetId: sheet.sheetId,
+                startRowIndex: 0,
+                endRowIndex: 1,
+              },
+              cell: {
+                userEnteredFormat: {
+                  backgroundColor: { red: 0.94, green: 0.95, blue: 0.93 },
+                  textFormat: { bold: true },
+                },
+              },
+              fields: "userEnteredFormat(backgroundColor,textFormat)",
+            },
+          },
+          {
+            autoResizeDimensions: {
+              dimensions: {
+                sheetId: sheet.sheetId,
+                dimension: "COLUMNS",
+                startIndex: 0,
+                endIndex: Math.max(sheet.columns, 1),
+              },
+            },
+          },
+        ]),
+      },
+      "Google Sheets formatting",
+    );
+  }
+
+  return {
+    spreadsheet_id: spreadsheet.spreadsheetId,
+    spreadsheet_url:
+      spreadsheet.spreadsheetUrl ??
+      `https://docs.google.com/spreadsheets/d/${spreadsheet.spreadsheetId}/edit`,
+  };
+};
+
+const authenticateGoogleWorkspaceRole = async (
+  request: express.Request,
+  response: express.Response,
+  role: GoogleWorkspaceRole,
+) =>
+  role === "advertiser"
+    ? requireAdvertiserSession(request, response)
+    : requireInfluencerSession(request, response);
+
 const normalizeChallengeCode = (value: unknown) =>
   normalizeRequiredText(value).toUpperCase();
 
@@ -7228,7 +7925,7 @@ const formatContractPdfDate = (value: string | undefined) => {
   return dateOnly ?? value;
 };
 
-const buildContractDocumentPdf = async ({
+const _buildLegacyContractDocumentPdf = async ({
   contract,
   signatureEvidence,
 }: {
@@ -7523,6 +8220,344 @@ const buildContractDocumentPdf = async ({
     }
   }
 
+  return Buffer.from(pdf.output("arraybuffer"));
+};
+
+const buildContractDocumentPdf = async ({
+  contract,
+  signatureEvidence,
+}: {
+  contract: Contract;
+  signatureEvidence?: ContractDocumentSignatureEvidence;
+}) => {
+  const { jsPDF } = await import("jspdf");
+  const pdf = new jsPDF({ unit: "pt", format: "a4" });
+  const regularFont = await loadSignedPdfFont();
+  const boldFont = regularFont ? await loadSignedPdfBoldFont() : undefined;
+  const fontFamily = regularFont?.familyName ?? "helvetica";
+
+  if (regularFont) {
+    pdf.addFileToVFS(regularFont.fileName, regularFont.base64);
+    pdf.addFont(regularFont.fileName, regularFont.familyName, "normal");
+    if (boldFont) {
+      pdf.addFileToVFS(boldFont.fileName, boldFont.base64);
+      pdf.addFont(boldFont.fileName, regularFont.familyName, "bold");
+    }
+  }
+
+  const canUseBold = !regularFont || Boolean(boldFont);
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const marginX = 62;
+  const topMargin = 56;
+  const bottomMargin = 58;
+  const contentWidth = pageWidth - marginX * 2;
+  let y = topMargin;
+
+  const setFont = (bold = false) => {
+    pdf.setFont(fontFamily, bold && canUseBold ? "bold" : "normal");
+  };
+
+  const setTextColor = (color: number) => {
+    pdf.setTextColor(color, color, color);
+  };
+
+  const ensureSpace = (height: number) => {
+    if (y + height <= pageHeight - bottomMargin) return;
+    pdf.addPage();
+    y = topMargin;
+  };
+
+  const splitText = (text: string, width: number) =>
+    pdf.splitTextToSize(formatPdfValue(text), width) as string[];
+
+  const drawTextLines = ({
+    lines,
+    x,
+    width,
+    size = 10.5,
+    lineHeight = 17,
+    bold = false,
+    color = 35,
+    align,
+  }: {
+    lines: string[];
+    x: number;
+    width?: number;
+    size?: number;
+    lineHeight?: number;
+    bold?: boolean;
+    color?: number;
+    align?: "left" | "center" | "right";
+  }) => {
+    setFont(bold);
+    pdf.setFontSize(size);
+    setTextColor(color);
+    lines.forEach((line) => {
+      ensureSpace(lineHeight);
+      pdf.text(line, x, y, align ? { align } : undefined);
+      y += lineHeight;
+    });
+    return width;
+  };
+
+  const addParagraph = (text: string, options: { indent?: number; top?: number } = {}) => {
+    const indent = options.indent ?? 0;
+    y += options.top ?? 0;
+    const lines = splitText(text, contentWidth - indent);
+    drawTextLines({
+      lines,
+      x: marginX + indent,
+      width: contentWidth - indent,
+      size: 10.5,
+      lineHeight: 17,
+      color: 38,
+    });
+    y += 4;
+  };
+
+  const addSectionTitle = (title: string, top = 20) => {
+    ensureSpace(top + 26);
+    y += top;
+    setFont(true);
+    pdf.setFontSize(12.5);
+    setTextColor(18);
+    pdf.text(title, marginX, y);
+    y += 10;
+    pdf.setDrawColor(24, 24, 24);
+    pdf.setLineWidth(0.6);
+    pdf.line(marginX, y, marginX + contentWidth, y);
+    y += 16;
+  };
+
+  const addDefinitionRows = (rows: Array<[string, string]>) => {
+    const labelWidth = 110;
+    rows.forEach(([label, rawValue]) => {
+      const valueLines = splitText(formatPdfValue(rawValue), contentWidth - labelWidth - 18);
+      const rowHeight = Math.max(29, valueLines.length * 14 + 14);
+      ensureSpace(rowHeight + 1);
+
+      pdf.setDrawColor(214, 214, 214);
+      pdf.setLineWidth(0.4);
+      pdf.line(marginX, y, marginX + contentWidth, y);
+
+      setFont(true);
+      pdf.setFontSize(9.5);
+      setTextColor(70);
+      pdf.text(label, marginX + 2, y + 18);
+
+      setFont(false);
+      pdf.setFontSize(10.2);
+      setTextColor(28);
+      valueLines.forEach((line, index) => {
+        pdf.text(line, marginX + labelWidth, y + 18 + index * 14);
+      });
+
+      y += rowHeight;
+    });
+    pdf.setDrawColor(214, 214, 214);
+    pdf.line(marginX, y, marginX + contentWidth, y);
+    y += 10;
+  };
+
+  const addClauseBlock = (heading: string, body: string) => {
+    ensureSpace(48);
+    setFont(true);
+    pdf.setFontSize(10.8);
+    setTextColor(22);
+    pdf.text(heading, marginX, y);
+    y += 17;
+    addParagraph(body, { indent: 12 });
+  };
+
+  const addSignatureArea = () => {
+    const gap = 18;
+    const boxWidth = (contentWidth - gap) / 2;
+    const boxHeight = 86;
+    ensureSpace(boxHeight + 20);
+
+    const boxes: Array<[string, string]> = [
+      ["광고주", formatPdfValue(contract.advertiser_info?.name ?? contract.advertiser_id)],
+      [
+        "인플루언서",
+        formatPdfValue(signatureEvidence?.signerName ?? contract.influencer_info.name, "서명 전"),
+      ],
+    ];
+
+    boxes.forEach(([label, value], index) => {
+      const x = marginX + index * (boxWidth + gap);
+      pdf.setDrawColor(185, 185, 185);
+      pdf.setLineWidth(0.5);
+      pdf.rect(x, y, boxWidth, boxHeight, "S");
+
+      setFont(true);
+      pdf.setFontSize(10);
+      setTextColor(35);
+      pdf.text(label, x + 14, y + 21);
+
+      pdf.setDrawColor(205, 205, 205);
+      pdf.line(x + 14, y + 56, x + boxWidth - 14, y + 56);
+
+      setFont(false);
+      pdf.setFontSize(10.5);
+      setTextColor(28);
+      pdf.text(value, x + 14, y + 73);
+    });
+
+    y += boxHeight + 6;
+  };
+
+  const addPageNumbers = () => {
+    const totalPages = pdf.getNumberOfPages();
+    for (let pageNo = 1; pageNo <= totalPages; pageNo += 1) {
+      pdf.setPage(pageNo);
+      setFont(false);
+      pdf.setFontSize(8.5);
+      setTextColor(120);
+      pdf.text(`- ${pageNo} -`, pageWidth / 2, pageHeight - 30, { align: "center" });
+    }
+  };
+
+  const campaign = contract.campaign ?? {};
+  const advertiserName = formatPdfValue(contract.advertiser_info?.name ?? contract.advertiser_id);
+  const influencerName = formatPdfValue(contract.influencer_info.name);
+  const platformText = formatPdfValue(
+    (campaign.platforms ?? []).map((platform) => pdfPlatformLabels[platform] ?? platform),
+  );
+  const deliverableText = formatPdfValue(campaign.deliverables, "제공 컨텐츠 조건이 입력되지 않았습니다.");
+  const periodText = formatPdfValue(
+    campaign.period ??
+      [formatContractPdfDate(campaign.start_date), formatContractPdfDate(campaign.end_date)]
+        .filter((value) => value !== "-")
+        .join(" - "),
+  );
+
+  setFont(true);
+  pdf.setFontSize(22);
+  setTextColor(12);
+  pdf.text("광고 계약서", pageWidth / 2, y, { align: "center" });
+  y += 34;
+
+  setFont(false);
+  pdf.setFontSize(10);
+  setTextColor(90);
+  pdf.text(`계약명: ${formatPdfValue(contract.title)}`, pageWidth / 2, y, { align: "center" });
+  y += 14;
+  pdf.text(`작성일: ${formatContractPdfDate(contract.created_at)}`, pageWidth / 2, y, {
+    align: "center",
+  });
+  y += 28;
+
+  addParagraph(
+    `본 계약은 광고주 ${advertiserName} 및 인플루언서 ${influencerName} 사이에서 광고 컨텐츠 제작 및 게시와 관련하여 체결된다.`,
+  );
+
+  addSectionTitle("제1조 계약 당사자");
+  addDefinitionRows([
+    ["광고주", advertiserName],
+    ["광고주 담당자", formatPdfValue(contract.advertiser_info?.manager)],
+    ["인플루언서", influencerName],
+    ["인플루언서 연락처", formatPdfValue(contract.influencer_info.contact)],
+    ["대표 채널", formatPdfValue(contract.influencer_info.channel_url)],
+  ]);
+
+  addSectionTitle("제2조 계약 목적 및 범위");
+  addParagraph(
+    `본 계약은 ${formatPdfValue(contract.title)}의 수행을 위하여 인플루언서가 광고 컨텐츠를 제작·게시하고, 광고주가 그 대가를 지급하는 데 필요한 조건을 정하는 것을 목적으로 한다.`,
+  );
+
+  addSectionTitle("제3조 플랫폼 및 컨텐츠");
+  addDefinitionRows([
+    ["계약 종류", formatPdfValue(contract.type)],
+    ["플랫폼", platformText],
+    ["컨텐츠", deliverableText],
+  ]);
+
+  addSectionTitle("제4조 일정 및 검수");
+  addDefinitionRows([
+    ["캠페인 기간", periodText],
+    ["업로드 마감일", formatPdfValue(campaign.upload_due_at ?? campaign.deadline)],
+    ["광고주 검수 회신", formatPdfValue(campaign.review_due_at)],
+    ["수정 가능 횟수", formatPdfValue(campaign.revision_limit)],
+  ]);
+
+  addSectionTitle("제5조 광고 표시 및 제출");
+  addDefinitionRows([
+    [
+      "광고 표시 문구",
+      formatPdfValue(
+        campaign.disclosure_text,
+        "광고 표시는 관련 법령과 플랫폼 정책에 따라 명확하게 표시한다.",
+      ),
+    ],
+  ]);
+  if ((campaign.required_hashtags ?? []).length || (campaign.brand_account_tags ?? []).length) {
+    addDefinitionRows([
+      ["필수 해시태그", formatPdfValue(campaign.required_hashtags)],
+      ["브랜드 태그", formatPdfValue(campaign.brand_account_tags)],
+    ]);
+  }
+  if (hasText(campaign.tracking_link)) {
+    addDefinitionRows([["추적 링크", campaign.tracking_link]]);
+  }
+
+  addSectionTitle("제6조 지급 조건");
+  addDefinitionRows([
+    ["지급 금액/조건", formatPdfValue(campaign.budget, "지급 조건이 입력되지 않았습니다.")],
+  ]);
+
+  addSectionTitle("제7조 특약 및 추가 조항");
+  if (contract.clauses.length > 0) {
+    contract.clauses.forEach((clause, index) => {
+      addClauseBlock(`7.${index + 1} ${formatPdfValue(clause.category)}`, clause.content);
+    });
+  } else {
+    addParagraph("별도 특약 사항이 없습니다.");
+  }
+
+  addSectionTitle("제8조 서명");
+  addParagraph(
+    "계약 당사자는 본 계약의 내용을 확인하였으며, 전자서명 또는 이에 준하는 방식으로 본 계약 체결에 동의한다.",
+  );
+  addSignatureArea();
+
+  if (signatureEvidence) {
+    addSectionTitle("전자서명 증빙");
+    addDefinitionRows([
+      ["서명자", signatureEvidence.signerName],
+      ["서명자 이메일", signatureEvidence.signerEmail],
+      ["서명 시각", signatureEvidence.signedAt],
+      ["서명 IP", signatureEvidence.clientIp],
+      ["계약 해시", signatureEvidence.contractHash],
+      ["서명 이미지 해시", signatureEvidence.signatureHash],
+      ["동의 문구 버전", signatureConsentVersion],
+      [
+        "동의 문구",
+        signatureEvidence.consentText ||
+          "서명자는 계약 내용을 확인하고 전자서명에 동의했습니다.",
+      ],
+    ]);
+
+    if (signatureEvidence.signatureDataUrl && signatureEvidence.signatureContentType) {
+      try {
+        const imageType =
+          signatureEvidence.signatureContentType === "image/png"
+            ? "PNG"
+            : signatureEvidence.signatureContentType === "image/jpeg"
+              ? "JPEG"
+              : undefined;
+        if (imageType) {
+          ensureSpace(66);
+          pdf.addImage(signatureEvidence.signatureDataUrl, imageType, marginX, y, 150, 45);
+          y += 54;
+        }
+      } catch {
+        addParagraph("서명 이미지는 별도 저장되었고 해시로 검증됩니다.");
+      }
+    }
+  }
+
+  addPageNumbers();
   return Buffer.from(pdf.output("arraybuffer"));
 };
 
@@ -10754,6 +11789,26 @@ const getMarketplaceCounterpartHref = (
 
   if (role === "influencer" && row.direction === "advertiser_to_influencer") {
     return undefined;
+  }
+
+  return undefined;
+};
+
+const loadSignedPdfBoldFont = async () => {
+  if (signedPdfBoldFontCache) return signedPdfBoldFontCache;
+
+  for (const candidate of signedPdfBoldFontCandidates) {
+    try {
+      const fontBuffer = await fs.readFile(candidate);
+      signedPdfBoldFontCache = {
+        fileName: path.basename(candidate),
+        familyName: "SignedPdfKR",
+        base64: fontBuffer.toString("base64"),
+      };
+      return signedPdfBoldFontCache;
+    } catch {
+      // Try the next configured/system font candidate.
+    }
   }
 
   return undefined;
@@ -16857,6 +17912,202 @@ app.get("/api/influencer/dashboard", async (request, response, next) => {
       return;
     }
 
+    next(error);
+  }
+});
+
+app.post("/api/google/workspace/connect", async (request, response, next) => {
+  try {
+    const role = normalizeGoogleWorkspaceRole(request.body?.role);
+    const feature =
+      normalizeGoogleWorkspaceFeature(request.body?.feature) ?? "sheets";
+
+    if (!role) {
+      response.status(422).json({ error: "Google 연결 역할이 올바르지 않습니다." });
+      return;
+    }
+
+    const auth = await authenticateGoogleWorkspaceRole(request, response, role);
+    if (!auth) return;
+
+    if (!useSupabase) {
+      response.status(503).json({
+        error: "Google 연결은 Supabase 저장소가 필요합니다.",
+      });
+      return;
+    }
+
+    const returnPath = normalizeGoogleReturnPath(
+      request.body?.return_path,
+      role === "advertiser" ? "/advertiser/dashboard" : "/influencer/dashboard",
+    );
+    const authorizationUrl = buildGoogleWorkspaceAuthorizationUrl({
+      request,
+      profileId: auth.profile.id,
+      role,
+      feature,
+      returnPath,
+    });
+
+    response.json({
+      authorization_url: authorizationUrl,
+      scopes: getGoogleWorkspaceScopes(feature),
+    });
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message === "Google Workspace integration is not configured"
+    ) {
+      response.status(503).json({
+        error: "Google Workspace 환경변수가 아직 설정되지 않았습니다.",
+      });
+      return;
+    }
+    next(error);
+  }
+});
+
+app.get("/api/google/oauth/callback", async (request, response) => {
+  const state = decodeGoogleOAuthState(request.query.state);
+  const returnPath = normalizeGoogleReturnPath(state?.returnPath, "/");
+  const redirectUrl = new URL(returnPath, `${getAppBaseUrl(request)}/`);
+  const redirectWithStatus = (status: "connected" | "failed") => {
+    redirectUrl.searchParams.set("google_workspace", status);
+    response.redirect(303, redirectUrl.toString());
+  };
+
+  if (!state) {
+    redirectWithStatus("failed");
+    return;
+  }
+
+  if (normalizeOptionalText(request.query.error)) {
+    redirectWithStatus("failed");
+    return;
+  }
+
+  try {
+    const code = normalizeRequiredText(request.query.code);
+    if (!code) {
+      redirectWithStatus("failed");
+      return;
+    }
+
+    const tokenPayload = await exchangeGoogleOAuthToken(request, {
+      grant_type: "authorization_code",
+      code,
+    });
+    const accessToken = normalizeRequiredText(tokenPayload.access_token);
+    const userInfo = accessToken ? await readGoogleUserInfo(accessToken) : {};
+
+    await storeGoogleOAuthConnection({
+      profileId: state.profileId,
+      requestedScopes: state.scopes,
+      tokenPayload,
+      userInfo,
+    });
+
+    redirectWithStatus("connected");
+  } catch (error) {
+    console.warn(
+      `[${productName}] Google Workspace OAuth callback failed: ${
+        error instanceof Error ? error.message : "unknown error"
+      }`,
+    );
+    redirectWithStatus("failed");
+  }
+});
+
+app.post("/api/google/sheets/export", async (request, response, next) => {
+  try {
+    const role = normalizeGoogleWorkspaceRole(request.body?.role);
+    if (!role) {
+      response.status(422).json({ error: "Google Sheets 내보내기 역할이 올바르지 않습니다." });
+      return;
+    }
+
+    const auth = await authenticateGoogleWorkspaceRole(request, response, role);
+    if (!auth) return;
+
+    if (!useSupabase) {
+      response.status(503).json({
+        error: "Google Sheets 내보내기는 Supabase 저장소가 필요합니다.",
+      });
+      return;
+    }
+
+    let workbook: GoogleExportWorkbook;
+    try {
+      workbook = parseGoogleExportWorkbook(request.body?.workbook ?? request.body);
+    } catch (error) {
+      response.status(422).json({
+        error:
+          error instanceof Error
+            ? error.message
+            : "Google Sheets 내보내기 데이터가 올바르지 않습니다.",
+      });
+      return;
+    }
+
+    const returnPath = normalizeGoogleReturnPath(
+      request.body?.return_path,
+      role === "advertiser" ? "/advertiser/dashboard" : "/influencer/dashboard",
+    );
+    const requiredScopes = googleWorkspaceFeatureScopes.sheets;
+    const connection = await readGoogleWorkspaceConnection(auth.profile.id);
+
+    if (!connectionHasScopes(connection, requiredScopes)) {
+      response.status(409).json({
+        code: "GOOGLE_CONNECTION_REQUIRED",
+        error: "Google 스프레드시트 연결이 필요합니다.",
+        authorization_url: buildGoogleWorkspaceAuthorizationUrl({
+          request,
+          profileId: auth.profile.id,
+          role,
+          feature: "sheets",
+          returnPath,
+        }),
+      });
+      return;
+    }
+
+    const accessToken = await refreshGoogleWorkspaceAccessToken(request, connection);
+    if (!accessToken) {
+      response.status(409).json({
+        code: "GOOGLE_CONNECTION_REQUIRED",
+        error: "Google 연결이 만료되었습니다. 다시 연결해 주세요.",
+        authorization_url: buildGoogleWorkspaceAuthorizationUrl({
+          request,
+          profileId: auth.profile.id,
+          role,
+          feature: "sheets",
+          returnPath,
+        }),
+      });
+      return;
+    }
+
+    const spreadsheet = await createGoogleSpreadsheet(accessToken, workbook);
+    response.json(spreadsheet);
+  } catch (error) {
+    if (isGoogleWorkspaceStorageNotReadyError(error)) {
+      response.status(503).json({
+        code: "GOOGLE_WORKSPACE_STORAGE_NOT_READY",
+        error: googleWorkspaceStorageNotReadyMessage,
+      });
+      return;
+    }
+
+    if (
+      error instanceof Error &&
+      error.message === "Google Workspace integration is not configured"
+    ) {
+      response.status(503).json({
+        code: "GOOGLE_WORKSPACE_NOT_CONFIGURED",
+        error: googleWorkspaceConfigMessage,
+      });
+      return;
+    }
     next(error);
   }
 });

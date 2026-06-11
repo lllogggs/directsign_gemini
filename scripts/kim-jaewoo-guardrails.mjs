@@ -978,11 +978,15 @@ check(
 check(
   "dashboard excel export stays quiet and excludes sensitive fields",
   packageJson.dependencies.fflate &&
-    dashboardDownloadButton.includes('aria-label="엑셀 내보내기"') &&
-    dashboardDownloadButton.includes('title="엑셀 내보내기"') &&
+    dashboardDownloadButton.includes('aria-label="내보내기"') &&
+    dashboardDownloadButton.includes('title="내보내기"') &&
     dashboardDownloadButton.includes(">내보내기</span>") &&
     !dashboardDownloadButton.includes(">다운로드</span>") &&
     dashboardDownloadButton.includes("hidden sm:inline") &&
+    advertiserDashboard.includes("<DashboardExportDialog") &&
+    influencerDashboard.includes("<DashboardExportDialog") &&
+    advertiserDashboard.includes("exportWorkbookToGoogleSheets") &&
+    influencerDashboard.includes("exportWorkbookToGoogleSheets") &&
     xlsxExport.includes("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") &&
     advertiserDashboard.includes("handleDownloadDashboard") &&
     advertiserDashboard.includes("const CONTRACTS_PER_PAGE = 20") &&
@@ -1012,7 +1016,7 @@ check(
     advertiserContractFilterPanel.includes(advertiserContractTableGrid) &&
     hasAdvertiserContractFilterTableOrder &&
     agents.includes('visible Korean copy "내보내기"') &&
-    agents.includes('accessible/title copy "엑셀 내보내기"') &&
+    agents.includes('accessible/title copy "내보내기"') &&
     agents.includes("Excel export should sit immediately beside the dashboard title") &&
     agents.includes("Date filtering belongs inside the dashboard filter panel") &&
     agents.includes("same visible column order as the table") &&
@@ -1504,6 +1508,7 @@ check(
     landing.includes("function AdvertiserBuilderProductPreview") &&
     landing.includes("function AdvertiserContractReviewProductPreview") &&
     landing.includes("function AdvertiserApplicantsProductPreview") &&
+    landing.includes("function IntroMobileServiceCapture") &&
     landing.includes("function InfluencerContractPdfPreview") &&
     landing.includes("function InfluencerRevisionRequestPreview") &&
     landing.includes("function InfluencerIntroDashboardPreview") &&
@@ -1535,14 +1540,20 @@ check(
     landing.includes("bg-[#e9ede8]") &&
     !landing.includes("data-intro-headerless-service-capture\n      className={`${desktopOnly ? \"hidden sm:block\" : \"block\"} h-full min-h-0 overflow-hidden rounded-[16px] border border-neutral-200 bg-white") &&
     landing.includes("yeollock-intro-contract-builder-focused.png") &&
+    landing.includes("yeollock-intro-contract-builder-mobile.png") &&
     landing.includes("yeollock-intro-contract-share-focused.png") &&
     landing.includes("yeollock-intro-content-review-focused.png") &&
+    landing.includes("yeollock-intro-content-review-mobile.png") &&
     landing.includes("yeollock-intro-campaign-applicants-focused.png") &&
+    landing.includes("yeollock-intro-campaigns-mobile.png") &&
     landing.includes("advertiserProposalAssetUrls.contractBuilder") &&
+    landing.includes("imageSrc={advertiserProposalAssetUrls.introContractBuilderMobile}") &&
     landing.includes("imageSrc={advertiserProposalAssetUrls.introContractBuilder}") &&
     landing.includes("imageSrc={advertiserProposalAssetUrls.introContractShare}") &&
     landing.includes('imageClassName="object-contain object-center"') &&
+    landing.includes("imageSrc={advertiserProposalAssetUrls.introContentReviewMobile}") &&
     landing.includes("imageSrc={advertiserProposalAssetUrls.introContentReview}") &&
+    landing.includes("imageSrc={advertiserProposalAssetUrls.introCampaignsMobile}") &&
     landing.includes("imageSrc={advertiserProposalAssetUrls.introCampaignApplicants}") &&
     !landing.includes('imageSrc={advertiserProposalAssetUrls.introContractBuilder}\n        imageClassName="object-cover') &&
     !landing.includes('imageSrc={advertiserProposalAssetUrls.introContractShare}\n          imageClassName="object-cover') &&
@@ -1750,12 +1761,19 @@ check(
   agents.includes("Mobile intro product previews must not become card-in-card mockups") &&
     landing.includes("function ActualContractBuilderMobilePreview") &&
     landing.includes("<ActualContractBuilderMobilePreview />") &&
-    landing.includes("src={advertiserProposalAssetUrls.contractBuilder}") &&
-    landing.includes("top-[-5.7%]") &&
-    landing.includes("w-[203%]") &&
+    landing.includes("function IntroMobileServiceCapture") &&
+    landing.includes("src={imageSrc}") &&
+    landing.includes("yeollock-intro-contract-builder-mobile.png") &&
+    landing.includes("yeollock-intro-content-review-mobile.png") &&
+    landing.includes("yeollock-intro-campaigns-mobile.png") &&
+    landing.includes("imageSrc={advertiserProposalAssetUrls.introContractBuilderMobile}") &&
+    landing.includes("imageSrc={advertiserProposalAssetUrls.introContentReviewMobile}") &&
+    landing.includes("imageSrc={advertiserProposalAssetUrls.introCampaignsMobile}") &&
+    !landing.includes("top-[-5.7%]") &&
+    !landing.includes("w-[203%]") &&
     landing.includes("sm:hidden") &&
     !landing.includes("function AdvertiserBuilderMobileProductPreview"),
-  "Mobile contract builder intro must show a cropped actual product screen, not a nested input/PDF mockup",
+  "Mobile advertiser intro must use actual mobile service screenshots instead of desktop dashboard captures or nested mockups",
 );
 
 check(

@@ -47,6 +47,10 @@ const advertiserProposalAssetUrls = {
     "../../../docs/sales/assets/yeollock-influencer-contract.png",
     import.meta.url,
   ).href,
+  contractPdfReviewPage: new URL(
+    "../../../docs/sales/assets/yeollock-contract-pdf-review-page.png",
+    import.meta.url,
+  ).href,
   introCampaignApplicants: new URL(
     "../../../docs/sales/assets/yeollock-intro-campaign-applicants-focused.png",
     import.meta.url,
@@ -589,16 +593,33 @@ const influencerProposalSlides: IntroProposalSlide[] = [
     label: "조건",
     pageNo: "01",
     stage: "product",
-    title: (
+    context: (
       <>
         받은 광고
         <br />
+        계약
+      </>
+    ),
+    title: (
+      <>
+        흩어진 광고 조건은
+        <br />
         <strong className="inline-block bg-gradient-to-br from-[#1d4ed8] to-[#2f6df6] bg-clip-text font-black text-transparent">
-          계약 조건 확인
+          바로 확인
         </strong>
       </>
     ),
-    description: "",
+    description:
+      "메일과 카톡에 흩어진 광고 조건은 금액 확인 누락, 일정 착오, 산출물 불명확, 활용 권한 과다로 이어집니다.",
+    support: (
+      <>
+        메일과 카톡에 흩어진 광고 조건은
+        <br />
+        <strong>금액 확인 누락</strong>, <strong>일정 착오</strong>
+        <br />
+        <strong>산출물 불명확</strong>, <strong>활용 권한 과다</strong>로 이어집니다
+      </>
+    ),
     productPreview: "influencerConditionReview",
   },
   {
@@ -2068,7 +2089,7 @@ function FinalHandshakeVisual({
 }
 
 function IntroFinalStartModal({ role }: { role: IntroRole }) {
-  const startHref = role === "advertiser" ? "/signup/advertiser" : "/signup/influencer";
+  const signupHref = role === "advertiser" ? "/signup/advertiser" : "/signup/influencer";
 
   return (
     <div
@@ -2086,7 +2107,7 @@ function IntroFinalStartModal({ role }: { role: IntroRole }) {
         style={{ animation: "introFinalDialogIn 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both" }}
       >
         <Link
-          to={startHref}
+          to={signupHref}
           className="inline-flex h-12 items-center justify-center rounded-[10px] bg-blue-600 px-5 text-[15px] font-black text-white shadow-[0_16px_34px_rgba(37,99,235,0.22)] transition hover:bg-blue-700 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-blue-700"
         >
           시작하기
@@ -2577,10 +2598,10 @@ function InfluencerConditionReviewPreview() {
           <div className="flex min-h-0 flex-col gap-2 max-[640px]:gap-1.5">
             <div className="rounded-[12px] border border-blue-200 bg-blue-50 px-3.5 py-3 max-[640px]:px-3 max-[640px]:py-2">
               <p className="text-[11px] font-black text-blue-700">
-                먼저 확인할 조건
+                흩어진 광고 조건은
               </p>
               <p className="mt-1 break-keep text-[13px] font-black leading-5 text-neutral-950 max-[640px]:text-[12px] max-[640px]:leading-4">
-                금액, 일정, 컨텐츠, 활용 범위를 한 화면에서 봅니다.
+                금액 확인 누락, 일정 착오, 산출물 불명확, 활용 권한 과다로 이어집니다.
               </p>
             </div>
             <dl className="grid min-h-0 flex-1 gap-2 overflow-hidden max-[640px]:grid-cols-2 max-[640px]:gap-1.5">
@@ -2753,83 +2774,17 @@ function InfluencerCampaignApplyPreview() {
 }
 
 function InfluencerContractPdfPreview() {
-  const clauses = [
-    ["제1조 계약 목적", "오브레 스튜디오 선크림 캠페인 컨텐츠 제작과 게시를 목적으로 합니다."],
-    ["제2조 컨텐츠 및 일정", "인스타그램 릴스 1건과 스토리 2건을 2026.05.29까지 업로드합니다."],
-    ["제3조 지급 조건", "컨텐츠 확인 후 7영업일 이내에 1,800,000원을 지급합니다."],
-    ["제4조 콘텐츠 활용", "브랜드 채널 활용 범위는 게시일로부터 3개월로 제한합니다."],
-    ["제5조 검수 기준", "수정 요청은 1회로 제한하며 요청 내용은 계약 화면에 기록합니다."],
-  ];
-
   return (
-    <>
-      <div className="border-b border-neutral-200 bg-white px-3 py-2 max-[640px]:py-1.5">
-        <div className="flex min-w-0 items-center justify-between gap-2">
-          <div className="min-w-0">
-            <p className="truncate text-[12px] font-extrabold text-neutral-500 max-[640px]:text-[11px]">
-              오브레 스튜디오
-            </p>
-            <h3 className="truncate text-[15px] font-black text-neutral-950 max-[640px]:text-[14px]">
-              선크림 릴스 광고 계약서
-            </h3>
-          </div>
-          <span className="inline-flex h-8 shrink-0 items-center rounded-[8px] bg-blue-600 px-3 text-[11px] font-extrabold text-white max-[640px]:h-7 max-[640px]:px-2.5">
-            PDF 원문
-          </span>
-        </div>
+    <div className="flex min-h-0 flex-1 items-center justify-center bg-[#e9ece8] p-2 max-[640px]:p-1.5">
+      <div className="flex h-full min-h-0 w-full items-center justify-center overflow-hidden rounded-[8px] bg-white shadow-[0_16px_34px_rgba(15,23,42,0.1)]">
+        <img
+          src={advertiserProposalAssetUrls.contractPdfReviewPage}
+          alt="실제 PDF 계약서 원문 첫 페이지"
+          className="h-full w-full object-contain object-center"
+          loading="eager"
+        />
       </div>
-      <div className="flex min-h-0 flex-1 bg-[#f3f4f1] p-2 max-[640px]:p-1.5">
-        <div className="mx-auto flex h-full w-full max-w-[560px] flex-col overflow-hidden rounded-[8px] border border-neutral-200 bg-white px-6 py-5 shadow-[0_16px_34px_rgba(15,23,42,0.08)] max-[640px]:px-4 max-[640px]:py-3">
-          <div className="border-b border-neutral-300 pb-4 text-center max-[640px]:pb-2.5">
-            <p className="text-[20px] font-black tracking-normal text-neutral-950 max-[640px]:text-[17px]">
-              광고 계약서
-            </p>
-            <p className="mt-2 text-[11px] font-bold text-neutral-500 max-[640px]:mt-1">
-              오브레 스튜디오 · 민서홈
-            </p>
-          </div>
-
-          <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-2 border-b border-neutral-200 pb-4 text-[11px] max-[640px]:mt-2.5 max-[640px]:gap-x-3 max-[640px]:gap-y-1.5 max-[640px]:pb-2.5">
-            {[
-              ["계약명", "선크림 릴스 캠페인"],
-              ["보상", "1,800,000원"],
-              ["게시일", "2026.05.29"],
-              ["플랫폼", "Instagram"],
-            ].map(([label, value]) => (
-              <div key={label} className="grid grid-cols-[52px_minmax(0,1fr)] gap-2 max-[640px]:grid-cols-1 max-[640px]:gap-0.5">
-                <span className="font-extrabold text-neutral-500">{label}</span>
-                <strong className="truncate font-black text-neutral-950">
-                  {value}
-                </strong>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-4 grid min-h-0 flex-1 gap-2 overflow-hidden max-[640px]:mt-2.5 max-[640px]:gap-1.5">
-            {clauses.map(([title, body], index) => (
-              <section
-                key={title}
-                className={`rounded-[7px] bg-neutral-50 px-3.5 py-3 max-[640px]:px-3 max-[640px]:py-2 ${
-                  index > 2 ? "max-[640px]:hidden" : ""
-                }`}
-              >
-                <h4 className="text-[12px] font-black text-neutral-950 max-[640px]:text-[11px]">
-                  {title}
-                </h4>
-                <p className="mt-1 line-clamp-2 text-[11px] font-semibold leading-5 text-neutral-600 max-[640px]:line-clamp-1 max-[640px]:text-[10px] max-[640px]:leading-4">
-                  {body}
-                </p>
-              </section>
-            ))}
-          </div>
-
-          <div className="mt-4 grid grid-cols-2 gap-6 border-t border-neutral-200 pt-4 text-[10px] font-black text-neutral-500 max-[430px]:hidden">
-            <span className="border-t border-neutral-300 pt-2">광고주 서명</span>
-            <span className="border-t border-neutral-300 pt-2 text-right">인플루언서 서명</span>
-          </div>
-        </div>
-      </div>
-    </>
+    </div>
   );
 }
 
@@ -3622,7 +3577,7 @@ const introDashboardDemoData = {
             title: "밤 루틴 릴스 검수",
             payment: "1,600,000원",
             metric: "초안 제출",
-            date: "D-5 / 2026.05.29",
+            date: "D-4 / 2026.05.28",
           },
           {
             platform: "유튜브",
