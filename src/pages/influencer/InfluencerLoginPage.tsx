@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
+  AuthPasswordResetLink,
   AuthLoginQuickActions,
   AuthLoginScreen,
 } from "../../components/AuthLoginScreen";
@@ -134,16 +135,16 @@ export function InfluencerLoginPage() {
           onChange: setPassword,
         },
       ]}
-      submitLabel="대시보드 열기"
+      submitLabel="로그인"
       isSubmitting={isSubmitting}
       error={error}
       errorHint="이메일과 비밀번호를 확인해 주세요. 처음 받은 계약이라면 계정 만들기 후 같은 계약으로 돌아옵니다."
-      footer={
+      postSubmit={<AuthPasswordResetLink href="/reset-password?role=influencer" />}
+      belowCard={
         <>
           <AuthLoginQuickActions
             introHref="/intro/influencer"
             signupHref={`/signup/influencer?next=${encodeURIComponent(nextPath)}`}
-            resetHref="/reset-password?role=influencer"
           />
           <span className="sr-only">{PRODUCT_NAME}</span>
         </>

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import {
+  AuthPasswordResetLink,
   AuthLoginQuickActions,
   AuthLoginScreen,
 } from "../../components/AuthLoginScreen";
@@ -364,15 +365,15 @@ export function AdvertiserAuthGate({
             onChange: setPassword,
           },
         ]}
-        submitLabel="대시보드 열기"
+        submitLabel="로그인"
         isSubmitting={isSubmitting}
         error={error}
         errorHint="이메일, 비밀번호, 광고주 계정 권한을 확인해 주세요. 계정이 없다면 아래에서 계정을 먼저 만들 수 있습니다."
-        footer={
+        postSubmit={<AuthPasswordResetLink href="/reset-password?role=advertiser" />}
+        belowCard={
           <AuthLoginQuickActions
             introHref="/intro/advertiser"
             signupHref="/signup/advertiser"
-            resetHref="/reset-password?role=advertiser"
           />
         }
         onSubmit={handleSubmit}
