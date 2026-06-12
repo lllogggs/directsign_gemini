@@ -19478,8 +19478,12 @@ app.get("/api/contracts/:id/deliverables", async (request, response, next) => {
 
     const access = await resolveLegacyContractAccess(request, response, contract, {
       allowShareToken: false,
+      sendError: false,
     });
-    if (!access) return;
+    if (!access) {
+      response.status(404).json({ error: "Contract not found" });
+      return;
+    }
 
     response.setHeader("Cache-Control", "no-store");
     response.json(buildDeliverableResponse(contract, await readContractDeliverableBundle(contract)));
@@ -20006,8 +20010,12 @@ app.get(
 
       const access = await resolveLegacyContractAccess(request, response, contract, {
         allowShareToken: false,
+        sendError: false,
       });
-      if (!access) return;
+      if (!access) {
+        response.status(404).json({ error: "Contract not found" });
+        return;
+      }
       if (access.role === "admin" && access.supportAccess.scope !== "contract_and_pdf") {
         response.status(403).json({
           error: "This support access request does not include private file access",
@@ -20351,7 +20359,7 @@ app.get("/api/contracts/:id/final-pdf", async (request, response, next) => {
     const signedPdfCookieAccess = !access && hasSignedPdfCookieAccess(request, contract);
 
     if (!access && !signedPdfCookieAccess) {
-      response.status(403).json({ error: "Signed PDF access is not allowed" });
+      response.status(404).json({ error: "Contract not found" });
       return;
     }
 

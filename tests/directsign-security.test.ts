@@ -2070,6 +2070,38 @@ describe("yeollock.me security regressions", () => {
     assert.match(routeSource, /redactContractForClient\(contract, access\.role\)/);
   });
 
+  it("does not expose private contract existence through deliverable and final PDF endpoints", () => {
+    const server = read("server/index.ts");
+    const deliverablesStart = server.indexOf('app.get("/api/contracts/:id/deliverables"');
+    const deliverablesSource = server.slice(
+      deliverablesStart,
+      server.indexOf('app.post("/api/contracts/:id/post-link"', deliverablesStart),
+    );
+    const fileStart = server.indexOf(
+      '"/api/contracts/:id/deliverables/:deliverableId/files/:fileId"',
+    );
+    const fileSource = server.slice(
+      fileStart,
+      server.indexOf('app.post("/api/contracts/:id/support-access-requests"', fileStart),
+    );
+    const finalPdfStart = server.indexOf('app.get("/api/contracts/:id/final-pdf"');
+    const finalPdfSource = server.slice(
+      finalPdfStart,
+      server.indexOf('app.post("/api/contracts/:id/signatures/influencer"', finalPdfStart),
+    );
+
+    for (const [name, source] of [
+      ["deliverables", deliverablesSource],
+      ["deliverable file", fileSource],
+      ["final PDF", finalPdfSource],
+    ] as const) {
+      assert.notEqual(source.length, 0, `${name} route must exist`);
+      assert.match(source, /sendError: false/);
+      assert.match(source, /response\.status\(404\)\.json\(\{ error: "Contract not found" \}\)/);
+    }
+    assert.doesNotMatch(finalPdfSource, /Signed PDF access is not allowed/);
+  });
+
   it("binds Google OAuth callbacks to the active app session and one-time state nonce", () => {
     const server = read("server/index.ts");
     const authStart = server.indexOf("const authenticateGoogleWorkspaceOAuthCallback");
