@@ -186,6 +186,70 @@
       "destination": "/api/index"
     },
     {
+      "source": "/.env(.*)",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/data/(.*)",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/server/(.*)",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/supabase/(.*)",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/scripts/(.*)",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/tests/(.*)",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/lib/(.*)",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/qa-artifacts/(.*)",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/docs/sales/(.*).csv",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/docs/sales/(.*).tsv",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/docs/sales/(.*).json",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/package.json",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/package-lock.json",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/tsconfig(.*).json",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/vite.config.ts",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/AGENTS.md",
+      "destination": "/api/index"
+    },
+    {
       "source": "/intro/advertiser",
       "destination": "/intro/advertiser/index.html"
     },

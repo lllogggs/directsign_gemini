@@ -1954,9 +1954,18 @@ describe("yeollock.me security regressions", () => {
     };
     const gitignore = read(".gitignore");
     const vercelignore = read(".vercelignore");
+    const vercelConfig = JSON.parse(read("vercel.json")) as {
+      rewrites?: Array<{ source?: string; destination?: string }>;
+    };
     const privacyScan = read("scripts/privacy-pii-scan.mjs");
     const governance = read("docs/privacy-data-governance.md");
     const server = read("server/index.ts");
+    const sensitiveRewriteSources = new Map(
+      vercelConfig.rewrites?.map((rewrite) => [
+        rewrite.source,
+        rewrite.destination,
+      ]),
+    );
     const salesDocs = readdirSync(join(root, "docs", "sales"))
       .filter((file) => statSync(join(root, "docs", "sales", file)).isFile());
 
@@ -1978,6 +1987,26 @@ describe("yeollock.me security regressions", () => {
     assert.match(server, /server\(\?:\\\/\|\$\)/);
     assert.match(server, /const sensitiveSalesArtifactRequestPattern/);
     assert.match(server, /response\.status\(404\)\.type\("text\/plain"\)\.send\("Not found"\)/);
+    for (const source of [
+      "/.env(.*)",
+      "/data/(.*)",
+      "/server/(.*)",
+      "/supabase/(.*)",
+      "/scripts/(.*)",
+      "/tests/(.*)",
+      "/lib/(.*)",
+      "/qa-artifacts/(.*)",
+      "/docs/sales/(.*).csv",
+      "/docs/sales/(.*).tsv",
+      "/docs/sales/(.*).json",
+      "/package.json",
+      "/package-lock.json",
+      "/tsconfig(.*).json",
+      "/vite.config.ts",
+      "/AGENTS.md",
+    ]) {
+      assert.equal(sensitiveRewriteSources.get(source), "/api/index");
+    }
 
     for (const file of salesDocs) {
       assert.doesNotMatch(
