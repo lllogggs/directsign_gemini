@@ -4,7 +4,9 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardCheck,
+  Download,
   FileSignature,
+  FileSpreadsheet,
   FileText,
   LogOut,
   Megaphone,
@@ -351,7 +353,9 @@ type IntroProposalSlide = {
   visualFacts?: IntroProposalFact[];
   productPreview?:
     | "advertiserBuilder"
+    | "advertiserContractDocument"
     | "advertiserContractReview"
+    | "advertiserExportDashboard"
     | "advertiserApplicants"
     | "influencerConditionReview"
     | "influencerCampaignApply"
@@ -377,6 +381,9 @@ function collectIntroProposalImageSources(slides: IntroProposalSlide[]) {
       sources.add(advertiserProposalAssetUrls.contractBuilder);
       sources.add(advertiserProposalAssetUrls.introContractBuilder);
       sources.add(advertiserProposalAssetUrls.introContractBuilderMobile);
+    }
+    if (slide.productPreview === "advertiserContractDocument") {
+      sources.add(advertiserProposalAssetUrls.contractPdfReviewPage);
     }
     if (slide.productPreview === "advertiserContractReview") {
       sources.add(advertiserProposalAssetUrls.introContentReview);
@@ -480,7 +487,7 @@ const advertiserProposalSlides: IntroProposalSlide[] = [
         </span>
       </>
     ),
-    productPreview: "advertiserBuilder",
+    productPreview: "advertiserContractDocument",
   },
   {
     label: "공유",
@@ -496,12 +503,12 @@ const advertiserProposalSlides: IntroProposalSlide[] = [
       </>
     ),
     description:
-      "작성한 계약서를 링크로 전달하면 인플루언서가 확인 후 서명합니다",
+      "공유 링크를 복사해 DM으로 전달하면 인플루언서가 계약서를 확인하고 서명합니다",
     support: (
       <>
-        작성한 계약서를 링크로 전달하면
+        공유 링크를 복사해 DM으로 전달하면
         <br />
-        <strong>인플루언서</strong>가 확인 후 <strong>서명</strong>합니다
+        <strong>인플루언서</strong>가 계약서 확인 후 <strong>서명</strong>합니다
       </>
     ),
   },
@@ -511,29 +518,23 @@ const advertiserProposalSlides: IntroProposalSlide[] = [
     stage: "product",
     title: (
       <>
-        계약 관리를
+        한눈에 볼 수 있는
         <br />
         <strong className="inline-block bg-gradient-to-br from-[#1d4ed8] to-[#2f6df6] bg-clip-text font-black text-transparent">
-          효율적으로
+          대시보드
         </strong>
       </>
     ),
     description:
-      "진행과정 관리, 플랫폼별 관리, 콘텐츠 확인, 수정요청, 서명 관리",
+      "계약 상태를 한 화면에서 보고 엑셀 파일이나 Google 스프레드시트로 내보냅니다",
     support: (
       <>
-        진행과정 관리,
+        계약 상태를 한 화면에서 보고
         <br />
-        플랫폼별 관리
-        <br />
-        <strong>콘텐츠 확인</strong>
-        <br />
-        <strong>수정요청</strong>
-        <br />
-        서명 관리
+        <strong>엑셀 파일</strong>이나 <strong>Google 스프레드시트</strong>로 내보냅니다
       </>
     ),
-    productPreview: "advertiserContractReview",
+    productPreview: "advertiserExportDashboard",
   },
   {
     label: "모집",
@@ -589,39 +590,72 @@ const advertiserProposalSlides: IntroProposalSlide[] = [
 
 const influencerProposalSlides: IntroProposalSlide[] = [
   {
-    label: "조건",
+    label: "문제",
     pageNo: "01",
-    stage: "product",
+    stage: "pain",
     context: (
       <>
-        광고 계약
+        광고계약
       </>
     ),
     title: (
       <>
-        흩어진 광고 조건은
+        흩어진 <strong className="font-black">광고 계약</strong>은
+        <br />
+        <strong className="font-black text-[#e11d48]">위험</strong>합니다.
+      </>
+    ),
+    description: "흩어진 광고 계약은 위험합니다.",
+    riskItems: [
+      {
+        label: "광고비 미지급",
+        imageSrc: advertiserProposalAssetUrls.riskMissedContact,
+        imageAlt: "광고비 지급이 지연되는 상황",
+      },
+      {
+        label: "마감일 착오",
+        imageSrc: advertiserProposalAssetUrls.riskGeneralDispute,
+        imageAlt: "계약 일정이 불분명해 확인이 필요한 상황",
+      },
+      {
+        label: "컨텐츠 기준 변경",
+        imageSrc: advertiserProposalAssetUrls.riskRevisionRefusal,
+        imageAlt: "컨텐츠 기준이 뒤늦게 바뀌는 상황",
+      },
+      {
+        label: "활용 범위 과다",
+        imageSrc: advertiserProposalAssetUrls.riskProductHeld,
+        imageAlt: "광고 컨텐츠 활용 범위가 불명확한 상황",
+      },
+    ],
+  },
+  {
+    label: "관리",
+    pageNo: "02",
+    stage: "product",
+    title: (
+      <>
+        받은 광고 계약
         <br />
         <strong className="inline-block bg-gradient-to-br from-[#1d4ed8] to-[#2f6df6] bg-clip-text font-black text-transparent">
-          바로 확인
+          한눈에 관리
         </strong>
       </>
     ),
     description:
-      "메일과 카톡에 흩어진 광고 조건은 금액 확인 누락, 일정 착오, 산출물 불명확, 활용 권한 과다로 이어집니다.",
+      "메일과 카톡에 흩어진 계약을 받은 계약 대시보드에서 계약별로 모아 보고, 할 일과 마감일을 확인합니다.",
     support: (
       <>
-        메일과 카톡에 흩어진 광고 조건은
+        메일과 카톡에 흩어진 계약을
         <br />
-        <strong>금액 확인 누락</strong>, <strong>일정 착오</strong>
-        <br />
-        <strong>산출물 불명확</strong>, <strong>활용 권한 과다</strong>로 이어집니다
+        <strong>받은 계약 대시보드</strong>에서 계약별로 관리합니다
       </>
     ),
-    productPreview: "influencerConditionReview",
+    productPreview: "influencerDashboard",
   },
   {
-    label: "링크",
-    pageNo: "02",
+    label: "조건",
+    pageNo: "03",
     stage: "product",
     title: (
       <>
@@ -633,7 +667,7 @@ const influencerProposalSlides: IntroProposalSlide[] = [
       </>
     ),
     description:
-      "광고주가 보낸 계약 링크를 열면 브랜드, 보상, 마감, 컨텐츠가 먼저 보입니다.",
+      "광고주가 보낸 계약 링크를 열면 브랜드, 보상, 마감, 컨텐츠, 활용 범위를 먼저 확인합니다.",
     support: (
       <>
         광고주가 보낸 계약 링크에서
@@ -641,13 +675,11 @@ const influencerProposalSlides: IntroProposalSlide[] = [
         <strong>브랜드, 보상, 마감, 컨텐츠</strong>를 먼저 확인합니다
       </>
     ),
-    imageSrc: advertiserProposalAssetUrls.influencerContract,
-    imageAlt: "인플루언서 계약서 링크 확인 화면",
-    imageFit: "contain",
+    productPreview: "influencerConditionReview",
   },
   {
     label: "원문",
-    pageNo: "03",
+    pageNo: "04",
     stage: "facts",
     title: (
       <>
@@ -671,7 +703,7 @@ const influencerProposalSlides: IntroProposalSlide[] = [
   },
   {
     label: "요청",
-    pageNo: "04",
+    pageNo: "05",
     stage: "facts",
     title: (
       <>
@@ -692,32 +724,6 @@ const influencerProposalSlides: IntroProposalSlide[] = [
       </>
     ),
     productPreview: "influencerRevision",
-  },
-  {
-    label: "보관",
-    pageNo: "05",
-    stage: "facts",
-    title: (
-      <>
-        계약별
-        <br />
-        할 일을
-        <br />
-        <strong className="inline-block bg-gradient-to-br from-[#1d4ed8] to-[#2f6df6] bg-clip-text font-black text-transparent">
-          한눈에 관리
-        </strong>
-      </>
-    ),
-    description:
-      "지원, 진행, 완료, 미선정 상태를 분리해 다음에 해야 할 일을 바로 확인합니다.",
-    support: (
-      <>
-        받은 계약과 서명 완료본을 계약별로 보관하고
-        <br />
-        다음 할 일을 바로 확인합니다
-      </>
-    ),
-    productPreview: "influencerDashboard",
   },
   {
     label: "신청",
@@ -755,8 +761,8 @@ const influencerProposalSlides: IntroProposalSlide[] = [
         <strong className="font-black">광고 참여</strong>
       </>
     ),
-    description: "계약 확인부터 캠페인 신청까지 연락미에서 시작하세요",
-    support: <strong>계약 확인부터 캠페인 신청까지</strong>,
+    description: "계약 확인부터 수정 요청, 서명 완료본 보관, 캠페인 신청까지 연락미에서 시작하세요",
+    support: <strong>계약 확인부터 서명 완료본 보관까지</strong>,
     imageSrc: advertiserProposalAssetUrls.contractHandshake,
     imageAlt: "계약서 서명 후 광고주와 인플루언서가 악수하는 장면",
     imageFit: "cover",
@@ -1889,7 +1895,7 @@ function ProposalSlideView({
               <p
                 className={
                   isFirstProposalSlide
-                    ? "mx-auto mb-2 block max-w-[310px] bg-gradient-to-br from-[#0f172a] to-[#2f6df6] bg-clip-text text-center font-neo-heavy text-[29px] font-black leading-[0.94] tracking-normal text-transparent drop-shadow-[0_12px_22px_rgba(36,86,214,0.14)] after:mx-auto after:mt-2 after:block after:h-1 after:w-10 after:rounded-full after:bg-blue-600 after:shadow-[0_12px_26px_rgba(36,86,214,0.24)] sm:mx-0 sm:mb-4 sm:max-w-none sm:text-left sm:text-[clamp(40px,4.2vw,52px)] sm:after:mx-0"
+                    ? "mx-auto mb-2 block max-w-none whitespace-nowrap break-keep bg-gradient-to-br from-[#0f172a] to-[#2f6df6] bg-clip-text text-center font-neo-heavy text-[27px] font-black leading-[0.94] tracking-normal text-transparent drop-shadow-[0_12px_22px_rgba(36,86,214,0.14)] after:mx-auto after:mt-2 after:block after:h-1 after:w-10 after:rounded-full after:bg-blue-600 after:shadow-[0_12px_26px_rgba(36,86,214,0.24)] sm:mx-0 sm:mb-4 sm:max-w-none sm:text-left sm:text-[clamp(40px,4.2vw,52px)] sm:after:mx-0"
                     : "mx-auto mb-2 inline-flex max-w-[260px] items-center justify-center rounded-full border border-blue-200/70 bg-white/75 px-2.5 py-1 text-center text-[11px] font-black leading-none tracking-normal text-blue-700 shadow-[0_10px_24px_rgba(37,99,235,0.08)] sm:mx-0 sm:mb-3 sm:max-w-none sm:justify-start sm:px-3 sm:text-left sm:text-[12px]"
                 }
               >
@@ -1926,13 +1932,7 @@ function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
   if (slide.stage === "link") {
     return (
       <div data-intro-visual className={introVisualFrameClass}>
-        <AdvertiserMobileLinkPreview />
-        <IntroDesktopServiceCapture
-          desktopOnly
-          imageAlt="실제 광고주 계약서 공유 링크 생성 화면"
-          imageSrc={advertiserProposalAssetUrls.introContractShare}
-          imageClassName="object-contain object-center"
-        />
+        <AdvertiserShareDmPreview />
       </div>
     );
   }
@@ -2314,7 +2314,120 @@ function InfluencerContractLinkMobilePreview() {
   );
 }
 
-function AdvertiserMobileLinkPreview() {
+function AdvertiserShareDmPreview() {
+  return (
+    <section className="grid h-full min-h-0 grid-rows-[minmax(0,0.44fr)_minmax(0,0.56fr)] gap-2 rounded-[16px] bg-[#e9ede8] p-1.5 sm:grid-cols-[minmax(0,0.58fr)_minmax(250px,0.42fr)] sm:grid-rows-none sm:gap-3 sm:p-3">
+      <div className="flex min-h-0 flex-col overflow-hidden rounded-[14px] border border-neutral-200 bg-white shadow-[0_18px_44px_rgba(15,23,42,0.08)]">
+        <div className="flex h-12 shrink-0 items-center justify-between border-b border-neutral-200 px-3.5 sm:h-14 sm:px-4">
+          <div className="min-w-0">
+            <p className="truncate text-[11px] font-extrabold text-neutral-500">
+              선크림 릴스 광고
+            </p>
+            <h3 className="truncate text-[14px] font-black text-neutral-950 sm:text-[16px]">
+              계약 공유
+            </h3>
+          </div>
+          <span className="inline-flex h-8 shrink-0 items-center rounded-[8px] bg-blue-600 px-3 text-[11px] font-black text-white sm:h-9 sm:px-4">
+            공유 링크 생성
+          </span>
+        </div>
+
+        <div className="grid min-h-0 flex-1 gap-2 bg-[#fbfcfa] p-2.5 sm:gap-3 sm:p-4">
+          <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
+            {[
+              ["계약서", "오브레 비건 선크림 릴스"],
+              ["인플루언서", "민서홈 · @minseo_home"],
+              ["컨텐츠", "릴스 1건 · 스토리 2건"],
+              ["마감", "2026.05.29"],
+            ].map(([label, value]) => (
+              <div
+                key={label}
+                className="min-w-0 rounded-[10px] border border-neutral-200 bg-white px-2.5 py-2 sm:px-3 sm:py-2.5"
+              >
+                <p className="text-[10px] font-extrabold text-neutral-500">
+                  {label}
+                </p>
+                <p className="mt-1 truncate text-[12px] font-black text-neutral-950 sm:text-[13px]">
+                  {value}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          <div className="hidden grid-cols-3 gap-2 sm:grid">
+            {[
+              ["링크 상태", "활성"],
+              ["유효기간", "7일"],
+              ["전달 채널", "DM"],
+            ].map(([label, value]) => (
+              <div
+                key={label}
+                className="rounded-[10px] border border-blue-100 bg-blue-50/60 px-3 py-2"
+              >
+                <p className="text-[10px] font-extrabold text-blue-700">
+                  {label}
+                </p>
+                <p className="mt-1 truncate text-[12px] font-black text-neutral-950">
+                  {value}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-auto rounded-[14px] border-2 border-blue-500 bg-white p-3 shadow-[0_18px_36px_rgba(37,99,235,0.14)] sm:p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[11px] font-extrabold text-blue-700">
+                  공유 링크
+                </p>
+                <p className="mt-1 truncate font-mono text-[11px] font-bold text-neutral-500 sm:text-[12px]">
+                  yeollock.me/contract/obrea-reels
+                </p>
+              </div>
+              <span className="inline-flex h-9 shrink-0 items-center rounded-[9px] bg-neutral-950 px-3 text-[11px] font-black text-white">
+                링크 복사
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex min-h-0 items-center justify-center overflow-hidden rounded-[14px] bg-[#dfe5df] p-2 sm:p-3">
+        <div className="flex h-full max-h-[620px] w-full max-w-[318px] flex-col overflow-hidden rounded-[24px] border-[7px] border-neutral-950 bg-neutral-950 shadow-[0_22px_48px_rgba(15,23,42,0.2)] sm:rounded-[28px] sm:border-[8px]">
+          <div className="flex h-11 shrink-0 items-center gap-2 bg-neutral-950 px-3 text-white">
+            <span className="h-6 w-6 rounded-full bg-gradient-to-br from-[#f58529] via-[#dd2a7b] to-[#515bd4]" />
+            <div className="min-w-0">
+              <p className="truncate text-[11px] font-black">@minseo_home</p>
+              <p className="truncate text-[9px] font-bold text-white/55">
+                Instagram DM
+              </p>
+            </div>
+          </div>
+          <div className="flex min-h-0 flex-1 flex-col gap-2 bg-[#f5f6f7] px-3 py-3">
+            <div className="max-w-[86%] rounded-[16px] rounded-bl-[5px] bg-white px-3 py-2 shadow-sm">
+              <p className="break-keep text-[11px] font-bold leading-5 text-neutral-800">
+                안녕하세요. 계약서 링크 보내드려요. 확인 후 서명 부탁드립니다.
+              </p>
+              <p className="mt-2 rounded-[10px] bg-blue-50 px-2 py-1.5 font-mono text-[10px] font-black text-blue-700">
+                yeollock.me/contract/obrea-reels
+              </p>
+            </div>
+            <div className="ml-auto max-w-[82%] rounded-[16px] rounded-br-[5px] bg-blue-600 px-3 py-2 shadow-sm">
+              <p className="break-keep text-[11px] font-bold leading-5 text-white">
+                계약서 확인하고 서명하겠습니다~!
+              </p>
+            </div>
+            <div className="mt-auto flex h-9 items-center rounded-full bg-white px-3 text-[10px] font-bold text-neutral-400 ring-1 ring-neutral-200">
+              메시지 입력...
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function _AdvertiserMobileLinkPreview() {
   return (
     <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[18px] border border-neutral-200 bg-white shadow-[0_18px_44px_rgba(15,23,42,0.1)] sm:hidden">
       <div className="flex h-12 shrink-0 items-center justify-between border-b border-neutral-200 px-3.5">
@@ -2413,8 +2526,16 @@ function IntroProposalProductPreview({
     return <AdvertiserBuilderProductPreview />;
   }
 
+  if (kind === "advertiserContractDocument") {
+    return <AdvertiserContractDocumentProductPreview />;
+  }
+
   if (kind === "advertiserContractReview") {
     return <AdvertiserContractReviewProductPreview />;
+  }
+
+  if (kind === "advertiserExportDashboard") {
+    return <AdvertiserExportDashboardPreview />;
   }
 
   if (kind === "advertiserApplicants") {
@@ -2515,6 +2636,153 @@ function IntroMobileServiceCapture({
   );
 }
 
+function AdvertiserContractDocumentProductPreview() {
+  return (
+    <>
+      <section
+        data-intro-real-service-capture
+        data-intro-headerless-service-capture
+        className="flex h-full min-h-0 w-full items-center justify-center overflow-hidden rounded-[16px] bg-[#e9ede8] p-2 sm:hidden"
+      >
+        <div className="flex h-full max-h-[606px] w-full items-center justify-center overflow-hidden rounded-[16px] bg-[#e2e5df] p-2 shadow-[0_16px_34px_rgba(15,23,42,0.08)] ring-1 ring-neutral-200/80">
+          <img
+            src={advertiserProposalAssetUrls.contractPdfReviewPage}
+            alt="현재 PDF 계약서 원문 미리보기"
+            className="h-full w-full object-contain object-center"
+            loading="eager"
+          />
+        </div>
+      </section>
+      <section className="hidden h-full min-h-0 overflow-hidden rounded-[16px] border border-neutral-200 bg-[#f4f5f2] p-3 shadow-[0_18px_48px_rgba(23,26,23,0.08)] sm:grid sm:grid-cols-[minmax(240px,0.38fr)_minmax(0,0.62fr)] sm:gap-3">
+        <div className="flex min-h-0 flex-col overflow-hidden rounded-[12px] border border-neutral-200 bg-white">
+          <div className="border-b border-neutral-200 px-4 py-3">
+            <p className="text-[11px] font-extrabold text-blue-700">
+              계약 조건 입력
+            </p>
+            <h3 className="mt-1 text-[17px] font-black text-neutral-950">
+              입력값이 계약서에 반영
+            </h3>
+          </div>
+          <div className="grid min-h-0 flex-1 content-start gap-2 bg-[#fbfcfa] p-3">
+            {[
+              ["플랫폼", "인스타그램"],
+              ["컨텐츠", "릴스 1건 · 스토리 2건"],
+              ["영상 길이", "30초 이상"],
+              ["지급 조건", "콘텐츠 확인 후 7영업일"],
+              ["활용 범위", "브랜드 채널 3개월"],
+            ].map(([label, value]) => (
+              <div
+                key={label}
+                className="rounded-[10px] border border-neutral-200 bg-white px-3 py-2.5"
+              >
+                <p className="text-[10px] font-extrabold text-neutral-500">
+                  {label}
+                </p>
+                <p className="mt-1 truncate text-[12px] font-black text-neutral-950">
+                  {value}
+                </p>
+              </div>
+            ))}
+          </div>
+          <div className="border-t border-neutral-200 bg-white p-3">
+            <span className="inline-flex h-10 w-full items-center justify-center rounded-[10px] bg-neutral-950 text-[12px] font-black text-white">
+              PDF 계약서 생성
+            </span>
+          </div>
+        </div>
+
+        <div className="flex min-h-0 items-center justify-center overflow-hidden rounded-[12px] bg-[#e2e5df] p-3">
+          <div className="relative flex h-full w-full max-w-[520px] items-center justify-center overflow-hidden rounded-[8px] bg-white shadow-[0_22px_48px_rgba(15,23,42,0.18)] ring-1 ring-neutral-300">
+            <img
+              src={advertiserProposalAssetUrls.contractPdfReviewPage}
+              alt="현재 PDF 계약서 원문"
+              className="h-full w-full object-contain object-center"
+              loading="eager"
+            />
+          </div>
+        </div>
+      </section>
+    </>
+  );
+}
+
+function AdvertiserExportDashboardPreview() {
+  const state = introDashboardDemoData.advertiser.states[1];
+
+  return (
+    <section className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-[16px] border border-neutral-200 bg-[#f4f5f2] p-2 shadow-[0_18px_48px_rgba(23,26,23,0.08)] sm:p-3">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[10px] border border-[#d9e0d9] bg-white">
+        <div className="border-b border-[#d9e0d9] bg-white px-3 py-2 sm:px-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h3 className="truncate text-[15px] font-black text-[#171a17] sm:text-[17px]">
+                계약 운영 대시보드
+              </h3>
+              <p className="mt-0.5 truncate text-[10px] font-bold text-[#7d857f] sm:text-[12px]">
+                진행중 계약 3건 · 전체 조건
+              </p>
+            </div>
+            <span className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-[8px] border border-neutral-200 bg-white px-3 text-[11px] font-black text-neutral-800 shadow-[0_1px_0_rgba(15,23,42,0.04)]">
+              <Download className="h-3.5 w-3.5" strokeWidth={2} />
+              내보내기
+            </span>
+          </div>
+        </div>
+        <IntroAdvertiserAccountBanner
+          accountMeta={introDashboardDemoData.advertiser.accountMeta}
+          accountName={introDashboardDemoData.advertiser.accountName}
+        />
+        <div className="min-h-0 flex-1 p-2">
+          <IntroContractBoard state={state} />
+        </div>
+      </div>
+
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-neutral-950/10 px-4">
+        <div className="w-full max-w-[360px] rounded-[10px] border border-neutral-200 bg-white p-3 shadow-[0_24px_70px_rgba(15,23,42,0.22)] sm:max-w-[390px] sm:p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[15px] font-black text-neutral-950 sm:text-[17px]">
+                내보내기
+              </p>
+            </div>
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-neutral-100 text-[15px] font-black text-neutral-500">
+              ×
+            </span>
+          </div>
+          <div className="mt-3 grid gap-2">
+            <div className="flex min-h-[54px] items-center gap-3 rounded-[8px] border border-neutral-200 bg-white px-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] bg-neutral-100 text-neutral-800">
+                <Download className="h-4 w-4" strokeWidth={2} />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[14px] font-black text-neutral-950">
+                  엑셀 파일
+                </span>
+                <span className="block truncate text-[12px] font-semibold text-neutral-500">
+                  .xlsx로 바로 다운로드
+                </span>
+              </span>
+            </div>
+            <div className="flex min-h-[54px] items-center gap-3 rounded-[8px] border border-neutral-200 bg-white px-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] bg-[#e8f0fe] text-[#1a73e8]">
+                <FileSpreadsheet className="h-4 w-4" strokeWidth={2} />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[14px] font-black text-neutral-950">
+                  Google 스프레드시트
+                </span>
+                <span className="block truncate text-[12px] font-semibold text-neutral-500">
+                  연결된 Google Drive에 새 시트 생성
+                </span>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function AdvertiserBuilderProductPreview() {
   return (
     <>
@@ -2588,14 +2856,14 @@ function InfluencerConditionReviewPreview() {
         <div className="flex h-12 shrink-0 items-center justify-between border-b border-neutral-200 bg-white px-3.5 max-[640px]:h-11">
           <div className="min-w-0">
             <p className="truncate text-[11px] font-extrabold text-neutral-500">
-              받은 계약
+              계약 링크
             </p>
             <h3 className="truncate text-[15px] font-black text-neutral-950 max-[640px]:text-[14px]">
-              릴스 협찬 조건 확인
+              핵심 조건 확인
             </h3>
           </div>
           <span className="inline-flex h-8 shrink-0 items-center rounded-[8px] bg-neutral-950 px-3 text-[11px] font-black text-white max-[640px]:h-7 max-[640px]:px-2.5">
-            서명 전
+            계약서 확인
           </span>
         </div>
 
@@ -2603,10 +2871,10 @@ function InfluencerConditionReviewPreview() {
           <div className="flex min-h-0 flex-col gap-2 max-[640px]:gap-1.5">
             <div className="rounded-[12px] border border-blue-200 bg-blue-50 px-3.5 py-3 max-[640px]:px-3 max-[640px]:py-2">
               <p className="text-[11px] font-black text-blue-700">
-                흩어진 광고 조건은
+                광고 조건 한눈에
               </p>
               <p className="mt-1 break-keep text-[13px] font-black leading-5 text-neutral-950 max-[640px]:text-[12px] max-[640px]:leading-4">
-                금액 확인 누락, 일정 착오, 산출물 불명확, 활용 권한 과다로 이어집니다.
+                브랜드, 보상, 마감, 컨텐츠, 활용 범위를 서명 전에 확인합니다.
               </p>
             </div>
             <dl className="grid min-h-0 flex-1 gap-2 overflow-hidden max-[640px]:grid-cols-2 max-[640px]:gap-1.5">
@@ -2639,7 +2907,7 @@ function InfluencerConditionReviewPreview() {
                   계약서 원문
                 </p>
                 <p className="mt-1 text-[15px] font-black text-neutral-950">
-                  광고 계약 조건
+                  광고 계약 원문
                 </p>
               </div>
               <span className="rounded-full bg-blue-50 px-3 py-1 text-[10px] font-black text-blue-700 ring-1 ring-blue-200">

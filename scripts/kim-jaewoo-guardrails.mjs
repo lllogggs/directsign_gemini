@@ -1498,15 +1498,16 @@ check(
   agents.includes("Intro carousel mobile image areas must not crop product screenshots") &&
     agents.includes("Influencer mobile intro pages must stay product-screen and dashboard centered") &&
     landing.includes("data-intro-visual") &&
-    landing.includes('productPreview: "advertiserBuilder"') &&
-    landing.includes('productPreview: "advertiserContractReview"') &&
+    landing.includes('productPreview: "advertiserContractDocument"') &&
+    landing.includes('productPreview: "advertiserExportDashboard"') &&
     landing.includes('productPreview: "advertiserApplicants"') &&
     landing.includes('productPreview: "influencerPdf"') &&
     landing.includes('productPreview: "influencerRevision"') &&
     landing.includes('productPreview: "influencerDashboard"') &&
     landing.includes("function IntroProposalProductPreview") &&
-    landing.includes("function AdvertiserBuilderProductPreview") &&
-    landing.includes("function AdvertiserContractReviewProductPreview") &&
+    landing.includes("function AdvertiserContractDocumentProductPreview") &&
+    landing.includes("function AdvertiserShareDmPreview") &&
+    landing.includes("function AdvertiserExportDashboardPreview") &&
     landing.includes("function AdvertiserApplicantsProductPreview") &&
     landing.includes("function IntroMobileServiceCapture") &&
     landing.includes("function InfluencerContractPdfPreview") &&
@@ -1517,20 +1518,23 @@ check(
     landing.includes("data-intro-carousel-controls") &&
     !landing.includes("data-intro-mobile-controls") &&
     landing.includes("object-[52%_center]") &&
+    landing.includes("contractPdfReviewPage") &&
+    landing.includes('imageClassName="object-contain object-center"') &&
     salesAdvertiserIntroduction.includes(".product-shot.product-shot-final img") &&
     salesAdvertiserIntroduction.includes("object-fit: cover;") &&
     salesAdvertiserIntroduction.includes("object-position: center;"),
-  "Intro mobile slides should use real product/dashboard previews, avoid duplicate inner headers, and keep final imagery contained in the shared visual frame",
+  "Intro mobile slides should keep product/dashboard previews contained, avoid duplicate inner headers, and keep final imagery contained in the shared visual frame",
 );
 
 check(
   "advertiser intro PC proposal previews stay dense",
-  agents.includes("Advertiser intro PC proposal pages after the first slide must preserve the approved dense") &&
+  agents.includes("Advertiser intro PC proposal pages after the first slide must preserve a dense, real-service feel") &&
     agents.includes("Intro carousel controls should sit together as one page-level bottom-center cluster") &&
-    agents.includes("Use headerless, focused actual service capture assets for the PC writing, link-share, content-review/contract-management, and campaign-applicant previews") &&
-    agents.includes("Focused capture crops must keep sidebars and action panels fully visible") &&
+    agents.includes("current approved advertiser flow") &&
+    agents.includes('page 3 highlights the actual "공유 링크 생성"') &&
+    agents.includes('page 4 shows the contract dashboard with the "내보내기" chooser') &&
+    agents.includes("Product previews may be composed in React") &&
     agents.includes("use the neutral gray intro background behind it rather than white top/bottom letterbox bands") &&
-    agents.includes('The link-share preview must show the actual "공유 링크 생성" action') &&
     landing.includes("function IntroDesktopServiceCapture") &&
     landing.includes("data-intro-carousel-controls") &&
     !landing.includes("sm:left-3 sm:top-1/2") &&
@@ -1547,9 +1551,15 @@ check(
     landing.includes("yeollock-intro-campaign-applicants-focused.png") &&
     landing.includes("yeollock-intro-campaigns-mobile.png") &&
     landing.includes("advertiserProposalAssetUrls.contractBuilder") &&
-    landing.includes("imageSrc={advertiserProposalAssetUrls.introContractBuilderMobile}") &&
-    landing.includes("imageSrc={advertiserProposalAssetUrls.introContractBuilder}") &&
-    landing.includes("imageSrc={advertiserProposalAssetUrls.introContractShare}") &&
+    landing.includes("contractPdfReviewPage") &&
+    landing.includes("function AdvertiserContractDocumentProductPreview") &&
+    landing.includes("function AdvertiserShareDmPreview") &&
+    landing.includes("function AdvertiserExportDashboardPreview") &&
+    landing.includes("공유 링크 생성") &&
+    landing.includes("계약서 확인하고 서명하겠습니다~!") &&
+    landing.includes("내보내기") &&
+    landing.includes("엑셀 파일") &&
+    landing.includes("Google 스프레드시트") &&
     landing.includes('imageClassName="object-contain object-center"') &&
     landing.includes("imageSrc={advertiserProposalAssetUrls.introContentReviewMobile}") &&
     landing.includes("imageSrc={advertiserProposalAssetUrls.introContentReview}") &&
@@ -2165,22 +2175,24 @@ check(
 
 check(
   "intro influencer explains why not email",
-  landing.includes("광고 계약") &&
-    landing.includes("흩어진 광고") &&
+  landing.includes("광고계약") &&
+    landing.includes("흩어진 광고 계약") &&
+    landing.includes("위험") &&
+    landing.includes("광고비 미지급") &&
+    landing.includes("마감일 착오") &&
+    landing.includes("컨텐츠 기준 변경") &&
+    landing.includes("활용 범위 과다") &&
+    landing.includes("받은 광고 계약") &&
+    landing.includes("받은 계약 대시보드") &&
     landing.includes("const influencerProposalSlides") &&
-    landing.includes("메일과 카톡에 흩어진") &&
-    landing.includes("금액 확인 누락") &&
-    landing.includes("일정 착오") &&
-    landing.includes("산출물 불명확") &&
-    landing.includes("활용 권한 과다") &&
     landing.includes("PDF 계약서") &&
     landing.includes("원문 확인") &&
     landing.includes("수정 요청") &&
     landing.includes("서명 완료본") &&
-    qaStandard.includes('"광고 계약"') &&
-    qaStandard.includes('"금액 확인 누락"') &&
-    agents.includes("instead of email or Kakao"),
-  "Influencer intro first viewport must make the email/Kakao replacement value concrete before dashboard taxonomy copy",
+    qaStandard.includes('"광고계약"') &&
+    qaStandard.includes('"광고비 미지급"') &&
+    agents.includes("Influencer intro pages must now lead like the advertiser pain-point opener"),
+  "Influencer intro first viewport must lead with creator-side contract risk cards before showing the received-contract dashboard",
 );
 
 for (const role of ["advertiser", "influencer"]) {
