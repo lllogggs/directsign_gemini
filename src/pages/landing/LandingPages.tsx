@@ -426,7 +426,8 @@ const advertiserProposalSlides: IntroProposalSlide[] = [
     title: (
       <>
         <strong className="font-black">계약서</strong>
-        <br />
+        <span className="sm:hidden"> </span>
+        <br className="hidden sm:block" />
         없는 <strong className="font-black">약속</strong>은
         <br />
         <strong className="font-black text-[#e11d48]">위험</strong>합니다.
@@ -593,7 +594,7 @@ const influencerProposalSlides: IntroProposalSlide[] = [
     stage: "product",
     context: (
       <>
-        받은 광고 계약
+        광고 계약
       </>
     ),
     title: (
@@ -1873,6 +1874,7 @@ function ProposalSlideView({
   slide: IntroProposalSlide;
 }) {
   const desktopSupport = slide.support || slide.description;
+  const isFirstProposalSlide = slide.pageNo === "01";
 
   return (
     <div
@@ -1884,12 +1886,22 @@ function ProposalSlideView({
         >
           <div className="mx-auto min-w-0 text-center sm:mx-0 sm:text-left">
             {slide.context ? (
-              <p className="mx-auto mb-2 inline-flex max-w-[260px] items-center justify-center rounded-full border border-blue-200/70 bg-white/75 px-2.5 py-1 text-center text-[11px] font-black leading-none tracking-normal text-blue-700 shadow-[0_10px_24px_rgba(37,99,235,0.08)] sm:mx-0 sm:mb-3 sm:max-w-none sm:justify-start sm:px-3 sm:text-left sm:text-[12px]">
+              <p
+                className={
+                  isFirstProposalSlide
+                    ? "mx-auto mb-2 block max-w-[310px] bg-gradient-to-br from-[#0f172a] to-[#2f6df6] bg-clip-text text-center font-neo-heavy text-[29px] font-black leading-[0.94] tracking-normal text-transparent drop-shadow-[0_12px_22px_rgba(36,86,214,0.14)] after:mx-auto after:mt-2 after:block after:h-1 after:w-10 after:rounded-full after:bg-blue-600 after:shadow-[0_12px_26px_rgba(36,86,214,0.24)] sm:mx-0 sm:mb-4 sm:max-w-none sm:text-left sm:text-[clamp(40px,4.2vw,52px)] sm:after:mx-0"
+                    : "mx-auto mb-2 inline-flex max-w-[260px] items-center justify-center rounded-full border border-blue-200/70 bg-white/75 px-2.5 py-1 text-center text-[11px] font-black leading-none tracking-normal text-blue-700 shadow-[0_10px_24px_rgba(37,99,235,0.08)] sm:mx-0 sm:mb-3 sm:max-w-none sm:justify-start sm:px-3 sm:text-left sm:text-[12px]"
+                }
+              >
                 {slide.context}
               </p>
             ) : null}
             <h2
-              className="mx-auto max-w-[310px] break-keep text-center font-neo-heavy text-[24px] leading-[1.06] tracking-normal text-neutral-950 sm:mx-0 sm:max-w-none sm:text-left sm:text-[clamp(38px,4.15vw,48px)] sm:leading-[1.07]"
+              className={`mx-auto max-w-[310px] break-keep text-center font-neo-heavy leading-[1.06] tracking-normal text-neutral-950 sm:mx-0 sm:max-w-none sm:text-left sm:leading-[1.07] ${
+                isFirstProposalSlide
+                  ? "text-[23px] sm:text-[clamp(34px,3.6vw,44px)]"
+                  : "text-[24px] sm:text-[clamp(38px,4.15vw,48px)]"
+              }`}
             >
               {slide.title}
             </h2>

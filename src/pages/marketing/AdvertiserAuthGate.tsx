@@ -1,6 +1,9 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
-import { AuthLoginScreen } from "../../components/AuthLoginScreen";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
+import {
+  AuthLoginQuickActions,
+  AuthLoginScreen,
+} from "../../components/AuthLoginScreen";
 import { apiFetch } from "../../domain/api";
 import {
   preloadAdvertiserDashboardBootstrap,
@@ -366,28 +369,11 @@ export function AdvertiserAuthGate({
         error={error}
         errorHint="이메일, 비밀번호, 광고주 계정 권한을 확인해 주세요. 계정이 없다면 아래에서 계정을 먼저 만들 수 있습니다."
         footer={
-          <div className="flex flex-wrap items-center justify-center gap-3">
-            <Link
-              to="/signup/advertiser"
-              className="inline-flex min-h-9 items-center text-[13px] font-semibold text-neutral-950 transition hover:text-neutral-600"
-            >
-              계정 만들기
-            </Link>
-            <span className="h-3 w-px bg-neutral-200" />
-            <Link
-              to="/reset-password?role=advertiser"
-              className="inline-flex min-h-9 items-center text-[13px] font-semibold text-neutral-500 transition hover:text-neutral-950"
-            >
-              비밀번호 재설정
-            </Link>
-            <span className="h-3 w-px bg-neutral-200" />
-            <Link
-              to="/login"
-              className="inline-flex min-h-9 items-center text-[13px] font-semibold text-neutral-500 transition hover:text-neutral-950"
-            >
-              돌아가기
-            </Link>
-          </div>
+          <AuthLoginQuickActions
+            introHref="/intro/advertiser"
+            signupHref="/signup/advertiser"
+            resetHref="/reset-password?role=advertiser"
+          />
         }
         onSubmit={handleSubmit}
       />

@@ -427,8 +427,7 @@ const browserRenderRoutes = [
     name: "intro influencer",
     path: "/intro/influencer",
     requiredText: [
-      "받은 광고",
-      "계약",
+      "광고 계약",
       "흩어진 광고 조건은",
       "금액 확인 누락",
       "일정 착오",
@@ -436,8 +435,7 @@ const browserRenderRoutes = [
       "활용 권한 과다",
     ],
     mobileRequiredText: [
-      "받은 광고",
-      "계약",
+      "광고 계약",
       "금액 확인 누락",
       "일정 착오",
       "산출물 불명확",

@@ -2165,7 +2165,7 @@ check(
 
 check(
   "intro influencer explains why not email",
-  landing.includes("받은 광고") &&
+  landing.includes("광고 계약") &&
     landing.includes("흩어진 광고") &&
     landing.includes("const influencerProposalSlides") &&
     landing.includes("메일과 카톡에 흩어진") &&
@@ -2177,7 +2177,7 @@ check(
     landing.includes("원문 확인") &&
     landing.includes("수정 요청") &&
     landing.includes("서명 완료본") &&
-    qaStandard.includes('"받은 광고"') &&
+    qaStandard.includes('"광고 계약"') &&
     qaStandard.includes('"금액 확인 누락"') &&
     agents.includes("instead of email or Kakao"),
   "Influencer intro first viewport must make the email/Kakao replacement value concrete before dashboard taxonomy copy",

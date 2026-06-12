@@ -219,3 +219,38 @@ export function AuthLoginScreen({
   );
 }
 
+export function AuthLoginQuickActions({
+  introHref,
+  signupHref,
+  resetHref,
+}: {
+  introHref: string;
+  signupHref: string;
+  resetHref: string;
+}) {
+  return (
+    <div className="grid gap-2 text-center">
+      <div className="grid grid-cols-2 gap-2">
+        <Link
+          to={introHref}
+          className="inline-flex h-10 items-center justify-center rounded-[11px] border border-neutral-200 bg-white px-3 text-[13px] font-black text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-neutral-950"
+        >
+          둘러보기
+        </Link>
+        <Link
+          to={signupHref}
+          className="inline-flex h-10 items-center justify-center rounded-[11px] bg-neutral-950 px-3 text-[13px] font-black text-white shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition hover:-translate-y-0.5 hover:bg-neutral-800 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-neutral-950"
+        >
+          가입하기
+        </Link>
+      </div>
+      <Link
+        to={resetHref}
+        className="mx-auto inline-flex min-h-8 items-center px-1 text-[12px] font-bold text-neutral-500 transition hover:text-neutral-950 focus-visible:rounded-[6px] focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-neutral-950"
+      >
+        비밀번호 재설정
+      </Link>
+    </div>
+  );
+}
+
