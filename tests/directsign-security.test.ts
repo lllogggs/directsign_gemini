@@ -1947,4 +1947,136 @@ describe("yeollock.me security regressions", () => {
     assert.match(agents, /more than 5,000 rows/);
     assert.match(agents, /detailed operational extracts/);
   });
+
+  it("blocks raw sales lead artifacts and server secrets from git-visible files", () => {
+    const packageJson = JSON.parse(read("package.json")) as {
+      scripts?: Record<string, string>;
+    };
+    const gitignore = read(".gitignore");
+    const vercelignore = read(".vercelignore");
+    const privacyScan = read("scripts/privacy-pii-scan.mjs");
+    const governance = read("docs/privacy-data-governance.md");
+    const server = read("server/index.ts");
+    const salesDocs = readdirSync(join(root, "docs", "sales"))
+      .filter((file) => statSync(join(root, "docs", "sales", file)).isFile());
+
+    assert.match(packageJson.scripts?.["privacy:scan"] ?? "", /privacy-pii-scan\.mjs/);
+    assert.match(packageJson.scripts?.lint ?? "", /privacy:scan/);
+    for (const ignoreFile of [gitignore, vercelignore]) {
+      assert.match(ignoreFile, /docs\/sales\/\*prospect\*\.tsv/);
+      assert.match(ignoreFile, /docs\/sales\/\*lead\*\.csv/);
+      assert.match(ignoreFile, /docs\/sales\/\*business-emails\*\.tsv/);
+      assert.match(ignoreFile, /docs\/sales\/\*email-discovery\*\.json/);
+      assert.match(ignoreFile, /docs\/sales\/cold-email-leads\.csv/);
+    }
+    assert.match(privacyScan, /git[\s\S]*ls-files[\s\S]*--exclude-standard/);
+    assert.match(privacyScan, /raw sales lead artifact/);
+    assert.match(privacyScan, /possible non-empty server secret/);
+    assert.match(governance, /Raw sales prospect files must not live/);
+    assert.match(server, /const sensitiveSourceStaticRequestPattern/);
+    assert.match(server, /data\(\?:\\\/\|\$\)/);
+    assert.match(server, /server\(\?:\\\/\|\$\)/);
+    assert.match(server, /const sensitiveSalesArtifactRequestPattern/);
+    assert.match(server, /response\.status\(404\)\.type\("text\/plain"\)\.send\("Not found"\)/);
+
+    for (const file of salesDocs) {
+      assert.doesNotMatch(
+        file,
+        /(prospect|lead|business-emails|email-discovery|cold-email).*\.(csv|tsv|json)$/i,
+      );
+    }
+  });
+
+  it("redacts private signature, token, and deliverable metadata from client API responses", () => {
+    const server = read("server/index.ts");
+    const redactionStart = server.indexOf("const redactSignatureDataForClient");
+    const redactionSource = server.slice(
+      redactionStart,
+      server.indexOf("const sha256Hex", redactionStart),
+    );
+
+    assert.notEqual(redactionStart, -1);
+    assert.match(redactionSource, /const redactContractForClient/);
+    assert.match(redactionSource, /share_token: undefined/);
+    assert.match(redactionSource, /sanitizeClientAuditEvent/);
+    assert.match(redactionSource, /contract_hash: signatureData\.contract_hash/);
+    assert.match(redactionSource, /signature_hash: signatureData\.signature_hash/);
+    for (const forbidden of [
+      /adv_sign: signatureData\.adv_sign/,
+      /inf_sign: signatureData\.inf_sign/,
+      /ip: signatureData\.ip/,
+      /user_agent: signatureData\.user_agent/,
+      /consent_text: signatureData\.consent_text/,
+      /signature_storage_path/,
+      /signed_pdf_path/,
+    ]) {
+      assert.doesNotMatch(redactionSource, forbidden);
+    }
+
+    assert.match(server, /delete safeMetadata\.submitted_ip/);
+    assert.match(server, /delete safeMetadata\.submitted_user_agent/);
+    assert.match(server, /delete safeMetadata\.proof_file/);
+    assert.doesNotMatch(server, /metadata: deliverable\.metadata \?\? \{\}/);
+    assert.doesNotMatch(server, /response\.json\(\{ contract: updatedContract \}\)/);
+    assert.doesNotMatch(server, /response\.json\(\{ contract, access_role: access\.role \}\)/);
+    assert.match(server, /redactContractForClient\(updatedContract, "influencer"\)/);
+    assert.match(server, /redactContractForClient\(updatedContract, actor\)/);
+    assert.match(server, /redactContractForClient\(contract, access\.role\)/);
+    assert.match(server, /redactContractForClient\(contract, "advertiser"\)/);
+    assert.match(server, /sanitizeDeliverableForClient\(deliverable\)/);
+    assert.match(server, /sanitizeDeliverableForClient\(updatedDeliverable\)/);
+  });
+
+  it("does not expose contract existence through the detail JSON endpoint", () => {
+    const server = read("server/index.ts");
+    const routeStart = server.indexOf('app.get("/api/contracts/:id"');
+    const routeSource = server.slice(
+      routeStart,
+      server.indexOf('app.get("/api/contracts/:id/review-pdf"', routeStart),
+    );
+
+    assert.notEqual(routeStart, -1);
+    assert.match(routeSource, /sendError: false/);
+    assert.match(routeSource, /response\.status\(404\)\.json\(\{ error: "Contract not found" \}\)/);
+    assert.match(routeSource, /redactContractForClient\(contract, access\.role\)/);
+  });
+
+  it("binds Google OAuth callbacks to the active app session and one-time state nonce", () => {
+    const server = read("server/index.ts");
+    const authStart = server.indexOf("const authenticateGoogleWorkspaceOAuthCallback");
+    const authSource = server.slice(
+      authStart,
+      server.indexOf("const getGoogleWorkspaceScopes", authStart),
+    );
+    const callbackStart = server.indexOf('app.get("/api/google/oauth/callback"');
+    const callbackSource = server.slice(
+      callbackStart,
+      server.indexOf('app.post("/api/google/sheets/export"', callbackStart),
+    );
+
+    assert.match(server, /const usedGoogleOAuthStateNonces = new Map/);
+    assert.match(server, /const consumeGoogleOAuthStateNonce/);
+    assert.match(server, /!hasText\(parsed\.nonce\)/);
+    assert.match(authSource, /authenticateAdvertiserRequest\(request, response\)/);
+    assert.match(authSource, /authenticateInfluencerRequest\(request, response\)/);
+    assert.match(authSource, /profile\.id !== state\.profileId/);
+    assert.match(callbackSource, /authenticateGoogleWorkspaceOAuthCallback/);
+    assert.match(callbackSource, /consumeGoogleOAuthStateNonce\(state\)/);
+    assert.match(callbackSource, /redirectWithStatus\("failed"\)/);
+  });
+
+  it("keeps Google Workspace token tables service-role only in Supabase grants", () => {
+    const migrationName = readdirSync(join(root, "supabase", "migrations")).find(
+      (file) => file.endsWith("_harden_google_workspace_table_grants.sql"),
+    );
+    assert.ok(migrationName);
+    const migration = read(`supabase/migrations/${migrationName}`);
+
+    assert.match(migration, /revoke all[\s\S]*google_workspace_connections[\s\S]*from public, anon, authenticated/);
+    assert.match(migration, /revoke all[\s\S]*google_calendar_events[\s\S]*from public, anon, authenticated/);
+    assert.match(migration, /grant select, insert, update, delete[\s\S]*google_workspace_connections[\s\S]*to service_role/);
+    assert.match(migration, /grant select, insert, update, delete[\s\S]*google_calendar_events[\s\S]*to service_role/);
+    assert.doesNotMatch(migration, /to anon/);
+    assert.doesNotMatch(migration, /to authenticated/);
+  });
 });

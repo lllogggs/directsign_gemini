@@ -737,6 +737,36 @@ app.use((_request, response, next) => {
   next();
 });
 
+const sensitiveSourceStaticRequestPattern =
+  /^\/(?:\.env(?:\..*)?|data(?:\/|$)|server(?:\/|$)|supabase(?:\/|$)|scripts(?:\/|$)|tests(?:\/|$)|lib(?:\/|$)|qa-artifacts(?:\/|$)|(?:package(?:-lock)?\.json|tsconfig(?:\.[^/]*)?\.json|vite\.config\.ts|AGENTS\.md)$)/i;
+const sensitiveSalesArtifactRequestPattern =
+  /^\/docs\/sales\/[^/]*(?:prospect|lead|business-emails|email-discovery|cold-email)[^/]*\.(?:csv|tsv|json)$/i;
+
+const isSensitiveSourceStaticRequest = (request: express.Request) => {
+  if (request.method !== "GET" && request.method !== "HEAD") return false;
+
+  let pathname = request.path;
+  try {
+    pathname = decodeURIComponent(pathname);
+  } catch {
+    return true;
+  }
+
+  return (
+    sensitiveSourceStaticRequestPattern.test(pathname) ||
+    sensitiveSalesArtifactRequestPattern.test(pathname)
+  );
+};
+
+app.use((request, response, next) => {
+  if (!isSensitiveSourceStaticRequest(request)) {
+    next();
+    return;
+  }
+
+  response.status(404).type("text/plain").send("Not found");
+});
+
 app.get("/favicon.ico", (_request, response) => {
   response.type("image/x-icon");
   response.sendFile(path.join(root, "public", "favicon.ico"));
@@ -2314,8 +2344,11 @@ async function buildAdvertiserLoginDashboardBootstrap(
           : Promise.resolve(undefined),
       ]);
 
+      const clientContracts = contracts.map((contract) =>
+        redactContractForClient(contract, "advertiser"),
+      );
       const dashboard = {
-        contracts,
+        contracts: clientContracts,
         verification,
         ...(messageSummary ? { message_summary: messageSummary } : {}),
         source: useSupabase ? "supabase" : "file",
@@ -3717,6 +3750,48 @@ const contractAccessActor = (
     actorDisplayName: access.role,
   };
 };
+
+type ClientContractAccessRole = ResolvedLegacyContractAccess["role"];
+
+const sanitizeClientAuditEvent = (
+  event: NonNullable<Contract["audit_events"]>[number],
+) => ({
+  ...event,
+  description: event.description
+    .replace(/\s*IP=[^;]*;\s*UA=.*$/i, "")
+    .replace(/\s*IP=[^\s;]*.*$/i, "")
+    .trim(),
+});
+
+const redactSignatureDataForClient = (
+  signatureData: Contract["signature_data"],
+): Contract["signature_data"] => {
+  if (!signatureData) return undefined;
+
+  return {
+    signed_at: signatureData.signed_at,
+    signer_name: signatureData.signer_name,
+    signer_email: signatureData.signer_email,
+    consent_text_version: signatureData.consent_text_version,
+    contract_hash: signatureData.contract_hash,
+    signature_hash: signatureData.signature_hash,
+  } as Contract["signature_data"];
+};
+
+const redactContractForClient = (
+  contract: Contract,
+  accessRole: ClientContractAccessRole,
+): Contract => ({
+  ...contract,
+  evidence: contract.evidence
+    ? {
+        ...contract.evidence,
+        ...(accessRole === "advertiser" ? {} : { share_token: undefined }),
+      }
+    : undefined,
+  signature_data: redactSignatureDataForClient(contract.signature_data),
+  audit_events: contract.audit_events?.map(sanitizeClientAuditEvent),
+});
 
 const sha256Hex = (value: string) =>
   createHash("sha256").update(value).digest("hex");
@@ -5190,6 +5265,7 @@ const googleWorkspaceFeatures = new Set<GoogleWorkspaceFeature>([
 const googleExportMaxSheets = 6;
 const googleExportMaxRowsPerSheet = 5000;
 const googleExportMaxCells = 120000;
+const usedGoogleOAuthStateNonces = new Map<string, number>();
 
 const normalizeGoogleWorkspaceRole = (
   value: unknown,
@@ -5257,6 +5333,7 @@ const decodeGoogleOAuthState = (value: unknown): GoogleOAuthState | undefined =>
     ) as GoogleOAuthState;
     if (
       !hasText(parsed.profileId) ||
+      !hasText(parsed.nonce) ||
       !googleWorkspaceRoles.has(parsed.role) ||
       !googleWorkspaceFeatures.has(parsed.feature) ||
       !Array.isArray(parsed.scopes) ||
@@ -5268,6 +5345,44 @@ const decodeGoogleOAuthState = (value: unknown): GoogleOAuthState | undefined =>
   } catch {
     return undefined;
   }
+};
+
+const pruneUsedGoogleOAuthStateNonces = () => {
+  const now = Date.now();
+  for (const [key, expiresAt] of usedGoogleOAuthStateNonces) {
+    if (expiresAt <= now) usedGoogleOAuthStateNonces.delete(key);
+  }
+};
+
+const consumeGoogleOAuthStateNonce = (state: GoogleOAuthState) => {
+  pruneUsedGoogleOAuthStateNonces();
+  const key = `${state.profileId}:${state.nonce}`;
+  if (usedGoogleOAuthStateNonces.has(key)) return false;
+  usedGoogleOAuthStateNonces.set(key, state.expiresAt);
+  return true;
+};
+
+const authenticateGoogleWorkspaceOAuthCallback = async (
+  request: express.Request,
+  response: express.Response,
+  state: GoogleOAuthState,
+) => {
+  const auth =
+    state.role === "advertiser"
+      ? await authenticateAdvertiserRequest(request, response)
+      : await authenticateInfluencerRequest(request, response);
+  if (!auth) return undefined;
+
+  const profile = auth.profile ?? (await readProfileByUserId(auth.user.id));
+  const roleMatches =
+    state.role === "advertiser"
+      ? isAdvertiserRole(profile?.role)
+      : isInfluencerRole(profile?.role);
+  if (!profile || !roleMatches || profile.id !== state.profileId) {
+    return undefined;
+  }
+
+  return { ...auth, profile };
 };
 
 const getGoogleWorkspaceScopes = (feature: GoogleWorkspaceFeature) => [
@@ -16567,6 +16682,22 @@ const buildDeliverableSummary = (
   return { total, submitted, approved };
 };
 
+const sanitizeDeliverableMetadataForClient = (
+  metadata: Record<string, unknown> | null | undefined,
+) => {
+  const safeMetadata = { ...(metadata ?? {}) };
+  delete safeMetadata.submitted_ip;
+  delete safeMetadata.submitted_user_agent;
+  delete safeMetadata.proof_file;
+
+  return safeMetadata;
+};
+
+const sanitizeDeliverableForClient = (deliverable: SupabaseDeliverableRow) => ({
+  ...deliverable,
+  metadata: sanitizeDeliverableMetadataForClient(deliverable.metadata),
+});
+
 const buildDeliverableResponse = (
   contract: Contract,
   bundle: Awaited<ReturnType<typeof readContractDeliverableBundle>>,
@@ -16590,7 +16721,7 @@ const buildDeliverableResponse = (
     review_status: normalizeDeliverableStatus(deliverable.review_status),
     review_comment: deliverable.review_comment,
     reviewed_at: deliverable.reviewed_at,
-    metadata: deliverable.metadata ?? {},
+    metadata: sanitizeDeliverableMetadataForClient(deliverable.metadata),
     files: (filesByDeliverable.get(deliverable.id) ?? []).map((file) => ({
       id: file.id,
       file_name: file.file_name,
@@ -17993,6 +18124,16 @@ app.get("/api/google/oauth/callback", async (request, response) => {
       return;
     }
 
+    const auth = await authenticateGoogleWorkspaceOAuthCallback(
+      request,
+      response,
+      state,
+    );
+    if (!auth || !consumeGoogleOAuthStateNonce(state)) {
+      redirectWithStatus("failed");
+      return;
+    }
+
     const tokenPayload = await exchangeGoogleOAuthToken(request, {
       grant_type: "authorization_code",
       code,
@@ -19312,7 +19453,9 @@ app.get("/api/contracts", async (request, response, next) => {
     );
 
     response.json({
-      contracts,
+      contracts: contracts.map((contract) =>
+        redactContractForClient(contract, "advertiser"),
+      ),
       source: useSupabase ? "supabase" : "file",
       allow_local_merge: !useSupabase,
       demo_mode: demoMode,
@@ -19430,7 +19573,10 @@ app.post("/api/contracts/:id/post-link", async (request, response, next) => {
       request,
     });
 
-    response.json({ contract: updatedContract, post_link: postLink });
+    response.json({
+      contract: redactContractForClient(updatedContract, "influencer"),
+      post_link: postLink,
+    });
   } catch (error) {
     next(error);
   }
@@ -19588,7 +19734,7 @@ app.post("/api/contracts/:id/deliverables", async (request, response, next) => {
 
     const updatedBundle = await readContractDeliverableBundle(contract);
     response.status(201).json({
-      deliverable,
+      deliverable: sanitizeDeliverableForClient(deliverable),
       ...buildDeliverableResponse(contract, updatedBundle),
     });
   } catch (error) {
@@ -19698,7 +19844,7 @@ app.patch("/api/contracts/:id/deliverables/:deliverableId", async (request, resp
 
     const updatedBundle = await readContractDeliverableBundle(contract);
     response.json({
-      deliverable: updatedDeliverable,
+      deliverable: sanitizeDeliverableForClient(updatedDeliverable),
       ...buildDeliverableResponse(contract, updatedBundle),
     });
   } catch (error) {
@@ -19836,7 +19982,7 @@ app.post("/api/contracts/:id/close", async (request, response, next) => {
     });
 
     response.json({
-      contract: updatedContract,
+      contract: redactContractForClient(updatedContract, "advertiser"),
       summary,
       message: "광고 계약 마감 완료",
     });
@@ -20092,8 +20238,11 @@ app.get("/api/contracts/:id", async (request, response, next) => {
       return;
     }
 
-    const access = await resolveLegacyContractAccess(request, response, contract);
+    const access = await resolveLegacyContractAccess(request, response, contract, {
+      sendError: false,
+    });
     if (!access) {
+      response.status(404).json({ error: "Contract not found" });
       return;
     }
 
@@ -20109,7 +20258,10 @@ app.get("/api/contracts/:id", async (request, response, next) => {
     }
 
     response.setHeader("Cache-Control", "no-store");
-    response.json({ contract, access_role: access.role });
+    response.json({
+      contract: redactContractForClient(contract, access.role),
+      access_role: access.role,
+    });
   } catch (error) {
     next(error);
   }
@@ -20134,8 +20286,11 @@ app.get("/api/contracts/:id/review-pdf", async (request, response, next) => {
       return;
     }
 
-    const access = await resolveLegacyContractAccess(request, response, contract);
+    const access = await resolveLegacyContractAccess(request, response, contract, {
+      sendError: false,
+    });
     if (!access) {
+      response.status(404).json({ error: "Contract not found" });
       return;
     }
 
@@ -20470,7 +20625,9 @@ app.post("/api/contracts/:id/signatures/influencer", async (request, response, n
 
     await writeStore(nextStore);
     setSignedPdfAccessCookie(response, updatedContract);
-    response.json({ contract: updatedContract });
+    response.json({
+      contract: redactContractForClient(updatedContract, "influencer"),
+    });
   } catch (error) {
     next(error);
   }
@@ -20619,7 +20776,9 @@ app.put("/api/contracts/:id", async (request, response, next) => {
       updatedContract,
     );
     await writeStore(nextStore);
-    response.json({ contract: updatedContract });
+    response.json({
+      contract: redactContractForClient(updatedContract, actor),
+    });
   } catch (error) {
     next(error);
   }

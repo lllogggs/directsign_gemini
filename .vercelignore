@@ -1,4 +1,15 @@
 data
+docs/sales/*prospect*.csv
+docs/sales/*prospect*.json
+docs/sales/*prospect*.tsv
+docs/sales/*lead*.csv
+docs/sales/*lead*.json
+docs/sales/*lead*.tsv
+docs/sales/*business-emails*.csv
+docs/sales/*business-emails*.json
+docs/sales/*business-emails*.tsv
+docs/sales/*email-discovery*.json
+docs/sales/cold-email-leads.csv
 logs
 qa-artifacts
 tmp
