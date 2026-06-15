@@ -328,7 +328,7 @@ function sampleHtml(type) {
               <div class="row"><span>이메일</span><strong>breadroom.manager@yeollock.me</strong></div>
               <div class="row"><span>승인일</span><strong>2026. 6. 7.</strong></div>
             </div>
-            <div class="cta-row"><span class="button primary">새 계약 작성</span><span class="button">캠페인 작성</span></div>
+            <div class="cta-row"><span class="button primary">1:1 계약 작성</span><span class="button">캠페인 작성</span></div>
           </article>
         </div>
       </section>

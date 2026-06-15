@@ -12,7 +12,7 @@
 
 @page { size: A4 landscape; margin: 0; }
 * { box-sizing: border-box; }
-html, body { margin: 0; background: #e8ebef; color: #111827; font-family: "NanumSquareNeo", "Malgun Gothic", system-ui, sans-serif; }
+html, body { margin: 0; background: #e8ebef; color: #111827; font-family: "NanumSquareNeo", "Malgun Gothic", system-ui, sans-serif; word-break: keep-all; overflow-wrap: normal; }
 body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 .deck { width: 100%; }
 .page {
@@ -43,15 +43,15 @@ body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 .kicker { color: #2563eb; font-size: 12px; font-weight: 900; margin-bottom: 7mm; }
 .dark .kicker { color: #8db6ff; }
 h1, h2, h3, p { margin: 0; }
-h1 { font-size: 49px; line-height: 1.08; letter-spacing: 0; font-weight: 900; max-width: 720px; }
-h2 { font-size: 36px; line-height: 1.14; letter-spacing: 0; font-weight: 900; max-width: 600px; }
+h1 { font-size: 45px; line-height: 1.12; letter-spacing: 0; font-weight: 900; max-width: 720px; word-break: keep-all; overflow-wrap: normal; }
+h2 { font-size: 32px; line-height: 1.18; letter-spacing: 0; font-weight: 900; max-width: 620px; word-break: keep-all; overflow-wrap: normal; }
 h3 { font-size: 19px; line-height: 1.28; font-weight: 900; }
-.lead { color: #4b5563; font-size: 17px; line-height: 1.72; font-weight: 700; max-width: 680px; margin-top: 7mm; }
+.lead { color: #4b5563; font-size: 16px; line-height: 1.65; font-weight: 700; max-width: 680px; margin-top: 7mm; word-break: keep-all; overflow-wrap: normal; }
 .dark .lead { color: rgba(255,255,255,.74); }
 .small { color: #6b7280; font-size: 11px; line-height: 1.55; font-weight: 700; }
 .dark .small { color: rgba(255,255,255,.62); }
-.hero-grid { display: grid; grid-template-columns: 43% 57%; gap: 15mm; align-items: center; height: 151mm; }
-.split { display: grid; grid-template-columns: 38% 62%; gap: 13mm; align-items: center; height: 151mm; }
+.hero-grid { display: grid; grid-template-columns: 45% 55%; gap: 13mm; align-items: center; height: 151mm; }
+.split { display: grid; grid-template-columns: 42% 58%; gap: 11mm; align-items: center; height: 151mm; }
 .split.equal { grid-template-columns: 50% 50%; }
 .stack { display: grid; gap: 5mm; }
 .points { display: grid; gap: 5mm; margin-top: 12mm; }
@@ -101,6 +101,11 @@ h3 { font-size: 19px; line-height: 1.28; font-weight: 900; }
 .export-option strong { display: block; font-size: 14px; line-height: 1.3; font-weight: 900; }
 .export-option span { display: block; color: #6b7280; font-size: 10px; line-height: 1.45; font-weight: 700; margin-top: 1mm; }
 .strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5mm; margin-top: 12mm; }
+.fact-list { display: grid; gap: 3mm; margin-top: 10mm; }
+.fact-row { display: grid; grid-template-columns: 22mm 1fr; gap: 4mm; align-items: start; padding: 4.2mm 0; border-top: 1px solid rgba(17,24,39,.08); }
+.fact-row:first-child { border-top: 0; }
+.fact-row b { font-size: 17px; line-height: 1.2; font-weight: 900; }
+.fact-row span { color: #6b7280; font-size: 11px; line-height: 1.52; font-weight: 700; }
 .metric {
   min-height: 32mm;
   border: 1px solid rgba(17,24,39,.09);
@@ -125,6 +130,9 @@ h3 { font-size: 19px; line-height: 1.28; font-weight: 900; }
 }
 .callout strong { display: block; font-size: 14px; font-weight: 900; margin-bottom: 2mm; }
 .callout span { color: #4b5563; font-size: 11px; line-height: 1.55; font-weight: 700; }
+.note-box { margin-top: 10mm; padding: 6mm; border-radius: 14px; background: #f8fafc; border: 1px solid rgba(37,99,235,.16); box-shadow: 0 14px 40px rgba(15,23,42,.08); }
+.note-box strong { display: block; font-size: 14px; font-weight: 900; margin-bottom: 2mm; }
+.note-box span { display: block; color: #4b5563; font-size: 11px; line-height: 1.55; font-weight: 700; }
 .workflow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5mm; margin-top: 14mm; }
 .step-card { background: #fff; border: 1px solid rgba(17,24,39,.09); border-radius: 14px; padding: 7mm; min-height: 39mm; }
 .dark .step-card { background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.12); }
@@ -179,7 +187,7 @@ h3 { font-size: 19px; line-height: 1.28; font-weight: 900; }
     <div class="hero-grid">
       <div>
         <div class="cover-badge">광고주 실무자 소개서</div>
-        <h1>광고 협업을<br />계약과 운영 기준으로<br />정리합니다.</h1>
+        <h1>광고 협업을<br />계약 기준으로<br />운영합니다.</h1>
         <p class="lead">인플루언서 협업에서 조건, 검토, 서명, 제출, 보고까지 흩어지는 일을 한 흐름으로 묶는 광고주 운영 도구입니다.</p>
         <div class="tag-row">
           <span class="tag">계약 작성</span>
@@ -189,7 +197,7 @@ h3 { font-size: 19px; line-height: 1.28; font-weight: 900; }
         </div>
       </div>
       <div class="mockup dark-card screen-wide">
-        <img src="assets/yeollock-practitioner-dashboard.png" alt="연락미 광고주 계약 운영 대시보드" />
+        <img src="assets/yeollock-practitioner-dashboard.png" alt="연락미 광고주 1:1 계약 대시보드" />
       </div>
     </div>
     <div class="cover-line"></div>
@@ -205,7 +213,7 @@ h3 { font-size: 19px; line-height: 1.28; font-weight: 900; }
     <div class="split">
       <div>
         <div class="kicker">왜 필요한가</div>
-        <h2>광고 협업의 리스크는 대부분 ‘기록이 흩어지는 순간’ 생깁니다.</h2>
+        <h2>협업 리스크는<br />기록이 흩어질 때<br />생깁니다.</h2>
         <p class="lead">메일, 메신저, 시트, PDF가 따로 움직이면 조건 확인과 책임 소재가 늦어집니다. 연락미는 실무자가 매일 확인해야 하는 상태와 다음 액션을 한 곳에 남깁니다.</p>
       </div>
       <div class="stack">
@@ -224,7 +232,7 @@ h3 { font-size: 19px; line-height: 1.28; font-weight: 900; }
     <div class="split">
       <div>
         <div class="kicker">계약 작성</div>
-        <h2>처음에는 하나의 플랫폼과 컨텐츠부터 시작합니다.</h2>
+        <h2>플랫폼과 컨텐츠를<br />순서대로 정리합니다.</h2>
         <p class="lead">플랫폼을 먼저 고르고, 그 플랫폼에서 필요한 컨텐츠 형태를 선택합니다. 같은 플랫폼 안에서 컨텐츠를 추가하거나, 필요할 때 플랫폼을 더하는 방식이라 작성 흐름이 복잡해지지 않습니다.</p>
         <div class="points">
           <div class="point"><span class="num">1</span><div><strong>플랫폼 선택</strong><span>Instagram, YouTube, Naver, TikTok 등 협업 채널을 먼저 정합니다.</span></div></div>
@@ -246,7 +254,7 @@ h3 { font-size: 19px; line-height: 1.28; font-weight: 900; }
     <div class="split equal">
       <div>
         <div class="kicker">계약서 확인</div>
-        <h2>상대방에게 보여줄 문서는 실제 계약서 원문이어야 합니다.</h2>
+        <h2>상대방이 보는 문서는<br />실제 계약서 원문입니다.</h2>
         <p class="lead">요약 카드가 아니라 광고주가 작성한 계약 조건이 PDF 문서 형태로 정리됩니다. 검토, 공유, 서명 전 단계에서 같은 문서를 기준으로 확인합니다.</p>
         <div class="quote"><strong>“조건이 바뀌었는지”보다 “어떤 문서에 동의했는지”가 먼저 보여야 합니다.</strong><span>계약 본문을 중심에 두면 실무자와 크리에이터가 같은 기준으로 대화할 수 있습니다.</span></div>
       </div>
@@ -261,15 +269,17 @@ h3 { font-size: 19px; line-height: 1.28; font-weight: 900; }
 
   <section class="page">
     <div class="brand-row"><div class="brand"><span class="brand-mark">Y</span>연락미</div><div class="meta">Operational Dashboard</div></div>
-    <div>
-      <div class="kicker">상태 관리</div>
-      <h2>대시보드는 오늘 처리할 계약을 보여주는 운영판입니다.</h2>
-      <p class="lead">작성중, 진행중, 종료 상태를 나누고 수정 요청, 검토 대기, 서명 준비처럼 실제 다음 행동이 필요한 항목을 빠르게 찾습니다.</p>
+    <div class="split">
+      <div>
+        <div class="kicker">상태 관리</div>
+        <h2>오늘 처리할 1:1 계약을<br />대시보드에서 봅니다.</h2>
+        <p class="lead">작성중, 진행중, 종료 상태를 나누고 수정 요청, 검토 대기, 서명 준비처럼 실제 다음 행동이 필요한 항목을 빠르게 찾습니다.</p>
+        <div class="note-box"><strong>고정된 대시보드 공간</strong><span>계약이 적어도 표 영역은 유지됩니다. 비어 있는 공간은 운영 여백으로 남고, 필요한 CTA만 명확하게 보입니다.</span></div>
+      </div>
+      <div class="mockup screen-wide">
+        <img src="assets/yeollock-practitioner-dashboard.png" alt="1:1 계약 대시보드 작성중 탭" />
+      </div>
     </div>
-    <div class="mockup screen-wide" style="margin-top: 10mm;">
-      <img src="assets/yeollock-practitioner-dashboard.png" alt="계약 운영 대시보드 작성중 탭" />
-    </div>
-    <div class="callout"><strong>고정된 대시보드 공간</strong><span>계약이 적어도 표 영역은 유지됩니다. 비어 있는 공간은 운영 여백으로 남고, 필요한 CTA만 명확하게 보입니다.</span></div>
 
   <div class="footer"><span>광고주 실무자 소개서</span><span>05</span></div>
 
@@ -280,12 +290,12 @@ h3 { font-size: 19px; line-height: 1.28; font-weight: 900; }
     <div class="split">
       <div>
         <div class="kicker">캠페인 모집</div>
-        <h2>캠페인 지원자는 바로 계약 흐름으로 연결됩니다.</h2>
-        <p class="lead">지원자 목록에서 크리에이터 프로필과 채널 정보를 보고 선정합니다. 선정 이후에는 모집 조건을 기준으로 계약이 이어져 운영 흐름이 끊기지 않습니다.</p>
+        <h2>지원자 선정 후<br />선정자별 진행을 관리합니다.</h2>
+        <p class="lead">지원자 목록에서 크리에이터 프로필과 채널 정보를 보고 선정합니다. 선정 이후에는 모집 조건을 기준으로 계약서, 서명, 제출 상태를 캠페인 안에서 이어갑니다.</p>
         <div class="points">
           <div class="point"><span class="num">1</span><div><strong>지원자 확인</strong><span>사진, 이름, 인증 채널, 팔로워 규모를 한눈에 봅니다.</span></div></div>
           <div class="point"><span class="num">2</span><div><strong>프로필 검토</strong><span>크리에이터의 공개 프로필과 채널을 확인합니다.</span></div></div>
-          <div class="point"><span class="num">3</span><div><strong>계약 생성</strong><span>선정한 지원자와 캠페인 조건을 계약으로 넘깁니다.</span></div></div>
+          <div class="point"><span class="num">3</span><div><strong>계약서 준비</strong><span>선정한 지원자별 계약서와 서명 진행을 캠페인 안에서 시작합니다.</span></div></div>
         </div>
       </div>
       <div class="mockup screen-wide screen-applicants">
@@ -302,12 +312,12 @@ h3 { font-size: 19px; line-height: 1.28; font-weight: 900; }
     <div class="split">
       <div>
         <div class="kicker">내부 보고</div>
-        <h2>운영 현황은 엑셀이나 Google 스프레드시트로 내보낼 수 있습니다.</h2>
+        <h2>운영 현황은<br />엑셀과 스프레드시트로<br />내보냅니다.</h2>
         <p class="lead">대시보드에서 내보내기를 누르면 파일 다운로드와 Google 스프레드시트 생성을 선택할 수 있습니다. 실무팀이 이미 쓰는 보고 방식으로 이어지게 하는 구조입니다.</p>
-        <div class="strip">
-          <div class="metric"><b>XLSX</b><span>바로 다운로드해서 내부 파일로 보관합니다.</span></div>
-          <div class="metric"><b>Sheets</b><span>사용자가 동의하면 Google Drive에 새 시트를 생성합니다.</span></div>
-          <div class="metric"><b>Safe</b><span>공유 토큰, 원본 서명, private storage 경로는 내보내지 않습니다.</span></div>
+        <div class="fact-list">
+          <div class="fact-row"><b>XLSX</b><span>바로 다운로드해서 내부 파일로 보관합니다.</span></div>
+          <div class="fact-row"><b>Sheets</b><span>사용자가 동의하면 Google Drive에 새 시트를 생성합니다.</span></div>
+          <div class="fact-row"><b>Safe</b><span>공유 토큰, 원본 서명, private storage 경로는 내보내지 않습니다.</span></div>
         </div>
       </div>
       <div class="mockup export-visual">
@@ -335,14 +345,14 @@ h3 { font-size: 19px; line-height: 1.28; font-weight: 900; }
     <div class="split">
       <div>
         <div class="cover-badge">운영 기준</div>
-        <h2>연락미는 광고 협업을 ‘기억’이 아니라 ‘기록’으로 운영하게 합니다.</h2>
+        <h2>광고 협업은<br />기억이 아니라<br />기록으로 운영합니다.</h2>
         <p class="lead">계약 조건을 구조화하고, 상대방 검토와 서명을 문서 기준으로 남기고, 대시보드와 시트로 내부 운영까지 연결합니다.</p>
       </div>
       <div>
         <div class="workflow">
           <div class="step-card"><i>01</i><strong>조건 작성</strong><span>플랫폼, 컨텐츠, 일정, 지급 조건을 입력합니다.</span></div>
           <div class="step-card"><i>02</i><strong>계약 확인</strong><span>PDF 문서 기준으로 검토하고 공유합니다.</span></div>
-          <div class="step-card"><i>03</i><strong>진행 관리</strong><span>수정, 서명, 제출, 종료 상태를 대시보드에서 봅니다.</span></div>
+          <div class="step-card"><i>03</i><strong>진행 관리</strong><span>1:1 계약은 계약 화면, 캠페인은 캠페인 상세에서 이어갑니다.</span></div>
           <div class="step-card"><i>04</i><strong>보고 연결</strong><span>엑셀 또는 Google 스프레드시트로 내보냅니다.</span></div>
         </div>
         <div class="quote" style="background: rgba(255,255,255,.09); border: 1px solid rgba(255,255,255,.12);"><strong>광고 협업을 반복 운영할수록 필요한 것은 더 많은 설명이 아니라 같은 기준의 기록입니다.</strong><span>yeollock.me</span></div>

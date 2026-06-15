@@ -69,10 +69,6 @@ const advertiserProposalAssetUrls = {
     "../../../docs/sales/assets/yeollock-intro-campaigns-mobile.png",
     import.meta.url,
   ).href,
-  introInfluencerDashboardMobile: new URL(
-    "../../../docs/sales/assets/yeollock-intro-influencer-dashboard-mobile.png",
-    import.meta.url,
-  ).href,
   contractHandshake: new URL(
     "../../../docs/sales/assets/yeollock-contract-handshake.png",
     import.meta.url,
@@ -393,9 +389,6 @@ function collectIntroProposalImageSources(slides: IntroProposalSlide[]) {
       sources.add(advertiserProposalAssetUrls.introCampaignApplicants);
       sources.add(advertiserProposalAssetUrls.introCampaignsMobile);
     }
-    if (slide.productPreview === "influencerDashboard") {
-      sources.add(advertiserProposalAssetUrls.introInfluencerDashboardMobile);
-    }
   });
 
   return Array.from(sources);
@@ -635,7 +628,7 @@ const influencerProposalSlides: IntroProposalSlide[] = [
     stage: "product",
     title: (
       <>
-        받은 광고 계약
+        1:1 계약
         <br />
         <strong className="inline-block bg-gradient-to-br from-[#1d4ed8] to-[#2f6df6] bg-clip-text font-black text-transparent">
           한눈에 관리
@@ -643,12 +636,12 @@ const influencerProposalSlides: IntroProposalSlide[] = [
       </>
     ),
     description:
-      "메일과 카톡에 흩어진 계약을 받은 계약 대시보드에서 계약별로 모아 보고, 할 일과 마감일을 확인합니다.",
+      "메일과 카톡에 흩어진 계약을 1:1 계약 대시보드에서 계약별로 모아 보고, 할 일과 마감일을 확인합니다.",
     support: (
       <>
         메일과 카톡에 흩어진 계약을
         <br />
-        <strong>받은 계약 대시보드</strong>에서 계약별로 관리합니다
+        <strong>1:1 계약 대시보드</strong>에서 계약별로 관리합니다
       </>
     ),
     productPreview: "influencerDashboard",
@@ -969,7 +962,7 @@ const roleIntroSlides = {
       preview: {
         kind: "proposal",
         header: "계약서 조건 확인",
-        targetLabel: "받은 계약",
+        targetLabel: "1:1 계약",
         targetName: "브레드룸 · 홈카페 공동구매",
         fields: [
           { label: "브랜드", value: "브레드룸" },
@@ -1343,7 +1336,7 @@ const influencerPreviewSlides: InfluencerPreviewSlide[] = [
   {
     kind: "list",
     label: "검토",
-    title: "받은 계약",
+    title: "1:1 계약 목록",
     count: "2",
     accentClass: "bg-blue-600",
     platformFilters: [
@@ -1608,8 +1601,8 @@ function StartIntroRolePicker({ onClose }: { onClose: () => void }) {
                   </strong>
                   <span className="mt-1 block truncate text-[11px] font-bold text-neutral-500">
                     {isAdvertiser
-                      ? "광고 조건과 계약 운영 흐름"
-                      : "받은 계약과 캠페인 참여 흐름"}
+                      ? "광고 조건과 1:1 계약 흐름"
+                      : "1:1 계약과 캠페인 참여 흐름"}
                   </span>
                 </span>
                 <span className="text-[18px] font-black text-neutral-400 transition group-hover:translate-x-0.5 group-hover:text-neutral-950">
@@ -2552,18 +2545,12 @@ function IntroProposalProductPreview({
 
   if (kind === "influencerDashboard") {
     return (
-      <>
-        <IntroMobileServiceCapture
-          imageAlt="실제 모바일 인플루언서 계약 대시보드 화면"
-          imageSrc={advertiserProposalAssetUrls.introInfluencerDashboardMobile}
+      <div className="h-full min-h-0 overflow-hidden rounded-[16px]">
+        <InfluencerIntroDashboardPreview
+          data={introDashboardDemoData.influencer}
+          stateIndex={1}
         />
-        <div className="hidden h-full min-h-0 overflow-hidden rounded-[16px] sm:block">
-          <InfluencerIntroDashboardPreview
-            data={introDashboardDemoData.influencer}
-            stateIndex={1}
-          />
-        </div>
-      </>
+      </div>
     );
   }
 
@@ -2716,7 +2703,7 @@ function AdvertiserExportDashboardPreview() {
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <h3 className="truncate text-[15px] font-black text-[#171a17] sm:text-[17px]">
-                계약 운영 대시보드
+                1:1 계약 대시보드
               </h3>
               <p className="mt-0.5 truncate text-[10px] font-bold text-[#7d857f] sm:text-[12px]">
                 진행중 계약 3건 · 전체 조건
@@ -3764,7 +3751,7 @@ const introDashboardDemoData = {
     accountName: "민서홈",
     accountMeta: "@minseo_home · creator@minseo-home.kr",
     verificationMeta: "Instagram · YouTube 인증 완료",
-    summary: "받은 계약 12건 · 이번 주 확인 4건",
+    summary: "1:1 계약 12건 · 이번 주 확인 4건",
     states: [
       {
         activeTab: "지원중",
@@ -4063,8 +4050,8 @@ function AdvertiserIntroDashboardPreview({
       <div className="min-h-0 flex-1 p-2">
         <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[8px] border border-[#d9e0d9] bg-white">
           <IntroDashboardTitleBar
-            title="계약 운영 대시보드"
-            actionLabel="새 계약"
+            title="1:1 계약 대시보드"
+            actionLabel="1:1 계약 작성"
           />
           <IntroAdvertiserAccountBanner
             accountMeta={data.accountMeta}
@@ -4096,10 +4083,10 @@ function _IntroAppHeader({ role }: { role: IntroRole }) {
               aria-label="광고주 대시보드 전환 미리보기"
               className="inline-flex h-10 items-center overflow-hidden rounded-[9px] border border-neutral-200 bg-white p-0.5"
             >
-              {["계약", "캠페인"].map((action, index) => (
+              {["1:1 계약", "캠페인"].map((action, index) => (
                 <span
                   key={action}
-                  className={`inline-flex h-8 w-12 items-center justify-center rounded-[7px] text-[11px] font-extrabold ${
+                  className={`inline-flex h-8 min-w-[58px] items-center justify-center rounded-[7px] px-2 text-[11px] font-extrabold ${
                     index === 0
                       ? "bg-neutral-950 text-white"
                       : "text-neutral-600"
@@ -4114,7 +4101,7 @@ function _IntroAppHeader({ role }: { role: IntroRole }) {
               <IntroHeaderAction
                 active
                 icon={<FileText className="h-3.5 w-3.5" strokeWidth={2} />}
-                label="내 계약"
+                label="1:1 계약"
               />
               <IntroHeaderAction
                 icon={<Megaphone className="h-3.5 w-3.5" strokeWidth={2} />}
@@ -4182,7 +4169,7 @@ function InfluencerIntroDashboardPreview({
       <div className="min-h-0 flex-1 p-2">
         <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[8px] border border-[#d9e0d9] bg-white">
           <IntroDashboardTitleBar
-            title="내 계약"
+            title="1:1 계약"
           />
           <IntroInfluencerProfileBanner accountName="크리에이터 소라" />
           <div className="min-h-0 flex-1 p-2">
@@ -4326,7 +4313,7 @@ function IntroContractBoard({ state }: { state: IntroDashboardState }) {
         <div className="flex min-h-9 items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="truncate text-[13px] font-extrabold text-[#171a17]">
-              계약 목록
+              1:1 계약 목록
             </p>
             <p className="mt-0.5 truncate text-[10px] font-semibold text-[#606861]">
               {state.rows.length}건 표시 · 전체 조건
@@ -4888,7 +4875,7 @@ function _InfluencerIntroScreen({ config }: { config: IntroConfig }) {
           </div>
 
           <p className="mt-6 max-w-[320px] text-[14px] font-extrabold leading-6 tracking-[-0.02em] text-neutral-600">
-            받은 계약을 확인하고, 필요한 요청과 서명 기록을 남깁니다.
+            1:1 계약을 확인하고, 필요한 요청과 서명 기록을 남깁니다.
           </p>
 
           <Link
@@ -5903,7 +5890,7 @@ function RoleDashboardPreview({ config }: { config: IntroConfig }) {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="text-[12px] font-semibold text-[#7d857f]">
-              계약 운영 화면
+              1:1 계약 운영 화면
             </p>
             <h2 className="mt-1 truncate text-[18px] font-semibold text-[#171a17]">
               {config.previewTitle}

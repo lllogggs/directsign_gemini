@@ -18,14 +18,14 @@ const surfaceConfig: Record<
   advertiser: {
     ariaLabel: "광고주 대시보드 전환",
     items: [
-      { id: "contracts", label: "계약", href: "/advertiser/dashboard" },
+      { id: "contracts", label: "1:1 계약", href: "/advertiser/dashboard" },
       { id: "campaigns", label: "캠페인", href: "/advertiser/campaigns" },
     ],
   },
   influencer: {
     ariaLabel: "인플루언서 대시보드 전환",
     items: [
-      { id: "contracts", label: "계약", href: "/influencer/dashboard" },
+      { id: "contracts", label: "1:1 계약", href: "/influencer/dashboard" },
       { id: "campaigns", label: "캠페인", href: "/influencer/campaigns" },
     ],
   },

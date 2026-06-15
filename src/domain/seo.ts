@@ -308,7 +308,7 @@ const getRouteSeoConfig = (pathname: string): RouteSeoConfig => {
     "/intro/influencer": {
       title: `인플루언서 광고 계약 검토 - ${PRODUCT_NAME}`,
       description:
-        "인플루언서가 받은 광고 계약 조건을 확인하고 수정 요청과 전자서명을 간단하게 진행할 수 있습니다.",
+        "광고주가 보낸 1:1 계약 조건을 인플루언서가 확인하고 수정 요청과 전자서명을 간단하게 진행할 수 있습니다.",
       canonicalPath: "/intro/influencer",
       robots: publicRobotsContent,
     },

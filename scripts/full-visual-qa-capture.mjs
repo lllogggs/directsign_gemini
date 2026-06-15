@@ -64,16 +64,16 @@ const publicPages = [
 ];
 
 const advertiserPages = [
-  { id: "dashboard", label: "광고주 계약 대시보드", path: "/advertiser/dashboard" },
+  { id: "dashboard", label: "광고주 1:1 계약 대시보드", path: "/advertiser/dashboard" },
   {
     id: "dashboard-progress-tab",
-    label: "광고주 계약 대시보드 진행중 탭",
+    label: "광고주 1:1 계약 대시보드 진행중 탭",
     path: "/advertiser/dashboard",
     action: async (page) => clickText(page, ["진행중"]),
   },
   {
     id: "dashboard-closed-tab",
-    label: "광고주 계약 대시보드 종료 탭",
+    label: "광고주 1:1 계약 대시보드 종료 탭",
     path: "/advertiser/dashboard",
     action: async (page) => clickText(page, ["종료", "완료"]),
   },
@@ -86,16 +86,16 @@ const advertiserPages = [
 ];
 
 const influencerPages = [
-  { id: "dashboard", label: "인플루언서 계약 대시보드", path: "/influencer/dashboard" },
+  { id: "dashboard", label: "인플루언서 1:1 계약 대시보드", path: "/influencer/dashboard" },
   {
     id: "dashboard-progress-tab",
-    label: "인플루언서 계약 대시보드 진행중 탭",
+    label: "인플루언서 1:1 계약 대시보드 진행중 탭",
     path: "/influencer/dashboard",
     action: async (page) => clickText(page, ["진행중"]),
   },
   {
     id: "dashboard-done-tab",
-    label: "인플루언서 계약 대시보드 완료 탭",
+    label: "인플루언서 1:1 계약 대시보드 완료 탭",
     path: "/influencer/dashboard",
     action: async (page) => clickText(page, ["완료"]),
   },

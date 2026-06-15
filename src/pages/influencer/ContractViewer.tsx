@@ -1124,7 +1124,7 @@ export function ContractViewer() {
               to="/login/influencer"
               className="flex h-11 items-center justify-center rounded-lg bg-neutral-950 px-4 text-sm font-semibold text-white transition hover:bg-neutral-800"
             >
-              내 계약함 확인
+              1:1 계약 목록 확인
             </Link>
             <Link
               to="/"
@@ -1169,13 +1169,13 @@ export function ContractViewer() {
     return (
       <AccessMessage
         title="아직 활성화되지 않은 검토 링크입니다"
-        description="광고주에게 새 계약 검토 링크 발급을 요청해 주세요."
+        description="광고주에게 1:1 계약 검토 링크 발급을 요청해 주세요."
         actions={
           <Link
             to="/login/influencer"
             className="flex h-11 items-center justify-center rounded-lg bg-neutral-950 px-4 text-sm font-semibold text-white transition hover:bg-neutral-800"
           >
-            내 계약함 확인
+            1:1 계약 목록 확인
           </Link>
         }
       />
@@ -1196,7 +1196,7 @@ export function ContractViewer() {
             to="/login/influencer"
             className="flex h-11 items-center justify-center rounded-lg bg-neutral-950 px-4 text-sm font-semibold text-white transition hover:bg-neutral-800"
           >
-            내 계약함 확인
+            1:1 계약 목록 확인
           </Link>
         }
       />

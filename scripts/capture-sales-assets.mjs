@@ -811,7 +811,7 @@ try {
     `${baseUrl}/advertiser/dashboard`,
     { width: 1440, height: 720 },
   );
-  await waitForBodyText(client, dashboardPage, "계약 운영");
+  await waitForBodyText(client, dashboardPage, "1:1 계약 대시보드");
   await clickVisibleButtonByText(client, dashboardPage, "필터");
   await capturePng(client, dashboardPage, "yeollock-advertiser-dashboard.png");
   await closePage(client, dashboardPage);

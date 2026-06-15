@@ -113,7 +113,7 @@ export function InfluencerLoginPage() {
   return (
     <AuthLoginScreen
       title="인플루언서 로그인"
-      description="받은 계약 화면으로 이동합니다."
+      description="1:1 계약 화면으로 이동합니다."
       fields={[
         {
           id: "email",
@@ -138,7 +138,7 @@ export function InfluencerLoginPage() {
       submitLabel="로그인"
       isSubmitting={isSubmitting}
       error={error}
-      errorHint="이메일과 비밀번호를 확인해 주세요. 처음 받은 계약이라면 계정 만들기 후 같은 계약으로 돌아옵니다."
+      errorHint="이메일과 비밀번호를 확인해 주세요. 처음 확인하는 1:1 계약이라면 계정 만들기 후 같은 계약으로 돌아옵니다."
       postSubmit={<AuthPasswordResetLink href="/reset-password?role=influencer" />}
       belowCard={
         <>

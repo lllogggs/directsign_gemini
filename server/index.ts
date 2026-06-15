@@ -752,6 +752,8 @@ const isSensitiveSourceStaticRequest = (request: express.Request) => {
     return true;
   }
 
+  if (!isPreview && pathname === "/lib/utils.ts") return false;
+
   return (
     sensitiveSourceStaticRequestPattern.test(pathname) ||
     sensitiveSalesArtifactRequestPattern.test(pathname)

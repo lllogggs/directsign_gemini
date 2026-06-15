@@ -12,7 +12,7 @@
 
 @page { size: A4 landscape; margin: 0; }
 * { box-sizing: border-box; }
-html, body { margin: 0; background: #e8ebef; color: #111827; font-family: "NanumSquareNeo", "Malgun Gothic", system-ui, sans-serif; }
+html, body { margin: 0; background: #e8ebef; color: #111827; font-family: "NanumSquareNeo", "Malgun Gothic", system-ui, sans-serif; word-break: keep-all; overflow-wrap: normal; }
 body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 .deck { width: 100%; }
 .page {
@@ -43,15 +43,15 @@ body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 .kicker { color: #2563eb; font-size: 12px; font-weight: 900; margin-bottom: 7mm; }
 .dark .kicker { color: #8db6ff; }
 h1, h2, h3, p { margin: 0; }
-h1 { font-size: 49px; line-height: 1.08; letter-spacing: 0; font-weight: 900; max-width: 720px; }
-h2 { font-size: 36px; line-height: 1.14; letter-spacing: 0; font-weight: 900; max-width: 600px; }
+h1 { font-size: 45px; line-height: 1.12; letter-spacing: 0; font-weight: 900; max-width: 720px; word-break: keep-all; overflow-wrap: normal; }
+h2 { font-size: 32px; line-height: 1.18; letter-spacing: 0; font-weight: 900; max-width: 620px; word-break: keep-all; overflow-wrap: normal; }
 h3 { font-size: 19px; line-height: 1.28; font-weight: 900; }
-.lead { color: #4b5563; font-size: 17px; line-height: 1.72; font-weight: 700; max-width: 680px; margin-top: 7mm; }
+.lead { color: #4b5563; font-size: 16px; line-height: 1.65; font-weight: 700; max-width: 680px; margin-top: 7mm; word-break: keep-all; overflow-wrap: normal; }
 .dark .lead { color: rgba(255,255,255,.74); }
 .small { color: #6b7280; font-size: 11px; line-height: 1.55; font-weight: 700; }
 .dark .small { color: rgba(255,255,255,.62); }
-.hero-grid { display: grid; grid-template-columns: 43% 57%; gap: 15mm; align-items: center; height: 151mm; }
-.split { display: grid; grid-template-columns: 38% 62%; gap: 13mm; align-items: center; height: 151mm; }
+.hero-grid { display: grid; grid-template-columns: 45% 55%; gap: 13mm; align-items: center; height: 151mm; }
+.split { display: grid; grid-template-columns: 42% 58%; gap: 11mm; align-items: center; height: 151mm; }
 .split.equal { grid-template-columns: 50% 50%; }
 .stack { display: grid; gap: 5mm; }
 .points { display: grid; gap: 5mm; margin-top: 12mm; }
@@ -101,6 +101,11 @@ h3 { font-size: 19px; line-height: 1.28; font-weight: 900; }
 .export-option strong { display: block; font-size: 14px; line-height: 1.3; font-weight: 900; }
 .export-option span { display: block; color: #6b7280; font-size: 10px; line-height: 1.45; font-weight: 700; margin-top: 1mm; }
 .strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5mm; margin-top: 12mm; }
+.fact-list { display: grid; gap: 3mm; margin-top: 10mm; }
+.fact-row { display: grid; grid-template-columns: 22mm 1fr; gap: 4mm; align-items: start; padding: 4.2mm 0; border-top: 1px solid rgba(17,24,39,.08); }
+.fact-row:first-child { border-top: 0; }
+.fact-row b { font-size: 17px; line-height: 1.2; font-weight: 900; }
+.fact-row span { color: #6b7280; font-size: 11px; line-height: 1.52; font-weight: 700; }
 .metric {
   min-height: 32mm;
   border: 1px solid rgba(17,24,39,.09);
@@ -125,6 +130,9 @@ h3 { font-size: 19px; line-height: 1.28; font-weight: 900; }
 }
 .callout strong { display: block; font-size: 14px; font-weight: 900; margin-bottom: 2mm; }
 .callout span { color: #4b5563; font-size: 11px; line-height: 1.55; font-weight: 700; }
+.note-box { margin-top: 10mm; padding: 6mm; border-radius: 14px; background: #f8fafc; border: 1px solid rgba(37,99,235,.16); box-shadow: 0 14px 40px rgba(15,23,42,.08); }
+.note-box strong { display: block; font-size: 14px; font-weight: 900; margin-bottom: 2mm; }
+.note-box span { display: block; color: #4b5563; font-size: 11px; line-height: 1.55; font-weight: 700; }
 .workflow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5mm; margin-top: 14mm; }
 .step-card { background: #fff; border: 1px solid rgba(17,24,39,.09); border-radius: 14px; padding: 7mm; min-height: 39mm; }
 .dark .step-card { background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.12); }
@@ -176,7 +184,7 @@ h3 { font-size: 19px; line-height: 1.28; font-weight: 900; }
     <div class="hero-grid">
       <div>
         <div class="cover-badge">광고주 실무 운영 가이드</div>
-        <h1>계약을 만들고,<br />검토를 받고,<br />완료까지 관리하는 법.</h1>
+        <h1>계약 작성부터<br />완료 관리까지.</h1>
         <p class="lead">팀에서 바로 공유할 수 있는 실무 흐름 중심 문서입니다. 각 단계에서 무엇을 확인하고 어떤 상태를 봐야 하는지만 남겼습니다.</p>
       </div>
       <div class="mockup dark-card screen-wide">
@@ -196,7 +204,7 @@ h3 { font-size: 19px; line-height: 1.28; font-weight: 900; }
     <div class="split">
       <div>
         <span class="guide-label">STEP 01</span>
-        <h2>출근 후 먼저 계약 운영 대시보드를 확인합니다.</h2>
+        <h2>출근 후 먼저<br />1:1 계약 대시보드를 봅니다.</h2>
         <div class="checklist">
           <div class="check"><span class="mark">✓</span><div><strong>작성중</strong><span>아직 공유하지 않은 계약 초안입니다. 조건 입력이 끝났는지 확인합니다.</span></div></div>
           <div class="check"><span class="mark">✓</span><div><strong>진행중</strong><span>검토, 수정, 서명, 콘텐츠 제출처럼 상대방과 주고받는 계약입니다.</span></div></div>
@@ -204,7 +212,7 @@ h3 { font-size: 19px; line-height: 1.28; font-weight: 900; }
         </div>
       </div>
       <div class="mockup screen-wide">
-        <img src="assets/yeollock-practitioner-dashboard.png" alt="광고주 계약 운영 대시보드" />
+        <img src="assets/yeollock-practitioner-dashboard.png" alt="광고주 1:1 계약 대시보드" />
       </div>
     </div>
 
@@ -217,7 +225,7 @@ h3 { font-size: 19px; line-height: 1.28; font-weight: 900; }
     <div class="split">
       <div>
         <span class="guide-label">STEP 02</span>
-        <h2>계약 작성은 플랫폼 선택에서 시작합니다.</h2>
+        <h2>계약 작성은<br />플랫폼 선택에서 시작합니다.</h2>
         <p class="lead">처음부터 모든 채널을 펼치지 않습니다. 하나의 플랫폼을 고른 뒤 그 안에서 컨텐츠를 선택하고, 필요할 때 컨텐츠나 플랫폼을 추가합니다.</p>
         <div class="points">
           <div class="point"><span class="num">1</span><div><strong>플랫폼</strong><span>인스타그램, 유튜브, 네이버, 틱톡 중 계약할 채널을 선택합니다.</span></div></div>
@@ -239,7 +247,7 @@ h3 { font-size: 19px; line-height: 1.28; font-weight: 900; }
     <div class="split equal">
       <div>
         <span class="guide-label">STEP 03</span>
-        <h2>공유 전에는 계약서 원문을 기준으로 확인합니다.</h2>
+        <h2>공유 전에는<br />계약서 원문을 확인합니다.</h2>
         <div class="checklist">
           <div class="check"><span class="mark">✓</span><div><strong>브랜드와 담당자 정보</strong><span>상대방이 계약 주체를 바로 알 수 있어야 합니다.</span></div></div>
           <div class="check"><span class="mark">✓</span><div><strong>플랫폼과 컨텐츠</strong><span>릴스, 숏폼, 블로그 원고 등 실제 제출 항목이 계약서에 반영되어야 합니다.</span></div></div>
@@ -261,7 +269,7 @@ h3 { font-size: 19px; line-height: 1.28; font-weight: 900; }
     <div class="split">
       <div>
         <span class="guide-label">STEP 04</span>
-        <h2>수정 요청은 계약 화면 안에서 처리합니다.</h2>
+        <h2>수정 요청은<br />계약 화면에서 처리합니다.</h2>
         <p class="lead">수정할 조항과 요청 내용을 명확히 남깁니다. 이후 검토, 반영, 서명 단계에서 같은 기록을 기준으로 확인할 수 있습니다.</p>
         <div class="points">
           <div class="point"><span class="num">1</span><div><strong>요청 내용 확인</strong><span>상대방이 어떤 조항을 바꾸고 싶은지 확인합니다.</span></div></div>
@@ -283,12 +291,12 @@ h3 { font-size: 19px; line-height: 1.28; font-weight: 900; }
     <div class="split">
       <div>
         <span class="guide-label">STEP 05</span>
-        <h2>캠페인은 지원자를 선정한 뒤 계약으로 이어갑니다.</h2>
-        <p class="lead">캠페인 조건은 모집 단계에서 정해집니다. 지원자를 선택하면 그 조건을 기준으로 계약 흐름을 생성하고, 이후에는 계약 대시보드에서 관리합니다.</p>
+        <h2>지원자 선정 후<br />선정자별 진행을 이어갑니다.</h2>
+        <p class="lead">캠페인 조건은 모집 단계에서 정해집니다. 지원자를 선택하면 그 조건을 기준으로 계약서를 만들고, 이후 서명과 제출 상태는 캠페인 상세에서 함께 봅니다.</p>
         <div class="checklist">
           <div class="check"><span class="mark">✓</span><div><strong>프로필과 채널 확인</strong><span>사진, 이름, 인증 플랫폼, 팔로워 규모를 보고 선정합니다.</span></div></div>
-          <div class="check"><span class="mark">✓</span><div><strong>선정 후 계약 생성</strong><span>지원자와 캠페인 조건을 다시 입력하지 않도록 연결합니다.</span></div></div>
-          <div class="check"><span class="mark">✓</span><div><strong>이후 관리는 계약 탭</strong><span>서명, 제출, 완료 상태는 계약 운영 대시보드에서 봅니다.</span></div></div>
+          <div class="check"><span class="mark">✓</span><div><strong>선정자별 계약서</strong><span>지원자와 캠페인 조건을 다시 입력하지 않고 계약서를 준비합니다.</span></div></div>
+          <div class="check"><span class="mark">✓</span><div><strong>캠페인 안에서 관리</strong><span>서명, 제출, 완료 상태를 캠페인 상세에서 선정자별로 봅니다.</span></div></div>
         </div>
       </div>
       <div class="mockup screen-wide screen-applicants">
@@ -305,7 +313,7 @@ h3 { font-size: 19px; line-height: 1.28; font-weight: 900; }
     <div class="split">
       <div>
         <span class="guide-label">STEP 06</span>
-        <h2>보고가 필요하면 대시보드에서 내보내기를 선택합니다.</h2>
+        <h2>보고는 대시보드<br />내보내기로 처리합니다.</h2>
         <p class="lead">엑셀 파일은 즉시 다운로드합니다. Google 스프레드시트는 사용자 동의 후 연결된 Drive에 새 시트를 만들고, 팀 보고나 공유 자료로 활용합니다.</p>
         <div class="checklist">
           <div class="check"><span class="mark">✓</span><div><strong>필터 확인</strong><span>필터가 적용되어 있으면 현재 조건에 맞는 결과를 내보냅니다.</span></div></div>
@@ -338,7 +346,7 @@ h3 { font-size: 19px; line-height: 1.28; font-weight: 900; }
     <div class="split">
       <div>
         <span class="guide-label" style="background:#fff;color:#111827;">DAILY ROUTINE</span>
-        <h2>매일 5분만 보면 되는 운영 순서입니다.</h2>
+        <h2>매일 5분,<br />이 순서만 확인합니다.</h2>
         <p class="lead">상태 확인, 지연 계약 처리, 수정 요청 응답, 완료 계약 보관, 보고 내보내기 순서로 반복하면 됩니다.</p>
       </div>
       <div class="workflow">

@@ -300,7 +300,7 @@ const APPLICANT_STATUS_META: Record<
     className: "border-sky-200 bg-sky-50 text-sky-700",
   },
   converted_to_contract: {
-    label: "수락 완료",
+    label: "선정 완료",
     className: "border-blue-200 bg-blue-50 text-blue-700",
   },
   closed: {
@@ -1081,7 +1081,7 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
                 <h1 className="truncate text-[17px] font-bold text-[#171a17]">
-                  {isCampaignSurface ? "캠페인 운영 대시보드" : "계약 운영 대시보드"}
+                  {isCampaignSurface ? "캠페인 운영 대시보드" : "1:1 계약 대시보드"}
                 </h1>
                 <DashboardDownloadButton onClick={handleDownloadDashboard} />
               </div>
@@ -1100,11 +1100,11 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
                   <Link
                     to="/advertiser/builder"
                     className="yl-primary-action inline-flex h-10 min-w-[112px] shrink-0 items-center justify-center gap-1.5 rounded-[9px] px-3 text-[13px] font-extrabold leading-none transition"
-                    aria-label="계약서 작성"
-                    title="계약서 작성"
+                    aria-label="1:1 계약 작성"
+                    title="1:1 계약 작성"
                   >
                     <Plus className="h-3.5 w-3.5" strokeWidth={2} />
-                    <span>계약서 작성</span>
+                    <span>1:1 계약 작성</span>
                   </Link>
                 )}
               </div>
@@ -2271,7 +2271,7 @@ function CampaignDetailView({
           className="mb-3 inline-flex h-8 items-center gap-1.5 rounded-[7px] border border-[#d9e0d9] bg-white px-2.5 text-[12px] font-extrabold text-[#303630] transition hover:border-[#cbd5cc]"
         >
           <ArrowLeft className="h-3.5 w-3.5" strokeWidth={2} />
-          계약 목록
+          모집 현황
         </button>
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_260px] lg:items-end">
           <div className="min-w-0">
@@ -2323,7 +2323,7 @@ function CampaignDetailView({
         <div className="flex min-h-11 items-center justify-between gap-3 px-3 py-2">
           <div className="min-w-0">
             <p className="truncate text-[14px] font-extrabold leading-5 text-[#171a17]">
-              인플루언서 목록
+              선정자별 진행
             </p>
             <p className="mt-0.5 truncate text-[11px] font-semibold text-[#606861]">
               {filteredContracts.length.toLocaleString("ko-KR")}명 표시 ·{" "}
@@ -2403,7 +2403,9 @@ function CampaignDetailView({
             </React.Fragment>
           ))
         ) : (
-          <EmptyState isInitialEmpty={campaign.contracts.length === 0} />
+          <CampaignParticipantEmptyState
+            isInitialEmpty={campaign.contracts.length === 0}
+          />
         )}
       </div>
     </section>
@@ -2810,7 +2812,7 @@ function CampaignApplicantRow({
     if (!canAccept || isAccepting) return;
 
     const confirmed = window.confirm(
-      `${thread.counterpartName || thread.senderName}을 선정할까요? 선정하면 계약이 생성됩니다.`,
+      `${thread.counterpartName || thread.senderName}을 선정할까요? 선정하면 이 캠페인의 계약서가 만들어집니다.`,
     );
     if (!confirmed) return;
 
@@ -2927,7 +2929,7 @@ function CampaignApplicantRow({
             href={`/advertiser/contract/${thread.convertedContractId}`}
             className={`${primaryActionSpan} inline-flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-md bg-[#171a17] px-2 text-[12px] font-extrabold text-white transition hover:bg-black`}
           >
-            계약 보기
+            계약서 보기
           </a>
         ) : canAccept ? (
           <button
@@ -3289,7 +3291,7 @@ function ContractTable({
         <div className="flex min-h-11 items-center justify-between gap-3 px-3 py-2">
           <div className="min-w-0">
             <p className="truncate text-[14px] font-extrabold leading-5 text-[#171a17]">
-              계약 목록
+              1:1 계약 목록
             </p>
             {isDataPending ? (
               <span
@@ -3933,12 +3935,36 @@ function EmptyState({ isInitialEmpty }: { isInitialEmpty: boolean }) {
         <FileText className="h-5 w-5" strokeWidth={1.7} />
       </div>
       <h2 className="mt-3 text-[14px] font-semibold text-[#171a17]">
-        {isInitialEmpty ? "아직 계약이 없습니다" : "조건에 맞는 계약이 없습니다"}
+        {isInitialEmpty ? "아직 1:1 계약이 없습니다" : "조건에 맞는 1:1 계약이 없습니다"}
       </h2>
       <p className="mt-1 max-w-md text-[12px] leading-5 text-[#7d857f]">
         {isInitialEmpty
-          ? "상대 정보와 합의 조건을 입력해 새 계약을 만들고 바로 관리할 수 있습니다."
+          ? "상대 정보와 합의 조건을 입력해 1:1 계약을 만들고 바로 관리할 수 있습니다."
           : "검색어를 줄이거나 전체로 바꿔보세요."}
+      </p>
+    </section>
+  );
+}
+
+function CampaignParticipantEmptyState({
+  isInitialEmpty,
+}: {
+  isInitialEmpty: boolean;
+}) {
+  return (
+    <section className="flex min-h-[190px] flex-col items-center justify-center bg-white px-6 text-center">
+      <div className="flex h-10 w-10 items-center justify-center rounded-[8px] bg-[#f8faf7] text-[#aeb7b0] ring-1 ring-[#d9e0d9]">
+        <FileText className="h-5 w-5" strokeWidth={1.7} />
+      </div>
+      <h2 className="mt-3 text-[14px] font-semibold text-[#171a17]">
+        {isInitialEmpty
+          ? "아직 선정자별 진행이 없습니다"
+          : "조건에 맞는 선정자가 없습니다"}
+      </h2>
+      <p className="mt-1 max-w-md text-[12px] leading-5 text-[#7d857f]">
+        {isInitialEmpty
+          ? "지원자를 선정하면 캠페인 조건으로 계약서와 서명 진행이 이곳에 표시됩니다."
+          : "검색어나 필터를 줄여보세요."}
       </p>
     </section>
   );
@@ -3968,7 +3994,7 @@ function CampaignEmptyState({ isInitialEmpty }: { isInitialEmpty: boolean }) {
       </h2>
       <p className="mt-1 max-w-md text-[12px] leading-5 text-[#7d857f]">
         {isInitialEmpty
-          ? "캠페인 작성에서 모집 조건을 만들면 이곳에서 지원자와 계약 전환을 관리합니다."
+          ? "캠페인 작성에서 모집 조건을 만들면 이곳에서 지원자와 선정자별 진행을 관리합니다."
           : "검색어를 줄이거나 전체로 바꿔보세요."}
       </p>
     </section>
@@ -3990,7 +4016,7 @@ function CampaignDataErrorPanel({ message }: { message: string }) {
 function SyncErrorPanel({ message }: { message: string }) {
   return (
     <section className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] leading-5 text-amber-800">
-      <p className="font-semibold">계약 목록을 최신 상태로 불러오지 못했습니다.</p>
+      <p className="font-semibold">1:1 계약 목록을 최신 상태로 불러오지 못했습니다.</p>
       <p className="mt-1 text-amber-700">
         서버 연결이나 권한을 확인해야 합니다. 현재 화면은 비어 있는 데이터가 아니라 실패 상태일 수 있습니다.
       </p>
@@ -5073,8 +5099,8 @@ function buildCampaignActivities(campaign: CampaignGroup): CampaignActivity[] {
         id: `${thread.id}:converted`,
         createdAt: thread.updatedAt,
         actor: "광고주",
-        title: "지원 수락",
-        description: "지원이 수락되어 계약이 생성되었습니다.",
+        title: "선정 완료",
+        description: "지원자를 선정하고 캠페인 계약서 진행을 시작했습니다.",
       });
     }
   }
@@ -5084,8 +5110,8 @@ function buildCampaignActivities(campaign: CampaignGroup): CampaignActivity[] {
       id: `${contract.id}:created`,
       createdAt: contract.created_at,
       actor: "광고주",
-      title: "계약 생성",
-      description: `${removeInternalTestLabel(contract.influencer_info.name, "인플루언서")} 계약이 생성되었습니다.`,
+      title: "계약서 준비",
+      description: `${removeInternalTestLabel(contract.influencer_info.name, "인플루언서")} 선정자 계약서가 만들어졌습니다.`,
     });
 
     if (contract.signature_data?.signed_at) {
@@ -5158,7 +5184,7 @@ function formatCampaignAuditActor(actor: NonNullable<Contract["audit_events"]>[n
 function formatCampaignAuditAction(action: string) {
   const labels: Record<string, string> = {
     campaign_application_accepted: "지원 수락",
-    contract_created: "계약 생성",
+    contract_created: "계약서 준비",
     share_link_issued: "검토 링크 발급",
     contract_signed: "계약 서명",
     contract_closed: "광고 계약 마감",

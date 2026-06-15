@@ -226,7 +226,7 @@ export function InfluencerVerification() {
         token ? `?token=${encodeURIComponent(token)}` : ""
       }`
     : "/influencer/dashboard";
-  const returnLabel = contractId ? "계약" : "내 계약";
+  const returnLabel = contractId ? "계약" : "1:1 계약";
   const contract = useAppStore((state) =>
     contractId ? state.getContract(contractId) : undefined,
   );
@@ -671,7 +671,7 @@ export function InfluencerVerification() {
                   className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-neutral-950 px-4 text-sm font-semibold text-white transition hover:bg-neutral-800"
                 >
                   <BookOpen className="h-4 w-4" />
-                  받은 계약 보기
+                  1:1 계약 보기
                 </button>
                 <button
                   type="button"

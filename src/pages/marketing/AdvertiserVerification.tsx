@@ -331,7 +331,7 @@ export function AdvertiserVerification() {
                   className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-neutral-950 px-4 text-sm font-semibold text-white transition hover:bg-neutral-800"
                 >
                   <FileText className="h-4 w-4" />
-                  새 계약 작성
+                  1:1 계약 작성
                 </button>
                 <button
                   type="button"

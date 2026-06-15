@@ -36,7 +36,7 @@ const commonCss = `
 
 @page { size: A4 landscape; margin: 0; }
 * { box-sizing: border-box; }
-html, body { margin: 0; background: #e8ebef; color: #111827; font-family: "NanumSquareNeo", "Malgun Gothic", system-ui, sans-serif; }
+html, body { margin: 0; background: #e8ebef; color: #111827; font-family: "NanumSquareNeo", "Malgun Gothic", system-ui, sans-serif; word-break: keep-all; overflow-wrap: normal; }
 body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 .deck { width: 100%; }
 .page {
@@ -67,15 +67,15 @@ body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 .kicker { color: #2563eb; font-size: 12px; font-weight: 900; margin-bottom: 7mm; }
 .dark .kicker { color: #8db6ff; }
 h1, h2, h3, p { margin: 0; }
-h1 { font-size: 49px; line-height: 1.08; letter-spacing: 0; font-weight: 900; max-width: 720px; }
-h2 { font-size: 36px; line-height: 1.14; letter-spacing: 0; font-weight: 900; max-width: 600px; }
+h1 { font-size: 45px; line-height: 1.12; letter-spacing: 0; font-weight: 900; max-width: 720px; word-break: keep-all; overflow-wrap: normal; }
+h2 { font-size: 32px; line-height: 1.18; letter-spacing: 0; font-weight: 900; max-width: 620px; word-break: keep-all; overflow-wrap: normal; }
 h3 { font-size: 19px; line-height: 1.28; font-weight: 900; }
-.lead { color: #4b5563; font-size: 17px; line-height: 1.72; font-weight: 700; max-width: 680px; margin-top: 7mm; }
+.lead { color: #4b5563; font-size: 16px; line-height: 1.65; font-weight: 700; max-width: 680px; margin-top: 7mm; word-break: keep-all; overflow-wrap: normal; }
 .dark .lead { color: rgba(255,255,255,.74); }
 .small { color: #6b7280; font-size: 11px; line-height: 1.55; font-weight: 700; }
 .dark .small { color: rgba(255,255,255,.62); }
-.hero-grid { display: grid; grid-template-columns: 43% 57%; gap: 15mm; align-items: center; height: 151mm; }
-.split { display: grid; grid-template-columns: 38% 62%; gap: 13mm; align-items: center; height: 151mm; }
+.hero-grid { display: grid; grid-template-columns: 45% 55%; gap: 13mm; align-items: center; height: 151mm; }
+.split { display: grid; grid-template-columns: 42% 58%; gap: 11mm; align-items: center; height: 151mm; }
 .split.equal { grid-template-columns: 50% 50%; }
 .stack { display: grid; gap: 5mm; }
 .points { display: grid; gap: 5mm; margin-top: 12mm; }
@@ -125,6 +125,11 @@ h3 { font-size: 19px; line-height: 1.28; font-weight: 900; }
 .export-option strong { display: block; font-size: 14px; line-height: 1.3; font-weight: 900; }
 .export-option span { display: block; color: #6b7280; font-size: 10px; line-height: 1.45; font-weight: 700; margin-top: 1mm; }
 .strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5mm; margin-top: 12mm; }
+.fact-list { display: grid; gap: 3mm; margin-top: 10mm; }
+.fact-row { display: grid; grid-template-columns: 22mm 1fr; gap: 4mm; align-items: start; padding: 4.2mm 0; border-top: 1px solid rgba(17,24,39,.08); }
+.fact-row:first-child { border-top: 0; }
+.fact-row b { font-size: 17px; line-height: 1.2; font-weight: 900; }
+.fact-row span { color: #6b7280; font-size: 11px; line-height: 1.52; font-weight: 700; }
 .metric {
   min-height: 32mm;
   border: 1px solid rgba(17,24,39,.09);
@@ -149,6 +154,9 @@ h3 { font-size: 19px; line-height: 1.28; font-weight: 900; }
 }
 .callout strong { display: block; font-size: 14px; font-weight: 900; margin-bottom: 2mm; }
 .callout span { color: #4b5563; font-size: 11px; line-height: 1.55; font-weight: 700; }
+.note-box { margin-top: 10mm; padding: 6mm; border-radius: 14px; background: #f8fafc; border: 1px solid rgba(37,99,235,.16); box-shadow: 0 14px 40px rgba(15,23,42,.08); }
+.note-box strong { display: block; font-size: 14px; font-weight: 900; margin-bottom: 2mm; }
+.note-box span { display: block; color: #4b5563; font-size: 11px; line-height: 1.55; font-weight: 700; }
 .workflow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5mm; margin-top: 14mm; }
 .step-card { background: #fff; border: 1px solid rgba(17,24,39,.09); border-radius: 14px; padding: 7mm; min-height: 39mm; }
 .dark .step-card { background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.12); }
@@ -215,7 +223,7 @@ const introDeck = `
     <div class="hero-grid">
       <div>
         <div class="cover-badge">광고주 실무자 소개서</div>
-        <h1>광고 협업을<br />계약과 운영 기준으로<br />정리합니다.</h1>
+        <h1>광고 협업을<br />계약 기준으로<br />운영합니다.</h1>
         <p class="lead">인플루언서 협업에서 조건, 검토, 서명, 제출, 보고까지 흩어지는 일을 한 흐름으로 묶는 광고주 운영 도구입니다.</p>
         <div class="tag-row">
           <span class="tag">계약 작성</span>
@@ -225,7 +233,7 @@ const introDeck = `
         </div>
       </div>
       <div class="mockup dark-card screen-wide">
-        <img src="${assets.dashboard}" alt="연락미 광고주 계약 운영 대시보드" />
+        <img src="${assets.dashboard}" alt="연락미 광고주 1:1 계약 대시보드" />
       </div>
     </div>
     <div class="cover-line"></div>
@@ -241,7 +249,7 @@ const introDeck = `
     <div class="split">
       <div>
         <div class="kicker">왜 필요한가</div>
-        <h2>광고 협업의 리스크는 대부분 ‘기록이 흩어지는 순간’ 생깁니다.</h2>
+        <h2>협업 리스크는<br />기록이 흩어질 때<br />생깁니다.</h2>
         <p class="lead">메일, 메신저, 시트, PDF가 따로 움직이면 조건 확인과 책임 소재가 늦어집니다. 연락미는 실무자가 매일 확인해야 하는 상태와 다음 액션을 한 곳에 남깁니다.</p>
       </div>
       <div class="stack">
@@ -258,7 +266,7 @@ const introDeck = `
     <div class="split">
       <div>
         <div class="kicker">계약 작성</div>
-        <h2>처음에는 하나의 플랫폼과 컨텐츠부터 시작합니다.</h2>
+        <h2>플랫폼과 컨텐츠를<br />순서대로 정리합니다.</h2>
         <p class="lead">플랫폼을 먼저 고르고, 그 플랫폼에서 필요한 컨텐츠 형태를 선택합니다. 같은 플랫폼 안에서 컨텐츠를 추가하거나, 필요할 때 플랫폼을 더하는 방식이라 작성 흐름이 복잡해지지 않습니다.</p>
         <div class="points">
           <div class="point"><span class="num">1</span><div><strong>플랫폼 선택</strong><span>Instagram, YouTube, Naver, TikTok 등 협업 채널을 먼저 정합니다.</span></div></div>
@@ -278,7 +286,7 @@ const introDeck = `
     <div class="split equal">
       <div>
         <div class="kicker">계약서 확인</div>
-        <h2>상대방에게 보여줄 문서는 실제 계약서 원문이어야 합니다.</h2>
+        <h2>상대방이 보는 문서는<br />실제 계약서 원문입니다.</h2>
         <p class="lead">요약 카드가 아니라 광고주가 작성한 계약 조건이 PDF 문서 형태로 정리됩니다. 검토, 공유, 서명 전 단계에서 같은 문서를 기준으로 확인합니다.</p>
         <div class="quote"><strong>“조건이 바뀌었는지”보다 “어떤 문서에 동의했는지”가 먼저 보여야 합니다.</strong><span>계약 본문을 중심에 두면 실무자와 크리에이터가 같은 기준으로 대화할 수 있습니다.</span></div>
       </div>
@@ -291,15 +299,17 @@ const introDeck = `
 
   <section class="page">
     <div class="brand-row"><div class="brand"><span class="brand-mark">Y</span>연락미</div><div class="meta">Operational Dashboard</div></div>
-    <div>
-      <div class="kicker">상태 관리</div>
-      <h2>대시보드는 오늘 처리할 계약을 보여주는 운영판입니다.</h2>
-      <p class="lead">작성중, 진행중, 종료 상태를 나누고 수정 요청, 검토 대기, 서명 준비처럼 실제 다음 행동이 필요한 항목을 빠르게 찾습니다.</p>
+    <div class="split">
+      <div>
+        <div class="kicker">상태 관리</div>
+        <h2>오늘 처리할 1:1 계약을<br />대시보드에서 봅니다.</h2>
+        <p class="lead">작성중, 진행중, 종료 상태를 나누고 수정 요청, 검토 대기, 서명 준비처럼 실제 다음 행동이 필요한 항목을 빠르게 찾습니다.</p>
+        <div class="note-box"><strong>고정된 대시보드 공간</strong><span>계약이 적어도 표 영역은 유지됩니다. 비어 있는 공간은 운영 여백으로 남고, 필요한 CTA만 명확하게 보입니다.</span></div>
+      </div>
+      <div class="mockup screen-wide">
+        <img src="${assets.dashboard}" alt="1:1 계약 대시보드 작성중 탭" />
+      </div>
     </div>
-    <div class="mockup screen-wide" style="margin-top: 10mm;">
-      <img src="${assets.dashboard}" alt="계약 운영 대시보드 작성중 탭" />
-    </div>
-    <div class="callout"><strong>고정된 대시보드 공간</strong><span>계약이 적어도 표 영역은 유지됩니다. 비어 있는 공간은 운영 여백으로 남고, 필요한 CTA만 명확하게 보입니다.</span></div>
     ${footer("광고주 실무자 소개서", 5)}
   </section>
 
@@ -308,12 +318,12 @@ const introDeck = `
     <div class="split">
       <div>
         <div class="kicker">캠페인 모집</div>
-        <h2>캠페인 지원자는 바로 계약 흐름으로 연결됩니다.</h2>
-        <p class="lead">지원자 목록에서 크리에이터 프로필과 채널 정보를 보고 선정합니다. 선정 이후에는 모집 조건을 기준으로 계약이 이어져 운영 흐름이 끊기지 않습니다.</p>
+        <h2>지원자 선정 후<br />선정자별 진행을 관리합니다.</h2>
+        <p class="lead">지원자 목록에서 크리에이터 프로필과 채널 정보를 보고 선정합니다. 선정 이후에는 모집 조건을 기준으로 계약서, 서명, 제출 상태를 캠페인 안에서 이어갑니다.</p>
         <div class="points">
           <div class="point"><span class="num">1</span><div><strong>지원자 확인</strong><span>사진, 이름, 인증 채널, 팔로워 규모를 한눈에 봅니다.</span></div></div>
           <div class="point"><span class="num">2</span><div><strong>프로필 검토</strong><span>크리에이터의 공개 프로필과 채널을 확인합니다.</span></div></div>
-          <div class="point"><span class="num">3</span><div><strong>계약 생성</strong><span>선정한 지원자와 캠페인 조건을 계약으로 넘깁니다.</span></div></div>
+          <div class="point"><span class="num">3</span><div><strong>계약서 준비</strong><span>선정한 지원자별 계약서와 서명 진행을 캠페인 안에서 시작합니다.</span></div></div>
         </div>
       </div>
       <div class="mockup screen-wide screen-applicants">
@@ -328,12 +338,12 @@ const introDeck = `
     <div class="split">
       <div>
         <div class="kicker">내부 보고</div>
-        <h2>운영 현황은 엑셀이나 Google 스프레드시트로 내보낼 수 있습니다.</h2>
+        <h2>운영 현황은<br />엑셀과 스프레드시트로<br />내보냅니다.</h2>
         <p class="lead">대시보드에서 내보내기를 누르면 파일 다운로드와 Google 스프레드시트 생성을 선택할 수 있습니다. 실무팀이 이미 쓰는 보고 방식으로 이어지게 하는 구조입니다.</p>
-        <div class="strip">
-          <div class="metric"><b>XLSX</b><span>바로 다운로드해서 내부 파일로 보관합니다.</span></div>
-          <div class="metric"><b>Sheets</b><span>사용자가 동의하면 Google Drive에 새 시트를 생성합니다.</span></div>
-          <div class="metric"><b>Safe</b><span>공유 토큰, 원본 서명, private storage 경로는 내보내지 않습니다.</span></div>
+        <div class="fact-list">
+          <div class="fact-row"><b>XLSX</b><span>바로 다운로드해서 내부 파일로 보관합니다.</span></div>
+          <div class="fact-row"><b>Sheets</b><span>사용자가 동의하면 Google Drive에 새 시트를 생성합니다.</span></div>
+          <div class="fact-row"><b>Safe</b><span>공유 토큰, 원본 서명, private storage 경로는 내보내지 않습니다.</span></div>
         </div>
       </div>
       <div class="mockup export-visual">
@@ -359,14 +369,14 @@ const introDeck = `
     <div class="split">
       <div>
         <div class="cover-badge">운영 기준</div>
-        <h2>연락미는 광고 협업을 ‘기억’이 아니라 ‘기록’으로 운영하게 합니다.</h2>
+        <h2>광고 협업은<br />기억이 아니라<br />기록으로 운영합니다.</h2>
         <p class="lead">계약 조건을 구조화하고, 상대방 검토와 서명을 문서 기준으로 남기고, 대시보드와 시트로 내부 운영까지 연결합니다.</p>
       </div>
       <div>
         <div class="workflow">
           <div class="step-card"><i>01</i><strong>조건 작성</strong><span>플랫폼, 컨텐츠, 일정, 지급 조건을 입력합니다.</span></div>
           <div class="step-card"><i>02</i><strong>계약 확인</strong><span>PDF 문서 기준으로 검토하고 공유합니다.</span></div>
-          <div class="step-card"><i>03</i><strong>진행 관리</strong><span>수정, 서명, 제출, 종료 상태를 대시보드에서 봅니다.</span></div>
+          <div class="step-card"><i>03</i><strong>진행 관리</strong><span>1:1 계약은 계약 화면, 캠페인은 캠페인 상세에서 이어갑니다.</span></div>
           <div class="step-card"><i>04</i><strong>보고 연결</strong><span>엑셀 또는 Google 스프레드시트로 내보냅니다.</span></div>
         </div>
         <div class="quote" style="background: rgba(255,255,255,.09); border: 1px solid rgba(255,255,255,.12);"><strong>광고 협업을 반복 운영할수록 필요한 것은 더 많은 설명이 아니라 같은 기준의 기록입니다.</strong><span>yeollock.me</span></div>
@@ -394,7 +404,7 @@ const guideDeck = `
     <div class="hero-grid">
       <div>
         <div class="cover-badge">광고주 실무 운영 가이드</div>
-        <h1>계약을 만들고,<br />검토를 받고,<br />완료까지 관리하는 법.</h1>
+        <h1>계약 작성부터<br />완료 관리까지.</h1>
         <p class="lead">팀에서 바로 공유할 수 있는 실무 흐름 중심 문서입니다. 각 단계에서 무엇을 확인하고 어떤 상태를 봐야 하는지만 남겼습니다.</p>
       </div>
       <div class="mockup dark-card screen-wide">
@@ -414,7 +424,7 @@ const guideDeck = `
     <div class="split">
       <div>
         <span class="guide-label">STEP 01</span>
-        <h2>출근 후 먼저 계약 운영 대시보드를 확인합니다.</h2>
+        <h2>출근 후 먼저<br />1:1 계약 대시보드를 봅니다.</h2>
         <div class="checklist">
           <div class="check"><span class="mark">✓</span><div><strong>작성중</strong><span>아직 공유하지 않은 계약 초안입니다. 조건 입력이 끝났는지 확인합니다.</span></div></div>
           <div class="check"><span class="mark">✓</span><div><strong>진행중</strong><span>검토, 수정, 서명, 콘텐츠 제출처럼 상대방과 주고받는 계약입니다.</span></div></div>
@@ -422,7 +432,7 @@ const guideDeck = `
         </div>
       </div>
       <div class="mockup screen-wide">
-        <img src="${assets.dashboard}" alt="광고주 계약 운영 대시보드" />
+        <img src="${assets.dashboard}" alt="광고주 1:1 계약 대시보드" />
       </div>
     </div>
     ${footer("광고주 운영 가이드", 2)}
@@ -433,7 +443,7 @@ const guideDeck = `
     <div class="split">
       <div>
         <span class="guide-label">STEP 02</span>
-        <h2>계약 작성은 플랫폼 선택에서 시작합니다.</h2>
+        <h2>계약 작성은<br />플랫폼 선택에서 시작합니다.</h2>
         <p class="lead">처음부터 모든 채널을 펼치지 않습니다. 하나의 플랫폼을 고른 뒤 그 안에서 컨텐츠를 선택하고, 필요할 때 컨텐츠나 플랫폼을 추가합니다.</p>
         <div class="points">
           <div class="point"><span class="num">1</span><div><strong>플랫폼</strong><span>인스타그램, 유튜브, 네이버, 틱톡 중 계약할 채널을 선택합니다.</span></div></div>
@@ -453,7 +463,7 @@ const guideDeck = `
     <div class="split equal">
       <div>
         <span class="guide-label">STEP 03</span>
-        <h2>공유 전에는 계약서 원문을 기준으로 확인합니다.</h2>
+        <h2>공유 전에는<br />계약서 원문을 확인합니다.</h2>
         <div class="checklist">
           <div class="check"><span class="mark">✓</span><div><strong>브랜드와 담당자 정보</strong><span>상대방이 계약 주체를 바로 알 수 있어야 합니다.</span></div></div>
           <div class="check"><span class="mark">✓</span><div><strong>플랫폼과 컨텐츠</strong><span>릴스, 숏폼, 블로그 원고 등 실제 제출 항목이 계약서에 반영되어야 합니다.</span></div></div>
@@ -473,7 +483,7 @@ const guideDeck = `
     <div class="split">
       <div>
         <span class="guide-label">STEP 04</span>
-        <h2>수정 요청은 계약 화면 안에서 처리합니다.</h2>
+        <h2>수정 요청은<br />계약 화면에서 처리합니다.</h2>
         <p class="lead">수정할 조항과 요청 내용을 명확히 남깁니다. 이후 검토, 반영, 서명 단계에서 같은 기록을 기준으로 확인할 수 있습니다.</p>
         <div class="points">
           <div class="point"><span class="num">1</span><div><strong>요청 내용 확인</strong><span>상대방이 어떤 조항을 바꾸고 싶은지 확인합니다.</span></div></div>
@@ -493,12 +503,12 @@ const guideDeck = `
     <div class="split">
       <div>
         <span class="guide-label">STEP 05</span>
-        <h2>캠페인은 지원자를 선정한 뒤 계약으로 이어갑니다.</h2>
-        <p class="lead">캠페인 조건은 모집 단계에서 정해집니다. 지원자를 선택하면 그 조건을 기준으로 계약 흐름을 생성하고, 이후에는 계약 대시보드에서 관리합니다.</p>
+        <h2>지원자 선정 후<br />선정자별 진행을 이어갑니다.</h2>
+        <p class="lead">캠페인 조건은 모집 단계에서 정해집니다. 지원자를 선택하면 그 조건을 기준으로 계약서를 만들고, 이후 서명과 제출 상태는 캠페인 상세에서 함께 봅니다.</p>
         <div class="checklist">
           <div class="check"><span class="mark">✓</span><div><strong>프로필과 채널 확인</strong><span>사진, 이름, 인증 플랫폼, 팔로워 규모를 보고 선정합니다.</span></div></div>
-          <div class="check"><span class="mark">✓</span><div><strong>선정 후 계약 생성</strong><span>지원자와 캠페인 조건을 다시 입력하지 않도록 연결합니다.</span></div></div>
-          <div class="check"><span class="mark">✓</span><div><strong>이후 관리는 계약 탭</strong><span>서명, 제출, 완료 상태는 계약 운영 대시보드에서 봅니다.</span></div></div>
+          <div class="check"><span class="mark">✓</span><div><strong>선정자별 계약서</strong><span>지원자와 캠페인 조건을 다시 입력하지 않고 계약서를 준비합니다.</span></div></div>
+          <div class="check"><span class="mark">✓</span><div><strong>캠페인 안에서 관리</strong><span>서명, 제출, 완료 상태를 캠페인 상세에서 선정자별로 봅니다.</span></div></div>
         </div>
       </div>
       <div class="mockup screen-wide screen-applicants">
@@ -513,7 +523,7 @@ const guideDeck = `
     <div class="split">
       <div>
         <span class="guide-label">STEP 06</span>
-        <h2>보고가 필요하면 대시보드에서 내보내기를 선택합니다.</h2>
+        <h2>보고는 대시보드<br />내보내기로 처리합니다.</h2>
         <p class="lead">엑셀 파일은 즉시 다운로드합니다. Google 스프레드시트는 사용자 동의 후 연결된 Drive에 새 시트를 만들고, 팀 보고나 공유 자료로 활용합니다.</p>
         <div class="checklist">
           <div class="check"><span class="mark">✓</span><div><strong>필터 확인</strong><span>필터가 적용되어 있으면 현재 조건에 맞는 결과를 내보냅니다.</span></div></div>
@@ -544,7 +554,7 @@ const guideDeck = `
     <div class="split">
       <div>
         <span class="guide-label" style="background:#fff;color:#111827;">DAILY ROUTINE</span>
-        <h2>매일 5분만 보면 되는 운영 순서입니다.</h2>
+        <h2>매일 5분,<br />이 순서만 확인합니다.</h2>
         <p class="lead">상태 확인, 지연 계약 처리, 수정 요청 응답, 완료 계약 보관, 보고 내보내기 순서로 반복하면 됩니다.</p>
       </div>
       <div class="workflow">

@@ -1447,12 +1447,36 @@ describe("yeollock.me security regressions", () => {
     const influencerDashboard = read("src/pages/influencer/InfluencerDashboard.tsx");
     const campaignPages = read("src/pages/marketplace/CampaignPages.tsx");
     const marketplacePages = read("src/pages/marketplace/MarketplacePages.tsx");
+    const practitionerIntroduction = read("docs/sales/advertiser-practitioner-introduction.html");
+    const practitionerGuide = read("docs/sales/advertiser-practitioner-guide.html");
     const app = read("src/App.tsx");
     const marketplaceDomain = read("src/domain/marketplace.ts");
     const packageJson = JSON.parse(read("package.json")) as {
       scripts?: Record<string, string>;
     };
     const marketplace = read("src/pages/marketplace/MarketplacePages.tsx");
+    const advertiserCampaignDetailStart = advertiserDashboard.indexOf(
+      "function CampaignDetailView",
+    );
+    const advertiserCampaignDetailEnd = advertiserDashboard.indexOf(
+      "function CampaignInfluencerTableHeaderRow",
+      advertiserCampaignDetailStart,
+    );
+    const advertiserCampaignDetailSource = advertiserDashboard.slice(
+      advertiserCampaignDetailStart,
+      advertiserCampaignDetailEnd,
+    );
+    const campaignParticipantEmptyStart = advertiserDashboard.indexOf(
+      "function CampaignParticipantEmptyState",
+    );
+    const campaignParticipantEmptyEnd = advertiserDashboard.indexOf(
+      "function CampaignLoadingState",
+      campaignParticipantEmptyStart,
+    );
+    const campaignParticipantEmptySource = advertiserDashboard.slice(
+      campaignParticipantEmptyStart,
+      campaignParticipantEmptyEnd,
+    );
     const supportersCampaignMigration = read(
       "supabase/migrations/20260526093000_allow_supporters_campaign_type.sql",
     );
@@ -1506,6 +1530,32 @@ describe("yeollock.me security regressions", () => {
     assert.match(kimGuardrails, /mobile main role title stays compact/);
     assert.match(kimGuardrails, /advertiser creator discovery and applicant selection support follower sorting/);
     assert.match(kimGuardrails, /advertiser sales PDF campaign applicant capture feels full/);
+    assert.match(kimGuardrails, /campaign selection stays inside campaign surface/);
+    assert.match(agents, /A campaign remains a one-to-many campaign surface after applicant selection/);
+    assert.match(advertiserDashboard, /지원자와 선정자별 진행을 관리합니다/);
+    assert.match(advertiserDashboard, /선정하면 이 캠페인의 계약서가 만들어집니다/);
+    assert.match(advertiserCampaignDetailSource, /모집 현황/);
+    assert.match(advertiserCampaignDetailSource, /선정자별 진행/);
+    assert.doesNotMatch(advertiserCampaignDetailSource, /1:1 계약 목록/);
+    assert.match(campaignParticipantEmptySource, /아직 선정자별 진행이 없습니다/);
+    assert.match(campaignParticipantEmptySource, /계약서와 서명 진행이 이곳에 표시됩니다/);
+    assert.doesNotMatch(campaignParticipantEmptySource, /아직 1:1 계약이 없습니다/);
+    assert.match(campaignPages, /선정하면 이 캠페인의 계약서 초안이 만들어집니다/);
+    assert.match(campaignPages, /캠페인 계약서 진행이 시작됩니다/);
+    assert.match(practitionerIntroduction, /선정자별 진행을 관리합니다/);
+    assert.match(practitionerGuide, /캠페인 상세에서 선정자별로 봅니다/);
+    for (const source of [
+      advertiserDashboard,
+      campaignPages,
+      practitionerIntroduction,
+      practitionerGuide,
+    ]) {
+      assert.doesNotMatch(source, /계약 전환/);
+      assert.doesNotMatch(source, /계약 흐름으로 연결/);
+      assert.doesNotMatch(source, /계약으로 넘깁니다/);
+      assert.doesNotMatch(source, /이후에는 1:1 계약 대시보드에서 관리/);
+      assert.doesNotMatch(source, /이후 관리는 1:1 계약/);
+    }
     assert.match(kimGuardrails, /intro pages use the PDF proposal slide frame/);
     assert.match(agents, /sales\/PDF proposal flow as a manual carousel/);
     assert.match(agents, /subtle left\/right controls/);
@@ -1739,7 +1789,9 @@ describe("yeollock.me security regressions", () => {
     assert.match(landing, /마감일 착오/);
     assert.match(landing, /컨텐츠 기준 변경/);
     assert.match(landing, /활용 범위 과다/);
-    assert.match(landing, /받은 계약 대시보드/);
+    assert.match(landing, /1:1 계약 대시보드/);
+    assert.doesNotMatch(landing, /받은 광고\s*계약/);
+    assert.doesNotMatch(landing, /받은 1:1 계약 대시보드/);
     assert.match(landing, /수정 요청/);
     assert.match(landing, /서명 완료본/);
     assert.match(qaStandard, /광고계약/);

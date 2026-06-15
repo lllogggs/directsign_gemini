@@ -191,7 +191,7 @@ const applicationStatusMeta: Record<
     className: "border-sky-200 bg-sky-50 text-sky-700",
   },
   converted_to_contract: {
-    label: "계약 생성",
+    label: "선정 완료",
     className: "border-blue-200 bg-blue-50 text-blue-700",
   },
   closed: {
@@ -208,7 +208,7 @@ type CampaignShellMetric = {
 const defaultCampaignShellMetrics: CampaignShellMetric[] = [
   { label: "계약 전", value: "조건 정리" },
   { label: "검토", value: "상대 확인" },
-  { label: "계약", value: "작성 연결" },
+  { label: "선정", value: "계약서 준비" },
 ];
 
 export function AdvertiserCampaignRecruitmentPage() {
@@ -609,7 +609,7 @@ export function AdvertiserCampaignRecruitmentPage() {
     const applicantName =
       application.counterpartName || application.senderName || "인플루언서";
     const confirmed = window.confirm(
-      `${applicantName}을 선정할까요? 선정하면 계약 초안이 생성됩니다.`,
+      `${applicantName}을 선정할까요? 선정하면 이 캠페인의 계약서 초안이 만들어집니다.`,
     );
     if (!confirmed) return;
 
@@ -1337,8 +1337,8 @@ export function InfluencerCampaignDiscoveryPage() {
         campaignId: campaign.id,
         tone: "success",
         message: data.already_submitted
-          ? "이미 신청한 캠페인입니다. 광고주가 확인하면 계약으로 이어집니다."
-          : "신청이 전달됐습니다. 광고주가 수락하면 계약이 생성됩니다.",
+          ? "이미 신청한 캠페인입니다. 광고주가 확인하면 선정자별 진행으로 이어집니다."
+          : "신청이 전달됐습니다. 광고주가 선정하면 캠페인 계약서 진행이 시작됩니다.",
       });
       setActiveView("applied");
       void loadApplications();
@@ -2121,7 +2121,7 @@ function AdvertiserCampaignApplicantRow({
             to={`/advertiser/contract/${application.convertedContractId}`}
             className={`${primaryActionSpan} inline-flex h-9 min-w-0 items-center justify-center rounded-md bg-neutral-950 px-2 text-[12px] font-semibold text-white transition hover:bg-black`}
           >
-            계약 보기
+            계약서 보기
           </Link>
         ) : canSelect ? (
           <button

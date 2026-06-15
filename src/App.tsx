@@ -257,8 +257,8 @@ function getRouteLoadingCopy(pathname: string): LoadingCopy {
 
   if (pathname.startsWith("/influencer")) {
     return {
-      label: "내 계약",
-      listTitle: "계약 목록",
+      label: "1:1 계약",
+      listTitle: "1:1 계약 목록",
       tabs: ["지원중", "진행중", "완료", "미선정"],
       variant: "app",
     };
@@ -266,8 +266,8 @@ function getRouteLoadingCopy(pathname: string): LoadingCopy {
 
   if (pathname.startsWith("/advertiser")) {
     return {
-      label: "계약 운영",
-      listTitle: "계약 목록",
+      label: "1:1 계약 운영",
+      listTitle: "1:1 계약 목록",
       tabs: ["작성중", "진행중", "종료"],
       variant: "app",
     };
@@ -279,7 +279,7 @@ function getRouteLoadingCopy(pathname: string): LoadingCopy {
 function AppLoading({
   label = "계약 데이터를 불러오는 중입니다",
   detail,
-  listTitle = "계약 목록",
+  listTitle = "1:1 계약 목록",
   tabs = ["작성중", "진행중", "종료"],
   variant = "plain",
 }: LoadingCopy) {
@@ -730,7 +730,7 @@ const getRouteSeoConfig = (pathname: string): RouteSeoConfig => {
     "/intro/influencer": {
       title: `인플루언서 광고 계약 검토 - ${PRODUCT_NAME}`,
       description:
-        "인플루언서가 받은 광고 계약 조건을 확인하고 수정 요청과 전자서명을 간단하게 진행할 수 있습니다.",
+        "광고주가 보낸 1:1 계약 조건을 인플루언서가 확인하고 수정 요청과 전자서명을 간단하게 진행할 수 있습니다.",
       canonicalPath: "/intro/influencer",
       robots: publicRobotsContent,
     },
@@ -1371,7 +1371,7 @@ function NotFoundPage() {
             to="/advertiser/dashboard"
             className="flex h-11 items-center justify-center rounded-lg border border-neutral-200 bg-[#fbfbfc] text-sm font-semibold text-neutral-700 transition hover:border-neutral-400 hover:bg-white"
           >
-            계약 운영 대시보드
+            1:1 계약 대시보드
           </Link>
         </div>
       </section>

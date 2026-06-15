@@ -28,17 +28,17 @@ export type ContractFirstExperienceContent = {
 export const CONTRACT_FIRST_EXPERIENCE_CONTENT = {
   id: "advertiser-contract-first-experience",
   storageKey: "yeollock:advertiser-contract-first-experience:v1",
-  title: "새 계약과 새 캠페인의 차이",
+  title: "1:1 계약과 캠페인의 차이",
   summary:
-    "새 계약은 이미 협의된 내용을 계약서로 옮기는 기능이고, 새 캠페인은 같은 조건으로 여러 인플루언서 계약을 발송하기 위한 기능입니다.",
+    "1:1 계약은 한 명과 협의된 내용을 계약서로 옮기는 기능이고, 캠페인은 같은 조건으로 여러 인플루언서를 모집한 뒤 계약을 진행하는 기능입니다.",
   steps: [
     {
-      title: "새 계약",
+      title: "1:1 계약",
       description:
         "다른 플랫폼이나 DM에서 브랜드와 인플루언서가 이미 협의한 조건을 계약서로 편하게 정리합니다.",
     },
     {
-      title: "새 캠페인",
+      title: "캠페인",
       description:
         "캠페인 조건을 먼저 만들고, 매칭된 인플루언서마다 같은 캠페인 조건으로 계약서를 만들어 발송합니다.",
     },
@@ -54,11 +54,11 @@ export const CONTRACT_FIRST_EXPERIENCE_CONTENT = {
     },
   ],
   checks: [
-    "이미 한 명과 협의된 건이면 새 계약을 선택하세요.",
+    "이미 한 명과 협의된 건이면 1:1 계약을 선택하세요.",
     "여러 인플루언서와 같은 조건으로 진행할 건이면 새 캠페인을 선택하세요.",
     "자동으로 구성된 조항도 광고주가 최종 책임지고 검토해야 합니다.",
   ],
-  primaryActionLabel: "새 계약",
+  primaryActionLabel: "1:1 계약",
   secondaryActionLabel: "확인했습니다",
 } satisfies ContractFirstExperienceContent;
 
@@ -184,7 +184,7 @@ export const SCREEN_HELP_CONTENT = {
     id: "influencer-contract-help",
     title: "계약 검토 도움말",
     summary:
-      "인플루언서가 받은 계약 내용을 확인하고, 조항 승인이나 수정 요청 후 전자서명까지 진행하는 화면입니다.",
+      "광고주가 보낸 1:1 계약 내용을 인플루언서가 확인하고, 조항 승인이나 수정 요청 후 전자서명까지 진행하는 화면입니다.",
     primaryAction:
       "금액, 일정, 제공물, 광고 표시 의무를 확인한 뒤 조항별로 승인하거나 수정 요청을 남기세요.",
     flow: [
@@ -198,7 +198,7 @@ export const SCREEN_HELP_CONTENT = {
       {
         title: "보안 링크와 상태 확인",
         description:
-          "상단 상태와 계약 제목을 확인해 본인이 받은 계약이 맞는지 먼저 봅니다.",
+          "상단 상태와 계약 제목을 확인해 본인에게 온 1:1 계약이 맞는지 먼저 봅니다.",
       },
       {
         title: "조항별 의무 검토",

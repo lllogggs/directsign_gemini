@@ -451,7 +451,7 @@ export function AdvertiserInfluencerDiscoveryPage() {
       title="인플루언서 찾기"
       description="프로필과 채널 규모를 보고 바로 컨택합니다."
       backHref="/advertiser/dashboard"
-      backLabel="계약 대시보드"
+      backLabel="1:1 계약 대시보드"
       profileCount={profiles.length}
       brandCount={brands.length}
       showMetrics={false}
@@ -464,7 +464,7 @@ export function AdvertiserInfluencerDiscoveryPage() {
             className="yl-header-action yl-header-action-primary"
           >
             <FileText className="h-4 w-4" />
-            <span className="hidden sm:inline">새 계약</span>
+            <span className="hidden sm:inline">1:1 계약</span>
           </button>
           <button
             type="button"
@@ -595,7 +595,7 @@ export function InfluencerBrandDiscoveryPage() {
       title="브랜드 찾기"
       description="브랜드 정보를 확인하고 바로 역제안합니다."
       backHref="/influencer/dashboard"
-      backLabel="내 계약"
+      backLabel="1:1 계약"
       profileCount={profiles.length}
       brandCount={displayBrands.length}
       showMetrics={false}
@@ -608,7 +608,7 @@ export function InfluencerBrandDiscoveryPage() {
             className="yl-header-action yl-header-action-primary"
           >
             <FileText className="h-4 w-4" />
-            <span className="hidden sm:inline">받은 계약</span>
+            <span className="hidden sm:inline">1:1 계약</span>
           </button>
           <button
             type="button"

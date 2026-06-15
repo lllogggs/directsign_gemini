@@ -17,7 +17,7 @@ const roleCopy = {
   influencer: {
     label: "인플루언서",
     loginHref: "/login/influencer",
-    description: "받은 계약 검토와 전자서명을 진행하는 인플루언서 계정의 접근을 복구합니다.",
+    description: "1:1 계약 검토와 전자서명을 진행하는 인플루언서 계정의 접근을 복구합니다.",
   },
 } satisfies Record<ResetRole, { label: string; loginHref: string; description: string }>;
 

@@ -770,7 +770,7 @@ export function InfluencerDashboard() {
             <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 flex-wrap items-end gap-x-3 gap-y-1">
               <h1 className="truncate text-[17px] font-bold text-[#171a17]">
-                내 계약
+                1:1 계약
               </h1>
             </div>
             <DashboardDownloadButton onClick={handleDownloadDashboard} />
@@ -956,7 +956,7 @@ function LoadingView() {
           <div className="border-b border-[#d9e0d9] bg-white px-4 py-2">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h1 className="truncate text-[17px] font-bold text-[#171a17]">
-                내 계약
+                1:1 계약
               </h1>
               <span className="h-8 w-24 rounded-[8px] border border-neutral-200 bg-neutral-50" />
             </div>
@@ -977,7 +977,7 @@ function LoadingView() {
               </div>
               <div className="border-b border-neutral-100 px-3 py-2">
                 <p className="text-[13px] font-extrabold text-neutral-950">
-                  계약 목록
+                  1:1 계약 목록
                 </p>
                 <p className="mt-0.5 text-[12px] font-semibold text-neutral-500">
                   플랫폼, 브랜드, 계약명, 지급내용, 마감일, 현 단계
@@ -1190,7 +1190,7 @@ function EmptyContracts({ hasQuery }: { hasQuery: boolean }) {
         <FileText className="h-5 w-5" strokeWidth={1.7} />
       </div>
       <h2 className="mt-3 text-[14px] font-semibold text-[#171a17]">
-        {hasQuery ? "조건에 맞는 계약이 없습니다" : "아직 내 계약이 없습니다"}
+        {hasQuery ? "조건에 맞는 1:1 계약이 없습니다" : "아직 1:1 계약이 없습니다"}
       </h2>
       <p className="mt-1 max-w-md text-[12px] leading-5 text-[#7d857f]">
         {hasQuery
@@ -1337,7 +1337,7 @@ function ContractTable({
         <div className="flex min-h-11 items-center justify-between gap-3 px-3 py-2">
           <div className="min-w-0">
             <p className="truncate text-[14px] font-extrabold leading-5 text-[#171a17]">
-              계약 목록
+              1:1 계약 목록
             </p>
             <p className="mt-0.5 truncate text-[11px] font-semibold text-[#606861]">
               {displayItems.length.toLocaleString("ko-KR")}건 표시 · {filterSummary}

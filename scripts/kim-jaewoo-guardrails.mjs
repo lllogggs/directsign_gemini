@@ -188,6 +188,9 @@ const llmsTxt = read("public/llms.txt");
 const envExample = read(".env.example");
 const qaStandard = read("scripts/qa-standard.mjs");
 const salesAdvertiserIntroduction = read("docs/sales/advertiser-introduction.html");
+const salesInfluencerIntroduction = read("docs/sales/influencer-introduction.html");
+const practitionerIntroduction = read("docs/sales/advertiser-practitioner-introduction.html");
+const practitionerGuide = read("docs/sales/advertiser-practitioner-guide.html");
 const captureSalesAssets = read("scripts/capture-sales-assets.mjs");
 const salesAdvertiserPdf = fs.readFileSync(
   path.join(root, "docs/sales/advertiser-introduction.pdf"),
@@ -220,6 +223,28 @@ const advertiserDashboardExportEnd = advertiserDashboard.indexOf(
 const advertiserDashboardExportSource = advertiserDashboard.slice(
   advertiserDashboardExportStart,
   advertiserDashboardExportEnd,
+);
+const advertiserCampaignDetailStart = advertiserDashboard.indexOf(
+  "function CampaignDetailView",
+);
+const advertiserCampaignDetailEnd = advertiserDashboard.indexOf(
+  "function CampaignInfluencerTableHeaderRow",
+  advertiserCampaignDetailStart,
+);
+const advertiserCampaignDetailSource = advertiserDashboard.slice(
+  advertiserCampaignDetailStart,
+  advertiserCampaignDetailEnd,
+);
+const campaignParticipantEmptyStart = advertiserDashboard.indexOf(
+  "function CampaignParticipantEmptyState",
+);
+const campaignParticipantEmptyEnd = advertiserDashboard.indexOf(
+  "function CampaignLoadingState",
+  campaignParticipantEmptyStart,
+);
+const campaignParticipantEmptySource = advertiserDashboard.slice(
+  campaignParticipantEmptyStart,
+  campaignParticipantEmptyEnd,
 );
 const advertiserContractFilterStart = advertiserDashboard.indexOf(
   'id="advertiser-contract-filters"',
@@ -349,7 +374,7 @@ for (const [text, reason] of [
 }
 
 for (const [text, reason] of [
-  ["캠페인 목록", "Contract-centered dashboard and intro surfaces must say 계약 목록"],
+  ["캠페인 목록", "Contract-centered dashboard and intro surfaces must say 1:1 계약 목록"],
   ["캠페인명", "Contract-centered dashboard and intro table/search labels must say 계약명"],
 ]) {
   assertNoText(`dashboard/intro contract language: ${text}`, dashboardAndIntroFiles, text, reason);
@@ -385,14 +410,14 @@ assertNoRegex(
 assertNoText(
   "mobile advertiser header avoids duplicate surface label",
   ["src/pages/marketing/Dashboard.tsx"],
-  "광고주 · 계약",
+  "광고주 · 1:1 계약",
   "The mobile surface switch owns the contract/campaign distinction; the app header should not repeat or truncate it",
 );
 
 assertNoText(
   "mobile influencer header avoids duplicate surface label",
   ["src/pages/influencer/InfluencerDashboard.tsx"],
-  "인플루언서 · 내 계약",
+  "인플루언서 · 1:1 계약",
   "The mobile surface switch owns the contract/campaign distinction; the app header should not repeat or truncate it",
 );
 
@@ -1054,7 +1079,7 @@ check(
 check(
   "mobile contract and campaign surfaces are explicit",
   mobileSurfaceSwitch.includes("data-mobile-surface-switch") &&
-    mobileSurfaceSwitch.includes("계약") &&
+    mobileSurfaceSwitch.includes("1:1 계약") &&
     mobileSurfaceSwitch.includes("캠페인") &&
     mobileSurfaceSwitch.includes("/advertiser/dashboard") &&
     mobileSurfaceSwitch.includes("/advertiser/campaigns") &&
@@ -1073,7 +1098,7 @@ check(
     dashboardSurfaceSwitch.includes("data-dashboard-surface-active") &&
     dashboardSurfaceSwitch.includes('ariaLabel: "광고주 대시보드 전환"') &&
     dashboardSurfaceSwitch.includes('ariaLabel: "인플루언서 대시보드 전환"') &&
-    dashboardSurfaceSwitch.includes('label: "계약"') &&
+    dashboardSurfaceSwitch.includes('label: "1:1 계약"') &&
     dashboardSurfaceSwitch.includes('label: "캠페인"') &&
     dashboardSurfaceSwitch.includes('href: "/advertiser/dashboard"') &&
     dashboardSurfaceSwitch.includes('href: "/advertiser/campaigns"') &&
@@ -1084,7 +1109,7 @@ check(
     campaignPages.includes('<DashboardSurfaceSwitch role={role} active="campaigns" />') &&
     !influencerDashboard.includes('aria-label="캠페인 찾기"') &&
     !campaignPages.includes("받은 계약"),
-  "Advertiser and influencer desktop app frames must use the same 계약/캠페인 dashboard switch instead of page-specific back or find buttons",
+  "Advertiser and influencer desktop app frames must use the same 1:1 계약/캠페인 dashboard switch instead of page-specific back or find buttons",
 );
 
 check(
@@ -1703,7 +1728,7 @@ check(
 
 check(
   "intro preview remains contract-centered",
-  landing.includes("계약 목록") &&
+  landing.includes("1:1 계약 목록") &&
     landing.includes("계약명") &&
     !landing.includes("캠페인 목록"),
   "intro previews must mirror the contract dashboard labels",
@@ -1937,6 +1962,55 @@ check(
 );
 
 check(
+  "sales and proposal captures use current 1:1 contract naming",
+  agents.includes("Proposal decks, sales PDFs, and screenshot assets must not preserve stale dashboard naming") &&
+    captureSalesAssets.includes('waitForBodyText(client, dashboardPage, "1:1 계약 대시보드")') &&
+    practitionerIntroduction.includes("1:1 계약 대시보드") &&
+    practitionerGuide.includes("1:1 계약 대시보드") &&
+    salesInfluencerIntroduction.includes("광고주가 보낸 1:1 계약") &&
+    ![salesAdvertiserIntroduction, salesInfluencerIntroduction, practitionerIntroduction, practitionerGuide].some(
+      (source) =>
+        source.includes("받은 광고 계약") ||
+        source.includes("받은 광고계약") ||
+        source.includes("받은 1:1 계약 대시보드") ||
+        source.includes("계약 운영 대시보드") ||
+        source.includes("출근 후 먼저<br />계약 대시보드") ||
+        source.includes("이후에는 계약 대시보드"),
+    ),
+  "Sales/proposal decks and their capture scripts must be regenerated after dashboard naming changes instead of keeping old image/copy labels",
+);
+
+check(
+  "campaign selection stays inside campaign surface",
+  agents.includes("A campaign remains a one-to-many campaign surface after applicant selection") &&
+    advertiserDashboard.includes("지원자와 선정자별 진행을 관리합니다") &&
+    advertiserDashboard.includes("선정하면 이 캠페인의 계약서가 만들어집니다") &&
+    advertiserDashboard.includes("계약서 보기") &&
+    advertiserCampaignDetailSource.includes("모집 현황") &&
+    advertiserCampaignDetailSource.includes("선정자별 진행") &&
+    campaignParticipantEmptySource.includes("아직 선정자별 진행이 없습니다") &&
+    campaignParticipantEmptySource.includes("계약서와 서명 진행이 이곳에 표시됩니다") &&
+    !advertiserCampaignDetailSource.includes("1:1 계약 목록") &&
+    !campaignParticipantEmptySource.includes("아직 1:1 계약이 없습니다") &&
+    campaignPages.includes("선정하면 이 캠페인의 계약서 초안이 만들어집니다") &&
+    campaignPages.includes("캠페인 계약서 진행이 시작됩니다") &&
+    campaignPages.includes("계약서 보기") &&
+    practitionerIntroduction.includes("선정자별 진행을 관리합니다") &&
+    practitionerIntroduction.includes("계약서, 서명, 제출 상태를 캠페인 안에서 이어갑니다") &&
+    practitionerGuide.includes("선정자별 진행을 이어갑니다") &&
+    practitionerGuide.includes("캠페인 상세에서 선정자별로 봅니다") &&
+    ![advertiserDashboard, campaignPages, practitionerIntroduction, practitionerGuide].some(
+      (source) =>
+        source.includes("계약 전환") ||
+        source.includes("계약 흐름으로 연결") ||
+        source.includes("계약으로 넘깁니다") ||
+        source.includes("이후에는 1:1 계약 대시보드에서 관리") ||
+        source.includes("이후 관리는 1:1 계약"),
+    ),
+  "Campaign applicants may generate contract documents, but customer-facing copy must keep selection, signing, submission, and review inside the campaign surface",
+);
+
+check(
   "campaign applicant rows avoid repeated filler copy",
   !advertiserDashboard.includes("캠페인 지원 데이터입니다") &&
     !seedTestAccounts.includes("캠페인 지원 데이터입니다") &&
@@ -2145,14 +2219,14 @@ check(
   "intro advertiser header mirrors real dashboard switch",
   landing.includes('aria-label="광고주 대시보드 전환 미리보기"') &&
     !landing.includes('? ["새 계약", "새 캠페인", "메시지함", "인플루언서 찾기", "로그아웃"]'),
-  "Advertiser intro preview must show the real dashboard 계약/캠페인 header switch, not put 새 계약/새 캠페인 in the global header",
+  "Advertiser intro preview must show the real dashboard 1:1 계약/캠페인 header switch, not put 새 계약/새 캠페인 in the global header",
 );
 
 check(
   "intro advertiser primary action stays in title bar",
-  landing.includes('actionLabel="새 계약"') &&
+  landing.includes('actionLabel="1:1 계약 작성"') &&
     landing.includes("function IntroDashboardTitleBar"),
-  "Advertiser intro preview must mirror the real dashboard by keeping 새 계약 in the dashboard title bar",
+  "Advertiser intro preview must mirror the real dashboard by keeping 1:1 계약 작성 in the dashboard title bar",
 );
 
 check(
@@ -2166,7 +2240,7 @@ check(
 
 check(
   "intro influencer header mirrors real dashboard actions",
-  landing.includes('label="내 계약"') &&
+  landing.includes('label="1:1 계약"') &&
     landing.includes('label="캠페인 찾기"') &&
     landing.includes('label="메시지함"') &&
     landing.includes('label="로그아웃"'),
@@ -2182,8 +2256,11 @@ check(
     landing.includes("마감일 착오") &&
     landing.includes("컨텐츠 기준 변경") &&
     landing.includes("활용 범위 과다") &&
-    landing.includes("받은 광고 계약") &&
-    landing.includes("받은 계약 대시보드") &&
+    landing.includes("1:1 계약") &&
+    landing.includes("1:1 계약 대시보드") &&
+    !landing.includes("받은 광고 계약") &&
+    !landing.includes("받은 광고계약") &&
+    !landing.includes("받은 1:1 계약 대시보드") &&
     landing.includes("const influencerProposalSlides") &&
     landing.includes("PDF 계약서") &&
     landing.includes("원문 확인") &&
