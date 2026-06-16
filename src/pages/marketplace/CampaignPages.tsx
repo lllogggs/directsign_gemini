@@ -2800,6 +2800,22 @@ function getCampaignFallbackThumbnailUrl(campaign: MarketplaceCampaignPost) {
     .filter(Boolean)
     .join(" ");
 
+  if (/monotrip/i.test(haystack)) {
+    return "/images/campaigns/monotrip-local-stay-v2.png";
+  }
+  if (/stayhour|nightcare/i.test(haystack)) {
+    return "/images/campaigns/stayhour-weekend-stay-v2.png";
+  }
+  if (/breadroom|obre/i.test(haystack)) {
+    return "/images/campaigns/breadroom-homecare-supporters-v2.png";
+  }
+  if (/object-studio|housefit/i.test(haystack)) {
+    return "/images/campaigns/object-studio-organization-v2.png";
+  }
+  if (/greenspoon|brewinglab/i.test(haystack)) {
+    return "/images/campaigns/greenspoon-breakfast-routine-v2.png";
+  }
+
   if (/모노트립|monotrip|숙소|로컬 숙소|브이로그/u.test(haystack)) {
     return "/images/campaigns/monotrip-local-stay-v2.png";
   }
