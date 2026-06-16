@@ -1001,10 +1001,12 @@ describe("yeollock.me security regressions", () => {
 
     assert.match(inbox, /role === "advertiser" \? "sent" : "inbox"/);
     assert.match(inbox, /summaryTitle:\s*\(openCount: number\) =>/);
-    assert.match(inbox, /`보낸 제안 \$\{openCount\.toLocaleString\(\)\}건이 진행 중입니다`/);
-    assert.match(inbox, /primaryBucketLabel: "보낸 제안"/);
+    assert.match(inbox, /`보낸 1:1 계약 제안 \$\{openCount\.toLocaleString\(\)\}건이 진행 중입니다`/);
+    assert.match(inbox, /primaryBucketLabel: "보낸 계약 제안"/);
     assert.match(inbox, /platformFilterOptions/);
     assert.match(inbox, /제안 종류/);
+    assert.match(inbox, /1:1 계약 제안 관리/);
+    assert.match(inbox, /1:1 계약 작성/);
     assert.doesNotMatch(inbox, /function PlatformPills/);
     assert.doesNotMatch(inbox, /formatPlatformLabel/);
     assert.match(
@@ -1697,6 +1699,45 @@ describe("yeollock.me security regressions", () => {
     assert.match(campaignPages, /ariaLabel="지원자 정렬"/);
     assert.match(advertiserDashboard, /APPLICANT_SORT_OPTIONS/);
     assert.match(advertiserDashboard, /compareCampaignApplicantsBySort/);
+    assert.match(
+      agents,
+      /advertiser-facing campaign management should read like an operational table\/list/,
+    );
+    assert.match(
+      agents,
+      /influencer-facing campaign discovery should read like thumbnail recruitment cards/,
+    );
+    assert.match(campaignPages, /function AdvertiserCampaignTable/);
+    assert.match(campaignPages, /function AdvertiserCampaignPreview/);
+    assert.match(campaignPages, /function CampaignThumbnail/);
+    assert.match(campaignPages, /function CampaignRecruitmentDetailDialog/);
+    assert.match(campaignPages, /function CampaignCardMetaChips/);
+    assert.match(campaignPages, /function CampaignCardDeadlineStrip/);
+    assert.match(campaignPages, /제출마감일/);
+    assert.match(campaignPages, /제출마감 \{getCampaignSubmissionDeadlineLabel\(campaign\)\}/);
+    assert.doesNotMatch(campaignPages, /콘텐츠 \{getCampaign/);
+    assert.match(campaignPages, /지역\/진행방식/);
+    assert.match(campaignPages, /제공상품/);
+    assert.match(campaignPages, /참여 미션/);
+    assert.match(campaignPages, /function CampaignImageUpload/);
+    assert.match(campaignPages, /\/api\/advertiser\/campaign-image/);
+    assert.match(server, /제공상품을 120자 이내로 입력해 주세요/);
+    assert.match(server, /지역\/진행방식:/);
+    assert.match(server, /"\/api\/advertiser\/campaign-image"/);
+    assert.match(server, /area: "campaign-thumbnails"/);
+    assert.match(marketplaceDomain, /offer\?: string/);
+    assert.match(marketplaceDomain, /thumbnailUrl\?: string/);
+    assert.match(marketplaceDomain, /\/images\/campaigns\/monotrip-local-stay-v2\.png/);
+    assert.match(
+      marketplaceDomain,
+      /\/images\/campaigns\/breadroom-homecare-supporters-v2\.png/,
+    );
+    assert.match(
+      seedAccounts,
+      /thumbnailUrl: "\/images\/campaigns\/breadroom-homecare-supporters-v2\.png"/,
+    );
+    assert.match(marketplaceDomain, /function isMarketplaceCampaignRecruiting/);
+    assert.match(marketplaceDomain, /isMarketplaceCampaignRecruiting\(campaign\.deadline\)/);
     assert.match(
       advertiserDashboard,
       /getChannelAudienceSortValue\(getCampaignApplicantDisplayPlatforms\(a\)\)/,

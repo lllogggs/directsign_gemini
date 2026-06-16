@@ -1287,7 +1287,7 @@ function InfluencerDiscoveryCard({
           className="yl-primary-action inline-flex h-10 items-center justify-center gap-2 rounded-[8px] px-3 text-[13px] font-extrabold transition"
         >
           <Send className="h-4 w-4" />
-          제안
+          1:1 계약
         </button>
         <Link
           to={getInfluencerProfilePath(profile)}
@@ -1407,12 +1407,12 @@ function InfluencerContactDialog({
       );
 
       if (response.status === 401) {
-        setError("광고주 로그인 후 제안을 저장할 수 있습니다.");
+        setError("광고주 로그인 후 1:1 계약 제안을 저장할 수 있습니다.");
         return;
       }
       if (!response.ok) {
         const data = (await response.json().catch(() => ({}))) as { error?: string };
-        setError(data.error ?? "제안을 저장하지 못했습니다. 다시 시도해 주세요.");
+        setError(data.error ?? "1:1 계약 제안을 저장하지 못했습니다. 다시 시도해 주세요.");
         return;
       }
 
@@ -1423,11 +1423,11 @@ function InfluencerContactDialog({
   };
 
   return (
-    <DialogFrame title={`${profile.displayName}에게 컨택`} onClose={onClose}>
+    <DialogFrame title={`${profile.displayName}에게 1:1 계약 제안`} onClose={onClose}>
       {submitted ? (
         <ProposalSubmitted
-          title="제안이 저장됐습니다"
-          body="브랜드 소개와 광고 형태가 메시지함에 저장됐습니다."
+          title="1:1 계약 제안이 저장됐습니다"
+          body="브랜드 소개와 계약 조건이 메시지함에 저장됐습니다."
           actionHref="/advertiser/messages"
           actionLabel="메시지함 보기"
           onClose={onClose}
@@ -1475,7 +1475,7 @@ function InfluencerContactDialog({
               ))}
             </select>
           </FormField>
-          <FormField label="제안 요약">
+          <FormField label="계약 조건 요약">
             <textarea
               required
               rows={3}
@@ -1509,7 +1509,7 @@ function InfluencerContactDialog({
             className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-blue-600 px-4 text-[14px] font-semibold text-white shadow-[0_14px_30px_rgba(37,99,235,0.18)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:shadow-none"
           >
             <Send className="h-4 w-4" />
-            {isSubmitting ? "저장 중" : "제안 저장"}
+            {isSubmitting ? "저장 중" : "1:1 계약 제안 저장"}
           </button>
         </form>
       )}

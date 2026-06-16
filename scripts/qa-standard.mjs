@@ -448,7 +448,7 @@ const browserRenderRoutes = [
   {
     name: "login",
     path: "/login",
-    requiredText: ["광고주 로그인", "인플루언서 로그인"],
+    requiredText: ["광고주로 시작", "인플루언서로 시작"],
     minTextLength: 60,
   },
   {

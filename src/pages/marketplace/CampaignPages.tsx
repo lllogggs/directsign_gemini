@@ -2,11 +2,14 @@ import {
   ArrowDownWideNarrow,
   ArrowUpDown,
   ArrowUpWideNarrow,
+  CalendarDays,
   ChevronDown,
   ExternalLink,
   FileSignature,
   FileText,
+  Gift,
   LogOut,
+  MapPin,
   Megaphone,
   Plus,
   RefreshCw,
@@ -14,6 +17,7 @@ import {
   Send,
   SlidersHorizontal,
   Settings,
+  UsersRound,
   X,
 } from "lucide-react";
 import {
@@ -98,6 +102,15 @@ type CampaignSort = {
 };
 type ApplicationStatusFilter = "all" | MarketplaceProposalStatus;
 
+const formatCampaignDateExample = (daysFromToday: number) => {
+  const date = new Date();
+  date.setDate(date.getDate() + daysFromToday);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(
+    2,
+    "0",
+  )}-${String(date.getDate()).padStart(2, "0")}`;
+};
+
 const platformOptions: PlatformFilter[] = [
   "all",
   "instagram",
@@ -151,6 +164,11 @@ type AdvertiserCampaignsResponse = {
 type BrandImageUploadResponse = {
   image_url?: string;
   brand?: MarketplaceBrandProfile;
+  error?: string;
+};
+
+type CampaignImageUploadResponse = {
+  image_url?: string;
   error?: string;
 };
 
@@ -220,12 +238,16 @@ export function AdvertiserCampaignRecruitmentPage() {
     title: "",
     type: "sponsored_post" as CampaignProposalType,
     applicantLimit: "",
+    location: "",
+    offer: "",
     budget: "",
     summary: "",
+    mission: "",
     deadline: "",
     uploadDeadline: "",
     platforms: ["instagram"] as InfluencerPlatform[],
     deliverables: "",
+    thumbnailUrl: "",
   });
   const [submitError, setSubmitError] = useState<string | undefined>();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -248,6 +270,9 @@ export function AdvertiserCampaignRecruitmentPage() {
   const [brandImagePreview, setBrandImagePreview] = useState<string | undefined>();
   const [brandImageError, setBrandImageError] = useState<string | undefined>();
   const [isBrandImageUploading, setIsBrandImageUploading] = useState(false);
+  const [campaignImagePreview, setCampaignImagePreview] = useState<string | undefined>();
+  const [campaignImageError, setCampaignImageError] = useState<string | undefined>();
+  const [isCampaignImageUploading, setIsCampaignImageUploading] = useState(false);
 
   const loadCampaigns = useCallback(async () => {
     setState((current) =>
@@ -343,11 +368,15 @@ export function AdvertiserCampaignRecruitmentPage() {
     return () => window.clearTimeout(timer);
   }, [refreshCampaignWorkspace]);
 
+  const requiredCampaignFieldCount = 12;
   const canSubmit =
     form.title.trim().length > 0 &&
     form.applicantLimit.trim().length > 0 &&
+    form.location.trim().length > 0 &&
+    form.offer.trim().length > 0 &&
     form.budget.trim().length > 0 &&
     form.deliverables.trim().length > 0 &&
+    form.mission.trim().length > 0 &&
     form.summary.trim().length > 0 &&
     form.uploadDeadline.trim().length > 0 &&
     form.deadline.trim().length > 0 &&
@@ -357,10 +386,13 @@ export function AdvertiserCampaignRecruitmentPage() {
     form.type.trim().length > 0 ? undefined : "광고형태",
     form.title.trim().length > 0 ? undefined : "제목",
     form.applicantLimit.trim().length > 0 ? undefined : "모집인원",
+    form.location.trim().length > 0 ? undefined : "지역/진행방식",
+    form.offer.trim().length > 0 ? undefined : "제공상품",
     form.budget.trim().length > 0 ? undefined : "지급내용",
     form.deliverables.trim().length > 0 ? undefined : "산출물",
+    form.mission.trim().length > 0 ? undefined : "참여 미션",
     form.summary.trim().length > 0 ? undefined : "캠페인설명",
-    form.uploadDeadline.trim().length > 0 ? undefined : "업로드 마감일",
+    form.uploadDeadline.trim().length > 0 ? undefined : "제출마감일",
     form.deadline.trim().length > 0 ? undefined : "모집마감일",
   ].filter(Boolean) as string[];
   const submitHelperText = canSubmit
@@ -439,6 +471,61 @@ export function AdvertiserCampaignRecruitmentPage() {
     }
   };
 
+  const handleCampaignImageSelect = async (file: File | undefined) => {
+    if (!file || isCampaignImageUploading) return;
+
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      setCampaignImageError("PNG, JPG, WebP 이미지만 올릴 수 있습니다.");
+      return;
+    }
+    if (file.size > 3 * 1024 * 1024) {
+      setCampaignImageError("이미지는 3MB 이하로 올려주세요.");
+      return;
+    }
+
+    setIsCampaignImageUploading(true);
+    setCampaignImageError(undefined);
+
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      setCampaignImagePreview(dataUrl);
+      const response = await apiFetch("/api/advertiser/campaign-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          file: {
+            name: file.name,
+            type: file.type,
+            size: file.size,
+            data_url: dataUrl,
+          },
+        }),
+      });
+
+      if (response.status === 401) {
+        navigate("/login/advertiser", { replace: true });
+        return;
+      }
+
+      const data = (await response.json().catch(() => ({}))) as
+        CampaignImageUploadResponse;
+      if (!response.ok || !data.image_url) {
+        throw new Error(data.error ?? "대표 이미지를 저장하지 못했습니다.");
+      }
+
+      setForm((current) => ({ ...current, thumbnailUrl: data.image_url ?? "" }));
+      setCampaignImagePreview(undefined);
+    } catch (error) {
+      setCampaignImageError(
+        error instanceof Error ? error.message : "대표 이미지를 저장하지 못했습니다.",
+      );
+      setCampaignImagePreview(undefined);
+    } finally {
+      setIsCampaignImageUploading(false);
+    }
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!canSubmit || isSubmitting) return;
@@ -489,11 +576,15 @@ export function AdvertiserCampaignRecruitmentPage() {
         ...current,
         title: "",
         applicantLimit: "",
+        location: "",
+        offer: "",
         budget: "",
         summary: "",
+        mission: "",
         deadline: "",
         uploadDeadline: "",
         deliverables: "",
+        thumbnailUrl: "",
       }));
       navigate("/advertiser/campaigns");
     } catch (error) {
@@ -507,20 +598,42 @@ export function AdvertiserCampaignRecruitmentPage() {
 
   const campaigns = state.status === "ready" ? state.campaigns : [];
   const brand = state.status === "ready" ? state.brand : null;
-  const draftSummaryRows = [
-    { label: "제목", value: form.title.trim() || "미입력" },
-    {
-      label: "플랫폼",
-      value:
-        form.platforms
-          .map((platform) => platformLabels[platform] ?? platform)
-          .join(", ") || "미입력",
-    },
-    { label: "모집", value: form.applicantLimit.trim() || "미입력" },
-    { label: "지급", value: form.budget.trim() || "미입력" },
-    { label: "산출물", value: form.deliverables.trim() || "미입력" },
-    { label: "마감", value: form.deadline.trim() || "미입력" },
-  ];
+  const draftCampaignPost = useMemo<MarketplaceCampaignPost>(() => {
+    const platforms = form.platforms.length > 0 ? form.platforms : ["instagram"];
+    const logoUrl = brandImagePreview ?? brand?.logoUrl;
+    const uploadedThumbnailUrl = campaignImagePreview ?? form.thumbnailUrl.trim();
+    const thumbnailUrl = uploadedThumbnailUrl || logoUrl;
+
+    return {
+      id: "draft-campaign-preview",
+      title: form.title.trim() || "캠페인 제목",
+      type: form.type,
+      applicantLimit: form.applicantLimit.trim() || "모집 인원",
+      location: form.location.trim() || brand?.location || "지역/진행방식",
+      offer: form.offer.trim() || "제공상품",
+      budget: form.budget.trim() || "지급 조건",
+      summary: form.summary.trim() || "캠페인 설명을 입력하면 이 영역에 표시됩니다.",
+      mission: form.mission.trim() || "참여 미션을 입력하면 상세 화면에 표시됩니다.",
+      deadline: form.deadline.trim() || undefined,
+      uploadDeadline: form.uploadDeadline.trim() || undefined,
+      platforms,
+      deliverables: parseCampaignDeliverables(form.deliverables),
+      status: "open",
+      brandId: brand?.id ?? "draft-brand",
+      brandHandle: brand?.handle ?? "draft-brand",
+      brandName: brand?.displayName ?? "브랜드명",
+      brandCategory: brand?.category ?? "카테고리",
+      brandHeadline: brand?.headline ?? "",
+      brandLocation: brand?.location ?? "지역/진행방식",
+      brandLogoLabel: brand?.logoLabel ?? "BR",
+      brandLogoUrl: logoUrl,
+      brandHref: brand ? `/brands/${brand.handle}` : "/brands",
+      typeLabel: proposalTypeLabels[form.type],
+      platformLabels: platforms.map((platform) => platformLabels[platform]),
+      deadlineLabel: getCampaignDeadlineLabel(form.deadline.trim() || undefined),
+      thumbnailUrl,
+    };
+  }, [brand, brandImagePreview, campaignImagePreview, form]);
   const campaignApplications = useMemo(
     () =>
       applicationsState.status === "ready" ? applicationsState.applications : [],
@@ -593,6 +706,9 @@ export function AdvertiserCampaignRecruitmentPage() {
   const deliverablesPlaceholder = isSupportersCampaign
     ? "예: 네이버 블로그 후기 1건, 인스타 피드 1건"
     : "예: 릴스 1건, 스토리 2건";
+  const missionPlaceholder = isSupportersCampaign
+    ? "예: 제품 수령 후 7일 내 사용 후기와 필수 문구 포함"
+    : "예: 제품 사용 장면, 핵심 장점 2가지, 광고 표시 포함";
   const summaryPlaceholder = isSupportersCampaign
     ? "제품, 작성 미션, 게시 유지 조건, 제품 제공비 기준을 적어 주세요."
     : "인플루언서가 바로 판단할 수 있도록 제품, 타깃, 원하는 컨텐츠 톤, 검수 기준을 적어 주세요.";
@@ -662,7 +778,9 @@ export function AdvertiserCampaignRecruitmentPage() {
       metrics={[
         {
           label: "작성",
-          value: canSubmit ? "완료" : `${9 - missingFormLabels.length}/9`,
+          value: canSubmit
+            ? "완료"
+            : `${requiredCampaignFieldCount - missingFormLabels.length}/${requiredCampaignFieldCount}`,
         },
         { label: "공개", value: "모집 노출" },
         { label: "지원자", value: "선정" },
@@ -674,7 +792,7 @@ export function AdvertiserCampaignRecruitmentPage() {
             className="yl-header-action yl-header-action-primary"
           >
             <FileSignature className="h-4 w-4" />
-            <span className="hidden sm:inline">계약 작성</span>
+            <span className="hidden sm:inline">1:1 계약 작성</span>
           </Link>
           <Link
             to="/advertiser/discover"
@@ -713,6 +831,16 @@ export function AdvertiserCampaignRecruitmentPage() {
           {brandImageError ? (
             <p className="mt-3 rounded-[10px] border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] font-extrabold text-rose-700">
               {brandImageError}
+            </p>
+          ) : null}
+          <CampaignImageUpload
+            imageUrl={campaignImagePreview ?? form.thumbnailUrl}
+            disabled={isCampaignImageUploading}
+            onSelect={handleCampaignImageSelect}
+          />
+          {campaignImageError ? (
+            <p className="mt-3 rounded-[10px] border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] font-extrabold text-rose-700">
+              {campaignImageError}
             </p>
           ) : null}
 
@@ -775,6 +903,34 @@ export function AdvertiserCampaignRecruitmentPage() {
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
+              <CampaignField label="지역/진행방식">
+                <input
+                  required
+                  value={form.location}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      location: event.target.value,
+                    }))
+                  }
+                  placeholder="예: 서울 성수 방문, 온라인 배송"
+                  className="campaign-input"
+                />
+              </CampaignField>
+              <CampaignField label="제공상품">
+                <input
+                  required
+                  value={form.offer}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, offer: event.target.value }))
+                  }
+                  placeholder="예: 러닝화 1족, 식사권 2인"
+                  className="campaign-input"
+                />
+              </CampaignField>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
               <CampaignField label="모집인원">
                 <input
                   required
@@ -817,6 +973,19 @@ export function AdvertiserCampaignRecruitmentPage() {
               />
             </CampaignField>
 
+            <CampaignField label="참여 미션">
+              <textarea
+                required
+                rows={2}
+                value={form.mission}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, mission: event.target.value }))
+                }
+                placeholder={missionPlaceholder}
+                className="campaign-input resize-none"
+              />
+            </CampaignField>
+
             <CampaignField label="캠페인설명">
               <textarea
                 required
@@ -831,7 +1000,7 @@ export function AdvertiserCampaignRecruitmentPage() {
             </CampaignField>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <CampaignField label="업로드 마감일">
+              <CampaignField label="제출마감일">
                 <input
                   required
                   type="text"
@@ -845,7 +1014,7 @@ export function AdvertiserCampaignRecruitmentPage() {
                       uploadDeadline: event.target.value,
                     }))
                   }
-                  placeholder="예: 2026-06-04"
+                  placeholder={`예: ${formatCampaignDateExample(14)}`}
                   className="campaign-input"
                 />
               </CampaignField>
@@ -860,7 +1029,7 @@ export function AdvertiserCampaignRecruitmentPage() {
                   onChange={(event) =>
                     setForm((current) => ({ ...current, deadline: event.target.value }))
                   }
-                  placeholder="예: 2026-05-28"
+                  placeholder={`예: ${formatCampaignDateExample(7)}`}
                   className="campaign-input"
                 />
               </CampaignField>
@@ -923,6 +1092,12 @@ export function AdvertiserCampaignRecruitmentPage() {
             </button>
           </div>
 
+          <AdvertiserCampaignPreview
+            campaign={draftCampaignPost}
+            canPublish={canSubmit}
+            helperText={submitHelperText}
+          />
+
           <AdvertiserCampaignViewTabs
             value={activeCampaignView}
             applicantsCount={campaignApplications.length}
@@ -942,45 +1117,11 @@ export function AdvertiserCampaignRecruitmentPage() {
                 title={applicationsState.message}
               />
             ) : campaignApplications.length === 0 ? (
-              <section className="mt-4 rounded-[16px] border border-neutral-200 bg-[#fbfbfc] p-4">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-[12px] bg-white text-neutral-700 ring-1 ring-neutral-200">
-                    <FileText className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[12px] font-extrabold text-neutral-400">
-                      저장 전
-                    </p>
-                    <h3 className="truncate text-[16px] font-extrabold text-neutral-950">
-                      작성 중인 캠페인 조건
-                    </h3>
-                  </div>
-                </div>
-                <dl className="mt-4 grid gap-2">
-                  {draftSummaryRows.map((row) => (
-                    <div
-                      key={row.label}
-                      className="grid grid-cols-[58px_minmax(0,1fr)] items-center gap-3 rounded-[10px] bg-white px-3 py-2"
-                    >
-                      <dt className="text-[11px] font-extrabold text-neutral-400">
-                        {row.label}
-                      </dt>
-                      <dd className="truncate text-right text-[13px] font-extrabold text-neutral-900">
-                        {row.value}
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
-                <p
-                  className={`mt-3 rounded-[10px] px-3 py-2 text-[12px] font-extrabold leading-5 ${
-                    canSubmit
-                      ? "bg-emerald-50 text-emerald-700"
-                      : "bg-white text-neutral-500"
-                  }`}
-                >
-                  {submitHelperText}
-                </p>
-              </section>
+              <PanelState
+                icon={<FileText className="h-5 w-5" />}
+                title="아직 지원자가 없습니다"
+                body="캠페인을 공개하면 지원자가 이 탭에 쌓입니다."
+              />
             ) : (
               <>
                 <AdvertiserCampaignApplicantControls
@@ -1035,14 +1176,7 @@ export function AdvertiserCampaignRecruitmentPage() {
               body="첫 캠페인을 등록하면 인플루언서 캠페인 화면에 바로 표시됩니다."
             />
           ) : (
-            <div className="mt-4 grid gap-3">
-              {campaigns.map((campaign) => (
-                <AdvertiserCampaignCard
-                  key={campaign.id ?? `${campaign.title}-${campaign.type}`}
-                  campaign={campaign}
-                />
-              ))}
-            </div>
+            <AdvertiserCampaignTable campaigns={campaigns} />
           )}
         </section>
       </section>
@@ -1078,6 +1212,8 @@ export function InfluencerCampaignDiscoveryPage() {
     | { campaignId: string; tone: "success" | "error"; message: string }
     | undefined
   >();
+  const [selectedCampaign, setSelectedCampaign] =
+    useState<MarketplaceCampaignPost | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -1207,6 +1343,9 @@ export function InfluencerCampaignDiscoveryPage() {
           campaign.brandCategory,
           campaign.title,
           campaign.summary ?? "",
+          campaign.location ?? "",
+          campaign.offer ?? "",
+          campaign.mission ?? "",
           campaign.budget,
           campaign.typeLabel,
           ...campaign.platformLabels,
@@ -1340,6 +1479,7 @@ export function InfluencerCampaignDiscoveryPage() {
           ? "이미 신청한 캠페인입니다. 광고주가 확인하면 선정자별 진행으로 이어집니다."
           : "신청이 전달됐습니다. 광고주가 선정하면 캠페인 계약서 진행이 시작됩니다.",
       });
+      setSelectedCampaign(null);
       setActiveView("applied");
       void loadApplications();
     } catch (error) {
@@ -1530,7 +1670,7 @@ export function InfluencerCampaignDiscoveryPage() {
           >
             {applicationNotice ? (
               <p
-                className={`rounded-[12px] border px-3 py-2 text-[12px] font-extrabold lg:col-span-3 ${
+                className={`rounded-[12px] border px-3 py-2 text-[12px] font-extrabold sm:col-span-2 xl:col-span-3 ${
                   applicationNotice.tone === "success"
                     ? "border-emerald-200 bg-emerald-50 text-emerald-700"
                     : "border-rose-200 bg-rose-50 text-rose-700"
@@ -1545,11 +1685,20 @@ export function InfluencerCampaignDiscoveryPage() {
                 campaign={campaign}
                 isApplying={applyingCampaignId === campaign.id}
                 onApply={applyToCampaign}
+                onOpenDetail={setSelectedCampaign}
               />
             ))}
           </div>
         )}
       </section>
+      {selectedCampaign ? (
+        <CampaignRecruitmentDetailDialog
+          campaign={selectedCampaign}
+          isApplying={applyingCampaignId === selectedCampaign.id}
+          onApply={applyToCampaign}
+          onClose={() => setSelectedCampaign(null)}
+        />
+      ) : null}
     </CampaignShell>
   );
 }
@@ -1721,44 +1870,153 @@ function CampaignField({
   );
 }
 
-function AdvertiserCampaignCard({
+function AdvertiserCampaignPreview({
+  campaign,
+  canPublish,
+  helperText,
+}: {
+  campaign: MarketplaceCampaignPost;
+  canPublish: boolean;
+  helperText: string;
+}) {
+  const campaignCopy = getCampaignDisplayCopy(campaign);
+  const factRows = getCampaignRecruitmentFacts(campaign);
+
+  return (
+    <section className="mt-4 overflow-hidden rounded-[12px] border border-neutral-200 bg-white">
+      <div className="flex items-center justify-between gap-3 border-b border-neutral-100 px-3 py-2">
+        <div className="min-w-0">
+          <p className="text-[12px] font-extrabold text-neutral-400">
+            인플루언서 카드 미리보기
+          </p>
+          <p className="truncate text-[13px] font-extrabold text-neutral-950">
+            {campaign.brandName}
+          </p>
+        </div>
+        <span
+          className={`rounded-full px-2.5 py-1 text-[10px] font-extrabold ${
+            canPublish
+              ? "bg-emerald-50 text-emerald-700"
+              : "bg-neutral-100 text-neutral-500"
+          }`}
+        >
+          {canPublish ? "공개 가능" : "작성 중"}
+        </span>
+      </div>
+      <CampaignThumbnail campaign={campaign} className="h-[126px]" />
+      <div className="p-3">
+        <div className="flex justify-end">
+          <CampaignPlatformLogoMarks
+            platforms={campaign.platforms ?? []}
+            compact
+            className="mt-0 justify-end"
+          />
+        </div>
+        <h3 className="mt-1 line-clamp-2 text-[15px] font-extrabold leading-5 text-neutral-950">
+          {campaignCopy.title}
+        </h3>
+        <p className="mt-1.5 line-clamp-2 break-keep text-[12px] font-bold leading-5 text-neutral-600">
+          {campaignCopy.summary}
+        </p>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          {factRows.map((fact) => (
+            <CampaignInlineFact
+              key={fact.label}
+              icon={fact.icon}
+              label={fact.label}
+              value={fact.value}
+            />
+          ))}
+        </div>
+        <p
+          className={`mt-3 rounded-[10px] px-3 py-2 text-[12px] font-extrabold leading-5 ${
+            canPublish ? "bg-emerald-50 text-emerald-700" : "bg-[#fbfaf7] text-neutral-500"
+          }`}
+        >
+          {helperText}
+        </p>
+      </div>
+    </section>
+  );
+}
+
+function AdvertiserCampaignTable({
+  campaigns,
+}: {
+  campaigns: MarketplaceBrandCampaign[];
+}) {
+  return (
+    <section className="mt-4 overflow-hidden rounded-[12px] border border-neutral-200 bg-white">
+      <div className="hidden grid-cols-[minmax(0,1.2fr)_minmax(92px,0.62fr)_82px_66px] gap-3 border-b border-neutral-200 bg-[#f8faf7] px-3 py-2 sm:grid">
+        <span className="text-[11px] font-black text-neutral-600">캠페인</span>
+        <span className="text-[11px] font-black text-neutral-600">제공</span>
+        <span className="text-right text-[11px] font-black text-neutral-600">
+          마감
+        </span>
+        <span className="text-right text-[11px] font-black text-neutral-600">
+          상태
+        </span>
+      </div>
+      <div className="divide-y divide-neutral-100">
+        {campaigns.map((campaign) => (
+          <AdvertiserCampaignRow
+            key={campaign.id ?? `${campaign.title}-${campaign.type}`}
+            campaign={campaign}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function AdvertiserCampaignRow({
   campaign,
 }: {
-  key?: string;
   campaign: MarketplaceBrandCampaign;
 }) {
   const statusMeta = getAdvertiserCampaignStatusMeta(campaign);
 
   return (
-    <article className="yl-card border p-3.5">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-[12px] font-extrabold text-neutral-400">
+    <article className="grid gap-2 px-3 py-3 sm:grid-cols-[minmax(0,1.2fr)_minmax(92px,0.62fr)_82px_66px] sm:items-center">
+      <div className="min-w-0">
+        <p className="truncate text-[13px] font-extrabold text-neutral-950">
+          {campaign.title}
+        </p>
+        <div className="mt-1 flex min-w-0 items-center gap-2">
+          <span className="shrink-0 text-[11px] font-extrabold text-neutral-400">
             {proposalTypeLabels[campaign.type]}
-          </p>
-          <h3 className="mt-1 line-clamp-2 text-[16px] font-extrabold leading-6 text-neutral-950">
-            {campaign.title}
-          </h3>
+          </span>
+          <CampaignPlatformLogoMarks
+            platforms={campaign.platforms ?? []}
+            compact
+            className="mt-0"
+          />
         </div>
+      </div>
+      <div className="min-w-0">
+        <p className="truncate text-[12px] font-bold text-neutral-500 sm:hidden">
+          제공
+        </p>
+        <p className="truncate text-[12px] font-extrabold text-neutral-800">
+          {getCampaignOfferLabel(campaign)}
+        </p>
+      </div>
+      <div className="text-left sm:text-right">
+        <p className="text-[12px] font-bold text-neutral-500 sm:hidden">마감</p>
+        <p className="text-[12px] font-extrabold tabular-nums text-neutral-800">
+          {getCampaignDdayLabel(campaign.deadline)}
+        </p>
+        <p className="text-[11px] font-bold tabular-nums text-neutral-400">
+          {getCampaignDeadlineLabel(campaign.deadline)}
+        </p>
+      </div>
+      <div className="flex justify-start sm:justify-end">
         <span
-          className={`rounded-full px-2.5 py-1 text-[10px] font-extrabold ${statusMeta.className}`}
+          className={`inline-flex h-7 items-center rounded-md px-2 text-[11px] font-extrabold ${statusMeta.className}`}
         >
           {statusMeta.label}
         </span>
       </div>
-      <div className="mt-3 grid gap-0 border-y border-neutral-100 py-1 sm:grid-cols-2 sm:gap-2 sm:border-y-0 sm:py-0">
-        <MiniInfo label="지급" value={campaign.budget} />
-        <MiniInfo label="모집" value={campaign.applicantLimit ?? "상시"} />
-        <MiniInfo
-          label="업로드"
-          value={getCampaignDeadlineLabel(campaign.uploadDeadline)}
-        />
-        <MiniInfo
-          label="모집마감"
-          value={getCampaignDeadlineLabel(campaign.deadline)}
-        />
-      </div>
-      <CampaignPlatformLogoMarks platforms={campaign.platforms ?? []} />
     </article>
   );
 }
@@ -1889,6 +2147,63 @@ function BrandImageUpload({
         }}
       />
     </div>
+  );
+}
+
+function CampaignImageUpload({
+  imageUrl,
+  disabled,
+  onSelect,
+}: {
+  imageUrl?: string;
+  disabled: boolean;
+  onSelect: (file: File | undefined) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  return (
+    <section className="mt-3 flex items-center justify-between gap-3 rounded-[12px] border border-neutral-200 bg-[#fbfaf7] px-3 py-2">
+      <div className="flex min-w-0 items-center gap-3">
+        <span className="flex h-12 w-16 shrink-0 items-center justify-center overflow-hidden rounded-[8px] bg-white text-[11px] font-extrabold text-neutral-400 ring-1 ring-neutral-200">
+          {imageUrl ? (
+            <img
+              src={imageUrl}
+              alt="캠페인 대표 이미지"
+              className="h-full w-full object-cover"
+              loading="lazy"
+            />
+          ) : (
+            "대표"
+          )}
+        </span>
+        <div className="min-w-0">
+          <p className="truncate text-[13px] font-extrabold text-neutral-950">
+            대표 이미지
+          </p>
+          <p className="mt-0.5 truncate text-[11px] font-bold text-neutral-500">
+            인플루언서 카드와 상세 상단에 표시됩니다.
+          </p>
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        disabled={disabled}
+        className="inline-flex h-9 shrink-0 items-center rounded-full border border-neutral-200 bg-white px-3 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 disabled:cursor-wait disabled:text-neutral-400"
+      >
+        {disabled ? "업로드 중" : "사진 업로드"}
+      </button>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        className="hidden"
+        onChange={(event) => {
+          onSelect(event.currentTarget.files?.[0]);
+          event.currentTarget.value = "";
+        }}
+      />
+    </section>
   );
 }
 
@@ -2302,6 +2617,71 @@ const generatedCampaignDisplayCopies: Record<
   },
 };
 
+const generatedCampaignRecruitmentDetails: Record<
+  string,
+  { location: string; offer: string; mission: string }
+> = {
+  "obre-beauty": {
+    location: "온라인 배송",
+    offer: "진정 세럼 본품",
+    mission: "2주 사용 루틴과 민감 피부 사용감을 릴스와 스토리로 소개",
+  },
+  housefit: {
+    location: "온라인 진행",
+    offer: "운동 프로그램 이용권",
+    mission: "집에서 따라할 수 있는 10분 루틴을 숏폼으로 제작",
+  },
+  brewinglab: {
+    location: "부산 · 온라인",
+    offer: "드립백 세트",
+    mission: "홈카페 레시피와 공동구매 구매 포인트를 자연스럽게 연결",
+  },
+  nightcare: {
+    location: "온라인 배송",
+    offer: "수면 케어 제품",
+    mission: "밤 루틴 안에서 제품 사용 장면과 휴식감을 숏폼으로 소개",
+  },
+  "breadroom-family": {
+    location: "온라인 배송",
+    offer: "파우치 신제품 세트",
+    mission: "신제품 첫인상과 사용 장면을 릴스 또는 쇼츠로 제작",
+  },
+};
+
+function getGeneratedCampaignRecruitmentDetails(
+  campaign: MarketplaceBrandCampaign | MarketplaceCampaignPost,
+) {
+  if (!("brandHandle" in campaign)) return undefined;
+
+  const familyKey = getMarketplaceBrandDisplayFamilyKey({
+    handle: campaign.brandHandle,
+    displayName: campaign.brandName,
+  });
+  const text = `${campaign.title} ${campaign.summary ?? ""}`;
+
+  if (familyKey === "breadroom-family") {
+    if (/홈케어|리빙|생활/u.test(text)) {
+      return {
+        location: "온라인 배송",
+        offer: "홈케어 제품 세트",
+        mission: "제품 사용 전후와 생활 속 사용 장면을 블로그 또는 숏폼으로 소개",
+      };
+    }
+    if (/선케어|선크림|자외선/u.test(text)) {
+      return {
+        location: "온라인 배송",
+        offer: "선케어 제품 세트",
+        mission: "제품 사용감과 야외 루틴 장면을 릴스와 스토리로 소개",
+      };
+    }
+    if (/파우치|필수템/u.test(text)) {
+      return generatedCampaignRecruitmentDetails["breadroom-family"];
+    }
+  }
+
+  return generatedCampaignRecruitmentDetails[familyKey];
+}
+
 function getCampaignDisplayCopy(campaign: MarketplaceCampaignPost) {
   const familyKey = getMarketplaceBrandDisplayFamilyKey({
     handle: campaign.brandHandle,
@@ -2322,72 +2702,490 @@ function getCampaignDisplayCopy(campaign: MarketplaceCampaignPost) {
   };
 }
 
+type CampaignRecruitmentFact = {
+  label: string;
+  value: string;
+  icon: ReactNode;
+};
+
+function parseCampaignDeliverables(value: string) {
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function getCampaignLocationLabel(
+  campaign: MarketplaceBrandCampaign | MarketplaceCampaignPost,
+) {
+  const post = campaign as MarketplaceCampaignPost;
+  const generated = getGeneratedCampaignRecruitmentDetails(campaign);
+  return campaign.location ?? generated?.location ?? post.brandLocation ?? "지역 확인";
+}
+
+function getCampaignOfferLabel(
+  campaign: MarketplaceBrandCampaign | MarketplaceCampaignPost,
+) {
+  const explicitOffer = campaign.offer?.trim();
+  if (explicitOffer) return explicitOffer;
+
+  const generated = getGeneratedCampaignRecruitmentDetails(campaign);
+  if (generated?.offer) return generated.offer;
+
+  const budget = campaign.budget.trim();
+  if (!budget) return "제공 조건 확인";
+
+  const offerLike = budget
+    .split(/[+·,]/u)
+    .map((item) => item.trim())
+    .find((item) => /제품|상품|숙박|식사|이용권|체험|방문|제공/u.test(item));
+
+  return offerLike || budget;
+}
+
+function getCampaignMissionLabel(
+  campaign: MarketplaceBrandCampaign | MarketplaceCampaignPost,
+) {
+  const generated = getGeneratedCampaignRecruitmentDetails(campaign);
+
+  return (
+    campaign.mission?.trim() ||
+    generated?.mission ||
+    campaign.deliverables?.filter(Boolean).join(", ") ||
+    campaign.summary?.trim() ||
+    "모집글 조건 확인"
+  );
+}
+
+function getCampaignDdayLabel(deadline: string | undefined) {
+  if (!deadline) return "상시";
+  const date = new Date(deadline);
+  if (Number.isNaN(date.getTime())) return deadline;
+
+  const today = new Date();
+  const todayStart = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate(),
+  );
+  const targetStart = new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+  );
+  const dayDiff = Math.round(
+    (targetStart.getTime() - todayStart.getTime()) / 86400000,
+  );
+
+  if (dayDiff > 0) return `D-${dayDiff}`;
+  if (dayDiff === 0) return "D-0";
+  return "마감";
+}
+
+function getCampaignSubmissionDeadlineLabel(
+  campaign: MarketplaceBrandCampaign | MarketplaceCampaignPost,
+) {
+  return getCampaignDeadlineLabel(campaign.uploadDeadline ?? campaign.deadline);
+}
+
+function getCampaignFallbackThumbnailUrl(campaign: MarketplaceCampaignPost) {
+  const haystack = [
+    campaign.brandHandle,
+    campaign.brandName,
+    campaign.title,
+    campaign.summary,
+    campaign.offer,
+    campaign.mission,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  if (/모노트립|monotrip|숙소|로컬 숙소|브이로그/u.test(haystack)) {
+    return "/images/campaigns/monotrip-local-stay-v2.png";
+  }
+  if (/브레드룸|breadroom|홈케어|서포터즈|언박싱|파우치/u.test(haystack)) {
+    return "/images/campaigns/breadroom-homecare-supporters-v2.png";
+  }
+  if (/오브제스튜디오|object-studio|공간 정리|리빙|소품/u.test(haystack)) {
+    return "/images/campaigns/object-studio-organization-v2.png";
+  }
+  if (/그린스푼|greenspoon|건강식|아침 식단|루틴/u.test(haystack)) {
+    return "/images/campaigns/greenspoon-breakfast-routine-v2.png";
+  }
+  if (/스테이아워|stayhour|주말 스테이|숙박권/u.test(haystack)) {
+    return "/images/campaigns/stayhour-weekend-stay-v2.png";
+  }
+
+  return undefined;
+}
+
+function getCampaignRecruitmentFacts(
+  campaign: MarketplaceBrandCampaign | MarketplaceCampaignPost,
+): CampaignRecruitmentFact[] {
+  return [
+    {
+      label: "지역",
+      value: getCampaignLocationLabel(campaign),
+      icon: <MapPin className="h-3.5 w-3.5" />,
+    },
+    {
+      label: "제공",
+      value: getCampaignOfferLabel(campaign),
+      icon: <Gift className="h-3.5 w-3.5" />,
+    },
+    {
+      label: "모집",
+      value: campaign.applicantLimit ?? "상시",
+      icon: <UsersRound className="h-3.5 w-3.5" />,
+    },
+    {
+      label: "모집마감",
+      value: getCampaignDdayLabel(campaign.deadline),
+      icon: <CalendarDays className="h-3.5 w-3.5" />,
+    },
+    {
+      label: "제출마감",
+      value: getCampaignSubmissionDeadlineLabel(campaign),
+      icon: <CalendarDays className="h-3.5 w-3.5" />,
+    },
+  ];
+}
+
+function CampaignThumbnail({
+  campaign,
+  className = "h-36",
+}: {
+  campaign: MarketplaceCampaignPost;
+  className?: string;
+}) {
+  const fallbackThumbnailUrl = getCampaignFallbackThumbnailUrl(campaign);
+  const hasRealThumbnail =
+    Boolean(campaign.thumbnailUrl) && campaign.thumbnailUrl !== campaign.brandLogoUrl;
+  const imageUrl =
+    hasRealThumbnail ? campaign.thumbnailUrl : fallbackThumbnailUrl ?? campaign.brandLogoUrl;
+  const usesLogoImage = !hasRealThumbnail && !fallbackThumbnailUrl;
+
+  return (
+    <div className={`relative overflow-hidden bg-[#eef1ea] ${className}`}>
+      {imageUrl ? (
+        <img
+          src={imageUrl}
+          alt={`${campaign.brandName} campaign`}
+          className={`h-full w-full ${
+            usesLogoImage ? "object-contain p-6" : "object-cover"
+          }`}
+          loading="lazy"
+        />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center text-[28px] font-black text-neutral-800">
+          {campaign.brandLogoLabel}
+        </div>
+      )}
+      <div className="absolute left-3 top-3 rounded-full bg-white/95 px-2.5 py-1 text-[10px] font-extrabold text-neutral-800 ring-1 ring-neutral-200">
+        {campaign.typeLabel}
+      </div>
+    </div>
+  );
+}
+
+function CampaignInlineFact({
+  icon,
+  label,
+  value,
+}: CampaignRecruitmentFact) {
+  return (
+    <div className="min-w-0 border-t border-neutral-100 pt-2">
+      <p className="flex items-center gap-1.5 text-[10px] font-extrabold text-neutral-400">
+        {icon}
+        {label}
+      </p>
+      <p className="mt-1 truncate text-[12px] font-extrabold text-neutral-900">
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function CampaignCardMetaChips({
+  campaign,
+}: {
+  campaign: MarketplaceCampaignPost;
+}) {
+  const chips = [
+    {
+      label: "지역",
+      value: getCampaignLocationLabel(campaign),
+      icon: <MapPin className="h-3.5 w-3.5" />,
+    },
+    {
+      label: "제공",
+      value: getCampaignOfferLabel(campaign),
+      icon: <Gift className="h-3.5 w-3.5" />,
+    },
+    {
+      label: "모집",
+      value: campaign.applicantLimit ?? "상시",
+      icon: <UsersRound className="h-3.5 w-3.5" />,
+    },
+  ];
+
+  return (
+    <div className="mt-3 flex flex-wrap gap-1.5">
+      {chips.map((chip) => (
+        <span
+          key={chip.label}
+          className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-[#f7f7f3] px-2.5 py-1 text-[11px] font-extrabold text-neutral-700 ring-1 ring-neutral-200/80"
+          title={`${chip.label}: ${chip.value}`}
+          aria-label={`${chip.label}: ${chip.value}`}
+        >
+          <span className="shrink-0 text-neutral-400" aria-hidden="true">
+            {chip.icon}
+          </span>
+          <span className="truncate">{chip.value}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function CampaignCardDeadlineStrip({
+  campaign,
+}: {
+  campaign: MarketplaceCampaignPost;
+}) {
+  return (
+    <div className="mt-2 grid grid-cols-2 gap-1.5">
+      <span
+        className="inline-flex min-w-0 items-center gap-1.5 rounded-[8px] bg-white px-2 py-1.5 text-[11px] font-extrabold text-neutral-800 ring-1 ring-neutral-200"
+        title={`모집마감: ${getCampaignDeadlineLabel(campaign.deadline)}`}
+      >
+        <CalendarDays className="h-3.5 w-3.5 shrink-0 text-neutral-400" />
+        <span className="truncate">모집 {getCampaignDdayLabel(campaign.deadline)}</span>
+      </span>
+      <span
+        className="inline-flex min-w-0 items-center gap-1.5 rounded-[8px] bg-white px-2 py-1.5 text-[11px] font-extrabold text-neutral-800 ring-1 ring-neutral-200"
+        title={`제출마감: ${getCampaignSubmissionDeadlineLabel(campaign)}`}
+      >
+        <CalendarDays className="h-3.5 w-3.5 shrink-0 text-neutral-400" />
+        <span className="truncate">제출마감 {getCampaignSubmissionDeadlineLabel(campaign)}</span>
+      </span>
+    </div>
+  );
+}
+
+function CampaignRecruitmentDetailDialog({
+  campaign,
+  isApplying,
+  onApply,
+  onClose,
+}: {
+  campaign: MarketplaceCampaignPost;
+  isApplying: boolean;
+  onApply: (campaign: MarketplaceCampaignPost) => void;
+  onClose: () => void;
+}) {
+  const campaignCopy = getCampaignDisplayCopy(campaign);
+  const facts = getCampaignRecruitmentFacts(campaign);
+  const detailRows = [
+    { label: "제공상품", value: getCampaignOfferLabel(campaign) },
+    { label: "지급조건", value: campaign.budget },
+    {
+      label: "산출물",
+      value: campaign.deliverables?.join(", ") || getCampaignMissionLabel(campaign),
+    },
+    { label: "참여 미션", value: getCampaignMissionLabel(campaign) },
+    {
+      label: "모집마감",
+      value: getCampaignDeadlineLabel(campaign.deadline),
+    },
+    {
+      label: "제출마감",
+      value: getCampaignSubmissionDeadlineLabel(campaign),
+    },
+  ];
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-950/50 p-3"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${campaignCopy.title} 상세`}
+    >
+      <button
+        type="button"
+        className="absolute inset-0 cursor-default"
+        aria-label="닫기"
+        onClick={onClose}
+      />
+      <section className="relative flex max-h-[calc(100svh-24px)] w-full max-w-[920px] flex-col overflow-hidden rounded-[14px] bg-white shadow-[0_28px_80px_rgba(15,23,42,0.28)]">
+        <div className="flex h-14 items-center justify-between gap-3 border-b border-neutral-200 px-4">
+          <div className="min-w-0">
+            <p className="truncate text-[13px] font-extrabold text-neutral-950">
+              {campaign.brandName}
+            </p>
+            <p className="truncate text-[11px] font-bold text-neutral-500">
+              {campaign.brandCategory} · {getCampaignLocationLabel(campaign)}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-950"
+            aria-label="닫기"
+            title="닫기"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="grid min-h-0 flex-1 overflow-y-auto lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
+          <div className="border-b border-neutral-200 lg:border-b-0 lg:border-r">
+            <CampaignThumbnail campaign={campaign} className="h-[236px]" />
+            <div className="grid grid-cols-2 gap-2 p-4">
+              {facts.map((fact) => (
+                <CampaignInlineFact
+                  key={fact.label}
+                  icon={fact.icon}
+                  label={fact.label}
+                  value={fact.value}
+                />
+              ))}
+            </div>
+          </div>
+          <div className="flex min-h-0 flex-col p-4">
+            <h2 className="break-keep text-[24px] font-black leading-8 text-neutral-950">
+              {campaignCopy.title}
+            </h2>
+            <p className="mt-3 break-keep text-[13px] font-bold leading-6 text-neutral-600">
+              {campaignCopy.summary}
+            </p>
+            <dl className="mt-4 grid gap-2">
+              {detailRows.map((row) => (
+                <div
+                  key={row.label}
+                  className="grid grid-cols-[92px_minmax(0,1fr)] gap-3 border-b border-neutral-100 pb-2 last:border-b-0"
+                >
+                  <dt className="text-[12px] font-extrabold text-neutral-400">
+                    {row.label}
+                  </dt>
+                  <dd className="break-keep text-[13px] font-extrabold leading-5 text-neutral-900">
+                    {row.value}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        </div>
+        <div className="shrink-0 border-t border-neutral-200 bg-white p-3 sm:flex sm:items-center sm:justify-between sm:gap-3">
+          <p className="mb-3 break-keep text-[12px] font-bold leading-5 text-neutral-500 sm:mb-0">
+            선정 후 캠페인 상세에서 계약서 확인과 서명을 진행합니다.
+          </p>
+          <button
+            type="button"
+            onClick={() => onApply(campaign)}
+            disabled={isApplying}
+            aria-busy={isApplying}
+            className="yl-primary-action inline-flex h-11 w-full items-center justify-center gap-2 rounded-[8px] px-4 text-[13px] font-extrabold disabled:cursor-wait disabled:bg-neutral-300 disabled:text-neutral-500 sm:w-[180px]"
+          >
+            <Send className="h-4 w-4" />
+            {isApplying ? "신청 중" : "신청하기"}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function CampaignPostCard({
   campaign,
   isApplying,
   onApply,
+  onOpenDetail,
 }: {
   key?: string;
   campaign: MarketplaceCampaignPost;
   isApplying: boolean;
   onApply: (campaign: MarketplaceCampaignPost) => void;
+  onOpenDetail: (campaign: MarketplaceCampaignPost) => void;
 }) {
   const campaignCopy = getCampaignDisplayCopy(campaign);
 
   return (
-    <article className="yl-card flex min-h-[258px] flex-col border p-3 sm:p-3.5">
-      <div className="flex items-start gap-3">
-        <span className="yl-profile-mark flex h-9 w-9 shrink-0 items-center justify-center text-[11px] font-extrabold sm:h-10 sm:w-10 sm:text-[12px]">
-          {campaign.brandLogoUrl ? (
-            <img
-              src={campaign.brandLogoUrl}
-              alt={`${campaign.brandName} logo`}
-              className="h-full w-full object-cover"
-              loading="lazy"
-            />
-          ) : (
-            campaign.brandLogoLabel
-          )}
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[16px] font-extrabold text-neutral-950">
-            {campaign.brandName}
-          </p>
-          <p className="mt-1 truncate text-[12px] font-bold text-neutral-400">
-            {campaign.brandCategory}
+    <article className="yl-card flex min-h-[382px] flex-col overflow-hidden border p-0">
+      <button
+        type="button"
+        onClick={() => onOpenDetail(campaign)}
+        className="block w-full text-left"
+        aria-label={`${campaignCopy.title} 상세 보기`}
+      >
+        <CampaignThumbnail campaign={campaign} className="h-[138px]" />
+      </button>
+      <div className="flex min-h-0 flex-1 flex-col p-3 sm:p-3.5">
+        <div className="flex items-start gap-3">
+          <span className="yl-profile-mark flex h-9 w-9 shrink-0 items-center justify-center text-[11px] font-extrabold sm:h-10 sm:w-10 sm:text-[12px]">
+            {campaign.brandLogoUrl ? (
+              <img
+                src={campaign.brandLogoUrl}
+                alt={`${campaign.brandName} logo`}
+                className="h-full w-full object-cover"
+                loading="lazy"
+              />
+            ) : (
+              campaign.brandLogoLabel
+            )}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[15px] font-extrabold text-neutral-950">
+              {campaign.brandName}
+            </p>
+            <p className="mt-0.5 truncate text-[12px] font-bold text-neutral-400">
+              {campaign.brandCategory}
+            </p>
+          </div>
+          <CampaignPlatformLogoMarks
+            platforms={campaign.platforms ?? []}
+            compact
+            className="mt-0 justify-end"
+          />
+        </div>
+
+        <div className="mt-3">
+          <button
+            type="button"
+            onClick={() => onOpenDetail(campaign)}
+            className="block w-full text-left"
+          >
+            <h2 className="line-clamp-2 text-[16px] font-extrabold leading-6 text-neutral-950">
+              {campaignCopy.title}
+            </h2>
+          </button>
+          <p className="mt-1.5 line-clamp-2 break-keep text-[12px] font-bold leading-5 text-neutral-600 sm:text-[13px]">
+            {campaignCopy.summary}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => onApply(campaign)}
-          disabled={isApplying}
-          aria-busy={isApplying}
-          className="yl-primary-action inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-[8px] px-3 text-[11px] font-extrabold transition disabled:cursor-wait disabled:bg-neutral-300 disabled:text-neutral-500"
-        >
-          <Send className="h-3.5 w-3.5" />
-          {isApplying ? "신청 중" : "신청"}
-        </button>
+
+        <CampaignCardMetaChips campaign={campaign} />
+        <CampaignCardDeadlineStrip campaign={campaign} />
+
+        <div className="mt-auto flex items-center gap-2 pt-3">
+          <button
+            type="button"
+            onClick={() => onOpenDetail(campaign)}
+            className="inline-flex h-9 flex-1 items-center justify-center rounded-[8px] border border-neutral-200 bg-white px-3 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-950 hover:text-neutral-950"
+          >
+            상세
+          </button>
+          <button
+            type="button"
+            onClick={() => onApply(campaign)}
+            disabled={isApplying}
+            aria-busy={isApplying}
+            className="yl-primary-action inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-[8px] px-3 text-[12px] font-extrabold transition disabled:cursor-wait disabled:bg-neutral-300 disabled:text-neutral-500"
+          >
+            <Send className="h-3.5 w-3.5" />
+            {isApplying ? "신청 중" : "신청하기"}
+          </button>
+        </div>
       </div>
-
-      <div className="mt-3">
-        <p className="text-[12px] font-extrabold text-neutral-400">
-          {campaign.typeLabel}
-        </p>
-        <h2 className="mt-1 line-clamp-2 text-[15px] font-extrabold leading-5 text-neutral-950 sm:text-[16px] sm:leading-6">
-          {campaignCopy.title}
-        </h2>
-        <p className="mt-1.5 line-clamp-1 break-keep text-[12px] font-bold leading-5 text-neutral-600 sm:text-[13px]">
-          {campaignCopy.summary}
-        </p>
-      </div>
-
-      <div className="mt-3 grid gap-0 border-y border-neutral-100 py-1 sm:grid-cols-2 sm:gap-2 sm:border-y-0 sm:py-0">
-        <MiniInfo label="지급" value={campaign.budget} />
-        <MiniInfo label="모집마감" value={campaign.deadlineLabel} />
-      </div>
-
-      <CampaignPlatformLogoMarks platforms={campaign.platforms ?? []} compact />
-
     </article>
   );
 }
@@ -2395,9 +3193,11 @@ function CampaignPostCard({
 function CampaignPlatformLogoMarks({
   platforms,
   compact = false,
+  className = "mt-2",
 }: {
   platforms: InfluencerPlatform[];
   compact?: boolean;
+  className?: string;
 }) {
   if (platforms.length === 0) return null;
 
@@ -2407,7 +3207,7 @@ function CampaignPlatformLogoMarks({
     .join(", ");
 
   return (
-    <div className="mt-2 flex flex-wrap gap-1.5" aria-label={`플랫폼 ${label}`}>
+    <div className={`${className} flex flex-wrap gap-1.5`} aria-label={`플랫폼 ${label}`}>
       {visiblePlatforms.map((platform) => (
         <span
           key={platform}
@@ -2751,10 +3551,16 @@ function formatAppliedCampaignTitle(application: MarketplaceMessageThread) {
 
   const valueStart = startIndex + startToken.length;
   const stopTokens = [
+    "모집 설명:",
+    "지역/진행방식:",
+    "제공상품:",
+    "참여 미션:",
     "모집인원:",
     "지급내용:",
     "산출물:",
     "플랫폼:",
+    "제출마감일:",
+    "콘텐츠 마감일:",
     "업로드 마감일:",
     "모집마감일:",
   ];
@@ -3048,16 +3854,6 @@ function getAmountSortMeta(value?: string | null) {
   };
 }
 
-function MiniInfo({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="yl-fact-tile yl-mobile-inline-fact sm:px-3 sm:py-2">
-      <p className="yl-fact-label truncate">{label}</p>
-      <p className="yl-fact-value truncate">
-        {value}
-      </p>
-    </div>
-  );
-}
 
 function CampaignFilterToggleButton({
   open,

@@ -1437,7 +1437,11 @@ interface MarketplaceCampaignSnapshot {
   type: CampaignProposalType;
   budget: string;
   applicantLimit?: string;
+  location?: string;
+  offer?: string;
   summary?: string;
+  mission?: string;
+  thumbnailUrl?: string;
   deadline?: string;
   uploadDeadline?: string;
   platforms?: InfluencerPlatform[];
@@ -9213,7 +9217,15 @@ const normalizeBrandCampaigns = (
       const applicantLimit = normalizeOptionalText(
         record.applicantLimit ?? record.applicant_limit,
       )?.slice(0, 40);
+      const location = normalizeOptionalText(record.location)?.slice(0, 80);
+      const offer = normalizeOptionalText(
+        record.offer ?? record.offeredProduct ?? record.offered_product,
+      )?.slice(0, 120);
       const summary = normalizeOptionalText(record.summary)?.slice(0, 1000);
+      const mission = normalizeOptionalText(record.mission)?.slice(0, 500);
+      const thumbnailUrl = normalizeMarketplacePublicImageUrl(
+        record.thumbnailUrl ?? record.thumbnail_url,
+      );
       const deadline = normalizeOptionalText(record.deadline)?.slice(0, 40);
       const uploadDeadline = normalizeOptionalText(
         record.uploadDeadline ?? record.upload_deadline,
@@ -9242,7 +9254,11 @@ const normalizeBrandCampaigns = (
         type,
         budget: budget.slice(0, 80),
         ...(applicantLimit ? { applicantLimit } : {}),
+        ...(location ? { location } : {}),
+        ...(offer ? { offer } : {}),
         ...(summary ? { summary } : {}),
+        ...(mission ? { mission } : {}),
+        ...(thumbnailUrl ? { thumbnailUrl } : {}),
         ...(deadline ? { deadline } : {}),
         ...(uploadDeadline ? { uploadDeadline } : {}),
         ...(platforms.length > 0 ? { platforms } : {}),
@@ -10862,12 +10878,51 @@ const saveAdvertiserMarketplaceBrandImage = async (
   };
 };
 
+const saveAdvertiserMarketplaceCampaignImage = async (
+  auth: AdvertiserSession,
+  file: NonNullable<ReturnType<typeof parseEvidenceFile>>,
+) => {
+  if (!useSupabase) {
+    return {
+      ok: false as const,
+      status: 503,
+      error: "Supabase is required for campaign image upload",
+    };
+  }
+
+  const organization = await readDefaultOrganizationForProfile(auth.profile.id);
+  if (!organization) {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "Advertiser organization is required",
+    };
+  }
+
+  const imageUrl = await storeMarketplacePublicImage({
+    area: "campaign-thumbnails",
+    ownerId: organization.id,
+    file,
+  });
+
+  return {
+    ok: true as const,
+    image_url: imageUrl,
+  };
+};
+
 const validateMarketplaceCampaignInput = (body: Record<string, unknown>) => {
   const title = normalizeRequiredText(body.title);
   const type = normalizeRequiredText(body.type) as CampaignProposalType;
   const applicantLimit = normalizeRequiredText(body.applicantLimit);
+  const location = normalizeRequiredText(body.location);
+  const offer = normalizeRequiredText(body.offer ?? body.offeredProduct);
   const budget = normalizeRequiredText(body.budget);
   const summary = normalizeRequiredText(body.summary);
+  const mission = normalizeOptionalText(body.mission);
+  const thumbnailUrl = normalizeMarketplacePublicImageUrl(
+    body.thumbnailUrl ?? body.thumbnail_url,
+  );
   const deadline = normalizeOptionalText(body.deadline);
   const uploadDeadline = normalizeOptionalText(body.uploadDeadline);
   const platforms = normalizeCampaignPlatforms(body.platforms, ["instagram"]);
@@ -10882,17 +10937,26 @@ const validateMarketplaceCampaignInput = (body: Record<string, unknown>) => {
   if (!applicantLimit || applicantLimit.length > 40) {
     return { error: "모집인원을 40자 이내로 입력해 주세요." };
   }
+  if (!location || location.length > 80) {
+    return { error: "지역/진행방식을 80자 이내로 입력해 주세요." };
+  }
+  if (!offer || offer.length > 120) {
+    return { error: "제공상품을 120자 이내로 입력해 주세요." };
+  }
   if (!budget || budget.length > 80) {
     return { error: "지급내용을 80자 이내로 입력해 주세요." };
   }
   if (!summary || summary.length > 1000) {
     return { error: "캠페인설명은 1000자 이내로 입력해 주세요." };
   }
+  if (mission && mission.length > 500) {
+    return { error: "참여 미션은 500자 이내로 입력해 주세요." };
+  }
   if (!deliverables.length) {
     return { error: "산출물을 6개 이내로 입력해 주세요." };
   }
   if (!uploadDeadline || uploadDeadline.length > 40) {
-    return { error: "업로드 마감일을 40자 이내로 입력해 주세요." };
+    return { error: "제출마감일을 40자 이내로 입력해 주세요." };
   }
   if (!deadline || deadline.length > 40) {
     return { error: "모집마감일을 40자 이내로 입력해 주세요." };
@@ -10902,8 +10966,12 @@ const validateMarketplaceCampaignInput = (body: Record<string, unknown>) => {
     title,
     type,
     applicantLimit,
+    location,
+    offer,
     budget,
     summary,
+    mission,
+    thumbnailUrl,
     deadline,
     uploadDeadline,
     platforms,
@@ -10946,8 +11014,12 @@ const upsertAdvertiserMarketplaceCampaign = async (
     title: payload.title,
     type: payload.type,
     applicantLimit: payload.applicantLimit,
+    location: payload.location,
+    offer: payload.offer,
     budget: payload.budget,
     summary: payload.summary,
+    ...(payload.mission ? { mission: payload.mission } : {}),
+    ...(payload.thumbnailUrl ? { thumbnailUrl: payload.thumbnailUrl } : {}),
     ...(payload.deadline ? { deadline: payload.deadline } : {}),
     uploadDeadline: payload.uploadDeadline,
     platforms: payload.platforms,
@@ -11002,7 +11074,10 @@ const upsertAdvertiserMarketplaceCampaign = async (
         category,
         headline: payload.title,
         description: payload.summary,
-        location: currentBrand.location || "운영 지역 미입력",
+        location:
+          currentBrand.location && currentBrand.location !== "운영 지역 미입력"
+            ? currentBrand.location
+            : payload.location,
         logo_label: currentBrand.logoLabel || buildMarketplaceAvatarLabel(displayName, "BR"),
         logo_url: currentBrand.logoUrl ?? null,
         preferred_platforms: preferredPlatforms,
@@ -11178,7 +11253,11 @@ const buildMarketplaceCampaignSnapshot = (
   type: campaign.type,
   budget: campaign.budget,
   ...(campaign.applicantLimit ? { applicantLimit: campaign.applicantLimit } : {}),
+  ...(campaign.location ? { location: campaign.location } : {}),
+  ...(campaign.offer ? { offer: campaign.offer } : {}),
   ...(campaign.summary ? { summary: campaign.summary } : {}),
+  ...(campaign.mission ? { mission: campaign.mission } : {}),
+  ...(campaign.thumbnailUrl ? { thumbnailUrl: campaign.thumbnailUrl } : {}),
   ...(campaign.deadline ? { deadline: campaign.deadline } : {}),
   ...(campaign.uploadDeadline ? { uploadDeadline: campaign.uploadDeadline } : {}),
   ...(campaign.platforms?.length ? { platforms: campaign.platforms } : {}),
@@ -11205,6 +11284,14 @@ const normalizeMarketplaceCampaignSnapshot = (
   const brandHandle = normalizeRequiredText(record.brandHandle);
   const brandName = normalizeRequiredText(record.brandName);
   const summary = normalizeOptionalText(record.summary);
+  const location = normalizeOptionalText(record.location);
+  const offer = normalizeOptionalText(
+    record.offer ?? record.offeredProduct ?? record.offered_product,
+  );
+  const mission = normalizeOptionalText(record.mission);
+  const thumbnailUrl = normalizeMarketplacePublicImageUrl(
+    record.thumbnailUrl ?? record.thumbnail_url,
+  );
   const deadline = normalizeOptionalText(record.deadline);
   const uploadDeadline = normalizeOptionalText(
     record.uploadDeadline ?? record.upload_deadline,
@@ -11231,7 +11318,11 @@ const normalizeMarketplaceCampaignSnapshot = (
     type,
     budget,
     ...(applicantLimit ? { applicantLimit } : {}),
+    ...(location ? { location } : {}),
+    ...(offer ? { offer } : {}),
     ...(summary ? { summary } : {}),
+    ...(mission ? { mission } : {}),
+    ...(thumbnailUrl ? { thumbnailUrl } : {}),
     ...(deadline ? { deadline } : {}),
     ...(uploadDeadline ? { uploadDeadline } : {}),
     ...(platforms.length ? { platforms } : {}),
@@ -11269,6 +11360,9 @@ const buildCampaignApplicationSummary = (campaign: MarketplaceCampaignPost) => {
   const lines = [
     `캠페인 신청: ${campaign.title}`,
     campaign.summary ? `모집 설명: ${campaign.summary}` : undefined,
+    campaign.location ? `지역/진행방식: ${campaign.location}` : undefined,
+    campaign.offer ? `제공상품: ${campaign.offer}` : undefined,
+    campaign.mission ? `참여 미션: ${campaign.mission}` : undefined,
     campaign.applicantLimit ? `모집인원: ${campaign.applicantLimit}` : undefined,
     `지급내용: ${campaign.budget}`,
     campaign.deliverables?.length
@@ -11277,7 +11371,7 @@ const buildCampaignApplicationSummary = (campaign: MarketplaceCampaignPost) => {
     campaign.platformLabels.length
       ? `플랫폼: ${campaign.platformLabels.join(", ")}`
       : undefined,
-    campaign.uploadDeadline ? `업로드 마감일: ${campaign.uploadDeadline}` : undefined,
+    campaign.uploadDeadline ? `제출마감일: ${campaign.uploadDeadline}` : undefined,
     campaign.deadline ? `모집마감일: ${campaign.deadline}` : undefined,
   ].filter((line): line is string => Boolean(line));
 
@@ -13383,10 +13477,13 @@ const buildMarketplaceCampaignDraftClauses = (
       content: [
         `캠페인명: ${snapshot.title}`,
         snapshot.summary ? `모집 설명: ${snapshot.summary}` : undefined,
+        snapshot.location ? `지역/진행방식: ${snapshot.location}` : undefined,
+        snapshot.offer ? `제공상품: ${snapshot.offer}` : undefined,
+        snapshot.mission ? `참여 미션: ${snapshot.mission}` : undefined,
         snapshot.applicantLimit ? `모집인원: ${snapshot.applicantLimit}` : undefined,
         snapshot.deadline ? `모집마감일: ${snapshot.deadline}` : undefined,
         snapshot.uploadDeadline
-          ? `업로드 마감일: ${snapshot.uploadDeadline}`
+          ? `제출마감일: ${snapshot.uploadDeadline}`
           : undefined,
         `브랜드: ${snapshot.brandName}`,
       ]
@@ -18467,6 +18564,45 @@ app.post("/api/advertiser/brand-image", async (request, response, next) => {
     response.json({
       image_url: result.image_url,
       brand: result.brand,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/advertiser/campaign-image", async (request, response, next) => {
+  try {
+    const advertiserAuth = await requireAdvertiserSession(request, response);
+    if (!advertiserAuth) return;
+
+    const throttle = consumeSensitiveEndpointRateLimit(
+      request,
+      "advertiser_campaign_image_upload",
+      advertiserAuth.profile.id,
+    );
+    if (throttle.blocked) {
+      sendSensitiveRateLimitResponse(response, throttle);
+      return;
+    }
+
+    const file = parseEvidenceFile(request.body?.file ?? request.body?.image);
+    const fileError = validateMarketplaceImageFile(file);
+    if (fileError || !file) {
+      response.status(422).json({ error: fileError ?? "Image file is invalid" });
+      return;
+    }
+
+    const result = await saveAdvertiserMarketplaceCampaignImage(
+      advertiserAuth,
+      file,
+    );
+    if (!result.ok) {
+      response.status(result.status).json({ error: result.error });
+      return;
+    }
+
+    response.json({
+      image_url: result.image_url,
     });
   } catch (error) {
     next(error);

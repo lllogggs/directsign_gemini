@@ -1010,7 +1010,7 @@ const buildContract = ({ brand, campaign, influencer, status, seed }) => {
             signer_name: influencer.name,
             signer_email: influencer.email,
             consent_text: "전자서명 동의가 완료되었습니다.",
-            consent_text_version: "showcase-2026-05-21",
+            consent_text_version: `showcase-${addDays(0).slice(0, 10)}`,
             contract_hash: stableToken(`qa:scenario:contract-hash:${seed}`),
             signature_hash: stableToken(`qa:scenario:signature:${seed}`),
           },

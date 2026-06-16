@@ -93,7 +93,7 @@ export const marketplaceFlowSteps = {
     { label: "캠페인", href: "/advertiser/campaigns" },
     { label: "탐색", href: "/advertiser/discover" },
     { label: "제안함", href: "/advertiser/messages" },
-    { label: "계약 작성", href: "/advertiser/builder" },
+    { label: "1:1 계약 작성", href: "/advertiser/builder" },
   ],
   influencer: [
     { label: "캠페인 확인", href: "/influencer/campaigns" },

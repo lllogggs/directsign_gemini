@@ -87,27 +87,27 @@ const proposalStatusTone: Record<MarketplaceProposalStatus, string> = {
 const roleCopy = {
   advertiser: {
     eyebrow: "광고주 계약 전환",
-    panelTitle: "계약으로 넘길 제안",
+    panelTitle: "1:1 계약 제안 관리",
     summaryTitle: (openCount: number) =>
       openCount > 0
-        ? `보낸 제안 ${openCount.toLocaleString()}건이 진행 중입니다`
-        : "보낸 제안 진행 상황",
-    summaryHint: "인플루언서에게 보낸 제안의 확인, 검토, 계약 전환을 관리합니다.",
+        ? `보낸 1:1 계약 제안 ${openCount.toLocaleString()}건이 진행 중입니다`
+        : "보낸 1:1 계약 제안 진행 상황",
+    summaryHint: "인플루언서에게 보낸 조건 제안의 확인, 검토, 계약서 작성을 관리합니다.",
     backHref: "/advertiser/dashboard",
     backLabel: "1:1 계약 대시보드",
     discoverHref: "/advertiser/discover",
     discoverLabel: "인플루언서 찾기",
     primaryHref: "/advertiser/builder",
-    primaryLabel: "계약 작성",
+    primaryLabel: "1:1 계약 작성",
     emptyInbox: "아직 받은 1:1 제안이 없습니다",
-    emptySent: "아직 보낸 컨택 제안이 없습니다",
+    emptySent: "아직 보낸 1:1 계약 제안이 없습니다",
     emptyInboxActionLabel: "인플루언서 찾기",
     emptyInboxActionHref: "/advertiser/discover",
     emptySentActionLabel: "인플루언서 찾기",
     emptySentActionHref: "/advertiser/discover",
-    primaryBucketLabel: "보낸 제안",
+    primaryBucketLabel: "보낸 계약 제안",
     secondaryBucketLabel: "받은 제안",
-    searchPlaceholder: "인플루언서, 제안 종류, 제안 내용 검색",
+    searchPlaceholder: "인플루언서, 제안 종류, 계약 조건 검색",
     dateHeader: "보낸 날",
   },
   influencer: {
@@ -768,7 +768,7 @@ function MessageThreadRow({
         : "계약 검토"
       : role === "advertiser"
         ? thread.bucket === "inbox"
-          ? "계약 작성"
+          ? "1:1 계약 작성"
           : "상대 보기"
         : thread.bucket === "inbox"
           ? "브랜드 보기"
@@ -895,6 +895,10 @@ function ProposalSummary({ summary }: { summary: string }) {
 function parseProposalSummary(summary: string) {
   const title =
     extractSummaryField(summary, "캠페인 신청:", [
+      "모집 설명:",
+      "지역/진행방식:",
+      "제공상품:",
+      "참여 미션:",
       "모집인원:",
       "지급내용:",
       "산출물:",

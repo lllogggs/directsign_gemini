@@ -260,6 +260,18 @@ export const addDays = (days: number) => {
   return date.toISOString();
 };
 
+const formatDateOnly = (days: number) => {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(
+    2,
+    "0",
+  )}.${String(date.getDate()).padStart(2, "0")}`;
+};
+
+const formatDemoPeriod = (startOffset: number, endOffset: number) =>
+  `${formatDateOnly(startOffset)} - ${formatDateOnly(endOffset)}`;
+
 export const createShareToken = () => uuidv4().replace(/-/g, "");
 
 export const createWorkflow = (
@@ -346,7 +358,7 @@ export const createDemoContracts = (): Contract[] => {
       campaign: {
         budget: "1,500,000원",
         deadline: addDays(5),
-        period: "2026.04.29 - 2026.05.31",
+        period: formatDemoPeriod(1, 28),
         platforms: ["INSTAGRAM"],
         deliverables: ["Instagram feed", "Reels"],
       },
@@ -415,7 +427,7 @@ export const createDemoContracts = (): Contract[] => {
       campaign: {
         budget: "3,200,000원",
         deadline: addDays(2),
-        period: "2026.05.01 - 2026.05.15",
+        period: formatDemoPeriod(2, 18),
         platforms: ["YOUTUBE", "INSTAGRAM", "TIKTOK"],
         deliverables: ["YouTube Shorts", "Instagram story", "TikTok short"],
       },
@@ -484,7 +496,7 @@ export const createDemoContracts = (): Contract[] => {
       campaign: {
         budget: "판매 수익 18%",
         deadline: addDays(1),
-        period: "2026.05.03 - 2026.05.30",
+        period: formatDemoPeriod(4, 24),
         platforms: ["INSTAGRAM", "NAVER_BLOG"],
         deliverables: ["Instagram reels", "Naver Blog", "Live commerce"],
       },

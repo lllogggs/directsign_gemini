@@ -7,8 +7,8 @@ import { getSafeRedirectPath } from "../../domain/navigation";
 const loginRoles = [
   {
     role: "advertiser",
-    title: "광고주 로그인",
-    detail: "계약 작성 · 검토 링크 · 증빙 관리",
+    title: "광고주로 시작",
+    detail: "로그인 · 가입 · 계약 작성",
     href: "/login/advertiser",
     fallback: "/advertiser/dashboard",
     allowedPrefixes: ["/advertiser"],
@@ -16,8 +16,8 @@ const loginRoles = [
   },
   {
     role: "influencer",
-    title: "인플루언서 로그인",
-    detail: "계약 검토 · 수정 요청 · 전자서명",
+    title: "인플루언서로 시작",
+    detail: "로그인 · 가입 · 전자서명",
     href: "/login/influencer",
     fallback: "/influencer/dashboard",
     allowedPrefixes: ["/influencer", "/contract"],

@@ -323,7 +323,7 @@ export function ContractAdminViewer() {
         ? isVerificationLoading
           ? "인증 확인 중"
           : isAdvertiserVerified
-            ? "공유 링크 활성화"
+            ? "서명 링크 만들기"
           : "광고주 인증 필요"
         : "수정 요청 검토";
   const canRequestSignatures =
@@ -374,12 +374,12 @@ export function ContractAdminViewer() {
 
   const copyLink = async () => {
     if (!summary.activeShare) {
-      setNotice("공유 링크가 아직 활성화되지 않았습니다.");
+      setNotice("서명 링크가 아직 만들어지지 않았습니다.");
       return;
     }
 
     await navigator.clipboard.writeText(summary.shareUrl);
-    setNotice("인플루언서 공유 링크를 복사했습니다.");
+    setNotice("계약서 링크를 복사했습니다.");
   };
 
   const saveDraft = () => {
@@ -390,7 +390,7 @@ export function ContractAdminViewer() {
 
     if (summary.activeShare) {
       setDraftConfirmationOpen(true);
-      setNotice("초안 저장을 계속하면 현재 공유 링크가 비활성화됩니다.");
+      setNotice("초안 저장을 계속하면 현재 서명 링크가 비활성화됩니다.");
       return;
     }
 
@@ -403,7 +403,7 @@ export function ContractAdminViewer() {
       status: "DRAFT",
       workflow: {
         next_actor: "advertiser",
-        next_action: "발송 전 확인을 마치고 공유 링크를 생성하세요.",
+        next_action: "발송 전 확인을 마치고 서명 링크를 만드세요.",
         due_at: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
         risk_level: "low",
         last_message: "계약 초안이 저장되었습니다.",
@@ -420,7 +420,7 @@ export function ContractAdminViewer() {
           actor: "advertiser",
           action: "draft_saved",
           description: summary.activeShare
-            ? "광고주가 활성 공유 링크를 비활성화하고 계약을 초안으로 저장했습니다."
+            ? "광고주가 활성 서명 링크를 비활성화하고 계약을 초안으로 저장했습니다."
             : "광고주가 계약을 초안으로 저장했습니다.",
           created_at: now,
         },
@@ -438,7 +438,7 @@ export function ContractAdminViewer() {
 
     if (!isAdvertiserVerified) {
       setNotice(
-        `사업자 인증 승인 후 공유 링크를 활성화할 수 있습니다. 현재 상태: ${verificationStatusLabel(
+        `사업자 인증 승인 후 서명 링크를 만들 수 있습니다. 현재 상태: ${verificationStatusLabel(
           advertiserVerificationStatus,
         )}`,
       );
@@ -458,8 +458,8 @@ export function ContractAdminViewer() {
         due_at: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
         risk_level: "medium",
         last_message: isFixedCampaign
-          ? "계약 공유 링크를 활성화했습니다."
-          : "최종본 공유 링크를 활성화했습니다.",
+          ? "계약서 서명 링크를 만들었습니다."
+          : "최종본 서명 링크를 만들었습니다.",
       },
       evidence: {
         share_token_status: "active",
@@ -475,13 +475,13 @@ export function ContractAdminViewer() {
           actor: "advertiser",
           action: "signature_requested",
           description: isFixedCampaign
-            ? "광고주가 계약 공유 링크를 활성화했습니다."
-            : "광고주가 최종본 공유 링크를 활성화했습니다.",
+            ? "광고주가 계약서 서명 링크를 만들었습니다."
+            : "광고주가 최종본 서명 링크를 만들었습니다.",
           created_at: now,
         },
       ],
     });
-    setNotice("서명 요청 링크를 활성화했습니다.");
+    setNotice("서명 요청 링크를 만들었습니다.");
   };
 
   const handlePrimaryAction = () => {
@@ -512,7 +512,7 @@ export function ContractAdminViewer() {
         clauses: nextClauses,
         workflow: {
           next_actor: "advertiser",
-          next_action: "계약 내용을 확인했습니다. 공유 링크를 활성화하세요.",
+          next_action: "계약 내용을 확인했습니다. 서명 링크를 만드세요.",
           due_at: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
           risk_level: "low",
           last_message: "계약 내용을 확인했습니다.",
@@ -528,7 +528,7 @@ export function ContractAdminViewer() {
           },
         ],
       });
-      setNotice("계약 내용을 확인했습니다. 이제 공유 링크를 활성화할 수 있습니다.");
+      setNotice("계약 내용을 확인했습니다. 이제 서명 링크를 만들 수 있습니다.");
       return;
     }
 
@@ -869,7 +869,7 @@ export function ContractAdminViewer() {
               </div>
               <p className="mt-2 max-w-3xl text-[13px] leading-6 text-neutral-500">
                 {isFixedCampaign
-                  ? "공유 링크를 발급하고 서명을 요청하세요."
+                  ? "서명 링크를 만들고 서명을 요청하세요."
                   : formatOperationalText(
                       contract.workflow?.next_action,
                       STATUS_META[contract.status].helper,
@@ -1006,8 +1006,8 @@ export function ContractAdminViewer() {
                 {!summary.allApproved && (
                   <p className="text-center text-[12px] font-semibold text-amber-700">
                     {isFixedCampaign
-                      ? "내용 확인 후 공유 링크가 활성화됩니다."
-                      : "검토 완료 후 공유 링크가 활성화됩니다."}
+                      ? "내용 확인 후 서명 링크를 만들 수 있습니다."
+                      : "검토 완료 후 서명 링크를 만들 수 있습니다."}
                   </p>
                 )}
               </div>
@@ -1026,7 +1026,7 @@ export function ContractAdminViewer() {
 
             {draftConfirmationOpen && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-[13px] text-amber-900">
-                <p className="font-semibold">공유 링크가 비활성화됩니다</p>
+                <p className="font-semibold">서명 링크가 비활성화됩니다</p>
                 <p className="mt-1 leading-5 text-amber-800">
                   인플루언서가 기존 링크로 더 이상 계약을 열 수 없습니다.
                 </p>
@@ -1852,7 +1852,7 @@ function formatAuditActionLabel(action: string) {
     evidence_downloaded: "컨텐츠 파일 다운로드",
     contract_closed: "광고 계약 마감",
     qa_contract_seeded: "계약 생성",
-    share_link_issued: "공유 링크 생성",
+    share_link_issued: "서명 링크 생성",
     signature_requested: "서명 요청",
     viewed_contract: "계약 본문 열람",
     viewed_pdf: "PDF 열람",

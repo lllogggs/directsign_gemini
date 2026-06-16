@@ -363,6 +363,12 @@ export function SignupPage({ role }: { role: SignupRole }) {
           </div>
         ) : null}
 
+        {role === "advertiser" ? (
+          <div className="rounded-[10px] border border-blue-100 bg-blue-50/70 px-3 py-2.5 text-[12px] font-semibold leading-5 text-blue-900">
+            연락미는 계약서 작성, 전자서명, 증빙 보관을 돕고 광고비 지급·정산·환불·세금은 당사자 간 처리합니다.
+          </div>
+        ) : null}
+
         <SignupConsentPanel
           consents={consents}
           disabled={isSubmitting}
@@ -532,6 +538,7 @@ function LegalConsentModal({
           items: [
             "연락미 계정 생성과 서비스 이용 조건을 확인합니다.",
             "계약 작성, 검토 링크, 전자서명 증빙의 기본 책임 범위를 확인합니다.",
+            "광고비 지급, 정산, 환불, 세금 처리는 계약 당사자 간 처리합니다.",
             "현재 가입과 기본 서비스 이용은 무료입니다. 향후 일부 또는 전체 기능이 유료로 전환될 수 있으며, 전환 전 안내합니다.",
           ],
         }

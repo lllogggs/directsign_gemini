@@ -1261,6 +1261,38 @@ check(
 );
 
 check(
+  "campaign recruitment splits advertiser table and influencer cards",
+  agents.includes("advertiser-facing campaign management should read like an operational table/list") &&
+    agents.includes("influencer-facing campaign discovery should read like thumbnail recruitment cards") &&
+    campaignPages.includes("function AdvertiserCampaignTable") &&
+    campaignPages.includes("function AdvertiserCampaignPreview") &&
+    campaignPages.includes("function CampaignThumbnail") &&
+    campaignPages.includes("function CampaignRecruitmentDetailDialog") &&
+    campaignPages.includes("function CampaignCardMetaChips") &&
+    campaignPages.includes("function CampaignCardDeadlineStrip") &&
+    campaignPages.includes("제출마감일") &&
+    campaignPages.includes("제출마감 {getCampaignSubmissionDeadlineLabel(campaign)}") &&
+    !campaignPages.includes("콘텐츠 {getCampaign") &&
+    campaignPages.includes("지역/진행방식") &&
+    campaignPages.includes("제공상품") &&
+    campaignPages.includes("참여 미션") &&
+    campaignPages.includes("/api/advertiser/campaign-image") &&
+    campaignPages.includes("function CampaignImageUpload") &&
+    server.includes("제공상품을 120자 이내로 입력해 주세요") &&
+    server.includes("지역/진행방식:") &&
+    server.includes('"/api/advertiser/campaign-image"') &&
+    server.includes('area: "campaign-thumbnails"') &&
+    marketplace.includes("offer?: string") &&
+    marketplace.includes("thumbnailUrl?: string") &&
+    marketplace.includes("/images/campaigns/monotrip-local-stay-v2.png") &&
+    marketplace.includes("/images/campaigns/breadroom-homecare-supporters-v2.png") &&
+    marketplace.includes("function isMarketplaceCampaignRecruiting") &&
+    marketplace.includes("isMarketplaceCampaignRecruiting(campaign.deadline)") &&
+    seedTestAccounts.includes('thumbnailUrl: "/images/campaigns/breadroom-homecare-supporters-v2.png"'),
+  "Campaign recruiting must keep advertiser operations table-like while making influencer discovery a generated-thumbnail card flow with compact card facts and separate recruitment/content deadlines",
+);
+
+check(
   "supporters campaign type creates product-mission contract guardrails",
   marketplace.includes('| "supporters"') &&
     marketplace.includes('supporters: "서포터즈"') &&
@@ -1489,8 +1521,9 @@ check(
     campaignPages.includes('showHeroCopy ? "py-2.5 sm:py-3" : "pb-2.5 pt-7 sm:py-3"') &&
     campaignPages.includes('aria-label={`${tab.label} ${tab.count}건`}') &&
     campaignPages.includes('hidden sm:inline') &&
-    campaignPages.includes("yl-fact-tile yl-mobile-inline-fact sm:px-3 sm:py-2") &&
-    campaignPages.includes("grid gap-0 border-y border-neutral-100 py-1 sm:grid-cols-2"),
+    campaignPages.includes("function CampaignInlineFact") &&
+    !campaignPages.includes("function CampaignCardFact") &&
+    !campaignPages.includes("rounded-[8px] border border-neutral-100 bg-[#fbfaf7]"),
   "Mobile brand/campaign pages should avoid fake response claims, top status panels, and boxed fact tiles inside cards",
 );
 
@@ -2011,6 +2044,28 @@ check(
 );
 
 check(
+  "new advertiser proposal copy uses action-result labels",
+  agents.includes("New advertiser proposal and onboarding copy must explain the two paths by action result") &&
+    agents.includes("Avoid \"1대多 계약서\" in customer-facing copy") &&
+    marketplacePages.includes("1:1 계약 제안") &&
+    marketplacePages.includes("계약 조건 요약") &&
+    marketplacePages.includes("1:1 계약") &&
+    marketplaceInboxPage.includes("1:1 계약 제안 관리") &&
+    marketplaceInboxPage.includes("보낸 1:1 계약 제안") &&
+    marketplaceInboxPage.includes("1:1 계약 작성") &&
+    !marketplaceInboxPage.includes("계약으로 넘길 제안") &&
+    campaignPages.includes("1:1 계약 작성") &&
+    contractAdminViewer.includes("서명 링크 만들기") &&
+    contractAdminViewer.includes("계약서 링크를 복사했습니다") &&
+    !contractAdminViewer.includes("공유 링크 활성화") &&
+    signupPage.includes("광고비 지급·정산·환불·세금은 당사자 간 처리합니다") &&
+    salesAdvertiserIntroduction.includes("선정자별 계약서 자동 생성") &&
+    !salesAdvertiserIntroduction.includes("1대多 계약서 자동 생성") &&
+    practitionerGuide.includes("서명 링크 만들기"),
+  "New advertisers must see clear proposal, contract-link, campaign-contract, and responsibility-boundary language before handoff",
+);
+
+check(
   "campaign applicant rows avoid repeated filler copy",
   !advertiserDashboard.includes("캠페인 지원 데이터입니다") &&
     !seedTestAccounts.includes("캠페인 지원 데이터입니다") &&
@@ -2129,7 +2184,8 @@ check(
     salesAdvertiserIntroduction.includes("캠페인 모집도") &&
     salesAdvertiserIntroduction.includes("캠페인에 지원한") &&
     salesAdvertiserIntroduction.includes("<strong>인플루언서 쉽게 확인, 선정</strong>") &&
-    salesAdvertiserIntroduction.includes("1대多 계약서 자동 생성") &&
+    salesAdvertiserIntroduction.includes("선정자별 계약서 자동 생성") &&
+    !salesAdvertiserIntroduction.includes("1대多 계약서 자동 생성") &&
     salesAdvertiserIntroduction.includes("서로에게") &&
     salesAdvertiserIntroduction.includes("안전한 광고") &&
     salesAdvertiserIntroduction.includes("문의 이메일") &&
@@ -2166,7 +2222,8 @@ check(
     salesAdvertiserIntroduction.includes("편리하게!") &&
     salesAdvertiserIntroduction.includes("캠페인에 지원한") &&
     salesAdvertiserIntroduction.includes("<strong>인플루언서 쉽게 확인, 선정</strong>") &&
-    salesAdvertiserIntroduction.includes("1대多 계약서 자동 생성") &&
+    salesAdvertiserIntroduction.includes("선정자별 계약서 자동 생성") &&
+    !salesAdvertiserIntroduction.includes("1대多 계약서 자동 생성") &&
     salesAdvertiserIntroduction.includes("서로에게") &&
     salesAdvertiserIntroduction.includes("안전한 광고") &&
     salesAdvertiserIntroduction.includes("연락미에서 시작하세요") &&

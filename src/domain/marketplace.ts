@@ -17,6 +17,17 @@ export const campaignProposalTypeOptions: CampaignProposalType[] = [
   "visit_review",
 ];
 
+const formatDateOnly = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate(),
+  ).padStart(2, "0")}`;
+
+const getRelativeCampaignDate = (daysFromToday: number) => {
+  const date = new Date();
+  date.setDate(date.getDate() + daysFromToday);
+  return formatDateOnly(date);
+};
+
 export type MarketplaceCampaignStatus = "open" | "draft" | "closed" | "ended";
 
 export type MarketplaceBrandCampaign = {
@@ -25,7 +36,11 @@ export type MarketplaceBrandCampaign = {
   type: CampaignProposalType;
   budget: string;
   applicantLimit?: string;
+  location?: string;
+  offer?: string;
   summary?: string;
+  mission?: string;
+  thumbnailUrl?: string;
   deadline?: string;
   uploadDeadline?: string;
   platforms?: InfluencerPlatform[];
@@ -109,6 +124,7 @@ export type MarketplaceCampaignPost = MarketplaceBrandCampaign & {
   brandName: string;
   brandCategory: string;
   brandHeadline: string;
+  brandLocation: string;
   brandLogoLabel: string;
   brandLogoUrl?: string;
   brandHref: string;
@@ -620,9 +636,13 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
         title: "신제품 언박싱 릴스",
         type: "sponsored_post",
         applicantLimit: "12명",
+        location: "온라인 배송",
+        offer: "파우치 신제품 세트",
+        thumbnailUrl: "/images/campaigns/breadroom-homecare-supporters-v2.png",
         budget: "180만-280만원",
-        deadline: "2026-06-10",
-        uploadDeadline: "2026-06-24",
+        mission: "신제품 첫인상과 사용 장면을 릴스 또는 쇼츠로 제작",
+        deadline: getRelativeCampaignDate(10),
+        uploadDeadline: getRelativeCampaignDate(24),
       },
     ],
     recentCreators: ["제우", "민서홈"],
@@ -650,9 +670,13 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
         title: "로컬 숙소 브이로그",
         type: "visit_review",
         applicantLimit: "6명",
+        location: "제주 · 강원 방문",
+        offer: "로컬 숙소 1박 체험",
+        thumbnailUrl: "/images/campaigns/monotrip-local-stay-v2.png",
         budget: "300만-500만원",
-        deadline: "2026-06-18",
-        uploadDeadline: "2026-07-02",
+        mission: "객실, 체크인, 주변 동선을 브이로그와 후기 컨텐츠로 소개",
+        deadline: getRelativeCampaignDate(3),
+        uploadDeadline: getRelativeCampaignDate(14),
       },
     ],
     recentCreators: ["채널오브", "민서홈"],
@@ -680,9 +704,13 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
         title: "공간 정리 전후 리뷰",
         type: "product_seeding",
         applicantLimit: "7명",
+        location: "온라인 배송",
+        offer: "공간 정리 소품 세트",
+        thumbnailUrl: "/images/campaigns/object-studio-organization-v2.png",
         budget: "제품 제공 + 120만원",
-        deadline: "2026-06-12",
-        uploadDeadline: "2026-06-26",
+        mission: "정리 전후 장면과 실제 사용 루틴을 사진/영상으로 제작",
+        deadline: getRelativeCampaignDate(6),
+        uploadDeadline: getRelativeCampaignDate(17),
       },
     ],
     recentCreators: ["제우", "민서홈"],
@@ -710,9 +738,12 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
         title: "진정 세럼 2주 루틴 리뷰",
         type: "product_seeding",
         applicantLimit: "9명",
+        location: "온라인 배송",
+        offer: "진정 세럼 본품",
         budget: "제품 제공 + 160만원",
-        deadline: "2026-06-16",
-        uploadDeadline: "2026-06-30",
+        mission: "2주 사용 루틴과 민감 피부 사용감을 릴스와 스토리로 소개",
+        deadline: getRelativeCampaignDate(4),
+        uploadDeadline: getRelativeCampaignDate(13),
       },
     ],
     recentCreators: ["유나뷰티", "리뷰제이"],
@@ -740,9 +771,12 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
         title: "10분 홈트 챌린지 쇼츠",
         type: "ppl",
         applicantLimit: "10명",
+        location: "온라인 진행",
+        offer: "운동 프로그램 이용권",
         budget: "250만-450만원",
-        deadline: "2026-06-21",
-        uploadDeadline: "2026-07-04",
+        mission: "집에서 따라할 수 있는 10분 루틴을 숏폼으로 제작",
+        deadline: getRelativeCampaignDate(9),
+        uploadDeadline: getRelativeCampaignDate(20),
       },
     ],
     recentCreators: ["하루핏", "지유로그"],
@@ -770,9 +804,12 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
         title: "홈카페 드립백 공동구매",
         type: "group_buy",
         applicantLimit: "8명",
+        location: "부산 · 온라인",
+        offer: "드립백 세트",
         budget: "판매 수수료 + 제품 제공",
-        deadline: "2026-06-24",
-        uploadDeadline: "2026-07-08",
+        mission: "홈카페 레시피와 공동구매 구매 포인트를 자연스럽게 연결",
+        deadline: getRelativeCampaignDate(12),
+        uploadDeadline: getRelativeCampaignDate(25),
       },
     ],
     recentCreators: ["오늘의취향", "민서홈"],
@@ -800,9 +837,12 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
         title: "나이트 루틴 숏폼 리뷰",
         type: "product_seeding",
         applicantLimit: "8명",
+        location: "온라인 배송",
+        offer: "수면 케어 제품",
         budget: "제품 제공 + 180만원",
-        deadline: "2026-06-19",
-        uploadDeadline: "2026-07-03",
+        mission: "밤 루틴 안에서 제품 사용 장면과 휴식감을 숏폼으로 소개",
+        deadline: getRelativeCampaignDate(5),
+        uploadDeadline: getRelativeCampaignDate(16),
       },
     ],
     recentCreators: ["루나데이", "지유로그"],
@@ -829,9 +869,13 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
         title: "주말 스테이 브이로그",
         type: "visit_review",
         applicantLimit: "5명",
+        location: "강원 · 제주 방문",
+        offer: "1박 숙박권",
+        thumbnailUrl: "/images/campaigns/stayhour-weekend-stay-v2.png",
         budget: "숙박 제공 + 300만원",
-        deadline: "2026-06-27",
-        uploadDeadline: "2026-07-11",
+        mission: "객실, 체크인, 주변 동선을 브이로그와 후기형 컨텐츠로 기록",
+        deadline: getRelativeCampaignDate(14),
+        uploadDeadline: getRelativeCampaignDate(28),
       },
     ],
     recentCreators: ["채널오브", "루데이"],
@@ -858,9 +902,13 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
         title: "아침 식단 루틴 리뷰",
         type: "product_seeding",
         applicantLimit: "10명",
+        location: "온라인 배송",
+        offer: "건강식 세트",
+        thumbnailUrl: "/images/campaigns/greenspoon-breakfast-routine-v2.png",
         budget: "제품 제공 + 140만원",
-        deadline: "2026-06-22",
-        uploadDeadline: "2026-07-06",
+        mission: "아침 식단 루틴과 제품 섭취 장면을 리뷰형 컨텐츠로 제작",
+        deadline: getRelativeCampaignDate(8),
+        uploadDeadline: getRelativeCampaignDate(19),
       },
     ],
     recentCreators: ["하루핏", "지유로그"],
@@ -1057,6 +1105,26 @@ export function getCampaignDeadlineLabel(deadline: string | undefined) {
   }).format(date);
 }
 
+function isMarketplaceCampaignRecruiting(deadline: string | undefined) {
+  if (!deadline) return true;
+  const date = new Date(deadline);
+  if (Number.isNaN(date.getTime())) return true;
+
+  const today = new Date();
+  const todayStart = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate(),
+  );
+  const deadlineStart = new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+  );
+
+  return deadlineStart >= todayStart;
+}
+
 export function buildMarketplaceCampaignPosts(
   brands: MarketplaceBrandProfile[],
 ): MarketplaceCampaignPost[] {
@@ -1076,18 +1144,25 @@ export function buildMarketplaceCampaignPosts(
           brandName: brand.displayName,
           brandCategory: brand.category,
           brandHeadline: brand.headline,
+          brandLocation: brand.location,
           brandLogoLabel: brand.logoLabel,
           brandLogoUrl: brand.logoUrl,
           brandHref: getBrandProfilePath(brand),
           typeLabel: proposalTypeLabels[campaign.type],
           platformLabels: platforms.map((platform) => platformLabels[platform]),
           deadlineLabel: getCampaignDeadlineLabel(campaign.deadline),
+          location: campaign.location ?? brand.location,
+          thumbnailUrl: campaign.thumbnailUrl ?? brand.logoUrl,
           platforms,
           status: campaign.status ?? "open",
         } satisfies MarketplaceCampaignPost;
       }),
     )
-    .filter((campaign) => campaign.status === "open");
+    .filter(
+      (campaign) =>
+        campaign.status === "open" &&
+        isMarketplaceCampaignRecruiting(campaign.deadline),
+    );
 }
 
 export function getPlatformTone(platform: InfluencerPlatform) {

@@ -619,8 +619,9 @@ const ensureMarketplaceProfiles = async ({ influencer, organizationId }) => {
             type: "sponsored_post",
             applicantLimit: "10명",
             budget: "1,500,000원 + 제품 제공",
-            deadline: dateOnly(2),
-            uploadDeadline: dateOnly(9),
+            thumbnailUrl: "/images/campaigns/breadroom-homecare-supporters-v2.png",
+            deadline: dateOnly(3),
+            uploadDeadline: dateOnly(12),
             platforms: ["instagram"],
             deliverables: ["인스타그램 릴스 1건", "스토리 2건"],
             status: "open",
@@ -631,8 +632,9 @@ const ensureMarketplaceProfiles = async ({ influencer, organizationId }) => {
             type: "visit_review",
             applicantLimit: "10명",
             budget: "2,200,000원",
+            thumbnailUrl: "/images/campaigns/breadroom-homecare-supporters-v2.png",
             deadline: dateOnly(5),
-            uploadDeadline: dateOnly(12),
+            uploadDeadline: dateOnly(14),
             platforms: ["instagram", "tiktok"],
             deliverables: ["인스타그램 릴스 1건", "틱톡 숏폼 1건"],
             status: "open",
@@ -643,8 +645,9 @@ const ensureMarketplaceProfiles = async ({ influencer, organizationId }) => {
             type: "supporters",
             applicantLimit: "10명",
             budget: "제품 제공(소비자가 86,000원 상당)",
-            deadline: dateOnly(12),
-            uploadDeadline: dateOnly(19),
+            thumbnailUrl: "/images/campaigns/breadroom-homecare-supporters-v2.png",
+            deadline: dateOnly(8),
+            uploadDeadline: dateOnly(18),
             platforms: ["naver_blog"],
             deliverables: ["네이버 블로그 후기 1건", "게시 유지 미션"],
             status: "open",
@@ -655,8 +658,9 @@ const ensureMarketplaceProfiles = async ({ influencer, organizationId }) => {
             type: "sponsored_post",
             applicantLimit: "10명",
             budget: "900,000원 + 제품 제공",
-            deadline: dateOnly(5),
-            uploadDeadline: dateOnly(14),
+            thumbnailUrl: "/images/campaigns/breadroom-homecare-supporters-v2.png",
+            deadline: dateOnly(11),
+            uploadDeadline: dateOnly(21),
             platforms: ["instagram"],
             deliverables: ["인스타그램 릴스 1건"],
             status: "open",
@@ -667,8 +671,9 @@ const ensureMarketplaceProfiles = async ({ influencer, organizationId }) => {
             type: "sponsored_post",
             applicantLimit: "10명",
             budget: "2,400,000원",
-            deadline: dateOnly(2),
-            uploadDeadline: dateOnly(12),
+            thumbnailUrl: "/images/campaigns/breadroom-homecare-supporters-v2.png",
+            deadline: dateOnly(14),
+            uploadDeadline: dateOnly(28),
             platforms: ["instagram"],
             deliverables: ["인스타그램 릴스 1건", "스토리 2건"],
             status: "open",
@@ -679,8 +684,9 @@ const ensureMarketplaceProfiles = async ({ influencer, organizationId }) => {
             type: "ppl",
             applicantLimit: "10명",
             budget: "3,200,000원",
-            deadline: dateOnly(1),
-            uploadDeadline: dateOnly(11),
+            thumbnailUrl: "/images/campaigns/breadroom-homecare-supporters-v2.png",
+            deadline: dateOnly(4),
+            uploadDeadline: dateOnly(16),
             platforms: ["youtube", "instagram"],
             deliverables: ["유튜브 쇼츠 1건", "인스타그램 스토리 2건"],
             status: "open",
@@ -691,8 +697,9 @@ const ensureMarketplaceProfiles = async ({ influencer, organizationId }) => {
             type: "product_seeding",
             applicantLimit: "10명",
             budget: "1,800,000원",
-            deadline: dateOnly(3),
-            uploadDeadline: dateOnly(13),
+            thumbnailUrl: "/images/campaigns/breadroom-homecare-supporters-v2.png",
+            deadline: dateOnly(6),
+            uploadDeadline: dateOnly(15),
             platforms: ["naver_blog"],
             deliverables: ["네이버 블로그 상세 리뷰 1건"],
             status: "open",
@@ -703,8 +710,9 @@ const ensureMarketplaceProfiles = async ({ influencer, organizationId }) => {
             type: "visit_review",
             applicantLimit: "10명",
             budget: "2,100,000원",
-            deadline: dateOnly(4),
-            uploadDeadline: dateOnly(12),
+            thumbnailUrl: "/images/campaigns/breadroom-homecare-supporters-v2.png",
+            deadline: dateOnly(9),
+            uploadDeadline: dateOnly(19),
             platforms: ["instagram"],
             deliverables: ["인스타그램 릴스 1건", "틱톡 숏폼 1건"],
             status: "open",
@@ -715,8 +723,9 @@ const ensureMarketplaceProfiles = async ({ influencer, organizationId }) => {
             type: "ppl",
             applicantLimit: "10명",
             budget: "2,800,000원",
-            deadline: dateOnly(6),
-            uploadDeadline: dateOnly(15),
+            thumbnailUrl: "/images/campaigns/breadroom-homecare-supporters-v2.png",
+            deadline: dateOnly(13),
+            uploadDeadline: dateOnly(24),
             platforms: ["youtube"],
             deliverables: ["유튜브 쇼츠 1건"],
             status: "open",
@@ -727,8 +736,9 @@ const ensureMarketplaceProfiles = async ({ influencer, organizationId }) => {
             type: "group_buy",
             applicantLimit: "10명",
             budget: "수수료 18%",
-            deadline: dateOnly(7),
-            uploadDeadline: dateOnly(17),
+            thumbnailUrl: "/images/campaigns/breadroom-homecare-supporters-v2.png",
+            deadline: dateOnly(16),
+            uploadDeadline: dateOnly(30),
             platforms: ["naver_blog"],
             deliverables: ["네이버 블로그 리뷰 1건", "인스타그램 스토리 2건"],
             status: "open",
@@ -804,7 +814,16 @@ const addDays = (days) => {
   return date.toISOString();
 };
 
-const dateOnly = (days) => addDays(days).slice(0, 10);
+const formatDateOnly = (date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate(),
+  ).padStart(2, "0")}`;
+
+const dateOnly = (days) => {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return formatDateOnly(date);
+};
 const shareToken = () => crypto.randomUUID().replaceAll("-", "");
 const postgrestInFilter = (values) =>
   `(${values.map((value) => encodeURIComponent(value)).join(",")})`;
@@ -1506,7 +1525,7 @@ const buildShowcaseContract = (scenario, advertiserId) => {
             signer_name: scenario.influencerName,
             signer_email: scenario.influencerContact,
             consent_text: "전자서명 동의가 완료되었습니다.",
-            consent_text_version: "showcase-2026-05-24",
+            consent_text_version: `showcase-${dateOnly(0)}`,
             contract_hash: stableServerUuid(`showcase:closed:contract:${scenario.key}`),
             signature_hash: stableServerUuid(`showcase:closed:signature:${scenario.key}`),
           },
@@ -1702,7 +1721,7 @@ const buildSeedCampaignApplicationSummary = (campaign) =>
     campaign.platforms?.length
       ? `플랫폼: ${campaign.platforms.map((platform) => seedPlatformLabels[platform] ?? "기타").join(", ")}`
       : undefined,
-    campaign.uploadDeadline ? `업로드 마감일: ${campaign.uploadDeadline}` : undefined,
+    campaign.uploadDeadline ? `제출마감일: ${campaign.uploadDeadline}` : undefined,
     campaign.deadline ? `모집마감일: ${campaign.deadline}` : undefined,
   ]
     .filter(Boolean)

@@ -543,7 +543,7 @@ const advertiserProposalSlides: IntroProposalSlide[] = [
       </>
     ),
     description:
-      "캠페인에 지원한 인플루언서 쉽게 확인, 선정하고 1대多 계약서를 자동 생성합니다",
+      "캠페인에 지원한 인플루언서를 확인하고 선정자별 계약서를 준비합니다",
     support: (
       <span className="support-stack">
         <span>
@@ -552,11 +552,11 @@ const advertiserProposalSlides: IntroProposalSlide[] = [
           <strong>인플루언서 쉽게 확인, 선정</strong>
         </span>
         <span>
-          광고주와 인플루언서간
+          선정된 인플루언서마다
           <br />
-          <strong>1대多 계약서 자동 생성</strong>으로
+          <strong>선정자별 계약서 자동 생성</strong>으로
           <br />
-          인플루언서에게 책임감 부여
+          캠페인 안에서 진행 관리
         </span>
       </span>
     ),
