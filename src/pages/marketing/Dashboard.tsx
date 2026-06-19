@@ -1795,7 +1795,7 @@ function CampaignListView({
         {filtersOpen ? (
           <div
             id="advertiser-campaign-filters"
-            className="grid gap-2 border-t border-[#edf1ed] bg-[#f8faf7] p-2 lg:grid-cols-[minmax(110px,0.22fr)_minmax(130px,0.24fr)_minmax(260px,0.7fr)_minmax(130px,0.24fr)]"
+            className="grid grid-cols-2 gap-2 border-t border-[#edf1ed] bg-[#f8faf7] p-2 lg:grid-cols-[minmax(110px,0.22fr)_minmax(130px,0.24fr)_minmax(260px,0.7fr)_minmax(130px,0.24fr)]"
           >
             <TableFilterSelect
               label="플랫폼"
@@ -1811,7 +1811,12 @@ function CampaignListView({
               onChange={onBrandFilterChange}
               compact
             />
-            <CampaignSearch value={query} onChange={onQueryChange} compact />
+            <CampaignSearch
+              value={query}
+              onChange={onQueryChange}
+              compact
+              className="col-span-2 lg:col-span-auto"
+            />
             <TableFilterSelect
               label="진도율"
               value={participantFilter}
@@ -2043,6 +2048,7 @@ function CampaignSearch({
   placeholder = "계약명으로 검색",
   ariaLabel,
   compact = false,
+  className = "",
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -2050,14 +2056,15 @@ function CampaignSearch({
   placeholder?: string;
   ariaLabel?: string;
   compact?: boolean;
+  className?: string;
 }) {
   return (
     <label
-      className={
+      className={`${className} ${
         compact
           ? "grid min-w-0 grid-cols-[70px_minmax(0,1fr)] items-center gap-2"
           : "block min-w-0"
-      }
+      }`}
     >
       <ColumnHeader label={label} />
       <span className={`relative block ${compact ? "" : "mt-1"}`}>
@@ -2110,12 +2117,6 @@ function CampaignRow({
         <p className="whitespace-nowrap text-[13px] font-extrabold text-[#171a17]">
           {progress.label}
         </p>
-        <div className="mt-1 h-1.5 max-w-[108px] overflow-hidden rounded-full bg-[#e6ebe6]">
-          <div
-            className="h-full rounded-full bg-[#171a17]"
-            style={{ width: `${progress.percent}%` }}
-          />
-        </div>
       </div>
       <CampaignDateText parts={dateParts} />
     </button>
@@ -2350,7 +2351,7 @@ function CampaignDetailView({
         {detailFiltersOpen ? (
           <div
             id="campaign-detail-filters"
-            className="grid gap-2 border-t border-[#edf1ed] bg-[#f8faf7] p-2 lg:grid-cols-[minmax(220px,0.7fr)_minmax(130px,0.36fr)_minmax(130px,0.34fr)_minmax(130px,0.34fr)_minmax(160px,0.45fr)]"
+            className="grid grid-cols-2 gap-2 border-t border-[#edf1ed] bg-[#f8faf7] p-2 lg:grid-cols-[minmax(220px,0.7fr)_minmax(130px,0.36fr)_minmax(130px,0.34fr)_minmax(130px,0.34fr)_minmax(160px,0.45fr)]"
           >
             <CampaignSearch
               label="인플루언서"
@@ -2358,6 +2359,7 @@ function CampaignDetailView({
               value={influencerQuery}
               onChange={setInfluencerQuery}
               compact
+              className="col-span-2 lg:col-span-auto"
             />
             <TableFilterSelect
               label="플랫폼"
@@ -3329,7 +3331,7 @@ function ContractTable({
         {filtersOpen ? (
           <div
             id="advertiser-contract-filters"
-            className="grid gap-2.5 border-t border-[#d9e0d9] bg-[#f4f5f2] px-3 py-3 sm:grid-cols-2 lg:grid-cols-[minmax(132px,0.34fr)_minmax(108px,0.26fr)_minmax(300px,1fr)_minmax(132px,0.34fr)_minmax(146px,0.38fr)_minmax(112px,0.3fr)] lg:items-end lg:gap-2"
+            className="grid grid-cols-2 gap-2 border-t border-[#d9e0d9] bg-[#f4f5f2] px-3 py-2.5 lg:grid-cols-[minmax(132px,0.34fr)_minmax(108px,0.26fr)_minmax(300px,1fr)_minmax(132px,0.34fr)_minmax(146px,0.38fr)_minmax(112px,0.3fr)] lg:items-end"
           >
             <TableFilterSelect
               label="플랫폼"
@@ -3349,6 +3351,7 @@ function ContractTable({
               sortKey="title"
               sortState={sortState}
               onSortChange={onSortChange}
+              className="col-span-2 lg:col-span-auto"
             />
             <TableFilterSelect
               label="지급내용"
@@ -3362,6 +3365,7 @@ function ContractTable({
               toValue={dateToFilter}
               onFromChange={onDateFromFilterChange}
               onToChange={onDateToFilterChange}
+              className="col-span-2 lg:col-span-auto"
             />
             <TableFilterSelect
               label="현 단계"
@@ -3588,6 +3592,7 @@ function ContractNameSearch({
   sortState,
   onSortChange,
   compact = false,
+  className = "",
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -3595,14 +3600,15 @@ function ContractNameSearch({
   sortState?: ContractSort;
   onSortChange?: (key: SortKey) => void;
   compact?: boolean;
+  className?: string;
 }) {
   return (
     <div
-      className={
+      className={`${className} ${
         compact
           ? "grid min-w-0 grid-cols-[70px_minmax(0,1fr)] items-center gap-2"
           : "block min-w-0"
-      }
+      }`}
     >
       <ColumnHeader
         label="계약명"
@@ -3630,15 +3636,17 @@ function DashboardDateRangeFilter({
   toValue,
   onFromChange,
   onToChange,
+  className = "",
 }: {
   label: string;
   fromValue: string;
   toValue: string;
   onFromChange: (value: string) => void;
   onToChange: (value: string) => void;
+  className?: string;
 }) {
   return (
-    <div className="block min-w-0">
+    <div className={`${className} block min-w-0`}>
       <ColumnHeader label={label} />
       <div className="mt-1 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1.5">
         <DashboardDateInput
@@ -3710,6 +3718,7 @@ function TableFilterSelect({
   onSortChange,
   onChange,
   compact = false,
+  className = "",
 }: {
   label: string;
   value: string;
@@ -3720,14 +3729,15 @@ function TableFilterSelect({
   onSortChange?: (key: SortKey) => void;
   onChange: (value: string) => void;
   compact?: boolean;
+  className?: string;
 }) {
   return (
     <div
-      className={
+      className={`${className} ${
         compact
           ? "grid min-w-0 grid-cols-[70px_minmax(0,1fr)] items-center gap-2"
           : "block min-w-0"
-      }
+      }`}
     >
       <ColumnHeader
         label={label}
@@ -3815,7 +3825,7 @@ function SortButton({
       title={`${label} ${nextDirection} 정렬`}
       className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] transition-colors ${
         active
-          ? "bg-[#171a17] text-white"
+          ? "bg-white text-[#171a17] ring-1 ring-[#cbd5cc] shadow-sm"
           : "text-[#9aa39d] hover:bg-[#eef0ed] hover:text-[#303630]"
       }`}
     >
@@ -4557,16 +4567,12 @@ function getCampaignRosterProgress(campaign: CampaignGroup) {
   const capacity = getCampaignCapacity(campaign);
   if (!capacity) {
     return {
-      label: `${current.toLocaleString()}/확인중`,
-      percent: current > 0 ? 12 : 0,
+      label: `${current.toLocaleString("ko-KR")}/확인중`,
     };
   }
 
-  const percent = Math.min(100, Math.round((current / capacity) * 100));
-
   return {
-    label: `${current.toLocaleString()}/${capacity.toLocaleString()}`,
-    percent,
+    label: `${current.toLocaleString("ko-KR")}/${capacity.toLocaleString("ko-KR")}명`,
   };
 }
 
@@ -4628,7 +4634,16 @@ function getCampaignListDateParts(campaign: CampaignGroup): DashboardDateParts {
     return { label: "종료일 확인" };
   }
 
-  return formatCampaignDashboardDateWithDday(value);
+  const parts = formatCampaignDashboardDateWithDday(value);
+  if (campaign.lifecycle === "ENDED" && parts.dateLabel) {
+    return {
+      label: `종료 / ${parts.dateLabel}`,
+      dday: "종료",
+      dateLabel: parts.dateLabel,
+    };
+  }
+
+  return parts;
 }
 
 function formatCampaignDashboardDateWithDday(value?: string): DashboardDateParts {
@@ -4643,7 +4658,11 @@ function formatCampaignDashboardDateWithDday(value?: string): DashboardDateParts
   ].join(".");
   const dayDiff = getDayDiffFromToday(date);
   const dday =
-    dayDiff > 0 ? `D-${dayDiff}` : dayDiff === 0 ? "D-0" : `D+${Math.abs(dayDiff)}`;
+    dayDiff > 0
+      ? `D-${dayDiff}`
+      : dayDiff === 0
+        ? "D-0"
+        : "마감 지남";
 
   return {
     label: `${dday} / ${dateLabel}`,
@@ -5513,7 +5532,11 @@ function formatDashboardDateWithDday(value?: string) {
   ].join(".");
   const dayDiff = getDayDiffFromToday(date);
   const dday =
-    dayDiff > 0 ? `D-${dayDiff}` : dayDiff === 0 ? "D-0" : `D+${Math.abs(dayDiff)}`;
+    dayDiff > 0
+      ? `D-${dayDiff}`
+      : dayDiff === 0
+        ? "D-0"
+        : "마감 지남";
 
   return `${dateLabel} / ${dday}`;
 }

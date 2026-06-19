@@ -14,10 +14,7 @@ const assets = {
   dashboard: rel(salesDir, "docs/sales/assets/yeollock-practitioner-dashboard.png"),
   builder: rel(salesDir, "docs/sales/assets/yeollock-practitioner-contract-builder.png"),
   detail: rel(salesDir, "docs/sales/assets/yeollock-practitioner-contract-detail.png"),
-  campaigns: rel(salesDir, "docs/qa-reports/full-capture-board-20260610-deployed-e6da475/screenshots/pc-advertiser-campaigns.png"),
   applicants: rel(salesDir, "docs/sales/assets/yeollock-campaign-applicants-dashboard.png"),
-  campaignNew: rel(salesDir, "docs/qa-reports/full-capture-board-20260610-deployed-e6da475/screenshots/pc-advertiser-campaign-new.png"),
-  discovery: rel(salesDir, "docs/qa-reports/full-capture-board-20260610-deployed-e6da475/screenshots/pc-advertiser-discover.png"),
   contractPdf: rel(salesDir, "docs/sales/assets/yeollock-contract-pdf-review-page.png"),
 };
 

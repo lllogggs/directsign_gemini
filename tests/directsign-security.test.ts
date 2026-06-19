@@ -1848,8 +1848,8 @@ describe("yeollock.me security regressions", () => {
     assert.match(advertiserVerification, /\{!approved && \(/);
     assert.doesNotMatch(influencerVerification, /InfoRow\s+label="현재 상태"\s+value="인증 완료"/);
     assert.doesNotMatch(marketplace, /제안 후 메시지함/);
-    assert.match(landing, /2026\.05\.29 \/ D-5/);
-    assert.doesNotMatch(landing, /D-5 \/ 2026\.05\.29/);
+    assert.match(landing, /2026\.06\.24 \/ D-5/);
+    assert.doesNotMatch(landing, /D\+\d+/);
   });
 
   it("separates public cache optimization from sensitive contract data", () => {

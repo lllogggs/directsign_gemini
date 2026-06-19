@@ -517,9 +517,9 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
               {filtersOpen ? (
                 <div
                   id="marketplace-message-filters"
-                  className="mt-3 grid gap-2 border-t border-[#edf1ed] pt-3 lg:grid-cols-[minmax(260px,1fr)_160px_160px_160px]"
+                  className="mt-3 grid grid-cols-2 gap-2 border-t border-[#edf1ed] pt-3 lg:grid-cols-[minmax(260px,1fr)_160px_160px_160px]"
                 >
-                  <div className="relative min-w-0">
+                  <div className="relative col-span-2 min-w-0 lg:col-span-1">
                     <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8b938d]" />
                     <input
                       value={query}
@@ -653,12 +653,12 @@ function SelectFilter({
   options: Array<{ value: string; label: string }>;
 }) {
   return (
-    <label className="grid min-w-0 gap-1.5">
+    <label className="grid min-w-0 gap-1">
       <span className="text-[12px] font-extrabold text-[#303630]">{label}</span>
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="h-9 w-full rounded-[6px] border border-[#d9e0d9] bg-[#f8faf7] px-3 text-[12px] font-bold text-[#303630] outline-none transition-colors hover:border-[#cbd5cc] focus:border-[#171a17] focus:bg-white"
+        className="h-9 w-full rounded-[6px] border border-[#d9e0d9] bg-[#f8faf7] px-2.5 text-[12px] font-bold text-[#303630] outline-none transition-colors hover:border-[#cbd5cc] focus:border-[#171a17] focus:bg-white"
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>

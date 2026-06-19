@@ -498,7 +498,7 @@ export function AdvertiserInfluencerDiscoveryPage() {
           label="인플루언서 검색"
           placeholder="이름, 핸들, 카테고리 검색"
         />
-        <div className="grid min-w-0 gap-3 lg:min-w-[600px] lg:grid-cols-[minmax(210px,0.42fr)_minmax(280px,0.58fr)]">
+        <div className="grid min-w-0 gap-2.5 lg:min-w-[600px] lg:grid-cols-[minmax(210px,0.42fr)_minmax(280px,0.58fr)]">
           <FilterChipGroup label="플랫폼">
             <PlatformFilterBar value={platformFilter} onChange={setPlatformFilter} />
           </FilterChipGroup>
@@ -1943,7 +1943,7 @@ function PlatformFilterBar({
   onChange: (value: PlatformFilter) => void;
 }) {
   return (
-    <div className="flex min-w-0 flex-wrap gap-1.5 lg:no-scrollbar lg:flex-nowrap lg:overflow-x-auto">
+    <div className="flex min-w-0 flex-wrap gap-1.5">
       {platformFilterOptions.map((platform) => {
         const active = value === platform;
         const label = platform === "all" ? "전체" : platformLabels[platform];
@@ -1983,7 +1983,7 @@ function CategoryChecklist({
       <legend className="text-[12px] font-extrabold text-neutral-500">
         카테고리
       </legend>
-      <div className="mt-1.5 grid max-h-28 min-w-0 grid-cols-2 gap-x-3 gap-y-1.5 overflow-y-auto pr-1 sm:grid-cols-3 lg:max-h-24">
+      <div className="mt-1.5 grid max-h-28 min-w-0 grid-cols-2 gap-x-3 gap-y-1.5 overflow-y-auto pr-1 sm:grid-cols-3 lg:max-h-24 lg:grid-cols-4">
       {categories.map((category) => {
         const checked = selected.has(category);
         const label = getCategoryLabel(category);

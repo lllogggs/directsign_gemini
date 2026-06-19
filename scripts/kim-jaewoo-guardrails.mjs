@@ -2268,8 +2268,8 @@ const expectedTabs = {
   influencer: ["지원중", "진행중", "완료", "미선정"],
 };
 const introDatePatterns = {
-  advertiser: /^20\d{2}\.\d{2}\.\d{2} \/ D(?:-\d+|\+\d+)$/,
-  influencer: /^D(?:-\d+|\+\d+) \/ 20\d{2}\.\d{2}\.\d{2}$/,
+  advertiser: /^20\d{2}\.\d{2}\.\d{2}(?: \/ D-\d+)?$/,
+  influencer: /^(?:D-\d+ \/ 20\d{2}\.\d{2}\.\d{2}|20\d{2}\.\d{2}\.\d{2})$/,
 };
 
 check(
@@ -2349,9 +2349,9 @@ for (const role of ["advertiser", "influencer"]) {
     );
 
     check(
-      `intro ${role} ${state.activeTab} dates include year and D-day`,
+      `intro ${role} ${state.activeTab} dates stay current and avoid D+`,
       state.rows.every((row) => introDatePatterns[role].test(row.date)),
-      `${role} ${state.activeTab}: every visible row date must match the role-specific D-day/date order`,
+      `${role} ${state.activeTab}: every visible row date must keep the role-specific date order without overdue D+ copy`,
     );
 
     check(

@@ -2125,7 +2125,7 @@ function InfluencerContractLinkDesktopPreview() {
   const facts = [
     { label: "광고주", value: "브레드룸", badge: "인증" },
     { label: "보상", value: "1,800,000원" },
-    { label: "마감", value: "2026.05.29" },
+    { label: "마감", value: "2026.06.30" },
     { label: "플랫폼", value: "인스타그램", platform: "인스타" },
     { label: "컨텐츠", value: "릴스" },
     { label: "수량", value: "1건" },
@@ -2208,7 +2208,7 @@ function InfluencerContractLinkDesktopPreview() {
             <div className="grid min-h-0 flex-1 gap-3 py-4">
               {[
                 ["제1조 계약 목적", "브랜드 공동구매 파일럿 콘텐츠 제작과 게시"],
-                ["제2조 컨텐츠 및 일정", "인스타그램 릴스 1건, 2026.05.29 마감"],
+                ["제2조 컨텐츠 및 일정", "인스타그램 릴스 1건, 2026.06.30 마감"],
                 ["제3조 지급 조건", "콘텐츠 확인 후 7영업일 내 1,800,000원 지급"],
                 ["제4조 콘텐츠 활용", "브랜드 채널과 랜딩 페이지 활용 범위 확인"],
               ].map(([title, body]) => (
@@ -2237,7 +2237,7 @@ function InfluencerContractLinkMobilePreview() {
   const facts = [
     { label: "광고주", value: "브레드룸", badge: "인증" },
     { label: "보상", value: "1,800,000원" },
-    { label: "마감", value: "2026.05.29" },
+    { label: "마감", value: "2026.06.30" },
     { label: "플랫폼", value: "인스타그램", platform: "인스타" },
     { label: "컨텐츠", value: "릴스" },
     { label: "수량", value: "1건" },
@@ -2331,7 +2331,7 @@ function AdvertiserShareDmPreview() {
               ["계약서", "오브레 비건 선크림 릴스"],
               ["인플루언서", "민서홈 · @minseo_home"],
               ["컨텐츠", "릴스 1건 · 스토리 2건"],
-              ["마감", "2026.05.29"],
+              ["마감", "2026.06.30"],
             ].map(([label, value]) => (
               <div
                 key={label}
@@ -2491,7 +2491,7 @@ function _AdvertiserMobileLinkPreview() {
           <div className="grid gap-0 divide-y divide-neutral-200 px-3 pb-2">
             {[
               ["보상", "1,800,000원"],
-              ["마감", "2026.05.29"],
+              ["마감", "2026.06.30"],
               ["플랫폼", "블로그"],
               ["수량", "1건"],
             ].map(([label, value]) => (
@@ -2831,7 +2831,7 @@ function InfluencerConditionReviewPreview() {
   const facts = [
     { label: "브랜드", value: "오브레 스튜디오", badge: "인증" },
     { label: "보상", value: "1,800,000원" },
-    { label: "마감", value: "2026.05.29" },
+    { label: "마감", value: "2026.06.30" },
     { label: "플랫폼", value: "인스타", platform: "인스타" },
     { label: "컨텐츠", value: "릴스 1건 · 스토리 2건" },
     { label: "활용", value: "브랜드 채널 3개월" },
@@ -2906,7 +2906,7 @@ function InfluencerConditionReviewPreview() {
                 ["제2조 컨텐츠", "릴스 1건, 스토리 2건"],
                 ["제3조 지급", "콘텐츠 승인 후 7영업일 이내"],
                 ["제4조 활용", "브랜드 채널 3개월 활용"],
-                ["제5조 일정", "2026.05.29까지 게시"],
+                ["제5조 일정", "2026.06.30까지 게시"],
               ].map(([title, body]) => (
                 <div key={title} className="rounded-[9px] bg-neutral-50 px-3 py-2.5">
                   <p className="text-[11px] font-black text-neutral-950">
@@ -2970,7 +2970,7 @@ function InfluencerCampaignApplyPreview() {
               {[
                 ["보상", "900,000원 + 제품"],
                 ["컨텐츠", "릴스 1건"],
-                ["마감", "2026.05.29"],
+                ["마감", "2026.06.30"],
                 ["상태", "신청 가능"],
               ].map(([label, value]) => (
                 <div key={label} className="rounded-[9px] bg-neutral-50 px-3 py-2 max-[640px]:px-2.5 max-[640px]:py-1.5">
@@ -3055,7 +3055,7 @@ function InfluencerRevisionRequestPreview() {
     ["제5조", "검수 및 수정 기준"],
   ];
   const responseRows = [
-    ["요청 생성", "2026.05.22"],
+    ["요청 생성", "2026.06.19"],
     ["광고주 확인", "진행중"],
     ["서명 상태", "대기"],
   ];
@@ -3598,7 +3598,7 @@ const introDashboardDemoData = {
             title: "민서홈 릴스 협찬 계약",
             payment: "900,000원 + 제품 제공",
             metric: "검토 대기",
-            date: "2026.05.29 / D-5",
+            date: "2026.06.24 / D-5",
           },
           {
             platform: "인스타 외 1",
@@ -3607,7 +3607,7 @@ const introDashboardDemoData = {
             title: "루나데이 공동구매 계약",
             payment: "수수료 18%",
             metric: "초안 작성",
-            date: "2026.05.31 / D-7",
+            date: "2026.06.26 / D-7",
           },
         ],
       },
@@ -3634,7 +3634,7 @@ const introDashboardDemoData = {
             payment: "수수료 18%",
             metric: "서명 완료",
             metricPercent: 70,
-            date: "2026.05.28 / D-4",
+            date: "2026.06.23 / D-4",
           },
           {
             platform: "유튜브",
@@ -3644,7 +3644,7 @@ const introDashboardDemoData = {
             payment: "2,800,000원",
             metric: "검수 대기",
             metricPercent: 50,
-            date: "2026.05.27 / D-3",
+            date: "2026.06.22 / D-3",
           },
           {
             platform: "인스타",
@@ -3654,7 +3654,7 @@ const introDashboardDemoData = {
             payment: "900,000원 + 제품 제공",
             metric: "콘텐츠 제출",
             metricPercent: 85,
-            date: "2026.05.26 / D-2",
+            date: "2026.06.21 / D-2",
           },
         ],
       },
@@ -3681,7 +3681,7 @@ const introDashboardDemoData = {
             payment: "1,800,000원",
             metric: "보관 완료",
             metricPercent: 100,
-            date: "2026.05.21 / D+3",
+            date: "2026.06.16",
           },
           {
             platform: "블로그",
@@ -3691,7 +3691,7 @@ const introDashboardDemoData = {
             payment: "수수료 18%",
             metric: "검수 완료",
             metricPercent: 100,
-            date: "2026.05.19 / D+5",
+            date: "2026.06.14",
           },
         ],
       },
@@ -3706,7 +3706,7 @@ const introDashboardDemoData = {
         amount: "180만원",
         status: "검토 필요",
         statusClass: "border-amber-200 bg-amber-50 text-amber-800",
-        deadline: "D+3",
+        deadline: "마감 지남",
         note: "릴스 1건 · 스토리 2건",
       },
       {
@@ -3718,7 +3718,7 @@ const introDashboardDemoData = {
         amount: "180만원",
         status: "수정 요청",
         statusClass: "border-amber-200 bg-amber-50 text-amber-800",
-        deadline: "D+1",
+        deadline: "마감 지남",
         note: "2차 활용 기간 조정",
       },
       {
@@ -3730,7 +3730,7 @@ const introDashboardDemoData = {
         amount: "260만원",
         status: "서명 준비",
         statusClass: "border-blue-200 bg-blue-50 text-blue-700",
-        deadline: "D+2",
+        deadline: "마감 지남",
         note: "유튜브 리뷰 1건",
       },
       {
@@ -3742,7 +3742,7 @@ const introDashboardDemoData = {
         amount: "판매 18%",
         status: "검수 대기",
         statusClass: "border-neutral-200 bg-white text-neutral-700",
-        deadline: "D+4",
+        deadline: "마감 지남",
         note: "블로그 리뷰 · 공구 링크",
       },
     ],
@@ -3775,7 +3775,7 @@ const introDashboardDemoData = {
             title: "브레드룸 릴스 협찬 계약",
             payment: "900,000원 + 제품 제공",
             metric: "지원 접수",
-            date: "D-2 / 2026.05.26",
+            date: "D-2 / 2026.06.21",
           },
           {
             platform: "인스타 +1",
@@ -3784,7 +3784,7 @@ const introDashboardDemoData = {
             title: "나이트케어 언박싱 계약",
             payment: "150만-250만원",
             metric: "지원 접수",
-            date: "D-10 / 2026.06.03",
+            date: "D-10 / 2026.06.29",
           },
         ],
       },
@@ -3810,7 +3810,7 @@ const introDashboardDemoData = {
             title: "공동구매 릴스 계약",
             payment: "수수료 18%",
             metric: "컨텐츠 제출",
-            date: "D-4 / 2026.05.28",
+            date: "D-4 / 2026.06.23",
           },
           {
             platform: "유튜브",
@@ -3819,7 +3819,7 @@ const introDashboardDemoData = {
             title: "나이트 케어 쇼츠 계약",
             payment: "2,800,000원",
             metric: "광고주 검수 필요",
-            date: "D-3 / 2026.05.27",
+            date: "D-3 / 2026.06.22",
           },
           {
             platform: "인스타",
@@ -3828,7 +3828,7 @@ const introDashboardDemoData = {
             title: "성수 팝업 릴스 계약",
             payment: "2,100,000원",
             metric: "컨텐츠 제출",
-            date: "D-1 / 2026.05.25",
+            date: "D-1 / 2026.06.20",
           },
           {
             platform: "인스타",
@@ -3837,7 +3837,7 @@ const introDashboardDemoData = {
             title: "밤 루틴 릴스 검수",
             payment: "1,600,000원",
             metric: "초안 제출",
-            date: "D-4 / 2026.05.28",
+            date: "D-4 / 2026.06.23",
           },
           {
             platform: "유튜브",
@@ -3846,7 +3846,7 @@ const introDashboardDemoData = {
             title: "홈카페 쇼츠 계약",
             payment: "판매 수수료 15%",
             metric: "게시 준비",
-            date: "D-6 / 2026.05.30",
+            date: "D-6 / 2026.06.25",
           },
           {
             platform: "인스타 +1",
@@ -3855,7 +3855,7 @@ const introDashboardDemoData = {
             title: "스킨케어 루틴 공동구매",
             payment: "1,400,000원",
             metric: "광고주 검수",
-            date: "D-8 / 2026.06.01",
+            date: "D-8 / 2026.06.27",
           },
         ],
       },
@@ -3881,7 +3881,7 @@ const introDashboardDemoData = {
             title: "공동구매 릴스 계약",
             payment: "수수료 18%",
             metric: "정산 보관",
-            date: "D+3 / 2026.05.21",
+            date: "2026.06.16",
           },
         ],
       },
@@ -3907,7 +3907,7 @@ const introDashboardDemoData = {
             title: "언박싱 릴스 제안",
             payment: "150만-250만원",
             metric: "미선정",
-            date: "D+4 / 2026.05.20",
+            date: "2026.06.15",
           },
         ],
       },
@@ -3922,7 +3922,7 @@ const introDashboardDemoData = {
         amount: "180만원",
         status: "검토 필요",
         statusClass: "border-amber-200 bg-amber-50 text-amber-800",
-        deadline: "D+3",
+        deadline: "마감 지남",
         note: "조항 확인",
       },
       {
@@ -3934,7 +3934,7 @@ const introDashboardDemoData = {
         amount: "180만원",
         status: "수정 협의",
         statusClass: "border-amber-200 bg-amber-50 text-amber-800",
-        deadline: "D+1",
+        deadline: "마감 지남",
         note: "활용 기간 답변 대기",
       },
       {
@@ -3946,7 +3946,7 @@ const introDashboardDemoData = {
         amount: "260만원",
         status: "서명 준비",
         statusClass: "border-blue-200 bg-blue-50 text-blue-700",
-        deadline: "D+2",
+        deadline: "마감 지남",
         note: "본인 인증 후 서명",
       },
       {
@@ -3958,7 +3958,7 @@ const introDashboardDemoData = {
         amount: "판매 18%",
         status: "컨텐츠 제출",
         statusClass: "border-amber-200 bg-amber-50 text-amber-800",
-        deadline: "D+4",
+        deadline: "마감 지남",
         note: "릴스 제출 링크",
       },
       {

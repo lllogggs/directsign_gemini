@@ -789,7 +789,7 @@ export function AdvertiserCampaignRecruitmentPage() {
         <>
           <Link
             to="/advertiser/builder"
-            className="yl-header-action yl-header-action-primary"
+            className="yl-header-action yl-header-action-secondary"
           >
             <FileSignature className="h-4 w-4" />
             <span className="hidden sm:inline">1:1 계약 작성</span>
@@ -1972,6 +1972,7 @@ function AdvertiserCampaignTable({
 function AdvertiserCampaignRow({
   campaign,
 }: {
+  key?: string;
   campaign: MarketplaceBrandCampaign;
 }) {
   const statusMeta = getAdvertiserCampaignStatusMeta(campaign);
@@ -2908,7 +2909,7 @@ function CampaignInlineFact({
   icon,
   label,
   value,
-}: CampaignRecruitmentFact) {
+}: CampaignRecruitmentFact & { key?: string }) {
   return (
     <div className="min-w-0 border-t border-neutral-100 pt-2">
       <p className="flex items-center gap-1.5 text-[10px] font-extrabold text-neutral-400">
@@ -3493,7 +3494,7 @@ function CampaignColumnHeader({
         title={`${label} ${nextDirection} 정렬`}
         className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] transition-colors ${
           active
-            ? "bg-neutral-950 text-white"
+            ? "bg-white text-neutral-950 ring-1 ring-neutral-300 shadow-sm"
             : "text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
         }`}
       >
