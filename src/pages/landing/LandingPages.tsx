@@ -28,6 +28,42 @@ import type { InfluencerPlatform } from "../../domain/verification";
 
 type IntroRole = "advertiser" | "influencer";
 
+const getIntroDate = (daysFromToday: number) => {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() + daysFromToday);
+  return date;
+};
+
+const formatIntroDate = (daysFromToday: number) => {
+  const date = getIntroDate(daysFromToday);
+  return `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(
+    2,
+    "0",
+  )}.${String(date.getDate()).padStart(2, "0")}`;
+};
+
+const formatIntroShortDate = (daysFromToday: number) => {
+  const date = getIntroDate(daysFromToday);
+  return `${date.getMonth() + 1}월 ${date.getDate()}일`;
+};
+
+const formatIntroShortDateTime = (daysFromToday: number, hour: number) =>
+  `${formatIntroShortDate(daysFromToday)} ${String(hour).padStart(2, "0")}:00`;
+
+const formatIntroDateRange = (startDaysFromToday: number, endDaysFromToday: number) =>
+  `${formatIntroDate(startDaysFromToday)}-${formatIntroDate(endDaysFromToday).slice(5)}`;
+
+const formatIntroDateWithDday = (
+  daysFromToday: number,
+  order: "dday-first" | "date-first" = "dday-first",
+) => {
+  const label =
+    daysFromToday >= 0 ? `D-${daysFromToday}` : `D+${Math.abs(daysFromToday)}`;
+  const date = formatIntroDate(daysFromToday);
+  return order === "date-first" ? `${date} / ${label}` : `${label} / ${date}`;
+};
+
 const advertiserProposalAssetUrls = {
   contractBuilder: new URL(
     "../../../docs/sales/assets/yeollock-contract-builder-first-screen.png",
@@ -788,7 +824,7 @@ const roleIntroSlides = {
           { label: "진행 단계", value: "조건 확인" },
           { label: "계약명", value: "러닝 챌린지 릴스" },
           { label: "금액", value: "320만원" },
-          { label: "업로드", value: "2026.06.12" },
+          { label: "업로드", value: formatIntroDate(7) },
         ],
         chips: ["조건 확인", "유료 광고(PPL)", "릴스 1건"],
         message:
@@ -821,7 +857,7 @@ const roleIntroSlides = {
           { label: "계약명", value: "러닝 챌린지 릴스 계약" },
           { label: "플랫폼", value: "Instagram · TikTok" },
           { label: "금액", value: "320만원" },
-          { label: "기간", value: "2026.06.01-06.20" },
+          { label: "기간", value: formatIntroDateRange(1, 20) },
         ],
         chips: ["유료 광고(PPL)", "릴스 1건", "스토리 2건"],
         message:
@@ -968,7 +1004,7 @@ const roleIntroSlides = {
           { label: "브랜드", value: "브레드룸" },
           { label: "플랫폼", value: "Instagram · Blog" },
           { label: "금액", value: "판매 수수료 18%" },
-          { label: "기간", value: "2026.06.01-06.20" },
+          { label: "기간", value: formatIntroDateRange(1, 20) },
         ],
         chips: ["공동구매", "릴스 1건", "블로그 리뷰"],
         message:
@@ -1118,7 +1154,7 @@ const advertiserPreviewSlides: AdvertiserPreviewSlide[] = [
       { label: "계약명", value: "신제품 언박싱 계약" },
       { label: "계약 유형", value: "제품 협찬 + 제작비" },
       { label: "금액", value: "2,800,000원" },
-      { label: "업로드", value: "6월 12일 18:00" },
+      { label: "업로드", value: formatIntroShortDateTime(7, 18) },
     ],
     contractSummary: [
       { label: "광고주", value: "브레드룸" },
@@ -1133,7 +1169,7 @@ const advertiserPreviewSlides: AdvertiserPreviewSlide[] = [
     generatedClauses: [
       {
         title: "산출물 및 일정",
-        text: "인플루언서는 릴스 1건과 스토리 2건을 6월 12일 18:00까지 업로드합니다.",
+        text: `인플루언서는 릴스 1건과 스토리 2건을 ${formatIntroShortDateTime(7, 18)}까지 업로드합니다.`,
       },
       {
         title: "컨텐츠 활용 범위",
@@ -1304,7 +1340,7 @@ const influencerPreviewSlides: InfluencerPreviewSlide[] = [
     summary: [
       { label: "계약명", value: "브레드룸 공동구매" },
       { label: "지급", value: "판매수수료 12%" },
-      { label: "마감", value: "6월 12일" },
+      { label: "마감", value: formatIntroShortDate(7) },
       { label: "검토", value: "1개 조항 확인 필요" },
     ],
     clauses: [
@@ -2125,7 +2161,7 @@ function InfluencerContractLinkDesktopPreview() {
   const facts = [
     { label: "광고주", value: "브레드룸", badge: "인증" },
     { label: "보상", value: "1,800,000원" },
-    { label: "마감", value: "2026.06.30" },
+    { label: "마감", value: formatIntroDate(11) },
     { label: "플랫폼", value: "인스타그램", platform: "인스타" },
     { label: "컨텐츠", value: "릴스" },
     { label: "수량", value: "1건" },
@@ -2208,7 +2244,7 @@ function InfluencerContractLinkDesktopPreview() {
             <div className="grid min-h-0 flex-1 gap-3 py-4">
               {[
                 ["제1조 계약 목적", "브랜드 공동구매 파일럿 콘텐츠 제작과 게시"],
-                ["제2조 컨텐츠 및 일정", "인스타그램 릴스 1건, 2026.06.30 마감"],
+                ["제2조 컨텐츠 및 일정", `인스타그램 릴스 1건, ${formatIntroDate(11)} 마감`],
                 ["제3조 지급 조건", "콘텐츠 확인 후 7영업일 내 1,800,000원 지급"],
                 ["제4조 콘텐츠 활용", "브랜드 채널과 랜딩 페이지 활용 범위 확인"],
               ].map(([title, body]) => (
@@ -2237,7 +2273,7 @@ function InfluencerContractLinkMobilePreview() {
   const facts = [
     { label: "광고주", value: "브레드룸", badge: "인증" },
     { label: "보상", value: "1,800,000원" },
-    { label: "마감", value: "2026.06.30" },
+    { label: "마감", value: formatIntroDate(11) },
     { label: "플랫폼", value: "인스타그램", platform: "인스타" },
     { label: "컨텐츠", value: "릴스" },
     { label: "수량", value: "1건" },
@@ -2331,7 +2367,7 @@ function AdvertiserShareDmPreview() {
               ["계약서", "오브레 비건 선크림 릴스"],
               ["인플루언서", "민서홈 · @minseo_home"],
               ["컨텐츠", "릴스 1건 · 스토리 2건"],
-              ["마감", "2026.06.30"],
+              ["마감", formatIntroDate(11)],
             ].map(([label, value]) => (
               <div
                 key={label}
@@ -2491,7 +2527,7 @@ function _AdvertiserMobileLinkPreview() {
           <div className="grid gap-0 divide-y divide-neutral-200 px-3 pb-2">
             {[
               ["보상", "1,800,000원"],
-              ["마감", "2026.06.30"],
+              ["마감", formatIntroDate(11)],
               ["플랫폼", "블로그"],
               ["수량", "1건"],
             ].map(([label, value]) => (
@@ -2831,7 +2867,7 @@ function InfluencerConditionReviewPreview() {
   const facts = [
     { label: "브랜드", value: "오브레 스튜디오", badge: "인증" },
     { label: "보상", value: "1,800,000원" },
-    { label: "마감", value: "2026.06.30" },
+    { label: "마감", value: formatIntroDate(11) },
     { label: "플랫폼", value: "인스타", platform: "인스타" },
     { label: "컨텐츠", value: "릴스 1건 · 스토리 2건" },
     { label: "활용", value: "브랜드 채널 3개월" },
@@ -2906,7 +2942,7 @@ function InfluencerConditionReviewPreview() {
                 ["제2조 컨텐츠", "릴스 1건, 스토리 2건"],
                 ["제3조 지급", "콘텐츠 승인 후 7영업일 이내"],
                 ["제4조 활용", "브랜드 채널 3개월 활용"],
-                ["제5조 일정", "2026.06.30까지 게시"],
+                ["제5조 일정", `${formatIntroDate(11)}까지 게시`],
               ].map(([title, body]) => (
                 <div key={title} className="rounded-[9px] bg-neutral-50 px-3 py-2.5">
                   <p className="text-[11px] font-black text-neutral-950">
@@ -2970,7 +3006,7 @@ function InfluencerCampaignApplyPreview() {
               {[
                 ["보상", "900,000원 + 제품"],
                 ["컨텐츠", "릴스 1건"],
-                ["마감", "2026.06.30"],
+                ["마감", formatIntroDate(11)],
                 ["상태", "신청 가능"],
               ].map(([label, value]) => (
                 <div key={label} className="rounded-[9px] bg-neutral-50 px-3 py-2 max-[640px]:px-2.5 max-[640px]:py-1.5">
@@ -3055,7 +3091,7 @@ function InfluencerRevisionRequestPreview() {
     ["제5조", "검수 및 수정 기준"],
   ];
   const responseRows = [
-    ["요청 생성", "2026.06.19"],
+    ["요청 생성", formatIntroDate(0)],
     ["광고주 확인", "진행중"],
     ["서명 상태", "대기"],
   ];
@@ -3598,7 +3634,7 @@ const introDashboardDemoData = {
             title: "민서홈 릴스 협찬 계약",
             payment: "900,000원 + 제품 제공",
             metric: "검토 대기",
-            date: "2026.06.24 / D-5",
+            date: formatIntroDateWithDday(5, "date-first"),
           },
           {
             platform: "인스타 외 1",
@@ -3607,7 +3643,7 @@ const introDashboardDemoData = {
             title: "루나데이 공동구매 계약",
             payment: "수수료 18%",
             metric: "초안 작성",
-            date: "2026.06.26 / D-7",
+            date: formatIntroDateWithDday(7, "date-first"),
           },
         ],
       },
@@ -3634,7 +3670,7 @@ const introDashboardDemoData = {
             payment: "수수료 18%",
             metric: "서명 완료",
             metricPercent: 70,
-            date: "2026.06.23 / D-4",
+            date: formatIntroDateWithDday(4, "date-first"),
           },
           {
             platform: "유튜브",
@@ -3644,7 +3680,7 @@ const introDashboardDemoData = {
             payment: "2,800,000원",
             metric: "검수 대기",
             metricPercent: 50,
-            date: "2026.06.22 / D-3",
+            date: formatIntroDateWithDday(3, "date-first"),
           },
           {
             platform: "인스타",
@@ -3654,7 +3690,7 @@ const introDashboardDemoData = {
             payment: "900,000원 + 제품 제공",
             metric: "콘텐츠 제출",
             metricPercent: 85,
-            date: "2026.06.21 / D-2",
+            date: formatIntroDateWithDday(2, "date-first"),
           },
         ],
       },
@@ -3681,7 +3717,7 @@ const introDashboardDemoData = {
             payment: "1,800,000원",
             metric: "보관 완료",
             metricPercent: 100,
-            date: "2026.06.16",
+            date: formatIntroDate(-3),
           },
           {
             platform: "블로그",
@@ -3691,7 +3727,7 @@ const introDashboardDemoData = {
             payment: "수수료 18%",
             metric: "검수 완료",
             metricPercent: 100,
-            date: "2026.06.14",
+            date: formatIntroDate(-5),
           },
         ],
       },
@@ -3775,7 +3811,7 @@ const introDashboardDemoData = {
             title: "브레드룸 릴스 협찬 계약",
             payment: "900,000원 + 제품 제공",
             metric: "지원 접수",
-            date: "D-2 / 2026.06.21",
+            date: formatIntroDateWithDday(2),
           },
           {
             platform: "인스타 +1",
@@ -3784,7 +3820,7 @@ const introDashboardDemoData = {
             title: "나이트케어 언박싱 계약",
             payment: "150만-250만원",
             metric: "지원 접수",
-            date: "D-10 / 2026.06.29",
+            date: formatIntroDateWithDday(10),
           },
         ],
       },
@@ -3810,7 +3846,7 @@ const introDashboardDemoData = {
             title: "공동구매 릴스 계약",
             payment: "수수료 18%",
             metric: "컨텐츠 제출",
-            date: "D-4 / 2026.06.23",
+            date: formatIntroDateWithDday(4),
           },
           {
             platform: "유튜브",
@@ -3819,7 +3855,7 @@ const introDashboardDemoData = {
             title: "나이트 케어 쇼츠 계약",
             payment: "2,800,000원",
             metric: "광고주 검수 필요",
-            date: "D-3 / 2026.06.22",
+            date: formatIntroDateWithDday(3),
           },
           {
             platform: "인스타",
@@ -3828,7 +3864,7 @@ const introDashboardDemoData = {
             title: "성수 팝업 릴스 계약",
             payment: "2,100,000원",
             metric: "컨텐츠 제출",
-            date: "D-1 / 2026.06.20",
+            date: formatIntroDateWithDday(1),
           },
           {
             platform: "인스타",
@@ -3837,7 +3873,7 @@ const introDashboardDemoData = {
             title: "밤 루틴 릴스 검수",
             payment: "1,600,000원",
             metric: "초안 제출",
-            date: "D-4 / 2026.06.23",
+            date: formatIntroDateWithDday(4),
           },
           {
             platform: "유튜브",
@@ -3846,7 +3882,7 @@ const introDashboardDemoData = {
             title: "홈카페 쇼츠 계약",
             payment: "판매 수수료 15%",
             metric: "게시 준비",
-            date: "D-6 / 2026.06.25",
+            date: formatIntroDateWithDday(6),
           },
           {
             platform: "인스타 +1",
@@ -3855,7 +3891,7 @@ const introDashboardDemoData = {
             title: "스킨케어 루틴 공동구매",
             payment: "1,400,000원",
             metric: "광고주 검수",
-            date: "D-8 / 2026.06.27",
+            date: formatIntroDateWithDday(8),
           },
         ],
       },
@@ -3881,7 +3917,7 @@ const introDashboardDemoData = {
             title: "공동구매 릴스 계약",
             payment: "수수료 18%",
             metric: "정산 보관",
-            date: "2026.06.16",
+            date: formatIntroDate(-3),
           },
         ],
       },
@@ -3907,7 +3943,7 @@ const introDashboardDemoData = {
             title: "언박싱 릴스 제안",
             payment: "150만-250만원",
             metric: "미선정",
-            date: "2026.06.15",
+            date: formatIntroDate(-4),
           },
         ],
       },
@@ -4489,10 +4525,14 @@ function IntroContractRows({ state }: { state: IntroDashboardState }) {
 }
 
 function getIntroDateRenderParts(value: string) {
-  const match = /^(D(?:-\d+|\+\d+)) \/ (20\d{2}\.\d{2}\.\d{2})$/.exec(value);
+  const ddayFirstMatch = /^(D(?:-\d+|\+\d+)) \/ (20\d{2}\.\d{2}\.\d{2})$/.exec(value);
+  const dateFirstMatch = /^(20\d{2}\.\d{2}\.\d{2}) \/ (D(?:-\d+|\+\d+))$/.exec(value);
+  const match = ddayFirstMatch ?? dateFirstMatch;
   if (!match) return { label: value };
 
-  const [, dday, dateLabel] = match;
+  const [, first, second] = match;
+  const dday = first.startsWith("D") ? first : second;
+  const dateLabel = first.startsWith("D") ? second : first;
   const urgentMatch = /^D-(\d+)$/.exec(dday);
   const urgentDays = urgentMatch ? Number(urgentMatch[1]) : Number.POSITIVE_INFINITY;
 

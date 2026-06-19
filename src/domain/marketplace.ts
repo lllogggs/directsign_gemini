@@ -24,6 +24,7 @@ const formatDateOnly = (date: Date) =>
 
 const getRelativeCampaignDate = (daysFromToday: number) => {
   const date = new Date();
+  date.setHours(0, 0, 0, 0);
   date.setDate(date.getDate() + daysFromToday);
   return formatDateOnly(date);
 };

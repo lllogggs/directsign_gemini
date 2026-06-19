@@ -135,9 +135,9 @@ const extractObjectLiteral = (source, marker) => {
   throw new Error(`object end not found after: ${marker}`);
 };
 
-const evaluateLiteralObject = (source, marker) => {
+const evaluateLiteralObject = (source, marker, context = {}) => {
   const literal = extractObjectLiteral(source, marker);
-  return vm.runInNewContext(`(${literal})`, {}, { timeout: 1000 });
+  return vm.runInNewContext(`(${literal})`, context, { timeout: 1000 });
 };
 
 const landing = read("src/pages/landing/LandingPages.tsx");
@@ -2262,7 +2262,29 @@ check(
   "Advertiser PDF must follow pain point -> yeollock strength -> link signature flow -> service/dashboard explanation -> CTA",
 );
 
-const demoData = evaluateLiteralObject(landing, "const introDashboardDemoData =");
+const getGuardrailIntroDate = (daysFromToday) => {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() + daysFromToday);
+  return `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(
+    2,
+    "0",
+  )}.${String(date.getDate()).padStart(2, "0")}`;
+};
+const guardrailIntroDateContext = {
+  formatIntroDate: getGuardrailIntroDate,
+  formatIntroDateWithDday: (daysFromToday, order = "dday-first") => {
+    const label =
+      daysFromToday >= 0 ? `D-${daysFromToday}` : `D+${Math.abs(daysFromToday)}`;
+    const date = getGuardrailIntroDate(daysFromToday);
+    return order === "date-first" ? `${date} / ${label}` : `${label} / ${date}`;
+  },
+};
+const demoData = evaluateLiteralObject(
+  landing,
+  "const introDashboardDemoData =",
+  guardrailIntroDateContext,
+);
 const expectedTabs = {
   advertiser: ["작성중", "진행중", "종료"],
   influencer: ["지원중", "진행중", "완료", "미선정"],

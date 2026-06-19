@@ -60,9 +60,16 @@ const stableUuid = (seed) => {
 const stableToken = (seed) =>
   crypto.createHash("sha256").update(seed).digest("hex").slice(0, 40);
 
-const addDays = (days) => {
+const getSeedDate = (days, hour = 12) => {
   const date = new Date();
+  date.setHours(0, 0, 0, 0);
   date.setDate(date.getDate() + days);
+  date.setHours(hour, 0, 0, 0);
+  return date;
+};
+
+const addDays = (days, hour) => {
+  const date = getSeedDate(days, hour);
   return date.toISOString();
 };
 

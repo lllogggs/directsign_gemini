@@ -808,9 +808,16 @@ const signatureImageDataUrl =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
 const showcaseBatch = `showcase-${timestamp.replace(/[-:.TZ]/g, "").slice(0, 14)}`;
 
-const addDays = (days) => {
+const getSeedDate = (days, hour = 12) => {
   const date = new Date();
+  date.setHours(0, 0, 0, 0);
   date.setDate(date.getDate() + days);
+  date.setHours(hour, 0, 0, 0);
+  return date;
+};
+
+const addDays = (days, hour) => {
+  const date = getSeedDate(days, hour);
   return date.toISOString();
 };
 
@@ -820,8 +827,7 @@ const formatDateOnly = (date) =>
   ).padStart(2, "0")}`;
 
 const dateOnly = (days) => {
-  const date = new Date();
-  date.setDate(date.getDate() + days);
+  const date = getSeedDate(days);
   return formatDateOnly(date);
 };
 const shareToken = () => crypto.randomUUID().replaceAll("-", "");

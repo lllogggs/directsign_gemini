@@ -1442,6 +1442,7 @@ describe("yeollock.me security regressions", () => {
     const advertiserVerification = read("src/pages/marketing/AdvertiserVerification.tsx");
     const influencerVerification = read("src/pages/influencer/InfluencerVerification.tsx");
     const seedAccounts = read("scripts/seed-test-accounts.mjs");
+    const seedQaMarketplaceScenario = read("scripts/seed-qa-marketplace-scenario.mjs");
     const server = read("server/index.ts");
     const dashboardSurfaceSwitch = read("src/components/DashboardSurfaceSwitch.tsx");
     const mobileSurfaceSwitch = read("src/components/MobileSurfaceSwitch.tsx");
@@ -1848,7 +1849,12 @@ describe("yeollock.me security regressions", () => {
     assert.match(advertiserVerification, /\{!approved && \(/);
     assert.doesNotMatch(influencerVerification, /InfoRow\s+label="현재 상태"\s+value="인증 완료"/);
     assert.doesNotMatch(marketplace, /제안 후 메시지함/);
-    assert.match(landing, /2026\.06\.24 \/ D-5/);
+    assert.match(landing, /formatIntroDateWithDday\(5, "date-first"\)/);
+    assert.match(landing, /formatIntroDateWithDday\(10\)/);
+    assert.match(landing, /formatIntroShortDateTime\(7, 18\)/);
+    assert.doesNotMatch(landing, /2026\.06\./);
+    assert.match(seedAccounts, /const getSeedDate = \(days, hour = 12\) =>/);
+    assert.match(seedQaMarketplaceScenario, /const getSeedDate = \(days, hour = 12\) =>/);
     assert.doesNotMatch(landing, /D\+\d+/);
   });
 
