@@ -12,6 +12,14 @@ docs/sales/*email-discovery*.json
 docs/sales/cold-email-leads.csv
 logs
 qa-artifacts
+docs/qa-reports
+docs/sales/review
+public/qa-captures
+public/images/campaigns/breadroom-homecare-supporters.png
+public/images/campaigns/greenspoon-breakfast-routine.png
+public/images/campaigns/monotrip-local-stay.png
+public/images/campaigns/object-studio-organization.png
+public/images/campaigns/stayhour-weekend-stay.png
 tmp
 *.log
 .env*
