@@ -252,7 +252,7 @@ export function createMarketplaceProfileFromPublicSettings(
     ],
     proposalHints: [
       "브랜드 소개와 광고 형태를 함께 보내면 검토가 빠릅니다.",
-      "컨텐츠 사용 범위와 희망 일정을 제안에 포함해 주세요.",
+      "콘텐츠 사용 범위와 희망 일정을 제안에 포함해 주세요.",
       "최종 조건은 전자계약 단계에서 다시 확인합니다.",
     ],
   };

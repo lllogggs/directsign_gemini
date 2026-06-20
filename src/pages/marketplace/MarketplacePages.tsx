@@ -1486,7 +1486,7 @@ function InfluencerContactDialog({
                   proposalSummary: event.target.value,
                 }))
               }
-              placeholder="업로드 채널, 희망 일정, 컨텐츠 사용 범위, 예산을 함께 적어 주세요."
+              placeholder="업로드 채널, 희망 일정, 콘텐츠 사용 범위, 예산을 함께 적어 주세요."
               className="marketplace-input resize-none"
             />
           </FormField>
@@ -1641,7 +1641,7 @@ function BrandContactDialog({
                   proposalSummary: event.target.value,
                 }))
               }
-              placeholder="브랜드와 어울리는 컨텐츠 아이디어, 일정, 희망 조건을 적어 주세요."
+              placeholder="브랜드와 어울리는 콘텐츠 아이디어, 일정, 희망 조건을 적어 주세요."
               className="marketplace-input resize-none"
             />
           </FormField>
@@ -2160,7 +2160,7 @@ function formatBrandMarketplaceDescription(brand: MarketplaceBrandProfile) {
   const audienceClause = targetLabel
     ? `${targetLabel} 고객 반응을 보며`
     : `${brand.category} 맥락에 맞춰`;
-  const platformClause = platformLabel ? `${platformLabel} 컨텐츠로` : "컨텐츠로";
+  const platformClause = platformLabel ? `${platformLabel} 콘텐츠로` : "콘텐츠로";
 
   return `${audienceClause} ${campaignTitle} 제안을 검토합니다. ${platformClause} 예산, 일정, 사용 범위를 계약 전 단계에서 확인합니다.`;
 }

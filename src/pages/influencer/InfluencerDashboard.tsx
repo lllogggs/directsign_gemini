@@ -167,8 +167,8 @@ const STAGE_META: Record<
     icon: <FileSignature className="h-4 w-4" />,
   },
   deliverables_due: {
-    label: "컨텐츠 제출",
-    helper: "컨텐츠 제출 링크",
+    label: "콘텐츠 제출",
+    helper: "콘텐츠 제출 링크",
     className: "border-amber-200 bg-amber-50 text-amber-800",
     icon: <FileCheck2 className="h-4 w-4" />,
   },

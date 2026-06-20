@@ -714,7 +714,7 @@ const ensureMarketplaceInfluencer = async (influencer) => {
         starting_price_label: "80만원부터",
         response_time_label: "당일 응답",
         verified_label: "인증 완료",
-        brand_fit: ["빠른 검토", "명확한 산출물", "계약 진행 가능"],
+        brand_fit: ["빠른 검토", "명확한 콘텐츠", "계약 진행 가능"],
         recent_brands: advertisers.map((item) => item.companyName).slice(0, 3),
         portfolio: [
           {
@@ -724,7 +724,7 @@ const ensureMarketplaceInfluencer = async (influencer) => {
           },
         ],
         proposal_hints: [
-          "캠페인 일정과 필수 산출물을 먼저 알려주세요.",
+          "캠페인 일정과 필수 콘텐츠를 먼저 알려주세요.",
           "2차 활용 범위는 계약서 초안 안에서 확인합니다.",
         ],
         is_published: true,
@@ -809,7 +809,7 @@ const proposalSummary = (brand, campaign, influencer) =>
     `브랜드: ${brand.companyName}`,
     `크리에이터: ${influencer.name}`,
     `지급내용: ${campaign.budget}`,
-    `산출물: ${campaign.deliverables.join(", ")}`,
+    `콘텐츠: ${campaign.deliverables.join(", ")}`,
     `플랫폼: ${campaign.platforms.join(", ")}`,
   ].join("\n");
 
@@ -837,7 +837,7 @@ const buildWorkflow = (status, dueAt) => {
     },
     SIGNED: {
       next_actor: "system",
-      next_action: "서명 완료 계약입니다. 산출물 증빙을 검토할 수 있습니다.",
+      next_action: "서명 완료 계약입니다. 콘텐츠 증빙을 검토할 수 있습니다.",
       risk_level: "low",
     },
     CLOSED: {
@@ -911,7 +911,7 @@ const buildClauses = (status, seed) => {
       clause_id: `${seed}-payment`,
       category: "지급 조건",
       content:
-        "광고주는 계약 조건에 따라 산출물 검토 후 합의한 보상을 지급합니다.",
+        "광고주는 계약 조건에 따라 콘텐츠 검토 후 합의한 보상을 지급합니다.",
       status: status === "DRAFT" ? "PENDING_REVIEW" : "APPROVED",
       history: [],
     },

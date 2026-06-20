@@ -747,7 +747,7 @@ check(
     agents.includes("Influencer contract share-link first screens must be contract-centered") &&
     agents.includes("polished document review surface") &&
     agents.includes("separate advertiser-check cards") &&
-    agents.includes("산출물 summaries should surface advertiser-entered values") &&
+    agents.includes("콘텐츠 summaries should surface advertiser-entered values") &&
     agents.includes('do not use "산출물" as a parent row') &&
     agents.includes('conditional "특약" row on the first summary') &&
     agents.includes('"특약사항" detail row') &&
@@ -778,7 +778,7 @@ check(
     contractViewer.includes("getSpecialTermCategoryLabel") &&
     contractViewer.includes("specialTermsSummary") &&
     influencerShareSummaryRows.includes('label: "플랫폼"') &&
-    influencerShareSummaryRows.includes('label: "컨텐츠"') &&
+    influencerShareSummaryRows.includes('label: "콘텐츠"') &&
     influencerShareSummaryRows.includes('label: "수량"') &&
     influencerShareSummaryRows.includes('label: "특약"') &&
     influencerShareSummaryRows.includes("deliverableSummaryFacts.platform") &&
@@ -787,7 +787,7 @@ check(
     influencerShareSummaryRows.includes("specialTermsSummary") &&
     !influencerShareSummaryRows.includes('label: "산출물"') &&
     contractViewer.includes('label="플랫폼"') &&
-    contractViewer.includes('label="컨텐츠"') &&
+    contractViewer.includes('label="콘텐츠"') &&
     contractViewer.includes('label="수량"') &&
     contractViewer.includes("hasViewedContractDocument") &&
     contractViewer.includes("shouldShowContractReviewCta") &&
@@ -2333,7 +2333,7 @@ check(
     landing.includes("위험") &&
     landing.includes("광고비 미지급") &&
     landing.includes("마감일 착오") &&
-    landing.includes("컨텐츠 기준 변경") &&
+    landing.includes("콘텐츠 기준 변경") &&
     landing.includes("활용 범위 과다") &&
     landing.includes("1:1 계약") &&
     landing.includes("1:1 계약 대시보드") &&

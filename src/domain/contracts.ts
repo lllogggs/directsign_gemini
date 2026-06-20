@@ -305,7 +305,7 @@ export const createWorkflow = (
     },
     SIGNED: {
       next_actor: "system",
-      next_action: "전자서명 완료 후 컨텐츠 제출을 기다리는 중입니다.",
+      next_action: "전자서명 완료 후 콘텐츠 제출을 기다리는 중입니다.",
       risk_level: "low",
     },
     CLOSED: {
@@ -453,7 +453,7 @@ export const createDemoContracts = (): Contract[] => {
       clauses: [
         {
           clause_id: "c_101",
-          category: "컨텐츠 업로드",
+          category: "콘텐츠 업로드",
           content: "유튜브 숏츠 1회, 인스타그램 스토리 2회 업로드",
           status: "APPROVED",
           history: [],

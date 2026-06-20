@@ -749,7 +749,7 @@ describe("yeollock.me security regressions", () => {
     assert.match(reviewPdfRoute, /Content-Type", "application\/pdf"/);
     assert.match(contractDocumentPdfBuilder, /광고 계약서/);
     assert.match(contractDocumentPdfBuilder, /제1조 계약 당사자/);
-    assert.match(contractDocumentPdfBuilder, /제3조 플랫폼 및 컨텐츠/);
+    assert.match(contractDocumentPdfBuilder, /제3조 플랫폼 및 콘텐츠/);
     assert.match(contractDocumentPdfBuilder, /제7조 특약 및 추가 조항/);
     assert.doesNotMatch(contractDocumentPdfBuilder, /계약 개요/);
     assert.doesNotMatch(contractDocumentPdfBuilder, /자동 생성 조항/);
@@ -1829,7 +1829,7 @@ describe("yeollock.me security regressions", () => {
     assert.match(landing, /흩어진 광고 계약/);
     assert.match(landing, /광고비 미지급/);
     assert.match(landing, /마감일 착오/);
-    assert.match(landing, /컨텐츠 기준 변경/);
+    assert.match(landing, /콘텐츠 기준 변경/);
     assert.match(landing, /활용 범위 과다/);
     assert.match(landing, /1:1 계약 대시보드/);
     assert.doesNotMatch(landing, /받은 광고\s*계약/);
@@ -2149,7 +2149,7 @@ describe("yeollock.me security regressions", () => {
     assert.doesNotMatch(server, /response\.json\(\{ contract, access_role: access\.role \}\)/);
     assert.match(server, /redactContractForClient\(updatedContract, "influencer"\)/);
     assert.match(server, /redactContractForClient\(updatedContract, actor\)/);
-    assert.match(server, /redactContractForClient\(contract, access\.role\)/);
+    assert.match(server, /redactContractForClient\(responseContract, access\.role\)/);
     assert.match(server, /redactContractForClient\(contract, "advertiser"\)/);
     assert.match(server, /sanitizeDeliverableForClient\(deliverable\)/);
     assert.match(server, /sanitizeDeliverableForClient\(updatedDeliverable\)/);
@@ -2166,7 +2166,31 @@ describe("yeollock.me security regressions", () => {
     assert.notEqual(routeStart, -1);
     assert.match(routeSource, /sendError: false/);
     assert.match(routeSource, /response\.status\(404\)\.json\(\{ error: "Contract not found" \}\)/);
-    assert.match(routeSource, /redactContractForClient\(contract, access\.role\)/);
+    assert.match(routeSource, /normalizeTestContractDatesForSession\(access\.auth, contract\)/);
+    assert.match(routeSource, /redactContractForClient\(responseContract, access\.role\)/);
+  });
+
+  it("rebases operational test account dates at the response boundary", () => {
+    const server = read("server/index.ts");
+
+    assert.match(server, /const shouldUseRelativeTestDatesForSession/);
+    assert.match(server, /timeZone: "Asia\/Seoul"/);
+    assert.match(server, /const normalizeTestContractDatesForSession/);
+    assert.match(server, /const normalizeTestBrandProfileCampaignDatesForSession/);
+    assert.match(server, /const normalizeTestMarketplaceProposalRowsForSession/);
+    assert.match(server, /const contractTextReplacements = new Map<string, string>\(\)/);
+    assert.match(server, /const normalizeRelativeTestContractScheduleText/);
+    assert.match(
+      server,
+      /normalizeRelativeTestContractScheduleText\(\s*replaceRelativeTestDatesInText\(clause\.content, contractTextReplacements\),\s*schedule,\s*\)/,
+    );
+    assert.match(server, /const sessionContracts = normalizeTestContractsForSession\(auth, contracts\)/);
+    assert.match(server, /const sessionContracts = normalizeTestContractsForSession\(\s*advertiserAuth,\s*contracts,\s*\)/);
+    assert.match(server, /normalizeTestBrandProfileCampaignDatesForSession\(auth, rawBrand\)/);
+    assert.match(server, /normalizeTestMarketplaceProposalRowsForSession\(\s*auth,\s*await addPlatformInfoToMarketplaceProposals/);
+    assert.match(server, /buildInfluencerDashboardApplications\(\s*profile\?\.id \?\? authUser\.id,\s*\{ user: authUser, profile \},\s*\)/);
+    assert.match(server, /buildInfluencerDashboardApplications\(auth\.profile\.id, auth\)/);
+    assert.doesNotMatch(server, /await writeStore\(normalizeTest/);
   });
 
   it("does not expose private contract existence through deliverable and final PDF endpoints", () => {

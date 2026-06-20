@@ -118,13 +118,13 @@ const STATUS_META: Record<
   },
   SIGNED: {
     label: "서명 완료",
-    helper: "전자서명 완료 후 컨텐츠 제출 대기",
+    helper: "전자서명 완료 후 콘텐츠 제출 대기",
     badge: "border-neutral-200 bg-white text-neutral-700",
     icon: <CheckCircle2 className="h-4 w-4" />,
   },
   CLOSED: {
     label: "계약 마감",
-    helper: "컨텐츠 확인 및 검수 완료",
+    helper: "콘텐츠 확인 및 검수 완료",
     badge: "border-emerald-200 bg-emerald-50 text-emerald-700",
     icon: <Copy className="h-4 w-4" />,
   },
@@ -614,7 +614,7 @@ export function ContractAdminViewer() {
       const data = (await response.json()) as DeliverablesResponse;
 
       if (!response.ok) {
-        throw new Error(data.error ?? "컨텐츠 제출 내역을 불러오지 못했습니다.");
+        throw new Error(data.error ?? "콘텐츠 제출 내역을 불러오지 못했습니다.");
       }
 
       setDeliverables(data);
@@ -622,7 +622,7 @@ export function ContractAdminViewer() {
       setDeliverablesError(
         getDeliverableErrorMessage(
           error instanceof Error ? error.message : undefined,
-          "컨텐츠 제출 내역을 불러오지 못했습니다.",
+          "콘텐츠 제출 내역을 불러오지 못했습니다.",
         ),
       );
     } finally {
@@ -650,10 +650,10 @@ export function ContractAdminViewer() {
 
     const reviewActionLabel =
       reviewStatus === "approved"
-        ? "컨텐츠 승인"
+        ? "콘텐츠 승인"
         : reviewStatus === "changes_requested"
-          ? "컨텐츠 수정 요청"
-          : "컨텐츠 반려";
+          ? "콘텐츠 수정 요청"
+          : "콘텐츠 반려";
     const confirmed = window.confirm(
       `${reviewActionLabel} 처리할까요? 처리 결과는 감사 기록에 남고 인플루언서 화면에 표시됩니다.`,
     );
@@ -687,7 +687,7 @@ export function ContractAdminViewer() {
         throw new Error(
           getDeliverableErrorMessage(
             data.error,
-            `컨텐츠 확인 및 검수 실패 (${response.status})`,
+            `콘텐츠 확인 및 검수 실패 (${response.status})`,
           ),
         );
       }
@@ -696,23 +696,23 @@ export function ContractAdminViewer() {
       setReviewComments((current) => ({ ...current, [deliverableId]: "" }));
       setDeliverablesNotice(
         reviewStatus === "approved"
-          ? "컨텐츠를 승인했습니다. 모든 항목이 승인되면 광고 계약을 마감할 수 있습니다."
+          ? "콘텐츠를 승인했습니다. 모든 항목이 승인되면 광고 계약을 마감할 수 있습니다."
           : reviewStatus === "changes_requested"
-            ? "인플루언서에게 컨텐츠 수정 요청을 보냈습니다."
-            : "컨텐츠를 반려했습니다.",
+            ? "인플루언서에게 콘텐츠 수정 요청을 보냈습니다."
+            : "콘텐츠를 반려했습니다.",
       );
       setNotice(
         reviewStatus === "approved"
-          ? "컨텐츠를 승인했습니다."
+          ? "콘텐츠를 승인했습니다."
           : reviewStatus === "changes_requested"
-            ? "컨텐츠 수정 요청을 보냈습니다."
-            : "컨텐츠를 반려했습니다.",
+            ? "콘텐츠 수정 요청을 보냈습니다."
+            : "콘텐츠를 반려했습니다.",
       );
     } catch (error) {
       setDeliverablesError(
         getDeliverableErrorMessage(
           error instanceof Error ? error.message : undefined,
-          "컨텐츠 확인 및 검수에 실패했습니다.",
+          "콘텐츠 확인 및 검수에 실패했습니다.",
         ),
       );
     } finally {
@@ -1380,10 +1380,10 @@ function AdvertiserDeliverablesPanel({
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
-              컨텐츠 확인 및 검수
+              콘텐츠 확인 및 검수
             </p>
             <h2 className="mt-1 text-[20px] font-semibold tracking-[-0.02em]">
-              광고 계약 마감 전 컨텐츠 URL과 파일을 확인하세요
+              광고 계약 마감 전 콘텐츠 URL과 파일을 확인하세요
             </h2>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -1419,7 +1419,7 @@ function AdvertiserDeliverablesPanel({
         )}
         <div className="mt-3 grid gap-2 text-[12px] font-semibold text-neutral-600 sm:grid-cols-2 lg:grid-cols-3">
           {[
-            "컨텐츠 URL",
+            "콘텐츠 URL",
             "광고표시 문구",
             "필수 해시태그",
             "브랜드 계정 태그",
@@ -1455,7 +1455,7 @@ function AdvertiserDeliverablesPanel({
           </div>
         ) : requirements.length === 0 ? (
           <div className="p-5 text-[14px] leading-6 text-neutral-500">
-            아직 제출 또는 요구된 컨텐츠 항목이 없습니다.
+            아직 제출 또는 요구된 콘텐츠 항목이 없습니다.
           </div>
         ) : (
           requirements.map((requirement) => {
@@ -1545,7 +1545,7 @@ function AdvertiserDeliverablesPanel({
                           >
                             <ExternalLink className="h-3.5 w-3.5 shrink-0" />
                             <span className="truncate">
-                              {formatPublicUrlLabel(submission.url, "컨텐츠 제출 링크 열기")}
+                              {formatPublicUrlLabel(submission.url, "콘텐츠 제출 링크 열기")}
                             </span>
                           </a>
                         )}
@@ -1559,7 +1559,7 @@ function AdvertiserDeliverablesPanel({
                               >
                                 <FileText className="h-3.5 w-3.5 shrink-0" />
                                 <span className="truncate">
-                                  {file.file_name ?? "컨텐츠 파일"}
+                                  {file.file_name ?? "콘텐츠 파일"}
                                 </span>
                                 {formatFileSize(file.byte_size) && (
                                   <span className="shrink-0 text-neutral-400">
@@ -1598,7 +1598,7 @@ function AdvertiserDeliverablesPanel({
                                 disabled={isReviewing}
                                 className="h-10 rounded-md bg-neutral-950 text-[13px] font-semibold text-white disabled:bg-neutral-200 disabled:text-neutral-500"
                               >
-                                컨텐츠 승인
+                                콘텐츠 승인
                               </button>
                               <button
                                 type="button"
@@ -1614,7 +1614,7 @@ function AdvertiserDeliverablesPanel({
                                 disabled={isReviewing}
                                 className="h-10 rounded-md border border-rose-200 bg-rose-50 text-[13px] font-semibold text-rose-700 disabled:text-rose-300"
                               >
-                                컨텐츠 반려
+                                콘텐츠 반려
                               </button>
                             </div>
                           </div>
@@ -1849,7 +1849,7 @@ function formatAuditActionLabel(action: string) {
     contract_signed: "전자서명 완료",
     created: "지원 요청 생성",
     draft_saved: "초안 저장",
-    evidence_downloaded: "컨텐츠 파일 다운로드",
+    evidence_downloaded: "콘텐츠 파일 다운로드",
     contract_closed: "광고 계약 마감",
     qa_contract_seeded: "계약 생성",
     share_link_issued: "서명 링크 생성",

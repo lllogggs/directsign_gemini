@@ -224,7 +224,7 @@ function DeliverableSummaryValue({
               <DeliverablePart label="플랫폼" value={parsed.platform} />
             )}
             {parsed.content && (
-              <DeliverablePart label="컨텐츠" value={parsed.content} />
+              <DeliverablePart label="콘텐츠" value={parsed.content} />
             )}
             {parsed.quantity && (
               <DeliverablePart label="수량" value={parsed.quantity} />
@@ -739,7 +739,7 @@ export function ContractViewer() {
 
       if (!response.ok) {
         throw new Error(
-          data.error ?? "컨텐츠 제출 내역을 불러오지 못했습니다.",
+          data.error ?? "콘텐츠 제출 내역을 불러오지 못했습니다.",
         );
       }
 
@@ -748,7 +748,7 @@ export function ContractViewer() {
       setDeliverablesError(
         getDeliverableErrorMessage(
           error instanceof Error ? error.message : undefined,
-          "컨텐츠 제출 내역을 불러오지 못했습니다.",
+          "콘텐츠 제출 내역을 불러오지 못했습니다.",
         ),
       );
     } finally {
@@ -766,7 +766,7 @@ export function ContractViewer() {
     const fileError = validateDeliverableFile(form.file);
 
     if (!url && !form.file) {
-      setDeliverablesError("컨텐츠 URL 또는 컨텐츠 파일을 추가해 주세요.");
+      setDeliverablesError("콘텐츠 URL 또는 콘텐츠 파일을 추가해 주세요.");
       setDeliverablesNotice("");
       return;
     }
@@ -780,7 +780,7 @@ export function ContractViewer() {
     }
 
     const confirmed = window.confirm(
-      "컨텐츠 제출물을 광고주에게 검수 요청할까요? 제출 후 검수 결과가 감사 기록에 남습니다.",
+      "콘텐츠 제출물을 광고주에게 검수 요청할까요? 제출 후 검수 결과가 감사 기록에 남습니다.",
     );
     if (!confirmed) return;
 
@@ -820,14 +820,14 @@ export function ContractViewer() {
         throw new Error(
           getDeliverableErrorMessage(
             data.error,
-            `컨텐츠 제출 실패 (${response.status})`,
+            `콘텐츠 제출 실패 (${response.status})`,
           ),
         );
       }
 
       setDeliverables(data);
       setDeliverablesNotice(
-        "컨텐츠 제출물을 접수했습니다. 광고주 확인 및 검수 결과를 이 화면에서 확인할 수 있습니다.",
+        "콘텐츠 제출물을 접수했습니다. 광고주 확인 및 검수 결과를 이 화면에서 확인할 수 있습니다.",
       );
       setDeliverableForms((current) => ({
         ...current,
@@ -837,7 +837,7 @@ export function ContractViewer() {
       setDeliverablesError(
         getDeliverableErrorMessage(
           error instanceof Error ? error.message : undefined,
-          "컨텐츠 제출에 실패했습니다.",
+          "콘텐츠 제출에 실패했습니다.",
         ),
       );
     } finally {
@@ -856,7 +856,7 @@ export function ContractViewer() {
     const urlError = validateDeliverableUrl(postLink);
 
     if (!postLink) {
-      setPostLinkError("컨텐츠 URL을 입력해 주세요.");
+      setPostLinkError("콘텐츠 URL을 입력해 주세요.");
       setPostLinkNotice("");
       return;
     }
@@ -867,7 +867,7 @@ export function ContractViewer() {
     }
 
     const confirmed = window.confirm(
-      "컨텐츠 URL을 광고주에게 제출할까요? 제출 링크는 광고주 검수 화면과 감사 기록에 남습니다.",
+      "콘텐츠 URL을 광고주에게 제출할까요? 제출 링크는 광고주 검수 화면과 감사 기록에 남습니다.",
     );
     if (!confirmed) return;
 
@@ -897,7 +897,7 @@ export function ContractViewer() {
         throw new Error(
           getDeliverableErrorMessage(
             data.error,
-            `컨텐츠 URL 제출 실패 (${response.status})`,
+            `콘텐츠 URL 제출 실패 (${response.status})`,
           ),
         );
       }
@@ -907,15 +907,15 @@ export function ContractViewer() {
         contractId: data.contract.id,
         value: data.contract.post_link ?? postLink,
       });
-      setPostLinkNotice("컨텐츠 URL을 제출했습니다. 광고주에게 제출 완료로 표시됩니다.");
+      setPostLinkNotice("콘텐츠 URL을 제출했습니다. 광고주에게 제출 완료로 표시됩니다.");
     } catch (error) {
       setPostLinkError(
         error instanceof Error
           ? getDeliverableErrorMessage(
               error.message,
-              "컨텐츠 URL 제출에 실패했습니다.",
+              "콘텐츠 URL 제출에 실패했습니다.",
             )
-          : "컨텐츠 URL 제출에 실패했습니다.",
+          : "콘텐츠 URL 제출에 실패했습니다.",
       );
     } finally {
       setIsSubmittingPostLink(false);
@@ -1402,13 +1402,13 @@ export function ContractViewer() {
     isContractClosed
       ? "광고 계약이 마감되었습니다"
       : contract.status === "SIGNED"
-        ? "서명 완료 후 컨텐츠를 제출하세요"
+        ? "서명 완료 후 콘텐츠를 제출하세요"
       : "계약 내용 확인";
   const heroDescription =
     isContractClosed
-      ? "컨텐츠 확인 및 검수가 완료되어 추가 제출과 서명 액션은 차단됩니다."
+      ? "콘텐츠 확인 및 검수가 완료되어 추가 제출과 서명 액션은 차단됩니다."
       : contract.status === "SIGNED"
-        ? "서명본은 저장되었습니다. 남은 컨텐츠는 URL이나 파일로 제출하고 광고주 확인 및 검수 결과를 확인하세요."
+        ? "서명본은 저장되었습니다. 남은 콘텐츠는 URL이나 파일로 제출하고 광고주 확인 및 검수 결과를 확인하세요."
       : needsInfluencerAccountSession
         ? isFixedCampaign
           ? "계약 내용은 먼저 확인할 수 있습니다. 가입 또는 로그인 후 이 계약으로 돌아와 서명합니다."
@@ -1501,7 +1501,7 @@ export function ContractViewer() {
         value: deliverableSummaryFacts.platform,
       },
       {
-        label: "컨텐츠",
+        label: "콘텐츠",
         value: deliverableSummaryFacts.content,
       },
       {
@@ -1549,7 +1549,7 @@ export function ContractViewer() {
           .join(", ") || "조항에서 확인",
     },
     {
-      label: "산출물",
+      label: "콘텐츠",
       value: (
         <DeliverableSummaryValue
           deliverables={contract.campaign?.deliverables}
@@ -2014,7 +2014,7 @@ export function ContractViewer() {
               {isContractSignedOrClosed && (
                 <ChecklistRow
                   checked={Boolean(contract.post_link)}
-                  label="컨텐츠 URL 제출"
+                  label="콘텐츠 URL 제출"
                 />
               )}
               {isContractSignedOrClosed && deliverables?.summary && (
@@ -2025,7 +2025,7 @@ export function ContractViewer() {
                       deliverables.summary.submitted >=
                         deliverables.summary.total
                     }
-                    label={`컨텐츠 파일 제출 ${deliverables.summary.submitted}/${deliverables.summary.total}`}
+                    label={`콘텐츠 파일 제출 ${deliverables.summary.submitted}/${deliverables.summary.total}`}
                   />
                   <ChecklistRow
                     checked={deliverables.summary.submitted > 0}
@@ -2037,7 +2037,7 @@ export function ContractViewer() {
                       deliverables.summary.approved >=
                         deliverables.summary.total
                     }
-                    label={`컨텐츠 승인 ${deliverables.summary.approved}/${deliverables.summary.total}`}
+                    label={`콘텐츠 승인 ${deliverables.summary.approved}/${deliverables.summary.total}`}
                   />
                   <ChecklistRow
                     checked={isContractClosed}
@@ -2606,13 +2606,13 @@ function InfluencerDeliverablesPanel({
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-neutral-500">
-              컨텐츠 파일 제출
+              콘텐츠 파일 제출
             </p>
             <h2 className="mt-1 text-lg font-semibold text-neutral-950">
               캡처, PDF, 스토리 캡처 보관
             </h2>
             <p className="mt-1 text-sm leading-6 text-neutral-500">
-              광고 계약 이행 확인에 필요한 컨텐츠 파일을 제출합니다.
+              광고 계약 이행 확인에 필요한 콘텐츠 파일을 제출합니다.
             </p>
           </div>
           <button
@@ -2638,10 +2638,10 @@ function InfluencerDeliverablesPanel({
       {!canSubmit && (
         <div className="border-b border-amber-200 bg-amber-50 px-5 py-3 text-sm font-semibold text-amber-800 sm:px-6">
           {isClosed ? (
-            "광고 계약이 마감되어 추가 컨텐츠 제출은 차단됩니다."
+            "광고 계약이 마감되어 추가 콘텐츠 제출은 차단됩니다."
           ) : (
             <>
-              컨텐츠 제출은 로그인한 인플루언서 계정에서만 가능합니다.
+              콘텐츠 제출은 로그인한 인플루언서 계정에서만 가능합니다.
               <a href={loginHref} className="ml-2 underline underline-offset-4">
                 로그인
               </a>
@@ -2669,7 +2669,7 @@ function InfluencerDeliverablesPanel({
           </div>
         ) : requirements.length === 0 ? (
           <div className="p-5 text-sm leading-6 text-neutral-500 sm:p-6">
-            제출할 컨텐츠 항목이 아직 없습니다.
+            제출할 콘텐츠 항목이 아직 없습니다.
           </div>
         ) : (
           requirements.map((requirement) => {
@@ -2776,7 +2776,7 @@ function InfluencerDeliverablesPanel({
                               <span className="truncate">
                                 {formatPublicUrlLabel(
                                   submission.url,
-                                  "컨텐츠 제출 링크 열기",
+                                  "콘텐츠 제출 링크 열기",
                                 )}
                               </span>
                             </a>
@@ -2791,7 +2791,7 @@ function InfluencerDeliverablesPanel({
                                 >
                                   <FileText className="h-3.5 w-3.5 shrink-0" />
                                   <span className="truncate">
-                                    {file.file_name ?? "컨텐츠 파일"}
+                                    {file.file_name ?? "콘텐츠 파일"}
                                   </span>
                                   {formatFileSize(file.byte_size) && (
                                     <span className="shrink-0 text-neutral-400">
@@ -2824,7 +2824,7 @@ function InfluencerDeliverablesPanel({
                     <label className="block">
                       <span className="flex items-center gap-2 text-xs font-semibold text-neutral-700">
                         <Link2 className="h-3.5 w-3.5" />
-                        컨텐츠 URL
+                        콘텐츠 URL
                       </span>
                       <input
                         value={form.url}
@@ -2863,7 +2863,7 @@ function InfluencerDeliverablesPanel({
                     <label className="flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold text-neutral-700">
                       <Upload className="h-4 w-4" />
                       <span className="min-w-0 flex-1 truncate">
-                        {form.file ? form.file.name : "컨텐츠 파일 선택"}
+                        {form.file ? form.file.name : "콘텐츠 파일 선택"}
                       </span>
                       {form.file && formatFileSize(form.file.size) && (
                         <span className="shrink-0 text-xs text-neutral-400">
@@ -2942,10 +2942,10 @@ function PostLinkSubmissionPanel({
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-neutral-500">
-              컨텐츠 URL 제출
+              콘텐츠 URL 제출
             </p>
             <h2 className="mt-1 text-lg font-semibold text-neutral-950">
-              컨텐츠 제출 링크
+              콘텐츠 제출 링크
             </h2>
             <p className="mt-1 text-sm leading-6 text-neutral-500">
               광고주는 이 링크를 기준으로 광고표시, 필수 해시태그, 브랜드 태그, 게시일을 확인합니다.
@@ -2959,7 +2959,7 @@ function PostLinkSubmissionPanel({
               className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-700 transition hover:border-neutral-400"
             >
               <ExternalLink className="h-3.5 w-3.5" />
-              컨텐츠 제출 링크 열기
+              콘텐츠 제출 링크 열기
             </a>
           ) : null}
         </div>
@@ -2968,10 +2968,10 @@ function PostLinkSubmissionPanel({
       {!canSubmit && (
         <div className="border-b border-amber-200 bg-amber-50 px-5 py-3 text-sm font-semibold text-amber-800 sm:px-6">
           {isClosed ? (
-            "광고 계약이 마감되어 추가 컨텐츠 URL 제출은 차단됩니다."
+            "광고 계약이 마감되어 추가 콘텐츠 URL 제출은 차단됩니다."
           ) : (
             <>
-              컨텐츠 URL 제출은 로그인한 인플루언서 계정에서만 가능합니다.
+              콘텐츠 URL 제출은 로그인한 인플루언서 계정에서만 가능합니다.
               <a href={loginHref} className="ml-2 underline underline-offset-4">
                 로그인
               </a>
@@ -2996,7 +2996,7 @@ function PostLinkSubmissionPanel({
         <label className="block min-w-0">
           <span className="flex items-center gap-2 text-xs font-semibold text-neutral-700">
             <Link2 className="h-3.5 w-3.5" />
-            컨텐츠 URL
+            콘텐츠 URL
           </span>
           <input
             value={value}
@@ -3020,7 +3020,7 @@ function PostLinkSubmissionPanel({
           disabled={disabled}
           className="mt-6 h-10 rounded-lg bg-neutral-950 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-500 sm:mt-auto"
         >
-          {isSubmitting ? "제출 중" : "컨텐츠 URL 제출"}
+          {isSubmitting ? "제출 중" : "콘텐츠 URL 제출"}
         </button>
       </div>
     </section>

@@ -80,6 +80,8 @@ import {
   getChannelAudienceSortValue,
   getInfluencerProfilePath,
   platformLabels,
+  proposalTypeLabels,
+  type CampaignProposalType,
   type MarketplaceBrandCampaign,
   type MarketplaceCampaignStatus,
   type MarketplaceInfluencerProfile,
@@ -154,6 +156,7 @@ type CampaignGroup = {
   applicants: MarketplaceMessageThread[];
   marketplaceCampaign?: MarketplaceBrandCampaign;
   lifecycle: CampaignLifecycle;
+  types: CampaignProposalType[];
   participantCount: number;
   acceptedParticipantCount: number;
   applicantCount: number;
@@ -343,7 +346,7 @@ const DETAIL_PROGRESS_OPTIONS: Array<{
   { value: "ALL", label: "전체" },
   { value: "SIGN_PENDING", label: "서명대기" },
   { value: "SIGNED_DONE", label: "전자서명 완료" },
-  { value: "UPLOAD_DONE", label: "컨텐츠 제출" },
+  { value: "UPLOAD_DONE", label: "콘텐츠 제출" },
 ];
 
 const DETAIL_DEADLINE_OPTIONS: Array<{
@@ -362,8 +365,8 @@ const DETAIL_POST_LINK_OPTIONS: Array<{
   label: string;
 }> = [
   { value: "ALL", label: "전체" },
-  { value: "SUBMITTED", label: "컨텐츠 제출" },
-  { value: "NOT_SUBMITTED", label: "컨텐츠 미제출" },
+  { value: "SUBMITTED", label: "콘텐츠 제출" },
+  { value: "NOT_SUBMITTED", label: "콘텐츠 미제출" },
 ];
 
 const STATUS_META: Record<
@@ -412,7 +415,7 @@ const STATUS_META: Record<
   SIGNED: {
     label: "서명 완료",
     shortLabel: "완료",
-    helper: "전자서명 완료 후 컨텐츠 제출 대기",
+    helper: "전자서명 완료 후 콘텐츠 제출 대기",
     tone: "text-neutral-900",
     badge: "border-neutral-300 bg-neutral-100 text-neutral-900",
     icon: <CheckCircle2 className="h-4 w-4" strokeWidth={1.8} />,
@@ -420,7 +423,7 @@ const STATUS_META: Record<
   CLOSED: {
     label: "계약 마감",
     shortLabel: "마감",
-    helper: "컨텐츠 확인 및 검수 완료",
+    helper: "콘텐츠 확인 및 검수 완료",
     tone: "text-emerald-700",
     badge: "border-emerald-200 bg-emerald-50 text-emerald-700",
     icon: <CopyCheck className="h-4 w-4" strokeWidth={1.8} />,
@@ -704,7 +707,8 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
     return campaignGroups
       .filter((campaign) =>
         (!normalizedQuery ||
-          campaign.name.toLowerCase().includes(normalizedQuery)) &&
+          campaign.name.toLowerCase().includes(normalizedQuery) ||
+          getCampaignTypeLabel(campaign).toLowerCase().includes(normalizedQuery)) &&
         (campaignPlatformFilter === "ALL" ||
           campaign.platforms.includes(campaignPlatformFilter)) &&
         (campaignBrandFilter === "ALL" ||
@@ -1863,10 +1867,16 @@ function CampaignTableHeaderRow({
   onSortChange: (key: SortKey) => void;
 }) {
   return (
-    <div className="hidden border-b border-[#d7ddd7] bg-[#f7f8f4] px-3 py-2.5 lg:grid lg:grid-cols-[minmax(104px,0.2fr)_minmax(82px,0.14fr)_minmax(250px,0.78fr)_minmax(160px,0.4fr)_minmax(132px,0.32fr)_minmax(104px,0.23fr)] lg:items-center lg:gap-2">
+    <div className="hidden border-b border-[#d7ddd7] bg-[#f7f8f4] px-3 py-2.5 lg:grid lg:grid-cols-[minmax(96px,0.18fr)_minmax(92px,0.18fr)_minmax(82px,0.14fr)_minmax(230px,0.74fr)_minmax(150px,0.36fr)_minmax(124px,0.3fr)_minmax(100px,0.22fr)] lg:items-center lg:gap-2">
       <ColumnHeader
         label="플랫폼"
         sortKey="platform"
+        sortState={sortState}
+        onSortChange={onSortChange}
+      />
+      <ColumnHeader
+        label="종류"
+        sortKey="type"
         sortState={sortState}
         onSortChange={onSortChange}
       />
@@ -2091,6 +2101,7 @@ function CampaignRow({
   const brandLabel = campaign.brands.join(", ");
   const progress = getCampaignRosterProgress(campaign);
   const platformLabel = formatCampaignPlatformSummary(campaign.platforms);
+  const typeLabel = getCampaignTypeLabel(campaign);
   const paymentLabel = getCampaignPaymentLabel(campaign);
   const dateParts = getCampaignListDateParts(campaign);
 
@@ -2098,12 +2109,15 @@ function CampaignRow({
     <button
       type="button"
       onClick={onOpen}
-      aria-label={`${campaign.name} 캠페인 열기, 지급내용 ${paymentLabel}, 신청/모집 인원 ${progress.label}, 날짜 ${dateParts.label}`}
-      className="group grid w-full gap-2 px-3 py-2 text-left transition-colors hover:bg-blue-50/45 lg:min-h-[44px] lg:grid-cols-[minmax(104px,0.2fr)_minmax(82px,0.14fr)_minmax(250px,0.78fr)_minmax(160px,0.4fr)_minmax(132px,0.32fr)_minmax(104px,0.23fr)] lg:items-center"
+      aria-label={`${campaign.name} 캠페인 열기, 종류 ${typeLabel}, 지급내용 ${paymentLabel}, 신청/모집 인원 ${progress.label}, 날짜 ${dateParts.label}`}
+      className="group grid w-full gap-2 px-3 py-2 text-left transition-colors hover:bg-blue-50/45 lg:min-h-[44px] lg:grid-cols-[minmax(96px,0.18fr)_minmax(92px,0.18fr)_minmax(82px,0.14fr)_minmax(230px,0.74fr)_minmax(150px,0.36fr)_minmax(124px,0.3fr)_minmax(100px,0.22fr)] lg:items-center"
     >
       <div className="min-w-0">
         <CampaignPlatformMarks platforms={campaign.platforms} title={platformLabel} />
       </div>
+      <p className="min-w-0 truncate whitespace-nowrap text-[12px] font-semibold text-[#303630]">
+        {typeLabel}
+      </p>
       <p className="min-w-0 truncate whitespace-nowrap text-[12px] font-semibold text-[#303630]">
         {brandLabel}
       </p>
@@ -2179,6 +2193,7 @@ function CampaignDetailView({
       ? Math.min(100, Math.round((campaign.completedCount / campaign.acceptedParticipantCount) * 100))
       : 0;
   const statusMeta = getCampaignLifecycleMeta(campaign);
+  const typeLabel = getCampaignTypeLabel(campaign);
   const platformOptions = PLATFORM_FILTERS.map((platform) => ({
     value: platform,
     label: formatPlatformFilterLabel(platform),
@@ -2283,6 +2298,9 @@ function CampaignDetailView({
               <h2 className="min-w-0 truncate text-[18px] font-bold text-[#171a17]">
                 {campaign.name}
               </h2>
+              <span className="inline-flex h-7 shrink-0 items-center rounded-md border border-[#d9e0d9] bg-white px-2.5 text-[12px] font-extrabold text-[#303630]">
+                {typeLabel}
+              </span>
               <span
                 className={`inline-flex h-7 shrink-0 items-center rounded-md border px-2.5 text-[12px] font-extrabold ${statusMeta.className}`}
               >
@@ -2383,7 +2401,7 @@ function CampaignDetailView({
               compact
             />
             <TableFilterSelect
-              label="컨텐츠 제출 링크"
+              label="콘텐츠 제출 링크"
               value={postLinkFilter}
               options={DETAIL_POST_LINK_OPTIONS}
               onChange={(value) => setPostLinkFilter(value as DetailPostLinkFilter)}
@@ -2421,7 +2439,7 @@ function CampaignInfluencerTableHeaderRow() {
       <ColumnHeader label="플랫폼" />
       <ColumnHeader label="현재 상태" />
       <ColumnHeader label="마감일" />
-      <ColumnHeader label="컨텐츠 제출" />
+      <ColumnHeader label="콘텐츠 제출" />
     </div>
   );
 }
@@ -3104,15 +3122,15 @@ function CampaignInfluencerRow({
             className="inline-flex max-w-full items-center gap-1.5 text-[12px] font-semibold text-[#171a17] underline underline-offset-4"
           >
             <ExternalLink className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">컨텐츠 제출 링크 열기</span>
+            <span className="truncate">콘텐츠 제출 링크 열기</span>
           </a>
         ) : contentSubmitted ? (
           <span className="text-[12px] font-semibold text-[#303630]">
-            컨텐츠 제출
+            콘텐츠 제출
           </span>
         ) : (
           <span className="text-[12px] font-semibold text-[#9aa39d]">
-            컨텐츠 미제출
+            콘텐츠 미제출
           </span>
         )}
       </span>
@@ -4068,6 +4086,21 @@ function formatContractTypeFilterLabel(type: Contract["type"]) {
   return type;
 }
 
+function contractTypeToCampaignProposalType(type: Contract["type"]): CampaignProposalType {
+  if (type === "PPL") return "ppl";
+  if (type === "공동구매") return "group_buy";
+  return "product_seeding";
+}
+
+function getCampaignTypeLabel(campaign: CampaignGroup) {
+  const labels = campaign.types
+    .map((type) => proposalTypeLabels[type])
+    .filter(Boolean);
+
+  if (labels.length <= 1) return labels[0] ?? "광고";
+  return `${labels[0]} 외 ${labels.length - 1}`;
+}
+
 function formatAmountFilterLabel(filter: AmountFilter) {
   if (filter === "FIXED") return "정액";
   if (filter === "COMMISSION") return "수수료";
@@ -4146,6 +4179,9 @@ function compareCampaignGroupsBySort(
       break;
     case "brand":
       result = compareText(a.brands.join(" "), b.brands.join(" "));
+      break;
+    case "type":
+      result = compareText(getCampaignTypeLabel(a), getCampaignTypeLabel(b));
       break;
     case "title":
       result = compareText(a.name, b.name);
@@ -4394,6 +4430,7 @@ type CampaignGroupDraft = {
   marketplaceCampaign?: MarketplaceBrandCampaign;
   latestUpdatedAt: string;
   platforms: Set<ContractPlatform>;
+  types: Set<CampaignProposalType>;
   brands: Set<string>;
 };
 
@@ -4422,6 +4459,7 @@ function buildCampaignGroups({
       applicants: [],
       latestUpdatedAt: "",
       platforms: new Set<ContractPlatform>(),
+      types: new Set<CampaignProposalType>(),
       brands: new Set<string>(),
     };
     groups.set(key, group);
@@ -4439,6 +4477,7 @@ function buildCampaignGroups({
     group.campaignId = campaign.id;
     group.marketplaceCampaign = campaign;
     group.latestUpdatedAt = getLaterDateValue(group.latestUpdatedAt, campaign.deadline);
+    group.types.add(campaign.type);
     group.brands.add(fallbackBrandName);
     for (const platform of campaign.platforms ?? []) {
       group.platforms.add(marketplacePlatformToContractPlatform(platform));
@@ -4455,6 +4494,7 @@ function buildCampaignGroups({
 
     group.contracts.push(contract);
     group.latestUpdatedAt = getLaterDateValue(group.latestUpdatedAt, contract.updated_at);
+    group.types.add(contractTypeToCampaignProposalType(contract.type));
     group.brands.add(getContractBrandName(contract));
     for (const platform of getContractPlatforms(contract)) {
       group.platforms.add(platform);
@@ -4473,6 +4513,7 @@ function buildCampaignGroups({
     if (thread.campaignId) group.campaignId = thread.campaignId;
     group.applicants.push(thread);
     group.latestUpdatedAt = getLaterDateValue(group.latestUpdatedAt, thread.updatedAt);
+    group.types.add(thread.proposalType);
     group.brands.add(thread.targetName || fallbackBrandName);
     for (const item of thread.platforms) {
       group.platforms.add(marketplacePlatformToContractPlatform(item.platform));
@@ -4496,6 +4537,7 @@ function buildCampaignGroups({
         (contract) => contract.status === "CLOSED",
       ).length;
       const platforms = Array.from(group.platforms);
+      const types = Array.from(group.types);
       const brands = Array.from(group.brands).filter(Boolean).sort(compareText);
 
       const campaign: CampaignGroup = {
@@ -4510,6 +4552,7 @@ function buildCampaignGroups({
         ),
         marketplaceCampaign: group.marketplaceCampaign,
         lifecycle: "RECRUITING",
+        types: types.length > 0 ? types : ["sponsored_post"],
         participantCount,
         acceptedParticipantCount,
         applicantCount: applicantNames.size,
@@ -4583,6 +4626,7 @@ function getCampaignCapacity(campaign: CampaignGroup) {
       ?.campaign?.applicant_limit ??
     extractCampaignSummaryField(campaign, "모집인원:", [
       "지급내용:",
+      "콘텐츠:",
       "산출물:",
       "플랫폼:",
       "업로드 마감일:",
@@ -4612,6 +4656,7 @@ function getCampaignPaymentLabel(campaign: CampaignGroup) {
     campaign.marketplaceCampaign?.budget ??
     campaign.contracts.find((contract) => contract.campaign?.budget)?.campaign?.budget ??
     extractCampaignSummaryField(campaign, "지급내용:", [
+      "콘텐츠:",
       "산출물:",
       "플랫폼:",
       "업로드 마감일:",
@@ -4912,7 +4957,7 @@ function buildCampaignAlerts(campaigns: CampaignGroup[]): CampaignAlert[] {
           campaignKey: campaign.key,
           campaignName: campaign.name,
           label: `마감 지남 ${counts.overdueContracts}건`,
-          detail: "컨텐츠 제출 링크나 서명 상태가 마감 이후에도 완료되지 않았습니다.",
+          detail: "콘텐츠 제출 링크나 서명 상태가 마감 이후에도 완료되지 않았습니다.",
           tone: "rose",
           priority: 30,
         });
@@ -4934,7 +4979,7 @@ function buildCampaignAlerts(campaigns: CampaignGroup[]): CampaignAlert[] {
           campaignKey: campaign.key,
           campaignName: campaign.name,
           label: `7일 이내 마감 ${counts.dueSoonContracts}건`,
-          detail: "캠페인 마감 전 서명이나 컨텐츠 제출 누락 여부를 확인하세요.",
+          detail: "캠페인 마감 전 서명이나 콘텐츠 제출 누락 여부를 확인하세요.",
           tone: "blue",
           priority: 50,
         });
@@ -5148,10 +5193,10 @@ function buildCampaignActivities(campaign: CampaignGroup): CampaignActivity[] {
         id: `${contract.id}:post-link`,
         createdAt: contract.updated_at,
         actor: contract.influencer_info.name,
-        title: "컨텐츠 제출",
+        title: "콘텐츠 제출",
         description: contract.post_link
-          ? "인플루언서가 컨텐츠 제출 링크를 등록했습니다."
-          : "인플루언서가 컨텐츠 파일을 제출했습니다.",
+          ? "인플루언서가 콘텐츠 제출 링크를 등록했습니다."
+          : "인플루언서가 콘텐츠 파일을 제출했습니다.",
       });
     }
 
@@ -5373,13 +5418,13 @@ function getCampaignProgressStatus(contract: Contract) {
   }
   if (isContractContentSubmitted(contract)) {
     return {
-      label: "컨텐츠 제출",
+      label: "콘텐츠 제출",
       className: "border-emerald-200 bg-emerald-50 text-emerald-700",
     };
   }
   if (isContractContentMissing(contract)) {
     return {
-      label: "컨텐츠 미제출",
+      label: "콘텐츠 미제출",
       className: "border-neutral-300 bg-neutral-100 text-neutral-800",
     };
   }
@@ -5931,6 +5976,7 @@ function buildAdvertiserCampaignExportSheet(campaigns: CampaignGroup[]): XlsxShe
     columns: [
       "계약명",
       "상태",
+      "종류",
       "브랜드",
       "플랫폼",
       "지급조건",
@@ -5943,6 +5989,7 @@ function buildAdvertiserCampaignExportSheet(campaigns: CampaignGroup[]): XlsxShe
     rows: campaigns.map((campaign) => [
       campaign.name,
       CAMPAIGN_LIFECYCLE_EXPORT_LABELS[campaign.lifecycle],
+      getCampaignTypeLabel(campaign),
       joinExportValues(campaign.brands),
       joinExportValues(
         campaign.platforms.map((platform) => PLATFORM_META[platform].label),

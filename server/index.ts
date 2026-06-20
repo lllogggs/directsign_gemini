@@ -2350,7 +2350,8 @@ async function buildAdvertiserLoginDashboardBootstrap(
           : Promise.resolve(undefined),
       ]);
 
-      const clientContracts = contracts.map((contract) =>
+      const sessionContracts = normalizeTestContractsForSession(auth, contracts);
+      const clientContracts = sessionContracts.map((contract) =>
         redactContractForClient(contract, "advertiser"),
       );
       const dashboard = {
@@ -5068,6 +5069,439 @@ const isOperationalTestContract = (contract: Contract) =>
     signature_data: contract.signature_data,
     audit_events: contract.audit_events,
   });
+
+type RelativeTestDateSession = {
+  user?: Pick<SupabaseAuthUser, "email">;
+  profile?: Partial<
+    Pick<
+      SupabaseProfileRow,
+      "email" | "name" | "company_name" | "role" | "avatar_url"
+    >
+  >;
+};
+
+const shouldUseRelativeTestDatesForSession = (
+  auth: RelativeTestDateSession | undefined,
+) =>
+  Boolean(
+    auth &&
+      (hasOperationalTestEmail([auth.user?.email, auth.profile?.email]) ||
+        hasOperationalTestMarker({
+          name: auth.profile?.name,
+          company_name: auth.profile?.company_name,
+          avatar_url: auth.profile?.avatar_url,
+          role: auth.profile?.role,
+        })),
+  );
+
+const relativeTestDateFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Seoul",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+const getRelativeTestBaseDateParts = () => {
+  const parts = Object.fromEntries(
+    relativeTestDateFormatter
+      .formatToParts(new Date())
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  );
+
+  return {
+    year: Number(parts.year),
+    month: Number(parts.month),
+    day: Number(parts.day),
+  };
+};
+
+const formatRelativeTestDateOnly = (date: Date) =>
+  `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(
+    date.getUTCDate(),
+  ).padStart(2, "0")}`;
+
+const getRelativeTestDate = (days: number, hour = 12) => {
+  const baseDate = getRelativeTestBaseDateParts();
+  return new Date(
+    Date.UTC(baseDate.year, baseDate.month - 1, baseDate.day + days, hour - 9),
+  );
+};
+
+const getRelativeTestDateOnly = (days: number) =>
+  formatRelativeTestDateOnly(getRelativeTestDate(days));
+
+const getRelativeTestIsoDate = (days: number, hour = 12) =>
+  getRelativeTestDate(days, hour).toISOString();
+
+const getRelativeTestSpread = (seed: string | undefined, modulo = 5) => {
+  const hash = sha256Hex(seed || "relative-test-date");
+  return Number.parseInt(hash.slice(0, 8), 16) % modulo;
+};
+
+const getDateOnlyToken = (value: string | undefined | null) =>
+  hasText(value) ? value.match(/\d{4}-\d{2}-\d{2}/)?.[0] : undefined;
+
+const rememberRelativeTestDateReplacement = (
+  replacements: Map<string, string>,
+  oldValue: string | undefined | null,
+  newValue: string | undefined,
+) => {
+  const oldDate = getDateOnlyToken(oldValue);
+  const newDate = getDateOnlyToken(newValue);
+  if (oldDate && newDate && oldDate !== newDate) {
+    replacements.set(oldDate, newDate);
+  }
+};
+
+const replaceRelativeTestDatesInText = (
+  value: string,
+  replacements: Map<string, string>,
+) => {
+  if (replacements.size === 0) return value;
+
+  return value.replace(/\d{4}([-.])\d{2}\1\d{2}/g, (dateToken) => {
+    const normalizedToken = dateToken.replace(/\./g, "-");
+    const replacement = replacements.get(normalizedToken);
+    if (!replacement) return dateToken;
+    return dateToken.includes(".") ? replacement.replace(/-/g, ".") : replacement;
+  });
+};
+
+const buildRelativeTestContractSchedule = (contract: Contract) => {
+  const spread = getRelativeTestSpread(contract.id, 5);
+  const completed = contract.status === "CLOSED";
+  const signed = contract.status === "SIGNED" || completed;
+  const workflowBaseByStatus: Record<Contract["status"], number> = {
+    DRAFT: 2,
+    REVIEWING: 3,
+    NEGOTIATING: 4,
+    APPROVED: 2,
+    SIGNED: 9,
+    CLOSED: -3,
+  };
+
+  return {
+    createdAt: getRelativeTestIsoDate(completed ? -24 - spread : -10 - spread, 9),
+    updatedAt: getRelativeTestIsoDate(
+      completed ? -4 - spread : -1 - (spread % 3),
+      16,
+    ),
+    startDate: getRelativeTestDateOnly(completed ? -18 - spread : -2 - (spread % 2)),
+    endDate: getRelativeTestDateOnly(completed ? -4 - spread : 18 + spread),
+    deadline: getRelativeTestDateOnly(completed ? -7 - spread : 5 + spread),
+    uploadDueAt: getRelativeTestDateOnly(completed ? -5 - spread : 10 + spread),
+    reviewDueAt: getRelativeTestDateOnly(completed ? -4 - spread : 12 + spread),
+    workflowDueAt: getRelativeTestIsoDate(
+      workflowBaseByStatus[contract.status] + (completed ? -spread : spread),
+      18,
+    ),
+    shareTokenExpiresAt: getRelativeTestIsoDate(7 + spread, 23),
+    signedAt: signed
+      ? getRelativeTestIsoDate(completed ? -4 - spread : -2 - spread, 15)
+      : undefined,
+  };
+};
+
+const normalizeRelativeTestContractScheduleText = (
+  value: string,
+  schedule: ReturnType<typeof buildRelativeTestContractSchedule>,
+) =>
+  value.replace(
+    /\d{4}([-.])\d{2}\1\d{2}부터\s+\d{4}([-.])\d{2}\2\d{2}까지 제작, 검수, 업로드를 진행합니다\./g,
+    `${schedule.startDate}부터 ${schedule.endDate}까지 제작, 검수, 업로드를 진행합니다.`,
+  );
+
+const normalizeRelativeTestContractDates = (contract: Contract): Contract => {
+  const schedule = buildRelativeTestContractSchedule(contract);
+  const lifecycleReplacements = new Map<string, string>();
+  const contractTextReplacements = new Map<string, string>();
+
+  rememberRelativeTestDateReplacement(
+    lifecycleReplacements,
+    contract.created_at,
+    schedule.createdAt,
+  );
+  rememberRelativeTestDateReplacement(
+    lifecycleReplacements,
+    contract.updated_at,
+    schedule.updatedAt,
+  );
+  rememberRelativeTestDateReplacement(
+    contractTextReplacements,
+    contract.campaign?.start_date,
+    schedule.startDate,
+  );
+  rememberRelativeTestDateReplacement(
+    contractTextReplacements,
+    contract.campaign?.end_date,
+    schedule.endDate,
+  );
+  rememberRelativeTestDateReplacement(
+    contractTextReplacements,
+    contract.campaign?.deadline,
+    schedule.deadline,
+  );
+  rememberRelativeTestDateReplacement(
+    contractTextReplacements,
+    contract.campaign?.upload_due_at,
+    schedule.uploadDueAt,
+  );
+  rememberRelativeTestDateReplacement(
+    contractTextReplacements,
+    contract.campaign?.review_due_at,
+    schedule.reviewDueAt,
+  );
+  rememberRelativeTestDateReplacement(
+    lifecycleReplacements,
+    contract.workflow?.due_at,
+    schedule.workflowDueAt,
+  );
+  rememberRelativeTestDateReplacement(
+    lifecycleReplacements,
+    contract.evidence?.share_token_expires_at,
+    schedule.shareTokenExpiresAt,
+  );
+  rememberRelativeTestDateReplacement(
+    lifecycleReplacements,
+    contract.signature_data?.signed_at,
+    schedule.signedAt,
+  );
+  const activityTextReplacements = new Map([
+    ...contractTextReplacements,
+    ...lifecycleReplacements,
+  ]);
+
+  return normalizeContract({
+    ...contract,
+    created_at: schedule.createdAt,
+    updated_at: schedule.updatedAt,
+    campaign: contract.campaign
+      ? {
+          ...contract.campaign,
+          start_date: schedule.startDate,
+          end_date: schedule.endDate,
+          deadline: schedule.deadline,
+          upload_due_at: schedule.uploadDueAt,
+          review_due_at: schedule.reviewDueAt,
+          period: `${schedule.startDate} - ${schedule.endDate}`,
+        }
+      : contract.campaign,
+    workflow: contract.workflow
+      ? {
+          ...contract.workflow,
+          due_at: schedule.workflowDueAt,
+          last_message: contract.workflow.last_message
+            ? replaceRelativeTestDatesInText(
+                contract.workflow.last_message,
+                activityTextReplacements,
+              )
+            : contract.workflow.last_message,
+        }
+      : contract.workflow,
+    evidence: contract.evidence
+      ? {
+          ...contract.evidence,
+          share_token_expires_at: schedule.shareTokenExpiresAt,
+        }
+      : contract.evidence,
+    deliverable_summary: contract.deliverable_summary
+      ? {
+          ...contract.deliverable_summary,
+          updated_at: schedule.updatedAt,
+        }
+      : contract.deliverable_summary,
+    signature_data: contract.signature_data
+      ? {
+          ...contract.signature_data,
+          ...(schedule.signedAt ? { signed_at: schedule.signedAt } : {}),
+        }
+      : contract.signature_data,
+    clauses: contract.clauses.map((clause, clauseIndex) => ({
+      ...clause,
+      content: normalizeRelativeTestContractScheduleText(
+        replaceRelativeTestDatesInText(clause.content, contractTextReplacements),
+        schedule,
+      ),
+      history: clause.history.map((history, historyIndex) => ({
+        ...history,
+        comment: replaceRelativeTestDatesInText(
+          history.comment,
+          contractTextReplacements,
+        ),
+        timestamp: getRelativeTestIsoDate(
+          -8 + Math.min(clauseIndex + historyIndex, 6),
+          13,
+        ),
+      })),
+    })),
+    audit_events: contract.audit_events?.map((event, index) => ({
+      ...event,
+      description: replaceRelativeTestDatesInText(
+        event.description,
+        activityTextReplacements,
+      ),
+      created_at: getRelativeTestIsoDate(-8 + Math.min(index, 7), 14),
+    })),
+    settlement: contract.settlement
+      ? {
+          ...contract.settlement,
+          advertiser_confirmed_at: contract.settlement.advertiser_confirmed_at
+            ? getRelativeTestIsoDate(-3, 15)
+            : contract.settlement.advertiser_confirmed_at,
+          inquiries: contract.settlement.inquiries?.map((inquiry, index) => ({
+            ...inquiry,
+            requested_at: getRelativeTestIsoDate(-4 - index, 11),
+          })),
+        }
+      : contract.settlement,
+  });
+};
+
+const normalizeTestContractDatesForSession = (
+  auth: RelativeTestDateSession | undefined,
+  contract: Contract,
+) =>
+  shouldUseRelativeTestDatesForSession(auth) && isOperationalTestContract(contract)
+    ? normalizeRelativeTestContractDates(contract)
+    : contract;
+
+const normalizeTestContractsForSession = (
+  auth: RelativeTestDateSession | undefined,
+  contracts: Contract[],
+) => contracts.map((contract) => normalizeTestContractDatesForSession(auth, contract));
+
+const normalizeRelativeTestCampaignDates = (
+  campaign: MarketplaceBrandCampaign,
+  index: number,
+): MarketplaceBrandCampaign => {
+  const spread = (index % 5) * 2 + getRelativeTestSpread(campaign.id ?? campaign.title, 2);
+  const ended = campaign.status === "closed" || campaign.status === "ended";
+  const deadline = getRelativeTestDateOnly(ended ? -5 - spread : 3 + spread);
+  const uploadDeadline = getRelativeTestDateOnly(ended ? -2 - spread : 14 + spread);
+  const createdAt = getRelativeTestIsoDate(ended ? -20 - spread : -7 - spread, 10);
+  const updatedAt = getRelativeTestIsoDate(ended ? -3 - spread : -1, 16);
+  const replacements = new Map<string, string>();
+
+  rememberRelativeTestDateReplacement(replacements, campaign.deadline, deadline);
+  rememberRelativeTestDateReplacement(
+    replacements,
+    campaign.uploadDeadline,
+    uploadDeadline,
+  );
+  rememberRelativeTestDateReplacement(replacements, campaign.createdAt, createdAt);
+  rememberRelativeTestDateReplacement(replacements, campaign.updatedAt, updatedAt);
+
+  return {
+    ...campaign,
+    deadline,
+    uploadDeadline,
+    createdAt,
+    updatedAt,
+    ...(campaign.closedAt
+      ? { closedAt: getRelativeTestIsoDate(-4 - spread, 15) }
+      : {}),
+    ...(campaign.endedAt
+      ? { endedAt: getRelativeTestIsoDate(-2 - spread, 15) }
+      : {}),
+    ...(campaign.reopenedAt
+      ? { reopenedAt: getRelativeTestIsoDate(-1, 15) }
+      : {}),
+    statusUpdatedAt: campaign.statusUpdatedAt
+      ? getRelativeTestIsoDate(ended ? -3 - spread : -1, 16)
+      : campaign.statusUpdatedAt,
+    summary: campaign.summary
+      ? replaceRelativeTestDatesInText(campaign.summary, replacements)
+      : campaign.summary,
+    mission: campaign.mission
+      ? replaceRelativeTestDatesInText(campaign.mission, replacements)
+      : campaign.mission,
+    activityEvents: campaign.activityEvents?.map((event, eventIndex) => ({
+      ...event,
+      description: replaceRelativeTestDatesInText(event.description, replacements),
+      createdAt: getRelativeTestIsoDate(
+        ended ? -6 - spread + eventIndex : -7 - spread + eventIndex,
+        13,
+      ),
+    })),
+  };
+};
+
+const normalizeTestCampaignsForSession = (
+  auth: RelativeTestDateSession | undefined,
+  campaigns: MarketplaceBrandCampaign[],
+) =>
+  shouldUseRelativeTestDatesForSession(auth)
+    ? campaigns.map(normalizeRelativeTestCampaignDates)
+    : campaigns;
+
+const normalizeTestBrandProfileCampaignDatesForSession = (
+  auth: RelativeTestDateSession | undefined,
+  brand: MarketplaceBrandProfile | undefined,
+) => {
+  if (!brand) return brand;
+  const activeCampaigns = normalizeTestCampaignsForSession(
+    auth,
+    brand.activeCampaigns,
+  );
+  return activeCampaigns === brand.activeCampaigns
+    ? brand
+    : { ...brand, activeCampaigns };
+};
+
+const normalizeRelativeTestCampaignSnapshot = (
+  snapshot: MarketplaceCampaignSnapshot | undefined,
+  seed: string,
+) => {
+  if (!snapshot) return snapshot;
+  const spread = getRelativeTestSpread(seed, 5);
+  return {
+    ...snapshot,
+    deadline: getRelativeTestDateOnly(4 + spread),
+    uploadDeadline: getRelativeTestDateOnly(16 + spread),
+  };
+};
+
+const normalizeRelativeTestProposalDates = (
+  row: SupabaseMarketplaceContactProposalRow,
+): SupabaseMarketplaceContactProposalRow => {
+  const createdAt = getRelativeTestIsoDate(-3 - getRelativeTestSpread(row.id, 3), 11);
+  const updatedAt = getRelativeTestIsoDate(-1 - getRelativeTestSpread(row.id, 2), 15);
+  const snapshot = normalizeRelativeTestCampaignSnapshot(
+    normalizeMarketplaceCampaignSnapshot(row.campaign_snapshot),
+    row.campaign_id ?? row.id,
+  );
+  const replacements = new Map<string, string>();
+
+  rememberRelativeTestDateReplacement(replacements, row.created_at, createdAt);
+  rememberRelativeTestDateReplacement(replacements, row.updated_at, updatedAt);
+  rememberRelativeTestDateReplacement(
+    replacements,
+    normalizeMarketplaceCampaignSnapshot(row.campaign_snapshot)?.deadline,
+    snapshot?.deadline,
+  );
+  rememberRelativeTestDateReplacement(
+    replacements,
+    normalizeMarketplaceCampaignSnapshot(row.campaign_snapshot)?.uploadDeadline,
+    snapshot?.uploadDeadline,
+  );
+
+  return {
+    ...row,
+    created_at: createdAt,
+    updated_at: updatedAt,
+    campaign_snapshot: snapshot ?? row.campaign_snapshot,
+    proposal_summary: replaceRelativeTestDatesInText(row.proposal_summary, replacements),
+  };
+};
+
+const normalizeTestMarketplaceProposalRowsForSession = (
+  auth: RelativeTestDateSession | undefined,
+  rows: SupabaseMarketplaceContactProposalRow[],
+) =>
+  shouldUseRelativeTestDatesForSession(auth)
+    ? rows.map(normalizeRelativeTestProposalDates)
+    : rows;
 
 const isOperationalTestSupportAccessRequest = (
   request: SupportAccessRequestRecord,
@@ -8232,10 +8666,10 @@ const _buildLegacyContractDocumentPdf = async ({
     ["대표 채널", formatPdfValue(contract.influencer_info.channel_url)],
   ]);
 
-  addHeading("제1조 제공 매체 및 컨텐츠 조건");
+  addHeading("제1조 제공 매체 및 콘텐츠 조건");
   addBoxedItems(
     (campaign.deliverables ?? []).map((item) => formatPdfValue(item)).filter((item) => item !== "-"),
-    "제공 매체와 컨텐츠 조건이 입력되지 않았습니다.",
+    "제공 매체와 콘텐츠 조건이 입력되지 않았습니다.",
   );
   addRows([
     [
@@ -8545,7 +8979,7 @@ const buildContractDocumentPdf = async ({
   const platformText = formatPdfValue(
     (campaign.platforms ?? []).map((platform) => pdfPlatformLabels[platform] ?? platform),
   );
-  const deliverableText = formatPdfValue(campaign.deliverables, "제공 컨텐츠 조건이 입력되지 않았습니다.");
+  const deliverableText = formatPdfValue(campaign.deliverables, "제공 콘텐츠 조건이 입력되지 않았습니다.");
   const periodText = formatPdfValue(
     campaign.period ??
       [formatContractPdfDate(campaign.start_date), formatContractPdfDate(campaign.end_date)]
@@ -8570,7 +9004,7 @@ const buildContractDocumentPdf = async ({
   y += 28;
 
   addParagraph(
-    `본 계약은 광고주 ${advertiserName} 및 인플루언서 ${influencerName} 사이에서 광고 컨텐츠 제작 및 게시와 관련하여 체결된다.`,
+    `본 계약은 광고주 ${advertiserName} 및 인플루언서 ${influencerName} 사이에서 광고 콘텐츠 제작 및 게시와 관련하여 체결된다.`,
   );
 
   addSectionTitle("제1조 계약 당사자");
@@ -8584,14 +9018,14 @@ const buildContractDocumentPdf = async ({
 
   addSectionTitle("제2조 계약 목적 및 범위");
   addParagraph(
-    `본 계약은 ${formatPdfValue(contract.title)}의 수행을 위하여 인플루언서가 광고 컨텐츠를 제작·게시하고, 광고주가 그 대가를 지급하는 데 필요한 조건을 정하는 것을 목적으로 한다.`,
+    `본 계약은 ${formatPdfValue(contract.title)}의 수행을 위하여 인플루언서가 광고 콘텐츠를 제작·게시하고, 광고주가 그 대가를 지급하는 데 필요한 조건을 정하는 것을 목적으로 한다.`,
   );
 
-  addSectionTitle("제3조 플랫폼 및 컨텐츠");
+  addSectionTitle("제3조 플랫폼 및 콘텐츠");
   addDefinitionRows([
     ["계약 종류", formatPdfValue(contract.type)],
     ["플랫폼", platformText],
-    ["컨텐츠", deliverableText],
+    ["콘텐츠", deliverableText],
   ]);
 
   addSectionTitle("제4조 일정 및 검수");
@@ -10793,7 +11227,9 @@ const readAdvertiserCampaignBoard = async (auth: AdvertiserSession) => {
   }
 
   const row = await readAdvertiserMarketplaceBrandRow(organization.id);
-  const brand = buildAdvertiserBrandProfileFromAuth(auth, organization, row);
+  const rawBrand = buildAdvertiserBrandProfileFromAuth(auth, organization, row);
+  const brand =
+    normalizeTestBrandProfileCampaignDatesForSession(auth, rawBrand) ?? rawBrand;
 
   return {
     organization,
@@ -10953,7 +11389,7 @@ const validateMarketplaceCampaignInput = (body: Record<string, unknown>) => {
     return { error: "참여 미션은 500자 이내로 입력해 주세요." };
   }
   if (!deliverables.length) {
-    return { error: "산출물을 6개 이내로 입력해 주세요." };
+    return { error: "콘텐츠를 6개 이내로 입력해 주세요." };
   }
   if (!uploadDeadline || uploadDeadline.length > 40) {
     return { error: "제출마감일을 40자 이내로 입력해 주세요." };
@@ -11026,7 +11462,7 @@ const upsertAdvertiserMarketplaceCampaign = async (
     deliverables:
       payload.deliverables.length > 0
         ? payload.deliverables
-        : ["컨텐츠 산출물 협의"],
+        : ["콘텐츠 협의"],
     status: "open",
     createdAt: now,
     updatedAt: now,
@@ -11103,7 +11539,9 @@ const upsertAdvertiserMarketplaceCampaign = async (
   clearPublicMarketplaceCache();
 
   const savedRow = await readAdvertiserMarketplaceBrandRow(organization.id);
-  const brand = buildAdvertiserBrandProfileFromAuth(auth, organization, savedRow);
+  const rawBrand = buildAdvertiserBrandProfileFromAuth(auth, organization, savedRow);
+  const brand =
+    normalizeTestBrandProfileCampaignDatesForSession(auth, rawBrand) ?? rawBrand;
 
   return {
     ok: true as const,
@@ -11232,7 +11670,9 @@ const updateAdvertiserMarketplaceCampaignStatus = async (
   clearPublicMarketplaceCache();
 
   const savedRow = await readAdvertiserMarketplaceBrandRow(organization.id);
-  const brand = buildAdvertiserBrandProfileFromAuth(auth, organization, savedRow);
+  const rawBrand = buildAdvertiserBrandProfileFromAuth(auth, organization, savedRow);
+  const brand =
+    normalizeTestBrandProfileCampaignDatesForSession(auth, rawBrand) ?? rawBrand;
   const savedCampaign =
     brand.activeCampaigns.find((campaign) => campaign.id === campaignId) ??
     updatedCampaign;
@@ -11366,7 +11806,7 @@ const buildCampaignApplicationSummary = (campaign: MarketplaceCampaignPost) => {
     campaign.applicantLimit ? `모집인원: ${campaign.applicantLimit}` : undefined,
     `지급내용: ${campaign.budget}`,
     campaign.deliverables?.length
-      ? `산출물: ${campaign.deliverables.join(", ")}`
+      ? `콘텐츠: ${campaign.deliverables.join(", ")}`
       : undefined,
     campaign.platformLabels.length
       ? `플랫폼: ${campaign.platformLabels.join(", ")}`
@@ -11777,7 +12217,7 @@ const upsertInfluencerPublicProfile = async ({
         ],
         proposal_hints: [
           "브랜드 소개와 광고 형태를 함께 보내면 검토가 빠릅니다.",
-          "컨텐츠 사용 범위와 희망 일정을 제안에 포함해 주세요.",
+          "콘텐츠 사용 범위와 희망 일정을 제안에 포함해 주세요.",
           "최종 조건은 전자계약 단계에서 다시 확인합니다.",
         ],
         is_published: true,
@@ -12401,11 +12841,14 @@ const readMarketplaceMessagesForAdvertiser = async (
 
   return buildMarketplaceMessagesResponse(
     "advertiser",
-    await addPlatformInfoToMarketplaceProposals(
-      uniqueRowsById([
-        ...(await addSenderInfluencerHandlesToMarketplaceProposals(incomingRows)),
-        ...sentRows,
-      ]),
+    normalizeTestMarketplaceProposalRowsForSession(
+      auth,
+      await addPlatformInfoToMarketplaceProposals(
+        uniqueRowsById([
+          ...(await addSenderInfluencerHandlesToMarketplaceProposals(incomingRows)),
+          ...sentRows,
+        ]),
+      ),
     ),
   );
 };
@@ -12462,11 +12905,14 @@ const readMarketplaceMessagesForInfluencer = async (
 
   return buildMarketplaceMessagesResponse(
     "influencer",
-    await addPlatformInfoToMarketplaceProposals(
-      uniqueRowsById([
-        ...(await addSenderBrandHandlesToMarketplaceProposals(incomingRows)),
-        ...sentRows,
-      ]),
+    normalizeTestMarketplaceProposalRowsForSession(
+      auth,
+      await addPlatformInfoToMarketplaceProposals(
+        uniqueRowsById([
+          ...(await addSenderBrandHandlesToMarketplaceProposals(incomingRows)),
+          ...sentRows,
+        ]),
+      ),
     ),
   );
 };
@@ -13447,7 +13893,7 @@ const buildMarketplaceCampaignDraftClauses = (
           {
             clause_id: "campaign_supporters_product_mission",
             category: "제품 제공 및 미션",
-            content: `광고주는 서포터즈 활동을 위해 "${snapshot.budget}"에 기재된 제품 또는 제품 제공 조건을 제공한다. 인플루언서는 제공 제품을 직접 사용한 뒤 다음 산출물을 기한 내 게시 또는 제출한다: ${deliverables}.`,
+            content: `광고주는 서포터즈 활동을 위해 "${snapshot.budget}"에 기재된 제품 또는 제품 제공 조건을 제공한다. 인플루언서는 제공 제품을 직접 사용한 뒤 다음 콘텐츠를 기한 내 게시 또는 제출한다: ${deliverables}.`,
             status: "APPROVED",
             history: [],
           },
@@ -13463,7 +13909,7 @@ const buildMarketplaceCampaignDraftClauses = (
             clause_id: "campaign_supporters_posting_mission",
             category: "게시 유지 및 미션 이행",
             content:
-              "인플루언서는 게시한 컨텐츠를 모집글 또는 계약서에 기재된 유지 기간 동안 공개 상태로 유지한다. 유지 기간이 별도로 기재되지 않은 경우 삭제, 비공개 전환, 주요 내용 수정은 광고주와 사전에 합의한다. 미션 불이행, 무단 삭제, 광고 표시 누락 등으로 캠페인 목적 달성이 어려운 경우 광고주는 제품 제공비 청구를 요청할 수 있다.",
+              "인플루언서는 게시한 콘텐츠를 모집글 또는 계약서에 기재된 유지 기간 동안 공개 상태로 유지한다. 유지 기간이 별도로 기재되지 않은 경우 삭제, 비공개 전환, 주요 내용 수정은 광고주와 사전에 합의한다. 미션 불이행, 무단 삭제, 광고 표시 누락 등으로 캠페인 목적 달성이 어려운 경우 광고주는 제품 제공비 청구를 요청할 수 있다.",
             status: "APPROVED",
             history: [],
           },
@@ -13494,8 +13940,8 @@ const buildMarketplaceCampaignDraftClauses = (
     },
     {
       clause_id: "campaign_application_deliverables",
-      category: "산출물 및 플랫폼",
-      content: `인플루언서는 ${platforms} 채널에서 다음 산출물을 제공한다: ${deliverables}. 컨텐츠 제출 마감일은 ${
+      category: "콘텐츠 및 플랫폼",
+      content: `인플루언서는 ${platforms} 채널에서 다음 콘텐츠를 제공한다: ${deliverables}. 콘텐츠 제출 마감일은 ${
         snapshot.uploadDeadline ?? "모집글 조건"
       } 기준으로 한다.`,
       status: "APPROVED",
@@ -13516,7 +13962,7 @@ const buildMarketplaceCampaignDraftClauses = (
       clause_id: "campaign_application_review",
       category: "광고 표시 및 검수",
       content:
-        "컨텐츠에는 관계 법령과 플랫폼 정책에 맞는 광고 표시를 포함한다. 광고주는 모집글에 명시한 산출물과 제출 기한을 기준으로 컨텐츠를 검수한다.",
+        "콘텐츠에는 관계 법령과 플랫폼 정책에 맞는 광고 표시를 포함한다. 광고주는 모집글에 명시한 콘텐츠와 제출 기한을 기준으로 콘텐츠를 검수한다.",
       status: "APPROVED",
       history: [],
     },
@@ -15101,13 +15547,13 @@ const formatDashboardActivityAction = (action: string) => {
     contract_signed: "계약 서명",
     contract_completed: "계약 마감",
     contract_closed: "계약 마감",
-    post_link_submitted: "컨텐츠 제출",
-    deliverable_submitted: "컨텐츠 제출",
-    deliverable_approved: "컨텐츠 승인",
+    post_link_submitted: "콘텐츠 제출",
+    deliverable_submitted: "콘텐츠 제출",
+    deliverable_approved: "콘텐츠 승인",
     deliverable_changes_requested: "수정 요청",
-    deliverable_rejected: "컨텐츠 반려",
+    deliverable_rejected: "콘텐츠 반려",
     signed_pdf_downloaded: "서명본 다운로드",
-    deliverable_file_downloaded: "컨텐츠 파일 다운로드",
+    deliverable_file_downloaded: "콘텐츠 파일 다운로드",
   };
 
   return labels[action] ?? action.replace(/_/g, " ");
@@ -15213,16 +15659,16 @@ const dashboardStageMeta: Record<
     nextAction: "최종본 확인과 플랫폼 계정 인증 승인이 끝나면 전자서명을 완료할 수 있습니다.",
   },
   deliverables_due: {
-    label: "컨텐츠 제출",
-    statusLabel: "컨텐츠 제출 필요",
+    label: "콘텐츠 제출",
+    statusLabel: "콘텐츠 제출 필요",
     actionLabel: "제출하기",
-    nextAction: "서명 완료 후 컨텐츠 URL이나 컨텐츠 파일을 제출해 주세요.",
+    nextAction: "서명 완료 후 콘텐츠 URL이나 콘텐츠 파일을 제출해 주세요.",
   },
   deliverables_review: {
     label: "광고주 검수 필요",
     statusLabel: "광고주 검수 중",
     actionLabel: "제출 내역 보기",
-    nextAction: "제출한 컨텐츠를 광고주가 확인 및 검수하고 있습니다.",
+    nextAction: "제출한 콘텐츠를 광고주가 확인 및 검수하고 있습니다.",
   },
   signed: {
     label: "완료",
@@ -15234,7 +15680,7 @@ const dashboardStageMeta: Record<
     label: "완료",
     statusLabel: "계약 마감",
     actionLabel: "마감 내역 보기",
-    nextAction: "모든 컨텐츠 확인 및 검수가 끝나 광고 계약이 마감되었습니다.",
+    nextAction: "모든 콘텐츠 확인 및 검수가 끝나 광고 계약이 마감되었습니다.",
   },
   waiting: {
     label: "대기",
@@ -15716,6 +16162,7 @@ const mapMarketplaceProposalToDashboardApplication = (
 
 const buildInfluencerDashboardApplications = async (
   profileId: string | undefined,
+  auth?: RelativeTestDateSession,
 ): Promise<InfluencerDashboardApplication[]> => {
   if (!useSupabase || !profileId) return [];
 
@@ -15727,7 +16174,7 @@ const buildInfluencerDashboardApplications = async (
   );
   const enrichedRows = await addPlatformInfoToMarketplaceProposals(rows);
 
-  return enrichedRows
+  return normalizeTestMarketplaceProposalRowsForSession(auth, enrichedRows)
     .map(mapMarketplaceProposalToDashboardApplication)
     .sort(
       (a, b) =>
@@ -16144,6 +16591,12 @@ const buildInfluencerDashboardFromLocal = async (
       const contactEmail = normalizeEmail(contract.influencer_info?.contact ?? "");
       return hasText(userEmail) && contactEmail === userEmail;
     })
+    .map((contract) =>
+      normalizeTestContractDatesForSession(
+        { user: authUser, profile },
+        contract,
+      ),
+    )
     .map(buildLegacyDashboardContract)
     .sort(
       (a, b) => parseDashboardDate(b.updated_at) - parseDashboardDate(a.updated_at),
@@ -16284,13 +16737,21 @@ const buildInfluencerDashboardFromRemote = async (
   }
 
   const influencerParties = uniqueRowsById([...profileParties, ...emailParties]);
-  const legacyContractsForUser = legacyStore.contracts.filter(
-    (contract) =>
-      userEmail &&
-      contract.influencer_info.contact.trim().toLowerCase() === userEmail,
-  );
+  const relativeDateAuth = { user: authUser, profile };
+  const legacyContractsForUser = legacyStore.contracts
+    .filter(
+      (contract) =>
+        userEmail &&
+        contract.influencer_info.contact.trim().toLowerCase() === userEmail,
+    )
+    .map((contract) =>
+      normalizeTestContractDatesForSession(relativeDateAuth, contract),
+    );
   const legacyContractsById = new Map(
-    legacyStore.contracts.map((contract) => [contract.id, contract]),
+    legacyStore.contracts.map((contract) => [
+      contract.id,
+      normalizeTestContractDatesForSession(relativeDateAuth, contract),
+    ]),
   );
   const contractIds = [
     ...new Set([
@@ -16394,7 +16855,10 @@ const buildInfluencerDashboardFromRemote = async (
   const dashboardApplications =
     options.includeApplications === false
       ? []
-      : await buildInfluencerDashboardApplications(profile?.id ?? authUser.id);
+      : await buildInfluencerDashboardApplications(
+          profile?.id ?? authUser.id,
+          { user: authUser, profile },
+        );
 
   const verificationRequests = (await readVerificationRequests()).filter(
     (request) =>
@@ -16979,26 +17443,26 @@ const updateContractDeliverableWorkflow = async (
     completed
       ? {
           next_actor: "advertiser" as const,
-          next_action: "모든 컨텐츠가 승인되었습니다. 광고 계약 마감을 진행하세요.",
+          next_action: "모든 콘텐츠가 승인되었습니다. 광고 계약 마감을 진행하세요.",
           risk_level: "low" as const,
-          last_message: "모든 필수 컨텐츠가 승인되었습니다.",
+          last_message: "모든 필수 콘텐츠가 승인되었습니다.",
         }
       : hasPendingReview
         ? {
             next_actor: "advertiser" as const,
-            next_action: "제출된 컨텐츠 URL과 파일을 검수하고 승인 또는 수정 요청을 남기세요.",
+            next_action: "제출된 콘텐츠 URL과 파일을 검수하고 승인 또는 수정 요청을 남기세요.",
             risk_level: "medium" as const,
-            last_message: "광고주 컨텐츠 확인 및 검수가 필요합니다.",
+            last_message: "광고주 콘텐츠 확인 및 검수가 필요합니다.",
           }
         : {
             next_actor: "influencer" as const,
             next_action: hasRevision
-              ? "수정 요청된 컨텐츠를 보완한 뒤 URL이나 파일을 다시 제출하세요."
-              : "컨텐츠 URL과 파일을 제출해 광고주 검수를 요청하세요.",
+              ? "수정 요청된 콘텐츠를 보완한 뒤 URL이나 파일을 다시 제출하세요."
+              : "콘텐츠 URL과 파일을 제출해 광고주 검수를 요청하세요.",
             risk_level: hasRevision ? ("medium" as const) : ("low" as const),
             last_message: hasRevision
-              ? "컨텐츠 수정 요청 또는 반려가 있습니다."
-              : "인플루언서 컨텐츠 제출을 기다리는 중입니다.",
+              ? "콘텐츠 수정 요청 또는 반려가 있습니다."
+              : "인플루언서 콘텐츠 제출을 기다리는 중입니다.",
           };
   const updates = completed
     ? {
@@ -19589,9 +20053,13 @@ app.get("/api/contracts", async (request, response, next) => {
     const contracts = store.contracts.filter((contract) =>
       canAdvertiserAccessLegacyContract(advertiserAuth, contract),
     );
+    const sessionContracts = normalizeTestContractsForSession(
+      advertiserAuth,
+      contracts,
+    );
 
     response.json({
-      contracts: contracts.map((contract) =>
+      contracts: sessionContracts.map((contract) =>
         redactContractForClient(contract, "advertiser"),
       ),
       source: useSupabase ? "supabase" : "file",
@@ -19685,9 +20153,9 @@ app.post("/api/contracts/:id/post-link", async (request, response, next) => {
         next_actor: contract.workflow?.next_actor ?? "system",
         next_action:
           contract.workflow?.next_action ??
-          "전자서명 완료 후 컨텐츠 제출을 기다리는 중입니다.",
+          "전자서명 완료 후 콘텐츠 제출을 기다리는 중입니다.",
         risk_level: contract.workflow?.risk_level ?? "low",
-        last_message: "인플루언서가 컨텐츠 URL을 제출했습니다.",
+        last_message: "인플루언서가 콘텐츠 URL을 제출했습니다.",
       },
       audit_events: [
         ...(contract.audit_events ?? []),
@@ -19695,7 +20163,7 @@ app.post("/api/contracts/:id/post-link", async (request, response, next) => {
           id: randomUUID(),
           actor: "influencer",
           action: "post_link_submitted",
-          description: "인플루언서가 컨텐츠 URL을 제출했습니다.",
+          description: "인플루언서가 콘텐츠 URL을 제출했습니다.",
           created_at: now,
         },
       ],
@@ -19775,7 +20243,7 @@ app.post("/api/contracts/:id/deliverables", async (request, response, next) => {
     const title =
       normalizeOptionalText(request.body?.title) ??
       requirement?.title ??
-      "컨텐츠";
+      "콘텐츠";
     const url = normalizeUrlValue(request.body?.url);
     const note = normalizeOptionalText(request.body?.note);
     const evidenceFile = parseEvidenceFile(request.body?.evidence_file);
@@ -20000,7 +20468,7 @@ app.get("/api/influencer/dashboard/applications", async (request, response, next
     if (!auth) return;
 
     response.json({
-      applications: await buildInfluencerDashboardApplications(auth.profile.id),
+      applications: await buildInfluencerDashboardApplications(auth.profile.id, auth),
     });
   } catch (error) {
     next(error);
@@ -20088,7 +20556,7 @@ app.post("/api/contracts/:id/close", async (request, response, next) => {
           actor: "advertiser",
           action: "contract_closed",
           description:
-            "광고주가 필수 컨텐츠 승인과 정산 완료를 확인한 뒤 광고 계약을 마감했습니다.",
+            "광고주가 필수 콘텐츠 승인과 정산 완료를 확인한 뒤 광고 계약을 마감했습니다.",
           created_at: now,
         },
       ],
@@ -20222,7 +20690,7 @@ app.get(
           action: "viewed_pdf",
           actor_role: "admin",
           actor_name: adminOperatorName,
-          description: "운영자가 당사자 요청에 따라 제출된 컨텐츠 파일을 내려받았습니다.",
+          description: "운영자가 당사자 요청에 따라 제출된 콘텐츠 파일을 내려받았습니다.",
           ip: getClientIp(request),
           user_agent: request.header("user-agent") ?? "unknown",
         });
@@ -20404,8 +20872,12 @@ app.get("/api/contracts/:id", async (request, response, next) => {
     }
 
     response.setHeader("Cache-Control", "no-store");
+    const responseContract =
+      access.role === "advertiser" || access.role === "influencer"
+        ? normalizeTestContractDatesForSession(access.auth, contract)
+        : contract;
     response.json({
-      contract: redactContractForClient(contract, access.role),
+      contract: redactContractForClient(responseContract, access.role),
       access_role: access.role,
     });
   } catch (error) {
@@ -20726,7 +21198,7 @@ app.post("/api/contracts/:id/signatures/influencer", async (request, response, n
       },
       workflow: {
         next_actor: "system",
-        next_action: "전자서명 완료 후 컨텐츠 제출을 기다리는 중입니다.",
+        next_action: "전자서명 완료 후 콘텐츠 제출을 기다리는 중입니다.",
         risk_level: "low",
         last_message: "인플루언서 전자서명이 완료되었습니다.",
       },

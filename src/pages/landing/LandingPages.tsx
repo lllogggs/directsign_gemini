@@ -647,14 +647,14 @@ const influencerProposalSlides: IntroProposalSlide[] = [
         imageAlt: "계약 일정이 불분명해 확인이 필요한 상황",
       },
       {
-        label: "컨텐츠 기준 변경",
+        label: "콘텐츠 기준 변경",
         imageSrc: advertiserProposalAssetUrls.riskRevisionRefusal,
-        imageAlt: "컨텐츠 기준이 뒤늦게 바뀌는 상황",
+        imageAlt: "콘텐츠 기준이 뒤늦게 바뀌는 상황",
       },
       {
         label: "활용 범위 과다",
         imageSrc: advertiserProposalAssetUrls.riskProductHeld,
-        imageAlt: "광고 컨텐츠 활용 범위가 불명확한 상황",
+        imageAlt: "광고 콘텐츠 활용 범위가 불명확한 상황",
       },
     ],
   },
@@ -696,12 +696,12 @@ const influencerProposalSlides: IntroProposalSlide[] = [
       </>
     ),
     description:
-      "광고주가 보낸 계약 링크를 열면 브랜드, 보상, 마감, 컨텐츠, 활용 범위를 먼저 확인합니다.",
+      "광고주가 보낸 계약 링크를 열면 브랜드, 보상, 마감, 콘텐츠, 활용 범위를 먼저 확인합니다.",
     support: (
       <>
         광고주가 보낸 계약 링크에서
         <br />
-        <strong>브랜드, 보상, 마감, 컨텐츠</strong>를 먼저 확인합니다
+        <strong>브랜드, 보상, 마감, 콘텐츠</strong>를 먼저 확인합니다
       </>
     ),
     productPreview: "influencerConditionReview",
@@ -805,7 +805,7 @@ const roleIntroSlides = {
       eyebrow: "계약 시작",
       title: ["DM 합의를", "계약서 초안으로"],
       description:
-        "브랜드, 보상, 일정, 산출물을 입력하면 광고 조건이 계약서 초안으로 정리됩니다.",
+        "브랜드, 보상, 일정, 콘텐츠를 입력하면 광고 조건이 계약서 초안으로 정리됩니다.",
       helper: "조건 입력만으로 초안 생성",
       primaryLabel: "시작하기",
       primaryHref: "/signup/advertiser",
@@ -828,7 +828,7 @@ const roleIntroSlides = {
         ],
         chips: ["조건 확인", "유료 광고(PPL)", "릴스 1건"],
         message:
-          `상대방, 금액, 일정, 산출물을 입력하면 ${PRODUCT_NAME} 계약 초안으로 이어집니다.`,
+          `상대방, 금액, 일정, 콘텐츠를 입력하면 ${PRODUCT_NAME} 계약 초안으로 이어집니다.`,
         timeline: ["상대 정보 입력", "조건 정리", "검토 링크", "전자서명"],
         actionLabel: "시작하기",
       },
@@ -929,7 +929,7 @@ const roleIntroSlides = {
           },
           {
             name: "오늘의 주방",
-            title: "주방가전 리뷰 컨텐츠",
+            title: "주방가전 리뷰 콘텐츠",
             status: "수정 요청",
             statusClass: "bg-amber-50 text-amber-800",
             due: "오늘 답변",
@@ -952,7 +952,7 @@ const roleIntroSlides = {
       eyebrow: "계약 수신",
       title: ["광고 조건을", "놓치지 않게"],
       description:
-        "메일함을 뒤지지 않고 금액, 일정, 산출물, 사용 권한을 먼저 확인합니다.",
+        "메일함을 뒤지지 않고 금액, 일정, 콘텐츠, 사용 권한을 먼저 확인합니다.",
       helper: "메일 대신 조건과 기록 정리",
       primaryLabel: "시작하기",
       primaryHref: "/signup/influencer",
@@ -975,7 +975,7 @@ const roleIntroSlides = {
         ],
         chips: ["계약 링크", "검토 필요", "서명 전"],
         message:
-          "계약 링크 안에서 조건, 산출물, 사용 권한을 먼저 확인합니다.",
+          "계약 링크 안에서 조건, 콘텐츠, 사용 권한을 먼저 확인합니다.",
         timeline: ["링크 열람", "조건 확인", "수정 요청", "전자서명"],
         actionLabel: "시작하기",
       },
@@ -985,7 +985,7 @@ const roleIntroSlides = {
       eyebrow: "조건 검토",
       title: ["돈, 일정, 권한을", "서명 전에 확인"],
       description:
-        "금액, 컨텐츠 제출 일정, 검수 기준, 광고 표시, 컨텐츠 사용 권한처럼 나중에 문제가 되는 조건을 먼저 봅니다.",
+        "금액, 콘텐츠 제출 일정, 검수 기준, 광고 표시, 콘텐츠 사용 권한처럼 나중에 문제가 되는 조건을 먼저 봅니다.",
       helper: "숨은 조건을 서명 전 확인",
       primaryLabel: "시작하기",
       primaryHref: "/signup/influencer",
@@ -1008,7 +1008,7 @@ const roleIntroSlides = {
         ],
         chips: ["공동구매", "릴스 1건", "블로그 리뷰"],
         message:
-          "광고주가 입력한 조건을 먼저 확인하고 빠진 산출물, 지급 조건, 사용 권한을 체크합니다.",
+          "광고주가 입력한 조건을 먼저 확인하고 빠진 콘텐츠, 지급 조건, 사용 권한을 체크합니다.",
         timeline: ["조건 확인", "질문 작성", "수정 요청", "전자서명"],
         actionLabel: "시작하기",
       },
@@ -1163,21 +1163,21 @@ const advertiserPreviewSlides: AdvertiserPreviewSlide[] = [
       { label: "지급", value: "2,800,000원" },
     ],
     clauseInputs: [
-      "컨텐츠는 업로드 후 3개월 동안 브랜드 채널에서 활용",
+      "콘텐츠는 업로드 후 3개월 동안 브랜드 채널에서 활용",
       "릴스 1건, 스토리 2건 업로드 후 초안 검수 1회",
     ],
     generatedClauses: [
       {
-        title: "산출물 및 일정",
+        title: "콘텐츠 및 일정",
         text: `인플루언서는 릴스 1건과 스토리 2건을 ${formatIntroShortDateTime(7, 18)}까지 업로드합니다.`,
       },
       {
-        title: "컨텐츠 활용 범위",
-        text: "브랜드는 업로드 컨텐츠를 브랜드 공식 채널에서 3개월 동안 활용할 수 있습니다.",
+        title: "콘텐츠 활용 범위",
+        text: "브랜드는 업로드 콘텐츠를 브랜드 공식 채널에서 3개월 동안 활용할 수 있습니다.",
       },
       {
         title: "광고 표시",
-        text: "컨텐츠에는 협찬 및 광고 표시 문구를 플랫폼 정책에 맞게 포함합니다.",
+        text: "콘텐츠에는 협찬 및 광고 표시 문구를 플랫폼 정책에 맞게 포함합니다.",
       },
     ],
   },
@@ -1192,7 +1192,7 @@ const advertiserPreviewSlides: AdvertiserPreviewSlide[] = [
     rows: [
       {
         partner: "오브제스튜디오",
-        contract: "2차 컨텐츠 사용 범위",
+        contract: "2차 콘텐츠 사용 범위",
         contractType: "유료 광고 (PPL)",
         channel: "유튜브",
         due: "확인 필요",
@@ -1270,7 +1270,7 @@ const advertiserPreviewSlides: AdvertiserPreviewSlide[] = [
       },
       {
         partner: "민채널",
-        contract: "월간 리뷰 컨텐츠",
+        contract: "월간 리뷰 콘텐츠",
         contractType: "제품 협찬",
         channel: "블로그",
         due: "보관 완료",
@@ -1350,14 +1350,14 @@ const influencerPreviewSlides: InfluencerPreviewSlide[] = [
         status: "승인 가능",
       },
       {
-        title: "2차 컨텐츠 활용",
-        text: "브랜드는 업로드 컨텐츠를 광고 소재로 12개월 동안 활용할 수 있습니다.",
+        title: "2차 콘텐츠 활용",
+        text: "브랜드는 업로드 콘텐츠를 광고 소재로 12개월 동안 활용할 수 있습니다.",
         status: "수정 필요",
         active: true,
       },
       {
         title: "광고 표시",
-        text: "컨텐츠에는 협찬 및 공동구매 안내 문구를 플랫폼 정책에 맞게 표시합니다.",
+        text: "콘텐츠에는 협찬 및 공동구매 안내 문구를 플랫폼 정책에 맞게 표시합니다.",
         status: "승인 가능",
       },
     ],
@@ -2163,7 +2163,7 @@ function InfluencerContractLinkDesktopPreview() {
     { label: "보상", value: "1,800,000원" },
     { label: "마감", value: formatIntroDate(11) },
     { label: "플랫폼", value: "인스타그램", platform: "인스타" },
-    { label: "컨텐츠", value: "릴스" },
+    { label: "콘텐츠", value: "릴스" },
     { label: "수량", value: "1건" },
   ];
 
@@ -2195,7 +2195,7 @@ function InfluencerContractLinkDesktopPreview() {
               계약 내용 확인
             </h4>
             <p className="mt-2 break-keep text-[12px] font-semibold leading-5 text-neutral-500">
-              브랜드, 보상, 마감, 컨텐츠를 먼저 확인하고 계약서 원문으로 넘어갑니다.
+              브랜드, 보상, 마감, 콘텐츠를 먼저 확인하고 계약서 원문으로 넘어갑니다.
             </p>
           </div>
 
@@ -2244,7 +2244,7 @@ function InfluencerContractLinkDesktopPreview() {
             <div className="grid min-h-0 flex-1 gap-3 py-4">
               {[
                 ["제1조 계약 목적", "브랜드 공동구매 파일럿 콘텐츠 제작과 게시"],
-                ["제2조 컨텐츠 및 일정", `인스타그램 릴스 1건, ${formatIntroDate(11)} 마감`],
+                ["제2조 콘텐츠 및 일정", `인스타그램 릴스 1건, ${formatIntroDate(11)} 마감`],
                 ["제3조 지급 조건", "콘텐츠 확인 후 7영업일 내 1,800,000원 지급"],
                 ["제4조 콘텐츠 활용", "브랜드 채널과 랜딩 페이지 활용 범위 확인"],
               ].map(([title, body]) => (
@@ -2275,7 +2275,7 @@ function InfluencerContractLinkMobilePreview() {
     { label: "보상", value: "1,800,000원" },
     { label: "마감", value: formatIntroDate(11) },
     { label: "플랫폼", value: "인스타그램", platform: "인스타" },
-    { label: "컨텐츠", value: "릴스" },
+    { label: "콘텐츠", value: "릴스" },
     { label: "수량", value: "1건" },
   ];
 
@@ -2366,7 +2366,7 @@ function AdvertiserShareDmPreview() {
             {[
               ["계약서", "오브레 비건 선크림 릴스"],
               ["인플루언서", "민서홈 · @minseo_home"],
-              ["컨텐츠", "릴스 1건 · 스토리 2건"],
+              ["콘텐츠", "릴스 1건 · 스토리 2건"],
               ["마감", formatIntroDate(11)],
             ].map(([label, value]) => (
               <div
@@ -2689,7 +2689,7 @@ function AdvertiserContractDocumentProductPreview() {
           <div className="grid min-h-0 flex-1 content-start gap-2 bg-[#fbfcfa] p-3">
             {[
               ["플랫폼", "인스타그램"],
-              ["컨텐츠", "릴스 1건 · 스토리 2건"],
+              ["콘텐츠", "릴스 1건 · 스토리 2건"],
               ["영상 길이", "30초 이상"],
               ["지급 조건", "콘텐츠 확인 후 7영업일"],
               ["활용 범위", "브랜드 채널 3개월"],
@@ -2869,7 +2869,7 @@ function InfluencerConditionReviewPreview() {
     { label: "보상", value: "1,800,000원" },
     { label: "마감", value: formatIntroDate(11) },
     { label: "플랫폼", value: "인스타", platform: "인스타" },
-    { label: "컨텐츠", value: "릴스 1건 · 스토리 2건" },
+    { label: "콘텐츠", value: "릴스 1건 · 스토리 2건" },
     { label: "활용", value: "브랜드 채널 3개월" },
   ];
 
@@ -2897,7 +2897,7 @@ function InfluencerConditionReviewPreview() {
                 광고 조건 한눈에
               </p>
               <p className="mt-1 break-keep text-[13px] font-black leading-5 text-neutral-950 max-[640px]:text-[12px] max-[640px]:leading-4">
-                브랜드, 보상, 마감, 컨텐츠, 활용 범위를 서명 전에 확인합니다.
+                브랜드, 보상, 마감, 콘텐츠, 활용 범위를 서명 전에 확인합니다.
               </p>
             </div>
             <dl className="grid min-h-0 flex-1 gap-2 overflow-hidden max-[640px]:grid-cols-2 max-[640px]:gap-1.5">
@@ -2939,7 +2939,7 @@ function InfluencerConditionReviewPreview() {
             </div>
             <div className="grid min-h-0 flex-1 gap-2 py-3">
               {[
-                ["제2조 컨텐츠", "릴스 1건, 스토리 2건"],
+                ["제2조 콘텐츠", "릴스 1건, 스토리 2건"],
                 ["제3조 지급", "콘텐츠 승인 후 7영업일 이내"],
                 ["제4조 활용", "브랜드 채널 3개월 활용"],
                 ["제5조 일정", `${formatIntroDate(11)}까지 게시`],
@@ -3005,7 +3005,7 @@ function InfluencerCampaignApplyPreview() {
             <dl className="grid grid-cols-2 gap-2 p-3 max-[640px]:gap-1.5 max-[640px]:p-2.5">
               {[
                 ["보상", "900,000원 + 제품"],
-                ["컨텐츠", "릴스 1건"],
+                ["콘텐츠", "릴스 1건"],
                 ["마감", formatIntroDate(11)],
                 ["상태", "신청 가능"],
               ].map(([label, value]) => (
@@ -3845,7 +3845,7 @@ const introDashboardDemoData = {
             brand: "브레드룸",
             title: "공동구매 릴스 계약",
             payment: "수수료 18%",
-            metric: "컨텐츠 제출",
+            metric: "콘텐츠 제출",
             date: formatIntroDateWithDday(4),
           },
           {
@@ -3863,7 +3863,7 @@ const introDashboardDemoData = {
             brand: "브레드룸",
             title: "성수 팝업 릴스 계약",
             payment: "2,100,000원",
-            metric: "컨텐츠 제출",
+            metric: "콘텐츠 제출",
             date: formatIntroDateWithDday(1),
           },
           {
@@ -3992,7 +3992,7 @@ const introDashboardDemoData = {
         party: "브루잉랩",
         title: "콜드브루 릴스 공동구매 계약",
         amount: "판매 18%",
-        status: "컨텐츠 제출",
+        status: "콘텐츠 제출",
         statusClass: "border-amber-200 bg-amber-50 text-amber-800",
         deadline: "마감 지남",
         note: "릴스 제출 링크",

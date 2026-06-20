@@ -27,39 +27,39 @@ const exactApiErrorMessages: Record<string, string> = {
   "Contract not found": "계약서를 찾을 수 없습니다.",
   "Contract access is not allowed": "이 계약을 볼 권한이 없습니다.",
   "Deliverable submission requires Supabase":
-    "현재 계정에서는 컨텐츠 제출을 사용할 수 없습니다. 관리자에게 문의해 주세요.",
+    "현재 계정에서는 콘텐츠 제출을 사용할 수 없습니다. 관리자에게 문의해 주세요.",
   "Deliverable review requires Supabase":
-    "현재 계정에서는 컨텐츠 확인 및 검수를 사용할 수 없습니다. 관리자에게 문의해 주세요.",
+    "현재 계정에서는 콘텐츠 확인 및 검수를 사용할 수 없습니다. 관리자에게 문의해 주세요.",
   "Contract must be signed before deliverables can be submitted":
-    "전자서명 완료 후 컨텐츠를 제출할 수 있습니다.",
+    "전자서명 완료 후 콘텐츠를 제출할 수 있습니다.",
   "Contract must be signed before post link can be submitted":
-    "전자서명 완료 후 컨텐츠 URL을 제출할 수 있습니다.",
+    "전자서명 완료 후 콘텐츠 URL을 제출할 수 있습니다.",
   "Contract must be signed before deliverables can be reviewed":
-    "전자서명 완료 상태에서만 컨텐츠를 검수할 수 있습니다.",
+    "전자서명 완료 상태에서만 콘텐츠를 검수할 수 있습니다.",
   "Contract must be signed before it can be closed":
-    "전자서명 완료 후 컨텐츠 검수를 마쳐야 계약을 마감할 수 있습니다.",
+    "전자서명 완료 후 콘텐츠 검수를 마쳐야 계약을 마감할 수 있습니다.",
   "All required content must be approved before contract close":
-    "모든 필수 컨텐츠를 승인한 뒤 광고 계약을 마감할 수 있습니다.",
+    "모든 필수 콘텐츠를 승인한 뒤 광고 계약을 마감할 수 있습니다.",
   "Valid deliverable requirement is required":
-    "제출할 컨텐츠 항목을 다시 선택해 주세요.",
+    "제출할 콘텐츠 항목을 다시 선택해 주세요.",
   "Content URL or proof file is required":
-    "컨텐츠 URL 또는 컨텐츠 파일을 하나 이상 추가해 주세요.",
+    "콘텐츠 URL 또는 콘텐츠 파일을 하나 이상 추가해 주세요.",
   "Content URL must be http or https":
-    "컨텐츠 URL은 https:// 또는 http:// 주소만 입력할 수 있습니다.",
+    "콘텐츠 URL은 https:// 또는 http:// 주소만 입력할 수 있습니다.",
   "Only PDF, PNG, JPG, or WebP proof files are allowed":
-    "컨텐츠 파일은 PDF, PNG, JPG, WebP만 첨부할 수 있습니다.",
-  "Proof file must be 10MB or smaller": "컨텐츠 파일은 10MB 이하로 첨부해 주세요.",
-  "Proof file is invalid": "컨텐츠 파일 형식을 확인해 주세요.",
-  "Proof file content is invalid": "컨텐츠 파일 내용과 형식이 일치하지 않습니다.",
+    "콘텐츠 파일은 PDF, PNG, JPG, WebP만 첨부할 수 있습니다.",
+  "Proof file must be 10MB or smaller": "콘텐츠 파일은 10MB 이하로 첨부해 주세요.",
+  "Proof file is invalid": "콘텐츠 파일 형식을 확인해 주세요.",
+  "Proof file content is invalid": "콘텐츠 파일 내용과 형식이 일치하지 않습니다.",
   "File could not be read": "파일을 읽지 못했습니다. 파일을 다시 선택해 주세요.",
   "Valid review status is required": "검수 상태를 다시 선택해 주세요.",
   "Review comment is required when requesting changes or rejecting":
     "수정 요청이나 반려에는 검수 코멘트가 필요합니다.",
   "Deliverable not found": "제출물을 찾을 수 없습니다.",
-  "Deliverable file not found": "컨텐츠 파일을 찾을 수 없습니다.",
-  "Deliverable file metadata is invalid": "컨텐츠 파일 정보가 올바르지 않습니다.",
+  "Deliverable file not found": "콘텐츠 파일을 찾을 수 없습니다.",
+  "Deliverable file metadata is invalid": "콘텐츠 파일 정보가 올바르지 않습니다.",
   "Deliverable file integrity check failed":
-    "컨텐츠 파일 무결성 확인에 실패했습니다. 다시 업로드해 주세요.",
+    "콘텐츠 파일 무결성 확인에 실패했습니다. 다시 업로드해 주세요.",
   "Valid share token is required": "공유 링크가 만료되었거나 올바르지 않습니다.",
   "Share token has expired": "공유 링크 유효기간이 만료되었습니다.",
   "Active contract is required for account verification":

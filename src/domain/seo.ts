@@ -301,7 +301,7 @@ const getRouteSeoConfig = (pathname: string): RouteSeoConfig => {
     "/intro/advertiser": {
       title: `광고주 광고 계약 관리 - ${PRODUCT_NAME}`,
       description:
-        "광고 조건 입력, 계약서 작성, 검토 링크 발송, 전자서명, 컨텐츠 제출 확인까지 광고주 계약 운영을 한 흐름으로 정리합니다.",
+        "광고 조건 입력, 계약서 작성, 검토 링크 발송, 전자서명, 콘텐츠 제출 확인까지 광고주 계약 운영을 한 흐름으로 정리합니다.",
       canonicalPath: "/intro/advertiser",
       robots: publicRobotsContent,
     },

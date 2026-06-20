@@ -432,7 +432,7 @@ const browserRenderRoutes = [
       "위험합니다",
       "광고비 미지급",
       "마감일 착오",
-      "컨텐츠 기준 변경",
+      "콘텐츠 기준 변경",
       "활용 범위 과다",
     ],
     mobileRequiredText: [

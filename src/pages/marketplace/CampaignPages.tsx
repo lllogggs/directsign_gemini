@@ -389,7 +389,7 @@ export function AdvertiserCampaignRecruitmentPage() {
     form.location.trim().length > 0 ? undefined : "지역/진행방식",
     form.offer.trim().length > 0 ? undefined : "제공상품",
     form.budget.trim().length > 0 ? undefined : "지급내용",
-    form.deliverables.trim().length > 0 ? undefined : "산출물",
+    form.deliverables.trim().length > 0 ? undefined : "콘텐츠",
     form.mission.trim().length > 0 ? undefined : "참여 미션",
     form.summary.trim().length > 0 ? undefined : "캠페인설명",
     form.uploadDeadline.trim().length > 0 ? undefined : "제출마감일",
@@ -711,7 +711,7 @@ export function AdvertiserCampaignRecruitmentPage() {
     : "예: 제품 사용 장면, 핵심 장점 2가지, 광고 표시 포함";
   const summaryPlaceholder = isSupportersCampaign
     ? "제품, 작성 미션, 게시 유지 조건, 제품 제공비 기준을 적어 주세요."
-    : "인플루언서가 바로 판단할 수 있도록 제품, 타깃, 원하는 컨텐츠 톤, 검수 기준을 적어 주세요.";
+    : "인플루언서가 바로 판단할 수 있도록 제품, 타깃, 원하는 콘텐츠 톤, 검수 기준을 적어 주세요.";
 
   const selectCampaignApplicant = async (application: MarketplaceMessageThread) => {
     if (
@@ -818,7 +818,7 @@ export function AdvertiserCampaignRecruitmentPage() {
                 캠페인 작성 폼
               </h2>
               <p className="mt-1 break-keep text-[12px] font-bold leading-5 text-neutral-500">
-                인플루언서가 지원 전에 보는 금액, 산출물, 일정만 빠짐없이 정리합니다.
+                인플루언서가 지원 전에 보는 금액, 콘텐츠, 일정만 빠짐없이 정리합니다.
               </p>
             </div>
             <BrandImageUpload
@@ -958,7 +958,7 @@ export function AdvertiserCampaignRecruitmentPage() {
               </CampaignField>
             </div>
 
-            <CampaignField label="산출물">
+            <CampaignField label="콘텐츠">
               <input
                 required
                 value={form.deliverables}
@@ -1575,7 +1575,7 @@ export function InfluencerCampaignDiscoveryPage() {
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
                     aria-label="캠페인 검색"
-                    placeholder="브랜드, 캠페인, 플랫폼, 산출물 검색"
+                    placeholder="브랜드, 캠페인, 플랫폼, 콘텐츠 검색"
                     className="h-9 w-full rounded-[8px] border border-neutral-200 bg-white pl-10 pr-3 text-[12px] font-bold text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950"
                   />
                 </div>
@@ -3007,7 +3007,7 @@ function CampaignRecruitmentDetailDialog({
     { label: "제공상품", value: getCampaignOfferLabel(campaign) },
     { label: "지급조건", value: campaign.budget },
     {
-      label: "산출물",
+      label: "콘텐츠",
       value: campaign.deliverables?.join(", ") || getCampaignMissionLabel(campaign),
     },
     { label: "참여 미션", value: getCampaignMissionLabel(campaign) },
@@ -3574,6 +3574,7 @@ function formatAppliedCampaignTitle(application: MarketplaceMessageThread) {
     "참여 미션:",
     "모집인원:",
     "지급내용:",
+    "콘텐츠:",
     "산출물:",
     "플랫폼:",
     "제출마감일:",

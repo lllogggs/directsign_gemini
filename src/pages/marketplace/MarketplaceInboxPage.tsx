@@ -901,22 +901,30 @@ function parseProposalSummary(summary: string) {
       "참여 미션:",
       "모집인원:",
       "지급내용:",
+      "콘텐츠:",
       "산출물:",
       "플랫폼:",
       "업로드 마감일:",
       "모집마감일:",
     ]) ?? summary.split(/[.。]/)[0]?.trim() ?? summary;
   const payment = extractSummaryField(summary, "지급내용:", [
+    "콘텐츠:",
     "산출물:",
     "플랫폼:",
     "업로드 마감일:",
     "모집마감일:",
   ]);
-  const deliverable = extractSummaryField(summary, "산출물:", [
-    "플랫폼:",
-    "업로드 마감일:",
-    "모집마감일:",
-  ]);
+  const deliverable =
+    extractSummaryField(summary, "콘텐츠:", [
+      "플랫폼:",
+      "업로드 마감일:",
+      "모집마감일:",
+    ]) ??
+    extractSummaryField(summary, "산출물:", [
+      "플랫폼:",
+      "업로드 마감일:",
+      "모집마감일:",
+    ]);
   const uploadDeadline = extractSummaryField(summary, "업로드 마감일:", [
     "모집마감일:",
   ]);
@@ -926,7 +934,7 @@ function parseProposalSummary(summary: string) {
   return {
     title: formatProposalSummaryTitle(title),
     payment: payment ? `지급 ${normalizeSummaryText(payment)}` : undefined,
-    deliverable: deliverable ? `산출물 ${normalizeSummaryText(deliverable)}` : undefined,
+    deliverable: deliverable ? `콘텐츠 ${normalizeSummaryText(deliverable)}` : undefined,
     deadline: deadline ? `마감 ${normalizeSummaryText(deadline)}` : undefined,
   };
 }

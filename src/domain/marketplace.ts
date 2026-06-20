@@ -163,7 +163,7 @@ export const marketplaceInfluencers: MarketplaceInfluencerProfile[] = [
     avatarLabel: "ZK",
     categories: ["뷰티", "라이프스타일", "패션"],
     audience: "20-34 여성 중심 · 관심사 기반 구매 전환",
-    audienceTags: ["20대 여성", "데일리 뷰티", "숏폼 반응", "리뷰형 컨텐츠"],
+    audienceTags: ["20대 여성", "데일리 뷰티", "숏폼 반응", "리뷰형 콘텐츠"],
     platforms: [
       {
         platform: "instagram",
@@ -223,7 +223,7 @@ export const marketplaceInfluencers: MarketplaceInfluencerProfile[] = [
     avatarUrl: "/images/influencers/creator-sora.png",
     categories: ["뷰티", "라이프스타일"],
     audience: "20-34 여성 중심 · 뷰티/라이프스타일 관심",
-    audienceTags: ["릴스", "쇼츠", "사용 장면", "리뷰형 컨텐츠"],
+    audienceTags: ["릴스", "쇼츠", "사용 장면", "리뷰형 콘텐츠"],
     platforms: [
       {
         platform: "instagram",
@@ -277,12 +277,12 @@ export const marketplaceInfluencers: MarketplaceInfluencerProfile[] = [
     displayName: "민서홈",
     headline: "홈카페, 리빙 소품, 주방 브랜드에 강한 리뷰형 크리에이터",
     bio:
-      "긴 설명보다 실제 배치, 사용 전후, 구매 이유를 차분하게 보여주는 컨텐츠를 만듭니다.",
+      "긴 설명보다 실제 배치, 사용 전후, 구매 이유를 차분하게 보여주는 콘텐츠를 만듭니다.",
     location: "부산 · 원격 협업",
     avatarLabel: "MH",
     categories: ["리빙", "홈카페", "푸드"],
     audience: "25-39 여성 · 리빙/소비재 관심",
-    audienceTags: ["홈카페", "주방용품", "저장형 컨텐츠", "블로그 연계"],
+    audienceTags: ["홈카페", "주방용품", "저장형 콘텐츠", "블로그 연계"],
     platforms: [
       {
         platform: "instagram",
@@ -314,7 +314,7 @@ export const marketplaceInfluencers: MarketplaceInfluencerProfile[] = [
         result: "검색 유입 4,200회",
       },
       {
-        title: "주방 선반 정리 컨텐츠",
+        title: "주방 선반 정리 콘텐츠",
         brand: "오브제스튜디오",
         result: "저장 1,140회",
       },
@@ -397,7 +397,7 @@ export const marketplaceInfluencers: MarketplaceInfluencerProfile[] = [
         handle: "@harufit",
         url: "https://www.tiktok.com/@harufit",
         followersLabel: "3.6만",
-        performanceLabel: "챌린지형 컨텐츠",
+        performanceLabel: "챌린지형 콘텐츠",
       },
     ],
     collaborationTypes: ["ppl", "sponsored_post", "supporters"],
@@ -429,7 +429,7 @@ export const marketplaceInfluencers: MarketplaceInfluencerProfile[] = [
     displayName: "루나데이",
     headline: "데일리 패션과 뷰티 제품을 자연스럽게 연결하는 릴스 크리에이터",
     bio:
-      "출근룩, 주말 외출, 파우치 루틴처럼 실제 하루 흐름 안에서 제품을 보여주는 컨텐츠를 만듭니다.",
+      "출근룩, 주말 외출, 파우치 루틴처럼 실제 하루 흐름 안에서 제품을 보여주는 콘텐츠를 만듭니다.",
     location: "서울 · 원격 협업",
     avatarLabel: "LD",
     avatarUrl: "/images/influencers/luna-day.png",
@@ -476,7 +476,7 @@ export const marketplaceInfluencers: MarketplaceInfluencerProfile[] = [
     avatarUrl: "/images/influencers/rooday.png",
     categories: ["푸드", "홈카페", "여행"],
     audience: "25-44 여성 · 로컬 맛집/카페 탐색",
-    audienceTags: ["방문 리뷰", "홈카페", "저장형 컨텐츠", "블로그"],
+    audienceTags: ["방문 리뷰", "홈카페", "저장형 콘텐츠", "블로그"],
     platforms: [
       {
         platform: "instagram",
@@ -548,7 +548,7 @@ export const marketplaceInfluencers: MarketplaceInfluencerProfile[] = [
     startingPriceLabel: "판매 조건 협의",
     responseTimeLabel: "당일 응답 가능",
     verifiedLabel: "플랫폼 인증 완료",
-    brandFit: ["홈카페", "공동구매", "레시피형 컨텐츠"],
+    brandFit: ["홈카페", "공동구매", "레시피형 콘텐츠"],
     recentBrands: ["브루잉랩", "오브제스튜디오"],
     portfolio: [
       {
@@ -568,7 +568,7 @@ export const marketplaceInfluencers: MarketplaceInfluencerProfile[] = [
     displayName: "지유로그",
     headline: "육아, 리빙, 생활용품 후기를 생활 장면 중심으로 보여주는 크리에이터",
     bio:
-      "아이와 함께 쓰는 제품, 집안 정리, 생활 루틴을 과장 없이 보여주는 컨텐츠를 제작합니다.",
+      "아이와 함께 쓰는 제품, 집안 정리, 생활 루틴을 과장 없이 보여주는 콘텐츠를 제작합니다.",
     location: "경기 · 원격 협업",
     avatarLabel: "ZL",
     avatarUrl: "/images/influencers/ziyu-log.png",
@@ -621,7 +621,7 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
     category: "뷰티 · 라이프스타일",
     headline: "신제품 런칭과 숏폼 전환을 함께할 크리에이터를 찾습니다",
     description:
-      "사용 장면이 분명한 뷰티/라이프스타일 컨텐츠를 선호합니다. 브랜드 소개와 필수 표현은 가볍게 제공하고, 크리에이터의 자연스러운 사용 경험을 우선합니다.",
+      "사용 장면이 분명한 뷰티/라이프스타일 콘텐츠를 선호합니다. 브랜드 소개와 필수 표현은 가볍게 제공하고, 크리에이터의 자연스러운 사용 경험을 우선합니다.",
     location: "서울 성수",
     logoLabel: "BR",
     logoUrl: "/images/brands/breadroom-logo.png",
@@ -655,7 +655,7 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
     category: "여행 · 로컬",
     headline: "방문형 리뷰와 브이로그 제안을 열어둔 여행 브랜드",
     description:
-      "숙박, 로컬 체험, 카페 방문 컨텐츠를 찾습니다. 광고 표기와 컨텐츠 사용 기간은 계약에서 명확히 정리합니다.",
+      "숙박, 로컬 체험, 카페 방문 콘텐츠를 찾습니다. 광고 표기와 콘텐츠 사용 기간은 계약에서 명확히 정리합니다.",
     location: "제주 · 강원",
     logoLabel: "MT",
     logoUrl: "/images/brands/monotrip-logo.png",
@@ -675,7 +675,7 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
         offer: "로컬 숙소 1박 체험",
         thumbnailUrl: "/images/campaigns/monotrip-local-stay-v2.png",
         budget: "300만-500만원",
-        mission: "객실, 체크인, 주변 동선을 브이로그와 후기 컨텐츠로 소개",
+        mission: "객실, 체크인, 주변 동선을 브이로그와 후기 콘텐츠로 소개",
         deadline: getRelativeCampaignDate(3),
         uploadDeadline: getRelativeCampaignDate(14),
       },
@@ -687,9 +687,9 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
     handle: "object-studio",
     displayName: "오브제스튜디오",
     category: "리빙 · 소품",
-    headline: "저장형 리빙 컨텐츠와 공동구매를 함께할 파트너를 찾습니다",
+    headline: "저장형 리빙 콘텐츠와 공동구매를 함께할 파트너를 찾습니다",
     description:
-      "제품 배치, 공간 전후 비교, 실제 사용 루틴이 보이는 컨텐츠를 선호합니다. 공동구매는 수수료 조건을 계약서에 분리해 기록합니다.",
+      "제품 배치, 공간 전후 비교, 실제 사용 루틴이 보이는 콘텐츠를 선호합니다. 공동구매는 수수료 조건을 계약서에 분리해 기록합니다.",
     location: "온라인 입점",
     logoLabel: "OS",
     logoUrl: "/images/brands/object-studio-logo.png",
@@ -698,7 +698,7 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
     budgetRangeLabel: "80만-350만원",
     responseTimeLabel: "당일 확인 가능",
     statusLabel: "입점 브랜드",
-    fitTags: ["리빙 소품", "공동구매", "저장형 컨텐츠"],
+    fitTags: ["리빙 소품", "공동구매", "저장형 콘텐츠"],
     audienceTargets: ["1인 가구", "홈오피스", "신혼 리빙"],
     activeCampaigns: [
       {
@@ -723,7 +723,7 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
     category: "뷰티 · 스킨케어",
     headline: "저자극 스킨케어 사용 후기를 자연스럽게 전할 크리에이터를 찾습니다",
     description:
-      "민감 피부 루틴, 성분 비교, 아침저녁 사용감을 섬세하게 보여줄 수 있는 컨텐츠를 선호합니다.",
+      "민감 피부 루틴, 성분 비교, 아침저녁 사용감을 섬세하게 보여줄 수 있는 콘텐츠를 선호합니다.",
     location: "서울 강남",
     logoLabel: "OB",
     logoUrl: "/images/brands/obre-beauty-logo.png",
@@ -754,9 +754,9 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
     handle: "housefit",
     displayName: "하우스핏",
     category: "헬스 · 홈트",
-    headline: "집에서 따라할 수 있는 운동 루틴 컨텐츠를 함께 만듭니다",
+    headline: "집에서 따라할 수 있는 운동 루틴 콘텐츠를 함께 만듭니다",
     description:
-      "운동 초보도 이해하기 쉬운 루틴, 자세 설명, 짧은 챌린지형 컨텐츠를 우선 검토합니다.",
+      "운동 초보도 이해하기 쉬운 루틴, 자세 설명, 짧은 챌린지형 콘텐츠를 우선 검토합니다.",
     location: "온라인 입점",
     logoLabel: "HF",
     logoUrl: "/images/brands/housefit-logo.png",
@@ -789,7 +789,7 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
     category: "푸드 · 홈카페",
     headline: "홈카페 레시피와 공동구매를 연결할 파트너를 찾습니다",
     description:
-      "원두, 드립백, 홈카페 도구를 실제 루틴 안에서 보여주는 컨텐츠와 공동구매 제안을 검토합니다.",
+      "원두, 드립백, 홈카페 도구를 실제 루틴 안에서 보여주는 콘텐츠와 공동구매 제안을 검토합니다.",
     location: "부산 · 온라인",
     logoLabel: "BL",
     logoUrl: "/images/brands/brewinglab-logo.png",
@@ -822,7 +822,7 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
     category: "헬스 · 수면케어",
     headline: "밤 루틴과 수면 케어 콘텐츠를 함께 만들 크리에이터를 찾습니다",
     description:
-      "수면 전 루틴, 휴식, 웰니스 제품 사용 장면을 차분하게 보여주는 컨텐츠를 선호합니다.",
+      "수면 전 루틴, 휴식, 웰니스 제품 사용 장면을 차분하게 보여주는 콘텐츠를 선호합니다.",
     location: "서울 · 온라인",
     logoLabel: "NC",
     logoUrl: "/images/brands/nightcare-logo.png",
@@ -874,7 +874,7 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
         offer: "1박 숙박권",
         thumbnailUrl: "/images/campaigns/stayhour-weekend-stay-v2.png",
         budget: "숙박 제공 + 300만원",
-        mission: "객실, 체크인, 주변 동선을 브이로그와 후기형 컨텐츠로 기록",
+        mission: "객실, 체크인, 주변 동선을 브이로그와 후기형 콘텐츠로 기록",
         deadline: getRelativeCampaignDate(14),
         uploadDeadline: getRelativeCampaignDate(28),
       },
@@ -888,7 +888,7 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
     category: "푸드 · 건강식",
     headline: "건강식 루틴과 식단 기록을 함께 보여줄 크리에이터를 찾습니다",
     description:
-      "아침 식단, 도시락, 운동 후 식사처럼 실제 생활 장면에서 제품을 소개하는 컨텐츠를 선호합니다.",
+      "아침 식단, 도시락, 운동 후 식사처럼 실제 생활 장면에서 제품을 소개하는 콘텐츠를 선호합니다.",
     location: "온라인 입점",
     logoLabel: "GS",
     preferredPlatforms: ["instagram", "youtube", "naver_blog"],
@@ -907,7 +907,7 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
         offer: "건강식 세트",
         thumbnailUrl: "/images/campaigns/greenspoon-breakfast-routine-v2.png",
         budget: "제품 제공 + 140만원",
-        mission: "아침 식단 루틴과 제품 섭취 장면을 리뷰형 컨텐츠로 제작",
+        mission: "아침 식단 루틴과 제품 섭취 장면을 리뷰형 콘텐츠로 제작",
         deadline: getRelativeCampaignDate(8),
         uploadDeadline: getRelativeCampaignDate(19),
       },

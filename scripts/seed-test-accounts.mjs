@@ -1392,7 +1392,7 @@ const buildShowcaseClauses = (scenario) =>
   [
     {
       clause_id: "scope",
-      category: "산출물",
+      category: "콘텐츠",
       content: `${scenario.deliverables.join(", ")}을 지정 채널에 업로드합니다.`,
     },
     {
@@ -1722,7 +1722,7 @@ const buildSeedCampaignApplicationSummary = (campaign) =>
     campaign.applicantLimit ? `모집인원: ${campaign.applicantLimit}` : undefined,
     `지급내용: ${campaign.budget}`,
     campaign.deliverables?.length
-      ? `산출물: ${campaign.deliverables.join(", ")}`
+      ? `콘텐츠: ${campaign.deliverables.join(", ")}`
       : undefined,
     campaign.platforms?.length
       ? `플랫폼: ${campaign.platforms.map((platform) => seedPlatformLabels[platform] ?? "기타").join(", ")}`

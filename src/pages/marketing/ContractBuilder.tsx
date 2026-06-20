@@ -262,11 +262,11 @@ const PLATFORM_CONTENT_GROUPS: Array<{
         platformLabel: "기타",
         contentType: "other",
         label: "직접 입력",
-        caption: "플랫폼/컨텐츠 직접 지정",
+        caption: "플랫폼/콘텐츠 직접 지정",
         requiredFields: ["platformName", "contentName", "note"],
         fields: [
           { key: "platformName", label: "플랫폼", placeholder: "예: 커뮤니티" },
-          { key: "contentName", label: "컨텐츠", placeholder: "예: 게시글" },
+          { key: "contentName", label: "콘텐츠", placeholder: "예: 게시글" },
           {
             key: "note",
             label: "조건",
@@ -300,7 +300,7 @@ const INITIAL_DRAFT: ContractDraft = {
   uploadDueDate: "",
   reviewDueDate: "",
   revisionLimit: "",
-  disclosureText: "컨텐츠 제목 또는 본문 첫 부분에 '유료광고' 또는 '#광고'를 명확히 표시",
+  disclosureText: "콘텐츠 제목 또는 본문 첫 부분에 '유료광고' 또는 '#광고'를 명확히 표시",
   trackingLink: "",
   requiredHashtags: "",
   brandAccountTags: "",
@@ -410,8 +410,8 @@ const buildContractClauses = (draft: ContractDraft): Clause[] => {
   if (deliverables.length > 0) {
     clauses.push({
       clause_id: "draft_deliverables",
-      category: "플랫폼 및 컨텐츠 조건",
-      content: `본 계약에 따라 인플루언서는 다음 플랫폼과 컨텐츠 조건에 맞춰 제작 및 게시해야 한다:\n${deliverables.join(
+      category: "플랫폼 및 콘텐츠 조건",
+      content: `본 계약에 따라 인플루언서는 다음 플랫폼과 콘텐츠 조건에 맞춰 제작 및 게시해야 한다:\n${deliverables.join(
         "\n",
       )}`,
       status: "PENDING_REVIEW",
@@ -433,7 +433,7 @@ const buildContractClauses = (draft: ContractDraft): Clause[] => {
         `캠페인 기간: ${draft.campaignStart || "입력 필요"} ~ ${
           draft.campaignEnd || "입력 필요"
         }`,
-        `컨텐츠 제출 마감: ${draft.uploadDueDate || "입력 필요"}`,
+        `콘텐츠 제출 마감: ${draft.uploadDueDate || "입력 필요"}`,
         `광고주 검수 회신 기한: ${draft.reviewDueDate || "입력 필요"}`,
         `수정 가능 횟수: ${draft.revisionLimit || "입력 필요"}`,
       ].join("\n"),
@@ -448,7 +448,7 @@ const buildContractClauses = (draft: ContractDraft): Clause[] => {
       category: "광고 표시 및 추적 조건",
       content: [
         `광고 표시 문구: ${draft.disclosureText || "입력 필요"}`,
-        "광고주와 인플루언서는 경제적 이해관계가 소비자에게 명확히 인식되도록 컨텐츠의 제목, 본문 첫 부분, 영상 설명 또는 플랫폼상 쉽게 확인 가능한 위치에 광고 표시를 유지해야 한다.",
+        "광고주와 인플루언서는 경제적 이해관계가 소비자에게 명확히 인식되도록 콘텐츠의 제목, 본문 첫 부분, 영상 설명 또는 플랫폼상 쉽게 확인 가능한 위치에 광고 표시를 유지해야 한다.",
         "플랫폼 정책이나 관계 법령상 더 엄격한 표시가 필요한 경우 그 기준을 우선 적용한다.",
         draft.trackingLink ? `필수 추적 링크: ${draft.trackingLink}` : "",
       ]
@@ -461,9 +461,9 @@ const buildContractClauses = (draft: ContractDraft): Clause[] => {
 
   clauses.push({
     clause_id: "draft_content_submission_review",
-    category: "컨텐츠 제출 및 검수 조건",
+    category: "콘텐츠 제출 및 검수 조건",
     content: [
-      "인플루언서는 컨텐츠 게시 후 광고주가 확인할 수 있는 컨텐츠 URL을 제출해야 한다. 광고주가 요구한 경우 게시물 캡처, 블로그 PDF, 스토리 캡처 등 파일을 함께 제출해야 한다. 광고주는 컨텐츠 URL, 광고표시 문구, 필수 해시태그, 브랜드 계정 태그, 게시일, 컨텐츠 형식별 조건을 확인할 수 있다. 제출된 컨텐츠에 누락 또는 오류가 있는 경우 광고주는 수정 요청 또는 반려를 할 수 있다. 광고주가 컨텐츠를 승인하면 해당 광고 계약은 마감 처리할 수 있다.",
+      "인플루언서는 콘텐츠 게시 후 광고주가 확인할 수 있는 콘텐츠 URL을 제출해야 한다. 광고주가 요구한 경우 게시물 캡처, 블로그 PDF, 스토리 캡처 등 파일을 함께 제출해야 한다. 광고주는 콘텐츠 URL, 광고표시 문구, 필수 해시태그, 브랜드 계정 태그, 게시일, 콘텐츠 형식별 조건을 확인할 수 있다. 제출된 콘텐츠에 누락 또는 오류가 있는 경우 광고주는 수정 요청 또는 반려를 할 수 있다. 광고주가 콘텐츠를 승인하면 해당 광고 계약은 마감 처리할 수 있다.",
       draft.requiredHashtags.trim()
         ? `필수 해시태그: ${splitCommaSeparated(draft.requiredHashtags).join(", ")}`
         : "",
@@ -482,9 +482,9 @@ const buildContractClauses = (draft: ContractDraft): Clause[] => {
 
   clauses.push({
     clause_id: "draft_content_usage",
-    category: "컨텐츠 활용권",
+    category: "콘텐츠 활용권",
     content: [
-      "광고주는 본 계약에서 선택한 범위 내에서 인플루언서가 제작한 컨텐츠를 사용할 수 있다. 사용 가능 채널, 사용 기간, 2차 편집 가능 여부는 본 계약에서 정한 조건에 따른다. 본 계약에 명시되지 않은 활용은 당사자 간 별도 합의가 필요하다.",
+      "광고주는 본 계약에서 선택한 범위 내에서 인플루언서가 제작한 콘텐츠를 사용할 수 있다. 사용 가능 채널, 사용 기간, 2차 편집 가능 여부는 본 계약에서 정한 조건에 따른다. 본 계약에 명시되지 않은 활용은 당사자 간 별도 합의가 필요하다.",
       `활용 허용 여부: ${draft.contentUsageAllowed ? "허용" : "별도 합의 필요"}`,
       draft.contentUsageChannels.trim()
         ? `사용 가능 채널: ${splitCommaSeparated(draft.contentUsageChannels).join(", ")}`
@@ -578,7 +578,7 @@ const validateContractDraft = (draft: ContractDraft): ValidationError[] => {
     errors.push({
       step: 1,
       field: "selectedDeliverables",
-      message: "계약에 포함할 플랫폼과 컨텐츠를 최소 1개 선택하세요.",
+      message: "계약에 포함할 플랫폼과 콘텐츠를 최소 1개 선택하세요.",
     });
   }
 
@@ -598,7 +598,7 @@ const validateContractDraft = (draft: ContractDraft): ValidationError[] => {
 
   requireField(3, "campaignStart", draft.campaignStart, "캠페인 시작일을 입력하세요.");
   requireField(3, "campaignEnd", draft.campaignEnd, "캠페인 종료일을 입력하세요.");
-  requireField(3, "uploadDueDate", draft.uploadDueDate, "컨텐츠 제출 마감일을 입력하세요.");
+  requireField(3, "uploadDueDate", draft.uploadDueDate, "콘텐츠 제출 마감일을 입력하세요.");
   requireField(3, "reviewDueDate", draft.reviewDueDate, "광고주 검수 회신 기한을 입력하세요.");
   requireField(3, "revisionLimit", draft.revisionLimit, "수정 가능 횟수를 입력하세요.");
   requireField(3, "payment", draft.payment, "지급 조건을 입력하세요.");
@@ -986,7 +986,7 @@ export function ContractBuilder() {
           file_required: Boolean(draft.contentFileRequirement.trim()),
           file_examples: draft.contentFileRequirement.trim() || undefined,
           review_scope:
-            "컨텐츠 URL, 광고표시 문구, 필수 해시태그, 브랜드 계정 태그, 게시일, 컨텐츠 형식별 조건",
+            "콘텐츠 URL, 광고표시 문구, 필수 해시태그, 브랜드 계정 태그, 게시일, 콘텐츠 형식별 조건",
         },
         content_usage: {
           allowed: draft.contentUsageAllowed,
@@ -1334,7 +1334,7 @@ export function ContractBuilder() {
               {step === 1 && (
                 <section className="animate-in fade-in slide-in-from-right-4 space-y-6">
                   <div>
-                    <Label className="mb-3 block">대상 플랫폼 및 컨텐츠</Label>
+                    <Label className="mb-3 block">대상 플랫폼 및 콘텐츠</Label>
                     <div className="space-y-3">
                       {selectedPlatformGroups.map((group) => (
                         <div
@@ -1424,7 +1424,7 @@ export function ContractBuilder() {
                             {addingContentPlatform === group.platform &&
                             group.remainingItems.length > 0 ? (
                               <div className="rounded-[10px] border border-neutral-200 bg-white p-3">
-                                <Label className="text-xs text-neutral-500">컨텐츠</Label>
+                                <Label className="text-xs text-neutral-500">콘텐츠</Label>
                                 <Select
                                   onValueChange={(value) => {
                                     const option = group.remainingItems.find(
@@ -1436,7 +1436,7 @@ export function ContractBuilder() {
                                   }}
                                 >
                                   <SelectTrigger className="mt-1 h-10">
-                                    <SelectValue placeholder="컨텐츠 선택" />
+                                    <SelectValue placeholder="콘텐츠 선택" />
                                   </SelectTrigger>
                                   <SelectContent>
                                     {group.remainingItems.map((option) => (
@@ -1468,7 +1468,7 @@ export function ContractBuilder() {
                                   className="mr-2 h-3.5 w-3.5"
                                   strokeWidth={1.8}
                                 />
-                                컨텐츠 추가
+                                콘텐츠 추가
                               </Button>
                             ) : null}
                           </div>
@@ -1508,7 +1508,7 @@ export function ContractBuilder() {
                               </Select>
                             </div>
                             <div>
-                              <Label className="text-xs text-neutral-500">컨텐츠</Label>
+                              <Label className="text-xs text-neutral-500">콘텐츠</Label>
                               <Select
                                 disabled={!pendingPlatform || pendingContentOptions.length === 0}
                                 onValueChange={(value) =>
@@ -1526,7 +1526,7 @@ export function ContractBuilder() {
                                   <SelectValue
                                     placeholder={
                                       pendingPlatform
-                                        ? "컨텐츠 선택"
+                                        ? "콘텐츠 선택"
                                         : "플랫폼 먼저 선택"
                                     }
                                   />
@@ -1662,7 +1662,7 @@ export function ContractBuilder() {
 
                   <div className="rounded-[16px] border border-neutral-200 bg-white p-4">
                     <h3 className="text-sm font-semibold text-neutral-950">
-                      컨텐츠 제출 조건
+                      콘텐츠 제출 조건
                     </h3>
                     <p className="mt-1 text-[12px] leading-5 text-neutral-500">
                       전자서명 완료 후 인플루언서가 제출해야 할 URL과 파일 기준입니다.
@@ -1691,7 +1691,7 @@ export function ContractBuilder() {
                         />
                       </div>
                       <div>
-                        <Label>컨텐츠 파일 제출 조건</Label>
+                        <Label>콘텐츠 파일 제출 조건</Label>
                         <Textarea
                           className="mt-1.5 min-h-[86px]"
                           placeholder="예: 게시물 캡처, 블로그 PDF, 스토리 캡처"
@@ -1716,9 +1716,9 @@ export function ContractBuilder() {
                         }
                       />
                       <div>
-                        <Label htmlFor="content-usage-allowed">컨텐츠 활용권</Label>
+                        <Label htmlFor="content-usage-allowed">콘텐츠 활용권</Label>
                         <p className="mt-1 text-[12px] leading-5 text-neutral-500">
-                          광고주가 제작 컨텐츠를 사용할 수 있는 범위를 계약서에 남깁니다.
+                          광고주가 제작 콘텐츠를 사용할 수 있는 범위를 계약서에 남깁니다.
                         </p>
                       </div>
                     </div>
@@ -2248,7 +2248,7 @@ const BuilderReviewPanel: React.FC<{
             />
           </ContractDocumentSection>
 
-          <ContractDocumentSection title="제1조 제공 매체 및 컨텐츠 조건">
+          <ContractDocumentSection title="제1조 제공 매체 및 콘텐츠 조건">
             {deliverables.length > 0 ? (
               <div className="space-y-2">
                 {deliverables.map((row, index) => (
@@ -2266,7 +2266,7 @@ const BuilderReviewPanel: React.FC<{
                 ))}
               </div>
             ) : (
-              <DocumentEmpty text="플랫폼과 컨텐츠 조건을 선택하면 계약서에 반영됩니다." />
+              <DocumentEmpty text="플랫폼과 콘텐츠 조건을 선택하면 계약서에 반영됩니다." />
             )}
           </ContractDocumentSection>
 

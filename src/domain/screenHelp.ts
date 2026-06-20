@@ -45,7 +45,7 @@ export const CONTRACT_FIRST_EXPERIENCE_CONTENT = {
     {
       title: "조건 확인",
       description:
-        "금액, 업로드 일정, 산출물, 사용 권한처럼 분쟁이 생기기 쉬운 항목을 발송 전에 확인합니다.",
+        "금액, 업로드 일정, 콘텐츠, 사용 권한처럼 분쟁이 생기기 쉬운 항목을 발송 전에 확인합니다.",
     },
     {
       title: "계약 발송",

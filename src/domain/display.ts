@@ -134,10 +134,13 @@ export const formatOperationalText = (
   if (!text) return fallback;
 
   const withoutBatch = text.replace(/^\[[^\]]+\]\s*/, "").trim();
-  const normalized = withoutBatch.toLowerCase();
+  const publicText = withoutBatch
+    .replace(/산출물/g, "콘텐츠")
+    .replace(/컨텐츠/g, "콘텐츠");
+  const normalized = publicText.toLowerCase();
 
   const exact: Record<string, string> = {
-    "content scope": "컨텐츠 범위",
+    "content scope": "콘텐츠 범위",
     "payment terms": "지급 조건",
     "change requested": "수정 요청",
     "qa change request for dashboard stage coverage.":
@@ -146,24 +149,24 @@ export const formatOperationalText = (
   };
   if (exact[normalized]) return exact[normalized];
 
-  const stageLabel = formatRawContractStage(withoutBatch);
+  const stageLabel = formatRawContractStage(publicText);
   if (stageLabel && withoutBatch !== text) return stageLabel;
 
-  const deliverable = formatDeliverableSeedText(withoutBatch);
+  const deliverable = formatDeliverableSeedText(publicText);
   if (deliverable) return deliverable;
 
-  const payment = formatPaymentSeedText(withoutBatch);
+  const payment = formatPaymentSeedText(publicText);
   if (payment) return payment;
 
-  if (/^qa[-\s_]/i.test(withoutBatch)) {
-    if (/approved/i.test(withoutBatch)) return "검수 승인 메모가 등록되었습니다.";
-    if (/deliverable submission/i.test(withoutBatch)) {
-      return "컨텐츠 제출 메모가 등록되었습니다.";
+  if (/^qa[-\s_]/i.test(publicText)) {
+    if (/approved/i.test(publicText)) return "검수 승인 메모가 등록되었습니다.";
+    if (/deliverable submission/i.test(publicText)) {
+      return "콘텐츠 제출 메모가 등록되었습니다.";
     }
     return fallback || "운영 기록이 저장되었습니다.";
   }
 
-  return withoutBatch
+  return publicText
     .replace(/\bNaver Blog\b/g, "네이버 블로그")
     .replace(/\bYouTube Shorts\b/g, "유튜브 숏츠")
     .replace(/\bInstagram Reels\b/g, "인스타그램 릴스")
@@ -229,8 +232,8 @@ const formatRawContractStage = (value: string) => {
     review: "검토",
     reviewing: "검토 중",
     "review needed": "검토 대기",
-    "deliverables due": "컨텐츠 제출",
-    "deliverables review": "컨텐츠 확인 및 검수",
+    "deliverables due": "콘텐츠 제출",
+    "deliverables review": "콘텐츠 확인 및 검수",
     signed: "서명 완료",
     signing: "서명 대기",
   };

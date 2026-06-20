@@ -250,7 +250,7 @@ const introDeck = `
         <p class="lead">메일, 메신저, 시트, PDF가 따로 움직이면 조건 확인과 책임 소재가 늦어집니다. 연락미는 실무자가 매일 확인해야 하는 상태와 다음 액션을 한 곳에 남깁니다.</p>
       </div>
       <div class="stack">
-        <div class="metric"><b>조건 누락</b><span>플랫폼, 컨텐츠 형태, 일정, 지급 조건이 대화 속에 섞이면 계약서 반영 여부를 다시 확인해야 합니다.</span></div>
+        <div class="metric"><b>조건 누락</b><span>플랫폼, 콘텐츠 형태, 일정, 지급 조건이 대화 속에 섞이면 계약서 반영 여부를 다시 확인해야 합니다.</span></div>
         <div class="metric"><b>수정 이력 분산</b><span>조항 수정 요청이 메신저에 남으면 누가 어떤 조건에 동의했는지 추적하기 어렵습니다.</span></div>
         <div class="metric"><b>보고 자료 재가공</b><span>계약 현황을 내부 시트로 다시 옮기는 일이 반복되면 마감과 상태가 어긋납니다.</span></div>
       </div>
@@ -263,16 +263,16 @@ const introDeck = `
     <div class="split">
       <div>
         <div class="kicker">계약 작성</div>
-        <h2>플랫폼과 컨텐츠를<br />순서대로 정리합니다.</h2>
-        <p class="lead">플랫폼을 먼저 고르고, 그 플랫폼에서 필요한 컨텐츠 형태를 선택합니다. 같은 플랫폼 안에서 컨텐츠를 추가하거나, 필요할 때 플랫폼을 더하는 방식이라 작성 흐름이 복잡해지지 않습니다.</p>
+        <h2>플랫폼과 콘텐츠를<br />순서대로 정리합니다.</h2>
+        <p class="lead">플랫폼을 먼저 고르고, 그 플랫폼에서 필요한 콘텐츠 형태를 선택합니다. 같은 플랫폼 안에서 콘텐츠를 추가하거나, 필요할 때 플랫폼을 더하는 방식이라 작성 흐름이 복잡해지지 않습니다.</p>
         <div class="points">
           <div class="point"><span class="num">1</span><div><strong>플랫폼 선택</strong><span>Instagram, YouTube, Naver, TikTok 등 협업 채널을 먼저 정합니다.</span></div></div>
-          <div class="point"><span class="num">2</span><div><strong>컨텐츠 조건 입력</strong><span>릴스, 숏폼, 롱폼, 블로그 원고처럼 실제 산출 방식에 맞춰 조건을 남깁니다.</span></div></div>
+          <div class="point"><span class="num">2</span><div><strong>콘텐츠 조건 입력</strong><span>릴스, 숏폼, 롱폼, 블로그 원고처럼 실제 산출 방식에 맞춰 조건을 남깁니다.</span></div></div>
           <div class="point"><span class="num">3</span><div><strong>계약서 초안 자동 정리</strong><span>입력한 조건이 PDF 계약 문서 흐름 안에 반영됩니다.</span></div></div>
         </div>
       </div>
       <div class="mockup screen-wide">
-        <img src="${assets.builder}" alt="플랫폼과 컨텐츠를 먼저 선택하는 계약서 작성 화면" />
+        <img src="${assets.builder}" alt="플랫폼과 콘텐츠를 먼저 선택하는 계약서 작성 화면" />
       </div>
     </div>
     ${footer("광고주 실무자 소개서", 3)}
@@ -371,7 +371,7 @@ const introDeck = `
       </div>
       <div>
         <div class="workflow">
-          <div class="step-card"><i>01</i><strong>조건 작성</strong><span>플랫폼, 컨텐츠, 일정, 지급 조건을 입력합니다.</span></div>
+          <div class="step-card"><i>01</i><strong>조건 작성</strong><span>플랫폼, 콘텐츠, 일정, 지급 조건을 입력합니다.</span></div>
           <div class="step-card"><i>02</i><strong>계약 확인</strong><span>PDF 문서 기준으로 검토하고 공유합니다.</span></div>
           <div class="step-card"><i>03</i><strong>진행 관리</strong><span>1:1 계약은 계약 화면, 캠페인은 캠페인 상세에서 이어갑니다.</span></div>
           <div class="step-card"><i>04</i><strong>보고 연결</strong><span>엑셀 또는 Google 스프레드시트로 내보냅니다.</span></div>
@@ -441,11 +441,11 @@ const guideDeck = `
       <div>
         <span class="guide-label">STEP 02</span>
         <h2>계약 작성은<br />플랫폼 선택에서 시작합니다.</h2>
-        <p class="lead">처음부터 모든 채널을 펼치지 않습니다. 하나의 플랫폼을 고른 뒤 그 안에서 컨텐츠를 선택하고, 필요할 때 컨텐츠나 플랫폼을 추가합니다.</p>
+        <p class="lead">처음부터 모든 채널을 펼치지 않습니다. 하나의 플랫폼을 고른 뒤 그 안에서 콘텐츠를 선택하고, 필요할 때 콘텐츠나 플랫폼을 추가합니다.</p>
         <div class="points">
           <div class="point"><span class="num">1</span><div><strong>플랫폼</strong><span>인스타그램, 유튜브, 네이버, 틱톡 중 계약할 채널을 선택합니다.</span></div></div>
-          <div class="point"><span class="num">2</span><div><strong>컨텐츠</strong><span>릴스, 피드, 스토리, 숏폼, 롱폼, 블로그 원고처럼 실제 제공물을 고릅니다.</span></div></div>
-          <div class="point"><span class="num">3</span><div><strong>조건</strong><span>영상은 길이, 블로그는 글자수와 사진 수처럼 컨텐츠에 맞는 기준을 입력합니다.</span></div></div>
+          <div class="point"><span class="num">2</span><div><strong>콘텐츠</strong><span>릴스, 피드, 스토리, 숏폼, 롱폼, 블로그 원고처럼 실제 제공물을 고릅니다.</span></div></div>
+          <div class="point"><span class="num">3</span><div><strong>조건</strong><span>영상은 길이, 블로그는 글자수와 사진 수처럼 콘텐츠에 맞는 기준을 입력합니다.</span></div></div>
         </div>
       </div>
       <div class="mockup screen-wide">
@@ -463,7 +463,7 @@ const guideDeck = `
         <h2>공유 전에는<br />계약서 원문을 확인합니다.</h2>
         <div class="checklist">
           <div class="check"><span class="mark">✓</span><div><strong>브랜드와 담당자 정보</strong><span>상대방이 계약 주체를 바로 알 수 있어야 합니다.</span></div></div>
-          <div class="check"><span class="mark">✓</span><div><strong>플랫폼과 컨텐츠</strong><span>릴스, 숏폼, 블로그 원고 등 실제 제출 항목이 계약서에 반영되어야 합니다.</span></div></div>
+          <div class="check"><span class="mark">✓</span><div><strong>플랫폼과 콘텐츠</strong><span>릴스, 숏폼, 블로그 원고 등 실제 제출 항목이 계약서에 반영되어야 합니다.</span></div></div>
           <div class="check"><span class="mark">✓</span><div><strong>기간, 마감, 지급 조건</strong><span>운영자가 관리할 날짜와 금액이 한 문서에 들어가야 합니다.</span></div></div>
           <div class="check"><span class="mark">✓</span><div><strong>특약</strong><span>별도 조건이 없다면 비워두고, 있다면 구체적으로 적습니다.</span></div></div>
         </div>
