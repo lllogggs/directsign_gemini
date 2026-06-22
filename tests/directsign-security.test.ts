@@ -1955,7 +1955,6 @@ describe("yeollock.me security regressions", () => {
       'label="종류"',
       "<ContractNameSearch",
       'label="지급내용"',
-      "<DashboardDateRangeFilter",
       'label="현 단계"',
     ].map((marker) => advertiserFilterPanel.indexOf(marker));
 
@@ -1978,11 +1977,15 @@ describe("yeollock.me security regressions", () => {
     assert.match(advertiserDashboard, /gap-x-3 gap-y-1/);
     assert.match(advertiserDashboard, /const \[contractDateFromFilter, setContractDateFromFilter\]/);
     assert.match(advertiserDashboard, /const \[contractDateToFilter, setContractDateToFilter\]/);
-    assert.match(advertiserDashboard, /function DashboardDateRangeFilter/);
-    assert.match(advertiserDashboard, /function DashboardDateInput/);
-    assert.match(advertiserDashboard, /type="date"/);
-    assert.match(advertiserDashboard, /placeholderLabel="시작일"/);
-    assert.match(advertiserDashboard, /placeholderLabel="종료일"/);
+    assert.match(advertiserDashboard, /const \[contractPeriodFilter, setContractPeriodFilter\]/);
+    assert.match(advertiserDashboard, /function DashboardPeriodPicker/);
+    assert.match(advertiserDashboard, /data-dashboard-period-picker-trigger="true"/);
+    assert.match(advertiserDashboard, /data-cost-period-quick="true"/);
+    assert.match(advertiserDashboard, /align="right"/);
+    assert.match(advertiserDashboard, /label: "금주"/);
+    assert.match(advertiserDashboard, /label: "전주"/);
+    assert.match(advertiserDashboard, /label: "당월"/);
+    assert.match(advertiserDashboard, /label: "전월"/);
     assert.match(advertiserDashboard, /matchesDashboardDateRange/);
     assert.match(advertiserDashboard, /Boolean\(contractDateFromFilter\)/);
     assert.match(advertiserDashboard, /Boolean\(contractDateToFilter\)/);
@@ -1992,7 +1995,7 @@ describe("yeollock.me security regressions", () => {
     assert.match(advertiserDashboard, /contractDownloadContracts\.length > DASHBOARD_CONTRACT_EXPORT_LIMIT/);
     assert.match(
       advertiserFilterPanel,
-      /lg:grid-cols-\[minmax\(132px,0\.34fr\)_minmax\(108px,0\.26fr\)_minmax\(300px,1fr\)_minmax\(132px,0\.34fr\)_minmax\(146px,0\.38fr\)_minmax\(112px,0\.3fr\)\]/,
+      /lg:grid-cols-\[minmax\(132px,0\.34fr\)_minmax\(108px,0\.26fr\)_minmax\(300px,1fr\)_minmax\(132px,0\.34fr\)_minmax\(112px,0\.3fr\)\]/,
     );
     assert.ok(advertiserFilterOrder.every((index) => index >= 0));
     assert.ok(
@@ -2004,7 +2007,7 @@ describe("yeollock.me security regressions", () => {
     assert.match(agents, /visible Korean copy "내보내기"/);
     assert.match(agents, /accessible\/title copy "내보내기"/);
     assert.match(agents, /Excel export should sit immediately beside the dashboard title/);
-    assert.match(agents, /Date filtering belongs inside the dashboard filter panel/);
+    assert.match(agents, /Date filtering should use the shared "기간 선택" button/);
     assert.match(agents, /same visible column order as the table/);
     assert.match(influencerDashboard, /<DashboardDownloadButton onClick=\{handleDownloadDashboard\} \/>/);
     assert.match(advertiserExportSource, /buildAdvertiserContractExportSheet/);

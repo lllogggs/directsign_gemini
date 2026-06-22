@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 
 type DashboardSurfaceRole = "advertiser" | "influencer";
-type DashboardSurfaceKind = "contracts" | "campaigns";
+type DashboardSurfaceKind = "contracts" | "campaigns" | "costs";
 
 interface DashboardSurfaceSwitchProps {
   role: DashboardSurfaceRole;
@@ -20,6 +20,7 @@ const surfaceConfig: Record<
     items: [
       { id: "contracts", label: "1:1 계약", href: "/advertiser/dashboard" },
       { id: "campaigns", label: "캠페인", href: "/advertiser/campaigns" },
+      { id: "costs", label: "광고비 현황", href: "/advertiser/costs" },
     ],
   },
   influencer: {

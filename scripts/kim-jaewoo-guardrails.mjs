@@ -258,13 +258,12 @@ const advertiserContractFilterPanel =
     ? advertiserDashboard.slice(advertiserContractFilterStart, advertiserContractFilterEnd)
     : "";
 const advertiserContractTableGrid =
-  "lg:grid-cols-[minmax(132px,0.34fr)_minmax(108px,0.26fr)_minmax(300px,1fr)_minmax(132px,0.34fr)_minmax(146px,0.38fr)_minmax(112px,0.3fr)]";
+  "lg:grid-cols-[minmax(132px,0.34fr)_minmax(108px,0.26fr)_minmax(300px,1fr)_minmax(132px,0.34fr)_minmax(112px,0.3fr)]";
 const advertiserContractFilterOrder = [
   'label="플랫폼"',
   'label="종류"',
   "<ContractNameSearch",
   'label="지급내용"',
-  "<DashboardDateRangeFilter",
   'label="현 단계"',
 ].map((marker) => advertiserContractFilterPanel.indexOf(marker));
 const hasAdvertiserContractFilterTableOrder =
@@ -1023,13 +1022,15 @@ check(
     advertiserDashboard.includes("const [contractDateFromFilter, setContractDateFromFilter]") &&
     advertiserDashboard.includes("const [contractDateToFilter, setContractDateToFilter]") &&
     advertiserDashboard.includes("matchesDashboardDateRange") &&
-    advertiserDashboard.includes("function DashboardDateRangeFilter") &&
-    advertiserDashboard.includes("function DashboardDateInput") &&
-    advertiserDashboard.includes('type="date"') &&
-    advertiserDashboard.includes("aria-label={`${label} 시작일 필터`}") &&
-    advertiserDashboard.includes("aria-label={`${label} 종료일 필터`}") &&
-    advertiserDashboard.includes('placeholderLabel="시작일"') &&
-    advertiserDashboard.includes('placeholderLabel="종료일"') &&
+    advertiserDashboard.includes("const [contractPeriodFilter, setContractPeriodFilter]") &&
+    advertiserDashboard.includes("function DashboardPeriodPicker") &&
+    advertiserDashboard.includes('data-dashboard-period-picker-trigger="true"') &&
+    advertiserDashboard.includes('data-cost-period-quick="true"') &&
+    advertiserDashboard.includes('align="right"') &&
+    advertiserDashboard.includes('label: "금주"') &&
+    advertiserDashboard.includes('label: "전주"') &&
+    advertiserDashboard.includes('label: "당월"') &&
+    advertiserDashboard.includes('label: "전월"') &&
     advertiserDashboard.includes("onDateFromFilterChange(\"\")") &&
     advertiserDashboard.includes("Boolean(contractDateFromFilter)") &&
     advertiserDashboard.includes("Boolean(contractDateToFilter)") &&
@@ -1043,7 +1044,7 @@ check(
     agents.includes('visible Korean copy "내보내기"') &&
     agents.includes('accessible/title copy "내보내기"') &&
     agents.includes("Excel export should sit immediately beside the dashboard title") &&
-    agents.includes("Date filtering belongs inside the dashboard filter panel") &&
+    agents.includes('Date filtering should use the shared "기간 선택" button') &&
     agents.includes("same visible column order as the table") &&
     advertiserDashboardExportSource.includes("buildAdvertiserContractExportSheet") &&
     advertiserDashboardExportSource.includes('"구분"') &&

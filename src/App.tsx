@@ -1078,6 +1078,7 @@ const getExactRoutePreloaders = (pathname: string): RouteModuleLoader[] => {
   if (pathname === "/advertiser/builder") return [loadContractBuilder];
   if (pathname === "/advertiser/discover") return [loadMarketplacePages];
   if (pathname === "/advertiser/campaigns") return [loadDashboard];
+  if (pathname === "/advertiser/costs") return [loadDashboard];
   if (pathname === "/advertiser/campaigns/new") return [loadCampaignPages];
   if (pathname === "/advertiser/messages") return [loadMarketplaceInboxPage];
   if (pathname === "/advertiser/verification") return [loadAdvertiserVerification];
@@ -1453,6 +1454,14 @@ function AppRoutes() {
             element={
               <AdvertiserAuthGate redirectUnauthenticated>
                 <Dashboard surface="campaigns" />
+              </AdvertiserAuthGate>
+            }
+          />
+          <Route
+            path="/advertiser/costs"
+            element={
+              <AdvertiserAuthGate redirectUnauthenticated>
+                <Dashboard surface="costs" />
               </AdvertiserAuthGate>
             }
           />

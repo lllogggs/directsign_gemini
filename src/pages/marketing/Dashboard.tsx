@@ -6,6 +6,7 @@ import {
   ArrowDownWideNarrow,
   ArrowUpDown,
   ArrowUpWideNarrow,
+  CalendarDays,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -206,7 +207,53 @@ type AdvertiserAccountSummary = {
   email?: string;
   businessNumber?: string;
 };
-type DashboardSurface = "contracts" | "campaigns";
+type DashboardSurface = "contracts" | "campaigns" | "costs";
+type CostPeriodFilter =
+  | "THIS_WEEK"
+  | "LAST_WEEK"
+  | "THIS_MONTH"
+  | "LAST_MONTH"
+  | "CUSTOM";
+type CostSourceFilter = "ALL" | "contracts" | "campaigns";
+type CostStatusFilter = "ALL" | "IN_PROGRESS" | "ENDED" | "PAID";
+type CostDashboardEntry = {
+  id: string;
+  contract: Contract;
+  dateValue: string;
+  dateLabel: string;
+  source: Exclude<CostSourceFilter, "ALL">;
+  sourceLabel: string;
+  title: string;
+  influencerName: string;
+  platformLabel: string;
+  amountValue?: number;
+  amountLabel: string;
+  lifecycle: CampaignLifecycle;
+  lifecycleLabel: string;
+  paid: boolean;
+  paidLabel: string;
+  nextDueLabel: string;
+  searchableText: string;
+};
+type CostDashboardSummary = {
+  total: number;
+  inProgress: number;
+  ended: number;
+  paid: number;
+};
+type CostTrendItem = {
+  key: string;
+  label: string;
+  from?: string;
+  to?: string;
+  contractAmount: number;
+  campaignAmount: number;
+  totalAmount: number;
+};
+type CostDateRange = {
+  from?: string;
+  to?: string;
+};
 
 interface DashboardProps {
   surface?: DashboardSurface;
@@ -243,6 +290,38 @@ const DETAIL_STATUS_FILTERS: DetailStatusFilter[] = [
 ];
 
 const AMOUNT_FILTERS: AmountFilter[] = ["ALL", "FIXED", "COMMISSION"];
+
+const COST_PERIOD_FILTERS: Array<{
+  value: CostPeriodFilter;
+  label: string;
+}> = [
+  { value: "THIS_WEEK", label: "금주" },
+  { value: "LAST_WEEK", label: "전주" },
+  { value: "THIS_MONTH", label: "당월" },
+  { value: "LAST_MONTH", label: "전월" },
+  { value: "CUSTOM", label: "기간 선택" },
+];
+
+const COST_SOURCE_FILTERS: Array<{
+  value: CostSourceFilter;
+  label: string;
+}> = [
+  { value: "ALL", label: "전체" },
+  { value: "contracts", label: "1:1 계약" },
+  { value: "campaigns", label: "캠페인" },
+];
+
+const COST_STATUS_FILTERS: Array<{
+  value: CostStatusFilter;
+  label: string;
+}> = [
+  { value: "ALL", label: "전체" },
+  { value: "IN_PROGRESS", label: "진행중" },
+  { value: "ENDED", label: "종료" },
+  { value: "PAID", label: "지급 확인" },
+];
+
+const COST_CALENDAR_WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 
 const CAMPAIGN_PARTICIPANT_OPTIONS: Array<{
   value: CampaignParticipantFilter;
@@ -474,6 +553,7 @@ const PLATFORM_META: Record<
 export function Dashboard({ surface = "contracts" }: DashboardProps) {
   const navigate = useNavigate();
   const isCampaignSurface = surface === "campaigns";
+  const isCostSurface = surface === "costs";
   const contracts = useAppStore((state) => state.contracts);
   const isHydrated = useAppStore((state) => state.isHydrated);
   const isSyncing = useAppStore((state) => state.isSyncing);
@@ -494,8 +574,18 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
   const [amountFilter, setAmountFilter] = useState<AmountFilter>("ALL");
   const [detailStatusFilter, setDetailStatusFilter] =
     useState<DetailStatusFilter>("ALL");
+  const [contractPeriodFilter, setContractPeriodFilter] =
+    useState<CostPeriodFilter>("CUSTOM");
   const [contractDateFromFilter, setContractDateFromFilter] = useState("");
   const [contractDateToFilter, setContractDateToFilter] = useState("");
+  const [costPeriodFilter, setCostPeriodFilter] =
+    useState<CostPeriodFilter>("THIS_MONTH");
+  const [costDateFromFilter, setCostDateFromFilter] = useState("");
+  const [costDateToFilter, setCostDateToFilter] = useState("");
+  const [costSourceFilter, setCostSourceFilter] =
+    useState<CostSourceFilter>("ALL");
+  const [costStatusFilter, setCostStatusFilter] =
+    useState<CostStatusFilter>("ALL");
   const [contractSort, setContractSort] = useState<ContractSort>({
     key: "updated",
     direction: "desc",
@@ -730,6 +820,45 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
     () => collapseInternalDuplicateContracts(contracts, getDashboardContractCollapseKey),
     [contracts],
   );
+  const costDateRange = useMemo(
+    () =>
+      getCostDateRange(
+        costPeriodFilter,
+        costDateFromFilter,
+        costDateToFilter,
+      ),
+    [costDateFromFilter, costDateToFilter, costPeriodFilter],
+  );
+  const costEntries = useMemo(
+    () => buildCostDashboardEntries(dashboardContracts, costDateRange),
+    [costDateRange, dashboardContracts],
+  );
+  const filteredCostEntries = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+
+    return costEntries
+      .filter(
+        (entry) =>
+          (!normalizedQuery ||
+            entry.searchableText.includes(normalizedQuery)) &&
+          (costSourceFilter === "ALL" || entry.source === costSourceFilter) &&
+          (costStatusFilter === "ALL" ||
+            (costStatusFilter === "PAID"
+              ? entry.paid
+              : costStatusFilter === "ENDED"
+                ? entry.lifecycle === "ENDED"
+                : entry.lifecycle !== "ENDED")),
+      )
+      .sort((a, b) => getDateMs(b.dateValue) - getDateMs(a.dateValue));
+  }, [costEntries, costSourceFilter, costStatusFilter, query]);
+  const costSummary = useMemo(
+    () => getCostDashboardSummary(filteredCostEntries),
+    [filteredCostEntries],
+  );
+  const costTrend = useMemo(
+    () => getCostTrendItems(filteredCostEntries, costPeriodFilter, costDateRange),
+    [costDateRange, costPeriodFilter, filteredCostEntries],
+  );
   const contractLifecycleCounts = useMemo(
     () => getContractLifecycleCounts(dashboardContracts),
     [dashboardContracts],
@@ -921,6 +1050,13 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
   const buildDashboardExportWorkbook = useCallback((): XlsxWorkbook | undefined => {
     const timestamp = getDashboardExportTimestamp();
 
+    if (isCostSurface) {
+      return {
+        fileName: `연락미-광고비-현황-${timestamp}.xlsx`,
+        sheets: [buildAdvertiserCostExportSheet(filteredCostEntries)],
+      };
+    }
+
     if (isCampaignSurface) {
       if (selectedCampaign) {
         return {
@@ -954,7 +1090,9 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
   }, [
     contractDownloadContracts,
     filteredCampaigns,
+    filteredCostEntries,
     isCampaignSurface,
+    isCostSurface,
     selectedCampaign,
   ]);
   const handleDownloadDashboard = useCallback(() => {
@@ -1003,7 +1141,7 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
 
   return (
     <div className="min-h-screen bg-[#f4f5f2] font-sans text-neutral-950 lg:h-screen lg:overflow-hidden">
-      {!isCampaignSurface && isHydrated && contracts.length === 0 ? (
+      {surface === "contracts" && isHydrated && contracts.length === 0 ? (
         <ContractFirstExperienceDialog
           content={CONTRACT_FIRST_EXPERIENCE_CONTENT}
           onCreateContract={() => navigate("/advertiser/builder")}
@@ -1085,12 +1223,16 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
                 <h1 className="truncate text-[17px] font-bold text-[#171a17]">
-                  {isCampaignSurface ? "캠페인 운영 대시보드" : "1:1 계약 대시보드"}
+                  {isCostSurface
+                    ? "광고비 현황"
+                    : isCampaignSurface
+                      ? "캠페인 운영 대시보드"
+                      : "1:1 계약 대시보드"}
                 </h1>
                 <DashboardDownloadButton onClick={handleDownloadDashboard} />
               </div>
               <div className="flex shrink-0 items-center gap-1.5">
-                {isCampaignSurface ? (
+                {isCostSurface ? null : isCampaignSurface ? (
                   <Link
                     to="/advertiser/campaigns/new"
                     className="yl-primary-action inline-flex h-10 min-w-[112px] shrink-0 items-center justify-center gap-1.5 rounded-[9px] px-3 text-[13px] font-extrabold leading-none transition"
@@ -1125,7 +1267,28 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
           />
 
           <div className="min-w-0 p-2 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
-            {isCampaignSurface ? (
+            {isCostSurface ? (
+              <CostDashboard
+                entries={filteredCostEntries}
+                totalEntries={costEntries.length}
+                summary={costSummary}
+                trend={costTrend}
+                periodFilter={costPeriodFilter}
+                onPeriodFilterChange={setCostPeriodFilter}
+                dateFromFilter={costDateFromFilter}
+                onDateFromFilterChange={setCostDateFromFilter}
+                dateToFilter={costDateToFilter}
+                onDateToFilterChange={setCostDateToFilter}
+                sourceFilter={costSourceFilter}
+                onSourceFilterChange={setCostSourceFilter}
+                statusFilter={costStatusFilter}
+                onStatusFilterChange={setCostStatusFilter}
+                query={query}
+                onQueryChange={setQuery}
+                onOpenContract={openContract}
+                isDataPending={isLoginTransitionPending || (!isHydrated && !syncError)}
+              />
+            ) : isCampaignSurface ? (
               <>
                 {marketplaceState.status === "error" && marketplaceState.error ? (
                   <CampaignDataErrorPanel message={marketplaceState.error} />
@@ -1188,6 +1351,8 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
                   onAmountFilterChange={setAmountFilter}
                   detailStatusFilter={detailStatusFilter}
                   onDetailStatusFilterChange={setDetailStatusFilter}
+                  periodFilter={contractPeriodFilter}
+                  onPeriodFilterChange={setContractPeriodFilter}
                   dateFromFilter={contractDateFromFilter}
                   onDateFromFilterChange={setContractDateFromFilter}
                   dateToFilter={contractDateToFilter}
@@ -1203,6 +1368,761 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
         </section>
       </main>
     </div>
+  );
+}
+
+function CostDashboard({
+  entries,
+  totalEntries,
+  summary,
+  trend,
+  periodFilter,
+  onPeriodFilterChange,
+  dateFromFilter,
+  onDateFromFilterChange,
+  dateToFilter,
+  onDateToFilterChange,
+  sourceFilter,
+  onSourceFilterChange,
+  statusFilter,
+  onStatusFilterChange,
+  query,
+  onQueryChange,
+  onOpenContract,
+  isDataPending,
+}: {
+  entries: CostDashboardEntry[];
+  totalEntries: number;
+  summary: CostDashboardSummary;
+  trend: CostTrendItem[];
+  periodFilter: CostPeriodFilter;
+  onPeriodFilterChange: (value: CostPeriodFilter) => void;
+  dateFromFilter: string;
+  onDateFromFilterChange: (value: string) => void;
+  dateToFilter: string;
+  onDateToFilterChange: (value: string) => void;
+  sourceFilter: CostSourceFilter;
+  onSourceFilterChange: (value: CostSourceFilter) => void;
+  statusFilter: CostStatusFilter;
+  onStatusFilterChange: (value: CostStatusFilter) => void;
+  query: string;
+  onQueryChange: (value: string) => void;
+  onOpenContract: (contract: Contract) => void;
+  isDataPending: boolean;
+}) {
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const activeFilters: AppliedFilter[] = [
+    sourceFilter !== "ALL"
+      ? {
+          id: "cost-source",
+          label: `구분 ${getCostSourceFilterLabel(sourceFilter)}`,
+          onRemove: () => onSourceFilterChange("ALL"),
+        }
+      : null,
+    statusFilter !== "ALL"
+      ? {
+          id: "cost-status",
+          label: `상태 ${getCostStatusFilterLabel(statusFilter)}`,
+          onRemove: () => onStatusFilterChange("ALL"),
+        }
+      : null,
+    query.trim()
+      ? {
+          id: "cost-query",
+          label: `검색 ${query.trim()}`,
+          onRemove: () => onQueryChange(""),
+        }
+      : null,
+  ].filter(isAppliedFilter);
+  const filterSummary =
+    activeFilters.length > 0 ? `${activeFilters.length}개 조건 적용` : "전체 조건";
+
+  return (
+    <section className="overflow-visible rounded-[8px] border border-[#d9e0d9] bg-white lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden">
+      <div className="border-b border-[#d9e0d9] bg-white px-3 py-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <DashboardPeriodPicker
+            periodFilter={periodFilter}
+            onPeriodFilterChange={onPeriodFilterChange}
+            dateFromFilter={dateFromFilter}
+            onDateFromFilterChange={onDateFromFilterChange}
+            dateToFilter={dateToFilter}
+            onDateToFilterChange={onDateToFilterChange}
+          />
+          <DashboardFilterToggleButton
+            open={filtersOpen}
+            activeCount={activeFilters.length}
+            onClick={() => setFiltersOpen((current) => !current)}
+            controlsId="advertiser-cost-filters"
+          />
+        </div>
+        <DashboardAppliedFilterBar
+          filters={activeFilters}
+          onClearAll={() => {
+            onSourceFilterChange("ALL");
+            onStatusFilterChange("ALL");
+            onQueryChange("");
+            onDateFromFilterChange("");
+            onDateToFilterChange("");
+          }}
+        />
+        {filtersOpen ? (
+          <div
+            id="advertiser-cost-filters"
+            className="grid grid-cols-2 gap-2 border-t border-[#d9e0d9] bg-[#f4f5f2] px-0 py-2.5 sm:grid-cols-[minmax(120px,0.22fr)_minmax(120px,0.22fr)_minmax(220px,0.32fr)_minmax(220px,0.36fr)] sm:items-end"
+          >
+            <TableFilterSelect
+              label="구분"
+              value={sourceFilter}
+              options={COST_SOURCE_FILTERS}
+              onChange={(value) => onSourceFilterChange(value as CostSourceFilter)}
+            />
+            <TableFilterSelect
+              label="상태"
+              value={statusFilter}
+              options={COST_STATUS_FILTERS}
+              onChange={(value) => onStatusFilterChange(value as CostStatusFilter)}
+            />
+            <CostDashboardSearch value={query} onChange={onQueryChange} />
+          </div>
+        ) : null}
+      </div>
+
+      <div className="min-h-0 overflow-y-auto bg-[#fbfbf8] p-3 lg:flex-1">
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          <CostMetricCard label="총 광고비" value={formatCostCurrency(summary.total)} />
+          <CostMetricCard
+            label="진행중 계약금액"
+            value={formatCostCurrency(summary.inProgress)}
+          />
+          <CostMetricCard
+            label="종료된 계약금액"
+            value={formatCostCurrency(summary.ended)}
+          />
+          <CostMetricCard
+            label="지급 확인 금액"
+            value={formatCostCurrency(summary.paid)}
+          />
+        </div>
+
+        <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(320px,0.9fr)_minmax(520px,1.35fr)]">
+          <CostTrendChart items={trend} />
+          <div className="overflow-hidden rounded-[8px] border border-[#d9e0d9] bg-white">
+            <div className="flex min-h-11 items-center justify-between gap-3 border-b border-[#d9e0d9] px-3 py-2">
+              <div className="min-w-0">
+                <p className="truncate text-[14px] font-extrabold leading-5 text-[#171a17]">
+                  광고비 상세
+                </p>
+                {isDataPending ? (
+                  <span
+                    className="mt-1 block h-3 w-24 rounded-full bg-neutral-100"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <p className="mt-0.5 truncate text-[11px] font-semibold text-[#606861]">
+                    {entries.length.toLocaleString("ko-KR")}건 표시 · {filterSummary}
+                  </p>
+                )}
+              </div>
+            </div>
+            <CostTableHeaderRow />
+            <div className="no-scrollbar max-h-[430px] divide-y divide-[#edf1ed] overflow-y-auto overscroll-contain lg:divide-y-0">
+              {isDataPending ? (
+                <CostTableSkeletonRows />
+              ) : entries.length > 0 ? (
+                entries.map((entry) => (
+                  <React.Fragment key={entry.id}>
+                    <CostRow
+                      entry={entry}
+                      onOpen={() => onOpenContract(entry.contract)}
+                    />
+                  </React.Fragment>
+                ))
+              ) : (
+                <CostEmptyState isInitialEmpty={totalEntries === 0} />
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function DashboardPeriodPicker({
+  periodFilter,
+  onPeriodFilterChange,
+  dateFromFilter,
+  onDateFromFilterChange,
+  dateToFilter,
+  onDateToFilterChange,
+  align = "left",
+}: {
+  periodFilter: CostPeriodFilter;
+  onPeriodFilterChange: (value: CostPeriodFilter) => void;
+  dateFromFilter: string;
+  onDateFromFilterChange: (value: string) => void;
+  dateToFilter: string;
+  onDateToFilterChange: (value: string) => void;
+  align?: "left" | "right";
+}) {
+  const activeRange = useMemo(
+    () => getCostDateRange(periodFilter, dateFromFilter, dateToFilter),
+    [dateFromFilter, dateToFilter, periodFilter],
+  );
+  const [open, setOpen] = useState(false);
+  const [draftPeriod, setDraftPeriod] =
+    useState<CostPeriodFilter>(periodFilter);
+  const [draftFrom, setDraftFrom] = useState(activeRange.from ?? "");
+  const [draftTo, setDraftTo] = useState(activeRange.to ?? "");
+  const [visibleMonth, setVisibleMonth] = useState(() =>
+    getCostCalendarMonth(activeRange.from ?? activeRange.to),
+  );
+  const activeButtonLabel = getCostPeriodButtonLabel(activeRange);
+  const draftRange = normalizeCostDraftRange(draftFrom, draftTo);
+
+  const syncDraftWithActiveRange = () => {
+    const nextRange = activeRange;
+    setDraftPeriod(periodFilter);
+    setDraftFrom(nextRange.from ?? "");
+    setDraftTo(nextRange.to ?? "");
+    setVisibleMonth(getCostCalendarMonth(nextRange.from ?? nextRange.to));
+  };
+
+  const applyQuickRange = (value: CostPeriodFilter) => {
+    const nextRange = getCostDateRange(value, "", "");
+    setDraftPeriod(value);
+    setDraftFrom(nextRange.from ?? "");
+    setDraftTo(nextRange.to ?? "");
+    setVisibleMonth(getCostCalendarMonth(nextRange.from ?? nextRange.to));
+  };
+  const selectDate = (value: string) => {
+    setDraftPeriod("CUSTOM");
+
+    if (!draftFrom || (draftFrom && draftTo)) {
+      setDraftFrom(value);
+      setDraftTo("");
+      return;
+    }
+
+    if (value < draftFrom) {
+      setDraftFrom(value);
+      setDraftTo(draftFrom);
+      return;
+    }
+
+    setDraftTo(value);
+  };
+  const applyToday = () => {
+    const today = toDateInputValue(new Date());
+    setDraftPeriod("CUSTOM");
+    setDraftFrom(today);
+    setDraftTo(today);
+    setVisibleMonth(getCostCalendarMonth(today));
+  };
+  const resetDraft = () => applyQuickRange("THIS_MONTH");
+  const applyDraft = () => {
+    if (draftPeriod === "CUSTOM") {
+      onDateFromFilterChange(draftRange.from ?? "");
+      onDateToFilterChange(draftRange.to ?? "");
+    } else {
+      const nextRange = getCostDateRange(draftPeriod, "", "");
+      onDateFromFilterChange(nextRange.from ?? "");
+      onDateToFilterChange(nextRange.to ?? "");
+    }
+
+    onPeriodFilterChange(draftPeriod);
+    setOpen(false);
+  };
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => {
+          if (!open) syncDraftWithActiveRange();
+          setOpen((current) => !current);
+        }}
+        aria-expanded={open}
+        data-dashboard-period-picker-trigger="true"
+        data-cost-period-picker-trigger="true"
+        className="inline-flex h-9 max-w-full items-center gap-2 rounded-[8px] border border-[#d9e0d9] bg-white px-3 text-[12px] font-extrabold text-[#303630] shadow-[0_8px_18px_rgba(23,26,23,0.045)] transition hover:border-[#171a17] hover:text-[#171a17]"
+      >
+        <CalendarDays className="h-3.5 w-3.5 shrink-0 text-[#606861]" strokeWidth={2} />
+        <span className="truncate">{activeButtonLabel}</span>
+        <ChevronDown
+          className={`h-3.5 w-3.5 shrink-0 text-[#606861] transition-transform ${
+            open ? "rotate-180" : ""
+          }`}
+          strokeWidth={2}
+        />
+      </button>
+
+      {open ? (
+        <div
+          className={`fixed inset-x-4 bottom-4 z-50 max-h-[72vh] overflow-y-auto rounded-[10px] border border-[#d9e0d9] bg-white shadow-[0_22px_70px_rgba(15,23,42,0.16)] sm:absolute sm:inset-x-auto sm:bottom-auto sm:top-[calc(100%+8px)] sm:w-[calc(100vw-64px)] sm:max-w-[760px] sm:max-h-none sm:overflow-hidden ${
+            align === "right" ? "sm:left-auto sm:right-0" : "sm:left-0"
+          }`}
+        >
+          <div className="border-b border-[#edf1ed] bg-[#fbfbf8] px-3 py-2.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="mr-1 text-[12px] font-extrabold text-[#606861]">
+                자동 선택
+              </span>
+              {COST_PERIOD_FILTERS.filter((item) => item.value !== "CUSTOM").map(
+                (item) => {
+                  const active = draftPeriod === item.value;
+
+                  return (
+                    <button
+                      key={item.value}
+                      type="button"
+                      data-cost-period-quick="true"
+                      onClick={() => applyQuickRange(item.value)}
+                      className={`h-8 rounded-[7px] px-3 text-[12px] font-extrabold transition ${
+                        active
+                          ? "bg-neutral-950 text-white"
+                          : "bg-white text-[#606861] ring-1 ring-[#d9e0d9] hover:text-[#171a17]"
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  );
+                },
+              )}
+            </div>
+          </div>
+
+          <div className="p-3 md:hidden">
+            <CostCalendarMonth
+              month={visibleMonth}
+              rangeFrom={draftRange.from}
+              rangeTo={draftRange.to}
+              onSelectDate={selectDate}
+              onPrevious={() =>
+                setVisibleMonth((current) => addCalendarMonths(current, -1))
+              }
+              onNext={() =>
+                setVisibleMonth((current) => addCalendarMonths(current, 1))
+              }
+            />
+          </div>
+
+          <div className="hidden gap-2 p-3 md:grid md:grid-cols-2">
+            <CostCalendarMonth
+              month={visibleMonth}
+              rangeFrom={draftRange.from}
+              rangeTo={draftRange.to}
+              onSelectDate={selectDate}
+              onPrevious={() =>
+                setVisibleMonth((current) => addCalendarMonths(current, -1))
+              }
+            />
+            <CostCalendarMonth
+              month={addCalendarMonths(visibleMonth, 1)}
+              rangeFrom={draftRange.from}
+              rangeTo={draftRange.to}
+              onSelectDate={selectDate}
+              onNext={() =>
+                setVisibleMonth((current) => addCalendarMonths(current, 1))
+              }
+            />
+          </div>
+
+          <div className="sticky bottom-0 z-10 border-t border-[#edf1ed] bg-[#fbfbf8] px-3 py-3">
+            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+              <div className="min-w-0">
+                <p className="text-[12px] font-extrabold text-[#303630]">
+                  선택된 기간
+                </p>
+                <div className="mt-2 grid gap-2 sm:grid-cols-[minmax(0,1fr)_16px_minmax(0,1fr)] sm:items-center">
+                  <CostDateInput
+                    value={draftRange.from ?? draftFrom}
+                    onChange={(value) => {
+                      setDraftPeriod("CUSTOM");
+                      setDraftFrom(value);
+                    }}
+                    label="시작일"
+                  />
+                  <span className="hidden text-center text-[12px] font-bold text-[#8b938d] sm:block">
+                    -
+                  </span>
+                  <CostDateInput
+                    value={draftRange.to ?? draftTo}
+                    onChange={(value) => {
+                      setDraftPeriod("CUSTOM");
+                      setDraftTo(value);
+                    }}
+                    label="종료일"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap justify-end gap-1.5">
+                <button
+                  type="button"
+                  onClick={applyToday}
+                  className="h-9 rounded-[7px] border border-[#d9e0d9] bg-white px-3 text-[12px] font-extrabold text-[#606861] transition hover:border-[#171a17] hover:text-[#171a17]"
+                >
+                  오늘
+                </button>
+                <button
+                  type="button"
+                  onClick={resetDraft}
+                  className="h-9 rounded-[7px] border border-[#d9e0d9] bg-white px-3 text-[12px] font-extrabold text-[#606861] transition hover:border-[#171a17] hover:text-[#171a17]"
+                >
+                  초기화
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOpen(false)}
+                  className="h-9 rounded-[7px] border border-[#d9e0d9] bg-white px-3 text-[12px] font-extrabold text-[#303630] transition hover:border-[#171a17]"
+                >
+                  닫기
+                </button>
+                <button
+                  type="button"
+                  data-dashboard-period-apply="true"
+                  onClick={applyDraft}
+                  className="h-9 rounded-[7px] bg-neutral-950 px-4 text-[12px] font-extrabold text-white transition hover:bg-neutral-800"
+                >
+                  적용
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function CostCalendarMonth({
+  month,
+  rangeFrom,
+  rangeTo,
+  onSelectDate,
+  onPrevious,
+  onNext,
+}: {
+  month: Date;
+  rangeFrom?: string;
+  rangeTo?: string;
+  onSelectDate: (value: string) => void;
+  onPrevious?: () => void;
+  onNext?: () => void;
+}) {
+  const days = getCostCalendarDays(month);
+
+  return (
+    <section className="min-w-0 rounded-[8px] border border-[#edf1ed] bg-white p-2.5">
+      <div className="grid h-8 grid-cols-[32px_minmax(0,1fr)_32px] items-center">
+        {onPrevious ? (
+          <button
+            type="button"
+            onClick={onPrevious}
+            aria-label="이전 달"
+            title="이전 달"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-[7px] text-[#606861] transition hover:bg-neutral-100 hover:text-[#171a17]"
+          >
+            <ChevronLeft className="h-4 w-4" strokeWidth={2.3} />
+          </button>
+        ) : (
+          <span />
+        )}
+        <p className="text-center text-[15px] font-black tabular-nums text-[#171a17]">
+          {formatCostCalendarMonthTitle(month)}
+        </p>
+        {onNext ? (
+          <button
+            type="button"
+            onClick={onNext}
+            aria-label="다음 달"
+            title="다음 달"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-[7px] text-[#606861] transition hover:bg-neutral-100 hover:text-[#171a17]"
+          >
+            <ChevronRight className="h-4 w-4" strokeWidth={2.3} />
+          </button>
+        ) : (
+          <span />
+        )}
+      </div>
+      <div className="mt-3 grid grid-cols-7 rounded-[6px] bg-[#f7f8f4] py-1">
+        {COST_CALENDAR_WEEKDAYS.map((day, index) => (
+          <span
+            key={day}
+            className={`text-center text-[12px] font-extrabold ${
+              index === 0
+                ? "text-rose-500"
+                : index === 6
+                  ? "text-blue-500"
+                  : "text-[#303630]"
+            }`}
+          >
+            {day}
+          </span>
+        ))}
+      </div>
+      <div className="mt-2 grid grid-cols-7 gap-1">
+        {days.map((date) => {
+          const value = toDateInputValue(date);
+          const inCurrentMonth = date.getMonth() === month.getMonth();
+          const dayIndex = date.getDay();
+          const selectedStart = value === rangeFrom;
+          const selectedEnd = value === rangeTo;
+          const inRange = Boolean(
+            rangeFrom && rangeTo && value > rangeFrom && value < rangeTo,
+          );
+          const isSelected = selectedStart || selectedEnd;
+          const today = value === toDateInputValue(new Date());
+          const dayTone =
+            dayIndex === 0
+              ? "text-rose-500"
+              : dayIndex === 6
+                ? "text-blue-500"
+                : "text-[#303630]";
+
+          return (
+            <button
+              key={value}
+              type="button"
+              onClick={() => onSelectDate(value)}
+              className={`flex h-8 min-w-0 items-center justify-center rounded-[7px] text-[13px] font-bold tabular-nums transition ${
+                isSelected
+                  ? "bg-neutral-950 text-white shadow-[0_8px_16px_rgba(23,23,23,0.16)]"
+                  : inRange
+                    ? "bg-blue-50 text-blue-700"
+                    : inCurrentMonth
+                      ? `${dayTone} hover:bg-neutral-100`
+                      : "text-neutral-300 hover:bg-neutral-50"
+              } ${today && !isSelected ? "ring-1 ring-blue-300" : ""}`}
+              aria-pressed={isSelected}
+            >
+              {date.getDate()}
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function CostDateInput({
+  value,
+  onChange,
+  label,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  label: string;
+}) {
+  return (
+    <label className="min-w-0">
+      <span className="sr-only">{label}</span>
+      <input
+        type="text"
+        inputMode="numeric"
+        maxLength={10}
+        placeholder="YYYY-MM-DD"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-9 w-full min-w-0 rounded-[7px] border border-[#d9e0d9] bg-white px-2 text-[12px] font-extrabold tabular-nums text-[#303630] outline-none transition hover:border-[#cbd5cc] focus:border-[#171a17]"
+      />
+    </label>
+  );
+}
+
+function CostMetricCard({ label, value }: { label: string; value: string }) {
+  return (
+    <article className="rounded-[8px] border border-[#d9e0d9] bg-white px-3 py-3">
+      <p className="truncate text-[12px] font-extrabold text-[#606861]">
+        {label}
+      </p>
+      <p className="mt-2 truncate text-[21px] font-black tabular-nums text-[#171a17]">
+        {value}
+      </p>
+    </article>
+  );
+}
+
+function CostTrendChart({ items }: { items: CostTrendItem[] }) {
+  const maxValue = Math.max(...items.map((item) => item.totalAmount), 0);
+
+  return (
+    <section className="rounded-[8px] border border-[#d9e0d9] bg-white p-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="truncate text-[14px] font-extrabold text-[#171a17]">
+          기간별 광고비
+        </p>
+        <div className="flex shrink-0 items-center gap-3 text-[11px] font-bold text-[#606861]">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-[3px] bg-neutral-950" />
+            1:1 계약
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-[3px] bg-[#2563eb]" />
+            캠페인
+          </span>
+        </div>
+      </div>
+      <div className="mt-4 flex h-[168px] items-end gap-2">
+        {items.map((item) => {
+          const totalHeight =
+            maxValue > 0 ? Math.max(8, (item.totalAmount / maxValue) * 100) : 0;
+          const campaignShare =
+            item.totalAmount > 0
+              ? (item.campaignAmount / item.totalAmount) * 100
+              : 0;
+          const contractShare = Math.max(0, 100 - campaignShare);
+
+          return (
+            <div key={item.key} className="flex min-w-0 flex-1 flex-col items-center gap-2">
+              <div className="flex h-[130px] w-full max-w-[34px] items-end">
+                {item.totalAmount > 0 ? (
+                  <div
+                    className="flex w-full flex-col justify-end overflow-hidden rounded-[7px] bg-neutral-100"
+                    style={{ height: `${totalHeight}%` }}
+                    title={`${item.label} ${formatCostCurrency(item.totalAmount)}`}
+                  >
+                    {item.campaignAmount > 0 ? (
+                      <span
+                        className="block w-full bg-[#2563eb]"
+                        style={{ height: `${campaignShare}%` }}
+                      />
+                    ) : null}
+                    {item.contractAmount > 0 ? (
+                      <span
+                        className="block w-full bg-neutral-950"
+                        style={{ height: `${contractShare}%` }}
+                      />
+                    ) : null}
+                  </div>
+                ) : (
+                  <span className="h-2 w-full rounded-[7px] bg-neutral-100" />
+                )}
+              </div>
+              <p className="w-full truncate text-center text-[11px] font-bold text-[#606861]">
+                {item.label}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function CostDashboardSearch({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="col-span-2 min-w-0 sm:col-span-auto">
+      <span className="block text-[11px] font-extrabold text-[#606861]">
+        검색
+      </span>
+      <span className="mt-1 flex h-9 items-center gap-2 rounded-[6px] border border-[#d9e0d9] bg-white px-2 transition-colors focus-within:border-[#171a17]">
+        <Search className="h-3.5 w-3.5 shrink-0 text-[#8b938d]" strokeWidth={2} />
+        <input
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder="계약명, 인플루언서 검색"
+          className="min-w-0 flex-1 bg-transparent text-[12px] font-bold text-[#303630] outline-none placeholder:text-[#a6aea8]"
+        />
+      </span>
+    </label>
+  );
+}
+
+function CostTableHeaderRow() {
+  return (
+    <div className="hidden border-b border-[#d7ddd7] bg-[#f7f8f4] px-3 py-2.5 lg:grid lg:grid-cols-[100px_86px_minmax(220px,1fr)_minmax(112px,0.36fr)_minmax(150px,0.5fr)_minmax(126px,0.4fr)] lg:items-center lg:gap-2">
+      <ColumnHeader label="계약 생성일" />
+      <ColumnHeader label="구분" />
+      <ColumnHeader label="계약명" />
+      <ColumnHeader label="인플루언서" />
+      <ColumnHeader label="계약 금액" />
+      <ColumnHeader label="상태" />
+    </div>
+  );
+}
+
+function CostRow({
+  entry,
+  onOpen,
+}: {
+  entry: CostDashboardEntry;
+  onOpen: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="group grid w-full gap-2 px-3 py-2.5 text-left transition-colors hover:bg-blue-50/45 lg:min-h-[42px] lg:grid-cols-[100px_86px_minmax(220px,1fr)_minmax(112px,0.36fr)_minmax(150px,0.5fr)_minmax(126px,0.4fr)] lg:items-center lg:py-1.5"
+    >
+      <p className="truncate text-[12px] font-semibold tabular-nums text-[#303630]">
+        {entry.dateLabel}
+      </p>
+      <p className="truncate text-[12px] font-extrabold text-[#303630]">
+        {entry.sourceLabel}
+      </p>
+      <div className="min-w-0">
+        <p className="truncate text-[13px] font-semibold text-[#171a17]">
+          {entry.title}
+        </p>
+        <p className="mt-1 truncate text-[11px] font-semibold text-[#606861] lg:hidden">
+          {entry.sourceLabel} · {entry.influencerName} · {entry.amountLabel}
+        </p>
+      </div>
+      <p className="hidden truncate text-[12px] font-semibold text-[#303630] lg:block">
+        {entry.influencerName}
+      </p>
+      <p className="hidden truncate text-[12px] font-semibold tabular-nums text-[#303630] lg:block">
+        {entry.amountLabel}
+      </p>
+      <p className="hidden truncate text-[12px] font-semibold text-[#303630] lg:block">
+        {entry.lifecycleLabel} · {entry.paidLabel}
+      </p>
+    </button>
+  );
+}
+
+function CostTableSkeletonRows() {
+  return (
+    <div className="divide-y divide-[#edf1ed] lg:divide-y-0" aria-hidden="true">
+      {Array.from({ length: 5 }, (_, index) => (
+        <div
+          key={index}
+          className="grid min-h-[52px] grid-cols-[88px_minmax(0,1fr)] items-center gap-2 px-3 py-2 lg:grid-cols-[100px_86px_minmax(220px,1fr)_minmax(112px,0.36fr)_minmax(150px,0.5fr)_minmax(126px,0.4fr)]"
+        >
+          <span className="h-3 w-20 rounded-full bg-neutral-100" />
+          <span className="h-3 w-16 rounded-full bg-neutral-100" />
+          <span className="h-4 w-4/5 rounded-full bg-neutral-100" />
+          <span className="h-3 w-24 rounded-full bg-neutral-100" />
+          <span className="h-3 w-24 rounded-full bg-neutral-100" />
+          <span className="h-3 w-20 rounded-full bg-neutral-100" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function CostEmptyState({ isInitialEmpty }: { isInitialEmpty: boolean }) {
+  return (
+    <section className="flex min-h-[190px] flex-col items-center justify-center bg-white px-6 text-center">
+      <div className="flex h-10 w-10 items-center justify-center rounded-[8px] bg-[#f8faf7] text-[#aeb7b0] ring-1 ring-[#d9e0d9]">
+        <FileText className="h-5 w-5" strokeWidth={1.7} />
+      </div>
+      <h2 className="mt-3 text-[14px] font-semibold text-[#171a17]">
+        {isInitialEmpty ? "표시할 광고비가 없습니다" : "조건에 맞는 광고비가 없습니다"}
+      </h2>
+      <p className="mt-1 max-w-md text-[12px] leading-5 text-[#7d857f]">
+        {isInitialEmpty ? "계약 금액이 있는 1:1 계약과 캠페인이 이곳에 표시됩니다." : "기간이나 필터를 바꿔보세요."}
+      </p>
+    </section>
   );
 }
 
@@ -1771,8 +2691,8 @@ function CampaignListView({
         onChange={onLifecycleFilterChange}
       />
       <div className="border-b border-[#d9e0d9] bg-white">
-        <div className="flex min-h-11 items-center justify-between gap-3 px-3 py-2">
-          <div className="min-w-0">
+        <div className="flex min-h-11 flex-wrap items-center justify-between gap-2 px-3 py-2">
+          <div className="min-w-[180px] flex-1">
             <p className="truncate text-[14px] font-extrabold leading-5 text-[#171a17]">
               모집 현황
             </p>
@@ -2339,8 +3259,8 @@ function CampaignDetailView({
       />
 
       <div className="border-b border-[#d9e0d9] bg-[#fbfcfa]">
-        <div className="flex min-h-11 items-center justify-between gap-3 px-3 py-2">
-          <div className="min-w-0">
+        <div className="flex min-h-11 flex-wrap items-center justify-between gap-2 px-3 py-2">
+          <div className="min-w-[180px] flex-1">
             <p className="truncate text-[14px] font-extrabold leading-5 text-[#171a17]">
               선정자별 진행
             </p>
@@ -3153,6 +4073,8 @@ function ContractTable({
   onAmountFilterChange,
   detailStatusFilter,
   onDetailStatusFilterChange,
+  periodFilter,
+  onPeriodFilterChange,
   dateFromFilter,
   onDateFromFilterChange,
   dateToFilter,
@@ -3176,6 +4098,8 @@ function ContractTable({
   onAmountFilterChange: (value: AmountFilter) => void;
   detailStatusFilter: DetailStatusFilter;
   onDetailStatusFilterChange: (value: DetailStatusFilter) => void;
+  periodFilter: CostPeriodFilter;
+  onPeriodFilterChange: (value: CostPeriodFilter) => void;
   dateFromFilter: string;
   onDateFromFilterChange: (value: string) => void;
   dateToFilter: string;
@@ -3239,18 +4163,18 @@ function ContractTable({
           onRemove: () => onDetailStatusFilterChange("ALL"),
         }
       : null,
-    dateFromFilter
+    dateFromFilter || dateToFilter
       ? {
-          id: "date-from",
-          label: `${dateColumnLabel} ${formatDateFilterLabel(dateFromFilter)} 이후`,
-          onRemove: () => onDateFromFilterChange(""),
-        }
-      : null,
-    dateToFilter
-      ? {
-          id: "date-to",
-          label: `${dateColumnLabel} ${formatDateFilterLabel(dateToFilter)} 이전`,
-          onRemove: () => onDateToFilterChange(""),
+          id: "date-range",
+          label: `${dateColumnLabel} ${formatCostRangeLabel({
+            from: dateFromFilter || undefined,
+            to: dateToFilter || undefined,
+          })}`,
+          onRemove: () => {
+            onPeriodFilterChange("CUSTOM");
+            onDateFromFilterChange("");
+            onDateToFilterChange("");
+          },
         }
       : null,
     query.trim()
@@ -3305,11 +4229,11 @@ function ContractTable({
     });
 
   return (
-    <section className="overflow-hidden rounded-[8px] border border-[#d9e0d9] bg-white lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+    <section className="overflow-visible rounded-[8px] border border-[#d9e0d9] bg-white lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden">
       {lifecycleTabs}
       <div className="border-b border-[#d9e0d9] bg-white">
-        <div className="flex min-h-11 items-center justify-between gap-3 px-3 py-2">
-          <div className="min-w-0">
+        <div className="flex min-h-11 flex-wrap items-center justify-between gap-2 px-3 py-2">
+          <div className="min-w-[180px] flex-1">
             <p className="truncate text-[14px] font-extrabold leading-5 text-[#171a17]">
               1:1 계약 목록
             </p>
@@ -3327,12 +4251,23 @@ function ContractTable({
               </p>
             )}
           </div>
-          <DashboardFilterToggleButton
-            open={filtersOpen}
-            activeCount={activeFilters.length}
-            onClick={() => setFiltersOpen((current) => !current)}
-            controlsId="advertiser-contract-filters"
-          />
+          <div className="flex w-full shrink-0 flex-wrap items-center justify-start gap-2 sm:w-auto sm:justify-end">
+            <DashboardPeriodPicker
+              periodFilter={periodFilter}
+              onPeriodFilterChange={onPeriodFilterChange}
+              dateFromFilter={dateFromFilter}
+              onDateFromFilterChange={onDateFromFilterChange}
+              dateToFilter={dateToFilter}
+              onDateToFilterChange={onDateToFilterChange}
+              align="right"
+            />
+            <DashboardFilterToggleButton
+              open={filtersOpen}
+              activeCount={activeFilters.length}
+              onClick={() => setFiltersOpen((current) => !current)}
+              controlsId="advertiser-contract-filters"
+            />
+          </div>
         </div>
         <DashboardAppliedFilterBar
           filters={activeFilters}
@@ -3341,6 +4276,7 @@ function ContractTable({
             onContractTypeFilterChange("ALL");
             onAmountFilterChange("ALL");
             onDetailStatusFilterChange("ALL");
+            onPeriodFilterChange("CUSTOM");
             onDateFromFilterChange("");
             onDateToFilterChange("");
             onQueryChange("");
@@ -3349,7 +4285,7 @@ function ContractTable({
         {filtersOpen ? (
           <div
             id="advertiser-contract-filters"
-            className="grid grid-cols-2 gap-2 border-t border-[#d9e0d9] bg-[#f4f5f2] px-3 py-2.5 lg:grid-cols-[minmax(132px,0.34fr)_minmax(108px,0.26fr)_minmax(300px,1fr)_minmax(132px,0.34fr)_minmax(146px,0.38fr)_minmax(112px,0.3fr)] lg:items-end"
+            className="grid grid-cols-2 gap-2 border-t border-[#d9e0d9] bg-[#f4f5f2] px-3 py-2.5 lg:grid-cols-[minmax(132px,0.34fr)_minmax(108px,0.26fr)_minmax(300px,1fr)_minmax(132px,0.34fr)_minmax(112px,0.3fr)] lg:items-end"
           >
             <TableFilterSelect
               label="플랫폼"
@@ -3376,14 +4312,6 @@ function ContractTable({
               value={amountFilter}
               options={amountOptions}
               onChange={(value) => onAmountFilterChange(value as AmountFilter)}
-            />
-            <DashboardDateRangeFilter
-              label={dateColumnLabel}
-              fromValue={dateFromFilter}
-              toValue={dateToFilter}
-              onFromChange={onDateFromFilterChange}
-              onToChange={onDateToFilterChange}
-              className="col-span-2 lg:col-span-auto"
             />
             <TableFilterSelect
               label="현 단계"
@@ -3645,84 +4573,6 @@ function ContractNameSearch({
         />
       </span>
     </div>
-  );
-}
-
-function DashboardDateRangeFilter({
-  label,
-  fromValue,
-  toValue,
-  onFromChange,
-  onToChange,
-  className = "",
-}: {
-  label: string;
-  fromValue: string;
-  toValue: string;
-  onFromChange: (value: string) => void;
-  onToChange: (value: string) => void;
-  className?: string;
-}) {
-  return (
-    <div className={`${className} block min-w-0`}>
-      <ColumnHeader label={label} />
-      <div className="mt-1 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1.5">
-        <DashboardDateInput
-          value={fromValue}
-          max={toValue || undefined}
-          aria-label={`${label} 시작일 필터`}
-          placeholderLabel="시작일"
-          onChange={onFromChange}
-        />
-        <span className="text-[12px] font-extrabold text-[#8b938d]" aria-hidden="true">
-          -
-        </span>
-        <DashboardDateInput
-          value={toValue}
-          min={fromValue || undefined}
-          aria-label={`${label} 종료일 필터`}
-          placeholderLabel="종료일"
-          onChange={onToChange}
-        />
-      </div>
-    </div>
-  );
-}
-
-function DashboardDateInput({
-  value,
-  min,
-  max,
-  "aria-label": ariaLabel,
-  placeholderLabel,
-  onChange,
-}: {
-  value: string;
-  min?: string;
-  max?: string;
-  "aria-label": string;
-  placeholderLabel: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <span className="relative block min-w-0">
-      {!value ? (
-        <span className="pointer-events-none absolute left-2 top-1/2 z-10 -translate-y-1/2 text-[12px] font-bold text-[#8b938d]">
-          {placeholderLabel}
-        </span>
-      ) : null}
-      <input
-        type="date"
-        value={value}
-        min={min}
-        max={max}
-        onChange={(event) => onChange(event.target.value)}
-        aria-label={ariaLabel}
-        className={`h-10 w-full min-w-0 rounded-[6px] border border-[#d9e0d9] bg-white px-2 text-[12px] font-bold tabular-nums outline-none transition-colors hover:border-[#cbd5cc] focus:border-[#171a17] ${
-          value ? "text-[#303630]" : "text-transparent"
-        }`}
-      />
-    </span>
   );
 }
 
@@ -4120,6 +4970,391 @@ function formatDashboardAmountLabel(value?: string | null) {
 
   if (percentMatch) return `수수료 ${percentMatch[1]}%`;
   return label || "-";
+}
+
+function getCostDateRange(
+  period: CostPeriodFilter,
+  customFrom: string,
+  customTo: string,
+): CostDateRange {
+  if (period === "CUSTOM") {
+    return {
+      from: customFrom || undefined,
+      to: customTo || undefined,
+    };
+  }
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  let from: Date;
+  let to: Date;
+
+  if (period === "THIS_WEEK") {
+    const mondayOffset = (today.getDay() + 6) % 7;
+    from = new Date(today);
+    from.setDate(today.getDate() - mondayOffset);
+    to = new Date(from);
+    to.setDate(from.getDate() + 6);
+  } else if (period === "LAST_WEEK") {
+    const mondayOffset = (today.getDay() + 6) % 7;
+    from = new Date(today);
+    from.setDate(today.getDate() - mondayOffset - 7);
+    to = new Date(from);
+    to.setDate(from.getDate() + 6);
+  } else if (period === "LAST_MONTH") {
+    from = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    to = new Date(today.getFullYear(), today.getMonth(), 0);
+  } else {
+    from = new Date(today.getFullYear(), today.getMonth(), 1);
+    to = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+  }
+
+  return {
+    from: toDateInputValue(from),
+    to: toDateInputValue(to),
+  };
+}
+
+function getCostPeriodButtonLabel(range: CostDateRange) {
+  const rangeLabel = formatCostRangeLabel(range);
+  return rangeLabel ? `기간 선택 · ${rangeLabel}` : "기간 선택";
+}
+
+function formatCostRangeLabel(range: CostDateRange) {
+  if (range.from && range.to) {
+    if (range.from === range.to) return formatDateFilterLabel(range.from);
+    return `${formatDateFilterLabel(range.from)}-${formatDateFilterLabel(range.to)}`;
+  }
+  if (range.from) return `${formatDateFilterLabel(range.from)}-`;
+  if (range.to) return `-${formatDateFilterLabel(range.to)}`;
+  return "";
+}
+
+function normalizeCostDraftRange(from: string, to: string): CostDateRange {
+  if (from && to) {
+    return from <= to ? { from, to } : { from: to, to: from };
+  }
+  if (from) return { from, to: from };
+  if (to) return { from: to, to };
+  return {};
+}
+
+function getCostCalendarMonth(value?: string) {
+  const date = parseDateInputValue(value) ?? new Date();
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function addCalendarMonths(date: Date, amount: number) {
+  return new Date(date.getFullYear(), date.getMonth() + amount, 1);
+}
+
+function formatCostCalendarMonthTitle(date: Date) {
+  return `${date.getFullYear()}. ${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function getCostCalendarDays(month: Date) {
+  const firstDay = new Date(month.getFullYear(), month.getMonth(), 1);
+  const start = new Date(firstDay);
+  start.setDate(firstDay.getDate() - firstDay.getDay());
+
+  return Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    return date;
+  });
+}
+
+function buildCostDashboardEntries(
+  contracts: Contract[],
+  range: CostDateRange,
+): CostDashboardEntry[] {
+  return contracts
+    .map((contract) => buildCostDashboardEntry(contract))
+    .filter((entry): entry is CostDashboardEntry => Boolean(entry))
+    .filter(
+      (entry) =>
+        (!range.from || entry.dateValue >= range.from) &&
+        (!range.to || entry.dateValue <= range.to),
+    );
+}
+
+function buildCostDashboardEntry(contract: Contract): CostDashboardEntry | undefined {
+  const dateValue = getCostContractDateValue(contract);
+  if (!dateValue) return undefined;
+
+  const lifecycle = getDashboardContractLifecycle(contract);
+  const source =
+    contract.campaign?.source === "marketplace_campaign" ? "campaigns" : "contracts";
+  const sourceLabel = source === "campaigns" ? "캠페인" : "1:1 계약";
+  const title = formatDashboardContractTitle(contract.title);
+  const influencerName = removeInternalTestLabel(
+    contract.influencer_info?.name,
+    "인플루언서",
+  );
+  const platformLabel = formatCampaignPlatformSummary(getContractPlatforms(contract));
+  const amountValue = parseDashboardCostAmount(contract.campaign?.budget);
+  const amountLabel = formatDashboardAmountLabel(contract.campaign?.budget);
+  const lifecycleLabel = getCostLifecycleLabel(lifecycle);
+  const paid = Boolean(contract.settlement?.advertiser_confirmed_paid);
+  const paidLabel = paid ? "지급 확인" : "미확인";
+  const nextDueLabel = formatDashboardContractDateLabel(contract, lifecycle);
+
+  return {
+    id: contract.id,
+    contract,
+    dateValue,
+    dateLabel: formatDateFilterLabel(dateValue),
+    source,
+    sourceLabel,
+    title,
+    influencerName,
+    platformLabel,
+    amountValue,
+    amountLabel,
+    lifecycle,
+    lifecycleLabel,
+    paid,
+    paidLabel,
+    nextDueLabel,
+    searchableText: [
+      title,
+      influencerName,
+      platformLabel,
+      sourceLabel,
+      amountLabel,
+      lifecycleLabel,
+      paidLabel,
+    ]
+      .join(" ")
+      .toLowerCase(),
+  };
+}
+
+function getCostContractDateValue(contract: Contract) {
+  const rawValue = contract.created_at || contract.updated_at;
+  if (!rawValue) return "";
+
+  const date = new Date(rawValue);
+  return Number.isNaN(date.getTime()) ? "" : toDateInputValue(date);
+}
+
+function parseDashboardCostAmount(value?: string | null) {
+  const text = value?.trim();
+  if (!text || /%|수수료|commission|판매\s*수익/i.test(text)) return undefined;
+
+  const compact = text.replace(/,/g, "");
+  const millionMatch = compact.match(/(\d+(?:\.\d+)?)\s*만\s*원?/);
+  if (millionMatch) {
+    const amount = Number(millionMatch[1]) * 10_000;
+    return Number.isFinite(amount) ? Math.round(amount) : undefined;
+  }
+
+  const numberMatch = compact.match(/(\d{4,})/);
+  if (!numberMatch) return undefined;
+
+  const amount = Number(numberMatch[1]);
+  return Number.isFinite(amount) ? amount : undefined;
+}
+
+function getCostDashboardSummary(entries: CostDashboardEntry[]): CostDashboardSummary {
+  return entries.reduce<CostDashboardSummary>(
+    (summary, entry) => {
+      const amount = entry.amountValue ?? 0;
+
+      summary.total += amount;
+      if (entry.lifecycle === "ENDED") summary.ended += amount;
+      else summary.inProgress += amount;
+      if (entry.paid) summary.paid += amount;
+
+      return summary;
+    },
+    {
+      total: 0,
+      inProgress: 0,
+      ended: 0,
+      paid: 0,
+    },
+  );
+}
+
+function getCostTrendItems(
+  entries: CostDashboardEntry[],
+  period: CostPeriodFilter,
+  range: CostDateRange,
+): CostTrendItem[] {
+  const buckets = getCostTrendBuckets(entries, period, range);
+  const byKey = new Map(
+    buckets.map((bucket) => [
+      bucket.key,
+      {
+        ...bucket,
+        contractAmount: 0,
+        campaignAmount: 0,
+        totalAmount: 0,
+      },
+    ]),
+  );
+
+  entries.forEach((entry) => {
+    const bucket = buckets.find(
+      (item) =>
+        item.from &&
+        item.to &&
+        entry.dateValue >= item.from &&
+        entry.dateValue <= item.to,
+    );
+    const item = bucket
+      ? byKey.get(bucket.key)
+      : byKey.get(entry.dateValue.slice(0, 7));
+    if (!item) return;
+
+    const amount = entry.amountValue ?? 0;
+    if (entry.source === "campaigns") item.campaignAmount += amount;
+    else item.contractAmount += amount;
+    item.totalAmount += amount;
+  });
+
+  return Array.from(byKey.values());
+}
+
+function getCostTrendBuckets(
+  entries: CostDashboardEntry[],
+  period: CostPeriodFilter,
+  range: CostDateRange,
+) {
+  if (period === "THIS_WEEK" || period === "LAST_WEEK") {
+    return buildDailyCostTrendBuckets(range);
+  }
+  if (period === "THIS_MONTH" || period === "LAST_MONTH") {
+    return buildWeeklyCostTrendBuckets(range);
+  }
+  return buildMonthCostTrendBuckets(entries, range);
+}
+
+function buildDailyCostTrendBuckets(range: CostDateRange) {
+  const from = parseDateInputValue(range.from) ?? new Date();
+  const to = parseDateInputValue(range.to) ?? from;
+
+  return buildDateBucketRange(from, to, (date) => ({
+    key: toDateInputValue(date),
+    label: `${date.getMonth() + 1}.${date.getDate()}`,
+    from: toDateInputValue(date),
+    to: toDateInputValue(date),
+  }));
+}
+
+function buildWeeklyCostTrendBuckets(range: CostDateRange) {
+  const from = parseDateInputValue(range.from) ?? new Date();
+  const to = parseDateInputValue(range.to) ?? from;
+  const buckets: Array<{ key: string; label: string; from: string; to: string }> = [];
+  let cursor = new Date(from);
+
+  while (cursor <= to) {
+    const bucketStart = new Date(cursor);
+    const bucketEnd = new Date(cursor);
+    bucketEnd.setDate(bucketEnd.getDate() + 6);
+    if (bucketEnd > to) bucketEnd.setTime(to.getTime());
+
+    const weekLabel = `${buckets.length + 1}주`;
+
+    buckets.push({
+      key: toDateInputValue(bucketStart),
+      label: weekLabel,
+      from: toDateInputValue(bucketStart),
+      to: toDateInputValue(bucketEnd),
+    });
+
+    cursor = new Date(bucketEnd);
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return buckets.length > 0
+    ? buckets
+    : [
+        {
+          key: toDateInputValue(from),
+          label: `${from.getMonth() + 1}.${from.getDate()}`,
+          from: toDateInputValue(from),
+          to: toDateInputValue(from),
+        },
+      ];
+}
+
+function buildDateBucketRange<T>(
+  from: Date,
+  to: Date,
+  createBucket: (date: Date) => T,
+) {
+  const buckets: T[] = [];
+  const cursor = new Date(from);
+
+  while (cursor <= to) {
+    buckets.push(createBucket(new Date(cursor)));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return buckets.length > 0 ? buckets : [createBucket(from)];
+}
+
+function parseDateInputValue(value?: string) {
+  if (!value) return undefined;
+  const [year, month, day] = value.split("-").map((part) => Number(part));
+  if (!year || !month || !day) return undefined;
+  const date = new Date(year, month - 1, day);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+function buildMonthCostTrendBuckets(
+  entries: CostDashboardEntry[],
+  range: CostDateRange,
+) {
+  const keys = Array.from(
+    new Set(entries.map((entry) => entry.dateValue.slice(0, 7))),
+  ).sort();
+
+  if (keys.length > 0) {
+    return keys.map((key) => ({
+      key,
+      label: key.replace("-", "."),
+      from: `${key}-01`,
+      to: getMonthEndDateInputValue(key),
+    }));
+  }
+
+  const fallback = range.from ?? toDateInputValue(new Date());
+  const key = fallback.slice(0, 7);
+
+  return [
+    {
+      key,
+      label: key.replace("-", "."),
+      from: `${key}-01`,
+      to: getMonthEndDateInputValue(key),
+    },
+  ];
+}
+
+function getMonthEndDateInputValue(yearMonth: string) {
+  const [year, month] = yearMonth.split("-").map((part) => Number(part));
+  if (!year || !month) return `${yearMonth}-31`;
+  return toDateInputValue(new Date(year, month, 0));
+}
+
+function formatCostCurrency(value: number) {
+  return `${Math.round(value).toLocaleString("ko-KR")}원`;
+}
+
+function getCostLifecycleLabel(lifecycle: CampaignLifecycle) {
+  if (lifecycle === "ENDED") return "종료";
+  return "진행중";
+}
+
+function getCostSourceFilterLabel(value: CostSourceFilter) {
+  return COST_SOURCE_FILTERS.find((item) => item.value === value)?.label ?? "전체";
+}
+
+function getCostStatusFilterLabel(value: CostStatusFilter) {
+  return COST_STATUS_FILTERS.find((item) => item.value === value)?.label ?? "전체";
 }
 
 function _compareContractsBySort(a: Contract, b: Contract, sort: ContractSort) {
@@ -5813,6 +7048,38 @@ function getContractAuditExportSummary(contract: Contract) {
     count: events.length,
     firstAt: events[0]?.created_at,
     latestAt: events.at(-1)?.created_at,
+  };
+}
+
+function buildAdvertiserCostExportSheet(entries: CostDashboardEntry[]): XlsxSheet {
+  return {
+    name: "광고비 현황",
+    columns: [
+      "계약 생성일",
+      "구분",
+      "계약명",
+      "인플루언서",
+      "플랫폼",
+      "계약 금액",
+      "합산 금액",
+      "계약 상태",
+      "지급 상태",
+      "다음 기한",
+      "최종수정일",
+    ],
+    rows: entries.map((entry) => [
+      entry.dateLabel,
+      entry.sourceLabel,
+      entry.title,
+      entry.influencerName,
+      entry.platformLabel,
+      entry.amountLabel,
+      entry.amountValue ?? "",
+      entry.lifecycleLabel,
+      entry.paidLabel,
+      entry.nextDueLabel,
+      formatExportDateTime(entry.contract.updated_at),
+    ]),
   };
 }
 
