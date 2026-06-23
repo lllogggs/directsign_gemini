@@ -44,6 +44,22 @@
     font-display: swap;
 }
 
+@font-face {
+    font-family: 'NanumMyeongjo';
+    src: url('/fonts/NanumMyeongjo-Regular.ttf') format('truetype');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'NanumMyeongjo';
+    src: url('/fonts/NanumMyeongjo-Bold.ttf') format('truetype');
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -258,6 +274,12 @@
   .font-neo-heavy {
     font-family: 'NanumSquareNeoHeavy', 'NanumSquareNeoExtraBold', 'NanumSquareNeoBold', 'NanumSquareNeo', 'Noto Sans KR', sans-serif;
     font-weight: 400;
+  }
+
+  .font-contract-document {
+    font-family: 'NanumMyeongjo', 'Batang', 'Times New Roman', serif;
+    letter-spacing: 0;
+    font-variant-numeric: tabular-nums;
   }
 
   .custom-scrollbar {

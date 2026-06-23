@@ -252,21 +252,6 @@ export function AdvertiserCampaignRecruitmentPage() {
   const [submitError, setSubmitError] = useState<string | undefined>();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [savedMessage, setSavedMessage] = useState<string | undefined>();
-  const [applicationsState, setApplicationsState] =
-    useState<CampaignApplicationsState>({ status: "loading" });
-  const [activeCampaignView, setActiveCampaignView] =
-    useState<AdvertiserCampaignView>("applicants");
-  const [selectingApplicantId, setSelectingApplicantId] = useState<string | undefined>();
-  const [applicantQuery, setApplicantQuery] = useState("");
-  const [applicantPlatformFilter, setApplicantPlatformFilter] =
-    useState<PlatformFilter>("all");
-  const [applicantStatusFilter, setApplicantStatusFilter] =
-    useState<ApplicationStatusFilter>("all");
-  const [applicantSort, setApplicantSort] = useState<CampaignSort>({
-    key: "followers",
-    direction: "desc",
-  });
-  const [applicantFiltersOpen, setApplicantFiltersOpen] = useState(false);
   const [brandImagePreview, setBrandImagePreview] = useState<string | undefined>();
   const [brandImageError, setBrandImageError] = useState<string | undefined>();
   const [isBrandImageUploading, setIsBrandImageUploading] = useState(false);
@@ -318,48 +303,9 @@ export function AdvertiserCampaignRecruitmentPage() {
     }
   }, [navigate]);
 
-  const loadCampaignApplications = useCallback(async () => {
-    setApplicationsState((current) =>
-      current.status === "ready" ? current : { status: "loading" },
-    );
-
-    try {
-      const response = await apiFetch("/api/marketplace/messages?role=advertiser", {
-        headers: { Accept: "application/json" },
-        credentials: "include",
-      });
-
-      if (response.status === 401) {
-        navigate("/login/advertiser", { replace: true });
-        return;
-      }
-
-      const data = (await response.json().catch(() => ({}))) as
-        | MarketplaceMessagesResponse
-        | { error?: string };
-
-      if (!response.ok || !("threads" in data)) {
-        const errorMessage = "error" in data ? data.error : undefined;
-        throw new Error(errorMessage ?? "지원자를 불러오지 못했습니다.");
-      }
-
-      setApplicationsState({
-        status: "ready",
-        applications: data.threads.filter(isCampaignApplicationThread),
-      });
-    } catch (error) {
-      setApplicationsState({
-        status: "error",
-        message:
-          error instanceof Error ? error.message : "지원자를 불러오지 못했습니다.",
-      });
-    }
-  }, [navigate]);
-
   const refreshCampaignWorkspace = useCallback(() => {
     void loadCampaigns();
-    void loadCampaignApplications();
-  }, [loadCampaignApplications, loadCampaigns]);
+  }, [loadCampaigns]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -570,7 +516,6 @@ export function AdvertiserCampaignRecruitmentPage() {
         brand: data.brand,
         campaigns: data.campaigns,
       });
-      void loadCampaignApplications();
       setSavedMessage("캠페인이 공개 목록에 반영되었습니다.");
       setForm((current) => ({
         ...current,
@@ -634,71 +579,6 @@ export function AdvertiserCampaignRecruitmentPage() {
       thumbnailUrl,
     };
   }, [brand, brandImagePreview, campaignImagePreview, form]);
-  const campaignApplications = useMemo(
-    () =>
-      applicationsState.status === "ready" ? applicationsState.applications : [],
-    [applicationsState],
-  );
-  const visibleCampaignApplications = useMemo(() => {
-    const normalizedQuery = applicantQuery.trim().toLowerCase();
-
-    return campaignApplications
-      .filter((application) => {
-        if (
-          applicantStatusFilter !== "all" &&
-          application.status !== applicantStatusFilter
-        ) {
-          return false;
-        }
-        if (
-          applicantPlatformFilter !== "all" &&
-          !application.platforms.some(
-            (platform) => platform.platform === applicantPlatformFilter,
-          )
-        ) {
-          return false;
-        }
-        if (!normalizedQuery) return true;
-
-        return [
-          application.counterpartName,
-          application.senderName,
-          application.counterpartIntro ?? "",
-          application.senderIntro,
-          application.campaignTitle ?? "",
-          formatAppliedCampaignTitle(application),
-          application.proposalTypeLabel,
-          ...application.platforms.flatMap((platform) => [
-            platform.label,
-            platform.handle ?? "",
-            platform.followersLabel ?? "",
-          ]),
-        ]
-          .join(" ")
-          .toLowerCase()
-          .includes(normalizedQuery);
-      })
-      .sort((a, b) => compareCampaignApplicantsBySort(a, b, applicantSort));
-  }, [
-    applicantPlatformFilter,
-    applicantQuery,
-    applicantSort,
-    applicantStatusFilter,
-    campaignApplications,
-  ]);
-  const applicantActiveFilterLabels = [
-    applicantQuery.trim() ? `검색 ${applicantQuery.trim()}` : null,
-    applicantPlatformFilter !== "all"
-      ? platformLabels[applicantPlatformFilter]
-      : null,
-    applicantStatusFilter !== "all"
-      ? applicationStatusMeta[applicantStatusFilter].label
-      : null,
-  ].filter((label): label is string => Boolean(label));
-  const applicantFilterSummary =
-    applicantActiveFilterLabels.length > 0
-      ? applicantActiveFilterLabels.join(" · ")
-      : "전체 조건";
   const isSupportersCampaign = form.type === "supporters";
   const budgetPlaceholder = isSupportersCampaign
     ? "예: 제품 제공(소비자가 89,000원 상당)"
@@ -712,61 +592,6 @@ export function AdvertiserCampaignRecruitmentPage() {
   const summaryPlaceholder = isSupportersCampaign
     ? "제품, 작성 미션, 게시 유지 조건, 제품 제공비 기준을 적어 주세요."
     : "인플루언서가 바로 판단할 수 있도록 제품, 타깃, 원하는 콘텐츠 톤, 검수 기준을 적어 주세요.";
-
-  const selectCampaignApplicant = async (application: MarketplaceMessageThread) => {
-    if (
-      selectingApplicantId ||
-      application.status === "converted_to_contract" ||
-      application.status === "closed"
-    ) {
-      return;
-    }
-
-    const applicantName =
-      application.counterpartName || application.senderName || "인플루언서";
-    const confirmed = window.confirm(
-      `${applicantName}을 선정할까요? 선정하면 이 캠페인의 계약서 초안이 만들어집니다.`,
-    );
-    if (!confirmed) return;
-
-    setSelectingApplicantId(application.id);
-
-    try {
-      const response = await apiFetch(
-        `/api/advertiser/marketplace/proposals/${encodeURIComponent(application.id)}/accept`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-        },
-      );
-
-      if (response.status === 401) {
-        navigate("/login/advertiser", { replace: true });
-        return;
-      }
-
-      const data = (await response.json().catch(() => ({}))) as
-        | CampaignApplicantAcceptResponse
-        | { error?: string };
-
-      if (!response.ok || !("contract" in data) || !data.contract?.id) {
-        throw new Error(
-          "error" in data
-            ? data.error ?? "계약 초안을 생성하지 못했습니다."
-            : "계약 초안을 생성하지 못했습니다.",
-        );
-      }
-
-      navigate(`/advertiser/contract/${data.contract.id}`);
-    } catch (error) {
-      window.alert(
-        error instanceof Error ? error.message : "선정에 실패했습니다.",
-      );
-    } finally {
-      setSelectingApplicantId(undefined);
-    }
-  };
 
   return (
     <CampaignShell
@@ -1072,18 +897,18 @@ export function AdvertiserCampaignRecruitmentPage() {
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-[12px] font-extrabold text-neutral-400">
-                캠페인 관리
+                캠페인 미리보기
               </p>
               <h2 className="mt-1 truncate text-[20px] font-extrabold text-neutral-950">
                 {brand?.displayName ?? "브랜드 프로필 준비 중"}
               </h2>
               <p className="mt-1 text-[13px] font-bold text-neutral-500">
-                작성한 조건과 공개 캠페인을 확인합니다.
+                저장 전 공개 카드를 확인합니다.
               </p>
             </div>
             <button
               type="button"
-              onClick={refreshCampaignWorkspace}
+              onClick={loadCampaigns}
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] border border-neutral-200 bg-white text-neutral-500 transition hover:border-neutral-300 hover:text-neutral-950"
               aria-label="새로고침"
               title="새로고침"
@@ -1097,87 +922,6 @@ export function AdvertiserCampaignRecruitmentPage() {
             canPublish={canSubmit}
             helperText={submitHelperText}
           />
-
-          <AdvertiserCampaignViewTabs
-            value={activeCampaignView}
-            applicantsCount={campaignApplications.length}
-            campaignsCount={campaigns.length}
-            onChange={setActiveCampaignView}
-          />
-
-          {activeCampaignView === "applicants" ? (
-            applicationsState.status === "loading" ? (
-              <PanelState
-                icon={<RefreshCw className="h-5 w-5 animate-spin" />}
-                title="지원자를 불러오는 중"
-              />
-            ) : applicationsState.status === "error" ? (
-              <PanelState
-                icon={<Megaphone className="h-5 w-5" />}
-                title={applicationsState.message}
-              />
-            ) : campaignApplications.length === 0 ? (
-              <PanelState
-                icon={<FileText className="h-5 w-5" />}
-                title="아직 지원자가 없습니다"
-                body="캠페인을 공개하면 지원자가 이 탭에 쌓입니다."
-              />
-            ) : (
-              <>
-                <AdvertiserCampaignApplicantControls
-                  visibleCount={visibleCampaignApplications.length}
-                  totalCount={campaignApplications.length}
-                  summary={applicantFilterSummary}
-                  filtersOpen={applicantFiltersOpen}
-                  activeFilterCount={applicantActiveFilterLabels.length}
-                  sortState={applicantSort}
-                  query={applicantQuery}
-                  platformFilter={applicantPlatformFilter}
-                  statusFilter={applicantStatusFilter}
-                  onSortChange={setApplicantSort}
-                  onToggleFilters={() =>
-                    setApplicantFiltersOpen((current) => !current)
-                  }
-                  onQueryChange={setApplicantQuery}
-                  onPlatformFilterChange={setApplicantPlatformFilter}
-                  onStatusFilterChange={setApplicantStatusFilter}
-                  onClear={() => {
-                    setApplicantQuery("");
-                    setApplicantPlatformFilter("all");
-                    setApplicantStatusFilter("all");
-                  }}
-                />
-                {visibleCampaignApplications.length === 0 ? (
-                  <PanelState
-                    icon={<Megaphone className="h-5 w-5" />}
-                    title="조건에 맞는 지원자가 없습니다"
-                    body="검색어나 필터 조건을 줄여보세요."
-                  />
-                ) : (
-                  <AdvertiserCampaignApplicantList
-                    applications={visibleCampaignApplications}
-                    selectingApplicantId={selectingApplicantId}
-                    onSelect={selectCampaignApplicant}
-                  />
-                )}
-              </>
-            )
-          ) : state.status === "loading" ? (
-            <PanelState
-              icon={<RefreshCw className="h-5 w-5 animate-spin" />}
-              title="캠페인을 불러오는 중"
-            />
-          ) : state.status === "error" ? (
-            <PanelState icon={<Megaphone className="h-5 w-5" />} title={state.message} />
-          ) : campaigns.length === 0 ? (
-            <PanelState
-              icon={<Megaphone className="h-5 w-5" />}
-              title="아직 공개 캠페인이 없습니다"
-              body="첫 캠페인을 등록하면 인플루언서 캠페인 화면에 바로 표시됩니다."
-            />
-          ) : (
-            <AdvertiserCampaignTable campaigns={campaigns} />
-          )}
         </section>
       </section>
     </CampaignShell>

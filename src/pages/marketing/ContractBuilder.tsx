@@ -2222,7 +2222,7 @@ const BuilderReviewPanel: React.FC<{
         )}
         <article
           data-preview-document
-          className={`mx-auto min-h-[1080px] w-full max-w-[680px] rounded-[3px] border border-neutral-300 bg-white shadow-[0_1px_0_rgba(15,23,42,0.05),0_20px_46px_rgba(15,23,42,0.18)] sm:px-10 sm:py-10 ${
+          className={`font-contract-document mx-auto min-h-[1080px] w-full max-w-[680px] rounded-[3px] border border-neutral-300 bg-white shadow-[0_1px_0_rgba(15,23,42,0.05),0_20px_46px_rgba(15,23,42,0.18)] sm:px-10 sm:py-10 ${
             isCompact ? "px-4 py-6" : "px-5 py-8"
           }`}
         >
