@@ -19,7 +19,14 @@ import {
   UserCheck,
   type LucideIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Link } from "react-router-dom";
 import { BrandLogo } from "../../components/BrandLogo";
 import { PlatformBrandMark } from "../../components/PlatformBrandMark";
@@ -430,7 +437,16 @@ function collectIntroProposalImageSources(slides: IntroProposalSlide[]) {
   return Array.from(sources);
 }
 
-function preloadIntroImages(sources: string[]) {
+function collectIntroInitialImageSources(slides: IntroProposalSlide[]) {
+  const firstSlide = slides[0];
+
+  return firstSlide ? collectIntroProposalImageSources([firstSlide]) : [];
+}
+
+function preloadIntroImages(
+  sources: string[],
+  priority: "high" | "auto" = "auto",
+) {
   if (typeof window === "undefined") return;
 
   sources.forEach((source) => {
@@ -441,10 +457,17 @@ function preloadIntroImages(sources: string[]) {
     link.rel = "preload";
     link.as = "image";
     link.href = source;
+    if (priority === "high") {
+      link.setAttribute("fetchpriority", "high");
+    }
     document.head.appendChild(link);
 
     const image = new Image();
     image.decoding = "async";
+    image.loading = "eager";
+    if (priority === "high") {
+      image.setAttribute("fetchpriority", "high");
+    }
     image.src = source;
   });
 }
@@ -1812,6 +1835,10 @@ function ProposalIntroCarousel({
   const activeSlide = slides[slideIndex] ?? slides[0];
   const slidePanelId = `intro-proposal-slide-${slideIndex}`;
 
+  useLayoutEffect(() => {
+    preloadIntroImages(collectIntroInitialImageSources(slides), "high");
+  }, [slides]);
+
   useEffect(() => {
     preloadIntroImages(collectIntroProposalImageSources(slides));
   }, [slides]);
@@ -1970,35 +1997,9 @@ function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
     return (
       <div data-intro-visual className={`${introVisualFrameClass} grid grid-cols-2 grid-rows-2 gap-2 sm:grid-cols-4 sm:grid-rows-none sm:content-center sm:gap-2.5 sm:bg-transparent`}>
         {slide.riskItems.map((item, index) => (
-          <article
-            key={item.label}
-            className="flex min-w-0 flex-col overflow-hidden rounded-[14px] border border-[#e1e7e2] bg-white shadow-[0_14px_28px_rgba(15,23,42,0.055)] sm:rounded-[16px] sm:shadow-[0_18px_34px_rgba(15,23,42,0.06)]"
-          >
-            {item.imageSrc ? (
-              <>
-                <img
-                  src={item.imageSrc}
-                  alt={item.imageAlt ?? ""}
-                  className="min-h-0 w-full flex-1 object-cover object-center sm:h-auto"
-                  loading="eager"
-                />
-                <p className="flex min-h-[42px] items-center justify-center bg-[linear-gradient(180deg,#fff_0%,#fbfcfa_100%)] px-2 py-2 text-center sm:min-h-[72px] sm:px-2.5 sm:py-3">
-                  <strong className="break-keep text-[13px] font-black leading-[1.14] tracking-normal text-neutral-950 sm:text-[clamp(15px,1.45vw,18px)]">
-                    {item.label}
-                  </strong>
-                </p>
-              </>
-            ) : (
-              <div className="relative flex min-h-[170px] flex-1 items-center justify-center overflow-hidden bg-[linear-gradient(135deg,#f8faf7_0%,#eef3ef_100%)] p-4 text-center sm:min-h-0">
-                <span className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-[58%] font-neo-heavy text-[64px] leading-none text-blue-600/16 sm:text-[76px]">
-                  0{index + 1}
-                </span>
-                <strong className="relative z-[1] break-keep text-[18px] font-black leading-[1.22] tracking-normal text-neutral-950 sm:text-[clamp(17px,1.7vw,22px)]">
-                  {item.label}
-                </strong>
-              </div>
-            )}
-          </article>
+          <div key={item.label} className="contents">
+            <ProposalRiskItemCard index={index} item={item} />
+          </div>
         ))}
       </div>
     );
@@ -2088,6 +2089,64 @@ function ProposalVisual({ slide }: { slide: IntroProposalSlide }) {
 
   return (
     <div className="h-full min-h-0 sm:h-auto sm:min-h-0" />
+  );
+}
+
+function ProposalRiskItemCard({
+  index,
+  item,
+}: {
+  index: number;
+  item: IntroProposalRiskItem;
+}) {
+  const [imageReady, setImageReady] = useState(false);
+
+  return (
+    <article
+      className="flex min-w-0 flex-col overflow-hidden rounded-[14px] border border-[#e1e7e2] bg-white shadow-[0_14px_28px_rgba(15,23,42,0.055)] sm:rounded-[16px] sm:shadow-[0_18px_34px_rgba(15,23,42,0.06)]"
+    >
+      {item.imageSrc ? (
+        <>
+          <div
+            aria-busy={!imageReady}
+            className="relative min-h-[170px] w-full overflow-hidden bg-[#dfe8e1] sm:aspect-[9/19] sm:min-h-0"
+          >
+            {!imageReady ? (
+              <span className="absolute inset-0 animate-pulse bg-[linear-gradient(110deg,#dfe8e1_0%,#f8faf7_44%,#d7e2d9_76%)]" />
+            ) : null}
+            <img
+              ref={(node) => {
+                if (node?.complete && node.naturalWidth > 0 && !imageReady) {
+                  setImageReady(true);
+                }
+              }}
+              src={item.imageSrc}
+              alt={item.imageAlt ?? ""}
+              className={`absolute inset-0 h-full w-full object-cover object-center transition-opacity duration-200 ${
+                imageReady ? "opacity-100" : "opacity-0"
+              }`}
+              decoding="async"
+              loading="eager"
+              onLoad={() => setImageReady(true)}
+            />
+          </div>
+          <p className="flex min-h-[42px] items-center justify-center bg-[linear-gradient(180deg,#fff_0%,#fbfcfa_100%)] px-2 py-2 text-center sm:min-h-[72px] sm:px-2.5 sm:py-3">
+            <strong className="break-keep text-[13px] font-black leading-[1.14] tracking-normal text-neutral-950 sm:text-[clamp(15px,1.45vw,18px)]">
+              {item.label}
+            </strong>
+          </p>
+        </>
+      ) : (
+        <div className="relative flex min-h-[170px] flex-1 items-center justify-center overflow-hidden bg-[linear-gradient(135deg,#f8faf7_0%,#eef3ef_100%)] p-4 text-center sm:min-h-0">
+          <span className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-[58%] font-neo-heavy text-[64px] leading-none text-blue-600/16 sm:text-[76px]">
+            0{index + 1}
+          </span>
+          <strong className="relative z-[1] break-keep text-[18px] font-black leading-[1.22] tracking-normal text-neutral-950 sm:text-[clamp(17px,1.7vw,22px)]">
+            {item.label}
+          </strong>
+        </div>
+      )}
+    </article>
   );
 }
 

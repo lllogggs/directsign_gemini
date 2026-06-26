@@ -603,6 +603,7 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
     });
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [dashboardPanelCloseSignal, setDashboardPanelCloseSignal] = useState(0);
   const [googleSheetsUrl, setGoogleSheetsUrl] = useState<string | undefined>();
   const [googleSheetsError, setGoogleSheetsError] = useState<string | undefined>();
   const [isGoogleSheetsExporting, setIsGoogleSheetsExporting] = useState(false);
@@ -1097,6 +1098,7 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
     selectedCampaign,
   ]);
   const handleDownloadDashboard = useCallback(() => {
+    setDashboardPanelCloseSignal((current) => current + 1);
     setGoogleSheetsUrl(undefined);
     setGoogleSheetsError(undefined);
     setExportDialogOpen(true);
@@ -1287,6 +1289,7 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
                 query={query}
                 onQueryChange={setQuery}
                 onOpenContract={openContract}
+                panelCloseSignal={dashboardPanelCloseSignal}
                 isDataPending={isLoginTransitionPending || (!isHydrated && !syncError)}
               />
             ) : isCampaignSurface ? (
@@ -1360,6 +1363,7 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
                   onDateToFilterChange={setContractDateToFilter}
                   sortState={contractSort}
                   onSortChange={handleContractSortChange}
+                  panelCloseSignal={dashboardPanelCloseSignal}
                   isDataPending={isLoginTransitionPending || (!isHydrated && !syncError)}
                   onOpen={openContract}
                 />
@@ -1390,6 +1394,7 @@ function CostDashboard({
   query,
   onQueryChange,
   onOpenContract,
+  panelCloseSignal,
   isDataPending,
 }: {
   entries: CostDashboardEntry[];
@@ -1409,9 +1414,11 @@ function CostDashboard({
   query: string;
   onQueryChange: (value: string) => void;
   onOpenContract: (contract: Contract) => void;
+  panelCloseSignal: number;
   isDataPending: boolean;
 }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [periodPickerCloseSignal, setPeriodPickerCloseSignal] = useState(0);
   const activeFilters: AppliedFilter[] = [
     sourceFilter !== "ALL"
       ? {
@@ -1438,6 +1445,15 @@ function CostDashboard({
   const filterSummary =
     activeFilters.length > 0 ? `${activeFilters.length}개 조건 적용` : "전체 조건";
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setFiltersOpen(false);
+      setPeriodPickerCloseSignal((current) => current + 1);
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [panelCloseSignal]);
+
   return (
     <section className="overflow-visible rounded-[8px] border border-[#d9e0d9] bg-white lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
       <div className="border-b border-[#d9e0d9] bg-white px-3 py-2.5">
@@ -1449,12 +1465,19 @@ function CostDashboard({
             onDateFromFilterChange={onDateFromFilterChange}
             dateToFilter={dateToFilter}
             onDateToFilterChange={onDateToFilterChange}
+            closeSignal={periodPickerCloseSignal}
+            onOpen={() => setFiltersOpen(false)}
           />
           <div className="relative">
             <DashboardFilterToggleButton
               open={filtersOpen}
               activeCount={activeFilters.length}
-              onClick={() => setFiltersOpen((current) => !current)}
+              onClick={() => {
+                if (!filtersOpen) {
+                  setPeriodPickerCloseSignal((signal) => signal + 1);
+                }
+                setFiltersOpen(!filtersOpen);
+              }}
               controlsId="advertiser-cost-filters"
             />
             <ResponsiveFilterPanel
@@ -1570,6 +1593,8 @@ function DashboardPeriodPicker({
   dateToFilter,
   onDateToFilterChange,
   align = "left",
+  closeSignal,
+  onOpen,
 }: {
   periodFilter: CostPeriodFilter;
   onPeriodFilterChange: (value: CostPeriodFilter) => void;
@@ -1578,6 +1603,8 @@ function DashboardPeriodPicker({
   dateToFilter: string;
   onDateToFilterChange: (value: string) => void;
   align?: "left" | "right";
+  closeSignal?: number;
+  onOpen?: () => void;
 }) {
   const activeRange = useMemo(
     () => getCostDateRange(periodFilter, dateFromFilter, dateToFilter),
@@ -1648,13 +1675,24 @@ function DashboardPeriodPicker({
     setOpen(false);
   };
 
+  useEffect(() => {
+    if (closeSignal === undefined) return;
+    const timer = window.setTimeout(() => setOpen(false), 0);
+
+    return () => window.clearTimeout(timer);
+  }, [closeSignal]);
+
   return (
     <div className="relative">
       <button
         type="button"
         onClick={() => {
-          if (!open) syncDraftWithActiveRange();
-          setOpen((current) => !current);
+          const nextOpen = !open;
+          if (nextOpen) {
+            syncDraftWithActiveRange();
+            onOpen?.();
+          }
+          setOpen(nextOpen);
         }}
         aria-expanded={open}
         data-dashboard-period-picker-trigger="true"
@@ -4141,6 +4179,7 @@ function ContractTable({
   onDateToFilterChange,
   sortState,
   onSortChange,
+  panelCloseSignal,
   isDataPending = false,
   onOpen,
 }: {
@@ -4166,6 +4205,7 @@ function ContractTable({
   onDateToFilterChange: (value: string) => void;
   sortState: ContractSort;
   onSortChange: (key: SortKey) => void;
+  panelCloseSignal: number;
   isDataPending?: boolean;
   onOpen: (contract: Contract) => void;
 }) {
@@ -4248,6 +4288,7 @@ function ContractTable({
   const filterSummary =
     activeFilters.length > 0 ? `${activeFilters.length}개 조건 적용` : "전체 조건";
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [periodPickerCloseSignal, setPeriodPickerCloseSignal] = useState(0);
   const displayContracts = collapseInternalDuplicateContracts(
     contracts,
     getDashboardContractCollapseKey,
@@ -4288,6 +4329,15 @@ function ContractTable({
       scopeKey: paginationScopeKey,
     });
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setFiltersOpen(false);
+      setPeriodPickerCloseSignal((current) => current + 1);
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [panelCloseSignal]);
+
   return (
     <section className="overflow-visible rounded-[8px] border border-[#d9e0d9] bg-white lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
       {lifecycleTabs}
@@ -4320,12 +4370,19 @@ function ContractTable({
               dateToFilter={dateToFilter}
               onDateToFilterChange={onDateToFilterChange}
               align="right"
+              closeSignal={periodPickerCloseSignal}
+              onOpen={() => setFiltersOpen(false)}
             />
             <div className="relative">
               <DashboardFilterToggleButton
                 open={filtersOpen}
                 activeCount={activeFilters.length}
-                onClick={() => setFiltersOpen((current) => !current)}
+                onClick={() => {
+                  if (!filtersOpen) {
+                    setPeriodPickerCloseSignal((signal) => signal + 1);
+                  }
+                  setFiltersOpen(!filtersOpen);
+                }}
                 controlsId="advertiser-contract-filters"
               />
               <ResponsiveFilterPanel
