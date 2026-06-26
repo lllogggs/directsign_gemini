@@ -29,6 +29,7 @@ import {
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { LogoMark } from "../../components/BrandLogo";
 import { PlatformBrandMark } from "../../components/PlatformBrandMark";
+import { ResponsiveFilterPanel } from "../../components/ResponsiveFilterPanel";
 import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
 import {
@@ -1217,7 +1218,7 @@ function MarketplaceShell({
         </div>
       </section>
 
-      <div className="yl-panel mx-3 my-3 flex min-h-0 max-w-[1500px] flex-1 flex-col overflow-hidden border sm:mx-5 lg:mx-auto lg:w-full">
+      <div className="yl-panel mx-3 my-3 flex min-h-0 max-w-[1500px] flex-1 flex-col overflow-visible border sm:mx-5 lg:mx-auto lg:w-full">
         {children}
       </div>
     </main>
@@ -1886,7 +1887,7 @@ function DiscoveryControls({
   );
 
   return (
-    <section className="border-b border-[#d9e0d9] bg-white">
+    <section className="relative overflow-visible border-b border-[#d9e0d9] bg-white">
       <div className="flex min-h-12 flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:py-2">
         <div className="flex w-full min-w-0 items-start justify-between gap-3 sm:block sm:flex-1">
           <div className="min-w-0 flex-1">
@@ -1897,40 +1898,55 @@ function DiscoveryControls({
               {count.toLocaleString()}건 표시 · {summary}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onToggle}
-            aria-expanded={open}
-            aria-controls={controlsId}
-            className={`${filterButtonClassName} sm:hidden`}
-          >
-            {filterButtonContent}
-          </button>
+          <div className="relative sm:hidden">
+            <button
+              type="button"
+              onClick={onToggle}
+              aria-expanded={open}
+              aria-controls={`${controlsId}-mobile`}
+              className={`${filterButtonClassName} sm:hidden`}
+            >
+              {filterButtonContent}
+            </button>
+            <ResponsiveFilterPanel
+              id={`${controlsId}-mobile`}
+              open={open}
+              activeCount={activeCount}
+              onClose={onToggle}
+            >
+              <div className="grid gap-4">{children}</div>
+            </ResponsiveFilterPanel>
+          </div>
         </div>
         {toolbar ? (
           <div className="w-full min-w-0 sm:hidden">{toolbar}</div>
         ) : null}
         <div className="hidden min-w-0 shrink-0 items-center gap-2 sm:flex">
           {toolbar}
-          <button
-            type="button"
-            onClick={onToggle}
-            aria-expanded={open}
-            aria-controls={controlsId}
-            className={filterButtonClassName}
-          >
-            {filterButtonContent}
-          </button>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={onToggle}
+              aria-expanded={open}
+              aria-controls={controlsId}
+              className={filterButtonClassName}
+            >
+              {filterButtonContent}
+            </button>
+            <ResponsiveFilterPanel
+              id={controlsId}
+              open={open}
+              activeCount={activeCount}
+              onClose={onToggle}
+              className="sm:w-[min(760px,calc(100vw-48px))]"
+            >
+              <div className="grid gap-4">
+                {children}
+              </div>
+            </ResponsiveFilterPanel>
+          </div>
         </div>
       </div>
-      {open ? (
-        <div
-          id={controlsId}
-          className="grid gap-3 border-t border-[#edf1ed] bg-[#fbfaf7] px-4 py-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start"
-        >
-          {children}
-        </div>
-      ) : null}
     </section>
   );
 }
@@ -1983,7 +1999,7 @@ function CategoryChecklist({
       <legend className="text-[12px] font-extrabold text-neutral-500">
         카테고리
       </legend>
-      <div className="mt-1.5 grid max-h-28 min-w-0 grid-cols-2 gap-x-3 gap-y-1.5 overflow-y-auto pr-1 sm:grid-cols-3 lg:max-h-24 lg:grid-cols-4">
+      <div className="mt-1.5 flex max-h-36 min-w-0 flex-wrap gap-1.5 overflow-y-auto pr-1">
       {categories.map((category) => {
         const checked = selected.has(category);
         const label = getCategoryLabel(category);
@@ -1991,7 +2007,11 @@ function CategoryChecklist({
         return (
           <label
             key={category}
-            className="flex min-w-0 items-center gap-2 text-[12px] font-bold text-neutral-700"
+            className={`inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2.5 text-[12px] font-semibold transition ${
+              checked
+                ? "border-neutral-950 bg-neutral-950 text-white"
+                : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300 hover:text-neutral-950"
+            }`}
           >
             <input
               type="checkbox"
@@ -2003,9 +2023,9 @@ function CategoryChecklist({
                     : [...values, category],
                 )
               }
-              className="h-4 w-4 shrink-0 accent-neutral-950"
+              className="h-3.5 w-3.5 rounded border-neutral-300 accent-neutral-950"
             />
-            <span className="truncate">{label}</span>
+            <span>{label}</span>
           </label>
         );
       })}

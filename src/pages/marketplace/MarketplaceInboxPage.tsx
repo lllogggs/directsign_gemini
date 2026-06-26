@@ -14,6 +14,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { LogoMark } from "../../components/BrandLogo";
+import { ResponsiveFilterPanel } from "../../components/ResponsiveFilterPanel";
 import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
 import { removeInternalTestLabel } from "../../domain/display";
@@ -375,6 +376,10 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
     setProposalTypeFilter("all");
     setStatusFilter("all");
   };
+  const clearAllFilters = () => {
+    resetScopedFilters();
+    setQuery("");
+  };
 
   return (
     <div className="flex h-svh flex-col overflow-hidden bg-[#f7f6f3] font-sans text-neutral-950">
@@ -462,7 +467,7 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
             </div>
           </div>
 
-          <div className="grid shrink-0 border-b border-neutral-200/80 bg-[#fcfcfd] sm:grid-cols-3">
+          <div className="grid shrink-0 gap-2 border-b border-neutral-200/80 bg-[#fbfcfa] p-3 sm:grid-cols-3">
             <SummaryMetric
               label={focusMetrics.primaryLabel}
               value={focusMetrics.primaryValue}
@@ -505,59 +510,64 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
                       </div>
                     ))}
                   </div>
-                  <InboxFilterToggleButton
-                    open={filtersOpen}
-                    activeCount={activeFilterLabels.length}
-                    controlsId="marketplace-message-filters"
-                    onClick={() => setFiltersOpen((current) => !current)}
-                  />
+                  <div className="relative">
+                    <InboxFilterToggleButton
+                      open={filtersOpen}
+                      activeCount={activeFilterLabels.length}
+                      controlsId="marketplace-message-filters"
+                      onClick={() => setFiltersOpen((current) => !current)}
+                    />
+                    <ResponsiveFilterPanel
+                      id="marketplace-message-filters"
+                      open={filtersOpen}
+                      activeCount={activeFilterLabels.length}
+                      onClose={() => setFiltersOpen(false)}
+                      onClear={clearAllFilters}
+                      className="sm:w-[min(640px,calc(100vw-48px))]"
+                    >
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(260px,1.55fr)_minmax(130px,0.8fr)_minmax(130px,0.8fr)_minmax(130px,0.8fr)]">
+                        <div className="relative min-w-0">
+                          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8b938d]" />
+                          <input
+                            value={query}
+                            onChange={(event) => setQuery(event.target.value)}
+                            aria-label="제안 검색"
+                            placeholder={copy.searchPlaceholder}
+                            className="h-9 w-full rounded-[6px] border border-[#d9e0d9] bg-[#f8faf7] pl-8 pr-3 text-[12px] font-semibold text-[#303630] outline-none transition-colors placeholder:text-[#8b938d] hover:border-[#cbd5cc] focus:border-[#171a17] focus:bg-white"
+                          />
+                        </div>
+                        <SelectFilter
+                          label="플랫폼"
+                          value={platformFilter}
+                          onChange={(value) => setPlatformFilter(value as PlatformFilter)}
+                          options={platformFilterOptions.map((platform) => ({
+                            value: platform,
+                            label: platform === "all" ? "전체" : platformLabels[platform],
+                          }))}
+                        />
+                        <SelectFilter
+                          label="제안 종류"
+                          value={proposalTypeFilter}
+                          onChange={(value) => setProposalTypeFilter(value as ProposalTypeFilter)}
+                          options={proposalTypeFilterOptions.map((type) => ({
+                            value: type,
+                            label: type === "all" ? "전체" : proposalTypeLabels[type],
+                          }))}
+                        />
+                        <SelectFilter
+                          label="상태"
+                          value={statusFilter}
+                          onChange={(value) => setStatusFilter(value as ProposalStatusFilter)}
+                          options={proposalStatusFilterOptions.map((status) => ({
+                            value: status,
+                            label: status === "all" ? "전체" : proposalStatusLabels[status],
+                          }))}
+                        />
+                      </div>
+                    </ResponsiveFilterPanel>
+                  </div>
                 </div>
               </div>
-
-              {filtersOpen ? (
-                <div
-                  id="marketplace-message-filters"
-                  className="mt-3 grid grid-cols-2 gap-2 border-t border-[#edf1ed] pt-3 lg:grid-cols-[minmax(260px,1fr)_160px_160px_160px]"
-                >
-                  <div className="relative col-span-2 min-w-0 lg:col-span-1">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8b938d]" />
-                    <input
-                      value={query}
-                      onChange={(event) => setQuery(event.target.value)}
-                      aria-label="제안 검색"
-                      placeholder={copy.searchPlaceholder}
-                      className="h-9 w-full rounded-[6px] border border-[#d9e0d9] bg-[#f8faf7] pl-8 pr-3 text-[12px] font-semibold text-[#303630] outline-none transition-colors placeholder:text-[#8b938d] hover:border-[#cbd5cc] focus:border-[#171a17] focus:bg-white"
-                    />
-                  </div>
-                  <SelectFilter
-                    label="플랫폼"
-                    value={platformFilter}
-                    onChange={(value) => setPlatformFilter(value as PlatformFilter)}
-                    options={platformFilterOptions.map((platform) => ({
-                      value: platform,
-                      label: platform === "all" ? "전체" : platformLabels[platform],
-                    }))}
-                  />
-                  <SelectFilter
-                    label="제안 종류"
-                    value={proposalTypeFilter}
-                    onChange={(value) => setProposalTypeFilter(value as ProposalTypeFilter)}
-                    options={proposalTypeFilterOptions.map((type) => ({
-                      value: type,
-                      label: type === "all" ? "전체" : proposalTypeLabels[type],
-                    }))}
-                  />
-                  <SelectFilter
-                    label="상태"
-                    value={statusFilter}
-                    onChange={(value) => setStatusFilter(value as ProposalStatusFilter)}
-                    options={proposalStatusFilterOptions.map((status) => ({
-                      value: status,
-                      label: status === "all" ? "전체" : proposalStatusLabels[status],
-                    }))}
-                  />
-                </div>
-              ) : null}
             </section>
 
             {state.status === "loading" ? (
@@ -596,10 +606,10 @@ function SummaryMetric({
   value: number;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 border-t border-neutral-200/80 px-4 py-3 first:border-t-0 sm:block sm:border-l sm:border-t-0 sm:first:border-l-0">
-      <p className="text-[12px] font-semibold text-[#7d857f]">{label}</p>
-      <p className="mt-0 flex items-baseline gap-0.5 text-[#171a17] sm:mt-1">
-        <span className="text-[22px] font-semibold leading-none tabular-nums">
+    <div className="flex min-h-12 items-center justify-between gap-3 rounded-[10px] border border-neutral-200/80 bg-white px-3 py-2">
+      <p className="text-[12px] font-extrabold text-[#7d857f]">{label}</p>
+      <p className="flex items-baseline gap-0.5 text-[#171a17]">
+        <span className="text-[20px] font-semibold leading-none tabular-nums">
           {value.toLocaleString()}
         </span>
         <span className="text-[13px] font-semibold text-[#7d857f]">건</span>

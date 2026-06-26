@@ -53,6 +53,7 @@ import { DashboardExportDialog } from "../../components/DashboardExportDialog";
 import { MobileSurfaceSwitch } from "../../components/MobileSurfaceSwitch";
 import { LogoMark } from "../../components/BrandLogo";
 import { PlatformBrandMark } from "../../components/PlatformBrandMark";
+import { ResponsiveFilterPanel } from "../../components/ResponsiveFilterPanel";
 import { useMarketplaceMessageSummary } from "../../hooks/useMarketplaceMessageSummary";
 import { exportWorkbookToGoogleSheets } from "../../domain/googleWorkspaceExport";
 import { downloadXlsx, type XlsxSheet, type XlsxWorkbook } from "../../domain/xlsxExport";
@@ -1327,7 +1328,7 @@ function ContractTable({
   const dateColumnLabel = getInfluencerDateColumnLabel(lifecycleFilter);
 
   return (
-    <section className="overflow-hidden rounded-[8px] border border-[#d9e0d9] bg-white shadow-[0_1px_0_rgba(255,255,255,0.9)_inset] lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+    <section className="overflow-visible rounded-[8px] border border-[#d9e0d9] bg-white shadow-[0_1px_0_rgba(255,255,255,0.9)_inset] lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
       <InfluencerLifecycleTabs
         value={lifecycleFilter}
         counts={lifecycleCounts}
@@ -1343,12 +1344,75 @@ function ContractTable({
               {displayItems.length.toLocaleString("ko-KR")}건 표시 · {filterSummary}
             </p>
           </div>
-          <InfluencerFilterToggleButton
-            open={filtersOpen}
-            activeCount={activeFilters.length}
-            onClick={() => setFiltersOpen((current) => !current)}
-            controlsId="influencer-contract-filters"
-          />
+          <div className="relative">
+            <InfluencerFilterToggleButton
+              open={filtersOpen}
+              activeCount={activeFilters.length}
+              onClick={() => setFiltersOpen((current) => !current)}
+              controlsId="influencer-contract-filters"
+            />
+            <ResponsiveFilterPanel
+              id="influencer-contract-filters"
+              open={filtersOpen}
+              activeCount={activeFilters.length}
+              onClose={() => setFiltersOpen(false)}
+              onClear={() => {
+                onPlatformFilterChange("all");
+                onBrandFilterChange("all");
+                onAmountFilterChange("all");
+                onDetailStageFilterChange("all");
+                onDeadlineFilterChange("all");
+                onQueryChange("");
+              }}
+              className="sm:w-[min(820px,calc(100vw-48px))]"
+            >
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(110px,0.75fr)_minmax(130px,0.85fr)_minmax(260px,1.45fr)]">
+                <TableFilterSelect
+                  label="플랫폼"
+                  value={platformFilter}
+                  options={platformOptions}
+                  onChange={(value) => onPlatformFilterChange(value as PlatformFilter)}
+                  compact
+                />
+                <TableFilterSelect
+                  label="브랜드"
+                  value={brandFilter}
+                  options={brandOptions}
+                  onChange={onBrandFilterChange}
+                  compact
+                />
+                <ContractNameSearch
+                  value={query}
+                  onChange={onQueryChange}
+                  sortKey="title"
+                  sortState={sortState}
+                  onSortChange={onSortChange}
+                  compact
+                />
+                <TableFilterSelect
+                  label="지급내용"
+                  value={amountFilter}
+                  options={amountOptions}
+                  onChange={(value) => onAmountFilterChange(value as AmountFilter)}
+                  compact
+                />
+                <TableFilterSelect
+                  label={metricColumnLabel}
+                  value={detailStageFilter}
+                  options={stageOptions}
+                  onChange={(value) => onDetailStageFilterChange(value as DetailStageFilter)}
+                  compact
+                />
+                <TableFilterSelect
+                  label={dateColumnLabel}
+                  value={deadlineFilter}
+                  options={deadlineOptions}
+                  onChange={(value) => onDeadlineFilterChange(value as DeadlineFilter)}
+                  compact
+                />
+              </div>
+            </ResponsiveFilterPanel>
+          </div>
         </div>
         <InfluencerAppliedFilterBar
           filters={activeFilters}
@@ -1361,56 +1425,6 @@ function ContractTable({
             onQueryChange("");
           }}
         />
-        {filtersOpen ? (
-          <div
-            id="influencer-contract-filters"
-            className="grid gap-2 border-t border-[#edf1ed] bg-[#f8faf7] p-2 lg:grid-cols-[minmax(110px,0.2fr)_minmax(130px,0.22fr)_minmax(240px,0.62fr)_minmax(120px,0.2fr)_minmax(130px,0.22fr)_minmax(120px,0.2fr)]"
-          >
-            <TableFilterSelect
-              label="플랫폼"
-              value={platformFilter}
-              options={platformOptions}
-              onChange={(value) => onPlatformFilterChange(value as PlatformFilter)}
-              compact
-            />
-            <TableFilterSelect
-              label="브랜드"
-              value={brandFilter}
-              options={brandOptions}
-              onChange={onBrandFilterChange}
-              compact
-            />
-            <ContractNameSearch
-              value={query}
-              onChange={onQueryChange}
-              sortKey="title"
-              sortState={sortState}
-              onSortChange={onSortChange}
-              compact
-            />
-            <TableFilterSelect
-              label="지급내용"
-              value={amountFilter}
-              options={amountOptions}
-              onChange={(value) => onAmountFilterChange(value as AmountFilter)}
-              compact
-            />
-            <TableFilterSelect
-              label={metricColumnLabel}
-              value={detailStageFilter}
-              options={stageOptions}
-              onChange={(value) => onDetailStageFilterChange(value as DetailStageFilter)}
-              compact
-            />
-            <TableFilterSelect
-              label={dateColumnLabel}
-              value={deadlineFilter}
-              options={deadlineOptions}
-              onChange={(value) => onDeadlineFilterChange(value as DeadlineFilter)}
-              compact
-            />
-          </div>
-        ) : null}
       </div>
       <InfluencerTableHeaderRow
         metricColumnLabel={metricColumnLabel}

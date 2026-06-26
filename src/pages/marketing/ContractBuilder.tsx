@@ -1206,7 +1206,7 @@ export function ContractBuilder() {
         </aside>
 
         <section className="contract-builder-surface relative z-0 min-h-0 w-full overflow-hidden bg-transparent">
-          <div className="mx-auto flex h-full max-w-[520px] flex-col p-6 md:p-10 lg:px-1 lg:py-5">
+          <div className="mx-auto flex h-full max-w-[540px] flex-col p-6 md:p-10 lg:px-1 lg:py-5">
             <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto scroll-pb-28 pb-4 pr-1 lg:scroll-pb-10 lg:pb-2 lg:pr-2">
               <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
                 {step} / 5 단계
@@ -1476,8 +1476,8 @@ export function ContractBuilder() {
                       ))}
 
                       {showAddPlatformForm && canAddPlatform ? (
-                        <div className="rounded-[14px] border border-neutral-200 bg-white p-3 shadow-[0_8px_22px_rgba(15,23,42,0.035)]">
-                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div className="min-h-[132px] rounded-[14px] border border-neutral-200 bg-white p-4 shadow-[0_8px_22px_rgba(15,23,42,0.035)] sm:p-5">
+                          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                             <div>
                               <Label className="text-xs text-neutral-500">플랫폼</Label>
                               <Select

@@ -64,6 +64,7 @@ import { DashboardSurfaceSwitch } from "../../components/DashboardSurfaceSwitch"
 import { MobileSurfaceSwitch } from "../../components/MobileSurfaceSwitch";
 import { LogoMark } from "../../components/BrandLogo";
 import { PlatformBrandMark } from "../../components/PlatformBrandMark";
+import { ResponsiveFilterPanel } from "../../components/ResponsiveFilterPanel";
 import { getPlatformDisplayName } from "../../domain/platformDisplay";
 
 type CampaignState =
@@ -1221,7 +1222,7 @@ export function InfluencerCampaignDiscoveryPage() {
         tone: "success",
         message: data.already_submitted
           ? "이미 신청한 캠페인입니다. 광고주가 확인하면 선정자별 진행으로 이어집니다."
-          : "신청이 전달됐습니다. 광고주가 선정하면 캠페인 계약서 진행이 시작됩니다.",
+          : "신청이 전달됐습니다. 광고주가 선정하면 이 캠페인의 계약서 초안이 만들어집니다. 캠페인 계약서 진행이 시작됩니다.",
       });
       setSelectedCampaign(null);
       setActiveView("applied");
@@ -1260,7 +1261,7 @@ export function InfluencerCampaignDiscoveryPage() {
         </>
       }
     >
-    <section className="yl-card flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border">
+    <section className="yl-card flex min-h-0 min-w-0 flex-1 flex-col overflow-visible border">
       <div className="border-b border-neutral-200 bg-white">
         <div className="flex min-h-12 flex-col gap-2 px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
           <div className="min-w-0 sm:flex-1">
@@ -1295,76 +1296,94 @@ export function InfluencerCampaignDiscoveryPage() {
                     : setAppliedCampaignSort
                 }
               />
-              <CampaignFilterToggleButton
-                open={filtersOpen}
-                activeCount={toolbarFilterCount}
-                controlsId={
-                  activeView === "open"
-                    ? "influencer-campaign-filters"
-                    : "influencer-applied-campaign-filters"
-                }
-                onClick={() => setFiltersOpen((current) => !current)}
-              />
+              <div className="relative">
+                <CampaignFilterToggleButton
+                  open={filtersOpen}
+                  activeCount={toolbarFilterCount}
+                  controlsId={
+                    activeView === "open"
+                      ? "influencer-campaign-filters"
+                      : "influencer-applied-campaign-filters"
+                  }
+                  onClick={() => setFiltersOpen((current) => !current)}
+                />
+                <ResponsiveFilterPanel
+                  id={
+                    activeView === "open"
+                      ? "influencer-campaign-filters"
+                      : "influencer-applied-campaign-filters"
+                  }
+                  open={filtersOpen}
+                  activeCount={toolbarFilterCount}
+                  onClose={() => setFiltersOpen(false)}
+                  onClear={() => {
+                    if (activeView === "open") {
+                      setQuery("");
+                      setPlatformFilter("all");
+                      setCategoryFilters([]);
+                      setProposalTypeFilter("all");
+                    } else {
+                      setAppliedQuery("");
+                      setAppliedStatusFilter("all");
+                    }
+                  }}
+                  className="sm:w-[min(820px,calc(100vw-48px))]"
+                >
+                  {activeView === "open" ? (
+                    <div className="grid gap-3">
+                      <div className="relative min-w-0">
+                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+                        <input
+                          value={query}
+                          onChange={(event) => setQuery(event.target.value)}
+                          aria-label="캠페인 검색"
+                          placeholder="브랜드, 캠페인, 플랫폼, 콘텐츠 검색"
+                          className="h-9 w-full rounded-[8px] border border-neutral-200 bg-white pl-10 pr-3 text-[12px] font-bold text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950"
+                        />
+                      </div>
+                      <div className="grid min-w-0 gap-3 lg:grid-cols-2">
+                        <FilterGroup label="플랫폼">
+                          {platformOptions.map((platform) => (
+                            <FilterButton
+                              key={platform}
+                              active={platformFilter === platform}
+                              label={platform === "all" ? "전체" : platformLabels[platform]}
+                              onClick={() => setPlatformFilter(platform)}
+                              tone={platform === "all" ? undefined : getPlatformTone(platform)}
+                            />
+                          ))}
+                        </FilterGroup>
+                        <FilterGroup label="형태">
+                          {proposalTypeFilterOptions.map((type) => (
+                            <FilterButton
+                              key={type}
+                              active={proposalTypeFilter === type}
+                              label={type === "all" ? "전체" : proposalTypeLabels[type]}
+                              onClick={() => setProposalTypeFilter(type)}
+                            />
+                          ))}
+                        </FilterGroup>
+                        <div className="lg:col-span-2">
+                          <CategoryCheckboxList
+                            values={categoryFilters}
+                            categories={categoryOptions}
+                            onChange={setCategoryFilters}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <AppliedCampaignFilters
+                      query={appliedQuery}
+                      statusFilter={appliedStatusFilter}
+                      onQueryChange={setAppliedQuery}
+                      onStatusFilterChange={setAppliedStatusFilter}
+                    />
+                  )}
+                </ResponsiveFilterPanel>
+              </div>
             </div>
           </div>
-          {filtersOpen ? (
-            activeView === "open" ? (
-              <div
-                id="influencer-campaign-filters"
-                className="grid gap-3 border-t border-neutral-200 bg-[#fbfaf7] p-3 lg:grid-cols-[280px_minmax(0,1fr)] lg:items-start"
-              >
-                <div className="relative min-w-0">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
-                  <input
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    aria-label="캠페인 검색"
-                    placeholder="브랜드, 캠페인, 플랫폼, 콘텐츠 검색"
-                    className="h-9 w-full rounded-[8px] border border-neutral-200 bg-white pl-10 pr-3 text-[12px] font-bold text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950"
-                  />
-                </div>
-                <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(160px,0.7fr)_minmax(160px,0.7fr)_minmax(220px,1fr)]">
-                  <FilterGroup label="플랫폼">
-                    {platformOptions.map((platform) => (
-                      <FilterButton
-                        key={platform}
-                        active={platformFilter === platform}
-                        label={platform === "all" ? "전체" : platformLabels[platform]}
-                        onClick={() => setPlatformFilter(platform)}
-                        tone={platform === "all" ? undefined : getPlatformTone(platform)}
-                      />
-                    ))}
-                  </FilterGroup>
-                  <FilterGroup label="형태">
-                    {proposalTypeFilterOptions.map((type) => (
-                      <FilterButton
-                        key={type}
-                        active={proposalTypeFilter === type}
-                        label={type === "all" ? "전체" : proposalTypeLabels[type]}
-                        onClick={() => setProposalTypeFilter(type)}
-                      />
-                    ))}
-                  </FilterGroup>
-                  <CategoryCheckboxList
-                    values={categoryFilters}
-                    categories={categoryOptions}
-                    onChange={setCategoryFilters}
-                  />
-                </div>
-              </div>
-            ) : (
-              <AppliedCampaignFilters
-                query={appliedQuery}
-                statusFilter={appliedStatusFilter}
-                onQueryChange={setAppliedQuery}
-                onStatusFilterChange={setAppliedStatusFilter}
-                onClear={() => {
-                  setAppliedQuery("");
-                  setAppliedStatusFilter("all");
-                }}
-              />
-            )
-          ) : null}
         </div>
 
         {activeView === "applied" ? (
@@ -3088,21 +3107,14 @@ function AppliedCampaignFilters({
   statusFilter,
   onQueryChange,
   onStatusFilterChange,
-  onClear,
 }: {
   query: string;
   statusFilter: ApplicationStatusFilter;
   onQueryChange: (value: string) => void;
   onStatusFilterChange: (value: ApplicationStatusFilter) => void;
-  onClear: () => void;
 }) {
-  const hasFilters = query.trim().length > 0 || statusFilter !== "all";
-
   return (
-    <div
-      id="influencer-applied-campaign-filters"
-      className="grid gap-2 border-t border-neutral-200 bg-[#fbfaf7] p-3 lg:grid-cols-[280px_minmax(0,1fr)_auto] lg:items-center"
-    >
+    <div className="grid gap-2 lg:grid-cols-[280px_minmax(0,1fr)] lg:items-center">
       <div className="relative min-w-0">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
         <input
@@ -3123,16 +3135,6 @@ function AppliedCampaignFilters({
           />
         ))}
       </FilterGroup>
-      {hasFilters ? (
-        <button
-          type="button"
-          onClick={onClear}
-          className="inline-flex h-8 w-fit items-center gap-1.5 rounded-[8px] px-2.5 text-[11px] font-extrabold text-neutral-500 transition hover:bg-white hover:text-neutral-950"
-        >
-          <X className="h-3.5 w-3.5" strokeWidth={2} />
-          초기화
-        </button>
-      ) : null}
     </div>
   );
 }
@@ -3673,13 +3675,17 @@ function CategoryCheckboxList({
       <legend className="text-[12px] font-extrabold text-neutral-500">
         카테고리
       </legend>
-      <div className="mt-1.5 grid max-h-28 min-w-0 grid-cols-2 gap-x-3 gap-y-1.5 overflow-y-auto pr-1 sm:grid-cols-3 lg:max-h-24">
+      <div className="mt-1.5 flex max-h-36 min-w-0 flex-wrap gap-1.5 overflow-y-auto pr-1">
         {categories.map((category) => {
           const checked = selected.has(category);
           return (
             <label
               key={category}
-              className="flex min-w-0 items-center gap-2 text-[12px] font-bold text-neutral-700"
+              className={`inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2.5 text-[12px] font-semibold transition ${
+                checked
+                  ? "border-neutral-950 bg-neutral-950 text-white"
+                  : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300 hover:text-neutral-950"
+              }`}
             >
               <input
                 type="checkbox"
@@ -3691,9 +3697,9 @@ function CategoryCheckboxList({
                       : [...values, category],
                   )
                 }
-                className="h-4 w-4 shrink-0 accent-neutral-950"
+                className="h-3.5 w-3.5 rounded border-neutral-300 accent-neutral-950"
               />
-              <span className="truncate">{category}</span>
+              <span>{category}</span>
             </label>
           );
         })}

@@ -73,6 +73,7 @@ import { DashboardExportDialog } from "../../components/DashboardExportDialog";
 import { DashboardSurfaceSwitch } from "../../components/DashboardSurfaceSwitch";
 import { MobileSurfaceSwitch } from "../../components/MobileSurfaceSwitch";
 import { PlatformBrandMark } from "../../components/PlatformBrandMark";
+import { ResponsiveFilterPanel } from "../../components/ResponsiveFilterPanel";
 import { CONTRACT_FIRST_EXPERIENCE_CONTENT } from "../../domain/screenHelp";
 import {
   compareChannelAudienceValues,
@@ -1438,7 +1439,7 @@ function CostDashboard({
     activeFilters.length > 0 ? `${activeFilters.length}개 조건 적용` : "전체 조건";
 
   return (
-    <section className="overflow-visible rounded-[8px] border border-[#d9e0d9] bg-white lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden">
+    <section className="overflow-visible rounded-[8px] border border-[#d9e0d9] bg-white lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
       <div className="border-b border-[#d9e0d9] bg-white px-3 py-2.5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <DashboardPeriodPicker
@@ -1449,12 +1450,44 @@ function CostDashboard({
             dateToFilter={dateToFilter}
             onDateToFilterChange={onDateToFilterChange}
           />
-          <DashboardFilterToggleButton
-            open={filtersOpen}
-            activeCount={activeFilters.length}
-            onClick={() => setFiltersOpen((current) => !current)}
-            controlsId="advertiser-cost-filters"
-          />
+          <div className="relative">
+            <DashboardFilterToggleButton
+              open={filtersOpen}
+              activeCount={activeFilters.length}
+              onClick={() => setFiltersOpen((current) => !current)}
+              controlsId="advertiser-cost-filters"
+            />
+            <ResponsiveFilterPanel
+              id="advertiser-cost-filters"
+              open={filtersOpen}
+              activeCount={activeFilters.length}
+              onClose={() => setFiltersOpen(false)}
+              onClear={() => {
+                onSourceFilterChange("ALL");
+                onStatusFilterChange("ALL");
+                onQueryChange("");
+                onDateFromFilterChange("");
+                onDateToFilterChange("");
+              }}
+              className="sm:w-[min(560px,calc(100vw-48px))]"
+            >
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(120px,0.9fr)_minmax(120px,0.9fr)_minmax(220px,1.5fr)] sm:items-end">
+                <TableFilterSelect
+                  label="구분"
+                  value={sourceFilter}
+                  options={COST_SOURCE_FILTERS}
+                  onChange={(value) => onSourceFilterChange(value as CostSourceFilter)}
+                />
+                <TableFilterSelect
+                  label="상태"
+                  value={statusFilter}
+                  options={COST_STATUS_FILTERS}
+                  onChange={(value) => onStatusFilterChange(value as CostStatusFilter)}
+                />
+                <CostDashboardSearch value={query} onChange={onQueryChange} />
+              </div>
+            </ResponsiveFilterPanel>
+          </div>
         </div>
         <DashboardAppliedFilterBar
           filters={activeFilters}
@@ -1466,26 +1499,6 @@ function CostDashboard({
             onDateToFilterChange("");
           }}
         />
-        {filtersOpen ? (
-          <div
-            id="advertiser-cost-filters"
-            className="grid grid-cols-2 gap-2 border-t border-[#d9e0d9] bg-[#f4f5f2] px-0 py-2.5 sm:grid-cols-[minmax(120px,0.22fr)_minmax(120px,0.22fr)_minmax(220px,0.32fr)_minmax(220px,0.36fr)] sm:items-end"
-          >
-            <TableFilterSelect
-              label="구분"
-              value={sourceFilter}
-              options={COST_SOURCE_FILTERS}
-              onChange={(value) => onSourceFilterChange(value as CostSourceFilter)}
-            />
-            <TableFilterSelect
-              label="상태"
-              value={statusFilter}
-              options={COST_STATUS_FILTERS}
-              onChange={(value) => onStatusFilterChange(value as CostStatusFilter)}
-            />
-            <CostDashboardSearch value={query} onChange={onQueryChange} />
-          </div>
-        ) : null}
       </div>
 
       <div className="min-h-0 overflow-y-auto bg-[#fbfbf8] p-3 lg:flex-1">
@@ -1946,10 +1959,18 @@ function CostMetricCard({ label, value }: { label: string; value: string }) {
 }
 
 function CostTrendChart({ items }: { items: CostTrendItem[] }) {
-  const maxValue = Math.max(...items.map((item) => item.totalAmount), 0);
+  const maxSeriesValue = Math.max(
+    ...items.flatMap((item) => [item.contractAmount, item.campaignAmount]),
+    0,
+  );
+  const guideLines = [0, 1, 2, 3];
+  const getBarHeight = (value: number) =>
+    maxSeriesValue > 0 && value > 0
+      ? Math.max(8, (value / maxSeriesValue) * 100)
+      : 0;
 
   return (
-    <section className="rounded-[8px] border border-[#d9e0d9] bg-white p-3">
+    <section className="rounded-[8px] border border-[#d9e0d9] bg-white p-3 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset]">
       <div className="flex items-center justify-between gap-3">
         <p className="truncate text-[14px] font-extrabold text-[#171a17]">
           기간별 광고비
@@ -1965,48 +1986,58 @@ function CostTrendChart({ items }: { items: CostTrendItem[] }) {
           </span>
         </div>
       </div>
-      <div className="mt-4 flex h-[168px] items-end gap-2">
-        {items.map((item) => {
-          const totalHeight =
-            maxValue > 0 ? Math.max(8, (item.totalAmount / maxValue) * 100) : 0;
-          const campaignShare =
-            item.totalAmount > 0
-              ? (item.campaignAmount / item.totalAmount) * 100
-              : 0;
-          const contractShare = Math.max(0, 100 - campaignShare);
+      <div className="relative mt-4 h-[182px] rounded-[8px] bg-[#fbfcfa] px-3 pb-7 pt-3">
+        <div className="absolute inset-x-3 bottom-7 top-3">
+          {guideLines.map((line) => (
+            <span
+              key={line}
+              className="absolute left-0 right-0 border-t border-dashed border-[#e4e9e4]"
+              style={{ bottom: `${(line / (guideLines.length - 1)) * 100}%` }}
+            />
+          ))}
+        </div>
+        <div className="relative flex h-full items-end gap-3">
+          {items.map((item) => {
+            const contractHeight = getBarHeight(item.contractAmount);
+            const campaignHeight = getBarHeight(item.campaignAmount);
+            const hasAmount =
+              item.contractAmount > 0 || item.campaignAmount > 0;
 
-          return (
-            <div key={item.key} className="flex min-w-0 flex-1 flex-col items-center gap-2">
-              <div className="flex h-[130px] w-full max-w-[34px] items-end">
-                {item.totalAmount > 0 ? (
-                  <div
-                    className="flex w-full flex-col justify-end overflow-hidden rounded-[7px] bg-neutral-100"
-                    style={{ height: `${totalHeight}%` }}
-                    title={`${item.label} ${formatCostCurrency(item.totalAmount)}`}
-                  >
-                    {item.campaignAmount > 0 ? (
-                      <span
-                        className="block w-full bg-[#2563eb]"
-                        style={{ height: `${campaignShare}%` }}
-                      />
-                    ) : null}
-                    {item.contractAmount > 0 ? (
-                      <span
-                        className="block w-full bg-neutral-950"
-                        style={{ height: `${contractShare}%` }}
-                      />
-                    ) : null}
-                  </div>
-                ) : (
-                  <span className="h-2 w-full rounded-[7px] bg-neutral-100" />
-                )}
+            return (
+              <div key={item.key} className="flex min-w-0 flex-1 flex-col items-center gap-2">
+                <div className="flex h-[124px] w-full items-end justify-center">
+                  {hasAmount ? (
+                    <div className="flex h-full items-end justify-center gap-1.5">
+                      <span className="flex h-full w-2.5 items-end justify-center sm:w-3">
+                        {item.contractAmount > 0 ? (
+                          <span
+                            className="block w-full rounded-full bg-neutral-950 shadow-[0_1px_0_rgba(255,255,255,0.18)_inset]"
+                            style={{ height: `${contractHeight}%` }}
+                            title={`${item.label} 1:1 ${formatCostCurrency(item.contractAmount)}`}
+                          />
+                        ) : null}
+                      </span>
+                      <span className="flex h-full w-2.5 items-end justify-center sm:w-3">
+                        {item.campaignAmount > 0 ? (
+                          <span
+                            className="block w-full rounded-full bg-[#2563eb] shadow-[0_1px_0_rgba(255,255,255,0.18)_inset]"
+                            style={{ height: `${campaignHeight}%` }}
+                            title={`${item.label} 캠페인 ${formatCostCurrency(item.campaignAmount)}`}
+                          />
+                        ) : null}
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="h-1.5 w-5 rounded-full bg-[#e4e9e4]" />
+                  )}
+                </div>
+                <p className="w-full truncate text-center text-[11px] font-bold text-[#606861]">
+                  {item.label}
+                </p>
               </div>
-              <p className="w-full truncate text-center text-[11px] font-bold text-[#606861]">
-                {item.label}
-              </p>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </section>
   );
@@ -2684,7 +2715,7 @@ function CampaignListView({
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   return (
-    <section className="overflow-hidden rounded-[8px] border border-[#d9e0d9] bg-white shadow-[0_1px_0_rgba(255,255,255,0.9)_inset] lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+    <section className="overflow-visible rounded-[8px] border border-[#d9e0d9] bg-white shadow-[0_1px_0_rgba(255,255,255,0.9)_inset] lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
       <CampaignLifecycleTabs
         value={lifecycleFilter}
         counts={lifecycleCounts}
@@ -2700,12 +2731,58 @@ function CampaignListView({
               {campaigns.length.toLocaleString("ko-KR")}건 표시 · {filterSummary}
             </p>
           </div>
-          <DashboardFilterToggleButton
-            open={filtersOpen}
-            activeCount={activeFilters.length}
-            onClick={() => setFiltersOpen((current) => !current)}
-            controlsId="advertiser-campaign-filters"
-          />
+          <div className="relative">
+            <DashboardFilterToggleButton
+              open={filtersOpen}
+              activeCount={activeFilters.length}
+              onClick={() => setFiltersOpen((current) => !current)}
+              controlsId="advertiser-campaign-filters"
+            />
+            <ResponsiveFilterPanel
+              id="advertiser-campaign-filters"
+              open={filtersOpen}
+              activeCount={activeFilters.length}
+              onClose={() => setFiltersOpen(false)}
+              onClear={() => {
+                onPlatformFilterChange("ALL");
+                onBrandFilterChange("ALL");
+                onParticipantFilterChange("ALL");
+                onQueryChange("");
+              }}
+              className="sm:w-[min(720px,calc(100vw-48px))]"
+            >
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(120px,0.75fr)_minmax(140px,0.85fr)_minmax(260px,1.6fr)_minmax(140px,0.85fr)] sm:items-end">
+                <TableFilterSelect
+                  label="플랫폼"
+                  value={platformFilter}
+                  options={platformOptions}
+                  onChange={(value) => onPlatformFilterChange(value as PlatformFilter)}
+                  compact
+                />
+                <TableFilterSelect
+                  label="브랜드"
+                  value={brandFilter}
+                  options={brandOptions}
+                  onChange={onBrandFilterChange}
+                  compact
+                />
+                <CampaignSearch
+                  value={query}
+                  onChange={onQueryChange}
+                  compact
+                />
+                <TableFilterSelect
+                  label="진도율"
+                  value={participantFilter}
+                  options={CAMPAIGN_PARTICIPANT_OPTIONS}
+                  onChange={(value) =>
+                    onParticipantFilterChange(value as CampaignParticipantFilter)
+                  }
+                  compact
+                />
+              </div>
+            </ResponsiveFilterPanel>
+          </div>
         </div>
         <DashboardAppliedFilterBar
           filters={activeFilters}
@@ -2716,42 +2793,6 @@ function CampaignListView({
             onQueryChange("");
           }}
         />
-        {filtersOpen ? (
-          <div
-            id="advertiser-campaign-filters"
-            className="grid grid-cols-2 gap-2 border-t border-[#edf1ed] bg-[#f8faf7] p-2 lg:grid-cols-[minmax(110px,0.22fr)_minmax(130px,0.24fr)_minmax(260px,0.7fr)_minmax(130px,0.24fr)]"
-          >
-            <TableFilterSelect
-              label="플랫폼"
-              value={platformFilter}
-              options={platformOptions}
-              onChange={(value) => onPlatformFilterChange(value as PlatformFilter)}
-              compact
-            />
-            <TableFilterSelect
-              label="브랜드"
-              value={brandFilter}
-              options={brandOptions}
-              onChange={onBrandFilterChange}
-              compact
-            />
-            <CampaignSearch
-              value={query}
-              onChange={onQueryChange}
-              compact
-              className="col-span-2 lg:col-span-auto"
-            />
-            <TableFilterSelect
-              label="진도율"
-              value={participantFilter}
-              options={CAMPAIGN_PARTICIPANT_OPTIONS}
-              onChange={(value) =>
-                onParticipantFilterChange(value as CampaignParticipantFilter)
-              }
-              compact
-            />
-          </div>
-        ) : null}
       </div>
       <CampaignTableHeaderRow
         dateColumnLabel={dateColumnLabel}
@@ -3269,12 +3310,65 @@ function CampaignDetailView({
               {detailFilterSummary}
             </p>
           </div>
-          <DashboardFilterToggleButton
-            open={detailFiltersOpen}
-            activeCount={detailActiveFilters.length}
-            onClick={() => setDetailFiltersOpen((current) => !current)}
-            controlsId="campaign-detail-filters"
-          />
+          <div className="relative">
+            <DashboardFilterToggleButton
+              open={detailFiltersOpen}
+              activeCount={detailActiveFilters.length}
+              onClick={() => setDetailFiltersOpen((current) => !current)}
+              controlsId="campaign-detail-filters"
+            />
+            <ResponsiveFilterPanel
+              id="campaign-detail-filters"
+              open={detailFiltersOpen}
+              activeCount={detailActiveFilters.length}
+              onClose={() => setDetailFiltersOpen(false)}
+              onClear={() => {
+                setInfluencerQuery("");
+                setPlatformFilter("ALL");
+                setProgressFilter("ALL");
+                setDeadlineFilter("ALL");
+                setPostLinkFilter("ALL");
+              }}
+            >
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(220px,1.35fr)_minmax(130px,0.8fr)_minmax(130px,0.8fr)_minmax(130px,0.8fr)_minmax(160px,0.95fr)]">
+                <CampaignSearch
+                  label="인플루언서"
+                  placeholder="인플루언서명 검색"
+                  value={influencerQuery}
+                  onChange={setInfluencerQuery}
+                  compact
+                />
+                <TableFilterSelect
+                  label="플랫폼"
+                  value={platformFilter}
+                  options={platformOptions}
+                  onChange={(value) => setPlatformFilter(value as PlatformFilter)}
+                  compact
+                />
+                <TableFilterSelect
+                  label="현재 상태"
+                  value={progressFilter}
+                  options={DETAIL_PROGRESS_OPTIONS}
+                  onChange={(value) => setProgressFilter(value as DetailProgressFilter)}
+                  compact
+                />
+                <TableFilterSelect
+                  label="마감일"
+                  value={deadlineFilter}
+                  options={DETAIL_DEADLINE_OPTIONS}
+                  onChange={(value) => setDeadlineFilter(value as DetailDeadlineFilter)}
+                  compact
+                />
+                <TableFilterSelect
+                  label="콘텐츠 제출 링크"
+                  value={postLinkFilter}
+                  options={DETAIL_POST_LINK_OPTIONS}
+                  onChange={(value) => setPostLinkFilter(value as DetailPostLinkFilter)}
+                  compact
+                />
+              </div>
+            </ResponsiveFilterPanel>
+          </div>
         </div>
         <DashboardAppliedFilterBar
           filters={detailActiveFilters}
@@ -3286,49 +3380,6 @@ function CampaignDetailView({
             setPostLinkFilter("ALL");
           }}
         />
-        {detailFiltersOpen ? (
-          <div
-            id="campaign-detail-filters"
-            className="grid grid-cols-2 gap-2 border-t border-[#edf1ed] bg-[#f8faf7] p-2 lg:grid-cols-[minmax(220px,0.7fr)_minmax(130px,0.36fr)_minmax(130px,0.34fr)_minmax(130px,0.34fr)_minmax(160px,0.45fr)]"
-          >
-            <CampaignSearch
-              label="인플루언서"
-              placeholder="인플루언서명 검색"
-              value={influencerQuery}
-              onChange={setInfluencerQuery}
-              compact
-              className="col-span-2 lg:col-span-auto"
-            />
-            <TableFilterSelect
-              label="플랫폼"
-              value={platformFilter}
-              options={platformOptions}
-              onChange={(value) => setPlatformFilter(value as PlatformFilter)}
-              compact
-            />
-            <TableFilterSelect
-              label="현재 상태"
-              value={progressFilter}
-              options={DETAIL_PROGRESS_OPTIONS}
-              onChange={(value) => setProgressFilter(value as DetailProgressFilter)}
-              compact
-            />
-            <TableFilterSelect
-              label="마감일"
-              value={deadlineFilter}
-              options={DETAIL_DEADLINE_OPTIONS}
-              onChange={(value) => setDeadlineFilter(value as DetailDeadlineFilter)}
-              compact
-            />
-            <TableFilterSelect
-              label="콘텐츠 제출 링크"
-              value={postLinkFilter}
-              options={DETAIL_POST_LINK_OPTIONS}
-              onChange={(value) => setPostLinkFilter(value as DetailPostLinkFilter)}
-              compact
-            />
-          </div>
-        ) : null}
       </div>
       <CampaignInfluencerTableHeaderRow />
 
@@ -3612,12 +3663,60 @@ function CampaignApplicantsPanel({
               </option>
             ))}
           </select>
-          <DashboardFilterToggleButton
-            open={filtersOpen}
-            activeCount={activeFilters.length}
-            controlsId="campaign-applicant-filters"
-            onClick={() => setFiltersOpen((current) => !current)}
-          />
+          <div className="relative">
+            <DashboardFilterToggleButton
+              open={filtersOpen}
+              activeCount={activeFilters.length}
+              controlsId="campaign-applicant-filters"
+              onClick={() => setFiltersOpen((current) => !current)}
+            />
+            <ResponsiveFilterPanel
+              id="campaign-applicant-filters"
+              open={filtersOpen}
+              activeCount={activeFilters.length}
+              onClose={() => setFiltersOpen(false)}
+              onClear={() => {
+                setQuery("");
+                setPlatformFilter("ALL");
+                setStatusFilter("ALL");
+              }}
+              className="sm:w-[min(560px,calc(100vw-48px))]"
+            >
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(220px,1.4fr)_minmax(130px,0.8fr)_minmax(130px,0.8fr)]">
+                <CampaignSearch
+                  label="이름"
+                  placeholder="이름, 채널 검색"
+                  ariaLabel="지원자 검색"
+                  value={query}
+                  onChange={setQuery}
+                  compact
+                />
+                <TableFilterSelect
+                  label="플랫폼"
+                  value={platformFilter}
+                  options={APPLICANT_PLATFORM_FILTERS.map((platform) => ({
+                    value: platform,
+                    label: platform === "ALL" ? "전체" : platformLabels[platform],
+                  }))}
+                  onChange={(value) =>
+                    setPlatformFilter(value as ApplicantPlatformFilter)
+                  }
+                  compact
+                />
+                <TableFilterSelect
+                  label="상태"
+                  value={statusFilter}
+                  options={APPLICANT_STATUS_FILTERS.map((status) => ({
+                    value: status,
+                    label:
+                      status === "ALL" ? "전체" : APPLICANT_STATUS_META[status].label,
+                  }))}
+                  onChange={(value) => setStatusFilter(value as ApplicantStatusFilter)}
+                  compact
+                />
+              </div>
+            </ResponsiveFilterPanel>
+          </div>
         </div>
       </div>
       <DashboardAppliedFilterBar
@@ -3628,45 +3727,6 @@ function CampaignApplicantsPanel({
           setStatusFilter("ALL");
         }}
       />
-      {filtersOpen ? (
-        <div
-          id="campaign-applicant-filters"
-          className="grid gap-2 border-t border-[#edf1ed] bg-[#f8faf7] p-2 lg:grid-cols-[minmax(220px,0.8fr)_minmax(130px,0.4fr)_minmax(130px,0.4fr)]"
-        >
-          <CampaignSearch
-            label="이름"
-            placeholder="이름, 채널 검색"
-            ariaLabel="지원자 검색"
-            value={query}
-            onChange={setQuery}
-            compact
-          />
-          <TableFilterSelect
-            label="플랫폼"
-            value={platformFilter}
-            options={APPLICANT_PLATFORM_FILTERS.map((platform) => ({
-              value: platform,
-              label: platform === "ALL" ? "전체" : platformLabels[platform],
-            }))}
-            onChange={(value) =>
-              setPlatformFilter(value as ApplicantPlatformFilter)
-            }
-            compact
-          />
-          <TableFilterSelect
-            label="상태"
-            value={statusFilter}
-            options={APPLICANT_STATUS_FILTERS.map((status) => ({
-              value: status,
-              label:
-                status === "ALL" ? "전체" : APPLICANT_STATUS_META[status].label,
-            }))}
-            onChange={(value) => setStatusFilter(value as ApplicantStatusFilter)}
-            compact
-          />
-        </div>
-      ) : null}
-
       {marketplaceStatus === "error" ? (
         <p className="border-t border-[#edf1ed] px-3 py-2 text-[12px] font-semibold text-rose-700">
           {marketplaceError ?? "지원자 목록을 불러오지 못했습니다."}
@@ -4229,7 +4289,7 @@ function ContractTable({
     });
 
   return (
-    <section className="overflow-visible rounded-[8px] border border-[#d9e0d9] bg-white lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden">
+    <section className="overflow-visible rounded-[8px] border border-[#d9e0d9] bg-white lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
       {lifecycleTabs}
       <div className="border-b border-[#d9e0d9] bg-white">
         <div className="flex min-h-11 flex-wrap items-center justify-between gap-2 px-3 py-2">
@@ -4261,12 +4321,65 @@ function ContractTable({
               onDateToFilterChange={onDateToFilterChange}
               align="right"
             />
-            <DashboardFilterToggleButton
-              open={filtersOpen}
-              activeCount={activeFilters.length}
-              onClick={() => setFiltersOpen((current) => !current)}
-              controlsId="advertiser-contract-filters"
-            />
+            <div className="relative">
+              <DashboardFilterToggleButton
+                open={filtersOpen}
+                activeCount={activeFilters.length}
+                onClick={() => setFiltersOpen((current) => !current)}
+                controlsId="advertiser-contract-filters"
+              />
+              <ResponsiveFilterPanel
+                id="advertiser-contract-filters"
+                open={filtersOpen}
+                activeCount={activeFilters.length}
+                onClose={() => setFiltersOpen(false)}
+                onClear={() => {
+                  onPlatformFilterChange("ALL");
+                  onContractTypeFilterChange("ALL");
+                  onAmountFilterChange("ALL");
+                  onDetailStatusFilterChange("ALL");
+                  onPeriodFilterChange("CUSTOM");
+                  onDateFromFilterChange("");
+                  onDateToFilterChange("");
+                  onQueryChange("");
+                }}
+                className="sm:w-[min(920px,calc(100vw-48px))]"
+              >
+                <div className="grid grid-cols-1 gap-2 lg:grid-cols-[minmax(132px,0.34fr)_minmax(108px,0.26fr)_minmax(300px,1fr)_minmax(132px,0.34fr)_minmax(112px,0.3fr)] lg:items-end">
+                  <TableFilterSelect
+                    label="플랫폼"
+                    value={platformFilter}
+                    options={platformOptions}
+                    onChange={(value) => onPlatformFilterChange(value as PlatformFilter)}
+                  />
+                  <TableFilterSelect
+                    label="종류"
+                    value={contractTypeFilter}
+                    options={contractTypeOptions}
+                    onChange={(value) => onContractTypeFilterChange(value as ContractTypeFilter)}
+                  />
+                  <ContractNameSearch
+                    value={query}
+                    onChange={onQueryChange}
+                    sortKey="title"
+                    sortState={sortState}
+                    onSortChange={onSortChange}
+                  />
+                  <TableFilterSelect
+                    label="지급내용"
+                    value={amountFilter}
+                    options={amountOptions}
+                    onChange={(value) => onAmountFilterChange(value as AmountFilter)}
+                  />
+                  <TableFilterSelect
+                    label="현 단계"
+                    value={detailStatusFilter}
+                    options={statusOptions}
+                    onChange={(value) => onDetailStatusFilterChange(value as DetailStatusFilter)}
+                  />
+                </div>
+              </ResponsiveFilterPanel>
+            </div>
           </div>
         </div>
         <DashboardAppliedFilterBar
@@ -4282,45 +4395,6 @@ function ContractTable({
             onQueryChange("");
           }}
         />
-        {filtersOpen ? (
-          <div
-            id="advertiser-contract-filters"
-            className="grid grid-cols-2 gap-2 border-t border-[#d9e0d9] bg-[#f4f5f2] px-3 py-2.5 lg:grid-cols-[minmax(132px,0.34fr)_minmax(108px,0.26fr)_minmax(300px,1fr)_minmax(132px,0.34fr)_minmax(112px,0.3fr)] lg:items-end"
-          >
-            <TableFilterSelect
-              label="플랫폼"
-              value={platformFilter}
-              options={platformOptions}
-              onChange={(value) => onPlatformFilterChange(value as PlatformFilter)}
-            />
-            <TableFilterSelect
-              label="종류"
-              value={contractTypeFilter}
-              options={contractTypeOptions}
-              onChange={(value) => onContractTypeFilterChange(value as ContractTypeFilter)}
-            />
-            <ContractNameSearch
-              value={query}
-              onChange={onQueryChange}
-              sortKey="title"
-              sortState={sortState}
-              onSortChange={onSortChange}
-              className="col-span-2 lg:col-span-auto"
-            />
-            <TableFilterSelect
-              label="지급내용"
-              value={amountFilter}
-              options={amountOptions}
-              onChange={(value) => onAmountFilterChange(value as AmountFilter)}
-            />
-            <TableFilterSelect
-              label="현 단계"
-              value={detailStatusFilter}
-              options={statusOptions}
-              onChange={(value) => onDetailStatusFilterChange(value as DetailStatusFilter)}
-            />
-          </div>
-        ) : null}
       </div>
       <ContractTableHeaderRow
         dateColumnLabel={dateColumnLabel}
@@ -4841,7 +4915,7 @@ function CampaignParticipantEmptyState({
       </h2>
       <p className="mt-1 max-w-md text-[12px] leading-5 text-[#7d857f]">
         {isInitialEmpty
-          ? "지원자를 선정하면 캠페인 조건으로 계약서와 서명 진행이 이곳에 표시됩니다."
+          ? "지원자를 선정하면 계약서와 서명 진행이 이곳에 표시됩니다."
           : "검색어나 필터를 줄여보세요."}
       </p>
     </section>
