@@ -8462,6 +8462,17 @@ const pdfPlatformLabels: Record<ContractPlatform, string> = {
   OTHER: "기타",
 };
 
+const pdfPaymentMethodLabels: Record<string, string> = {
+  external_bank_transfer: "외부 계좌입금",
+  advertiser_direct: "광고주 직접 지급",
+  other_direct: "기타 직접 정산",
+};
+
+const formatPdfPaymentMethod = (value: unknown) =>
+  typeof value === "string" && pdfPaymentMethodLabels[value]
+    ? pdfPaymentMethodLabels[value]
+    : formatPdfValue(value, "당사자 직접 정산");
+
 const formatPdfValue = (value: unknown, fallback = "-") => {
   if (Array.isArray(value)) {
     const normalized = value
@@ -8694,6 +8705,7 @@ const _buildLegacyContractDocumentPdf = async ({
     ["업로드 마감일", formatPdfValue(campaign.upload_due_at ?? campaign.deadline)],
     ["광고주 검수 회신", formatPdfValue(campaign.review_due_at)],
     ["수정 가능 횟수", formatPdfValue(campaign.revision_limit)],
+    ["수정 요청 기준", formatPdfValue(campaign.revision_request_policy)],
   ]);
 
   addHeading("제3조 광고 표시 및 추적");
@@ -8706,6 +8718,9 @@ const _buildLegacyContractDocumentPdf = async ({
   if (hasText(campaign.tracking_link)) {
     addRows([["추적 링크", campaign.tracking_link]]);
   }
+  if ((campaign.reference_links ?? []).length) {
+    addRows([["예시 레퍼런스", formatPdfValue(campaign.reference_links)]]);
+  }
   if ((campaign.required_hashtags ?? []).length || (campaign.brand_account_tags ?? []).length) {
     addRows([
       ["필수 해시태그", formatPdfValue(campaign.required_hashtags)],
@@ -8714,6 +8729,15 @@ const _buildLegacyContractDocumentPdf = async ({
   }
 
   addHeading("제4조 지급 조건");
+  addRows([
+    ["지급 방식", formatPdfPaymentMethod(campaign.payment_method)],
+    [
+      "원천징수",
+      campaign.withholding_tax_enabled === true
+        ? "3.3% 원천징수/소득신고 확인"
+        : "당사자 직접 확인",
+    ],
+  ]);
   addParagraph(formatPdfValue(campaign.budget, "지급 조건이 입력되지 않았습니다."));
 
   addHeading("특약 및 자동 생성 조항");
@@ -9034,6 +9058,7 @@ const buildContractDocumentPdf = async ({
     ["업로드 마감일", formatPdfValue(campaign.upload_due_at ?? campaign.deadline)],
     ["광고주 검수 회신", formatPdfValue(campaign.review_due_at)],
     ["수정 가능 횟수", formatPdfValue(campaign.revision_limit)],
+    ["수정 요청 기준", formatPdfValue(campaign.revision_request_policy)],
   ]);
 
   addSectionTitle("제5조 광고 표시 및 제출");
@@ -9055,9 +9080,19 @@ const buildContractDocumentPdf = async ({
   if (hasText(campaign.tracking_link)) {
     addDefinitionRows([["추적 링크", campaign.tracking_link]]);
   }
+  if ((campaign.reference_links ?? []).length) {
+    addDefinitionRows([["예시 레퍼런스", formatPdfValue(campaign.reference_links)]]);
+  }
 
   addSectionTitle("제6조 지급 조건");
   addDefinitionRows([
+    ["지급 방식", formatPdfPaymentMethod(campaign.payment_method)],
+    [
+      "원천징수",
+      campaign.withholding_tax_enabled === true
+        ? "3.3% 원천징수/소득신고 확인"
+        : "당사자 직접 확인",
+    ],
     ["지급 금액/조건", formatPdfValue(campaign.budget, "지급 조건이 입력되지 않았습니다.")],
   ]);
 
@@ -13447,6 +13482,11 @@ const validateContractPayload = (contract: Contract) => {
     !isSafeHttpUrl(contract.campaign?.tracking_link)
   ) {
     return "Tracking link must be an http(s) URL";
+  }
+  for (const referenceLink of contract.campaign?.reference_links ?? []) {
+    if (hasText(referenceLink) && !isSafeHttpUrl(referenceLink)) {
+      return "Reference link must be an http(s) URL";
+    }
   }
   if (hasText(contract.post_link) && !isSafeHttpUrl(contract.post_link)) {
     return "Submitted post link must be an http(s) URL";

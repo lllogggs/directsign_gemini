@@ -115,8 +115,12 @@ export interface ContractCampaign {
   upload_due_at?: string;
   review_due_at?: string;
   revision_limit?: string;
+  revision_request_policy?: string;
   disclosure_text?: string;
   tracking_link?: string;
+  reference_links?: string[];
+  payment_method?: "external_bank_transfer" | "advertiser_direct" | "other_direct";
+  withholding_tax_enabled?: boolean;
   period?: string;
   platforms?: ContractPlatform[];
   deliverables?: string[];

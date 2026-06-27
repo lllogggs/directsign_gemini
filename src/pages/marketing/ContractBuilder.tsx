@@ -85,8 +85,10 @@ interface ContractDraft {
   uploadDueDate: string;
   reviewDueDate: string;
   revisionLimit: string;
+  revisionRequestPolicy: string;
   disclosureText: string;
   trackingLink: string;
+  referenceLinks: string;
   requiredHashtags: string;
   brandAccountTags: string;
   contentFileRequirement: string;
@@ -95,6 +97,8 @@ interface ContractDraft {
   contentUsagePeriod: string;
   contentUsageEditAllowed: boolean;
   exclusivity: string;
+  paymentMethod: "external_bank_transfer" | "advertiser_direct" | "other_direct";
+  withholdingTaxEnabled: boolean;
   payment: string;
   customClauses: { id: string; category: string; content: string }[];
   newClauseCategory: string;
@@ -300,8 +304,11 @@ const INITIAL_DRAFT: ContractDraft = {
   uploadDueDate: "",
   reviewDueDate: "",
   revisionLimit: "",
+  revisionRequestPolicy:
+    "수정 요청은 계약서에 적힌 광고표시, 필수 해시태그, 링크, 일정, 콘텐츠 형식 조건에 한정합니다.",
   disclosureText: "콘텐츠 제목 또는 본문 첫 부분에 '유료광고' 또는 '#광고'를 명확히 표시",
   trackingLink: "",
+  referenceLinks: "",
   requiredHashtags: "",
   brandAccountTags: "",
   contentFileRequirement: "게시물 캡처, 블로그 PDF, 스토리 캡처 등 광고주가 확인할 수 있는 파일",
@@ -310,6 +317,8 @@ const INITIAL_DRAFT: ContractDraft = {
   contentUsagePeriod: "",
   contentUsageEditAllowed: false,
   exclusivity: "",
+  paymentMethod: "external_bank_transfer",
+  withholdingTaxEnabled: true,
   payment: "",
   customClauses: [],
   newClauseCategory: "",
@@ -336,6 +345,18 @@ const splitCommaSeparated = (value: string) =>
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+
+const splitLineSeparated = (value: string) =>
+  value
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+const paymentMethodLabels: Record<ContractDraft["paymentMethod"], string> = {
+  external_bank_transfer: "외부 계좌입금",
+  advertiser_direct: "광고주 직접 지급",
+  other_direct: "기타 직접 정산",
+};
 
 const addDays = (days: number) => {
   const date = new Date();
@@ -399,6 +420,7 @@ const getSelectedPlatforms = (draft: ContractDraft): ContractPlatform[] =>
 
 const buildContractClauses = (draft: ContractDraft): Clause[] => {
   const clauses: Clause[] = [];
+  const referenceLinks = splitLineSeparated(draft.referenceLinks);
   const deliverables = getDeliverableItems(draft)
     .map(
       (item) =>
@@ -436,13 +458,15 @@ const buildContractClauses = (draft: ContractDraft): Clause[] => {
         `콘텐츠 제출 마감: ${draft.uploadDueDate || "입력 필요"}`,
         `광고주 검수 회신 기한: ${draft.reviewDueDate || "입력 필요"}`,
         `수정 가능 횟수: ${draft.revisionLimit || "입력 필요"}`,
+        `수정 요청 기준: ${draft.revisionRequestPolicy || "입력 필요"}`,
+        "광고주는 계약서에 명시된 조건의 누락, 오류, 광고표시 미흡, 필수 링크·태그 누락 등 객관적으로 확인 가능한 사유에 따라 수정 요청할 수 있다. 단순 취향이나 사후 변경 목적의 반복 수정 요청은 당사자 간 추가 합의가 필요하다.",
       ].join("\n"),
       status: "PENDING_REVIEW",
       history: [],
     });
   }
 
-  if (draft.disclosureText || draft.trackingLink) {
+  if (draft.disclosureText || draft.trackingLink || referenceLinks.length > 0) {
     clauses.push({
       clause_id: "draft_disclosure",
       category: "광고 표시 및 추적 조건",
@@ -451,6 +475,9 @@ const buildContractClauses = (draft: ContractDraft): Clause[] => {
         "광고주와 인플루언서는 경제적 이해관계가 소비자에게 명확히 인식되도록 콘텐츠의 제목, 본문 첫 부분, 영상 설명 또는 플랫폼상 쉽게 확인 가능한 위치에 광고 표시를 유지해야 한다.",
         "플랫폼 정책이나 관계 법령상 더 엄격한 표시가 필요한 경우 그 기준을 우선 적용한다.",
         draft.trackingLink ? `필수 추적 링크: ${draft.trackingLink}` : "",
+        referenceLinks.length > 0
+          ? `광고주 제공 레퍼런스: ${referenceLinks.join(", ")}`
+          : "",
       ]
         .filter(Boolean)
         .join("\n"),
@@ -500,6 +527,15 @@ const buildContractClauses = (draft: ContractDraft): Clause[] => {
     history: [],
   });
 
+  clauses.push({
+    clause_id: "draft_creator_ip_responsibility",
+    category: "저작권 및 제3자 권리 책임",
+    content:
+      "인플루언서는 콘텐츠 제작 과정에서 사용하는 이미지, 영상, 음악, 폰트, 초상, 상표, 장소 촬영물 등 제3자의 권리를 침해하지 않도록 필요한 권리 확인과 사용 허락을 받아야 한다. 인플루언서가 임의로 사용한 자료 또는 권리 미확보로 분쟁, 삭제 요청, 손해배상, 행정 제재가 발생한 경우 그 책임은 해당 자료를 사용한 인플루언서에게 있다. 다만 광고주가 특정 자료의 사용을 직접 제공하거나 지시한 경우 그 자료 사용 권한에 대한 책임은 광고주에게 있다.",
+    status: "PENDING_REVIEW",
+    history: [],
+  });
+
   if (draft.exclusivity) {
     clauses.push({
       clause_id: "draft_exclusivity",
@@ -514,7 +550,14 @@ const buildContractClauses = (draft: ContractDraft): Clause[] => {
     clauses.push({
       clause_id: "draft_payment",
       category: "대가 지급",
-      content: `본 계약의 대가로 광고주는 인플루언서에게 다음과 같이 지급한다: ${draft.payment}`,
+      content: [
+        `본 계약의 대가로 광고주는 인플루언서에게 다음과 같이 지급한다: ${draft.payment}`,
+        `지급 방식: ${paymentMethodLabels[draft.paymentMethod]}`,
+        draft.withholdingTaxEnabled
+          ? "개인 인플루언서에게 인적용역 대가로 지급하는 경우 3.3% 원천징수 및 소득신고 적용 여부와 처리 주체는 당사자가 직접 확인하여 이행한다."
+          : "원천징수 또는 소득신고가 필요한 지급인지 여부는 당사자가 직접 확인하여 이행한다.",
+        "연락미는 계약서 작성, 전자서명, 증빙 보관 도구를 제공하며 광고비 지급대행, 에스크로, 세금 신고, 원천징수 이행을 대행하지 않는다.",
+      ].join("\n"),
       status: "PENDING_REVIEW",
       history: [],
     });
@@ -573,6 +616,16 @@ const validateContractDraft = (draft: ContractDraft): ValidationError[] => {
     });
   }
 
+  splitLineSeparated(draft.referenceLinks).forEach((link) => {
+    if (!isHttpUrl(link)) {
+      errors.push({
+        step: 3,
+        field: "referenceLinks",
+        message: "레퍼런스 링크는 http 또는 https 주소만 입력할 수 있습니다.",
+      });
+    }
+  });
+
   const deliverables = getDeliverableItems(draft);
   if (deliverables.length === 0) {
     errors.push({
@@ -601,6 +654,7 @@ const validateContractDraft = (draft: ContractDraft): ValidationError[] => {
   requireField(3, "uploadDueDate", draft.uploadDueDate, "콘텐츠 제출 마감일을 입력하세요.");
   requireField(3, "reviewDueDate", draft.reviewDueDate, "광고주 검수 회신 기한을 입력하세요.");
   requireField(3, "revisionLimit", draft.revisionLimit, "수정 가능 횟수를 입력하세요.");
+  requireField(3, "revisionRequestPolicy", draft.revisionRequestPolicy, "수정 요청 기준을 입력하세요.");
   requireField(3, "payment", draft.payment, "지급 조건을 입력하세요.");
   requireField(3, "disclosureText", draft.disclosureText, "광고 표시 조건을 입력하세요.");
 
@@ -965,8 +1019,12 @@ export function ContractBuilder() {
         upload_due_at: draft.uploadDueDate,
         review_due_at: draft.reviewDueDate,
         revision_limit: draft.revisionLimit.trim(),
+        revision_request_policy: draft.revisionRequestPolicy.trim(),
         disclosure_text: draft.disclosureText.trim(),
         tracking_link: draft.trackingLink.trim() || undefined,
+        reference_links: splitLineSeparated(draft.referenceLinks),
+        payment_method: draft.paymentMethod,
+        withholding_tax_enabled: draft.withholdingTaxEnabled,
         period:
           draft.campaignStart && draft.campaignEnd
             ? `${draft.campaignStart} - ${draft.campaignEnd}`
@@ -1632,6 +1690,18 @@ export function ContractBuilder() {
                   </div>
 
                   <div>
+                    <Label>수정 요청 기준</Label>
+                    <Textarea
+                      className="mt-1.5 min-h-[86px]"
+                      placeholder="예: 광고표시 누락, 필수 해시태그 누락, 계약한 콘텐츠 형식 미충족"
+                      value={draft.revisionRequestPolicy}
+                      onChange={(event) =>
+                        updateDraft({ revisionRequestPolicy: event.target.value })
+                      }
+                    />
+                  </div>
+
+                  <div>
                     <Label>광고 표시 조건</Label>
                     <Input
                       className="mt-1.5"
@@ -1658,6 +1728,18 @@ export function ContractBuilder() {
                     <p className="mt-2 text-[12px] leading-5 text-neutral-500">
                       쿠폰 코드나 해시태그는 광고 표시 조건 또는 특약에 적어 주세요.
                     </p>
+                  </div>
+
+                  <div>
+                    <Label>예시 레퍼런스 링크</Label>
+                    <Textarea
+                      className="mt-1.5 min-h-[86px]"
+                      placeholder="광고주가 원하는 톤이나 형식의 콘텐츠 URL을 한 줄에 하나씩 입력"
+                      value={draft.referenceLinks}
+                      onChange={(event) =>
+                        updateDraft({ referenceLinks: event.target.value })
+                      }
+                    />
                   </div>
 
                   <div className="rounded-[16px] border border-neutral-200 bg-white p-4">
@@ -1773,8 +1855,40 @@ export function ContractBuilder() {
 
                   <div>
                     <Label>지급 조건</Label>
+                    <div className="mt-1.5 grid gap-3 sm:grid-cols-[180px_1fr]">
+                      <select
+                        value={draft.paymentMethod}
+                        onChange={(event) =>
+                          updateDraft({
+                            paymentMethod: event.target
+                              .value as ContractDraft["paymentMethod"],
+                          })
+                        }
+                        className="h-11 rounded-md border border-neutral-200 bg-white px-3 text-sm font-semibold text-neutral-900 outline-none transition hover:border-neutral-300 focus:border-neutral-950"
+                        aria-label="지급 방식"
+                      >
+                        {Object.entries(paymentMethodLabels).map(([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
+                      <label className="flex min-h-11 items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 text-[13px] font-semibold text-neutral-700">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-neutral-300 text-neutral-900"
+                          checked={draft.withholdingTaxEnabled}
+                          onChange={(event) =>
+                            updateDraft({
+                              withholdingTaxEnabled: event.target.checked,
+                            })
+                          }
+                        />
+                        3.3% 원천징수/소득신고 확인
+                      </label>
+                    </div>
                     <Textarea
-                      className="mt-1.5 min-h-[110px]"
+                      className="mt-3 min-h-[110px]"
                       placeholder="예: 총 1,200,000원, 세금계산서 수령 후 7영업일 내 지급"
                       value={draft.payment}
                       onChange={(event) => updateDraft({ payment: event.target.value })}
@@ -1937,6 +2051,27 @@ export function ContractBuilder() {
                     <SummaryRow label="업로드 마감" value={draft.uploadDueDate || "미입력"} />
                     <SummaryRow label="검수 기한" value={draft.reviewDueDate || "미입력"} />
                     <SummaryRow label="수정 횟수" value={draft.revisionLimit || "미입력"} />
+                    <SummaryRow
+                      label="수정 기준"
+                      value={draft.revisionRequestPolicy || "미입력"}
+                      multiline
+                    />
+                    <SummaryRow
+                      label="레퍼런스"
+                      value={
+                        splitLineSeparated(draft.referenceLinks).length > 0
+                          ? `${splitLineSeparated(draft.referenceLinks).length}개`
+                          : "없음"
+                      }
+                    />
+                    <SummaryRow
+                      label="지급 방식"
+                      value={paymentMethodLabels[draft.paymentMethod]}
+                    />
+                    <SummaryRow
+                      label="3.3% 확인"
+                      value={draft.withholdingTaxEnabled ? "적용 확인" : "당사자 확인"}
+                    />
                   </ReviewBlock>
 
                   <ReviewBlock title="발송 상태">
@@ -2205,6 +2340,7 @@ const BuilderReviewPanel: React.FC<{
 }> = ({ draft, clauses, density = "regular" }) => {
   const isCompact = density === "compact";
   const deliverables = getDeliverableItems(draft);
+  const referenceLinks = splitLineSeparated(draft.referenceLinks);
   const previewDate = new Date().toISOString().split("T")[0];
 
   return (
@@ -2277,6 +2413,7 @@ const BuilderReviewPanel: React.FC<{
                 ["업로드 마감일", formatDraftValue(draft.uploadDueDate)],
                 ["광고주 검수 회신", formatDraftValue(draft.reviewDueDate)],
                 ["수정 가능 횟수", formatDraftValue(draft.revisionLimit)],
+                ["수정 요청 기준", formatDraftValue(draft.revisionRequestPolicy)],
               ]}
             />
           </ContractDocumentSection>
@@ -2293,9 +2430,23 @@ const BuilderReviewPanel: React.FC<{
                 {draft.trackingLink}
               </p>
             )}
+            {referenceLinks.length > 0 && (
+              <DocumentRows rows={[["예시 레퍼런스", referenceLinks.join("\n")]]} />
+            )}
           </ContractDocumentSection>
 
           <ContractDocumentSection title="제4조 지급 조건">
+            <DocumentRows
+              rows={[
+                ["지급 방식", paymentMethodLabels[draft.paymentMethod]],
+                [
+                  "원천징수",
+                  draft.withholdingTaxEnabled
+                    ? "3.3% 원천징수/소득신고 확인"
+                    : "당사자 직접 확인",
+                ],
+              ]}
+            />
             <DocumentParagraph>
               {formatDraftValue(
                 draft.payment,
@@ -2431,13 +2582,30 @@ const ReviewBlock: React.FC<{ title: string; children: React.ReactNode }> = ({
   </div>
 );
 
-const SummaryRow: React.FC<{ label: string; value: string }> = ({
+const SummaryRow: React.FC<{
+  label: string;
+  value: string;
+  multiline?: boolean;
+}> = ({
   label,
+  multiline = false,
   value,
 }) => (
-  <div className="flex items-start justify-between gap-4 text-[13px]">
+  <div
+    className={
+      multiline
+        ? "text-[13px]"
+        : "flex items-start justify-between gap-4 text-[13px]"
+    }
+  >
     <span className="text-neutral-400">{label}</span>
-    <span className="max-w-[260px] text-right font-medium text-neutral-800">
+    <span
+      className={
+        multiline
+          ? "mt-1 block text-left font-medium leading-5 text-neutral-800"
+          : "max-w-[260px] text-right font-medium text-neutral-800"
+      }
+    >
       {value}
     </span>
   </div>

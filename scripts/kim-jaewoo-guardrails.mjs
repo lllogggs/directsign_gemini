@@ -346,7 +346,7 @@ check(
     agents.includes("mobile dashboard rows should keep clear row separators") &&
     (advertiserDashboard.match(dashboardMobileDividerBodyPattern)?.length ?? 0) >= 3 &&
     (influencerDashboard.match(dashboardMobileDividerBodyPattern)?.length ?? 0) >= 1 &&
-    advertiserDashboard.includes("divide-y divide-[#edf1ed] border-t border-[#edf1ed] lg:divide-y-0") &&
+    advertiserDashboard.includes("no-scrollbar max-h-[620px] divide-y divide-[#edf1ed] overflow-y-auto overscroll-contain lg:max-h-none lg:min-h-0 lg:flex-1 lg:divide-y-0") &&
     hasOnlyMobileDashboardDividers(advertiserDashboard) &&
     hasOnlyMobileDashboardDividers(influencerDashboard) &&
     !advertiserDashboard.includes("hover:bg-[#fafaf7]") &&
@@ -1162,25 +1162,19 @@ check(
     ) &&
     campaignPages.includes("ProfileAvatarLink") &&
     campaignPages.includes('controlsId="advertiser-campaign-applicant-filters"') &&
+    advertiserDashboard.includes("CampaignApplicantsPanel") &&
+    advertiserDashboard.includes("isRecruitingDetail ? (") &&
+    advertiserDashboard.includes("allowSelection") &&
     advertiserDashboard.includes("APPLICANT_SORT_OPTIONS") &&
     advertiserDashboard.includes('aria-label="지원자 정렬"') &&
     advertiserDashboard.includes("compareCampaignApplicantsBySort") &&
-    advertiserDashboard.includes(
-      "getChannelAudienceSortValue(getCampaignApplicantDisplayPlatforms(a))",
-    ) &&
     advertiserDashboard.includes('controlsId="campaign-applicant-filters"') &&
     marketplace.includes("getInfluencerProfilePathByDisplayName") &&
     marketplace.includes('handle: "creator-sora"') &&
     marketplace.includes('displayName: "크리에이터 소라"') &&
     !marketplacePages.includes('"creator-sora": "zeu_k"') &&
-    advertiserDashboard.includes("findInfluencerProfileByHandle(thread.counterpartHref)") &&
-    advertiserDashboard.includes("findInfluencerProfileByDisplayName(applicantName)") &&
     advertiserDashboard.includes("const displayPlatforms = getCampaignApplicantDisplayPlatforms(") &&
-    advertiserDashboard.includes("<ApplicantPlatformLinks platforms={displayPlatforms} />") &&
-    advertiserDashboard.includes("thread.counterpartCategories") &&
     advertiserDashboard.includes("applicantProfile,") &&
-    advertiserDashboard.includes("<ApplicantCategoryPill category={mainCategory} />") &&
-    advertiserDashboard.includes("visiblePlatforms.slice(0, 1)") &&
     !advertiserDashboard.includes("formatCampaignActivityDate(thread.createdAt)") &&
     campaignPages.includes("findInfluencerProfileByHandle(application.counterpartHref)") &&
     campaignPages.includes("findInfluencerProfileByDisplayName(applicantName)") &&
@@ -1196,16 +1190,10 @@ check(
     campaignPages.includes(
       "getChannelAudienceSortValue(getCampaignApplicantDisplayPlatforms(a))",
     ) &&
-    advertiserDashboard.includes("grid w-full grid-cols-2 gap-1.5 sm:w-[190px]") &&
     advertiserDashboard.includes(
       "no-scrollbar overflow-x-hidden overflow-y-auto overscroll-contain rounded-[10px]",
     ) &&
-    advertiserDashboard.includes(
-      "lg:grid-cols-[minmax(260px,0.82fr)_minmax(280px,0.78fr)_190px]",
-    ) &&
-    advertiserDashboard.includes('primaryActionSpan = hasProfileAction ? "" : "col-span-2"') &&
-    campaignPages.includes("grid w-full grid-cols-2 gap-1.5 sm:w-[188px]") &&
-    advertiserDashboard.includes("프로필 보기"),
+    campaignPages.includes("grid w-full grid-cols-2 gap-1.5 sm:w-[188px]"),
   "Advertiser creator discovery and campaign applicant selection must sort by subscriber/follower scale, keep fixed-width action groups across states, and make creator profile browsing directly reachable from names, avatars, or row actions",
 );
 
@@ -1240,17 +1228,23 @@ check(
   "advertiser campaign dashboard avoids placeholder campaign values",
   !advertiserDashboard.includes("/미정") &&
     !advertiserDashboard.includes("명 신청") &&
-    advertiserDashboard.includes("신청/모집 인원") &&
+    !advertiserDashboard.includes("신청/모집 인원") &&
+    !advertiserDashboard.includes("진도율") &&
+    advertiserDashboard.includes("CampaignApplicantsPanel") &&
+    advertiserDashboard.includes("지원자 현황") &&
+    advertiserDashboard.includes("isRecruitingDetail") &&
+    advertiserDashboard.includes('allowSelection') &&
     advertiserDashboard.includes("계약 조건 확인") &&
     advertiserDashboard.includes("extractCampaignSummaryField"),
-  "Advertiser campaign rows must not show '-' or '/미정', and progress must use compact 신청/모집 ratios instead of repeating 신청 copy",
+  "Advertiser campaign dashboard lists must avoid applicant/progress columns, while recruiting detail keeps the right-side applicant selection rail",
 );
 
 check(
   "campaign dashboard interaction parity covers sorting and applied filters",
   agents.includes("Paired advertiser/influencer dashboard surfaces must keep interaction parity") &&
     advertiserDashboard.includes("compareCampaignGroupsBySort") &&
-    advertiserDashboard.includes('sortKey="participants"') &&
+    advertiserDashboard.includes('sortKey="deadline"') &&
+    advertiserDashboard.includes('controlsId="campaign-detail-filters"') &&
     advertiserDashboard.includes("handleCampaignSortChange") &&
     campaignPages.includes("function CampaignSortSelect") &&
     campaignPages.includes("compareMarketplaceCampaignPostsBySort") &&
@@ -2017,13 +2011,16 @@ check(
 check(
   "campaign selection stays inside campaign surface",
   agents.includes("A campaign remains a one-to-many campaign surface after applicant selection") &&
-    advertiserDashboard.includes("지원자와 선정자별 진행을 관리합니다") &&
-    advertiserDashboard.includes("선정하면 이 캠페인의 계약서가 만들어집니다") &&
-    advertiserDashboard.includes("계약서 보기") &&
+    advertiserDashboard.includes("선정자별 진행을 관리합니다") &&
+    !advertiserDashboard.includes("지원자와 선정자별 진행을 관리합니다") &&
+    !advertiserDashboard.includes("선정하면 이 캠페인의 계약서가 만들어집니다") &&
+    advertiserDashboard.includes("캠페인 계약서 진행이 시작됩니다") &&
+    advertiserCampaignDetailSource.includes("onOpen={() => onOpenContract(contract)}") &&
+    advertiserDashboard.includes("콘텐츠 제출 링크 열기") &&
     advertiserCampaignDetailSource.includes("모집 현황") &&
     advertiserCampaignDetailSource.includes("선정자별 진행") &&
     campaignParticipantEmptySource.includes("아직 선정자별 진행이 없습니다") &&
-    campaignParticipantEmptySource.includes("계약서와 서명 진행이 이곳에 표시됩니다") &&
+    campaignParticipantEmptySource.includes("선정자별 계약서와 서명 진행이 이곳에 표시됩니다") &&
     !advertiserCampaignDetailSource.includes("1:1 계약 목록") &&
     !campaignParticipantEmptySource.includes("아직 1:1 계약이 없습니다") &&
     campaignPages.includes("선정하면 이 캠페인의 계약서 초안이 만들어집니다") &&

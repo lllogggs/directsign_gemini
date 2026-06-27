@@ -463,7 +463,7 @@ export function AdvertiserVerification() {
                     담당자와 증빙
                   </p>
                   <p className="mt-0.5 text-xs font-medium text-neutral-500">
-                    증빙 파일은 심사와 감사 기록 용도로만 사용합니다.
+                    사업자 증빙과 대표 서명 또는 인감 날인 자료는 심사와 감사 기록 용도로만 사용합니다.
                   </p>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -505,12 +505,12 @@ export function AdvertiserVerification() {
                   />
                   <label className="block">
                     <span className="text-sm font-semibold text-neutral-900">
-                      사업자등록증명원 파일
+                      사업자/서명 증빙 파일
                     </span>
                     <span className="mt-2 flex h-11 cursor-pointer items-center gap-3 rounded-lg border border-dashed border-neutral-300 bg-[#fbfbfc] px-3 transition hover:border-neutral-500 hover:bg-white">
                       <FileUp className="h-4 w-4 shrink-0 text-neutral-500" />
                       <span className="min-w-0 truncate text-sm font-semibold text-neutral-900">
-                        {file ? file.name : "PDF/이미지 업로드"}
+                        {file ? file.name : "증빙 파일 업로드"}
                       </span>
                       <input
                         type="file"
@@ -698,7 +698,9 @@ function InfoRow({
       }
     >
       <p className="text-xs font-semibold text-neutral-400">{label}</p>
-      <p className="mt-1 break-words font-medium text-neutral-800">{value}</p>
+      <p className="mt-1 break-words font-medium text-neutral-800 [overflow-wrap:anywhere]">
+        {value}
+      </p>
     </div>
   );
 }

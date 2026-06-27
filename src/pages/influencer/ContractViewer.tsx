@@ -131,6 +131,15 @@ const DELIVERABLE_PLATFORM_LABELS = [
 const getContractPlatformLabel = (platform?: string) =>
   platform ? (CONTRACT_PLATFORM_LABELS[platform] ?? platform) : undefined;
 
+const getContractPaymentMethodLabel = (
+  method?: NonNullable<Contract["campaign"]>["payment_method"],
+) => {
+  if (method === "external_bank_transfer") return "외부 계좌입금";
+  if (method === "advertiser_direct") return "광고주 직접 지급";
+  if (method === "other_direct") return "기타 직접 정산";
+  return "당사자 직접 정산";
+};
+
 const parseDeliverableSummary = (
   value: string,
   fallbackPlatform?: string,
@@ -1539,6 +1548,17 @@ export function ContractViewer() {
     {
       label: "검수 마감",
       value: contract.campaign?.review_due_at || "미지정",
+    },
+    {
+      label: "지급 방식",
+      value: getContractPaymentMethodLabel(contract.campaign?.payment_method),
+    },
+    {
+      label: "원천징수",
+      value:
+        contract.campaign?.withholding_tax_enabled === true
+          ? "3.3% 확인"
+          : "당사자 확인",
     },
     {
       label: "플랫폼",

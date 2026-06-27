@@ -322,8 +322,7 @@ Example option format:
   - Campaign dashboard and influencer dashboard date values should render as `D-N / YYYY.MM.DD`; D-0 through D-3 must make only the D-day segment red.
   - Dashboard cells must not show raw placeholder values such as `-` or `/미정` when summary data, seed data, or a clear business fallback can communicate meaning.
   - Table column labels should support obvious ascending/descending sorting when sortable.
-  - Use "신청/모집 인원" for campaign dashboard progress. The cell should be compact ratio data such as "3/10", not repeated copy like "3명 신청".
-  - Do not show every test campaign as "1/1" or "1명 신청"; maintain varied test states and progress so the dashboard looks real.
+  - Campaign dashboard lists should not show applicant/progress columns such as "신청/모집 인원" or progress filters such as "진도율"; keep the list focused on campaign operations. Opened campaign detail must differ by lifecycle: recruiting details keep the right-side "지원자 현황" rail with the blue "선정" action, in-progress details focus on selected-person progress and content submission, and ended details are read-only final progress records.
   - Dashboard and seed data must cover 1:1 contracts and one-to-many campaign contracts across recruiting, active, ended/completed, rejected, revision, signature, content, and review states.
   - Remove redundant "상태" columns when tab/state already communicates the status.
   - Paired advertiser/influencer dashboard surfaces must keep interaction parity. If one side has search, filters, sorting, lifecycle tabs, or drill-in actions for contracts or campaigns, the other side needs a role-appropriate equivalent unless the Product Owner explicitly approves an asymmetry.
