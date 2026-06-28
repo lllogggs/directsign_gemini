@@ -38,11 +38,14 @@ import {
   compareChannelAudienceValues,
   findInfluencerProfileByDisplayName,
   findInfluencerProfileByHandle,
+  formatMarketplaceCountries,
   getCampaignDeadlineLabel,
   getChannelAudienceSortValue,
   getInfluencerProfilePath,
   getMarketplaceBrandDisplayFamilyKey,
+  getMarketplaceCountryLabel,
   getPlatformTone,
+  marketplaceCountryOptions,
   marketplaceBrands,
   platformLabels,
   proposalTypeLabels,
@@ -50,6 +53,7 @@ import {
   type MarketplaceBrandCampaign,
   type MarketplaceBrandProfile,
   type MarketplaceCampaignPost,
+  type MarketplaceCountryCode,
   type MarketplaceInfluencerProfile,
 } from "../../domain/marketplace";
 import {
@@ -247,6 +251,7 @@ export function AdvertiserCampaignRecruitmentPage() {
     deadline: "",
     uploadDeadline: "",
     platforms: ["instagram"] as InfluencerPlatform[],
+    targetCountries: [] as MarketplaceCountryCode[],
     deliverables: "",
     thumbnailUrl: "",
   });
@@ -356,6 +361,18 @@ export function AdvertiserCampaignRecruitmentPage() {
         platforms: exists
           ? current.platforms.filter((item) => item !== platform)
           : [...current.platforms, platform],
+      };
+    });
+  };
+
+  const toggleTargetCountry = (country: MarketplaceCountryCode) => {
+    setForm((current) => {
+      const exists = current.targetCountries.includes(country);
+      return {
+        ...current,
+        targetCountries: exists
+          ? current.targetCountries.filter((item) => item !== country)
+          : [...current.targetCountries, country],
       };
     });
   };
@@ -530,6 +547,7 @@ export function AdvertiserCampaignRecruitmentPage() {
         deadline: "",
         uploadDeadline: "",
         deliverables: "",
+        targetCountries: [],
         thumbnailUrl: "",
       }));
       navigate("/advertiser/campaigns");
@@ -558,6 +576,7 @@ export function AdvertiserCampaignRecruitmentPage() {
       location: form.location.trim() || brand?.location || "지역/진행방식",
       offer: form.offer.trim() || "제공상품",
       budget: form.budget.trim() || "지급 조건",
+      targetCountries: form.targetCountries,
       summary: form.summary.trim() || "캠페인 설명을 입력하면 이 영역에 표시됩니다.",
       mission: form.mission.trim() || "참여 미션을 입력하면 상세 화면에 표시됩니다.",
       deadline: form.deadline.trim() || undefined,
@@ -630,10 +649,10 @@ export function AdvertiserCampaignRecruitmentPage() {
         </>
       }
     >
-      <section className="grid gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1.18fr)_minmax(320px,0.82fr)]">
+      <section className="grid min-w-0 gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1.18fr)_minmax(320px,0.82fr)]">
         <form
           onSubmit={handleSubmit}
-          className="yl-card border p-4 sm:p-5 lg:min-h-0 lg:overflow-y-auto"
+          className="yl-card min-w-0 border p-4 sm:p-5 lg:min-h-0 lg:overflow-y-auto"
         >
           <div className="flex items-start justify-between gap-3 border-b border-neutral-200 pb-4">
             <div>
@@ -692,7 +711,30 @@ export function AdvertiserCampaignRecruitmentPage() {
                         {platformLabels[platform]}
                       </button>
                     );
-                  })}
+                })}
+              </div>
+            </CampaignField>
+
+            <CampaignField label="타깃 국가">
+              <div className="flex flex-wrap gap-2">
+                {marketplaceCountryOptions.map((country) => {
+                  const active = form.targetCountries.includes(country);
+                  return (
+                    <button
+                      key={country}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => toggleTargetCountry(country)}
+                      className={`inline-flex h-9 items-center rounded-[10px] border px-3 text-[12px] font-extrabold transition ${
+                        active
+                          ? "border-neutral-950 bg-neutral-950 text-white"
+                          : "border-neutral-200 bg-white text-neutral-500 hover:border-neutral-300 hover:text-neutral-950"
+                      }`}
+                    >
+                      {getMarketplaceCountryLabel(country)}
+                    </button>
+                  );
+                })}
               </div>
             </CampaignField>
 
@@ -894,7 +936,7 @@ export function AdvertiserCampaignRecruitmentPage() {
           </div>
         </form>
 
-        <section className="yl-panel border p-4 lg:min-h-0 lg:overflow-y-auto">
+        <section className="yl-panel min-w-0 border p-4 lg:min-h-0 lg:overflow-y-auto">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-[12px] font-extrabold text-neutral-400">
@@ -1089,6 +1131,7 @@ export function InfluencerCampaignDiscoveryPage() {
           campaign.title,
           campaign.summary ?? "",
           campaign.location ?? "",
+          formatMarketplaceCountries(campaign.targetCountries),
           campaign.offer ?? "",
           campaign.mission ?? "",
           campaign.budget,
@@ -1593,7 +1636,7 @@ function CampaignShell({
         </div>
       </section>
 
-      <div className="mx-auto flex min-h-0 w-full max-w-[1500px] flex-1 flex-col overflow-y-auto px-3 py-2 sm:px-5 sm:py-3 lg:px-6">
+      <div className="mx-auto flex min-h-0 w-full max-w-[1500px] flex-1 flex-col overflow-x-hidden overflow-y-auto px-3 py-2 sm:px-5 sm:py-3 lg:px-6">
         {children}
       </div>
     </main>
@@ -2691,7 +2734,15 @@ function CampaignCardMetaChips({
 }: {
   campaign: MarketplaceCampaignPost;
 }) {
+  const countryLabel = formatMarketplaceCountries(campaign.targetCountries);
   const chips = [
+    countryLabel
+      ? {
+          label: "타깃 국가",
+          value: countryLabel,
+          icon: <UsersRound className="h-3.5 w-3.5" />,
+        }
+      : null,
     {
       label: "지역",
       value: getCampaignLocationLabel(campaign),
@@ -2707,7 +2758,9 @@ function CampaignCardMetaChips({
       value: campaign.applicantLimit ?? "상시",
       icon: <UsersRound className="h-3.5 w-3.5" />,
     },
-  ];
+  ].filter((chip): chip is { label: string; value: string; icon: ReactNode } =>
+    Boolean(chip),
+  );
 
   return (
     <div className="mt-3 flex flex-wrap gap-1.5">
@@ -2766,7 +2819,11 @@ function CampaignRecruitmentDetailDialog({
 }) {
   const campaignCopy = getCampaignDisplayCopy(campaign);
   const facts = getCampaignRecruitmentFacts(campaign);
+  const targetCountryLabel = formatMarketplaceCountries(campaign.targetCountries);
   const detailRows = [
+    ...(targetCountryLabel
+      ? [{ label: "타깃 국가", value: targetCountryLabel }]
+      : []),
     { label: "제공상품", value: getCampaignOfferLabel(campaign) },
     { label: "지급조건", value: campaign.budget },
     {

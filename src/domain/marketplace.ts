@@ -17,6 +17,64 @@ export const campaignProposalTypeOptions: CampaignProposalType[] = [
   "visit_review",
 ];
 
+export type MarketplaceCountryCode =
+  | "south_korea"
+  | "japan"
+  | "taiwan"
+  | "hong_kong"
+  | "united_states"
+  | "china"
+  | "thailand"
+  | "vietnam"
+  | "indonesia"
+  | "singapore"
+  | "malaysia"
+  | "global";
+
+export const marketplaceCountryOptions: MarketplaceCountryCode[] = [
+  "south_korea",
+  "japan",
+  "taiwan",
+  "hong_kong",
+  "united_states",
+  "china",
+  "thailand",
+  "vietnam",
+  "indonesia",
+  "singapore",
+  "malaysia",
+  "global",
+];
+
+export const marketplaceCountryLabels: Record<MarketplaceCountryCode, string> = {
+  south_korea: "한국",
+  japan: "일본",
+  taiwan: "대만",
+  hong_kong: "홍콩",
+  united_states: "미국",
+  china: "중국",
+  thailand: "태국",
+  vietnam: "베트남",
+  indonesia: "인도네시아",
+  singapore: "싱가포르",
+  malaysia: "말레이시아",
+  global: "글로벌",
+};
+
+export const getMarketplaceCountryLabel = (country: MarketplaceCountryCode) =>
+  marketplaceCountryLabels[country] ?? country;
+
+export const formatMarketplaceCountries = (
+  countries: MarketplaceCountryCode[] | undefined,
+  fallback = "",
+) => {
+  if (!countries || countries.length === 0) return fallback;
+  const labels = countries.map((country) => getMarketplaceCountryLabel(country));
+  return labels.length <= 3
+    ? labels.join(", ")
+    : `${labels.slice(0, 3).join(", ")} 외 ${labels.length - 3}`;
+};
+
 const formatDateOnly = (date: Date) =>
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
     date.getDate(),
@@ -41,6 +99,7 @@ export type MarketplaceBrandCampaign = {
   offer?: string;
   summary?: string;
   mission?: string;
+  targetCountries?: MarketplaceCountryCode[];
   thumbnailUrl?: string;
   deadline?: string;
   uploadDeadline?: string;
@@ -74,6 +133,7 @@ export type MarketplaceInfluencerProfile = {
   avatarUrl?: string;
   categories: string[];
   audience: string;
+  audienceCountries?: MarketplaceCountryCode[];
   audienceTags: string[];
   platforms: Array<{
     platform: InfluencerPlatform;
@@ -163,6 +223,7 @@ export const marketplaceInfluencers: MarketplaceInfluencerProfile[] = [
     avatarLabel: "ZK",
     categories: ["뷰티", "라이프스타일", "패션"],
     audience: "20-34 여성 중심 · 관심사 기반 구매 전환",
+    audienceCountries: ["south_korea", "japan", "taiwan"],
     audienceTags: ["20대 여성", "데일리 뷰티", "숏폼 반응", "리뷰형 콘텐츠"],
     platforms: [
       {
@@ -223,6 +284,7 @@ export const marketplaceInfluencers: MarketplaceInfluencerProfile[] = [
     avatarUrl: "/images/influencers/creator-sora.png",
     categories: ["뷰티", "라이프스타일"],
     audience: "20-34 여성 중심 · 뷰티/라이프스타일 관심",
+    audienceCountries: ["south_korea", "japan", "taiwan"],
     audienceTags: ["릴스", "쇼츠", "사용 장면", "리뷰형 콘텐츠"],
     platforms: [
       {
@@ -282,6 +344,7 @@ export const marketplaceInfluencers: MarketplaceInfluencerProfile[] = [
     avatarLabel: "MH",
     categories: ["리빙", "홈카페", "푸드"],
     audience: "25-39 여성 · 리빙/소비재 관심",
+    audienceCountries: ["south_korea"],
     audienceTags: ["홈카페", "주방용품", "저장형 콘텐츠", "블로그 연계"],
     platforms: [
       {
@@ -335,6 +398,7 @@ export const marketplaceInfluencers: MarketplaceInfluencerProfile[] = [
     avatarLabel: "OV",
     categories: ["테크", "라이프스타일", "교육"],
     audience: "25-44 남녀 · 정보 탐색형 시청자",
+    audienceCountries: ["south_korea", "united_states"],
     audienceTags: ["롱폼 리뷰", "구매 전 탐색", "제품 비교", "테크"],
     platforms: [
       {
@@ -381,6 +445,7 @@ export const marketplaceInfluencers: MarketplaceInfluencerProfile[] = [
     avatarUrl: "/images/influencers/haru-fit.png",
     categories: ["헬스", "라이프스타일"],
     audience: "20-39 남녀 · 홈트/건강 루틴 관심",
+    audienceCountries: ["south_korea", "thailand"],
     audienceTags: ["홈트", "챌린지", "운동 초보", "숏폼 루틴"],
     platforms: [
       {
@@ -435,6 +500,7 @@ export const marketplaceInfluencers: MarketplaceInfluencerProfile[] = [
     avatarUrl: "/images/influencers/luna-day.png",
     categories: ["패션", "뷰티", "라이프스타일"],
     audience: "20-34 여성 · 패션/뷰티 구매 관심",
+    audienceCountries: ["south_korea", "japan", "taiwan"],
     audienceTags: ["데일리룩", "파우치", "릴스", "스토리"],
     platforms: [
       {
@@ -476,6 +542,7 @@ export const marketplaceInfluencers: MarketplaceInfluencerProfile[] = [
     avatarUrl: "/images/influencers/rooday.png",
     categories: ["푸드", "홈카페", "여행"],
     audience: "25-44 여성 · 로컬 맛집/카페 탐색",
+    audienceCountries: ["south_korea", "japan"],
     audienceTags: ["방문 리뷰", "홈카페", "저장형 콘텐츠", "블로그"],
     platforms: [
       {
@@ -525,6 +592,7 @@ export const marketplaceInfluencers: MarketplaceInfluencerProfile[] = [
     avatarUrl: "/images/influencers/today-taste.png",
     categories: ["홈카페", "푸드", "리빙"],
     audience: "25-39 여성 · 홈카페/선물 구매층",
+    audienceCountries: ["south_korea", "taiwan", "hong_kong"],
     audienceTags: ["홈카페", "레시피", "공동구매", "저장형"],
     platforms: [
       {
@@ -574,6 +642,7 @@ export const marketplaceInfluencers: MarketplaceInfluencerProfile[] = [
     avatarUrl: "/images/influencers/ziyu-log.png",
     categories: ["리빙", "육아", "라이프스타일"],
     audience: "30-44 여성 · 육아/생활용품 관심",
+    audienceCountries: ["south_korea", "vietnam"],
     audienceTags: ["육아", "생활용품", "실사용 후기", "저장형"],
     platforms: [
       {
@@ -639,6 +708,7 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
         applicantLimit: "12명",
         location: "온라인 배송",
         offer: "파우치 신제품 세트",
+        targetCountries: ["south_korea", "japan", "taiwan"],
         thumbnailUrl: "/images/campaigns/breadroom-homecare-supporters-v2.png",
         budget: "180만-280만원",
         mission: "신제품 첫인상과 사용 장면을 릴스 또는 쇼츠로 제작",
@@ -673,6 +743,7 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
         applicantLimit: "6명",
         location: "제주 · 강원 방문",
         offer: "로컬 숙소 1박 체험",
+        targetCountries: ["japan", "taiwan", "hong_kong"],
         thumbnailUrl: "/images/campaigns/monotrip-local-stay-v2.png",
         budget: "300만-500만원",
         mission: "객실, 체크인, 주변 동선을 브이로그와 후기 콘텐츠로 소개",
@@ -707,6 +778,7 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
         applicantLimit: "7명",
         location: "온라인 배송",
         offer: "공간 정리 소품 세트",
+        targetCountries: ["south_korea", "singapore", "malaysia"],
         thumbnailUrl: "/images/campaigns/object-studio-organization-v2.png",
         budget: "제품 제공 + 120만원",
         mission: "정리 전후 장면과 실제 사용 루틴을 사진/영상으로 제작",
@@ -741,6 +813,7 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
         applicantLimit: "9명",
         location: "온라인 배송",
         offer: "진정 세럼 본품",
+        targetCountries: ["japan", "united_states", "thailand"],
         budget: "제품 제공 + 160만원",
         mission: "2주 사용 루틴과 민감 피부 사용감을 릴스와 스토리로 소개",
         deadline: getRelativeCampaignDate(4),
@@ -774,6 +847,7 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
         applicantLimit: "10명",
         location: "온라인 진행",
         offer: "운동 프로그램 이용권",
+        targetCountries: ["south_korea", "thailand", "vietnam"],
         budget: "250만-450만원",
         mission: "집에서 따라할 수 있는 10분 루틴을 숏폼으로 제작",
         deadline: getRelativeCampaignDate(9),
@@ -807,6 +881,7 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
         applicantLimit: "8명",
         location: "부산 · 온라인",
         offer: "드립백 세트",
+        targetCountries: ["taiwan", "hong_kong", "singapore"],
         budget: "판매 수수료 + 제품 제공",
         mission: "홈카페 레시피와 공동구매 구매 포인트를 자연스럽게 연결",
         deadline: getRelativeCampaignDate(12),
@@ -840,6 +915,7 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
         applicantLimit: "8명",
         location: "온라인 배송",
         offer: "수면 케어 제품",
+        targetCountries: ["south_korea", "japan"],
         budget: "제품 제공 + 180만원",
         mission: "밤 루틴 안에서 제품 사용 장면과 휴식감을 숏폼으로 소개",
         deadline: getRelativeCampaignDate(5),
@@ -872,6 +948,7 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
         applicantLimit: "5명",
         location: "강원 · 제주 방문",
         offer: "1박 숙박권",
+        targetCountries: ["japan", "taiwan", "united_states"],
         thumbnailUrl: "/images/campaigns/stayhour-weekend-stay-v2.png",
         budget: "숙박 제공 + 300만원",
         mission: "객실, 체크인, 주변 동선을 브이로그와 후기형 콘텐츠로 기록",
@@ -905,6 +982,7 @@ export const marketplaceBrands: MarketplaceBrandProfile[] = [
         applicantLimit: "10명",
         location: "온라인 배송",
         offer: "건강식 세트",
+        targetCountries: ["south_korea", "vietnam", "indonesia"],
         thumbnailUrl: "/images/campaigns/greenspoon-breakfast-routine-v2.png",
         budget: "제품 제공 + 140만원",
         mission: "아침 식단 루틴과 제품 섭취 장면을 리뷰형 콘텐츠로 제작",

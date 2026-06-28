@@ -13,6 +13,8 @@ export type RouteSeoConfig = {
   description: string;
   canonicalPath: string;
   robots: string;
+  htmlLang?: string;
+  ogLocale?: string;
   ogImageUrl?: string;
   ogImageAlt?: string;
   structuredData?: unknown;
@@ -63,6 +65,9 @@ export const privateRobotsContent = "noindex,nofollow";
 
 export const staticSeoRoutePaths = [
   "/",
+  "/en/creators",
+  "/ja/creators",
+  "/zh/creators",
   "/intro/advertiser",
   "/intro/influencer",
   "/privacy",
@@ -103,6 +108,16 @@ const influencerIntentKeywords = [
   "PPL 조건 검토",
   "공동구매 계약 검토",
   "크리에이터 광고 계약",
+];
+
+const globalCreatorIntentKeywords = [
+  "Korean brand collaboration",
+  "Korean influencer campaign",
+  "K-beauty brand deals",
+  "K-fashion creator campaign",
+  "Korea travel creator",
+  "韓国ブランド 案件",
+  "韩国品牌合作",
 ];
 
 const seoFeatureList = [
@@ -298,6 +313,33 @@ const getRouteSeoConfig = (pathname: string): RouteSeoConfig => {
       canonicalPath: "/",
       robots: publicRobotsContent,
     },
+    "/en/creators": {
+      title: `Korean brand deals for creators - ${PRODUCT_NAME}`,
+      description:
+        "Join Yeollock to review Korean brand campaigns, confirm content terms, sign digitally, and keep contract proof in one place.",
+      canonicalPath: "/en/creators",
+      robots: publicRobotsContent,
+      htmlLang: "en",
+      ogLocale: "en_US",
+    },
+    "/ja/creators": {
+      title: `韓国ブランド案件を契約で管理 - ${PRODUCT_NAME}`,
+      description:
+        "Yeollockで韓国ブランドのキャンペーン条件を確認し、電子署名とPDF証拠保管まで進められます。",
+      canonicalPath: "/ja/creators",
+      robots: publicRobotsContent,
+      htmlLang: "ja",
+      ogLocale: "ja_JP",
+    },
+    "/zh/creators": {
+      title: `韩国品牌合作创作者页面 - ${PRODUCT_NAME}`,
+      description:
+        "通过Yeollock确认韩国品牌活动条件、完成电子签名，并集中保存合约PDF与合作记录。",
+      canonicalPath: "/zh/creators",
+      robots: publicRobotsContent,
+      htmlLang: "zh",
+      ogLocale: "zh_CN",
+    },
     "/intro/advertiser": {
       title: `광고주 광고 계약 관리 - ${PRODUCT_NAME}`,
       description:
@@ -427,6 +469,36 @@ const publicSearchIntentPages: Record<string, IntentAwareSeoCopy> = {
     canonicalPath: "/",
     robots: publicRobotsContent,
     keywords: seoKeywordList,
+  },
+  "/en/creators": {
+    title: `Korean brand deals for creators | ${PRODUCT_NAME}`,
+    description:
+      "Global creators can join Yeollock to review Korean brand campaigns, confirm content terms, sign digitally, and keep proof in one place.",
+    canonicalPath: "/en/creators",
+    robots: publicRobotsContent,
+    htmlLang: "en",
+    ogLocale: "en_US",
+    keywords: globalCreatorIntentKeywords,
+  },
+  "/ja/creators": {
+    title: `韓国ブランド案件を契約で管理 | ${PRODUCT_NAME}`,
+    description:
+      "韓国ブランドのキャンペーン条件確認、電子署名、PDF証拠保管までYeollockで整理できます。",
+    canonicalPath: "/ja/creators",
+    robots: publicRobotsContent,
+    htmlLang: "ja",
+    ogLocale: "ja_JP",
+    keywords: globalCreatorIntentKeywords,
+  },
+  "/zh/creators": {
+    title: `韩国品牌合作创作者页面 | ${PRODUCT_NAME}`,
+    description:
+      "创作者可以通过Yeollock确认韩国品牌活动条件、完成电子签名，并集中保存合约PDF与合作记录。",
+    canonicalPath: "/zh/creators",
+    robots: publicRobotsContent,
+    htmlLang: "zh",
+    ogLocale: "zh_CN",
+    keywords: globalCreatorIntentKeywords,
   },
   "/intro/advertiser": {
     title: `광고주 인플루언서 계약 관리 | ${PRODUCT_NAME}`,

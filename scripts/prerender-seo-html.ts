@@ -42,6 +42,9 @@ const resourceRouteLabels = Object.fromEntries(
 
 const routeLabels: Record<StaticSeoRoutePath, string> = {
   "/": "홈",
+  "/en/creators": "Global creators",
+  "/ja/creators": "日本語クリエイター案内",
+  "/zh/creators": "中文创作者页面",
   "/intro/advertiser": "광고주 안내",
   "/intro/influencer": "인플루언서 안내",
   "/privacy": "개인정보 처리방침",
@@ -63,6 +66,18 @@ const routeSearchSummaries: Record<StaticSeoRoutePath, string[]> = {
   "/": [
     "연락미는 광고주와 인플루언서가 협찬, PPL, 공동구매 조건을 계약서 작성, 검토 링크, 수정 협의, 전자서명 증빙까지 한 흐름으로 정리하는 한국어 광고 계약 워크스페이스입니다.",
     "정산 대행, 에스크로, 세무 대행, 광고 성과 보증은 제공하지 않으며 계약 상태와 서명 증빙을 명확하게 남기는 데 집중합니다.",
+  ],
+  "/en/creators": [
+    "Yeollock helps global creators review Korean brand campaigns, confirm content terms, sign digitally, and keep contract proof in one place.",
+    "Ad fees, payouts, taxes, refunds, and escrow remain between the brand and creator.",
+  ],
+  "/ja/creators": [
+    "Yeollockは、韓国ブランドのキャンペーン条件確認、電子署名、PDF証拠保管までをひとつの流れで整理します。",
+    "広告費の支払い、税金、返金、エスクローはブランドとクリエイター間の責任です。",
+  ],
+  "/zh/creators": [
+    "Yeollock帮助创作者确认韩国品牌活动条件、完成电子签名，并集中保存合约PDF与合作记录。",
+    "广告费支付、税务、退款和托管由品牌与创作者双方负责。",
   ],
   "/intro/advertiser": [
     "광고주, 브랜드, 광고대행사는 광고 조건을 입력하고 계약서를 작성한 뒤 인플루언서에게 검토 링크를 보낼 수 있습니다.",
@@ -176,6 +191,31 @@ const replaceAlternateLink = (html: string, hreflang: string, href: string) =>
     )}" />`,
   );
 
+const creatorAlternatePaths = ["/en/creators", "/ja/creators", "/zh/creators"];
+
+const replaceRouteAlternateLinks = (
+  html: string,
+  routePath: StaticSeoRoutePath,
+  canonicalUrl: string,
+) => {
+  if (creatorAlternatePaths.includes(routePath)) {
+    let nextHtml = html;
+    nextHtml = replaceAlternateLink(nextHtml, "en", buildCanonicalUrl("/en/creators"));
+    nextHtml = replaceAlternateLink(nextHtml, "ja", buildCanonicalUrl("/ja/creators"));
+    nextHtml = replaceAlternateLink(nextHtml, "zh", buildCanonicalUrl("/zh/creators"));
+    nextHtml = replaceAlternateLink(
+      nextHtml,
+      "x-default",
+      buildCanonicalUrl("/en/creators"),
+    );
+    return nextHtml;
+  }
+
+  let nextHtml = replaceAlternateLink(html, "ko-KR", canonicalUrl);
+  nextHtml = replaceAlternateLink(nextHtml, "x-default", canonicalUrl);
+  return nextHtml;
+};
+
 const replaceStructuredData = (html: string, structuredData?: unknown) => {
   const pattern = new RegExp(
     `<script\\s+(?=[^>]*\\bid=["']${escapeRegex(
@@ -197,6 +237,7 @@ const renderNoscript = (
   description: string,
   routePath: StaticSeoRoutePath,
 ) => {
+  const seo = getIntentAwareRouteSeoConfig(routePath);
   const navLinks = staticSeoRoutePaths
     .filter((route) => !resourcePathSet.has(route))
     .map((route) => {
@@ -212,7 +253,7 @@ const renderNoscript = (
     .join("\n        ");
 
   return `<noscript>
-      <main lang="ko" style="max-width: 720px; margin: 48px auto; padding: 0 20px; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.7; color: #171717;">
+      <main lang="${escapeHtml(seo.htmlLang ?? "ko")}" style="max-width: 720px; margin: 48px auto; padding: 0 20px; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.7; color: #171717;">
         <h1 style="font-size: 28px; line-height: 1.2; margin: 0 0 12px;">${escapeHtml(title)}</h1>
         <p style="margin: 0 0 16px;">${escapeHtml(description)}</p>
         <section aria-label="서비스 설명" style="margin: 0 0 18px;">
@@ -246,6 +287,7 @@ const renderSeoHtml = (template: string, routePath: StaticSeoRoutePath) => {
   const canonicalUrl = buildCanonicalUrl(seo.canonicalPath);
   let html = template;
 
+  html = html.replace(/<html\s+lang=["'][^"']*["']/i, `<html lang="${escapeHtml(seo.htmlLang ?? "ko")}"`);
   html = html.replace(/<title>[\s\S]*?<\/title>/i, `<title>${escapeHtml(seo.title)}</title>`);
   html = replaceMetaName(html, "description", seo.description);
   html = replaceMetaName(html, "robots", seo.robots);
@@ -262,11 +304,10 @@ const renderSeoHtml = (template: string, routePath: StaticSeoRoutePath) => {
   html = replaceMetaName(html, "application-name", PRODUCT_NAME);
   html = replaceMetaName(html, "apple-mobile-web-app-title", PRODUCT_NAME);
   html = replaceCanonicalLink(html, canonicalUrl);
-  html = replaceAlternateLink(html, "ko-KR", canonicalUrl);
-  html = replaceAlternateLink(html, "x-default", canonicalUrl);
+  html = replaceRouteAlternateLinks(html, routePath, canonicalUrl);
   html = replaceMetaProperty(html, "og:site_name", PRODUCT_NAME);
   html = replaceMetaProperty(html, "og:type", "website");
-  html = replaceMetaProperty(html, "og:locale", "ko_KR");
+  html = replaceMetaProperty(html, "og:locale", seo.ogLocale ?? "ko_KR");
   html = replaceMetaProperty(html, "og:url", canonicalUrl);
   html = replaceMetaProperty(html, "og:title", seo.title);
   html = replaceMetaProperty(html, "og:description", seo.description);

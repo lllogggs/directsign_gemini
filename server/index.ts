@@ -42,14 +42,17 @@ import {
   campaignProposalTypeOptions,
   findBrandProfileByHandle,
   findInfluencerProfileByHandle,
+  formatMarketplaceCountries,
   mergeMarketplaceBrandProfiles,
   mergeMarketplaceInfluencerProfiles,
+  marketplaceCountryOptions,
   platformLabels,
   type CampaignProposalType,
   type MarketplaceBrandCampaign,
   type MarketplaceBrandProfile,
   type MarketplaceCampaignStatus,
   type MarketplaceCampaignPost,
+  type MarketplaceCountryCode,
   type MarketplaceInfluencerProfile,
 } from "../src/domain/marketplace.js";
 import {
@@ -1310,6 +1313,7 @@ interface SupabaseMarketplaceInfluencerProfileRow {
   avatar_url?: string | null;
   categories?: string[] | null;
   audience: string;
+  audience_countries?: MarketplaceCountryCode[] | null;
   audience_tags?: string[] | null;
   collaboration_types?: CampaignProposalType[] | null;
   starting_price_label: string;
@@ -1441,6 +1445,7 @@ interface MarketplaceCampaignSnapshot {
   offer?: string;
   summary?: string;
   mission?: string;
+  targetCountries?: MarketplaceCountryCode[];
   thumbnailUrl?: string;
   deadline?: string;
   uploadDeadline?: string;
@@ -9567,6 +9572,9 @@ const insertSupabaseV2RowsIgnoringDuplicates = async (
 const campaignProposalTypes = new Set<CampaignProposalType>(
   campaignProposalTypeOptions,
 );
+const marketplaceCountries = new Set<MarketplaceCountryCode>(
+  marketplaceCountryOptions,
+);
 
 const normalizeStringArrayForStorage = (
   value: unknown,
@@ -9595,6 +9603,23 @@ const normalizeCampaignProposalTypes = (
   );
 
   return normalized.length > 0 ? Array.from(new Set(normalized)) : fallback;
+};
+
+const normalizeMarketplaceCountries = (
+  value: unknown,
+  fallback: MarketplaceCountryCode[] = [],
+  maxItems = 8,
+) => {
+  if (!Array.isArray(value)) return fallback;
+
+  const normalized = value.filter(
+    (item): item is MarketplaceCountryCode =>
+      typeof item === "string" && marketplaceCountries.has(item as MarketplaceCountryCode),
+  );
+
+  return normalized.length > 0
+    ? Array.from(new Set(normalized)).slice(0, maxItems)
+    : fallback;
 };
 
 const normalizeMarketplacePortfolio = (
@@ -9692,6 +9717,9 @@ const normalizeBrandCampaigns = (
       )?.slice(0, 120);
       const summary = normalizeOptionalText(record.summary)?.slice(0, 1000);
       const mission = normalizeOptionalText(record.mission)?.slice(0, 500);
+      const targetCountries = normalizeMarketplaceCountries(
+        record.targetCountries ?? record.target_countries,
+      );
       const thumbnailUrl = normalizeMarketplacePublicImageUrl(
         record.thumbnailUrl ?? record.thumbnail_url,
       );
@@ -9727,6 +9755,7 @@ const normalizeBrandCampaigns = (
         ...(offer ? { offer } : {}),
         ...(summary ? { summary } : {}),
         ...(mission ? { mission } : {}),
+        ...(targetCountries.length > 0 ? { targetCountries } : {}),
         ...(thumbnailUrl ? { thumbnailUrl } : {}),
         ...(deadline ? { deadline } : {}),
         ...(uploadDeadline ? { uploadDeadline } : {}),
@@ -9850,6 +9879,7 @@ const mapInfluencerProfileRowToMarketplaceProfile = (
     ...base,
     id: row.id,
     avatarUrl: row.avatar_url ?? base.avatarUrl,
+    audienceCountries: normalizeMarketplaceCountries(row.audience_countries),
     audienceTags: row.audience_tags ?? settings.categories,
     platforms: mappedChannels.length > 0 ? mappedChannels : base.platforms,
     verifiedLabel: row.verified_label,
@@ -11391,6 +11421,9 @@ const validateMarketplaceCampaignInput = (body: Record<string, unknown>) => {
   const budget = normalizeRequiredText(body.budget);
   const summary = normalizeRequiredText(body.summary);
   const mission = normalizeOptionalText(body.mission);
+  const targetCountries = normalizeMarketplaceCountries(
+    body.targetCountries ?? body.target_countries,
+  );
   const thumbnailUrl = normalizeMarketplacePublicImageUrl(
     body.thumbnailUrl ?? body.thumbnail_url,
   );
@@ -11442,6 +11475,7 @@ const validateMarketplaceCampaignInput = (body: Record<string, unknown>) => {
     budget,
     summary,
     mission,
+    targetCountries,
     thumbnailUrl,
     deadline,
     uploadDeadline,
@@ -11490,6 +11524,9 @@ const upsertAdvertiserMarketplaceCampaign = async (
     budget: payload.budget,
     summary: payload.summary,
     ...(payload.mission ? { mission: payload.mission } : {}),
+    ...(payload.targetCountries.length > 0
+      ? { targetCountries: payload.targetCountries }
+      : {}),
     ...(payload.thumbnailUrl ? { thumbnailUrl: payload.thumbnailUrl } : {}),
     ...(payload.deadline ? { deadline: payload.deadline } : {}),
     uploadDeadline: payload.uploadDeadline,
@@ -11732,6 +11769,9 @@ const buildMarketplaceCampaignSnapshot = (
   ...(campaign.offer ? { offer: campaign.offer } : {}),
   ...(campaign.summary ? { summary: campaign.summary } : {}),
   ...(campaign.mission ? { mission: campaign.mission } : {}),
+  ...(campaign.targetCountries?.length
+    ? { targetCountries: campaign.targetCountries }
+    : {}),
   ...(campaign.thumbnailUrl ? { thumbnailUrl: campaign.thumbnailUrl } : {}),
   ...(campaign.deadline ? { deadline: campaign.deadline } : {}),
   ...(campaign.uploadDeadline ? { uploadDeadline: campaign.uploadDeadline } : {}),
@@ -11764,6 +11804,9 @@ const normalizeMarketplaceCampaignSnapshot = (
     record.offer ?? record.offeredProduct ?? record.offered_product,
   );
   const mission = normalizeOptionalText(record.mission);
+  const targetCountries = normalizeMarketplaceCountries(
+    record.targetCountries ?? record.target_countries,
+  );
   const thumbnailUrl = normalizeMarketplacePublicImageUrl(
     record.thumbnailUrl ?? record.thumbnail_url,
   );
@@ -11797,6 +11840,7 @@ const normalizeMarketplaceCampaignSnapshot = (
     ...(offer ? { offer } : {}),
     ...(summary ? { summary } : {}),
     ...(mission ? { mission } : {}),
+    ...(targetCountries.length ? { targetCountries } : {}),
     ...(thumbnailUrl ? { thumbnailUrl } : {}),
     ...(deadline ? { deadline } : {}),
     ...(uploadDeadline ? { uploadDeadline } : {}),
@@ -13927,6 +13971,7 @@ const buildMarketplaceCampaignDraftClauses = (
   const deliverables =
     snapshot.deliverables?.filter(hasText).join(", ") ||
     "모집글 조건";
+  const targetCountries = formatMarketplaceCountries(snapshot.targetCountries);
   const supportersClauses: Contract["clauses"] =
     snapshot.type === "supporters"
       ? [
@@ -13963,6 +14008,7 @@ const buildMarketplaceCampaignDraftClauses = (
       content: [
         `캠페인명: ${snapshot.title}`,
         snapshot.summary ? `모집 설명: ${snapshot.summary}` : undefined,
+        targetCountries ? `타깃 국가: ${targetCountries}` : undefined,
         snapshot.location ? `지역/진행방식: ${snapshot.location}` : undefined,
         snapshot.offer ? `제공상품: ${snapshot.offer}` : undefined,
         snapshot.mission ? `참여 미션: ${snapshot.mission}` : undefined,

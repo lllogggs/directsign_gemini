@@ -39,8 +39,11 @@ import {
   getChannelAudienceSortValue,
   getInfluencerProfilePath,
   getMarketplaceBrandDisplayFamilyKey,
+  formatMarketplaceCountries,
+  getMarketplaceCountryLabel,
   findBrandProfileByHandle,
   marketplaceBrands,
+  marketplaceCountryOptions,
   marketplaceInfluencers,
   mergeMarketplaceBrandProfiles,
   mergeMarketplaceInfluencerProfiles,
@@ -48,6 +51,7 @@ import {
   proposalTypeLabels,
   type CampaignProposalType,
   type MarketplaceBrandProfile,
+  type MarketplaceCountryCode,
   type MarketplaceInfluencerProfile,
 } from "../../domain/marketplace";
 import { getPlatformDisplayName } from "../../domain/platformDisplay";
@@ -387,6 +391,7 @@ export function AdvertiserInfluencerDiscoveryPage() {
   const [query, setQuery] = useState("");
   const [platformFilter, setPlatformFilter] = useState<PlatformFilter>("all");
   const [categoryFilters, setCategoryFilters] = useState<string[]>([]);
+  const [countryFilters, setCountryFilters] = useState<MarketplaceCountryCode[]>([]);
   const [influencerSort, setInfluencerSort] =
     useState<InfluencerSortValue>("audience_desc");
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -405,6 +410,14 @@ export function AdvertiserInfluencerDiscoveryPage() {
           profile.platforms.some((platform) => platform.platform === platformFilter);
         if (!matchesPlatform) return false;
         if (!hasAnyCategory(profile.categories, categoryFilters)) return false;
+        if (
+          countryFilters.length > 0 &&
+          !countryFilters.some((country) =>
+            profile.audienceCountries?.includes(country),
+          )
+        ) {
+          return false;
+        }
         if (!normalizedQuery) return true;
 
         return [
@@ -414,6 +427,7 @@ export function AdvertiserInfluencerDiscoveryPage() {
           profile.bio,
           profile.location,
           profile.audience,
+          formatMarketplaceCountries(profile.audienceCountries),
           ...profile.categories,
           ...profile.brandFit,
           ...profile.recentBrands,
@@ -424,7 +438,7 @@ export function AdvertiserInfluencerDiscoveryPage() {
           .includes(normalizedQuery);
       })
       .sort((a, b) => compareInfluencerProfilesBySort(a, b, influencerSort));
-  }, [categoryFilters, influencerSort, platformFilter, profiles, query]);
+  }, [categoryFilters, countryFilters, influencerSort, platformFilter, profiles, query]);
   const influencerCategoryOptions = useMemo(
     () =>
       Array.from(
@@ -442,6 +456,9 @@ export function AdvertiserInfluencerDiscoveryPage() {
     query.trim() ? `검색 ${query.trim()}` : null,
     platformFilter !== "all" ? platformLabels[platformFilter] : null,
     categoryFilters.length > 0 ? formatSelectedCategorySummary(categoryFilters) : null,
+    countryFilters.length > 0
+      ? `국가 ${formatMarketplaceCountries(countryFilters)}`
+      : null,
   ].filter((label): label is string => Boolean(label));
   const filterSummary =
     activeFilterLabels.length > 0 ? activeFilterLabels.join(" · ") : "전체 조건";
@@ -499,7 +516,7 @@ export function AdvertiserInfluencerDiscoveryPage() {
           label="인플루언서 검색"
           placeholder="이름, 핸들, 카테고리 검색"
         />
-        <div className="grid min-w-0 gap-2.5 lg:min-w-[600px] lg:grid-cols-[minmax(210px,0.42fr)_minmax(280px,0.58fr)]">
+        <div className="grid min-w-0 gap-2.5 overflow-x-hidden lg:grid-cols-[minmax(0,0.31fr)_minmax(0,0.35fr)_minmax(0,0.34fr)]">
           <FilterChipGroup label="플랫폼">
             <PlatformFilterBar value={platformFilter} onChange={setPlatformFilter} />
           </FilterChipGroup>
@@ -507,6 +524,10 @@ export function AdvertiserInfluencerDiscoveryPage() {
             values={categoryFilters}
             categories={influencerCategoryOptions}
             onChange={setCategoryFilters}
+          />
+          <CountryChecklist
+            values={countryFilters}
+            onChange={setCountryFilters}
           />
         </div>
       </DiscoveryControls>
@@ -1233,6 +1254,8 @@ function InfluencerDiscoveryCard({
   profile: MarketplaceInfluencerProfile;
   onContact: () => void;
 }) {
+  const audienceCountryLabel = formatMarketplaceCountries(profile.audienceCountries);
+
   return (
     <article className="yl-card flex min-h-[204px] w-full min-w-0 flex-col border p-3.5">
       <div className="flex items-start gap-3">
@@ -1269,6 +1292,11 @@ function InfluencerDiscoveryCard({
       <p className="mt-3 truncate text-[12px] font-extrabold text-neutral-600">
         {getCategoryLabels(profile.categories, 3).join(" · ")}
       </p>
+      {audienceCountryLabel ? (
+        <p className="mt-1 truncate text-[11px] font-extrabold text-neutral-400">
+          오디언스 {audienceCountryLabel}
+        </p>
+      ) : null}
 
       <div className="mt-2.5 flex flex-wrap gap-1.5">
         {profile.platforms.slice(0, 3).map((platform) => (
@@ -1999,7 +2027,7 @@ function CategoryChecklist({
       <legend className="text-[12px] font-extrabold text-neutral-500">
         카테고리
       </legend>
-      <div className="mt-1.5 flex max-h-36 min-w-0 flex-wrap gap-1.5 overflow-y-auto pr-1">
+      <div className="mt-1.5 flex min-w-0 flex-wrap gap-1.5 pr-1">
       {categories.map((category) => {
         const checked = selected.has(category);
         const label = getCategoryLabel(category);
@@ -2029,6 +2057,54 @@ function CategoryChecklist({
           </label>
         );
       })}
+      </div>
+    </fieldset>
+  );
+}
+
+function CountryChecklist({
+  values,
+  onChange,
+}: {
+  values: MarketplaceCountryCode[];
+  onChange: (value: MarketplaceCountryCode[]) => void;
+}) {
+  const selected = new Set(values);
+
+  return (
+    <fieldset className="min-w-0">
+      <legend className="text-[12px] font-extrabold text-neutral-500">
+        오디언스 국가
+      </legend>
+      <div className="mt-1.5 flex min-w-0 flex-wrap gap-1.5 pr-1">
+        {marketplaceCountryOptions.map((country) => {
+          const checked = selected.has(country);
+
+          return (
+            <label
+              key={country}
+              className={`inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2.5 text-[12px] font-semibold transition ${
+                checked
+                  ? "border-neutral-950 bg-neutral-950 text-white"
+                  : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300 hover:text-neutral-950"
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={() =>
+                  onChange(
+                    checked
+                      ? values.filter((value) => value !== country)
+                      : [...values, country],
+                  )
+                }
+                className="h-3.5 w-3.5 rounded border-neutral-300 accent-neutral-950"
+              />
+              <span>{getMarketplaceCountryLabel(country)}</span>
+            </label>
+          );
+        })}
       </div>
     </fieldset>
   );

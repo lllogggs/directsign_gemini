@@ -12,6 +12,7 @@ import { Component, lazy, Suspense, useEffect, type ErrorInfo, type ReactNode } 
 import { BrandLogo } from "./components/BrandLogo";
 import { AdvertiserAuthGate } from "./pages/marketing/AdvertiserAuthGate";
 import { RoleIntroPage, StartPage } from "./pages/landing/LandingPages";
+import { GlobalCreatorLandingPage } from "./pages/landing/GlobalCreatorLandingPage";
 import { Dashboard as AdvertiserDashboard } from "./pages/marketing/Dashboard";
 import { InfluencerDashboard as InfluencerDashboardPage } from "./pages/influencer/InfluencerDashboard";
 import { LegalDocumentPage } from "./pages/legal/LegalDocumentPage";
@@ -491,6 +492,8 @@ type RouteSeoConfig = {
   description: string;
   canonicalPath: string;
   robots: string;
+  htmlLang?: string;
+  ogLocale?: string;
   ogImageUrl?: string;
   ogImageAlt?: string;
   structuredData?: unknown;
@@ -528,6 +531,15 @@ const influencerIntentKeywords = [
   "PPL 조건 검토",
   "공동구매 계약 검토",
   "크리에이터 광고 계약",
+];
+const globalCreatorIntentKeywords = [
+  "Korean brand collaboration",
+  "Korean influencer campaign",
+  "K-beauty brand deals",
+  "K-fashion creator campaign",
+  "Korea travel creator",
+  "韓国ブランド 案件",
+  "韩国品牌合作",
 ];
 const seoFeatureList = [
   "광고 조건 입력",
@@ -720,6 +732,33 @@ const getRouteSeoConfig = (pathname: string): RouteSeoConfig => {
       canonicalPath: "/",
       robots: publicRobotsContent,
     },
+    "/en/creators": {
+      title: `Korean brand deals for creators - ${PRODUCT_NAME}`,
+      description:
+        "Join Yeollock to review Korean brand campaigns, confirm content terms, sign digitally, and keep contract proof in one place.",
+      canonicalPath: "/en/creators",
+      robots: publicRobotsContent,
+      htmlLang: "en",
+      ogLocale: "en_US",
+    },
+    "/ja/creators": {
+      title: `韓国ブランド案件を契約で管理 - ${PRODUCT_NAME}`,
+      description:
+        "Yeollockで韓国ブランドのキャンペーン条件を確認し、電子署名とPDF証拠保管まで進められます。",
+      canonicalPath: "/ja/creators",
+      robots: publicRobotsContent,
+      htmlLang: "ja",
+      ogLocale: "ja_JP",
+    },
+    "/zh/creators": {
+      title: `韩国品牌合作创作者页面 - ${PRODUCT_NAME}`,
+      description:
+        "通过Yeollock确认韩国品牌活动条件、完成电子签名，并集中保存合约PDF与合作记录。",
+      canonicalPath: "/zh/creators",
+      robots: publicRobotsContent,
+      htmlLang: "zh",
+      ogLocale: "zh_CN",
+    },
     "/intro/advertiser": {
       title: `광고주 광고 계약 관리 - ${PRODUCT_NAME}`,
       description:
@@ -855,6 +894,36 @@ const publicSearchIntentPages: Record<string, IntentAwareSeoCopy> = {
     canonicalPath: "/",
     robots: publicRobotsContent,
     keywords: seoKeywordList,
+  },
+  "/en/creators": {
+    title: `Korean brand deals for creators | ${PRODUCT_NAME}`,
+    description:
+      "Global creators can join Yeollock to review Korean brand campaigns, confirm content terms, sign digitally, and keep proof in one place.",
+    canonicalPath: "/en/creators",
+    robots: publicRobotsContent,
+    htmlLang: "en",
+    ogLocale: "en_US",
+    keywords: globalCreatorIntentKeywords,
+  },
+  "/ja/creators": {
+    title: `韓国ブランド案件を契約で管理 | ${PRODUCT_NAME}`,
+    description:
+      "韓国ブランドのキャンペーン条件確認、電子署名、PDF証拠保管までYeollockで整理できます。",
+    canonicalPath: "/ja/creators",
+    robots: publicRobotsContent,
+    htmlLang: "ja",
+    ogLocale: "ja_JP",
+    keywords: globalCreatorIntentKeywords,
+  },
+  "/zh/creators": {
+    title: `韩国品牌合作创作者页面 | ${PRODUCT_NAME}`,
+    description:
+      "创作者可以通过Yeollock确认韩国品牌活动条件、完成电子签名，并集中保存合约PDF与合作记录。",
+    canonicalPath: "/zh/creators",
+    robots: publicRobotsContent,
+    htmlLang: "zh",
+    ogLocale: "zh_CN",
+    keywords: globalCreatorIntentKeywords,
   },
   "/intro/advertiser": {
     title: `광고주 인플루언서 계약 관리 | ${PRODUCT_NAME}`,
@@ -1223,6 +1292,7 @@ function RouteSeoMeta() {
     const canonicalUrl = buildCanonicalUrl(seo.canonicalPath);
 
     window.document.title = seo.title;
+    window.document.documentElement.lang = seo.htmlLang ?? "ko";
     upsertMetaByName("description", seo.description);
     upsertMetaByName("robots", seo.robots);
     upsertMetaByName("application-name", PRODUCT_NAME);
@@ -1230,7 +1300,7 @@ function RouteSeoMeta() {
     upsertLink("canonical", canonicalUrl);
     upsertMetaByProperty("og:site_name", PRODUCT_NAME);
     upsertMetaByProperty("og:type", "website");
-    upsertMetaByProperty("og:locale", "ko_KR");
+    upsertMetaByProperty("og:locale", seo.ogLocale ?? "ko_KR");
     upsertMetaByProperty("og:url", canonicalUrl);
     upsertMetaByProperty("og:title", seo.title);
     upsertMetaByProperty("og:description", seo.description);
@@ -1403,6 +1473,9 @@ function AppRoutes() {
             path="/"
             element={<StartPage />}
           />
+          <Route path="/en/creators" element={<GlobalCreatorLandingPage locale="en" />} />
+          <Route path="/ja/creators" element={<GlobalCreatorLandingPage locale="ja" />} />
+          <Route path="/zh/creators" element={<GlobalCreatorLandingPage locale="zh" />} />
           <Route path="/intro/advertiser" element={<AdvertiserIntroPage />} />
           <Route path="/intro/influencer" element={<InfluencerIntroPage />} />
           <Route path="/login" element={<LoginLanding />} />
