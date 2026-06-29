@@ -16,6 +16,7 @@ type GlobalCreatorLandingCopy = {
   trustLine: string;
   audienceLabel: string;
   audienceItems: string[];
+  painEyebrow: string;
   painTitle: string;
   painItems: string[];
   flowTitle: string;
@@ -39,6 +40,7 @@ type GlobalCreatorLandingCopy = {
     verified: string;
     rows: Array<{ label: string; value: string }>;
   };
+  screenshotAlt: string;
 };
 
 const mobileCampaignScreenshot = new URL(
@@ -53,8 +55,8 @@ const globalCreatorLandingCopies: Record<
   en: {
     path: "/en/creators",
     navLogin: "Log in",
-    eyebrow: "For creators who love Korea",
-    title: ["Get Korean brand deals", "with clear contracts."],
+    eyebrow: "For creators working with Korea",
+    title: ["K-brand deals,", "clear contracts."],
     subtitle:
       "Yeollock helps global creators review Korean brand campaigns, confirm content terms, sign digitally, and keep proof in one place.",
     primaryCta: "Join as creator",
@@ -67,6 +69,7 @@ const globalCreatorLandingCopies: Record<
       "Korea travel creators",
       "K-lifestyle channels",
     ],
+    painEyebrow: "Contract first",
     painTitle: "Korean collaborations should not stay buried in DMs.",
     painItems: [
       "Campaign terms can be unclear across languages.",
@@ -106,7 +109,7 @@ const globalCreatorLandingCopies: Record<
       brand: "Seoul skincare brand",
       campaign: "Reels + Story review",
       rewardLabel: "Reward",
-      reward: "KRW 1,800,000",
+      reward: "KRW 1.8M",
       deadlineLabel: "Deadline",
       deadline: "D-7",
       apply: "Apply with profile",
@@ -120,64 +123,66 @@ const globalCreatorLandingCopies: Record<
         { label: "Revision", value: "1 request" },
       ],
     },
+    screenshotAlt: "Yeollock Korean campaign screen",
   },
   ja: {
     path: "/ja/creators",
     navLogin: "ログイン",
-    eyebrow: "韓国に関心のあるクリエイターへ",
-    title: ["韓国ブランド案件を", "契約でクリアに。"],
+    eyebrow: "韓国が好きなクリエイターへ",
+    title: ["韓国ブランド案件を", "契約まで明確に。"],
     subtitle:
-      "Yeollockは、韓国ブランドのキャンペーン条件確認、電子署名、PDF証拠の保管までをひとつの流れで整理します。",
+      "Yeollockなら、韓国ブランドの募集内容、制作条件、電子署名、PDF証拠を一つの場所で確認できます。",
     primaryCta: "クリエイター登録",
     trustLine:
-      "K-beauty、K-fashion、韓国旅行、フード、ライフスタイル案件に向いています。",
+      "K-beauty、K-fashion、旅行、グルメ、ライフスタイル案件に対応。",
     audienceLabel: "対象",
     audienceItems: [
       "K-beautyレビュー",
-      "韓国ファッション",
-      "韓国旅行・カフェ",
-      "K-lifestyle",
+      "韓国旅行クリエイター",
+      "K-fashion発信",
+      "ライフスタイル投稿",
     ],
-    painTitle: "韓国ブランドとの約束を、DMだけで終わらせない。",
+    painEyebrow: "契約を先に",
+    painTitle: "韓国ブランドとのやり取りを、DMだけで終わらせない。",
     painItems: [
-      "言語が違うと、条件や納期の理解にズレが出やすい。",
-      "修正範囲、使用権、締切は記録として残す必要がある。",
-      "署名済みPDFを案件後もすぐ確認できる状態にする。",
+      "言語が違うと、募集条件の認識がずれやすい。",
+      "締切、使用範囲、修正依頼は書面で残す必要があります。",
+      "署名済みPDFを案件後もすぐ確認できます。",
     ],
-    flowTitle: "Yeollockで明確になること",
+    flowTitle: "Yeollockで確認できること",
     flowItems: [
       {
-        title: "キャンペーン条件",
+        title: "募集条件",
         description:
-          "ブランド、投稿先、コンテンツ形式、報酬、締切を確認できます。",
+          "ブランド、掲載先、制作内容、報酬、締切を応募前・署名前に確認できます。",
       },
       {
-        title: "契約確認",
+        title: "契約レビュー",
         description:
-          "契約リンクからPDFを確認し、必要な修正を署名前に依頼できます。",
+          "契約リンクからPDFを開き、署名前に必要な修正を明確に依頼できます。",
       },
       {
         title: "証拠保管",
         description:
-          "署名済みPDFと主要な契約記録をアカウントに保管します。",
+          "署名済みPDFと主要な契約記録を一つのアカウントに残せます。",
       },
     ],
-    proofTitle: "韓国ブランド運用に合わせた管理",
+    proofTitle: "韓国ブランド案件の記録を一か所に",
     proofItems: [
       "電子契約リンク",
       "認証済みチャンネル",
-      "コンテンツ・締切記録",
+      "制作条件と締切",
       "署名済みPDF",
     ],
     boundary:
-      "Yeollockは契約作成、電子署名、証拠保管を支援します。広告費の支払い、税金、返金、エスクローはブランドとクリエイター間の責任です。",
+      "Yeollockは契約書作成、電子署名、証拠保管を整理します。広告費の支払い、税金、返金、エスクローはブランドとクリエイター間で行います。",
     campaignPreview: {
       title: "韓国キャンペーン",
-      tabs: ["Beauty", "Fashion", "Travel"],
-      brand: "ソウルスキンケアブランド",
+      tabs: ["美容", "ファッション", "旅行"],
+      brand: "ソウルのスキンケアブランド",
       campaign: "Reels + Storyレビュー",
       rewardLabel: "報酬",
-      reward: "KRW 1,800,000",
+      reward: "KRW 1.8M",
       deadlineLabel: "締切",
       deadline: "D-7",
       apply: "プロフィールで応募",
@@ -186,89 +191,91 @@ const globalCreatorLandingCopies: Record<
       title: "契約サマリー",
       verified: "事業者認証済み",
       rows: [
-        { label: "プラットフォーム", value: "Instagram" },
-        { label: "コンテンツ", value: "Reels, Story" },
+        { label: "掲載先", value: "Instagram" },
+        { label: "内容", value: "Reels, Story" },
         { label: "修正", value: "1回" },
       ],
     },
+    screenshotAlt: "Yeollockの韓国キャンペーン画面",
   },
   zh: {
     path: "/zh/creators",
     navLogin: "登录",
     eyebrow: "面向关注韩国的创作者",
-    title: ["用清晰合约", "承接韩国品牌合作。"],
+    title: ["韩国品牌合作，", "签约前说清楚。"],
     subtitle:
-      "Yeollock帮助全球创作者确认韩国品牌活动条件、完成电子签名，并集中保存PDF与合作记录。",
+      "Yeollock 帮助海外创作者查看韩国品牌活动、确认内容条件、在线签署，并统一保存 PDF 证据。",
     primaryCta: "注册创作者",
-    trustLine:
-      "适合K-beauty、K-fashion、韩国旅行、美食与生活方式类合作。",
+    trustLine: "适用于 K-beauty、K-fashion、旅行、美食和生活方式合作。",
     audienceLabel: "适合",
     audienceItems: [
-      "K-beauty测评",
-      "韩系时尚创作者",
-      "韩国旅行内容",
-      "K-lifestyle频道",
+      "K-beauty 测评",
+      "韩国旅行创作者",
+      "K-fashion 内容",
+      "生活方式频道",
     ],
-    painTitle: "韩国品牌合作，不该只停留在私信里。",
+    painEyebrow: "先看合同",
+    painTitle: "韩国品牌合作，不只停留在私信里。",
     painItems: [
-      "跨语言沟通时，合作条件和截止日期容易产生误解。",
-      "修改范围、内容权利和发布时间需要留下书面记录。",
-      "合作结束后，也应能快速找到已签署PDF。",
+      "跨语言沟通时，活动条件容易理解不一致。",
+      "截止日、内容使用权和修改要求都需要书面记录。",
+      "签署后的 PDF 应该在活动结束后也能随时找到。",
     ],
-    flowTitle: "Yeollock帮你明确这些内容",
+    flowTitle: "Yeollock 帮你确认",
     flowItems: [
       {
         title: "活动条件",
         description:
-          "品牌、平台、内容形式、报酬与截止日期会在申请或签署前显示。",
+          "在申请或签约前，确认品牌、平台、内容形式、报酬和截止日。",
       },
       {
-        title: "合约确认",
+        title: "合同确认",
         description:
-          "通过合约链接查看PDF，并在签署前提出明确修改请求。",
+          "打开合同链接，查看 PDF，并在签署前清楚提出需要修改的内容。",
       },
       {
         title: "证据保存",
         description:
-          "已签署PDF和关键合作记录会集中保存在账号中。",
+          "将签署后的 PDF 和关键合同记录保存在同一个服务账号中。",
       },
     ],
-    proofTitle: "为韩国品牌合作流程设计",
+    proofTitle: "为韩国品牌合作保留记录",
     proofItems: [
-      "电子合约链接",
+      "电子合同链接",
       "已认证创作者频道",
-      "内容与截止日期记录",
-      "已签署PDF证据",
+      "内容与截止日记录",
+      "签署 PDF 证据",
     ],
     boundary:
-      "Yeollock负责整理合约、电子签名与证据保存。广告费支付、税务、退款和托管由品牌与创作者双方负责。",
+      "Yeollock 负责整理合同、电子签名和证据保存。广告费用、结算、税务、退款和托管由品牌与创作者自行处理。",
     campaignPreview: {
-      title: "韩国品牌活动",
-      tabs: ["Beauty", "Fashion", "Travel"],
+      title: "韩国活动看板",
+      tabs: ["美妆", "时尚", "旅行"],
       brand: "首尔护肤品牌",
-      campaign: "Reels + Story测评",
+      campaign: "Reels + Story 测评",
       rewardLabel: "报酬",
-      reward: "KRW 1,800,000",
-      deadlineLabel: "截止",
+      reward: "KRW 1.8M",
+      deadlineLabel: "截止日",
       deadline: "D-7",
       apply: "用资料申请",
     },
     contractPreview: {
-      title: "合约摘要",
-      verified: "企业已认证",
+      title: "合同摘要",
+      verified: "企业认证完成",
       rows: [
         { label: "平台", value: "Instagram" },
         { label: "内容", value: "Reels, Story" },
-        { label: "修改", value: "1次请求" },
+        { label: "修改", value: "1次" },
       ],
     },
+    screenshotAlt: "Yeollock 韩国品牌活动页面",
   },
 };
 
 const globalCreatorLanguageOrder: GlobalCreatorLocale[] = ["en", "ja", "zh"];
 
 const getPageLang = (locale: GlobalCreatorLocale) =>
-  locale === "ja" ? "ja" : locale === "zh" ? "zh" : "en";
+  locale === "ja" ? "ja" : locale === "zh" ? "zh-CN" : "en";
 
 export function GlobalCreatorLandingPage({
   locale,
@@ -276,6 +283,8 @@ export function GlobalCreatorLandingPage({
   locale: GlobalCreatorLocale;
 }) {
   const copy = globalCreatorLandingCopies[locale];
+  const heroTitleSizeClass =
+    locale === "en" ? "sm:text-[64px] lg:text-[72px]" : "sm:text-[58px] lg:text-[64px]";
 
   return (
     <main
@@ -309,16 +318,17 @@ export function GlobalCreatorLandingPage({
           className="pointer-events-none absolute inset-x-0 bottom-0 h-[42%] bg-[#e3e7df]"
           aria-hidden="true"
         />
-        <div className="relative mx-auto grid min-h-[calc(100svh-60px)] w-full max-w-[1500px] grid-rows-[auto_1fr] px-4 pb-7 pt-8 sm:px-6 sm:pb-10 sm:pt-10 lg:grid-cols-[minmax(0,0.92fr)_minmax(560px,1.08fr)] lg:grid-rows-1 lg:items-center lg:gap-8 lg:py-10">
+        <div className="relative mx-auto grid w-full max-w-[1500px] px-4 pb-7 pt-8 sm:px-6 sm:pb-10 sm:pt-10 lg:min-h-[calc(100svh-60px)] lg:grid-cols-[minmax(0,0.92fr)_minmax(560px,1.08fr)] lg:items-center lg:gap-8 lg:py-10">
           <div className="relative z-10 max-w-[720px] pt-2 lg:pt-0">
             <p className="text-[12px] font-extrabold uppercase leading-none tracking-normal text-blue-700">
               {copy.eyebrow}
             </p>
-            <h1 className="font-neo-heavy mt-4 text-[40px] leading-[1.03] tracking-normal text-neutral-950 sm:text-[64px] lg:text-[72px]">
-              {copy.title.map((line, index) => (
+            <h1
+              className={`font-neo-heavy mt-4 text-[37px] leading-[1.06] tracking-normal text-neutral-950 ${heroTitleSizeClass}`}
+            >
+              {copy.title.map((line) => (
                 <span key={line} className="block">
                   {line}
-                  {index < copy.title.length - 1 ? " " : ""}
                 </span>
               ))}
             </h1>
@@ -345,7 +355,7 @@ export function GlobalCreatorLandingPage({
                 {copy.audienceItems.map((item) => (
                   <span
                     key={item}
-                    className="inline-flex h-8 items-center rounded-full border border-neutral-200 bg-white px-3 text-[12px] font-extrabold text-neutral-700"
+                    className="inline-flex min-h-8 items-center rounded-full border border-neutral-200 bg-white px-3 py-1 text-[12px] font-extrabold leading-5 text-neutral-700"
                   >
                     {item}
                   </span>
@@ -354,7 +364,7 @@ export function GlobalCreatorLandingPage({
             </div>
           </div>
 
-          <GlobalCreatorHeroVisual copy={copy} locale={locale} />
+          <GlobalCreatorHeroVisual copy={copy} />
 
           <div className="relative z-10 grid max-w-[620px] gap-2 sm:hidden">
             <p className="text-[12px] font-extrabold uppercase leading-8 tracking-normal text-neutral-400">
@@ -364,7 +374,7 @@ export function GlobalCreatorLandingPage({
               {copy.audienceItems.map((item) => (
                 <span
                   key={item}
-                  className="inline-flex h-8 items-center rounded-full border border-neutral-200 bg-white px-3 text-[12px] font-extrabold text-neutral-700"
+                  className="inline-flex min-h-8 items-center rounded-full border border-neutral-200 bg-white px-3 py-1 text-[12px] font-extrabold leading-5 text-neutral-700"
                 >
                   {item}
                 </span>
@@ -377,7 +387,7 @@ export function GlobalCreatorLandingPage({
       <section className="mx-auto grid w-full max-w-[1500px] gap-5 px-4 py-8 sm:px-6 sm:py-12 lg:grid-cols-[0.88fr_1.12fr] lg:gap-8 lg:py-16">
         <div className="max-w-[620px]">
           <p className="text-[12px] font-extrabold uppercase tracking-normal text-blue-700">
-            Contract first
+            {copy.painEyebrow}
           </p>
           <h2 className="font-neo-heavy mt-3 text-[30px] leading-tight tracking-normal text-neutral-950 sm:text-[42px]">
             {copy.painTitle}
@@ -387,7 +397,7 @@ export function GlobalCreatorLandingPage({
           {copy.painItems.map((item, index) => (
             <article
               key={item}
-              className="yl-card grid min-h-[164px] content-between border p-4"
+              className="yl-card grid min-h-[128px] content-between border p-4 sm:min-h-[164px]"
             >
               <span className="flex h-8 w-8 items-center justify-center rounded-[8px] bg-neutral-950 text-[12px] font-black text-white">
                 {index + 1}
@@ -488,30 +498,21 @@ function LanguageSwitcher({
 
 function GlobalCreatorHeroVisual({
   copy,
-  locale,
 }: {
   copy: GlobalCreatorLandingCopy;
-  locale: GlobalCreatorLocale;
 }) {
-  const screenshotAlt =
-    locale === "ja"
-      ? "Yeollockのキャンペーン管理画面"
-      : locale === "zh"
-        ? "Yeollock韩国品牌活动页面"
-        : "Yeollock Korean campaign screen";
-
   return (
     <div
       data-global-hero-visual
-      className="relative z-0 mt-8 min-h-[440px] w-full lg:mt-0 lg:min-h-[560px]"
+      className="relative z-0 mt-7 min-h-[370px] w-full sm:min-h-[470px] lg:mt-0 lg:min-h-[560px]"
     >
       <div
-        className="absolute left-1/2 top-4 h-[420px] w-[min(92vw,650px)] -translate-x-1/2 rounded-[24px] border border-white/80 bg-white/78 shadow-[0_28px_80px_rgba(15,23,42,0.13)] backdrop-blur sm:h-[520px] lg:left-auto lg:right-0 lg:top-1/2 lg:h-[520px] lg:w-[650px] lg:translate-x-0 lg:-translate-y-1/2"
+        className="absolute left-1/2 top-4 h-[350px] w-[min(92vw,650px)] -translate-x-1/2 rounded-[24px] border border-white/80 bg-white/78 shadow-[0_28px_80px_rgba(15,23,42,0.13)] backdrop-blur sm:h-[520px] lg:left-auto lg:right-0 lg:top-1/2 lg:h-[520px] lg:w-[650px] lg:translate-x-0 lg:-translate-y-1/2"
         aria-hidden="true"
       />
-      <div className="relative mx-auto grid w-full max-w-[680px] grid-cols-[minmax(0,1fr)_148px] gap-3 pt-8 sm:grid-cols-[minmax(0,1fr)_190px] sm:gap-4 sm:pt-12 lg:pt-14">
+      <div className="relative mx-auto grid w-full max-w-[680px] grid-cols-[minmax(0,1fr)_124px] gap-3 pt-7 sm:grid-cols-[minmax(0,1fr)_190px] sm:gap-4 sm:pt-12 lg:pt-14">
         <section className="overflow-hidden rounded-[18px] border border-neutral-200 bg-white shadow-[0_20px_58px_rgba(15,23,42,0.13)]">
-          <div className="flex h-12 items-center justify-between border-b border-neutral-200 bg-[#f7f8f4] px-4">
+          <div className="flex h-11 items-center justify-between border-b border-neutral-200 bg-[#f7f8f4] px-3 sm:h-12 sm:px-4">
             <div className="flex items-center gap-2">
               <span className="h-2.5 w-2.5 rounded-full bg-red-300" />
               <span className="h-2.5 w-2.5 rounded-full bg-amber-300" />
@@ -521,13 +522,13 @@ function GlobalCreatorHeroVisual({
               yeollock.me
             </span>
           </div>
-          <div className="p-4 sm:p-5">
+          <div className="p-3 sm:p-5">
             <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-[12px] font-extrabold text-neutral-400">
+              <div className="min-w-0">
+                <p className="truncate text-[11px] font-extrabold text-neutral-400 sm:text-[12px]">
                   {copy.campaignPreview.title}
                 </p>
-                <h2 className="mt-1 text-[22px] font-black leading-tight text-neutral-950 sm:text-[28px]">
+                <h2 className="mt-1 text-[18px] font-black leading-tight text-neutral-950 sm:text-[28px]">
                   {copy.campaignPreview.brand}
                 </h2>
               </div>
@@ -536,11 +537,11 @@ function GlobalCreatorHeroVisual({
                 <PlatformBrandMark platform="tiktok" size="sm" />
               </div>
             </div>
-            <div className="mt-5 flex flex-wrap gap-2">
+            <div className="mt-4 flex flex-wrap gap-2 sm:mt-5">
               {copy.campaignPreview.tabs.map((tab, index) => (
                 <span
                   key={tab}
-                  className={`inline-flex h-8 items-center rounded-full px-3 text-[11px] font-black ${
+                  className={`inline-flex min-h-7 items-center rounded-full px-2.5 py-1 text-[10px] font-black leading-4 sm:h-8 sm:px-3 sm:text-[11px] ${
                     index === 0
                       ? "bg-neutral-950 text-white"
                       : "bg-neutral-100 text-neutral-500"
@@ -550,36 +551,36 @@ function GlobalCreatorHeroVisual({
                 </span>
               ))}
             </div>
-            <div className="mt-5 grid gap-3 rounded-[14px] border border-neutral-200 bg-[#fbfbf8] p-4">
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-[13px] font-black text-neutral-950">
+            <div className="mt-4 grid gap-3 rounded-[14px] border border-neutral-200 bg-[#fbfbf8] p-3 sm:mt-5 sm:p-4">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[12px] font-black text-neutral-950 sm:text-[13px]">
                   {copy.campaignPreview.campaign}
                 </span>
-                <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-black text-blue-700">
+                <span className="shrink-0 rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-black text-blue-700">
                   {copy.campaignPreview.deadline}
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-3 border-t border-neutral-200 pt-3">
-                <div>
+                <div className="min-w-0">
                   <p className="text-[11px] font-extrabold text-neutral-400">
                     {copy.campaignPreview.rewardLabel}
                   </p>
-                  <p className="mt-1 text-[15px] font-black text-neutral-950">
+                  <p className="mt-1 truncate text-[13px] font-black text-neutral-950 sm:text-[15px]">
                     {copy.campaignPreview.reward}
                   </p>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <p className="text-[11px] font-extrabold text-neutral-400">
                     {copy.campaignPreview.deadlineLabel}
                   </p>
-                  <p className="mt-1 text-[15px] font-black text-neutral-950">
+                  <p className="mt-1 text-[13px] font-black text-neutral-950 sm:text-[15px]">
                     {copy.campaignPreview.deadline}
                   </p>
                 </div>
               </div>
               <button
                 type="button"
-                className="mt-1 inline-flex h-10 items-center justify-center rounded-[8px] bg-blue-600 text-[12px] font-black text-white shadow-[0_10px_24px_rgba(37,99,235,0.18)]"
+                className="mt-1 inline-flex min-h-10 items-center justify-center rounded-[8px] bg-blue-600 px-2 py-2 text-[12px] font-black leading-4 text-white shadow-[0_10px_24px_rgba(37,99,235,0.18)]"
               >
                 {copy.campaignPreview.apply}
               </button>
@@ -591,25 +592,25 @@ function GlobalCreatorHeroVisual({
           <div className="overflow-hidden rounded-[16px] bg-white">
             <img
               src={mobileCampaignScreenshot}
-              alt={screenshotAlt}
-              className="h-[316px] w-full object-cover object-top sm:h-[390px]"
+              alt={copy.screenshotAlt}
+              className="h-[258px] w-full object-cover object-top sm:h-[390px]"
               loading="eager"
             />
           </div>
         </section>
 
-        <section className="col-span-2 -mt-1 ml-auto w-[min(94%,460px)] rounded-[16px] border border-neutral-200 bg-white p-4 shadow-[0_18px_52px_rgba(15,23,42,0.12)] sm:-mt-12 sm:mr-8">
+        <section className="col-span-2 -mt-1 ml-auto w-[min(94%,460px)] rounded-[16px] border border-neutral-200 bg-white p-3 shadow-[0_18px_52px_rgba(15,23,42,0.12)] sm:-mt-12 sm:mr-8 sm:p-4">
           <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
+            <div className="flex min-w-0 items-center gap-2">
               <FileSignature
-                className="h-4 w-4 text-blue-700"
+                className="h-4 w-4 shrink-0 text-blue-700"
                 strokeWidth={2.4}
               />
-              <h2 className="text-[14px] font-black text-neutral-950">
+              <h2 className="truncate text-[14px] font-black text-neutral-950">
                 {copy.contractPreview.title}
               </h2>
             </div>
-            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-black text-blue-700">
+            <span className="shrink-0 rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-black text-blue-700">
               {copy.contractPreview.verified}
             </span>
           </div>
@@ -617,12 +618,12 @@ function GlobalCreatorHeroVisual({
             {copy.contractPreview.rows.map((row) => (
               <div
                 key={row.label}
-                className="grid grid-cols-[92px_1fr] items-center gap-3 border-t border-neutral-200 pt-2 first:border-t-0 first:pt-0"
+                className="grid grid-cols-[82px_1fr] items-center gap-3 border-t border-neutral-200 pt-2 first:border-t-0 first:pt-0 sm:grid-cols-[92px_1fr]"
               >
                 <span className="text-[11px] font-extrabold text-neutral-400">
                   {row.label}
                 </span>
-                <span className="text-[13px] font-black text-neutral-950">
+                <span className="min-w-0 text-[13px] font-black text-neutral-950">
                   {row.value}
                 </span>
               </div>

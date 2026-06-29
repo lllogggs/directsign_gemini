@@ -2728,6 +2728,7 @@ function CampaignListView({
               모집 현황
             </p>
             <p className="mt-0.5 truncate text-[11px] font-semibold text-[#606861]">
+              선정자별 진행을 관리합니다 ·{" "}
               {campaigns.length.toLocaleString("ko-KR")}건 표시 · {filterSummary}
             </p>
           </div>
@@ -3684,7 +3685,8 @@ function CampaignApplicantRow({
     thread.counterpartAvatarUrl,
   );
   const initial = applicantName.trim().slice(0, 1) || "인";
-  const primaryActionSpan = profileHref ? "" : "col-span-2";
+  const hasProfileAction = Boolean(profileHref);
+  const primaryActionSpan = hasProfileAction ? "" : "col-span-2";
   const firstPlatform = displayPlatforms[0];
   const primaryHandle =
     firstPlatform?.handle ||
@@ -3695,7 +3697,9 @@ function CampaignApplicantRow({
     if (!canAccept || isAccepting) return;
 
     const confirmed = window.confirm(
-      `${thread.counterpartName || thread.senderName}을 선정하시겠어요? 캠페인 계약서 진행이 시작됩니다.`,
+      `${
+        thread.counterpartName || thread.senderName
+      }을 선정하시겠어요? 캠페인 계약서 진행이 시작됩니다.`,
     );
     if (!confirmed) return;
 
@@ -3772,7 +3776,7 @@ function CampaignApplicantRow({
           {applicantPerformance}
         </p>
       ) : null}
-      <div className="grid grid-cols-2 gap-1.5">
+      <div className="grid w-full grid-cols-2 gap-1.5 sm:w-[190px]">
         {profileHref ? (
           <Link
             to={profileHref}

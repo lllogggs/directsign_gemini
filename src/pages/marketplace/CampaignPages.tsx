@@ -4,6 +4,7 @@ import {
   ArrowUpWideNarrow,
   CalendarDays,
   ChevronDown,
+  CheckCircle2,
   ExternalLink,
   FileSignature,
   FileText,
@@ -44,7 +45,6 @@ import {
   getInfluencerProfilePath,
   getMarketplaceBrandDisplayFamilyKey,
   getMarketplaceCountryLabel,
-  getPlatformTone,
   marketplaceCountryOptions,
   marketplaceBrands,
   platformLabels,
@@ -715,7 +715,7 @@ export function AdvertiserCampaignRecruitmentPage() {
               </div>
             </CampaignField>
 
-            <CampaignField label="타깃 국가">
+            <CampaignField label="국가">
               <div className="flex flex-wrap gap-2">
                 {marketplaceCountryOptions.map((country) => {
                   const active = form.targetCountries.includes(country);
@@ -994,6 +994,7 @@ export function InfluencerCampaignDiscoveryPage() {
     direction: "desc",
   });
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [openFilterList, setOpenFilterList] = useState<string | null>(null);
   const [applyingCampaignId, setApplyingCampaignId] = useState<string | undefined>();
   const [applicationNotice, setApplicationNotice] = useState<
     | { campaignId: string; tone: "success" | "error"; message: string }
@@ -1348,7 +1349,12 @@ export function InfluencerCampaignDiscoveryPage() {
                       ? "influencer-campaign-filters"
                       : "influencer-applied-campaign-filters"
                   }
-                  onClick={() => setFiltersOpen((current) => !current)}
+                  onClick={() =>
+                    setFiltersOpen((current) => {
+                      if (current) setOpenFilterList(null);
+                      return !current;
+                    })
+                  }
                 />
                 <ResponsiveFilterPanel
                   id={
@@ -1358,7 +1364,10 @@ export function InfluencerCampaignDiscoveryPage() {
                   }
                   open={filtersOpen}
                   activeCount={toolbarFilterCount}
-                  onClose={() => setFiltersOpen(false)}
+                  onClose={() => {
+                    setFiltersOpen(false);
+                    setOpenFilterList(null);
+                  }}
                   onClear={() => {
                     if (activeView === "open") {
                       setQuery("");
@@ -1369,6 +1378,7 @@ export function InfluencerCampaignDiscoveryPage() {
                       setAppliedQuery("");
                       setAppliedStatusFilter("all");
                     }
+                    setOpenFilterList(null);
                   }}
                   className="sm:w-[min(820px,calc(100vw-48px))]"
                 >
@@ -1384,41 +1394,37 @@ export function InfluencerCampaignDiscoveryPage() {
                           className="h-9 w-full rounded-[8px] border border-neutral-200 bg-white pl-10 pr-3 text-[12px] font-bold text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950"
                         />
                       </div>
-                      <div className="grid min-w-0 gap-3 lg:grid-cols-2">
-                        <FilterGroup label="플랫폼">
-                          {platformOptions.map((platform) => (
-                            <FilterButton
-                              key={platform}
-                              active={platformFilter === platform}
-                              label={platform === "all" ? "전체" : platformLabels[platform]}
-                              onClick={() => setPlatformFilter(platform)}
-                              tone={platform === "all" ? undefined : getPlatformTone(platform)}
-                            />
-                          ))}
-                        </FilterGroup>
-                        <FilterGroup label="형태">
-                          {proposalTypeFilterOptions.map((type) => (
-                            <FilterButton
-                              key={type}
-                              active={proposalTypeFilter === type}
-                              label={type === "all" ? "전체" : proposalTypeLabels[type]}
-                              onClick={() => setProposalTypeFilter(type)}
-                            />
-                          ))}
-                        </FilterGroup>
-                        <div className="lg:col-span-2">
-                          <CategoryCheckboxList
-                            values={categoryFilters}
-                            categories={categoryOptions}
-                            onChange={setCategoryFilters}
-                          />
-                        </div>
+                      <div className="grid min-w-0 gap-2">
+                        <CampaignPlatformFilterList
+                          id="influencer-campaign-platform"
+                          openId={openFilterList}
+                          onOpenChange={setOpenFilterList}
+                          value={platformFilter}
+                          onChange={setPlatformFilter}
+                        />
+                        <CampaignProposalTypeFilterList
+                          id="influencer-campaign-type"
+                          openId={openFilterList}
+                          onOpenChange={setOpenFilterList}
+                          value={proposalTypeFilter}
+                          onChange={setProposalTypeFilter}
+                        />
+                        <CampaignCategoryFilterList
+                          id="influencer-campaign-category"
+                          openId={openFilterList}
+                          onOpenChange={setOpenFilterList}
+                          values={categoryFilters}
+                          categories={categoryOptions}
+                          onChange={setCategoryFilters}
+                        />
                       </div>
                     </div>
                   ) : (
                     <AppliedCampaignFilters
                       query={appliedQuery}
                       statusFilter={appliedStatusFilter}
+                      openId={openFilterList}
+                      onOpenChange={setOpenFilterList}
                       onQueryChange={setAppliedQuery}
                       onStatusFilterChange={setAppliedStatusFilter}
                     />
@@ -2047,6 +2053,7 @@ function AdvertiserCampaignApplicantControls({
   onStatusFilterChange: (value: ApplicationStatusFilter) => void;
   onClear: () => void;
 }) {
+  const [openFilterList, setOpenFilterList] = useState<string | null>(null);
   const hasFilters =
     query.trim().length > 0 || platformFilter !== "all" || statusFilter !== "all";
 
@@ -2072,7 +2079,10 @@ function AdvertiserCampaignApplicantControls({
             open={filtersOpen}
             activeCount={activeFilterCount}
             controlsId="advertiser-campaign-applicant-filters"
-            onClick={onToggleFilters}
+            onClick={() => {
+              if (filtersOpen) setOpenFilterList(null);
+              onToggleFilters();
+            }}
           />
         </div>
       </div>
@@ -2092,27 +2102,20 @@ function AdvertiserCampaignApplicantControls({
             />
           </div>
           <div className="grid min-w-0 gap-2 lg:grid-cols-2">
-            <FilterGroup label="플랫폼">
-              {platformOptions.map((platform) => (
-                <FilterButton
-                  key={platform}
-                  active={platformFilter === platform}
-                  label={platform === "all" ? "전체" : platformLabels[platform]}
-                  onClick={() => onPlatformFilterChange(platform)}
-                  tone={platform === "all" ? undefined : getPlatformTone(platform)}
-                />
-              ))}
-            </FilterGroup>
-            <FilterGroup label="상태">
-              {applicationStatusFilterOptions.map((status) => (
-                <FilterButton
-                  key={status}
-                  active={statusFilter === status}
-                  label={status === "all" ? "전체" : applicationStatusMeta[status].label}
-                  onClick={() => onStatusFilterChange(status)}
-                />
-              ))}
-            </FilterGroup>
+            <CampaignPlatformFilterList
+              id="advertiser-applicant-platform"
+              openId={openFilterList}
+              onOpenChange={setOpenFilterList}
+              value={platformFilter}
+              onChange={onPlatformFilterChange}
+            />
+            <CampaignApplicationStatusFilterList
+              id="advertiser-applicant-status"
+              openId={openFilterList}
+              onOpenChange={setOpenFilterList}
+              value={statusFilter}
+              onChange={onStatusFilterChange}
+            />
           </div>
           {hasFilters ? (
             <button
@@ -2738,7 +2741,7 @@ function CampaignCardMetaChips({
   const chips = [
     countryLabel
       ? {
-          label: "타깃 국가",
+          label: "국가",
           value: countryLabel,
           icon: <UsersRound className="h-3.5 w-3.5" />,
         }
@@ -2822,7 +2825,7 @@ function CampaignRecruitmentDetailDialog({
   const targetCountryLabel = formatMarketplaceCountries(campaign.targetCountries);
   const detailRows = [
     ...(targetCountryLabel
-      ? [{ label: "타깃 국가", value: targetCountryLabel }]
+      ? [{ label: "국가", value: targetCountryLabel }]
       : []),
     { label: "제공상품", value: getCampaignOfferLabel(campaign) },
     { label: "지급조건", value: campaign.budget },
@@ -3162,11 +3165,15 @@ function CampaignSortSelect({
 function AppliedCampaignFilters({
   query,
   statusFilter,
+  openId,
+  onOpenChange,
   onQueryChange,
   onStatusFilterChange,
 }: {
   query: string;
   statusFilter: ApplicationStatusFilter;
+  openId: string | null;
+  onOpenChange: (value: string | null) => void;
   onQueryChange: (value: string) => void;
   onStatusFilterChange: (value: ApplicationStatusFilter) => void;
 }) {
@@ -3182,16 +3189,13 @@ function AppliedCampaignFilters({
           className="h-9 w-full rounded-[8px] border border-neutral-200 bg-white pl-10 pr-3 text-[12px] font-bold text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950"
         />
       </div>
-      <FilterGroup label="상태">
-        {applicationStatusFilterOptions.map((status) => (
-          <FilterButton
-            key={status}
-            active={statusFilter === status}
-            label={status === "all" ? "전체" : applicationStatusMeta[status].label}
-            onClick={() => onStatusFilterChange(status)}
-          />
-        ))}
-      </FilterGroup>
+      <CampaignApplicationStatusFilterList
+        id="influencer-applied-status"
+        openId={openId}
+        onOpenChange={onOpenChange}
+        value={statusFilter}
+        onChange={onStatusFilterChange}
+      />
     </div>
   );
 }
@@ -3716,7 +3720,111 @@ function formatCampaignCategoryFilterSummary(categories: string[]) {
   return categories.length <= 2 ? categories.join(", ") : `카테고리 ${categories.length}개`;
 }
 
-function CategoryCheckboxList({
+type CampaignFilterListOption<T extends string> = {
+  value: T;
+  label: string;
+};
+
+type CampaignFilterListDisclosureProps = {
+  id: string;
+  openId: string | null;
+  onOpenChange: (value: string | null) => void;
+};
+
+function CampaignPlatformFilterList({
+  id,
+  openId,
+  onOpenChange,
+  value,
+  onChange,
+}: {
+  value: PlatformFilter;
+  onChange: (value: PlatformFilter) => void;
+} & CampaignFilterListDisclosureProps) {
+  const options = platformOptions.map((platform) => ({
+    value: platform,
+    label: platform === "all" ? "전체" : platformLabels[platform],
+  }));
+
+  return (
+    <CampaignFilterListSection
+      id={id}
+      openId={openId}
+      onOpenChange={onOpenChange}
+      label="플랫폼"
+      summary={value === "all" ? "전체" : platformLabels[value]}
+      options={options}
+      selectedValues={[value]}
+      closeOnSelect
+      onSelect={onChange}
+    />
+  );
+}
+
+function CampaignProposalTypeFilterList({
+  id,
+  openId,
+  onOpenChange,
+  value,
+  onChange,
+}: {
+  value: ProposalTypeFilter;
+  onChange: (value: ProposalTypeFilter) => void;
+} & CampaignFilterListDisclosureProps) {
+  const options = proposalTypeFilterOptions.map((type) => ({
+    value: type,
+    label: type === "all" ? "전체" : proposalTypeLabels[type],
+  }));
+
+  return (
+    <CampaignFilterListSection
+      id={id}
+      openId={openId}
+      onOpenChange={onOpenChange}
+      label="형태"
+      summary={value === "all" ? "전체" : proposalTypeLabels[value]}
+      options={options}
+      selectedValues={[value]}
+      closeOnSelect
+      onSelect={onChange}
+    />
+  );
+}
+
+function CampaignApplicationStatusFilterList({
+  id,
+  openId,
+  onOpenChange,
+  value,
+  onChange,
+}: {
+  value: ApplicationStatusFilter;
+  onChange: (value: ApplicationStatusFilter) => void;
+} & CampaignFilterListDisclosureProps) {
+  const options = applicationStatusFilterOptions.map((status) => ({
+    value: status,
+    label: status === "all" ? "전체" : applicationStatusMeta[status].label,
+  }));
+
+  return (
+    <CampaignFilterListSection
+      id={id}
+      openId={openId}
+      onOpenChange={onOpenChange}
+      label="상태"
+      summary={value === "all" ? "전체" : applicationStatusMeta[value].label}
+      options={options}
+      selectedValues={[value]}
+      closeOnSelect
+      onSelect={onChange}
+    />
+  );
+}
+
+function CampaignCategoryFilterList({
+  id,
+  openId,
+  onOpenChange,
   values,
   categories,
   onChange,
@@ -3724,89 +3832,140 @@ function CategoryCheckboxList({
   values: string[];
   categories: string[];
   onChange: (value: string[]) => void;
-}) {
+} & CampaignFilterListDisclosureProps) {
   const selected = new Set(values);
+  const options = categories.map((category) => ({
+    value: category,
+    label: category,
+  }));
 
   return (
-    <fieldset className="min-w-0">
-      <legend className="text-[12px] font-extrabold text-neutral-500">
-        카테고리
-      </legend>
-      <div className="mt-1.5 flex max-h-36 min-w-0 flex-wrap gap-1.5 overflow-y-auto pr-1">
-        {categories.map((category) => {
-          const checked = selected.has(category);
-          return (
-            <label
-              key={category}
-              className={`inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2.5 text-[12px] font-semibold transition ${
-                checked
-                  ? "border-neutral-950 bg-neutral-950 text-white"
-                  : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300 hover:text-neutral-950"
-              }`}
-            >
-              <input
-                type="checkbox"
-                checked={checked}
-                onChange={() =>
-                  onChange(
-                    checked
-                      ? values.filter((value) => value !== category)
-                      : [...values, category],
-                  )
-                }
-                className="h-3.5 w-3.5 rounded border-neutral-300 accent-neutral-950"
-              />
-              <span>{category}</span>
-            </label>
-          );
-        })}
-      </div>
-    </fieldset>
+    <CampaignFilterListSection
+      id={id}
+      openId={openId}
+      onOpenChange={onOpenChange}
+      label="카테고리"
+      summary={
+        values.length > 0 ? formatCampaignCategoryFilterSummary(values) : "전체"
+      }
+      options={options}
+      selectedValues={values}
+      onClear={() => onChange([])}
+      onSelect={(category) =>
+        onChange(
+          selected.has(category)
+            ? values.filter((value) => value !== category)
+            : [...values, category],
+        )
+      }
+    />
   );
 }
 
-function FilterGroup({
+function CampaignFilterListSection<T extends string>({
+  id,
+  openId,
+  onOpenChange,
   label,
-  children,
+  summary,
+  options,
+  selectedValues,
+  onSelect,
+  onClear,
+  closeOnSelect = false,
 }: {
+  id: string;
+  openId: string | null;
+  onOpenChange: (value: string | null) => void;
   label: string;
-  children: ReactNode;
+  summary: string;
+  options: Array<CampaignFilterListOption<T>>;
+  selectedValues: T[];
+  onSelect: (value: T) => void;
+  onClear?: () => void;
+  closeOnSelect?: boolean;
 }) {
+  const open = openId === id;
+  const selected = new Set<T>(selectedValues);
+  const isClearSelected = Boolean(onClear) && selectedValues.length === 0;
+
   return (
-    <div className="grid min-w-0 gap-1.5">
-      <span className="text-[12px] font-extrabold text-neutral-500">
-        {label}
-      </span>
-      <div className="flex min-w-0 flex-wrap gap-1.5">{children}</div>
-    </div>
+    <section className="min-w-0 overflow-hidden rounded-[10px] border border-neutral-200 bg-white">
+      <button
+        type="button"
+        onClick={() => onOpenChange(open ? null : id)}
+        aria-expanded={open}
+        className="flex h-11 w-full min-w-0 items-center justify-between gap-3 px-3 text-left transition hover:bg-neutral-50"
+      >
+        <span className="min-w-0">
+          <span className="block text-[12px] font-extrabold leading-tight text-neutral-500">
+            {label}
+          </span>
+          <span className="mt-0.5 block truncate text-[13px] font-extrabold leading-tight text-neutral-950">
+            {summary}
+          </span>
+        </span>
+        <ChevronDown
+          className={`h-4 w-4 shrink-0 text-neutral-500 transition-transform ${
+            open ? "rotate-180" : ""
+          }`}
+          strokeWidth={2}
+        />
+      </button>
+      {open ? (
+        <div className="max-h-56 overflow-y-auto border-t border-neutral-100 p-1">
+          {onClear ? (
+            <CampaignFilterListOptionButton
+              label="전체"
+              selected={isClearSelected}
+              onClick={() => {
+                onClear();
+                if (closeOnSelect) onOpenChange(null);
+              }}
+            />
+          ) : null}
+          {options.map((option) => (
+            <CampaignFilterListOptionButton
+              key={String(option.value)}
+              label={option.label}
+              selected={selected.has(option.value)}
+              onClick={() => {
+                onSelect(option.value);
+                if (closeOnSelect) onOpenChange(null);
+              }}
+            />
+          ))}
+        </div>
+      ) : null}
+    </section>
   );
 }
 
-function FilterButton({
-  active,
+function CampaignFilterListOptionButton({
   label,
   onClick,
-  tone,
+  selected,
 }: {
   key?: string;
-  active: boolean;
   label: string;
   onClick: () => void;
-  tone?: string;
+  selected: boolean;
 }) {
-  const activeClass = tone ?? "border-neutral-950 bg-neutral-950 text-white";
-
   return (
     <button
       type="button"
+      aria-pressed={selected}
       onClick={onClick}
-      className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-extrabold transition sm:px-2 ${
-        active
-          ? activeClass
-          : "border-neutral-200 bg-white text-neutral-500 hover:border-neutral-300 hover:text-neutral-950"
+      className={`flex h-9 w-full items-center justify-between gap-3 rounded-[8px] px-2.5 text-left text-[12px] font-extrabold transition ${
+        selected
+          ? "bg-neutral-950 text-white"
+          : "text-neutral-600 hover:bg-neutral-50 hover:text-neutral-950"
       }`}
     >
-      <span>{label}</span>
+      <span className="truncate">{label}</span>
+      {selected ? (
+        <CheckCircle2 className="h-3.5 w-3.5 shrink-0" strokeWidth={2.4} />
+      ) : null}
     </button>
   );
 }

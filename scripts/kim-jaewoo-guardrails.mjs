@@ -1116,30 +1116,49 @@ check(
 check(
   "marketplace discovery separates platform and category filters",
     agents.includes("Platform and category are separate discovery axes") &&
-      agents.includes("Category filters that have many options should not be an always-visible chip strip on mobile") &&
-      agents.includes("allow multiple category selections") &&
+      agents.includes("Marketplace and dashboard-like filters should use compact expandable list rows") &&
+      agents.includes('label country filters simply as "국가"') &&
       marketplacePages.includes("const [categoryFilters, setCategoryFilters] = useState<string[]>([])") &&
       marketplacePages.includes("hasAnyCategory(profile.categories, categoryFilters)") &&
       marketplacePages.includes("function getCategoryFilterKey") &&
       marketplacePages.includes("const categoryKeyAliases") &&
       marketplacePages.includes("const categoryDisplayLabels") &&
       agents.includes("Category chips and filters must use customer-facing Korean labels") &&
-      marketplacePages.includes("function CategoryChecklist") &&
-      marketplacePages.includes("type=\"checkbox\"") &&
+      marketplacePages.includes("function PlatformSelectList") &&
+      marketplacePages.includes("function CategorySelectList") &&
+      marketplacePages.includes("function CountrySelectList") &&
+      marketplacePages.includes("function FilterListSection") &&
+      marketplacePages.includes('label="국가"') &&
       marketplacePages.includes("values={categoryFilters}") &&
       marketplacePages.includes('getCategoryLabels(profile.categories, 3).join(" · ")') &&
-      marketplacePages.includes("FilterChipGroup label=\"플랫폼\"") &&
+      !marketplacePages.includes("type=\"checkbox\"") &&
+      !marketplacePages.includes("오디언스 국가") &&
+      !marketplacePages.includes("타깃 국가") &&
+      !marketplacePages.includes("주요 국가") &&
       !marketplacePages.includes("function CategoryFilterBar") &&
+      !marketplacePages.includes("FilterChipGroup label=\"플랫폼\"") &&
       !marketplacePages.includes("FilterChipGroup label=\"카테고리\"") &&
     campaignPages.includes("const [categoryFilters, setCategoryFilters] = useState<string[]>([])") &&
-    campaignPages.includes("function CategoryCheckboxList") &&
+    campaignPages.includes("function CampaignPlatformFilterList") &&
+    campaignPages.includes("function CampaignProposalTypeFilterList") &&
+    campaignPages.includes("function CampaignCategoryFilterList") &&
+    campaignPages.includes("function CampaignApplicationStatusFilterList") &&
+    campaignPages.includes("function CampaignFilterListSection") &&
     campaignPages.includes("formatCampaignCategoryFilterSummary(categoryFilters)") &&
     campaignPages.includes("!categoryFilters.includes(campaign.brandCategory)") &&
     campaignPages.includes("values={categoryFilters}") &&
+    campaignPages.includes('label="국가"') &&
+    !campaignPages.includes("type=\"checkbox\"") &&
+    !campaignPages.includes("function CategoryCheckboxList") &&
+    !campaignPages.includes("function FilterGroup") &&
+    !campaignPages.includes("function FilterButton") &&
+    !campaignPages.includes("오디언스 국가") &&
+    !campaignPages.includes("타깃 국가") &&
+    !campaignPages.includes("주요 국가") &&
     !campaignPages.includes("function CampaignCategoryStrip") &&
     !campaignPages.includes("<CampaignCategoryStrip") &&
     !campaignPages.includes('<FilterGroup label="카테고리">'),
-  "Advertiser discovery and influencer campaign discovery must keep platform and category separate, with category handled as compact multi-select checkboxes instead of mobile-eating chip strips",
+  "Advertiser discovery and influencer campaign discovery must keep platform/category/country filters as compact expandable lists, not checkbox or chip groups",
 );
 
 check(

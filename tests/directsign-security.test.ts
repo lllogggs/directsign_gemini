@@ -1535,8 +1535,10 @@ describe("yeollock.me security regressions", () => {
     assert.match(kimGuardrails, /advertiser sales PDF campaign applicant capture feels full/);
     assert.match(kimGuardrails, /campaign selection stays inside campaign surface/);
     assert.match(agents, /A campaign remains a one-to-many campaign surface after applicant selection/);
-    assert.match(advertiserDashboard, /지원자와 선정자별 진행을 관리합니다/);
-    assert.match(advertiserDashboard, /선정하면 이 캠페인의 계약서가 만들어집니다/);
+    assert.match(advertiserDashboard, /선정자별 진행을 관리합니다/);
+    assert.doesNotMatch(advertiserDashboard, /지원자와 선정자별 진행을 관리합니다/);
+    assert.doesNotMatch(advertiserDashboard, /선정하면 이 캠페인의 계약서가 만들어집니다/);
+    assert.match(advertiserDashboard, /캠페인 계약서 진행이 시작됩니다/);
     assert.match(advertiserCampaignDetailSource, /모집 현황/);
     assert.match(advertiserCampaignDetailSource, /선정자별 진행/);
     assert.doesNotMatch(advertiserCampaignDetailSource, /1:1 계약 목록/);
@@ -1639,8 +1641,8 @@ describe("yeollock.me security regressions", () => {
     assert.match(marketplacePages, /hasAnyCategory\(profile\.categories, categoryFilters\)/);
     assert.match(marketplacePages, /function getCategoryFilterKey/);
     assert.match(marketplacePages, /const categoryDisplayLabels/);
-    assert.match(marketplacePages, /function CategoryChecklist/);
-    assert.match(marketplacePages, /<CategoryChecklist/);
+    assert.match(marketplacePages, /function FilterListSection/);
+    assert.match(marketplacePages, /<FilterListSection/);
     assert.match(marketplacePages, /values=\{categoryFilters\}/);
     assert.match(marketplacePages, /function InfluencerSortSelect/);
     assert.match(marketplacePages, /audience_desc/);
@@ -1648,8 +1650,9 @@ describe("yeollock.me security regressions", () => {
     assert.match(marketplacePages, /구독자·팔로워 많은순/);
     assert.match(marketplaceDomain, /function getChannelAudienceSortValue/);
     assert.match(marketplaceDomain, /function compareChannelAudienceValues/);
-    assert.match(campaignPages, /function CategoryCheckboxList/);
-    assert.match(campaignPages, /<CategoryCheckboxList/);
+    assert.match(campaignPages, /function CampaignCategoryFilterList/);
+    assert.match(campaignPages, /<CampaignCategoryFilterList/);
+    assert.match(campaignPages, /function CampaignFilterListSection/);
     assert.match(app, /path="\/advertiser\/campaigns"/);
     assert.match(app, /<Dashboard surface="campaigns" \/>/);
     assert.match(app, /path="\/advertiser\/campaigns\/new"/);
@@ -1684,11 +1687,12 @@ describe("yeollock.me security regressions", () => {
     assert.match(qaStandard, /filter button overflow/);
     assert.doesNotMatch(advertiserDashboard, /\/미정/);
     assert.doesNotMatch(advertiserDashboard, /명 신청/);
-    assert.match(advertiserDashboard, /신청\/모집 인원/);
+    assert.doesNotMatch(advertiserDashboard, /신청\/모집 인원/);
+    assert.match(advertiserDashboard, /sortKey="deadline"/);
     assert.match(agents, /Paired advertiser\/influencer dashboard surfaces must keep interaction parity/);
     assert.match(agents, /Campaign applicant middle columns must stay compact and single-line/);
     assert.match(advertiserDashboard, /compareCampaignGroupsBySort/);
-    assert.match(advertiserDashboard, /sortKey="participants"/);
+    assert.doesNotMatch(advertiserDashboard, /sortKey="participants"/);
     assert.match(advertiserDashboard, /handleCampaignSortChange/);
     assert.match(campaignPages, /function CampaignSortSelect/);
     assert.match(campaignPages, /compareMarketplaceCampaignPostsBySort/);
@@ -1796,7 +1800,10 @@ describe("yeollock.me security regressions", () => {
       advertiserDashboard,
       /no-scrollbar overflow-x-hidden overflow-y-auto overscroll-contain rounded-\[10px\]/,
     );
-    assert.match(advertiserDashboard, /lg:grid-cols-\[minmax\(260px,0\.82fr\)_minmax\(280px,0\.78fr\)_190px\]/);
+    assert.match(
+      advertiserDashboard,
+      /lg:grid-cols-\[minmax\(180px,0\.7fr\)_minmax\(130px,0\.36fr\)_minmax\(130px,0\.34fr\)_minmax\(130px,0\.34fr\)_minmax\(160px,0\.45fr\)\]/,
+    );
     assert.match(advertiserDashboard, /primaryActionSpan = hasProfileAction \? "" : "col-span-2"/);
     assert.match(campaignPages, /grid w-full grid-cols-2 gap-1\.5 sm:w-\[188px\]/);
     assert.match(advertiserDashboard, /프로필 보기/);

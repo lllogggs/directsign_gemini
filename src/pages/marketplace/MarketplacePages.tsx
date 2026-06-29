@@ -395,6 +395,7 @@ export function AdvertiserInfluencerDiscoveryPage() {
   const [influencerSort, setInfluencerSort] =
     useState<InfluencerSortValue>("audience_desc");
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [openFilterList, setOpenFilterList] = useState<string | null>(null);
   const [selectedProfile, setSelectedProfile] =
     useState<MarketplaceInfluencerProfile | null>(null);
   const { profiles, isLoading } = useMarketplaceInfluencers();
@@ -508,7 +509,12 @@ export function AdvertiserInfluencerDiscoveryPage() {
             onChange={setInfluencerSort}
           />
         }
-        onToggle={() => setFiltersOpen((current) => !current)}
+        onToggle={() =>
+          setFiltersOpen((current) => {
+            if (current) setOpenFilterList(null);
+            return !current;
+          })
+        }
       >
         <SearchBox
           value={query}
@@ -516,16 +522,26 @@ export function AdvertiserInfluencerDiscoveryPage() {
           label="인플루언서 검색"
           placeholder="이름, 핸들, 카테고리 검색"
         />
-        <div className="grid min-w-0 gap-2.5 overflow-x-hidden lg:grid-cols-[minmax(0,0.31fr)_minmax(0,0.35fr)_minmax(0,0.34fr)]">
-          <FilterChipGroup label="플랫폼">
-            <PlatformFilterBar value={platformFilter} onChange={setPlatformFilter} />
-          </FilterChipGroup>
-          <CategoryChecklist
+        <div className="grid min-w-0 gap-2.5 overflow-x-hidden">
+          <PlatformSelectList
+            id="advertiser-platform"
+            openId={openFilterList}
+            onOpenChange={setOpenFilterList}
+            value={platformFilter}
+            onChange={setPlatformFilter}
+          />
+          <CategorySelectList
+            id="advertiser-category"
+            openId={openFilterList}
+            onOpenChange={setOpenFilterList}
             values={categoryFilters}
             categories={influencerCategoryOptions}
             onChange={setCategoryFilters}
           />
-          <CountryChecklist
+          <CountrySelectList
+            id="advertiser-country"
+            openId={openFilterList}
+            onOpenChange={setOpenFilterList}
             values={countryFilters}
             onChange={setCountryFilters}
           />
@@ -567,6 +583,7 @@ export function InfluencerBrandDiscoveryPage() {
   const [query, setQuery] = useState("");
   const [platformFilter, setPlatformFilter] = useState<PlatformFilter>("all");
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [openFilterList, setOpenFilterList] = useState<string | null>(null);
   const [selectedBrand, setSelectedBrand] =
     useState<MarketplaceBrandProfile | null>(null);
   const publicProfilePath = useInfluencerPublicProfilePath();
@@ -660,7 +677,12 @@ export function InfluencerBrandDiscoveryPage() {
         open={filtersOpen}
         activeCount={activeFilterLabels.length}
         controlsId="influencer-brand-filters"
-        onToggle={() => setFiltersOpen((current) => !current)}
+        onToggle={() =>
+          setFiltersOpen((current) => {
+            if (current) setOpenFilterList(null);
+            return !current;
+          })
+        }
       >
         <SearchBox
           value={query}
@@ -668,7 +690,13 @@ export function InfluencerBrandDiscoveryPage() {
           label="브랜드 검색"
           placeholder="브랜드, 카테고리 검색"
         />
-        <PlatformFilterBar value={platformFilter} onChange={setPlatformFilter} />
+        <PlatformSelectList
+          id="brand-platform"
+          openId={openFilterList}
+          onOpenChange={setOpenFilterList}
+          value={platformFilter}
+          onChange={setPlatformFilter}
+        />
       </DiscoveryControls>
 
       {isLoading ? (
@@ -1294,7 +1322,7 @@ function InfluencerDiscoveryCard({
       </p>
       {audienceCountryLabel ? (
         <p className="mt-1 truncate text-[11px] font-extrabold text-neutral-400">
-          오디언스 {audienceCountryLabel}
+          국가 {audienceCountryLabel}
         </p>
       ) : null}
 
@@ -1979,39 +2007,51 @@ function DiscoveryControls({
   );
 }
 
-function PlatformFilterBar({
+type FilterListOption<T extends string> = {
+  value: T;
+  label: string;
+};
+
+type FilterListDisclosureProps = {
+  id: string;
+  openId: string | null;
+  onOpenChange: (value: string | null) => void;
+};
+
+function PlatformSelectList({
+  id,
+  openId,
+  onOpenChange,
   value,
   onChange,
 }: {
   value: PlatformFilter;
   onChange: (value: PlatformFilter) => void;
-}) {
-  return (
-    <div className="flex min-w-0 flex-wrap gap-1.5">
-      {platformFilterOptions.map((platform) => {
-        const active = value === platform;
-        const label = platform === "all" ? "전체" : platformLabels[platform];
+} & FilterListDisclosureProps) {
+  const options = platformFilterOptions.map((platform) => ({
+    value: platform,
+    label: platform === "all" ? "전체" : platformLabels[platform],
+  }));
 
-        return (
-          <button
-            key={platform}
-            type="button"
-            onClick={() => onChange(platform)}
-            className={`inline-flex h-8 shrink-0 items-center rounded-md border px-2.5 text-[12px] font-semibold transition ${
-              active
-                ? "border-neutral-950 bg-neutral-950 text-white"
-                : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300 hover:text-neutral-950"
-            }`}
-          >
-            {label}
-          </button>
-        );
-      })}
-    </div>
+  return (
+    <FilterListSection
+      id={id}
+      openId={openId}
+      onOpenChange={onOpenChange}
+      label="플랫폼"
+      summary={value === "all" ? "전체" : platformLabels[value]}
+      options={options}
+      selectedValues={[value]}
+      closeOnSelect
+      onSelect={onChange}
+    />
   );
 }
 
-function CategoryChecklist({
+function CategorySelectList({
+  id,
+  openId,
+  onOpenChange,
   values,
   categories,
   onChange,
@@ -2019,94 +2059,178 @@ function CategoryChecklist({
   values: string[];
   categories: string[];
   onChange: (value: string[]) => void;
-}) {
+} & FilterListDisclosureProps) {
   const selected = new Set(values);
+  const options = categories.map((category) => ({
+    value: category,
+    label: getCategoryLabel(category),
+  }));
 
   return (
-    <fieldset className="min-w-0">
-      <legend className="text-[12px] font-extrabold text-neutral-500">
-        카테고리
-      </legend>
-      <div className="mt-1.5 flex min-w-0 flex-wrap gap-1.5 pr-1">
-      {categories.map((category) => {
-        const checked = selected.has(category);
-        const label = getCategoryLabel(category);
-
-        return (
-          <label
-            key={category}
-            className={`inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2.5 text-[12px] font-semibold transition ${
-              checked
-                ? "border-neutral-950 bg-neutral-950 text-white"
-                : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300 hover:text-neutral-950"
-            }`}
-          >
-            <input
-              type="checkbox"
-              checked={checked}
-              onChange={() =>
-                onChange(
-                  checked
-                    ? values.filter((value) => value !== category)
-                    : [...values, category],
-                )
-              }
-              className="h-3.5 w-3.5 rounded border-neutral-300 accent-neutral-950"
-            />
-            <span>{label}</span>
-          </label>
-        );
-      })}
-      </div>
-    </fieldset>
+    <FilterListSection
+      id={id}
+      openId={openId}
+      onOpenChange={onOpenChange}
+      label="카테고리"
+      summary={
+        values.length > 0 ? formatSelectedCategorySummary(values) : "전체"
+      }
+      options={options}
+      selectedValues={values}
+      onClear={() => onChange([])}
+      onSelect={(category) =>
+        onChange(
+          selected.has(category)
+            ? values.filter((value) => value !== category)
+            : [...values, category],
+        )
+      }
+    />
   );
 }
 
-function CountryChecklist({
+function CountrySelectList({
+  id,
+  openId,
+  onOpenChange,
   values,
   onChange,
 }: {
   values: MarketplaceCountryCode[];
   onChange: (value: MarketplaceCountryCode[]) => void;
-}) {
+} & FilterListDisclosureProps) {
   const selected = new Set(values);
+  const options = marketplaceCountryOptions.map((country) => ({
+    value: country,
+    label: getMarketplaceCountryLabel(country),
+  }));
 
   return (
-    <fieldset className="min-w-0">
-      <legend className="text-[12px] font-extrabold text-neutral-500">
-        오디언스 국가
-      </legend>
-      <div className="mt-1.5 flex min-w-0 flex-wrap gap-1.5 pr-1">
-        {marketplaceCountryOptions.map((country) => {
-          const checked = selected.has(country);
+    <FilterListSection
+      id={id}
+      openId={openId}
+      onOpenChange={onOpenChange}
+      label="국가"
+      summary={values.length > 0 ? formatMarketplaceCountries(values) : "전체"}
+      options={options}
+      selectedValues={values}
+      onClear={() => onChange([])}
+      onSelect={(country) =>
+        onChange(
+          selected.has(country)
+            ? values.filter((value) => value !== country)
+            : [...values, country],
+        )
+      }
+    />
+  );
+}
 
-          return (
-            <label
-              key={country}
-              className={`inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2.5 text-[12px] font-semibold transition ${
-                checked
-                  ? "border-neutral-950 bg-neutral-950 text-white"
-                  : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-300 hover:text-neutral-950"
-              }`}
-            >
-              <input
-                type="checkbox"
-                checked={checked}
-                onChange={() =>
-                  onChange(
-                    checked
-                      ? values.filter((value) => value !== country)
-                      : [...values, country],
-                  )
-                }
-                className="h-3.5 w-3.5 rounded border-neutral-300 accent-neutral-950"
-              />
-              <span>{getMarketplaceCountryLabel(country)}</span>
-            </label>
-          );
-        })}
-      </div>
-    </fieldset>
+function FilterListSection<T extends string>({
+  id,
+  openId,
+  onOpenChange,
+  label,
+  summary,
+  options,
+  selectedValues,
+  onSelect,
+  onClear,
+  closeOnSelect = false,
+}: {
+  id: string;
+  openId: string | null;
+  onOpenChange: (value: string | null) => void;
+  label: string;
+  summary: string;
+  options: Array<FilterListOption<T>>;
+  selectedValues: T[];
+  onSelect: (value: T) => void;
+  onClear?: () => void;
+  closeOnSelect?: boolean;
+}) {
+  const open = openId === id;
+  const selected = new Set<T>(selectedValues);
+  const isClearSelected = Boolean(onClear) && selectedValues.length === 0;
+
+  return (
+    <section className="min-w-0 overflow-hidden rounded-[10px] border border-neutral-200 bg-white">
+      <button
+        type="button"
+        onClick={() => onOpenChange(open ? null : id)}
+        aria-expanded={open}
+        className="flex h-11 w-full min-w-0 items-center justify-between gap-3 px-3 text-left transition hover:bg-neutral-50"
+      >
+        <span className="min-w-0">
+          <span className="block text-[12px] font-extrabold leading-tight text-neutral-500">
+            {label}
+          </span>
+          <span className="mt-0.5 block truncate text-[13px] font-extrabold leading-tight text-neutral-950">
+            {summary}
+          </span>
+        </span>
+        <ChevronDown
+          className={`h-4 w-4 shrink-0 text-neutral-500 transition-transform ${
+            open ? "rotate-180" : ""
+          }`}
+          strokeWidth={2}
+        />
+      </button>
+      {open ? (
+        <div className="max-h-56 overflow-y-auto border-t border-neutral-100 p-1">
+          {onClear ? (
+            <FilterListOptionButton
+              label="전체"
+              selected={isClearSelected}
+              onClick={() => {
+                onClear();
+                if (closeOnSelect) onOpenChange(null);
+              }}
+            />
+          ) : null}
+          {options.map((option) => (
+            <FilterListOptionButton
+              key={String(option.value)}
+              label={option.label}
+              selected={selected.has(option.value)}
+              onClick={() => {
+                onSelect(option.value);
+                if (closeOnSelect) onOpenChange(null);
+              }}
+            />
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function FilterListOptionButton({
+  label,
+  selected,
+  onClick,
+}: {
+  key?: string;
+  label: string;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      onClick={onClick}
+      className={`flex h-9 w-full items-center justify-between gap-3 rounded-[8px] px-2.5 text-left text-[12px] font-extrabold transition ${
+        selected
+          ? "bg-neutral-950 text-white"
+          : "text-neutral-600 hover:bg-neutral-50 hover:text-neutral-950"
+      }`}
+    >
+      <span className="truncate">{label}</span>
+      {selected ? (
+        <CheckCircle2 className="h-3.5 w-3.5 shrink-0" strokeWidth={2.4} />
+      ) : null}
+    </button>
   );
 }
 
@@ -2134,23 +2258,6 @@ function InfluencerSortSelect({
         ))}
       </select>
     </label>
-  );
-}
-
-function FilterChipGroup({
-  label,
-  children,
-}: {
-  label: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="grid min-w-0 gap-1.5">
-      <span className="text-[12px] font-extrabold text-neutral-500">
-        {label}
-      </span>
-      <div className="min-w-0 flex-1">{children}</div>
-    </div>
   );
 }
 

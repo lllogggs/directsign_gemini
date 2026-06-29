@@ -152,6 +152,7 @@ const buildStructuredData = ({
   title,
   description,
   canonicalPath,
+  htmlLang,
   ogImageUrl = defaultOgImageUrl,
   ogImageAlt = defaultOgImageAlt,
   keywords = seoKeywordList,
@@ -159,13 +160,19 @@ const buildStructuredData = ({
   resourceList,
 }: Pick<
   RouteSeoConfig,
-  "title" | "description" | "canonicalPath" | "ogImageUrl" | "ogImageAlt"
+  | "title"
+  | "description"
+  | "canonicalPath"
+  | "htmlLang"
+  | "ogImageUrl"
+  | "ogImageAlt"
 > & {
   keywords?: string[];
   resource?: SeoResourcePage;
   resourceList?: SeoResourcePage[];
 }) => {
   const url = buildCanonicalUrl(canonicalPath);
+  const pageLanguage = htmlLang ?? "ko-KR";
   const keywordText = keywords.join(", ");
   const graph: unknown[] = [
     {
@@ -235,7 +242,7 @@ const buildStructuredData = ({
       name: title,
       description,
       keywords: keywordText,
-      inLanguage: "ko-KR",
+      inLanguage: pageLanguage,
       dateModified: seoDateModified,
       primaryImageOfPage: {
         "@type": "ImageObject",
@@ -260,7 +267,7 @@ const buildStructuredData = ({
       publisher: { "@id": `${publicSiteOrigin}/#organization` },
       image: ogImageUrl,
       dateModified: seoDateModified,
-      inLanguage: "ko-KR",
+      inLanguage: pageLanguage,
       keywords: keywordText,
       articleSection: resource.sections.map((section) => section.heading),
     });
@@ -316,28 +323,28 @@ const getRouteSeoConfig = (pathname: string): RouteSeoConfig => {
     "/en/creators": {
       title: `Korean brand deals for creators - ${PRODUCT_NAME}`,
       description:
-        "Join Yeollock to review Korean brand campaigns, confirm content terms, sign digitally, and keep contract proof in one place.",
+        "Review K-brand terms, sign online, and keep proof with Yeollock.",
       canonicalPath: "/en/creators",
       robots: publicRobotsContent,
       htmlLang: "en",
       ogLocale: "en_US",
     },
     "/ja/creators": {
-      title: `韓国ブランド案件を契約で管理 - ${PRODUCT_NAME}`,
+      title: `韓国ブランド案件を契約まで明確に - ${PRODUCT_NAME}`,
       description:
-        "Yeollockで韓国ブランドのキャンペーン条件を確認し、電子署名とPDF証拠保管まで進められます。",
+        "Yeollockで韓国ブランドの募集条件、電子署名、PDF証拠保管まで一つの場所で確認できます。",
       canonicalPath: "/ja/creators",
       robots: publicRobotsContent,
       htmlLang: "ja",
       ogLocale: "ja_JP",
     },
     "/zh/creators": {
-      title: `韩国品牌合作创作者页面 - ${PRODUCT_NAME}`,
+      title: `韩国品牌合作，签约前说清楚 - ${PRODUCT_NAME}`,
       description:
-        "通过Yeollock确认韩国品牌活动条件、完成电子签名，并集中保存合约PDF与合作记录。",
+        "通过 Yeollock 查看韩国品牌活动条件、在线签署，并统一保存合同 PDF 与合作证据。",
       canonicalPath: "/zh/creators",
       robots: publicRobotsContent,
-      htmlLang: "zh",
+      htmlLang: "zh-CN",
       ogLocale: "zh_CN",
     },
     "/intro/advertiser": {
@@ -473,7 +480,7 @@ const publicSearchIntentPages: Record<string, IntentAwareSeoCopy> = {
   "/en/creators": {
     title: `Korean brand deals for creators | ${PRODUCT_NAME}`,
     description:
-      "Global creators can join Yeollock to review Korean brand campaigns, confirm content terms, sign digitally, and keep proof in one place.",
+      "Review K-brand terms, sign online, and keep proof with Yeollock.",
     canonicalPath: "/en/creators",
     robots: publicRobotsContent,
     htmlLang: "en",
@@ -481,9 +488,9 @@ const publicSearchIntentPages: Record<string, IntentAwareSeoCopy> = {
     keywords: globalCreatorIntentKeywords,
   },
   "/ja/creators": {
-    title: `韓国ブランド案件を契約で管理 | ${PRODUCT_NAME}`,
+    title: `韓国ブランド案件を契約まで明確に | ${PRODUCT_NAME}`,
     description:
-      "韓国ブランドのキャンペーン条件確認、電子署名、PDF証拠保管までYeollockで整理できます。",
+      "韓国ブランドの募集条件、電子署名、PDF証拠保管までYeollockで一つに整理できます。",
     canonicalPath: "/ja/creators",
     robots: publicRobotsContent,
     htmlLang: "ja",
@@ -491,12 +498,12 @@ const publicSearchIntentPages: Record<string, IntentAwareSeoCopy> = {
     keywords: globalCreatorIntentKeywords,
   },
   "/zh/creators": {
-    title: `韩国品牌合作创作者页面 | ${PRODUCT_NAME}`,
+    title: `韩国品牌合作，签约前说清楚 | ${PRODUCT_NAME}`,
     description:
-      "创作者可以通过Yeollock确认韩国品牌活动条件、完成电子签名，并集中保存合约PDF与合作记录。",
+      "创作者可以通过 Yeollock 查看韩国品牌活动条件、在线签署，并统一保存合同 PDF 与合作证据。",
     canonicalPath: "/zh/creators",
     robots: publicRobotsContent,
-    htmlLang: "zh",
+    htmlLang: "zh-CN",
     ogLocale: "zh_CN",
     keywords: globalCreatorIntentKeywords,
   },

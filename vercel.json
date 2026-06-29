@@ -250,6 +250,18 @@
       "destination": "/api/index"
     },
     {
+      "source": "/en/creators",
+      "destination": "/en/creators/index.html"
+    },
+    {
+      "source": "/ja/creators",
+      "destination": "/ja/creators/index.html"
+    },
+    {
+      "source": "/zh/creators",
+      "destination": "/zh/creators/index.html"
+    },
+    {
       "source": "/intro/advertiser",
       "destination": "/intro/advertiser/index.html"
     },

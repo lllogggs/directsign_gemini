@@ -14008,7 +14008,7 @@ const buildMarketplaceCampaignDraftClauses = (
       content: [
         `캠페인명: ${snapshot.title}`,
         snapshot.summary ? `모집 설명: ${snapshot.summary}` : undefined,
-        targetCountries ? `타깃 국가: ${targetCountries}` : undefined,
+        targetCountries ? `국가: ${targetCountries}` : undefined,
         snapshot.location ? `지역/진행방식: ${snapshot.location}` : undefined,
         snapshot.offer ? `제공상품: ${snapshot.offer}` : undefined,
         snapshot.mission ? `참여 미션: ${snapshot.mission}` : undefined,

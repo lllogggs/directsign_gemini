@@ -191,6 +191,17 @@ const replaceAlternateLink = (html: string, hreflang: string, href: string) =>
     )}" />`,
   );
 
+const removeAlternateLink = (html: string, hreflang: string) =>
+  html.replace(
+    new RegExp(
+      `<link\\s+(?=[^>]*\\brel=["']alternate["'])(?=[^>]*\\bhreflang=["']${escapeRegex(
+        hreflang,
+      )}["'])[^>]*>\\s*`,
+      "gi",
+    ),
+    "",
+  );
+
 const creatorAlternatePaths = ["/en/creators", "/ja/creators", "/zh/creators"];
 
 const replaceRouteAlternateLinks = (
@@ -199,10 +210,15 @@ const replaceRouteAlternateLinks = (
   canonicalUrl: string,
 ) => {
   if (creatorAlternatePaths.includes(routePath)) {
-    let nextHtml = html;
+    let nextHtml = removeAlternateLink(html, "ko-KR");
+    nextHtml = removeAlternateLink(nextHtml, "zh");
     nextHtml = replaceAlternateLink(nextHtml, "en", buildCanonicalUrl("/en/creators"));
     nextHtml = replaceAlternateLink(nextHtml, "ja", buildCanonicalUrl("/ja/creators"));
-    nextHtml = replaceAlternateLink(nextHtml, "zh", buildCanonicalUrl("/zh/creators"));
+    nextHtml = replaceAlternateLink(
+      nextHtml,
+      "zh-CN",
+      buildCanonicalUrl("/zh/creators"),
+    );
     nextHtml = replaceAlternateLink(
       nextHtml,
       "x-default",
