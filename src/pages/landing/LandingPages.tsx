@@ -1,6 +1,7 @@
 import {
   ArrowRight,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   ClipboardCheck,
@@ -8,6 +9,7 @@ import {
   FileSignature,
   FileSpreadsheet,
   FileText,
+  Globe2,
   LogOut,
   Megaphone,
   MessageSquareText,
@@ -27,7 +29,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { BrandLogo } from "../../components/BrandLogo";
 import { PlatformBrandMark } from "../../components/PlatformBrandMark";
 import { PRODUCT_NAME } from "../../domain/brand";
@@ -143,6 +145,11 @@ type RoleCard = {
   introHref: string;
 };
 
+type StartLanguageLink = {
+  value: string;
+  label: string;
+};
+
 type IntroConfig = {
   eyebrow: string;
   title: string[];
@@ -204,6 +211,13 @@ const roleCards: RoleCard[] = [
     href: "/login/influencer",
     introHref: "/intro/influencer",
   },
+];
+
+const startLanguageLinks: StartLanguageLink[] = [
+  { value: "/", label: "한국어" },
+  { value: "/en/creators", label: "English" },
+  { value: "/ja/creators", label: "日本語" },
+  { value: "/zh/creators", label: "繁中" },
 ];
 
 function getStartRoleTone(role: IntroRole) {
@@ -1486,6 +1500,7 @@ const influencerPreviewSlides: InfluencerPreviewSlide[] = [
 ];
 
 export function StartPage() {
+  const navigate = useNavigate();
   const [showIntroRolePicker, setShowIntroRolePicker] = useState(false);
 
   useEffect(() => {
@@ -1517,6 +1532,27 @@ export function StartPage() {
             <BrandLogo />
           </Link>
           <div className="flex min-w-0 items-center gap-1.5">
+            <label
+              className="yl-secondary-action inline-flex min-h-10 shrink-0 cursor-pointer items-center gap-1.5 rounded-[8px] border px-2.5 text-[11px] font-bold text-neutral-500 transition hover:text-neutral-950 focus-within:outline-2 focus-within:outline-offset-4 focus-within:outline-neutral-950 sm:px-3"
+              aria-label="언어 선택"
+              title="언어 선택"
+            >
+              <Globe2 className="h-3.5 w-3.5" aria-hidden="true" />
+              <select
+                data-start-language-select
+                aria-label="언어 선택"
+                defaultValue="/"
+                onChange={(event) => navigate(event.currentTarget.value)}
+                className="h-full cursor-pointer appearance-none bg-transparent text-[11px] font-bold text-neutral-600 outline-none"
+              >
+                {startLanguageLinks.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="h-3.5 w-3.5 text-neutral-400" aria-hidden="true" />
+            </label>
             <Link
               to="/login"
               className="yl-secondary-action inline-flex min-h-10 shrink-0 items-center rounded-[8px] border px-3 text-[11px] font-bold text-neutral-500 transition focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
