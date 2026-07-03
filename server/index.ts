@@ -17725,6 +17725,83 @@ app.get("/api/health", (_request, response) => {
   });
 });
 
+type StartLanguageTargetPath = "/en/creators" | "/ja/creators" | "/zh/creators";
+type StartLanguageTargetReason =
+  | "country_japan"
+  | "country_chinese"
+  | "country_overseas"
+  | "language_japanese"
+  | "language_chinese"
+  | "language_overseas";
+
+const startChineseCountryCodes = new Set(["CN", "HK", "MO", "TW"]);
+
+const parseAcceptLanguageTags = (acceptLanguage: string | undefined) =>
+  (acceptLanguage ?? "")
+    .split(",")
+    .map((part) => part.trim().split(";")[0]?.trim().toLowerCase())
+    .filter((part): part is string => Boolean(part));
+
+const resolveStartLanguageTarget = ({
+  countryCode,
+  acceptLanguage,
+}: {
+  countryCode?: string;
+  acceptLanguage?: string;
+}): {
+  targetPath: StartLanguageTargetPath | null;
+  reason: StartLanguageTargetReason | null;
+} => {
+  const normalizedCountry = countryCode?.trim().toUpperCase();
+  const languageTags = parseAcceptLanguageTags(acceptLanguage);
+
+  if (normalizedCountry === "KR") {
+    return { targetPath: null, reason: null };
+  }
+
+  if (normalizedCountry === "JP") {
+    return { targetPath: "/ja/creators", reason: "country_japan" };
+  }
+
+  if (normalizedCountry && startChineseCountryCodes.has(normalizedCountry)) {
+    return { targetPath: "/zh/creators", reason: "country_chinese" };
+  }
+
+  if (languageTags.some((tag) => tag === "ko" || tag.startsWith("ko-"))) {
+    return { targetPath: null, reason: null };
+  }
+
+  if (languageTags.some((tag) => tag === "ja" || tag.startsWith("ja-"))) {
+    return { targetPath: "/ja/creators", reason: "language_japanese" };
+  }
+
+  if (languageTags.some((tag) => tag === "zh" || tag.startsWith("zh-"))) {
+    return { targetPath: "/zh/creators", reason: "language_chinese" };
+  }
+
+  if (normalizedCountry) {
+    return { targetPath: "/en/creators", reason: "country_overseas" };
+  }
+
+  if (languageTags.length > 0) {
+    return { targetPath: "/en/creators", reason: "language_overseas" };
+  }
+
+  return { targetPath: null, reason: null };
+};
+
+app.get("/api/visitor-language-target", (request, response) => {
+  const countryCode = request.header("x-vercel-ip-country") ?? undefined;
+  const acceptLanguage = request.header("accept-language") ?? undefined;
+  const target = resolveStartLanguageTarget({ countryCode, acceptLanguage });
+
+  response.setHeader("Cache-Control", "no-store");
+  response.json({
+    ...target,
+    countryCode: countryCode?.trim().toUpperCase() || null,
+  });
+});
+
 app.get("/api/auth/warmup", async (_request, response) => {
   response.setHeader("Cache-Control", "no-store");
   warmDashboardDataCachesInBackground("auth-warmup");

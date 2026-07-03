@@ -220,6 +220,12 @@ const startLanguageLinks: StartLanguageLink[] = [
   { value: "/zh/creators", label: "繁中" },
 ];
 
+const startLanguageManualChoiceKey = "yeollock:start-language-manual-choice";
+const startLanguageAutoRoutedKey = "yeollock:start-language-auto-routed";
+const startLanguageTargetPaths = new Set(
+  startLanguageLinks.map((item) => item.value),
+);
+
 function getStartRoleTone(role: IntroRole) {
   if (role === "advertiser") {
     return {
@@ -1504,6 +1510,66 @@ export function StartPage() {
   const [showIntroRolePicker, setShowIntroRolePicker] = useState(false);
 
   useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    try {
+      if (
+        window.localStorage.getItem(startLanguageManualChoiceKey) ||
+        window.localStorage.getItem(startLanguageAutoRoutedKey)
+      ) {
+        return undefined;
+      }
+    } catch {
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    let cancelled = false;
+
+    void fetch("/api/visitor-language-target", {
+      signal: controller.signal,
+      headers: { Accept: "application/json" },
+    })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload: { targetPath?: unknown } | null) => {
+        if (cancelled) return;
+
+        const targetPath =
+          typeof payload?.targetPath === "string" ? payload.targetPath : null;
+
+        if (
+          !targetPath ||
+          targetPath === "/" ||
+          !startLanguageTargetPaths.has(targetPath) ||
+          targetPath === window.location.pathname
+        ) {
+          return;
+        }
+
+        try {
+          window.localStorage.setItem(startLanguageAutoRoutedKey, targetPath);
+        } catch {
+          // If storage is blocked, the redirect still works for this visit.
+        }
+
+        navigate(targetPath, { replace: true });
+      })
+      .catch((error: unknown) => {
+        if (
+          !cancelled &&
+          !(error instanceof DOMException && error.name === "AbortError")
+        ) {
+          console.warn("Start language routing failed", error);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [navigate]);
+
+  useEffect(() => {
     if (!showIntroRolePicker) return undefined;
 
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1545,7 +1611,18 @@ export function StartPage() {
                 data-start-language-select
                 aria-label="언어 선택"
                 defaultValue="/"
-                onChange={(event) => navigate(event.currentTarget.value)}
+                onChange={(event) => {
+                  const targetPath = event.currentTarget.value;
+                  try {
+                    window.localStorage.setItem(
+                      startLanguageManualChoiceKey,
+                      targetPath,
+                    );
+                  } catch {
+                    // Navigation should not depend on storage availability.
+                  }
+                  navigate(targetPath);
+                }}
                 className="absolute inset-0 h-full w-full cursor-pointer appearance-none opacity-0 outline-none"
               >
                 {startLanguageLinks.map((item) => (
