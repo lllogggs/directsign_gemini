@@ -1533,17 +1533,20 @@ export function StartPage() {
           </Link>
           <div className="flex min-w-0 items-center gap-1.5">
             <label
-              className="yl-secondary-action inline-flex min-h-10 shrink-0 cursor-pointer items-center gap-1.5 rounded-[8px] border px-2.5 text-[11px] font-bold text-neutral-500 transition hover:text-neutral-950 focus-within:outline-2 focus-within:outline-offset-4 focus-within:outline-neutral-950 sm:px-3"
+              className="yl-secondary-action relative inline-flex min-h-10 shrink-0 cursor-pointer items-center gap-1.5 rounded-[8px] border px-2.5 text-[11px] font-bold text-neutral-600 transition hover:text-neutral-950 focus-within:outline-2 focus-within:outline-offset-4 focus-within:outline-neutral-950 sm:px-3"
               aria-label="언어 선택"
               title="언어 선택"
             >
-              <Globe2 className="h-3.5 w-3.5" aria-hidden="true" />
+              <Globe2 className="h-4 w-4 text-neutral-950" aria-hidden="true" />
+              <span className="text-[11px] font-bold text-neutral-700">
+                Language
+              </span>
               <select
                 data-start-language-select
                 aria-label="언어 선택"
                 defaultValue="/"
                 onChange={(event) => navigate(event.currentTarget.value)}
-                className="h-full cursor-pointer appearance-none bg-transparent text-[11px] font-bold text-neutral-600 outline-none"
+                className="absolute inset-0 h-full w-full cursor-pointer appearance-none opacity-0 outline-none"
               >
                 {startLanguageLinks.map((item) => (
                   <option key={item.value} value={item.value}>
