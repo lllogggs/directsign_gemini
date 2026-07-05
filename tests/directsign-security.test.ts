@@ -447,7 +447,8 @@ describe("yeollock.me security regressions", () => {
     assert.match(server, /const filterOperationalMarketplaceTestData/);
     assert.match(server, /demoMode \|\| !isProductionRuntime \|\| allowProductionTestData/);
     assert.match(server, /!filterOperationalMarketplaceTestData \|\|[\s\S]+!hasOperationalTestMarker\(profile\)/);
-    assert.match(server, /if \(allowMarketplaceSeedData\) return mergeMarketplaceInfluencerProfiles\(dbProfiles\)/);
+    assert.match(server, /const visibleProfiles = \[\.\.\.dbProfiles, \.\.\.discoveredProfiles\]/);
+    assert.match(server, /if \(allowMarketplaceSeedData\) \{\s*return mergeMarketplaceInfluencerProfiles\(visibleProfiles\);\s*\}/);
     assert.match(server, /if \(allowMarketplaceSeedData\) return mergeMarketplaceBrandProfiles\(visibleDbProfiles\)/);
     assert.match(server, /if \(!useSupabase\) return fallbackMarketplaceBrandProfiles\(\)/);
     assert.match(server, /const profiles = await readPublicMarketplaceCache\(\s*"marketplace-influencers"/);

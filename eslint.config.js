@@ -15,6 +15,7 @@ export default tseslint.config(
       ".tmp",
       ".codex-logs",
       ".vercel",
+      "data/sales-leads/**/scripts/**",
     ],
   },
   {

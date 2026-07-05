@@ -18,7 +18,10 @@ import {
   UserRound,
 } from "lucide-react";
 import {
+  type FocusEvent,
   type FormEvent,
+  type MouseEvent,
+  type PointerEvent,
   type ReactNode,
   useEffect,
   useId,
@@ -398,6 +401,11 @@ export function AdvertiserInfluencerDiscoveryPage() {
   const [openFilterList, setOpenFilterList] = useState<string | null>(null);
   const [selectedProfile, setSelectedProfile] =
     useState<MarketplaceInfluencerProfile | null>(null);
+  const [previewProfile, setPreviewProfile] = useState<{
+    profile: MarketplaceInfluencerProfile;
+    top: number;
+    left: number;
+  } | null>(null);
   const { profiles, isLoading } = useMarketplaceInfluencers();
   const { brands } = useMarketplaceBrands();
 
@@ -438,7 +446,9 @@ export function AdvertiserInfluencerDiscoveryPage() {
           .toLowerCase()
           .includes(normalizedQuery);
       })
-      .sort((a, b) => compareInfluencerProfilesBySort(a, b, influencerSort));
+      .sort((a, b) =>
+        compareInfluencerProfilesBySort(a, b, influencerSort, platformFilter),
+      );
   }, [categoryFilters, countryFilters, influencerSort, platformFilter, profiles, query]);
   const influencerCategoryOptions = useMemo(
     () =>
@@ -463,6 +473,32 @@ export function AdvertiserInfluencerDiscoveryPage() {
   ].filter((label): label is string => Boolean(label));
   const filterSummary =
     activeFilterLabels.length > 0 ? activeFilterLabels.join(" · ") : "전체 조건";
+  const showProfilePreview = (
+    profile: MarketplaceInfluencerProfile,
+    event:
+      | MouseEvent<HTMLElement>
+      | PointerEvent<HTMLElement>
+      | FocusEvent<HTMLElement>,
+  ) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const width = 344;
+    const height = 258;
+    const hasPointer = "clientX" in event && typeof event.clientX === "number";
+    const anchorX = hasPointer ? event.clientX : rect.left + rect.width * 0.62;
+    const anchorY = hasPointer ? event.clientY : rect.top + 20;
+    const rightSideLeft = anchorX + 18;
+    const leftSideLeft = anchorX - width - 18;
+    const left =
+      rightSideLeft + width <= window.innerWidth - 16
+        ? rightSideLeft
+        : Math.max(16, leftSideLeft);
+    const top = Math.min(
+      Math.max(72, anchorY + 16),
+      Math.max(72, window.innerHeight - height - 16),
+    );
+
+    setPreviewProfile({ profile, top, left });
+  };
 
   return (
     <MarketplaceShell
@@ -522,30 +558,28 @@ export function AdvertiserInfluencerDiscoveryPage() {
           label="인플루언서 검색"
           placeholder="이름, 핸들, 카테고리 검색"
         />
-        <div className="grid min-w-0 gap-2.5 overflow-x-hidden">
-          <PlatformSelectList
-            id="advertiser-platform"
-            openId={openFilterList}
-            onOpenChange={setOpenFilterList}
-            value={platformFilter}
-            onChange={setPlatformFilter}
-          />
-          <CategorySelectList
-            id="advertiser-category"
-            openId={openFilterList}
-            onOpenChange={setOpenFilterList}
-            values={categoryFilters}
-            categories={influencerCategoryOptions}
-            onChange={setCategoryFilters}
-          />
-          <CountrySelectList
-            id="advertiser-country"
-            openId={openFilterList}
-            onOpenChange={setOpenFilterList}
-            values={countryFilters}
-            onChange={setCountryFilters}
-          />
-        </div>
+        <PlatformSelectList
+          id="advertiser-platform"
+          openId={openFilterList}
+          onOpenChange={setOpenFilterList}
+          value={platformFilter}
+          onChange={setPlatformFilter}
+        />
+        <CategorySelectList
+          id="advertiser-category"
+          openId={openFilterList}
+          onOpenChange={setOpenFilterList}
+          values={categoryFilters}
+          categories={influencerCategoryOptions}
+          onChange={setCategoryFilters}
+        />
+        <CountrySelectList
+          id="advertiser-country"
+          openId={openFilterList}
+          onOpenChange={setOpenFilterList}
+          values={countryFilters}
+          onChange={setCountryFilters}
+        />
       </DiscoveryControls>
 
       {isLoading ? (
@@ -556,15 +590,22 @@ export function AdvertiserInfluencerDiscoveryPage() {
           body="검색어나 조건을 줄여보세요."
         />
       ) : (
-        <section className="grid min-h-0 flex-1 items-start gap-3 overflow-y-auto p-3 lg:grid-cols-3 lg:p-4">
-          {filteredProfiles.map((profile) => (
-            <InfluencerDiscoveryCard
-              key={profile.id}
-              profile={profile}
-              onContact={() => setSelectedProfile(profile)}
+        <>
+          <InfluencerDiscoveryTable
+            profiles={filteredProfiles}
+            platformFilter={platformFilter}
+            onContact={setSelectedProfile}
+            onPreview={showProfilePreview}
+            onPreviewEnd={() => setPreviewProfile(null)}
+          />
+          {previewProfile ? (
+            <InfluencerPreviewCard
+              profile={previewProfile.profile}
+              top={previewProfile.top}
+              left={previewProfile.left}
             />
-          ))}
-        </section>
+          ) : null}
+        </>
       )}
 
       {selectedProfile ? (
@@ -1274,22 +1315,131 @@ function MarketplaceShell({
   );
 }
 
-function InfluencerDiscoveryCard({
-  profile,
+function InfluencerDiscoveryTable({
+  profiles,
+  platformFilter,
   onContact,
+  onPreview,
+  onPreviewEnd,
+}: {
+  profiles: MarketplaceInfluencerProfile[];
+  platformFilter: PlatformFilter;
+  onContact: (profile: MarketplaceInfluencerProfile) => void;
+  onPreview: (
+    profile: MarketplaceInfluencerProfile,
+    event:
+      | MouseEvent<HTMLElement>
+      | PointerEvent<HTMLElement>
+      | FocusEvent<HTMLElement>,
+  ) => void;
+  onPreviewEnd: () => void;
+}) {
+  return (
+    <section className="min-h-0 flex-1 overflow-auto p-2.5 lg:p-4">
+      <div className="hidden min-w-[980px] overflow-hidden rounded-[8px] border border-[#d9e0d9] bg-white lg:block">
+        <div className="grid grid-cols-[64px_180px_minmax(420px,1fr)_88px_132px_156px] items-center gap-3 border-b border-[#d7ddd7] bg-[#f7f8f4] px-4 py-3 text-[12px] font-extrabold tracking-[-0.01em] text-[#303630]">
+          <span>플랫폼</span>
+          <span>카테고리</span>
+          <span>인플루언서</span>
+          <span>국가</span>
+          <span>구독자/팔로워</span>
+          <span className="text-right">액션</span>
+        </div>
+        <div>
+          {profiles.map((profile) => (
+            <InfluencerDiscoveryTableRow
+              key={profile.id}
+              profile={profile}
+              platformFilter={platformFilter}
+              onContact={onContact}
+              onPreview={onPreview}
+              onPreviewEnd={onPreviewEnd}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className="overflow-hidden rounded-[8px] border border-[#d9e0d9] bg-white lg:hidden">
+        {profiles.map((profile) => (
+          <InfluencerDiscoveryCompactRow
+            key={profile.id}
+            profile={profile}
+            platformFilter={platformFilter}
+            onContact={onContact}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function InfluencerDiscoveryTableRow({
+  profile,
+  platformFilter,
+  onContact,
+  onPreview,
+  onPreviewEnd,
 }: {
   key?: string;
   profile: MarketplaceInfluencerProfile;
-  onContact: () => void;
+  platformFilter: PlatformFilter;
+  onContact: (profile: MarketplaceInfluencerProfile) => void;
+  onPreview: (
+    profile: MarketplaceInfluencerProfile,
+    event:
+      | MouseEvent<HTMLElement>
+      | PointerEvent<HTMLElement>
+      | FocusEvent<HTMLElement>,
+  ) => void;
+  onPreviewEnd: () => void;
 }) {
-  const audienceCountryLabel = formatMarketplaceCountries(profile.audienceCountries);
+  const primaryPlatform = getMarketplaceInfluencerDisplayPlatform(
+    profile,
+    platformFilter,
+  );
+  const categoryLabel = getCategoryLabels(profile.categories, 3).join(" · ");
+  const countryLabel = formatMarketplaceCountries(profile.audienceCountries, "한국");
+  const audienceLabel = formatDiscoveryAudienceMetric(primaryPlatform?.followersLabel);
+  const platformLabel = primaryPlatform
+    ? platformLabels[primaryPlatform.platform]
+    : "기타";
 
   return (
-    <article className="yl-card flex min-h-[204px] w-full min-w-0 flex-col border p-3.5">
-      <div className="flex items-start gap-3">
+    <article
+      data-marketplace-influencer-row="true"
+      tabIndex={0}
+      onMouseEnter={(event) => onPreview(profile, event)}
+      onMouseMove={(event) => onPreview(profile, event)}
+      onPointerEnter={(event) => onPreview(profile, event)}
+      onPointerMove={(event) => onPreview(profile, event)}
+      onFocus={(event) => onPreview(profile, event)}
+      onMouseLeave={onPreviewEnd}
+      onPointerLeave={onPreviewEnd}
+      onBlur={onPreviewEnd}
+      className="group grid min-h-[64px] grid-cols-[64px_180px_minmax(420px,1fr)_88px_132px_156px] items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-[#fbfcfa] focus-visible:bg-[#fbfcfa] focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-blue-600"
+    >
+      <div className="min-w-0">
+        {primaryPlatform ? (
+          <span
+            className="inline-flex max-w-full items-center text-neutral-800"
+            title={platformLabel}
+            aria-label={platformLabel}
+          >
+            <PlatformBrandMark platform={primaryPlatform.platform} size="xs" />
+          </span>
+        ) : (
+          <span className="text-[12px] font-bold text-neutral-400">확인 필요</span>
+        )}
+      </div>
+
+      <p className="truncate text-[12px] font-bold text-neutral-700">
+        {categoryLabel || "카테고리 확인"}
+      </p>
+
+      <div className="flex min-w-0 items-center gap-3">
         <Link
           to={getInfluencerProfilePath(profile)}
-          className="shrink-0 rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950"
+          className="shrink-0 rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700"
           aria-label={`${profile.displayName} 프로필 보기`}
         >
           <AvatarBlock
@@ -1298,63 +1448,196 @@ function InfluencerDiscoveryCard({
             alt={profile.displayName}
           />
         </Link>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
+        <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-1.5">
             <Link
               to={getInfluencerProfilePath(profile)}
-              className="min-w-0 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950"
-              title={`${profile.displayName} 프로필 보기`}
+              className="min-w-0 truncate text-[14px] font-extrabold text-neutral-950 hover:underline"
+              title={profile.displayName}
             >
-              <h2 className="truncate text-[17px] font-semibold text-neutral-950">
-                {profile.displayName}
-              </h2>
+              {profile.displayName}
             </Link>
-            <BadgeCheck className="h-4 w-4 shrink-0 text-neutral-700" />
+            <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-neutral-500" />
           </div>
-          <p className="mt-1 line-clamp-2 text-[12px] font-semibold leading-5 text-neutral-600">
+          <p className="mt-0.5 truncate text-[12px] font-semibold text-neutral-500">
             {cleanMarketplaceCopy(profile.bio || profile.headline)}
           </p>
         </div>
       </div>
 
-      <p className="mt-3 truncate text-[12px] font-extrabold text-neutral-600">
-        {getCategoryLabels(profile.categories, 3).join(" · ")}
+      <p className="truncate text-[12px] font-bold text-neutral-500">{countryLabel}</p>
+      <p className="truncate text-[12px] font-extrabold text-neutral-950">
+        {audienceLabel}
       </p>
-      {audienceCountryLabel ? (
-        <p className="mt-1 truncate text-[11px] font-extrabold text-neutral-400">
-          국가 {audienceCountryLabel}
-        </p>
-      ) : null}
 
-      <div className="mt-2.5 flex flex-wrap gap-1.5">
-        {profile.platforms.slice(0, 3).map((platform) => (
-          <PlatformPill
-            key={`${profile.id}-${platform.platform}`}
-            platform={platform.platform}
-            label={platformLabels[platform.platform]}
-            value={platform.followersLabel}
-          />
-        ))}
-      </div>
-
-      <div className="mt-auto grid grid-cols-2 gap-2 pt-3">
+      <div className="flex justify-end gap-2">
         <button
           type="button"
-          onClick={onContact}
-          className="yl-primary-action inline-flex h-10 items-center justify-center gap-2 rounded-[8px] px-3 text-[13px] font-extrabold transition"
+          onClick={() => onContact(profile)}
+          className="inline-flex h-9 w-[86px] items-center justify-center gap-1.5 rounded-[7px] bg-blue-600 px-2 text-[12px] font-extrabold text-white transition hover:bg-blue-700"
         >
-          <Send className="h-4 w-4" />
-          1:1 계약
+          <Send className="h-3.5 w-3.5" />
+          1:1 제안
         </button>
         <Link
           to={getInfluencerProfilePath(profile)}
-          className="yl-secondary-action inline-flex h-10 w-full items-center justify-center gap-2 rounded-[8px] border text-[13px] font-extrabold transition"
+          className="inline-flex h-9 w-[58px] items-center justify-center rounded-[7px] border border-neutral-200 bg-white text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
         >
           프로필
         </Link>
       </div>
     </article>
   );
+}
+
+function InfluencerDiscoveryCompactRow({
+  profile,
+  platformFilter,
+  onContact,
+}: {
+  key?: string;
+  profile: MarketplaceInfluencerProfile;
+  platformFilter: PlatformFilter;
+  onContact: (profile: MarketplaceInfluencerProfile) => void;
+}) {
+  const primaryPlatform = getMarketplaceInfluencerDisplayPlatform(
+    profile,
+    platformFilter,
+  );
+  const categoryLabel = getCategoryLabels(profile.categories, 2).join(" · ");
+
+  return (
+    <article className="grid gap-3 border-b border-[#e4e9e4] p-3 last:border-b-0">
+      <div className="flex min-w-0 items-start gap-3">
+        <AvatarBlock
+          label={profile.avatarLabel}
+          src={getMarketplaceInfluencerAvatarUrl(profile)}
+          alt={profile.displayName}
+        />
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <h2 className="truncate text-[15px] font-extrabold text-neutral-950">
+              {profile.displayName}
+            </h2>
+            <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-neutral-500" />
+          </div>
+          <p className="mt-1 truncate text-[12px] font-bold text-neutral-600">
+            {categoryLabel || "카테고리 확인"}
+          </p>
+          {primaryPlatform ? (
+            <div className="mt-1.5">
+              <PlatformPill
+                platform={primaryPlatform.platform}
+                label={platformLabels[primaryPlatform.platform]}
+                value={primaryPlatform.followersLabel}
+              />
+            </div>
+          ) : null}
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={() => onContact(profile)}
+          className="yl-primary-action inline-flex h-10 items-center justify-center gap-2 rounded-[8px] px-3 text-[13px] font-extrabold transition"
+        >
+          <Send className="h-4 w-4" />
+          1:1 제안
+        </button>
+        <Link
+          to={getInfluencerProfilePath(profile)}
+          className="yl-secondary-action inline-flex h-10 items-center justify-center rounded-[8px] border text-[13px] font-extrabold transition"
+        >
+          프로필
+        </Link>
+      </div>
+    </article>
+  );
+}
+
+function InfluencerPreviewCard({
+  profile,
+  top,
+  left,
+}: {
+  profile: MarketplaceInfluencerProfile;
+  top: number;
+  left: number;
+}) {
+  const categoryLabel = getCategoryLabels(profile.categories, 4).join(" · ");
+  const countryLabel = formatMarketplaceCountries(profile.audienceCountries, "한국");
+  const description = cleanMarketplaceCopy(profile.bio || profile.headline);
+
+  return (
+    <aside
+      data-marketplace-preview-card="true"
+      className="pointer-events-none fixed z-50 hidden w-[344px] rounded-[10px] border border-[#cfd8cf] bg-white p-4 shadow-[0_22px_60px_rgba(15,23,42,0.18)] lg:block"
+      style={{ top, left }}
+      aria-hidden="true"
+    >
+      <div className="flex min-w-0 items-start gap-3">
+        <AvatarBlock
+          label={profile.avatarLabel}
+          src={getMarketplaceInfluencerAvatarUrl(profile)}
+          alt={profile.displayName}
+        />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <h3 className="truncate text-[16px] font-extrabold text-neutral-950">
+              {profile.displayName}
+            </h3>
+            <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-neutral-500" />
+          </div>
+          <p className="mt-1 line-clamp-2 text-[12px] font-semibold leading-5 text-neutral-600">
+            {description}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-2 text-[12px]">
+        <div className="grid grid-cols-[58px_minmax(0,1fr)] gap-2">
+          <span className="font-extrabold text-neutral-400">카테고리</span>
+          <span className="truncate font-extrabold text-neutral-800">
+            {categoryLabel || "확인 필요"}
+          </span>
+        </div>
+        <div className="grid grid-cols-[58px_minmax(0,1fr)] gap-2">
+          <span className="font-extrabold text-neutral-400">국가</span>
+          <span className="truncate font-extrabold text-neutral-800">{countryLabel}</span>
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1.5">
+        {profile.platforms.slice(0, 3).map((platform) => (
+          <PlatformPill
+            key={`${profile.id}-preview-${platform.platform}`}
+            platform={platform.platform}
+            label={platformLabels[platform.platform]}
+            value={platform.followersLabel}
+          />
+        ))}
+      </div>
+    </aside>
+  );
+}
+
+function formatDiscoveryAudienceMetric(value: string | undefined) {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) return "공개 지표 확인";
+  return normalized.replace(/^(구독자|팔로워)\s+/, "");
+}
+
+function getMarketplaceInfluencerDisplayPlatform(
+  profile: MarketplaceInfluencerProfile,
+  platformFilter: PlatformFilter,
+) {
+  if (platformFilter !== "all") {
+    return (
+      profile.platforms.find((platform) => platform.platform === platformFilter) ??
+      profile.platforms[0]
+    );
+  }
+  return profile.platforms[0];
 }
 
 function BrandDiscoveryCard({
@@ -1979,30 +2262,27 @@ function DiscoveryControls({
         ) : null}
         <div className="hidden min-w-0 shrink-0 items-center gap-2 sm:flex">
           {toolbar}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={onToggle}
-              aria-expanded={open}
-              aria-controls={controlsId}
-              className={filterButtonClassName}
-            >
-              {filterButtonContent}
-            </button>
-            <ResponsiveFilterPanel
-              id={controlsId}
-              open={open}
-              activeCount={activeCount}
-              onClose={onToggle}
-              className="sm:w-[min(760px,calc(100vw-48px))]"
-            >
-              <div className="grid gap-4">
-                {children}
-              </div>
-            </ResponsiveFilterPanel>
-          </div>
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={open}
+            aria-controls={controlsId}
+            className={filterButtonClassName}
+          >
+            {filterButtonContent}
+          </button>
         </div>
       </div>
+      {open ? (
+        <div
+          id={controlsId}
+          className="hidden border-t border-[#e3e8e3] bg-[#fbfcfa] px-4 py-3 sm:block"
+        >
+          <div className="grid grid-cols-[minmax(220px,1.1fr)_minmax(160px,0.8fr)_minmax(180px,0.9fr)_minmax(160px,0.8fr)] gap-2.5">
+            {children}
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -2154,12 +2434,12 @@ function FilterListSection<T extends string>({
   const isClearSelected = Boolean(onClear) && selectedValues.length === 0;
 
   return (
-    <section className="min-w-0 overflow-hidden rounded-[10px] border border-neutral-200 bg-white">
+    <section className="min-w-0 overflow-hidden rounded-[8px] border border-[#d7ddd7] bg-white shadow-[0_1px_0_rgba(15,23,42,0.03)]">
       <button
         type="button"
         onClick={() => onOpenChange(open ? null : id)}
         aria-expanded={open}
-        className="flex h-11 w-full min-w-0 items-center justify-between gap-3 px-3 text-left transition hover:bg-neutral-50"
+        className="flex h-10 w-full min-w-0 items-center justify-between gap-3 px-3 text-left transition hover:bg-[#f6f8f6]"
       >
         <span className="min-w-0">
           <span className="block text-[12px] font-extrabold leading-tight text-neutral-500">
@@ -2177,7 +2457,7 @@ function FilterListSection<T extends string>({
         />
       </button>
       {open ? (
-        <div className="max-h-56 overflow-y-auto border-t border-neutral-100 p-1">
+        <div className="max-h-48 overflow-y-auto border-t border-[#e4e9e4] bg-[#fbfcfa] p-1.5">
           {onClear ? (
             <FilterListOptionButton
               label="전체"
@@ -2222,13 +2502,13 @@ function FilterListOptionButton({
       onClick={onClick}
       className={`flex h-9 w-full items-center justify-between gap-3 rounded-[8px] px-2.5 text-left text-[12px] font-extrabold transition ${
         selected
-          ? "bg-neutral-950 text-white"
-          : "text-neutral-600 hover:bg-neutral-50 hover:text-neutral-950"
+          ? "bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-100"
+          : "text-neutral-600 hover:bg-white hover:text-neutral-950"
       }`}
     >
       <span className="truncate">{label}</span>
       {selected ? (
-        <CheckCircle2 className="h-3.5 w-3.5 shrink-0" strokeWidth={2.4} />
+        <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-blue-600" strokeWidth={2.4} />
       ) : null}
     </button>
   );
@@ -2265,18 +2545,32 @@ function compareInfluencerProfilesBySort(
   a: MarketplaceInfluencerProfile,
   b: MarketplaceInfluencerProfile,
   sort: InfluencerSortValue,
+  platformFilter: PlatformFilter = "all",
 ) {
   if (sort === "name_asc") {
     return compareMarketplaceText(a.displayName, b.displayName);
   }
 
   const result = compareChannelAudienceValues(
-    getChannelAudienceSortValue(a.platforms),
-    getChannelAudienceSortValue(b.platforms),
+    getChannelAudienceSortValue(
+      getProfilePlatformsForSort(a, platformFilter),
+    ),
+    getChannelAudienceSortValue(
+      getProfilePlatformsForSort(b, platformFilter),
+    ),
     sort === "audience_asc" ? "asc" : "desc",
   );
 
   return result || compareMarketplaceText(a.displayName, b.displayName);
+}
+
+function getProfilePlatformsForSort(
+  profile: MarketplaceInfluencerProfile,
+  platformFilter: PlatformFilter,
+) {
+  if (platformFilter === "all") return profile.platforms;
+  const platform = getMarketplaceInfluencerDisplayPlatform(profile, platformFilter);
+  return platform ? [platform] : profile.platforms;
 }
 
 function compareMarketplaceText(a: string, b: string) {
@@ -2399,6 +2693,7 @@ function PlatformPill({
   value?: string;
 }) {
   const hasMetric = Boolean(value);
+  const metricValue = hasMetric ? formatDiscoveryAudienceMetric(value) : "";
 
   return (
     <span
@@ -2407,11 +2702,13 @@ function PlatformPill({
           ? "h-7 text-neutral-900"
           : "h-6 text-neutral-800"
       }`}
-      title={value ? `${label} ${value}` : label}
-      aria-label={value ? `${label} ${value}` : label}
+      title={metricValue ? `${label} ${metricValue}` : label}
+      aria-label={metricValue ? `${label} ${metricValue}` : label}
     >
       <PlatformBrandMark platform={platform} size={hasMetric ? "xs" : "sm"} />
-      {value ? <span className="truncate text-neutral-950">{value}</span> : null}
+      {metricValue ? (
+        <span className="truncate text-neutral-950">{metricValue}</span>
+      ) : null}
     </span>
   );
 }

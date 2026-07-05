@@ -1355,6 +1355,36 @@ interface SupabaseMarketplaceInfluencerChannelRow {
   updated_at?: string | null;
 }
 
+interface SupabaseDiscoveredInfluencerProfileRow {
+  id: string;
+  platform: InfluencerPlatform;
+  public_handle: string;
+  external_id: string;
+  platform_handle: string;
+  display_name: string;
+  headline?: string | null;
+  bio?: string | null;
+  profile_url: string;
+  avatar_url?: string | null;
+  categories?: string[] | null;
+  audience_countries?: MarketplaceCountryCode[] | null;
+  audience_tags?: string[] | null;
+  followers_label?: string | null;
+  follower_count?: number | null;
+  average_views?: number | null;
+  post_count?: number | null;
+  quality_score?: number | null;
+  status: "active" | "needs_review" | "hidden" | "claimed";
+  source_provider?: string | null;
+  source_keyword?: string | null;
+  source_url?: string | null;
+  source_evidence?: Record<string, unknown> | null;
+  discovered_at?: string | null;
+  last_checked_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
 type SupabaseMarketplaceInfluencerHandleRow = Pick<
   SupabaseMarketplaceInfluencerProfileRow,
   | "id"
@@ -9893,6 +9923,120 @@ const mapInfluencerProfileRowToMarketplaceProfile = (
   };
 };
 
+const formatDiscoveredMetricLabel = (value: number | null | undefined) => {
+  if (!Number.isFinite(value ?? Number.NaN)) return undefined;
+  const amount = Number(value);
+  if (amount >= 100_000_000) {
+    const label = (amount / 100_000_000).toFixed(amount >= 1_000_000_000 ? 0 : 1);
+    return `${label.replace(/\.0$/, "")}억`;
+  }
+  if (amount >= 10_000) {
+    const label = (amount / 10_000).toFixed(amount >= 100_000 ? 0 : 1);
+    return `${label.replace(/\.0$/, "")}만`;
+  }
+  return Math.round(amount).toLocaleString("ko-KR");
+};
+
+const getDiscoveredCategoryLabel = (categories: string[]) => {
+  if (categories.some((category) => /beauty|뷰티|미용|화장/i.test(category))) {
+    return "뷰티";
+  }
+  if (
+    categories.some((category) =>
+      /living|리빙|라이프|생활|홈|인테리어/i.test(category),
+    )
+  ) {
+    return "리빙";
+  }
+  return "콘텐츠";
+};
+
+const isClearlyBusinessDiscoveredInfluencerRow = (
+  row: SupabaseDiscoveredInfluencerProfileRow,
+) => {
+  const text = [
+    row.display_name,
+    row.headline,
+    row.bio,
+    row.platform_handle,
+    row.source_keyword,
+    ...(row.categories ?? []),
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return [
+    /(?:블로그대행|포스팅대행|마케팅대행|체험단대행|상위\s*노출|노출\s*보장|구매평)/i,
+    /(?:실내건축|면허|보유업체|카카오채널문의|인스타그램\s*@).{0,24}(?:인테리어|견적|시공|문의|검색|아이디검색)/i,
+    /(?:인테리어|리모델링).{0,24}(?:실내건축|면허|보유업체|카카오채널문의|시공|견적|유선문의)/i,
+    /(?:업체|회사|견적|문의|상담|전문).{0,16}(?:인테리어|리모델링|시공|설계)/i,
+    /(?:interior|design|remodeling).{0,32}(?:company|agency|studio|contact|quote)/i,
+    /\bseo\b/i,
+  ].some((pattern) => pattern.test(text));
+};
+
+const mapDiscoveredInfluencerRowToMarketplaceProfile = (
+  row: SupabaseDiscoveredInfluencerProfileRow,
+): MarketplaceInfluencerProfile => {
+  const categories = normalizeStringArrayForStorage(row.categories, [], 6);
+  const categoryLabel = getDiscoveredCategoryLabel(categories);
+  const averageViewsLabel = formatDiscoveredMetricLabel(row.average_views);
+  const postCountLabel = formatDiscoveredMetricLabel(row.post_count);
+  const followerLabel =
+    normalizeOptionalText(row.followers_label) ||
+    (row.follower_count
+      ? `${formatDiscoveredMetricLabel(row.follower_count)}명`
+      : "공개 지표 확인");
+  const performanceLabel = averageViewsLabel
+    ? `평균 조회 ${averageViewsLabel}`
+    : postCountLabel
+      ? `포스트 ${postCountLabel}`
+      : "채널 확인 필요";
+  const displayName = normalizeRequiredText(row.display_name) || row.platform_handle;
+
+  return {
+    id: `discovered-${row.id}`,
+    handle: row.public_handle,
+    displayName,
+    headline:
+      normalizeOptionalText(row.headline) ?? `${categoryLabel} 콘텐츠 크리에이터`,
+    bio:
+      normalizeOptionalText(row.bio) ??
+      "공개 채널 기준으로 발견된 크리에이터 후보입니다.",
+    location: "한국",
+    avatarLabel: buildMarketplaceAvatarLabel(displayName),
+    avatarUrl: normalizeMarketplacePublicImageUrl(row.avatar_url),
+    categories: categories.length > 0 ? categories : [categoryLabel],
+    audience: "한국 소비자 관심 기반",
+    audienceCountries: normalizeMarketplaceCountries(row.audience_countries),
+    audienceTags:
+      normalizeStringArrayForStorage(row.audience_tags, [], 6).length > 0
+        ? normalizeStringArrayForStorage(row.audience_tags, [], 6)
+        : categories,
+    platforms: [
+      {
+        platform: row.platform,
+        label: platformLabels[row.platform],
+        handle: formatStoredMarketplacePlatformHandle(
+          row.platform_handle,
+          row.platform,
+        ),
+        url: row.profile_url,
+        followersLabel: followerLabel,
+        performanceLabel,
+      },
+    ],
+    collaborationTypes: ["sponsored_post", "product_seeding", "supporters"],
+    startingPriceLabel: "제안 가능",
+    responseTimeLabel: "연락처 확인 필요",
+    verifiedLabel: "공개 후보",
+    brandFit: categories.length > 0 ? categories : [categoryLabel],
+    recentBrands: [],
+    portfolio: [],
+    proposalHints: ["공개 채널을 확인한 뒤 광고 조건을 제안하세요."],
+  };
+};
+
 const mapBrandProfileRowToMarketplaceProfile = (
   row: SupabaseMarketplaceBrandProfileRow,
 ): MarketplaceBrandProfile => ({
@@ -9950,6 +10094,41 @@ const readMarketplaceInfluencerRows = async (query: string) => {
   };
 };
 
+const readDiscoveredInfluencerProfiles = async () => {
+  if (!useSupabase) return [];
+
+  try {
+    const rows: SupabaseDiscoveredInfluencerProfileRow[] = [];
+    const pageSize = 1000;
+    const maxRows = 3000;
+    for (let offset = 0; offset < maxRows; offset += pageSize) {
+      const page = await readSupabaseRows<SupabaseDiscoveredInfluencerProfileRow>(
+        "discovered_influencer_profiles",
+        `?select=*&status=eq.active&order=quality_score.desc,last_checked_at.desc&limit=${pageSize}&offset=${offset}`,
+        "discovered influencer profiles",
+      );
+      rows.push(...page);
+      if (page.length < pageSize) break;
+    }
+
+    return rows
+      .filter((row) => !isClearlyBusinessDiscoveredInfluencerRow(row))
+      .map(mapDiscoveredInfluencerRowToMarketplaceProfile)
+      .filter(
+        (profile) =>
+          !filterOperationalMarketplaceTestData ||
+          !hasOperationalTestMarker(profile),
+      );
+  } catch (error) {
+    console.warn(
+      `[${productName}] discovered influencer profiles unavailable: ${
+        error instanceof Error ? error.message : "unknown error"
+      }`,
+    );
+    return [];
+  }
+};
+
 const readMarketplaceInfluencerProfiles = async () => {
   const { profiles, channels } = await readMarketplaceInfluencerRows(
     "?select=*&is_published=eq.true&order=updated_at.desc",
@@ -9967,7 +10146,13 @@ const readMarketplaceInfluencerProfiles = async () => {
         !hasOperationalTestMarker(profile),
     );
 
-  if (allowMarketplaceSeedData) return mergeMarketplaceInfluencerProfiles(dbProfiles);
+  const discoveredProfiles = await readDiscoveredInfluencerProfiles();
+  const visibleProfiles = [...dbProfiles, ...discoveredProfiles];
+
+  if (allowMarketplaceSeedData) {
+    return mergeMarketplaceInfluencerProfiles(visibleProfiles);
+  }
+  if (visibleProfiles.length > 0) return visibleProfiles;
   return dbProfiles.length > 0 ? dbProfiles : fallbackMarketplaceInfluencerProfiles();
 };
 
