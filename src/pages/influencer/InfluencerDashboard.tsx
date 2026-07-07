@@ -54,6 +54,7 @@ import { MobileSurfaceSwitch } from "../../components/MobileSurfaceSwitch";
 import { LogoMark } from "../../components/BrandLogo";
 import { PlatformBrandMark } from "../../components/PlatformBrandMark";
 import { ResponsiveFilterPanel } from "../../components/ResponsiveFilterPanel";
+import { FilterSelectControl } from "../../components/FilterSelectControl";
 import { useMarketplaceMessageSummary } from "../../hooks/useMarketplaceMessageSummary";
 import { exportWorkbookToGoogleSheets } from "../../domain/googleWorkspaceExport";
 import { downloadXlsx, type XlsxSheet, type XlsxWorkbook } from "../../domain/xlsxExport";
@@ -1813,20 +1814,13 @@ function TableFilterSelect({
         sortState={sortState}
         onSortChange={onSortChange}
       />
-      <select
+      <FilterSelectControl
         value={value}
-        onChange={(event) => onChange(event.target.value)}
-        aria-label={`${label} 필터`}
-        className={`block h-9 max-w-full ${maxWidthClassName} ${
-          compact ? "" : "mt-1"
-        } rounded-[6px] border border-[#d9e0d9] bg-white px-2 text-[12px] font-bold text-[#303630] outline-none transition-colors hover:border-[#cbd5cc] focus:border-[#171a17]`}
-      >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
+        onChange={onChange}
+        options={options}
+        ariaLabel={`${label} 필터`}
+        className={`max-w-full ${maxWidthClassName} ${compact ? "" : "mt-1"}`}
+      />
     </div>
   );
 }

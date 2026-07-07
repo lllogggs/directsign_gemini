@@ -34,7 +34,7 @@ export function ResponsiveFilterPanel({
       />
       <div
         id={id}
-        className={`fixed inset-x-0 bottom-0 z-50 max-h-[82dvh] overflow-y-auto rounded-t-[20px] border border-neutral-200 bg-white p-4 shadow-[0_-18px_48px_rgba(15,23,42,0.18)] sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:top-[calc(100%+8px)] sm:max-h-[min(520px,calc(100vh-180px))] sm:w-[min(760px,calc(100vw-48px))] sm:rounded-[12px] sm:p-3 sm:shadow-[0_18px_54px_rgba(15,23,42,0.16)] ${className}`}
+        className={`fixed inset-x-0 bottom-0 z-50 max-h-[82dvh] overflow-y-auto rounded-t-[20px] border border-neutral-200 bg-white p-4 shadow-[0_-18px_48px_rgba(15,23,42,0.18)] sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:top-[calc(100%+8px)] sm:max-h-[min(520px,calc(100vh-180px))] sm:w-[min(760px,calc(100vw-48px))] sm:overflow-visible sm:rounded-[12px] sm:p-3 sm:shadow-[0_18px_54px_rgba(15,23,42,0.16)] ${className}`}
       >
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">

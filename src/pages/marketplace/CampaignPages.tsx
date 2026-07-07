@@ -3958,13 +3958,13 @@ function CampaignFilterListOptionButton({
       onClick={onClick}
       className={`flex h-9 w-full items-center justify-between gap-3 rounded-[8px] px-2.5 text-left text-[12px] font-extrabold transition ${
         selected
-          ? "bg-neutral-950 text-white"
-          : "text-neutral-600 hover:bg-neutral-50 hover:text-neutral-950"
+          ? "bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-100"
+          : "text-neutral-600 hover:bg-[#f6f8f6] hover:text-neutral-950"
       }`}
     >
       <span className="truncate">{label}</span>
       {selected ? (
-        <CheckCircle2 className="h-3.5 w-3.5 shrink-0" strokeWidth={2.4} />
+        <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-blue-600" strokeWidth={2.4} />
       ) : null}
     </button>
   );
