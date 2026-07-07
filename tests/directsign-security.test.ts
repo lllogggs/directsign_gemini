@@ -447,8 +447,13 @@ describe("yeollock.me security regressions", () => {
     assert.match(server, /const filterOperationalMarketplaceTestData/);
     assert.match(server, /demoMode \|\| !isProductionRuntime \|\| allowProductionTestData/);
     assert.match(server, /!filterOperationalMarketplaceTestData \|\|[\s\S]+!hasOperationalTestMarker\(profile\)/);
-    assert.match(server, /const visibleProfiles = \[\.\.\.dbProfiles, \.\.\.discoveredProfiles\]/);
-    assert.match(server, /if \(allowMarketplaceSeedData\) \{\s*return mergeMarketplaceInfluencerProfiles\(visibleProfiles\);\s*\}/);
+    assert.match(server, /const registeredProfiles = dbProfiles\.slice\(offset, offset \+ limit\)/);
+    assert.match(server, /const visibleProfiles = \[\.\.\.registeredProfiles, \.\.\.discoveredProfiles\]/);
+    assert.match(server, /if \(visibleProfiles\.length > 0\) return visibleProfiles/);
+    assert.doesNotMatch(
+      server,
+      /return mergeMarketplaceInfluencerProfiles\(visibleProfiles\)/,
+    );
     assert.match(server, /if \(allowMarketplaceSeedData\) return mergeMarketplaceBrandProfiles\(visibleDbProfiles\)/);
     assert.match(server, /if \(!useSupabase\) return fallbackMarketplaceBrandProfiles\(\)/);
     assert.match(server, /const profiles = await readPublicMarketplaceCache\(\s*"marketplace-influencers"/);
@@ -1205,6 +1210,44 @@ describe("yeollock.me security regressions", () => {
     );
   });
 
+  it("keeps discovered influencer candidates out of the 1:1 proposal flow", () => {
+    const marketplace = read("src/domain/marketplace.ts");
+    const marketplacePages = read("src/pages/marketplace/MarketplacePages.tsx");
+    const server = read("server/index.ts");
+
+    assert.match(marketplace, /source\?: "registered" \| "discovered"/);
+    assert.match(marketplace, /source: profile\.source \?\? "registered"/);
+    assert.match(
+      marketplace,
+      /accountProfiles\.length > 0 \? accountProfiles : mergeMarketplaceInfluencerProfiles\(\)/,
+    );
+    assert.match(server, /source: "registered"/);
+    assert.match(server, /source: "discovered"/);
+    assert.doesNotMatch(
+      server,
+      /return mergeMarketplaceInfluencerProfiles\(visibleProfiles\)/,
+    );
+    assert.match(server, /if \(profile\.source === "discovered"\)/);
+    assert.match(
+      server,
+      /연락미에 등록된 인플루언서에게만 1:1 계약 제안을 보낼 수 있습니다/,
+    );
+    assert.match(
+      marketplacePages,
+      /function isRegisteredMarketplaceInfluencer\(profile: MarketplaceInfluencerProfile\)/,
+    );
+    assert.match(
+      marketplacePages,
+      /const canPropose = isRegisteredMarketplaceInfluencer\(profile\)/,
+    );
+    assert.match(marketplacePages, /채널 보기/);
+    assert.match(marketplacePages, /title="공개 채널 보기"/);
+    assert.match(
+      marketplacePages,
+      /target=\{primaryChannelUrl \? "_blank" : undefined\}/,
+    );
+  });
+
   it("derives influencer public profile handles from the first registered platform outside the dashboard strip", () => {
     const publicProfile = read("src/domain/publicInfluencerProfile.ts");
     const server = read("server/index.ts");
@@ -1886,7 +1929,10 @@ describe("yeollock.me security regressions", () => {
     assert.match(server, /isEmptyPublicMarketplaceValue/);
     assert.match(server, /applyPublicMarketplaceFallback/);
     assert.match(server, /applyPublicMarketplaceFallback\(await loader\(\), options\)/);
-    assert.match(server, /dbProfiles\.length > 0 \? dbProfiles : fallbackMarketplaceInfluencerProfiles\(\)/);
+    assert.match(
+      server,
+      /dbProfiles\.length > 0[\s\S]*dbProfiles\.slice\(offset, offset \+ limit\)[\s\S]*fallbackMarketplaceInfluencerProfiles\(\)\.slice\(offset, offset \+ limit\)/,
+    );
     assert.match(server, /visibleDbProfiles\.length > 0[\s\S]*fallbackMarketplaceBrandProfiles\(\)/);
     assert.match(server, /invalidateByTag/);
     assert.match(server, /Vercel-CDN-Cache-Control/);

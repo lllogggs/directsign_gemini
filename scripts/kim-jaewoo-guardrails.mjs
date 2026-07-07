@@ -963,7 +963,8 @@ check(
     server.includes("fallbackMarketplaceInfluencerProfiles") &&
     server.includes("fallbackMarketplaceBrandProfiles") &&
     server.includes("fallbackMarketplaceCampaignPosts") &&
-    server.includes("dbProfiles.length > 0 ? dbProfiles : fallbackMarketplaceInfluencerProfiles()") &&
+    server.includes("dbProfiles.slice(offset, offset + limit)") &&
+    server.includes("fallbackMarketplaceInfluencerProfiles().slice(offset, offset + limit)") &&
     server.includes("publicMarketplaceCache.delete(key)") &&
     server.includes('process.env.VERCEL === "1"') &&
     server.includes("public marketplace cache cold fallback"),

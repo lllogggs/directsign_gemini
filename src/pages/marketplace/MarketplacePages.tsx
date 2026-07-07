@@ -23,6 +23,8 @@ import {
   type MouseEvent,
   type PointerEvent,
   type ReactNode,
+  type RefObject,
+  useCallback,
   useEffect,
   useId,
   useMemo,
@@ -47,9 +49,7 @@ import {
   findBrandProfileByHandle,
   marketplaceBrands,
   marketplaceCountryOptions,
-  marketplaceInfluencers,
   mergeMarketplaceBrandProfiles,
-  mergeMarketplaceInfluencerProfiles,
   platformLabels,
   proposalTypeLabels,
   type CampaignProposalType,
@@ -128,8 +128,6 @@ const influencerSortOptions: Array<{ label: string; value: InfluencerSortValue }
   { label: "이름순", value: "name_asc" },
 ];
 
-const demoInfluencerProfileAliases: Record<string, string> = {};
-
 function getCategoryFilterKey(category: string) {
   const normalized = category.trim().toLowerCase();
   return categoryKeyAliases[normalized] ?? normalized;
@@ -163,6 +161,7 @@ function formatSelectedCategorySummary(categories: string[]) {
 
 type MarketplaceInfluencersResponse = {
   profiles: MarketplaceInfluencerProfile[];
+  hasMore?: boolean;
 };
 
 type MarketplaceInfluencerResponse = {
@@ -177,42 +176,88 @@ type MarketplaceBrandResponse = {
   brand: MarketplaceBrandProfile;
 };
 
+const marketplaceInfluencerPageSize = 1000;
+
+function mergeUniqueInfluencerProfiles(
+  current: MarketplaceInfluencerProfile[],
+  incoming: MarketplaceInfluencerProfile[],
+) {
+  const seen = new Set(current.map((profile) => profile.id));
+  const next = [...current];
+  for (const profile of incoming) {
+    if (seen.has(profile.id)) continue;
+    seen.add(profile.id);
+    next.push(profile);
+  }
+  return next;
+}
+
 function useMarketplaceInfluencers() {
   const [profiles, setProfiles] =
-    useState<MarketplaceInfluencerProfile[]>(marketplaceInfluencers);
-  const [isLoading, setIsLoading] = useState(marketplaceInfluencers.length === 0);
+    useState<MarketplaceInfluencerProfile[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const nextOffsetRef = useRef(0);
+  const loadingRef = useRef(false);
+  const mountedRef = useRef(false);
+  const hasMoreRef = useRef(true);
 
-  useEffect(() => {
-    let active = true;
-
-    void apiFetch("/api/marketplace/influencers", {
-      headers: { Accept: "application/json" },
-    })
-      .then(async (response) => {
-        if (!response.ok) throw new Error("Marketplace influencers failed");
-        return (await response.json()) as MarketplaceInfluencersResponse;
-      })
-      .then((data) => {
-        if (!active) return;
-        setProfiles(
-          data.profiles.length > 0
-            ? mergeMarketplaceInfluencerProfiles(data.profiles)
-            : marketplaceInfluencers,
-        );
-      })
-      .catch(() => {
-        if (active) setProfiles(marketplaceInfluencers);
-      })
-      .finally(() => {
-        if (active) setIsLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
+  const updateHasMore = useCallback((value: boolean) => {
+    hasMoreRef.current = value;
+    setHasMore(value);
   }, []);
 
-  return { profiles, isLoading };
+  const loadNextPage = useCallback(async () => {
+    if (loadingRef.current || !hasMoreRef.current) return;
+
+    const offset = nextOffsetRef.current;
+    loadingRef.current = true;
+    if (offset === 0) {
+      setIsLoading(true);
+    } else {
+      setIsLoadingMore(true);
+    }
+
+    try {
+      const response = await apiFetch(
+        `/api/marketplace/influencers?limit=${marketplaceInfluencerPageSize}&offset=${offset}`,
+        { headers: { Accept: "application/json" } },
+      );
+      if (!response.ok) throw new Error("Marketplace influencers failed");
+      const data = (await response.json()) as MarketplaceInfluencersResponse;
+      if (!mountedRef.current) return;
+
+      const incomingProfiles = data.profiles.length > 0 ? data.profiles : [];
+      setProfiles((current) =>
+        offset === 0
+          ? mergeUniqueInfluencerProfiles([], incomingProfiles)
+          : mergeUniqueInfluencerProfiles(current, incomingProfiles),
+      );
+      nextOffsetRef.current = offset + incomingProfiles.length;
+      updateHasMore(Boolean(data.hasMore) && incomingProfiles.length > 0);
+    } catch {
+      if (mountedRef.current && offset === 0) setProfiles([]);
+      if (mountedRef.current) updateHasMore(false);
+    } finally {
+      if (mountedRef.current) {
+        setIsLoading(false);
+        setIsLoadingMore(false);
+      }
+      loadingRef.current = false;
+    }
+  }, [updateHasMore]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    void loadNextPage();
+
+    return () => {
+      mountedRef.current = false;
+    };
+  }, [loadNextPage]);
+
+  return { profiles, isLoading, isLoadingMore, hasMore, loadNextPage };
 }
 
 function useMarketplaceBrands() {
@@ -254,24 +299,7 @@ function useMarketplaceBrands() {
 }
 
 function useMarketplaceInfluencerProfile(handle: string | undefined) {
-  const fallbackProfile = useMemo(
-    () => {
-      if (!handle) return null;
-      const normalizedHandle = normalizePublicProfileHandle(handle);
-      const sourceHandle =
-        demoInfluencerProfileAliases[normalizedHandle] ?? normalizedHandle;
-      const profile =
-        marketplaceInfluencers.find(
-          (item) => normalizePublicProfileHandle(item.handle) === sourceHandle,
-        ) ?? null;
-
-      if (!profile) return null;
-      return sourceHandle === normalizedHandle
-        ? profile
-        : { ...profile, id: `${profile.id}-${normalizedHandle}`, handle: normalizedHandle };
-    },
-    [handle],
-  );
+  const fallbackProfile: MarketplaceInfluencerProfile | null = null;
   const [remoteResult, setRemoteResult] = useState<{
     handle: string;
     profile: MarketplaceInfluencerProfile | null;
@@ -406,8 +434,33 @@ export function AdvertiserInfluencerDiscoveryPage() {
     top: number;
     left: number;
   } | null>(null);
-  const { profiles, isLoading } = useMarketplaceInfluencers();
+  const {
+    profiles,
+    isLoading,
+    isLoadingMore,
+    hasMore,
+    loadNextPage,
+  } = useMarketplaceInfluencers();
   const { brands } = useMarketplaceBrands();
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (isLoading || !hasMore) return;
+    const target = loadMoreRef.current;
+    if (!target) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          void loadNextPage();
+        }
+      },
+      { rootMargin: "360px 0px 360px 0px" },
+    );
+
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [hasMore, isLoading, loadNextPage, profiles.length]);
 
   const filteredProfiles = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -594,6 +647,9 @@ export function AdvertiserInfluencerDiscoveryPage() {
           <InfluencerDiscoveryTable
             profiles={filteredProfiles}
             platformFilter={platformFilter}
+            loadMoreRef={loadMoreRef}
+            isLoadingMore={isLoadingMore}
+            hasMore={hasMore}
             onContact={setSelectedProfile}
             onPreview={showProfilePreview}
             onPreviewEnd={() => setPreviewProfile(null)}
@@ -816,6 +872,11 @@ export function PublicInfluencerProfilePage() {
   const categoryLabels = getCategoryLabels(profile.categories, 4);
   const channelSummaries = profile.platforms.slice(0, 4);
   const platformCount = Math.min(Math.max(channelSummaries.length, 1), 4);
+  const isDiscoveredProfile = isDiscoveredMarketplaceInfluencer(profile);
+  const primaryChannelUrl = getMarketplaceInfluencerPrimaryChannelUrl(
+    profile,
+    "all",
+  );
   const hasFeaturedPlatformLayout = platformCount <= 2;
   const platformRowsClassName =
     platformCount === 1
@@ -854,19 +915,49 @@ export function PublicInfluencerProfilePage() {
   );
   const primaryProfileActionLabel = isOwnPublishedProfile
     ? "프로필 관리"
-    : "제안하기";
+    : isDiscoveredProfile
+      ? "채널 보기"
+      : "제안하기";
   const primaryProfileActionIcon = isOwnPublishedProfile ? (
     <Settings className="h-4 w-4" />
+  ) : isDiscoveredProfile ? (
+    <ExternalLink className="h-4 w-4" />
   ) : (
     <Handshake className="h-4 w-4" />
   );
+  const primaryProfileActionClassName =
+    "items-center justify-center gap-2 rounded-[12px] bg-blue-600 px-4 text-[14px] font-extrabold text-white shadow-[0_14px_34px_rgba(37,99,235,0.24)] transition hover:bg-blue-700 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700";
   const handlePrimaryProfileAction = () => {
     if (isOwnPublishedProfile) {
       navigate("/influencer/dashboard");
       return;
     }
+    if (isDiscoveredProfile) return;
     setShowContact(true);
   };
+  const renderPrimaryProfileAction = (className: string) =>
+    isDiscoveredProfile && primaryChannelUrl ? (
+      <a
+        href={primaryChannelUrl}
+        target="_blank"
+        rel="noreferrer"
+        className={className}
+        aria-label={`${profile.displayName} 공개 채널 보기`}
+        title="공개 채널 보기"
+      >
+        {primaryProfileActionIcon}
+        {primaryProfileActionLabel}
+      </a>
+    ) : (
+      <button
+        type="button"
+        onClick={handlePrimaryProfileAction}
+        className={className}
+      >
+        {primaryProfileActionIcon}
+        {primaryProfileActionLabel}
+      </button>
+    );
 
   return (
     <main className="min-h-svh bg-[#f4f7fb] font-sans text-neutral-950">
@@ -927,14 +1018,9 @@ export function PublicInfluencerProfilePage() {
 
                 </div>
 
-                <button
-                  type="button"
-                  onClick={handlePrimaryProfileAction}
-                  className="hidden h-12 w-[156px] items-center justify-center gap-2 rounded-[12px] bg-blue-600 px-4 text-[14px] font-extrabold text-white shadow-[0_14px_34px_rgba(37,99,235,0.24)] transition hover:bg-blue-700 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700 lg:inline-flex"
-                >
-                  {primaryProfileActionIcon}
-                  {primaryProfileActionLabel}
-                </button>
+                {renderPrimaryProfileAction(
+                  `hidden h-12 w-[156px] lg:inline-flex ${primaryProfileActionClassName}`,
+                )}
               </div>
 
               <div className="mt-auto pt-5 sm:pt-7">
@@ -976,14 +1062,9 @@ export function PublicInfluencerProfilePage() {
                     </div>
 
                     <aside className="flex min-h-[52px] min-w-0 items-center justify-center lg:hidden">
-                      <button
-                        type="button"
-                        onClick={handlePrimaryProfileAction}
-                        className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-[12px] bg-blue-600 px-4 text-[14px] font-extrabold text-white shadow-[0_14px_34px_rgba(37,99,235,0.24)] transition hover:bg-blue-700 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700"
-                      >
-                        {primaryProfileActionIcon}
-                        {primaryProfileActionLabel}
-                      </button>
+                      {renderPrimaryProfileAction(
+                        `inline-flex h-12 w-full ${primaryProfileActionClassName}`,
+                      )}
                     </aside>
                   </div>
                 </div>
@@ -994,7 +1075,7 @@ export function PublicInfluencerProfilePage() {
         </article>
       </section>
 
-      {showContact && !isOwnPublishedProfile ? (
+      {showContact && !isOwnPublishedProfile && !isDiscoveredProfile ? (
         <InfluencerContactDialog
           key={profile.id}
           profile={profile}
@@ -1299,7 +1380,7 @@ function MarketplaceShell({
             </div>
             {showMetrics ? (
               <div className="grid grid-cols-3 gap-1.5 rounded-[14px] border border-neutral-200 bg-white p-1.5 shadow-[0_10px_26px_rgba(15,23,42,0.035)] sm:w-[360px]">
-                <MiniMetric label="공개 프로필" value={(profileCount ?? marketplaceInfluencers.length).toString()} />
+                <MiniMetric label="공개 프로필" value={(profileCount ?? 0).toString()} />
                 <MiniMetric label="입점 브랜드" value={(brandCount ?? marketplaceBrands.length).toString()} />
                 <MiniMetric label="계약 연결" value="요청 가능" />
               </div>
@@ -1318,12 +1399,18 @@ function MarketplaceShell({
 function InfluencerDiscoveryTable({
   profiles,
   platformFilter,
+  loadMoreRef,
+  isLoadingMore,
+  hasMore,
   onContact,
   onPreview,
   onPreviewEnd,
 }: {
   profiles: MarketplaceInfluencerProfile[];
   platformFilter: PlatformFilter;
+  loadMoreRef: RefObject<HTMLDivElement | null>;
+  isLoadingMore: boolean;
+  hasMore: boolean;
   onContact: (profile: MarketplaceInfluencerProfile) => void;
   onPreview: (
     profile: MarketplaceInfluencerProfile,
@@ -1369,6 +1456,15 @@ function InfluencerDiscoveryTable({
           />
         ))}
       </div>
+      {hasMore || isLoadingMore ? (
+        <div
+          ref={loadMoreRef}
+          className="flex h-14 items-center justify-center text-[12px] font-extrabold text-neutral-400"
+          aria-live="polite"
+        >
+          {isLoadingMore ? "불러오는 중" : null}
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -1403,6 +1499,11 @@ function InfluencerDiscoveryTableRow({
   const platformLabel = primaryPlatform
     ? platformLabels[primaryPlatform.platform]
     : "기타";
+  const canPropose = isRegisteredMarketplaceInfluencer(profile);
+  const primaryChannelUrl = getMarketplaceInfluencerPrimaryChannelUrl(
+    profile,
+    platformFilter,
+  );
 
   return (
     <article
@@ -1471,19 +1572,33 @@ function InfluencerDiscoveryTableRow({
       </p>
 
       <div className="flex justify-end gap-2">
-        <button
-          type="button"
-          onClick={() => onContact(profile)}
-          className="inline-flex h-9 w-[86px] items-center justify-center gap-1.5 rounded-[7px] bg-blue-600 px-2 text-[12px] font-extrabold text-white transition hover:bg-blue-700"
-        >
-          <Send className="h-3.5 w-3.5" />
-          1:1 제안
-        </button>
+        {canPropose ? (
+          <button
+            type="button"
+            onClick={() => onContact(profile)}
+            className="inline-flex h-9 w-[86px] items-center justify-center gap-1.5 rounded-[7px] bg-blue-600 px-2 text-[12px] font-extrabold text-white transition hover:bg-blue-700"
+          >
+            <Send className="h-3.5 w-3.5" />
+            1:1 제안
+          </button>
+        ) : (
+          <a
+            href={primaryChannelUrl ?? getInfluencerProfilePath(profile)}
+            target={primaryChannelUrl ? "_blank" : undefined}
+            rel={primaryChannelUrl ? "noreferrer" : undefined}
+            aria-label={`${profile.displayName} 공개 채널 보기`}
+            title="공개 채널 보기"
+            className="inline-flex h-9 w-[86px] items-center justify-center gap-1.5 rounded-[7px] bg-blue-600 px-2 text-[12px] font-extrabold text-white transition hover:bg-blue-700"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            채널 보기
+          </a>
+        )}
         <Link
           to={getInfluencerProfilePath(profile)}
           className="inline-flex h-9 w-[58px] items-center justify-center rounded-[7px] border border-neutral-200 bg-white text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
         >
-          프로필
+          {canPropose ? "프로필" : "정보"}
         </Link>
       </div>
     </article>
@@ -1505,6 +1620,11 @@ function InfluencerDiscoveryCompactRow({
     platformFilter,
   );
   const categoryLabel = getCategoryLabels(profile.categories, 2).join(" · ");
+  const canPropose = isRegisteredMarketplaceInfluencer(profile);
+  const primaryChannelUrl = getMarketplaceInfluencerPrimaryChannelUrl(
+    profile,
+    platformFilter,
+  );
 
   return (
     <article className="grid gap-3 border-b border-[#e4e9e4] p-3 last:border-b-0">
@@ -1536,19 +1656,33 @@ function InfluencerDiscoveryCompactRow({
         </div>
       </div>
       <div className="grid grid-cols-2 gap-2">
-        <button
-          type="button"
-          onClick={() => onContact(profile)}
-          className="yl-primary-action inline-flex h-10 items-center justify-center gap-2 rounded-[8px] px-3 text-[13px] font-extrabold transition"
-        >
-          <Send className="h-4 w-4" />
-          1:1 제안
-        </button>
+        {canPropose ? (
+          <button
+            type="button"
+            onClick={() => onContact(profile)}
+            className="yl-primary-action inline-flex h-10 items-center justify-center gap-2 rounded-[8px] px-3 text-[13px] font-extrabold transition"
+          >
+            <Send className="h-4 w-4" />
+            1:1 제안
+          </button>
+        ) : (
+          <a
+            href={primaryChannelUrl ?? getInfluencerProfilePath(profile)}
+            target={primaryChannelUrl ? "_blank" : undefined}
+            rel={primaryChannelUrl ? "noreferrer" : undefined}
+            aria-label={`${profile.displayName} 공개 채널 보기`}
+            title="공개 채널 보기"
+            className="yl-primary-action inline-flex h-10 items-center justify-center gap-2 rounded-[8px] px-3 text-[13px] font-extrabold transition"
+          >
+            <ExternalLink className="h-4 w-4" />
+            채널 보기
+          </a>
+        )}
         <Link
           to={getInfluencerProfilePath(profile)}
           className="yl-secondary-action inline-flex h-10 items-center justify-center rounded-[8px] border text-[13px] font-extrabold transition"
         >
-          프로필
+          {canPropose ? "프로필" : "정보"}
         </Link>
       </div>
     </article>
@@ -1627,6 +1761,14 @@ function formatDiscoveryAudienceMetric(value: string | undefined) {
   return normalized.replace(/^(구독자|팔로워)\s+/, "");
 }
 
+function isDiscoveredMarketplaceInfluencer(profile: MarketplaceInfluencerProfile) {
+  return profile.source === "discovered";
+}
+
+function isRegisteredMarketplaceInfluencer(profile: MarketplaceInfluencerProfile) {
+  return !isDiscoveredMarketplaceInfluencer(profile);
+}
+
 function getMarketplaceInfluencerDisplayPlatform(
   profile: MarketplaceInfluencerProfile,
   platformFilter: PlatformFilter,
@@ -1638,6 +1780,13 @@ function getMarketplaceInfluencerDisplayPlatform(
     );
   }
   return profile.platforms[0];
+}
+
+function getMarketplaceInfluencerPrimaryChannelUrl(
+  profile: MarketplaceInfluencerProfile,
+  platformFilter: PlatformFilter,
+) {
+  return getMarketplaceInfluencerDisplayPlatform(profile, platformFilter)?.url;
 }
 
 function BrandDiscoveryCard({

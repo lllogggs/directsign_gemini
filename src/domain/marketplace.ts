@@ -155,6 +155,7 @@ export type MarketplaceInfluencerProfile = {
     result: string;
   }>;
   proposalHints: string[];
+  source?: "registered" | "discovered";
 };
 
 export type MarketplaceBrandProfile = {
@@ -1036,7 +1037,12 @@ export function mergeMarketplaceInfluencerProfiles(
 
   [...accountProfiles, ...marketplaceInfluencers].forEach((profile) => {
     const normalized = normalizeMarketplaceHandle(profile.handle);
-    if (!byHandle.has(normalized)) byHandle.set(normalized, profile);
+    if (!byHandle.has(normalized)) {
+      byHandle.set(normalized, {
+        ...profile,
+        source: profile.source ?? "registered",
+      });
+    }
   });
 
   return Array.from(byHandle.values());
@@ -1061,7 +1067,9 @@ export function findInfluencerProfileByHandle(
 ) {
   if (!handle) return undefined;
   const normalized = normalizeMarketplaceHandle(handle);
-  return mergeMarketplaceInfluencerProfiles(accountProfiles).find(
+  const profiles =
+    accountProfiles.length > 0 ? accountProfiles : mergeMarketplaceInfluencerProfiles();
+  return profiles.find(
     (profile) => normalizeMarketplaceHandle(profile.handle) === normalized,
   );
 }
@@ -1072,7 +1080,9 @@ export function findInfluencerProfileByDisplayName(
 ) {
   const normalizedName = displayName?.trim().replace(/\s+/g, " ");
   if (!normalizedName) return undefined;
-  return mergeMarketplaceInfluencerProfiles(accountProfiles).find(
+  const profiles =
+    accountProfiles.length > 0 ? accountProfiles : mergeMarketplaceInfluencerProfiles();
+  return profiles.find(
     (profile) => profile.displayName.trim().replace(/\s+/g, " ") === normalizedName,
   );
 }

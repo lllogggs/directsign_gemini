@@ -9920,6 +9920,7 @@ const mapInfluencerProfileRowToMarketplaceProfile = (
       base.proposalHints,
       6,
     ),
+    source: "registered",
   };
 };
 
@@ -10034,6 +10035,7 @@ const mapDiscoveredInfluencerRowToMarketplaceProfile = (
     recentBrands: [],
     portfolio: [],
     proposalHints: ["공개 채널을 확인한 뒤 광고 조건을 제안하세요."],
+    source: "discovered",
   };
 };
 
@@ -10094,31 +10096,74 @@ const readMarketplaceInfluencerRows = async (query: string) => {
   };
 };
 
-const readDiscoveredInfluencerProfiles = async () => {
+const marketplaceInfluencerProfileResponseLimit = 1000;
+
+type MarketplaceInfluencerProfileReadOptions = {
+  limit?: number;
+  offset?: number;
+};
+
+const clampMarketplaceInfluencerPageNumber = (
+  value: unknown,
+  fallback: number,
+  min: number,
+  max: number,
+) => {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+  const parsed =
+    typeof rawValue === "string" || typeof rawValue === "number"
+      ? Number.parseInt(String(rawValue), 10)
+      : NaN;
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(Math.max(parsed, min), max);
+};
+
+const readMarketplaceInfluencerPagination = (
+  query: express.Request["query"],
+) => ({
+  limit: clampMarketplaceInfluencerPageNumber(
+    query.limit,
+    marketplaceInfluencerProfileResponseLimit,
+    1,
+    marketplaceInfluencerProfileResponseLimit,
+  ),
+  offset: clampMarketplaceInfluencerPageNumber(query.offset, 0, 0, 50000),
+});
+
+const readDiscoveredInfluencerProfiles = async (
+  options: MarketplaceInfluencerProfileReadOptions = {},
+) => {
   if (!useSupabase) return [];
 
+  const limit = Math.max(options.limit ?? marketplaceInfluencerProfileResponseLimit, 0);
+  const offset = Math.max(options.offset ?? 0, 0);
+  if (limit === 0) return [];
+
   try {
-    const rows: SupabaseDiscoveredInfluencerProfileRow[] = [];
+    const rows: MarketplaceInfluencerProfile[] = [];
     const pageSize = 1000;
-    const maxRows = 3000;
-    for (let offset = 0; offset < maxRows; offset += pageSize) {
+    const sourceScanLimit = Math.max(offset + limit + pageSize, pageSize);
+    for (let scanOffset = 0; scanOffset < sourceScanLimit; scanOffset += pageSize) {
       const page = await readSupabaseRows<SupabaseDiscoveredInfluencerProfileRow>(
         "discovered_influencer_profiles",
-        `?select=*&status=eq.active&order=quality_score.desc,last_checked_at.desc&limit=${pageSize}&offset=${offset}`,
+        `?select=*&status=eq.active&order=quality_score.desc,last_checked_at.desc,id.asc&limit=${pageSize}&offset=${scanOffset}`,
         "discovered influencer profiles",
       );
-      rows.push(...page);
+      rows.push(
+        ...page
+          .filter((row) => !isClearlyBusinessDiscoveredInfluencerRow(row))
+          .map(mapDiscoveredInfluencerRowToMarketplaceProfile)
+          .filter(
+            (profile) =>
+              !filterOperationalMarketplaceTestData ||
+              !hasOperationalTestMarker(profile),
+          ),
+      );
+      if (rows.length >= offset + limit) break;
       if (page.length < pageSize) break;
     }
 
-    return rows
-      .filter((row) => !isClearlyBusinessDiscoveredInfluencerRow(row))
-      .map(mapDiscoveredInfluencerRowToMarketplaceProfile)
-      .filter(
-        (profile) =>
-          !filterOperationalMarketplaceTestData ||
-          !hasOperationalTestMarker(profile),
-      );
+    return rows.slice(offset, offset + limit);
   } catch (error) {
     console.warn(
       `[${productName}] discovered influencer profiles unavailable: ${
@@ -10129,7 +10174,12 @@ const readDiscoveredInfluencerProfiles = async () => {
   }
 };
 
-const readMarketplaceInfluencerProfiles = async () => {
+const readMarketplaceInfluencerProfiles = async (
+  options: MarketplaceInfluencerProfileReadOptions = {},
+) => {
+  const limit = Math.max(options.limit ?? marketplaceInfluencerProfileResponseLimit, 0);
+  const offset = Math.max(options.offset ?? 0, 0);
+
   const { profiles, channels } = await readMarketplaceInfluencerRows(
     "?select=*&is_published=eq.true&order=updated_at.desc",
   );
@@ -10146,14 +10196,22 @@ const readMarketplaceInfluencerProfiles = async () => {
         !hasOperationalTestMarker(profile),
     );
 
-  const discoveredProfiles = await readDiscoveredInfluencerProfiles();
-  const visibleProfiles = [...dbProfiles, ...discoveredProfiles];
+  const registeredProfiles = dbProfiles.slice(offset, offset + limit);
+  const discoveredProfileOffset = Math.max(offset - dbProfiles.length, 0);
+  const discoveredProfileLimit = Math.max(limit - registeredProfiles.length, 0);
+  const discoveredProfiles =
+    discoveredProfileLimit > 0
+      ? await readDiscoveredInfluencerProfiles({
+          limit: discoveredProfileLimit,
+          offset: discoveredProfileOffset,
+        })
+      : [];
+  const visibleProfiles = [...registeredProfiles, ...discoveredProfiles].slice(0, limit);
 
-  if (allowMarketplaceSeedData) {
-    return mergeMarketplaceInfluencerProfiles(visibleProfiles);
-  }
   if (visibleProfiles.length > 0) return visibleProfiles;
-  return dbProfiles.length > 0 ? dbProfiles : fallbackMarketplaceInfluencerProfiles();
+  return dbProfiles.length > 0
+    ? dbProfiles.slice(offset, offset + limit)
+    : fallbackMarketplaceInfluencerProfiles().slice(offset, offset + limit);
 };
 
 const readMarketplaceBrandProfiles = async () => {
@@ -19197,8 +19255,22 @@ app.get("/api/cron/ops-alerts", async (request, response, next) => {
   }
 });
 
-app.get("/api/marketplace/influencers", async (_request, response, next) => {
+app.get("/api/marketplace/influencers", async (request, response, next) => {
   try {
+    if (request.query.limit !== undefined || request.query.offset !== undefined) {
+      const { limit, offset } = readMarketplaceInfluencerPagination(request.query);
+      const page = await readMarketplaceInfluencerProfiles({
+        limit: limit + 1,
+        offset,
+      });
+      sendPublicMarketplaceJson(
+        response,
+        { profiles: page.slice(0, limit), hasMore: page.length > limit },
+        "marketplace-influencers",
+      );
+      return;
+    }
+
     const profiles = await readPublicMarketplaceCache(
       "marketplace-influencers",
       readMarketplaceInfluencerProfiles,
@@ -19653,6 +19725,13 @@ app.post(
       );
       if (!profile) {
         response.status(404).json({ error: "Influencer profile not found" });
+        return;
+      }
+      if (profile.source === "discovered") {
+        response.status(409).json({
+          error:
+            "연락미에 등록된 인플루언서에게만 1:1 계약 제안을 보낼 수 있습니다.",
+        });
         return;
       }
 
