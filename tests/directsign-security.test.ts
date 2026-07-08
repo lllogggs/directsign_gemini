@@ -957,6 +957,7 @@ describe("yeollock.me security regressions", () => {
   it("moves advertiser login to the destination shell before waiting for authentication response", () => {
     const app = read("src/App.tsx");
     const advertiserAuthGate = read("src/pages/marketing/AdvertiserAuthGate.tsx");
+    const influencerLoginPage = read("src/pages/influencer/InfluencerLoginPage.tsx");
     const loginLanding = read("src/pages/auth/LoginLanding.tsx");
     const fastAuth = read("lib/fast-auth.ts");
     const server = read("server/index.ts");
@@ -988,6 +989,9 @@ describe("yeollock.me security regressions", () => {
       "advertiser login should move to the destination shell before waiting for the API response",
     );
     assert.match(advertiserAuthGate, /if \(!navigatedOptimistically\) \{/);
+    assert.match(influencerLoginPage, /const isCampaignContinuation = nextPath\.startsWith\("\/campaigns\/"\)/);
+    assert.match(influencerLoginPage, /const shouldNavigateOptimistically = !isCampaignContinuation/);
+    assert.match(influencerLoginPage, /if \(shouldNavigateOptimistically\) \{/);
     assert.match(loginLanding, /const href = next[\s\S]+\? `\$\{role\.href\}\?next=/);
     assert.match(loginLanding, /: role\.href/);
 

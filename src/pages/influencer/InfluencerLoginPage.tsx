@@ -51,6 +51,7 @@ export function InfluencerLoginPage() {
     setIsSubmitting(true);
     setError("");
     let navigatedOptimistically = false;
+    const shouldNavigateOptimistically = !isCampaignContinuation;
 
     try {
       const loginPromise = apiFetch("/api/influencer/login", {
@@ -63,9 +64,11 @@ export function InfluencerLoginPage() {
         body: JSON.stringify({ email, password }),
       });
 
-      navigatedOptimistically = true;
-      startFastLoginTransition("influencer");
-      navigate(nextPath, { replace: true });
+      if (shouldNavigateOptimistically) {
+        navigatedOptimistically = true;
+        startFastLoginTransition("influencer");
+        navigate(nextPath, { replace: true });
+      }
 
       const response = await loginPromise;
       const data = (await response.json()) as
