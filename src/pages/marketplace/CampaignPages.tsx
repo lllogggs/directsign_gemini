@@ -46,6 +46,7 @@ import {
   getInfluencerProfilePath,
   getMarketplaceBrandDisplayFamilyKey,
   getMarketplaceCountryLabel,
+  isMarketplaceApplicationBrandId,
   marketplaceCountryOptions,
   marketplaceBrands,
   platformLabels,
@@ -2931,7 +2932,10 @@ function getCampaignDisplayCopy(campaign: MarketplaceCampaignPost) {
 }
 
 function canApplyToMarketplaceCampaign(campaign: MarketplaceCampaignPost) {
-  return campaign.acceptsApplications !== false;
+  return (
+    campaign.acceptsApplications === true ||
+    isMarketplaceApplicationBrandId(campaign.brandId)
+  );
 }
 
 function getCampaignApplyButtonLabel(

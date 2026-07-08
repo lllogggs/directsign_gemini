@@ -1610,6 +1610,7 @@ describe("yeollock.me security regressions", () => {
     assert.match(marketplaceDomain, /acceptsApplications: isMarketplaceApplicationBrandId\(brand\.id\)/);
     assert.match(server, /isMarketplaceApplicationBrandId\(campaign\.brandId\)/);
     assert.match(campaignPages, /function canApplyToMarketplaceCampaign/);
+    assert.match(campaignPages, /isMarketplaceApplicationBrandId\(campaign\.brandId\)/);
     assert.match(campaignPages, /신청 준비 중/);
     assert.match(campaignPages, /\/api\/influencer\/session/);
     assert.match(server, /insertSupabaseRowsReturning<SupabaseMarketplaceContactProposalRow>\(\s*"marketplace_contact_proposals"/);
