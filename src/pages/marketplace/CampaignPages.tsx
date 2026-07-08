@@ -1616,7 +1616,7 @@ export function PublicCampaignRecruitmentPage() {
 
   const applyToCampaign = async (campaign: MarketplaceCampaignPost) => {
     if (applyingCampaignId) return;
-    const campaignCopy = getCampaignDisplayCopy(campaign);
+    const campaignCopy = getPublicCampaignDisplayCopy(campaign);
 
     const confirmed = window.confirm(
       `${campaignCopy.title} 캠페인에 신청할까요? 신청 내역은 신청한 캠페인에 표시됩니다.`,
@@ -1679,7 +1679,7 @@ export function PublicCampaignRecruitmentPage() {
   };
 
   const campaign = state.status === "ready" ? state.campaign : null;
-  const campaignCopy = campaign ? getCampaignDisplayCopy(campaign) : null;
+  const campaignCopy = campaign ? getPublicCampaignDisplayCopy(campaign) : null;
   const facts = campaign ? getCampaignRecruitmentFacts(campaign) : [];
   const targetCountryLabel = campaign
     ? formatMarketplaceCountries(campaign.targetCountries)
@@ -2860,6 +2860,13 @@ function getCampaignDisplayCopy(campaign: MarketplaceCampaignPost) {
   return {
     title: hasGeneratedTitle ? generatedCopy.title : campaign.title,
     summary: hasGeneratedSummary ? generatedCopy.summary : rawSummary,
+  };
+}
+
+function getPublicCampaignDisplayCopy(campaign: MarketplaceCampaignPost) {
+  return {
+    title: campaign.title,
+    summary: campaign.summary?.trim() || campaign.brandHeadline,
   };
 }
 
