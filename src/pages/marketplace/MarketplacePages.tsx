@@ -1421,10 +1421,36 @@ function InfluencerDiscoveryTable({
   ) => void;
   onPreviewEnd: () => void;
 }) {
+  const setVisibleLoadMoreRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      if (node && node.offsetParent !== null) loadMoreRef.current = node;
+    },
+    [loadMoreRef],
+  );
+  const renderLoadMoreMarker = () => {
+    const compactMarker = profiles.length < 8;
+    return hasMore || isLoadingMore ? (
+      <div
+        ref={setVisibleLoadMoreRef}
+        className={
+          compactMarker
+            ? "h-px"
+            : "flex h-14 items-center justify-center text-[12px] font-extrabold text-neutral-400"
+        }
+        aria-live="polite"
+      >
+        {isLoadingMore && !compactMarker ? "불러오는 중" : null}
+      </div>
+    ) : null;
+  };
+
   return (
-    <section className="min-h-0 flex-1 overflow-auto p-2.5 lg:p-4">
-      <div className="hidden min-w-[980px] overflow-hidden rounded-[8px] border border-[#d9e0d9] bg-white lg:block">
-        <div className="grid grid-cols-[64px_180px_minmax(420px,1fr)_88px_132px_156px] items-center gap-3 border-b border-[#d7ddd7] bg-[#f7f8f4] px-4 py-3 text-[12px] font-extrabold tracking-[-0.01em] text-[#303630]">
+    <section className="min-h-0 flex-1 overflow-auto p-2.5 lg:flex lg:flex-col lg:overflow-hidden lg:p-4">
+      <div className="hidden min-h-0 min-w-[980px] flex-1 flex-col rounded-[8px] border border-[#d9e0d9] bg-white lg:flex">
+        <div
+          data-influencer-table-header="true"
+          className="grid shrink-0 grid-cols-[64px_180px_minmax(420px,1fr)_88px_132px_156px] items-center gap-3 rounded-t-[8px] border-b border-[#d7ddd7] bg-[#f7f8f4] px-4 py-3 text-[12px] font-extrabold tracking-[-0.01em] text-[#303630] shadow-[0_1px_0_rgba(215,221,215,0.9)]"
+        >
           <span>플랫폼</span>
           <span>카테고리</span>
           <span>인플루언서</span>
@@ -1432,7 +1458,10 @@ function InfluencerDiscoveryTable({
           <span>구독자/팔로워</span>
           <span className="text-right">액션</span>
         </div>
-        <div>
+        <div
+          data-influencer-table-scroll="true"
+          className="min-h-0 flex-1 overflow-auto"
+        >
           {profiles.map((profile) => (
             <InfluencerDiscoveryTableRow
               key={profile.id}
@@ -1443,6 +1472,7 @@ function InfluencerDiscoveryTable({
               onPreviewEnd={onPreviewEnd}
             />
           ))}
+          {renderLoadMoreMarker()}
         </div>
       </div>
 
@@ -1456,15 +1486,7 @@ function InfluencerDiscoveryTable({
           />
         ))}
       </div>
-      {hasMore || isLoadingMore ? (
-        <div
-          ref={loadMoreRef}
-          className="flex h-14 items-center justify-center text-[12px] font-extrabold text-neutral-400"
-          aria-live="polite"
-        >
-          {isLoadingMore ? "불러오는 중" : null}
-        </div>
-      ) : null}
+      <div className="lg:hidden">{renderLoadMoreMarker()}</div>
     </section>
   );
 }
@@ -2903,23 +2925,26 @@ function AvatarBlock({
   alt?: string;
   size?: "default" | "large" | "hero";
 }) {
+  const [failedImageSrc, setFailedImageSrc] = useState<string | null>(null);
   const sizeClass =
     size === "hero"
       ? "h-28 w-28 text-[30px]"
       : size === "large"
         ? "h-20 w-20 text-[24px]"
         : "h-12 w-12 text-[15px]";
+  const shouldRenderImage = Boolean(src && failedImageSrc !== src);
 
   return (
     <span
       className={`yl-profile-mark flex shrink-0 items-center justify-center overflow-hidden font-semibold ${sizeClass}`}
     >
-      {src ? (
+      {shouldRenderImage ? (
         <img
           src={src}
           alt={alt ?? ""}
           className="h-full w-full object-cover"
           loading="lazy"
+          onError={() => setFailedImageSrc(src ?? null)}
         />
       ) : (
         label

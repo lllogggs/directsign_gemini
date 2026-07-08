@@ -162,6 +162,25 @@ const categoryConfigs = {
       "건강관리 블로그",
     ],
   },
+  game: {
+    label: "게임",
+    categories: ["게임", "엔터테인먼트", "콘텐츠"],
+    audienceTags: ["게임", "라이브", "스트리밍"],
+    youtubeQueries: [
+      "한국 게임 유튜버",
+      "게임 리뷰 유튜버",
+      "게임 스트리머 유튜버",
+      "모바일 게임 유튜버",
+      "게임 플레이 유튜버",
+    ],
+    naverQueries: [
+      "게임 블로그 리뷰",
+      "모바일 게임 블로그",
+      "게임 공략 블로그",
+      "게임 스트리머 블로그",
+      "게임 크리에이터 블로그",
+    ],
+  },
   tech: {
     label: "IT",
     categories: ["IT", "생활가전", "테크"],
@@ -276,7 +295,7 @@ const args = new Map(
 
 const categories = String(
   args.get("categories") ??
-    "beauty,living,fashion,food,travel,parenting,pet,fitness,tech",
+    "beauty,living,fashion,food,travel,parenting,pet,fitness,game,tech",
 )
   .split(",")
   .map((value) => value.trim())
@@ -286,7 +305,9 @@ const includeYoutube = args.get("youtube") !== "false";
 const includeNaver = args.get("naver") !== "false";
 const includeInstagram = args.get("instagram") !== "false";
 const youtubePerQuery = parsePositiveInt(args.get("youtube-per-query"), 12);
+const youtubePages = parsePositiveInt(args.get("youtube-pages"), 1);
 const naverPerQuery = parsePositiveInt(args.get("naver-per-query"), 30);
+const naverPages = parsePositiveInt(args.get("naver-pages"), 1);
 const minFollowers = parseOptionalPositiveInt(args.get("min-followers"));
 const maxFollowers = parseOptionalPositiveInt(args.get("max-followers"));
 const inputPath = args.get("input");
@@ -405,6 +426,17 @@ function inferCategories(text, preferredCategory) {
   const result = new Set(config?.categories ?? []);
   const lower = text.toLowerCase();
 
+  if (isStrongGamingText(text)) {
+    return [
+      "게임",
+      "엔터테인먼트",
+      "콘텐츠",
+      ...Array.from(result).filter(
+        (item) => !["게임", "엔터테인먼트", "콘텐츠"].includes(item),
+      ),
+    ].slice(0, 6);
+  }
+
   if (/뷰티|스킨|메이크업|화장품|향수|beauty|makeup|cosmetic/.test(lower)) {
     ["뷰티", "스킨케어", "메이크업"].forEach((item) => result.add(item));
   }
@@ -429,11 +461,21 @@ function inferCategories(text, preferredCategory) {
   if (/운동|헬스|홈트|필라테스|다이어트|fitness|health|workout/.test(lower)) {
     ["운동", "헬스", "건강"].forEach((item) => result.add(item));
   }
+  if (isStrongGamingText(text)) {
+    ["게임", "엔터테인먼트", "콘텐츠"].forEach((item) => result.add(item));
+  }
   if (/it|테크|가전|스마트폰|디지털|tech|gadget/.test(lower)) {
     ["IT", "생활가전", "테크"].forEach((item) => result.add(item));
   }
 
   return Array.from(result).slice(0, 6);
+}
+
+function isStrongGamingText(value) {
+  const text = String(value ?? "").toLowerCase();
+  return /(?:게임\s*(?:유튜버|크리에이터|리뷰|방송|스트리머|공략|플레이)|게이머|게임플레이|게임\s*채널|gaming|gamer|gameplay|gameplays|games\b|game\s*over|minecraft|roblox|league of legends|valorant|battlegrounds|pubg|fortnite|메이플랜드|메이플스토리|마인크래프트|로블록스|발로란트|배틀그라운드|리그오브레전드|모바일게임)/i.test(
+    text,
+  );
 }
 
 function scoreCandidate(candidate) {
@@ -506,25 +548,36 @@ async function collectYoutubeCandidates() {
 
   for (const category of categories) {
     for (const query of categoryConfigs[category].youtubeQueries) {
-      const searchUrl = new URL("https://www.googleapis.com/youtube/v3/search");
-      searchUrl.searchParams.set("part", "snippet");
-      searchUrl.searchParams.set("type", "channel");
-      searchUrl.searchParams.set("regionCode", "KR");
-      searchUrl.searchParams.set("relevanceLanguage", "ko");
-      searchUrl.searchParams.set("maxResults", String(Math.min(youtubePerQuery, 50)));
-      searchUrl.searchParams.set("q", query);
-      searchUrl.searchParams.set("key", apiKey);
+      let pageToken = "";
+      for (let pageIndex = 0; pageIndex < youtubePages; pageIndex += 1) {
+        const searchUrl = new URL("https://www.googleapis.com/youtube/v3/search");
+        searchUrl.searchParams.set("part", "snippet");
+        searchUrl.searchParams.set("type", "channel");
+        searchUrl.searchParams.set("regionCode", "KR");
+        searchUrl.searchParams.set("relevanceLanguage", "ko");
+        searchUrl.searchParams.set("maxResults", String(Math.min(youtubePerQuery, 50)));
+        searchUrl.searchParams.set("q", query);
+        searchUrl.searchParams.set("key", apiKey);
+        if (pageToken) searchUrl.searchParams.set("pageToken", pageToken);
 
-      const data = await fetchJson(searchUrl, undefined, `YouTube search ${query}`);
-      for (const item of data.items ?? []) {
-        const channelId = item?.id?.channelId;
-        if (!channelId || discovered.has(channelId)) continue;
-        discovered.set(channelId, {
-          category,
-          query,
-          channelId,
-          snippet: item.snippet ?? {},
-        });
+        const data = await fetchJson(
+          searchUrl,
+          undefined,
+          `YouTube search ${query} page ${pageIndex + 1}`,
+        );
+        for (const item of data.items ?? []) {
+          const channelId = item?.id?.channelId;
+          if (!channelId || discovered.has(channelId)) continue;
+          discovered.set(channelId, {
+            category,
+            query,
+            channelId,
+            snippet: item.snippet ?? {},
+          });
+        }
+
+        pageToken = data.nextPageToken || "";
+        if (!pageToken) break;
       }
     }
   }
@@ -621,50 +674,56 @@ async function collectNaverBlogCandidates() {
 
   for (const category of categories) {
     for (const query of categoryConfigs[category].naverQueries) {
-      const url = new URL("https://openapi.naver.com/v1/search/blog.json");
-      url.searchParams.set("query", query);
-      url.searchParams.set("display", String(Math.min(naverPerQuery, 100)));
-      url.searchParams.set("start", "1");
-      url.searchParams.set("sort", "sim");
+      const display = Math.min(naverPerQuery, 100);
+      for (let pageIndex = 0; pageIndex < naverPages; pageIndex += 1) {
+        const start = pageIndex * display + 1;
+        if (start > 1000) break;
 
-      const data = await fetchJson(
-        url,
-        {
-          headers: {
-            "X-Naver-Client-Id": clientId,
-            "X-Naver-Client-Secret": clientSecret,
-          },
-        },
-        `Naver blog search ${query}`,
-      );
+        const url = new URL("https://openapi.naver.com/v1/search/blog.json");
+        url.searchParams.set("query", query);
+        url.searchParams.set("display", String(display));
+        url.searchParams.set("start", String(start));
+        url.searchParams.set("sort", "sim");
 
-      for (const item of data.items ?? []) {
-        const bloggerLink = ensureHttpUrl(stripHtml(item.bloggerlink));
-        if (!bloggerLink) continue;
-        let bloggerUrl;
-        try {
-          bloggerUrl = new URL(bloggerLink);
-        } catch {
-          continue;
-        }
-        if (bloggerUrl.hostname.toLowerCase() !== "blog.naver.com") continue;
-        const key = bloggerLink.toLowerCase();
-        const current =
-          grouped.get(key) ??
+        const data = await fetchJson(
+          url,
           {
-            category,
-            bloggerLink,
-            bloggerName: stripHtml(item.bloggername),
-            titles: [],
-            descriptions: [],
-            queries: new Set(),
-            links: new Set(),
-          };
-        current.queries.add(query);
-        current.links.add(ensureHttpUrl(stripHtml(item.link)));
-        current.titles.push(stripHtml(item.title));
-        current.descriptions.push(stripHtml(item.description));
-        grouped.set(key, current);
+            headers: {
+              "X-Naver-Client-Id": clientId,
+              "X-Naver-Client-Secret": clientSecret,
+            },
+          },
+          `Naver blog search ${query} page ${pageIndex + 1}`,
+        );
+
+        for (const item of data.items ?? []) {
+          const bloggerLink = ensureHttpUrl(stripHtml(item.bloggerlink));
+          if (!bloggerLink) continue;
+          let bloggerUrl;
+          try {
+            bloggerUrl = new URL(bloggerLink);
+          } catch {
+            continue;
+          }
+          if (bloggerUrl.hostname.toLowerCase() !== "blog.naver.com") continue;
+          const key = bloggerLink.toLowerCase();
+          const current =
+            grouped.get(key) ??
+            {
+              category,
+              bloggerLink,
+              bloggerName: stripHtml(item.bloggername),
+              titles: [],
+              descriptions: [],
+              queries: new Set(),
+              links: new Set(),
+            };
+          current.queries.add(query);
+          current.links.add(ensureHttpUrl(stripHtml(item.link)));
+          current.titles.push(stripHtml(item.title));
+          current.descriptions.push(stripHtml(item.description));
+          grouped.set(key, current);
+        }
       }
     }
   }
@@ -846,6 +905,17 @@ async function collectCuratedInstagramCandidates() {
       const config = categoryConfigs[category];
       const followerCount = Number.parseInt(String(seed.follower_count ?? ""), 10);
       const profileUrl = `https://www.instagram.com/${handle}/`;
+      const inferredCategories = inferCategories(
+        [
+          seed.display_name,
+          seed.headline,
+          seed.bio,
+          seed.source_keyword,
+          seed.source_url,
+          handle,
+        ].join(" "),
+        category,
+      );
       const candidate = {
         id: stableUuid(`discovered:instagram:${handle}`),
         platform: "instagram",
@@ -857,7 +927,11 @@ async function collectCuratedInstagramCandidates() {
         bio: stripHtml(seed.bio).slice(0, 240),
         profile_url: profileUrl,
         avatar_url: null,
-        categories: seed.categories?.length ? seed.categories : config.categories,
+        categories: seed.categories?.length
+          ? inferCategories(seed.categories.join(" "), category)
+          : inferredCategories.length
+            ? inferredCategories
+            : config.categories,
         audience_countries: ["south_korea"],
         audience_tags: config.audienceTags,
         followers_label: Number.isFinite(followerCount)
@@ -1099,6 +1173,8 @@ async function main() {
         input: inputPath,
         minFollowers,
         maxFollowers,
+        youtubePages,
+        naverPages,
         total: rows.length,
         active: active.length,
         needs_review: rows.length - active.length,

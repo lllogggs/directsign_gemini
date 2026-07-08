@@ -9939,6 +9939,9 @@ const formatDiscoveredMetricLabel = (value: number | null | undefined) => {
 };
 
 const getDiscoveredCategoryLabel = (categories: string[]) => {
+  if (categories.some((category) => /game|게임|게이머|gaming/i.test(category))) {
+    return "게임";
+  }
   if (categories.some((category) => /beauty|뷰티|미용|화장/i.test(category))) {
     return "뷰티";
   }
