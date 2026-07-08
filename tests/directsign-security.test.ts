@@ -1601,6 +1601,8 @@ describe("yeollock.me security regressions", () => {
     assert.match(campaignPages, /export function PublicCampaignRecruitmentPage/);
     assert.match(campaignPages, /function getPublicCampaignDisplayCopy/);
     assert.match(campaignPages, /const campaignCopy = campaign \? getPublicCampaignDisplayCopy\(campaign\) : null/);
+    assert.match(campaignPages, /\/api\/influencer\/session/);
+    assert.match(campaignPages, /href: "\/influencer\/campaigns"/);
     assert.match(campaignPages, /getCampaignSharePath\(campaign\)/);
     assert.match(campaignPages, /copyCampaignLink/);
     assert.match(advertiserDashboard, /copyCampaignShareLink/);

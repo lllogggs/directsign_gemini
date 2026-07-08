@@ -1568,6 +1568,34 @@ export function PublicCampaignRecruitmentPage() {
     | { tone: "success" | "error"; message: string }
     | undefined
   >();
+  const [sessionStatus, setSessionStatus] = useState<
+    "checking" | "anonymous" | "authenticated"
+  >("checking");
+
+  useEffect(() => {
+    let active = true;
+
+    void apiFetch("/api/influencer/session", {
+      headers: { Accept: "application/json" },
+      credentials: "include",
+    })
+      .then(async (response) => {
+        const data = (await response.json().catch(() => ({}))) as
+          InfluencerSessionStatusResponse;
+        if (!active) return;
+        setSessionStatus(
+          response.ok && data.authenticated === true ? "authenticated" : "anonymous",
+        );
+      })
+      .catch(() => {
+        if (!active) return;
+        setSessionStatus("anonymous");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -1704,6 +1732,16 @@ export function PublicCampaignRecruitmentPage() {
       : campaignId
         ? `/campaigns/${encodeURIComponent(campaignId)}`
         : undefined) ?? "/influencer/campaigns";
+  const accountLink =
+    sessionStatus === "authenticated"
+      ? {
+          href: "/influencer/campaigns",
+          label: "내 캠페인",
+        }
+      : {
+          href: `/login/influencer?next=${encodeURIComponent(currentSharePath)}`,
+          label: "지원 계정 로그인",
+        };
 
   return (
     <main className="min-h-svh bg-[#f7f6f3] font-sans text-neutral-950">
@@ -1716,10 +1754,10 @@ export function PublicCampaignRecruitmentPage() {
             </span>
           </Link>
           <Link
-            to={`/login/influencer?next=${encodeURIComponent(currentSharePath)}`}
+            to={accountLink.href}
             className="inline-flex h-10 items-center justify-center rounded-[10px] border border-neutral-200 bg-white px-3 text-[13px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:text-neutral-950"
           >
-            지원 계정 로그인
+            {accountLink.label}
           </Link>
         </div>
       </header>
