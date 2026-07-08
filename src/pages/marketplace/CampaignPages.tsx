@@ -5,6 +5,7 @@ import {
   CalendarDays,
   ChevronDown,
   CheckCircle2,
+  Copy,
   ExternalLink,
   FileSignature,
   FileText,
@@ -30,7 +31,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
 import {
@@ -161,6 +162,10 @@ type MarketplaceCampaignsResponse = {
   campaigns: MarketplaceCampaignPost[];
 };
 
+type MarketplaceCampaignResponse = {
+  campaign: MarketplaceCampaignPost;
+};
+
 type AdvertiserCampaignsResponse = {
   brand: MarketplaceBrandProfile | null;
   campaigns: MarketplaceBrandCampaign[];
@@ -233,6 +238,34 @@ const defaultCampaignShellMetrics: CampaignShellMetric[] = [
   { label: "검토", value: "상대 확인" },
   { label: "선정", value: "계약서 준비" },
 ];
+
+function getCampaignSharePath(campaign: { id?: string }) {
+  return campaign.id ? `/campaigns/${encodeURIComponent(campaign.id)}` : undefined;
+}
+
+function getCampaignShareUrl(campaign: { id?: string }) {
+  const path = getCampaignSharePath(campaign);
+  if (!path) return undefined;
+  if (typeof window === "undefined") return path;
+  return new URL(path, window.location.origin).toString();
+}
+
+async function copyTextToClipboard(text: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  textarea.remove();
+}
 
 export function AdvertiserCampaignRecruitmentPage() {
   const navigate = useNavigate();
@@ -1245,7 +1278,10 @@ export function InfluencerCampaignDiscoveryPage() {
       );
 
       if (response.status === 401) {
-        navigate("/login/influencer", { replace: true });
+        const nextPath = getCampaignSharePath(campaign) ?? "/influencer/campaigns";
+        navigate(`/login/influencer?next=${encodeURIComponent(nextPath)}`, {
+          replace: true,
+        });
         return;
       }
 
@@ -1515,6 +1551,282 @@ export function InfluencerCampaignDiscoveryPage() {
   );
 }
 
+export function PublicCampaignRecruitmentPage() {
+  const navigate = useNavigate();
+  const { campaignId } = useParams<{ campaignId: string }>();
+  const [state, setState] = useState<
+    | { status: "loading" }
+    | { status: "ready"; campaign: MarketplaceCampaignPost }
+    | { status: "error"; message: string }
+  >(() =>
+    campaignId
+      ? { status: "loading" }
+      : { status: "error", message: "모집 링크를 찾을 수 없습니다." },
+  );
+  const [applyingCampaignId, setApplyingCampaignId] = useState<string | undefined>();
+  const [applicationNotice, setApplicationNotice] = useState<
+    | { tone: "success" | "error"; message: string }
+    | undefined
+  >();
+
+  useEffect(() => {
+    let active = true;
+
+    if (!campaignId) {
+      return () => {
+        active = false;
+      };
+    }
+
+    void apiFetch(`/api/marketplace/campaigns/${encodeURIComponent(campaignId)}`, {
+      headers: { Accept: "application/json" },
+    })
+      .then(async (response) => {
+        const data = (await response.json().catch(() => ({}))) as
+          | MarketplaceCampaignResponse
+          | { error?: string };
+        if (!response.ok || !("campaign" in data)) {
+          throw new Error(
+            "error" in data
+              ? data.error ?? "모집글을 불러오지 못했습니다."
+              : "모집글을 불러오지 못했습니다.",
+          );
+        }
+        return data.campaign;
+      })
+      .then((campaign) => {
+        if (!active) return;
+        setState({ status: "ready", campaign });
+      })
+      .catch((error) => {
+        if (!active) return;
+        setState({
+          status: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : "모집글을 불러오지 못했습니다.",
+        });
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [campaignId]);
+
+  const applyToCampaign = async (campaign: MarketplaceCampaignPost) => {
+    if (applyingCampaignId) return;
+    const campaignCopy = getCampaignDisplayCopy(campaign);
+
+    const confirmed = window.confirm(
+      `${campaignCopy.title} 캠페인에 신청할까요? 신청 내역은 신청한 캠페인에 표시됩니다.`,
+    );
+    if (!confirmed) return;
+
+    setApplyingCampaignId(campaign.id);
+    setApplicationNotice({
+      tone: "success",
+      message: `${campaignCopy.title} 신청을 전송 중입니다.`,
+    });
+
+    try {
+      const response = await apiFetch(
+        `/api/marketplace/campaigns/${encodeURIComponent(campaign.id)}/applications`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+        },
+      );
+
+      if (response.status === 401) {
+        const nextPath = getCampaignSharePath(campaign) ?? "/influencer/campaigns";
+        navigate(`/login/influencer?next=${encodeURIComponent(nextPath)}`, {
+          replace: true,
+        });
+        return;
+      }
+
+      const data = (await response.json().catch(() => ({}))) as
+        | CampaignApplicationResponse
+        | { error?: string };
+
+      if (!response.ok || !("proposal" in data)) {
+        throw new Error(
+          "error" in data
+            ? data.error ?? "캠페인 신청을 저장하지 못했습니다."
+            : "캠페인 신청을 저장하지 못했습니다.",
+        );
+      }
+
+      setApplicationNotice({
+        tone: "success",
+        message: data.already_submitted
+          ? "이미 신청한 캠페인입니다. 광고주가 확인하면 선정자별 진행으로 이어집니다."
+          : "신청이 전달됐습니다. 광고주가 선정하면 이 캠페인의 계약서 초안이 만들어집니다.",
+      });
+    } catch (error) {
+      setApplicationNotice({
+        tone: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "캠페인 신청을 저장하지 못했습니다.",
+      });
+    } finally {
+      setApplyingCampaignId(undefined);
+    }
+  };
+
+  const campaign = state.status === "ready" ? state.campaign : null;
+  const campaignCopy = campaign ? getCampaignDisplayCopy(campaign) : null;
+  const facts = campaign ? getCampaignRecruitmentFacts(campaign) : [];
+  const targetCountryLabel = campaign
+    ? formatMarketplaceCountries(campaign.targetCountries)
+    : "";
+  const detailRows = campaign
+    ? [
+        ...(targetCountryLabel ? [{ label: "국가", value: targetCountryLabel }] : []),
+        { label: "제공상품", value: getCampaignOfferLabel(campaign) },
+        { label: "지급조건", value: campaign.budget },
+        {
+          label: "콘텐츠",
+          value: campaign.deliverables?.join(", ") || getCampaignMissionLabel(campaign),
+        },
+        { label: "참여 미션", value: getCampaignMissionLabel(campaign) },
+        { label: "모집마감", value: getCampaignDeadlineLabel(campaign.deadline) },
+        { label: "제출마감", value: getCampaignSubmissionDeadlineLabel(campaign) },
+      ]
+    : [];
+  const currentSharePath =
+    (campaign
+      ? getCampaignSharePath(campaign)
+      : campaignId
+        ? `/campaigns/${encodeURIComponent(campaignId)}`
+        : undefined) ?? "/influencer/campaigns";
+
+  return (
+    <main className="min-h-svh bg-[#f7f6f3] font-sans text-neutral-950">
+      <header className="border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
+        <div className="mx-auto flex h-14 max-w-[1180px] items-center justify-between px-4 sm:px-6 lg:px-8">
+          <Link to="/" className="flex min-w-0 shrink-0 items-center gap-3">
+            <LogoMark />
+            <span className="font-neo-heavy text-[18px] leading-none text-neutral-950">
+              {PRODUCT_NAME}
+            </span>
+          </Link>
+          <Link
+            to={`/login/influencer?next=${encodeURIComponent(currentSharePath)}`}
+            className="inline-flex h-10 items-center justify-center rounded-[10px] border border-neutral-200 bg-white px-3 text-[13px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:text-neutral-950"
+          >
+            지원 계정 로그인
+          </Link>
+        </div>
+      </header>
+
+      <section className="mx-auto flex min-h-[calc(100svh-56px)] w-full max-w-[1180px] flex-col px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
+        {state.status === "loading" ? (
+          <PanelState
+            icon={<RefreshCw className="h-5 w-5 animate-spin" />}
+            title="모집글을 불러오는 중"
+          />
+        ) : state.status === "error" ? (
+          <PanelState
+            icon={<Megaphone className="h-5 w-5" />}
+            title={state.message}
+            body="모집이 종료되었거나 링크가 변경되었을 수 있습니다."
+          />
+        ) : campaign && campaignCopy ? (
+          <article className="grid min-h-0 flex-1 overflow-hidden rounded-[12px] border border-neutral-200 bg-white shadow-[0_14px_40px_rgba(15,23,42,0.07)] lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+            <div className="min-h-0 border-b border-neutral-200 bg-[#fbfaf7] lg:border-b-0 lg:border-r">
+              <CampaignThumbnail campaign={campaign} className="h-[260px] lg:h-full" />
+            </div>
+
+            <div className="flex min-h-0 flex-col">
+              <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
+                <div className="flex min-w-0 items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-[13px] font-extrabold text-neutral-500">
+                      {campaign.brandName} · {campaign.brandCategory}
+                    </p>
+                    <h1 className="mt-2 break-keep text-[25px] font-black leading-8 text-neutral-950 sm:text-[34px] sm:leading-10">
+                      {campaignCopy.title}
+                    </h1>
+                  </div>
+                  <CampaignPlatformLogoMarks
+                    platforms={campaign.platforms ?? []}
+                    compact
+                    className="mt-1 justify-end"
+                  />
+                </div>
+
+                <p className="mt-4 break-keep text-[14px] font-bold leading-7 text-neutral-600">
+                  {campaignCopy.summary}
+                </p>
+
+                <div className="mt-5 grid grid-cols-2 gap-3">
+                  {facts.map((fact) => (
+                    <CampaignInlineFact
+                      key={fact.label}
+                      icon={fact.icon}
+                      label={fact.label}
+                      value={fact.value}
+                    />
+                  ))}
+                </div>
+
+                <dl className="mt-6 grid gap-2 border-t border-neutral-200 pt-4">
+                  {detailRows.map((row) => (
+                    <div
+                      key={row.label}
+                      className="grid grid-cols-[86px_minmax(0,1fr)] gap-3 border-b border-neutral-100 pb-2 last:border-b-0"
+                    >
+                      <dt className="text-[12px] font-extrabold text-neutral-400">
+                        {row.label}
+                      </dt>
+                      <dd className="break-keep text-[13px] font-extrabold leading-5 text-neutral-900">
+                        {row.value}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+
+              <div className="shrink-0 border-t border-neutral-200 bg-white p-3 sm:flex sm:items-center sm:justify-between sm:gap-3">
+                {applicationNotice ? (
+                  <p
+                    className={`mb-3 break-keep rounded-[8px] border px-3 py-2 text-[12px] font-extrabold leading-5 sm:mb-0 ${
+                      applicationNotice.tone === "success"
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                        : "border-rose-200 bg-rose-50 text-rose-700"
+                    }`}
+                  >
+                    {applicationNotice.message}
+                  </p>
+                ) : (
+                  <p className="mb-3 break-keep text-[12px] font-bold leading-5 text-neutral-500 sm:mb-0">
+                    신청 후 광고주가 선정하면 계약서와 서명 진행이 시작됩니다.
+                  </p>
+                )}
+                <button
+                  type="button"
+                  onClick={() => applyToCampaign(campaign)}
+                  disabled={applyingCampaignId === campaign.id}
+                  aria-busy={applyingCampaignId === campaign.id}
+                  className="yl-primary-action inline-flex h-11 w-full items-center justify-center gap-2 rounded-[8px] px-4 text-[13px] font-extrabold disabled:cursor-wait disabled:bg-neutral-300 disabled:text-neutral-500 sm:w-[180px]"
+                >
+                  <Send className="h-4 w-4" />
+                  {applyingCampaignId === campaign.id ? "신청 중" : "신청하기"}
+                </button>
+              </div>
+            </div>
+          </article>
+        ) : null}
+      </section>
+    </main>
+  );
+}
+
 function CampaignShell({
   eyebrow,
   title,
@@ -1757,9 +2069,24 @@ function AdvertiserCampaignTable({
 }: {
   campaigns: MarketplaceBrandCampaign[];
 }) {
+  const [copiedCampaignId, setCopiedCampaignId] = useState<string | undefined>();
+
+  const copyCampaignLink = async (campaign: MarketplaceBrandCampaign) => {
+    const shareUrl = getCampaignShareUrl(campaign);
+    if (!shareUrl || !campaign.id) return;
+
+    await copyTextToClipboard(shareUrl);
+    setCopiedCampaignId(campaign.id);
+    window.setTimeout(() => {
+      setCopiedCampaignId((current) =>
+        current === campaign.id ? undefined : current,
+      );
+    }, 1600);
+  };
+
   return (
     <section className="mt-4 overflow-hidden rounded-[12px] border border-neutral-200 bg-white">
-      <div className="hidden grid-cols-[minmax(0,1.2fr)_minmax(92px,0.62fr)_82px_66px] gap-3 border-b border-neutral-200 bg-[#f8faf7] px-3 py-2 sm:grid">
+      <div className="hidden grid-cols-[minmax(0,1.2fr)_minmax(92px,0.62fr)_82px_66px_96px] gap-3 border-b border-neutral-200 bg-[#f8faf7] px-3 py-2 sm:grid">
         <span className="text-[11px] font-black text-neutral-600">캠페인</span>
         <span className="text-[11px] font-black text-neutral-600">제공</span>
         <span className="text-right text-[11px] font-black text-neutral-600">
@@ -1768,12 +2095,17 @@ function AdvertiserCampaignTable({
         <span className="text-right text-[11px] font-black text-neutral-600">
           상태
         </span>
+        <span className="text-right text-[11px] font-black text-neutral-600">
+          링크
+        </span>
       </div>
       <div className="divide-y divide-neutral-100">
         {campaigns.map((campaign) => (
           <AdvertiserCampaignRow
             key={campaign.id ?? `${campaign.title}-${campaign.type}`}
             campaign={campaign}
+            copied={copiedCampaignId === campaign.id}
+            onCopyLink={copyCampaignLink}
           />
         ))}
       </div>
@@ -1783,14 +2115,19 @@ function AdvertiserCampaignTable({
 
 function AdvertiserCampaignRow({
   campaign,
+  copied,
+  onCopyLink,
 }: {
   key?: string;
   campaign: MarketplaceBrandCampaign;
+  copied: boolean;
+  onCopyLink: (campaign: MarketplaceBrandCampaign) => void;
 }) {
   const statusMeta = getAdvertiserCampaignStatusMeta(campaign);
+  const shareUrl = getCampaignShareUrl(campaign);
 
   return (
-    <article className="grid gap-2 px-3 py-3 sm:grid-cols-[minmax(0,1.2fr)_minmax(92px,0.62fr)_82px_66px] sm:items-center">
+    <article className="grid gap-2 px-3 py-3 sm:grid-cols-[minmax(0,1.2fr)_minmax(92px,0.62fr)_82px_66px_96px] sm:items-center">
       <div className="min-w-0">
         <p className="truncate text-[13px] font-extrabold text-neutral-950">
           {campaign.title}
@@ -1829,6 +2166,20 @@ function AdvertiserCampaignRow({
         >
           {statusMeta.label}
         </span>
+      </div>
+      <div className="flex justify-start sm:justify-end">
+        {shareUrl ? (
+          <button
+            type="button"
+            onClick={() => onCopyLink(campaign)}
+            className="inline-flex h-8 w-[92px] items-center justify-center gap-1.5 rounded-md border border-neutral-200 bg-white px-2 text-[11px] font-extrabold text-neutral-700 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+            aria-label={`${campaign.title} 모집 링크 복사`}
+            title="모집 링크 복사"
+          >
+            <Copy className="h-3.5 w-3.5" />
+            {copied ? "복사됨" : "링크 복사"}
+          </button>
+        ) : null}
       </div>
     </article>
   );

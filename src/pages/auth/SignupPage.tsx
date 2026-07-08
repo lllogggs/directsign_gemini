@@ -80,7 +80,9 @@ export function SignupPage({ role }: { role: SignupRole }) {
   const location = useLocation();
   const config = roleConfig[role];
   const allowedNextPrefixes =
-    role === "influencer" ? ["/influencer", "/contract"] : ["/advertiser"];
+    role === "influencer"
+      ? ["/influencer", "/contract", "/campaigns"]
+      : ["/advertiser"];
   const nextPath = getNextPath(
     location.search,
     config.nextPath,
@@ -89,8 +91,12 @@ export function SignupPage({ role }: { role: SignupRole }) {
   const loginRedirectPath = `${config.loginPath}?next=${encodeURIComponent(nextPath)}`;
   const isContractContinuationSignup =
     role === "influencer" && nextPath.startsWith("/contract/");
+  const isCampaignContinuationSignup =
+    role === "influencer" && nextPath.startsWith("/campaigns/");
   const signupSubmitLabel = isContractContinuationSignup
     ? "가입하고 계약으로 돌아가기"
+    : isCampaignContinuationSignup
+      ? "가입하고 캠페인으로 돌아가기"
     : "가입하기";
   const [name, setName] = useState("");
   const [companyName, setCompanyName] = useState("");

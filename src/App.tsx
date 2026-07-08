@@ -232,6 +232,11 @@ const InfluencerCampaignDiscoveryPage = lazy(() =>
     default: module.InfluencerCampaignDiscoveryPage,
   })),
 );
+const PublicCampaignRecruitmentPage = lazy(() =>
+  loadCampaignPages().then((module) => ({
+    default: module.PublicCampaignRecruitmentPage,
+  })),
+);
 
 type LoadingCopy = {
   label: string;
@@ -1167,6 +1172,7 @@ const getExactRoutePreloaders = (pathname: string): RouteModuleLoader[] => {
   if (pathname === "/influencer/campaigns") return [loadCampaignPages];
   if (pathname === "/influencer/messages") return [loadMarketplaceInboxPage];
   if (pathname === "/influencer/verification") return [loadInfluencerVerification];
+  if (pathname.startsWith("/campaigns/")) return [loadCampaignPages];
   if (pathname.startsWith("/brands/")) return [loadMarketplacePages];
   if (pathname === "/resources" || pathname.startsWith("/resources/")) return [];
   if (pathname !== "/" && pathname.split("/").filter(Boolean).length === 1) {
@@ -1253,6 +1259,7 @@ const getImmediateRoutePreloaders = (
     const nextPath = getNextPath(search, "/influencer/dashboard", [
       "/influencer",
       "/contract",
+      "/campaigns",
     ]);
     return [loadInfluencerDashboard, ...getExactRoutePreloaders(nextPath)];
   }
@@ -1597,6 +1604,10 @@ function AppRoutes() {
           <Route
             path="/influencer/messages"
             element={<InfluencerMessagesPage />}
+          />
+          <Route
+            path="/campaigns/:campaignId"
+            element={<PublicCampaignRecruitmentPage />}
           />
           <Route path="/brands/:brandHandle" element={<PublicBrandProfilePage />} />
           <Route path="/:profileHandle" element={<PublicInfluencerProfilePage />} />

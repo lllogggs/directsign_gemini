@@ -25,6 +25,7 @@ export function InfluencerLoginPage() {
   const nextPath = getNextPath(location.search, "/influencer/dashboard", [
     "/influencer",
     "/contract",
+    "/campaigns",
   ]);
   const initialLoginError =
     typeof (location.state as { loginError?: unknown } | null)?.loginError ===
@@ -35,6 +36,15 @@ export function InfluencerLoginPage() {
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState(initialLoginError);
+  const isCampaignContinuation = nextPath.startsWith("/campaigns/");
+  const loginDescription = isCampaignContinuation
+    ? "캠페인 신청 화면으로 이동합니다."
+    : nextPath.startsWith("/contract/")
+      ? "계약 화면으로 이동합니다."
+      : "인플루언서 대시보드로 이동합니다.";
+  const loginErrorHint = isCampaignContinuation
+    ? "이메일과 비밀번호를 확인해 주세요. 처음 신청하는 캠페인이라면 계정 만들기 후 같은 모집글로 돌아옵니다."
+    : "이메일과 비밀번호를 확인해 주세요. 처음 확인하는 1:1 계약이라면 계정 만들기 후 같은 계약으로 돌아옵니다.";
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -113,7 +123,7 @@ export function InfluencerLoginPage() {
   return (
     <AuthLoginScreen
       title="인플루언서 로그인"
-      description="1:1 계약 화면으로 이동합니다."
+      description={loginDescription}
       fields={[
         {
           id: "email",
@@ -138,7 +148,7 @@ export function InfluencerLoginPage() {
       submitLabel="로그인"
       isSubmitting={isSubmitting}
       error={error}
-      errorHint="이메일과 비밀번호를 확인해 주세요. 처음 확인하는 1:1 계약이라면 계정 만들기 후 같은 계약으로 돌아옵니다."
+      errorHint={loginErrorHint}
       postSubmit={<AuthPasswordResetLink href="/reset-password?role=influencer" />}
       belowCard={
         <>

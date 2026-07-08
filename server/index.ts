@@ -19358,6 +19358,35 @@ app.get("/api/marketplace/campaigns", async (_request, response, next) => {
   }
 });
 
+app.get("/api/marketplace/campaigns/:campaignId", async (request, response, next) => {
+  try {
+    const campaigns = await readPublicMarketplaceCache(
+      "marketplace-campaigns",
+      async () =>
+        buildMarketplaceCampaignPosts(
+          await readPublicMarketplaceCache(
+            "marketplace-brands",
+            readMarketplaceBrandProfiles,
+            { fallback: fallbackMarketplaceBrandProfiles },
+          ),
+        ),
+      { fallback: fallbackMarketplaceCampaignPosts },
+    );
+    const campaign = campaigns.find(
+      (candidate) => candidate.id === request.params.campaignId,
+    );
+
+    if (!campaign) {
+      response.status(404).json({ error: "Campaign not found" });
+      return;
+    }
+
+    sendPublicMarketplaceJson(response, { campaign }, "marketplace-campaigns");
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post(
   "/api/marketplace/campaigns/:campaignId/applications",
   async (request, response, next) => {

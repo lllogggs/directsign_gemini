@@ -1494,6 +1494,8 @@ describe("yeollock.me security regressions", () => {
     const influencerDashboard = read("src/pages/influencer/InfluencerDashboard.tsx");
     const campaignPages = read("src/pages/marketplace/CampaignPages.tsx");
     const marketplacePages = read("src/pages/marketplace/MarketplacePages.tsx");
+    const influencerLoginPage = read("src/pages/influencer/InfluencerLoginPage.tsx");
+    const signupPage = read("src/pages/auth/SignupPage.tsx");
     const practitionerIntroduction = read("docs/sales/advertiser-practitioner-introduction.html");
     const practitionerGuide = read("docs/sales/advertiser-practitioner-guide.html");
     const app = read("src/App.tsx");
@@ -1593,6 +1595,16 @@ describe("yeollock.me security regressions", () => {
     assert.match(campaignPages, /캠페인 계약서 진행이 시작됩니다/);
     assert.match(practitionerIntroduction, /선정자별 진행을 관리합니다/);
     assert.match(practitionerGuide, /캠페인 상세에서 선정자별로 봅니다/);
+    assert.match(app, /path="\/campaigns\/:campaignId"/);
+    assert.match(app, /PublicCampaignRecruitmentPage/);
+    assert.match(server, /app\.get\("\/api\/marketplace\/campaigns\/:campaignId"/);
+    assert.match(campaignPages, /export function PublicCampaignRecruitmentPage/);
+    assert.match(campaignPages, /getCampaignSharePath\(campaign\)/);
+    assert.match(campaignPages, /copyCampaignLink/);
+    assert.match(advertiserDashboard, /copyCampaignShareLink/);
+    assert.match(advertiserDashboard, /getCampaignShareUrl\(campaign\)/);
+    assert.match(influencerLoginPage, /"\/campaigns"/);
+    assert.match(signupPage, /"\/campaigns"/);
     for (const source of [
       advertiserDashboard,
       campaignPages,

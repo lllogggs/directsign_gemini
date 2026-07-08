@@ -191,6 +191,41 @@ type CampaignActivity = {
   title: string;
   description: string;
 };
+
+function getCampaignSharePath(campaign: {
+  campaignId?: string;
+  marketplaceCampaign?: { id?: string };
+}) {
+  const campaignId = campaign.campaignId ?? campaign.marketplaceCampaign?.id;
+  return campaignId ? `/campaigns/${encodeURIComponent(campaignId)}` : undefined;
+}
+
+function getCampaignShareUrl(campaign: {
+  campaignId?: string;
+  marketplaceCampaign?: { id?: string };
+}) {
+  const path = getCampaignSharePath(campaign);
+  if (!path) return undefined;
+  if (typeof window === "undefined") return path;
+  return new URL(path, window.location.origin).toString();
+}
+
+async function copyTextToClipboard(text: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  textarea.remove();
+}
 type MarketplaceDashboardState = {
   status: "loading" | "ready" | "error";
   campaigns: MarketplaceBrandCampaign[];
@@ -3128,6 +3163,7 @@ function CampaignDetailView({
   const [postLinkFilter, setPostLinkFilter] =
     useState<DetailPostLinkFilter>("ALL");
   const [detailFiltersOpen, setDetailFiltersOpen] = useState(false);
+  const [isCampaignLinkCopied, setIsCampaignLinkCopied] = useState(false);
   const completionRatio =
     campaign.acceptedParticipantCount > 0
       ? Math.min(100, Math.round((campaign.completedCount / campaign.acceptedParticipantCount) * 100))
@@ -3137,6 +3173,14 @@ function CampaignDetailView({
   const detailProgressTitle = isEndedDetail ? "최종 진행 기록" : "선정자별 진행";
   const statusMeta = getCampaignLifecycleMeta(campaign);
   const typeLabel = getCampaignTypeLabel(campaign);
+  const campaignShareUrl = getCampaignShareUrl(campaign);
+  const copyCampaignShareLink = async () => {
+    if (!campaignShareUrl) return;
+
+    await copyTextToClipboard(campaignShareUrl);
+    setIsCampaignLinkCopied(true);
+    window.setTimeout(() => setIsCampaignLinkCopied(false), 1600);
+  };
   const platformOptions = PLATFORM_FILTERS.map((platform) => ({
     value: platform,
     label: formatPlatformFilterLabel(platform),
@@ -3266,6 +3310,18 @@ function CampaignDetailView({
                 style={{ width: `${completionRatio}%` }}
               />
             </div>
+            {campaignShareUrl ? (
+              <button
+                type="button"
+                onClick={() => void copyCampaignShareLink()}
+                className="inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-md border border-blue-200 bg-white px-2.5 text-[12px] font-extrabold text-blue-700 transition hover:border-blue-300 hover:bg-blue-50"
+                aria-label={`${campaign.name} 모집 링크 복사`}
+                title="모집 링크 복사"
+              >
+                <CopyCheck className="h-3.5 w-3.5" />
+                {isCampaignLinkCopied ? "복사됨" : "모집 링크 복사"}
+              </button>
+            ) : null}
             <CampaignStatusActions
               campaign={campaign}
               onUpdateStatus={onUpdateCampaignStatus}
