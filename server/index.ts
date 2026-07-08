@@ -43,6 +43,7 @@ import {
   findBrandProfileByHandle,
   findInfluencerProfileByHandle,
   formatMarketplaceCountries,
+  isMarketplaceApplicationBrandId,
   mergeMarketplaceBrandProfiles,
   mergeMarketplaceInfluencerProfiles,
   marketplaceCountryOptions,
@@ -12156,7 +12157,7 @@ const submitMarketplaceCampaignApplication = async (
   }
 
   const campaign = await findMarketplaceCampaignPostById(campaignId);
-  if (!campaign || !isUuid(campaign.brandId)) {
+  if (!campaign || !isMarketplaceApplicationBrandId(campaign.brandId)) {
     return {
       ok: false as const,
       status: 404,

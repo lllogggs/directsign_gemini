@@ -193,7 +193,14 @@ export type MarketplaceCampaignPost = MarketplaceBrandCampaign & {
   typeLabel: string;
   platformLabels: string[];
   deadlineLabel: string;
+  acceptsApplications: boolean;
 };
+
+export function isMarketplaceApplicationBrandId(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value,
+  );
+}
 
 export const proposalTypeLabels: Record<CampaignProposalType, string> = {
   sponsored_post: "유료 광고",
@@ -1244,6 +1251,7 @@ export function buildMarketplaceCampaignPosts(
           thumbnailUrl: campaign.thumbnailUrl ?? brand.logoUrl,
           platforms,
           status: campaign.status ?? "open",
+          acceptsApplications: isMarketplaceApplicationBrandId(brand.id),
         } satisfies MarketplaceCampaignPost;
       }),
     )

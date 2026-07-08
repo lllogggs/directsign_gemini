@@ -1253,6 +1253,15 @@ export function InfluencerCampaignDiscoveryPage() {
 
   const applyToCampaign = async (campaign: MarketplaceCampaignPost) => {
     if (applyingCampaignId) return;
+    if (!canApplyToMarketplaceCampaign(campaign)) {
+      setApplicationNotice({
+        tone: "error",
+        message:
+          "이 모집글은 현재 신청을 받을 수 없습니다. 광고주가 공유한 최신 모집 링크로 다시 확인해주세요.",
+      });
+      return;
+    }
+
     const campaignCopy = getCampaignDisplayCopy(campaign);
 
     const confirmed = window.confirm(
@@ -1644,6 +1653,15 @@ export function PublicCampaignRecruitmentPage() {
 
   const applyToCampaign = async (campaign: MarketplaceCampaignPost) => {
     if (applyingCampaignId) return;
+    if (!canApplyToMarketplaceCampaign(campaign)) {
+      setApplicationNotice({
+        tone: "error",
+        message:
+          "이 모집글은 현재 신청을 받을 수 없습니다. 광고주가 공유한 최신 모집 링크로 다시 확인해주세요.",
+      });
+      return;
+    }
+
     const campaignCopy = getPublicCampaignDisplayCopy(campaign);
 
     const confirmed = window.confirm(
@@ -1708,6 +1726,9 @@ export function PublicCampaignRecruitmentPage() {
 
   const campaign = state.status === "ready" ? state.campaign : null;
   const campaignCopy = campaign ? getPublicCampaignDisplayCopy(campaign) : null;
+  const canApplyToCurrentCampaign = campaign
+    ? canApplyToMarketplaceCampaign(campaign)
+    : false;
   const facts = campaign ? getCampaignRecruitmentFacts(campaign) : [];
   const targetCountryLabel = campaign
     ? formatMarketplaceCountries(campaign.targetCountries)
@@ -1843,18 +1864,26 @@ export function PublicCampaignRecruitmentPage() {
                   </p>
                 ) : (
                   <p className="mb-3 break-keep text-[12px] font-bold leading-5 text-neutral-500 sm:mb-0">
-                    신청 후 광고주가 선정하면 계약서와 서명 진행이 시작됩니다.
+                    {canApplyToCurrentCampaign
+                      ? "신청 후 광고주가 선정하면 계약서와 서명 진행이 시작됩니다."
+                      : "광고주가 공유한 최신 모집 링크에서 신청할 수 있습니다."}
                   </p>
                 )}
                 <button
                   type="button"
                   onClick={() => applyToCampaign(campaign)}
-                  disabled={applyingCampaignId === campaign.id}
+                  disabled={
+                    applyingCampaignId === campaign.id ||
+                    !canApplyToMarketplaceCampaign(campaign)
+                  }
                   aria-busy={applyingCampaignId === campaign.id}
-                  className="yl-primary-action inline-flex h-11 w-full items-center justify-center gap-2 rounded-[8px] px-4 text-[13px] font-extrabold disabled:cursor-wait disabled:bg-neutral-300 disabled:text-neutral-500 sm:w-[180px]"
+                  className="yl-primary-action inline-flex h-11 w-full items-center justify-center gap-2 rounded-[8px] px-4 text-[13px] font-extrabold disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:text-neutral-500 sm:w-[180px]"
                 >
                   <Send className="h-4 w-4" />
-                  {applyingCampaignId === campaign.id ? "신청 중" : "신청하기"}
+                  {getCampaignApplyButtonLabel(
+                    campaign,
+                    applyingCampaignId === campaign.id,
+                  )}
                 </button>
               </div>
             </div>
@@ -2901,6 +2930,18 @@ function getCampaignDisplayCopy(campaign: MarketplaceCampaignPost) {
   };
 }
 
+function canApplyToMarketplaceCampaign(campaign: MarketplaceCampaignPost) {
+  return campaign.acceptsApplications !== false;
+}
+
+function getCampaignApplyButtonLabel(
+  campaign: MarketplaceCampaignPost,
+  isApplying: boolean,
+) {
+  if (isApplying) return "신청 중";
+  return canApplyToMarketplaceCampaign(campaign) ? "신청하기" : "신청 준비 중";
+}
+
 function getPublicCampaignDisplayCopy(campaign: MarketplaceCampaignPost) {
   return {
     title: campaign.title,
@@ -3318,12 +3359,12 @@ function CampaignRecruitmentDetailDialog({
           <button
             type="button"
             onClick={() => onApply(campaign)}
-            disabled={isApplying}
+            disabled={isApplying || !canApplyToMarketplaceCampaign(campaign)}
             aria-busy={isApplying}
-            className="yl-primary-action inline-flex h-11 w-full items-center justify-center gap-2 rounded-[8px] px-4 text-[13px] font-extrabold disabled:cursor-wait disabled:bg-neutral-300 disabled:text-neutral-500 sm:w-[180px]"
+            className="yl-primary-action inline-flex h-11 w-full items-center justify-center gap-2 rounded-[8px] px-4 text-[13px] font-extrabold disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:text-neutral-500 sm:w-[180px]"
           >
             <Send className="h-4 w-4" />
-            {isApplying ? "신청 중" : "신청하기"}
+            {getCampaignApplyButtonLabel(campaign, isApplying)}
           </button>
         </div>
       </section>
@@ -3413,12 +3454,12 @@ function CampaignPostCard({
           <button
             type="button"
             onClick={() => onApply(campaign)}
-            disabled={isApplying}
+            disabled={isApplying || !canApplyToMarketplaceCampaign(campaign)}
             aria-busy={isApplying}
-            className="yl-primary-action inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-[8px] px-3 text-[12px] font-extrabold transition disabled:cursor-wait disabled:bg-neutral-300 disabled:text-neutral-500"
+            className="yl-primary-action inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-[8px] px-3 text-[12px] font-extrabold transition disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:text-neutral-500"
           >
             <Send className="h-3.5 w-3.5" />
-            {isApplying ? "신청 중" : "신청하기"}
+            {getCampaignApplyButtonLabel(campaign, isApplying)}
           </button>
         </div>
       </div>
