@@ -9,9 +9,13 @@ docs/sales/*business-emails*.csv
 docs/sales/*business-emails*.json
 docs/sales/*business-emails*.tsv
 docs/sales/*email-discovery*.json
+docs/sales/*outreach*.csv
+docs/sales/*outreach*.json
+docs/sales/*outreach*.tsv
 docs/sales/cold-email-leads.csv
 logs
 qa-artifacts
+docs/discovery
 docs/qa-reports
 docs/sales/review
 public/qa-captures
@@ -24,3 +28,5 @@ tmp
 *.log
 .env*
 .codex-*
+scripts/enrich-brand-ad-memos.mjs
+scripts/seed-feedback-demo-accounts.mjs
