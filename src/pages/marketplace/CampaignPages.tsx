@@ -118,6 +118,59 @@ const formatCampaignDateExample = (daysFromToday: number) => {
   )}-${String(date.getDate()).padStart(2, "0")}`;
 };
 
+function parseCampaignDate(value?: string) {
+  const match = String(value ?? "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]) - 1;
+  const day = Number(match[3]);
+  const date = new Date(year, month, day);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatCampaignDateValue(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(
+    2,
+    "0",
+  )}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function getCampaignCalendarMonth(value?: string) {
+  const date = parseCampaignDate(value) ?? new Date();
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function addCampaignCalendarMonths(date: Date, amount: number) {
+  return new Date(date.getFullYear(), date.getMonth() + amount, 1);
+}
+
+function formatCampaignCalendarMonthTitle(date: Date) {
+  return `${date.getFullYear()}년 ${date.getMonth() + 1}월`;
+}
+
+function formatCampaignDateButtonLabel(value: string) {
+  const date = parseCampaignDate(value);
+  if (!date) return value;
+  return `${date.getFullYear()}. ${String(date.getMonth() + 1).padStart(
+    2,
+    "0",
+  )}. ${String(date.getDate()).padStart(2, "0")}.`;
+}
+
+function getCampaignCalendarDays(month: Date) {
+  const firstDay = new Date(month.getFullYear(), month.getMonth(), 1);
+  const lastDay = new Date(month.getFullYear(), month.getMonth() + 1, 0);
+  const days: Array<Date | null> = Array.from(
+    { length: firstDay.getDay() },
+    () => null,
+  );
+  for (let day = 1; day <= lastDay.getDate(); day += 1) {
+    days.push(new Date(month.getFullYear(), month.getMonth(), day));
+  }
+  while (days.length % 7 !== 0) days.push(null);
+  return days;
+}
+
 const platformOptions: PlatformFilter[] = [
   "all",
   "instagram",
@@ -298,6 +351,7 @@ export function AdvertiserCampaignRecruitmentPage() {
   const [campaignImagePreview, setCampaignImagePreview] = useState<string | undefined>();
   const [campaignImageError, setCampaignImageError] = useState<string | undefined>();
   const [isCampaignImageUploading, setIsCampaignImageUploading] = useState(false);
+  const [openFormList, setOpenFormList] = useState<string | null>(null);
 
   const loadCampaigns = useCallback(async () => {
     setState((current) =>
@@ -725,54 +779,49 @@ export function AdvertiserCampaignRecruitmentPage() {
 
           <div className="mt-4 grid gap-4">
             <CampaignField label="플랫폼">
-              <div className="flex flex-wrap gap-2">
-                {platformOptions
+              <CampaignFormSelectList
+                id="campaign-form-platforms"
+                openId={openFormList}
+                onOpenChange={setOpenFormList}
+                summary={
+                  form.platforms.length > 0
+                    ? form.platforms.map((platform) => platformLabels[platform]).join(", ")
+                    : "선택"
+                }
+                options={platformOptions
                   .filter((platform): platform is InfluencerPlatform => platform !== "all")
-                  .map((platform) => {
-                    const active = form.platforms.includes(platform);
-                    return (
-                      <button
-                        key={platform}
-                        type="button"
-                        aria-pressed={active}
-                        onClick={() => togglePlatform(platform)}
-                        className={`inline-flex h-9 items-center rounded-[10px] border px-3 text-[12px] font-extrabold transition ${
-                          active
-                            ? "border-neutral-950 bg-neutral-950 text-white"
-                            : "border-neutral-200 bg-white text-neutral-500 hover:border-neutral-300 hover:text-neutral-950"
-                        }`}
-                      >
-                        {platformLabels[platform]}
-                      </button>
-                    );
-                })}
-              </div>
+                  .map((platform) => ({
+                    value: platform,
+                    label: platformLabels[platform],
+                  }))}
+                selectedValues={form.platforms}
+                onSelect={togglePlatform}
+              />
             </CampaignField>
 
             <CampaignField label="국가">
-              <div className="flex flex-wrap gap-2">
-                {marketplaceCountryOptions.map((country) => {
-                  const active = form.targetCountries.includes(country);
-                  return (
-                    <button
-                      key={country}
-                      type="button"
-                      aria-pressed={active}
-                      onClick={() => toggleTargetCountry(country)}
-                      className={`inline-flex h-9 items-center rounded-[10px] border px-3 text-[12px] font-extrabold transition ${
-                        active
-                          ? "border-neutral-950 bg-neutral-950 text-white"
-                          : "border-neutral-200 bg-white text-neutral-500 hover:border-neutral-300 hover:text-neutral-950"
-                      }`}
-                    >
-                      {getMarketplaceCountryLabel(country)}
-                    </button>
-                  );
-                })}
-              </div>
+              <CampaignFormSelectList
+                id="campaign-form-countries"
+                openId={openFormList}
+                onOpenChange={setOpenFormList}
+                summary={
+                  form.targetCountries.length > 0
+                    ? formatMarketplaceCountries(form.targetCountries)
+                    : "전체"
+                }
+                options={marketplaceCountryOptions.map((country) => ({
+                  value: country,
+                  label: getMarketplaceCountryLabel(country),
+                }))}
+                selectedValues={form.targetCountries}
+                onClear={() =>
+                  setForm((current) => ({ ...current, targetCountries: [] }))
+                }
+                onSelect={toggleTargetCountry}
+              />
             </CampaignField>
 
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-4">
               <CampaignField label="광고형태">
                 <select
                   value={form.type}
@@ -804,7 +853,7 @@ export function AdvertiserCampaignRecruitmentPage() {
               </CampaignField>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-4">
               <CampaignField label="지역/진행방식">
                 <input
                   required
@@ -832,7 +881,7 @@ export function AdvertiserCampaignRecruitmentPage() {
               </CampaignField>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-4">
               <CampaignField label="모집인원">
                 <input
                   required
@@ -878,61 +927,55 @@ export function AdvertiserCampaignRecruitmentPage() {
             <CampaignField label="참여 미션">
               <textarea
                 required
-                rows={2}
+                rows={3}
                 value={form.mission}
                 onChange={(event) =>
                   setForm((current) => ({ ...current, mission: event.target.value }))
                 }
                 placeholder={missionPlaceholder}
-                className="campaign-input resize-none"
+                className="campaign-input min-h-[96px] resize-y overflow-y-auto"
               />
             </CampaignField>
 
             <CampaignField label="캠페인설명">
               <textarea
                 required
-                rows={3}
+                rows={8}
                 value={form.summary}
                 onChange={(event) =>
                   setForm((current) => ({ ...current, summary: event.target.value }))
                 }
                 placeholder={summaryPlaceholder}
-                className="campaign-input resize-none"
+                className="campaign-input min-h-[190px] resize-y overflow-y-auto"
               />
             </CampaignField>
 
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-4">
               <CampaignField label="제출마감일">
-                <input
-                  required
-                  type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}"
-                  maxLength={10}
+                <CampaignDatePicker
+                  id="campaign-form-upload-deadline"
+                  openId={openFormList}
+                  onOpenChange={setOpenFormList}
                   value={form.uploadDeadline}
-                  onChange={(event) =>
+                  min={formatCampaignDateExample(1)}
+                  onChange={(value) =>
                     setForm((current) => ({
                       ...current,
-                      uploadDeadline: event.target.value,
+                      uploadDeadline: value,
                     }))
                   }
-                  placeholder={`예: ${formatCampaignDateExample(14)}`}
-                  className="campaign-input"
                 />
               </CampaignField>
               <CampaignField label="모집마감일">
-                <input
-                  required
-                  type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}"
-                  maxLength={10}
+                <CampaignDatePicker
+                  id="campaign-form-recruit-deadline"
+                  openId={openFormList}
+                  onOpenChange={setOpenFormList}
                   value={form.deadline}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, deadline: event.target.value }))
+                  min={formatCampaignDateExample(1)}
+                  onChange={(value) =>
+                    setForm((current) => ({ ...current, deadline: value }))
                   }
-                  placeholder={`예: ${formatCampaignDateExample(7)}`}
-                  className="campaign-input"
                 />
               </CampaignField>
             </div>
@@ -2062,6 +2105,178 @@ function CampaignField({
   );
 }
 
+function CampaignFormSelectList<T extends string>({
+  id,
+  openId,
+  onOpenChange,
+  summary,
+  options,
+  selectedValues,
+  onSelect,
+  onClear,
+}: {
+  id: string;
+  openId: string | null;
+  onOpenChange: (value: string | null) => void;
+  summary: string;
+  options: Array<{ value: T; label: string }>;
+  selectedValues: T[];
+  onSelect: (value: T) => void;
+  onClear?: () => void;
+}) {
+  const open = openId === id;
+  const selected = new Set<T>(selectedValues);
+  const isClearSelected = Boolean(onClear) && selectedValues.length === 0;
+
+  return (
+    <section className="min-w-0 overflow-hidden rounded-[10px] border border-neutral-200 bg-white">
+      <button
+        type="button"
+        onClick={() => onOpenChange(open ? null : id)}
+        aria-expanded={open}
+        className="flex h-11 w-full min-w-0 items-center justify-between gap-3 px-3 text-left transition hover:bg-neutral-50"
+      >
+        <span className="min-w-0 truncate text-[13px] font-extrabold text-neutral-950">
+          {summary}
+        </span>
+        <ChevronDown
+          className={`h-4 w-4 shrink-0 text-neutral-500 transition-transform ${
+            open ? "rotate-180" : ""
+          }`}
+          strokeWidth={2}
+        />
+      </button>
+      {open ? (
+        <div className="max-h-56 overflow-y-auto border-t border-neutral-100 p-1">
+          {onClear ? (
+            <CampaignFilterListOptionButton
+              label="전체"
+              selected={isClearSelected}
+              onClick={() => {
+                onClear();
+              }}
+            />
+          ) : null}
+          {options.map((option) => (
+            <CampaignFilterListOptionButton
+              key={String(option.value)}
+              label={option.label}
+              selected={selected.has(option.value)}
+              onClick={() => {
+                onSelect(option.value);
+              }}
+            />
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function CampaignDatePicker({
+  id,
+  openId,
+  onOpenChange,
+  value,
+  min,
+  onChange,
+}: {
+  id: string;
+  openId: string | null;
+  onOpenChange: (value: string | null) => void;
+  value: string;
+  min: string;
+  onChange: (value: string) => void;
+}) {
+  const open = openId === id;
+  const [visibleMonth, setVisibleMonth] = useState(() =>
+    getCampaignCalendarMonth(value || min),
+  );
+  const selectedDate = parseCampaignDate(value);
+  const minimumDate = parseCampaignDate(min);
+  const days = useMemo(() => getCampaignCalendarDays(visibleMonth), [visibleMonth]);
+
+  return (
+    <section className="relative min-w-0">
+      <button
+        type="button"
+        onClick={() => {
+          if (!open) setVisibleMonth(getCampaignCalendarMonth(value || min));
+          onOpenChange(open ? null : id);
+        }}
+        aria-expanded={open}
+        className="campaign-input flex items-center justify-between gap-3 text-left"
+      >
+        <span className={value ? "text-neutral-950" : "text-neutral-400"}>
+          {value ? formatCampaignDateButtonLabel(value) : "날짜 선택"}
+        </span>
+        <CalendarDays className="h-4 w-4 shrink-0 text-neutral-500" />
+      </button>
+      {open ? (
+        <div className="absolute bottom-full left-0 z-30 mb-2 w-full max-w-[360px] rounded-[12px] border border-neutral-200 bg-white p-3 shadow-[0_20px_44px_rgba(15,23,42,0.14)]">
+          <div className="flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() =>
+                setVisibleMonth((current) => addCampaignCalendarMonths(current, -1))
+              }
+              className="h-8 rounded-[8px] px-2 text-[12px] font-extrabold text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-950"
+            >
+              이전
+            </button>
+            <p className="text-[13px] font-extrabold text-neutral-950">
+              {formatCampaignCalendarMonthTitle(visibleMonth)}
+            </p>
+            <button
+              type="button"
+              onClick={() =>
+                setVisibleMonth((current) => addCampaignCalendarMonths(current, 1))
+              }
+              className="h-8 rounded-[8px] px-2 text-[12px] font-extrabold text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-950"
+            >
+              다음
+            </button>
+          </div>
+          <div className="mt-3 grid grid-cols-7 gap-1 text-center text-[11px] font-extrabold text-neutral-400">
+            {["일", "월", "화", "수", "목", "금", "토"].map((day) => (
+              <span key={day}>{day}</span>
+            ))}
+          </div>
+          <div className="mt-1 grid grid-cols-7 gap-1">
+            {days.map((day, index) => {
+              if (!day) return <span key={`empty-${index}`} className="h-8" />;
+              const dateValue = formatCampaignDateValue(day);
+              const disabled = minimumDate ? day < minimumDate : false;
+              const selected =
+                Boolean(selectedDate) && dateValue === formatCampaignDateValue(selectedDate);
+              return (
+                <button
+                  key={dateValue}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => {
+                    onChange(dateValue);
+                    onOpenChange(null);
+                  }}
+                  className={`h-8 rounded-[8px] text-[12px] font-extrabold transition ${
+                    selected
+                      ? "bg-blue-600 text-white"
+                      : disabled
+                        ? "cursor-not-allowed text-neutral-300"
+                        : "text-neutral-700 hover:bg-neutral-100 hover:text-neutral-950"
+                  }`}
+                >
+                  {day.getDate()}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function AdvertiserCampaignPreview({
   campaign,
   canPublish,
@@ -2079,7 +2294,7 @@ function AdvertiserCampaignPreview({
       <div className="flex items-center justify-between gap-3 border-b border-neutral-100 px-3 py-2">
         <div className="min-w-0">
           <p className="text-[12px] font-extrabold text-neutral-400">
-            인플루언서 카드 미리보기
+            모집 카드 미리보기
           </p>
           <p className="truncate text-[13px] font-extrabold text-neutral-950">
             {campaign.brandName}
@@ -2413,7 +2628,7 @@ function CampaignImageUpload({
             대표 이미지
           </p>
           <p className="mt-0.5 truncate text-[11px] font-bold text-neutral-500">
-            인플루언서 카드와 상세 상단에 표시됩니다.
+            모집 카드와 상세 상단에 표시됩니다.
           </p>
         </div>
       </div>
