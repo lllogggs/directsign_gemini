@@ -681,18 +681,6 @@
     box-shadow: 0 1px 0 rgba(255, 255, 255, 0.82) inset;
   }
 
-  .yl-profile-mark::after {
-    content: "";
-    position: absolute;
-    right: 8px;
-    bottom: 8px;
-    width: 7px;
-    height: 7px;
-    border-radius: 999px;
-    background: var(--yl-accent);
-    box-shadow: 0 0 0 3px var(--yl-accent-soft);
-  }
-
   .yl-fact-tile {
     min-width: 0;
     border: 1px solid rgba(22, 28, 26, 0.1);

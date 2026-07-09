@@ -72,6 +72,10 @@ import { LogoMark } from "../../components/BrandLogo";
 import { PlatformBrandMark } from "../../components/PlatformBrandMark";
 import { ResponsiveFilterPanel } from "../../components/ResponsiveFilterPanel";
 import { getPlatformDisplayName } from "../../domain/platformDisplay";
+import {
+  readSelectedAdvertiserBrandId,
+  writeSelectedAdvertiserBrandId,
+} from "../../domain/advertiserBrands";
 
 type CampaignState =
   | { status: "loading" }
@@ -83,6 +87,7 @@ type AdvertiserCampaignState =
   | {
       status: "ready";
       brand: MarketplaceBrandProfile | null;
+      brands: MarketplaceBrandProfile[];
       campaigns: MarketplaceBrandCampaign[];
     }
   | { status: "error"; message: string };
@@ -222,6 +227,7 @@ type MarketplaceCampaignResponse = {
 
 type AdvertiserCampaignsResponse = {
   brand: MarketplaceBrandProfile | null;
+  brands?: MarketplaceBrandProfile[];
   campaigns: MarketplaceBrandCampaign[];
 };
 
@@ -326,6 +332,9 @@ export function AdvertiserCampaignRecruitmentPage() {
   const [state, setState] = useState<AdvertiserCampaignState>({
     status: "loading",
   });
+  const [selectedBrandId, setSelectedBrandId] = useState(() =>
+    readSelectedAdvertiserBrandId(),
+  );
   const [form, setForm] = useState({
     title: "",
     type: "sponsored_post" as CampaignProposalType,
@@ -359,7 +368,10 @@ export function AdvertiserCampaignRecruitmentPage() {
     );
 
     try {
-      const response = await apiFetch("/api/advertiser/campaigns", {
+      const query = selectedBrandId
+        ? `?brandId=${encodeURIComponent(selectedBrandId)}`
+        : "";
+      const response = await apiFetch(`/api/advertiser/campaigns${query}`, {
         headers: { Accept: "application/json" },
         credentials: "include",
       });
@@ -384,8 +396,13 @@ export function AdvertiserCampaignRecruitmentPage() {
       setState({
         status: "ready",
         brand: data.brand,
+        brands: data.brands ?? (data.brand ? [data.brand] : []),
         campaigns: data.campaigns,
       });
+      if (data.brand?.id) {
+        setSelectedBrandId(data.brand.id);
+        writeSelectedAdvertiserBrandId(data.brand.id);
+      }
     } catch (error) {
       setState({
         status: "error",
@@ -395,7 +412,7 @@ export function AdvertiserCampaignRecruitmentPage() {
             : "캠페인을 불러오지 못했습니다.",
       });
     }
-  }, [navigate]);
+  }, [navigate, selectedBrandId]);
 
   const refreshCampaignWorkspace = useCallback(() => {
     void loadCampaigns();
@@ -488,6 +505,7 @@ export function AdvertiserCampaignRecruitmentPage() {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
+          brandId: selectedBrandId,
           file: {
             name: file.name,
             type: file.type,
@@ -509,9 +527,21 @@ export function AdvertiserCampaignRecruitmentPage() {
 
       setState((current) =>
         current.status === "ready"
-          ? { ...current, brand: data.brand ?? current.brand }
+          ? {
+              ...current,
+              brand: data.brand ?? current.brand,
+              brands: data.brand
+                ? current.brands.map((brand) =>
+                    brand.id === data.brand?.id ? data.brand : brand,
+                  )
+                : current.brands,
+            }
           : current,
       );
+      if (data.brand?.id) {
+        setSelectedBrandId(data.brand.id);
+        writeSelectedAdvertiserBrandId(data.brand.id);
+      }
       setBrandImagePreview(undefined);
     } catch (error) {
       setBrandImageError(
@@ -593,6 +623,7 @@ export function AdvertiserCampaignRecruitmentPage() {
         credentials: "include",
         body: JSON.stringify({
           ...form,
+          brandId: selectedBrandId,
           deliverables: form.deliverables
             .split(",")
             .map((item) => item.trim())
@@ -620,8 +651,13 @@ export function AdvertiserCampaignRecruitmentPage() {
       setState({
         status: "ready",
         brand: data.brand,
+        brands: data.brands ?? (data.brand ? [data.brand] : []),
         campaigns: data.campaigns,
       });
+      if (data.brand?.id) {
+        setSelectedBrandId(data.brand.id);
+        writeSelectedAdvertiserBrandId(data.brand.id);
+      }
       setSavedMessage("캠페인이 공개 목록에 반영되었습니다.");
       setForm((current) => ({
         ...current,

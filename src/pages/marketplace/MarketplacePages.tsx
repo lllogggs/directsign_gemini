@@ -1,7 +1,6 @@
 import {
   ArrowLeft,
   ArrowUpDown,
-  BadgeCheck,
   ChevronDown,
   CheckCircle2,
   ExternalLink,
@@ -830,6 +829,9 @@ export function PublicInfluencerProfilePage() {
   const navigate = useNavigate();
   const { profileHandle } = useParams<{ profileHandle: string }>();
   const [showContact, setShowContact] = useState(false);
+  const [failedProfileAvatarUrl, setFailedProfileAvatarUrl] = useState<string | null>(
+    null,
+  );
   const { profile, isLoading } = useMarketplaceInfluencerProfile(profileHandle);
   const currentProfilePath = useInfluencerPublicProfilePath();
 
@@ -959,6 +961,10 @@ export function PublicInfluencerProfilePage() {
       </button>
     );
 
+  const profileAvatarUrl = getMarketplaceInfluencerAvatarUrl(profile);
+  const shouldRenderProfileAvatar =
+    Boolean(profileAvatarUrl) && failedProfileAvatarUrl !== profileAvatarUrl;
+
   return (
     <main className="min-h-svh bg-[#f4f7fb] font-sans text-neutral-950">
       <header className="border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
@@ -992,14 +998,17 @@ export function PublicInfluencerProfilePage() {
           <div className="grid lg:grid-cols-[320px_minmax(0,1fr)]">
             <div className="relative bg-neutral-950 p-1.5 sm:p-2.5">
               <img
-                src={getMarketplaceInfluencerAvatarUrl(profile)}
+                src={profileAvatarUrl}
                 alt={profile.displayName}
                 className="h-[200px] w-full rounded-[20px] object-cover shadow-[0_18px_42px_rgba(15,23,42,0.12)] sm:h-[320px] sm:rounded-[22px] lg:h-full lg:min-h-[360px]"
+                style={{ display: shouldRenderProfileAvatar ? undefined : "none" }}
+                onError={() => setFailedProfileAvatarUrl(profileAvatarUrl ?? null)}
               />
-              <span className="absolute bottom-5 left-5 inline-flex h-8 items-center gap-1.5 rounded-full border border-white/80 bg-white/90 px-3 text-[12px] font-extrabold text-blue-700 shadow-[0_10px_24px_rgba(15,23,42,0.12)] backdrop-blur sm:bottom-7 sm:left-7">
-                <BadgeCheck className="h-3.5 w-3.5" />
-                플랫폼 인증
-              </span>
+              {!shouldRenderProfileAvatar ? (
+                <div className="flex h-[200px] w-full items-center justify-center rounded-[20px] bg-neutral-900 text-[40px] font-extrabold text-white shadow-[0_18px_42px_rgba(15,23,42,0.12)] sm:h-[320px] sm:rounded-[22px] sm:text-[56px] lg:h-full lg:min-h-[360px]">
+                  {profile.avatarLabel}
+                </div>
+              ) : null}
             </div>
 
             <div className="flex min-w-0 flex-col p-4 sm:p-7 lg:p-8">
@@ -1580,7 +1589,6 @@ function InfluencerDiscoveryTableRow({
             >
               {profile.displayName}
             </Link>
-            <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-neutral-500" />
           </div>
           <p className="mt-0.5 truncate text-[12px] font-semibold text-neutral-500">
             {cleanMarketplaceCopy(profile.bio || profile.headline)}
@@ -1661,7 +1669,6 @@ function InfluencerDiscoveryCompactRow({
             <h2 className="truncate text-[15px] font-extrabold text-neutral-950">
               {profile.displayName}
             </h2>
-            <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-neutral-500" />
           </div>
           <p className="mt-1 truncate text-[12px] font-bold text-neutral-600">
             {categoryLabel || "카테고리 확인"}
@@ -1742,7 +1749,6 @@ function InfluencerPreviewCard({
             <h3 className="truncate text-[16px] font-extrabold text-neutral-950">
               {profile.displayName}
             </h3>
-            <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-neutral-500" />
           </div>
           <p className="mt-1 line-clamp-2 text-[12px] font-semibold leading-5 text-neutral-600">
             {description}

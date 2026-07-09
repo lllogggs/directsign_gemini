@@ -730,7 +730,7 @@ app.use((_request, response, next) => {
         "object-src 'none'",
         "frame-ancestors 'none'",
         "form-action 'self'",
-        "img-src 'self' data: blob: https://*.supabase.co https://*.google-analytics.com https://*.googletagmanager.com https://*.clarity.ms https://c.bing.com",
+        "img-src 'self' data: blob: https://*.supabase.co https://*.google-analytics.com https://*.googletagmanager.com https://*.clarity.ms https://c.bing.com https://*.ggpht.com https://*.googleusercontent.com https://*.cdninstagram.com https://*.fbcdn.net https://*.tiktokcdn.com https://*.pstatic.net",
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
         "font-src 'self' https://fonts.gstatic.com",
         "script-src 'self' https://*.googletagmanager.com https://*.clarity.ms",
@@ -1028,6 +1028,7 @@ const normalizeStore = (store: ContractStoreFile): ContractStoreFile => ({
 interface SupabaseContractRow {
   id: string;
   advertiser_id: string;
+  brand_profile_id?: string | null;
   campaign_name?: string | null;
   post_link?: string | null;
   title: string;
@@ -1433,6 +1434,8 @@ interface SupabaseMarketplaceBrandProfileRow {
   active_campaigns?: MarketplaceBrandProfile["activeCampaigns"] | null;
   recent_creators?: string[] | null;
   is_published: boolean;
+  is_default?: boolean | null;
+  archived_at?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
 }
@@ -1610,7 +1613,7 @@ const protectLegacyContractForSupabase = (contract: Contract): Contract => {
 
 const restoreLegacyContractFromSupabase = (
   row: Pick<SupabaseContractRow, "contract" | "share_token"> &
-    Partial<Pick<SupabaseContractRow, "campaign_name" | "post_link">>,
+    Partial<Pick<SupabaseContractRow, "brand_profile_id" | "campaign_name" | "post_link">>,
 ) => {
   const fallbackToken = decryptShareTokenFromLegacyStore(row.share_token);
   const contractToken = decryptShareTokenFromLegacyStore(
@@ -1621,6 +1624,8 @@ const restoreLegacyContractFromSupabase = (
   const restoredContract = row.contract
     ? {
         ...row.contract,
+        brand_profile_id:
+          row.contract.brand_profile_id ?? row.brand_profile_id ?? undefined,
         campaign_name: row.contract.campaign_name ?? row.campaign_name ?? undefined,
         post_link: row.contract.post_link ?? row.post_link ?? undefined,
       }
@@ -1647,6 +1652,7 @@ const toSupabaseRow = (contract: Contract): SupabaseContractRow => {
   return {
     id: normalizedContract.id,
     advertiser_id: normalizedContract.advertiser_id,
+    brand_profile_id: normalizedContract.brand_profile_id ?? null,
     campaign_name: normalizedContract.campaign_name ?? normalizedContract.title,
     post_link: normalizedContract.post_link ?? null,
     title: normalizedContract.title,
@@ -3632,14 +3638,29 @@ const bindContractToAdvertiser = async (
   contract: Contract,
 ) => {
   const organization = await readDefaultOrganizationForProfile(auth.profile.id);
+  const requestedBrandId = normalizeAdvertiserSelectedBrandId(contract.brand_profile_id);
+  const brandRow = organization
+    ? await readAdvertiserMarketplaceBrandRow(organization.id, requestedBrandId)
+    : undefined;
+  const verificationSummary = await buildAdvertiserScopedVerificationSummary(auth).catch(
+    () => undefined,
+  );
+  const advertiserVerification = verificationSummary?.advertiser;
+  const certifiedRequest =
+    advertiserVerification?.status === "approved"
+      ? advertiserVerification.latest_request
+      : undefined;
   const companyName = normalizeRequiredText(
-    contract.advertiser_info?.name ??
+    certifiedRequest?.subject_name ??
+      advertiserVerification?.account?.company_name ??
       organization?.name ??
       auth.profile.company_name ??
       auth.profile.name,
   );
   const manager = normalizeRequiredText(
-    contract.advertiser_info?.manager ??
+    certifiedRequest?.submitted_by_name ??
+      advertiserVerification?.account?.name ??
+      contract.advertiser_info?.manager ??
       auth.profile.name ??
       auth.profile.email ??
       auth.user.email,
@@ -3648,6 +3669,7 @@ const bindContractToAdvertiser = async (
   return {
     ...contract,
     advertiser_id: auth.profile.id,
+    brand_profile_id: brandRow?.id ?? contract.brand_profile_id,
     advertiser_info: {
       name: companyName || auth.profile.name || "광고주",
       manager: manager || auth.profile.email || auth.user.email,
@@ -10047,6 +10069,7 @@ const mapBrandProfileRowToMarketplaceProfile = (
   row: SupabaseMarketplaceBrandProfileRow,
 ): MarketplaceBrandProfile => ({
   id: row.id,
+  organizationId: row.organization_id,
   handle: row.public_handle,
   displayName: row.display_name,
   category: row.category,
@@ -10064,6 +10087,8 @@ const mapBrandProfileRowToMarketplaceProfile = (
   audienceTargets: row.audience_targets ?? [],
   activeCampaigns: normalizeBrandCampaigns(row.active_campaigns),
   recentCreators: row.recent_creators ?? [],
+  isDefault: Boolean(row.is_default),
+  archivedAt: row.archived_at ?? undefined,
 });
 
 const readMarketplaceInfluencerRows = async (query: string) => {
@@ -10223,7 +10248,7 @@ const readMarketplaceBrandProfiles = async () => {
 
   const rows = await readSupabaseRows<SupabaseMarketplaceBrandProfileRow>(
     "marketplace_brand_profiles",
-    "?select=*&is_published=eq.true&order=updated_at.desc",
+    "?select=*&is_published=eq.true&archived_at=is.null&order=updated_at.desc",
     "marketplace brand profiles",
   );
 
@@ -11470,30 +11495,53 @@ const runMarketplaceFollowerSync = (options: {
 const buildMarketplaceBrandHandle = (
   organization: SupabaseOrganizationRow,
   profile: SupabaseProfileRow,
+  options: { name?: string; suffix?: string } = {},
 ) => {
-  const source = `${organization.name || profile.company_name || profile.name || "brand"}`;
+  const source = `${options.name || organization.name || profile.company_name || profile.name || "brand"}`;
   const normalized = source
     .normalize("NFKD")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
-  const suffix = organization.id.replace(/-/g, "").slice(0, 6);
+  const suffix = (options.suffix || organization.id).replace(/-/g, "").slice(0, 6);
   const base = normalized.length >= 3 ? normalized.slice(0, 20).replace(/-+$/g, "") : "brand";
 
   return `${base}-${suffix}`.slice(0, 30).replace(/-+$/g, "");
 };
 
+const readAdvertiserMarketplaceBrandRows = async (
+  organizationId: string,
+  options: { includeArchived?: boolean } = {},
+) => {
+  if (!useSupabase) return [] as SupabaseMarketplaceBrandProfileRow[];
+
+  return readSupabaseRows<SupabaseMarketplaceBrandProfileRow>(
+    "marketplace_brand_profiles",
+    `?select=*&organization_id=eq.${encodeURIComponent(organizationId)}${
+      options.includeArchived ? "" : "&archived_at=is.null"
+    }&order=is_default.desc,created_at.asc`,
+    "advertiser marketplace brand profiles",
+  );
+};
+
 const readAdvertiserMarketplaceBrandRow = async (
   organizationId: string,
+  brandId?: string,
 ) => {
   if (!useSupabase) return undefined;
 
-  const rows = await readSupabaseRows<SupabaseMarketplaceBrandProfileRow>(
-    "marketplace_brand_profiles",
-    `?select=*&organization_id=eq.${encodeURIComponent(organizationId)}&limit=1`,
-    "advertiser marketplace brand profile",
-  );
+  if (brandId && isUuid(brandId)) {
+    const rows = await readSupabaseRows<SupabaseMarketplaceBrandProfileRow>(
+      "marketplace_brand_profiles",
+      `?select=*&organization_id=eq.${encodeURIComponent(
+        organizationId,
+      )}&id=eq.${encodeURIComponent(brandId)}&archived_at=is.null&limit=1`,
+      "advertiser marketplace selected brand profile",
+    );
+    if (rows[0]) return rows[0];
+  }
 
+  const rows = await readAdvertiserMarketplaceBrandRows(organizationId);
   return rows[0];
 };
 
@@ -11508,6 +11556,7 @@ const buildAdvertiserBrandProfileFromAuth = (
 
   return {
     id: stableUuid(`marketplace:brand:${organization.id}`),
+    organizationId: organization.id,
     handle: buildMarketplaceBrandHandle(organization, auth.profile),
     displayName: name,
     category: "캠페인 모집",
@@ -11525,27 +11574,46 @@ const buildAdvertiserBrandProfileFromAuth = (
     audienceTargets: [],
     activeCampaigns: [],
     recentCreators: [],
+    isDefault: true,
   };
 };
 
-const readAdvertiserCampaignBoard = async (auth: AdvertiserSession) => {
+const normalizeAdvertiserSelectedBrandId = (value: unknown) =>
+  isUuid(normalizeRequiredText(value)) ? normalizeRequiredText(value) : undefined;
+
+const readAdvertiserCampaignBoard = async (
+  auth: AdvertiserSession,
+  selectedBrandId?: string,
+) => {
   const organization = await readDefaultOrganizationForProfile(auth.profile.id);
   if (!organization) {
     return {
       organization: undefined,
       brand: undefined,
+      brands: [] as MarketplaceBrandProfile[],
       campaigns: [] as MarketplaceBrandCampaign[],
     };
   }
 
-  const row = await readAdvertiserMarketplaceBrandRow(organization.id);
+  const rows = await readAdvertiserMarketplaceBrandRows(organization.id);
+  const row =
+    selectedBrandId && rows.some((item) => item.id === selectedBrandId)
+      ? rows.find((item) => item.id === selectedBrandId)
+      : rows[0];
   const rawBrand = buildAdvertiserBrandProfileFromAuth(auth, organization, row);
   const brand =
     normalizeTestBrandProfileCampaignDatesForSession(auth, rawBrand) ?? rawBrand;
+  const brands =
+    rows.length > 0
+      ? rows
+          .map((item) => buildAdvertiserBrandProfileFromAuth(auth, organization, item))
+          .map((item) => normalizeTestBrandProfileCampaignDatesForSession(auth, item) ?? item)
+      : [brand];
 
   return {
     organization,
     brand,
+    brands,
     campaigns: brand.activeCampaigns,
   };
 };
@@ -11553,6 +11621,7 @@ const readAdvertiserCampaignBoard = async (auth: AdvertiserSession) => {
 const saveAdvertiserMarketplaceBrandImage = async (
   auth: AdvertiserSession,
   file: NonNullable<ReturnType<typeof parseEvidenceFile>>,
+  selectedBrandId?: string,
 ) => {
   if (!useSupabase) {
     return {
@@ -11571,12 +11640,10 @@ const saveAdvertiserMarketplaceBrandImage = async (
     };
   }
 
-  const imageUrl = await storeMarketplacePublicImage({
-    area: "brand-logos",
-    ownerId: organization.id,
-    file,
-  });
-  const existing = await readAdvertiserMarketplaceBrandRow(organization.id);
+  const existing = await readAdvertiserMarketplaceBrandRow(
+    organization.id,
+    selectedBrandId,
+  );
   const currentBrand = buildAdvertiserBrandProfileFromAuth(
     auth,
     organization,
@@ -11584,6 +11651,11 @@ const saveAdvertiserMarketplaceBrandImage = async (
   );
   const now = new Date().toISOString();
   const rowId = existing?.id ?? stableUuid(`marketplace:brand:${organization.id}`);
+  const imageUrl = await storeMarketplacePublicImage({
+    area: "brand-logos",
+    ownerId: rowId,
+    file,
+  });
   const displayName = currentBrand.displayName || organization.name;
 
   await upsertSupabaseV2Rows(
@@ -11611,14 +11683,16 @@ const saveAdvertiserMarketplaceBrandImage = async (
         active_campaigns: currentBrand.activeCampaigns,
         recent_creators: currentBrand.recentCreators,
         is_published: existing?.is_published ?? currentBrand.activeCampaigns.length > 0,
+        is_default: existing?.is_default ?? true,
+        archived_at: null,
         updated_at: now,
       },
     ],
-    "organization_id",
+    "id",
   );
   clearPublicMarketplaceCache();
 
-  const savedRow = await readAdvertiserMarketplaceBrandRow(organization.id);
+  const savedRow = await readAdvertiserMarketplaceBrandRow(organization.id, rowId);
   return {
     ok: true as const,
     image_url: imageUrl,
@@ -11656,6 +11730,256 @@ const saveAdvertiserMarketplaceCampaignImage = async (
   return {
     ok: true as const,
     image_url: imageUrl,
+  };
+};
+
+const validateAdvertiserBrandProfileInput = (body: Record<string, unknown>) => {
+  const displayName = normalizeRequiredText(
+    body.displayName ?? body.display_name ?? body.name,
+  );
+  const category = normalizeOptionalText(body.category) ?? "캠페인 모집";
+  const location = normalizeOptionalText(body.location) ?? "운영 지역 미입력";
+  const headline =
+    normalizeOptionalText(body.headline) ??
+    `${displayName || "브랜드"} 인플루언서 협업 캠페인`;
+  const description =
+    normalizeOptionalText(body.description) ??
+    "모집글을 등록하면 인플루언서가 캠페인 조건을 확인하고 신청할 수 있습니다.";
+
+  if (!displayName || displayName.length > 60) {
+    return { error: "브랜드명은 60자 이내로 입력해 주세요." };
+  }
+  if (category.length > 40) {
+    return { error: "카테고리는 40자 이내로 입력해 주세요." };
+  }
+  if (location.length > 80) {
+    return { error: "운영 지역은 80자 이내로 입력해 주세요." };
+  }
+  if (headline.length > 120) {
+    return { error: "브랜드 한줄 소개는 120자 이내로 입력해 주세요." };
+  }
+  if (description.length > 500) {
+    return { error: "브랜드 설명은 500자 이내로 입력해 주세요." };
+  }
+
+  return {
+    displayName,
+    category,
+    location,
+    headline,
+    description,
+  };
+};
+
+const upsertAdvertiserBrandProfile = async (
+  auth: AdvertiserSession,
+  body: Record<string, unknown>,
+  brandId?: string,
+) => {
+  if (!useSupabase) {
+    return {
+      ok: false as const,
+      status: 503,
+      error: "Supabase 설정이 필요합니다.",
+    };
+  }
+
+  const organization = await readDefaultOrganizationForProfile(auth.profile.id);
+  if (!organization) {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "광고주 조직 정보를 찾을 수 없습니다.",
+    };
+  }
+
+  const payload = validateAdvertiserBrandProfileInput(body);
+  if ("error" in payload) {
+    return { ok: false as const, status: 422, error: payload.error };
+  }
+
+  const existing = brandId
+    ? await readAdvertiserMarketplaceBrandRow(organization.id, brandId)
+    : undefined;
+  if (brandId && !existing) {
+    return {
+      ok: false as const,
+      status: 404,
+      error: "브랜드를 찾을 수 없습니다.",
+    };
+  }
+
+  const activeRows = await readAdvertiserMarketplaceBrandRows(organization.id);
+  const rowId = existing?.id ?? randomUUID();
+  const now = new Date().toISOString();
+  const displayName = payload.displayName;
+  const logoLabel = existing?.logo_label ?? buildMarketplaceAvatarLabel(displayName, "BR");
+  const shouldMaterializeDefaultBrand = !existing && activeRows.length === 0;
+  const defaultBrandId = shouldMaterializeDefaultBrand
+    ? stableUuid(`marketplace:brand:${organization.id}`)
+    : undefined;
+  const defaultBrand = shouldMaterializeDefaultBrand
+    ? buildAdvertiserBrandProfileFromAuth(auth, organization)
+    : undefined;
+  const isFirstBrand = activeRows.length === 0 && !defaultBrand;
+
+  await upsertSupabaseV2Rows(
+    "marketplace_brand_profiles",
+    [
+      ...(defaultBrand && defaultBrandId
+        ? [
+            {
+              id: defaultBrandId,
+              organization_id: organization.id,
+              public_handle: buildMarketplaceBrandHandle(organization, auth.profile, {
+                name: defaultBrand.displayName,
+                suffix: defaultBrandId,
+              }),
+              display_name: defaultBrand.displayName,
+              category: defaultBrand.category,
+              headline: defaultBrand.headline,
+              description: defaultBrand.description,
+              location: defaultBrand.location,
+              logo_label: defaultBrand.logoLabel,
+              logo_url: defaultBrand.logoUrl ?? null,
+              preferred_platforms: defaultBrand.preferredPlatforms,
+              proposal_types: defaultBrand.proposalTypes,
+              budget_range_label: defaultBrand.budgetRangeLabel,
+              response_time_label: defaultBrand.responseTimeLabel,
+              status_label: defaultBrand.statusLabel,
+              fit_tags: defaultBrand.fitTags,
+              audience_targets: defaultBrand.audienceTargets,
+              active_campaigns: defaultBrand.activeCampaigns,
+              recent_creators: defaultBrand.recentCreators,
+              is_published: false,
+              is_default: true,
+              archived_at: null,
+              updated_at: now,
+            },
+          ]
+        : []),
+      {
+        id: rowId,
+        organization_id: organization.id,
+        public_handle:
+          existing?.public_handle ??
+          buildMarketplaceBrandHandle(organization, auth.profile, {
+            name: displayName,
+            suffix: rowId,
+          }),
+        display_name: displayName,
+        category: payload.category,
+        headline: payload.headline,
+        description: payload.description,
+        location: payload.location,
+        logo_label: logoLabel,
+        logo_url: existing?.logo_url ?? null,
+        preferred_platforms: existing?.preferred_platforms ?? [],
+        proposal_types:
+          existing?.proposal_types ?? ["sponsored_post", "product_seeding", "supporters"],
+        budget_range_label: existing?.budget_range_label ?? "협의 가능",
+        response_time_label: existing?.response_time_label ?? "제안 확인 후 응답",
+        status_label: existing?.status_label ?? "모집 준비",
+        fit_tags: existing?.fit_tags ?? ["캠페인 모집", "전자계약 가능"],
+        audience_targets: existing?.audience_targets ?? [],
+        active_campaigns: existing?.active_campaigns ?? [],
+        recent_creators: existing?.recent_creators ?? [],
+        is_published: existing?.is_published ?? false,
+        is_default: existing?.is_default ?? isFirstBrand,
+        archived_at: null,
+        updated_at: now,
+      },
+    ],
+    "id",
+  );
+
+  clearPublicMarketplaceCache();
+  const board = await readAdvertiserCampaignBoard(auth, rowId);
+
+  return {
+    ok: true as const,
+    brand: board.brand,
+    brands: board.brands,
+    campaigns: board.campaigns,
+  };
+};
+
+const archiveAdvertiserBrandProfile = async (
+  auth: AdvertiserSession,
+  brandId: string,
+) => {
+  if (!useSupabase) {
+    return {
+      ok: false as const,
+      status: 503,
+      error: "Supabase 설정이 필요합니다.",
+    };
+  }
+
+  const organization = await readDefaultOrganizationForProfile(auth.profile.id);
+  if (!organization) {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "광고주 조직 정보를 찾을 수 없습니다.",
+    };
+  }
+
+  const activeRows = await readAdvertiserMarketplaceBrandRows(organization.id);
+  const target = activeRows.find((row) => row.id === brandId);
+  if (!target) {
+    return {
+      ok: false as const,
+      status: 404,
+      error: "브랜드를 찾을 수 없습니다.",
+    };
+  }
+  if (activeRows.length <= 1) {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "최소 1개의 브랜드는 남겨야 합니다.",
+    };
+  }
+
+  const now = new Date().toISOString();
+  await patchSupabaseRecord(
+    "marketplace_brand_profiles",
+    `?id=eq.${encodeURIComponent(target.id)}&organization_id=eq.${encodeURIComponent(
+      organization.id,
+    )}`,
+    {
+      archived_at: now,
+      is_published: false,
+      is_default: false,
+      updated_at: now,
+    },
+    "Supabase advertiser brand archive",
+  );
+
+  const remainingRows = activeRows.filter((row) => row.id !== target.id);
+  if (target.is_default && remainingRows[0]) {
+    await patchSupabaseRecord(
+      "marketplace_brand_profiles",
+      `?id=eq.${encodeURIComponent(remainingRows[0].id)}&organization_id=eq.${encodeURIComponent(
+        organization.id,
+      )}`,
+      {
+        is_default: true,
+        updated_at: now,
+      },
+      "Supabase advertiser default brand reassignment",
+    );
+  }
+
+  clearPublicMarketplaceCache();
+  const board = await readAdvertiserCampaignBoard(auth, remainingRows[0]?.id);
+
+  return {
+    ok: true as const,
+    brand: board.brand,
+    brands: board.brands,
+    campaigns: board.campaigns,
   };
 };
 
@@ -11757,7 +12081,11 @@ const upsertAdvertiserMarketplaceCampaign = async (
     return { ok: false as const, status: 422, error: payload.error };
   }
 
-  const existing = await readAdvertiserMarketplaceBrandRow(organization.id);
+  const selectedBrandId = normalizeAdvertiserSelectedBrandId(body.brandId ?? body.brand_id);
+  const existing = await readAdvertiserMarketplaceBrandRow(
+    organization.id,
+    selectedBrandId,
+  );
   const currentBrand = buildAdvertiserBrandProfileFromAuth(auth, organization, existing);
   const now = new Date().toISOString();
   const actor = auth.profile.email || auth.user.email || auth.profile.name;
@@ -11850,23 +12178,24 @@ const upsertAdvertiserMarketplaceCampaign = async (
         active_campaigns: campaigns,
         recent_creators: currentBrand.recentCreators,
         is_published: true,
+        is_default: existing?.is_default ?? true,
+        archived_at: null,
         updated_at: now,
       },
     ],
-    "organization_id",
+    "id",
   );
   clearPublicMarketplaceCache();
 
-  const savedRow = await readAdvertiserMarketplaceBrandRow(organization.id);
-  const rawBrand = buildAdvertiserBrandProfileFromAuth(auth, organization, savedRow);
-  const brand =
-    normalizeTestBrandProfileCampaignDatesForSession(auth, rawBrand) ?? rawBrand;
+  const board = await readAdvertiserCampaignBoard(auth, rowId);
+  const brand = board.brand ?? currentBrand;
 
   return {
     ok: true as const,
     brand,
     campaign,
-    campaigns: brand.activeCampaigns,
+    brands: board.brands,
+    campaigns: board.campaigns,
   };
 };
 
@@ -11901,7 +12230,20 @@ const updateAdvertiserMarketplaceCampaignStatus = async (
     };
   }
 
-  const existing = await readAdvertiserMarketplaceBrandRow(organization.id);
+  const selectedBrandId = normalizeAdvertiserSelectedBrandId(
+    body.brandId ?? body.brand_id,
+  );
+  const brandRows = await readAdvertiserMarketplaceBrandRows(organization.id);
+  const existing =
+    (selectedBrandId
+      ? brandRows.find((row) => row.id === selectedBrandId)
+      : undefined) ??
+    brandRows.find((row) =>
+      normalizeBrandCampaigns(row.active_campaigns).some(
+        (campaign) => campaign.id === campaignId,
+      ),
+    ) ??
+    brandRows[0];
   if (!existing) {
     return {
       ok: false as const,
@@ -11988,19 +12330,18 @@ const updateAdvertiserMarketplaceCampaignStatus = async (
   );
   clearPublicMarketplaceCache();
 
-  const savedRow = await readAdvertiserMarketplaceBrandRow(organization.id);
-  const rawBrand = buildAdvertiserBrandProfileFromAuth(auth, organization, savedRow);
-  const brand =
-    normalizeTestBrandProfileCampaignDatesForSession(auth, rawBrand) ?? rawBrand;
+  const board = await readAdvertiserCampaignBoard(auth, existing.id);
+  const brand = board.brand ?? currentBrand;
   const savedCampaign =
-    brand.activeCampaigns.find((campaign) => campaign.id === campaignId) ??
+    board.campaigns.find((campaign) => campaign.id === campaignId) ??
     updatedCampaign;
 
   return {
     ok: true as const,
     brand,
     campaign: savedCampaign,
-    campaigns: brand.activeCampaigns,
+    brands: board.brands,
+    campaigns: board.campaigns,
   };
 };
 
@@ -14350,15 +14691,6 @@ const readMarketplaceProposalForAdvertiserAcceptance = async (
     };
   }
 
-  const brandRow = await readAdvertiserMarketplaceBrandRow(organization.id);
-  if (!brandRow) {
-    return {
-      ok: false as const,
-      status: 409,
-      error: "캠페인 브랜드 프로필을 찾을 수 없습니다.",
-    };
-  }
-
   const proposalRows = await readMarketplaceProposalRows(
     `?select=*&id=eq.${encodeURIComponent(proposalId)}&limit=1`,
     "marketplace proposal acceptance lookup",
@@ -14370,6 +14702,20 @@ const readMarketplaceProposalForAdvertiserAcceptance = async (
       ok: false as const,
       status: 404,
       error: "신청 내역을 찾을 수 없습니다.",
+    };
+  }
+
+  const brandRows = await readAdvertiserMarketplaceBrandRows(organization.id, {
+    includeArchived: true,
+  });
+  const brandRow = brandRows.find(
+    (row) => row.id === proposal.target_brand_profile_id,
+  );
+  if (!brandRow) {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "캠페인 브랜드 프로필을 찾을 수 없습니다.",
     };
   }
 
@@ -14453,12 +14799,35 @@ const createDraftContractFromMarketplaceApplication = async (
   const channelUrl = safeMarketplaceProposalChannelUrl(proposal);
   const influencerContact =
     senderProfile?.email || proposal.sender_influencer_handle || "계약 작성 단계에서 확인";
+  const verificationSummary = await buildAdvertiserScopedVerificationSummary(auth).catch(
+    () => undefined,
+  );
+  const advertiserVerification = verificationSummary?.advertiser;
+  const certifiedRequest =
+    advertiserVerification?.status === "approved"
+      ? advertiserVerification.latest_request
+      : undefined;
+  const advertiserLegalName = normalizeRequiredText(
+    certifiedRequest?.subject_name ??
+      advertiserVerification?.account?.company_name ??
+      organization.name ??
+      auth.profile.company_name ??
+      auth.profile.name,
+  );
+  const advertiserManager = normalizeRequiredText(
+    certifiedRequest?.submitted_by_name ??
+      advertiserVerification?.account?.name ??
+      auth.profile.name ??
+      auth.profile.email ??
+      auth.user.email,
+  );
   const contract: Contract = {
     id: contractId,
     advertiser_id: auth.profile.id,
+    brand_profile_id: brand.id,
     advertiser_info: {
-      name: organization.name || brand.displayName,
-      manager: auth.profile.email || auth.user.email || auth.profile.name,
+      name: advertiserLegalName || organization.name || "광고주",
+      manager: advertiserManager || auth.profile.email || auth.user.email,
     },
     type: proposalTypeToContractType(snapshot.type),
     status: "DRAFT",
@@ -19435,12 +19804,116 @@ app.get("/api/advertiser/campaigns", async (request, response, next) => {
     const advertiserAuth = await requireAdvertiserSession(request, response);
     if (!advertiserAuth) return;
 
-    const board = await readAdvertiserCampaignBoard(advertiserAuth);
+    const board = await readAdvertiserCampaignBoard(
+      advertiserAuth,
+      normalizeAdvertiserSelectedBrandId(request.query.brandId),
+    );
 
     response.setHeader("Cache-Control", "no-store");
     response.json({
       brand: board.brand ?? null,
+      brands: board.brands,
       campaigns: board.campaigns,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/advertiser/brands", async (request, response, next) => {
+  try {
+    const advertiserAuth = await requireAdvertiserSession(request, response);
+    if (!advertiserAuth) return;
+
+    const board = await readAdvertiserCampaignBoard(
+      advertiserAuth,
+      normalizeAdvertiserSelectedBrandId(request.query.brandId),
+    );
+
+    response.setHeader("Cache-Control", "no-store");
+    response.json({
+      brand: board.brand ?? null,
+      brands: board.brands,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/advertiser/brands", async (request, response, next) => {
+  try {
+    const advertiserAuth = await requireAdvertiserSession(request, response);
+    if (!advertiserAuth) return;
+
+    const result = await upsertAdvertiserBrandProfile(
+      advertiserAuth,
+      request.body && typeof request.body === "object"
+        ? (request.body as Record<string, unknown>)
+        : {},
+    );
+
+    if (!result.ok) {
+      response.status(result.status).json({ error: result.error });
+      return;
+    }
+
+    response.status(201).json({
+      brand: result.brand ?? null,
+      brands: result.brands,
+      campaigns: result.campaigns,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch("/api/advertiser/brands/:id", async (request, response, next) => {
+  try {
+    const advertiserAuth = await requireAdvertiserSession(request, response);
+    if (!advertiserAuth) return;
+
+    const result = await upsertAdvertiserBrandProfile(
+      advertiserAuth,
+      request.body && typeof request.body === "object"
+        ? (request.body as Record<string, unknown>)
+        : {},
+      request.params.id,
+    );
+
+    if (!result.ok) {
+      response.status(result.status).json({ error: result.error });
+      return;
+    }
+
+    response.json({
+      brand: result.brand ?? null,
+      brands: result.brands,
+      campaigns: result.campaigns,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete("/api/advertiser/brands/:id", async (request, response, next) => {
+  try {
+    const advertiserAuth = await requireAdvertiserSession(request, response);
+    if (!advertiserAuth) return;
+
+    const result = await archiveAdvertiserBrandProfile(
+      advertiserAuth,
+      request.params.id,
+    );
+
+    if (!result.ok) {
+      response.status(result.status).json({ error: result.error });
+      return;
+    }
+
+    response.json({
+      brand: result.brand ?? null,
+      brands: result.brands,
+      campaigns: result.campaigns,
     });
   } catch (error) {
     next(error);
@@ -19472,6 +19945,7 @@ app.post("/api/advertiser/brand-image", async (request, response, next) => {
     const result = await saveAdvertiserMarketplaceBrandImage(
       advertiserAuth,
       file,
+      normalizeAdvertiserSelectedBrandId(request.body?.brandId ?? request.body?.brand_id),
     );
     if (!result.ok) {
       response.status(result.status).json({ error: result.error });
@@ -19545,6 +20019,7 @@ app.post("/api/advertiser/campaigns", async (request, response, next) => {
 
     response.status(201).json({
       brand: result.brand,
+      brands: result.brands,
       campaign: result.campaign,
       campaigns: result.campaigns,
     });
@@ -19573,6 +20048,7 @@ app.patch("/api/advertiser/campaigns/:id/status", async (request, response, next
 
     response.json({
       brand: result.brand,
+      brands: result.brands,
       campaign: result.campaign,
       campaigns: result.campaigns,
     });

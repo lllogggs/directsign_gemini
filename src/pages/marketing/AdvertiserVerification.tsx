@@ -425,7 +425,7 @@ export function AdvertiserVerification() {
                     </p>
                   </div>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="grid gap-3">
                   <TextField
                     label="회사/브랜드명"
                     value={visibleForm.subject_name}
@@ -466,7 +466,7 @@ export function AdvertiserVerification() {
                     사업자 증빙과 대표 서명 또는 인감 날인 자료는 심사와 감사 기록 용도로만 사용합니다.
                   </p>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="grid gap-3">
                   <TextField
                     label="담당자명"
                     value={visibleForm.submitted_by_name}

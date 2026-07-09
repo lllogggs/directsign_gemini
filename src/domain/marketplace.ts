@@ -160,6 +160,7 @@ export type MarketplaceInfluencerProfile = {
 
 export type MarketplaceBrandProfile = {
   id: string;
+  organizationId?: string;
   handle: string;
   displayName: string;
   category: string;
@@ -177,6 +178,8 @@ export type MarketplaceBrandProfile = {
   audienceTargets: string[];
   activeCampaigns: MarketplaceBrandCampaign[];
   recentCreators: string[];
+  isDefault?: boolean;
+  archivedAt?: string;
 };
 
 export type MarketplaceCampaignPost = MarketplaceBrandCampaign & {

@@ -66,6 +66,10 @@ import {
   subscribeFastLoginTransition,
   waitForFastLoginTransition,
 } from "../../domain/fastLoginTransition";
+import {
+  readSelectedAdvertiserBrandId,
+  writeSelectedAdvertiserBrandId,
+} from "../../domain/advertiserBrands";
 import { ContractFirstExperienceDialog } from "../../components/ScreenHelp";
 import { LogoMark } from "../../components/BrandLogo";
 import { DashboardDownloadButton } from "../../components/DashboardDownloadButton";
@@ -86,6 +90,7 @@ import {
   proposalTypeLabels,
   type CampaignProposalType,
   type MarketplaceBrandCampaign,
+  type MarketplaceBrandProfile,
   type MarketplaceCampaignStatus,
   type MarketplaceInfluencerProfile,
 } from "../../domain/marketplace";
@@ -228,12 +233,27 @@ async function copyTextToClipboard(text: string) {
 }
 type MarketplaceDashboardState = {
   status: "loading" | "ready" | "error";
+  brand: MarketplaceBrandProfile | null;
+  brands: MarketplaceBrandProfile[];
   campaigns: MarketplaceBrandCampaign[];
   threads: MarketplaceMessageThread[];
   error?: string;
 };
 type CampaignStatusUpdateResponse = {
+  brand?: MarketplaceBrandProfile | null;
+  brands?: MarketplaceBrandProfile[];
   campaign?: MarketplaceBrandCampaign;
+  campaigns?: MarketplaceBrandCampaign[];
+  error?: string;
+};
+type AdvertiserCampaignsResponse = {
+  brand?: MarketplaceBrandProfile | null;
+  brands?: MarketplaceBrandProfile[];
+  campaigns?: MarketplaceBrandCampaign[];
+};
+type AdvertiserBrandsResponse = {
+  brand?: MarketplaceBrandProfile | null;
+  brands?: MarketplaceBrandProfile[];
   campaigns?: MarketplaceBrandCampaign[];
   error?: string;
 };
@@ -621,9 +641,24 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
   const [marketplaceState, setMarketplaceState] =
     useState<MarketplaceDashboardState>({
       status: "loading",
+      brand: null,
+      brands: [],
       campaigns: [],
       threads: [],
     });
+  const [selectedBrandId, setSelectedBrandId] = useState(() =>
+    readSelectedAdvertiserBrandId(),
+  );
+  const [brandSelectorOpen, setBrandSelectorOpen] = useState(false);
+  const [brandManagerOpen, setBrandManagerOpen] = useState(false);
+  const [brandForm, setBrandForm] = useState({
+    displayName: "",
+    category: "",
+    location: "",
+  });
+  const [brandActionError, setBrandActionError] = useState<string | undefined>();
+  const [isSavingBrand, setIsSavingBrand] = useState(false);
+  const [deletingBrandId, setDeletingBrandId] = useState<string | undefined>();
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [dashboardPanelCloseSignal, setDashboardPanelCloseSignal] = useState(0);
@@ -686,8 +721,11 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
     );
 
     try {
+      const brandQuery = selectedBrandId
+        ? `?brandId=${encodeURIComponent(selectedBrandId)}`
+        : "";
       const [campaignResponse, messageResponse] = await Promise.all([
-        apiFetch("/api/advertiser/campaigns", {
+        apiFetch(`/api/advertiser/campaigns${brandQuery}`, {
           headers: { Accept: "application/json" },
           credentials: "include",
         }),
@@ -703,7 +741,7 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
       }
 
       const campaignData = (await campaignResponse.json().catch(() => ({}))) as
-        | { campaigns?: MarketplaceBrandCampaign[] }
+        | AdvertiserCampaignsResponse
         | { error?: string };
       const messageData = (await messageResponse.json().catch(() => ({}))) as
         | MarketplaceMessagesResponse
@@ -727,12 +765,20 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
 
       setMarketplaceState({
         status: "ready",
+        brand: campaignData.brand ?? null,
+        brands: campaignData.brands ?? (campaignData.brand ? [campaignData.brand] : []),
         campaigns: campaignData.campaigns ?? [],
         threads: messageData.threads,
       });
+      if (campaignData.brand?.id) {
+        setSelectedBrandId(campaignData.brand.id);
+        writeSelectedAdvertiserBrandId(campaignData.brand.id);
+      }
     } catch (error) {
       setMarketplaceState({
         status: "error",
+        brand: null,
+        brands: [],
         campaigns: [],
         threads: [],
         error:
@@ -741,7 +787,7 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
             : "캠페인 지원자 목록을 불러오지 못했습니다.",
       });
     }
-  }, [navigate]);
+  }, [navigate, selectedBrandId]);
 
   useEffect(() => {
     const syncLoginTransition = () => {
@@ -772,11 +818,12 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
         contracts,
         marketplaceCampaigns: marketplaceState.campaigns,
         messageThreads: marketplaceState.threads,
-        fallbackBrandName: advertiserAccount.name,
+        fallbackBrandName: marketplaceState.brand?.displayName ?? advertiserAccount.name,
       }),
     [
       advertiserAccount.name,
       contracts,
+      marketplaceState.brand,
       marketplaceState.campaigns,
       marketplaceState.threads,
     ],
@@ -991,7 +1038,7 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ status }),
+          body: JSON.stringify({ status, brandId: selectedBrandId }),
         },
       );
 
@@ -1015,11 +1062,136 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
       setMarketplaceState((current) => ({
         ...current,
         status: "ready",
+        brand: data.brand ?? current.brand,
+        brands: data.brands ?? current.brands,
         campaigns: data.campaigns ?? current.campaigns,
         error: undefined,
       }));
     },
-    [navigate],
+    [navigate, selectedBrandId],
+  );
+  const selectedBrand =
+    marketplaceState.brand ??
+    marketplaceState.brands.find((brand) => brand.id === selectedBrandId) ??
+    null;
+  const applyAdvertiserBrandResponse = useCallback(
+    (data: AdvertiserBrandsResponse) => {
+      setMarketplaceState((current) => ({
+        ...current,
+        status: "ready",
+        brand: data.brand ?? current.brand,
+        brands: data.brands ?? current.brands,
+        campaigns: data.campaigns ?? current.campaigns,
+        error: undefined,
+      }));
+
+      if (data.brand?.id) {
+        setSelectedBrandId(data.brand.id);
+        writeSelectedAdvertiserBrandId(data.brand.id);
+      }
+    },
+    [],
+  );
+  const handleSelectAdvertiserBrand = useCallback(
+    (brandId: string) => {
+      const brand = marketplaceState.brands.find((item) => item.id === brandId);
+      setSelectedBrandId(brandId);
+      writeSelectedAdvertiserBrandId(brandId);
+      setBrandSelectorOpen(false);
+      if (brand) {
+        setMarketplaceState((current) => ({
+          ...current,
+          brand,
+          campaigns: brand.activeCampaigns ?? current.campaigns,
+        }));
+      }
+    },
+    [marketplaceState.brands],
+  );
+  const handleOpenBrandManager = useCallback(() => {
+    setBrandSelectorOpen(false);
+    setBrandActionError(undefined);
+    setBrandManagerOpen(true);
+  }, []);
+  const handleCreateAdvertiserBrand = useCallback(async () => {
+    if (isSavingBrand) return;
+    const displayName = brandForm.displayName.trim();
+    if (!displayName) {
+      setBrandActionError("브랜드명을 입력해 주세요.");
+      return;
+    }
+
+    setIsSavingBrand(true);
+    setBrandActionError(undefined);
+
+    try {
+      const response = await apiFetch("/api/advertiser/brands", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          displayName,
+          category: brandForm.category.trim() || undefined,
+          location: brandForm.location.trim() || undefined,
+        }),
+      });
+
+      if (response.status === 401) {
+        navigate("/login/advertiser", { replace: true });
+        return;
+      }
+
+      const data = (await response.json().catch(() => ({}))) as AdvertiserBrandsResponse;
+      if (!response.ok || !data.brand) {
+        throw new Error(data.error ?? "브랜드를 추가하지 못했습니다.");
+      }
+
+      applyAdvertiserBrandResponse(data);
+      setBrandForm({ displayName: "", category: "", location: "" });
+    } catch (error) {
+      setBrandActionError(
+        error instanceof Error ? error.message : "브랜드를 추가하지 못했습니다.",
+      );
+    } finally {
+      setIsSavingBrand(false);
+    }
+  }, [applyAdvertiserBrandResponse, brandForm, isSavingBrand, navigate]);
+  const handleDeleteAdvertiserBrand = useCallback(
+    async (brandId: string) => {
+      if (deletingBrandId) return;
+      setDeletingBrandId(brandId);
+      setBrandActionError(undefined);
+
+      try {
+        const response = await apiFetch(
+          `/api/advertiser/brands/${encodeURIComponent(brandId)}`,
+          {
+            method: "DELETE",
+            headers: { Accept: "application/json" },
+            credentials: "include",
+          },
+        );
+
+        if (response.status === 401) {
+          navigate("/login/advertiser", { replace: true });
+          return;
+        }
+
+        const data = (await response.json().catch(() => ({}))) as AdvertiserBrandsResponse;
+        if (!response.ok) {
+          throw new Error(data.error ?? "브랜드를 삭제하지 못했습니다.");
+        }
+
+        applyAdvertiserBrandResponse(data);
+      } catch (error) {
+        setBrandActionError(
+          error instanceof Error ? error.message : "브랜드를 삭제하지 못했습니다.",
+        );
+      } finally {
+        setDeletingBrandId(undefined);
+      }
+    },
+    [applyAdvertiserBrandResponse, deletingBrandId, navigate],
   );
   const acceptCampaignApplication = useCallback(
     async (thread: MarketplaceMessageThread) => {
@@ -1179,6 +1351,24 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
         googleSheetsError={googleSheetsError}
         isGoogleSheetsPending={isGoogleSheetsExporting}
       />
+      <BrandManagementDialog
+        open={brandManagerOpen}
+        brands={marketplaceState.brands}
+        selectedBrand={selectedBrand}
+        selectedBrandId={selectedBrand?.id}
+        form={brandForm}
+        isSaving={isSavingBrand}
+        deletingBrandId={deletingBrandId}
+        error={brandActionError}
+        onClose={() => {
+          setBrandManagerOpen(false);
+          setBrandActionError(undefined);
+        }}
+        onFormChange={setBrandForm}
+        onCreate={handleCreateAdvertiserBrand}
+        onSelect={handleSelectAdvertiserBrand}
+        onDelete={handleDeleteAdvertiserBrand}
+      />
       <header className="sticky top-0 z-30 border-b border-neutral-200/70 bg-white/92 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-[1500px] items-center justify-between px-3 sm:px-5 lg:px-6">
           <button
@@ -1233,6 +1423,10 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
                 setAccountMenuOpen(false);
                 navigate("/reset-password?role=advertiser");
               }}
+              onOpenBusinessVerification={() => {
+                setAccountMenuOpen(false);
+                navigate("/advertiser/verification");
+              }}
             />
           </div>
         </div>
@@ -1283,6 +1477,14 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
           <VerificationBanner
             status={advertiserVerificationStatus}
             account={advertiserAccount}
+            selectedBrand={selectedBrand}
+            brands={marketplaceState.brands}
+            brandSelectorOpen={brandSelectorOpen}
+            onToggleBrandSelector={() =>
+              setBrandSelectorOpen((current) => !current)
+            }
+            onSelectBrand={handleSelectAdvertiserBrand}
+            onOpenBrandManager={handleOpenBrandManager}
             isLoading={isVerificationLoading}
             latest={verificationSummary?.advertiser.latest_request}
             onOpen={() => navigate("/advertiser/verification")}
@@ -2213,16 +2415,203 @@ function CostEmptyState({ isInitialEmpty }: { isInitialEmpty: boolean }) {
   );
 }
 
+type AdvertiserBrandForm = {
+  displayName: string;
+  category: string;
+  location: string;
+};
+
+function BrandManagementDialog({
+  open,
+  brands,
+  selectedBrand,
+  selectedBrandId,
+  form,
+  isSaving,
+  deletingBrandId,
+  error,
+  onClose,
+  onFormChange,
+  onCreate,
+  onSelect,
+  onDelete,
+}: {
+  open: boolean;
+  brands: MarketplaceBrandProfile[];
+  selectedBrand: MarketplaceBrandProfile | null;
+  selectedBrandId?: string;
+  form: AdvertiserBrandForm;
+  isSaving: boolean;
+  deletingBrandId?: string;
+  error?: string;
+  onClose: () => void;
+  onFormChange: (form: AdvertiserBrandForm) => void;
+  onCreate: () => void;
+  onSelect: (brandId: string) => void;
+  onDelete: (brandId: string) => void;
+}) {
+  if (!open) return null;
+
+  const listedBrands = brands.length > 0 ? brands : selectedBrand ? [selectedBrand] : [];
+  const canDelete = brands.length > 1;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-3 py-6">
+      <section className="w-full max-w-[640px] overflow-hidden rounded-[14px] border border-neutral-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.22)]">
+        <div className="flex items-center justify-between gap-3 border-b border-neutral-100 px-5 py-4">
+          <div className="min-w-0">
+            <h2 className="text-[17px] font-extrabold text-neutral-950">
+              브랜드 정보
+            </h2>
+            <p className="mt-1 text-[12px] font-semibold text-neutral-500">
+              사업자 계정에서 운영할 브랜드를 관리합니다.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-950"
+            aria-label="닫기"
+            title="닫기"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="grid gap-4 p-5 lg:grid-cols-[minmax(0,1fr)_minmax(220px,0.72fr)]">
+          <div className="min-w-0">
+            <p className="text-[12px] font-extrabold text-neutral-500">
+              등록 브랜드
+            </p>
+            <div className="mt-2 max-h-[320px] space-y-2 overflow-y-auto pr-1">
+              {listedBrands.length > 0 ? (
+                listedBrands.map((brand) => {
+                  const selected = brand.id === selectedBrandId;
+                  const deleting = deletingBrandId === brand.id;
+                  return (
+                    <div
+                      key={brand.id}
+                      className={`rounded-[12px] border px-3 py-3 ${
+                        selected
+                          ? "border-blue-200 bg-blue-50/80"
+                          : "border-neutral-200 bg-white"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-[14px] font-extrabold text-neutral-950">
+                            {brand.displayName}
+                          </p>
+                          <p className="mt-1 truncate text-[12px] font-semibold text-neutral-500">
+                            {[brand.category, brand.location].filter(Boolean).join(" · ") ||
+                              "브랜드 정보 미입력"}
+                          </p>
+                        </div>
+                        {selected ? (
+                          <span className="shrink-0 rounded-full bg-blue-600 px-2 py-1 text-[10px] font-extrabold text-white">
+                            선택됨
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="mt-3 flex items-center justify-end gap-2">
+                        {selected ? null : (
+                          <button
+                            type="button"
+                            onClick={() => onSelect(brand.id)}
+                            className="h-8 rounded-md border border-neutral-200 bg-white px-3 text-[11px] font-extrabold text-neutral-700 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+                          >
+                            선택
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          disabled={!canDelete || deleting}
+                          onClick={() => onDelete(brand.id)}
+                          className="h-8 rounded-md border border-neutral-200 bg-white px-3 text-[11px] font-extrabold text-neutral-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          {deleting ? "삭제 중" : "삭제"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="flex min-h-[120px] items-center justify-center rounded-[12px] border border-dashed border-neutral-200 bg-neutral-50 text-[12px] font-bold text-neutral-500">
+                  등록된 브랜드가 없습니다.
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="min-w-0 rounded-[12px] border border-neutral-200 bg-[#fbfaf7] p-3">
+            <p className="text-[12px] font-extrabold text-neutral-500">
+              브랜드 추가
+            </p>
+            <label className="mt-3 block text-[12px] font-extrabold text-neutral-700">
+              브랜드명
+              <input
+                value={form.displayName}
+                onChange={(event) =>
+                  onFormChange({ ...form, displayName: event.target.value })
+                }
+                className="mt-1 h-10 w-full rounded-[9px] border border-neutral-200 bg-white px-3 text-[13px] font-bold text-neutral-950 outline-none transition focus:border-neutral-400"
+                placeholder="예: 브랜드명"
+              />
+            </label>
+            <label className="mt-3 block text-[12px] font-extrabold text-neutral-700">
+              카테고리
+              <input
+                value={form.category}
+                onChange={(event) =>
+                  onFormChange({ ...form, category: event.target.value })
+                }
+                className="mt-1 h-10 w-full rounded-[9px] border border-neutral-200 bg-white px-3 text-[13px] font-bold text-neutral-950 outline-none transition focus:border-neutral-400"
+                placeholder="예: 뷰티"
+              />
+            </label>
+            <label className="mt-3 block text-[12px] font-extrabold text-neutral-700">
+              운영지역
+              <input
+                value={form.location}
+                onChange={(event) =>
+                  onFormChange({ ...form, location: event.target.value })
+                }
+                className="mt-1 h-10 w-full rounded-[9px] border border-neutral-200 bg-white px-3 text-[13px] font-bold text-neutral-950 outline-none transition focus:border-neutral-400"
+                placeholder="예: 서울/전국"
+              />
+            </label>
+            {error ? (
+              <p className="mt-3 rounded-[9px] border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] font-extrabold text-rose-700">
+                {error}
+              </p>
+            ) : null}
+            <button
+              type="button"
+              onClick={onCreate}
+              disabled={isSaving}
+              className="mt-4 flex h-10 w-full items-center justify-center rounded-[9px] bg-blue-600 px-3 text-[13px] font-extrabold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isSaving ? "추가 중" : "브랜드 추가"}
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function AccountSettingsMenu({
   account,
   open,
   onToggle,
   onChangePassword,
+  onOpenBusinessVerification,
 }: {
   account: AdvertiserAccountSummary;
   open: boolean;
   onToggle: () => void;
   onChangePassword: () => void;
+  onOpenBusinessVerification: () => void;
 }) {
   const emailChangeHref = buildSupportMailtoHref({
     subject: "광고주 계정 이메일 변경 요청",
@@ -2231,7 +2620,7 @@ function AccountSettingsMenu({
       "",
       `현재 표시 이메일: ${account.email ?? "확인 필요"}`,
       "변경할 이메일:",
-      "회사/브랜드명:",
+      "사업자명:",
       "요청 사유:",
     ].join("\n"),
   });
@@ -2270,6 +2659,14 @@ function AccountSettingsMenu({
           </a>
           <button
             type="button"
+            onClick={onOpenBusinessVerification}
+            className="flex h-11 w-full items-center gap-2 px-4 text-left text-[12px] font-extrabold text-neutral-700 transition hover:bg-neutral-50 hover:text-neutral-950"
+          >
+            <ShieldCheck className="h-3.5 w-3.5" />
+            사업자 인증
+          </button>
+          <button
+            type="button"
             onClick={onChangePassword}
             className="flex h-11 w-full items-center gap-2 px-4 text-left text-[12px] font-extrabold text-neutral-700 transition hover:bg-neutral-50 hover:text-neutral-950"
           >
@@ -2285,6 +2682,12 @@ function AccountSettingsMenu({
 function VerificationBanner({
   status,
   account,
+  selectedBrand,
+  brands,
+  brandSelectorOpen,
+  onToggleBrandSelector,
+  onSelectBrand,
+  onOpenBrandManager,
   isLoading,
   latest,
   onOpen,
@@ -2292,6 +2695,12 @@ function VerificationBanner({
 }: {
   status: VerificationStatus;
   account: AdvertiserAccountSummary;
+  selectedBrand: MarketplaceBrandProfile | null;
+  brands: MarketplaceBrandProfile[];
+  brandSelectorOpen: boolean;
+  onToggleBrandSelector: () => void;
+  onSelectBrand: (brandId: string) => void;
+  onOpenBrandManager: () => void;
   isLoading: boolean;
   latest?: VerificationRequest;
   onOpen: () => void;
@@ -2304,6 +2713,12 @@ function VerificationBanner({
   const businessNumber = account.businessNumber
     ? formatBusinessRegistrationNumber(account.businessNumber)
     : undefined;
+  const brandName = selectedBrand?.displayName ?? account.name;
+  const brandSummary = [selectedBrand?.category, selectedBrand?.location]
+    .filter(Boolean)
+    .join(" · ");
+  const selectableBrands =
+    brands.length > 0 ? brands : selectedBrand ? [selectedBrand] : [];
 
   if (showCompactAccount) {
     return (
@@ -2315,19 +2730,72 @@ function VerificationBanner({
         }
       >
         <div className="flex flex-row items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="truncate text-[15px] font-bold text-neutral-950">
-              {account.name}
-            </p>
-            {businessNumber ? (
-              <p className="mt-0.5 truncate text-[12px] font-semibold text-neutral-500">
-                사업자번호 {businessNumber}
+          <div className="relative min-w-0">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <p className="truncate text-[15px] font-bold text-neutral-950">
+                {brandName}
               </p>
+              <button
+                type="button"
+                onClick={onToggleBrandSelector}
+                className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-1.5 text-[12px] font-extrabold text-neutral-500 transition hover:bg-white hover:text-neutral-950"
+                aria-label="브랜드 변경"
+                title="브랜드 변경"
+              >
+                변경
+                <ChevronDown className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            {brandSummary ? (
+              <p className="mt-0.5 truncate text-[12px] font-semibold text-neutral-500">
+                {brandSummary}
+              </p>
+            ) : null}
+            {brandSelectorOpen ? (
+              <div className="absolute left-0 top-[calc(100%+8px)] z-40 w-[280px] overflow-hidden rounded-[12px] border border-neutral-200 bg-white text-left shadow-[0_18px_50px_rgba(15,23,42,0.14)]">
+                <div className="max-h-[240px] overflow-y-auto p-1">
+                  {selectableBrands.map((brand) => {
+                    const active = brand.id === selectedBrand?.id;
+                    return (
+                      <button
+                        key={brand.id}
+                        type="button"
+                        onClick={() => onSelectBrand(brand.id)}
+                        className={`flex w-full items-center justify-between gap-3 rounded-[10px] px-3 py-2 text-left transition ${
+                          active
+                            ? "bg-blue-50 text-blue-700"
+                            : "text-neutral-800 hover:bg-neutral-50"
+                        }`}
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate text-[12px] font-extrabold">
+                            {brand.displayName}
+                          </span>
+                          <span className="block truncate text-[11px] font-bold text-neutral-500">
+                            {[brand.category, brand.location].filter(Boolean).join(" · ")}
+                          </span>
+                        </span>
+                        {active ? (
+                          <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+                <button
+                  type="button"
+                  onClick={onOpenBrandManager}
+                  className="flex h-10 w-full items-center justify-center gap-1.5 border-t border-neutral-100 text-[12px] font-extrabold text-neutral-700 transition hover:bg-neutral-50 hover:text-neutral-950"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  브랜드 추가
+                </button>
+              </div>
             ) : null}
           </div>
           <button
             type="button"
-            onClick={onOpen}
+            onClick={onOpenBrandManager}
             className="h-10 shrink-0 whitespace-nowrap rounded-md border border-neutral-200 bg-white px-3 text-[12px] font-semibold text-neutral-800 transition hover:border-neutral-300 hover:bg-neutral-50"
           >
             정보 보기

@@ -179,6 +179,7 @@ export interface AuditEvent {
 export interface Contract {
   id: string;
   advertiser_id: string;
+  brand_profile_id?: string;
   campaign_name?: string;
   post_link?: string;
   deliverable_summary?: {

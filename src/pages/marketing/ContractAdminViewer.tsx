@@ -17,6 +17,7 @@ import {
   Save,
   Send,
   Settings,
+  ShieldCheck,
 } from "lucide-react";
 import { format } from "date-fns";
 import { Textarea } from "@/components/ui/textarea";
@@ -842,6 +843,10 @@ export function ContractAdminViewer() {
               onChangePassword={() => {
                 setAccountMenuOpen(false);
                 navigate("/reset-password?role=advertiser");
+              }}
+              onOpenBusinessVerification={() => {
+                setAccountMenuOpen(false);
+                navigate("/advertiser/verification");
               }}
             />
           </div>
@@ -1719,11 +1724,13 @@ function ContractAdminAccountSettingsMenu({
   open,
   onToggle,
   onChangePassword,
+  onOpenBusinessVerification,
 }: {
   account: { name: string; email?: string };
   open: boolean;
   onToggle: () => void;
   onChangePassword: () => void;
+  onOpenBusinessVerification: () => void;
 }) {
   const emailChangeHref = buildAdminSupportMailtoHref({
     subject: "광고주 계정 이메일 변경 요청",
@@ -1731,7 +1738,7 @@ function ContractAdminAccountSettingsMenu({
       "광고주 계정 이메일 변경을 요청합니다.",
       "",
       `현재 표시 이메일: ${account.email ?? "확인 필요"}`,
-      `회사/브랜드명: ${account.name}`,
+      `사업자명: ${account.name}`,
       "변경할 이메일:",
       "요청 사유:",
     ].join("\n"),
@@ -1767,6 +1774,14 @@ function ContractAdminAccountSettingsMenu({
             <Mail className="h-3.5 w-3.5" />
             이메일 변경
           </a>
+          <button
+            type="button"
+            onClick={onOpenBusinessVerification}
+            className="flex h-11 w-full items-center gap-2 px-4 text-left text-[12px] font-extrabold text-neutral-700 transition hover:bg-neutral-50 hover:text-neutral-950"
+          >
+            <ShieldCheck className="h-3.5 w-3.5" />
+            사업자 인증
+          </button>
           <button
             type="button"
             onClick={onChangePassword}

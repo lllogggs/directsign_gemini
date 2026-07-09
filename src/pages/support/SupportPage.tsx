@@ -182,7 +182,7 @@ export function SupportPage() {
                 </p>
               </div>
             )}
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3">
               <label className="grid gap-2 text-[13px] font-bold text-neutral-700">
                 유형
                 <select

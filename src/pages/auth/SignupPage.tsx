@@ -343,7 +343,7 @@ export function SignupPage({ role }: { role: SignupRole }) {
         onSubmit={handleSubmit}
       >
         {role === "influencer" ? (
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3">
             <SignupSelectField
               label="활동 분야"
               value={activityCategories[0] ?? ""}

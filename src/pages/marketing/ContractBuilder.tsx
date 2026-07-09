@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   useAppStore,
@@ -51,6 +51,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   ArrowLeft,
+  CalendarDays,
   Check,
   CheckCircle2,
   Copy,
@@ -64,9 +65,19 @@ import {
   Trash2,
 } from "lucide-react";
 import { apiFetch } from "../../domain/api";
+import type { MarketplaceBrandProfile } from "../../domain/marketplace";
+import {
+  readSelectedAdvertiserBrandId,
+  writeSelectedAdvertiserBrandId,
+} from "../../domain/advertiserBrands";
 
 type StepId = 1 | 2 | 3 | 4 | 5;
 type ResultMode = "draft" | "share";
+type AdvertiserBrandsResponse = {
+  brand?: MarketplaceBrandProfile | null;
+  brands?: MarketplaceBrandProfile[];
+  error?: string;
+};
 
 interface ContractDraft {
   advertiserName: string;
@@ -364,6 +375,59 @@ const addDays = (days: number) => {
   return date.toISOString();
 };
 
+function parseContractDate(value?: string) {
+  const match = String(value ?? "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]) - 1;
+  const day = Number(match[3]);
+  const date = new Date(year, month, day);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatContractDateValue(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(
+    2,
+    "0",
+  )}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function getContractCalendarMonth(value?: string) {
+  const date = parseContractDate(value) ?? new Date();
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function addContractCalendarMonths(date: Date, amount: number) {
+  return new Date(date.getFullYear(), date.getMonth() + amount, 1);
+}
+
+function formatContractCalendarMonthTitle(date: Date) {
+  return `${date.getFullYear()}년 ${date.getMonth() + 1}월`;
+}
+
+function formatContractDateButtonLabel(value: string) {
+  const date = parseContractDate(value);
+  if (!date) return value;
+  return `${date.getFullYear()}. ${String(date.getMonth() + 1).padStart(
+    2,
+    "0",
+  )}. ${String(date.getDate()).padStart(2, "0")}.`;
+}
+
+function getContractCalendarDays(month: Date) {
+  const firstDay = new Date(month.getFullYear(), month.getMonth(), 1);
+  const lastDay = new Date(month.getFullYear(), month.getMonth() + 1, 0);
+  const days: Array<Date | null> = Array.from(
+    { length: firstDay.getDay() },
+    () => null,
+  );
+  for (let day = 1; day <= lastDay.getDate(); day += 1) {
+    days.push(new Date(month.getFullYear(), month.getMonth(), day));
+  }
+  while (days.length % 7 !== 0) days.push(null);
+  return days;
+}
+
 const ALL_DELIVERABLE_OPTIONS = PLATFORM_CONTENT_GROUPS.flatMap((group) => group.items);
 
 const getDeliverableOption = (contentType: ContractDeliverableContentType) =>
@@ -583,7 +647,7 @@ const validateContractDraft = (draft: ContractDraft): ValidationError[] => {
     if (isBlank(value)) errors.push({ step, field, message });
   };
 
-  requireField(2, "advertiserName", draft.advertiserName, "광고주/브랜드명을 입력하세요.");
+  requireField(2, "advertiserName", draft.advertiserName, "광고주 사업자명을 입력하세요.");
   requireField(2, "title", draft.title, "계약 건명을 입력하세요.");
   requireField(2, "influencerName", draft.influencerName, "인플루언서명 또는 채널명을 입력하세요.");
   requireField(2, "influencerUrl", draft.influencerUrl, "메인 채널 URL을 입력하세요.");
@@ -786,13 +850,22 @@ export function ContractBuilder() {
     isVerificationLoading,
     verificationSummary?.advertiser.latest_request,
   );
+  const [selectedBrandId, setSelectedBrandId] = useState(() =>
+    readSelectedAdvertiserBrandId(),
+  );
+  const [selectedBrand, setSelectedBrand] =
+    useState<MarketplaceBrandProfile | null>(null);
   const advertiserDefaults = verificationSummary?.advertiser;
+  const certifiedAdvertiserRequest =
+    advertiserDefaults?.status === "approved"
+      ? advertiserDefaults.latest_request
+      : undefined;
   const defaultAdvertiserName = removeInternalTestLabel(
-    advertiserDefaults?.latest_request?.subject_name ||
+    certifiedAdvertiserRequest?.subject_name ||
       advertiserDefaults?.account?.company_name,
   );
   const defaultAdvertiserManager = removeInternalTestLabel(
-    advertiserDefaults?.latest_request?.submitted_by_name ||
+    certifiedAdvertiserRequest?.submitted_by_name ||
       advertiserDefaults?.account?.name,
   );
   const advertiserAccountForHeader = {
@@ -811,6 +884,7 @@ export function ContractBuilder() {
   const [isAddingPlatform, setIsAddingPlatform] = useState(false);
   const [addingContentPlatform, setAddingContentPlatform] = useState<ContractPlatform | "">("");
   const [pendingPlatform, setPendingPlatform] = useState<ContractPlatform | "">("");
+  const [openDatePicker, setOpenDatePicker] = useState<string | null>(null);
   const [editedAdvertiserFields, setEditedAdvertiserFields] = useState({
     name: false,
     manager: false,
@@ -821,6 +895,45 @@ export function ContractBuilder() {
     stale?: boolean;
   } | null>(null);
   const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    const query = selectedBrandId
+      ? `?brandId=${encodeURIComponent(selectedBrandId)}`
+      : "";
+
+    void apiFetch(`/api/advertiser/brands${query}`, {
+      headers: { Accept: "application/json" },
+      credentials: "include",
+    })
+      .then(async (response) => {
+        if (response.status === 401) {
+          navigate("/login/advertiser", { replace: true });
+          return undefined;
+        }
+        const data = (await response.json().catch(() => ({}))) as
+          | AdvertiserBrandsResponse
+          | { error?: string };
+        if (!response.ok || !("brand" in data)) return undefined;
+        return data.brand ?? data.brands?.[0] ?? null;
+      })
+      .then((brand) => {
+        if (!active || brand === undefined) return;
+        setSelectedBrand(brand);
+        if (brand?.id) {
+          setSelectedBrandId(brand.id);
+          writeSelectedAdvertiserBrandId(brand.id);
+        }
+      })
+      .catch(() => {
+        if (!active) return;
+        setSelectedBrand(null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [navigate, selectedBrandId]);
 
   const draftWithAdvertiserDefaults = useMemo(
     () => ({
@@ -999,6 +1112,7 @@ export function ContractBuilder() {
 
     return {
       advertiser_id: "adv_1",
+      brand_profile_id: (selectedBrand?.id ?? selectedBrandId) || undefined,
       campaign_name: draft.title.trim(),
       advertiser_info: {
         name: draft.advertiserName.trim(),
@@ -1220,6 +1334,10 @@ export function ContractBuilder() {
                 setAccountMenuOpen(false);
                 navigate("/reset-password?role=advertiser");
               }}
+              onOpenBusinessVerification={() => {
+                setAccountMenuOpen(false);
+                navigate("/advertiser/verification");
+              }}
             />
           </div>
         </div>
@@ -1307,10 +1425,10 @@ export function ContractBuilder() {
                   </div>
 
                   <div>
-                    <Label>광고주/브랜드명</Label>
+                    <Label>광고주 사업자명</Label>
                     <Input
                       className="mt-1.5"
-                      placeholder="예: 다이렉트뷰티"
+                      placeholder="예: 주식회사 연락미"
                       value={draftWithAdvertiserDefaults.advertiserName}
                       onChange={(event) => {
                         setEditedAdvertiserFields((current) => ({
@@ -1448,11 +1566,11 @@ export function ContractBuilder() {
                                     </div>
                                   </div>
 
-                                  <div className="grid grid-cols-2 gap-2 border-t border-neutral-200 px-3 pb-3 pt-3">
+                                  <div className="grid gap-2 border-t border-neutral-200 px-3 pb-3 pt-3">
                                     {item.fields.map((field) => (
                                       <div
                                         key={`${item.contentType}-${field.key}`}
-                                        className={field.fullWidth ? "col-span-2" : ""}
+                                        className="min-w-0"
                                       >
                                         <Label className="text-xs text-neutral-500">
                                           {field.label}
@@ -1535,7 +1653,7 @@ export function ContractBuilder() {
 
                       {showAddPlatformForm && canAddPlatform ? (
                         <div className="min-h-[132px] rounded-[14px] border border-neutral-200 bg-white p-4 shadow-[0_8px_22px_rgba(15,23,42,0.035)] sm:p-5">
-                          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                          <div className="grid gap-4">
                             <div>
                               <Label className="text-xs text-neutral-500">플랫폼</Label>
                               <Select
@@ -1627,53 +1745,49 @@ export function ContractBuilder() {
 
               {step === 3 && (
                 <section className="animate-in fade-in slide-in-from-right-4 space-y-6">
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid gap-3">
                     <div>
                       <Label>캠페인 시작일</Label>
-                      <Input
-                        type="date"
-                        className="mt-1.5"
-                        value={draft.campaignStart}
-                        onChange={(event) =>
-                          updateDraft({ campaignStart: event.target.value })
-                        }
-                      />
+                        <ContractDatePicker
+                          id="contract-campaign-start"
+                          openId={openDatePicker}
+                          onOpenChange={setOpenDatePicker}
+                          value={draft.campaignStart}
+                          onChange={(value) => updateDraft({ campaignStart: value })}
+                        />
                     </div>
                     <div>
                       <Label>캠페인 종료일</Label>
-                      <Input
-                        type="date"
-                        className="mt-1.5"
-                        value={draft.campaignEnd}
-                        onChange={(event) =>
-                          updateDraft({ campaignEnd: event.target.value })
-                        }
-                      />
+                        <ContractDatePicker
+                          id="contract-campaign-end"
+                          openId={openDatePicker}
+                          onOpenChange={setOpenDatePicker}
+                          value={draft.campaignEnd}
+                          onChange={(value) => updateDraft({ campaignEnd: value })}
+                        />
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid gap-3">
                     <div>
                       <Label>업로드 마감일</Label>
-                      <Input
-                        type="date"
-                        className="mt-1.5"
-                        value={draft.uploadDueDate}
-                        onChange={(event) =>
-                          updateDraft({ uploadDueDate: event.target.value })
-                        }
-                      />
+                        <ContractDatePicker
+                          id="contract-upload-due-date"
+                          openId={openDatePicker}
+                          onOpenChange={setOpenDatePicker}
+                          value={draft.uploadDueDate}
+                          onChange={(value) => updateDraft({ uploadDueDate: value })}
+                        />
                     </div>
                     <div>
                       <Label>검수 회신 기한</Label>
-                      <Input
-                        type="date"
-                        className="mt-1.5"
-                        value={draft.reviewDueDate}
-                        onChange={(event) =>
-                          updateDraft({ reviewDueDate: event.target.value })
-                        }
-                      />
+                        <ContractDatePicker
+                          id="contract-review-due-date"
+                          openId={openDatePicker}
+                          onOpenChange={setOpenDatePicker}
+                          value={draft.reviewDueDate}
+                          onChange={(value) => updateDraft({ reviewDueDate: value })}
+                        />
                     </div>
                   </div>
 
@@ -1855,7 +1969,7 @@ export function ContractBuilder() {
 
                   <div>
                     <Label>지급 조건</Label>
-                    <div className="mt-1.5 grid gap-3 sm:grid-cols-[180px_1fr]">
+                    <div className="mt-1.5 grid gap-3">
                       <select
                         value={draft.paymentMethod}
                         onChange={(event) =>
@@ -2271,11 +2385,13 @@ function BuilderAccountSettingsMenu({
   open,
   onToggle,
   onChangePassword,
+  onOpenBusinessVerification,
 }: {
   account: { name: string; email?: string };
   open: boolean;
   onToggle: () => void;
   onChangePassword: () => void;
+  onOpenBusinessVerification: () => void;
 }) {
   const emailChangeHref = buildBuilderSupportMailtoHref({
     subject: "광고주 계정 이메일 변경 요청",
@@ -2283,7 +2399,7 @@ function BuilderAccountSettingsMenu({
       "광고주 계정 이메일 변경을 요청합니다.",
       "",
       `현재 표시 이메일: ${account.email ?? "확인 필요"}`,
-      `회사/브랜드명: ${account.name}`,
+      `사업자명: ${account.name}`,
       "변경할 이메일:",
       "요청 사유:",
     ].join("\n"),
@@ -2319,6 +2435,14 @@ function BuilderAccountSettingsMenu({
             <Mail className="h-3.5 w-3.5" />
             이메일 변경
           </a>
+          <button
+            type="button"
+            onClick={onOpenBusinessVerification}
+            className="flex h-11 w-full items-center gap-2 px-4 text-left text-[12px] font-extrabold text-neutral-700 transition hover:bg-neutral-50 hover:text-neutral-950"
+          >
+            <ShieldCheck className="h-3.5 w-3.5" />
+            사업자 인증
+          </button>
           <button
             type="button"
             onClick={onChangePassword}
@@ -2497,6 +2621,103 @@ const BuilderReviewPanel: React.FC<{
     </div>
   );
 };
+
+function ContractDatePicker({
+  id,
+  openId,
+  onOpenChange,
+  value,
+  onChange,
+}: {
+  id: string;
+  openId: string | null;
+  onOpenChange: (value: string | null) => void;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const open = openId === id;
+  const [visibleMonth, setVisibleMonth] = useState(() =>
+    getContractCalendarMonth(value),
+  );
+  const selectedDate = parseContractDate(value);
+  const days = useMemo(() => getContractCalendarDays(visibleMonth), [visibleMonth]);
+
+  return (
+    <section className="relative mt-1.5 min-w-0">
+      <button
+        type="button"
+        onClick={() => {
+          if (!open) setVisibleMonth(getContractCalendarMonth(value));
+          onOpenChange(open ? null : id);
+        }}
+        aria-expanded={open}
+        className="flex h-11 w-full min-w-0 items-center justify-between gap-3 rounded-md border border-neutral-200 bg-white px-3 text-left text-sm font-semibold text-neutral-900 outline-none transition hover:border-neutral-300 focus:border-neutral-950"
+      >
+        <span className={value ? "text-neutral-950" : "text-neutral-400"}>
+          {value ? formatContractDateButtonLabel(value) : "날짜 선택"}
+        </span>
+        <CalendarDays className="h-4 w-4 shrink-0 text-neutral-500" />
+      </button>
+      {open ? (
+        <div className="absolute left-0 top-full z-30 mt-2 w-full max-w-[360px] rounded-[12px] border border-neutral-200 bg-white p-3 shadow-[0_20px_44px_rgba(15,23,42,0.14)]">
+          <div className="flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() =>
+                setVisibleMonth((current) => addContractCalendarMonths(current, -1))
+              }
+              className="h-8 rounded-[8px] px-2 text-[12px] font-extrabold text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-950"
+            >
+              이전
+            </button>
+            <p className="text-[13px] font-extrabold text-neutral-950">
+              {formatContractCalendarMonthTitle(visibleMonth)}
+            </p>
+            <button
+              type="button"
+              onClick={() =>
+                setVisibleMonth((current) => addContractCalendarMonths(current, 1))
+              }
+              className="h-8 rounded-[8px] px-2 text-[12px] font-extrabold text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-950"
+            >
+              다음
+            </button>
+          </div>
+          <div className="mt-3 grid grid-cols-7 gap-1 text-center text-[11px] font-extrabold text-neutral-400">
+            {["일", "월", "화", "수", "목", "금", "토"].map((day) => (
+              <span key={day}>{day}</span>
+            ))}
+          </div>
+          <div className="mt-1 grid grid-cols-7 gap-1">
+            {days.map((day, index) => {
+              if (!day) return <span key={`empty-${index}`} className="h-8" />;
+              const dateValue = formatContractDateValue(day);
+              const selected =
+                Boolean(selectedDate) && dateValue === formatContractDateValue(selectedDate);
+              return (
+                <button
+                  key={dateValue}
+                  type="button"
+                  onClick={() => {
+                    onChange(dateValue);
+                    onOpenChange(null);
+                  }}
+                  className={`h-8 rounded-[8px] text-[12px] font-extrabold transition ${
+                    selected
+                      ? "bg-blue-600 text-white"
+                      : "text-neutral-700 hover:bg-neutral-100 hover:text-neutral-950"
+                  }`}
+                >
+                  {day.getDate()}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
 
 const ContractDocumentSection: React.FC<{
   title: string;

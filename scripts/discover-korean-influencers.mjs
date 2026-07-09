@@ -304,13 +304,22 @@ const apply = args.get("apply") === "true";
 const includeYoutube = args.get("youtube") !== "false";
 const includeNaver = args.get("naver") !== "false";
 const includeInstagram = args.get("instagram") !== "false";
+const includeTikTok = args.get("tiktok") !== "false";
 const youtubePerQuery = parsePositiveInt(args.get("youtube-per-query"), 12);
 const youtubePages = parsePositiveInt(args.get("youtube-pages"), 1);
 const naverPerQuery = parsePositiveInt(args.get("naver-per-query"), 30);
 const naverPages = parsePositiveInt(args.get("naver-pages"), 1);
+const tiktokPerQuery = parsePositiveInt(args.get("tiktok-per-query"), 30);
+const tiktokPages = parsePositiveInt(args.get("tiktok-pages"), 1);
 const minFollowers = parseOptionalPositiveInt(args.get("min-followers"));
 const maxFollowers = parseOptionalPositiveInt(args.get("max-followers"));
 const inputPath = args.get("input");
+const outputPlatforms = new Set(
+  String(args.get("output-platforms") ?? "")
+    .split(",")
+    .map(normalizePlatformName)
+    .filter(Boolean),
+);
 
 function parsePositiveInt(value, fallback) {
   const parsed = Number.parseInt(String(value ?? ""), 10);
@@ -321,6 +330,16 @@ function parseOptionalPositiveInt(value) {
   if (value == null) return undefined;
   const parsed = Number.parseInt(String(value), 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function normalizePlatformName(value) {
+  const platform = String(value ?? "").trim().toLowerCase().replace(/-/g, "_");
+  if (platform === "naver" || platform === "blog") return "naver_blog";
+  if (platform === "ig") return "instagram";
+  if (platform === "tt") return "tiktok";
+  return ["youtube", "naver_blog", "instagram", "tiktok"].includes(platform)
+    ? platform
+    : "";
 }
 
 function sha256(value) {
@@ -348,6 +367,10 @@ function stripHtml(value) {
     .trim();
 }
 
+function truncateText(value, maxLength) {
+  return Array.from(String(value ?? "")).slice(0, maxLength).join("");
+}
+
 function slugPart(value) {
   return String(value ?? "")
     .trim()
@@ -364,6 +387,7 @@ function makePublicHandle(platform, handleSeed, externalId) {
   const prefixByPlatform = {
     instagram: "ig",
     naver_blog: "blog",
+    tiktok: "tt",
     youtube: "yt",
   };
   const prefix = prefixByPlatform[platform] ?? "ch";
@@ -389,6 +413,32 @@ function compactKoreanNumber(value) {
     return `${(amount / 10_000).toFixed(amount >= 100_000 ? 0 : 1).replace(/\.0$/, "")}만`;
   }
   return Math.round(amount).toLocaleString("ko-KR");
+}
+
+function parseEnglishCompactNumber(value, unit) {
+  const amount = Number.parseFloat(String(value ?? "").replace(/,/g, ""));
+  if (!Number.isFinite(amount)) return null;
+  const normalizedUnit = String(unit ?? "").toLowerCase();
+  const multiplier =
+    normalizedUnit === "b" ? 1_000_000_000 :
+      normalizedUnit === "m" ? 1_000_000 :
+        normalizedUnit === "k" ? 1_000 :
+          1;
+  return Math.round(amount * multiplier);
+}
+
+function parseTikTokFollowerCount(text) {
+  const match = String(text ?? "").match(/([\d,.]+)\s*([kmb])?\s*followers\b/i);
+  if (!match) return null;
+  return parseEnglishCompactNumber(match[1], match[2]);
+}
+
+function hasKoreaProfileSignal(text) {
+  const value = String(text ?? "");
+  return (
+    /[\uac00-\ud7a3]/u.test(value) ||
+    /\b(?:south\s*korea|korea|korean|seoul|busan|incheon|daegu|daejeon|gwangju|ulsan|jeju|k-?beauty|k-?food|k-?fashion|k-?style|k-?pop)\b/i.test(value)
+  );
 }
 
 function isLikelyBrandOrInstitution(text) {
@@ -500,6 +550,9 @@ function scoreCandidate(candidate) {
   if (candidate.platform === "instagram" && candidate.follower_count) {
     score += Math.min(18, Math.round(Math.log10(candidate.follower_count + 1) * 4));
   }
+  if (candidate.platform === "tiktok" && candidate.follower_count) {
+    score += Math.min(18, Math.round(Math.log10(candidate.follower_count + 1) * 4));
+  }
   if (candidate.average_views) {
     score += Math.min(12, Math.round(Math.log10(candidate.average_views + 1) * 3));
   }
@@ -524,10 +577,15 @@ function scoreCandidate(candidate) {
 
 function rescoreRow(row) {
   const scored = scoreCandidate(row);
+  const hasRequiredTikTokSignal =
+    row.platform !== "tiktok" || row.source_evidence?.koreaProfileSignal === true;
+  const qualityScore = hasRequiredTikTokSignal
+    ? scored.qualityScore
+    : Math.min(scored.qualityScore, 45);
   return {
     ...row,
-    quality_score: scored.qualityScore,
-    status: scored.status,
+    quality_score: qualityScore,
+    status: hasRequiredTikTokSignal ? scored.status : "needs_review",
   };
 }
 
@@ -622,7 +680,7 @@ async function collectYoutubeCandidates() {
         platform_handle: platformHandle || channel.id,
         display_name: title || platformHandle || channel.id,
         headline: `${categoryConfigs[seed.category].label} 콘텐츠 채널`,
-        bio: description.slice(0, 240),
+        bio: truncateText(description, 240),
         profile_url: profileUrl,
         avatar_url: snippet.thumbnails?.high?.url ?? snippet.thumbnails?.default?.url ?? null,
         categories: categoriesForRow,
@@ -744,7 +802,7 @@ async function collectNaverBlogCandidates() {
       platform_handle: blogId,
       display_name: blog.bloggerName || blogId,
       headline: `${categoryConfigs[blog.category].label} 리뷰 블로그`,
-      bio: blog.descriptions.slice(0, 3).join(" ").slice(0, 240),
+      bio: truncateText(blog.descriptions.slice(0, 3).join(" "), 240),
       profile_url: blog.bloggerLink,
       avatar_url: null,
       categories: categoriesForRow,
@@ -885,6 +943,336 @@ function collectInstagramCandidatesFromCrosslinks(sourceRows) {
   return Array.from(byHandle.values());
 }
 
+const reservedTikTokHandles = new Set([
+  "about",
+  "business",
+  "channel",
+  "content",
+  "creator",
+  "discover",
+  "download",
+  "explore",
+  "foryou",
+  "korea",
+  "korean",
+  "legal",
+  "live",
+  "login",
+  "music",
+  "search",
+  "share",
+  "shop",
+  "star",
+  "tag",
+  "tiktok",
+  "upload",
+  "video",
+]);
+
+const tiktokSearchQueriesByCategory = {
+  beauty: [
+    "tiktok beauty korea creator",
+    "tiktok korean beauty",
+    "korean beauty tiktok influencer",
+  ],
+  living: [
+    "tiktok korea lifestyle creator",
+    "tiktok korean home living",
+    "korean lifestyle tiktok influencer",
+  ],
+  fashion: [
+    "tiktok korean fashion creator",
+    "tiktok korea outfit",
+    "korean fashion tiktok influencer",
+  ],
+  food: [
+    "tiktok korean food creator",
+    "tiktok korea restaurant recipe",
+    "korean food tiktok influencer",
+  ],
+  travel: [
+    "tiktok korea travel creator",
+    "tiktok korea hotel travel",
+    "korean travel tiktok influencer",
+  ],
+  parenting: [
+    "tiktok korea parenting creator",
+    "tiktok korean family kids",
+    "korean parenting tiktok influencer",
+  ],
+  pet: [
+    "tiktok korea pet creator",
+    "tiktok korean dog cat",
+    "korean pet tiktok influencer",
+  ],
+  fitness: [
+    "tiktok korea fitness creator",
+    "tiktok korean workout",
+    "korean fitness tiktok influencer",
+  ],
+  game: [
+    "tiktok korea gaming creator",
+    "tiktok korean game streamer",
+    "korean gaming tiktok influencer",
+  ],
+  tech: [
+    "tiktok korea tech creator",
+    "tiktok korean gadget review",
+    "korean tech tiktok influencer",
+  ],
+};
+
+function normalizeTikTokHandle(value) {
+  const handle = String(value ?? "")
+    .trim()
+    .replace(/^@+/, "")
+    .replace(/[/?#].*$/, "")
+    .replace(/[.,;:)\]}"'`]+$/, "")
+    .toLowerCase();
+
+  if (!/^[a-z0-9](?:[a-z0-9._]{1,22}[a-z0-9])?$/.test(handle)) return "";
+  if (reservedTikTokHandles.has(handle)) return "";
+  return handle;
+}
+
+function extractTikTokProfileRefs(text) {
+  const source = String(text ?? "");
+  const refs = new Map();
+  const add = (rawHandle, evidence) => {
+    const handle = normalizeTikTokHandle(rawHandle);
+    if (!handle) return;
+    refs.set(handle, evidence);
+  };
+
+  for (const match of source.matchAll(
+    /https?:\/\/(?:www\.)?tiktok\.com\/@([A-Za-z0-9._]{2,24})(?:[/?#][^\s]*)?/gi,
+  )) {
+    add(match[1], match[0]);
+  }
+
+  return Array.from(refs, ([handle, evidence]) => ({ handle, evidence }));
+}
+
+function buildTikTokCandidateFromSource({
+  handle,
+  sourceRow,
+  category,
+  title,
+  description,
+  sourceUrl,
+  evidence,
+  provider,
+  keyword,
+}) {
+  const config = categoryConfigs[category] ?? categoryConfigs.beauty;
+  const displayName =
+    stripHtml(title) ||
+    stripHtml(sourceRow?.display_name) ||
+    handle;
+  const bio = truncateText(stripHtml(description || sourceRow?.bio), 240);
+  const profileUrl = `https://www.tiktok.com/@${handle}`;
+  const followerCount = parseTikTokFollowerCount(`${displayName} ${bio}`);
+  const sourceAudienceCountries = Array.isArray(sourceRow?.audience_countries)
+    ? sourceRow.audience_countries
+    : [];
+  const hasSourceKoreaAudience = sourceAudienceCountries.some((country) =>
+    /^(south_korea|kr|korea)$/i.test(String(country ?? "")),
+  );
+  const koreaProfileSignal =
+    hasSourceKoreaAudience || hasKoreaProfileSignal(`${displayName} ${bio} ${handle}`);
+  const categoriesForRow =
+    sourceRow?.categories?.length
+      ? sourceRow.categories
+      : inferCategories(`${displayName} ${bio} ${keyword ?? ""}`, category);
+  const candidate = {
+    id: stableUuid(`discovered:tiktok:${handle}`),
+    platform: "tiktok",
+    public_handle: makePublicHandle("tiktok", handle, handle),
+    external_id: handle,
+    platform_handle: handle,
+    display_name: displayName,
+    headline: `${categoriesForRow[0] ?? config.label} 틱톡 크리에이터`,
+    bio,
+    profile_url: profileUrl,
+    avatar_url: sourceRow?.avatar_url ?? null,
+    categories: categoriesForRow,
+    audience_countries: sourceAudienceCountries.length
+      ? sourceAudienceCountries
+      : koreaProfileSignal
+        ? ["south_korea"]
+        : [],
+    audience_tags: sourceRow?.audience_tags ?? config.audienceTags,
+    followers_label: Number.isFinite(followerCount)
+      ? `팔로워 ${compactKoreanNumber(followerCount)}명`
+      : "틱톡 공개 프로필",
+    follower_count: Number.isFinite(followerCount) ? followerCount : null,
+    average_views: null,
+    post_count: null,
+    source_provider: provider,
+    source_keyword: keyword,
+    source_url: sourceUrl || profileUrl,
+    source_evidence: {
+      sourceCategory: category,
+      sourcePlatform: sourceRow?.platform ?? null,
+      sourceProfileUrl: sourceRow?.profile_url ?? null,
+      extractedFrom: evidence,
+      koreaProfileSignal,
+    },
+  };
+  const scored = scoreCandidate(candidate);
+  const qualityScore = koreaProfileSignal
+    ? scored.qualityScore
+    : Math.min(scored.qualityScore, 45);
+  return {
+    ...candidate,
+    quality_score: qualityScore,
+    status: koreaProfileSignal && scored.status === "active" ? "active" : "needs_review",
+  };
+}
+
+function collectTikTokCandidatesFromCrosslinks(sourceRows) {
+  if (!includeTikTok) return [];
+
+  const byHandle = new Map();
+  for (const row of sourceRows) {
+    const text = [
+      row.display_name,
+      row.headline,
+      row.bio,
+      row.profile_url,
+      row.source_url,
+      row.platform_handle,
+    ].join(" ");
+    const category = row.source_evidence?.sourceCategory in categoryConfigs
+      ? row.source_evidence.sourceCategory
+      : categories[0] ?? "beauty";
+    for (const ref of extractTikTokProfileRefs(text)) {
+      const enriched = buildTikTokCandidateFromSource({
+        handle: ref.handle,
+        sourceRow: row,
+        category,
+        title: row.display_name,
+        description: row.bio,
+        sourceUrl: row.profile_url,
+        evidence: ref.evidence,
+        provider: "public_profile_crosslink",
+        keyword: row.source_keyword,
+      });
+      const previous = byHandle.get(ref.handle);
+      if (!previous || enriched.quality_score > previous.quality_score) {
+        byHandle.set(ref.handle, enriched);
+      }
+    }
+  }
+
+  return Array.from(byHandle.values());
+}
+
+async function collectTikTokCandidatesFromNaverWeb() {
+  const clientId = process.env.NAVER_CLIENT_ID;
+  const clientSecret = process.env.NAVER_CLIENT_SECRET;
+  if (!clientId || !clientSecret || !includeTikTok) return [];
+
+  const byHandle = new Map();
+  for (const category of categories) {
+    const queries = tiktokSearchQueriesByCategory[category] ?? [];
+    for (const query of queries) {
+      const display = Math.min(tiktokPerQuery, 100);
+      for (let pageIndex = 0; pageIndex < tiktokPages; pageIndex += 1) {
+        const start = pageIndex * display + 1;
+        if (start > 1000) break;
+
+        const url = new URL("https://openapi.naver.com/v1/search/webkr.json");
+        url.searchParams.set("query", query);
+        url.searchParams.set("display", String(display));
+        url.searchParams.set("start", String(start));
+
+        const data = await fetchJson(
+          url,
+          {
+            headers: {
+              "X-Naver-Client-Id": clientId,
+              "X-Naver-Client-Secret": clientSecret,
+            },
+          },
+          `Naver web TikTok search ${query} page ${pageIndex + 1}`,
+        );
+
+        for (const item of data.items ?? []) {
+          const title = stripHtml(item.title);
+          const description = stripHtml(item.description);
+          const link = ensureHttpUrl(stripHtml(item.link));
+          const refs = extractTikTokProfileRefs(link);
+          for (const ref of refs) {
+            const enriched = buildTikTokCandidateFromSource({
+              handle: ref.handle,
+              category,
+              title: title || ref.handle,
+              description,
+              sourceUrl: link || `https://www.tiktok.com/@${ref.handle}`,
+              evidence: ref.evidence,
+              provider: "naver_web_search_tiktok_public_profile",
+              keyword: query,
+            });
+            const previous = byHandle.get(ref.handle);
+            if (!previous || enriched.quality_score > previous.quality_score) {
+              byHandle.set(ref.handle, enriched);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return Array.from(byHandle.values());
+}
+
+async function collectCuratedTikTokCandidates() {
+  if (!includeTikTok) return [];
+
+  const seedPath = path.join(outputDir, "tiktok-curated-seeds.json");
+  let seeds;
+  try {
+    seeds = JSON.parse(await fs.readFile(seedPath, "utf8"));
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+    return [];
+  }
+
+  return seeds
+    .map((seed) => {
+      const handle = normalizeTikTokHandle(seed.handle);
+      if (!handle) return null;
+      const category = seed.category in categoryConfigs ? seed.category : "beauty";
+      const followerCount = Number.parseInt(String(seed.follower_count ?? ""), 10);
+      const candidate = buildTikTokCandidateFromSource({
+        handle,
+        category,
+        title: stripHtml(seed.display_name) || handle,
+        description: stripHtml(seed.bio),
+        sourceUrl: seed.source_url ?? `https://www.tiktok.com/@${handle}`,
+        evidence: seed.source_url ?? handle,
+        provider: "curated_tiktok_public_search",
+        keyword: seed.source_keyword ?? "tiktok public profile search",
+      });
+      return {
+        ...candidate,
+        headline: stripHtml(seed.headline) || candidate.headline,
+        followers_label: Number.isFinite(followerCount)
+          ? `팔로워 ${compactKoreanNumber(followerCount)}명`
+          : candidate.followers_label,
+        follower_count: Number.isFinite(followerCount) ? followerCount : null,
+        post_count: Number.isFinite(seed.post_count) ? seed.post_count : null,
+        source_evidence: {
+          ...candidate.source_evidence,
+          sourceNote: seed.source_note ?? null,
+        },
+        status: seed.status ?? candidate.status,
+      };
+    })
+    .filter(Boolean);
+}
+
 async function collectCuratedInstagramCandidates() {
   if (!includeInstagram) return [];
 
@@ -924,7 +1312,7 @@ async function collectCuratedInstagramCandidates() {
         platform_handle: handle,
         display_name: stripHtml(seed.display_name) || handle,
         headline: stripHtml(seed.headline) || `${config.label} 인스타그램 크리에이터`,
-        bio: stripHtml(seed.bio).slice(0, 240),
+        bio: truncateText(stripHtml(seed.bio), 240),
         profile_url: profileUrl,
         avatar_url: null,
         categories: seed.categories?.length
@@ -1044,15 +1432,29 @@ async function fetchSupabaseRows(table, query) {
   );
 }
 
+async function fetchAllSupabaseRows(table, query, pageSize = 1000) {
+  const rows = [];
+  for (let offset = 0; ; offset += pageSize) {
+    const separator = query.includes("?") ? "&" : "?";
+    const page = await fetchSupabaseRows(
+      table,
+      `${query}${separator}limit=${pageSize}&offset=${offset}`,
+    );
+    rows.push(...page);
+    if (page.length < pageSize) break;
+  }
+  return rows;
+}
+
 async function reserveExistingHandles(rows) {
   const [discovered, marketplace] = await Promise.all([
-    fetchSupabaseRows(
+    fetchAllSupabaseRows(
       "discovered_influencer_profiles",
-      "?select=id,public_handle&limit=20000",
+      "?select=id,public_handle",
     ).catch(() => []),
-    fetchSupabaseRows(
+    fetchAllSupabaseRows(
       "marketplace_influencer_profiles",
-      "?select=id,public_handle&limit=20000",
+      "?select=id,public_handle",
     ).catch(() => []),
   ]);
 
@@ -1131,12 +1533,18 @@ async function main() {
     const collected = [
       ...baseCollected,
       ...collectInstagramCandidatesFromCrosslinks(baseCollected),
+      ...collectTikTokCandidatesFromCrosslinks(baseCollected),
+      ...(await collectTikTokCandidatesFromNaverWeb()),
       ...(await collectCuratedInstagramCandidates()),
+      ...(await collectCuratedTikTokCandidates()),
     ];
     sourceRows = collected;
   }
 
-  const deduped = dedupeRows(filterRowsByFollowerRange(sourceRows.map(rescoreRow)));
+  const targetRows = outputPlatforms.size > 0
+    ? sourceRows.filter((row) => outputPlatforms.has(row.platform))
+    : sourceRows;
+  const deduped = dedupeRows(filterRowsByFollowerRange(targetRows.map(rescoreRow)));
   const rows = apply ? await reserveExistingHandles(deduped) : deduped;
 
   await fs.mkdir(outputDir, { recursive: true });
@@ -1175,6 +1583,7 @@ async function main() {
         maxFollowers,
         youtubePages,
         naverPages,
+        tiktokPages,
         total: rows.length,
         active: active.length,
         needs_review: rows.length - active.length,

@@ -720,7 +720,7 @@ export function InfluencerVerification() {
               </div>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3">
               <TextField
                 label="이름/활동명"
                 value={form.subject_name}
