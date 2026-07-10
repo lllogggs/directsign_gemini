@@ -10002,6 +10002,71 @@ const isClearlyBusinessDiscoveredInfluencerRow = (
   ].some((pattern) => pattern.test(text));
 };
 
+const normalizeDiscoveredInfluencerDisplayName = (
+  row: SupabaseDiscoveredInfluencerProfileRow,
+) => {
+  const fallback = row.platform_handle || row.public_handle || row.id;
+  const rawName = normalizeRequiredText(row.display_name) || fallback;
+  const handle = normalizeRequiredText(row.platform_handle || row.public_handle);
+  const handleWithoutAt = handle.replace(/^@/, "");
+  let name = rawName
+    .replace(/\s*[|｜]\s*(?:TikTok|YouTube|Instagram|NAVER|Naver(?: Blog)?|네이버(?:\s*블로그)?)\s*$/i, "")
+    .replace(/\s*[-–—]\s*(?:TikTok|YouTube|Instagram|NAVER|Naver(?: Blog)?|네이버(?:\s*블로그)?)\s*$/i, "")
+    .replace(/\s*\((?:@[^)]+|[^)]*TikTok[^)]*|[^)]*YouTube[^)]*)\)\s*$/i, "")
+    .replace(/\s*@[\w.]{2,32}\s*$/i, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+  if (!name || /^[@\W_]+$/.test(name)) {
+    name = handle ? handle.replace(/^@/, "") : fallback;
+  }
+
+  if (handleWithoutAt && name.toLowerCase() === handleWithoutAt.toLowerCase()) {
+    return handle.replace(/^@/, "");
+  }
+
+  return name;
+};
+
+const isClearlyNonCreatorDiscoveredInfluencerRow = (
+  row: SupabaseDiscoveredInfluencerProfileRow,
+) => {
+  const displayName = normalizeDiscoveredInfluencerDisplayName(row);
+  const identityText = [
+    displayName,
+    row.display_name,
+    row.headline,
+    row.platform_handle,
+    row.profile_url,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const metadataText = [
+    row.bio,
+    row.source_keyword,
+    ...(row.categories ?? []),
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const combinedText = `${identityText} ${metadataText}`;
+
+  const identityPatterns = [
+    /(?:유튜버|인플루언서|크리에이터|채널).{0,16}(?:순위|랭킹)/i,
+    /(?:순위|랭킹).{0,16}(?:유튜버|인플루언서|크리에이터|채널)/i,
+    /(?:한국|국내)?\s*(?:유튜버|인플루언서|크리에이터)\s*(?:순위|랭킹)$/i,
+    /(?:^|\s)(?:TikTok\s*Korea|틱톡\s*TikTok\s*Korea|YouTube\s*Korea|Instagram\s*Korea)(?:\s|$|\()/i,
+    /(?:공식\s*(?:계정|채널)|official\s*(?:account|channel))/i,
+  ];
+  const combinedPatterns = [
+    /(?:브랜드|브랜드 공식|회사|기업|매장|쇼핑몰|스토어|platform|official shop)/i,
+  ];
+
+  return (
+    identityPatterns.some((pattern) => pattern.test(identityText)) ||
+    combinedPatterns.some((pattern) => pattern.test(combinedText))
+  );
+};
+
 const mapDiscoveredInfluencerRowToMarketplaceProfile = (
   row: SupabaseDiscoveredInfluencerProfileRow,
 ): MarketplaceInfluencerProfile => {
@@ -10019,7 +10084,7 @@ const mapDiscoveredInfluencerRowToMarketplaceProfile = (
     : postCountLabel
       ? `포스트 ${postCountLabel}`
       : "채널 확인 필요";
-  const displayName = normalizeRequiredText(row.display_name) || row.platform_handle;
+  const displayName = normalizeDiscoveredInfluencerDisplayName(row);
 
   return {
     id: `discovered-${row.id}`,
@@ -10179,6 +10244,7 @@ const readDiscoveredInfluencerProfiles = async (
       rows.push(
         ...page
           .filter((row) => !isClearlyBusinessDiscoveredInfluencerRow(row))
+          .filter((row) => !isClearlyNonCreatorDiscoveredInfluencerRow(row))
           .map(mapDiscoveredInfluencerRowToMarketplaceProfile)
           .filter(
             (profile) =>

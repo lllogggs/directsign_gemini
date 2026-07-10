@@ -428,6 +428,10 @@ export function AdvertiserInfluencerDiscoveryPage() {
   const [openFilterList, setOpenFilterList] = useState<string | null>(null);
   const [selectedProfile, setSelectedProfile] =
     useState<MarketplaceInfluencerProfile | null>(null);
+  const closeInfluencerFilterPanel = useCallback(() => {
+    setOpenFilterList(null);
+    setFiltersOpen(false);
+  }, []);
   const [previewProfile, setPreviewProfile] = useState<{
     profile: MarketplaceInfluencerProfile;
     top: number;
@@ -595,6 +599,7 @@ export function AdvertiserInfluencerDiscoveryPage() {
           <InfluencerSortSelect
             value={influencerSort}
             onChange={setInfluencerSort}
+            onOpen={closeInfluencerFilterPanel}
           />
         }
         onToggle={() =>
@@ -1601,7 +1606,7 @@ function InfluencerDiscoveryTableRow({
             rel={primaryChannelUrl ? "noreferrer" : undefined}
             aria-label={`${profile.displayName} 공개 채널 보기`}
             title="공개 채널 보기"
-            className="inline-flex h-9 w-[96px] items-center justify-center gap-1.5 rounded-[7px] bg-blue-600 px-2 text-[12px] font-extrabold text-white transition hover:bg-blue-700"
+            className="inline-flex h-9 w-[96px] items-center justify-center gap-1.5 rounded-[7px] border border-neutral-200 bg-white px-2 text-[12px] font-extrabold text-neutral-800 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
           >
             <ExternalLink className="h-3.5 w-3.5" />
             채널 보기
@@ -1673,7 +1678,7 @@ function InfluencerDiscoveryCompactRow({
             rel={primaryChannelUrl ? "noreferrer" : undefined}
             aria-label={`${profile.displayName} 공개 채널 보기`}
             title="공개 채널 보기"
-            className="yl-primary-action inline-flex h-10 w-full items-center justify-center gap-2 rounded-[8px] px-3 text-[13px] font-extrabold transition"
+            className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-[8px] border border-neutral-200 bg-white px-3 text-[13px] font-extrabold text-neutral-800 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
           >
             <ExternalLink className="h-4 w-4" />
             채널 보기
@@ -2678,15 +2683,18 @@ function FilterListOptionButton({
 function InfluencerSortSelect({
   value,
   onChange,
+  onOpen,
 }: {
   value: InfluencerSortValue;
   onChange: (value: InfluencerSortValue) => void;
+  onOpen?: () => void;
 }) {
   return (
     <FilterSelectControl
       value={value}
       options={influencerSortOptions}
       onChange={(nextValue) => onChange(nextValue as InfluencerSortValue)}
+      onOpen={onOpen}
       ariaLabel="인플루언서 정렬"
       leadingIcon={
         <ArrowUpDown

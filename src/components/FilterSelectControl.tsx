@@ -22,6 +22,7 @@ type FilterSelectControlProps = {
   triggerClassName?: string;
   menuClassName?: string;
   leadingIcon?: ReactNode;
+  onOpen?: () => void;
 };
 
 export function FilterSelectControl({
@@ -33,6 +34,7 @@ export function FilterSelectControl({
   triggerClassName = "",
   menuClassName = "",
   leadingIcon,
+  onOpen,
 }: FilterSelectControlProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -73,7 +75,13 @@ export function FilterSelectControl({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={open ? listboxId : undefined}
-        onClick={() => setOpen((current) => !current)}
+        onClick={() =>
+          setOpen((current) => {
+            const nextOpen = !current;
+            if (nextOpen) onOpen?.();
+            return nextOpen;
+          })
+        }
         className={`inline-flex h-9 w-full max-w-full items-center justify-between gap-2 rounded-[9px] border bg-white px-3 text-left text-[12px] font-extrabold text-[#303630] outline-none transition ${
           open
             ? "border-neutral-300 shadow-[0_0_0_3px_rgba(15,23,42,0.08)]"

@@ -1378,6 +1378,7 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
         brands={marketplaceState.brands}
         selectedBrand={selectedBrand}
         selectedBrandId={selectedBrand?.id}
+        account={advertiserAccount}
         form={brandForm}
         isSaving={isSavingBrand}
         deletingBrandId={deletingBrandId}
@@ -2452,6 +2453,7 @@ function BrandManagementDialog({
   brands,
   selectedBrand,
   selectedBrandId,
+  account,
   form,
   isSaving,
   deletingBrandId,
@@ -2466,6 +2468,7 @@ function BrandManagementDialog({
   brands: MarketplaceBrandProfile[];
   selectedBrand: MarketplaceBrandProfile | null;
   selectedBrandId?: string;
+  account: AdvertiserAccountSummary;
   form: AdvertiserBrandForm;
   isSaving: boolean;
   deletingBrandId?: string;
@@ -2480,6 +2483,7 @@ function BrandManagementDialog({
 
   const listedBrands = brands.length > 0 ? brands : selectedBrand ? [selectedBrand] : [];
   const canDelete = brands.length > 1;
+  const showDefaultBusinessCard = listedBrands.length === 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-3 py-6">
@@ -2561,6 +2565,30 @@ function BrandManagementDialog({
                     </div>
                   );
                 })
+              ) : showDefaultBusinessCard ? (
+                <div className="rounded-[12px] border border-blue-100 bg-blue-50/70 px-3 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-[14px] font-extrabold text-neutral-950">
+                        {account.name}
+                      </p>
+                      <p className="mt-1 truncate text-[12px] font-semibold text-neutral-600">
+                        사업자 인증 정보 기준
+                      </p>
+                      {account.businessNumber ? (
+                        <p className="mt-1 truncate text-[11px] font-bold text-neutral-500">
+                          사업자번호 {formatBusinessRegistrationNumber(account.businessNumber)}
+                        </p>
+                      ) : null}
+                    </div>
+                    <span className="shrink-0 rounded-full bg-blue-600 px-2 py-1 text-[10px] font-extrabold text-white">
+                      기본
+                    </span>
+                  </div>
+                  <p className="mt-3 text-[12px] font-semibold leading-5 text-neutral-600">
+                    별도 브랜드를 운영하면 오른쪽에서 브랜드 정보를 추가하세요.
+                  </p>
+                </div>
               ) : (
                 <div className="flex min-h-[120px] items-center justify-center rounded-[12px] border border-dashed border-neutral-200 bg-neutral-50 text-[12px] font-bold text-neutral-500">
                   등록된 브랜드가 없습니다.
@@ -2749,7 +2777,7 @@ function AccountSettingsMenu({
       </button>
 
       {open ? (
-        <div className="absolute right-0 top-[calc(100%+8px)] z-40 w-[260px] overflow-hidden rounded-[12px] border border-neutral-200 bg-white text-left shadow-[0_18px_50px_rgba(15,23,42,0.14)]">
+        <div className="absolute right-0 top-[calc(100%+8px)] z-40 w-[290px] overflow-hidden rounded-[12px] border border-neutral-200 bg-white text-left shadow-[0_18px_50px_rgba(15,23,42,0.14)]">
           <div className="border-b border-neutral-100 px-4 py-3">
             <p className="text-[13px] font-extrabold text-neutral-950">
               계정 설정
@@ -2786,7 +2814,7 @@ function AccountSettingsMenu({
                 사업자 인증 관리
               </span>
               <span className="mt-0.5 block text-[11px] font-semibold leading-4 text-neutral-500">
-                계약 발송에 필요한 사업자 정보를 확인합니다.
+                사업자 정보를 확인하고 관리합니다.
               </span>
             </span>
           </button>

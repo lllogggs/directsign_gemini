@@ -926,7 +926,7 @@ function InfluencerAccountSettingsMenu({
       </button>
 
       {open ? (
-        <div className="absolute right-0 top-[calc(100%+8px)] z-40 w-[260px] overflow-hidden rounded-[12px] border border-neutral-200 bg-white text-left shadow-[0_18px_50px_rgba(15,23,42,0.14)]">
+        <div className="absolute right-0 top-[calc(100%+8px)] z-40 w-[290px] overflow-hidden rounded-[12px] border border-neutral-200 bg-white text-left shadow-[0_18px_50px_rgba(15,23,42,0.14)]">
           <div className="border-b border-neutral-100 px-4 py-3">
             <p className="text-[13px] font-extrabold text-neutral-950">
               계정 설정

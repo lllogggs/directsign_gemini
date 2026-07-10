@@ -1664,9 +1664,9 @@ export function StartPage() {
                 <div
                   role="menu"
                   aria-label="언어 선택"
-                  className="absolute right-0 top-[calc(100%+8px)] z-50 w-[184px] overflow-hidden rounded-[12px] border border-neutral-200 bg-white p-1.5 text-left shadow-[0_18px_50px_rgba(15,23,42,0.14)]"
+                  className="absolute right-0 top-[calc(100%+8px)] z-50 w-[164px] overflow-hidden rounded-[12px] border border-neutral-200 bg-white p-1 text-left shadow-[0_18px_50px_rgba(15,23,42,0.14)] sm:w-[184px] sm:p-1.5"
                 >
-                  <div className="border-b border-neutral-100 px-2.5 py-2">
+                  <div className="hidden border-b border-neutral-100 px-2.5 py-2 sm:block">
                     <p className="text-[11px] font-extrabold text-neutral-500">
                       Language
                     </p>
@@ -1684,7 +1684,7 @@ export function StartPage() {
                           role="menuitemradio"
                           aria-checked={selected}
                           onClick={() => handleLanguageSelect(item.value)}
-                          className={`flex h-9 w-full items-center justify-between gap-2 rounded-[9px] px-2.5 text-left text-[12px] font-extrabold transition ${
+                          className={`flex h-8 w-full items-center justify-between gap-2 rounded-[9px] px-2.5 text-left text-[11px] font-extrabold transition sm:h-9 sm:text-[12px] ${
                             selected
                               ? "bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-100"
                               : "text-neutral-600 hover:bg-neutral-50 hover:text-neutral-950"

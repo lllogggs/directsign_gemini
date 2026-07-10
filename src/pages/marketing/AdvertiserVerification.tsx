@@ -351,7 +351,7 @@ export function AdvertiserVerification() {
                     <button
                       type="button"
                       onClick={() => navigate("/advertiser/builder")}
-                      className="inline-flex h-11 items-center justify-center gap-2 rounded-[10px] bg-neutral-950 px-4 text-sm font-extrabold text-white transition hover:bg-neutral-800"
+                      className="inline-flex h-11 items-center justify-center gap-2 rounded-[10px] bg-blue-600 px-4 text-sm font-extrabold text-white transition hover:bg-blue-700"
                     >
                       <FileText className="h-4 w-4" />
                       1:1 계약 작성
@@ -611,7 +611,7 @@ export function AdvertiserVerification() {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="h-11 w-full rounded-lg bg-neutral-950 px-5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-500 disabled:shadow-none"
+                className="h-11 w-full rounded-lg bg-blue-600 px-5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(37,99,235,0.16)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-500 disabled:shadow-none"
               >
                 {isSubmitting
                   ? "접수 중"

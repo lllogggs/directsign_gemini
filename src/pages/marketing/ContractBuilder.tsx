@@ -2445,7 +2445,7 @@ function BuilderAccountSettingsMenu({
       </button>
 
       {open ? (
-        <div className="absolute right-0 top-[calc(100%+8px)] z-40 w-[260px] overflow-hidden rounded-[12px] border border-neutral-200 bg-white text-left shadow-[0_18px_50px_rgba(15,23,42,0.14)]">
+        <div className="absolute right-0 top-[calc(100%+8px)] z-40 w-[290px] overflow-hidden rounded-[12px] border border-neutral-200 bg-white text-left shadow-[0_18px_50px_rgba(15,23,42,0.14)]">
           <div className="border-b border-neutral-100 px-4 py-3">
             <p className="text-[13px] font-extrabold text-neutral-950">계정 설정</p>
             {account.email ? (
@@ -2480,7 +2480,7 @@ function BuilderAccountSettingsMenu({
                 사업자 인증 관리
               </span>
               <span className="mt-0.5 block text-[11px] font-semibold leading-4 text-neutral-500">
-                계약 발송에 필요한 사업자 정보를 확인합니다.
+                사업자 정보를 확인하고 관리합니다.
               </span>
             </span>
           </button>
