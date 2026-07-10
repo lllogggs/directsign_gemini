@@ -1577,9 +1577,6 @@ function InfluencerDiscoveryTableRow({
             {profile.displayName}
           </Link>
         </div>
-        <p className="mt-0.5 truncate text-[12px] font-semibold text-neutral-500">
-          {formatInfluencerDiscoveryDescription(profile)}
-        </p>
       </div>
 
       <p className="truncate text-[12px] font-bold text-neutral-500">{countryLabel}</p>
@@ -1698,7 +1695,6 @@ function InfluencerPreviewCard({
 }) {
   const categoryLabel = getCategoryLabels(profile.categories, 4).join(" · ");
   const countryLabel = formatMarketplaceCountries(profile.audienceCountries, "한국");
-  const description = formatInfluencerDiscoveryDescription(profile);
   const avatarUrl = getMarketplaceInfluencerAvatarUrl(profile);
 
   return (
@@ -1719,9 +1715,6 @@ function InfluencerPreviewCard({
               {profile.displayName}
             </h3>
           </div>
-          <p className="mt-1 line-clamp-2 text-[12px] font-semibold leading-5 text-neutral-600">
-            {description}
-          </p>
         </div>
       </div>
 
@@ -2750,10 +2743,6 @@ function compareMarketplaceText(a: string, b: string) {
 function cleanMarketplaceCopy(value: string) {
   return value
     .replace(
-      "공개 채널 기준으로 발견된 크리에이터 후보입니다.",
-      "채널 지표와 콘텐츠 톤을 보고 협업 가능성을 검토할 수 있습니다.",
-    )
-    .replace(
       "광고주 컨택, 제안 저장, 전자계약 전환 흐름을 검증하기 위한 공개 프로필입니다.",
       "브랜드 컨택과 전자계약 전환에 적합한 공개 프로필입니다.",
     )
@@ -2773,19 +2762,6 @@ function cleanMarketplaceCopy(value: string) {
     .replace(/\bQA\b/gi, "")
     .replace(/\s{2,}/g, " ")
     .trim();
-}
-
-function formatInfluencerDiscoveryDescription(profile: MarketplaceInfluencerProfile) {
-  const cleaned = cleanMarketplaceCopy(profile.bio || profile.headline);
-  if (
-    !cleaned ||
-    cleaned === "공개 후보" ||
-    cleaned.includes("발견된 크리에이터 후보") ||
-    cleaned.includes("공개 채널 기준")
-  ) {
-    return "채널 지표와 콘텐츠 톤을 보고 협업 가능성을 검토할 수 있습니다.";
-  }
-  return cleaned;
 }
 
 const genericBrandDescriptionCopies = new Set([
