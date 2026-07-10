@@ -33,7 +33,7 @@ import {
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { LogoMark } from "../../components/BrandLogo";
 import { PlatformBrandMark } from "../../components/PlatformBrandMark";
-import { ResponsiveFilterPanel } from "../../components/ResponsiveFilterPanel";
+import { FilterSelectControl } from "../../components/FilterSelectControl";
 import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
 import {
@@ -964,6 +964,9 @@ export function PublicInfluencerProfilePage() {
   const profileAvatarUrl = getMarketplaceInfluencerAvatarUrl(profile);
   const shouldRenderProfileAvatar =
     Boolean(profileAvatarUrl) && failedProfileAvatarUrl !== profileAvatarUrl;
+  const profileLayoutClassName = shouldRenderProfileAvatar
+    ? "grid lg:grid-cols-[320px_minmax(0,1fr)]"
+    : "grid";
 
   return (
     <main className="min-h-svh bg-[#f4f7fb] font-sans text-neutral-950">
@@ -995,21 +998,17 @@ export function PublicInfluencerProfilePage() {
           data-profile-layout="creator-media-kit"
           className="mx-auto max-w-[1080px] overflow-hidden rounded-[28px] border border-neutral-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.1)]"
         >
-          <div className="grid lg:grid-cols-[320px_minmax(0,1fr)]">
-            <div className="relative bg-neutral-950 p-1.5 sm:p-2.5">
-              <img
-                src={profileAvatarUrl}
-                alt={profile.displayName}
-                className="h-[200px] w-full rounded-[20px] object-cover shadow-[0_18px_42px_rgba(15,23,42,0.12)] sm:h-[320px] sm:rounded-[22px] lg:h-full lg:min-h-[360px]"
-                style={{ display: shouldRenderProfileAvatar ? undefined : "none" }}
-                onError={() => setFailedProfileAvatarUrl(profileAvatarUrl ?? null)}
-              />
-              {!shouldRenderProfileAvatar ? (
-                <div className="flex h-[200px] w-full items-center justify-center rounded-[20px] bg-neutral-900 text-[40px] font-extrabold text-white shadow-[0_18px_42px_rgba(15,23,42,0.12)] sm:h-[320px] sm:rounded-[22px] sm:text-[56px] lg:h-full lg:min-h-[360px]">
-                  {profile.avatarLabel}
-                </div>
-              ) : null}
-            </div>
+          <div className={profileLayoutClassName}>
+            {shouldRenderProfileAvatar ? (
+              <div className="relative bg-neutral-950 p-1.5 sm:p-2.5">
+                <img
+                  src={profileAvatarUrl}
+                  alt={profile.displayName}
+                  className="h-[200px] w-full rounded-[20px] object-cover shadow-[0_18px_42px_rgba(15,23,42,0.12)] sm:h-[320px] sm:rounded-[22px] lg:h-full lg:min-h-[360px]"
+                  onError={() => setFailedProfileAvatarUrl(profileAvatarUrl ?? null)}
+                />
+              </div>
+            ) : null}
 
             <div className="flex min-w-0 flex-col p-4 sm:p-7 lg:p-8">
               <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_156px] lg:items-start">
@@ -1458,7 +1457,7 @@ function InfluencerDiscoveryTable({
       <div className="hidden min-h-0 min-w-[980px] flex-1 flex-col rounded-[8px] border border-[#d9e0d9] bg-white lg:flex">
         <div
           data-influencer-table-header="true"
-          className="grid shrink-0 grid-cols-[64px_180px_minmax(420px,1fr)_88px_132px_156px] items-center gap-3 rounded-t-[8px] border-b border-[#d7ddd7] bg-[#f7f8f4] px-4 py-3 text-[12px] font-extrabold tracking-[-0.01em] text-[#303630] shadow-[0_1px_0_rgba(215,221,215,0.9)]"
+          className="grid shrink-0 grid-cols-[64px_180px_minmax(420px,1fr)_88px_120px_104px] items-center gap-3 rounded-t-[8px] border-b border-[#d7ddd7] bg-[#f7f8f4] px-4 py-3 text-[12px] font-extrabold tracking-[-0.01em] text-[#303630] shadow-[0_1px_0_rgba(215,221,215,0.9)]"
         >
           <span>플랫폼</span>
           <span>카테고리</span>
@@ -1548,7 +1547,7 @@ function InfluencerDiscoveryTableRow({
       onMouseLeave={onPreviewEnd}
       onPointerLeave={onPreviewEnd}
       onBlur={onPreviewEnd}
-      className="group grid min-h-[64px] grid-cols-[64px_180px_minmax(420px,1fr)_88px_132px_156px] items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-[#fbfcfa] focus-visible:bg-[#fbfcfa] focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-blue-600"
+      className="group grid min-h-[64px] grid-cols-[64px_180px_minmax(420px,1fr)_88px_120px_104px] items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-[#fbfcfa] focus-visible:bg-[#fbfcfa] focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-blue-600"
     >
       <div className="min-w-0">
         {primaryPlatform ? (
@@ -1568,32 +1567,19 @@ function InfluencerDiscoveryTableRow({
         {categoryLabel || "카테고리 확인"}
       </p>
 
-      <div className="flex min-w-0 items-center gap-3">
-        <Link
-          to={getInfluencerProfilePath(profile)}
-          className="shrink-0 rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700"
-          aria-label={`${profile.displayName} 프로필 보기`}
-        >
-          <AvatarBlock
-            label={profile.avatarLabel}
-            src={getMarketplaceInfluencerAvatarUrl(profile)}
-            alt={profile.displayName}
-          />
-        </Link>
-        <div className="min-w-0">
-          <div className="flex min-w-0 items-center gap-1.5">
-            <Link
-              to={getInfluencerProfilePath(profile)}
-              className="min-w-0 truncate text-[14px] font-extrabold text-neutral-950 hover:underline"
-              title={profile.displayName}
-            >
-              {profile.displayName}
-            </Link>
-          </div>
-          <p className="mt-0.5 truncate text-[12px] font-semibold text-neutral-500">
-            {cleanMarketplaceCopy(profile.bio || profile.headline)}
-          </p>
+      <div className="min-w-0">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <Link
+            to={getInfluencerProfilePath(profile)}
+            className="min-w-0 truncate text-[14px] font-extrabold text-neutral-950 hover:underline"
+            title={profile.displayName}
+          >
+            {profile.displayName}
+          </Link>
         </div>
+        <p className="mt-0.5 truncate text-[12px] font-semibold text-neutral-500">
+          {formatInfluencerDiscoveryDescription(profile)}
+        </p>
       </div>
 
       <p className="truncate text-[12px] font-bold text-neutral-500">{countryLabel}</p>
@@ -1601,12 +1587,12 @@ function InfluencerDiscoveryTableRow({
         {audienceLabel}
       </p>
 
-      <div className="flex justify-end gap-2">
+      <div className="flex justify-end">
         {canPropose ? (
           <button
             type="button"
             onClick={() => onContact(profile)}
-            className="inline-flex h-9 w-[86px] items-center justify-center gap-1.5 rounded-[7px] bg-blue-600 px-2 text-[12px] font-extrabold text-white transition hover:bg-blue-700"
+            className="inline-flex h-9 w-[96px] items-center justify-center gap-1.5 rounded-[7px] bg-blue-600 px-2 text-[12px] font-extrabold text-white transition hover:bg-blue-700"
           >
             <Send className="h-3.5 w-3.5" />
             1:1 제안
@@ -1618,18 +1604,12 @@ function InfluencerDiscoveryTableRow({
             rel={primaryChannelUrl ? "noreferrer" : undefined}
             aria-label={`${profile.displayName} 공개 채널 보기`}
             title="공개 채널 보기"
-            className="inline-flex h-9 w-[86px] items-center justify-center gap-1.5 rounded-[7px] bg-blue-600 px-2 text-[12px] font-extrabold text-white transition hover:bg-blue-700"
+            className="inline-flex h-9 w-[96px] items-center justify-center gap-1.5 rounded-[7px] bg-blue-600 px-2 text-[12px] font-extrabold text-white transition hover:bg-blue-700"
           >
             <ExternalLink className="h-3.5 w-3.5" />
             채널 보기
           </a>
         )}
-        <Link
-          to={getInfluencerProfilePath(profile)}
-          className="inline-flex h-9 w-[58px] items-center justify-center rounded-[7px] border border-neutral-200 bg-white text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
-        >
-          {canPropose ? "프로필" : "정보"}
-        </Link>
       </div>
     </article>
   );
@@ -1658,12 +1638,7 @@ function InfluencerDiscoveryCompactRow({
 
   return (
     <article className="grid gap-3 border-b border-[#e4e9e4] p-3 last:border-b-0">
-      <div className="flex min-w-0 items-start gap-3">
-        <AvatarBlock
-          label={profile.avatarLabel}
-          src={getMarketplaceInfluencerAvatarUrl(profile)}
-          alt={profile.displayName}
-        />
+      <div className="flex min-w-0 items-start">
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-1.5">
             <h2 className="truncate text-[15px] font-extrabold text-neutral-950">
@@ -1684,12 +1659,12 @@ function InfluencerDiscoveryCompactRow({
           ) : null}
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid gap-2">
         {canPropose ? (
           <button
             type="button"
             onClick={() => onContact(profile)}
-            className="yl-primary-action inline-flex h-10 items-center justify-center gap-2 rounded-[8px] px-3 text-[13px] font-extrabold transition"
+            className="yl-primary-action inline-flex h-10 w-full items-center justify-center gap-2 rounded-[8px] px-3 text-[13px] font-extrabold transition"
           >
             <Send className="h-4 w-4" />
             1:1 제안
@@ -1701,18 +1676,12 @@ function InfluencerDiscoveryCompactRow({
             rel={primaryChannelUrl ? "noreferrer" : undefined}
             aria-label={`${profile.displayName} 공개 채널 보기`}
             title="공개 채널 보기"
-            className="yl-primary-action inline-flex h-10 items-center justify-center gap-2 rounded-[8px] px-3 text-[13px] font-extrabold transition"
+            className="yl-primary-action inline-flex h-10 w-full items-center justify-center gap-2 rounded-[8px] px-3 text-[13px] font-extrabold transition"
           >
             <ExternalLink className="h-4 w-4" />
             채널 보기
           </a>
         )}
-        <Link
-          to={getInfluencerProfilePath(profile)}
-          className="yl-secondary-action inline-flex h-10 items-center justify-center rounded-[8px] border text-[13px] font-extrabold transition"
-        >
-          {canPropose ? "프로필" : "정보"}
-        </Link>
       </div>
     </article>
   );
@@ -1729,7 +1698,8 @@ function InfluencerPreviewCard({
 }) {
   const categoryLabel = getCategoryLabels(profile.categories, 4).join(" · ");
   const countryLabel = formatMarketplaceCountries(profile.audienceCountries, "한국");
-  const description = cleanMarketplaceCopy(profile.bio || profile.headline);
+  const description = formatInfluencerDiscoveryDescription(profile);
+  const avatarUrl = getMarketplaceInfluencerAvatarUrl(profile);
 
   return (
     <aside
@@ -1739,9 +1709,8 @@ function InfluencerPreviewCard({
       aria-hidden="true"
     >
       <div className="flex min-w-0 items-start gap-3">
-        <AvatarBlock
-          label={profile.avatarLabel}
-          src={getMarketplaceInfluencerAvatarUrl(profile)}
+        <OptionalAvatarImage
+          src={avatarUrl}
           alt={profile.displayName}
         />
         <div className="min-w-0 flex-1">
@@ -2382,6 +2351,7 @@ function DiscoveryControls({
   onToggle: () => void;
   children: ReactNode;
 }) {
+  const rootRef = useRef<HTMLElement | null>(null);
   const filterButtonClassName =
     "inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-[8px] border border-neutral-200 bg-white px-3 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:text-neutral-950 sm:h-8 sm:px-2.5";
   const filterButtonContent = (
@@ -2402,8 +2372,33 @@ function DiscoveryControls({
     </>
   );
 
+  useEffect(() => {
+    if (!open) return undefined;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (rootRef.current?.contains(target)) return;
+      onToggle();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onToggle();
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onToggle, open]);
+
   return (
-    <section className="relative overflow-visible border-b border-[#d9e0d9] bg-white">
+    <section
+      ref={rootRef}
+      className="relative overflow-visible border-b border-[#d9e0d9] bg-white"
+    >
       <div className="flex min-h-12 flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:py-2">
         <div className="flex w-full min-w-0 items-start justify-between gap-3 sm:block sm:flex-1">
           <div className="min-w-0 flex-1">
@@ -2419,19 +2414,11 @@ function DiscoveryControls({
               type="button"
               onClick={onToggle}
               aria-expanded={open}
-              aria-controls={`${controlsId}-mobile`}
+              aria-controls={controlsId}
               className={`${filterButtonClassName} sm:hidden`}
             >
               {filterButtonContent}
             </button>
-            <ResponsiveFilterPanel
-              id={`${controlsId}-mobile`}
-              open={open}
-              activeCount={activeCount}
-              onClose={onToggle}
-            >
-              <div className="grid gap-4">{children}</div>
-            </ResponsiveFilterPanel>
           </div>
         </div>
         {toolbar ? (
@@ -2453,9 +2440,9 @@ function DiscoveryControls({
       {open ? (
         <div
           id={controlsId}
-          className="hidden border-t border-[#e3e8e3] bg-[#fbfcfa] px-4 py-3 sm:block"
+          className="absolute left-3 right-3 top-[calc(100%+8px)] z-[60] rounded-[14px] border border-neutral-200 bg-white p-3 shadow-[0_22px_60px_rgba(15,23,42,0.18)] sm:left-auto sm:right-4 sm:w-[min(900px,calc(100vw-48px))]"
         >
-          <div className="grid grid-cols-[minmax(220px,1.1fr)_minmax(160px,0.8fr)_minmax(180px,0.9fr)_minmax(160px,0.8fr)] gap-2.5">
+          <div className="grid gap-2 sm:grid-cols-[minmax(220px,1.1fr)_minmax(150px,0.72fr)_minmax(180px,0.82fr)_minmax(150px,0.72fr)]">
             {children}
           </div>
         </div>
@@ -2611,12 +2598,16 @@ function FilterListSection<T extends string>({
   const isClearSelected = Boolean(onClear) && selectedValues.length === 0;
 
   return (
-    <section className="min-w-0 overflow-hidden rounded-[8px] border border-[#d7ddd7] bg-white shadow-[0_1px_0_rgba(15,23,42,0.03)]">
+    <section className="relative min-w-0">
       <button
         type="button"
         onClick={() => onOpenChange(open ? null : id)}
         aria-expanded={open}
-        className="flex h-10 w-full min-w-0 items-center justify-between gap-3 px-3 text-left transition hover:bg-[#f6f8f6]"
+        className={`flex h-10 w-full min-w-0 items-center justify-between gap-3 rounded-[10px] border bg-white px-3 text-left shadow-[0_1px_0_rgba(15,23,42,0.03)] transition ${
+          open
+            ? "border-neutral-300 shadow-[0_0_0_3px_rgba(15,23,42,0.06)]"
+            : "border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50"
+        }`}
       >
         <span className="min-w-0">
           <span className="block text-[12px] font-extrabold leading-tight text-neutral-500">
@@ -2634,7 +2625,7 @@ function FilterListSection<T extends string>({
         />
       </button>
       {open ? (
-        <div className="max-h-48 overflow-y-auto border-t border-[#e4e9e4] bg-[#fbfcfa] p-1.5">
+        <div className="absolute left-0 right-0 top-full z-[70] mt-2 max-h-56 overflow-y-auto rounded-[12px] border border-neutral-200 bg-white p-1.5 shadow-[0_18px_50px_rgba(15,23,42,0.14)]">
           {onClear ? (
             <FilterListOptionButton
               label="전체"
@@ -2699,22 +2690,21 @@ function InfluencerSortSelect({
   onChange: (value: InfluencerSortValue) => void;
 }) {
   return (
-    <label className="inline-flex h-9 w-full min-w-0 items-center gap-1.5 rounded-[8px] border border-neutral-200 bg-white px-2.5 text-neutral-700 sm:h-8 sm:w-auto sm:shrink-0 sm:px-2">
-      <ArrowUpDown className="h-3.5 w-3.5 shrink-0 text-neutral-500" strokeWidth={2} />
-      <span className="sr-only">인플루언서 정렬</span>
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value as InfluencerSortValue)}
-        aria-label="인플루언서 정렬"
-        className="h-8 min-w-0 flex-1 bg-transparent text-[12px] font-extrabold text-neutral-700 outline-none sm:h-7 sm:min-w-[138px] sm:flex-none sm:text-[11px]"
-      >
-        {influencerSortOptions.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </label>
+    <FilterSelectControl
+      value={value}
+      options={influencerSortOptions}
+      onChange={(nextValue) => onChange(nextValue as InfluencerSortValue)}
+      ariaLabel="인플루언서 정렬"
+      leadingIcon={
+        <ArrowUpDown
+          className="h-3.5 w-3.5 text-neutral-500"
+          strokeWidth={2}
+        />
+      }
+      className="w-full sm:w-[178px] sm:shrink-0"
+      triggerClassName="sm:h-8 sm:text-[11px]"
+      menuClassName="sm:min-w-[178px]"
+    />
   );
 }
 
@@ -2760,6 +2750,10 @@ function compareMarketplaceText(a: string, b: string) {
 function cleanMarketplaceCopy(value: string) {
   return value
     .replace(
+      "공개 채널 기준으로 발견된 크리에이터 후보입니다.",
+      "채널 지표와 콘텐츠 톤을 보고 협업 가능성을 검토할 수 있습니다.",
+    )
+    .replace(
       "광고주 컨택, 제안 저장, 전자계약 전환 흐름을 검증하기 위한 공개 프로필입니다.",
       "브랜드 컨택과 전자계약 전환에 적합한 공개 프로필입니다.",
     )
@@ -2779,6 +2773,19 @@ function cleanMarketplaceCopy(value: string) {
     .replace(/\bQA\b/gi, "")
     .replace(/\s{2,}/g, " ")
     .trim();
+}
+
+function formatInfluencerDiscoveryDescription(profile: MarketplaceInfluencerProfile) {
+  const cleaned = cleanMarketplaceCopy(profile.bio || profile.headline);
+  if (
+    !cleaned ||
+    cleaned === "공개 후보" ||
+    cleaned.includes("발견된 크리에이터 후보") ||
+    cleaned.includes("공개 채널 기준")
+  ) {
+    return "채널 지표와 콘텐츠 톤을 보고 협업 가능성을 검토할 수 있습니다.";
+  }
+  return cleaned;
 }
 
 const genericBrandDescriptionCopies = new Set([
@@ -2955,6 +2962,29 @@ function AvatarBlock({
       ) : (
         label
       )}
+    </span>
+  );
+}
+
+function OptionalAvatarImage({
+  src,
+  alt,
+}: {
+  src?: string;
+  alt: string;
+}) {
+  const [failedImageSrc, setFailedImageSrc] = useState<string | null>(null);
+  if (!src || failedImageSrc === src) return null;
+
+  return (
+    <span className="flex h-12 w-12 shrink-0 overflow-hidden rounded-full bg-neutral-100">
+      <img
+        src={src}
+        alt={alt}
+        className="h-full w-full object-cover"
+        loading="lazy"
+        onError={() => setFailedImageSrc(src)}
+      />
     </span>
   );
 }

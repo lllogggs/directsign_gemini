@@ -302,11 +302,15 @@ const categories = String(
   .filter((value) => value in categoryConfigs);
 const apply = args.get("apply") === "true";
 const includeYoutube = args.get("youtube") !== "false";
+const includeYoutubeApi = args.get("youtube-api") !== "false";
+const includeYoutubeWeb = args.get("youtube-web") !== "false";
 const includeNaver = args.get("naver") !== "false";
 const includeInstagram = args.get("instagram") !== "false";
 const includeTikTok = args.get("tiktok") !== "false";
 const youtubePerQuery = parsePositiveInt(args.get("youtube-per-query"), 12);
 const youtubePages = parsePositiveInt(args.get("youtube-pages"), 1);
+const youtubeWebPerQuery = parsePositiveInt(args.get("youtube-web-per-query"), 50);
+const youtubeWebPages = parsePositiveInt(args.get("youtube-web-pages"), 2);
 const naverPerQuery = parsePositiveInt(args.get("naver-per-query"), 30);
 const naverPages = parsePositiveInt(args.get("naver-pages"), 1);
 const tiktokPerQuery = parsePositiveInt(args.get("tiktok-per-query"), 30);
@@ -427,10 +431,33 @@ function parseEnglishCompactNumber(value, unit) {
   return Math.round(amount * multiplier);
 }
 
+function parseKoreanCompactNumber(value, unit) {
+  const amount = Number.parseFloat(String(value ?? "").replace(/,/g, ""));
+  if (!Number.isFinite(amount)) return null;
+  const normalizedUnit = String(unit ?? "");
+  const multiplier =
+    normalizedUnit === "억" ? 100_000_000 :
+      normalizedUnit === "만" ? 10_000 :
+        normalizedUnit === "천" ? 1_000 :
+          1;
+  return Math.round(amount * multiplier);
+}
+
 function parseTikTokFollowerCount(text) {
   const match = String(text ?? "").match(/([\d,.]+)\s*([kmb])?\s*followers\b/i);
   if (!match) return null;
   return parseEnglishCompactNumber(match[1], match[2]);
+}
+
+function parseYoutubeSubscriberCount(text) {
+  const source = String(text ?? "");
+  const korean = source.match(/구독자\s*([\d,.]+)\s*([억만천]?)\s*명?/i);
+  if (korean) return parseKoreanCompactNumber(korean[1], korean[2]);
+
+  const english = source.match(/([\d,.]+)\s*([kmb])?\s*subscribers\b/i);
+  if (english) return parseEnglishCompactNumber(english[1], english[2]);
+
+  return null;
 }
 
 function hasKoreaProfileSignal(text) {
@@ -600,7 +627,7 @@ async function fetchJson(url, init, label) {
 
 async function collectYoutubeCandidates() {
   const apiKey = process.env.YOUTUBE_DATA_API_KEY;
-  if (!apiKey || !includeYoutube) return [];
+  if (!apiKey || !includeYoutube || !includeYoutubeApi) return [];
 
   const discovered = new Map();
 
@@ -711,6 +738,192 @@ async function collectYoutubeCandidates() {
   }
 
   return rows;
+}
+
+function normalizeYoutubePathRef(value) {
+  const raw = String(value ?? "")
+    .trim()
+    .replace(/^@+/, "")
+    .replace(/[/?#].*$/, "")
+    .replace(/[.,;:)\]}"'`]+$/, "");
+
+  if (!raw) return null;
+  if (/^UC[A-Za-z0-9_-]{20,}$/.test(raw)) {
+    return { type: "channel", value: raw };
+  }
+
+  const handle = raw.toLowerCase();
+  if (!/^[a-z0-9](?:[a-z0-9._-]{1,28}[a-z0-9])?$/.test(handle)) return null;
+  if (/^(about|channel|channels|creator|creators|feed|gaming|hashtag|live|music|playlist|premium|results|shorts|watch|youtube|yt)$/i.test(handle)) {
+    return null;
+  }
+  return { type: "handle", value: handle };
+}
+
+function extractYoutubeProfileRefs(text) {
+  const source = String(text ?? "");
+  const refs = new Map();
+  const add = (type, rawValue, evidence) => {
+    const normalized = normalizeYoutubePathRef(rawValue);
+    if (!normalized || normalized.type !== type) return;
+    refs.set(`${normalized.type}:${normalized.value}`, {
+      type: normalized.type,
+      value: normalized.value,
+      evidence,
+    });
+  };
+
+  for (const match of source.matchAll(
+    /https?:\/\/(?:www\.)?youtube\.com\/@([A-Za-z0-9._-]{2,30})(?:[/?#][^\s]*)?/gi,
+  )) {
+    add("handle", match[1], match[0]);
+  }
+  for (const match of source.matchAll(
+    /https?:\/\/(?:www\.)?youtube\.com\/channel\/(UC[A-Za-z0-9_-]{20,})(?:[/?#][^\s]*)?/gi,
+  )) {
+    add("channel", match[1], match[0]);
+  }
+  for (const match of source.matchAll(
+    /https?:\/\/(?:www\.)?youtube\.com\/(?:c|user)\/([A-Za-z0-9._-]{2,30})(?:[/?#][^\s]*)?/gi,
+  )) {
+    add("handle", match[1], match[0]);
+  }
+
+  return Array.from(refs.values());
+}
+
+function buildYoutubeCandidateFromWeb({
+  ref,
+  category,
+  title,
+  description,
+  sourceUrl,
+  keyword,
+}) {
+  const config = categoryConfigs[category] ?? categoryConfigs.beauty;
+  const text = `${title} ${description}`;
+  const subscriberCount = parseYoutubeSubscriberCount(text);
+  const profileUrl =
+    ref.type === "channel"
+      ? `https://www.youtube.com/channel/${ref.value}`
+      : `https://www.youtube.com/@${ref.value}`;
+  const displayName =
+    stripHtml(title)
+      .replace(/\s*-\s*YouTube\s*$/i, "")
+      .replace(/\s*-\s*유튜브\s*$/i, "")
+      .trim() || ref.value;
+  const categoriesForRow = inferCategories(`${displayName} ${description} ${keyword}`, category);
+  const candidate = {
+    id: stableUuid(`discovered:youtube:web:${ref.type}:${ref.value}`),
+    platform: "youtube",
+    public_handle: makePublicHandle("youtube", ref.value, `${ref.type}:${ref.value}`),
+    external_id: `${ref.type}:${ref.value}`,
+    platform_handle: ref.value,
+    display_name: displayName,
+    headline: `${config.label} 유튜브 채널`,
+    bio: truncateText(stripHtml(description), 240),
+    profile_url: profileUrl,
+    avatar_url: null,
+    categories: categoriesForRow,
+    audience_countries: hasKoreaProfileSignal(`${displayName} ${description} ${keyword}`)
+      ? ["south_korea"]
+      : [],
+    audience_tags: config.audienceTags,
+    followers_label: Number.isFinite(subscriberCount)
+      ? `구독자 ${compactKoreanNumber(subscriberCount)}명`
+      : "구독자 확인 필요",
+    follower_count: Number.isFinite(subscriberCount) ? subscriberCount : null,
+    average_views: null,
+    post_count: null,
+    source_provider: "naver_web_search_youtube_public_profile",
+    source_keyword: keyword,
+    source_url: sourceUrl || profileUrl,
+    source_evidence: {
+      sourceCategory: category,
+      extractedFrom: ref.evidence,
+      youtubeRefType: ref.type,
+      koreaProfileSignal: hasKoreaProfileSignal(`${displayName} ${description} ${keyword}`),
+    },
+  };
+  const scored = scoreCandidate(candidate);
+  return {
+    ...candidate,
+    quality_score: scored.qualityScore,
+    status: scored.status,
+  };
+}
+
+function youtubeWebQueriesForCategory(category) {
+  const config = categoryConfigs[category] ?? categoryConfigs.beauty;
+  const terms = Array.from(new Set([config.label, ...(config.categories ?? [])].filter(Boolean)));
+  return Array.from(
+    new Set([
+      ...(config.youtubeQueries ?? []),
+      ...terms.flatMap((term) => [
+        `site:youtube.com/@ ${term} 유튜버`,
+        `site:youtube.com/channel ${term} 유튜브`,
+        `${term} 유튜브 채널`,
+        `${term} 크리에이터 유튜브`,
+      ]),
+    ]),
+  );
+}
+
+async function collectYoutubeCandidatesFromNaverWeb() {
+  const clientId = process.env.NAVER_CLIENT_ID;
+  const clientSecret = process.env.NAVER_CLIENT_SECRET;
+  if (!clientId || !clientSecret || !includeYoutube || !includeYoutubeWeb) return [];
+
+  const byRef = new Map();
+  for (const category of categories) {
+    for (const query of youtubeWebQueriesForCategory(category)) {
+      const display = Math.min(youtubeWebPerQuery, 100);
+      for (let pageIndex = 0; pageIndex < youtubeWebPages; pageIndex += 1) {
+        const start = pageIndex * display + 1;
+        if (start > 1000) break;
+
+        const url = new URL("https://openapi.naver.com/v1/search/webkr.json");
+        url.searchParams.set("query", query);
+        url.searchParams.set("display", String(display));
+        url.searchParams.set("start", String(start));
+
+        const data = await fetchJson(
+          url,
+          {
+            headers: {
+              "X-Naver-Client-Id": clientId,
+              "X-Naver-Client-Secret": clientSecret,
+            },
+          },
+          `Naver web YouTube search ${query} page ${pageIndex + 1}`,
+        );
+
+        for (const item of data.items ?? []) {
+          const title = stripHtml(item.title);
+          const description = stripHtml(item.description);
+          const link = ensureHttpUrl(stripHtml(item.link));
+          const refs = extractYoutubeProfileRefs(`${link} ${title} ${description}`);
+          for (const ref of refs) {
+            const enriched = buildYoutubeCandidateFromWeb({
+              ref,
+              category,
+              title,
+              description,
+              sourceUrl: link,
+              keyword: query,
+            });
+            const key = `${ref.type}:${ref.value}`;
+            const previous = byRef.get(key);
+            if (!previous || enriched.quality_score > previous.quality_score) {
+              byRef.set(key, enriched);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return Array.from(byRef.values());
 }
 
 function naverBlogIdFromLink(link) {
@@ -971,51 +1184,91 @@ const reservedTikTokHandles = new Set([
 
 const tiktokSearchQueriesByCategory = {
   beauty: [
+    "site:tiktok.com/@ 틱톡 뷰티",
+    "틱톡 뷰티 크리에이터",
+    "틱톡 화장품 리뷰",
+    "틱톡 메이크업 추천",
     "tiktok beauty korea creator",
     "tiktok korean beauty",
     "korean beauty tiktok influencer",
   ],
   living: [
+    "site:tiktok.com/@ 틱톡 리빙",
+    "틱톡 리빙 크리에이터",
+    "틱톡 살림 생활용품",
+    "틱톡 인테리어 홈",
     "tiktok korea lifestyle creator",
     "tiktok korean home living",
     "korean lifestyle tiktok influencer",
   ],
   fashion: [
+    "site:tiktok.com/@ 틱톡 패션",
+    "틱톡 패션 크리에이터",
+    "틱톡 데일리룩 코디",
+    "틱톡 쇼핑하울",
     "tiktok korean fashion creator",
     "tiktok korea outfit",
     "korean fashion tiktok influencer",
   ],
   food: [
+    "site:tiktok.com/@ 틱톡 맛집",
+    "틱톡 푸드 크리에이터",
+    "틱톡 맛집 리뷰",
+    "틱톡 요리 레시피",
     "tiktok korean food creator",
     "tiktok korea restaurant recipe",
     "korean food tiktok influencer",
   ],
   travel: [
+    "site:tiktok.com/@ 틱톡 여행",
+    "틱톡 여행 크리에이터",
+    "틱톡 국내여행 숙소",
+    "틱톡 제주 여행",
     "tiktok korea travel creator",
     "tiktok korea hotel travel",
     "korean travel tiktok influencer",
   ],
   parenting: [
+    "site:tiktok.com/@ 틱톡 육아",
+    "틱톡 육아 크리에이터",
+    "틱톡 키즈 가족",
+    "틱톡 맘 인플루언서",
     "tiktok korea parenting creator",
     "tiktok korean family kids",
     "korean parenting tiktok influencer",
   ],
   pet: [
+    "site:tiktok.com/@ 틱톡 반려동물",
+    "틱톡 펫 크리에이터",
+    "틱톡 강아지 고양이",
+    "틱톡 반려견",
     "tiktok korea pet creator",
     "tiktok korean dog cat",
     "korean pet tiktok influencer",
   ],
   fitness: [
+    "site:tiktok.com/@ 틱톡 운동",
+    "틱톡 운동 크리에이터",
+    "틱톡 헬스 홈트",
+    "틱톡 다이어트",
     "tiktok korea fitness creator",
     "tiktok korean workout",
     "korean fitness tiktok influencer",
   ],
   game: [
+    "site:tiktok.com/@ 틱톡 게임",
+    "틱톡 게임 크리에이터",
+    "틱톡 게임 스트리머",
+    "틱톡 모바일게임",
     "tiktok korea gaming creator",
     "tiktok korean game streamer",
     "korean gaming tiktok influencer",
   ],
   tech: [
+    "site:tiktok.com/@ 틱톡 테크",
+    "틱톡 IT 크리에이터",
+    "틱톡 가전 리뷰",
+    "틱톡 스마트폰 리뷰",
     "tiktok korea tech creator",
     "tiktok korean gadget review",
     "korean tech tiktok influencer",
@@ -1528,6 +1781,7 @@ async function main() {
   } else {
     const baseCollected = [
       ...(await collectYoutubeCandidates()),
+      ...(await collectYoutubeCandidatesFromNaverWeb()),
       ...(await collectNaverBlogCandidates()),
     ];
     const collected = [

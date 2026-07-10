@@ -10029,7 +10029,7 @@ const mapDiscoveredInfluencerRowToMarketplaceProfile = (
       normalizeOptionalText(row.headline) ?? `${categoryLabel} 콘텐츠 크리에이터`,
     bio:
       normalizeOptionalText(row.bio) ??
-      "공개 채널 기준으로 발견된 크리에이터 후보입니다.",
+      "채널 지표와 콘텐츠 톤을 보고 협업 가능성을 검토할 수 있습니다.",
     location: "한국",
     avatarLabel: buildMarketplaceAvatarLabel(displayName),
     avatarUrl: normalizeMarketplacePublicImageUrl(row.avatar_url),

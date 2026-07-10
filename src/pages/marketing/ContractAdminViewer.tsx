@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   AlertCircle,
@@ -840,6 +840,7 @@ export function ContractAdminViewer() {
               account={advertiserAccount}
               open={accountMenuOpen}
               onToggle={() => setAccountMenuOpen((current) => !current)}
+              onClose={() => setAccountMenuOpen(false)}
               onChangePassword={() => {
                 setAccountMenuOpen(false);
                 navigate("/reset-password?role=advertiser");
@@ -1723,15 +1724,18 @@ function ContractAdminAccountSettingsMenu({
   account,
   open,
   onToggle,
+  onClose,
   onChangePassword,
   onOpenBusinessVerification,
 }: {
   account: { name: string; email?: string };
   open: boolean;
   onToggle: () => void;
+  onClose: () => void;
   onChangePassword: () => void;
   onOpenBusinessVerification: () => void;
 }) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const emailChangeHref = buildAdminSupportMailtoHref({
     subject: "광고주 계정 이메일 변경 요청",
     body: [
@@ -1744,8 +1748,30 @@ function ContractAdminAccountSettingsMenu({
     ].join("\n"),
   });
 
+  useEffect(() => {
+    if (!open) return undefined;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (rootRef.current?.contains(target)) return;
+      onClose();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose, open]);
+
   return (
-    <div className="relative shrink-0">
+    <div ref={rootRef} className="relative shrink-0">
       <button
         type="button"
         onClick={onToggle}
@@ -1769,26 +1795,48 @@ function ContractAdminAccountSettingsMenu({
           </div>
           <a
             href={emailChangeHref}
-            className="flex h-11 items-center gap-2 px-4 text-[12px] font-extrabold text-neutral-700 transition hover:bg-neutral-50 hover:text-neutral-950"
+            onClick={onClose}
+            className="flex min-h-12 items-start gap-2 px-4 py-3 text-left transition hover:bg-neutral-50"
           >
-            <Mail className="h-3.5 w-3.5" />
-            이메일 변경
+            <Mail className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-500" />
+            <span className="min-w-0">
+              <span className="block text-[12px] font-extrabold text-neutral-800">
+                로그인 이메일 변경 요청
+              </span>
+              <span className="mt-0.5 block text-[11px] font-semibold leading-4 text-neutral-500">
+                소유 확인 후 새 이메일로 변경합니다.
+              </span>
+            </span>
           </a>
           <button
             type="button"
             onClick={onOpenBusinessVerification}
-            className="flex h-11 w-full items-center gap-2 px-4 text-left text-[12px] font-extrabold text-neutral-700 transition hover:bg-neutral-50 hover:text-neutral-950"
+            className="flex min-h-12 w-full items-start gap-2 px-4 py-3 text-left transition hover:bg-neutral-50"
           >
-            <ShieldCheck className="h-3.5 w-3.5" />
-            사업자 인증
+            <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-500" />
+            <span className="min-w-0">
+              <span className="block text-[12px] font-extrabold text-neutral-800">
+                사업자 인증 관리
+              </span>
+              <span className="mt-0.5 block text-[11px] font-semibold leading-4 text-neutral-500">
+                계약 발송에 필요한 사업자 정보를 확인합니다.
+              </span>
+            </span>
           </button>
           <button
             type="button"
             onClick={onChangePassword}
-            className="flex h-11 w-full items-center gap-2 px-4 text-left text-[12px] font-extrabold text-neutral-700 transition hover:bg-neutral-50 hover:text-neutral-950"
+            className="flex min-h-12 w-full items-start gap-2 px-4 py-3 text-left transition hover:bg-neutral-50"
           >
-            <KeyRound className="h-3.5 w-3.5" />
-            비밀번호 변경
+            <KeyRound className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-500" />
+            <span className="min-w-0">
+              <span className="block text-[12px] font-extrabold text-neutral-800">
+                비밀번호 재설정
+              </span>
+              <span className="mt-0.5 block text-[11px] font-semibold leading-4 text-neutral-500">
+                로그인 비밀번호를 다시 설정합니다.
+              </span>
+            </span>
           </button>
         </div>
       ) : null}

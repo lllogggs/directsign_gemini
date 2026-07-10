@@ -275,78 +275,103 @@ export function AdvertiserVerification() {
       </header>
 
       <main
-        className={`mx-auto grid h-[calc(100vh-56px)] gap-3 overflow-hidden px-5 py-4 sm:px-8 ${
+        className={`mx-auto grid h-[calc(100vh-56px)] gap-4 overflow-hidden px-5 py-5 sm:px-8 ${
           showApprovedOverview
             ? "max-w-4xl lg:grid-cols-1"
-            : "max-w-5xl lg:grid-cols-[minmax(0,1fr)_260px]"
+            : "max-w-6xl lg:grid-cols-[minmax(0,1fr)_320px]"
         }`}
       >
         <section
-          className={`overflow-y-auto rounded-lg border border-neutral-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)] sm:p-5 ${
+          className={`overflow-y-auto rounded-[16px] border border-neutral-200/90 bg-white p-0 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_22px_60px_rgba(15,23,42,0.08)] ${
             showApprovedOverview
               ? "min-h-[420px]"
               : "min-h-0"
           }`}
         >
           {approved && !showVerificationForm && (
-            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-neutral-950 text-white">
-                  <ShieldCheck className="h-5 w-5" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-neutral-950">
-                    사업자 인증이 완료되었습니다
-                  </p>
-                  <p className="mt-1 text-sm leading-6 text-emerald-800/80">
-                    {displayCompany} 계정은 계약 공유 링크를 발송할 수 있습니다.
-                  </p>
-                </div>
-                </div>
+            <div className="m-5 overflow-hidden rounded-[16px] border border-neutral-200 bg-white shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_18px_48px_rgba(15,23,42,0.07)] sm:m-6">
+              <div className="border-b border-neutral-200 bg-[#fbfaf7] px-5 py-5 sm:px-6">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[12px] bg-neutral-950 text-white">
+                      <ShieldCheck className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[12px] font-extrabold text-emerald-700">
+                        사업자 인증 완료
+                      </p>
+                      <h1 className="mt-1 text-[22px] font-extrabold tracking-tight text-neutral-950">
+                        {displayCompany}
+                      </h1>
+                      <p className="mt-1 text-sm font-semibold leading-6 text-neutral-600">
+                        인증된 사업자 정보로 계약 공유 링크를 발송할 수 있습니다.
+                      </p>
+                    </div>
+                  </div>
                   <button
                     type="button"
                     onClick={() => setShowUpdateForm(true)}
-                  className="h-10 shrink-0 rounded-lg border border-emerald-200 bg-white px-4 text-sm font-semibold text-emerald-900 transition hover:border-emerald-300"
+                    className="h-10 shrink-0 rounded-[10px] border border-neutral-200 bg-white px-4 text-sm font-extrabold text-neutral-800 transition hover:border-neutral-300 hover:bg-neutral-50"
                   >
                     인증 정보 갱신 요청
                   </button>
-              </div>
-              <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                <InfoRow label="회사" value={displayCompany} compact />
-                <InfoRow label="담당" value={displayManager} compact />
-                <InfoRow label="이메일" value={displayEmail} compact />
-                <InfoRow label="사업자" value={displayBusinessNumber} compact />
-              </div>
-              {latest ? (
-                <div className="mt-3 rounded-md border border-emerald-200 bg-white px-3 py-2 text-xs font-semibold leading-5 text-emerald-900">
-                  제출일 {new Intl.DateTimeFormat("ko-KR").format(new Date(latest.created_at))}
-                  {latest.reviewer_note ? ` · 검토 메모 ${latest.reviewer_note}` : ""}
                 </div>
-              ) : null}
-              <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={() => navigate("/advertiser/builder")}
-                  className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-neutral-950 px-4 text-sm font-semibold text-white transition hover:bg-neutral-800"
-                >
-                  <FileText className="h-4 w-4" />
-                  1:1 계약 작성
-                </button>
-                <button
-                  type="button"
-                  onClick={() => navigate("/advertiser/campaigns/new")}
-                  className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-white px-4 text-sm font-semibold text-emerald-900 transition hover:border-emerald-300 hover:bg-emerald-50"
-                >
-                  <Megaphone className="h-4 w-4" />
-                  캠페인 작성
-                </button>
+              </div>
+              <div className="grid gap-4 p-5 sm:p-6 lg:grid-cols-[minmax(0,1fr)_260px]">
+                <section className="rounded-[14px] border border-neutral-200 bg-white p-4">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <p className="text-sm font-extrabold text-neutral-950">
+                      인증 사업자 정보
+                    </p>
+                    <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-extrabold text-emerald-700">
+                      승인됨
+                    </span>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <InfoRow label="회사" value={displayCompany} compact />
+                    <InfoRow label="담당자" value={displayManager} compact />
+                    <InfoRow label="이메일" value={displayEmail} compact />
+                    <InfoRow label="사업자등록번호" value={displayBusinessNumber} compact />
+                  </div>
+                  {latest ? (
+                    <div className="mt-3 rounded-[10px] border border-neutral-200 bg-[#fbfbfc] px-3 py-2 text-xs font-semibold leading-5 text-neutral-700">
+                      제출일 {new Intl.DateTimeFormat("ko-KR").format(new Date(latest.created_at))}
+                      {latest.reviewer_note ? ` · 검토 메모 ${latest.reviewer_note}` : ""}
+                    </div>
+                  ) : null}
+                </section>
+                <aside className="rounded-[14px] border border-neutral-200 bg-[#fbfbfc] p-4">
+                  <p className="text-sm font-extrabold text-neutral-950">
+                    다음 작업
+                  </p>
+                  <p className="mt-1 text-xs font-semibold leading-5 text-neutral-500">
+                    계약 작성과 캠페인 모집을 바로 시작할 수 있습니다.
+                  </p>
+                  <div className="mt-4 grid gap-2">
+                    <button
+                      type="button"
+                      onClick={() => navigate("/advertiser/builder")}
+                      className="inline-flex h-11 items-center justify-center gap-2 rounded-[10px] bg-neutral-950 px-4 text-sm font-extrabold text-white transition hover:bg-neutral-800"
+                    >
+                      <FileText className="h-4 w-4" />
+                      1:1 계약 작성
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigate("/advertiser/campaigns/new")}
+                      className="inline-flex h-11 items-center justify-center gap-2 rounded-[10px] border border-neutral-200 bg-white px-4 text-sm font-extrabold text-neutral-800 transition hover:border-neutral-300 hover:bg-neutral-50"
+                    >
+                      <Megaphone className="h-4 w-4" />
+                      캠페인 작성
+                    </button>
+                  </div>
+                </aside>
               </div>
             </div>
           )}
 
           {rejectionGuidance && (
-            <div className="mb-5 rounded-lg border border-rose-200 bg-rose-50 p-4 shadow-[inset_3px_0_0_rgba(190,18,60,0.22)]">
+            <div className="mx-5 mt-5 rounded-[14px] border border-rose-200 bg-rose-50 p-4 shadow-[inset_3px_0_0_rgba(190,18,60,0.22)] sm:mx-6">
               <div className="flex items-start gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-rose-700 ring-1 ring-rose-100">
                   <AlertTriangle className="h-5 w-5" />
@@ -375,17 +400,20 @@ export function AdvertiserVerification() {
           )}
 
           {showVerificationForm && (
-            <div className="mb-4 border-b border-neutral-100 pb-4">
+            <div className="border-b border-neutral-200 bg-[#fbfaf7] px-5 py-5 sm:px-6">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-              <h1 className="text-[24px] font-semibold tracking-tight">
-                {approved ? "사업자 인증 정보 갱신" : "사업자 인증"}
-              </h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-neutral-500">
-                {approved
-                  ? "상호, 담당자, 사업자 정보가 바뀐 경우에만 새 증빙으로 갱신합니다."
-                  : "계약 발송 전 사업자번호와 증빙을 확인합니다. 운영자 법적 고지 정보와는 별개입니다."}
-              </p>
+                  <p className="text-[12px] font-extrabold text-neutral-500">
+                    광고주 계정 심사
+                  </p>
+                  <h1 className="mt-1 text-[25px] font-extrabold tracking-tight text-neutral-950">
+                    {approved ? "사업자 인증 정보 갱신" : "사업자 인증 요청"}
+                  </h1>
+                  <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-neutral-600">
+                    {approved
+                      ? "상호, 담당자, 사업자 정보가 바뀐 경우 새 증빙으로 다시 확인합니다."
+                      : "계약 발송 전에 상호, 대표자, 사업자번호와 증빙 파일을 확인합니다."}
+                  </p>
                 </div>
                 <span
                   className={`w-fit rounded-full border px-3 py-1 text-xs font-semibold ${verificationStatusTone(
@@ -395,17 +423,17 @@ export function AdvertiserVerification() {
                   {isLoading ? "정보 확인 중" : verificationStatusLabel(status)}
                 </span>
               </div>
-              <div className="mt-4 grid gap-2 text-xs font-semibold leading-5 text-neutral-600 sm:grid-cols-3">
-                <div className="rounded-lg border border-neutral-200 bg-[#fbfbfc] px-3 py-2">
-                  <span className="block text-neutral-950">필수</span>
+              <div className="mt-5 grid gap-2 text-xs font-semibold leading-5 text-neutral-600 sm:grid-cols-3">
+                <div className="rounded-[12px] border border-neutral-200 bg-white px-3 py-3 shadow-[0_1px_0_rgba(15,23,42,0.03)]">
+                  <span className="block text-neutral-950">필수 정보</span>
                   사업자번호, 대표자명, 증빙 파일
                 </div>
-                <div className="rounded-lg border border-neutral-200 bg-[#fbfbfc] px-3 py-2">
-                  <span className="block text-neutral-950">검토</span>
+                <div className="rounded-[12px] border border-neutral-200 bg-white px-3 py-3 shadow-[0_1px_0_rgba(15,23,42,0.03)]">
+                  <span className="block text-neutral-950">검토 시간</span>
                   보통 1영업일 내 확인
                 </div>
-                <div className="rounded-lg border border-neutral-200 bg-[#fbfbfc] px-3 py-2">
-                  <span className="block text-neutral-950">제한</span>
+                <div className="rounded-[12px] border border-neutral-200 bg-white px-3 py-3 shadow-[0_1px_0_rgba(15,23,42,0.03)]">
+                  <span className="block text-neutral-950">승인 전 제한</span>
                   승인 전 계약 공유 차단
                 </div>
               </div>
@@ -413,16 +441,21 @@ export function AdvertiserVerification() {
           )}
 
           {showVerificationForm && (
-            <form onSubmit={handleSubmit} className="space-y-3">
-              <section className="rounded-lg border border-neutral-200 bg-white p-3">
+            <form onSubmit={handleSubmit} className="space-y-4 p-5 sm:p-6">
+              <section className="rounded-[14px] border border-neutral-200 bg-white p-4 shadow-[0_1px_0_rgba(15,23,42,0.03)]">
                 <div className="mb-3 flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-neutral-950">
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-7 min-w-7 items-center justify-center rounded-[9px] bg-neutral-950 text-[11px] font-extrabold text-white">
+                      01
+                    </span>
+                    <div>
+                    <p className="text-sm font-extrabold text-neutral-950">
                       사업자 정보
                     </p>
-                    <p className="mt-0.5 text-xs font-medium text-neutral-500">
+                    <p className="mt-0.5 text-xs font-semibold text-neutral-500">
                       국세청 조회와 증빙 대조에 쓰는 필수 정보입니다.
                     </p>
+                    </div>
                   </div>
                 </div>
                 <div className="grid gap-3">
@@ -457,14 +490,19 @@ export function AdvertiserVerification() {
                 </div>
               </section>
 
-              <section className="rounded-lg border border-neutral-200 bg-white p-3">
-                <div className="mb-3">
-                  <p className="text-sm font-semibold text-neutral-950">
-                    담당자와 증빙
-                  </p>
-                  <p className="mt-0.5 text-xs font-medium text-neutral-500">
-                    사업자 증빙과 대표 서명 또는 인감 날인 자료는 심사와 감사 기록 용도로만 사용합니다.
-                  </p>
+              <section className="rounded-[14px] border border-neutral-200 bg-white p-4 shadow-[0_1px_0_rgba(15,23,42,0.03)]">
+                <div className="mb-3 flex items-start gap-3">
+                  <span className="flex h-7 min-w-7 items-center justify-center rounded-[9px] bg-neutral-950 text-[11px] font-extrabold text-white">
+                    02
+                  </span>
+                  <div>
+                    <p className="text-sm font-extrabold text-neutral-950">
+                      담당자와 증빙
+                    </p>
+                    <p className="mt-0.5 text-xs font-semibold text-neutral-500">
+                      사업자 증빙과 대표 서명 또는 인감 날인 자료를 함께 확인합니다.
+                    </p>
+                  </div>
                 </div>
                 <div className="grid gap-3">
                   <TextField
@@ -507,10 +545,15 @@ export function AdvertiserVerification() {
                     <span className="text-sm font-semibold text-neutral-900">
                       사업자/서명 증빙 파일
                     </span>
-                    <span className="mt-2 flex h-11 cursor-pointer items-center gap-3 rounded-lg border border-dashed border-neutral-300 bg-[#fbfbfc] px-3 transition hover:border-neutral-500 hover:bg-white">
+                    <span className="mt-2 flex min-h-[64px] cursor-pointer items-center gap-3 rounded-[12px] border border-dashed border-neutral-300 bg-[#fbfbfc] px-4 transition hover:border-neutral-500 hover:bg-white">
                       <FileUp className="h-4 w-4 shrink-0 text-neutral-500" />
-                      <span className="min-w-0 truncate text-sm font-semibold text-neutral-900">
-                        {file ? file.name : "증빙 파일 업로드"}
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-extrabold text-neutral-900">
+                          {file ? file.name : "증빙 파일 업로드"}
+                        </span>
+                        <span className="mt-1 block text-xs font-semibold text-neutral-500">
+                          PDF, PNG, JPG, WebP · 10MB 이하
+                        </span>
                       </span>
                       <input
                         type="file"
@@ -534,7 +577,7 @@ export function AdvertiserVerification() {
                 </div>
               </section>
 
-              <div>
+              <div className="rounded-[14px] border border-neutral-200 bg-white p-4 shadow-[0_1px_0_rgba(15,23,42,0.03)]">
                 <label className="text-sm font-semibold text-neutral-900">
                   선택 메모
                 </label>
@@ -667,14 +710,14 @@ function TextField({
 }) {
   return (
     <label className="block">
-      <span className="text-sm font-semibold text-neutral-900">{label}</span>
+      <span className="text-sm font-extrabold text-neutral-900">{label}</span>
       <input
         type={type}
         value={value}
         required={required}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-2 h-11 w-full rounded-lg border border-neutral-200 bg-[#fbfbfc] px-3 text-sm outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950 focus:bg-white focus:shadow-[0_0_0_3px_rgba(23,23,23,0.05)]"
+        className="mt-2 h-12 w-full rounded-[10px] border border-neutral-200 bg-[#fbfbfc] px-3 text-sm font-semibold outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950 focus:bg-white focus:shadow-[0_0_0_3px_rgba(23,23,23,0.05)]"
       />
     </label>
   );

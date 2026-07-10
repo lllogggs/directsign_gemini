@@ -38,6 +38,12 @@ const apply = args.get("apply") !== "false";
 const youtubePerQuery = parsePositiveInt(args.get("youtube-per-query"), 8);
 const youtubePages = parsePositiveInt(args.get("youtube-pages"), 1);
 const youtubeCheckMinutes = parsePositiveNumber(args.get("youtube-check-minutes"), 180);
+const youtubeMinIntervalMinutes = parsePositiveNumber(
+  args.get("youtube-min-interval-minutes"),
+  youtubeCheckMinutes,
+);
+const youtubeWebPerQuery = parsePositiveInt(args.get("youtube-web-per-query"), 50);
+const youtubeWebPages = parsePositiveInt(args.get("youtube-web-pages"), 2);
 const naverPerQuery = parsePositiveInt(args.get("naver-per-query"), 80);
 const naverPages = parsePositiveInt(args.get("naver-pages"), 4);
 const includeYoutube = args.get("youtube") !== "false";
@@ -193,11 +199,28 @@ function shouldSkipPlatformCheck(state, platformJob, nowMs) {
   if (platformJob.id !== "youtube") return null;
   const cooldownUntil = state.platformCooldownUntil?.[platformJob.id] ?? null;
   const cooldownUntilMs = Date.parse(String(cooldownUntil ?? ""));
-  if (!Number.isFinite(cooldownUntilMs) || cooldownUntilMs <= nowMs) return null;
-  return {
-    cooldownUntil,
-    waitMinutes: Math.ceil((cooldownUntilMs - nowMs) / 60_000),
-  };
+  if (Number.isFinite(cooldownUntilMs) && cooldownUntilMs > nowMs) {
+    return {
+      reason: "platform_usage_limit_cooldown",
+      cooldownUntil,
+      nextCheckAt: cooldownUntil,
+      waitMinutes: Math.ceil((cooldownUntilMs - nowMs) / 60_000),
+    };
+  }
+
+  const lastCheckedAt = state.platformLastCheckedAt?.[platformJob.id] ?? null;
+  const lastCheckedMs = Date.parse(String(lastCheckedAt ?? ""));
+  const nextCheckMs = lastCheckedMs + youtubeMinIntervalMinutes * 60_000;
+  if (Number.isFinite(lastCheckedMs) && nextCheckMs > nowMs) {
+    return {
+      reason: "platform_check_interval_guard",
+      lastCheckedAt,
+      nextCheckAt: new Date(nextCheckMs).toISOString(),
+      waitMinutes: Math.ceil((nextCheckMs - nowMs) / 60_000),
+    };
+  }
+
+  return null;
 }
 
 function isPlatformUsageLimitResult(result) {
@@ -214,6 +237,11 @@ function isPlatformUsageLimitResult(result) {
 
 function updatePlatformLimitState(state, platformJob, result, checkedAt) {
   if (platformJob.id !== "youtube") return null;
+  if (platformJob.youtubeApi === false) {
+    return {
+      platformLimitedUntil: state.platformCooldownUntil?.[platformJob.id] ?? null,
+    };
+  }
   state.platformCooldownUntil = { ...(state.platformCooldownUntil ?? {}) };
   if (!result.ok && isPlatformUsageLimitResult(result)) {
     const cooldownUntil = new Date(
@@ -258,12 +286,16 @@ function runDiscovery(category, platformJob) {
     `--categories=${category}`,
     `--apply=${apply ? "true" : "false"}`,
     `--youtube=${platformJob.flags.youtube ? "true" : "false"}`,
+    `--youtube-api=${platformJob.youtubeApi === false ? "false" : "true"}`,
+    `--youtube-web=${platformJob.youtubeWeb === false ? "false" : "true"}`,
     `--naver=${platformJob.flags.naver ? "true" : "false"}`,
     `--instagram=${platformJob.flags.instagram ? "true" : "false"}`,
     `--tiktok=${platformJob.flags.tiktok ? "true" : "false"}`,
     `--output-platforms=${platformJob.outputPlatforms}`,
     `--youtube-per-query=${youtubePerQuery}`,
     `--youtube-pages=${youtubePages}`,
+    `--youtube-web-per-query=${youtubeWebPerQuery}`,
+    `--youtube-web-pages=${youtubeWebPages}`,
     `--naver-per-query=${naverPerQuery}`,
     `--naver-pages=${naverPages}`,
     `--tiktok-per-query=${tiktokPerQuery}`,
@@ -345,8 +377,11 @@ async function main() {
     platforms: platformPlan.map((platform) => platform.id),
     platformCycleMinutes: intervalMinutes * platformPlan.length,
     youtubeCheckMinutes,
+    youtubeMinIntervalMinutes,
     youtubePerQuery,
     youtubePages,
+    youtubeWebPerQuery,
+    youtubeWebPages,
     naverPerQuery,
     naverPages,
     tiktokPerQuery,
@@ -364,22 +399,24 @@ async function main() {
       const platformJob = platformPlan[platformIndex];
       const startedAt = new Date().toISOString();
       const skip = shouldSkipPlatformCheck(state, platformJob, Date.now());
-      if (skip) {
+      const runJob = skip && platformJob.id === "youtube"
+        ? { ...platformJob, youtubeApi: false }
+        : platformJob;
+      if (skip && platformJob.id !== "youtube") {
         const finishedAt = new Date().toISOString();
         await appendLog({
           type: "run_skipped",
           at: finishedAt,
           category,
           platform: platformJob.id,
-          reason: "platform_usage_limit_cooldown",
           ...skip,
         });
         advanceStateAfterPlatform(state, categoryIndex, platformIndex, {
           lastSkipAt: finishedAt,
           lastSkippedCategory: category,
           lastSkippedPlatform: platformJob.id,
-          lastSkippedReason: "platform_usage_limit_cooldown",
-          lastSkippedNextCheckAt: skip.cooldownUntil,
+          lastSkippedReason: skip.reason,
+          lastSkippedNextCheckAt: skip.nextCheckAt,
         });
         await writeState(state);
         localRuns += 1;
@@ -399,13 +436,21 @@ async function main() {
         at: startedAt,
         category,
         platform: platformJob.id,
+        ...(skip
+          ? {
+              apiSkippedReason: skip.reason,
+              apiNextCheckAt: skip.nextCheckAt,
+              youtubeApi: false,
+              youtubeWeb: true,
+            }
+          : {}),
       });
 
-      const result = await runDiscovery(category, platformJob);
+      const result = await runDiscovery(category, runJob);
       const finishedAt = new Date().toISOString();
       const platformLimitState = updatePlatformLimitState(
         state,
-        platformJob,
+        runJob,
         result,
         startedAt,
       );

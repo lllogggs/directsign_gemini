@@ -1508,6 +1508,13 @@ const influencerPreviewSlides: InfluencerPreviewSlide[] = [
 export function StartPage() {
   const navigate = useNavigate();
   const [showIntroRolePicker, setShowIntroRolePicker] = useState(false);
+  const [languageMenuOpen, setLanguageMenuOpen] = useState(false);
+  const languageMenuRef = useRef<HTMLDivElement | null>(null);
+  const currentLanguagePath =
+    typeof window !== "undefined" ? window.location.pathname : "/";
+  const activeLanguage =
+    startLanguageLinks.find((item) => item.value === currentLanguagePath) ??
+    startLanguageLinks[0];
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -1582,6 +1589,41 @@ export function StartPage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [showIntroRolePicker]);
 
+  useEffect(() => {
+    if (!languageMenuOpen) return undefined;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (languageMenuRef.current?.contains(target)) return;
+      setLanguageMenuOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setLanguageMenuOpen(false);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [languageMenuOpen]);
+
+  const handleLanguageSelect = useCallback(
+    (targetPath: string) => {
+      try {
+        window.localStorage.setItem(startLanguageManualChoiceKey, targetPath);
+      } catch {
+        // Navigation should not depend on storage availability.
+      }
+      setLanguageMenuOpen(false);
+      navigate(targetPath);
+    },
+    [navigate],
+  );
+
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#f7f6f3] font-sans text-neutral-950">
       <div
@@ -1598,41 +1640,70 @@ export function StartPage() {
             <BrandLogo />
           </Link>
           <div className="flex min-w-0 items-center gap-1.5">
-            <label
-              className="yl-secondary-action relative inline-flex min-h-10 shrink-0 cursor-pointer items-center gap-1.5 rounded-[8px] border px-2.5 text-[11px] font-bold text-neutral-600 transition hover:text-neutral-950 focus-within:outline-2 focus-within:outline-offset-4 focus-within:outline-neutral-950 sm:px-3"
-              aria-label="언어 선택"
-              title="언어 선택"
-            >
-              <Globe2 className="h-4 w-4 text-neutral-950" aria-hidden="true" />
-              <span className="text-[11px] font-bold text-neutral-700">
-                Language
-              </span>
-              <select
+            <div ref={languageMenuRef} className="relative shrink-0">
+              <button
+                type="button"
                 data-start-language-select
+                onClick={() => setLanguageMenuOpen((current) => !current)}
                 aria-label="언어 선택"
-                defaultValue="/"
-                onChange={(event) => {
-                  const targetPath = event.currentTarget.value;
-                  try {
-                    window.localStorage.setItem(
-                      startLanguageManualChoiceKey,
-                      targetPath,
-                    );
-                  } catch {
-                    // Navigation should not depend on storage availability.
-                  }
-                  navigate(targetPath);
-                }}
-                className="absolute inset-0 h-full w-full cursor-pointer appearance-none opacity-0 outline-none"
+                title="언어 선택"
+                aria-haspopup="menu"
+                aria-expanded={languageMenuOpen}
+                className="yl-secondary-action inline-flex min-h-10 items-center gap-1.5 rounded-[8px] border px-2.5 text-[11px] font-extrabold text-neutral-700 transition hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:px-3"
               >
-                {startLanguageLinks.map((item) => (
-                  <option key={item.value} value={item.value}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="h-3.5 w-3.5 text-neutral-400" aria-hidden="true" />
-            </label>
+                <Globe2 className="h-4 w-4 text-neutral-950" aria-hidden="true" />
+                <span>Language</span>
+                <ChevronDown
+                  className={`h-3.5 w-3.5 text-neutral-400 transition-transform ${
+                    languageMenuOpen ? "rotate-180" : ""
+                  }`}
+                  aria-hidden="true"
+                />
+              </button>
+              {languageMenuOpen ? (
+                <div
+                  role="menu"
+                  aria-label="언어 선택"
+                  className="absolute right-0 top-[calc(100%+8px)] z-50 w-[184px] overflow-hidden rounded-[12px] border border-neutral-200 bg-white p-1.5 text-left shadow-[0_18px_50px_rgba(15,23,42,0.14)]"
+                >
+                  <div className="border-b border-neutral-100 px-2.5 py-2">
+                    <p className="text-[11px] font-extrabold text-neutral-500">
+                      Language
+                    </p>
+                    <p className="mt-0.5 truncate text-[12px] font-extrabold text-neutral-950">
+                      {activeLanguage.label}
+                    </p>
+                  </div>
+                  <div className="mt-1">
+                    {startLanguageLinks.map((item) => {
+                      const selected = item.value === activeLanguage.value;
+                      return (
+                        <button
+                          key={item.value}
+                          type="button"
+                          role="menuitemradio"
+                          aria-checked={selected}
+                          onClick={() => handleLanguageSelect(item.value)}
+                          className={`flex h-9 w-full items-center justify-between gap-2 rounded-[9px] px-2.5 text-left text-[12px] font-extrabold transition ${
+                            selected
+                              ? "bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-100"
+                              : "text-neutral-600 hover:bg-neutral-50 hover:text-neutral-950"
+                          }`}
+                        >
+                          <span className="truncate">{item.label}</span>
+                          {selected ? (
+                            <CheckCircle2
+                              className="h-3.5 w-3.5 shrink-0 text-blue-600"
+                              strokeWidth={2.4}
+                            />
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+            </div>
             <Link
               to="/login"
               className="yl-secondary-action inline-flex min-h-10 shrink-0 items-center rounded-[8px] border px-3 text-[11px] font-bold text-neutral-500 transition focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"

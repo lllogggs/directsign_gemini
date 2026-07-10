@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   AlertCircle,
@@ -651,10 +651,13 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
   );
   const [brandSelectorOpen, setBrandSelectorOpen] = useState(false);
   const [brandManagerOpen, setBrandManagerOpen] = useState(false);
-  const [brandForm, setBrandForm] = useState({
+  const [brandForm, setBrandForm] = useState<AdvertiserBrandForm>({
     displayName: "",
     category: "",
     location: "",
+    businessLabel: "",
+    homepage: "",
+    description: "",
   });
   const [brandActionError, setBrandActionError] = useState<string | undefined>();
   const [isSavingBrand, setIsSavingBrand] = useState(false);
@@ -1116,10 +1119,20 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
   const handleCreateAdvertiserBrand = useCallback(async () => {
     if (isSavingBrand) return;
     const displayName = brandForm.displayName.trim();
-    if (!displayName) {
-      setBrandActionError("브랜드명을 입력해 주세요.");
+    const category = brandForm.category.trim();
+    const location = brandForm.location.trim();
+    if (!displayName || !category || !location) {
+      setBrandActionError("브랜드명, 카테고리, 운영지역을 입력해 주세요.");
       return;
     }
+    const businessLabel = brandForm.businessLabel.trim();
+    const homepage = brandForm.homepage.trim();
+    const descriptionParts = [
+      brandForm.description.trim() ||
+        `${displayName}의 인플루언서 협업 조건을 관리하는 브랜드 프로필입니다.`,
+      businessLabel ? `운영사: ${businessLabel}` : undefined,
+      homepage ? `공식 채널: ${homepage}` : undefined,
+    ].filter(Boolean);
 
     setIsSavingBrand(true);
     setBrandActionError(undefined);
@@ -1131,8 +1144,10 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
         credentials: "include",
         body: JSON.stringify({
           displayName,
-          category: brandForm.category.trim() || undefined,
-          location: brandForm.location.trim() || undefined,
+          category,
+          location,
+          headline: `${displayName}의 인플루언서 협업 제안을 관리합니다`,
+          description: descriptionParts.join("\n").slice(0, 500),
         }),
       });
 
@@ -1147,7 +1162,14 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
       }
 
       applyAdvertiserBrandResponse(data);
-      setBrandForm({ displayName: "", category: "", location: "" });
+      setBrandForm({
+        displayName: "",
+        category: "",
+        location: "",
+        businessLabel: "",
+        homepage: "",
+        description: "",
+      });
     } catch (error) {
       setBrandActionError(
         error instanceof Error ? error.message : "브랜드를 추가하지 못했습니다.",
@@ -1419,6 +1441,7 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
               account={advertiserAccount}
               open={accountMenuOpen}
               onToggle={() => setAccountMenuOpen((current) => !current)}
+              onClose={() => setAccountMenuOpen(false)}
               onChangePassword={() => {
                 setAccountMenuOpen(false);
                 navigate("/reset-password?role=advertiser");
@@ -2419,6 +2442,9 @@ type AdvertiserBrandForm = {
   displayName: string;
   category: string;
   location: string;
+  businessLabel: string;
+  homepage: string;
+  description: string;
 };
 
 function BrandManagementDialog({
@@ -2543,43 +2569,78 @@ function BrandManagementDialog({
             </div>
           </div>
 
-          <div className="min-w-0 rounded-[12px] border border-neutral-200 bg-[#fbfaf7] p-3">
-            <p className="text-[12px] font-extrabold text-neutral-500">
-              브랜드 추가
-            </p>
-            <label className="mt-3 block text-[12px] font-extrabold text-neutral-700">
-              브랜드명
-              <input
-                value={form.displayName}
-                onChange={(event) =>
-                  onFormChange({ ...form, displayName: event.target.value })
-                }
-                className="mt-1 h-10 w-full rounded-[9px] border border-neutral-200 bg-white px-3 text-[13px] font-bold text-neutral-950 outline-none transition focus:border-neutral-400"
-                placeholder="예: 브랜드명"
-              />
-            </label>
-            <label className="mt-3 block text-[12px] font-extrabold text-neutral-700">
-              카테고리
-              <input
-                value={form.category}
-                onChange={(event) =>
-                  onFormChange({ ...form, category: event.target.value })
-                }
-                className="mt-1 h-10 w-full rounded-[9px] border border-neutral-200 bg-white px-3 text-[13px] font-bold text-neutral-950 outline-none transition focus:border-neutral-400"
-                placeholder="예: 뷰티"
-              />
-            </label>
-            <label className="mt-3 block text-[12px] font-extrabold text-neutral-700">
-              운영지역
-              <input
-                value={form.location}
-                onChange={(event) =>
-                  onFormChange({ ...form, location: event.target.value })
-                }
-                className="mt-1 h-10 w-full rounded-[9px] border border-neutral-200 bg-white px-3 text-[13px] font-bold text-neutral-950 outline-none transition focus:border-neutral-400"
-                placeholder="예: 서울/전국"
-              />
-            </label>
+          <div className="min-w-0 rounded-[12px] border border-neutral-200 bg-[#fbfaf7] p-4">
+            <div className="border-b border-neutral-200 pb-3">
+              <p className="text-[13px] font-extrabold text-neutral-950">
+                신규 브랜드 등록
+              </p>
+              <p className="mt-1 text-[11px] font-semibold leading-5 text-neutral-500">
+                캠페인 모집과 계약서에 표시될 운영 브랜드 정보를 등록합니다.
+              </p>
+            </div>
+            <div className="mt-3 grid gap-3">
+              <BrandRegistrationField label="브랜드명" required>
+                <input
+                  value={form.displayName}
+                  onChange={(event) =>
+                    onFormChange({ ...form, displayName: event.target.value })
+                  }
+                  className="h-11 w-full rounded-[10px] border border-neutral-200 bg-white px-3 text-[13px] font-bold text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950 focus:shadow-[0_0_0_3px_rgba(15,23,42,0.06)]"
+                  placeholder="예: 브레드룸"
+                />
+              </BrandRegistrationField>
+              <BrandRegistrationField label="사업자/운영사명">
+                <input
+                  value={form.businessLabel}
+                  onChange={(event) =>
+                    onFormChange({ ...form, businessLabel: event.target.value })
+                  }
+                  className="h-11 w-full rounded-[10px] border border-neutral-200 bg-white px-3 text-[13px] font-bold text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950 focus:shadow-[0_0_0_3px_rgba(15,23,42,0.06)]"
+                  placeholder="예: 주식회사 연락미"
+                />
+              </BrandRegistrationField>
+              <BrandRegistrationField label="카테고리" required>
+                <input
+                  value={form.category}
+                  onChange={(event) =>
+                    onFormChange({ ...form, category: event.target.value })
+                  }
+                  className="h-11 w-full rounded-[10px] border border-neutral-200 bg-white px-3 text-[13px] font-bold text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950 focus:shadow-[0_0_0_3px_rgba(15,23,42,0.06)]"
+                  placeholder="예: 뷰티 · 스킨케어"
+                />
+              </BrandRegistrationField>
+              <BrandRegistrationField label="운영지역" required>
+                <input
+                  value={form.location}
+                  onChange={(event) =>
+                    onFormChange({ ...form, location: event.target.value })
+                  }
+                  className="h-11 w-full rounded-[10px] border border-neutral-200 bg-white px-3 text-[13px] font-bold text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950 focus:shadow-[0_0_0_3px_rgba(15,23,42,0.06)]"
+                  placeholder="예: 전국 배송 / 서울 방문"
+                />
+              </BrandRegistrationField>
+              <BrandRegistrationField label="공식 채널">
+                <input
+                  value={form.homepage}
+                  onChange={(event) =>
+                    onFormChange({ ...form, homepage: event.target.value })
+                  }
+                  className="h-11 w-full rounded-[10px] border border-neutral-200 bg-white px-3 text-[13px] font-bold text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950 focus:shadow-[0_0_0_3px_rgba(15,23,42,0.06)]"
+                  placeholder="홈페이지 또는 인스타그램 주소"
+                />
+              </BrandRegistrationField>
+              <BrandRegistrationField label="브랜드 설명">
+                <textarea
+                  value={form.description}
+                  onChange={(event) =>
+                    onFormChange({ ...form, description: event.target.value })
+                  }
+                  rows={4}
+                  className="min-h-[96px] w-full resize-none rounded-[10px] border border-neutral-200 bg-white px-3 py-2.5 text-[13px] font-bold leading-5 text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950 focus:shadow-[0_0_0_3px_rgba(15,23,42,0.06)]"
+                  placeholder="주요 제품, 협업 방식, 인플루언서에게 보여줄 브랜드 소개를 적어 주세요."
+                />
+              </BrandRegistrationField>
+            </div>
             {error ? (
               <p className="mt-3 rounded-[9px] border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] font-extrabold text-rose-700">
                 {error}
@@ -2600,19 +2661,46 @@ function BrandManagementDialog({
   );
 }
 
+function BrandRegistrationField({
+  label,
+  required = false,
+  children,
+}: {
+  label: string;
+  required?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="block">
+      <span className="flex items-center gap-1.5 text-[12px] font-extrabold text-neutral-700">
+        {label}
+        {required ? (
+          <span className="rounded-full bg-neutral-950 px-1.5 py-0.5 text-[9px] font-extrabold text-white">
+            필수
+          </span>
+        ) : null}
+      </span>
+      <span className="mt-1.5 block">{children}</span>
+    </label>
+  );
+}
+
 function AccountSettingsMenu({
   account,
   open,
   onToggle,
+  onClose,
   onChangePassword,
   onOpenBusinessVerification,
 }: {
   account: AdvertiserAccountSummary;
   open: boolean;
   onToggle: () => void;
+  onClose: () => void;
   onChangePassword: () => void;
   onOpenBusinessVerification: () => void;
 }) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const emailChangeHref = buildSupportMailtoHref({
     subject: "광고주 계정 이메일 변경 요청",
     body: [
@@ -2625,8 +2713,30 @@ function AccountSettingsMenu({
     ].join("\n"),
   });
 
+  useEffect(() => {
+    if (!open) return undefined;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (rootRef.current?.contains(target)) return;
+      onClose();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose, open]);
+
   return (
-    <div className="relative shrink-0">
+    <div ref={rootRef} className="relative shrink-0">
       <button
         type="button"
         onClick={onToggle}
@@ -2652,26 +2762,48 @@ function AccountSettingsMenu({
           </div>
           <a
             href={emailChangeHref}
-            className="flex h-11 items-center gap-2 px-4 text-[12px] font-extrabold text-neutral-700 transition hover:bg-neutral-50 hover:text-neutral-950"
+            onClick={onClose}
+            className="flex min-h-12 items-start gap-2 px-4 py-3 text-left transition hover:bg-neutral-50"
           >
-            <Mail className="h-3.5 w-3.5" />
-            이메일 변경
+            <Mail className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-500" />
+            <span className="min-w-0">
+              <span className="block text-[12px] font-extrabold text-neutral-800">
+                로그인 이메일 변경 요청
+              </span>
+              <span className="mt-0.5 block text-[11px] font-semibold leading-4 text-neutral-500">
+                소유 확인 후 새 이메일로 변경합니다.
+              </span>
+            </span>
           </a>
           <button
             type="button"
             onClick={onOpenBusinessVerification}
-            className="flex h-11 w-full items-center gap-2 px-4 text-left text-[12px] font-extrabold text-neutral-700 transition hover:bg-neutral-50 hover:text-neutral-950"
+            className="flex min-h-12 w-full items-start gap-2 px-4 py-3 text-left transition hover:bg-neutral-50"
           >
-            <ShieldCheck className="h-3.5 w-3.5" />
-            사업자 인증
+            <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-500" />
+            <span className="min-w-0">
+              <span className="block text-[12px] font-extrabold text-neutral-800">
+                사업자 인증 관리
+              </span>
+              <span className="mt-0.5 block text-[11px] font-semibold leading-4 text-neutral-500">
+                계약 발송에 필요한 사업자 정보를 확인합니다.
+              </span>
+            </span>
           </button>
           <button
             type="button"
             onClick={onChangePassword}
-            className="flex h-11 w-full items-center gap-2 px-4 text-left text-[12px] font-extrabold text-neutral-700 transition hover:bg-neutral-50 hover:text-neutral-950"
+            className="flex min-h-12 w-full items-start gap-2 px-4 py-3 text-left transition hover:bg-neutral-50"
           >
-            <KeyRound className="h-3.5 w-3.5" />
-            비밀번호 변경
+            <KeyRound className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-500" />
+            <span className="min-w-0">
+              <span className="block text-[12px] font-extrabold text-neutral-800">
+                비밀번호 재설정
+              </span>
+              <span className="mt-0.5 block text-[11px] font-semibold leading-4 text-neutral-500">
+                로그인 비밀번호를 다시 설정합니다.
+              </span>
+            </span>
           </button>
         </div>
       ) : null}
