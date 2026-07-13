@@ -448,6 +448,11 @@ describe("yeollock.me security regressions", () => {
       "supabase/migrations/20260713020000_add_advertiser_saved_influencers.sql",
     );
 
+    assert.match(
+      marketplace,
+      /<span[^>]*>저장<\/span>[\s\S]*<span>국가<\/span>[\s\S]*<span>플랫폼<\/span>[\s\S]*<span>카테고리<\/span>[\s\S]*<span>인플루언서<\/span>[\s\S]*<span>채널 지표<\/span>/,
+    );
+
     assert.equal(
       classifyDiscoveredInfluencerAccount({
         platform: "instagram",
@@ -877,6 +882,13 @@ describe("yeollock.me security regressions", () => {
         categories: ["맛집"],
       }),
       ["건강·운동"],
+    );
+    assert.deepEqual(
+      normalizeMarketplaceCreatorCategories({
+        display_name: "게임 크리에이터 민준",
+        categories: ["리빙"],
+      }),
+      ["게임"],
     );
     assert.match(collector, /existingSameId\?\.status === "hidden"/);
     assert.match(curator, /queryWikidataAccountTypes/);

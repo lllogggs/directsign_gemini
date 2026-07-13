@@ -2068,13 +2068,13 @@ function InfluencerDiscoveryTable({
       <div className="mx-auto hidden min-h-0 min-w-[1000px] max-w-[1200px] flex-1 flex-col rounded-[8px] border border-[#d9e0d9] bg-white lg:flex lg:w-full">
         <div
           data-influencer-table-header="true"
-          className="grid shrink-0 grid-cols-[44px_78px_56px_minmax(240px,0.8fr)_minmax(150px,0.6fr)_minmax(140px,0.5fr)_96px] items-center gap-2.5 rounded-t-[8px] border-b border-[#d7ddd7] bg-[#f7f8f4] px-3 py-3 text-[12px] font-extrabold text-[#303630] shadow-[0_1px_0_rgba(215,221,215,0.9)]"
+          className="grid shrink-0 grid-cols-[44px_78px_56px_minmax(150px,0.6fr)_minmax(240px,0.8fr)_minmax(140px,0.5fr)_96px] items-center gap-2.5 rounded-t-[8px] border-b border-[#d7ddd7] bg-[#f7f8f4] px-3 py-3 text-[12px] font-extrabold text-[#303630] shadow-[0_1px_0_rgba(215,221,215,0.9)]"
         >
           <span className="text-center">저장</span>
           <span>국가</span>
           <span>플랫폼</span>
-          <span>인플루언서</span>
           <span>카테고리</span>
+          <span>인플루언서</span>
           <span>채널 지표</span>
           <span className="text-right">액션</span>
         </div>
@@ -2287,7 +2287,7 @@ function InfluencerDiscoveryTableRow({
       onMouseLeave={onPreviewEnd}
       onPointerLeave={onPreviewEnd}
       onBlur={onPreviewEnd}
-      className="group grid min-h-[64px] grid-cols-[44px_78px_56px_minmax(240px,0.8fr)_minmax(150px,0.6fr)_minmax(140px,0.5fr)_96px] items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-[#fbfcfa] focus-visible:bg-[#fbfcfa] focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-blue-600"
+      className="group grid min-h-[64px] grid-cols-[44px_78px_56px_minmax(150px,0.6fr)_minmax(240px,0.8fr)_minmax(140px,0.5fr)_96px] items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-[#fbfcfa] focus-visible:bg-[#fbfcfa] focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-blue-600"
     >
       <InfluencerSaveCheckbox
         profile={profile}
@@ -2312,6 +2312,10 @@ function InfluencerDiscoveryTableRow({
         )}
       </div>
 
+      <p className="truncate text-[12px] font-bold text-neutral-700">
+        {categoryLabel || "일상·브이로그"}
+      </p>
+
       <div className="min-w-0">
         <div className="flex min-w-0 items-center gap-1.5">
           <Link
@@ -2323,10 +2327,6 @@ function InfluencerDiscoveryTableRow({
           </Link>
         </div>
       </div>
-
-      <p className="truncate text-[12px] font-bold text-neutral-700">
-        {categoryLabel || "일상·브이로그"}
-      </p>
       <p
         className="truncate text-[12px] font-extrabold text-neutral-950"
         title={primaryPlatform?.performanceLabel}

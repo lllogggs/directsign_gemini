@@ -1234,7 +1234,7 @@ check(
   agents.includes("Advertiser influencer discovery is for independent creators") &&
     agents.includes("Advertiser influencer saves belong to the advertiser organization") &&
     agents.includes("stable, searchable medium-level taxonomy") &&
-    agents.includes("저장, 국가, 플랫폼, 인플루언서, 카테고리, 채널 지표, 액션") &&
+    agents.includes("저장, 국가, 플랫폼, 카테고리, 인플루언서, 채널 지표, 액션") &&
     influencerDiscoveryQuality.includes("INSTAGRAM_PUBLIC_CREATOR_FOLLOWER_LIMIT = 2_000_000") &&
     influencerDiscoveryQuality.includes("classifyDiscoveredInfluencerAccount") &&
     influencerDiscoveryQuality.includes("classifyExternalInfluencerSearchEvidence") &&
