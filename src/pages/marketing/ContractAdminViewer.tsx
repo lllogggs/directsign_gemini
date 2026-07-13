@@ -318,6 +318,8 @@ export function ContractAdminViewer() {
       ? "계약 마감"
       : contract.status === "SIGNED"
       ? "서명 완료"
+      : summary.activeShare
+        ? "계약서 링크 복사"
       : isFixedCampaign && !summary.allApproved
         ? "내용 확인"
       : summary.allApproved
@@ -329,10 +331,19 @@ export function ContractAdminViewer() {
         : "수정 요청 검토";
   const canRequestSignatures =
     summary.allApproved &&
+    !summary.activeShare &&
     !isContractSignedOrClosed &&
     isAdvertiserVerified &&
     !isVerificationLoading;
   const displayContractTitle = formatContractTitleForDisplay(contract.title);
+  const fixedCampaignNextAction =
+    contract.status === "CLOSED"
+      ? "콘텐츠 검수와 광고 계약 마감이 완료되었습니다."
+      : contract.status === "SIGNED"
+        ? "제출된 콘텐츠를 확인하고 검수하세요."
+        : contract.status === "APPROVED"
+          ? "서명 링크를 만들고 서명을 요청하세요."
+          : "캠페인 조건과 선정자별 계약 내용을 확인하세요.";
   const displayInfluencerName = removeInternalTestLabel(
     contract.influencer_info.name,
     "인플루언서",
@@ -486,6 +497,11 @@ export function ContractAdminViewer() {
   };
 
   const handlePrimaryAction = () => {
+    if (summary.activeShare && !isContractSignedOrClosed) {
+      void copyLink();
+      return;
+    }
+
     if (canRequestSignatures) {
       requestSignatures();
       return;
@@ -817,17 +833,6 @@ export function ContractAdminViewer() {
             </button>
             <button
               type="button"
-              onClick={copyLink}
-              disabled={!summary.activeShare}
-              className="yl-header-action yl-header-action-secondary disabled:pointer-events-none disabled:text-neutral-300 disabled:shadow-none"
-              aria-label="링크 복사"
-              title="링크 복사"
-            >
-              <Copy className="h-3.5 w-3.5" strokeWidth={2} />
-              <span className="hidden sm:inline">링크 복사</span>
-            </button>
-            <button
-              type="button"
               onClick={handleLogout}
               className="yl-header-action yl-header-action-secondary"
               aria-label="로그아웃"
@@ -875,7 +880,7 @@ export function ContractAdminViewer() {
               </div>
               <p className="mt-2 max-w-3xl text-[13px] leading-6 text-neutral-500">
                 {isFixedCampaign
-                  ? "서명 링크를 만들고 서명을 요청하세요."
+                  ? fixedCampaignNextAction
                   : formatOperationalText(
                       contract.workflow?.next_action,
                       STATUS_META[contract.status].helper,
@@ -928,7 +933,7 @@ export function ContractAdminViewer() {
 
         <section className="grid min-h-0 gap-4 lg:flex-1 xl:grid-cols-[348px_minmax(0,1fr)]">
           <aside className="custom-scrollbar min-h-0 space-y-3 overflow-visible pr-0 lg:overflow-y-auto lg:pr-1">
-            <Panel title="검토·응답">
+            <Panel title={isContractSignedOrClosed ? "계약 파일" : "검토·응답"}>
               <div className="space-y-3">
                 {activeReviewClause ? (
                   <>
@@ -987,18 +992,21 @@ export function ContractAdminViewer() {
                   </>
                 ) : (
                   <>
-                    <button
-                      type="button"
-                      onClick={handlePrimaryAction}
-                      disabled={
-                        isContractSignedOrClosed ||
-                        (summary.allApproved && isVerificationLoading)
-                      }
-                      className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-neutral-950 text-[13px] font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition hover:bg-neutral-800 hover:shadow-[0_14px_30px_rgba(15,23,42,0.18)] disabled:bg-neutral-200 disabled:text-neutral-400 disabled:shadow-none"
-                    >
-                      <Send className="h-4 w-4" />
-                      {primaryActionLabel}
-                    </button>
+                    {!isContractSignedOrClosed ? (
+                      <button
+                        type="button"
+                        onClick={handlePrimaryAction}
+                        disabled={summary.allApproved && isVerificationLoading}
+                        className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-neutral-950 text-[13px] font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition hover:bg-neutral-800 hover:shadow-[0_14px_30px_rgba(15,23,42,0.18)] disabled:bg-neutral-200 disabled:text-neutral-400 disabled:shadow-none"
+                      >
+                        {summary.activeShare ? (
+                          <Copy className="h-4 w-4" />
+                        ) : (
+                          <Send className="h-4 w-4" />
+                        )}
+                        {primaryActionLabel}
+                      </button>
+                    ) : null}
                   </>
                 )}
                 <a
@@ -1381,7 +1389,7 @@ function AdvertiserDeliverablesPanel({
   const isInitialLoading = isLoading && !data;
 
   return (
-    <section className="mb-5 overflow-hidden rounded-lg border border-neutral-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)]">
+    <section className="custom-scrollbar mb-5 overflow-hidden rounded-lg border border-neutral-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)] lg:max-h-[300px] lg:flex-none lg:overflow-y-auto">
       <div className="border-b border-neutral-200 bg-[#fbfbfc] px-5 py-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>

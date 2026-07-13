@@ -38,15 +38,22 @@ const reservedProfileHandles = new Set([
   "advertiser",
   "api",
   "brands",
+  "campaigns",
   "contract",
+  "en",
   "influencer",
   "intro",
+  "ja",
   "legal",
   "login",
   "marketing",
   "privacy",
+  "reset-password",
+  "resources",
   "signup",
+  "support",
   "terms",
+  "zh",
 ]);
 
 const categoryLabels: Record<InfluencerActivityCategory, string> = {

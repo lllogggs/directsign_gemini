@@ -9,10 +9,10 @@ import {
   FileUp,
   LogOut,
   Megaphone,
-  Settings,
   ShieldCheck,
 } from "lucide-react";
 import { LogoMark } from "../../components/BrandLogo";
+import { AdvertiserAccountSettingsMenu } from "../../components/AdvertiserAccountSettingsMenu";
 import {
   type VerificationAccountInfo,
   type VerificationRequest,
@@ -21,10 +21,17 @@ import {
   verificationStatusTone,
 } from "../../domain/verification";
 import { apiFetch } from "../../domain/api";
-import { useVerificationSummary } from "../../hooks/useVerificationSummary";
+import {
+  clearVerificationSummaryCache,
+  useVerificationSummary,
+} from "../../hooks/useVerificationSummary";
 import { PRODUCT_NAME } from "../../domain/brand";
 import { removeInternalTestLabel } from "../../domain/display";
 import { translateApiErrorMessage } from "../../domain/userMessages";
+import { clearAdvertiserSessionCache } from "../../domain/advertiserSessionCache";
+import { clearAdvertiserDashboardBootstrapPreload } from "../../domain/advertiserDashboardPreload";
+import { finishFastLoginTransition } from "../../domain/fastLoginTransition";
+import { clearMarketplaceMessageSummaryCache } from "../../hooks/useMarketplaceMessageSummary";
 
 const MAX_VERIFICATION_FILE_SIZE = 10 * 1024 * 1024;
 const ACCEPTED_VERIFICATION_FILE_TYPES = new Set([
@@ -121,12 +128,14 @@ export function AdvertiserVerification() {
   const [submitted, setSubmitted] = useState(false);
   const [hasEditedForm, setHasEditedForm] = useState(false);
   const [showUpdateForm, setShowUpdateForm] = useState(false);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
 
   const advertiser = summary?.advertiser;
   const status = advertiser?.status ?? "not_submitted";
   const latest = advertiser?.latest_request;
   const account = advertiser?.account;
   const approved = status === "approved";
+  const pending = status === "pending";
   const rejectionGuidance =
     status === "rejected"
       ? getVerificationRejectionGuidance(latest, "advertiser_organization")
@@ -151,11 +160,24 @@ export function AdvertiserVerification() {
     approved && !showVerificationForm && !rejectionGuidance;
 
   const handleLogout = async () => {
-    await apiFetch("/api/advertiser/logout", {
-      method: "POST",
-      credentials: "include",
-    }).catch(() => undefined);
-    navigate("/login/advertiser", { replace: true });
+    try {
+      await apiFetch("/api/advertiser/logout", {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch (logoutError) {
+      console.warn(
+        `[${PRODUCT_NAME}] advertiser logout request failed`,
+        logoutError,
+      );
+    } finally {
+      finishFastLoginTransition("advertiser");
+      clearAdvertiserSessionCache();
+      clearAdvertiserDashboardBootstrapPreload();
+      clearVerificationSummaryCache("advertiser");
+      clearMarketplaceMessageSummaryCache("advertiser");
+      navigate("/login/advertiser", { replace: true });
+    }
   };
 
   const updateForm = (updates: Partial<AdvertiserVerificationForm>) => {
@@ -168,6 +190,12 @@ export function AdvertiserVerification() {
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError("");
+
+    if (isSubmitting || isLoading) return;
+    if (pending) {
+      setError("이미 접수된 인증 요청을 검토 중입니다.");
+      return;
+    }
 
     if (!file) {
       setError("사업자등록증명원 PDF 또는 이미지 파일을 첨부해 주세요.");
@@ -230,8 +258,8 @@ export function AdvertiserVerification() {
   };
 
   return (
-    <div className="fixed inset-0 overflow-hidden bg-[#f4f5f7] font-sans text-neutral-950">
-      <header className="border-b border-neutral-200/80 bg-white shadow-[0_1px_0_rgba(15,23,42,0.04)]">
+    <div className="min-h-svh bg-[#f4f5f7] font-sans text-neutral-950 lg:fixed lg:inset-0 lg:overflow-hidden">
+      <header className="sticky top-0 z-30 border-b border-neutral-200/80 bg-white shadow-[0_1px_0_rgba(15,23,42,0.04)]">
         <div className="mx-auto flex h-14 max-w-[1500px] items-center justify-between px-3 sm:px-5">
           <div className="flex min-w-0 items-center gap-3">
             <button
@@ -261,28 +289,30 @@ export function AdvertiserVerification() {
               <LogOut className="h-4 w-4" />
               <span className="hidden sm:inline">로그아웃</span>
             </button>
-            <button
-              type="button"
-              onClick={() => navigate("/reset-password?role=advertiser")}
-              className="yl-header-icon-action"
-              aria-label="설정"
-              title="설정"
-            >
-              <Settings className="h-4 w-4" />
-            </button>
+            <AdvertiserAccountSettingsMenu
+              account={{ email: account?.email }}
+              open={accountMenuOpen}
+              onToggle={() => setAccountMenuOpen((current) => !current)}
+              onClose={() => setAccountMenuOpen(false)}
+              onOpenBusinessVerification={() => setAccountMenuOpen(false)}
+              onChangePassword={() => {
+                setAccountMenuOpen(false);
+                navigate("/reset-password?role=advertiser");
+              }}
+            />
           </div>
         </div>
       </header>
 
       <main
-        className={`mx-auto grid h-[calc(100vh-56px)] gap-4 overflow-hidden px-5 py-5 sm:px-8 ${
+        className={`mx-auto grid min-h-[calc(100svh-56px)] gap-4 px-5 py-5 sm:px-8 lg:h-[calc(100vh-56px)] lg:min-h-0 lg:overflow-hidden ${
           showApprovedOverview
             ? "max-w-4xl lg:grid-cols-1"
             : "max-w-6xl lg:grid-cols-[minmax(0,1fr)_320px]"
         }`}
       >
         <section
-          className={`overflow-y-auto rounded-[16px] border border-neutral-200/90 bg-white p-0 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_22px_60px_rgba(15,23,42,0.08)] ${
+          className={`overflow-visible rounded-[16px] border border-neutral-200/90 bg-white p-0 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_22px_60px_rgba(15,23,42,0.08)] lg:overflow-y-auto ${
             showApprovedOverview
               ? "min-h-[420px]"
               : "min-h-0"
@@ -292,7 +322,7 @@ export function AdvertiserVerification() {
             <div className="m-5 overflow-hidden rounded-[16px] border border-neutral-200 bg-white shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_18px_48px_rgba(15,23,42,0.07)] sm:m-6">
               <div className="border-b border-neutral-200 bg-[#fbfaf7] px-5 py-5 sm:px-6">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="flex items-start gap-3">
+                  <div className="flex min-w-0 items-start gap-3">
                     <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[12px] bg-neutral-950 text-white">
                       <ShieldCheck className="h-5 w-5" />
                     </div>
@@ -300,7 +330,7 @@ export function AdvertiserVerification() {
                       <p className="text-[12px] font-extrabold text-emerald-700">
                         사업자 인증 완료
                       </p>
-                      <h1 className="mt-1 text-[22px] font-extrabold tracking-tight text-neutral-950">
+                      <h1 className="mt-1 break-words text-[20px] font-extrabold tracking-tight text-neutral-950 [overflow-wrap:anywhere] sm:text-[22px]">
                         {displayCompany}
                       </h1>
                       <p className="mt-1 text-sm font-semibold leading-6 text-neutral-600">
@@ -317,8 +347,8 @@ export function AdvertiserVerification() {
                   </button>
                 </div>
               </div>
-              <div className="grid gap-4 p-5 sm:p-6 lg:grid-cols-[minmax(0,1fr)_260px]">
-                <section className="rounded-[14px] border border-neutral-200 bg-white p-4">
+              <div className="grid min-w-0 gap-4 p-5 sm:p-6 lg:grid-cols-[minmax(0,1fr)_260px]">
+                <section className="min-w-0 rounded-[14px] border border-neutral-200 bg-white p-4">
                   <div className="mb-3 flex items-center justify-between gap-3">
                     <p className="text-sm font-extrabold text-neutral-950">
                       인증 사업자 정보
@@ -330,7 +360,12 @@ export function AdvertiserVerification() {
                   <div className="grid gap-2 sm:grid-cols-2">
                     <InfoRow label="회사" value={displayCompany} compact />
                     <InfoRow label="담당자" value={displayManager} compact />
-                    <InfoRow label="이메일" value={displayEmail} compact />
+                    <InfoRow
+                      label="이메일"
+                      value={<EmailAddress value={displayEmail} />}
+                      compact
+                      preserveBreaks
+                    />
                     <InfoRow label="사업자등록번호" value={displayBusinessNumber} compact />
                   </div>
                   {latest ? (
@@ -610,13 +645,15 @@ export function AdvertiserVerification() {
 
               <button
                 type="submit"
-                disabled={isSubmitting}
+                disabled={isSubmitting || isLoading || pending}
                 className="h-11 w-full rounded-lg bg-blue-600 px-5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(37,99,235,0.16)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-500 disabled:shadow-none"
               >
                 {isSubmitting
                   ? "접수 중"
                   : approved
                     ? "인증 정보 갱신 요청"
+                    : pending
+                      ? "심사 중"
                     : status === "rejected"
                       ? "새 증빙으로 재제출"
                       : "수기 심사 요청"}
@@ -626,7 +663,7 @@ export function AdvertiserVerification() {
         </section>
 
         {!showApprovedOverview ? (
-        <aside className="min-h-0 space-y-3 overflow-y-auto">
+        <aside className="space-y-3 overflow-visible lg:min-h-0 lg:overflow-y-auto">
           <section className="rounded-lg border border-neutral-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_14px_34px_rgba(15,23,42,0.05)]">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
@@ -654,7 +691,11 @@ export function AdvertiserVerification() {
               <div className="mt-4 space-y-3 border-t border-neutral-100 pt-4 text-sm">
                 <InfoRow label="회사" value={displayCompany} />
                 <InfoRow label="담당" value={displayManager} />
-                <InfoRow label="이메일" value={displayEmail} />
+                <InfoRow
+                  label="이메일"
+                  value={<EmailAddress value={displayEmail} />}
+                  preserveBreaks
+                />
                 <InfoRow label="사업자" value={displayBusinessNumber} />
                 {latest && (
                   <InfoRow
@@ -727,24 +768,48 @@ function InfoRow({
   label,
   value,
   compact = false,
+  preserveBreaks = false,
 }: {
   label: string;
-  value: string;
+  value: React.ReactNode;
   compact?: boolean;
+  preserveBreaks?: boolean;
 }) {
   return (
     <div
       className={
         compact
-          ? "rounded-md border border-neutral-200 bg-white px-3 py-2"
+          ? "min-w-0 rounded-md border border-neutral-200 bg-white px-3 py-2"
           : undefined
       }
     >
       <p className="text-xs font-semibold text-neutral-400">{label}</p>
-      <p className="mt-1 break-words font-medium text-neutral-800 [overflow-wrap:anywhere]">
+      <p
+        className={`mt-1 font-medium text-neutral-800 ${
+          preserveBreaks
+            ? "break-normal [overflow-wrap:normal]"
+            : "break-words [overflow-wrap:anywhere]"
+        }`}
+      >
         {value}
       </p>
     </div>
+  );
+}
+
+function EmailAddress({ value }: { value: string }) {
+  const separatorIndex = value.lastIndexOf("@");
+
+  if (separatorIndex <= 0 || separatorIndex === value.length - 1) {
+    return <>{value}</>;
+  }
+
+  return (
+    <>
+      {value.slice(0, separatorIndex + 1)}
+      <wbr />
+      {value.slice(separatorIndex + 1)}
+    </>
   );
 }
 

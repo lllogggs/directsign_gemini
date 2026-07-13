@@ -5,11 +5,10 @@ import {
   CalendarDays,
   ChevronDown,
   CheckCircle2,
-  Copy,
-  ExternalLink,
   FileSignature,
   FileText,
   Gift,
+  LogIn,
   LogOut,
   MapPin,
   Megaphone,
@@ -18,7 +17,6 @@ import {
   Search,
   Send,
   SlidersHorizontal,
-  Settings,
   UsersRound,
   X,
 } from "lucide-react";
@@ -27,28 +25,23 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { apiFetch } from "../../domain/api";
+import { useBodyScrollLock } from "../../hooks/useBodyScrollLock";
 import { PRODUCT_NAME } from "../../domain/brand";
 import {
-  buildMarketplaceCampaignPosts,
   campaignProposalTypeOptions,
-  compareChannelAudienceValues,
-  findInfluencerProfileByDisplayName,
-  findInfluencerProfileByHandle,
   formatMarketplaceCountries,
   getCampaignDeadlineLabel,
-  getChannelAudienceSortValue,
-  getInfluencerProfilePath,
   getMarketplaceBrandDisplayFamilyKey,
   getMarketplaceCountryLabel,
   isMarketplaceApplicationBrandId,
   marketplaceCountryOptions,
-  marketplaceBrands,
   platformLabels,
   proposalTypeLabels,
   type CampaignProposalType,
@@ -56,7 +49,6 @@ import {
   type MarketplaceBrandProfile,
   type MarketplaceCampaignPost,
   type MarketplaceCountryCode,
-  type MarketplaceInfluencerProfile,
 } from "../../domain/marketplace";
 import {
   formatMarketplaceMessageDate,
@@ -64,10 +56,11 @@ import {
   type MarketplaceMessagesResponse,
   type MarketplaceProposalStatus,
 } from "../../domain/marketplaceInbox";
-import { getMarketplaceInfluencerAvatarUrlFromHref } from "../../domain/marketplaceAvatars";
 import type { InfluencerPlatform } from "../../domain/verification";
 import { DashboardSurfaceSwitch } from "../../components/DashboardSurfaceSwitch";
 import { MobileSurfaceSwitch } from "../../components/MobileSurfaceSwitch";
+import { AdvertiserAccountSettingsMenu } from "../../components/AdvertiserAccountSettingsMenu";
+import { InfluencerAccountSettingsMenu } from "../../components/InfluencerAccountSettingsMenu";
 import { LogoMark } from "../../components/BrandLogo";
 import { PlatformBrandMark } from "../../components/PlatformBrandMark";
 import { ResponsiveFilterPanel } from "../../components/ResponsiveFilterPanel";
@@ -77,6 +70,12 @@ import {
   readSelectedAdvertiserBrandId,
   writeSelectedAdvertiserBrandId,
 } from "../../domain/advertiserBrands";
+import { clearAdvertiserSessionCache } from "../../domain/advertiserSessionCache";
+import { clearAdvertiserDashboardBootstrapPreload } from "../../domain/advertiserDashboardPreload";
+import { clearInfluencerDashboardPreload } from "../../domain/influencerDashboardPreload";
+import { finishFastLoginTransition } from "../../domain/fastLoginTransition";
+import { clearVerificationSummaryCache } from "../../hooks/useVerificationSummary";
+import { clearMarketplaceMessageSummaryCache } from "../../hooks/useMarketplaceMessageSummary";
 
 type CampaignState =
   | { status: "loading" }
@@ -96,7 +95,8 @@ type AdvertiserCampaignState =
 type PlatformFilter = "all" | InfluencerPlatform;
 type ProposalTypeFilter = "all" | CampaignProposalType;
 type InfluencerCampaignView = "open" | "applied";
-type AdvertiserCampaignView = "applicants" | "campaigns";
+type CampaignShellMode = "authenticated" | "anonymous";
+type CampaignShellRole = "advertiser" | "influencer";
 type CampaignSortDirection = "asc" | "desc";
 type CampaignSortKey =
   | "deadline"
@@ -210,14 +210,6 @@ const appliedCampaignSortOptions: Array<{ label: string; value: CampaignSort }> 
   { label: "브랜드순", value: { key: "brand", direction: "asc" } },
   { label: "캠페인순", value: { key: "title", direction: "asc" } },
 ];
-const advertiserApplicantSortOptions: Array<{ label: string; value: CampaignSort }> = [
-  { label: "구독자·팔로워 많은순", value: { key: "followers", direction: "desc" } },
-  { label: "구독자·팔로워 적은순", value: { key: "followers", direction: "asc" } },
-  { label: "최근 지원순", value: { key: "appliedAt", direction: "desc" } },
-  { label: "이름순", value: { key: "applicant", direction: "asc" } },
-  { label: "상태순", value: { key: "status", direction: "asc" } },
-];
-
 type MarketplaceCampaignsResponse = {
   campaigns: MarketplaceCampaignPost[];
 };
@@ -261,11 +253,6 @@ type InfluencerSessionStatusResponse = {
   authenticated?: boolean;
 };
 
-type CampaignApplicantAcceptResponse = {
-  contract?: {
-    id: string;
-  };
-};
 
 const applicationStatusMeta: Record<
   MarketplaceProposalStatus,
@@ -278,6 +265,14 @@ const applicationStatusMeta: Record<
   reviewed: {
     label: "검토 중",
     className: "border-sky-200 bg-sky-50 text-sky-700",
+  },
+  accepted: {
+    label: "선정 준비",
+    className: "border-blue-200 bg-blue-50 text-blue-700",
+  },
+  declined: {
+    label: "미선정",
+    className: "border-rose-200 bg-rose-50 text-rose-700",
   },
   converted_to_contract: {
     label: "선정 완료",
@@ -294,38 +289,8 @@ type CampaignShellMetric = {
   value: string;
 };
 
-const defaultCampaignShellMetrics: CampaignShellMetric[] = [
-  { label: "계약 전", value: "조건 정리" },
-  { label: "검토", value: "상대 확인" },
-  { label: "선정", value: "계약서 준비" },
-];
-
 function getCampaignSharePath(campaign: { id?: string }) {
   return campaign.id ? `/campaigns/${encodeURIComponent(campaign.id)}` : undefined;
-}
-
-function getCampaignShareUrl(campaign: { id?: string }) {
-  const path = getCampaignSharePath(campaign);
-  if (!path) return undefined;
-  if (typeof window === "undefined") return path;
-  return new URL(path, window.location.origin).toString();
-}
-
-async function copyTextToClipboard(text: string) {
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text);
-    return;
-  }
-
-  const textarea = document.createElement("textarea");
-  textarea.value = text;
-  textarea.setAttribute("readonly", "true");
-  textarea.style.position = "fixed";
-  textarea.style.opacity = "0";
-  document.body.appendChild(textarea);
-  textarea.select();
-  document.execCommand("copy");
-  textarea.remove();
 }
 
 export function AdvertiserCampaignRecruitmentPage() {
@@ -427,7 +392,7 @@ export function AdvertiserCampaignRecruitmentPage() {
   }, [refreshCampaignWorkspace]);
 
   const requiredCampaignFieldCount = 12;
-  const canSubmit =
+  const hasRequiredCampaignFields =
     form.title.trim().length > 0 &&
     form.applicantLimit.trim().length > 0 &&
     form.location.trim().length > 0 &&
@@ -439,25 +404,34 @@ export function AdvertiserCampaignRecruitmentPage() {
     form.uploadDeadline.trim().length > 0 &&
     form.deadline.trim().length > 0 &&
     form.platforms.length > 0;
+  const recruitmentDeadline = parseCampaignDate(form.deadline);
+  const uploadDeadline = parseCampaignDate(form.uploadDeadline);
+  const dateOrderError =
+    recruitmentDeadline && uploadDeadline && uploadDeadline < recruitmentDeadline
+      ? "제출마감일은 모집마감일과 같거나 이후여야 합니다."
+      : undefined;
+  const canSubmit = hasRequiredCampaignFields && !dateOrderError;
   const missingFormLabels = [
     form.platforms.length > 0 ? undefined : "플랫폼",
     form.type.trim().length > 0 ? undefined : "광고형태",
-    form.title.trim().length > 0 ? undefined : "제목",
+    form.title.trim().length > 0 ? undefined : "캠페인명",
     form.applicantLimit.trim().length > 0 ? undefined : "모집인원",
     form.location.trim().length > 0 ? undefined : "지역/진행방식",
     form.offer.trim().length > 0 ? undefined : "제공상품",
     form.budget.trim().length > 0 ? undefined : "지급내용",
-    form.deliverables.trim().length > 0 ? undefined : "콘텐츠",
+    form.deliverables.trim().length > 0 ? undefined : "콘텐츠 조건",
     form.mission.trim().length > 0 ? undefined : "참여 미션",
     form.summary.trim().length > 0 ? undefined : "캠페인설명",
-    form.uploadDeadline.trim().length > 0 ? undefined : "제출마감일",
-    form.deadline.trim().length > 0 ? undefined : "모집마감일",
+    form.uploadDeadline.trim().length > 0 ? undefined : "제출마감",
+    form.deadline.trim().length > 0 ? undefined : "모집마감",
   ].filter(Boolean) as string[];
-  const submitHelperText = canSubmit
-    ? "필수 조건이 준비되었습니다. 공개하면 인플루언서 캠페인 화면에 바로 노출됩니다."
-    : `남은 필수 항목: ${missingFormLabels.slice(0, 4).join(", ")}${
-        missingFormLabels.length > 4 ? ` 외 ${missingFormLabels.length - 4}개` : ""
-      }`;
+  const submitHelperText = dateOrderError
+    ? dateOrderError
+    : canSubmit
+      ? "필수 조건이 준비되었습니다. 공개하면 인플루언서 캠페인 화면에 바로 노출됩니다."
+      : `남은 필수 항목: ${missingFormLabels.slice(0, 4).join(", ")}${
+          missingFormLabels.length > 4 ? ` 외 ${missingFormLabels.length - 4}개` : ""
+        }`;
 
   const togglePlatform = (platform: InfluencerPlatform) => {
     setForm((current) => {
@@ -685,7 +659,6 @@ export function AdvertiserCampaignRecruitmentPage() {
     }
   };
 
-  const campaigns = state.status === "ready" ? state.campaigns : [];
   const brand = state.status === "ready" ? state.brand : null;
   const draftCampaignPost = useMemo<MarketplaceCampaignPost>(() => {
     const platforms = form.platforms.length > 0 ? form.platforms : ["instagram"];
@@ -740,6 +713,8 @@ export function AdvertiserCampaignRecruitmentPage() {
 
   return (
     <CampaignShell
+      mode="authenticated"
+      role="advertiser"
       eyebrow="광고주 캠페인"
       title="캠페인 작성"
       description="모집 조건을 공개하고 지원자를 한곳에서 확인합니다."
@@ -779,42 +754,64 @@ export function AdvertiserCampaignRecruitmentPage() {
           onSubmit={handleSubmit}
           className="yl-card min-w-0 border p-4 sm:p-5 lg:min-h-0 lg:overflow-y-auto"
         >
-          <div className="flex items-start justify-between gap-3 border-b border-neutral-200 pb-4">
-            <div>
+          <div className="flex flex-col gap-3 border-b border-neutral-200 pb-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
               <p className="text-[12px] font-extrabold text-neutral-400">
                 캠페인 조건 입력
               </p>
               <h2 className="mt-1 text-[20px] font-extrabold text-neutral-950">
                 캠페인 작성 폼
               </h2>
-              <p className="mt-1 break-keep text-[12px] font-bold leading-5 text-neutral-500">
+              <p className="mt-1 max-w-[520px] break-keep text-[12px] font-bold leading-5 text-neutral-500">
                 인플루언서가 지원 전에 보는 금액, 콘텐츠, 일정만 빠짐없이 정리합니다.
               </p>
             </div>
-            <BrandImageUpload
-              brand={brand}
-              previewUrl={brandImagePreview}
-              disabled={isBrandImageUploading}
-              onSelect={handleBrandImageSelect}
-            />
+            <div className="self-end sm:self-start">
+              <BrandImageUpload
+                brand={brand}
+                previewUrl={brandImagePreview}
+                disabled={isBrandImageUploading}
+                onSelect={handleBrandImageSelect}
+              />
+            </div>
           </div>
           {brandImageError ? (
             <p className="mt-3 rounded-[10px] border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] font-extrabold text-rose-700">
               {brandImageError}
             </p>
           ) : null}
-          <CampaignImageUpload
-            imageUrl={campaignImagePreview ?? form.thumbnailUrl}
-            disabled={isCampaignImageUploading}
-            onSelect={handleCampaignImageSelect}
-          />
-          {campaignImageError ? (
-            <p className="mt-3 rounded-[10px] border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] font-extrabold text-rose-700">
-              {campaignImageError}
-            </p>
-          ) : null}
+          <div className="mt-4 grid min-w-0 gap-4">
+            <CampaignField label="캠페인명">
+              <input
+                required
+                value={form.title}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, title: event.target.value }))
+                }
+                placeholder="예: 여름 러닝 챌린지 릴스 모집"
+                className="campaign-input"
+              />
+            </CampaignField>
 
-          <div className="mt-4 grid gap-4">
+            <CampaignField label="광고형태">
+              <FilterSelectControl
+                value={form.type}
+                options={proposalTypeOptions.map((type) => ({
+                  value: type,
+                  label: proposalTypeLabels[type],
+                }))}
+                onChange={(value) =>
+                  setForm((current) => ({
+                    ...current,
+                    type: value as CampaignProposalType,
+                  }))
+                }
+                onOpen={() => setOpenFormList(null)}
+                ariaLabel="광고형태"
+                triggerClassName="h-10 rounded-[10px] text-[13px]"
+              />
+            </CampaignField>
+
             <CampaignField label="플랫폼">
               <CampaignFormSelectList
                 id="campaign-form-platforms"
@@ -851,6 +848,7 @@ export function AdvertiserCampaignRecruitmentPage() {
                   label: getMarketplaceCountryLabel(country),
                 }))}
                 selectedValues={form.targetCountries}
+                searchPlaceholder="국가 검색"
                 onClear={() =>
                   setForm((current) => ({ ...current, targetCountries: [] }))
                 }
@@ -858,105 +856,98 @@ export function AdvertiserCampaignRecruitmentPage() {
               />
             </CampaignField>
 
-            <div className="grid gap-4">
-              <CampaignField label="광고형태">
-                <select
-                  value={form.type}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      type: event.target.value as CampaignProposalType,
-                    }))
-                  }
-                  className="campaign-input"
-                >
-                  {proposalTypeOptions.map((type) => (
-                    <option key={type} value={type}>
-                      {proposalTypeLabels[type]}
-                    </option>
-                  ))}
-                </select>
-              </CampaignField>
-              <CampaignField label="제목">
-                <input
-                  required
-                  value={form.title}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, title: event.target.value }))
-                  }
-                  placeholder="예: 여름 러닝 챌린지 릴스 모집"
-                  className="campaign-input"
-                />
-              </CampaignField>
-            </div>
+            <CampaignField label="모집마감">
+              <CampaignDatePicker
+                id="campaign-form-recruit-deadline"
+                label="모집마감"
+                openId={openFormList}
+                onOpenChange={setOpenFormList}
+                value={form.deadline}
+                min={formatCampaignDateExample(1)}
+                onChange={(value) =>
+                  setForm((current) => ({ ...current, deadline: value }))
+                }
+              />
+            </CampaignField>
 
-            <div className="grid gap-4">
-              <CampaignField label="지역/진행방식">
-                <input
-                  required
-                  value={form.location}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      location: event.target.value,
-                    }))
-                  }
-                  placeholder="예: 서울 성수 방문, 온라인 배송"
-                  className="campaign-input"
-                />
-              </CampaignField>
-              <CampaignField label="제공상품">
-                <input
-                  required
-                  value={form.offer}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, offer: event.target.value }))
-                  }
-                  placeholder="예: 러닝화 1족, 식사권 2인"
-                  className="campaign-input"
-                />
-              </CampaignField>
-            </div>
+            <CampaignField label="제출마감">
+              <CampaignDatePicker
+                id="campaign-form-upload-deadline"
+                label="제출마감"
+                openId={openFormList}
+                onOpenChange={setOpenFormList}
+                value={form.uploadDeadline}
+                min={formatCampaignDateExample(1)}
+                onChange={(value) =>
+                  setForm((current) => ({
+                    ...current,
+                    uploadDeadline: value,
+                  }))
+                }
+              />
+            </CampaignField>
 
-            <div className="grid gap-4">
-              <CampaignField label="모집인원">
-                <input
-                  required
-                  value={form.applicantLimit}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      applicantLimit: event.target.value,
-                    }))
-                  }
-                  placeholder="예: 5명"
-                  className="campaign-input"
-                />
-              </CampaignField>
-              <CampaignField label="지급내용">
-                <input
-                  required
-                  value={form.budget}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, budget: event.target.value }))
-                  }
-                  placeholder={budgetPlaceholder}
-                  className="campaign-input"
-                />
-              </CampaignField>
-            </div>
-
-            <CampaignField label="콘텐츠">
+            <CampaignField label="지급내용">
               <input
                 required
-                value={form.deliverables}
+                value={form.budget}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, budget: event.target.value }))
+                }
+                placeholder={budgetPlaceholder}
+                className="campaign-input"
+              />
+            </CampaignField>
+
+            <CampaignField label="모집인원">
+              <input
+                required
+                value={form.applicantLimit}
                 onChange={(event) =>
                   setForm((current) => ({
                     ...current,
-                    deliverables: event.target.value,
+                    applicantLimit: event.target.value,
                   }))
                 }
-                placeholder={deliverablesPlaceholder}
+                placeholder="예: 5명"
+                className="campaign-input"
+              />
+            </CampaignField>
+
+            <CampaignImageUpload
+              imageUrl={campaignImagePreview ?? form.thumbnailUrl}
+              disabled={isCampaignImageUploading}
+              onSelect={handleCampaignImageSelect}
+            />
+            {campaignImageError ? (
+              <p className="rounded-[10px] border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] font-extrabold text-rose-700">
+                {campaignImageError}
+              </p>
+            ) : null}
+
+            <CampaignField label="지역/진행방식">
+              <input
+                required
+                value={form.location}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    location: event.target.value,
+                  }))
+                }
+                placeholder="예: 서울 성수 방문, 온라인 배송"
+                className="campaign-input"
+              />
+            </CampaignField>
+
+            <CampaignField label="제공상품">
+              <input
+                required
+                value={form.offer}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, offer: event.target.value }))
+                }
+                placeholder="예: 러닝화 1족, 식사권 2인"
                 className="campaign-input"
               />
             </CampaignField>
@@ -987,35 +978,20 @@ export function AdvertiserCampaignRecruitmentPage() {
               />
             </CampaignField>
 
-            <div className="grid gap-4">
-              <CampaignField label="제출마감일">
-                <CampaignDatePicker
-                  id="campaign-form-upload-deadline"
-                  openId={openFormList}
-                  onOpenChange={setOpenFormList}
-                  value={form.uploadDeadline}
-                  min={formatCampaignDateExample(1)}
-                  onChange={(value) =>
-                    setForm((current) => ({
-                      ...current,
-                      uploadDeadline: value,
-                    }))
-                  }
-                />
-              </CampaignField>
-              <CampaignField label="모집마감일">
-                <CampaignDatePicker
-                  id="campaign-form-recruit-deadline"
-                  openId={openFormList}
-                  onOpenChange={setOpenFormList}
-                  value={form.deadline}
-                  min={formatCampaignDateExample(1)}
-                  onChange={(value) =>
-                    setForm((current) => ({ ...current, deadline: value }))
-                  }
-                />
-              </CampaignField>
-            </div>
+            <CampaignField label="콘텐츠 조건">
+              <input
+                required
+                value={form.deliverables}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    deliverables: event.target.value,
+                  }))
+                }
+                placeholder={deliverablesPlaceholder}
+                className="campaign-input"
+              />
+            </CampaignField>
 
             {submitError ? (
               <p className="rounded-[12px] border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] font-extrabold text-rose-700">
@@ -1028,7 +1004,7 @@ export function AdvertiserCampaignRecruitmentPage() {
               </p>
             ) : null}
 
-            <div className="yl-panel mt-4 border p-3">
+            <div className="yl-panel mt-4 min-w-0 border p-3">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <p
                   className={`break-keep text-[12px] font-extrabold leading-5 ${
@@ -1087,10 +1063,14 @@ export function AdvertiserCampaignRecruitmentPage() {
 
 export function InfluencerCampaignDiscoveryPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [state, setState] = useState<CampaignState>({ status: "loading" });
+  const [shellMode, setShellMode] =
+    useState<CampaignShellMode>("anonymous");
   const [applicationsState, setApplicationsState] =
     useState<CampaignApplicationsState>({ status: "loading" });
-  const [activeView, setActiveView] = useState<InfluencerCampaignView>("open");
+  const activeView: InfluencerCampaignView =
+    searchParams.get("view") === "applied" ? "applied" : "open";
   const [query, setQuery] = useState("");
   const [platformFilter, setPlatformFilter] = useState<PlatformFilter>("all");
   const [categoryFilters, setCategoryFilters] = useState<string[]>([]);
@@ -1116,6 +1096,17 @@ export function InfluencerCampaignDiscoveryPage() {
   >();
   const [selectedCampaign, setSelectedCampaign] =
     useState<MarketplaceCampaignPost | null>(null);
+  const handleActiveViewChange = (nextView: InfluencerCampaignView) => {
+    const nextSearchParams = new URLSearchParams(searchParams);
+    if (nextView === "applied") {
+      nextSearchParams.set("view", "applied");
+    } else {
+      nextSearchParams.delete("view");
+    }
+    setFiltersOpen(false);
+    setOpenFilterList(null);
+    setSearchParams(nextSearchParams, { replace: true });
+  };
 
   useEffect(() => {
     let active = true;
@@ -1131,12 +1122,7 @@ export function InfluencerCampaignDiscoveryPage() {
         if (!active) return;
         setState({
           status: "ready",
-          campaigns:
-            data.campaigns.length > 0
-              ? dedupeCampaignsByBrandIdentity(data.campaigns)
-              : dedupeCampaignsByBrandIdentity(
-                  buildMarketplaceCampaignPosts(marketplaceBrands),
-                ),
+          campaigns: dedupeCampaignsByBrandIdentity(data.campaigns),
         });
       })
       .catch((error) => {
@@ -1167,8 +1153,11 @@ export function InfluencerCampaignDiscoveryPage() {
       });
       const sessionData = (await sessionResponse.json().catch(() => ({}))) as
         InfluencerSessionStatusResponse;
+      const authenticated =
+        sessionResponse.ok && sessionData.authenticated === true;
+      setShellMode(authenticated ? "authenticated" : "anonymous");
 
-      if (!sessionResponse.ok || sessionData.authenticated !== true) {
+      if (!authenticated) {
         setApplicationsState({ status: "ready", applications: [] });
         return;
       }
@@ -1179,6 +1168,7 @@ export function InfluencerCampaignDiscoveryPage() {
       });
 
       if (response.status === 401) {
+        setShellMode("anonymous");
         setApplicationsState({ status: "ready", applications: [] });
         return;
       }
@@ -1197,6 +1187,7 @@ export function InfluencerCampaignDiscoveryPage() {
         applications: data.threads.filter(isInfluencerCampaignApplication),
       });
     } catch (error) {
+      setShellMode("anonymous");
       setApplicationsState({
         status: "error",
         message:
@@ -1214,10 +1205,10 @@ export function InfluencerCampaignDiscoveryPage() {
     return () => window.clearTimeout(timer);
   }, [loadApplications]);
 
-  const campaigns =
-    state.status === "ready"
-      ? state.campaigns
-      : dedupeCampaignsByBrandIdentity(buildMarketplaceCampaignPosts(marketplaceBrands));
+  const campaigns = useMemo(
+    () => (state.status === "ready" ? state.campaigns : []),
+    [state],
+  );
   const visibleCampaigns = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
 
@@ -1395,7 +1386,7 @@ export function InfluencerCampaignDiscoveryPage() {
           : "신청이 전달됐습니다. 광고주가 선정하면 이 캠페인의 계약서 초안이 만들어집니다. 캠페인 계약서 진행이 시작됩니다.",
       });
       setSelectedCampaign(null);
-      setActiveView("applied");
+      handleActiveViewChange("applied");
       void loadApplications();
     } catch (error) {
       setApplicationNotice({
@@ -1413,6 +1404,8 @@ export function InfluencerCampaignDiscoveryPage() {
 
   return (
     <CampaignShell
+      mode={shellMode}
+      role="influencer"
       eyebrow="인플루언서 캠페인"
       title="캠페인 탐색"
       description="모집 조건을 비교하고 바로 신청합니다."
@@ -1434,7 +1427,7 @@ export function InfluencerCampaignDiscoveryPage() {
     <section className="yl-card flex min-h-0 min-w-0 flex-1 flex-col overflow-visible border">
       <div className="border-b border-neutral-200 bg-white">
         <div className="flex min-h-12 flex-col gap-2 px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-          <div className="min-w-0 sm:flex-1">
+          <div className="hidden min-w-0 sm:block sm:flex-1">
               <p className="truncate text-[13px] font-extrabold text-neutral-950">
                 {activeView === "open" ? "모집 캠페인" : "신청한 캠페인"}
               </p>
@@ -1444,13 +1437,15 @@ export function InfluencerCampaignDiscoveryPage() {
                   : `${visibleApplications.length.toLocaleString()}건 표시 · ${appliedFilterSummary}`}
               </p>
             </div>
-            <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_minmax(116px,auto)_auto] items-center gap-2 sm:flex sm:w-auto">
-              <CampaignViewTabs
-                value={activeView}
-                openCount={visibleCampaigns.length}
-                appliedCount={applications.length}
-                onChange={setActiveView}
-              />
+            <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:flex sm:w-auto">
+              <div className="col-span-2 min-w-0 sm:contents">
+                <CampaignViewTabs
+                  value={activeView}
+                  openCount={visibleCampaigns.length}
+                  appliedCount={applications.length}
+                  onChange={handleActiveViewChange}
+                />
+              </div>
               <CampaignSortSelect
                 value={
                   activeView === "open" ? openCampaignSort : appliedCampaignSort
@@ -1595,6 +1590,12 @@ export function InfluencerCampaignDiscoveryPage() {
           <PanelState icon={<RefreshCw className="h-5 w-5 animate-spin" />} title="캠페인을 불러오는 중" />
         ) : state.status === "error" ? (
           <PanelState icon={<Megaphone className="h-5 w-5" />} title={state.message} />
+        ) : campaigns.length === 0 ? (
+          <PanelState
+            icon={<Megaphone className="h-5 w-5" />}
+            title="모집 중인 캠페인이 없습니다"
+            body="새 캠페인이 공개되면 이곳에 표시됩니다."
+          />
         ) : visibleCampaigns.length === 0 ? (
           <PanelState
             icon={<Megaphone className="h-5 w-5" />}
@@ -1844,12 +1845,14 @@ export function PublicCampaignRecruitmentPage() {
           href: `/login/influencer?next=${encodeURIComponent(currentSharePath)}`,
           label: "지원 계정 로그인",
         };
+  const logoHref =
+    sessionStatus === "authenticated" ? "/influencer/dashboard" : "/";
 
   return (
     <main className="min-h-svh bg-[#f7f6f3] font-sans text-neutral-950">
       <header className="border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-[1180px] items-center justify-between px-4 sm:px-6 lg:px-8">
-          <Link to="/" className="flex min-w-0 shrink-0 items-center gap-3">
+          <Link to={logoHref} className="flex min-w-0 shrink-0 items-center gap-3">
             <LogoMark />
             <span className="font-neo-heavy text-[18px] leading-none text-neutral-950">
               {PRODUCT_NAME}
@@ -1976,15 +1979,18 @@ export function PublicCampaignRecruitmentPage() {
 }
 
 function CampaignShell({
+  mode,
+  role,
   eyebrow,
   title,
   description,
-  backHref,
-  metrics = defaultCampaignShellMetrics,
+  metrics = [],
   actions,
   showHeroCopy = true,
   children,
 }: {
+  mode: CampaignShellMode;
+  role: CampaignShellRole;
   eyebrow: string;
   title: string;
   description: string;
@@ -1995,7 +2001,10 @@ function CampaignShell({
   children: ReactNode;
 }) {
   const navigate = useNavigate();
-  const role = backHref.startsWith("/influencer") ? "influencer" : "advertiser";
+  const isAuthenticated = mode === "authenticated";
+  const dashboardHref = `/${role}/dashboard`;
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const closeAccountMenu = useCallback(() => setAccountMenuOpen(false), []);
   const handleLogout = async () => {
     try {
       await apiFetch(`/api/${role}/logout`, {
@@ -2005,6 +2014,16 @@ function CampaignShell({
     } catch (error) {
       console.warn(`[${PRODUCT_NAME}] ${role} logout request failed`, error);
     } finally {
+      finishFastLoginTransition(role);
+      clearVerificationSummaryCache(role);
+      clearMarketplaceMessageSummaryCache(role);
+      if (role === "advertiser") {
+        clearAdvertiserSessionCache();
+        clearAdvertiserDashboardBootstrapPreload();
+        writeSelectedAdvertiserBrandId(undefined);
+      } else {
+        clearInfluencerDashboardPreload();
+      }
       navigate(role === "advertiser" ? "/login/advertiser" : "/login/influencer", {
         replace: true,
       });
@@ -2015,44 +2034,81 @@ function CampaignShell({
     <main className="flex h-svh flex-col overflow-hidden bg-[#f7f6f3] font-sans text-neutral-950">
       <header className="z-30 shrink-0 border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-[1500px] items-center justify-between px-3 sm:px-5 lg:px-6">
-          <Link to="/" className="flex shrink-0 items-center gap-3">
+          <Link
+            to={isAuthenticated ? dashboardHref : "/"}
+            className="flex shrink-0 items-center gap-3"
+          >
             <LogoMark />
             <span className="font-neo-heavy text-[18px] leading-none text-neutral-950 sm:text-[19px]">
               {PRODUCT_NAME}
             </span>
           </Link>
 
-          <div className="no-scrollbar ml-3 flex min-w-0 items-center gap-2 overflow-x-auto">
-            <div className="hidden sm:block">
-              <DashboardSurfaceSwitch role={role} active="campaigns" />
-            </div>
-            {actions}
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="yl-header-action yl-header-action-secondary"
-              aria-label="로그아웃"
-              title="로그아웃"
-            >
-              <LogOut className="h-4 w-4" />
-              <span className="hidden sm:inline">로그아웃</span>
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                navigate(`/reset-password?role=${role}`, { replace: false })
-              }
-              className="yl-header-icon-action"
-              aria-label="계정 설정"
-              title="계정 설정"
-            >
-              <Settings className="h-4 w-4" />
-            </button>
+          <div className="ml-2 flex min-w-0 flex-1 items-center justify-end gap-1.5 overflow-visible sm:ml-3 sm:gap-2">
+            {isAuthenticated ? (
+              <>
+                <div className="hidden sm:block">
+                  <DashboardSurfaceSwitch role={role} active="campaigns" />
+                </div>
+                <div className="hidden sm:contents">{actions}</div>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="yl-header-action yl-header-action-secondary hidden sm:inline-flex"
+                  aria-label="로그아웃"
+                  title="로그아웃"
+                >
+                  <LogOut className="h-4 w-4" />
+                  <span>로그아웃</span>
+                </button>
+                {role === "advertiser" ? (
+                  <AdvertiserAccountSettingsMenu
+                    account={{}}
+                    open={accountMenuOpen}
+                    onToggle={() => setAccountMenuOpen((current) => !current)}
+                    onClose={closeAccountMenu}
+                    onOpenBusinessVerification={() => {
+                      closeAccountMenu();
+                      navigate("/advertiser/verification");
+                    }}
+                    onChangePassword={() => {
+                      closeAccountMenu();
+                      navigate("/reset-password?role=advertiser");
+                    }}
+                  />
+                ) : (
+                  <InfluencerAccountSettingsMenu
+                    account={{ name: "인플루언서" }}
+                    open={accountMenuOpen}
+                    onToggle={() => setAccountMenuOpen((current) => !current)}
+                    onClose={closeAccountMenu}
+                    onManageProfile={() => {
+                      closeAccountMenu();
+                      navigate("/influencer/profile");
+                    }}
+                    onChangePassword={() => {
+                      closeAccountMenu();
+                      navigate("/reset-password?role=influencer");
+                    }}
+                  />
+                )}
+              </>
+            ) : (
+              <Link
+                to={`/login/${role}`}
+                className="yl-header-action yl-header-action-secondary shrink-0"
+                aria-label="로그인"
+                title="로그인"
+              >
+                <LogIn className="h-4 w-4" />
+                <span className="hidden sm:inline">로그인</span>
+              </Link>
+            )}
           </div>
         </div>
       </header>
 
-      <MobileSurfaceSwitch role={role} active="campaigns" />
+      {isAuthenticated ? <MobileSurfaceSwitch role={role} active="campaigns" /> : null}
 
       <section
         className={`shrink-0 bg-[#f7f6f3] ${
@@ -2072,7 +2128,7 @@ function CampaignShell({
           ) : null}
           <div
             className={`${showHeroCopy ? "mt-1.5 sm:mt-2" : ""} grid gap-2 sm:gap-3 ${
-              metrics.length > 0
+              isAuthenticated && metrics.length > 0
                 ? "lg:grid-cols-[minmax(0,1fr)_330px] lg:items-end"
                 : ""
             }`}
@@ -2087,7 +2143,7 @@ function CampaignShell({
                 </p>
               ) : null}
             </div>
-            {metrics.length > 0 ? (
+            {isAuthenticated && metrics.length > 0 ? (
               <div className="yl-evidence-strip grid-cols-3 sm:gap-2 sm:p-2">
                 {metrics.map((metric) => (
                   <ShellMetric
@@ -2135,7 +2191,7 @@ function CampaignField({
   children: ReactNode;
 }) {
   return (
-    <div className="grid gap-2">
+    <div className="grid min-w-0 gap-2">
       <span className="text-[13px] font-extrabold text-neutral-800">{label}</span>
       {children}
     </div>
@@ -2151,6 +2207,7 @@ function CampaignFormSelectList<T extends string>({
   selectedValues,
   onSelect,
   onClear,
+  searchPlaceholder,
 }: {
   id: string;
   openId: string | null;
@@ -2160,17 +2217,80 @@ function CampaignFormSelectList<T extends string>({
   selectedValues: T[];
   onSelect: (value: T) => void;
   onClear?: () => void;
+  searchPlaceholder?: string;
 }) {
   const open = openId === id;
+  const rootRef = useRef<HTMLElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const [listPlacement, setListPlacement] = useState<"up" | "down">("down");
+  const [searchQuery, setSearchQuery] = useState("");
   const selected = new Set<T>(selectedValues);
   const isClearSelected = Boolean(onClear) && selectedValues.length === 0;
+  const normalizedSearchQuery = searchQuery.trim().toLocaleLowerCase("ko");
+  const visibleOptions = normalizedSearchQuery
+    ? options.filter((option) =>
+        `${option.label} ${String(option.value)}`
+          .toLocaleLowerCase("ko")
+          .includes(normalizedSearchQuery),
+      )
+    : options;
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node) || rootRef.current?.contains(target)) return;
+      onOpenChange(null);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      onOpenChange(null);
+      window.requestAnimationFrame(() => triggerRef.current?.focus());
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown, true);
+    };
+  }, [onOpenChange, open]);
+
+  useEffect(() => {
+    if (!open || !searchPlaceholder) return;
+    const frame = window.requestAnimationFrame(() => searchInputRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [open, searchPlaceholder]);
+
+  useLayoutEffect(() => {
+    if (!open || !rootRef.current || !listRef.current) return;
+    const triggerBounds = rootRef.current.getBoundingClientRect();
+    const listBounds = listRef.current.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - triggerBounds.bottom - 8;
+    const spaceAbove = triggerBounds.top - 8;
+    setListPlacement(
+      listBounds.height > spaceBelow && spaceAbove > spaceBelow ? "up" : "down",
+    );
+  }, [open, options.length]);
 
   return (
-    <section className="relative min-w-0">
+    <section ref={rootRef} className="relative min-w-0">
       <button
+        ref={triggerRef}
         type="button"
-        onClick={() => onOpenChange(open ? null : id)}
+        onClick={() => {
+          if (!open) setListPlacement("down");
+          setSearchQuery("");
+          onOpenChange(open ? null : id);
+        }}
+        aria-haspopup="listbox"
         aria-expanded={open}
+        aria-controls={open ? `${id}-listbox` : undefined}
         className={`flex h-10 w-full min-w-0 items-center justify-between gap-3 rounded-[10px] border bg-white px-3 text-left shadow-[0_1px_0_rgba(15,23,42,0.03)] transition ${
           open
             ? "border-neutral-300 shadow-[0_0_0_3px_rgba(15,23,42,0.06)]"
@@ -2188,26 +2308,58 @@ function CampaignFormSelectList<T extends string>({
         />
       </button>
       {open ? (
-        <div className="absolute left-0 right-0 top-full z-[70] mt-2 max-h-56 overflow-y-auto rounded-[12px] border border-neutral-200 bg-white p-1.5 shadow-[0_18px_50px_rgba(15,23,42,0.14)]">
-          {onClear ? (
-            <CampaignFilterListOptionButton
-              label="전체"
-              selected={isClearSelected}
-              onClick={() => {
-                onClear();
-              }}
-            />
+        <div
+          ref={listRef}
+          data-placement={listPlacement}
+          className={`absolute left-0 right-0 z-[70] overflow-hidden rounded-[12px] border border-neutral-200 bg-white p-1.5 shadow-[0_18px_50px_rgba(15,23,42,0.14)] ${
+            listPlacement === "up" ? "bottom-full mb-2" : "top-full mt-2"
+          }`}
+        >
+          {searchPlaceholder ? (
+            <label className="mb-1.5 flex h-9 items-center gap-2 rounded-[8px] border border-neutral-200 bg-neutral-50 px-2.5 focus-within:border-neutral-300 focus-within:bg-white">
+              <Search className="h-3.5 w-3.5 shrink-0 text-neutral-400" strokeWidth={2} />
+              <input
+                ref={searchInputRef}
+                type="search"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder={searchPlaceholder}
+                aria-label={searchPlaceholder}
+                className="min-w-0 flex-1 bg-transparent text-[12px] font-bold text-neutral-900 outline-none placeholder:text-neutral-400"
+              />
+            </label>
           ) : null}
-          {options.map((option) => (
-            <CampaignFilterListOptionButton
-              key={String(option.value)}
-              label={option.label}
-              selected={selected.has(option.value)}
-              onClick={() => {
-                onSelect(option.value);
-              }}
-            />
-          ))}
+          <div
+            id={`${id}-listbox`}
+            role="listbox"
+            aria-multiselectable="true"
+            className={searchPlaceholder ? "max-h-48 overflow-y-auto" : "max-h-56 overflow-y-auto"}
+          >
+            {onClear && !normalizedSearchQuery ? (
+              <CampaignFilterListOptionButton
+                label="전체"
+                selected={isClearSelected}
+                onClick={() => {
+                  onClear();
+                }}
+              />
+            ) : null}
+            {visibleOptions.map((option) => (
+              <CampaignFilterListOptionButton
+                key={String(option.value)}
+                label={option.label}
+                selected={selected.has(option.value)}
+                onClick={() => {
+                  onSelect(option.value);
+                }}
+              />
+            ))}
+            {visibleOptions.length === 0 ? (
+              <p className="px-2.5 py-4 text-center text-[12px] font-bold text-neutral-400">
+                검색 결과 없음
+              </p>
+            ) : null}
+          </div>
         </div>
       ) : null}
     </section>
@@ -2216,6 +2368,7 @@ function CampaignFormSelectList<T extends string>({
 
 function CampaignDatePicker({
   id,
+  label,
   openId,
   onOpenChange,
   value,
@@ -2223,6 +2376,7 @@ function CampaignDatePicker({
   onChange,
 }: {
   id: string;
+  label: string;
   openId: string | null;
   onOpenChange: (value: string | null) => void;
   value: string;
@@ -2230,22 +2384,80 @@ function CampaignDatePicker({
   onChange: (value: string) => void;
 }) {
   const open = openId === id;
+  const rootRef = useRef<HTMLElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const calendarRef = useRef<HTMLDivElement | null>(null);
+  const [calendarPlacement, setCalendarPlacement] = useState<"up" | "down">(
+    "down",
+  );
   const [visibleMonth, setVisibleMonth] = useState(() =>
     getCampaignCalendarMonth(value || min),
   );
   const selectedDate = parseCampaignDate(value);
   const minimumDate = parseCampaignDate(min);
   const days = useMemo(() => getCampaignCalendarDays(visibleMonth), [visibleMonth]);
+  const closeCalendar = useCallback(
+    (restoreFocus: boolean) => {
+      onOpenChange(null);
+      if (restoreFocus) {
+        window.requestAnimationFrame(() => triggerRef.current?.focus());
+      }
+    },
+    [onOpenChange],
+  );
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node) || rootRef.current?.contains(target)) return;
+      closeCalendar(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      closeCalendar(true);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown, true);
+    };
+  }, [closeCalendar, open]);
+
+  useLayoutEffect(() => {
+    if (!open || !rootRef.current || !calendarRef.current) return;
+    const triggerBounds = rootRef.current.getBoundingClientRect();
+    const calendarBounds = calendarRef.current.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - triggerBounds.bottom - 8;
+    const spaceAbove = triggerBounds.top - 8;
+    const nextPlacement =
+      calendarBounds.height > spaceBelow && spaceAbove > spaceBelow
+        ? "up"
+        : "down";
+    setCalendarPlacement(nextPlacement);
+  }, [open, visibleMonth]);
 
   return (
-    <section className="relative min-w-0">
+    <section ref={rootRef} className="relative min-w-0">
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => {
-          if (!open) setVisibleMonth(getCampaignCalendarMonth(value || min));
+          if (!open) {
+            setCalendarPlacement("down");
+            setVisibleMonth(getCampaignCalendarMonth(value || min));
+          }
           onOpenChange(open ? null : id);
         }}
+        aria-haspopup="dialog"
+        aria-label={`${label} 날짜 선택`}
         aria-expanded={open}
+        aria-controls={open ? `${id}-calendar` : undefined}
         className="campaign-input flex items-center justify-between gap-3 text-left"
       >
         <span className={value ? "text-neutral-950" : "text-neutral-400"}>
@@ -2254,7 +2466,16 @@ function CampaignDatePicker({
         <CalendarDays className="h-4 w-4 shrink-0 text-neutral-500" />
       </button>
       {open ? (
-        <div className="absolute bottom-full left-0 z-30 mb-2 w-full max-w-[360px] rounded-[12px] border border-neutral-200 bg-white p-3 shadow-[0_20px_44px_rgba(15,23,42,0.14)]">
+        <div
+          ref={calendarRef}
+          id={`${id}-calendar`}
+          role="dialog"
+          aria-label={`${label} 날짜 선택`}
+          data-placement={calendarPlacement}
+          className={`absolute left-0 z-30 w-full max-w-[360px] rounded-[12px] border border-neutral-200 bg-white p-3 shadow-[0_20px_44px_rgba(15,23,42,0.14)] ${
+            calendarPlacement === "up" ? "bottom-full mb-2" : "top-full mt-2"
+          }`}
+        >
           <div className="flex items-center justify-between gap-2">
             <button
               type="button"
@@ -2297,7 +2518,7 @@ function CampaignDatePicker({
                   disabled={disabled}
                   onClick={() => {
                     onChange(dateValue);
-                    onOpenChange(null);
+                    closeCalendar(true);
                   }}
                   className={`h-8 rounded-[8px] text-[12px] font-extrabold transition ${
                     selected
@@ -2388,204 +2609,6 @@ function AdvertiserCampaignPreview({
   );
 }
 
-function AdvertiserCampaignTable({
-  campaigns,
-}: {
-  campaigns: MarketplaceBrandCampaign[];
-}) {
-  const [copiedCampaignId, setCopiedCampaignId] = useState<string | undefined>();
-
-  const copyCampaignLink = async (campaign: MarketplaceBrandCampaign) => {
-    const shareUrl = getCampaignShareUrl(campaign);
-    if (!shareUrl || !campaign.id) return;
-
-    await copyTextToClipboard(shareUrl);
-    setCopiedCampaignId(campaign.id);
-    window.setTimeout(() => {
-      setCopiedCampaignId((current) =>
-        current === campaign.id ? undefined : current,
-      );
-    }, 1600);
-  };
-
-  return (
-    <section className="mt-4 overflow-hidden rounded-[12px] border border-neutral-200 bg-white">
-      <div className="hidden grid-cols-[minmax(0,1.2fr)_minmax(92px,0.62fr)_82px_66px_96px] gap-3 border-b border-neutral-200 bg-[#f8faf7] px-3 py-2 sm:grid">
-        <span className="text-[11px] font-black text-neutral-600">캠페인</span>
-        <span className="text-[11px] font-black text-neutral-600">제공</span>
-        <span className="text-right text-[11px] font-black text-neutral-600">
-          마감
-        </span>
-        <span className="text-right text-[11px] font-black text-neutral-600">
-          상태
-        </span>
-        <span className="text-right text-[11px] font-black text-neutral-600">
-          링크
-        </span>
-      </div>
-      <div className="divide-y divide-neutral-100">
-        {campaigns.map((campaign) => (
-          <AdvertiserCampaignRow
-            key={campaign.id ?? `${campaign.title}-${campaign.type}`}
-            campaign={campaign}
-            copied={copiedCampaignId === campaign.id}
-            onCopyLink={copyCampaignLink}
-          />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function AdvertiserCampaignRow({
-  campaign,
-  copied,
-  onCopyLink,
-}: {
-  key?: string;
-  campaign: MarketplaceBrandCampaign;
-  copied: boolean;
-  onCopyLink: (campaign: MarketplaceBrandCampaign) => void;
-}) {
-  const statusMeta = getAdvertiserCampaignStatusMeta(campaign);
-  const shareUrl = getCampaignShareUrl(campaign);
-
-  return (
-    <article className="grid gap-2 px-3 py-3 sm:grid-cols-[minmax(0,1.2fr)_minmax(92px,0.62fr)_82px_66px_96px] sm:items-center">
-      <div className="min-w-0">
-        <p className="truncate text-[13px] font-extrabold text-neutral-950">
-          {campaign.title}
-        </p>
-        <div className="mt-1 flex min-w-0 items-center gap-2">
-          <span className="shrink-0 text-[11px] font-extrabold text-neutral-400">
-            {proposalTypeLabels[campaign.type]}
-          </span>
-          <CampaignPlatformLogoMarks
-            platforms={campaign.platforms ?? []}
-            compact
-            className="mt-0"
-          />
-        </div>
-      </div>
-      <div className="min-w-0">
-        <p className="truncate text-[12px] font-bold text-neutral-500 sm:hidden">
-          제공
-        </p>
-        <p className="truncate text-[12px] font-extrabold text-neutral-800">
-          {getCampaignOfferLabel(campaign)}
-        </p>
-      </div>
-      <div className="text-left sm:text-right">
-        <p className="text-[12px] font-bold text-neutral-500 sm:hidden">마감</p>
-        <p className="text-[12px] font-extrabold tabular-nums text-neutral-800">
-          {getCampaignDdayLabel(campaign.deadline)}
-        </p>
-        <p className="text-[11px] font-bold tabular-nums text-neutral-400">
-          {getCampaignDeadlineLabel(campaign.deadline)}
-        </p>
-      </div>
-      <div className="flex justify-start sm:justify-end">
-        <span
-          className={`inline-flex h-7 items-center rounded-md px-2 text-[11px] font-extrabold ${statusMeta.className}`}
-        >
-          {statusMeta.label}
-        </span>
-      </div>
-      <div className="flex justify-start sm:justify-end">
-        {shareUrl ? (
-          <button
-            type="button"
-            onClick={() => onCopyLink(campaign)}
-            className="inline-flex h-8 w-[92px] items-center justify-center gap-1.5 rounded-md border border-neutral-200 bg-white px-2 text-[11px] font-extrabold text-neutral-700 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
-            aria-label={`${campaign.title} 모집 링크 복사`}
-            title="모집 링크 복사"
-          >
-            <Copy className="h-3.5 w-3.5" />
-            {copied ? "복사됨" : "링크 복사"}
-          </button>
-        ) : null}
-      </div>
-    </article>
-  );
-}
-
-function getAdvertiserCampaignStatusMeta(campaign: MarketplaceBrandCampaign) {
-  if (campaign.status === "ended") {
-    return {
-      label: "종료",
-      className: "bg-neutral-100 text-neutral-600",
-    };
-  }
-  if (campaign.status === "closed") {
-    return {
-      label: "모집 종료",
-      className: "bg-amber-50 text-amber-700",
-    };
-  }
-  if (campaign.status === "draft") {
-    return {
-      label: "비공개",
-      className: "bg-neutral-100 text-neutral-600",
-    };
-  }
-
-  return {
-    label: "공개",
-    className: "bg-emerald-50 text-emerald-700",
-  };
-}
-
-function AdvertiserCampaignViewTabs({
-  value,
-  applicantsCount,
-  campaignsCount,
-  onChange,
-}: {
-  value: AdvertiserCampaignView;
-  applicantsCount: number;
-  campaignsCount: number;
-  onChange: (value: AdvertiserCampaignView) => void;
-}) {
-  const tabs: Array<{ id: AdvertiserCampaignView; label: string; count: number }> = [
-    { id: "applicants", label: "지원자", count: applicantsCount },
-    { id: "campaigns", label: "공개 캠페인", count: campaignsCount },
-  ];
-
-  return (
-    <div
-      className="mt-4 grid grid-cols-2 gap-1 overflow-hidden rounded-full bg-neutral-100 p-1"
-      role="tablist"
-      aria-label="캠페인 관리 보기"
-    >
-      {tabs.map((tab) => {
-        const active = value === tab.id;
-        return (
-          <button
-            key={tab.id}
-            type="button"
-            role="tab"
-            aria-selected={active}
-            aria-label={`${tab.label} ${tab.count}건`}
-            onClick={() => onChange(tab.id)}
-            className={`h-9 min-w-0 rounded-full px-2 text-[12px] font-extrabold transition ${
-              active
-                ? "bg-white text-neutral-950 shadow-[0_1px_0_rgba(15,23,42,0.04)]"
-                : "text-neutral-500 hover:text-neutral-800"
-            }`}
-          >
-            <span className="inline-flex max-w-full items-center justify-center gap-1 overflow-hidden whitespace-nowrap">
-              {tab.label}
-              <span className={active ? "text-neutral-500" : "text-neutral-400"}>
-                {tab.count}
-              </span>
-            </span>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 function BrandImageUpload({
   brand,
   previewUrl,
@@ -2650,7 +2673,7 @@ function CampaignImageUpload({
   const inputRef = useRef<HTMLInputElement>(null);
 
   return (
-    <section className="mt-3 flex items-center justify-between gap-3 rounded-[12px] border border-neutral-200 bg-[#fbfaf7] px-3 py-2">
+    <section className="flex min-w-0 items-center justify-between gap-3 rounded-[12px] border border-neutral-200 bg-[#fbfaf7] px-3 py-2">
       <div className="flex min-w-0 items-center gap-3">
         <span className="flex h-12 w-16 shrink-0 items-center justify-center overflow-hidden rounded-[8px] bg-white text-[11px] font-extrabold text-neutral-400 ring-1 ring-neutral-200">
           {imageUrl ? (
@@ -2693,387 +2716,6 @@ function CampaignImageUpload({
       />
     </section>
   );
-}
-
-function AdvertiserCampaignApplicantControls({
-  visibleCount,
-  totalCount,
-  summary,
-  filtersOpen,
-  activeFilterCount,
-  sortState,
-  query,
-  platformFilter,
-  statusFilter,
-  onSortChange,
-  onToggleFilters,
-  onQueryChange,
-  onPlatformFilterChange,
-  onStatusFilterChange,
-  onClear,
-}: {
-  visibleCount: number;
-  totalCount: number;
-  summary: string;
-  filtersOpen: boolean;
-  activeFilterCount: number;
-  sortState: CampaignSort;
-  query: string;
-  platformFilter: PlatformFilter;
-  statusFilter: ApplicationStatusFilter;
-  onSortChange: (value: CampaignSort) => void;
-  onToggleFilters: () => void;
-  onQueryChange: (value: string) => void;
-  onPlatformFilterChange: (value: PlatformFilter) => void;
-  onStatusFilterChange: (value: ApplicationStatusFilter) => void;
-  onClear: () => void;
-}) {
-  const [openFilterList, setOpenFilterList] = useState<string | null>(null);
-  const hasFilters =
-    query.trim().length > 0 || platformFilter !== "all" || statusFilter !== "all";
-
-  return (
-    <section className="mt-4 overflow-hidden rounded-[12px] border border-neutral-200 bg-white">
-      <div className="flex min-h-12 flex-col gap-2 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <p className="truncate text-[13px] font-extrabold text-neutral-950">
-            지원자 목록
-          </p>
-          <p className="mt-0.5 truncate text-[11px] font-bold text-neutral-500">
-            {visibleCount.toLocaleString()}명 표시 / {totalCount.toLocaleString()}명 · {summary}
-          </p>
-        </div>
-        <div className="flex min-w-0 items-center gap-2">
-          <CampaignSortSelect
-            value={sortState}
-            options={advertiserApplicantSortOptions}
-            ariaLabel="지원자 정렬"
-            onChange={onSortChange}
-          />
-          <CampaignFilterToggleButton
-            open={filtersOpen}
-            activeCount={activeFilterCount}
-            controlsId="advertiser-campaign-applicant-filters"
-            onClick={() => {
-              if (filtersOpen) setOpenFilterList(null);
-              onToggleFilters();
-            }}
-          />
-        </div>
-      </div>
-      {filtersOpen ? (
-        <div
-          id="advertiser-campaign-applicant-filters"
-          className="grid gap-2 border-t border-neutral-200 bg-[#fbfaf7] p-3 lg:grid-cols-[minmax(220px,280px)_minmax(0,1fr)_auto] lg:items-center"
-        >
-          <div className="relative min-w-0">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
-            <input
-              value={query}
-              onChange={(event) => onQueryChange(event.target.value)}
-              aria-label="지원자 검색"
-              placeholder="이름, 캠페인, 채널 검색"
-              className="h-9 w-full rounded-[8px] border border-neutral-200 bg-white pl-10 pr-3 text-[12px] font-bold text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950"
-            />
-          </div>
-          <div className="grid min-w-0 gap-2 lg:grid-cols-2">
-            <CampaignPlatformFilterList
-              id="advertiser-applicant-platform"
-              openId={openFilterList}
-              onOpenChange={setOpenFilterList}
-              value={platformFilter}
-              onChange={onPlatformFilterChange}
-            />
-            <CampaignApplicationStatusFilterList
-              id="advertiser-applicant-status"
-              openId={openFilterList}
-              onOpenChange={setOpenFilterList}
-              value={statusFilter}
-              onChange={onStatusFilterChange}
-            />
-          </div>
-          {hasFilters ? (
-            <button
-              type="button"
-              onClick={onClear}
-              className="inline-flex h-8 w-fit items-center gap-1.5 rounded-[8px] px-2.5 text-[11px] font-extrabold text-neutral-500 transition hover:bg-white hover:text-neutral-950"
-            >
-              <X className="h-3.5 w-3.5" strokeWidth={2} />
-              초기화
-            </button>
-          ) : null}
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
-function AdvertiserCampaignApplicantList({
-  applications,
-  selectingApplicantId,
-  onSelect,
-}: {
-  applications: MarketplaceMessageThread[];
-  selectingApplicantId: string | undefined;
-  onSelect: (application: MarketplaceMessageThread) => void;
-}) {
-  return (
-    <section className="mt-2 rounded-[12px] border border-neutral-200 bg-white p-2">
-      <div className="grid gap-2">
-        {applications.map((application) => (
-          <AdvertiserCampaignApplicantRow
-            key={application.id}
-            application={application}
-            isSelecting={selectingApplicantId === application.id}
-            onSelect={onSelect}
-          />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function AdvertiserCampaignApplicantRow({
-  application,
-  isSelecting,
-  onSelect,
-}: {
-  key?: string;
-  application: MarketplaceMessageThread;
-  isSelecting: boolean;
-  onSelect: (application: MarketplaceMessageThread) => void;
-}) {
-  const title = formatAppliedCampaignTitle(application);
-  const applicantName =
-    application.counterpartName || application.senderName || "인플루언서";
-  const avatarLabel = buildCampaignApplicantAvatarLabel(
-    application.counterpartAvatarLabel,
-    applicantName,
-  );
-  const applicantProfile = getCampaignApplicantProfile(application, applicantName);
-  const displayPlatforms = getCampaignApplicantDisplayPlatforms(
-    application,
-    applicantProfile,
-  );
-  const mainCategory = getCampaignApplicantMainCategory(
-    application.counterpartCategories,
-    applicantProfile,
-  );
-  const profileHref =
-    application.counterpartHref ||
-    (applicantProfile ? getInfluencerProfilePath(applicantProfile) : undefined);
-  const avatarUrl = getMarketplaceInfluencerAvatarUrlFromHref(
-    profileHref,
-    application.counterpartAvatarUrl,
-  );
-  const canSelect =
-    !application.convertedContractId &&
-    application.status !== "converted_to_contract" &&
-    application.status !== "closed";
-  const hasProfileAction = Boolean(profileHref);
-  const primaryActionSpan = hasProfileAction ? "" : "col-span-2";
-
-  return (
-    <article className="rounded-[10px] border border-neutral-100 bg-white p-3 transition hover:bg-[#f8faf7]">
-      <div className="grid min-w-0 gap-3 sm:grid-cols-[minmax(0,1fr)_188px] sm:items-start">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <ProfileAvatarLink
-            href={profileHref}
-            label={avatarLabel}
-            src={avatarUrl}
-            name={applicantName}
-          />
-          <div className="min-w-0">
-            {profileHref ? (
-              <Link
-                to={profileHref}
-                className="block truncate text-[13px] font-extrabold text-neutral-950 hover:underline"
-                title={`${applicantName} 프로필 보기`}
-              >
-                {applicantName}
-              </Link>
-            ) : (
-              <p className="truncate text-[13px] font-extrabold text-neutral-950">
-                {applicantName}
-              </p>
-            )}
-            <div className="mt-1.5">
-              <CampaignApplicantPlatformPills
-                platforms={displayPlatforms}
-                category={mainCategory}
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="grid w-full grid-cols-2 gap-1.5 sm:w-[188px]">
-          {profileHref ? (
-            <Link
-              to={profileHref}
-              className="inline-flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-md border border-neutral-200 bg-white px-2 text-[12px] font-semibold text-neutral-700 transition hover:border-neutral-950 hover:text-neutral-950"
-            >
-              프로필
-              <ExternalLink className="h-3.5 w-3.5" />
-            </Link>
-          ) : null}
-        {application.convertedContractId ? (
-          <Link
-            to={`/advertiser/contract/${application.convertedContractId}`}
-            className={`${primaryActionSpan} inline-flex h-9 min-w-0 items-center justify-center rounded-md bg-neutral-950 px-2 text-[12px] font-semibold text-white transition hover:bg-black`}
-          >
-            계약서 보기
-          </Link>
-        ) : canSelect ? (
-          <button
-            type="button"
-            onClick={() => onSelect(application)}
-            disabled={isSelecting}
-            className={`${primaryActionSpan} inline-flex h-9 min-w-0 items-center justify-center rounded-md bg-blue-600 px-2 text-[12px] font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-neutral-300`}
-          >
-            {isSelecting ? "선정 중" : "선정"}
-          </button>
-        ) : (
-          <span
-            className={`${primaryActionSpan} inline-flex h-9 min-w-0 items-center justify-center rounded-md border px-2 text-[12px] font-semibold ${applicationStatusMeta[application.status].className}`}
-          >
-            {applicationStatusMeta[application.status].label}
-          </span>
-        )}
-        </div>
-      </div>
-
-      <p className="mt-3 truncate text-[13px] font-bold text-neutral-800" title={title}>
-        {title}
-      </p>
-
-    </article>
-  );
-}
-
-function ProfileAvatarLink({
-  href,
-  label,
-  src,
-  name,
-}: {
-  href?: string;
-  label: string;
-  src?: string;
-  name: string;
-}) {
-  const avatar = (
-    <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-neutral-950 text-[12px] font-extrabold text-white">
-      {src ? (
-        <img
-          src={src}
-          alt={`${name} profile`}
-          className="h-full w-full object-cover"
-          loading="lazy"
-        />
-      ) : (
-        label
-      )}
-    </span>
-  );
-
-  return href ? (
-    <Link
-      to={href}
-      className="shrink-0 rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950"
-      aria-label={`${name} 프로필 보기`}
-    >
-      {avatar}
-    </Link>
-  ) : (
-    avatar
-  );
-}
-
-function getCampaignApplicantProfile(
-  application: MarketplaceMessageThread,
-  applicantName: string,
-) {
-  return (
-    findInfluencerProfileByHandle(application.counterpartHref) ??
-    findInfluencerProfileByDisplayName(applicantName)
-  );
-}
-
-function getCampaignApplicantDisplayPlatforms(
-  application: MarketplaceMessageThread,
-  fallbackProfile?: MarketplaceInfluencerProfile,
-) {
-  if (!application.counterpartHref && fallbackProfile?.platforms.length) {
-    return fallbackProfile.platforms;
-  }
-
-  return application.platforms;
-}
-
-function getCampaignApplicantMainCategory(
-  categories?: string[],
-  profile?: MarketplaceInfluencerProfile,
-) {
-  return [...(categories ?? []), ...(profile?.categories ?? [])].find(
-    (category) => category.trim().length > 0,
-  );
-}
-
-function CampaignApplicantPlatformPills({
-  platforms,
-  category,
-}: {
-  platforms: MarketplaceMessageThread["platforms"];
-  category?: string;
-}) {
-  const visiblePlatforms =
-    platforms.length > 0
-      ? platforms
-      : [{ platform: "other" as InfluencerPlatform, label: platformLabels.other }];
-
-  return (
-    <div className="flex min-w-0 flex-nowrap items-center gap-1 overflow-hidden">
-      {visiblePlatforms.slice(0, 1).map((item, index) => {
-        const label = getPlatformDisplayName(item.platform);
-        const text = item.followersLabel;
-        const title = item.followersLabel ? `${label} ${item.followersLabel}` : label;
-
-        return (
-          <span
-            key={`${item.platform}-${item.handle ?? index}`}
-            className="inline-flex min-w-0 shrink items-center gap-1.5 text-[11px] font-extrabold text-neutral-800"
-            title={title}
-          >
-            <PlatformBrandMark platform={item.platform} size="sm" />
-            {text ? <span className="truncate">{text}</span> : null}
-          </span>
-        );
-      })}
-      {category ? (
-        <span
-          className="inline-flex shrink-0 items-center text-[11px] font-extrabold text-neutral-600"
-          title={category}
-        >
-          {category}
-        </span>
-      ) : null}
-    </div>
-  );
-}
-
-function buildCampaignApplicantAvatarLabel(
-  label: string | undefined,
-  name: string,
-) {
-  const raw = (label || name).trim();
-  if (!raw) return "IN";
-
-  const compact = raw.replace(/\s+/g, "");
-  if (/^[A-Za-z0-9]+$/u.test(compact)) {
-    return compact.slice(0, 2).toUpperCase();
-  }
-
-  return compact.slice(0, 2);
 }
 
 const generatedCampaignDisplayCopies: Record<
@@ -3517,6 +3159,7 @@ function CampaignRecruitmentDetailDialog({
   onApply: (campaign: MarketplaceCampaignPost) => void;
   onClose: () => void;
 }) {
+  useBodyScrollLock(true);
   const campaignCopy = getCampaignDisplayCopy(campaign);
   const facts = getCampaignRecruitmentFacts(campaign);
   const targetCountryLabel = formatMarketplaceCountries(campaign.targetCountries);
@@ -3789,7 +3432,7 @@ function CampaignViewTabs({
 
   return (
     <div
-      className="grid min-w-0 flex-1 grid-cols-2 gap-1 overflow-hidden rounded-full bg-neutral-100 p-1 sm:min-w-[250px] lg:w-[320px]"
+      className="grid min-w-0 flex-1 grid-cols-2 w-full gap-1 overflow-hidden rounded-full bg-neutral-100 p-1 sm:min-w-[250px] lg:w-[320px]"
       role="tablist"
       aria-label="캠페인 보기"
     >
@@ -3812,7 +3455,7 @@ function CampaignViewTabs({
             <span className="inline-flex max-w-full items-center justify-center gap-1 overflow-hidden whitespace-nowrap">
               <span className="sm:hidden">{tab.mobileLabel}</span>
               <span className="hidden sm:inline">{tab.label}</span>
-              <span className={`${active ? "text-neutral-500" : "text-neutral-400"} hidden sm:inline`}>
+              <span className={active ? "text-neutral-500" : "text-neutral-400"}>
                 {tab.count}
               </span>
             </span>
@@ -4204,63 +3847,6 @@ function distributeCampaignsByBrand(campaigns: MarketplaceCampaignPost[]) {
   return distributed;
 }
 
-function compareCampaignApplicantsBySort(
-  a: MarketplaceMessageThread,
-  b: MarketplaceMessageThread,
-  sort: CampaignSort,
-) {
-  let result: number;
-
-  switch (sort.key) {
-    case "followers":
-      result = compareChannelAudienceValues(
-        getChannelAudienceSortValue(getCampaignApplicantDisplayPlatforms(a)),
-        getChannelAudienceSortValue(getCampaignApplicantDisplayPlatforms(b)),
-        sort.direction,
-      );
-      break;
-    case "applicant":
-    case "brand":
-      result = compareText(
-        a.counterpartName || a.senderName,
-        b.counterpartName || b.senderName,
-      );
-      break;
-    case "title":
-      result = compareText(formatAppliedCampaignTitle(a), formatAppliedCampaignTitle(b));
-      break;
-    case "status":
-      result =
-        applicationStatusFilterOptions.indexOf(a.status) -
-        applicationStatusFilterOptions.indexOf(b.status);
-      break;
-    case "platform":
-      result = compareText(
-        a.platforms
-          .map((platform) => `${platformLabels[platform.platform]} ${platform.handle ?? ""}`)
-          .join(" "),
-        b.platforms
-          .map((platform) => `${platformLabels[platform.platform]} ${platform.handle ?? ""}`)
-          .join(" "),
-      );
-      break;
-    case "appliedAt":
-    default:
-      result = compareOptionalDateValues(a.createdAt, b.createdAt);
-      break;
-  }
-
-  if (result === 0) {
-    result = compareText(a.counterpartName || a.senderName, b.counterpartName || b.senderName);
-  }
-
-  return sort.key === "followers"
-    ? result
-    : sort.direction === "asc"
-      ? result
-      : -result;
-}
-
 function compareAppliedCampaignApplicationsBySort(
   a: MarketplaceMessageThread,
   b: MarketplaceMessageThread,
@@ -4582,13 +4168,48 @@ function CampaignFilterListSection<T extends string>({
   const open = openId === id;
   const selected = new Set<T>(selectedValues);
   const isClearSelected = Boolean(onClear) && selectedValues.length === 0;
+  const rootRef = useRef<HTMLElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const closeList = () => {
+      onOpenChange(null);
+      window.requestAnimationFrame(() => triggerRef.current?.focus());
+    };
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      closeList();
+    };
+    const handlePointerDown = (event: globalThis.PointerEvent) => {
+      if (event.button !== 0 || !(event.target instanceof Node)) return;
+      if (rootRef.current?.contains(event.target)) return;
+      onOpenChange(null);
+    };
+
+    document.addEventListener("keydown", handleKeyDown, true);
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown, true);
+      document.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [onOpenChange, open]);
 
   return (
-    <section className="min-w-0 overflow-hidden rounded-[10px] border border-neutral-200 bg-white">
+    <section
+      ref={rootRef}
+      className="min-w-0 overflow-hidden rounded-[10px] border border-neutral-200 bg-white"
+    >
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => onOpenChange(open ? null : id)}
         aria-expanded={open}
+        aria-haspopup="listbox"
+        aria-controls={`${id}-listbox`}
         className="flex h-11 w-full min-w-0 items-center justify-between gap-3 px-3 text-left transition hover:bg-neutral-50"
       >
         <span className="min-w-0">
@@ -4607,7 +4228,12 @@ function CampaignFilterListSection<T extends string>({
         />
       </button>
       {open ? (
-        <div className="max-h-56 overflow-y-auto border-t border-neutral-100 p-1">
+        <div
+          id={`${id}-listbox`}
+          role="listbox"
+          aria-multiselectable={!closeOnSelect || undefined}
+          className="max-h-56 overflow-y-auto border-t border-neutral-100 p-1"
+        >
           {onClear ? (
             <CampaignFilterListOptionButton
               label="전체"
@@ -4648,6 +4274,8 @@ function CampaignFilterListOptionButton({
   return (
     <button
       type="button"
+      role="option"
+      aria-selected={selected}
       aria-pressed={selected}
       onClick={onClick}
       className={`flex h-9 w-full items-center justify-between gap-3 rounded-[8px] px-2.5 text-left text-[12px] font-extrabold transition ${

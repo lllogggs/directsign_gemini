@@ -13,8 +13,6 @@ import { BrandLogo } from "./components/BrandLogo";
 import { AdvertiserAuthGate } from "./pages/marketing/AdvertiserAuthGate";
 import { RoleIntroPage, StartPage } from "./pages/landing/LandingPages";
 import { GlobalCreatorLandingPage } from "./pages/landing/GlobalCreatorLandingPage";
-import { Dashboard as AdvertiserDashboard } from "./pages/marketing/Dashboard";
-import { InfluencerDashboard as InfluencerDashboardPage } from "./pages/influencer/InfluencerDashboard";
 import { LegalDocumentPage } from "./pages/legal/LegalDocumentPage";
 import { SeoResourcePage, SeoResourcesIndexPage } from "./pages/seo/SeoResourcePage";
 import { getNextPath } from "./domain/navigation";
@@ -30,7 +28,7 @@ import {
 
 type RouteModuleLoader = () => Promise<unknown>;
 
-const loadDashboard = () => Promise.resolve({ Dashboard: AdvertiserDashboard });
+const loadDashboard = () => import("./pages/marketing/Dashboard");
 const loadContractBuilder = () => import("./pages/marketing/ContractBuilder");
 const loadContractAdminViewer = () =>
   import("./pages/marketing/ContractAdminViewer");
@@ -43,7 +41,9 @@ const loadAdvertiserVerification = () =>
 const loadInfluencerVerification = () =>
   import("./pages/influencer/InfluencerVerification");
 const loadInfluencerDashboard = () =>
-  Promise.resolve({ InfluencerDashboard: InfluencerDashboardPage });
+  import("./pages/influencer/InfluencerDashboard");
+const loadInfluencerPublicProfileSettingsPage = () =>
+  import("./pages/influencer/InfluencerPublicProfileSettingsPage");
 const loadInfluencerLoginPage = () =>
   import("./pages/influencer/InfluencerLoginPage");
 const loadSystemAdminDashboard = () =>
@@ -55,7 +55,9 @@ const loadMarketplaceInboxPage = () =>
   import("./pages/marketplace/MarketplaceInboxPage");
 const loadCampaignPages = () => import("./pages/marketplace/CampaignPages");
 
-const Dashboard = AdvertiserDashboard;
+const Dashboard = lazy(() =>
+  loadDashboard().then((module) => ({ default: module.Dashboard })),
+);
 const ContractBuilder = lazy(() =>
   loadContractBuilder().then((module) => ({
     default: module.ContractBuilder,
@@ -176,7 +178,16 @@ const InfluencerVerification = lazy(() =>
     default: module.InfluencerVerification,
   })),
 );
-const InfluencerDashboard = InfluencerDashboardPage;
+const InfluencerDashboard = lazy(() =>
+  loadInfluencerDashboard().then((module) => ({
+    default: module.InfluencerDashboard,
+  })),
+);
+const InfluencerPublicProfileSettingsPage = lazy(() =>
+  loadInfluencerPublicProfileSettingsPage().then((module) => ({
+    default: module.InfluencerPublicProfileSettingsPage,
+  })),
+);
 const InfluencerLoginPage = lazy(() =>
   loadInfluencerLoginPage().then((module) => ({
     default: module.InfluencerLoginPage,
@@ -246,6 +257,69 @@ type LoadingCopy = {
   variant?: "app" | "plain";
 };
 
+const routeLoadingCopy: Record<string, LoadingCopy> = {
+  "/advertiser/campaigns": {
+    label: "캠페인 운영",
+    listTitle: "캠페인 목록",
+    tabs: ["모집중", "진행중", "종료"],
+    variant: "app",
+  },
+  "/advertiser/campaigns/new": {
+    label: "캠페인 작성",
+    listTitle: "모집 조건",
+    tabs: ["캠페인", "지원자", "계약"],
+    variant: "app",
+  },
+  "/advertiser/costs": {
+    label: "광고비 현황",
+    listTitle: "광고비 상세",
+    tabs: ["금주", "전주", "당월", "전월"],
+    variant: "app",
+  },
+  "/advertiser/messages": {
+    label: "1:1 계약 제안 관리",
+    listTitle: "제안 목록",
+    tabs: ["보낸 계약 제안", "받은 제안"],
+    variant: "app",
+  },
+  "/advertiser/discover": {
+    label: "인플루언서 찾기",
+    listTitle: "인플루언서 목록",
+    tabs: ["전체", "인스타그램", "유튜브", "블로그"],
+    variant: "app",
+  },
+  "/advertiser/verification": {
+    label: "사업자 인증",
+    listTitle: "사업자 인증 정보",
+    tabs: ["기본 정보", "사업자 정보", "증빙 파일"],
+    variant: "app",
+  },
+  "/influencer/campaigns": {
+    label: "캠페인 탐색",
+    listTitle: "캠페인 목록",
+    tabs: ["모집 캠페인", "신청한 캠페인"],
+    variant: "app",
+  },
+  "/influencer/messages": {
+    label: "계약 전 검토할 제안",
+    listTitle: "제안 목록",
+    tabs: ["받은 제안", "보낸 제안"],
+    variant: "app",
+  },
+  "/influencer/brands": {
+    label: "브랜드 찾기",
+    listTitle: "브랜드 목록",
+    tabs: ["전체", "인스타그램", "유튜브", "블로그"],
+    variant: "app",
+  },
+  "/influencer/verification": {
+    label: "플랫폼 계정 인증",
+    listTitle: "인증 계정",
+    tabs: ["인스타그램", "유튜브", "블로그", "틱톡"],
+    variant: "app",
+  },
+};
+
 function getRouteLoadingCopy(pathname: string): LoadingCopy {
   if (pathname === "/intro/advertiser") {
     return {
@@ -260,6 +334,13 @@ function getRouteLoadingCopy(pathname: string): LoadingCopy {
       detail: "조건 확인, 수정 요청, 전자서명 안내를 불러오는 중입니다.",
     };
   }
+
+  if (pathname === "/influencer/profile") {
+    return { label: "공개 프로필을 불러오는 중입니다" };
+  }
+
+  const matchedRouteCopy = routeLoadingCopy[pathname];
+  if (matchedRouteCopy) return matchedRouteCopy;
 
   if (pathname.startsWith("/influencer")) {
     return {
@@ -431,7 +512,10 @@ class RouteErrorBoundary extends Component<
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#f4f5f7] px-5 py-10 font-sans text-neutral-950">
         <section className="w-full max-w-[440px] rounded-lg border border-neutral-200 bg-white p-6 text-center shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)]">
-          <p className="text-sm font-semibold text-neutral-500">{PRODUCT_NAME}</p>
+          <BrandLogo
+            className="inline-flex items-center justify-center gap-2.5"
+            textClassName="font-neo-heavy text-[18px] leading-none tracking-normal text-neutral-950"
+          />
           <h1 className="mt-3 text-[24px] font-semibold tracking-normal">
             화면을 다시 불러와야 합니다
           </h1>
@@ -1168,6 +1252,9 @@ const getExactRoutePreloaders = (pathname: string): RouteModuleLoader[] => {
   }
   if (pathname.startsWith("/contract/")) return [loadContractViewer];
   if (pathname === "/influencer/dashboard") return [loadInfluencerDashboard];
+  if (pathname === "/influencer/profile") {
+    return [loadInfluencerPublicProfileSettingsPage];
+  }
   if (pathname === "/influencer/brands") return [loadMarketplacePages];
   if (pathname === "/influencer/campaigns") return [loadCampaignPages];
   if (pathname === "/influencer/messages") return [loadMarketplaceInboxPage];
@@ -1205,6 +1292,7 @@ const getContextualRoutePreloaders = (pathname: string): RouteModuleLoader[] => 
   if (pathname === "/influencer/dashboard") {
     return [
       loadInfluencerDashboard,
+      loadInfluencerPublicProfileSettingsPage,
       loadCampaignPages,
       loadMarketplacePages,
       loadMarketplaceInboxPage,
@@ -1231,6 +1319,7 @@ const getContextualRoutePreloaders = (pathname: string): RouteModuleLoader[] => 
   if (pathname.startsWith("/influencer")) {
     return [
       loadInfluencerDashboard,
+      loadInfluencerPublicProfileSettingsPage,
       loadMarketplacePages,
       loadMarketplaceInboxPage,
       loadCampaignPages,
@@ -1432,7 +1521,10 @@ function NotFoundPage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-[#f4f5f7] px-5 py-10 font-sans text-neutral-950">
       <section className="w-full max-w-[420px] rounded-lg border border-neutral-200 bg-white p-6 text-center shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)]">
-        <p className="text-sm font-semibold text-neutral-500">{PRODUCT_NAME}</p>
+        <BrandLogo
+          className="inline-flex items-center justify-center gap-2.5"
+          textClassName="font-neo-heavy text-[18px] leading-none tracking-normal text-neutral-950"
+        />
         <h1 className="mt-3 text-[24px] font-semibold tracking-normal">
           페이지를 찾을 수 없습니다
         </h1>
@@ -1592,6 +1684,10 @@ function AppRoutes() {
           <Route
             path="/influencer/dashboard"
             element={<InfluencerDashboard />}
+          />
+          <Route
+            path="/influencer/profile"
+            element={<InfluencerPublicProfileSettingsPage />}
           />
           <Route
             path="/influencer/brands"

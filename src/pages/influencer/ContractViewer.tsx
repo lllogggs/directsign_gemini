@@ -5,7 +5,7 @@ import {
   useParams,
   useSearchParams,
 } from "react-router-dom";
-import * as pdfjsLib from "pdfjs-dist";
+import type { PDFDocumentProxy, RenderTask } from "pdfjs-dist";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.mjs?url";
 import {
   useAppStore,
@@ -16,6 +16,7 @@ import { apiFetch, apiPath } from "../../domain/api";
 import { isFixedCampaignContract } from "../../domain/contracts";
 import { useVerificationSummary } from "../../hooks/useVerificationSummary";
 import { buildLoginRedirect } from "../../domain/navigation";
+import { waitForFastLoginTransition } from "../../domain/fastLoginTransition";
 import {
   getVerificationRejectionGuidance,
   type InfluencerPlatform,
@@ -49,6 +50,7 @@ import {
 } from "../../domain/legalConsent";
 import { buildSupportTicketPath } from "../../domain/support";
 import { ScreenHelpButton } from "../../components/ScreenHelp";
+import { BrandLogo } from "../../components/BrandLogo";
 import { SCREEN_HELP_CONTENT } from "../../domain/screenHelp";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -74,8 +76,6 @@ import {
   Upload,
 } from "lucide-react";
 import { format } from "date-fns";
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 type CanvasPoint = {
   x: number;
@@ -180,82 +180,6 @@ const parseDeliverableSummary = (
 
 const escapeRegExp = (value: string) =>
   value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-function DeliverableSummaryValue({
-  deliverables,
-  platforms,
-}: {
-  deliverables?: string[];
-  platforms?: string[];
-}) {
-  const platformFallbacks = (platforms ?? [])
-    .map((platform) => getContractPlatformLabel(platform))
-    .filter((platform): platform is string => Boolean(platform));
-  const enteredDeliverables = (deliverables ?? []).filter((item) =>
-    item.trim(),
-  );
-  const summaryItems =
-    enteredDeliverables.length > 0 ? enteredDeliverables : platformFallbacks;
-
-  if (summaryItems.length === 0) {
-    return (
-      <strong className="font-semibold text-neutral-950">조항에서 확인</strong>
-    );
-  }
-
-  return (
-    <span className="grid gap-1 text-right">
-      {summaryItems.map((item, index) => {
-        const parsed = parseDeliverableSummary(
-          item,
-          platformFallbacks[index] ?? platformFallbacks[0],
-        );
-        const hasStructuredValue =
-          parsed.platform || parsed.content || parsed.quantity || parsed.duration;
-
-        if (!hasStructuredValue) {
-          return (
-            <strong
-              key={`${parsed.raw}-${index}`}
-              className="font-semibold text-neutral-950"
-            >
-              {parsed.raw}
-            </strong>
-          );
-        }
-
-        return (
-          <span
-            key={`${parsed.raw}-${index}`}
-            className="flex flex-wrap justify-end gap-x-1.5 gap-y-1 leading-5"
-          >
-            {parsed.platform && (
-              <DeliverablePart label="플랫폼" value={parsed.platform} />
-            )}
-            {parsed.content && (
-              <DeliverablePart label="콘텐츠" value={parsed.content} />
-            )}
-            {parsed.quantity && (
-              <DeliverablePart label="수량" value={parsed.quantity} />
-            )}
-            {parsed.duration && (
-              <DeliverablePart label="유지" value={parsed.duration} />
-            )}
-          </span>
-        );
-      })}
-    </span>
-  );
-}
-
-function DeliverablePart({ label, value }: { label: string; value: string }) {
-  return (
-    <span className="inline-flex items-baseline gap-1">
-      <span className="text-[11px] font-medium text-neutral-500">{label}</span>
-      <strong className="font-semibold text-neutral-950">{value}</strong>
-    </span>
-  );
-}
 
 const uniqueVisibleValues = (values: Array<string | undefined>) =>
   Array.from(
@@ -491,7 +415,13 @@ export function ContractViewer() {
   } = useVerificationSummary({ role: "influencer", enabled: Boolean(contract) });
 
   const [showSignModal, setShowSignModal] = useState(false);
-  const [viewedContractDocumentId, setViewedContractDocumentId] = useState("");
+  const contractDocumentReviewKey = contract
+    ? `${contract.id}:${contract.updated_at}`
+    : "";
+  const [revealedContractDocumentKey, setRevealedContractDocumentKey] =
+    useState("");
+  const [reviewedContractDocumentKey, setReviewedContractDocumentKey] =
+    useState("");
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const contractDocRef = useRef<HTMLElement>(null);
   const shouldScrollContractDocumentRef = useRef(false);
@@ -507,10 +437,12 @@ export function ContractViewer() {
   const shareToken = searchParams.get("token") ?? "";
   const supportAccessRequestId = searchParams.get("support") ?? "";
   const accessVerificationKey = `${id ?? ""}:${shareToken}:${supportAccessRequestId}`;
-  const contractIsSignedOrClosedForReview =
-    contract?.status === "SIGNED" || contract?.status === "CLOSED";
-  const hasViewedContractDocument =
-    Boolean(contract?.id) && viewedContractDocumentId === contract?.id;
+  const hasRevealedContractDocument =
+    Boolean(contractDocumentReviewKey) &&
+    revealedContractDocumentKey === contractDocumentReviewKey;
+  const hasReviewedContractDocument =
+    Boolean(contractDocumentReviewKey) &&
+    reviewedContractDocumentKey === contractDocumentReviewKey;
   const [isFetchingSharedContract, setIsFetchingSharedContract] =
     useState(false);
   const [sharedContractError, setSharedContractError] = useState("");
@@ -539,6 +471,11 @@ export function ContractViewer() {
   const [postLinkNotice, setPostLinkNotice] = useState("");
   const [isSubmittingPostLink, setIsSubmittingPostLink] = useState(false);
   const [currentTime, setCurrentTime] = useState(() => Date.now());
+
+  const handleContractDocumentReviewComplete = useCallback(() => {
+    if (!contractDocumentReviewKey) return;
+    setReviewedContractDocumentKey(contractDocumentReviewKey);
+  }, [contractDocumentReviewKey]);
 
   const getCanvasPoint = (
     e: React.MouseEvent | React.TouchEvent,
@@ -952,22 +889,10 @@ export function ContractViewer() {
   }, [contract?.influencer_info.name, showSignModal]);
 
   useEffect(() => {
-    if (hasViewedContractDocument || contractIsSignedOrClosedForReview) return;
-    const handleScroll = () => {
-      const node = contractDocRef.current;
-      if (!node || !contract?.id || window.scrollY < 120) return;
-      const rect = node.getBoundingClientRect();
-      if (rect.top <= window.innerHeight * 0.35) {
-        setViewedContractDocumentId(contract.id);
-      }
-    };
-
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, [contract?.id, contractIsSignedOrClosedForReview, hasViewedContractDocument]);
-
-  useEffect(() => {
-    if (!hasViewedContractDocument || !shouldScrollContractDocumentRef.current) {
+    if (
+      !hasRevealedContractDocument ||
+      !shouldScrollContractDocumentRef.current
+    ) {
       return;
     }
     shouldScrollContractDocumentRef.current = false;
@@ -977,7 +902,7 @@ export function ContractViewer() {
         block: "start",
       });
     });
-  }, [hasViewedContractDocument]);
+  }, [hasRevealedContractDocument]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -1008,6 +933,7 @@ export function ContractViewer() {
       setSharedContractError("");
 
       try {
+        await waitForFastLoginTransition("influencer", 6_000);
         const query = new URLSearchParams();
         if (shareToken) query.set("token", shareToken);
         if (supportAccessRequestId)
@@ -1275,6 +1201,9 @@ export function ContractViewer() {
   const isInfluencerReviewerAuthenticated =
     isInfluencerAuthenticated &&
     (serverAccessRole === "influencer" || isInfluencerContractOwner);
+  const canSubmitInfluencerContent =
+    !isContractClosed &&
+    (serverAccessRole === "influencer" || isInfluencerReviewerAuthenticated);
   const needsInfluencerAccountSession =
     !isInfluencerReviewerAuthenticated || verificationStatusCode === 401;
   const isInfluencerVerificationApproved =
@@ -1312,7 +1241,7 @@ export function ContractViewer() {
     );
   const canOpenSignModal =
     allApproved &&
-    hasViewedContractDocument &&
+    hasReviewedContractDocument &&
     !isVerificationLoading &&
     !hasVerificationStatusError &&
     isContractSignableState &&
@@ -1328,44 +1257,47 @@ export function ContractViewer() {
           : !isContractPlatformVerificationApproved
             ? "인증 후 서명하기"
             : "서명하기";
-  const signStatusMessage = !allApproved
-    ? "광고주가 계약서 최종본을 승인하면 서명할 수 있습니다."
-    : !isContractSignableState
-      ? "광고주가 최종본을 승인하고 서명 링크를 활성화하면 서명할 수 있습니다."
-      : isVerificationLoading
-        ? "서명 가능 여부를 확인하기 위해 계정 인증 상태를 불러오고 있습니다."
-        : hasVerificationStatusError
-          ? "인증 상태를 불러오지 못했습니다. 잠시 후 다시 확인해주세요."
-          : needsInfluencerAccountSession
-            ? "계정이 없으면 가입 후 이 계약으로 돌아와 인증과 서명을 이어갈 수 있습니다."
-          : !isContractPlatformVerificationApproved
-            ? isInfluencerVerificationApproved
-              ? isFixedCampaign
-                ? "계약 내용은 확인됐지만, 이 계약에 쓰는 채널 인증을 추가해야 서명할 수 있습니다."
-                : "PDF 계약서는 확인됐지만, 이 계약에 쓰는 채널 인증을 추가해야 서명할 수 있습니다."
+  const signStatusMessage = !hasReviewedContractDocument
+    ? "계약서 원문을 먼저 확인하세요."
+    : !allApproved
+      ? "광고주가 계약서 최종본을 승인하면 서명할 수 있습니다."
+      : !isContractSignableState
+        ? "광고주가 최종본을 승인하고 서명 링크를 활성화하면 서명할 수 있습니다."
+        : isVerificationLoading
+          ? "서명 가능 여부를 확인하기 위해 계정 인증 상태를 불러오고 있습니다."
+          : hasVerificationStatusError
+            ? "인증 상태를 불러오지 못했습니다. 잠시 후 다시 확인해주세요."
+            : needsInfluencerAccountSession
+              ? "계정이 없으면 가입 후 이 계약으로 돌아와 인증과 서명을 이어갈 수 있습니다."
+            : !isContractPlatformVerificationApproved
+              ? isInfluencerVerificationApproved
+                ? isFixedCampaign
+                  ? "계약 내용은 확인됐지만, 이 계약에 쓰는 채널 인증을 추가해야 서명할 수 있습니다."
+                  : "PDF 계약서는 확인됐지만, 이 계약에 쓰는 채널 인증을 추가해야 서명할 수 있습니다."
+                : isFixedCampaign
+                  ? `계약 내용은 확인됐지만, 이 계약 플랫폼의 계정 인증 승인이 필요합니다. 현재 상태: ${verificationStatusLabel(
+                      influencerVerificationStatus,
+                    )}`
+                  : `PDF 계약서는 확인됐지만, 이 계약 플랫폼의 계정 인증 승인이 필요합니다. 현재 상태: ${verificationStatusLabel(
+                      influencerVerificationStatus,
+                    )}`
               : isFixedCampaign
-                ? `계약 내용은 확인됐지만, 이 계약 플랫폼의 계정 인증 승인이 필요합니다. 현재 상태: ${verificationStatusLabel(
-                    influencerVerificationStatus,
-                  )}`
-                : `PDF 계약서는 확인됐지만, 이 계약 플랫폼의 계정 인증 승인이 필요합니다. 현재 상태: ${verificationStatusLabel(
-                    influencerVerificationStatus,
-                  )}`
-            : isFixedCampaign
-              ? "계약 내용과 계정 인증이 완료되어 서명할 수 있습니다."
-              : "PDF 계약서와 계정 인증이 확인되어 서명할 수 있습니다.";
+                ? "계약 내용과 계정 인증이 완료되어 서명할 수 있습니다."
+                : "PDF 계약서와 계정 인증이 확인되어 서명할 수 있습니다.";
   const shouldShowContractReviewCta =
     !isOperatorSupportView &&
     !isContractSignedOrClosed &&
-    !hasViewedContractDocument;
+    !hasRevealedContractDocument;
   const shouldShowContractDocument =
     isOperatorSupportView ||
     isContractSignedOrClosed ||
-    hasViewedContractDocument;
+    hasRevealedContractDocument;
   const shouldShowPdfReview =
     shouldShowContractDocument && !isContractSignedOrClosed;
   const canUseSignatureCta =
-    canOpenSignModal ||
-    (allApproved && isContractSignableState && !isVerificationLoading);
+    hasReviewedContractDocument &&
+    (canOpenSignModal ||
+      (allApproved && isContractSignableState && !isVerificationLoading));
   const primaryCtaLabel = shouldShowContractReviewCta
     ? "계약서 확인하기"
     : signButtonLabel;
@@ -1374,24 +1306,29 @@ export function ContractViewer() {
     : signStatusMessage;
   const primaryCtaDescription = shouldShowContractReviewCta
     ? "확인 후 PDF 계약서가 바로 열립니다."
-    : "서명하면 감사 이력이 기록되고 서명본 PDF가 다운로드됩니다.";
+    : !hasReviewedContractDocument
+      ? "마지막 페이지까지 확인하면 서명할 수 있습니다."
+      : "서명하면 감사 이력이 기록되고 서명본 PDF가 다운로드됩니다.";
   const primaryCtaDisabled = shouldShowContractReviewCta
     ? false
-    : !allApproved || isVerificationLoading || !isContractSignableState;
+    : !hasReviewedContractDocument ||
+      !allApproved ||
+      isVerificationLoading ||
+      !isContractSignableState;
   const primaryCtaIsBlue = shouldShowContractReviewCta || canUseSignatureCta;
   const mainClassName = shouldShowContractReviewCta
-    ? "mx-auto flex h-[calc(100dvh-57px)] w-full max-w-5xl flex-1 items-stretch px-4 pb-20 pt-4 sm:px-6 sm:pb-24 lg:px-8"
+    ? "mx-auto flex h-[calc(100dvh-57px)] min-h-0 w-full max-w-5xl flex-1 items-stretch overflow-hidden px-4 pb-20 pt-4 sm:px-6 sm:pb-24 lg:px-8"
     : shouldShowPdfReview
       ? "mx-auto flex w-full max-w-5xl flex-1 px-0 pb-24 pt-0 sm:px-6 sm:pb-28 sm:pt-4 lg:px-8"
-    : "mx-auto grid w-full max-w-6xl flex-1 gap-4 px-4 pb-36 pt-4 sm:px-6 sm:pb-32 lg:grid-cols-[minmax(0,1fr)_340px] lg:px-8";
+    : "mx-auto grid min-w-0 w-full max-w-6xl flex-1 gap-4 px-4 pb-36 pt-4 sm:px-6 sm:pb-32 lg:grid-cols-[minmax(0,1fr)_340px] lg:px-8";
   const contentSectionClassName = shouldShowContractReviewCta
     ? "h-full w-full"
     : shouldShowPdfReview
       ? "w-full"
-    : "space-y-3 sm:space-y-4";
+    : "min-w-0 space-y-3 sm:space-y-4";
   const summaryCardClassName = shouldShowContractReviewCta
     ? "grid h-full min-h-0 w-full grid-rows-[auto_minmax(0,1fr)] gap-5 rounded-xl border border-neutral-200/80 bg-white px-5 py-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_24px_70px_rgba(15,23,42,0.08)] sm:grid-cols-[minmax(0,0.88fr)_minmax(340px,1fr)] sm:grid-rows-none sm:items-stretch sm:gap-8 sm:px-8 sm:py-7 lg:px-10 lg:py-8"
-    : "rounded-lg border border-neutral-200/80 bg-white px-4 py-4 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_42px_rgba(15,23,42,0.055)] sm:px-6 sm:py-5";
+    : "min-w-0 rounded-lg border border-neutral-200/80 bg-white px-4 py-4 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_42px_rgba(15,23,42,0.055)] sm:px-6 sm:py-5";
   const summaryTitleClassName = shouldShowContractReviewCta
     ? "mt-4 break-keep text-[28px] font-semibold leading-tight text-neutral-950 sm:text-[38px]"
     : "mt-3 break-keep text-[25px] font-semibold leading-tight text-neutral-950 sm:text-3xl";
@@ -1425,7 +1362,7 @@ export function ContractViewer() {
       : isFixedCampaign
         ? "계약 내용을 확인하고 계정 인증이 끝나면 바로 서명합니다."
         : "핵심 조건을 먼저 확인하고, PDF 계약서와 계정 인증이 준비되면 바로 서명합니다.";
-  const contractReviewStepLabel = hasViewedContractDocument
+  const contractReviewStepLabel = hasReviewedContractDocument
     ? "PDF 계약서 확인 완료"
     : "PDF 계약서 확인";
   const signatureChecklistChecked =
@@ -1435,7 +1372,7 @@ export function ContractViewer() {
       ? "전자서명 완료"
       : contract.status === "SIGNED"
       ? "서명 완료"
-      : !hasViewedContractDocument
+      : !hasReviewedContractDocument
         ? "PDF 확인 대기"
         : !allApproved
           ? "광고주 승인 대기"
@@ -1559,23 +1496,6 @@ export function ContractViewer() {
         contract.campaign?.withholding_tax_enabled === true
           ? "3.3% 확인"
           : "당사자 확인",
-    },
-    {
-      label: "플랫폼",
-      value:
-        contract.campaign?.platforms
-          ?.map((platform) => getContractPlatformLabel(platform))
-          .filter(Boolean)
-          .join(", ") || "조항에서 확인",
-    },
-    {
-      label: "콘텐츠",
-      value: (
-        <DeliverableSummaryValue
-          deliverables={contract.campaign?.deliverables}
-          platforms={contract.campaign?.platforms}
-        />
-      ),
     },
     {
       label: "광고 표기",
@@ -1727,13 +1647,25 @@ export function ContractViewer() {
   };
 
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-[#f7f6f3] text-neutral-950">
+    <div
+      className={`flex flex-col bg-[#f7f6f3] text-neutral-950 ${
+        shouldShowContractReviewCta
+          ? "h-[100dvh] overflow-hidden"
+          : "min-h-[100dvh]"
+      }`}
+    >
       <header className="sticky top-0 z-30 border-b border-neutral-200/80 bg-white/95 shadow-[0_1px_0_rgba(15,23,42,0.04)] backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-2.5 sm:px-6 lg:px-8">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-neutral-950 text-white shadow-[0_8px_24px_rgba(15,23,42,0.14)]">
-              <FileSignature className="h-[18px] w-[18px]" strokeWidth={1.8} />
-            </div>
+          <div className="flex min-w-0 items-center gap-2.5">
+            <BrandLogo
+              className="yl-brand-action -ml-1 inline-flex h-9 min-w-9 shrink-0 items-center gap-2.5 rounded-lg px-1"
+              markClassName="h-9 w-9 rounded-lg"
+              textClassName="font-neo-heavy hidden text-[18px] leading-none text-neutral-950 md:inline"
+            />
+            <span
+              aria-hidden="true"
+              className="hidden h-5 w-px shrink-0 bg-neutral-200 sm:block"
+            />
             <div className="min-w-0">
               <h1 className="truncate text-base font-semibold text-neutral-950 sm:text-lg">
                 {displayContractTitle}
@@ -1777,7 +1709,7 @@ export function ContractViewer() {
               <h2 className={summaryTitleClassName}>
                 {heroTitle}
               </h2>
-              <p className="mt-2 max-w-xl break-keep text-[14px] leading-6 text-neutral-600">
+              <p className="mt-2 max-w-xl break-keep break-words text-[14px] leading-6 text-neutral-600">
                 {heroDescription}
               </p>
               {shouldShowContractReviewCta ? (
@@ -1841,7 +1773,15 @@ export function ContractViewer() {
                   새 탭
                 </a>
               </div>
-              <PdfContractPreview href={reviewPdfHref} />
+              <PdfContractPreview
+                key={`${contractDocumentReviewKey}:${reviewPdfHref}`}
+                href={reviewPdfHref}
+                onReviewComplete={
+                  isOperatorSupportView
+                    ? undefined
+                    : handleContractDocumentReviewComplete
+                }
+              />
             </section>
           )}
 
@@ -1925,7 +1865,7 @@ export function ContractViewer() {
                       <h3 className="text-base font-semibold text-neutral-950">
                         {formatOperationalText(clause.category)}
                       </h3>
-                      <p className="mt-3 whitespace-pre-wrap rounded-lg border border-neutral-200 bg-white p-4 text-[15px] leading-7 text-neutral-800">
+                      <p className="mt-3 whitespace-pre-wrap break-words rounded-lg border border-neutral-200 bg-white p-4 text-[15px] leading-7 text-neutral-800">
                         {formatOperationalText(clause.content)}
                       </p>
                     </div>
@@ -1960,9 +1900,7 @@ export function ContractViewer() {
                 notice={postLinkNotice}
                 isSubmitting={isSubmittingPostLink}
                 canSubmit={
-                  !isContractClosed &&
-                  hasAuthenticatedContractAccess &&
-                  serverAccessRole === "influencer"
+                  canSubmitInfluencerContent
                 }
                 isClosed={isContractClosed}
                 loginHref={loginForVerificationPath}
@@ -1993,9 +1931,7 @@ export function ContractViewer() {
                 onSubmit={submitDeliverable}
                 loginHref={loginForVerificationPath}
                 canSubmit={
-                  !isContractClosed &&
-                  hasAuthenticatedContractAccess &&
-                  serverAccessRole === "influencer"
+                  canSubmitInfluencerContent
                 }
                 isClosed={isContractClosed}
               />
@@ -2006,7 +1942,7 @@ export function ContractViewer() {
         </section>
 
         {isContractSignedOrClosed && (
-          <aside className="space-y-4 lg:sticky lg:top-20 lg:h-fit">
+          <aside className="min-w-0 space-y-4 lg:sticky lg:top-20 lg:h-fit">
           <div className="rounded-lg border border-neutral-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_14px_36px_rgba(15,23,42,0.05)]">
             <div className="mb-4 flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-100 text-neutral-700">
@@ -2365,13 +2301,8 @@ export function ContractViewer() {
               disabled={primaryCtaDisabled}
               onClick={() => {
                 if (shouldShowContractReviewCta) {
-                  setViewedContractDocumentId(contract.id);
-                  window.requestAnimationFrame(() => {
-                    contractDocRef.current?.scrollIntoView({
-                      behavior: "smooth",
-                      block: "start",
-                    });
-                  });
+                  shouldScrollContractDocumentRef.current = true;
+                  setRevealedContractDocumentKey(contractDocumentReviewKey);
                   return;
                 }
 
@@ -3057,15 +2988,22 @@ function AccessMessage({
   actions?: React.ReactNode;
 }) {
   return (
-    <div className="flex min-h-[100dvh] items-center justify-center bg-[#f7f6f3] px-4">
-      <div className="w-full max-w-md rounded-lg border border-neutral-200/80 bg-white p-6 text-center shadow-[0_1px_2px_rgba(15,23,42,0.04),0_22px_60px_rgba(15,23,42,0.08)]">
-        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-amber-50 text-amber-700">
-          <AlertTriangle className="h-6 w-6" strokeWidth={1.8} />
+    <div className="flex min-h-[100dvh] flex-col bg-[#f7f6f3]">
+      <header className="border-b border-neutral-200/80 bg-white/95 shadow-[0_1px_0_rgba(15,23,42,0.04)] backdrop-blur">
+        <div className="mx-auto flex h-14 w-full max-w-6xl items-center px-4 sm:px-6 lg:px-8">
+          <BrandLogo className="yl-brand-action -ml-1 inline-flex h-10 min-w-10 items-center gap-2.5 rounded-lg px-1" />
         </div>
-        <h1 className="mt-4 text-xl font-semibold text-neutral-950">{title}</h1>
-        <p className="mt-2 text-sm leading-6 text-neutral-600">{description}</p>
-        {actions ? <div className="mt-6 grid gap-2">{actions}</div> : null}
-      </div>
+      </header>
+      <main className="flex flex-1 items-center justify-center px-4 py-8">
+        <div className="w-full max-w-md rounded-lg border border-neutral-200/80 bg-white p-6 text-center shadow-[0_1px_2px_rgba(15,23,42,0.04),0_22px_60px_rgba(15,23,42,0.08)]">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-amber-50 text-amber-700">
+            <AlertTriangle className="h-6 w-6" strokeWidth={1.8} />
+          </div>
+          <h1 className="mt-4 text-xl font-semibold text-neutral-950">{title}</h1>
+          <p className="mt-2 text-sm leading-6 text-neutral-600">{description}</p>
+          {actions ? <div className="mt-6 grid gap-2">{actions}</div> : null}
+        </div>
+      </main>
     </div>
   );
 }
@@ -3123,42 +3061,245 @@ function StatusPill({
   );
 }
 
-function PdfContractPreview({ href }: { href: string }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+function PdfContractPreview({
+  href,
+  onReviewComplete,
+}: {
+  key?: React.Key;
+  href: string;
+  onReviewComplete?: () => void;
+}) {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
+  const finalPageRef = useRef<HTMLElement>(null);
+  const reviewCompletedRef = useRef(false);
+  const [pdfDocument, setPdfDocument] = useState<PDFDocumentProxy | null>(null);
   const [renderState, setRenderState] = useState<
     "loading" | "ready" | "error"
   >("loading");
-  const [pageCount, setPageCount] = useState(0);
+  const [pageWidth, setPageWidth] = useState(0);
+  const [renderedPageNumbers, setRenderedPageNumbers] = useState<Set<number>>(
+    () => new Set(),
+  );
+  const [hasReachedFinalPage, setHasReachedFinalPage] = useState(false);
+  const pageCount = pdfDocument?.numPages ?? 0;
+  const allPagesRendered =
+    pageCount > 0 && renderedPageNumbers.size === pageCount;
 
   useEffect(() => {
     let cancelled = false;
-    const loadingTask = pdfjsLib.getDocument({
-      url: href,
-      withCredentials: true,
-    });
+    let loadingTask:
+      | ReturnType<(typeof import("pdfjs-dist"))["getDocument"]>
+      | undefined;
 
-    const renderPdf = async () => {
-      setRenderState("loading");
-
+    const loadPdf = async () => {
       try {
+        const pdfjsLib = await import("pdfjs-dist");
+        if (cancelled) return;
+        pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+        loadingTask = pdfjsLib.getDocument({
+          url: href,
+          withCredentials: true,
+        });
         const pdf = await loadingTask.promise;
         if (cancelled) return;
+        setPdfDocument(pdf);
+        setRenderState("ready");
+      } catch {
+        if (!cancelled) setRenderState("error");
+      }
+    };
 
-        const page = await pdf.getPage(1);
+    void loadPdf();
+
+    return () => {
+      cancelled = true;
+      void loadingTask?.destroy();
+    };
+  }, [href]);
+
+  useEffect(() => {
+    if (renderState !== "ready") return;
+    const frame = frameRef.current;
+    if (!frame) return;
+
+    const updatePageWidth = () => {
+      const nextWidth = Math.max(
+        1,
+        Math.floor(Math.min(frame.clientWidth, 820)),
+      );
+      setPageWidth((currentWidth) =>
+        currentWidth === nextWidth ? currentWidth : nextWidth,
+      );
+    };
+
+    updatePageWidth();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", updatePageWidth);
+      return () => window.removeEventListener("resize", updatePageWidth);
+    }
+
+    const resizeObserver = new ResizeObserver(updatePageWidth);
+    resizeObserver.observe(frame);
+    return () => resizeObserver.disconnect();
+  }, [renderState]);
+
+  useEffect(() => {
+    if (
+      renderState !== "ready" ||
+      pageCount === 0 ||
+      hasReachedFinalPage
+    ) {
+      return;
+    }
+
+    const scrollContainer = scrollContainerRef.current;
+    const finalPage = finalPageRef.current;
+    if (!scrollContainer || !finalPage) return;
+
+    const checkFinalPagePosition = () => {
+      const scrollRect = scrollContainer.getBoundingClientRect();
+      const finalPageRect = finalPage.getBoundingClientRect();
+      const reachedDocumentEnd =
+        scrollContainer.scrollHeight <= scrollContainer.clientHeight + 2 ||
+        scrollContainer.scrollTop + scrollContainer.clientHeight >=
+          scrollContainer.scrollHeight - 24;
+
+      if (
+        reachedDocumentEnd &&
+        finalPageRect.bottom <= scrollRect.bottom + 24 &&
+        finalPageRect.bottom >= scrollRect.top
+      ) {
+        setHasReachedFinalPage(true);
+      }
+    };
+
+    checkFinalPagePosition();
+    scrollContainer.addEventListener("scroll", checkFinalPagePosition, {
+      passive: true,
+    });
+    window.addEventListener("resize", checkFinalPagePosition);
+
+    return () => {
+      scrollContainer.removeEventListener("scroll", checkFinalPagePosition);
+      window.removeEventListener("resize", checkFinalPagePosition);
+    };
+  }, [hasReachedFinalPage, pageCount, pageWidth, renderState]);
+
+  useEffect(() => {
+    if (
+      !allPagesRendered ||
+      !hasReachedFinalPage ||
+      reviewCompletedRef.current
+    ) {
+      return;
+    }
+
+    reviewCompletedRef.current = true;
+    onReviewComplete?.();
+  }, [allPagesRendered, hasReachedFinalPage, onReviewComplete]);
+
+  const handlePageRendered = useCallback((pageNumber: number) => {
+    setRenderedPageNumbers((currentPages) => {
+      if (currentPages.has(pageNumber)) return currentPages;
+      const nextPages = new Set(currentPages);
+      nextPages.add(pageNumber);
+      return nextPages;
+    });
+  }, []);
+
+  return (
+    <div
+      ref={scrollContainerRef}
+      aria-label="계약서 PDF 문서"
+      className="h-[calc(100dvh-184px)] min-h-[420px] overflow-y-auto overscroll-contain bg-neutral-100 px-2 py-3 sm:h-[calc(100dvh-210px)] sm:min-h-[560px] sm:px-6 sm:py-5"
+    >
+      <div ref={frameRef} className="mx-auto min-h-full w-full max-w-[820px]">
+        {renderState === "loading" && (
+          <div className="flex min-h-[420px] items-center justify-center rounded-lg border border-neutral-200 bg-white text-sm font-semibold text-neutral-500 sm:min-h-[520px]">
+            PDF 계약서를 불러오는 중입니다.
+          </div>
+        )}
+        {renderState === "error" && (
+          <div className="flex min-h-[420px] flex-col items-center justify-center gap-3 rounded-lg border border-neutral-200 bg-white px-4 text-center sm:min-h-[520px]">
+            <p className="text-sm font-semibold text-neutral-950">
+              PDF를 화면에 표시하지 못했습니다.
+            </p>
+            <a
+              href={href}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-neutral-950 px-4 text-sm font-semibold text-white"
+            >
+              <ExternalLink className="h-4 w-4" strokeWidth={1.8} />
+              PDF 원본 열기
+            </a>
+          </div>
+        )}
+        {renderState === "ready" && pdfDocument && (
+          <div className="space-y-4 sm:space-y-6">
+            {Array.from({ length: pageCount }, (_, index) => {
+              const pageNumber = index + 1;
+              return (
+                <section
+                  key={pageNumber}
+                  ref={pageNumber === pageCount ? finalPageRef : undefined}
+                  aria-label={`계약서 PDF ${pageNumber}페이지`}
+                  className="scroll-mt-4"
+                >
+                  <PdfPageCanvas
+                    pdfDocument={pdfDocument}
+                    pageNumber={pageNumber}
+                    pageWidth={pageWidth}
+                    onRendered={handlePageRendered}
+                  />
+                  <p className="mt-2 text-center text-xs font-semibold text-neutral-500">
+                    {pageNumber} / {pageCount}
+                  </p>
+                </section>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PdfPageCanvas({
+  pdfDocument,
+  pageNumber,
+  pageWidth,
+  onRendered,
+}: {
+  pdfDocument: PDFDocumentProxy;
+  pageNumber: number;
+  pageWidth: number;
+  onRendered: (pageNumber: number) => void;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [pageState, setPageState] = useState<
+    "loading" | "ready" | "error"
+  >("loading");
+
+  useEffect(() => {
+    if (pageWidth <= 0) return;
+
+    let cancelled = false;
+    let renderTask: RenderTask | undefined;
+
+    const renderPage = async () => {
+      try {
+        const page = await pdfDocument.getPage(pageNumber);
         if (cancelled) return;
 
         const canvas = canvasRef.current;
-        const frame = frameRef.current;
         const context = canvas?.getContext("2d");
-        if (!canvas || !context) return;
+        if (!canvas || !context) throw new Error("PDF canvas is unavailable");
 
         const baseViewport = page.getViewport({ scale: 1 });
-        const availableWidth = Math.max(
-          280,
-          Math.min(frame?.clientWidth ?? 760, 760),
-        );
-        const scale = availableWidth / baseViewport.width;
+        const scale = pageWidth / baseViewport.width;
         const outputScale = Math.min(window.devicePixelRatio || 1, 2);
         const viewport = page.getViewport({ scale });
         const renderViewport = page.getViewport({ scale: scale * outputScale });
@@ -3168,71 +3309,63 @@ function PdfContractPreview({ href }: { href: string }) {
         canvas.style.width = `${Math.floor(viewport.width)}px`;
         canvas.style.height = `${Math.floor(viewport.height)}px`;
 
-        await page.render({
+        renderTask = page.render({
           canvas,
           canvasContext: context,
           viewport: renderViewport,
-        }).promise;
+        });
+        await renderTask.promise;
 
         if (!cancelled) {
-          setPageCount(pdf.numPages);
-          setRenderState("ready");
+          setPageState("ready");
+          onRendered(pageNumber);
         }
-      } catch {
-        if (!cancelled) setRenderState("error");
+      } catch (error) {
+        if (
+          !cancelled &&
+          (!(error instanceof Error) ||
+            error.name !== "RenderingCancelledException")
+        ) {
+          setPageState("error");
+        }
       }
     };
 
-    void renderPdf();
+    void renderPage();
 
     return () => {
       cancelled = true;
-      void loadingTask.destroy();
+      renderTask?.cancel();
     };
-  }, [href]);
+  }, [onRendered, pageNumber, pageWidth, pdfDocument]);
 
   return (
-    <div className="h-[calc(100dvh-190px)] min-h-[560px] overflow-auto bg-neutral-100 px-3 py-4 sm:h-[calc(100dvh-210px)] sm:px-6">
-      <div
-        ref={frameRef}
-        className="mx-auto flex min-h-full w-full max-w-[760px] items-start justify-center"
-      >
-        <div className="w-full">
-          {renderState === "loading" && (
-            <div className="flex min-h-[520px] items-center justify-center rounded-lg border border-neutral-200 bg-white text-sm font-semibold text-neutral-500">
-              PDF 계약서를 불러오는 중입니다.
-            </div>
-          )}
-          {renderState === "error" && (
-            <div className="flex min-h-[520px] flex-col items-center justify-center gap-3 rounded-lg border border-neutral-200 bg-white px-4 text-center">
-              <p className="text-sm font-semibold text-neutral-950">
-                PDF를 화면에 표시하지 못했습니다.
-              </p>
-              <a
-                href={href}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-neutral-950 px-4 text-sm font-semibold text-white"
-              >
-                <ExternalLink className="h-4 w-4" strokeWidth={1.8} />
-                PDF 원본 열기
-              </a>
-            </div>
-          )}
-          <canvas
-            ref={canvasRef}
-            aria-label="계약서 PDF 1페이지 미리보기"
-            className={`mx-auto rounded-sm bg-white shadow-[0_14px_40px_rgba(15,23,42,0.12)] ${
-              renderState === "ready" ? "block" : "hidden"
-            }`}
-          />
-          {renderState === "ready" && pageCount > 1 && (
-            <p className="mt-3 text-center text-xs font-semibold text-neutral-500">
-              1 / {pageCount}
-            </p>
-          )}
+    <div className="relative w-full overflow-hidden rounded-sm bg-white shadow-[0_14px_40px_rgba(15,23,42,0.12)]">
+      {pageState === "loading" && (
+        <div className="aspect-[210/297] w-full animate-pulse bg-white" />
+      )}
+      {pageState === "error" && (
+        <div className="flex aspect-[210/297] w-full items-center justify-center border border-neutral-200 bg-white px-4 text-center text-sm font-semibold text-neutral-600">
+          이 페이지를 화면에 표시하지 못했습니다.
         </div>
-      </div>
+      )}
+      {pageNumber === 1 ? (
+        <canvas
+          ref={canvasRef}
+          aria-label="계약서 PDF 1페이지 미리보기"
+          className={`mx-auto max-w-full bg-white ${
+            pageState === "ready" ? "block" : "hidden"
+          }`}
+        />
+      ) : (
+        <canvas
+          ref={canvasRef}
+          aria-label={`계약서 PDF ${pageNumber}페이지 미리보기`}
+          className={`mx-auto max-w-full bg-white ${
+            pageState === "ready" ? "block" : "hidden"
+          }`}
+        />
+      )}
     </div>
   );
 }

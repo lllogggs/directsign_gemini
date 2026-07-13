@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   AlertCircle,
   ArrowDownWideNarrow,
@@ -19,6 +19,7 @@ import {
   Settings,
   SlidersHorizontal,
   UserCheck,
+  UserRound,
   X,
 } from "lucide-react";
 import { apiFetch } from "../../domain/api";
@@ -26,8 +27,6 @@ import { PRODUCT_NAME } from "../../domain/brand";
 import { LEGAL_CONTACT_EMAIL } from "../../domain/legalEntity";
 import type {
   InfluencerDashboardActivityEvent,
-  InfluencerDashboardApplication,
-  InfluencerDashboardApplicationStage,
   InfluencerDashboardContract,
   InfluencerDashboardContractStage,
   InfluencerDashboardResponse,
@@ -36,7 +35,10 @@ import {
   clearInfluencerDashboardPreload,
   consumeInfluencerDashboardPreload,
 } from "../../domain/influencerDashboardPreload";
-import { waitForFastLoginTransition } from "../../domain/fastLoginTransition";
+import {
+  finishFastLoginTransition,
+  waitForFastLoginTransition,
+} from "../../domain/fastLoginTransition";
 import { buildLoginRedirect } from "../../domain/navigation";
 import {
   formatContractTitleForDisplay,
@@ -55,7 +57,11 @@ import { LogoMark } from "../../components/BrandLogo";
 import { PlatformBrandMark } from "../../components/PlatformBrandMark";
 import { ResponsiveFilterPanel } from "../../components/ResponsiveFilterPanel";
 import { FilterSelectControl } from "../../components/FilterSelectControl";
-import { useMarketplaceMessageSummary } from "../../hooks/useMarketplaceMessageSummary";
+import {
+  clearMarketplaceMessageSummaryCache,
+  useMarketplaceMessageSummary,
+} from "../../hooks/useMarketplaceMessageSummary";
+import { clearVerificationSummaryCache } from "../../hooks/useVerificationSummary";
 import { exportWorkbookToGoogleSheets } from "../../domain/googleWorkspaceExport";
 import { downloadXlsx, type XlsxSheet, type XlsxWorkbook } from "../../domain/xlsxExport";
 
@@ -138,7 +144,6 @@ type InfluencerCampaignWorkItem = {
   };
   activity_events: InfluencerDashboardActivityEvent[];
   source_contract?: InfluencerDashboardContract;
-  source_application?: InfluencerDashboardApplication;
 };
 
 const STAGE_META: Record<
@@ -265,9 +270,6 @@ const AMOUNT_FILTERS: AmountFilter[] = ["all", "fixed", "commission"];
 
 const DETAIL_STAGE_FILTERS: DetailStageFilter[] = [
   "all",
-  "application_submitted",
-  "application_reviewed",
-  "application_accepted",
   "review_needed",
   "change_pending",
   "ready_to_sign",
@@ -275,7 +277,6 @@ const DETAIL_STAGE_FILTERS: DetailStageFilter[] = [
   "deliverables_review",
   "signed",
   "completed",
-  "application_closed",
 ];
 
 const DEADLINE_FILTERS: DeadlineFilter[] = [
@@ -290,10 +291,8 @@ const INFLUENCER_LIFECYCLE_TABS: Array<{
   value: InfluencerCampaignLifecycle;
   label: string;
 }> = [
-  { value: "APPLIED", label: "지원중" },
   { value: "IN_PROGRESS", label: "진행중" },
   { value: "COMPLETED", label: "완료" },
-  { value: "REJECTED", label: "미선정" },
 ];
 
 const PLATFORM_META: Record<
@@ -369,9 +368,6 @@ export function InfluencerDashboard() {
   } = useMarketplaceMessageSummary("influencer", {
     enabled: state.status === "ready",
   });
-  const readyDashboardUserId =
-    state.status === "ready" ? state.dashboard.user.id : undefined;
-
   const loadDashboard = useCallback(async () => {
     setState((current) =>
       current.status === "ready" ? current : { status: "loading" },
@@ -450,50 +446,6 @@ export function InfluencerDashboard() {
     }, 0);
     return () => window.clearTimeout(timer);
   }, [loadDashboard]);
-
-  useEffect(() => {
-    if (state.status !== "ready" || !readyDashboardUserId) return;
-
-    let active = true;
-    const timer = window.setTimeout(() => {
-      void apiFetch("/api/influencer/dashboard/applications", {
-        headers: { Accept: "application/json" },
-        credentials: "include",
-      })
-        .then(async (response) => {
-          if (!response.ok) return undefined;
-          return (await response.json()) as Pick<
-            InfluencerDashboardResponse,
-            "applications"
-          >;
-        })
-        .then((data) => {
-          if (!active || !data?.applications) return;
-          setState((current) => {
-            if (
-              current.status !== "ready" ||
-              current.dashboard.user.id !== readyDashboardUserId
-            ) {
-              return current;
-            }
-
-            return {
-              status: "ready",
-              dashboard: {
-                ...current.dashboard,
-                applications: data.applications,
-              },
-            };
-          });
-        })
-        .catch(() => undefined);
-    }, 500);
-
-    return () => {
-      active = false;
-      window.clearTimeout(timer);
-    };
-  }, [readyDashboardUserId, state.status]);
 
   const handleAvatarSelect = async (file: File | undefined) => {
     if (!file || isAvatarUploading) return;
@@ -600,7 +552,7 @@ export function InfluencerDashboard() {
     selectedCampaignLifecycleFilter ??
     INFLUENCER_LIFECYCLE_TABS.find((tab) => lifecycleCounts[tab.value] > 0)
       ?.value ??
-    "APPLIED";
+    "IN_PROGRESS";
   const brandOptions = buildInfluencerBrandFilterOptions(campaignItems);
   const filteredCampaignItems = visibleCampaignItems
     .filter((item) => {
@@ -706,6 +658,10 @@ export function InfluencerDashboard() {
     } catch (error) {
       console.warn(`[${PRODUCT_NAME}] influencer logout request failed`, error);
     } finally {
+      finishFastLoginTransition("influencer");
+      clearInfluencerDashboardPreload();
+      clearVerificationSummaryCache("influencer");
+      clearMarketplaceMessageSummaryCache("influencer");
       navigate("/login/influencer", { replace: true });
     }
   };
@@ -756,6 +712,10 @@ export function InfluencerDashboard() {
               open={accountMenuOpen}
               onToggle={() => setAccountMenuOpen((current) => !current)}
               onClose={() => setAccountMenuOpen(false)}
+              onManageProfile={() => {
+                setAccountMenuOpen(false);
+                navigate("/influencer/profile");
+              }}
               onChangePassword={() => {
                 setAccountMenuOpen(false);
                 navigate("/reset-password?role=influencer");
@@ -869,12 +829,14 @@ function InfluencerAccountSettingsMenu({
   open,
   onToggle,
   onClose,
+  onManageProfile,
   onChangePassword,
 }: {
   account: InfluencerAccountSummary;
   open: boolean;
   onToggle: () => void;
   onClose: () => void;
+  onManageProfile: () => void;
   onChangePassword: () => void;
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -937,6 +899,21 @@ function InfluencerAccountSettingsMenu({
               </p>
             ) : null}
           </div>
+          <button
+            type="button"
+            onClick={onManageProfile}
+            className="flex min-h-12 w-full items-start gap-2 px-4 py-3 text-left transition hover:bg-neutral-50"
+          >
+            <UserRound className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-500" />
+            <span className="min-w-0">
+              <span className="block text-[12px] font-extrabold text-neutral-800">
+                공개 프로필 관리
+              </span>
+              <span className="mt-0.5 block text-[11px] font-semibold leading-4 text-neutral-500">
+                활동 정보와 공개 주소를 관리합니다.
+              </span>
+            </span>
+          </button>
           <a
             href={emailChangeHref}
             onClick={onClose}
@@ -1006,8 +983,8 @@ function LoadingView() {
           </div>
           <div className="min-w-0 p-2.5 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
             <div className="rounded-[10px] border border-neutral-200 bg-white">
-              <div className="grid grid-cols-4 rounded-t-[10px] bg-[#e8e5df] text-[13px] font-extrabold text-neutral-700">
-                {["지원중", "진행중", "완료", "미선정"].map((label, index) => (
+              <div className="grid grid-cols-2 rounded-t-[10px] bg-[#e8e5df] text-[13px] font-extrabold text-neutral-700">
+                {["진행중", "완료"].map((label, index) => (
                   <div
                     key={label}
                     className={`flex h-11 items-center px-3 ${
@@ -1238,8 +1215,16 @@ function EmptyContracts({ hasQuery }: { hasQuery: boolean }) {
       <p className="mt-1 max-w-md text-[12px] leading-5 text-[#7d857f]">
         {hasQuery
           ? "검색어를 줄이거나 전체로 바꿔보세요."
-          : `캠페인에 지원하거나 브랜드가 ${PRODUCT_NAME} 계약을 진행하면 이곳에 표시됩니다.`}
+          : `브랜드가 ${PRODUCT_NAME} 1:1 계약을 진행하면 이곳에 표시됩니다.`}
       </p>
+      {!hasQuery ? (
+        <Link
+          to="/influencer/campaigns?view=applied"
+          className="mt-4 inline-flex h-9 items-center justify-center rounded-md border border-[#d9e0d9] bg-white px-3 text-[12px] font-extrabold text-[#303630] transition hover:border-[#bfc8c0]"
+        >
+          신청한 캠페인 보기
+        </Link>
+      ) : null}
     </section>
   );
 }
@@ -1993,7 +1978,6 @@ function PlatformPills({ item }: { item: InfluencerCampaignWorkItem }) {
 function buildInfluencerCampaignWorkItems(
   dashboard: InfluencerDashboardResponse,
 ): InfluencerCampaignWorkItem[] {
-  const contractIds = new Set(dashboard.contracts.map((contract) => contract.id));
   const contractItems = dashboard.contracts.map(
     (contract): InfluencerCampaignWorkItem => ({
       id: `contract:${contract.id}`,
@@ -2018,53 +2002,10 @@ function buildInfluencerCampaignWorkItems(
       source_contract: contract,
     }),
   );
-  const applicationItems = (dashboard.applications ?? [])
-    .filter(
-      (application) =>
-        !application.converted_contract_id ||
-        !contractIds.has(application.converted_contract_id),
-    )
-    .map(
-      (application): InfluencerCampaignWorkItem => ({
-        id: `application:${application.id}`,
-        kind: "application",
-        lifecycle: getApplicationLifecycle(application),
-        title: application.campaign_title,
-        advertiser_name: application.brand_name,
-        stage: mapApplicationWorkStage(application.stage),
-        stage_label: application.stage_label,
-        next_action_label: application.next_action_label,
-        action_label: application.action_label,
-        action_href: application.action_href,
-        platform_labels: application.platform_labels,
-        platforms: application.platforms,
-        platform_accounts: application.platforms.map((platform) => ({ platform })),
-        fee_label: application.fee_label,
-        deadline_label: application.deadline_label,
-        due_at: application.due_at,
-        updated_at: application.updated_at,
-        deliverable_summary: {
-          total: 0,
-          submitted: 0,
-          approved: 0,
-        },
-        activity_events: application.activity_events ?? [],
-        source_application: application,
-      }),
-    );
 
-  return [...applicationItems, ...contractItems].sort(
+  return contractItems.sort(
     (a, b) => parseDate(b.updated_at) - parseDate(a.updated_at),
   );
-}
-
-function mapApplicationWorkStage(
-  stage: InfluencerDashboardApplicationStage,
-): InfluencerApplicationWorkStage {
-  if (stage === "reviewed") return "application_reviewed";
-  if (stage === "accepted") return "application_accepted";
-  if (stage === "closed") return "application_closed";
-  return "application_submitted";
 }
 
 function getContractLifecycle(
@@ -2075,14 +2016,6 @@ function getContractLifecycle(
   }
 
   return "IN_PROGRESS";
-}
-
-function getApplicationLifecycle(
-  application: InfluencerDashboardApplication,
-): InfluencerCampaignLifecycle {
-  if (application.stage === "closed") return "REJECTED";
-  if (application.stage === "accepted") return "IN_PROGRESS";
-  return "APPLIED";
 }
 
 function getInfluencerLifecycleCounts(items: InfluencerCampaignWorkItem[]) {

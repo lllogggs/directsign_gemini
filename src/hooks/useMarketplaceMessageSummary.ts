@@ -29,6 +29,14 @@ const messageSummaryInflight = new Map<
   MarketplaceInboxRole,
   Promise<MarketplaceMessageSummary | undefined>
 >();
+const messageSummaryGeneration = new Map<MarketplaceInboxRole, number>();
+
+const getMessageSummaryGeneration = (role: MarketplaceInboxRole) =>
+  messageSummaryGeneration.get(role) ?? 0;
+
+const advanceMessageSummaryGeneration = (role: MarketplaceInboxRole) => {
+  messageSummaryGeneration.set(role, getMessageSummaryGeneration(role) + 1);
+};
 
 const getCachedMessageSummary = (role: MarketplaceInboxRole) => {
   const cache = messageSummaryCache.get(role);
@@ -44,11 +52,26 @@ export function primeMarketplaceMessageSummary(
   role: MarketplaceInboxRole,
   summary: MarketplaceMessageSummary,
 ) {
+  advanceMessageSummaryGeneration(role);
   messageSummaryInflight.delete(role);
   messageSummaryCache.set(role, {
     summary,
     cachedAt: Date.now(),
   });
+}
+
+export function clearMarketplaceMessageSummaryCache(
+  role?: MarketplaceInboxRole,
+) {
+  const roles = role
+    ? [role]
+    : [...new Set([...messageSummaryCache.keys(), ...messageSummaryInflight.keys()])];
+
+  for (const targetRole of roles) {
+    advanceMessageSummaryGeneration(targetRole);
+    messageSummaryCache.delete(targetRole);
+    messageSummaryInflight.delete(targetRole);
+  }
 }
 
 export function useMarketplaceMessageSummary(
@@ -77,9 +100,10 @@ export function useMarketplaceMessageSummary(
       }
 
       if (active) setIsLoading(true);
-      const inflight =
-        messageSummaryInflight.get(role) ??
-        waitForFastLoginTransition(role, 2_500)
+      let inflight = messageSummaryInflight.get(role);
+      if (!inflight) {
+        const requestGeneration = getMessageSummaryGeneration(role);
+        inflight = waitForFastLoginTransition(role, 2_500)
           .then(() =>
             apiFetch(`/api/marketplace/messages?role=${role}&summary=1`, {
               headers: { Accept: "application/json" },
@@ -90,6 +114,9 @@ export function useMarketplaceMessageSummary(
             if (!response.ok) return undefined;
             const data = (await response.json()) as MarketplaceMessagesResponse;
             const nextSummary = data.summary ?? emptyMarketplaceMessageSummary;
+            if (getMessageSummaryGeneration(role) !== requestGeneration) {
+              return messageSummaryCache.get(role)?.summary;
+            }
             messageSummaryCache.set(role, {
               summary: nextSummary,
               cachedAt: Date.now(),
@@ -98,9 +125,12 @@ export function useMarketplaceMessageSummary(
           })
           .catch(() => emptyMarketplaceMessageSummary)
           .finally(() => {
-            messageSummaryInflight.delete(role);
+            if (messageSummaryInflight.get(role) === inflight) {
+              messageSummaryInflight.delete(role);
+            }
           });
-      messageSummaryInflight.set(role, inflight);
+        messageSummaryInflight.set(role, inflight);
+      }
 
       void inflight
         .then((nextSummary) => {

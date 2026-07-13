@@ -15,6 +15,7 @@ export type ClauseStatus =
   | "DELETION_REQUESTED";
 export type ContractActor = "advertiser" | "influencer" | "system";
 export type ContractRiskLevel = "low" | "medium" | "high";
+export type DataOrigin = "production" | "qa" | "demo" | "seed";
 export type AdvertiserTrustRiskLevel = "low" | "medium" | "high";
 export type PdfStatus = "not_ready" | "draft_ready" | "signed_ready";
 export type ContractPlatform =
@@ -178,6 +179,7 @@ export interface AuditEvent {
 
 export interface Contract {
   id: string;
+  data_origin?: DataOrigin;
   advertiser_id: string;
   brand_profile_id?: string;
   campaign_name?: string;

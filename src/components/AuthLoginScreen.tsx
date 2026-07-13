@@ -1,8 +1,120 @@
 import React from "react";
 import { ArrowRight, CheckCircle2 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { BrandLogo } from "./BrandLogo";
 import { PRODUCT_NAME } from "../domain/brand";
+
+export type GlobalCreatorAuthLocale = "en" | "ja" | "zh";
+
+const supportedAuthLocales = new Set<GlobalCreatorAuthLocale>([
+  "en",
+  "ja",
+  "zh",
+]);
+
+export type AuthLoginChromeCopy = {
+  homeLabel: string;
+  otherLoginLabel: string;
+  legalNavLabel: string;
+  privacyLabel: string;
+  termsLabel: string;
+  eSignLabel: string;
+  supportLabel: string;
+};
+
+const defaultAuthLoginChromeCopy: AuthLoginChromeCopy = {
+  homeLabel: `${PRODUCT_NAME} 홈`,
+  otherLoginLabel: "다른 로그인",
+  legalNavLabel: "법적 문서",
+  privacyLabel: "개인정보 처리방침",
+  termsLabel: "이용약관",
+  eSignLabel: "전자서명 안내",
+  supportLabel: "문의",
+};
+
+function readNestedGlobalCreatorLocale(
+  params: URLSearchParams,
+): GlobalCreatorAuthLocale | null {
+  const nextPath = params.get("next");
+  if (
+    !nextPath?.startsWith("/") ||
+    nextPath.startsWith("//") ||
+    nextPath.includes("\\")
+  ) {
+    return null;
+  }
+
+  try {
+    const nestedUrl = new URL(nextPath, "https://yeollock.local");
+    const nestedLocale = nestedUrl.searchParams.get("locale");
+    if (
+      nestedUrl.origin === "https://yeollock.local" &&
+      nestedUrl.searchParams.get("source") === "global-creators" &&
+      nestedLocale &&
+      supportedAuthLocales.has(nestedLocale as GlobalCreatorAuthLocale)
+    ) {
+      return nestedLocale as GlobalCreatorAuthLocale;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function getGlobalCreatorAuthLocale(
+  currentSearch: string,
+): GlobalCreatorAuthLocale | null {
+  const params = new URLSearchParams(currentSearch);
+  const locale = params.get("locale");
+
+  if (
+    params.get("source") === "global-creators" &&
+    locale &&
+    supportedAuthLocales.has(locale as GlobalCreatorAuthLocale)
+  ) {
+    return locale as GlobalCreatorAuthLocale;
+  }
+
+  return readNestedGlobalCreatorLocale(params);
+}
+
+// Shared by the auth entry screens so locale context survives role transitions.
+// eslint-disable-next-line react-refresh/only-export-components
+export function preserveAuthContext(href: string, currentSearch: string) {
+  const currentParams = new URLSearchParams(currentSearch);
+  const directLocale = currentParams.get("locale");
+  const nestedGlobalLocale = readNestedGlobalCreatorLocale(currentParams);
+  const locale =
+    directLocale &&
+    supportedAuthLocales.has(directLocale as GlobalCreatorAuthLocale)
+      ? directLocale
+      : nestedGlobalLocale;
+  const hasGlobalSource =
+    currentParams.get("source") === "global-creators" ||
+    nestedGlobalLocale !== null;
+  const nextPath = currentParams.get("next");
+  const target = new URL(href, "https://yeollock.local");
+
+  if (target.origin !== "https://yeollock.local") return href;
+  if (locale) {
+    target.searchParams.set("locale", locale);
+  }
+  if (hasGlobalSource) {
+    target.searchParams.set("source", "global-creators");
+    if (
+      nextPath?.startsWith("/") &&
+      !nextPath.startsWith("//") &&
+      !nextPath.includes("\\") &&
+      !target.searchParams.has("next")
+    ) {
+      target.searchParams.set("next", nextPath);
+    }
+  }
+
+  return `${target.pathname}${target.search}${target.hash}`;
+}
 
 export interface AuthLoginField {
   id: string;
@@ -19,6 +131,9 @@ export interface AuthLoginField {
 
 interface AuthLoginScreenProps {
   title: string;
+  lang?: string;
+  homeHref?: string;
+  chromeCopy?: Partial<AuthLoginChromeCopy>;
   description?: string;
   trustBadges?: string[];
   processSummary?: Array<{
@@ -43,6 +158,9 @@ interface AuthLoginScreenProps {
 
 export function AuthLoginScreen({
   title,
+  lang,
+  homeHref = "/",
+  chromeCopy,
   description,
   trustBadges,
   processSummary,
@@ -61,30 +179,37 @@ export function AuthLoginScreen({
   showLegalFooter = true,
   onSubmit,
 }: AuthLoginScreenProps) {
+  const location = useLocation();
+  const copy = { ...defaultAuthLoginChromeCopy, ...chromeCopy };
   const errorId = error ? `${title.replace(/\s+/g, "-")}-login-error` : undefined;
+  const otherLoginHref = preserveAuthContext("/login", location.search);
+  const contextualHomeHref = preserveAuthContext(homeHref, location.search);
 
   return (
-    <main className="h-svh overflow-hidden bg-[#f7f6f3] px-4 pb-2 pt-0 font-sans text-neutral-950 sm:px-6 sm:pb-5 sm:pt-0">
+    <main
+      lang={lang}
+      className="min-h-svh overflow-y-auto bg-[#f7f6f3] px-4 pb-2 pt-0 font-sans text-neutral-950 sm:h-svh sm:overflow-hidden sm:px-6 sm:pb-5 sm:pt-0"
+    >
       <div className="mx-auto flex h-full min-h-0 w-full max-w-[1500px] flex-col">
         <header className="flex h-14 shrink-0 items-center justify-between 2xl:px-6">
           <Link
-            to="/"
-            aria-label={`${PRODUCT_NAME} 홈`}
+            to={contextualHomeHref}
+            aria-label={copy.homeLabel}
             className="yl-brand-action -ml-1 inline-flex min-h-10 items-center gap-2.5 rounded-[12px] px-1 py-1 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
           >
             <BrandLogo />
           </Link>
           {showOtherLoginLink ? (
             <Link
-              to="/login"
+              to={otherLoginHref}
               className="inline-flex min-h-10 items-center rounded-full border border-neutral-200 bg-white/65 px-3 text-[12px] font-bold text-neutral-500 shadow-[0_1px_0_rgba(15,23,42,0.02)] transition hover:border-neutral-300 hover:bg-white hover:text-neutral-950"
             >
-              다른 로그인
+              {copy.otherLoginLabel}
             </Link>
           ) : null}
         </header>
 
-        <section className="grid min-h-0 flex-1 place-items-center overflow-hidden py-2 pb-3 sm:py-2">
+        <section className="grid min-h-0 flex-1 place-items-start overflow-visible py-2 pb-3 sm:place-items-center sm:overflow-hidden sm:py-2">
           <div className="flex max-h-none w-full max-w-[460px] flex-col sm:min-h-0 sm:max-h-full">
             <section className="custom-scrollbar overflow-visible rounded-[16px] border border-neutral-200/90 bg-white shadow-[0_1px_0_rgba(15,23,42,0.035),0_16px_44px_rgba(15,23,42,0.05)] sm:min-h-0 sm:max-h-full sm:overflow-y-auto sm:rounded-[18px]">
               <div className="p-4 sm:p-6">
@@ -206,20 +331,20 @@ export function AuthLoginScreen({
 
             {showLegalFooter ? (
               <nav
-                aria-label="법적 문서"
+                aria-label={copy.legalNavLabel}
                 className="mt-2 flex shrink-0 flex-wrap items-center justify-center gap-1 text-[12px] font-semibold text-neutral-400 sm:mt-3 sm:gap-2"
               >
-                <Link className="inline-flex min-h-7 items-center px-2 transition hover:text-neutral-950 sm:min-h-8" to="/privacy">
-                  개인정보 처리방침
+                <Link className="inline-flex min-h-7 items-center px-2 transition hover:text-neutral-950 sm:min-h-8" to={preserveAuthContext("/privacy", location.search)}>
+                  {copy.privacyLabel}
                 </Link>
-                <Link className="inline-flex min-h-7 items-center px-2 transition hover:text-neutral-950 sm:min-h-8" to="/terms">
-                  이용약관
+                <Link className="inline-flex min-h-7 items-center px-2 transition hover:text-neutral-950 sm:min-h-8" to={preserveAuthContext("/terms", location.search)}>
+                  {copy.termsLabel}
                 </Link>
-                <Link className="inline-flex min-h-7 items-center px-2 transition hover:text-neutral-950 sm:min-h-8" to="/legal/e-sign-consent">
-                  전자서명 안내
+                <Link className="inline-flex min-h-7 items-center px-2 transition hover:text-neutral-950 sm:min-h-8" to={preserveAuthContext("/legal/e-sign-consent", location.search)}>
+                  {copy.eSignLabel}
                 </Link>
-                <Link className="inline-flex min-h-7 items-center px-2 transition hover:text-neutral-950 sm:min-h-8" to="/support">
-                  문의
+                <Link className="inline-flex min-h-7 items-center px-2 transition hover:text-neutral-950 sm:min-h-8" to={preserveAuthContext("/support", location.search)}>
+                  {copy.supportLabel}
                 </Link>
               </nav>
             ) : null}
@@ -233,35 +358,51 @@ export function AuthLoginScreen({
 export function AuthLoginQuickActions({
   introHref,
   signupHref,
+  introLabel = "둘러보기",
+  signupLabel = "가입하기",
 }: {
   introHref: string;
   signupHref: string;
+  introLabel?: string;
+  signupLabel?: string;
 }) {
+  const location = useLocation();
+  const contextualIntroHref = preserveAuthContext(introHref, location.search);
+  const contextualSignupHref = preserveAuthContext(signupHref, location.search);
+
   return (
     <div className="grid grid-cols-2 gap-2 text-center">
       <Link
-        to={introHref}
+        to={contextualIntroHref}
         className="inline-flex h-10 items-center justify-center rounded-[11px] border border-neutral-200 bg-white/80 px-3 text-[13px] font-black text-neutral-700 shadow-[0_1px_0_rgba(15,23,42,0.02)] transition hover:border-neutral-300 hover:bg-white hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-neutral-950"
       >
-        둘러보기
+        {introLabel}
       </Link>
       <Link
-        to={signupHref}
+        to={contextualSignupHref}
         className="inline-flex h-10 items-center justify-center rounded-[11px] bg-neutral-950 px-3 text-[13px] font-black text-white shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition hover:-translate-y-0.5 hover:bg-neutral-800 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-neutral-950"
       >
-        가입하기
+        {signupLabel}
       </Link>
     </div>
   );
 }
 
-export function AuthPasswordResetLink({ href }: { href: string }) {
+export function AuthPasswordResetLink({
+  href,
+  label = "비밀번호 재설정",
+}: {
+  href: string;
+  label?: string;
+}) {
+  const location = useLocation();
+
   return (
     <Link
-      to={href}
+      to={preserveAuthContext(href, location.search)}
       className="inline-flex min-h-8 items-center px-1 text-[12px] font-bold text-neutral-500 transition hover:text-neutral-950 focus-visible:rounded-[6px] focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-neutral-950"
     >
-      비밀번호 재설정
+      {label}
     </Link>
   );
 }

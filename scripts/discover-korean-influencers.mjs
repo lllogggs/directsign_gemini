@@ -2,6 +2,17 @@ import dotenv from "dotenv";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
+import {
+  choosePreferredInfluencerRow,
+  inferCreatorCountries,
+  normalizeMarketplaceCountryCodes,
+  normalizePublicProfileUrl,
+} from "./lib/influencer-country.mjs";
+import { sanitizeInfluencerCollectedRow } from "./lib/influencer-text-quality.mjs";
+import {
+  classifyDiscoveredInfluencerAccount,
+  normalizeMarketplaceCreatorCategories,
+} from "../src/domain/influencerDiscoveryQuality.js";
 
 dotenv.config({ path: ".env.local" });
 dotenv.config();
@@ -460,14 +471,6 @@ function parseYoutubeSubscriberCount(text) {
   return null;
 }
 
-function hasKoreaProfileSignal(text) {
-  const value = String(text ?? "");
-  return (
-    /[\uac00-\ud7a3]/u.test(value) ||
-    /\b(?:south\s*korea|korea|korean|seoul|busan|incheon|daegu|daejeon|gwangju|ulsan|jeju|k-?beauty|k-?food|k-?fashion|k-?style|k-?pop)\b/i.test(value)
-  );
-}
-
 function isLikelyBrandOrInstitution(text) {
   const lower = text.toLowerCase();
   return (
@@ -604,15 +607,21 @@ function scoreCandidate(candidate) {
 
 function rescoreRow(row) {
   const scored = scoreCandidate(row);
+  const countryConfidence = String(row.source_evidence?.countryConfidence ?? "");
+  const hasCountrySignal =
+    Array.isArray(row.audience_countries) && row.audience_countries.length > 0;
   const hasRequiredTikTokSignal =
-    row.platform !== "tiktok" || row.source_evidence?.koreaProfileSignal === true;
-  const qualityScore = hasRequiredTikTokSignal
+    row.platform !== "tiktok" ||
+    (hasCountrySignal && countryConfidence !== "unknown") ||
+    row.source_evidence?.koreaProfileSignal === true;
+  const canBeActive = hasCountrySignal && hasRequiredTikTokSignal;
+  const qualityScore = canBeActive
     ? scored.qualityScore
     : Math.min(scored.qualityScore, 45);
   return {
     ...row,
     quality_score: qualityScore,
-    status: hasRequiredTikTokSignal ? scored.status : "needs_review",
+    status: canBeActive ? scored.status : "needs_review",
   };
 }
 
@@ -699,6 +708,12 @@ async function collectYoutubeCandidates() {
           ? Math.round(viewCount / videoCount)
           : undefined;
       const categoriesForRow = inferCategories(`${title} ${description}`, seed.category);
+      const countryInference = inferCreatorCountries({
+        displayName: title,
+        bio: description,
+        handle: platformHandle,
+        officialCountryCode: snippet.country,
+      });
       const candidate = {
         id: stableUuid(`discovered:youtube:${channel.id}`),
         platform: "youtube",
@@ -711,7 +726,7 @@ async function collectYoutubeCandidates() {
         profile_url: profileUrl,
         avatar_url: snippet.thumbnails?.high?.url ?? snippet.thumbnails?.default?.url ?? null,
         categories: categoriesForRow,
-        audience_countries: ["south_korea"],
+        audience_countries: countryInference.countries,
         audience_tags: categoryConfigs[seed.category].audienceTags,
         followers_label: subscriberCount ? `구독자 ${compactKoreanNumber(subscriberCount)}명` : "구독자 공개 안됨",
         follower_count: Number.isFinite(subscriberCount) ? subscriberCount : null,
@@ -726,6 +741,9 @@ async function collectYoutubeCandidates() {
           viewCount: Number.isFinite(viewCount) ? viewCount : null,
           videoCount: Number.isFinite(videoCount) ? videoCount : null,
           hiddenSubscriberCount: Boolean(stats.hiddenSubscriberCount),
+          officialCountry: snippet.country ?? null,
+          countryConfidence: countryInference.confidence,
+          countrySignals: countryInference.signals,
         },
       };
       const scored = scoreCandidate(candidate);
@@ -813,6 +831,11 @@ function buildYoutubeCandidateFromWeb({
       .replace(/\s*-\s*유튜브\s*$/i, "")
       .trim() || ref.value;
   const categoriesForRow = inferCategories(`${displayName} ${description} ${keyword}`, category);
+  const countryInference = inferCreatorCountries({
+    displayName,
+    bio: description,
+    handle: ref.value,
+  });
   const candidate = {
     id: stableUuid(`discovered:youtube:web:${ref.type}:${ref.value}`),
     platform: "youtube",
@@ -825,9 +848,7 @@ function buildYoutubeCandidateFromWeb({
     profile_url: profileUrl,
     avatar_url: null,
     categories: categoriesForRow,
-    audience_countries: hasKoreaProfileSignal(`${displayName} ${description} ${keyword}`)
-      ? ["south_korea"]
-      : [],
+    audience_countries: countryInference.countries,
     audience_tags: config.audienceTags,
     followers_label: Number.isFinite(subscriberCount)
       ? `구독자 ${compactKoreanNumber(subscriberCount)}명`
@@ -842,7 +863,8 @@ function buildYoutubeCandidateFromWeb({
       sourceCategory: category,
       extractedFrom: ref.evidence,
       youtubeRefType: ref.type,
-      koreaProfileSignal: hasKoreaProfileSignal(`${displayName} ${description} ${keyword}`),
+      countryConfidence: countryInference.confidence,
+      countrySignals: countryInference.signals,
     },
   };
   const scored = scoreCandidate(candidate);
@@ -1028,12 +1050,14 @@ async function collectNaverBlogCandidates() {
       source_provider: "naver_search_api",
       source_keyword: Array.from(blog.queries)[0],
       source_url: Array.from(blog.links)[0] || blog.bloggerLink,
-      source_evidence: {
-        sourceCategory: blog.category,
-        searchQueries: Array.from(blog.queries),
-        matchedPosts: blog.links.size,
-        sampleTitles: blog.titles.slice(0, 5),
-      },
+        source_evidence: {
+          sourceCategory: blog.category,
+          searchQueries: Array.from(blog.queries),
+          matchedPosts: blog.links.size,
+          sampleTitles: blog.titles.slice(0, 5),
+          countryConfidence: "platform",
+          countrySignals: ["platform:naver_blog"],
+        },
     };
     const scored = scoreCandidate(candidate);
     return {
@@ -1112,6 +1136,16 @@ function collectInstagramCandidatesFromCrosslinks(sourceRows) {
     ].join(" ");
     for (const ref of extractInstagramProfileRefs(text)) {
       const profileUrl = `https://www.instagram.com/${ref.handle}/`;
+      const trustInheritedCountries = ["official", "explicit", "platform"].includes(
+        String(row.source_evidence?.countryConfidence ?? ""),
+      );
+      const countryInference = inferCreatorCountries({
+        displayName: row.display_name,
+        bio: row.bio,
+        handle: ref.handle,
+        inheritedCountries: row.audience_countries,
+        trustInheritedCountries,
+      });
       const candidate = {
         id: stableUuid(`discovered:instagram:${ref.handle}`),
         platform: "instagram",
@@ -1124,7 +1158,7 @@ function collectInstagramCandidatesFromCrosslinks(sourceRows) {
         profile_url: profileUrl,
         avatar_url: row.avatar_url ?? null,
         categories: row.categories ?? [],
-        audience_countries: row.audience_countries ?? ["south_korea"],
+        audience_countries: countryInference.countries,
         audience_tags: row.audience_tags ?? [],
         followers_label: "인스타 공개 프로필",
         follower_count: null,
@@ -1138,6 +1172,8 @@ function collectInstagramCandidatesFromCrosslinks(sourceRows) {
           sourceProfileUrl: row.profile_url,
           extractedFrom: ref.evidence,
           sourceCategory: row.source_evidence?.sourceCategory ?? row.categories?.[0] ?? null,
+          countryConfidence: countryInference.confidence,
+          countrySignals: countryInference.signals,
         },
       };
       const scored = scoreCandidate(candidate);
@@ -1328,11 +1364,18 @@ function buildTikTokCandidateFromSource({
   const sourceAudienceCountries = Array.isArray(sourceRow?.audience_countries)
     ? sourceRow.audience_countries
     : [];
-  const hasSourceKoreaAudience = sourceAudienceCountries.some((country) =>
-    /^(south_korea|kr|korea)$/i.test(String(country ?? "")),
+  const trustInheritedCountries = ["official", "explicit", "platform"].includes(
+    String(sourceRow?.source_evidence?.countryConfidence ?? ""),
   );
-  const koreaProfileSignal =
-    hasSourceKoreaAudience || hasKoreaProfileSignal(`${displayName} ${bio} ${handle}`);
+  const countryInference = inferCreatorCountries({
+    displayName,
+    bio,
+    handle,
+    inheritedCountries: sourceAudienceCountries,
+    trustInheritedCountries,
+  });
+  const hasCountrySignal =
+    countryInference.countries.length > 0 && countryInference.confidence !== "unknown";
   const categoriesForRow =
     sourceRow?.categories?.length
       ? sourceRow.categories
@@ -1349,11 +1392,7 @@ function buildTikTokCandidateFromSource({
     profile_url: profileUrl,
     avatar_url: sourceRow?.avatar_url ?? null,
     categories: categoriesForRow,
-    audience_countries: sourceAudienceCountries.length
-      ? sourceAudienceCountries
-      : koreaProfileSignal
-        ? ["south_korea"]
-        : [],
+    audience_countries: countryInference.countries,
     audience_tags: sourceRow?.audience_tags ?? config.audienceTags,
     followers_label: Number.isFinite(followerCount)
       ? `팔로워 ${compactKoreanNumber(followerCount)}명`
@@ -1369,17 +1408,18 @@ function buildTikTokCandidateFromSource({
       sourcePlatform: sourceRow?.platform ?? null,
       sourceProfileUrl: sourceRow?.profile_url ?? null,
       extractedFrom: evidence,
-      koreaProfileSignal,
+      countryConfidence: countryInference.confidence,
+      countrySignals: countryInference.signals,
     },
   };
   const scored = scoreCandidate(candidate);
-  const qualityScore = koreaProfileSignal
+  const qualityScore = hasCountrySignal
     ? scored.qualityScore
     : Math.min(scored.qualityScore, 45);
   return {
     ...candidate,
     quality_score: qualityScore,
-    status: koreaProfileSignal && scored.status === "active" ? "active" : "needs_review",
+    status: hasCountrySignal && scored.status === "active" ? "active" : "needs_review",
   };
 }
 
@@ -1508,9 +1548,24 @@ async function collectCuratedTikTokCandidates() {
         provider: "curated_tiktok_public_search",
         keyword: seed.source_keyword ?? "tiktok public profile search",
       });
+      const seededCountries = normalizeMarketplaceCountryCodes(
+        seed.countries ?? seed.audience_countries,
+      );
+      const countryInference = seededCountries.length > 0
+        ? {
+            countries: seededCountries,
+            confidence: "curated",
+            signals: seededCountries.map((country) => `curated:${country}`),
+          }
+        : inferCreatorCountries({
+            displayName: seed.display_name,
+            bio: seed.bio,
+            handle,
+          });
       return {
         ...candidate,
         headline: stripHtml(seed.headline) || candidate.headline,
+        audience_countries: countryInference.countries,
         followers_label: Number.isFinite(followerCount)
           ? `팔로워 ${compactKoreanNumber(followerCount)}명`
           : candidate.followers_label,
@@ -1519,6 +1574,8 @@ async function collectCuratedTikTokCandidates() {
         source_evidence: {
           ...candidate.source_evidence,
           sourceNote: seed.source_note ?? null,
+          countryConfidence: countryInference.confidence,
+          countrySignals: countryInference.signals,
         },
         status: seed.status ?? candidate.status,
       };
@@ -1546,6 +1603,18 @@ async function collectCuratedInstagramCandidates() {
       const config = categoryConfigs[category];
       const followerCount = Number.parseInt(String(seed.follower_count ?? ""), 10);
       const profileUrl = `https://www.instagram.com/${handle}/`;
+      const displayName = stripHtml(seed.display_name) || handle;
+      const bio = truncateText(stripHtml(seed.bio), 240);
+      const seededCountries = normalizeMarketplaceCountryCodes(
+        seed.countries ?? seed.audience_countries,
+      );
+      const countryInference = seededCountries.length > 0
+        ? {
+            countries: seededCountries,
+            confidence: "curated",
+            signals: seededCountries.map((country) => `curated:${country}`),
+          }
+        : inferCreatorCountries({ displayName, bio, handle });
       const inferredCategories = inferCategories(
         [
           seed.display_name,
@@ -1563,9 +1632,9 @@ async function collectCuratedInstagramCandidates() {
         public_handle: makePublicHandle("instagram", handle, handle),
         external_id: handle,
         platform_handle: handle,
-        display_name: stripHtml(seed.display_name) || handle,
+        display_name: displayName,
         headline: stripHtml(seed.headline) || `${config.label} 인스타그램 크리에이터`,
-        bio: truncateText(stripHtml(seed.bio), 240),
+        bio,
         profile_url: profileUrl,
         avatar_url: null,
         categories: seed.categories?.length
@@ -1573,7 +1642,7 @@ async function collectCuratedInstagramCandidates() {
           : inferredCategories.length
             ? inferredCategories
             : config.categories,
-        audience_countries: ["south_korea"],
+        audience_countries: countryInference.countries,
         audience_tags: config.audienceTags,
         followers_label: Number.isFinite(followerCount)
           ? `팔로워 ${compactKoreanNumber(followerCount)}명`
@@ -1588,6 +1657,8 @@ async function collectCuratedInstagramCandidates() {
           sourceCategory: category,
           sourceUrl: seed.source_url ?? profileUrl,
           sourceNote: seed.source_note ?? null,
+          countryConfidence: countryInference.confidence,
+          countrySignals: countryInference.signals,
         },
       };
       const scored = scoreCandidate(candidate);
@@ -1604,13 +1675,47 @@ function dedupeRows(rows) {
   const byId = new Map();
   for (const row of rows) {
     const previous = byId.get(row.id);
-    if (!previous || row.quality_score > previous.quality_score) {
-      byId.set(row.id, row);
+    byId.set(row.id, previous ? choosePreferredInfluencerRow(previous, row) : row);
+  }
+
+  const uniqueRows = Array.from(byId.values());
+  const parent = new Map(uniqueRows.map((row) => [row.id, row.id]));
+  const find = (id) => {
+    const current = parent.get(id);
+    if (!current || current === id) return id;
+    const root = find(current);
+    parent.set(id, root);
+    return root;
+  };
+  const union = (leftId, rightId) => {
+    const leftRoot = find(leftId);
+    const rightRoot = find(rightId);
+    if (leftRoot !== rightRoot) parent.set(rightRoot, leftRoot);
+  };
+  const identityOwner = new Map();
+  for (const row of uniqueRows) {
+    const handle = String(row.platform_handle ?? "").trim().toLowerCase();
+    const normalizedUrl = normalizePublicProfileUrl(row.profile_url);
+    const keys = [
+      handle ? `${row.platform}:handle:${handle}` : "",
+      normalizedUrl ? `${row.platform}:url:${normalizedUrl}` : "",
+    ].filter(Boolean);
+    for (const key of keys) {
+      const owner = identityOwner.get(key);
+      if (owner) union(row.id, owner);
+      else identityOwner.set(key, row.id);
     }
   }
 
+  const grouped = new Map();
+  for (const row of uniqueRows) {
+    const root = find(row.id);
+    const current = grouped.get(root);
+    grouped.set(root, current ? choosePreferredInfluencerRow(current, row) : row);
+  }
+
   const usedHandles = new Map();
-  return Array.from(byId.values())
+  return Array.from(grouped.values())
     .sort((a, b) => b.quality_score - a.quality_score)
     .map((row) => {
       const currentOwner = usedHandles.get(row.public_handle);
@@ -1687,11 +1792,14 @@ async function fetchSupabaseRows(table, query) {
 
 async function fetchAllSupabaseRows(table, query, pageSize = 1000) {
   const rows = [];
+  const orderedQuery = /(?:[?&])order=/.test(query)
+    ? query
+    : `${query}${query.includes("?") ? "&" : "?"}order=id.asc`;
   for (let offset = 0; ; offset += pageSize) {
-    const separator = query.includes("?") ? "&" : "?";
+    const separator = orderedQuery.includes("?") ? "&" : "?";
     const page = await fetchSupabaseRows(
       table,
-      `${query}${separator}limit=${pageSize}&offset=${offset}`,
+      `${orderedQuery}${separator}limit=${pageSize}&offset=${offset}`,
     );
     rows.push(...page);
     if (page.length < pageSize) break;
@@ -1703,7 +1811,7 @@ async function reserveExistingHandles(rows) {
   const [discovered, marketplace] = await Promise.all([
     fetchAllSupabaseRows(
       "discovered_influencer_profiles",
-      "?select=id,public_handle",
+      "?select=id,public_handle,platform,platform_handle,profile_url,source_provider,status,quality_score,audience_countries,source_evidence",
     ).catch(() => []),
     fetchAllSupabaseRows(
       "marketplace_influencer_profiles",
@@ -1716,18 +1824,124 @@ async function reserveExistingHandles(rows) {
     if (row.public_handle) taken.set(String(row.public_handle).toLowerCase(), row.id);
   }
 
-  return rows.map((row) => {
-    const owner = taken.get(row.public_handle.toLowerCase());
-    if (!owner || owner === row.id) {
-      taken.set(row.public_handle.toLowerCase(), row.id);
-      return row;
+  const existingIdentityOwners = new Map();
+  const existingById = new Map(discovered.map((row) => [row.id, row]));
+  for (const row of discovered) {
+    const handle = String(row.platform_handle ?? "").trim().toLowerCase();
+    const normalizedUrl = normalizePublicProfileUrl(row.profile_url);
+    const keys = [
+      handle ? `${row.platform}:handle:${handle}` : "",
+      normalizedUrl ? `${row.platform}:url:${normalizedUrl}` : "",
+    ].filter(Boolean);
+    for (const key of keys) {
+      const current = existingIdentityOwners.get(key);
+      existingIdentityOwners.set(
+        key,
+        current ? choosePreferredInfluencerRow(current, row) : row,
+      );
+    }
+  }
+
+  return rows.flatMap((incomingRow) => {
+    const accountAssessment = classifyDiscoveredInfluencerAccount(incomingRow);
+    const normalizedCategories = normalizeMarketplaceCreatorCategories(incomingRow);
+    const row = {
+      ...incomingRow,
+      categories: normalizedCategories,
+      status: accountAssessment.excluded ? "hidden" : incomingRow.status,
+      source_evidence: {
+        ...(incomingRow.source_evidence ?? {}),
+        categoryTaxonomy: {
+          version: "2026-07-medium-v1",
+          primaryCategory: normalizedCategories[0],
+          sourceCategories: incomingRow.categories ?? [],
+        },
+        ...(accountAssessment.excluded
+          ? {
+              accountCuration: {
+                type: accountAssessment.type,
+                reason: accountAssessment.reason,
+                version: "2026-07-independent-creators-v1",
+              },
+            }
+          : {}),
+      },
+    };
+    const existingSameId = existingById.get(row.id);
+    const existingEvidence = existingSameId?.source_evidence ?? {};
+    const countryLocked =
+      existingEvidence.countryLock === true ||
+      existingEvidence.countryConfidence === "manual_verified";
+    const statusLocked =
+      existingSameId?.status === "claimed" ||
+      existingEvidence.countryStatusLock === true;
+    const mergedEvidence = {
+      ...existingEvidence,
+      ...(row.source_evidence ?? {}),
+      ...(countryLocked
+        ? {
+            countryConfidence: existingEvidence.countryConfidence,
+            countrySignals: existingEvidence.countrySignals,
+            countryLock: true,
+            countryStatusLock: existingEvidence.countryStatusLock === true,
+            countryAudit: existingEvidence.countryAudit,
+          }
+        : {}),
+    };
+    const mergedCandidate = existingSameId
+      ? {
+          ...row,
+          source_evidence: mergedEvidence,
+          ...(countryLocked
+            ? {
+                audience_countries: normalizeMarketplaceCountryCodes(
+                  existingSameId.audience_countries,
+                ),
+              }
+            : {}),
+          ...(statusLocked ? { status: existingSameId.status } : {}),
+        }
+      : row;
+    const candidate =
+      existingSameId?.status === "hidden"
+        ? { ...mergedCandidate, status: "hidden" }
+        : mergedCandidate;
+    const handle = String(candidate.platform_handle ?? "").trim().toLowerCase();
+    const normalizedUrl = normalizePublicProfileUrl(candidate.profile_url);
+    const identityKeys = [
+      handle ? `${candidate.platform}:handle:${handle}` : "",
+      normalizedUrl ? `${candidate.platform}:url:${normalizedUrl}` : "",
+    ].filter(Boolean);
+    const preferredExisting = identityKeys
+      .map((key) => existingIdentityOwners.get(key))
+      .filter(Boolean)
+      .reduce(
+        (preferred, existing) =>
+          preferred ? choosePreferredInfluencerRow(preferred, existing) : existing,
+        undefined,
+      );
+    if (
+      preferredExisting &&
+      preferredExisting.id !== candidate.id &&
+      choosePreferredInfluencerRow(preferredExisting, candidate).id === preferredExisting.id
+    ) {
+      return [];
     }
 
-    const suffix = sha256(row.id).slice(0, 5);
-    const base = row.public_handle.slice(0, Math.max(3, 29 - suffix.length));
+    const owner = taken.get(candidate.public_handle.toLowerCase());
+    if (!owner || owner === candidate.id) {
+      taken.set(candidate.public_handle.toLowerCase(), candidate.id);
+      return [candidate];
+    }
+
+    const suffix = sha256(candidate.id).slice(0, 5);
+    const base = candidate.public_handle.slice(
+      0,
+      Math.max(3, 29 - suffix.length),
+    );
     const publicHandle = `${base}-${suffix}`.replace(/[^a-z0-9]+$/, "");
-    taken.set(publicHandle.toLowerCase(), row.id);
-    return { ...row, public_handle: publicHandle };
+    taken.set(publicHandle.toLowerCase(), candidate.id);
+    return [{ ...candidate, public_handle: publicHandle }];
   });
 }
 
@@ -1798,7 +2012,11 @@ async function main() {
   const targetRows = outputPlatforms.size > 0
     ? sourceRows.filter((row) => outputPlatforms.has(row.platform))
     : sourceRows;
-  const deduped = dedupeRows(filterRowsByFollowerRange(targetRows.map(rescoreRow)));
+  const deduped = dedupeRows(
+    filterRowsByFollowerRange(
+      targetRows.map(sanitizeInfluencerCollectedRow).map(rescoreRow),
+    ),
+  );
   const rows = apply ? await reserveExistingHandles(deduped) : deduped;
 
   await fs.mkdir(outputDir, { recursive: true });

@@ -16,6 +16,11 @@
     "qa:discord": "npm run qa",
     "discover:influencers": "node scripts/discover-korean-influencers.mjs",
     "discover:influencers:loop": "node scripts/run-influencer-discovery-loop.mjs",
+    "sync:naver-blog-visitors": "node scripts/sync-discovered-naver-blog-visitors.mjs",
+    "audit:influencers": "node scripts/audit-influencer-database.mjs",
+    "repair:influencer-countries": "node scripts/repair-influencer-country-data.mjs",
+    "repair:influencer-quality": "node scripts/repair-influencer-data-quality.mjs",
+    "curate:influencers": "node scripts/curate-influencer-marketplace.mjs",
     "seed:qa-marketplace": "node scripts/seed-qa-marketplace-scenario.mjs",
     "seed:test-accounts": "node scripts/seed-test-accounts.mjs",
     "secrets:generate": "node scripts/generate-secrets.mjs"

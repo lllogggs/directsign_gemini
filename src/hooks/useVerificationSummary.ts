@@ -5,6 +5,7 @@ import {
   waitForFastLoginTransition,
   type FastLoginRole,
 } from "../domain/fastLoginTransition";
+import { getAdvertiserSessionCache } from "../domain/advertiserSessionCache";
 import { translateApiErrorMessage } from "../domain/userMessages";
 import type { VerificationSummary } from "../domain/verification";
 
@@ -13,24 +14,39 @@ type VerificationSummaryOptions = {
   enabled?: boolean;
 };
 
-const VERIFICATION_SUMMARY_CACHE_MS = 2 * 60 * 1000;
-const verificationSummaryCache = new Map<
-  string,
-  {
-    summary: VerificationSummary;
-    statusCode: number;
-    cachedAt: number;
-  }
->();
-type VerificationSummaryCacheEntry = {
+type VerificationSummaryResponse = {
   summary: VerificationSummary;
   statusCode: number;
-  cachedAt: number;
 };
+
+type VerificationSummaryCacheEntry = VerificationSummaryResponse & {
+  accountKey?: string;
+  cachedAt: number;
+  targetKey: string;
+};
+
+type VerificationSummaryInflightEntry = {
+  accountKey?: string;
+  generation: number;
+  promise: Promise<VerificationSummaryCacheEntry | undefined>;
+};
+
+type VerificationAccountContext = {
+  key?: string;
+  email?: string;
+};
+
+const VERIFICATION_SUMMARY_CACHE_MS = 15 * 1000;
+const verificationSummaryCache = new Map<
+  string,
+  VerificationSummaryCacheEntry
+>();
 const verificationSummaryInflight = new Map<
   string,
-  Promise<VerificationSummaryCacheEntry | undefined>
+  VerificationSummaryInflightEntry
 >();
+const verificationSummaryAccountKeys = new Map<string, string>();
+const verificationSummaryGenerations = new Map<string, number>();
 
 const buildVerificationStatusUrl = (role?: VerificationSummaryOptions["role"]) => {
   const query = new URLSearchParams();
@@ -42,154 +58,248 @@ const buildVerificationStatusUrl = (role?: VerificationSummaryOptions["role"]) =
 const getVerificationCacheKey = (role?: VerificationSummaryOptions["role"]) =>
   role ?? "all";
 
+const normalizeAccountKey = (accountKey?: string) => {
+  const normalized = accountKey?.trim();
+  return normalized ? `account:${normalized}` : undefined;
+};
+
+const normalizeEmail = (email?: string) => email?.trim().toLowerCase();
+
+const getVerificationAccountContext = (
+  role?: VerificationSummaryOptions["role"],
+  accountKey?: string,
+): VerificationAccountContext => {
+  if (role === "advertiser") {
+    const user = getAdvertiserSessionCache()?.user;
+    const runtimeKey = normalizeAccountKey(user?.id);
+    if (runtimeKey) {
+      return { key: runtimeKey, email: normalizeEmail(user?.email) };
+    }
+  }
+
+  return { key: normalizeAccountKey(accountKey) };
+};
+
+const getVerificationTargetKey = (
+  role: VerificationSummaryOptions["role"] | undefined,
+  summary: VerificationSummary,
+) => {
+  if (role === "advertiser") return summary.advertiser.target_id;
+  if (role === "influencer") return summary.influencer.target_id;
+  return `${summary.advertiser.target_id}:${summary.influencer.target_id}`;
+};
+
+const getVerificationSummaryEmail = (
+  role: VerificationSummaryOptions["role"] | undefined,
+  summary: VerificationSummary,
+) =>
+  role === "advertiser"
+    ? normalizeEmail(summary.advertiser.account?.email)
+    : role === "influencer"
+      ? normalizeEmail(summary.influencer.account?.email)
+      : undefined;
+
+const getVerificationGeneration = (cacheKey: string) =>
+  verificationSummaryGenerations.get(cacheKey) ?? 0;
+
+const invalidateVerificationCacheKey = (cacheKey: string) => {
+  verificationSummaryCache.delete(cacheKey);
+  verificationSummaryInflight.delete(cacheKey);
+  verificationSummaryGenerations.set(
+    cacheKey,
+    getVerificationGeneration(cacheKey) + 1,
+  );
+};
+
+const syncVerificationAccountKey = (
+  role?: VerificationSummaryOptions["role"],
+  accountKey?: string,
+) => {
+  const cacheKey = getVerificationCacheKey(role);
+  const resolvedAccountKey = getVerificationAccountContext(role, accountKey).key;
+  const previousAccountKey = verificationSummaryAccountKeys.get(cacheKey);
+
+  if (!resolvedAccountKey) return previousAccountKey;
+  if (previousAccountKey && previousAccountKey !== resolvedAccountKey) {
+    invalidateVerificationCacheKey(cacheKey);
+  } else {
+    const cached = verificationSummaryCache.get(cacheKey);
+    if (cached?.accountKey && cached.accountKey !== resolvedAccountKey) {
+      invalidateVerificationCacheKey(cacheKey);
+    }
+  }
+
+  verificationSummaryAccountKeys.set(cacheKey, resolvedAccountKey);
+  return resolvedAccountKey;
+};
+
 const getFastLoginRole = (
   role?: VerificationSummaryOptions["role"],
 ): FastLoginRole | undefined =>
   role === "advertiser" || role === "influencer" ? role : undefined;
 
-const getVerificationStorageKey = (role?: VerificationSummaryOptions["role"]) =>
-  `yeollock-verification-summary:${getVerificationCacheKey(role)}`;
-
-function readStoredVerificationSummary(role?: VerificationSummaryOptions["role"]) {
-  if (typeof window === "undefined") return undefined;
-
-  try {
-    const raw = window.sessionStorage.getItem(getVerificationStorageKey(role));
-    if (!raw) return undefined;
-    const parsed = JSON.parse(raw) as {
-      summary?: VerificationSummary;
-      statusCode?: number;
-      cachedAt?: number;
-    };
-    if (!parsed.summary || typeof parsed.cachedAt !== "number") return undefined;
-    if (Date.now() - parsed.cachedAt > VERIFICATION_SUMMARY_CACHE_MS) {
-      window.sessionStorage.removeItem(getVerificationStorageKey(role));
-      return undefined;
-    }
-    return {
-      summary: parsed.summary,
-      statusCode: parsed.statusCode ?? 200,
-      cachedAt: parsed.cachedAt,
-    };
-  } catch {
-    return undefined;
-  }
-}
-
-function writeStoredVerificationSummary(
-  role: VerificationSummaryOptions["role"] | undefined,
-  entry: VerificationSummaryCacheEntry,
-) {
-  if (typeof window === "undefined") return;
-
-  try {
-    window.sessionStorage.setItem(
-      getVerificationStorageKey(role),
-      JSON.stringify(entry),
-    );
-  } catch {
-    // Keep the in-memory cache even if sessionStorage is unavailable.
-  }
-}
-
 export function primeVerificationSummary(
   role: VerificationSummaryOptions["role"] | undefined,
   summary: VerificationSummary,
   statusCode = 200,
+  accountKey?: string,
 ) {
+  const cacheKey = getVerificationCacheKey(role);
+  const accountContext = getVerificationAccountContext(role, accountKey);
+  const summaryEmail = getVerificationSummaryEmail(role, summary);
+  if (
+    accountContext.email &&
+    summaryEmail &&
+    accountContext.email !== summaryEmail
+  ) {
+    return undefined;
+  }
+
+  const targetKey = getVerificationTargetKey(role, summary);
+  let resolvedAccountKey: string;
+  if (accountContext.key) {
+    resolvedAccountKey =
+      syncVerificationAccountKey(role, accountKey) ?? accountContext.key;
+  } else {
+    resolvedAccountKey = `target:${targetKey}`;
+    const previousAccountKey = verificationSummaryAccountKeys.get(cacheKey);
+    if (previousAccountKey && previousAccountKey !== resolvedAccountKey) {
+      invalidateVerificationCacheKey(cacheKey);
+    }
+    verificationSummaryAccountKeys.set(cacheKey, resolvedAccountKey);
+  }
+
   const entry = {
     summary,
     statusCode,
+    accountKey: resolvedAccountKey,
     cachedAt: Date.now(),
-  };
-  verificationSummaryCache.set(getVerificationCacheKey(role), entry);
-  writeStoredVerificationSummary(role, entry);
+    targetKey,
+  } satisfies VerificationSummaryCacheEntry;
+  verificationSummaryCache.set(cacheKey, entry);
+  return entry;
 }
 
 export function getCachedVerificationSummary(
   role?: VerificationSummaryOptions["role"],
+  accountKey?: string,
 ) {
-  const cache = verificationSummaryCache.get(getVerificationCacheKey(role));
-  if (!cache) {
-    const stored = readStoredVerificationSummary(role);
-    if (stored) {
-      verificationSummaryCache.set(getVerificationCacheKey(role), stored);
-    }
-    return stored;
-  }
-  if (Date.now() - cache.cachedAt > VERIFICATION_SUMMARY_CACHE_MS) {
-    verificationSummaryCache.delete(getVerificationCacheKey(role));
-    if (typeof window !== "undefined") {
-      window.sessionStorage.removeItem(getVerificationStorageKey(role));
-    }
+  const cacheKey = getVerificationCacheKey(role);
+  const resolvedAccountKey = syncVerificationAccountKey(role, accountKey);
+  const cached = verificationSummaryCache.get(cacheKey);
+  if (!cached) return undefined;
+
+  if (Date.now() - cached.cachedAt > VERIFICATION_SUMMARY_CACHE_MS) {
+    invalidateVerificationCacheKey(cacheKey);
     return undefined;
   }
-  return cache;
+  if (resolvedAccountKey && cached.accountKey !== resolvedAccountKey) {
+    invalidateVerificationCacheKey(cacheKey);
+    return undefined;
+  }
+
+  const accountEmail = getVerificationAccountContext(role, accountKey).email;
+  const summaryEmail = getVerificationSummaryEmail(role, cached.summary);
+  if (accountEmail && summaryEmail && accountEmail !== summaryEmail) {
+    invalidateVerificationCacheKey(cacheKey);
+    return undefined;
+  }
+
+  return cached;
 }
 
 export function clearVerificationSummaryCache(
   role?: VerificationSummaryOptions["role"],
 ) {
   if (role) {
-    verificationSummaryCache.delete(getVerificationCacheKey(role));
-    verificationSummaryInflight.delete(getVerificationCacheKey(role));
-    if (typeof window !== "undefined") {
-      window.sessionStorage.removeItem(getVerificationStorageKey(role));
-    }
+    const cacheKey = getVerificationCacheKey(role);
+    invalidateVerificationCacheKey(cacheKey);
+    verificationSummaryAccountKeys.delete(cacheKey);
     return;
   }
-  verificationSummaryCache.clear();
-  verificationSummaryInflight.clear();
-  if (typeof window !== "undefined") {
-    for (const key of Object.keys(window.sessionStorage)) {
-      if (key.startsWith("yeollock-verification-summary:")) {
-        window.sessionStorage.removeItem(key);
-      }
-    }
-  }
+
+  const cacheKeys = new Set([
+    "all",
+    "advertiser",
+    "influencer",
+    ...verificationSummaryCache.keys(),
+    ...verificationSummaryInflight.keys(),
+    ...verificationSummaryAccountKeys.keys(),
+  ]);
+  cacheKeys.forEach(invalidateVerificationCacheKey);
+  verificationSummaryAccountKeys.clear();
 }
 
 async function fetchVerificationSummary(
   role?: VerificationSummaryOptions["role"],
-  signal?: AbortSignal,
+  accountKey?: string,
 ) {
   const cacheKey = getVerificationCacheKey(role);
+  const requestAccountContext = getVerificationAccountContext(role, accountKey);
+  const resolvedAccountKey = syncVerificationAccountKey(role, accountKey);
+  const generation = getVerificationGeneration(cacheKey);
   const existingRequest = verificationSummaryInflight.get(cacheKey);
-  if (existingRequest) return existingRequest;
+  if (
+    existingRequest &&
+    existingRequest.generation === generation &&
+    existingRequest.accountKey === resolvedAccountKey
+  ) {
+    return existingRequest.promise;
+  }
 
   const request = (async () => {
     const response = await apiFetch(buildVerificationStatusUrl(role), {
       headers: { Accept: "application/json" },
       credentials: "include",
-      signal,
+      cache: "no-store",
     });
 
     if (!response.ok) {
-      clearVerificationSummaryCache(role);
+      invalidateVerificationCacheKey(cacheKey);
       throw new Error(`인증 상태 API 오류 (${response.status})`);
     }
 
-    const entry = {
-      summary: (await response.json()) as VerificationSummary,
-      statusCode: response.status,
-      cachedAt: Date.now(),
-    };
-    verificationSummaryCache.set(cacheKey, entry);
-    writeStoredVerificationSummary(role, entry);
-    return entry;
-  })().finally(() => {
-    verificationSummaryInflight.delete(cacheKey);
+    const summary = (await response.json()) as VerificationSummary;
+    const currentAccountContext = getVerificationAccountContext(role);
+    if (
+      requestAccountContext.key &&
+      currentAccountContext.key &&
+      requestAccountContext.key !== currentAccountContext.key
+    ) {
+      syncVerificationAccountKey(role);
+      return undefined;
+    }
+    if (generation !== getVerificationGeneration(cacheKey)) return undefined;
+
+    return primeVerificationSummary(
+      role,
+      summary,
+      response.status,
+      accountKey,
+    );
+  })();
+  verificationSummaryInflight.set(cacheKey, {
+    accountKey: resolvedAccountKey,
+    generation,
+    promise: request,
   });
 
-  verificationSummaryInflight.set(cacheKey, request);
-  return request;
+  try {
+    return await request;
+  } finally {
+    if (verificationSummaryInflight.get(cacheKey)?.promise === request) {
+      verificationSummaryInflight.delete(cacheKey);
+    }
+  }
 }
 
 export async function preloadVerificationSummary(
   role?: VerificationSummaryOptions["role"],
+  accountKey?: string,
 ) {
-  if (getCachedVerificationSummary(role)) return;
-  await fetchVerificationSummary(role).catch(() => undefined);
+  const cached = getCachedVerificationSummary(role, accountKey);
+  if (cached) return cached;
+  return fetchVerificationSummary(role, accountKey).catch(() => undefined);
 }
 
 const getVerificationSummaryErrorMessage = (message?: string) => {
@@ -220,19 +330,34 @@ export function useVerificationSummary(options?: VerificationSummaryOptions) {
     cached?.statusCode,
   );
 
-  const load = useCallback(async (signal?: AbortSignal, silent = false) => {
+  const load = useCallback(async (signal?: AbortSignal, force = false) => {
     if (!enabled) {
+      setSummary(null);
       setIsLoading(false);
       setError(undefined);
+      setStatusCode(undefined);
       return;
     }
-    if (!silent) setIsLoading(true);
+
+    const currentCache = force ? undefined : getCachedVerificationSummary(role);
+    if (currentCache) {
+      setSummary(currentCache.summary);
+      setStatusCode(currentCache.statusCode);
+      setError(undefined);
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
     setError(undefined);
-    if (!silent) setStatusCode(undefined);
+    if (!force) {
+      setSummary(null);
+      setStatusCode(undefined);
+    }
 
     try {
-      const next = await fetchVerificationSummary(role, signal);
-      if (!next) return;
+      const next = await fetchVerificationSummary(role);
+      if (signal?.aborted || !next) return;
       setStatusCode(next.statusCode);
       setSummary(next.summary);
     } catch (requestError) {
@@ -240,7 +365,7 @@ export function useVerificationSummary(options?: VerificationSummaryOptions) {
       const message =
         requestError instanceof Error ? requestError.message : undefined;
       setStatusCode(getStatusCodeFromVerificationError(message));
-      setSummary((current) => current ?? null);
+      setSummary(null);
       setError(
         message
           ? getVerificationSummaryErrorMessage(message)
@@ -252,15 +377,11 @@ export function useVerificationSummary(options?: VerificationSummaryOptions) {
   }, [enabled, role]);
 
   const refresh = async () => {
-    await load();
+    await load(undefined, true);
   };
 
   useEffect(() => {
     if (!enabled) {
-      return;
-    }
-
-    if (getCachedVerificationSummary(role)) {
       return;
     }
 

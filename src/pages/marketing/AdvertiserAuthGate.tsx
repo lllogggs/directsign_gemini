@@ -7,6 +7,7 @@ import {
 } from "../../components/AuthLoginScreen";
 import { apiFetch } from "../../domain/api";
 import {
+  clearAdvertiserDashboardBootstrapPreload,
   preloadAdvertiserDashboardBootstrap,
   primeAdvertiserDashboardBootstrap,
 } from "../../domain/advertiserDashboardPreload";
@@ -66,11 +67,32 @@ let advertiserLoginWarmupStarted = false;
 const prewarmAdvertiserLoginEndpoint = () => {
   if (advertiserLoginWarmupStarted || typeof window === "undefined") return;
   advertiserLoginWarmupStarted = true;
-  void apiFetch("/api/advertiser/login", {
-    method: "GET",
-    headers: { Accept: "application/json" },
-    credentials: "include",
-  }).catch(() => undefined);
+  void Promise.allSettled([
+    apiFetch("/api/auth/warmup", {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      credentials: "include",
+    }),
+    apiFetch("/api/advertiser/login", {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      credentials: "include",
+    }),
+  ]);
+};
+
+const rememberAuthenticatedAdvertiser = (
+  user?: AdvertiserSessionResponse["user"],
+) => {
+  const previousAccountId = getAdvertiserSessionCache()?.user?.id;
+  const nextAccountId = user?.id;
+  if (!nextAccountId || previousAccountId !== nextAccountId) {
+    clearVerificationSummaryCache("advertiser");
+    clearAdvertiserDashboardBootstrapPreload();
+  }
+  if (!nextAccountId) clearAdvertiserSessionCache();
+  rememberAdvertiserSession(user);
+  return nextAccountId;
 };
 
 export function AdvertiserAuthGate({
@@ -107,12 +129,13 @@ export function AdvertiserAuthGate({
   }, [hydrateContracts]);
 
   const preloadDashboard = useCallback(async () => {
+    const accountId = getAdvertiserSessionCache()?.user?.id;
     try {
       await preloadAdvertiserDashboardBootstrap();
     } catch (preloadError) {
       console.warn("[yeollock.me] advertiser dashboard preload failed", preloadError);
       await Promise.allSettled([
-        preloadVerificationSummary("advertiser"),
+        preloadVerificationSummary("advertiser", accountId),
         refreshContracts({ force: true }),
       ]);
     }
@@ -153,9 +176,12 @@ export function AdvertiserAuthGate({
         const data = (await response.json()) as AdvertiserSessionResponse;
 
         if (!cancelled && response.ok && data.authenticated === true) {
-          rememberAdvertiserSession(data.user);
+          const accountId = rememberAuthenticatedAdvertiser(data.user);
           if (location.pathname === "/advertiser/verification") {
-            await waitSoft(preloadVerificationSummary("advertiser"), 900);
+            await waitSoft(
+              preloadVerificationSummary("advertiser", accountId),
+              900,
+            );
           }
           setIsAuthenticated(true);
           setIsChecking(false);
@@ -166,6 +192,7 @@ export function AdvertiserAuthGate({
         if (!cancelled) {
           clearAdvertiserSessionCache();
           clearVerificationSummaryCache("advertiser");
+          clearAdvertiserDashboardBootstrapPreload();
           setIsAuthenticated(false);
         }
       } catch {
@@ -191,7 +218,7 @@ export function AdvertiserAuthGate({
     const timer = window.setTimeout(() => {
       const run = async () => {
         if (isFastLoginTransitionPending("advertiser")) {
-          await waitForFastLoginTransition("advertiser", 2_500);
+          await waitForFastLoginTransition("advertiser", 6_000);
         }
         if (cancelled) return;
 
@@ -250,10 +277,15 @@ export function AdvertiserAuthGate({
         );
       }
 
+      const accountId = rememberAuthenticatedAdvertiser(data.user);
       if (!navigatedOptimistically) setIsAuthenticated(true);
-      rememberAdvertiserSession(data.user);
       if (data.dashboard?.verification) {
-        primeVerificationSummary("advertiser", data.dashboard.verification);
+        primeVerificationSummary(
+          "advertiser",
+          data.dashboard.verification,
+          200,
+          accountId,
+        );
       }
       if (Array.isArray(data.dashboard?.contracts)) {
         primeAdvertiserDashboardBootstrap(data.dashboard);
@@ -266,13 +298,18 @@ export function AdvertiserAuthGate({
       }
       finishFastLoginTransition("advertiser");
       if (dashboardPreload) void dashboardPreload;
-      if (redirectAfterLogin && !navigatedOptimistically) {
+      if (
+        redirectAfterLogin &&
+        (!navigatedOptimistically || window.location.pathname !== redirectAfterLogin)
+      ) {
         navigate(redirectAfterLogin, { replace: true });
         return;
       }
     } catch (loginError) {
       finishFastLoginTransition("advertiser");
       clearAdvertiserSessionCache();
+      clearVerificationSummaryCache("advertiser");
+      clearAdvertiserDashboardBootstrapPreload();
       const message =
         loginError instanceof Error
           ? translateApiErrorMessage(

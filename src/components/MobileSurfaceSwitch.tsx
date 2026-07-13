@@ -12,7 +12,12 @@ const surfaceCopy: Record<
   SurfaceRole,
   {
     ariaLabel: string;
-    items: Array<{ id: SurfaceKind; label: string; href: string }>;
+    items: Array<{
+      id: SurfaceKind;
+      label: string;
+      href: string;
+      ariaLabel?: string;
+    }>;
   }
 > = {
   advertiser: {
@@ -20,7 +25,12 @@ const surfaceCopy: Record<
     items: [
       { id: "contracts", label: "1:1 계약", href: "/advertiser/dashboard" },
       { id: "campaigns", label: "캠페인", href: "/advertiser/campaigns" },
-      { id: "costs", label: "광고비 현황", href: "/advertiser/costs" },
+      {
+        id: "costs",
+        label: "광고비",
+        ariaLabel: "광고비 현황",
+        href: "/advertiser/costs",
+      },
     ],
   },
   influencer: {
@@ -60,6 +70,7 @@ export function MobileSurfaceSwitch({ role, active }: MobileSurfaceSwitchProps) 
                 key={item.id}
                 className={className}
                 aria-current="page"
+                aria-label={item.ariaLabel}
                 data-mobile-surface-active={item.id}
               >
                 {item.label}
@@ -68,7 +79,13 @@ export function MobileSurfaceSwitch({ role, active }: MobileSurfaceSwitchProps) 
           }
 
           return (
-            <Link key={item.id} to={item.href} className={className}>
+            <Link
+              key={item.id}
+              to={item.href}
+              className={className}
+              aria-label={item.ariaLabel}
+              title={item.ariaLabel}
+            >
               {item.label}
             </Link>
           );

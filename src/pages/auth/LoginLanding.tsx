@@ -1,5 +1,6 @@
 import { ArrowRight, Building2, UserRound } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
+import { preserveAuthContext } from "../../components/AuthLoginScreen";
 import { BrandLogo } from "../../components/BrandLogo";
 import { PRODUCT_NAME } from "../../domain/brand";
 import { getSafeRedirectPath } from "../../domain/navigation";
@@ -20,7 +21,7 @@ const loginRoles = [
     detail: "로그인 · 가입 · 전자서명",
     href: "/login/influencer",
     fallback: "/influencer/dashboard",
-    allowedPrefixes: ["/influencer", "/contract"],
+    allowedPrefixes: ["/influencer", "/contract", "/campaigns"],
     icon: UserRound,
   },
 ] as const;
@@ -92,11 +93,12 @@ export function LoginLanding() {
                 const href = next
                   ? `${role.href}?next=${encodeURIComponent(next)}`
                   : role.href;
+                const contextualHref = preserveAuthContext(href, location.search);
 
                 return (
                   <Link
                     key={role.href}
-                    to={href}
+                    to={contextualHref}
                     aria-label={role.title}
                     className={`group flex h-[112px] items-center gap-4 rounded-[10px] border px-5 text-left shadow-[0_1px_0_rgba(15,23,42,0.03),0_10px_28px_rgba(15,23,42,0.035)] transition hover:-translate-y-0.5 hover:shadow-[0_1px_0_rgba(15,23,42,0.04),0_14px_34px_rgba(15,23,42,0.055)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950 sm:h-[124px] sm:px-6 ${tone.card}`}
                   >
@@ -121,7 +123,7 @@ export function LoginLanding() {
             </div>
             <div className="mt-3 text-center">
               <Link
-                to="/reset-password?role=advertiser"
+                to={preserveAuthContext("/reset-password", location.search)}
                 className="inline-flex min-h-8 items-center text-[12px] font-bold text-neutral-500 transition hover:text-neutral-950"
               >
                 비밀번호 재설정

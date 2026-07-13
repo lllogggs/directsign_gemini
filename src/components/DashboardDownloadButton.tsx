@@ -14,12 +14,12 @@ export function DashboardDownloadButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="yl-header-action yl-header-action-secondary disabled:pointer-events-none disabled:border-neutral-200 disabled:bg-neutral-50 disabled:text-neutral-300 disabled:shadow-none"
+      className="yl-header-action yl-header-action-secondary !w-[88px] px-2.5 sm:!w-[112px] disabled:pointer-events-none disabled:border-neutral-200 disabled:bg-neutral-50 disabled:text-neutral-300 disabled:shadow-none"
       aria-label="내보내기"
       title="내보내기"
     >
       <Download className="h-3.5 w-3.5" strokeWidth={2} />
-      <span className="hidden sm:inline">내보내기</span>
+      <span>내보내기</span>
     </button>
   );
 }

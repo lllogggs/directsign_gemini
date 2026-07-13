@@ -1,4 +1,8 @@
 import type { InfluencerPlatform } from "./verification.js";
+import {
+  isoAlpha2CountryCodes,
+  isIsoAlpha2CountryCode,
+} from "./isoCountryCodes.js";
 
 export type CampaignProposalType =
   | "sponsored_post"
@@ -17,21 +21,7 @@ export const campaignProposalTypeOptions: CampaignProposalType[] = [
   "visit_review",
 ];
 
-export type MarketplaceCountryCode =
-  | "south_korea"
-  | "japan"
-  | "taiwan"
-  | "hong_kong"
-  | "united_states"
-  | "china"
-  | "thailand"
-  | "vietnam"
-  | "indonesia"
-  | "singapore"
-  | "malaysia"
-  | "global";
-
-export const marketplaceCountryOptions: MarketplaceCountryCode[] = [
+export const marketplaceLegacyCountryOptions = [
   "south_korea",
   "japan",
   "taiwan",
@@ -43,10 +33,52 @@ export const marketplaceCountryOptions: MarketplaceCountryCode[] = [
   "indonesia",
   "singapore",
   "malaysia",
+  "australia",
+  "canada",
+  "germany",
+  "india",
+  "philippines",
+  "bulgaria",
+  "tanzania",
+  "egypt",
   "global",
-];
+  "other",
+] as const;
 
-export const marketplaceCountryLabels: Record<MarketplaceCountryCode, string> = {
+export type MarketplaceLegacyCountryCode =
+  (typeof marketplaceLegacyCountryOptions)[number];
+export type MarketplaceIsoCountryCode = `iso_${Lowercase<string>}`;
+export type MarketplaceCountryCode =
+  | MarketplaceLegacyCountryCode
+  | MarketplaceIsoCountryCode;
+
+const marketplaceCountryCodeByIso: Record<string, MarketplaceLegacyCountryCode> = {
+  AU: "australia",
+  BG: "bulgaria",
+  CA: "canada",
+  CN: "china",
+  DE: "germany",
+  EG: "egypt",
+  HK: "hong_kong",
+  ID: "indonesia",
+  IN: "india",
+  JP: "japan",
+  KR: "south_korea",
+  MY: "malaysia",
+  PH: "philippines",
+  SG: "singapore",
+  TH: "thailand",
+  TW: "taiwan",
+  TZ: "tanzania",
+  US: "united_states",
+  VN: "vietnam",
+};
+
+const marketplaceLegacyCountrySet = new Set<string>(
+  marketplaceLegacyCountryOptions,
+);
+
+export const marketplaceCountryLabels: Record<MarketplaceLegacyCountryCode, string> = {
   south_korea: "한국",
   japan: "일본",
   taiwan: "대만",
@@ -58,11 +90,68 @@ export const marketplaceCountryLabels: Record<MarketplaceCountryCode, string> = 
   indonesia: "인도네시아",
   singapore: "싱가포르",
   malaysia: "말레이시아",
+  australia: "호주",
+  canada: "캐나다",
+  germany: "독일",
+  india: "인도",
+  philippines: "필리핀",
+  bulgaria: "불가리아",
+  tanzania: "탄자니아",
+  egypt: "이집트",
   global: "글로벌",
+  other: "기타 국가",
 };
 
-export const getMarketplaceCountryLabel = (country: MarketplaceCountryCode) =>
-  marketplaceCountryLabels[country] ?? country;
+const koreanRegionNames = new Intl.DisplayNames(["ko"], { type: "region" });
+
+export const marketplaceCountryFromIso = (
+  value: string | null | undefined,
+): MarketplaceCountryCode | "" => {
+  const isoCode = String(value ?? "").trim().toUpperCase();
+  if (!isIsoAlpha2CountryCode(isoCode)) return "";
+  return (
+    marketplaceCountryCodeByIso[isoCode] ??
+    (`iso_${isoCode.toLowerCase()}` as MarketplaceIsoCountryCode)
+  );
+};
+
+export const isMarketplaceCountryCode = (
+  value: unknown,
+): value is MarketplaceCountryCode => {
+  if (typeof value !== "string") return false;
+  if (marketplaceLegacyCountrySet.has(value)) return true;
+  if (!/^iso_[a-z]{2}$/.test(value)) return false;
+  return isIsoAlpha2CountryCode(value.slice(4));
+};
+
+export const getMarketplaceCountryLabel = (country: MarketplaceCountryCode) => {
+  if (marketplaceLegacyCountrySet.has(country)) {
+    return marketplaceCountryLabels[country as MarketplaceLegacyCountryCode];
+  }
+
+  const isoCode = country.slice(4).toUpperCase();
+  return koreanRegionNames.of(isoCode) ?? isoCode;
+};
+
+const preferredMarketplaceCountries = marketplaceLegacyCountryOptions.filter(
+  (country) => country !== "global" && country !== "other",
+);
+const extendedMarketplaceCountries = isoAlpha2CountryCodes
+  .filter((isoCode) => !marketplaceCountryCodeByIso[isoCode])
+  .map((isoCode) => `iso_${isoCode.toLowerCase()}` as MarketplaceIsoCountryCode)
+  .sort((left, right) =>
+    getMarketplaceCountryLabel(left).localeCompare(
+      getMarketplaceCountryLabel(right),
+      "ko",
+    ),
+  );
+
+export const marketplaceCountryOptions: MarketplaceCountryCode[] = [
+  ...preferredMarketplaceCountries,
+  ...extendedMarketplaceCountries,
+  "global",
+  "other",
+];
 
 export const formatMarketplaceCountries = (
   countries: MarketplaceCountryCode[] | undefined,

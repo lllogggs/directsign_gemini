@@ -7,8 +7,7 @@ dotenv.config();
 const SUPABASE_URL = process.env.SUPABASE_URL?.replace(/\/$/, "");
 const SERVICE_KEY =
   process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SECRET_KEY;
-const TEST_ACCOUNT_PASSWORD =
-  process.env.QA_TEST_PASSWORD ?? "YeollockTest!2026";
+const TEST_ACCOUNT_PASSWORD = process.env.QA_TEST_PASSWORD;
 const PUBLIC_SITE_URL = (
   process.env.PUBLIC_SITE_URL ??
   process.env.VITE_PUBLIC_SITE_URL ??
@@ -23,6 +22,36 @@ const LEGACY_CONTRACTS_TABLE =
   process.env.SUPABASE_CONTRACTS_TABLE ?? "directsign_contracts";
 const ALLOW_PRODUCTION_TEST_DATA =
   process.env.YEOLLOCK_ALLOW_PRODUCTION_TEST_DATA === "true";
+const SEED_RUN_CONFIRMED =
+  process.env.YEOLLOCK_SEED_TEST_ACCOUNTS === "true";
+const ACKNOWLEDGED_SUPABASE_HOST = process.env.YEOLLOCK_ACK_SUPABASE_HOST;
+
+if (!SEED_RUN_CONFIRMED) {
+  throw new Error(
+    "Test account seeding requires the per-run opt-in YEOLLOCK_SEED_TEST_ACCOUNTS=true.",
+  );
+}
+
+if (!SUPABASE_URL || !SERVICE_KEY) {
+  throw new Error("Supabase service environment is missing");
+}
+
+if (!TEST_ACCOUNT_PASSWORD) {
+  throw new Error("QA_TEST_PASSWORD must be set for this seed run");
+}
+
+let supabaseHost;
+try {
+  supabaseHost = new URL(SUPABASE_URL).host;
+} catch {
+  throw new Error("SUPABASE_URL must be a valid absolute URL");
+}
+
+if (ACKNOWLEDGED_SUPABASE_HOST !== supabaseHost) {
+  throw new Error(
+    `Set YEOLLOCK_ACK_SUPABASE_HOST=${supabaseHost} to acknowledge the exact Supabase target for this run.`,
+  );
+}
 
 const isProductionHost = (value) =>
   /^https:\/\/(www\.)?yeollock\.me$/i.test(value);
@@ -57,10 +86,6 @@ const testHandles = {
   influencer: "creator-sora",
   brand: "breadroom-partner",
 };
-
-if (!SUPABASE_URL || !SERVICE_KEY) {
-  throw new Error("Supabase service environment is missing");
-}
 
 const restHeaders = {
   apikey: SERVICE_KEY,
@@ -267,6 +292,7 @@ const ensureProfilesAndOrganization = async (advertiser, influencer) => {
         activity_categories: [],
         activity_platforms: [],
         verification_status: "approved",
+        data_origin: "qa",
         email_verified_at: timestamp,
         updated_at: timestamp,
       },
@@ -280,6 +306,7 @@ const ensureProfilesAndOrganization = async (advertiser, influencer) => {
         activity_categories: ["lifestyle", "beauty", "tech"],
         activity_platforms: ["instagram", "youtube", "tiktok", "naver_blog"],
         verification_status: "approved",
+        data_origin: "qa",
         email_verified_at: timestamp,
         updated_at: timestamp,
       },
@@ -610,7 +637,7 @@ const ensureMarketplaceProfiles = async ({ influencer, organizationId }) => {
         budget_range_label: "100만-450만원",
         response_time_label: "1영업일 내 확인",
         status_label: "입점 브랜드",
-        fit_tags: ["뷰티 신제품", "릴스/쇼츠", "사용 후기", "계약 전환"],
+        fit_tags: ["뷰티 신제품", "릴스/쇼츠", "사용 후기", "장기 협업"],
         audience_targets: ["20-34 뷰티 관심 고객", "데일리 루틴", "선물 구매층"],
         active_campaigns: [
           {
@@ -728,7 +755,8 @@ const ensureMarketplaceProfiles = async ({ influencer, organizationId }) => {
             uploadDeadline: dateOnly(24),
             platforms: ["youtube"],
             deliverables: ["유튜브 쇼츠 1건"],
-            status: "open",
+            status: "closed",
+            closedAt: dateOnly(-1),
           },
           {
             id: stableUuid("qa:campaign:breadroom:groupbuy-pilot"),
@@ -741,7 +769,8 @@ const ensureMarketplaceProfiles = async ({ influencer, organizationId }) => {
             uploadDeadline: dateOnly(30),
             platforms: ["naver_blog"],
             deliverables: ["네이버 블로그 리뷰 1건", "인스타그램 스토리 2건"],
-            status: "open",
+            status: "closed",
+            closedAt: dateOnly(-1),
           },
           {
             id: stableUuid("qa:campaign:obre:reels-ended"),
@@ -1153,6 +1182,108 @@ const showcaseScenarios = [
   },
 ];
 
+const oneToOneShowcaseScenarios = [
+  {
+    key: "one-to-one-draft",
+    title: "민서홈 여름 루틴 릴스 1:1 계약 초안",
+    campaignName: "민서홈 여름 루틴 릴스",
+    influencerName: "민서홈",
+    influencerContact: "minseo.home@example.com",
+    channelUrl: "https://instagram.com/minseo.home",
+    type: "협찬",
+    status: "DRAFT",
+    nextActor: "advertiser",
+    nextAction: "조건을 확인한 뒤 서명 링크를 만드세요.",
+    budget: "900,000원 + 제품 제공",
+    platforms: ["INSTAGRAM"],
+    deliverables: ["인스타그램 릴스 1건"],
+    dueDays: 5,
+    risk: "low",
+    clauses: "draft",
+  },
+  {
+    key: "one-to-one-review",
+    title: "크리에이터 소라 신제품 릴스 1:1 계약",
+    campaignName: "신제품 릴스 1:1 협업",
+    influencerName: accounts.influencer.name,
+    influencerContact: accounts.influencer.email,
+    channelUrl: "https://instagram.com/creator.sora",
+    type: "협찬",
+    status: "REVIEWING",
+    nextActor: "influencer",
+    nextAction: "크리에이터가 계약서를 확인하고 있습니다.",
+    lastMessage: "콘텐츠 범위와 게시 일정을 확인 중입니다.",
+    budget: "2,400,000원",
+    platforms: ["INSTAGRAM"],
+    deliverables: ["인스타그램 릴스 1건", "스토리 2건"],
+    dueDays: 2,
+    risk: "medium",
+    clauses: "review",
+  },
+  {
+    key: "one-to-one-negotiating",
+    title: "크리에이터 소라 쇼츠 활용 범위 조정",
+    campaignName: "쇼츠 1:1 콘텐츠 협업",
+    influencerName: accounts.influencer.name,
+    influencerContact: accounts.influencer.email,
+    channelUrl: "https://youtube.com/@creator_sora",
+    type: "PPL",
+    status: "NEGOTIATING",
+    nextActor: "advertiser",
+    nextAction: "요청받은 콘텐츠 활용 범위를 검토하세요.",
+    lastMessage: "2차 활용 기간을 3개월로 조정해 달라는 요청이 있습니다.",
+    budget: "3,200,000원",
+    platforms: ["YOUTUBE", "INSTAGRAM"],
+    deliverables: ["유튜브 쇼츠 1건", "인스타그램 스토리 2건"],
+    dueDays: 1,
+    risk: "high",
+    clauses: "change",
+  },
+  {
+    key: "one-to-one-signed",
+    title: "크리에이터 소라 블로그 리뷰 서명 완료",
+    campaignName: "블로그 리뷰 1:1 협업",
+    influencerName: accounts.influencer.name,
+    influencerContact: accounts.influencer.email,
+    channelUrl: "https://blog.naver.com/creator_sora",
+    type: "협찬",
+    status: "APPROVED",
+    nextActor: "influencer",
+    nextAction: "전자서명을 완료하세요.",
+    budget: "1,800,000원",
+    platforms: ["NAVER_BLOG"],
+    deliverables: ["네이버 블로그 상세 리뷰 1건"],
+    dueDays: 3,
+    risk: "low",
+    clauses: "approved",
+    sign: true,
+  },
+  {
+    key: "one-to-one-closed",
+    title: "크리에이터 소라 홈카페 콘텐츠 계약 종료",
+    campaignName: "홈카페 콘텐츠 1:1 협업",
+    influencerName: accounts.influencer.name,
+    influencerContact: accounts.influencer.email,
+    channelUrl: "https://instagram.com/creator.sora",
+    type: "협찬",
+    status: "APPROVED",
+    nextActor: "influencer",
+    nextAction: "서명 후 콘텐츠 링크를 제출하세요.",
+    budget: "1,600,000원",
+    platforms: ["INSTAGRAM"],
+    deliverables: ["인스타그램 릴스 1건"],
+    dueDays: -6,
+    endDays: -3,
+    completedDays: -3,
+    risk: "low",
+    clauses: "approved",
+    sign: true,
+    submitDeliverable: true,
+    approveDeliverable: true,
+    closeContract: true,
+  },
+];
+
 const seedPlatformLabels = {
   instagram: "인스타",
   youtube: "유튜브",
@@ -1428,7 +1559,7 @@ const buildShowcaseClauses = (scenario) =>
         : [],
   }));
 
-const buildShowcaseContract = (scenario, advertiserId) => {
+const buildShowcaseContract = (scenario, advertiserId, marketplaceCampaign) => {
   const activeShare = scenario.status !== "DRAFT" && scenario.status !== "CLOSED";
   const createdAt = addDays(-4);
   const completedAt =
@@ -1451,6 +1582,7 @@ const buildShowcaseContract = (scenario, advertiserId) => {
 
   return {
     id: stableUuid(`${showcaseBatch}:${scenario.key}`),
+    data_origin: "qa",
     advertiser_id: advertiserId,
     campaign_name: scenario.campaignName,
     advertiser_info: {
@@ -1466,6 +1598,14 @@ const buildShowcaseContract = (scenario, advertiserId) => {
       contact: scenario.influencerContact,
     },
     campaign: {
+      source: "marketplace_campaign",
+      fixed_terms: true,
+      marketplace_campaign_id: marketplaceCampaign?.id,
+      source_application_id: marketplaceCampaign?.id
+        ? stableUuid(
+            `qa:campaign-dashboard-application:${marketplaceCampaign.id}:${scenario.influencerName}:0`,
+          )
+        : undefined,
       budget: scenario.budget,
       start_date: campaignStartDate,
       end_date: campaignEndDate,
@@ -1540,6 +1680,20 @@ const buildShowcaseContract = (scenario, advertiserId) => {
       : {}),
     created_at: createdAt,
     updated_at: updatedAt,
+  };
+};
+
+const buildOneToOneShowcaseContract = (scenario, advertiserId) => {
+  const contract = buildShowcaseContract(scenario, advertiserId, undefined);
+  return {
+    ...contract,
+    campaign: {
+      ...contract.campaign,
+      source: "direct",
+      fixed_terms: false,
+      marketplace_campaign_id: undefined,
+      source_application_id: undefined,
+    },
   };
 };
 
@@ -1782,6 +1936,7 @@ const ensureCampaignDashboardApplicantProfiles = async () => {
       activity_categories: normalizeSeedActivityCategories(profile.categories),
       activity_platforms: ["instagram", "youtube", "naver_blog"],
       verification_status: "approved",
+      data_origin: "qa",
       email_verified_at: timestamp,
       updated_at: timestamp,
     })),
@@ -1815,7 +1970,7 @@ const ensureCampaignDashboardApplicantProfiles = async () => {
       public_handle: profile.handle,
       display_name: profile.name,
       headline: profile.headline,
-      bio: `${profile.name} 캠페인 지원 화면을 실제 인플루언서 계정처럼 검수하기 위한 공개 프로필입니다.`,
+      bio: `${profile.name}의 ${profile.categories.join(" · ")} 콘텐츠와 브랜드 협업 정보를 확인할 수 있습니다.`,
       location: "서울 · 원격 협업",
       avatar_label: profile.name.slice(0, 1),
       avatar_url: profile.avatarUrl,
@@ -1826,13 +1981,13 @@ const ensureCampaignDashboardApplicantProfiles = async () => {
       starting_price_label: "협의 가능",
       response_time_label: "당일 응답",
       verified_label: "플랫폼 인증 완료",
-      brand_fit: ["캠페인 지원", "콘텐츠 제작", "계약 전환"],
+      brand_fit: ["브랜드 협업", "콘텐츠 제작", "일정 준수"],
       recent_brands: ["브레드룸", "오브레"],
       portfolio: [
         {
           title: "브랜드 캠페인 리뷰",
           brand: "브레드룸",
-          result: "캠페인 지원자 화면 검수용 프로필",
+          result: "제품 특징과 사용 장면을 담은 콘텐츠 제작",
         },
       ],
       proposal_hints: ["캠페인 조건 확인 후 신청합니다."],
@@ -1966,7 +2121,114 @@ const seedCampaignDashboardApplications = async ({
   return rows.length;
 };
 
-const seedDashboardShowcase = async ({ advertiser, influencer, marketplace }) => {
+const seedOneToOneProposalShowcase = async ({
+  advertiser,
+  influencer,
+  marketplace,
+  organizationId,
+  convertedContractId,
+}) => {
+  const advertiserProposals = [
+    {
+      status: "submitted",
+      proposalType: "sponsored_post",
+      summary: "선케어 제품 릴스 1건과 스토리 2건, 광고비 150만원을 제안합니다.",
+    },
+    {
+      status: "reviewed",
+      proposalType: "ppl",
+      summary: "신제품 사용 장면을 담은 유튜브 쇼츠 1건을 제안합니다.",
+    },
+    {
+      status: "accepted",
+      proposalType: "sponsored_post",
+      summary: "월 2회 릴스 콘텐츠로 이어가는 장기 협업 조건입니다.",
+    },
+    {
+      status: "declined",
+      proposalType: "visit_review",
+      summary: "성수 팝업 방문과 현장 릴스 제작을 제안했습니다.",
+    },
+    {
+      status: "converted_to_contract",
+      proposalType: "product_seeding",
+      summary: "홈케어 제품 블로그 리뷰 조건으로 계약서 작성이 완료되었습니다.",
+      convertedContractId,
+    },
+  ];
+  const influencerProposals = [
+    {
+      status: "submitted",
+      proposalType: "sponsored_post",
+      summary: "데일리 루틴에 제품 사용 장면을 담은 릴스 협업을 제안합니다.",
+    },
+    {
+      status: "reviewed",
+      proposalType: "product_seeding",
+      summary: "제품 사용 전후를 비교하는 상세 리뷰 콘텐츠를 제안합니다.",
+    },
+    {
+      status: "accepted",
+      proposalType: "ppl",
+      summary: "유튜브 쇼츠와 인스타그램 스토리를 함께 제작하는 조건입니다.",
+    },
+  ];
+  const rows = [
+    ...advertiserProposals.map((proposal, index) => ({
+      id: stableUuid(`qa:one-to-one-proposal:advertiser:${proposal.status}`),
+      direction: "advertiser_to_influencer",
+      target_influencer_profile_id: marketplace.influencerProfileId,
+      target_handle: testHandles.influencer,
+      target_display_name: "크리에이터 소라",
+      sender_profile_id: advertiser.id,
+      sender_organization_id: organizationId,
+      sender_brand_profile_id: marketplace.brandProfileId,
+      sender_name: accounts.advertiser.company_name,
+      sender_intro: "뷰티와 라이프스타일 콘텐츠를 함께 만드는 브레드룸입니다.",
+      proposal_type: proposal.proposalType,
+      proposal_summary: proposal.summary,
+      converted_contract_id: proposal.convertedContractId,
+      data_origin: "qa",
+      request_key: `qa-advertiser-${proposal.status}`,
+      status: proposal.status,
+      created_at: addDays(-(index + 1), 10),
+      updated_at: addDays(-(index + 1), 11),
+    })),
+    ...influencerProposals.map((proposal, index) => ({
+      id: stableUuid(`qa:one-to-one-proposal:influencer:${proposal.status}`),
+      direction: "influencer_to_brand",
+      target_brand_profile_id: marketplace.brandProfileId,
+      target_handle: testHandles.brand,
+      target_display_name: accounts.advertiser.company_name,
+      sender_profile_id: influencer.id,
+      sender_name: "크리에이터 소라",
+      sender_intro: "릴스와 쇼츠 중심으로 제품 사용 장면을 만드는 크리에이터입니다.",
+      proposal_type: proposal.proposalType,
+      proposal_summary: proposal.summary,
+      data_origin: "qa",
+      request_key: `qa-influencer-${proposal.status}`,
+      status: proposal.status,
+      created_at: addDays(-(index + 2), 14),
+      updated_at: addDays(-(index + 2), 15),
+    })),
+  ];
+
+  await upsert(
+    "marketplace_contact_proposals",
+    rows,
+    "id",
+    "one-to-one proposal showcase fixtures",
+  );
+
+  return rows.length;
+};
+
+const seedDashboardShowcase = async ({
+  advertiser,
+  influencer,
+  marketplace,
+  organizationId,
+}) => {
   const advertiserSession = await login("/api/advertiser/login", advertiser.email);
   const influencerSession = await login("/api/influencer/login", influencer.email);
   const cleanup = await cleanupDashboardShowcaseData({
@@ -1979,20 +2241,96 @@ const seedDashboardShowcase = async ({ advertiser, influencer, marketplace }) =>
   const created = [];
   const contractsByCampaignName = new Map();
 
-  for (const scenario of showcaseScenarios) {
+  for (const scenario of oneToOneShowcaseScenarios) {
     let contract = await putContract(
-      buildShowcaseContract(scenario, advertiser.id),
+      buildOneToOneShowcaseContract(scenario, advertiser.id),
       advertiserSession.cookie,
     );
-
+    const scenarioInfluencerSession =
+      scenario.sign || scenario.submitDeliverable
+        ? await login("/api/influencer/login", influencer.email)
+        : influencerSession;
     if (scenario.sign) {
-      contract = await signContract(contract.id, influencerSession.cookie);
+      contract = await signContract(contract.id, scenarioInfluencerSession.cookie);
     }
     if (scenario.submitDeliverable) {
       contract = await submitPostLink(
         contract.id,
         scenario,
-        influencerSession.cookie,
+        scenarioInfluencerSession.cookie,
+      );
+      const bundle = await loadDeliverableBundle(
+        contract.id,
+        scenarioInfluencerSession.cookie,
+      );
+      const requirements = Array.isArray(bundle.requirements)
+        ? bundle.requirements
+        : [];
+      const targets = requirements.length > 0 ? requirements : [undefined];
+      const submittedDeliverables = [];
+      let submissionIndex = 0;
+      for (const requirement of targets) {
+        const quantity = scenario.closeContract
+          ? Math.max(1, Number(requirement?.quantity) || 1)
+          : 1;
+        for (let count = 0; count < quantity; count += 1) {
+          submittedDeliverables.push(
+            await submitDeliverable(
+              contract.id,
+              scenario,
+              scenarioInfluencerSession.cookie,
+              requirement,
+              submissionIndex,
+            ),
+          );
+          submissionIndex += 1;
+        }
+      }
+      if (scenario.approveDeliverable) {
+        for (const deliverable of submittedDeliverables) {
+          if (!deliverable?.id) continue;
+          await approveDeliverable(
+            contract.id,
+            deliverable.id,
+            advertiserSession.cookie,
+          );
+        }
+      }
+    }
+    if (scenario.closeContract) {
+      contract = await closeContract(contract.id, advertiserSession.cookie);
+    }
+    created.push({
+      id: contract.id,
+      title: scenario.title,
+      campaignName: scenario.campaignName,
+      status: contract.status,
+      influencer: scenario.influencerName,
+      workflow: "one_to_one",
+    });
+  }
+
+  for (const scenario of showcaseScenarios) {
+    const marketplaceCampaign = marketplace.campaigns.find(
+      (campaign) => campaign.title === scenario.campaignName,
+    );
+    let contract = await putContract(
+      buildShowcaseContract(scenario, advertiser.id, marketplaceCampaign),
+      advertiserSession.cookie,
+    );
+    const scenarioInfluencerSession =
+      scenario.sign || scenario.submitDeliverable
+        ? await login("/api/influencer/login", influencer.email)
+        : influencerSession;
+
+    if (scenario.sign) {
+      contract = await signContract(contract.id, scenarioInfluencerSession.cookie);
+    }
+    if (scenario.submitDeliverable) {
+      contract = await submitPostLink(
+        contract.id,
+        scenario,
+        scenarioInfluencerSession.cookie,
       );
     }
 
@@ -2000,7 +2338,7 @@ const seedDashboardShowcase = async ({ advertiser, influencer, marketplace }) =>
     if (scenario.submitDeliverable) {
       const bundle = await loadDeliverableBundle(
         contract.id,
-        influencerSession.cookie,
+        scenarioInfluencerSession.cookie,
       );
       const requirements = Array.isArray(bundle.requirements)
         ? bundle.requirements
@@ -2021,7 +2359,7 @@ const seedDashboardShowcase = async ({ advertiser, influencer, marketplace }) =>
             await submitDeliverable(
               contract.id,
               scenario,
-              influencerSession.cookie,
+              scenarioInfluencerSession.cookie,
               requirement,
               submissionIndex,
             ),
@@ -2050,6 +2388,7 @@ const seedDashboardShowcase = async ({ advertiser, influencer, marketplace }) =>
       campaignName: scenario.campaignName,
       status: contract.status,
       influencer: scenario.influencerName,
+      workflow: "marketplace_campaign",
     });
     contractsByCampaignName.set(scenario.campaignName, {
       id: contract.id,
@@ -2062,15 +2401,32 @@ const seedDashboardShowcase = async ({ advertiser, influencer, marketplace }) =>
     contractsByCampaignName,
     applicantProfileByName,
   });
+  const seededOneToOneProposals = await seedOneToOneProposalShowcase({
+    advertiser,
+    influencer,
+    marketplace,
+    organizationId,
+    convertedContractId: created.find(
+      (contract) => contract.workflow === "one_to_one" && contract.status !== "DRAFT",
+    )?.id,
+  });
 
+  const finalAdvertiserSession = await login(
+    "/api/advertiser/login",
+    advertiser.email,
+  );
   const advertiserContractsResponse = await appJson(
     "/api/contracts",
-    { headers: { Cookie: advertiserSession.cookie } },
+    { headers: { Cookie: finalAdvertiserSession.cookie } },
     "advertiser contract list after showcase seed",
+  );
+  const finalInfluencerSession = await login(
+    "/api/influencer/login",
+    influencer.email,
   );
   const influencerDashboard = await appJson(
     "/api/influencer/dashboard",
-    { headers: { Cookie: influencerSession.cookie } },
+    { headers: { Cookie: finalInfluencerSession.cookie } },
     "influencer dashboard after showcase seed",
   );
 
@@ -2078,6 +2434,7 @@ const seedDashboardShowcase = async ({ advertiser, influencer, marketplace }) =>
     base_url: DASHBOARD_BASE_URL,
     archived_contracts: cleanup.archivedContracts,
     created_contracts: created.length,
+    seeded_one_to_one_proposals: seededOneToOneProposals,
     seeded_campaign_applications: seededApplications,
     advertiser_visible_contracts: advertiserContractsResponse.contracts?.length ?? 0,
     influencer_visible_contracts: influencerDashboard.contracts?.length ?? 0,
@@ -2086,6 +2443,7 @@ const seedDashboardShowcase = async ({ advertiser, influencer, marketplace }) =>
       title: contract.title,
       status: contract.status,
       influencer: contract.influencer,
+      workflow: contract.workflow,
     })),
   };
 };
@@ -2105,6 +2463,7 @@ const dashboardShowcase = await seedDashboardShowcase({
   advertiser,
   influencer,
   marketplace,
+  organizationId,
 });
 
 console.log(

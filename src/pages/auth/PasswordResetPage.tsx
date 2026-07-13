@@ -1,6 +1,15 @@
-import React, { useMemo, useState } from "react";
-import { ArrowLeft, ArrowRight, CheckCircle2, KeyRound, MailCheck } from "lucide-react";
+import React, { useState } from "react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Building2,
+  CheckCircle2,
+  KeyRound,
+  MailCheck,
+  UserRound,
+} from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
+import { preserveAuthContext } from "../../components/AuthLoginScreen";
 import { BrandLogo } from "../../components/BrandLogo";
 import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
@@ -31,15 +40,14 @@ function getRecoveryAccessToken() {
   return hashParams.get("access_token") ?? queryParams.get("access_token") ?? "";
 }
 
-function getResetRole(search: string): ResetRole {
+function getResetRole(search: string): ResetRole | null {
   const role = new URLSearchParams(search).get("role");
-  return role === "influencer" ? "influencer" : "advertiser";
+  return role === "advertiser" || role === "influencer" ? role : null;
 }
 
 export function PasswordResetPage() {
   const location = useLocation();
   const role = getResetRole(location.search);
-  const copy = roleCopy[role];
   const [accessToken] = useState(() => getRecoveryAccessToken());
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -48,14 +56,21 @@ export function PasswordResetPage() {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const isCompleting = Boolean(accessToken);
+
+  if (!role) {
+    return (
+      <PasswordResetRoleChoice
+        currentSearch={location.search}
+        recoveryHash={location.hash}
+      />
+    );
+  }
+
+  const copy = roleCopy[role];
   const title = isCompleting ? "새 비밀번호 설정" : "비밀번호 재설정";
-  const helper = useMemo(
-    () =>
-      isCompleting
-        ? "메일 링크가 확인되었습니다. 새 비밀번호를 설정하면 기존 비밀번호는 더 이상 사용할 수 없습니다."
-        : copy.description,
-    [copy.description, isCompleting],
-  );
+  const helper = isCompleting
+    ? "메일 링크가 확인되었습니다. 새 비밀번호를 설정하면 기존 비밀번호는 더 이상 사용할 수 없습니다."
+    : copy.description;
 
   const requestReset = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -135,7 +150,11 @@ export function PasswordResetPage() {
         );
       }
 
-      window.history.replaceState(null, "", `/reset-password?role=${role}`);
+      window.history.replaceState(
+        null,
+        "",
+        preserveAuthContext(`/reset-password?role=${role}`, location.search),
+      );
       setPassword("");
       setPasswordConfirm("");
       setNotice(data.message ?? "비밀번호를 변경했습니다. 새 비밀번호로 로그인해 주세요.");
@@ -165,7 +184,7 @@ export function PasswordResetPage() {
             <BrandLogo />
           </Link>
           <Link
-            to={copy.loginHref}
+            to={preserveAuthContext(copy.loginHref, location.search)}
             className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white/65 px-3 py-1.5 text-[12px] font-bold text-neutral-500 shadow-[0_1px_0_rgba(15,23,42,0.02)] transition hover:border-neutral-300 hover:bg-white hover:text-neutral-950"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
@@ -268,6 +287,82 @@ export function PasswordResetPage() {
                 {!isSubmitting ? <ArrowRight className="h-4 w-4" /> : null}
               </button>
             </form>
+          </div>
+        </section>
+      </div>
+    </main>
+  );
+}
+
+function PasswordResetRoleChoice({
+  currentSearch,
+  recoveryHash,
+}: {
+  currentSearch: string;
+  recoveryHash: string;
+}) {
+  const loginHref = preserveAuthContext("/login", currentSearch);
+  const getRoleHref = (role: ResetRole) =>
+    `${preserveAuthContext(`/reset-password?role=${role}`, currentSearch)}${recoveryHash}`;
+
+  return (
+    <main className="min-h-screen bg-[#f7f6f3] px-5 pb-5 pt-0 font-sans text-neutral-950 sm:px-6">
+      <div className="mx-auto flex min-h-[calc(100vh-20px)] w-full max-w-[1500px] flex-col">
+        <header className="flex h-14 items-center justify-between 2xl:px-6">
+          <Link
+            to="/"
+            className="yl-brand-action -ml-1 inline-flex items-center gap-2.5 rounded-[12px] px-1 py-1 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
+            aria-label={`${PRODUCT_NAME} 홈`}
+          >
+            <BrandLogo />
+          </Link>
+          <Link
+            to={loginHref}
+            className="inline-flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white/65 px-3 py-1.5 text-[12px] font-bold text-neutral-500 shadow-[0_1px_0_rgba(15,23,42,0.02)] transition hover:border-neutral-300 hover:bg-white hover:text-neutral-950"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            로그인
+          </Link>
+        </header>
+
+        <section className="grid flex-1 place-items-center py-8">
+          <div className="w-full max-w-[460px] rounded-[22px] border border-neutral-200/90 bg-white p-6 shadow-[0_1px_0_rgba(15,23,42,0.035),0_20px_58px_rgba(15,23,42,0.06)] sm:p-7">
+            <h1 className="font-neo-heavy text-[28px] leading-tight tracking-normal">
+              계정 유형을 선택하세요
+            </h1>
+            <p className="mt-2 text-[14px] font-semibold leading-6 text-neutral-500">
+              비밀번호를 재설정할 계정과 같은 유형을 선택해 주세요.
+            </p>
+
+            <div
+              role="group"
+              aria-label="비밀번호 재설정 계정 유형"
+              className="mt-6 grid gap-3"
+            >
+              {(
+                [
+                  { role: "advertiser", icon: Building2 },
+                  { role: "influencer", icon: UserRound },
+                ] as const
+              ).map((item) => {
+                const Icon = item.icon;
+                return (
+                  <Link
+                    key={item.role}
+                    to={getRoleHref(item.role)}
+                    className="group flex min-h-16 items-center gap-3 rounded-[12px] border border-neutral-200 bg-[#fbfaf7] px-4 py-3 text-left transition hover:border-blue-300 hover:bg-blue-50/45 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-blue-700"
+                  >
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] border border-blue-100 bg-white text-blue-700">
+                      <Icon className="h-4.5 w-4.5" />
+                    </span>
+                    <span className="min-w-0 flex-1 text-[15px] font-extrabold text-neutral-950">
+                      {roleCopy[item.role].label} 계정
+                    </span>
+                    <ArrowRight className="h-4 w-4 shrink-0 text-neutral-400 transition group-hover:translate-x-0.5 group-hover:text-blue-700" />
+                  </Link>
+                );
+              })}
+            </div>
           </div>
         </section>
       </div>

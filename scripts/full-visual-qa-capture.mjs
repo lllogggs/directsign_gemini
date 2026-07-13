@@ -8,7 +8,7 @@ import { chromium } from "playwright";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..");
 
-const baseUrl = (process.env.QA_BASE_URL || "https://yeollock.me").replace(/\/$/, "");
+const baseUrl = (process.env.QA_BASE_URL || "http://127.0.0.1:3000").replace(/\/$/, "");
 const outputRoot =
   process.env.QA_OUTPUT_DIR ||
   path.join(
@@ -27,6 +27,41 @@ const credentials = {
     password: process.env.QA_TEST_PASSWORD || "YeollockTest!2026",
   },
 };
+
+const sensitiveQueryKeyPattern = /token|secret|password|signature|code/i;
+
+function redactUrlForReport(value) {
+  if (typeof value !== "string" || !value) return value;
+
+  try {
+    const absolute = /^[a-z][a-z\d+.-]*:\/\//i.test(value);
+    const url = new URL(value, "http://qa-report.local");
+    for (const key of [...url.searchParams.keys()]) {
+      if (sensitiveQueryKeyPattern.test(key)) {
+        url.searchParams.set(key, "REDACTED");
+      }
+    }
+    if (url.hash.includes("=")) {
+      const hashParams = new URLSearchParams(url.hash.slice(1));
+      for (const key of [...hashParams.keys()]) {
+        if (sensitiveQueryKeyPattern.test(key)) {
+          hashParams.set(key, "REDACTED");
+        }
+      }
+      url.hash = hashParams.toString();
+    }
+    return absolute ? url.toString() : `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return redactSensitiveText(value);
+  }
+}
+
+function redactSensitiveText(value) {
+  return String(value).replace(
+    /([?&#][a-z\d_.-]*(?:token|secret|password|signature|code)[a-z\d_.-]*=)[^&#\s]*/gi,
+    "$1REDACTED",
+  );
+}
 
 async function launchBrowser() {
   for (const channel of ["chrome", "msedge"]) {
@@ -59,8 +94,46 @@ const publicPages = [
   { id: "esign-consent", label: "전자서명 동의", path: "/legal/e-sign-consent" },
   { id: "resources", label: "자료실", path: "/resources" },
   { id: "resource-contract", label: "자료실 상세", path: "/resources/collaboration-contract" },
-  { id: "public-influencer-profile", label: "공개 인플루언서 프로필", path: "/creator-sora" },
   { id: "public-brand-profile", label: "공개 브랜드 프로필", path: "/brands/breadroom-partner" },
+  {
+    id: "public-registered-influencer-profile",
+    label: "등록 인플루언서 공개 프로필",
+    path: "/creator-sora",
+  },
+  { id: "global-creators-en", label: "해외 크리에이터 영문", path: "/en/creators" },
+  { id: "global-creators-ja", label: "해외 크리에이터 일본어", path: "/ja/creators" },
+  { id: "global-creators-zh", label: "해외 크리에이터 중국어", path: "/zh/creators" },
+  {
+    id: "login-influencer-en",
+    label: "인플루언서 영문 로그인",
+    path: "/login/influencer?locale=en",
+  },
+  {
+    id: "signup-influencer-en",
+    label: "인플루언서 영문 회원가입",
+    path: "/signup/influencer?locale=en",
+  },
+  {
+    id: "login-influencer-ja",
+    label: "인플루언서 일본어 로그인",
+    path: "/login/influencer?locale=ja",
+  },
+  {
+    id: "signup-influencer-ja",
+    label: "인플루언서 일본어 회원가입",
+    path: "/signup/influencer?locale=ja",
+  },
+  {
+    id: "login-influencer-zh",
+    label: "인플루언서 중국어 로그인",
+    path: "/login/influencer?locale=zh",
+  },
+  {
+    id: "signup-influencer-zh",
+    label: "인플루언서 중국어 회원가입",
+    path: "/signup/influencer?locale=zh",
+  },
+  { id: "admin-login", label: "운영자 로그인", path: "/admin/login" },
 ];
 
 const advertiserPages = [
@@ -69,18 +142,19 @@ const advertiserPages = [
     id: "dashboard-progress-tab",
     label: "광고주 1:1 계약 대시보드 진행중 탭",
     path: "/advertiser/dashboard",
-    action: async (page) => clickText(page, ["진행중"]),
+    action: async (page) => selectExactTab(page, ["진행중"]),
   },
   {
     id: "dashboard-closed-tab",
     label: "광고주 1:1 계약 대시보드 종료 탭",
     path: "/advertiser/dashboard",
-    action: async (page) => clickText(page, ["종료", "완료"]),
+    action: async (page) => selectExactTab(page, ["종료", "완료"]),
   },
   { id: "builder", label: "광고주 계약 작성", path: "/advertiser/builder" },
   { id: "discover", label: "인플루언서 찾기", path: "/advertiser/discover" },
   { id: "campaigns", label: "광고주 캠페인", path: "/advertiser/campaigns" },
   { id: "campaign-new", label: "캠페인 작성", path: "/advertiser/campaigns/new" },
+  { id: "costs", label: "광고비 현황", path: "/advertiser/costs" },
   { id: "messages", label: "광고주 메시지", path: "/advertiser/messages" },
   { id: "verification", label: "광고주 인증", path: "/advertiser/verification" },
 ];
@@ -91,18 +165,19 @@ const influencerPages = [
     id: "dashboard-progress-tab",
     label: "인플루언서 1:1 계약 대시보드 진행중 탭",
     path: "/influencer/dashboard",
-    action: async (page) => clickText(page, ["진행중"]),
+    action: async (page) => selectExactTab(page, ["진행중"]),
   },
   {
     id: "dashboard-done-tab",
     label: "인플루언서 1:1 계약 대시보드 완료 탭",
     path: "/influencer/dashboard",
-    action: async (page) => clickText(page, ["완료"]),
+    action: async (page) => selectExactTab(page, ["완료"]),
   },
   { id: "brands", label: "브랜드 찾기", path: "/influencer/brands" },
   { id: "campaigns", label: "캠페인 찾기", path: "/influencer/campaigns" },
   { id: "messages", label: "인플루언서 메시지", path: "/influencer/messages" },
   { id: "verification", label: "인플루언서 인증", path: "/influencer/verification" },
+  { id: "profile", label: "인플루언서 공개 프로필 관리", path: "/influencer/profile" },
 ];
 
 const introSlides = [
@@ -120,22 +195,63 @@ const introSlides = [
   })),
 ];
 
-async function clickText(page, candidates) {
-  for (const text of candidates) {
-    const button = page.getByRole("button", { name: new RegExp(text) }).first();
-    if ((await button.count().catch(() => 0)) > 0) {
-      await button.click({ timeout: 1500 }).catch(() => null);
+async function selectExactTab(page, candidates) {
+  const tabs = page.locator('[role="tab"]');
+
+  for (const label of candidates) {
+    const count = await tabs.count();
+    for (let index = 0; index < count; index += 1) {
+      const tab = tabs.nth(index);
+      const visibleLabel = (await tab.locator("span").first().textContent().catch(() => ""))
+        ?.trim();
+      if (visibleLabel !== label) continue;
+
+      const element = await tab.elementHandle();
+      if (!element) throw new Error(`Tab element unavailable: ${label}`);
+      await tab.click({ timeout: 3000 });
+      await page.waitForFunction(
+        (node) => node.getAttribute("aria-selected") === "true",
+        element,
+        { timeout: 5000 },
+      );
+      if ((await tab.getAttribute("aria-selected")) !== "true") {
+        throw new Error(`Tab did not become selected: ${label}`);
+      }
       await page.waitForTimeout(500);
-      return true;
-    }
-    const fallback = page.getByText(text, { exact: false }).first();
-    if ((await fallback.count().catch(() => 0)) > 0) {
-      await fallback.click({ timeout: 1500 }).catch(() => null);
-      await page.waitForTimeout(500);
-      return true;
+      return;
     }
   }
-  return false;
+
+  throw new Error(`Exact tab not found: ${candidates.join(" or ")}`);
+}
+
+async function discoverPublicInfluencerScenario() {
+  const response = await fetch(`${baseUrl}/api/marketplace/influencers`, {
+    headers: { Accept: "application/json" },
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!response.ok) {
+    throw new Error(`Public influencer discovery failed (${response.status})`);
+  }
+
+  const data = await response.json();
+  const profiles = Array.isArray(data.profiles) ? data.profiles : [];
+  const profile = profiles.find(
+    (item) => typeof item?.handle === "string" && item.handle.trim(),
+  );
+  if (!profile) {
+    throw new Error("Public influencer discovery returned no current handle");
+  }
+
+  const handle = profile.handle.trim();
+  return {
+    handle,
+    scenario: {
+      id: "public-influencer-profile",
+      label: "공개 인플루언서 프로필",
+      path: `/${encodeURIComponent(handle)}`,
+    },
+  };
 }
 
 async function selectIntroSlide(page, index) {
@@ -204,6 +320,96 @@ async function getContractSamples(page) {
   });
 }
 
+async function getCampaignSamples(page) {
+  await page.goto(`${baseUrl}/advertiser/campaigns`, { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle", { timeout: 12000 }).catch(() => null);
+  return page.evaluate(async () => {
+    const [campaignResponse, contractResponse, messageResponse] = await Promise.all([
+      fetch("/api/advertiser/campaigns", {
+        headers: { Accept: "application/json" },
+        credentials: "include",
+      }),
+      fetch("/api/contracts", {
+        headers: { Accept: "application/json" },
+        credentials: "include",
+      }),
+      fetch("/api/marketplace/messages?role=advertiser", {
+        headers: { Accept: "application/json" },
+        credentials: "include",
+      }),
+    ]);
+    if (!campaignResponse.ok || !contractResponse.ok || !messageResponse.ok) {
+      throw new Error("Campaign QA data could not be loaded");
+    }
+    const [data, contractData, messageData] = await Promise.all([
+      campaignResponse.json(),
+      contractResponse.json(),
+      messageResponse.json(),
+    ]);
+    const campaigns = Array.isArray(data.campaigns) ? data.campaigns : [];
+    const contracts = Array.isArray(contractData.contracts)
+      ? contractData.contracts
+      : [];
+    const threads = Array.isArray(messageData.threads) ? messageData.threads : [];
+    const activityCounts = new Map();
+    const addActivity = (campaignId, weight = 1) => {
+      if (typeof campaignId !== "string" || !campaignId) return;
+      activityCounts.set(campaignId, (activityCounts.get(campaignId) ?? 0) + weight);
+    };
+    for (const contract of contracts) {
+      addActivity(contract?.campaign?.id ?? contract?.campaign_id, 2);
+    }
+    for (const thread of threads) {
+      addActivity(thread?.campaignId, 1);
+    }
+    const pickMostPopulated = (status) =>
+      campaigns
+        .filter((item) => item?.status === status && item?.id)
+        .sort((left, right) => {
+          const scoreDifference =
+            (activityCounts.get(right.id) ?? 0) -
+            (activityCounts.get(left.id) ?? 0);
+          if (scoreDifference !== 0) return scoreDifference;
+          return String(left.title ?? "").localeCompare(String(right.title ?? ""), "ko");
+        })[0];
+    const map = (item) =>
+      item?.id
+        ? {
+            id: item.id,
+            title: item.title,
+            status: item.status,
+            activityCount: activityCounts.get(item.id) ?? 0,
+          }
+        : null;
+    const samples = {
+      recruiting: map(pickMostPopulated("open")),
+      progress: map(pickMostPopulated("closed")),
+      ended: map(pickMostPopulated("ended")),
+      count: campaigns.length,
+    };
+    for (const key of ["recruiting", "progress", "ended"]) {
+      if (!samples[key]) throw new Error(`Missing ${key} campaign QA data`);
+    }
+    return samples;
+  });
+}
+
+async function waitForStableScreen(page) {
+  const loadingPatterns = [
+    "불러오는 중",
+    "확인하는 중",
+    "준비하는 중",
+    "잠시만 기다려 주세요",
+  ];
+  const deadline = Date.now() + 5000;
+
+  while (Date.now() < deadline) {
+    const text = await page.locator("body").innerText().catch(() => "");
+    if (!loadingPatterns.some((pattern) => text.includes(pattern))) return;
+    await page.waitForTimeout(250);
+  }
+}
+
 function toUrl(routePath) {
   return routePath.startsWith("http") ? routePath : `${baseUrl}${routePath}`;
 }
@@ -215,8 +421,8 @@ async function captureScenario({ page, viewport, role, scenario }) {
     id: scenario.id,
     role,
     label: scenario.label,
-    path: scenario.path,
-    url,
+    path: redactUrlForReport(scenario.path),
+    url: redactUrlForReport(url),
     viewport: viewport.key,
     viewportLabel: viewport.label,
     ok: false,
@@ -228,17 +434,19 @@ async function captureScenario({ page, viewport, role, scenario }) {
   try {
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
     await page.waitForLoadState("networkidle", { timeout: 12000 }).catch(() => null);
-    await page.waitForTimeout(500);
+    await waitForStableScreen(page);
+    await page.waitForTimeout(300);
     if (scenario.action) {
       await scenario.action(page);
       await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => null);
+      await waitForStableScreen(page);
     }
 
     const fileName = `${viewport.key}-${role}-${scenario.id}.png`;
     const filePath = path.join(outputRoot, "screenshots", fileName);
     await page.screenshot({ path: filePath, fullPage: false });
     result.screenshot = path.relative(outputRoot, filePath).replace(/\\/g, "/");
-    result.metrics = await page.evaluate(() => {
+    const metrics = await page.evaluate(() => {
       const doc = document.documentElement;
       const bodyText = document.body.innerText || "";
       const visibleNodes = Array.from(
@@ -290,18 +498,25 @@ async function captureScenario({ page, viewport, role, scenario }) {
         clientHeight: doc.clientHeight,
         interactiveCount: visibleNodes.length,
         firstInteractive: visibleNodes.slice(0, 12),
+        selectedTabs: Array.from(
+          document.querySelectorAll('[role="tab"][aria-selected="true"]'),
+        ).map((tab) => (tab.querySelector("span")?.textContent || tab.textContent || "").trim()),
       };
     });
+    metrics.location = redactUrlForReport(metrics.location);
+    result.metrics = metrics;
     result.durationMs = Date.now() - startedAt;
     result.ok = true;
   } catch (error) {
-    result.error = error instanceof Error ? error.message : String(error);
+    result.error = redactSensitiveText(
+      error instanceof Error ? error.message : String(error),
+    );
   }
 
   return result;
 }
 
-async function runForViewport(browser, viewport) {
+async function runForViewport(browser, viewport, resolvedPublicPages) {
   const viewportDir = path.join(outputRoot, "screenshots");
   await fs.mkdir(viewportDir, { recursive: true });
   const contextOptions = {
@@ -323,6 +538,7 @@ async function runForViewport(browser, viewport) {
   const results = [];
   const dynamicPublicPages = [];
   const dynamicAdvertiserPages = [...advertiserPages];
+  const dynamicInfluencerPages = [...influencerPages];
 
   try {
     await login(advertiserPage, "advertiser");
@@ -331,6 +547,7 @@ async function runForViewport(browser, viewport) {
     const contractSamples = await getContractSamples(advertiserPage).catch((error) => ({
       error: error instanceof Error ? error.message : String(error),
     }));
+    const campaignSamples = await getCampaignSamples(advertiserPage);
     if (contractSamples.active?.id) {
       dynamicAdvertiserPages.push({
         id: "contract-detail-active",
@@ -347,14 +564,48 @@ async function runForViewport(browser, viewport) {
         });
       }
     }
+    if (contractSamples.signed?.id) {
+      dynamicAdvertiserPages.push({
+        id: "contract-detail-signed",
+        label: "광고주 서명 완료 계약 상세",
+        path: `/advertiser/contract/${contractSamples.signed.id}`,
+      });
+      dynamicInfluencerPages.push({
+        id: "contract-detail-signed",
+        label: "인플루언서 서명 완료 계약 상세",
+        path: `/contract/${contractSamples.signed.id}`,
+      });
+    }
 
-    for (const scenario of [...publicPages, ...introSlides, ...dynamicPublicPages]) {
+    for (const [key, label] of [
+      ["recruiting", "모집중"],
+      ["progress", "진행중"],
+      ["ended", "종료"],
+    ]) {
+      const campaign = campaignSamples[key];
+      if (!campaign?.id) continue;
+      dynamicAdvertiserPages.push({
+        id: `campaign-detail-${key}`,
+        label: `광고주 캠페인 ${label} 상세`,
+        path: `/advertiser/campaigns?campaign=${encodeURIComponent(`campaign:${campaign.id}`)}`,
+      });
+    }
+
+    if (campaignSamples.recruiting?.id) {
+      dynamicPublicPages.push({
+        id: "public-campaign-detail",
+        label: "공개 캠페인 상세",
+        path: `/campaigns/${encodeURIComponent(campaignSamples.recruiting.id)}`,
+      });
+    }
+
+    for (const scenario of [...resolvedPublicPages, ...introSlides, ...dynamicPublicPages]) {
       results.push(await captureScenario({ page: publicPage, viewport, role: "public", scenario }));
     }
     for (const scenario of dynamicAdvertiserPages) {
       results.push(await captureScenario({ page: advertiserPage, viewport, role: "advertiser", scenario }));
     }
-    for (const scenario of influencerPages) {
+    for (const scenario of dynamicInfluencerPages) {
       results.push(await captureScenario({ page: influencerPage, viewport, role: "influencer", scenario }));
     }
   } finally {
@@ -368,12 +619,14 @@ async function runForViewport(browser, viewport) {
 
 async function main() {
   await fs.mkdir(outputRoot, { recursive: true });
+  const publicInfluencer = await discoverPublicInfluencerScenario();
+  const resolvedPublicPages = [...publicPages, publicInfluencer.scenario];
   const browser = await launchBrowser();
   const allResults = [];
 
   try {
     for (const viewport of viewports) {
-      const results = await runForViewport(browser, viewport);
+      const results = await runForViewport(browser, viewport, resolvedPublicPages);
       allResults.push(...results);
     }
   } finally {
@@ -381,8 +634,9 @@ async function main() {
   }
 
   const summary = {
-    baseUrl,
+    baseUrl: redactUrlForReport(baseUrl),
     outputRoot,
+    publicInfluencerHandle: publicInfluencer.handle,
     createdAt: new Date().toISOString(),
     total: allResults.length,
     passed: allResults.filter((item) => item.ok).length,
@@ -396,6 +650,10 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(error);
+  console.error(
+    redactSensitiveText(
+      error instanceof Error ? error.stack || error.message : String(error),
+    ),
+  );
   process.exitCode = 1;
 });

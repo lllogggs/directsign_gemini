@@ -7,8 +7,7 @@ dotenv.config();
 const SUPABASE_URL = process.env.SUPABASE_URL?.replace(/\/$/, "");
 const SERVICE_KEY =
   process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SECRET_KEY;
-const TEST_ACCOUNT_PASSWORD =
-  process.env.QA_TEST_PASSWORD ?? "YeollockTest!2026";
+const TEST_ACCOUNT_PASSWORD = process.env.QA_TEST_PASSWORD;
 const PUBLIC_SITE_URL = (
   process.env.PUBLIC_SITE_URL ??
   process.env.VITE_PUBLIC_SITE_URL ??
@@ -16,6 +15,36 @@ const PUBLIC_SITE_URL = (
 ).replace(/\/$/, "");
 const ALLOW_PRODUCTION_TEST_DATA =
   process.env.YEOLLOCK_ALLOW_PRODUCTION_TEST_DATA === "true";
+const SEED_RUN_CONFIRMED =
+  process.env.YEOLLOCK_SEED_QA_MARKETPLACE_SCENARIO === "true";
+const ACKNOWLEDGED_SUPABASE_HOST = process.env.YEOLLOCK_ACK_SUPABASE_HOST;
+
+if (!SEED_RUN_CONFIRMED) {
+  throw new Error(
+    "QA marketplace seeding requires the per-run opt-in YEOLLOCK_SEED_QA_MARKETPLACE_SCENARIO=true.",
+  );
+}
+
+if (!SUPABASE_URL || !SERVICE_KEY) {
+  throw new Error("Supabase service environment is missing");
+}
+
+if (!TEST_ACCOUNT_PASSWORD) {
+  throw new Error("QA_TEST_PASSWORD must be set for this seed run");
+}
+
+let supabaseHost;
+try {
+  supabaseHost = new URL(SUPABASE_URL).host;
+} catch {
+  throw new Error("SUPABASE_URL must be a valid absolute URL");
+}
+
+if (ACKNOWLEDGED_SUPABASE_HOST !== supabaseHost) {
+  throw new Error(
+    `Set YEOLLOCK_ACK_SUPABASE_HOST=${supabaseHost} to acknowledge the exact Supabase target for this run.`,
+  );
+}
 
 const isProductionHost = (value) =>
   /^https:\/\/(www\.)?yeollock\.me$/i.test(value);
@@ -28,10 +57,6 @@ if (!ALLOW_PRODUCTION_TEST_DATA && isProductionHost(PUBLIC_SITE_URL)) {
 
 const ACCOUNT_COUNT = 5;
 const timestamp = new Date().toISOString();
-
-if (!SUPABASE_URL || !SERVICE_KEY) {
-  throw new Error("Supabase service environment is missing");
-}
 
 const restHeaders = {
   apikey: SERVICE_KEY,
@@ -59,6 +84,7 @@ const stableUuid = (seed) => {
 
 const stableToken = (seed) =>
   crypto.createHash("sha256").update(seed).digest("hex").slice(0, 40);
+const randomShareToken = () => crypto.randomBytes(32).toString("hex");
 
 const getSeedDate = (days, hour = 12) => {
   const date = new Date();
@@ -319,6 +345,7 @@ const ensureAdvertiserProfile = async (account, user) => {
         activity_categories: [],
         activity_platforms: [],
         verification_status: "approved",
+        data_origin: "qa",
         email_verified_at: timestamp,
         updated_at: timestamp,
       },
@@ -432,6 +459,7 @@ const ensureInfluencerProfile = async (account, user) => {
         activity_categories: account.categories,
         activity_platforms: ["instagram", "youtube", "naver_blog"],
         verification_status: "approved",
+        data_origin: "qa",
         email_verified_at: timestamp,
         updated_at: timestamp,
       },
@@ -638,7 +666,7 @@ const ensureBrandProfile = async (advertiser) => {
         category: advertiser.category,
         headline: `${advertiser.companyName} 광고 캠페인 보드`,
         description:
-          "인플루언서 모집부터 계약 전환까지 한 화면에서 운영합니다.",
+          "인플루언서 모집부터 선정자별 진행까지 한 화면에서 운영합니다.",
         location: "서울",
         logo_label: advertiser.companyName.slice(0, 1),
         logo_url: advertiser.logoUrl,
@@ -854,7 +882,7 @@ const buildWorkflow = (status, dueAt) => {
   };
 };
 
-const buildEvidence = (status, seed) => {
+const buildEvidence = (status) => {
   if (status === "DRAFT") {
     return {
       share_token_status: "not_issued",
@@ -873,7 +901,7 @@ const buildEvidence = (status, seed) => {
 
   return {
     share_token_status: "active",
-    share_token: stableToken(`qa:scenario:share:${seed}`),
+    share_token: randomShareToken(),
     share_token_expires_at: addDays(14),
     audit_ready: true,
     pdf_status: "draft_ready",
@@ -923,7 +951,7 @@ const buildContract = ({ brand, campaign, influencer, status, seed }) => {
   const finalStatus = status === "SIGNED" || status === "CLOSED";
   const createdAt = addDays(finalStatus ? -14 : -3);
   const updatedAt = finalStatus ? addDays(status === "CLOSED" ? -1 : -2) : timestamp;
-  const shareEvidence = buildEvidence(status, seed);
+  const shareEvidence = buildEvidence(status);
   const postLink =
     finalStatus
       ? `https://instagram.com/p/${brand.handle}-${influencer.handle}`
@@ -931,6 +959,7 @@ const buildContract = ({ brand, campaign, influencer, status, seed }) => {
 
   return {
     id: contractId,
+    data_origin: "qa",
     advertiser_id: brand.user.id,
     campaign_name: campaign.title,
     post_link: postLink,

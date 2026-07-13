@@ -43,10 +43,10 @@ import {
   findBrandProfileByHandle,
   findInfluencerProfileByHandle,
   formatMarketplaceCountries,
+  isMarketplaceCountryCode,
   isMarketplaceApplicationBrandId,
   mergeMarketplaceBrandProfiles,
   mergeMarketplaceInfluencerProfiles,
-  marketplaceCountryOptions,
   platformLabels,
   type CampaignProposalType,
   type MarketplaceBrandCampaign,
@@ -56,6 +56,10 @@ import {
   type MarketplaceCountryCode,
   type MarketplaceInfluencerProfile,
 } from "../src/domain/marketplace.js";
+import {
+  classifyDiscoveredInfluencerAccount,
+  normalizeMarketplaceCreatorCategories,
+} from "../src/domain/influencerDiscoveryQuality.js";
 import {
   getProposalTypeLabel,
   type MarketplaceInboxRole,
@@ -127,6 +131,7 @@ type OwnershipCheckStatus =
   | "not_found"
   | "blocked"
   | "failed";
+type DataOrigin = "production" | "qa" | "demo" | "seed";
 
 interface VerificationRequestRecord {
   id: string;
@@ -134,6 +139,7 @@ interface VerificationRequestRecord {
   target_id: string;
   verification_type: VerificationType;
   status: VerificationStatus;
+  data_origin?: DataOrigin;
   profile_id?: string;
   organization_id?: string;
   subject_name: string;
@@ -202,6 +208,7 @@ interface SupportAccessRequestRecord {
   reason: string;
   scope: SupportAccessScope;
   status: SupportAccessStatus;
+  data_origin?: DataOrigin;
   expires_at: string;
   reviewed_by_name?: string;
   reviewed_at?: string;
@@ -247,6 +254,7 @@ interface OperationalSupportTicketRecord {
   browser_context?: Record<string, unknown>;
   severity: OperationalSupportTicketSeverity;
   status: OperationalSupportTicketStatus;
+  data_origin?: DataOrigin;
   admin_note?: string;
   source: string;
   ip_hash?: string;
@@ -496,14 +504,6 @@ const adminSessionSecret = resolveServerSecret({
   requiredInProduction: isProductionRuntime || Boolean(adminAccessCode),
   generateLocal: Boolean(adminAccessCode) || !isProductionRuntime,
 });
-const userSessionFastPathSecret =
-  resolveServerSecret({
-    name: "USER_SESSION_FAST_PATH_SECRET",
-    purpose: "signing short-lived advertiser and influencer fast session cookies",
-    requiredInProduction: false,
-    generateLocal: false,
-  }) ?? adminSessionSecret;
-
 if (isProductionRuntime && !demoMode && !adminAccessCode?.trim()) {
   throw new Error("Production requires ADMIN_ACCESS_CODE for operator access.");
 }
@@ -522,7 +522,6 @@ const influencerFastSessionCookie = "directsign_influencer_fast";
 const signedPdfAccessCookie = "yeollock_signed_pdf_access";
 const influencerAccessMaxAgeSeconds = 60 * 60;
 const influencerRefreshMaxAgeSeconds = 60 * 60 * 24 * 14;
-const userFastSessionMaxAgeSeconds = 60 * 10;
 const signedPdfAccessMaxAgeSeconds = 60 * 10;
 const defaultAdvertiserTargetId =
   process.env.DIRECTSIGN_DEFAULT_ADVERTISER_ID ?? "adv_1";
@@ -546,10 +545,10 @@ const allowLocalMarketplacePublicFileFallback =
     process.env.MARKETPLACE_ALLOW_LOCAL_PUBLIC_FILE_FALLBACK === "true");
 const allowProductionTestData =
   process.env.YEOLLOCK_ALLOW_PRODUCTION_TEST_DATA === "true";
-const allowMarketplaceSeedData =
-  demoMode || !isProductionRuntime || allowProductionTestData;
 const allowPublicMarketplaceCatalogFallback =
-  process.env.DISABLE_PUBLIC_MARKETPLACE_CATALOG_FALLBACK !== "1";
+  !isProductionRuntime &&
+  (demoMode ||
+    process.env.DIRECTSIGN_ALLOW_BUNDLED_CATALOG_FALLBACK === "true");
 const filterOperationalMarketplaceTestData =
   isProductionRuntime && !demoMode && !allowProductionTestData;
 const signatureConsentVersion = SIGNATURE_CONSENT_VERSION;
@@ -634,7 +633,7 @@ const marketplaceFollowerSyncStaleMs =
 const marketplaceNaverBlogVisitorSyncStaleMs =
   parsePositiveNumberEnv(
     process.env.MARKETPLACE_NAVER_BLOG_VISITOR_SYNC_STALE_DAYS,
-    1,
+    7,
   ) * dayMs;
 const cspReportOnly =
   process.env.CONTENT_SECURITY_POLICY_REPORT_ONLY === "true" ||
@@ -786,14 +785,6 @@ app.use(
     redirect: false,
   }),
 );
-
-interface AdminLoginAttempt {
-  failures: number;
-  windowStartedAt: number;
-  lockedUntil?: number;
-}
-
-const adminLoginAttempts = new Map<string, AdminLoginAttempt>();
 
 interface RateLimitBucket {
   count: number;
@@ -1037,6 +1028,7 @@ interface SupabaseContractRow {
   share_token?: string | null;
   share_token_status: string;
   contract: Contract;
+  data_origin?: DataOrigin | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -1070,6 +1062,7 @@ interface SupabaseProfileRow {
   role: "marketer" | "influencer" | "admin";
   name: string;
   email: string;
+  data_origin?: DataOrigin | null;
   avatar_url?: string | null;
   company_name?: string | null;
   activity_categories?: InfluencerActivityCategory[] | null;
@@ -1134,6 +1127,10 @@ interface StoredPrivateFile {
 interface SupabaseContractV2Row {
   id: string;
   status: "draft" | "negotiating" | "signing" | "active" | "completed" | "cancelled";
+  data_origin?: DataOrigin | null;
+  workflow_source?: "one_to_one" | "marketplace_campaign" | null;
+  marketplace_campaign_id?: string | null;
+  source_application_id?: string | null;
   campaign_title: string;
   campaign_summary?: string | null;
   campaign_start_date?: string | null;
@@ -1280,6 +1277,7 @@ interface SupabaseSupportAccessRequestRow {
   reason: string;
   scope: SupportAccessScope;
   status: SupportAccessStatus;
+  data_origin?: DataOrigin | null;
   expires_at: string;
   reviewed_by_name?: string | null;
   reviewed_at?: string | null;
@@ -1306,6 +1304,7 @@ interface SupabaseSupportAccessEventRow {
 interface SupabaseMarketplaceInfluencerProfileRow {
   id: string;
   owner_profile_id: string;
+  data_origin?: DataOrigin | null;
   public_handle: string;
   display_name: string;
   headline: string;
@@ -1375,6 +1374,15 @@ interface SupabaseDiscoveredInfluencerProfileRow {
   follower_count?: number | null;
   average_views?: number | null;
   post_count?: number | null;
+  naver_blog_visitor_average_4d?: number | null;
+  naver_blog_visitor_counts?: Array<{ date: string; count: number }> | null;
+  naver_blog_visitor_checked_at?: string | null;
+  naver_blog_visitor_status?:
+    | "not_checked"
+    | "available"
+    | "unavailable"
+    | "failed"
+    | null;
   quality_score?: number | null;
   status: "active" | "needs_review" | "hidden" | "claimed";
   source_provider?: string | null;
@@ -1385,6 +1393,13 @@ interface SupabaseDiscoveredInfluencerProfileRow {
   last_checked_at?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
+}
+
+interface SupabaseAdvertiserSavedInfluencerRow {
+  organization_id: string;
+  influencer_public_handle: string;
+  created_by_profile_id: string;
+  created_at: string;
 }
 
 type SupabaseMarketplaceInfluencerHandleRow = Pick<
@@ -1416,6 +1431,7 @@ interface SupabaseMarketplaceFollowerSyncRunRow {
 interface SupabaseMarketplaceBrandProfileRow {
   id: string;
   organization_id: string;
+  data_origin?: DataOrigin | null;
   public_handle: string;
   display_name: string;
   category: string;
@@ -1440,6 +1456,17 @@ interface SupabaseMarketplaceBrandProfileRow {
   updated_at?: string | null;
 }
 
+interface SupabaseMarketplaceCampaignRow {
+  id: string;
+  brand_profile_id: string;
+  organization_id: string;
+  campaign_data: Record<string, unknown>;
+  status: MarketplaceCampaignStatus;
+  created_at: string;
+  updated_at: string;
+  archived_at?: string | null;
+}
+
 interface SupabaseMarketplaceContactProposalRow {
   id: string;
   direction: MarketplaceProposalDirection;
@@ -1449,6 +1476,7 @@ interface SupabaseMarketplaceContactProposalRow {
   target_display_name: string;
   sender_profile_id?: string | null;
   sender_organization_id?: string | null;
+  sender_brand_profile_id?: string | null;
   sender_brand_handle?: string | null;
   sender_influencer_handle?: string | null;
   sender_influencer_avatar_label?: string | null;
@@ -1463,6 +1491,8 @@ interface SupabaseMarketplaceContactProposalRow {
   campaign_id?: string | null;
   campaign_snapshot?: MarketplaceCampaignSnapshot | null;
   converted_contract_id?: string | null;
+  data_origin?: DataOrigin | null;
+  request_key?: string | null;
   status: MarketplaceProposalStatus;
   created_at: string;
   updated_at: string;
@@ -1613,7 +1643,12 @@ const protectLegacyContractForSupabase = (contract: Contract): Contract => {
 
 const restoreLegacyContractFromSupabase = (
   row: Pick<SupabaseContractRow, "contract" | "share_token"> &
-    Partial<Pick<SupabaseContractRow, "brand_profile_id" | "campaign_name" | "post_link">>,
+    Partial<
+      Pick<
+        SupabaseContractRow,
+        "brand_profile_id" | "campaign_name" | "post_link" | "data_origin"
+      >
+    >,
 ) => {
   const fallbackToken = decryptShareTokenFromLegacyStore(row.share_token);
   const contractToken = decryptShareTokenFromLegacyStore(
@@ -1624,6 +1659,7 @@ const restoreLegacyContractFromSupabase = (
   const restoredContract = row.contract
     ? {
         ...row.contract,
+        data_origin: row.data_origin ?? row.contract.data_origin ?? undefined,
         brand_profile_id:
           row.contract.brand_profile_id ?? row.brand_profile_id ?? undefined,
         campaign_name: row.contract.campaign_name ?? row.campaign_name ?? undefined,
@@ -1663,6 +1699,7 @@ const toSupabaseRow = (contract: Contract): SupabaseContractRow => {
       null,
     share_token_status:
       normalizedContract.evidence?.share_token_status ?? "not_issued",
+    data_origin: normalizedContract.data_origin ?? null,
     contract: protectedContract,
     created_at: normalizedContract.created_at,
     updated_at: normalizedContract.updated_at,
@@ -1707,7 +1744,7 @@ const assertSupabaseOk = async (response: Response, label: string) => {
 };
 
 const isMissingLegacyCampaignColumnError = (message: string) =>
-  /campaign_name|post_link/i.test(message) &&
+  /campaign_name|post_link|data_origin/i.test(message) &&
   /column|schema cache|Could not find/i.test(message);
 
 const readSupabaseRows = async <T>(table: string, query = "", label = table) => {
@@ -1744,6 +1781,7 @@ const profileSelectFields = [
   "privacy_policy_accepted_at",
   "terms_version",
   "privacy_policy_version",
+  "data_origin",
 ].join(",");
 
 const recentSessionCacheTtlMs = parsePositiveNumberEnv(
@@ -1792,6 +1830,10 @@ const organizationCache = new Map<
   { organization?: SupabaseOrganizationRow; cachedAt: number }
 >();
 const organizationInflight = new Map<
+  string,
+  Promise<SupabaseOrganizationRow | undefined>
+>();
+const advertiserOrganizationProvisionInflight = new Map<
   string,
   Promise<SupabaseOrganizationRow | undefined>
 >();
@@ -1887,7 +1929,9 @@ const cloneContractStore = (store: ContractStoreFile): ContractStoreFile =>
 
 type SupabaseLegacyContractProjection =
   Pick<SupabaseContractRow, "id" | "contract" | "share_token"> &
-    Partial<Pick<SupabaseContractRow, "campaign_name" | "post_link">>;
+    Partial<
+      Pick<SupabaseContractRow, "campaign_name" | "post_link" | "data_origin">
+    >;
 
 const rememberSupabaseContractStoreCache = (store: ContractStoreFile) => {
   supabaseContractStoreCache = {
@@ -2126,6 +2170,122 @@ const readDefaultOrganizationForProfile = async (profileId: string) => {
   return request;
 };
 
+const ensureDefaultOrganizationForAdvertiserProfile = async (
+  profile: SupabaseProfileRow,
+) => {
+  if (!useSupabase || !isAdvertiserRole(profile.role)) return undefined;
+
+  const existing = await readDefaultOrganizationForProfile(profile.id);
+  if (existing) return existing;
+
+  const inflight = advertiserOrganizationProvisionInflight.get(profile.id);
+  if (inflight) return inflight;
+
+  const request = (async () => {
+    const ownedOrganizations = await readSupabaseRows<SupabaseOrganizationRow>(
+      "organizations",
+      `?select=*&created_by_profile_id=eq.${encodeURIComponent(
+        profile.id,
+      )}&organization_type=eq.advertiser&deleted_at=is.null&order=created_at.asc&limit=1`,
+      "advertiser owned organization recovery",
+    );
+    let organization = ownedOrganizations[0];
+
+    if (!organization) {
+      const organizationId = stableUuid(`advertiser:organization:${profile.id}`);
+      const organizationName =
+        normalizeRequiredText(profile.company_name) ||
+        normalizeRequiredText(profile.name) ||
+        "광고주";
+
+      await upsertSupabaseV2Rows(
+        "organizations",
+        [
+          {
+            id: organizationId,
+            name: organizationName,
+            organization_type: "advertiser",
+            created_by_profile_id: profile.id,
+            business_verification_status:
+              profile.verification_status ?? "not_submitted",
+            deleted_at: null,
+            updated_at: new Date().toISOString(),
+          },
+        ],
+        "id",
+      );
+
+      const rows = await readSupabaseRows<SupabaseOrganizationRow>(
+        "organizations",
+        `?select=*&id=eq.${encodeURIComponent(organizationId)}&limit=1`,
+        "provisioned advertiser organization",
+      );
+      organization = rows[0];
+    }
+
+    if (!organization?.id) return undefined;
+
+    await upsertSupabaseV2Rows(
+      "organization_members",
+      [
+        {
+          organization_id: organization.id,
+          profile_id: profile.id,
+          role: "owner",
+          is_default: true,
+        },
+      ],
+      "organization_id,profile_id",
+    );
+    rememberOrganizationCache(profile.id, organization);
+    return organization;
+  })().finally(() => {
+    advertiserOrganizationProvisionInflight.delete(profile.id);
+  });
+
+  advertiserOrganizationProvisionInflight.set(profile.id, request);
+  return request;
+};
+
+const readOrganizationDataOrigin = async (
+  organizationId: string | undefined,
+): Promise<DataOrigin> => {
+  if (!useSupabase || !hasText(organizationId)) return "production";
+
+  const memberships = await readSupabaseRows<{
+    profile_id: string;
+  }>(
+    "organization_members",
+    `?select=profile_id&organization_id=eq.${encodeURIComponent(
+      organizationId!,
+    )}&role=in.(owner,admin,marketer)`,
+    "organization data origin memberships",
+  );
+  const profileIds = memberships.map((membership) => membership.profile_id);
+  if (profileIds.length === 0) return "production";
+
+  const profiles = await readSupabaseRows<
+    Pick<SupabaseProfileRow, "id" | "data_origin">
+  >(
+    "profiles",
+    `?select=id,data_origin&id=in.${postgrestInFilter(profileIds)}`,
+    "organization data origins",
+  );
+  return resolveTrustedDataOrigin(...profiles.map((profile) => profile.data_origin));
+};
+
+const readTrustedProfileDataOrigin = async (
+  profileId: string | undefined,
+): Promise<DataOrigin> => {
+  if (!useSupabase || !hasText(profileId)) return "production";
+  const rows = await readSupabaseRows<Pick<SupabaseProfileRow, "id" | "data_origin">>(
+    "profiles",
+    `?select=id,data_origin&id=eq.${encodeURIComponent(profileId!)}&limit=1`,
+    "trusted profile data origin",
+  );
+  return normalizeDataOrigin(rows[0]?.data_origin) ?? "production";
+};
+
 const buildAdvertiserSessionUser = (
   authUser: SupabaseAuthUser,
   profile: SupabaseProfileRow,
@@ -2200,17 +2360,7 @@ const requireAdvertiserSession = async (
     return undefined;
   }
 
-  if (!auth.fastSession) {
-    const fastToken = createUserFastSessionToken(auth.user, profile, "marketer");
-    if (fastToken) {
-      response.append(
-        "Set-Cookie",
-        `${advertiserFastSessionCookie}=${encodeURIComponent(
-          fastToken,
-        )}; ${advertiserCookieOptions(userFastSessionMaxAgeSeconds)}`,
-      );
-    }
-  }
+  await ensureDefaultOrganizationForAdvertiserProfile(profile);
 
   return { ...auth, profile };
 };
@@ -2233,18 +2383,6 @@ const requireInfluencerSession = async (
       error: "인플루언서 계정 권한이 필요합니다. 인플루언서 계정으로 로그인해 주세요.",
     });
     return undefined;
-  }
-
-  if (!auth.fastSession) {
-    const fastToken = createUserFastSessionToken(auth.user, profile, "influencer");
-    if (fastToken) {
-      response.append(
-        "Set-Cookie",
-        `${influencerFastSessionCookie}=${encodeURIComponent(
-          fastToken,
-        )}; ${influencerCookieOptions(userFastSessionMaxAgeSeconds)}`,
-      );
-    }
   }
 
   return { ...auth, profile };
@@ -2291,7 +2429,7 @@ const getAdvertiserDashboardCacheKey = (
 ) => `${auth.profile.id}:${includeMessageSummary ? "full" : "lite"}`;
 
 const canUseAdvertiserDashboardCache = (auth: AdvertiserSession) =>
-  hasText(auth.accessToken) || auth.fastSession === true;
+  hasText(auth.accessToken);
 
 const readAdvertiserDashboardCache = (
   auth: AdvertiserSession,
@@ -2370,13 +2508,15 @@ async function buildAdvertiserLoginDashboardBootstrap(
 
     const dashboardPromise = (async () => {
       const [contracts, verification, messageSummary] = await Promise.all([
-        readAdvertiserScopedSupabaseContracts(auth).then(async (scopedContracts) => {
-          if (scopedContracts) return scopedContracts;
-          const store = await readStore();
-          return store.contracts.filter((contract) =>
-            canAdvertiserAccessLegacyContract(auth, contract),
-          );
-        }),
+        useSupabase
+          ? readAdvertiserScopedSupabaseContracts(auth).then(
+              (scopedContracts) => scopedContracts ?? [],
+            )
+          : readStore().then((store) =>
+              store.contracts.filter((contract) =>
+                canAdvertiserAccessLegacyContract(auth, contract),
+              ),
+            ),
         buildAdvertiserScopedVerificationSummary(auth),
         includeMessageSummary
           ? readMarketplaceMessagesForAdvertiser(auth, { summaryOnly: true })
@@ -2484,6 +2624,7 @@ const normalizeSupportAccessRequest = (
   reason: row.reason,
   scope: row.scope ?? "contract",
   status: row.status,
+  data_origin: row.data_origin ?? undefined,
   expires_at: row.expires_at,
   reviewed_by_name: row.reviewed_by_name ?? undefined,
   reviewed_at: row.reviewed_at ?? undefined,
@@ -2899,6 +3040,7 @@ const normalizeSupportTicket = (
       : {},
   severity: supportTicketSeverities.has(row.severity) ? row.severity : "normal",
   status: supportTicketStatuses.has(row.status) ? row.status : "open",
+  data_origin: row.data_origin ?? undefined,
   admin_note: row.admin_note ?? undefined,
   source: row.source ?? "support_page",
   ip_hash: row.ip_hash ?? undefined,
@@ -3092,6 +3234,10 @@ const isDuplicateOperationalAlertError = (error: unknown) =>
   (error.message.includes("duplicate key") ||
     error.message.includes("23505") ||
     error.message.includes("409"));
+
+const isSupabaseUniqueViolationError = (error: unknown) =>
+  error instanceof Error &&
+  (error.message.includes("duplicate key") || error.message.includes("23505"));
 
 const normalizeOperationalAlert = (
   row: OperationalAlertRecord,
@@ -3668,6 +3814,14 @@ const bindContractToAdvertiser = async (
 
   return {
     ...contract,
+    data_origin:
+      normalizeDataOrigin(auth.profile.data_origin) ??
+      deriveDataOrigin([
+        auth.profile.email,
+        auth.user.email,
+        auth.profile.name,
+        auth.profile.company_name,
+      ]),
     advertiser_id: auth.profile.id,
     brand_profile_id: brandRow?.id ?? contract.brand_profile_id,
     advertiser_info: {
@@ -3888,82 +4042,6 @@ const parseCookies = (cookieHeader: string | undefined) => {
   );
 };
 
-type UserFastSessionPayload = {
-  v: 1;
-  role: "marketer" | "influencer";
-  exp: number;
-  user: SupabaseAuthUser;
-  profile: SupabaseProfileRow;
-};
-
-const userFastSessionHmac = (payload: string) => {
-  if (!userSessionFastPathSecret) return "";
-  return createHmac("sha256", userSessionFastPathSecret)
-    .update(payload)
-    .digest("hex");
-};
-
-const createUserFastSessionToken = (
-  user: SupabaseAuthUser,
-  profile: SupabaseProfileRow,
-  role: UserFastSessionPayload["role"],
-) => {
-  if (!userSessionFastPathSecret) return undefined;
-
-  const payload = Buffer.from(
-    JSON.stringify({
-      v: 1,
-      role,
-      exp: Date.now() + userFastSessionMaxAgeSeconds * 1000,
-      user: {
-        id: user.id,
-        email: user.email ?? profile.email,
-        email_confirmed_at:
-          user.email_confirmed_at ?? profile.email_verified_at ?? undefined,
-        confirmed_at: user.confirmed_at ?? profile.email_verified_at ?? undefined,
-      },
-      profile,
-    } satisfies UserFastSessionPayload),
-    "utf8",
-  ).toString("base64url");
-  const signature = userFastSessionHmac(payload);
-  return `${payload}.${signature}`;
-};
-
-const verifyUserFastSessionToken = (
-  token: string | undefined,
-  expectedRole: UserFastSessionPayload["role"],
-) => {
-  if (!token || !userSessionFastPathSecret) return undefined;
-
-  const [payload, signature] = token.split(".");
-  if (!payload || !signature) return undefined;
-  if (!safeEqual(signature, userFastSessionHmac(payload))) return undefined;
-
-  try {
-    const parsed = JSON.parse(
-      Buffer.from(payload, "base64url").toString("utf8"),
-    ) as Partial<UserFastSessionPayload>;
-
-    if (parsed.v !== 1 || parsed.role !== expectedRole) return undefined;
-    if (typeof parsed.exp !== "number" || parsed.exp < Date.now()) {
-      return undefined;
-    }
-    if (!parsed.user?.id || !parsed.profile?.id) return undefined;
-    if (parsed.user.id !== parsed.profile.id) return undefined;
-    if (parsed.profile.role !== expectedRole) return undefined;
-
-    return parsed as UserFastSessionPayload;
-  } catch {
-    return undefined;
-  }
-};
-
-const shouldUseUserFastSession = (
-  request: express.Request,
-  bearerToken: string | undefined,
-) => !bearerToken && (request.method === "GET" || request.method === "HEAD");
-
 const signedPdfCookieOptions = (maxAgeSeconds = signedPdfAccessMaxAgeSeconds) =>
   [
     "HttpOnly",
@@ -4127,7 +4205,7 @@ const clearAdvertiserCookieOptions = () =>
 const setAdvertiserSessionCookies = (
   response: express.Response,
   session: SupabaseAuthSession,
-  profile?: SupabaseProfileRow,
+  _profile?: SupabaseProfileRow,
 ) => {
   const cookies = [
     `${advertiserAccessCookie}=${encodeURIComponent(
@@ -4138,6 +4216,7 @@ const setAdvertiserSessionCookies = (
         Math.max(60, Number(session.expires_in ?? influencerAccessMaxAgeSeconds)),
       ),
     )}`,
+    `${advertiserFastSessionCookie}=; ${clearAdvertiserCookieOptions()}`,
   ];
 
   if (session.refresh_token) {
@@ -4146,17 +4225,6 @@ const setAdvertiserSessionCookies = (
         session.refresh_token,
       )}; ${advertiserCookieOptions(influencerRefreshMaxAgeSeconds)}`,
     );
-  }
-
-  if (profile && isAdvertiserRole(profile.role)) {
-    const fastToken = createUserFastSessionToken(session.user, profile, "marketer");
-    if (fastToken) {
-      cookies.push(
-        `${advertiserFastSessionCookie}=${encodeURIComponent(
-          fastToken,
-        )}; ${advertiserCookieOptions(userFastSessionMaxAgeSeconds)}`,
-      );
-    }
   }
 
   response.setHeader("Set-Cookie", cookies);
@@ -4174,7 +4242,7 @@ const clearAdvertiserSessionCookies = (response: express.Response) => {
 const setInfluencerSessionCookies = (
   response: express.Response,
   session: SupabaseAuthSession,
-  profile?: SupabaseProfileRow,
+  _profile?: SupabaseProfileRow,
 ) => {
   const cookies = [
     `${influencerAccessCookie}=${encodeURIComponent(
@@ -4185,6 +4253,7 @@ const setInfluencerSessionCookies = (
         Math.max(60, Number(session.expires_in ?? influencerAccessMaxAgeSeconds)),
       ),
     )}`,
+    `${influencerFastSessionCookie}=; ${clearInfluencerCookieOptions()}`,
   ];
 
   if (session.refresh_token) {
@@ -4193,17 +4262,6 @@ const setInfluencerSessionCookies = (
         session.refresh_token,
       )}; ${influencerCookieOptions(influencerRefreshMaxAgeSeconds)}`,
     );
-  }
-
-  if (profile && isInfluencerRole(profile.role)) {
-    const fastToken = createUserFastSessionToken(session.user, profile, "influencer");
-    if (fastToken) {
-      cookies.push(
-        `${influencerFastSessionCookie}=${encodeURIComponent(
-          fastToken,
-        )}; ${influencerCookieOptions(userFastSessionMaxAgeSeconds)}`,
-      );
-    }
   }
 
   response.setHeader("Set-Cookie", cookies);
@@ -4222,50 +4280,10 @@ const getClientIp = (request: express.Request) => {
   return request.ip || request.socket.remoteAddress || "unknown";
 };
 
-const getAdminLoginAttemptKey = (request: express.Request) =>
-  request.socket.remoteAddress || getClientIp(request);
-
-const getAdminLoginThrottle = (key: string) => {
-  const now = Date.now();
-  const attempt = adminLoginAttempts.get(key);
-
-  if (!attempt) return { blocked: false };
-  if (attempt.lockedUntil && attempt.lockedUntil > now) {
-    return {
-      blocked: true,
-      retryAfterSeconds: Math.ceil((attempt.lockedUntil - now) / 1000),
-    };
-  }
-  if (now - attempt.windowStartedAt > adminLoginWindowMs) {
-    adminLoginAttempts.delete(key);
-  }
-  return { blocked: false };
-};
-
-const recordAdminLoginFailure = (key: string) => {
-  const now = Date.now();
-  const current = adminLoginAttempts.get(key);
-  const attempt =
-    current && now - current.windowStartedAt <= adminLoginWindowMs
-      ? current
-      : { failures: 0, windowStartedAt: now };
-
-  attempt.failures += 1;
-  if (attempt.failures >= adminLoginMaxFailures) {
-    attempt.lockedUntil = now + adminLoginLockMs;
-  }
-  adminLoginAttempts.set(key, attempt);
-  return attempt;
-};
-
-const clearAdminLoginFailures = (key: string) => {
-  adminLoginAttempts.delete(key);
-};
-
 const normalizeRateLimitEmail = (value: unknown) =>
   String(value ?? "").trim().toLowerCase();
 
-const consumeRateLimitBucket = (
+const consumeLocalRateLimitBucket = (
   key: string,
   maxAttempts: number,
   windowMs: number,
@@ -4293,6 +4311,73 @@ const consumeRateLimitBucket = (
   return { blocked: false };
 };
 
+let distributedRateLimitFallbackWarned = false;
+
+const consumeRateLimitBucket = async (
+  key: string,
+  maxAttempts: number,
+  windowMs: number,
+) => {
+  if (useSupabase) {
+    try {
+      const bucketKey = sha256Hex(`rate-limit:${key}`);
+      const response = await fetchSupabase("rpc/consume_directsign_rate_limit", "", {
+        method: "POST",
+        body: JSON.stringify({
+          p_bucket_key: bucketKey,
+          p_max_attempts: maxAttempts,
+          p_window_seconds: Math.max(1, Math.ceil(windowMs / 1000)),
+        }),
+      });
+      await assertSupabaseOk(response, "Supabase distributed rate limit");
+      const payload = (await response.json()) as
+        | Array<{ blocked?: boolean; retry_after_seconds?: number }>
+        | { blocked?: boolean; retry_after_seconds?: number };
+      const result = Array.isArray(payload) ? payload[0] : payload;
+      if (result && typeof result.blocked === "boolean") {
+        return {
+          blocked: result.blocked,
+          retryAfterSeconds: result.retry_after_seconds,
+        };
+      }
+    } catch (error) {
+      if (!distributedRateLimitFallbackWarned) {
+        distributedRateLimitFallbackWarned = true;
+        console.warn(
+          `[${productName}] distributed rate limit unavailable; using instance fallback: ${
+            error instanceof Error ? error.message : "unknown error"
+          }`,
+        );
+      }
+    }
+  }
+
+  return consumeLocalRateLimitBucket(key, maxAttempts, windowMs);
+};
+
+const clearRateLimitBucket = async (key: string) => {
+  publicAuthRateLimitBuckets.delete(key);
+  if (!useSupabase) return;
+
+  try {
+    const response = await fetchSupabase(
+      "directsign_rate_limit_buckets",
+      `?bucket_key=eq.${encodeURIComponent(sha256Hex(`rate-limit:${key}`))}`,
+      { method: "DELETE" },
+    );
+    await assertSupabaseOk(response, "Supabase distributed rate limit clear");
+  } catch (error) {
+    if (!distributedRateLimitFallbackWarned) {
+      distributedRateLimitFallbackWarned = true;
+      console.warn(
+        `[${productName}] distributed rate limit clear failed: ${
+          error instanceof Error ? error.message : "unknown error"
+        }`,
+      );
+    }
+  }
+};
+
 const getPublicAuthRateLimitKeys = (
   request: express.Request,
   action: string,
@@ -4317,31 +4402,33 @@ const getPublicAuthRateLimitKeys = (
   return keys;
 };
 
-const consumePublicAuthRateLimit = (
+const consumePublicAuthRateLimit = async (
   request: express.Request,
   action: string,
   email: unknown,
 ) => {
-  for (const limit of getPublicAuthRateLimitKeys(request, action, email)) {
-    const result = consumeRateLimitBucket(
+  const limits = getPublicAuthRateLimitKeys(request, action, email);
+  for (const limit of limits) {
+    const result = await consumeRateLimitBucket(
       limit.key,
       limit.maxAttempts,
       publicAuthWindowMs,
     );
     if (result.blocked) return result;
   }
-
   return { blocked: false };
 };
 
-const clearPublicAuthRateLimit = (
+const clearPublicAuthRateLimit = async (
   request: express.Request,
   action: string,
   email: unknown,
 ) => {
-  for (const limit of getPublicAuthRateLimitKeys(request, action, email)) {
-    publicAuthRateLimitBuckets.delete(limit.key);
-  }
+  await Promise.all(
+    getPublicAuthRateLimitKeys(request, action, email).map((limit) =>
+      clearRateLimitBucket(limit.key),
+    ),
+  );
 };
 
 const sendPublicAuthRateLimitResponse = (
@@ -4362,7 +4449,7 @@ const normalizeRateLimitSubject = (value: unknown) =>
     .replace(/[^a-z0-9._:@-]+/g, "-")
     .slice(0, 160);
 
-const consumeSensitiveEndpointRateLimit = (
+const consumeSensitiveEndpointRateLimit = async (
   request: express.Request,
   action: string,
   subject?: unknown,
@@ -4384,14 +4471,13 @@ const consumeSensitiveEndpointRateLimit = (
   }
 
   for (const limit of limits) {
-    const result = consumeRateLimitBucket(
+    const result = await consumeRateLimitBucket(
       limit.key,
       limit.maxAttempts,
       sensitiveEndpointWindowMs,
     );
     if (result.blocked) return result;
   }
-
   return { blocked: false };
 };
 
@@ -4427,6 +4513,62 @@ const buildEmailConfirmationRedirect = (
   const url = new URL(loginPath, `${getAppBaseUrl(request)}/`);
   url.searchParams.set("next", nextPath);
   return url.toString();
+};
+
+type SignupRedirectRole = "advertiser" | "influencer";
+
+const signupNextPathRules: Record<
+  SignupRedirectRole,
+  { fallback: string; allowedPrefixes: string[] }
+> = {
+  advertiser: {
+    fallback: "/advertiser/verification",
+    allowedPrefixes: ["/advertiser"],
+  },
+  influencer: {
+    fallback: "/influencer/dashboard",
+    allowedPrefixes: ["/influencer", "/contract", "/campaigns"],
+  },
+};
+
+const normalizeSignupNextPath = (
+  value: unknown,
+  role: SignupRedirectRole,
+) => {
+  const { fallback, allowedPrefixes } = signupNextPathRules[role];
+  const candidate = normalizeOptionalText(value);
+  const hasControlCharacter = candidate
+    ? Array.from(candidate).some((character) => {
+        const code = character.charCodeAt(0);
+        return code <= 31 || code === 127;
+      })
+    : false;
+  if (
+    !candidate ||
+    candidate.length > 700 ||
+    !candidate.startsWith("/") ||
+    candidate.startsWith("//") ||
+    candidate.includes("\\") ||
+    hasControlCharacter
+  ) {
+    return fallback;
+  }
+
+  try {
+    const baseUrl = new URL("https://yeollock.local");
+    const parsed = new URL(candidate, baseUrl);
+    const allowed =
+      parsed.origin === baseUrl.origin &&
+      allowedPrefixes.some(
+        (prefix) =>
+          parsed.pathname === prefix || parsed.pathname.startsWith(`${prefix}/`),
+      );
+    return allowed
+      ? `${parsed.pathname}${parsed.search}${parsed.hash}`
+      : fallback;
+  } catch {
+    return fallback;
+  }
 };
 
 const getAdminSessionFromRequest = (request: express.Request) =>
@@ -4732,29 +4874,19 @@ const revokeSessionFromRequest = async (
 const authenticateInfluencerRequest = async (
   request: express.Request,
   response?: express.Response,
-) => {
+): Promise<
+  | {
+      user: SupabaseAuthUser;
+      accessToken: string;
+      profile?: SupabaseProfileRow;
+    }
+  | undefined
+> => {
   const cookies = parseCookies(request.header("cookie"));
   const bearerToken = getBearerToken(request);
   const cookieAccessToken = cookies.get(influencerAccessCookie);
   const refreshToken = cookies.get(influencerRefreshCookie);
-  const fastSessionToken = cookies.get(influencerFastSessionCookie);
   const accessToken = bearerToken ?? cookieAccessToken;
-
-  if (shouldUseUserFastSession(request, bearerToken)) {
-    const fastSession = verifyUserFastSessionToken(
-      fastSessionToken,
-      "influencer",
-    );
-    if (fastSession) {
-      rememberProfile(fastSession.profile);
-      return {
-        user: fastSession.user,
-        accessToken: accessToken ?? "",
-        profile: fastSession.profile,
-        fastSession: true,
-      };
-    }
-  }
 
   if (accessToken) {
     const cachedUser = readRecentAuthSession(accessToken);
@@ -4798,26 +4930,19 @@ const authenticateInfluencerRequest = async (
 const authenticateAdvertiserRequest = async (
   request: express.Request,
   response?: express.Response,
-) => {
+): Promise<
+  | {
+      user: SupabaseAuthUser;
+      accessToken: string;
+      profile?: SupabaseProfileRow;
+    }
+  | undefined
+> => {
   const cookies = parseCookies(request.header("cookie"));
   const bearerToken = getBearerToken(request);
   const cookieAccessToken = cookies.get(advertiserAccessCookie);
   const refreshToken = cookies.get(advertiserRefreshCookie);
-  const fastSessionToken = cookies.get(advertiserFastSessionCookie);
   const accessToken = bearerToken ?? cookieAccessToken;
-
-  if (shouldUseUserFastSession(request, bearerToken)) {
-    const fastSession = verifyUserFastSessionToken(fastSessionToken, "marketer");
-    if (fastSession) {
-      rememberProfile(fastSession.profile);
-      return {
-        user: fastSession.user,
-        accessToken: accessToken ?? "",
-        profile: fastSession.profile,
-        fastSession: true,
-      };
-    }
-  }
 
   if (accessToken) {
     const cachedUser = readRecentAuthSession(accessToken);
@@ -5104,53 +5229,85 @@ const hasOperationalTestMarker = (value: unknown, depth = 0): boolean => {
 const isOperationalTestContractId = (value: unknown) =>
   hasText(value) && /^(demo-contract|qa-|test-|seed-)/i.test(value.trim());
 
-const isOperationalTestContract = (contract: Contract) =>
-  isOperationalTestContractId(contract.id) ||
-  hasOperationalTestEmail([
-    contract.advertiser_info?.name,
-    contract.advertiser_info?.manager,
-    contract.influencer_info?.name,
-    contract.influencer_info?.contact,
-    contract.signature_data?.signer_email,
-  ]) ||
-  hasOperationalTestMarker({
-    title: contract.title,
-    campaign_name: contract.campaign_name,
-    post_link: contract.post_link,
-    advertiser_id: contract.advertiser_id,
-    advertiser_info: contract.advertiser_info,
-    influencer_info: contract.influencer_info,
-    campaign: contract.campaign,
-    workflow: contract.workflow,
-    settlement: contract.settlement,
-    evidence: contract.evidence,
-    signature_data: contract.signature_data,
-    audit_events: contract.audit_events,
-  });
+const normalizeDataOrigin = (value: unknown): DataOrigin | undefined =>
+  value === "production" || value === "qa" || value === "demo" || value === "seed"
+    ? value
+    : undefined;
+
+const isExplicitNonProductionOrigin = (value: unknown) => {
+  const origin = normalizeDataOrigin(value);
+  return origin ? origin !== "production" : undefined;
+};
+
+const deriveDataOrigin = (values: unknown[]): DataOrigin =>
+  hasOperationalTestEmail(values) || values.some((value) => hasOperationalTestMarker(value))
+    ? "qa"
+    : "production";
+
+const resolveTrustedDataOrigin = (...values: unknown[]): DataOrigin => {
+  const origins = values
+    .map(normalizeDataOrigin)
+    .filter((origin): origin is DataOrigin => Boolean(origin));
+  return origins.find((origin) => origin !== "production") ?? "production";
+};
+
+const isOperationalTestContract = (contract: Contract) => {
+  const explicitOrigin = isExplicitNonProductionOrigin(contract.data_origin);
+  if (explicitOrigin !== undefined) return explicitOrigin;
+
+  return (
+    isOperationalTestContractId(contract.id) ||
+    hasOperationalTestEmail([
+      contract.advertiser_info?.name,
+      contract.advertiser_info?.manager,
+      contract.influencer_info?.name,
+      contract.influencer_info?.contact,
+      contract.signature_data?.signer_email,
+    ]) ||
+    hasOperationalTestMarker({
+      title: contract.title,
+      campaign_name: contract.campaign_name,
+      post_link: contract.post_link,
+      advertiser_id: contract.advertiser_id,
+      advertiser_info: contract.advertiser_info,
+      influencer_info: contract.influencer_info,
+      campaign: contract.campaign,
+      workflow: contract.workflow,
+      settlement: contract.settlement,
+      evidence: contract.evidence,
+      signature_data: contract.signature_data,
+      audit_events: contract.audit_events,
+    })
+  );
+};
 
 type RelativeTestDateSession = {
   user?: Pick<SupabaseAuthUser, "email">;
   profile?: Partial<
     Pick<
       SupabaseProfileRow,
-      "email" | "name" | "company_name" | "role" | "avatar_url"
+      "email" | "name" | "company_name" | "role" | "avatar_url" | "data_origin"
     >
   >;
 };
 
 const shouldUseRelativeTestDatesForSession = (
   auth: RelativeTestDateSession | undefined,
-) =>
-  Boolean(
-    auth &&
-      (hasOperationalTestEmail([auth.user?.email, auth.profile?.email]) ||
-        hasOperationalTestMarker({
-          name: auth.profile?.name,
-          company_name: auth.profile?.company_name,
-          avatar_url: auth.profile?.avatar_url,
-          role: auth.profile?.role,
-        })),
+) => {
+  if (!auth) return false;
+  const explicitOrigin = isExplicitNonProductionOrigin(auth.profile?.data_origin);
+  if (explicitOrigin !== undefined) return explicitOrigin;
+
+  return Boolean(
+    hasOperationalTestEmail([auth.user?.email, auth.profile?.email]) ||
+      hasOperationalTestMarker({
+        name: auth.profile?.name,
+        company_name: auth.profile?.company_name,
+        avatar_url: auth.profile?.avatar_url,
+        role: auth.profile?.role,
+      }),
   );
+};
 
 const relativeTestDateFormatter = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Asia/Seoul",
@@ -5563,42 +5720,57 @@ const normalizeTestMarketplaceProposalRowsForSession = (
 
 const isOperationalTestSupportAccessRequest = (
   request: SupportAccessRequestRecord,
-) =>
-  isOperationalTestContractId(request.contract_id) ||
-  hasOperationalTestEmail([request.requester_name, request.requester_email]) ||
-  hasOperationalTestMarker({
-    requester_name: request.requester_name,
-    reason: request.reason,
-    reviewed_by_name: request.reviewed_by_name,
-    audit_events: request.audit_events,
-  });
+) => {
+  const explicitOrigin = isExplicitNonProductionOrigin(request.data_origin);
+  if (explicitOrigin !== undefined) return explicitOrigin;
+  return (
+    isOperationalTestContractId(request.contract_id) ||
+    hasOperationalTestEmail([request.requester_name, request.requester_email]) ||
+    hasOperationalTestMarker({
+      requester_name: request.requester_name,
+      reason: request.reason,
+      reviewed_by_name: request.reviewed_by_name,
+      audit_events: request.audit_events,
+    })
+  );
+};
 
-const isOperationalTestSupportTicket = (ticket: OperationalSupportTicketRecord) =>
-  isOperationalTestContractId(ticket.contract_id) ||
-  hasOperationalTestEmail([ticket.requester_name, ticket.requester_email]) ||
-  hasOperationalTestMarker({
-    source: ticket.source,
-    requester_name: ticket.requester_name,
-    subject: ticket.subject,
-    message: ticket.message,
-    contract_title: ticket.contract_title,
-    page_path: ticket.page_path,
-    context_url: ticket.context_url,
-    browser_context: ticket.browser_context,
-  });
+const isOperationalTestSupportTicket = (ticket: OperationalSupportTicketRecord) => {
+  const explicitOrigin = isExplicitNonProductionOrigin(ticket.data_origin);
+  if (explicitOrigin !== undefined) return explicitOrigin;
+  return (
+    isOperationalTestContractId(ticket.contract_id) ||
+    hasOperationalTestEmail([ticket.requester_name, ticket.requester_email]) ||
+    hasOperationalTestMarker({
+      source: ticket.source,
+      requester_name: ticket.requester_name,
+      subject: ticket.subject,
+      message: ticket.message,
+      contract_title: ticket.contract_title,
+      page_path: ticket.page_path,
+      context_url: ticket.context_url,
+      browser_context: ticket.browser_context,
+    })
+  );
+};
 
 const isOperationalTestVerificationRequest = (
   request: VerificationRequestRecord,
-) =>
-  hasOperationalTestEmail([request.submitted_by_email]) ||
-  hasOperationalTestMarker({
-    evidence_snapshot_json: request.evidence_snapshot_json,
-    subject_name: request.subject_name,
-    platform_handle: request.platform_handle,
-    platform_url: request.platform_url,
-    ownership_challenge_url: request.ownership_challenge_url,
-    note: request.note,
-  });
+) => {
+  const explicitOrigin = isExplicitNonProductionOrigin(request.data_origin);
+  if (explicitOrigin !== undefined) return explicitOrigin;
+  return (
+    hasOperationalTestEmail([request.submitted_by_email]) ||
+    hasOperationalTestMarker({
+      evidence_snapshot_json: request.evidence_snapshot_json,
+      subject_name: request.subject_name,
+      platform_handle: request.platform_handle,
+      platform_url: request.platform_url,
+      ownership_challenge_url: request.ownership_challenge_url,
+      note: request.note,
+    })
+  );
+};
 
 const normalizeSelectedValues = <T extends string>(
   value: unknown,
@@ -6160,13 +6332,27 @@ const normalizeGoogleSheetCell = (value: GoogleSheetCellValue) => {
 const parseGoogleExportWorkbook = (body: unknown): GoogleExportWorkbook => {
   const payload = body as Record<string, unknown> | undefined;
   const rawSheets = Array.isArray(payload?.sheets) ? payload.sheets : [];
-  const sheets = rawSheets.slice(0, googleExportMaxSheets).map((sheet, index) => {
+  if (rawSheets.length > googleExportMaxSheets) {
+    throw new Error(
+      `Google 스프레드시트는 한 번에 ${googleExportMaxSheets}개 시트까지 내보낼 수 있습니다.`,
+    );
+  }
+
+  const sheets = rawSheets.map((sheet, index) => {
     const sheetPayload = sheet as Record<string, unknown>;
     const columns = Array.isArray(sheetPayload.columns)
       ? sheetPayload.columns.map((column) => normalizeRequiredText(column).slice(0, 120))
       : [];
-    const rows = Array.isArray(sheetPayload.rows)
-      ? sheetPayload.rows.slice(0, googleExportMaxRowsPerSheet).map((row) =>
+    const rawRows = Array.isArray(sheetPayload.rows) ? sheetPayload.rows : [];
+    if (rawRows.length > googleExportMaxRowsPerSheet) {
+      throw new Error(
+        `Google 스프레드시트는 시트당 ${googleExportMaxRowsPerSheet.toLocaleString(
+          "ko-KR",
+        )}행까지 내보낼 수 있습니다. 필터로 범위를 줄여 주세요.`,
+      );
+    }
+    const rows = rawRows.length > 0
+      ? rawRows.map((row) =>
           Array.isArray(row)
             ? row.slice(0, columns.length).map(normalizeGoogleSheetCell)
             : [],
@@ -9276,11 +9462,31 @@ const toIsoDateTime = (value: string | undefined) => {
 };
 
 const parseMoneyAmount = (value: string | undefined) => {
-  if (!hasText(value) || value.includes("%")) return undefined;
-  const numeric = value.replace(/[^\d.-]/g, "");
-  if (!numeric) return undefined;
-  const parsed = Number(numeric);
-  return Number.isFinite(parsed) ? parsed : undefined;
+  const text = value?.trim();
+  if (
+    !text ||
+    /%|협의|미정|수수료|commission|판매\s*수익|성과\s*형|매월|월별|회당|건당/i.test(
+      text,
+    ) ||
+    /[~–—-]|부터|이상|이하|최대|최소|범위/i.test(text)
+  ) {
+    return undefined;
+  }
+
+  const matches = Array.from(
+    text.matchAll(
+      /(\d+(?:\.\d+)?)\s*억\s*원?|(\d+(?:\.\d+)?)\s*만\s*원?|([0-9][0-9,]{0,})\s*원/g,
+    ),
+  );
+  if (matches.length !== 1) return undefined;
+
+  const match = matches[0];
+  const amount = match[1]
+    ? Number(match[1]) * 100_000_000
+    : match[2]
+      ? Number(match[2]) * 10_000
+      : Number((match[3] ?? "").replace(/,/g, ""));
+  return Number.isFinite(amount) && amount >= 0 ? Math.round(amount) : undefined;
 };
 
 const legacyContractStatusLabels: Record<Contract["status"], string> = {
@@ -9625,10 +9831,6 @@ const insertSupabaseV2RowsIgnoringDuplicates = async (
 const campaignProposalTypes = new Set<CampaignProposalType>(
   campaignProposalTypeOptions,
 );
-const marketplaceCountries = new Set<MarketplaceCountryCode>(
-  marketplaceCountryOptions,
-);
-
 const normalizeStringArrayForStorage = (
   value: unknown,
   fallback: string[] = [],
@@ -9667,7 +9869,7 @@ const normalizeMarketplaceCountries = (
 
   const normalized = value.filter(
     (item): item is MarketplaceCountryCode =>
-      typeof item === "string" && marketplaceCountries.has(item as MarketplaceCountryCode),
+      isMarketplaceCountryCode(item),
   );
 
   return normalized.length > 0
@@ -9831,6 +10033,121 @@ const normalizeBrandCampaigns = (
     .slice(0, maxItems);
 };
 
+const marketplaceCampaignTable = "marketplace_campaigns";
+let normalizedMarketplaceCampaignFallbackWarned = false;
+
+const isMissingMarketplaceCampaignTableError = (error: unknown) =>
+  error instanceof Error &&
+  /marketplace_campaigns|schema cache|Could not find the table|relation/i.test(
+    error.message,
+  ) &&
+  /404|400|PGRST205|does not exist|schema cache/i.test(error.message);
+
+const readNormalizedMarketplaceCampaignRows = async (
+  query: string,
+): Promise<SupabaseMarketplaceCampaignRow[] | undefined> => {
+  try {
+    return await readSupabaseRows<SupabaseMarketplaceCampaignRow>(
+      marketplaceCampaignTable,
+      query,
+      "normalized marketplace campaigns",
+    );
+  } catch (error) {
+    if (!isMissingMarketplaceCampaignTableError(error)) throw error;
+    if (!normalizedMarketplaceCampaignFallbackWarned) {
+      console.warn(
+        "[yeollock.me] marketplace_campaigns is unavailable; using the legacy brand campaign mirror until migrations are applied.",
+      );
+      normalizedMarketplaceCampaignFallbackWarned = true;
+    }
+    return undefined;
+  }
+};
+
+const mapNormalizedMarketplaceCampaignRow = (
+  row: SupabaseMarketplaceCampaignRow,
+) => {
+  const data =
+    row.campaign_data && typeof row.campaign_data === "object"
+      ? row.campaign_data
+      : {};
+  return normalizeBrandCampaigns(
+    [
+      {
+        ...data,
+        id: row.id,
+        status: row.status,
+        createdAt: data.createdAt ?? row.created_at,
+        updatedAt: data.updatedAt ?? row.updated_at,
+      },
+    ],
+    1,
+  )[0];
+};
+
+const hydrateBrandRowsWithNormalizedCampaigns = async (
+  rows: SupabaseMarketplaceBrandProfileRow[],
+) => {
+  if (rows.length === 0) return rows;
+  const campaignRows = await readNormalizedMarketplaceCampaignRows(
+    `?select=*&brand_profile_id=in.${postgrestInFilter(
+      rows.map((row) => row.id),
+    )}&archived_at=is.null&order=created_at.desc`,
+  );
+  if (!campaignRows) return rows;
+
+  const campaignsByBrand = new Map<string, MarketplaceBrandCampaign[]>();
+  for (const row of campaignRows) {
+    const campaign = mapNormalizedMarketplaceCampaignRow(row);
+    if (!campaign) continue;
+    const campaigns = campaignsByBrand.get(row.brand_profile_id) ?? [];
+    campaigns.push(campaign);
+    campaignsByBrand.set(row.brand_profile_id, campaigns);
+  }
+
+  return rows.map((row) => ({
+    ...row,
+    active_campaigns: campaignsByBrand.get(row.id) ?? [],
+  }));
+};
+
+const upsertNormalizedMarketplaceCampaign = async (
+  organizationId: string,
+  brandProfileId: string,
+  campaign: MarketplaceBrandCampaign,
+) => {
+  if (!campaign.id) return false;
+  const now = new Date().toISOString();
+  try {
+    await upsertSupabaseV2Rows(
+      marketplaceCampaignTable,
+      [
+        {
+          id: campaign.id,
+          brand_profile_id: brandProfileId,
+          organization_id: organizationId,
+          campaign_data: campaign,
+          status: campaign.status ?? "open",
+          created_at: campaign.createdAt ?? now,
+          updated_at: campaign.updatedAt ?? now,
+          archived_at: null,
+        },
+      ],
+      "id",
+    );
+    return true;
+  } catch (error) {
+    if (!isMissingMarketplaceCampaignTableError(error)) throw error;
+    if (!normalizedMarketplaceCampaignFallbackWarned) {
+      console.warn(
+        "[yeollock.me] marketplace_campaigns is unavailable; campaign writes remain on the legacy brand mirror until migrations are applied.",
+      );
+      normalizedMarketplaceCampaignFallbackWarned = true;
+    }
+    return false;
+  }
+};
+
 const buildMarketplaceAvatarLabel = (name: string, fallback = "IN") => {
   const normalized = name.trim();
   if (!normalized) return fallback;
@@ -9932,6 +10249,7 @@ const mapInfluencerProfileRowToMarketplaceProfile = (
     ...base,
     id: row.id,
     avatarUrl: row.avatar_url ?? base.avatarUrl,
+    categories: normalizeMarketplaceCreatorCategories({ categories: settings.categories }),
     audienceCountries: normalizeMarketplaceCountries(row.audience_countries),
     audienceTags: row.audience_tags ?? settings.categories,
     platforms: mappedChannels.length > 0 ? mappedChannels : base.platforms,
@@ -10070,21 +10388,36 @@ const isClearlyNonCreatorDiscoveredInfluencerRow = (
 const mapDiscoveredInfluencerRowToMarketplaceProfile = (
   row: SupabaseDiscoveredInfluencerProfileRow,
 ): MarketplaceInfluencerProfile => {
-  const categories = normalizeStringArrayForStorage(row.categories, [], 6);
+  const categories = normalizeMarketplaceCreatorCategories(row);
   const categoryLabel = getDiscoveredCategoryLabel(categories);
   const averageViewsLabel = formatDiscoveredMetricLabel(row.average_views);
   const postCountLabel = formatDiscoveredMetricLabel(row.post_count);
+  const naverBlogVisitorAverage =
+    row.platform === "naver_blog" &&
+    row.naver_blog_visitor_status === "available" &&
+    row.naver_blog_visitor_average_4d != null &&
+    Number.isFinite(Number(row.naver_blog_visitor_average_4d))
+      ? Number(row.naver_blog_visitor_average_4d)
+      : undefined;
   const followerLabel =
-    normalizeOptionalText(row.followers_label) ||
-    (row.follower_count
-      ? `${formatDiscoveredMetricLabel(row.follower_count)}명`
-      : "공개 지표 확인");
-  const performanceLabel = averageViewsLabel
-    ? `평균 조회 ${averageViewsLabel}`
-    : postCountLabel
-      ? `포스트 ${postCountLabel}`
-      : "채널 확인 필요";
+    naverBlogVisitorAverage !== undefined
+      ? `일평균 ${formatDiscoveredMetricLabel(naverBlogVisitorAverage)}명`
+      : normalizeOptionalText(row.followers_label) ||
+        (row.follower_count
+          ? `${formatDiscoveredMetricLabel(row.follower_count)}명`
+          : "공개 지표 확인");
+  const performanceLabel =
+    naverBlogVisitorAverage !== undefined
+      ? "최근 4일 평균 방문자"
+      : averageViewsLabel
+        ? `평균 조회 ${averageViewsLabel}`
+        : postCountLabel
+          ? `포스트 ${postCountLabel}`
+          : "채널 확인 필요";
   const displayName = normalizeDiscoveredInfluencerDisplayName(row);
+  const audienceCountries = normalizeMarketplaceCountries(row.audience_countries);
+  const countryLabel = formatMarketplaceCountries(audienceCountries, "국가 미확인");
+  const audienceTags = normalizeStringArrayForStorage(row.audience_tags, [], 6);
 
   return {
     id: `discovered-${row.id}`,
@@ -10093,16 +10426,13 @@ const mapDiscoveredInfluencerRowToMarketplaceProfile = (
     headline:
       normalizeOptionalText(row.headline) ?? `${categoryLabel} 콘텐츠 크리에이터`,
     bio: normalizeOptionalText(row.bio) ?? "",
-    location: "한국",
+    location: countryLabel,
     avatarLabel: buildMarketplaceAvatarLabel(displayName),
     avatarUrl: normalizeMarketplacePublicImageUrl(row.avatar_url),
     categories: categories.length > 0 ? categories : [categoryLabel],
-    audience: "한국 소비자 관심 기반",
-    audienceCountries: normalizeMarketplaceCountries(row.audience_countries),
-    audienceTags:
-      normalizeStringArrayForStorage(row.audience_tags, [], 6).length > 0
-        ? normalizeStringArrayForStorage(row.audience_tags, [], 6)
-        : categories,
+    audience: audienceTags.length > 0 ? audienceTags.join(" · ") : categoryLabel,
+    audienceCountries,
+    audienceTags: audienceTags.length > 0 ? audienceTags : categories,
     platforms: [
       {
         platform: row.platform,
@@ -10193,6 +10523,7 @@ const marketplaceInfluencerProfileResponseLimit = 1000;
 type MarketplaceInfluencerProfileReadOptions = {
   limit?: number;
   offset?: number;
+  platform?: InfluencerPlatform;
 };
 
 const clampMarketplaceInfluencerPageNumber = (
@@ -10222,6 +10553,16 @@ const readMarketplaceInfluencerPagination = (
   offset: clampMarketplaceInfluencerPageNumber(query.offset, 0, 0, 50000),
 });
 
+const readMarketplaceInfluencerPlatformFilter = (
+  value: express.Request["query"][string],
+) => {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+  if (typeof rawValue !== "string") return undefined;
+  return influencerPlatforms.has(rawValue as InfluencerPlatform)
+    ? (rawValue as InfluencerPlatform)
+    : undefined;
+};
+
 const readDiscoveredInfluencerProfiles = async (
   options: MarketplaceInfluencerProfileReadOptions = {},
 ) => {
@@ -10235,14 +10576,18 @@ const readDiscoveredInfluencerProfiles = async (
     const rows: MarketplaceInfluencerProfile[] = [];
     const pageSize = 1000;
     const sourceScanLimit = Math.max(offset + limit + pageSize, pageSize);
+    const platformFilter = options.platform
+      ? `&platform=eq.${encodeURIComponent(options.platform)}`
+      : "";
     for (let scanOffset = 0; scanOffset < sourceScanLimit; scanOffset += pageSize) {
       const page = await readSupabaseRows<SupabaseDiscoveredInfluencerProfileRow>(
         "discovered_influencer_profiles",
-        `?select=*&status=eq.active&order=quality_score.desc,last_checked_at.desc,id.asc&limit=${pageSize}&offset=${scanOffset}`,
+        `?select=*&status=eq.active${platformFilter}&order=quality_score.desc,last_checked_at.desc,id.asc&limit=${pageSize}&offset=${scanOffset}`,
         "discovered influencer profiles",
       );
       rows.push(
         ...page
+          .filter((row) => !classifyDiscoveredInfluencerAccount(row).excluded)
           .filter((row) => !isClearlyBusinessDiscoveredInfluencerRow(row))
           .filter((row) => !isClearlyNonCreatorDiscoveredInfluencerRow(row))
           .map(mapDiscoveredInfluencerRowToMarketplaceProfile)
@@ -10274,7 +10619,9 @@ const readMarketplaceInfluencerProfiles = async (
   const offset = Math.max(options.offset ?? 0, 0);
 
   const { profiles, channels } = await readMarketplaceInfluencerRows(
-    "?select=*&is_published=eq.true&order=updated_at.desc",
+    `?select=*&is_published=eq.true${
+      filterOperationalMarketplaceTestData ? "&data_origin=eq.production" : ""
+    }&order=updated_at.desc`,
   );
   const dbProfiles = profiles
     .map((profile) =>
@@ -10288,40 +10635,200 @@ const readMarketplaceInfluencerProfiles = async (
         !filterOperationalMarketplaceTestData ||
         !hasOperationalTestMarker(profile),
     );
+  const matchingDbProfiles = options.platform
+    ? dbProfiles.filter((profile) =>
+        profile.platforms.some((channel) => channel.platform === options.platform),
+      )
+    : dbProfiles;
 
-  const registeredProfiles = dbProfiles.slice(offset, offset + limit);
-  const discoveredProfileOffset = Math.max(offset - dbProfiles.length, 0);
+  const registeredProfiles = matchingDbProfiles.slice(offset, offset + limit);
+  const discoveredProfileOffset = Math.max(offset - matchingDbProfiles.length, 0);
   const discoveredProfileLimit = Math.max(limit - registeredProfiles.length, 0);
   const discoveredProfiles =
     discoveredProfileLimit > 0
       ? await readDiscoveredInfluencerProfiles({
           limit: discoveredProfileLimit,
           offset: discoveredProfileOffset,
+          platform: options.platform,
         })
       : [];
   const visibleProfiles = [...registeredProfiles, ...discoveredProfiles].slice(0, limit);
 
   if (visibleProfiles.length > 0) return visibleProfiles;
-  return dbProfiles.length > 0
-    ? dbProfiles.slice(offset, offset + limit)
-    : fallbackMarketplaceInfluencerProfiles().slice(offset, offset + limit);
+  if (matchingDbProfiles.length > 0) {
+    return matchingDbProfiles.slice(offset, offset + limit);
+  }
+  const fallbackProfiles = options.platform
+    ? fallbackMarketplaceInfluencerProfiles().filter((profile) =>
+        profile.platforms.some((channel) => channel.platform === options.platform),
+      )
+    : fallbackMarketplaceInfluencerProfiles();
+  return fallbackProfiles.slice(offset, offset + limit);
+};
+
+const readPublicMarketplaceInfluencerProfileByHandle = async (handle: string) => {
+  const normalizedHandle = normalizePublicProfileHandle(handle);
+  if (!normalizedHandle) return undefined;
+
+  if (useSupabase) {
+    const { profiles, channels } = await readMarketplaceInfluencerRows(
+      `?select=*&is_published=eq.true&public_handle=eq.${encodeURIComponent(
+        normalizedHandle,
+      )}${
+        filterOperationalMarketplaceTestData ? "&data_origin=eq.production" : ""
+      }&limit=1`,
+    );
+    const registeredProfile = profiles[0];
+    if (registeredProfile) {
+      const mappedProfile = mapInfluencerProfileRowToMarketplaceProfile(
+        registeredProfile,
+        channels.get(registeredProfile.id) ?? [],
+      );
+      if (
+        !filterOperationalMarketplaceTestData ||
+        !hasOperationalTestMarker(mappedProfile)
+      ) {
+        return mappedProfile;
+      }
+    }
+
+    const discoveredRows =
+      await readSupabaseRows<SupabaseDiscoveredInfluencerProfileRow>(
+        "discovered_influencer_profiles",
+        `?select=*&status=eq.active&public_handle=eq.${encodeURIComponent(
+          normalizedHandle,
+        )}&limit=1`,
+        "discovered influencer profile lookup",
+      );
+    const discoveredRow = discoveredRows[0];
+    if (
+      discoveredRow &&
+      !classifyDiscoveredInfluencerAccount(discoveredRow).excluded &&
+      !isClearlyBusinessDiscoveredInfluencerRow(discoveredRow) &&
+      !isClearlyNonCreatorDiscoveredInfluencerRow(discoveredRow)
+    ) {
+      const mappedProfile = mapDiscoveredInfluencerRowToMarketplaceProfile(discoveredRow);
+      if (
+        !filterOperationalMarketplaceTestData ||
+        !hasOperationalTestMarker(mappedProfile)
+      ) {
+        return mappedProfile;
+      }
+    }
+  }
+
+  return findInfluencerProfileByHandle(
+    normalizedHandle,
+    fallbackMarketplaceInfluencerProfiles(),
+  );
+};
+
+const readAdvertiserSavedInfluencerRows = async (organizationId: string) => {
+  if (!useSupabase) return [] as SupabaseAdvertiserSavedInfluencerRow[];
+  return readSupabaseRows<SupabaseAdvertiserSavedInfluencerRow>(
+    "advertiser_saved_influencers",
+    `?select=*&organization_id=eq.${encodeURIComponent(
+      organizationId,
+    )}&order=created_at.desc&limit=5000`,
+    "advertiser saved influencers",
+  );
+};
+
+const readPublicMarketplaceInfluencerProfilesByHandles = async (
+  handles: string[],
+) => {
+  const normalizedHandles = Array.from(
+    new Set(handles.map(normalizePublicProfileHandle).filter(Boolean)),
+  ).slice(0, 5000);
+  if (normalizedHandles.length === 0) return [];
+
+  if (!useSupabase) {
+    const fallbackByHandle = new Map(
+      fallbackMarketplaceInfluencerProfiles().map((profile) => [
+        normalizePublicProfileHandle(profile.handle),
+        profile,
+      ]),
+    );
+    return normalizedHandles
+      .map((handle) => fallbackByHandle.get(handle))
+      .filter((profile): profile is MarketplaceInfluencerProfile => Boolean(profile));
+  }
+
+  const profileByHandle = new Map<string, MarketplaceInfluencerProfile>();
+  for (let index = 0; index < normalizedHandles.length; index += 100) {
+    const batch = normalizedHandles.slice(index, index + 100);
+    const handleFilter = postgrestInFilter(batch);
+    const [{ profiles, channels }, discoveredRows] = await Promise.all([
+      readMarketplaceInfluencerRows(
+        `?select=*&is_published=eq.true&public_handle=in.${handleFilter}${
+          filterOperationalMarketplaceTestData ? "&data_origin=eq.production" : ""
+        }`,
+      ),
+      readSupabaseRows<SupabaseDiscoveredInfluencerProfileRow>(
+        "discovered_influencer_profiles",
+        `?select=*&status=eq.active&public_handle=in.${handleFilter}`,
+        "saved discovered influencer profiles",
+      ),
+    ]);
+
+    for (const row of profiles) {
+      const profile = mapInfluencerProfileRowToMarketplaceProfile(
+        row,
+        channels.get(row.id) ?? [],
+      );
+      if (
+        !filterOperationalMarketplaceTestData ||
+        !hasOperationalTestMarker(profile)
+      ) {
+        profileByHandle.set(normalizePublicProfileHandle(profile.handle), profile);
+      }
+    }
+    for (const row of discoveredRows) {
+      if (
+        classifyDiscoveredInfluencerAccount(row).excluded ||
+        isClearlyBusinessDiscoveredInfluencerRow(row) ||
+        isClearlyNonCreatorDiscoveredInfluencerRow(row)
+      ) {
+        continue;
+      }
+      const profile = mapDiscoveredInfluencerRowToMarketplaceProfile(row);
+      if (
+        filterOperationalMarketplaceTestData &&
+        hasOperationalTestMarker(profile)
+      ) {
+        continue;
+      }
+      if (!profileByHandle.has(normalizePublicProfileHandle(profile.handle))) {
+        profileByHandle.set(normalizePublicProfileHandle(profile.handle), profile);
+      }
+    }
+  }
+
+  return normalizedHandles
+    .map((handle) => profileByHandle.get(handle))
+    .filter((profile): profile is MarketplaceInfluencerProfile => Boolean(profile));
 };
 
 const readMarketplaceBrandProfiles = async () => {
   if (!useSupabase) return fallbackMarketplaceBrandProfiles();
 
-  const rows = await readSupabaseRows<SupabaseMarketplaceBrandProfileRow>(
+  const rawRows = await readSupabaseRows<SupabaseMarketplaceBrandProfileRow>(
     "marketplace_brand_profiles",
-    "?select=*&is_published=eq.true&archived_at=is.null&order=updated_at.desc",
+    `?select=*&is_published=eq.true&archived_at=is.null${
+      filterOperationalMarketplaceTestData ? "&data_origin=eq.production" : ""
+    }&order=updated_at.desc`,
     "marketplace brand profiles",
   );
+  const rows = await hydrateBrandRowsWithNormalizedCampaigns(rawRows);
 
   const dbProfiles = rows.map(mapBrandProfileRowToMarketplaceProfile);
   const visibleDbProfiles = dbProfiles.filter(
     (profile) =>
       !filterOperationalMarketplaceTestData || !hasOperationalTestMarker(profile),
   );
-  if (allowMarketplaceSeedData) return mergeMarketplaceBrandProfiles(visibleDbProfiles);
+  if (allowPublicMarketplaceCatalogFallback) {
+    return mergeMarketplaceBrandProfiles(visibleDbProfiles);
+  }
   return visibleDbProfiles.length > 0
     ? visibleDbProfiles
     : fallbackMarketplaceBrandProfiles();
@@ -10405,7 +10912,7 @@ const publicMarketplaceAllTags = Array.from(
 let runtimeCachePromise: Promise<RuntimeCacheClient | undefined> | undefined;
 
 const getPublicMarketplaceRuntimeCacheKey = (key: PublicMarketplaceCacheKey) =>
-  `public-marketplace:${key}:v1`;
+  `public-marketplace:${key}:v2`;
 
 const getVercelRuntimeCache = async () => {
   if (process.env.DISABLE_VERCEL_RUNTIME_CACHE === "1") return undefined;
@@ -10724,15 +11231,8 @@ const formatMarketplacePersonCountLabel = (count: number) => {
   return `${count.toLocaleString("ko-KR")}\uba85`;
 };
 
-const formatNaverBlogVisitorLabel = (
-  count: number,
-  basis: "yesterday" | "stored_5_day_average",
-) =>
-  basis === "yesterday"
-    ? `\uc5b4\uc81c \ubc29\ubb38\uc790 ${formatMarketplacePersonCountLabel(count)}`
-    : `\ucd5c\uadfc 5\uc77c \ud3c9\uade0 \ubc29\ubb38\uc790 ${formatMarketplacePersonCountLabel(
-        count,
-      )}`;
+const formatNaverBlogVisitorLabel = (count: number) =>
+  `\uc77c\ud3c9\uade0 ${formatMarketplacePersonCountLabel(count)}`;
 
 const buildFollowerSnapshot = (
   snapshot: Omit<MarketplaceFollowerSyncSnapshot, "checkedAt"> & {
@@ -10750,7 +11250,7 @@ type NaverBlogVisitorCount = {
 };
 
 const naverBlogVisitorCounterProvider = "naver_blog_public_visitor_counter";
-const naverBlogVisitorAverageWindowDays = 5;
+const naverBlogVisitorAverageWindowDays = 4;
 const kstOffsetMs = 9 * 60 * 60 * 1000;
 
 const formatKstCompactDate = (date: Date, dayOffset = 0) => {
@@ -10761,8 +11261,10 @@ const formatKstCompactDate = (date: Date, dayOffset = 0) => {
   return `${year}${month}${day}`;
 };
 
-const getNaverBlogVisitorTargetDate = (date = new Date()) =>
-  formatKstCompactDate(date, -1);
+const getNaverBlogVisitorTargetDates = (date = new Date()) =>
+  Array.from({ length: naverBlogVisitorAverageWindowDays }, (_, index) =>
+    formatKstCompactDate(date, -(index + 1)),
+  );
 
 const normalizeNaverBlogVisitorCounts = (
   counts: NaverBlogVisitorCount[],
@@ -10821,13 +11323,17 @@ const readNaverBlogVisitorCountsFromMetadata = (
 
 const selectNaverBlogCompletedVisitorCounts = (
   counts: NaverBlogVisitorCount[],
-  targetDate: string,
-) =>
-  normalizeNaverBlogVisitorCounts(counts)
-    .filter((count) => count.date <= targetDate)
-    .slice(0, naverBlogVisitorAverageWindowDays);
+  targetDates: string[],
+) => {
+  const byDate = new Map(
+    normalizeNaverBlogVisitorCounts(counts).map((count) => [count.date, count]),
+  );
+  return targetDates
+    .map((targetDate) => byDate.get(targetDate))
+    .filter((count): count is NaverBlogVisitorCount => Boolean(count));
+};
 
-const calculateNaverBlogFiveDayAverage = (
+const calculateNaverBlogFourDayAverage = (
   counts: NaverBlogVisitorCount[],
 ) => {
   const windowCounts = counts.slice(0, naverBlogVisitorAverageWindowDays);
@@ -10841,23 +11347,23 @@ const calculateNaverBlogFiveDayAverage = (
 const buildNaverBlogStoredAverageSnapshot = ({
   channel,
   blogId,
-  targetDate,
+  targetDates,
   checkedAt,
   httpStatus,
   error,
 }: {
   channel: SupabaseMarketplaceInfluencerChannelRow;
   blogId: string;
-  targetDate: string;
+  targetDates: string[];
   checkedAt: string;
   httpStatus?: number;
   error: string;
 }) => {
   const storedCounts = selectNaverBlogCompletedVisitorCounts(
     readNaverBlogVisitorCountsFromMetadata(channel.follower_sync_metadata),
-    targetDate,
+    targetDates,
   );
-  const average = calculateNaverBlogFiveDayAverage(storedCounts);
+  const average = calculateNaverBlogFourDayAverage(storedCounts);
   if (average === undefined) return undefined;
 
   return buildFollowerSnapshot({
@@ -10865,13 +11371,13 @@ const buildNaverBlogStoredAverageSnapshot = ({
     provider: naverBlogVisitorCounterProvider,
     checkedAt,
     followerCount: average,
-    followersLabel: formatNaverBlogVisitorLabel(average, "stored_5_day_average"),
+    followersLabel: formatNaverBlogVisitorLabel(average),
     httpStatus,
     error,
     metadata: {
       metric: "daily_blog_visitors",
-      value_basis: "stored_5_day_average",
-      target_date: targetDate,
+      value_basis: "stored_4_day_average",
+      target_dates: targetDates,
       blog_id: blogId,
       naver_blog_daily_visitors: storedCounts,
       average_window_days: naverBlogVisitorAverageWindowDays,
@@ -11150,7 +11656,7 @@ const fetchNaverBlogVisitorSnapshot = async (
   channel: SupabaseMarketplaceInfluencerChannelRow,
 ): Promise<MarketplaceFollowerSyncSnapshot> => {
   const checkedAt = new Date().toISOString();
-  const targetDate = getNaverBlogVisitorTargetDate(new Date(checkedAt));
+  const targetDates = getNaverBlogVisitorTargetDates(new Date(checkedAt));
   const blogId =
     extractNaverBlogId(channel.handle) || extractNaverBlogId(channel.url ?? undefined);
 
@@ -11179,20 +11685,19 @@ const fetchNaverBlogVisitorSnapshot = async (
     const visitorCounts = parseNaverBlogVisitorCounts(response.body);
     const completedCounts = selectNaverBlogCompletedVisitorCounts(
       visitorCounts,
-      targetDate,
+      targetDates,
     );
-    const targetCount = completedCounts.find((count) => count.date === targetDate);
-    const fiveDayAverage = calculateNaverBlogFiveDayAverage(completedCounts);
+    const fourDayAverage = calculateNaverBlogFourDayAverage(completedCounts);
 
     if (!response.ok) {
       return (
         buildNaverBlogStoredAverageSnapshot({
           channel,
           blogId,
-          targetDate,
+          targetDates,
           checkedAt,
           httpStatus: response.status,
-          error: "Naver Blog visitor counter request failed; showing stored five day average.",
+          error: "Naver Blog visitor counter request failed; showing stored four day average.",
         }) ??
         buildFollowerSnapshot({
           status: "failed",
@@ -11200,31 +11705,31 @@ const fetchNaverBlogVisitorSnapshot = async (
           checkedAt,
           httpStatus: response.status,
           error: "Naver Blog visitor counter request failed.",
-          metadata: { blog_id: blogId, target_date: targetDate },
+          metadata: { blog_id: blogId, target_dates: targetDates },
         })
       );
     }
 
-    if (!targetCount) {
+    if (fourDayAverage === undefined) {
       return (
         buildNaverBlogStoredAverageSnapshot({
           channel,
           blogId,
-          targetDate,
+          targetDates,
           checkedAt,
           httpStatus: response.status,
           error:
-            "Naver Blog visitor counter did not include yesterday; showing stored five day average.",
+            "Naver Blog visitor counter did not include four completed days; showing stored four day average.",
         }) ??
         buildFollowerSnapshot({
           status: "failed",
           provider: naverBlogVisitorCounterProvider,
           checkedAt,
           httpStatus: response.status,
-          error: "Naver Blog visitor counter did not include yesterday.",
+          error: "Naver Blog visitor counter did not include four completed days.",
           metadata: {
             blog_id: blogId,
-            target_date: targetDate,
+            target_dates: targetDates,
             naver_blog_daily_visitors: completedCounts,
           },
         })
@@ -11236,16 +11741,16 @@ const fetchNaverBlogVisitorSnapshot = async (
       provider: naverBlogVisitorCounterProvider,
       checkedAt,
       httpStatus: response.status,
-      followerCount: targetCount.count,
-      followersLabel: formatNaverBlogVisitorLabel(targetCount.count, "yesterday"),
+      followerCount: fourDayAverage,
+      followersLabel: formatNaverBlogVisitorLabel(fourDayAverage),
       metadata: {
         metric: "daily_blog_visitors",
-        value_basis: "yesterday",
-        target_date: targetDate,
+        value_basis: "completed_4_day_average",
+        target_dates: targetDates,
         blog_id: blogId,
         naver_blog_daily_visitors: completedCounts,
         average_window_days: naverBlogVisitorAverageWindowDays,
-        five_day_average: fiveDayAverage ?? null,
+        four_day_average: fourDayAverage,
       },
     });
   } catch (error) {
@@ -11255,16 +11760,16 @@ const fetchNaverBlogVisitorSnapshot = async (
       buildNaverBlogStoredAverageSnapshot({
         channel,
         blogId,
-        targetDate,
+        targetDates,
         checkedAt,
-        error: `${errorMessage}; showing stored five day average.`,
+        error: `${errorMessage}; showing stored four day average.`,
       }) ??
       buildFollowerSnapshot({
         status: "failed",
         provider: naverBlogVisitorCounterProvider,
         checkedAt,
         error: errorMessage,
-        metadata: { blog_id: blogId, target_date: targetDate },
+        metadata: { blog_id: blogId, target_dates: targetDates },
       })
     );
   }
@@ -11579,13 +12084,14 @@ const readAdvertiserMarketplaceBrandRows = async (
 ) => {
   if (!useSupabase) return [] as SupabaseMarketplaceBrandProfileRow[];
 
-  return readSupabaseRows<SupabaseMarketplaceBrandProfileRow>(
+  const rows = await readSupabaseRows<SupabaseMarketplaceBrandProfileRow>(
     "marketplace_brand_profiles",
     `?select=*&organization_id=eq.${encodeURIComponent(organizationId)}${
       options.includeArchived ? "" : "&archived_at=is.null"
     }&order=is_default.desc,created_at.asc`,
     "advertiser marketplace brand profiles",
   );
+  return hydrateBrandRowsWithNormalizedCampaigns(rows);
 };
 
 const readAdvertiserMarketplaceBrandRow = async (
@@ -11642,6 +12148,51 @@ const buildAdvertiserBrandProfileFromAuth = (
   };
 };
 
+const ensureAdvertiserDefaultBrandRow = async (
+  auth: AdvertiserSession,
+  organization: SupabaseOrganizationRow,
+  rows: SupabaseMarketplaceBrandProfileRow[],
+) => {
+  if (!useSupabase || rows.length > 0) return rows;
+
+  const brand = buildAdvertiserBrandProfileFromAuth(auth, organization);
+  const now = new Date().toISOString();
+  await upsertSupabaseV2Rows(
+    "marketplace_brand_profiles",
+    [
+      {
+        id: brand.id,
+        organization_id: organization.id,
+        data_origin: await readTrustedProfileDataOrigin(auth.profile.id),
+        public_handle: brand.handle,
+        display_name: brand.displayName,
+        category: brand.category,
+        headline: brand.headline,
+        description: brand.description,
+        location: brand.location,
+        logo_label: brand.logoLabel,
+        logo_url: brand.logoUrl ?? null,
+        preferred_platforms: brand.preferredPlatforms,
+        proposal_types: brand.proposalTypes,
+        budget_range_label: brand.budgetRangeLabel,
+        response_time_label: brand.responseTimeLabel,
+        status_label: brand.statusLabel,
+        fit_tags: brand.fitTags,
+        audience_targets: brand.audienceTargets,
+        active_campaigns: brand.activeCampaigns,
+        recent_creators: brand.recentCreators,
+        is_published: false,
+        is_default: true,
+        archived_at: null,
+        updated_at: now,
+      },
+    ],
+    "id",
+  );
+  clearPublicMarketplaceCache();
+  return readAdvertiserMarketplaceBrandRows(organization.id);
+};
+
 const normalizeAdvertiserSelectedBrandId = (value: unknown) =>
   isUuid(normalizeRequiredText(value)) ? normalizeRequiredText(value) : undefined;
 
@@ -11659,7 +12210,11 @@ const readAdvertiserCampaignBoard = async (
     };
   }
 
-  const rows = await readAdvertiserMarketplaceBrandRows(organization.id);
+  const rows = await ensureAdvertiserDefaultBrandRow(
+    auth,
+    organization,
+    await readAdvertiserMarketplaceBrandRows(organization.id),
+  );
   const row =
     selectedBrandId && rows.some((item) => item.id === selectedBrandId)
       ? rows.find((item) => item.id === selectedBrandId)
@@ -11728,6 +12283,9 @@ const saveAdvertiserMarketplaceBrandImage = async (
       {
         id: rowId,
         organization_id: organization.id,
+        data_origin:
+          normalizeDataOrigin(auth.profile.data_origin) ??
+          deriveDataOrigin([auth.profile.email, auth.user.email]),
         public_handle:
           existing?.public_handle ?? buildMarketplaceBrandHandle(organization, auth.profile),
         display_name: displayName,
@@ -11877,6 +12435,12 @@ const upsertAdvertiserBrandProfile = async (
   const rowId = existing?.id ?? randomUUID();
   const now = new Date().toISOString();
   const displayName = payload.displayName;
+  const removeLogo =
+    existing &&
+    (body.removeLogo === true ||
+      body.remove_logo === true ||
+      (Object.prototype.hasOwnProperty.call(body, "logoUrl") &&
+        body.logoUrl === null));
   const logoLabel = existing?.logo_label ?? buildMarketplaceAvatarLabel(displayName, "BR");
   const shouldMaterializeDefaultBrand = !existing && activeRows.length === 0;
   const defaultBrandId = shouldMaterializeDefaultBrand
@@ -11895,6 +12459,9 @@ const upsertAdvertiserBrandProfile = async (
             {
               id: defaultBrandId,
               organization_id: organization.id,
+              data_origin:
+                normalizeDataOrigin(auth.profile.data_origin) ??
+                deriveDataOrigin([auth.profile.email, auth.user.email]),
               public_handle: buildMarketplaceBrandHandle(organization, auth.profile, {
                 name: defaultBrand.displayName,
                 suffix: defaultBrandId,
@@ -11925,6 +12492,9 @@ const upsertAdvertiserBrandProfile = async (
       {
         id: rowId,
         organization_id: organization.id,
+        data_origin:
+          normalizeDataOrigin(auth.profile.data_origin) ??
+          deriveDataOrigin([auth.profile.email, auth.user.email]),
         public_handle:
           existing?.public_handle ??
           buildMarketplaceBrandHandle(organization, auth.profile, {
@@ -11937,7 +12507,7 @@ const upsertAdvertiserBrandProfile = async (
         description: payload.description,
         location: payload.location,
         logo_label: logoLabel,
-        logo_url: existing?.logo_url ?? null,
+        logo_url: removeLogo ? null : existing?.logo_url ?? null,
         preferred_platforms: existing?.preferred_platforms ?? [],
         proposal_types:
           existing?.proposal_types ?? ["sponsored_post", "product_seeding", "supporters"],
@@ -12003,6 +12573,27 @@ const archiveAdvertiserBrandProfile = async (
       ok: false as const,
       status: 409,
       error: "최소 1개의 브랜드는 남겨야 합니다.",
+    };
+  }
+
+  const activeCampaignCount = normalizeBrandCampaigns(target.active_campaigns ?? []).filter(
+    (campaign) => campaign.status === "open" || campaign.status === "draft",
+  ).length;
+  const openProposalRows = await readMarketplaceProposalRows(
+    `?select=id,status&target_brand_profile_id=eq.${encodeURIComponent(
+      target.id,
+    )}&status=in.(submitted,reviewed,accepted)&limit=1000`,
+    "advertiser brand archive open proposals",
+  );
+  if (activeCampaignCount > 0 || openProposalRows.length > 0) {
+    return {
+      ok: false as const,
+      status: 409,
+      error: `진행 중 캠페인 ${activeCampaignCount.toLocaleString(
+        "ko-KR",
+      )}건, 미결 제안 ${openProposalRows.length.toLocaleString(
+        "ko-KR",
+      )}건이 있어 브랜드를 삭제할 수 없습니다. 먼저 해당 건을 종료해 주세요.`,
     };
   }
 
@@ -12191,7 +12782,6 @@ const upsertAdvertiserMarketplaceCampaign = async (
   };
   const campaigns = normalizeBrandCampaigns(
     [campaign, ...currentBrand.activeCampaigns],
-    8,
   );
   const preferredPlatforms = Array.from(
     new Set([
@@ -12215,6 +12805,9 @@ const upsertAdvertiserMarketplaceCampaign = async (
       {
         id: rowId,
         organization_id: organization.id,
+        data_origin:
+          normalizeDataOrigin(auth.profile.data_origin) ??
+          deriveDataOrigin([auth.profile.email, auth.user.email]),
         public_handle:
           existing?.public_handle ?? buildMarketplaceBrandHandle(organization, auth.profile),
         display_name: displayName,
@@ -12248,6 +12841,11 @@ const upsertAdvertiserMarketplaceCampaign = async (
       },
     ],
     "id",
+  );
+  await upsertNormalizedMarketplaceCampaign(
+    organization.id,
+    rowId,
+    campaign,
   );
   clearPublicMarketplaceCache();
 
@@ -12391,6 +12989,11 @@ const updateAdvertiserMarketplaceCampaignStatus = async (
       updated_at: now,
     },
     "Supabase advertiser campaign status update",
+  );
+  await upsertNormalizedMarketplaceCampaign(
+    organization.id,
+    existing.id,
+    updatedCampaign,
   );
   clearPublicMarketplaceCache();
 
@@ -12575,7 +13178,7 @@ const submitMarketplaceCampaignApplication = async (
       auth.profile.id,
     )}&target_brand_profile_id=eq.${encodeURIComponent(
       campaign.brandId,
-    )}&campaign_id=eq.${encodeURIComponent(campaign.id)}&status=in.(submitted,reviewed,converted_to_contract)&limit=1`,
+    )}&campaign_id=eq.${encodeURIComponent(campaign.id)}&limit=1`,
     "marketplace campaign application duplicate check",
   );
 
@@ -12597,31 +13200,60 @@ const submitMarketplaceCampaignApplication = async (
     publicProfile?.headline ||
     auth.profile.activity_categories?.join(", ") ||
     "캠페인을 확인하고 신청했습니다.";
+  const [targetBrandRow] = await readSupabaseRows<
+    Pick<SupabaseMarketplaceBrandProfileRow, "id" | "organization_id">
+  >(
+    "marketplace_brand_profiles",
+    `?select=id,organization_id&id=eq.${encodeURIComponent(campaign.brandId)}&limit=1`,
+    "campaign application target brand",
+  );
+  const proposalDataOrigin = resolveTrustedDataOrigin(
+    await readTrustedProfileDataOrigin(auth.profile.id),
+    await readOrganizationDataOrigin(targetBrandRow?.organization_id),
+  );
   const now = new Date().toISOString();
   const proposalId = randomUUID();
-  const rows = await insertSupabaseRowsReturning<SupabaseMarketplaceContactProposalRow>(
-    "marketplace_contact_proposals",
-    [
-      {
-        id: proposalId,
-        direction: "influencer_to_brand",
-        target_brand_profile_id: campaign.brandId,
-        target_handle: campaign.brandHandle,
-        target_display_name: campaign.brandName,
-        sender_profile_id: auth.profile.id,
-        sender_name: senderName,
-        sender_intro: senderIntro,
-        proposal_type: campaign.type,
-        proposal_summary: buildCampaignApplicationSummary(campaign),
-        campaign_id: campaign.id,
-        campaign_snapshot: buildMarketplaceCampaignSnapshot(campaign),
-        status: "submitted",
-        created_at: now,
-        updated_at: now,
-      },
-    ],
-    "marketplace campaign application",
-  );
+  let rows: SupabaseMarketplaceContactProposalRow[];
+  try {
+    rows = await insertSupabaseRowsReturning<SupabaseMarketplaceContactProposalRow>(
+      "marketplace_contact_proposals",
+      [
+        {
+          id: proposalId,
+          direction: "influencer_to_brand",
+          target_brand_profile_id: campaign.brandId,
+          target_handle: campaign.brandHandle,
+          target_display_name: campaign.brandName,
+          sender_profile_id: auth.profile.id,
+          sender_name: senderName,
+          sender_intro: senderIntro,
+          proposal_type: campaign.type,
+          proposal_summary: buildCampaignApplicationSummary(campaign),
+          campaign_id: campaign.id,
+          campaign_snapshot: buildMarketplaceCampaignSnapshot(campaign),
+          data_origin: proposalDataOrigin,
+          status: "submitted",
+          created_at: now,
+          updated_at: now,
+        },
+      ],
+      "marketplace campaign application",
+    );
+  } catch (error) {
+    if (!isSupabaseUniqueViolationError(error)) throw error;
+    const [existing] = await readMarketplaceProposalRows(
+      `?select=*&direction=eq.influencer_to_brand&sender_profile_id=eq.${encodeURIComponent(
+        auth.profile.id,
+      )}&campaign_id=eq.${encodeURIComponent(campaign.id)}&limit=1`,
+      "marketplace campaign application duplicate recovery",
+    );
+    if (!existing) throw error;
+    return {
+      ok: true as const,
+      alreadySubmitted: true,
+      proposal: existing,
+    };
+  }
   invalidateAdvertiserDashboardCache();
   invalidateInfluencerDashboardCache();
 
@@ -12793,6 +13425,17 @@ const upsertInfluencerPublicProfile = async ({
   const dashboard = await buildInfluencerDashboard(authUser);
   const defaults = buildDefaultPublicProfileSettings(dashboard);
   const approvedPlatforms = dashboard.verification.approved_platforms;
+  const { profiles: storedProfileRows, channels: storedChannelRowsByProfile } =
+    await readMarketplaceInfluencerRows(
+      `?select=*&owner_profile_id=eq.${encodeURIComponent(profile.id)}&limit=1`,
+    );
+  const storedProfileRow = storedProfileRows[0];
+  const storedChannelRows = storedProfileRow
+    ? storedChannelRowsByProfile.get(storedProfileRow.id) ?? []
+    : [];
+  const existingProfile = storedProfileRow
+    ? mapInfluencerProfileRowToPublicSettings(storedProfileRow, storedChannelRows)
+    : undefined;
   const automaticHandle = getAutomaticPublicProfileHandle(approvedPlatforms) ?? "";
   const handleError = automaticHandle
     ? getPublicProfileHandleError(automaticHandle)
@@ -12802,56 +13445,36 @@ const upsertInfluencerPublicProfile = async ({
     return { ok: false as const, status: 422, error: handleError };
   }
 
-  const automaticHandleConflict = await findInfluencerPublicHandleConflict(
-    automaticHandle,
-    profile.id,
-  );
-  let handle = automaticHandle;
+  let handle = existingProfile?.handle ?? automaticHandle;
+  const automaticHandleConflict = existingProfile
+    ? undefined
+    : await findInfluencerPublicHandleConflict(automaticHandle, profile.id);
 
-  if (automaticHandleConflict) {
+  if (!existingProfile && automaticHandleConflict) {
     const alternateHandle = normalizeAlternatePublicProfileHandle(
       body.alternateHandle,
     );
-
-    if (!alternateHandle) {
-      return buildPublicProfileHandleConflictResult({
-        handle: automaticHandle,
-        ownerProfileId: profile.id,
-      });
-    }
-
-    const alternateHandleError = getPublicProfileHandleError(alternateHandle);
-    if (alternateHandleError) {
-      return {
-        ok: false as const,
-        status: 422,
-        code: "public_profile_alternate_handle_invalid",
-        error: alternateHandleError,
-        handle: alternateHandle,
-      };
-    }
-
-    if (alternateHandle === automaticHandle) {
-      return buildPublicProfileHandleConflictResult({
-        handle: automaticHandle,
-        ownerProfileId: profile.id,
-      });
-    }
-
-    const alternateHandleConflict = await findInfluencerPublicHandleConflict(
+    const candidates = [
       alternateHandle,
-      profile.id,
-    );
+      ...buildAlternatePublicProfileHandleSuggestions(automaticHandle, profile.id),
+    ].filter((candidate): candidate is string => Boolean(candidate));
 
-    if (alternateHandleConflict) {
-      return buildPublicProfileHandleConflictResult({
-        handle: alternateHandle,
-        ownerProfileId: profile.id,
-        error: "입력한 공개 주소가 이미 사용 중입니다. 다른 주소를 입력해 주세요.",
-      });
+    let availableHandle: string | undefined;
+    for (const candidate of candidates) {
+      if (getPublicProfileHandleError(candidate)) continue;
+      if (!(await findInfluencerPublicHandleConflict(candidate, profile.id))) {
+        availableHandle = candidate;
+        break;
+      }
     }
 
-    handle = alternateHandle;
+    if (!availableHandle) {
+      return buildPublicProfileHandleConflictResult({
+        handle: automaticHandle,
+        ownerProfileId: profile.id,
+      });
+    }
+    handle = availableHandle;
   }
 
   const now = new Date().toISOString();
@@ -12877,7 +13500,6 @@ const upsertInfluencerPublicProfile = async ({
     body.collaborationTypes,
     defaults.collaborationTypes,
   );
-  const existingProfile = await readStoredInfluencerPublicProfile(profile.id);
   const avatarUrl =
     normalizeMarketplacePublicImageUrl(body.avatarUrl ?? body.avatar_url) ??
     existingProfile?.avatarUrl ??
@@ -12920,6 +13542,9 @@ const upsertInfluencerPublicProfile = async ({
       {
         id: rowId,
         owner_profile_id: profile.id,
+        data_origin:
+          normalizeDataOrigin(profile.data_origin) ??
+          deriveDataOrigin([profile.email, authUser.email]),
         public_handle: savedProfile.handle,
         display_name: savedProfile.displayName,
         headline: savedProfile.headline,
@@ -12938,19 +13563,6 @@ const upsertInfluencerPublicProfile = async ({
             ? "계정 프로필 연동"
             : "공개 프로필 설정",
         brand_fit: savedProfile.brandFit,
-        recent_brands: ["입점 브랜드 제안 가능"],
-        portfolio: [
-          {
-            title: "공개 프로필",
-            brand: productName,
-            result: "광고주 컨택 접수 가능",
-          },
-        ],
-        proposal_hints: [
-          "브랜드 소개와 광고 형태를 함께 보내면 검토가 빠릅니다.",
-          "콘텐츠 사용 범위와 희망 일정을 제안에 포함해 주세요.",
-          "최종 조건은 전자계약 단계에서 다시 확인합니다.",
-        ],
         is_published: true,
         updated_at: now,
       },
@@ -12958,27 +13570,51 @@ const upsertInfluencerPublicProfile = async ({
     "owner_profile_id",
   );
 
-  await deleteSupabaseV2Rows(
-    "marketplace_influencer_channels",
-    `?profile_id=eq.${encodeURIComponent(rowId)}`,
+  const approvedChannelKeys = new Set(
+    savedProfile.platforms.map(
+      (platform) => `${platform.platform}:${platform.handle.trim().toLowerCase()}`,
+    ),
   );
+  const removedChannelIds = storedChannelRows
+    .filter(
+      (channel) =>
+        !approvedChannelKeys.has(
+          `${channel.platform}:${channel.handle.trim().toLowerCase()}`,
+        ),
+    )
+    .map((channel) => channel.id);
+  if (removedChannelIds.length > 0) {
+    await deleteSupabaseV2Rows(
+      "marketplace_influencer_channels",
+      `?id=in.${postgrestInFilter(removedChannelIds)}`,
+    );
+  }
 
   await upsertSupabaseV2Rows(
     "marketplace_influencer_channels",
-    savedProfile.platforms.map((platform, index) => ({
-      id: stableUuid(
-        `marketplace:influencer-channel:${rowId}:${platform.platform}:${platform.handle}`,
-      ),
-      profile_id: rowId,
-      platform: platform.platform,
-      label: platformLabels[platform.platform],
-      handle: platform.handle,
-      url: platform.url ?? buildMarketplacePlatformUrl(platform.platform, platform.handle),
-      followers_label: "계정 연동",
-      performance_label: "프로필에서 확인",
-      sort_order: index,
-      updated_at: now,
-    })),
+    savedProfile.platforms.map((platform, index) => {
+      const existingChannel = storedChannelRows.find(
+        (channel) =>
+          channel.platform === platform.platform &&
+          channel.handle.trim().toLowerCase() === platform.handle.trim().toLowerCase(),
+      );
+      return {
+        id:
+          existingChannel?.id ??
+          stableUuid(
+            `marketplace:influencer-channel:${rowId}:${platform.platform}:${platform.handle}`,
+          ),
+        profile_id: rowId,
+        platform: platform.platform,
+        label: platformLabels[platform.platform],
+        handle: platform.handle,
+        url:
+          platform.url ??
+          buildMarketplacePlatformUrl(platform.platform, platform.handle),
+        sort_order: index,
+        updated_at: now,
+      };
+    }),
   );
   clearPublicMarketplaceCache();
 
@@ -13063,6 +13699,9 @@ const submitInfluencerPublicHandleAppeal = async ({
     target_id: profile.id,
     verification_type: "platform_account",
     status: "pending",
+    data_origin:
+      normalizeDataOrigin(profile.data_origin) ??
+      deriveDataOrigin([submittedEmail, submittedName]),
     profile_id: profile.id,
     subject_name: `${submittedName} 공개 주소 이의신청`,
     submitted_by_name: submittedName,
@@ -13128,12 +13767,48 @@ const validateMarketplaceProposal = (body: Record<string, unknown>) => {
   return { senderName, senderIntro, proposalType, proposalSummary };
 };
 
+const buildMarketplaceProposalRequestKey = ({
+  request,
+  direction,
+  senderProfileId,
+  targetId,
+  payload,
+}: {
+  request: express.Request;
+  direction: MarketplaceProposalDirection;
+  senderProfileId: string;
+  targetId: string;
+  payload: {
+    senderName: string;
+    senderIntro: string;
+    proposalType: CampaignProposalType;
+    proposalSummary: string;
+  };
+}) => {
+  const clientKey = normalizeOptionalText(request.header("Idempotency-Key"))?.slice(
+    0,
+    120,
+  );
+  const retryWindow = Math.floor(Date.now() / (10 * 60 * 1000));
+  return sha256Hex(
+    JSON.stringify({
+      direction,
+      senderProfileId,
+      targetId,
+      payload,
+      retryKey: clientKey || retryWindow,
+    }),
+  );
+};
+
 const emptyMarketplaceMessageSummary = (): MarketplaceMessageSummary => ({
   inboxCount: 0,
   sentCount: 0,
   unreadCount: 0,
   submittedCount: 0,
   reviewedCount: 0,
+  acceptedCount: 0,
+  declinedCount: 0,
   convertedCount: 0,
   closedCount: 0,
 });
@@ -13269,6 +13944,8 @@ const buildMarketplaceMessageSummary = (
     if (bucket === "inbox" && row.status === "submitted") acc.unreadCount += 1;
     if (row.status === "submitted") acc.submittedCount += 1;
     if (row.status === "reviewed") acc.reviewedCount += 1;
+    if (row.status === "accepted") acc.acceptedCount += 1;
+    if (row.status === "declined") acc.declinedCount += 1;
     if (row.status === "converted_to_contract") acc.convertedCount += 1;
     if (row.status === "closed") acc.closedCount += 1;
     return acc;
@@ -13584,6 +14261,88 @@ const readMarketplaceMessagesForAdvertiser = async (
   );
 };
 
+interface MarketplaceProposalTransitionRow {
+  proposal_id: string;
+  previous_status: MarketplaceProposalStatus;
+  current_status: MarketplaceProposalStatus;
+  current_converted_contract_id?: string | null;
+  changed: boolean;
+}
+
+const transitionMarketplaceProposal = async ({
+  proposalId,
+  expectedStatuses,
+  nextStatus,
+  convertedContractId,
+}: {
+  proposalId: string;
+  expectedStatuses: MarketplaceProposalStatus[];
+  nextStatus: MarketplaceProposalStatus;
+  convertedContractId?: string;
+}) => {
+  const response = await fetchSupabase(
+    "rpc/transition_marketplace_contact_proposal",
+    "",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        p_proposal_id: proposalId,
+        p_expected_statuses: expectedStatuses,
+        p_next_status: nextStatus,
+        p_converted_contract_id: convertedContractId ?? null,
+      }),
+    },
+  );
+  await assertSupabaseOk(response, "Supabase marketplace proposal transition");
+  const rows = (await response.json()) as MarketplaceProposalTransitionRow[];
+  return rows[0];
+};
+
+const transitionMarketplaceProposalToContract = async (
+  proposal: SupabaseMarketplaceContactProposalRow,
+  contractId: string,
+  expectedStatuses: MarketplaceProposalStatus[],
+) => {
+  if (
+    proposal.status === "converted_to_contract" &&
+    proposal.converted_contract_id === contractId
+  ) {
+    return { ok: true as const, alreadyConverted: true };
+  }
+
+  const transition = await transitionMarketplaceProposal({
+    proposalId: proposal.id,
+    expectedStatuses,
+    nextStatus: "converted_to_contract",
+    convertedContractId: contractId,
+  });
+  if (!transition) {
+    return {
+      ok: false as const,
+      status: 404,
+      error: "제안 내역을 찾을 수 없습니다.",
+    };
+  }
+  if (
+    !transition.changed &&
+    !(
+      transition.current_status === "converted_to_contract" &&
+      transition.current_converted_contract_id === contractId
+    )
+  ) {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "제안 상태가 변경되었습니다. 최신 상태를 확인해 주세요.",
+    };
+  }
+
+  return {
+    ok: true as const,
+    alreadyConverted: !transition.changed,
+  };
+};
+
 const readMarketplaceMessagesForInfluencer = async (
   auth: InfluencerSession,
   options: { summaryOnly?: boolean } = {},
@@ -13654,7 +14413,7 @@ const readSupabaseLegacyContractRows = async (
 ): Promise<SupabaseLegacyContractProjection[]> => {
   let response = await fetchSupabase(
     supabaseLegacyTable,
-    `?select=id,contract,share_token,campaign_name,post_link${querySuffix}`,
+    `?select=id,contract,share_token,campaign_name,post_link,data_origin${querySuffix}`,
   );
 
   if (!response.ok) {
@@ -13698,6 +14457,12 @@ const readAdvertiserScopedSupabaseContracts = async (
   if (!useSupabase) return undefined;
 
   const profileEmail = normalizeEmail(auth.profile.email ?? auth.user.email ?? "");
+  const cachedStore = readSupabaseContractStoreCache();
+  if (cachedStore) {
+    return cachedStore.contracts.filter((contract) =>
+      canAdvertiserAccessLegacyContract(auth, contract),
+    );
+  }
 
   try {
     const rowsByAdvertiserId = await readSupabaseLegacyContractRows(
@@ -13725,12 +14490,12 @@ const readAdvertiserScopedSupabaseContracts = async (
       canAdvertiserAccessLegacyContract(auth, contract),
     );
   } catch (error) {
-    console.warn(
-      `[${productName}] advertiser scoped contract read fell back to full store: ${
+    throw new Error(
+      `Advertiser-scoped contract read failed: ${
         error instanceof Error ? error.message : "unknown error"
       }`,
+      { cause: error },
     );
-    return undefined;
   }
 };
 
@@ -13759,7 +14524,7 @@ const readSupabaseLegacyContract = async (
 
   let response = await fetchSupabase(
     supabaseLegacyTable,
-    `?select=contract,share_token,campaign_name,post_link&id=eq.${encodeURIComponent(contractId)}&limit=1`,
+    `?select=contract,share_token,campaign_name,post_link,data_origin&id=eq.${encodeURIComponent(contractId)}&limit=1`,
   );
 
   if (!response.ok) {
@@ -13779,7 +14544,7 @@ const readSupabaseLegacyContract = async (
 
   const rows = (await response.json()) as Array<
     Pick<SupabaseContractRow, "contract" | "share_token"> &
-      Partial<Pick<SupabaseContractRow, "campaign_name" | "post_link">>
+      Partial<Pick<SupabaseContractRow, "campaign_name" | "post_link" | "data_origin">>
   >;
   const row = rows[0];
 
@@ -13867,6 +14632,14 @@ const syncSupabaseV2Contract = async (contract: Contract) => {
     {
       id: contract.id,
       legacy_contract_id: contract.id,
+      data_origin: contract.data_origin ?? null,
+      workflow_source:
+        contract.campaign?.source === "marketplace_campaign"
+          ? "marketplace_campaign"
+          : "one_to_one",
+      marketplace_campaign_id:
+        contract.campaign?.marketplace_campaign_id ?? null,
+      source_application_id: contract.campaign?.source_application_id ?? null,
       status: mapContractToV2Status(contract),
       campaign_title: contract.title,
       campaign_summary: contract.workflow?.last_message,
@@ -14613,6 +15386,48 @@ const safeMarketplaceProposalChannelUrl = (
   return isSafeHttpUrl(profileUrl) ? profileUrl : "https://yeollock.me";
 };
 
+const readOneToOneProposalInfluencerParty = async (
+  proposal: SupabaseMarketplaceContactProposalRow,
+) => {
+  const profileQuery =
+    proposal.direction === "advertiser_to_influencer"
+      ? hasText(proposal.target_influencer_profile_id ?? undefined)
+        ? `?select=*&id=eq.${encodeURIComponent(
+            proposal.target_influencer_profile_id!,
+          )}&limit=1`
+        : undefined
+      : hasText(proposal.sender_profile_id ?? undefined)
+        ? `?select=*&owner_profile_id=eq.${encodeURIComponent(
+            proposal.sender_profile_id!,
+          )}&limit=1`
+        : undefined;
+  if (!profileQuery) return undefined;
+
+  const { profiles, channels } = await readMarketplaceInfluencerRows(profileQuery);
+  const marketplaceProfile = profiles[0];
+  if (!marketplaceProfile) return undefined;
+  const ownerProfile = await readProfileByUserId(marketplaceProfile.owner_profile_id);
+  if (!ownerProfile) return undefined;
+
+  const channelRows = channels.get(marketplaceProfile.id) ?? [];
+  const channelUrl =
+    proposal.marketplace_platforms?.find((platform) => isSafeHttpUrl(platform.url))
+      ?.url ??
+    channelRows.find((channel) => isSafeHttpUrl(channel.url ?? undefined))?.url ??
+    buildInfluencerPublicProfileUrl(marketplaceProfile.public_handle);
+
+  return {
+    profileId: ownerProfile.id,
+    name: marketplaceProfile.display_name || ownerProfile.name,
+    contact: ownerProfile.email,
+    channelUrl,
+    dataOrigin: resolveTrustedDataOrigin(
+      proposal.data_origin,
+      ownerProfile.data_origin,
+    ),
+  };
+};
+
 const buildMarketplaceCampaignDraftClauses = (
   snapshot: MarketplaceCampaignSnapshot,
   _row: SupabaseMarketplaceContactProposalRow,
@@ -14809,6 +15624,318 @@ const readMarketplaceProposalForAdvertiserAcceptance = async (
   };
 };
 
+const readOneToOneProposalForAdvertiser = async (
+  auth: AdvertiserSession,
+  proposalId: string,
+) => {
+  if (!useSupabase) {
+    return {
+      ok: false as const,
+      status: 503,
+      error: "Supabase 설정이 필요합니다.",
+    };
+  }
+
+  const organization = await readDefaultOrganizationForProfile(auth.profile.id);
+  if (!organization) {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "광고주 조직 정보를 찾을 수 없습니다.",
+    };
+  }
+
+  const [proposal] = await readMarketplaceProposalRows(
+    `?select=*&id=eq.${encodeURIComponent(proposalId)}&limit=1`,
+    "advertiser one-to-one proposal lookup",
+  );
+  if (!proposal) {
+    return {
+      ok: false as const,
+      status: 404,
+      error: "1:1 제안을 찾을 수 없습니다.",
+    };
+  }
+  if (hasText(proposal.campaign_id ?? undefined)) {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "캠페인 지원자는 캠페인 상세에서 관리해 주세요.",
+    };
+  }
+
+  const brandRows = await readAdvertiserMarketplaceBrandRows(organization.id, {
+    includeArchived: true,
+  });
+  const brandRow =
+    proposal.direction === "influencer_to_brand"
+      ? brandRows.find((row) => row.id === proposal.target_brand_profile_id)
+      : brandRows.find((row) => row.id === proposal.sender_brand_profile_id) ??
+        brandRows.find(
+          (row) =>
+            row.display_name.trim().toLowerCase() ===
+            proposal.sender_name.trim().toLowerCase(),
+        ) ??
+        brandRows.find((row) => row.is_default) ??
+        brandRows[0];
+  const ownsProposal =
+    proposal.direction === "advertiser_to_influencer"
+      ? proposal.sender_profile_id === auth.profile.id
+      : Boolean(brandRow && proposal.target_brand_profile_id === brandRow.id);
+
+  if (!ownsProposal || !brandRow) {
+    return {
+      ok: false as const,
+      status: 403,
+      error: "이 1:1 제안을 관리할 권한이 없습니다.",
+    };
+  }
+
+  const [withSenderHandle] =
+    proposal.direction === "influencer_to_brand"
+      ? await addSenderInfluencerHandlesToMarketplaceProposals([proposal])
+      : [proposal];
+  const [enrichedProposal] = await addPlatformInfoToMarketplaceProposals([
+    withSenderHandle,
+  ]);
+
+  return {
+    ok: true as const,
+    organization,
+    brand: mapBrandProfileRowToMarketplaceProfile(brandRow),
+    proposal: enrichedProposal,
+  };
+};
+
+const updateOneToOneProposalDecision = async (
+  proposal: SupabaseMarketplaceContactProposalRow,
+  decision: "accepted" | "declined",
+) => {
+  if (proposal.status === decision) {
+    return { ok: true as const, status: 200, proposal, alreadyUpdated: true };
+  }
+  if (proposal.status === "converted_to_contract") {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "이미 계약서 작성으로 전환된 제안입니다.",
+    };
+  }
+  if (!["submitted", "reviewed", "accepted"].includes(proposal.status)) {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "현재 상태에서는 제안 응답을 변경할 수 없습니다.",
+    };
+  }
+  if (proposal.status === "accepted" && decision === "declined") {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "수락한 제안은 메시지함에서 거절로 되돌릴 수 없습니다.",
+    };
+  }
+
+  const transition = await transitionMarketplaceProposal({
+    proposalId: proposal.id,
+    expectedStatuses: ["submitted", "reviewed"],
+    nextStatus: decision,
+  });
+  if (!transition) {
+    return {
+      ok: false as const,
+      status: 404,
+      error: "1:1 제안을 찾을 수 없습니다.",
+    };
+  }
+  if (!transition.changed && transition.current_status !== decision) {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "제안 상태가 변경되었습니다. 최신 상태를 확인해 주세요.",
+    };
+  }
+
+  const [updatedProposal] = await readMarketplaceProposalRows(
+    `?select=*&id=eq.${encodeURIComponent(proposal.id)}&limit=1`,
+    "one-to-one proposal decision result",
+  );
+  invalidateAdvertiserDashboardCache();
+  invalidateInfluencerDashboardCache();
+
+  return {
+    ok: true as const,
+    status: 200,
+    alreadyUpdated: !transition.changed,
+    proposal:
+      updatedProposal ??
+      ({ ...proposal, status: decision } as SupabaseMarketplaceContactProposalRow),
+  };
+};
+
+const respondToOneToOneProposalAsAdvertiser = async (
+  auth: AdvertiserSession,
+  proposalId: string,
+  decision: "accepted" | "declined",
+) => {
+  const result = await readOneToOneProposalForAdvertiser(auth, proposalId);
+  if (!result.ok) return result;
+  if (result.proposal.direction !== "influencer_to_brand") {
+    return {
+      ok: false as const,
+      status: 403,
+      error: "상대방이 보낸 1:1 제안에만 응답할 수 있습니다.",
+    };
+  }
+  return updateOneToOneProposalDecision(result.proposal, decision);
+};
+
+const respondToOneToOneProposalAsInfluencer = async (
+  auth: InfluencerSession,
+  proposalId: string,
+  decision: "accepted" | "declined",
+) => {
+  if (!useSupabase) {
+    return {
+      ok: false as const,
+      status: 503,
+      error: "Supabase 설정이 필요합니다.",
+    };
+  }
+  const [proposal] = await readMarketplaceProposalRows(
+    `?select=*&id=eq.${encodeURIComponent(proposalId)}&limit=1`,
+    "influencer one-to-one proposal response lookup",
+  );
+  if (!proposal) {
+    return {
+      ok: false as const,
+      status: 404,
+      error: "1:1 제안을 찾을 수 없습니다.",
+    };
+  }
+  if (
+    proposal.direction !== "advertiser_to_influencer" ||
+    hasText(proposal.campaign_id ?? undefined) ||
+    !hasText(proposal.target_influencer_profile_id ?? undefined)
+  ) {
+    return {
+      ok: false as const,
+      status: 403,
+      error: "이 1:1 제안에 응답할 권한이 없습니다.",
+    };
+  }
+  const ownerRows = await readSupabaseRows<
+    Pick<SupabaseMarketplaceInfluencerProfileRow, "id" | "owner_profile_id">
+  >(
+    "marketplace_influencer_profiles",
+    `?select=id,owner_profile_id&id=eq.${encodeURIComponent(
+      proposal.target_influencer_profile_id!,
+    )}&owner_profile_id=eq.${encodeURIComponent(auth.profile.id)}&limit=1`,
+    "influencer one-to-one proposal owner lookup",
+  );
+  if (!ownerRows[0]) {
+    return {
+      ok: false as const,
+      status: 403,
+      error: "이 1:1 제안에 응답할 권한이 없습니다.",
+    };
+  }
+  return updateOneToOneProposalDecision(proposal, decision);
+};
+
+const buildOneToOneProposalDraftContext = async (
+  auth: AdvertiserSession,
+  proposalId: string,
+) => {
+  const result = await readOneToOneProposalForAdvertiser(auth, proposalId);
+  if (!result.ok) {
+    return {
+      ok: false as const,
+      status: result.status,
+      error: result.error,
+    };
+  }
+
+  const { brand, proposal } = result;
+  if (proposal.status === "declined" || proposal.status === "closed") {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "거절되거나 종료된 제안은 계약서로 작성할 수 없습니다.",
+    };
+  }
+  if (!["accepted", "converted_to_contract"].includes(proposal.status)) {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "상대방이 제안을 수락한 뒤 계약서를 작성할 수 있습니다.",
+    };
+  }
+
+  const contractId =
+    proposal.converted_contract_id ??
+    stableUuid(`marketplace-proposal-contract:${proposal.id}`);
+  const existing = await readContractWriteContext(contractId);
+  if (existing.existingContract) {
+    if (proposal.status !== "converted_to_contract") {
+      const transition = await transitionMarketplaceProposalToContract(
+        proposal,
+        contractId,
+        ["accepted"],
+      );
+      if (!transition.ok) {
+        return {
+          ok: false as const,
+          status: transition.status,
+          error: transition.error,
+        };
+      }
+    }
+    return {
+      ok: true as const,
+      status: 200,
+      alreadyConverted: true,
+      contractId,
+      proposal,
+      brand,
+    };
+  }
+
+  const influencerParty = await readOneToOneProposalInfluencerParty(proposal);
+  if (!influencerParty) {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "제안 상대의 등록 프로필 정보를 확인할 수 없습니다.",
+    };
+  }
+
+  return {
+    ok: true as const,
+    status: 200,
+    alreadyConverted: false,
+    contractId,
+    proposal,
+    brand,
+    prefill: {
+      brandId: brand.id,
+      title: `${influencerParty.name} 1:1 광고 계약`,
+      type: proposalTypeToContractType(proposal.proposal_type),
+      influencerName: influencerParty.name,
+      influencerUrl: influencerParty.channelUrl,
+      influencerContact: influencerParty.contact,
+      platforms: Array.from(
+        new Set(
+          (proposal.marketplace_platforms ?? []).map((platform) =>
+            marketplacePlatformToContractPlatform(platform.platform),
+          ),
+        ),
+      ),
+      proposalSummary: proposal.proposal_summary,
+    },
+  };
+};
+
 const createDraftContractFromMarketplaceApplication = async (
   auth: AdvertiserSession,
   proposalId: string,
@@ -14835,6 +15962,14 @@ const createDraftContractFromMarketplaceApplication = async (
     };
   }
 
+  if (!hasText(proposal.campaign_id ?? undefined)) {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "1:1 제안은 상대방 수락 후 계약서 작성 화면에서 진행해 주세요.",
+    };
+  }
+
   if (proposal.converted_contract_id) {
     const existing = await readContractWriteContext(proposal.converted_contract_id);
     if (existing.existingContract) {
@@ -14847,12 +15982,39 @@ const createDraftContractFromMarketplaceApplication = async (
     }
   }
 
+  const deterministicContractId = stableUuid(
+    `marketplace-proposal-contract:${proposal.id}`,
+  );
+  const deterministicExisting = await readContractWriteContext(
+    deterministicContractId,
+  );
+  if (deterministicExisting.existingContract) {
+    const transition = await transitionMarketplaceProposalToContract(
+      proposal,
+      deterministicContractId,
+      ["submitted", "reviewed", "accepted"],
+    );
+    if (!transition.ok) {
+      return {
+        ok: false as const,
+        status: transition.status,
+        error: transition.error,
+      };
+    }
+    return {
+      ok: true as const,
+      status: 200,
+      contract: deterministicExisting.existingContract,
+      alreadyConverted: true,
+    };
+  }
+
   const snapshot = await resolveMarketplaceCampaignSnapshotForProposal(proposal);
   const senderProfile = proposal.sender_profile_id
     ? await readProfileByUserId(proposal.sender_profile_id)
     : undefined;
   const now = new Date().toISOString();
-  const contractId = randomUUID();
+  const contractId = deterministicContractId;
   const platforms =
     snapshot.platforms && snapshot.platforms.length > 0
       ? snapshot.platforms.map(marketplacePlatformToContractPlatform)
@@ -14887,6 +16049,17 @@ const createDraftContractFromMarketplaceApplication = async (
   );
   const contract: Contract = {
     id: contractId,
+    data_origin: resolveTrustedDataOrigin(
+      normalizeDataOrigin(auth.profile.data_origin) ??
+        deriveDataOrigin([
+          auth.profile.email,
+          auth.user.email,
+          auth.profile.name,
+          auth.profile.company_name,
+        ]),
+      proposal.data_origin,
+      senderProfile?.data_origin,
+    ),
     advertiser_id: auth.profile.id,
     brand_profile_id: brand.id,
     advertiser_info: {
@@ -14927,7 +16100,7 @@ const createDraftContractFromMarketplaceApplication = async (
     }),
     audit_events: [
       {
-        id: randomUUID(),
+        id: stableUuid(`marketplace-proposal-contract-event:${proposal.id}`),
         actor: "advertiser",
         action: "campaign_application_accepted",
         description: "광고주가 캠페인 신청을 수락해 계약이 생성되었습니다.",
@@ -14950,16 +16123,18 @@ const createDraftContractFromMarketplaceApplication = async (
 
   const { store, existingIndex } = await readContractWriteContext(contract.id);
   await writeStore(mergeContractIntoStore(store, existingIndex, contract));
-  await patchSupabaseRecord(
-    "marketplace_contact_proposals",
-    `?id=eq.${encodeURIComponent(proposal.id)}`,
-    {
-      status: "converted_to_contract",
-      converted_contract_id: contract.id,
-      updated_at: now,
-    },
-    "Supabase marketplace proposal contract conversion",
+  const transition = await transitionMarketplaceProposalToContract(
+    proposal,
+    contract.id,
+    ["submitted", "reviewed", "accepted"],
   );
+  if (!transition.ok) {
+    return {
+      ok: false as const,
+      status: transition.status,
+      error: transition.error,
+    };
+  }
 
   return {
     ok: true as const,
@@ -15547,6 +16722,68 @@ const deriveVerificationStatus = (
   return latest?.status ?? fallback ?? "not_submitted";
 };
 
+const sanitizeVerificationRequestForSummary = (
+  request: VerificationRequestRecord | undefined,
+) => {
+  if (!request) return undefined;
+
+  const {
+    id,
+    target_type,
+    target_id,
+    verification_type,
+    status,
+    subject_name,
+    submitted_by_name,
+    submitted_by_email,
+    business_registration_number,
+    representative_name,
+    manager_phone,
+    platform,
+    platform_handle,
+    platform_url,
+    ownership_verification_method,
+    ownership_check_status,
+    ownership_checked_at,
+    document_issue_date,
+    document_check_number,
+    note,
+    reviewer_note,
+    reviewed_by_name,
+    reviewed_at,
+    created_at,
+    updated_at,
+  } = request;
+
+  return {
+    id,
+    target_type,
+    target_id,
+    verification_type,
+    status,
+    subject_name,
+    submitted_by_name,
+    submitted_by_email,
+    business_registration_number,
+    representative_name,
+    manager_phone,
+    platform,
+    platform_handle,
+    platform_url,
+    ownership_verification_method,
+    ownership_check_status,
+    ownership_checked_at,
+    document_issue_date,
+    document_check_number,
+    note,
+    reviewer_note,
+    reviewed_by_name,
+    reviewed_at,
+    created_at,
+    updated_at,
+  };
+};
+
 const getContractRequiredInfluencerPlatforms = (contract: Contract) => {
   const platforms =
     contract.campaign?.platforms?.map((platform) =>
@@ -15575,7 +16812,14 @@ const verificationMatchesPlatformAccount = (
   platform: InfluencerPlatform,
   platformUrl?: string,
 ) => {
-  if (request.status !== "approved" || request.platform !== platform) return false;
+  if (
+    request.status !== "approved" ||
+    request.verification_type !== "platform_account" ||
+    request.platform !== platform ||
+    !hasText(request.platform_handle)
+  ) {
+    return false;
+  }
   if (!hasText(platformUrl)) return false;
 
   const inferredPlatform = normalizeInfluencerPlatform(
@@ -15595,10 +16839,24 @@ const verificationMatchesContractPlatform = (
   platform: InfluencerPlatform,
   contract: Contract,
 ) => {
-  return verificationMatchesPlatformAccount(
-    request,
-    platform,
-    contract.influencer_info.channel_url,
+  if (
+    request.status !== "approved" ||
+    request.verification_type !== "platform_account" ||
+    request.platform !== platform ||
+    !hasText(request.platform_handle)
+  ) {
+    return false;
+  }
+
+  const channelUrl = contract.influencer_info.channel_url;
+  const inferredFromChannelUrl = inferPlatformFromUrl(channelUrl);
+  const channelPlatform = inferredFromChannelUrl
+    ? normalizeInfluencerPlatform(mapPlatformToV2(inferredFromChannelUrl))
+    : undefined;
+
+  return (
+    channelPlatform !== platform ||
+    verificationMatchesPlatformAccount(request, platform, channelUrl)
   );
 };
 
@@ -15644,13 +16902,13 @@ const buildVerificationSummary = async (
       target_type: "advertiser_organization",
       target_id: advertiserTargetId,
       status: advertiserLatest?.status ?? "not_submitted",
-      latest_request: advertiserLatest,
+      latest_request: sanitizeVerificationRequestForSummary(advertiserLatest),
     },
     influencer: {
       target_type: "influencer_account",
       target_id: influencerTargetId,
       status: influencerLatest?.status ?? "not_submitted",
-      latest_request: influencerLatest,
+      latest_request: sanitizeVerificationRequestForSummary(influencerLatest),
     },
   };
 };
@@ -15775,7 +17033,7 @@ const buildAdvertiserScopedVerificationSummary = async (
       target_type: "advertiser_organization" as const,
       target_id: context.targetId,
       status: advertiserStatus,
-      latest_request: advertiserLatest,
+      latest_request: sanitizeVerificationRequestForSummary(advertiserLatest),
       account: {
         name: auth.profile.name,
         company_name:
@@ -15815,7 +17073,7 @@ const buildInfluencerScopedVerificationSummary = async (
       target_type: "influencer_account" as const,
       target_id: auth.profile.id,
       status,
-      latest_request: influencerLatest,
+      latest_request: sanitizeVerificationRequestForSummary(influencerLatest),
       approved_platforms: approvedPlatforms,
       account: {
         name: auth.profile.name,
@@ -16897,7 +18155,7 @@ const mapMarketplaceProposalToDashboardApplication = (
   const brandName = snapshot?.brandName ?? row.target_display_name ?? "광고주";
   const actionHref = row.converted_contract_id
     ? `/contract/${encodeURIComponent(row.converted_contract_id)}`
-    : "/influencer/messages";
+    : "/influencer/campaigns?view=applied";
 
   return {
     id: row.id,
@@ -16935,7 +18193,7 @@ const buildInfluencerDashboardApplications = async (
   const rows = await readMarketplaceProposalRows(
     `?select=*&direction=eq.influencer_to_brand&sender_profile_id=eq.${encodeURIComponent(
       profileId,
-    )}&order=updated_at.desc`,
+    )}&campaign_id=not.is.null&order=updated_at.desc`,
     "influencer dashboard campaign applications",
   );
   const enrichedRows = await addPlatformInfoToMarketplaceProposals(rows);
@@ -17103,6 +18361,15 @@ const buildLegacyContractFromV2Rows = ({
       contact: influencerParty?.email ?? "",
     },
     campaign: {
+      ...(contract.workflow_source === "marketplace_campaign"
+        ? {
+            source: "marketplace_campaign" as const,
+            fixed_terms: true,
+            marketplace_campaign_id:
+              contract.marketplace_campaign_id ?? undefined,
+            source_application_id: contract.source_application_id ?? undefined,
+          }
+        : {}),
       budget: formatPricingTerm(pricingTerm),
       start_date: contract.campaign_start_date ?? undefined,
       end_date: contract.campaign_end_date ?? undefined,
@@ -17355,7 +18622,11 @@ const buildInfluencerDashboardFromLocal = async (
   const dashboardContracts = store.contracts
     .filter((contract) => {
       const contactEmail = normalizeEmail(contract.influencer_info?.contact ?? "");
-      return hasText(userEmail) && contactEmail === userEmail;
+      return (
+        hasText(userEmail) &&
+        contactEmail === userEmail &&
+        !isFixedCampaignContract(contract)
+      );
     })
     .map((contract) =>
       normalizeTestContractDatesForSession(
@@ -17508,7 +18779,8 @@ const buildInfluencerDashboardFromRemote = async (
     .filter(
       (contract) =>
         userEmail &&
-        contract.influencer_info.contact.trim().toLowerCase() === userEmail,
+        contract.influencer_info.contact.trim().toLowerCase() === userEmail &&
+        !isFixedCampaignContract(contract),
     )
     .map((contract) =>
       normalizeTestContractDatesForSession(relativeDateAuth, contract),
@@ -17592,21 +18864,31 @@ const buildInfluencerDashboardFromRemote = async (
     );
     const v2ContractIds = new Set(contracts.map((contract) => contract.id));
 
-    dashboardContracts = contracts.map((contract) =>
-      buildV2DashboardContract({
-        contract,
-        legacyContract:
+    dashboardContracts = contracts
+      .filter((contract) => {
+        const legacyContract =
           legacyContractsById.get(contract.legacy_contract_id ?? "") ??
-          legacyContractsById.get(contract.id),
-        parties: partiesByContract.get(contract.id) ?? [],
-        platforms: platformsByContract.get(contract.id) ?? [],
-        pricingTerm: pricingByContract.get(contract.id),
-        clauses: clausesByContract.get(contract.id) ?? [],
-        deliverableRequirements: requirementsByContract.get(contract.id) ?? [],
-        deliverables: deliverablesByContract.get(contract.id) ?? [],
-        events: eventsByContract.get(contract.id) ?? [],
-      }),
-    );
+          legacyContractsById.get(contract.id);
+        return (
+          contract.workflow_source !== "marketplace_campaign" &&
+          !isFixedCampaignContract(legacyContract)
+        );
+      })
+      .map((contract) =>
+        buildV2DashboardContract({
+          contract,
+          legacyContract:
+            legacyContractsById.get(contract.legacy_contract_id ?? "") ??
+            legacyContractsById.get(contract.id),
+          parties: partiesByContract.get(contract.id) ?? [],
+          platforms: platformsByContract.get(contract.id) ?? [],
+          pricingTerm: pricingByContract.get(contract.id),
+          clauses: clausesByContract.get(contract.id) ?? [],
+          deliverableRequirements: requirementsByContract.get(contract.id) ?? [],
+          deliverables: deliverablesByContract.get(contract.id) ?? [],
+          events: eventsByContract.get(contract.id) ?? [],
+        }),
+      );
 
     dashboardContracts.push(
       ...legacyContractsForUser
@@ -17749,7 +19031,9 @@ const writeStore = async (store: ContractStoreFile) => {
       await syncSupabaseV2Contracts(normalizedContracts);
     }
     await upsertSupabaseContracts(normalizedContracts);
-    rememberSupabaseContractStoreCache({ contracts: normalizedContracts });
+    // Supabase point writes intentionally pass a one-contract store. Treating
+    // that partial store as the global list cache hides every other contract.
+    invalidateSupabaseContractStoreCache();
     invalidateAdvertiserDashboardCache();
     invalidateInfluencerDashboardCache();
     return;
@@ -18500,7 +19784,7 @@ app.get("/api/auth/warmup", async (_request, response) => {
 app.post("/api/support/tickets", async (request, response, next) => {
   try {
     const requesterEmail = normalizeEmail(request.body?.requester_email);
-    const throttle = consumeSensitiveEndpointRateLimit(
+    const throttle = await consumeSensitiveEndpointRateLimit(
       request,
       "operational_support_ticket",
       requesterEmail || getClientIp(request),
@@ -18553,6 +19837,9 @@ app.post("/api/support/tickets", async (request, response, next) => {
       return;
     }
 
+    const trustedContract = contractId
+      ? await readContractById(contractId)
+      : undefined;
     const now = new Date().toISOString();
     const ticket = await insertSupportTicket({
       id: randomUUID(),
@@ -18581,6 +19868,8 @@ app.post("/api/support/tickets", async (request, response, next) => {
         ? (severityInput as OperationalSupportTicketSeverity)
         : "normal",
       status: "open",
+      data_origin:
+        normalizeDataOrigin(trustedContract?.data_origin) ?? "production",
       source: "support_page",
       ip_hash: sha256Hex(`support-ticket:${getClientIp(request)}`),
       user_agent: request.header("user-agent")?.slice(0, 500),
@@ -18611,45 +19900,52 @@ app.get("/api/admin/session", (request, response) => {
   });
 });
 
-app.post("/api/admin/login", (request, response) => {
-  if (!isAdminAuthConfigured()) {
-    response.status(503).json({
-      error: "Admin authentication is not configured",
-      configured: false,
-    });
-    return;
-  }
+app.post("/api/admin/login", async (request, response, next) => {
+  try {
+    if (!isAdminAuthConfigured()) {
+      response.status(503).json({
+        error: "Admin authentication is not configured",
+        configured: false,
+      });
+      return;
+    }
 
-  const accessCode = String(request.body?.accessCode ?? "");
-  const attemptKey = getAdminLoginAttemptKey(request);
-  const throttle = getAdminLoginThrottle(attemptKey);
-
-  if (throttle.blocked) {
-    response.setHeader("Retry-After", String(throttle.retryAfterSeconds ?? 60));
-    response.status(429).json({
-      error: "운영자 로그인 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.",
-      retry_after_seconds: throttle.retryAfterSeconds,
-    });
-    return;
-  }
-
-  if (!safeEqual(accessCode, adminAccessCode!)) {
-    const attempt = recordAdminLoginFailure(attemptKey);
-    console.warn(
-      `[${productName} Admin] failed login attempt from ${getClientIp(request)} (${attempt.failures}/${adminLoginMaxFailures})`,
+    const accessCode = String(request.body?.accessCode ?? "");
+    const attemptKey = `admin-login:ip:${getClientIp(request)}`;
+    const throttle = await consumeRateLimitBucket(
+      attemptKey,
+      adminLoginMaxFailures,
+      Math.max(adminLoginWindowMs, adminLoginLockMs),
     );
-    response.status(401).json({ error: "운영자 인증 코드가 올바르지 않습니다." });
-    return;
-  }
 
-  clearAdminLoginFailures(attemptKey);
-  response.setHeader(
-    "Set-Cookie",
-    `${adminSessionCookie}=${encodeURIComponent(
-      createAdminSessionToken(),
-    )}; ${adminCookieOptions()}`,
-  );
-  response.json({ authenticated: true, configured: true });
+    if (throttle.blocked) {
+      response.setHeader("Retry-After", String(throttle.retryAfterSeconds ?? 60));
+      response.status(429).json({
+        error: "운영자 로그인 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.",
+        retry_after_seconds: throttle.retryAfterSeconds,
+      });
+      return;
+    }
+
+    if (!safeEqual(accessCode, adminAccessCode!)) {
+      console.warn(
+        `[${productName} Admin] failed login attempt from ${getClientIp(request)}`,
+      );
+      response.status(401).json({ error: "운영자 인증 코드가 올바르지 않습니다." });
+      return;
+    }
+
+    await clearRateLimitBucket(attemptKey);
+    response.setHeader(
+      "Set-Cookie",
+      `${adminSessionCookie}=${encodeURIComponent(
+        createAdminSessionToken(),
+      )}; ${adminCookieOptions()}`,
+    );
+    response.json({ authenticated: true, configured: true });
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.post("/api/admin/logout", (_request, response) => {
@@ -18729,7 +20025,7 @@ app.get("/api/admin/support-tickets", async (request, response, next) => {
 
 app.patch("/api/admin/support-tickets/:id", async (request, response, next) => {
   try {
-    const throttle = consumeSensitiveEndpointRateLimit(
+    const throttle = await consumeSensitiveEndpointRateLimit(
       request,
       "admin_support_ticket_update",
       request.params.id,
@@ -18792,7 +20088,7 @@ app.get("/api/admin/support-access-requests", async (request, response, next) =>
 
 app.patch("/api/admin/support-access-requests/:id", async (request, response, next) => {
   try {
-    const throttle = consumeSensitiveEndpointRateLimit(
+    const throttle = await consumeSensitiveEndpointRateLimit(
       request,
       "admin_support_access_review",
       request.params.id,
@@ -18911,7 +20207,7 @@ app.post("/api/auth/password-reset/request", async (request, response) => {
       return;
     }
 
-    const throttle = consumePublicAuthRateLimit(request, "password_reset", email);
+    const throttle = await consumePublicAuthRateLimit(request, "password_reset", email);
     if (throttle.blocked) {
       sendPublicAuthRateLimitResponse(response, throttle);
       return;
@@ -18926,7 +20222,7 @@ app.post("/api/auth/password-reset/request", async (request, response) => {
       email,
       redirectTo: resetUrl.toString(),
     });
-    clearPublicAuthRateLimit(request, "password_reset", email);
+    await clearPublicAuthRateLimit(request, "password_reset", email);
 
     response.status(202).json({
       message:
@@ -18962,7 +20258,7 @@ app.post("/api/auth/password-reset/complete", async (request, response) => {
       return;
     }
 
-    const throttle = consumeSensitiveEndpointRateLimit(
+    const throttle = await consumeSensitiveEndpointRateLimit(
       request,
       "password_reset_complete",
       accessToken.slice(0, 24),
@@ -18997,7 +20293,7 @@ app.post("/api/advertiser/login", async (request, response) => {
       return;
     }
 
-    const throttle = consumePublicAuthRateLimit(request, "advertiser_login", email);
+    const throttle = await consumePublicAuthRateLimit(request, "advertiser_login", email);
     if (throttle.blocked) {
       sendPublicAuthRateLimitResponse(response, throttle);
       return;
@@ -19044,7 +20340,7 @@ app.post("/api/advertiser/login", async (request, response) => {
     rememberRecentAuthSession(session.access_token, session.user);
     rememberProfile(profile);
     setAdvertiserSessionCookies(response, session, profile);
-    clearPublicAuthRateLimit(request, "advertiser_login", email);
+    await clearPublicAuthRateLimit(request, "advertiser_login", email);
     const advertiserSession = {
       user: session.user,
       accessToken: session.access_token,
@@ -19091,6 +20387,10 @@ app.post("/api/advertiser/signup", async (request, response) => {
     const managerName = normalizeRequiredText(request.body?.name);
     const companyName = normalizeRequiredText(request.body?.company_name);
     const passwordError = validateSignupPassword(password);
+    const nextPath = normalizeSignupNextPath(
+      request.body?.next_path,
+      "advertiser",
+    );
 
     if (!isValidEmail(email)) {
       response.status(422).json({ error: "올바른 이메일을 입력해 주세요." });
@@ -19111,7 +20411,7 @@ app.post("/api/advertiser/signup", async (request, response) => {
       return;
     }
 
-    const throttle = consumePublicAuthRateLimit(request, "advertiser_signup", email);
+    const throttle = await consumePublicAuthRateLimit(request, "advertiser_signup", email);
     if (throttle.blocked) {
       sendPublicAuthRateLimitResponse(response, throttle);
       return;
@@ -19125,7 +20425,7 @@ app.post("/api/advertiser/signup", async (request, response) => {
       redirectTo: buildEmailConfirmationRedirect(
         request,
         "/login/advertiser",
-        "/advertiser/verification",
+        nextPath,
       ),
     });
 
@@ -19135,6 +20435,7 @@ app.post("/api/advertiser/signup", async (request, response) => {
         role: "marketer",
         name: managerName,
         email,
+        data_origin: "production",
         company_name: companyName,
         verification_status: "not_submitted",
         email_verified_at: null,
@@ -19249,7 +20550,7 @@ app.post("/api/influencer/login", async (request, response, _next) => {
       return;
     }
 
-    const throttle = consumePublicAuthRateLimit(request, "influencer_login", email);
+    const throttle = await consumePublicAuthRateLimit(request, "influencer_login", email);
     if (throttle.blocked) {
       sendPublicAuthRateLimitResponse(response, throttle);
       return;
@@ -19273,7 +20574,7 @@ app.post("/api/influencer/login", async (request, response, _next) => {
     rememberRecentAuthSession(session.access_token, session.user);
     rememberProfile(profile);
     setInfluencerSessionCookies(response, session, profile);
-    clearPublicAuthRateLimit(request, "influencer_login", email);
+    await clearPublicAuthRateLimit(request, "influencer_login", email);
     void buildInfluencerDashboard(session.user, {
       includeApplications: false,
     }).catch((error) => {
@@ -19318,6 +20619,10 @@ app.post("/api/influencer/signup", async (request, response) => {
       influencerPlatforms,
     );
     const passwordError = validateSignupPassword(password);
+    const nextPath = normalizeSignupNextPath(
+      request.body?.next_path,
+      "influencer",
+    );
 
     if (!isValidEmail(email)) {
       response.status(422).json({ error: "올바른 이메일을 입력해 주세요." });
@@ -19352,7 +20657,7 @@ app.post("/api/influencer/signup", async (request, response) => {
       return;
     }
 
-    const throttle = consumePublicAuthRateLimit(request, "influencer_signup", email);
+    const throttle = await consumePublicAuthRateLimit(request, "influencer_signup", email);
     if (throttle.blocked) {
       sendPublicAuthRateLimitResponse(response, throttle);
       return;
@@ -19365,7 +20670,7 @@ app.post("/api/influencer/signup", async (request, response) => {
       redirectTo: buildEmailConfirmationRedirect(
         request,
         "/login/influencer",
-        "/influencer/dashboard",
+        nextPath,
       ),
     });
 
@@ -19375,6 +20680,7 @@ app.post("/api/influencer/signup", async (request, response) => {
         role: "influencer",
         name,
         email,
+        data_origin: "production",
         activity_categories: activityCategories.selected,
         activity_platforms: activityPlatforms.selected,
         verification_status: "not_submitted",
@@ -19694,11 +21000,65 @@ app.get("/api/cron/ops-alerts", async (request, response, next) => {
 
 app.get("/api/marketplace/influencers", async (request, response, next) => {
   try {
-    if (request.query.limit !== undefined || request.query.offset !== undefined) {
+    const platform = readMarketplaceInfluencerPlatformFilter(request.query.platform);
+    if (request.query.platform !== undefined && !platform) {
+      response.status(422).json({ error: "Invalid influencer platform filter" });
+      return;
+    }
+
+    const savedOnlyQuery = request.query.saved_only;
+    if (
+      savedOnlyQuery !== undefined &&
+      savedOnlyQuery !== "true" &&
+      savedOnlyQuery !== "false"
+    ) {
+      response.status(422).json({ error: "Invalid saved influencer filter" });
+      return;
+    }
+    const savedOnly = savedOnlyQuery === "true";
+
+    if (savedOnly) {
+      const advertiserAuth = await requireAdvertiserSession(request, response);
+      if (!advertiserAuth) return;
+      const organization = await readDefaultOrganizationForProfile(
+        advertiserAuth.profile.id,
+      );
+      if (!organization) {
+        response.status(409).json({ error: "Advertiser organization is required" });
+        return;
+      }
+
+      const { limit, offset } = readMarketplaceInfluencerPagination(request.query);
+      const savedRows = await readAdvertiserSavedInfluencerRows(organization.id);
+      const savedProfiles = (
+        await readPublicMarketplaceInfluencerProfilesByHandles(
+          savedRows.map((row) => row.influencer_public_handle),
+        )
+      ).filter(
+        (profile) =>
+          !platform ||
+          profile.platforms.some((profilePlatform) => profilePlatform.platform === platform),
+      );
+      const page = savedProfiles.slice(offset, offset + limit + 1);
+
+      response.setHeader("Cache-Control", "private, no-store");
+      response.json({
+        profiles: page.slice(0, limit),
+        hasMore: page.length > limit,
+      });
+      return;
+    }
+
+    if (
+      request.query.limit !== undefined ||
+      request.query.offset !== undefined ||
+      platform
+    ) {
       const { limit, offset } = readMarketplaceInfluencerPagination(request.query);
       const page = await readMarketplaceInfluencerProfiles({
         limit: limit + 1,
         offset,
+        platform,
       });
       sendPublicMarketplaceJson(
         response,
@@ -19719,14 +21079,120 @@ app.get("/api/marketplace/influencers", async (request, response, next) => {
   }
 });
 
+app.get("/api/advertiser/saved-influencers", async (request, response, next) => {
+  try {
+    const advertiserAuth = await requireAdvertiserSession(request, response);
+    if (!advertiserAuth) return;
+    const organization = await readDefaultOrganizationForProfile(
+      advertiserAuth.profile.id,
+    );
+    if (!organization) {
+      response.status(409).json({ error: "Advertiser organization is required" });
+      return;
+    }
+
+    const savedRows = await readAdvertiserSavedInfluencerRows(organization.id);
+    response.setHeader("Cache-Control", "private, no-store");
+    response.json({
+      handles: savedRows.map((row) => row.influencer_public_handle),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.put(
+  "/api/advertiser/saved-influencers/:handle",
+  async (request, response, next) => {
+    try {
+      const advertiserAuth = await requireAdvertiserSession(request, response);
+      if (!advertiserAuth) return;
+      if (!useSupabase) {
+        response.status(503).json({ error: "Supabase is required for saved influencers" });
+        return;
+      }
+
+      const handle = normalizePublicProfileHandle(request.params.handle);
+      if (!handle) {
+        response.status(422).json({ error: "Influencer handle is required" });
+        return;
+      }
+      const profile = await readPublicMarketplaceInfluencerProfileByHandle(handle);
+      if (!profile) {
+        response.status(404).json({ error: "Influencer profile not found" });
+        return;
+      }
+
+      const organization = await readDefaultOrganizationForProfile(
+        advertiserAuth.profile.id,
+      );
+      if (!organization) {
+        response.status(409).json({ error: "Advertiser organization is required" });
+        return;
+      }
+
+      await upsertSupabaseV2Rows(
+        "advertiser_saved_influencers",
+        [
+          {
+            organization_id: organization.id,
+            influencer_public_handle: handle,
+            created_by_profile_id: advertiserAuth.profile.id,
+          },
+        ],
+        "organization_id,influencer_public_handle",
+      );
+      response.setHeader("Cache-Control", "private, no-store");
+      response.json({ handle, saved: true });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+app.delete(
+  "/api/advertiser/saved-influencers/:handle",
+  async (request, response, next) => {
+    try {
+      const advertiserAuth = await requireAdvertiserSession(request, response);
+      if (!advertiserAuth) return;
+      if (!useSupabase) {
+        response.status(503).json({ error: "Supabase is required for saved influencers" });
+        return;
+      }
+
+      const handle = normalizePublicProfileHandle(request.params.handle);
+      if (!handle) {
+        response.status(422).json({ error: "Influencer handle is required" });
+        return;
+      }
+      const organization = await readDefaultOrganizationForProfile(
+        advertiserAuth.profile.id,
+      );
+      if (!organization) {
+        response.status(409).json({ error: "Advertiser organization is required" });
+        return;
+      }
+
+      await deleteSupabaseV2Rows(
+        "advertiser_saved_influencers",
+        `?organization_id=eq.${encodeURIComponent(
+          organization.id,
+        )}&influencer_public_handle=eq.${encodeURIComponent(handle)}`,
+      );
+      response.setHeader("Cache-Control", "private, no-store");
+      response.json({ handle, saved: false });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
 app.get("/api/marketplace/influencers/:handle", async (request, response, next) => {
   try {
-    const profiles = await readPublicMarketplaceCache(
-      "marketplace-influencers",
-      readMarketplaceInfluencerProfiles,
-      { fallback: fallbackMarketplaceInfluencerProfiles },
+    const profile = await readPublicMarketplaceInfluencerProfileByHandle(
+      request.params.handle,
     );
-    const profile = findInfluencerProfileByHandle(request.params.handle, profiles);
 
     if (!profile) {
       response.status(404).json({ error: "Influencer profile not found" });
@@ -19828,7 +21294,7 @@ app.post(
       const influencerAuth = await requireInfluencerSession(request, response);
       if (!influencerAuth) return;
 
-      const throttle = consumeSensitiveEndpointRateLimit(
+      const throttle = await consumeSensitiveEndpointRateLimit(
         request,
         "marketplace_campaign_application",
         `${influencerAuth.profile.id}:${request.params.campaignId}`,
@@ -19989,7 +21455,7 @@ app.post("/api/advertiser/brand-image", async (request, response, next) => {
     const advertiserAuth = await requireAdvertiserSession(request, response);
     if (!advertiserAuth) return;
 
-    const throttle = consumeSensitiveEndpointRateLimit(
+    const throttle = await consumeSensitiveEndpointRateLimit(
       request,
       "advertiser_brand_image_upload",
       advertiserAuth.profile.id,
@@ -20030,7 +21496,7 @@ app.post("/api/advertiser/campaign-image", async (request, response, next) => {
     const advertiserAuth = await requireAdvertiserSession(request, response);
     if (!advertiserAuth) return;
 
-    const throttle = consumeSensitiveEndpointRateLimit(
+    const throttle = await consumeSensitiveEndpointRateLimit(
       request,
       "advertiser_campaign_image_upload",
       advertiserAuth.profile.id,
@@ -20128,7 +21594,7 @@ app.post(
       const advertiserAuth = await requireAdvertiserSession(request, response);
       if (!advertiserAuth) return;
 
-      const throttle = consumeSensitiveEndpointRateLimit(
+      const throttle = await consumeSensitiveEndpointRateLimit(
         request,
         "marketplace_proposal_accept",
         `${advertiserAuth.profile.id}:${request.params.id}`,
@@ -20138,19 +21604,145 @@ app.post(
         return;
       }
 
-      const result = await createDraftContractFromMarketplaceApplication(
-        advertiserAuth,
-        request.params.id,
+      const [proposal] = await readMarketplaceProposalRows(
+        `?select=id,campaign_id&id=eq.${encodeURIComponent(
+          request.params.id,
+        )}&limit=1`,
+        "marketplace proposal accept route lookup",
       );
+      const result = hasText(proposal?.campaign_id ?? undefined)
+        ? await createDraftContractFromMarketplaceApplication(
+            advertiserAuth,
+            request.params.id,
+          )
+        : await respondToOneToOneProposalAsAdvertiser(
+            advertiserAuth,
+            request.params.id,
+            "accepted",
+          );
 
       if (!result.ok) {
         response.status(result.status).json({ error: result.error });
         return;
       }
 
+      if ("contract" in result) {
+        response.status(result.status).json({
+          contract: result.contract,
+          already_converted: result.alreadyConverted,
+        });
+        return;
+      }
+
       response.status(result.status).json({
-        contract: result.contract,
+        proposal: result.proposal,
+        next_path: `/advertiser/builder?proposal=${encodeURIComponent(
+          request.params.id,
+        )}`,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+app.post(
+  "/api/advertiser/marketplace/proposals/:id/respond",
+  async (request, response, next) => {
+    try {
+      const advertiserAuth = await requireAdvertiserSession(request, response);
+      if (!advertiserAuth) return;
+
+      const throttle = await consumeSensitiveEndpointRateLimit(
+        request,
+        "marketplace_proposal_respond",
+        `${advertiserAuth.profile.id}:${request.params.id}`,
+      );
+      if (throttle.blocked) {
+        sendSensitiveRateLimitResponse(response, throttle);
+        return;
+      }
+      const decision = normalizeOptionalText(request.body?.decision);
+      if (decision !== "accepted" && decision !== "declined") {
+        response.status(422).json({ error: "수락 또는 거절을 선택해 주세요." });
+        return;
+      }
+      const result = await respondToOneToOneProposalAsAdvertiser(
+        advertiserAuth,
+        request.params.id,
+        decision,
+      );
+      if (!result.ok) {
+        response.status(result.status).json({ error: result.error });
+        return;
+      }
+      response.status(result.status).json({ proposal: result.proposal });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+app.post(
+  "/api/influencer/marketplace/proposals/:id/respond",
+  async (request, response, next) => {
+    try {
+      const influencerAuth = await requireInfluencerSession(request, response);
+      if (!influencerAuth) return;
+      const throttle = await consumeSensitiveEndpointRateLimit(
+        request,
+        "marketplace_proposal_respond",
+        `${influencerAuth.profile.id}:${request.params.id}`,
+      );
+      if (throttle.blocked) {
+        sendSensitiveRateLimitResponse(response, throttle);
+        return;
+      }
+      const decision = normalizeOptionalText(request.body?.decision);
+      if (decision !== "accepted" && decision !== "declined") {
+        response.status(422).json({ error: "수락 또는 거절을 선택해 주세요." });
+        return;
+      }
+      const result = await respondToOneToOneProposalAsInfluencer(
+        influencerAuth,
+        request.params.id,
+        decision,
+      );
+      if (!result.ok) {
+        response.status(result.status).json({ error: result.error });
+        return;
+      }
+      response.status(result.status).json({ proposal: result.proposal });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+app.get(
+  "/api/advertiser/marketplace/proposals/:id/draft-context",
+  async (request, response, next) => {
+    try {
+      response.setHeader("Cache-Control", "no-store");
+      const advertiserAuth = await requireAdvertiserSession(request, response);
+      if (!advertiserAuth) return;
+      const result = await buildOneToOneProposalDraftContext(
+        advertiserAuth,
+        request.params.id,
+      );
+      if (!result.ok) {
+        response.status(result.status).json({ error: result.error });
+        return;
+      }
+      response.json({
+        contract_id: result.contractId,
         already_converted: result.alreadyConverted,
+        converted_contract_id: result.alreadyConverted
+          ? result.contractId
+          : undefined,
+        brand: result.brand,
+        proposal: mapMarketplaceProposalToMessage(result.proposal, "advertiser"),
+        ...("prefill" in result ? { prefill: result.prefill } : {}),
       });
     } catch (error) {
       next(error);
@@ -20190,7 +21782,7 @@ app.post("/api/influencer/public-profile/avatar", async (request, response, next
     const influencerAuth = await requireInfluencerSession(request, response);
     if (!influencerAuth) return;
 
-    const throttle = consumeSensitiveEndpointRateLimit(
+    const throttle = await consumeSensitiveEndpointRateLimit(
       request,
       "influencer_avatar_upload",
       influencerAuth.profile.id,
@@ -20250,7 +21842,7 @@ app.post("/api/influencer/public-profile/handle-appeal", async (request, respons
     const influencerAuth = await requireInfluencerSession(request, response);
     if (!influencerAuth) return;
 
-    const throttle = consumeSensitiveEndpointRateLimit(
+    const throttle = await consumeSensitiveEndpointRateLimit(
       request,
       "public_profile_handle_appeal",
       influencerAuth.profile.id,
@@ -20292,9 +21884,18 @@ app.post(
       const advertiserAuth = await requireAdvertiserSession(request, response);
       if (!advertiserAuth) return;
 
-      const profile = findInfluencerProfileByHandle(
+      const throttle = await consumeSensitiveEndpointRateLimit(
+        request,
+        "marketplace_proposal_create",
+        advertiserAuth.profile.id,
+      );
+      if (throttle.blocked) {
+        sendSensitiveRateLimitResponse(response, throttle);
+        return;
+      }
+
+      const profile = await readPublicMarketplaceInfluencerProfileByHandle(
         request.params.handle,
-        await readMarketplaceInfluencerProfiles(),
       );
       if (!profile) {
         response.status(404).json({ error: "Influencer profile not found" });
@@ -20321,40 +21922,94 @@ app.post(
       const organization = await readDefaultOrganizationForProfile(
         advertiserAuth.profile.id,
       );
+      if (!organization) {
+        response.status(409).json({ error: "광고주 조직 정보를 찾을 수 없습니다." });
+        return;
+      }
+      const brandRows = await readAdvertiserMarketplaceBrandRows(organization.id);
+      const senderBrandRow =
+        brandRows.find(
+          (brand) =>
+            brand.display_name.trim().toLowerCase() ===
+            payload.senderName.trim().toLowerCase(),
+        ) ?? brandRows.find((brand) => brand.is_default) ?? brandRows[0];
+      if (!senderBrandRow) {
+        response.status(409).json({
+          error: "1:1 계약 제안을 보내기 전에 사용할 브랜드를 등록해 주세요.",
+        });
+        return;
+      }
+
+      const targetProfileRows = await readSupabaseRows<
+        Pick<SupabaseMarketplaceInfluencerProfileRow, "id" | "owner_profile_id">
+      >(
+        "marketplace_influencer_profiles",
+        `?select=id,owner_profile_id&id=eq.${encodeURIComponent(profile.id)}&limit=1`,
+        "one-to-one target influencer owner",
+      );
+      const targetOwnerProfile = targetProfileRows[0]?.owner_profile_id
+        ? await readProfileByUserId(targetProfileRows[0].owner_profile_id)
+        : undefined;
+      const requestKey = buildMarketplaceProposalRequestKey({
+        request,
+        direction: "advertiser_to_influencer",
+        senderProfileId: advertiserAuth.profile.id,
+        targetId: profile.id,
+        payload,
+      });
       const now = new Date().toISOString();
       const proposalId = randomUUID();
-
-      await insertSupabaseRowsReturning(
-        "marketplace_contact_proposals",
-        [
-          {
-            id: proposalId,
-            direction: "advertiser_to_influencer",
-            target_influencer_profile_id: isUuid(profile.id) ? profile.id : null,
-            target_handle: profile.handle,
-            target_display_name: profile.displayName,
-            sender_profile_id: advertiserAuth.profile.id,
-            sender_organization_id: organization?.id ?? null,
-            sender_name: payload.senderName,
-            sender_intro: payload.senderIntro,
-            proposal_type: payload.proposalType,
-            proposal_summary: payload.proposalSummary,
-            status: "submitted",
-            created_at: now,
-            updated_at: now,
-          },
-        ],
-        "marketplace contact proposal",
-      );
+      let savedProposalId: string = proposalId;
+      let alreadySubmitted = false;
+      try {
+        await insertSupabaseRowsReturning(
+          "marketplace_contact_proposals",
+          [
+            {
+              id: proposalId,
+              direction: "advertiser_to_influencer",
+              target_influencer_profile_id: isUuid(profile.id) ? profile.id : null,
+              target_handle: profile.handle,
+              target_display_name: profile.displayName,
+              sender_profile_id: advertiserAuth.profile.id,
+              sender_organization_id: organization.id,
+              sender_brand_profile_id: senderBrandRow.id,
+              sender_name: senderBrandRow.display_name,
+              sender_intro: payload.senderIntro,
+              proposal_type: payload.proposalType,
+              proposal_summary: payload.proposalSummary,
+              data_origin: resolveTrustedDataOrigin(
+                await readTrustedProfileDataOrigin(advertiserAuth.profile.id),
+                await readTrustedProfileDataOrigin(targetOwnerProfile?.id),
+              ),
+              request_key: requestKey,
+              status: "submitted",
+              created_at: now,
+              updated_at: now,
+            },
+          ],
+          "marketplace contact proposal",
+        );
+      } catch (error) {
+        if (!isSupabaseUniqueViolationError(error)) throw error;
+        const [existingProposal] = await readMarketplaceProposalRows(
+          `?select=*&request_key=eq.${encodeURIComponent(requestKey)}&limit=1`,
+          "marketplace contact proposal retry",
+        );
+        if (!existingProposal) throw error;
+        savedProposalId = existingProposal.id;
+        alreadySubmitted = true;
+      }
       invalidateAdvertiserDashboardCache();
       invalidateInfluencerDashboardCache();
 
-      response.status(201).json({
+      response.status(alreadySubmitted ? 200 : 201).json({
         proposal: {
-          id: proposalId,
+          id: savedProposalId,
           status: "submitted",
           target_handle: profile.handle,
         },
+        already_submitted: alreadySubmitted,
       });
     } catch (error) {
       next(error);
@@ -20368,6 +22023,16 @@ app.post(
     try {
       const influencerAuth = await requireInfluencerSession(request, response);
       if (!influencerAuth) return;
+
+      const throttle = await consumeSensitiveEndpointRateLimit(
+        request,
+        "marketplace_proposal_create",
+        influencerAuth.profile.id,
+      );
+      if (throttle.blocked) {
+        sendSensitiveRateLimitResponse(response, throttle);
+        return;
+      }
 
       const brand = findBrandProfileByHandle(
         request.params.handle,
@@ -20388,39 +22053,72 @@ app.post(
         return;
       }
 
+      const publicProfile = await readInfluencerMarketplaceProfileForApplication(
+        influencerAuth,
+      );
+      const senderName =
+        publicProfile?.displayName ||
+        influencerAuth.profile.name ||
+        influencerAuth.user.email ||
+        "인플루언서";
+      const requestKey = buildMarketplaceProposalRequestKey({
+        request,
+        direction: "influencer_to_brand",
+        senderProfileId: influencerAuth.profile.id,
+        targetId: brand.id,
+        payload,
+      });
       const now = new Date().toISOString();
       const proposalId = randomUUID();
-
-      await insertSupabaseRowsReturning(
-        "marketplace_contact_proposals",
-        [
-          {
-            id: proposalId,
-            direction: "influencer_to_brand",
-            target_brand_profile_id: isUuid(brand.id) ? brand.id : null,
-            target_handle: brand.handle,
-            target_display_name: brand.displayName,
-            sender_profile_id: influencerAuth.profile.id,
-            sender_name: payload.senderName,
-            sender_intro: payload.senderIntro,
-            proposal_type: payload.proposalType,
-            proposal_summary: payload.proposalSummary,
-            status: "submitted",
-            created_at: now,
-            updated_at: now,
-          },
-        ],
-        "marketplace contact proposal",
-      );
+      let savedProposalId: string = proposalId;
+      let alreadySubmitted = false;
+      try {
+        await insertSupabaseRowsReturning(
+          "marketplace_contact_proposals",
+          [
+            {
+              id: proposalId,
+              direction: "influencer_to_brand",
+              target_brand_profile_id: isUuid(brand.id) ? brand.id : null,
+              target_handle: brand.handle,
+              target_display_name: brand.displayName,
+              sender_profile_id: influencerAuth.profile.id,
+              sender_name: senderName,
+              sender_intro: payload.senderIntro,
+              proposal_type: payload.proposalType,
+              proposal_summary: payload.proposalSummary,
+              data_origin: resolveTrustedDataOrigin(
+                await readTrustedProfileDataOrigin(influencerAuth.profile.id),
+                await readOrganizationDataOrigin(brand.organizationId),
+              ),
+              request_key: requestKey,
+              status: "submitted",
+              created_at: now,
+              updated_at: now,
+            },
+          ],
+          "marketplace contact proposal",
+        );
+      } catch (error) {
+        if (!isSupabaseUniqueViolationError(error)) throw error;
+        const [existingProposal] = await readMarketplaceProposalRows(
+          `?select=*&request_key=eq.${encodeURIComponent(requestKey)}&limit=1`,
+          "marketplace contact proposal retry",
+        );
+        if (!existingProposal) throw error;
+        savedProposalId = existingProposal.id;
+        alreadySubmitted = true;
+      }
       invalidateAdvertiserDashboardCache();
       invalidateInfluencerDashboardCache();
 
-      response.status(201).json({
+      response.status(alreadySubmitted ? 200 : 201).json({
         proposal: {
-          id: proposalId,
+          id: savedProposalId,
           status: "submitted",
           target_handle: brand.handle,
         },
+        already_submitted: alreadySubmitted,
       });
     } catch (error) {
       next(error);
@@ -20507,6 +22205,7 @@ app.post("/api/webhooks/instagram", async (request, response, next) => {
 
 app.get("/api/verification/status", async (request, response, next) => {
   try {
+    response.setHeader("Cache-Control", "no-store");
     const requestedRole = normalizeOptionalText(request.query.role);
 
     if (verifyAdminSessionToken(getAdminSessionFromRequest(request))) {
@@ -20567,7 +22266,7 @@ app.get("/api/verification/status", async (request, response, next) => {
 
 app.post("/api/verification/advertiser", async (request, response, next) => {
   try {
-    const throttle = consumeSensitiveEndpointRateLimit(
+    const throttle = await consumeSensitiveEndpointRateLimit(
       request,
       "verification_advertiser",
       request.body?.business_registration_number,
@@ -20653,6 +22352,9 @@ app.post("/api/verification/advertiser", async (request, response, next) => {
       target_id: verificationContext.targetId,
       verification_type: "business_registration_certificate",
       status: autoApprove ? "approved" : "pending",
+      data_origin:
+        normalizeDataOrigin(advertiserAuth.profile.data_origin) ??
+        deriveDataOrigin([submittedByEmail, submittedByName, subjectName]),
       profile_id: verificationContext.profileId,
       organization_id: verificationContext.organizationId,
       subject_name: subjectName,
@@ -20691,7 +22393,9 @@ app.post("/api/verification/advertiser", async (request, response, next) => {
       updated_at: now,
     });
 
-    response.status(201).json({ request: record });
+    response.status(201).json({
+      request: sanitizeVerificationRequestForSummary(record),
+    });
   } catch (error) {
     next(error);
   }
@@ -20699,7 +22403,7 @@ app.post("/api/verification/advertiser", async (request, response, next) => {
 
 app.post("/api/verification/influencer", async (request, response, next) => {
   try {
-    const throttle = consumeSensitiveEndpointRateLimit(
+    const throttle = await consumeSensitiveEndpointRateLimit(
       request,
       "verification_influencer",
       request.body?.platform_url ?? request.body?.platform_handle,
@@ -20835,6 +22539,9 @@ app.post("/api/verification/influencer", async (request, response, next) => {
       target_id: targetId,
       verification_type: "platform_account",
       status: autoApprove ? "approved" : "pending",
+      data_origin:
+        normalizeDataOrigin(influencerAuth.profile.data_origin) ??
+        deriveDataOrigin([submittedByEmail, subjectName, platformHandle]),
       profile_id: influencerAuth.profile.id,
       subject_name: subjectName,
       submitted_by_email: submittedByEmail,
@@ -20878,7 +22585,9 @@ app.post("/api/verification/influencer", async (request, response, next) => {
       updated_at: now,
     });
 
-    response.status(201).json({ request: record });
+    response.status(201).json({
+      request: sanitizeVerificationRequestForSummary(record),
+    });
   } catch (error) {
     next(error);
   }
@@ -20897,7 +22606,7 @@ app.get("/api/admin/verification-requests", async (request, response, next) => {
 
 app.post("/api/admin/verification-requests/:id/automation-check", async (request, response, next) => {
   try {
-    const throttle = consumeSensitiveEndpointRateLimit(
+    const throttle = await consumeSensitiveEndpointRateLimit(
       request,
       "admin_verification_automation_check",
       request.params.id,
@@ -20988,7 +22697,7 @@ app.get("/api/admin/verification-requests/:id/evidence", async (request, respons
 
 app.patch("/api/admin/verification-requests/:id", async (request, response, next) => {
   try {
-    const throttle = consumeSensitiveEndpointRateLimit(
+    const throttle = await consumeSensitiveEndpointRateLimit(
       request,
       "admin_verification_review",
       request.params.id,
@@ -21029,6 +22738,7 @@ app.patch("/api/admin/verification-requests/:id", async (request, response, next
 
 app.get("/api/contracts", async (request, response, next) => {
   try {
+    response.setHeader("Cache-Control", "no-store");
     const adminAuthenticated = verifyAdminSessionToken(
       getAdminSessionFromRequest(request),
     );
@@ -21100,7 +22810,7 @@ app.get("/api/contracts/:id/deliverables", async (request, response, next) => {
 
 app.post("/api/contracts/:id/post-link", async (request, response, next) => {
   try {
-    const throttle = consumeSensitiveEndpointRateLimit(
+    const throttle = await consumeSensitiveEndpointRateLimit(
       request,
       "post_link_submit",
       request.params.id,
@@ -21194,7 +22904,7 @@ app.post("/api/contracts/:id/post-link", async (request, response, next) => {
 
 app.post("/api/contracts/:id/deliverables", async (request, response, next) => {
   try {
-    const throttle = consumeSensitiveEndpointRateLimit(
+    const throttle = await consumeSensitiveEndpointRateLimit(
       request,
       "deliverable_submit",
       request.params.id,
@@ -21354,7 +23064,7 @@ app.post("/api/contracts/:id/deliverables", async (request, response, next) => {
 
 app.patch("/api/contracts/:id/deliverables/:deliverableId", async (request, response, next) => {
   try {
-    const throttle = consumeSensitiveEndpointRateLimit(
+    const throttle = await consumeSensitiveEndpointRateLimit(
       request,
       "deliverable_review",
       request.params.deliverableId,
@@ -21477,7 +23187,7 @@ app.get("/api/influencer/dashboard/applications", async (request, response, next
 
 app.post("/api/contracts/:id/close", async (request, response, next) => {
   try {
-    const throttle = consumeSensitiveEndpointRateLimit(
+    const throttle = await consumeSensitiveEndpointRateLimit(
       request,
       "contract_close",
       request.params.id,
@@ -21711,7 +23421,7 @@ app.get(
 
 app.post("/api/contracts/:id/support-access-requests", async (request, response, next) => {
   try {
-    const throttle = consumeSensitiveEndpointRateLimit(
+    const throttle = await consumeSensitiveEndpointRateLimit(
       request,
       "support_access_request",
       request.params.id,
@@ -21811,6 +23521,9 @@ app.post("/api/contracts/:id/support-access-requests", async (request, response,
       reason,
       scope,
       status: "active",
+      data_origin:
+        normalizeDataOrigin(contract.data_origin) ??
+        deriveDataOrigin([requesterEmail, requesterName, contract.title]),
       expires_at: expiresAt,
       audit_events: [
         {
@@ -21887,7 +23600,7 @@ app.get("/api/contracts/:id", async (request, response, next) => {
 
 app.get("/api/contracts/:id/review-pdf", async (request, response, next) => {
   try {
-    const throttle = consumeSensitiveEndpointRateLimit(
+    const throttle = await consumeSensitiveEndpointRateLimit(
       request,
       "contract_review_pdf",
       request.params.id,
@@ -21945,7 +23658,7 @@ app.get("/api/contracts/:id/review-pdf", async (request, response, next) => {
 
 app.get("/api/contracts/:id/final-pdf", async (request, response, next) => {
   try {
-    const throttle = consumeSensitiveEndpointRateLimit(
+    const throttle = await consumeSensitiveEndpointRateLimit(
       request,
       "final_pdf",
       request.params.id,
@@ -22049,7 +23762,7 @@ app.get("/api/contracts/:id/final-pdf", async (request, response, next) => {
 
 app.post("/api/contracts/:id/signatures/influencer", async (request, response, next) => {
   try {
-    const throttle = consumeSensitiveEndpointRateLimit(
+    const throttle = await consumeSensitiveEndpointRateLimit(
       request,
       "influencer_signature",
       request.params.id,
@@ -22253,7 +23966,7 @@ app.post("/api/contracts/:id/signatures/influencer", async (request, response, n
 
 app.put("/api/contracts/:id", async (request, response, next) => {
   try {
-    const throttle = consumeSensitiveEndpointRateLimit(
+    const throttle = await consumeSensitiveEndpointRateLimit(
       request,
       "contract_write",
       request.params.id,
@@ -22287,6 +24000,7 @@ app.put("/api/contracts/:id", async (request, response, next) => {
     }
 
     let advertiserAuth: AdvertiserSession | undefined;
+    let linkedOneToOneProposal: SupabaseMarketplaceContactProposalRow | undefined;
 
     if (actor === "advertiser") {
       advertiserAuth = await requireAdvertiserSession(request, response);
@@ -22307,6 +24021,88 @@ app.put("/api/contracts/:id", async (request, response, next) => {
         advertiserAuth,
         normalizedContract,
       );
+
+      const sourceProposalId = normalizedContract.campaign?.source_application_id;
+      if (
+        hasText(sourceProposalId) &&
+        normalizedContract.campaign?.source !== "marketplace_campaign"
+      ) {
+        const proposalResult = await readOneToOneProposalForAdvertiser(
+          advertiserAuth,
+          sourceProposalId!,
+        );
+        if (!proposalResult.ok) {
+          response
+            .status(proposalResult.status)
+            .json({ error: proposalResult.error });
+          return;
+        }
+        const proposal = proposalResult.proposal;
+        const expectedContractId = stableUuid(
+          `marketplace-proposal-contract:${proposal.id}`,
+        );
+        if (
+          proposal.status !== "accepted" &&
+          !(
+            proposal.status === "converted_to_contract" &&
+            proposal.converted_contract_id === normalizedContract.id
+          )
+        ) {
+          response.status(409).json({
+            error: "상대방이 수락한 1:1 제안만 계약서로 작성할 수 있습니다.",
+          });
+          return;
+        }
+        if (
+          normalizedContract.id !== expectedContractId ||
+          normalizedContract.campaign?.fixed_terms === true
+        ) {
+          response.status(409).json({
+            error: "1:1 제안 계약 연결 정보가 올바르지 않습니다.",
+          });
+          return;
+        }
+        if (
+          proposal.converted_contract_id &&
+          proposal.converted_contract_id !== normalizedContract.id
+        ) {
+          response.status(409).json({
+            error: "이미 다른 계약서로 전환된 1:1 제안입니다.",
+          });
+          return;
+        }
+        const influencerParty = await readOneToOneProposalInfluencerParty(proposal);
+        if (!influencerParty) {
+          response.status(409).json({
+            error: "제안 상대의 등록 프로필 정보를 확인할 수 없습니다.",
+          });
+          return;
+        }
+        normalizedContract = await bindContractToAdvertiser(advertiserAuth, {
+          ...normalizedContract,
+          brand_profile_id: proposalResult.brand.id,
+          campaign: {
+            ...normalizedContract.campaign,
+            source: "direct",
+            fixed_terms: false,
+            source_application_id: proposal.id,
+          },
+        });
+        normalizedContract = {
+          ...normalizedContract,
+          data_origin: resolveTrustedDataOrigin(
+            normalizedContract.data_origin,
+            proposal.data_origin,
+            influencerParty.dataOrigin,
+          ),
+          influencer_info: {
+            name: influencerParty.name,
+            channel_url: influencerParty.channelUrl,
+            contact: influencerParty.contact,
+          },
+        };
+        linkedOneToOneProposal = proposal;
+      }
     }
 
     const validationError = validateContractPayload(normalizedContract);
@@ -22394,6 +24190,19 @@ app.put("/api/contracts/:id", async (request, response, next) => {
       updatedContract,
     );
     await writeStore(nextStore);
+    if (linkedOneToOneProposal) {
+      const transition = await transitionMarketplaceProposalToContract(
+        linkedOneToOneProposal,
+        updatedContract.id,
+        ["accepted"],
+      );
+      if (!transition.ok) {
+        response.status(transition.status).json({ error: transition.error });
+        return;
+      }
+      invalidateAdvertiserDashboardCache();
+      invalidateInfluencerDashboardCache();
+    }
     response.json({
       contract: redactContractForClient(updatedContract, actor),
     });

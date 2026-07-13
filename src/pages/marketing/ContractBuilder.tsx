@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   useAppStore,
   Contract,
@@ -26,6 +26,9 @@ import {
   useVerificationSummary,
 } from "../../hooks/useVerificationSummary";
 import { clearAdvertiserSessionCache } from "../../domain/advertiserSessionCache";
+import { clearAdvertiserDashboardBootstrapPreload } from "../../domain/advertiserDashboardPreload";
+import { finishFastLoginTransition } from "../../domain/fastLoginTransition";
+import { clearMarketplaceMessageSummaryCache } from "../../hooks/useMarketplaceMessageSummary";
 import { PRODUCT_NAME } from "../../domain/brand";
 import { LEGAL_CONTACT_EMAIL } from "../../domain/legalEntity";
 import { ScreenHelpButton } from "../../components/ScreenHelp";
@@ -76,6 +79,24 @@ type ResultMode = "draft" | "share";
 type AdvertiserBrandsResponse = {
   brand?: MarketplaceBrandProfile | null;
   brands?: MarketplaceBrandProfile[];
+  error?: string;
+};
+
+type MarketplaceProposalDraftContextResponse = {
+  contract_id?: string;
+  already_converted?: boolean;
+  converted_contract_id?: string;
+  brand?: MarketplaceBrandProfile;
+  prefill?: {
+    brandId?: string;
+    title?: string;
+    type?: ContractType;
+    influencerName?: string;
+    influencerUrl?: string;
+    influencerContact?: string;
+    platforms?: ContractPlatform[];
+    proposalSummary?: string;
+  };
   error?: string;
 };
 
@@ -429,6 +450,17 @@ function getContractCalendarDays(month: Date) {
 }
 
 const ALL_DELIVERABLE_OPTIONS = PLATFORM_CONTENT_GROUPS.flatMap((group) => group.items);
+
+const defaultDeliverableByPlatform: Record<
+  ContractPlatform,
+  ContractDeliverableContentType
+> = {
+  INSTAGRAM: "instagram_reels",
+  YOUTUBE: "youtube_shorts",
+  TIKTOK: "tiktok_shortform",
+  NAVER_BLOG: "naver_blog_review",
+  OTHER: "other",
+};
 
 const getDeliverableOption = (contentType: ContractDeliverableContentType) =>
   ALL_DELIVERABLE_OPTIONS.find((option) => option.contentType === contentType);
@@ -834,6 +866,7 @@ const buildBuilderSupportMailtoHref = ({
 
 export function ContractBuilder() {
   const navigate = useNavigate();
+  const location = useLocation();
   const addContract = useAppStore((state) => state.addContract);
   const updateContract = useAppStore((state) => state.updateContract);
   const getContract = useAppStore((state) => state.getContract);
@@ -895,6 +928,97 @@ export function ContractBuilder() {
     stale?: boolean;
   } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [sourceProposalId, setSourceProposalId] = useState<string>();
+  const [sourceProposalContractId, setSourceProposalContractId] =
+    useState<string>();
+  const [proposalLoadError, setProposalLoadError] = useState<string>();
+  const [isProposalLoading, setIsProposalLoading] = useState(false);
+  const loadedProposalRef = useRef<string>();
+  const isProposalPartyLocked = Boolean(sourceProposalId);
+
+  useEffect(() => {
+    const proposalId = new URLSearchParams(location.search).get("proposal")?.trim();
+    if (!proposalId || loadedProposalRef.current === proposalId) return;
+    loadedProposalRef.current = proposalId;
+    setIsProposalLoading(true);
+    setProposalLoadError(undefined);
+
+    void apiFetch(
+      `/api/advertiser/marketplace/proposals/${encodeURIComponent(
+        proposalId,
+      )}/draft-context`,
+      { headers: { Accept: "application/json" }, credentials: "include" },
+    )
+      .then(async (response) => {
+        if (response.status === 401) {
+          const next = encodeURIComponent(`${location.pathname}${location.search}`);
+          navigate(`/login/advertiser?next=${next}`, { replace: true });
+          return undefined;
+        }
+        const data = (await response.json().catch(() => ({}))) as
+          MarketplaceProposalDraftContextResponse;
+        if (!response.ok) {
+          throw new Error(data.error ?? "1:1 제안 내용을 불러오지 못했습니다.");
+        }
+        return data;
+      })
+      .then((data) => {
+        if (!data) return;
+        if (data.already_converted && data.converted_contract_id) {
+          navigate(`/advertiser/contract/${data.converted_contract_id}`, {
+            replace: true,
+          });
+          return;
+        }
+        if (!data.contract_id || !data.prefill) {
+          throw new Error("1:1 제안 계약 정보가 올바르지 않습니다.");
+        }
+
+        const selectedDeliverables = Array.from(
+          new Set(
+            (data.prefill.platforms ?? ["OTHER"]).map(
+              (platform) => defaultDeliverableByPlatform[platform] ?? "other",
+            ),
+          ),
+        );
+        setSourceProposalId(proposalId);
+        setSourceProposalContractId(data.contract_id);
+        if (data.prefill.brandId) {
+          setSelectedBrandId(data.prefill.brandId);
+          writeSelectedAdvertiserBrandId(data.prefill.brandId);
+        }
+        setDraft((current) => ({
+          ...current,
+          title: data.prefill?.title ?? current.title,
+          type: data.prefill?.type ?? current.type,
+          influencerName: data.prefill?.influencerName ?? current.influencerName,
+          influencerUrl: data.prefill?.influencerUrl ?? current.influencerUrl,
+          influencerContact:
+            data.prefill?.influencerContact ?? current.influencerContact,
+          selectedDeliverables,
+          deliverableRequirements: Object.fromEntries(
+            selectedDeliverables.map((contentType) => [contentType, {}]),
+          ),
+          customClauses: data.prefill?.proposalSummary
+            ? [
+                {
+                  id: `marketplace_proposal_${proposalId}`,
+                  category: "사전 제안 내용",
+                  content: data.prefill.proposalSummary,
+                },
+              ]
+            : current.customClauses,
+        }));
+      })
+      .catch((error) => {
+        setProposalLoadError(
+          error instanceof Error
+            ? error.message
+            : "1:1 제안 내용을 불러오지 못했습니다.",
+        );
+      })
+      .finally(() => setIsProposalLoading(false));
+  }, [location.pathname, location.search, navigate]);
 
   useEffect(() => {
     let active = true;
@@ -960,14 +1084,13 @@ export function ContractBuilder() {
   );
   const stepErrors = validationErrors.filter((error) => error.step === step);
   const currentStepHasBlockingError = allErrors.some((error) => error.step === step);
-  const shareResultState =
-    result?.mode === "share"
-      ? syncError
-        ? "error"
-        : isSyncing
-          ? "syncing"
-          : "ready"
-      : undefined;
+  const resultSaveState = result
+    ? syncError
+      ? "error"
+      : isSyncing
+        ? "syncing"
+        : "ready"
+    : undefined;
 
   const updateDraft = (
     updater: Partial<ContractDraft> | ((current: ContractDraft) => ContractDraft),
@@ -1127,6 +1250,8 @@ export function ContractBuilder() {
         contact: draft.influencerContact.trim(),
       },
       campaign: {
+        source: sourceProposalId ? "direct" : undefined,
+        source_application_id: sourceProposalId,
         budget: draft.payment.trim(),
         start_date: draft.campaignStart,
         end_date: draft.campaignEnd,
@@ -1211,7 +1336,9 @@ export function ContractBuilder() {
     const payload = buildContractPayload(status, draftToSave, shareToken);
     const now = new Date().toISOString();
     const event = {
-      id: `audit_${Date.now()}`,
+      id: sourceProposalId
+        ? `marketplace_proposal_${sourceProposalId}_draft_saved`
+        : `audit_${Date.now()}`,
       actor: "advertiser" as const,
       action: mode === "draft" ? "draft_saved" : "share_link_issued",
       description:
@@ -1230,6 +1357,7 @@ export function ContractBuilder() {
     } else {
       const created = addContract({
         ...payload,
+        ...(sourceProposalContractId ? { id: sourceProposalContractId } : {}),
         audit_events: [event],
       });
       contractId = created.id;
@@ -1258,8 +1386,11 @@ export function ContractBuilder() {
     } catch (error) {
       console.warn(`[${PRODUCT_NAME}] advertiser logout request failed`, error);
     } finally {
+      finishFastLoginTransition("advertiser");
       clearAdvertiserSessionCache();
+      clearAdvertiserDashboardBootstrapPreload();
       clearVerificationSummaryCache("advertiser");
+      clearMarketplaceMessageSummaryCache("advertiser");
       resetHydration();
       navigate("/login/advertiser", { replace: true });
     }
@@ -1385,21 +1516,41 @@ export function ContractBuilder() {
         <section className="contract-builder-surface relative z-0 min-h-0 w-full overflow-hidden bg-transparent">
           <div className="mx-auto flex h-full max-w-[540px] flex-col p-6 md:p-10 lg:px-1 lg:py-5">
             <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto scroll-pb-28 pb-4 pr-1 lg:scroll-pb-10 lg:pb-2 lg:pr-2">
-              <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
-                {step} / 5 단계
-              </p>
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
+                  {step} / 5 단계
+                </p>
+                <ScreenHelpButton
+                  content={SCREEN_HELP_CONTENT.contractBuilder}
+                  className="lg:hidden"
+                />
+              </div>
               <div className="mb-3 flex items-start justify-between gap-3">
                 <h1 className="font-neo-heavy text-[28px] leading-[1.18] text-neutral-950 lg:text-[30px]">
                   새 전자계약서 작성
                 </h1>
                 <ScreenHelpButton
                   content={SCREEN_HELP_CONTENT.contractBuilder}
-                  className="mt-0.5"
+                  className="mt-0.5 hidden lg:inline-flex"
                 />
               </div>
               <p className="mb-5 text-[13px] font-semibold leading-5 text-neutral-500">
                 조건 입력 후 검토 링크를 생성합니다.
               </p>
+
+              {isProposalLoading ? (
+                <div className="mb-4 rounded-[8px] border border-blue-100 bg-blue-50 px-3 py-2.5 text-[12px] font-bold text-blue-700">
+                  수락된 1:1 제안 내용을 불러오는 중입니다.
+                </div>
+              ) : proposalLoadError ? (
+                <div className="mb-4 rounded-[8px] border border-rose-200 bg-rose-50 px-3 py-2.5 text-[12px] font-bold leading-5 text-rose-700">
+                  {proposalLoadError}
+                </div>
+              ) : sourceProposalId ? (
+                <div className="mb-4 rounded-[8px] border border-blue-100 bg-blue-50 px-3 py-2.5 text-[12px] font-bold text-blue-700">
+                  수락된 1:1 제안에서 계약서를 작성하고 있습니다.
+                </div>
+              ) : null}
 
               {stepErrors.length > 0 && <ValidationSummary errors={stepErrors} />}
 
@@ -1473,9 +1624,19 @@ export function ContractBuilder() {
                       <div>
                         <Label>성명 또는 채널명</Label>
                         <Input
-                          className="mt-1.5"
+                          className={`mt-1.5 ${
+                            isProposalPartyLocked
+                              ? "cursor-default bg-neutral-50 text-neutral-700"
+                              : ""
+                          }`}
                           placeholder="예: 뷰티온에어"
                           value={draft.influencerName}
+                          readOnly={isProposalPartyLocked}
+                          title={
+                            isProposalPartyLocked
+                              ? "제안 상대의 등록 정보"
+                              : undefined
+                          }
                           onChange={(event) =>
                             updateDraft({ influencerName: event.target.value })
                           }
@@ -1484,9 +1645,19 @@ export function ContractBuilder() {
                       <div>
                         <Label>메인 채널 URL</Label>
                         <Input
-                          className="mt-1.5"
+                          className={`mt-1.5 ${
+                            isProposalPartyLocked
+                              ? "cursor-default bg-neutral-50 text-neutral-700"
+                              : ""
+                          }`}
                           placeholder="https://instagram.com/..."
                           value={draft.influencerUrl}
+                          readOnly={isProposalPartyLocked}
+                          title={
+                            isProposalPartyLocked
+                              ? "제안 상대의 등록 정보"
+                              : undefined
+                          }
                           onChange={(event) =>
                             updateDraft({ influencerUrl: event.target.value })
                           }
@@ -1495,9 +1666,19 @@ export function ContractBuilder() {
                       <div>
                         <Label>연락처</Label>
                         <Input
-                          className="mt-1.5"
+                          className={`mt-1.5 ${
+                            isProposalPartyLocked
+                              ? "cursor-default bg-neutral-50 text-neutral-700"
+                              : ""
+                          }`}
                           placeholder="creator@brand.co.kr"
                           value={draft.influencerContact}
+                          readOnly={isProposalPartyLocked}
+                          title={
+                            isProposalPartyLocked
+                              ? "제안 상대의 등록 정보"
+                              : undefined
+                          }
                           onChange={(event) =>
                             updateDraft({ influencerContact: event.target.value })
                           }
@@ -2209,40 +2390,48 @@ export function ContractBuilder() {
                   </div>
                   <h3 className="mb-3 text-xl font-heading tracking-tight text-neutral-900">
                     {result.mode === "draft"
-                      ? "초안 저장 완료"
-                      : shareResultState === "syncing"
+                      ? resultSaveState === "syncing"
+                        ? "초안 저장 중"
+                        : resultSaveState === "error"
+                          ? "초안 저장 확인 필요"
+                          : "초안 저장 완료"
+                      : resultSaveState === "syncing"
                         ? "공유 링크 저장 중"
-                        : shareResultState === "error"
+                        : resultSaveState === "error"
                           ? "공유 링크 확인 필요"
                           : "공유 링크 생성 완료"}
                   </h3>
                   <p className="mx-auto mb-6 max-w-[320px] text-[13px] leading-6 text-neutral-500">
                     {result.mode === "draft"
-                      ? "계약이 초안 상태로 저장되었습니다. 아직 상대방에게 공유되지 않았습니다."
-                      : shareResultState === "syncing"
+                      ? resultSaveState === "syncing"
+                        ? "계약 초안을 서버에 저장하고 있습니다."
+                        : resultSaveState === "error"
+                          ? "초안 저장에 실패했습니다. 네트워크 상태를 확인한 뒤 다시 저장해 주세요."
+                          : "계약이 초안 상태로 저장되었습니다. 아직 상대방에게 공유되지 않았습니다."
+                      : resultSaveState === "syncing"
                         ? "변경 사항 저장이 끝나면 링크를 복사해 전달할 수 있습니다."
-                        : shareResultState === "error"
+                        : resultSaveState === "error"
                           ? "변경 사항이 완전히 저장되지 않았습니다. 저장 상태를 확인한 뒤 공유하세요."
                           : "이 링크를 전달하면 상대방이 계약서를 검토할 수 있습니다."}
                   </p>
-                  {result.mode === "share" && (
+                  {resultSaveState !== "ready" && (
                     <div
                       className={`mb-5 border px-4 py-3 text-left text-[12px] leading-5 ${
-                        shareResultState === "error"
+                        resultSaveState === "error"
                           ? "border-amber-200 bg-amber-50 text-amber-800"
                           : "border-neutral-200 bg-neutral-50 text-neutral-800"
                       }`}
                     >
-                      {shareResultState === "error"
+                      {resultSaveState === "error"
                         ? "저장에 실패했습니다. 네트워크 상태를 확인한 뒤 다시 공유 링크를 생성하세요."
-                        : shareResultState === "syncing"
+                        : resultSaveState === "syncing"
                           ? "계약 내용을 저장하고 있습니다."
                           : "저장이 완료되었습니다. 링크를 전달해도 됩니다."}
                     </div>
                   )}
                   {result.mode === "share" &&
                     result.link &&
-                    shareResultState === "ready" &&
+                    resultSaveState === "ready" &&
                     !result.stale && (
                       <div className="flex w-full items-center gap-3">
                         <Input
@@ -2536,7 +2725,7 @@ const BuilderReviewPanel: React.FC<{
         >
           <header className="border-b border-neutral-200 pb-7 text-center">
             <h2 className="text-[22px] font-semibold leading-tight text-neutral-950 sm:text-[28px]">
-              {draft.title || DEFAULT_CONTRACT_TITLE_EXAMPLE}
+              {draft.title.trim() || "계약 건명 미입력"}
             </h2>
             <p className="mt-3 text-[13px] font-semibold text-neutral-500">
               작성일 {previewDate}

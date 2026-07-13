@@ -2,10 +2,12 @@ import {
   ArrowLeft,
   ArrowUpDown,
   ChevronDown,
+  Check,
   CheckCircle2,
   ExternalLink,
   FileText,
   Handshake,
+  LogIn,
   LogOut,
   Megaphone,
   MessageSquareText,
@@ -34,8 +36,15 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { LogoMark } from "../../components/BrandLogo";
 import { PlatformBrandMark } from "../../components/PlatformBrandMark";
 import { FilterSelectControl } from "../../components/FilterSelectControl";
+import { AdvertiserAccountSettingsMenu } from "../../components/AdvertiserAccountSettingsMenu";
+import { InfluencerAccountSettingsMenu } from "../../components/InfluencerAccountSettingsMenu";
 import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
+import {
+  getMarketplaceCreatorCategoryLabel,
+  MARKETPLACE_CREATOR_CATEGORY_OPTIONS,
+  normalizeMarketplaceCreatorCategory,
+} from "../../domain/influencerDiscoveryQuality.js";
 import {
   campaignProposalTypeOptions,
   compareChannelAudienceValues,
@@ -45,10 +54,7 @@ import {
   getMarketplaceBrandDisplayFamilyKey,
   formatMarketplaceCountries,
   getMarketplaceCountryLabel,
-  findBrandProfileByHandle,
-  marketplaceBrands,
   marketplaceCountryOptions,
-  mergeMarketplaceBrandProfiles,
   platformLabels,
   proposalTypeLabels,
   type CampaignProposalType,
@@ -64,9 +70,204 @@ import {
 } from "../../domain/publicInfluencerProfile";
 import { getMarketplaceInfluencerAvatarUrl } from "../../domain/marketplaceAvatars";
 import type { InfluencerPlatform } from "../../domain/verification";
+import { clearAdvertiserSessionCache } from "../../domain/advertiserSessionCache";
+import { clearAdvertiserDashboardBootstrapPreload } from "../../domain/advertiserDashboardPreload";
+import { clearInfluencerDashboardPreload } from "../../domain/influencerDashboardPreload";
+import { finishFastLoginTransition } from "../../domain/fastLoginTransition";
+import { clearVerificationSummaryCache } from "../../hooks/useVerificationSummary";
+import { clearMarketplaceMessageSummaryCache } from "../../hooks/useMarketplaceMessageSummary";
 
 type PlatformFilter = "all" | InfluencerPlatform;
 type InfluencerSortValue = "audience_desc" | "audience_asc" | "name_asc";
+type ContactDraftRole = "advertiser" | "influencer";
+type MarketplaceShellMode = "authenticated" | "anonymous";
+type MarketplaceShellRole = ContactDraftRole;
+type MarketplaceSessionStatusResponse = {
+  authenticated?: boolean;
+};
+type InfluencerContactForm = {
+  brandName: string;
+  brandIntro: string;
+  proposalType: CampaignProposalType;
+  proposalSummary: string;
+};
+type BrandContactForm = {
+  creatorName: string;
+  channelIntro: string;
+  proposalType: CampaignProposalType;
+  proposalSummary: string;
+};
+
+const CONTACT_DRAFT_TTL_MS = 30 * 60 * 1000;
+const CONTACT_DRAFT_STORAGE_PREFIX = "yeollock:contact-draft:v1";
+
+const normalizeContactDraftTarget = (value: string) =>
+  value.trim().toLowerCase();
+
+const getContactDraftStorageKey = (
+  role: ContactDraftRole,
+  targetHandle: string,
+) =>
+  `${CONTACT_DRAFT_STORAGE_PREFIX}:${role}:${normalizeContactDraftTarget(
+    targetHandle,
+  )}`;
+
+const clearContactDraft = (
+  role: ContactDraftRole,
+  targetHandle: string,
+) => {
+  try {
+    window.sessionStorage.removeItem(
+      getContactDraftStorageKey(role, targetHandle),
+    );
+  } catch {
+    // Storage can be unavailable in privacy-restricted browser contexts.
+  }
+};
+
+const saveContactDraft = <T extends Record<string, string>>({
+  role,
+  targetHandle,
+  form,
+}: {
+  role: ContactDraftRole;
+  targetHandle: string;
+  form: T;
+}) => {
+  const normalizedTarget = normalizeContactDraftTarget(targetHandle);
+  if (!normalizedTarget) return;
+
+  try {
+    window.sessionStorage.setItem(
+      getContactDraftStorageKey(role, normalizedTarget),
+      JSON.stringify({
+        role,
+        target: { handle: normalizedTarget },
+        expiresAt: Date.now() + CONTACT_DRAFT_TTL_MS,
+        form,
+      }),
+    );
+  } catch {
+    // Draft persistence must never block the contact flow.
+  }
+};
+
+const readContactDraft = <T,>({
+  role,
+  targetHandle,
+  parseForm,
+}: {
+  role: ContactDraftRole;
+  targetHandle: string;
+  parseForm: (value: unknown) => T | undefined;
+}) => {
+  const normalizedTarget = normalizeContactDraftTarget(targetHandle);
+  if (!normalizedTarget) return undefined;
+
+  const storageKey = getContactDraftStorageKey(role, normalizedTarget);
+  try {
+    const rawDraft = window.sessionStorage.getItem(storageKey);
+    if (!rawDraft) return undefined;
+
+    const draft = JSON.parse(rawDraft) as {
+      role?: unknown;
+      target?: { handle?: unknown };
+      expiresAt?: unknown;
+      form?: unknown;
+    };
+    const expiresAt =
+      typeof draft.expiresAt === "number" ? draft.expiresAt : Number.NaN;
+    const storedTarget =
+      typeof draft.target?.handle === "string"
+        ? normalizeContactDraftTarget(draft.target.handle)
+        : "";
+    if (
+      draft.role !== role ||
+      storedTarget !== normalizedTarget ||
+      !Number.isFinite(expiresAt) ||
+      Date.now() >= expiresAt
+    ) {
+      window.sessionStorage.removeItem(storageKey);
+      return undefined;
+    }
+
+    const parsedForm = parseForm(draft.form);
+    if (!parsedForm) {
+      window.sessionStorage.removeItem(storageKey);
+      return undefined;
+    }
+    return parsedForm;
+  } catch {
+    try {
+      window.sessionStorage.removeItem(storageKey);
+    } catch {
+      // Ignore storage cleanup failures.
+    }
+    return undefined;
+  }
+};
+
+const readDraftText = (
+  value: unknown,
+  maxLength: number,
+): string | undefined =>
+  typeof value === "string" ? value.slice(0, maxLength) : undefined;
+
+const isCampaignProposalType = (
+  value: unknown,
+): value is CampaignProposalType =>
+  typeof value === "string" &&
+  campaignProposalTypeOptions.includes(value as CampaignProposalType);
+
+const parseInfluencerContactDraft = (
+  value: unknown,
+): InfluencerContactForm | undefined => {
+  if (!value || typeof value !== "object") return undefined;
+  const form = value as Record<string, unknown>;
+  const brandName = readDraftText(form.brandName, 80);
+  const brandIntro = readDraftText(form.brandIntro, 1000);
+  const proposalSummary = readDraftText(form.proposalSummary, 1500);
+  if (
+    brandName === undefined ||
+    brandIntro === undefined ||
+    proposalSummary === undefined ||
+    !isCampaignProposalType(form.proposalType)
+  ) {
+    return undefined;
+  }
+
+  return {
+    brandName,
+    brandIntro,
+    proposalType: form.proposalType,
+    proposalSummary,
+  };
+};
+
+const parseBrandContactDraft = (
+  value: unknown,
+): BrandContactForm | undefined => {
+  if (!value || typeof value !== "object") return undefined;
+  const form = value as Record<string, unknown>;
+  const creatorName = readDraftText(form.creatorName, 80);
+  const channelIntro = readDraftText(form.channelIntro, 1000);
+  const proposalSummary = readDraftText(form.proposalSummary, 1500);
+  if (
+    creatorName === undefined ||
+    channelIntro === undefined ||
+    proposalSummary === undefined ||
+    !isCampaignProposalType(form.proposalType)
+  ) {
+    return undefined;
+  }
+
+  return {
+    creatorName,
+    channelIntro,
+    proposalType: form.proposalType,
+    proposalSummary,
+  };
+};
 
 const platformFilterOptions: PlatformFilter[] = [
   "all",
@@ -77,48 +278,9 @@ const platformFilterOptions: PlatformFilter[] = [
   "other",
 ];
 
-const categoryKeyAliases: Record<string, string> = {
-  beauty: "beauty",
-  "뷰티": "beauty",
-  tech: "tech",
-  "테크": "tech",
-  lifestyle: "lifestyle",
-  "라이프스타일": "lifestyle",
-  fashion: "fashion",
-  "패션": "fashion",
-  education: "education",
-  "교육": "education",
-  fitness: "fitness",
-  "피트니스": "fitness",
-  game: "game",
-  "게임": "game",
-  mukbang: "food",
-  food: "food",
-  "푸드": "food",
-  travel: "travel",
-  "여행": "travel",
-  living: "living",
-  "리빙": "living",
-  homecafe: "homecafe",
-  "홈카페": "homecafe",
-  parenting: "parenting",
-  "육아": "parenting",
-};
-
-const categoryDisplayLabels: Record<string, string> = {
-  beauty: "뷰티",
-  tech: "테크",
-  lifestyle: "라이프스타일",
-  fashion: "패션",
-  education: "교육",
-  fitness: "피트니스",
-  game: "게임",
-  food: "푸드",
-  travel: "여행",
-  living: "리빙",
-  homecafe: "홈카페",
-  parenting: "육아",
-};
+const influencerCategoryOptions = MARKETPLACE_CREATOR_CATEGORY_OPTIONS.map(
+  (option) => option.value,
+);
 
 const proposalTypeOptions = campaignProposalTypeOptions;
 const influencerSortOptions: Array<{ label: string; value: InfluencerSortValue }> = [
@@ -128,13 +290,11 @@ const influencerSortOptions: Array<{ label: string; value: InfluencerSortValue }
 ];
 
 function getCategoryFilterKey(category: string) {
-  const normalized = category.trim().toLowerCase();
-  return categoryKeyAliases[normalized] ?? normalized;
+  return normalizeMarketplaceCreatorCategory(category) || "content";
 }
 
 function getCategoryLabel(category: string) {
-  const key = getCategoryFilterKey(category);
-  return categoryDisplayLabels[key] ?? cleanMarketplaceCopy(category);
+  return getMarketplaceCreatorCategoryLabel(getCategoryFilterKey(category));
 }
 
 function getCategoryLabels(categories: string[], limit: number) {
@@ -167,6 +327,10 @@ type MarketplaceInfluencerResponse = {
   profile: MarketplaceInfluencerProfile;
 };
 
+type AdvertiserSavedInfluencersResponse = {
+  handles?: string[];
+};
+
 type MarketplaceBrandsResponse = {
   brands: MarketplaceBrandProfile[];
 };
@@ -191,16 +355,21 @@ function mergeUniqueInfluencerProfiles(
   return next;
 }
 
-function useMarketplaceInfluencers() {
+function useMarketplaceInfluencers(
+  platformFilter: PlatformFilter,
+  savedOnly = false,
+) {
   const [profiles, setProfiles] =
     useState<MarketplaceInfluencerProfile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [error, setError] = useState<string | undefined>();
   const [hasMore, setHasMore] = useState(true);
   const nextOffsetRef = useRef(0);
   const loadingRef = useRef(false);
   const mountedRef = useRef(false);
   const hasMoreRef = useRef(true);
+  const requestGenerationRef = useRef(0);
 
   const updateHasMore = useCallback((value: boolean) => {
     hasMoreRef.current = value;
@@ -210,8 +379,10 @@ function useMarketplaceInfluencers() {
   const loadNextPage = useCallback(async () => {
     if (loadingRef.current || !hasMoreRef.current) return;
 
+    const requestGeneration = requestGenerationRef.current;
     const offset = nextOffsetRef.current;
     loadingRef.current = true;
+    setError(undefined);
     if (offset === 0) {
       setIsLoading(true);
     } else {
@@ -219,13 +390,26 @@ function useMarketplaceInfluencers() {
     }
 
     try {
+      const platformQuery =
+        platformFilter === "all"
+          ? ""
+          : `&platform=${encodeURIComponent(platformFilter)}`;
+      const savedQuery = savedOnly ? "&saved_only=true" : "";
       const response = await apiFetch(
-        `/api/marketplace/influencers?limit=${marketplaceInfluencerPageSize}&offset=${offset}`,
+        `/api/marketplace/influencers?limit=${marketplaceInfluencerPageSize}&offset=${offset}${platformQuery}${savedQuery}`,
         { headers: { Accept: "application/json" } },
       );
       if (!response.ok) throw new Error("Marketplace influencers failed");
       const data = (await response.json()) as MarketplaceInfluencersResponse;
-      if (!mountedRef.current) return;
+      if (
+        !mountedRef.current ||
+        requestGeneration !== requestGenerationRef.current
+      ) {
+        return;
+      }
+      if (!Array.isArray(data.profiles)) {
+        throw new Error("Marketplace influencers response was invalid");
+      }
 
       const incomingProfiles = data.profiles.length > 0 ? data.profiles : [];
       setProfiles((current) =>
@@ -236,73 +420,225 @@ function useMarketplaceInfluencers() {
       nextOffsetRef.current = offset + incomingProfiles.length;
       updateHasMore(Boolean(data.hasMore) && incomingProfiles.length > 0);
     } catch {
-      if (mountedRef.current && offset === 0) setProfiles([]);
-      if (mountedRef.current) updateHasMore(false);
+      const isCurrentRequest =
+        mountedRef.current &&
+        requestGeneration === requestGenerationRef.current;
+      if (isCurrentRequest && offset === 0) setProfiles([]);
+      if (isCurrentRequest) {
+        setError("인플루언서 목록을 불러오지 못했습니다.");
+      }
     } finally {
-      if (mountedRef.current) {
+      if (
+        mountedRef.current &&
+        requestGeneration === requestGenerationRef.current
+      ) {
         setIsLoading(false);
         setIsLoadingMore(false);
+        loadingRef.current = false;
       }
-      loadingRef.current = false;
     }
-  }, [updateHasMore]);
+  }, [platformFilter, savedOnly, updateHasMore]);
+
+  const retry = useCallback(() => {
+    if (loadingRef.current) return;
+    setError(undefined);
+    void loadNextPage();
+  }, [loadNextPage]);
 
   useEffect(() => {
     mountedRef.current = true;
-    void loadNextPage();
+    requestGenerationRef.current += 1;
+    const requestGeneration = requestGenerationRef.current;
+    nextOffsetRef.current = 0;
+    loadingRef.current = false;
+    hasMoreRef.current = true;
+    const timer = window.setTimeout(() => {
+      if (
+        !mountedRef.current ||
+        requestGeneration !== requestGenerationRef.current
+      ) {
+        return;
+      }
+      setProfiles([]);
+      setError(undefined);
+      setIsLoading(true);
+      setIsLoadingMore(false);
+      updateHasMore(true);
+      void loadNextPage();
+    }, 0);
 
     return () => {
       mountedRef.current = false;
+      requestGenerationRef.current += 1;
+      window.clearTimeout(timer);
     };
-  }, [loadNextPage]);
+  }, [loadNextPage, updateHasMore]);
 
-  return { profiles, isLoading, isLoadingMore, hasMore, loadNextPage };
+  return {
+    profiles,
+    isLoading,
+    isLoadingMore,
+    error,
+    hasMore,
+    loadNextPage,
+    retry,
+  };
 }
 
-function useMarketplaceBrands() {
-  const [brands, setBrands] =
-    useState<MarketplaceBrandProfile[]>(marketplaceBrands);
-  const [isLoading, setIsLoading] = useState(marketplaceBrands.length === 0);
+function useAdvertiserSavedInfluencers() {
+  const [savedHandles, setSavedHandles] = useState<Set<string>>(() => new Set());
+  const [savingHandles, setSavingHandles] = useState<Set<string>>(() => new Set());
+  const [isReady, setIsReady] = useState(false);
+  const [error, setError] = useState<string | undefined>();
+  const savedHandlesRef = useRef(savedHandles);
+  const savingHandlesRef = useRef(savingHandles);
+  const mountedRef = useRef(false);
+
+  const replaceSavedHandles = useCallback((next: Set<string>) => {
+    savedHandlesRef.current = next;
+    setSavedHandles(next);
+  }, []);
+
+  const replaceSavingHandles = useCallback((next: Set<string>) => {
+    savingHandlesRef.current = next;
+    setSavingHandles(next);
+  }, []);
 
   useEffect(() => {
+    mountedRef.current = true;
     let active = true;
 
-    void apiFetch("/api/marketplace/brands", {
+    void apiFetch("/api/advertiser/saved-influencers", {
       headers: { Accept: "application/json" },
     })
       .then(async (response) => {
-        if (!response.ok) throw new Error("Marketplace brands failed");
-        return (await response.json()) as MarketplaceBrandsResponse;
-      })
-      .then((data) => {
-        if (!active) return;
-        setBrands(
-          data.brands.length > 0
-            ? mergeMarketplaceBrandProfiles(data.brands)
-            : marketplaceBrands,
+        if (!response.ok) throw new Error("Saved influencers failed");
+        const data = (await response.json()) as AdvertiserSavedInfluencersResponse;
+        const handles = new Set(
+          (Array.isArray(data.handles) ? data.handles : [])
+            .map((handle) => normalizePublicProfileHandle(handle))
+            .filter(Boolean),
         );
+        if (active) replaceSavedHandles(handles);
       })
       .catch(() => {
-        if (active) setBrands(marketplaceBrands);
+        if (active) setError("저장 목록을 불러오지 못했습니다.");
       })
       .finally(() => {
-        if (active) setIsLoading(false);
+        if (active) setIsReady(true);
       });
 
     return () => {
       active = false;
+      mountedRef.current = false;
     };
+  }, [replaceSavedHandles]);
+
+  const toggleSaved = useCallback(
+    async (profile: MarketplaceInfluencerProfile) => {
+      const handle = normalizePublicProfileHandle(profile.handle);
+      if (!handle || savingHandlesRef.current.has(handle)) return;
+
+      const wasSaved = savedHandlesRef.current.has(handle);
+      const optimisticSaved = new Set(savedHandlesRef.current);
+      if (wasSaved) optimisticSaved.delete(handle);
+      else optimisticSaved.add(handle);
+      replaceSavedHandles(optimisticSaved);
+
+      const nextSaving = new Set(savingHandlesRef.current);
+      nextSaving.add(handle);
+      replaceSavingHandles(nextSaving);
+      setError(undefined);
+
+      try {
+        const response = await apiFetch(
+          `/api/advertiser/saved-influencers/${encodeURIComponent(handle)}`,
+          {
+            method: wasSaved ? "DELETE" : "PUT",
+            headers: { Accept: "application/json" },
+          },
+        );
+        if (!response.ok) throw new Error("Saved influencer update failed");
+      } catch {
+        const rolledBack = new Set(savedHandlesRef.current);
+        if (wasSaved) rolledBack.add(handle);
+        else rolledBack.delete(handle);
+        replaceSavedHandles(rolledBack);
+        if (mountedRef.current) setError("저장 상태를 변경하지 못했습니다.");
+      } finally {
+        const completed = new Set(savingHandlesRef.current);
+        completed.delete(handle);
+        replaceSavingHandles(completed);
+      }
+    },
+    [replaceSavedHandles, replaceSavingHandles],
+  );
+
+  return {
+    savedHandles,
+    savingHandles,
+    isReady,
+    error,
+    toggleSaved,
+  };
+}
+
+function useMarketplaceBrands() {
+  const [brands, setBrands] = useState<MarketplaceBrandProfile[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | undefined>();
+  const mountedRef = useRef(false);
+
+  const loadBrands = useCallback(async () => {
+    setIsLoading(true);
+    setError(undefined);
+
+    try {
+      const response = await apiFetch("/api/marketplace/brands", {
+        headers: { Accept: "application/json" },
+      });
+      if (!response.ok) throw new Error("Marketplace brands failed");
+      const data = (await response.json()) as MarketplaceBrandsResponse;
+      if (!Array.isArray(data.brands)) {
+        throw new Error("Marketplace brands response was invalid");
+      }
+      if (mountedRef.current) setBrands(data.brands);
+    } catch {
+      if (mountedRef.current) {
+        setBrands([]);
+        setError("브랜드 목록을 불러오지 못했습니다.");
+      }
+    } finally {
+      if (mountedRef.current) setIsLoading(false);
+    }
   }, []);
 
-  return { brands, isLoading };
+  useEffect(() => {
+    mountedRef.current = true;
+    const timer = window.setTimeout(() => {
+      void loadBrands();
+    }, 0);
+
+    return () => {
+      mountedRef.current = false;
+      window.clearTimeout(timer);
+    };
+  }, [loadBrands]);
+
+  return { brands, isLoading, error, retry: loadBrands };
 }
 
 function useMarketplaceInfluencerProfile(handle: string | undefined) {
-  const fallbackProfile: MarketplaceInfluencerProfile | null = null;
   const [remoteResult, setRemoteResult] = useState<{
     handle: string;
+    status: "ready";
     profile: MarketplaceInfluencerProfile | null;
+  } | {
+    handle: string;
+    status: "error";
+    message: string;
   } | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     if (!handle) return;
@@ -313,41 +649,58 @@ function useMarketplaceInfluencerProfile(handle: string | undefined) {
       headers: { Accept: "application/json" },
     })
       .then(async (response) => {
-        if (response.status === 404) return { profile: fallbackProfile };
+        if (response.status === 404) return { profile: null };
         if (!response.ok) throw new Error("Marketplace influencer failed");
         return (await response.json()) as MarketplaceInfluencerResponse;
       })
       .then((data) => {
-        if (active) setRemoteResult({ handle, profile: data.profile });
+        if (active) setRemoteResult({ handle, status: "ready", profile: data.profile });
       })
       .catch(() => {
         if (active) {
-          setRemoteResult({ handle, profile: fallbackProfile });
+          setRemoteResult({
+            handle,
+            status: "error",
+            message: "인플루언서 프로필을 불러오지 못했습니다.",
+          });
         }
       });
 
     return () => {
       active = false;
     };
-  }, [fallbackProfile, handle]);
+  }, [handle, reloadToken]);
 
   const hasRemoteResult = remoteResult?.handle === handle;
 
   return {
-    profile: hasRemoteResult ? remoteResult.profile : fallbackProfile,
-    isLoading: Boolean(handle && !fallbackProfile && !hasRemoteResult),
+    profile:
+      hasRemoteResult && remoteResult.status === "ready"
+        ? remoteResult.profile
+        : null,
+    isLoading: Boolean(handle && !hasRemoteResult),
+    error:
+      hasRemoteResult && remoteResult.status === "error"
+        ? remoteResult.message
+        : undefined,
+    retry: () => {
+      setRemoteResult(null);
+      setReloadToken((current) => current + 1);
+    },
   };
 }
 
 function useMarketplaceBrandProfile(handle: string | undefined) {
-  const fallbackBrand = useMemo(
-    () => (handle ? findBrandProfileByHandle(handle) ?? null : null),
-    [handle],
-  );
   const [remoteResult, setRemoteResult] = useState<{
     brand: MarketplaceBrandProfile | null;
     handle: string;
+    status: "ready";
+  } | {
+    handle: string;
+    status: "error";
+    message: string;
   } | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     if (!handle) return;
@@ -358,29 +711,42 @@ function useMarketplaceBrandProfile(handle: string | undefined) {
       headers: { Accept: "application/json" },
     })
       .then(async (response) => {
-        if (response.status === 404) return { brand: fallbackBrand };
+        if (response.status === 404) return { brand: null };
         if (!response.ok) throw new Error("Marketplace brand failed");
         return (await response.json()) as MarketplaceBrandResponse;
       })
       .then((data) => {
-        if (active) setRemoteResult({ handle, brand: data.brand });
+        if (active) setRemoteResult({ handle, status: "ready", brand: data.brand });
       })
       .catch(() => {
         if (active) {
-          setRemoteResult({ handle, brand: fallbackBrand });
+          setRemoteResult({
+            handle,
+            status: "error",
+            message: "브랜드 프로필을 불러오지 못했습니다.",
+          });
         }
       });
 
     return () => {
       active = false;
     };
-  }, [fallbackBrand, handle]);
+  }, [handle, reloadToken]);
 
   const hasRemoteResult = remoteResult?.handle === handle;
 
   return {
-    brand: hasRemoteResult ? remoteResult.brand : fallbackBrand,
-    isLoading: Boolean(handle && !fallbackBrand && !hasRemoteResult),
+    brand:
+      hasRemoteResult && remoteResult.status === "ready" ? remoteResult.brand : null,
+    isLoading: Boolean(handle && !hasRemoteResult),
+    error:
+      hasRemoteResult && remoteResult.status === "error"
+        ? remoteResult.message
+        : undefined,
+    retry: () => {
+      setRemoteResult(null);
+      setReloadToken((current) => current + 1);
+    },
   };
 }
 
@@ -416,12 +782,51 @@ function useInfluencerPublicProfilePath() {
   return path;
 }
 
+function useMarketplaceShellMode(
+  role: MarketplaceShellRole,
+): MarketplaceShellMode {
+  const [mode, setMode] = useState<MarketplaceShellMode>("anonymous");
+
+  useEffect(() => {
+    let active = true;
+
+    void apiFetch(`/api/${role}/session`, {
+      headers: { Accept: "application/json" },
+      credentials: "include",
+    })
+      .then(async (response) => {
+        const data = (await response.json().catch(() => ({}))) as
+          MarketplaceSessionStatusResponse;
+        if (!active) return;
+        setMode(
+          response.ok && data.authenticated === true
+            ? "authenticated"
+            : "anonymous",
+        );
+      })
+      .catch(() => {
+        if (active) setMode("anonymous");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [role]);
+
+  return mode;
+}
+
+function useInfluencerMarketplaceShellMode(): MarketplaceShellMode {
+  return useMarketplaceShellMode("influencer");
+}
+
 export function AdvertiserInfluencerDiscoveryPage() {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [platformFilter, setPlatformFilter] = useState<PlatformFilter>("all");
   const [categoryFilters, setCategoryFilters] = useState<string[]>([]);
   const [countryFilters, setCountryFilters] = useState<MarketplaceCountryCode[]>([]);
+  const [savedOnly, setSavedOnly] = useState(false);
   const [influencerSort, setInfluencerSort] =
     useState<InfluencerSortValue>("audience_desc");
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -438,19 +843,31 @@ export function AdvertiserInfluencerDiscoveryPage() {
     left: number;
   } | null>(null);
   const {
+    savedHandles,
+    savingHandles,
+    isReady: savedHandlesReady,
+    error: savedInfluencerError,
+    toggleSaved: toggleSavedInfluencer,
+  } = useAdvertiserSavedInfluencers();
+  const {
     profiles,
     isLoading,
     isLoadingMore,
+    error: influencerLoadError,
     hasMore,
     loadNextPage,
-  } = useMarketplaceInfluencers();
+    retry: retryInfluencers,
+  } = useMarketplaceInfluencers(platformFilter, savedOnly);
   const { brands } = useMarketplaceBrands();
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (isLoading || !hasMore) return;
+    if (isLoading || influencerLoadError || !hasMore) return;
     const target = loadMoreRef.current;
     if (!target) return;
+    const scrollRoot = target.closest<HTMLElement>(
+      '[data-influencer-table-scroll="true"], [data-influencer-list-scroll="true"]',
+    );
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -458,18 +875,39 @@ export function AdvertiserInfluencerDiscoveryPage() {
           void loadNextPage();
         }
       },
-      { rootMargin: "360px 0px 360px 0px" },
+      {
+        root: scrollRoot,
+        rootMargin: "0px",
+        threshold: 0.01,
+      },
     );
 
     observer.observe(target);
     return () => observer.disconnect();
-  }, [hasMore, isLoading, loadNextPage, profiles.length]);
+  }, [
+    categoryFilters,
+    countryFilters,
+    hasMore,
+    influencerLoadError,
+    isLoading,
+    loadNextPage,
+    platformFilter,
+    profiles.length,
+    query,
+  ]);
 
   const filteredProfiles = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
 
     return profiles
       .filter((profile) => {
+        if (
+          savedOnly &&
+          savedHandlesReady &&
+          !savedHandles.has(normalizePublicProfileHandle(profile.handle))
+        ) {
+          return false;
+        }
         const matchesPlatform =
           platformFilter === "all" ||
           profile.platforms.some((platform) => platform.platform === platformFilter);
@@ -505,22 +943,20 @@ export function AdvertiserInfluencerDiscoveryPage() {
       .sort((a, b) =>
         compareInfluencerProfilesBySort(a, b, influencerSort, platformFilter),
       );
-  }, [categoryFilters, countryFilters, influencerSort, platformFilter, profiles, query]);
-  const influencerCategoryOptions = useMemo(
-    () =>
-      Array.from(
-        new Set<string>(
-          profiles.flatMap((profile) =>
-            profile.categories.map((category) => getCategoryFilterKey(category)),
-          ),
-        ),
-      ).sort((left, right) =>
-        getCategoryLabel(left).localeCompare(getCategoryLabel(right), "ko"),
-      ),
-    [profiles],
-  );
+  }, [
+    categoryFilters,
+    countryFilters,
+    influencerSort,
+    platformFilter,
+    profiles,
+    query,
+    savedHandles,
+    savedHandlesReady,
+    savedOnly,
+  ]);
   const activeFilterLabels = [
     query.trim() ? `검색 ${query.trim()}` : null,
+    savedOnly ? "저장한 계정" : null,
     platformFilter !== "all" ? platformLabels[platformFilter] : null,
     categoryFilters.length > 0 ? formatSelectedCategorySummary(categoryFilters) : null,
     countryFilters.length > 0
@@ -558,6 +994,8 @@ export function AdvertiserInfluencerDiscoveryPage() {
 
   return (
     <MarketplaceShell
+      mode="authenticated"
+      role="advertiser"
       eyebrow="광고주 탐색"
       title="인플루언서 찾기"
       description="프로필과 채널 규모를 보고 바로 컨택합니다."
@@ -595,19 +1033,24 @@ export function AdvertiserInfluencerDiscoveryPage() {
         open={filtersOpen}
         activeCount={activeFilterLabels.length}
         controlsId="advertiser-influencer-filters"
+        filterColumns={5}
         toolbar={
           <InfluencerSortSelect
             value={influencerSort}
             onChange={setInfluencerSort}
-            onOpen={closeInfluencerFilterPanel}
+            onOpen={() => {
+              setPreviewProfile(null);
+              closeInfluencerFilterPanel();
+            }}
           />
         }
-        onToggle={() =>
+        onToggle={() => {
+          setPreviewProfile(null);
           setFiltersOpen((current) => {
             if (current) setOpenFilterList(null);
             return !current;
-          })
-        }
+          });
+        }}
       >
         <SearchBox
           value={query}
@@ -615,6 +1058,7 @@ export function AdvertiserInfluencerDiscoveryPage() {
           label="인플루언서 검색"
           placeholder="이름, 핸들, 카테고리 검색"
         />
+        <SavedOnlyFilterToggle value={savedOnly} onChange={setSavedOnly} />
         <PlatformSelectList
           id="advertiser-platform"
           openId={openFilterList}
@@ -627,7 +1071,6 @@ export function AdvertiserInfluencerDiscoveryPage() {
           openId={openFilterList}
           onOpenChange={setOpenFilterList}
           values={categoryFilters}
-          categories={influencerCategoryOptions}
           onChange={setCategoryFilters}
         />
         <CountrySelectList
@@ -641,11 +1084,38 @@ export function AdvertiserInfluencerDiscoveryPage() {
 
       {isLoading ? (
         <MarketplaceLoadingState label="인플루언서 프로필을 불러오는 중입니다" />
-      ) : filteredProfiles.length === 0 ? (
-        <EmptyMarketplaceState
-          title="조건에 맞는 인플루언서가 없습니다"
-          body="검색어나 조건을 줄여보세요."
+      ) : influencerLoadError && profiles.length === 0 ? (
+        <MarketplaceErrorState
+          message={influencerLoadError}
+          onRetry={retryInfluencers}
         />
+      ) : filteredProfiles.length === 0 ? (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <EmptyMarketplaceState
+            title={
+              savedOnly
+                ? "저장한 인플루언서가 없습니다"
+                : profiles.length === 0
+                ? "등록된 인플루언서가 없습니다"
+                : "조건에 맞는 인플루언서가 없습니다"
+            }
+            body={
+              savedOnly
+                ? "목록의 저장 칸에서 관심 계정을 추가할 수 있습니다."
+                : profiles.length === 0
+                ? "새 프로필이 등록되면 이곳에 표시됩니다."
+                : "검색어나 조건을 줄여보세요."
+            }
+          />
+          <InfluencerLoadMoreMarker
+            profileCount={0}
+            loadMoreRef={loadMoreRef}
+            isLoadingMore={isLoadingMore}
+            hasMore={hasMore}
+            error={influencerLoadError}
+            onRetry={retryInfluencers}
+          />
+        </div>
       ) : (
         <>
           <InfluencerDiscoveryTable
@@ -654,7 +1124,12 @@ export function AdvertiserInfluencerDiscoveryPage() {
             loadMoreRef={loadMoreRef}
             isLoadingMore={isLoadingMore}
             hasMore={hasMore}
+            loadError={influencerLoadError}
+            onRetry={retryInfluencers}
             onContact={setSelectedProfile}
+            savedHandles={savedHandles}
+            savingHandles={savingHandles}
+            onToggleSaved={toggleSavedInfluencer}
             onPreview={showProfilePreview}
             onPreviewEnd={() => setPreviewProfile(null)}
           />
@@ -675,12 +1150,21 @@ export function AdvertiserInfluencerDiscoveryPage() {
           onClose={() => setSelectedProfile(null)}
         />
       ) : null}
+      {savedInfluencerError ? (
+        <div
+          role="alert"
+          className="fixed bottom-5 left-1/2 z-[90] -translate-x-1/2 rounded-[8px] bg-neutral-950 px-4 py-3 text-[12px] font-extrabold text-white shadow-xl"
+        >
+          {savedInfluencerError}
+        </div>
+      ) : null}
     </MarketplaceShell>
   );
 }
 
 export function InfluencerBrandDiscoveryPage() {
   const navigate = useNavigate();
+  const shellMode = useInfluencerMarketplaceShellMode();
   const [query, setQuery] = useState("");
   const [platformFilter, setPlatformFilter] = useState<PlatformFilter>("all");
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -688,8 +1172,13 @@ export function InfluencerBrandDiscoveryPage() {
   const [selectedBrand, setSelectedBrand] =
     useState<MarketplaceBrandProfile | null>(null);
   const publicProfilePath = useInfluencerPublicProfilePath();
-  const { profiles } = useMarketplaceInfluencers();
-  const { brands, isLoading } = useMarketplaceBrands();
+  const { profiles } = useMarketplaceInfluencers("all");
+  const {
+    brands,
+    isLoading,
+    error: brandLoadError,
+    retry: retryBrands,
+  } = useMarketplaceBrands();
   const displayBrands = useMemo(
     () => dedupeBrandsByDisplayIdentity(brands),
     [brands],
@@ -731,6 +1220,8 @@ export function InfluencerBrandDiscoveryPage() {
 
   return (
     <MarketplaceShell
+      mode={shellMode}
+      role="influencer"
       eyebrow="인플루언서 탐색"
       title="브랜드 찾기"
       description="브랜드 정보를 확인하고 바로 역제안합니다."
@@ -742,14 +1233,6 @@ export function InfluencerBrandDiscoveryPage() {
       showHeroCopy={false}
       actions={
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => navigate("/influencer/dashboard")}
-            className="yl-header-action yl-header-action-primary"
-          >
-            <FileText className="h-4 w-4" />
-            <span className="hidden sm:inline">1:1 계약</span>
-          </button>
           <button
             type="button"
             onClick={() => navigate("/influencer/campaigns")}
@@ -802,10 +1285,20 @@ export function InfluencerBrandDiscoveryPage() {
 
       {isLoading ? (
         <MarketplaceLoadingState label="브랜드 프로필을 불러오는 중입니다" />
+      ) : brandLoadError ? (
+        <MarketplaceErrorState message={brandLoadError} onRetry={retryBrands} />
       ) : filteredBrands.length === 0 ? (
         <EmptyMarketplaceState
-          title="조건에 맞는 브랜드가 없습니다"
-          body="검색어나 조건을 줄여보세요."
+          title={
+            displayBrands.length === 0
+              ? "등록된 브랜드가 없습니다"
+              : "조건에 맞는 브랜드가 없습니다"
+          }
+          body={
+            displayBrands.length === 0
+              ? "새 브랜드가 등록되면 이곳에 표시됩니다."
+              : "검색어나 조건을 줄여보세요."
+          }
         />
       ) : (
         <section className="grid min-h-0 flex-1 items-start gap-3 overflow-y-auto p-3 lg:grid-cols-3 lg:p-4">
@@ -837,12 +1330,20 @@ export function PublicInfluencerProfilePage() {
   const [failedProfileAvatarUrl, setFailedProfileAvatarUrl] = useState<string | null>(
     null,
   );
-  const { profile, isLoading } = useMarketplaceInfluencerProfile(profileHandle);
+  const {
+    profile,
+    isLoading,
+    error: profileLoadError,
+    retry: retryProfile,
+  } = useMarketplaceInfluencerProfile(profileHandle);
   const currentProfilePath = useInfluencerPublicProfilePath();
+  const advertiserShellMode = useMarketplaceShellMode("advertiser");
 
   if (isLoading) {
     return (
       <MarketplaceShell
+        mode="anonymous"
+        role="advertiser"
         eyebrow="공개 프로필"
         title="프로필을 불러오는 중입니다"
         description="공개 주소에 연결된 인플루언서 정보를 확인하고 있습니다."
@@ -854,9 +1355,28 @@ export function PublicInfluencerProfilePage() {
     );
   }
 
+  if (profileLoadError) {
+    return (
+      <MarketplaceShell
+        mode="anonymous"
+        role="advertiser"
+        eyebrow="공개 프로필"
+        title="프로필을 불러오지 못했습니다"
+        description="잠시 후 다시 확인해 주세요."
+        backHref="/"
+        backLabel="처음으로"
+        showMetrics={false}
+      >
+        <MarketplaceErrorState message={profileLoadError} onRetry={retryProfile} />
+      </MarketplaceShell>
+    );
+  }
+
   if (!profile) {
     return (
       <MarketplaceShell
+        mode="anonymous"
+        role="advertiser"
         eyebrow="공개 프로필"
         title="프로필을 찾을 수 없습니다"
         description="핸들이 바뀌었거나 아직 공개되지 않은 프로필입니다."
@@ -920,6 +1440,16 @@ export function PublicInfluencerProfilePage() {
       normalizePublicProfileHandle(currentProfilePath) ===
         normalizePublicProfileHandle(profile.handle),
   );
+  const publicProfileHeaderHref = isOwnPublishedProfile
+    ? "/influencer/profile"
+    : advertiserShellMode === "authenticated"
+      ? "/advertiser/discover"
+      : "/intro/advertiser";
+  const publicProfileHeaderLabel = isOwnPublishedProfile
+    ? "프로필 관리"
+    : advertiserShellMode === "authenticated"
+      ? "인플루언서 찾기"
+      : "광고주 시작하기";
   const primaryProfileActionLabel = isOwnPublishedProfile
     ? "프로필 관리"
     : isDiscoveredProfile
@@ -982,18 +1512,15 @@ export function PublicInfluencerProfilePage() {
             <span className="font-neo-heavy text-[18px] leading-none tracking-[-0.045em]">{PRODUCT_NAME}</span>
           </Link>
           <Link
-            to="/advertiser/discover"
-            className="inline-flex h-10 w-10 items-center justify-center rounded-[12px] border border-neutral-200 bg-white text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 sm:hidden"
-            aria-label="인플루언서 목록으로 돌아가기"
-            title="인플루언서 목록으로 돌아가기"
+            to={publicProfileHeaderHref}
+            className="inline-flex h-10 items-center gap-1.5 rounded-[12px] border border-neutral-200 bg-white px-3 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 sm:text-[13px]"
+            aria-label={publicProfileHeaderLabel}
+            title={publicProfileHeaderLabel}
           >
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
-          <Link
-            to="/intro/advertiser"
-            className="hidden h-10 items-center rounded-[12px] border border-neutral-200 bg-white px-3 text-[13px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 sm:inline-flex"
-          >
-            광고주 시작하기
+            {advertiserShellMode === "authenticated" || isOwnPublishedProfile ? (
+              <ArrowLeft className="h-4 w-4 shrink-0" />
+            ) : null}
+            {publicProfileHeaderLabel}
           </Link>
         </div>
       </header>
@@ -1062,7 +1589,7 @@ export function PublicInfluencerProfilePage() {
                             </div>
                           </div>
                           <p className={platformFollowerClassName}>
-                            {platform.followersLabel}
+                            {formatDiscoveryAudienceMetric(platform.followersLabel)}
                           </p>
                           <span
                             aria-hidden="true"
@@ -1085,6 +1612,7 @@ export function PublicInfluencerProfilePage() {
               </div>
             </div>
           </div>
+
         </article>
       </section>
 
@@ -1102,11 +1630,19 @@ export function PublicInfluencerProfilePage() {
 export function PublicBrandProfilePage() {
   const { brandHandle } = useParams<{ brandHandle: string }>();
   const [showContact, setShowContact] = useState(false);
-  const { brand, isLoading } = useMarketplaceBrandProfile(brandHandle);
+  const influencerShellMode = useMarketplaceShellMode("influencer");
+  const {
+    brand,
+    isLoading,
+    error: brandLoadError,
+    retry: retryBrand,
+  } = useMarketplaceBrandProfile(brandHandle);
 
   if (isLoading) {
     return (
       <MarketplaceShell
+        mode="anonymous"
+        role="influencer"
         eyebrow="브랜드 프로필"
         title="브랜드를 불러오는 중입니다"
         description="공개 주소에 연결된 입점 브랜드 정보를 확인하고 있습니다."
@@ -1118,9 +1654,28 @@ export function PublicBrandProfilePage() {
     );
   }
 
+  if (brandLoadError) {
+    return (
+      <MarketplaceShell
+        mode="anonymous"
+        role="influencer"
+        eyebrow="브랜드 프로필"
+        title="브랜드를 불러오지 못했습니다"
+        description="잠시 후 다시 확인해 주세요."
+        backHref="/influencer/brands"
+        backLabel="브랜드 찾기"
+        showMetrics={false}
+      >
+        <MarketplaceErrorState message={brandLoadError} onRetry={retryBrand} />
+      </MarketplaceShell>
+    );
+  }
+
   if (!brand) {
     return (
       <MarketplaceShell
+        mode="anonymous"
+        role="influencer"
         eyebrow="브랜드 프로필"
         title="브랜드를 찾을 수 없습니다"
         description="핸들이 바뀌었거나 아직 공개되지 않은 브랜드 프로필입니다."
@@ -1149,10 +1704,14 @@ export function PublicBrandProfilePage() {
             <span className="font-neo-heavy text-[18px] leading-none tracking-[-0.045em]">{PRODUCT_NAME}</span>
           </Link>
           <Link
-            to="/intro/influencer"
+            to={
+              influencerShellMode === "authenticated"
+                ? "/influencer/brands"
+                : "/intro/influencer"
+            }
             className="inline-flex h-10 items-center rounded-[12px] border border-neutral-200 bg-white px-3 text-[13px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
           >
-            인플루언서 시작하기
+            {influencerShellMode === "authenticated" ? "브랜드 찾기" : "인플루언서 시작하기"}
           </Link>
         </div>
       </header>
@@ -1284,6 +1843,8 @@ export function PublicBrandProfilePage() {
 }
 
 function MarketplaceShell({
+  mode,
+  role,
   eyebrow,
   title,
   description,
@@ -1296,6 +1857,8 @@ function MarketplaceShell({
   showHeroCopy = true,
   children,
 }: {
+  mode: MarketplaceShellMode;
+  role: MarketplaceShellRole;
   eyebrow: string;
   title: string;
   description: string;
@@ -1309,7 +1872,10 @@ function MarketplaceShell({
   children: ReactNode;
 }) {
   const navigate = useNavigate();
-  const role = backHref.startsWith("/influencer") ? "influencer" : "advertiser";
+  const isAuthenticated = mode === "authenticated";
+  const dashboardHref = `/${role}/dashboard`;
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const closeAccountMenu = useCallback(() => setAccountMenuOpen(false), []);
   const handleLogout = async () => {
     try {
       await apiFetch(`/api/${role}/logout`, {
@@ -1319,6 +1885,15 @@ function MarketplaceShell({
     } catch (error) {
       console.warn(`[${PRODUCT_NAME}] ${role} logout request failed`, error);
     } finally {
+      finishFastLoginTransition(role);
+      clearVerificationSummaryCache(role);
+      clearMarketplaceMessageSummaryCache(role);
+      if (role === "advertiser") {
+        clearAdvertiserSessionCache();
+        clearAdvertiserDashboardBootstrapPreload();
+      } else {
+        clearInfluencerDashboardPreload();
+      }
       navigate(role === "advertiser" ? "/login/advertiser" : "/login/influencer", {
         replace: true,
       });
@@ -1329,40 +1904,70 @@ function MarketplaceShell({
     <main className="flex h-svh flex-col overflow-hidden bg-[#f7f6f3] font-sans text-neutral-950">
       <header className="z-30 shrink-0 border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-[1500px] items-center justify-between px-3 sm:px-5 lg:px-6">
-          <Link to="/" className="flex shrink-0 items-center gap-3">
+          <Link
+            to={isAuthenticated ? dashboardHref : "/"}
+            className="flex shrink-0 items-center gap-3"
+          >
             <LogoMark />
             <span className="font-neo-heavy text-[18px] leading-none sm:text-[19px]">{PRODUCT_NAME}</span>
           </Link>
-          <div className="no-scrollbar ml-3 flex min-w-0 items-center gap-2 overflow-x-auto">
-            <Link
-              to={backHref}
-              className="yl-header-action yl-header-action-secondary"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              <span className="hidden sm:inline">{backLabel}</span>
-            </Link>
-            {actions}
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="yl-header-action yl-header-action-secondary"
-              aria-label="로그아웃"
-              title="로그아웃"
-            >
-              <LogOut className="h-4 w-4" />
-              <span className="hidden sm:inline">로그아웃</span>
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                navigate(`/reset-password?role=${role}`, { replace: false })
-              }
-              className="yl-header-icon-action"
-              aria-label="계정 설정"
-              title="계정 설정"
-            >
-              <Settings className="h-4 w-4" />
-            </button>
+          <div className="ml-2 flex min-w-0 flex-1 items-center justify-end gap-1.5 overflow-visible sm:ml-3 sm:gap-2">
+            {isAuthenticated ? (
+              <>
+                {actions}
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="yl-header-action yl-header-action-secondary hidden sm:inline-flex"
+                  aria-label="로그아웃"
+                  title="로그아웃"
+                >
+                  <LogOut className="h-4 w-4" />
+                  <span>로그아웃</span>
+                </button>
+                {role === "advertiser" ? (
+                  <AdvertiserAccountSettingsMenu
+                    account={{}}
+                    open={accountMenuOpen}
+                    onToggle={() => setAccountMenuOpen((current) => !current)}
+                    onClose={closeAccountMenu}
+                    onOpenBusinessVerification={() => {
+                      closeAccountMenu();
+                      navigate("/advertiser/verification");
+                    }}
+                    onChangePassword={() => {
+                      closeAccountMenu();
+                      navigate("/reset-password?role=advertiser");
+                    }}
+                  />
+                ) : (
+                  <InfluencerAccountSettingsMenu
+                    account={{ name: "인플루언서" }}
+                    open={accountMenuOpen}
+                    onToggle={() => setAccountMenuOpen((current) => !current)}
+                    onClose={closeAccountMenu}
+                    onManageProfile={() => {
+                      closeAccountMenu();
+                      navigate("/influencer/profile");
+                    }}
+                    onChangePassword={() => {
+                      closeAccountMenu();
+                      navigate("/reset-password?role=influencer");
+                    }}
+                  />
+                )}
+              </>
+            ) : (
+              <Link
+                to={`/login/${role}`}
+                className="yl-header-action yl-header-action-secondary shrink-0"
+                aria-label="로그인"
+                title="로그인"
+              >
+                <LogIn className="h-4 w-4" />
+                <span className="hidden sm:inline">로그인</span>
+              </Link>
+            )}
           </div>
         </div>
       </header>
@@ -1381,20 +1986,31 @@ function MarketplaceShell({
             <p className="text-[13px] font-extrabold text-neutral-500">{eyebrow}</p>
           ) : null}
           <div className={`${showHeroCopy ? "mt-1.5" : ""} flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between`}>
-            <div className="min-w-0">
-              <h1 className="font-neo-heavy text-[28px] leading-[1.05] text-neutral-950 sm:text-[36px] sm:leading-none">
-                {title}
-              </h1>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-3">
+                <h1 className="min-w-0 font-neo-heavy text-[28px] leading-[1.05] text-neutral-950 sm:text-[36px] sm:leading-none">
+                  {title}
+                </h1>
+                <Link
+                  to={backHref}
+                  className="yl-header-action yl-header-action-secondary shrink-0"
+                  aria-label={backLabel}
+                  title={backLabel}
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  <span className="hidden sm:inline">{backLabel}</span>
+                </Link>
+              </div>
               {showHeroCopy ? (
                 <p className="mt-2 line-clamp-1 max-w-3xl break-keep text-[13px] font-bold leading-5 text-neutral-600">
                   {description}
                 </p>
               ) : null}
             </div>
-            {showMetrics ? (
+            {isAuthenticated && showMetrics ? (
               <div className="grid grid-cols-3 gap-1.5 rounded-[14px] border border-neutral-200 bg-white p-1.5 shadow-[0_10px_26px_rgba(15,23,42,0.035)] sm:w-[360px]">
                 <MiniMetric label="공개 프로필" value={(profileCount ?? 0).toString()} />
-                <MiniMetric label="입점 브랜드" value={(brandCount ?? marketplaceBrands.length).toString()} />
+                <MiniMetric label="입점 브랜드" value={(brandCount ?? 0).toString()} />
                 <MiniMetric label="계약 연결" value="요청 가능" />
               </div>
             ) : null}
@@ -1415,7 +2031,12 @@ function InfluencerDiscoveryTable({
   loadMoreRef,
   isLoadingMore,
   hasMore,
+  loadError,
+  onRetry,
   onContact,
+  savedHandles,
+  savingHandles,
+  onToggleSaved,
   onPreview,
   onPreviewEnd,
 }: {
@@ -1424,7 +2045,12 @@ function InfluencerDiscoveryTable({
   loadMoreRef: RefObject<HTMLDivElement | null>;
   isLoadingMore: boolean;
   hasMore: boolean;
+  loadError?: string;
+  onRetry: () => void;
   onContact: (profile: MarketplaceInfluencerProfile) => void;
+  savedHandles: ReadonlySet<string>;
+  savingHandles: ReadonlySet<string>;
+  onToggleSaved: (profile: MarketplaceInfluencerProfile) => Promise<void>;
   onPreview: (
     profile: MarketplaceInfluencerProfile,
     event:
@@ -1434,41 +2060,22 @@ function InfluencerDiscoveryTable({
   ) => void;
   onPreviewEnd: () => void;
 }) {
-  const setVisibleLoadMoreRef = useCallback(
-    (node: HTMLDivElement | null) => {
-      if (node && node.offsetParent !== null) loadMoreRef.current = node;
-    },
-    [loadMoreRef],
-  );
-  const renderLoadMoreMarker = () => {
-    const compactMarker = profiles.length < 8;
-    return hasMore || isLoadingMore ? (
-      <div
-        ref={setVisibleLoadMoreRef}
-        className={
-          compactMarker
-            ? "h-px"
-            : "flex h-14 items-center justify-center text-[12px] font-extrabold text-neutral-400"
-        }
-        aria-live="polite"
-      >
-        {isLoadingMore && !compactMarker ? "불러오는 중" : null}
-      </div>
-    ) : null;
-  };
-
   return (
-    <section className="min-h-0 flex-1 overflow-auto p-2.5 lg:flex lg:flex-col lg:overflow-hidden lg:p-4">
-      <div className="hidden min-h-0 min-w-[980px] flex-1 flex-col rounded-[8px] border border-[#d9e0d9] bg-white lg:flex">
+    <section
+      data-influencer-list-scroll="true"
+      className="min-h-0 flex-1 overflow-auto p-2.5 lg:flex lg:flex-col lg:overflow-hidden lg:p-4"
+    >
+      <div className="mx-auto hidden min-h-0 min-w-[1000px] max-w-[1200px] flex-1 flex-col rounded-[8px] border border-[#d9e0d9] bg-white lg:flex lg:w-full">
         <div
           data-influencer-table-header="true"
-          className="grid shrink-0 grid-cols-[64px_180px_minmax(420px,1fr)_88px_120px_104px] items-center gap-3 rounded-t-[8px] border-b border-[#d7ddd7] bg-[#f7f8f4] px-4 py-3 text-[12px] font-extrabold tracking-[-0.01em] text-[#303630] shadow-[0_1px_0_rgba(215,221,215,0.9)]"
+          className="grid shrink-0 grid-cols-[44px_78px_56px_minmax(240px,0.8fr)_minmax(150px,0.6fr)_minmax(140px,0.5fr)_96px] items-center gap-2.5 rounded-t-[8px] border-b border-[#d7ddd7] bg-[#f7f8f4] px-3 py-3 text-[12px] font-extrabold text-[#303630] shadow-[0_1px_0_rgba(215,221,215,0.9)]"
         >
-          <span>플랫폼</span>
-          <span>카테고리</span>
-          <span>인플루언서</span>
+          <span className="text-center">저장</span>
           <span>국가</span>
-          <span>구독자/팔로워</span>
+          <span>플랫폼</span>
+          <span>인플루언서</span>
+          <span>카테고리</span>
+          <span>채널 지표</span>
           <span className="text-right">액션</span>
         </div>
         <div
@@ -1481,11 +2088,21 @@ function InfluencerDiscoveryTable({
               profile={profile}
               platformFilter={platformFilter}
               onContact={onContact}
+              isSaved={savedHandles.has(normalizePublicProfileHandle(profile.handle))}
+              isSaving={savingHandles.has(normalizePublicProfileHandle(profile.handle))}
+              onToggleSaved={onToggleSaved}
               onPreview={onPreview}
               onPreviewEnd={onPreviewEnd}
             />
           ))}
-          {renderLoadMoreMarker()}
+          <InfluencerLoadMoreMarker
+            profileCount={profiles.length}
+            loadMoreRef={loadMoreRef}
+            isLoadingMore={isLoadingMore}
+            hasMore={hasMore}
+            error={loadError}
+            onRetry={onRetry}
+          />
         </div>
       </div>
 
@@ -1496,11 +2113,120 @@ function InfluencerDiscoveryTable({
             profile={profile}
             platformFilter={platformFilter}
             onContact={onContact}
+            isSaved={savedHandles.has(normalizePublicProfileHandle(profile.handle))}
+            isSaving={savingHandles.has(normalizePublicProfileHandle(profile.handle))}
+            onToggleSaved={onToggleSaved}
           />
         ))}
       </div>
-      <div className="lg:hidden">{renderLoadMoreMarker()}</div>
+      <div className="lg:hidden">
+        <InfluencerLoadMoreMarker
+          profileCount={profiles.length}
+          loadMoreRef={loadMoreRef}
+          isLoadingMore={isLoadingMore}
+          hasMore={hasMore}
+          error={loadError}
+          onRetry={onRetry}
+        />
+      </div>
     </section>
+  );
+}
+
+function InfluencerLoadMoreMarker({
+  profileCount,
+  loadMoreRef,
+  isLoadingMore,
+  hasMore,
+  error,
+  onRetry,
+}: {
+  profileCount: number;
+  loadMoreRef: RefObject<HTMLDivElement | null>;
+  isLoadingMore: boolean;
+  hasMore: boolean;
+  error?: string;
+  onRetry: () => void;
+}) {
+  const setVisibleLoadMoreRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      if (node && node.offsetParent !== null) loadMoreRef.current = node;
+    },
+    [loadMoreRef],
+  );
+
+  if (error) {
+    return (
+      <div className="flex min-h-14 items-center justify-center gap-3 px-3 text-[12px] font-semibold text-rose-700">
+        <span>{error}</span>
+        <button
+          type="button"
+          onClick={onRetry}
+          className="h-8 rounded-md border border-rose-200 bg-white px-3 font-extrabold transition hover:border-rose-300"
+        >
+          다시 시도
+        </button>
+      </div>
+    );
+  }
+
+  if (!hasMore && !isLoadingMore) return null;
+
+  const compactMarker = profileCount < 8;
+  return (
+    <div
+      ref={setVisibleLoadMoreRef}
+      className={
+        compactMarker
+          ? "h-px"
+          : "flex h-14 items-center justify-center text-[12px] font-extrabold text-neutral-400"
+      }
+      aria-live="polite"
+    >
+      {isLoadingMore && !compactMarker ? "불러오는 중" : null}
+    </div>
+  );
+}
+
+function InfluencerSaveCheckbox({
+  profile,
+  isSaved,
+  isSaving,
+  onToggle,
+}: {
+  profile: MarketplaceInfluencerProfile;
+  isSaved: boolean;
+  isSaving: boolean;
+  onToggle: (profile: MarketplaceInfluencerProfile) => Promise<void>;
+}) {
+  const label = isSaved ? "저장 해제" : "저장";
+
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={isSaved}
+      aria-label={`${profile.displayName} ${label}`}
+      title={label}
+      disabled={isSaving}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        void onToggle(profile);
+      }}
+      className="inline-flex h-9 w-9 items-center justify-center justify-self-center rounded-[7px] transition hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-600 disabled:cursor-wait disabled:opacity-50"
+    >
+      <span
+        aria-hidden="true"
+        className={`inline-flex h-[18px] w-[18px] items-center justify-center rounded-[4px] border transition ${
+          isSaved
+            ? "border-blue-600 bg-blue-600 text-white"
+            : "border-neutral-300 bg-white text-transparent"
+        }`}
+      >
+        <Check className="h-3.5 w-3.5" strokeWidth={3} />
+      </span>
+    </button>
   );
 }
 
@@ -1508,6 +2234,9 @@ function InfluencerDiscoveryTableRow({
   profile,
   platformFilter,
   onContact,
+  isSaved,
+  isSaving,
+  onToggleSaved,
   onPreview,
   onPreviewEnd,
 }: {
@@ -1515,6 +2244,9 @@ function InfluencerDiscoveryTableRow({
   profile: MarketplaceInfluencerProfile;
   platformFilter: PlatformFilter;
   onContact: (profile: MarketplaceInfluencerProfile) => void;
+  isSaved: boolean;
+  isSaving: boolean;
+  onToggleSaved: (profile: MarketplaceInfluencerProfile) => Promise<void>;
   onPreview: (
     profile: MarketplaceInfluencerProfile,
     event:
@@ -1529,7 +2261,10 @@ function InfluencerDiscoveryTableRow({
     platformFilter,
   );
   const categoryLabel = getCategoryLabels(profile.categories, 3).join(" · ");
-  const countryLabel = formatMarketplaceCountries(profile.audienceCountries, "한국");
+  const countryLabel = formatMarketplaceCountries(
+    profile.audienceCountries,
+    "국가 미확인",
+  );
   const audienceLabel = formatDiscoveryAudienceMetric(primaryPlatform?.followersLabel);
   const platformLabel = primaryPlatform
     ? platformLabels[primaryPlatform.platform]
@@ -1552,8 +2287,17 @@ function InfluencerDiscoveryTableRow({
       onMouseLeave={onPreviewEnd}
       onPointerLeave={onPreviewEnd}
       onBlur={onPreviewEnd}
-      className="group grid min-h-[64px] grid-cols-[64px_180px_minmax(420px,1fr)_88px_120px_104px] items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-[#fbfcfa] focus-visible:bg-[#fbfcfa] focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-blue-600"
+      className="group grid min-h-[64px] grid-cols-[44px_78px_56px_minmax(240px,0.8fr)_minmax(150px,0.6fr)_minmax(140px,0.5fr)_96px] items-center gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-[#fbfcfa] focus-visible:bg-[#fbfcfa] focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-blue-600"
     >
+      <InfluencerSaveCheckbox
+        profile={profile}
+        isSaved={isSaved}
+        isSaving={isSaving}
+        onToggle={onToggleSaved}
+      />
+
+      <p className="truncate text-[12px] font-bold text-neutral-500">{countryLabel}</p>
+
       <div className="min-w-0">
         {primaryPlatform ? (
           <span
@@ -1568,10 +2312,6 @@ function InfluencerDiscoveryTableRow({
         )}
       </div>
 
-      <p className="truncate text-[12px] font-bold text-neutral-700">
-        {categoryLabel || "카테고리 확인"}
-      </p>
-
       <div className="min-w-0">
         <div className="flex min-w-0 items-center gap-1.5">
           <Link
@@ -1584,8 +2324,13 @@ function InfluencerDiscoveryTableRow({
         </div>
       </div>
 
-      <p className="truncate text-[12px] font-bold text-neutral-500">{countryLabel}</p>
-      <p className="truncate text-[12px] font-extrabold text-neutral-950">
+      <p className="truncate text-[12px] font-bold text-neutral-700">
+        {categoryLabel || "일상·브이로그"}
+      </p>
+      <p
+        className="truncate text-[12px] font-extrabold text-neutral-950"
+        title={primaryPlatform?.performanceLabel}
+      >
         {audienceLabel}
       </p>
 
@@ -1594,7 +2339,7 @@ function InfluencerDiscoveryTableRow({
           <button
             type="button"
             onClick={() => onContact(profile)}
-            className="inline-flex h-9 w-[96px] items-center justify-center gap-1.5 rounded-[7px] bg-blue-600 px-2 text-[12px] font-extrabold text-white transition hover:bg-blue-700"
+            className="inline-flex h-9 w-[92px] items-center justify-center gap-1.5 rounded-[7px] bg-blue-600 px-2 text-[12px] font-extrabold text-white transition hover:bg-blue-700"
           >
             <Send className="h-3.5 w-3.5" />
             1:1 제안
@@ -1606,7 +2351,7 @@ function InfluencerDiscoveryTableRow({
             rel={primaryChannelUrl ? "noreferrer" : undefined}
             aria-label={`${profile.displayName} 공개 채널 보기`}
             title="공개 채널 보기"
-            className="inline-flex h-9 w-[96px] items-center justify-center gap-1.5 rounded-[7px] border border-neutral-200 bg-white px-2 text-[12px] font-extrabold text-neutral-800 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
+            className="inline-flex h-9 w-[92px] items-center justify-center gap-1.5 rounded-[7px] border border-neutral-200 bg-white px-2 text-[12px] font-extrabold text-neutral-800 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
           >
             <ExternalLink className="h-3.5 w-3.5" />
             채널 보기
@@ -1621,11 +2366,17 @@ function InfluencerDiscoveryCompactRow({
   profile,
   platformFilter,
   onContact,
+  isSaved,
+  isSaving,
+  onToggleSaved,
 }: {
   key?: string;
   profile: MarketplaceInfluencerProfile;
   platformFilter: PlatformFilter;
   onContact: (profile: MarketplaceInfluencerProfile) => void;
+  isSaved: boolean;
+  isSaving: boolean;
+  onToggleSaved: (profile: MarketplaceInfluencerProfile) => Promise<void>;
 }) {
   const primaryPlatform = getMarketplaceInfluencerDisplayPlatform(
     profile,
@@ -1637,18 +2388,26 @@ function InfluencerDiscoveryCompactRow({
     profile,
     platformFilter,
   );
+  const countryLabel = formatMarketplaceCountries(
+    profile.audienceCountries,
+    "국가 미확인",
+  );
 
   return (
     <article className="grid gap-3 border-b border-[#e4e9e4] p-3 last:border-b-0">
       <div className="flex min-w-0 items-start">
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-1.5">
-            <h2 className="truncate text-[15px] font-extrabold text-neutral-950">
+            <Link
+              to={getInfluencerProfilePath(profile)}
+              className="min-w-0 truncate text-[15px] font-extrabold text-neutral-950 hover:underline"
+              title={profile.displayName}
+            >
               {profile.displayName}
-            </h2>
+            </Link>
           </div>
           <p className="mt-1 truncate text-[12px] font-bold text-neutral-600">
-            {categoryLabel || "카테고리 확인"}
+            {countryLabel} · {categoryLabel || "일상·브이로그"}
           </p>
           {primaryPlatform ? (
             <div className="mt-1.5">
@@ -1656,10 +2415,17 @@ function InfluencerDiscoveryCompactRow({
                 platform={primaryPlatform.platform}
                 label={platformLabels[primaryPlatform.platform]}
                 value={primaryPlatform.followersLabel}
+                description={primaryPlatform.performanceLabel}
               />
             </div>
           ) : null}
         </div>
+        <InfluencerSaveCheckbox
+          profile={profile}
+          isSaved={isSaved}
+          isSaving={isSaving}
+          onToggle={onToggleSaved}
+        />
       </div>
       <div className="grid gap-2">
         {canPropose ? (
@@ -1699,7 +2465,10 @@ function InfluencerPreviewCard({
   left: number;
 }) {
   const categoryLabel = getCategoryLabels(profile.categories, 4).join(" · ");
-  const countryLabel = formatMarketplaceCountries(profile.audienceCountries, "한국");
+  const countryLabel = formatMarketplaceCountries(
+    profile.audienceCountries,
+    "국가 미확인",
+  );
   const avatarUrl = getMarketplaceInfluencerAvatarUrl(profile);
 
   return (
@@ -1743,6 +2512,7 @@ function InfluencerPreviewCard({
             platform={platform.platform}
             label={platformLabels[platform.platform]}
             value={platform.followersLabel}
+            description={platform.performanceLabel}
           />
         ))}
       </div>
@@ -1774,6 +2544,7 @@ function getMarketplaceInfluencerDisplayPlatform(
       profile.platforms[0]
     );
   }
+
   return profile.platforms[0];
 }
 
@@ -1857,20 +2628,47 @@ function InfluencerContactDialog({
   profile: MarketplaceInfluencerProfile;
   onClose: () => void;
 }) {
+  const [initialDraft] = useState(() =>
+    readContactDraft({
+      role: "advertiser",
+      targetHandle: profile.handle,
+      parseForm: parseInfluencerContactDraft,
+    }),
+  );
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [form, setForm] = useState({
-    brandName: "",
-    brandIntro: "",
-    proposalType: profile.collaborationTypes[0] ?? "sponsored_post",
-    proposalSummary: "",
-  });
+  const [draftRestored, setDraftRestored] = useState(Boolean(initialDraft));
+  const [form, setForm] = useState<InfluencerContactForm>(
+    () =>
+      initialDraft ?? {
+        brandName: "",
+        brandIntro: "",
+        proposalType: profile.collaborationTypes[0] ?? "sponsored_post",
+        proposalSummary: "",
+      },
+  );
   const loginNext = encodeURIComponent(getInfluencerProfilePath(profile));
   const canSubmit =
     form.brandName.trim().length > 0 &&
     form.brandIntro.trim().length > 0 &&
     form.proposalSummary.trim().length > 0;
+  const persistDraft = useCallback(() => {
+    saveContactDraft({
+      role: "advertiser",
+      targetHandle: profile.handle,
+      form: {
+        brandName: form.brandName.slice(0, 80),
+        brandIntro: form.brandIntro.slice(0, 1000),
+        proposalType: form.proposalType,
+        proposalSummary: form.proposalSummary.slice(0, 1500),
+      },
+    });
+  }, [form, profile.handle]);
+  const handleClose = useCallback(() => {
+    clearContactDraft("advertiser", profile.handle);
+    onClose();
+  }, [onClose, profile.handle]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1891,6 +2689,7 @@ function InfluencerContactDialog({
       );
 
       if (response.status === 401) {
+        persistDraft();
         setError("광고주 로그인 후 1:1 계약 제안을 저장할 수 있습니다.");
         return;
       }
@@ -1900,27 +2699,43 @@ function InfluencerContactDialog({
         return;
       }
 
+      clearContactDraft("advertiser", profile.handle);
+      setDraftRestored(false);
       setSubmitted(true);
+    } catch {
+      setError("1:1 계약 제안을 저장하지 못했습니다. 네트워크 연결을 확인하고 다시 시도해 주세요.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <DialogFrame title={`${profile.displayName}에게 1:1 계약 제안`} onClose={onClose}>
+    <DialogFrame
+      title={`${profile.displayName}에게 1:1 계약 제안`}
+      onClose={handleClose}
+    >
       {submitted ? (
         <ProposalSubmitted
           title="1:1 계약 제안이 저장됐습니다"
           body="브랜드 소개와 계약 조건이 메시지함에 저장됐습니다."
           actionHref="/advertiser/messages"
           actionLabel="메시지함 보기"
-          onClose={onClose}
+          onClose={handleClose}
         />
       ) : (
         <form onSubmit={handleSubmit} className="grid gap-4">
+          {draftRestored ? (
+            <div
+              role="status"
+              className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-[12px] font-semibold text-blue-800"
+            >
+              저장된 제안 내용을 불러왔습니다. 확인 후 직접 저장해 주세요.
+            </div>
+          ) : null}
           <FormField label="브랜드명">
             <input
               required
+              maxLength={80}
               value={form.brandName}
               onChange={(event) =>
                 setForm((current) => ({ ...current, brandName: event.target.value }))
@@ -1933,6 +2748,7 @@ function InfluencerContactDialog({
             <textarea
               required
               rows={3}
+              maxLength={1000}
               value={form.brandIntro}
               onChange={(event) =>
                 setForm((current) => ({ ...current, brandIntro: event.target.value }))
@@ -1963,6 +2779,7 @@ function InfluencerContactDialog({
             <textarea
               required
               rows={3}
+              maxLength={1500}
               value={form.proposalSummary}
               onChange={(event) =>
                 setForm((current) => ({
@@ -1980,6 +2797,7 @@ function InfluencerContactDialog({
               {error.includes("로그인") ? (
                 <Link
                   to={`/login/advertiser?next=${loginNext}`}
+                  onClick={persistDraft}
                   className="mt-2 inline-flex h-9 items-center rounded-md bg-neutral-950 px-3 text-[12px] font-semibold text-white transition hover:bg-neutral-800"
                 >
                   광고주 로그인하고 계속
@@ -2009,20 +2827,47 @@ function BrandContactDialog({
   brand: MarketplaceBrandProfile;
   onClose: () => void;
 }) {
+  const [initialDraft] = useState(() =>
+    readContactDraft({
+      role: "influencer",
+      targetHandle: brand.handle,
+      parseForm: parseBrandContactDraft,
+    }),
+  );
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [form, setForm] = useState({
-    creatorName: "",
-    channelIntro: "",
-    proposalType: brand.proposalTypes[0] ?? "sponsored_post",
-    proposalSummary: "",
-  });
+  const [draftRestored, setDraftRestored] = useState(Boolean(initialDraft));
+  const [form, setForm] = useState<BrandContactForm>(
+    () =>
+      initialDraft ?? {
+        creatorName: "",
+        channelIntro: "",
+        proposalType: brand.proposalTypes[0] ?? "sponsored_post",
+        proposalSummary: "",
+      },
+  );
   const loginNext = encodeURIComponent(getBrandProfilePath(brand));
   const canSubmit =
     form.creatorName.trim().length > 0 &&
     form.channelIntro.trim().length > 0 &&
     form.proposalSummary.trim().length > 0;
+  const persistDraft = useCallback(() => {
+    saveContactDraft({
+      role: "influencer",
+      targetHandle: brand.handle,
+      form: {
+        creatorName: form.creatorName.slice(0, 80),
+        channelIntro: form.channelIntro.slice(0, 1000),
+        proposalType: form.proposalType,
+        proposalSummary: form.proposalSummary.slice(0, 1500),
+      },
+    });
+  }, [brand.handle, form]);
+  const handleClose = useCallback(() => {
+    clearContactDraft("influencer", brand.handle);
+    onClose();
+  }, [brand.handle, onClose]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -2043,6 +2888,7 @@ function BrandContactDialog({
       );
 
       if (response.status === 401) {
+        persistDraft();
         setError("인플루언서 로그인 후 역제안을 저장할 수 있습니다.");
         return;
       }
@@ -2052,27 +2898,40 @@ function BrandContactDialog({
         return;
       }
 
+      clearContactDraft("influencer", brand.handle);
+      setDraftRestored(false);
       setSubmitted(true);
+    } catch {
+      setError("역제안을 저장하지 못했습니다. 네트워크 연결을 확인하고 다시 시도해 주세요.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <DialogFrame title={`${brand.displayName}에 제안`} onClose={onClose}>
+    <DialogFrame title={`${brand.displayName}에 제안`} onClose={handleClose}>
       {submitted ? (
         <ProposalSubmitted
           title="역제안이 저장됐습니다"
           body="내 채널 소개와 광고 형태가 저장됐습니다. 이후 상태는 메시지함에서 확인할 수 있습니다."
           actionHref="/influencer/messages"
           actionLabel="메시지함 보기"
-          onClose={onClose}
+          onClose={handleClose}
         />
       ) : (
         <form onSubmit={handleSubmit} className="grid gap-4">
+          {draftRestored ? (
+            <div
+              role="status"
+              className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-[12px] font-semibold text-blue-800"
+            >
+              저장된 제안 내용을 불러왔습니다. 확인 후 직접 저장해 주세요.
+            </div>
+          ) : null}
           <FormField label="활동명">
             <input
               required
+              maxLength={80}
               value={form.creatorName}
               onChange={(event) =>
                 setForm((current) => ({ ...current, creatorName: event.target.value }))
@@ -2085,6 +2944,7 @@ function BrandContactDialog({
             <textarea
               required
               rows={3}
+              maxLength={1000}
               value={form.channelIntro}
               onChange={(event) =>
                 setForm((current) => ({
@@ -2118,6 +2978,7 @@ function BrandContactDialog({
             <textarea
               required
               rows={3}
+              maxLength={1500}
               value={form.proposalSummary}
               onChange={(event) =>
                 setForm((current) => ({
@@ -2135,6 +2996,7 @@ function BrandContactDialog({
               {error.includes("로그인") ? (
                 <Link
                   to={`/login/influencer?next=${loginNext}`}
+                  onClick={persistDraft}
                   className="mt-2 inline-flex h-9 items-center rounded-md bg-neutral-950 px-3 text-[12px] font-semibold text-white transition hover:bg-neutral-800"
                 >
                   인플루언서 로그인하고 계속
@@ -2335,6 +3197,7 @@ function DiscoveryControls({
   open,
   activeCount,
   controlsId,
+  filterColumns = 4,
   toolbar,
   onToggle,
   children,
@@ -2345,11 +3208,13 @@ function DiscoveryControls({
   open: boolean;
   activeCount: number;
   controlsId: string;
+  filterColumns?: 4 | 5;
   toolbar?: ReactNode;
   onToggle: () => void;
   children: ReactNode;
 }) {
   const rootRef = useRef<HTMLElement | null>(null);
+  const restoreFocusRef = useRef<HTMLButtonElement | null>(null);
   const filterButtonClassName =
     "inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-[8px] border border-neutral-200 bg-white px-3 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:text-neutral-950 sm:h-8 sm:px-2.5";
   const filterButtonContent = (
@@ -2380,7 +3245,11 @@ function DiscoveryControls({
       onToggle();
     };
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onToggle();
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      onToggle();
+      window.requestAnimationFrame(() => restoreFocusRef.current?.focus());
     };
 
     document.addEventListener("pointerdown", handlePointerDown);
@@ -2391,6 +3260,11 @@ function DiscoveryControls({
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [onToggle, open]);
+
+  const handleToggle = (event: MouseEvent<HTMLButtonElement>) => {
+    if (!open) restoreFocusRef.current = event.currentTarget;
+    onToggle();
+  };
 
   return (
     <section
@@ -2410,7 +3284,7 @@ function DiscoveryControls({
           <div className="relative sm:hidden">
             <button
               type="button"
-              onClick={onToggle}
+              onClick={handleToggle}
               aria-expanded={open}
               aria-controls={controlsId}
               className={`${filterButtonClassName} sm:hidden`}
@@ -2426,7 +3300,7 @@ function DiscoveryControls({
           {toolbar}
           <button
             type="button"
-            onClick={onToggle}
+            onClick={handleToggle}
             aria-expanded={open}
             aria-controls={controlsId}
             className={filterButtonClassName}
@@ -2438,14 +3312,67 @@ function DiscoveryControls({
       {open ? (
         <div
           id={controlsId}
-          className="absolute left-3 right-3 top-[calc(100%+8px)] z-[60] rounded-[14px] border border-neutral-200 bg-white p-3 shadow-[0_22px_60px_rgba(15,23,42,0.18)] sm:left-auto sm:right-4 sm:w-[min(900px,calc(100vw-48px))]"
+          className={`absolute left-3 right-3 top-[calc(100%+8px)] z-[60] rounded-[14px] border border-neutral-200 bg-white p-3 shadow-[0_22px_60px_rgba(15,23,42,0.18)] sm:left-auto sm:right-4 ${
+            filterColumns === 5
+              ? "sm:w-[min(720px,calc(100vw-48px))] lg:w-[min(1040px,calc(100vw-48px))]"
+              : "sm:w-[min(720px,calc(100vw-48px))] lg:w-[min(900px,calc(100vw-48px))]"
+          }`}
         >
-          <div className="grid gap-2 sm:grid-cols-[minmax(220px,1.1fr)_minmax(150px,0.72fr)_minmax(180px,0.82fr)_minmax(150px,0.72fr)]">
+          <div
+            className={`grid gap-2 sm:grid-cols-2 ${
+              filterColumns === 5
+                ? "lg:grid-cols-[minmax(210px,1.15fr)_minmax(140px,0.72fr)_minmax(140px,0.72fr)_minmax(180px,0.88fr)_minmax(150px,0.76fr)]"
+                : "lg:grid-cols-[minmax(220px,1.1fr)_minmax(150px,0.72fr)_minmax(180px,0.82fr)_minmax(150px,0.72fr)]"
+            }`}
+          >
             {children}
           </div>
         </div>
       ) : null}
     </section>
+  );
+}
+
+function SavedOnlyFilterToggle({
+  value,
+  onChange,
+}: {
+  value: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={value}
+      onClick={() => onChange(!value)}
+      className={`flex h-10 w-full min-w-0 items-center justify-between gap-3 rounded-[10px] border px-3 text-left shadow-[0_1px_0_rgba(15,23,42,0.03)] transition ${
+        value
+          ? "border-blue-200 bg-blue-50"
+          : "border-neutral-200 bg-white hover:border-neutral-300 hover:bg-neutral-50"
+      }`}
+    >
+      <span className="min-w-0">
+        <span className="block text-[12px] font-extrabold leading-tight text-neutral-500">
+          저장
+        </span>
+        <span className="mt-0.5 block truncate text-[13px] font-extrabold leading-tight text-neutral-950">
+          {value ? "저장한 계정만" : "전체"}
+        </span>
+      </span>
+      <span
+        aria-hidden="true"
+        className={`relative h-5 w-9 shrink-0 rounded-full transition ${
+          value ? "bg-blue-600" : "bg-neutral-300"
+        }`}
+      >
+        <span
+          className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+            value ? "translate-x-[18px]" : "translate-x-0.5"
+          }`}
+        />
+      </span>
+    </button>
   );
 }
 
@@ -2495,15 +3422,13 @@ function CategorySelectList({
   openId,
   onOpenChange,
   values,
-  categories,
   onChange,
 }: {
   values: string[];
-  categories: string[];
   onChange: (value: string[]) => void;
 } & FilterListDisclosureProps) {
   const selected = new Set(values);
-  const options = categories.map((category) => ({
+  const options = influencerCategoryOptions.map((category) => ({
     value: category,
     label: getCategoryLabel(category),
   }));
@@ -2519,6 +3444,8 @@ function CategorySelectList({
       }
       options={options}
       selectedValues={values}
+      searchPlaceholder="카테고리 검색"
+      listMaxHeightClassName="max-h-72"
       onClear={() => onChange([])}
       onSelect={(category) =>
         onChange(
@@ -2556,6 +3483,7 @@ function CountrySelectList({
       summary={values.length > 0 ? formatMarketplaceCountries(values) : "전체"}
       options={options}
       selectedValues={values}
+      searchPlaceholder="국가 검색"
       onClear={() => onChange([])}
       onSelect={(country) =>
         onChange(
@@ -2579,6 +3507,8 @@ function FilterListSection<T extends string>({
   onSelect,
   onClear,
   closeOnSelect = false,
+  searchPlaceholder,
+  listMaxHeightClassName,
 }: {
   id: string;
   openId: string | null;
@@ -2590,17 +3520,67 @@ function FilterListSection<T extends string>({
   onSelect: (value: T) => void;
   onClear?: () => void;
   closeOnSelect?: boolean;
+  searchPlaceholder?: string;
+  listMaxHeightClassName?: string;
 }) {
   const open = openId === id;
+  const rootRef = useRef<HTMLElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
   const selected = new Set<T>(selectedValues);
   const isClearSelected = Boolean(onClear) && selectedValues.length === 0;
+  const normalizedSearchQuery = searchQuery.trim().toLocaleLowerCase("ko");
+  const visibleOptions = normalizedSearchQuery
+    ? options.filter((option) =>
+        `${option.label} ${String(option.value)}`
+          .toLocaleLowerCase("ko")
+          .includes(normalizedSearchQuery),
+      )
+    : options;
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node) || rootRef.current?.contains(target)) return;
+      onOpenChange(null);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      onOpenChange(null);
+      window.requestAnimationFrame(() => triggerRef.current?.focus());
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown, true);
+    };
+  }, [onOpenChange, open]);
+
+  useEffect(() => {
+    if (!open || !searchPlaceholder) return;
+    const frame = window.requestAnimationFrame(() => searchInputRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [open, searchPlaceholder]);
 
   return (
-    <section className="relative min-w-0">
+    <section ref={rootRef} className="relative min-w-0">
       <button
+        ref={triggerRef}
         type="button"
-        onClick={() => onOpenChange(open ? null : id)}
+        onClick={() => {
+          setSearchQuery("");
+          onOpenChange(open ? null : id);
+        }}
+        aria-haspopup="listbox"
         aria-expanded={open}
+        aria-controls={open ? `${id}-listbox` : undefined}
         className={`flex h-10 w-full min-w-0 items-center justify-between gap-3 rounded-[10px] border bg-white px-3 text-left shadow-[0_1px_0_rgba(15,23,42,0.03)] transition ${
           open
             ? "border-neutral-300 shadow-[0_0_0_3px_rgba(15,23,42,0.06)]"
@@ -2623,28 +3603,60 @@ function FilterListSection<T extends string>({
         />
       </button>
       {open ? (
-        <div className="absolute left-0 right-0 top-full z-[70] mt-2 max-h-56 overflow-y-auto rounded-[12px] border border-neutral-200 bg-white p-1.5 shadow-[0_18px_50px_rgba(15,23,42,0.14)]">
-          {onClear ? (
-            <FilterListOptionButton
-              label="전체"
-              selected={isClearSelected}
-              onClick={() => {
-                onClear();
-                if (closeOnSelect) onOpenChange(null);
-              }}
-            />
+        <div
+          className="absolute left-0 right-0 top-full z-[70] mt-2 overflow-hidden rounded-[12px] border border-neutral-200 bg-white p-1.5 shadow-[0_18px_50px_rgba(15,23,42,0.14)]"
+        >
+          {searchPlaceholder ? (
+            <label className="mb-1.5 flex h-9 items-center gap-2 rounded-[8px] border border-neutral-200 bg-neutral-50 px-2.5 focus-within:border-neutral-300 focus-within:bg-white">
+              <Search className="h-3.5 w-3.5 shrink-0 text-neutral-400" strokeWidth={2} />
+              <input
+                ref={searchInputRef}
+                type="search"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder={searchPlaceholder}
+                aria-label={searchPlaceholder}
+                className="min-w-0 flex-1 bg-transparent text-[12px] font-bold text-neutral-900 outline-none placeholder:text-neutral-400"
+              />
+            </label>
           ) : null}
-          {options.map((option) => (
-            <FilterListOptionButton
-              key={String(option.value)}
-              label={option.label}
-              selected={selected.has(option.value)}
-              onClick={() => {
-                onSelect(option.value);
-                if (closeOnSelect) onOpenChange(null);
-              }}
-            />
-          ))}
+          <div
+            id={`${id}-listbox`}
+            role="listbox"
+            aria-label={label}
+            aria-multiselectable={closeOnSelect ? undefined : true}
+            className={`${
+              listMaxHeightClassName ??
+              (searchPlaceholder ? "max-h-48" : "max-h-56")
+            } overflow-y-auto`}
+          >
+            {onClear && !normalizedSearchQuery ? (
+              <FilterListOptionButton
+                label="전체"
+                selected={isClearSelected}
+                onClick={() => {
+                  onClear();
+                  if (closeOnSelect) onOpenChange(null);
+                }}
+              />
+            ) : null}
+            {visibleOptions.map((option) => (
+              <FilterListOptionButton
+                key={String(option.value)}
+                label={option.label}
+                selected={selected.has(option.value)}
+                onClick={() => {
+                  onSelect(option.value);
+                  if (closeOnSelect) onOpenChange(null);
+                }}
+              />
+            ))}
+            {visibleOptions.length === 0 ? (
+              <p className="px-2.5 py-4 text-center text-[12px] font-bold text-neutral-400">
+                검색 결과 없음
+              </p>
+            ) : null}
+          </div>
         </div>
       ) : null}
     </section>
@@ -2664,6 +3676,8 @@ function FilterListOptionButton({
   return (
     <button
       type="button"
+      role="option"
+      aria-selected={selected}
       aria-pressed={selected}
       onClick={onClick}
       className={`flex h-9 w-full items-center justify-between gap-3 rounded-[8px] px-2.5 text-left text-[12px] font-extrabold transition ${
@@ -2854,14 +3868,17 @@ function PlatformPill({
   platform,
   label,
   value,
+  description,
 }: {
   key?: string;
   platform: InfluencerPlatform;
   label: string;
   value?: string;
+  description?: string;
 }) {
   const hasMetric = Boolean(value);
   const metricValue = hasMetric ? formatDiscoveryAudienceMetric(value) : "";
+  const accessibleLabel = [label, description, metricValue].filter(Boolean).join(" ");
 
   return (
     <span
@@ -2870,8 +3887,8 @@ function PlatformPill({
           ? "h-7 text-neutral-900"
           : "h-6 text-neutral-800"
       }`}
-      title={metricValue ? `${label} ${metricValue}` : label}
-      aria-label={metricValue ? `${label} ${metricValue}` : label}
+      title={accessibleLabel}
+      aria-label={accessibleLabel}
     >
       <PlatformBrandMark platform={platform} size={hasMetric ? "xs" : "sm"} />
       {metricValue ? (
@@ -3056,6 +4073,30 @@ function MarketplaceLoadingState({ label }: { label: string }) {
         </div>
         <p className="mt-3 text-[13px] font-semibold text-neutral-600">{label}</p>
       </div>
+    </section>
+  );
+}
+
+function MarketplaceErrorState({
+  message,
+  onRetry,
+}: {
+  message: string;
+  onRetry: () => void;
+}) {
+  return (
+    <section className="flex min-h-[240px] flex-1 flex-col items-center justify-center px-6 py-10 text-center">
+      <div className="flex h-11 w-11 items-center justify-center rounded-[8px] bg-rose-50 text-rose-700">
+        <Search className="h-5 w-5" />
+      </div>
+      <h2 className="mt-4 text-[17px] font-semibold text-neutral-950">{message}</h2>
+      <button
+        type="button"
+        onClick={onRetry}
+        className="mt-5 inline-flex h-10 items-center justify-center rounded-md border border-neutral-200 bg-white px-4 text-[13px] font-semibold text-neutral-800 transition hover:border-neutral-300 hover:bg-neutral-50"
+      >
+        다시 시도
+      </button>
     </section>
   );
 }

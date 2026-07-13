@@ -1,4 +1,6 @@
+import { useEffect, useRef, type KeyboardEvent } from "react";
 import { Download, ExternalLink, FileSpreadsheet, Loader2, X } from "lucide-react";
+import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 
 type DashboardExportDialogProps = {
   open: boolean;
@@ -10,6 +12,9 @@ type DashboardExportDialogProps = {
   isGoogleSheetsPending?: boolean;
 };
 
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 export function DashboardExportDialog({
   open,
   onClose,
@@ -19,6 +24,67 @@ export function DashboardExportDialog({
   googleSheetsError,
   isGoogleSheetsPending = false,
 }: DashboardExportDialogProps) {
+  useBodyScrollLock(open);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    restoreFocusRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    const frame = window.requestAnimationFrame(() => closeButtonRef.current?.focus());
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      onCloseRef.current();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.removeEventListener("keydown", handleKeyDown);
+      restoreFocusRef.current?.focus();
+      restoreFocusRef.current = null;
+    };
+  }, [open]);
+
+  const trapFocus = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Tab") return;
+    const candidates = dialogRef.current
+      ? Array.from(
+          dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
+        )
+      : [];
+    const focusable: HTMLElement[] = candidates.filter(
+      (element): element is HTMLElement =>
+        element instanceof HTMLElement && element.getClientRects().length > 0,
+    );
+    if (focusable.length === 0) {
+      event.preventDefault();
+      dialogRef.current?.focus();
+      return;
+    }
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
   if (!open) return null;
 
   return (
@@ -28,7 +94,12 @@ export function DashboardExportDialog({
       aria-modal="true"
       aria-labelledby="dashboard-export-title"
     >
-      <div className="w-full max-w-[420px] rounded-[8px] border border-neutral-200 bg-white p-4 shadow-xl">
+      <div
+        ref={dialogRef}
+        tabIndex={-1}
+        onKeyDown={trapFocus}
+        className="w-full max-w-[420px] rounded-[8px] border border-neutral-200 bg-white p-4 shadow-xl"
+      >
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2
@@ -39,6 +110,7 @@ export function DashboardExportDialog({
             </h2>
           </div>
           <button
+            ref={closeButtonRef}
             type="button"
             onClick={onClose}
             className="flex h-8 w-8 items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-100 hover:text-neutral-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-950"

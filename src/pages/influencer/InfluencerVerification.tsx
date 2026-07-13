@@ -14,11 +14,11 @@ import {
   LogOut,
   Music2,
   RefreshCw,
-  Settings,
   Youtube,
 } from "lucide-react";
 import { useAppStore } from "../../store";
 import { LogoMark } from "../../components/BrandLogo";
+import { InfluencerAccountSettingsMenu } from "../../components/InfluencerAccountSettingsMenu";
 import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
 import { formatPublicHandleValue } from "../../domain/display";
@@ -248,6 +248,7 @@ export function InfluencerVerification() {
   const [submitted, setSubmitted] = useState(false);
   const [submittedChallengeCode, setSubmittedChallengeCode] = useState("");
   const [showAdditionalRequest, setShowAdditionalRequest] = useState(false);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const selectedPlatform = PLATFORM_META[platform];
   const selectedMethod = METHOD_META[method];
   const proofUrl = form.ownership_challenge_url || form.platform_url;
@@ -480,8 +481,8 @@ export function InfluencerVerification() {
   };
 
   return (
-    <div className="fixed inset-0 overflow-hidden bg-[#f4f5f7] font-sans text-neutral-950">
-      <header className="border-b border-neutral-200/80 bg-white shadow-[0_1px_0_rgba(15,23,42,0.04)]">
+    <div className="min-h-svh bg-[#f4f5f7] font-sans text-neutral-950 lg:fixed lg:inset-0 lg:overflow-hidden">
+      <header className="sticky top-0 z-30 border-b border-neutral-200/80 bg-white shadow-[0_1px_0_rgba(15,23,42,0.04)]">
         <div className="mx-auto flex h-14 max-w-[1500px] items-center justify-between px-3 sm:px-5">
           <div className="flex min-w-0 items-center gap-3">
             <button
@@ -511,28 +512,36 @@ export function InfluencerVerification() {
               <LogOut className="h-4 w-4" />
               <span className="hidden sm:inline">로그아웃</span>
             </button>
-            <button
-              type="button"
-              onClick={() => navigate("/reset-password?role=influencer")}
-              className="yl-header-icon-action"
-              aria-label="설정"
-              title="설정"
-            >
-              <Settings className="h-4 w-4" />
-            </button>
+            <InfluencerAccountSettingsMenu
+              account={{
+                name: verification?.account?.name ?? "인플루언서",
+                email: verification?.account?.email,
+              }}
+              open={accountMenuOpen}
+              onToggle={() => setAccountMenuOpen((current) => !current)}
+              onClose={() => setAccountMenuOpen(false)}
+              onManageProfile={() => {
+                setAccountMenuOpen(false);
+                navigate("/influencer/profile");
+              }}
+              onChangePassword={() => {
+                setAccountMenuOpen(false);
+                navigate("/reset-password?role=influencer");
+              }}
+            />
           </div>
         </div>
       </header>
 
       <main
-        className={`mx-auto grid h-[calc(100vh-56px)] gap-3 overflow-hidden px-5 py-4 sm:px-8 ${
+        className={`mx-auto grid min-h-[calc(100svh-56px)] gap-3 px-5 py-4 sm:px-8 lg:h-[calc(100vh-56px)] lg:min-h-0 lg:overflow-hidden ${
           showApprovedOverview
             ? "max-w-4xl lg:grid-cols-1"
             : "max-w-5xl lg:grid-cols-[minmax(0,1fr)_260px]"
         }`}
       >
         <section
-          className={`overflow-y-auto rounded-lg border border-neutral-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)] sm:p-5 ${
+          className={`overflow-visible rounded-lg border border-neutral-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)] sm:p-5 lg:overflow-y-auto ${
             showApprovedOverview
               ? "min-h-[420px]"
               : "min-h-0"
@@ -936,7 +945,7 @@ export function InfluencerVerification() {
         </section>
 
         {!showApprovedOverview ? (
-        <aside className="min-h-0 space-y-3 overflow-y-auto">
+        <aside className="space-y-3 overflow-visible lg:min-h-0 lg:overflow-y-auto">
           <section className="rounded-lg border border-neutral-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_14px_34px_rgba(15,23,42,0.05)]">
             <div className="mb-4 flex items-center gap-3">
               <div

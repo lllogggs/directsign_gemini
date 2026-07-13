@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   BookOpenText,
   CheckCircle2,
@@ -35,11 +36,13 @@ export function ScreenHelpButton({
   const [open, setOpen] = useState(false);
   const titleId = useId();
   const descriptionId = useId();
+  const triggerButtonRef = useRef<HTMLButtonElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!open) return undefined;
 
+    const triggerButton = triggerButtonRef.current;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     closeButtonRef.current?.focus();
@@ -55,6 +58,7 @@ export function ScreenHelpButton({
     return () => {
       document.body.style.overflow = previousOverflow;
       document.removeEventListener("keydown", handleKeyDown);
+      window.requestAnimationFrame(() => triggerButton?.focus());
     };
   }, [open]);
 
@@ -62,6 +66,7 @@ export function ScreenHelpButton({
     <>
       <span className={cn("inline-flex shrink-0", className)}>
         <button
+          ref={triggerButtonRef}
           type="button"
           data-od-id={`${content.id}-trigger`}
           onClick={() => setOpen(true)}
@@ -78,8 +83,9 @@ export function ScreenHelpButton({
         </button>
       </span>
 
-      {open ? (
-        <div
+      {open && typeof document !== "undefined"
+        ? createPortal(
+          <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/10 p-4 backdrop-blur-[2px]"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) setOpen(false);
@@ -211,8 +217,10 @@ export function ScreenHelpButton({
               </button>
             </div>
           </section>
-        </div>
-      ) : null}
+          </div>,
+          document.body,
+        )
+        : null}
     </>
   );
 }

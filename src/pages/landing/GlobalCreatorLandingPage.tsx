@@ -277,6 +277,11 @@ const globalCreatorLanguageOrder: GlobalCreatorLocale[] = ["en", "ja", "zh"];
 const getPageLang = (locale: GlobalCreatorLocale) =>
   locale === "ja" ? "ja" : locale === "zh" ? "zh-CN" : "en";
 
+const getLocalizedAuthHref = (
+  path: "/login/influencer" | "/signup/influencer",
+  locale: GlobalCreatorLocale,
+) => `${path}?locale=${locale}&source=global-creators`;
+
 export function GlobalCreatorLandingPage({
   locale,
 }: {
@@ -304,7 +309,7 @@ export function GlobalCreatorLandingPage({
           <div className="flex min-w-0 items-center gap-2">
             <LanguageSwitcher locale={locale} className="flex" />
             <Link
-              to="/login/influencer"
+              to={getLocalizedAuthHref("/login/influencer", locale)}
               className="yl-secondary-action inline-flex h-9 shrink-0 items-center justify-center rounded-[8px] border px-3 text-[12px] font-extrabold transition focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
             >
               {copy.navLogin}
@@ -337,7 +342,7 @@ export function GlobalCreatorLandingPage({
             </p>
             <div className="mt-7 flex flex-wrap items-center gap-3">
               <Link
-                to={`/signup/influencer?locale=${locale}&source=global-creators`}
+                to={getLocalizedAuthHref("/signup/influencer", locale)}
                 className="inline-flex h-12 items-center justify-center rounded-[9px] bg-blue-600 px-5 text-[14px] font-extrabold text-white shadow-[0_12px_28px_rgba(37,99,235,0.22)] ring-1 ring-blue-500/20 transition hover:bg-blue-700 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700"
               >
                 {copy.primaryCta}

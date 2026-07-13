@@ -10,7 +10,7 @@ const listGitVisibleFiles = () => {
   const output = execFileSync(
     "git",
     ["ls-files", "--cached", "--others", "--exclude-standard"],
-    { cwd: root, encoding: "utf8" },
+    { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
   );
   return output.split(/\r?\n/).filter(Boolean);
 };

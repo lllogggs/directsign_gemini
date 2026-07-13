@@ -15,18 +15,17 @@ import {
   CopyCheck,
   ExternalLink,
   FileText,
-  KeyRound,
+  ImagePlus,
   LogOut,
-  Mail,
   Megaphone,
   MessageSquareText,
   MoreHorizontal,
   PenLine,
   Plus,
   Search,
-  Settings,
   ShieldCheck,
   SlidersHorizontal,
+  Trash2,
   X,
 } from "lucide-react";
 import {
@@ -35,6 +34,9 @@ import {
   ContractStatus,
   useAppStore,
 } from "../../store";
+import {
+  isFixedCampaignContract,
+} from "../../domain/contracts";
 import {
   getVerificationRejectionGuidance,
   verificationStatusTone,
@@ -53,13 +55,13 @@ import {
   useVerificationSummary,
 } from "../../hooks/useVerificationSummary";
 import { useMarketplaceMessageSummary } from "../../hooks/useMarketplaceMessageSummary";
+import { useBodyScrollLock } from "../../hooks/useBodyScrollLock";
 import {
   clearAdvertiserSessionCache,
   getAdvertiserSessionCache,
 } from "../../domain/advertiserSessionCache";
 import { clearAdvertiserDashboardBootstrapPreload } from "../../domain/advertiserDashboardPreload";
 import { PRODUCT_NAME } from "../../domain/brand";
-import { LEGAL_CONTACT_EMAIL } from "../../domain/legalEntity";
 import { apiFetch } from "../../domain/api";
 import {
   isFastLoginTransitionPending,
@@ -79,6 +81,7 @@ import { MobileSurfaceSwitch } from "../../components/MobileSurfaceSwitch";
 import { PlatformBrandMark } from "../../components/PlatformBrandMark";
 import { ResponsiveFilterPanel } from "../../components/ResponsiveFilterPanel";
 import { FilterSelectControl } from "../../components/FilterSelectControl";
+import { AdvertiserAccountSettingsMenu } from "../../components/AdvertiserAccountSettingsMenu";
 import { CONTRACT_FIRST_EXPERIENCE_CONTENT } from "../../domain/screenHelp";
 import {
   compareChannelAudienceValues,
@@ -257,6 +260,11 @@ type AdvertiserBrandsResponse = {
   campaigns?: MarketplaceBrandCampaign[];
   error?: string;
 };
+type AdvertiserBrandImageResponse = {
+  image_url?: string;
+  brand?: MarketplaceBrandProfile | null;
+  error?: string;
+};
 type AdvertiserAccountSummary = {
   name: string;
   meta?: string;
@@ -296,6 +304,7 @@ type CostDashboardSummary = {
   inProgress: number;
   ended: number;
   paid: number;
+  unpriced: number;
 };
 type CostTrendItem = {
   key: string;
@@ -426,6 +435,14 @@ const APPLICANT_STATUS_META: Record<
   reviewed: {
     label: "검토 중",
     className: "border-sky-200 bg-sky-50 text-sky-700",
+  },
+  accepted: {
+    label: "선정 준비",
+    className: "border-blue-200 bg-blue-50 text-blue-700",
+  },
+  declined: {
+    label: "미선정",
+    className: "border-rose-200 bg-rose-50 text-rose-700",
   },
   converted_to_contract: {
     label: "선정 완료",
@@ -651,6 +668,9 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
   );
   const [brandSelectorOpen, setBrandSelectorOpen] = useState(false);
   const [brandManagerOpen, setBrandManagerOpen] = useState(false);
+  const [brandManagerMode, setBrandManagerMode] =
+    useState<"create" | "edit">("create");
+  const [editingBrandId, setEditingBrandId] = useState<string | undefined>();
   const [brandForm, setBrandForm] = useState<AdvertiserBrandForm>({
     displayName: "",
     category: "",
@@ -661,6 +681,13 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
   });
   const [brandActionError, setBrandActionError] = useState<string | undefined>();
   const [isSavingBrand, setIsSavingBrand] = useState(false);
+  const [updatingBrandId, setUpdatingBrandId] = useState<string | undefined>();
+  const [uploadingBrandLogoId, setUploadingBrandLogoId] = useState<
+    string | undefined
+  >();
+  const [removingBrandLogoId, setRemovingBrandLogoId] = useState<
+    string | undefined
+  >();
   const [deletingBrandId, setDeletingBrandId] = useState<string | undefined>();
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
@@ -801,7 +828,6 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
   }, []);
 
   useEffect(() => {
-    if (!isCampaignSurface && !searchParams.get("campaign")) return;
     let active = true;
     const timer = window.setTimeout(() => {
       void waitForFastLoginTransition("advertiser").then(() => {
@@ -813,12 +839,12 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [isCampaignSurface, loadMarketplaceCampaignData, searchParams]);
+  }, [loadMarketplaceCampaignData]);
 
   const campaignGroups = useMemo(
     () =>
       buildCampaignGroups({
-        contracts,
+        contracts: contracts.filter(isFixedCampaignContract),
         marketplaceCampaigns: marketplaceState.campaigns,
         messageThreads: marketplaceState.threads,
         fallbackBrandName: marketplaceState.brand?.displayName ?? advertiserAccount.name,
@@ -892,6 +918,10 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
     () => collapseInternalDuplicateContracts(contracts, getDashboardContractCollapseKey),
     [contracts],
   );
+  const oneToOneContracts = useMemo(
+    () => dashboardContracts.filter((contract) => !isFixedCampaignContract(contract)),
+    [dashboardContracts],
+  );
   const costDateRange = useMemo(
     () =>
       getCostDateRange(
@@ -932,13 +962,13 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
     [costDateRange, costPeriodFilter, filteredCostEntries],
   );
   const contractLifecycleCounts = useMemo(
-    () => getContractLifecycleCounts(dashboardContracts),
-    [dashboardContracts],
+    () => getContractLifecycleCounts(oneToOneContracts),
+    [oneToOneContracts],
   );
   const visibleContracts = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
 
-    return dashboardContracts
+    return oneToOneContracts
       .filter(
         (contract) =>
           getDashboardContractLifecycle(contract) === campaignLifecycleFilter &&
@@ -965,7 +995,7 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
     campaignPlatformFilter,
     contractSort,
     contractTypeFilter,
-    dashboardContracts,
+    oneToOneContracts,
     detailStatusFilter,
     query,
   ]);
@@ -981,12 +1011,12 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
     () =>
       hasContractDashboardFilters
         ? visibleContracts
-        : [...dashboardContracts].sort((a, b) =>
+        : [...oneToOneContracts].sort((a, b) =>
             _compareContractsBySort(a, b, contractSort),
           ),
     [
       contractSort,
-      dashboardContracts,
+      oneToOneContracts,
       hasContractDashboardFilters,
       visibleContracts,
     ],
@@ -1095,6 +1125,40 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
     },
     [],
   );
+  const applyUpdatedAdvertiserBrand = useCallback(
+    (
+      brandId: string,
+      data: Pick<AdvertiserBrandsResponse, "brand" | "brands" | "campaigns">,
+    ) => {
+      setMarketplaceState((current) => {
+        const nextBrands =
+          data.brands ??
+          (data.brand
+            ? current.brands.map((brand) =>
+                brand.id === data.brand?.id ? data.brand : brand,
+              )
+            : current.brands);
+        const updatedBrand =
+          nextBrands.find((brand) => brand.id === brandId) ??
+          (data.brand?.id === brandId ? data.brand : undefined);
+        const isActiveBrand =
+          selectedBrandId === brandId || current.brand?.id === brandId;
+
+        return {
+          ...current,
+          status: "ready",
+          brand: isActiveBrand && updatedBrand ? updatedBrand : current.brand,
+          brands: nextBrands,
+          campaigns:
+            isActiveBrand && data.campaigns
+              ? data.campaigns
+              : current.campaigns,
+          error: undefined,
+        };
+      });
+    },
+    [selectedBrandId],
+  );
   const handleSelectAdvertiserBrand = useCallback(
     (brandId: string) => {
       const brand = marketplaceState.brands.find((item) => item.id === brandId);
@@ -1114,25 +1178,41 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
   const handleOpenBrandManager = useCallback(() => {
     setBrandSelectorOpen(false);
     setBrandActionError(undefined);
+    if (selectedBrand) {
+      setBrandManagerMode("edit");
+      setEditingBrandId(selectedBrand.id);
+      setBrandForm(createAdvertiserBrandFormFromProfile(selectedBrand));
+    } else {
+      setBrandManagerMode("create");
+      setEditingBrandId(undefined);
+      setBrandForm(createEmptyAdvertiserBrandForm());
+    }
     setBrandManagerOpen(true);
+  }, [selectedBrand]);
+  const handleEditAdvertiserBrand = useCallback(
+    (brandId: string) => {
+      const brand = marketplaceState.brands.find((item) => item.id === brandId);
+      if (!brand) return;
+      setBrandManagerMode("edit");
+      setEditingBrandId(brand.id);
+      setBrandForm(createAdvertiserBrandFormFromProfile(brand));
+      setBrandActionError(undefined);
+    },
+    [marketplaceState.brands],
+  );
+  const handleStartAdvertiserBrandCreate = useCallback(() => {
+    setBrandManagerMode("create");
+    setEditingBrandId(undefined);
+    setBrandForm(createEmptyAdvertiserBrandForm());
+    setBrandActionError(undefined);
   }, []);
   const handleCreateAdvertiserBrand = useCallback(async () => {
     if (isSavingBrand) return;
-    const displayName = brandForm.displayName.trim();
-    const category = brandForm.category.trim();
-    const location = brandForm.location.trim();
-    if (!displayName || !category || !location) {
-      setBrandActionError("브랜드명, 카테고리, 운영지역을 입력해 주세요.");
+    const payload = buildAdvertiserBrandPayload(brandForm);
+    if (!payload.ok) {
+      setBrandActionError(payload.error);
       return;
     }
-    const businessLabel = brandForm.businessLabel.trim();
-    const homepage = brandForm.homepage.trim();
-    const descriptionParts = [
-      brandForm.description.trim() ||
-        `${displayName}의 인플루언서 협업 조건을 관리하는 브랜드 프로필입니다.`,
-      businessLabel ? `운영사: ${businessLabel}` : undefined,
-      homepage ? `공식 채널: ${homepage}` : undefined,
-    ].filter(Boolean);
 
     setIsSavingBrand(true);
     setBrandActionError(undefined);
@@ -1142,13 +1222,7 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({
-          displayName,
-          category,
-          location,
-          headline: `${displayName}의 인플루언서 협업 제안을 관리합니다`,
-          description: descriptionParts.join("\n").slice(0, 500),
-        }),
+        body: JSON.stringify(payload.value),
       });
 
       if (response.status === 401) {
@@ -1162,14 +1236,9 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
       }
 
       applyAdvertiserBrandResponse(data);
-      setBrandForm({
-        displayName: "",
-        category: "",
-        location: "",
-        businessLabel: "",
-        homepage: "",
-        description: "",
-      });
+      setBrandManagerMode("edit");
+      setEditingBrandId(data.brand.id);
+      setBrandForm(createAdvertiserBrandFormFromProfile(data.brand));
     } catch (error) {
       setBrandActionError(
         error instanceof Error ? error.message : "브랜드를 추가하지 못했습니다.",
@@ -1178,9 +1247,141 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
       setIsSavingBrand(false);
     }
   }, [applyAdvertiserBrandResponse, brandForm, isSavingBrand, navigate]);
+  const handleUpdateAdvertiserBrand = useCallback(
+    async (
+      brandId: string,
+      nextForm: AdvertiserBrandForm,
+      options?: { removeLogo?: boolean },
+    ) => {
+      if (updatingBrandId || removingBrandLogoId) return undefined;
+      const existingBrand = marketplaceState.brands.find(
+        (brand) => brand.id === brandId,
+      );
+      const payload = buildAdvertiserBrandPayload(nextForm, existingBrand);
+      if (!payload.ok) {
+        setBrandActionError(payload.error);
+        return undefined;
+      }
+
+      if (options?.removeLogo) setRemovingBrandLogoId(brandId);
+      else setUpdatingBrandId(brandId);
+      setBrandActionError(undefined);
+
+      try {
+        const response = await apiFetch(
+          `/api/advertiser/brands/${encodeURIComponent(brandId)}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({
+              ...payload.value,
+              ...(options?.removeLogo
+                ? { removeLogo: true, remove_logo: true, logoUrl: null }
+                : {}),
+            }),
+          },
+        );
+
+        if (response.status === 401) {
+          navigate("/login/advertiser", { replace: true });
+          return undefined;
+        }
+
+        const data = (await response.json().catch(() => ({}))) as AdvertiserBrandsResponse;
+        if (!response.ok || !data.brand) {
+          throw new Error(data.error ?? "브랜드 정보를 저장하지 못했습니다.");
+        }
+        if (options?.removeLogo && data.brand.logoUrl) {
+          throw new Error("브랜드 로고 삭제가 반영되지 않았습니다. 잠시 후 다시 시도해 주세요.");
+        }
+
+        applyUpdatedAdvertiserBrand(brandId, data);
+        if (editingBrandId === brandId && !options?.removeLogo) {
+          setBrandForm(createAdvertiserBrandFormFromProfile(data.brand));
+        }
+        return data.brand;
+      } catch (error) {
+        setBrandActionError(
+          error instanceof Error
+            ? error.message
+            : options?.removeLogo
+              ? "브랜드 로고를 삭제하지 못했습니다."
+              : "브랜드 정보를 저장하지 못했습니다.",
+        );
+        return undefined;
+      } finally {
+        if (options?.removeLogo) setRemovingBrandLogoId(undefined);
+        else setUpdatingBrandId(undefined);
+      }
+    },
+    [
+      applyUpdatedAdvertiserBrand,
+      editingBrandId,
+      marketplaceState.brands,
+      navigate,
+      removingBrandLogoId,
+      updatingBrandId,
+    ],
+  );
+  const handleUploadAdvertiserBrandLogo = useCallback(
+    async (brandId: string, file: File) => {
+      if (uploadingBrandLogoId) return undefined;
+      if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+        setBrandActionError("PNG, JPG, WebP 이미지만 올릴 수 있습니다.");
+        return undefined;
+      }
+      if (file.size > 3 * 1024 * 1024) {
+        setBrandActionError("브랜드 로고는 3MB 이하로 올려주세요.");
+        return undefined;
+      }
+
+      setUploadingBrandLogoId(brandId);
+      setBrandActionError(undefined);
+
+      try {
+        const dataUrl = await readDashboardFileAsDataUrl(file);
+        const response = await apiFetch("/api/advertiser/brand-image", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            brandId,
+            file: {
+              name: file.name,
+              type: file.type,
+              size: file.size,
+              data_url: dataUrl,
+            },
+          }),
+        });
+
+        if (response.status === 401) {
+          navigate("/login/advertiser", { replace: true });
+          return undefined;
+        }
+
+        const data = (await response.json().catch(() => ({}))) as AdvertiserBrandImageResponse;
+        if (!response.ok || !data.brand) {
+          throw new Error(data.error ?? "브랜드 로고를 저장하지 못했습니다.");
+        }
+
+        applyUpdatedAdvertiserBrand(brandId, { brand: data.brand });
+        return data.brand;
+      } catch (error) {
+        setBrandActionError(
+          error instanceof Error ? error.message : "브랜드 로고를 저장하지 못했습니다.",
+        );
+        return undefined;
+      } finally {
+        setUploadingBrandLogoId(undefined);
+      }
+    },
+    [applyUpdatedAdvertiserBrand, navigate, uploadingBrandLogoId],
+  );
   const handleDeleteAdvertiserBrand = useCallback(
     async (brandId: string) => {
-      if (deletingBrandId) return;
+      if (deletingBrandId) return false;
       setDeletingBrandId(brandId);
       setBrandActionError(undefined);
 
@@ -1196,7 +1397,7 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
 
         if (response.status === 401) {
           navigate("/login/advertiser", { replace: true });
-          return;
+          return false;
         }
 
         const data = (await response.json().catch(() => ({}))) as AdvertiserBrandsResponse;
@@ -1205,15 +1406,28 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
         }
 
         applyAdvertiserBrandResponse(data);
+        if (editingBrandId === brandId) {
+          if (data.brand) {
+            setBrandManagerMode("edit");
+            setEditingBrandId(data.brand.id);
+            setBrandForm(createAdvertiserBrandFormFromProfile(data.brand));
+          } else {
+            setBrandManagerMode("create");
+            setEditingBrandId(undefined);
+            setBrandForm(createEmptyAdvertiserBrandForm());
+          }
+        }
+        return true;
       } catch (error) {
         setBrandActionError(
           error instanceof Error ? error.message : "브랜드를 삭제하지 못했습니다.",
         );
+        return false;
       } finally {
         setDeletingBrandId(undefined);
       }
     },
-    [applyAdvertiserBrandResponse, deletingBrandId, navigate],
+    [applyAdvertiserBrandResponse, deletingBrandId, editingBrandId, navigate],
   );
   const acceptCampaignApplication = useCallback(
     async (thread: MarketplaceMessageThread) => {
@@ -1379,8 +1593,13 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
         selectedBrand={selectedBrand}
         selectedBrandId={selectedBrand?.id}
         account={advertiserAccount}
+        mode={brandManagerMode}
+        editingBrandId={editingBrandId}
         form={brandForm}
         isSaving={isSavingBrand}
+        updatingBrandId={updatingBrandId}
+        uploadingBrandLogoId={uploadingBrandLogoId}
+        removingBrandLogoId={removingBrandLogoId}
         deletingBrandId={deletingBrandId}
         error={brandActionError}
         onClose={() => {
@@ -1389,6 +1608,10 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
         }}
         onFormChange={setBrandForm}
         onCreate={handleCreateAdvertiserBrand}
+        onStartCreate={handleStartAdvertiserBrandCreate}
+        onEdit={handleEditAdvertiserBrand}
+        onUpdate={handleUpdateAdvertiserBrand}
+        onUploadLogo={handleUploadAdvertiserBrandLogo}
         onSelect={handleSelectAdvertiserBrand}
         onDelete={handleDeleteAdvertiserBrand}
       />
@@ -1438,7 +1661,7 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
               <LogOut className="h-3.5 w-3.5" strokeWidth={2} />
               <span className="hidden sm:inline">로그아웃</span>
             </button>
-            <AccountSettingsMenu
+            <AdvertiserAccountSettingsMenu
               account={advertiserAccount}
               open={accountMenuOpen}
               onToggle={() => setAccountMenuOpen((current) => !current)}
@@ -1464,11 +1687,20 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
                 <h1 className="truncate text-[17px] font-bold text-[#171a17]">
-                  {isCostSurface
-                    ? "광고비 현황"
-                    : isCampaignSurface
-                      ? "캠페인 운영 대시보드"
-                      : "1:1 계약 대시보드"}
+                  <span className="sm:hidden">
+                    {isCostSurface
+                      ? "광고비 현황"
+                      : isCampaignSurface
+                        ? "캠페인 운영"
+                        : "1:1 계약"}
+                  </span>
+                  <span className="hidden sm:inline">
+                    {isCostSurface
+                      ? "광고비 현황"
+                      : isCampaignSurface
+                        ? "캠페인 운영 대시보드"
+                        : "1:1 계약 대시보드"}
+                  </span>
                 </h1>
                 <DashboardDownloadButton onClick={handleDownloadDashboard} />
               </div>
@@ -1588,7 +1820,7 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
                     />
                   }
                   contracts={visibleContracts}
-                  totalContracts={dashboardContracts.length}
+                  totalContracts={oneToOneContracts.length}
                   query={query}
                   onQueryChange={setQuery}
                   platformFilter={campaignPlatformFilter}
@@ -1770,7 +2002,15 @@ function CostDashboard({
 
       <div className="min-h-0 overflow-y-auto bg-[#fbfbf8] p-3 lg:flex-1">
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-          <CostMetricCard label="총 광고비" value={formatCostCurrency(summary.total)} />
+          <CostMetricCard
+            label="총 광고비"
+            value={formatCostCurrency(summary.total)}
+            note={
+              summary.unpriced > 0
+                ? `금액 미산정 ${summary.unpriced.toLocaleString("ko-KR")}건`
+                : undefined
+            }
+          />
           <CostMetricCard
             label="진행중 계약금액"
             value={formatCostCurrency(summary.inProgress)}
@@ -1862,6 +2102,9 @@ function DashboardPeriodPicker({
   const [visibleMonth, setVisibleMonth] = useState(() =>
     getCostCalendarMonth(activeRange.from ?? activeRange.to),
   );
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  useBodyScrollLock(open);
   const activeButtonLabel = getCostPeriodButtonLabel(activeRange);
   const draftRange = normalizeCostDraftRange(draftFrom, draftTo);
 
@@ -1926,9 +2169,39 @@ function DashboardPeriodPicker({
     return () => window.clearTimeout(timer);
   }, [closeSignal]);
 
+  useEffect(() => {
+    if (!open) return undefined;
+    const triggerElement = triggerRef.current;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (
+        panelRef.current?.contains(target) ||
+        triggerRef.current?.contains(target)
+      ) {
+        return;
+      }
+      setOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setOpen(false);
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+      window.requestAnimationFrame(() => triggerElement?.focus());
+    };
+  }, [open]);
+
   return (
     <div className="relative">
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => {
           const nextOpen = !open;
@@ -1954,11 +2227,22 @@ function DashboardPeriodPicker({
       </button>
 
       {open ? (
-        <div
-          className={`fixed inset-x-4 bottom-4 z-50 max-h-[72vh] overflow-y-auto rounded-[10px] border border-[#d9e0d9] bg-white shadow-[0_22px_70px_rgba(15,23,42,0.16)] sm:absolute sm:inset-x-auto sm:bottom-auto sm:top-[calc(100%+8px)] sm:w-[calc(100vw-64px)] sm:max-w-[760px] sm:max-h-none sm:overflow-hidden ${
-            align === "right" ? "sm:left-auto sm:right-0" : "sm:left-0"
-          }`}
-        >
+        <>
+          <button
+            type="button"
+            className="fixed inset-0 z-40 bg-black/20 backdrop-blur-[1px] sm:hidden"
+            aria-label="기간 선택 닫기"
+            onClick={() => setOpen(false)}
+          />
+          <div
+            ref={panelRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="기간 선택"
+            className={`fixed inset-x-0 bottom-0 z-50 max-h-[calc(100svh-16px)] overflow-y-auto overscroll-contain rounded-t-[12px] border border-[#d9e0d9] bg-white shadow-[0_22px_70px_rgba(15,23,42,0.16)] sm:absolute sm:inset-x-auto sm:bottom-auto sm:top-[calc(100%+8px)] sm:w-[calc(100vw-64px)] sm:max-w-[760px] sm:max-h-none sm:overflow-hidden sm:rounded-[10px] ${
+              align === "right" ? "sm:left-auto sm:right-0" : "sm:left-0"
+            }`}
+          >
           <div className="border-b border-[#edf1ed] bg-[#fbfbf8] px-3 py-2.5">
             <div className="flex flex-wrap items-center gap-2">
               <span className="mr-1 text-[12px] font-extrabold text-[#606861]">
@@ -2086,7 +2370,8 @@ function DashboardPeriodPicker({
               </div>
             </div>
           </div>
-        </div>
+          </div>
+        </>
       ) : null}
     </div>
   );
@@ -2227,7 +2512,15 @@ function CostDateInput({
   );
 }
 
-function CostMetricCard({ label, value }: { label: string; value: string }) {
+function CostMetricCard({
+  label,
+  value,
+  note,
+}: {
+  label: string;
+  value: string;
+  note?: string;
+}) {
   return (
     <article className="rounded-[8px] border border-[#d9e0d9] bg-white px-3 py-3">
       <p className="truncate text-[12px] font-extrabold text-[#606861]">
@@ -2236,6 +2529,9 @@ function CostMetricCard({ label, value }: { label: string; value: string }) {
       <p className="mt-2 truncate text-[21px] font-black tabular-nums text-[#171a17]">
         {value}
       </p>
+      {note ? (
+        <p className="mt-1 truncate text-[11px] font-bold text-amber-700">{note}</p>
+      ) : null}
     </article>
   );
 }
@@ -2448,19 +2744,145 @@ type AdvertiserBrandForm = {
   description: string;
 };
 
+function createEmptyAdvertiserBrandForm(): AdvertiserBrandForm {
+  return {
+    displayName: "",
+    category: "",
+    location: "",
+    businessLabel: "",
+    homepage: "",
+    description: "",
+  };
+}
+
+function createAdvertiserBrandFormFromProfile(
+  brand: MarketplaceBrandProfile,
+): AdvertiserBrandForm {
+  let businessLabel = "";
+  let homepage = "";
+  const descriptionLines = brand.description.split(/\r?\n/).filter((line) => {
+    const normalized = line.trim();
+    if (/^운영사\s*:/i.test(normalized)) {
+      businessLabel = normalized.replace(/^운영사\s*:\s*/i, "").trim();
+      return false;
+    }
+    if (/^공식\s*채널\s*:/i.test(normalized)) {
+      homepage = normalized.replace(/^공식\s*채널\s*:\s*/i, "").trim();
+      return false;
+    }
+    return true;
+  });
+
+  return {
+    displayName: brand.displayName,
+    category: brand.category,
+    location: brand.location,
+    businessLabel,
+    homepage,
+    description: descriptionLines.join("\n").trim(),
+  };
+}
+
+function buildAdvertiserBrandPayload(
+  form: AdvertiserBrandForm,
+  existingBrand?: MarketplaceBrandProfile,
+) {
+  const displayName = form.displayName.trim();
+  const category = form.category.trim();
+  const location = form.location.trim();
+  const businessLabel = form.businessLabel.trim();
+  const homepage = form.homepage.trim();
+  const description = form.description.trim();
+
+  if (!displayName || !category || !location) {
+    return {
+      ok: false as const,
+      error: "브랜드명, 카테고리, 운영 지역을 입력해 주세요.",
+    };
+  }
+  if (displayName.length > 60) {
+    return { ok: false as const, error: "브랜드명은 60자 이내로 입력해 주세요." };
+  }
+  if (businessLabel.length > 100) {
+    return { ok: false as const, error: "브랜드 운영사명은 100자 이내로 입력해 주세요." };
+  }
+  if (category.length > 40) {
+    return { ok: false as const, error: "카테고리는 40자 이내로 입력해 주세요." };
+  }
+  if (location.length > 80) {
+    return { ok: false as const, error: "운영 지역은 80자 이내로 입력해 주세요." };
+  }
+  if (homepage.length > 200) {
+    return { ok: false as const, error: "공식 채널은 200자 이내로 입력해 주세요." };
+  }
+
+  const descriptionParts = [
+    description || `${displayName}의 인플루언서 협업 정보를 안내합니다.`,
+    businessLabel ? `운영사: ${businessLabel}` : undefined,
+    homepage ? `공식 채널: ${homepage}` : undefined,
+  ].filter((value): value is string => Boolean(value));
+  const storedDescription = descriptionParts.join("\n");
+  if (storedDescription.length > 500) {
+    return {
+      ok: false as const,
+      error: "운영사와 공식 채널을 포함한 브랜드 설명은 500자 이내로 입력해 주세요.",
+    };
+  }
+
+  const existingGeneratedHeadline = existingBrand
+    ? `${existingBrand.displayName}의 인플루언서 협업 제안을 관리합니다`
+    : undefined;
+  const headline =
+    existingBrand?.headline && existingBrand.headline !== existingGeneratedHeadline
+      ? existingBrand.headline
+      : `${displayName}의 인플루언서 협업 제안을 관리합니다`;
+
+  return {
+    ok: true as const,
+    value: {
+      displayName,
+      category,
+      location,
+      headline,
+      description: storedDescription,
+    },
+  };
+}
+
+function readDashboardFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () =>
+      typeof reader.result === "string"
+        ? resolve(reader.result)
+        : reject(new Error("브랜드 로고를 읽지 못했습니다."));
+    reader.onerror = () => reject(new Error("브랜드 로고를 읽지 못했습니다."));
+    reader.readAsDataURL(file);
+  });
+}
+
 function BrandManagementDialog({
   open,
   brands,
   selectedBrand,
   selectedBrandId,
   account,
+  mode,
+  editingBrandId,
   form,
   isSaving,
+  updatingBrandId,
+  uploadingBrandLogoId,
+  removingBrandLogoId,
   deletingBrandId,
   error,
   onClose,
   onFormChange,
   onCreate,
+  onStartCreate,
+  onEdit,
+  onUpdate,
+  onUploadLogo,
   onSelect,
   onDelete,
 }: {
@@ -2469,37 +2891,114 @@ function BrandManagementDialog({
   selectedBrand: MarketplaceBrandProfile | null;
   selectedBrandId?: string;
   account: AdvertiserAccountSummary;
+  mode: "create" | "edit";
+  editingBrandId?: string;
   form: AdvertiserBrandForm;
   isSaving: boolean;
+  updatingBrandId?: string;
+  uploadingBrandLogoId?: string;
+  removingBrandLogoId?: string;
   deletingBrandId?: string;
   error?: string;
   onClose: () => void;
   onFormChange: (form: AdvertiserBrandForm) => void;
   onCreate: () => void;
+  onStartCreate: () => void;
+  onEdit: (brandId: string) => void;
+  onUpdate: (
+    brandId: string,
+    form: AdvertiserBrandForm,
+    options?: { removeLogo?: boolean },
+  ) => Promise<MarketplaceBrandProfile | undefined>;
+  onUploadLogo: (
+    brandId: string,
+    file: File,
+  ) => Promise<MarketplaceBrandProfile | undefined>;
   onSelect: (brandId: string) => void;
-  onDelete: (brandId: string) => void;
+  onDelete: (brandId: string) => Promise<boolean>;
 }) {
-  if (!open) return null;
+  const [pendingDeleteBrandId, setPendingDeleteBrandId] = useState<string>();
+  const [pendingLogoRemovalBrandId, setPendingLogoRemovalBrandId] =
+    useState<string>();
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  useBodyScrollLock(open);
 
   const listedBrands = brands.length > 0 ? brands : selectedBrand ? [selectedBrand] : [];
   const canDelete = brands.length > 1;
   const showDefaultBusinessCard = listedBrands.length === 0;
+  const editingBrand = listedBrands.find((brand) => brand.id === editingBrandId);
+  const pendingDeleteBrand = listedBrands.find(
+    (brand) => brand.id === pendingDeleteBrandId,
+  );
+  const pendingLogoRemovalBrand = listedBrands.find(
+    (brand) => brand.id === pendingLogoRemovalBrandId,
+  );
+  const handleDialogClose = useCallback(() => {
+    setPendingDeleteBrandId(undefined);
+    setPendingLogoRemovalBrandId(undefined);
+    onClose();
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      if (pendingDeleteBrandId) {
+        setPendingDeleteBrandId(undefined);
+        return;
+      }
+      if (pendingLogoRemovalBrandId) {
+        setPendingLogoRemovalBrandId(undefined);
+        return;
+      }
+      handleDialogClose();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [
+    handleDialogClose,
+    open,
+    pendingDeleteBrandId,
+    pendingLogoRemovalBrandId,
+  ]);
+
+  if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-3 py-6">
-      <section className="w-full max-w-[640px] overflow-hidden rounded-[14px] border border-neutral-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.22)]">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-3 py-4"
+      onMouseDown={(event) => {
+        if (
+          event.target === event.currentTarget &&
+          !pendingDeleteBrandId &&
+          !pendingLogoRemovalBrandId
+        ) {
+          handleDialogClose();
+        }
+      }}
+    >
+      <section
+        className="flex max-h-[calc(100vh-32px)] w-full max-w-[900px] flex-col overflow-hidden rounded-[12px] border border-neutral-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.22)]"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="brand-manager-title"
+      >
         <div className="flex items-center justify-between gap-3 border-b border-neutral-100 px-5 py-4">
           <div className="min-w-0">
-            <h2 className="text-[17px] font-extrabold text-neutral-950">
+            <h2
+              id="brand-manager-title"
+              className="text-[17px] font-extrabold text-neutral-950"
+            >
               브랜드 정보
             </h2>
             <p className="mt-1 text-[12px] font-semibold text-neutral-500">
-              사업자 계정에서 운영할 브랜드를 관리합니다.
+              한 사업자 계정에서 운영하는 브랜드를 등록하고 관리합니다.
             </p>
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleDialogClose}
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-950"
             aria-label="닫기"
             title="닫기"
@@ -2508,183 +3007,438 @@ function BrandManagementDialog({
           </button>
         </div>
 
-        <div className="grid gap-4 p-5 lg:grid-cols-[minmax(0,1fr)_minmax(220px,0.72fr)]">
-          <div className="min-w-0">
-            <p className="text-[12px] font-extrabold text-neutral-500">
-              등록 브랜드
-            </p>
-            <div className="mt-2 max-h-[320px] space-y-2 overflow-y-auto pr-1">
+        <div className="min-h-0 flex-1 overflow-y-auto md:grid md:grid-cols-[280px_minmax(0,1fr)] md:overflow-hidden">
+          <aside className="border-b border-neutral-200 bg-[#fbfbf8] md:flex md:min-h-0 md:flex-col md:border-b-0 md:border-r">
+            <div className="flex items-center justify-between gap-3 px-4 py-3">
+              <p className="text-[12px] font-extrabold text-neutral-600">
+                등록 브랜드 {listedBrands.length.toLocaleString("ko-KR")}
+              </p>
+              <button
+                type="button"
+                onClick={onStartCreate}
+                className="inline-flex h-8 items-center gap-1 rounded-[7px] border border-neutral-200 bg-white px-2.5 text-[11px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                새 브랜드
+              </button>
+            </div>
+            <div className="max-h-[230px] overflow-y-auto border-t border-neutral-200 md:max-h-none md:flex-1">
               {listedBrands.length > 0 ? (
-                listedBrands.map((brand) => {
-                  const selected = brand.id === selectedBrandId;
-                  const deleting = deletingBrandId === brand.id;
-                  return (
-                    <div
-                      key={brand.id}
-                      className={`rounded-[12px] border px-3 py-3 ${
-                        selected
-                          ? "border-blue-200 bg-blue-50/80"
-                          : "border-neutral-200 bg-white"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="truncate text-[14px] font-extrabold text-neutral-950">
-                            {brand.displayName}
-                          </p>
-                          <p className="mt-1 truncate text-[12px] font-semibold text-neutral-500">
-                            {[brand.category, brand.location].filter(Boolean).join(" · ") ||
-                              "브랜드 정보 미입력"}
-                          </p>
+                <div className="divide-y divide-neutral-200">
+                  {listedBrands.map((brand) => {
+                    const selected = brand.id === selectedBrandId;
+                    const editing = brand.id === editingBrandId && mode === "edit";
+                    const deleting = deletingBrandId === brand.id;
+                    return (
+                      <div
+                        key={brand.id}
+                        className={`px-4 py-3 transition ${
+                          editing ? "bg-blue-50/70" : "bg-transparent"
+                        }`}
+                      >
+                        <div className="flex items-start gap-3">
+                          <BrandLogoPreview brand={brand} className="h-10 w-10" />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex min-w-0 items-center gap-2">
+                              <p className="truncate text-[13px] font-extrabold text-neutral-950">
+                                {brand.displayName}
+                              </p>
+                              {selected ? (
+                                <span className="shrink-0 text-[10px] font-extrabold text-blue-700">
+                                  사용 중
+                                </span>
+                              ) : null}
+                            </div>
+                            <p className="mt-1 truncate text-[11px] font-semibold text-neutral-500">
+                              {[brand.category, brand.location]
+                                .filter(Boolean)
+                                .join(" · ") || "브랜드 정보 미입력"}
+                            </p>
+                          </div>
                         </div>
-                        {selected ? (
-                          <span className="shrink-0 rounded-full bg-blue-600 px-2 py-1 text-[10px] font-extrabold text-white">
-                            선택됨
-                          </span>
-                        ) : null}
-                      </div>
-                      <div className="mt-3 flex items-center justify-end gap-2">
-                        {selected ? null : (
+                        <div className="mt-2.5 flex items-center justify-end gap-1.5">
+                          {!selected ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onSelect(brand.id);
+                                onEdit(brand.id);
+                              }}
+                              className="h-7 rounded-[6px] px-2 text-[11px] font-extrabold text-neutral-600 transition hover:bg-white hover:text-blue-700"
+                            >
+                              사용
+                            </button>
+                          ) : null}
                           <button
                             type="button"
-                            onClick={() => onSelect(brand.id)}
-                            className="h-8 rounded-md border border-neutral-200 bg-white px-3 text-[11px] font-extrabold text-neutral-700 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+                            onClick={() => onEdit(brand.id)}
+                            className="h-7 rounded-[6px] px-2 text-[11px] font-extrabold text-neutral-600 transition hover:bg-white hover:text-neutral-950"
                           >
-                            선택
+                            수정
                           </button>
-                        )}
-                        <button
-                          type="button"
-                          disabled={!canDelete || deleting}
-                          onClick={() => onDelete(brand.id)}
-                          className="h-8 rounded-md border border-neutral-200 bg-white px-3 text-[11px] font-extrabold text-neutral-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700 disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                          {deleting ? "삭제 중" : "삭제"}
-                        </button>
+                          <button
+                            type="button"
+                            disabled={!canDelete || deleting}
+                            onClick={() => setPendingDeleteBrandId(brand.id)}
+                            className="flex h-7 w-7 items-center justify-center rounded-[6px] text-neutral-400 transition hover:bg-white hover:text-rose-700 disabled:cursor-not-allowed disabled:opacity-35"
+                            aria-label={`${brand.displayName} 삭제`}
+                            title={canDelete ? "브랜드 삭제" : "최소 1개의 브랜드는 남겨야 합니다"}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })
+                    );
+                  })}
+                </div>
               ) : showDefaultBusinessCard ? (
-                <div className="rounded-[12px] border border-blue-100 bg-blue-50/70 px-3 py-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-[14px] font-extrabold text-neutral-950">
-                        {account.name}
-                      </p>
-                      <p className="mt-1 truncate text-[12px] font-semibold text-neutral-600">
-                        사업자 인증 정보 기준
-                      </p>
-                      {account.businessNumber ? (
-                        <p className="mt-1 truncate text-[11px] font-bold text-neutral-500">
-                          사업자번호 {formatBusinessRegistrationNumber(account.businessNumber)}
-                        </p>
-                      ) : null}
-                    </div>
-                    <span className="shrink-0 rounded-full bg-blue-600 px-2 py-1 text-[10px] font-extrabold text-white">
-                      기본
-                    </span>
-                  </div>
-                  <p className="mt-3 text-[12px] font-semibold leading-5 text-neutral-600">
-                    별도 브랜드를 운영하면 오른쪽에서 브랜드 정보를 추가하세요.
+                <div className="px-4 py-5">
+                  <p className="truncate text-[13px] font-extrabold text-neutral-950">
+                    {account.name}
+                  </p>
+                  <p className="mt-1 text-[11px] font-semibold text-neutral-500">
+                    사업자 인증 정보 기준
+                  </p>
+                  {account.businessNumber ? (
+                    <p className="mt-1 text-[11px] font-bold text-neutral-500">
+                      사업자번호 {formatBusinessRegistrationNumber(account.businessNumber)}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          </aside>
+
+          <div className="min-w-0 bg-white px-5 py-5 md:min-h-0 md:overflow-y-auto md:px-6">
+            <div className="flex items-start justify-between gap-4 border-b border-neutral-200 pb-4">
+              <div className="min-w-0">
+                <p className="text-[15px] font-extrabold text-neutral-950">
+                  {mode === "edit" ? "브랜드 정보 수정" : "신규 브랜드 등록"}
+                </p>
+                <p className="mt-1 text-[11px] font-semibold leading-5 text-neutral-500">
+                  {mode === "edit"
+                    ? "캠페인과 인플루언서에게 표시되는 브랜드 정보를 관리합니다."
+                    : "사업자 계정에 새 운영 브랜드를 등록합니다."}
+                </p>
+              </div>
+              {mode === "edit" && editingBrand ? (
+                <span className="shrink-0 text-[11px] font-extrabold text-neutral-500">
+                  {editingBrand.isDefault ? "기본 브랜드" : "운영 브랜드"}
+                </span>
+              ) : null}
+            </div>
+
+            {mode === "edit" && editingBrand ? (
+              <div className="flex items-center gap-3 border-b border-neutral-200 py-4">
+                <BrandLogoPreview brand={editingBrand} className="h-14 w-14" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[12px] font-extrabold text-neutral-800">
+                    브랜드 로고
+                  </p>
+                  <p className="mt-1 text-[11px] font-semibold text-neutral-500">
+                    PNG, JPG, WebP · 최대 3MB
                   </p>
                 </div>
-              ) : (
-                <div className="flex min-h-[120px] items-center justify-center rounded-[12px] border border-dashed border-neutral-200 bg-neutral-50 text-[12px] font-bold text-neutral-500">
-                  등록된 브랜드가 없습니다.
+                <input
+                  ref={logoInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="sr-only"
+                  onChange={async (event) => {
+                    const file = event.target.files?.[0];
+                    if (file) await onUploadLogo(editingBrand.id, file);
+                    event.target.value = "";
+                  }}
+                />
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => logoInputRef.current?.click()}
+                    disabled={uploadingBrandLogoId === editingBrand.id}
+                    className="inline-flex h-9 items-center gap-1.5 rounded-[7px] border border-neutral-200 bg-white px-3 text-[11px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <ImagePlus className="h-3.5 w-3.5" />
+                    {uploadingBrandLogoId === editingBrand.id ? "업로드 중" : "교체"}
+                  </button>
+                  {editingBrand.logoUrl ? (
+                    <button
+                      type="button"
+                      onClick={() => setPendingLogoRemovalBrandId(editingBrand.id)}
+                      disabled={removingBrandLogoId === editingBrand.id}
+                      className="flex h-9 w-9 items-center justify-center rounded-[7px] text-neutral-400 transition hover:bg-rose-50 hover:text-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      aria-label="브랜드 로고 삭제"
+                      title="브랜드 로고 삭제"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  ) : null}
                 </div>
-              )}
-            </div>
-          </div>
+              </div>
+            ) : null}
 
-          <div className="min-w-0 rounded-[12px] border border-neutral-200 bg-[#fbfaf7] p-4">
-            <div className="border-b border-neutral-200 pb-3">
-              <p className="text-[13px] font-extrabold text-neutral-950">
-                신규 브랜드 등록
-              </p>
-              <p className="mt-1 text-[11px] font-semibold leading-5 text-neutral-500">
-                캠페인 모집과 계약서에 표시될 운영 브랜드 정보를 등록합니다.
-              </p>
-            </div>
-            <div className="mt-3 grid gap-3">
-              <BrandRegistrationField label="브랜드명" required>
-                <input
-                  value={form.displayName}
-                  onChange={(event) =>
-                    onFormChange({ ...form, displayName: event.target.value })
-                  }
-                  className="h-11 w-full rounded-[10px] border border-neutral-200 bg-white px-3 text-[13px] font-bold text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950 focus:shadow-[0_0_0_3px_rgba(15,23,42,0.06)]"
-                  placeholder="예: 브레드룸"
-                />
-              </BrandRegistrationField>
-              <BrandRegistrationField label="사업자/운영사명">
-                <input
-                  value={form.businessLabel}
-                  onChange={(event) =>
-                    onFormChange({ ...form, businessLabel: event.target.value })
-                  }
-                  className="h-11 w-full rounded-[10px] border border-neutral-200 bg-white px-3 text-[13px] font-bold text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950 focus:shadow-[0_0_0_3px_rgba(15,23,42,0.06)]"
-                  placeholder="예: 주식회사 연락미"
-                />
-              </BrandRegistrationField>
-              <BrandRegistrationField label="카테고리" required>
-                <input
-                  value={form.category}
-                  onChange={(event) =>
-                    onFormChange({ ...form, category: event.target.value })
-                  }
-                  className="h-11 w-full rounded-[10px] border border-neutral-200 bg-white px-3 text-[13px] font-bold text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950 focus:shadow-[0_0_0_3px_rgba(15,23,42,0.06)]"
-                  placeholder="예: 뷰티 · 스킨케어"
-                />
-              </BrandRegistrationField>
-              <BrandRegistrationField label="운영지역" required>
-                <input
-                  value={form.location}
-                  onChange={(event) =>
-                    onFormChange({ ...form, location: event.target.value })
-                  }
-                  className="h-11 w-full rounded-[10px] border border-neutral-200 bg-white px-3 text-[13px] font-bold text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950 focus:shadow-[0_0_0_3px_rgba(15,23,42,0.06)]"
-                  placeholder="예: 전국 배송 / 서울 방문"
-                />
-              </BrandRegistrationField>
-              <BrandRegistrationField label="공식 채널">
-                <input
-                  value={form.homepage}
-                  onChange={(event) =>
-                    onFormChange({ ...form, homepage: event.target.value })
-                  }
-                  className="h-11 w-full rounded-[10px] border border-neutral-200 bg-white px-3 text-[13px] font-bold text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950 focus:shadow-[0_0_0_3px_rgba(15,23,42,0.06)]"
-                  placeholder="홈페이지 또는 인스타그램 주소"
-                />
-              </BrandRegistrationField>
-              <BrandRegistrationField label="브랜드 설명">
-                <textarea
-                  value={form.description}
-                  onChange={(event) =>
-                    onFormChange({ ...form, description: event.target.value })
-                  }
-                  rows={4}
-                  className="min-h-[96px] w-full resize-none rounded-[10px] border border-neutral-200 bg-white px-3 py-2.5 text-[13px] font-bold leading-5 text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950 focus:shadow-[0_0_0_3px_rgba(15,23,42,0.06)]"
-                  placeholder="주요 제품, 협업 방식, 인플루언서에게 보여줄 브랜드 소개를 적어 주세요."
-                />
-              </BrandRegistrationField>
-            </div>
+            <BrandRegistrationFormFields form={form} onChange={onFormChange} />
+            <p className="mt-3 text-[11px] font-semibold leading-5 text-neutral-500">
+              계약서 서명 주체는 이 정보가 아닌 계정의 사업자 인증 정보로 관리됩니다.
+            </p>
             {error ? (
-              <p className="mt-3 rounded-[9px] border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] font-extrabold text-rose-700">
+              <p className="mt-3 rounded-[8px] border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] font-extrabold text-rose-700">
                 {error}
               </p>
             ) : null}
             <button
               type="button"
-              onClick={onCreate}
-              disabled={isSaving}
-              className="mt-4 flex h-10 w-full items-center justify-center rounded-[9px] bg-blue-600 px-3 text-[13px] font-extrabold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={() => {
+                if (mode === "edit" && editingBrand) {
+                  void onUpdate(editingBrand.id, form);
+                } else {
+                  onCreate();
+                }
+              }}
+              disabled={
+                mode === "edit"
+                  ? !editingBrand || updatingBrandId === editingBrand.id
+                  : isSaving
+              }
+              className="mt-4 flex h-10 w-full items-center justify-center rounded-[8px] bg-blue-600 px-3 text-[13px] font-extrabold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isSaving ? "추가 중" : "브랜드 추가"}
+              {mode === "edit"
+                ? updatingBrandId === editingBrand?.id
+                  ? "저장 중"
+                  : "변경사항 저장"
+                : isSaving
+                  ? "등록 중"
+                  : "브랜드 등록"}
             </button>
           </div>
         </div>
       </section>
+      {pendingLogoRemovalBrand ? (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/45 px-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="brand-logo-remove-confirm-title"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setPendingLogoRemovalBrandId(undefined);
+            }
+          }}
+        >
+          <section className="w-full max-w-[420px] rounded-[12px] border border-neutral-200 bg-white p-5 shadow-[0_24px_70px_rgba(15,23,42,0.26)]">
+            <h3
+              id="brand-logo-remove-confirm-title"
+              className="text-[17px] font-extrabold text-neutral-950"
+            >
+              브랜드 로고 삭제
+            </h3>
+            <p className="mt-3 text-[13px] font-semibold leading-6 text-neutral-600">
+              {pendingLogoRemovalBrand.displayName}의 등록 로고를 삭제하면 브랜드
+              이니셜이 대신 표시됩니다.
+            </p>
+            {error ? (
+              <p className="mt-3 rounded-[8px] border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] font-extrabold text-rose-700">
+                {error}
+              </p>
+            ) : null}
+            <div className="mt-5 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setPendingLogoRemovalBrandId(undefined)}
+                disabled={removingBrandLogoId === pendingLogoRemovalBrand.id}
+                className="h-10 rounded-[8px] border border-neutral-200 bg-white text-[13px] font-extrabold text-neutral-700 transition hover:bg-neutral-50 disabled:opacity-50"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const updated = await onUpdate(
+                    pendingLogoRemovalBrand.id,
+                    createAdvertiserBrandFormFromProfile(
+                      pendingLogoRemovalBrand,
+                    ),
+                    { removeLogo: true },
+                  );
+                  if (updated && !updated.logoUrl) {
+                    setPendingLogoRemovalBrandId(undefined);
+                  }
+                }}
+                disabled={removingBrandLogoId === pendingLogoRemovalBrand.id}
+                className="h-10 rounded-[8px] bg-rose-600 text-[13px] font-extrabold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {removingBrandLogoId === pendingLogoRemovalBrand.id
+                  ? "삭제 중"
+                  : "로고 삭제"}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+      {pendingDeleteBrand ? (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/45 px-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="brand-delete-confirm-title"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setPendingDeleteBrandId(undefined);
+            }
+          }}
+        >
+          <section className="w-full max-w-[420px] rounded-[12px] border border-neutral-200 bg-white p-5 shadow-[0_24px_70px_rgba(15,23,42,0.26)]">
+            <h3
+              id="brand-delete-confirm-title"
+              className="text-[17px] font-extrabold text-neutral-950"
+            >
+              {pendingDeleteBrand.displayName} 삭제
+            </h3>
+            <p className="mt-3 text-[13px] font-semibold leading-6 text-neutral-600">
+              운영 브랜드 목록에서 보관 처리합니다. 과거 계약 기록은 유지되며,
+              진행 중 캠페인이나 미결 제안이 있으면 삭제되지 않습니다.
+            </p>
+            {error ? (
+              <p className="mt-3 rounded-[8px] border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] font-extrabold text-rose-700">
+                {error}
+              </p>
+            ) : null}
+            <div className="mt-5 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setPendingDeleteBrandId(undefined)}
+                disabled={deletingBrandId === pendingDeleteBrand.id}
+                className="h-10 rounded-[8px] border border-neutral-200 bg-white text-[13px] font-extrabold text-neutral-700 transition hover:bg-neutral-50 disabled:opacity-50"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const deleted = await onDelete(pendingDeleteBrand.id);
+                  if (deleted) setPendingDeleteBrandId(undefined);
+                }}
+                disabled={deletingBrandId === pendingDeleteBrand.id}
+                className="h-10 rounded-[8px] bg-rose-600 text-[13px] font-extrabold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {deletingBrandId === pendingDeleteBrand.id
+                  ? "삭제 중"
+                  : "브랜드 삭제"}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function BrandLogoPreview({
+  brand,
+  className,
+}: {
+  brand: MarketplaceBrandProfile;
+  className: string;
+}) {
+  return (
+    <div
+      className={`relative flex shrink-0 items-center justify-center overflow-hidden rounded-[8px] border border-neutral-200 bg-neutral-100 text-[12px] font-black text-neutral-600 ${className}`}
+      aria-hidden="true"
+    >
+      <span>{brand.logoLabel || brand.displayName.slice(0, 2).toUpperCase()}</span>
+      {brand.logoUrl ? (
+        <img
+          key={brand.logoUrl}
+          src={brand.logoUrl}
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover"
+          onError={(event) => {
+            event.currentTarget.style.display = "none";
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function BrandRegistrationFormFields({
+  form,
+  onChange,
+}: {
+  form: AdvertiserBrandForm;
+  onChange: (form: AdvertiserBrandForm) => void;
+}) {
+  const inputClassName =
+    "h-11 w-full rounded-[8px] border border-neutral-200 bg-white px-3 text-[13px] font-bold text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950 focus:shadow-[0_0_0_3px_rgba(15,23,42,0.06)]";
+
+  return (
+    <div className="mt-4 grid gap-3">
+      <BrandRegistrationField label="브랜드명" required>
+        <input
+          value={form.displayName}
+          maxLength={60}
+          onChange={(event) =>
+            onChange({ ...form, displayName: event.target.value })
+          }
+          className={inputClassName}
+          placeholder="예: 브레드룸"
+        />
+      </BrandRegistrationField>
+      <BrandRegistrationField label="브랜드 운영사명">
+        <input
+          value={form.businessLabel}
+          maxLength={100}
+          onChange={(event) =>
+            onChange({ ...form, businessLabel: event.target.value })
+          }
+          className={inputClassName}
+          placeholder="예: 주식회사 연락미"
+        />
+      </BrandRegistrationField>
+      <BrandRegistrationField label="카테고리" required>
+        <input
+          value={form.category}
+          maxLength={40}
+          onChange={(event) =>
+            onChange({ ...form, category: event.target.value })
+          }
+          className={inputClassName}
+          placeholder="예: 뷰티 · 스킨케어"
+        />
+      </BrandRegistrationField>
+      <BrandRegistrationField label="운영 지역" required>
+        <input
+          value={form.location}
+          maxLength={80}
+          onChange={(event) =>
+            onChange({ ...form, location: event.target.value })
+          }
+          className={inputClassName}
+          placeholder="예: 전국 배송 / 서울 방문"
+        />
+      </BrandRegistrationField>
+      <BrandRegistrationField label="공식 채널">
+        <input
+          value={form.homepage}
+          maxLength={200}
+          onChange={(event) =>
+            onChange({ ...form, homepage: event.target.value })
+          }
+          className={inputClassName}
+          placeholder="홈페이지 또는 인스타그램 주소"
+        />
+      </BrandRegistrationField>
+      <BrandRegistrationField label="브랜드 설명">
+        <textarea
+          value={form.description}
+          maxLength={500}
+          onChange={(event) =>
+            onChange({ ...form, description: event.target.value })
+          }
+          rows={5}
+          className="min-h-[112px] w-full resize-y rounded-[8px] border border-neutral-200 bg-white px-3 py-2.5 text-[13px] font-bold leading-5 text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950 focus:shadow-[0_0_0_3px_rgba(15,23,42,0.06)]"
+          placeholder="주요 제품과 협업 방식 등 인플루언서에게 보여줄 소개를 적어 주세요."
+        />
+      </BrandRegistrationField>
     </div>
   );
 }
@@ -2710,132 +3464,6 @@ function BrandRegistrationField({
       </span>
       <span className="mt-1.5 block">{children}</span>
     </label>
-  );
-}
-
-function AccountSettingsMenu({
-  account,
-  open,
-  onToggle,
-  onClose,
-  onChangePassword,
-  onOpenBusinessVerification,
-}: {
-  account: AdvertiserAccountSummary;
-  open: boolean;
-  onToggle: () => void;
-  onClose: () => void;
-  onChangePassword: () => void;
-  onOpenBusinessVerification: () => void;
-}) {
-  const rootRef = useRef<HTMLDivElement | null>(null);
-  const emailChangeHref = buildSupportMailtoHref({
-    subject: "광고주 계정 이메일 변경 요청",
-    body: [
-      "광고주 계정 이메일 변경을 요청합니다.",
-      "",
-      `현재 표시 이메일: ${account.email ?? "확인 필요"}`,
-      "변경할 이메일:",
-      "사업자명:",
-      "요청 사유:",
-    ].join("\n"),
-  });
-
-  useEffect(() => {
-    if (!open) return undefined;
-
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target;
-      if (!(target instanceof Node)) return;
-      if (rootRef.current?.contains(target)) return;
-      onClose();
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-
-    document.addEventListener("pointerdown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [onClose, open]);
-
-  return (
-    <div ref={rootRef} className="relative shrink-0">
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-label="계정 설정"
-        title="계정 설정"
-        aria-expanded={open}
-        className="yl-header-icon-action"
-      >
-        <Settings className="h-3.5 w-3.5" strokeWidth={2} />
-      </button>
-
-      {open ? (
-        <div className="absolute right-0 top-[calc(100%+8px)] z-40 w-[290px] overflow-hidden rounded-[12px] border border-neutral-200 bg-white text-left shadow-[0_18px_50px_rgba(15,23,42,0.14)]">
-          <div className="border-b border-neutral-100 px-4 py-3">
-            <p className="text-[13px] font-extrabold text-neutral-950">
-              계정 설정
-            </p>
-            {account.email ? (
-              <p className="mt-1 truncate text-[12px] font-semibold text-neutral-500">
-                {account.email}
-              </p>
-            ) : null}
-          </div>
-          <a
-            href={emailChangeHref}
-            onClick={onClose}
-            className="flex min-h-12 items-start gap-2 px-4 py-3 text-left transition hover:bg-neutral-50"
-          >
-            <Mail className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-500" />
-            <span className="min-w-0">
-              <span className="block text-[12px] font-extrabold text-neutral-800">
-                로그인 이메일 변경 요청
-              </span>
-              <span className="mt-0.5 block text-[11px] font-semibold leading-4 text-neutral-500">
-                소유 확인 후 새 이메일로 변경합니다.
-              </span>
-            </span>
-          </a>
-          <button
-            type="button"
-            onClick={onOpenBusinessVerification}
-            className="flex min-h-12 w-full items-start gap-2 px-4 py-3 text-left transition hover:bg-neutral-50"
-          >
-            <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-500" />
-            <span className="min-w-0">
-              <span className="block text-[12px] font-extrabold text-neutral-800">
-                사업자 인증 관리
-              </span>
-              <span className="mt-0.5 block text-[11px] font-semibold leading-4 text-neutral-500">
-                사업자 정보를 확인하고 관리합니다.
-              </span>
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={onChangePassword}
-            className="flex min-h-12 w-full items-start gap-2 px-4 py-3 text-left transition hover:bg-neutral-50"
-          >
-            <KeyRound className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-500" />
-            <span className="min-w-0">
-              <span className="block text-[12px] font-extrabold text-neutral-800">
-                비밀번호 재설정
-              </span>
-              <span className="mt-0.5 block text-[11px] font-semibold leading-4 text-neutral-500">
-                로그인 비밀번호를 다시 설정합니다.
-              </span>
-            </span>
-          </button>
-        </div>
-      ) : null}
-    </div>
   );
 }
 
@@ -3048,18 +3676,6 @@ function VerificationBanner({
       </div>
     </section>
   );
-}
-
-function buildSupportMailtoHref({
-  subject,
-  body,
-}: {
-  subject: string;
-  body: string;
-}) {
-  return `mailto:${LEGAL_CONTACT_EMAIL}?subject=${encodeURIComponent(
-    subject,
-  )}&body=${encodeURIComponent(body)}`;
 }
 
 function SyncPill({
@@ -3377,6 +3993,12 @@ function CampaignListView({
   const filterSummary =
     activeFilters.length > 0 ? `${activeFilters.length}개 조건 적용` : "전체 조건";
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const lifecycleTitle =
+    lifecycleFilter === "RECRUITING"
+      ? "모집 현황"
+      : lifecycleFilter === "IN_PROGRESS"
+        ? "진행 현황"
+        : "종료 내역";
 
   return (
     <section className="overflow-visible rounded-[8px] border border-[#d9e0d9] bg-white shadow-[0_1px_0_rgba(255,255,255,0.9)_inset] lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
@@ -3389,10 +4011,9 @@ function CampaignListView({
         <div className="flex min-h-11 flex-wrap items-center justify-between gap-2 px-3 py-2">
           <div className="min-w-[180px] flex-1">
             <p className="truncate text-[14px] font-extrabold leading-5 text-[#171a17]">
-              모집 현황
+              {lifecycleTitle}
             </p>
             <p className="mt-0.5 truncate text-[11px] font-semibold text-[#606861]">
-              선정자별 진행을 관리합니다 ·{" "}
               {campaigns.length.toLocaleString("ko-KR")}건 표시 · {filterSummary}
             </p>
           </div>
@@ -3634,7 +4255,7 @@ function CampaignLifecycleTabs({
               onClick={() => onChange(tab.value)}
               role="tab"
               aria-selected={active}
-              className={`relative flex h-10 min-w-0 flex-1 items-center justify-between gap-2 overflow-visible rounded-t-[10px] border px-3 text-left transition focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-neutral-950 ${
+              className={`relative flex h-10 min-w-0 flex-1 items-center justify-between gap-1 overflow-visible rounded-t-[10px] border px-1.5 text-left transition focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-neutral-950 sm:gap-2 sm:px-3 ${
                 active
                   ? "yl-dashboard-lifecycle-tab-active z-10 border-[#d9e0d9] border-b-white bg-white text-[#171a17]"
                   : "border-transparent bg-transparent text-[#59605b] hover:bg-white/35 hover:text-[#171a17]"
@@ -3798,6 +4419,18 @@ function CampaignDetailView({
       : 0;
   const isRecruitingDetail = campaign.lifecycle === "RECRUITING";
   const isEndedDetail = campaign.lifecycle === "ENDED";
+  const detailListTitle =
+    campaign.lifecycle === "RECRUITING"
+      ? "모집 현황"
+      : campaign.lifecycle === "IN_PROGRESS"
+        ? "진행 현황"
+        : "종료 내역";
+  const selectedApplicantCount = Math.max(
+    campaign.acceptedParticipantCount,
+    campaign.applicants.filter((applicant) =>
+      ["accepted", "converted_to_contract"].includes(applicant.status),
+    ).length,
+  );
   const detailProgressTitle = isEndedDetail ? "최종 진행 기록" : "선정자별 진행";
   const statusMeta = getCampaignLifecycleMeta(campaign);
   const typeLabel = getCampaignTypeLabel(campaign);
@@ -3902,9 +4535,9 @@ function CampaignDetailView({
           className="mb-3 inline-flex h-8 items-center gap-1.5 rounded-[7px] border border-[#d9e0d9] bg-white px-2.5 text-[12px] font-extrabold text-[#303630] transition hover:border-[#cbd5cc]"
         >
           <ArrowLeft className="h-3.5 w-3.5" strokeWidth={2} />
-          모집 현황
+          {detailListTitle}
         </button>
-        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_260px] lg:items-end">
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_260px] lg:items-start">
           <div className="min-w-0">
             <p className="text-[11px] font-extrabold text-[#7d857f]">
               캠페인 상세
@@ -3924,21 +4557,40 @@ function CampaignDetailView({
             </div>
           </div>
           <div className="grid gap-2">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-[13px] font-extrabold text-[#171a17]">
-                완료율: {campaign.completedCount} / {campaign.acceptedParticipantCount}
-              </p>
-              <span className="text-[12px] font-semibold text-[#606861]">
-                {completionRatio}%
-              </span>
-            </div>
-            <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#e6ebe6]">
-              <div
-                className="h-full rounded-full bg-[#171a17]"
-                style={{ width: `${completionRatio}%` }}
-              />
-            </div>
-            {campaignShareUrl ? (
+            {isRecruitingDetail ? (
+              <div className="flex items-center justify-between gap-4 text-[13px] text-[#606861]">
+                <span>
+                  지원자{" "}
+                  <strong className="font-extrabold text-[#171a17]">
+                    {campaign.applicants.length.toLocaleString("ko-KR")}명
+                  </strong>
+                </span>
+                <span>
+                  선정{" "}
+                  <strong className="font-extrabold text-[#171a17]">
+                    {selectedApplicantCount.toLocaleString("ko-KR")}명
+                  </strong>
+                </span>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[13px] font-extrabold text-[#171a17]">
+                    완료율: {campaign.completedCount} / {campaign.acceptedParticipantCount}
+                  </p>
+                  <span className="text-[12px] font-semibold text-[#606861]">
+                    {completionRatio}%
+                  </span>
+                </div>
+                <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#e6ebe6]">
+                  <div
+                    className="h-full rounded-full bg-[#171a17]"
+                    style={{ width: `${completionRatio}%` }}
+                  />
+                </div>
+              </>
+            )}
+            {isRecruitingDetail && campaignShareUrl ? (
               <button
                 type="button"
                 onClick={() => void copyCampaignShareLink()}
@@ -3959,7 +4611,7 @@ function CampaignDetailView({
       </div>
 
       <div
-        className={`grid min-h-0 lg:flex-1 ${
+        className={`grid min-h-0 grid-cols-1 lg:flex-1 ${
           isRecruitingDetail ? "lg:grid-cols-[minmax(0,1fr)_360px]" : "lg:grid-cols-1"
         }`}
       >
@@ -4176,7 +4828,7 @@ function CampaignApplicantsPanel({
   return (
     <aside className="border-t border-[#d9e0d9] bg-white lg:flex lg:min-h-0 lg:flex-col lg:border-l lg:border-t-0">
       <div className="border-b border-[#d9e0d9] bg-white px-3 py-2.5">
-        <div className="flex items-start justify-between gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <p className="truncate text-[14px] font-extrabold text-[#171a17]">
               지원자 현황
@@ -4186,21 +4838,17 @@ function CampaignApplicantsPanel({
               {applicants.length.toLocaleString("ko-KR")}명
             </p>
           </div>
-          <div className="flex shrink-0 items-center gap-1.5">
-            <select
+          <div className="flex w-full shrink-0 items-center gap-1.5 sm:w-auto">
+            <FilterSelectControl
               value={sortValue}
-              onChange={(event) =>
-                setSortValue(event.target.value as ApplicantSortValue)
-              }
-              aria-label="지원자 정렬"
-              className="h-8 max-w-[150px] rounded-[6px] border border-[#d9e0d9] bg-white px-2 text-[11px] font-bold text-[#303630] outline-none transition-colors hover:border-[#cbd5cc] focus:border-[#171a17]"
-            >
-              {APPLICANT_SORT_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+              onChange={(value) => setSortValue(value as ApplicantSortValue)}
+              options={APPLICANT_SORT_OPTIONS}
+              ariaLabel="지원자 정렬"
+              className="min-w-0 flex-1 sm:w-[158px] sm:flex-none"
+              triggerClassName="h-8 rounded-[6px] border-[#d9e0d9] px-2 text-[11px] shadow-none"
+              menuClassName="left-auto right-0 min-w-[176px]"
+              onOpen={() => setFiltersOpen(false)}
+            />
             <div className="relative">
               <DashboardFilterToggleButton
                 open={filtersOpen}
@@ -4373,10 +5021,7 @@ function CampaignApplicantRow({
   const hasProfileAction = Boolean(profileHref);
   const primaryActionSpan = hasProfileAction ? "" : "col-span-2";
   const firstPlatform = displayPlatforms[0];
-  const primaryHandle =
-    firstPlatform?.handle ||
-    firstPlatform?.followersLabel ||
-    (firstPlatform ? platformLabels[firstPlatform.platform] : "채널 확인");
+  const primaryHandle = firstPlatform?.handle || firstPlatform?.followersLabel;
 
   const handleAccept = async () => {
     if (!canAccept || isAccepting) return;
@@ -4445,11 +5090,12 @@ function CampaignApplicantRow({
                 {applicantName}
               </p>
             )}
-            <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
           </div>
-          <p className="mt-0.5 truncate text-[11px] font-semibold text-[#606861]">
-            {primaryHandle}
-          </p>
+          {primaryHandle ? (
+            <p className="mt-0.5 truncate text-[11px] font-semibold text-[#606861]">
+              {primaryHandle}
+            </p>
+          ) : null}
         </div>
       </div>
       <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
@@ -4763,11 +5409,19 @@ function getCampaignApplicantDisplayPlatforms(
   thread: MarketplaceMessageThread,
   fallbackProfile?: MarketplaceInfluencerProfile,
 ) {
-  if (!thread.counterpartHref && fallbackProfile?.platforms.length) {
-    return fallbackProfile.platforms;
-  }
+  const platforms =
+    !thread.counterpartHref && fallbackProfile?.platforms.length
+      ? fallbackProfile.platforms
+      : thread.platforms;
 
-  return thread.platforms;
+  return platforms.map((platform) => ({
+    ...platform,
+    followersLabel: /^(?:계정 연동|채널 확인|미입력|-)$/i.test(
+      platform.followersLabel?.trim() ?? "",
+    )
+      ? undefined
+      : platform.followersLabel,
+  }));
 }
 
 function getCampaignApplicantMainCategory(
@@ -5944,19 +6598,36 @@ function getCostContractDateValue(contract: Contract) {
 
 function parseDashboardCostAmount(value?: string | null) {
   const text = value?.trim();
-  if (!text || /%|수수료|commission|판매\s*수익/i.test(text)) return undefined;
+  if (
+    !text ||
+    /협의|미정|수수료|commission|판매\s*수익|성과\s*형|매월|월별|회당|건당/i.test(
+      text,
+    ) ||
+    /[~–—-]|부터|이상|이하|최대|최소|범위/i.test(text) ||
+    /(?:월|개월|회|건)\s*[x×*]?\s*\d/i.test(text)
+  ) {
+    return undefined;
+  }
 
-  const compact = text.replace(/,/g, "");
-  const millionMatch = compact.match(/(\d+(?:\.\d+)?)\s*만\s*원?/);
-  if (millionMatch) {
-    const amount = Number(millionMatch[1]) * 10_000;
+  const matches = Array.from(
+    text.matchAll(
+      /(\d+(?:\.\d+)?)\s*억\s*원?|(\d+(?:\.\d+)?)\s*만\s*원?|([0-9][0-9,]{3,})\s*원/g,
+    ),
+  );
+  if (matches.length > 1) return undefined;
+
+  if (matches.length === 1) {
+    const match = matches[0];
+    const amount = match[1]
+      ? Number(match[1]) * 100_000_000
+      : match[2]
+        ? Number(match[2]) * 10_000
+        : Number((match[3] ?? "").replace(/,/g, ""));
     return Number.isFinite(amount) ? Math.round(amount) : undefined;
   }
 
-  const numberMatch = compact.match(/(\d{4,})/);
-  if (!numberMatch) return undefined;
-
-  const amount = Number(numberMatch[1]);
+  if (!/^\d{4,}$/.test(text.replace(/,/g, ""))) return undefined;
+  const amount = Number(text.replace(/,/g, ""));
   return Number.isFinite(amount) ? amount : undefined;
 }
 
@@ -5964,6 +6635,8 @@ function getCostDashboardSummary(entries: CostDashboardEntry[]): CostDashboardSu
   return entries.reduce<CostDashboardSummary>(
     (summary, entry) => {
       const amount = entry.amountValue ?? 0;
+
+      if (entry.amountValue === undefined) summary.unpriced += 1;
 
       summary.total += amount;
       if (entry.lifecycle === "ENDED") summary.ended += amount;
@@ -5977,6 +6650,7 @@ function getCostDashboardSummary(entries: CostDashboardEntry[]): CostDashboardSu
       inProgress: 0,
       ended: 0,
       paid: 0,
+      unpriced: 0,
     },
   );
 }
@@ -6561,8 +7235,14 @@ function buildCampaignGroups({
       const completedCount = group.contracts.filter(
         (contract) => contract.status === "CLOSED",
       ).length;
-      const platforms = Array.from(group.platforms);
-      const types = Array.from(group.types);
+      const platforms = group.marketplaceCampaign?.platforms?.length
+        ? group.marketplaceCampaign.platforms.map(
+            marketplacePlatformToContractPlatform,
+          )
+        : Array.from(group.platforms);
+      const types = group.marketplaceCampaign
+        ? [group.marketplaceCampaign.type]
+        : Array.from(group.types);
       const brands = Array.from(group.brands).filter(Boolean).sort(compareText);
 
       const campaign: CampaignGroup = {
@@ -6823,6 +7503,12 @@ function getCampaignLifecycle(campaign: CampaignGroup): CampaignLifecycle {
   ) {
     return "ENDED";
   }
+  if (
+    campaign.marketplaceCampaign?.status === "open" &&
+    !isPastCampaignDeadline(campaign.marketplaceCampaign.deadline)
+  ) {
+    return "RECRUITING";
+  }
   if (campaign.acceptedParticipantCount > 0 || campaign.contracts.length > 0) {
     return "IN_PROGRESS";
   }
@@ -7060,7 +7746,11 @@ function getCampaignStatusActions(campaign: CampaignGroup) {
     icon: typeof Clock3;
   }> = [];
 
-  if (campaign.marketplaceCampaign && status === "open") {
+  if (
+    campaign.marketplaceCampaign &&
+    campaign.lifecycle === "RECRUITING" &&
+    status === "open"
+  ) {
     actions.push({
       status: "closed",
       label: "모집 종료",

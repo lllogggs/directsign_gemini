@@ -12,6 +12,8 @@ export type MarketplaceProposalDirection =
 export type MarketplaceProposalStatus =
   | "submitted"
   | "reviewed"
+  | "accepted"
+  | "declined"
   | "converted_to_contract"
   | "closed";
 
@@ -54,6 +56,8 @@ export type MarketplaceMessageSummary = {
   unreadCount: number;
   submittedCount: number;
   reviewedCount: number;
+  acceptedCount: number;
+  declinedCount: number;
   convertedCount: number;
   closedCount: number;
 };
@@ -70,6 +74,8 @@ export const emptyMarketplaceMessageSummary: MarketplaceMessageSummary = {
   unreadCount: 0,
   submittedCount: 0,
   reviewedCount: 0,
+  acceptedCount: 0,
+  declinedCount: 0,
   convertedCount: 0,
   closedCount: 0,
 };
@@ -77,13 +83,17 @@ export const emptyMarketplaceMessageSummary: MarketplaceMessageSummary = {
 export const proposalStatusLabels: Record<MarketplaceProposalStatus, string> = {
   submitted: "새 제안",
   reviewed: "검토 중",
-  converted_to_contract: "계약 전환",
+  accepted: "수락됨",
+  declined: "거절됨",
+  converted_to_contract: "계약서 작성 완료",
   closed: "종료",
 };
 
 export const proposalStatusTone: Record<MarketplaceProposalStatus, string> = {
   submitted: "border-amber-200 bg-amber-50 text-amber-800",
   reviewed: "border-sky-200 bg-sky-50 text-sky-700",
+  accepted: "border-blue-200 bg-blue-50 text-blue-700",
+  declined: "border-rose-200 bg-rose-50 text-rose-700",
   converted_to_contract: "border-emerald-200 bg-emerald-50 text-emerald-700",
   closed: "border-neutral-200 bg-neutral-100 text-neutral-600",
 };

@@ -1011,6 +1011,7 @@ const measureBrowserLogin = async (client, sessionId, baseUrl, role, email) => {
     minTextLength: 50,
     timeoutMs: 15000,
   });
+  await sleep(Number(process.env.QA_LOGIN_PRELOAD_SETTLE_MS || 400));
 
   const startedAt = performance.now();
   const submitted = await fillLoginAndSubmit(
@@ -1026,7 +1027,7 @@ const measureBrowserLogin = async (client, sessionId, baseUrl, role, email) => {
 
   try {
     await waitForRouteReady(client, sessionId, dashboardPath, {
-      minTextLength: 80,
+      minTextLength: 10,
       timeoutMs: Math.max(browserPerformanceBudgets.loginMs + 5000, 15000),
     });
   } catch (error) {
@@ -1044,6 +1045,42 @@ const measureBrowserLogin = async (client, sessionId, baseUrl, role, email) => {
     `Browser perf login ${role}`,
     ok ? "pass" : "fail",
     `${durationMs}ms, budget ${browserPerformanceBudgets.loginMs}ms`,
+  );
+  return ok;
+};
+
+const checkBrowserRoleSession = async (client, sessionId, role) => {
+  const deadline = Date.now() + 10000;
+  let state = {};
+
+  while (Date.now() < deadline) {
+    state = await evaluateCdpValue(
+      client,
+      sessionId,
+      `(async () => {
+        const response = await fetch(${JSON.stringify(`/api/${role}/session`)}, {
+          credentials: "include",
+          headers: { Accept: "application/json" },
+        });
+        const data = await response.json().catch(() => ({}));
+        return {
+          status: response.status,
+          authenticated: data.authenticated === true,
+          pathname: location.pathname,
+        };
+      })()`,
+    );
+    if (state.authenticated) break;
+    await sleep(100);
+  }
+
+  const ok = Boolean(state.authenticated);
+  record(
+    `Browser auth session ${role}`,
+    ok ? "pass" : "fail",
+    ok
+      ? `authoritative session confirmed on ${state.pathname}`
+      : `status ${state.status ?? "unknown"}, path ${state.pathname ?? "unknown"}`,
   );
   return ok;
 };
@@ -1192,6 +1229,385 @@ const checkInfluencerCampaignMobileScroll = async (client, sessionId, baseUrl) =
   }
 };
 
+const checkAdvertiserApplicantSortMenu = async (
+  client,
+  sessionId,
+  baseUrl,
+  outputDir,
+) => {
+  try {
+    await client.send(
+      "Emulation.setDeviceMetricsOverride",
+      {
+        width: 1365,
+        height: 900,
+        deviceScaleFactor: 1,
+        mobile: false,
+      },
+      sessionId,
+    );
+    await client.send(
+      "Emulation.setTouchEmulationEnabled",
+      { enabled: false },
+      sessionId,
+    );
+
+    const campaign = await evaluateCdpValue(
+      client,
+      sessionId,
+      `(async () => {
+        const [campaignResponse, messageResponse] = await Promise.all([
+          fetch("/api/advertiser/campaigns", {
+            credentials: "include",
+            headers: { Accept: "application/json" },
+          }),
+          fetch("/api/marketplace/messages?role=advertiser", {
+            credentials: "include",
+            headers: { Accept: "application/json" },
+          }),
+        ]);
+        if (!campaignResponse.ok || !messageResponse.ok) return null;
+        const [campaignData, messageData] = await Promise.all([
+          campaignResponse.json(),
+          messageResponse.json(),
+        ]);
+        const campaigns = Array.isArray(campaignData.campaigns)
+          ? campaignData.campaigns
+          : [];
+        const threads = Array.isArray(messageData.threads) ? messageData.threads : [];
+        const counts = new Map();
+        for (const thread of threads) {
+          if (!thread?.campaignId) continue;
+          counts.set(thread.campaignId, (counts.get(thread.campaignId) || 0) + 1);
+        }
+        return campaigns
+          .filter((item) => item?.id && (counts.get(item.id) || 0) > 0)
+          .sort((left, right) =>
+            (counts.get(right.id) || 0) - (counts.get(left.id) || 0)
+          )
+          .map((item) => ({ id: item.id, applicantCount: counts.get(item.id) || 0 }))[0] || null;
+      })()`,
+    );
+
+    if (!campaign?.id) {
+      record(
+        "Browser advertiser applicant sort menu",
+        "fail",
+        "campaign with applicants missing",
+      );
+      return false;
+    }
+
+    const route = `/advertiser/campaigns?campaign=${encodeURIComponent(
+      `campaign:${campaign.id}`,
+    )}`;
+    await client.send(
+      "Page.navigate",
+      { url: new URL(route, baseUrl).toString() },
+      sessionId,
+    );
+    await waitForRouteReady(client, sessionId, "/advertiser/campaigns", {
+      minTextLength: 100,
+      timeoutMs: 15000,
+    });
+
+    const opened = await evaluateCdpValue(
+      client,
+      sessionId,
+      `(async () => {
+        const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        let trigger = null;
+        for (let attempt = 0; attempt < 100; attempt += 1) {
+          trigger = document.querySelector(
+            'button[aria-label="지원자 정렬"][aria-haspopup="listbox"]'
+          );
+          if (trigger) break;
+          await wait(100);
+        }
+        if (!trigger) return { ok: false, detail: "applicant sort trigger missing" };
+        trigger.click();
+        await wait(100);
+        const listbox = document.querySelector('[role="listbox"][aria-label="지원자 정렬"]');
+        const options = listbox
+          ? Array.from(listbox.querySelectorAll('[role="option"]'))
+          : [];
+        const rect = listbox?.getBoundingClientRect();
+        return {
+          ok:
+            trigger.getAttribute("aria-expanded") === "true" &&
+            Boolean(listbox) &&
+            options.length >= 2 &&
+            rect.left >= 0 &&
+            rect.right <= window.innerWidth,
+          detail: listbox ? "sort listbox incomplete or clipped" : "sort listbox missing",
+          optionCount: options.length,
+          menuLeft: rect ? Math.round(rect.left) : null,
+          menuRight: rect ? Math.round(rect.right) : null,
+        };
+      })()`,
+    );
+    if (!opened?.ok) {
+      record(
+        "Browser advertiser applicant sort menu",
+        "fail",
+        opened?.detail || "sort menu did not open",
+      );
+      return false;
+    }
+
+    const screenshot = await client.send(
+      "Page.captureScreenshot",
+      { format: "png", captureBeyondViewport: false },
+      sessionId,
+    );
+    await fs.writeFile(
+      path.join(outputDir, "advertiser-applicant-sort-open.png"),
+      Buffer.from(screenshot.data, "base64"),
+    );
+
+    await client.send(
+      "Input.dispatchKeyEvent",
+      { type: "keyDown", key: "Escape", code: "Escape" },
+      sessionId,
+    );
+    await client.send(
+      "Input.dispatchKeyEvent",
+      { type: "keyUp", key: "Escape", code: "Escape" },
+      sessionId,
+    );
+
+    const result = await evaluateCdpValue(
+      client,
+      sessionId,
+      `(async () => {
+        const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const trigger = document.querySelector(
+          'button[aria-label="지원자 정렬"][aria-haspopup="listbox"]'
+        );
+        if (!trigger) return { ok: false, detail: "sort trigger disappeared" };
+        await wait(80);
+        const escaped = trigger.getAttribute("aria-expanded") === "false";
+        trigger.click();
+        await wait(80);
+        const options = Array.from(
+          document.querySelectorAll('[role="listbox"][aria-label="지원자 정렬"] [role="option"]')
+        );
+        const nextOption = options.find(
+          (option) => option.getAttribute("aria-selected") === "false"
+        );
+        if (!nextOption) return { ok: false, detail: "alternate sort option missing" };
+        const selectedText = (nextOption.textContent || "").trim();
+        nextOption.click();
+        await wait(100);
+        const selected =
+          trigger.getAttribute("aria-expanded") === "false" &&
+          (trigger.textContent || "").includes(selectedText);
+        trigger.click();
+        await wait(80);
+        document.body.dispatchEvent(
+          new PointerEvent("pointerdown", { bubbles: true, pointerType: "mouse" })
+        );
+        await wait(80);
+        const outsideClosed = trigger.getAttribute("aria-expanded") === "false";
+        return { ok: escaped && selected && outsideClosed, escaped, selected, outsideClosed };
+      })()`,
+    );
+
+    const ok = Boolean(result?.ok);
+    record(
+      "Browser advertiser applicant sort menu",
+      ok ? "pass" : "fail",
+      ok
+        ? `${opened.optionCount} options, Escape/select/outside click verified, ${campaign.applicantCount} applicants`
+        : result?.detail ||
+            `escape ${Boolean(result?.escaped)}, select ${Boolean(result?.selected)}, outside ${Boolean(result?.outsideClosed)}`,
+    );
+    return ok;
+  } catch (error) {
+    record(
+      "Browser advertiser applicant sort menu",
+      "fail",
+      error instanceof Error ? error.message : String(error),
+    );
+    return false;
+  }
+};
+
+const checkInfluencerContractLoginContinuation = async (
+  client,
+  sessionId,
+  baseUrl,
+  outputDir,
+) => {
+  try {
+    const contractState = await evaluateCdpValue(
+      client,
+      sessionId,
+      `(async () => {
+        const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const preferredStages = ["deliverables_due", "deliverables_review", "signed"];
+        let lastState = { authenticated: false, contractCount: 0, stages: [] };
+        for (let attempt = 0; attempt < 100; attempt += 1) {
+          const response = await fetch("/api/influencer/dashboard?includeApplications=false", {
+            credentials: "include",
+            headers: { Accept: "application/json" },
+          });
+          const data = await response.json().catch(() => ({}));
+          const contracts = Array.isArray(data.contracts) ? data.contracts : [];
+          const contract = contracts
+            .filter((item) => item?.id && preferredStages.includes(item.stage))
+            .sort(
+              (left, right) =>
+                preferredStages.indexOf(left.stage) - preferredStages.indexOf(right.stage),
+            )
+            .map((item) => ({ id: item.id, stage: item.stage }))[0];
+          lastState = {
+            authenticated: data.authenticated === true,
+            contractCount: contracts.length,
+            stages: contracts.map((item) => item.stage),
+          };
+          if (contract) return { ...lastState, contract };
+          await wait(100);
+        }
+        return { ...lastState, contract: null };
+      })()`,
+    );
+    const contract = contractState?.contract;
+    if (!contract?.id) {
+      record(
+        "Browser influencer contract login continuation",
+        "fail",
+        `signed direct contract missing; authenticated ${Boolean(
+          contractState?.authenticated,
+        )}, contracts ${contractState?.contractCount ?? 0}, stages ${(
+          contractState?.stages ?? []
+        ).join(",") || "none"}`,
+      );
+      return false;
+    }
+
+    await evaluateCdpValue(
+      client,
+      sessionId,
+      `(async () => {
+        await fetch("/api/influencer/logout", {
+          method: "POST",
+          credentials: "include",
+          headers: { Accept: "application/json" },
+        });
+        return true;
+      })()`,
+    );
+    await client.send(
+      "Emulation.setDeviceMetricsOverride",
+      {
+        width: 320,
+        height: 844,
+        deviceScaleFactor: 1,
+        mobile: true,
+      },
+      sessionId,
+    );
+    await client.send(
+      "Emulation.setTouchEmulationEnabled",
+      { enabled: true },
+      sessionId,
+    );
+
+    const destinationPath = `/contract/${contract.id}`;
+    const loginPath = `/login/influencer?next=${encodeURIComponent(destinationPath)}`;
+    await client.send(
+      "Page.navigate",
+      { url: new URL(loginPath, baseUrl).toString() },
+      sessionId,
+    );
+    await waitForRouteReady(client, sessionId, "/login/influencer", {
+      minTextLength: 50,
+      timeoutMs: 15000,
+    });
+    const submitted = await fillLoginAndSubmit(
+      client,
+      sessionId,
+      qaCredentials.influencerEmail,
+      qaCredentials.password,
+    );
+    if (!submitted?.ok) {
+      record(
+        "Browser influencer contract login continuation",
+        "fail",
+        submitted?.detail || "login submit failed",
+      );
+      return false;
+    }
+
+    const deadline = Date.now() + 20000;
+    let state = {};
+    while (Date.now() < deadline) {
+      state = await evaluateCdpValue(
+        client,
+        sessionId,
+        `(() => {
+          const text = document.body?.innerText || "";
+          const doc = document.documentElement;
+          return {
+            pathname: location.pathname,
+            hasSignedHeading: text.includes("서명 완료 후 콘텐츠를 제출하세요"),
+            hasLoadFailure: text.includes("계약을 불러올 수 없습니다"),
+            overflowX: Math.max(0, doc.scrollWidth - doc.clientWidth),
+            scrollWidth: doc.scrollWidth,
+            clientWidth: doc.clientWidth,
+            textLength: text.trim().length,
+          };
+        })()`,
+      );
+      if (
+        state.pathname === destinationPath &&
+        state.hasSignedHeading &&
+        !state.hasLoadFailure
+      ) {
+        break;
+      }
+      if (state.hasLoadFailure) break;
+      await sleep(100);
+    }
+
+    const screenshot = await client.send(
+      "Page.captureScreenshot",
+      { format: "png", captureBeyondViewport: false },
+      sessionId,
+    );
+    await fs.writeFile(
+      path.join(outputDir, "mobile-influencer-contract-login-continuation.png"),
+      Buffer.from(screenshot.data, "base64"),
+    );
+
+    const ok =
+      state.pathname === destinationPath &&
+      state.hasSignedHeading &&
+      !state.hasLoadFailure &&
+      Number(state.overflowX ?? 1) === 0;
+    record(
+      "Browser influencer contract login continuation",
+      ok ? "pass" : "fail",
+      ok
+        ? `contract ${contract.stage}, 320px overflow ${state.overflowX}px`
+        : `path ${state.pathname || "unknown"}, signed heading ${Boolean(
+            state.hasSignedHeading,
+          )}, load failure ${Boolean(state.hasLoadFailure)}, overflow ${
+            state.overflowX ?? "unknown"
+          }px`,
+    );
+    return ok;
+  } catch (error) {
+    record(
+      "Browser influencer contract login continuation",
+      "fail",
+      error instanceof Error ? error.message : String(error),
+    );
+    return false;
+  }
+};
+
 const measureBrowserInputAction = async (client, sessionId, label) => {
   const result = await evaluateCdpValue(
     client,
@@ -1269,6 +1685,14 @@ const measureBrowserSelectAction = async (client, sessionId, label) => {
       const findSelect = () => Array.from(document.querySelectorAll("select")).find(
         (item) => item.options.length > 1,
       );
+      const findCustomFilterTrigger = () =>
+        Array.from(document.querySelectorAll("button[aria-expanded]")).find((item) => {
+          const controls = item.getAttribute("aria-controls") || "";
+          if (/filters/i.test(controls)) return false;
+          if (item.getAttribute("aria-haspopup") === "listbox") return false;
+          const text = (item.textContent || "").trim();
+          return text && !/필터|filter|기간|정렬/i.test(text);
+        });
       const openFiltersIfNeeded = async () => {
         const button = Array.from(document.querySelectorAll("button")).find((item) =>
           /필터|filter/i.test(item.textContent || "") ||
@@ -1284,7 +1708,26 @@ const measureBrowserSelectAction = async (client, sessionId, label) => {
         const opened = await openFiltersIfNeeded();
         if (opened) select = findSelect();
       }
-      if (!select) return { ok: false, detail: "select filter missing" };
+
+      if (!select) {
+        const trigger = findCustomFilterTrigger();
+        if (!trigger) return { ok: false, detail: "filter control missing" };
+        trigger.click();
+        await waitFrames();
+        const option = Array.from(document.querySelectorAll("button[aria-pressed]")).find(
+          (item) => item.getAttribute("aria-pressed") === "false" && item.offsetParent !== null,
+        );
+        if (!option) return { ok: false, detail: "filter option missing" };
+        const startedAt = performance.now();
+        option.click();
+        await waitFrames();
+        return {
+          ok: true,
+          durationMs: Math.round(performance.now() - startedAt),
+          value: (option.textContent || "").trim(),
+        };
+      }
+
       const nextIndex = select.selectedIndex === 0 ? 1 : 0;
       const startedAt = performance.now();
       select.selectedIndex = nextIndex;
@@ -1399,6 +1842,18 @@ const checkBrowserPerformance = async (baseUrl) => {
           qaCredentials.advertiserEmail,
         ),
       );
+      checkResults.push(
+        await checkBrowserRoleSession(client, sessionId, "advertiser"),
+      );
+      await client.send(
+        "Page.navigate",
+        { url: new URL("/advertiser/discover", baseUrl).toString() },
+        sessionId,
+      );
+      await waitForRouteReady(client, sessionId, "/advertiser/discover", {
+        minTextLength: 80,
+        timeoutMs: 15000,
+      });
       checkResults.push(await measureBrowserInputAction(client, sessionId, "advertiser"));
       checkResults.push(await measureBrowserSelectAction(client, sessionId, "advertiser"));
       for (const [route, label] of [
@@ -1412,6 +1867,14 @@ const checkBrowserPerformance = async (baseUrl) => {
           await measureBrowserRouteTransition(client, sessionId, baseUrl, route, label),
         );
       }
+      checkResults.push(
+        await checkAdvertiserApplicantSortMenu(
+          client,
+          sessionId,
+          baseUrl,
+          outputDir,
+        ),
+      );
 
       checkResults.push(
         await measureBrowserLogin(
@@ -1421,6 +1884,9 @@ const checkBrowserPerformance = async (baseUrl) => {
           "influencer",
           qaCredentials.influencerEmail,
         ),
+      );
+      checkResults.push(
+        await checkBrowserRoleSession(client, sessionId, "influencer"),
       );
       checkResults.push(await measureBrowserInputAction(client, sessionId, "influencer"));
       checkResults.push(await measureBrowserSelectAction(client, sessionId, "influencer"));
@@ -1436,6 +1902,14 @@ const checkBrowserPerformance = async (baseUrl) => {
       }
       checkResults.push(
         await checkInfluencerCampaignMobileScroll(client, sessionId, baseUrl),
+      );
+      checkResults.push(
+        await checkInfluencerContractLoginContinuation(
+          client,
+          sessionId,
+          baseUrl,
+          outputDir,
+        ),
       );
     } finally {
       if (targetId) {

@@ -33,6 +33,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { BrandLogo } from "../../components/BrandLogo";
 import { PlatformBrandMark } from "../../components/PlatformBrandMark";
 import { PRODUCT_NAME } from "../../domain/brand";
+import { useBodyScrollLock } from "../../hooks/useBodyScrollLock";
 import type { InfluencerPlatform } from "../../domain/verification";
 
 type IntroRole = "advertiser" | "influencer";
@@ -217,7 +218,7 @@ const startLanguageLinks: StartLanguageLink[] = [
   { value: "/", label: "한국어" },
   { value: "/en/creators", label: "English" },
   { value: "/ja/creators", label: "日本語" },
-  { value: "/zh/creators", label: "繁中" },
+  { value: "/zh/creators", label: "简体中文" },
 ];
 
 const startLanguageManualChoiceKey = "yeollock:start-language-manual-choice";
@@ -1796,6 +1797,7 @@ export function StartPage() {
 }
 
 function StartIntroRolePicker({ onClose }: { onClose: () => void }) {
+  useBodyScrollLock(true);
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-950/24 px-5 backdrop-blur-[1px]"
@@ -2830,7 +2832,7 @@ function IntroProposalProductPreview({
       <div className="h-full min-h-0 overflow-hidden rounded-[16px]">
         <InfluencerIntroDashboardPreview
           data={introDashboardDemoData.influencer}
-          stateIndex={1}
+          stateIndex={0}
         />
       </div>
     );
@@ -3115,14 +3117,15 @@ function InfluencerConditionReviewPreview() {
     { label: "보상", value: "1,800,000원" },
     { label: "마감", value: formatIntroDate(11) },
     { label: "플랫폼", value: "인스타", platform: "인스타" },
-    { label: "콘텐츠", value: "릴스 1건 · 스토리 2건" },
-    { label: "활용", value: "브랜드 채널 3개월" },
+    { label: "콘텐츠", value: "릴스 · 스토리" },
+    { label: "수량", value: "릴스 1건 · 스토리 2건" },
+    { label: "특약", value: "브랜드 채널 3개월 활용" },
   ];
 
   return (
     <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[16px] border border-neutral-200 bg-[#f4f5f2] p-2 shadow-[0_18px_48px_rgba(23,26,23,0.08)] max-[640px]:rounded-[14px] max-[640px]:p-1.5">
       <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[10px] border border-[#d9e0d9] bg-white">
-        <div className="flex h-12 shrink-0 items-center justify-between border-b border-neutral-200 bg-white px-3.5 max-[640px]:h-11">
+        <div className="flex h-12 shrink-0 items-center border-b border-neutral-200 bg-white px-3.5 max-[640px]:h-11">
           <div className="min-w-0">
             <p className="truncate text-[11px] font-extrabold text-neutral-500">
               계약 링크
@@ -3131,33 +3134,32 @@ function InfluencerConditionReviewPreview() {
               핵심 조건 확인
             </h3>
           </div>
-          <span className="inline-flex h-8 shrink-0 items-center rounded-[8px] bg-neutral-950 px-3 text-[11px] font-black text-white max-[640px]:h-7 max-[640px]:px-2.5">
-            계약서 확인
-          </span>
         </div>
 
-        <div className="grid min-h-0 flex-1 gap-2 bg-[#fbfcfa] p-2 max-[640px]:gap-1.5 max-[640px]:p-1.5 sm:grid-cols-[minmax(250px,0.42fr)_minmax(0,0.58fr)]">
-          <div className="flex min-h-0 flex-col gap-2 max-[640px]:gap-1.5">
-            <div className="rounded-[12px] border border-blue-200 bg-blue-50 px-3.5 py-3 max-[640px]:px-3 max-[640px]:py-2">
-              <p className="text-[11px] font-black text-blue-700">
-                광고 조건 한눈에
-              </p>
-              <p className="mt-1 break-keep text-[13px] font-black leading-5 text-neutral-950 max-[640px]:text-[12px] max-[640px]:leading-4">
-                브랜드, 보상, 마감, 콘텐츠, 활용 범위를 서명 전에 확인합니다.
-              </p>
+        <div className="grid min-h-0 flex-1 gap-2 bg-[#fbfcfa] p-2 max-[640px]:gap-1.5 max-[640px]:p-1.5 sm:grid-cols-[minmax(250px,0.43fr)_minmax(0,0.57fr)]">
+          <div className="flex min-h-0 flex-col overflow-hidden rounded-[12px] border border-neutral-200 bg-white px-3.5 py-3 shadow-[0_12px_28px_rgba(15,23,42,0.045)] max-[640px]:px-3 max-[640px]:py-2.5">
+            <div className="border-b border-neutral-200 pb-2.5 max-[640px]:pb-2">
+              <div className="min-w-0">
+                <p className="text-[10px] font-extrabold text-neutral-500">
+                  광고 계약
+                </p>
+                <p className="mt-0.5 truncate text-[13px] font-black text-neutral-950 max-[640px]:text-[12px]">
+                  비건 선크림 릴스 계약
+                </p>
+              </div>
             </div>
-            <dl className="grid min-h-0 flex-1 gap-2 overflow-hidden max-[640px]:grid-cols-2 max-[640px]:gap-1.5">
+            <dl className="min-h-0 flex-1 overflow-hidden py-1">
               {facts.map((fact) => (
                 <div
                   key={fact.label}
-                  className="grid min-h-[58px] grid-cols-[68px_minmax(0,1fr)] items-center gap-2 rounded-[10px] border border-neutral-200 bg-white px-3 py-2 max-[640px]:min-h-[52px] max-[640px]:grid-cols-1 max-[640px]:gap-1 max-[640px]:px-2.5 max-[640px]:py-1.5"
+                  className="grid min-h-[34px] grid-cols-[54px_minmax(0,1fr)] items-center gap-2 border-b border-neutral-200/70 py-1.5 last:border-b-0 max-[640px]:min-h-[31px] max-[640px]:py-1"
                 >
                   <dt className="text-[10px] font-extrabold text-neutral-500">
                     {fact.label}
                   </dt>
-                  <dd className="flex min-w-0 items-center justify-end gap-1.5 text-right text-[12px] font-black text-neutral-950 max-[640px]:justify-start max-[640px]:text-left max-[640px]:text-[11px]">
+                  <dd className="flex min-w-0 items-center justify-end gap-1.5 text-right text-[11px] font-black leading-4 text-neutral-950 max-[640px]:text-[10px]">
                     {fact.platform ? <IntroPlatformMarks platform={fact.platform} /> : null}
-                    <span className="truncate">{fact.value}</span>
+                    <span className="min-w-0 break-keep">{fact.value}</span>
                     {fact.badge ? (
                       <span className="shrink-0 rounded-full bg-blue-50 px-1.5 py-0.5 text-[9px] font-black text-blue-700 ring-1 ring-blue-200">
                         {fact.badge}
@@ -3167,6 +3169,9 @@ function InfluencerConditionReviewPreview() {
                 </div>
               ))}
             </dl>
+            <span className="mt-2 inline-flex h-9 shrink-0 items-center justify-center rounded-[8px] bg-blue-600 px-3 text-[11px] font-black text-white max-[640px]:mt-1.5 max-[640px]:h-8">
+              계약서 확인하기
+            </span>
           </div>
 
           <div className="flex min-h-0 flex-col overflow-hidden rounded-[12px] border border-neutral-200 bg-white p-3 shadow-[0_12px_28px_rgba(15,23,42,0.055)] max-[640px]:hidden">
@@ -3199,14 +3204,6 @@ function InfluencerConditionReviewPreview() {
                   </p>
                 </div>
               ))}
-            </div>
-            <div className="grid grid-cols-2 gap-2 border-t border-neutral-200 pt-3">
-              <span className="inline-flex h-9 items-center justify-center rounded-[8px] border border-neutral-200 text-[11px] font-black text-neutral-700">
-                수정 요청
-              </span>
-              <span className="inline-flex h-9 items-center justify-center rounded-[8px] bg-blue-600 text-[11px] font-black text-white">
-                계약서 확인
-              </span>
             </div>
           </div>
         </div>
@@ -3248,6 +3245,17 @@ function InfluencerCampaignApplyPreview() {
                 <IntroPlatformMarks platform="인스타" size="sm" />
               </div>
             </div>
+            <div className="relative h-40 shrink-0 overflow-hidden border-y border-neutral-200 max-[640px]:h-36">
+              <img
+                src="/images/campaigns/breadroom-homecare-supporters.png"
+                alt="선크림 릴스 캠페인 제공 상품"
+                className="h-full w-full object-cover object-center"
+                loading="eager"
+              />
+              <span className="absolute bottom-2 left-2 rounded-[7px] bg-white/95 px-2 py-1 text-[10px] font-black text-neutral-800 shadow-sm backdrop-blur">
+                선케어 제품 2종 제공
+              </span>
+            </div>
             <dl className="grid grid-cols-2 gap-2 p-3 max-[640px]:gap-1.5 max-[640px]:p-2.5">
               {[
                 ["보상", "900,000원 + 제품"],
@@ -3264,6 +3272,24 @@ function InfluencerCampaignApplyPreview() {
                   </dd>
                 </div>
               ))}
+            </dl>
+            <dl className="grid grid-cols-2 border-t border-neutral-200 bg-[#fbfcfa] px-3 py-2.5 max-[640px]:px-2.5 max-[640px]:py-2">
+              <div className="min-w-0 border-r border-neutral-200 pr-3">
+                <dt className="text-[10px] font-extrabold text-neutral-500">
+                  제공 상품
+                </dt>
+                <dd className="mt-1 truncate text-[11px] font-black text-neutral-950">
+                  선케어 제품 2종
+                </dd>
+              </div>
+              <div className="min-w-0 pl-3">
+                <dt className="text-[10px] font-extrabold text-neutral-500">
+                  진행 방식
+                </dt>
+                <dd className="mt-1 truncate text-[11px] font-black text-neutral-950">
+                  제품 배송 · 온라인
+                </dd>
+              </div>
             </dl>
             <div className="mt-auto grid grid-cols-[1fr_auto] items-center gap-3 border-t border-neutral-200 p-3 max-[640px]:p-2.5">
               <div className="min-w-0">
@@ -4036,47 +4062,10 @@ const introDashboardDemoData = {
     summary: "1:1 계약 12건 · 이번 주 확인 4건",
     states: [
       {
-        activeTab: "지원중",
-        tabs: [
-          { label: "지원중", count: 2 },
-          { label: "진행중", count: 6 },
-          { label: "완료", count: 1 },
-          { label: "미선정", count: 1 },
-        ],
-        itemCount: 2,
-        metricColumnLabel: "내 상태",
-        dateColumnLabel: "응답기한",
-        metricBeforeDate: true,
-        emptyTitle: "조건에 맞는 계약이 없습니다",
-        emptyMessage: "검색어를 줄이거나 전체로 바꿔보세요.",
-        rows: [
-          {
-            platform: "인스타",
-            platformClass: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
-            brand: "브레드룸",
-            title: "브레드룸 릴스 협찬 계약",
-            payment: "900,000원 + 제품 제공",
-            metric: "지원 접수",
-            date: formatIntroDateWithDday(2),
-          },
-          {
-            platform: "인스타 +1",
-            platformClass: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
-            brand: "나이트케어",
-            title: "나이트케어 언박싱 계약",
-            payment: "150만-250만원",
-            metric: "지원 접수",
-            date: formatIntroDateWithDday(10),
-          },
-        ],
-      },
-      {
         activeTab: "진행중",
         tabs: [
-          { label: "지원중", count: 2 },
           { label: "진행중", count: 6 },
           { label: "완료", count: 1 },
-          { label: "미선정", count: 1 },
         ],
         itemCount: 6,
         metricColumnLabel: "내 할 일",
@@ -4144,10 +4133,8 @@ const introDashboardDemoData = {
       {
         activeTab: "완료",
         tabs: [
-          { label: "지원중", count: 2 },
           { label: "진행중", count: 6 },
           { label: "완료", count: 1 },
-          { label: "미선정", count: 1 },
         ],
         itemCount: 1,
         metricColumnLabel: "결과",
@@ -4164,32 +4151,6 @@ const introDashboardDemoData = {
             payment: "수수료 18%",
             metric: "정산 보관",
             date: formatIntroDate(-3),
-          },
-        ],
-      },
-      {
-        activeTab: "미선정",
-        tabs: [
-          { label: "지원중", count: 2 },
-          { label: "진행중", count: 6 },
-          { label: "완료", count: 1 },
-          { label: "미선정", count: 1 },
-        ],
-        itemCount: 1,
-        metricColumnLabel: "결과",
-        dateColumnLabel: "결과일",
-        metricBeforeDate: true,
-        emptyTitle: "조건에 맞는 계약이 없습니다",
-        emptyMessage: "검색어를 줄이거나 전체로 바꿔보세요.",
-        rows: [
-          {
-            platform: "인스타",
-            platformClass: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
-            brand: "나이트케어",
-            title: "언박싱 릴스 제안",
-            payment: "150만-250만원",
-            metric: "미선정",
-            date: formatIntroDate(-4),
           },
         ],
       },

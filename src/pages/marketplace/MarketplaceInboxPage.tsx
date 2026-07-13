@@ -9,11 +9,13 @@ import {
   Search,
   Send,
   SlidersHorizontal,
-  Settings,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { LogoMark } from "../../components/BrandLogo";
+import { AdvertiserAccountSettingsMenu } from "../../components/AdvertiserAccountSettingsMenu";
+import { InfluencerAccountSettingsMenu } from "../../components/InfluencerAccountSettingsMenu";
+import { FilterSelectControl } from "../../components/FilterSelectControl";
 import { ResponsiveFilterPanel } from "../../components/ResponsiveFilterPanel";
 import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
@@ -33,6 +35,19 @@ import {
   type MarketplaceProposalStatus,
 } from "../../domain/marketplaceInbox";
 import type { InfluencerPlatform } from "../../domain/verification";
+import { clearAdvertiserSessionCache } from "../../domain/advertiserSessionCache";
+import { clearAdvertiserDashboardBootstrapPreload } from "../../domain/advertiserDashboardPreload";
+import { clearInfluencerDashboardPreload } from "../../domain/influencerDashboardPreload";
+import { finishFastLoginTransition } from "../../domain/fastLoginTransition";
+import { clearVerificationSummaryCache } from "../../hooks/useVerificationSummary";
+import { clearMarketplaceMessageSummaryCache } from "../../hooks/useMarketplaceMessageSummary";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 type InboxState =
   | { status: "loading" }
@@ -43,13 +58,6 @@ type MessageThread = MarketplaceMessagesResponse["threads"][number];
 type PlatformFilter = "all" | InfluencerPlatform;
 type ProposalTypeFilter = "all" | CampaignProposalType;
 type ProposalStatusFilter = "all" | MarketplaceProposalStatus;
-
-type ProposalAcceptResponse = {
-  contract?: {
-    id: string;
-  };
-  already_converted?: boolean;
-};
 
 const platformFilterOptions: PlatformFilter[] = [
   "all",
@@ -67,6 +75,8 @@ const proposalStatusFilterOptions: ProposalStatusFilter[] = [
   "all",
   "submitted",
   "reviewed",
+  "accepted",
+  "declined",
   "converted_to_contract",
   "closed",
 ];
@@ -74,20 +84,24 @@ const proposalStatusFilterOptions: ProposalStatusFilter[] = [
 const proposalStatusLabels: Record<MarketplaceProposalStatus, string> = {
   submitted: "제안 전송",
   reviewed: "진행 중",
-  converted_to_contract: "계약 전환",
+  accepted: "수락됨",
+  declined: "거절됨",
+  converted_to_contract: "계약서 작성 완료",
   closed: "종료",
 };
 
 const proposalStatusTone: Record<MarketplaceProposalStatus, string> = {
   submitted: "border-amber-200 bg-amber-50 text-amber-800",
   reviewed: "border-sky-200 bg-sky-50 text-sky-700",
+  accepted: "border-blue-200 bg-blue-50 text-blue-700",
+  declined: "border-rose-200 bg-rose-50 text-rose-700",
   converted_to_contract: "border-blue-200 bg-blue-50 text-blue-700",
   closed: "border-neutral-200 bg-neutral-100 text-neutral-600",
 };
 
 const roleCopy = {
   advertiser: {
-    eyebrow: "광고주 계약 전환",
+    eyebrow: "광고주 1:1 제안",
     panelTitle: "1:1 계약 제안 관리",
     summaryTitle: (openCount: number) =>
       openCount > 0
@@ -175,6 +189,7 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
   const [statusFilter, setStatusFilter] = useState<ProposalStatusFilter>("all");
   const [query, setQuery] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
 
   const loadMessages = useCallback(async () => {
     setState((current) =>
@@ -231,6 +246,15 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
     } catch (error) {
       console.warn(`[${PRODUCT_NAME}] ${role} logout request failed`, error);
     } finally {
+      finishFastLoginTransition(role);
+      clearVerificationSummaryCache(role);
+      clearMarketplaceMessageSummaryCache(role);
+      if (role === "advertiser") {
+        clearAdvertiserSessionCache();
+        clearAdvertiserDashboardBootstrapPreload();
+      } else {
+        clearInfluencerDashboardPreload();
+      }
       navigate(role === "advertiser" ? "/login/advertiser" : "/login/influencer", {
         replace: true,
       });
@@ -262,14 +286,14 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
   const inboxCount = inboxThreads.length;
   const totalCount = messageThreads.length;
   const totalOpenCount = messageThreads.filter((thread) =>
-    ["submitted", "reviewed"].includes(thread.status),
+    ["submitted", "reviewed", "accepted"].includes(thread.status),
   ).length;
   const totalConvertedCount = messageThreads.filter(
     (thread) => thread.status === "converted_to_contract",
   ).length;
   const inboxOpenCount = inboxThreads.filter(
     (thread) =>
-      ["submitted", "reviewed"].includes(thread.status),
+      ["submitted", "reviewed", "accepted"].includes(thread.status),
   ).length;
   const inboxUnreadCount = inboxThreads.filter(
     (thread) => thread.unread,
@@ -282,7 +306,7 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
           primaryValue: totalCount,
           firstLabel: "확인 필요",
           firstValue: inboxOpenCount,
-          secondLabel: "계약 전환",
+          secondLabel: "계약서 작성 완료",
           secondValue: totalConvertedCount,
         }
       : {
@@ -390,15 +414,17 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
             <span className="font-neo-heavy text-[18px] leading-none sm:text-[19px]">{PRODUCT_NAME}</span>
           </Link>
 
-          <div className="no-scrollbar ml-3 flex min-w-0 items-center gap-2 overflow-x-auto">
+          <div className="ml-3 flex min-w-0 items-center justify-end gap-1.5 sm:gap-2">
             {!contractHomeIsPrimary ? (
-              <Link
-                to={copy.primaryHref}
-                className="yl-header-action yl-header-action-primary"
-              >
-                <FileSignature className="h-4 w-4" />
-                <span className="hidden sm:inline">{copy.primaryLabel}</span>
-              </Link>
+              <span className="hidden sm:block">
+                <Link
+                  to={copy.primaryHref}
+                  className="yl-header-action yl-header-action-primary"
+                >
+                  <FileSignature className="h-4 w-4" />
+                  <span>{copy.primaryLabel}</span>
+                </Link>
+              </span>
             ) : null}
             <Link
               to={copy.backHref}
@@ -415,15 +441,17 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
               )}
               <span className="hidden sm:inline">{copy.backLabel}</span>
             </Link>
-            <button
-              type="button"
-              onClick={() => void loadMessages()}
-              className="yl-header-icon-action"
-              aria-label="새로고침"
-              title="새로고침"
-            >
-              <RefreshCw className="h-4 w-4" />
-            </button>
+            <span className="hidden sm:block">
+              <button
+                type="button"
+                onClick={() => void loadMessages()}
+                className="yl-header-icon-action"
+                aria-label="새로고침"
+                title="새로고침"
+              >
+                <RefreshCw className="h-4 w-4" />
+              </button>
+            </span>
             <button
               type="button"
               onClick={handleLogout}
@@ -434,17 +462,37 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
               <LogOut className="h-4 w-4" />
               <span className="hidden sm:inline">로그아웃</span>
             </button>
-            <button
-              type="button"
-              onClick={() =>
-                navigate(`/reset-password?role=${role}`, { replace: false })
-              }
-              className="yl-header-icon-action"
-              aria-label="계정 설정"
-              title="계정 설정"
-            >
-              <Settings className="h-4 w-4" />
-            </button>
+            {role === "advertiser" ? (
+              <AdvertiserAccountSettingsMenu
+                account={{}}
+                open={accountMenuOpen}
+                onToggle={() => setAccountMenuOpen((current) => !current)}
+                onClose={() => setAccountMenuOpen(false)}
+                onOpenBusinessVerification={() => {
+                  setAccountMenuOpen(false);
+                  navigate("/advertiser/verification");
+                }}
+                onChangePassword={() => {
+                  setAccountMenuOpen(false);
+                  navigate("/reset-password?role=advertiser");
+                }}
+              />
+            ) : (
+              <InfluencerAccountSettingsMenu
+                account={{ name: "인플루언서" }}
+                open={accountMenuOpen}
+                onToggle={() => setAccountMenuOpen((current) => !current)}
+                onClose={() => setAccountMenuOpen(false)}
+                onManageProfile={() => {
+                  setAccountMenuOpen(false);
+                  navigate("/influencer/profile");
+                }}
+                onChangePassword={() => {
+                  setAccountMenuOpen(false);
+                  navigate("/reset-password?role=influencer");
+                }}
+              />
+            )}
           </div>
         </div>
       </header>
@@ -589,7 +637,12 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
                 }
               />
             ) : (
-              <MessageTable copy={copy} role={role} threads={visibleThreads} />
+              <MessageTable
+                copy={copy}
+                role={role}
+                threads={visibleThreads}
+                onRefresh={loadMessages}
+              />
             )}
           </div>
         </section>
@@ -663,20 +716,16 @@ function SelectFilter({
   options: Array<{ value: string; label: string }>;
 }) {
   return (
-    <label className="grid min-w-0 gap-1">
+    <div className="grid min-w-0 gap-1">
       <span className="text-[12px] font-extrabold text-[#303630]">{label}</span>
-      <select
+      <FilterSelectControl
         value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-9 w-full rounded-[6px] border border-[#d9e0d9] bg-[#f8faf7] px-2.5 text-[12px] font-bold text-[#303630] outline-none transition-colors hover:border-[#cbd5cc] focus:border-[#171a17] focus:bg-white"
-      >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </label>
+        options={options}
+        onChange={onChange}
+        ariaLabel={`${label} 필터`}
+        triggerClassName="rounded-[6px] border-[#d9e0d9] bg-[#f8faf7] shadow-none"
+      />
+    </div>
   );
 }
 
@@ -720,10 +769,12 @@ function MessageTable({
   copy,
   role,
   threads,
+  onRefresh,
 }: {
   copy: (typeof roleCopy)[MarketplaceInboxRole];
   role: MarketplaceInboxRole;
   threads: MessageThread[];
+  onRefresh: () => Promise<void>;
 }) {
   return (
     <section className="overflow-hidden rounded-b-[8px] border border-[#d9e0d9] bg-white lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
@@ -737,7 +788,11 @@ function MessageTable({
       <div className="max-h-[620px] divide-y divide-[#edf1ed] overflow-y-auto lg:max-h-none lg:min-h-0 lg:flex-1">
         {threads.map((thread) => (
           <div key={thread.id}>
-            <MessageThreadRow role={role} thread={thread} />
+            <MessageThreadRow
+              role={role}
+              thread={thread}
+              onRefresh={onRefresh}
+            />
           </div>
         ))}
       </div>
@@ -748,91 +803,47 @@ function MessageTable({
 function MessageThreadRow({
   role,
   thread,
+  onRefresh,
 }: {
   role: MarketplaceInboxRole;
   thread: MessageThread;
+  onRefresh: () => Promise<void>;
 }) {
   const navigate = useNavigate();
-  const [isAccepting, setIsAccepting] = useState(false);
-  const [acceptError, setAcceptError] = useState<string | undefined>();
-  const canAcceptAsContract =
-    role === "advertiser" &&
+  const [detailOpen, setDetailOpen] = useState(false);
+  const canRespond =
     thread.bucket === "inbox" &&
-    thread.direction === "influencer_to_brand" &&
-    thread.status !== "converted_to_contract" &&
-    thread.status !== "closed";
+    ["submitted", "reviewed"].includes(thread.status);
+  const canWriteContract =
+    role === "advertiser" && thread.status === "accepted";
   const actionHref =
     thread.convertedContractId
       ? role === "advertiser"
         ? `/advertiser/contract/${thread.convertedContractId}`
         : `/contract/${thread.convertedContractId}`
-      : role === "advertiser"
-        ? thread.bucket === "inbox"
-          ? "/advertiser/builder"
-          : thread.counterpartHref
+      : canWriteContract
+        ? `/advertiser/builder?proposal=${encodeURIComponent(thread.id)}`
+        : role === "advertiser"
+          ? thread.counterpartHref
         : thread.counterpartHref ?? "/influencer/dashboard";
   const actionLabel =
     thread.convertedContractId
       ? role === "advertiser"
         ? "초안 보기"
         : "계약 검토"
-      : role === "advertiser"
-        ? thread.bucket === "inbox"
-          ? "1:1 계약 작성"
-          : "상대 보기"
-        : thread.bucket === "inbox"
-          ? "브랜드 보기"
-          : "캠페인 보기";
+      : canWriteContract
+        ? "계약서 작성"
+        : role === "advertiser"
+          ? "상대 보기"
+        : "브랜드 보기";
   const counterpartName = thread.counterpartName;
   const proposalSummary = thread.proposalSummary;
 
-  const acceptAsContract = async () => {
-    if (isAccepting) return;
-
-    setIsAccepting(true);
-    setAcceptError(undefined);
-
-    try {
-      const response = await apiFetch(
-        `/api/advertiser/marketplace/proposals/${encodeURIComponent(thread.id)}/accept`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-        },
-      );
-
-      if (response.status === 401) {
-        navigate("/login/advertiser", { replace: true });
-        return;
-      }
-
-      const data = (await response.json().catch(() => ({}))) as
-        | ProposalAcceptResponse
-        | { error?: string };
-
-      if (!response.ok || !("contract" in data) || !data.contract?.id) {
-        throw new Error(
-          "error" in data
-            ? data.error ?? "계약 초안을 생성하지 못했습니다."
-            : "계약 초안을 생성하지 못했습니다.",
-        );
-      }
-
-      navigate(`/advertiser/contract/${data.contract.id}`);
-    } catch (error) {
-      setAcceptError(
-        error instanceof Error ? error.message : "계약 초안을 생성하지 못했습니다.",
-      );
-    } finally {
-      setIsAccepting(false);
-    }
-  };
-
   return (
-    <article className={`grid gap-3 px-4 py-3 text-left transition-colors hover:bg-[#f8faf7] lg:grid-cols-[104px_minmax(170px,0.75fr)_minmax(330px,1.45fr)_132px_132px] lg:items-center ${
-      thread.unread ? "bg-[#fffdf3]" : "bg-white"
-    }`}>
+    <>
+      <article className={`grid gap-3 px-4 py-3 text-left transition-colors hover:bg-[#f8faf7] lg:grid-cols-[104px_minmax(170px,0.75fr)_minmax(330px,1.45fr)_132px_132px] lg:items-center ${
+        thread.unread ? "bg-[#fffdf3]" : "bg-white"
+      }`}>
       <div className="flex min-w-0 items-center gap-2 md:block">
         <span
           className={`inline-flex h-6 shrink-0 items-center rounded-md border px-2 text-[11px] font-semibold ${proposalStatusTone[thread.status]}`}
@@ -859,15 +870,14 @@ function MessageThreadRow({
       </p>
 
       <div className="grid gap-1 lg:justify-end">
-        {canAcceptAsContract ? (
+        {canRespond ? (
           <button
             type="button"
-            onClick={() => void acceptAsContract()}
-            disabled={isAccepting}
+            onClick={() => setDetailOpen(true)}
             className="inline-flex h-9 w-full items-center justify-center gap-2 whitespace-nowrap rounded-md bg-blue-600 px-3 text-[12px] font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-neutral-300 lg:w-[126px]"
           >
-            {isAccepting ? "생성 중" : "수락"}
-            <FileSignature className="h-3.5 w-3.5" />
+            제안 보기
+            <ArrowRight className="h-3.5 w-3.5" />
           </button>
         ) : actionHref ? (
           <Link
@@ -882,13 +892,188 @@ function MessageThreadRow({
             연결 대기
           </span>
         )}
-        {acceptError ? (
-          <p className="max-w-[220px] text-[11px] font-semibold leading-4 text-rose-700 lg:text-right">
-            {acceptError}
-          </p>
-        ) : null}
       </div>
-    </article>
+      </article>
+      <ProposalDecisionDialog
+        open={detailOpen}
+        role={role}
+        thread={thread}
+        onOpenChange={setDetailOpen}
+        onRefresh={onRefresh}
+        onNavigate={(path) => navigate(path)}
+      />
+    </>
+  );
+}
+
+function ProposalDecisionDialog({
+  open,
+  role,
+  thread,
+  onOpenChange,
+  onRefresh,
+  onNavigate,
+}: {
+  open: boolean;
+  role: MarketplaceInboxRole;
+  thread: MessageThread;
+  onOpenChange: (open: boolean) => void;
+  onRefresh: () => Promise<void>;
+  onNavigate: (path: string) => void;
+}) {
+  const [pendingDecision, setPendingDecision] = useState<
+    "accepted" | "declined"
+  >();
+  const [error, setError] = useState<string>();
+
+  const respond = async (decision: "accepted" | "declined") => {
+    if (pendingDecision) return;
+    setPendingDecision(decision);
+    setError(undefined);
+
+    try {
+      const path =
+        role === "advertiser" && decision === "accepted"
+          ? `/api/advertiser/marketplace/proposals/${encodeURIComponent(
+              thread.id,
+            )}/accept`
+          : `/api/${role}/marketplace/proposals/${encodeURIComponent(
+              thread.id,
+            )}/respond`;
+      const response = await apiFetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body:
+          role === "advertiser" && decision === "accepted"
+            ? undefined
+            : JSON.stringify({ decision }),
+      });
+
+      if (response.status === 401) {
+        onNavigate(role === "advertiser" ? "/login/advertiser" : "/login/influencer");
+        return;
+      }
+      const data = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        next_path?: string;
+      };
+      if (!response.ok) {
+        throw new Error(data.error ?? "제안 응답을 저장하지 못했습니다.");
+      }
+
+      clearMarketplaceMessageSummaryCache(role);
+      onOpenChange(false);
+      if (decision === "accepted" && data.next_path) {
+        onNavigate(data.next_path);
+        return;
+      }
+      await onRefresh();
+    } catch (responseError) {
+      setError(
+        responseError instanceof Error
+          ? responseError.message
+          : "제안 응답을 저장하지 못했습니다.",
+      );
+    } finally {
+      setPendingDecision(undefined);
+    }
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!pendingDecision) onOpenChange(nextOpen);
+      }}
+    >
+      <DialogContent className="max-h-[min(720px,calc(100vh-32px))] max-w-[560px] overflow-y-auto rounded-[10px] p-0">
+        <DialogHeader className="border-b border-neutral-200 px-5 py-4 text-left">
+          <DialogTitle className="text-[18px] font-extrabold text-neutral-950">
+            {thread.counterpartName}의 1:1 제안
+          </DialogTitle>
+          <DialogDescription className="text-[12px] font-semibold text-neutral-500">
+            조건을 확인한 뒤 수락 또는 거절해 주세요.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="px-5 py-4">
+          <dl className="divide-y divide-neutral-100 border-y border-neutral-200">
+            <ProposalDetailRow label="제안 종류" value={thread.proposalTypeLabel} />
+            <ProposalDetailRow label="보낸 사람" value={thread.senderName} />
+            <ProposalDetailRow label="소개" value={thread.senderIntro} multiline />
+            <ProposalDetailRow
+              label="플랫폼"
+              value={
+                thread.platforms.length > 0
+                  ? thread.platforms
+                      .map((platform) =>
+                        [platformLabels[platform.platform], platform.handle]
+                          .filter(Boolean)
+                          .join(" "),
+                      )
+                      .join(", ")
+                  : "협의"
+              }
+            />
+            <ProposalDetailRow
+              label="제안 내용"
+              value={thread.proposalSummary}
+              multiline
+            />
+          </dl>
+
+          {error ? (
+            <p className="mt-3 rounded-[8px] border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] font-semibold leading-5 text-rose-700">
+              {error}
+            </p>
+          ) : null}
+
+          <div className="mt-5 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => void respond("declined")}
+              disabled={Boolean(pendingDecision)}
+              className="h-11 rounded-[8px] border border-neutral-200 bg-white text-[13px] font-extrabold text-neutral-700 transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {pendingDecision === "declined" ? "저장 중" : "거절"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void respond("accepted")}
+              disabled={Boolean(pendingDecision)}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-[8px] bg-blue-600 text-[13px] font-extrabold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <FileSignature className="h-4 w-4" />
+              {pendingDecision === "accepted" ? "저장 중" : "수락"}
+            </button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ProposalDetailRow({
+  label,
+  value,
+  multiline = false,
+}: {
+  label: string;
+  value: string;
+  multiline?: boolean;
+}) {
+  return (
+    <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-3 py-3">
+      <dt className="text-[12px] font-extrabold text-neutral-500">{label}</dt>
+      <dd
+        className={`text-[13px] font-semibold text-neutral-900 ${
+          multiline ? "whitespace-pre-wrap break-words leading-6" : "truncate"
+        }`}
+      >
+        {value}
+      </dd>
+    </div>
   );
 }
 
@@ -1010,10 +1195,10 @@ function LoadingState() {
           <RefreshCw className="h-5 w-5 animate-spin" />
         </div>
         <h2 className="mt-3 text-[14px] font-semibold text-[#171a17]">
-          제안함 데이터를 불러오는 중입니다
+          제안 목록을 확인하는 중입니다
         </h2>
         <p className="mt-1 text-[12px] font-medium leading-5 text-[#7d857f]">
-          잠시 후 결과가 없으면 빈 상태와 다음 행동을 안내합니다.
+          잠시만 기다려 주세요.
         </p>
       </div>
     </section>

@@ -46,6 +46,19 @@ const youtubeWebPerQuery = parsePositiveInt(args.get("youtube-web-per-query"), 5
 const youtubeWebPages = parsePositiveInt(args.get("youtube-web-pages"), 2);
 const naverPerQuery = parsePositiveInt(args.get("naver-per-query"), 80);
 const naverPages = parsePositiveInt(args.get("naver-pages"), 4);
+const naverVisitorSync = args.get("naver-visitor-sync") !== "false";
+const naverVisitorBatchSize = parsePositiveInt(
+  args.get("naver-visitor-batch-size"),
+  300,
+);
+const naverVisitorStaleDays = parsePositiveNumber(
+  args.get("naver-visitor-stale-days"),
+  7,
+);
+const naverVisitorConcurrency = parsePositiveInt(
+  args.get("naver-visitor-concurrency"),
+  6,
+);
 const includeYoutube = args.get("youtube") !== "false";
 const includeNaver = args.get("naver") !== "false";
 const includeInstagram = args.get("instagram") !== "false";
@@ -340,6 +353,52 @@ function runDiscovery(category, platformJob) {
   });
 }
 
+function runNaverVisitorSync() {
+  const childArgs = [
+    "scripts/sync-discovered-naver-blog-visitors.mjs",
+    `--apply=${apply ? "true" : "false"}`,
+    `--batch-size=${naverVisitorBatchSize}`,
+    `--max-rows=${naverVisitorBatchSize}`,
+    `--stale-days=${naverVisitorStaleDays}`,
+    `--concurrency=${naverVisitorConcurrency}`,
+  ];
+
+  return new Promise((resolve) => {
+    const startedAt = Date.now();
+    const child = spawn(process.execPath, childArgs, {
+      cwd,
+      env: process.env,
+      windowsHide: true,
+    });
+    let stdout = "";
+    let stderr = "";
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGTERM");
+    }, Math.min(runTimeoutMinutes, 10) * 60 * 1000);
+
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on("close", (code) => {
+      clearTimeout(timeout);
+      resolve({
+        ok: code === 0 && !timedOut,
+        code,
+        timedOut,
+        durationMs: Date.now() - startedAt,
+        summary: extractJsonSummary(stdout),
+        stdoutTail: stdout.slice(-2000),
+        stderrTail: stderr.slice(-2000),
+      });
+    });
+  });
+}
+
 async function readState() {
   try {
     return JSON.parse(await fs.readFile(statePath, "utf8"));
@@ -384,6 +443,10 @@ async function main() {
     youtubeWebPages,
     naverPerQuery,
     naverPages,
+    naverVisitorSync,
+    naverVisitorBatchSize,
+    naverVisitorStaleDays,
+    naverVisitorConcurrency,
     tiktokPerQuery,
     tiktokPages,
   });
@@ -463,12 +526,37 @@ async function main() {
         ...result,
       });
 
+      let naverVisitorResult = null;
+      if (naverVisitorSync && platformJob.id === "naver_blog") {
+        await appendLog({
+          type: "naver_visitor_sync_started",
+          at: new Date().toISOString(),
+          batchSize: naverVisitorBatchSize,
+          staleDays: naverVisitorStaleDays,
+        });
+        naverVisitorResult = await runNaverVisitorSync();
+        await appendLog({
+          type: naverVisitorResult.ok
+            ? "naver_visitor_sync_finished"
+            : "naver_visitor_sync_failed",
+          at: new Date().toISOString(),
+          ...naverVisitorResult,
+        });
+      }
+
       advanceStateAfterPlatform(state, categoryIndex, platformIndex, {
         lastRunAt: finishedAt,
         lastCategory: category,
         lastPlatform: platformJob.id,
         lastOk: result.ok,
         lastSummary: result.summary,
+        ...(naverVisitorResult
+          ? {
+              lastNaverVisitorSyncAt: new Date().toISOString(),
+              lastNaverVisitorSyncOk: naverVisitorResult.ok,
+              lastNaverVisitorSyncSummary: naverVisitorResult.summary,
+            }
+          : {}),
         ...(platformLimitState ?? {}),
       });
       await writeState(state);

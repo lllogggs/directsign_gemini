@@ -253,7 +253,9 @@ interface AppState {
   primeContracts: (response: ContractsResponse) => void;
   resetHydration: () => void;
   addContract: (
-    contract: Omit<Contract, "id" | "created_at" | "updated_at">,
+    contract: Omit<Contract, "id" | "created_at" | "updated_at"> & {
+      id?: string;
+    },
   ) => Contract;
   updateContract: (
     id: string,
@@ -383,7 +385,7 @@ export const useAppStore = create<AppState>()(
 
         const newContract: Contract = {
           ...contractData,
-          id: uuidv4(),
+          id: contractData.id ?? uuidv4(),
           workflow: contractData.workflow ?? createWorkflow(contractData.status),
           evidence: normalizeEvidence(evidence),
           audit_events: contractData.audit_events ?? [

@@ -43,7 +43,7 @@ export function LogoMark({ className = "" }: LogoMarkProps) {
 }
 
 export function BrandLogo({
-  className = "inline-flex items-center gap-2.5",
+  className = "inline-flex shrink-0 items-center gap-2.5 whitespace-nowrap",
   markClassName,
   text = PRODUCT_NAME,
   textClassName = "font-neo-heavy text-[18px] leading-none tracking-[-0.045em] text-neutral-950 sm:text-[19px]",
@@ -51,7 +51,7 @@ export function BrandLogo({
   return (
     <span className={className}>
       <LogoMark className={markClassName} />
-      <span className={textClassName}>{text}</span>
+      <span className={`whitespace-nowrap ${textClassName}`}>{text}</span>
     </span>
   );
 }

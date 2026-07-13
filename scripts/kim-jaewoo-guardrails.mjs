@@ -147,8 +147,15 @@ const influencerDashboard = read("src/pages/influencer/InfluencerDashboard.tsx")
 const campaignPages = read("src/pages/marketplace/CampaignPages.tsx");
 const marketplacePages = read("src/pages/marketplace/MarketplacePages.tsx");
 const marketplaceInboxPage = read("src/pages/marketplace/MarketplaceInboxPage.tsx");
+const marketplaceInbox = read("src/domain/marketplaceInbox.ts");
 const marketplace = read("src/domain/marketplace.ts");
 const marketplaceAvatars = read("src/domain/marketplaceAvatars.ts");
+const influencerDiscoveryQuality = read("src/domain/influencerDiscoveryQuality.js");
+const influencerCollector = read("scripts/discover-korean-influencers.mjs");
+const influencerCurator = read("scripts/curate-influencer-marketplace.mjs");
+const advertiserSavedInfluencersMigration = read(
+  "supabase/migrations/20260713020000_add_advertiser_saved_influencers.sql",
+);
 const server = read("server/index.ts");
 const fastAuth = read("lib/fast-auth.ts");
 const signupPage = read("src/pages/auth/SignupPage.tsx");
@@ -575,6 +582,7 @@ check(
 check(
   "login and route transition budgets stay strict",
   qaStandard.includes("loginMs: Number(process.env.QA_LOGIN_BUDGET_MS || 1300)") &&
+    qaStandard.includes("QA_LOGIN_PRELOAD_SETTLE_MS || 400") &&
     qaStandard.includes(
       "routeMs: Number(process.env.QA_ROUTE_TRANSITION_BUDGET_MS || 1500)",
     ) &&
@@ -585,6 +593,9 @@ check(
     fastAuth.includes('supabaseAuthUrl("/settings")') &&
     fastAuth.includes('supabaseRestUrl("profiles", "?select=id&limit=1")') &&
     advertiserAuthGate.includes("activateVerifiedCachedSession") &&
+    advertiserAuthGate.includes('waitForFastLoginTransition("advertiser", 6_000)') &&
+    advertiserAuthGate.includes("window.location.pathname !== redirectAfterLogin") &&
+    qaStandard.includes("checkBrowserRoleSession") &&
     advertiserAuthGate.includes("navigate(redirectAfterLogin, { replace: true });"),
   "Login and route transitions must keep strict QA budgets, warm Supabase before submit, and advertiser login must not wait on a second route before showing the destination shell",
 );
@@ -768,8 +779,6 @@ check(
     contractViewer.includes('      : "계약 내용 확인";') &&
     contractViewer.includes("조건을 먼저 보고, 로그인 후 바로 서명합니다.") &&
     contractViewer.includes("contractSummaryRows") &&
-    contractViewer.includes("DeliverableSummaryValue") &&
-    contractViewer.includes("DeliverablePart") &&
     contractViewer.includes("parseDeliverableSummary") &&
     contractViewer.includes("getDeliverableFactValues") &&
     contractViewer.includes("deliverableSummaryFacts") &&
@@ -785,17 +794,19 @@ check(
     influencerShareSummaryRows.includes("deliverableSummaryFacts.quantity") &&
     influencerShareSummaryRows.includes("specialTermsSummary") &&
     !influencerShareSummaryRows.includes('label: "산출물"') &&
-    contractViewer.includes('label="플랫폼"') &&
-    contractViewer.includes('label="콘텐츠"') &&
-    contractViewer.includes('label="수량"') &&
-    contractViewer.includes("hasViewedContractDocument") &&
+    contractViewer.includes("hasRevealedContractDocument") &&
+    contractViewer.includes("hasReviewedContractDocument") &&
     contractViewer.includes("shouldShowContractReviewCta") &&
     contractViewer.includes("shouldShowContractDocument") &&
     contractViewer.includes("shouldShowPdfReview") &&
     contractViewer.includes("function PdfContractPreview") &&
     contractViewer.includes('aria-label="계약서 PDF 1페이지 미리보기"') &&
     contractViewer.includes("pdfjsLib.getDocument") &&
-    contractViewer.includes("<PdfContractPreview href={reviewPdfHref} />") &&
+    contractViewer.includes("<PdfContractPreview") &&
+    contractViewer.includes("href={reviewPdfHref}") &&
+    contractViewer.includes("onReviewComplete=") &&
+    contractViewer.includes("allPagesRendered") &&
+    contractViewer.includes("hasReachedFinalPage") &&
     contractViewer.includes("contractDetailRows") &&
     contractViewer.includes('label: "특약사항"') &&
     contractViewer.includes("reviewPdfHref") &&
@@ -963,8 +974,8 @@ check(
     server.includes("fallbackMarketplaceInfluencerProfiles") &&
     server.includes("fallbackMarketplaceBrandProfiles") &&
     server.includes("fallbackMarketplaceCampaignPosts") &&
-    server.includes("dbProfiles.slice(offset, offset + limit)") &&
-    server.includes("fallbackMarketplaceInfluencerProfiles().slice(offset, offset + limit)") &&
+    server.includes("matchingDbProfiles.slice(offset, offset + limit)") &&
+    server.includes("fallbackProfiles.slice(offset, offset + limit)") &&
     server.includes("publicMarketplaceCache.delete(key)") &&
     server.includes('process.env.VERCEL === "1"') &&
     server.includes("public marketplace cache cold fallback"),
@@ -1007,7 +1018,7 @@ check(
     dashboardDownloadButton.includes('title="내보내기"') &&
     dashboardDownloadButton.includes(">내보내기</span>") &&
     !dashboardDownloadButton.includes(">다운로드</span>") &&
-    dashboardDownloadButton.includes("hidden sm:inline") &&
+    !dashboardDownloadButton.includes("hidden sm:inline") &&
     advertiserDashboard.includes("<DashboardExportDialog") &&
     influencerDashboard.includes("<DashboardExportDialog") &&
     advertiserDashboard.includes("exportWorkbookToGoogleSheets") &&
@@ -1038,7 +1049,7 @@ check(
     advertiserDashboard.includes("hasContractDashboardFilters") &&
     advertiserDashboard.includes("contractDownloadContracts") &&
     advertiserDashboard.includes("? visibleContracts") &&
-    advertiserDashboard.includes(": [...dashboardContracts]") &&
+    advertiserDashboard.includes(": [...oneToOneContracts]") &&
     advertiserDashboard.includes("contractDownloadContracts.length > DASHBOARD_CONTRACT_EXPORT_LIMIT") &&
     advertiserContractFilterPanel.includes(advertiserContractTableGrid) &&
     hasAdvertiserContractFilterTableOrder &&
@@ -1122,8 +1133,10 @@ check(
       marketplacePages.includes("const [categoryFilters, setCategoryFilters] = useState<string[]>([])") &&
       marketplacePages.includes("hasAnyCategory(profile.categories, categoryFilters)") &&
       marketplacePages.includes("function getCategoryFilterKey") &&
-      marketplacePages.includes("const categoryKeyAliases") &&
-      marketplacePages.includes("const categoryDisplayLabels") &&
+      marketplacePages.includes("MARKETPLACE_CREATOR_CATEGORY_OPTIONS") &&
+      marketplacePages.includes("normalizeMarketplaceCreatorCategory") &&
+      marketplacePages.includes('searchPlaceholder="카테고리 검색"') &&
+      marketplacePages.includes('listMaxHeightClassName="max-h-72"') &&
       agents.includes("Category chips and filters must use customer-facing Korean labels") &&
       marketplacePages.includes("function PlatformSelectList") &&
       marketplacePages.includes("function CategorySelectList") &&
@@ -1174,19 +1187,11 @@ check(
     marketplacePages.includes("compareInfluencerProfilesBySort") &&
     marketplacePages.includes("구독자·팔로워 많은순") &&
     marketplacePages.includes("getInfluencerProfilePath(profile)") &&
-    campaignPages.includes("AdvertiserCampaignApplicantControls") &&
-    campaignPages.includes('ariaLabel="지원자 정렬"') &&
-    campaignPages.includes("compareCampaignApplicantsBySort") &&
-    campaignPages.includes(
-      "getChannelAudienceSortValue(getCampaignApplicantDisplayPlatforms(a))",
-    ) &&
-    campaignPages.includes("ProfileAvatarLink") &&
-    campaignPages.includes('controlsId="advertiser-campaign-applicant-filters"') &&
     advertiserDashboard.includes("CampaignApplicantsPanel") &&
     advertiserDashboard.includes("isRecruitingDetail ? (") &&
     advertiserDashboard.includes("allowSelection") &&
     advertiserDashboard.includes("APPLICANT_SORT_OPTIONS") &&
-    advertiserDashboard.includes('aria-label="지원자 정렬"') &&
+    advertiserDashboard.includes('ariaLabel="지원자 정렬"') &&
     advertiserDashboard.includes("compareCampaignApplicantsBySort") &&
     advertiserDashboard.includes('controlsId="campaign-applicant-filters"') &&
     marketplace.includes("getInfluencerProfilePathByDisplayName") &&
@@ -1196,25 +1201,78 @@ check(
     advertiserDashboard.includes("const displayPlatforms = getCampaignApplicantDisplayPlatforms(") &&
     advertiserDashboard.includes("applicantProfile,") &&
     !advertiserDashboard.includes("formatCampaignActivityDate(thread.createdAt)") &&
-    campaignPages.includes("findInfluencerProfileByHandle(application.counterpartHref)") &&
-    campaignPages.includes("findInfluencerProfileByDisplayName(applicantName)") &&
-    campaignPages.includes("const displayPlatforms = getCampaignApplicantDisplayPlatforms(") &&
-    campaignPages.includes("application.counterpartCategories") &&
-    campaignPages.includes("applicantProfile,") &&
-    campaignPages.includes("category={mainCategory}") &&
-    campaignPages.includes("flex-nowrap items-center gap-1 overflow-hidden") &&
-    campaignPages.includes("visiblePlatforms.slice(0, 1)") &&
-    !campaignPages.includes("지원 {formatMarketplaceMessageDate(application.createdAt)}") &&
     server.includes("sender_influencer_categories") &&
     server.includes("display_name,headline,categories") &&
-    campaignPages.includes(
+    advertiserDashboard.includes(
       "getChannelAudienceSortValue(getCampaignApplicantDisplayPlatforms(a))",
     ) &&
     advertiserDashboard.includes(
       "no-scrollbar overflow-x-hidden overflow-y-auto overscroll-contain rounded-[10px]",
     ) &&
-    campaignPages.includes("grid w-full grid-cols-2 gap-1.5 sm:w-[188px]"),
+    advertiserDashboard.includes("grid w-full grid-cols-2 gap-1.5 sm:w-[190px]"),
   "Advertiser creator discovery and campaign applicant selection must sort by subscriber/follower scale, keep fixed-width action groups across states, and make creator profile browsing directly reachable from names, avatars, or row actions",
+);
+
+check(
+  "marketplace platform filters page matching creators server-side",
+  agents.includes("Paginated influencer discovery filters must be applied by the server") &&
+    server.includes("readMarketplaceInfluencerPlatformFilter") &&
+    server.includes("platform: options.platform") &&
+    server.includes("&platform=eq.${encodeURIComponent(options.platform)}") &&
+    marketplacePages.includes("useMarketplaceInfluencers(platformFilter, savedOnly)") &&
+    marketplacePages.includes("&platform=${encodeURIComponent(platformFilter)}") &&
+    marketplacePages.includes("requestGenerationRef") &&
+    marketplacePages.includes('data-influencer-table-scroll="true"') &&
+    marketplacePages.includes('data-influencer-list-scroll="true"') &&
+    marketplacePages.includes("root: scrollRoot") &&
+    marketplacePages.includes('rootMargin: "0px"'),
+  "Platform filters must request matching profiles before the 1,000-row page limit, discard stale responses when the filter changes, and load the next page only at the actual list bottom",
+);
+
+check(
+  "influencer discovery excludes celebrities and persists advertiser saves",
+  agents.includes("Advertiser influencer discovery is for independent creators") &&
+    agents.includes("Advertiser influencer saves belong to the advertiser organization") &&
+    agents.includes("stable, searchable medium-level taxonomy") &&
+    agents.includes("저장, 국가, 플랫폼, 인플루언서, 카테고리, 채널 지표, 액션") &&
+    influencerDiscoveryQuality.includes("INSTAGRAM_PUBLIC_CREATOR_FOLLOWER_LIMIT = 2_000_000") &&
+    influencerDiscoveryQuality.includes("classifyDiscoveredInfluencerAccount") &&
+    influencerDiscoveryQuality.includes("classifyExternalInfluencerSearchEvidence") &&
+    influencerDiscoveryQuality.includes("reviewedIndependentCreatorHandles") &&
+    influencerDiscoveryQuality.includes("fanAccountHandlePattern") &&
+    influencerDiscoveryQuality.includes("MARKETPLACE_CREATOR_CATEGORY_OPTIONS") &&
+    influencerCollector.includes('existingSameId?.status === "hidden"') &&
+    influencerCollector.includes("classifyDiscoveredInfluencerAccount(incomingRow)") &&
+    influencerCurator.includes("queryWikidataAccountTypes") &&
+    influencerCurator.includes("queryNaverAccountEvidence") &&
+    influencerCurator.includes("naverTargetedReviewVersion") &&
+    server.includes('app.get("/api/advertiser/saved-influencers"') &&
+    server.includes('"/api/advertiser/saved-influencers/:handle"') &&
+    server.includes('savedOnlyQuery === "true"') &&
+    marketplacePages.includes("function InfluencerSaveCheckbox") &&
+    marketplacePages.includes("function SavedOnlyFilterToggle") &&
+    marketplacePages.includes('role="checkbox"') &&
+    marketplacePages.includes('role="switch"') &&
+    advertiserSavedInfluencersMigration.includes("organization_id uuid not null") &&
+    advertiserSavedInfluencersMigration.includes("enable row level security") &&
+    advertiserSavedInfluencersMigration.includes("to service_role"),
+  "Discovery must hide celebrity/corporate Instagram rows durably, keep one stable searchable category, and store advertiser saves server-side per organization",
+);
+
+check(
+  "Naver Blog discovery uses completed four-day public visitor averages",
+  agents.includes("exact four completed KST days before today (D-1 through D-4)") &&
+    agents.includes("refresh each discovered blog at least once every seven days") &&
+    server.includes("naver_blog_visitor_average_4d") &&
+    server.includes('"최근 4일 평균 방문자"') &&
+    marketplacePages.includes("채널 지표") &&
+    marketplacePages.includes("primaryPlatform?.performanceLabel") &&
+    exists("scripts/sync-discovered-naver-blog-visitors.mjs") &&
+    exists("src/domain/naverBlogVisitors.js") &&
+    exists(
+      "supabase/migrations/20260713010000_add_discovered_naver_blog_visitor_metrics.sql",
+    ),
+  "Public Naver Blog rows must show a weekly refreshed D-1 through D-4 average without including today's partial visitor count",
 );
 
 check(
@@ -1279,7 +1337,8 @@ check(
   "campaign recruitment splits advertiser table and influencer cards",
   agents.includes("advertiser-facing campaign management should read like an operational table/list") &&
     agents.includes("influencer-facing campaign discovery should read like thumbnail recruitment cards") &&
-    campaignPages.includes("function AdvertiserCampaignTable") &&
+    advertiserDashboard.includes("function CampaignListView") &&
+    advertiserDashboard.includes("function CampaignTableHeaderRow") &&
     campaignPages.includes("function AdvertiserCampaignPreview") &&
     campaignPages.includes("function CampaignThumbnail") &&
     campaignPages.includes("function CampaignRecruitmentDetailDialog") &&
@@ -1349,7 +1408,6 @@ check(
     marketplaceAvatars.includes("/images/influencers/minseo-home.png") &&
     marketplacePages.includes("getMarketplaceInfluencerAvatarUrl(profile)") &&
     marketplacePages.includes("src={src}") &&
-    campaignPages.includes("getMarketplaceInfluencerAvatarUrlFromHref(") &&
     advertiserDashboard.includes("getMarketplaceInfluencerAvatarUrlFromHref("),
   "Seeded influencer discovery, public profiles, and applicant rows must use generated profile photos instead of initials-only placeholders",
 );
@@ -1386,8 +1444,9 @@ check(
     influencerPublicProfileSource.includes('target="_blank"') &&
     influencerPublicProfileSource.includes("bg-blue-600") &&
     influencerPublicProfileSource.includes("제안하기") &&
-    influencerPublicProfileSource.includes('to="/advertiser/discover"') &&
-    influencerPublicProfileSource.includes("sm:hidden") &&
+    influencerPublicProfileSource.includes("publicProfileHeaderHref") &&
+    influencerPublicProfileSource.includes('"/advertiser/discover"') &&
+    influencerPublicProfileSource.includes("lg:hidden") &&
     agents.includes("first screens should not show money") &&
     agents.includes('proposal areas should show only the blue "제안하기" button') &&
     agents.includes("account for one, two, three, and four verified platforms") &&
@@ -1554,12 +1613,10 @@ check(
     !advertiserDashboard.includes(">{item.label}</span>") &&
     campaignPages.includes('from "../../components/PlatformBrandMark"') &&
     campaignPages.includes('from "../../domain/platformDisplay"') &&
-    campaignPages.includes('<PlatformBrandMark platform={item.platform} size="sm" />') &&
-    campaignPages.includes("getPlatformDisplayName(item.platform)") &&
-    campaignPages.includes("const text = item.followersLabel") &&
-    campaignPages.includes(
-      "inline-flex min-w-0 shrink items-center gap-1.5 text-[11px] font-extrabold text-neutral-800",
-    ) &&
+    campaignPages.includes("function CampaignPlatformLogoMarks") &&
+    campaignPages.includes('<PlatformBrandMark platform={platform} size="sm" />') &&
+    campaignPages.includes("getPlatformDisplayName(platform)") &&
+    campaignPages.includes('aria-label={`플랫폼 ${label}`}') &&
     marketplacePages.includes('value={platform.followersLabel}') &&
     marketplacePages.includes('const hasMetric = Boolean(value)') &&
     marketplacePages.includes('PlatformBrandMark platform={platform} size={hasMetric ? "xs" : "sm"}'),
@@ -2043,9 +2100,6 @@ check(
     campaignParticipantEmptySource.includes("선정자별 계약서와 서명 진행이 이곳에 표시됩니다") &&
     !advertiserCampaignDetailSource.includes("1:1 계약 목록") &&
     !campaignParticipantEmptySource.includes("아직 1:1 계약이 없습니다") &&
-    campaignPages.includes("선정하면 이 캠페인의 계약서 초안이 만들어집니다") &&
-    campaignPages.includes("캠페인 계약서 진행이 시작됩니다") &&
-    campaignPages.includes("계약서 보기") &&
     practitionerIntroduction.includes("선정자별 진행을 관리합니다") &&
     practitionerIntroduction.includes("계약서, 서명, 제출 상태를 캠페인 안에서 이어갑니다") &&
     practitionerGuide.includes("선정자별 진행을 이어갑니다") &&
@@ -2091,7 +2145,6 @@ check(
     !advertiserDashboard.includes("const rawIntro") &&
     !campaignPages.includes("const intro =") &&
     advertiserDashboard.includes("<ApplicantCategoryPill category={mainCategory} />") &&
-    campaignPages.includes("category={mainCategory}") &&
     agents.includes("Campaign applicant dashboards must not show repeated filler sentences"),
   "Campaign applicant dashboard rows must remove generic repeated support text such as 캠페인 지원 데이터입니다",
 );
@@ -2305,7 +2358,7 @@ const demoData = evaluateLiteralObject(
 );
 const expectedTabs = {
   advertiser: ["작성중", "진행중", "종료"],
-  influencer: ["지원중", "진행중", "완료", "미선정"],
+  influencer: ["진행중", "완료"],
 };
 const introDatePatterns = {
   advertiser: /^20\d{2}\.\d{2}\.\d{2}(?: \/ D-\d+)?$/,
@@ -2413,6 +2466,58 @@ check(
   "intro advertiser table order mirrors real dashboard",
   (demoData.advertiser?.states ?? []).every((state) => state.metricBeforeDate !== true),
   "Advertiser intro preview table must keep 마감일/종료일 before 현 단계 like the real advertiser dashboard",
+);
+
+check(
+  "one-to-one inbox uses customer-facing contract copy",
+  marketplaceInbox.includes('converted_to_contract: "계약서 작성 완료"') &&
+    marketplaceInboxPage.includes('eyebrow: "광고주 1:1 제안"') &&
+    marketplaceInboxPage.includes('secondLabel: "계약서 작성 완료"') &&
+    !marketplaceInbox.includes('converted_to_contract: "계약 전환"') &&
+    !marketplaceInboxPage.includes('eyebrow: "광고주 계약 전환"'),
+  "1:1 proposal screens must describe the customer result as 계약서 작성 완료 and must not expose internal contract-conversion terminology",
+);
+
+check(
+  "campaign applicant sorting uses the shared popover interaction",
+  advertiserDashboard.includes("<FilterSelectControl") &&
+    advertiserDashboard.includes('ariaLabel="지원자 정렬"') &&
+    advertiserDashboard.includes('controlsId="campaign-applicant-filters"') &&
+    qaStandard.includes("checkAdvertiserApplicantSortMenu") &&
+    qaStandard.includes("Escape/select/outside click verified"),
+  "Campaign applicant sorting must use the shared list popover and QA must exercise Escape, selection, and outside-click closing",
+);
+
+check(
+  "campaign applications stay separate from direct proposals",
+  server.includes("&campaign_id=not.is.null&order=updated_at.desc") &&
+    seedTestAccounts.includes("seedOneToOneProposalShowcase") &&
+    seedTestAccounts.includes('direction: "advertiser_to_influencer"') &&
+    seedTestAccounts.includes('direction: "influencer_to_brand"') &&
+    seedTestAccounts.includes('data_origin: "qa"') &&
+    seedTestAccounts.includes('request_key: `qa-advertiser-${proposal.status}`') &&
+    seedTestAccounts.includes('request_key: `qa-influencer-${proposal.status}`'),
+  "Influencer campaign dashboards must query only campaign-linked applications, while direct 1:1 proposal fixtures remain explicit QA data",
+);
+
+check(
+  "contract login continuation waits for the authoritative session",
+  contractViewer.includes('waitForFastLoginTransition("influencer", 6_000)') &&
+    contractViewer.includes("mx-auto grid min-w-0 w-full max-w-6xl") &&
+    contractViewer.includes("min-w-0 rounded-lg border") &&
+    qaStandard.includes("checkInfluencerContractLoginContinuation") &&
+    qaStandard.includes("width: 320") &&
+    qaStandard.includes('text.includes("계약을 불러올 수 없습니다")'),
+  "Optimistic influencer login must wait for its session before loading a private contract, and the 320px signed-contract route must remain free of horizontal overflow",
+);
+
+check(
+  "influencer campaign intro preview is visually occupied with real campaign facts",
+  landing.includes("function InfluencerCampaignApplyPreview") &&
+    landing.includes('/images/campaigns/breadroom-homecare-supporters.png') &&
+    landing.includes("제공 상품") &&
+    landing.includes("진행 방식"),
+  "The influencer campaign-application intro slide must show the real campaign image and concise product/method facts instead of leaving a large empty preview area",
 );
 
 console.log("\nSummary");
