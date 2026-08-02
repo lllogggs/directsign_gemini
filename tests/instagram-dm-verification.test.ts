@@ -299,6 +299,52 @@ describe("Platform verification customer email", () => {
     assert.match(body.subject, /인스타그램 계정 인증 요청/);
   });
 
+  it("keeps the sender name as 연락미 even when an environment display name is broken", async () => {
+    resetPlatformVerificationEmailDedupeForTests();
+    const bodies: Array<{ from: string }> = [];
+    const fetchImpl = (async (
+      _input: string | URL | Request,
+      init?: RequestInit,
+    ) => {
+      bodies.push(JSON.parse(String(init?.body)) as { from: string });
+      return new Response(JSON.stringify({ id: "email_sender_test" }), { status: 200 });
+    }) as typeof fetch;
+
+    await sendPlatformVerificationEmail(
+      { ...productionInput, requestId: "sender-broken-display" },
+      {
+        apiKey: "resend-test-key",
+        from: "??? <no-reply@auth.yeollock.me>",
+        fetchImpl,
+      },
+    );
+    await sendPlatformVerificationEmail(
+      { ...productionInput, requestId: "sender-header-injection" },
+      {
+        apiKey: "resend-test-key",
+        from: "연락미 <no-reply@auth.yeollock.me>\r\nBcc: attacker@example.com",
+        fetchImpl,
+      },
+    );
+    await sendPlatformVerificationEmail(
+      { ...productionInput, requestId: "sender-custom-mailbox" },
+      {
+        apiKey: "resend-test-key",
+        from: "다른 이름 <updates@auth.yeollock.me>",
+        fetchImpl,
+      },
+    );
+
+    assert.deepEqual(
+      bodies.map((body) => body.from),
+      [
+        "연락미 <no-reply@auth.yeollock.me>",
+        "연락미 <no-reply@auth.yeollock.me>",
+        "연락미 <updates@auth.yeollock.me>",
+      ],
+    );
+  });
+
   it("returns a failure result without blocking a later retry", async () => {
     resetPlatformVerificationEmailDedupeForTests();
     let fetchCalls = 0;

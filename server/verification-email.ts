@@ -64,16 +64,22 @@ const normalizeSingleLine = (value: string | undefined) =>
 const isValidRecipientEmail = (value: string) =>
   value.length <= 320 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
-const isValidFrom = (value: string) =>
-  value.length <= 400 &&
-  !/[\r\n]/.test(value) &&
-  /<[^<>\s@]+@[^<>\s@]+\.[^<>\s@]+>$/.test(value);
-
 const resolveFrom = (override: string | undefined) => {
-  const candidate = normalizeSingleLine(
-    override ?? process.env.VERIFICATION_EMAIL_FROM,
-  );
-  return isValidFrom(candidate) ? candidate : defaultVerificationEmailFrom;
+  const rawCandidate = override ?? process.env.VERIFICATION_EMAIL_FROM;
+  if (
+    typeof rawCandidate !== "string" ||
+    rawCandidate.length > 400 ||
+    /[\r\n]/.test(rawCandidate)
+  ) {
+    return defaultVerificationEmailFrom;
+  }
+
+  const candidate = rawCandidate.trim();
+  const match = /^[^<>]*<([^<>\s@]+@[^<>\s@]+\.[^<>\s@]+)>$/.exec(candidate);
+  const mailbox = match?.[1]?.toLowerCase() ?? "";
+  return isValidRecipientEmail(mailbox)
+    ? `연락미 <${mailbox}>`
+    : defaultVerificationEmailFrom;
 };
 
 const platformLabel = (platform: PlatformVerificationEmailInput["platform"]) => {
