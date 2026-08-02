@@ -1728,10 +1728,14 @@ const measureBrowserSelectAction = async (client, sessionId, label) => {
         (item) => item.options.length > 1,
       );
       const findCustomFilterTrigger = () =>
-        Array.from(document.querySelectorAll("button[aria-expanded]")).find((item) => {
+        Array.from(
+          document.querySelectorAll(
+            'button[aria-haspopup="listbox"], button[aria-expanded]',
+          ),
+        ).find((item) => {
+          if (item.offsetParent === null) return false;
           const controls = item.getAttribute("aria-controls") || "";
           if (/filters/i.test(controls)) return false;
-          if (item.getAttribute("aria-haspopup") === "listbox") return false;
           const text = (item.textContent || "").trim();
           return text && !/필터|filter|기간|정렬/i.test(text);
         });
@@ -1746,18 +1750,27 @@ const measureBrowserSelectAction = async (client, sessionId, label) => {
         return true;
       };
       let select = findSelect();
-      if (!select) {
+      let trigger = findCustomFilterTrigger();
+      if (!select && !trigger) {
         const opened = await openFiltersIfNeeded();
-        if (opened) select = findSelect();
+        if (opened) {
+          select = findSelect();
+          trigger = findCustomFilterTrigger();
+        }
       }
 
       if (!select) {
-        const trigger = findCustomFilterTrigger();
         if (!trigger) return { ok: false, detail: "filter control missing" };
         trigger.click();
         await waitFrames();
-        const option = Array.from(document.querySelectorAll("button[aria-pressed]")).find(
-          (item) => item.getAttribute("aria-pressed") === "false" && item.offsetParent !== null,
+        const option = Array.from(
+          document.querySelectorAll(
+            'button[role="option"], button[aria-pressed]',
+          ),
+        ).find((item) =>
+          item.offsetParent !== null &&
+          (item.getAttribute("aria-selected") === "false" ||
+            item.getAttribute("aria-pressed") === "false"),
         );
         if (!option) return { ok: false, detail: "filter option missing" };
         const startedAt = performance.now();
@@ -1794,6 +1807,168 @@ const measureBrowserSelectAction = async (client, sessionId, label) => {
     `Browser perf action ${label} filter`,
     ok ? "pass" : "fail",
     `${result.durationMs}ms, budget ${browserPerformanceBudgets.actionMs}ms`,
+  );
+  return ok;
+};
+
+const checkDashboardSurfaceBreakpoints = async (
+  client,
+  sessionId,
+  role,
+) => {
+  const widths = [640, 768, 900, 1024, 1365];
+  const route = `/${role}/dashboard`;
+  const measurements = [];
+
+  try {
+    await waitForRouteReady(client, sessionId, route, {
+      minTextLength: 60,
+      timeoutMs: 15000,
+    });
+
+    for (const width of widths) {
+      await client.send(
+        "Emulation.setDeviceMetricsOverride",
+        {
+          width,
+          height: 900,
+          deviceScaleFactor: 1,
+          mobile: false,
+        },
+        sessionId,
+      );
+
+      const result = await evaluateCdpValue(
+        client,
+        sessionId,
+        `(async () => {
+          const role = ${JSON.stringify(role)};
+          const expectedWidth = ${width};
+          const desktopSelector =
+            '[data-dashboard-surface-switch="' + role + '"]';
+          const mobileSelector =
+            '[data-mobile-surface-switch="' + role + '"]';
+
+          for (let attempt = 0; attempt < 150; attempt += 1) {
+            if (
+              document.querySelector(desktopSelector) &&
+              document.querySelector(mobileSelector)
+            ) {
+              break;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 100));
+          }
+
+          await document.fonts?.ready;
+          await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+          await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+
+          const desktopSwitches = [
+            ...document.querySelectorAll(desktopSelector),
+          ];
+          const mobileSwitches = [
+            ...document.querySelectorAll(mobileSelector),
+          ];
+          const isVisible = (element) => {
+            if (!element || element.getClientRects().length === 0) return false;
+            const rect = element.getBoundingClientRect();
+            return rect.width > 0 && rect.height > 0;
+          };
+          const rectFits = (element) => {
+            const rect = element.getBoundingClientRect();
+            return rect.left >= -0.5 && rect.right <= window.innerWidth + 0.5;
+          };
+          const itemText = (element) => (element?.textContent || '').trim();
+
+          const desktop = desktopSwitches[0] || null;
+          const mobile = mobileSwitches[0] || null;
+          const desktopItems = desktop
+            ? [...desktop.querySelectorAll(':scope > .yl-dashboard-surface-link')]
+            : [];
+          const mobileItems = mobile
+            ? [...(mobile.querySelector(':scope > div')?.children || [])]
+            : [];
+          const desktopVisible = isVisible(desktop);
+          const mobileVisible = isVisible(mobile);
+          const expectsDesktop = window.innerWidth >= 1024;
+          const visibleNav = expectsDesktop ? desktop : mobile;
+          const visibleItems = expectsDesktop ? desktopItems : mobileItems;
+          const ordered =
+            itemText(visibleItems[0]) === '캠페인' &&
+            itemText(visibleItems[1]) === '1:1 계약';
+          const active = expectsDesktop
+            ? desktop?.querySelector('[data-dashboard-surface-active="contracts"]')
+            : mobile?.querySelector('[data-mobile-surface-active="contracts"]');
+          const widths = desktopItems.map((item) => item.getBoundingClientRect().width);
+          const widthDelta = widths.length
+            ? Math.max(...widths) - Math.min(...widths)
+            : 0;
+          const visibleRectsFit =
+            Boolean(visibleNav) &&
+            rectFits(visibleNav) &&
+            visibleItems.length >= 2 &&
+            visibleItems.every((item) => isVisible(item) && rectFits(item));
+          const overflow =
+            document.documentElement.scrollWidth - document.documentElement.clientWidth;
+          const visibilityMatches = expectsDesktop
+            ? desktopVisible && !mobileVisible
+            : mobileVisible && !desktopVisible;
+          const viewportMatches = window.innerWidth === expectedWidth;
+
+          return {
+            ok:
+              viewportMatches &&
+              desktopSwitches.length === 1 &&
+              mobileSwitches.length === 1 &&
+              visibilityMatches &&
+              ordered &&
+              Boolean(active) &&
+              visibleRectsFit &&
+              (!expectsDesktop || widthDelta <= 1) &&
+              overflow <= 0,
+            expectedWidth,
+            width: window.innerWidth,
+            viewportMatches,
+            desktopCount: desktopSwitches.length,
+            mobileCount: mobileSwitches.length,
+            desktopVisible,
+            mobileVisible,
+            ordered,
+            active: Boolean(active),
+            visibleRectsFit,
+            widthDelta: Math.round(widthDelta * 10) / 10,
+            overflow,
+          };
+        })()`,
+      );
+      measurements.push(result);
+    }
+  } finally {
+    await client.send(
+      "Emulation.setDeviceMetricsOverride",
+      {
+        width: 1365,
+        height: 900,
+        deviceScaleFactor: 1,
+        mobile: false,
+      },
+      sessionId,
+    );
+  }
+
+  const ok =
+    measurements.length === widths.length &&
+    measurements.every((measurement) => measurement?.ok);
+  record(
+    `Browser ${role} dashboard surface breakpoints`,
+    ok ? "pass" : "fail",
+    measurements
+      .map((measurement) =>
+        measurement?.ok
+          ? `${measurement.width}px ok`
+          : `${measurement?.width ?? "?"}px ${JSON.stringify(measurement)}`,
+      )
+      .join(", "),
   );
   return ok;
 };
@@ -1887,6 +2062,13 @@ const checkBrowserPerformance = async (baseUrl) => {
       checkResults.push(
         await checkBrowserRoleSession(client, sessionId, "advertiser"),
       );
+      checkResults.push(
+        await checkDashboardSurfaceBreakpoints(
+          client,
+          sessionId,
+          "advertiser",
+        ),
+      );
       await client.send(
         "Page.navigate",
         { url: new URL("/advertiser/discover", baseUrl).toString() },
@@ -1929,6 +2111,13 @@ const checkBrowserPerformance = async (baseUrl) => {
       );
       checkResults.push(
         await checkBrowserRoleSession(client, sessionId, "influencer"),
+      );
+      checkResults.push(
+        await checkDashboardSurfaceBreakpoints(
+          client,
+          sessionId,
+          "influencer",
+        ),
       );
       checkResults.push(await measureBrowserInputAction(client, sessionId, "influencer"));
       checkResults.push(await measureBrowserSelectAction(client, sessionId, "influencer"));
