@@ -1172,7 +1172,13 @@ const checkInfluencerCampaignMobileScroll = async (client, sessionId, baseUrl) =
           await new Promise((resolve) => setTimeout(resolve, 100));
         }
         const pageText = document.body?.innerText || "";
-        if (!pageText.includes("모집 캠페인")) {
+        const activeCampaignTab = document.querySelector(
+          '[role="tablist"][aria-label="캠페인 보기"] [role="tab"][aria-selected="true"]',
+        );
+        if (
+          !activeCampaignTab ||
+          !/^모집 캠페인 [0-9]+건$/u.test(activeCampaignTab.getAttribute("aria-label") || "")
+        ) {
           return { ok: false, detail: "campaign list header missing" };
         }
         const filterButton = document.querySelector(
