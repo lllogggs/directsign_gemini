@@ -61,9 +61,14 @@ Owner-only checklist: see [`owner-action-memo.md`](owner-action-memo.md).
 - Verify that signed Korean contract PDFs render readable text. Production
   bundles NanumGothic for the default path; `SIGNED_PDF_FONT_PATH` can override
   it with another Korean-capable TTF font if needed.
+- Apply `20260730090000_add_auth_security_foundation.sql` followed by
+  `20260730100000_add_atomic_admin_mfa_rate_limit_reservations.sql`, create each
+  operator as an individual Supabase user with `profiles.role = 'admin'`, and
+  complete TOTP enrollment before granting production admin access. There is no
+  shared admin code or static operator-name fallback.
 - Set strong server-only secrets: `SUPABASE_SERVICE_ROLE_KEY`,
-  `ADMIN_ACCESS_CODE`, `ADMIN_SESSION_SECRET`,
-  `DIRECTSIGN_TOKEN_ENCRYPTION_SECRET`. Generate app secrets with
+  `USER_SESSION_FAST_PATH_SECRET`, `DIRECTSIGN_TOKEN_ENCRYPTION_SECRET`.
+  Generate app secrets with
   `npm run secrets:generate`, keep them stable across deployments, and do not
   prefix secrets with `VITE_`.
 - Set `APP_URL` to the deployed origin, keep public auth rate limits enabled, and

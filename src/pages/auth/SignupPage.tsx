@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router";
 import { ArrowRight, MailCheck, X } from "lucide-react";
 import {
   AuthLoginScreen,
@@ -11,6 +11,7 @@ import type {
   GlobalCreatorAuthLocale,
 } from "../../components/AuthLoginScreen";
 import { BrandLogo } from "../../components/BrandLogo";
+import { readAuthPrefillEmail } from "../../components/AuthAccountNoticeDialog";
 import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
 import { LEGAL_CONTACT_EMAIL } from "../../domain/legalEntity";
@@ -109,6 +110,7 @@ type GlobalCreatorSignupCopy = {
   nameLabel: string;
   emailLabel: string;
   passwordLabel: string;
+  passwordConfirmationLabel: string;
   passwordPlaceholder: string;
   categoryLabel: string;
   platformLabel: string;
@@ -126,6 +128,8 @@ type GlobalCreatorSignupCopy = {
     invalidEmail: string;
     passwordLength: string;
     passwordFormat: string;
+    passwordConfirmationRequired: string;
+    passwordMismatch: string;
     nameRequired: string;
     invalidActivity: string;
     emailInUse: string;
@@ -182,6 +186,7 @@ const globalCreatorSignupCopies: Record<
     nameLabel: "Name or creator name",
     emailLabel: "Email",
     passwordLabel: "Password",
+    passwordConfirmationLabel: "Confirm password",
     passwordPlaceholder: "8+ characters with letters and numbers",
     categoryLabel: "Primary category",
     platformLabel: "Main platform",
@@ -216,6 +221,8 @@ const globalCreatorSignupCopies: Record<
       invalidEmail: "Enter a valid email address.",
       passwordLength: "Use at least 8 characters for your password.",
       passwordFormat: "Include both letters and numbers in your password.",
+      passwordConfirmationRequired: "Re-enter your password.",
+      passwordMismatch: "Passwords do not match.",
       nameRequired: "Enter your name or creator name.",
       invalidActivity: "Select a valid category and platform.",
       emailInUse:
@@ -227,7 +234,7 @@ const globalCreatorSignupCopies: Record<
     confirmation: {
       title: "Check your email",
       message:
-        "We sent a confirmation email. Open the link, then log in to Yeollock.",
+        "We sent a confirmation email. Open the link, then log in to 연락미.",
       loginLabel: "Log in",
       editEmailLabel: "Change email",
       inboxHint: "If it is missing, check your spam and promotions folders.",
@@ -243,8 +250,8 @@ const globalCreatorSignupCopies: Record<
       terms: {
         title: "Terms of Service",
         items: [
-          "Review the terms for creating a Yeollock account and using the service.",
-          "Yeollock supports contract drafting, review links, e-signatures, and evidence storage.",
+          "Review the terms for creating a 연락미 account and using the service.",
+          "연락미 supports contract drafting, review links, e-signatures, and evidence storage.",
           "Ad fees, payouts, refunds, and taxes are handled between the contracting parties.",
           "Signup and core features are currently free. We will give notice before any paid transition.",
         ],
@@ -275,6 +282,7 @@ const globalCreatorSignupCopies: Record<
     nameLabel: "名前または活動名",
     emailLabel: "メールアドレス",
     passwordLabel: "パスワード",
+    passwordConfirmationLabel: "パスワード（確認）",
     passwordPlaceholder: "英字と数字を含む8文字以上",
     categoryLabel: "活動ジャンル",
     platformLabel: "メインプラットフォーム",
@@ -309,6 +317,8 @@ const globalCreatorSignupCopies: Record<
       invalidEmail: "有効なメールアドレスを入力してください。",
       passwordLength: "パスワードは8文字以上で入力してください。",
       passwordFormat: "パスワードには英字と数字を含めてください。",
+      passwordConfirmationRequired: "パスワードをもう一度入力してください。",
+      passwordMismatch: "パスワードが一致しません。",
       nameRequired: "名前または活動名を入力してください。",
       invalidActivity: "活動ジャンルとプラットフォームを選び直してください。",
       emailInUse:
@@ -336,7 +346,7 @@ const globalCreatorSignupCopies: Record<
       terms: {
         title: "利用規約",
         items: [
-          "Yeollockのアカウント作成とサービス利用条件を確認します。",
+          "연락미のアカウント作成とサービス利用条件を確認します。",
           "契約書作成、確認リンク、電子署名、証拠保管に関する責任範囲を確認します。",
           "広告費の支払い、精算、返金、税務は契約当事者間で行います。",
           "現在、登録と基本機能は無料です。有料化する場合は事前にお知らせします。",
@@ -368,6 +378,7 @@ const globalCreatorSignupCopies: Record<
     nameLabel: "姓名或创作者名称",
     emailLabel: "邮箱",
     passwordLabel: "密码",
+    passwordConfirmationLabel: "确认密码",
     passwordPlaceholder: "至少8位，包含字母和数字",
     categoryLabel: "内容领域",
     platformLabel: "主要平台",
@@ -402,6 +413,8 @@ const globalCreatorSignupCopies: Record<
       invalidEmail: "请输入有效的邮箱地址。",
       passwordLength: "密码至少需要8位。",
       passwordFormat: "密码需同时包含字母和数字。",
+      passwordConfirmationRequired: "请再次输入密码。",
+      passwordMismatch: "两次输入的密码不一致。",
       nameRequired: "请输入姓名或创作者名称。",
       invalidActivity: "请重新选择内容领域和平台。",
       emailInUse: "该邮箱可能已注册。请登录或查看确认邮件。",
@@ -427,8 +440,8 @@ const globalCreatorSignupCopies: Record<
       terms: {
         title: "服务条款",
         items: [
-          "请确认创建Yeollock账号和使用服务的相关条款。",
-          "Yeollock提供合同起草、审阅链接、电子签名和证据保存服务。",
+          "请确认创建연락미账号和使用服务的相关条款。",
+          "연락미提供合同起草、审阅链接、电子签名和证据保存服务。",
           "广告费、结算、退款和税务由合同双方自行处理。",
           "目前注册和基础功能免费。如转为付费，我们会提前通知。",
         ],
@@ -580,8 +593,11 @@ export function SignupPage({ role }: { role: SignupRole }) {
     : INFLUENCER_PLATFORM_OPTIONS;
   const [name, setName] = useState("");
   const [companyName, setCompanyName] = useState("");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(() => readAuthPrefillEmail(location.state));
   const [password, setPassword] = useState("");
+  const [passwordConfirmation, setPasswordConfirmation] = useState("");
+  const [passwordConfirmationTouched, setPasswordConfirmationTouched] =
+    useState(false);
   const [activityCategories, setActivityCategories] = useState<
     InfluencerActivityCategory[]
   >([]);
@@ -605,8 +621,23 @@ export function SignupPage({ role }: { role: SignupRole }) {
   const influencerRequiredProfileComplete =
     role !== "influencer" ||
     (influencerCategorySelected && influencerPlatformSelected);
+  const passwordsMatch =
+    password.length > 0 &&
+    passwordConfirmation.length > 0 &&
+    password === passwordConfirmation;
+  const passwordConfirmationError = passwordConfirmationTouched
+    ? passwordConfirmation.length === 0
+      ? globalCopy?.errors.passwordConfirmationRequired ??
+        "비밀번호를 한 번 더 입력해 주세요."
+      : password !== passwordConfirmation
+        ? globalCopy?.errors.passwordMismatch ??
+          "비밀번호가 일치하지 않습니다."
+        : ""
+    : "";
   const canSubmitSignup =
-    requiredConsentsAccepted && influencerRequiredProfileComplete;
+    requiredConsentsAccepted &&
+    influencerRequiredProfileComplete &&
+    passwordsMatch;
   const resolveSignupError = (message: string | null | undefined) =>
     globalCopy
       ? localizeGlobalSignupError(message, globalCopy)
@@ -614,6 +645,11 @@ export function SignupPage({ role }: { role: SignupRole }) {
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (!passwordsMatch) {
+      setPasswordConfirmationTouched(true);
+      setError("");
+      return;
+    }
     setIsSubmitting(true);
     setError("");
     setConfirmationEmail("");
@@ -650,6 +686,7 @@ export function SignupPage({ role }: { role: SignupRole }) {
           name: name.trim(),
           email: normalizedEmail,
           password,
+          password_confirmation: passwordConfirmation,
           terms_accepted: consents.terms,
           privacy_accepted: consents.privacy,
           terms_version: TERMS_DOCUMENT_VERSION,
@@ -822,6 +859,22 @@ export function SignupPage({ role }: { role: SignupRole }) {
               "영문과 숫자를 포함해 8자 이상",
             required: true,
             onChange: setPassword,
+          },
+          {
+            id: "passwordConfirmation",
+            label:
+              globalCopy?.passwordConfirmationLabel ?? "비밀번호 확인",
+            value: passwordConfirmation,
+            type: "password",
+            autoComplete: "new-password",
+            placeholder:
+              globalCopy?.passwordConfirmationLabel ?? "비밀번호 다시 입력",
+            required: true,
+            error: passwordConfirmationError || undefined,
+            onChange: (value: string) => {
+              setPasswordConfirmation(value);
+              setPasswordConfirmationTouched(true);
+            },
           },
         ]}
         submitLabel={signupSubmitLabel}

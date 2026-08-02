@@ -3,8 +3,7 @@ import { randomBytes } from "node:crypto";
 const randomValue = (byteLength = 48) => randomBytes(byteLength).toString("base64url");
 
 const secrets = {
-  ADMIN_ACCESS_CODE: `adm_${randomValue(24)}`,
-  ADMIN_SESSION_SECRET: randomValue(),
+  USER_SESSION_FAST_PATH_SECRET: randomValue(),
   DIRECTSIGN_TOKEN_ENCRYPTION_SECRET: randomValue(),
 };
 

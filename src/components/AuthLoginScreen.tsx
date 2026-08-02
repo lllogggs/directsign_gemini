@@ -1,6 +1,6 @@
 import React from "react";
 import { ArrowRight, CheckCircle2 } from "lucide-react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router";
 import { BrandLogo } from "./BrandLogo";
 import { PRODUCT_NAME } from "../domain/brand";
 
@@ -123,6 +123,7 @@ export interface AuthLoginField {
   type: "email" | "password" | "text";
   autoComplete?: string;
   helper?: React.ReactNode;
+  error?: React.ReactNode;
   placeholder?: string;
   required?: boolean;
   disabled?: boolean;
@@ -261,28 +262,57 @@ export function AuthLoginScreen({
                   onSubmit={onSubmit}
                   aria-describedby={errorId}
                 >
-                  {fields.map((field) => (
-                    <label key={field.id} className="block">
-                      <span className="text-[13px] font-bold text-neutral-700">
-                        {field.label}
-                      </span>
-                      <input
-                        className="mt-1.5 h-10 w-full rounded-[12px] border border-neutral-200 bg-[#fbfaf7] px-3.5 text-[14px] font-semibold text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-blue-600 focus:bg-white focus:shadow-[0_0_0_3px_rgba(37,99,235,0.10)] disabled:bg-neutral-100 disabled:text-neutral-400 sm:mt-2 sm:h-11 sm:px-4 sm:text-[15px]"
-                        value={field.value}
-                        onChange={(event) => field.onChange(event.target.value)}
-                        type={field.type}
-                        autoComplete={field.autoComplete}
-                        placeholder={field.placeholder}
-                        required={field.required}
-                        disabled={field.disabled || isSubmitting}
-                        aria-invalid={Boolean(error) || undefined}
-                        aria-describedby={errorId}
-                      />
-                      {field.helper ? (
-                        <span className="mt-2 block">{field.helper}</span>
-                      ) : null}
-                    </label>
-                  ))}
+                  {fields.map((field) => {
+                    const helperId = field.helper
+                      ? `${field.id}-helper`
+                      : undefined;
+                    const fieldErrorId = field.error
+                      ? `${field.id}-error`
+                      : undefined;
+                    const describedBy = [helperId, fieldErrorId, errorId]
+                      .filter(Boolean)
+                      .join(" ") || undefined;
+
+                    return (
+                      <label key={field.id} className="block">
+                        <span className="text-[13px] font-bold text-neutral-700">
+                          {field.label}
+                        </span>
+                        <input
+                          id={field.id}
+                          className={`mt-1.5 h-10 w-full rounded-[12px] border bg-[#fbfaf7] px-3.5 text-[14px] font-semibold text-neutral-950 outline-none transition placeholder:text-neutral-400 focus:bg-white disabled:bg-neutral-100 disabled:text-neutral-400 sm:mt-2 sm:h-11 sm:px-4 sm:text-[15px] ${
+                            field.error
+                              ? "border-red-300 hover:border-red-400 focus:border-red-500 focus:shadow-[0_0_0_3px_rgba(239,68,68,0.10)]"
+                              : "border-neutral-200 hover:border-neutral-300 focus:border-blue-600 focus:shadow-[0_0_0_3px_rgba(37,99,235,0.10)]"
+                          }`}
+                          value={field.value}
+                          onChange={(event) => field.onChange(event.target.value)}
+                          type={field.type}
+                          autoComplete={field.autoComplete}
+                          placeholder={field.placeholder}
+                          required={field.required}
+                          disabled={field.disabled || isSubmitting}
+                          aria-invalid={Boolean(field.error || error) || undefined}
+                          aria-describedby={describedBy}
+                        />
+                        {field.helper ? (
+                          <span id={helperId} className="mt-2 block">
+                            {field.helper}
+                          </span>
+                        ) : null}
+                        {field.error ? (
+                          <span
+                            id={fieldErrorId}
+                            role="alert"
+                            aria-live="polite"
+                            className="mt-2 block text-[12px] font-semibold leading-5 text-red-600"
+                          >
+                            {field.error}
+                          </span>
+                        ) : null}
+                      </label>
+                    );
+                  })}
 
                   {children}
 

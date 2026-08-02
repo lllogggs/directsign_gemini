@@ -26,6 +26,23 @@ export type InfluencerVerificationMethod =
   | "channel_description_code"
   | "screenshot_review";
 
+export type InstagramDmChallengeState =
+  | "awaiting_dm"
+  | "retrying_provider"
+  | "verified"
+  | "expired"
+  | "manual_review";
+
+export interface InstagramDmChallenge {
+  request_id: string;
+  state: InstagramDmChallengeState;
+  code?: string;
+  expires_at: string;
+  official_handle: string;
+  official_url: string;
+  verified_handle?: string;
+}
+
 export type OwnershipCheckStatus =
   | "not_run"
   | "matched"
@@ -185,10 +202,9 @@ export const getVerificationRejectionGuidance = (
       body: "계약 초안 작성은 계속할 수 있지만, 새 증빙으로 승인되기 전까지 공유 링크 발송은 제한됩니다.",
       reviewerNote,
       checklist: [
-        "사업자등록번호, 회사명, 대표자명이 증빙 문서와 가입 정보에서 서로 일치하는지 확인해 주세요.",
+        "사업자등록번호, 대표자명, 개업일자가 증빙 문서와 일치하는지 확인해 주세요.",
         "발급일과 문서확인번호가 보이는 최근 사업자등록증명원 PDF 또는 이미지를 올려 주세요.",
         "문서 전체가 잘리지 않고 흐릿하지 않은지, 민감 정보를 가린 경우에도 검수에 필요한 항목은 보이는지 확인해 주세요.",
-        "대행사가 브랜드를 대신 계약하는 경우 운영자 메모에 관계와 계약 권한을 적어 주세요.",
       ],
     };
   }

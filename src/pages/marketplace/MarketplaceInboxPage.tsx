@@ -11,7 +11,7 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router";
 import { LogoMark } from "../../components/BrandLogo";
 import { AdvertiserAccountSettingsMenu } from "../../components/AdvertiserAccountSettingsMenu";
 import { InfluencerAccountSettingsMenu } from "../../components/InfluencerAccountSettingsMenu";

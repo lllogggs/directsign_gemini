@@ -32,7 +32,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router";
 import { LogoMark } from "../../components/BrandLogo";
 import { PlatformBrandMark } from "../../components/PlatformBrandMark";
 import { FilterSelectControl } from "../../components/FilterSelectControl";
@@ -45,6 +45,7 @@ import {
   MARKETPLACE_CREATOR_CATEGORY_OPTIONS,
   normalizeMarketplaceCreatorCategory,
 } from "../../domain/influencerDiscoveryQuality.js";
+import { normalizeNaverBlogRecentPosts } from "../../domain/naverBlogPosts.js";
 import {
   campaignProposalTypeOptions,
   compareChannelAudienceValues,
@@ -80,7 +81,7 @@ import { clearMarketplaceMessageSummaryCache } from "../../hooks/useMarketplaceM
 type PlatformFilter = "all" | InfluencerPlatform;
 type InfluencerSortValue = "audience_desc" | "audience_asc" | "name_asc";
 type ContactDraftRole = "advertiser" | "influencer";
-type MarketplaceShellMode = "authenticated" | "anonymous";
+type MarketplaceShellMode = "checking" | "authenticated" | "anonymous";
 type MarketplaceShellRole = ContactDraftRole;
 type MarketplaceSessionStatusResponse = {
   authenticated?: boolean;
@@ -306,12 +307,6 @@ function getCategoryLabels(categories: string[], limit: number) {
   return Array.from(labelsByKey.values()).slice(0, limit);
 }
 
-function hasAnyCategory(categories: string[], filters: string[]) {
-  if (filters.length === 0) return true;
-  const selectedKeys = new Set(filters);
-  return categories.some((category) => selectedKeys.has(getCategoryFilterKey(category)));
-}
-
 function formatSelectedCategorySummary(categories: string[]) {
   if (categories.length === 0) return "";
   const labels = categories.map((category) => getCategoryLabel(category));
@@ -320,7 +315,8 @@ function formatSelectedCategorySummary(categories: string[]) {
 
 type MarketplaceInfluencersResponse = {
   profiles: MarketplaceInfluencerProfile[];
-  hasMore?: boolean;
+  hasMore: boolean;
+  total: number;
 };
 
 type MarketplaceInfluencerResponse = {
@@ -340,6 +336,8 @@ type MarketplaceBrandResponse = {
 };
 
 const marketplaceInfluencerPageSize = 1000;
+const emptyInfluencerCategoryFilters: string[] = [];
+const emptyInfluencerCountryFilters: MarketplaceCountryCode[] = [];
 
 function mergeUniqueInfluencerProfiles(
   current: MarketplaceInfluencerProfile[],
@@ -358,6 +356,10 @@ function mergeUniqueInfluencerProfiles(
 function useMarketplaceInfluencers(
   platformFilter: PlatformFilter,
   savedOnly = false,
+  query = "",
+  categoryFilters: string[] = emptyInfluencerCategoryFilters,
+  countryFilters: MarketplaceCountryCode[] = emptyInfluencerCountryFilters,
+  savedHandlesRevision = 0,
 ) {
   const [profiles, setProfiles] =
     useState<MarketplaceInfluencerProfile[]>([]);
@@ -365,6 +367,7 @@ function useMarketplaceInfluencers(
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [hasMore, setHasMore] = useState(true);
+  const [total, setTotal] = useState<number | null>(null);
   const nextOffsetRef = useRef(0);
   const loadingRef = useRef(false);
   const mountedRef = useRef(false);
@@ -390,13 +393,26 @@ function useMarketplaceInfluencers(
     }
 
     try {
-      const platformQuery =
-        platformFilter === "all"
-          ? ""
-          : `&platform=${encodeURIComponent(platformFilter)}`;
-      const savedQuery = savedOnly ? "&saved_only=true" : "";
+      const searchParams = new URLSearchParams({
+        limit: String(marketplaceInfluencerPageSize),
+        offset: String(offset),
+      });
+      if (platformFilter !== "all") {
+        searchParams.set("platform", platformFilter);
+      }
+      if (savedOnly) {
+        searchParams.set("saved_only", "true");
+        searchParams.set("saved_revision", String(savedHandlesRevision));
+      }
+      if (query.trim()) searchParams.set("search", query.trim());
+      categoryFilters.forEach((category) =>
+        searchParams.append("category", category),
+      );
+      countryFilters.forEach((country) =>
+        searchParams.append("country", country),
+      );
       const response = await apiFetch(
-        `/api/marketplace/influencers?limit=${marketplaceInfluencerPageSize}&offset=${offset}${platformQuery}${savedQuery}`,
+        `/api/marketplace/influencers?${searchParams.toString()}`,
         { headers: { Accept: "application/json" } },
       );
       if (!response.ok) throw new Error("Marketplace influencers failed");
@@ -410,6 +426,14 @@ function useMarketplaceInfluencers(
       if (!Array.isArray(data.profiles)) {
         throw new Error("Marketplace influencers response was invalid");
       }
+      if (
+        !Number.isInteger(data.total) ||
+        data.total < 0 ||
+        (data.profiles.length > 0 &&
+          data.total < offset + data.profiles.length)
+      ) {
+        throw new Error("Marketplace influencer total was invalid");
+      }
 
       const incomingProfiles = data.profiles.length > 0 ? data.profiles : [];
       setProfiles((current) =>
@@ -417,13 +441,17 @@ function useMarketplaceInfluencers(
           ? mergeUniqueInfluencerProfiles([], incomingProfiles)
           : mergeUniqueInfluencerProfiles(current, incomingProfiles),
       );
+      setTotal(data.total);
       nextOffsetRef.current = offset + incomingProfiles.length;
-      updateHasMore(Boolean(data.hasMore) && incomingProfiles.length > 0);
+      updateHasMore(data.hasMore && incomingProfiles.length > 0);
     } catch {
       const isCurrentRequest =
         mountedRef.current &&
         requestGeneration === requestGenerationRef.current;
-      if (isCurrentRequest && offset === 0) setProfiles([]);
+      if (isCurrentRequest && offset === 0) {
+        setProfiles([]);
+        setTotal(null);
+      }
       if (isCurrentRequest) {
         setError("인플루언서 목록을 불러오지 못했습니다.");
       }
@@ -437,7 +465,15 @@ function useMarketplaceInfluencers(
         loadingRef.current = false;
       }
     }
-  }, [platformFilter, savedOnly, updateHasMore]);
+  }, [
+    categoryFilters,
+    countryFilters,
+    platformFilter,
+    query,
+    savedOnly,
+    savedHandlesRevision,
+    updateHasMore,
+  ]);
 
   const retry = useCallback(() => {
     if (loadingRef.current) return;
@@ -460,6 +496,7 @@ function useMarketplaceInfluencers(
         return;
       }
       setProfiles([]);
+      setTotal(null);
       setError(undefined);
       setIsLoading(true);
       setIsLoadingMore(false);
@@ -480,6 +517,7 @@ function useMarketplaceInfluencers(
     isLoadingMore,
     error,
     hasMore,
+    total,
     loadNextPage,
     retry,
   };
@@ -489,6 +527,7 @@ function useAdvertiserSavedInfluencers() {
   const [savedHandles, setSavedHandles] = useState<Set<string>>(() => new Set());
   const [savingHandles, setSavingHandles] = useState<Set<string>>(() => new Set());
   const [isReady, setIsReady] = useState(false);
+  const [revision, setRevision] = useState(0);
   const [error, setError] = useState<string | undefined>();
   const savedHandlesRef = useRef(savedHandles);
   const savingHandlesRef = useRef(savingHandles);
@@ -559,6 +598,9 @@ function useAdvertiserSavedInfluencers() {
           },
         );
         if (!response.ok) throw new Error("Saved influencer update failed");
+        if (mountedRef.current) {
+          setRevision((current) => current + 1);
+        }
       } catch {
         const rolledBack = new Set(savedHandlesRef.current);
         if (wasSaved) rolledBack.add(handle);
@@ -578,6 +620,7 @@ function useAdvertiserSavedInfluencers() {
     savedHandles,
     savingHandles,
     isReady,
+    revision,
     error,
     toggleSaved,
   };
@@ -785,31 +828,54 @@ function useInfluencerPublicProfilePath() {
 function useMarketplaceShellMode(
   role: MarketplaceShellRole,
 ): MarketplaceShellMode {
-  const [mode, setMode] = useState<MarketplaceShellMode>("anonymous");
+  const [mode, setMode] = useState<MarketplaceShellMode>("checking");
 
   useEffect(() => {
     let active = true;
+    let retryAttempt = 0;
+    let retryTimer: number | undefined;
 
-    void apiFetch(`/api/${role}/session`, {
-      headers: { Accept: "application/json" },
-      credentials: "include",
-    })
-      .then(async (response) => {
+    const checkSession = async () => {
+      try {
+        const response = await apiFetch(`/api/${role}/session`, {
+          headers: { Accept: "application/json" },
+          credentials: "include",
+        });
         const data = (await response.json().catch(() => ({}))) as
           MarketplaceSessionStatusResponse;
         if (!active) return;
-        setMode(
-          response.ok && data.authenticated === true
-            ? "authenticated"
-            : "anonymous",
-        );
-      })
-      .catch(() => {
-        if (active) setMode("anonymous");
-      });
+        if (response.ok && data.authenticated === true) {
+          retryAttempt = 0;
+          setMode("authenticated");
+          return;
+        }
+        if (
+          response.status === 401 ||
+          response.status === 403 ||
+          (response.ok && data.authenticated === false)
+        ) {
+          retryAttempt = 0;
+          setMode("anonymous");
+          return;
+        }
+      } catch {
+        // Keep the last known shell mode while authentication is temporarily unavailable.
+      }
+
+      if (!active || retryTimer !== undefined) return;
+      const retryDelayMs = Math.min(1_000 * 2 ** retryAttempt, 10_000);
+      retryAttempt += 1;
+      retryTimer = window.setTimeout(() => {
+        retryTimer = undefined;
+        void checkSession();
+      }, retryDelayMs);
+    };
+
+    void checkSession();
 
     return () => {
       active = false;
+      if (retryTimer !== undefined) window.clearTimeout(retryTimer);
     };
   }, [role]);
 
@@ -842,10 +908,11 @@ export function AdvertiserInfluencerDiscoveryPage() {
     top: number;
     left: number;
   } | null>(null);
+  const previewCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const {
     savedHandles,
     savingHandles,
-    isReady: savedHandlesReady,
+    revision: savedHandlesRevision,
     error: savedInfluencerError,
     toggleSaved: toggleSavedInfluencer,
   } = useAdvertiserSavedInfluencers();
@@ -855,9 +922,17 @@ export function AdvertiserInfluencerDiscoveryPage() {
     isLoadingMore,
     error: influencerLoadError,
     hasMore,
+    total: influencerTotal,
     loadNextPage,
     retry: retryInfluencers,
-  } = useMarketplaceInfluencers(platformFilter, savedOnly);
+  } = useMarketplaceInfluencers(
+    platformFilter,
+    savedOnly,
+    query,
+    categoryFilters,
+    countryFilters,
+    savedOnly ? savedHandlesRevision : 0,
+  );
   const { brands } = useMarketplaceBrands();
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
@@ -896,64 +971,13 @@ export function AdvertiserInfluencerDiscoveryPage() {
     query,
   ]);
 
-  const filteredProfiles = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
-
-    return profiles
-      .filter((profile) => {
-        if (
-          savedOnly &&
-          savedHandlesReady &&
-          !savedHandles.has(normalizePublicProfileHandle(profile.handle))
-        ) {
-          return false;
-        }
-        const matchesPlatform =
-          platformFilter === "all" ||
-          profile.platforms.some((platform) => platform.platform === platformFilter);
-        if (!matchesPlatform) return false;
-        if (!hasAnyCategory(profile.categories, categoryFilters)) return false;
-        if (
-          countryFilters.length > 0 &&
-          !countryFilters.some((country) =>
-            profile.audienceCountries?.includes(country),
-          )
-        ) {
-          return false;
-        }
-        if (!normalizedQuery) return true;
-
-        return [
-          profile.displayName,
-          profile.handle,
-          profile.headline,
-          profile.bio,
-          profile.location,
-          profile.audience,
-          formatMarketplaceCountries(profile.audienceCountries),
-          ...profile.categories,
-          ...profile.brandFit,
-          ...profile.recentBrands,
-          ...profile.platforms.map((platform) => platform.handle),
-        ]
-          .join(" ")
-          .toLowerCase()
-          .includes(normalizedQuery);
-      })
-      .sort((a, b) =>
+  const filteredProfiles = useMemo(
+    () =>
+      [...profiles].sort((a, b) =>
         compareInfluencerProfilesBySort(a, b, influencerSort, platformFilter),
-      );
-  }, [
-    categoryFilters,
-    countryFilters,
-    influencerSort,
-    platformFilter,
-    profiles,
-    query,
-    savedHandles,
-    savedHandlesReady,
-    savedOnly,
-  ]);
+      ),
+    [influencerSort, platformFilter, profiles],
+  );
   const activeFilterLabels = [
     query.trim() ? `검색 ${query.trim()}` : null,
     savedOnly ? "저장한 계정" : null,
@@ -972,9 +996,13 @@ export function AdvertiserInfluencerDiscoveryPage() {
       | PointerEvent<HTMLElement>
       | FocusEvent<HTMLElement>,
   ) => {
+    if (previewCloseTimerRef.current) {
+      clearTimeout(previewCloseTimerRef.current);
+      previewCloseTimerRef.current = null;
+    }
     const rect = event.currentTarget.getBoundingClientRect();
-    const width = 344;
-    const height = 258;
+    const width = 384;
+    const height = profile.recentPosts?.length ? 430 : 258;
     const hasPointer = "clientX" in event && typeof event.clientX === "number";
     const anchorX = hasPointer ? event.clientX : rect.left + rect.width * 0.62;
     const anchorY = hasPointer ? event.clientY : rect.top + 20;
@@ -991,6 +1019,25 @@ export function AdvertiserInfluencerDiscoveryPage() {
 
     setPreviewProfile({ profile, top, left });
   };
+  const keepProfilePreviewOpen = useCallback(() => {
+    if (!previewCloseTimerRef.current) return;
+    clearTimeout(previewCloseTimerRef.current);
+    previewCloseTimerRef.current = null;
+  }, []);
+  const scheduleProfilePreviewClose = useCallback(() => {
+    if (previewCloseTimerRef.current) clearTimeout(previewCloseTimerRef.current);
+    previewCloseTimerRef.current = setTimeout(() => {
+      setPreviewProfile(null);
+      previewCloseTimerRef.current = null;
+    }, 180);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (previewCloseTimerRef.current) clearTimeout(previewCloseTimerRef.current);
+    },
+    [],
+  );
 
   return (
     <MarketplaceShell
@@ -1001,7 +1048,7 @@ export function AdvertiserInfluencerDiscoveryPage() {
       description="프로필과 채널 규모를 보고 바로 컨택합니다."
       backHref="/advertiser/dashboard"
       backLabel="1:1 계약 대시보드"
-      profileCount={profiles.length}
+      profileCount={influencerTotal ?? 0}
       brandCount={brands.length}
       showMetrics={false}
       showHeroCopy={false}
@@ -1028,7 +1075,7 @@ export function AdvertiserInfluencerDiscoveryPage() {
     >
       <DiscoveryControls
         title="인플루언서 목록"
-        count={filteredProfiles.length}
+        count={influencerTotal}
         summary={filterSummary}
         open={filtersOpen}
         activeCount={activeFilterLabels.length}
@@ -1131,13 +1178,15 @@ export function AdvertiserInfluencerDiscoveryPage() {
             savingHandles={savingHandles}
             onToggleSaved={toggleSavedInfluencer}
             onPreview={showProfilePreview}
-            onPreviewEnd={() => setPreviewProfile(null)}
+            onPreviewEnd={scheduleProfilePreviewClose}
           />
           {previewProfile ? (
             <InfluencerPreviewCard
               profile={previewProfile.profile}
               top={previewProfile.top}
               left={previewProfile.left}
+              onPreviewEnter={keepProfilePreviewOpen}
+              onPreviewEnd={scheduleProfilePreviewClose}
             />
           ) : null}
         </>
@@ -1342,7 +1391,7 @@ export function PublicInfluencerProfilePage() {
   if (isLoading) {
     return (
       <MarketplaceShell
-        mode="anonymous"
+        mode={advertiserShellMode}
         role="advertiser"
         eyebrow="공개 프로필"
         title="프로필을 불러오는 중입니다"
@@ -1358,7 +1407,7 @@ export function PublicInfluencerProfilePage() {
   if (profileLoadError) {
     return (
       <MarketplaceShell
-        mode="anonymous"
+        mode={advertiserShellMode}
         role="advertiser"
         eyebrow="공개 프로필"
         title="프로필을 불러오지 못했습니다"
@@ -1375,7 +1424,7 @@ export function PublicInfluencerProfilePage() {
   if (!profile) {
     return (
       <MarketplaceShell
-        mode="anonymous"
+        mode={advertiserShellMode}
         role="advertiser"
         eyebrow="공개 프로필"
         title="프로필을 찾을 수 없습니다"
@@ -1511,17 +1560,30 @@ export function PublicInfluencerProfilePage() {
             <LogoMark />
             <span className="font-neo-heavy text-[18px] leading-none tracking-[-0.045em]">{PRODUCT_NAME}</span>
           </Link>
-          <Link
-            to={publicProfileHeaderHref}
-            className="inline-flex h-10 items-center gap-1.5 rounded-[12px] border border-neutral-200 bg-white px-3 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 sm:text-[13px]"
-            aria-label={publicProfileHeaderLabel}
-            title={publicProfileHeaderLabel}
-          >
-            {advertiserShellMode === "authenticated" || isOwnPublishedProfile ? (
-              <ArrowLeft className="h-4 w-4 shrink-0" />
-            ) : null}
-            {publicProfileHeaderLabel}
-          </Link>
+          {advertiserShellMode === "checking" && !isOwnPublishedProfile ? (
+            <span
+              className="inline-flex h-10 w-[120px] items-center justify-center rounded-[12px] border border-neutral-200 bg-white"
+              aria-busy="true"
+            >
+              <span className="sr-only">로그인 상태 확인 중</span>
+              <span
+                className="h-4 w-20 animate-pulse rounded bg-neutral-200"
+                aria-hidden="true"
+              />
+            </span>
+          ) : (
+            <Link
+              to={publicProfileHeaderHref}
+              className="inline-flex h-10 items-center gap-1.5 rounded-[12px] border border-neutral-200 bg-white px-3 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 sm:text-[13px]"
+              aria-label={publicProfileHeaderLabel}
+              title={publicProfileHeaderLabel}
+            >
+              {advertiserShellMode === "authenticated" || isOwnPublishedProfile ? (
+                <ArrowLeft className="h-4 w-4 shrink-0" />
+              ) : null}
+              {publicProfileHeaderLabel}
+            </Link>
+          )}
         </div>
       </header>
 
@@ -1641,7 +1703,7 @@ export function PublicBrandProfilePage() {
   if (isLoading) {
     return (
       <MarketplaceShell
-        mode="anonymous"
+        mode={influencerShellMode}
         role="influencer"
         eyebrow="브랜드 프로필"
         title="브랜드를 불러오는 중입니다"
@@ -1657,7 +1719,7 @@ export function PublicBrandProfilePage() {
   if (brandLoadError) {
     return (
       <MarketplaceShell
-        mode="anonymous"
+        mode={influencerShellMode}
         role="influencer"
         eyebrow="브랜드 프로필"
         title="브랜드를 불러오지 못했습니다"
@@ -1674,7 +1736,7 @@ export function PublicBrandProfilePage() {
   if (!brand) {
     return (
       <MarketplaceShell
-        mode="anonymous"
+        mode={influencerShellMode}
         role="influencer"
         eyebrow="브랜드 프로필"
         title="브랜드를 찾을 수 없습니다"
@@ -1703,16 +1765,31 @@ export function PublicBrandProfilePage() {
             <LogoMark />
             <span className="font-neo-heavy text-[18px] leading-none tracking-[-0.045em]">{PRODUCT_NAME}</span>
           </Link>
-          <Link
-            to={
-              influencerShellMode === "authenticated"
-                ? "/influencer/brands"
-                : "/intro/influencer"
-            }
-            className="inline-flex h-10 items-center rounded-[12px] border border-neutral-200 bg-white px-3 text-[13px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
-          >
-            {influencerShellMode === "authenticated" ? "브랜드 찾기" : "인플루언서 시작하기"}
-          </Link>
+          {influencerShellMode === "checking" ? (
+            <span
+              className="inline-flex h-10 w-[120px] items-center justify-center rounded-[12px] border border-neutral-200 bg-white"
+              aria-busy="true"
+            >
+              <span className="sr-only">로그인 상태 확인 중</span>
+              <span
+                className="h-4 w-20 animate-pulse rounded bg-neutral-200"
+                aria-hidden="true"
+              />
+            </span>
+          ) : (
+            <Link
+              to={
+                influencerShellMode === "authenticated"
+                  ? "/influencer/brands"
+                  : "/intro/influencer"
+              }
+              className="inline-flex h-10 items-center rounded-[12px] border border-neutral-200 bg-white px-3 text-[13px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
+            >
+              {influencerShellMode === "authenticated"
+                ? "브랜드 찾기"
+                : "인플루언서 시작하기"}
+            </Link>
+          )}
         </div>
       </header>
 
@@ -1873,6 +1950,7 @@ function MarketplaceShell({
 }) {
   const navigate = useNavigate();
   const isAuthenticated = mode === "authenticated";
+  const isCheckingSession = mode === "checking";
   const dashboardHref = `/${role}/dashboard`;
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const closeAccountMenu = useCallback(() => setAccountMenuOpen(false), []);
@@ -1904,13 +1982,27 @@ function MarketplaceShell({
     <main className="flex h-svh flex-col overflow-hidden bg-[#f7f6f3] font-sans text-neutral-950">
       <header className="z-30 shrink-0 border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-[1500px] items-center justify-between px-3 sm:px-5 lg:px-6">
-          <Link
-            to={isAuthenticated ? dashboardHref : "/"}
-            className="flex shrink-0 items-center gap-3"
-          >
-            <LogoMark />
-            <span className="font-neo-heavy text-[18px] leading-none sm:text-[19px]">{PRODUCT_NAME}</span>
-          </Link>
+          {isCheckingSession ? (
+            <div
+              className="flex shrink-0 items-center gap-3"
+              aria-busy="true"
+            >
+              <LogoMark />
+              <span className="font-neo-heavy text-[18px] leading-none sm:text-[19px]">
+                {PRODUCT_NAME}
+              </span>
+            </div>
+          ) : (
+            <Link
+              to={isAuthenticated ? dashboardHref : "/"}
+              className="flex shrink-0 items-center gap-3"
+            >
+              <LogoMark />
+              <span className="font-neo-heavy text-[18px] leading-none sm:text-[19px]">
+                {PRODUCT_NAME}
+              </span>
+            </Link>
+          )}
           <div className="ml-2 flex min-w-0 flex-1 items-center justify-end gap-1.5 overflow-visible sm:ml-3 sm:gap-2">
             {isAuthenticated ? (
               <>
@@ -1957,7 +2049,7 @@ function MarketplaceShell({
                   />
                 )}
               </>
-            ) : (
+            ) : mode === "anonymous" ? (
               <Link
                 to={`/login/${role}`}
                 className="yl-header-action yl-header-action-secondary shrink-0"
@@ -1967,6 +2059,17 @@ function MarketplaceShell({
                 <LogIn className="h-4 w-4" />
                 <span className="hidden sm:inline">로그인</span>
               </Link>
+            ) : (
+              <span
+                className="yl-header-action yl-header-action-secondary pointer-events-none shrink-0"
+                aria-busy="true"
+              >
+                <span className="sr-only">로그인 상태 확인 중</span>
+                <span
+                  className="h-4 w-16 animate-pulse rounded bg-neutral-200"
+                  aria-hidden="true"
+                />
+              </span>
             )}
           </div>
         </div>
@@ -2378,6 +2481,7 @@ function InfluencerDiscoveryCompactRow({
   isSaving: boolean;
   onToggleSaved: (profile: MarketplaceInfluencerProfile) => Promise<void>;
 }) {
+  const [recentPostsOpen, setRecentPostsOpen] = useState(false);
   const primaryPlatform = getMarketplaceInfluencerDisplayPlatform(
     profile,
     platformFilter,
@@ -2392,6 +2496,7 @@ function InfluencerDiscoveryCompactRow({
     profile.audienceCountries,
     "국가 미확인",
   );
+  const recentPosts = normalizeNaverBlogRecentPosts(profile.recentPosts, 3);
 
   return (
     <article className="grid gap-3 border-b border-[#e4e9e4] p-3 last:border-b-0">
@@ -2427,6 +2532,24 @@ function InfluencerDiscoveryCompactRow({
           onToggle={onToggleSaved}
         />
       </div>
+      {recentPosts.length > 0 ? (
+        <div className="rounded-[8px] border border-neutral-200 bg-[#fbfcfa]">
+          <button
+            type="button"
+            onClick={() => setRecentPostsOpen((current) => !current)}
+            className="flex min-h-10 w-full items-center justify-between gap-3 px-3 text-left text-[12px] font-extrabold text-neutral-800"
+            aria-expanded={recentPostsOpen}
+          >
+            <span>최근 확인 게시물 {recentPosts.length}</span>
+            <ChevronDown
+              className={`h-4 w-4 shrink-0 transition ${recentPostsOpen ? "rotate-180" : ""}`}
+            />
+          </button>
+          {recentPostsOpen ? (
+            <NaverRecentPostList posts={recentPosts} className="border-t border-neutral-200 px-3 py-2" />
+          ) : null}
+        </div>
+      ) : null}
       <div className="grid gap-2">
         {canPropose ? (
           <button
@@ -2459,10 +2582,14 @@ function InfluencerPreviewCard({
   profile,
   top,
   left,
+  onPreviewEnter,
+  onPreviewEnd,
 }: {
   profile: MarketplaceInfluencerProfile;
   top: number;
   left: number;
+  onPreviewEnter: () => void;
+  onPreviewEnd: () => void;
 }) {
   const categoryLabel = getCategoryLabels(profile.categories, 4).join(" · ");
   const countryLabel = formatMarketplaceCountries(
@@ -2470,13 +2597,19 @@ function InfluencerPreviewCard({
     "국가 미확인",
   );
   const avatarUrl = getMarketplaceInfluencerAvatarUrl(profile);
+  const recentPosts = normalizeNaverBlogRecentPosts(profile.recentPosts, 3);
 
   return (
     <aside
       data-marketplace-preview-card="true"
-      className="pointer-events-none fixed z-50 hidden w-[344px] rounded-[10px] border border-[#cfd8cf] bg-white p-4 shadow-[0_22px_60px_rgba(15,23,42,0.18)] lg:block"
+      className="fixed z-50 hidden w-[384px] rounded-[10px] border border-[#cfd8cf] bg-white p-4 shadow-[0_22px_60px_rgba(15,23,42,0.18)] lg:block"
       style={{ top, left }}
-      aria-hidden="true"
+      onMouseEnter={onPreviewEnter}
+      onMouseLeave={onPreviewEnd}
+      onFocus={onPreviewEnter}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) onPreviewEnd();
+      }}
     >
       <div className="flex min-w-0 items-start gap-3">
         <OptionalAvatarImage
@@ -2516,7 +2649,50 @@ function InfluencerPreviewCard({
           />
         ))}
       </div>
+      {recentPosts.length > 0 ? (
+        <div className="mt-3 border-t border-neutral-200 pt-3">
+          <p className="text-[11px] font-extrabold text-neutral-500">최근 확인 게시물</p>
+          <NaverRecentPostList posts={recentPosts} className="mt-1.5" />
+        </div>
+      ) : null}
     </aside>
+  );
+}
+
+function NaverRecentPostList({
+  posts,
+  className = "",
+}: {
+  posts: NonNullable<MarketplaceInfluencerProfile["recentPosts"]>;
+  className?: string;
+}) {
+  const safePosts = normalizeNaverBlogRecentPosts(posts, 3);
+  if (safePosts.length === 0) return null;
+
+  return (
+    <div className={`grid gap-1 ${className}`.trim()}>
+      {safePosts.map((post) => (
+        <a
+          key={post.url}
+          href={post.url}
+          target="_blank"
+          rel="noreferrer"
+          className="group/post grid min-h-8 grid-cols-[minmax(0,1fr)_72px] items-center gap-2 rounded-[6px] px-1.5 text-[12px] transition hover:bg-blue-50 focus-visible:outline-2 focus-visible:outline-blue-600"
+          aria-label={`${post.title} 게시물 새 탭에서 보기`}
+          title={post.title}
+        >
+          <span className="truncate font-bold text-neutral-800 group-hover/post:text-blue-700">
+            {post.title}
+          </span>
+          <time
+            dateTime={post.publishedDate}
+            className="text-right font-semibold tabular-nums text-neutral-500"
+          >
+            {post.publishedDate.replaceAll("-", ".")}
+          </time>
+        </a>
+      ))}
+    </div>
   );
 }
 
@@ -2688,7 +2864,7 @@ function InfluencerContactDialog({
         },
       );
 
-      if (response.status === 401) {
+      if (response.status === 401 || response.status === 403) {
         persistDraft();
         setError("광고주 로그인 후 1:1 계약 제안을 저장할 수 있습니다.");
         return;
@@ -2887,7 +3063,7 @@ function BrandContactDialog({
         },
       );
 
-      if (response.status === 401) {
+      if (response.status === 401 || response.status === 403) {
         persistDraft();
         setError("인플루언서 로그인 후 역제안을 저장할 수 있습니다.");
         return;
@@ -3184,6 +3360,7 @@ function SearchBox({
         onChange={(event) => onChange(event.target.value)}
         aria-label={label}
         placeholder={placeholder}
+        maxLength={120}
         className="h-9 w-full rounded-md border border-neutral-200 bg-white pl-9 pr-3 text-[12px] font-semibold text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950"
       />
     </div>
@@ -3203,7 +3380,7 @@ function DiscoveryControls({
   children,
 }: {
   title: string;
-  count: number;
+  count: number | null;
   summary: string;
   open: boolean;
   activeCount: number;
@@ -3277,8 +3454,13 @@ function DiscoveryControls({
             <p className="truncate text-[14px] font-extrabold leading-tight text-neutral-950 sm:text-[13px]">
               {title}
             </p>
-            <p className="mt-0.5 truncate text-[11px] font-bold leading-tight text-neutral-500">
-              {count.toLocaleString()}건 표시 · {summary}
+            <p
+              className="mt-0.5 truncate text-[11px] font-bold leading-tight text-neutral-500"
+              data-discovery-total-count={count ?? "loading"}
+              aria-live="polite"
+            >
+              {count === null ? "전체 건수 집계 중" : `총 ${count.toLocaleString()}건`} ·{" "}
+              {summary}
             </p>
           </div>
           <div className="relative sm:hidden">

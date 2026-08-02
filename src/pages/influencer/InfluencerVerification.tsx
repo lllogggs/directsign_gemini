@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react";
-import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import React, { useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate, useSearchParams } from "react-router";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -7,18 +7,22 @@ import {
   BookOpen,
   CheckCircle2,
   Copy,
-  ExternalLink,
   FileImage,
+  FileSignature,
   Globe2,
   Instagram,
   LogOut,
+  Megaphone,
   Music2,
   RefreshCw,
   Youtube,
 } from "lucide-react";
 import { useAppStore } from "../../store";
 import { LogoMark } from "../../components/BrandLogo";
+import { DashboardSurfaceSwitch } from "../../components/DashboardSurfaceSwitch";
+import { HeaderMessageCenterButton } from "../../components/HeaderMessageCenterButton";
 import { InfluencerAccountSettingsMenu } from "../../components/InfluencerAccountSettingsMenu";
+import { MobileSurfaceSwitch } from "../../components/MobileSurfaceSwitch";
 import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
 import { formatPublicHandleValue } from "../../domain/display";
@@ -26,12 +30,17 @@ import { buildLoginRedirect } from "../../domain/navigation";
 import { translateApiErrorMessage } from "../../domain/userMessages";
 import {
   getVerificationRejectionGuidance,
+  type InstagramDmChallenge,
   type InfluencerPlatform,
   type InfluencerVerificationMethod,
   verificationStatusLabel,
   verificationStatusTone,
 } from "../../domain/verification";
 import { useVerificationSummary } from "../../hooks/useVerificationSummary";
+import {
+  clearMarketplaceMessageSummaryCache,
+  useMarketplaceMessageSummary,
+} from "../../hooks/useMarketplaceMessageSummary";
 
 const MAX_VERIFICATION_FILE_SIZE = 10 * 1024 * 1024;
 const ACCEPTED_VERIFICATION_FILE_TYPES = new Set([
@@ -63,8 +72,6 @@ const validateVerificationFile = (file: File | null) => {
 };
 
 interface InfluencerVerificationForm {
-  subject_name: string;
-  submitted_by_email: string;
   platform_handle: string;
   platform_url: string;
   ownership_challenge_url: string;
@@ -72,19 +79,102 @@ interface InfluencerVerificationForm {
 }
 
 const initialForm: InfluencerVerificationForm = {
-  subject_name: "",
-  submitted_by_email: "",
   platform_handle: "",
   platform_url: "",
   ownership_challenge_url: "",
   note: "",
 };
 
-const OFFICIAL_INSTAGRAM_HANDLE =
-  String(import.meta.env.VITE_INSTAGRAM_OFFICIAL_HANDLE ?? "yeollockme")
-    .trim()
-    .replace(/^@+/, "") || "yeollockme";
-const OFFICIAL_INSTAGRAM_URL = `https://instagram.com/${OFFICIAL_INSTAGRAM_HANDLE}`;
+const normalizeInstagramHandleInput = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+
+  try {
+    const parsed = new URL(
+      /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`,
+    );
+    if (parsed.hostname.replace(/^www\./i, "").toLowerCase() === "instagram.com") {
+      return (parsed.pathname.split("/").filter(Boolean)[0] ?? "")
+        .replace(/^@+/, "")
+        .trim();
+    }
+  } catch {
+    // Plain handles are normalized below.
+  }
+
+  return trimmed.replace(/^@+/, "").split(/[/?#]/)[0].trim();
+};
+
+const buildInstagramProfileUrl = (handle: string) => {
+  const username = normalizeInstagramHandleInput(handle);
+  return username ? `https://www.instagram.com/${username}/` : "";
+};
+
+type InstagramDmChallengeResponse = {
+  error?: string;
+  code?: string;
+  request?: { id?: string };
+  instagram_dm_challenge?: Partial<InstagramDmChallenge> & {
+    code?: string;
+    expires_at: string;
+    official_handle: string;
+  };
+};
+
+const fetchInstagramDmChallenge = async (requestId?: string) => {
+  const query = new URLSearchParams();
+  if (requestId?.trim()) query.set("request_id", requestId.trim());
+  const suffix = query.size > 0 ? `?${query.toString()}` : "";
+  const response = await apiFetch(
+    `/api/verification/influencer/instagram-dm-challenge${suffix}`,
+    {
+      credentials: "include",
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    },
+  );
+  const data = (await response.json()) as InstagramDmChallengeResponse;
+
+  if (!response.ok) {
+    throw new Error(data.error || "Instagram DM 인증 상태를 확인하지 못했습니다.");
+  }
+
+  return data.instagram_dm_challenge;
+};
+
+const INSTAGRAM_DM_CHALLENGE_STATES = new Set<InstagramDmChallenge["state"]>([
+  "awaiting_dm",
+  "retrying_provider",
+  "verified",
+  "expired",
+  "manual_review",
+]);
+
+const normalizeInstagramDmChallenge = (
+  challenge: InstagramDmChallengeResponse["instagram_dm_challenge"],
+  requestId = "",
+  fallbackState?: InstagramDmChallenge["state"],
+): InstagramDmChallenge | undefined => {
+  if (!challenge?.expires_at || !challenge.official_handle) return undefined;
+
+  const officialHandle = challenge.official_handle.trim().replace(/^@+/, "");
+  if (!officialHandle) return undefined;
+  const state = challenge.state || fallbackState;
+  if (!state || !INSTAGRAM_DM_CHALLENGE_STATES.has(state)) return undefined;
+  const resolvedRequestId = challenge.request_id || requestId;
+  if (!resolvedRequestId) return undefined;
+
+  return {
+    request_id: resolvedRequestId,
+    state,
+    code: challenge.code,
+    expires_at: challenge.expires_at,
+    official_handle: officialHandle,
+    official_url:
+      challenge.official_url || `https://instagram.com/${officialHandle}`,
+    verified_handle: challenge.verified_handle,
+  };
+};
 
 const METHOD_META: Record<
   InfluencerVerificationMethod,
@@ -95,7 +185,7 @@ const METHOD_META: Record<
 > = {
   instagram_dm_code: {
     label: "Instagram DM 인증",
-    helper: "연락미 공식 계정에 인증 코드를 DM으로 보내고 운영자가 확인",
+    helper: "연락미 공식 계정에 인증 코드를 DM으로 보내면 자동으로 확인됩니다.",
   },
   profile_bio_code: {
     label: "프로필 소개에 코드 삽입",
@@ -144,10 +234,9 @@ const PLATFORM_META: Record<
       "screenshot_review",
     ],
     instructions: [
-      "가장 권장하는 방식은 연락미 공식 인스타그램 계정으로 인증 코드를 DM 보내는 것입니다.",
-      "DM을 보낸 뒤 요청을 접수하면 운영자가 발신 계정과 입력한 프로필 URL을 대조합니다.",
-      "공개 흔적을 남기기 싫다면 프로필 소개나 게시글보다 DM 인증을 선택하세요.",
-      "Meta 자동화가 연결되기 전까지는 운영자가 직접 확인해 승인합니다.",
+      "DM 인증을 시작하면 서버가 일회용 인증 코드를 발급합니다.",
+      "발급된 코드를 연락미 공식 인스타그램 계정으로 보내면 자동으로 확인됩니다.",
+      "DM 자동 인증을 사용할 수 없을 때만 다른 인증 방식을 선택하세요.",
     ],
   },
   youtube: {
@@ -226,7 +315,6 @@ export function InfluencerVerification() {
         token ? `?token=${encodeURIComponent(token)}` : ""
       }`
     : "/influencer/dashboard";
-  const returnLabel = contractId ? "계약" : "1:1 계약";
   const contract = useAppStore((state) =>
     contractId ? state.getContract(contractId) : undefined,
   );
@@ -236,6 +324,13 @@ export function InfluencerVerification() {
     refresh: refreshVerificationSummary,
     statusCode: verificationStatusCode,
   } = useVerificationSummary({ role: "influencer" });
+  const {
+    summary: messageSummary,
+    isLoading: isMessageSummaryLoading,
+  } = useMarketplaceMessageSummary("influencer", {
+    enabled: verificationStatusCode !== 401,
+  });
+  const refreshVerificationSummaryRef = useRef(refreshVerificationSummary);
   const [prefilledContractId, setPrefilledContractId] = useState("");
   const [platform, setPlatform] = useState<InfluencerPlatform>("instagram");
   const [method, setMethod] =
@@ -246,81 +341,53 @@ export function InfluencerVerification() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [submitted, setSubmitted] = useState(false);
-  const [submittedChallengeCode, setSubmittedChallengeCode] = useState("");
+  const [instagramDmChallenge, setInstagramDmChallenge] =
+    useState<InstagramDmChallenge | null>(null);
+  const [instagramDmUnavailable, setInstagramDmUnavailable] = useState(false);
+  const [instagramDmRestoreFailed, setInstagramDmRestoreFailed] = useState(false);
+  const [instagramDmRestoreAttempt, setInstagramDmRestoreAttempt] = useState(0);
+  const [isInstagramDmRestoring, setIsInstagramDmRestoring] = useState(true);
   const [showAdditionalRequest, setShowAdditionalRequest] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const selectedPlatform = PLATFORM_META[platform];
   const selectedMethod = METHOD_META[method];
-  const proofUrl = form.ownership_challenge_url || form.platform_url;
-  const evidenceHref = proofUrl.trim();
   const isInstagramDmMethod =
     platform === "instagram" && method === "instagram_dm_code";
+  const showFocusedInstagramDm =
+    isInstagramDmMethod &&
+    (Boolean(instagramDmChallenge) ||
+      instagramDmUnavailable ||
+      instagramDmRestoreFailed);
   const verification = summary?.influencer;
   const verificationStatus = verification?.status ?? "not_submitted";
   const latest = verification?.latest_request;
   const approved = verificationStatus === "approved";
   const approvedPlatforms = verification?.approved_platforms ?? [];
-  const approvedPlatformChips = approvedPlatforms;
-  const visibleApprovedPlatformChips = approvedPlatformChips.slice(0, 4);
-  const hiddenApprovedPlatformChipCount =
-    approvedPlatformChips.length - visibleApprovedPlatformChips.length;
-  const approvedPlatformNames = Array.from(
-    new Set(
-      approvedPlatforms.map(
-        (item) => PLATFORM_META[item.platform]?.label ?? item.platform,
-      ),
-    ),
-  );
-  const approvedPlatformLabel =
-    approvedPlatformNames.length > 1
-      ? `${approvedPlatformNames.length}개 플랫폼 인증`
-      : approvedPlatformNames[0] ?? "";
-  const showRequestForm = !approved || showAdditionalRequest;
+  const showRequestForm =
+    showFocusedInstagramDm || !approved || showAdditionalRequest;
   const rejectionGuidance =
     verificationStatus === "rejected"
       ? getVerificationRejectionGuidance(latest, "influencer_account")
       : undefined;
-  const showApprovedOverview =
-    approved && !showRequestForm && !rejectionGuidance;
-  const selectedApprovedPlatform = approvedPlatforms.find(
-    (item) => item.platform === platform,
-  );
-  const latestMatchesSelectedPlatform =
-    latest?.platform === undefined || latest.platform === platform;
   const verifiedHandle =
-    selectedApprovedPlatform?.handle ||
-    (latestMatchesSelectedPlatform ? latest?.platform_handle : undefined);
+    approvedPlatforms[0]?.handle || latest?.platform_handle;
   const displayVerifiedHandle = formatPublicHandleValue(
     verifiedHandle,
     "인증된 계정",
   );
-  const verifiedUrl =
-    selectedApprovedPlatform?.url ||
-    (latestMatchesSelectedPlatform ? latest?.platform_url : undefined);
-  const sidebarEvidenceHref = showRequestForm
-    ? evidenceHref
-    : verifiedUrl?.trim() ?? "";
-  const sidebarPlatformLabel = showRequestForm
-    ? selectedPlatform.label
-    : approvedPlatformLabel
-      ? approvedPlatformLabel
-      : "승인된 플랫폼";
-  const sidebarIcon = showRequestForm ? (
-    selectedPlatform.icon
-  ) : (
-    <BadgeCheck className="h-4 w-4" />
-  );
-  const sidebarClassName = showRequestForm
-    ? selectedPlatform.className
-    : "border-emerald-200 bg-emerald-50 text-emerald-700";
 
   const handleLogout = async () => {
     await apiFetch("/api/influencer/logout", {
       method: "POST",
       credentials: "include",
     }).catch(() => undefined);
+    clearMarketplaceMessageSummaryCache("influencer");
     navigate("/login/influencer", { replace: true });
   };
+
+  useEffect(() => {
+    refreshVerificationSummaryRef.current = refreshVerificationSummary;
+  }, [refreshVerificationSummary]);
 
   useEffect(() => {
     if (verificationStatusCode !== 401) return;
@@ -337,6 +404,112 @@ export function InfluencerVerification() {
   }, [location.pathname, location.search, navigate, verificationStatusCode]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    const restoreInstagramDmChallenge = async () => {
+      setIsInstagramDmRestoring(true);
+      setInstagramDmRestoreFailed(false);
+      try {
+        const responseChallenge = await fetchInstagramDmChallenge();
+        const challenge = normalizeInstagramDmChallenge(responseChallenge);
+        if (responseChallenge && !challenge) {
+          throw new Error("Invalid Instagram DM challenge response");
+        }
+        if (cancelled) return;
+        if (!challenge) {
+          setInstagramDmChallenge(null);
+          return;
+        }
+        if (challenge.state === "verified") {
+          await refreshVerificationSummaryRef.current();
+          if (!cancelled) {
+            setInstagramDmChallenge(null);
+            setShowAdditionalRequest(false);
+          }
+          return;
+        }
+
+        setPlatform("instagram");
+        setMethod("instagram_dm_code");
+        setInstagramDmUnavailable(false);
+        setInstagramDmChallenge(challenge);
+      } catch {
+        if (!cancelled) setInstagramDmRestoreFailed(true);
+      } finally {
+        if (!cancelled) setIsInstagramDmRestoring(false);
+      }
+    };
+
+    void restoreInstagramDmChallenge();
+    return () => {
+      cancelled = true;
+    };
+  }, [instagramDmRestoreAttempt]);
+
+  useEffect(() => {
+    if (
+      instagramDmChallenge?.state !== "awaiting_dm" &&
+      instagramDmChallenge?.state !== "retrying_provider"
+    ) {
+      return;
+    }
+
+    const requestId = instagramDmChallenge.request_id;
+    let cancelled = false;
+    let checking = false;
+    const pollInstagramDmChallenge = async () => {
+      if (checking || document.visibilityState === "hidden") return;
+      checking = true;
+
+      try {
+        const responseChallenge = await fetchInstagramDmChallenge(requestId);
+        const challenge = normalizeInstagramDmChallenge(
+          responseChallenge,
+          requestId,
+        );
+        if (responseChallenge && !challenge) {
+          throw new Error("Invalid Instagram DM challenge response");
+        }
+        if (challenge && challenge.request_id !== requestId) {
+          throw new Error("Instagram DM challenge request mismatch");
+        }
+        if (cancelled) return;
+        if (!challenge) {
+          await refreshVerificationSummaryRef.current();
+          if (!cancelled) setInstagramDmChallenge(null);
+          return;
+        }
+        if (challenge.state === "verified") {
+          await refreshVerificationSummaryRef.current();
+          if (!cancelled) {
+            setInstagramDmChallenge(null);
+            setShowAdditionalRequest(false);
+          }
+          return;
+        }
+
+        setInstagramDmChallenge((current) => ({
+          ...challenge,
+          code: challenge.code ?? current?.code,
+        }));
+      } catch {
+        // Keep the active code visible and retry on the next poll.
+      } finally {
+        checking = false;
+      }
+    };
+
+    const interval = window.setInterval(() => {
+      void pollInstagramDmChallenge();
+    }, 3_000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [instagramDmChallenge?.request_id, instagramDmChallenge?.state]);
+
+  useEffect(() => {
     if (!contract || prefilledContractId === contract.id) return;
 
     const timer = window.setTimeout(() => {
@@ -348,9 +521,6 @@ export function InfluencerVerification() {
 
       setForm((current) => ({
         ...current,
-        subject_name: current.subject_name || contract.influencer_info.name,
-        submitted_by_email:
-          current.submitted_by_email || contract.influencer_info.contact,
         platform_handle:
           current.platform_handle ||
           inferHandle(contract.influencer_info.channel_url, inferredPlatform ?? platform),
@@ -368,12 +538,12 @@ export function InfluencerVerification() {
     setForm((current) => ({ ...current, ...updates }));
     setError("");
     setSubmitted(false);
-    setSubmittedChallengeCode("");
   };
 
   const updatePlatform = (nextPlatform: InfluencerPlatform) => {
     setPlatform(nextPlatform);
     setMethod(PLATFORM_META[nextPlatform].methods[0]);
+    setInstagramDmUnavailable(false);
     setForm((current) => ({
       ...current,
       platform_handle: "",
@@ -382,14 +552,13 @@ export function InfluencerVerification() {
     }));
     setError("");
     setSubmitted(false);
-    setSubmittedChallengeCode("");
   };
 
   const updateMethod = (nextMethod: InfluencerVerificationMethod) => {
     setMethod(nextMethod);
+    setInstagramDmUnavailable(false);
     setError("");
     setSubmitted(false);
-    setSubmittedChallengeCode("");
   };
 
   const handleCopyCode = async () => {
@@ -400,9 +569,38 @@ export function InfluencerVerification() {
     }
   };
 
+  const handleCopyInstagramDmCode = () => {
+    const code = instagramDmChallenge?.code;
+    if (!code) return;
+
+    void navigator.clipboard.writeText(code).catch(() => {
+      setError("인증 코드를 복사하지 못했습니다. 코드를 직접 선택해서 복사하세요.");
+    });
+  };
+
+  const handleOpenInstagramFallback = () => {
+    setInstagramDmChallenge(null);
+    setInstagramDmUnavailable(false);
+    setInstagramDmRestoreFailed(false);
+    setMethod("profile_bio_code");
+    setError("");
+    setSubmitted(false);
+  };
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError("");
+
+    const instagramUsername = isInstagramDmMethod
+      ? normalizeInstagramHandleInput(form.platform_handle)
+      : "";
+    if (
+      isInstagramDmMethod &&
+      !/^[A-Za-z0-9._]{1,30}$/.test(instagramUsername)
+    ) {
+      setError("인스타그램 사용자 이름을 정확히 입력해 주세요.");
+      return;
+    }
 
     if (method === "screenshot_review" && !file) {
       setError("스크린샷 검수를 선택한 경우 증빙 파일을 첨부해야 합니다.");
@@ -419,6 +617,16 @@ export function InfluencerVerification() {
 
     try {
       const fileDataUrl = file ? await readFileAsDataUrl(file) : undefined;
+      const submittedForm = isInstagramDmMethod
+        ? {
+            ...form,
+            platform_handle: instagramUsername,
+            platform_url: buildInstagramProfileUrl(instagramUsername),
+            ownership_challenge_url: buildInstagramProfileUrl(instagramUsername),
+          }
+        : form;
+      const submittedProofUrl =
+        submittedForm.ownership_challenge_url || submittedForm.platform_url;
       const response = await apiFetch("/api/verification/influencer", {
         method: "POST",
         credentials: "include",
@@ -427,14 +635,16 @@ export function InfluencerVerification() {
           Accept: "application/json",
         },
         body: JSON.stringify({
-          ...form,
+          ...submittedForm,
           ...(contractId ? { contract_id: contractId } : {}),
           platform,
-          target_id: buildTargetId(platform, form),
+          target_id: buildTargetId(platform, submittedForm),
           ownership_verification_method: method,
-          ownership_challenge_code: challengeCode,
-          ownership_challenge_url: proofUrl,
-          evidence_file: file
+          ownership_challenge_code: isInstagramDmMethod
+            ? undefined
+            : challengeCode,
+          ownership_challenge_url: submittedProofUrl,
+          evidence_file: !isInstagramDmMethod && file
             ? {
                 name: file.name,
                 type: inferVerificationFileType(file),
@@ -443,14 +653,61 @@ export function InfluencerVerification() {
               }
             : undefined,
           note:
-            form.note ||
-            (isInstagramDmMethod
-              ? `${PRODUCT_NAME} 공식 인스타그램 @${OFFICIAL_INSTAGRAM_HANDLE}으로 인증 코드 ${challengeCode}를 DM 발송합니다.`
-              : `${selectedPlatform.label} 계정에 ${PRODUCT_NAME} 인증 코드 ${challengeCode}를 게시했습니다.`),
+            !isInstagramDmMethod
+              ? form.note ||
+                `${selectedPlatform.label} 계정에 ${PRODUCT_NAME} 인증 코드 ${challengeCode}를 게시했습니다.`
+              : undefined,
         }),
       });
 
-      const data = (await response.json()) as { error?: string };
+      const data = (await response.json()) as InstagramDmChallengeResponse;
+
+      if (
+        isInstagramDmMethod &&
+        (response.status === 409 ||
+          (response.status >= 500 &&
+            data.code !== "INSTAGRAM_DM_AUTOMATION_UNAVAILABLE"))
+      ) {
+        try {
+          const responseChallenge = await fetchInstagramDmChallenge();
+          const recoveredChallenge = normalizeInstagramDmChallenge(
+            responseChallenge,
+          );
+          if (responseChallenge && !recoveredChallenge) {
+            throw new Error("Invalid Instagram DM challenge response");
+          }
+          if (recoveredChallenge) {
+            setInstagramDmUnavailable(false);
+            setInstagramDmRestoreFailed(false);
+            if (recoveredChallenge.state === "verified") {
+              await refreshVerificationSummary();
+              setInstagramDmChallenge(null);
+              setShowAdditionalRequest(false);
+            } else {
+              setInstagramDmChallenge(recoveredChallenge);
+            }
+            return;
+          }
+        } catch {
+          if (data.code !== "INSTAGRAM_DM_AUTOMATION_UNAVAILABLE") {
+            setInstagramDmRestoreFailed(true);
+            return;
+          }
+        }
+
+        setInstagramDmRestoreFailed(true);
+        return;
+      }
+
+      if (
+        isInstagramDmMethod &&
+        response.status === 503 &&
+        data.code === "INSTAGRAM_DM_AUTOMATION_UNAVAILABLE"
+      ) {
+        setInstagramDmChallenge(null);
+        setInstagramDmUnavailable(true);
+        return;
+      }
 
       if (!response.ok) {
         throw new Error(
@@ -461,8 +718,24 @@ export function InfluencerVerification() {
         );
       }
 
+      if (isInstagramDmMethod) {
+        const dmChallenge = normalizeInstagramDmChallenge(
+          data.instagram_dm_challenge,
+          data.request?.id,
+          "awaiting_dm",
+        );
+        if (!dmChallenge?.code || !dmChallenge.request_id) {
+          throw new Error("Instagram DM 인증 요청 정보를 받지 못했습니다.");
+        }
+
+        setInstagramDmChallenge(dmChallenge);
+        setInstagramDmUnavailable(false);
+        setSubmitted(false);
+        await refreshVerificationSummary();
+        return;
+      }
+
       setSubmitted(true);
-      setSubmittedChallengeCode(challengeCode);
       setForm(initialForm);
       setFile(null);
       await refreshVerificationSummary();
@@ -482,32 +755,36 @@ export function InfluencerVerification() {
 
   return (
     <div className="min-h-svh bg-[#f4f5f7] font-sans text-neutral-950 lg:fixed lg:inset-0 lg:overflow-hidden">
-      <header className="sticky top-0 z-30 border-b border-neutral-200/80 bg-white shadow-[0_1px_0_rgba(15,23,42,0.04)]">
-        <div className="mx-auto flex h-14 max-w-[1500px] items-center justify-between px-3 sm:px-5">
-          <div className="flex min-w-0 items-center gap-3">
+      <header className="sticky top-0 z-30 border-b border-neutral-200/70 bg-white/92 backdrop-blur">
+        <div className="mx-auto flex h-14 max-w-[1500px] items-center justify-between px-3 sm:px-5 lg:px-6">
+          <div className="flex min-w-0 items-center">
             <button
               type="button"
-              onClick={() => navigate(returnPath)}
-              className="yl-brand-action group flex min-w-0 items-center gap-3 rounded-lg text-neutral-950 transition hover:text-neutral-700"
+              onClick={() => navigate("/influencer/dashboard")}
+              className="yl-brand-action -ml-1 flex h-10 min-w-10 shrink-0 items-center gap-3 rounded-[12px] px-1 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
               aria-label={PRODUCT_NAME}
             >
               <LogoMark />
-              <span className="truncate text-lg font-extrabold">{PRODUCT_NAME}</span>
+              <span className="font-neo-heavy text-[18px] leading-none">
+                {PRODUCT_NAME}
+              </span>
             </button>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => navigate(returnPath)}
-              className="yl-header-action yl-header-action-secondary"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              <span className="hidden sm:inline">{returnLabel}</span>
-            </button>
+          <div className="ml-2 flex min-w-0 items-center justify-end gap-1.5 sm:ml-3 sm:gap-2">
+            <div className="hidden lg:block">
+              <DashboardSurfaceSwitch role="influencer" />
+            </div>
+            <HeaderMessageCenterButton
+              unreadCount={messageSummary.unreadCount}
+              isLoading={isMessageSummaryLoading}
+              onClick={() => navigate("/influencer/messages")}
+            />
             <button
               type="button"
               onClick={handleLogout}
               className="yl-header-action yl-header-action-secondary"
+              aria-label="로그아웃"
+              title="로그아웃"
             >
               <LogOut className="h-4 w-4" />
               <span className="hidden sm:inline">로그아웃</span>
@@ -533,52 +810,25 @@ export function InfluencerVerification() {
         </div>
       </header>
 
+      <MobileSurfaceSwitch role="influencer" />
+
       <main
-        className={`mx-auto grid min-h-[calc(100svh-56px)] gap-3 px-5 py-4 sm:px-8 lg:h-[calc(100vh-56px)] lg:min-h-0 lg:overflow-hidden ${
-          showApprovedOverview
-            ? "max-w-4xl lg:grid-cols-1"
-            : "max-w-5xl lg:grid-cols-[minmax(0,1fr)_260px]"
-        }`}
+        className="mx-auto grid min-h-[calc(100svh-113px)] max-w-4xl gap-3 px-5 py-4 sm:px-8 lg:h-[calc(100vh-57px)] lg:min-h-0 lg:overflow-hidden"
       >
         <section
-          className={`overflow-visible rounded-lg border border-neutral-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)] sm:p-5 lg:overflow-y-auto ${
-            showApprovedOverview
-              ? "min-h-[420px]"
-              : "min-h-0"
-          }`}
+          className="min-h-[420px] overflow-visible rounded-lg border border-neutral-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)] sm:p-5 lg:overflow-y-auto"
         >
-          {(!approved || showRequestForm) && (
-          <div className="mb-4 rounded-lg border border-neutral-200 bg-[#fbfbfc] p-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-neutral-950 text-white">
-                  <BadgeCheck className="h-5 w-5" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-neutral-950">
-                    {approved ? "플랫폼 인증이 완료되었습니다" : "플랫폼 인증 상태"}
-                  </p>
-                  <p className="mt-1 text-sm leading-6 text-neutral-500">
-                    {approved
-                      ? `${displayVerifiedHandle} 기준으로 인증되어 있습니다. 다른 플랫폼을 추가하거나 계정 정보가 바뀐 경우에만 새 요청을 남기세요.`
-                      : "계약 검토는 가능하지만, 서명하려면 계정 소유 인증 승인이 먼저 필요합니다."}
-                  </p>
-                </div>
-              </div>
-              <span
-                className={`w-fit rounded-full border px-3 py-1 text-xs font-semibold ${verificationStatusTone(
-                  verificationStatus,
-                )}`}
-              >
-                {isVerificationLoading
-                  ? "정보 확인 중"
-                  : verificationStatusLabel(verificationStatus)}
-              </span>
-            </div>
-          </div>
-          )}
-
-          {rejectionGuidance && (
+          {contractId ? (
+            <button
+              type="button"
+              onClick={() => navigate(returnPath)}
+              className="mb-4 inline-flex h-9 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold text-neutral-700 transition hover:border-neutral-400 hover:text-neutral-950"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              계약으로 돌아가기
+            </button>
+          ) : null}
+          {rejectionGuidance && !showFocusedInstagramDm && (
             <div className="mb-5 rounded-lg border border-rose-200 bg-rose-50 p-4 shadow-[inset_3px_0_0_rgba(190,18,60,0.22)]">
               <div className="flex items-start gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-rose-700 ring-1 ring-rose-100">
@@ -589,7 +839,7 @@ export function InfluencerVerification() {
                     {rejectionGuidance.title}
                   </p>
                   <p className="mt-1 text-sm leading-6 text-rose-800/80">
-                    {rejectionGuidance.body}
+                    반려 사유와 확인 항목을 살펴본 뒤 계정 인증을 다시 요청해 주세요.
                   </p>
                   <div className="mt-3 rounded-md border border-rose-100 bg-white/70 px-3 py-2 text-xs font-semibold leading-5 text-rose-900">
                     반려 사유: {rejectionGuidance.reviewerNote}
@@ -607,15 +857,26 @@ export function InfluencerVerification() {
             </div>
           )}
 
-          {(!approved || showRequestForm) && (
+          {(!approved || showRequestForm) && !showFocusedInstagramDm && (
           <div className="mb-5">
-            <h1 className="text-[24px] font-semibold tracking-tight">
-              {approved ? "플랫폼 인증 관리" : "플랫폼 계정 소유 인증"}
-            </h1>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h1 className="text-[24px] font-semibold tracking-tight">
+                {approved ? "플랫폼 인증 관리" : "플랫폼 계정 소유 인증"}
+              </h1>
+              <span
+                className={`w-fit rounded-full border px-3 py-1 text-xs font-semibold ${verificationStatusTone(
+                  verificationStatus,
+                )}`}
+              >
+                {isVerificationLoading
+                  ? "정보 확인 중"
+                  : verificationStatusLabel(verificationStatus)}
+              </span>
+            </div>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-neutral-500">
               {approved
                 ? "이미 승인된 계정은 유지됩니다. 새 채널이나 변경된 URL만 추가로 접수하세요."
-                : "계약에 쓰는 채널이 본인 계정인지 코드, DM, URL 중 가능한 방식으로 확인합니다."}
+                : "본인 계정인지 DM, 공개 코드 또는 증빙 화면으로 확인합니다."}
             </p>
           </div>
           )}
@@ -629,13 +890,13 @@ export function InfluencerVerification() {
                     플랫폼 인증 완료
                   </p>
                   <p className="mt-2 max-w-2xl break-keep text-sm leading-6 text-emerald-800/80">
-                    승인된 플랫폼으로 계약 검토와 전자서명을 진행할 수 있습니다.
+                    승인된 플랫폼 계정이 연락미 프로필에 표시됩니다.
                   </p>
                   <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                    {visibleApprovedPlatformChips.length > 0 ? (
-                      visibleApprovedPlatformChips.map((item) => (
+                    {approvedPlatforms.length > 0 ? (
+                      approvedPlatforms.map((item, index) => (
                         <div
-                          key={`${item.platform}-${item.handle ?? item.url ?? "approved"}`}
+                          key={`${item.platform}-${item.handle ?? item.url ?? "approved"}-${index}`}
                           className="min-w-0 rounded-lg border border-emerald-200 bg-white px-3 py-2.5"
                         >
                           <p className="text-[11px] font-semibold text-emerald-700">
@@ -658,11 +919,6 @@ export function InfluencerVerification() {
                         </p>
                       </div>
                     )}
-                    {hiddenApprovedPlatformChipCount > 0 ? (
-                      <div className="rounded-lg border border-emerald-200 bg-white px-3 py-2.5 text-sm font-semibold text-emerald-800">
-                        외 {hiddenApprovedPlatformChipCount}개
-                      </div>
-                    ) : null}
                   </div>
                 </div>
                 <button
@@ -676,25 +932,177 @@ export function InfluencerVerification() {
               <div className="mt-4 grid gap-2 sm:grid-cols-2">
                 <button
                   type="button"
-                  onClick={() => navigate("/influencer/dashboard")}
+                  onClick={() => navigate("/influencer/campaigns")}
                   className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-neutral-950 px-4 text-sm font-semibold text-white transition hover:bg-neutral-800"
                 >
-                  <BookOpen className="h-4 w-4" />
-                  1:1 계약 보기
+                  <Megaphone className="h-4 w-4" />
+                  캠페인 보기
                 </button>
                 <button
                   type="button"
-                  onClick={() => navigate("/influencer/brands")}
+                  onClick={() => navigate("/influencer/dashboard")}
                   className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-white px-4 text-sm font-semibold text-emerald-900 transition hover:border-emerald-300 hover:bg-emerald-50"
                 >
-                  <Globe2 className="h-4 w-4" />
-                  브랜드 찾기
+                  <FileSignature className="h-4 w-4" />
+                  1:1 계약 보기
                 </button>
               </div>
             </section>
           ) : null}
 
           {showRequestForm ? (
+          instagramDmRestoreFailed ? (
+            <section className="mx-auto flex min-h-[380px] max-w-xl flex-col justify-center">
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-center">
+                <AlertTriangle className="mx-auto h-9 w-9 text-amber-700" />
+                <h1 className="mt-4 text-xl font-semibold text-amber-950">
+                  인증 상태를 확인하지 못했습니다
+                </h1>
+                <p className="mt-2 text-sm leading-6 text-amber-800">
+                  진행 중인 인증 정보는 그대로 유지됩니다. 잠시 후 다시 확인해 주세요.
+                </p>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setInstagramDmRestoreAttempt((current) => current + 1)
+                  }
+                  className="mt-6 h-11 w-full rounded-lg bg-neutral-950 px-5 text-sm font-semibold text-white transition hover:bg-neutral-800"
+                >
+                  인증 상태 다시 확인
+                </button>
+              </div>
+            </section>
+          ) : instagramDmUnavailable ? (
+            <section className="mx-auto flex min-h-[380px] max-w-xl flex-col justify-center">
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-center">
+                <AlertTriangle className="mx-auto h-9 w-9 text-amber-700" />
+                <h1 className="mt-4 text-xl font-semibold text-amber-950">
+                  Instagram DM 인증을 사용할 수 없습니다
+                </h1>
+                <p className="mt-2 text-sm leading-6 text-amber-800">
+                  서버 연결이 준비되지 않아 요청이 접수되지 않았습니다. 다른 방식으로 계정 소유를 인증해 주세요.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleOpenInstagramFallback}
+                  className="mt-6 h-11 w-full rounded-lg border border-neutral-300 bg-white px-5 text-sm font-semibold text-neutral-800 transition hover:border-neutral-500"
+                >
+                  다른 방식으로 인증
+                </button>
+              </div>
+            </section>
+          ) :
+          showFocusedInstagramDm && instagramDmChallenge ? (
+            <section className="mx-auto flex min-h-[380px] max-w-xl flex-col justify-center">
+              {instagramDmChallenge.state === "verified" ? (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className="rounded-xl border border-emerald-200 bg-emerald-50 p-6 text-center"
+                >
+                  <CheckCircle2 className="mx-auto h-10 w-10 text-emerald-700" />
+                  <h1 className="mt-4 text-xl font-semibold text-emerald-950">
+                    Instagram 계정 인증 완료
+                  </h1>
+                  <p className="mt-2 text-sm text-emerald-800">
+                    {formatPublicHandleValue(
+                      instagramDmChallenge.verified_handle || form.platform_handle,
+                      "Instagram 계정",
+                    )}
+                  </p>
+                </div>
+              ) : instagramDmChallenge.state === "expired" ? (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-center">
+                  <AlertTriangle className="mx-auto h-9 w-9 text-amber-700" />
+                  <h1 className="mt-4 text-xl font-semibold text-amber-950">
+                    인증 코드가 만료되었습니다
+                  </h1>
+                  <p className="mt-2 text-sm leading-6 text-amber-800">
+                    새 인증 요청을 시작하면 새로운 코드를 받을 수 있습니다.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInstagramDmChallenge(null);
+                      setError("");
+                    }}
+                    className="mt-6 h-11 w-full rounded-lg bg-neutral-950 px-5 text-sm font-semibold text-white transition hover:bg-neutral-800"
+                  >
+                    다시 인증하기
+                  </button>
+                </div>
+              ) : instagramDmChallenge.state === "manual_review" ? (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className="rounded-xl border border-neutral-200 bg-neutral-50 p-6 text-center"
+                >
+                  <BadgeCheck className="mx-auto h-9 w-9 text-neutral-700" />
+                  <h1 className="mt-4 text-xl font-semibold text-neutral-950">
+                    수기 확인으로 접수되었습니다
+                  </h1>
+                  <p className="mt-2 text-sm leading-6 text-neutral-600">
+                    수기 확인 결과를 기다리거나 다른 방식으로 인증할 수 있습니다.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleOpenInstagramFallback}
+                    className="mt-6 h-11 w-full rounded-lg border border-neutral-300 bg-white px-5 text-sm font-semibold text-neutral-800 transition hover:border-neutral-500"
+                  >
+                    다른 방식으로 인증
+                  </button>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-neutral-200 bg-[#fbfbfc] p-5 sm:p-6">
+                  <div className="text-center">
+                    <Instagram className="mx-auto h-9 w-9 text-fuchsia-700" />
+                    <h1 className="mt-4 text-xl font-semibold text-neutral-950">
+                      Instagram DM으로 인증
+                    </h1>
+                    <p className="mt-2 text-sm leading-6 text-neutral-600">
+                      아래 코드를 @{instagramDmChallenge.official_handle}에 보내면 자동으로 확인됩니다.
+                    </p>
+                  </div>
+
+                  {instagramDmChallenge.code ? (
+                    <>
+                      <code className="mt-6 block rounded-lg border border-neutral-200 bg-white px-4 py-4 text-center font-mono text-lg font-bold tracking-wide text-neutral-950">
+                        {instagramDmChallenge.code}
+                      </code>
+                      <a
+                        href={instagramDmChallenge.official_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={handleCopyInstagramDmCode}
+                        className="mt-4 flex h-11 w-full items-center justify-center rounded-lg bg-neutral-950 px-5 text-sm font-semibold text-white transition hover:bg-neutral-800"
+                      >
+                        코드 복사하고 Instagram 열기
+                      </a>
+                    </>
+                  ) : null}
+
+                  <div
+                    role="status"
+                    aria-live="polite"
+                    className="mt-4 flex items-center justify-center gap-2 text-sm font-semibold text-neutral-600"
+                  >
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    {instagramDmChallenge.state === "retrying_provider"
+                      ? "Meta 재시도 중 · 코드 유지"
+                      : `DM 확인 중 · ${formatInstagramDmExpiry(instagramDmChallenge.expires_at)}까지`}
+                  </div>
+                  {error ? (
+                    <div
+                      role="alert"
+                      className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700"
+                    >
+                      {error}
+                    </div>
+                  ) : null}
+                </div>
+              )}
+            </section>
+          ) : (
           <form onSubmit={handleSubmit} className="space-y-3">
             <div>
               <div className="mb-2 flex items-center justify-between gap-3">
@@ -729,45 +1137,41 @@ export function InfluencerVerification() {
               </div>
             </div>
 
-            <div className="grid gap-3">
+            {isInstagramDmMethod ? (
               <TextField
-                label="이름/활동명"
-                value={form.subject_name}
-                onChange={(value) => updateForm({ subject_name: value })}
-                required
-              />
-              <TextField
-                label="연락 이메일"
-                type="email"
-                value={form.submitted_by_email}
-                onChange={(value) =>
-                  updateForm({ submitted_by_email: value })
-                }
-                required
-              />
-              <TextField
-                label="핸들/채널 ID"
+                label="인스타그램 사용자 이름"
                 value={form.platform_handle}
                 onChange={(value) => updateForm({ platform_handle: value })}
-                placeholder={selectedPlatform.handlePlaceholder}
+                placeholder="@creator"
                 required
               />
-              <TextField
-                label="프로필 URL"
-                type="url"
-                value={form.platform_url}
-                onChange={(value) =>
-                  updateForm({
-                    platform_url: value,
-                    ownership_challenge_url:
-                      form.ownership_challenge_url || value,
-                  })
-                }
-                placeholder={selectedPlatform.urlPlaceholder}
-                required
-              />
-            </div>
+            ) : (
+              <div className="grid gap-3">
+                <TextField
+                  label="핸들/채널 ID"
+                  value={form.platform_handle}
+                  onChange={(value) => updateForm({ platform_handle: value })}
+                  placeholder={selectedPlatform.handlePlaceholder}
+                  required
+                />
+                <TextField
+                  label="프로필 URL"
+                  type="url"
+                  value={form.platform_url}
+                  onChange={(value) =>
+                    updateForm({
+                      platform_url: value,
+                      ownership_challenge_url:
+                        form.ownership_challenge_url || value,
+                    })
+                  }
+                  placeholder={selectedPlatform.urlPlaceholder}
+                  required
+                />
+              </div>
+            )}
 
+            {!isInstagramDmMethod ? (
             <section className="rounded-lg border border-neutral-200 bg-[#fbfbfc] p-3">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
@@ -775,9 +1179,7 @@ export function InfluencerVerification() {
                     {PRODUCT_NAME} 인증 흐름
                   </p>
                   <p className="mt-1 text-xs leading-5 text-neutral-500">
-                    {isInstagramDmMethod
-                      ? `코드 복사 → @${OFFICIAL_INSTAGRAM_HANDLE} DM → 요청 접수`
-                      : "코드 복사 → 프로필/게시글에 임시 등록 → 증빙 URL 입력"}
+                    코드 복사 → 프로필/게시글에 임시 등록 → 증빙 URL 입력
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -794,26 +1196,16 @@ export function InfluencerVerification() {
                     onClick={() => setChallengeCode(createChallengeCode())}
                     icon={<RefreshCw className="h-4 w-4" />}
                   />
-                  {isInstagramDmMethod && (
-                    <a
-                      href={OFFICIAL_INSTAGRAM_URL}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="hidden h-10 items-center rounded-md border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-700 transition hover:border-neutral-400 sm:inline-flex"
-                    >
-                      @{OFFICIAL_INSTAGRAM_HANDLE}
-                    </a>
-                  )}
                 </div>
               </div>
 
               <div className="mt-3 rounded-md bg-white px-3 py-2 text-xs font-semibold leading-5 text-neutral-600">
-                {isInstagramDmMethod
-                  ? "공개 댓글이나 게시글 없이 DM으로 확인합니다."
-                  : "검수 후 프로필/게시글에 남긴 코드는 삭제해도 됩니다."}
+                검수 후 프로필/게시글에 남긴 코드는 삭제해도 됩니다.
               </div>
             </section>
+            ) : null}
 
+            {!isInstagramDmMethod ? (
             <div>
               <p className="mb-2 text-sm font-semibold text-neutral-900">
                 인증 방식
@@ -838,6 +1230,7 @@ export function InfluencerVerification() {
                 {selectedMethod.helper}
               </p>
             </div>
+            ) : null}
 
             {!isInstagramDmMethod ? (
               <>
@@ -857,6 +1250,7 @@ export function InfluencerVerification() {
               </>
             ) : null}
 
+            {!isInstagramDmMethod ? (
             <div>
               <label className="text-sm font-semibold text-neutral-900">
                 증빙 스크린샷
@@ -891,7 +1285,9 @@ export function InfluencerVerification() {
                 />
               </label>
             </div>
+            ) : null}
 
+            {!isInstagramDmMethod ? (
             <label className="block">
               <span className="text-sm font-semibold text-neutral-900">
                 운영자에게 남길 메모
@@ -903,6 +1299,7 @@ export function InfluencerVerification() {
                 placeholder="코드를 넣은 위치, 임시 게시글 여부, 검수 후 삭제 예정 등 참고 내용을 적어주세요."
               />
             </label>
+            ) : null}
 
             {error && (
               <div
@@ -919,21 +1316,30 @@ export function InfluencerVerification() {
                 aria-live="polite"
                 className="rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm font-semibold text-neutral-800"
               >
-                {isInstagramDmMethod
-                  ? `접수 완료. 코드 ${submittedChallengeCode}를 @${OFFICIAL_INSTAGRAM_HANDLE}으로 DM 보내면 확인합니다.`
-                  : "계정 소유 인증 요청을 접수했습니다. 운영자 검수 후 승인됩니다."}
+                계정 소유 인증 요청을 접수했습니다. 운영자 검수 후 승인됩니다.
               </div>
             )}
 
             <button
               type="submit"
-              disabled={isSubmitting || isVerificationLoading || verificationStatusCode === 401}
+              disabled={
+                isSubmitting ||
+                isVerificationLoading ||
+                verificationStatusCode === 401 ||
+                (isInstagramDmMethod && isInstagramDmRestoring)
+              }
               className="h-11 w-full rounded-lg bg-neutral-950 px-5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-500 disabled:shadow-none"
             >
               {isSubmitting
-                ? "접수 중"
+                ? isInstagramDmMethod
+                  ? "DM 인증 준비 중"
+                  : "접수 중"
+                : isInstagramDmMethod && isInstagramDmRestoring
+                  ? "인증 상태 확인 중"
                 : isVerificationLoading
                   ? "계정 확인 중"
+                : isInstagramDmMethod
+                  ? "Instagram DM 인증 시작"
                 : approved
                   ? "플랫폼 인증 추가 요청"
                   : verificationStatus === "rejected"
@@ -941,85 +1347,10 @@ export function InfluencerVerification() {
                   : "계정 소유 인증 요청"}
             </button>
           </form>
+          )
           ) : null}
         </section>
 
-        {!showApprovedOverview ? (
-        <aside className="space-y-3 overflow-visible lg:min-h-0 lg:overflow-y-auto">
-          <section className="rounded-lg border border-neutral-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_14px_34px_rgba(15,23,42,0.05)]">
-            <div className="mb-4 flex items-center gap-3">
-              <div
-                className={`flex h-10 w-10 items-center justify-center rounded-lg ${sidebarClassName}`}
-              >
-                {sidebarIcon}
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-neutral-400">
-                  {showRequestForm ? "현재 선택" : "인증 정보"}
-                </p>
-                <p className="text-sm font-semibold text-neutral-950">
-                  {sidebarPlatformLabel}
-                </p>
-              </div>
-            </div>
-            {showRequestForm ? (
-              <>
-                <InfoRow label="인증 방식" value={selectedMethod.label} />
-                <InfoRow label="인증 코드" value={challengeCode} mono />
-                <InfoRow
-                  label={isInstagramDmMethod ? "인스타 프로필" : "증빙 URL"}
-                  value={proofUrl || verifiedUrl || "미입력"}
-                />
-                {isInstagramDmMethod && (
-                  <InfoRow
-                    label="DM 받을 계정"
-                    value={`@${OFFICIAL_INSTAGRAM_HANDLE}`}
-                  />
-                )}
-                {approved && verifiedHandle && (
-                  <InfoRow label="승인 계정" value={displayVerifiedHandle} />
-                )}
-              </>
-            ) : (
-              <>
-                {verifiedHandle ? (
-                  <InfoRow label="대표 계정" value={displayVerifiedHandle} />
-                ) : null}
-                <InfoRow
-                  label="추가 인증"
-                  value="필요할 때만 새 요청"
-                />
-              </>
-            )}
-          </section>
-
-          {showRequestForm && (
-            <>
-              <section className="rounded-lg border border-neutral-200/80 bg-white p-4 text-sm leading-6 text-neutral-600 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_14px_34px_rgba(15,23,42,0.05)]">
-                <p className="font-semibold text-neutral-950">서명 조건</p>
-                <p className="mt-1">
-                  계약 검토는 계속 가능하고, 전자서명은 플랫폼 인증 승인 뒤 진행됩니다.
-                </p>
-              </section>
-              {sidebarEvidenceHref ? (
-                <a
-                  href={sidebarEvidenceHref}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex h-11 items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white text-sm font-semibold text-neutral-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-neutral-400 hover:shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
-                >
-                  <ExternalLink className="h-4 w-4" />
-                  증빙 URL 열기
-                </a>
-              ) : (
-                <div className="flex min-h-11 items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50 px-3 text-center text-sm font-semibold text-neutral-400">
-                  증빙 URL 입력 후 열기 가능
-                </div>
-              )}
-            </>
-          )}
-        </aside>
-        ) : null}
       </main>
     </div>
   );
@@ -1077,29 +1408,6 @@ function IconButton({
   );
 }
 
-function InfoRow({
-  label,
-  value,
-  mono = false,
-}: {
-  label: string;
-  value: string;
-  mono?: boolean;
-}) {
-  return (
-    <div className="border-t border-neutral-100 py-3 first:border-t-0 first:pt-0">
-      <p className="text-xs font-semibold text-neutral-400">{label}</p>
-      <p
-        className={`mt-1 break-words text-sm font-medium text-neutral-800 ${
-          mono ? "font-mono" : ""
-        }`}
-      >
-        {value}
-      </p>
-    </div>
-  );
-}
-
 function createChallengeCode() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   const values = new Uint32Array(8);
@@ -1114,6 +1422,16 @@ function createChallengeCode() {
 
   const token = Array.from(values, (value) => alphabet[value % alphabet.length]);
   return `DS-${token.slice(0, 4).join("")}-${token.slice(4).join("")}`;
+}
+
+function formatInstagramDmExpiry(value: string) {
+  const expiresAt = new Date(value);
+  if (Number.isNaN(expiresAt.getTime())) return "잠시 후";
+
+  return expiresAt.toLocaleTimeString("ko-KR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function buildTargetId(

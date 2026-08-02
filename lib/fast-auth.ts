@@ -1,11 +1,31 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
-  createCipheriv,
   createDecipheriv,
   createHash,
   createHmac,
   randomBytes,
 } from "node:crypto";
+import {
+  userSessionAccessMaxAgeSeconds,
+  userSessionRefreshMaxAgeSeconds,
+} from "./user-session-policy.js";
+import {
+  getUserSessionLogoutBarrierCookieName,
+  getUserSessionLogoutResumeCookieName,
+  readUserSessionLogoutBarrierState,
+  type UserSessionBrowserRole,
+} from "./user-session-barrier.js";
+import {
+  classifyAuthMetricDataOrigin,
+  observeOperationalAuthMetric,
+  type AuthMetricDataOrigin,
+  type AuthMetricOutcome,
+} from "./auth-monitoring.js";
+import {
+  authMetricOriginCookieMaxAgeSeconds,
+  createAuthMetricOriginCookieValue,
+  getAuthMetricOriginCookieName,
+} from "./auth-metric-origin.js";
 
 type Role = "marketer" | "influencer";
 type VerificationStatus = "not_submitted" | "pending" | "approved" | "rejected";
@@ -20,6 +40,7 @@ type RequestLike = IncomingMessage & {
   body?: unknown;
   method?: string;
   headers: IncomingMessage["headers"];
+  authMetricDataOrigin?: AuthMetricDataOrigin;
 };
 
 type ResponseLike = ServerResponse & {
@@ -46,6 +67,7 @@ interface SupabaseProfileRow {
   role: Role | "admin";
   name: string;
   email: string;
+  data_origin?: AuthMetricDataOrigin | null;
   company_name?: string | null;
   activity_categories?: string[] | null;
   activity_platforms?: InfluencerPlatform[] | null;
@@ -119,11 +141,8 @@ const isHostedRuntime =
 const isPreview = process.argv.includes("--preview") || isHostedRuntime;
 const shareTokenCipherPrefix = "enc:v1:";
 const userFastSessionMaxAgeSeconds = 60 * 10;
-const accessMaxAgeSeconds = 60 * 60;
-const refreshMaxAgeSeconds = 60 * 60 * 24 * 14;
-const adminSessionSecret = process.env.ADMIN_SESSION_SECRET?.trim();
 const userSessionFastPathSecret =
-  process.env.USER_SESSION_FAST_PATH_SECRET?.trim() || adminSessionSecret;
+  process.env.USER_SESSION_FAST_PATH_SECRET?.trim();
 const shareTokenEncryptionSecret =
   process.env.DIRECTSIGN_TOKEN_ENCRYPTION_SECRET?.trim();
 const publicAuthIpMaxAttempts = readPositiveNumber(
@@ -140,6 +159,9 @@ const publicAuthAttempts = new Map<
   string,
   { count: number; resetAt: number }
 >();
+const distributedRateLimitRequired =
+  isHostedRuntime || process.env.NODE_ENV === "production";
+const distributedRateLimitTimeoutMs = 1_500;
 const fastAuthWarmupTtlMs = 20_000;
 const fastAuthWarmupTimeoutMs = 1_500;
 let fastAuthWarmup:
@@ -154,6 +176,7 @@ const profileSelectFields = [
   "role",
   "name",
   "email",
+  "data_origin",
   "company_name",
   "activity_categories",
   "activity_platforms",
@@ -289,6 +312,18 @@ async function createSupabasePasswordSession(email: string, password: string) {
   return (await response.json()) as SupabaseAuthSession;
 }
 
+async function revokeSupabaseSession(accessToken: string) {
+  const response = await fetch(supabaseAuthUrl("/logout?scope=local"), {
+    method: "POST",
+    headers: supabaseHeaders(accessToken),
+  });
+  if (!response.ok) {
+    throw new Error(
+      `Supabase logout failed (${response.status}): ${await parseSupabaseError(response)}`,
+    );
+  }
+}
+
 const hasText = (value: unknown): value is string =>
   typeof value === "string" && value.trim().length > 0;
 
@@ -306,6 +341,20 @@ function getClientIp(request: RequestLike) {
     request.socket.remoteAddress ||
     "unknown"
   );
+}
+
+class FastAuthRateLimitUnavailableError extends Error {
+  constructor(cause?: unknown) {
+    super(
+      "Distributed authentication rate limiting is temporarily unavailable",
+      cause === undefined ? undefined : { cause },
+    );
+    this.name = "FastAuthRateLimitUnavailableError";
+  }
+}
+
+function hashFastAuthRateLimitKey(value: string) {
+  return createHash("sha256").update(`fast-auth-rate-limit:${value}`).digest("hex");
 }
 
 function checkOrigin(request: RequestLike) {
@@ -332,30 +381,106 @@ function checkOrigin(request: RequestLike) {
   return allowed.includes(origin);
 }
 
-function consumeRateLimit(request: RequestLike, role: string, email: string) {
+function consumeLocalRateLimitBucket(key: string, limit: number) {
   const now = Date.now();
-  const ip = getClientIp(request);
-  const keys = [`ip:${role}:${ip}`, `email:${role}:${email}`];
-  for (const key of keys) {
-    const limit = key.startsWith("email:")
-      ? publicAuthEmailMaxAttempts
-      : publicAuthIpMaxAttempts;
-    const attempt = publicAuthAttempts.get(key);
-    if (!attempt || attempt.resetAt <= now) {
-      publicAuthAttempts.set(key, { count: 1, resetAt: now + publicAuthWindowMs });
-      continue;
+  const attempt = publicAuthAttempts.get(key);
+  if (!attempt || attempt.resetAt <= now) {
+    publicAuthAttempts.set(key, { count: 1, resetAt: now + publicAuthWindowMs });
+    return { blocked: false, retryAfter: 0 };
+  }
+  if (attempt.count >= limit) {
+    return { blocked: true, retryAfter: Math.ceil((attempt.resetAt - now) / 1000) };
+  }
+  attempt.count += 1;
+  return { blocked: false, retryAfter: 0 };
+}
+
+async function consumeDistributedRateLimitBucket(key: string, limit: number) {
+  const response = await fetch(
+    supabaseRestUrl("rpc/consume_directsign_rate_limit"),
+    {
+      method: "POST",
+      headers: supabaseHeaders(),
+      body: JSON.stringify({
+        p_bucket_key: key,
+        p_max_attempts: limit,
+        p_window_seconds: Math.max(1, Math.ceil(publicAuthWindowMs / 1000)),
+      }),
+      signal: AbortSignal.timeout(distributedRateLimitTimeoutMs),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Distributed rate limit failed (${response.status})`);
+  }
+  const payload = (await response.json()) as
+    | Array<{ blocked?: boolean; retry_after_seconds?: number }>
+    | { blocked?: boolean; retry_after_seconds?: number };
+  const result = Array.isArray(payload) ? payload[0] : payload;
+  if (!result || typeof result.blocked !== "boolean") {
+    throw new Error("Distributed rate limit returned an invalid result");
+  }
+  return {
+    blocked: result.blocked,
+    retryAfter: Math.max(0, Number(result.retry_after_seconds) || 0),
+  };
+}
+
+function getRateLimitKeys(request: RequestLike, role: string, email: string) {
+  return [
+    {
+      scope: "ip" as const,
+      key: hashFastAuthRateLimitKey(`ip:${role}:${getClientIp(request)}`),
+      limit: publicAuthIpMaxAttempts,
+    },
+    {
+      scope: "email" as const,
+      key: hashFastAuthRateLimitKey(`email:${role}:${email}`),
+      limit: publicAuthEmailMaxAttempts,
+    },
+  ];
+}
+
+async function consumeRateLimit(request: RequestLike, role: string, email: string) {
+  for (const bucket of getRateLimitKeys(request, role, email)) {
+    try {
+      const result = await consumeDistributedRateLimitBucket(bucket.key, bucket.limit);
+      if (result.blocked) return result;
+    } catch (error) {
+      if (distributedRateLimitRequired) {
+        throw new FastAuthRateLimitUnavailableError(error);
+      }
+      const result = consumeLocalRateLimitBucket(bucket.key, bucket.limit);
+      if (result.blocked) return result;
     }
-    if (attempt.count >= limit) {
-      return { blocked: true, retryAfter: Math.ceil((attempt.resetAt - now) / 1000) };
-    }
-    attempt.count += 1;
   }
   return { blocked: false, retryAfter: 0 };
 }
 
-function clearRateLimit(role: string, email: string, request: RequestLike) {
-  publicAuthAttempts.delete(`ip:${role}:${getClientIp(request)}`);
-  publicAuthAttempts.delete(`email:${role}:${email}`);
+async function clearRateLimit(role: string, email: string, request: RequestLike) {
+  // A successful login may clear only that subject's credential bucket. The
+  // shared IP bucket must retain its attempt history so an attacker cannot
+  // reset it by authenticating one account they control.
+  const buckets = getRateLimitKeys(request, role, email).filter(
+    (bucket) => bucket.scope === "email",
+  );
+  for (const bucket of buckets) publicAuthAttempts.delete(bucket.key);
+  if (!supabaseUrl || !supabaseServiceRoleKey) return;
+
+  await Promise.allSettled(
+    buckets.map((bucket) =>
+      fetch(
+        supabaseRestUrl(
+          "directsign_rate_limit_buckets",
+          `?bucket_key=eq.${encodeURIComponent(bucket.key)}`,
+        ),
+        {
+          method: "DELETE",
+          headers: supabaseHeaders(),
+          signal: AbortSignal.timeout(distributedRateLimitTimeoutMs),
+        },
+      ),
+    ),
+  );
 }
 
 async function readBody(request: RequestLike) {
@@ -391,6 +516,66 @@ function cookieOptions(maxAgeSeconds: number) {
     .join("; ");
 }
 
+function appendResponseCookies(response: ResponseLike, cookies: string[]) {
+  if (cookies.length === 0) return;
+  const existing = response.getHeader("Set-Cookie");
+  const existingCookies = Array.isArray(existing)
+    ? existing.map(String)
+    : typeof existing === "string"
+      ? [existing]
+      : [];
+  response.setHeader("Set-Cookie", [...existingCookies, ...cookies]);
+}
+
+function bindSessionToObservedLogoutBarrier(
+  request: RequestLike,
+  response: ResponseLike,
+  role: UserSessionBrowserRole,
+) {
+  const { barrier } = readUserSessionLogoutBarrierState(
+    getHeader(request, "cookie"),
+    role,
+  );
+  const resumeCookieName = getUserSessionLogoutResumeCookieName(role);
+  appendResponseCookies(response, [
+    barrier
+      ? `${resumeCookieName}=${barrier}; ${cookieOptions(
+          userSessionRefreshMaxAgeSeconds,
+        )}`
+      : `${resumeCookieName}=; ${cookieOptions(0)}`,
+  ]);
+}
+
+async function terminateRoleSession(
+  response: ResponseLike,
+  role: UserSessionBrowserRole,
+  session: SupabaseAuthSession,
+) {
+  const cookiePrefix =
+    role === "advertiser" ? "directsign_advertiser" : "directsign_influencer";
+  const barrierCookieName = getUserSessionLogoutBarrierCookieName(role);
+  const resumeCookieName = getUserSessionLogoutResumeCookieName(role);
+  response.setHeader("Set-Cookie", [
+    `${cookiePrefix}_access=; ${cookieOptions(0)}`,
+    `${cookiePrefix}_refresh=; ${cookieOptions(0)}`,
+    `${cookiePrefix}_fast=; ${cookieOptions(0)}`,
+    `${getAuthMetricOriginCookieName(role)}=; ${cookieOptions(0)}`,
+    `${barrierCookieName}=${randomBytes(16).toString("hex")}; ${cookieOptions(
+      userSessionRefreshMaxAgeSeconds,
+    )}`,
+    `${resumeCookieName}=; ${cookieOptions(0)}`,
+  ]);
+  try {
+    await revokeSupabaseSession(session.access_token);
+  } catch (error) {
+    console.warn(
+      `[yeollock fast auth] ${role} authorization termination revoke failed: ${
+        error instanceof Error ? error.message : "unknown error"
+      }`,
+    );
+  }
+}
+
 function fastSessionHmac(payload: string) {
   if (!userSessionFastPathSecret) return "";
   return createHmac("sha256", userSessionFastPathSecret)
@@ -423,7 +608,29 @@ function createFastSessionToken(
   return `${payload}.${fastSessionHmac(payload)}`;
 }
 
+function readAuthMetricOriginBinding(session: SupabaseAuthSession) {
+  const [, payload] = session.access_token.split(".");
+  if (!payload || !session.refresh_token) return undefined;
+  try {
+    const claims = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as {
+      sub?: string;
+      session_id?: string;
+    };
+    if (claims.sub !== session.user.id || !hasText(claims.session_id)) {
+      return undefined;
+    }
+    return {
+      userId: session.user.id,
+      authSessionId: claims.session_id,
+      sessionProof: session.refresh_token,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 function setSessionCookies(
+  request: RequestLike,
   response: ResponseLike,
   role: "advertiser" | "influencer",
   session: SupabaseAuthSession,
@@ -437,8 +644,11 @@ function setSessionCookies(
       session.access_token,
     )}; ${cookieOptions(
       Math.min(
-        accessMaxAgeSeconds,
-        Math.max(60, Number(session.expires_in ?? accessMaxAgeSeconds)),
+        userSessionAccessMaxAgeSeconds,
+        Math.max(
+          60,
+          Number(session.expires_in ?? userSessionAccessMaxAgeSeconds),
+        ),
       ),
     )}`,
   ];
@@ -446,7 +656,7 @@ function setSessionCookies(
     cookies.push(
       `${cookiePrefix}_refresh=${encodeURIComponent(
         session.refresh_token,
-      )}; ${cookieOptions(refreshMaxAgeSeconds)}`,
+      )}; ${cookieOptions(userSessionRefreshMaxAgeSeconds)}`,
     );
   }
   const fastToken = createFastSessionToken(session.user, profile, profileRole);
@@ -457,27 +667,34 @@ function setSessionCookies(
       )}; ${cookieOptions(userFastSessionMaxAgeSeconds)}`,
     );
   }
+  const metricOrigin = classifyAuthMetricDataOrigin({
+    identifier: profile.email ?? session.user.email,
+    explicit: profile.data_origin,
+  });
+  const metricOriginBinding = readAuthMetricOriginBinding(session);
+  const metricOriginValue =
+    metricOrigin && shareTokenEncryptionSecret && metricOriginBinding
+      ? createAuthMetricOriginCookieValue({
+          role,
+          origin: metricOrigin,
+          secret: shareTokenEncryptionSecret,
+          ...metricOriginBinding,
+        })
+      : undefined;
+  if (metricOriginValue) {
+    cookies.push(
+      `${getAuthMetricOriginCookieName(role)}=${encodeURIComponent(
+        metricOriginValue,
+      )}; ${cookieOptions(authMetricOriginCookieMaxAgeSeconds)}`,
+    );
+  }
   response.setHeader("Set-Cookie", cookies);
+  bindSessionToObservedLogoutBarrier(request, response, role);
 }
 
 function getShareTokenCipherKey() {
   if (!shareTokenEncryptionSecret) return undefined;
   return createHash("sha256").update(shareTokenEncryptionSecret).digest();
-}
-
-function encryptShareTokenForLegacyStore(value: string | undefined | null) {
-  if (!hasText(value)) return undefined;
-  if (value.startsWith(shareTokenCipherPrefix)) return value;
-  const key = getShareTokenCipherKey();
-  if (!key) return value;
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", key, iv);
-  const ciphertext = Buffer.concat([
-    cipher.update(value, "utf8"),
-    cipher.final(),
-  ]);
-  const payload = Buffer.concat([iv, cipher.getAuthTag(), ciphertext]);
-  return `${shareTokenCipherPrefix}${payload.toString("base64url")}`;
 }
 
 function decryptShareTokenFromLegacyStore(value: string | undefined | null) {
@@ -525,12 +742,12 @@ function restoreLegacyContract(row: SupabaseContractRow) {
 }
 
 function protectContractForClient(contract: ContractRecord) {
-  if (!contract?.evidence?.share_token) return contract;
+  if (!contract?.evidence) return contract;
   return {
     ...contract,
     evidence: {
       ...contract.evidence,
-      share_token: encryptShareTokenForLegacyStore(contract.evidence.share_token),
+      share_token: undefined,
     },
   };
 }
@@ -715,12 +932,26 @@ function sameUser(profile: SupabaseProfileRow | undefined, user: SupabaseAuthUse
 async function handleAdvertiserLogin(request: RequestLike, response: ResponseLike) {
   const body = await readBody(request);
   const email = normalizeEmail(body.email);
+  request.authMetricDataOrigin = classifyAuthMetricDataOrigin({ identifier: email });
   const password = typeof body.password === "string" ? body.password : "";
   if (!email.includes("@") || !password) {
     sendJson(response, 422, { error: "이메일과 비밀번호를 입력해 주세요." });
     return;
   }
-  const throttle = consumeRateLimit(request, "advertiser_login", email);
+  let throttle: { blocked: boolean; retryAfter: number };
+  try {
+    throttle = await consumeRateLimit(request, "advertiser_login", email);
+  } catch (error) {
+    if (error instanceof FastAuthRateLimitUnavailableError) {
+      response.setHeader("Retry-After", "2");
+      sendJson(response, 503, {
+        error: "Authentication is temporarily unavailable. Try again.",
+        retryable: true,
+      });
+      return;
+    }
+    throw error;
+  }
   if (throttle.blocked) {
     response.setHeader("Retry-After", String(throttle.retryAfter));
     sendJson(response, 429, { error: "로그인 시도가 많습니다. 잠시 후 다시 시도해 주세요." });
@@ -778,7 +1009,14 @@ async function handleAdvertiserLogin(request: RequestLike, response: ResponseLik
   const profile = sameUser(profileByEmail, session.user)
     ? profileByEmail
     : await readProfileByUserId(session.user.id);
+  if (profile) {
+    request.authMetricDataOrigin = classifyAuthMetricDataOrigin({
+      identifier: profile.email,
+      explicit: profile.data_origin,
+    });
+  }
   if (profile?.role !== "marketer") {
+    await terminateRoleSession(response, "advertiser", session);
     sendJson(response, 403, { error: "광고주 계정 권한이 필요합니다." });
     return;
   }
@@ -800,8 +1038,8 @@ async function handleAdvertiserLogin(request: RequestLike, response: ResponseLik
     allow_local_merge: false,
     demo_mode: false,
   };
-  setSessionCookies(response, "advertiser", session, profile);
-  clearRateLimit("advertiser_login", email, request);
+  setSessionCookies(request, response, "advertiser", session, profile);
+  await clearRateLimit("advertiser_login", email, request);
   sendJson(response, 200, {
     authenticated: true,
     user: buildAdvertiserUser(session.user, profile, resolvedOrganization),
@@ -812,12 +1050,26 @@ async function handleAdvertiserLogin(request: RequestLike, response: ResponseLik
 async function handleInfluencerLogin(request: RequestLike, response: ResponseLike) {
   const body = await readBody(request);
   const email = normalizeEmail(body.email);
+  request.authMetricDataOrigin = classifyAuthMetricDataOrigin({ identifier: email });
   const password = typeof body.password === "string" ? body.password : "";
   if (!email.includes("@") || !password) {
     sendJson(response, 422, { error: "이메일과 비밀번호를 입력해 주세요." });
     return;
   }
-  const throttle = consumeRateLimit(request, "influencer_login", email);
+  let throttle: { blocked: boolean; retryAfter: number };
+  try {
+    throttle = await consumeRateLimit(request, "influencer_login", email);
+  } catch (error) {
+    if (error instanceof FastAuthRateLimitUnavailableError) {
+      response.setHeader("Retry-After", "2");
+      sendJson(response, 503, {
+        error: "Authentication is temporarily unavailable. Try again.",
+        retryable: true,
+      });
+      return;
+    }
+    throw error;
+  }
   if (throttle.blocked) {
     response.setHeader("Retry-After", String(throttle.retryAfter));
     sendJson(response, 429, { error: "로그인 시도가 많습니다. 잠시 후 다시 시도해 주세요." });
@@ -829,12 +1081,19 @@ async function handleInfluencerLogin(request: RequestLike, response: ResponseLik
   const profile = sameUser(profileByEmail, session.user)
     ? profileByEmail
     : await readProfileByUserId(session.user.id);
+  if (profile) {
+    request.authMetricDataOrigin = classifyAuthMetricDataOrigin({
+      identifier: profile.email,
+      explicit: profile.data_origin,
+    });
+  }
   if (profile?.role !== "influencer") {
+    await terminateRoleSession(response, "influencer", session);
     sendJson(response, 403, { error: "인플루언서 계정 권한이 필요합니다." });
     return;
   }
-  setSessionCookies(response, "influencer", session, profile);
-  clearRateLimit("influencer_login", email, request);
+  setSessionCookies(request, response, "influencer", session, profile);
+  await clearRateLimit("influencer_login", email, request);
   sendJson(response, 200, {
     authenticated: true,
     user: buildInfluencerUser(session.user, profile),
@@ -847,10 +1106,12 @@ function withFastAuthHandler(
   handler: (request: RequestLike, response: ResponseLike) => Promise<void>,
 ) {
   return async function fastAuthHandler(request: RequestLike, response: ResponseLike) {
+    const startedAt = Date.now();
     response.setHeader("X-Yeollock-Auth-Entrypoint", `fast-${role}`);
+    response.setHeader("Cache-Control", "private, no-store");
+    response.setHeader("Vary", "Cookie");
 
     if (request.method === "GET" || request.method === "HEAD") {
-      response.setHeader("Cache-Control", "no-store");
       await startFastAuthWarmup();
       response.statusCode = 204;
       response.end();
@@ -868,6 +1129,24 @@ function withFastAuthHandler(
     }
     try {
       await handler(request, response);
+      const status = response.statusCode;
+      const outcome: AuthMetricOutcome =
+        status >= 200 && status < 300
+          ? "success"
+          : status === 429
+            ? "rate_limited"
+            : status === 403
+              ? "invalid"
+              : status >= 500
+                ? "provider_error"
+                : "rejected";
+      observeOperationalAuthMetric({
+        operation: "user_login",
+        role: role === "advertiser" ? "marketer" : "influencer",
+        outcome,
+        latencyMs: Date.now() - startedAt,
+        dataOrigin: request.authMetricDataOrigin,
+      });
     } catch (error) {
       const status = /Invalid login credentials|invalid/i.test(
         error instanceof Error ? error.message : String(error),
@@ -879,6 +1158,13 @@ function withFastAuthHandler(
           status === 401
             ? "로그인에 실패했습니다."
             : "로그인을 처리하지 못했습니다.",
+      });
+      observeOperationalAuthMetric({
+        operation: "user_login",
+        role: role === "advertiser" ? "marketer" : "influencer",
+        outcome: status === 401 ? "rejected" : "provider_error",
+        latencyMs: Date.now() - startedAt,
+        dataOrigin: request.authMetricDataOrigin,
       });
     }
   };

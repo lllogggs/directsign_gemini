@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Navigate, useLocation, useNavigate } from "react-router";
 import {
   AlertTriangle,
   ArrowUpRight,
@@ -102,8 +102,19 @@ type OperationalSupportTicket = {
 
 type OperationalAlert = {
   id: string;
-  kind: "verification_request" | "support_ticket" | "support_access";
-  action: "auto_approved" | "needs_review" | "mobile_action";
+  kind:
+    | "verification_request"
+    | "support_ticket"
+    | "support_access"
+    | "auth_health";
+  action:
+    | "auto_approved"
+    | "needs_review"
+    | "mobile_action"
+    | "provider_degraded"
+    | "terminal_spike"
+    | "revoke_failed"
+    | "rate_limit_spike";
   severity: "info" | "normal" | "high" | "urgent";
   status: "queued" | "sent" | "failed" | "muted";
   subject_type: string;
@@ -128,6 +139,18 @@ type AdminDashboardSection =
   | "manual_verification";
 
 type VerificationReviewTab = "pending" | "approved";
+
+type AdminAuthStep = "credentials" | "totp";
+
+type AdminAuthResponse = {
+  authenticated?: boolean;
+  configured?: boolean;
+  mfa_required?: boolean;
+  enrollment_required?: boolean;
+  qr_code?: string;
+  secret?: string;
+  error?: string;
+};
 
 const emptyMetrics: AdminMetrics = {
   contract_count: 0,
@@ -171,7 +194,13 @@ export function SystemAdminDashboard({
   const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAuthConfigured, setIsAuthConfigured] = useState(true);
-  const [accessCode, setAccessCode] = useState("");
+  const [authStep, setAuthStep] = useState<AdminAuthStep>("credentials");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [totpCode, setTotpCode] = useState("");
+  const [isTotpEnrollment, setIsTotpEnrollment] = useState(false);
+  const [totpQrCode, setTotpQrCode] = useState("");
+  const [totpSecret, setTotpSecret] = useState("");
   const [error, setError] = useState("");
   const [metrics, setMetrics] = useState<AdminMetrics>(emptyMetrics);
   const [supportRequests, setSupportRequests] = useState<SupportAccessRequest[]>([]);
@@ -201,7 +230,10 @@ export function SystemAdminDashboard({
     [supportRequests],
   );
   const pendingVerificationRequests = useMemo(
-    () => verificationRequests.filter((request) => request.status === "pending"),
+    () =>
+      verificationRequests.filter((request) =>
+        isVisiblePendingVerificationRequest(request, verificationRequests),
+      ),
     [verificationRequests],
   );
   const approvedVerificationRequests = useMemo(
@@ -411,43 +443,88 @@ export function SystemAdminDashboard({
     return undefined;
   }, [isAuthenticated, loadAdminData]);
 
+  const completeAdminLogin = () => {
+    setIsAuthenticated(true);
+    setAuthStep("credentials");
+    setEmail("");
+    setPassword("");
+    setTotpCode("");
+    setTotpQrCode("");
+    setTotpSecret("");
+    setIsTotpEnrollment(false);
+    if (loginOnly) {
+      navigate(nextPath, { replace: true });
+    }
+  };
+
+  const restartAdminLogin = () => {
+    setAuthStep("credentials");
+    setPassword("");
+    setTotpCode("");
+    setTotpQrCode("");
+    setTotpSecret("");
+    setIsTotpEnrollment(false);
+    setError("");
+  };
+
   const handleLogin = async (event: React.FormEvent) => {
     event.preventDefault();
     setIsSubmitting(true);
     setError("");
 
     try {
-      const response = await apiFetch("/api/admin/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
+      const isTotpStep = authStep === "totp";
+      const response = await apiFetch(
+        isTotpStep ? "/api/admin/mfa/verify" : "/api/admin/login",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify(
+            isTotpStep ? { code: totpCode } : { email, password },
+          ),
         },
-        body: JSON.stringify({ accessCode }),
-      });
-      const data = (await response.json()) as {
-        authenticated?: boolean;
-        configured?: boolean;
-        error?: string;
-      };
+      );
+      const data = (await response.json()) as AdminAuthResponse;
 
-      if (!response.ok || data.authenticated !== true) {
-        setIsAuthConfigured(data.configured !== false);
-        setError(
-          data.configured === false
-            ? "운영자 인증 환경변수가 아직 설정되지 않았습니다."
-            : "관리자 인증 코드가 올바르지 않습니다.",
-        );
+      if (response.ok && data.authenticated === true) {
+        completeAdminLogin();
         return;
       }
 
-      setIsAuthenticated(true);
-      setAccessCode("");
-      if (loginOnly) {
-        navigate(nextPath, { replace: true });
+      if (!isTotpStep && response.ok && data.mfa_required === true) {
+        setAuthStep("totp");
+        setPassword("");
+        setTotpCode("");
+        setIsTotpEnrollment(data.enrollment_required === true);
+        setTotpQrCode(data.qr_code?.trim() ?? "");
+        setTotpSecret(data.secret?.trim() ?? "");
+        return;
       }
+
+      setIsAuthConfigured(data.configured !== false);
+      if (
+        isTotpStep &&
+        (response.status === 403 || data.error === "운영자 인증을 다시 시작해 주세요.")
+      ) {
+        restartAdminLogin();
+        setError("운영자 로그인을 다시 진행해 주세요.");
+        return;
+      }
+      setError(
+        data.configured === false
+          ? "운영자 로그인을 사용할 수 없습니다. 서버 설정을 확인해 주세요."
+          : translateApiErrorMessage(
+              data.error,
+              isTotpStep
+                ? "인증 앱의 코드를 확인해 주세요."
+                : "이메일 또는 비밀번호를 확인해 주세요.",
+            ),
+      );
     } catch {
-      setError("운영자 인증 서버에 연결하지 못했습니다.");
+      setError("운영자 로그인 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.");
     } finally {
       setIsSubmitting(false);
     }
@@ -664,41 +741,114 @@ export function SystemAdminDashboard({
       );
     }
 
+    const isTotpStep = authStep === "totp";
+    const safeTotpQrCode = totpQrCode.startsWith("data:image/")
+      ? totpQrCode
+      : "";
+
     return (
       <AuthLoginScreen
-        title="운영자 접속"
-        fields={[
-          {
-            id: "accessCode",
-            label: "인증 코드",
-            value: accessCode,
-            type: "password",
-            autoComplete: "one-time-code",
-            placeholder: "인증 코드",
-            required: true,
-            disabled: !isAuthConfigured,
-            onChange: setAccessCode,
-          },
-        ]}
-        submitLabel="들어가기"
-        isSubmitting={isSubmitting || !isAuthConfigured}
+        title={isTotpStep ? "2단계 인증" : "운영자 로그인"}
+        description={
+          isTotpStep
+            ? isTotpEnrollment
+              ? "인증 앱을 등록하고 표시된 코드를 입력해 주세요."
+              : "인증 앱에 표시된 코드를 입력해 주세요."
+            : "개인 운영자 계정으로 로그인해 주세요."
+        }
+        fields={
+          isTotpStep
+            ? [
+                {
+                  id: "totpCode",
+                  label: "인증 코드",
+                  value: totpCode,
+                  type: "text",
+                  autoComplete: "one-time-code",
+                  placeholder: "6자리 코드",
+                  required: true,
+                  disabled: !isAuthConfigured,
+                  onChange: (value: string) =>
+                    setTotpCode(value.replace(/\D/g, "").slice(0, 8)),
+                },
+              ]
+            : [
+                {
+                  id: "email",
+                  label: "이메일",
+                  value: email,
+                  type: "email",
+                  autoComplete: "username",
+                  placeholder: "name@company.com",
+                  required: true,
+                  disabled: !isAuthConfigured,
+                  onChange: setEmail,
+                },
+                {
+                  id: "password",
+                  label: "비밀번호",
+                  value: password,
+                  type: "password",
+                  autoComplete: "current-password",
+                  placeholder: "비밀번호",
+                  required: true,
+                  disabled: !isAuthConfigured,
+                  onChange: setPassword,
+                },
+              ]
+        }
+        submitLabel={isTotpStep ? "인증하고 들어가기" : "로그인"}
+        submittingLabel={isTotpStep ? "인증 중" : "로그인 중"}
+        submitDisabled={!isAuthConfigured}
+        isSubmitting={isSubmitting}
         error={
           error ||
           (!isAuthConfigured
-            ? "서버에 ADMIN_ACCESS_CODE와 ADMIN_SESSION_SECRET을 설정해 주세요."
+            ? "운영자 로그인을 사용할 수 없습니다. 서버 설정을 확인해 주세요."
             : undefined)
         }
+        showOtherLoginLink={false}
         footer={
           <button
             type="button"
-            onClick={() => navigate("/login")}
+            onClick={isTotpStep ? restartAdminLogin : () => navigate("/login")}
             className="text-[13px] font-semibold text-neutral-500 transition hover:text-neutral-950"
           >
-            로그인으로 돌아가기
+            {isTotpStep ? "계정 다시 입력" : "일반 로그인으로 돌아가기"}
           </button>
         }
         onSubmit={handleLogin}
-      />
+      >
+        {isTotpStep && isTotpEnrollment ? (
+          <section
+            aria-label="인증 앱 등록 정보"
+            className="rounded-[14px] border border-neutral-200 bg-neutral-50 p-4"
+          >
+            {safeTotpQrCode ? (
+              <img
+                src={safeTotpQrCode}
+                alt="인증 앱 등록 QR 코드"
+                className="mx-auto h-40 w-40 rounded-[12px] bg-white p-2"
+              />
+            ) : null}
+            {totpSecret ? (
+              <div className={safeTotpQrCode ? "mt-3" : ""}>
+                <p className="text-[12px] font-bold text-neutral-600">
+                  직접 입력 키
+                </p>
+                <code className="mt-1.5 block break-all rounded-[10px] border border-neutral-200 bg-white px-3 py-2 text-center text-[12px] font-bold tracking-[0.08em] text-neutral-900">
+                  {totpSecret}
+                </code>
+              </div>
+            ) : null}
+            {!safeTotpQrCode && !totpSecret ? (
+              <p className="text-[13px] font-semibold leading-5 text-neutral-600">
+                인증 앱 등록 정보를 불러오지 못했습니다. 계정을 다시 입력해 주세요.
+              </p>
+            ) : null}
+          </section>
+        ) : null}
+      </AuthLoginScreen>
     );
   }
 
@@ -905,7 +1055,12 @@ export function SystemAdminDashboard({
   );
 }
 
-type MobileOperationKind = "all" | "verification" | "support_ticket" | "support_access";
+type MobileOperationKind =
+  | "all"
+  | "verification"
+  | "support_ticket"
+  | "support_access"
+  | "auth_health";
 
 type MobileOperationItem = {
   key: string;
@@ -1002,10 +1157,10 @@ function MobileAdminOperations({
         : items.filter((item) => item.kind === kindFilter),
     [items, kindFilter],
   );
-  const selectedItem =
-    visibleItems.find((item) => item.key === selectedItemKey) ??
-    visibleItems[0] ??
-    items[0];
+  const selectedItem = selectedItemKey
+    ? items.find((item) => item.key === selectedItemKey)
+    : visibleItems[0] ?? items[0];
+  const linkedItemMissing = Boolean(selectedItemKey && !selectedItem);
   const pendingAlertCount = operationalAlerts.filter(
     (alert) => alert.status === "queued" || alert.status === "failed",
   ).length;
@@ -1025,6 +1180,11 @@ function MobileAdminOperations({
       id: "support_access",
       label: "지원",
       count: items.filter((item) => item.kind === "support_access").length,
+    },
+    {
+      id: "auth_health",
+      label: "로그인",
+      count: items.filter((item) => item.kind === "auth_health").length,
     },
   ];
 
@@ -1188,23 +1348,41 @@ function MobileAdminOperations({
           )}
         </section>
 
-        <MobileOperationDetail
-          checkingVerificationId={checkingVerificationId}
-          closingSupportId={closingSupportId}
-          item={selectedItem}
-          reviewingVerificationId={reviewingVerificationId}
-          supportAccessRequests={activeSupportRequests}
-          supportTickets={activeSupportTickets}
-          updatingTicketId={updatingTicketId}
-          verificationRequests={verificationRequests}
-          onApproveVerification={onApproveVerification}
-          onCloseSupportAccess={onCloseSupportAccess}
-          onOpenContract={onOpenContract}
-          onOpenSupportAccess={onOpenSupportAccess}
-          onRejectVerification={onRejectVerification}
-          onRecheckVerification={onRecheckVerification}
-          onUpdateTicketStatus={onUpdateTicketStatus}
-        />
+        {linkedItemMissing ? (
+          <section className="rounded-lg border border-neutral-200 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+            {isLoadingData ? (
+              <div className="h-20 animate-pulse rounded-lg bg-neutral-100" />
+            ) : (
+              <>
+                <h2 className="text-base font-semibold text-neutral-950">
+                  현재 작업 대상이 아닙니다
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-neutral-600">
+                  이 알림의 인증 요청은 새 요청으로 대체되었거나 이미 처리되었습니다.
+                </p>
+              </>
+            )}
+          </section>
+        ) : (
+          <MobileOperationDetail
+            checkingVerificationId={checkingVerificationId}
+            closingSupportId={closingSupportId}
+            item={selectedItem}
+            operationalAlerts={operationalAlerts}
+            reviewingVerificationId={reviewingVerificationId}
+            supportAccessRequests={activeSupportRequests}
+            supportTickets={activeSupportTickets}
+            updatingTicketId={updatingTicketId}
+            verificationRequests={verificationRequests}
+            onApproveVerification={onApproveVerification}
+            onCloseSupportAccess={onCloseSupportAccess}
+            onOpenContract={onOpenContract}
+            onOpenSupportAccess={onOpenSupportAccess}
+            onRejectVerification={onRejectVerification}
+            onRecheckVerification={onRecheckVerification}
+            onUpdateTicketStatus={onUpdateTicketStatus}
+          />
+        )}
       </main>
     </div>
   );
@@ -1239,8 +1417,27 @@ function buildMobileOperationItems({
       autoApprovedVerificationIds.has(request.id) &&
       !pendingIds.has(request.id),
   );
+  const authHealthAlerts = operationalAlerts
+    .filter((alert) => alert.kind === "auth_health" && alert.status !== "muted")
+    .slice(0, 20);
 
   return [
+    ...authHealthAlerts.map((alert) => ({
+      key: `auth_health:${alert.id}`,
+      id: alert.id,
+      kind: "auth_health" as const,
+      title: alert.title,
+      eyebrow: "로그인 상태",
+      description: alert.body,
+      statusLabel: authHealthStatusLabel(alert),
+      createdAt: alert.created_at,
+      tone:
+        alert.severity === "urgent"
+          ? ("urgent" as const)
+          : alert.severity === "high"
+            ? ("high" as const)
+            : ("normal" as const),
+    })),
     ...pendingVerificationRequests.map((request) => ({
       key: `verification:${request.id}`,
       id: request.id,
@@ -1298,6 +1495,7 @@ function MobileOperationDetail({
   checkingVerificationId,
   closingSupportId,
   item,
+  operationalAlerts,
   reviewingVerificationId,
   supportAccessRequests,
   supportTickets,
@@ -1314,6 +1512,7 @@ function MobileOperationDetail({
   checkingVerificationId: string;
   closingSupportId: string;
   item?: MobileOperationItem;
+  operationalAlerts: OperationalAlert[];
   reviewingVerificationId: string;
   supportAccessRequests: SupportAccessRequest[];
   supportTickets: OperationalSupportTicket[];
@@ -1332,12 +1531,59 @@ function MobileOperationDetail({
 }) {
   if (!item) return null;
 
+  if (item.kind === "auth_health") {
+    const alert = operationalAlerts.find((record) => record.id === item.id);
+    if (!alert || alert.kind !== "auth_health") return null;
+
+    return (
+      <section className="rounded-lg border border-neutral-200 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-neutral-500">
+              {authHealthActionLabel(alert.action)}
+            </p>
+            <h2 className="mt-1 text-lg font-semibold tracking-[-0.02em]">
+              {alert.title}
+            </h2>
+          </div>
+          <span
+            className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${mobileToneClass(
+              item.tone,
+            )}`}
+          >
+            {authHealthStatusLabel(alert)}
+          </span>
+        </div>
+        <p className="mt-4 whitespace-pre-line text-sm leading-6 text-neutral-700">
+          {alert.body}
+        </p>
+        <p className="mt-3 text-xs font-medium text-neutral-500">
+          감지 {formatDateTime(alert.created_at)}
+        </p>
+      </section>
+    );
+  }
+
   if (item.kind === "verification") {
     const request = verificationRequests.find((record) => record.id === item.id);
     if (!request) return null;
     const evidenceUrl = getVerificationEvidenceUrl(request);
     const proofUrl = request.ownership_challenge_url ?? request.platform_url;
-    const isPending = request.status === "pending";
+    const isInstagramDm =
+      request.ownership_verification_method === "instagram_dm_code";
+    const canReview = isActionableManualVerificationRequest(
+      request,
+      verificationRequests,
+    );
+    const instagramDmState = getInstagramDmState(request);
+    const showInstagramDmFailureReason =
+      isInstagramDm &&
+      (["retrying_provider", "manual_review", "expired"].includes(
+        instagramDmState,
+      ) ||
+        ["not_found", "blocked", "failed"].includes(
+          request.ownership_check_status ?? "",
+        ));
 
     return (
       <section className="rounded-lg border border-neutral-200 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
@@ -1362,6 +1608,11 @@ function MobileOperationDetail({
           )}
           {request.ownership_challenge_code && (
             <p className="font-mono">코드 {request.ownership_challenge_code}</p>
+          )}
+          {showInstagramDmFailureReason && (
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold leading-5 text-amber-800">
+              Instagram DM · {getInstagramDmFailureReasonLabel(request)}
+            </p>
           )}
           <p className="text-xs font-medium text-neutral-500">
             접수 {formatDateTime(request.created_at)}
@@ -1396,16 +1647,22 @@ function MobileOperationDetail({
           )}
         </div>
 
-        {isPending ? (
-          <div className="mt-3 grid grid-cols-3 gap-2">
-            <button
-              type="button"
-              disabled={checkingVerificationId === request.id}
-              onClick={() => onRecheckVerification(request.id)}
-              className="h-10 rounded-lg border border-neutral-200 bg-white text-sm font-semibold text-neutral-700 disabled:opacity-50"
-            >
-              재확인
-            </button>
+        {canReview ? (
+          <div
+            className={`mt-3 grid gap-2 ${
+              isInstagramDm ? "grid-cols-2" : "grid-cols-3"
+            }`}
+          >
+            {!isInstagramDm && (
+              <button
+                type="button"
+                disabled={checkingVerificationId === request.id}
+                onClick={() => onRecheckVerification(request.id)}
+                className="h-10 rounded-lg border border-neutral-200 bg-white text-sm font-semibold text-neutral-700 disabled:opacity-50"
+              >
+                재확인
+              </button>
+            )}
             <button
               type="button"
               disabled={reviewingVerificationId === request.id}
@@ -1423,11 +1680,11 @@ function MobileOperationDetail({
               반려
             </button>
           </div>
-        ) : (
+        ) : request.status !== "pending" ? (
           <p className="mt-4 rounded-lg bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700">
             처리 {formatDateTime(request.reviewed_at ?? request.updated_at)}
           </p>
-        )}
+        ) : null}
       </section>
     );
   }
@@ -2059,6 +2316,10 @@ function VerificationReviewPanel({
                 : undefined;
           const proofUrl = request.ownership_challenge_url ?? request.platform_url;
           const isPending = request.status === "pending";
+          const canReview = isActionableManualVerificationRequest(
+            request,
+            requests,
+          );
           const isHandleAppeal = isPublicProfileHandleAppeal(request);
           const claimedHandle = getEvidenceString(request, "claimed_handle");
           const claimedProfileUrl =
@@ -2067,6 +2328,15 @@ function VerificationReviewPanel({
           const currentOwnerId = getEvidenceString(request, "current_owner_profile_id");
           const claimReason = getEvidenceString(request, "reason") || request.note;
           const automationSummary = getVerificationAutomationSummary(request);
+          const businessStartDate = getEvidenceString(
+            request,
+            "business_start_date",
+          );
+          const fallbackReason = getVerificationFallbackReasonLabel(
+            getEvidenceString(request, "fallback_reason"),
+          );
+          const instagramDmFailureReason =
+            getInstagramDmFailureReasonLabel(request);
 
           return (
             <article
@@ -2112,9 +2382,11 @@ function VerificationReviewPanel({
                 {request.ownership_verification_method && (
                   <p>방식 {verificationMethodLabel(request.ownership_verification_method)}</p>
                 )}
-                {request.ownership_verification_method === "instagram_dm_code" && (
+                {request.ownership_verification_method === "instagram_dm_code" &&
+                  request.status === "pending" &&
+                  request.ownership_check_status === "failed" && (
                   <p className="font-semibold text-neutral-700">
-                    공식 인스타그램 DM 발신 계정과 프로필 URL을 대조 후 승인
+                    Instagram DM 자동 확인 실패 · {instagramDmFailureReason}
                   </p>
                 )}
                 {request.ownership_challenge_code && (
@@ -2125,6 +2397,18 @@ function VerificationReviewPanel({
                 {request.business_registration_number && (
                   <p>사업자번호 {request.business_registration_number}</p>
                 )}
+                {request.representative_name && (
+                  <p>대표자 {request.representative_name}</p>
+                )}
+                {businessStartDate && <p>개업일 {businessStartDate}</p>}
+                {fallbackReason && (
+                  <p className="font-semibold text-amber-700">
+                    서류 전환 사유 {fallbackReason}
+                  </p>
+                )}
+                {automationSummary &&
+                  request.ownership_verification_method !==
+                    "instagram_dm_code" && <p>{automationSummary}</p>}
                 {request.evidence_file_name && (
                   <p className="truncate">파일 {request.evidence_file_name}</p>
                 )}
@@ -2161,17 +2445,20 @@ function VerificationReviewPanel({
                     문서 보기
                   </a>
                 )}
-                {isPending && (
+                {canReview && (
                   <>
-                    <button
-                      type="button"
-                      disabled={checkingId === request.id}
-                      title={automationSummary || undefined}
-                      onClick={() => onRecheck(request.id)}
-                      className="inline-flex h-9 items-center rounded-lg border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-700 transition hover:border-neutral-400 disabled:opacity-50"
-                    >
-                      {checkingId === request.id ? "자동 확인 중" : "자동 확인"}
-                    </button>
+                    {request.ownership_verification_method !==
+                      "instagram_dm_code" && (
+                      <button
+                        type="button"
+                        disabled={checkingId === request.id}
+                        title={automationSummary || undefined}
+                        onClick={() => onRecheck(request.id)}
+                        className="inline-flex h-9 items-center rounded-lg border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-700 transition hover:border-neutral-400 disabled:opacity-50"
+                      >
+                        {checkingId === request.id ? "자동 확인 중" : "자동 확인"}
+                      </button>
+                    )}
                     <button
                       type="button"
                       disabled={reviewingId === request.id}
@@ -2280,6 +2567,24 @@ function supportTicketSeverityLabel(
   return labels[severity];
 }
 
+function authHealthActionLabel(action: OperationalAlert["action"]) {
+  const labels: Partial<Record<OperationalAlert["action"], string>> = {
+    provider_degraded: "인증 공급자 오류",
+    terminal_spike: "세션 종료 증가",
+    revoke_failed: "세션 폐기 실패",
+    rate_limit_spike: "로그인 제한 증가",
+  };
+
+  return labels[action] ?? "로그인 상태";
+}
+
+function authHealthStatusLabel(alert: OperationalAlert) {
+  if (alert.status === "failed") return "전송 실패";
+  if (alert.status === "queued") return "확인 필요";
+  if (alert.status === "sent") return "알림 전송";
+  return "숨김";
+}
+
 function supportStatusLabel(request: SupportAccessRequest) {
   if (request.is_active) return "열람 가능";
   if (request.status === "closed") return "종료";
@@ -2340,7 +2645,7 @@ function verificationTypeLabel(request: VerificationRequest) {
 
 function verificationMethodLabel(method: string) {
   const labels: Record<string, string> = {
-    instagram_dm_code: "Instagram DM 수동 확인",
+    instagram_dm_code: "Instagram DM 인증",
     profile_bio_code: "프로필 소개 코드",
     public_post_code: "공개 게시글 코드",
     channel_description_code: "채널 설명 코드",
@@ -2348,6 +2653,67 @@ function verificationMethodLabel(method: string) {
   };
 
   return labels[method] ?? method;
+}
+
+function isActionableManualVerificationRequest(
+  request: VerificationRequest,
+  requests: VerificationRequest[],
+) {
+  if (request.status !== "pending") return false;
+  if (request.ownership_verification_method !== "instagram_dm_code") {
+    return true;
+  }
+  const ownership = request.evidence_snapshot_json?.ownership_verification as
+    | Record<string, unknown>
+    | undefined;
+  const instagramDm = ownership?.instagram_dm as
+    | Record<string, unknown>
+    | undefined;
+  const isFailureState =
+    instagramDm?.state === "manual_review" || instagramDm?.state === "expired";
+  if (!isFailureState) return false;
+  const handle = request.platform_handle?.replace(/^@+/, "").toLowerCase();
+  const createdAt = new Date(request.created_at).getTime();
+  return !requests.some(
+    (candidate) =>
+      candidate.id !== request.id &&
+      candidate.target_id === request.target_id &&
+      candidate.platform === "instagram" &&
+      candidate.platform_handle?.replace(/^@+/, "").toLowerCase() === handle &&
+      new Date(candidate.created_at).getTime() >= createdAt,
+  );
+}
+
+function isInstagramDmProviderRetryRequest(
+  request: VerificationRequest,
+  requests: VerificationRequest[],
+) {
+  return (
+    request.status === "pending" &&
+    request.platform === "instagram" &&
+    request.ownership_verification_method === "instagram_dm_code" &&
+    getInstagramDmState(request) === "retrying_provider" &&
+    !requests.some(
+      (candidate) =>
+        candidate.id !== request.id &&
+        candidate.target_id === request.target_id &&
+        candidate.platform === "instagram" &&
+        candidate.platform_handle?.replace(/^@+/, "").toLowerCase() ===
+          request.platform_handle?.replace(/^@+/, "").toLowerCase() &&
+        new Date(candidate.created_at).getTime() >=
+          new Date(request.created_at).getTime(),
+    )
+  );
+}
+
+function isVisiblePendingVerificationRequest(
+  request: VerificationRequest,
+  requests: VerificationRequest[],
+) {
+  return (
+    isActionableManualVerificationRequest(request, requests) ||
+    isInstagramDmProviderRetryRequest(request, requests)
+  );
 }
 
 function buildDefaultVerificationReviewerNote(
@@ -2366,7 +2732,7 @@ function buildDefaultVerificationReviewerNote(
   }
 
   if (request.ownership_verification_method === "instagram_dm_code") {
-    return "공식 인스타그램 DM 발신 계정과 제출한 프로필 URL 또는 인증 코드가 일치하는지 확인할 수 없습니다. 같은 코드로 다시 DM을 보내고 재제출해 주세요.";
+    return "Instagram DM 자동 확인을 완료하지 못했습니다. 새 인증 요청에서 발급된 새 코드를 공식 계정으로 보내 주세요.";
   }
 
   return "프로필 URL, 핸들, 인증 코드 위치 또는 공개 접근 가능 여부를 확인할 수 없습니다. 코드가 보이는 URL이나 스크린샷으로 다시 제출해 주세요.";
@@ -2379,6 +2745,43 @@ function isPublicProfileHandleAppeal(request: VerificationRequest) {
 function getEvidenceString(request: VerificationRequest, key: string) {
   const value = request.evidence_snapshot_json?.[key];
   return typeof value === "string" && value.trim() ? value : "";
+}
+
+function getInstagramDmState(request: VerificationRequest) {
+  const ownership = request.evidence_snapshot_json?.ownership_verification as
+    | Record<string, unknown>
+    | undefined;
+  const instagramDm = ownership?.instagram_dm as
+    | Record<string, unknown>
+    | undefined;
+  return typeof instagramDm?.state === "string" ? instagramDm.state : "";
+}
+
+function getInstagramDmFailureReasonLabel(request: VerificationRequest) {
+  const ownership = request.evidence_snapshot_json?.ownership_verification as
+    | Record<string, unknown>
+    | undefined;
+  const instagramDm = ownership?.instagram_dm as
+    | Record<string, unknown>
+    | undefined;
+  const reason = typeof instagramDm?.failure_reason === "string"
+    ? instagramDm.failure_reason
+    : "";
+  const labels: Record<string, string> = {
+    expired: "코드 만료",
+    username_mismatch: "제출 계정과 DM 발신 계정 불일치",
+    provider_unavailable: "Meta 발신자 조회 일시 실패 · 자동 재시도",
+  };
+  return labels[reason] ?? "사유 확인 필요";
+}
+
+function getVerificationFallbackReasonLabel(value: string) {
+  const labels: Record<string, string> = {
+    not_matched: "정보 불일치 또는 신규 등록 반영 지연",
+    service_unavailable: "국세청 자동 확인 일시 불가",
+    inactive: "휴업 또는 폐업 상태 조회",
+  };
+  return labels[value] ?? "";
 }
 
 function getVerificationAutomationSummary(request: VerificationRequest) {

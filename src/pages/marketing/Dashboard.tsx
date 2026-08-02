@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import {
   AlertCircle,
   ArrowLeft,
@@ -1629,11 +1629,11 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
 
           <div className="ml-2 flex min-w-0 items-center justify-end gap-1.5 sm:ml-3 sm:gap-2">
             {isSyncing || syncError ? (
-              <div className="hidden shrink-0 sm:block">
+              <div className="hidden shrink-0 lg:block">
                 <SyncPill isSyncing={isSyncing} syncError={syncError} />
               </div>
             ) : null}
-            <div className="hidden sm:block">
+            <div className="hidden lg:block">
               <DashboardSurfaceSwitch role="advertiser" active={surface} />
             </div>
             <MessageCenterButton
@@ -3831,9 +3831,9 @@ function getAdvertiserVerificationBannerCopy(
       actionLabel: "재제출",
     },
     not_submitted: {
-      statusLabel: "제출 필요",
-      helper: "사업자 인증을 제출해야 인플루언서에게 공유 링크를 보낼 수 있습니다.",
-      actionLabel: "인증 제출",
+      statusLabel: "인증 필요",
+      helper: "사업자 인증을 완료해야 인플루언서에게 공유 링크를 보낼 수 있습니다.",
+      actionLabel: "사업자 인증하기",
     },
   };
 

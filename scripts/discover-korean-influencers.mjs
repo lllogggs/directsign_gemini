@@ -2,6 +2,7 @@ import dotenv from "dotenv";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
+import { fileURLToPath } from "node:url";
 import {
   choosePreferredInfluencerRow,
   inferCreatorCountries,
@@ -13,12 +14,28 @@ import {
   classifyDiscoveredInfluencerAccount,
   normalizeMarketplaceCreatorCategories,
 } from "../src/domain/influencerDiscoveryQuality.js";
+import { normalizeNaverBlogRecentPosts } from "../src/domain/naverBlogPosts.js";
+import {
+  getNaverSearchBudgetSnapshot,
+  reserveNaverSearchRequest,
+} from "./lib/naver-search-budget.mjs";
+import { stageInfluencerDiscoveryWorkbook } from "./lib/influencer-discovery-queue.mjs";
 
 dotenv.config({ path: ".env.local" });
 dotenv.config();
 
 const cwd = process.cwd();
 const outputDir = path.join(cwd, "docs", "discovery");
+const uploaderLockRelativePath = path.join(
+  "data",
+  "influencer-discovery-queue",
+  "uploader.lock",
+);
+const uploaderStateRelativePath = path.join(
+  "data",
+  "influencer-discovery-queue",
+  "state.json",
+);
 
 const categoryConfigs = {
   beauty: {
@@ -311,7 +328,18 @@ const categories = String(
   .split(",")
   .map((value) => value.trim())
   .filter((value) => value in categoryConfigs);
-const apply = args.get("apply") === "true";
+const requestedApply = args.get("apply") === "true";
+const storageMode = String(args.get("storage") ?? "local-xlsx").trim();
+const debugOutput = args.get("debug-output") === "true";
+if (requestedApply || storageMode === "supabase") {
+  throw new Error(
+    "Direct Supabase collection writes are disabled. Use --storage=local-xlsx and the 12-hour batch uploader.",
+  );
+}
+if (!["local-xlsx", "none"].includes(storageMode)) {
+  throw new Error(`Unsupported discovery storage mode: ${storageMode}`);
+}
+const apply = false;
 const includeYoutube = args.get("youtube") !== "false";
 const includeYoutubeApi = args.get("youtube-api") !== "false";
 const includeYoutubeWeb = args.get("youtube-web") !== "false";
@@ -320,10 +348,22 @@ const includeInstagram = args.get("instagram") !== "false";
 const includeTikTok = args.get("tiktok") !== "false";
 const youtubePerQuery = parsePositiveInt(args.get("youtube-per-query"), 12);
 const youtubePages = parsePositiveInt(args.get("youtube-pages"), 1);
-const youtubeWebPerQuery = parsePositiveInt(args.get("youtube-web-per-query"), 50);
+const youtubeWebPerQuery = parsePositiveInt(
+  args.get("youtube-web-per-query"),
+  50,
+);
 const youtubeWebPages = parsePositiveInt(args.get("youtube-web-pages"), 2);
 const naverPerQuery = parsePositiveInt(args.get("naver-per-query"), 30);
 const naverPages = parsePositiveInt(args.get("naver-pages"), 1);
+const naverSorts = Array.from(
+  new Set(
+    String(args.get("naver-sorts") ?? "sim,date")
+      .split(",")
+      .map((value) => value.trim().toLowerCase())
+      .filter((value) => ["sim", "date"].includes(value)),
+  ),
+);
+if (naverSorts.length === 0) naverSorts.push("sim", "date");
 const tiktokPerQuery = parsePositiveInt(args.get("tiktok-per-query"), 30);
 const tiktokPages = parsePositiveInt(args.get("tiktok-pages"), 1);
 const minFollowers = parseOptionalPositiveInt(args.get("min-followers"));
@@ -348,7 +388,10 @@ function parseOptionalPositiveInt(value) {
 }
 
 function normalizePlatformName(value) {
-  const platform = String(value ?? "").trim().toLowerCase().replace(/-/g, "_");
+  const platform = String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/-/g, "_");
   if (platform === "naver" || platform === "blog") return "naver_blog";
   if (platform === "ig") return "instagram";
   if (platform === "tt") return "tiktok";
@@ -383,7 +426,9 @@ function stripHtml(value) {
 }
 
 function truncateText(value, maxLength) {
-  return Array.from(String(value ?? "")).slice(0, maxLength).join("");
+  return Array.from(String(value ?? ""))
+    .slice(0, maxLength)
+    .join("");
 }
 
 function slugPart(value) {
@@ -408,7 +453,9 @@ function makePublicHandle(platform, handleSeed, externalId) {
   const prefix = prefixByPlatform[platform] ?? "ch";
   const slug = slugPart(handleSeed);
   const fallback = sha256(`${platform}:${externalId}`).slice(0, 10);
-  return `${prefix}-${slug || fallback}`.slice(0, 30).replace(/[^a-z0-9]+$/, "");
+  return `${prefix}-${slug || fallback}`
+    .slice(0, 30)
+    .replace(/[^a-z0-9]+$/, "");
 }
 
 function ensureHttpUrl(value) {
@@ -435,10 +482,13 @@ function parseEnglishCompactNumber(value, unit) {
   if (!Number.isFinite(amount)) return null;
   const normalizedUnit = String(unit ?? "").toLowerCase();
   const multiplier =
-    normalizedUnit === "b" ? 1_000_000_000 :
-      normalizedUnit === "m" ? 1_000_000 :
-        normalizedUnit === "k" ? 1_000 :
-          1;
+    normalizedUnit === "b"
+      ? 1_000_000_000
+      : normalizedUnit === "m"
+        ? 1_000_000
+        : normalizedUnit === "k"
+          ? 1_000
+          : 1;
   return Math.round(amount * multiplier);
 }
 
@@ -447,10 +497,13 @@ function parseKoreanCompactNumber(value, unit) {
   if (!Number.isFinite(amount)) return null;
   const normalizedUnit = String(unit ?? "");
   const multiplier =
-    normalizedUnit === "억" ? 100_000_000 :
-      normalizedUnit === "만" ? 10_000 :
-        normalizedUnit === "천" ? 1_000 :
-          1;
+    normalizedUnit === "억"
+      ? 100_000_000
+      : normalizedUnit === "만"
+        ? 10_000
+        : normalizedUnit === "천"
+          ? 1_000
+          : 1;
   return Math.round(amount * multiplier);
 }
 
@@ -520,13 +573,19 @@ function inferCategories(text, preferredCategory) {
   if (/뷰티|스킨|메이크업|화장품|향수|beauty|makeup|cosmetic/.test(lower)) {
     ["뷰티", "스킨케어", "메이크업"].forEach((item) => result.add(item));
   }
-  if (/리빙|살림|집꾸미기|인테리어|생활용품|홈데코|living|home|interior/.test(lower)) {
+  if (
+    /리빙|살림|집꾸미기|인테리어|생활용품|홈데코|living|home|interior/.test(
+      lower,
+    )
+  ) {
     ["리빙", "라이프스타일", "홈"].forEach((item) => result.add(item));
   }
   if (/패션|코디|데일리룩|쇼핑하울|fashion|style|outfit/.test(lower)) {
     ["패션", "스타일", "코디"].forEach((item) => result.add(item));
   }
-  if (/푸드|맛집|요리|레시피|카페|디저트|food|recipe|restaurant|cafe/.test(lower)) {
+  if (
+    /푸드|맛집|요리|레시피|카페|디저트|food|recipe|restaurant|cafe/.test(lower)
+  ) {
     ["푸드", "맛집", "요리"].forEach((item) => result.add(item));
   }
   if (/여행|숙소|호텔|제주|국내여행|travel|hotel|stay/.test(lower)) {
@@ -575,23 +634,41 @@ function scoreCandidate(candidate) {
   if (candidate.avatar_url) score += 4;
   if ((candidate.categories ?? []).length > 0) score += 8;
   if (candidate.platform === "youtube" && candidate.follower_count) {
-    score += Math.min(22, Math.round(Math.log10(candidate.follower_count + 1) * 4));
+    score += Math.min(
+      22,
+      Math.round(Math.log10(candidate.follower_count + 1) * 4),
+    );
   }
   if (candidate.platform === "instagram" && candidate.follower_count) {
-    score += Math.min(18, Math.round(Math.log10(candidate.follower_count + 1) * 4));
+    score += Math.min(
+      18,
+      Math.round(Math.log10(candidate.follower_count + 1) * 4),
+    );
   }
   if (candidate.platform === "tiktok" && candidate.follower_count) {
-    score += Math.min(18, Math.round(Math.log10(candidate.follower_count + 1) * 4));
+    score += Math.min(
+      18,
+      Math.round(Math.log10(candidate.follower_count + 1) * 4),
+    );
   }
   if (candidate.average_views) {
-    score += Math.min(12, Math.round(Math.log10(candidate.average_views + 1) * 3));
+    score += Math.min(
+      12,
+      Math.round(Math.log10(candidate.average_views + 1) * 3),
+    );
   }
   if (candidate.platform === "naver_blog") {
-    score += Math.min(14, Number(candidate.source_evidence?.matchedPosts ?? 1) * 4);
+    score += Math.min(
+      14,
+      Number(candidate.source_evidence?.matchedPosts ?? 1) * 4,
+    );
   }
   if (brandLike) score -= 35;
   if (poorDisplayName) score -= 32;
-  if (candidate.platform === "youtube" && Number(candidate.follower_count ?? 0) < 1_000) {
+  if (
+    candidate.platform === "youtube" &&
+    Number(candidate.follower_count ?? 0) < 1_000
+  ) {
     score -= 6;
   }
 
@@ -607,14 +684,18 @@ function scoreCandidate(candidate) {
 
 function rescoreRow(row) {
   const scored = scoreCandidate(row);
-  const countryConfidence = String(row.source_evidence?.countryConfidence ?? "");
+  const countryConfidence = String(
+    row.source_evidence?.countryConfidence ?? "",
+  );
   const hasCountrySignal =
     Array.isArray(row.audience_countries) && row.audience_countries.length > 0;
   const hasRequiredTikTokSignal =
     row.platform !== "tiktok" ||
     (hasCountrySignal && countryConfidence !== "unknown") ||
     row.source_evidence?.koreaProfileSignal === true;
-  const canBeActive = hasCountrySignal && hasRequiredTikTokSignal;
+  const canBeActive =
+    row.platform === "naver_blog" ||
+    (hasCountrySignal && hasRequiredTikTokSignal);
   const qualityScore = canBeActive
     ? scored.qualityScore
     : Math.min(scored.qualityScore, 45);
@@ -629,9 +710,23 @@ async function fetchJson(url, init, label) {
   const response = await fetch(url, init);
   if (!response.ok) {
     const body = await response.text().catch(() => "");
-    throw new Error(`${label} failed (${response.status}): ${body.slice(0, 240)}`);
+    throw new Error(
+      `${label} failed (${response.status}): ${body.slice(0, 240)}`,
+    );
   }
   return response.json();
+}
+
+let naverSearchBudgetExhausted = false;
+
+async function fetchNaverSearchJson(url, init, label, endpoint) {
+  if (naverSearchBudgetExhausted) return null;
+  const reservation = await reserveNaverSearchRequest(endpoint);
+  if (!reservation.allowed) {
+    naverSearchBudgetExhausted = true;
+    return null;
+  }
+  return fetchJson(url, init, label);
 }
 
 async function collectYoutubeCandidates() {
@@ -644,12 +739,17 @@ async function collectYoutubeCandidates() {
     for (const query of categoryConfigs[category].youtubeQueries) {
       let pageToken = "";
       for (let pageIndex = 0; pageIndex < youtubePages; pageIndex += 1) {
-        const searchUrl = new URL("https://www.googleapis.com/youtube/v3/search");
+        const searchUrl = new URL(
+          "https://www.googleapis.com/youtube/v3/search",
+        );
         searchUrl.searchParams.set("part", "snippet");
         searchUrl.searchParams.set("type", "channel");
         searchUrl.searchParams.set("regionCode", "KR");
         searchUrl.searchParams.set("relevanceLanguage", "ko");
-        searchUrl.searchParams.set("maxResults", String(Math.min(youtubePerQuery, 50)));
+        searchUrl.searchParams.set(
+          "maxResults",
+          String(Math.min(youtubePerQuery, 50)),
+        );
         searchUrl.searchParams.set("q", query);
         searchUrl.searchParams.set("key", apiKey);
         if (pageToken) searchUrl.searchParams.set("pageToken", pageToken);
@@ -681,7 +781,9 @@ async function collectYoutubeCandidates() {
 
   for (let index = 0; index < channelIds.length; index += 50) {
     const ids = channelIds.slice(index, index + 50);
-    const channelUrl = new URL("https://www.googleapis.com/youtube/v3/channels");
+    const channelUrl = new URL(
+      "https://www.googleapis.com/youtube/v3/channels",
+    );
     channelUrl.searchParams.set("part", "snippet,statistics");
     channelUrl.searchParams.set("id", ids.join(","));
     channelUrl.searchParams.set("key", apiKey);
@@ -704,10 +806,15 @@ async function collectYoutubeCandidates() {
       const videoCount = Number.parseInt(stats.videoCount ?? "", 10);
       const viewCount = Number.parseInt(stats.viewCount ?? "", 10);
       const averageViews =
-        Number.isFinite(viewCount) && Number.isFinite(videoCount) && videoCount > 0
+        Number.isFinite(viewCount) &&
+        Number.isFinite(videoCount) &&
+        videoCount > 0
           ? Math.round(viewCount / videoCount)
           : undefined;
-      const categoriesForRow = inferCategories(`${title} ${description}`, seed.category);
+      const categoriesForRow = inferCategories(
+        `${title} ${description}`,
+        seed.category,
+      );
       const countryInference = inferCreatorCountries({
         displayName: title,
         bio: description,
@@ -717,19 +824,30 @@ async function collectYoutubeCandidates() {
       const candidate = {
         id: stableUuid(`discovered:youtube:${channel.id}`),
         platform: "youtube",
-        public_handle: makePublicHandle("youtube", platformHandle || title, channel.id),
+        public_handle: makePublicHandle(
+          "youtube",
+          platformHandle || title,
+          channel.id,
+        ),
         external_id: channel.id,
         platform_handle: platformHandle || channel.id,
         display_name: title || platformHandle || channel.id,
         headline: `${categoryConfigs[seed.category].label} 콘텐츠 채널`,
         bio: truncateText(description, 240),
         profile_url: profileUrl,
-        avatar_url: snippet.thumbnails?.high?.url ?? snippet.thumbnails?.default?.url ?? null,
+        avatar_url:
+          snippet.thumbnails?.high?.url ??
+          snippet.thumbnails?.default?.url ??
+          null,
         categories: categoriesForRow,
         audience_countries: countryInference.countries,
         audience_tags: categoryConfigs[seed.category].audienceTags,
-        followers_label: subscriberCount ? `구독자 ${compactKoreanNumber(subscriberCount)}명` : "구독자 공개 안됨",
-        follower_count: Number.isFinite(subscriberCount) ? subscriberCount : null,
+        followers_label: subscriberCount
+          ? `구독자 ${compactKoreanNumber(subscriberCount)}명`
+          : "구독자 공개 안됨",
+        follower_count: Number.isFinite(subscriberCount)
+          ? subscriberCount
+          : null,
         average_views: Number.isFinite(averageViews) ? averageViews : null,
         post_count: Number.isFinite(videoCount) ? videoCount : null,
         source_provider: "youtube_data_api",
@@ -772,7 +890,11 @@ function normalizeYoutubePathRef(value) {
 
   const handle = raw.toLowerCase();
   if (!/^[a-z0-9](?:[a-z0-9._-]{1,28}[a-z0-9])?$/.test(handle)) return null;
-  if (/^(about|channel|channels|creator|creators|feed|gaming|hashtag|live|music|playlist|premium|results|shorts|watch|youtube|yt)$/i.test(handle)) {
+  if (
+    /^(about|channel|channels|creator|creators|feed|gaming|hashtag|live|music|playlist|premium|results|shorts|watch|youtube|yt)$/i.test(
+      handle,
+    )
+  ) {
     return null;
   }
   return { type: "handle", value: handle };
@@ -830,7 +952,10 @@ function buildYoutubeCandidateFromWeb({
       .replace(/\s*-\s*YouTube\s*$/i, "")
       .replace(/\s*-\s*유튜브\s*$/i, "")
       .trim() || ref.value;
-  const categoriesForRow = inferCategories(`${displayName} ${description} ${keyword}`, category);
+  const categoriesForRow = inferCategories(
+    `${displayName} ${description} ${keyword}`,
+    category,
+  );
   const countryInference = inferCreatorCountries({
     displayName,
     bio: description,
@@ -839,7 +964,11 @@ function buildYoutubeCandidateFromWeb({
   const candidate = {
     id: stableUuid(`discovered:youtube:web:${ref.type}:${ref.value}`),
     platform: "youtube",
-    public_handle: makePublicHandle("youtube", ref.value, `${ref.type}:${ref.value}`),
+    public_handle: makePublicHandle(
+      "youtube",
+      ref.value,
+      `${ref.type}:${ref.value}`,
+    ),
     external_id: `${ref.type}:${ref.value}`,
     platform_handle: ref.value,
     display_name: displayName,
@@ -877,7 +1006,9 @@ function buildYoutubeCandidateFromWeb({
 
 function youtubeWebQueriesForCategory(category) {
   const config = categoryConfigs[category] ?? categoryConfigs.beauty;
-  const terms = Array.from(new Set([config.label, ...(config.categories ?? [])].filter(Boolean)));
+  const terms = Array.from(
+    new Set([config.label, ...(config.categories ?? [])].filter(Boolean)),
+  );
   return Array.from(
     new Set([
       ...(config.youtubeQueries ?? []),
@@ -894,7 +1025,8 @@ function youtubeWebQueriesForCategory(category) {
 async function collectYoutubeCandidatesFromNaverWeb() {
   const clientId = process.env.NAVER_CLIENT_ID;
   const clientSecret = process.env.NAVER_CLIENT_SECRET;
-  if (!clientId || !clientSecret || !includeYoutube || !includeYoutubeWeb) return [];
+  if (!clientId || !clientSecret || !includeYoutube || !includeYoutubeWeb)
+    return [];
 
   const byRef = new Map();
   for (const category of categories) {
@@ -909,7 +1041,7 @@ async function collectYoutubeCandidatesFromNaverWeb() {
         url.searchParams.set("display", String(display));
         url.searchParams.set("start", String(start));
 
-        const data = await fetchJson(
+        const data = await fetchNaverSearchJson(
           url,
           {
             headers: {
@@ -918,13 +1050,17 @@ async function collectYoutubeCandidatesFromNaverWeb() {
             },
           },
           `Naver web YouTube search ${query} page ${pageIndex + 1}`,
+          "webkr",
         );
+        if (!data) break;
 
         for (const item of data.items ?? []) {
           const title = stripHtml(item.title);
           const description = stripHtml(item.description);
           const link = ensureHttpUrl(stripHtml(item.link));
-          const refs = extractYoutubeProfileRefs(`${link} ${title} ${description}`);
+          const refs = extractYoutubeProfileRefs(
+            `${link} ${title} ${description}`,
+          );
           for (const ref of refs) {
             const enriched = buildYoutubeCandidateFromWeb({
               ref,
@@ -968,41 +1104,43 @@ async function collectNaverBlogCandidates() {
   for (const category of categories) {
     for (const query of categoryConfigs[category].naverQueries) {
       const display = Math.min(naverPerQuery, 100);
-      for (let pageIndex = 0; pageIndex < naverPages; pageIndex += 1) {
-        const start = pageIndex * display + 1;
-        if (start > 1000) break;
+      for (const sort of naverSorts) {
+        for (let pageIndex = 0; pageIndex < naverPages; pageIndex += 1) {
+          const start = pageIndex * display + 1;
+          if (start > 1000) break;
 
-        const url = new URL("https://openapi.naver.com/v1/search/blog.json");
-        url.searchParams.set("query", query);
-        url.searchParams.set("display", String(display));
-        url.searchParams.set("start", String(start));
-        url.searchParams.set("sort", "sim");
+          const url = new URL("https://openapi.naver.com/v1/search/blog.json");
+          url.searchParams.set("query", query);
+          url.searchParams.set("display", String(display));
+          url.searchParams.set("start", String(start));
+          url.searchParams.set("sort", sort);
 
-        const data = await fetchJson(
-          url,
-          {
-            headers: {
-              "X-Naver-Client-Id": clientId,
-              "X-Naver-Client-Secret": clientSecret,
-            },
-          },
-          `Naver blog search ${query} page ${pageIndex + 1}`,
-        );
-
-        for (const item of data.items ?? []) {
-          const bloggerLink = ensureHttpUrl(stripHtml(item.bloggerlink));
-          if (!bloggerLink) continue;
-          let bloggerUrl;
-          try {
-            bloggerUrl = new URL(bloggerLink);
-          } catch {
-            continue;
-          }
-          if (bloggerUrl.hostname.toLowerCase() !== "blog.naver.com") continue;
-          const key = bloggerLink.toLowerCase();
-          const current =
-            grouped.get(key) ??
+          const data = await fetchNaverSearchJson(
+            url,
             {
+              headers: {
+                "X-Naver-Client-Id": clientId,
+                "X-Naver-Client-Secret": clientSecret,
+              },
+            },
+            `Naver blog search ${query} ${sort} page ${pageIndex + 1}`,
+            "blog",
+          );
+          if (!data) break;
+
+          for (const item of data.items ?? []) {
+            const bloggerLink = ensureHttpUrl(stripHtml(item.bloggerlink));
+            if (!bloggerLink) continue;
+            let bloggerUrl;
+            try {
+              bloggerUrl = new URL(bloggerLink);
+            } catch {
+              continue;
+            }
+            if (bloggerUrl.hostname.toLowerCase() !== "blog.naver.com")
+              continue;
+            const key = bloggerLink.toLowerCase();
+            const current = grouped.get(key) ?? {
               category,
               bloggerLink,
               bloggerName: stripHtml(item.bloggername),
@@ -1010,12 +1148,20 @@ async function collectNaverBlogCandidates() {
               descriptions: [],
               queries: new Set(),
               links: new Set(),
+              posts: [],
             };
-          current.queries.add(query);
-          current.links.add(ensureHttpUrl(stripHtml(item.link)));
-          current.titles.push(stripHtml(item.title));
-          current.descriptions.push(stripHtml(item.description));
-          grouped.set(key, current);
+            const postUrl = ensureHttpUrl(stripHtml(item.link));
+            current.queries.add(query);
+            if (postUrl) current.links.add(postUrl);
+            current.titles.push(stripHtml(item.title));
+            current.descriptions.push(stripHtml(item.description));
+            current.posts.push({
+              title: item.title,
+              url: postUrl,
+              publishedDate: item.postdate,
+            });
+            grouped.set(key, current);
+          }
         }
       }
     }
@@ -1029,6 +1175,15 @@ async function collectNaverBlogCandidates() {
       ...blog.descriptions.slice(0, 5),
     ].join(" ");
     const categoriesForRow = inferCategories(text, blog.category);
+    const recentPosts = normalizeNaverBlogRecentPosts(blog.posts, 3);
+    // Naver Search returns post snippets, not an official creator country or
+    // the blogger's self-authored profile location. Keep country unknown until
+    // a separate official or manual verification source is available.
+    const countryInference = {
+      countries: [],
+      confidence: "unknown",
+      signals: [],
+    };
     const candidate = {
       id: stableUuid(`discovered:naver_blog:${blog.bloggerLink.toLowerCase()}`),
       platform: "naver_blog",
@@ -1041,7 +1196,7 @@ async function collectNaverBlogCandidates() {
       profile_url: blog.bloggerLink,
       avatar_url: null,
       categories: categoriesForRow,
-      audience_countries: ["south_korea"],
+      audience_countries: countryInference.countries,
       audience_tags: categoryConfigs[blog.category].audienceTags,
       followers_label: "블로그 공개",
       follower_count: null,
@@ -1050,14 +1205,14 @@ async function collectNaverBlogCandidates() {
       source_provider: "naver_search_api",
       source_keyword: Array.from(blog.queries)[0],
       source_url: Array.from(blog.links)[0] || blog.bloggerLink,
-        source_evidence: {
-          sourceCategory: blog.category,
-          searchQueries: Array.from(blog.queries),
-          matchedPosts: blog.links.size,
-          sampleTitles: blog.titles.slice(0, 5),
-          countryConfidence: "platform",
-          countrySignals: ["platform:naver_blog"],
-        },
+      source_evidence: {
+        sourceCategory: blog.category,
+        searchQueries: Array.from(blog.queries),
+        matchedPosts: blog.links.size,
+        recentPosts,
+        countryConfidence: countryInference.confidence,
+        countrySignals: countryInference.signals,
+      },
     };
     const scored = scoreCandidate(candidate);
     return {
@@ -1136,9 +1291,11 @@ function collectInstagramCandidatesFromCrosslinks(sourceRows) {
     ].join(" ");
     for (const ref of extractInstagramProfileRefs(text)) {
       const profileUrl = `https://www.instagram.com/${ref.handle}/`;
-      const trustInheritedCountries = ["official", "explicit", "platform"].includes(
-        String(row.source_evidence?.countryConfidence ?? ""),
-      );
+      const trustInheritedCountries = [
+        "official",
+        "explicit",
+        "platform",
+      ].includes(String(row.source_evidence?.countryConfidence ?? ""));
       const countryInference = inferCreatorCountries({
         displayName: row.display_name,
         bio: row.bio,
@@ -1171,7 +1328,8 @@ function collectInstagramCandidatesFromCrosslinks(sourceRows) {
           sourcePlatform: row.platform,
           sourceProfileUrl: row.profile_url,
           extractedFrom: ref.evidence,
-          sourceCategory: row.source_evidence?.sourceCategory ?? row.categories?.[0] ?? null,
+          sourceCategory:
+            row.source_evidence?.sourceCategory ?? row.categories?.[0] ?? null,
           countryConfidence: countryInference.confidence,
           countrySignals: countryInference.signals,
         },
@@ -1355,9 +1513,7 @@ function buildTikTokCandidateFromSource({
 }) {
   const config = categoryConfigs[category] ?? categoryConfigs.beauty;
   const displayName =
-    stripHtml(title) ||
-    stripHtml(sourceRow?.display_name) ||
-    handle;
+    stripHtml(title) || stripHtml(sourceRow?.display_name) || handle;
   const bio = truncateText(stripHtml(description || sourceRow?.bio), 240);
   const profileUrl = `https://www.tiktok.com/@${handle}`;
   const followerCount = parseTikTokFollowerCount(`${displayName} ${bio}`);
@@ -1375,11 +1531,11 @@ function buildTikTokCandidateFromSource({
     trustInheritedCountries,
   });
   const hasCountrySignal =
-    countryInference.countries.length > 0 && countryInference.confidence !== "unknown";
-  const categoriesForRow =
-    sourceRow?.categories?.length
-      ? sourceRow.categories
-      : inferCategories(`${displayName} ${bio} ${keyword ?? ""}`, category);
+    countryInference.countries.length > 0 &&
+    countryInference.confidence !== "unknown";
+  const categoriesForRow = sourceRow?.categories?.length
+    ? sourceRow.categories
+    : inferCategories(`${displayName} ${bio} ${keyword ?? ""}`, category);
   const candidate = {
     id: stableUuid(`discovered:tiktok:${handle}`),
     platform: "tiktok",
@@ -1419,7 +1575,10 @@ function buildTikTokCandidateFromSource({
   return {
     ...candidate,
     quality_score: qualityScore,
-    status: hasCountrySignal && scored.status === "active" ? "active" : "needs_review",
+    status:
+      hasCountrySignal && scored.status === "active"
+        ? "active"
+        : "needs_review",
   };
 }
 
@@ -1436,9 +1595,10 @@ function collectTikTokCandidatesFromCrosslinks(sourceRows) {
       row.source_url,
       row.platform_handle,
     ].join(" ");
-    const category = row.source_evidence?.sourceCategory in categoryConfigs
-      ? row.source_evidence.sourceCategory
-      : categories[0] ?? "beauty";
+    const category =
+      row.source_evidence?.sourceCategory in categoryConfigs
+        ? row.source_evidence.sourceCategory
+        : (categories[0] ?? "beauty");
     for (const ref of extractTikTokProfileRefs(text)) {
       const enriched = buildTikTokCandidateFromSource({
         handle: ref.handle,
@@ -1480,7 +1640,7 @@ async function collectTikTokCandidatesFromNaverWeb() {
         url.searchParams.set("display", String(display));
         url.searchParams.set("start", String(start));
 
-        const data = await fetchJson(
+        const data = await fetchNaverSearchJson(
           url,
           {
             headers: {
@@ -1489,7 +1649,9 @@ async function collectTikTokCandidatesFromNaverWeb() {
             },
           },
           `Naver web TikTok search ${query} page ${pageIndex + 1}`,
+          "webkr",
         );
+        if (!data) break;
 
         for (const item of data.items ?? []) {
           const title = stripHtml(item.title);
@@ -1536,8 +1698,12 @@ async function collectCuratedTikTokCandidates() {
     .map((seed) => {
       const handle = normalizeTikTokHandle(seed.handle);
       if (!handle) return null;
-      const category = seed.category in categoryConfigs ? seed.category : "beauty";
-      const followerCount = Number.parseInt(String(seed.follower_count ?? ""), 10);
+      const category =
+        seed.category in categoryConfigs ? seed.category : "beauty";
+      const followerCount = Number.parseInt(
+        String(seed.follower_count ?? ""),
+        10,
+      );
       const candidate = buildTikTokCandidateFromSource({
         handle,
         category,
@@ -1551,17 +1717,18 @@ async function collectCuratedTikTokCandidates() {
       const seededCountries = normalizeMarketplaceCountryCodes(
         seed.countries ?? seed.audience_countries,
       );
-      const countryInference = seededCountries.length > 0
-        ? {
-            countries: seededCountries,
-            confidence: "curated",
-            signals: seededCountries.map((country) => `curated:${country}`),
-          }
-        : inferCreatorCountries({
-            displayName: seed.display_name,
-            bio: seed.bio,
-            handle,
-          });
+      const countryInference =
+        seededCountries.length > 0
+          ? {
+              countries: seededCountries,
+              confidence: "curated",
+              signals: seededCountries.map((country) => `curated:${country}`),
+            }
+          : inferCreatorCountries({
+              displayName: seed.display_name,
+              bio: seed.bio,
+              handle,
+            });
       return {
         ...candidate,
         headline: stripHtml(seed.headline) || candidate.headline,
@@ -1599,22 +1766,27 @@ async function collectCuratedInstagramCandidates() {
     .map((seed) => {
       const handle = normalizeInstagramHandle(seed.handle);
       if (!handle) return null;
-      const category = seed.category in categoryConfigs ? seed.category : "beauty";
+      const category =
+        seed.category in categoryConfigs ? seed.category : "beauty";
       const config = categoryConfigs[category];
-      const followerCount = Number.parseInt(String(seed.follower_count ?? ""), 10);
+      const followerCount = Number.parseInt(
+        String(seed.follower_count ?? ""),
+        10,
+      );
       const profileUrl = `https://www.instagram.com/${handle}/`;
       const displayName = stripHtml(seed.display_name) || handle;
       const bio = truncateText(stripHtml(seed.bio), 240);
       const seededCountries = normalizeMarketplaceCountryCodes(
         seed.countries ?? seed.audience_countries,
       );
-      const countryInference = seededCountries.length > 0
-        ? {
-            countries: seededCountries,
-            confidence: "curated",
-            signals: seededCountries.map((country) => `curated:${country}`),
-          }
-        : inferCreatorCountries({ displayName, bio, handle });
+      const countryInference =
+        seededCountries.length > 0
+          ? {
+              countries: seededCountries,
+              confidence: "curated",
+              signals: seededCountries.map((country) => `curated:${country}`),
+            }
+          : inferCreatorCountries({ displayName, bio, handle });
       const inferredCategories = inferCategories(
         [
           seed.display_name,
@@ -1633,7 +1805,8 @@ async function collectCuratedInstagramCandidates() {
         external_id: handle,
         platform_handle: handle,
         display_name: displayName,
-        headline: stripHtml(seed.headline) || `${config.label} 인스타그램 크리에이터`,
+        headline:
+          stripHtml(seed.headline) || `${config.label} 인스타그램 크리에이터`,
         bio,
         profile_url: profileUrl,
         avatar_url: null,
@@ -1651,7 +1824,8 @@ async function collectCuratedInstagramCandidates() {
         average_views: null,
         post_count: Number.isFinite(seed.post_count) ? seed.post_count : null,
         source_provider: "curated_instagram_public_search",
-        source_keyword: seed.source_keyword ?? "instagram public profile search",
+        source_keyword:
+          seed.source_keyword ?? "instagram public profile search",
         source_url: seed.source_url ?? profileUrl,
         source_evidence: {
           sourceCategory: category,
@@ -1675,7 +1849,10 @@ function dedupeRows(rows) {
   const byId = new Map();
   for (const row of rows) {
     const previous = byId.get(row.id);
-    byId.set(row.id, previous ? choosePreferredInfluencerRow(previous, row) : row);
+    byId.set(
+      row.id,
+      previous ? choosePreferredInfluencerRow(previous, row) : row,
+    );
   }
 
   const uniqueRows = Array.from(byId.values());
@@ -1694,7 +1871,9 @@ function dedupeRows(rows) {
   };
   const identityOwner = new Map();
   for (const row of uniqueRows) {
-    const handle = String(row.platform_handle ?? "").trim().toLowerCase();
+    const handle = String(row.platform_handle ?? "")
+      .trim()
+      .toLowerCase();
     const normalizedUrl = normalizePublicProfileUrl(row.profile_url);
     const keys = [
       handle ? `${row.platform}:handle:${handle}` : "",
@@ -1711,7 +1890,10 @@ function dedupeRows(rows) {
   for (const row of uniqueRows) {
     const root = find(row.id);
     const current = grouped.get(root);
-    grouped.set(root, current ? choosePreferredInfluencerRow(current, row) : row);
+    grouped.set(
+      root,
+      current ? choosePreferredInfluencerRow(current, row) : row,
+    );
   }
 
   const usedHandles = new Map();
@@ -1761,7 +1943,9 @@ function toTsv(rows) {
     headers
       .map((header) =>
         String(
-          header === "category" ? row.categories?.[0] ?? "" : row[header] ?? "",
+          header === "category"
+            ? (row.categories?.[0] ?? "")
+            : (row[header] ?? ""),
         )
           .replace(/\t/g, " ")
           .replace(/\r?\n/g, " "),
@@ -1807,27 +1991,237 @@ async function fetchAllSupabaseRows(table, query, pageSize = 1000) {
   return rows;
 }
 
-async function reserveExistingHandles(rows) {
-  const [discovered, marketplace] = await Promise.all([
-    fetchAllSupabaseRows(
-      "discovered_influencer_profiles",
-      "?select=id,public_handle,platform,platform_handle,profile_url,source_provider,status,quality_score,audience_countries,source_evidence",
-    ).catch(() => []),
-    fetchAllSupabaseRows(
-      "marketplace_influencer_profiles",
-      "?select=id,public_handle",
-    ).catch(() => []),
-  ]);
+async function fetchSupabaseRowsByIds(table, columns, ids, chunkSize = 100) {
+  const normalizedIds = Array.from(
+    new Set(ids.map((id) => String(id ?? "").trim()).filter(Boolean)),
+  );
+  const rows = [];
+  for (let index = 0; index < normalizedIds.length; index += chunkSize) {
+    const chunk = normalizedIds.slice(index, index + chunkSize);
+    const idFilter = chunk.map((id) => encodeURIComponent(id)).join(",");
+    rows.push(
+      ...(await fetchAllSupabaseRows(
+        table,
+        `?select=${columns}&id=in.(${idFilter})`,
+      )),
+    );
+  }
+  return rows;
+}
+
+const influencerMaterialColumns = [
+  "platform",
+  "public_handle",
+  "external_id",
+  "platform_handle",
+  "display_name",
+  "headline",
+  "bio",
+  "profile_url",
+  "avatar_url",
+  "categories",
+  "audience_countries",
+  "audience_tags",
+  "followers_label",
+  "follower_count",
+  "average_views",
+  "post_count",
+  "quality_score",
+  "status",
+  "source_provider",
+  "source_keyword",
+  "source_url",
+  "source_evidence",
+];
+
+function stableJsonValue(value) {
+  if (Array.isArray(value)) return value.map(stableJsonValue);
+  if (!value || typeof value !== "object") return value ?? null;
+  return Object.fromEntries(
+    Object.keys(value)
+      .sort()
+      .map((key) => [key, stableJsonValue(value[key])]),
+  );
+}
+
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function mergeInfluencerEvidenceValue(existingValue, incomingValue) {
+  if (incomingValue === undefined || incomingValue === null)
+    return existingValue;
+  if (existingValue === undefined || existingValue === null)
+    return incomingValue;
+
+  if (Array.isArray(existingValue) && Array.isArray(incomingValue)) {
+    const merged = [];
+    const seen = new Set();
+    for (const value of [...existingValue, ...incomingValue]) {
+      const identity = JSON.stringify(stableJsonValue(value));
+      if (seen.has(identity)) continue;
+      seen.add(identity);
+      merged.push(value);
+    }
+    return merged;
+  }
+
+  if (isPlainObject(existingValue) && isPlainObject(incomingValue)) {
+    const merged = { ...existingValue };
+    for (const [key, value] of Object.entries(incomingValue)) {
+      merged[key] = mergeInfluencerEvidenceValue(existingValue[key], value);
+    }
+    return merged;
+  }
+
+  return incomingValue;
+}
+
+export async function assertInfluencerUploaderSession({
+  token,
+  pid,
+  authorizedAt,
+  batchId,
+  rootDir = cwd,
+} = {}) {
+  const sessionPid = Number(pid);
+  const authorizedDate = new Date(authorizedAt);
+  if (
+    !token ||
+    !batchId ||
+    !Number.isInteger(sessionPid) ||
+    sessionPid !== process.pid ||
+    !Number.isFinite(authorizedDate.getTime())
+  ) {
+    throw new Error("A verified influencer uploader session is required.");
+  }
+
+  const projectRoot = path.resolve(rootDir);
+  const lockPath = path.join(projectRoot, uploaderLockRelativePath);
+  const statePath = path.join(projectRoot, uploaderStateRelativePath);
+  let lock;
+  let state;
+  try {
+    [lock, state] = await Promise.all([
+      fs.readFile(lockPath, "utf8").then(JSON.parse),
+      fs.readFile(statePath, "utf8").then(JSON.parse),
+    ]);
+  } catch {
+    throw new Error("A verified influencer uploader session is required.");
+  }
+
+  const authorizedIso = authorizedDate.toISOString();
+  if (
+    lock?.token !== token ||
+    Number(lock?.pid) !== sessionPid ||
+    lock?.startedAt !== authorizedIso ||
+    state?.lastSupabaseAccessAt !== authorizedIso ||
+    state?.lastAttemptAt !== authorizedIso ||
+    state?.lastAttemptedBatchId !== batchId ||
+    Number(state?.intervalHours) < 12
+  ) {
+    throw new Error("A verified influencer uploader session is required.");
+  }
+
+  try {
+    process.kill(sessionPid, 0);
+  } catch {
+    throw new Error("A verified influencer uploader session is required.");
+  }
+
+  return {
+    token,
+    pid: sessionPid,
+    authorizedAt: authorizedIso,
+    batchId,
+    rootDir: projectRoot,
+    lockPath,
+    statePath,
+  };
+}
+
+function hasMaterialInfluencerChange(existing, candidate) {
+  if (!existing) return true;
+  return influencerMaterialColumns.some(
+    (column) =>
+      JSON.stringify(stableJsonValue(existing[column])) !==
+      JSON.stringify(stableJsonValue(candidate[column])),
+  );
+}
+
+function countryConfidenceRank(value) {
+  const confidence = String(value ?? "")
+    .trim()
+    .toLowerCase();
+  if (confidence === "manual_verified") return 6;
+  if (confidence === "official") return 5;
+  if (confidence === "explicit") return 4;
+  if (confidence === "curated") return 3;
+  if (confidence === "inherited") return 2;
+  return 0;
+}
+
+function mergeUniqueStrings(...values) {
+  return Array.from(
+    new Set(
+      values
+        .flatMap((value) => (Array.isArray(value) ? value : []))
+        .map((value) => String(value ?? "").trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
+export async function reserveExistingHandles(
+  rows,
+  {
+    onlyChanged = false,
+    databaseSnapshot = undefined,
+    uploaderSession = undefined,
+  } = {},
+) {
+  if (databaseSnapshot === undefined) {
+    await assertInfluencerUploaderSession(uploaderSession);
+  }
+  const candidateIds = rows.map((row) => row.id);
+  const [discoveredIdentities, discoveredCandidates, marketplace] =
+    databaseSnapshot !== undefined
+      ? [
+          databaseSnapshot.discoveredIdentities ?? [],
+          databaseSnapshot.discoveredCandidates ?? [],
+          databaseSnapshot.marketplace ?? [],
+        ]
+      : await Promise.all([
+          fetchAllSupabaseRows(
+            "discovered_influencer_profiles",
+            "?select=id,platform,public_handle,platform_handle,profile_url,status,source_provider,quality_score",
+          ),
+          fetchSupabaseRowsByIds(
+            "discovered_influencer_profiles",
+            `id,${influencerMaterialColumns.join(",")}`,
+            candidateIds,
+          ),
+          fetchAllSupabaseRows(
+            "marketplace_influencer_profiles",
+            "?select=id,public_handle",
+          ),
+        ]);
 
   const taken = new Map();
-  for (const row of [...discovered, ...marketplace]) {
-    if (row.public_handle) taken.set(String(row.public_handle).toLowerCase(), row.id);
+  for (const row of [...discoveredIdentities, ...marketplace]) {
+    if (row.public_handle)
+      taken.set(String(row.public_handle).toLowerCase(), row.id);
   }
 
   const existingIdentityOwners = new Map();
-  const existingById = new Map(discovered.map((row) => [row.id, row]));
-  for (const row of discovered) {
-    const handle = String(row.platform_handle ?? "").trim().toLowerCase();
+  const protectedIdentityOwners = new Map();
+  const existingById = new Map(
+    discoveredCandidates.map((row) => [row.id, row]),
+  );
+  for (const row of discoveredIdentities) {
+    const handle = String(row.platform_handle ?? "")
+      .trim()
+      .toLowerCase();
     const normalizedUrl = normalizePublicProfileUrl(row.profile_url);
     const keys = [
       handle ? `${row.platform}:handle:${handle}` : "",
@@ -1839,12 +2233,16 @@ async function reserveExistingHandles(rows) {
         key,
         current ? choosePreferredInfluencerRow(current, row) : row,
       );
+      if (["hidden", "claimed"].includes(String(row.status ?? ""))) {
+        protectedIdentityOwners.set(key, row);
+      }
     }
   }
 
-  return rows.flatMap((incomingRow) => {
+  const preparedRows = rows.flatMap((incomingRow) => {
     const accountAssessment = classifyDiscoveredInfluencerAccount(incomingRow);
-    const normalizedCategories = normalizeMarketplaceCreatorCategories(incomingRow);
+    const normalizedCategories =
+      normalizeMarketplaceCreatorCategories(incomingRow);
     const row = {
       ...incomingRow,
       categories: normalizedCategories,
@@ -1869,33 +2267,128 @@ async function reserveExistingHandles(rows) {
     };
     const existingSameId = existingById.get(row.id);
     const existingEvidence = existingSameId?.source_evidence ?? {};
+    const incomingEvidence = row.source_evidence ?? {};
+    const existingCountryCodes = normalizeMarketplaceCountryCodes(
+      existingSameId?.audience_countries,
+    );
+    const incomingCountryCodes = normalizeMarketplaceCountryCodes(
+      row.audience_countries,
+    );
+    const existingCountryRank = countryConfidenceRank(
+      existingEvidence.countryConfidence,
+    );
+    const incomingCountryRank = countryConfidenceRank(
+      incomingEvidence.countryConfidence,
+    );
     const countryLocked =
       existingEvidence.countryLock === true ||
       existingEvidence.countryConfidence === "manual_verified";
+    const existingAuthoritativeCountry =
+      existingCountryCodes.length > 0 &&
+      existingCountryRank >= countryConfidenceRank("explicit");
+    const incomingAuthoritativeCountry =
+      incomingCountryCodes.length > 0 &&
+      incomingCountryRank >= countryConfidenceRank("explicit");
+    const preserveExistingCountry =
+      countryLocked || existingAuthoritativeCountry;
+    const mergedAuthoritativeCountries =
+      !countryLocked &&
+      existingAuthoritativeCountry &&
+      incomingAuthoritativeCountry
+        ? normalizeMarketplaceCountryCodes([
+            ...existingCountryCodes,
+            ...incomingCountryCodes,
+          ])
+        : existingCountryCodes;
+    const preservedCountrySignals =
+      !countryLocked &&
+      existingAuthoritativeCountry &&
+      incomingAuthoritativeCountry
+        ? mergeUniqueStrings(
+            existingEvidence.countrySignals,
+            incomingEvidence.countrySignals,
+          )
+        : existingEvidence.countrySignals;
+    const preservedCountryConfidence =
+      !countryLocked &&
+      existingAuthoritativeCountry &&
+      incomingAuthoritativeCountry &&
+      incomingCountryRank > existingCountryRank
+        ? incomingEvidence.countryConfidence
+        : existingEvidence.countryConfidence;
+    const preservedCountryLock = countryLocked
+      ? existingEvidence.countryLock === true
+      : existingEvidence.countryLock === true ||
+        incomingEvidence.countryLock === true;
+    const preservedCountryStatusLock = countryLocked
+      ? existingEvidence.countryStatusLock === true
+      : existingEvidence.countryStatusLock === true ||
+        incomingEvidence.countryStatusLock === true;
+    const preservedCountryAudit = countryLocked
+      ? existingEvidence.countryAudit
+      : mergeInfluencerEvidenceValue(
+          existingEvidence.countryAudit,
+          incomingEvidence.countryAudit,
+        );
     const statusLocked =
-      existingSameId?.status === "claimed" ||
-      existingEvidence.countryStatusLock === true;
+      existingSameId?.status === "claimed" || preservedCountryStatusLock;
+    const recentPosts = normalizeNaverBlogRecentPosts(
+      [
+        ...(Array.isArray(existingEvidence.recentPosts)
+          ? existingEvidence.recentPosts
+          : []),
+        ...(Array.isArray(incomingEvidence.recentPosts)
+          ? incomingEvidence.recentPosts
+          : []),
+      ],
+      3,
+    );
+    const sourceUrls = mergeUniqueStrings(
+      existingEvidence.sourceUrls,
+      incomingEvidence.sourceUrls,
+      [
+        existingEvidence.sourceUrl,
+        incomingEvidence.sourceUrl,
+        existingSameId?.source_url,
+        row.source_url,
+      ],
+    );
     const mergedEvidence = {
-      ...existingEvidence,
-      ...(row.source_evidence ?? {}),
-      ...(countryLocked
+      ...mergeInfluencerEvidenceValue(existingEvidence, incomingEvidence),
+      ...(recentPosts.length > 0 ? { recentPosts } : {}),
+      ...(sourceUrls.length > 0 ? { sourceUrls } : {}),
+      ...(preserveExistingCountry
         ? {
-            countryConfidence: existingEvidence.countryConfidence,
-            countrySignals: existingEvidence.countrySignals,
-            countryLock: true,
-            countryStatusLock: existingEvidence.countryStatusLock === true,
-            countryAudit: existingEvidence.countryAudit,
+            countryConfidence: preservedCountryConfidence,
+            countrySignals: preservedCountrySignals,
           }
         : {}),
     };
+    if (preserveExistingCountry) {
+      if (preservedCountryConfidence === undefined) {
+        delete mergedEvidence.countryConfidence;
+      }
+      if (preservedCountrySignals === undefined) {
+        delete mergedEvidence.countrySignals;
+      }
+      if (preservedCountryLock) mergedEvidence.countryLock = true;
+      else delete mergedEvidence.countryLock;
+      if (preservedCountryStatusLock) mergedEvidence.countryStatusLock = true;
+      else delete mergedEvidence.countryStatusLock;
+      if (preservedCountryAudit !== undefined) {
+        mergedEvidence.countryAudit = preservedCountryAudit;
+      } else {
+        delete mergedEvidence.countryAudit;
+      }
+    }
     const mergedCandidate = existingSameId
       ? {
           ...row,
           source_evidence: mergedEvidence,
-          ...(countryLocked
+          ...(preserveExistingCountry
             ? {
                 audience_countries: normalizeMarketplaceCountryCodes(
-                  existingSameId.audience_countries,
+                  mergedAuthoritativeCountries,
                 ),
               }
             : {}),
@@ -1906,24 +2399,33 @@ async function reserveExistingHandles(rows) {
       existingSameId?.status === "hidden"
         ? { ...mergedCandidate, status: "hidden" }
         : mergedCandidate;
-    const handle = String(candidate.platform_handle ?? "").trim().toLowerCase();
+    const handle = String(candidate.platform_handle ?? "")
+      .trim()
+      .toLowerCase();
     const normalizedUrl = normalizePublicProfileUrl(candidate.profile_url);
     const identityKeys = [
       handle ? `${candidate.platform}:handle:${handle}` : "",
       normalizedUrl ? `${candidate.platform}:url:${normalizedUrl}` : "",
     ].filter(Boolean);
+    const protectedExisting = identityKeys
+      .map((key) => protectedIdentityOwners.get(key))
+      .find((existing) => existing && existing.id !== candidate.id);
+    if (protectedExisting) return [];
     const preferredExisting = identityKeys
       .map((key) => existingIdentityOwners.get(key))
       .filter(Boolean)
       .reduce(
         (preferred, existing) =>
-          preferred ? choosePreferredInfluencerRow(preferred, existing) : existing,
+          preferred
+            ? choosePreferredInfluencerRow(preferred, existing)
+            : existing,
         undefined,
       );
     if (
       preferredExisting &&
       preferredExisting.id !== candidate.id &&
-      choosePreferredInfluencerRow(preferredExisting, candidate).id === preferredExisting.id
+      choosePreferredInfluencerRow(preferredExisting, candidate).id ===
+        preferredExisting.id
     ) {
       return [];
     }
@@ -1943,9 +2445,19 @@ async function reserveExistingHandles(rows) {
     taken.set(publicHandle.toLowerCase(), candidate.id);
     return [{ ...candidate, public_handle: publicHandle }];
   });
+
+  return onlyChanged
+    ? preparedRows.filter((row) =>
+        hasMaterialInfluencerChange(existingById.get(row.id), row),
+      )
+    : preparedRows;
 }
 
-async function upsertSupabaseRows(rows) {
+export async function upsertSupabaseRows(
+  rows,
+  { uploaderSession = undefined } = {},
+) {
+  await assertInfluencerUploaderSession(uploaderSession);
   const supabaseUrl = process.env.SUPABASE_URL?.replace(/\/$/, "");
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!supabaseUrl || !serviceKey) {
@@ -1970,7 +2482,9 @@ async function upsertSupabaseRows(rows) {
     );
     if (!response.ok) {
       const body = await response.text().catch(() => "");
-      throw new Error(`Supabase upsert failed (${response.status}): ${body.slice(0, 400)}`);
+      throw new Error(
+        `Supabase upsert failed (${response.status}): ${body.slice(0, 400)}`,
+      );
     }
     applied += chunk.length;
   }
@@ -1985,12 +2499,18 @@ async function main() {
   let sourceRows;
   let sourceCategories = categories;
   if (inputPath) {
-    const resolvedInputPath = path.isAbsolute(inputPath) ? inputPath : path.join(cwd, inputPath);
+    const resolvedInputPath = path.isAbsolute(inputPath)
+      ? inputPath
+      : path.join(cwd, inputPath);
     const parsed = JSON.parse(await fs.readFile(resolvedInputPath, "utf8"));
     sourceRows = Array.isArray(parsed) ? parsed : parsed.rows;
-    sourceCategories = Array.isArray(parsed.categories) ? parsed.categories : categories;
+    sourceCategories = Array.isArray(parsed.categories)
+      ? parsed.categories
+      : categories;
     if (!Array.isArray(sourceRows)) {
-      throw new Error("Input file must be an array or a JSON object with rows.");
+      throw new Error(
+        "Input file must be an array or a JSON object with rows.",
+      );
     }
   } else {
     const baseCollected = [
@@ -2009,24 +2529,53 @@ async function main() {
     sourceRows = collected;
   }
 
-  const targetRows = outputPlatforms.size > 0
-    ? sourceRows.filter((row) => outputPlatforms.has(row.platform))
-    : sourceRows;
+  const targetRows =
+    outputPlatforms.size > 0
+      ? sourceRows.filter((row) => outputPlatforms.has(row.platform))
+      : sourceRows;
   const deduped = dedupeRows(
     filterRowsByFollowerRange(
       targetRows.map(sanitizeInfluencerCollectedRow).map(rescoreRow),
     ),
   );
-  const rows = apply ? await reserveExistingHandles(deduped) : deduped;
+  const rows = deduped;
 
-  await fs.mkdir(outputDir, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const baseName = `${stamp}-korean-influencer-discovery-${sourceCategories.join("-")}`;
-  await fs.writeFile(
-    path.join(outputDir, `${baseName}.json`),
-    JSON.stringify({ categories: sourceCategories, input: inputPath, apply, total: rows.length, rows }, null, 2),
-  );
-  await fs.writeFile(path.join(outputDir, `${baseName}.tsv`), toTsv(rows));
+  let legacyOutput;
+  if (debugOutput) {
+    await fs.mkdir(outputDir, { recursive: true });
+    await fs.writeFile(
+      path.join(outputDir, `${baseName}.json`),
+      JSON.stringify(
+        {
+          categories: sourceCategories,
+          input: inputPath,
+          apply,
+          total: rows.length,
+          rows,
+        },
+        null,
+        2,
+      ),
+    );
+    await fs.writeFile(path.join(outputDir, `${baseName}.tsv`), toTsv(rows));
+    legacyOutput = path.join(outputDir, `${baseName}.tsv`);
+  }
+
+  const staged =
+    storageMode === "local-xlsx" && rows.length > 0
+      ? await stageInfluencerDiscoveryWorkbook({
+          runId: baseName,
+          createdAt: new Date().toISOString(),
+          category: sourceCategories.join(","),
+          platform:
+            outputPlatforms.size === 1
+              ? Array.from(outputPlatforms)[0]
+              : "mixed",
+          rows,
+        })
+      : null;
 
   const active = rows.filter((row) => row.status === "active");
   const byPlatform = rows.reduce((acc, row) => {
@@ -2040,10 +2589,8 @@ async function main() {
     return acc;
   }, {});
 
-  let applied = 0;
-  if (apply) {
-    applied = await upsertSupabaseRows(rows);
-  }
+  const applied = 0;
+  const naverSearchBudget = await getNaverSearchBudgetSnapshot();
 
   console.log(
     JSON.stringify(
@@ -2055,14 +2602,19 @@ async function main() {
         maxFollowers,
         youtubePages,
         naverPages,
+        naverSorts,
         tiktokPages,
+        naverSearchBudget,
         total: rows.length,
         active: active.length,
         needs_review: rows.length - active.length,
         byPlatform,
         byCategory,
         applied,
-        output: path.join(outputDir, `${baseName}.tsv`),
+        storage: storageMode,
+        staged: staged?.rowCount ?? 0,
+        pendingWorkbook: staged?.filePath ?? null,
+        output: legacyOutput ?? staged?.filePath ?? null,
       },
       null,
       2,
@@ -2070,7 +2622,13 @@ async function main() {
   );
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exitCode = 1;
-});
+const isMainModule =
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isMainModule) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  });
+}

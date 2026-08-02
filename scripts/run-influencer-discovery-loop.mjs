@@ -12,6 +12,8 @@ const args = new Map(
       return [key, rest.length > 0 ? rest.join("=") : "true"];
     }),
 );
+const automaticCollectionEnabled =
+  args.get("enable-automatic-collection") === "true";
 
 const defaultCategories = [
   "beauty",
@@ -34,7 +36,15 @@ const categories = String(args.get("categories") ?? defaultCategories.join(","))
 const intervalMinutes = parsePositiveNumber(args.get("interval-minutes"), 5);
 const maxRuns = parseNonnegativeInt(args.get("max-runs"), 0);
 const runTimeoutMinutes = parsePositiveNumber(args.get("run-timeout-minutes"), 30);
-const apply = args.get("apply") !== "false";
+const batchUploadTimeoutMinutes = parsePositiveNumber(
+  args.get("batch-upload-timeout-minutes"),
+  180,
+);
+const storage = String(args.get("storage") ?? "local-xlsx").trim().toLowerCase();
+const uploadIntervalHours = Math.max(
+  12,
+  parsePositiveNumber(args.get("upload-interval-hours"), 12),
+);
 const youtubePerQuery = parsePositiveInt(args.get("youtube-per-query"), 8);
 const youtubePages = parsePositiveInt(args.get("youtube-pages"), 1);
 const youtubeCheckMinutes = parsePositiveNumber(args.get("youtube-check-minutes"), 180);
@@ -46,7 +56,10 @@ const youtubeWebPerQuery = parsePositiveInt(args.get("youtube-web-per-query"), 5
 const youtubeWebPages = parsePositiveInt(args.get("youtube-web-pages"), 2);
 const naverPerQuery = parsePositiveInt(args.get("naver-per-query"), 80);
 const naverPages = parsePositiveInt(args.get("naver-pages"), 4);
-const naverVisitorSync = args.get("naver-visitor-sync") !== "false";
+const naverSorts = String(args.get("naver-sorts") ?? "sim,date")
+  .split(",")
+  .map((value) => value.trim().toLowerCase())
+  .filter((value) => ["sim", "date"].includes(value));
 const naverVisitorBatchSize = parsePositiveInt(
   args.get("naver-visitor-batch-size"),
   300,
@@ -122,7 +135,7 @@ function buildPlatformPlan() {
       outputPlatforms: "instagram",
       flags: {
         youtube: false,
-        naver: includeNaver,
+        naver: false,
         instagram: true,
         tiktok: false,
       },
@@ -297,7 +310,8 @@ function runDiscovery(category, platformJob) {
   const childArgs = [
     "scripts/discover-korean-influencers.mjs",
     `--categories=${category}`,
-    `--apply=${apply ? "true" : "false"}`,
+    "--apply=false",
+    `--storage=${storage}`,
     `--youtube=${platformJob.flags.youtube ? "true" : "false"}`,
     `--youtube-api=${platformJob.youtubeApi === false ? "false" : "true"}`,
     `--youtube-web=${platformJob.youtubeWeb === false ? "false" : "true"}`,
@@ -311,6 +325,7 @@ function runDiscovery(category, platformJob) {
     `--youtube-web-pages=${youtubeWebPages}`,
     `--naver-per-query=${naverPerQuery}`,
     `--naver-pages=${naverPages}`,
+    `--naver-sorts=${naverSorts.join(",") || "sim,date"}`,
     `--tiktok-per-query=${tiktokPerQuery}`,
     `--tiktok-pages=${tiktokPages}`,
   ];
@@ -353,14 +368,13 @@ function runDiscovery(category, platformJob) {
   });
 }
 
-function runNaverVisitorSync() {
+function runBatchUploader() {
   const childArgs = [
-    "scripts/sync-discovered-naver-blog-visitors.mjs",
-    `--apply=${apply ? "true" : "false"}`,
-    `--batch-size=${naverVisitorBatchSize}`,
-    `--max-rows=${naverVisitorBatchSize}`,
-    `--stale-days=${naverVisitorStaleDays}`,
-    `--concurrency=${naverVisitorConcurrency}`,
+    "scripts/upload-influencer-discovery-batch.mjs",
+    `--interval-hours=${uploadIntervalHours}`,
+    `--naver-visitor-batch-size=${naverVisitorBatchSize}`,
+    `--naver-visitor-stale-days=${naverVisitorStaleDays}`,
+    `--naver-visitor-concurrency=${naverVisitorConcurrency}`,
   ];
 
   return new Promise((resolve) => {
@@ -375,8 +389,17 @@ function runNaverVisitorSync() {
     let timedOut = false;
     const timeout = setTimeout(() => {
       timedOut = true;
-      child.kill("SIGTERM");
-    }, Math.min(runTimeoutMinutes, 10) * 60 * 1000);
+      if (process.platform === "win32" && child.pid) {
+        const killer = spawn(
+          "taskkill.exe",
+          ["/PID", String(child.pid), "/T", "/F"],
+          { windowsHide: true, stdio: "ignore" },
+        );
+        killer.unref();
+      } else {
+        child.kill("SIGTERM");
+      }
+    }, batchUploadTimeoutMinutes * 60 * 1000);
 
     child.stdout.on("data", (chunk) => {
       stdout += chunk.toString();
@@ -399,6 +422,24 @@ function runNaverVisitorSync() {
   });
 }
 
+async function checkBatchUpload() {
+  await appendLog({
+    type: "batch_upload_check_started",
+    at: new Date().toISOString(),
+    intervalHours: uploadIntervalHours,
+  });
+  const result = await runBatchUploader();
+  const checkedAt = new Date().toISOString();
+  await appendLog({
+    type: result.ok
+      ? "batch_upload_check_finished"
+      : "batch_upload_check_failed",
+    at: checkedAt,
+    ...result,
+  });
+  return { result, checkedAt };
+}
+
 async function readState() {
   try {
     return JSON.parse(await fs.readFile(statePath, "utf8"));
@@ -409,7 +450,15 @@ async function readState() {
 
 async function writeState(state) {
   await fs.mkdir(tmpDir, { recursive: true });
-  await fs.writeFile(statePath, JSON.stringify(state, null, 2), "utf8");
+  const temporaryPath = `${statePath}.${process.pid}.partial`;
+  await fs.writeFile(temporaryPath, JSON.stringify(state, null, 2), "utf8");
+  try {
+    await fs.rename(temporaryPath, statePath);
+  } catch (error) {
+    if (error?.code !== "EEXIST" && error?.code !== "EPERM") throw error;
+    await fs.rm(statePath, { force: true });
+    await fs.rename(temporaryPath, statePath);
+  }
 }
 
 async function main() {
@@ -418,6 +467,16 @@ async function main() {
   }
   if (platformPlan.length === 0) {
     throw new Error("No platforms configured for influencer discovery loop.");
+  }
+  if (args.get("apply") === "true") {
+    throw new Error(
+      "Direct Supabase apply is disabled. The discovery loop only stages local XLSX files.",
+    );
+  }
+  if (storage !== "local-xlsx") {
+    throw new Error(
+      "The discovery loop requires --storage=local-xlsx. Supabase uploads run in the 12-hour batch uploader.",
+    );
   }
 
   await assertSingleInstance();
@@ -428,7 +487,10 @@ async function main() {
     categories,
     intervalMinutes,
     maxRuns,
-    apply,
+    apply: false,
+    storage,
+    uploadIntervalHours,
+    batchUploadTimeoutMinutes,
     includeYoutube,
     includeNaver,
     includeInstagram,
@@ -443,7 +505,7 @@ async function main() {
     youtubeWebPages,
     naverPerQuery,
     naverPages,
-    naverVisitorSync,
+    naverSorts,
     naverVisitorBatchSize,
     naverVisitorStaleDays,
     naverVisitorConcurrency,
@@ -452,6 +514,9 @@ async function main() {
   });
 
   const state = await readState();
+  delete state.lastNaverVisitorSyncAt;
+  delete state.lastNaverVisitorSyncOk;
+  delete state.lastNaverVisitorSyncSummary;
   let localRuns = 0;
 
   try {
@@ -474,12 +539,16 @@ async function main() {
           platform: platformJob.id,
           ...skip,
         });
+        const batchCheck = await checkBatchUpload();
         advanceStateAfterPlatform(state, categoryIndex, platformIndex, {
           lastSkipAt: finishedAt,
           lastSkippedCategory: category,
           lastSkippedPlatform: platformJob.id,
           lastSkippedReason: skip.reason,
           lastSkippedNextCheckAt: skip.nextCheckAt,
+          lastBatchCheckAt: batchCheck.checkedAt,
+          lastBatchCheckOk: batchCheck.result.ok,
+          lastBatchSummary: batchCheck.result.summary,
         });
         await writeState(state);
         localRuns += 1;
@@ -526,23 +595,7 @@ async function main() {
         ...result,
       });
 
-      let naverVisitorResult = null;
-      if (naverVisitorSync && platformJob.id === "naver_blog") {
-        await appendLog({
-          type: "naver_visitor_sync_started",
-          at: new Date().toISOString(),
-          batchSize: naverVisitorBatchSize,
-          staleDays: naverVisitorStaleDays,
-        });
-        naverVisitorResult = await runNaverVisitorSync();
-        await appendLog({
-          type: naverVisitorResult.ok
-            ? "naver_visitor_sync_finished"
-            : "naver_visitor_sync_failed",
-          at: new Date().toISOString(),
-          ...naverVisitorResult,
-        });
-      }
+      const batchCheck = await checkBatchUpload();
 
       advanceStateAfterPlatform(state, categoryIndex, platformIndex, {
         lastRunAt: finishedAt,
@@ -550,13 +603,9 @@ async function main() {
         lastPlatform: platformJob.id,
         lastOk: result.ok,
         lastSummary: result.summary,
-        ...(naverVisitorResult
-          ? {
-              lastNaverVisitorSyncAt: new Date().toISOString(),
-              lastNaverVisitorSyncOk: naverVisitorResult.ok,
-              lastNaverVisitorSyncSummary: naverVisitorResult.summary,
-            }
-          : {}),
+        lastBatchCheckAt: batchCheck.checkedAt,
+        lastBatchCheckOk: batchCheck.result.ok,
+        lastBatchSummary: batchCheck.result.summary,
         ...(platformLimitState ?? {}),
       });
       await writeState(state);
@@ -576,11 +625,18 @@ async function main() {
   }
 }
 
-main().catch(async (error) => {
-  await appendLog({
-    type: "loop_error",
-    at: new Date().toISOString(),
-    error: error instanceof Error ? error.message : String(error),
+if (!automaticCollectionEnabled) {
+  process.stdout.write(
+    "Influencer automatic collection is disabled. " +
+      "Product Owner approval and --enable-automatic-collection=true are required.\n",
+  );
+} else {
+  main().catch(async (error) => {
+    await appendLog({
+      type: "loop_error",
+      at: new Date().toISOString(),
+      error: error instanceof Error ? error.message : String(error),
+    });
+    process.exitCode = 1;
   });
-  process.exitCode = 1;
-});
+}

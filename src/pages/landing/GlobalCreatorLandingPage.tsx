@@ -1,5 +1,5 @@
 import { ArrowRight, CheckCircle2, FileSignature } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { BrandLogo } from "../../components/BrandLogo";
 import { PlatformBrandMark } from "../../components/PlatformBrandMark";
 import { PRODUCT_NAME } from "../../domain/brand";
@@ -58,7 +58,7 @@ const globalCreatorLandingCopies: Record<
     eyebrow: "For creators working with Korea",
     title: ["K-brand deals,", "clear contracts."],
     subtitle:
-      "Yeollock helps global creators review Korean brand campaigns, confirm content terms, sign digitally, and keep proof in one place.",
+      "연락미 helps global creators review Korean brand campaigns, confirm content terms, sign digitally, and keep proof in one place.",
     primaryCta: "Join as creator",
     trustLine:
       "Built for K-beauty, K-fashion, travel, food, and lifestyle collaborations.",
@@ -76,7 +76,7 @@ const globalCreatorLandingCopies: Record<
       "Deadlines, content rights, and revision requests need written proof.",
       "Your signed PDF should be easy to find after the campaign.",
     ],
-    flowTitle: "What Yeollock keeps clear",
+    flowTitle: "What 연락미 keeps clear",
     flowItems: [
       {
         title: "Campaign terms",
@@ -102,7 +102,7 @@ const globalCreatorLandingCopies: Record<
       "Signed PDF evidence",
     ],
     boundary:
-      "Yeollock organizes contracts, e-signatures, and evidence. Ad fees, payouts, taxes, refunds, and escrow remain between the brand and creator.",
+      "연락미 organizes contracts, e-signatures, and evidence. Ad fees, payouts, taxes, refunds, and escrow remain between the brand and creator.",
     campaignPreview: {
       title: "Korean campaign board",
       tabs: ["Beauty", "Fashion", "Travel"],
@@ -123,7 +123,7 @@ const globalCreatorLandingCopies: Record<
         { label: "Revision", value: "1 request" },
       ],
     },
-    screenshotAlt: "Yeollock Korean campaign screen",
+    screenshotAlt: "연락미 Korean campaign screen",
   },
   ja: {
     path: "/ja/creators",
@@ -131,7 +131,7 @@ const globalCreatorLandingCopies: Record<
     eyebrow: "韓国が好きなクリエイターへ",
     title: ["韓国ブランド案件を", "契約まで明確に。"],
     subtitle:
-      "Yeollockなら、韓国ブランドの募集内容、制作条件、電子署名、PDF証拠を一つの場所で確認できます。",
+      "연락미なら、韓国ブランドの募集内容、制作条件、電子署名、PDF証拠を一つの場所で確認できます。",
     primaryCta: "クリエイター登録",
     trustLine:
       "K-beauty、K-fashion、旅行、グルメ、ライフスタイル案件に対応。",
@@ -149,7 +149,7 @@ const globalCreatorLandingCopies: Record<
       "締切、使用範囲、修正依頼は書面で残す必要があります。",
       "署名済みPDFを案件後もすぐ確認できます。",
     ],
-    flowTitle: "Yeollockで確認できること",
+    flowTitle: "연락미で確認できること",
     flowItems: [
       {
         title: "募集条件",
@@ -175,7 +175,7 @@ const globalCreatorLandingCopies: Record<
       "署名済みPDF",
     ],
     boundary:
-      "Yeollockは契約書作成、電子署名、証拠保管を整理します。広告費の支払い、税金、返金、エスクローはブランドとクリエイター間で行います。",
+      "연락미は契約書作成、電子署名、証拠保管を整理します。広告費の支払い、税金、返金、エスクローはブランドとクリエイター間で行います。",
     campaignPreview: {
       title: "韓国キャンペーン",
       tabs: ["美容", "ファッション", "旅行"],
@@ -196,7 +196,7 @@ const globalCreatorLandingCopies: Record<
         { label: "修正", value: "1回" },
       ],
     },
-    screenshotAlt: "Yeollockの韓国キャンペーン画面",
+    screenshotAlt: "연락미の韓国キャンペーン画面",
   },
   zh: {
     path: "/zh/creators",
@@ -204,7 +204,7 @@ const globalCreatorLandingCopies: Record<
     eyebrow: "面向关注韩国的创作者",
     title: ["韩国品牌合作，", "签约前说清楚。"],
     subtitle:
-      "Yeollock 帮助海外创作者查看韩国品牌活动、确认内容条件、在线签署，并统一保存 PDF 证据。",
+      "연락미 帮助海外创作者查看韩国品牌活动、确认内容条件、在线签署，并统一保存 PDF 证据。",
     primaryCta: "注册创作者",
     trustLine: "适用于 K-beauty、K-fashion、旅行、美食和生活方式合作。",
     audienceLabel: "适合",
@@ -221,7 +221,7 @@ const globalCreatorLandingCopies: Record<
       "截止日、内容使用权和修改要求都需要书面记录。",
       "签署后的 PDF 应该在活动结束后也能随时找到。",
     ],
-    flowTitle: "Yeollock 帮你确认",
+    flowTitle: "연락미 帮你确认",
     flowItems: [
       {
         title: "活动条件",
@@ -247,7 +247,7 @@ const globalCreatorLandingCopies: Record<
       "签署 PDF 证据",
     ],
     boundary:
-      "Yeollock 负责整理合同、电子签名和证据保存。广告费用、结算、税务、退款和托管由品牌与创作者自行处理。",
+      "연락미 负责整理合同、电子签名和证据保存。广告费用、结算、税务、退款和托管由品牌与创作者自行处理。",
     campaignPreview: {
       title: "韩国活动看板",
       tabs: ["美妆", "时尚", "旅行"],
@@ -268,7 +268,7 @@ const globalCreatorLandingCopies: Record<
         { label: "修改", value: "1次" },
       ],
     },
-    screenshotAlt: "Yeollock 韩国品牌活动页面",
+    screenshotAlt: "연락미 韩国品牌活动页面",
   },
 };
 

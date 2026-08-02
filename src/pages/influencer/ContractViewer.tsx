@@ -4,7 +4,7 @@ import {
   useNavigate,
   useParams,
   useSearchParams,
-} from "react-router-dom";
+} from "react-router";
 import type { PDFDocumentProxy, RenderTask } from "pdfjs-dist";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.mjs?url";
 import {
@@ -1073,18 +1073,11 @@ export function ContractViewer() {
     );
   }
 
-  const expectedShareToken = contract.evidence?.share_token;
   const shareTokenExpired =
     Boolean(contract.evidence?.share_token_expires_at) &&
     new Date(contract.evidence!.share_token_expires_at!).getTime() <
       currentTime;
-  const shareTokenRequired =
-    contract.evidence?.share_token_status === "active" &&
-    Boolean(expectedShareToken);
-  const hasValidShareToken =
-    serverAccessVerified ||
-    !shareTokenRequired ||
-    shareToken === expectedShareToken;
+  const hasValidShareToken = serverAccessVerified;
   const isOperatorSupportView = serverAccessRole === "admin" && !shareToken;
   const hasAuthenticatedContractAccess =
     serverAccessRole === "advertiser" || serverAccessRole === "influencer";

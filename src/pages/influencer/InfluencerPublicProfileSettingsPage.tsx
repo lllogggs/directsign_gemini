@@ -3,8 +3,10 @@ import {
   ArrowLeft,
   CheckCircle2,
   ExternalLink,
+  ImagePlus,
   LogOut,
   Save,
+  UserRound,
 } from "lucide-react";
 import {
   type FormEvent,
@@ -15,7 +17,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router";
 import { LogoMark } from "../../components/BrandLogo";
 import { InfluencerAccountSettingsMenu } from "../../components/InfluencerAccountSettingsMenu";
 import { PlatformBrandMark } from "../../components/PlatformBrandMark";
@@ -110,6 +112,9 @@ export function InfluencerPublicProfileSettingsPage() {
   const [form, setForm] = useState<ProfileForm | null>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isAvatarUploading, setIsAvatarUploading] = useState(false);
+  const [avatarUploadError, setAvatarUploadError] = useState<string | undefined>();
+  const avatarInputRef = useRef<HTMLInputElement>(null);
   const [saveError, setSaveError] = useState<string | undefined>();
   const [saveSuccess, setSaveSuccess] = useState<string | undefined>();
 
@@ -281,6 +286,77 @@ export function InfluencerPublicProfileSettingsPage() {
     }
   };
 
+  const handleAvatarSelect = async (file: File | undefined) => {
+    if (!file || isAvatarUploading || state.status !== "ready") return;
+
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      setAvatarUploadError("PNG, JPG, WebP 이미지만 올릴 수 있습니다.");
+      return;
+    }
+    if (file.size > 3 * 1024 * 1024) {
+      setAvatarUploadError("이미지는 3MB 이하로 올려주세요.");
+      return;
+    }
+
+    setIsAvatarUploading(true);
+    setAvatarUploadError(undefined);
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      const response = await apiFetch("/api/influencer/public-profile/avatar", {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          file: {
+            name: file.name,
+            type: file.type,
+            size: file.size,
+            data_url: dataUrl,
+          },
+        }),
+      });
+
+      if (response.status === 401) {
+        redirectToLogin();
+        return;
+      }
+
+      const payload = await readJson<{ image_url?: string; error?: string }>(
+        response,
+      );
+      if (!response.ok || !payload.image_url) {
+        throw new Error(payload.error ?? "이미지를 저장하지 못했습니다.");
+      }
+
+      setState((current) =>
+        current.status === "ready"
+          ? {
+              ...current,
+              dashboard: {
+                ...current.dashboard,
+                user: {
+                  ...current.dashboard.user,
+                  avatar_url: payload.image_url,
+                },
+              },
+            }
+          : current,
+      );
+    } catch (error) {
+      setAvatarUploadError(
+        translateApiErrorMessage(
+          error instanceof Error ? error.message : undefined,
+          "이미지를 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+        ),
+      );
+    } finally {
+      setIsAvatarUploading(false);
+    }
+  };
+
   const handleLogout = async () => {
     try {
       await apiFetch("/api/influencer/logout", {
@@ -364,6 +440,58 @@ export function InfluencerPublicProfileSettingsPage() {
               </div>
 
               <form onSubmit={handleSubmit}>
+                <ProfileField label="프로필 이미지" fieldId="profile-avatar">
+                  <div
+                    id="profile-avatar"
+                    className="flex flex-wrap items-center gap-3"
+                  >
+                    <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-[12px] bg-neutral-100 text-neutral-500 ring-1 ring-neutral-200">
+                      {state.dashboard.user.avatar_url ? (
+                        <img
+                          src={state.dashboard.user.avatar_url}
+                          alt="현재 프로필 이미지"
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <UserRound className="h-6 w-6" />
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <button
+                        type="button"
+                        onClick={() => avatarInputRef.current?.click()}
+                        disabled={isAvatarUploading}
+                        className="inline-flex h-10 items-center justify-center gap-2 rounded-[8px] border border-neutral-200 bg-white px-3 text-[13px] font-bold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 disabled:cursor-wait disabled:text-neutral-400"
+                      >
+                        <ImagePlus className="h-4 w-4" />
+                        {isAvatarUploading ? "업로드 중" : "이미지 변경"}
+                      </button>
+                      <input
+                        ref={avatarInputRef}
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        className="sr-only"
+                        onChange={(event) => {
+                          void handleAvatarSelect(event.currentTarget.files?.[0]);
+                          event.currentTarget.value = "";
+                        }}
+                      />
+                      {avatarUploadError ? (
+                        <p
+                          role="alert"
+                          className="mt-2 text-[12px] font-semibold text-rose-700"
+                        >
+                          {avatarUploadError}
+                        </p>
+                      ) : (
+                        <p className="mt-1.5 text-[12px] font-medium text-neutral-500">
+                          PNG, JPG, WebP · 최대 3MB
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </ProfileField>
+
                 <ProfileField label="활동명" htmlFor="profile-display-name">
                   <input
                     id="profile-display-name"
@@ -803,4 +931,19 @@ function ProfileErrorView({
       </button>
     </section>
   );
+}
+
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+        return;
+      }
+      reject(new Error("이미지를 읽지 못했습니다."));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("이미지를 읽지 못했습니다."));
+    reader.readAsDataURL(file);
+  });
 }

@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import React, { useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router";
 import {
   AuthPasswordResetLink,
   AuthLoginQuickActions,
@@ -11,6 +11,15 @@ import type {
   AuthLoginChromeCopy,
   GlobalCreatorAuthLocale,
 } from "../../components/AuthLoginScreen";
+import { BrandLogo } from "../../components/BrandLogo";
+import {
+  appendSafeAuthNext,
+  AuthAccountNoticeDialog,
+  clearConsumedAuthNavigationState,
+  parseAuthAccountNotice,
+  readAuthNoticeState,
+  readAuthPrefillEmail,
+} from "../../components/AuthAccountNoticeDialog";
 import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
 import {
@@ -244,10 +253,15 @@ export function InfluencerLoginPage() {
     rawInitialLoginError && globalCopy
       ? localizeGlobalLoginError(rawInitialLoginError, globalCopy)
       : rawInitialLoginError;
-  const [email, setEmail] = useState("");
+  const initialAuthNotice = readAuthNoticeState(location.state, "influencer");
+  const initialPrefillEmail = readAuthPrefillEmail(location.state);
+  const [email, setEmail] = useState(initialPrefillEmail);
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [error, setError] = useState(initialLoginError);
+  const [authNotice, setAuthNotice] = useState(initialAuthNotice);
+  const consumedInitialAuthStateRef = useRef(false);
   const isCampaignContinuation = nextPath.startsWith("/campaigns/");
   const isContractContinuation = nextPath.startsWith("/contract/");
   const loginDescription = globalCopy
@@ -274,6 +288,58 @@ export function InfluencerLoginPage() {
     globalCopy
       ? localizeGlobalLoginError(message, globalCopy)
       : translateApiErrorMessage(message, "로그인에 실패했습니다.");
+
+  useEffect(() => {
+    let active = true;
+    let retryAttempt = 0;
+    let retryTimer: number | undefined;
+
+    const checkExistingSession = async () => {
+      try {
+        const response = await apiFetch("/api/influencer/session", {
+          headers: { Accept: "application/json" },
+          credentials: "include",
+        });
+        const data = (await response.json().catch(() => ({}))) as {
+          authenticated?: boolean;
+        };
+        if (!active) return;
+
+        if (response.ok && data.authenticated === true) {
+          finishFastLoginTransition("influencer");
+          void preloadInfluencerDashboard().catch(() => undefined);
+          navigate(destinationPath, { replace: true });
+          return;
+        }
+
+        const isAuthoritativeLogout =
+          response.status === 401 ||
+          response.status === 403 ||
+          (response.ok && data.authenticated === false);
+        if (isAuthoritativeLogout) {
+          setIsCheckingSession(false);
+          return;
+        }
+      } catch {
+        // A network failure is retryable and must not look like logout.
+      }
+
+      if (!active || retryTimer !== undefined) return;
+      const retryDelayMs = Math.min(1_000 * 2 ** retryAttempt, 10_000);
+      retryAttempt += 1;
+      retryTimer = window.setTimeout(() => {
+        retryTimer = undefined;
+        void checkExistingSession();
+      }, retryDelayMs);
+    };
+
+    void checkExistingSession();
+
+    return () => {
+      active = false;
+      if (retryTimer !== undefined) window.clearTimeout(retryTimer);
+    };
+  }, [destinationPath, navigate]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -302,9 +368,39 @@ export function InfluencerLoginPage() {
       const response = await loginPromise;
       const data = (await response.json()) as
         | { authenticated: true; dashboard?: InfluencerDashboardResponse }
-        | { error?: string };
+        | {
+            error?: string;
+            code?: string;
+            actual_role?: string;
+            correct_login_path?: string;
+            signup_path?: string;
+          };
 
       if (!response.ok || !("authenticated" in data)) {
+        const notice = parseAuthAccountNotice(data, "influencer");
+        if (notice) {
+          const loginPath = preserveAuthContext(
+            appendSafeAuthNext(
+              "/login/influencer",
+              nextPath,
+              "influencer",
+            ),
+            location.search,
+          );
+          if (navigatedOptimistically) {
+            navigate(loginPath, {
+              replace: true,
+              state: {
+                authNotice: notice,
+                prefillEmail: email.trim(),
+              },
+            });
+            return;
+          }
+          setAuthNotice(notice);
+          setError("");
+          return;
+        }
         const errorMessage = "error" in data ? data.error : undefined;
         throw new Error(resolveLoginError(errorMessage));
       }
@@ -352,64 +448,113 @@ export function InfluencerLoginPage() {
   };
 
   useEffect(() => {
-    if (!initialLoginError) return;
-    navigate(`${location.pathname}${location.search}`, {
-      replace: true,
-      state: null,
+    if (consumedInitialAuthStateRef.current) return;
+    if (!initialLoginError && !initialAuthNotice && !initialPrefillEmail) return;
+    consumedInitialAuthStateRef.current = true;
+    clearConsumedAuthNavigationState();
+  }, [initialAuthNotice, initialLoginError, initialPrefillEmail]);
+
+  const handleNoticeAction = () => {
+    if (!authNotice) return;
+    const rawNext = new URLSearchParams(location.search).get("next");
+    const actionRole = authNotice.actualRole;
+    let actionPath = appendSafeAuthNext(
+      authNotice.actionPath,
+      authNotice.code === "ACCOUNT_SETUP_INCOMPLETE" ? nextPath : rawNext,
+      actionRole,
+    );
+    if (authNotice.code === "ACCOUNT_SETUP_INCOMPLETE") {
+      actionPath = preserveAuthContext(actionPath, location.search);
+    }
+    navigate(actionPath, {
+      state: { prefillEmail: email.trim() },
     });
-  }, [initialLoginError, location.pathname, location.search, navigate]);
+  };
+
+  if (isCheckingSession) {
+    return (
+      <main className="min-h-svh bg-[#f7f6f3] px-4 font-sans text-neutral-950 sm:px-6">
+        <div className="mx-auto flex min-h-svh w-full max-w-[1500px] flex-col">
+          <header className="flex h-14 shrink-0 items-center 2xl:px-6">
+            <BrandLogo />
+          </header>
+          <section
+            className="grid flex-1 place-items-center pb-14"
+            aria-busy="true"
+            aria-live="polite"
+          >
+            <span className="sr-only">로그인 상태 확인 중</span>
+            <div className="w-full max-w-[460px] rounded-[18px] border border-neutral-200/90 bg-white p-6 shadow-[0_1px_0_rgba(15,23,42,0.035),0_16px_44px_rgba(15,23,42,0.05)]">
+              <div className="h-8 w-48 animate-pulse rounded bg-neutral-200" />
+              <div className="mt-3 h-5 w-72 max-w-full animate-pulse rounded bg-neutral-100" />
+              <div className="mt-8 h-11 animate-pulse rounded-[12px] bg-neutral-100" />
+              <div className="mt-4 h-11 animate-pulse rounded-[12px] bg-neutral-100" />
+              <div className="mt-5 h-11 animate-pulse rounded-[12px] bg-blue-100" />
+            </div>
+          </section>
+        </div>
+      </main>
+    );
+  }
 
   return (
-    <AuthLoginScreen
-      title={globalCopy?.title ?? "인플루언서 로그인"}
-      lang={globalCopy?.lang}
-      homeHref={globalCopy?.homeHref}
-      chromeCopy={globalCopy?.chrome}
-      description={loginDescription}
-      fields={[
-        {
-          id: "email",
-          label: globalCopy?.emailLabel ?? "이메일",
-          value: email,
-          type: "email",
-          autoComplete: "email",
-          required: true,
-          onChange: setEmail,
-        },
-        {
-          id: "password",
-          label: globalCopy?.passwordLabel ?? "비밀번호",
-          value: password,
-          type: "password",
-          autoComplete: "current-password",
-          placeholder: globalCopy?.passwordPlaceholder ?? "비밀번호 입력",
-          required: true,
-          onChange: setPassword,
-        },
-      ]}
-      submitLabel={globalCopy?.submitLabel ?? "로그인"}
-      submittingLabel={globalCopy?.submittingLabel}
-      isSubmitting={isSubmitting}
-      error={error}
-      errorHint={loginErrorHint}
-      postSubmit={
-        <AuthPasswordResetLink
-          href="/reset-password?role=influencer"
-          label={globalCopy?.resetPasswordLabel}
-        />
-      }
-      belowCard={
-        <>
-          <AuthLoginQuickActions
-            introHref={globalCopy?.homeHref ?? "/intro/influencer"}
-            signupHref={`/signup/influencer?next=${encodeURIComponent(nextPath)}`}
-            introLabel={globalCopy?.introLabel}
-            signupLabel={globalCopy?.signupLabel}
+    <>
+      <AuthLoginScreen
+        title={globalCopy?.title ?? "인플루언서 로그인"}
+        lang={globalCopy?.lang}
+        homeHref={globalCopy?.homeHref}
+        chromeCopy={globalCopy?.chrome}
+        description={loginDescription}
+        fields={[
+          {
+            id: "email",
+            label: globalCopy?.emailLabel ?? "이메일",
+            value: email,
+            type: "email",
+            autoComplete: "email",
+            required: true,
+            onChange: setEmail,
+          },
+          {
+            id: "password",
+            label: globalCopy?.passwordLabel ?? "비밀번호",
+            value: password,
+            type: "password",
+            autoComplete: "current-password",
+            placeholder: globalCopy?.passwordPlaceholder ?? "비밀번호 입력",
+            required: true,
+            onChange: setPassword,
+          },
+        ]}
+        submitLabel={globalCopy?.submitLabel ?? "로그인"}
+        submittingLabel={globalCopy?.submittingLabel}
+        isSubmitting={isSubmitting}
+        error={authNotice ? "" : error}
+        errorHint={loginErrorHint}
+        postSubmit={
+          <AuthPasswordResetLink
+            href="/reset-password?role=influencer"
+            label={globalCopy?.resetPasswordLabel}
           />
-          <span className="sr-only">{PRODUCT_NAME}</span>
-        </>
-      }
-      onSubmit={handleSubmit}
-    />
+        }
+        belowCard={
+          <>
+            <AuthLoginQuickActions
+              introHref={globalCopy?.homeHref ?? "/intro/influencer"}
+              signupHref={`/signup/influencer?next=${encodeURIComponent(nextPath)}`}
+              introLabel={globalCopy?.introLabel}
+              signupLabel={globalCopy?.signupLabel}
+            />
+            <span className="sr-only">{PRODUCT_NAME}</span>
+          </>
+        }
+        onSubmit={handleSubmit}
+      />
+      <AuthAccountNoticeDialog
+        notice={authNotice}
+        onAction={handleNoticeAction}
+        onClose={() => setAuthNotice(null)}
+      />
+    </>
   );
 }

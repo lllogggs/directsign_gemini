@@ -1,34 +1,30 @@
-import { Link } from "react-router-dom";
-
-type DashboardSurfaceRole = "advertiser" | "influencer";
-type DashboardSurfaceKind = "contracts" | "campaigns" | "costs";
+import { Link } from "react-router";
+import {
+  DASHBOARD_SURFACE_ITEMS,
+  type DashboardSurfaceItem,
+  type DashboardSurfaceKind,
+  type DashboardSurfaceRole,
+} from "../domain/dashboardSurfaces";
 
 interface DashboardSurfaceSwitchProps {
   role: DashboardSurfaceRole;
-  active: DashboardSurfaceKind;
+  active?: DashboardSurfaceKind;
 }
 
 const surfaceConfig: Record<
   DashboardSurfaceRole,
   {
     ariaLabel: string;
-    items: Array<{ id: DashboardSurfaceKind; label: string; href: string }>;
+    items: DashboardSurfaceItem[];
   }
 > = {
   advertiser: {
     ariaLabel: "광고주 대시보드 전환",
-    items: [
-      { id: "contracts", label: "1:1 계약", href: "/advertiser/dashboard" },
-      { id: "campaigns", label: "캠페인", href: "/advertiser/campaigns" },
-      { id: "costs", label: "광고비 현황", href: "/advertiser/costs" },
-    ],
+    items: DASHBOARD_SURFACE_ITEMS.advertiser,
   },
   influencer: {
     ariaLabel: "인플루언서 대시보드 전환",
-    items: [
-      { id: "contracts", label: "1:1 계약", href: "/influencer/dashboard" },
-      { id: "campaigns", label: "캠페인", href: "/influencer/campaigns" },
-    ],
+    items: DASHBOARD_SURFACE_ITEMS.influencer,
   },
 };
 

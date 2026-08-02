@@ -244,6 +244,11 @@ export type MarketplaceInfluencerProfile = {
     result: string;
   }>;
   proposalHints: string[];
+  recentPosts?: Array<{
+    title: string;
+    url: string;
+    publishedDate: string;
+  }>;
   source?: "registered" | "discovered";
 };
 

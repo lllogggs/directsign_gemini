@@ -72,7 +72,12 @@ const exactApiErrorMessages: Record<string, string> = {
   "Representative name is required": "대표자명을 입력해 주세요.",
   "Business registration number is invalid":
     "사업자등록번호 형식을 확인해 주세요.",
+  "Business start date is required": "개업일자를 확인해 주세요.",
+  "Business start date cannot be in the future":
+    "개업일자는 오늘 이후 날짜로 입력할 수 없습니다.",
   "Document issue date is required": "사업자등록증명원 발급일을 입력해 주세요.",
+  "Document issue date cannot be in the future":
+    "문서 발급일은 오늘 이후 날짜로 입력할 수 없습니다.",
   "Valid name and email are required": "이름과 이메일을 올바르게 입력해 주세요.",
   "Valid platform is required": "플랫폼을 다시 선택해 주세요.",
   "Valid ownership verification method is required":

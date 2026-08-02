@@ -27,10 +27,19 @@
     {
       "path": "/api/cron/ops-alerts",
       "schedule": "0 17 * * *"
-    },
+    }
+  ],
+  "redirects": [
     {
-      "path": "/api/cron/sync-marketplace-followers",
-      "schedule": "0 18 * * *"
+      "source": "/:path(.*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "www\\.yeollock\\.me"
+        }
+      ],
+      "destination": "https://yeollock.me/:path",
+      "permanent": true
     }
   ],
   "headers": [

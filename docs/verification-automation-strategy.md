@@ -1,6 +1,6 @@
 # Verification Automation Strategy
 
-연락미의 인증 자동화는 "자동 확인 결과를 증빙으로 붙이고, 최종 승인 권한은 운영자가 유지"하는 구조로 시작한다. 완전 자동 승인은 환경변수 플래그가 켜진 경우에만 동작한다.
+연락미의 광고주 인증은 국세청 상태조회와 세 항목 진위확인이 모두 일치하면 즉시 승인하고, 그 외에는 운영자 서류 심사로 전환한다. 인플루언서 계정 인증은 자동 확인 결과를 운영자 검수 증빙으로 사용하는 구조를 유지한다.
 
 ## Advertiser Business Verification
 
@@ -10,7 +10,7 @@
 - 국세청 사업자등록 진위확인: `NTS_BUSINESS_VALIDATE_API_KEY`
 - 사업자등록번호 체크섬 검증
 - 상태조회 결과, 진위확인 결과, 결과 해시를 `verification_requests.evidence_snapshot_json.automation.business_registration`에 저장
-- `VERIFICATION_AUTO_APPROVE_BUSINESS="true"`일 때만 자동 승인
+- `VERIFICATION_AUTO_APPROVE_BUSINESS="false"`는 장애 대응용 자동승인 중지 스위치이며, 설정하지 않거나 `true`이면 엄격한 일치 건을 자동 승인
 
 필요한 API:
 
@@ -21,12 +21,14 @@
 - 사업자등록번호
 - 대표자명
 - 개업일자
-- 사업자등록증명원 또는 사업자등록증 파일
+- 자동 확인 실패 시에만 사업자등록증명원 또는 사업자등록증 파일과 문서 발급 정보
 
 주의:
 
 - 국세청 상태조회는 사업자가 계속사업자인지 확인한다.
 - 진위확인은 사업자등록번호, 개업일자, 대표자명 조합이 맞는지 확인한다.
+- 상태조회와 진위확인이 모두 명시적으로 성공한 경우에만 즉시 승인한다. 미설정, 장애, 비정상 응답은 반려하지 않고 서류 심사로 전환한다.
+- 세 항목 확인은 법적 상호나 제출자의 재직·대표 권한을 확인한 결과로 과장하지 않는다.
 - 법적 고지용 운영자 개인정보와 광고주 사업자 인증은 별개다.
 
 ## Influencer Platform Verification
@@ -72,28 +74,30 @@
 
 ### Instagram
 
-현재 구현:
+> **2026-08-02 현재 운영 기준:** Business Discovery·운영자 수동 DM 승인·고객
+> Instagram/Facebook redirect를 사용하던 이전 설계는 폐기했다. 상세 source of truth는
+> [`instagram-dm-automation-runbook.md`](./instagram-dm-automation-runbook.md)다.
 
-- `META_GRAPH_ACCESS_TOKEN`, `META_IG_USER_ID`가 있으면 Instagram Graph API Business Discovery로 공개 professional 계정 bio를 확인한다.
-- `META_WEBHOOK_VERIFY_TOKEN`, `META_APP_SECRET`가 있으면 `/api/webhooks/instagram` inbound DM webhook으로 챌린지 코드 수신을 처리한다.
-- 승인 전 운영은 `instagram_dm_code` 방식으로 접수한다. 인플루언서가 연락미 공식 인스타그램 계정에 챌린지 코드를 DM으로 보내고, 운영자가 발신 계정과 제출 프로필 URL을 대조해 승인한다.
-- API가 없으면 공개 코드/스크린샷 수동 검토로 fallback.
+- 고객 Meta 로그인은 제공하지 않는다.
+- 연락미 공식 Professional 계정 `@yeollockme`만 운영자가 Meta App에 한 번 연결한다.
+- 고객은 연락미 서버가 발급한 일회용 코드를 `@yeollockme`에 먼저 DM으로 보낸다.
+- Vercel이 Meta 서명 webhook의 recipient와 sender username을 확인하고, 제출 핸들·프로필 URL과 정확히 일치할 때만 원자적으로 자동 승인한다.
+- `META_INSTAGRAM_ACCESS_TOKEN`과 만료시각, App Secret, webhook verify token, 공식 IG user ID, 전용 자동승인 flag가 모두 준비되지 않으면 요청을 저장하지 않고 503으로 닫는다.
+- 불일치·만료는 수기 검수 대상이며, Meta 조회 장애는 코드를 유지한 채 자동 재시도하는 읽기 전용 운영 상태다.
+- production migration·환경변수·배포·실제 Meta 서명 E2E·Discord 실패 알림 확인 전에는 운영 중으로 보고하지 않는다.
+- 서버 처리이므로 위 준비가 끝난 뒤에는 Product Owner의 로컬 컴퓨터가 꺼져 있어도 동작한다.
 
-필요한 API/설정:
+현재 구현과 필요한 설정:
 
-- Meta app
-- Instagram professional account 또는 connected Facebook Page
-- Graph API access token
-- Business Discovery permission/app review
-- Messenger API for Instagram webhook 권한을 쓰려면 webhook subscription과 app review
+- 공식 `@yeollockme` Professional 계정의 `instagram_business_basic`, `instagram_business_manage_messages` 권한과 messages webhook 구독
+- `META_APP_ID`, `META_APP_SECRET`, `META_INSTAGRAM_ACCESS_TOKEN`, `META_INSTAGRAM_ACCESS_TOKEN_EXPIRES_AT`, `META_IG_USER_ID`, `META_WEBHOOK_VERIFY_TOKEN`
+- `/api/webhooks/instagram` GET verify와 POST `X-Hub-Signature-256` 검증
+- 10분 일회용 challenge, keyed hash 조회, AES-GCM 복구 ciphertext, consume/replay 방지
+- Meta sender profile username과 제출 핸들·프로필 URL username의 exact match
+- DB 원자 consume 및 원자 관리자 terminal review RPC
+- QA/demo/seed 자동승인·Discord 제외와 민감정보 비저장
 
-DM 우회 전략:
-
-- 우리가 먼저 아무 인플루언서에게 DM을 보내는 방식은 제한이 크다.
-- 대신 인플루언서가 연락미 공식 Instagram 계정으로 챌린지 코드를 먼저 DM으로 보내게 한다.
-- 자동화 전에는 관리자 화면에서 코드, 핸들, 프로필 URL, 실제 DM 발신 계정을 비교해 수동 승인한다.
-- Meta webhook이 inbound message를 받아 pending verification의 코드와 매칭한다.
-- 이 방식은 "사용자가 먼저 보낸 DM"이라 정책 리스크가 낮고 자동화 여지가 있다.
+Meta 구성이 없거나 전용 자동승인 flag가 꺼져 있으면 DM 요청을 pending으로 남기지 않는다. 사용자에게 다른 공개 코드 또는 스크린샷 검수 방식을 선택하게 한다.
 
 ### TikTok
 
@@ -128,7 +132,7 @@ DM 우회 전략:
 앱 등록/심사가 필요한 것:
 
 - Meta app id/secret
-- Meta Graph access token
+- 공식 `@yeollockme`용 Meta Instagram access token과 만료시각
 - Meta IG user id
 - Meta webhook verify token
 - TikTok client key/secret
@@ -136,12 +140,11 @@ DM 우회 전략:
 나중에 OAuth UI까지 붙일 때 필요한 것:
 
 - TikTok redirect URI
-- Instagram/Facebook redirect URI
 - 각 플랫폼 앱 심사에 제출할 개인정보 처리방침/서비스 설명 URL
 
 ## Current Safety Defaults
 
-- 자동 승인 기본값은 모두 `false`.
+- 광고주 사업자 인증은 엄격한 국세청 일치 건만 기본 자동 승인하며 명시적 `false`로 중지할 수 있다. 플랫폼 계정 자동 승인은 기본 `false`다.
 - API 응답 원문은 저장하지 않고 해시와 최소 메타데이터만 저장한다.
 - 토큰과 API 키는 서버 환경변수만 사용한다.
 - 운영자 법률/사업자 개인정보 입력을 요구하지 않는다.

@@ -1,6 +1,16 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { createHmac } from "node:crypto";
+import {
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { formatContractTitleForDisplay } from "../src/domain/display";
 import {
@@ -8,11 +18,32 @@ import {
   isMarketplaceCountryCode,
   marketplaceCountryFromIso,
   marketplaceCountryOptions,
+  type MarketplaceInfluencerProfile,
 } from "../src/domain/marketplace";
+import { paginateMarketplaceInfluencerProfiles } from "../src/domain/marketplaceInfluencerSearch";
 import {
   calculateNaverBlogVisitorAverage,
   getNaverBlogCompletedVisitorDates,
 } from "../src/domain/naverBlogVisitors.js";
+import {
+  normalizeNaverBlogPostDate,
+  normalizeNaverBlogPostUrl,
+  normalizeNaverBlogRecentPosts,
+} from "../src/domain/naverBlogPosts.js";
+import { createNaverSearchBudget } from "../scripts/lib/naver-search-budget.mjs";
+import {
+  isRetryableSupabaseAuthFailureStatus,
+  isTerminalSupabaseRefreshFailure,
+  userSessionAccessMaxAgeSeconds,
+  userSessionRefreshMaxAgeSeconds,
+  userSessionRefreshReuseCacheMs,
+  userSessionRollingDays,
+} from "../lib/user-session-policy";
+import {
+  isActionableInstagramDmManualReview,
+  isAwaitingInstagramDmRestoreRecord,
+  selectInstagramDmRestoreRecord,
+} from "../server/instagram-dm-verification";
 import {
   classifyExternalInfluencerSearchEvidence,
   classifyDiscoveredInfluencerAccount,
@@ -33,6 +64,29 @@ const escapeRegExp = (value: string) =>
   value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 describe("yeollock.me security regressions", () => {
+  it("keeps the customer-facing product name as 연락미", () => {
+    const customerBrandFiles = [
+      "src/App.tsx",
+      "src/domain/seo.ts",
+      "src/pages/auth/SignupPage.tsx",
+      "src/pages/landing/GlobalCreatorLandingPage.tsx",
+    ];
+
+    for (const path of customerBrandFiles) {
+      const source = read(path);
+      assert.equal(source.includes("Yeollock"), false, path);
+      assert.equal(source.includes("열록"), false, path);
+      assert.equal(source.includes("연락미"), true, path);
+    }
+
+    const envExample = read(".env.example");
+    const server = read("server/index.ts");
+    assert.match(envExample, /^PRODUCT_NAME="연락미"$/m);
+    assert.match(envExample, /^VITE_PRODUCT_NAME="연락미"$/m);
+    assert.match(server, /normalizedConfiguredProductKey === "yeollock\.me"/);
+    assert.match(server, /\? "연락미"\s*: normalizedConfiguredProductName/);
+  });
+
   it("does not inject the server-only Gemini API key into the Vite client bundle", () => {
     const viteConfig = read("vite.config.ts");
 
@@ -327,7 +381,7 @@ describe("yeollock.me security regressions", () => {
     );
   });
 
-  it("protects marketplace follower sync with cron auth and server-only logs", () => {
+  it("keeps marketplace follower sync server-only and automatically disabled", () => {
     const server = read("server/index.ts");
     const envExample = read(".env.example");
     const migration = read(
@@ -337,14 +391,24 @@ describe("yeollock.me security regressions", () => {
       crons?: Array<{ path?: string; schedule?: string }>;
     };
 
+    assert.equal(
+      vercelConfig.crons?.some(
+        (cron) => cron.path === "/api/cron/sync-marketplace-followers",
+      ),
+      false,
+    );
     assert.ok(
       vercelConfig.crons?.some(
         (cron) =>
-          cron.path === "/api/cron/sync-marketplace-followers" &&
-          cron.schedule === "0 18 * * *",
+          cron.path === "/api/cron/ops-alerts" &&
+          cron.schedule === "0 17 * * *",
       ),
     );
     assert.match(envExample, /CRON_SECRET=""/);
+    assert.match(
+      envExample,
+      /ENABLE_AUTOMATIC_MARKETPLACE_FOLLOWER_SYNC="false"/,
+    );
     assert.match(
       envExample,
       /MARKETPLACE_NAVER_BLOG_VISITOR_SYNC_STALE_DAYS="7"/,
@@ -356,6 +420,11 @@ describe("yeollock.me security regressions", () => {
     assert.match(server, /requireCronRequest/);
     assert.match(server, /safeEqual\(token, cronSecret\)/);
     assert.match(server, /\/api\/cron\/sync-marketplace-followers/);
+    assert.match(
+      server,
+      /process\.env\.ENABLE_AUTOMATIC_MARKETPLACE_FOLLOWER_SYNC === "true"/,
+    );
+    assert.match(server, /AUTOMATIC_INFLUENCER_COLLECTION_DISABLED/);
     assert.match(server, /runMarketplaceFollowerSync/);
     assert.match(server, /marketplace_follower_sync_runs/);
     assert.match(server, /marketplace_follower_sync_events/);
@@ -388,11 +457,15 @@ describe("yeollock.me security regressions", () => {
       scripts?: Record<string, string>;
     };
     const collector = read("scripts/run-influencer-discovery-loop.mjs");
+    const batchUploader = read("scripts/upload-influencer-discovery-batch.mjs");
     const syncScript = read("scripts/sync-discovered-naver-blog-visitors.mjs");
     const server = read("server/index.ts");
     const marketplace = read("src/pages/marketplace/MarketplacePages.tsx");
     const migration = read(
       "supabase/migrations/20260713010000_add_discovered_naver_blog_visitor_metrics.sql",
+    );
+    const idempotentMigration = read(
+      "supabase/migrations/20260716001000_make_naver_blog_visitor_metrics_idempotent.sql",
     );
     const now = new Date("2026-07-13T08:30:00+09:00");
     const metric = calculateNaverBlogVisitorAverage(
@@ -423,20 +496,523 @@ describe("yeollock.me security regressions", () => {
       packageJson.scripts?.["sync:naver-blog-visitors"] ?? "",
       /sync-discovered-naver-blog-visitors\.mjs/,
     );
-    assert.match(collector, /naver_visitor_sync_finished/);
-    assert.match(collector, /naver-visitor-stale-days/);
+    assert.match(collector, /upload-influencer-discovery-batch\.mjs/);
+    assert.doesNotMatch(collector, /sync-discovered-naver-blog-visitors\.mjs/);
+    assert.match(batchUploader, /sync-discovered-naver-blog-visitors\.mjs/);
+    assert.match(batchUploader, /--batch-upload=true/);
+    assert.match(batchUploader, /--apply=true/);
+    assert.match(batchUploader, /naver-visitor-stale-days/);
     assert.match(syncScript, /NVisitorgp4Ajax\.nhn/);
     assert.match(syncScript, /args\.get\("stale-days"\)/);
+    assert.match(syncScript, /stageNaverVisitorWorkbook/);
+    assert.match(syncScript, /readPendingNaverVisitorBatch/);
+    assert.match(syncScript, /archiveNaverVisitorBatch/);
+    assert.match(syncScript, /apply_discovered_naver_blog_visitor_metrics_v2/);
+    assert.match(syncScript, /validateUploaderSession/);
+    assert.match(syncScript, /YEOLLOCK_INFLUENCER_UPLOADER_LOCK_TOKEN/);
     assert.match(server, /naver_blog_visitor_average_4d/);
     assert.match(server, /최근 4일 평균 방문자/);
     assert.match(marketplace, /채널 지표/);
     assert.match(migration, /naver_blog_visitor_average_4d bigint/);
     assert.match(migration, /apply_discovered_naver_blog_visitor_metrics/);
     assert.match(
+      idempotentMigration,
+      /apply_discovered_naver_blog_visitor_metrics_v2/,
+    );
+    assert.match(
+      idempotentMigration,
+      /updates\.checked_at > profile\.naver_blog_visitor_checked_at/,
+    );
+    assert.match(idempotentMigration, /is distinct from/);
+    assert.match(
+      idempotentMigration,
+      /revoke execute on function public\.apply_discovered_naver_blog_visitor_metrics\(jsonb\)/,
+    );
+    assert.match(
       migration,
       /revoke all on function[\s\S]+from public, anon, authenticated;/,
     );
     assert.match(migration, /grant execute on function[\s\S]+to service_role;/);
+  });
+
+  it("stages influencer collection in local XLSX and uploads changed rows at most every 12 hours", () => {
+    const packageJson = JSON.parse(read("package.json")) as {
+      scripts?: Record<string, string>;
+    };
+    const agents = read("AGENTS.md");
+    const gitignore = read(".gitignore");
+    const collector = read("scripts/discover-korean-influencers.mjs");
+    const collectorMain = collector.slice(
+      collector.indexOf("async function main()"),
+      collector.indexOf("const isMainModule"),
+    );
+    const loop = read("scripts/run-influencer-discovery-loop.mjs");
+    const startScript = read("scripts/start-influencer-discovery-loop.ps1");
+    const uploader = read("scripts/upload-influencer-discovery-batch.mjs");
+    const queue = read("scripts/lib/influencer-discovery-queue.mjs");
+    const visitorSync = read("scripts/sync-discovered-naver-blog-visitors.mjs");
+
+    assert.match(
+      agents,
+      /collection runs must not read from or write to Supabase/,
+    );
+    assert.match(agents, /gitignored local XLSX staging workbook/);
+    assert.match(agents, /at most once every 12 hours/);
+    assert.match(
+      agents,
+      /automatic collection and its coupled batch-upload checks are disabled by default/,
+    );
+    assert.match(gitignore, /^data\/$/m);
+    assert.match(collector, /requestedApply \|\| storageMode === "supabase"/);
+    assert.doesNotMatch(collector, /allow-direct-supabase/);
+    assert.match(collectorMain, /stageInfluencerDiscoveryWorkbook/);
+    assert.doesNotMatch(collectorMain, /reserveExistingHandles\(/);
+    assert.doesNotMatch(collectorMain, /upsertSupabaseRows\(/);
+    assert.doesNotMatch(
+      collector,
+      /fetchAllSupabaseRows\([\s\S]{0,220}\.catch\(\(\) => \[\]\)/,
+    );
+    assert.match(loop, /"--apply=false"/);
+    assert.match(loop, /storage !== "local-xlsx"/);
+    assert.match(loop, /upload-influencer-discovery-batch\.mjs/);
+    assert.match(
+      loop,
+      /args\.get\("enable-automatic-collection"\) === "true"/,
+    );
+    assert.match(loop, /if \(!automaticCollectionEnabled\)/);
+    assert.ok(
+      loop.indexOf("if (!automaticCollectionEnabled)") <
+        loop.indexOf("main().catch"),
+    );
+    assert.doesNotMatch(loop, /"--apply=true"/);
+    assert.doesNotMatch(loop, /sync-discovered-naver-blog-visitors\.mjs/);
+    assert.match(startScript, /\[switch\]\$EnableAutomaticCollection/);
+    assert.match(startScript, /if \(-not \$EnableAutomaticCollection\)/);
+    assert.ok(
+      startScript.indexOf("if (-not $EnableAutomaticCollection)") <
+        startScript.indexOf("Start-Process"),
+    );
+    assert.match(startScript, /--enable-automatic-collection=true/);
+    assert.match(startScript, /--storage=local-xlsx/);
+    assert.match(startScript, /--upload-interval-hours=12/);
+    assert.doesNotMatch(startScript, /--apply=true/);
+    assert.match(uploader, /MINIMUM_UPLOAD_INTERVAL_HOURS = 12/);
+    assert.match(
+      uploader,
+      /Math\.max\([\s\S]{0,100}MINIMUM_UPLOAD_INTERVAL_HOURS/,
+    );
+    assert.match(uploader, /isInfluencerBatchDue/);
+    assert.match(uploader, /onlyChanged:\s*true/);
+    assert.match(uploader, /uploaderSession/);
+    assert.match(
+      collector,
+      /assertInfluencerUploaderSession\(uploaderSession\)/,
+    );
+    assert.match(collector, /state\?\.lastSupabaseAccessAt !== authorizedIso/);
+    assert.match(collector, /state\?\.lastAttemptedBatchId !== batchId/);
+    assert.match(
+      collector,
+      /upsertSupabaseRows[\s\S]{0,220}assertInfluencerUploaderSession\(uploaderSession\)/,
+    );
+    assert.match(uploader, /archiveInfluencerBatch/);
+    assert.match(uploader, /sync-discovered-naver-blog-visitors\.mjs/);
+    assert.match(queue, /t="inlineStr"/);
+    assert.match(queue, /\.partial/);
+    assert.match(queue, /Pending queue workbook changed after snapshot/);
+    assert.match(visitorSync, /!apply \|\| !batchUpload/);
+    assert.match(visitorSync, /stageNaverVisitorWorkbook/);
+    assert.match(
+      packageJson.scripts?.["upload:influencers:batch"] ?? "",
+      /upload-influencer-discovery-batch\.mjs/,
+    );
+    assert.match(
+      packageJson.scripts?.test ?? "",
+      /influencer-discovery-queue\.test\.ts/,
+    );
+  });
+
+  it("keeps the automatic influencer loop inert without the dedicated opt-in flag", () => {
+    const directory = mkdtempSync(join(tmpdir(), "yeollock-disabled-loop-"));
+    try {
+      const result = spawnSync(
+        process.execPath,
+        [join(process.cwd(), "scripts", "run-influencer-discovery-loop.mjs")],
+        {
+          cwd: directory,
+          encoding: "utf8",
+          timeout: 5_000,
+        },
+      );
+
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, /automatic collection is disabled/i);
+      assert.equal(result.signal, null);
+      assert.deepEqual(readdirSync(directory), []);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps Naver recent post titles, links, and dates bound and safe", () => {
+    const posts = normalizeNaverBlogRecentPosts(
+      [
+        {
+          title: "<b>두 번째</b> 게시물",
+          url: "http://blog.naver.com/example/2#section",
+          publishedDate: "20260713",
+        },
+        {
+          title: "첫 번째 게시물",
+          link: "https://m.blog.naver.com/example/1",
+          postdate: "2026-07-12",
+        },
+        {
+          title: "중복 게시물",
+          url: "https://blog.naver.com/example/2",
+          publishedDate: "20260711",
+        },
+        {
+          title: "외부 링크",
+          url: "https://example.com/not-naver",
+          publishedDate: "20260714",
+        },
+      ],
+      3,
+    );
+
+    assert.deepEqual(posts, [
+      {
+        title: "두 번째 게시물",
+        url: "https://blog.naver.com/example/2",
+        publishedDate: "2026-07-13",
+      },
+      {
+        title: "첫 번째 게시물",
+        url: "https://m.blog.naver.com/example/1",
+        publishedDate: "2026-07-12",
+      },
+    ]);
+    assert.equal(normalizeNaverBlogPostDate("20260230"), "");
+    assert.equal(normalizeNaverBlogPostUrl("javascript:alert(1)"), "");
+
+    const collector = read("scripts/discover-korean-influencers.mjs");
+    const countryRepair = read("scripts/repair-influencer-country-data.mjs");
+    const server = read("server/index.ts");
+    const marketplace = read("src/pages/marketplace/MarketplacePages.tsx");
+    const naverCollectorSource = collector.slice(
+      collector.indexOf("async function collectNaverBlogCandidates"),
+      collector.indexOf("const reservedInstagramHandles"),
+    );
+    assert.match(collector, /recentPosts/);
+    assert.match(collector, /naverSorts/);
+    assert.doesNotMatch(
+      collector,
+      /platform:\s*"naver_blog"[\s\S]{0,900}audience_countries:\s*\["south_korea"\]/,
+    );
+    assert.doesNotMatch(naverCollectorSource, /inferCreatorCountries/);
+    assert.match(naverCollectorSource, /confidence:\s*"unknown"/);
+    assert.match(countryRepair, /naver_search_not_creator_country_evidence/);
+    assert.match(server, /normalizeNaverBlogRecentPosts/);
+    assert.match(marketplace, /최근 확인 게시물/);
+    assert.match(marketplace, /rel="noreferrer"/);
+  });
+
+  it("caps every Naver search path in one KST-daily 80 percent ledger", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "yeollock-naver-budget-"));
+    const statePath = join(directory, "usage.json");
+    try {
+      const budget = createNaverSearchBudget({
+        statePath,
+        dailyLimit: 10,
+        budgetRatio: 0.8,
+        now: () => new Date("2026-07-14T12:00:00+09:00"),
+      });
+      for (let index = 0; index < 8; index += 1) {
+        const result = await budget.reserveRequest(
+          index % 2 === 0 ? "/v1/search/blog.json" : "/v1/search/webkr.json",
+        );
+        assert.equal(result.allowed, true);
+      }
+      const exhausted = await budget.reserveRequest("/v1/search/blog.json");
+      assert.equal(exhausted.allowed, false);
+      assert.equal(exhausted.reason, "budget_exhausted");
+      assert.equal(exhausted.cap, 8);
+      assert.equal(exhausted.used, 8);
+      assert.equal(exhausted.remaining, 0);
+
+      writeFileSync(statePath, "{not-json", "utf8");
+      const corrupt = await budget.snapshot();
+      assert.equal(corrupt.allowed, false);
+      assert.equal(corrupt.reason, "corrupt_state");
+      assert.equal(corrupt.used, 8);
+
+      const collector = read("scripts/discover-korean-influencers.mjs");
+      const curator = read("scripts/curate-influencer-marketplace.mjs");
+      const server = read("server/index.ts");
+      const envExample = read(".env.example");
+      assert.match(collector, /reserveNaverSearchRequest/);
+      assert.match(curator, /reserveNaverSearchRequest/);
+      const naverVerificationStart = server.indexOf(
+        "const runNaverBlogAutomationCheck",
+      );
+      const naverVerificationSource = server.slice(
+        naverVerificationStart,
+        server.indexOf(
+          "const runInstagramAutomationCheck",
+          naverVerificationStart,
+        ),
+      );
+      assert.match(
+        naverVerificationSource,
+        /reserveNaverSearchRequest\("blog"\)/,
+      );
+      assert.match(naverVerificationSource, /if \(!reservation\.allowed\)/);
+      assert.match(envExample, /NAVER_SEARCH_DAILY_LIMIT="25000"/);
+      assert.match(envExample, /NAVER_SEARCH_DAILY_BUDGET_RATIO="0\.8"/);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps influencer discovery totals stable across server-filtered pages", () => {
+    const makeProfile = (
+      id: string,
+      overrides: Partial<MarketplaceInfluencerProfile> = {},
+    ): MarketplaceInfluencerProfile => ({
+      id,
+      handle: id,
+      displayName: id,
+      headline: `${id} headline`,
+      bio: `${id} bio`,
+      location: "국가 미확인",
+      avatarLabel: id.slice(0, 1),
+      categories: ["content"],
+      audience: "1,000명",
+      audienceTags: [],
+      platforms: [
+        {
+          platform: "instagram",
+          label: "인스타그램",
+          handle: id,
+          url: `https://www.instagram.com/${id}`,
+          followersLabel: "1,000명",
+          performanceLabel: "공개 지표 확인",
+        },
+      ],
+      collaborationTypes: ["sponsored_post"],
+      startingPriceLabel: "협의",
+      responseTimeLabel: "협의",
+      verifiedLabel: "공개 계정",
+      brandFit: [],
+      recentBrands: [],
+      portfolio: [],
+      proposalHints: [],
+      ...overrides,
+    });
+    const profiles = [
+      makeProfile("alpha", {
+        displayName: "알파 뷰티",
+        categories: ["beauty"],
+        audienceCountries: ["south_korea"],
+      }),
+      makeProfile("beta", {
+        categories: ["beauty"],
+        audienceCountries: ["south_korea"],
+        platforms: [
+          {
+            platform: "youtube",
+            label: "유튜브",
+            handle: "beta",
+            url: "https://www.youtube.com/@beta",
+            followersLabel: "2,000명",
+            performanceLabel: "공개 지표 확인",
+          },
+        ],
+      }),
+      makeProfile("gamma", {
+        categories: ["tech"],
+        audienceCountries: ["japan"],
+        platforms: [
+          {
+            platform: "instagram",
+            label: "인스타그램",
+            handle: "gamma",
+            url: "https://www.instagram.com/gamma",
+            followersLabel: "3,000명",
+            performanceLabel: "공개 지표 확인",
+          },
+          {
+            platform: "youtube",
+            label: "유튜브",
+            handle: "gamma",
+            url: "https://www.youtube.com/@gamma",
+            followersLabel: "3,000명",
+            performanceLabel: "공개 지표 확인",
+          },
+        ],
+      }),
+      makeProfile("delta", {
+        categories: ["travel"],
+        platforms: [
+          {
+            platform: "naver_blog",
+            label: "네이버 블로그",
+            handle: "delta",
+            url: "https://blog.naver.com/delta",
+            followersLabel: "공개 지표 확인",
+            performanceLabel: "공개 지표 확인",
+          },
+        ],
+      }),
+      makeProfile("epsilon", {
+        categories: ["fashion"],
+        audienceCountries: ["taiwan"],
+        platforms: [
+          {
+            platform: "tiktok",
+            label: "틱톡",
+            handle: "epsilon",
+            url: "https://www.tiktok.com/@epsilon",
+            followersLabel: "5,000명",
+            performanceLabel: "공개 지표 확인",
+          },
+        ],
+      }),
+    ];
+
+    const first = paginateMarketplaceInfluencerProfiles(profiles, {
+      limit: 2,
+      offset: 0,
+    });
+    const second = paginateMarketplaceInfluencerProfiles(profiles, {
+      limit: 2,
+      offset: 2,
+    });
+    const last = paginateMarketplaceInfluencerProfiles(profiles, {
+      limit: 2,
+      offset: 4,
+    });
+    const beyondEnd = paginateMarketplaceInfluencerProfiles(profiles, {
+      limit: 2,
+      offset: 9,
+    });
+    assert.deepEqual(
+      [first.total, second.total, last.total, beyondEnd.total],
+      [5, 5, 5, 5],
+    );
+    assert.deepEqual(
+      [first.profiles.length, second.profiles.length, last.profiles.length],
+      [2, 2, 1],
+    );
+    assert.deepEqual(
+      [first.hasMore, second.hasMore, last.hasMore, beyondEnd.hasMore],
+      [true, true, false, false],
+    );
+    assert.equal(beyondEnd.profiles.length, 0);
+
+    assert.equal(
+      paginateMarketplaceInfluencerProfiles(profiles, {
+        limit: 10,
+        offset: 0,
+        platform: "youtube",
+      }).total,
+      2,
+    );
+    assert.equal(
+      paginateMarketplaceInfluencerProfiles(profiles, {
+        limit: 10,
+        offset: 0,
+        categories: ["beauty"],
+      }).total,
+      2,
+    );
+    assert.equal(
+      paginateMarketplaceInfluencerProfiles(profiles, {
+        limit: 10,
+        offset: 0,
+        countries: ["south_korea"],
+      }).total,
+      2,
+    );
+    assert.equal(
+      paginateMarketplaceInfluencerProfiles(profiles, {
+        limit: 10,
+        offset: 0,
+        platform: "youtube",
+        categories: ["beauty"],
+        countries: ["south_korea"],
+      }).total,
+      1,
+    );
+    assert.equal(
+      paginateMarketplaceInfluencerProfiles(profiles, {
+        limit: 10,
+        offset: 0,
+        search: "알파",
+      }).total,
+      1,
+    );
+    assert.equal(
+      paginateMarketplaceInfluencerProfiles(profiles, {
+        limit: 10,
+        offset: 0,
+        categories: ["beauty", "tech"],
+      }).total,
+      3,
+    );
+    assert.equal(
+      paginateMarketplaceInfluencerProfiles(profiles, {
+        limit: 10,
+        offset: 0,
+        countries: ["south_korea", "japan"],
+      }).total,
+      3,
+    );
+    assert.equal(
+      paginateMarketplaceInfluencerProfiles([profiles[0], profiles[2]], {
+        limit: 10,
+        offset: 0,
+        categories: ["beauty"],
+      }).total,
+      1,
+    );
+
+    const server = read("server/index.ts");
+    const marketplace = read("src/pages/marketplace/MarketplacePages.tsx");
+    assert.match(server, /readMarketplaceInfluencerSearchFilters/);
+    assert.match(server, /paginateMarketplaceInfluencerProfiles/);
+    assert.match(
+      server,
+      /response\.setHeader\("Cache-Control", "private, no-store"\)/,
+    );
+    assert.match(server, /const savedHandles = new Set\(/);
+    assert.match(
+      server,
+      /savedHandles\.size > 0[\s\S]*readPublicMarketplaceCache\(/,
+    );
+    assert.match(
+      server,
+      /savedHandles\.has\(normalizePublicProfileHandle\(profile\.handle\)\)/,
+    );
+    assert.doesNotMatch(
+      server,
+      /readPublicMarketplaceInfluencerProfilesByHandles/,
+    );
+    assert.doesNotMatch(server, /\.filter\(Boolean\)\s*\.slice\(0, 12\)/);
+    assert.match(marketplace, /total: influencerTotal/);
+    assert.match(marketplace, /searchParams\.append\("category", category\)/);
+    assert.match(marketplace, /searchParams\.append\("country", country\)/);
+    assert.match(marketplace, /data-discovery-total-count/);
+    assert.match(marketplace, /총 \$\{count\.toLocaleString\(\)\}건/);
+    assert.doesNotMatch(marketplace, /count=\{filteredProfiles\.length\}/);
+    assert.doesNotMatch(
+      marketplace,
+      /setSavedHandles\(next\);\s*setRevision\(/,
+    );
+    assert.match(
+      marketplace,
+      /if \(!response\.ok\) throw new Error\("Saved influencer update failed"\);\s*if \(mountedRef\.current\) \{\s*setRevision\(/,
+    );
   });
 
   it("keeps influencer discovery independent-creator only with organization-scoped saves", () => {
@@ -471,7 +1047,8 @@ describe("yeollock.me security regressions", () => {
         [
           {
             title: "권나라, 블랙 필라테스룩",
-            description: "배우 권나라가 자신의 인스타그램(@hv_nara)에 공개했다.",
+            description:
+              "배우 권나라가 자신의 인스타그램(@hv_nara)에 공개했다.",
             link: "https://example.com/hv_nara",
           },
         ],
@@ -1060,6 +1637,7 @@ describe("yeollock.me security regressions", () => {
 
   it("separates production data from test seeds and centralizes support tickets", () => {
     const server = read("server/index.ts");
+    const operationalTestEmail = read("server/operational-test-email.ts");
     const app = read("src/App.tsx");
     const supportPage = read("src/pages/support/SupportPage.tsx");
     const supportDomain = read("src/domain/support.ts");
@@ -1109,16 +1687,13 @@ describe("yeollock.me security regressions", () => {
     );
     assert.match(
       server,
-      /const registeredProfiles = matchingDbProfiles\.slice\(offset, offset \+ limit\)/,
+      /const \{ profiles, channels \} = await readAllMarketplaceInfluencerRows/,
     );
     assert.match(
       server,
-      /const visibleProfiles = \[\.\.\.registeredProfiles, \.\.\.discoveredProfiles\]/,
+      /const visibleProfiles = \[\.\.\.dbProfiles, \.\.\.discoveredProfiles\]/,
     );
-    assert.match(
-      server,
-      /if \(visibleProfiles\.length > 0\) return visibleProfiles/,
-    );
+    assert.match(server, /if \(useSupabase\) return visibleProfiles/);
     assert.doesNotMatch(
       server,
       /return mergeMarketplaceInfluencerProfiles\(visibleProfiles\)/,
@@ -1192,7 +1767,11 @@ describe("yeollock.me security regressions", () => {
     assert.match(server, /readOperationalAdminVerificationRequests/);
     assert.match(server, /readOperationalAdminSupportTickets/);
     assert.match(server, /if \(!useSupabase\) return \[\] as Contract\[\];/);
-    assert.match(server, /operationalTestEmailLocals/);
+    assert.match(
+      server,
+      /import \{ isOperationalTestEmail \} from "\.\/operational-test-email\.js"/,
+    );
+    assert.match(operationalTestEmail, /operationalTestEmailLocals/);
     assert.match(server, /isOperationalTestContract/);
     assert.match(server, /isOperationalTestSupportAccessRequest/);
     assert.match(server, /isOperationalTestSupportTicket/);
@@ -1206,9 +1785,9 @@ describe("yeollock.me security regressions", () => {
     assert.match(server, /!isOperationalTestSupportAccessRequest\(request\)/);
     assert.match(server, /!isOperationalTestSupportTicket\(ticket\)/);
     assert.match(server, /!isOperationalTestVerificationRequest\(request\)/);
-    assert.match(server, /breadroom\.manager/);
-    assert.match(server, /test\.influencer/);
-    assert.match(server, /creator\.sora/);
+    assert.match(operationalTestEmail, /breadroom\.manager/);
+    assert.match(operationalTestEmail, /test\.influencer/);
+    assert.match(operationalTestEmail, /creator\.sora/);
     assert.match(server, /광고주 매니저/);
     assert.match(server, /브레드룸 신제품 언박싱/);
     assert.match(server, /title: contract\.title/);
@@ -1300,7 +1879,7 @@ describe("yeollock.me security regressions", () => {
     );
   });
 
-  it("fails closed for production demo mode and anonymous admin attribution", () => {
+  it("fails closed for production demo mode and shared admin fallbacks", () => {
     const server = read("server/index.ts");
     const envExample = read(".env.example");
 
@@ -1309,14 +1888,356 @@ describe("yeollock.me security regressions", () => {
       server,
       /DIRECTSIGN_DEMO_MODE cannot be enabled in production/,
     );
-    assert.match(server, /Production requires ADMIN_ACCESS_CODE/);
-    assert.match(server, /Production requires ADMIN_OPERATOR_NAME/);
+    assert.doesNotMatch(server, /ADMIN_ACCESS_CODE|ADMIN_OPERATOR_NAME/);
+    assert.doesNotMatch(envExample, /ADMIN_ACCESS_CODE|ADMIN_OPERATOR_NAME/);
+    assert.match(server, /profile\?\.role !== "admin"/);
+    assert.match(server, /claims\.aal !== "aal2"/);
+    assert.match(server, /getVerifiedAdminTotpFactor/);
+    assert.match(envExample, /USER_SESSION_FAST_PATH_SECRET=""/);
+    assert.match(envExample, /DIRECTSIGN_ALLOW_PRODUCTION_DEMO_MODE="false"/);
+  });
+
+  it("binds personal admin MFA and one-time recent authentication to server state", () => {
+    const server = read("server/index.ts");
+    const migration = read(
+      "supabase/migrations/20260730090000_add_auth_security_foundation.sql",
+    );
+    const adminUi = read("src/pages/admin/SystemAdminDashboard.tsx");
+    const clientApi = read("src/domain/api.ts");
+    const recentDialog = read("src/components/RecentAuthDialog.tsx");
+    const monitoring = read("lib/auth-monitoring.ts");
+    const metricOrigin = read("lib/auth-metric-origin.ts");
+    const metricClassifierStart = server.indexOf(
+      "const classifySessionAuthMetricDataOrigin",
+    );
+    const metricClassifierSource = server.slice(
+      metricClassifierStart,
+      server.indexOf("const hasAdminTotpAmr", metricClassifierStart),
+    );
+    const adminRegistrationStart = server.indexOf(
+      "const registerAdminOperatorSession",
+    );
+    const adminRegistrationSource = server.slice(
+      adminRegistrationStart,
+      server.indexOf("const revokeAdminOperatorSession", adminRegistrationStart),
+    );
+    const metricTableStart = migration.indexOf(
+      "create table if not exists public.operational_auth_metric_buckets",
+    );
+    const metricTableSource = migration.slice(
+      metricTableStart,
+      migration.indexOf(
+        "create index if not exists operational_auth_metric_bucket_minute_idx",
+        metricTableStart,
+      ),
+    );
+
+    assert.match(server, /app\.post\("\/api\/admin\/mfa\/verify"/);
+    assert.match(server, /claims\.aal !== "aal2"/);
+    assert.match(server, /profile\?\.role !== "admin"/);
+    assert.match(
+      adminRegistrationSource,
+      /\?on_conflict=admin_session_id|\?on_conflict=auth_session_id/,
+    );
+    assert.match(adminUi, /type AdminAuthStep = "credentials" \| "totp"/);
+    assert.match(adminUi, /qr_code\?: string/);
+    assert.match(adminUi, /enrollment_required\?: boolean/);
+
+    assert.match(migration, /create table if not exists public\.auth_recent_grants/);
+    assert.match(migration, /expires_at <= authenticated_at \+ interval '10 minutes'/);
+    assert.match(migration, /create or replace function public\.consume_auth_recent_grant/);
+    for (const exactBinding of [
+      "grant_row.profile_id = p_profile_id",
+      "grant_row.auth_session_id = p_auth_session_id",
+      "grant_row.role = p_role",
+      "grant_row.action = p_action",
+      "grant_row.resource_hash = p_resource_hash",
+      "grant_row.consumed_at is null",
+    ]) {
+      assert.match(migration, new RegExp(exactBinding.replaceAll(".", "\\.")));
+    }
+    assert.match(migration, /coalesce\(auth\.role\(\), ''\) <> 'service_role'/);
+    assert.match(server, /app\.post\("\/api\/auth\/recent"/);
+    assert.match(server, /action: "advertiser_contract_close"/);
+    assert.match(server, /action: "advertiser_share_reveal"/);
+    assert.match(server, /action: "influencer_signature"/);
+    assert.match(server, /share_token: undefined/);
+    assert.match(recentDialog, /registerRecentAuthHandler/);
+    assert.match(recentDialog, /현재 로그인은 그대로 유지됩니다/);
+    assert.match(clientApi, /authenticated \? fetch\(target, init\) : response/);
+
+    assert.match(monitoring, /record_operational_auth_metric/);
+    assert.match(monitoring, /metric\.dataOrigin !== "production"/);
+    assert.doesNotMatch(monitoring, /authenticatedContext/);
+    assert.match(metricOrigin, /createHmac\("sha256", secret\)/);
+    assert.match(metricOrigin, /"v2"/);
+    assert.match(metricOrigin, /bindingDigest\("user", userId, secret\)/);
+    assert.match(
+      metricOrigin,
+      /bindingDigest\("session", authSessionId, secret\)/,
+    );
+    assert.match(metricOrigin, /bindingDigest\("proof", sessionProof, secret\)/);
+    assert.match(metricOrigin, /expiresAtSeconds <= nowSeconds/);
+    assert.match(server, /readAuthMetricOriginFromRequest/);
+    assert.doesNotMatch(metricClassifierSource, /accessToken|claims|decode/);
+    assert.match(
+      metricClassifierSource,
+      /return verifiedIdentityOrigin \?\? authoritativeOrigin/,
+    );
+    assert.doesNotMatch(
+      metricTableSource,
+      /profile_id|email|ip_hash|auth_session_id|token_hash|resource_hash|user_agent/i,
+    );
+  });
+
+  it("hardens admin TOTP against factor swapping, phone-only AAL2, and provider outages", () => {
+    const server = read("server/index.ts");
+    const atomicMfaMigration = read(
+      "supabase/migrations/20260730100000_add_atomic_admin_mfa_rate_limit_reservations.sql",
+    );
+    const verifyRouteStart = server.indexOf(
+      'app.post("/api/admin/mfa/verify"',
+    );
+    const verifyRoute = server.slice(
+      verifyRouteStart,
+      server.indexOf('app.post("/api/admin/logout"', verifyRouteStart),
+    );
+    const retryableBranchStarts = Array.from(
+      verifyRoute.matchAll(/if \(isRetryableAdminMfaFailure\(error\)\) \{/g),
+      (match) => match.index,
+    );
+
+    assert.ok(verifyRouteStart >= 0);
+    assert.match(server, /createHmac\("sha256", secret\)/);
+    assert.match(server, /createAdminPendingMfaBindingToken/);
+    assert.match(server, /verifyAdminPendingMfaBindingToken/);
+    for (const bindingField of ["userId", "authSessionId", "factorId"]) {
+      assert.match(server, new RegExp(`payload\\.${bindingField}`));
+    }
+    assert.match(
+      verifyRoute,
+      /factor\.id === factorId && factor\.factor_type === "totp"/,
+    );
+    assert.match(verifyRoute, /authoritative: true/);
+    assert.ok((server.match(/hasAdminTotpAmr\(claims\)/g) ?? []).length >= 4);
+    assert.match(server, /entry\.method\?\.toLowerCase\(\) === "totp"/);
+
+    assert.match(verifyRoute, /reserveAdminMfaRateLimit\(/);
+    assert.match(server, /rpc\/reserve_admin_mfa_rate_limit/);
+    assert.match(server, /rollbackAdminMfaRateLimitReservation/);
+    assert.match(server, /adminMfaMaxFailures/);
+    assert.match(verifyRoute, /response\.status\(429\)/);
+    assert.doesNotMatch(verifyRoute, /clearAdminMfaSubjectRateLimits/);
+    assert.doesNotMatch(verifyRoute, /directsign_rate_limit_buckets[\s\S]*DELETE/);
+    assert.match(server, /`admin-mfa:user:\$\{userId\}`/);
+    assert.match(server, /`admin-mfa:factor:\$\{factorId\}`/);
+    assert.match(server, /`admin-mfa:ip:\$\{getClientIp\(request\)\}`/);
+    assert.doesNotMatch(verifyRoute, /sha256Hex\(factorBinding\)/);
+    assert.ok(retryableBranchStarts.length >= 3);
+    for (const branchStart of retryableBranchStarts) {
+      const branch = verifyRoute.slice(branchStart, branchStart + 900);
+      assert.match(branch, /rollbackAdminMfaReservationOrRespond/);
+      assert.match(branch, /response\.status\(503\)/);
+      const retryableResponse = branch.slice(
+        0,
+        branch.indexOf("response.status(503)") + 180,
+      );
+      assert.match(retryableResponse, /retryable: true/);
+      assert.doesNotMatch(retryableResponse, /clearAdminSessionCookies/);
+      assert.doesNotMatch(retryableResponse, /clearRateLimitBucket/);
+      assert.doesNotMatch(
+        retryableResponse,
+        /finalizeAdminMfaRateLimitReservation/,
+      );
+    }
+    assert.match(atomicMfaMigration, /pg_advisory_xact_lock/);
+    assert.match(
+      atomicMfaMigration,
+      /admin MFA rate limit buckets must be distinct/,
+    );
+    assert.match(
+      atomicMfaMigration,
+      /if v_blocked then[\s\S]*?select true, v_retry_after_seconds, false/,
+    );
+    assert.match(
+      atomicMfaMigration,
+      /bucket\.reset_at = v_item\.bucket_reset_at/,
+    );
+    assert.match(
+      atomicMfaMigration,
+      /terminal_outcome in \('finalized', 'rolled_back'\)/,
+    );
+    assert.match(
+      atomicMfaMigration,
+      /reservation_ttl_seconds integer not null/,
+    );
+    assert.match(
+      atomicMfaMigration,
+      /v_existing_reservation\.reservation_ttl_seconds[\s\S]*?<> p_reservation_ttl_seconds/,
+    );
+    assert.match(server, /type AdminMfaProviderStage =[\s\S]*?"enroll"[\s\S]*?"remove"/);
+    assert.match(server, /fetchSupabaseAdminMfa\(\s*"enroll"/);
+    assert.match(server, /fetchSupabaseAdminMfa\(\s*"remove"/);
     assert.match(
       server,
-      /const adminOperatorName = configuredAdminOperatorName/,
+      /setAdminSessionCookies\([\s\S]*?adminPendingSessionMaxAgeSeconds[\s\S]*?sendRetryableAdminMfaUnavailable/,
     );
-    assert.match(envExample, /ADMIN_OPERATOR_NAME=""/);
-    assert.match(envExample, /DIRECTSIGN_ALLOW_PRODUCTION_DEMO_MODE="false"/);
+    assert.match(
+      server,
+      /admin\?\.authSessionId \?\? claims\?\.session_id/,
+    );
+  });
+
+  it("behaviorally exact-binds and expires the admin pending-MFA cookie", async () => {
+    const envNames = [
+      "VERCEL",
+      "DIRECTSIGN_DEMO_MODE",
+      "SUPABASE_URL",
+      "SUPABASE_PUBLISHABLE_KEY",
+      "SUPABASE_SERVICE_ROLE_KEY",
+      "DIRECTSIGN_TOKEN_ENCRYPTION_SECRET",
+    ] as const;
+    const previousEnv = new Map(
+      envNames.map((name) => [name, process.env[name]] as const),
+    );
+    process.env.VERCEL = "1";
+    process.env.DIRECTSIGN_DEMO_MODE = "false";
+    process.env.SUPABASE_URL = "https://admin-mfa-unit-test.supabase.co";
+    process.env.SUPABASE_PUBLISHABLE_KEY = "p".repeat(48);
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "s".repeat(48);
+    process.env.DIRECTSIGN_TOKEN_ENCRYPTION_SECRET = "x".repeat(64);
+
+    try {
+      const {
+        createAdminPendingMfaBindingToken,
+        readAdminPendingMfaBindingToken,
+        verifyAdminPendingMfaBindingToken,
+      } = await import("../server/index");
+      const secret = "binding-secret-".padEnd(64, "z");
+      const nowMs = 10_000;
+      const tokens = new Map(
+        (["production", "qa", "demo", "seed"] as const).map((dataOrigin) => {
+          const candidate = createAdminPendingMfaBindingToken({
+            secret,
+            userId: "user-a",
+            authSessionId: "session-a",
+            factorId: "totp-a",
+            dataOrigin,
+            nowMs,
+          });
+          assert.equal(
+            readAdminPendingMfaBindingToken({
+              token: candidate,
+              secret,
+              nowMs: nowMs + 1,
+            })?.dataOrigin,
+            dataOrigin,
+          );
+          return [dataOrigin, candidate] as const;
+        }),
+      );
+      const token = tokens.get("production")!;
+      const verify = (overrides: {
+        token?: string;
+        secret?: string;
+        userId?: string;
+        authSessionId?: string;
+        nowMs?: number;
+      } = {}) =>
+        verifyAdminPendingMfaBindingToken({
+          token: overrides.token ?? token,
+          secret: overrides.secret ?? secret,
+          userId: overrides.userId ?? "user-a",
+          authSessionId: overrides.authSessionId ?? "session-a",
+          nowMs: overrides.nowMs ?? nowMs + 1,
+        });
+
+      assert.equal(verify(), "totp-a");
+      assert.equal(verify({ userId: "user-b" }), undefined);
+      assert.equal(verify({ authSessionId: "session-b" }), undefined);
+      assert.equal(verify({ secret: "wrong-secret".padEnd(64, "q") }), undefined);
+      assert.equal(verify({ nowMs: nowMs + 10 * 60 * 1000 + 1 }), undefined);
+      const tamperedToken = `${token.slice(0, -1)}${token.endsWith("A") ? "B" : "A"}`;
+      assert.equal(verify({ token: tamperedToken }), undefined);
+
+      const legacyPayload = Buffer.from(
+        JSON.stringify({
+          version: 1,
+          userId: "user-a",
+          authSessionId: "session-a",
+          factorId: "totp-a",
+          issuedAt: nowMs,
+          expiresAt: nowMs + 10 * 60 * 1000,
+        }),
+        "utf8",
+      ).toString("base64url");
+      const legacyToken = `${legacyPayload}.${createHmac("sha256", secret)
+        .update(legacyPayload)
+        .digest("base64url")}`;
+      assert.equal(
+        readAdminPendingMfaBindingToken({
+          token: legacyToken,
+          secret,
+          nowMs: nowMs + 1,
+        })?.dataOrigin,
+        undefined,
+      );
+
+      const invalidOriginPayload = Buffer.from(
+        JSON.stringify({
+          version: 2,
+          userId: "user-a",
+          authSessionId: "session-a",
+          factorId: "totp-a",
+          dataOrigin: "customer-supplied",
+          issuedAt: nowMs,
+          expiresAt: nowMs + 10 * 60 * 1000,
+        }),
+        "utf8",
+      ).toString("base64url");
+      const invalidOriginToken = `${invalidOriginPayload}.${createHmac(
+        "sha256",
+        secret,
+      )
+        .update(invalidOriginPayload)
+        .digest("base64url")}`;
+      assert.equal(
+        readAdminPendingMfaBindingToken({
+          token: invalidOriginToken,
+          secret,
+          nowMs: nowMs + 1,
+        }),
+        undefined,
+      );
+    } finally {
+      for (const name of envNames) {
+        const previous = previousEnv.get(name);
+        if (previous === undefined) delete process.env[name];
+        else process.env[name] = previous;
+      }
+    }
+  });
+
+  it("canonicalizes www to the apex host with a permanent method-preserving redirect", () => {
+    const vercel = JSON.parse(read("vercel.json")) as {
+      redirects?: Array<{
+        source?: string;
+        destination?: string;
+        permanent?: boolean;
+        has?: Array<{ type?: string; value?: string }>;
+      }>;
+    };
+    const redirect = vercel.redirects?.find((candidate) =>
+      candidate.has?.some(
+        (condition) =>
+          condition.type === "host" && condition.value === "www\\.yeollock\\.me",
+      ),
+    );
+
+    assert.ok(redirect);
+    assert.equal(redirect.source, "/:path(.*)");
+    assert.equal(redirect.destination, "https://yeollock.me/:path");
+    assert.equal(redirect.permanent, true);
   });
 
   it("fails closed when Supabase support access audit events cannot be stored", () => {
@@ -1396,7 +2317,9 @@ describe("yeollock.me security regressions", () => {
 
     assert.notEqual(reviewRouteStart, -1);
     assert.notEqual(reviewRouteEnd, -1);
-    assert.match(reviewRoute, /const reviewedByName = adminOperatorName/);
+    assert.match(reviewRoute, /const admin = await requireAdminSession/);
+    assert.match(reviewRoute, /const reviewedByName = admin\.profile\.name/);
+    assert.match(reviewRoute, /reviewedByProfileId: admin\.profile\.id/);
     assert.doesNotMatch(reviewRoute, /request\.body\?\.reviewed_by_name/);
   });
 
@@ -1407,13 +2330,13 @@ describe("yeollock.me security regressions", () => {
     assert.match(builder, /공유 링크 확인 필요/);
     assert.match(
       builder,
-      /disabled=\{result\.stale \|\| isSyncing \|\| Boolean\(syncError\)\}/,
+      /disabled=\{[\s\S]{0,180}result\.stale \|\|[\s\S]{0,80}isSyncing \|\|[\s\S]{0,80}Boolean\(syncError\)/,
     );
     assert.match(builder, /resultSaveState === "ready"[\s\S]+!result\.stale/);
-    assert.match(builder, /buildContractShareUrl/);
+    assert.match(builder, /\/share-link\/reveal/);
   });
 
-  it("builds public share links from configured public site URL", () => {
+  it("builds public share links from the canonical site and step-up reveal endpoint", () => {
     const links = read("src/domain/links.ts");
     const builder = read("src/pages/marketing/ContractBuilder.tsx");
     const adminViewer = read("src/pages/marketing/ContractAdminViewer.tsx");
@@ -1421,9 +2344,55 @@ describe("yeollock.me security regressions", () => {
 
     assert.match(links, /VITE_PUBLIC_SITE_URL/);
     assert.match(links, /buildContractShareUrl/);
-    assert.match(builder, /buildContractShareUrl/);
-    assert.match(adminViewer, /buildContractShareUrl/);
+    assert.match(builder, /\/share-link\/reveal/);
+    assert.doesNotMatch(builder, /buildContractShareUrl|createShareToken/);
+    assert.match(adminViewer, /\/share-link\/reveal/);
+    assert.doesNotMatch(adminViewer, /buildContractShareUrl|createShareToken/);
+    assert.match(adminViewer, /payload\.share_url/);
     assert.match(envExample, /VITE_PUBLIC_SITE_URL="https:\/\/yeollock\.me"/);
+  });
+
+  it("keeps share tokens server-authored and absent from routine client state", () => {
+    const server = read("server/index.ts");
+    const fastAuth = read("lib/fast-auth.ts");
+    const store = read("src/store.ts");
+    const builder = read("src/pages/marketing/ContractBuilder.tsx");
+    const adminViewer = read("src/pages/marketing/ContractAdminViewer.tsx");
+    const normalizeStart = server.indexOf("const normalizeContract =");
+    const normalizeSource = server.slice(
+      normalizeStart,
+      server.indexOf("const normalizeStore", normalizeStart),
+    );
+    const serverAuthorStart = server.indexOf(
+      "const serverAuthorContractShareEvidence",
+    );
+    const serverAuthorSource = server.slice(
+      serverAuthorStart,
+      server.indexOf("const isContractSendAttempt", serverAuthorStart),
+    );
+    const fastProtectionStart = fastAuth.indexOf(
+      "function protectContractForClient",
+    );
+    const fastProtectionSource = fastAuth.slice(
+      fastProtectionStart,
+      fastAuth.indexOf("async function readProfileByEmail", fastProtectionStart),
+    );
+
+    assert.doesNotMatch(normalizeSource, /createShareToken\(/);
+    assert.match(serverAuthorSource, /hasUsableContractShareLink\(existing\)/);
+    assert.match(serverAuthorSource, /createShareToken\(\)/);
+    assert.match(serverAuthorSource, /existing!\.evidence!\.share_token/);
+    assert.match(serverAuthorSource, /actor === "influencer"/);
+    assert.match(serverAuthorSource, /evidence: existing\?\.evidence/);
+    assert.match(server, /!hasUsableContractShareLink\(existing\)/);
+    assert.match(server, /isContractShareRotation/);
+    assert.match(fastProtectionSource, /share_token: undefined/);
+    assert.doesNotMatch(fastProtectionSource, /encryptShareTokenForLegacyStore/);
+    assert.match(store, /share_token: undefined/);
+    assert.doesNotMatch(builder, /createShareToken|buildContractShareUrl/);
+    assert.doesNotMatch(adminViewer, /createShareToken|buildContractShareUrl/);
+    assert.match(builder, /navigator\.clipboard\.writeText\(payload\.share_url\)/);
+    assert.match(adminViewer, /navigator\.clipboard\.writeText\(payload\.share_url\)/);
   });
 
   it("does not keep contracts or share tokens in persistent browser localStorage", () => {
@@ -1442,6 +2411,81 @@ describe("yeollock.me security regressions", () => {
     );
     assert.doesNotMatch(persistConfig, /localStorage/);
     assert.doesNotMatch(persistConfig, /share_token/);
+  });
+
+  it("keeps customer login rolling while separating transient auth failures from logout", () => {
+    assert.equal(userSessionAccessMaxAgeSeconds, 60 * 60);
+    assert.equal(userSessionRollingDays, 30);
+    assert.equal(userSessionRefreshMaxAgeSeconds, 60 * 60 * 24 * 30);
+    assert.equal(userSessionRefreshReuseCacheMs, 10 * 1000);
+
+    for (const status of [408, 425, 429, 500, 502, 503, 504]) {
+      assert.equal(isRetryableSupabaseAuthFailureStatus(status), true);
+      assert.equal(
+        isTerminalSupabaseRefreshFailure({
+          status,
+          code: "refresh_token_not_found",
+        }),
+        false,
+      );
+    }
+    for (const status of [400, 401, 403, 404, 409, 422]) {
+      assert.equal(isRetryableSupabaseAuthFailureStatus(status), false);
+      assert.equal(
+        isTerminalSupabaseRefreshFailure({
+          status,
+          code: "unexpected_failure",
+        }),
+        false,
+      );
+    }
+    assert.equal(
+      isTerminalSupabaseRefreshFailure({
+        status: 400,
+        code: "refresh_token_not_found",
+      }),
+      true,
+    );
+
+    const server = read("server/index.ts");
+    const fastAuth = read("lib/fast-auth.ts");
+    const advertiserGate = read("src/pages/marketing/AdvertiserAuthGate.tsx");
+    const influencerLogin = read("src/pages/influencer/InfluencerLoginPage.tsx");
+
+    assert.match(server, /userSessionRefreshMaxAgeSeconds/);
+    assert.match(fastAuth, /userSessionRefreshMaxAgeSeconds/);
+    assert.match(server, /signal: createSupabaseTimeoutSignal\(\)/);
+    assert.match(server, /SupabaseAuthUserVerificationError/);
+    assert.match(server, /SupabaseSessionRefreshError/);
+    assert.match(server, /AuthSessionTemporarilyUnavailableError/);
+    assert.match(server, /supabaseSessionRefreshInflight/);
+    assert.match(server, /supabaseSessionRefreshReuseCache/);
+    assert.match(server, /getTokenCacheKey\(refreshToken\)/);
+    assert.match(server, /response\.setHeader\("Retry-After", "1"\)/);
+    assert.match(server, /response\.status\(503\)/);
+    assert.match(server, /setPrivateAuthResponseHeaders\(response\)/);
+    assert.match(
+      fastAuth,
+      /response\.setHeader\("Cache-Control", "private, no-store"\)/,
+    );
+    assert.match(fastAuth, /response\.setHeader\("Vary", "Cookie"\)/);
+
+    assert.match(advertiserGate, /const isAuthoritativeLogout/);
+    assert.match(advertiserGate, /response\.status === 401/);
+    assert.match(advertiserGate, /response\.status === 403/);
+    assert.match(advertiserGate, /retryDelayMs/);
+    assert.match(advertiserGate, /<BrandLogo \/>/);
+
+    assert.match(influencerLogin, /apiFetch\("\/api\/influencer\/session"/);
+    assert.match(influencerLogin, /const isAuthoritativeLogout/);
+    assert.match(influencerLogin, /isCheckingSession/);
+    assert.match(influencerLogin, /retryDelayMs/);
+    assert.match(influencerLogin, /<BrandLogo \/>/);
+
+    assert.match(server, /const adminSessionMaxAgeSeconds = 60 \* 60 \* 8/);
+    assert.match(server, /const signedPdfAccessMaxAgeSeconds = 60 \* 10/);
+    assert.doesNotMatch(advertiserGate, /localStorage/);
+    assert.doesNotMatch(influencerLogin, /localStorage/);
   });
 
   it("blocks bearer share tokens from signed PDF downloads", () => {
@@ -1754,6 +2798,218 @@ describe("yeollock.me security regressions", () => {
     ]) {
       assert.doesNotMatch(read(file), /fetch\(\s*["'`]\/api/);
     }
+  });
+
+  it("requires an exact password confirmation before either signup contacts Supabase", () => {
+    const server = read("server/index.ts");
+    const advertiserSignupStart = server.indexOf(
+      'app.post("/api/advertiser/signup"',
+    );
+    const influencerSignupStart = server.indexOf(
+      'app.post("/api/influencer/signup"',
+    );
+    const advertiserSignup = server.slice(
+      advertiserSignupStart,
+      server.indexOf('app.post("/api/advertiser/logout"', advertiserSignupStart),
+    );
+    const influencerSignup = server.slice(
+      influencerSignupStart,
+      server.indexOf('app.post("/api/influencer/logout"', influencerSignupStart),
+    );
+
+    for (const signupSource of [advertiserSignup, influencerSignup]) {
+      const mismatchIndex = signupSource.indexOf(
+        "password !== passwordConfirmation",
+      );
+      const firstSupabaseAuthIndex = Math.min(
+        ...[
+          signupSource.indexOf("createSupabasePasswordSession("),
+          signupSource.indexOf("createSupabaseSignupUser({"),
+        ].filter((index) => index >= 0),
+      );
+
+      assert.notEqual(mismatchIndex, -1);
+      assert.ok(
+        mismatchIndex < firstSupabaseAuthIndex,
+        "password confirmation must be checked before a Supabase Auth request",
+      );
+      assert.match(signupSource, /request\.body\?\.password_confirmation/);
+      assert.match(signupSource, /code: "PASSWORD_CONFIRMATION_MISMATCH"/);
+      assert.match(signupSource, /response\.status\(422\)/);
+    }
+
+    assert.equal(
+      (server.match(/code: "PASSWORD_CONFIRMATION_MISMATCH"/g) ?? []).length,
+      2,
+    );
+  });
+
+  it("returns typed account setup and role mismatch results only after password auth", () => {
+    const server = read("server/index.ts");
+    const advertiserLoginStart = server.indexOf(
+      'app.post("/api/advertiser/login"',
+    );
+    const influencerLoginStart = server.indexOf(
+      'app.post("/api/influencer/login"',
+    );
+    const advertiserLogin = server.slice(
+      advertiserLoginStart,
+      server.indexOf('app.post("/api/advertiser/signup"', advertiserLoginStart),
+    );
+    const influencerLogin = server.slice(
+      influencerLoginStart,
+      server.indexOf('app.post("/api/influencer/signup"', influencerLoginStart),
+    );
+
+    for (const loginSource of [advertiserLogin, influencerLogin]) {
+      const passwordSessionIndex = loginSource.indexOf(
+        "createSupabasePasswordSession(email, password)",
+      );
+      assert.ok(passwordSessionIndex >= 0);
+      assert.match(
+        loginSource,
+        /typeof request\.body\?\.password === "string" \? request\.body\.password : ""/,
+      );
+      assert.doesNotMatch(
+        loginSource,
+        /normalizeRequiredText\(request\.body\?\.password\)/,
+      );
+      assert.ok(
+        loginSource.indexOf('code: "ACCOUNT_SETUP_INCOMPLETE"') >
+          passwordSessionIndex,
+      );
+      assert.ok(
+        loginSource.indexOf('code: "AUTH_ROLE_MISMATCH"') >
+          passwordSessionIndex,
+      );
+      assert.ok(
+        (loginSource.match(/terminateRoleSessionForAuthorizationFailure/g) ?? [])
+          .length >= 2,
+      );
+      assert.match(loginSource, /accessToken: session\.access_token/);
+      assert.match(loginSource, /refreshToken: session\.refresh_token/);
+      assert.match(loginSource, /userId: session\.user\.id/);
+      assert.match(loginSource, /response\.status\(401\)/);
+    }
+
+    assert.match(advertiserLogin, /signup_path: "\/signup\/advertiser"/);
+    assert.match(advertiserLogin, /actual_role: "influencer"/);
+    assert.match(
+      advertiserLogin,
+      /correct_login_path: "\/login\/influencer"/,
+    );
+    assert.match(influencerLogin, /signup_path: "\/signup\/influencer"/);
+    assert.match(influencerLogin, /actual_role: "advertiser"/);
+    assert.match(
+      influencerLogin,
+      /correct_login_path: "\/login\/advertiser"/,
+    );
+  });
+
+  it("recovers a password-verified auth-only advertiser without overwriting profiles", () => {
+    const server = read("server/index.ts");
+    const advertiserSignupStart = server.indexOf(
+      'app.post("/api/advertiser/signup"',
+    );
+    const advertiserSignup = server.slice(
+      advertiserSignupStart,
+      server.indexOf('app.post("/api/advertiser/logout"', advertiserSignupStart),
+    );
+    const mismatchIndex = advertiserSignup.indexOf(
+      "password !== passwordConfirmation",
+    );
+    const recoveryStart = advertiserSignup.indexOf(
+      "let existingPasswordSession",
+    );
+    const regularSignupStart = advertiserSignup.indexOf(
+      "const authUser = await createSupabaseSignupUser",
+    );
+    const recoverySource = advertiserSignup.slice(
+      recoveryStart,
+      regularSignupStart,
+    );
+
+    assert.ok(
+      mismatchIndex >= 0 &&
+        recoveryStart > mismatchIndex &&
+        regularSignupStart > recoveryStart,
+    );
+    assert.match(recoverySource, /createSupabasePasswordSession\(email, password\)/);
+    assert.match(recoverySource, /if \(existingProfile\)/);
+    assert.match(
+      recoverySource,
+      /insertSupabaseV2RowsIgnoringDuplicates\([\s\S]+"profiles"/,
+    );
+    assert.doesNotMatch(recoverySource, /upsertSupabaseV2Rows\(\s*"profiles"/);
+    assert.match(recoverySource, /const recoveredProfile = await readProfileByUserId/);
+    assert.match(recoverySource, /if \(!isAdvertiserRole\(recoveredProfile\.role\)\)/);
+    assert.match(
+      recoverySource,
+      /ensureDefaultOrganizationForAdvertiserProfile\([\s\S]+recoveredProfile/,
+    );
+    assert.match(recoverySource, /recovered_signup: true/);
+    assert.match(recoverySource, /next_path: nextPath/);
+    assert.match(recoverySource, /setAdvertiserSessionCookies/);
+    assert.match(
+      recoverySource,
+      /finally[\s\S]+if \(!keepRecoveredSession\)[\s\S]+revokeTemporarySupabaseSession/,
+    );
+    assert.match(recoverySource, /code: "ACCOUNT_ALREADY_REGISTERED"/);
+    assert.match(recoverySource, /code: "AUTH_ROLE_MISMATCH"/);
+  });
+
+  it("recovers a password-verified auth-only influencer without overwriting profiles", () => {
+    const server = read("server/index.ts");
+    const influencerSignupStart = server.indexOf(
+      'app.post("/api/influencer/signup"',
+    );
+    const influencerSignup = server.slice(
+      influencerSignupStart,
+      server.indexOf('app.post("/api/influencer/logout"', influencerSignupStart),
+    );
+    const recoveryStart = influencerSignup.indexOf(
+      "let existingPasswordSession",
+    );
+    const regularSignupStart = influencerSignup.indexOf(
+      "const authUser = await createSupabaseSignupUser",
+    );
+    const recoverySource = influencerSignup.slice(
+      recoveryStart,
+      regularSignupStart,
+    );
+    const signupUserHelperStart = server.indexOf(
+      "const createSupabaseSignupUser",
+    );
+    const signupUserHelper = server.slice(
+      signupUserHelperStart,
+      server.indexOf(
+        "const requestSupabasePasswordRecovery",
+        signupUserHelperStart,
+      ),
+    );
+
+    assert.ok(recoveryStart >= 0 && regularSignupStart > recoveryStart);
+    assert.match(recoverySource, /createSupabasePasswordSession\(email, password\)/);
+    assert.match(recoverySource, /if \(existingProfile\)/);
+    assert.match(
+      recoverySource,
+      /insertSupabaseV2RowsIgnoringDuplicates\([\s\S]+"profiles"/,
+    );
+    assert.doesNotMatch(recoverySource, /upsertSupabaseV2Rows\(/);
+    assert.match(recoverySource, /const recoveredProfile = await readProfileByUserId/);
+    assert.match(recoverySource, /if \(!isInfluencerRole\(recoveredProfile\.role\)\)/);
+    assert.match(recoverySource, /recovered_signup: true/);
+    assert.match(
+      influencerSignup,
+      /const nextPath = normalizeSignupNextPath\([\s\S]+request\.body\?\.next_path,[\s\S]+"influencer",[\s\S]+\)/,
+    );
+    assert.match(recoverySource, /next_path: nextPath/);
+    assert.match(recoverySource, /setInfluencerSessionCookies/);
+    assert.match(recoverySource, /revokeTemporarySupabaseSession/);
+    assert.match(
+      signupUserHelper,
+      /Array\.isArray\(authUser\.identities\)[\s\S]+authUser\.identities\.length === 0/,
+    );
   });
 
   it("moves advertiser login to the destination shell before waiting for authentication response", () => {
@@ -2557,7 +3813,7 @@ describe("yeollock.me security regressions", () => {
     assert.match(legalPage, /별도 서면, 공증, 인감, 원본 제출/);
   });
 
-  it("keeps verification automation optional until provider registration", () => {
+  it("keeps verification provider credentials optional with strict fallback", () => {
     const server = read("server/index.ts");
     const envExample = read(".env.example");
     const influencerVerification = read(
@@ -2567,7 +3823,7 @@ describe("yeollock.me security regressions", () => {
 
     assert.match(envExample, /NTS_BUSINESS_STATUS_API_KEY=""/);
     assert.match(envExample, /NTS_BUSINESS_VALIDATE_API_KEY=""/);
-    assert.match(envExample, /VERIFICATION_AUTO_APPROVE_BUSINESS="false"/);
+    assert.match(envExample, /VERIFICATION_AUTO_APPROVE_BUSINESS="true"/);
     assert.match(envExample, /VERIFICATION_AUTO_APPROVE_PLATFORM="false"/);
     assert.match(envExample, /YOUTUBE_DATA_API_KEY=""/);
     assert.match(envExample, /NAVER_CLIENT_ID=""/);
@@ -2602,12 +3858,384 @@ describe("yeollock.me security regressions", () => {
     assert.match(server, /provider: "tiktok_login_kit"/);
     assert.match(server, /provider: "instagram_messaging_webhook"/);
     assert.match(server, /"instagram_dm_code"/);
-    assert.match(server, /runInstagramDmManualCheck/);
+    assert.match(server, /runInstagramDmWebhookCheck/);
+    assert.doesNotMatch(server, /pending operator review|approve manually/);
     assert.match(server, /business_registration: businessAutomationCheck/);
     assert.match(server, /platform_account: platformAutomationCheck/);
     assert.match(influencerVerification, /Instagram DM 인증/);
-    assert.match(influencerVerification, /OFFICIAL_INSTAGRAM_HANDLE/);
-    assert.match(adminDashboard, /Instagram DM 수동 확인/);
+    assert.match(influencerVerification, /instagramDmChallenge\.official_handle/);
+    assert.match(influencerVerification, /instagramDmChallenge\.official_url/);
+    assert.match(adminDashboard, /Instagram DM 인증/);
+  });
+
+  it("keeps Instagram DM ownership challenges server-issued, exact, and one-time", () => {
+    const server = read("server/index.ts");
+    const adminDashboard = read("src/pages/admin/SystemAdminDashboard.tsx");
+    const instagramDmModule = read("server/instagram-dm-verification.ts");
+    const influencerVerification = read(
+      "src/pages/influencer/InfluencerVerification.tsx",
+    );
+    const envExample = read(".env.example");
+    const migration = read(
+      "supabase/migrations/20260802090000_add_instagram_dm_challenge_automation.sql",
+    );
+    const lifecycleMigration = read(
+      "supabase/migrations/20260802091000_enforce_instagram_dm_challenge_lifecycle.sql",
+    );
+    const atomicMigration = read(
+      "supabase/migrations/20260802092000_add_atomic_instagram_dm_transitions.sql",
+    );
+    const webhookStart = server.indexOf("const verifyMetaWebhookSignature");
+    const webhookSource = `${instagramDmModule}\n${server.slice(
+      webhookStart,
+      server.indexOf("const latestVerificationForTarget", webhookStart),
+    )}`;
+    const influencerRouteStart = server.indexOf(
+      'app.post("/api/verification/influencer"',
+    );
+    const influencerRouteSource = server.slice(
+      influencerRouteStart,
+      server.indexOf('app.get("/api/admin/verification-requests"', influencerRouteStart),
+    );
+    const automationPlanStart = server.indexOf(
+      "const buildVerificationAutomationPlan",
+    );
+    const automationPlanSource = server.slice(
+      automationPlanStart,
+      server.indexOf("const buildNotConfiguredAutomationResult", automationPlanStart),
+    );
+    const operationalTestStart = server.indexOf(
+      "const isOperationalTestVerificationRequest",
+    );
+    const operationalTestSource = server.slice(
+      operationalTestStart,
+      server.indexOf("const normalizeSelectedValues", operationalTestStart),
+    );
+    const verificationAlertStart = server.indexOf(
+      "const enqueueVerificationOperationalAlert",
+    );
+    const verificationAlertSource = server.slice(
+      verificationAlertStart,
+      server.indexOf("const enqueueSupportTicketOperationalAlert", verificationAlertStart),
+    );
+    const retryingProviderRecord = {
+      id: "11111111-1111-4111-8111-111111111111",
+      profile_id: "influencer-owner-1",
+      target_id: "influencer-owner-1",
+      created_at: "2026-08-02T02:55:00.000Z",
+      status: "pending",
+      platform: "instagram",
+      platform_handle: "creator.name",
+      platform_url: "https://instagram.com/creator.name",
+      ownership_verification_method: "instagram_dm_code",
+      ownership_challenge_code_hash: "hash:active",
+      ownership_challenge_code_ciphertext: "cipher:active",
+      ownership_challenge_consumed_at: null,
+      ownership_challenge_expires_at: "2026-08-02T03:10:00.000Z",
+    };
+    const retryingProviderState = () => "retrying_provider";
+
+    assert.match(envExample, /VERIFICATION_AUTO_APPROVE_INSTAGRAM_DM="false"/);
+    assert.match(envExample, /META_INSTAGRAM_ACCESS_TOKEN=""/);
+    assert.match(envExample, /META_INSTAGRAM_ACCESS_TOKEN_EXPIRES_AT=""/);
+    assert.match(server, /const instagramDmChallengeTtlMs = 10 \* 60 \* 1000/);
+    assert.match(server, /const createInstagramDmChallengeCode/);
+    assert.match(server, /randomBytes\(8\)/);
+    assert.match(server, /hashInstagramDmChallengeCode/);
+    assert.match(server, /encryptInstagramDmChallengeCode/);
+    assert.match(server, /decryptInstagramDmChallengeCode/);
+    assert.match(server, /readActiveInstagramDmChallenge/);
+    assert.match(server, /aes-256-gcm/);
+    assert.match(server, /VERIFICATION_AUTO_APPROVE_INSTAGRAM_DM === "true"/);
+    assert.match(
+      automationPlanSource,
+      /instagramDmRuntimeEnv\.every\(\(name\) => hasText\(process\.env\[name\]\)\)/,
+    );
+    assert.match(automationPlanSource, /instagramDmTokenExpiry > Date\.now\(\)/);
+    assert.match(
+      automationPlanSource,
+      /process\.env\.VERIFICATION_AUTO_APPROVE_INSTAGRAM_DM === "true"/,
+    );
+    assert.match(
+      influencerRouteSource,
+      /isInstagramDmMethod[\s\S]+createInstagramDmChallengeCode\(\)/,
+    );
+    assert.match(
+      influencerRouteSource,
+      /Cache-Control", "private, no-store"/,
+    );
+    assert.match(
+      influencerRouteSource,
+      /INSTAGRAM_DM_AUTOMATION_UNAVAILABLE/,
+    );
+    assert.match(
+      influencerRouteSource,
+      /const isOperationalTestSubmission =[\s\S]+hasOperationalTestEmail[\s\S]+hasOperationalTestMarker/,
+    );
+    assert.match(
+      influencerRouteSource,
+      /enqueueInstagramDmAutomationUnavailableAlert\([\s\S]{0,180}isOperationalTestSubmission/,
+    );
+    assert.match(influencerRouteSource, /readActiveInstagramDmChallenge/);
+    assert.match(
+      influencerRouteSource,
+      /const platformHandle = isInstagramDmMethod\s+\? instagramDmUsername/,
+    );
+    assert.match(
+      influencerRouteSource,
+      /`https:\/\/www\.instagram\.com\/\$\{instagramDmUsername\}\//,
+    );
+    assert.match(
+      influencerRouteSource,
+      /catch \(error\) \{\s+if \(isInstagramDmMethod\)/,
+    );
+    assert.match(influencerRouteSource, /ownership_challenge_code_hash/);
+    assert.match(influencerRouteSource, /ownership_challenge_code_ciphertext/);
+    assert.match(
+      influencerRouteSource,
+      /ownership_challenge_code: isInstagramDmMethod[\s\S]{0,100}\? undefined/,
+    );
+    assert.match(influencerRouteSource, /instagram_dm_challenge/);
+    assert.match(influencerRouteSource, /request\.query\.request_id/);
+    assert.ok(
+      influencerRouteSource.indexOf("record = await insertVerificationRequest") <
+        influencerRouteSource.indexOf(
+          "await supersedeActiveInstagramDmChallengeForFallback",
+        ),
+      "alternate request must be stored before the previous DM challenge is superseded",
+    );
+    assert.match(
+      influencerRouteSource,
+      /\/api\/verification\/influencer\/instagram-dm-challenge/,
+    );
+    assert.match(webhookSource, /isStillAuthoritative/);
+    assert.match(webhookSource, /freshSupabase: true/);
+    assert.match(
+      influencerVerification,
+      /fetchInstagramDmChallenge\(requestId\)/,
+    );
+    assert.match(
+      influencerVerification,
+      /challenge\.request_id !== requestId/,
+    );
+    assert.match(webhookSource, /expectedRecipientId/);
+    assert.match(webhookSource, /recipientId !== expectedRecipientId/);
+    assert.match(webhookSource, /message\?\.is_echo === true/);
+    assert.match(webhookSource, /https:\/\/graph\.instagram\.com/);
+    assert.match(webhookSource, /Authorization: `Bearer \$\{metaInstagramAccessToken\}`/);
+    assert.match(webhookSource, /senderUsername !== requestedHandle/);
+    assert.match(webhookSource, /profileUrlHandle !== requestedHandle/);
+    assert.match(webhookSource, /status=eq\.pending/);
+    assert.match(webhookSource, /ownership_challenge_consumed_at=is\.null/);
+    assert.match(webhookSource, /ownership_challenge_expires_at=gt\./);
+    assert.match(webhookSource, /Prefer: "return=representation"/);
+    assert.match(webhookSource, /ownership_challenge_code_ciphertext: null/);
+    assert.match(webhookSource, /delete instagramDm\.failure_reason/);
+    assert.match(webhookSource, /Promise\.allSettled/);
+    assert.match(
+      webhookSource,
+      /rpc\/directsign_consume_instagram_dm_challenge/,
+    );
+    assert.match(webhookSource, /enqueueInstagramDmFailureOperationalAlert\(saved, reason\)\.catch/);
+    assert.match(instagramDmModule, /"retrying_provider"/);
+    assert.match(
+      operationalTestSource,
+      /if \(explicitOrigin === true\) return true/,
+    );
+    assert.doesNotMatch(
+      operationalTestSource,
+      /if \(explicitOrigin !== undefined\) return explicitOrigin/,
+    );
+    assert.match(operationalTestSource, /hasOperationalTestEmail/);
+    assert.match(operationalTestSource, /hasOperationalTestMarker/);
+    assert.match(server, /isOperationalTest: isOperationalTestVerificationRequest/);
+    assert.match(
+      verificationAlertSource,
+      /const enqueueVerificationOperationalAlert[\s\S]+isOperationalTestVerificationRequest\(record\)/,
+    );
+    assert.match(
+      verificationAlertSource,
+      /const enqueueInstagramDmFailureOperationalAlert[\s\S]+isOperationalTestVerificationRequest\(record\)/,
+    );
+    assert.equal(
+      isAwaitingInstagramDmRestoreRecord(
+        retryingProviderRecord,
+        new Date("2026-08-02T03:00:00.000Z").getTime(),
+        retryingProviderState,
+      ),
+      true,
+    );
+    assert.equal(
+      selectInstagramDmRestoreRecord([retryingProviderRecord], {
+        nowMs: new Date("2026-08-02T03:00:00.000Z").getTime(),
+        getChallengeState: retryingProviderState,
+      })?.id,
+      retryingProviderRecord.id,
+    );
+    assert.equal(
+      isActionableInstagramDmManualReview(
+        retryingProviderRecord,
+        [retryingProviderRecord],
+        retryingProviderState,
+      ),
+      false,
+    );
+    assert.match(server, /enqueueInstagramDmFailureOperationalAlert/);
+    assert.match(server, /인증 코드 만료/);
+    assert.match(server, /제출 계정과 DM 발신 계정 불일치/);
+    assert.match(server, /Meta 발신자 조회 일시 실패/);
+    assert.match(server, /enqueueInstagramDmTokenExpiryOperationalAlert/);
+    assert.match(server, /const isActionableManualVerificationRequest/);
+    assert.match(
+      server,
+      /Instagram DM verification is still waiting for the signed webhook/,
+    );
+    assert.match(
+      adminDashboard,
+      /isVisiblePendingVerificationRequest\(request, verificationRequests\)/,
+    );
+    assert.match(adminDashboard, /function isInstagramDmProviderRetryRequest/);
+    assert.match(
+      adminDashboard,
+      /getInstagramDmState\(request\) === "retrying_provider"/,
+    );
+    assert.match(
+      adminDashboard,
+      /const canReview = isActionableManualVerificationRequest/,
+    );
+    assert.match(adminDashboard, /const linkedItemMissing/);
+    assert.match(adminDashboard, /현재 작업 대상이 아닙니다/);
+    assert.doesNotMatch(
+      adminDashboard,
+      /find\(\(item\) => item\.key === selectedItemKey\) \?\?\s+visibleItems\[0\]/,
+    );
+    assert.match(server, /hasNewerInstagramVerificationRequestForSameHandle/);
+    assert.match(
+      server,
+      /Instagram DM verification is retried only by the signed webhook/,
+    );
+    assert.match(
+      server,
+      /A newer Instagram ownership verification request is authoritative/,
+    );
+    assert.match(
+      adminDashboard,
+      /request\.ownership_verification_method !==\s+"instagram_dm_code"/,
+    );
+    assert.match(server, /const ownershipVerifierUserAgent = "yeollock-ownership-verifier\/1\.0"/);
+    assert.doesNotMatch(server, /`\$\{productName\} ownership verifier`/);
+    assert.match(migration, /add value if not exists 'instagram_dm_code'/);
+    assert.match(migration, /ownership_challenge_code_hash text/);
+    assert.match(migration, /ownership_challenge_code_ciphertext text/);
+    assert.match(migration, /ownership_challenge_expires_at timestamptz/);
+    assert.match(migration, /ownership_challenge_consumed_at timestamptz/);
+    assert.match(migration, /verification_requests_active_challenge_hash_idx/);
+    assert.match(migration, /verification_requests_one_active_instagram_dm_idx/);
+    assert.match(migration, /regexp_replace\(platform_handle, '\^@\+', ''\)/);
+    assert.match(server, /rpc\/directsign_review_instagram_dm_challenge/);
+    assert.match(
+      atomicMigration,
+      /lock table public\.verification_requests in share row exclusive mode/,
+    );
+    assert.match(
+      atomicMigration,
+      /directsign_consume_instagram_dm_challenge[\s\S]+not exists/,
+    );
+    assert.match(
+      atomicMigration,
+      /directsign_review_instagram_dm_challenge[\s\S]+not exists/,
+    );
+    assert.match(
+      atomicMigration,
+      /revoke all on function[\s\S]+from public, anon, authenticated/,
+    );
+    assert.match(atomicMigration, /to service_role/);
+    assert.match(
+      server,
+      /isInstagramDmTerminalReview[\s\S]+ownership_challenge_code_hash: null[\s\S]+ownership_challenge_code_ciphertext: null/,
+    );
+    assert.match(
+      server,
+      /isInstagramDmTerminalReview \? "&status=eq\.pending"/,
+    );
+    assert.match(
+      lifecycleMigration,
+      /verification_requests_terminal_dm_challenge_cleared_chk/,
+    );
+    assert.match(lifecycleMigration, /or status = 'pending'/);
+    assert.match(lifecycleMigration, /ownership_challenge_code_hash is null/);
+    assert.match(
+      lifecycleMigration,
+      /ownership_challenge_code_ciphertext is null/,
+    );
+  });
+
+  it("uses strict three-field NTS advertiser verification before document fallback", () => {
+    const server = read("server/index.ts");
+    const advertiserVerification = read(
+      "src/pages/marketing/AdvertiserVerification.tsx",
+    );
+    const adminDashboard = read("src/pages/admin/SystemAdminDashboard.tsx");
+    const legalPage = read("src/pages/legal/LegalDocumentPage.tsx");
+    const agents = read("AGENTS.md");
+    const automationStart = server.indexOf(
+      "const runBusinessRegistrationAutomationCheck",
+    );
+    const automationSource = server.slice(
+      automationStart,
+      server.indexOf("const buildNotConfiguredAutomationResult", automationStart),
+    );
+    const routeStart = server.indexOf(
+      'app.post("/api/verification/advertiser"',
+    );
+    const routeSource = server.slice(
+      routeStart,
+      server.indexOf('app.post("/api/verification/influencer"', routeStart),
+    );
+
+    assert.match(server, /check\.profile\?\.business_status_code === "01"/);
+    assert.match(server, /check\.profile\?\.validate_status === "matched"/);
+    assert.match(server, /process\.env\.VERIFICATION_AUTO_APPROVE_BUSINESS !== "false"/);
+    assert.match(automationSource, /Promise\.all\(/);
+    assert.match(automationSource, /start_dt: businessStartDate/);
+    assert.match(automationSource, /p_nm: representativeName/);
+    assert.doesNotMatch(automationSource, /b_nm|subjectName/);
+    assert.match(automationSource, /statusResult\?\.b_stt_cd === "01"/);
+    assert.match(automationSource, /!statusPayloadValid \|\| !validatePayloadValid/);
+
+    assert.match(routeSource, /submissionMode === "automatic"/);
+    assert.match(routeSource, /outcome: "evidence_required"/);
+    assert.match(routeSource, /outcome: autoApprove \? "approved" : "pending_manual_review"/);
+    assert.match(routeSource, /verification_method: autoApprove \? "nts_three_field"/);
+    assert.match(routeSource, /Cache-Control", "private, no-store"/);
+    assert.ok(
+      routeSource.indexOf('outcome: "evidence_required"') <
+        routeSource.indexOf("insertVerificationRequest"),
+    );
+    assert.match(
+      routeSource,
+      /!autoApprove && evidenceFile[\s\S]+storeEvidenceFile/,
+    );
+
+    for (const label of ["사업자등록번호", "대표자명", "개업일자"]) {
+      assert.match(advertiserVerification, new RegExp(`label="${label}"`));
+    }
+    assert.match(advertiserVerification, /submission_mode: submissionMode/);
+    assert.match(advertiserVerification, /data\.outcome === "evidence_required"/);
+    assert.match(advertiserVerification, /\{activeFallback \? \(/);
+    assert.doesNotMatch(advertiserVerification, /label="회사\/브랜드명"/);
+    assert.doesNotMatch(advertiserVerification, /label="담당자명"/);
+    assert.doesNotMatch(advertiserVerification, /label="담당자 이메일"/);
+    assert.doesNotMatch(advertiserVerification, /보통 1영업일/);
+
+    assert.match(adminDashboard, /서류 전환 사유/);
+    assert.match(adminDashboard, /business_start_date/);
+    assert.match(adminDashboard, /request\.representative_name/);
+    assert.match(legalPage, /국세청 자동 확인이 되지 않는 경우에만 증빙 파일/);
+    assert.match(
+      agents,
+      /default advertiser business-verification path is an immediate National Tax Service check/,
+    );
   });
 
   it("keeps Kim Jaewoo UI guardrails aligned with rendered copy", () => {
@@ -2631,6 +4259,7 @@ describe("yeollock.me security regressions", () => {
     const dashboardSurfaceSwitch = read(
       "src/components/DashboardSurfaceSwitch.tsx",
     );
+    const dashboardSurfaces = read("src/domain/dashboardSurfaces.ts");
     const mobileSurfaceSwitch = read("src/components/MobileSurfaceSwitch.tsx");
     const advertiserDashboard = read("src/pages/marketing/Dashboard.tsx");
     const influencerDashboard = read(
@@ -2650,6 +4279,7 @@ describe("yeollock.me security regressions", () => {
     );
     const app = read("src/App.tsx");
     const marketplaceDomain = read("src/domain/marketplace.ts");
+    const influencerSearch = read("src/domain/marketplaceInfluencerSearch.ts");
     const packageJson = JSON.parse(read("package.json")) as {
       scripts?: Record<string, string>;
     };
@@ -2778,7 +4408,7 @@ describe("yeollock.me security regressions", () => {
     );
     assert.match(
       kimGuardrails,
-      /public marketplace cache falls back after cold Supabase timeout/,
+      /public marketplace cache keeps influencer totals exact and other fallbacks safe/,
     );
     assert.match(
       kimGuardrails,
@@ -3019,13 +4649,29 @@ describe("yeollock.me security regressions", () => {
       /광고 계약을 만들 광고주인지, 받은 계약을 검토할 인플루언서인지 선택해 주세요/,
     );
     assert.match(mobileSurfaceSwitch, /data-mobile-surface-switch/);
-    assert.match(mobileSurfaceSwitch, /\/advertiser\/campaigns/);
-    assert.match(mobileSurfaceSwitch, /\/influencer\/campaigns/);
+    assert.match(mobileSurfaceSwitch, /DASHBOARD_SURFACE_ITEMS/);
     assert.match(dashboardSurfaceSwitch, /data-dashboard-surface-switch/);
     assert.match(dashboardSurfaceSwitch, /data-dashboard-surface-active/);
     assert.match(dashboardSurfaceSwitch, /인플루언서 대시보드 전환/);
-    assert.match(dashboardSurfaceSwitch, /href: "\/influencer\/dashboard"/);
-    assert.match(dashboardSurfaceSwitch, /href: "\/influencer\/campaigns"/);
+    assert.match(dashboardSurfaceSwitch, /DASHBOARD_SURFACE_ITEMS/);
+    assert.match(dashboardSurfaces, /href: "\/influencer\/dashboard"/);
+    assert.match(dashboardSurfaces, /href: "\/influencer\/campaigns"/);
+    assert.ok(
+      dashboardSurfaces.indexOf(
+        '{ id: "campaigns", label: "캠페인", href: "/advertiser/campaigns" }',
+      ) <
+        dashboardSurfaces.indexOf(
+          '{ id: "contracts", label: "1:1 계약", href: "/advertiser/dashboard" }',
+        ),
+    );
+    assert.ok(
+      dashboardSurfaces.indexOf(
+        '{ id: "campaigns", label: "캠페인", href: "/influencer/campaigns" }',
+      ) <
+        dashboardSurfaces.indexOf(
+          '{ id: "contracts", label: "1:1 계약", href: "/influencer/dashboard" }',
+        ),
+    );
     assert.match(
       advertiserDashboard,
       /<DashboardSurfaceSwitch role="advertiser" active=\{surface\} \/>/,
@@ -3033,6 +4679,24 @@ describe("yeollock.me security regressions", () => {
     assert.match(
       influencerDashboard,
       /<DashboardSurfaceSwitch role="influencer" active="contracts" \/>/,
+    );
+    assert.match(influencerDashboard, /인스타그램 계정 인증하기/);
+    assert.match(influencerDashboard, /인증 계속하기/);
+    assert.doesNotMatch(influencerDashboard, /인증한 플랫폼 없음/);
+    assert.match(
+      influencerVerification,
+      /<DashboardSurfaceSwitch role="influencer" \/>/,
+    );
+    assert.match(
+      influencerVerification,
+      /<MobileSurfaceSwitch role="influencer" \/>/,
+    );
+    assert.doesNotMatch(influencerVerification, /label="이름\/활동명"/);
+    assert.doesNotMatch(influencerVerification, /label="연락 이메일"/);
+    assert.doesNotMatch(influencerVerification, /서명 조건/);
+    assert.match(
+      server,
+      /const submittedByEmail =\s+influencerAuth\.profile\.email \?\? influencerAuth\.user\.email/,
     );
     assert.match(
       campaignPages,
@@ -3053,8 +4717,8 @@ describe("yeollock.me security regressions", () => {
       /const \[categoryFilters, setCategoryFilters\]/,
     );
     assert.match(
-      marketplacePages,
-      /hasAnyCategory\(profile\.categories, categoryFilters\)/,
+      influencerSearch,
+      /categoryFilters\.has\(getCategoryFilterKey\(category\)\)/,
     );
     assert.match(marketplacePages, /function getCategoryFilterKey/);
     assert.match(marketplacePages, /MARKETPLACE_CREATOR_CATEGORY_OPTIONS/);
@@ -3075,16 +4739,19 @@ describe("yeollock.me security regressions", () => {
       /Paginated influencer discovery filters must be applied by the server/,
     );
     assert.match(server, /readMarketplaceInfluencerPlatformFilter/);
-    assert.match(server, /platform: options\.platform/);
+    assert.match(
+      server,
+      /const profileFilters = \{ \.\.\.filters, platform \}/,
+    );
     assert.match(server, /readPublicMarketplaceInfluencerProfileByHandle/);
     assert.match(
       marketplacePages,
-      /useMarketplaceInfluencers\(platformFilter, savedOnly\)/,
+      /useMarketplaceInfluencers\([\s\S]+platformFilter,[\s\S]+savedOnly,[\s\S]+query,[\s\S]+categoryFilters,[\s\S]+countryFilters/,
     );
     assert.match(marketplacePages, /requestGenerationRef/);
     assert.match(
       marketplacePages,
-      /&platform=\$\{encodeURIComponent\(platformFilter\)\}/,
+      /searchParams\.set\("platform", platformFilter\)/,
     );
     assert.match(marketplacePages, /data-influencer-table-scroll="true"/);
     assert.match(marketplacePages, /data-influencer-list-scroll="true"/);
@@ -3325,7 +4992,11 @@ describe("yeollock.me security regressions", () => {
       "오브레 릴스 정산 완료 계약",
     );
     assert.match(authLoginScreen, /disabled:!bg-neutral-200/);
-    assert.match(advertiserVerification, /\{!approved && \(/);
+    assert.match(advertiserVerification, /showApprovedOverview \?/);
+    assert.equal(
+      (advertiserVerification.match(/사업자 인증 완료/g) ?? []).length,
+      1,
+    );
     assert.doesNotMatch(
       influencerVerification,
       /InfoRow\s+label="현재 상태"\s+value="인증 완료"/,
@@ -3391,8 +5062,9 @@ describe("yeollock.me security regressions", () => {
     );
     assert.match(
       server,
-      /matchingDbProfiles\.length > 0[\s\S]*matchingDbProfiles\.slice\(offset, offset \+ limit\)[\s\S]*fallbackProfiles\.slice\(offset, offset \+ limit\)/,
+      /readPublicMarketplaceCache\([\s\S]+"marketplace-influencers",[\s\S]+readMarketplaceInfluencerProfileCollection/,
     );
+    assert.match(server, /paginateMarketplaceInfluencerProfiles\(profiles/);
     assert.match(
       server,
       /visibleDbProfiles\.length > 0[\s\S]*fallbackMarketplaceBrandProfiles\(\)/,
@@ -3402,7 +5074,7 @@ describe("yeollock.me security regressions", () => {
     assert.match(server, /Vercel-Cache-Tag/);
     assert.match(
       server,
-      /sendPublicMarketplaceJson\(response, \{ profiles \}, "marketplace-influencers"\)/,
+      /sendPublicMarketplaceJson\(response, page, "marketplace-influencers"\)/,
     );
     assert.match(
       server,
@@ -4089,7 +5761,7 @@ describe("yeollock.me security regressions", () => {
     const nextPathStart = server.indexOf("const signupNextPathRules");
     const nextPathSource = server.slice(
       nextPathStart,
-      server.indexOf("const getAdminSessionFromRequest", nextPathStart),
+      server.indexOf("const getBearerToken", nextPathStart),
     );
     const campaignCreateStart = server.indexOf(
       "const upsertAdvertiserMarketplaceCampaign",
@@ -4171,7 +5843,11 @@ describe("yeollock.me security regressions", () => {
     assert.doesNotMatch(server, /location:\s*"한국"/);
     assert.match(
       collector,
-      /const canBeActive = hasCountrySignal && hasRequiredTikTokSignal/,
+      /row\.platform === "naver_blog" \|\|\s*\(hasCountrySignal && hasRequiredTikTokSignal\)/,
+    );
+    assert.doesNotMatch(
+      collector,
+      /platform:\s*"naver_blog"[\s\S]{0,1200}audience_countries:\s*\["south_korea"\]/,
     );
     assert.match(collector, /existingSameId\?\.status === "hidden"/);
     assert.match(collector, /existingEvidence\.countryLock === true/);

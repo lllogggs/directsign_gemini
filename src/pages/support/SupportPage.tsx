@@ -1,5 +1,5 @@
 import { type FormEvent, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router";
 import { ArrowLeft, CheckCircle2 } from "lucide-react";
 import { LogoMark } from "../../components/BrandLogo";
 import { apiFetch } from "../../domain/api";

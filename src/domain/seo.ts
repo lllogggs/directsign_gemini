@@ -323,7 +323,7 @@ const getRouteSeoConfig = (pathname: string): RouteSeoConfig => {
     "/en/creators": {
       title: `Korean brand deals for creators - ${PRODUCT_NAME}`,
       description:
-        "Review K-brand terms, sign online, and keep proof with Yeollock.",
+        "Review K-brand terms, sign online, and keep proof with 연락미.",
       canonicalPath: "/en/creators",
       robots: publicRobotsContent,
       htmlLang: "en",
@@ -332,7 +332,7 @@ const getRouteSeoConfig = (pathname: string): RouteSeoConfig => {
     "/ja/creators": {
       title: `韓国ブランド案件を契約まで明確に - ${PRODUCT_NAME}`,
       description:
-        "Yeollockで韓国ブランドの募集条件、電子署名、PDF証拠保管まで一つの場所で確認できます。",
+        "연락미で韓国ブランドの募集条件、電子署名、PDF証拠保管まで一つの場所で確認できます。",
       canonicalPath: "/ja/creators",
       robots: publicRobotsContent,
       htmlLang: "ja",
@@ -341,7 +341,7 @@ const getRouteSeoConfig = (pathname: string): RouteSeoConfig => {
     "/zh/creators": {
       title: `韩国品牌合作，签约前说清楚 - ${PRODUCT_NAME}`,
       description:
-        "通过 Yeollock 查看韩国品牌活动条件、在线签署，并统一保存合同 PDF 与合作证据。",
+        "通过 연락미 查看韩国品牌活动条件、在线签署，并统一保存合同 PDF 与合作证据。",
       canonicalPath: "/zh/creators",
       robots: publicRobotsContent,
       htmlLang: "zh-CN",
@@ -480,7 +480,7 @@ const publicSearchIntentPages: Record<string, IntentAwareSeoCopy> = {
   "/en/creators": {
     title: `Korean brand deals for creators | ${PRODUCT_NAME}`,
     description:
-      "Review K-brand terms, sign online, and keep proof with Yeollock.",
+      "Review K-brand terms, sign online, and keep proof with 연락미.",
     canonicalPath: "/en/creators",
     robots: publicRobotsContent,
     htmlLang: "en",
@@ -490,7 +490,7 @@ const publicSearchIntentPages: Record<string, IntentAwareSeoCopy> = {
   "/ja/creators": {
     title: `韓国ブランド案件を契約まで明確に | ${PRODUCT_NAME}`,
     description:
-      "韓国ブランドの募集条件、電子署名、PDF証拠保管までYeollockで一つに整理できます。",
+      "韓国ブランドの募集条件、電子署名、PDF証拠保管まで연락미で一つに整理できます。",
     canonicalPath: "/ja/creators",
     robots: publicRobotsContent,
     htmlLang: "ja",
@@ -500,7 +500,7 @@ const publicSearchIntentPages: Record<string, IntentAwareSeoCopy> = {
   "/zh/creators": {
     title: `韩国品牌合作，签约前说清楚 | ${PRODUCT_NAME}`,
     description:
-      "创作者可以通过 Yeollock 查看韩国品牌活动条件、在线签署，并统一保存合同 PDF 与合作证据。",
+      "创作者可以通过 연락미 查看韩国品牌活动条件、在线签署，并统一保存合同 PDF 与合作证据。",
     canonicalPath: "/zh/creators",
     robots: publicRobotsContent,
     htmlLang: "zh-CN",

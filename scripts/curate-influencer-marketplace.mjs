@@ -6,6 +6,7 @@ import {
   classifyDiscoveredInfluencerAccount,
   normalizeMarketplaceCreatorCategories,
 } from "../src/domain/influencerDiscoveryQuality.js";
+import { reserveNaverSearchRequest } from "./lib/naver-search-budget.mjs";
 
 dotenv.config({ path: ".env.local" });
 dotenv.config();
@@ -285,6 +286,19 @@ async function queryNaverAccountEvidence(
   if (naverQuotaExhausted) return NAVER_QUOTA_EXHAUSTED;
   await waitForNaverRequestSlot();
   if (naverQuotaExhausted) return NAVER_QUOTA_EXHAUSTED;
+  const reservation = await reserveNaverSearchRequest(
+    "/v1/search/webkr.json",
+  );
+  if (!reservation.allowed) {
+    naverQuotaExhausted = true;
+    if (!naverQuotaWarningShown) {
+      console.warn(
+        "Naver Search daily budget is exhausted or unavailable; cached progress will be saved and non-Naver work will continue.",
+      );
+      naverQuotaWarningShown = true;
+    }
+    return NAVER_QUOTA_EXHAUSTED;
+  }
   const query = [
     row.display_name,
     ...(targeted ? [] : [row.platform_handle]),
@@ -312,7 +326,7 @@ async function queryNaverAccountEvidence(
       naverQuotaExhausted = true;
       if (!naverQuotaWarningShown) {
         console.warn(
-          "Naver Search daily quota exhausted; cached progress will be saved and remaining handles will resume on the next run.",
+          "Naver Search daily quota exhausted; cached progress will be saved and non-Naver work will continue.",
         );
         naverQuotaWarningShown = true;
       }

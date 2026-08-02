@@ -337,7 +337,7 @@ export const createEvidence = (
     ...overrides,
     share_token:
       shareTokenStatus === "active"
-        ? (overrides.share_token ?? createShareToken())
+        ? overrides.share_token
         : undefined,
   };
 };
@@ -374,6 +374,7 @@ export const createDemoContracts = (): Contract[] => {
       }),
       evidence: createEvidence({
         share_token_status: "active",
+        share_token: createShareToken(),
         share_token_expires_at: addDays(7),
         audit_ready: true,
         pdf_status: "draft_ready",
@@ -443,6 +444,7 @@ export const createDemoContracts = (): Contract[] => {
       }),
       evidence: createEvidence({
         share_token_status: "active",
+        share_token: createShareToken(),
         share_token_expires_at: addDays(7),
         audit_ready: true,
         pdf_status: "draft_ready",
@@ -512,6 +514,7 @@ export const createDemoContracts = (): Contract[] => {
       }),
       evidence: createEvidence({
         share_token_status: "active",
+        share_token: createShareToken(),
         share_token_expires_at: addDays(7),
         audit_ready: true,
         pdf_status: "draft_ready",

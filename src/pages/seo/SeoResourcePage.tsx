@@ -1,4 +1,4 @@
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { LogoMark } from "../../components/BrandLogo";
 import { PRODUCT_NAME } from "../../domain/brand";

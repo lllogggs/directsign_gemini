@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { v4 as uuidv4 } from "uuid";
-import { createEvidence, createShareToken, createWorkflow } from "./domain/contracts";
+import { createEvidence, createWorkflow } from "./domain/contracts";
 import { apiFetch } from "./domain/api";
 import type {
   AuditEvent,
@@ -138,20 +138,12 @@ const finishSyncOperation = (
 
 const normalizeEvidence = (
   evidence: Contract["evidence"],
-  current?: Contract["evidence"],
 ): Contract["evidence"] => {
   if (!evidence) return evidence;
 
-  if (evidence.share_token_status !== "active") {
-    return {
-      ...evidence,
-      share_token: undefined,
-    };
-  }
-
   return {
     ...evidence,
-    share_token: evidence.share_token ?? current?.share_token ?? createShareToken(),
+    share_token: undefined,
   };
 };
 
@@ -425,7 +417,7 @@ export const useAppStore = create<AppState>()(
               ...contract,
               ...updates,
               evidence: updates.evidence
-                ? normalizeEvidence(updates.evidence, contract.evidence)
+                ? normalizeEvidence(updates.evidence)
                 : contract.evidence,
               updated_at: new Date().toISOString(),
             };

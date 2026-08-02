@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router";
 import {
   useAppStore,
   Contract,
@@ -8,13 +8,11 @@ import {
   ContractType,
   Clause,
 } from "../../store";
-import { createShareToken } from "../../domain/contracts";
 import type {
   ContractDeliverableContentType,
   ContractDeliverableItem,
   ContractDeliverableRequirementDetail,
 } from "../../domain/contracts";
-import { buildContractShareUrl } from "../../domain/links";
 import {
   getVerificationRejectionGuidance,
   type VerificationRequest,
@@ -843,9 +841,9 @@ function getAdvertiserVerificationBuilderCopy(
       actionLabel: "재제출",
     },
     not_submitted: {
-      label: "제출 필요",
-      helper: "사업자 인증을 제출해야 인플루언서에게 공유 링크를 보낼 수 있습니다.",
-      actionLabel: "사업자 인증 제출",
+      label: "인증 필요",
+      helper: "사업자 인증을 완료해야 인플루언서에게 공유 링크를 보낼 수 있습니다.",
+      actionLabel: "사업자 인증하기",
     },
   };
 
@@ -924,10 +922,12 @@ export function ContractBuilder() {
   });
   const [result, setResult] = useState<{
     mode: ResultMode;
-    link?: string;
+    contractId?: string;
     stale?: boolean;
   } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [isCopyingLink, setIsCopyingLink] = useState(false);
+  const [copyError, setCopyError] = useState("");
   const [sourceProposalId, setSourceProposalId] = useState<string>();
   const [sourceProposalContractId, setSourceProposalContractId] =
     useState<string>();
@@ -1228,7 +1228,6 @@ export function ContractBuilder() {
   const buildContractPayload = (
     status: ContractStatus,
     sourceDraft: ContractDraft,
-    shareToken?: string,
   ): Omit<Contract, "id" | "created_at" | "updated_at"> => {
     const draft = sourceDraft;
     const deliverableItems = getDeliverableItems(draft);
@@ -1295,8 +1294,8 @@ export function ContractBuilder() {
       workflow: buildWorkflow(status),
       evidence: {
         share_token_status: status === "DRAFT" ? "not_issued" : "active",
-        share_token: status === "DRAFT" ? undefined : shareToken,
-        share_token_expires_at: status === "DRAFT" ? undefined : addDays(7),
+        share_token: undefined,
+        share_token_expires_at: undefined,
         audit_ready: status !== "DRAFT",
         pdf_status: status === "DRAFT" ? "not_ready" : "draft_ready",
       },
@@ -1329,11 +1328,7 @@ export function ContractBuilder() {
 
     const status: ContractStatus = mode === "draft" ? "DRAFT" : "REVIEWING";
     const existing = savedContractId ? getContract(savedContractId) : undefined;
-    const shareToken =
-      status === "DRAFT"
-        ? undefined
-        : (existing?.evidence?.share_token ?? createShareToken());
-    const payload = buildContractPayload(status, draftToSave, shareToken);
+    const payload = buildContractPayload(status, draftToSave);
     const now = new Date().toISOString();
     const event = {
       id: sourceProposalId
@@ -1364,18 +1359,54 @@ export function ContractBuilder() {
       setSavedContractId(created.id);
     }
 
-    const link =
-      mode === "share" && contractId
-        ? buildContractShareUrl(contractId, payload.evidence?.share_token)
-        : undefined;
-    setResult({ mode, link, stale: false });
+    setCopyError("");
+    setResult({
+      mode,
+      contractId: mode === "share" ? contractId : undefined,
+      stale: false,
+    });
   };
 
-  const copyToClipboard = () => {
-    if (!result?.link || result.stale || isSyncing || syncError) return;
-    navigator.clipboard.writeText(result.link);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const copyToClipboard = async () => {
+    if (
+      !result?.contractId ||
+      result.stale ||
+      isSyncing ||
+      syncError ||
+      isCopyingLink
+    ) {
+      return;
+    }
+    setIsCopyingLink(true);
+    setCopyError("");
+    try {
+      const response = await apiFetch(
+        `/api/contracts/${encodeURIComponent(result.contractId)}/share-link/reveal`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { Accept: "application/json" },
+        },
+      );
+      const payload = (await response.json().catch(() => ({}))) as {
+        share_url?: string;
+        error?: string;
+      };
+      if (!response.ok || !payload.share_url) {
+        throw new Error(payload.error || "계약서 링크를 확인하지 못했습니다.");
+      }
+      await navigator.clipboard.writeText(payload.share_url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      setCopyError(
+        error instanceof Error
+          ? error.message
+          : "계약서 링크를 확인하지 못했습니다.",
+      );
+    } finally {
+      setIsCopyingLink(false);
+    }
   };
   const handleLogout = async () => {
     try {
@@ -2430,24 +2461,33 @@ export function ContractBuilder() {
                     </div>
                   )}
                   {result.mode === "share" &&
-                    result.link &&
+                    result.contractId &&
                     resultSaveState === "ready" &&
                     !result.stale && (
-                      <div className="flex w-full items-center gap-3">
-                        <Input
-                          readOnly
-                          value={result.link}
-                          className="h-11 flex-1 rounded-[12px] border-neutral-200 bg-[#fbfaf7] px-4 font-mono text-[12px] text-neutral-600 focus-visible:ring-0"
-                        />
+                      <div className="w-full">
                         <Button
                           type="button"
                           onClick={copyToClipboard}
-                          disabled={result.stale || isSyncing || Boolean(syncError)}
-                          className="h-11 shrink-0 rounded-[12px] bg-neutral-950 px-5 text-[13px] font-bold text-white hover:bg-neutral-800 disabled:bg-neutral-100 disabled:text-neutral-400"
+                          disabled={
+                            result.stale ||
+                            isSyncing ||
+                            Boolean(syncError) ||
+                            isCopyingLink
+                          }
+                          className="h-11 w-full rounded-[12px] bg-neutral-950 px-5 text-[13px] font-bold text-white hover:bg-neutral-800 disabled:bg-neutral-100 disabled:text-neutral-400"
                         >
                           <Copy className="mr-2 h-3.5 w-3.5" />
-                          {copied ? "복사됨" : "복사"}
+                          {isCopyingLink
+                            ? "본인 확인 중"
+                            : copied
+                              ? "복사됨"
+                              : "계약서 링크 복사"}
                         </Button>
+                        {copyError ? (
+                          <p className="mt-2 text-[12px] font-semibold text-red-600" role="alert">
+                            {copyError}
+                          </p>
+                        ) : null}
                       </div>
                     )}
                   {savedContractId && (

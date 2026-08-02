@@ -1,5 +1,5 @@
 import { ArrowRight, Building2, UserRound } from "lucide-react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router";
 import { preserveAuthContext } from "../../components/AuthLoginScreen";
 import { BrandLogo } from "../../components/BrandLogo";
 import { PRODUCT_NAME } from "../../domain/brand";

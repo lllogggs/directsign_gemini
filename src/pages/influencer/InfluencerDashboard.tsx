@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router";
 import {
   AlertCircle,
   ArrowDownWideNarrow,
@@ -52,6 +52,7 @@ import type { InfluencerPlatform } from "../../domain/verification";
 import { DashboardSurfaceSwitch } from "../../components/DashboardSurfaceSwitch";
 import { DashboardDownloadButton } from "../../components/DashboardDownloadButton";
 import { DashboardExportDialog } from "../../components/DashboardExportDialog";
+import { HeaderMessageCenterButton } from "../../components/HeaderMessageCenterButton";
 import { MobileSurfaceSwitch } from "../../components/MobileSurfaceSwitch";
 import { LogoMark } from "../../components/BrandLogo";
 import { PlatformBrandMark } from "../../components/PlatformBrandMark";
@@ -359,9 +360,6 @@ export function InfluencerDashboard() {
   const [googleSheetsUrl, setGoogleSheetsUrl] = useState<string | undefined>();
   const [googleSheetsError, setGoogleSheetsError] = useState<string | undefined>();
   const [isGoogleSheetsExporting, setIsGoogleSheetsExporting] = useState(false);
-  const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | undefined>();
-  const [avatarUploadError, setAvatarUploadError] = useState<string | undefined>();
-  const [isAvatarUploading, setIsAvatarUploading] = useState(false);
   const {
     summary: messageSummary,
     isLoading: isMessageSummaryLoading,
@@ -446,76 +444,6 @@ export function InfluencerDashboard() {
     }, 0);
     return () => window.clearTimeout(timer);
   }, [loadDashboard]);
-
-  const handleAvatarSelect = async (file: File | undefined) => {
-    if (!file || isAvatarUploading) return;
-
-    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
-      setAvatarUploadError("PNG, JPG, WebP 이미지만 올릴 수 있습니다.");
-      return;
-    }
-    if (file.size > 3 * 1024 * 1024) {
-      setAvatarUploadError("이미지는 3MB 이하로 올려주세요.");
-      return;
-    }
-
-    setIsAvatarUploading(true);
-    setAvatarUploadError(undefined);
-
-    try {
-      const dataUrl = await readFileAsDataUrl(file);
-      setAvatarPreviewUrl(dataUrl);
-      const response = await apiFetch("/api/influencer/public-profile/avatar", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          file: {
-            name: file.name,
-            type: file.type,
-            size: file.size,
-            data_url: dataUrl,
-          },
-        }),
-      });
-
-      if (response.status === 401) {
-        navigate("/login/influencer", { replace: true });
-        return;
-      }
-
-      const data = (await response.json().catch(() => ({}))) as {
-        image_url?: string;
-        error?: string;
-      };
-      if (!response.ok || !data.image_url) {
-        throw new Error(data.error ?? "이미지를 저장하지 못했습니다.");
-      }
-
-      setState((current) =>
-        current.status === "ready"
-          ? {
-              status: "ready",
-              dashboard: {
-                ...current.dashboard,
-                user: {
-                  ...current.dashboard.user,
-                  avatar_url: data.image_url,
-                },
-              },
-            }
-          : current,
-      );
-      setAvatarPreviewUrl(undefined);
-    } catch (error) {
-      setAvatarUploadError(
-        error instanceof Error ? error.message : "이미지를 저장하지 못했습니다.",
-      );
-      setAvatarPreviewUrl(undefined);
-    } finally {
-      setIsAvatarUploading(false);
-    }
-  };
 
   if (state.status === "loading") {
     return <DashboardShell><LoadingView /></DashboardShell>;
@@ -689,10 +617,10 @@ export function InfluencerDashboard() {
           </button>
 
           <div className="ml-2 flex min-w-0 items-center justify-end gap-1.5 sm:ml-3 sm:gap-2">
-            <div className="hidden sm:block">
+            <div className="hidden lg:block">
               <DashboardSurfaceSwitch role="influencer" active="contracts" />
             </div>
-            <MessageCenterButton
+            <HeaderMessageCenterButton
               unreadCount={messageSummary.unreadCount}
               isLoading={isMessageSummaryLoading}
               onClick={() => navigate("/influencer/messages")}
@@ -740,13 +668,7 @@ export function InfluencerDashboard() {
           </div>
           </div>
 
-          <InfluencerAccountBanner
-            dashboard={dashboard}
-            avatarPreviewUrl={avatarPreviewUrl}
-            avatarUploadError={avatarUploadError}
-            isAvatarUploading={isAvatarUploading}
-            onAvatarSelect={handleAvatarSelect}
-          />
+          <InfluencerAccountBanner dashboard={dashboard} />
 
           <div className="min-w-0 p-2.5 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
             <ContractTable
@@ -789,38 +711,6 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-[#f4f5f2] font-sans text-neutral-950 lg:h-screen lg:overflow-hidden">
       {children}
     </div>
-  );
-}
-
-function MessageCenterButton({
-  unreadCount,
-  isLoading,
-  onClick,
-}: {
-  unreadCount: number;
-  isLoading: boolean;
-  onClick: () => void;
-}) {
-  const badge = unreadCount > 0 ? unreadCount : undefined;
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="yl-header-action yl-header-action-secondary relative"
-      aria-label="메시지함"
-      title="메시지함"
-    >
-      <MessageSquareText className="h-3.5 w-3.5" strokeWidth={2} />
-      <span className="hidden sm:inline">메시지함</span>
-      {badge ? (
-        <span className="absolute right-0 top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-extrabold tabular-nums text-white ring-2 ring-white">
-          {badge > 9 ? "9+" : badge}
-        </span>
-      ) : isLoading ? (
-        <span className="absolute right-0 top-0 h-2.5 w-2.5 rounded-full bg-neutral-300 ring-2 ring-white" />
-      ) : null}
-    </button>
   );
 }
 
@@ -1093,23 +983,12 @@ function ErrorView({
 
 function InfluencerAccountBanner({
   dashboard,
-  avatarPreviewUrl,
-  avatarUploadError,
-  isAvatarUploading,
-  onAvatarSelect,
 }: {
   dashboard: InfluencerDashboardResponse;
-  avatarPreviewUrl?: string;
-  avatarUploadError?: string;
-  isAvatarUploading: boolean;
-  onAvatarSelect: (file: File | undefined) => void;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
   const verificationApproved = dashboard.verification.status === "approved";
-  const approvedPlatforms = dashboard.verification.approved_platforms.filter(
-    (platform) => platform.handle.trim().length > 0,
-  );
-  const avatarUrl = avatarPreviewUrl ?? dashboard.user.avatar_url;
+  const approvedPlatforms = dashboard.verification.approved_platforms;
+  const avatarUrl = dashboard.user.avatar_url;
   const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | undefined>();
   const shouldShowAvatar = Boolean(avatarUrl && failedAvatarUrl !== avatarUrl);
   const displayName = removeInternalTestLabel(
@@ -1138,9 +1017,11 @@ function InfluencerAccountBanner({
             <p className="truncate text-sm font-extrabold text-neutral-950">
               {displayName}
             </p>
-            <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-xs font-extrabold text-blue-700">
-              {verificationApproved ? "인증 완료" : "인증 전"}
-            </span>
+            {verificationApproved ? (
+              <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-xs font-extrabold text-blue-700">
+                인증 완료
+              </span>
+            ) : null}
           </div>
           <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[12px] leading-4 text-neutral-500">
             {approvedPlatforms.map((platform, index) => (
@@ -1156,37 +1037,19 @@ function InfluencerAccountBanner({
                 </span>
               </span>
             ))}
-            {approvedPlatforms.length === 0 ? (
-              <span className="text-[12px] font-semibold text-neutral-500">
-                인증한 플랫폼 없음
-              </span>
+            {!verificationApproved ? (
+              <Link
+                to="/influencer/verification"
+                className="inline-flex min-h-8 items-center rounded-[8px] border border-blue-200 bg-blue-50 px-2.5 text-[12px] font-extrabold text-blue-700 transition hover:border-blue-300 hover:bg-blue-100"
+              >
+                {dashboard.verification.status === "not_submitted"
+                  ? "인스타그램 계정 인증하기"
+                  : "인증 계속하기"}
+              </Link>
             ) : null}
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          disabled={isAvatarUploading}
-          className="inline-flex h-8 shrink-0 items-center rounded-[8px] border border-neutral-200 bg-white px-2.5 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 disabled:cursor-wait disabled:text-neutral-400"
-        >
-          {isAvatarUploading ? "업로드 중" : "이미지 변경"}
-        </button>
-        <input
-          ref={inputRef}
-          type="file"
-          accept="image/png,image/jpeg,image/webp"
-          className="hidden"
-          onChange={(event) => {
-            onAvatarSelect(event.currentTarget.files?.[0]);
-            event.currentTarget.value = "";
-          }}
-        />
       </div>
-      {avatarUploadError ? (
-        <p className="mt-2 rounded-[8px] border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-[12px] font-extrabold text-rose-700">
-          {avatarUploadError}
-        </p>
-      ) : null}
     </section>
   );
 }
@@ -2579,19 +2442,4 @@ function formatInfluencerAccountId(url: string | undefined, platform: Influencer
     const clean = url.replace(/^https?:\/\//, "").replace(/^@/, "").split(/[/?#]/)[0];
     return platform === "naver_blog" ? clean : `@${clean}`;
   }
-}
-
-function readFileAsDataUrl(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        resolve(reader.result);
-        return;
-      }
-      reject(new Error("File could not be read"));
-    };
-    reader.onerror = () => reject(reader.error ?? new Error("File could not be read"));
-    reader.readAsDataURL(file);
-  });
 }

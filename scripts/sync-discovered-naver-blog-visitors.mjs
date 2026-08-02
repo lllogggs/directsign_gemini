@@ -5,6 +5,11 @@ import {
   NAVER_BLOG_VISITOR_AVERAGE_DAYS,
   calculateNaverBlogVisitorAverage,
 } from "../src/domain/naverBlogVisitors.js";
+import {
+  archiveNaverVisitorBatch,
+  readPendingNaverVisitorBatch,
+  stageNaverVisitorWorkbook,
+} from "./lib/influencer-discovery-queue.mjs";
 
 dotenv.config({ path: ".env.local" });
 dotenv.config();
@@ -20,7 +25,8 @@ const args = new Map(
     }),
 );
 
-const apply = args.get("apply") !== "false";
+const apply = args.get("apply") === "true";
+const batchUpload = args.get("batch-upload") === "true";
 const batchSize = Math.min(parsePositiveInt(args.get("batch-size"), 60), 500);
 const configuredMaxRows = parseNonnegativeInt(args.get("max-rows"), batchSize);
 const maxRows = !apply && configuredMaxRows === 0 ? batchSize : configuredMaxRows;
@@ -40,6 +46,15 @@ const retryBackoffMs = Math.min(
 const tmpDir = path.join(cwd, ".tmp");
 const logDir = path.join(cwd, "logs");
 const lockPath = path.join(tmpDir, "naver-blog-visitor-sync.pid");
+const uploaderLockPath = path.join(
+  cwd,
+  "data",
+  "influencer-discovery-queue",
+  "uploader.lock",
+);
+const uploaderTokenEnvName = "YEOLLOCK_INFLUENCER_UPLOADER_LOCK_TOKEN";
+const uploaderPidEnvName = "YEOLLOCK_INFLUENCER_UPLOADER_PID";
+let uploaderSessionValidated = false;
 
 function parsePositiveInt(value, fallback) {
   const parsed = Number.parseInt(String(value ?? ""), 10);
@@ -72,23 +87,40 @@ function isProcessAlive(pid) {
 
 async function acquireLock() {
   await fs.mkdir(tmpDir, { recursive: true });
-  try {
-    const current = JSON.parse(await fs.readFile(lockPath, "utf8"));
-    if (isProcessAlive(Number(current.pid))) {
-      return { acquired: false, pid: Number(current.pid) };
-    }
-  } catch (error) {
-    if (error?.code !== "ENOENT") {
-      await fs.rm(lockPath, { force: true }).catch(() => undefined);
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    let handle;
+    try {
+      handle = await fs.open(lockPath, "wx");
+      await handle.writeFile(
+        JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() }, null, 2),
+        "utf8",
+      );
+      await handle.sync();
+      await handle.close();
+      return { acquired: true, pid: process.pid };
+    } catch (error) {
+      await handle?.close().catch(() => undefined);
+      if (error?.code !== "EEXIST") throw error;
+
+      let current;
+      try {
+        current = JSON.parse(await fs.readFile(lockPath, "utf8"));
+      } catch (readError) {
+        if (readError?.code === "ENOENT") continue;
+        const stats = await fs.stat(lockPath).catch(() => null);
+        if (stats && Date.now() - stats.mtimeMs < 60_000) {
+          return { acquired: false, pid: null };
+        }
+      }
+      if (isProcessAlive(Number(current?.pid))) {
+        return { acquired: false, pid: Number(current.pid) };
+      }
+      await fs.rm(lockPath, { force: true }).catch((removeError) => {
+        if (removeError?.code !== "ENOENT") throw removeError;
+      });
     }
   }
-
-  await fs.writeFile(
-    lockPath,
-    JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() }, null, 2),
-    "utf8",
-  );
-  return { acquired: true, pid: process.pid };
+  return { acquired: false, pid: null };
 }
 
 async function releaseLock() {
@@ -103,12 +135,47 @@ async function releaseLock() {
 }
 
 function readSupabaseConfig() {
+  assertBatchDatabaseAccess();
   const supabaseUrl = process.env.SUPABASE_URL?.replace(/\/$/, "");
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!supabaseUrl || !serviceKey) {
     throw new Error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.");
   }
   return { supabaseUrl, serviceKey };
+}
+
+function assertBatchDatabaseAccess() {
+  if (!apply || !batchUpload || !uploaderSessionValidated) {
+    throw new Error(
+      "Supabase access requires a verified 12-hour uploader session.",
+    );
+  }
+}
+
+async function validateUploaderSession() {
+  const expectedToken = String(process.env[uploaderTokenEnvName] ?? "");
+  const expectedPid = Number.parseInt(String(process.env[uploaderPidEnvName] ?? ""), 10);
+  if (!expectedToken || !Number.isInteger(expectedPid) || expectedPid <= 0) {
+    throw new Error("The Naver visitor batch is missing its uploader session.");
+  }
+
+  let lock;
+  try {
+    lock = JSON.parse(await fs.readFile(uploaderLockPath, "utf8"));
+  } catch (error) {
+    throw new Error("The Naver visitor batch uploader lock is unavailable.", {
+      cause: error,
+    });
+  }
+  if (
+    String(lock?.token ?? "") !== expectedToken ||
+    Number(lock?.pid) !== expectedPid ||
+    process.ppid !== expectedPid ||
+    !isProcessAlive(expectedPid)
+  ) {
+    throw new Error("The Naver visitor batch uploader session is invalid or stale.");
+  }
+  uploaderSessionValidated = true;
 }
 
 async function fetchDueRows(limit) {
@@ -265,13 +332,14 @@ async function collectMetrics(rows) {
 }
 
 async function applyMetrics(updates) {
-  if (!apply || updates.length === 0) return 0;
+  assertBatchDatabaseAccess();
+  if (updates.length === 0) return 0;
   const { supabaseUrl, serviceKey } = readSupabaseConfig();
   let updated = 0;
   for (let index = 0; index < updates.length; index += 100) {
     const chunk = updates.slice(index, index + 100);
     const response = await fetch(
-      `${supabaseUrl}/rest/v1/rpc/apply_discovered_naver_blog_visitor_metrics`,
+      `${supabaseUrl}/rest/v1/rpc/apply_discovered_naver_blog_visitor_metrics_v2`,
       {
         method: "POST",
         headers: {
@@ -295,6 +363,36 @@ async function applyMetrics(updates) {
   return updated;
 }
 
+async function uploadPendingMetrics() {
+  const pending = await readPendingNaverVisitorBatch({ rootDir: cwd });
+  if (pending.files.length === 0) {
+    return {
+      batchId: null,
+      pendingFiles: 0,
+      pendingRows: 0,
+      updated: 0,
+      archivePath: null,
+    };
+  }
+
+  const updated = await applyMetrics(pending.rows);
+  const completedAt = new Date().toISOString();
+  const archive = await archiveNaverVisitorBatch({
+    rootDir: cwd,
+    batchId: pending.batchId,
+    files: pending.files,
+    rows: pending.rows,
+    completedAt,
+  });
+  return {
+    batchId: pending.batchId,
+    pendingFiles: pending.files.length,
+    pendingRows: pending.rows.length,
+    updated,
+    archivePath: archive.archivePath,
+  };
+}
+
 async function appendSummary(summary) {
   await fs.mkdir(logDir, { recursive: true });
   const day = new Date().toISOString().slice(0, 10);
@@ -306,6 +404,26 @@ async function appendSummary(summary) {
 }
 
 async function main() {
+  if (!apply || !batchUpload) {
+    if (apply && !batchUpload) {
+      throw new Error(
+        "Direct visitor-metric writes are disabled. Use --apply=true --batch-upload=true from the 12-hour uploader.",
+      );
+    }
+    const summary = {
+      ok: true,
+      apply,
+      batchUpload,
+      skipped: "batch_upload_required",
+      checkedAt: new Date().toISOString(),
+    };
+    await appendSummary(summary);
+    console.log(JSON.stringify(summary, null, 2));
+    return;
+  }
+
+  await validateUploaderSession();
+
   const lock = await acquireLock();
   if (!lock.acquired) {
     const summary = {
@@ -319,8 +437,20 @@ async function main() {
   }
 
   const startedAt = new Date().toISOString();
-  const totals = { checked: 0, available: 0, unavailable: 0, failed: 0, updated: 0 };
+  const totals = {
+    checked: 0,
+    available: 0,
+    unavailable: 0,
+    failed: 0,
+    staged: 0,
+    retried: 0,
+    updated: 0,
+  };
   try {
+    const retriedBatch = await uploadPendingMetrics();
+    totals.retried += retriedBatch.pendingRows;
+    totals.updated += retriedBatch.updated;
+
     while (maxRows === 0 || totals.checked < maxRows) {
       const remaining = maxRows === 0 ? batchSize : Math.min(batchSize, maxRows - totals.checked);
       if (remaining <= 0) break;
@@ -336,14 +466,23 @@ async function main() {
         (update) => update.visitor_status === "unavailable",
       ).length;
       totals.failed += updates.filter((update) => update.visitor_status === "failed").length;
-      totals.updated += await applyMetrics(updates);
+      const staged = await stageNaverVisitorWorkbook({
+        rootDir: cwd,
+        runId: `naver-visitor-${process.pid}-${Date.now()}-${totals.checked}`,
+        createdAt: new Date().toISOString(),
+        rows: updates,
+      });
+      totals.staged += staged.rowCount;
+      const uploadedBatch = await uploadPendingMetrics();
+      totals.updated += uploadedBatch.updated;
 
-      if (!apply || rows.length < remaining) break;
+      if (rows.length < remaining) break;
     }
 
     const summary = {
       ok: true,
       apply,
+      batchUpload,
       startedAt,
       finishedAt: new Date().toISOString(),
       averageWindowDays: NAVER_BLOG_VISITOR_AVERAGE_DAYS,

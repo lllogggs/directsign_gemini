@@ -11,14 +11,15 @@ dotenv.config({ path: ".env.local" });
 dotenv.config();
 
 const apply = process.argv.includes("--apply");
-const auditVersion = "2026-07-12-country-v2";
+const naverPlatformOnly = process.argv.includes("--naver-platform-only");
+const auditVersion = "2026-07-14-country-v3";
 const auditedAt = new Date().toISOString();
 const outputDir = path.join(process.cwd(), "docs", "discovery");
 const supabaseUrl = process.env.SUPABASE_URL?.replace(/\/$/, "");
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const youtubeApiKey = process.env.YOUTUBE_DATA_API_KEY ?? process.env.YOUTUBE_API_KEY;
 
-if (!supabaseUrl || !serviceKey || !youtubeApiKey) {
+if (!supabaseUrl || !serviceKey || (!naverPlatformOnly && !youtubeApiKey)) {
   throw new Error(
     "SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and YOUTUBE_DATA_API_KEY are required.",
   );
@@ -82,9 +83,10 @@ const manualOverrides = new Map(
 
 async function readAllRows() {
   const rows = [];
+  const platformFilter = naverPlatformOnly ? "&platform=eq.naver_blog" : "";
   for (let offset = 0; ; offset += 1000) {
     const response = await fetch(
-      `${supabaseUrl}/rest/v1/discovered_influencer_profiles?select=*&order=id.asc&limit=1000&offset=${offset}`,
+      `${supabaseUrl}/rest/v1/discovered_influencer_profiles?select=*${platformFilter}&order=id.asc&limit=1000&offset=${offset}`,
       { headers },
     );
     if (!response.ok) throw new Error(await response.text());
@@ -184,7 +186,9 @@ function stagePatch(row, changes, reason) {
   });
 }
 
-const youtubeVerification = await readOfficialYoutubeCountries(rows);
+const youtubeVerification = naverPlatformOnly
+  ? { channelRows: [], channels: new Map() }
+  : await readOfficialYoutubeCountries(rows);
 for (const row of youtubeVerification.channelRows) {
   if (
     row.source_evidence?.countryLock === true ||
@@ -256,6 +260,29 @@ for (const row of rows) {
   const existingCountryConfidence = String(
     row.source_evidence?.countryConfidence ?? "",
   );
+  const isUntrustedNaverSearchCountry =
+    row.platform === "naver_blog" &&
+    provider === "naver_search_api" &&
+    existingCountryConfidence !== "official" &&
+    (existingCountries.length > 0 ||
+      ["platform", "explicit", "inherited"].includes(
+        existingCountryConfidence,
+      ));
+  if (isUntrustedNaverSearchCountry) {
+    stagePatch(
+      row,
+      {
+        audience_countries: [],
+        source_evidence: {
+          countryConfidence: "unknown",
+          countrySignals: [],
+        },
+      },
+      "naver_search_not_creator_country_evidence",
+    );
+    continue;
+  }
+  if (naverPlatformOnly) continue;
   const hasTrustedExistingCountry = [
     "official",
     "platform",
@@ -393,7 +420,7 @@ for (const row of rows) {
   }
 }
 
-for (const row of rows) {
+for (const row of naverPlatformOnly ? [] : rows) {
   const normalizedHandle = String(row.platform_handle ?? "").toLowerCase();
   const override =
     manualOverrides.get(`${row.platform}:${normalizedHandle}`) ??
@@ -415,7 +442,7 @@ for (const row of rows) {
   );
 }
 
-const duplicateGroups = buildDuplicateGroups(rows);
+const duplicateGroups = naverPlatformOnly ? [] : buildDuplicateGroups(rows);
 for (const group of duplicateGroups) {
   const preferred = group.rows.reduce(choosePreferredInfluencerRow);
   for (const row of group.rows) {
@@ -450,6 +477,7 @@ await fs.writeFile(
     {
       generatedAt: auditedAt,
       apply,
+      naverPlatformOnly,
       totalRows: rows.length,
       youtubeChannelsChecked: youtubeVerification.channels.size,
       duplicateGroups: duplicateGroups.length,
@@ -505,6 +533,7 @@ console.log(
     {
       ok: true,
       apply,
+      naverPlatformOnly,
       totalRows: rows.length,
       youtubeChannelsChecked: youtubeVerification.channels.size,
       patches: patchRows.length,

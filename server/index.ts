@@ -18,6 +18,33 @@ import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { fileURLToPath } from "node:url";
 import {
+  extractInstagramDmChallengeEvents,
+  isActionableInstagramDmManualReview,
+  isAwaitingInstagramDmRestoreRecord,
+  normalizeInstagramUsername,
+  processInstagramDmChallengeEvent,
+  selectInstagramDmRestoreRecord,
+  verifyInstagramWebhookSignature,
+  type InstagramDmChallengeEvent,
+} from "./instagram-dm-verification.js";
+import { isOperationalTestEmail } from "./operational-test-email.js";
+import { sendPlatformVerificationEmail } from "./verification-email.js";
+import { verificationRequestBelongsToInfluencerAccount } from "./verification-ownership.js";
+import {
+  classifyAuthMetricDataOrigin,
+  observeOperationalAuthMetric,
+  type AuthMetricDataOrigin,
+  type AuthMetricOperation,
+  type AuthMetricOutcome,
+  type AuthMetricRole,
+} from "../lib/auth-monitoring.js";
+import {
+  authMetricOriginCookieMaxAgeSeconds,
+  createAuthMetricOriginCookieValue,
+  getAuthMetricOriginCookieName,
+  readAuthMetricOriginCookieValue,
+} from "../lib/auth-metric-origin.js";
+import {
   createDemoContracts,
   createEvidence,
   createShareToken,
@@ -57,9 +84,15 @@ import {
   type MarketplaceInfluencerProfile,
 } from "../src/domain/marketplace.js";
 import {
+  normalizeMarketplaceCreatorCategory,
   classifyDiscoveredInfluencerAccount,
   normalizeMarketplaceCreatorCategories,
 } from "../src/domain/influencerDiscoveryQuality.js";
+import {
+  paginateMarketplaceInfluencerProfiles,
+  type MarketplaceInfluencerSearchFilters,
+} from "../src/domain/marketplaceInfluencerSearch.js";
+import { normalizeNaverBlogRecentPosts } from "../src/domain/naverBlogPosts.js";
 import {
   getProposalTypeLabel,
   type MarketplaceInboxRole,
@@ -87,6 +120,20 @@ import {
   SUPPORT_ACCESS_CONSENT_TEXT,
 } from "../src/domain/legalConsent.js";
 import { normalizeSeoPath, staticSeoRoutePaths } from "../src/domain/seo.js";
+import { reserveNaverSearchRequest } from "../scripts/lib/naver-search-budget.mjs";
+import {
+  isTerminalSupabaseAccessFailure,
+  isTerminalSupabaseRefreshFailure,
+  userSessionAccessMaxAgeSeconds,
+  userSessionRefreshMaxAgeSeconds,
+  userSessionRefreshReuseCacheMs,
+} from "../lib/user-session-policy.js";
+import {
+  getUserSessionLogoutBarrierCookieName,
+  getUserSessionLogoutResumeCookieName,
+  readUserSessionLogoutBarrierState,
+  type UserSessionBrowserRole,
+} from "../lib/user-session-barrier.js";
 
 dotenv.config({ path: ".env.local" });
 dotenv.config();
@@ -153,7 +200,13 @@ interface VerificationRequestRecord {
   platform_url?: string;
   ownership_verification_method?: InfluencerVerificationMethod;
   ownership_challenge_code?: string;
+  ownership_challenge_code_hash?: string | null;
+  ownership_challenge_code_ciphertext?: string | null;
   ownership_challenge_url?: string;
+  ownership_challenge_expires_at?: string | null;
+  ownership_challenge_consumed_at?: string | null;
+  ownership_challenge_message_id_hash?: string | null;
+  ownership_challenge_sender_id_hash?: string | null;
   ownership_check_status?: OwnershipCheckStatus;
   ownership_checked_at?: string;
   document_issue_date?: string;
@@ -166,6 +219,7 @@ interface VerificationRequestRecord {
   reviewer_note?: string;
   submitted_ip?: string;
   submitted_user_agent?: string;
+  reviewed_by_profile_id?: string;
   reviewed_by_name?: string;
   reviewed_at?: string;
   created_at: string;
@@ -190,6 +244,7 @@ interface SupportAccessAuditEvent {
     | "revoked"
     | "expired";
   actor_role: SupportAccessActorRole;
+  actor_profile_id?: string;
   actor_name?: string;
   description: string;
   ip?: string;
@@ -210,6 +265,7 @@ interface SupportAccessRequestRecord {
   status: SupportAccessStatus;
   data_origin?: DataOrigin;
   expires_at: string;
+  reviewed_by_profile_id?: string;
   reviewed_by_name?: string;
   reviewed_at?: string;
   audit_events: SupportAccessAuditEvent[];
@@ -255,6 +311,7 @@ interface OperationalSupportTicketRecord {
   severity: OperationalSupportTicketSeverity;
   status: OperationalSupportTicketStatus;
   data_origin?: DataOrigin;
+  reviewed_by_profile_id?: string;
   admin_note?: string;
   source: string;
   ip_hash?: string;
@@ -270,11 +327,16 @@ interface OperationalSupportTicketStoreFile {
 type OperationalAlertKind =
   | "verification_request"
   | "support_ticket"
-  | "support_access";
+  | "support_access"
+  | "auth_health";
 type OperationalAlertAction =
   | "auto_approved"
   | "needs_review"
-  | "mobile_action";
+  | "mobile_action"
+  | "provider_degraded"
+  | "terminal_spike"
+  | "revoke_failed"
+  | "rate_limit_spike";
 type OperationalAlertSeverity = "info" | "normal" | "high" | "urgent";
 type OperationalAlertStatus = "queued" | "sent" | "failed" | "muted";
 
@@ -467,8 +529,6 @@ const resolveServerSecret = ({
   return generateLocal ? getLocalRuntimeSecret(name, purpose) : undefined;
 };
 
-const adminAccessCode = readConfiguredServerSecret("ADMIN_ACCESS_CODE");
-const configuredAdminOperatorName = readConfiguredServerSecret("ADMIN_OPERATOR_NAME");
 const cronSecret = readConfiguredServerSecret("CRON_SECRET");
 const discordOperationsWebhookUrl =
   readConfiguredServerSecret("DISCORD_OPERATIONS_WEBHOOK_URL") ??
@@ -480,6 +540,16 @@ const discordOperationsChannelId =
   readConfiguredServerSecret("DISCORD_OPERATIONS_CHANNEL_ID") ??
   readConfiguredServerSecret("OPERATIONS_DISCORD_CHANNEL_ID");
 const discordOperationsUserAgent = "yeollock-operations-notifier/1.0";
+const ownershipVerifierUserAgent = "yeollock-ownership-verifier/1.0";
+const metaInstagramAccessToken = readConfiguredServerSecret(
+  "META_INSTAGRAM_ACCESS_TOKEN",
+);
+const metaInstagramAccessTokenExpiresAt =
+  process.env.META_INSTAGRAM_ACCESS_TOKEN_EXPIRES_AT?.trim() || undefined;
+const instagramDmAutoApproveEnabled =
+  process.env.VERIFICATION_AUTO_APPROVE_INSTAGRAM_DM === "true";
+const instagramDmChallengeTtlMs = 10 * 60 * 1000;
+const instagramDmChallengeCipherPrefix = "igdm:v1:";
 const googleWorkspaceOAuthClientId =
   readConfiguredServerSecret("GOOGLE_WORKSPACE_OAUTH_CLIENT_ID") ??
   readConfiguredServerSecret("GOOGLE_SHEETS_OAUTH_CLIENT_ID") ??
@@ -498,30 +568,21 @@ const googleWorkspaceTokenSecret = resolveServerSecret({
     googleWorkspaceOAuthConfigured && isProductionRuntime && !demoMode,
   generateLocal: googleWorkspaceOAuthConfigured && !isProductionRuntime,
 });
-const adminSessionSecret = resolveServerSecret({
-  name: "ADMIN_SESSION_SECRET",
-  purpose: "signing admin session cookies",
-  requiredInProduction: isProductionRuntime || Boolean(adminAccessCode),
-  generateLocal: Boolean(adminAccessCode) || !isProductionRuntime,
-});
-if (isProductionRuntime && !demoMode && !adminAccessCode?.trim()) {
-  throw new Error("Production requires ADMIN_ACCESS_CODE for operator access.");
-}
-
-if (isProductionRuntime && !demoMode && !configuredAdminOperatorName?.trim()) {
-  throw new Error("Production requires ADMIN_OPERATOR_NAME for audit attribution.");
-}
-const adminSessionCookie = "directsign_admin_session";
 const adminSessionMaxAgeSeconds = 60 * 60 * 8;
+const adminPendingSessionMaxAgeSeconds = 60 * 10;
+const adminAccessCookie = "directsign_admin_access";
+const adminRefreshCookie = "directsign_admin_refresh";
+const adminMfaFactorCookie = "directsign_admin_mfa_factor";
 const advertiserAccessCookie = "directsign_advertiser_access";
 const advertiserRefreshCookie = "directsign_advertiser_refresh";
 const advertiserFastSessionCookie = "directsign_advertiser_fast";
 const influencerAccessCookie = "directsign_influencer_access";
 const influencerRefreshCookie = "directsign_influencer_refresh";
 const influencerFastSessionCookie = "directsign_influencer_fast";
+const advertiserRecentAuthCookie = "directsign_advertiser_recent_auth";
+const influencerRecentAuthCookie = "directsign_influencer_recent_auth";
+const recentAuthMaxAgeSeconds = 60 * 10;
 const signedPdfAccessCookie = "yeollock_signed_pdf_access";
-const influencerAccessMaxAgeSeconds = 60 * 60;
-const influencerRefreshMaxAgeSeconds = 60 * 60 * 24 * 14;
 const signedPdfAccessMaxAgeSeconds = 60 * 10;
 const defaultAdvertiserTargetId =
   process.env.DIRECTSIGN_DEFAULT_ADVERTISER_ID ?? "adv_1";
@@ -554,8 +615,19 @@ const filterOperationalMarketplaceTestData =
 const signatureConsentVersion = SIGNATURE_CONSENT_VERSION;
 const signatureConsentText = SIGNATURE_CONSENT_TEXT;
 const supportAccessConsentText = SUPPORT_ACCESS_CONSENT_TEXT;
-const productName = process.env.PRODUCT_NAME ?? process.env.VITE_PRODUCT_NAME ?? "yeollock.me";
-const adminOperatorName = configuredAdminOperatorName ?? `${productName} 운영자`;
+const configuredProductName =
+  process.env.PRODUCT_NAME ?? process.env.VITE_PRODUCT_NAME ?? "연락미";
+const normalizedConfiguredProductName = configuredProductName
+  .replace(/\r|\n/g, "")
+  .trim();
+const normalizedConfiguredProductKey = normalizedConfiguredProductName.toLowerCase();
+const productName =
+  !normalizedConfiguredProductName ||
+  normalizedConfiguredProductKey === "yeollock" ||
+  normalizedConfiguredProductKey === "yeollock.me" ||
+  normalizedConfiguredProductKey === "directsign"
+    ? "연락미"
+    : normalizedConfiguredProductName;
 const signupTermsVersion = "2026-06-02";
 const signupPrivacyPolicyVersion = "2026-06-02";
 const signedPdfFontCandidates = [
@@ -595,6 +667,14 @@ const adminLoginWindowMs =
   parsePositiveNumberEnv(process.env.ADMIN_LOGIN_WINDOW_SECONDS, 15 * 60) * 1000;
 const adminLoginLockMs =
   parsePositiveNumberEnv(process.env.ADMIN_LOGIN_LOCK_SECONDS, 15 * 60) * 1000;
+const adminMfaMaxFailures = parsePositiveNumberEnv(
+  process.env.ADMIN_MFA_MAX_FAILURES,
+  5,
+);
+const adminMfaWindowMs =
+  parsePositiveNumberEnv(process.env.ADMIN_MFA_WINDOW_SECONDS, 15 * 60) * 1000;
+const adminMfaLockMs =
+  parsePositiveNumberEnv(process.env.ADMIN_MFA_LOCK_SECONDS, 15 * 60) * 1000;
 const publicAuthIpMaxAttempts = parsePositiveNumberEnv(
   process.env.PUBLIC_AUTH_IP_MAX_ATTEMPTS,
   40,
@@ -630,6 +710,8 @@ const marketplaceFollowerSyncMaxChannels = Math.min(
 const marketplaceFollowerSyncStaleMs =
   parsePositiveNumberEnv(process.env.MARKETPLACE_FOLLOWER_SYNC_STALE_DAYS, 6) *
   dayMs;
+const automaticMarketplaceFollowerSyncEnabled =
+  process.env.ENABLE_AUTOMATIC_MARKETPLACE_FOLLOWER_SYNC === "true";
 const marketplaceNaverBlogVisitorSyncStaleMs =
   parsePositiveNumberEnv(
     process.env.MARKETPLACE_NAVER_BLOG_VISITOR_SYNC_STALE_DAYS,
@@ -661,6 +743,70 @@ app.use(
     },
   }),
 );
+
+type OperationalAuthMetricRequest = express.Request & {
+  authMetricOperation?: AuthMetricOperation;
+  authMetricRole?: AuthMetricRole;
+  authMetricOutcome?: AuthMetricOutcome;
+  authMetricDataOrigin?: AuthMetricDataOrigin;
+};
+
+const authMetricRoutes = new Map<
+  string,
+  { operation: AuthMetricOperation; role: AuthMetricRole }
+>([
+  ["/api/advertiser/login", { operation: "user_login", role: "marketer" }],
+  ["/api/influencer/login", { operation: "user_login", role: "influencer" }],
+  ["/api/admin/login", { operation: "admin_login", role: "admin" }],
+  ["/api/admin/mfa/verify", { operation: "admin_mfa_verify", role: "admin" }],
+  ["/api/auth/recent", { operation: "recent_auth_issue", role: "anonymous" }],
+  ["/api/advertiser/logout", { operation: "session_logout", role: "marketer" }],
+  ["/api/influencer/logout", { operation: "session_logout", role: "influencer" }],
+  ["/api/admin/logout", { operation: "session_logout", role: "admin" }],
+  ["/api/auth/password-reset/request", { operation: "password_reset", role: "anonymous" }],
+  ["/api/auth/password-reset/complete", { operation: "password_reset", role: "anonymous" }],
+]);
+
+app.use((request, response, next) => {
+  const config = authMetricRoutes.get(request.path);
+  if (!config) {
+    next();
+    return;
+  }
+  const metricRequest = request as OperationalAuthMetricRequest;
+  const startedAt = Date.now();
+  metricRequest.authMetricOperation = config.operation;
+  metricRequest.authMetricRole = config.role;
+  metricRequest.authMetricDataOrigin = classifyAuthMetricDataOrigin({
+    identifier: normalizeOptionalText(request.body?.email),
+  });
+  response.once("finish", () => {
+    const status = response.statusCode;
+    const outcome =
+      metricRequest.authMetricOutcome ??
+      (status >= 200 && status < 300
+        ? "success"
+        : status === 428
+          ? "required"
+          : status === 429
+            ? "rate_limited"
+            : status === 401
+              ? "rejected"
+              : status === 403
+                ? "invalid"
+                : status >= 500
+                  ? "provider_error"
+                  : "rejected");
+    observeOperationalAuthMetric({
+      operation: metricRequest.authMetricOperation ?? config.operation,
+      role: metricRequest.authMetricRole ?? config.role,
+      outcome,
+      latencyMs: Date.now() - startedAt,
+      dataOrigin: metricRequest.authMetricDataOrigin,
+    });
+  });
+  next();
+});
 
 const stateChangingMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const allowedConfiguredOrigins = [
@@ -846,6 +992,19 @@ const platformUrlHostPatterns: Record<InfluencerPlatform, RegExp[]> = {
 };
 const standardHttpPorts = new Set(["", "80", "443"]);
 const ownershipChallengePattern = /^DS-[A-Z0-9]{4}-[A-Z0-9]{4}$/;
+const instagramDmChallengeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const configuredInstagramOfficialHandle = String(
+  process.env.VITE_INSTAGRAM_OFFICIAL_HANDLE ?? "yeollockme",
+)
+  .trim()
+  .replace(/^@+/, "")
+  .toLowerCase();
+const instagramOfficialHandle = /^[a-z0-9._]{1,30}$/.test(
+  configuredInstagramOfficialHandle,
+)
+  ? configuredInstagramOfficialHandle
+  : "yeollockme";
+const instagramOfficialUrl = `https://instagram.com/${instagramOfficialHandle}`;
 const evidenceFileMimeTypes = new Set([
   "application/pdf",
   "image/png",
@@ -880,6 +1039,80 @@ const advertiserDeliverableReviewStatuses = new Set<DeliverableReviewStatus>([
 
 const hasText = (value: unknown): value is string =>
   typeof value === "string" && value.trim().length > 0;
+
+const getInstagramDmChallengeCipherKey = () =>
+  shareTokenEncryptionSecret
+    ? createHash("sha256")
+        .update(`instagram-dm-challenge:${shareTokenEncryptionSecret}`)
+        .digest()
+    : undefined;
+
+const hashInstagramDmChallengeCode = (value: string) => {
+  const key = getInstagramDmChallengeCipherKey();
+  if (!key) {
+    throw new Error("Instagram DM challenge encryption is not configured");
+  }
+  return createHmac("sha256", key)
+    .update(normalizeChallengeCode(value))
+    .digest("hex");
+};
+
+const encryptInstagramDmChallengeCode = (value: string, requestId: string) => {
+  const key = getInstagramDmChallengeCipherKey();
+  if (!key) {
+    throw new Error("Instagram DM challenge encryption is not configured");
+  }
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  cipher.setAAD(Buffer.from(requestId, "utf8"));
+  const ciphertext = Buffer.concat([
+    cipher.update(value, "utf8"),
+    cipher.final(),
+  ]);
+  const payload = Buffer.concat([iv, cipher.getAuthTag(), ciphertext]);
+  return `${instagramDmChallengeCipherPrefix}${payload.toString("base64url")}`;
+};
+
+const decryptInstagramDmChallengeCode = (
+  value: string | undefined,
+  requestId: string,
+) => {
+  if (!hasText(value) || !value.startsWith(instagramDmChallengeCipherPrefix)) {
+    return undefined;
+  }
+  const key = getInstagramDmChallengeCipherKey();
+  if (!key) return undefined;
+  try {
+    const payload = Buffer.from(
+      value.slice(instagramDmChallengeCipherPrefix.length),
+      "base64url",
+    );
+    const iv = payload.subarray(0, 12);
+    const authTag = payload.subarray(12, 28);
+    const ciphertext = payload.subarray(28);
+    const decipher = createDecipheriv("aes-256-gcm", key, iv);
+    decipher.setAAD(Buffer.from(requestId, "utf8"));
+    decipher.setAuthTag(authTag);
+    const challengeCode = Buffer.concat([
+      decipher.update(ciphertext),
+      decipher.final(),
+    ]).toString("utf8");
+    return ownershipChallengePattern.test(challengeCode)
+      ? challengeCode
+      : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+const createInstagramDmChallengeCode = () => {
+  const values = randomBytes(8);
+  const token = Array.from(
+    values,
+    (value) => instagramDmChallengeAlphabet[value & 31],
+  );
+  return `DS-${token.slice(0, 4).join("")}-${token.slice(4).join("")}`;
+};
 
 const getShareTokenCipherKey = () => {
   if (!shareTokenEncryptionSecret) return undefined;
@@ -943,7 +1176,7 @@ const googleTokenCipherPrefix = "gws:v1:";
 
 const getGoogleWorkspaceCipherKey = () => {
   const secret =
-    googleWorkspaceTokenSecret ?? adminSessionSecret ?? shareTokenEncryptionSecret;
+    googleWorkspaceTokenSecret ?? shareTokenEncryptionSecret;
   return secret ? createHash("sha256").update(secret).digest() : undefined;
 };
 
@@ -999,8 +1232,9 @@ const normalizeContract = (contract: Contract): Contract => {
   if (!contract.evidence) return normalizedContract;
 
   const shareToken =
-    contract.evidence.share_token_status === "active"
-      ? (contract.evidence.share_token ?? createShareToken())
+    contract.evidence.share_token_status === "active" &&
+    hasText(contract.evidence.share_token)
+      ? contract.evidence.share_token
       : undefined;
 
   return {
@@ -1038,13 +1272,42 @@ interface SupabaseAuthUser {
   email?: string;
   email_confirmed_at?: string | null;
   confirmed_at?: string | null;
+  identities?: unknown[] | null;
+  factors?: SupabaseMfaFactor[];
+}
+
+interface SupabaseMfaFactor {
+  id: string;
+  factor_type?: "totp" | "phone";
+  friendly_name?: string | null;
+  status?: "verified" | "unverified";
+  created_at?: string;
+  updated_at?: string;
+}
+
+interface SupabaseAccessTokenClaims {
+  sub?: string;
+  session_id?: string;
+  aal?: "aal1" | "aal2";
+  exp?: number;
+  iat?: number;
+  amr?: Array<{ method?: string; timestamp?: number }>;
 }
 
 interface SupabaseAuthSession {
   access_token: string;
   refresh_token?: string;
   expires_in?: number;
+  token_type?: string;
   user: SupabaseAuthUser;
+}
+
+interface AdminSession {
+  user: SupabaseAuthUser;
+  profile: SupabaseProfileRow;
+  accessToken: string;
+  authSessionId: string;
+  authenticatedAt: string;
 }
 
 type SupabaseSignupPayload =
@@ -1279,6 +1542,7 @@ interface SupabaseSupportAccessRequestRow {
   status: SupportAccessStatus;
   data_origin?: DataOrigin | null;
   expires_at: string;
+  reviewed_by_profile_id?: string | null;
   reviewed_by_name?: string | null;
   reviewed_at?: string | null;
   audit_events?: SupportAccessAuditEvent[] | null;
@@ -1292,6 +1556,7 @@ interface SupabaseSupportAccessEventRow {
   contract_id: string;
   action: SupportAccessAuditEvent["action"];
   actor_role: SupportAccessActorRole;
+  actor_profile_id?: string | null;
   actor_name?: string | null;
   description: string;
   ip?: string | null;
@@ -1721,6 +1986,35 @@ const parseSupabaseError = async (response: Response) => {
   }
 };
 
+const parseSupabaseAuthError = async (response: Response) => {
+  const body = await response.text();
+  try {
+    const parsed = JSON.parse(body) as {
+      code?: string;
+      error_code?: string;
+      error?: string;
+      error_description?: string;
+      message?: string;
+      msg?: string;
+    };
+    const code = parsed.code ?? parsed.error_code ?? parsed.error;
+    const message = [
+      parsed.message,
+      parsed.msg,
+      parsed.error_description,
+      parsed.error,
+      parsed.code,
+      parsed.error_code,
+    ]
+      .filter((value): value is string => hasText(value))
+      .filter((value, index, values) => values.indexOf(value) === index)
+      .join(": ");
+    return { code, message: message || body };
+  } catch {
+    return { message: body };
+  }
+};
+
 type SupabaseRequestInit = Omit<RequestInit, "headers"> & {
   headers?: Record<string, string>;
 };
@@ -1786,7 +2080,7 @@ const profileSelectFields = [
 
 const recentSessionCacheTtlMs = parsePositiveNumberEnv(
   process.env.SUPABASE_RECENT_SESSION_CACHE_SECONDS,
-  8,
+  60,
 ) * 1000;
 const profileCacheTtlMs = parsePositiveNumberEnv(
   process.env.SUPABASE_PROFILE_CACHE_SECONDS,
@@ -2344,6 +2638,7 @@ const requireAdvertiserSession = async (
   request: express.Request,
   response: express.Response,
 ) => {
+  const metricStartedAt = Date.now();
   const auth = await authenticateAdvertiserRequest(request, response);
 
   if (!auth) {
@@ -2352,15 +2647,55 @@ const requireAdvertiserSession = async (
   }
 
   const profile = auth.profile ?? (await readProfileByUserId(auth.user.id));
+  const metricDataOrigin = classifyAuthMetricDataOrigin({
+    identifier: profile?.email ?? auth.user.email,
+    explicit: profile?.data_origin,
+  });
 
   if (!isAdvertiserRole(profile?.role)) {
+    observeOperationalAuthMetric({
+      operation: auth.refreshed ? "session_refresh" : "session_validate",
+      role: "marketer",
+      outcome: "invalid",
+      latencyMs: Date.now() - metricStartedAt,
+      dataOrigin: metricDataOrigin,
+    });
+    await terminateRoleSessionForAuthorizationFailure({
+      request,
+      response,
+      role: "advertiser",
+      accessToken: auth.accessToken,
+      userId: auth.user.id,
+    });
     response.status(403).json({
       error: "광고주 계정 권한이 필요합니다. 광고주 계정으로 로그인해 주세요.",
     });
     return undefined;
   }
 
+  ensureAuthMetricOriginCookie(
+    request,
+    response,
+    "advertiser",
+    profile,
+    readAuthMetricOriginBindingFromRequest(request, "advertiser", {
+      accessToken: auth.accessToken,
+      refreshToken: auth.refreshToken,
+      verifiedUserId: auth.user.id,
+    }),
+  );
+
   await ensureDefaultOrganizationForAdvertiserProfile(profile);
+
+  if (auth.refreshed || request.path === "/api/advertiser/session") {
+    observeOperationalAuthMetric({
+      operation: auth.refreshed ? "session_refresh" : "session_validate",
+      role: "marketer",
+      outcome: "success",
+      latencyMs: Date.now() - metricStartedAt,
+      dataOrigin: metricDataOrigin,
+    });
+  }
 
   return { ...auth, profile };
 };
@@ -2369,6 +2704,7 @@ const requireInfluencerSession = async (
   request: express.Request,
   response: express.Response,
 ) => {
+  const metricStartedAt = Date.now();
   const auth = await authenticateInfluencerRequest(request, response);
 
   if (!auth) {
@@ -2377,12 +2713,52 @@ const requireInfluencerSession = async (
   }
 
   const profile = auth.profile ?? (await readProfileByUserId(auth.user.id));
+  const metricDataOrigin = classifyAuthMetricDataOrigin({
+    identifier: profile?.email ?? auth.user.email,
+    explicit: profile?.data_origin,
+  });
 
   if (!isInfluencerRole(profile?.role)) {
+    observeOperationalAuthMetric({
+      operation: auth.refreshed ? "session_refresh" : "session_validate",
+      role: "influencer",
+      outcome: "invalid",
+      latencyMs: Date.now() - metricStartedAt,
+      dataOrigin: metricDataOrigin,
+    });
+    await terminateRoleSessionForAuthorizationFailure({
+      request,
+      response,
+      role: "influencer",
+      accessToken: auth.accessToken,
+      userId: auth.user.id,
+    });
     response.status(403).json({
       error: "인플루언서 계정 권한이 필요합니다. 인플루언서 계정으로 로그인해 주세요.",
     });
     return undefined;
+  }
+
+  ensureAuthMetricOriginCookie(
+    request,
+    response,
+    "influencer",
+    profile,
+    readAuthMetricOriginBindingFromRequest(request, "influencer", {
+      accessToken: auth.accessToken,
+      refreshToken: auth.refreshToken,
+      verifiedUserId: auth.user.id,
+    }),
+  );
+
+  if (auth.refreshed || request.path === "/api/influencer/session") {
+    observeOperationalAuthMetric({
+      operation: auth.refreshed ? "session_refresh" : "session_validate",
+      role: "influencer",
+      outcome: "success",
+      latencyMs: Date.now() - metricStartedAt,
+      dataOrigin: metricDataOrigin,
+    });
   }
 
   return { ...auth, profile };
@@ -2626,6 +3002,7 @@ const normalizeSupportAccessRequest = (
   status: row.status,
   data_origin: row.data_origin ?? undefined,
   expires_at: row.expires_at,
+  reviewed_by_profile_id: row.reviewed_by_profile_id ?? undefined,
   reviewed_by_name: row.reviewed_by_name ?? undefined,
   reviewed_at: row.reviewed_at ?? undefined,
   audit_events: Array.isArray(row.audit_events) ? row.audit_events : [],
@@ -2639,6 +3016,7 @@ const normalizeSupportAccessEvent = (
   id: row.id,
   action: row.action,
   actor_role: row.actor_role,
+  actor_profile_id: row.actor_profile_id ?? undefined,
   actor_name: row.actor_name ?? undefined,
   description: row.description,
   ip: row.ip ?? undefined,
@@ -2859,6 +3237,7 @@ const appendSupportAccessEventRow = async (
       contract_id: requestRecord.contract_id,
       action: event.action,
       actor_role: event.actor_role,
+      actor_profile_id: event.actor_profile_id ?? null,
       actor_name: event.actor_name ?? null,
       description: event.description,
       ip: event.ip ?? null,
@@ -2876,6 +3255,7 @@ const appendSupportAccessEventRow = async (
           contract_id: requestRecord.contract_id,
           action: event.action,
           actor_role: event.actor_role,
+          actor_profile_id: event.actor_profile_id,
           actor_name: event.actor_name,
           description: event.description,
           ip: event.ip,
@@ -3193,11 +3573,16 @@ const operationalAlertKinds = new Set<OperationalAlertKind>([
   "verification_request",
   "support_ticket",
   "support_access",
+  "auth_health",
 ]);
 const operationalAlertActions = new Set<OperationalAlertAction>([
   "auto_approved",
   "needs_review",
   "mobile_action",
+  "provider_degraded",
+  "terminal_spike",
+  "revoke_failed",
+  "rate_limit_spike",
 ]);
 const operationalAlertSeverities = new Set<OperationalAlertSeverity>([
   "info",
@@ -3518,7 +3903,7 @@ const sendDiscordOperationalAlert = async (alert: OperationalAlertRecord) => {
         "User-Agent": discordOperationsUserAgent,
       },
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(4000),
     });
 
     if (!response.ok) {
@@ -3540,7 +3925,7 @@ const sendDiscordOperationalAlert = async (alert: OperationalAlertRecord) => {
           "User-Agent": discordOperationsUserAgent,
         },
         body: JSON.stringify(messagePayload),
-        signal: AbortSignal.timeout(8000),
+        signal: AbortSignal.timeout(4000),
       },
     );
 
@@ -3603,14 +3988,39 @@ const verificationAlertSubjectType = (record: VerificationRequestRecord) =>
     ? "광고주 사업자 인증"
     : "인플루언서 계정 인증";
 
+const getInstagramDmChallengeState = (record: VerificationRequestRecord) =>
+  normalizeOptionalText(
+    (
+      record.evidence_snapshot_json?.ownership_verification as
+        | { instagram_dm?: { state?: unknown } }
+        | undefined
+    )?.instagram_dm?.state,
+  );
+
 const enqueueVerificationOperationalAlert = async (
   record: VerificationRequestRecord,
 ) => {
   if (isOperationalTestVerificationRequest(record)) return undefined;
+  if (
+    record.ownership_verification_method === "instagram_dm_code" &&
+    getInstagramDmChallengeState(record) === "awaiting_dm"
+  ) {
+    return undefined;
+  }
+  if (
+    record.ownership_verification_method === "instagram_dm_code" &&
+    record.status === "approved"
+  ) {
+    return undefined;
+  }
 
+  const verificationMethod = normalizeRequiredText(
+    record.evidence_snapshot_json?.verification_method,
+  );
   const isAutomationApproval =
     record.status === "approved" &&
-    normalizeRequiredText(record.reviewed_by_name).includes("automation");
+    (verificationMethod === "nts_three_field" ||
+      normalizeRequiredText(record.reviewed_by_name).includes("automation"));
   const needsReview = record.status === "pending";
 
   if (!isAutomationApproval && !needsReview) return undefined;
@@ -3637,6 +4047,110 @@ const enqueueVerificationOperationalAlert = async (
       target_type: record.target_type,
       verification_type: record.verification_type,
       status: record.status,
+    },
+  });
+};
+
+const enqueueInstagramDmFailureOperationalAlert = async (
+  record: VerificationRequestRecord,
+  reason: "expired" | "username_mismatch" | "provider_unavailable" | "not_configured",
+) => {
+  if (isOperationalTestVerificationRequest(record)) return undefined;
+  const reasonBody = {
+    expired: "인증 코드 만료 · 사용자가 새 인증 요청에서 새 코드를 발급해야 합니다.",
+    username_mismatch:
+      "제출 계정과 DM 발신 계정 불일치 · 수기 검토가 필요합니다.",
+    provider_unavailable:
+      "Meta 발신자 조회 일시 실패 · 자동 재시도 중이며 Meta 연결 상태를 확인해야 합니다.",
+    not_configured:
+      "Meta 자동 인증 설정 누락 · 서버 연결 설정을 확인해야 합니다.",
+  }[reason];
+  return enqueueOperationalAlert({
+    kind: "verification_request",
+    action: "needs_review",
+    severity: "high",
+    subject_type: verificationAlertSubjectType(record),
+    subject_id: record.id,
+    title: "Instagram DM 인증 확인 필요",
+    body: reasonBody,
+    mobile_path: `/admin/mobile?item=verification:${encodeURIComponent(record.id)}`,
+    dashboard_path: "/admin",
+    dedupe_key: `verification_request:${record.id}:needs_review`,
+    decision_reason: reason,
+    metadata_json: {
+      target_type: record.target_type,
+      verification_type: record.verification_type,
+      platform: "instagram",
+      reason,
+    },
+  });
+};
+
+const enqueueInstagramDmAutomationUnavailableAlert = async (
+  profileId: string,
+  dataOrigin: DataOrigin,
+  isOperationalTest: boolean,
+) => {
+  if (dataOrigin !== "production" || isOperationalTest) return undefined;
+  const cooldownHour = new Date().toISOString().slice(0, 13);
+  return enqueueOperationalAlert({
+    kind: "verification_request",
+    action: "needs_review",
+    severity: "high",
+    subject_type: "Instagram DM 인증 시스템",
+    subject_id: sha256Hex(`instagram-dm-unavailable:${profileId}`),
+    title: "Instagram DM 자동 인증 점검 필요",
+    body: "Instagram DM 자동 인증 설정 또는 전용 자동승인 스위치를 확인해 주세요.",
+    mobile_path: "/admin/mobile",
+    dashboard_path: "/admin",
+    dedupe_key: `instagram_dm_automation:unavailable:${cooldownHour}`,
+    decision_reason: "not_configured",
+    metadata_json: {
+      platform: "instagram",
+      reason: "not_configured",
+    },
+  });
+};
+
+const enqueueInstagramDmTokenExpiryOperationalAlert = async () => {
+  if (!isProductionRuntime || !metaInstagramAccessToken) return undefined;
+  const expiresAtMs = metaInstagramAccessTokenExpiresAt
+    ? new Date(metaInstagramAccessTokenExpiresAt).getTime()
+    : Number.NaN;
+  const remainingMs = expiresAtMs - Date.now();
+  const reason = !metaInstagramAccessTokenExpiresAt
+    ? "expiry_not_recorded"
+    : !Number.isFinite(expiresAtMs)
+      ? "expiry_invalid"
+      : remainingMs <= 0
+        ? "token_expired"
+        : remainingMs <= 7 * dayMs
+          ? "token_expiring"
+          : undefined;
+  if (!reason) return undefined;
+
+  const cooldownDay = new Date().toISOString().slice(0, 10);
+  return enqueueOperationalAlert({
+    kind: "verification_request",
+    action: "needs_review",
+    severity: "high",
+    subject_type: "Instagram DM 인증 시스템",
+    subject_id: "instagram-dm-access-token",
+    title: "Instagram DM 토큰 점검 필요",
+    body:
+      reason === "token_expiring"
+        ? "Instagram DM 서버 토큰이 7일 안에 만료됩니다. 만료 전에 갱신해 주세요."
+        : "Instagram DM 서버 토큰의 만료 상태를 확인해 주세요.",
+    mobile_path: "/admin/mobile",
+    dashboard_path: "/admin",
+    dedupe_key: `instagram_dm_token:${reason}:${cooldownDay}`,
+    decision_reason: reason,
+    metadata_json: {
+      platform: "instagram",
+      reason,
+      expires_at: Number.isFinite(expiresAtMs)
+        ? new Date(expiresAtMs).toISOString()
+        : undefined,
     },
   });
 };
@@ -3750,6 +4264,8 @@ const dispatchQueuedOperationalAlerts = async (limit = 20) => {
 };
 
 const runOperationalAlertSweep = async () => {
+  await enqueueInstagramDmTokenExpiryOperationalAlert().catch(() => undefined);
+  await expireInstagramDmChallenges();
   const [verificationRequests, supportTickets, supportAccessRequests] =
     await Promise.all([
       readOperationalAdminVerificationRequests(),
@@ -3889,7 +4405,10 @@ const resolveLegacyContractAccess = async (
     }
   }
 
-  if (allowAdmin && verifyAdminSessionToken(getAdminSessionFromRequest(request))) {
+  const adminAuth = allowAdmin
+    ? await authenticateAdminRequest(request, response)
+    : undefined;
+  if (adminAuth) {
     const supportAccessRequestId = getSupportAccessRequestIdFromRequest(request);
 
     if (!supportAccessRequestId) {
@@ -3906,7 +4425,7 @@ const resolveLegacyContractAccess = async (
       supportAccessRequestId,
     );
     if (supportAccess) {
-      return { role: "admin" as const, supportAccess };
+      return { role: "admin" as const, supportAccess, auth: adminAuth };
     }
 
     if (sendError) {
@@ -3955,14 +4474,6 @@ const contractAccessActor = (
     };
   }
 
-  if (access.role === "admin") {
-    return {
-      actorProfileId: undefined,
-      actorRole: "admin",
-      actorDisplayName: adminOperatorName,
-    };
-  }
-
   return {
     actorProfileId: undefined,
     actorRole: access.role,
@@ -3999,13 +4510,13 @@ const redactSignatureDataForClient = (
 
 const redactContractForClient = (
   contract: Contract,
-  accessRole: ClientContractAccessRole,
+  _accessRole: ClientContractAccessRole,
 ): Contract => ({
   ...contract,
   evidence: contract.evidence
     ? {
         ...contract.evidence,
-        ...(accessRole === "advertiser" ? {} : { share_token: undefined }),
+        share_token: undefined,
       }
     : undefined,
   signature_data: redactSignatureDataForClient(contract.signature_data),
@@ -4014,11 +4525,6 @@ const redactContractForClient = (
 
 const sha256Hex = (value: string) =>
   createHash("sha256").update(value).digest("hex");
-
-const hmacHex = (value: string) => {
-  if (!adminSessionSecret) return "";
-  return createHmac("sha256", adminSessionSecret).update(value).digest("hex");
-};
 
 const safeEqual = (left: string, right: string) => {
   const leftBuffer = Buffer.from(left);
@@ -4127,40 +4633,21 @@ const setSignedPdfAccessCookie = (
   );
 };
 
-const createAdminSessionToken = () => {
-  const expiresAt = Date.now() + adminSessionMaxAgeSeconds * 1000;
-  const nonce = randomBytes(16).toString("hex");
-  const payload = `${expiresAt}.${nonce}`;
-  const signature = hmacHex(payload);
-  return `${payload}.${signature}`;
-};
-
-const verifyAdminSessionToken = (token: string | undefined) => {
-  if (!token || !adminSessionSecret) return false;
-
-  const [expiresAt, nonce, signature] = token.split(".");
-  if (!expiresAt || !nonce || !signature) return false;
-  if (Number(expiresAt) < Date.now()) return false;
-
-  const expectedSignature = hmacHex(`${expiresAt}.${nonce}`);
-  return safeEqual(signature, expectedSignature);
-};
-
 const isAdminAuthConfigured = () =>
-  hasText(adminAccessCode) && hasText(adminSessionSecret);
+  Boolean(supabaseUrl && supabasePublishableKey && supabaseServiceRoleKey);
 
-const adminCookieOptions = () => [
+const adminCookieOptions = (maxAgeSeconds = adminSessionMaxAgeSeconds) => [
   "HttpOnly",
-  "SameSite=Lax",
+  "SameSite=Strict",
   "Path=/",
-  `Max-Age=${adminSessionMaxAgeSeconds}`,
+  `Max-Age=${maxAgeSeconds}`,
   isPreview ? "Secure" : "",
 ].filter(Boolean).join("; ");
 
 const clearAdminCookieOptions = () =>
   [
     "HttpOnly",
-    "SameSite=Lax",
+    "SameSite=Strict",
     "Path=/",
     "Max-Age=0",
     isPreview ? "Secure" : "",
@@ -4202,18 +4689,207 @@ const clearAdvertiserCookieOptions = () =>
     isPreview ? "Secure" : "",
   ].filter(Boolean).join("; ");
 
+const recentAuthCookieOptions = (maxAgeSeconds = recentAuthMaxAgeSeconds) =>
+  [
+    "HttpOnly",
+    "SameSite=Strict",
+    "Path=/api",
+    `Max-Age=${maxAgeSeconds}`,
+    isPreview ? "Secure" : "",
+  ].filter(Boolean).join("; ");
+
+const getRecentAuthCookieName = (role: "advertiser" | "influencer") =>
+  role === "advertiser"
+    ? advertiserRecentAuthCookie
+    : influencerRecentAuthCookie;
+
+const decodeSupabaseAccessTokenClaims = (
+  accessToken: string | undefined,
+): SupabaseAccessTokenClaims | undefined => {
+  if (!accessToken) return undefined;
+  const [, payload] = accessToken.split(".");
+  if (!payload) return undefined;
+  try {
+    return JSON.parse(
+      Buffer.from(payload, "base64url").toString("utf8"),
+    ) as SupabaseAccessTokenClaims;
+  } catch {
+    return undefined;
+  }
+};
+
+const classifySessionAuthMetricDataOrigin = ({
+  user,
+  profile,
+  authoritativeOrigin,
+}: {
+  user?: SupabaseAuthUser;
+  profile?: SupabaseProfileRow;
+  authoritativeOrigin?: AuthMetricDataOrigin;
+}) => {
+  const verifiedIdentityOrigin = classifyAuthMetricDataOrigin({
+    identifier: profile?.email ?? user?.email,
+    explicit: profile?.data_origin,
+  });
+  return verifiedIdentityOrigin ?? authoritativeOrigin;
+};
+
+const hasAdminTotpAmr = (claims: SupabaseAccessTokenClaims | undefined) =>
+  claims?.amr?.some((entry) => entry.method?.toLowerCase() === "totp") === true;
+
+const appendResponseCookies = (
+  response: express.Response,
+  cookies: string[],
+) => {
+  if (cookies.length === 0) return;
+  const existing = response.getHeader("Set-Cookie");
+  const existingCookies = Array.isArray(existing)
+    ? existing.map(String)
+    : typeof existing === "string"
+      ? [existing]
+      : [];
+  response.setHeader("Set-Cookie", [...existingCookies, ...cookies]);
+};
+
+const setPrivateAuthResponseHeaders = (response: express.Response) => {
+  response.setHeader("Cache-Control", "private, no-store");
+  response.setHeader("Vary", "Cookie");
+};
+
+type AuthMetricOriginBinding = {
+  userId: string;
+  authSessionId: string;
+  sessionProof: string;
+};
+
+const readAuthMetricOriginBindingFromRequest = (
+  request: express.Request,
+  role: UserSessionBrowserRole,
+  {
+    accessToken,
+    refreshToken,
+    verifiedUserId,
+  }: {
+    accessToken?: string;
+    refreshToken?: string;
+    verifiedUserId?: string;
+  } = {},
+): AuthMetricOriginBinding | undefined => {
+  const cookies = parseCookies(request.header("cookie"));
+  const candidateAccessToken =
+    accessToken ??
+    getBearerToken(request) ??
+    cookies.get(
+      role === "advertiser" ? advertiserAccessCookie : influencerAccessCookie,
+    );
+  const candidateRefreshToken =
+    refreshToken ??
+    cookies.get(
+      role === "advertiser" ? advertiserRefreshCookie : influencerRefreshCookie,
+    );
+  const claims = decodeSupabaseAccessTokenClaims(candidateAccessToken);
+  if (
+    !hasText(claims?.sub) ||
+    !hasText(claims.session_id) ||
+    !hasText(candidateRefreshToken) ||
+    (verifiedUserId && claims.sub !== verifiedUserId)
+  ) {
+    return undefined;
+  }
+  return {
+    userId: claims.sub,
+    authSessionId: claims.session_id,
+    sessionProof: candidateRefreshToken,
+  };
+};
+
+const buildAuthMetricOriginCookie = (
+  role: UserSessionBrowserRole,
+  profile: SupabaseProfileRow | undefined,
+  binding: AuthMetricOriginBinding | undefined,
+) => {
+  if (!profile || !binding || profile.id !== binding.userId) return undefined;
+  const origin = classifyAuthMetricDataOrigin({
+    identifier: profile.email,
+    explicit: profile.data_origin,
+  });
+  if (!origin) return undefined;
+  const value = createAuthMetricOriginCookieValue({
+    role,
+    origin,
+    secret: shareTokenEncryptionSecret,
+    ...binding,
+  });
+  if (!value) return undefined;
+  const options =
+    role === "advertiser"
+      ? advertiserCookieOptions(authMetricOriginCookieMaxAgeSeconds)
+      : influencerCookieOptions(authMetricOriginCookieMaxAgeSeconds);
+  return `${getAuthMetricOriginCookieName(role)}=${encodeURIComponent(
+    value,
+  )}; ${options}`;
+};
+
+const clearAuthMetricOriginCookie = (role: UserSessionBrowserRole) =>
+  `${getAuthMetricOriginCookieName(role)}=; ${
+    role === "advertiser"
+      ? clearAdvertiserCookieOptions()
+      : clearInfluencerCookieOptions()
+  }`;
+
+const readAuthMetricOriginFromRequest = (
+  request: express.Request,
+  role: UserSessionBrowserRole,
+  binding = readAuthMetricOriginBindingFromRequest(request, role),
+) => {
+  if (!binding) return undefined;
+  return readAuthMetricOriginCookieValue({
+    value: parseCookies(request.header("cookie")).get(
+      getAuthMetricOriginCookieName(role),
+    ),
+    role,
+    secret: shareTokenEncryptionSecret,
+    ...binding,
+  });
+};
+
+const ensureAuthMetricOriginCookie = (
+  request: express.Request,
+  response: express.Response,
+  role: UserSessionBrowserRole,
+  profile: SupabaseProfileRow,
+  binding: AuthMetricOriginBinding | undefined,
+) => {
+  const expectedOrigin = classifyAuthMetricDataOrigin({
+    identifier: profile.email,
+    explicit: profile.data_origin,
+  });
+  if (
+    !expectedOrigin ||
+    readAuthMetricOriginFromRequest(request, role, binding) === expectedOrigin
+  ) {
+    return;
+  }
+  const cookie = buildAuthMetricOriginCookie(role, profile, binding);
+  if (cookie) appendResponseCookies(response, [cookie]);
+};
+
 const setAdvertiserSessionCookies = (
+  request: express.Request,
   response: express.Response,
   session: SupabaseAuthSession,
-  _profile?: SupabaseProfileRow,
+  profile?: SupabaseProfileRow,
 ) => {
   const cookies = [
     `${advertiserAccessCookie}=${encodeURIComponent(
       session.access_token,
     )}; ${advertiserCookieOptions(
       Math.min(
-        influencerAccessMaxAgeSeconds,
-        Math.max(60, Number(session.expires_in ?? influencerAccessMaxAgeSeconds)),
+        userSessionAccessMaxAgeSeconds,
+        Math.max(
+          60,
+          Number(session.expires_in ?? userSessionAccessMaxAgeSeconds),
+        ),
       ),
     )}`,
     `${advertiserFastSessionCookie}=; ${clearAdvertiserCookieOptions()}`,
@@ -4223,11 +4899,26 @@ const setAdvertiserSessionCookies = (
     cookies.push(
       `${advertiserRefreshCookie}=${encodeURIComponent(
         session.refresh_token,
-      )}; ${advertiserCookieOptions(influencerRefreshMaxAgeSeconds)}`,
+      )}; ${advertiserCookieOptions(userSessionRefreshMaxAgeSeconds)}`,
     );
   }
+  const metricOriginCookie = buildAuthMetricOriginCookie(
+    "advertiser",
+    profile,
+    readAuthMetricOriginBindingFromRequest(request, "advertiser", {
+      accessToken: session.access_token,
+      refreshToken: session.refresh_token,
+      verifiedUserId: session.user.id,
+    }),
+  );
+  if (metricOriginCookie) cookies.push(metricOriginCookie);
 
   response.setHeader("Set-Cookie", cookies);
+  bindSessionToObservedUserSessionLogoutBarrier(
+    request,
+    response,
+    "advertiser",
+  );
 };
 
 const clearAdvertiserSessionCookies = (response: express.Response) => {
@@ -4235,22 +4926,27 @@ const clearAdvertiserSessionCookies = (response: express.Response) => {
     `${advertiserAccessCookie}=; ${clearAdvertiserCookieOptions()}`,
     `${advertiserRefreshCookie}=; ${clearAdvertiserCookieOptions()}`,
     `${advertiserFastSessionCookie}=; ${clearAdvertiserCookieOptions()}`,
+    clearAuthMetricOriginCookie("advertiser"),
     `${signedPdfAccessCookie}=; ${signedPdfCookieOptions(0)}`,
   ]);
 };
 
 const setInfluencerSessionCookies = (
+  request: express.Request,
   response: express.Response,
   session: SupabaseAuthSession,
-  _profile?: SupabaseProfileRow,
+  profile?: SupabaseProfileRow,
 ) => {
   const cookies = [
     `${influencerAccessCookie}=${encodeURIComponent(
       session.access_token,
     )}; ${influencerCookieOptions(
       Math.min(
-        influencerAccessMaxAgeSeconds,
-        Math.max(60, Number(session.expires_in ?? influencerAccessMaxAgeSeconds)),
+        userSessionAccessMaxAgeSeconds,
+        Math.max(
+          60,
+          Number(session.expires_in ?? userSessionAccessMaxAgeSeconds),
+        ),
       ),
     )}`,
     `${influencerFastSessionCookie}=; ${clearInfluencerCookieOptions()}`,
@@ -4260,11 +4956,26 @@ const setInfluencerSessionCookies = (
     cookies.push(
       `${influencerRefreshCookie}=${encodeURIComponent(
         session.refresh_token,
-      )}; ${influencerCookieOptions(influencerRefreshMaxAgeSeconds)}`,
+      )}; ${influencerCookieOptions(userSessionRefreshMaxAgeSeconds)}`,
     );
   }
+  const metricOriginCookie = buildAuthMetricOriginCookie(
+    "influencer",
+    profile,
+    readAuthMetricOriginBindingFromRequest(request, "influencer", {
+      accessToken: session.access_token,
+      refreshToken: session.refresh_token,
+      verifiedUserId: session.user.id,
+    }),
+  );
+  if (metricOriginCookie) cookies.push(metricOriginCookie);
 
   response.setHeader("Set-Cookie", cookies);
+  bindSessionToObservedUserSessionLogoutBarrier(
+    request,
+    response,
+    "influencer",
+  );
 };
 
 const clearInfluencerSessionCookies = (response: express.Response) => {
@@ -4272,7 +4983,74 @@ const clearInfluencerSessionCookies = (response: express.Response) => {
     `${influencerAccessCookie}=; ${clearInfluencerCookieOptions()}`,
     `${influencerRefreshCookie}=; ${clearInfluencerCookieOptions()}`,
     `${influencerFastSessionCookie}=; ${clearInfluencerCookieOptions()}`,
+    clearAuthMetricOriginCookie("influencer"),
     `${signedPdfAccessCookie}=; ${signedPdfCookieOptions(0)}`,
+  ]);
+};
+
+const getRoleCookieOptions = (
+  role: UserSessionBrowserRole,
+  maxAgeSeconds: number,
+) =>
+  role === "advertiser"
+    ? advertiserCookieOptions(maxAgeSeconds)
+    : influencerCookieOptions(maxAgeSeconds);
+
+const getRoleClearCookieOptions = (role: UserSessionBrowserRole) =>
+  role === "advertiser"
+    ? clearAdvertiserCookieOptions()
+    : clearInfluencerCookieOptions();
+
+const clearRoleSessionCookies = (
+  response: express.Response,
+  role: UserSessionBrowserRole,
+) => {
+  if (role === "advertiser") {
+    clearAdvertiserSessionCookies(response);
+    return;
+  }
+  clearInfluencerSessionCookies(response);
+};
+
+const hasUserSessionLogoutBarrier = (
+  request: express.Request,
+  role: UserSessionBrowserRole,
+) =>
+  readUserSessionLogoutBarrierState(request.header("cookie"), role).blocked;
+
+const appendUserSessionLogoutBarrier = (
+  response: express.Response,
+  role: UserSessionBrowserRole,
+) => {
+  const barrierCookieName = getUserSessionLogoutBarrierCookieName(role);
+  const resumeCookieName = getUserSessionLogoutResumeCookieName(role);
+  const barrierNonce = randomUUID().replaceAll("-", "");
+  appendResponseCookies(response, [
+    `${barrierCookieName}=${barrierNonce}; ${getRoleCookieOptions(
+      role,
+      userSessionRefreshMaxAgeSeconds,
+    )}`,
+    `${resumeCookieName}=; ${getRoleClearCookieOptions(role)}`,
+  ]);
+};
+
+const bindSessionToObservedUserSessionLogoutBarrier = (
+  request: express.Request,
+  response: express.Response,
+  role: UserSessionBrowserRole,
+) => {
+  const { barrier } = readUserSessionLogoutBarrierState(
+    request.header("cookie"),
+    role,
+  );
+  const resumeCookieName = getUserSessionLogoutResumeCookieName(role);
+  appendResponseCookies(response, [
+    barrier
+      ? `${resumeCookieName}=${barrier}; ${getRoleCookieOptions(
+          role,
+          userSessionRefreshMaxAgeSeconds,
+        )}`
+      : `${resumeCookieName}=; ${getRoleClearCookieOptions(role)}`,
   ]);
 };
 
@@ -4313,10 +5091,21 @@ const consumeLocalRateLimitBucket = (
 
 let distributedRateLimitFallbackWarned = false;
 
+class DistributedRateLimitUnavailableError extends Error {
+  constructor(cause?: unknown) {
+    super(
+      "Distributed rate limiting is temporarily unavailable",
+      cause === undefined ? undefined : { cause },
+    );
+    this.name = "DistributedRateLimitUnavailableError";
+  }
+}
+
 const consumeRateLimitBucket = async (
   key: string,
   maxAttempts: number,
   windowMs: number,
+  { requireDistributed = false }: { requireDistributed?: boolean } = {},
 ) => {
   if (useSupabase) {
     try {
@@ -4341,6 +5130,9 @@ const consumeRateLimitBucket = async (
         };
       }
     } catch (error) {
+      if (requireDistributed) {
+        throw new DistributedRateLimitUnavailableError(error);
+      }
       if (!distributedRateLimitFallbackWarned) {
         distributedRateLimitFallbackWarned = true;
         console.warn(
@@ -4352,12 +5144,24 @@ const consumeRateLimitBucket = async (
     }
   }
 
+  if (requireDistributed) {
+    throw new DistributedRateLimitUnavailableError();
+  }
+
   return consumeLocalRateLimitBucket(key, maxAttempts, windowMs);
 };
 
-const clearRateLimitBucket = async (key: string) => {
-  publicAuthRateLimitBuckets.delete(key);
-  if (!useSupabase) return;
+const clearRateLimitBucket = async (
+  key: string,
+  { requireDistributed = false }: { requireDistributed?: boolean } = {},
+) => {
+  if (!useSupabase) {
+    if (requireDistributed) {
+      throw new DistributedRateLimitUnavailableError();
+    }
+    publicAuthRateLimitBuckets.delete(key);
+    return;
+  }
 
   try {
     const response = await fetchSupabase(
@@ -4366,7 +5170,11 @@ const clearRateLimitBucket = async (key: string) => {
       { method: "DELETE" },
     );
     await assertSupabaseOk(response, "Supabase distributed rate limit clear");
+    publicAuthRateLimitBuckets.delete(key);
   } catch (error) {
+    if (requireDistributed) {
+      throw new DistributedRateLimitUnavailableError(error);
+    }
     if (!distributedRateLimitFallbackWarned) {
       distributedRateLimitFallbackWarned = true;
       console.warn(
@@ -4375,6 +5183,160 @@ const clearRateLimitBucket = async (key: string) => {
         }`,
       );
     }
+  }
+};
+
+const getAdminMfaRateLimitKeys = (
+  request: express.Request,
+  userId: string,
+  factorId: string,
+) => [
+  `admin-mfa:user:${userId}`,
+  `admin-mfa:factor:${factorId}`,
+  `admin-mfa:ip:${getClientIp(request)}`,
+];
+
+type AdminMfaRateLimitReservation = {
+  id: string;
+  keys: string[];
+  blocked: boolean;
+  retryAfterSeconds: number;
+};
+
+export const reserveAdminMfaRateLimit = async (
+  request: express.Request,
+  userId: string,
+  factorId: string,
+) : Promise<AdminMfaRateLimitReservation> => {
+  if (!useSupabase) throw new DistributedRateLimitUnavailableError();
+  const keys = getAdminMfaRateLimitKeys(request, userId, factorId);
+  const id = randomUUID();
+  try {
+    const response = await fetchSupabase("rpc/reserve_admin_mfa_rate_limit", "", {
+      method: "POST",
+      body: JSON.stringify({
+        p_reservation_id: id,
+        p_user_bucket_key: sha256Hex(`rate-limit:${keys[0]}`),
+        p_factor_bucket_key: sha256Hex(`rate-limit:${keys[1]}`),
+        p_ip_bucket_key: sha256Hex(`rate-limit:${keys[2]}`),
+        p_max_attempts: adminMfaMaxFailures,
+        p_window_seconds: Math.max(
+          1,
+          Math.ceil(Math.max(adminMfaWindowMs, adminMfaLockMs) / 1000),
+        ),
+        p_reservation_ttl_seconds: 120,
+      }),
+    });
+    await assertSupabaseOk(response, "Supabase admin MFA reservation");
+    const payload = (await response.json()) as
+      | Array<{
+          blocked?: boolean;
+          retry_after_seconds?: number;
+          reserved?: boolean;
+        }>
+      | {
+          blocked?: boolean;
+          retry_after_seconds?: number;
+          reserved?: boolean;
+        };
+    const result = Array.isArray(payload) ? payload[0] : payload;
+    if (
+      !result ||
+      typeof result.blocked !== "boolean" ||
+      typeof result.reserved !== "boolean" ||
+      result.blocked === result.reserved
+    ) {
+      throw new Error("Supabase admin MFA reservation returned an invalid result");
+    }
+    return {
+      id,
+      keys,
+      blocked: result.blocked,
+      retryAfterSeconds: Math.max(
+        0,
+        Number(result.retry_after_seconds) || 0,
+      ),
+    };
+  } catch (error) {
+    throw new DistributedRateLimitUnavailableError(error);
+  }
+};
+
+export const rollbackAdminMfaRateLimitReservation = async (
+  reservationId: string,
+) => {
+  if (!useSupabase) throw new DistributedRateLimitUnavailableError();
+  try {
+    const response = await fetchSupabase(
+      "rpc/rollback_admin_mfa_rate_limit_reservation",
+      "",
+      {
+        method: "POST",
+        body: JSON.stringify({ p_reservation_id: reservationId }),
+      },
+    );
+    await assertSupabaseOk(response, "Supabase admin MFA reservation rollback");
+    if ((await response.json()) !== true) {
+      throw new Error("Supabase admin MFA reservation rollback was not applied");
+    }
+  } catch (error) {
+    throw new DistributedRateLimitUnavailableError(error);
+  }
+};
+
+const rollbackAdminMfaReservationOrRespond = async (
+  response: express.Response,
+  reservation: AdminMfaRateLimitReservation,
+) => {
+  try {
+    await rollbackAdminMfaRateLimitReservation(reservation.id);
+    return true;
+  } catch (error) {
+    if (error instanceof DistributedRateLimitUnavailableError) {
+      sendRetryableAdminMfaUnavailable(response);
+      return false;
+    }
+    throw error;
+  }
+};
+
+export const finalizeAdminMfaRateLimitReservation = async (
+  reservationId: string,
+) => {
+  if (!useSupabase) throw new DistributedRateLimitUnavailableError();
+  try {
+    const response = await fetchSupabase(
+      "rpc/finalize_admin_mfa_rate_limit_reservation",
+      "",
+      {
+        method: "POST",
+        body: JSON.stringify({ p_reservation_id: reservationId }),
+      },
+    );
+    await assertSupabaseOk(response, "Supabase admin MFA reservation finalize");
+    if ((await response.json()) !== true) {
+      throw new Error("Supabase admin MFA reservation finalize was not applied");
+    }
+  } catch (error) {
+    throw new DistributedRateLimitUnavailableError(error);
+  }
+};
+
+const finalizeAdminMfaReservationOrRespond = async (
+  response: express.Response,
+  reservation: AdminMfaRateLimitReservation,
+  onUnavailable?: () => void,
+) => {
+  try {
+    await finalizeAdminMfaRateLimitReservation(reservation.id);
+    return true;
+  } catch (error) {
+    if (error instanceof DistributedRateLimitUnavailableError) {
+      onUnavailable?.();
+      sendRetryableAdminMfaUnavailable(response);
+      return false;
+    }
+    throw error;
   }
 };
 
@@ -4571,9 +5533,6 @@ const normalizeSignupNextPath = (
   }
 };
 
-const getAdminSessionFromRequest = (request: express.Request) =>
-  parseCookies(request.header("cookie")).get(adminSessionCookie);
-
 const getBearerToken = (request: express.Request) => {
   const authorization = request.header("authorization") ?? "";
   const [scheme, token] = authorization.split(" ");
@@ -4598,6 +5557,40 @@ const requireCronRequest = (
   return true;
 };
 
+class SupabaseAuthUserVerificationError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string,
+  ) {
+    super(message);
+    this.name = "SupabaseAuthUserVerificationError";
+  }
+
+  get terminal() {
+    return isTerminalSupabaseAccessFailure({
+      status: this.status,
+      code: this.code,
+      message: this.message,
+    });
+  }
+}
+
+class SupabasePasswordGrantError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string,
+  ) {
+    super(message);
+    this.name = "SupabasePasswordGrantError";
+  }
+
+  get retryable() {
+    return this.status === 408 || this.status === 429 || this.status >= 500;
+  }
+}
+
 const fetchSupabaseAuthUser = async (accessToken: string) => {
   const response = await fetch(supabaseAuthUrl("/user"), {
     headers: supabaseAuthHeaders(accessToken),
@@ -4605,7 +5598,12 @@ const fetchSupabaseAuthUser = async (accessToken: string) => {
   });
 
   if (!response.ok) {
-    throw new Error(`Supabase user verification failed (${response.status})`);
+    const error = await parseSupabaseAuthError(response);
+    throw new SupabaseAuthUserVerificationError(
+      error.message,
+      response.status,
+      error.code,
+    );
   }
 
   return (await response.json()) as SupabaseAuthUser;
@@ -4626,7 +5624,12 @@ const createSupabasePasswordSession = async (
   );
 
   if (!response.ok) {
-    throw new Error(await parseSupabaseError(response));
+    const error = await parseSupabaseAuthError(response);
+    throw new SupabasePasswordGrantError(
+      error.message,
+      response.status,
+      error.code,
+    );
   }
 
   return (await response.json()) as SupabaseAuthSession;
@@ -4713,6 +5716,9 @@ const createSupabaseSignupUser = async ({
   const authUser = extractSupabaseSignupUser(payload);
   if (!authUser?.id) {
     throw new Error("Supabase 가입 응답에서 사용자 정보를 확인할 수 없습니다.");
+  }
+  if (Array.isArray(authUser.identities) && authUser.identities.length === 0) {
+    throw new Error("User already registered");
   }
 
   return authUser;
@@ -4813,21 +5819,195 @@ const getSignupFailureMessage = (error: unknown, fallback: string) => {
   return hasText(message) && !isAsciiMessage ? message : fallback;
 };
 
-const refreshSupabaseSession = async (refreshToken: string) => {
+class SupabaseSessionRefreshError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string,
+  ) {
+    super(message);
+    this.name = "SupabaseSessionRefreshError";
+  }
+
+  get terminal() {
+    return isTerminalSupabaseRefreshFailure({
+      status: this.status,
+      code: this.code,
+      message: this.message,
+    });
+  }
+}
+
+class AuthSessionTemporarilyUnavailableError extends Error {
+  constructor(cause: unknown) {
+    super("Authentication service temporarily unavailable", { cause });
+    this.name = "AuthSessionTemporarilyUnavailableError";
+  }
+}
+
+class ExplicitUserLogoutError extends Error {
+  constructor() {
+    super("The browser session was explicitly logged out");
+    this.name = "ExplicitUserLogoutError";
+  }
+}
+
+const supabaseSessionRefreshInflight = new Map<
+  string,
+  Promise<SupabaseAuthSession>
+>();
+const supabaseSessionRefreshReuseCache = new Map<
+  string,
+  { session: SupabaseAuthSession; expiresAt: number }
+>();
+const explicitlyTerminatedSessionTokens = new Map<string, number>();
+
+const pruneExplicitlyTerminatedSessionTokens = (now = Date.now()) => {
+  for (const [key, expiresAt] of explicitlyTerminatedSessionTokens) {
+    if (expiresAt <= now) explicitlyTerminatedSessionTokens.delete(key);
+  }
+  while (explicitlyTerminatedSessionTokens.size >= 2_048) {
+    const oldestKey = explicitlyTerminatedSessionTokens.keys().next().value;
+    if (typeof oldestKey !== "string") break;
+    explicitlyTerminatedSessionTokens.delete(oldestKey);
+  }
+};
+
+const markSessionTokenExplicitlyTerminated = (token: string | undefined) => {
+  if (!hasText(token)) return;
+  const now = Date.now();
+  pruneExplicitlyTerminatedSessionTokens(now);
+  explicitlyTerminatedSessionTokens.set(
+    getTokenCacheKey(token),
+    now + userSessionRefreshMaxAgeSeconds * 1000,
+  );
+};
+
+const clearExplicitTerminationForSessionToken = (
+  token: string | undefined,
+) => {
+  if (!hasText(token)) return;
+  explicitlyTerminatedSessionTokens.delete(getTokenCacheKey(token));
+};
+
+const isSessionTokenExplicitlyTerminated = (token: string | undefined) => {
+  if (!hasText(token)) return false;
+  const key = getTokenCacheKey(token);
+  const expiresAt = explicitlyTerminatedSessionTokens.get(key);
+  if (!expiresAt) return false;
+  if (expiresAt <= Date.now()) {
+    explicitlyTerminatedSessionTokens.delete(key);
+    return false;
+  }
+  return true;
+};
+
+const readReusableSupabaseSessionRefresh = (cacheKey: string) => {
+  const cached = supabaseSessionRefreshReuseCache.get(cacheKey);
+  if (!cached) return undefined;
+  if (cached.expiresAt <= Date.now()) {
+    supabaseSessionRefreshReuseCache.delete(cacheKey);
+    return undefined;
+  }
+  return cached.session;
+};
+
+const rememberReusableSupabaseSessionRefresh = (
+  cacheKey: string,
+  session: SupabaseAuthSession,
+) => {
+  const now = Date.now();
+  for (const [key, cached] of supabaseSessionRefreshReuseCache) {
+    if (cached.expiresAt <= now) supabaseSessionRefreshReuseCache.delete(key);
+  }
+  while (supabaseSessionRefreshReuseCache.size >= 256) {
+    const oldestKey = supabaseSessionRefreshReuseCache.keys().next().value;
+    if (typeof oldestKey !== "string") break;
+    supabaseSessionRefreshReuseCache.delete(oldestKey);
+  }
+  supabaseSessionRefreshReuseCache.set(cacheKey, {
+    session,
+    expiresAt: now + userSessionRefreshReuseCacheMs,
+  });
+};
+
+const requestSupabaseSessionRefresh = async (refreshToken: string) => {
   const response = await fetch(
     supabaseAuthUrl("/token?grant_type=refresh_token"),
     {
       method: "POST",
       headers: supabaseAuthHeaders(),
+      signal: createSupabaseTimeoutSignal(),
       body: JSON.stringify({ refresh_token: refreshToken }),
     },
   );
 
   if (!response.ok) {
-    throw new Error(await parseSupabaseError(response));
+    const error = await parseSupabaseAuthError(response);
+    throw new SupabaseSessionRefreshError(
+      error.message,
+      response.status,
+      error.code,
+    );
   }
 
-  return (await response.json()) as SupabaseAuthSession;
+  const session = (await response.json()) as SupabaseAuthSession;
+  if (
+    !hasText(session.access_token) ||
+    !hasText(session.refresh_token) ||
+    !isSupabaseAuthUser(session.user)
+  ) {
+    throw new SupabaseSessionRefreshError(
+      "Supabase returned an invalid refresh response",
+      502,
+    );
+  }
+
+  return session;
+};
+
+const refreshSupabaseSession = async (
+  refreshToken: string,
+  options: { allowExplicitlyTerminated?: boolean } = {},
+) => {
+  if (
+    !options.allowExplicitlyTerminated &&
+    isSessionTokenExplicitlyTerminated(refreshToken)
+  ) {
+    throw new ExplicitUserLogoutError();
+  }
+  const cacheKey = getTokenCacheKey(refreshToken);
+  const reusable = readReusableSupabaseSessionRefresh(cacheKey);
+  if (reusable) {
+    if (
+      !options.allowExplicitlyTerminated &&
+      isSessionTokenExplicitlyTerminated(refreshToken)
+    ) {
+      throw new ExplicitUserLogoutError();
+    }
+    return reusable;
+  }
+  const inflight = supabaseSessionRefreshInflight.get(cacheKey);
+  const request = inflight ?? requestSupabaseSessionRefresh(refreshToken);
+  if (!inflight) supabaseSessionRefreshInflight.set(cacheKey, request);
+
+  try {
+    const session = await request;
+    if (
+      !options.allowExplicitlyTerminated &&
+      isSessionTokenExplicitlyTerminated(refreshToken)
+    ) {
+      throw new ExplicitUserLogoutError();
+    }
+    if (!isSessionTokenExplicitlyTerminated(refreshToken)) {
+      rememberReusableSupabaseSessionRefresh(cacheKey, session);
+    }
+    return session;
+  } finally {
+    if (supabaseSessionRefreshInflight.get(cacheKey) === request) {
+      supabaseSessionRefreshInflight.delete(cacheKey);
+    }
+  }
 };
 
 const revokeSupabaseSession = async (accessToken: string | undefined) => {
@@ -4836,6 +6016,7 @@ const revokeSupabaseSession = async (accessToken: string | undefined) => {
   const response = await fetch(supabaseAuthUrl("/logout?scope=local"), {
     method: "POST",
     headers: supabaseAuthHeaders(accessToken),
+    signal: createSupabaseTimeoutSignal(),
   });
 
   if (!response.ok) {
@@ -4845,30 +6026,197 @@ const revokeSupabaseSession = async (accessToken: string | undefined) => {
   }
 };
 
+const revokeTemporarySupabaseSession = async (
+  session: SupabaseAuthSession,
+  context: string,
+) => {
+  try {
+    forgetRecentAuthSession(session.access_token);
+    await revokeSupabaseSession(session.access_token);
+  } catch (error) {
+    console.warn(
+      `[${productName}] ${context} temporary session revoke failed: ${
+        error instanceof Error ? error.message : "unknown error"
+      }`,
+    );
+  }
+};
+
 const revokeSessionFromRequest = async (
   request: express.Request,
   accessCookieName: string,
   refreshCookieName: string,
+  options: { allowExplicitlyTerminatedRefresh?: boolean } = {},
 ) => {
   const cookies = parseCookies(request.header("cookie"));
   const bearerToken = getBearerToken(request);
   const cookieAccessToken = cookies.get(accessCookieName);
   const refreshToken = cookies.get(refreshCookieName);
   const accessToken = bearerToken ?? cookieAccessToken;
+  const refreshCacheKey = hasText(refreshToken)
+    ? getTokenCacheKey(refreshToken)
+    : undefined;
+  if (refreshCacheKey) supabaseSessionRefreshReuseCache.delete(refreshCacheKey);
 
   if (hasText(accessToken)) {
     forgetProfile(readRecentAuthSession(accessToken)?.id);
     forgetRecentAuthSession(accessToken);
-    await revokeSupabaseSession(accessToken);
-    return;
+    try {
+      await revokeSupabaseSession(accessToken);
+      return;
+    } catch (error) {
+      if (!hasText(refreshToken)) throw error;
+      // An expired access token can still revoke the same local session after refresh.
+    }
   }
 
   if (hasText(refreshToken)) {
-    const session = await refreshSupabaseSession(refreshToken);
+    const session = await refreshSupabaseSession(refreshToken, {
+      allowExplicitlyTerminated: options.allowExplicitlyTerminatedRefresh,
+    });
+    if (refreshCacheKey) supabaseSessionRefreshReuseCache.delete(refreshCacheKey);
+    markSessionTokenExplicitlyTerminated(session.access_token);
+    markSessionTokenExplicitlyTerminated(session.refresh_token);
     forgetProfile(session.user.id);
     forgetRecentAuthSession(session.access_token);
     await revokeSupabaseSession(session.access_token);
   }
+};
+
+const getRoleSessionCookieNames = (role: UserSessionBrowserRole) =>
+  role === "advertiser"
+    ? {
+        accessCookieName: advertiserAccessCookie,
+        refreshCookieName: advertiserRefreshCookie,
+      }
+    : {
+        accessCookieName: influencerAccessCookie,
+        refreshCookieName: influencerRefreshCookie,
+      };
+
+const forgetRoleSessionRequestCaches = (
+  request: express.Request,
+  role: UserSessionBrowserRole,
+  additionalTokens: Array<string | undefined> = [],
+  userId?: string,
+) => {
+  const { accessCookieName, refreshCookieName } =
+    getRoleSessionCookieNames(role);
+  const cookies = parseCookies(request.header("cookie"));
+  const accessToken = getBearerToken(request) ?? cookies.get(accessCookieName);
+  const refreshToken = cookies.get(refreshCookieName);
+  const tokens = [accessToken, refreshToken, ...additionalTokens].filter(
+    hasText,
+  );
+
+  for (const token of tokens) {
+    const cachedUser = readRecentAuthSession(token);
+    if (cachedUser?.id) forgetProfile(cachedUser.id);
+    forgetRecentAuthSession(token);
+    supabaseSessionRefreshReuseCache.delete(getTokenCacheKey(token));
+    markSessionTokenExplicitlyTerminated(token);
+  }
+  forgetProfile(userId);
+};
+
+const establishExplicitUserSessionLogout = (
+  request: express.Request,
+  response: express.Response,
+  role: UserSessionBrowserRole,
+  additionalTokens: Array<string | undefined> = [],
+  userId?: string,
+) => {
+  forgetRoleSessionRequestCaches(
+    request,
+    role,
+    additionalTokens,
+    userId,
+  );
+  clearRoleSessionCookies(response, role);
+  appendUserSessionLogoutBarrier(response, role);
+};
+
+const terminateRoleSessionForAuthorizationFailure = async ({
+  request,
+  response,
+  role,
+  accessToken,
+  refreshToken,
+  userId,
+}: {
+  request: express.Request;
+  response: express.Response;
+  role: UserSessionBrowserRole;
+  accessToken: string;
+  refreshToken?: string;
+  userId?: string;
+}) => {
+  const metricStartedAt = Date.now();
+  const profile = userId ? readProfileFromCache(userId) : undefined;
+  const metricDataOrigin = classifySessionAuthMetricDataOrigin({
+    profile,
+    authoritativeOrigin: readAuthMetricOriginFromRequest(request, role),
+  });
+  establishExplicitUserSessionLogout(
+    request,
+    response,
+    role,
+    [accessToken, refreshToken],
+    userId,
+  );
+  try {
+    await revokeSupabaseSession(accessToken);
+    observeOperationalAuthMetric({
+      operation: "session_revoke",
+      role: role === "advertiser" ? "marketer" : "influencer",
+      outcome: "success",
+      latencyMs: Date.now() - metricStartedAt,
+      dataOrigin: metricDataOrigin,
+    });
+  } catch (error) {
+    observeOperationalAuthMetric({
+      operation: "session_revoke",
+      role: role === "advertiser" ? "marketer" : "influencer",
+      outcome: "provider_error",
+      latencyMs: Date.now() - metricStartedAt,
+      dataOrigin: metricDataOrigin,
+    });
+    console.warn(
+      `[${productName}] ${role} authorization termination revoke failed: ${
+        error instanceof Error ? error.message : "unknown error"
+      }`,
+    );
+  }
+};
+
+const observeBrowserSessionAuthOutcome = ({
+  request,
+  role,
+  operation,
+  outcome,
+  startedAt,
+  user,
+}: {
+  request: express.Request;
+  role: UserSessionBrowserRole;
+  operation: "session_validate" | "session_refresh";
+  outcome: AuthMetricOutcome;
+  startedAt: number;
+  user?: SupabaseAuthUser;
+}) => {
+  const userId = user?.id;
+  const profile = userId ? readProfileFromCache(userId) : undefined;
+  observeOperationalAuthMetric({
+    operation,
+    role: role === "advertiser" ? "marketer" : "influencer",
+    outcome,
+    latencyMs: Date.now() - startedAt,
+    dataOrigin: classifySessionAuthMetricDataOrigin({
+      user,
+      profile,
+      authoritativeOrigin: readAuthMetricOriginFromRequest(request, role),
+    }),
+  });
 };
 
 const authenticateInfluencerRequest = async (
@@ -4878,20 +6226,33 @@ const authenticateInfluencerRequest = async (
   | {
       user: SupabaseAuthUser;
       accessToken: string;
+      refreshToken?: string;
       profile?: SupabaseProfileRow;
+      refreshed?: boolean;
     }
   | undefined
 > => {
+  const metricStartedAt = Date.now();
   const cookies = parseCookies(request.header("cookie"));
   const bearerToken = getBearerToken(request);
   const cookieAccessToken = cookies.get(influencerAccessCookie);
   const refreshToken = cookies.get(influencerRefreshCookie);
   const accessToken = bearerToken ?? cookieAccessToken;
 
+  if (
+    hasUserSessionLogoutBarrier(request, "influencer") ||
+    isSessionTokenExplicitlyTerminated(accessToken) ||
+    isSessionTokenExplicitlyTerminated(refreshToken)
+  ) {
+    forgetRoleSessionRequestCaches(request, "influencer");
+    if (response) clearInfluencerSessionCookies(response);
+    return undefined;
+  }
+
   if (accessToken) {
     const cachedUser = readRecentAuthSession(accessToken);
     if (cachedUser) {
-      return { user: cachedUser, accessToken };
+      return { user: cachedUser, accessToken, refreshToken };
     }
 
     try {
@@ -4900,9 +6261,34 @@ const authenticateInfluencerRequest = async (
       return {
         user,
         accessToken,
+        refreshToken,
       };
-    } catch {
-      // Try the refresh token below before failing the request.
+    } catch (error) {
+      if (
+        !(error instanceof SupabaseAuthUserVerificationError) ||
+        !error.terminal
+      ) {
+        observeBrowserSessionAuthOutcome({
+          request,
+          role: "influencer",
+          operation: "session_validate",
+          outcome: "unavailable",
+          startedAt: metricStartedAt,
+        });
+        throw new AuthSessionTemporarilyUnavailableError(error);
+      }
+      if (!refreshToken) {
+        observeBrowserSessionAuthOutcome({
+          request,
+          role: "influencer",
+          operation: "session_validate",
+          outcome: "invalid",
+          startedAt: metricStartedAt,
+        });
+        if (response) clearInfluencerSessionCookies(response);
+        return undefined;
+      }
+      // A confirmed invalid access token may still be recovered by refresh.
     }
   }
 
@@ -4910,17 +6296,41 @@ const authenticateInfluencerRequest = async (
     try {
       const session = await refreshSupabaseSession(refreshToken);
       if (response) {
-        setInfluencerSessionCookies(response, session);
+        setInfluencerSessionCookies(request, response, session);
       }
       rememberRecentAuthSession(session.access_token, session.user);
       return {
         user: session.user,
         accessToken: session.access_token,
+        refreshToken: session.refresh_token ?? refreshToken,
+        refreshed: true,
       };
-    } catch {
-      if (response) {
-        clearInfluencerSessionCookies(response);
+    } catch (error) {
+      if (
+        error instanceof ExplicitUserLogoutError ||
+        (error instanceof SupabaseSessionRefreshError && error.terminal)
+      ) {
+        observeBrowserSessionAuthOutcome({
+          request,
+          role: "influencer",
+          operation: "session_refresh",
+          outcome:
+            error instanceof ExplicitUserLogoutError ? "revoked" : "invalid",
+          startedAt: metricStartedAt,
+        });
+        if (response) {
+          clearInfluencerSessionCookies(response);
+        }
+        return undefined;
       }
+      observeBrowserSessionAuthOutcome({
+        request,
+        role: "influencer",
+        operation: "session_refresh",
+        outcome: "unavailable",
+        startedAt: metricStartedAt,
+      });
+      throw new AuthSessionTemporarilyUnavailableError(error);
     }
   }
 
@@ -4934,20 +6344,33 @@ const authenticateAdvertiserRequest = async (
   | {
       user: SupabaseAuthUser;
       accessToken: string;
+      refreshToken?: string;
       profile?: SupabaseProfileRow;
+      refreshed?: boolean;
     }
   | undefined
 > => {
+  const metricStartedAt = Date.now();
   const cookies = parseCookies(request.header("cookie"));
   const bearerToken = getBearerToken(request);
   const cookieAccessToken = cookies.get(advertiserAccessCookie);
   const refreshToken = cookies.get(advertiserRefreshCookie);
   const accessToken = bearerToken ?? cookieAccessToken;
 
+  if (
+    hasUserSessionLogoutBarrier(request, "advertiser") ||
+    isSessionTokenExplicitlyTerminated(accessToken) ||
+    isSessionTokenExplicitlyTerminated(refreshToken)
+  ) {
+    forgetRoleSessionRequestCaches(request, "advertiser");
+    if (response) clearAdvertiserSessionCookies(response);
+    return undefined;
+  }
+
   if (accessToken) {
     const cachedUser = readRecentAuthSession(accessToken);
     if (cachedUser) {
-      return { user: cachedUser, accessToken };
+      return { user: cachedUser, accessToken, refreshToken };
     }
 
     try {
@@ -4956,9 +6379,34 @@ const authenticateAdvertiserRequest = async (
       return {
         user,
         accessToken,
+        refreshToken,
       };
-    } catch {
-      // Try the refresh token below before failing the request.
+    } catch (error) {
+      if (
+        !(error instanceof SupabaseAuthUserVerificationError) ||
+        !error.terminal
+      ) {
+        observeBrowserSessionAuthOutcome({
+          request,
+          role: "advertiser",
+          operation: "session_validate",
+          outcome: "unavailable",
+          startedAt: metricStartedAt,
+        });
+        throw new AuthSessionTemporarilyUnavailableError(error);
+      }
+      if (!refreshToken) {
+        observeBrowserSessionAuthOutcome({
+          request,
+          role: "advertiser",
+          operation: "session_validate",
+          outcome: "invalid",
+          startedAt: metricStartedAt,
+        });
+        if (response) clearAdvertiserSessionCookies(response);
+        return undefined;
+      }
+      // A confirmed invalid access token may still be recovered by refresh.
     }
   }
 
@@ -4966,33 +6414,874 @@ const authenticateAdvertiserRequest = async (
     try {
       const session = await refreshSupabaseSession(refreshToken);
       if (response) {
-        setAdvertiserSessionCookies(response, session);
+        setAdvertiserSessionCookies(request, response, session);
       }
       rememberRecentAuthSession(session.access_token, session.user);
       return {
         user: session.user,
         accessToken: session.access_token,
+        refreshToken: session.refresh_token ?? refreshToken,
+        refreshed: true,
       };
-    } catch {
-      if (response) {
-        clearAdvertiserSessionCookies(response);
+    } catch (error) {
+      if (
+        error instanceof ExplicitUserLogoutError ||
+        (error instanceof SupabaseSessionRefreshError && error.terminal)
+      ) {
+        observeBrowserSessionAuthOutcome({
+          request,
+          role: "advertiser",
+          operation: "session_refresh",
+          outcome:
+            error instanceof ExplicitUserLogoutError ? "revoked" : "invalid",
+          startedAt: metricStartedAt,
+        });
+        if (response) {
+          clearAdvertiserSessionCookies(response);
+        }
+        return undefined;
       }
+      observeBrowserSessionAuthOutcome({
+        request,
+        role: "advertiser",
+        operation: "session_refresh",
+        outcome: "unavailable",
+        startedAt: metricStartedAt,
+      });
+      throw new AuthSessionTemporarilyUnavailableError(error);
     }
   }
 
   return undefined;
 };
 
-const requireAdminSession = (
+interface AdminOperatorSessionRow {
+  auth_session_id: string;
+  operator_profile_id: string;
+  aal: "aal2";
+  authenticated_at: string;
+  last_seen_at: string;
+  absolute_expires_at: string;
+  revoked_at?: string | null;
+  revoke_reason?: string | null;
+}
+
+type AdminTotpEnrollment = {
+  id: string;
+  qrCode?: string;
+  secret?: string;
+};
+
+type AdminPendingMfaBindingPayload = {
+  version: 1 | 2;
+  userId: string;
+  authSessionId: string;
+  factorId: string;
+  dataOrigin?: AuthMetricDataOrigin;
+  issuedAt: number;
+  expiresAt: number;
+};
+
+type AdminPendingMfaBindingInput = {
+  secret: string;
+  userId: string;
+  authSessionId: string;
+  factorId: string;
+  dataOrigin: AuthMetricDataOrigin;
+  nowMs?: number;
+};
+
+export const createAdminPendingMfaBindingToken = ({
+  secret,
+  userId,
+  authSessionId,
+  factorId,
+  dataOrigin,
+  nowMs = Date.now(),
+}: AdminPendingMfaBindingInput) => {
+  if (
+    ![secret, userId, authSessionId, factorId].every(hasText) ||
+    !["production", "qa", "demo", "seed"].includes(dataOrigin)
+  ) {
+    throw new Error("Admin pending MFA binding requires exact session values");
+  }
+  const payload: AdminPendingMfaBindingPayload = {
+    version: 2,
+    userId,
+    authSessionId,
+    factorId,
+    dataOrigin,
+    issuedAt: nowMs,
+    expiresAt: nowMs + adminPendingSessionMaxAgeSeconds * 1000,
+  };
+  const encodedPayload = Buffer.from(JSON.stringify(payload), "utf8").toString(
+    "base64url",
+  );
+  const signature = createHmac("sha256", secret)
+    .update(encodedPayload)
+    .digest("base64url");
+  return `${encodedPayload}.${signature}`;
+};
+
+export const readAdminPendingMfaBindingToken = ({
+  token,
+  secret,
+  nowMs = Date.now(),
+}: {
+  token: string | undefined;
+  secret: string;
+  nowMs?: number;
+}) => {
+  if (!token || !hasText(secret)) return undefined;
+  const [encodedPayload, signature, extra] = token.split(".");
+  if (!encodedPayload || !signature || extra) return undefined;
+  const expectedSignature = createHmac("sha256", secret)
+    .update(encodedPayload)
+    .digest("base64url");
+  if (!safeEqual(signature, expectedSignature)) return undefined;
+
+  try {
+    const payload = JSON.parse(
+      Buffer.from(encodedPayload, "base64url").toString("utf8"),
+    ) as Partial<AdminPendingMfaBindingPayload>;
+    if (
+      (payload.version !== 1 && payload.version !== 2) ||
+      !hasText(payload.userId) ||
+      !hasText(payload.authSessionId) ||
+      !hasText(payload.factorId) ||
+      (payload.version === 1 && payload.dataOrigin !== undefined) ||
+      (payload.version === 2 &&
+        !["production", "qa", "demo", "seed"].includes(
+          payload.dataOrigin ?? "",
+        )) ||
+      !Number.isFinite(payload.issuedAt) ||
+      !Number.isFinite(payload.expiresAt) ||
+      payload.issuedAt! > nowMs + 30_000 ||
+      payload.expiresAt! <= nowMs ||
+      payload.expiresAt! - payload.issuedAt! >
+        adminPendingSessionMaxAgeSeconds * 1000
+    ) {
+      return undefined;
+    }
+    return payload as AdminPendingMfaBindingPayload;
+  } catch {
+    return undefined;
+  }
+};
+
+export const verifyAdminPendingMfaBindingToken = ({
+  token,
+  secret,
+  userId,
+  authSessionId,
+  nowMs = Date.now(),
+}: {
+  token: string | undefined;
+  secret: string;
+  userId: string;
+  authSessionId: string;
+  nowMs?: number;
+}) => {
+  if (!hasText(userId) || !hasText(authSessionId)) return undefined;
+  const payload = readAdminPendingMfaBindingToken({ token, secret, nowMs });
+  if (payload?.userId !== userId || payload.authSessionId !== authSessionId) {
+    return undefined;
+  }
+  return payload.factorId;
+};
+
+const getAdminAuthTokensFromRequest = (request: express.Request) => {
+  const cookies = parseCookies(request.header("cookie"));
+  return {
+    accessToken: cookies.get(adminAccessCookie),
+    refreshToken: cookies.get(adminRefreshCookie),
+    factorBinding: cookies.get(adminMfaFactorCookie),
+  };
+};
+
+const setAdminSessionCookies = (
+  response: express.Response,
+  session: SupabaseAuthSession,
+  maxAgeSeconds: number,
+  factorId?: string,
+  metricDataOrigin?: AuthMetricDataOrigin,
+) => {
+  const cookies = [
+    `${adminAccessCookie}=${encodeURIComponent(session.access_token)}; ${adminCookieOptions(
+      maxAgeSeconds,
+    )}`,
+  ];
+  if (hasText(session.refresh_token)) {
+    cookies.push(
+      `${adminRefreshCookie}=${encodeURIComponent(
+        session.refresh_token!,
+      )}; ${adminCookieOptions(maxAgeSeconds)}`,
+    );
+  }
+  const claims = decodeSupabaseAccessTokenClaims(session.access_token);
+  const factorBinding = factorId && metricDataOrigin
+    ? createAdminPendingMfaBindingToken({
+        secret: shareTokenEncryptionSecret,
+        userId: session.user.id,
+        authSessionId: claims?.session_id ?? "",
+        factorId,
+        dataOrigin: metricDataOrigin,
+      })
+    : undefined;
+  cookies.push(
+    factorBinding
+      ? `${adminMfaFactorCookie}=${encodeURIComponent(factorBinding)}; ${adminCookieOptions(
+          adminPendingSessionMaxAgeSeconds,
+        )}`
+      : `${adminMfaFactorCookie}=; ${clearAdminCookieOptions()}`,
+  );
+  appendResponseCookies(response, cookies);
+  setPrivateAuthResponseHeaders(response);
+};
+
+const clearAdminSessionCookies = (response: express.Response) => {
+  appendResponseCookies(response, [
+    `${adminAccessCookie}=; ${clearAdminCookieOptions()}`,
+    `${adminRefreshCookie}=; ${clearAdminCookieOptions()}`,
+    `${adminMfaFactorCookie}=; ${clearAdminCookieOptions()}`,
+  ]);
+  setPrivateAuthResponseHeaders(response);
+};
+
+const readAdminProfileByUserId = async (userId: string) => {
+  const rows = await readSupabaseRows<SupabaseProfileRow>(
+    "profiles",
+    `?select=${profileSelectFields}&id=eq.${encodeURIComponent(userId)}&limit=1`,
+    "admin profile",
+  );
+  return rows[0];
+};
+
+type AdminMfaProviderStage =
+  | "factor_list"
+  | "enroll"
+  | "remove"
+  | "challenge"
+  | "verify";
+
+class SupabaseAdminMfaProviderError extends Error {
+  constructor(
+    readonly stage: AdminMfaProviderStage,
+    readonly status: number | undefined,
+    message: string,
+    cause?: unknown,
+  ) {
+    super(message, cause === undefined ? undefined : { cause });
+    this.name = "SupabaseAdminMfaProviderError";
+  }
+
+  get retryable() {
+    return (
+      this.status === undefined ||
+      this.status === 408 ||
+      this.status === 429 ||
+      this.status >= 500
+    );
+  }
+}
+
+const fetchSupabaseAdminMfa = async (
+  stage: AdminMfaProviderStage,
+  url: string,
+  init: RequestInit,
+) => {
+  try {
+    return await fetch(url, init);
+  } catch (error) {
+    throw new SupabaseAdminMfaProviderError(
+      stage,
+      undefined,
+      `Supabase MFA ${stage} request was unavailable`,
+      error,
+    );
+  }
+};
+
+const isRetryableAdminMfaFailure = (error: unknown) =>
+  (error instanceof SupabaseAdminMfaProviderError && error.retryable) ||
+  (error instanceof SupabaseAuthUserVerificationError &&
+    (error.status === 408 || error.status === 429 || error.status >= 500)) ||
+  (error instanceof Error &&
+    (error.name === "AbortError" ||
+      error.name === "TimeoutError" ||
+      error instanceof TypeError));
+
+const sendRetryableAdminMfaUnavailable = (response: express.Response) => {
+  response.setHeader("Retry-After", "2");
+  response.status(503).json({
+    error: "MFA provider is temporarily unavailable. Try again.",
+    retryable: true,
+  });
+};
+
+const normalizeMfaFactorPayload = (payload: unknown): SupabaseMfaFactor[] => {
+  if (Array.isArray(payload)) return payload as SupabaseMfaFactor[];
+  if (!payload || typeof payload !== "object") return [];
+  const record = payload as Record<string, unknown>;
+  const candidates = [record.all, record.totp, record.phone, record.factors];
+  return candidates.flatMap((value) =>
+    Array.isArray(value) ? (value as SupabaseMfaFactor[]) : [],
+  );
+};
+
+const listSupabaseMfaFactors = async (
+  accessToken: string,
+  user?: SupabaseAuthUser,
+  { authoritative = false }: { authoritative?: boolean } = {},
+) => {
+  const embedded = normalizeMfaFactorPayload(user?.factors);
+  const response = await fetchSupabaseAdminMfa(
+    "factor_list",
+    supabaseAuthUrl("/factors"),
+    {
+      headers: supabaseAuthHeaders(accessToken),
+      signal: createSupabaseTimeoutSignal(),
+    },
+  );
+  if (!response.ok) {
+    if (!authoritative && embedded.length > 0) return embedded;
+    throw new SupabaseAdminMfaProviderError(
+      "factor_list",
+      response.status,
+      `Supabase MFA factor list failed (${response.status}): ${await parseSupabaseError(
+        response,
+      )}`,
+    );
+  }
+  const fetched = normalizeMfaFactorPayload(await response.json());
+  const factors = new Map<string, SupabaseMfaFactor>();
+  for (const factor of authoritative ? fetched : [...embedded, ...fetched]) {
+    if (hasText(factor.id)) factors.set(factor.id, factor);
+  }
+  return Array.from(factors.values());
+};
+
+const getVerifiedAdminTotpFactor = async (
+  accessToken: string,
+  user?: SupabaseAuthUser,
+  options?: { authoritative?: boolean },
+) =>
+  (await listSupabaseMfaFactors(accessToken, user, options)).find(
+    (factor) =>
+      factor.factor_type === "totp" && factor.status === "verified",
+  );
+
+const enrollAdminTotpFactor = async (
+  accessToken: string,
+): Promise<AdminTotpEnrollment> => {
+  const response = await fetchSupabaseAdminMfa(
+    "enroll",
+    supabaseAuthUrl("/factors"),
+    {
+      method: "POST",
+      headers: supabaseAuthHeaders(accessToken),
+      signal: createSupabaseTimeoutSignal(),
+      body: JSON.stringify({
+        factor_type: "totp",
+        friendly_name: `${productName} operator`,
+      }),
+    },
+  );
+  if (!response.ok) {
+    throw new SupabaseAdminMfaProviderError(
+      "enroll",
+      response.status,
+      `Supabase MFA enrollment failed (${response.status}): ${await parseSupabaseError(
+        response,
+      )}`,
+    );
+  }
+  const payload = (await response.json()) as {
+    id?: string;
+    totp?: { qr_code?: string; secret?: string; uri?: string };
+  };
+  if (!hasText(payload.id)) throw new Error("Supabase returned an invalid MFA factor");
+  return {
+    id: payload.id!,
+    qrCode: payload.totp?.qr_code ?? payload.totp?.uri,
+    secret: payload.totp?.secret,
+  };
+};
+
+const removeSupabaseMfaFactor = async (
+  accessToken: string,
+  factorId: string,
+) => {
+  const response = await fetchSupabaseAdminMfa(
+    "remove",
+    supabaseAuthUrl(`/factors/${encodeURIComponent(factorId)}`),
+    {
+      method: "DELETE",
+      headers: supabaseAuthHeaders(accessToken),
+      signal: createSupabaseTimeoutSignal(),
+    },
+  );
+  if (!response.ok) {
+    throw new SupabaseAdminMfaProviderError(
+      "remove",
+      response.status,
+      `Supabase MFA factor removal failed (${response.status}): ${await parseSupabaseError(
+        response,
+      )}`,
+    );
+  }
+};
+
+const verifyAdminTotpFactor = async ({
+  accessToken,
+  factorId,
+  code,
+}: {
+  accessToken: string;
+  factorId: string;
+  code: string;
+}) => {
+  const challengeResponse = await fetchSupabaseAdminMfa(
+    "challenge",
+    supabaseAuthUrl(`/factors/${encodeURIComponent(factorId)}/challenge`),
+    {
+      method: "POST",
+      headers: supabaseAuthHeaders(accessToken),
+      signal: createSupabaseTimeoutSignal(),
+      body: "{}",
+    },
+  );
+  if (!challengeResponse.ok) {
+    throw new SupabaseAdminMfaProviderError(
+      "challenge",
+      challengeResponse.status,
+      `Supabase MFA challenge failed (${challengeResponse.status}): ${await parseSupabaseError(
+        challengeResponse,
+      )}`,
+    );
+  }
+  const challenge = (await challengeResponse.json()) as { id?: string };
+  if (!hasText(challenge.id)) throw new Error("Supabase returned an invalid MFA challenge");
+
+  const verifyResponse = await fetchSupabaseAdminMfa(
+    "verify",
+    supabaseAuthUrl(`/factors/${encodeURIComponent(factorId)}/verify`),
+    {
+      method: "POST",
+      headers: supabaseAuthHeaders(accessToken),
+      signal: createSupabaseTimeoutSignal(),
+      body: JSON.stringify({ challenge_id: challenge.id, code }),
+    },
+  );
+  if (!verifyResponse.ok) {
+    throw new SupabaseAdminMfaProviderError(
+      "verify",
+      verifyResponse.status,
+      `Supabase MFA verification failed (${verifyResponse.status}): ${await parseSupabaseError(
+        verifyResponse,
+      )}`,
+    );
+  }
+  return (await verifyResponse.json()) as SupabaseAuthSession;
+};
+
+const registerAdminOperatorSession = async (
+  profile: SupabaseProfileRow,
+  claims: SupabaseAccessTokenClaims,
+) => {
+  if (
+    !hasText(claims.session_id) ||
+    claims.aal !== "aal2" ||
+    !hasAdminTotpAmr(claims)
+  ) {
+    throw new Error("A TOTP-backed AAL2 Supabase session is required for operator access");
+  }
+  const now = new Date();
+  const authenticatedAt = new Date(
+    Math.max(
+      0,
+      ...((claims.amr ?? []).map((entry) => Number(entry.timestamp) * 1000).filter(
+        Number.isFinite,
+      )),
+      now.getTime(),
+    ),
+  ).toISOString();
+  const absoluteExpiresAt = new Date(
+    now.getTime() + adminSessionMaxAgeSeconds * 1000,
+  ).toISOString();
+  const response = await fetchSupabase(
+    "admin_operator_sessions",
+    "?on_conflict=auth_session_id",
+    {
+      method: "POST",
+      headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+      body: JSON.stringify([
+        {
+          auth_session_id: claims.session_id,
+          operator_profile_id: profile.id,
+          aal: "aal2",
+          authenticated_at: authenticatedAt,
+          last_seen_at: now.toISOString(),
+          absolute_expires_at: absoluteExpiresAt,
+          revoked_at: null,
+          revoke_reason: null,
+        },
+      ]),
+    },
+  );
+  await assertSupabaseOk(response, "Supabase admin operator session registration");
+  return { authenticatedAt, absoluteExpiresAt };
+};
+
+const revokeAdminOperatorSession = async (
+  authSessionId: string | undefined,
+  reason: string,
+) => {
+  if (!useSupabase || !hasText(authSessionId)) return;
+  const response = await fetchSupabase(
+    "admin_operator_sessions",
+    `?auth_session_id=eq.${encodeURIComponent(authSessionId!)}`,
+    {
+      method: "PATCH",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({
+        revoked_at: new Date().toISOString(),
+        revoke_reason: reason.slice(0, 120),
+      }),
+    },
+  );
+  await assertSupabaseOk(response, "Supabase admin operator session revoke");
+};
+
+const authenticateAdminRequest = async (
+  request: express.Request,
+  response?: express.Response,
+): Promise<AdminSession | undefined> => {
+  const metricStartedAt = Date.now();
+  if (!isAdminAuthConfigured()) return undefined;
+  const tokens = getAdminAuthTokensFromRequest(request);
+  let accessToken = tokens.accessToken;
+  let refreshedSession: SupabaseAuthSession | undefined;
+  let user: SupabaseAuthUser | undefined;
+
+  if (accessToken) {
+    try {
+      user = await fetchSupabaseAuthUser(accessToken);
+    } catch (error) {
+      if (
+        !(error instanceof SupabaseAuthUserVerificationError) ||
+        !error.terminal
+      ) {
+        throw new AuthSessionTemporarilyUnavailableError(error);
+      }
+    }
+  }
+
+  if (!user && tokens.refreshToken) {
+    try {
+      refreshedSession = await refreshSupabaseSession(tokens.refreshToken, {
+        allowExplicitlyTerminated: true,
+      });
+      accessToken = refreshedSession.access_token;
+      user = refreshedSession.user;
+      if (response) {
+        setAdminSessionCookies(
+          response,
+          refreshedSession,
+          adminSessionMaxAgeSeconds,
+        );
+      }
+    } catch (error) {
+      if (
+        error instanceof ExplicitUserLogoutError ||
+        (error instanceof SupabaseSessionRefreshError && error.terminal)
+      ) {
+        if (response) clearAdminSessionCookies(response);
+        return undefined;
+      }
+      throw new AuthSessionTemporarilyUnavailableError(error);
+    }
+  }
+
+  if (!user || !accessToken) {
+    if (response && (tokens.accessToken || tokens.refreshToken)) {
+      clearAdminSessionCookies(response);
+    }
+    return undefined;
+  }
+
+  const claims = decodeSupabaseAccessTokenClaims(accessToken);
+  const profile = await readAdminProfileByUserId(user.id);
+  const metricDataOrigin = classifyAuthMetricDataOrigin({
+    identifier: profile?.email ?? user.email,
+    explicit: profile?.data_origin,
+  });
+  let verifiedTotp: SupabaseMfaFactor | undefined;
+  try {
+    verifiedTotp = await getVerifiedAdminTotpFactor(accessToken, user, {
+      authoritative: true,
+    });
+  } catch (error) {
+    if (isRetryableAdminMfaFailure(error)) {
+      throw new AuthSessionTemporarilyUnavailableError(error);
+    }
+  }
+  if (
+    !claims?.session_id ||
+    claims.sub !== user.id ||
+    claims.aal !== "aal2" ||
+    !hasAdminTotpAmr(claims) ||
+    profile?.role !== "admin" ||
+    !verifiedTotp
+  ) {
+    observeOperationalAuthMetric({
+      operation: refreshedSession ? "session_refresh" : "session_validate",
+      role: "admin",
+      outcome: "invalid",
+      latencyMs: Date.now() - metricStartedAt,
+      dataOrigin: metricDataOrigin,
+    });
+    await revokeAdminOperatorSession(claims?.session_id, "authorization_invalid").catch(
+      () => undefined,
+    );
+    if (response) clearAdminSessionCookies(response);
+    return undefined;
+  }
+
+  const rows = await readSupabaseRows<AdminOperatorSessionRow>(
+    "admin_operator_sessions",
+    `?select=auth_session_id,operator_profile_id,aal,authenticated_at,last_seen_at,absolute_expires_at,revoked_at,revoke_reason&auth_session_id=eq.${encodeURIComponent(
+      claims.session_id,
+    )}&operator_profile_id=eq.${encodeURIComponent(profile.id)}&revoked_at=is.null&absolute_expires_at=gt.${encodeURIComponent(
+      new Date().toISOString(),
+    )}&limit=1`,
+    "active admin operator session",
+  );
+  const registered = rows[0];
+  if (!registered || registered.aal !== "aal2") {
+    observeOperationalAuthMetric({
+      operation: refreshedSession ? "session_refresh" : "session_validate",
+      role: "admin",
+      outcome: "revoked",
+      latencyMs: Date.now() - metricStartedAt,
+      dataOrigin: metricDataOrigin,
+    });
+    if (response) clearAdminSessionCookies(response);
+    return undefined;
+  }
+
+  const touchResponse = await fetchSupabase(
+    "admin_operator_sessions",
+    `?auth_session_id=eq.${encodeURIComponent(claims.session_id)}`,
+    {
+      method: "PATCH",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({ last_seen_at: new Date().toISOString() }),
+    },
+  );
+  await assertSupabaseOk(touchResponse, "Supabase admin operator session touch");
+  if (refreshedSession || request.path === "/api/admin/session") {
+    observeOperationalAuthMetric({
+      operation: refreshedSession ? "session_refresh" : "session_validate",
+      role: "admin",
+      outcome: "success",
+      latencyMs: Date.now() - metricStartedAt,
+      dataOrigin: metricDataOrigin,
+    });
+  }
+  return {
+    user,
+    profile,
+    accessToken,
+    authSessionId: claims.session_id,
+    authenticatedAt: registered.authenticated_at,
+  };
+};
+
+const requireAdminSession = async (
   request: express.Request,
   response: express.Response,
 ) => {
-  if (verifyAdminSessionToken(getAdminSessionFromRequest(request))) {
-    return true;
+  const session = await authenticateAdminRequest(request, response);
+  if (session) return session;
+  setPrivateAuthResponseHeaders(response);
+  response.status(401).json({ error: "Admin session is required" });
+  return undefined;
+};
+
+type RecentAuthRole = "advertiser" | "influencer";
+type RecentAuthAction =
+  | "advertiser_contract_send"
+  | "advertiser_contract_close"
+  | "advertiser_share_reveal"
+  | "advertiser_share_rotate"
+  | "influencer_signature"
+  | "account_security_change";
+
+const recentAuthActionsByRole: Record<RecentAuthRole, ReadonlySet<RecentAuthAction>> = {
+  advertiser: new Set<RecentAuthAction>([
+    "advertiser_contract_send",
+    "advertiser_contract_close",
+    "advertiser_share_reveal",
+    "advertiser_share_rotate",
+    "account_security_change",
+  ]),
+  influencer: new Set<RecentAuthAction>([
+    "influencer_signature",
+    "account_security_change",
+  ]),
+};
+
+const recentAuthDbRole = (role: RecentAuthRole) =>
+  role === "advertiser" ? ("marketer" as const) : ("influencer" as const);
+
+const isUuidText = (value: string | undefined): value is string =>
+  Boolean(
+    value &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        value,
+      ),
+  );
+
+const normalizeRecentAuthResource = (value: unknown) => {
+  const resource = normalizeRequiredText(value);
+  return resource && resource.length <= 200 ? resource : undefined;
+};
+
+const recentAuthResourceHash = ({
+  role,
+  action,
+  resource,
+}: {
+  role: RecentAuthRole;
+  action: RecentAuthAction;
+  resource: string;
+}) =>
+  createHmac("sha256", shareTokenEncryptionSecret)
+    .update(JSON.stringify({ version: 1, role, action, resource }))
+    .digest("hex");
+
+const setRecentAuthGrantCookie = (
+  response: express.Response,
+  role: RecentAuthRole,
+  token: string,
+) => {
+  appendResponseCookies(response, [
+    `${getRecentAuthCookieName(role)}=${encodeURIComponent(
+      token,
+    )}; ${recentAuthCookieOptions()}`,
+  ]);
+};
+
+const clearRecentAuthGrantCookie = (
+  response: express.Response,
+  role: RecentAuthRole,
+) => {
+  appendResponseCookies(response, [
+    `${getRecentAuthCookieName(role)}=; ${recentAuthCookieOptions(0)}`,
+  ]);
+};
+
+const readAuthoritativeSecurityProfile = async (userId: string) => {
+  const rows = await readSupabaseRows<SupabaseProfileRow>(
+    "profiles",
+    `?select=id,role,name,email,data_origin&id=eq.${encodeURIComponent(userId)}&limit=1`,
+    "authoritative security profile",
+  );
+  return rows[0];
+};
+
+const sendRecentAuthRequired = (
+  response: express.Response,
+  role: RecentAuthRole,
+  action: RecentAuthAction,
+  resource: string,
+) => {
+  setPrivateAuthResponseHeaders(response);
+  response.setHeader("X-Yeollock-Reauthentication", "required");
+  response.status(428).json({
+    code: "recent_auth_required",
+    error: "계속하려면 비밀번호를 다시 확인해 주세요.",
+    role,
+    action,
+    resource,
+  });
+};
+
+const requireRecentAuthGrant = async ({
+  request,
+  response,
+  role,
+  action,
+  resource,
+  session,
+}: {
+  request: express.Request;
+  response: express.Response;
+  role: RecentAuthRole;
+  action: RecentAuthAction;
+  resource: string;
+  session: AdvertiserSession | InfluencerSession;
+}) => {
+  const metricStartedAt = Date.now();
+  const metricDataOrigin = classifyAuthMetricDataOrigin({
+    identifier: session.profile.email ?? session.user.email,
+    explicit: session.profile.data_origin,
+  });
+  const recordConsume = (outcome: AuthMetricOutcome) =>
+    observeOperationalAuthMetric({
+      operation: "recent_auth_consume",
+      role: recentAuthDbRole(role),
+      outcome,
+      latencyMs: Date.now() - metricStartedAt,
+      dataOrigin: metricDataOrigin,
+    });
+  const claims = decodeSupabaseAccessTokenClaims(session.accessToken);
+  if (
+    claims?.sub !== session.user.id ||
+    !isUuidText(claims.session_id) ||
+    !recentAuthActionsByRole[role].has(action)
+  ) {
+    recordConsume("invalid");
+    response.status(401).json({ error: "현재 로그인 세션을 다시 확인해 주세요." });
+    return false;
   }
 
-  response.status(401).json({ error: "Admin session is required" });
-  return false;
+  const token = parseCookies(request.header("cookie")).get(
+    getRecentAuthCookieName(role),
+  );
+  if (!token || !/^[A-Za-z0-9_-]{32,256}$/.test(token)) {
+    recordConsume("required");
+    sendRecentAuthRequired(response, role, action, resource);
+    return false;
+  }
+
+  try {
+    const rpcResponse = await fetchSupabase("rpc/consume_auth_recent_grant", "", {
+      method: "POST",
+      body: JSON.stringify({
+        p_token_hash: sha256Hex(token),
+        p_profile_id: session.profile.id,
+        p_auth_session_id: claims.session_id,
+        p_role: recentAuthDbRole(role),
+        p_action: action,
+        p_resource_hash: recentAuthResourceHash({ role, action, resource }),
+      }),
+    });
+    await assertSupabaseOk(rpcResponse, "Supabase recent authentication consume");
+    const consumed = (await rpcResponse.json()) === true;
+    clearRecentAuthGrantCookie(response, role);
+    if (!consumed) {
+      recordConsume("invalid");
+      sendRecentAuthRequired(response, role, action, resource);
+      return false;
+    }
+    recordConsume("success");
+    return true;
+  } catch (error) {
+    recordConsume("unavailable");
+    throw new AuthSessionTemporarilyUnavailableError(error);
+  }
 };
 
 const normalizeBusinessRegistrationNumber = (value: string) =>
@@ -5025,35 +7314,6 @@ const normalizeRequiredText = (value: unknown) =>
 
 const normalizeEmail = (value: unknown) =>
   normalizeRequiredText(value).toLowerCase();
-
-const operationalTestEmailLocals = new Set([
-  "breadroom.manager",
-  "test.influencer",
-  "creator.sora",
-  "breadroom",
-  "breadroom-partner",
-  "obre-beauty",
-  "housefit",
-  "brewinglab",
-  "nightcare",
-  "minseo.home",
-  "today.taste",
-  "haru.fit",
-  "ziyu.log",
-  "luna.day",
-  "yuna.beauty",
-  "review.j",
-  "only.routine",
-  "harin.log",
-  "moa.review",
-  "sua.pick",
-  "raon.beauty",
-  "jian.home",
-  "serin.daily",
-  "narae.shorts",
-  "romi.review",
-  "sodam.pick",
-]);
 
 const operationalTestTextPattern =
   /\b(?:qa|test|demo|seed|showcase|dummy)\b|테스트|데모|시드|쇼케이스/i;
@@ -5160,32 +7420,6 @@ const extractEmails = (value: unknown) =>
   hasText(value)
     ? (value.match(/[^\s<>()"']+@[^\s<>()"']+\.[^\s<>()"']+/g) ?? [])
     : [];
-
-const isOperationalTestEmail = (value: unknown) => {
-  const email = normalizeEmail(value);
-  if (!email.includes("@")) return false;
-
-  const [local = "", domain = ""] = email.split("@");
-  if (
-    domain === "directsign.app" ||
-    domain === "example.com" ||
-    domain === "example.net" ||
-    domain === "example.org" ||
-    domain.endsWith(".test") ||
-    domain === "test"
-  ) {
-    return true;
-  }
-
-  if (
-    /^(qa|test|demo|seed)[._-]/i.test(local) ||
-    /[._-](qa|test|demo|seed)([._-]|$)/i.test(local)
-  ) {
-    return true;
-  }
-
-  return domain === "yeollock.me" && operationalTestEmailLocals.has(local);
-};
 
 const hasOperationalTestEmail = (values: unknown[]) =>
   values.some((value) => extractEmails(value).some(isOperationalTestEmail));
@@ -5758,7 +7992,7 @@ const isOperationalTestVerificationRequest = (
   request: VerificationRequestRecord,
 ) => {
   const explicitOrigin = isExplicitNonProductionOrigin(request.data_origin);
-  if (explicitOrigin !== undefined) return explicitOrigin;
+  if (explicitOrigin === true) return true;
   return (
     hasOperationalTestEmail([request.submitted_by_email]) ||
     hasOperationalTestMarker({
@@ -5834,8 +8068,40 @@ const normalizeDateOnlyValue = (value: unknown) => {
   const normalized = normalizeOptionalText(value);
   if (!normalized) return undefined;
 
-  const match = normalized.match(/^\d{4}-\d{2}-\d{2}$/);
-  return match ? normalized : undefined;
+  const digits = normalized.replace(/[^\d]/g, "");
+  if (digits.length !== 8) return undefined;
+
+  const year = Number(digits.slice(0, 4));
+  const month = Number(digits.slice(4, 6));
+  const day = Number(digits.slice(6, 8));
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    Number.isNaN(date.getTime()) ||
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return undefined;
+  }
+
+  return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
+};
+
+const businessVerificationDateFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Seoul",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+const currentBusinessVerificationDate = () => {
+  const parts = Object.fromEntries(
+    businessVerificationDateFormatter
+      .formatToParts(new Date())
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  );
+  return `${parts.year}-${parts.month}-${parts.day}`;
 };
 
 const normalizeUrlValue = (value: unknown) => {
@@ -5973,7 +8239,7 @@ const normalizeGoogleReturnPath = (
 };
 
 const getGoogleOAuthStateSecret = () =>
-  adminSessionSecret ?? googleWorkspaceTokenSecret ?? shareTokenEncryptionSecret;
+  googleWorkspaceTokenSecret ?? shareTokenEncryptionSecret;
 
 const encodeGoogleOAuthState = (state: GoogleOAuthState) => {
   const secret = getGoogleOAuthStateSecret();
@@ -6659,7 +8925,7 @@ const fetchPublicHttpText = async (urlValue: string) => {
         headers: {
           Accept: "text/html,text/plain,*/*",
           Host: url.host,
-          "User-Agent": `${productName} ownership verifier`,
+          "User-Agent": ownershipVerifierUserAgent,
         },
       },
       (incoming) => {
@@ -6768,6 +9034,7 @@ const checkOwnershipChallenge = async (
 
 type VerificationAutomationStatus =
   | "not_configured"
+  | "pending"
   | "matched"
   | "not_found"
   | "blocked"
@@ -6812,6 +9079,24 @@ const hasConfiguredEnv = (...names: string[]) =>
   names.some((name) => hasText(process.env[name]));
 
 const buildVerificationAutomationPlan = (platform: InfluencerPlatform) => {
+  const instagramDmRuntimeEnv = [
+    "META_APP_SECRET",
+    "META_WEBHOOK_VERIFY_TOKEN",
+    "META_IG_USER_ID",
+    "META_INSTAGRAM_ACCESS_TOKEN",
+    "META_INSTAGRAM_ACCESS_TOKEN_EXPIRES_AT",
+  ];
+  const instagramDmTokenExpiry = new Date(
+    process.env.META_INSTAGRAM_ACCESS_TOKEN_EXPIRES_AT?.trim() ?? "",
+  ).getTime();
+  const instagramDmConfigured =
+    instagramDmRuntimeEnv.every((name) => hasText(process.env[name])) &&
+    Number.isFinite(instagramDmTokenExpiry) &&
+    instagramDmTokenExpiry > Date.now() &&
+    process.env.VERIFICATION_AUTO_APPROVE_INSTAGRAM_DM === "true";
+  const instagramDmAppRegistered = ["META_APP_ID", "META_APP_SECRET"].every(
+    (name) => hasText(process.env[name]),
+  );
   const plans: Record<
     InfluencerPlatform,
     {
@@ -6847,22 +9132,20 @@ const buildVerificationAutomationPlan = (platform: InfluencerPlatform) => {
       note: "Naver 개발자 앱 등록 전에는 공개 URL의 인증 코드 확인으로 fallback합니다.",
     },
     instagram: {
-      provider: "instagram_graph_api",
-      configured: hasConfiguredEnv("META_GRAPH_ACCESS_TOKEN", "META_IG_USER_ID"),
-      mode: hasConfiguredEnv("META_GRAPH_ACCESS_TOKEN", "META_IG_USER_ID")
-        ? "api_ready"
-        : hasConfiguredEnv("META_WEBHOOK_VERIFY_TOKEN")
-          ? "webhook_ready"
-          : "manual_fallback",
-      registration_required: !hasConfiguredEnv("META_APP_ID", "META_APP_SECRET"),
+      provider: "instagram_messaging_webhook",
+      configured: instagramDmConfigured,
+      mode: instagramDmConfigured ? "webhook_ready" : "manual_fallback",
+      registration_required: !instagramDmAppRegistered,
       required_env: [
         "META_APP_ID",
         "META_APP_SECRET",
-        "META_GRAPH_ACCESS_TOKEN",
+        "META_INSTAGRAM_ACCESS_TOKEN",
+        "META_INSTAGRAM_ACCESS_TOKEN_EXPIRES_AT",
         "META_IG_USER_ID",
+        "META_WEBHOOK_VERIFY_TOKEN",
       ],
-      fallback: "profile bio/post challenge, screenshot, or inbound Instagram DM webhook",
-      note: "Instagram Graph API는 Meta 앱 등록과 권한 심사가 필요하므로 현재는 코드/스크린샷 검수로 처리합니다.",
+      fallback: "profile bio/post challenge or screenshot review",
+      note: "고객 Meta 로그인 없이 연락미 공식 계정의 서명된 inbound DM webhook으로 발신 계정을 확인합니다.",
     },
     tiktok: {
       provider: "tiktok_login_kit",
@@ -7005,6 +9288,7 @@ const buildAutomationOwnershipStatus = (
   status: VerificationAutomationStatus,
 ): OwnershipCheckStatus => {
   if (status === "matched") return "matched";
+  if (status === "pending") return "not_run";
   if (status === "not_found" || status === "invalid_input") return "not_found";
   if (status === "blocked" || status === "not_configured") return "blocked";
   return "failed";
@@ -7013,10 +9297,70 @@ const buildAutomationOwnershipStatus = (
 const shouldAutoApproveBusinessVerification = (
   check: VerificationAutomationResult,
 ) =>
-  process.env.VERIFICATION_AUTO_APPROVE_BUSINESS === "true" &&
+  process.env.VERIFICATION_AUTO_APPROVE_BUSINESS !== "false" &&
   check.status === "matched" &&
-  (check.profile?.validate_status === "matched" ||
-    check.profile?.validate_status === undefined);
+  check.profile?.business_status_code === "01" &&
+  check.profile?.validate_status === "matched";
+
+type AdvertiserVerificationFallbackReason =
+  | "not_matched"
+  | "service_unavailable"
+  | "inactive";
+
+const buildAdvertiserVerificationFallback = (
+  check: VerificationAutomationResult,
+): {
+  reason: AdvertiserVerificationFallbackReason;
+  message: string;
+  retryable: boolean;
+} => {
+  const validateHttpStatus = Number(check.profile?.validate_http_status);
+  const providerUnavailable =
+    !check.configured ||
+    check.status === "blocked" ||
+    check.status === "failed" ||
+    check.status === "not_configured" ||
+    (typeof check.http_status === "number" &&
+      (check.http_status < 200 || check.http_status >= 300)) ||
+    (Number.isFinite(validateHttpStatus) &&
+      (validateHttpStatus < 200 || validateHttpStatus >= 300));
+
+  if (providerUnavailable) {
+    return {
+      reason: "service_unavailable",
+      message:
+        "지금 국세청 자동 확인을 완료하지 못했습니다. 다시 시도하거나 서류로 인증해 주세요.",
+      retryable: true,
+    };
+  }
+
+  const businessStatusCode = normalizeRequiredText(
+    check.profile?.business_status_code,
+  );
+  const businessStatusLabel = normalizeRequiredText(
+    check.profile?.business_status_label,
+  );
+  if (
+    (businessStatusCode && businessStatusCode !== "01") ||
+    (!businessStatusCode &&
+      businessStatusLabel &&
+      !businessStatusLabel.includes("계속"))
+  ) {
+    return {
+      reason: "inactive",
+      message:
+        "국세청에서 휴업 또는 폐업 상태로 조회됩니다. 현재 계속사업자라면 최신 증빙을 제출해 주세요.",
+      retryable: false,
+    };
+  }
+
+  return {
+    reason: "not_matched",
+    message:
+      "입력 정보가 국세청 등록 정보와 일치하지 않거나 신규 등록 정보가 아직 반영되지 않았습니다. 서류로 이어서 인증할 수 있습니다.",
+    retryable: false,
+  };
+};
 
 const shouldAutoApprovePlatformVerification = (
   check: VerificationAutomationResult,
@@ -7029,7 +9373,6 @@ const runBusinessRegistrationAutomationCheck = async (
   options: {
     businessStartDate?: string;
     representativeName?: string;
-    subjectName?: string;
   } = {},
 ): Promise<VerificationAutomationResult> => {
   const checkedAt = new Date().toISOString();
@@ -7046,7 +9389,6 @@ const runBusinessRegistrationAutomationCheck = async (
     process.env.NTS_BUSINESS_VALIDATE_API_KEY?.trim() || serviceKey;
   const businessStartDate = normalizeDateCompact(options.businessStartDate);
   const representativeName = normalizeRequiredText(options.representativeName);
-  const subjectName = normalizeRequiredText(options.subjectName);
 
   if (!isValidBusinessRegistrationNumber(normalizedNumber)) {
     return {
@@ -7067,43 +9409,53 @@ const runBusinessRegistrationAutomationCheck = async (
       status: "not_configured",
       checked_at: checkedAt,
       message:
-        "국세청 사업자등록정보 API 키가 없어 수동 검수로 접수합니다. API 등록 후 NTS_BUSINESS_STATUS_API_KEY를 설정하면 자동 상태 조회가 실행됩니다.",
+        "국세청 사업자등록정보 API 키가 없어 자동 조회를 실행하지 못했습니다. API 등록 후 NTS_BUSINESS_STATUS_API_KEY를 설정하기 전에는 서류 인증 경로를 안내합니다.",
     };
   }
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5000);
+  if (!businessStartDate || !representativeName) {
+    return {
+      provider: "nts_businessman",
+      configured: true,
+      mode: "api_ready",
+      status: "invalid_input",
+      checked_at: checkedAt,
+      message: "대표자명과 개업일자가 없어 국세청 진위확인을 실행하지 않았습니다.",
+    };
+  }
 
   try {
-    const url = new URL("https://api.odcloud.kr/api/nts-businessman/v1/status");
-    url.searchParams.set("serviceKey", statusServiceKey);
-    const apiResponse = await fetch(url.toString(), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify({ b_no: [normalizedNumber] }),
-      signal: controller.signal,
-    });
-    const payload = (await apiResponse.json().catch(() => ({}))) as {
-      data?: Array<{
-        b_no?: string;
-        b_stt?: string;
-        b_stt_cd?: string;
-        tax_type?: string;
-        end_dt?: string;
-      }>;
-    };
-    const result = payload.data?.[0];
-    let validateStatus: VerificationAutomationStatus | undefined;
-    let validateHttpStatus: number | undefined;
-    let validatePayload: unknown;
+    const statusUrl = new URL(
+      "https://api.odcloud.kr/api/nts-businessman/v1/status",
+    );
+    statusUrl.searchParams.set("serviceKey", statusServiceKey);
+    const validateUrl = new URL(
+      "https://api.odcloud.kr/api/nts-businessman/v1/validate",
+    );
+    validateUrl.searchParams.set("serviceKey", validateServiceKey);
 
-    if (validateServiceKey && businessStartDate && representativeName) {
-      const validateUrl = new URL("https://api.odcloud.kr/api/nts-businessman/v1/validate");
-      validateUrl.searchParams.set("serviceKey", validateServiceKey);
-      const validateResponse = await fetchJsonWithTimeout<{
+    const [statusResponse, validateResponse] = await Promise.all([
+      fetchJsonWithTimeout<{
+        data?: Array<{
+          b_no?: string;
+          b_stt?: string;
+          b_stt_cd?: string;
+          tax_type?: string;
+          end_dt?: string;
+        }>;
+      }>(
+        statusUrl.toString(),
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({ b_no: [normalizedNumber] }),
+        },
+        6500,
+      ),
+      fetchJsonWithTimeout<{
         data?: Array<{
           valid?: string;
           valid_msg?: string;
@@ -7124,54 +9476,69 @@ const runBusinessRegistrationAutomationCheck = async (
                 b_no: normalizedNumber,
                 start_dt: businessStartDate,
                 p_nm: representativeName,
-                ...(subjectName ? { b_nm: subjectName } : {}),
               },
             ],
           }),
         },
         6500,
-      );
-      validateHttpStatus = validateResponse.status;
-      validatePayload = validateResponse.payload;
-      validateStatus =
-        validateResponse.ok && validateResponse.payload.data?.[0]?.valid === "01"
+      ),
+    ]);
+    const statusPayload = statusResponse.payload as {
+      data?: Array<{
+        b_no?: string;
+        b_stt?: string;
+        b_stt_cd?: string;
+        tax_type?: string;
+        end_dt?: string;
+      }>;
+    };
+    const statusResult = statusPayload.data?.[0];
+    const validateResult = validateResponse.payload.data?.[0];
+    const statusPayloadValid =
+      statusResponse.ok && hasText(statusResult?.b_stt_cd);
+    const validatePayloadValid =
+      validateResponse.ok && hasText(validateResult?.valid);
+    const validateStatus: VerificationAutomationStatus = !validatePayloadValid
+      ? "failed"
+      : validateResult?.valid === "01"
+        ? "matched"
+        : "not_found";
+    const isActive = statusResult?.b_stt_cd === "01";
+    const automationStatus: VerificationAutomationStatus =
+      !statusPayloadValid || !validatePayloadValid
+        ? "failed"
+        : isActive && validateStatus === "matched"
           ? "matched"
           : "not_found";
-    } else if (validateServiceKey) {
-      validateStatus = "invalid_input";
-    }
-    const isActive =
-      result?.b_stt_cd === "01" ||
-      normalizeRequiredText(result?.b_stt).includes("계속");
 
     return {
       provider: "nts_businessman",
       configured: true,
       mode: "api_ready",
-      status:
-        apiResponse.ok &&
-        isActive &&
-        (validateStatus === undefined || validateStatus === "matched")
-          ? "matched"
-          : "not_found",
+      status: automationStatus,
       checked_at: checkedAt,
-      http_status: apiResponse.status,
+      http_status: statusResponse.status,
       result_hash: sha256Hex(
-        JSON.stringify({ status: result ?? payload, validate: validatePayload }),
+        JSON.stringify({
+          status: statusResponse.payload,
+          validate: validateResponse.payload,
+        }),
       ),
       profile: {
-        business_status_code: result?.b_stt_cd,
-        business_status_label: result?.b_stt,
-        tax_type: result?.tax_type,
+        business_status_code: statusResult?.b_stt_cd,
+        business_status_label: statusResult?.b_stt,
+        tax_type: statusResult?.tax_type,
         validate_status: validateStatus,
-        validate_http_status: validateHttpStatus,
-        validate_attempted: validateStatus !== undefined,
-        validate_input_ready: Boolean(businessStartDate && representativeName),
+        validate_http_status: validateResponse.status,
+        validate_attempted: true,
+        validate_input_ready: true,
       },
       message:
-        apiResponse.ok && isActive
-          ? "국세청 사업자등록 상태 조회에서 계속사업자로 확인되었습니다."
-          : "국세청 사업자등록 상태 조회 결과를 운영자 검수에서 확인해야 합니다.",
+        automationStatus === "matched"
+          ? "국세청에서 계속사업자 상태와 제출한 세 가지 등록 정보가 일치했습니다."
+          : automationStatus === "failed"
+            ? "국세청 응답을 완료된 확인 결과로 판정할 수 없습니다."
+            : "국세청 등록 정보가 일치하지 않거나 계속사업자 상태가 아닙니다.",
     };
   } catch (error) {
     return {
@@ -7185,8 +9552,6 @@ const runBusinessRegistrationAutomationCheck = async (
           ? `국세청 사업자등록 상태 자동 조회 실패: ${error.message}`
           : "국세청 사업자등록 상태 자동 조회에 실패했습니다.",
     };
-  } finally {
-    clearTimeout(timeout);
   }
 };
 
@@ -7572,6 +9937,25 @@ const runNaverBlogAutomationCheck = async ({
   }
 
   try {
+    const reservation = await reserveNaverSearchRequest("blog");
+    if (!reservation.allowed) {
+      return {
+        provider: plan.provider,
+        configured: true,
+        mode: "manual_fallback",
+        status: "blocked",
+        checked_at: checkedAt,
+        message:
+          "네이버 자동 확인을 잠시 사용할 수 없습니다. 공개 증빙을 다시 확인하거나 수기 인증을 요청해 주세요.",
+        next_action: "manual_review",
+        public_challenge: publicChallenge,
+        ownership_check: publicChallenge,
+        profile: {
+          blog_id: expectedBlogId || undefined,
+        },
+        plan,
+      };
+    }
     const url = new URL("https://openapi.naver.com/v1/search/blog.json");
     url.searchParams.set("query", `${challengeCode} ${expectedBlogId || platformHandle}`);
     url.searchParams.set("display", "10");
@@ -7807,35 +10191,47 @@ const runInstagramAutomationCheck = async ({
   }
 };
 
-const runInstagramDmManualCheck = (
-  challengeCode: string,
+const isInstagramDmWebhookConfigured = () =>
+  Boolean(
+    process.env.META_WEBHOOK_VERIFY_TOKEN?.trim() &&
+      process.env.META_APP_SECRET?.trim() &&
+      process.env.META_IG_USER_ID?.trim() &&
+      metaInstagramAccessToken,
+  );
+
+const isInstagramDmAccessTokenCurrent = () => {
+  if (!metaInstagramAccessTokenExpiresAt) return false;
+  const expiresAt = new Date(metaInstagramAccessTokenExpiresAt).getTime();
+  return Number.isFinite(expiresAt) && expiresAt > Date.now();
+};
+
+const isInstagramDmAutomationReady = () =>
+  isInstagramDmWebhookConfigured() &&
+  isInstagramDmAccessTokenCurrent() &&
+  instagramDmAutoApproveEnabled;
+
+const runInstagramDmWebhookCheck = (
+  challengeCodeHash: string,
 ): VerificationAutomationResult => {
   const checkedAt = new Date().toISOString();
   const plan = buildVerificationAutomationPlan("instagram");
-  const webhookConfigured = Boolean(
-    process.env.META_WEBHOOK_VERIFY_TOKEN?.trim() &&
-      process.env.META_APP_SECRET?.trim(),
-  );
+  const webhookConfigured = isInstagramDmWebhookConfigured();
 
   return {
-    provider: webhookConfigured
-      ? "instagram_messaging_webhook"
-      : "instagram_dm_manual_review",
+    provider: "instagram_messaging_webhook",
     configured: webhookConfigured,
     mode: webhookConfigured ? "webhook_ready" : "manual_fallback",
-    status: "blocked",
+    status: "pending",
     checked_at: checkedAt,
-    message:
-      "Instagram DM challenge is pending operator review until inbound webhook automation approves it.",
-    next_action:
-      "Confirm the influencer sent this challenge code to the official Instagram account, then approve manually.",
+    message: "Waiting for the signed inbound Instagram DM webhook.",
+    next_action: "Keep the challenge active while the server checks the webhook.",
     matched_fields: [],
     ownership_check: {
       status: "not_run",
       checked_at: checkedAt,
     },
     profile: {
-      challenge_code_hash: sha256Hex(challengeCode),
+      challenge_code_hash: challengeCodeHash,
       review_channel: "instagram_dm",
       webhook_configured: webhookConfigured,
     },
@@ -8033,7 +10429,7 @@ const runPlatformAccountAutomationCheck = async ({
   const plan = buildVerificationAutomationPlan(platform);
 
   if (platform === "instagram" && ownershipMethod === "instagram_dm_code") {
-    return runInstagramDmManualCheck(challengeCode);
+    return runInstagramDmWebhookCheck(hashInstagramDmChallengeCode(challengeCode));
   }
 
   if (ownershipMethod === "screenshot_review") {
@@ -9580,11 +11976,73 @@ const readOperationalAdminSupportTickets = async () => {
     .filter((ticket) => !isOperationalTestSupportTicket(ticket));
 };
 
+const isActionableManualVerificationRequest = (
+  request: VerificationRequestRecord,
+  requests: VerificationRequestRecord[] = [request],
+) => {
+  if (request.status !== "pending") return false;
+  if (request.ownership_verification_method !== "instagram_dm_code") {
+    return true;
+  }
+  return isActionableInstagramDmManualReview(
+    request,
+    requests,
+    getInstagramDmChallengeState,
+  );
+};
+
+const isInstagramDmProviderRetryRequest = (
+  request: VerificationRequestRecord,
+  requests: VerificationRequestRecord[] = [request],
+) =>
+  request.status === "pending" &&
+  request.platform === "instagram" &&
+  request.ownership_verification_method === "instagram_dm_code" &&
+  getInstagramDmChallengeState(request) === "retrying_provider" &&
+  !hasNewerInstagramVerificationRequestForSameHandle(request, requests);
+
+const filterInfluencerVerificationRequests = (
+  requests: VerificationRequestRecord[],
+  trustedProfileId: string,
+  trustedProfileEmail: string | undefined,
+) =>
+  requests.filter((request) =>
+    verificationRequestBelongsToInfluencerAccount(
+      request,
+      trustedProfileId,
+      trustedProfileEmail,
+    ),
+  );
+
+const hasNewerInstagramVerificationRequestForSameHandle = (
+  candidate: VerificationRequestRecord,
+  requests: VerificationRequestRecord[],
+) => {
+  const profileId = candidate.profile_id ?? candidate.target_id;
+  const handle = normalizeInstagramUsername(candidate.platform_handle);
+  const createdAt = new Date(candidate.created_at).getTime();
+  if (!profileId || !handle || !Number.isFinite(createdAt)) return true;
+  return requests.some(
+    (request) =>
+      request.id !== candidate.id &&
+      (request.profile_id ?? request.target_id) === profileId &&
+      request.platform === "instagram" &&
+      normalizeInstagramUsername(request.platform_handle) === handle &&
+      new Date(request.created_at).getTime() >= createdAt,
+  );
+};
+
 const readOperationalAdminVerificationRequests = async () => {
   if (!useSupabase) return [] as VerificationRequestRecord[];
   const requests = await readSupabaseVerificationRequests();
-  return requests.filter(
+  const operationalRequests = requests.filter(
     (request) => !isOperationalTestVerificationRequest(request),
+  );
+  return operationalRequests.filter(
+    (request) =>
+      request.status !== "pending" ||
+      isActionableManualVerificationRequest(request, operationalRequests) ||
+      isInstagramDmProviderRetryRequest(request, operationalRequests),
   );
 };
 
@@ -10418,6 +12876,10 @@ const mapDiscoveredInfluencerRowToMarketplaceProfile = (
   const audienceCountries = normalizeMarketplaceCountries(row.audience_countries);
   const countryLabel = formatMarketplaceCountries(audienceCountries, "국가 미확인");
   const audienceTags = normalizeStringArrayForStorage(row.audience_tags, [], 6);
+  const recentPosts =
+    row.platform === "naver_blog"
+      ? normalizeNaverBlogRecentPosts(row.source_evidence?.recentPosts, 3)
+      : [];
 
   return {
     id: `discovered-${row.id}`,
@@ -10454,6 +12916,7 @@ const mapDiscoveredInfluencerRowToMarketplaceProfile = (
     recentBrands: [],
     portfolio: [],
     proposalHints: ["공개 채널을 확인한 뒤 광고 조건을 제안하세요."],
+    recentPosts,
     source: "discovered",
   };
 };
@@ -10518,13 +12981,47 @@ const readMarketplaceInfluencerRows = async (query: string) => {
   };
 };
 
-const marketplaceInfluencerProfileResponseLimit = 1000;
+const readAllMarketplaceInfluencerRows = async (query: string) => {
+  if (!useSupabase) {
+    return {
+      profiles: [] as SupabaseMarketplaceInfluencerProfileRow[],
+      channels: new Map<string, SupabaseMarketplaceInfluencerChannelRow[]>(),
+    };
+  }
 
-type MarketplaceInfluencerProfileReadOptions = {
-  limit?: number;
-  offset?: number;
-  platform?: InfluencerPlatform;
+  const pageSize = 1000;
+  const profiles: SupabaseMarketplaceInfluencerProfileRow[] = [];
+  for (let offset = 0; ; offset += pageSize) {
+    const page = await readSupabaseRows<SupabaseMarketplaceInfluencerProfileRow>(
+      "marketplace_influencer_profiles",
+      `${query}&limit=${pageSize}&offset=${offset}`,
+      "marketplace influencer profiles",
+    );
+    profiles.push(...page);
+    if (page.length < pageSize) break;
+  }
+
+  const channelRows: SupabaseMarketplaceInfluencerChannelRow[] = [];
+  for (let index = 0; index < profiles.length; index += 100) {
+    const profileFilter = postgrestInFilter(
+      profiles.slice(index, index + 100).map((profile) => profile.id),
+    );
+    channelRows.push(
+      ...(await readSupabaseRows<SupabaseMarketplaceInfluencerChannelRow>(
+        "marketplace_influencer_channels",
+        `?select=*&profile_id=in.${profileFilter}&order=sort_order.asc`,
+        "marketplace influencer channels",
+      )),
+    );
+  }
+
+  return {
+    profiles,
+    channels: groupMarketplaceChannelsByProfileId(channelRows),
+  };
 };
+
+const marketplaceInfluencerProfileResponseLimit = 1000;
 
 const clampMarketplaceInfluencerPageNumber = (
   value: unknown,
@@ -10563,23 +13060,57 @@ const readMarketplaceInfluencerPlatformFilter = (
     : undefined;
 };
 
+const readMarketplaceInfluencerFilterValues = (
+  value: express.Request["query"][string],
+) => {
+  const values = Array.isArray(value) ? value : value === undefined ? [] : [value];
+  return values
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean);
+};
+
+const readMarketplaceInfluencerSearchFilters = (
+  query: express.Request["query"],
+) => {
+  const rawSearch = Array.isArray(query.search) ? query.search[0] : query.search;
+  const search = typeof rawSearch === "string" ? rawSearch.trim().slice(0, 120) : "";
+  const categoryValues = readMarketplaceInfluencerFilterValues(query.category);
+  const categories = categoryValues
+    .map((category) => normalizeMarketplaceCreatorCategory(category))
+    .filter(Boolean);
+  const countryValues = readMarketplaceInfluencerFilterValues(query.country);
+  const countries = countryValues.filter(
+    (country): country is MarketplaceCountryCode => isMarketplaceCountryCode(country),
+  );
+
+  return {
+    filters: {
+      search: search || undefined,
+      categories: [...new Set(categories)],
+      countries: [...new Set(countries)],
+    } satisfies MarketplaceInfluencerSearchFilters,
+    invalid: [
+      ...categoryValues.filter(
+        (category) => !normalizeMarketplaceCreatorCategory(category),
+      ),
+      ...countryValues.filter((country) => !isMarketplaceCountryCode(country)),
+    ],
+  };
+};
+
 const readDiscoveredInfluencerProfiles = async (
-  options: MarketplaceInfluencerProfileReadOptions = {},
+  options: Pick<MarketplaceInfluencerSearchFilters, "platform"> = {},
 ) => {
   if (!useSupabase) return [];
-
-  const limit = Math.max(options.limit ?? marketplaceInfluencerProfileResponseLimit, 0);
-  const offset = Math.max(options.offset ?? 0, 0);
-  if (limit === 0) return [];
 
   try {
     const rows: MarketplaceInfluencerProfile[] = [];
     const pageSize = 1000;
-    const sourceScanLimit = Math.max(offset + limit + pageSize, pageSize);
     const platformFilter = options.platform
       ? `&platform=eq.${encodeURIComponent(options.platform)}`
       : "";
-    for (let scanOffset = 0; scanOffset < sourceScanLimit; scanOffset += pageSize) {
+    for (let scanOffset = 0; ; scanOffset += pageSize) {
       const page = await readSupabaseRows<SupabaseDiscoveredInfluencerProfileRow>(
         "discovered_influencer_profiles",
         `?select=*&status=eq.active${platformFilter}&order=quality_score.desc,last_checked_at.desc,id.asc&limit=${pageSize}&offset=${scanOffset}`,
@@ -10597,28 +13128,22 @@ const readDiscoveredInfluencerProfiles = async (
               !hasOperationalTestMarker(profile),
           ),
       );
-      if (rows.length >= offset + limit) break;
       if (page.length < pageSize) break;
     }
 
-    return rows.slice(offset, offset + limit);
+    return rows;
   } catch (error) {
     console.warn(
       `[${productName}] discovered influencer profiles unavailable: ${
         error instanceof Error ? error.message : "unknown error"
       }`,
     );
-    return [];
+    throw error;
   }
 };
 
-const readMarketplaceInfluencerProfiles = async (
-  options: MarketplaceInfluencerProfileReadOptions = {},
-) => {
-  const limit = Math.max(options.limit ?? marketplaceInfluencerProfileResponseLimit, 0);
-  const offset = Math.max(options.offset ?? 0, 0);
-
-  const { profiles, channels } = await readMarketplaceInfluencerRows(
+const readMarketplaceInfluencerProfileCollection = async () => {
+  const { profiles, channels } = await readAllMarketplaceInfluencerRows(
     `?select=*&is_published=eq.true${
       filterOperationalMarketplaceTestData ? "&data_origin=eq.production" : ""
     }&order=updated_at.desc`,
@@ -10635,35 +13160,11 @@ const readMarketplaceInfluencerProfiles = async (
         !filterOperationalMarketplaceTestData ||
         !hasOperationalTestMarker(profile),
     );
-  const matchingDbProfiles = options.platform
-    ? dbProfiles.filter((profile) =>
-        profile.platforms.some((channel) => channel.platform === options.platform),
-      )
-    : dbProfiles;
+  const discoveredProfiles = await readDiscoveredInfluencerProfiles();
+  const visibleProfiles = [...dbProfiles, ...discoveredProfiles];
 
-  const registeredProfiles = matchingDbProfiles.slice(offset, offset + limit);
-  const discoveredProfileOffset = Math.max(offset - matchingDbProfiles.length, 0);
-  const discoveredProfileLimit = Math.max(limit - registeredProfiles.length, 0);
-  const discoveredProfiles =
-    discoveredProfileLimit > 0
-      ? await readDiscoveredInfluencerProfiles({
-          limit: discoveredProfileLimit,
-          offset: discoveredProfileOffset,
-          platform: options.platform,
-        })
-      : [];
-  const visibleProfiles = [...registeredProfiles, ...discoveredProfiles].slice(0, limit);
-
-  if (visibleProfiles.length > 0) return visibleProfiles;
-  if (matchingDbProfiles.length > 0) {
-    return matchingDbProfiles.slice(offset, offset + limit);
-  }
-  const fallbackProfiles = options.platform
-    ? fallbackMarketplaceInfluencerProfiles().filter((profile) =>
-        profile.platforms.some((channel) => channel.platform === options.platform),
-      )
-    : fallbackMarketplaceInfluencerProfiles();
-  return fallbackProfiles.slice(offset, offset + limit);
+  if (useSupabase) return visibleProfiles;
+  return fallbackMarketplaceInfluencerProfiles();
 };
 
 const readPublicMarketplaceInfluencerProfileByHandle = async (handle: string) => {
@@ -10725,88 +13226,20 @@ const readPublicMarketplaceInfluencerProfileByHandle = async (handle: string) =>
 
 const readAdvertiserSavedInfluencerRows = async (organizationId: string) => {
   if (!useSupabase) return [] as SupabaseAdvertiserSavedInfluencerRow[];
-  return readSupabaseRows<SupabaseAdvertiserSavedInfluencerRow>(
-    "advertiser_saved_influencers",
-    `?select=*&organization_id=eq.${encodeURIComponent(
-      organizationId,
-    )}&order=created_at.desc&limit=5000`,
-    "advertiser saved influencers",
-  );
-};
-
-const readPublicMarketplaceInfluencerProfilesByHandles = async (
-  handles: string[],
-) => {
-  const normalizedHandles = Array.from(
-    new Set(handles.map(normalizePublicProfileHandle).filter(Boolean)),
-  ).slice(0, 5000);
-  if (normalizedHandles.length === 0) return [];
-
-  if (!useSupabase) {
-    const fallbackByHandle = new Map(
-      fallbackMarketplaceInfluencerProfiles().map((profile) => [
-        normalizePublicProfileHandle(profile.handle),
-        profile,
-      ]),
+  const pageSize = 1000;
+  const rows: SupabaseAdvertiserSavedInfluencerRow[] = [];
+  for (let offset = 0; ; offset += pageSize) {
+    const page = await readSupabaseRows<SupabaseAdvertiserSavedInfluencerRow>(
+      "advertiser_saved_influencers",
+      `?select=*&organization_id=eq.${encodeURIComponent(
+        organizationId,
+      )}&order=created_at.desc&limit=${pageSize}&offset=${offset}`,
+      "advertiser saved influencers",
     );
-    return normalizedHandles
-      .map((handle) => fallbackByHandle.get(handle))
-      .filter((profile): profile is MarketplaceInfluencerProfile => Boolean(profile));
+    rows.push(...page);
+    if (page.length < pageSize) break;
   }
-
-  const profileByHandle = new Map<string, MarketplaceInfluencerProfile>();
-  for (let index = 0; index < normalizedHandles.length; index += 100) {
-    const batch = normalizedHandles.slice(index, index + 100);
-    const handleFilter = postgrestInFilter(batch);
-    const [{ profiles, channels }, discoveredRows] = await Promise.all([
-      readMarketplaceInfluencerRows(
-        `?select=*&is_published=eq.true&public_handle=in.${handleFilter}${
-          filterOperationalMarketplaceTestData ? "&data_origin=eq.production" : ""
-        }`,
-      ),
-      readSupabaseRows<SupabaseDiscoveredInfluencerProfileRow>(
-        "discovered_influencer_profiles",
-        `?select=*&status=eq.active&public_handle=in.${handleFilter}`,
-        "saved discovered influencer profiles",
-      ),
-    ]);
-
-    for (const row of profiles) {
-      const profile = mapInfluencerProfileRowToMarketplaceProfile(
-        row,
-        channels.get(row.id) ?? [],
-      );
-      if (
-        !filterOperationalMarketplaceTestData ||
-        !hasOperationalTestMarker(profile)
-      ) {
-        profileByHandle.set(normalizePublicProfileHandle(profile.handle), profile);
-      }
-    }
-    for (const row of discoveredRows) {
-      if (
-        classifyDiscoveredInfluencerAccount(row).excluded ||
-        isClearlyBusinessDiscoveredInfluencerRow(row) ||
-        isClearlyNonCreatorDiscoveredInfluencerRow(row)
-      ) {
-        continue;
-      }
-      const profile = mapDiscoveredInfluencerRowToMarketplaceProfile(row);
-      if (
-        filterOperationalMarketplaceTestData &&
-        hasOperationalTestMarker(profile)
-      ) {
-        continue;
-      }
-      if (!profileByHandle.has(normalizePublicProfileHandle(profile.handle))) {
-        profileByHandle.set(normalizePublicProfileHandle(profile.handle), profile);
-      }
-    }
-  }
-
-  return normalizedHandles
-    .map((handle) => profileByHandle.get(handle))
-    .filter((profile): profile is MarketplaceInfluencerProfile => Boolean(profile));
+  return rows;
 };
 
 const readMarketplaceBrandProfiles = async () => {
@@ -11114,8 +13547,7 @@ const warmPublicMarketplaceCache = () => {
     void Promise.all([
       readPublicMarketplaceCache(
         "marketplace-influencers",
-        readMarketplaceInfluencerProfiles,
-        { fallback: fallbackMarketplaceInfluencerProfiles },
+        readMarketplaceInfluencerProfileCollection,
       ),
       readPublicMarketplaceCache(
         "marketplace-brands",
@@ -16190,6 +18622,7 @@ const writeVerificationRequests = async (
 const appendVerificationEvidenceAccessAudit = async (
   record: VerificationRequestRecord,
   request: express.Request,
+  admin: AdminSession,
 ) => {
   const existingAudit = Array.isArray(
     record.evidence_snapshot_json?.evidence_access_audit,
@@ -16200,7 +18633,8 @@ const appendVerificationEvidenceAccessAudit = async (
     id: randomUUID(),
     action: "evidence_downloaded",
     actor_role: "admin",
-    actor_name: adminOperatorName,
+    actor_profile_id: admin.profile.id,
+    actor_name: admin.profile.name,
     ip: getClientIp(request),
     user_agent: request.header("user-agent") ?? "unknown",
     created_at: new Date().toISOString(),
@@ -16248,28 +18682,47 @@ const applyVerificationStatusSideEffects = async (
       ? (record.reviewed_at ?? record.updated_at)
       : undefined;
 
-  if (record.profile_id) {
-    const profileVerificationStatus =
-      record.target_type === "influencer_account"
-        ? deriveVerificationStatus(
-            (await readVerificationRequests()).filter(
-              (request) =>
-                request.target_type === "influencer_account" &&
-                (request.profile_id === record.profile_id ||
-                  request.target_id === record.profile_id ||
-                  (hasText(record.submitted_by_email) &&
-                    normalizeEmail(request.submitted_by_email ?? "") ===
-                      normalizeEmail(record.submitted_by_email))),
-            ),
-            record.status,
-          )
-        : record.status;
+  const influencerProfileId =
+    record.target_type === "influencer_account"
+      ? (record.profile_id ?? record.target_id)
+      : undefined;
+  const influencerProfile = influencerProfileId
+    ? await readProfileByUserId(influencerProfileId)
+    : undefined;
+  const influencerRecordOwned = Boolean(
+    influencerProfile &&
+      verificationRequestBelongsToInfluencerAccount(
+        record,
+        influencerProfile.id,
+        influencerProfile.email,
+      ),
+  );
 
+  if (influencerProfile && influencerRecordOwned) {
+    const profileVerificationStatus = deriveVerificationStatus(
+      filterInfluencerVerificationRequests(
+        await readVerificationRequests(),
+        influencerProfile.id,
+        influencerProfile.email,
+      ),
+      record.status,
+    );
+
+    await patchSupabaseRecord(
+      "profiles",
+      `?id=eq.${encodeURIComponent(influencerProfile.id)}`,
+      {
+        verification_status: profileVerificationStatus,
+        updated_at: record.updated_at,
+      },
+      "Supabase profile verification status update",
+    );
+  } else if (record.target_type !== "influencer_account" && record.profile_id) {
     await patchSupabaseRecord(
       "profiles",
       `?id=eq.${encodeURIComponent(record.profile_id)}`,
       {
-        verification_status: profileVerificationStatus,
+        verification_status: record.status,
         updated_at: record.updated_at,
       },
       "Supabase profile verification status update",
@@ -16277,18 +18730,65 @@ const applyVerificationStatusSideEffects = async (
   }
 
   if (record.organization_id) {
+    const currentOrganization = record.profile_id
+      ? await readDefaultOrganizationForProfile(record.profile_id)
+      : undefined;
+    const preserveApprovedVerification =
+      currentOrganization?.id === record.organization_id &&
+      currentOrganization.business_verification_status === "approved" &&
+      record.status !== "approved";
     await patchSupabaseRecord(
       "organizations",
       `?id=eq.${encodeURIComponent(record.organization_id)}`,
       {
-        business_verification_status: record.status,
-        business_verified_at: record.status === "approved" ? reviewedAt : null,
-        business_verification_request_id: record.id,
-        representative_name: record.representative_name,
+        business_verification_status: preserveApprovedVerification
+          ? "approved"
+          : record.status,
+        ...(!preserveApprovedVerification
+          ? {
+              business_verified_at:
+                record.status === "approved" ? reviewedAt : null,
+              business_verification_request_id: record.id,
+            }
+          : {}),
+        ...(record.status === "approved"
+          ? {
+              business_registration_number:
+                record.business_registration_number,
+              representative_name: record.representative_name,
+            }
+          : {}),
         updated_at: record.updated_at,
       },
       "Supabase organization verification status update",
     );
+  }
+
+  if (
+    record.verification_type === "platform_account" &&
+    record.target_type === "influencer_account" &&
+    (record.status === "pending" ||
+      record.status === "approved" ||
+      record.status === "rejected") &&
+    !isOperationalTestVerificationRequest(record) &&
+    influencerProfile &&
+    influencerRecordOwned
+  ) {
+    try {
+      if (influencerProfile.email) {
+        await sendPlatformVerificationEmail({
+          requestId: record.id,
+          recipientEmail: influencerProfile.email,
+          status: record.status,
+          platform: record.platform,
+          ownershipMethod: record.ownership_verification_method,
+          dataOrigin: record.data_origin,
+          isOperationalTest: isOperationalTestVerificationRequest(record),
+        });
+      }
+    } catch {
+      // Customer email is best-effort and must never fail the verification mutation.
+    }
   }
 };
 
@@ -16323,26 +18823,99 @@ const updateVerificationRequestReview = async ({
   id,
   status,
   reviewerNote,
+  reviewedByProfileId,
   reviewedByName,
 }: {
   id: string;
   status: VerificationStatus;
   reviewerNote?: string;
+  reviewedByProfileId: string;
   reviewedByName?: string;
 }) => {
   const reviewedAt = new Date().toISOString();
-  const updates = {
+  const verificationRequests = await readVerificationRequests();
+  const existingRecord = verificationRequests.find((record) => record.id === id);
+  if (!existingRecord) return undefined;
+  const isInstagramDmTerminalReview =
+    existingRecord.ownership_verification_method === "instagram_dm_code" &&
+    (status === "approved" || status === "rejected");
+  if (
+    isInstagramDmTerminalReview &&
+    hasNewerInstagramVerificationRequestForSameHandle(
+      existingRecord,
+      verificationRequests,
+    )
+  ) {
+    return undefined;
+  }
+  const updates: Partial<VerificationRequestRecord> = {
     status,
     reviewer_note: reviewerNote,
+    reviewed_by_profile_id: reviewedByProfileId,
     reviewed_by_name: reviewedByName,
     reviewed_at: reviewedAt,
     updated_at: reviewedAt,
+    ...(isInstagramDmTerminalReview
+      ? {
+          evidence_snapshot_json: buildInstagramDmSnapshot(
+            existingRecord,
+            status === "approved" ? "verified" : "manual_review",
+            {
+              checked_at: reviewedAt,
+              manual_terminal_status: status,
+            },
+          ),
+          ownership_challenge_code_hash: null,
+          ownership_challenge_code_ciphertext: null,
+          ownership_challenge_consumed_at: reviewedAt,
+          ownership_check_status:
+            status === "approved" ? "matched" : "failed",
+          ownership_checked_at: reviewedAt,
+        }
+      : {}),
   };
 
   if (useSupabase) {
+    if (isInstagramDmTerminalReview) {
+      const response = await fetchSupabase(
+        "rpc/directsign_review_instagram_dm_challenge",
+        "",
+        {
+          method: "POST",
+          headers: { Prefer: "return=representation" },
+          body: JSON.stringify({
+            p_request_id: id,
+            p_status: status,
+            p_reviewer_note: reviewerNote ?? null,
+            p_reviewed_by_profile_id: reviewedByProfileId,
+            p_reviewed_by_name: reviewedByName ?? null,
+            p_reviewed_at: reviewedAt,
+            p_evidence_snapshot: updates.evidence_snapshot_json,
+          }),
+        },
+      );
+      await assertSupabaseOk(
+        response,
+        "Supabase atomic Instagram DM review",
+      );
+      const rows = (await response.json()) as VerificationRequestRecord[];
+      const updatedRecord = rows[0]
+        ? normalizeVerificationRequest(rows[0])
+        : undefined;
+      invalidateSupabaseVerificationRequestCache();
+      invalidateAdvertiserDashboardCache();
+      invalidateInfluencerDashboardCache();
+      if (updatedRecord) {
+        await applyVerificationStatusSideEffects(updatedRecord);
+      }
+      return updatedRecord;
+    }
+
     const response = await fetchSupabase(
       "verification_requests",
-      `?id=eq.${encodeURIComponent(id)}`,
+      `?id=eq.${encodeURIComponent(id)}${
+        isInstagramDmTerminalReview ? "&status=eq.pending" : ""
+      }`,
       {
         method: "PATCH",
         headers: { Prefer: "return=representation" },
@@ -16362,10 +18935,10 @@ const updateVerificationRequestReview = async ({
     return updatedRecord;
   }
 
-  const verificationRequests = await readVerificationRequests();
   let updatedRecord: VerificationRequestRecord | undefined;
   const nextRequests = verificationRequests.map((record) => {
     if (record.id !== id) return record;
+    if (isInstagramDmTerminalReview && record.status !== "pending") return record;
     updatedRecord = normalizeVerificationRequest({ ...record, ...updates });
     return updatedRecord;
   });
@@ -16434,7 +19007,6 @@ const rerunVerificationAutomation = async (
           existingSnapshot.business_start_date,
         ),
         representativeName: record.representative_name,
-        subjectName: record.subject_name,
       },
     );
     const autoApprove =
@@ -16464,11 +19036,18 @@ const rerunVerificationAutomation = async (
   }
 
   if (record.target_type === "influencer_account") {
+    const challengeCode =
+      record.ownership_verification_method === "instagram_dm_code"
+        ? decryptInstagramDmChallengeCode(
+            record.ownership_challenge_code_ciphertext ?? undefined,
+            record.id,
+          )
+        : record.ownership_challenge_code;
     if (
       !record.platform ||
       !record.platform_handle ||
       !record.platform_url ||
-      !record.ownership_challenge_code
+      !challengeCode
     ) {
       throw new Error("Platform verification request is missing required fields");
     }
@@ -16480,7 +19059,7 @@ const rerunVerificationAutomation = async (
       proofUrl: record.ownership_challenge_url ?? record.platform_url,
       ownershipMethod:
         record.ownership_verification_method ?? "screenshot_review",
-      challengeCode: record.ownership_challenge_code,
+      challengeCode,
     });
     const ownershipCheck =
       result.ownership_check ??
@@ -16537,123 +19116,437 @@ const rerunVerificationAutomation = async (
 
 const verifyMetaWebhookSignature = (request: express.Request) => {
   const appSecret = process.env.META_APP_SECRET?.trim();
-  if (!appSecret) return false;
   const signature = request.header("x-hub-signature-256");
   const rawBody = (request as express.Request & { rawBody?: Buffer }).rawBody;
-  if (!signature?.startsWith("sha256=") || !rawBody) return false;
-
-  const expected = `sha256=${createHmac("sha256", appSecret)
-    .update(rawBody)
-    .digest("hex")}`;
-  const left = Buffer.from(signature);
-  const right = Buffer.from(expected);
-  return left.length === right.length && timingSafeEqual(left, right);
+  return verifyInstagramWebhookSignature(rawBody, signature, appSecret);
 };
 
-const extractInstagramDmChallengeEvents = (body: unknown) => {
-  const events: Array<{
-    challengeCode: string;
-    senderId?: string;
-    messageId?: string;
-    receivedAt: string;
-  }> = [];
-  const entries = Array.isArray((body as { entry?: unknown[] })?.entry)
-    ? ((body as { entry: unknown[] }).entry)
-    : [];
+const hasNewerInstagramRequestForSameHandle = async (
+  candidate: VerificationRequestRecord,
+  options: { freshSupabase?: boolean } = {},
+) => {
+  const profileId = candidate.profile_id;
+  const candidateHandle = normalizeInstagramUsername(candidate.platform_handle);
+  if (!profileId || !candidateHandle) return true;
 
-  for (const entry of entries) {
-    const messaging = Array.isArray((entry as { messaging?: unknown[] })?.messaging)
-      ? ((entry as { messaging: unknown[] }).messaging)
-      : [];
+  const records =
+    useSupabase && options.freshSupabase
+      ? await readSupabaseRows<VerificationRequestRecord>(
+          "verification_requests",
+          `?select=id,profile_id,platform,platform_handle,created_at&profile_id=eq.${encodeURIComponent(profileId)}&platform=eq.instagram&created_at=gte.${encodeURIComponent(candidate.created_at)}&order=created_at.desc&limit=100`,
+          "newer Instagram ownership request authority check",
+        )
+      : await readVerificationRequests();
+  return hasNewerInstagramVerificationRequestForSameHandle(candidate, records);
+};
 
-    for (const item of messaging) {
-      const message = (item as { message?: { text?: unknown; mid?: unknown } }).message;
-      const text = normalizeRequiredText(message?.text).toUpperCase();
-      const match = text.match(/DS-[A-Z0-9]{4}-[A-Z0-9]{4}/);
-      if (!match) continue;
-
-      events.push({
-        challengeCode: match[0],
-        senderId: normalizeOptionalText(
-          (item as { sender?: { id?: unknown } }).sender?.id,
-        ),
-        messageId: normalizeOptionalText(message?.mid),
-        receivedAt: new Date().toISOString(),
-      });
-    }
+const readPendingInstagramDmChallengeByHash = async (codeHash: string) => {
+  let candidate: VerificationRequestRecord | undefined;
+  if (useSupabase) {
+    const rows = await readSupabaseRows<VerificationRequestRecord>(
+      "verification_requests",
+      `?select=*&target_type=eq.influencer_account&platform=eq.instagram&status=eq.pending&ownership_verification_method=eq.instagram_dm_code&ownership_challenge_code_hash=eq.${encodeURIComponent(codeHash)}&ownership_challenge_consumed_at=is.null&limit=1`,
+      "pending Instagram DM challenge",
+    );
+    candidate = rows[0] ? normalizeVerificationRequest(rows[0]) : undefined;
+  } else {
+    candidate = (await readVerificationRequests()).find(
+      (record) =>
+        record.target_type === "influencer_account" &&
+        record.platform === "instagram" &&
+        record.status === "pending" &&
+        record.ownership_verification_method === "instagram_dm_code" &&
+        record.ownership_challenge_code_hash === codeHash &&
+        !record.ownership_challenge_consumed_at,
+    );
   }
 
-  return events;
+  if (!candidate?.profile_id) return candidate;
+  const hasNewerSameHandleRequest =
+    await hasNewerInstagramRequestForSameHandle(candidate);
+  return hasNewerSameHandleRequest ? undefined : candidate;
 };
 
-const applyInstagramDmChallengeEvent = async (event: {
-  challengeCode: string;
-  senderId?: string;
-  messageId?: string;
-  receivedAt: string;
-}) => {
+const patchPendingInstagramDmChallenge = async (
+  record: VerificationRequestRecord,
+  codeHash: string,
+  updates: Partial<VerificationRequestRecord>,
+  requireUnexpired: boolean,
+) => {
+  if (useSupabase) {
+    const now = new Date().toISOString();
+    const query = [
+      `?id=eq.${encodeURIComponent(record.id)}`,
+      "status=eq.pending",
+      "platform=eq.instagram",
+      "ownership_verification_method=eq.instagram_dm_code",
+      `ownership_challenge_code_hash=eq.${encodeURIComponent(codeHash)}`,
+      "ownership_challenge_consumed_at=is.null",
+      ...(requireUnexpired
+        ? [`ownership_challenge_expires_at=gt.${encodeURIComponent(now)}`]
+        : []),
+    ].join("&");
+    const response = await fetchSupabase("verification_requests", query, {
+      method: "PATCH",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify(updates),
+    });
+    await assertSupabaseOk(response, "Supabase Instagram DM conditional update");
+    const rows = (await response.json()) as VerificationRequestRecord[];
+    const saved = rows[0] ? normalizeVerificationRequest(rows[0]) : undefined;
+    if (saved) {
+      invalidateSupabaseVerificationRequestCache();
+      invalidateInfluencerDashboardCache();
+    }
+    return saved;
+  }
+
   const records = await readVerificationRequests();
-  const record = records
+  let saved: VerificationRequestRecord | undefined;
+  await writeVerificationRequests(
+    records.map((item) => {
+      const unexpired =
+        !requireUnexpired ||
+        (hasText(item.ownership_challenge_expires_at) &&
+          new Date(item.ownership_challenge_expires_at).getTime() > Date.now());
+      if (
+        item.id !== record.id ||
+        item.status !== "pending" ||
+        item.ownership_challenge_code_hash !== codeHash ||
+        item.ownership_challenge_consumed_at ||
+        !unexpired
+      ) {
+        return item;
+      }
+      saved = normalizeVerificationRequest({ ...item, ...updates });
+      return saved;
+    }),
+  );
+  return saved;
+};
+
+const buildInstagramDmSnapshot = (
+  record: VerificationRequestRecord,
+  state:
+    | "awaiting_dm"
+    | "retrying_provider"
+    | "verified"
+    | "expired"
+    | "manual_review",
+  updates: Record<string, unknown> = {},
+) => {
+  const snapshot = record.evidence_snapshot_json ?? {};
+  const ownership =
+    (snapshot.ownership_verification as Record<string, unknown> | undefined) ?? {};
+  const instagramDm: Record<string, unknown> = {
+    ...((ownership.instagram_dm as Record<string, unknown> | undefined) ?? {}),
+    state,
+    ...updates,
+  };
+  if (state === "verified") {
+    delete instagramDm.failure_reason;
+  }
+  return {
+    ...snapshot,
+    ownership_verification: {
+      ...ownership,
+      instagram_dm: instagramDm,
+    },
+  };
+};
+
+const readActiveInstagramDmChallenge = async (
+  profileId: string,
+  username: string,
+) => {
+  const now = new Date().toISOString();
+  if (useSupabase) {
+    const rows = await readSupabaseRows<VerificationRequestRecord>(
+      "verification_requests",
+      `?select=*&profile_id=eq.${encodeURIComponent(profileId)}&platform=eq.instagram&status=eq.pending&ownership_verification_method=eq.instagram_dm_code&ownership_challenge_code_hash=not.is.null&ownership_challenge_consumed_at=is.null&ownership_challenge_expires_at=gt.${encodeURIComponent(now)}&order=created_at.desc&limit=10`,
+      "active Instagram DM challenge",
+    );
+    return rows
+      .map(normalizeVerificationRequest)
+      .find(
+        (record) =>
+          normalizeInstagramUsername(record.platform_handle) === username,
+      );
+  }
+
+  return (await readVerificationRequests())
     .filter(
-      (item) =>
-        item.target_type === "influencer_account" &&
-        item.platform === "instagram" &&
-        item.status === "pending" &&
-        item.ownership_challenge_code === event.challengeCode,
+      (record) =>
+        record.profile_id === profileId &&
+        record.platform === "instagram" &&
+        record.status === "pending" &&
+        record.ownership_verification_method === "instagram_dm_code" &&
+        hasText(record.ownership_challenge_code_hash) &&
+        !record.ownership_challenge_consumed_at &&
+        hasText(record.ownership_challenge_expires_at) &&
+        new Date(record.ownership_challenge_expires_at).getTime() > Date.now() &&
+        normalizeInstagramUsername(record.platform_handle) === username,
     )
     .sort((a, b) => parseDateDescending(a.created_at, b.created_at))[0];
+};
 
-  if (!record) return undefined;
+const supersedeActiveInstagramDmChallengeForFallback = async (
+  profileId: string,
+  username: string,
+  supersededAt: string,
+) => {
+  const active = await readActiveInstagramDmChallenge(profileId, username);
+  const codeHash = active?.ownership_challenge_code_hash;
+  if (!active || !codeHash) return undefined;
 
-  const existingSnapshot = record.evidence_snapshot_json ?? {};
-  const dmAutomation: VerificationAutomationResult = {
-    provider: "instagram_messaging_webhook",
-    configured: true,
-    mode: "webhook_ready",
-    status: "matched",
-    checked_at: event.receivedAt,
-    message: "Instagram inbound DM contained the pending challenge code.",
-    matched_fields: ["messaging.message.text"],
-    ownership_check: {
-      status: "matched",
-      checked_at: event.receivedAt,
+  return patchPendingInstagramDmChallenge(
+    active,
+    codeHash,
+    {
+      status: "rejected",
+      evidence_snapshot_json: buildInstagramDmSnapshot(active, "manual_review", {
+        failure_reason: "superseded_by_alternate_method",
+        checked_at: supersededAt,
+      }),
+      ownership_challenge_code_hash: null,
+      ownership_challenge_code_ciphertext: null,
+      ownership_check_status: "not_run",
+      ownership_checked_at: supersededAt,
+      reviewer_note:
+        "Superseded by an alternate ownership verification request selected by the account owner.",
+      reviewed_by_name: `${productName} automation`,
+      reviewed_at: supersededAt,
+      updated_at: supersededAt,
     },
-    profile: {
-      sender_id_hash: event.senderId ? sha256Hex(event.senderId) : undefined,
-      message_id_hash: event.messageId ? sha256Hex(event.messageId) : undefined,
+    false,
+  );
+};
+
+const buildInstagramDmChallengeResponse = (
+  record: VerificationRequestRecord,
+  state:
+    | "awaiting_dm"
+    | "retrying_provider"
+    | "verified"
+    | "expired"
+    | "manual_review",
+  code?: string,
+) => ({
+  request_id: record.id,
+  state,
+  ...(code ? { code } : {}),
+  expires_at: record.ownership_challenge_expires_at,
+  official_handle: instagramOfficialHandle,
+  official_url: instagramOfficialUrl,
+  ...(state === "verified" && record.platform_handle
+    ? { verified_handle: record.platform_handle }
+    : {}),
+});
+
+const markInstagramDmChallengeFailure = async (
+  record: VerificationRequestRecord,
+  codeHash: string,
+  reason: "expired" | "username_mismatch" | "provider_unavailable",
+  receivedAt: string,
+) => {
+  const invalidateChallenge = reason !== "provider_unavailable";
+  const saved = await patchPendingInstagramDmChallenge(
+    record,
+    codeHash,
+    {
+      evidence_snapshot_json: buildInstagramDmSnapshot(
+        record,
+        reason === "expired"
+          ? "expired"
+          : reason === "provider_unavailable"
+            ? "retrying_provider"
+            : "manual_review",
+        { failure_reason: reason, checked_at: receivedAt },
+      ),
+      ownership_check_status: "failed",
+      ownership_checked_at: receivedAt,
+      ...(invalidateChallenge
+        ? {
+            ownership_challenge_code_hash: null,
+            ownership_challenge_code_ciphertext: null,
+          }
+        : {}),
+      updated_at: receivedAt,
     },
-  };
-  const autoApprove = shouldAutoApprovePlatformVerification(dmAutomation);
-  const nextSnapshot = {
-    ...existingSnapshot,
-    ownership_verification: {
-      ...((existingSnapshot.ownership_verification as
-        | Record<string, unknown>
-        | undefined) ?? {}),
-      automation: {
-        ...(((existingSnapshot.ownership_verification as
-          | Record<string, unknown>
-          | undefined)?.automation as Record<string, unknown> | undefined) ?? {}),
-        instagram_dm: dmAutomation,
+    false,
+  );
+  if (
+    saved &&
+    !(await hasNewerInstagramRequestForSameHandle(saved, {
+      freshSupabase: true,
+    }))
+  ) {
+    await enqueueInstagramDmFailureOperationalAlert(saved, reason).catch(
+      () => undefined,
+    );
+  }
+  return saved;
+};
+
+const expireInstagramDmChallenges = async () => {
+  const now = new Date();
+  const records = (await readVerificationRequests()).filter(
+    (record) =>
+      record.platform === "instagram" &&
+      record.status === "pending" &&
+      record.ownership_verification_method === "instagram_dm_code" &&
+      hasText(record.ownership_challenge_code_hash) &&
+      hasText(record.ownership_challenge_expires_at) &&
+      new Date(record.ownership_challenge_expires_at).getTime() <= now.getTime(),
+  );
+  for (const record of records.slice(0, 100)) {
+    await markInstagramDmChallengeFailure(
+      record,
+      record.ownership_challenge_code_hash!,
+      "expired",
+      now.toISOString(),
+    );
+  }
+};
+
+const fetchInstagramDmSenderUsername = async (senderId: string) => {
+  const version = process.env.META_GRAPH_API_VERSION?.trim() || "v24.0";
+  if (!metaInstagramAccessToken) {
+    throw new Error("Instagram messaging access token is not configured");
+  }
+  const url = new URL(
+    `https://graph.instagram.com/${version}/${encodeURIComponent(senderId)}`,
+  );
+  url.searchParams.set("fields", "id,username");
+  const result = await fetchJsonWithTimeout<{ username?: string; error?: unknown }>(
+    url.toString(),
+    {
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${metaInstagramAccessToken}`,
+        "User-Agent": ownershipVerifierUserAgent,
       },
     },
-  };
+    5000,
+  );
+  const username = normalizeInstagramUsername(result.payload.username);
+  if (!result.ok || !username) {
+    throw new Error(`Instagram user profile lookup failed (${result.status})`);
+  }
+  return username;
+};
 
-  return updateVerificationRequestAutomation(record, {
-    evidence_snapshot_json: nextSnapshot,
-    ownership_check_status: "matched",
-    ownership_checked_at: event.receivedAt,
-    ...(autoApprove
-      ? {
-          status: "approved" as VerificationStatus,
-          reviewer_note:
-            "Auto-approved by inbound Instagram DM challenge automation.",
-          reviewed_by_name: `${productName} automation`,
-          reviewed_at: event.receivedAt,
+const applyInstagramDmChallengeEvent = async (
+  event: InstagramDmChallengeEvent,
+) => {
+  const result = await processInstagramDmChallengeEvent(event, {
+    now: () => new Date(),
+    hashCode: hashInstagramDmChallengeCode,
+    readPendingByHash: readPendingInstagramDmChallengeByHash,
+    lookupSenderUsername: fetchInstagramDmSenderUsername,
+    markFailure: markInstagramDmChallengeFailure,
+    isStillAuthoritative: async (record) =>
+      !(await hasNewerInstagramRequestForSameHandle(record, {
+        freshSupabase: true,
+      })),
+    autoApproveEnabled: instagramDmAutoApproveEnabled,
+    isOperationalTest: isOperationalTestVerificationRequest,
+    compareAndConsume: async ({
+      record,
+      codeHash,
+      event: verifiedEvent,
+      requestedHandle,
+      autoApprove,
+    }) => {
+      const senderIdHash = sha256Hex(verifiedEvent.senderId);
+      const messageIdHash = sha256Hex(verifiedEvent.messageId);
+      const evidenceSnapshot = buildInstagramDmSnapshot(
+        record,
+        autoApprove ? "verified" : "manual_review",
+        {
+          provider: "instagram_messaging_webhook",
+          checked_at: verifiedEvent.receivedAt,
+          verified_handle: requestedHandle,
+          sender_id_hash: senderIdHash,
+          message_id_hash: messageIdHash,
+          auto_approve_enabled: autoApprove,
+        },
+      );
+      if (useSupabase) {
+        const response = await fetchSupabase(
+          "rpc/directsign_consume_instagram_dm_challenge",
+          "",
+          {
+            method: "POST",
+            headers: { Prefer: "return=representation" },
+            body: JSON.stringify({
+              p_request_id: record.id,
+              p_code_hash: codeHash,
+              p_received_at: verifiedEvent.receivedAt,
+              p_auto_approve: autoApprove,
+              p_evidence_snapshot: evidenceSnapshot,
+              p_message_id_hash: messageIdHash,
+              p_sender_id_hash: senderIdHash,
+              p_reviewer_note: autoApprove
+                ? "Auto-approved by exact Instagram DM sender username match."
+                : null,
+              p_reviewed_by_name: autoApprove
+                ? `${productName} instagram automation`
+                : null,
+            }),
+          },
+        );
+        await assertSupabaseOk(
+          response,
+          "Supabase atomic Instagram DM consume",
+        );
+        const rows = (await response.json()) as VerificationRequestRecord[];
+        const saved = rows[0]
+          ? normalizeVerificationRequest(rows[0])
+          : undefined;
+        if (saved) {
+          invalidateSupabaseVerificationRequestCache();
+          invalidateInfluencerDashboardCache();
         }
-      : {}),
-    updated_at: event.receivedAt,
+        return saved;
+      }
+
+      return patchPendingInstagramDmChallenge(
+        record,
+        codeHash,
+        {
+          status: autoApprove ? "approved" : "pending",
+          evidence_snapshot_json: evidenceSnapshot,
+          ownership_challenge_code_hash: null,
+          ownership_challenge_code_ciphertext: null,
+          ownership_challenge_consumed_at: verifiedEvent.receivedAt,
+          ownership_challenge_message_id_hash: messageIdHash,
+          ownership_challenge_sender_id_hash: senderIdHash,
+          ownership_check_status: "matched",
+          ownership_checked_at: verifiedEvent.receivedAt,
+          ...(autoApprove
+            ? {
+                reviewer_note:
+                  "Auto-approved by exact Instagram DM sender username match.",
+                reviewed_by_name: `${productName} instagram automation`,
+                reviewed_at: verifiedEvent.receivedAt,
+              }
+            : {}),
+          updated_at: verifiedEvent.receivedAt,
+        },
+        true,
+      );
+    },
+    onSaved: async (saved) => {
+      await Promise.allSettled([
+        applyVerificationStatusSideEffects(saved),
+        enqueueVerificationOperationalAlert(saved),
+      ]);
+    },
   });
+
+  if (result.outcome === "provider_unavailable") throw result.error;
+  return result.outcome === "verified" ? result.saved : undefined;
 };
 
 const latestVerificationForTarget = (
@@ -16683,14 +19576,10 @@ const parseDateAscending = (a: string, b: string) => {
 const getInfluencerVerificationRequestsForAuth = async (
   auth: InfluencerSession,
 ) => {
-  const userEmail = normalizeEmail(auth.profile.email ?? auth.user.email ?? "");
-  return (await readVerificationRequests()).filter(
-    (request) =>
-      request.target_type === "influencer_account" &&
-      (request.profile_id === auth.profile.id ||
-        request.target_id === auth.profile.id ||
-        (hasText(userEmail) &&
-          normalizeEmail(request.submitted_by_email ?? "") === userEmail)),
+  return filterInfluencerVerificationRequests(
+    await readVerificationRequests(),
+    auth.profile.id,
+    auth.profile.email ?? auth.user.email,
   );
 };
 
@@ -16745,6 +19634,8 @@ const sanitizeVerificationRequestForSummary = (
     ownership_verification_method,
     ownership_check_status,
     ownership_checked_at,
+    ownership_challenge_expires_at,
+    ownership_challenge_consumed_at,
     document_issue_date,
     document_check_number,
     note,
@@ -16773,6 +19664,8 @@ const sanitizeVerificationRequestForSummary = (
     ownership_verification_method,
     ownership_check_status,
     ownership_checked_at,
+    ownership_challenge_expires_at,
+    ownership_challenge_consumed_at,
     document_issue_date,
     document_check_number,
     note,
@@ -17007,7 +19900,7 @@ const buildAdvertiserScopedVerificationSummary = async (
       ].filter((value): value is string => hasText(value)),
     ),
   );
-  const advertiserLatest = requests
+  const advertiserRequests = requests
     .filter(
       (request) =>
         request.target_type === "advertiser_organization" &&
@@ -17022,18 +19915,26 @@ const buildAdvertiserScopedVerificationSummary = async (
           )
         ),
     )
-    .sort((a, b) => parseDateDescending(a.created_at, b.created_at))[0];
-  const advertiserStatus =
-    advertiserLatest?.status === "approved" && !hasText(advertiserLatest.reviewed_at)
+    .sort((a, b) => parseDateDescending(a.created_at, b.created_at));
+  const advertiserLatest = advertiserRequests[0];
+  const advertiserApproved = advertiserRequests.find(
+    (request) => request.status === "approved" && hasText(request.reviewed_at),
+  );
+  const advertiserStatus = advertiserApproved
+    ? "approved"
+    : advertiserLatest?.status === "approved"
       ? "pending"
       : (advertiserLatest?.status ?? "not_submitted");
+  const advertiserSummaryRequest = advertiserApproved ?? advertiserLatest;
 
   return {
     advertiser: {
       target_type: "advertiser_organization" as const,
       target_id: context.targetId,
       status: advertiserStatus,
-      latest_request: sanitizeVerificationRequestForSummary(advertiserLatest),
+      latest_request: sanitizeVerificationRequestForSummary(
+        advertiserSummaryRequest,
+      ),
       account: {
         name: auth.profile.name,
         company_name:
@@ -17120,9 +20021,9 @@ const isAdvertiserApprovedForContractSend = async (
         ),
     )
     .sort((a, b) => parseDateDescending(a.created_at, b.created_at));
-  const latest = relevantRequests[0];
-
-  return latest?.status === "approved" && hasText(latest.reviewed_at);
+  return relevantRequests.some(
+    (request) => request.status === "approved" && hasText(request.reviewed_at),
+  );
 };
 
 const maskBusinessRegistrationNumber = (value: string | undefined) => {
@@ -17151,23 +20052,6 @@ const extractEmailDomain = (value: string | undefined | null) => {
   const atIndex = email.lastIndexOf("@");
   if (atIndex < 0 || atIndex === email.length - 1) return undefined;
   return email.slice(atIndex + 1);
-};
-
-const normalizeBusinessNameForTrust = (value: string | undefined | null) =>
-  normalizeRequiredText(value)
-    .toLowerCase()
-    .replace(/\s/g, "")
-    .replace(/[()（）.,·ㆍ\-_]/g, "")
-    .replace(/주식회사|유한회사|합자회사|합명회사|사단법인|재단법인|㈜|\(주\)|주\)/g, "");
-
-const businessNamesLikelyMatch = (
-  left: string | undefined | null,
-  right: string | undefined | null,
-) => {
-  const normalizedLeft = normalizeBusinessNameForTrust(left);
-  const normalizedRight = normalizeBusinessNameForTrust(right);
-  if (!normalizedLeft || !normalizedRight) return true;
-  return normalizedLeft.includes(normalizedRight) || normalizedRight.includes(normalizedLeft);
 };
 
 const extractVerificationBusinessStartDate = (
@@ -17265,7 +20149,10 @@ const buildAdvertiserTrustSnapshot = async (
     auth,
     contract,
   );
-  const latest = requests[0];
+  const latest =
+    requests.find(
+      (request) => request.status === "approved" && hasText(request.reviewed_at),
+    ) ?? requests[0];
   const previousProgressContracts = contracts.filter(
     (item) =>
       item.id !== contract.id &&
@@ -17279,8 +20166,8 @@ const buildAdvertiserTrustSnapshot = async (
   const managerEmailDomain = extractEmailDomain(managerEmail);
   const budgetAmount = parseMoneyAmount(contract.campaign?.budget);
   const businessStartDate = extractVerificationBusinessStartDate(latest);
-  const verifiedBusinessName =
-    latest?.subject_name ?? organization?.name ?? contract.advertiser_info?.name;
+  const displayBusinessName =
+    organization?.name ?? contract.advertiser_info?.name ?? latest?.subject_name;
   const riskFlags: NonNullable<
     NonNullable<Contract["advertiser_trust"]>["risk_flags"]
   > = [];
@@ -17320,13 +20207,6 @@ const buildAdvertiserTrustSnapshot = async (
     "low",
   );
   addFlag(
-    !businessNamesLikelyMatch(verifiedBusinessName, contract.advertiser_info?.name),
-    15,
-    "business_name_contract_name_mismatch",
-    "인증 사업자명과 계약서의 광고주명이 다릅니다.",
-    "medium",
-  );
-  addFlag(
     isDateWithinDays(businessStartDate, 90),
     15,
     "recent_business_start_date",
@@ -17362,7 +20242,7 @@ const buildAdvertiserTrustSnapshot = async (
     business_verification_status: verificationStatus,
     business_verification_label: verificationLabels[verificationStatus],
     business_verified_at: latest?.reviewed_at ?? latest?.updated_at,
-    business_name: verifiedBusinessName,
+    business_name: displayBusinessName,
     business_registration_number_masked:
       maskBusinessRegistrationNumber(latest?.business_registration_number) ??
       maskBusinessRegistrationNumber(organization?.business_registration_number ?? undefined),
@@ -17379,18 +20259,77 @@ const buildAdvertiserTrustSnapshot = async (
   };
 };
 
+const hasUsableContractShareLink = (contract: Contract | undefined) => {
+  if (
+    contract?.evidence?.share_token_status !== "active" ||
+    !hasText(contract.evidence.share_token)
+  ) {
+    return false;
+  }
+  if (!contract.evidence.share_token_expires_at) return true;
+  const expiresAt = new Date(contract.evidence.share_token_expires_at).getTime();
+  return Number.isFinite(expiresAt) && expiresAt > Date.now();
+};
+
+const serverAuthorContractShareEvidence = (
+  existing: Contract | undefined,
+  incoming: Contract,
+  actor: "advertiser" | "influencer",
+): Contract => {
+  if (actor === "influencer") {
+    return {
+      ...incoming,
+      evidence: existing?.evidence,
+    };
+  }
+  if (!incoming.evidence) return incoming;
+  if (incoming.evidence.share_token_status !== "active") {
+    return {
+      ...incoming,
+      evidence: {
+        ...incoming.evidence,
+        share_token: undefined,
+      },
+    };
+  }
+
+  const preserveExisting = hasUsableContractShareLink(existing);
+  return {
+    ...incoming,
+    evidence: {
+      ...incoming.evidence,
+      share_token: preserveExisting
+        ? existing!.evidence!.share_token
+        : createShareToken(),
+      share_token_expires_at: preserveExisting
+        ? existing!.evidence!.share_token_expires_at
+        : new Date(Date.now() + 7 * dayMs).toISOString(),
+    },
+  };
+};
+
 const isContractSendAttempt = (
   existing: Contract | undefined,
   incoming: Contract,
 ) => {
   const newShareLinkIssued =
     incoming.evidence?.share_token_status === "active" &&
-    existing?.evidence?.share_token_status !== "active";
+    !hasUsableContractShareLink(existing);
   const movingOutOfDraft =
     incoming.status !== "DRAFT" && (!existing || existing.status === "DRAFT");
 
   return newShareLinkIssued || movingOutOfDraft;
 };
+
+const isContractShareRotation = (
+  existing: Contract | undefined,
+  incoming: Contract,
+) =>
+  incoming.evidence?.share_token_status === "active" &&
+  Boolean(existing) &&
+  (existing?.evidence?.share_token_status === "revoked" ||
+    (existing?.evidence?.share_token_status === "active" &&
+      !hasUsableContractShareLink(existing)));
 
 const buildServerAuthoredContract = (
   actor: Exclude<AuditActor, "system">,
@@ -17745,17 +20684,12 @@ const inferLegacyDashboardStage = (
 
 const buildContractActionHref = (contractId: string, legacyContract?: Contract) => {
   const viewerContractId = legacyContract?.id ?? contractId;
-  const token = legacyContract?.evidence?.share_token;
-  const tokenActive = legacyContract?.evidence?.share_token_status === "active";
-  const suffix = token && tokenActive ? `?token=${encodeURIComponent(token)}` : "";
-  return `/contract/${viewerContractId}${suffix}`;
+  return `/contract/${viewerContractId}`;
 };
 
 const buildVerificationHref = (contractId: string, legacyContract?: Contract) => {
   const viewerContractId = legacyContract?.id ?? contractId;
-  const token = legacyContract?.evidence?.share_token;
-  const suffix = token ? `&token=${encodeURIComponent(token)}` : "";
-  return `/influencer/verification?contractId=${encodeURIComponent(viewerContractId)}${suffix}`;
+  return `/influencer/verification?contractId=${encodeURIComponent(viewerContractId)}`;
 };
 
 const getLegacyPlatformAccounts = (
@@ -18641,11 +21575,10 @@ const buildInfluencerDashboardFromLocal = async (
   const dashboardApplications =
     options.includeApplications === false ? [] : [];
 
-  const verificationRequests = (await readVerificationRequests()).filter(
-    (request) =>
-      request.target_type === "influencer_account" &&
-      (request.profile_id === authUser.id ||
-        request.submitted_by_email?.trim().toLowerCase() === userEmail),
+  const verificationRequests = filterInfluencerVerificationRequests(
+    await readVerificationRequests(),
+    profile?.id ?? authUser.id,
+    profile?.email ?? authUser.email,
   );
   const latestVerification = [...verificationRequests]
     .sort((a, b) => parseDateDescending(a.created_at, b.created_at))[0];
@@ -18908,11 +21841,10 @@ const buildInfluencerDashboardFromRemote = async (
           { user: authUser, profile },
         );
 
-  const verificationRequests = (await readVerificationRequests()).filter(
-    (request) =>
-      request.target_type === "influencer_account" &&
-      (request.profile_id === authUser.id ||
-        request.submitted_by_email?.trim().toLowerCase() === userEmail),
+  const verificationRequests = filterInfluencerVerificationRequests(
+    await readVerificationRequests(),
+    profile?.id ?? authUser.id,
+    profile?.email ?? authUser.email,
   );
   const latestVerification = [...verificationRequests]
     .sort((a, b) => parseDateDescending(a.created_at, b.created_at))[0];
@@ -19892,16 +22824,34 @@ app.post("/api/support/tickets", async (request, response, next) => {
   }
 });
 
-app.get("/api/admin/session", (request, response) => {
-  const token = parseCookies(request.header("cookie")).get(adminSessionCookie);
-  response.json({
-    authenticated: verifyAdminSessionToken(token),
-    configured: isAdminAuthConfigured(),
-  });
+app.use("/api/admin", (_request, response, next) => {
+  setPrivateAuthResponseHeaders(response);
+  next();
+});
+
+app.get("/api/admin/session", async (request, response, next) => {
+  try {
+    setPrivateAuthResponseHeaders(response);
+    const admin = await authenticateAdminRequest(request, response);
+    response.json({
+      authenticated: Boolean(admin),
+      configured: isAdminAuthConfigured(),
+      operator: admin
+        ? {
+            id: admin.profile.id,
+            name: admin.profile.name,
+            email: admin.profile.email ?? admin.user.email,
+          }
+        : undefined,
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.post("/api/admin/login", async (request, response, next) => {
   try {
+    setPrivateAuthResponseHeaders(response);
     if (!isAdminAuthConfigured()) {
       response.status(503).json({
         error: "Admin authentication is not configured",
@@ -19910,8 +22860,17 @@ app.post("/api/admin/login", async (request, response, next) => {
       return;
     }
 
-    const accessCode = String(request.body?.accessCode ?? "");
-    const attemptKey = `admin-login:ip:${getClientIp(request)}`;
+    const email = normalizeEmail(request.body?.email);
+    const password =
+      typeof request.body?.password === "string" ? request.body.password : "";
+    if (!email || !password) {
+      response.status(422).json({ error: "Email and password are required" });
+      return;
+    }
+
+    const attemptKey = `admin-login:${sha256Hex(email)}:ip:${sha256Hex(
+      getClientIp(request),
+    )}`;
     const throttle = await consumeRateLimitBucket(
       attemptKey,
       adminLoginMaxFailures,
@@ -19927,38 +22886,449 @@ app.post("/api/admin/login", async (request, response, next) => {
       return;
     }
 
-    if (!safeEqual(accessCode, adminAccessCode!)) {
-      console.warn(
-        `[${productName} Admin] failed login attempt from ${getClientIp(request)}`,
-      );
-      response.status(401).json({ error: "운영자 인증 코드가 올바르지 않습니다." });
+    let session: SupabaseAuthSession;
+    try {
+      session = await createSupabasePasswordSession(email, password);
+    } catch (error) {
+      if (
+        (error instanceof SupabasePasswordGrantError && error.retryable) ||
+        !(error instanceof SupabasePasswordGrantError)
+      ) {
+        throw new AuthSessionTemporarilyUnavailableError(error);
+      }
+      response.status(401).json({ error: "이메일 또는 비밀번호를 확인해 주세요." });
       return;
     }
 
-    await clearRateLimitBucket(attemptKey);
-    response.setHeader(
-      "Set-Cookie",
-      `${adminSessionCookie}=${encodeURIComponent(
-        createAdminSessionToken(),
-      )}; ${adminCookieOptions()}`,
+    const profile = await readAdminProfileByUserId(session.user.id);
+    const metricRequest = request as OperationalAuthMetricRequest;
+    const adminMetricDataOrigin = profile
+      ? classifyAuthMetricDataOrigin({
+          identifier: profile.email ?? session.user.email,
+          explicit: profile.data_origin,
+        })
+      : undefined;
+    if (adminMetricDataOrigin) {
+      metricRequest.authMetricDataOrigin = adminMetricDataOrigin;
+    }
+    if (profile?.role !== "admin") {
+      (request as OperationalAuthMetricRequest).authMetricOutcome = "invalid";
+      await revokeSupabaseSession(session.access_token).catch(() => undefined);
+      clearAdminSessionCookies(response);
+      response.status(403).json({ error: "운영자 계정 권한이 필요합니다." });
+      return;
+    }
+
+    const claims = decodeSupabaseAccessTokenClaims(session.access_token);
+    if (
+      claims?.aal === "aal2" &&
+      hasText(claims.session_id) &&
+      hasAdminTotpAmr(claims)
+    ) {
+      await registerAdminOperatorSession(profile, claims);
+      setAdminSessionCookies(response, session, adminSessionMaxAgeSeconds);
+      await clearRateLimitBucket(attemptKey);
+      response.json({
+        authenticated: true,
+        configured: true,
+        operator: { id: profile.id, name: profile.name, email: profile.email },
+      });
+      return;
+    }
+
+    let factor: SupabaseMfaFactor | undefined;
+    let enrollment: AdminTotpEnrollment | undefined;
+    let pendingFactorId: string | undefined;
+    metricRequest.authMetricOperation = "admin_mfa_challenge";
+    try {
+      const factors = await listSupabaseMfaFactors(
+        session.access_token,
+        session.user,
+        { authoritative: true },
+      );
+      factor = factors.find(
+        (candidate) =>
+          candidate.factor_type === "totp" && candidate.status === "verified",
+      );
+      if (!factor) {
+        metricRequest.authMetricOperation = "admin_mfa_enroll";
+        const unfinishedFactors = factors.filter(
+          (candidate) =>
+            candidate.factor_type === "totp" && candidate.status !== "verified",
+        );
+        for (const unfinished of unfinishedFactors) {
+          pendingFactorId = unfinished.id;
+          await removeSupabaseMfaFactor(session.access_token, unfinished.id);
+          pendingFactorId = undefined;
+        }
+        enrollment = await enrollAdminTotpFactor(session.access_token);
+        factor = { id: enrollment.id, factor_type: "totp", status: "unverified" };
+        pendingFactorId = factor.id;
+      }
+    } catch (error) {
+      if (isRetryableAdminMfaFailure(error)) {
+        setAdminSessionCookies(
+          response,
+          session,
+          adminPendingSessionMaxAgeSeconds,
+          pendingFactorId,
+          adminMetricDataOrigin,
+        );
+        sendRetryableAdminMfaUnavailable(response);
+        return;
+      }
+      throw error;
+    }
+
+    setAdminSessionCookies(
+      response,
+      session,
+      adminPendingSessionMaxAgeSeconds,
+      factor!.id,
+      adminMetricDataOrigin,
     );
-    response.json({ authenticated: true, configured: true });
+    await clearRateLimitBucket(attemptKey);
+    response.json({
+      authenticated: false,
+      configured: true,
+      mfa_required: true,
+      enrollment_required: Boolean(enrollment),
+      qr_code: enrollment?.qrCode,
+      secret: enrollment?.secret,
+    });
   } catch (error) {
     next(error);
   }
 });
 
-app.post("/api/admin/logout", (_request, response) => {
-  response.setHeader("Set-Cookie", [
-    `${adminSessionCookie}=; ${clearAdminCookieOptions()}`,
+app.post("/api/admin/mfa/verify", async (request, response, next) => {
+  let reservation: AdminMfaRateLimitReservation | undefined;
+  try {
+    setPrivateAuthResponseHeaders(response);
+    const { accessToken, refreshToken, factorBinding } =
+      getAdminAuthTokensFromRequest(request);
+    const code = normalizeRequiredText(request.body?.code).replace(/\s+/g, "");
+    if (!accessToken || !factorBinding) {
+      clearAdminSessionCookies(response);
+      response.status(401).json({ error: "운영자 인증을 다시 시작해 주세요." });
+      return;
+    }
+
+    const pendingBinding = readAdminPendingMfaBindingToken({
+      token: factorBinding,
+      secret: shareTokenEncryptionSecret ?? "",
+    });
+    if (!pendingBinding) {
+      clearAdminSessionCookies(response);
+      response.status(401).json({ error: "Admin MFA must be restarted" });
+      return;
+    }
+    const metricRequest = request as OperationalAuthMetricRequest;
+    metricRequest.authMetricDataOrigin = pendingBinding.dataOrigin;
+
+    try {
+      reservation = await reserveAdminMfaRateLimit(
+        request,
+        pendingBinding.userId,
+        pendingBinding.factorId,
+      );
+    } catch (error) {
+      if (error instanceof DistributedRateLimitUnavailableError) {
+        sendRetryableAdminMfaUnavailable(response);
+        return;
+      }
+      throw error;
+    }
+    if (reservation.blocked) {
+      response.setHeader(
+        "Retry-After",
+        String(reservation.retryAfterSeconds || 60),
+      );
+      response.status(429).json({
+        error: "운영자 인증 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.",
+        retry_after_seconds: reservation.retryAfterSeconds,
+      });
+      reservation = undefined;
+      return;
+    }
+    if (!/^\d{6,8}$/.test(code)) {
+      if (!(await finalizeAdminMfaReservationOrRespond(response, reservation))) {
+        return;
+      }
+      reservation = undefined;
+      response.status(422).json({ error: "인증 앱의 숫자 코드를 입력해 주세요." });
+      return;
+    }
+
+    let pendingUser: SupabaseAuthUser;
+    let pendingClaims: SupabaseAccessTokenClaims | undefined;
+    let factorId: string | undefined = pendingBinding.factorId;
+    try {
+      pendingUser = await fetchSupabaseAuthUser(accessToken);
+      pendingClaims = decodeSupabaseAccessTokenClaims(accessToken);
+      factorId = verifyAdminPendingMfaBindingToken({
+        token: factorBinding,
+        secret: shareTokenEncryptionSecret ?? "",
+        userId: pendingUser.id,
+        authSessionId: pendingClaims?.session_id ?? "",
+      });
+      const authoritativeFactors = factorId
+        ? await listSupabaseMfaFactors(accessToken, pendingUser, {
+            authoritative: true,
+          })
+        : [];
+      const ownedTotpFactor = authoritativeFactors.find(
+        (factor) =>
+          factor.id === factorId && factor.factor_type === "totp",
+      );
+      if (
+        !factorId ||
+        pendingClaims?.sub !== pendingUser.id ||
+        !hasText(pendingClaims.session_id) ||
+        !ownedTotpFactor
+      ) {
+        if (!(await rollbackAdminMfaReservationOrRespond(response, reservation))) {
+          return;
+        }
+        reservation = undefined;
+        clearAdminSessionCookies(response);
+        response.status(401).json({ error: "운영자 인증을 다시 시작해 주세요." });
+        return;
+      }
+    } catch (error) {
+      if (isRetryableAdminMfaFailure(error)) {
+        if (!(await rollbackAdminMfaReservationOrRespond(response, reservation))) {
+          return;
+        }
+        reservation = undefined;
+        response.setHeader("Retry-After", "2");
+        response.status(503).json({
+          error: "인증 서비스에 일시적으로 연결할 수 없습니다. 다시 시도해 주세요.",
+          retryable: true,
+        });
+        return;
+      }
+      if (!(await rollbackAdminMfaReservationOrRespond(response, reservation))) {
+        return;
+      }
+      reservation = undefined;
+      clearAdminSessionCookies(response);
+      response.status(401).json({ error: "운영자 인증을 다시 시작해 주세요." });
+      return;
+    }
+
+    let session: SupabaseAuthSession;
+    try {
+      session = await verifyAdminTotpFactor({ accessToken, factorId, code });
+    } catch (error) {
+      if (isRetryableAdminMfaFailure(error)) {
+        if (!(await rollbackAdminMfaReservationOrRespond(response, reservation))) {
+          return;
+        }
+        reservation = undefined;
+        response.setHeader("Retry-After", "2");
+        response.status(503).json({
+          error: "인증 서비스에 일시적으로 연결할 수 없습니다. 다시 시도해 주세요.",
+          retryable: true,
+        });
+        return;
+      }
+      if (
+        error instanceof SupabaseAdminMfaProviderError &&
+        error.stage === "challenge"
+      ) {
+        if (!(await rollbackAdminMfaReservationOrRespond(response, reservation))) {
+          return;
+        }
+        reservation = undefined;
+        clearAdminSessionCookies(response);
+        response.status(401).json({ error: "운영자 인증을 다시 시작해 주세요." });
+        return;
+      }
+      if (
+        error instanceof SupabaseAdminMfaProviderError &&
+        error.stage === "verify"
+      ) {
+        if (!(await finalizeAdminMfaReservationOrRespond(response, reservation))) {
+          return;
+        }
+        reservation = undefined;
+        response.status(401).json({ error: "인증 코드가 올바르지 않습니다." });
+        return;
+      }
+      throw error;
+    }
+    if (!hasText(session.refresh_token) && refreshToken) {
+      session = { ...session, refresh_token: refreshToken };
+    }
+    let user: SupabaseAuthUser;
+    let profile: SupabaseProfileRow | undefined;
+    let verifiedFactor: SupabaseMfaFactor | undefined;
+    try {
+      user = await fetchSupabaseAuthUser(session.access_token);
+      profile = await readAdminProfileByUserId(user.id);
+      verifiedFactor = (
+        await listSupabaseMfaFactors(session.access_token, user, {
+          authoritative: true,
+        })
+      ).find(
+        (factor) =>
+          factor.id === factorId &&
+          factor.factor_type === "totp" &&
+          factor.status === "verified",
+      );
+    } catch (error) {
+      if (isRetryableAdminMfaFailure(error)) {
+        if (!(await rollbackAdminMfaReservationOrRespond(response, reservation))) {
+          return;
+        }
+        reservation = undefined;
+        setAdminSessionCookies(
+          response,
+          session,
+          adminPendingSessionMaxAgeSeconds,
+          factorId,
+          pendingBinding.dataOrigin,
+        );
+        response.setHeader("Retry-After", "2");
+        response.status(503).json({
+          error: "인증 서비스에 일시적으로 연결할 수 없습니다. 다시 시도해 주세요.",
+          retryable: true,
+        });
+        return;
+      }
+      if (!(await rollbackAdminMfaReservationOrRespond(response, reservation))) {
+        return;
+      }
+      reservation = undefined;
+      throw error;
+    }
+    if (profile) {
+      metricRequest.authMetricDataOrigin = classifyAuthMetricDataOrigin({
+          identifier: profile.email ?? user.email,
+          explicit: profile.data_origin,
+        });
+    }
+    const claims = decodeSupabaseAccessTokenClaims(session.access_token);
+    if (
+      profile?.role !== "admin" ||
+      claims?.aal !== "aal2" ||
+      claims.sub !== user.id ||
+      !hasText(claims.session_id) ||
+      !hasAdminTotpAmr(claims) ||
+      !verifiedFactor
+    ) {
+      if (!(await rollbackAdminMfaReservationOrRespond(response, reservation))) {
+        return;
+      }
+      reservation = undefined;
+      await revokeSupabaseSession(session.access_token).catch(() => undefined);
+      clearAdminSessionCookies(response);
+      response.status(403).json({ error: "AAL2 운영자 인증이 필요합니다." });
+      return;
+    }
+
+    if (
+      !(await finalizeAdminMfaReservationOrRespond(
+        response,
+        reservation,
+        () =>
+          setAdminSessionCookies(
+            response,
+            session,
+            adminPendingSessionMaxAgeSeconds,
+            factorId,
+            metricRequest.authMetricDataOrigin,
+          ),
+      ))
+    ) {
+      return;
+    }
+    reservation = undefined;
+    try {
+      await registerAdminOperatorSession(profile, claims);
+    } catch {
+      setAdminSessionCookies(
+        response,
+        session,
+        adminPendingSessionMaxAgeSeconds,
+        factorId,
+        metricRequest.authMetricDataOrigin,
+      );
+      sendRetryableAdminMfaUnavailable(response);
+      return;
+    }
+    setAdminSessionCookies(response, session, adminSessionMaxAgeSeconds);
+    response.json({
+      authenticated: true,
+      configured: true,
+      operator: { id: profile.id, name: profile.name, email: profile.email },
+    });
+  } catch (error) {
+    if (reservation && !reservation.blocked) {
+      await rollbackAdminMfaRateLimitReservation(reservation.id).catch(
+        () => undefined,
+      );
+    }
+    next(error);
+  }
+});
+
+app.post("/api/admin/logout", async (request, response) => {
+  setPrivateAuthResponseHeaders(response);
+  const metricStartedAt = Date.now();
+  const admin = await authenticateAdminRequest(request).catch(() => undefined);
+  const { accessToken, refreshToken } = getAdminAuthTokensFromRequest(request);
+  const metricDataOrigin = classifySessionAuthMetricDataOrigin({
+    user: admin?.user,
+    profile: admin?.profile,
+  });
+  (request as OperationalAuthMetricRequest).authMetricDataOrigin = metricDataOrigin;
+  const claims = decodeSupabaseAccessTokenClaims(accessToken);
+  let revokeFailed = false;
+  await revokeAdminOperatorSession(
+    admin?.authSessionId ?? claims?.session_id,
+    "explicit_logout",
+  ).catch(() => {
+    revokeFailed = true;
+  });
+  clearAdminSessionCookies(response);
+  response.append(
+    "Set-Cookie",
     `${signedPdfAccessCookie}=; ${signedPdfCookieOptions(0)}`,
-  ]);
+  );
+  try {
+    await revokeSessionFromRequest(
+      request,
+      adminAccessCookie,
+      adminRefreshCookie,
+      { allowExplicitlyTerminatedRefresh: true },
+    );
+  } catch (error) {
+    revokeFailed = true;
+    console.warn(
+      `[${productName}] admin provider logout failed: ${
+        error instanceof Error ? error.message : "unknown error"
+      }`,
+    );
+  }
+  if (refreshToken) {
+    supabaseSessionRefreshReuseCache.delete(getTokenCacheKey(refreshToken));
+  }
+  observeOperationalAuthMetric({
+    operation: "session_revoke",
+    role: "admin",
+    outcome: revokeFailed ? "provider_error" : "success",
+    latencyMs: Date.now() - metricStartedAt,
+    dataOrigin: metricDataOrigin,
+  });
   response.json({ authenticated: false });
 });
 
 app.get("/api/admin/metrics", async (request, response, next) => {
   try {
-    if (!requireAdminSession(request, response)) return;
+    const admin = await requireAdminSession(request, response);
+    if (!admin) return;
 
     const [
       contracts,
@@ -19981,7 +23351,11 @@ app.get("/api/admin/metrics", async (request, response, next) => {
         ...metrics,
         verification: {
           pending_count: verificationRequests.filter(
-            (record) => record.status === "pending",
+            (record) =>
+              isActionableManualVerificationRequest(
+                record,
+                verificationRequests,
+              ),
           ).length,
           total_count: verificationRequests.length,
         },
@@ -20000,7 +23374,7 @@ app.get("/api/admin/metrics", async (request, response, next) => {
 
 app.get("/api/admin/operational-alerts", async (request, response, next) => {
   try {
-    if (!requireAdminSession(request, response)) return;
+    if (!(await requireAdminSession(request, response))) return;
 
     response.json({
       operational_alerts: await readOperationalAlerts(),
@@ -20013,7 +23387,7 @@ app.get("/api/admin/operational-alerts", async (request, response, next) => {
 
 app.get("/api/admin/support-tickets", async (request, response, next) => {
   try {
-    if (!requireAdminSession(request, response)) return;
+    if (!(await requireAdminSession(request, response))) return;
 
     response.json({
       support_tickets: await readOperationalAdminSupportTickets(),
@@ -20035,7 +23409,8 @@ app.patch("/api/admin/support-tickets/:id", async (request, response, next) => {
       return;
     }
 
-    if (!requireAdminSession(request, response)) return;
+    const admin = await requireAdminSession(request, response);
+    if (!admin) return;
 
     const status = normalizeRequiredText(request.body?.status);
     const adminNote = normalizeOptionalText(request.body?.admin_note);
@@ -20056,6 +23431,7 @@ app.patch("/api/admin/support-tickets/:id", async (request, response, next) => {
     const updated = await updateSupportTicket({
       ...ticket,
       status: status as OperationalSupportTicketStatus,
+      reviewed_by_profile_id: admin.profile.id,
       admin_note: adminNote,
     });
 
@@ -20067,7 +23443,7 @@ app.patch("/api/admin/support-tickets/:id", async (request, response, next) => {
 
 app.get("/api/admin/support-access-requests", async (request, response, next) => {
   try {
-    if (!requireAdminSession(request, response)) return;
+    if (!(await requireAdminSession(request, response))) return;
 
     const supportAccessRequests = await readOperationalAdminSupportAccessRequests();
     response.json({
@@ -20098,7 +23474,8 @@ app.patch("/api/admin/support-access-requests/:id", async (request, response, ne
       return;
     }
 
-    if (!requireAdminSession(request, response)) return;
+    const admin = await requireAdminSession(request, response);
+    if (!admin) return;
 
     const status = String(request.body?.status ?? "");
     if (status !== "closed" && status !== "revoked") {
@@ -20118,7 +23495,8 @@ app.patch("/api/admin/support-access-requests/:id", async (request, response, ne
       id: randomUUID(),
       action: status === "closed" ? "closed" : "revoked",
       actor_role: "admin",
-      actor_name: adminOperatorName,
+      actor_profile_id: admin.profile.id,
+      actor_name: admin.profile.name,
       description:
         status === "closed"
           ? "운영자가 지원 열람을 종료했습니다."
@@ -20131,7 +23509,8 @@ app.patch("/api/admin/support-access-requests/:id", async (request, response, ne
     const updated = await updateSupportAccessRequest({
       ...record,
       status,
-      reviewed_by_name: adminOperatorName,
+      reviewed_by_profile_id: admin.profile.id,
+      reviewed_by_name: admin.profile.name,
       reviewed_at: new Date().toISOString(),
       audit_events: useSupabase
         ? record.audit_events
@@ -20148,6 +23527,8 @@ app.patch("/api/admin/support-access-requests/:id", async (request, response, ne
 
 app.get("/api/advertiser/session", async (request, response, next) => {
   try {
+    const metricStartedAt = Date.now();
+    setPrivateAuthResponseHeaders(response);
     const auth = await authenticateAdvertiserRequest(request, response);
 
     if (!auth) {
@@ -20158,9 +23539,47 @@ app.get("/api/advertiser/session", async (request, response, next) => {
     const profile = auth.profile ?? (await readProfileByUserId(auth.user.id));
 
     if (!isAdvertiserRole(profile?.role)) {
+      observeOperationalAuthMetric({
+        operation: auth.refreshed ? "session_refresh" : "session_validate",
+        role: "marketer",
+        outcome: "invalid",
+        latencyMs: Date.now() - metricStartedAt,
+        dataOrigin: classifyAuthMetricDataOrigin({
+          identifier: profile?.email ?? auth.user.email,
+          explicit: profile?.data_origin,
+        }),
+      });
+      await terminateRoleSessionForAuthorizationFailure({
+        request,
+        response,
+        role: "advertiser",
+        accessToken: auth.accessToken,
+        userId: auth.user.id,
+      });
       response.status(403).json({ authenticated: false });
       return;
     }
+    ensureAuthMetricOriginCookie(
+      request,
+      response,
+      "advertiser",
+      profile,
+      readAuthMetricOriginBindingFromRequest(request, "advertiser", {
+        accessToken: auth.accessToken,
+        refreshToken: auth.refreshToken,
+        verifiedUserId: auth.user.id,
+      }),
+    );
+    observeOperationalAuthMetric({
+      operation: auth.refreshed ? "session_refresh" : "session_validate",
+      role: "marketer",
+      outcome: "success",
+      latencyMs: Date.now() - metricStartedAt,
+      dataOrigin: classifyAuthMetricDataOrigin({
+        identifier: profile.email ?? auth.user.email,
+        explicit: profile.data_origin,
+      }),
+    });
     const organization = await readDefaultOrganizationForProfile(profile.id);
 
     response.json({
@@ -20283,10 +23702,154 @@ app.post("/api/auth/password-reset/complete", async (request, response) => {
   }
 });
 
+app.post("/api/auth/recent", async (request, response, next) => {
+  setPrivateAuthResponseHeaders(response);
+  try {
+    if (!useSupabase) {
+      response.status(503).json({
+        error: "재인증 저장소를 사용할 수 없습니다.",
+        retryable: true,
+      });
+      return;
+    }
+
+    const role = normalizeRequiredText(request.body?.role) as RecentAuthRole;
+    const action = normalizeRequiredText(request.body?.action) as RecentAuthAction;
+    const resource = normalizeRecentAuthResource(request.body?.resource);
+    const password = normalizeRequiredText(request.body?.password);
+    if (
+      (role !== "advertiser" && role !== "influencer") ||
+      !recentAuthActionsByRole[role]?.has(action) ||
+      !resource ||
+      !password
+    ) {
+      response.status(422).json({ error: "유효한 재인증 요청이 필요합니다." });
+      return;
+    }
+
+    const session =
+      role === "advertiser"
+        ? await requireAdvertiserSession(request, response)
+        : await requireInfluencerSession(request, response);
+    if (!session) return;
+
+    const metricRequest = request as OperationalAuthMetricRequest;
+    metricRequest.authMetricRole = recentAuthDbRole(role);
+    metricRequest.authMetricDataOrigin = classifyAuthMetricDataOrigin({
+      identifier: session.profile.email ?? session.user.email,
+      explicit: session.profile.data_origin,
+    });
+
+    const currentClaims = decodeSupabaseAccessTokenClaims(session.accessToken);
+    if (
+      currentClaims?.sub !== session.user.id ||
+      !isUuidText(currentClaims.session_id)
+    ) {
+      response.status(401).json({ error: "현재 로그인 세션을 다시 확인해 주세요." });
+      return;
+    }
+
+    const throttle = await consumeSensitiveEndpointRateLimit(
+      request,
+      "recent_auth_password",
+      `${session.profile.id}:${action}`,
+    );
+    if (throttle.blocked) {
+      sendSensitiveRateLimitResponse(response, throttle);
+      return;
+    }
+
+    const email = normalizeEmail(session.profile.email ?? session.user.email ?? "");
+    if (!isValidEmail(email)) {
+      response.status(409).json({ error: "계정 이메일을 확인할 수 없습니다." });
+      return;
+    }
+
+    let passwordSession: SupabaseAuthSession;
+    try {
+      passwordSession = await createSupabasePasswordSession(email, password);
+    } catch (error) {
+      if (
+        (error instanceof SupabasePasswordGrantError && error.retryable) ||
+        !(error instanceof SupabasePasswordGrantError)
+      ) {
+        throw new AuthSessionTemporarilyUnavailableError(error);
+      }
+      response.status(401).json({ error: "비밀번호가 올바르지 않습니다." });
+      return;
+    }
+
+    const authoritativeProfile = await readAuthoritativeSecurityProfile(
+      passwordSession.user.id,
+    );
+    if (
+      passwordSession.user.id !== session.user.id ||
+      authoritativeProfile?.id !== session.profile.id ||
+      authoritativeProfile.role !== recentAuthDbRole(role)
+    ) {
+      await revokeSupabaseSession(passwordSession.access_token).catch(() => undefined);
+      response.status(403).json({ error: "현재 계정 권한을 다시 확인해 주세요." });
+      return;
+    }
+
+    const token = randomBytes(32).toString("base64url");
+    const authenticatedAt = new Date();
+    const expiresAt = new Date(
+      authenticatedAt.getTime() + recentAuthMaxAgeSeconds * 1000,
+    );
+    const insertResponse = await fetchSupabase("auth_recent_grants", "", {
+      method: "POST",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify([
+        {
+          token_hash: sha256Hex(token),
+          profile_id: authoritativeProfile.id,
+          auth_session_id: currentClaims.session_id,
+          role: authoritativeProfile.role,
+          action,
+          resource_hash: recentAuthResourceHash({ role, action, resource }),
+          authenticated_at: authenticatedAt.toISOString(),
+          expires_at: expiresAt.toISOString(),
+        },
+      ]),
+    });
+    await assertSupabaseOk(insertResponse, "Supabase recent authentication grant");
+    setRecentAuthGrantCookie(response, role, token);
+    const temporarySessionRevokeStartedAt = Date.now();
+    await revokeSupabaseSession(passwordSession.access_token).then(() => {
+      observeOperationalAuthMetric({
+        operation: "session_revoke",
+        role: recentAuthDbRole(role),
+        outcome: "success",
+        latencyMs: Date.now() - temporarySessionRevokeStartedAt,
+        dataOrigin: metricRequest.authMetricDataOrigin,
+      });
+    }).catch((error) => {
+      observeOperationalAuthMetric({
+        operation: "session_revoke",
+        role: recentAuthDbRole(role),
+        outcome: "provider_error",
+        latencyMs: Date.now() - temporarySessionRevokeStartedAt,
+        dataOrigin: metricRequest.authMetricDataOrigin,
+      });
+      console.warn(
+        `[${productName}] temporary recent-auth session revoke failed: ${
+          error instanceof Error ? error.name : "unknown error"
+        }`,
+      );
+    });
+    response.json({ authenticated: true, expires_in: recentAuthMaxAgeSeconds });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post("/api/advertiser/login", async (request, response) => {
+  setPrivateAuthResponseHeaders(response);
   try {
     const email = normalizeRequiredText(request.body?.email).toLowerCase();
-    const password = normalizeRequiredText(request.body?.password);
+    const password =
+      typeof request.body?.password === "string" ? request.body.password : "";
 
     if (!email.includes("@") || !password) {
       response.status(422).json({ error: "이메일과 비밀번호를 입력해 주세요." });
@@ -20330,16 +23893,68 @@ app.post("/api/advertiser/login", async (request, response) => {
         ? profileByEmail
         : await readProfileByUserId(session.user.id);
 
-    if (!isAdvertiserRole(profile?.role)) {
-      response.status(403).json({
-        error: "광고주 계정 권한이 필요합니다. 광고주 계정으로 로그인해 주세요.",
+    if (profile) {
+      (request as OperationalAuthMetricRequest).authMetricDataOrigin =
+        classifyAuthMetricDataOrigin({
+          identifier: profile.email ?? session.user.email,
+          explicit: profile.data_origin,
+        });
+    }
+
+    if (!profile) {
+      await terminateRoleSessionForAuthorizationFailure({
+        request,
+        response,
+        role: "advertiser",
+        accessToken: session.access_token,
+        refreshToken: session.refresh_token,
+        userId: session.user.id,
+      });
+      await clearPublicAuthRateLimit(request, "advertiser_login", email).catch(
+        () => undefined,
+      );
+      response.status(409).json({
+        error: "가입이 완료되지 않은 계정입니다. 가입을 계속해 주세요.",
+        code: "ACCOUNT_SETUP_INCOMPLETE",
+        signup_path: "/signup/advertiser",
       });
       return;
     }
 
+    if (!isAdvertiserRole(profile.role)) {
+      await terminateRoleSessionForAuthorizationFailure({
+        request,
+        response,
+        role: "advertiser",
+        accessToken: session.access_token,
+        refreshToken: session.refresh_token,
+        userId: session.user.id,
+      });
+      await clearPublicAuthRateLimit(request, "advertiser_login", email).catch(
+        () => undefined,
+      );
+      if (isInfluencerRole(profile.role)) {
+        response.status(403).json({
+          error:
+            "이 계정은 인플루언서 계정입니다. 인플루언서 로그인으로 이동해 주세요.",
+          code: "AUTH_ROLE_MISMATCH",
+          actual_role: "influencer",
+          correct_login_path: "/login/influencer",
+        });
+        return;
+      }
+      response.status(403).json({
+        error: "이 계정은 광고주 로그인 화면을 사용할 수 없습니다.",
+        code: "ACCOUNT_ACCESS_DENIED",
+      });
+      return;
+    }
+
+    clearExplicitTerminationForSessionToken(session.access_token);
+    clearExplicitTerminationForSessionToken(session.refresh_token);
     rememberRecentAuthSession(session.access_token, session.user);
     rememberProfile(profile);
-    setAdvertiserSessionCookies(response, session, profile);
+    setAdvertiserSessionCookies(request, response, session, profile);
     await clearPublicAuthRateLimit(request, "advertiser_login", email);
     const advertiserSession = {
       user: session.user,
@@ -20383,7 +23998,12 @@ app.post("/api/advertiser/signup", async (request, response) => {
     }
 
     const email = normalizeEmail(request.body?.email);
-    const password = normalizeRequiredText(request.body?.password);
+    const password =
+      typeof request.body?.password === "string" ? request.body.password : "";
+    const passwordConfirmation =
+      typeof request.body?.password_confirmation === "string"
+        ? request.body.password_confirmation
+        : "";
     const managerName = normalizeRequiredText(request.body?.name);
     const companyName = normalizeRequiredText(request.body?.company_name);
     const passwordError = validateSignupPassword(password);
@@ -20394,6 +24014,13 @@ app.post("/api/advertiser/signup", async (request, response) => {
 
     if (!isValidEmail(email)) {
       response.status(422).json({ error: "올바른 이메일을 입력해 주세요." });
+      return;
+    }
+    if (!passwordConfirmation || password !== passwordConfirmation) {
+      response.status(422).json({
+        error: "비밀번호 확인이 일치하지 않습니다.",
+        code: "PASSWORD_CONFIRMATION_MISMATCH",
+      });
       return;
     }
     if (passwordError) {
@@ -20417,6 +24044,151 @@ app.post("/api/advertiser/signup", async (request, response) => {
       return;
     }
 
+    let existingPasswordSession: SupabaseAuthSession | undefined;
+    try {
+      existingPasswordSession = await createSupabasePasswordSession(email, password);
+    } catch {
+      // New accounts do not have a password session yet.
+    }
+
+    if (existingPasswordSession) {
+      let keepRecoveredSession = false;
+      try {
+        const existingProfile = await readProfileByUserId(
+          existingPasswordSession.user.id,
+        );
+
+        if (existingProfile) {
+          await clearPublicAuthRateLimit(
+            request,
+            "advertiser_signup",
+            email,
+          ).catch(() => undefined);
+
+          if (isInfluencerRole(existingProfile.role)) {
+            response.status(403).json({
+              error:
+                "이 계정은 인플루언서 계정입니다. 인플루언서 로그인으로 이동해 주세요.",
+              code: "AUTH_ROLE_MISMATCH",
+              actual_role: "influencer",
+              correct_login_path: "/login/influencer",
+            });
+            return;
+          }
+
+          if (isAdvertiserRole(existingProfile.role)) {
+            response.status(409).json({
+              error: "이미 가입이 완료된 광고주 계정입니다. 로그인해 주세요.",
+              code: "ACCOUNT_ALREADY_REGISTERED",
+              actual_role: "advertiser",
+              correct_login_path: "/login/advertiser",
+            });
+            return;
+          }
+
+          response.status(403).json({
+            error: "이 계정은 광고주 가입에 사용할 수 없습니다.",
+            code: "ACCOUNT_ACCESS_DENIED",
+          });
+          return;
+        }
+
+        await insertSupabaseV2RowsIgnoringDuplicates(
+          "profiles",
+          [
+            {
+              id: existingPasswordSession.user.id,
+              role: "marketer",
+              name: managerName,
+              email,
+              data_origin: deriveDataOrigin([email, managerName, companyName]),
+              company_name: companyName,
+              verification_status: "not_submitted",
+              email_verified_at:
+                existingPasswordSession.user.email_confirmed_at ??
+                existingPasswordSession.user.confirmed_at ??
+                null,
+              ...buildSignupLegalConsent(request, "advertiser"),
+              updated_at: new Date().toISOString(),
+            },
+          ],
+          "id",
+        );
+
+        const recoveredProfile = await readProfileByUserId(
+          existingPasswordSession.user.id,
+        );
+        if (!recoveredProfile) {
+          throw new Error("Recovered advertiser profile was not created");
+        }
+        if (!isAdvertiserRole(recoveredProfile.role)) {
+          const actualRole = isInfluencerRole(recoveredProfile.role)
+            ? "influencer"
+            : undefined;
+          response.status(403).json({
+            error: actualRole
+              ? "이 계정은 인플루언서 계정입니다. 인플루언서 로그인으로 이동해 주세요."
+              : "이 계정은 광고주 가입에 사용할 수 없습니다.",
+            code: actualRole
+              ? "AUTH_ROLE_MISMATCH"
+              : "ACCOUNT_ACCESS_DENIED",
+            ...(actualRole
+              ? {
+                  actual_role: actualRole,
+                  correct_login_path: "/login/influencer",
+                }
+              : {}),
+          });
+          return;
+        }
+
+        const organization = await ensureDefaultOrganizationForAdvertiserProfile(
+          recoveredProfile,
+        );
+        if (!organization) {
+          throw new Error("Recovered advertiser organization was not created");
+        }
+
+        await clearPublicAuthRateLimit(
+          request,
+          "advertiser_signup",
+          email,
+        ).catch(() => undefined);
+        clearExplicitTerminationForSessionToken(existingPasswordSession.access_token);
+        clearExplicitTerminationForSessionToken(existingPasswordSession.refresh_token);
+        rememberRecentAuthSession(
+          existingPasswordSession.access_token,
+          existingPasswordSession.user,
+        );
+        rememberProfile(recoveredProfile);
+        keepRecoveredSession = true;
+        setAdvertiserSessionCookies(
+          request,
+          response,
+          existingPasswordSession,
+          recoveredProfile,
+        );
+        response.json({
+          authenticated: true,
+          recovered_signup: true,
+          next_path: nextPath,
+          user: buildAdvertiserSessionUser(
+            existingPasswordSession.user,
+            recoveredProfile,
+            organization,
+          ),
+        });
+        return;
+      } finally {
+        if (!keepRecoveredSession) {
+          await revokeTemporarySupabaseSession(
+            existingPasswordSession,
+            "advertiser signup",
+          );
+        }
+      }
+    }
+
     const authUser = await createSupabaseSignupUser({
       email,
       password,
@@ -20435,7 +24207,7 @@ app.post("/api/advertiser/signup", async (request, response) => {
         role: "marketer",
         name: managerName,
         email,
-        data_origin: "production",
+        data_origin: deriveDataOrigin([email, managerName, companyName]),
         company_name: companyName,
         verification_status: "not_submitted",
         email_verified_at: null,
@@ -20497,25 +24269,59 @@ app.post("/api/advertiser/signup", async (request, response) => {
 });
 
 app.post("/api/advertiser/logout", async (request, response) => {
+  setPrivateAuthResponseHeaders(response);
+  const metricStartedAt = Date.now();
+  const logoutAccessToken =
+    getBearerToken(request) ??
+    parseCookies(request.header("cookie")).get(advertiserAccessCookie);
+  const logoutUser = readRecentAuthSession(logoutAccessToken);
+  const logoutProfile = logoutUser ? readProfileFromCache(logoutUser.id) : undefined;
+  const metricDataOrigin = classifySessionAuthMetricDataOrigin({
+    user: logoutUser,
+    profile: logoutProfile,
+    authoritativeOrigin: readAuthMetricOriginFromRequest(request, "advertiser"),
+  });
+  (request as OperationalAuthMetricRequest).authMetricDataOrigin = metricDataOrigin;
+  establishExplicitUserSessionLogout(
+    request,
+    response,
+    "advertiser",
+  );
   try {
     await revokeSessionFromRequest(
       request,
       advertiserAccessCookie,
       advertiserRefreshCookie,
+      { allowExplicitlyTerminatedRefresh: true },
     );
+    observeOperationalAuthMetric({
+      operation: "session_revoke",
+      role: "marketer",
+      outcome: "success",
+      latencyMs: Date.now() - metricStartedAt,
+      dataOrigin: metricDataOrigin,
+    });
   } catch (error) {
+    observeOperationalAuthMetric({
+      operation: "session_revoke",
+      role: "marketer",
+      outcome: "provider_error",
+      latencyMs: Date.now() - metricStartedAt,
+      dataOrigin: metricDataOrigin,
+    });
     console.warn(
       `[${productName}] advertiser Supabase logout revoke failed: ${
         error instanceof Error ? error.message : "unknown error"
       }`,
     );
   }
-  clearAdvertiserSessionCookies(response);
   response.json({ authenticated: false });
 });
 
 app.get("/api/influencer/session", async (request, response, next) => {
   try {
+    const metricStartedAt = Date.now();
+    setPrivateAuthResponseHeaders(response);
     const auth = await authenticateInfluencerRequest(request, response);
 
     if (!auth) {
@@ -20526,9 +24332,49 @@ app.get("/api/influencer/session", async (request, response, next) => {
     const profile = auth.profile ?? (await readProfileByUserId(auth.user.id));
 
     if (!profile || !isInfluencerRole(profile.role)) {
+      observeOperationalAuthMetric({
+        operation: auth.refreshed ? "session_refresh" : "session_validate",
+        role: "influencer",
+        outcome: "invalid",
+        latencyMs: Date.now() - metricStartedAt,
+        dataOrigin: classifyAuthMetricDataOrigin({
+          identifier: profile?.email ?? auth.user.email,
+          explicit: profile?.data_origin,
+        }),
+      });
+      await terminateRoleSessionForAuthorizationFailure({
+        request,
+        response,
+        role: "influencer",
+        accessToken: auth.accessToken,
+        userId: auth.user.id,
+      });
       response.status(403).json({ authenticated: false });
       return;
     }
+
+    ensureAuthMetricOriginCookie(
+      request,
+      response,
+      "influencer",
+      profile,
+      readAuthMetricOriginBindingFromRequest(request, "influencer", {
+        accessToken: auth.accessToken,
+        refreshToken: auth.refreshToken,
+        verifiedUserId: auth.user.id,
+      }),
+    );
+
+    observeOperationalAuthMetric({
+      operation: auth.refreshed ? "session_refresh" : "session_validate",
+      role: "influencer",
+      outcome: "success",
+      latencyMs: Date.now() - metricStartedAt,
+      dataOrigin: classifyAuthMetricDataOrigin({
+        identifier: profile.email ?? auth.user.email,
+        explicit: profile.data_origin,
+      }),
+    });
 
     response.json({
       authenticated: true,
@@ -20541,9 +24387,11 @@ app.get("/api/influencer/session", async (request, response, next) => {
 });
 
 app.post("/api/influencer/login", async (request, response, _next) => {
+  setPrivateAuthResponseHeaders(response);
   try {
     const email = normalizeRequiredText(request.body?.email).toLowerCase();
-    const password = normalizeRequiredText(request.body?.password);
+    const password =
+      typeof request.body?.password === "string" ? request.body.password : "";
 
     if (!email.includes("@") || !password) {
       response.status(422).json({ error: "이메일과 비밀번호를 입력해 주세요." });
@@ -20564,16 +24412,67 @@ app.post("/api/influencer/login", async (request, response, _next) => {
         ? profileByEmail
         : await readProfileByUserId(session.user.id);
 
-    if (!profile || !isInfluencerRole(profile.role)) {
-      response.status(403).json({
-        error: "인플루언서 계정 권한이 필요합니다. 인플루언서 계정으로 로그인해 주세요.",
+    if (profile) {
+      (request as OperationalAuthMetricRequest).authMetricDataOrigin =
+        classifyAuthMetricDataOrigin({
+          identifier: profile.email ?? session.user.email,
+          explicit: profile.data_origin,
+        });
+    }
+
+    if (!profile) {
+      await terminateRoleSessionForAuthorizationFailure({
+        request,
+        response,
+        role: "influencer",
+        accessToken: session.access_token,
+        refreshToken: session.refresh_token,
+        userId: session.user.id,
+      });
+      await clearPublicAuthRateLimit(request, "influencer_login", email).catch(
+        () => undefined,
+      );
+      response.status(409).json({
+        error: "가입이 완료되지 않은 계정입니다. 가입을 계속해 주세요.",
+        code: "ACCOUNT_SETUP_INCOMPLETE",
+        signup_path: "/signup/influencer",
       });
       return;
     }
 
+    if (!isInfluencerRole(profile.role)) {
+      await terminateRoleSessionForAuthorizationFailure({
+        request,
+        response,
+        role: "influencer",
+        accessToken: session.access_token,
+        refreshToken: session.refresh_token,
+        userId: session.user.id,
+      });
+      await clearPublicAuthRateLimit(request, "influencer_login", email).catch(
+        () => undefined,
+      );
+      if (isAdvertiserRole(profile.role)) {
+        response.status(403).json({
+          error: "이 계정은 광고주 계정입니다. 광고주 로그인으로 이동해 주세요.",
+          code: "AUTH_ROLE_MISMATCH",
+          actual_role: "advertiser",
+          correct_login_path: "/login/advertiser",
+        });
+        return;
+      }
+      response.status(403).json({
+        error: "이 계정은 인플루언서 로그인 화면을 사용할 수 없습니다.",
+        code: "ACCOUNT_ACCESS_DENIED",
+      });
+      return;
+    }
+
+    clearExplicitTerminationForSessionToken(session.access_token);
+    clearExplicitTerminationForSessionToken(session.refresh_token);
     rememberRecentAuthSession(session.access_token, session.user);
     rememberProfile(profile);
-    setInfluencerSessionCookies(response, session, profile);
+    setInfluencerSessionCookies(request, response, session, profile);
     await clearPublicAuthRateLimit(request, "influencer_login", email);
     void buildInfluencerDashboard(session.user, {
       includeApplications: false,
@@ -20608,7 +24507,12 @@ app.post("/api/influencer/signup", async (request, response) => {
     }
 
     const email = normalizeEmail(request.body?.email);
-    const password = normalizeRequiredText(request.body?.password);
+    const password =
+      typeof request.body?.password === "string" ? request.body.password : "";
+    const passwordConfirmation =
+      typeof request.body?.password_confirmation === "string"
+        ? request.body.password_confirmation
+        : "";
     const name = normalizeRequiredText(request.body?.name);
     const activityCategories = normalizeSelectedValues<InfluencerActivityCategory>(
       request.body?.activity_categories,
@@ -20626,6 +24530,13 @@ app.post("/api/influencer/signup", async (request, response) => {
 
     if (!isValidEmail(email)) {
       response.status(422).json({ error: "올바른 이메일을 입력해 주세요." });
+      return;
+    }
+    if (!passwordConfirmation || password !== passwordConfirmation) {
+      response.status(422).json({
+        error: "비밀번호 확인이 일치하지 않습니다.",
+        code: "PASSWORD_CONFIRMATION_MISMATCH",
+      });
       return;
     }
     if (passwordError) {
@@ -20663,6 +24574,144 @@ app.post("/api/influencer/signup", async (request, response) => {
       return;
     }
 
+    let existingPasswordSession: SupabaseAuthSession | undefined;
+    try {
+      existingPasswordSession = await createSupabasePasswordSession(email, password);
+    } catch {
+      // New accounts do not have a password session yet.
+    }
+
+    if (existingPasswordSession) {
+      let keepRecoveredSession = false;
+      try {
+        const existingProfile = await readProfileByUserId(
+          existingPasswordSession.user.id,
+        );
+
+        if (existingProfile) {
+          await clearPublicAuthRateLimit(
+            request,
+            "influencer_signup",
+            email,
+          ).catch(() => undefined);
+
+          if (isAdvertiserRole(existingProfile.role)) {
+            response.status(403).json({
+              error: "이 계정은 광고주 계정입니다. 광고주 로그인으로 이동해 주세요.",
+              code: "AUTH_ROLE_MISMATCH",
+              actual_role: "advertiser",
+              correct_login_path: "/login/advertiser",
+            });
+            return;
+          }
+
+          if (isInfluencerRole(existingProfile.role)) {
+            response.status(409).json({
+              error: "이미 가입이 완료된 인플루언서 계정입니다. 로그인해 주세요.",
+              code: "ACCOUNT_ALREADY_REGISTERED",
+              actual_role: "influencer",
+              correct_login_path: "/login/influencer",
+            });
+            return;
+          }
+
+          response.status(403).json({
+            error: "이 계정은 인플루언서 가입에 사용할 수 없습니다.",
+            code: "ACCOUNT_ACCESS_DENIED",
+          });
+          return;
+        }
+
+        await insertSupabaseV2RowsIgnoringDuplicates(
+          "profiles",
+          [
+            {
+              id: existingPasswordSession.user.id,
+              role: "influencer",
+              name,
+              email,
+              data_origin: deriveDataOrigin([email, name]),
+              activity_categories: activityCategories.selected,
+              activity_platforms: activityPlatforms.selected,
+              verification_status: "not_submitted",
+              email_verified_at:
+                existingPasswordSession.user.email_confirmed_at ??
+                existingPasswordSession.user.confirmed_at ??
+                null,
+              ...buildSignupLegalConsent(request, "influencer"),
+              updated_at: new Date().toISOString(),
+            },
+          ],
+          "id",
+        );
+
+        const recoveredProfile = await readProfileByUserId(
+          existingPasswordSession.user.id,
+        );
+        if (!recoveredProfile) {
+          throw new Error("Recovered influencer profile was not created");
+        }
+        if (!isInfluencerRole(recoveredProfile.role)) {
+          const actualRole = isAdvertiserRole(recoveredProfile.role)
+            ? "advertiser"
+            : undefined;
+          response.status(403).json({
+            error: actualRole
+              ? "이 계정은 광고주 계정입니다. 광고주 로그인으로 이동해 주세요."
+              : "이 계정은 인플루언서 가입에 사용할 수 없습니다.",
+            code: actualRole
+              ? "AUTH_ROLE_MISMATCH"
+              : "ACCOUNT_ACCESS_DENIED",
+            ...(actualRole
+              ? {
+                  actual_role: actualRole,
+                  correct_login_path: "/login/advertiser",
+                }
+              : {}),
+          });
+          return;
+        }
+
+        await clearPublicAuthRateLimit(
+          request,
+          "influencer_signup",
+          email,
+        ).catch(() => undefined);
+        clearExplicitTerminationForSessionToken(existingPasswordSession.access_token);
+        clearExplicitTerminationForSessionToken(existingPasswordSession.refresh_token);
+        rememberRecentAuthSession(
+          existingPasswordSession.access_token,
+          existingPasswordSession.user,
+        );
+        rememberProfile(recoveredProfile);
+        keepRecoveredSession = true;
+        setInfluencerSessionCookies(
+          request,
+          response,
+          existingPasswordSession,
+          recoveredProfile,
+        );
+        response.json({
+          authenticated: true,
+          recovered_signup: true,
+          next_path: nextPath,
+          user: buildInfluencerSessionUser(
+            existingPasswordSession.user,
+            recoveredProfile,
+          ),
+          verification: buildInfluencerSessionVerification(recoveredProfile),
+        });
+        return;
+      } finally {
+        if (!keepRecoveredSession) {
+          await revokeTemporarySupabaseSession(
+            existingPasswordSession,
+            "influencer signup",
+          );
+        }
+      }
+    }
+
     const authUser = await createSupabaseSignupUser({
       email,
       password,
@@ -20680,7 +24729,7 @@ app.post("/api/influencer/signup", async (request, response) => {
         role: "influencer",
         name,
         email,
-        data_origin: "production",
+        data_origin: deriveDataOrigin([email, name]),
         activity_categories: activityCategories.selected,
         activity_platforms: activityPlatforms.selected,
         verification_status: "not_submitted",
@@ -20716,20 +24765,52 @@ app.post("/api/influencer/signup", async (request, response) => {
 });
 
 app.post("/api/influencer/logout", async (request, response) => {
+  setPrivateAuthResponseHeaders(response);
+  const metricStartedAt = Date.now();
+  const logoutAccessToken =
+    getBearerToken(request) ??
+    parseCookies(request.header("cookie")).get(influencerAccessCookie);
+  const logoutUser = readRecentAuthSession(logoutAccessToken);
+  const logoutProfile = logoutUser ? readProfileFromCache(logoutUser.id) : undefined;
+  const metricDataOrigin = classifySessionAuthMetricDataOrigin({
+    user: logoutUser,
+    profile: logoutProfile,
+    authoritativeOrigin: readAuthMetricOriginFromRequest(request, "influencer"),
+  });
+  (request as OperationalAuthMetricRequest).authMetricDataOrigin = metricDataOrigin;
+  establishExplicitUserSessionLogout(
+    request,
+    response,
+    "influencer",
+  );
   try {
     await revokeSessionFromRequest(
       request,
       influencerAccessCookie,
       influencerRefreshCookie,
+      { allowExplicitlyTerminatedRefresh: true },
     );
+    observeOperationalAuthMetric({
+      operation: "session_revoke",
+      role: "influencer",
+      outcome: "success",
+      latencyMs: Date.now() - metricStartedAt,
+      dataOrigin: metricDataOrigin,
+    });
   } catch (error) {
+    observeOperationalAuthMetric({
+      operation: "session_revoke",
+      role: "influencer",
+      outcome: "provider_error",
+      latencyMs: Date.now() - metricStartedAt,
+      dataOrigin: metricDataOrigin,
+    });
     console.warn(
       `[${productName}] influencer Supabase logout revoke failed: ${
         error instanceof Error ? error.message : "unknown error"
       }`,
     );
   }
-  clearInfluencerSessionCookies(response);
   response.json({ authenticated: false });
 });
 
@@ -20742,10 +24823,23 @@ app.get("/api/influencer/dashboard", async (request, response, next) => {
       return;
     }
 
+    const profile = auth.profile ?? (await readProfileByUserId(auth.user.id));
+    if (!isInfluencerRole(profile?.role)) {
+      await terminateRoleSessionForAuthorizationFailure({
+        request,
+        response,
+        role: "influencer",
+        accessToken: auth.accessToken,
+        userId: auth.user.id,
+      });
+      response.status(403).json({ authenticated: false });
+      return;
+    }
+
     const includeApplications =
       normalizeOptionalText(request.query.includeApplications) !== "false";
     response.json(
-      await buildInfluencerDashboard(auth.user, { includeApplications }, auth.profile),
+      await buildInfluencerDashboard(auth.user, { includeApplications }, profile),
     );
   } catch (error) {
     if (error instanceof Error && error.message === "Influencer role is required") {
@@ -20969,6 +25063,15 @@ app.get(
   "/api/cron/sync-marketplace-followers",
   async (request, response, next) => {
     if (!requireCronRequest(request, response)) return;
+    if (!automaticMarketplaceFollowerSyncEnabled) {
+      response.status(503).json({
+        code: "AUTOMATIC_INFLUENCER_COLLECTION_DISABLED",
+        error:
+          "Automatic influencer follower collection is disabled by Product Owner policy.",
+        retryable: false,
+      });
+      return;
+    }
 
     try {
       const maxChannels =
@@ -21005,6 +25108,14 @@ app.get("/api/marketplace/influencers", async (request, response, next) => {
       response.status(422).json({ error: "Invalid influencer platform filter" });
       return;
     }
+    const { filters, invalid } = readMarketplaceInfluencerSearchFilters(
+      request.query,
+    );
+    if (invalid.length > 0) {
+      response.status(422).json({ error: "Invalid influencer search filter" });
+      return;
+    }
+    const profileFilters = { ...filters, platform };
 
     const savedOnlyQuery = request.query.saved_only;
     if (
@@ -21030,39 +25141,53 @@ app.get("/api/marketplace/influencers", async (request, response, next) => {
 
       const { limit, offset } = readMarketplaceInfluencerPagination(request.query);
       const savedRows = await readAdvertiserSavedInfluencerRows(organization.id);
-      const savedProfiles = (
-        await readPublicMarketplaceInfluencerProfilesByHandles(
-          savedRows.map((row) => row.influencer_public_handle),
-        )
-      ).filter(
-        (profile) =>
-          !platform ||
-          profile.platforms.some((profilePlatform) => profilePlatform.platform === platform),
+      const savedHandles = new Set(
+        savedRows
+          .map((row) => normalizePublicProfileHandle(row.influencer_public_handle))
+          .filter(Boolean),
       );
-      const page = savedProfiles.slice(offset, offset + limit + 1);
+      const publicProfiles =
+        savedHandles.size > 0
+          ? await readPublicMarketplaceCache(
+              "marketplace-influencers",
+              readMarketplaceInfluencerProfileCollection,
+            )
+          : [];
+      const savedProfiles = publicProfiles.filter((profile) =>
+        savedHandles.has(normalizePublicProfileHandle(profile.handle)),
+      );
+      const page = paginateMarketplaceInfluencerProfiles(savedProfiles, {
+        ...profileFilters,
+        limit,
+        offset,
+      });
 
       response.setHeader("Cache-Control", "private, no-store");
-      response.json({
-        profiles: page.slice(0, limit),
-        hasMore: page.length > limit,
-      });
+      response.json(page);
       return;
     }
 
     if (
       request.query.limit !== undefined ||
       request.query.offset !== undefined ||
+      request.query.search !== undefined ||
+      request.query.category !== undefined ||
+      request.query.country !== undefined ||
       platform
     ) {
       const { limit, offset } = readMarketplaceInfluencerPagination(request.query);
-      const page = await readMarketplaceInfluencerProfiles({
-        limit: limit + 1,
+      const profiles = await readPublicMarketplaceCache(
+        "marketplace-influencers",
+        readMarketplaceInfluencerProfileCollection,
+      );
+      const page = paginateMarketplaceInfluencerProfiles(profiles, {
+        ...profileFilters,
+        limit,
         offset,
-        platform,
       });
       sendPublicMarketplaceJson(
         response,
-        { profiles: page.slice(0, limit), hasMore: page.length > limit },
+        page,
         "marketplace-influencers",
       );
       return;
@@ -21070,10 +25195,13 @@ app.get("/api/marketplace/influencers", async (request, response, next) => {
 
     const profiles = await readPublicMarketplaceCache(
       "marketplace-influencers",
-      readMarketplaceInfluencerProfiles,
-      { fallback: fallbackMarketplaceInfluencerProfiles },
+      readMarketplaceInfluencerProfileCollection,
     );
-    sendPublicMarketplaceJson(response, { profiles }, "marketplace-influencers");
+    const page = paginateMarketplaceInfluencerProfiles(profiles, {
+      limit: marketplaceInfluencerProfileResponseLimit,
+      offset: 0,
+    });
+    sendPublicMarketplaceJson(response, page, "marketplace-influencers");
   } catch (error) {
     next(error);
   }
@@ -21764,6 +25892,13 @@ app.get("/api/influencer/public-profile", async (request, response, next) => {
       influencerAuth.profile ?? (await readProfileByUserId(influencerAuth.user.id));
 
     if (!profile || !isInfluencerRole(profile.role)) {
+      await terminateRoleSessionForAuthorizationFailure({
+        request,
+        response,
+        role: "influencer",
+        accessToken: influencerAuth.accessToken,
+        userId: influencerAuth.user.id,
+      });
       response.status(403).json({ authenticated: false, profile: null });
       return;
     }
@@ -22183,7 +26318,8 @@ app.get("/api/webhooks/instagram", (request, response) => {
 
 app.post("/api/webhooks/instagram", async (request, response, next) => {
   try {
-    if (!process.env.META_WEBHOOK_VERIFY_TOKEN?.trim()) {
+    const expectedRecipientId = process.env.META_IG_USER_ID?.trim();
+    if (!isInstagramDmWebhookConfigured() || !expectedRecipientId) {
       response.status(404).json({ error: "Instagram webhook is not configured" });
       return;
     }
@@ -22192,7 +26328,10 @@ app.post("/api/webhooks/instagram", async (request, response, next) => {
       return;
     }
 
-    const events = extractInstagramDmChallengeEvents(request.body);
+    const events = extractInstagramDmChallengeEvents(
+      request.body,
+      expectedRecipientId,
+    );
     const updated = (
       await Promise.all(events.map((event) => applyInstagramDmChallengeEvent(event)))
     ).filter((record): record is VerificationRequestRecord => Boolean(record));
@@ -22208,7 +26347,7 @@ app.get("/api/verification/status", async (request, response, next) => {
     response.setHeader("Cache-Control", "no-store");
     const requestedRole = normalizeOptionalText(request.query.role);
 
-    if (verifyAdminSessionToken(getAdminSessionFromRequest(request))) {
+    if (await authenticateAdminRequest(request, response)) {
       const advertiserId =
         normalizeOptionalText(request.query.advertiser_id) ??
         defaultAdvertiserTargetId;
@@ -22266,6 +26405,8 @@ app.get("/api/verification/status", async (request, response, next) => {
 
 app.post("/api/verification/advertiser", async (request, response, next) => {
   try {
+    response.setHeader("Cache-Control", "private, no-store");
+    response.setHeader("Vary", "Cookie");
     const throttle = await consumeSensitiveEndpointRateLimit(
       request,
       "verification_advertiser",
@@ -22283,9 +26424,7 @@ app.post("/api/verification/advertiser", async (request, response, next) => {
     const verificationContext = await buildAdvertiserVerificationContext(
       advertiserAuth,
     );
-    const subjectName =
-      normalizeRequiredText(request.body?.subject_name) ||
-      verificationContext.subjectName;
+    const subjectName = verificationContext.subjectName;
     const submittedByName = verificationContext.submittedByName;
     const submittedByEmail = verificationContext.submittedByEmail;
     const representativeName = normalizeRequiredText(request.body?.representative_name);
@@ -22293,6 +26432,8 @@ app.post("/api/verification/advertiser", async (request, response, next) => {
       request.body?.business_registration_number,
     );
     const managerPhone = normalizeOptionalText(request.body?.manager_phone);
+    const submissionMode =
+      request.body?.submission_mode === "document" ? "document" : "automatic";
     const documentIssueDate = normalizeDateOnlyValue(
       request.body?.document_issue_date,
     );
@@ -22304,7 +26445,10 @@ app.post("/api/verification/advertiser", async (request, response, next) => {
     );
     const note = normalizeOptionalText(request.body?.note);
     const evidenceFile = parseEvidenceFile(request.body?.evidence_file);
-    const evidenceError = validateEvidenceFile(evidenceFile);
+    const evidenceError =
+      submissionMode === "document" || evidenceFile
+        ? validateEvidenceFile(evidenceFile)
+        : undefined;
 
     if (!subjectName) {
       response.status(422).json({ error: "Company or brand name is required" });
@@ -22322,12 +26466,12 @@ app.post("/api/verification/advertiser", async (request, response, next) => {
       response.status(422).json({ error: "Business registration number is invalid" });
       return;
     }
-    if (!documentIssueDate) {
-      response.status(422).json({ error: "Document issue date is required" });
+    if (!businessStartDate) {
+      response.status(422).json({ error: "Business start date is required" });
       return;
     }
-    if (evidenceError) {
-      response.status(422).json({ error: evidenceError });
+    if (businessStartDate > currentBusinessVerificationDate()) {
+      response.status(422).json({ error: "Business start date cannot be in the future" });
       return;
     }
 
@@ -22335,17 +26479,51 @@ app.post("/api/verification/advertiser", async (request, response, next) => {
       await runBusinessRegistrationAutomationCheck(businessRegistrationNumber, {
         businessStartDate,
         representativeName,
-        subjectName,
       });
     const now = new Date().toISOString();
     const requestId = randomUUID();
     const autoApprove = shouldAutoApproveBusinessVerification(businessAutomationCheck);
-    const storedEvidenceFile = await storeEvidenceFile({
-      requestId,
-      ownerId: verificationContext.profileId,
-      area: "verification-advertiser",
-      file: evidenceFile!,
-    });
+
+    if (!autoApprove && submissionMode === "automatic") {
+      const fallback = buildAdvertiserVerificationFallback(
+        businessAutomationCheck,
+      );
+      response.status(200).json({
+        outcome: "evidence_required",
+        ...fallback,
+      });
+      return;
+    }
+
+    if (!autoApprove && submissionMode === "document" && !documentIssueDate) {
+      response.status(422).json({ error: "Document issue date is required" });
+      return;
+    }
+    if (
+      !autoApprove &&
+      documentIssueDate &&
+      documentIssueDate > currentBusinessVerificationDate()
+    ) {
+      response.status(422).json({ error: "Document issue date cannot be in the future" });
+      return;
+    }
+    if (!autoApprove && evidenceError) {
+      response.status(422).json({ error: evidenceError });
+      return;
+    }
+
+    const storedEvidenceFile =
+      !autoApprove && evidenceFile
+        ? await storeEvidenceFile({
+            requestId,
+            ownerId: verificationContext.profileId,
+            area: "verification-advertiser",
+            file: evidenceFile,
+          })
+        : undefined;
+    const fallback = autoApprove
+      ? undefined
+      : buildAdvertiserVerificationFallback(businessAutomationCheck);
     const record = await insertVerificationRequest({
       id: requestId,
       target_type: "advertiser_organization",
@@ -22365,35 +26543,38 @@ app.post("/api/verification/advertiser", async (request, response, next) => {
       ),
       representative_name: representativeName,
       manager_phone: managerPhone,
-      document_issue_date: documentIssueDate,
-      document_check_number: documentCheckNumber,
-      evidence_file_name: evidenceFile!.name,
-      evidence_file_mime: evidenceFile!.type,
-      evidence_file_size: evidenceFile!.size,
+      document_issue_date: storedEvidenceFile ? documentIssueDate : undefined,
+      document_check_number: storedEvidenceFile ? documentCheckNumber : undefined,
+      evidence_file_name: storedEvidenceFile ? evidenceFile?.name : undefined,
+      evidence_file_mime: storedEvidenceFile ? evidenceFile?.type : undefined,
+      evidence_file_size: storedEvidenceFile ? evidenceFile?.size : undefined,
       evidence_snapshot_json: buildVerificationEvidenceSnapshot(requestId, storedEvidenceFile, {
         submitted_profile_id: verificationContext.profileId,
         organization_id: verificationContext.organizationId,
         submitted_business_registration_number:
           normalizeBusinessRegistrationNumber(businessRegistrationNumber),
         business_start_date: businessStartDate,
-        document_check_number: documentCheckNumber,
+        verification_method: autoApprove ? "nts_three_field" : "manual_document",
+        fallback_reason: fallback?.reason,
+        document_check_number: storedEvidenceFile ? documentCheckNumber : undefined,
         automation: {
           business_registration: businessAutomationCheck,
         },
       }),
       note,
       reviewer_note: autoApprove
-        ? "Auto-approved by NTS business status/validation automation."
+        ? "국세청 사업자 정보 일치 확인"
         : undefined,
       submitted_ip: getClientIp(request),
       submitted_user_agent: request.header("user-agent") ?? "unknown",
-      reviewed_by_name: autoApprove ? `${productName} automation` : undefined,
+      reviewed_by_name: autoApprove ? `${productName} 자동 확인` : undefined,
       reviewed_at: autoApprove ? now : undefined,
       created_at: now,
       updated_at: now,
     });
 
     response.status(201).json({
+      outcome: autoApprove ? "approved" : "pending_manual_review",
       request: sanitizeVerificationRequestForSummary(record),
     });
   } catch (error) {
@@ -22403,6 +26584,8 @@ app.post("/api/verification/advertiser", async (request, response, next) => {
 
 app.post("/api/verification/influencer", async (request, response, next) => {
   try {
+    response.setHeader("Cache-Control", "private, no-store");
+    response.setHeader("Vary", "Cookie");
     const throttle = await consumeSensitiveEndpointRateLimit(
       request,
       "verification_influencer",
@@ -22430,22 +26613,40 @@ app.post("/api/verification/influencer", async (request, response, next) => {
       return;
     }
 
-    const subjectName =
-      normalizeRequiredText(request.body?.subject_name) ||
-      influencerAuth.profile.name;
+    const subjectName = influencerAuth.profile.name;
     const submittedByEmail =
       influencerAuth.profile.email ?? influencerAuth.user.email ?? "";
+    const requestDataOrigin = normalizeDataOrigin(
+      influencerAuth.profile.data_origin,
+    );
     const platform = normalizeRequiredText(request.body?.platform) as InfluencerPlatform;
-    const platformHandle = normalizeRequiredText(request.body?.platform_handle);
-    const platformUrl = normalizeUrlValue(request.body?.platform_url);
+    const submittedPlatformHandle = normalizeRequiredText(
+      request.body?.platform_handle,
+    );
+    const submittedPlatformUrl = normalizeUrlValue(request.body?.platform_url);
     const ownershipMethod = normalizeRequiredText(
       request.body?.ownership_verification_method,
     ) as InfluencerVerificationMethod;
-    const ownershipChallengeCode = normalizeChallengeCode(
-      request.body?.ownership_challenge_code,
+    const isInstagramDmMethod =
+      platform === "instagram" && ownershipMethod === "instagram_dm_code";
+    const instagramDmUsername = isInstagramDmMethod
+      ? normalizeInstagramUsername(submittedPlatformHandle)
+      : "";
+    const platformHandle = isInstagramDmMethod
+      ? instagramDmUsername
+      : submittedPlatformHandle;
+    const platformUrl = isInstagramDmMethod && instagramDmUsername
+      ? `https://www.instagram.com/${instagramDmUsername}/`
+      : submittedPlatformUrl;
+    const ownershipChallengeCode = isInstagramDmMethod
+      ? createInstagramDmChallengeCode()
+      : normalizeChallengeCode(request.body?.ownership_challenge_code);
+    const submittedOwnershipChallengeUrl = normalizeUrlValue(
+      request.body?.ownership_challenge_url,
     );
-    const ownershipChallengeUrl =
-      normalizeUrlValue(request.body?.ownership_challenge_url) ?? platformUrl;
+    const ownershipChallengeUrl = isInstagramDmMethod
+      ? platformUrl
+      : submittedOwnershipChallengeUrl ?? platformUrl;
     const targetId = influencerAuth.profile.id;
     const platformAccessToken = normalizeOptionalText(
       request.body?.platform_access_token,
@@ -22472,12 +26673,45 @@ app.post("/api/verification/influencer", async (request, response, next) => {
       response.status(422).json({ error: "Instagram DM verification is only available for Instagram" });
       return;
     }
-    if (!platformHandle || !platformUrl) {
+    if (!submittedPlatformHandle || !submittedPlatformUrl) {
       response.status(422).json({ error: "Valid profile handle and URL are required" });
       return;
     }
-    if (!isExpectedPlatformUrl(platform, platformUrl)) {
+    if (!isExpectedPlatformUrl(platform, submittedPlatformUrl)) {
       response.status(422).json({ error: "Profile URL does not match the selected platform" });
+      return;
+    }
+    if (
+      isInstagramDmMethod &&
+      (!instagramDmUsername ||
+        instagramDmUsername !== normalizeInstagramUsername(submittedPlatformUrl))
+    ) {
+      response.status(422).json({
+        error: "Instagram handle and profile URL username must match",
+      });
+      return;
+    }
+    if (isInstagramDmMethod && !isInstagramDmAutomationReady()) {
+      const isOperationalTestSubmission =
+        requestDataOrigin !== "production" ||
+        hasOperationalTestEmail([submittedByEmail]) ||
+        hasOperationalTestMarker({
+          subject_name: subjectName,
+          platform_handle: platformHandle,
+          platform_url: platformUrl,
+          ownership_challenge_url: ownershipChallengeUrl,
+          note,
+        });
+      await enqueueInstagramDmAutomationUnavailableAlert(
+        influencerAuth.profile.id,
+        requestDataOrigin,
+        isOperationalTestSubmission,
+      ).catch(() => undefined);
+      response.status(503).json({
+        error: "Instagram DM 자동 인증 서버 연결을 준비 중입니다.",
+        code: "INSTAGRAM_DM_AUTOMATION_UNAVAILABLE",
+        retryable: true,
+      });
       return;
     }
     if (
@@ -22500,7 +26734,50 @@ app.post("/api/verification/influencer", async (request, response, next) => {
       return;
     }
 
-    const now = new Date().toISOString();
+    if (isInstagramDmMethod && isInstagramDmAutomationReady()) {
+      await expireInstagramDmChallenges();
+      const activeChallenge = await readActiveInstagramDmChallenge(
+        influencerAuth.profile.id,
+        normalizeInstagramUsername(platformHandle),
+      );
+      const activeCode = activeChallenge
+        ? decryptInstagramDmChallengeCode(
+            activeChallenge.ownership_challenge_code_ciphertext ?? undefined,
+            activeChallenge.id,
+          )
+        : undefined;
+      if (activeChallenge && activeCode) {
+        const activeState =
+          getInstagramDmChallengeState(activeChallenge) === "retrying_provider"
+            ? "retrying_provider"
+            : "awaiting_dm";
+        response.status(200).json({
+          request: sanitizeVerificationRequestForSummary(activeChallenge),
+          instagram_dm_challenge: buildInstagramDmChallengeResponse(
+            activeChallenge,
+            activeState,
+            activeCode,
+          ),
+        });
+        return;
+      }
+    }
+
+    const nowDate = new Date();
+    const now = nowDate.toISOString();
+    const requestId = randomUUID();
+    const instagramDmChallengeHash = isInstagramDmMethod
+      ? hashInstagramDmChallengeCode(ownershipChallengeCode)
+      : undefined;
+    const instagramDmChallengeCiphertext = isInstagramDmMethod
+      ? encryptInstagramDmChallengeCode(ownershipChallengeCode, requestId)
+      : undefined;
+    const instagramDmChallengeExpiresAt = isInstagramDmMethod
+      ? new Date(nowDate.getTime() + instagramDmChallengeTtlMs).toISOString()
+      : undefined;
+    const instagramDmChallengeState = isInstagramDmAutomationReady()
+      ? "awaiting_dm"
+      : "manual_review";
     const platformAutomationCheck = await runPlatformAccountAutomationCheck({
       platform,
       platformHandle,
@@ -22521,10 +26798,9 @@ app.post("/api/verification/influencer", async (request, response, next) => {
         checked_at: string;
         http_status?: number;
       });
-    const autoApprove = shouldAutoApprovePlatformVerification(
-      platformAutomationCheck,
-    );
-    const requestId = randomUUID();
+    const autoApprove =
+      !isInstagramDmMethod &&
+      shouldAutoApprovePlatformVerification(platformAutomationCheck);
     const storedEvidenceFile = evidenceFile
       ? await storeEvidenceFile({
           requestId,
@@ -22533,15 +26809,15 @@ app.post("/api/verification/influencer", async (request, response, next) => {
           file: evidenceFile,
         })
       : undefined;
-    const record = await insertVerificationRequest({
-      id: requestId,
-      target_type: "influencer_account",
+    let record: VerificationRequestRecord;
+    try {
+      record = await insertVerificationRequest({
+        id: requestId,
+        target_type: "influencer_account",
       target_id: targetId,
       verification_type: "platform_account",
       status: autoApprove ? "approved" : "pending",
-      data_origin:
-        normalizeDataOrigin(influencerAuth.profile.data_origin) ??
-        deriveDataOrigin([submittedByEmail, subjectName, platformHandle]),
+      data_origin: requestDataOrigin,
       profile_id: influencerAuth.profile.id,
       subject_name: subjectName,
       submitted_by_email: submittedByEmail,
@@ -22549,8 +26825,13 @@ app.post("/api/verification/influencer", async (request, response, next) => {
       platform_handle: platformHandle,
       platform_url: platformUrl,
       ownership_verification_method: ownershipMethod,
-      ownership_challenge_code: ownershipChallengeCode,
+      ownership_challenge_code: isInstagramDmMethod
+        ? undefined
+        : ownershipChallengeCode,
+      ownership_challenge_code_hash: instagramDmChallengeHash,
+      ownership_challenge_code_ciphertext: instagramDmChallengeCiphertext,
       ownership_challenge_url: ownershipChallengeUrl,
+      ownership_challenge_expires_at: instagramDmChallengeExpiresAt,
       ownership_check_status: ownershipCheck.status,
       ownership_checked_at: ownershipCheck.checked_at,
       evidence_file_name: evidenceFile?.name,
@@ -22564,7 +26845,17 @@ app.post("/api/verification/influencer", async (request, response, next) => {
           platform_url: platformUrl,
           profile_id: influencerAuth.profile.id,
           method: ownershipMethod,
-          challenge_code: ownershipChallengeCode,
+          ...(isInstagramDmMethod
+            ? {
+                challenge_code_hash: instagramDmChallengeHash,
+                instagram_dm: {
+                  state: instagramDmChallengeState,
+                  expires_at: instagramDmChallengeExpiresAt,
+                  webhook_configured: isInstagramDmWebhookConfigured(),
+                  automation_ready: isInstagramDmAutomationReady(),
+                },
+              }
+            : { challenge_code: ownershipChallengeCode }),
           challenge_url: ownershipChallengeUrl,
           automated_check: ownershipCheck,
           automation: {
@@ -22583,19 +26874,175 @@ app.post("/api/verification/influencer", async (request, response, next) => {
       reviewed_at: autoApprove ? now : undefined,
       created_at: now,
       updated_at: now,
-    });
+      });
+      if (platform === "instagram" && !isInstagramDmMethod) {
+        await supersedeActiveInstagramDmChallengeForFallback(
+          influencerAuth.profile.id,
+          normalizeInstagramUsername(platformHandle),
+          now,
+        ).catch(() => {
+          console.warn(
+            `[${productName}] Instagram DM fallback supersede failed; the newer alternate request remains authoritative.`,
+          );
+          return undefined;
+        });
+      }
+    } catch (error) {
+      if (isInstagramDmMethod) {
+        const activeChallenge = await readActiveInstagramDmChallenge(
+          influencerAuth.profile.id,
+          normalizeInstagramUsername(platformHandle),
+        );
+        const activeCode = activeChallenge
+          ? decryptInstagramDmChallengeCode(
+              activeChallenge.ownership_challenge_code_ciphertext ?? undefined,
+              activeChallenge.id,
+            )
+          : undefined;
+        if (activeChallenge && activeCode) {
+          const activeState =
+            getInstagramDmChallengeState(activeChallenge) === "retrying_provider"
+              ? "retrying_provider"
+              : "awaiting_dm";
+          response.status(200).json({
+            request: sanitizeVerificationRequestForSummary(activeChallenge),
+            instagram_dm_challenge: buildInstagramDmChallengeResponse(
+              activeChallenge,
+              activeState,
+              activeCode,
+            ),
+          });
+          return;
+        }
+      }
+      throw error;
+    }
 
     response.status(201).json({
       request: sanitizeVerificationRequestForSummary(record),
+      ...(isInstagramDmMethod
+        ? {
+            instagram_dm_challenge: buildInstagramDmChallengeResponse(
+              record,
+              instagramDmChallengeState,
+              instagramDmChallengeState === "awaiting_dm"
+                ? ownershipChallengeCode
+                : undefined,
+            ),
+          }
+        : {}),
     });
   } catch (error) {
     next(error);
   }
 });
 
+app.get(
+  "/api/verification/influencer/instagram-dm-challenge",
+  async (request, response, next) => {
+    try {
+      response.setHeader("Cache-Control", "private, no-store");
+      response.setHeader("Vary", "Cookie");
+      const influencerAuth = await requireInfluencerSession(request, response);
+      if (!influencerAuth) return;
+
+      const requestedId = normalizeOptionalText(request.query.request_id);
+      if (requestedId && !isUuidText(requestedId)) {
+        response.status(422).json({ error: "Valid Instagram DM request id is required" });
+        return;
+      }
+
+      const instagramRequests = (
+        await getInfluencerVerificationRequestsForAuth(influencerAuth)
+      )
+        .filter((record) => record.platform === "instagram")
+        .sort((a, b) => parseDateDescending(a.created_at, b.created_at));
+      const requestNow = Date.now();
+      let record = selectInstagramDmRestoreRecord(instagramRequests, {
+        requestId: requestedId,
+        nowMs: requestNow,
+        getChallengeState: getInstagramDmChallengeState,
+      });
+      if (!record) {
+        response.json({});
+        return;
+      }
+
+      const expired =
+        record.status === "pending" &&
+        hasText(record.ownership_challenge_expires_at) &&
+        new Date(record.ownership_challenge_expires_at).getTime() <= Date.now();
+      if (expired && hasText(record.ownership_challenge_code_hash)) {
+        record =
+          (await markInstagramDmChallengeFailure(
+            record,
+            record.ownership_challenge_code_hash,
+            "expired",
+            new Date().toISOString(),
+          )) ?? record;
+      }
+
+      const snapshotState = getInstagramDmChallengeState(record);
+      if (
+        record.status === "rejected" ||
+        (!requestedId &&
+          !isAwaitingInstagramDmRestoreRecord(
+            record,
+            requestNow,
+            getInstagramDmChallengeState,
+          ))
+      ) {
+        response.json({});
+        return;
+      }
+      const isRetryableDm =
+        record.status === "pending" &&
+        (snapshotState === "awaiting_dm" ||
+          snapshotState === "retrying_provider") &&
+        hasText(record.ownership_challenge_code_hash) &&
+        hasText(record.ownership_challenge_code_ciphertext) &&
+        !record.ownership_challenge_consumed_at &&
+        hasText(record.ownership_challenge_expires_at) &&
+        new Date(record.ownership_challenge_expires_at).getTime() > Date.now();
+      const state = record.status === "approved"
+        ? "verified"
+        : expired || snapshotState === "expired"
+          ? "expired"
+          : snapshotState === "manual_review"
+            ? "manual_review"
+            : isRetryableDm
+              ? snapshotState === "retrying_provider"
+                ? "retrying_provider"
+                : "awaiting_dm"
+              : undefined;
+      if (!state) {
+        response.json({});
+        return;
+      }
+      const code =
+        isRetryableDm
+          ? decryptInstagramDmChallengeCode(
+              record.ownership_challenge_code_ciphertext ?? undefined,
+              record.id,
+            )
+          : undefined;
+
+      response.json({
+        instagram_dm_challenge: buildInstagramDmChallengeResponse(
+          record,
+          state,
+          code,
+        ),
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
 app.get("/api/admin/verification-requests", async (request, response, next) => {
   try {
-    if (!requireAdminSession(request, response)) return;
+    if (!(await requireAdminSession(request, response))) return;
     response.json({
       verification_requests: await readOperationalAdminVerificationRequests(),
     });
@@ -22616,7 +27063,7 @@ app.post("/api/admin/verification-requests/:id/automation-check", async (request
       return;
     }
 
-    if (!requireAdminSession(request, response)) return;
+    if (!(await requireAdminSession(request, response))) return;
 
     const record = (await readVerificationRequests()).find(
       (item) => item.id === request.params.id,
@@ -22624,6 +27071,12 @@ app.post("/api/admin/verification-requests/:id/automation-check", async (request
 
     if (!record) {
       response.status(404).json({ error: "Verification request not found" });
+      return;
+    }
+    if (record.ownership_verification_method === "instagram_dm_code") {
+      response.status(409).json({
+        error: "Instagram DM verification is retried only by the signed webhook",
+      });
       return;
     }
 
@@ -22639,7 +27092,8 @@ app.post("/api/admin/verification-requests/:id/automation-check", async (request
 
 app.get("/api/admin/verification-requests/:id/evidence", async (request, response, next) => {
   try {
-    if (!requireAdminSession(request, response)) return;
+    const admin = await requireAdminSession(request, response);
+    if (!admin) return;
 
     const record = (await readVerificationRequests()).find(
       (item) => item.id === request.params.id,
@@ -22669,7 +27123,7 @@ app.get("/api/admin/verification-requests/:id/evidence", async (request, respons
         "Content-Disposition",
         `attachment; filename="${sanitizeStorageSegment(storedFile.file_name)}"`,
       );
-      await appendVerificationEvidenceAccessAudit(record, request);
+      await appendVerificationEvidenceAccessAudit(record, request, admin);
       response.send(fileBuffer);
       return;
     }
@@ -22684,7 +27138,7 @@ app.get("/api/admin/verification-requests/:id/evidence", async (request, respons
       response.setHeader("Content-Type", contentType);
       response.setHeader("Cache-Control", "no-store");
       response.setHeader("Content-Disposition", `attachment; filename="${record.id}-evidence.${extensionForMimeType(contentType)}"`);
-      await appendVerificationEvidenceAccessAudit(record, request);
+      await appendVerificationEvidenceAccessAudit(record, request, admin);
       response.send(buffer);
       return;
     }
@@ -22707,14 +27161,49 @@ app.patch("/api/admin/verification-requests/:id", async (request, response, next
       return;
     }
 
-    if (!requireAdminSession(request, response)) return;
+    const admin = await requireAdminSession(request, response);
+    if (!admin) return;
 
     const status = normalizeRequiredText(request.body?.status);
     const reviewerNote = normalizeOptionalText(request.body?.reviewer_note);
-    const reviewedByName = adminOperatorName;
+    const reviewedByName = admin.profile.name;
 
     if (!verificationStatuses.has(status)) {
       response.status(422).json({ error: "Valid verification status is required" });
+      return;
+    }
+
+    const allVerificationRequests = await readVerificationRequests();
+    const existingRecord = allVerificationRequests.find(
+      (item) => item.id === request.params.id,
+    );
+    if (!existingRecord) {
+      response.status(404).json({ error: "Verification request not found" });
+      return;
+    }
+    if (
+      existingRecord.ownership_verification_method === "instagram_dm_code" &&
+      hasNewerInstagramVerificationRequestForSameHandle(
+        existingRecord,
+        allVerificationRequests,
+      )
+    ) {
+      response.status(409).json({
+        error: "A newer Instagram ownership verification request is authoritative",
+      });
+      return;
+    }
+    if (
+      existingRecord.ownership_verification_method === "instagram_dm_code" &&
+      existingRecord.status === "pending" &&
+      !isActionableManualVerificationRequest(
+        existingRecord,
+        allVerificationRequests,
+      )
+    ) {
+      response.status(409).json({
+        error: "Instagram DM verification is still waiting for the signed webhook",
+      });
       return;
     }
 
@@ -22722,10 +27211,20 @@ app.patch("/api/admin/verification-requests/:id", async (request, response, next
       id: request.params.id,
       status: status as VerificationStatus,
       reviewerNote,
+      reviewedByProfileId: admin.profile.id,
       reviewedByName,
     });
 
     if (!record) {
+      if (
+        existingRecord.ownership_verification_method === "instagram_dm_code"
+      ) {
+        response.status(409).json({
+          error:
+            "Instagram DM verification changed or a newer request became authoritative",
+        });
+        return;
+      }
       response.status(404).json({ error: "Verification request not found" });
       return;
     }
@@ -22739,8 +27238,8 @@ app.patch("/api/admin/verification-requests/:id", async (request, response, next
 app.get("/api/contracts", async (request, response, next) => {
   try {
     response.setHeader("Cache-Control", "no-store");
-    const adminAuthenticated = verifyAdminSessionToken(
-      getAdminSessionFromRequest(request),
+    const adminAuthenticated = Boolean(
+      await authenticateAdminRequest(request, response),
     );
 
     if (adminAuthenticated) {
@@ -23237,6 +27736,19 @@ app.post("/api/contracts/:id/close", async (request, response, next) => {
       return;
     }
 
+    if (
+      !(await requireRecentAuthGrant({
+        request,
+        response,
+        role: "advertiser",
+        action: "advertiser_contract_close",
+        resource: contract.id,
+        session: advertiserAuth,
+      }))
+    ) {
+      return;
+    }
+
     const now = new Date().toISOString();
     const updatedContract = normalizeContract({
       ...contract,
@@ -23399,7 +27911,8 @@ app.get(
         await appendSupportAccessAuditEvent(access.supportAccess.id, {
           action: "viewed_pdf",
           actor_role: "admin",
-          actor_name: adminOperatorName,
+          actor_profile_id: access.auth.profile.id,
+          actor_name: access.auth.profile.name,
           description: "운영자가 당사자 요청에 따라 제출된 콘텐츠 파일을 내려받았습니다.",
           ip: getClientIp(request),
           user_agent: request.header("user-agent") ?? "unknown",
@@ -23577,7 +28090,8 @@ app.get("/api/contracts/:id", async (request, response, next) => {
       await appendSupportAccessAuditEvent(access.supportAccess.id, {
         action: "viewed_contract",
         actor_role: "admin",
-        actor_name: adminOperatorName,
+        actor_profile_id: access.auth.profile.id,
+        actor_name: access.auth.profile.name,
         description: "운영자가 당사자 요청에 따라 계약 본문을 열람했습니다.",
         ip: getClientIp(request),
         user_agent: request.header("user-agent") ?? "unknown",
@@ -23593,6 +28107,68 @@ app.get("/api/contracts/:id", async (request, response, next) => {
       contract: redactContractForClient(responseContract, access.role),
       access_role: access.role,
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/contracts/:id/share-link/reveal", async (request, response, next) => {
+  setPrivateAuthResponseHeaders(response);
+  try {
+    const throttle = await consumeSensitiveEndpointRateLimit(
+      request,
+      "contract_share_link_reveal",
+      request.params.id,
+    );
+    if (throttle.blocked) {
+      sendSensitiveRateLimitResponse(response, throttle);
+      return;
+    }
+
+    const advertiserAuth = await requireAdvertiserSession(request, response);
+    if (!advertiserAuth) return;
+    const contract = await readContractById(request.params.id);
+    if (!contract) {
+      response.status(404).json({ error: "Contract not found" });
+      return;
+    }
+    if (!canAdvertiserAccessLegacyContract(advertiserAuth, contract)) {
+      response.status(403).json({ error: "이 계약을 볼 권한이 없습니다." });
+      return;
+    }
+
+    const token = contract.evidence?.share_token;
+    const expiresAt = contract.evidence?.share_token_expires_at
+      ? new Date(contract.evidence.share_token_expires_at).getTime()
+      : undefined;
+    if (
+      contract.evidence?.share_token_status !== "active" ||
+      !hasText(token) ||
+      (typeof expiresAt === "number" && expiresAt <= Date.now())
+    ) {
+      response.status(409).json({ error: "현재 사용할 수 있는 계약서 링크가 없습니다." });
+      return;
+    }
+
+    if (
+      !(await requireRecentAuthGrant({
+        request,
+        response,
+        role: "advertiser",
+        action: "advertiser_share_reveal",
+        resource: contract.id,
+        session: advertiserAuth,
+      }))
+    ) {
+      return;
+    }
+
+    const shareUrl = new URL(
+      `/contract/${encodeURIComponent(contract.id)}`,
+      `${getAppBaseUrl(request)}/`,
+    );
+    shareUrl.searchParams.set("token", token!);
+    response.json({ share_url: shareUrl.toString() });
   } catch (error) {
     next(error);
   }
@@ -23636,7 +28212,8 @@ app.get("/api/contracts/:id/review-pdf", async (request, response, next) => {
       await appendSupportAccessAuditEvent(access.supportAccess.id, {
         action: "viewed_pdf",
         actor_role: "admin",
-        actor_name: adminOperatorName,
+        actor_profile_id: access.auth.profile.id,
+        actor_name: access.auth.profile.name,
         description: "운영자가 당사자 요청에 따라 계약서 전체보기 PDF를 열람했습니다.",
         ip: getClientIp(request),
         user_agent: request.header("user-agent") ?? "unknown",
@@ -23697,7 +28274,8 @@ app.get("/api/contracts/:id/final-pdf", async (request, response, next) => {
       await appendSupportAccessAuditEvent(access.supportAccess.id, {
         action: "viewed_pdf",
         actor_role: "admin",
-        actor_name: adminOperatorName,
+        actor_profile_id: access.auth.profile.id,
+        actor_name: access.auth.profile.name,
         description: "운영자가 당사자 요청에 따라 서명본 PDF를 열람했습니다.",
         ip: getClientIp(request),
         user_agent: request.header("user-agent") ?? "unknown",
@@ -23863,6 +28441,19 @@ app.post("/api/contracts/:id/signatures/influencer", async (request, response, n
       return;
     }
 
+    if (
+      !(await requireRecentAuthGrant({
+        request,
+        response,
+        role: "influencer",
+        action: "influencer_signature",
+        resource: existing.id,
+        session: influencerAuth,
+      }))
+    ) {
+      return;
+    }
+
     const contractHash = sha256Hex(
       JSON.stringify({
         ...existing,
@@ -23992,12 +28583,16 @@ app.put("/api/contracts/:id", async (request, response, next) => {
       request.header("X-Yeollock-Actor") ??
       request.header("X-DirectSign-Actor") ??
       "advertiser";
-    let normalizedContract = normalizeContract(contract);
 
     if (actor !== "advertiser" && actor !== "influencer") {
       response.status(403).json({ error: "Invalid actor" });
       return;
     }
+    let normalizedContract = serverAuthorContractShareEvidence(
+      existingContract,
+      normalizeContract(contract),
+      actor,
+    );
 
     let advertiserAuth: AdvertiserSession | undefined;
     let linkedOneToOneProposal: SupabaseMarketplaceContactProposalRow | undefined;
@@ -24152,9 +28747,11 @@ app.put("/api/contracts/:id", async (request, response, next) => {
       return;
     }
 
-    if (
+    const contractSendAttempt =
       actor === "advertiser" &&
-      isContractSendAttempt(existingContract, normalizedContract) &&
+      isContractSendAttempt(existingContract, normalizedContract);
+    if (
+      contractSendAttempt &&
       !(await isAdvertiserApprovedForContractSend(
         advertiserAuth!,
         normalizedContract,
@@ -24164,6 +28761,22 @@ app.put("/api/contracts/:id", async (request, response, next) => {
         error:
           "사업자 인증 승인 후 계약 공유 링크를 발송할 수 있습니다.",
       });
+      return;
+    }
+
+    if (
+      contractSendAttempt &&
+      !(await requireRecentAuthGrant({
+        request,
+        response,
+        role: "advertiser",
+        action: isContractShareRotation(existingContract, normalizedContract)
+          ? "advertiser_share_rotate"
+          : "advertiser_contract_send",
+        resource: normalizedContract.id,
+        session: advertiserAuth!,
+      }))
+    ) {
       return;
     }
 
@@ -24218,6 +28831,16 @@ app.use(
     response: express.Response,
     _next: express.NextFunction,
   ) => {
+    if (error instanceof AuthSessionTemporarilyUnavailableError) {
+      response.setHeader("Cache-Control", "private, no-store");
+      response.setHeader("Vary", "Cookie");
+      response.setHeader("Retry-After", "1");
+      response.status(503).json({
+        error: "Authentication service temporarily unavailable",
+        retryable: true,
+      });
+      return;
+    }
     console.error(`[${productName} API]`, error);
     response.status(500).json({ error: "Internal server error" });
   },

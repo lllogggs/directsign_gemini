@@ -8,7 +8,7 @@ import {
   MailCheck,
   UserRound,
 } from "lucide-react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router";
 import { preserveAuthContext } from "../../components/AuthLoginScreen";
 import { BrandLogo } from "../../components/BrandLogo";
 import { apiFetch } from "../../domain/api";

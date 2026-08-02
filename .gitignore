@@ -2,6 +2,10 @@ node_modules/
 build/
 dist/
 coverage/
+docs/qa-reports/
+docs/discovery/
+public/qa-captures/
+logs/*.jsonl
 qa-artifacts/*
 !qa-artifacts/seed-dashboard-matrix.mjs
 tmp/

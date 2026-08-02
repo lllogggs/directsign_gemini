@@ -30,7 +30,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { apiFetch } from "../../domain/api";
 import { useBodyScrollLock } from "../../hooks/useBodyScrollLock";
 import { PRODUCT_NAME } from "../../domain/brand";
@@ -95,7 +95,7 @@ type AdvertiserCampaignState =
 type PlatformFilter = "all" | InfluencerPlatform;
 type ProposalTypeFilter = "all" | CampaignProposalType;
 type InfluencerCampaignView = "open" | "applied";
-type CampaignShellMode = "authenticated" | "anonymous";
+type CampaignShellMode = "checking" | "authenticated" | "anonymous";
 type CampaignShellRole = "advertiser" | "influencer";
 type CampaignSortDirection = "asc" | "desc";
 type CampaignSortKey =
@@ -342,7 +342,7 @@ export function AdvertiserCampaignRecruitmentPage() {
         credentials: "include",
       });
 
-      if (response.status === 401) {
+      if (response.status === 401 || response.status === 403) {
         navigate("/login/advertiser", { replace: true });
         return;
       }
@@ -490,7 +490,7 @@ export function AdvertiserCampaignRecruitmentPage() {
         }),
       });
 
-      if (response.status === 401) {
+      if (response.status === 401 || response.status === 403) {
         navigate("/login/advertiser", { replace: true });
         return;
       }
@@ -560,7 +560,7 @@ export function AdvertiserCampaignRecruitmentPage() {
         }),
       });
 
-      if (response.status === 401) {
+      if (response.status === 401 || response.status === 403) {
         navigate("/login/advertiser", { replace: true });
         return;
       }
@@ -606,7 +606,7 @@ export function AdvertiserCampaignRecruitmentPage() {
         }),
       });
 
-      if (response.status === 401) {
+      if (response.status === 401 || response.status === 403) {
         navigate("/login/advertiser", { replace: true });
         return;
       }
@@ -1066,9 +1066,12 @@ export function InfluencerCampaignDiscoveryPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [state, setState] = useState<CampaignState>({ status: "loading" });
   const [shellMode, setShellMode] =
-    useState<CampaignShellMode>("anonymous");
+    useState<CampaignShellMode>("checking");
   const [applicationsState, setApplicationsState] =
     useState<CampaignApplicationsState>({ status: "loading" });
+  const applicationsRetryAttemptRef = useRef(0);
+  const applicationsRetryTimerRef = useRef<number | undefined>(undefined);
+  const loadApplicationsRef = useRef<() => Promise<void>>(async () => undefined);
   const activeView: InfluencerCampaignView =
     searchParams.get("view") === "applied" ? "applied" : "open";
   const [query, setQuery] = useState("");
@@ -1141,11 +1144,29 @@ export function InfluencerCampaignDiscoveryPage() {
     };
   }, []);
 
+  const scheduleApplicationsRetry = useCallback(() => {
+    if (applicationsRetryTimerRef.current !== undefined) return;
+    const retryDelayMs = Math.min(
+      1_000 * 2 ** applicationsRetryAttemptRef.current,
+      10_000,
+    );
+    applicationsRetryAttemptRef.current += 1;
+    applicationsRetryTimerRef.current = window.setTimeout(() => {
+      applicationsRetryTimerRef.current = undefined;
+      void loadApplicationsRef.current();
+    }, retryDelayMs);
+  }, []);
+
   const loadApplications = useCallback(async () => {
+    if (applicationsRetryTimerRef.current !== undefined) {
+      window.clearTimeout(applicationsRetryTimerRef.current);
+      applicationsRetryTimerRef.current = undefined;
+    }
     setApplicationsState((current) =>
       current.status === "ready" ? current : { status: "loading" },
     );
 
+    let sessionEstablished = false;
     try {
       const sessionResponse = await apiFetch("/api/influencer/session", {
         headers: { Accept: "application/json" },
@@ -1153,12 +1174,24 @@ export function InfluencerCampaignDiscoveryPage() {
       });
       const sessionData = (await sessionResponse.json().catch(() => ({}))) as
         InfluencerSessionStatusResponse;
-      const authenticated =
-        sessionResponse.ok && sessionData.authenticated === true;
-      setShellMode(authenticated ? "authenticated" : "anonymous");
-
-      if (!authenticated) {
+      if (sessionResponse.ok && sessionData.authenticated === true) {
+        applicationsRetryAttemptRef.current = 0;
+        sessionEstablished = true;
+        setShellMode("authenticated");
+      } else if (
+        sessionResponse.status === 401 ||
+        sessionResponse.status === 403 ||
+        (sessionResponse.ok && sessionData.authenticated === false)
+      ) {
+        applicationsRetryAttemptRef.current = 0;
+        setShellMode("anonymous");
         setApplicationsState({ status: "ready", applications: [] });
+        return;
+      } else {
+        setApplicationsState((current) =>
+          current.status === "ready" ? current : { status: "loading" },
+        );
+        scheduleApplicationsRetry();
         return;
       }
 
@@ -1167,7 +1200,7 @@ export function InfluencerCampaignDiscoveryPage() {
         credentials: "include",
       });
 
-      if (response.status === 401) {
+      if (response.status === 401 || response.status === 403) {
         setShellMode("anonymous");
         setApplicationsState({ status: "ready", applications: [] });
         return;
@@ -1187,7 +1220,13 @@ export function InfluencerCampaignDiscoveryPage() {
         applications: data.threads.filter(isInfluencerCampaignApplication),
       });
     } catch (error) {
-      setShellMode("anonymous");
+      if (!sessionEstablished) {
+        setApplicationsState((current) =>
+          current.status === "ready" ? current : { status: "loading" },
+        );
+        scheduleApplicationsRetry();
+        return;
+      }
       setApplicationsState({
         status: "error",
         message:
@@ -1196,13 +1235,23 @@ export function InfluencerCampaignDiscoveryPage() {
             : "신청한 캠페인을 불러오지 못했습니다.",
       });
     }
-  }, []);
+  }, [scheduleApplicationsRetry]);
+
+  useEffect(() => {
+    loadApplicationsRef.current = loadApplications;
+  }, [loadApplications]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
       void loadApplications();
     }, 0);
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      if (applicationsRetryTimerRef.current !== undefined) {
+        window.clearTimeout(applicationsRetryTimerRef.current);
+        applicationsRetryTimerRef.current = undefined;
+      }
+    };
   }, [loadApplications]);
 
   const campaigns = useMemo(
@@ -1358,7 +1407,7 @@ export function InfluencerCampaignDiscoveryPage() {
         },
       );
 
-      if (response.status === 401) {
+      if (response.status === 401 || response.status === 403) {
         const nextPath = getCampaignSharePath(campaign) ?? "/influencer/campaigns";
         navigate(`/login/influencer?next=${encodeURIComponent(nextPath)}`, {
           replace: true,
@@ -1665,26 +1714,48 @@ export function PublicCampaignRecruitmentPage() {
 
   useEffect(() => {
     let active = true;
+    let retryAttempt = 0;
+    let retryTimer: number | undefined;
 
-    void apiFetch("/api/influencer/session", {
-      headers: { Accept: "application/json" },
-      credentials: "include",
-    })
-      .then(async (response) => {
+    const checkSession = async () => {
+      try {
+        const response = await apiFetch("/api/influencer/session", {
+          headers: { Accept: "application/json" },
+          credentials: "include",
+        });
         const data = (await response.json().catch(() => ({}))) as
           InfluencerSessionStatusResponse;
         if (!active) return;
-        setSessionStatus(
-          response.ok && data.authenticated === true ? "authenticated" : "anonymous",
-        );
-      })
-      .catch(() => {
-        if (!active) return;
-        setSessionStatus("anonymous");
-      });
+        if (response.ok && data.authenticated === true) {
+          setSessionStatus("authenticated");
+          return;
+        }
+        if (
+          response.status === 401 ||
+          response.status === 403 ||
+          (response.ok && data.authenticated === false)
+        ) {
+          setSessionStatus("anonymous");
+          return;
+        }
+      } catch {
+        // Keep the current state and retry a transient session check.
+      }
+
+      if (!active || retryTimer !== undefined) return;
+      const retryDelayMs = Math.min(1_000 * 2 ** retryAttempt, 10_000);
+      retryAttempt += 1;
+      retryTimer = window.setTimeout(() => {
+        retryTimer = undefined;
+        void checkSession();
+      }, retryDelayMs);
+    };
+
+    void checkSession();
 
     return () => {
       active = false;
+      if (retryTimer !== undefined) window.clearTimeout(retryTimer);
     };
   }, []);
 
@@ -1767,7 +1838,7 @@ export function PublicCampaignRecruitmentPage() {
         },
       );
 
-      if (response.status === 401) {
+      if (response.status === 401 || response.status === 403) {
         const nextPath = getCampaignSharePath(campaign) ?? "/influencer/campaigns";
         navigate(`/login/influencer?next=${encodeURIComponent(nextPath)}`, {
           replace: true,
@@ -1841,29 +1912,57 @@ export function PublicCampaignRecruitmentPage() {
           href: "/influencer/campaigns",
           label: "내 캠페인",
         }
-      : {
+      : sessionStatus === "anonymous"
+        ? {
           href: `/login/influencer?next=${encodeURIComponent(currentSharePath)}`,
           label: "지원 계정 로그인",
-        };
+          }
+        : undefined;
   const logoHref =
-    sessionStatus === "authenticated" ? "/influencer/dashboard" : "/";
+    sessionStatus === "authenticated"
+      ? "/influencer/dashboard"
+      : sessionStatus === "anonymous"
+        ? "/"
+        : undefined;
 
   return (
     <main className="min-h-svh bg-[#f7f6f3] font-sans text-neutral-950">
       <header className="border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-[1180px] items-center justify-between px-4 sm:px-6 lg:px-8">
-          <Link to={logoHref} className="flex min-w-0 shrink-0 items-center gap-3">
-            <LogoMark />
-            <span className="font-neo-heavy text-[18px] leading-none text-neutral-950">
-              {PRODUCT_NAME}
+          {logoHref ? (
+            <Link to={logoHref} className="flex min-w-0 shrink-0 items-center gap-3">
+              <LogoMark />
+              <span className="font-neo-heavy text-[18px] leading-none text-neutral-950">
+                {PRODUCT_NAME}
+              </span>
+            </Link>
+          ) : (
+            <div className="flex min-w-0 shrink-0 items-center gap-3" aria-busy="true">
+              <LogoMark />
+              <span className="font-neo-heavy text-[18px] leading-none text-neutral-950">
+                {PRODUCT_NAME}
+              </span>
+            </div>
+          )}
+          {accountLink ? (
+            <Link
+              to={accountLink.href}
+              className="inline-flex h-10 items-center justify-center rounded-[10px] border border-neutral-200 bg-white px-3 text-[13px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:text-neutral-950"
+            >
+              {accountLink.label}
+            </Link>
+          ) : (
+            <span
+              className="inline-flex h-10 w-[120px] items-center justify-center rounded-[10px] border border-neutral-200 bg-white"
+              aria-busy="true"
+            >
+              <span className="sr-only">로그인 상태 확인 중</span>
+              <span
+                className="h-4 w-20 animate-pulse rounded bg-neutral-200"
+                aria-hidden="true"
+              />
             </span>
-          </Link>
-          <Link
-            to={accountLink.href}
-            className="inline-flex h-10 items-center justify-center rounded-[10px] border border-neutral-200 bg-white px-3 text-[13px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:text-neutral-950"
-          >
-            {accountLink.label}
-          </Link>
+          )}
         </div>
       </header>
 
@@ -2002,6 +2101,7 @@ function CampaignShell({
 }) {
   const navigate = useNavigate();
   const isAuthenticated = mode === "authenticated";
+  const isCheckingSession = mode === "checking";
   const dashboardHref = `/${role}/dashboard`;
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const closeAccountMenu = useCallback(() => setAccountMenuOpen(false), []);
@@ -2034,27 +2134,39 @@ function CampaignShell({
     <main className="flex h-svh flex-col overflow-hidden bg-[#f7f6f3] font-sans text-neutral-950">
       <header className="z-30 shrink-0 border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-[1500px] items-center justify-between px-3 sm:px-5 lg:px-6">
-          <Link
-            to={isAuthenticated ? dashboardHref : "/"}
-            className="flex shrink-0 items-center gap-3"
-          >
-            <LogoMark />
-            <span className="font-neo-heavy text-[18px] leading-none text-neutral-950 sm:text-[19px]">
-              {PRODUCT_NAME}
-            </span>
-          </Link>
+          {isCheckingSession ? (
+            <div
+              className="flex shrink-0 items-center gap-3"
+              aria-busy="true"
+            >
+              <LogoMark />
+              <span className="font-neo-heavy text-[18px] leading-none text-neutral-950 sm:text-[19px]">
+                {PRODUCT_NAME}
+              </span>
+            </div>
+          ) : (
+            <Link
+              to={isAuthenticated ? dashboardHref : "/"}
+              className="flex shrink-0 items-center gap-3"
+            >
+              <LogoMark />
+              <span className="font-neo-heavy text-[18px] leading-none text-neutral-950 sm:text-[19px]">
+                {PRODUCT_NAME}
+              </span>
+            </Link>
+          )}
 
           <div className="ml-2 flex min-w-0 flex-1 items-center justify-end gap-1.5 overflow-visible sm:ml-3 sm:gap-2">
             {isAuthenticated ? (
               <>
-                <div className="hidden sm:block">
+                <div className="hidden lg:block">
                   <DashboardSurfaceSwitch role={role} active="campaigns" />
                 </div>
-                <div className="hidden sm:contents">{actions}</div>
+                <div className="hidden lg:contents">{actions}</div>
                 <button
                   type="button"
                   onClick={handleLogout}
-                  className="yl-header-action yl-header-action-secondary hidden sm:inline-flex"
+                  className="yl-header-action yl-header-action-secondary hidden lg:inline-flex"
                   aria-label="로그아웃"
                   title="로그아웃"
                 >
@@ -2093,7 +2205,7 @@ function CampaignShell({
                   />
                 )}
               </>
-            ) : (
+            ) : mode === "anonymous" ? (
               <Link
                 to={`/login/${role}`}
                 className="yl-header-action yl-header-action-secondary shrink-0"
@@ -2103,6 +2215,17 @@ function CampaignShell({
                 <LogIn className="h-4 w-4" />
                 <span className="hidden sm:inline">로그인</span>
               </Link>
+            ) : (
+              <span
+                className="yl-header-action yl-header-action-secondary pointer-events-none shrink-0"
+                aria-busy="true"
+              >
+                <span className="sr-only">로그인 상태 확인 중</span>
+                <span
+                  className="h-4 w-16 animate-pulse rounded bg-neutral-200"
+                  aria-hidden="true"
+                />
+              </span>
             )}
           </div>
         </div>

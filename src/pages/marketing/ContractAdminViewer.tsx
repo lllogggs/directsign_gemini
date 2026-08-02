@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router";
 import {
   AlertCircle,
   CheckCircle2,
@@ -23,8 +23,7 @@ import { format } from "date-fns";
 import { Textarea } from "@/components/ui/textarea";
 import { ClauseHistory, Contract, ContractStatus, useAppStore } from "../../store";
 import { apiFetch, apiPath } from "../../domain/api";
-import { createShareToken, isFixedCampaignContract } from "../../domain/contracts";
-import { buildContractShareUrl } from "../../domain/links";
+import { isFixedCampaignContract } from "../../domain/contracts";
 import { PRODUCT_NAME } from "../../domain/brand";
 import { LEGAL_CONTACT_EMAIL } from "../../domain/legalEntity";
 import { SUPPORT_ACCESS_CONSENT_TEXT } from "../../domain/legalConsent";
@@ -209,7 +208,6 @@ export function ContractAdminViewer() {
       pendingClauses,
       activeShare,
       allApproved,
-      shareUrl: buildContractShareUrl(contract.id, contract.evidence?.share_token),
     };
   }, [contract]);
   const safeInfluencerHref = getSafeExternalHref(
@@ -390,8 +388,34 @@ export function ContractAdminViewer() {
       return;
     }
 
-    await navigator.clipboard.writeText(summary.shareUrl);
-    setNotice("계약서 링크를 복사했습니다.");
+    try {
+      const response = await apiFetch(
+        `/api/contracts/${encodeURIComponent(contract.id)}/share-link/reveal`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { Accept: "application/json" },
+        },
+      );
+      const payload = (await response.json()) as {
+        share_url?: string;
+        error?: string;
+      };
+      if (!response.ok || !payload.share_url) {
+        throw new Error(payload.error || "계약서 링크를 확인하지 못했습니다.");
+      }
+      await navigator.clipboard.writeText(payload.share_url);
+      setNotice("계약서 링크를 복사했습니다.");
+    } catch (error) {
+      setNotice(
+        error instanceof Error
+          ? translateApiErrorMessage(
+              error.message,
+              "계약서 링크를 복사하지 못했습니다.",
+            )
+          : "계약서 링크를 복사하지 못했습니다.",
+      );
+    }
   };
 
   const saveDraft = () => {
@@ -458,7 +482,6 @@ export function ContractAdminViewer() {
     }
 
     const now = new Date().toISOString();
-    const shareToken = contract.evidence?.share_token ?? createShareToken();
 
     updateContract(contract.id, {
       status: "APPROVED",
@@ -475,7 +498,6 @@ export function ContractAdminViewer() {
       },
       evidence: {
         share_token_status: "active",
-        share_token: shareToken,
         share_token_expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
         audit_ready: true,
         pdf_status: "draft_ready",

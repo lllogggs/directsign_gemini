@@ -1,9 +1,8 @@
-import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useRef, useState } from "react";
+import { useNavigate } from "react-router";
 import {
   AlertTriangle,
   ArrowLeft,
-  Building2,
   CheckCircle2,
   FileText,
   FileUp,
@@ -17,8 +16,6 @@ import {
   type VerificationAccountInfo,
   type VerificationRequest,
   getVerificationRejectionGuidance,
-  verificationStatusLabel,
-  verificationStatusTone,
 } from "../../domain/verification";
 import { apiFetch } from "../../domain/api";
 import {
@@ -26,7 +23,6 @@ import {
   useVerificationSummary,
 } from "../../hooks/useVerificationSummary";
 import { PRODUCT_NAME } from "../../domain/brand";
-import { removeInternalTestLabel } from "../../domain/display";
 import { translateApiErrorMessage } from "../../domain/userMessages";
 import { clearAdvertiserSessionCache } from "../../domain/advertiserSessionCache";
 import { clearAdvertiserDashboardBootstrapPreload } from "../../domain/advertiserDashboardPreload";
@@ -40,6 +36,58 @@ const ACCEPTED_VERIFICATION_FILE_TYPES = new Set([
   "image/jpeg",
   "image/webp",
 ]);
+const KST_DATE_FORMATTER = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Seoul",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+const getCurrentKstDate = () => {
+  const parts = Object.fromEntries(
+    KST_DATE_FORMATTER.formatToParts(new Date())
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  );
+  return `${parts.year}-${parts.month}-${parts.day}`;
+};
+
+type VerificationSubmissionMode = "automatic" | "document";
+type VerificationFallbackReason =
+  | "not_matched"
+  | "service_unavailable"
+  | "inactive";
+
+interface AdvertiserVerificationForm {
+  business_registration_number: string;
+  representative_name: string;
+  business_start_date: string;
+  document_issue_date: string;
+  document_check_number: string;
+}
+
+interface AdvertiserVerificationResponse {
+  error?: string;
+  outcome?: "approved" | "evidence_required" | "pending_manual_review";
+  reason?: VerificationFallbackReason;
+  message?: string;
+  retryable?: boolean;
+  request?: VerificationRequest;
+}
+
+interface ManualFallback {
+  reason: VerificationFallbackReason;
+  message: string;
+  retryable: boolean;
+}
+
+const initialForm: AdvertiserVerificationForm = {
+  business_registration_number: "",
+  representative_name: "",
+  business_start_date: "",
+  document_issue_date: "",
+  document_check_number: "",
+};
 
 const inferVerificationFileType = (file: File) => {
   if (file.type) return file.type;
@@ -62,30 +110,11 @@ const validateVerificationFile = (file: File | null) => {
   return undefined;
 };
 
-interface AdvertiserVerificationForm {
-  subject_name: string;
-  business_registration_number: string;
-  representative_name: string;
-  submitted_by_name: string;
-  submitted_by_email: string;
-  manager_phone: string;
-  business_start_date: string;
-  document_issue_date: string;
-  document_check_number: string;
-  note: string;
-}
-
-const initialForm: AdvertiserVerificationForm = {
-  subject_name: "",
-  business_registration_number: "",
-  representative_name: "",
-  submitted_by_name: "",
-  submitted_by_email: "",
-  manager_phone: "",
-  business_start_date: "",
-  document_issue_date: "",
-  document_check_number: "",
-  note: "",
+const formatBusinessRegistrationInput = (value: string) => {
+  const digits = value.replace(/\D/g, "").slice(0, 10);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 5) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+  return `${digits.slice(0, 3)}-${digits.slice(3, 5)}-${digits.slice(5)}`;
 };
 
 const withVerificationDefaults = (
@@ -94,8 +123,6 @@ const withVerificationDefaults = (
   account?: VerificationAccountInfo,
 ): AdvertiserVerificationForm => ({
   ...form,
-  subject_name:
-    form.subject_name || latest?.subject_name || account?.company_name || "",
   business_registration_number:
     form.business_registration_number ||
     latest?.business_registration_number ||
@@ -106,29 +133,36 @@ const withVerificationDefaults = (
     latest?.representative_name ||
     account?.representative_name ||
     "",
-  submitted_by_name:
-    form.submitted_by_name || latest?.submitted_by_name || account?.name || "",
-  submitted_by_email:
-    form.submitted_by_email || latest?.submitted_by_email || account?.email || "",
-  manager_phone: form.manager_phone || latest?.manager_phone || "",
-  business_start_date: form.business_start_date || "",
   document_issue_date:
     form.document_issue_date || latest?.document_issue_date || "",
   document_check_number:
     form.document_check_number || latest?.document_check_number || "",
 });
 
+const fallbackFromRejectedRequest = (): ManualFallback => ({
+  reason: "not_matched",
+  message: "반려 사유를 확인하고 새 사업자등록증명원을 제출해 주세요.",
+  retryable: false,
+});
+
 export function AdvertiserVerification() {
   const navigate = useNavigate();
-  const { summary, isLoading, refresh } = useVerificationSummary({ role: "advertiser" });
+  const {
+    summary,
+    isLoading,
+    error: summaryError,
+    refresh,
+  } = useVerificationSummary({ role: "advertiser" });
   const [form, setForm] = useState(initialForm);
   const [file, setFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [submitted, setSubmitted] = useState(false);
   const [hasEditedForm, setHasEditedForm] = useState(false);
+  const [manualFallback, setManualFallback] =
+    useState<ManualFallback | null>(null);
   const [showUpdateForm, setShowUpdateForm] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const manualReviewRef = useRef<HTMLElement>(null);
 
   const advertiser = summary?.advertiser;
   const status = advertiser?.status ?? "not_submitted";
@@ -136,28 +170,25 @@ export function AdvertiserVerification() {
   const account = advertiser?.account;
   const approved = status === "approved";
   const pending = status === "pending";
-  const rejectionGuidance =
-    status === "rejected"
-      ? getVerificationRejectionGuidance(latest, "advertiser_organization")
-      : undefined;
-  const displayCompany = removeInternalTestLabel(
-    latest?.subject_name || account?.company_name,
-    "브랜드",
-  );
-  const displayManager = removeInternalTestLabel(
-    latest?.submitted_by_name || account?.name,
-    "광고주",
-  );
-  const displayEmail = latest?.submitted_by_email || account?.email || "-";
-  const displayBusinessNumber =
+  const rejected = status === "rejected";
+  const rejectionGuidance = rejected
+    ? getVerificationRejectionGuidance(latest, "advertiser_organization")
+    : undefined;
+  const visibleForm = hasEditedForm
+    ? form
+    : withVerificationDefaults(form, latest, account);
+  const activeFallback = rejected
+    ? manualFallback ?? fallbackFromRejectedRequest()
+    : manualFallback;
+  const showVerificationForm = (!approved && !pending) || showUpdateForm;
+  const showApprovedOverview = approved && !showUpdateForm;
+  const displayBusinessNumber = formatBusinessRegistrationInput(
     latest?.business_registration_number ||
-    account?.business_registration_number ||
-    "-";
-  const visibleForm =
-    hasEditedForm || submitted ? form : withVerificationDefaults(form, latest, account);
-  const showVerificationForm = !approved || showUpdateForm;
-  const showApprovedOverview =
-    approved && !showVerificationForm && !rejectionGuidance;
+      account?.business_registration_number ||
+      "",
+  );
+  const displayRepresentative =
+    latest?.representative_name || account?.representative_name || "-";
 
   const handleLogout = async () => {
     try {
@@ -180,15 +211,20 @@ export function AdvertiserVerification() {
     }
   };
 
-  const updateForm = (updates: Partial<AdvertiserVerificationForm>) => {
+  const updateForm = (
+    updates: Partial<AdvertiserVerificationForm>,
+    resetFallback = false,
+  ) => {
     setForm({ ...visibleForm, ...updates });
     setHasEditedForm(true);
     setError("");
-    setSubmitted(false);
+    if (resetFallback && !rejected) {
+      setManualFallback(null);
+      setFile(null);
+    }
   };
 
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
+  const submitVerification = async (submissionMode: VerificationSubmissionMode) => {
     setError("");
 
     if (isSubmitting || isLoading) return;
@@ -197,7 +233,7 @@ export function AdvertiserVerification() {
       return;
     }
 
-    if (!file) {
+    if (submissionMode === "document" && !file) {
       setError("사업자등록증명원 PDF 또는 이미지 파일을 첨부해 주세요.");
       return;
     }
@@ -211,7 +247,15 @@ export function AdvertiserVerification() {
     setIsSubmitting(true);
 
     try {
-      const file_data_url = await readFileAsDataUrl(file);
+      const evidenceFile =
+        submissionMode === "document" && file
+          ? {
+              name: file.name,
+              type: inferVerificationFileType(file),
+              size: file.size,
+              data_url: await readFileAsDataUrl(file),
+            }
+          : undefined;
       const response = await apiFetch("/api/verification/advertiser", {
         method: "POST",
         credentials: "include",
@@ -220,62 +264,86 @@ export function AdvertiserVerification() {
           Accept: "application/json",
         },
         body: JSON.stringify({
-          ...visibleForm,
-          evidence_file: {
-            name: file.name,
-            type: inferVerificationFileType(file),
-            size: file.size,
-            data_url: file_data_url,
-          },
+          submission_mode: submissionMode,
+          business_registration_number:
+            visibleForm.business_registration_number,
+          representative_name: visibleForm.representative_name,
+          business_start_date: visibleForm.business_start_date,
+          ...(submissionMode === "document"
+            ? {
+                document_issue_date: visibleForm.document_issue_date,
+                document_check_number: visibleForm.document_check_number,
+                evidence_file: evidenceFile,
+              }
+            : {}),
         }),
       });
 
-      const data = (await response.json()) as { error?: string };
+      const data = (await response.json()) as AdvertiserVerificationResponse;
 
       if (!response.ok) {
         throw new Error(
-          translateApiErrorMessage(data.error, "인증 요청을 접수하지 못했습니다."),
+          translateApiErrorMessage(data.error, "사업자 정보를 확인하지 못했습니다."),
         );
       }
 
-      setSubmitted(true);
+      if (data.outcome === "evidence_required") {
+        const nextFallback: ManualFallback = {
+          reason: data.reason ?? "not_matched",
+          message:
+            data.message ??
+            "자동 확인을 완료하지 못했습니다. 서류로 이어서 인증해 주세요.",
+          retryable: data.retryable === true,
+        };
+        setManualFallback(nextFallback);
+        window.requestAnimationFrame(() => manualReviewRef.current?.focus());
+        return;
+      }
+
       setFile(null);
       setForm(initialForm);
       setHasEditedForm(false);
+      setManualFallback(null);
+      setShowUpdateForm(false);
       await refresh();
     } catch (submitError) {
       setError(
         submitError instanceof Error
           ? translateApiErrorMessage(
               submitError.message,
-              "인증 요청을 접수하지 못했습니다.",
+              "사업자 정보를 확인하지 못했습니다.",
             )
-          : "인증 요청을 접수하지 못했습니다.",
+          : "사업자 정보를 확인하지 못했습니다.",
       );
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    await submitVerification(activeFallback ? "document" : "automatic");
+  };
+
   return (
-    <div className="min-h-svh bg-[#f4f5f7] font-sans text-neutral-950 lg:fixed lg:inset-0 lg:overflow-hidden">
+    <div className="min-h-svh bg-[#f4f5f7] font-sans text-neutral-950">
       <header className="sticky top-0 z-30 border-b border-neutral-200/80 bg-white shadow-[0_1px_0_rgba(15,23,42,0.04)]">
         <div className="mx-auto flex h-14 max-w-[1500px] items-center justify-between px-3 sm:px-5">
-          <div className="flex min-w-0 items-center gap-3">
-            <button
-              type="button"
-              onClick={() => navigate("/advertiser/dashboard")}
-              className="yl-brand-action group flex min-w-0 items-center gap-3 rounded-lg text-neutral-950 transition hover:text-neutral-700"
-              aria-label={PRODUCT_NAME}
-            >
-              <LogoMark />
-              <span className="truncate text-lg font-extrabold">{PRODUCT_NAME}</span>
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => navigate("/advertiser/dashboard")}
+            className="yl-brand-action group flex min-w-0 items-center gap-3 rounded-lg text-neutral-950 transition hover:text-neutral-700"
+            aria-label={PRODUCT_NAME}
+          >
+            <LogoMark />
+            <span className="truncate text-lg font-extrabold">{PRODUCT_NAME}</span>
+          </button>
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => navigate("/advertiser/dashboard")}
+              aria-label="대시보드로 이동"
+              title="대시보드로 이동"
               className="yl-header-action yl-header-action-secondary"
             >
               <ArrowLeft className="h-4 w-4" />
@@ -284,6 +352,8 @@ export function AdvertiserVerification() {
             <button
               type="button"
               onClick={handleLogout}
+              aria-label="로그아웃"
+              title="로그아웃"
               className="yl-header-action yl-header-action-secondary"
             >
               <LogOut className="h-4 w-4" />
@@ -304,433 +374,392 @@ export function AdvertiserVerification() {
         </div>
       </header>
 
-      <main
-        className={`mx-auto grid min-h-[calc(100svh-56px)] gap-4 px-5 py-5 sm:px-8 lg:h-[calc(100vh-56px)] lg:min-h-0 lg:overflow-hidden ${
-          showApprovedOverview
-            ? "max-w-4xl lg:grid-cols-1"
-            : "max-w-6xl lg:grid-cols-[minmax(0,1fr)_320px]"
-        }`}
-      >
-        <section
-          className={`overflow-visible rounded-[16px] border border-neutral-200/90 bg-white p-0 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_22px_60px_rgba(15,23,42,0.08)] lg:overflow-y-auto ${
-            showApprovedOverview
-              ? "min-h-[420px]"
-              : "min-h-0"
-          }`}
-        >
-          {approved && !showVerificationForm && (
-            <div className="m-5 overflow-hidden rounded-[16px] border border-neutral-200 bg-white shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_18px_48px_rgba(15,23,42,0.07)] sm:m-6">
-              <div className="border-b border-neutral-200 bg-[#fbfaf7] px-5 py-5 sm:px-6">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="flex min-w-0 items-start gap-3">
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[12px] bg-neutral-950 text-white">
-                      <ShieldCheck className="h-5 w-5" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[12px] font-extrabold text-emerald-700">
-                        사업자 인증 완료
-                      </p>
-                      <h1 className="mt-1 break-words text-[20px] font-extrabold tracking-tight text-neutral-950 [overflow-wrap:anywhere] sm:text-[22px]">
-                        {displayCompany}
-                      </h1>
-                      <p className="mt-1 text-sm font-semibold leading-6 text-neutral-600">
-                        인증된 사업자 정보로 계약 공유 링크를 발송할 수 있습니다.
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowUpdateForm(true)}
-                    className="h-10 shrink-0 rounded-[10px] border border-neutral-200 bg-white px-4 text-sm font-extrabold text-neutral-800 transition hover:border-neutral-300 hover:bg-neutral-50"
-                  >
-                    인증 정보 갱신 요청
-                  </button>
-                </div>
-              </div>
-              <div className="grid min-w-0 gap-4 p-5 sm:p-6 lg:grid-cols-[minmax(0,1fr)_260px]">
-                <section className="min-w-0 rounded-[14px] border border-neutral-200 bg-white p-4">
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <p className="text-sm font-extrabold text-neutral-950">
-                      인증 사업자 정보
+      <main className="mx-auto min-h-[calc(100svh-56px)] max-w-4xl px-4 py-5 sm:px-8 sm:py-8">
+        {isLoading && !summary ? (
+          <VerificationLoadingShell />
+        ) : summaryError && !summary ? (
+          <section className="rounded-[16px] border border-neutral-200 bg-white p-6 shadow-[0_22px_60px_rgba(15,23,42,0.08)]">
+            <h1 className="text-xl font-extrabold">인증 상태를 확인하지 못했습니다</h1>
+            <p className="mt-2 text-sm font-semibold leading-6 text-neutral-600">
+              {summaryError}
+            </p>
+            <button
+              type="button"
+              onClick={() => void refresh()}
+              className="mt-5 h-11 rounded-[10px] bg-blue-600 px-5 text-sm font-extrabold text-white transition hover:bg-blue-700"
+            >
+              다시 시도
+            </button>
+          </section>
+        ) : showApprovedOverview ? (
+          <ApprovedVerificationOverview
+            businessNumber={displayBusinessNumber || "-"}
+            representativeName={displayRepresentative}
+            onUpdate={() => {
+              setShowUpdateForm(true);
+              setError("");
+            }}
+            onNavigate={navigate}
+          />
+        ) : pending ? (
+          <PendingVerificationOverview latest={latest} />
+        ) : (
+          <section className="overflow-hidden rounded-[16px] border border-neutral-200/90 bg-white shadow-[0_22px_60px_rgba(15,23,42,0.08)]">
+            {rejectionGuidance ? (
+              <div className="border-b border-rose-200 bg-rose-50 p-5 sm:p-6">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-rose-700" />
+                  <div className="min-w-0">
+                    <h2 className="text-sm font-extrabold text-rose-950">
+                      {rejectionGuidance.title}
+                    </h2>
+                    <p className="mt-1 text-sm font-semibold leading-6 text-rose-800">
+                      {rejectionGuidance.reviewerNote}
                     </p>
-                    <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-extrabold text-emerald-700">
-                      승인됨
-                    </span>
-                  </div>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <InfoRow label="회사" value={displayCompany} compact />
-                    <InfoRow label="담당자" value={displayManager} compact />
-                    <InfoRow
-                      label="이메일"
-                      value={<EmailAddress value={displayEmail} />}
-                      compact
-                      preserveBreaks
-                    />
-                    <InfoRow label="사업자등록번호" value={displayBusinessNumber} compact />
-                  </div>
-                  {latest ? (
-                    <div className="mt-3 rounded-[10px] border border-neutral-200 bg-[#fbfbfc] px-3 py-2 text-xs font-semibold leading-5 text-neutral-700">
-                      제출일 {new Intl.DateTimeFormat("ko-KR").format(new Date(latest.created_at))}
-                      {latest.reviewer_note ? ` · 검토 메모 ${latest.reviewer_note}` : ""}
-                    </div>
-                  ) : null}
-                </section>
-                <aside className="rounded-[14px] border border-neutral-200 bg-[#fbfbfc] p-4">
-                  <p className="text-sm font-extrabold text-neutral-950">
-                    다음 작업
-                  </p>
-                  <p className="mt-1 text-xs font-semibold leading-5 text-neutral-500">
-                    계약 작성과 캠페인 모집을 바로 시작할 수 있습니다.
-                  </p>
-                  <div className="mt-4 grid gap-2">
-                    <button
-                      type="button"
-                      onClick={() => navigate("/advertiser/builder")}
-                      className="inline-flex h-11 items-center justify-center gap-2 rounded-[10px] bg-blue-600 px-4 text-sm font-extrabold text-white transition hover:bg-blue-700"
-                    >
-                      <FileText className="h-4 w-4" />
-                      1:1 계약 작성
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => navigate("/advertiser/campaigns/new")}
-                      className="inline-flex h-11 items-center justify-center gap-2 rounded-[10px] border border-neutral-200 bg-white px-4 text-sm font-extrabold text-neutral-800 transition hover:border-neutral-300 hover:bg-neutral-50"
-                    >
-                      <Megaphone className="h-4 w-4" />
-                      캠페인 작성
-                    </button>
-                  </div>
-                </aside>
-              </div>
-            </div>
-          )}
-
-          {rejectionGuidance && (
-            <div className="mx-5 mt-5 rounded-[14px] border border-rose-200 bg-rose-50 p-4 shadow-[inset_3px_0_0_rgba(190,18,60,0.22)] sm:mx-6">
-              <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-rose-700 ring-1 ring-rose-100">
-                  <AlertTriangle className="h-5 w-5" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-rose-900">
-                    {rejectionGuidance.title}
-                  </p>
-                  <p className="mt-1 text-sm leading-6 text-rose-800/80">
-                    {rejectionGuidance.body}
-                  </p>
-                  <div className="mt-3 rounded-md border border-rose-100 bg-white/70 px-3 py-2 text-xs font-semibold leading-5 text-rose-900">
-                    반려 사유: {rejectionGuidance.reviewerNote}
-                  </div>
-                  <ul className="mt-3 grid gap-2 text-xs leading-5 text-rose-900 sm:grid-cols-2">
-                    {rejectionGuidance.checklist.map((item) => (
-                      <li key={item} className="flex items-start gap-2">
-                        <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                        <span>{item}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {showVerificationForm && (
-            <div className="border-b border-neutral-200 bg-[#fbfaf7] px-5 py-5 sm:px-6">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <p className="text-[12px] font-extrabold text-neutral-500">
-                    광고주 계정 심사
-                  </p>
-                  <h1 className="mt-1 text-[25px] font-extrabold tracking-tight text-neutral-950">
-                    {approved ? "사업자 인증 정보 갱신" : "사업자 인증 요청"}
-                  </h1>
-                  <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-neutral-600">
-                    {approved
-                      ? "상호, 담당자, 사업자 정보가 바뀐 경우 새 증빙으로 다시 확인합니다."
-                      : "계약 발송 전에 상호, 대표자, 사업자번호와 증빙 파일을 확인합니다."}
-                  </p>
-                </div>
-                <span
-                  className={`w-fit rounded-full border px-3 py-1 text-xs font-semibold ${verificationStatusTone(
-                    status,
-                  )}`}
-                >
-                  {isLoading ? "정보 확인 중" : verificationStatusLabel(status)}
-                </span>
-              </div>
-              <div className="mt-5 grid gap-2 text-xs font-semibold leading-5 text-neutral-600 sm:grid-cols-3">
-                <div className="rounded-[12px] border border-neutral-200 bg-white px-3 py-3 shadow-[0_1px_0_rgba(15,23,42,0.03)]">
-                  <span className="block text-neutral-950">필수 정보</span>
-                  사업자번호, 대표자명, 증빙 파일
-                </div>
-                <div className="rounded-[12px] border border-neutral-200 bg-white px-3 py-3 shadow-[0_1px_0_rgba(15,23,42,0.03)]">
-                  <span className="block text-neutral-950">검토 시간</span>
-                  보통 1영업일 내 확인
-                </div>
-                <div className="rounded-[12px] border border-neutral-200 bg-white px-3 py-3 shadow-[0_1px_0_rgba(15,23,42,0.03)]">
-                  <span className="block text-neutral-950">승인 전 제한</span>
-                  승인 전 계약 공유 차단
-                </div>
-              </div>
-            </div>
-          )}
-
-          {showVerificationForm && (
-            <form onSubmit={handleSubmit} className="space-y-4 p-5 sm:p-6">
-              <section className="rounded-[14px] border border-neutral-200 bg-white p-4 shadow-[0_1px_0_rgba(15,23,42,0.03)]">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <div className="flex items-start gap-3">
-                    <span className="flex h-7 min-w-7 items-center justify-center rounded-[9px] bg-neutral-950 text-[11px] font-extrabold text-white">
-                      01
-                    </span>
-                    <div>
-                    <p className="text-sm font-extrabold text-neutral-950">
-                      사업자 정보
-                    </p>
-                    <p className="mt-0.5 text-xs font-semibold text-neutral-500">
-                      국세청 조회와 증빙 대조에 쓰는 필수 정보입니다.
-                    </p>
-                    </div>
+                    <ul className="mt-3 grid gap-2 text-xs font-semibold leading-5 text-rose-900 sm:grid-cols-2">
+                      {rejectionGuidance.checklist.map((item) => (
+                        <li key={item} className="flex items-start gap-2">
+                          <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 </div>
-                <div className="grid gap-3">
-                  <TextField
-                    label="회사/브랜드명"
-                    value={visibleForm.subject_name}
-                    onChange={(value) => updateForm({ subject_name: value })}
-                    required
-                  />
-                  <TextField
-                    label="사업자등록번호"
-                    value={visibleForm.business_registration_number}
-                    onChange={(value) =>
-                      updateForm({ business_registration_number: value })
-                    }
-                    placeholder="000-00-00000"
-                    required
-                  />
-                  <TextField
-                    label="대표자명"
-                    value={visibleForm.representative_name}
-                    onChange={(value) => updateForm({ representative_name: value })}
-                    required
-                  />
-                  <TextField
-                    label="개업일자"
-                    type="text"
-                    placeholder="예: 20260517"
-                    value={visibleForm.business_start_date}
-                    onChange={(value) => updateForm({ business_start_date: value })}
-                  />
-                </div>
-              </section>
-
-              <section className="rounded-[14px] border border-neutral-200 bg-white p-4 shadow-[0_1px_0_rgba(15,23,42,0.03)]">
-                <div className="mb-3 flex items-start gap-3">
-                  <span className="flex h-7 min-w-7 items-center justify-center rounded-[9px] bg-neutral-950 text-[11px] font-extrabold text-white">
-                    02
-                  </span>
-                  <div>
-                    <p className="text-sm font-extrabold text-neutral-950">
-                      담당자와 증빙
-                    </p>
-                    <p className="mt-0.5 text-xs font-semibold text-neutral-500">
-                      사업자 증빙과 대표 서명 또는 인감 날인 자료를 함께 확인합니다.
-                    </p>
-                  </div>
-                </div>
-                <div className="grid gap-3">
-                  <TextField
-                    label="담당자명"
-                    value={visibleForm.submitted_by_name}
-                    onChange={(value) => updateForm({ submitted_by_name: value })}
-                    required
-                  />
-                  <TextField
-                    label="담당자 이메일"
-                    type="email"
-                    value={visibleForm.submitted_by_email}
-                    onChange={(value) => updateForm({ submitted_by_email: value })}
-                    required
-                  />
-                  <TextField
-                    label="담당자 연락처"
-                    value={visibleForm.manager_phone}
-                    onChange={(value) => updateForm({ manager_phone: value })}
-                  />
-                  <TextField
-                    label="문서 발급일"
-                    type="text"
-                    placeholder="예: 20260517"
-                    value={visibleForm.document_issue_date}
-                    onChange={(value) =>
-                      updateForm({ document_issue_date: value })
-                    }
-                    required
-                  />
-                  <TextField
-                    label="문서확인번호/발급번호"
-                    value={visibleForm.document_check_number}
-                    onChange={(value) =>
-                      updateForm({ document_check_number: value })
-                    }
-                    placeholder="정부24/홈택스 문서 번호"
-                  />
-                  <label className="block">
-                    <span className="text-sm font-semibold text-neutral-900">
-                      사업자/서명 증빙 파일
-                    </span>
-                    <span className="mt-2 flex min-h-[64px] cursor-pointer items-center gap-3 rounded-[12px] border border-dashed border-neutral-300 bg-[#fbfbfc] px-4 transition hover:border-neutral-500 hover:bg-white">
-                      <FileUp className="h-4 w-4 shrink-0 text-neutral-500" />
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-extrabold text-neutral-900">
-                          {file ? file.name : "증빙 파일 업로드"}
-                        </span>
-                        <span className="mt-1 block text-xs font-semibold text-neutral-500">
-                          PDF, PNG, JPG, WebP · 10MB 이하
-                        </span>
-                      </span>
-                      <input
-                        type="file"
-                        accept="application/pdf,image/png,image/jpeg,image/webp"
-                        className="sr-only"
-                        onChange={(event) => {
-                          const nextFile = event.target.files?.[0] ?? null;
-                          const fileError = validateVerificationFile(nextFile);
-                          if (fileError) {
-                            setFile(null);
-                            setError(fileError);
-                            event.currentTarget.value = "";
-                            return;
-                          }
-                          setFile(nextFile);
-                          setError("");
-                        }}
-                      />
-                    </span>
-                  </label>
-                </div>
-              </section>
-
-              <div className="rounded-[14px] border border-neutral-200 bg-white p-4 shadow-[0_1px_0_rgba(15,23,42,0.03)]">
-                <label className="text-sm font-semibold text-neutral-900">
-                  선택 메모
-                </label>
-                <textarea
-                  value={visibleForm.note}
-                  onChange={(event) => updateForm({ note: event.target.value })}
-                  className="mt-2 min-h-16 w-full rounded-lg border border-neutral-200 bg-[#fbfbfc] p-3 text-sm outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950 focus:bg-white focus:shadow-[0_0_0_3px_rgba(23,23,23,0.05)]"
-                  placeholder="상호가 브랜드명과 다르거나 대행사가 대신 계약하는 경우 적어주세요."
-                />
-              </div>
-
-              {error && (
-                <div
-                  role="alert"
-                  aria-live="assertive"
-                  className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700"
-                >
-                  {error}
-                </div>
-              )}
-              {submitted && (
-                <div
-                  role="status"
-                  aria-live="polite"
-                  className="rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm font-semibold text-neutral-800"
-                >
-                  인증 요청이 접수되었습니다. 승인 전까지 계약 발송은 제한됩니다.
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={isSubmitting || isLoading || pending}
-                className="h-11 w-full rounded-lg bg-blue-600 px-5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(37,99,235,0.16)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-500 disabled:shadow-none"
-              >
-                {isSubmitting
-                  ? "접수 중"
-                  : approved
-                    ? "인증 정보 갱신 요청"
-                    : pending
-                      ? "심사 중"
-                    : status === "rejected"
-                      ? "새 증빙으로 재제출"
-                      : "수기 심사 요청"}
-              </button>
-            </form>
-          )}
-        </section>
-
-        {!showApprovedOverview ? (
-        <aside className="space-y-3 overflow-visible lg:min-h-0 lg:overflow-y-auto">
-          <section className="rounded-lg border border-neutral-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_14px_34px_rgba(15,23,42,0.05)]">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-neutral-950 text-white">
-                  <Building2 className="h-5 w-5" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-neutral-950">
-                    {approved ? "인증 정보" : "제출 전 확인"}
-                  </p>
-                </div>
-              </div>
-              {!approved && (
-                <span
-                  className={`rounded-full border px-3 py-1 text-xs font-semibold ${verificationStatusTone(
-                    status,
-                  )}`}
-                >
-                  {isLoading ? "정보 확인 중" : verificationStatusLabel(status)}
-                </span>
-              )}
-            </div>
-
-            {(latest || account) ? (
-              <div className="mt-4 space-y-3 border-t border-neutral-100 pt-4 text-sm">
-                <InfoRow label="회사" value={displayCompany} />
-                <InfoRow label="담당" value={displayManager} />
-                <InfoRow
-                  label="이메일"
-                  value={<EmailAddress value={displayEmail} />}
-                  preserveBreaks
-                />
-                <InfoRow label="사업자" value={displayBusinessNumber} />
-                {latest && (
-                  <InfoRow
-                    label="제출일"
-                    value={new Intl.DateTimeFormat("ko-KR").format(
-                      new Date(latest.created_at),
-                    )}
-                  />
-                )}
-                {latest?.reviewer_note && (
-                  <InfoRow label="검토 메모" value={latest.reviewer_note} />
-                )}
               </div>
             ) : null}
-            {!approved && (
-              <ul className="mt-4 space-y-2 border-t border-neutral-100 pt-4 text-xs leading-5 text-neutral-600">
-                <li className="flex gap-2">
-                  <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-500" />
-                  사업자번호와 대표자명을 확인합니다.
-                </li>
-                <li className="flex gap-2">
-                  <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-500" />
-                  파일은 10MB 이하 PDF/이미지만 받습니다.
-                </li>
-                <li className="flex gap-2">
-                  <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-500" />
-                  보통 1영업일 내 확인합니다.
-                </li>
-              </ul>
-            )}
+
+            <div className="border-b border-neutral-200 bg-[#fbfaf7] px-5 py-5 sm:px-6">
+              <p className="text-[12px] font-extrabold text-blue-700">
+                국세청 즉시 확인
+              </p>
+              <div className="mt-1 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h1 className="text-[25px] font-extrabold tracking-tight text-neutral-950">
+                    {approved ? "사업자 인증 정보 갱신" : "사업자 정보 확인"}
+                  </h1>
+                  <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-neutral-600">
+                    사업자등록번호, 대표자명, 개업일자를 확인합니다. 일치하면 바로 인증되며 확인되지 않을 때만 서류를 요청합니다.
+                  </p>
+                </div>
+                {approved ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowUpdateForm(false);
+                      setManualFallback(null);
+                      setError("");
+                    }}
+                    className="h-10 shrink-0 rounded-[10px] border border-neutral-200 bg-white px-4 text-sm font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
+                  >
+                    취소
+                  </button>
+                ) : null}
+              </div>
+            </div>
+
+            {showVerificationForm ? (
+              <form
+                onSubmit={handleSubmit}
+                aria-busy={isSubmitting}
+                className="space-y-5 p-5 sm:p-6"
+              >
+                <section aria-labelledby="automatic-verification-title">
+                  <h2
+                    id="automatic-verification-title"
+                    className="text-sm font-extrabold text-neutral-950"
+                  >
+                    국세청 등록 정보
+                  </h2>
+                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                    <div className="sm:col-span-2">
+                      <TextField
+                        label="사업자등록번호"
+                        value={visibleForm.business_registration_number}
+                        onChange={(value) =>
+                          updateForm(
+                            {
+                              business_registration_number:
+                                formatBusinessRegistrationInput(value),
+                            },
+                            true,
+                          )
+                        }
+                        placeholder="000-00-00000"
+                        inputMode="numeric"
+                        autoComplete="off"
+                        disabled={isSubmitting}
+                        required
+                      />
+                    </div>
+                    <TextField
+                      label="대표자명"
+                      value={visibleForm.representative_name}
+                      onChange={(value) =>
+                        updateForm({ representative_name: value }, true)
+                      }
+                      autoComplete="name"
+                      disabled={isSubmitting}
+                      required
+                    />
+                    <TextField
+                      label="개업일자"
+                      type="date"
+                      max={getCurrentKstDate()}
+                      value={visibleForm.business_start_date}
+                      onChange={(value) =>
+                        updateForm({ business_start_date: value }, true)
+                      }
+                      disabled={isSubmitting}
+                      required
+                    />
+                  </div>
+                </section>
+
+                {activeFallback ? (
+                  <section
+                    ref={manualReviewRef}
+                    tabIndex={-1}
+                    aria-labelledby="manual-verification-title"
+                    className="rounded-[14px] border border-amber-200 bg-amber-50/70 p-4 outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
+                  >
+                    <div className="flex items-start gap-3">
+                      <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+                      <div className="min-w-0 flex-1">
+                        <h2
+                          id="manual-verification-title"
+                          className="text-sm font-extrabold text-amber-950"
+                        >
+                          서류로 인증하기
+                        </h2>
+                        <p className="mt-1 text-sm font-semibold leading-6 text-amber-900/80">
+                          {activeFallback.message}
+                        </p>
+                        {activeFallback.retryable ? (
+                          <button
+                            type="button"
+                            disabled={isSubmitting}
+                            onClick={() => void submitVerification("automatic")}
+                            className="mt-2 text-xs font-extrabold text-blue-700 underline decoration-blue-300 underline-offset-4 disabled:text-neutral-400"
+                          >
+                            국세청 다시 확인
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="mt-4 grid gap-4 border-t border-amber-200/80 pt-4 sm:grid-cols-2">
+                      <TextField
+                        label="문서 발급일"
+                        type="date"
+                        max={getCurrentKstDate()}
+                        value={visibleForm.document_issue_date}
+                        onChange={(value) =>
+                          updateForm({ document_issue_date: value })
+                        }
+                        disabled={isSubmitting}
+                        required
+                      />
+                      <TextField
+                        label="문서확인번호/발급번호"
+                        value={visibleForm.document_check_number}
+                        onChange={(value) =>
+                          updateForm({ document_check_number: value })
+                        }
+                        placeholder="정부24/홈택스 문서 번호"
+                        disabled={isSubmitting}
+                      />
+                      <label className="block sm:col-span-2">
+                        <span className="text-sm font-extrabold text-neutral-900">
+                          사업자등록증명원
+                        </span>
+                        <span className="mt-2 flex min-h-[68px] cursor-pointer items-center gap-3 rounded-[12px] border border-dashed border-neutral-300 bg-white px-4 transition hover:border-neutral-500">
+                          <FileUp className="h-4 w-4 shrink-0 text-neutral-500" />
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm font-extrabold text-neutral-900">
+                              {file ? file.name : "증빙 파일 선택"}
+                            </span>
+                            <span className="mt-1 block text-xs font-semibold text-neutral-500">
+                              PDF, PNG, JPG, WebP · 10MB 이하
+                            </span>
+                          </span>
+                          <input
+                            type="file"
+                            accept="application/pdf,image/png,image/jpeg,image/webp"
+                            className="sr-only"
+                            disabled={isSubmitting}
+                            required
+                            onChange={(event) => {
+                              const nextFile = event.target.files?.[0] ?? null;
+                              const nextError = validateVerificationFile(nextFile);
+                              if (nextError) {
+                                setFile(null);
+                                setError(nextError);
+                                event.currentTarget.value = "";
+                                return;
+                              }
+                              setFile(nextFile);
+                              setError("");
+                            }}
+                          />
+                        </span>
+                      </label>
+                    </div>
+                  </section>
+                ) : null}
+
+                {error ? (
+                  <div
+                    role="alert"
+                    aria-live="assertive"
+                    className="rounded-[10px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700"
+                  >
+                    {error}
+                  </div>
+                ) : null}
+
+                <button
+                  type="submit"
+                  disabled={isSubmitting || isLoading}
+                  className="h-12 w-full rounded-[10px] bg-blue-600 px-5 text-sm font-extrabold text-white shadow-[0_10px_24px_rgba(37,99,235,0.16)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-500 disabled:shadow-none"
+                >
+                  {isSubmitting
+                    ? activeFallback
+                      ? "서류 제출 중"
+                      : "확인 중"
+                    : activeFallback
+                      ? "서류 심사 요청"
+                      : "사업자 인증하기"}
+                </button>
+              </form>
+            ) : null}
           </section>
-        </aside>
-        ) : null}
+        )}
       </main>
     </div>
+  );
+}
+
+function ApprovedVerificationOverview({
+  businessNumber,
+  representativeName,
+  onUpdate,
+  onNavigate,
+}: {
+  businessNumber: string;
+  representativeName: string;
+  onUpdate: () => void;
+  onNavigate: (path: string) => void;
+}) {
+  return (
+    <section className="overflow-hidden rounded-[16px] border border-neutral-200 bg-white shadow-[0_22px_60px_rgba(15,23,42,0.08)]">
+      <div className="border-b border-neutral-200 bg-[#fbfaf7] px-5 py-6 sm:px-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[12px] bg-blue-600 text-white">
+              <ShieldCheck className="h-5 w-5" />
+            </div>
+            <div>
+              <h1 className="text-[22px] font-extrabold tracking-tight text-neutral-950">
+                사업자 인증 완료
+              </h1>
+              <p className="mt-1 text-sm font-semibold leading-6 text-neutral-600">
+                국세청 등록 정보가 일치해 계약을 발송할 수 있습니다.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onUpdate}
+            className="h-10 shrink-0 rounded-[10px] border border-neutral-200 bg-white px-4 text-sm font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
+          >
+            인증 정보 갱신
+          </button>
+        </div>
+      </div>
+      <div className="grid gap-4 p-5 sm:p-6 lg:grid-cols-[minmax(0,1fr)_260px]">
+        <div className="grid gap-3 rounded-[14px] border border-neutral-200 p-4 sm:grid-cols-2">
+          <InfoRow label="사업자등록번호" value={businessNumber} />
+          <InfoRow label="대표자명" value={representativeName} />
+        </div>
+        <div className="grid gap-2 rounded-[14px] bg-[#f7f8fa] p-4">
+          <button
+            type="button"
+            onClick={() => onNavigate("/advertiser/builder")}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-[10px] bg-blue-600 px-4 text-sm font-extrabold text-white transition hover:bg-blue-700"
+          >
+            <FileText className="h-4 w-4" />
+            1:1 계약 작성
+          </button>
+          <button
+            type="button"
+            onClick={() => onNavigate("/advertiser/campaigns/new")}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-[10px] border border-neutral-200 bg-white px-4 text-sm font-extrabold text-neutral-800 transition hover:border-neutral-300 hover:bg-neutral-50"
+          >
+            <Megaphone className="h-4 w-4" />
+            캠페인 작성
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function PendingVerificationOverview({
+  latest,
+}: {
+  latest?: VerificationRequest;
+}) {
+  return (
+    <section className="overflow-hidden rounded-[16px] border border-neutral-200 bg-white shadow-[0_22px_60px_rgba(15,23,42,0.08)]">
+      <div className="border-b border-neutral-200 bg-[#fbfaf7] px-5 py-6 sm:px-6">
+        <h1 className="text-[22px] font-extrabold tracking-tight text-neutral-950">
+          서류 검토 중
+        </h1>
+        <p className="mt-2 text-sm font-semibold leading-6 text-neutral-600">
+          제출한 사업자등록증명원을 운영자가 확인하고 있습니다.
+        </p>
+      </div>
+      <div className="grid gap-3 p-5 sm:grid-cols-3 sm:p-6">
+        <InfoRow
+          label="사업자등록번호"
+          value={formatBusinessRegistrationInput(
+            latest?.business_registration_number ?? "",
+          ) || "-"}
+        />
+        <InfoRow label="대표자명" value={latest?.representative_name || "-"} />
+        <InfoRow
+          label="접수일"
+          value={
+            latest?.created_at
+              ? new Intl.DateTimeFormat("ko-KR").format(
+                  new Date(latest.created_at),
+                )
+              : "-"
+          }
+        />
+      </div>
+    </section>
+  );
+}
+
+function VerificationLoadingShell() {
+  return (
+    <section
+      aria-label="사업자 인증 상태 확인 중"
+      className="animate-pulse overflow-hidden rounded-[16px] border border-neutral-200 bg-white shadow-[0_22px_60px_rgba(15,23,42,0.08)]"
+    >
+      <div className="border-b border-neutral-100 bg-[#fbfaf7] p-6">
+        <div className="h-3 w-24 rounded bg-neutral-200" />
+        <div className="mt-3 h-7 w-52 rounded bg-neutral-200" />
+        <div className="mt-3 h-4 w-72 max-w-full rounded bg-neutral-100" />
+      </div>
+      <div className="grid gap-4 p-6 sm:grid-cols-2">
+        <div className="h-16 rounded-[12px] bg-neutral-100 sm:col-span-2" />
+        <div className="h-16 rounded-[12px] bg-neutral-100" />
+        <div className="h-16 rounded-[12px] bg-neutral-100" />
+        <div className="h-12 rounded-[10px] bg-neutral-200 sm:col-span-2" />
+      </div>
+    </section>
   );
 }
 
@@ -741,6 +770,10 @@ function TextField({
   type = "text",
   placeholder,
   required,
+  inputMode,
+  autoComplete,
+  max,
+  disabled,
 }: {
   label: string;
   value: string;
@@ -748,6 +781,10 @@ function TextField({
   type?: string;
   placeholder?: string;
   required?: boolean;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
+  autoComplete?: string;
+  max?: string;
+  disabled?: boolean;
 }) {
   return (
     <label className="block">
@@ -757,59 +794,25 @@ function TextField({
         value={value}
         required={required}
         placeholder={placeholder}
+        inputMode={inputMode}
+        autoComplete={autoComplete}
+        max={max}
+        disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-2 h-12 w-full rounded-[10px] border border-neutral-200 bg-[#fbfbfc] px-3 text-sm font-semibold outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950 focus:bg-white focus:shadow-[0_0_0_3px_rgba(23,23,23,0.05)]"
+        className="mt-2 h-12 w-full rounded-[10px] border border-neutral-200 bg-[#fbfbfc] px-3 text-sm font-semibold text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-blue-600 focus:bg-white focus:shadow-[0_0_0_3px_rgba(37,99,235,0.10)] disabled:cursor-wait disabled:bg-neutral-100 disabled:text-neutral-500"
       />
     </label>
   );
 }
 
-function InfoRow({
-  label,
-  value,
-  compact = false,
-  preserveBreaks = false,
-}: {
-  label: string;
-  value: React.ReactNode;
-  compact?: boolean;
-  preserveBreaks?: boolean;
-}) {
+function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div
-      className={
-        compact
-          ? "min-w-0 rounded-md border border-neutral-200 bg-white px-3 py-2"
-          : undefined
-      }
-    >
+    <div className="min-w-0 rounded-[10px] border border-neutral-200 bg-white px-3 py-3">
       <p className="text-xs font-semibold text-neutral-400">{label}</p>
-      <p
-        className={`mt-1 font-medium text-neutral-800 ${
-          preserveBreaks
-            ? "break-normal [overflow-wrap:normal]"
-            : "break-words [overflow-wrap:anywhere]"
-        }`}
-      >
+      <p className="mt-1 break-words text-sm font-extrabold text-neutral-800 [overflow-wrap:anywhere]">
         {value}
       </p>
     </div>
-  );
-}
-
-function EmailAddress({ value }: { value: string }) {
-  const separatorIndex = value.lastIndexOf("@");
-
-  if (separatorIndex <= 0 || separatorIndex === value.length - 1) {
-    return <>{value}</>;
-  }
-
-  return (
-    <>
-      {value.slice(0, separatorIndex + 1)}
-      <wbr />
-      {value.slice(separatorIndex + 1)}
-    </>
   );
 }
 
