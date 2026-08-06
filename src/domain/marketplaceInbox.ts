@@ -17,6 +17,13 @@ export type MarketplaceProposalStatus =
   | "converted_to_contract"
   | "closed";
 
+export type MarketplaceCampaignApplicationCustomerStatus =
+  | "submitted"
+  | "reviewed"
+  | "accepted"
+  | "converted_to_contract"
+  | "not_selected";
+
 export type MarketplaceMessageThread = {
   id: string;
   bucket: MarketplaceMessageBucket;
@@ -68,6 +75,24 @@ export type MarketplaceMessagesResponse = {
   threads: MarketplaceMessageThread[];
   summary: MarketplaceMessageSummary;
 };
+
+export function getMarketplaceCampaignApplicationCustomerStatus(
+  application: Pick<
+    MarketplaceMessageThread,
+    "status" | "convertedContractId"
+  >,
+): MarketplaceCampaignApplicationCustomerStatus {
+  if (
+    application.convertedContractId ||
+    application.status === "converted_to_contract"
+  ) {
+    return "converted_to_contract";
+  }
+  if (application.status === "declined" || application.status === "closed") {
+    return "not_selected";
+  }
+  return application.status;
+}
 
 export const emptyMarketplaceMessageSummary: MarketplaceMessageSummary = {
   inboxCount: 0,

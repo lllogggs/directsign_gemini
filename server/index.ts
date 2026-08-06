@@ -1877,6 +1877,22 @@ interface PublishMarketplaceCampaignRpcRow {
   result_business_verified?: unknown;
 }
 
+interface FinalizeMarketplaceCampaignRecruitmentRpcRow {
+  result_campaign_id?: unknown;
+  result_campaign_data?: unknown;
+  result_status?: unknown;
+  result_not_selected_count?: unknown;
+}
+
+interface ReserveMarketplaceCampaignSelectionRpcRow {
+  result_proposal_id?: unknown;
+  result_previous_status?: unknown;
+  result_current_status?: unknown;
+  result_campaign_status?: unknown;
+  result_reserved?: unknown;
+  result_reason?: unknown;
+}
+
 interface SupabaseMarketplaceContactProposalRow {
   id: string;
   direction: MarketplaceProposalDirection;
@@ -3808,6 +3824,11 @@ const isDuplicateOperationalAlertError = (error: unknown) =>
 const isSupabaseUniqueViolationError = (error: unknown) =>
   error instanceof Error &&
   (error.message.includes("duplicate key") || error.message.includes("23505"));
+
+const isCampaignApplicationClosedWriteError = (error: unknown) =>
+  error instanceof Error &&
+  (error.message.includes("campaign is not open for applications") ||
+    error.message.includes("campaign application target is not authorized"));
 
 const normalizeOperationalAlert = (
   row: OperationalAlertRecord,
@@ -13071,6 +13092,141 @@ const publishMarketplaceCampaignAtomically = async ({
   };
 };
 
+const finalizeMarketplaceCampaignRecruitmentAtomically = async ({
+  organizationId,
+  brandProfileId,
+  actorProfileId,
+  campaign,
+}: {
+  organizationId: string;
+  brandProfileId: string;
+  actorProfileId: string;
+  campaign: MarketplaceBrandCampaign;
+}) => {
+  if (!campaign.id) throw new Error("Campaign id is required for finalization");
+  const rpcResponse = await fetchSupabase(
+    "rpc/finalize_marketplace_campaign_recruitment",
+    "",
+    {
+      method: "POST",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify({
+        p_campaign_id: campaign.id,
+        p_brand_profile_id: brandProfileId,
+        p_organization_id: organizationId,
+        p_actor_profile_id: actorProfileId,
+        p_campaign_data: {
+          ...campaign,
+          status: "closed",
+          statusUpdatedByProfileId: actorProfileId,
+        },
+      }),
+    },
+  );
+  await assertSupabaseOk(
+    rpcResponse,
+    "Supabase atomic campaign recruitment finalization",
+  );
+  const rows =
+    (await rpcResponse.json()) as FinalizeMarketplaceCampaignRecruitmentRpcRow[];
+  const row = rows[0];
+  if (!row) {
+    throw new Error("Supabase campaign recruitment finalization returned no row");
+  }
+
+  const campaignId = normalizeOptionalText(row.result_campaign_id);
+  const status = normalizeOptionalText(row.result_status);
+  const campaignData =
+    row.result_campaign_data && typeof row.result_campaign_data === "object"
+      ? (row.result_campaign_data as Record<string, unknown>)
+      : {};
+  if (!campaignId || status !== "closed") {
+    throw new Error("Supabase campaign recruitment finalization returned invalid data");
+  }
+  const savedCampaign = mapNormalizedMarketplaceCampaignRow({
+    id: campaignId,
+    brand_profile_id: brandProfileId,
+    organization_id: organizationId,
+    campaign_data: campaignData,
+    status: "closed",
+    created_at:
+      normalizeOptionalText(campaignData.createdAt) ?? new Date().toISOString(),
+    updated_at:
+      normalizeOptionalText(campaignData.updatedAt) ?? new Date().toISOString(),
+    archived_at: null,
+  });
+  if (!savedCampaign) {
+    throw new Error("Supabase campaign recruitment finalization returned invalid campaign");
+  }
+
+  return {
+    campaign: savedCampaign,
+    notSelectedCount: normalizeCampaignAccessInteger(
+      row.result_not_selected_count,
+    ),
+  };
+};
+
+const reserveMarketplaceCampaignApplicationSelectionAtomically = async ({
+  proposalId,
+  campaignId,
+  brandProfileId,
+  organizationId,
+  actorProfileId,
+}: {
+  proposalId: string;
+  campaignId: string;
+  brandProfileId: string;
+  organizationId: string;
+  actorProfileId: string;
+}) => {
+  const rpcResponse = await fetchSupabase(
+    "rpc/reserve_marketplace_campaign_application_selection",
+    "",
+    {
+      method: "POST",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify({
+        p_proposal_id: proposalId,
+        p_campaign_id: campaignId,
+        p_brand_profile_id: brandProfileId,
+        p_organization_id: organizationId,
+        p_actor_profile_id: actorProfileId,
+      }),
+    },
+  );
+  await assertSupabaseOk(
+    rpcResponse,
+    "Supabase atomic campaign applicant selection reservation",
+  );
+  const rows =
+    (await rpcResponse.json()) as ReserveMarketplaceCampaignSelectionRpcRow[];
+  const row = rows[0];
+  const proposalStatus = normalizeOptionalText(row?.result_current_status);
+  const knownProposalStatuses: MarketplaceProposalStatus[] = [
+    "submitted",
+    "reviewed",
+    "accepted",
+    "declined",
+    "converted_to_contract",
+    "closed",
+  ];
+  if (
+    !row ||
+    normalizeOptionalText(row.result_proposal_id) !== proposalId ||
+    !knownProposalStatuses.includes(proposalStatus as MarketplaceProposalStatus)
+  ) {
+    throw new Error("Supabase campaign applicant selection reservation returned invalid data");
+  }
+
+  return {
+    reserved: row.result_reserved === true,
+    reason: normalizeOptionalText(row.result_reason),
+    campaignStatus: normalizeOptionalText(row.result_campaign_status),
+    proposalStatus: proposalStatus as MarketplaceProposalStatus,
+  };
+};
+
 const isCampaignContractVerificationExempt = async ({
   contractId,
   organizationId,
@@ -14225,7 +14381,9 @@ const readMarketplaceBrandProfiles = async () => {
     }&order=updated_at.desc`,
     "marketplace brand profiles",
   );
-  const rows = await hydrateBrandRowsWithNormalizedCampaigns(rawRows);
+  const rows = await hydrateBrandRowsWithNormalizedCampaigns(rawRows, {
+    readAll: true,
+  });
 
   const dbProfiles = rows.map(mapBrandProfileRowToMarketplaceProfile);
   const visibleDbProfiles = dbProfiles.filter(
@@ -14238,6 +14396,60 @@ const readMarketplaceBrandProfiles = async () => {
   return visibleDbProfiles.length > 0
     ? visibleDbProfiles
     : fallbackMarketplaceBrandProfiles();
+};
+
+const readMarketplaceCampaignPosts = async () => {
+  if (!useSupabase) {
+    return buildMarketplaceCampaignPosts(fallbackMarketplaceBrandProfiles());
+  }
+
+  const campaignRows = await readAllNormalizedMarketplaceCampaignRows(
+    "?select=*&status=eq.open&archived_at=is.null&order=created_at.desc",
+  );
+  if (!campaignRows) {
+    return buildMarketplaceCampaignPosts(await readMarketplaceBrandProfiles());
+  }
+  if (campaignRows.length === 0) {
+    return allowPublicMarketplaceCatalogFallback
+      ? buildMarketplaceCampaignPosts(fallbackMarketplaceBrandProfiles())
+      : [];
+  }
+
+  const brandIds = Array.from(
+    new Set(campaignRows.map((campaign) => campaign.brand_profile_id)),
+  );
+  const rawBrandRows = await readSupabaseRows<SupabaseMarketplaceBrandProfileRow>(
+    "marketplace_brand_profiles",
+    `?select=*&id=in.${postgrestInFilter(
+      brandIds,
+    )}&is_published=eq.true&archived_at=is.null${
+      filterOperationalMarketplaceTestData ? "&data_origin=eq.production" : ""
+    }&order=updated_at.desc`,
+    "marketplace campaign brand profiles",
+  );
+  const campaignsByBrand = new Map<string, MarketplaceBrandCampaign[]>();
+  for (const row of campaignRows) {
+    const campaign = mapNormalizedMarketplaceCampaignRow(row);
+    if (!campaign) continue;
+    const campaigns = campaignsByBrand.get(row.brand_profile_id) ?? [];
+    campaigns.push(campaign);
+    campaignsByBrand.set(row.brand_profile_id, campaigns);
+  }
+
+  const dbProfiles = rawBrandRows.map((row) =>
+    mapBrandProfileRowToMarketplaceProfile({
+      ...row,
+      active_campaigns: campaignsByBrand.get(row.id) ?? [],
+    }),
+  );
+  const visibleDbProfiles = dbProfiles.filter(
+    (profile) =>
+      !filterOperationalMarketplaceTestData || !hasOperationalTestMarker(profile),
+  );
+  const profiles = allowPublicMarketplaceCatalogFallback
+    ? mergeMarketplaceBrandProfiles(visibleDbProfiles)
+    : visibleDbProfiles;
+  return buildMarketplaceCampaignPosts(profiles);
 };
 
 const publicMarketplaceCacheMaxAgeSeconds = 60;
@@ -14491,7 +14703,7 @@ const readPublicMarketplaceCache = async <T,>(
 
 const clearPublicMarketplaceCache = () => {
   publicMarketplaceCache.clear();
-  void expirePublicMarketplaceRuntimeCache().catch((error) => {
+  return expirePublicMarketplaceRuntimeCache().catch((error) => {
     console.warn(
       `[${productName}] public marketplace runtime cache invalidation failed: ${
         error instanceof Error ? error.message : "unknown error"
@@ -14522,10 +14734,10 @@ const warmPublicMarketplaceCache = () => {
       readMarketplaceBrandProfiles,
       { fallback: fallbackMarketplaceBrandProfiles },
     )
-      .then((brands) =>
+      .then(() =>
         readPublicMarketplaceCache(
           "marketplace-campaigns",
-          async () => buildMarketplaceCampaignPosts(brands),
+          readMarketplaceCampaignPosts,
           { fallback: fallbackMarketplaceCampaignPosts },
         ),
       )
@@ -15597,7 +15809,7 @@ const ensureAdvertiserDefaultBrandRow = async (
     ],
     "id",
   );
-  clearPublicMarketplaceCache();
+  await clearPublicMarketplaceCache();
   return readAdvertiserMarketplaceBrandRows(organization.id);
 };
 
@@ -15725,7 +15937,7 @@ const saveAdvertiserMarketplaceBrandImage = async (
     ],
     "id",
   );
-  clearPublicMarketplaceCache();
+  await clearPublicMarketplaceCache();
 
   const savedRow = await readAdvertiserMarketplaceBrandRow(organization.id, rowId);
   return {
@@ -16355,7 +16567,7 @@ const upsertAdvertiserMarketplaceCampaign = async (
     ],
     "id",
   );
-  clearPublicMarketplaceCache();
+  await clearPublicMarketplaceCache();
 
   const board = await readAdvertiserCampaignBoard(auth, rowId);
   const brand = board.brand ?? currentBrand;
@@ -16513,6 +16725,7 @@ const updateAdvertiserMarketplaceCampaignStatus = async (
     ...statusFields,
   };
   let authoritativeCampaign = updatedCampaign;
+  let notSelectedCount = 0;
   if (currentCampaign.status === "draft" && requestedStatus === "open") {
     const publicationRequestKey = buildCampaignPublicationRequestKey({
       request,
@@ -16547,6 +16760,15 @@ const updateAdvertiserMarketplaceCampaignStatus = async (
       };
     }
     authoritativeCampaign = publication.campaign;
+  } else if (requestedStatus === "closed") {
+    const finalization = await finalizeMarketplaceCampaignRecruitmentAtomically({
+      organizationId: organization.id,
+      brandProfileId: existing.id,
+      actorProfileId: auth.profile.id,
+      campaign: updatedCampaign,
+    });
+    authoritativeCampaign = finalization.campaign;
+    notSelectedCount = finalization.notSelectedCount;
   } else {
     const normalizedCampaignSaved = await upsertNormalizedMarketplaceCampaign(
       organization.id,
@@ -16568,22 +16790,20 @@ const updateAdvertiserMarketplaceCampaignStatus = async (
       : [authoritativeCampaign, ...currentBrand.activeCampaigns];
   const campaigns = normalizeBrandCampaigns(activeCampaigns, 20);
 
-  await patchSupabaseRecord(
-    "marketplace_brand_profiles",
-    `?id=eq.${encodeURIComponent(existing.id)}`,
-    {
-      active_campaigns: campaigns,
-      status_label:
-        requestedStatus === "open"
-          ? "모집 중"
-          : requestedStatus === "closed"
-            ? "모집 종료"
-            : "운영 종료",
-      updated_at: now,
-    },
-    "Supabase advertiser campaign status update",
-  );
-  clearPublicMarketplaceCache();
+  if (requestedStatus !== "closed") {
+    await patchSupabaseRecord(
+      "marketplace_brand_profiles",
+      `?id=eq.${encodeURIComponent(existing.id)}`,
+      {
+        active_campaigns: campaigns,
+        status_label:
+          requestedStatus === "open" ? "모집 중" : "운영 종료",
+        updated_at: now,
+      },
+      "Supabase advertiser campaign status update",
+    );
+  }
+  await clearPublicMarketplaceCache();
 
   const board = await readAdvertiserCampaignBoard(auth, existing.id);
   const brand = board.brand ?? currentBrand;
@@ -16598,6 +16818,7 @@ const updateAdvertiserMarketplaceCampaignStatus = async (
     brands: board.brands,
     campaigns: board.campaigns,
     campaign_access: board.campaignAccess,
+    not_selected_count: notSelectedCount,
   };
 };
 
@@ -16714,7 +16935,7 @@ const normalizeMarketplaceCampaignSnapshot = (
 };
 
 const findMarketplaceCampaignPostById = async (campaignId: string) => {
-  const campaigns = buildMarketplaceCampaignPosts(await readMarketplaceBrandProfiles());
+  const campaigns = await readMarketplaceCampaignPosts();
   return campaigns.find((campaign) => campaign.id === campaignId);
 };
 
@@ -16946,6 +17167,13 @@ const submitMarketplaceCampaignApplication = async (
       "marketplace campaign application",
     );
   } catch (error) {
+    if (isCampaignApplicationClosedWriteError(error)) {
+      return {
+        ok: false as const,
+        status: 409,
+        error: "모집이 종료되어 신청할 수 없습니다.",
+      };
+    }
     if (!isSupabaseUniqueViolationError(error)) throw error;
     const [existing] = await readMarketplaceProposalRows(
       `?select=*&direction=eq.influencer_to_brand&sender_profile_id=eq.${encodeURIComponent(
@@ -19453,7 +19681,7 @@ const readMarketplaceProposalForAdvertiserAcceptance = async (
     return {
       ok: false as const,
       status: 403,
-      error: "이 신청을 수락할 권한이 없습니다.",
+      error: "이 지원자를 선정할 권한이 없습니다.",
     };
   }
 
@@ -19805,12 +20033,13 @@ const createDraftContractFromMarketplaceApplication = async (
     };
   }
 
-  const { organization, brand, proposal } = acceptance;
-  if (proposal.status === "closed") {
+  const { organization, brand } = acceptance;
+  let proposal = acceptance.proposal;
+  if (proposal.status === "declined" || proposal.status === "closed") {
     return {
       ok: false as const,
       status: 409,
-      error: "종료된 신청은 계약으로 전환할 수 없습니다.",
+      error: "미선정으로 확정된 지원자는 선정할 수 없습니다.",
     };
   }
 
@@ -19833,6 +20062,64 @@ const createDraftContractFromMarketplaceApplication = async (
       };
     }
   }
+
+  const selectionReservation =
+    await reserveMarketplaceCampaignApplicationSelectionAtomically({
+      proposalId: proposal.id,
+      campaignId: proposal.campaign_id,
+      brandProfileId: brand.id,
+      organizationId: organization.id,
+      actorProfileId: auth.profile.id,
+    });
+  if (
+    selectionReservation.proposalStatus === "declined" ||
+    selectionReservation.proposalStatus === "closed"
+  ) {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "미선정으로 확정된 지원자는 선정할 수 없습니다.",
+    };
+  }
+  if (selectionReservation.reason === "campaign_closed") {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "모집이 종료되어 지원자를 선정할 수 없습니다.",
+    };
+  }
+  if (selectionReservation.proposalStatus === "converted_to_contract") {
+    const [latestProposal] = await readMarketplaceProposalRows(
+      `?select=*&id=eq.${encodeURIComponent(proposal.id)}&limit=1`,
+      "campaign applicant selection reservation recovery",
+    );
+    if (latestProposal?.converted_contract_id) {
+      const existing = await readContractWriteContext(
+        latestProposal.converted_contract_id,
+      );
+      if (existing.existingContract) {
+        return {
+          ok: true as const,
+          status: 200,
+          contract: existing.existingContract,
+          alreadyConverted: true,
+        };
+      }
+    }
+    return {
+      ok: false as const,
+      status: 409,
+      error: "선정 처리가 진행 중입니다. 잠시 후 다시 확인해 주세요.",
+    };
+  }
+  if (selectionReservation.proposalStatus !== "accepted") {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "지원 상태가 변경되었습니다. 최신 상태를 확인해 주세요.",
+    };
+  }
+  proposal = { ...proposal, status: "accepted" };
 
   const deterministicContractId = stableUuid(
     `marketplace-proposal-contract:${proposal.id}`,
@@ -19962,7 +20249,7 @@ const createDraftContractFromMarketplaceApplication = async (
         id: stableUuid(`marketplace-proposal-contract-event:${proposal.id}`),
         actor: "advertiser",
         action: "campaign_application_accepted",
-        description: "광고주가 캠페인 신청을 수락해 계약이 생성되었습니다.",
+        description: "광고주가 지원자를 선정해 계약이 생성되었습니다.",
         created_at: now,
       },
     ],
@@ -22248,7 +22535,8 @@ const formatDashboardActivityAction = (action: string) => {
   const labels: Record<string, string> = {
     campaign_application_submitted: "캠페인 지원",
     campaign_application_reviewed: "지원 검토",
-    campaign_application_accepted: "지원 수락",
+    campaign_application_accepted: "지원자 선정",
+    campaign_application_not_selected: "미선정",
     campaign_application_closed: "지원 종료",
     contract_created: "계약 생성",
     share_link_issued: "검토 링크 발급",
@@ -22732,18 +23020,28 @@ const applicationStageMeta: Record<
   },
   reviewed: {
     label: "검토 중",
-    actionLabel: "메시지 확인",
-    nextAction: "광고주 검토가 진행 중입니다. 추가 요청은 메시지함에서 확인하세요.",
+    actionLabel: "신청 내역 보기",
+    nextAction: "광고주가 지원 내용을 확인했습니다. 선정 결과를 기다려 주세요.",
+  },
+  reserved: {
+    label: "선정 준비",
+    actionLabel: "신청 내역 보기",
+    nextAction: "선정자 계약서를 준비하고 있습니다.",
   },
   accepted: {
-    label: "수락 완료",
+    label: "선정 완료",
     actionLabel: "계약 보기",
-    nextAction: "지원이 수락되었습니다. 생성된 계약을 확인하세요.",
+    nextAction: "캠페인에 선정되어 생성된 계약을 확인할 수 있습니다.",
+  },
+  declined: {
+    label: "미선정",
+    actionLabel: "신청 내역 보기",
+    nextAction: "이번 캠페인은 미선정되었습니다.",
   },
   closed: {
-    label: "종료",
-    actionLabel: "기록 보기",
-    nextAction: "지원 흐름이 종료되었습니다. 메시지함에서 기록을 확인할 수 있습니다.",
+    label: "미선정",
+    actionLabel: "신청 내역 보기",
+    nextAction: "이번 캠페인은 미선정되었습니다.",
   },
 };
 
@@ -22753,6 +23051,8 @@ const inferApplicationStage = (
   if (row.converted_contract_id || row.status === "converted_to_contract") {
     return "accepted";
   }
+  if (row.status === "accepted") return "reserved";
+  if (row.status === "declined") return "declined";
   if (row.status === "reviewed") return "reviewed";
   if (row.status === "closed") return "closed";
   return "submitted";
@@ -22790,7 +23090,19 @@ const buildApplicationActivityEvents = (
         id: `${row.id}:accepted`,
         actor: brandName,
         action: "campaign_application_accepted",
-        description: "지원이 수락되어 계약이 생성되었습니다.",
+        description: "캠페인에 선정되어 계약이 생성되었습니다.",
+        createdAt: row.updated_at,
+      }),
+    );
+  }
+
+  if (row.status === "declined") {
+    events.push(
+      normalizeDashboardActivityEvent({
+        id: `${row.id}:declined`,
+        actor: brandName,
+        action: "campaign_application_not_selected",
+        description: "이번 캠페인은 미선정되었습니다.",
         createdAt: row.updated_at,
       }),
     );
@@ -27250,14 +27562,7 @@ app.get("/api/marketplace/campaigns", async (_request, response, next) => {
   try {
     const campaigns = await readPublicMarketplaceCache(
       "marketplace-campaigns",
-      async () =>
-        buildMarketplaceCampaignPosts(
-          await readPublicMarketplaceCache(
-            "marketplace-brands",
-            readMarketplaceBrandProfiles,
-            { fallback: fallbackMarketplaceBrandProfiles },
-          ),
-        ),
+      readMarketplaceCampaignPosts,
       { fallback: fallbackMarketplaceCampaignPosts },
     );
     sendPublicMarketplaceJson(response, { campaigns }, "marketplace-campaigns");
@@ -27270,14 +27575,7 @@ app.get("/api/marketplace/campaigns/:campaignId", async (request, response, next
   try {
     const campaigns = await readPublicMarketplaceCache(
       "marketplace-campaigns",
-      async () =>
-        buildMarketplaceCampaignPosts(
-          await readPublicMarketplaceCache(
-            "marketplace-brands",
-            readMarketplaceBrandProfiles,
-            { fallback: fallbackMarketplaceBrandProfiles },
-          ),
-        ),
+      readMarketplaceCampaignPosts,
       { fallback: fallbackMarketplaceCampaignPosts },
     );
     const campaign = campaigns.find(
@@ -27600,6 +27898,7 @@ app.patch("/api/advertiser/campaigns/:id/status", async (request, response, next
       campaign: result.campaign,
       campaigns: result.campaigns,
       campaign_access: result.campaign_access,
+      not_selected_count: result.not_selected_count,
     });
   } catch (error) {
     next(error);

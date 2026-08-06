@@ -20,6 +20,7 @@ import {
   marketplaceCountryOptions,
   type MarketplaceInfluencerProfile,
 } from "../src/domain/marketplace";
+import { getMarketplaceCampaignApplicationCustomerStatus } from "../src/domain/marketplaceInbox";
 import { paginateMarketplaceInfluencerProfiles } from "../src/domain/marketplaceInfluencerSearch";
 import {
   calculateNaverBlogVisitorAverage,
@@ -5155,7 +5156,7 @@ describe("yeollock.me security regressions", () => {
     assert.match(advertiserDashboard, /group\.applicants\.push\(thread\)/);
     assert.match(
       advertiserDashboard,
-      /const applicants = campaign\.applicants/,
+      /const applicants = useMemo\([\s\S]*?campaign\.applicants/,
     );
     assert.match(campaignPages, /href: "\/influencer\/campaigns"/);
     assert.match(campaignPages, /getCampaignSharePath\(campaign\)/);
@@ -6701,6 +6702,224 @@ describe("yeollock.me security regressions", () => {
     );
     assert.doesNotMatch(server, /DISABLE_PUBLIC_MARKETPLACE_CATALOG_FALLBACK/);
     assert.match(server, /`public-marketplace:\$\{key\}:v2`/);
+  });
+
+  it("publishes campaigns from the authoritative source and finalizes unselected applicants atomically", () => {
+    const server = read("server/index.ts");
+    const dashboard = read("src/pages/marketing/Dashboard.tsx");
+    const campaignPage = read("src/pages/marketplace/CampaignPages.tsx");
+    const dashboardDomain = read("src/domain/influencerDashboard.ts");
+    const finalizationMigration = read(
+      "supabase/migrations/20260806140000_finalize_campaign_recruitment.sql",
+    );
+    const applicationBoundaryMigration = read(
+      "supabase/migrations/20260806141000_lock_campaign_application_boundaries.sql",
+    );
+    const notificationMigration = read(
+      "supabase/migrations/20260803100000_add_customer_notification_center.sql",
+    );
+
+    const publicReaderStart = server.indexOf(
+      "const readMarketplaceCampaignPosts = async",
+    );
+    const publicReaderSource = server.slice(
+      publicReaderStart,
+      server.indexOf("const publicMarketplaceCacheMaxAgeSeconds", publicReaderStart),
+    );
+    assert.notEqual(publicReaderStart, -1);
+    assert.match(
+      publicReaderSource,
+      /readAllNormalizedMarketplaceCampaignRows\([\s\S]*?status=eq\.open&archived_at=is\.null/,
+    );
+    assert.match(publicReaderSource, /is_published=eq\.true&archived_at=is\.null/);
+    assert.match(publicReaderSource, /filterOperationalMarketplaceTestData/);
+    assert.match(server, /"marketplace-campaigns",\s*readMarketplaceCampaignPosts/);
+
+    const statusUpdateStart = server.indexOf(
+      "const updateAdvertiserMarketplaceCampaignStatus = async",
+    );
+    const statusUpdateSource = server.slice(
+      statusUpdateStart,
+      server.indexOf("const buildMarketplaceCampaignSnapshot", statusUpdateStart),
+    );
+    assert.match(
+      statusUpdateSource,
+      /requestedStatus === "closed"[\s\S]*?finalizeMarketplaceCampaignRecruitmentAtomically/,
+    );
+    assert.match(statusUpdateSource, /await clearPublicMarketplaceCache\(\)/);
+    assert.match(statusUpdateSource, /not_selected_count: notSelectedCount/);
+
+    const campaignUpdateIndex = finalizationMigration.indexOf(
+      "update public.marketplace_campaigns",
+    );
+    const applicationUpdateIndex = finalizationMigration.indexOf(
+      "update public.marketplace_contact_proposals",
+    );
+    assert.ok(campaignUpdateIndex >= 0);
+    assert.ok(applicationUpdateIndex > campaignUpdateIndex);
+    assert.match(finalizationMigration, /coalesce\(auth\.role\(\), ''\) <> 'service_role'/);
+    assert.match(
+      finalizationMigration,
+      /campaign\.id = p_campaign_id[\s\S]*?campaign\.brand_profile_id = p_brand_profile_id[\s\S]*?campaign\.organization_id = p_organization_id/,
+    );
+    assert.match(
+      finalizationMigration,
+      /application\.direction = 'influencer_to_brand'[\s\S]*?application\.campaign_id = p_campaign_id[\s\S]*?application\.target_brand_profile_id = p_brand_profile_id[\s\S]*?application\.converted_contract_id is null[\s\S]*?application\.status in \('submitted', 'reviewed'\)/,
+    );
+    assert.match(finalizationMigration, /status = 'declined'/);
+    assert.match(
+      finalizationMigration,
+      /revoke execute on function public\.finalize_marketplace_campaign_recruitment[\s\S]*?from public, anon, authenticated/,
+    );
+    assert.match(
+      notificationMigration,
+      /proposal\.status in \('submitted', 'reviewed'\)[\s\S]*?perform public\.project_campaign_status_notification\(v_source_key\)/,
+    );
+
+    assert.match(
+      dashboard,
+      /const APPLICANT_STATUS_FILTERS[\s\S]*?"reviewed",\s*"accepted",\s*"converted_to_contract",\s*"not_selected"/,
+    );
+    assert.match(
+      campaignPage,
+      /const applicationStatusFilterOptions[\s\S]*?"reviewed",\s*"accepted",\s*"converted_to_contract",\s*"not_selected"/,
+    );
+    const applicantFilterSource = dashboard.slice(
+      dashboard.indexOf("const APPLICANT_STATUS_FILTERS"),
+      dashboard.indexOf("const APPLICANT_SORT_OPTIONS"),
+    );
+    const applicationFilterSource = campaignPage.slice(
+      campaignPage.indexOf("const applicationStatusFilterOptions"),
+      campaignPage.indexOf("const openCampaignSortOptions"),
+    );
+    assert.doesNotMatch(applicantFilterSource, /"declined"|"closed"/);
+    assert.doesNotMatch(applicationFilterSource, /"declined"|"closed"/);
+    assert.equal(
+      getMarketplaceCampaignApplicationCustomerStatus({
+        status: "closed",
+        convertedContractId: "legacy-selected-contract",
+      }),
+      "converted_to_contract",
+    );
+    assert.equal(
+      getMarketplaceCampaignApplicationCustomerStatus({ status: "closed" }),
+      "not_selected",
+    );
+    assert.equal(
+      getMarketplaceCampaignApplicationCustomerStatus({ status: "declined" }),
+      "not_selected",
+    );
+    assert.match(
+      campaignPage,
+      /application\.status === "declined" \|\| application\.status === "closed"[\s\S]*?aria-label="추가 액션 없음"[\s\S]*?—/,
+    );
+    assert.doesNotMatch(campaignPage, /to="\/influencer\/messages"/);
+    assert.match(
+      campaignPage,
+      /not_selected:[\s\S]*?label: "미선정"[\s\S]*?border-neutral-200 bg-neutral-100 text-neutral-600/,
+    );
+    const applicationStageMetaStart = server.indexOf(
+      "const applicationStageMeta",
+    );
+    const applicationStageMetaSource = server.slice(
+      applicationStageMetaStart,
+      server.indexOf("const inferApplicationStage", applicationStageMetaStart),
+    );
+    assert.doesNotMatch(applicationStageMetaSource, /메시지/);
+    assert.match(
+      applicationStageMetaSource,
+      /reviewed:[\s\S]*?actionLabel: "신청 내역 보기"[\s\S]*?선정 결과를 기다려 주세요/,
+    );
+    assert.match(
+      applicationStageMetaSource,
+      /closed:[\s\S]*?label: "미선정"[\s\S]*?이번 캠페인은 미선정되었습니다/,
+    );
+
+    const submissionCampaignLockIndex = applicationBoundaryMigration.indexOf(
+      "for key share",
+    );
+    const submissionOpenCheckIndex = applicationBoundaryMigration.indexOf(
+      "v_campaign.status <> 'open'",
+    );
+    const reservationCampaignLockIndex = applicationBoundaryMigration.indexOf(
+      "select campaign.* into v_campaign",
+      submissionOpenCheckIndex,
+    );
+    const reservationProposalLockIndex = applicationBoundaryMigration.indexOf(
+      "select proposal.* into v_proposal",
+      reservationCampaignLockIndex,
+    );
+    assert.ok(submissionCampaignLockIndex >= 0);
+    assert.ok(submissionOpenCheckIndex > submissionCampaignLockIndex);
+    assert.ok(reservationCampaignLockIndex > submissionOpenCheckIndex);
+    assert.ok(reservationProposalLockIndex > reservationCampaignLockIndex);
+    assert.match(
+      applicationBoundaryMigration,
+      /v_campaign\.status <> 'open'[\s\S]*?message = 'campaign is not open for applications'/,
+    );
+    assert.match(
+      applicationBoundaryMigration,
+      /v_proposal\.status = 'accepted'[\s\S]*?'already_reserved'/,
+    );
+    assert.match(
+      applicationBoundaryMigration,
+      /v_campaign\.status <> 'open'[\s\S]*?'campaign_closed'[\s\S]*?status = 'accepted'/,
+    );
+    assert.match(
+      applicationBoundaryMigration,
+      /revoke execute on function public\.reserve_marketplace_campaign_application_selection[\s\S]*?from public, anon, authenticated/,
+    );
+    assert.match(
+      applicationBoundaryMigration,
+      /actor\.data_origin = brand\.data_origin[\s\S]*?brand\.data_origin <> 'production'[\s\S]*?qa\|test\|demo\|seed[\s\S]*?directsign/,
+    );
+
+    const contractCreationStart = server.indexOf(
+      "const createDraftContractFromMarketplaceApplication",
+    );
+    const contractCreationSource = server.slice(
+      contractCreationStart,
+      server.indexOf("const readVerificationRequests", contractCreationStart),
+    );
+    const reservationIndex = contractCreationSource.indexOf(
+      "reserveMarketplaceCampaignApplicationSelectionAtomically",
+    );
+    const contractWriteIndex = contractCreationSource.indexOf("await writeStore(");
+    assert.ok(reservationIndex >= 0);
+    assert.ok(contractWriteIndex > reservationIndex);
+    assert.match(
+      contractCreationSource,
+      /proposalStatus === "declined"[\s\S]*?미선정으로 확정된 지원자는 선정할 수 없습니다/,
+    );
+    assert.doesNotMatch(contractCreationSource, /지원 수락|신청을 수락/);
+    assert.match(server, /campaign_application_accepted: "지원자 선정"/);
+    assert.match(server, /campaign_application_not_selected: "미선정"/);
+    assert.match(server, /if \(row\.status === "accepted"\) return "reserved"/);
+    assert.match(
+      dashboard,
+      /thread\.status === "accepted"[\s\S]*?isSelectionReserved[\s\S]*?"선정 계속"/,
+    );
+    assert.match(
+      dashboard,
+      /hasSelectionReservations[\s\S]*?showApplicantsPanel[\s\S]*?reservedOnly=\{!isRecruitingDetail\}/,
+    );
+    assert.match(
+      contractCreationSource,
+      /stableUuid\([\s\S]*?marketplace-proposal-contract:\$\{proposal\.id\}/,
+    );
+    const actionStart = dashboard.indexOf("function getCampaignStatusActions");
+    const actionSource = dashboard.slice(
+      actionStart,
+      dashboard.indexOf("function formatCampaignStatusLabel", actionStart),
+    );
+    assert.match(
+      actionSource,
+      /선정하지 않은 지원자는 미선정으로 확정됩니다/,
+    );
+    assert.doesNotMatch(actionSource, /탈락|거절/);
+    assert.match(dashboardDomain, /\| "declined"/);
+    assert.match(server, /if \(row\.status === "declined"\) return "declined"/);
+    assert.match(server, /label: "미선정"[\s\S]*?이번 캠페인은 미선정되었습니다/);
   });
 
   it("keeps signup continuations role-scoped and campaign applications in the applied view", () => {

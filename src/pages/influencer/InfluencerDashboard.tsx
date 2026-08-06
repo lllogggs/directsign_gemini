@@ -12,7 +12,6 @@ import {
   FileSignature,
   FileText,
   LogOut,
-  MessageSquareText,
   Search,
   SlidersHorizontal,
   UserCheck,
@@ -79,7 +78,9 @@ type ActualAmountKind = Exclude<AmountFilter, "all">;
 type InfluencerApplicationWorkStage =
   | "application_submitted"
   | "application_reviewed"
+  | "application_reserved"
   | "application_accepted"
+  | "application_declined"
   | "application_closed";
 type InfluencerWorkStage =
   | InfluencerDashboardContractStage
@@ -259,14 +260,26 @@ const APPLICATION_STAGE_META: Record<
   },
   application_reviewed: {
     label: "검토 중",
-    helper: "메시지 확인",
+    helper: "선정 결과 대기",
     className: "border-sky-200 bg-sky-50 text-sky-700",
-    icon: <MessageSquareText className="h-4 w-4" />,
+    icon: <Clock3 className="h-4 w-4" />,
+  },
+  application_reserved: {
+    label: "선정 준비",
+    helper: "계약서 준비 중",
+    className: "border-blue-200 bg-blue-50 text-blue-700",
+    icon: <Clock3 className="h-4 w-4" />,
   },
   application_accepted: {
-    label: "수락 완료",
+    label: "선정 완료",
     helper: "계약 확인",
     className: "border-blue-200 bg-blue-50 text-blue-700",
+    icon: <CheckCircle2 className="h-4 w-4" />,
+  },
+  application_declined: {
+    label: "미선정",
+    helper: "결과 보관",
+    className: "border-neutral-200 bg-neutral-100 text-neutral-600",
     icon: <CheckCircle2 className="h-4 w-4" />,
   },
   application_closed: {
@@ -1944,12 +1957,18 @@ function getInfluencerMetricTone(item: InfluencerCampaignWorkItem) {
 
   if (
     item.stage === "ready_to_sign" ||
-    item.stage === "application_accepted"
+    item.stage === "application_accepted" ||
+    item.stage === "application_reserved"
   ) {
     return "text-blue-700";
   }
 
-  if (item.stage === "application_closed") return "text-[#7d857f]";
+  if (
+    item.stage === "application_closed" ||
+    item.stage === "application_declined"
+  ) {
+    return "text-[#7d857f]";
+  }
   return "text-[#303630]";
 }
 
@@ -1992,9 +2011,11 @@ function getSubmissionStatusMeta(item: InfluencerCampaignWorkItem) {
     return {
       label: item.next_action_label || "지원 상태 확인",
       className:
-        item.stage === "application_closed"
+        item.stage === "application_closed" ||
+        item.stage === "application_declined"
           ? "text-[#7d857f]"
-          : item.stage === "application_accepted"
+          : item.stage === "application_accepted" ||
+              item.stage === "application_reserved"
             ? "text-blue-700"
             : "text-amber-700",
     };

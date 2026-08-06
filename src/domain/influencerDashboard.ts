@@ -30,7 +30,9 @@ export type InfluencerDashboardContractStage =
 export type InfluencerDashboardApplicationStage =
   | "submitted"
   | "reviewed"
+  | "reserved"
   | "accepted"
+  | "declined"
   | "closed";
 
 export interface InfluencerDashboardActivityEvent {

@@ -311,6 +311,12 @@ export function getNotificationCopy(item: NotificationItem): NotificationCopy {
         detail: `${campaign} 선정 결과와 다음 단계를 확인해 주세요.`,
       };
     case "campaign.status_changed":
+      if (campaignStatus === "closed") {
+        return {
+          title: "캠페인 지원 결과",
+          detail: `${campaign} 지원 결과가 미선정으로 확정되었습니다.`,
+        };
+      }
       return {
         title: "캠페인 상태 변경",
         detail: `${campaign}이 ${status} 상태로 변경되었습니다.`,

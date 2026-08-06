@@ -8,7 +8,6 @@ import {
   ChevronDown,
   CheckCircle2,
   FileSignature,
-  FileText,
   Gift,
   LogIn,
   LogOut,
@@ -57,9 +56,10 @@ import {
 } from "../../domain/marketplace";
 import {
   formatMarketplaceMessageDate,
+  getMarketplaceCampaignApplicationCustomerStatus,
+  type MarketplaceCampaignApplicationCustomerStatus,
   type MarketplaceMessageThread,
   type MarketplaceMessagesResponse,
-  type MarketplaceProposalStatus,
 } from "../../domain/marketplaceInbox";
 import type { InfluencerPlatform } from "../../domain/verification";
 import {
@@ -142,7 +142,9 @@ type CampaignSort = {
   key: CampaignSortKey;
   direction: CampaignSortDirection;
 };
-type ApplicationStatusFilter = "all" | MarketplaceProposalStatus;
+type ApplicationStatusFilter =
+  | "all"
+  | MarketplaceCampaignApplicationCustomerStatus;
 
 const INFLUENCER_CAMPAIGN_TOUR_STEPS = [
   {
@@ -253,8 +255,9 @@ const applicationStatusFilterOptions: ApplicationStatusFilter[] = [
   "all",
   "submitted",
   "reviewed",
+  "accepted",
   "converted_to_contract",
-  "closed",
+  "not_selected",
 ];
 const openCampaignSortOptions: Array<{ label: string; value: CampaignSort }> = [
   { label: "마감 임박순", value: { key: "deadline", direction: "asc" } },
@@ -319,7 +322,7 @@ type InfluencerSessionStatusResponse = {
 
 
 const applicationStatusMeta: Record<
-  MarketplaceProposalStatus,
+  MarketplaceCampaignApplicationCustomerStatus,
   { label: string; className: string }
 > = {
   submitted: {
@@ -334,16 +337,12 @@ const applicationStatusMeta: Record<
     label: "선정 준비",
     className: "border-blue-200 bg-blue-50 text-blue-700",
   },
-  declined: {
-    label: "미선정",
-    className: "border-rose-200 bg-rose-50 text-rose-700",
-  },
   converted_to_contract: {
     label: "선정 완료",
     className: "border-blue-200 bg-blue-50 text-blue-700",
   },
-  closed: {
-    label: "종료",
+  not_selected: {
+    label: "미선정",
     className: "border-neutral-200 bg-neutral-100 text-neutral-600",
   },
 };
@@ -1528,7 +1527,8 @@ export function InfluencerCampaignDiscoveryPage() {
       .filter((application) => {
         if (
           appliedStatusFilter !== "all" &&
-          application.status !== appliedStatusFilter
+          getMarketplaceCampaignApplicationCustomerStatus(application) !==
+            appliedStatusFilter
         ) {
           return false;
         }
@@ -1716,17 +1716,6 @@ export function InfluencerCampaignDiscoveryPage() {
       backHref="/influencer/dashboard"
       metrics={[]}
       showHeroCopy={false}
-      actions={
-        <>
-          <Link
-            to="/influencer/messages"
-            className="yl-header-action yl-header-action-secondary hidden sm:inline-flex"
-          >
-            <FileText className="h-4 w-4" />
-            <span className="hidden sm:inline">메시지함</span>
-          </Link>
-        </>
-      }
     >
     <section className="yl-card flex min-h-0 min-w-0 flex-1 flex-col overflow-visible border">
       <div className="border-b border-neutral-200 bg-white">
@@ -4451,7 +4440,9 @@ function AppliedCampaignRow({
   application: MarketplaceMessageThread;
   focused?: boolean;
 }) {
-  const statusMeta = applicationStatusMeta[application.status];
+  const displayStatus =
+    getMarketplaceCampaignApplicationCustomerStatus(application);
+  const statusMeta = applicationStatusMeta[displayStatus];
   const title = formatAppliedCampaignTitle(application);
 
   return (
@@ -4493,6 +4484,13 @@ function AppliedCampaignRow({
           >
             계약 검토
           </Link>
+        ) : application.status === "declined" || application.status === "closed" ? (
+          <span
+            aria-label="추가 액션 없음"
+            className="inline-flex h-9 w-[96px] items-center justify-center text-[12px] font-semibold text-neutral-400"
+          >
+            —
+          </span>
         ) : (
           <span className="inline-flex h-9 w-[96px] items-center justify-center rounded-md border border-neutral-200 bg-white text-[12px] font-semibold text-neutral-500">
             대기
@@ -4677,8 +4675,12 @@ function compareAppliedCampaignApplicationsBySort(
       break;
     case "status":
       result =
-        applicationStatusFilterOptions.indexOf(a.status) -
-        applicationStatusFilterOptions.indexOf(b.status);
+        applicationStatusFilterOptions.indexOf(
+          getMarketplaceCampaignApplicationCustomerStatus(a),
+        ) -
+        applicationStatusFilterOptions.indexOf(
+          getMarketplaceCampaignApplicationCustomerStatus(b),
+        );
       break;
     case "appliedAt":
     default:

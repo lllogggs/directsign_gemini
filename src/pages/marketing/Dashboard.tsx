@@ -103,9 +103,10 @@ import {
   type MarketplaceInfluencerProfile,
 } from "../../domain/marketplace";
 import {
+  getMarketplaceCampaignApplicationCustomerStatus,
+  type MarketplaceCampaignApplicationCustomerStatus,
   type MarketplaceMessageThread,
   type MarketplaceMessagesResponse,
-  type MarketplaceProposalStatus,
 } from "../../domain/marketplaceInbox";
 import { getMarketplaceInfluencerAvatarUrlFromHref } from "../../domain/marketplaceAvatars";
 import {
@@ -124,7 +125,9 @@ type DetailProgressFilter = "ALL" | "UPLOAD_DONE" | "SIGNED_DONE" | "SIGN_PENDIN
 type DetailDeadlineFilter = "ALL" | "OVERDUE" | "THIS_WEEK" | "LATER" | "NO_DATE";
 type DetailPostLinkFilter = "ALL" | "SUBMITTED" | "NOT_SUBMITTED";
 type ApplicantPlatformFilter = "ALL" | InfluencerPlatform;
-type ApplicantStatusFilter = "ALL" | MarketplaceProposalStatus;
+type ApplicantStatusFilter =
+  | "ALL"
+  | MarketplaceCampaignApplicationCustomerStatus;
 type ApplicantSortValue =
   | "audience_desc"
   | "audience_asc"
@@ -304,6 +307,7 @@ type CampaignStatusUpdateResponse = {
   campaign?: MarketplaceBrandCampaign;
   campaigns?: MarketplaceBrandCampaign[];
   campaign_access?: AdvertiserCampaignAccess;
+  not_selected_count?: number;
   error?: string;
 };
 type AdvertiserCampaignsResponse = {
@@ -483,7 +487,7 @@ const CONTRACT_LIFECYCLE_TABS: Array<{
 ];
 
 const APPLICANT_STATUS_META: Record<
-  MarketplaceProposalStatus,
+  MarketplaceCampaignApplicationCustomerStatus,
   { label: string; className: string }
 > = {
   submitted: {
@@ -498,16 +502,12 @@ const APPLICANT_STATUS_META: Record<
     label: "선정 준비",
     className: "border-blue-200 bg-blue-50 text-blue-700",
   },
-  declined: {
-    label: "미선정",
-    className: "border-rose-200 bg-rose-50 text-rose-700",
-  },
   converted_to_contract: {
     label: "선정 완료",
     className: "border-blue-200 bg-blue-50 text-blue-700",
   },
-  closed: {
-    label: "종료",
+  not_selected: {
+    label: "미선정",
     className: "border-neutral-200 bg-neutral-100 text-neutral-600",
   },
 };
@@ -525,8 +525,9 @@ const APPLICANT_STATUS_FILTERS: ApplicantStatusFilter[] = [
   "ALL",
   "submitted",
   "reviewed",
+  "accepted",
   "converted_to_contract",
-  "closed",
+  "not_selected",
 ];
 
 const APPLICANT_SORT_OPTIONS: Array<{
@@ -1515,8 +1516,8 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
       if (!response.ok || !("contract" in data) || !data.contract?.id) {
         throw new Error(
           "error" in data
-            ? data.error ?? "지원 수락에 실패했습니다."
-            : "지원 수락에 실패했습니다.",
+            ? data.error ?? "지원자 선정에 실패했습니다."
+            : "지원자 선정에 실패했습니다.",
         );
       }
 
@@ -4528,6 +4529,11 @@ function CampaignDetailView({
       ? Math.min(100, Math.round((campaign.completedCount / campaign.acceptedParticipantCount) * 100))
       : 0;
   const isRecruitingDetail = campaign.lifecycle === "RECRUITING";
+  const hasSelectionReservations = campaign.applicants.some(
+    (applicant) =>
+      applicant.status === "accepted" && !applicant.convertedContractId,
+  );
+  const showApplicantsPanel = isRecruitingDetail || hasSelectionReservations;
   const isEndedDetail = campaign.lifecycle === "ENDED";
   const detailListTitle =
     campaign.lifecycle === "RECRUITING"
@@ -4537,9 +4543,14 @@ function CampaignDetailView({
         : "종료 내역";
   const selectedApplicantCount = Math.max(
     campaign.acceptedParticipantCount,
-    campaign.applicants.filter((applicant) =>
-      ["accepted", "converted_to_contract"].includes(applicant.status),
-    ).length,
+    campaign.applicants.filter((applicant) => {
+      const displayStatus =
+        getMarketplaceCampaignApplicationCustomerStatus(applicant);
+      return (
+        displayStatus === "accepted" ||
+        displayStatus === "converted_to_contract"
+      );
+    }).length,
   );
   const detailProgressTitle = isEndedDetail ? "최종 진행 기록" : "선정자별 진행";
   const statusMeta = getCampaignLifecycleMeta(campaign);
@@ -4722,7 +4733,7 @@ function CampaignDetailView({
 
       <div
         className={`grid min-h-0 grid-cols-1 lg:flex-1 ${
-          isRecruitingDetail ? "lg:grid-cols-[minmax(0,1fr)_360px]" : "lg:grid-cols-1"
+          showApplicantsPanel ? "lg:grid-cols-[minmax(0,1fr)_360px]" : "lg:grid-cols-1"
         }`}
       >
         <div className="min-w-0 lg:flex lg:min-h-0 lg:flex-col">
@@ -4827,13 +4838,14 @@ function CampaignDetailView({
         )}
           </div>
         </div>
-        {isRecruitingDetail ? (
+        {showApplicantsPanel ? (
           <CampaignApplicantsPanel
             campaign={campaign}
             marketplaceStatus={marketplaceStatus}
             marketplaceError={marketplaceError}
             onAcceptApplication={onAcceptApplication}
             allowSelection
+            reservedOnly={!isRecruitingDetail}
           />
         ) : null}
       </div>
@@ -4859,14 +4871,26 @@ function CampaignApplicantsPanel({
   marketplaceError,
   onAcceptApplication,
   allowSelection,
+  reservedOnly,
 }: {
   campaign: CampaignGroup;
   marketplaceStatus: MarketplaceDashboardState["status"];
   marketplaceError?: string;
   onAcceptApplication: (thread: MarketplaceMessageThread) => Promise<void>;
   allowSelection: boolean;
+  reservedOnly: boolean;
 }) {
-  const applicants = campaign.applicants;
+  const applicants = useMemo(
+    () =>
+      reservedOnly
+        ? campaign.applicants.filter(
+            (applicant) =>
+              applicant.status === "accepted" &&
+              !applicant.convertedContractId,
+          )
+        : campaign.applicants,
+    [campaign.applicants, reservedOnly],
+  );
   const [query, setQuery] = useState("");
   const [platformFilter, setPlatformFilter] =
     useState<ApplicantPlatformFilter>("ALL");
@@ -4901,7 +4925,9 @@ function CampaignApplicantsPanel({
             thread.platforms.some(
               (platform) => platform.platform === platformFilter,
             )) &&
-          (statusFilter === "ALL" || thread.status === statusFilter)
+          (statusFilter === "ALL" ||
+            getMarketplaceCampaignApplicationCustomerStatus(thread) ===
+              statusFilter)
         );
       })
       .sort((a, b) => compareCampaignApplicantsBySort(a, b, sortValue));
@@ -5101,11 +5127,17 @@ function CampaignApplicantRow({
 }) {
   const [isAccepting, setIsAccepting] = useState(false);
   const [acceptError, setAcceptError] = useState<string>();
-  const statusMeta = APPLICANT_STATUS_META[thread.status];
+  const statusMeta =
+    APPLICANT_STATUS_META[
+      getMarketplaceCampaignApplicationCustomerStatus(thread)
+    ];
+  const isSelectionReserved = thread.status === "accepted";
   const canAccept =
     allowSelection &&
     !thread.convertedContractId &&
-    (thread.status === "submitted" || thread.status === "reviewed");
+    (thread.status === "submitted" ||
+      thread.status === "reviewed" ||
+      isSelectionReserved);
   const applicantName = getCampaignApplicantDisplayName(thread);
   const applicantProfile = getCampaignApplicantProfile(thread, applicantName);
   const displayPlatforms = getCampaignApplicantDisplayPlatforms(
@@ -5137,9 +5169,11 @@ function CampaignApplicantRow({
     if (!canAccept || isAccepting) return;
 
     const confirmed = window.confirm(
-      `${
-        thread.counterpartName || thread.senderName
-      }을 선정하시겠어요? 캠페인 계약서 진행이 시작됩니다.`,
+      isSelectionReserved
+        ? `${thread.counterpartName || thread.senderName}의 계약서 생성을 계속할까요?`
+        : `${
+            thread.counterpartName || thread.senderName
+          }을 선정하시겠어요? 캠페인 계약서 진행이 시작됩니다.`,
     );
     if (!confirmed) return;
 
@@ -5241,7 +5275,11 @@ function CampaignApplicantRow({
             disabled={isAccepting}
             className={`${primaryActionSpan} inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-md bg-blue-600 px-2 text-[12px] font-extrabold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-neutral-300`}
           >
-            {isAccepting ? "선정 중" : "선정"}
+            {isAccepting
+              ? "처리 중"
+              : isSelectionReserved
+                ? "선정 계속"
+                : "선정"}
           </button>
         ) : (
           <span
@@ -7780,7 +7818,7 @@ function buildCampaignAlerts(campaigns: CampaignGroup[]): CampaignAlert[] {
           campaignKey: campaign.key,
           campaignName: campaign.name,
           label: `계약 초안 ${counts.draftContracts}건`,
-          detail: "지원 수락 후 생성된 초안을 검토 링크 발급까지 이어가야 합니다.",
+          detail: "선정 후 생성된 계약서 초안을 검토 링크 발급까지 이어가야 합니다.",
           tone: "blue",
           priority: 40,
         });
@@ -7870,7 +7908,7 @@ function getCampaignStatusActions(campaign: CampaignGroup) {
       status: "closed",
       label: "모집 종료",
       confirmMessage:
-        "이 캠페인의 공개 모집을 종료할까요? 기존 지원자와 진행 중 계약은 유지됩니다.",
+        "모집을 종료하면 선정하지 않은 지원자는 미선정으로 확정됩니다. 계속할까요?",
       className: "border-amber-200 bg-amber-50 text-amber-800 hover:border-amber-300",
       icon: Clock3,
     });
@@ -8063,7 +8101,7 @@ function formatCampaignAuditActor(actor: NonNullable<Contract["audit_events"]>[n
 
 function formatCampaignAuditAction(action: string) {
   const labels: Record<string, string> = {
-    campaign_application_accepted: "지원 수락",
+    campaign_application_accepted: "지원자 선정",
     contract_created: "계약서 준비",
     share_link_issued: "검토 링크 발급",
     contract_signed: "계약 서명",
@@ -8896,7 +8934,9 @@ function buildAdvertiserCampaignApplicantExportSheet(
 
       return [
         applicantName,
-        APPLICANT_STATUS_META[thread.status].label,
+        APPLICANT_STATUS_META[
+          getMarketplaceCampaignApplicationCustomerStatus(thread)
+        ].label,
         joinExportValues(
           displayPlatforms.map((platform) =>
             joinExportValues([

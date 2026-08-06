@@ -93,8 +93,8 @@ test("campaign status notifications map server status codes to Korean labels", (
   });
 
   assert.deepEqual(copy, {
-    title: "캠페인 상태 변경",
-    detail: "여름 캠페인이 모집 종료 상태로 변경되었습니다.",
+    title: "캠페인 지원 결과",
+    detail: "여름 캠페인 지원 결과가 미선정으로 확정되었습니다.",
   });
 });
 
