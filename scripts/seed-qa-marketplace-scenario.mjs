@@ -816,20 +816,59 @@ const ensureMarketplaceInfluencer = async (influencer) => {
   return { ...influencer, influencerProfileId };
 };
 
-const campaignSnapshot = (brand, campaign) => ({
-  id: campaign.id,
-  title: campaign.title,
-  type: campaign.type,
-  budget: campaign.budget,
-  summary: campaign.summary,
-  deadline: campaign.deadline,
-  platforms: campaign.platforms,
-  deliverables: campaign.deliverables,
-  brandId: brand.brandProfileId,
-  brandHandle: brand.handle,
-  brandName: brand.companyName,
-  brandCategory: brand.category,
-});
+const buildCampaignConsentState = (campaign) => {
+  const seenIds = new Set();
+  const items = (Array.isArray(campaign.requiredConsents)
+    ? campaign.requiredConsents
+    : []
+  )
+    .map((item) => ({
+      id: String(item?.id ?? "").trim(),
+      text: String(item?.text ?? "")
+        .trim()
+        .replace(/\r\n?/g, "\n"),
+    }))
+    .filter((item) => {
+      if (
+        !item.id ||
+        item.id.length > 80 ||
+        !item.text ||
+        item.text.length > 300 ||
+        seenIds.has(item.id)
+      ) {
+        return false;
+      }
+      seenIds.add(item.id);
+      return true;
+    })
+    .slice(0, 8);
+  const version = crypto
+    .createHash("sha256")
+    .update(JSON.stringify(items.map(({ id, text }) => ({ id, text }))))
+    .digest("hex");
+
+  return { items, version };
+};
+
+const campaignSnapshot = (brand, campaign) => {
+  const consent = buildCampaignConsentState(campaign);
+  return {
+    id: campaign.id,
+    title: campaign.title,
+    type: campaign.type,
+    budget: campaign.budget,
+    summary: campaign.summary,
+    deadline: campaign.deadline,
+    platforms: campaign.platforms,
+    deliverables: campaign.deliverables,
+    requiredConsents: consent.items,
+    consentVersion: consent.version,
+    brandId: brand.brandProfileId,
+    brandHandle: brand.handle,
+    brandName: brand.companyName,
+    brandCategory: brand.category,
+  };
+};
 
 const proposalSummary = (brand, campaign, influencer) =>
   [
@@ -1114,6 +1153,8 @@ const buildScenarioRows = (brands, creators) => {
       const campaign = brand.campaigns[combination.campaignIndex];
       const influencer = creators[combination.creatorIndex];
       const seed = `${brand.handle}:${campaign.id}:${influencer.handle}`;
+      const createdAt = addDays(-2 - combination.campaignIndex);
+      const consent = buildCampaignConsentState(campaign);
       const contract = combination.contractStatus
         ? buildContract({
             brand,
@@ -1140,8 +1181,15 @@ const buildScenarioRows = (brands, creators) => {
         status: combination.status,
         campaign_id: campaign.id,
         campaign_snapshot: campaignSnapshot(brand, campaign),
+        application_consent_snapshot: {
+          version: consent.version,
+          items: consent.items,
+          accepted_at: createdAt,
+          actor_profile_id: influencer.user.id,
+          campaign_id: campaign.id,
+        },
         converted_contract_id: contract?.id ?? null,
-        created_at: addDays(-2 - combination.campaignIndex),
+        created_at: createdAt,
         updated_at: contract ? contract.updated_at : timestamp,
       });
     });
@@ -1221,6 +1269,12 @@ for (const influencer of influencerUsers) {
 }
 
 const { proposals, contracts } = buildScenarioRows(brands, creators);
+
+await removeRows(
+  "marketplace_contact_proposals",
+  `?id=in.(${proposals.map((proposal) => proposal.id).join(",")})`,
+  "stale QA campaign applications",
+);
 
 await upsert(
   "marketplace_contact_proposals",

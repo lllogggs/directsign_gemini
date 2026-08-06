@@ -26,11 +26,17 @@ import {
 import { clearAdvertiserSessionCache } from "../../domain/advertiserSessionCache";
 import { clearAdvertiserDashboardBootstrapPreload } from "../../domain/advertiserDashboardPreload";
 import { finishFastLoginTransition } from "../../domain/fastLoginTransition";
-import { clearMarketplaceMessageSummaryCache } from "../../hooks/useMarketplaceMessageSummary";
+import {
+  clearMarketplaceMessageSummaryCache,
+  useMarketplaceMessageSummary,
+} from "../../hooks/useMarketplaceMessageSummary";
+import { clearNotificationCenterCache } from "../../hooks/useNotificationCenter";
 import { PRODUCT_NAME } from "../../domain/brand";
-import { LEGAL_CONTACT_EMAIL } from "../../domain/legalEntity";
 import { ScreenHelpButton } from "../../components/ScreenHelp";
 import { LogoMark } from "../../components/BrandLogo";
+import { AdvertiserAccountSettingsMenu } from "../../components/AdvertiserAccountSettingsMenu";
+import { HeaderMessageCenterButton } from "../../components/HeaderMessageCenterButton";
+import { HeaderNotificationCenterButton } from "../../components/HeaderNotificationCenterButton";
 import { SCREEN_HELP_CONTENT } from "../../domain/screenHelp";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,11 +63,8 @@ import {
   CheckCircle2,
   Copy,
   FileText,
-  KeyRound,
   LogOut,
-  Mail,
   Plus,
-  Settings,
   ShieldCheck,
   Trash2,
 } from "lucide-react";
@@ -850,18 +853,6 @@ function getAdvertiserVerificationBuilderCopy(
   return copies[status];
 }
 
-const buildBuilderSupportMailtoHref = ({
-  subject,
-  body,
-}: {
-  subject: string;
-  body: string;
-}) => {
-  return `mailto:${LEGAL_CONTACT_EMAIL}?subject=${encodeURIComponent(
-    subject,
-  )}&body=${encodeURIComponent(body)}`;
-};
-
 export function ContractBuilder() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -912,6 +903,8 @@ export function ContractBuilder() {
   const [savedContractId, setSavedContractId] = useState("");
   const [mobilePreviewOpen, setMobilePreviewOpen] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const { summary: messageSummary, isLoading: isMessageSummaryLoading } =
+    useMarketplaceMessageSummary("advertiser");
   const [isAddingPlatform, setIsAddingPlatform] = useState(false);
   const [addingContentPlatform, setAddingContentPlatform] = useState<ContractPlatform | "">("");
   const [pendingPlatform, setPendingPlatform] = useState<ContractPlatform | "">("");
@@ -1422,6 +1415,7 @@ export function ContractBuilder() {
       clearAdvertiserDashboardBootstrapPreload();
       clearVerificationSummaryCache("advertiser");
       clearMarketplaceMessageSummaryCache("advertiser");
+      clearNotificationCenterCache("advertiser");
       resetHydration();
       navigate("/login/advertiser", { replace: true });
     }
@@ -1471,25 +1465,31 @@ export function ContractBuilder() {
             <button
               type="button"
               onClick={() => navigate("/advertiser/dashboard")}
-              className="yl-header-action yl-header-action-secondary"
+              className="yl-header-action yl-header-action-secondary hidden sm:inline-flex"
               aria-label="대시보드"
               title="대시보드"
             >
               <span className="hidden sm:inline">대시보드</span>
               <span className="sm:hidden">홈</span>
             </button>
+            <HeaderNotificationCenterButton role="advertiser" />
+            <HeaderMessageCenterButton
+              unreadCount={messageSummary.unreadCount}
+              isLoading={isMessageSummaryLoading}
+              onClick={() => navigate("/advertiser/messages")}
+            />
             <button
               type="button"
               onClick={handleLogout}
-              className="yl-header-action yl-header-action-secondary"
+              className="yl-header-action yl-header-action-secondary hidden sm:inline-flex"
               aria-label="로그아웃"
               title="로그아웃"
             >
               <LogOut className="h-3.5 w-3.5" strokeWidth={2} />
               <span className="hidden sm:inline">로그아웃</span>
             </button>
-            <BuilderAccountSettingsMenu
-              account={advertiserAccountForHeader}
+            <AdvertiserAccountSettingsMenu
+              account={{ email: advertiserAccountForHeader.email }}
               open={accountMenuOpen}
               onToggle={() => setAccountMenuOpen((current) => !current)}
               onClose={() => setAccountMenuOpen(false)}
@@ -1500,6 +1500,10 @@ export function ContractBuilder() {
               onOpenBusinessVerification={() => {
                 setAccountMenuOpen(false);
                 navigate("/advertiser/verification");
+              }}
+              onLogout={() => {
+                setAccountMenuOpen(false);
+                void handleLogout();
               }}
             />
           </div>
@@ -2606,130 +2610,6 @@ export function ContractBuilder() {
           </div>
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
-
-function BuilderAccountSettingsMenu({
-  account,
-  open,
-  onToggle,
-  onClose,
-  onChangePassword,
-  onOpenBusinessVerification,
-}: {
-  account: { name: string; email?: string };
-  open: boolean;
-  onToggle: () => void;
-  onClose: () => void;
-  onChangePassword: () => void;
-  onOpenBusinessVerification: () => void;
-}) {
-  const rootRef = useRef<HTMLDivElement | null>(null);
-  const emailChangeHref = buildBuilderSupportMailtoHref({
-    subject: "광고주 계정 이메일 변경 요청",
-    body: [
-      "광고주 계정 이메일 변경을 요청합니다.",
-      "",
-      `현재 표시 이메일: ${account.email ?? "확인 필요"}`,
-      `사업자명: ${account.name}`,
-      "변경할 이메일:",
-      "요청 사유:",
-    ].join("\n"),
-  });
-
-  useEffect(() => {
-    if (!open) return undefined;
-
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target;
-      if (!(target instanceof Node)) return;
-      if (rootRef.current?.contains(target)) return;
-      onClose();
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-
-    document.addEventListener("pointerdown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [onClose, open]);
-
-  return (
-    <div ref={rootRef} className="relative shrink-0">
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-label="계정 설정"
-        title="계정 설정"
-        aria-expanded={open}
-        className="yl-header-icon-action"
-      >
-        <Settings className="h-3.5 w-3.5" strokeWidth={2} />
-      </button>
-
-      {open ? (
-        <div className="absolute right-0 top-[calc(100%+8px)] z-40 w-[290px] overflow-hidden rounded-[12px] border border-neutral-200 bg-white text-left shadow-[0_18px_50px_rgba(15,23,42,0.14)]">
-          <div className="border-b border-neutral-100 px-4 py-3">
-            <p className="text-[13px] font-extrabold text-neutral-950">계정 설정</p>
-            {account.email ? (
-              <p className="mt-1 truncate text-[12px] font-semibold text-neutral-500">
-                {account.email}
-              </p>
-            ) : null}
-          </div>
-          <a
-            href={emailChangeHref}
-            onClick={onClose}
-            className="flex min-h-12 items-start gap-2 px-4 py-3 text-left transition hover:bg-neutral-50"
-          >
-            <Mail className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-500" />
-            <span className="min-w-0">
-              <span className="block text-[12px] font-extrabold text-neutral-800">
-                로그인 이메일 변경 요청
-              </span>
-              <span className="mt-0.5 block text-[11px] font-semibold leading-4 text-neutral-500">
-                소유 확인 후 새 이메일로 변경합니다.
-              </span>
-            </span>
-          </a>
-          <button
-            type="button"
-            onClick={onOpenBusinessVerification}
-            className="flex min-h-12 w-full items-start gap-2 px-4 py-3 text-left transition hover:bg-neutral-50"
-          >
-            <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-500" />
-            <span className="min-w-0">
-              <span className="block text-[12px] font-extrabold text-neutral-800">
-                사업자 인증 관리
-              </span>
-              <span className="mt-0.5 block text-[11px] font-semibold leading-4 text-neutral-500">
-                사업자 정보를 확인하고 관리합니다.
-              </span>
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={onChangePassword}
-            className="flex min-h-12 w-full items-start gap-2 px-4 py-3 text-left transition hover:bg-neutral-50"
-          >
-            <KeyRound className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-500" />
-            <span className="min-w-0">
-              <span className="block text-[12px] font-extrabold text-neutral-800">
-                비밀번호 재설정
-              </span>
-              <span className="mt-0.5 block text-[11px] font-semibold leading-4 text-neutral-500">
-                로그인 비밀번호를 다시 설정합니다.
-              </span>
-            </span>
-          </button>
-        </div>
-      ) : null}
     </div>
   );
 }

@@ -24,6 +24,7 @@ type FilterSelectControlProps = {
   triggerClassName?: string;
   menuClassName?: string;
   leadingIcon?: ReactNode;
+  triggerLabel?: ReactNode;
   onOpen?: () => void;
 };
 
@@ -36,6 +37,7 @@ export function FilterSelectControl({
   triggerClassName = "",
   menuClassName = "",
   leadingIcon,
+  triggerLabel,
   onOpen,
 }: FilterSelectControlProps) {
   const [open, setOpen] = useState(false);
@@ -231,7 +233,7 @@ export function FilterSelectControl({
       >
         <span className="flex min-w-0 items-center gap-1.5">
           {leadingIcon ? <span className="shrink-0">{leadingIcon}</span> : null}
-          <span className="min-w-0 truncate">{selectedLabel}</span>
+          <span className="min-w-0 truncate">{triggerLabel ?? selectedLabel}</span>
         </span>
         <ChevronDown
           className={`h-3.5 w-3.5 shrink-0 text-[#606861] transition-transform ${

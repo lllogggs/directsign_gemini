@@ -15,6 +15,8 @@ import { Link, useNavigate } from "react-router";
 import { LogoMark } from "../../components/BrandLogo";
 import { AdvertiserAccountSettingsMenu } from "../../components/AdvertiserAccountSettingsMenu";
 import { InfluencerAccountSettingsMenu } from "../../components/InfluencerAccountSettingsMenu";
+import { HeaderMessageCenterButton } from "../../components/HeaderMessageCenterButton";
+import { HeaderNotificationCenterButton } from "../../components/HeaderNotificationCenterButton";
 import { FilterSelectControl } from "../../components/FilterSelectControl";
 import { ResponsiveFilterPanel } from "../../components/ResponsiveFilterPanel";
 import { apiFetch } from "../../domain/api";
@@ -41,6 +43,7 @@ import { clearInfluencerDashboardPreload } from "../../domain/influencerDashboar
 import { finishFastLoginTransition } from "../../domain/fastLoginTransition";
 import { clearVerificationSummaryCache } from "../../hooks/useVerificationSummary";
 import { clearMarketplaceMessageSummaryCache } from "../../hooks/useMarketplaceMessageSummary";
+import { clearNotificationCenterCache } from "../../hooks/useNotificationCenter";
 import {
   Dialog,
   DialogContent,
@@ -249,6 +252,7 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
       finishFastLoginTransition(role);
       clearVerificationSummaryCache(role);
       clearMarketplaceMessageSummaryCache(role);
+      clearNotificationCenterCache(role);
       if (role === "advertiser") {
         clearAdvertiserSessionCache();
         clearAdvertiserDashboardBootstrapPreload();
@@ -415,6 +419,16 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
           </Link>
 
           <div className="ml-3 flex min-w-0 items-center justify-end gap-1.5 sm:gap-2">
+            <HeaderNotificationCenterButton role={role} />
+            <HeaderMessageCenterButton
+              unreadCount={
+                state.status === "ready"
+                  ? state.data.summary.unreadCount
+                  : 0
+              }
+              isLoading={state.status === "loading"}
+              onClick={() => navigate(`/${role}/messages`)}
+            />
             {!contractHomeIsPrimary ? (
               <span className="hidden sm:block">
                 <Link
@@ -428,7 +442,7 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
             ) : null}
             <Link
               to={copy.backHref}
-              className={`yl-header-action ${
+              className={`yl-header-action hidden sm:inline-flex ${
                 contractHomeIsPrimary
                   ? "yl-header-action-primary"
                   : "yl-header-action-secondary"
@@ -455,7 +469,7 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
             <button
               type="button"
               onClick={handleLogout}
-              className="yl-header-action yl-header-action-secondary"
+              className="yl-header-action yl-header-action-secondary hidden sm:inline-flex"
               aria-label="로그아웃"
               title="로그아웃"
             >
@@ -476,6 +490,10 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
                   setAccountMenuOpen(false);
                   navigate("/reset-password?role=advertiser");
                 }}
+                onLogout={() => {
+                  setAccountMenuOpen(false);
+                  void handleLogout();
+                }}
               />
             ) : (
               <InfluencerAccountSettingsMenu
@@ -490,6 +508,10 @@ export function MarketplaceInboxPage({ role }: { role: MarketplaceInboxRole }) {
                 onChangePassword={() => {
                   setAccountMenuOpen(false);
                   navigate("/reset-password?role=influencer");
+                }}
+                onLogout={() => {
+                  setAccountMenuOpen(false);
+                  void handleLogout();
                 }}
               />
             )}

@@ -8,17 +8,21 @@ export type CampaignProposalType =
   | "sponsored_post"
   | "product_seeding"
   | "supporters"
+  | "experience_group"
   | "ppl"
   | "group_buy"
-  | "visit_review";
+  | "visit_review"
+  | "other";
 
 export const campaignProposalTypeOptions: CampaignProposalType[] = [
   "sponsored_post",
   "product_seeding",
   "supporters",
+  "experience_group",
   "ppl",
   "group_buy",
   "visit_review",
+  "other",
 ];
 
 export const marketplaceLegacyCountryOptions = [
@@ -182,6 +186,7 @@ export type MarketplaceBrandCampaign = {
   id?: string;
   title: string;
   type: CampaignProposalType;
+  otherTypeLabel?: string;
   budget: string;
   applicantLimit?: string;
   location?: string;
@@ -194,6 +199,11 @@ export type MarketplaceBrandCampaign = {
   uploadDeadline?: string;
   platforms?: InfluencerPlatform[];
   deliverables?: string[];
+  requiredConsents?: Array<{
+    id: string;
+    text: string;
+  }>;
+  consentVersion?: string;
   status?: MarketplaceCampaignStatus;
   createdAt?: string;
   updatedAt?: string;
@@ -250,6 +260,10 @@ export type MarketplaceInfluencerProfile = {
     publishedDate: string;
   }>;
   source?: "registered" | "discovered";
+  registrationVisibility?: "authenticated_advertisers";
+  platformVerified?: boolean;
+  publicProfilePublished?: boolean;
+  publicProfileHandle?: string;
 };
 
 export type MarketplaceBrandProfile = {
@@ -303,10 +317,31 @@ export const proposalTypeLabels: Record<CampaignProposalType, string> = {
   sponsored_post: "유료 광고",
   product_seeding: "제품 협찬",
   supporters: "서포터즈",
+  experience_group: "체험단",
   ppl: "PPL",
   group_buy: "공동구매",
   visit_review: "방문 리뷰",
+  other: "기타",
 };
+
+export function getCampaignProposalTypeDisplayLabel(
+  campaign: Pick<MarketplaceBrandCampaign, "type" | "otherTypeLabel">,
+) {
+  return campaign.type === "other" && campaign.otherTypeLabel?.trim()
+    ? campaign.otherTypeLabel.trim()
+    : proposalTypeLabels[campaign.type];
+}
+
+export function formatCampaignApplicantLimit(
+  value: string | undefined,
+  fallback = "상시",
+) {
+  const normalized = value?.trim();
+  if (!normalized) return fallback;
+  return /^\d+$/.test(normalized)
+    ? `${Number(normalized).toLocaleString("ko-KR")}명`
+    : normalized;
+}
 
 export const platformLabels: Record<InfluencerPlatform, string> = {
   instagram: "인스타",
@@ -1216,7 +1251,20 @@ export function findBrandProfileByHandle(
 }
 
 export function getInfluencerProfilePath(profile: MarketplaceInfluencerProfile) {
-  return `/${normalizeMarketplaceHandle(profile.handle)}`;
+  return `/${normalizeMarketplaceHandle(
+    profile.publicProfilePublished && profile.publicProfileHandle
+      ? profile.publicProfileHandle
+      : profile.handle,
+  )}`;
+}
+
+export function canOpenInfluencerPublicProfile(
+  profile: MarketplaceInfluencerProfile,
+) {
+  return !(
+    profile.registrationVisibility === "authenticated_advertisers" &&
+    !profile.publicProfilePublished
+  );
 }
 
 export function getInfluencerProfilePathByDisplayName(displayName: string | undefined) {
@@ -1341,7 +1389,7 @@ export function buildMarketplaceCampaignPosts(
           brandLogoLabel: brand.logoLabel,
           brandLogoUrl: brand.logoUrl,
           brandHref: getBrandProfilePath(brand),
-          typeLabel: proposalTypeLabels[campaign.type],
+          typeLabel: getCampaignProposalTypeDisplayLabel(campaign),
           platformLabels: platforms.map((platform) => platformLabels[platform]),
           deadlineLabel: getCampaignDeadlineLabel(campaign.deadline),
           location: campaign.location ?? brand.location,

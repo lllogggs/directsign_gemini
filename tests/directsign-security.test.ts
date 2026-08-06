@@ -32,6 +32,11 @@ import {
 } from "../src/domain/naverBlogPosts.js";
 import { createNaverSearchBudget } from "../scripts/lib/naver-search-budget.mjs";
 import {
+  buildDiscoveredPublicInfluencerDirectoryRow,
+  parsePublicAudienceCountLabel,
+  resolvePublicInfluencerDirectoryRows,
+} from "../scripts/lib/public-influencer-directory.mjs";
+import {
   isRetryableSupabaseAuthFailureStatus,
   isTerminalSupabaseRefreshFailure,
   userSessionAccessMaxAgeSeconds,
@@ -64,6 +69,261 @@ const escapeRegExp = (value: string) =>
   value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 describe("yeollock.me security regressions", () => {
+  it("keeps progressive campaign verification out of first-use spotlight copy", () => {
+    const dashboard = read("src/pages/marketing/Dashboard.tsx");
+    const campaignPages = read("src/pages/marketplace/CampaignPages.tsx");
+    const tourStart = dashboard.indexOf(
+      "const ADVERTISER_CAMPAIGN_TOUR_STEPS",
+    );
+    const tourEnd = dashboard.indexOf("type ContractSort", tourStart);
+    const helperStart = campaignPages.indexOf("const submitHelperText");
+    const helperEnd = campaignPages.indexOf(
+      "const togglePlatform",
+      helperStart,
+    );
+
+    assert.notEqual(tourStart, -1);
+    assert.notEqual(tourEnd, -1);
+
+    const campaignTour = dashboard.slice(tourStart, tourEnd);
+    assert.match(
+      campaignTour,
+      /여러 인플루언서를 모집할 캠페인 내용과 참여 조건을 작성해 배포합니다/,
+    );
+    assert.doesNotMatch(campaignTour, /첫\s*2회|3회차|사업자 인증/);
+
+    assert.notEqual(helperStart, -1);
+    assert.notEqual(helperEnd, -1);
+    const publicationHelper = campaignPages.slice(helperStart, helperEnd);
+    assert.match(
+      publicationHelper,
+      /verificationBlocksPublication[\s\S]*3회차부터 사업자 인증/,
+    );
+    assert.match(
+      publicationHelper,
+      /: canSubmit\s*\? "필수 조건이 준비되었습니다\. 공개하면 인플루언서 캠페인 화면에 바로 노출됩니다\."/,
+    );
+    assert.doesNotMatch(publicationHelper, /가입만으로|현재 \$\{campaignAccess/);
+    assert.match(
+      campaignPages,
+      /verificationBlocksPublication \? \([\s\S]*사업자 인증하기/,
+    );
+  });
+
+  it("keeps campaign authoring ordered and application consent evidence immutable", () => {
+    const campaignPages = read("src/pages/marketplace/CampaignPages.tsx");
+    const marketplace = read("src/domain/marketplace.ts");
+    const marketplacePages = read("src/pages/marketplace/MarketplacePages.tsx");
+    const landing = read("src/pages/landing/LandingPages.tsx");
+    const server = read("server/index.ts");
+    const expandMigration = read(
+      "supabase/migrations/20260806130000_add_campaign_application_consents.sql",
+    );
+    const enforcementMigration = read(
+      "supabase/migrations/20260806131000_enforce_campaign_application_consents.sql",
+    );
+    const seedTestAccounts = read("scripts/seed-test-accounts.mjs");
+    const seedQaMarketplaceScenario = read(
+      "scripts/seed-qa-marketplace-scenario.mjs",
+    );
+    const creationStart = campaignPages.indexOf(
+      "export function AdvertiserCampaignRecruitmentPage",
+    );
+    const creationEnd = campaignPages.indexOf(
+      "export function InfluencerCampaignDiscoveryPage",
+      creationStart,
+    );
+    const checkboxStart = campaignPages.indexOf(
+      "function CampaignFormCheckboxOption",
+    );
+    const checkboxEnd = campaignPages.indexOf(
+      "function CampaignDatePicker",
+      checkboxStart,
+    );
+    const discoveryFilterStart = campaignPages.indexOf(
+      "function CampaignPlatformFilterList",
+    );
+    const discoveryFilterEnd = campaignPages.indexOf(
+      "function dedupeCampaignsByBrandIdentity",
+      discoveryFilterStart,
+    );
+    const consentDialogStart = campaignPages.indexOf(
+      "function CampaignApplicationConsentDialog",
+    );
+    const consentDialogEnd = campaignPages.indexOf(
+      "function CampaignRecruitmentDetailDialog",
+      consentDialogStart,
+    );
+
+    assert.notEqual(creationStart, -1);
+    assert.ok(creationEnd > creationStart);
+    assert.notEqual(checkboxStart, -1);
+    assert.ok(checkboxEnd > checkboxStart);
+    assert.notEqual(discoveryFilterStart, -1);
+    assert.ok(discoveryFilterEnd > discoveryFilterStart);
+    assert.notEqual(consentDialogStart, -1);
+    assert.ok(consentDialogEnd > consentDialogStart);
+
+    const creation = campaignPages.slice(creationStart, creationEnd);
+    const checkboxOption = campaignPages.slice(checkboxStart, checkboxEnd);
+    const discoveryFilters = campaignPages.slice(
+      discoveryFilterStart,
+      discoveryFilterEnd,
+    );
+    const consentDialog = campaignPages.slice(
+      consentDialogStart,
+      consentDialogEnd,
+    );
+    const orderedFields = [
+      "<CampaignImageUpload",
+      '<CampaignField label="캠페인명">',
+      '<CampaignField label="플랫폼">',
+      '<CampaignField label="광고형태">',
+    ].map((marker) => creation.indexOf(marker));
+
+    assert.ok(orderedFields.every((index) => index >= 0));
+    assert.ok(
+      orderedFields.every(
+        (index, position) => position === 0 || orderedFields[position - 1] < index,
+      ),
+    );
+    assert.match(marketplace, /experience_group: "체험단"/);
+    assert.match(marketplace, /other: "기타"/);
+    assert.match(
+      campaignPages,
+      /OTHER_CAMPAIGN_TYPE_OPTION_LABEL = "기타\(직접작성\)"/,
+    );
+    assert.match(creation, /<CampaignField label="광고형태 직접작성">/);
+    assert.ok(creation.includes('inputMode="numeric"'));
+    assert.ok(creation.includes('pattern="[0-9]*"'));
+    assert.ok(creation.includes('.replace(/\\D/g, "")'));
+    assert.match(creation, /<CampaignField label="지역">/);
+    assert.match(creation, /<CampaignField label="가이드라인">/);
+    assert.doesNotMatch(
+      creation,
+      /<CampaignField label="(?:지역\/진행방식|진행방식|제공상품|참여 미션)">/,
+    );
+
+    assert.match(checkboxOption, /type="checkbox"/);
+    assert.ok(
+      checkboxOption.indexOf('type="checkbox"') <
+        checkboxOption.indexOf('<span className="min-w-0 flex-1 truncate">'),
+    );
+    assert.doesNotMatch(discoveryFilters, /type="checkbox"/);
+
+    assert.match(campaignPages, /function CampaignRequiredConsentEditor/);
+    assert.doesNotMatch(campaignPages, /DEFAULT_CAMPAIGN_REQUIRED_CONSENTS/);
+    assert.ok((creation.match(/requiredConsents: \[\]/g) ?? []).length >= 2);
+    assert.match(campaignPages, /consents\.map\(\(consent, index\) =>/);
+    assert.match(campaignPages, /동의 항목 추가/);
+    assert.ok(
+      (campaignPages.match(/requiredConsents\.length === 0/g) ?? []).length >= 2,
+    );
+    assert.ok(
+      (campaignPages.match(/submitCampaignApplication\(campaign, \[\]\)/g) ?? [])
+        .length >= 2,
+    );
+    assert.match(consentDialog, /requiredConsents\.map/);
+    assert.match(consentDialog, /"동의합니다"/);
+    assert.match(consentDialog, /aria-pressed=\{accepted\}/);
+    assert.match(consentDialog, /disabled=\{!allAccepted \|\| isSubmitting\}/);
+    assert.match(consentDialog, /disabled:hover:bg-neutral-300/);
+    assert.doesNotMatch(campaignPages, /window\.confirm/);
+    const consentEditor = campaignPages.slice(
+      campaignPages.indexOf("function CampaignRequiredConsentEditor"),
+      campaignPages.indexOf("function CampaignFormSelectList"),
+    );
+    assert.equal(consentEditor.match(/h-9 w-9/g)?.length, 3);
+    assert.match(
+      marketplacePages,
+      /getCampaignProposalTypeDisplayLabel\(campaign\)/,
+    );
+    assert.match(
+      marketplacePages,
+      /formatCampaignApplicantLimit\(campaign\.applicantLimit\)/,
+    );
+    const campaignIntroPreview = landing.slice(
+      landing.indexOf("function InfluencerCampaignApplyPreview"),
+      landing.indexOf("function InfluencerContractPdfPreview"),
+    );
+    assert.match(campaignIntroPreview, /신청 동의/);
+    assert.match(campaignIntroPreview, /광고주 직접 추가/);
+    assert.doesNotMatch(campaignIntroPreview, /4개 항목/);
+    assert.match(
+      campaignIntroPreview,
+      /광고주가 추가한 항목이 있는 캠페인은 각 항목에 동의한 뒤 신청합니다\./,
+    );
+    assert.equal(campaignIntroPreview.match(/동의 후 신청/g)?.length, 1);
+    assert.doesNotMatch(
+      campaignIntroPreview,
+      /bg-blue-600[^>]*>\s*신청\s*</,
+    );
+
+    assert.match(
+      server,
+      /const buildCampaignConsentVersion[\s\S]*sha256Hex\(JSON\.stringify/,
+    );
+    assert.match(
+      server,
+      /createHash\("sha256"\)\.update\(value\)\.digest\("hex"\)/,
+    );
+    assert.match(server, /requiredConsents: requiredConsentsResult\.items/);
+    assert.match(server, /consentVersion: requiredConsentsResult\.version/);
+    assert.match(server, /safeEqual\(submittedVersion, expectedVersion\)/);
+    assert.match(server, /acceptedIds\.length !== expectedIds\.length/);
+    assert.match(
+      server,
+      /expectedIds\.some\(\(id\) => !acceptedIdSet\.has\(id\)\)/,
+    );
+    assert.match(server, /application_consent_snapshot: \{/);
+    assert.match(
+      expandMigration,
+      /add column if not exists application_consent_snapshot jsonb/,
+    );
+    assert.match(
+      expandMigration,
+      /marketplace_campaign_application_consent_snapshot_guard/,
+    );
+    assert.match(
+      expandMigration,
+      /new\.application_consent_snapshot is distinct from old\.application_consent_snapshot/,
+    );
+    assert.match(expandMigration, /if p_snapshot is null then\s+return true;/);
+    assert.doesNotMatch(
+      expandMigration,
+      /campaign application consent snapshot is required/,
+    );
+    assert.match(
+      enforcementMigration,
+      /new\.direction = 'influencer_to_brand'[\s\S]*new\.campaign_id is not null[\s\S]*new\.application_consent_snapshot is null/,
+    );
+    assert.match(
+      enforcementMigration,
+      /campaign application consent snapshot is required/,
+    );
+    assert.match(seedTestAccounts, /application_consent_snapshot: \{/);
+    assert.match(seedTestAccounts, /buildSeedCampaignConsentState/);
+    assert.match(seedQaMarketplaceScenario, /application_consent_snapshot: \{/);
+    assert.match(seedQaMarketplaceScenario, /buildCampaignConsentState/);
+    assert.match(
+      seedQaMarketplaceScenario,
+      /"stale QA campaign applications"/,
+    );
+    assert.match(
+      server,
+      /const normalizeCampaignRequiredConsents[\s\S]*if \(!Array\.isArray\(value\)\) return \[\];/,
+    );
+    assert.match(server, /record\.offer \?\? record\.offeredProduct/);
+    assert.match(server, /const mission = normalizeOptionalText\(record\.mission\)/);
+  });
+
+  it("moves initial spotlight focus from the dialog container to a tour control", () => {
+    const spotlight = read("src/components/ProductSpotlightTour.tsx");
+
+    assert.match(spotlight, /document\.activeElement === tooltip/);
+    assert.match(spotlight, /focusTourControl\(tooltip\)/);
+  });
+
   it("keeps the customer-facing product name as 연락미", () => {
     const customerBrandFiles = [
       "src/App.tsx",
@@ -774,7 +1034,7 @@ describe("yeollock.me security regressions", () => {
     }
   });
 
-  it("keeps influencer discovery totals stable across server-filtered pages", () => {
+  it("keeps influencer discovery totals exact across fixed 100-row pages", () => {
     const makeProfile = (
       id: string,
       overrides: Partial<MarketplaceInfluencerProfile> = {},
@@ -977,33 +1237,93 @@ describe("yeollock.me security regressions", () => {
       1,
     );
 
+    const directorySizedProfiles = Array.from({ length: 243 }, (_, index) =>
+      makeProfile(`creator-${String(index + 1).padStart(3, "0")}`),
+    );
+    const directoryFirstPage = paginateMarketplaceInfluencerProfiles(
+      directorySizedProfiles,
+      { limit: 100, offset: 0 },
+    );
+    const directorySecondPage = paginateMarketplaceInfluencerProfiles(
+      directorySizedProfiles,
+      { limit: 100, offset: 100 },
+    );
+    const directoryLastPage = paginateMarketplaceInfluencerProfiles(
+      directorySizedProfiles,
+      { limit: 100, offset: 200 },
+    );
+    assert.deepEqual(
+      [directoryFirstPage.total, directorySecondPage.total, directoryLastPage.total],
+      [243, 243, 243],
+    );
+    assert.deepEqual(
+      [
+        directoryFirstPage.profiles.length,
+        directorySecondPage.profiles.length,
+        directoryLastPage.profiles.length,
+      ],
+      [100, 100, 43],
+    );
+    assert.equal(
+      new Set(
+        [
+          ...directoryFirstPage.profiles,
+          ...directorySecondPage.profiles,
+          ...directoryLastPage.profiles,
+        ].map((profile) => profile.id),
+      ).size,
+      243,
+    );
+
     const server = read("server/index.ts");
     const marketplace = read("src/pages/marketplace/MarketplacePages.tsx");
+    const agents = read("AGENTS.md");
+    const directoryMigration = read(
+      "supabase/migrations/20260804100000_add_public_influencer_directory.sql",
+    );
     assert.match(server, /readMarketplaceInfluencerSearchFilters/);
-    assert.match(server, /paginateMarketplaceInfluencerProfiles/);
+    assert.match(server, /rpc\/list_marketplace_influencers/);
+    assert.match(server, /const marketplaceInfluencerPageSize = 100/);
+    assert.match(server, /readIndexedMarketplaceInfluencerPage/);
+    assert.match(server, /hydrateMarketplaceInfluencerDirectoryReferences/);
+    assert.doesNotMatch(server, /readMarketplaceInfluencerProfileCollection/);
+    assert.doesNotMatch(server, /readDiscoveredInfluencerProfiles/);
     assert.match(
       server,
       /response\.setHeader\("Cache-Control", "private, no-store"\)/,
     );
-    assert.match(server, /const savedHandles = new Set\(/);
-    assert.match(
-      server,
-      /savedHandles\.size > 0[\s\S]*readPublicMarketplaceCache\(/,
-    );
-    assert.match(
-      server,
-      /savedHandles\.has\(normalizePublicProfileHandle\(profile\.handle\)\)/,
-    );
-    assert.doesNotMatch(
-      server,
-      /readPublicMarketplaceInfluencerProfilesByHandles/,
-    );
+    assert.match(server, /p_saved_only: savedOnly/);
+    assert.match(server, /p_organization_id: organizationId \?\? null/);
+    assert.match(directoryMigration, /create table[^;]+marketplace_public_influencer_directory/is);
+    assert.match(directoryMigration, /create or replace function public\.list_marketplace_influencers/is);
+    assert.match(directoryMigration, /p_page_size integer default 100/);
+    assert.match(directoryMigration, /p_page_size is distinct from 100/);
+    assert.match(directoryMigration, /count\(\*\)/);
+    assert.match(directoryMigration, /p_saved_only/);
+    assert.match(directoryMigration, /p_organization_id/);
+    assert.match(directoryMigration, /grant execute[^;]+to service_role/is);
+    assert.doesNotMatch(directoryMigration, /grant execute[^;]+to (?:anon|authenticated)/is);
     assert.doesNotMatch(server, /\.filter\(Boolean\)\s*\.slice\(0, 12\)/);
     assert.match(marketplace, /total: influencerTotal/);
+    assert.match(marketplace, /const marketplaceInfluencerPageSize = 100/);
+    assert.match(marketplace, /searchParams\.set\("page", String\(page\)\)/);
+    assert.match(marketplace, /searchParams\.set\("sort", influencerSort\)/);
     assert.match(marketplace, /searchParams\.append\("category", category\)/);
     assert.match(marketplace, /searchParams\.append\("country", country\)/);
+    assert.match(marketplace, /const desktopPages = getInfluencerPaginationWindow\([\s\S]*?10,[\s\S]*?\);/);
+    assert.match(marketplace, /const mobilePages = getInfluencerPaginationWindow\([\s\S]*?5,[\s\S]*?\);/);
+    assert.match(marketplace, /aria-current=\{isCurrent \? "page" : undefined\}/);
+    assert.match(marketplace, /aria-label="이전 페이지"/);
+    assert.match(marketplace, /aria-label="다음 페이지"/);
+    assert.doesNotMatch(marketplace, /new IntersectionObserver/);
+    assert.doesNotMatch(marketplace, /InfluencerLoadMoreMarker/);
+    assert.doesNotMatch(marketplace, /compareInfluencerProfilesBySort/);
     assert.match(marketplace, /data-discovery-total-count/);
     assert.match(marketplace, /총 \$\{count\.toLocaleString\(\)\}건/);
+    assert.match(
+      agents,
+      /authoritative server-side numbered pagination with exactly 100 eligible discovery entries/,
+    );
     assert.doesNotMatch(marketplace, /count=\{filteredProfiles\.length\}/);
     assert.doesNotMatch(
       marketplace,
@@ -1011,8 +1331,270 @@ describe("yeollock.me security regressions", () => {
     );
     assert.match(
       marketplace,
-      /if \(!response\.ok\) throw new Error\("Saved influencer update failed"\);\s*if \(mountedRef\.current\) \{\s*setRevision\(/,
+      /if \(!response\.ok\) throw new Error\("Saved influencer update failed"\);[\s\S]+const canonicalHandle =[\s\S]+replaceSavedHandles\(confirmedSaved\);\s*if \(mountedRef\.current\) \{\s*setRevision\(/,
     );
+  });
+
+  it("keeps completed production influencer members private to authenticated advertiser discovery", () => {
+    const server = read("server/index.ts");
+    const marketplace = read("src/pages/marketplace/MarketplacePages.tsx");
+    const migration = read(
+      "supabase/migrations/20260806120000_add_registered_influencer_discovery.sql",
+    );
+    const discoveryRoute = server.slice(
+      server.indexOf('app.get("/api/marketplace/influencers"'),
+      server.indexOf('app.get("/api/advertiser/saved-influencers"'),
+    );
+    const proposalRoute = server.slice(
+      server.indexOf('"/api/marketplace/influencers/:handle/proposals"'),
+      server.indexOf('"/api/marketplace/brands/:handle/proposals"'),
+    );
+    const publicDetailRoute = server.slice(
+      server.indexOf('app.get("/api/marketplace/influencers/:handle"'),
+      server.indexOf('app.get("/api/marketplace/brands"'),
+    );
+    const profilePublish = server.slice(
+      server.indexOf("const upsertInfluencerPublicProfile"),
+      server.indexOf("const submitInfluencerPublicHandleAppeal"),
+    );
+
+    assert.match(
+      migration,
+      /create table if not exists public\.marketplace_registered_influencer_directory/,
+    );
+    assert.match(migration, /registered_identity_only boolean[\s\S]+default false/);
+    assert.match(
+      migration,
+      /marketplace_influencer_profiles_registered_handle_owner/,
+    );
+    assert.match(migration, /'rm-' \|\| left\(md5\(owner_profile_id::text\), 27\)/);
+    assert.match(migration, /registered_member_visibility = 'authenticated_advertisers'/);
+    assert.match(migration, /auth\.uid\(\)/);
+    assert.match(migration, /auth\.role\(\) is distinct from 'authenticated'/);
+    assert.match(migration, /membership\.role::text in \('owner', 'admin', 'marketer'\)/);
+    assert.match(migration, /p_page_size is distinct from 100/);
+    assert.match(
+      migration,
+      /revoke all on table public\.marketplace_registered_influencer_directory[\s\S]+from public, anon, authenticated/,
+    );
+    assert.match(
+      migration,
+      /grant execute on function public\.list_authenticated_marketplace_influencers[\s\S]+to authenticated/,
+    );
+    assert.doesNotMatch(
+      migration,
+      /grant execute on function public\.list_authenticated_marketplace_influencers[\s\S]+to anon/,
+    );
+    assert.match(
+      migration,
+      /A creator's audience market is not evidence of the creator's own country/,
+    );
+    assert.doesNotMatch(migration, /v_marketplace_profile\.audience_countries/);
+    assert.match(migration, /v_creator_countries := '\{\}'::text\[\]/);
+    assert.match(migration, /v_country_display_label := '국가 미확인'/);
+    assert.match(
+      migration,
+      /set influencer_public_handle = registered_member\.registered_handle/,
+    );
+    const registeredMemberRefresh = migration.slice(
+      migration.indexOf(
+        "create or replace function directsign_private.directsign_refresh_registered_member_discovery",
+      ),
+      migration.indexOf(
+        "create or replace function public.resolve_marketplace_saved_influencer_handle",
+      ),
+    );
+    assert.match(
+      registeredMemberRefresh,
+      /jsonb_array_elements\(v_verified_channels\)[\s\S]+discovered\.platform_handle/,
+    );
+    assert.match(
+      registeredMemberRefresh,
+      /insert into public\.advertiser_saved_influencers[\s\S]+v_registered_handle[\s\S]+on conflict \(organization_id, influencer_public_handle\) do nothing/,
+    );
+    assert.match(
+      registeredMemberRefresh,
+      /with removed_alias_saves as \([\s\S]+delete from public\.advertiser_saved_influencers as saved[\s\S]+any\(v_saved_alias_handles\)[\s\S]+returning/,
+    );
+    assert.match(
+      registeredMemberRefresh,
+      /pg_advisory_xact_lock\([\s\S]+directsign:marketplace-saved-influencer:/,
+    );
+    assert.match(
+      migration,
+      /create or replace function public\.resolve_marketplace_saved_influencer_handle/,
+    );
+    assert.match(
+      migration,
+      /join lateral jsonb_array_elements\(registered_member\.verified_channels\)[\s\S]+verified_channel\.value ->> 'platform' = discovered\.platform::text[\s\S]+btrim\(discovered\.platform_handle\)/,
+    );
+    assert.match(
+      migration,
+      /revoke all on function\s+public\.resolve_marketplace_saved_influencer_handle\(text\)\s+from public, anon, authenticated/,
+    );
+    assert.match(
+      migration,
+      /grant execute on function\s+public\.resolve_marketplace_saved_influencer_handle\(text\)\s+to service_role/,
+    );
+    assert.match(
+      migration,
+      /join auth\.users as auth_user[\s\S]+auth_user\.id = candidate\.id/,
+    );
+    assert.match(migration, /auth_user\.raw_app_meta_data/);
+    assert.match(migration, /auth_user\.raw_user_meta_data/);
+    assert.match(migration, /qa_account\|seeded\|is_test\|test_data/);
+    const atomicSavedMutation = migration.slice(
+      migration.indexOf(
+        "create or replace function public.mutate_marketplace_saved_influencer",
+      ),
+      migration.indexOf(
+        "create or replace function directsign_private.directsign_sync_registered_member_profile",
+      ),
+    );
+    assert.match(
+      atomicSavedMutation,
+      /pg_advisory_xact_lock\([\s\S]+directsign:marketplace-saved-influencer:/,
+    );
+    assert.match(
+      atomicSavedMutation,
+      /resolve_marketplace_saved_influencer_handle\(v_requested_handle\)[\s\S]+insert into public\.advertiser_saved_influencers[\s\S]+delete from public\.advertiser_saved_influencers/,
+    );
+    assert.match(
+      migration,
+      /revoke all on function public\.mutate_marketplace_saved_influencer\([\s\S]+\) from public, anon, authenticated/,
+    );
+    assert.match(
+      migration,
+      /grant execute on function public\.mutate_marketplace_saved_influencer\([\s\S]+\) to service_role/,
+    );
+
+    assert.match(discoveryRoute, /requireAdvertiserSession\(request, response\)/);
+    assert.match(discoveryRoute, /readAuthenticatedMarketplaceInfluencerPage/);
+    assert.match(discoveryRoute, /accessToken: advertiserAuth\.accessToken/);
+    assert.match(discoveryRoute, /Cache-Control", "private, no-store/);
+    assert.doesNotMatch(discoveryRoute, /sendPublicMarketplaceJson/);
+    const authenticatedRestHelper = server.slice(
+      server.indexOf("const fetchSupabaseAsUser"),
+      server.indexOf("const assertSupabaseOk"),
+    );
+    assert.match(authenticatedRestHelper, /supabaseAuthHeaders\(accessToken\)/);
+    assert.match(authenticatedRestHelper, /cache: "no-store"/);
+    assert.match(server, /rpc\/list_authenticated_marketplace_influencers/);
+    assert.match(server, /readRegisteredMarketplaceInfluencerByStableHandle/);
+    assert.match(server, /readAdvertiserVisibleMarketplaceInfluencerByHandle/);
+    assert.match(server, /rpc\/mutate_marketplace_saved_influencer/);
+    const savedInfluencerMutationRoutes = server.slice(
+      server.indexOf('"/api/advertiser/saved-influencers/:handle"'),
+      server.indexOf('app.get("/api/marketplace/influencers/:handle"'),
+    );
+    assert.equal(
+      savedInfluencerMutationRoutes.match(
+        /mutateAdvertiserSavedInfluencer\(\{/g,
+      )?.length,
+      2,
+    );
+    assert.doesNotMatch(
+      savedInfluencerMutationRoutes,
+      /upsertSupabaseV2Rows\(\s*"advertiser_saved_influencers"/,
+    );
+    assert.doesNotMatch(
+      savedInfluencerMutationRoutes,
+      /deleteSupabaseV2Rows\(\s*"advertiser_saved_influencers"/,
+    );
+    assert.match(marketplace, /const canonicalHandle =/);
+    assert.match(marketplace, /confirmedSaved\.delete\(canonicalHandle\)/);
+    assert.match(marketplace, /confirmedSaved\.add\(canonicalHandle\)/);
+    assert.match(proposalRoute, /target\.marketplaceProfileId/);
+    assert.match(proposalRoute, /target_influencer_profile_id: target\.marketplaceProfileId/);
+    assert.match(
+      publicDetailRoute,
+      /readPublicMarketplaceInfluencerProfileByHandle/,
+    );
+    assert.doesNotMatch(publicDetailRoute, /readRegisteredMarketplaceInfluencerByStableHandle/);
+
+    assert.match(profilePublish, /storedProfileRow\?\.id \?\? stableUuid/);
+    assert.match(profilePublish, /let handle = existingProfile\?\.handle \?\? automaticHandle/);
+    assert.match(
+      profilePublish,
+      /const automaticHandleConflict = existingProfile[\s\S]+findInfluencerPublicHandleConflict/,
+    );
+    assert.match(profilePublish, /registered_identity_only: false/);
+    assert.match(
+      profilePublish,
+      /storedProfileRow && storedProfileRow\.registered_identity_only !== true/,
+    );
+    assert.match(
+      server,
+      /const readStoredInfluencerPublicProfile[\s\S]+profile\.registered_identity_only === true/,
+    );
+    assert.match(
+      server,
+      /target_influencer_profile_id=in\.\$\{postgrestInFilter\([\s\S]+publicProfileIds/,
+    );
+  });
+
+  it("builds one deterministic eligible influencer directory", () => {
+    const sharedHandle = "shared.creator";
+    const discovered = {
+      id: "11111111-1111-4111-8111-111111111111",
+      platform: "instagram",
+      public_handle: sharedHandle,
+      platform_handle: `@${sharedHandle}`,
+      display_name: "공개 크리에이터",
+      headline: "뷰티와 라이프스타일",
+      bio: "일상을 기록합니다",
+      categories: ["뷰티"],
+      audience_countries: ["south_korea"],
+      audience_tags: ["20대"],
+      follower_count: 12_345,
+      followers_label: "1.2만명",
+      quality_score: 92,
+      status: "active",
+      updated_at: "2026-08-04T00:00:00.000Z",
+    };
+    const discoveredRow = buildDiscoveredPublicInfluencerDirectoryRow(discovered);
+    assert.ok(discoveredRow);
+    assert.equal(discoveredRow.max_audience_count, 12_345);
+    assert.deepEqual(discoveredRow.platforms, ["instagram"]);
+    assert.equal(parsePublicAudienceCountLabel("구독자 2.4만명"), 24_000);
+    assert.equal(
+      buildDiscoveredPublicInfluencerDirectoryRow({
+        ...discovered,
+        id: "22222222-2222-4222-8222-222222222222",
+        public_handle: "hidden.creator",
+        status: "hidden",
+      }),
+      null,
+    );
+
+    const resolved = resolvePublicInfluencerDirectoryRows({
+      registeredProfiles: [
+        {
+          id: "33333333-3333-4333-8333-333333333333",
+          public_handle: sharedHandle,
+          display_name: "가입 크리에이터",
+          categories: ["뷰티"],
+          audience_countries: ["south_korea"],
+          is_published: true,
+          data_origin: "production",
+          updated_at: "2026-08-04T00:00:00.000Z",
+        },
+      ],
+      registeredChannels: [
+        {
+          id: "44444444-4444-4444-8444-444444444444",
+          profile_id: "33333333-3333-4333-8333-333333333333",
+          platform: "instagram",
+          handle: `@${sharedHandle}`,
+          follower_count: 50_000,
+          updated_at: "2026-08-04T00:00:00.000Z",
+        },
+      ],
+      discoveredProfiles: [discovered],
+    });
+    assert.equal(resolved.rows.length, 1);
+    assert.equal(resolved.rows[0]?.source_type, "registered");
+    assert.equal(resolved.summary.handle_conflicts.length, 1);
   });
 
   it("keeps influencer discovery independent-creator only with organization-scoped saves", () => {
@@ -1026,7 +1608,7 @@ describe("yeollock.me security regressions", () => {
 
     assert.match(
       marketplace,
-      /<span[^>]*>저장<\/span>[\s\S]*<span>국가<\/span>[\s\S]*<span>플랫폼<\/span>[\s\S]*<span>카테고리<\/span>[\s\S]*<span>인플루언서<\/span>[\s\S]*<span>채널 지표<\/span>/,
+      /<span[^>]*>관심<\/span>[\s\S]*<span>국가<\/span>[\s\S]*<span>플랫폼<\/span>[\s\S]*<span>카테고리<\/span>[\s\S]*<span>인플루언서<\/span>[\s\S]*<span>채널 지표<\/span>/,
     );
 
     assert.equal(
@@ -1472,9 +2054,16 @@ describe("yeollock.me security regressions", () => {
     assert.match(server, /savedOnlyQuery === "true"/);
     assert.match(server, /requireAdvertiserSession/);
     assert.match(server, /readAdvertiserSavedInfluencerRows/);
-    assert.match(marketplace, /function InfluencerSaveCheckbox/);
-    assert.match(marketplace, /function SavedOnlyFilterToggle/);
-    assert.match(marketplace, /role="checkbox"/);
+    assert.match(marketplace, /function InfluencerInterestButton/);
+    assert.match(marketplace, /function InfluencerInterestScope/);
+    assert.match(marketplace, /aria-pressed=\{isSaved\}/);
+    assert.match(marketplace, /관심 인플루언서 추가/);
+    assert.match(marketplace, /mobileOnly/);
+    assert.match(
+      marketplace,
+      /useAdvertiserSavedInfluencers\(advertiserShellMode === "authenticated"\)/,
+    );
+    assert.doesNotMatch(marketplace, /저장한 인플루언서|저장한 계정만/);
     assert.match(marketplace, /searchPlaceholder="카테고리 검색"/);
     assert.match(
       migration,
@@ -1659,6 +2248,9 @@ describe("yeollock.me security regressions", () => {
     const settlementCategoryRemovalMigration = read(
       "supabase/migrations/20260529090000_remove_settlement_support_ticket_category.sql",
     );
+    const marketplaceEligibility = read(
+      "src/domain/marketplaceInfluencerEligibility.js",
+    );
 
     assert.match(envExample, /YEOLLOCK_ALLOW_PRODUCTION_TEST_DATA="false"/);
     assert.match(envExample, /VITE_LEGAL_OPERATOR_NAME=""/);
@@ -1685,19 +2277,13 @@ describe("yeollock.me security regressions", () => {
       server,
       /!filterOperationalMarketplaceTestData \|\|[\s\S]+!hasOperationalTestMarker\(profile\)/,
     );
-    assert.match(
-      server,
-      /const \{ profiles, channels \} = await readAllMarketplaceInfluencerRows/,
-    );
-    assert.match(
-      server,
-      /const visibleProfiles = \[\.\.\.dbProfiles, \.\.\.discoveredProfiles\]/,
-    );
-    assert.match(server, /if \(useSupabase\) return visibleProfiles/);
-    assert.doesNotMatch(
-      server,
-      /return mergeMarketplaceInfluencerProfiles\(visibleProfiles\)/,
-    );
+    assert.match(server, /classifyMarketplacePublicInfluencerEligibility/);
+    assert.match(server, /readIndexedMarketplaceInfluencerPage/);
+    assert.match(server, /rpc\/list_marketplace_influencers/);
+    assert.doesNotMatch(server, /readAllMarketplaceInfluencerRows/);
+    assert.match(marketplaceEligibility, /knownOperationalSeedHandles/);
+    assert.match(marketplaceEligibility, /operationalTestTextPattern/);
+    assert.match(marketplaceEligibility, /reason: "operational_test_marker"/);
     assert.match(
       server,
       /if \(allowPublicMarketplaceCatalogFallback\) \{[\s\S]+return mergeMarketplaceBrandProfiles\(visibleDbProfiles\)/,
@@ -1706,10 +2292,8 @@ describe("yeollock.me security regressions", () => {
       server,
       /if \(!useSupabase\) return fallbackMarketplaceBrandProfiles\(\)/,
     );
-    assert.match(
-      server,
-      /const profiles = await readPublicMarketplaceCache\(\s*"marketplace-influencers"/,
-    );
+    assert.match(server, /readAuthenticatedMarketplaceInfluencerPage/);
+    assert.match(server, /rpc\/list_authenticated_marketplace_influencers/);
     assert.match(
       server,
       /readPublicMarketplaceInfluencerProfileByHandle\(\s*request\.params\.handle/,
@@ -2707,7 +3291,7 @@ describe("yeollock.me security regressions", () => {
     assert.match(influencerViewer, /!isContractSignedOrClosed/);
     assert.match(dashboard, /isContractContentSubmitted/);
     assert.match(dashboard, /contract\.deliverable_summary/);
-    assert.match(campaignPages, /window\.confirm/);
+    assert.doesNotMatch(campaignPages, /window\.confirm/);
   });
 
   it("audits evidence and signed PDF downloads on the server", () => {
@@ -3204,17 +3788,27 @@ describe("yeollock.me security regressions", () => {
       publicProfile,
       /return clean \? `yeollock\.me\/\$\{clean\}` : "yeollock\.me"/,
     );
-    assert.match(
-      marketplace,
-      /return `\/\$\{normalizeMarketplaceHandle\(profile\.handle\)\}`/,
+    assert.match(marketplace, /profile\.publicProfilePublished && profile\.publicProfileHandle/);
+    assert.match(marketplace, /normalizeMarketplaceHandle\([\s\S]+profile\.handle/);
+    const counterpartHrefHelper = server.slice(
+      server.indexOf("const getMarketplaceCounterpartHref"),
+      server.indexOf("const loadSignedPdfBoldFont"),
     );
     assert.match(
-      server,
+      counterpartHrefHelper,
+      /row\.target_influencer_public_handle[\s\S]+getInfluencerPublicProfilePath\(row\.target_influencer_public_handle\)/,
+    );
+    assert.match(
+      counterpartHrefHelper,
+      /getInfluencerPublicProfilePath\(row\.sender_influencer_handle\)/,
+    );
+    assert.doesNotMatch(
+      counterpartHrefHelper,
       /getInfluencerPublicProfilePath\(row\.target_handle\)/,
     );
     assert.match(
       server,
-      /getInfluencerPublicProfilePath\(row\.sender_influencer_handle\)/,
+      /profile\?\.data_origin === "production"[\s\S]+profile\.is_published[\s\S]+profile\.registered_identity_only !== true/,
     );
     assert.doesNotMatch(marketplacePages, /yeollock\.me\/\{profile\.handle\}/);
     assert.doesNotMatch(
@@ -3241,20 +3835,24 @@ describe("yeollock.me security regressions", () => {
     assert.match(influencerPublicProfileSource, /href=\{platform\.url\}/);
     assert.match(
       influencerPublicProfileSource,
-      /const publicProfileHeaderHref = isOwnPublishedProfile/,
+      /const publicInfluencerHeader: PublicProfileHeaderConfig/,
     );
     assert.match(
       influencerPublicProfileSource,
-      /advertiserShellMode === "authenticated"/,
+      /authenticatedHref: "\/advertiser\/discover"/,
     );
-    assert.match(influencerPublicProfileSource, /\? "\/advertiser\/discover"/);
+    assert.match(influencerPublicProfileSource, /forceHref: "\/influencer\/profile"/);
+    assert.match(
+      influencerPublicProfileSource,
+      /<PublicProfileHeader[\s\S]*?mode=\{advertiserShellMode\}[\s\S]*?publicInfluencerHeader/,
+    );
     assert.match(influencerPublicProfileSource, /lg:hidden/);
     assert.match(influencerPublicProfileSource, /bg-blue-600/);
-    assert.match(influencerPublicProfileSource, /제안하기/);
+    assert.match(influencerPublicProfileSource, /1:1 계약 제안/);
     assert.match(agents, /first screens should not show money/);
     assert.match(
       agents,
-      /proposal areas should show only the blue "제안하기" button/,
+      /proposal areas must call the primary action `1:1 계약 제안`/,
     );
     assert.match(
       agents,
@@ -3344,8 +3942,9 @@ describe("yeollock.me security regressions", () => {
     );
     assert.match(
       influencerPublicProfileSource,
-      /lg:grid-cols-\[minmax\(0,1fr\)_156px\]/,
+      /lg:grid-cols-\[minmax\(0,1fr\)_auto\]/,
     );
+    assert.match(influencerPublicProfileSource, /variant="detail"/);
     assert.match(
       influencerPublicProfileSource,
       /lg:grid-cols-\[minmax\(0,1fr\)\]/,
@@ -3370,7 +3969,10 @@ describe("yeollock.me security regressions", () => {
       /lg:items-center lg:justify-center/,
     );
     assert.match(influencerPublicProfileSource, /lg:text-\[48px\]/);
-    assert.match(influencerPublicProfileSource, /lg:inline-flex/);
+    assert.match(
+      influencerPublicProfileSource,
+      /hidden shrink-0 items-center justify-end gap-2 lg:flex/,
+    );
     assert.match(influencerPublicProfileSource, /lg:hidden/);
     assert.match(influencerPublicProfileSource, /ExternalLink/);
     assert.match(influencerPublicProfileSource, /h-\[200px\]/);
@@ -3445,10 +4047,10 @@ describe("yeollock.me security regressions", () => {
     assert.match(influencerPublicProfileSource, /data-profile-platform-strip/);
     assert.match(
       influencerPublicProfileSource,
-      /lg:grid-cols-\[minmax\(0,1fr\)_156px\]/,
+      /lg:grid-cols-\[minmax\(0,1fr\)_auto\]/,
     );
     assert.match(influencerPublicProfileSource, /w-\[156px\]/);
-    assert.match(influencerPublicProfileSource, /lg:inline-flex/);
+    assert.match(influencerPublicProfileSource, /justify-end gap-2 lg:flex/);
     assert.match(influencerPublicProfileSource, /lg:hidden/);
     assert.match(influencerPublicProfileSource, /min-h-\[52px\]/);
     assert.doesNotMatch(
@@ -4251,6 +4853,9 @@ describe("yeollock.me security regressions", () => {
     const influencerVerification = read(
       "src/pages/influencer/InfluencerVerification.tsx",
     );
+    const influencerProfileSettings = read(
+      "src/pages/influencer/InfluencerPublicProfileSettingsPage.tsx",
+    );
     const seedAccounts = read("scripts/seed-test-accounts.mjs");
     const seedQaMarketplaceScenario = read(
       "scripts/seed-qa-marketplace-scenario.mjs",
@@ -4267,6 +4872,7 @@ describe("yeollock.me security regressions", () => {
     );
     const campaignPages = read("src/pages/marketplace/CampaignPages.tsx");
     const marketplacePages = read("src/pages/marketplace/MarketplacePages.tsx");
+    const responsiveFilterPanel = read("src/components/ResponsiveFilterPanel.tsx");
     const influencerLoginPage = read(
       "src/pages/influencer/InfluencerLoginPage.tsx",
     );
@@ -4408,7 +5014,7 @@ describe("yeollock.me security regressions", () => {
     );
     assert.match(
       kimGuardrails,
-      /public marketplace cache keeps influencer totals exact and other fallbacks safe/,
+      /indexed influencer directory keeps exact totals without full-corpus reads/,
     );
     assert.match(
       kimGuardrails,
@@ -4724,19 +5330,27 @@ describe("yeollock.me security regressions", () => {
     assert.match(marketplacePages, /MARKETPLACE_CREATOR_CATEGORY_OPTIONS/);
     assert.match(marketplacePages, /normalizeMarketplaceCreatorCategory/);
     assert.match(marketplacePages, /searchPlaceholder="카테고리 검색"/);
-    assert.match(marketplacePages, /listMaxHeightClassName="max-h-72"/);
-    assert.match(marketplacePages, /function FilterListSection/);
-    assert.match(marketplacePages, /<FilterListSection/);
-    assert.match(marketplacePages, /values=\{categoryFilters\}/);
+    assert.match(marketplacePages, /function InfluencerFilterPanelContents/);
+    assert.match(marketplacePages, /function DirectMultiFilterSection/);
+    assert.match(marketplacePages, /lg:max-h-40 lg:overflow-y-auto/);
+    assert.match(marketplacePages, /getPlatformDisplayName\(platform\)/);
+    assert.doesNotMatch(marketplacePages, /플랫폼 · 카테고리 · 국가/);
+    assert.match(responsiveFilterPanel, /yl-primary-action/);
+    assert.doesNotMatch(responsiveFilterPanel, /"전체 조건"/);
+    assert.match(
+      responsiveFilterPanel,
+      /onClear && activeCount > 0 && !mobileOnly/,
+    );
+    assert.match(marketplacePages, /categoryFilters=\{categoryFilters\}/);
     assert.match(marketplacePages, /function InfluencerSortSelect/);
     assert.match(marketplacePages, /audience_desc/);
-    assert.match(marketplacePages, /compareInfluencerProfilesBySort/);
+    assert.match(marketplacePages, /searchParams\.set\("sort", influencerSort\)/);
     assert.match(marketplacePages, /구독자·팔로워 많은순/);
     assert.match(marketplaceDomain, /function getChannelAudienceSortValue/);
     assert.match(marketplaceDomain, /function compareChannelAudienceValues/);
     assert.match(
       agents,
-      /Paginated influencer discovery filters must be applied by the server/,
+      /authoritative server-side numbered pagination with exactly 100 eligible discovery entries/,
     );
     assert.match(server, /readMarketplaceInfluencerPlatformFilter/);
     assert.match(
@@ -4755,8 +5369,9 @@ describe("yeollock.me security regressions", () => {
     );
     assert.match(marketplacePages, /data-influencer-table-scroll="true"/);
     assert.match(marketplacePages, /data-influencer-list-scroll="true"/);
-    assert.match(marketplacePages, /root: scrollRoot/);
-    assert.match(marketplacePages, /rootMargin: "0px"/);
+    assert.match(marketplacePages, /function InfluencerPagination/);
+    assert.match(marketplacePages, /aria-current/);
+    assert.doesNotMatch(marketplacePages, /new IntersectionObserver/);
     assert.match(campaignPages, /function CampaignCategoryFilterList/);
     assert.match(campaignPages, /<CampaignCategoryFilterList/);
     assert.match(campaignPages, /function CampaignFilterListSection/);
@@ -4777,12 +5392,17 @@ describe("yeollock.me security regressions", () => {
     assert.doesNotMatch(campaignPages, /받은 계약/);
     assert.match(marketplaceDomain, /\| "supporters"/);
     assert.match(marketplaceDomain, /supporters: "서포터즈"/);
-    assert.match(campaignPages, /제품 제공\(소비자가 89,000원 상당\)/);
+    assert.match(marketplaceDomain, /experience_group: "체험단"/);
+    assert.match(marketplaceDomain, /other: "기타"/);
+    assert.match(
+      campaignPages,
+      /OTHER_CAMPAIGN_TYPE_OPTION_LABEL = "기타\(직접작성\)"/,
+    );
     assert.match(marketplace, /campaignProposalTypeOptions/);
     assert.match(server, /campaign_supporters_resale_ban/);
     assert.match(server, /서포터즈 활동 자격은 자동 박탈/);
     assert.match(server, /campaign_supporters_posting_mission/);
-    assert.match(server, /미션 불이행/);
+    assert.match(server, /콘텐츠 조건 불이행/);
     assert.match(supportersCampaignMigration, /'supporters'/);
     assert.match(seedAccounts, /type: "supporters"/);
     assert.match(server, /fallbackMarketplaceCampaignPosts/);
@@ -4844,13 +5464,15 @@ describe("yeollock.me security regressions", () => {
       /제출마감 \{getCampaignSubmissionDeadlineLabel\(campaign\)\}/,
     );
     assert.doesNotMatch(campaignPages, /콘텐츠 \{getCampaign/);
-    assert.match(campaignPages, /지역\/진행방식/);
-    assert.match(campaignPages, /제공상품/);
-    assert.match(campaignPages, /참여 미션/);
+    assert.match(campaignPages, /<CampaignField label="지역">/);
+    assert.match(campaignPages, /<CampaignField label="가이드라인">/);
+    assert.match(campaignPages, /function CampaignRequiredConsentEditor/);
+    assert.match(campaignPages, /function CampaignApplicationConsentDialog/);
     assert.match(campaignPages, /function CampaignImageUpload/);
     assert.match(campaignPages, /\/api\/advertiser\/campaign-image/);
     assert.match(server, /제공상품을 120자 이내로 입력해 주세요/);
-    assert.match(server, /지역\/진행방식:/);
+    assert.match(server, /가이드라인:/);
+    assert.match(server, /지역:/);
     assert.match(server, /"\/api\/advertiser\/campaign-image"/);
     assert.match(server, /area: "campaign-thumbnails"/);
     assert.match(marketplaceDomain, /offer\?: string/);
@@ -4892,6 +5514,10 @@ describe("yeollock.me security regressions", () => {
     assert.match(
       advertiserDashboard,
       /findInfluencerProfileByDisplayName\(applicantName\)/,
+    );
+    assert.match(
+      advertiserDashboard,
+      /if \(thread\.counterpartProfilePublished === false\) return undefined/,
     );
     assert.match(
       advertiserDashboard,
@@ -5001,6 +5627,15 @@ describe("yeollock.me security regressions", () => {
       influencerVerification,
       /InfoRow\s+label="현재 상태"\s+value="인증 완료"/,
     );
+    const verifiedPlatformRows = influencerProfileSettings.slice(
+      influencerProfileSettings.indexOf("function VerifiedPlatformRows"),
+      influencerProfileSettings.indexOf("function ProfileLoadingView"),
+    );
+    assert.match(
+      verifiedPlatformRows,
+      /grid min-h-16 grid-cols-\[minmax\(0,1fr\)_auto\] items-center/,
+    );
+    assert.doesNotMatch(verifiedPlatformRows, /bg-blue-50 px-2/);
     assert.doesNotMatch(marketplace, /제안 후 메시지함/);
     assert.match(landing, /formatIntroDateWithDday\(5, "date-first"\)/);
     assert.match(landing, /formatIntroDateWithDday\(8\)/);
@@ -5035,6 +5670,279 @@ describe("yeollock.me security regressions", () => {
     assert.match(server, /active_campaigns: campaigns/);
   });
 
+  it("enforces progressive campaign verification at the atomic server and database boundary", () => {
+    const server = read("server/index.ts");
+    const migration = read(
+      "supabase/migrations/20260806110000_add_progressive_campaign_verification.sql",
+    );
+    const registeredDiscoveryMigration = read(
+      "supabase/migrations/20260806120000_add_registered_influencer_discovery.sql",
+    );
+
+    assert.match(server, /const ADVERTISER_UNVERIFIED_CAMPAIGN_LIMIT = 2/);
+    assert.match(server, /rpc\/get_progressive_campaign_access/);
+    assert.match(server, /rpc\/publish_marketplace_campaign/);
+    assert.match(server, /campaign_access: board\.campaignAccess/);
+    assert.match(server, /code: "advertiser_business_verification_required"/);
+
+    assert.match(migration, /add column if not exists first_published_at timestamptz/);
+    assert.match(migration, /add column if not exists organization_campaign_sequence bigint/);
+    assert.match(migration, /verification_gate_basis text/);
+    assert.match(
+      migration,
+      /campaign\.campaign_data ->> 'createdAt'/,
+    );
+    assert.match(
+      migration,
+      /partition by publication\.organization_id[\s\S]*publication\.publication_at asc, publication\.id asc/,
+    );
+    assert.match(
+      migration,
+      /marketplace_campaigns_organization_sequence_unique[\s\S]*organization_id,[\s\S]*organization_campaign_sequence/,
+    );
+    assert.match(
+      migration,
+      /create table if not exists public\.marketplace_campaign_publication_counters/,
+    );
+    assert.match(migration, /pg_advisory_xact_lock/);
+    assert.match(migration, /v_next_sequence := v_published_count \+ 1/);
+    assert.match(migration, /not v_business_verified and v_next_sequence > 2/);
+    assert.match(
+      migration,
+      /when v_next_sequence <= 2 then 'intro_exempt'[\s\S]*else 'business_verified'/,
+    );
+    assert.match(migration, /else 'grandfathered'/);
+    assert.match(migration, /campaign publication identity is immutable/);
+    assert.match(migration, /contract workflow provenance is immutable/);
+    const businessVerificationFunction = migration.slice(
+      migration.indexOf(
+        "create or replace function public.directsign_organization_business_verified",
+      ),
+      migration.indexOf(
+        "create or replace function public.get_progressive_campaign_access",
+      ),
+    );
+    for (const operationalVerificationBinding of [
+      "request.id = organization.business_verification_request_id",
+      "request.organization_id = organization.id",
+      "request.target_id = organization.id::text",
+      "request.data_origin = 'production'",
+      "submitter.data_origin = 'production'",
+      "submitter.role::text = 'marketer'",
+      "organization.business_verification_status = 'approved'",
+      "organization.business_verified_at is not null",
+      "organization.business_registration_number =",
+      "request.business_registration_number",
+      "btrim(organization.representative_name) =",
+      "btrim(request.representative_name)",
+      "directsign_email_is_operational",
+      "directsign_has_test_marker",
+      "submitter_auth.raw_app_meta_data",
+      "submitter_auth.raw_user_meta_data",
+      "request.evidence_snapshot_json",
+      "data_origin|environment",
+      "qa|test|demo|seed|qa_account",
+      "qa_account|seeded|is_test|test_data",
+    ]) {
+      assert.ok(
+        businessVerificationFunction.includes(operationalVerificationBinding),
+        operationalVerificationBinding,
+      );
+    }
+    const testMarkerHelperPattern =
+      /create or replace function directsign_private\.directsign_has_test_marker\([\s\S]*?\n\$\$;/;
+    const campaignTestMarkerHelper = migration.match(testMarkerHelperPattern)?.[0];
+    const discoveryTestMarkerHelper =
+      registeredDiscoveryMigration.match(testMarkerHelperPattern)?.[0];
+    assert.ok(campaignTestMarkerHelper, "campaign test-marker helper must exist");
+    assert.equal(
+      discoveryTestMarkerHelper,
+      campaignTestMarkerHelper,
+      "later migrations must not weaken the shared production test-marker helper",
+    );
+    for (const knownSeedMarker of [
+      "광고주.매니저",
+      "브레드룸",
+      "브래드룸",
+      "오브레",
+      "크리에이터.소라",
+      "민서홈",
+      "소담픽",
+    ]) {
+      assert.ok(campaignTestMarkerHelper.includes(knownSeedMarker), knownSeedMarker);
+    }
+    assert.doesNotMatch(
+      businessVerificationFunction,
+      /request\.organization_id = p_organization_id[\s\S]+\bor\b[\s\S]+request\.target_id/,
+    );
+    assert.doesNotMatch(
+      migration,
+      /grant execute on function public\.publish_marketplace_campaign\([\s\S]*to (?:anon|authenticated)/,
+    );
+
+    const publishFunction = migration.slice(
+      migration.indexOf("create or replace function public.publish_marketplace_campaign"),
+      migration.indexOf(
+        "create or replace function public.directsign_campaign_contract_verification_exempt",
+      ),
+    );
+    assert.ok(
+      publishFunction.indexOf("insert into public.marketplace_campaigns") <
+        publishFunction.indexOf("update public.marketplace_brand_profiles"),
+      "the authoritative campaign insert must precede the legacy brand mirror",
+    );
+
+    const createFlow = server.slice(
+      server.indexOf("const upsertAdvertiserMarketplaceCampaign"),
+      server.indexOf("const updateAdvertiserMarketplaceCampaignStatus"),
+    );
+    const publicationKeyBuilder = server.slice(
+      server.indexOf("const buildCampaignPublicationRequestKey"),
+      server.indexOf("const upsertAdvertiserMarketplaceCampaign"),
+    );
+    assert.match(publicationKeyBuilder, /Idempotency-Key/);
+    assert.match(publicationKeyBuilder, /clientKey\.length < 16/);
+    assert.doesNotMatch(publicationKeyBuilder, /Date\.now|retryWindow|payload/);
+    assert.match(createFlow, /campaign_idempotency_key_required/);
+    assert.ok(
+      createFlow.indexOf("publishMarketplaceCampaignAtomically") <
+        createFlow.indexOf('"marketplace_brand_profiles"'),
+      "campaign publication must succeed before the denormalized brand update",
+    );
+    assert.doesNotMatch(createFlow, /active_campaigns: campaigns/);
+  });
+
+  it("keeps every authoritative advertiser campaign manageable beyond the legacy mirror", () => {
+    const server = read("server/index.ts");
+    const allCampaignReader = server.slice(
+      server.indexOf("const readAllNormalizedMarketplaceCampaignRows"),
+      server.indexOf("const mapNormalizedMarketplaceCampaignRow"),
+    );
+    assert.match(allCampaignReader, /pageSize = 1000/);
+    assert.match(allCampaignReader, /offset/);
+
+    const advertiserBrandReader = server.slice(
+      server.indexOf("const readAdvertiserMarketplaceBrandRows"),
+      server.indexOf("const ensureAdvertiserDefaultBrandRow"),
+    );
+    assert.match(advertiserBrandReader, /readAll: true/);
+    assert.match(advertiserBrandReader, /Number\.MAX_SAFE_INTEGER/);
+
+    const archiveFlow = server.slice(
+      server.indexOf("const archiveAdvertiserBrandProfile"),
+      server.indexOf("const validateMarketplaceCampaignInput"),
+    );
+    assert.match(archiveFlow, /readAllNormalizedMarketplaceCampaignRows/);
+    assert.match(archiveFlow, /status=in\.\(open,draft\)/);
+
+    const statusFlow = server.slice(
+      server.indexOf("const updateAdvertiserMarketplaceCampaignStatus"),
+      server.indexOf("const buildMarketplaceCampaignSnapshot"),
+    );
+    assert.match(statusFlow, /authoritativeCampaignRows/);
+    assert.match(statusFlow, /organization_id=eq/);
+    assert.match(statusFlow, /campaign_idempotency_key_required/);
+    assert.doesNotMatch(statusFlow, /Math\.floor\(Date\.now/);
+  });
+
+  it("keeps campaign exemptions provenance-bound while gating direct proposals and new applications", () => {
+    const server = read("server/index.ts");
+    const migration = read(
+      "supabase/migrations/20260806110000_add_progressive_campaign_verification.sql",
+    );
+
+    const exemptionFunction = migration.slice(
+      migration.indexOf(
+        "create or replace function public.directsign_campaign_contract_verification_exempt",
+      ),
+      migration.indexOf(
+        "create or replace function public.directsign_protect_campaign_publication_identity",
+      ),
+    );
+    for (const requiredBinding of [
+      "contract.workflow_source = 'marketplace_campaign'",
+      "campaign.id = contract.marketplace_campaign_id",
+      "application.id::text = contract.source_application_id",
+      "application.converted_contract_id = contract.id",
+      "campaign.verification_gate_basis = 'intro_exempt'",
+      "campaign.organization_campaign_sequence between 1 and 2",
+    ]) {
+      assert.ok(exemptionFunction.includes(requiredBinding), requiredBinding);
+    }
+    assert.match(server, /rpc\/directsign_campaign_contract_verification_exempt/);
+    assert.match(server, /const resolveAdvertiserContractAccess/);
+    assert.match(server, /isAdvertiserVerifiedOrCampaignContractExempt/);
+    assert.match(server, /buildAdvertiserVerificationRequiredPayload/);
+
+    const serverBusinessVerification = server.slice(
+      server.indexOf("const isAdvertiserBusinessVerified"),
+      server.indexOf("const isAdvertiserApprovedForContractSend"),
+    );
+    assert.match(
+      serverBusinessVerification,
+      /rpc\/directsign_organization_business_verified/,
+    );
+    assert.match(
+      serverBusinessVerification,
+      /if \(!organization \|\| !isUuid\(organization\.id\)\) return false/,
+    );
+    assert.match(serverBusinessVerification, /rpcResponse\.json\(\)\) === true/);
+    assert.doesNotMatch(serverBusinessVerification, /readVerificationRequests/);
+    assert.doesNotMatch(serverBusinessVerification, /relevantRequests/);
+    assert.doesNotMatch(
+      serverBusinessVerification,
+      /request\.status === "approved"/,
+    );
+
+    const contractDetailRoute = server.slice(
+      server.indexOf('app.get("/api/contracts/:id"'),
+      server.indexOf('app.post("/api/contracts/:id/share-link/reveal"'),
+    );
+    assert.match(contractDetailRoute, /resolveAdvertiserContractAccess/);
+    assert.match(contractDetailRoute, /advertiser_contract_access/);
+
+    const advertiserWriteGuard = server.slice(
+      server.indexOf("const verifyAdvertiserContractWriteAccess"),
+      server.indexOf("const verifyInfluencerShareAccess"),
+    );
+    assert.match(advertiserWriteGuard, /isFixedCampaignContract\(existing\)/);
+    assert.match(advertiserWriteGuard, /incoming\.brand_profile_id/);
+    assert.match(advertiserWriteGuard, /incoming\.influencer_info/);
+    assert.match(advertiserWriteGuard, /incoming\.campaign/);
+    assert.match(advertiserWriteGuard, /incoming\.clauses/);
+
+    const directProposalRoute = server.slice(
+      server.indexOf('"/api/marketplace/influencers/:handle/proposals"'),
+      server.indexOf('"/api/marketplace/brands/:handle/proposals"'),
+    );
+    assert.match(directProposalRoute, /isAdvertiserBusinessVerified\(advertiserAuth\)/);
+    assert.match(
+      directProposalRoute,
+      /buildAdvertiserVerificationRequiredPayload\(\)/,
+    );
+    assert.ok(
+      directProposalRoute.indexOf("isAdvertiserBusinessVerified") <
+        directProposalRoute.indexOf("insertSupabaseRowsReturning"),
+    );
+
+    const applicationFlow = server.slice(
+      server.indexOf("const submitMarketplaceCampaignApplication"),
+      server.indexOf("const saveInfluencerMarketplaceAvatar"),
+    );
+    assert.match(applicationFlow, /code: "influencer_verification_required"/);
+    assert.match(applicationFlow, /next_path: "\/influencer\/verification"/);
+    assert.ok(
+      applicationFlow.indexOf("if (existingRows[0])") <
+        applicationFlow.indexOf("hasApprovedInfluencerPlatformVerification"),
+      "an idempotent duplicate application lookup must happen before the new-application gate",
+    );
+    assert.ok(
+      applicationFlow.indexOf("hasApprovedInfluencerPlatformVerification") <
+        applicationFlow.indexOf("insertSupabaseRowsReturning"),
+      "platform verification must be approved before a new application insert",
+    );
+  });
+
   it("separates public cache optimization from sensitive contract data", () => {
     const server = read("server/index.ts");
     const packageJson = JSON.parse(read("package.json")) as {
@@ -5060,11 +5968,13 @@ describe("yeollock.me security regressions", () => {
       server,
       /applyPublicMarketplaceFallback\(await loader\(\), options\)/,
     );
-    assert.match(
+    assert.doesNotMatch(
       server,
       /readPublicMarketplaceCache\([\s\S]+"marketplace-influencers",[\s\S]+readMarketplaceInfluencerProfileCollection/,
     );
-    assert.match(server, /paginateMarketplaceInfluencerProfiles\(profiles/);
+    assert.match(server, /readIndexedMarketplaceInfluencerPage/);
+    assert.match(server, /rpc\/list_marketplace_influencers/);
+    assert.match(server, /paginateMarketplaceInfluencerProfiles\(fallbackProfiles/);
     assert.match(
       server,
       /visibleDbProfiles\.length > 0[\s\S]*fallbackMarketplaceBrandProfiles\(\)/,
@@ -5072,10 +5982,8 @@ describe("yeollock.me security regressions", () => {
     assert.match(server, /invalidateByTag/);
     assert.match(server, /Vercel-CDN-Cache-Control/);
     assert.match(server, /Vercel-Cache-Tag/);
-    assert.match(
-      server,
-      /sendPublicMarketplaceJson\(response, page, "marketplace-influencers"\)/,
-    );
+    assert.match(server, /readAuthenticatedMarketplaceInfluencerPage/);
+    assert.match(server, /rpc\/list_authenticated_marketplace_influencers/);
     assert.match(
       server,
       /sendPublicMarketplaceJson\(response, \{ campaigns \}, "marketplace-campaigns"\)/,
@@ -5309,6 +6217,7 @@ describe("yeollock.me security regressions", () => {
     const gitignore = read(".gitignore");
     const vercelignore = read(".vercelignore");
     const vercelConfig = JSON.parse(read("vercel.json")) as {
+      functions?: Record<string, { excludeFiles?: string }>;
       rewrites?: Array<{ source?: string; destination?: string }>;
     };
     const privacyScan = read("scripts/privacy-pii-scan.mjs");
@@ -5323,6 +6232,9 @@ describe("yeollock.me security regressions", () => {
     const salesDocs = readdirSync(join(root, "docs", "sales")).filter((file) =>
       statSync(join(root, "docs", "sales", file)).isFile(),
     );
+    const vercelIgnoreLines = new Set(
+      vercelignore.split(/\r?\n/).map((line) => line.trim()),
+    );
 
     assert.match(
       packageJson.scripts?.["privacy:scan"] ?? "",
@@ -5335,6 +6247,41 @@ describe("yeollock.me security regressions", () => {
       assert.match(ignoreFile, /docs\/sales\/\*business-emails\*\.tsv/);
       assert.match(ignoreFile, /docs\/sales\/\*email-discovery\*\.json/);
       assert.match(ignoreFile, /docs\/sales\/cold-email-leads\.csv/);
+    }
+    for (const deploymentOnlyPath of [
+      ".tmp",
+      ".vercel-global",
+      ".vercel/output",
+      ".vercel/**",
+      ".mcp.json",
+      ".agents",
+      ".codex",
+      ".od-skills",
+      "AGENTS.md",
+      "data",
+      "data/**",
+      "**/runtime-secrets.json",
+      "dist",
+      "supabase",
+      "tests",
+      "**/.env*",
+    ]) {
+      assert.ok(vercelIgnoreLines.has(deploymentOnlyPath));
+    }
+    assert.match(vercelignore, /^docs\/sales\/\*\.\*$/m);
+    assert.doesNotMatch(vercelignore, /^docs\/sales\/assets(?:\/|$)/m);
+    const apiFunctionExcludes =
+      vercelConfig.functions?.["api/index.ts"]?.excludeFiles ?? "";
+    for (const blockedFunctionPath of [
+      "data/**",
+      "**/runtime-secrets.json",
+      "**/*.log",
+      "docs/sales/**",
+      "qa-artifacts/**",
+      "tmp/**",
+      ".tmp/**",
+    ]) {
+      assert.ok(apiFunctionExcludes.includes(blockedFunctionPath));
     }
     assert.match(privacyScan, /git[\s\S]*ls-files[\s\S]*--exclude-standard/);
     assert.match(privacyScan, /raw sales lead artifact/);
@@ -5758,6 +6705,9 @@ describe("yeollock.me security regressions", () => {
 
   it("keeps signup continuations role-scoped and campaign applications in the applied view", () => {
     const server = read("server/index.ts");
+    const progressiveCampaignMigration = read(
+      "supabase/migrations/20260806110000_add_progressive_campaign_verification.sql",
+    );
     const nextPathStart = server.indexOf("const signupNextPathRules");
     const nextPathSource = server.slice(
       nextPathStart,
@@ -5773,11 +6723,6 @@ describe("yeollock.me security regressions", () => {
         campaignCreateStart,
       ),
     );
-    const campaignNormalizeSource = campaignCreateSource.slice(
-      campaignCreateSource.indexOf("const campaigns = normalizeBrandCampaigns"),
-      campaignCreateSource.indexOf("const preferredPlatforms"),
-    );
-
     assert.match(nextPathSource, /allowedPrefixes: \["\/advertiser"\]/);
     assert.match(
       nextPathSource,
@@ -5796,11 +6741,12 @@ describe("yeollock.me security regressions", () => {
       2,
     );
     assert.match(server, /"\/influencer\/campaigns\?view=applied"/);
+    assert.match(campaignCreateSource, /publishMarketplaceCampaignAtomically/);
     assert.match(
-      campaignNormalizeSource,
-      /\[campaign, \.\.\.currentBrand\.activeCampaigns\]/,
+      progressiveCampaignMigration,
+      /order by campaign\.created_at desc, campaign\.id desc[\s\S]*limit 20/,
     );
-    assert.doesNotMatch(campaignNormalizeSource, /,\s*8\s*,?/);
+    assert.doesNotMatch(progressiveCampaignMigration, /limit 8/);
   });
 
   it("marks private contract list responses no-store", () => {

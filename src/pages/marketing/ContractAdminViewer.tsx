@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import {
   AlertCircle,
@@ -7,17 +7,13 @@ import {
   Copy,
   ExternalLink,
   FileText,
-  KeyRound,
   LifeBuoy,
   LogOut,
-  Mail,
   MessageSquareText,
   PenLine,
   RefreshCw,
   Save,
   Send,
-  Settings,
-  ShieldCheck,
 } from "lucide-react";
 import { format } from "date-fns";
 import { Textarea } from "@/components/ui/textarea";
@@ -25,16 +21,26 @@ import { ClauseHistory, Contract, ContractStatus, useAppStore } from "../../stor
 import { apiFetch, apiPath } from "../../domain/api";
 import { isFixedCampaignContract } from "../../domain/contracts";
 import { PRODUCT_NAME } from "../../domain/brand";
-import { LEGAL_CONTACT_EMAIL } from "../../domain/legalEntity";
 import { SUPPORT_ACCESS_CONSENT_TEXT } from "../../domain/legalConsent";
 import { buildSupportTicketPath } from "../../domain/support";
 import { BrandLogo, LogoMark } from "../../components/BrandLogo";
-import { verificationStatusLabel } from "../../domain/verification";
+import { AdvertiserAccountSettingsMenu } from "../../components/AdvertiserAccountSettingsMenu";
+import { HeaderMessageCenterButton } from "../../components/HeaderMessageCenterButton";
+import { HeaderNotificationCenterButton } from "../../components/HeaderNotificationCenterButton";
 import {
   clearVerificationSummaryCache,
   useVerificationSummary,
 } from "../../hooks/useVerificationSummary";
+import {
+  isAdvertiserContractAccess,
+  type AdvertiserContractAccess,
+} from "../../domain/verificationPolicy";
 import { clearAdvertiserSessionCache } from "../../domain/advertiserSessionCache";
+import {
+  clearMarketplaceMessageSummaryCache,
+  useMarketplaceMessageSummary,
+} from "../../hooks/useMarketplaceMessageSummary";
+import { clearNotificationCenterCache } from "../../hooks/useNotificationCenter";
 import { translateApiErrorMessage } from "../../domain/userMessages";
 import {
   formatContractTitleForDisplay,
@@ -71,17 +77,6 @@ const getSafeExternalHref = (value?: string) => {
     return undefined;
   }
 };
-
-const buildAdminSupportMailtoHref = ({
-  subject,
-  body,
-}: {
-  subject: string;
-  body: string;
-}) =>
-  `mailto:${LEGAL_CONTACT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(
-    body,
-  )}`;
 
 const STATUS_META: Record<
   ContractStatus,
@@ -149,6 +144,17 @@ const getContractProgressIndex = (status: ContractStatus) => {
   return 0;
 };
 
+type AdvertiserContractAccessState =
+  | {
+      contractId: string;
+      status: "loading" | "failed";
+    }
+  | {
+      contractId: string;
+      status: "ready";
+      access: AdvertiserContractAccess;
+    };
+
 export function ContractAdminViewer() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -177,12 +183,18 @@ export function ContractAdminViewer() {
   const [reviewingDeliverableId, setReviewingDeliverableId] = useState("");
   const [isClosingContract, setIsClosingContract] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [contractAccessState, setContractAccessState] =
+    useState<AdvertiserContractAccessState>({
+      contractId: id ?? "",
+      status: "loading",
+    });
+  const [contractAccessRetrySignal, setContractAccessRetrySignal] = useState(0);
+  const { summary: messageSummary, isLoading: isMessageSummaryLoading } =
+    useMarketplaceMessageSummary("advertiser");
   const [focusedClauseId, setFocusedClauseId] = useState("");
-  const { summary: verificationSummary, isLoading: isVerificationLoading } =
-    useVerificationSummary({ role: "advertiser" });
-  const advertiserVerificationStatus =
-    verificationSummary?.advertiser.status ?? "not_submitted";
-  const isAdvertiserVerified = advertiserVerificationStatus === "approved";
+  const { summary: verificationSummary } = useVerificationSummary({
+    role: "advertiser",
+  });
   const advertiserAccount = useMemo(() => {
     const latest = verificationSummary?.advertiser.latest_request;
     const account = verificationSummary?.advertiser.account;
@@ -257,6 +269,50 @@ export function ContractAdminViewer() {
   }, [hydrateContracts, id]);
 
   useEffect(() => {
+    if (!id) return undefined;
+
+    const contractId = id;
+    const controller = new AbortController();
+
+    const loadContractAccess = async () => {
+      try {
+        const response = await apiFetch(
+          `/api/contracts/${encodeURIComponent(contractId)}`,
+          {
+            credentials: "include",
+            headers: { Accept: "application/json" },
+            cache: "no-store",
+            signal: controller.signal,
+          },
+        );
+        const payload = (await response.json().catch(() => undefined)) as
+          | { advertiser_contract_access?: unknown }
+          | undefined;
+
+        if (
+          !response.ok ||
+          !isAdvertiserContractAccess(payload?.advertiser_contract_access)
+        ) {
+          throw new Error("Advertiser contract access is unavailable");
+        }
+
+        setContractAccessState({
+          contractId,
+          status: "ready",
+          access: payload.advertiser_contract_access,
+        });
+      } catch {
+        if (controller.signal.aborted) return;
+        setContractAccessState({ contractId, status: "failed" });
+      }
+    };
+
+    void loadContractAccess();
+
+    return () => controller.abort();
+  }, [contractAccessRetrySignal, id]);
+
+  useEffect(() => {
     const nextFocusedClauseId =
       reviewableClauses.length === 0
         ? ""
@@ -311,6 +367,19 @@ export function ContractAdminViewer() {
     );
   }
 
+  const isContractAccessReady =
+    contractAccessState.contractId === contract.id &&
+    contractAccessState.status === "ready";
+  const advertiserContractAccess = isContractAccessReady
+    ? contractAccessState.access
+    : undefined;
+  const isContractAccessFailed =
+    contractAccessState.contractId === contract.id &&
+    contractAccessState.status === "failed";
+  const isContractAccessLoading =
+    contractAccessState.contractId !== contract.id ||
+    contractAccessState.status === "loading";
+
   const primaryActionLabel =
     contract.status === "CLOSED"
       ? "계약 마감"
@@ -321,18 +390,19 @@ export function ContractAdminViewer() {
       : isFixedCampaign && !summary.allApproved
         ? "내용 확인"
       : summary.allApproved
-        ? isVerificationLoading
-          ? "인증 확인 중"
-          : isAdvertiserVerified
+        ? !isContractAccessReady
+          ? isContractAccessFailed
+            ? "권한 다시 확인"
+            : "권한 확인 중"
+          : advertiserContractAccess.can_send
             ? "서명 링크 만들기"
-          : "광고주 인증 필요"
+            : "광고주 인증 필요"
         : "수정 요청 검토";
   const canRequestSignatures =
     summary.allApproved &&
     !summary.activeShare &&
     !isContractSignedOrClosed &&
-    isAdvertiserVerified &&
-    !isVerificationLoading;
+    advertiserContractAccess?.can_send === true;
   const displayContractTitle = formatContractTitleForDisplay(contract.title);
   const fixedCampaignNextAction =
     contract.status === "CLOSED"
@@ -472,12 +542,13 @@ export function ContractAdminViewer() {
       return;
     }
 
-    if (!isAdvertiserVerified) {
-      setNotice(
-        `사업자 인증 승인 후 서명 링크를 만들 수 있습니다. 현재 상태: ${verificationStatusLabel(
-          advertiserVerificationStatus,
-        )}`,
-      );
+    if (!isContractAccessReady || !advertiserContractAccess) {
+      setNotice("계약 권한을 확인한 뒤 다시 시도해 주세요.");
+      return;
+    }
+
+    if (!advertiserContractAccess.can_send) {
+      setNotice("사업자 인증 승인 후 서명 링크를 만들 수 있습니다.");
       return;
     }
 
@@ -530,13 +601,22 @@ export function ContractAdminViewer() {
     }
 
     if (summary.allApproved && !isContractSignedOrClosed) {
-      if (isVerificationLoading) {
-        setNotice("사업자 인증 상태를 확인한 뒤 다시 시도해 주세요.");
+      if (isContractAccessFailed) {
+        setContractAccessState({
+          contractId: contract.id,
+          status: "loading",
+        });
+        setContractAccessRetrySignal((current) => current + 1);
+        return;
+      }
+
+      if (!isContractAccessReady || !advertiserContractAccess) {
+        setNotice("계약 권한을 확인한 뒤 다시 시도해 주세요.");
         return;
       }
 
       setNotice("사업자 인증 화면에서 승인 절차를 먼저 완료해 주세요.");
-      navigate("/advertiser/verification");
+      navigate(advertiserContractAccess.next_path);
       return;
     }
 
@@ -822,6 +902,8 @@ export function ContractAdminViewer() {
     } finally {
       clearAdvertiserSessionCache();
       clearVerificationSummaryCache("advertiser");
+      clearMarketplaceMessageSummaryCache("advertiser");
+      clearNotificationCenterCache("advertiser");
       resetHydration();
       navigate("/login/advertiser", { replace: true });
     }
@@ -846,25 +928,31 @@ export function ContractAdminViewer() {
             <button
               type="button"
               onClick={() => navigate("/advertiser/dashboard")}
-              className="yl-header-action yl-header-action-secondary"
+              className="yl-header-action yl-header-action-secondary hidden sm:inline-flex"
               aria-label="대시보드"
               title="대시보드"
             >
               <span className="hidden sm:inline">대시보드</span>
               <span className="sm:hidden">홈</span>
             </button>
+            <HeaderNotificationCenterButton role="advertiser" />
+            <HeaderMessageCenterButton
+              unreadCount={messageSummary.unreadCount}
+              isLoading={isMessageSummaryLoading}
+              onClick={() => navigate("/advertiser/messages")}
+            />
             <button
               type="button"
               onClick={handleLogout}
-              className="yl-header-action yl-header-action-secondary"
+              className="yl-header-action yl-header-action-secondary hidden sm:inline-flex"
               aria-label="로그아웃"
               title="로그아웃"
             >
               <LogOut className="h-3.5 w-3.5" strokeWidth={2} />
               <span className="hidden sm:inline">로그아웃</span>
             </button>
-            <ContractAdminAccountSettingsMenu
-              account={advertiserAccount}
+            <AdvertiserAccountSettingsMenu
+              account={{ email: advertiserAccount.email }}
               open={accountMenuOpen}
               onToggle={() => setAccountMenuOpen((current) => !current)}
               onClose={() => setAccountMenuOpen(false)}
@@ -875,6 +963,10 @@ export function ContractAdminViewer() {
               onOpenBusinessVerification={() => {
                 setAccountMenuOpen(false);
                 navigate("/advertiser/verification");
+              }}
+              onLogout={() => {
+                setAccountMenuOpen(false);
+                void handleLogout();
               }}
             />
           </div>
@@ -1018,11 +1110,22 @@ export function ContractAdminViewer() {
                       <button
                         type="button"
                         onClick={handlePrimaryAction}
-                        disabled={summary.allApproved && isVerificationLoading}
-                        className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-neutral-950 text-[13px] font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition hover:bg-neutral-800 hover:shadow-[0_14px_30px_rgba(15,23,42,0.18)] disabled:bg-neutral-200 disabled:text-neutral-400 disabled:shadow-none"
+                        disabled={
+                          summary.allApproved &&
+                          !summary.activeShare &&
+                          isContractAccessLoading
+                        }
+                        className="yl-primary-action inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg text-[13px] font-semibold transition hover:shadow-[0_14px_30px_rgba(15,23,42,0.18)] disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-400 disabled:shadow-none"
                       >
                         {summary.activeShare ? (
                           <Copy className="h-4 w-4" />
+                        ) : summary.allApproved &&
+                          (isContractAccessLoading || isContractAccessFailed) ? (
+                          <RefreshCw
+                            className={`h-4 w-4 ${
+                              isContractAccessLoading ? "animate-spin" : ""
+                            }`}
+                          />
                         ) : (
                           <Send className="h-4 w-4" />
                         )}
@@ -1746,130 +1849,6 @@ function MetaLine({ label, value }: { label: string; value: string }) {
     <div className="flex items-center justify-between gap-4">
       <span className="text-neutral-400">{label}</span>
       <span className="truncate text-right font-semibold text-neutral-800">{value}</span>
-    </div>
-  );
-}
-
-function ContractAdminAccountSettingsMenu({
-  account,
-  open,
-  onToggle,
-  onClose,
-  onChangePassword,
-  onOpenBusinessVerification,
-}: {
-  account: { name: string; email?: string };
-  open: boolean;
-  onToggle: () => void;
-  onClose: () => void;
-  onChangePassword: () => void;
-  onOpenBusinessVerification: () => void;
-}) {
-  const rootRef = useRef<HTMLDivElement | null>(null);
-  const emailChangeHref = buildAdminSupportMailtoHref({
-    subject: "광고주 계정 이메일 변경 요청",
-    body: [
-      "광고주 계정 이메일 변경을 요청합니다.",
-      "",
-      `현재 표시 이메일: ${account.email ?? "확인 필요"}`,
-      `사업자명: ${account.name}`,
-      "변경할 이메일:",
-      "요청 사유:",
-    ].join("\n"),
-  });
-
-  useEffect(() => {
-    if (!open) return undefined;
-
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target;
-      if (!(target instanceof Node)) return;
-      if (rootRef.current?.contains(target)) return;
-      onClose();
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-
-    document.addEventListener("pointerdown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [onClose, open]);
-
-  return (
-    <div ref={rootRef} className="relative shrink-0">
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-label="계정 설정"
-        title="계정 설정"
-        aria-expanded={open}
-        className="yl-header-icon-action"
-      >
-        <Settings className="h-3.5 w-3.5" strokeWidth={2} />
-      </button>
-
-      {open ? (
-        <div className="absolute right-0 top-[calc(100%+8px)] z-40 w-[290px] overflow-hidden rounded-[12px] border border-neutral-200 bg-white text-left shadow-[0_18px_50px_rgba(15,23,42,0.14)]">
-          <div className="border-b border-neutral-100 px-4 py-3">
-            <p className="text-[13px] font-extrabold text-neutral-950">계정 설정</p>
-            {account.email ? (
-              <p className="mt-1 truncate text-[12px] font-semibold text-neutral-500">
-                {account.email}
-              </p>
-            ) : null}
-          </div>
-          <a
-            href={emailChangeHref}
-            onClick={onClose}
-            className="flex min-h-12 items-start gap-2 px-4 py-3 text-left transition hover:bg-neutral-50"
-          >
-            <Mail className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-500" />
-            <span className="min-w-0">
-              <span className="block text-[12px] font-extrabold text-neutral-800">
-                로그인 이메일 변경 요청
-              </span>
-              <span className="mt-0.5 block text-[11px] font-semibold leading-4 text-neutral-500">
-                소유 확인 후 새 이메일로 변경합니다.
-              </span>
-            </span>
-          </a>
-          <button
-            type="button"
-            onClick={onOpenBusinessVerification}
-            className="flex min-h-12 w-full items-start gap-2 px-4 py-3 text-left transition hover:bg-neutral-50"
-          >
-            <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-500" />
-            <span className="min-w-0">
-              <span className="block text-[12px] font-extrabold text-neutral-800">
-                사업자 인증 관리
-              </span>
-              <span className="mt-0.5 block text-[11px] font-semibold leading-4 text-neutral-500">
-                사업자 정보를 확인하고 관리합니다.
-              </span>
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={onChangePassword}
-            className="flex min-h-12 w-full items-start gap-2 px-4 py-3 text-left transition hover:bg-neutral-50"
-          >
-            <KeyRound className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-500" />
-            <span className="min-w-0">
-              <span className="block text-[12px] font-extrabold text-neutral-800">
-                비밀번호 재설정
-              </span>
-              <span className="mt-0.5 block text-[11px] font-semibold leading-4 text-neutral-500">
-                로그인 비밀번호를 다시 설정합니다.
-              </span>
-            </span>
-          </button>
-        </div>
-      ) : null}
     </div>
   );
 }

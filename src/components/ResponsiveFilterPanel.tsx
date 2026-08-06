@@ -1,4 +1,4 @@
-import { useEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 
@@ -9,6 +9,8 @@ type ResponsiveFilterPanelProps = {
   activeCount?: number;
   onClose: () => void;
   onClear?: () => void;
+  mobileOnly?: boolean;
+  closeLabel?: string;
   children: ReactNode;
   className?: string;
 };
@@ -23,10 +25,18 @@ export function ResponsiveFilterPanel({
   activeCount = 0,
   onClose,
   onClear,
+  mobileOnly = false,
+  closeLabel = "적용",
   children,
   className = "",
 }: ResponsiveFilterPanelProps) {
-  useBodyScrollLock(open);
+  const [isMobileViewport, setIsMobileViewport] = useState(() =>
+    typeof window === "undefined"
+      ? false
+      : window.matchMedia("(max-width: 1023px)").matches,
+  );
+  const shouldRender = open && (!mobileOnly || isMobileViewport);
+  useBodyScrollLock(shouldRender);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
@@ -37,7 +47,16 @@ export function ResponsiveFilterPanel({
   }, [onClose]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!mobileOnly) return undefined;
+    const media = window.matchMedia("(max-width: 1023px)");
+    const syncViewport = () => setIsMobileViewport(media.matches);
+    syncViewport();
+    media.addEventListener("change", syncViewport);
+    return () => media.removeEventListener("change", syncViewport);
+  }, [mobileOnly]);
+
+  useEffect(() => {
+    if (!shouldRender) return;
 
     restoreFocusRef.current =
       document.activeElement instanceof HTMLElement
@@ -69,7 +88,7 @@ export function ResponsiveFilterPanel({
       restoreFocusRef.current?.focus();
       restoreFocusRef.current = null;
     };
-  }, [open]);
+  }, [shouldRender]);
 
   const trapFocus = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "Tab") return;
@@ -99,12 +118,22 @@ export function ResponsiveFilterPanel({
     }
   };
 
-  if (!open) return null;
+  if (!shouldRender) return null;
+
+  const backdropClassName = mobileOnly
+    ? "fixed inset-0 z-40 bg-black/20 backdrop-blur-[1px]"
+    : "fixed inset-0 z-40 bg-black/20 backdrop-blur-[1px] sm:hidden";
+  const panelClassName = mobileOnly
+    ? "fixed inset-x-0 bottom-0 z-50 max-h-[82dvh] overflow-y-auto rounded-t-[20px] border border-neutral-200 bg-white p-4 shadow-[0_-18px_48px_rgba(15,23,42,0.18)]"
+    : "fixed inset-x-0 bottom-0 z-50 max-h-[82dvh] overflow-y-auto rounded-t-[20px] border border-neutral-200 bg-white p-4 shadow-[0_-18px_48px_rgba(15,23,42,0.18)] sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:top-[calc(100%+8px)] sm:max-h-[min(520px,calc(100vh-180px))] sm:w-[min(760px,calc(100vw-48px))] sm:overflow-visible sm:rounded-[12px] sm:p-3 sm:shadow-[0_18px_54px_rgba(15,23,42,0.16)]";
+  const mobileActionClassName = mobileOnly
+    ? "sticky bottom-0 -mx-4 mt-4 flex gap-2 border-t border-neutral-200 bg-white/95 px-4 pb-1 pt-3 backdrop-blur"
+    : "sticky bottom-0 -mx-4 mt-4 flex gap-2 border-t border-neutral-200 bg-white/95 px-4 pb-1 pt-3 backdrop-blur sm:hidden";
 
   return (
     <>
       <div
-        className="fixed inset-0 z-40 bg-black/20 backdrop-blur-[1px] sm:hidden"
+        className={backdropClassName}
         aria-hidden="true"
         onClick={onClose}
       />
@@ -116,7 +145,7 @@ export function ResponsiveFilterPanel({
         aria-labelledby={`${id}-title`}
         tabIndex={-1}
         onKeyDown={trapFocus}
-        className={`fixed inset-x-0 bottom-0 z-50 max-h-[82dvh] overflow-y-auto rounded-t-[20px] border border-neutral-200 bg-white p-4 shadow-[0_-18px_48px_rgba(15,23,42,0.18)] sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:top-[calc(100%+8px)] sm:max-h-[min(520px,calc(100vh-180px))] sm:w-[min(760px,calc(100vw-48px))] sm:overflow-visible sm:rounded-[12px] sm:p-3 sm:shadow-[0_18px_54px_rgba(15,23,42,0.16)] ${className}`}
+        className={`${panelClassName} ${className}`}
       >
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
@@ -126,12 +155,14 @@ export function ResponsiveFilterPanel({
             >
               {title}
             </p>
-            <p className="mt-0.5 text-[11px] font-bold text-neutral-500">
-              {activeCount > 0 ? `${activeCount}개 조건 적용` : "전체 조건"}
-            </p>
+            {activeCount > 0 ? (
+              <p className="mt-0.5 text-[11px] font-bold text-neutral-500">
+                {activeCount}개 조건 적용
+              </p>
+            ) : null}
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
-            {onClear && activeCount > 0 ? (
+            {onClear && activeCount > 0 && !mobileOnly ? (
               <button
                 type="button"
                 onClick={onClear}
@@ -152,7 +183,7 @@ export function ResponsiveFilterPanel({
           </div>
         </div>
         <div className="mt-3">{children}</div>
-        <div className="sticky bottom-0 -mx-4 mt-4 flex gap-2 border-t border-neutral-200 bg-white/95 px-4 pb-1 pt-3 backdrop-blur sm:hidden">
+        <div className={mobileActionClassName}>
           {onClear ? (
             <button
               type="button"
@@ -165,9 +196,9 @@ export function ResponsiveFilterPanel({
           <button
             type="button"
             onClick={onClose}
-            className="h-11 flex-[1.4] rounded-[12px] bg-neutral-950 text-[13px] font-extrabold text-white"
+            className="yl-primary-action h-11 flex-[1.4] rounded-[12px] text-[13px] font-extrabold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700"
           >
-            적용
+            {closeLabel}
           </button>
         </div>
       </div>

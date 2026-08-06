@@ -241,6 +241,12 @@
     -webkit-font-smoothing: antialiased;
   }
 
+  html.yl-fixed-app-frame,
+  body.yl-fixed-app-frame {
+    height: 100%;
+    overflow: hidden;
+  }
+
   :where(button, [role="button"], [role="tab"], a[href], summary):not(:disabled) {
     cursor: pointer;
   }
@@ -560,8 +566,8 @@
 
   .yl-header-icon-action {
     display: inline-flex;
-    height: 2.5rem;
-    width: 2.5rem;
+    height: 40px;
+    width: 40px;
     flex-shrink: 0;
     align-items: center;
     justify-content: center;
@@ -857,6 +863,16 @@
     border-color: rgb(23 23 23);
     background-color: white;
     box-shadow: 0 0 0 3px rgba(23, 23, 23, 0.08);
+  }
+
+  .yl-profile-settings .marketplace-input {
+    background-color: #fbfbfc;
+  }
+
+  .yl-profile-settings .marketplace-input:focus {
+    border-color: rgb(37 99 235);
+    background-color: white;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
   }
 
   .campaign-input {

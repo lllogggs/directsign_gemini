@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import {
   AlertCircle,
@@ -11,20 +11,15 @@ import {
   FileCheck2,
   FileSignature,
   FileText,
-  KeyRound,
   LogOut,
-  Mail,
   MessageSquareText,
   Search,
-  Settings,
   SlidersHorizontal,
   UserCheck,
-  UserRound,
   X,
 } from "lucide-react";
 import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
-import { LEGAL_CONTACT_EMAIL } from "../../domain/legalEntity";
 import type {
   InfluencerDashboardActivityEvent,
   InfluencerDashboardContract,
@@ -53,16 +48,23 @@ import { DashboardSurfaceSwitch } from "../../components/DashboardSurfaceSwitch"
 import { DashboardDownloadButton } from "../../components/DashboardDownloadButton";
 import { DashboardExportDialog } from "../../components/DashboardExportDialog";
 import { HeaderMessageCenterButton } from "../../components/HeaderMessageCenterButton";
+import { HeaderNotificationCenterButton } from "../../components/HeaderNotificationCenterButton";
+import { InfluencerAccountSettingsMenu } from "../../components/InfluencerAccountSettingsMenu";
 import { MobileSurfaceSwitch } from "../../components/MobileSurfaceSwitch";
 import { LogoMark } from "../../components/BrandLogo";
 import { PlatformBrandMark } from "../../components/PlatformBrandMark";
 import { ResponsiveFilterPanel } from "../../components/ResponsiveFilterPanel";
 import { FilterSelectControl } from "../../components/FilterSelectControl";
 import {
+  ProductSpotlightTour,
+  type ProductSpotlightTourStep,
+} from "../../components/ProductSpotlightTour";
+import {
   clearMarketplaceMessageSummaryCache,
   useMarketplaceMessageSummary,
 } from "../../hooks/useMarketplaceMessageSummary";
 import { clearVerificationSummaryCache } from "../../hooks/useVerificationSummary";
+import { clearNotificationCenterCache } from "../../hooks/useNotificationCenter";
 import { exportWorkbookToGoogleSheets } from "../../domain/googleWorkspaceExport";
 import { downloadXlsx, type XlsxSheet, type XlsxWorkbook } from "../../domain/xlsxExport";
 
@@ -102,6 +104,31 @@ type ContractSort = {
   key: SortKey;
   direction: SortDirection;
 };
+
+const INFLUENCER_CONTRACT_TOUR_STEPS = [
+  {
+    id: "surfaces",
+    target: "influencer-dashboard-surfaces",
+    title: "캠페인과 1:1 계약",
+    description:
+      "캠페인에서는 모집글을 찾아 지원하고, 1:1 계약에서는 브랜드가 직접 보낸 계약을 확인합니다.",
+  },
+  {
+    id: "verification",
+    target: "influencer-verification-summary",
+    title: "지원 전 계정 인증",
+    description:
+      "첫 캠페인 지원부터 가입과 플랫폼 계정 인증이 필요합니다. 이 영역에서 인증 상태와 승인된 계정을 확인할 수 있습니다.",
+  },
+  {
+    id: "workspace",
+    target: "influencer-contract-workspace",
+    title: "다음 작업이 있는 계약 찾기",
+    description:
+      "상태 탭과 필터로 확인·서명·콘텐츠 제출이 필요한 계약을 좁히고, 계약 행을 눌러 이어서 진행합니다.",
+    padding: 6,
+  },
+] satisfies readonly ProductSpotlightTourStep[];
 type AppliedFilter = {
   id: string;
   label: string;
@@ -590,12 +617,20 @@ export function InfluencerDashboard() {
       clearInfluencerDashboardPreload();
       clearVerificationSummaryCache("influencer");
       clearMarketplaceMessageSummaryCache("influencer");
+      clearNotificationCenterCache("influencer");
       navigate("/login/influencer", { replace: true });
     }
   };
 
   return (
     <DashboardShell>
+      <ProductSpotlightTour
+        accountId={dashboard.user.id}
+        role="influencer"
+        tourId="contract-dashboard"
+        version={1}
+        steps={INFLUENCER_CONTRACT_TOUR_STEPS}
+      />
       <DashboardExportDialog
         open={exportDialogOpen}
         onClose={() => setExportDialogOpen(false)}
@@ -620,6 +655,7 @@ export function InfluencerDashboard() {
             <div className="hidden lg:block">
               <DashboardSurfaceSwitch role="influencer" active="contracts" />
             </div>
+            <HeaderNotificationCenterButton role="influencer" />
             <HeaderMessageCenterButton
               unreadCount={messageSummary.unreadCount}
               isLoading={isMessageSummaryLoading}
@@ -628,7 +664,7 @@ export function InfluencerDashboard() {
             <button
               type="button"
               onClick={handleLogout}
-              className="yl-header-action yl-header-action-secondary"
+              className="yl-header-action yl-header-action-secondary hidden sm:inline-flex"
               aria-label="로그아웃"
               title="로그아웃"
             >
@@ -647,6 +683,10 @@ export function InfluencerDashboard() {
               onChangePassword={() => {
                 setAccountMenuOpen(false);
                 navigate("/reset-password?role=influencer");
+              }}
+              onLogout={() => {
+                setAccountMenuOpen(false);
+                void handleLogout();
               }}
             />
           </div>
@@ -710,132 +750,6 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-[#f4f5f2] font-sans text-neutral-950 lg:h-screen lg:overflow-hidden">
       {children}
-    </div>
-  );
-}
-
-function InfluencerAccountSettingsMenu({
-  account,
-  open,
-  onToggle,
-  onClose,
-  onManageProfile,
-  onChangePassword,
-}: {
-  account: InfluencerAccountSummary;
-  open: boolean;
-  onToggle: () => void;
-  onClose: () => void;
-  onManageProfile: () => void;
-  onChangePassword: () => void;
-}) {
-  const rootRef = useRef<HTMLDivElement | null>(null);
-  const emailChangeHref = buildSupportMailtoHref({
-    subject: "인플루언서 계정 이메일 변경 요청",
-    body: [
-      "인플루언서 계정 이메일 변경을 요청합니다.",
-      "",
-      `현재 표시 이메일: ${account.email ?? "확인 필요"}`,
-      `활동명: ${account.name}`,
-      "변경할 이메일:",
-      "요청 사유:",
-    ].join("\n"),
-  });
-
-  useEffect(() => {
-    if (!open) return undefined;
-
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target;
-      if (!(target instanceof Node)) return;
-      if (rootRef.current?.contains(target)) return;
-      onClose();
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-
-    document.addEventListener("pointerdown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [onClose, open]);
-
-  return (
-    <div ref={rootRef} className="relative shrink-0">
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-label="계정 설정"
-        title="계정 설정"
-        aria-expanded={open}
-        className="yl-header-icon-action"
-      >
-        <Settings className="h-3.5 w-3.5" strokeWidth={2} />
-      </button>
-
-      {open ? (
-        <div className="absolute right-0 top-[calc(100%+8px)] z-40 w-[290px] overflow-hidden rounded-[12px] border border-neutral-200 bg-white text-left shadow-[0_18px_50px_rgba(15,23,42,0.14)]">
-          <div className="border-b border-neutral-100 px-4 py-3">
-            <p className="text-[13px] font-extrabold text-neutral-950">
-              계정 설정
-            </p>
-            {account.email ? (
-              <p className="mt-1 truncate text-[12px] font-semibold text-neutral-500">
-                {account.email}
-              </p>
-            ) : null}
-          </div>
-          <button
-            type="button"
-            onClick={onManageProfile}
-            className="flex min-h-12 w-full items-start gap-2 px-4 py-3 text-left transition hover:bg-neutral-50"
-          >
-            <UserRound className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-500" />
-            <span className="min-w-0">
-              <span className="block text-[12px] font-extrabold text-neutral-800">
-                공개 프로필 관리
-              </span>
-              <span className="mt-0.5 block text-[11px] font-semibold leading-4 text-neutral-500">
-                활동 정보와 공개 주소를 관리합니다.
-              </span>
-            </span>
-          </button>
-          <a
-            href={emailChangeHref}
-            onClick={onClose}
-            className="flex min-h-12 items-start gap-2 px-4 py-3 text-left transition hover:bg-neutral-50"
-          >
-            <Mail className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-500" />
-            <span className="min-w-0">
-              <span className="block text-[12px] font-extrabold text-neutral-800">
-                로그인 이메일 변경 요청
-              </span>
-              <span className="mt-0.5 block text-[11px] font-semibold leading-4 text-neutral-500">
-                소유 확인 후 새 이메일로 변경합니다.
-              </span>
-            </span>
-          </a>
-          <button
-            type="button"
-            onClick={onChangePassword}
-            className="flex min-h-12 w-full items-start gap-2 px-4 py-3 text-left transition hover:bg-neutral-50"
-          >
-            <KeyRound className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-500" />
-            <span className="min-w-0">
-              <span className="block text-[12px] font-extrabold text-neutral-800">
-                비밀번호 재설정
-              </span>
-              <span className="mt-0.5 block text-[11px] font-semibold leading-4 text-neutral-500">
-                로그인 비밀번호를 다시 설정합니다.
-              </span>
-            </span>
-          </button>
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -997,7 +911,10 @@ function InfluencerAccountBanner({
   );
 
   return (
-    <section className="border-b border-[#d9e0d9] bg-[#fcfcfd] px-4 py-2">
+    <section
+      data-product-tour="influencer-verification-summary"
+      className="border-b border-[#d9e0d9] bg-[#fcfcfd] px-4 py-2"
+    >
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white text-[12px] font-extrabold text-neutral-800 ring-1 ring-neutral-200">
           {shouldShowAvatar ? (
@@ -1052,18 +969,6 @@ function InfluencerAccountBanner({
       </div>
     </section>
   );
-}
-
-function buildSupportMailtoHref({
-  subject,
-  body,
-}: {
-  subject: string;
-  body: string;
-}) {
-  return `mailto:${LEGAL_CONTACT_EMAIL}?subject=${encodeURIComponent(
-    subject,
-  )}&body=${encodeURIComponent(body)}`;
 }
 
 function EmptyContracts({ hasQuery }: { hasQuery: boolean }) {
@@ -1218,7 +1123,10 @@ function ContractTable({
   const dateColumnLabel = getInfluencerDateColumnLabel(lifecycleFilter);
 
   return (
-    <section className="overflow-visible rounded-[8px] border border-[#d9e0d9] bg-white shadow-[0_1px_0_rgba(255,255,255,0.9)_inset] lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+    <section
+      data-product-tour="influencer-contract-workspace"
+      className="overflow-visible rounded-[8px] border border-[#d9e0d9] bg-white shadow-[0_1px_0_rgba(255,255,255,0.9)_inset] lg:flex lg:min-h-0 lg:flex-1 lg:flex-col"
+    >
       <InfluencerLifecycleTabs
         value={lifecycleFilter}
         counts={lifecycleCounts}

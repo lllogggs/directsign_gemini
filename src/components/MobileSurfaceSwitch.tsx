@@ -35,6 +35,7 @@ export function MobileSurfaceSwitch({ role, active }: MobileSurfaceSwitchProps) 
       className="border-b border-neutral-200/80 bg-white px-3 py-2 lg:hidden"
       aria-label={copy.ariaLabel}
       data-mobile-surface-switch={role}
+      data-product-tour={`${role}-dashboard-surfaces`}
     >
       <div
         className={`mx-auto grid h-10 max-w-[1500px] ${gridClassName} gap-1 rounded-[10px] bg-neutral-100 p-1`}

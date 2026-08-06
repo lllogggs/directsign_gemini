@@ -1,5 +1,7 @@
 import {
+  ArrowDown,
   ArrowDownWideNarrow,
+  ArrowUp,
   ArrowUpDown,
   ArrowUpWideNarrow,
   CalendarDays,
@@ -17,6 +19,7 @@ import {
   Search,
   Send,
   SlidersHorizontal,
+  Trash2,
   UsersRound,
   X,
 } from "lucide-react";
@@ -36,8 +39,10 @@ import { useBodyScrollLock } from "../../hooks/useBodyScrollLock";
 import { PRODUCT_NAME } from "../../domain/brand";
 import {
   campaignProposalTypeOptions,
+  formatCampaignApplicantLimit,
   formatMarketplaceCountries,
   getCampaignDeadlineLabel,
+  getCampaignProposalTypeDisplayLabel,
   getMarketplaceBrandDisplayFamilyKey,
   getMarketplaceCountryLabel,
   isMarketplaceApplicationBrandId,
@@ -57,14 +62,26 @@ import {
   type MarketplaceProposalStatus,
 } from "../../domain/marketplaceInbox";
 import type { InfluencerPlatform } from "../../domain/verification";
+import {
+  isAdvertiserCampaignAccess,
+  isVerificationRequiredError,
+  type AdvertiserCampaignAccess,
+  type VerificationRequiredApiError,
+} from "../../domain/verificationPolicy";
 import { DashboardSurfaceSwitch } from "../../components/DashboardSurfaceSwitch";
 import { MobileSurfaceSwitch } from "../../components/MobileSurfaceSwitch";
 import { AdvertiserAccountSettingsMenu } from "../../components/AdvertiserAccountSettingsMenu";
 import { InfluencerAccountSettingsMenu } from "../../components/InfluencerAccountSettingsMenu";
+import { HeaderMessageCenterButton } from "../../components/HeaderMessageCenterButton";
+import { HeaderNotificationCenterButton } from "../../components/HeaderNotificationCenterButton";
 import { LogoMark } from "../../components/BrandLogo";
 import { PlatformBrandMark } from "../../components/PlatformBrandMark";
 import { ResponsiveFilterPanel } from "../../components/ResponsiveFilterPanel";
 import { FilterSelectControl } from "../../components/FilterSelectControl";
+import {
+  ProductSpotlightTour,
+  type ProductSpotlightTourStep,
+} from "../../components/ProductSpotlightTour";
 import { getPlatformDisplayName } from "../../domain/platformDisplay";
 import {
   readSelectedAdvertiserBrandId,
@@ -75,7 +92,18 @@ import { clearAdvertiserDashboardBootstrapPreload } from "../../domain/advertise
 import { clearInfluencerDashboardPreload } from "../../domain/influencerDashboardPreload";
 import { finishFastLoginTransition } from "../../domain/fastLoginTransition";
 import { clearVerificationSummaryCache } from "../../hooks/useVerificationSummary";
-import { clearMarketplaceMessageSummaryCache } from "../../hooks/useMarketplaceMessageSummary";
+import {
+  clearMarketplaceMessageSummaryCache,
+  useMarketplaceMessageSummary,
+} from "../../hooks/useMarketplaceMessageSummary";
+import { clearNotificationCenterCache } from "../../hooks/useNotificationCenter";
+import {
+  clearCampaignPublicationAttempt,
+  fingerprintCampaignPublicationPayload,
+  resolveCampaignPublicationAttempt,
+  resolveCampaignPublicationIntentId,
+  type CampaignPublicationAttempt,
+} from "../../domain/campaignPublicationIdempotency";
 
 type CampaignState =
   | { status: "loading" }
@@ -89,6 +117,7 @@ type AdvertiserCampaignState =
       brand: MarketplaceBrandProfile | null;
       brands: MarketplaceBrandProfile[];
       campaigns: MarketplaceBrandCampaign[];
+      campaignAccess?: AdvertiserCampaignAccess;
     }
   | { status: "error"; message: string };
 
@@ -114,6 +143,30 @@ type CampaignSort = {
   direction: CampaignSortDirection;
 };
 type ApplicationStatusFilter = "all" | MarketplaceProposalStatus;
+
+const INFLUENCER_CAMPAIGN_TOUR_STEPS = [
+  {
+    id: "surfaces",
+    target: "influencer-dashboard-surfaces",
+    title: "캠페인과 1:1 계약",
+    description:
+      "캠페인에서는 원하는 모집글에 지원하고, 1:1 계약에서는 브랜드가 직접 보낸 계약을 확인합니다.",
+  },
+  {
+    id: "views",
+    target: "influencer-campaign-views",
+    title: "모집과 신청 내역",
+    description:
+      "모집 캠페인에서 새 기회를 찾고, 신청한 캠페인에서 선정 여부와 이후 진행 상태를 확인합니다.",
+  },
+  {
+    id: "filters",
+    target: "influencer-campaign-filters",
+    title: "내 채널에 맞는 캠페인 찾기",
+    description:
+      "모집 탭은 플랫폼·카테고리·모집 유형으로, 신청 내역은 검색·신청 상태로 좁힐 수 있습니다. 첫 지원 전에는 가입과 플랫폼 계정 인증이 필요합니다.",
+  },
+] satisfies readonly ProductSpotlightTourStep[];
 
 const formatCampaignDateExample = (daysFromToday: number) => {
   const date = new Date();
@@ -186,6 +239,13 @@ const platformOptions: PlatformFilter[] = [
   "other",
 ];
 
+const OTHER_CAMPAIGN_TYPE_OPTION_LABEL = "기타(직접작성)";
+
+function createCampaignRequiredConsentId() {
+  const randomId = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
+  return `consent-${randomId}`;
+}
+
 const proposalTypeOptions = campaignProposalTypeOptions;
 
 const proposalTypeFilterOptions: ProposalTypeFilter[] = ["all", ...proposalTypeOptions];
@@ -222,6 +282,7 @@ type AdvertiserCampaignsResponse = {
   brand: MarketplaceBrandProfile | null;
   brands?: MarketplaceBrandProfile[];
   campaigns: MarketplaceBrandCampaign[];
+  campaign_access?: AdvertiserCampaignAccess;
 };
 
 type BrandImageUploadResponse = {
@@ -251,6 +312,9 @@ type CampaignApplicationsState =
   | { status: "error"; message: string };
 type InfluencerSessionStatusResponse = {
   authenticated?: boolean;
+  user?: {
+    id?: string;
+  };
 };
 
 
@@ -304,18 +368,18 @@ export function AdvertiserCampaignRecruitmentPage() {
   const [form, setForm] = useState({
     title: "",
     type: "sponsored_post" as CampaignProposalType,
+    otherTypeLabel: "",
     applicantLimit: "",
     location: "",
-    offer: "",
     budget: "",
     summary: "",
-    mission: "",
     deadline: "",
     uploadDeadline: "",
     platforms: ["instagram"] as InfluencerPlatform[],
     targetCountries: [] as MarketplaceCountryCode[],
     deliverables: "",
     thumbnailUrl: "",
+    requiredConsents: [] as NonNullable<MarketplaceBrandCampaign["requiredConsents"]>,
   });
   const [submitError, setSubmitError] = useState<string | undefined>();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -327,6 +391,11 @@ export function AdvertiserCampaignRecruitmentPage() {
   const [campaignImageError, setCampaignImageError] = useState<string | undefined>();
   const [isCampaignImageUploading, setIsCampaignImageUploading] = useState(false);
   const [openFormList, setOpenFormList] = useState<string | null>(null);
+  const [campaignPublicationIntentId] = useState(() =>
+    resolveCampaignPublicationIntentId(),
+  );
+  const campaignPublicationAttemptRef =
+    useRef<CampaignPublicationAttempt | undefined>(undefined);
 
   const loadCampaigns = useCallback(async () => {
     setState((current) =>
@@ -364,6 +433,9 @@ export function AdvertiserCampaignRecruitmentPage() {
         brand: data.brand,
         brands: data.brands ?? (data.brand ? [data.brand] : []),
         campaigns: data.campaigns,
+        campaignAccess: isAdvertiserCampaignAccess(data.campaign_access)
+          ? data.campaign_access
+          : undefined,
       });
       if (data.brand?.id) {
         setSelectedBrandId(data.brand.id);
@@ -391,47 +463,61 @@ export function AdvertiserCampaignRecruitmentPage() {
     return () => window.clearTimeout(timer);
   }, [refreshCampaignWorkspace]);
 
-  const requiredCampaignFieldCount = 12;
+  const requiresOtherTypeLabel = form.type === "other";
+  const hasValidRequiredConsents = form.requiredConsents.every(
+    (consent) => consent.text.trim().length > 0 && consent.text.trim().length <= 300,
+  );
+  const requiredCampaignFieldCount =
+    (requiresOtherTypeLabel ? 11 : 10) + (form.requiredConsents.length > 0 ? 1 : 0);
   const hasRequiredCampaignFields =
     form.title.trim().length > 0 &&
+    form.platforms.length > 0 &&
+    (!requiresOtherTypeLabel || form.otherTypeLabel.trim().length > 0) &&
     form.applicantLimit.trim().length > 0 &&
     form.location.trim().length > 0 &&
-    form.offer.trim().length > 0 &&
     form.budget.trim().length > 0 &&
     form.deliverables.trim().length > 0 &&
-    form.mission.trim().length > 0 &&
     form.summary.trim().length > 0 &&
     form.uploadDeadline.trim().length > 0 &&
     form.deadline.trim().length > 0 &&
-    form.platforms.length > 0;
+    hasValidRequiredConsents;
   const recruitmentDeadline = parseCampaignDate(form.deadline);
   const uploadDeadline = parseCampaignDate(form.uploadDeadline);
   const dateOrderError =
     recruitmentDeadline && uploadDeadline && uploadDeadline < recruitmentDeadline
       ? "제출마감일은 모집마감일과 같거나 이후여야 합니다."
       : undefined;
+  const campaignAccess =
+    state.status === "ready" ? state.campaignAccess : undefined;
+  const verificationBlocksPublication =
+    campaignAccess?.verification_required === true;
   const canSubmit = hasRequiredCampaignFields && !dateOrderError;
+  const canPublishCampaign = canSubmit && !verificationBlocksPublication;
   const missingFormLabels = [
+    form.title.trim().length > 0 ? undefined : "캠페인명",
     form.platforms.length > 0 ? undefined : "플랫폼",
     form.type.trim().length > 0 ? undefined : "광고형태",
-    form.title.trim().length > 0 ? undefined : "캠페인명",
+    !requiresOtherTypeLabel || form.otherTypeLabel.trim().length > 0
+      ? undefined
+      : "광고형태 직접작성",
     form.applicantLimit.trim().length > 0 ? undefined : "모집인원",
-    form.location.trim().length > 0 ? undefined : "지역/진행방식",
-    form.offer.trim().length > 0 ? undefined : "제공상품",
+    form.location.trim().length > 0 ? undefined : "지역",
     form.budget.trim().length > 0 ? undefined : "지급내용",
     form.deliverables.trim().length > 0 ? undefined : "콘텐츠 조건",
-    form.mission.trim().length > 0 ? undefined : "참여 미션",
-    form.summary.trim().length > 0 ? undefined : "캠페인설명",
+    form.summary.trim().length > 0 ? undefined : "가이드라인",
     form.uploadDeadline.trim().length > 0 ? undefined : "제출마감",
     form.deadline.trim().length > 0 ? undefined : "모집마감",
+    hasValidRequiredConsents ? undefined : "동의 항목 내용",
   ].filter(Boolean) as string[];
   const submitHelperText = dateOrderError
     ? dateOrderError
-    : canSubmit
-      ? "필수 조건이 준비되었습니다. 공개하면 인플루언서 캠페인 화면에 바로 노출됩니다."
-      : `남은 필수 항목: ${missingFormLabels.slice(0, 4).join(", ")}${
-          missingFormLabels.length > 4 ? ` 외 ${missingFormLabels.length - 4}개` : ""
-        }`;
+    : verificationBlocksPublication
+      ? "인플루언서가 인증된 사업주체임을 확인할 수 있도록 3회차부터 사업자 인증에 협조해 주세요."
+      : canSubmit
+        ? "필수 조건이 준비되었습니다. 공개하면 인플루언서 캠페인 화면에 바로 노출됩니다."
+        : `남은 필수 항목: ${missingFormLabels.slice(0, 4).join(", ")}${
+            missingFormLabels.length > 4 ? ` 외 ${missingFormLabels.length - 4}개` : ""
+          }`;
 
   const togglePlatform = (platform: InfluencerPlatform) => {
     setForm((current) => {
@@ -585,35 +671,90 @@ export function AdvertiserCampaignRecruitmentPage() {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!canSubmit || isSubmitting) return;
+    if (!canPublishCampaign || isSubmitting) return;
 
     setIsSubmitting(true);
     setSubmitError(undefined);
     setSavedMessage(undefined);
 
     try {
+      const publicationPayload = {
+        title: form.title.trim(),
+        type: form.type,
+        otherTypeLabel:
+          form.type === "other" ? form.otherTypeLabel.trim() : undefined,
+        applicantLimit: form.applicantLimit.trim(),
+        location: form.location.trim(),
+        budget: form.budget.trim(),
+        summary: form.summary.trim(),
+        deadline: form.deadline.trim(),
+        uploadDeadline: form.uploadDeadline.trim(),
+        platforms: [...form.platforms].sort(),
+        targetCountries: [...form.targetCountries].sort(),
+        deliverables: form.deliverables
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean)
+          .slice(0, 6),
+        thumbnailUrl: form.thumbnailUrl.trim(),
+        requiredConsents: form.requiredConsents.map((consent) => ({
+          id: consent.id,
+          text: consent.text.trim(),
+        })),
+        brandId: selectedBrandId,
+      };
+      const serializedPayload = JSON.stringify(publicationPayload);
+      const fingerprint = await fingerprintCampaignPublicationPayload(
+        serializedPayload,
+      );
+      const publicationAttempt = resolveCampaignPublicationAttempt({
+        intentId: campaignPublicationIntentId,
+        fingerprint,
+        currentAttempt: campaignPublicationAttemptRef.current,
+      });
+      campaignPublicationAttemptRef.current = publicationAttempt;
+
       const response = await apiFetch("/api/advertiser/campaigns", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": publicationAttempt.idempotencyKey,
+        },
         credentials: "include",
-        body: JSON.stringify({
-          ...form,
-          brandId: selectedBrandId,
-          deliverables: form.deliverables
-            .split(",")
-            .map((item) => item.trim())
-            .filter(Boolean),
-        }),
+        body: serializedPayload,
       });
-
-      if (response.status === 401 || response.status === 403) {
-        navigate("/login/advertiser", { replace: true });
-        return;
-      }
 
       const data = (await response.json().catch(() => ({}))) as
         | AdvertiserCampaignsResponse
-        | { error?: string };
+        | VerificationRequiredApiError;
+
+      if (response.status === 401) {
+        navigate("/login/advertiser", { replace: true });
+        return;
+      }
+      if (
+        response.status === 403 &&
+        isVerificationRequiredError(
+          data,
+          "advertiser_business_verification_required",
+        )
+      ) {
+        setState((current) =>
+          current.status === "ready" &&
+          isAdvertiserCampaignAccess(data.campaign_access)
+            ? { ...current, campaignAccess: data.campaign_access }
+            : current,
+        );
+        setSubmitError(
+          data.error ??
+            "3회차 캠페인부터는 사업자 인증을 완료한 뒤 공개할 수 있습니다.",
+        );
+        return;
+      }
+      if (response.status === 403) {
+        navigate("/login/advertiser", { replace: true });
+        return;
+      }
 
       if (!response.ok || !("campaigns" in data)) {
         throw new Error(
@@ -623,11 +764,17 @@ export function AdvertiserCampaignRecruitmentPage() {
         );
       }
 
+      clearCampaignPublicationAttempt(publicationAttempt);
+      campaignPublicationAttemptRef.current = undefined;
+
       setState({
         status: "ready",
         brand: data.brand,
         brands: data.brands ?? (data.brand ? [data.brand] : []),
         campaigns: data.campaigns,
+        campaignAccess: isAdvertiserCampaignAccess(data.campaign_access)
+          ? data.campaign_access
+          : undefined,
       });
       if (data.brand?.id) {
         setSelectedBrandId(data.brand.id);
@@ -637,17 +784,17 @@ export function AdvertiserCampaignRecruitmentPage() {
       setForm((current) => ({
         ...current,
         title: "",
+        otherTypeLabel: "",
         applicantLimit: "",
         location: "",
-        offer: "",
         budget: "",
         summary: "",
-        mission: "",
         deadline: "",
         uploadDeadline: "",
         deliverables: "",
         targetCountries: [],
         thumbnailUrl: "",
+        requiredConsents: [],
       }));
       navigate("/advertiser/campaigns");
     } catch (error) {
@@ -670,46 +817,50 @@ export function AdvertiserCampaignRecruitmentPage() {
       id: "draft-campaign-preview",
       title: form.title.trim() || "캠페인 제목",
       type: form.type,
+      otherTypeLabel:
+        form.type === "other" ? form.otherTypeLabel.trim() || undefined : undefined,
       applicantLimit: form.applicantLimit.trim() || "모집 인원",
-      location: form.location.trim() || brand?.location || "지역/진행방식",
-      offer: form.offer.trim() || "제공상품",
+      location: form.location.trim() || "지역",
       budget: form.budget.trim() || "지급 조건",
       targetCountries: form.targetCountries,
-      summary: form.summary.trim() || "캠페인 설명을 입력하면 이 영역에 표시됩니다.",
-      mission: form.mission.trim() || "참여 미션을 입력하면 상세 화면에 표시됩니다.",
+      summary: form.summary.trim() || "가이드라인을 입력하면 이 영역에 표시됩니다.",
       deadline: form.deadline.trim() || undefined,
       uploadDeadline: form.uploadDeadline.trim() || undefined,
       platforms,
       deliverables: parseCampaignDeliverables(form.deliverables),
+      requiredConsents: form.requiredConsents
+        .map((consent) => ({ id: consent.id, text: consent.text.trim() }))
+        .filter((consent) => consent.text.length > 0),
       status: "open",
       brandId: brand?.id ?? "draft-brand",
       brandHandle: brand?.handle ?? "draft-brand",
       brandName: brand?.displayName ?? "브랜드명",
       brandCategory: brand?.category ?? "카테고리",
       brandHeadline: brand?.headline ?? "",
-      brandLocation: brand?.location ?? "지역/진행방식",
+      brandLocation: brand?.location ?? "지역",
       brandLogoLabel: brand?.logoLabel ?? "BR",
       brandLogoUrl: logoUrl,
       brandHref: brand ? `/brands/${brand.handle}` : "/brands",
-      typeLabel: proposalTypeLabels[form.type],
+      typeLabel:
+        form.type === "other" && !form.otherTypeLabel.trim()
+          ? OTHER_CAMPAIGN_TYPE_OPTION_LABEL
+          : getCampaignProposalTypeDisplayLabel(form),
       platformLabels: platforms.map((platform) => platformLabels[platform]),
       deadlineLabel: getCampaignDeadlineLabel(form.deadline.trim() || undefined),
       thumbnailUrl,
     };
   }, [brand, brandImagePreview, campaignImagePreview, form]);
-  const isSupportersCampaign = form.type === "supporters";
-  const budgetPlaceholder = isSupportersCampaign
+  const isProductExperienceCampaign =
+    form.type === "supporters" || form.type === "experience_group";
+  const budgetPlaceholder = isProductExperienceCampaign
     ? "예: 제품 제공(소비자가 89,000원 상당)"
     : "예: 150만-300만원";
-  const deliverablesPlaceholder = isSupportersCampaign
+  const deliverablesPlaceholder = isProductExperienceCampaign
     ? "예: 네이버 블로그 후기 1건, 인스타 피드 1건"
     : "예: 릴스 1건, 스토리 2건";
-  const missionPlaceholder = isSupportersCampaign
-    ? "예: 제품 수령 후 7일 내 사용 후기와 필수 문구 포함"
-    : "예: 제품 사용 장면, 핵심 장점 2가지, 광고 표시 포함";
-  const summaryPlaceholder = isSupportersCampaign
-    ? "제품, 작성 미션, 게시 유지 조건, 제품 제공비 기준을 적어 주세요."
-    : "인플루언서가 바로 판단할 수 있도록 제품, 타깃, 원하는 콘텐츠 톤, 검수 기준을 적어 주세요.";
+  const summaryPlaceholder = isProductExperienceCampaign
+    ? "콘텐츠 작성 기준, 게시 기한, 공개 유지 기간, 필수 문구를 적어 주세요."
+    : "인플루언서가 바로 판단할 수 있도록 타깃, 콘텐츠 톤, 필수 문구, 검수 기준을 적어 주세요.";
 
   return (
     <CampaignShell
@@ -725,7 +876,7 @@ export function AdvertiserCampaignRecruitmentPage() {
           label: "작성",
           value: canSubmit
             ? "완료"
-            : `${requiredCampaignFieldCount - missingFormLabels.length}/${requiredCampaignFieldCount}`,
+            : `${Math.max(0, requiredCampaignFieldCount - missingFormLabels.length)}/${requiredCampaignFieldCount}`,
         },
         { label: "공개", value: "모집 노출" },
         { label: "지원자", value: "선정" },
@@ -781,6 +932,17 @@ export function AdvertiserCampaignRecruitmentPage() {
             </p>
           ) : null}
           <div className="mt-4 grid min-w-0 gap-4">
+            <CampaignImageUpload
+              imageUrl={campaignImagePreview ?? form.thumbnailUrl}
+              disabled={isCampaignImageUploading}
+              onSelect={handleCampaignImageSelect}
+            />
+            {campaignImageError ? (
+              <p className="rounded-[10px] border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] font-extrabold text-rose-700">
+                {campaignImageError}
+              </p>
+            ) : null}
+
             <CampaignField label="캠페인명">
               <input
                 required
@@ -790,25 +952,6 @@ export function AdvertiserCampaignRecruitmentPage() {
                 }
                 placeholder="예: 여름 러닝 챌린지 릴스 모집"
                 className="campaign-input"
-              />
-            </CampaignField>
-
-            <CampaignField label="광고형태">
-              <FilterSelectControl
-                value={form.type}
-                options={proposalTypeOptions.map((type) => ({
-                  value: type,
-                  label: proposalTypeLabels[type],
-                }))}
-                onChange={(value) =>
-                  setForm((current) => ({
-                    ...current,
-                    type: value as CampaignProposalType,
-                  }))
-                }
-                onOpen={() => setOpenFormList(null)}
-                ariaLabel="광고형태"
-                triggerClassName="h-10 rounded-[10px] text-[13px]"
               />
             </CampaignField>
 
@@ -832,6 +975,55 @@ export function AdvertiserCampaignRecruitmentPage() {
                 onSelect={togglePlatform}
               />
             </CampaignField>
+
+            <CampaignField label="광고형태">
+              <CampaignFormSelectList
+                id="campaign-form-type"
+                openId={openFormList}
+                onOpenChange={setOpenFormList}
+                summary={
+                  form.type === "other" && form.otherTypeLabel.trim()
+                    ? form.otherTypeLabel.trim()
+                    : form.type === "other"
+                      ? OTHER_CAMPAIGN_TYPE_OPTION_LABEL
+                      : proposalTypeLabels[form.type]
+                }
+                options={proposalTypeOptions.map((type) => ({
+                  value: type,
+                  label:
+                    type === "other"
+                      ? OTHER_CAMPAIGN_TYPE_OPTION_LABEL
+                      : proposalTypeLabels[type],
+                }))}
+                selectedValues={[form.type]}
+                closeOnSelect
+                onSelect={(type) =>
+                  setForm((current) => ({
+                    ...current,
+                    type,
+                    otherTypeLabel: type === "other" ? current.otherTypeLabel : "",
+                  }))
+                }
+              />
+            </CampaignField>
+
+            {form.type === "other" ? (
+              <CampaignField label="광고형태 직접작성">
+                <input
+                  required
+                  maxLength={60}
+                  value={form.otherTypeLabel}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      otherTypeLabel: event.target.value,
+                    }))
+                  }
+                  placeholder="예: 브랜드 앰배서더"
+                  className="campaign-input"
+                />
+              </CampaignField>
+            ) : null}
 
             <CampaignField label="국가">
               <CampaignFormSelectList
@@ -900,32 +1092,34 @@ export function AdvertiserCampaignRecruitmentPage() {
             </CampaignField>
 
             <CampaignField label="모집인원">
-              <input
-                required
-                value={form.applicantLimit}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    applicantLimit: event.target.value,
-                  }))
-                }
-                placeholder="예: 5명"
-                className="campaign-input"
-              />
+              <div className="relative">
+                <input
+                  required
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={4}
+                  value={form.applicantLimit}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      applicantLimit: event.target.value
+                        .replace(/\D/g, "")
+                        .replace(/^0+/, "")
+                        .slice(0, 4),
+                    }))
+                  }
+                  placeholder="예: 5"
+                  aria-label="모집인원"
+                  className="campaign-input pr-11"
+                />
+                <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-[13px] font-extrabold text-neutral-500">
+                  명
+                </span>
+              </div>
             </CampaignField>
 
-            <CampaignImageUpload
-              imageUrl={campaignImagePreview ?? form.thumbnailUrl}
-              disabled={isCampaignImageUploading}
-              onSelect={handleCampaignImageSelect}
-            />
-            {campaignImageError ? (
-              <p className="rounded-[10px] border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] font-extrabold text-rose-700">
-                {campaignImageError}
-              </p>
-            ) : null}
-
-            <CampaignField label="지역/진행방식">
+            <CampaignField label="지역">
               <input
                 required
                 value={form.location}
@@ -935,37 +1129,12 @@ export function AdvertiserCampaignRecruitmentPage() {
                     location: event.target.value,
                   }))
                 }
-                placeholder="예: 서울 성수 방문, 온라인 배송"
+                placeholder="예: 서울 성수"
                 className="campaign-input"
               />
             </CampaignField>
 
-            <CampaignField label="제공상품">
-              <input
-                required
-                value={form.offer}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, offer: event.target.value }))
-                }
-                placeholder="예: 러닝화 1족, 식사권 2인"
-                className="campaign-input"
-              />
-            </CampaignField>
-
-            <CampaignField label="참여 미션">
-              <textarea
-                required
-                rows={3}
-                value={form.mission}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, mission: event.target.value }))
-                }
-                placeholder={missionPlaceholder}
-                className="campaign-input min-h-[96px] resize-y overflow-y-auto"
-              />
-            </CampaignField>
-
-            <CampaignField label="캠페인설명">
+            <CampaignField label="가이드라인">
               <textarea
                 required
                 rows={8}
@@ -993,6 +1162,13 @@ export function AdvertiserCampaignRecruitmentPage() {
               />
             </CampaignField>
 
+            <CampaignRequiredConsentEditor
+              consents={form.requiredConsents}
+              onChange={(requiredConsents) =>
+                setForm((current) => ({ ...current, requiredConsents }))
+              }
+            />
+
             {submitError ? (
               <p className="rounded-[12px] border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] font-extrabold text-rose-700">
                 {submitError}
@@ -1008,19 +1184,32 @@ export function AdvertiserCampaignRecruitmentPage() {
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <p
                   className={`break-keep text-[12px] font-extrabold leading-5 ${
-                    canSubmit ? "text-emerald-700" : "text-neutral-500"
+                    verificationBlocksPublication
+                      ? "text-amber-700"
+                      : canSubmit
+                        ? "text-emerald-700"
+                        : "text-neutral-500"
                   }`}
                 >
                   {submitHelperText}
                 </p>
-                <button
-                  type="submit"
-                  disabled={!canSubmit || isSubmitting}
-                  className="inline-flex h-12 w-full shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[8px] bg-blue-600 px-5 text-[14px] font-extrabold text-white shadow-[0_14px_34px_rgba(37,99,235,0.22)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:shadow-none sm:w-auto sm:min-w-[148px]"
-                >
-                  <Plus className="h-4 w-4" />
-                  {isSubmitting ? "저장 중" : "캠페인 저장"}
-                </button>
+                {verificationBlocksPublication ? (
+                  <Link
+                    to={campaignAccess?.next_path ?? "/advertiser/verification"}
+                    className="yl-primary-action inline-flex h-12 w-full shrink-0 items-center justify-center whitespace-nowrap rounded-[8px] px-5 text-[14px] font-extrabold transition sm:w-auto sm:min-w-[148px]"
+                  >
+                    사업자 인증하기
+                  </Link>
+                ) : (
+                  <button
+                    type="submit"
+                    disabled={!canPublishCampaign || isSubmitting}
+                    className="inline-flex h-12 w-full shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[8px] bg-blue-600 px-5 text-[14px] font-extrabold text-white shadow-[0_14px_34px_rgba(37,99,235,0.22)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:shadow-none sm:w-auto sm:min-w-[148px]"
+                  >
+                    <Plus className="h-4 w-4" />
+                    {isSubmitting ? "공개 중" : "캠페인 공개"}
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -1052,7 +1241,7 @@ export function AdvertiserCampaignRecruitmentPage() {
 
           <AdvertiserCampaignPreview
             campaign={draftCampaignPost}
-            canPublish={canSubmit}
+            canPublish={canPublishCampaign}
             helperText={submitHelperText}
           />
         </section>
@@ -1069,11 +1258,13 @@ export function InfluencerCampaignDiscoveryPage() {
     useState<CampaignShellMode>("checking");
   const [applicationsState, setApplicationsState] =
     useState<CampaignApplicationsState>({ status: "loading" });
+  const [tourAccountId, setTourAccountId] = useState<string | undefined>();
   const applicationsRetryAttemptRef = useRef(0);
   const applicationsRetryTimerRef = useRef<number | undefined>(undefined);
   const loadApplicationsRef = useRef<() => Promise<void>>(async () => undefined);
   const activeView: InfluencerCampaignView =
     searchParams.get("view") === "applied" ? "applied" : "open";
+  const focusedCampaignId = searchParams.get("campaign") ?? undefined;
   const [query, setQuery] = useState("");
   const [platformFilter, setPlatformFilter] = useState<PlatformFilter>("all");
   const [categoryFilters, setCategoryFilters] = useState<string[]>([]);
@@ -1094,10 +1285,17 @@ export function InfluencerCampaignDiscoveryPage() {
   const [openFilterList, setOpenFilterList] = useState<string | null>(null);
   const [applyingCampaignId, setApplyingCampaignId] = useState<string | undefined>();
   const [applicationNotice, setApplicationNotice] = useState<
-    | { campaignId: string; tone: "success" | "error"; message: string }
+    | {
+        campaignId: string;
+        tone: "success" | "error";
+        message: string;
+        actionHref?: string;
+      }
     | undefined
   >();
   const [selectedCampaign, setSelectedCampaign] =
+    useState<MarketplaceCampaignPost | null>(null);
+  const [applicationConsentCampaign, setApplicationConsentCampaign] =
     useState<MarketplaceCampaignPost | null>(null);
   const handleActiveViewChange = (nextView: InfluencerCampaignView) => {
     const nextSearchParams = new URLSearchParams(searchParams);
@@ -1105,6 +1303,7 @@ export function InfluencerCampaignDiscoveryPage() {
       nextSearchParams.set("view", "applied");
     } else {
       nextSearchParams.delete("view");
+      nextSearchParams.delete("campaign");
     }
     setFiltersOpen(false);
     setOpenFilterList(null);
@@ -1178,6 +1377,7 @@ export function InfluencerCampaignDiscoveryPage() {
         applicationsRetryAttemptRef.current = 0;
         sessionEstablished = true;
         setShellMode("authenticated");
+        setTourAccountId(sessionData.user?.id);
       } else if (
         sessionResponse.status === 401 ||
         sessionResponse.status === 403 ||
@@ -1185,6 +1385,7 @@ export function InfluencerCampaignDiscoveryPage() {
       ) {
         applicationsRetryAttemptRef.current = 0;
         setShellMode("anonymous");
+        setTourAccountId(undefined);
         setApplicationsState({ status: "ready", applications: [] });
         return;
       } else {
@@ -1195,13 +1396,17 @@ export function InfluencerCampaignDiscoveryPage() {
         return;
       }
 
-      const response = await apiFetch("/api/marketplace/messages?role=influencer", {
-        headers: { Accept: "application/json" },
-        credentials: "include",
-      });
+      const response = await apiFetch(
+        "/api/marketplace/campaign-applications?role=influencer",
+        {
+          headers: { Accept: "application/json" },
+          credentials: "include",
+        },
+      );
 
       if (response.status === 401 || response.status === 403) {
         setShellMode("anonymous");
+        setTourAccountId(undefined);
         setApplicationsState({ status: "ready", applications: [] });
         return;
       }
@@ -1372,7 +1577,7 @@ export function InfluencerCampaignDiscoveryPage() {
       ? activeFilterLabels.length
       : appliedActiveFilterLabels.length;
 
-  const applyToCampaign = async (campaign: MarketplaceCampaignPost) => {
+  const applyToCampaign = (campaign: MarketplaceCampaignPost) => {
     if (applyingCampaignId) return;
     if (!canApplyToMarketplaceCampaign(campaign)) {
       setApplicationNotice({
@@ -1383,12 +1588,23 @@ export function InfluencerCampaignDiscoveryPage() {
       return;
     }
 
-    const campaignCopy = getCampaignDisplayCopy(campaign);
-
-    const confirmed = window.confirm(
-      `${campaignCopy.title} 캠페인에 신청할까요? 신청 내역은 신청한 캠페인에 표시됩니다.`,
+    setSelectedCampaign(null);
+    const requiredConsents = (campaign.requiredConsents ?? []).filter(
+      (consent) => consent.id.trim() && consent.text.trim(),
     );
-    if (!confirmed) return;
+    if (requiredConsents.length === 0) {
+      void submitCampaignApplication(campaign, []);
+      return;
+    }
+    setApplicationConsentCampaign(campaign);
+  };
+
+  const submitCampaignApplication = async (
+    campaign: MarketplaceCampaignPost,
+    acceptedConsentIds: string[],
+  ) => {
+    if (applyingCampaignId) return;
+    const campaignCopy = getCampaignDisplayCopy(campaign);
 
     setApplyingCampaignId(campaign.id);
     setApplicationNotice({
@@ -1404,20 +1620,48 @@ export function InfluencerCampaignDiscoveryPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
+          body: JSON.stringify({
+            acceptedConsentIds,
+            consentVersion: campaign.consentVersion ?? "",
+          }),
         },
       );
 
-      if (response.status === 401 || response.status === 403) {
+      const data = (await response.json().catch(() => ({}))) as
+        | CampaignApplicationResponse
+        | VerificationRequiredApiError;
+
+      if (response.status === 401) {
+        setApplicationConsentCampaign(null);
         const nextPath = getCampaignSharePath(campaign) ?? "/influencer/campaigns";
         navigate(`/login/influencer?next=${encodeURIComponent(nextPath)}`, {
           replace: true,
         });
         return;
       }
-
-      const data = (await response.json().catch(() => ({}))) as
-        | CampaignApplicationResponse
-        | { error?: string };
+      if (
+        response.status === 403 &&
+        isVerificationRequiredError(data, "influencer_verification_required")
+      ) {
+        setApplicationConsentCampaign(null);
+        setApplicationNotice({
+          campaignId: campaign.id,
+          tone: "error",
+          message:
+            data.error ??
+            "첫 캠페인 지원부터 플랫폼 계정 인증이 필요합니다.",
+          actionHref: data.next_path ?? "/influencer/verification",
+        });
+        return;
+      }
+      if (response.status === 403) {
+        setApplicationConsentCampaign(null);
+        const nextPath = getCampaignSharePath(campaign) ?? "/influencer/campaigns";
+        navigate(`/login/influencer?next=${encodeURIComponent(nextPath)}`, {
+          replace: true,
+        });
+        return;
+      }
 
       if (!response.ok || !("proposal" in data)) {
         throw new Error(
@@ -1434,10 +1678,12 @@ export function InfluencerCampaignDiscoveryPage() {
           ? "이미 신청한 캠페인입니다. 광고주가 확인하면 선정자별 진행으로 이어집니다."
           : "신청이 전달됐습니다. 광고주가 선정하면 이 캠페인의 계약서 초안이 만들어집니다. 캠페인 계약서 진행이 시작됩니다.",
       });
+      setApplicationConsentCampaign(null);
       setSelectedCampaign(null);
       handleActiveViewChange("applied");
       void loadApplications();
     } catch (error) {
+      setApplicationConsentCampaign(null);
       setApplicationNotice({
         campaignId: campaign.id,
         tone: "error",
@@ -1452,7 +1698,16 @@ export function InfluencerCampaignDiscoveryPage() {
   };
 
   return (
-    <CampaignShell
+    <>
+      <ProductSpotlightTour
+        accountId={tourAccountId}
+        role="influencer"
+        tourId="campaign-discovery"
+        version={1}
+        steps={INFLUENCER_CAMPAIGN_TOUR_STEPS}
+        enabled={shellMode === "authenticated"}
+      />
+      <CampaignShell
       mode={shellMode}
       role="influencer"
       eyebrow="인플루언서 캠페인"
@@ -1631,6 +1886,7 @@ export function InfluencerCampaignDiscoveryPage() {
           ) : (
             <AppliedCampaignList
               applications={visibleApplications}
+              focusedCampaignId={focusedCampaignId}
               sortState={appliedCampaignSort}
               onSortChange={setAppliedCampaignSort}
             />
@@ -1657,15 +1913,23 @@ export function InfluencerCampaignDiscoveryPage() {
             className="grid min-h-0 flex-1 auto-rows-max gap-x-3 gap-y-5 overflow-y-auto overscroll-contain bg-[#fbfaf7] p-3 sm:grid-cols-2 xl:grid-cols-3"
           >
             {applicationNotice ? (
-              <p
-                className={`rounded-[12px] border px-3 py-2 text-[12px] font-extrabold sm:col-span-2 xl:col-span-3 ${
+              <div
+                className={`flex flex-col gap-2 rounded-[12px] border px-3 py-2 text-[12px] font-extrabold sm:col-span-2 sm:flex-row sm:items-center sm:justify-between xl:col-span-3 ${
                   applicationNotice.tone === "success"
                     ? "border-emerald-200 bg-emerald-50 text-emerald-700"
                     : "border-rose-200 bg-rose-50 text-rose-700"
                 }`}
               >
-                {applicationNotice.message}
-              </p>
+                <p>{applicationNotice.message}</p>
+                {applicationNotice.actionHref ? (
+                  <Link
+                    to={applicationNotice.actionHref}
+                    className="yl-primary-action inline-flex h-9 shrink-0 items-center justify-center rounded-[8px] px-3 text-[12px] font-extrabold"
+                  >
+                    계정 인증하기
+                  </Link>
+                ) : null}
+              </div>
             ) : null}
             {visibleCampaigns.map((campaign) => (
               <CampaignPostCard
@@ -1687,7 +1951,21 @@ export function InfluencerCampaignDiscoveryPage() {
           onClose={() => setSelectedCampaign(null)}
         />
       ) : null}
-    </CampaignShell>
+      {applicationConsentCampaign ? (
+        <CampaignApplicationConsentDialog
+          campaign={applicationConsentCampaign}
+          isSubmitting={applyingCampaignId === applicationConsentCampaign.id}
+          onCancel={() => setApplicationConsentCampaign(null)}
+          onSubmit={(acceptedConsentIds) =>
+            submitCampaignApplication(
+              applicationConsentCampaign,
+              acceptedConsentIds,
+            )
+          }
+        />
+      ) : null}
+      </CampaignShell>
+    </>
   );
 }
 
@@ -1705,12 +1983,23 @@ export function PublicCampaignRecruitmentPage() {
   );
   const [applyingCampaignId, setApplyingCampaignId] = useState<string | undefined>();
   const [applicationNotice, setApplicationNotice] = useState<
-    | { tone: "success" | "error"; message: string }
+    | {
+        tone: "success" | "error";
+        message: string;
+        actionHref?: string;
+      }
     | undefined
   >();
+  const [applicationConsentCampaign, setApplicationConsentCampaign] =
+    useState<MarketplaceCampaignPost | null>(null);
   const [sessionStatus, setSessionStatus] = useState<
     "checking" | "anonymous" | "authenticated"
   >("checking");
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const { summary: publicMessageSummary, isLoading: isPublicMessageSummaryLoading } =
+    useMarketplaceMessageSummary("influencer", {
+      enabled: sessionStatus === "authenticated",
+    });
 
   useEffect(() => {
     let active = true;
@@ -1804,7 +2093,7 @@ export function PublicCampaignRecruitmentPage() {
     };
   }, [campaignId]);
 
-  const applyToCampaign = async (campaign: MarketplaceCampaignPost) => {
+  const applyToCampaign = (campaign: MarketplaceCampaignPost) => {
     if (applyingCampaignId) return;
     if (!canApplyToMarketplaceCampaign(campaign)) {
       setApplicationNotice({
@@ -1815,12 +2104,22 @@ export function PublicCampaignRecruitmentPage() {
       return;
     }
 
-    const campaignCopy = getPublicCampaignDisplayCopy(campaign);
-
-    const confirmed = window.confirm(
-      `${campaignCopy.title} 캠페인에 신청할까요? 신청 내역은 신청한 캠페인에 표시됩니다.`,
+    const requiredConsents = (campaign.requiredConsents ?? []).filter(
+      (consent) => consent.id.trim() && consent.text.trim(),
     );
-    if (!confirmed) return;
+    if (requiredConsents.length === 0) {
+      void submitCampaignApplication(campaign, []);
+      return;
+    }
+    setApplicationConsentCampaign(campaign);
+  };
+
+  const submitCampaignApplication = async (
+    campaign: MarketplaceCampaignPost,
+    acceptedConsentIds: string[],
+  ) => {
+    if (applyingCampaignId) return;
+    const campaignCopy = getPublicCampaignDisplayCopy(campaign);
 
     setApplyingCampaignId(campaign.id);
     setApplicationNotice({
@@ -1835,20 +2134,47 @@ export function PublicCampaignRecruitmentPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
+          body: JSON.stringify({
+            acceptedConsentIds,
+            consentVersion: campaign.consentVersion ?? "",
+          }),
         },
       );
 
-      if (response.status === 401 || response.status === 403) {
+      const data = (await response.json().catch(() => ({}))) as
+        | CampaignApplicationResponse
+        | VerificationRequiredApiError;
+
+      if (response.status === 401) {
+        setApplicationConsentCampaign(null);
         const nextPath = getCampaignSharePath(campaign) ?? "/influencer/campaigns";
         navigate(`/login/influencer?next=${encodeURIComponent(nextPath)}`, {
           replace: true,
         });
         return;
       }
-
-      const data = (await response.json().catch(() => ({}))) as
-        | CampaignApplicationResponse
-        | { error?: string };
+      if (
+        response.status === 403 &&
+        isVerificationRequiredError(data, "influencer_verification_required")
+      ) {
+        setApplicationConsentCampaign(null);
+        setApplicationNotice({
+          tone: "error",
+          message:
+            data.error ??
+            "첫 캠페인 지원부터 플랫폼 계정 인증이 필요합니다.",
+          actionHref: data.next_path ?? "/influencer/verification",
+        });
+        return;
+      }
+      if (response.status === 403) {
+        setApplicationConsentCampaign(null);
+        const nextPath = getCampaignSharePath(campaign) ?? "/influencer/campaigns";
+        navigate(`/login/influencer?next=${encodeURIComponent(nextPath)}`, {
+          replace: true,
+        });
+        return;
+      }
 
       if (!response.ok || !("proposal" in data)) {
         throw new Error(
@@ -1864,7 +2190,9 @@ export function PublicCampaignRecruitmentPage() {
           ? "이미 신청한 캠페인입니다. 광고주가 확인하면 선정자별 진행으로 이어집니다."
           : "신청이 전달됐습니다. 광고주가 선정하면 이 캠페인의 계약서 초안이 만들어집니다.",
       });
+      setApplicationConsentCampaign(null);
     } catch (error) {
+      setApplicationConsentCampaign(null);
       setApplicationNotice({
         tone: "error",
         message:
@@ -1889,13 +2217,11 @@ export function PublicCampaignRecruitmentPage() {
   const detailRows = campaign
     ? [
         ...(targetCountryLabel ? [{ label: "국가", value: targetCountryLabel }] : []),
-        { label: "제공상품", value: getCampaignOfferLabel(campaign) },
         { label: "지급조건", value: campaign.budget },
         {
           label: "콘텐츠",
-          value: campaign.deliverables?.join(", ") || getCampaignMissionLabel(campaign),
+          value: campaign.deliverables?.join(", ") || "가이드라인 확인",
         },
-        { label: "참여 미션", value: getCampaignMissionLabel(campaign) },
         { label: "모집마감", value: getCampaignDeadlineLabel(campaign.deadline) },
         { label: "제출마감", value: getCampaignSubmissionDeadlineLabel(campaign) },
       ]
@@ -1924,9 +2250,28 @@ export function PublicCampaignRecruitmentPage() {
       : sessionStatus === "anonymous"
         ? "/"
         : undefined;
+  const handlePublicPageLogout = async () => {
+    try {
+      await apiFetch("/api/influencer/logout", {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch {
+      // Local private state is still cleared below.
+    } finally {
+      finishFastLoginTransition("influencer");
+      clearVerificationSummaryCache("influencer");
+      clearMarketplaceMessageSummaryCache("influencer");
+      clearNotificationCenterCache("influencer");
+      clearInfluencerDashboardPreload();
+      setAccountMenuOpen(false);
+      setSessionStatus("anonymous");
+    }
+  };
 
   return (
-    <main className="min-h-svh bg-[#f7f6f3] font-sans text-neutral-950">
+    <>
+      <main className="min-h-svh bg-[#f7f6f3] font-sans text-neutral-950">
       <header className="border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-[1180px] items-center justify-between px-4 sm:px-6 lg:px-8">
           {logoHref ? (
@@ -1944,7 +2289,47 @@ export function PublicCampaignRecruitmentPage() {
               </span>
             </div>
           )}
-          {accountLink ? (
+          {sessionStatus === "authenticated" ? (
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <HeaderNotificationCenterButton role="influencer" />
+              <HeaderMessageCenterButton
+                unreadCount={publicMessageSummary.unreadCount}
+                isLoading={isPublicMessageSummaryLoading}
+                onClick={() => navigate("/influencer/messages")}
+              />
+              <Link
+                to="/influencer/campaigns"
+                className="yl-header-action yl-header-action-secondary hidden sm:inline-flex"
+              >
+                내 캠페인
+              </Link>
+              <button
+                type="button"
+                onClick={() => void handlePublicPageLogout()}
+                className="yl-header-action yl-header-action-secondary hidden sm:inline-flex"
+                aria-label="로그아웃"
+                title="로그아웃"
+              >
+                <LogOut className="h-4 w-4" />
+                <span>로그아웃</span>
+              </button>
+              <InfluencerAccountSettingsMenu
+                account={{ name: "인플루언서" }}
+                open={accountMenuOpen}
+                onToggle={() => setAccountMenuOpen((current) => !current)}
+                onClose={() => setAccountMenuOpen(false)}
+                onManageProfile={() => {
+                  setAccountMenuOpen(false);
+                  navigate("/influencer/profile");
+                }}
+                onChangePassword={() => {
+                  setAccountMenuOpen(false);
+                  navigate("/reset-password?role=influencer");
+                }}
+                onLogout={() => void handlePublicPageLogout()}
+              />
+            </div>
+          ) : accountLink ? (
             <Link
               to={accountLink.href}
               className="inline-flex h-10 items-center justify-center rounded-[10px] border border-neutral-200 bg-white px-3 text-[13px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:text-neutral-950"
@@ -1952,16 +2337,12 @@ export function PublicCampaignRecruitmentPage() {
               {accountLink.label}
             </Link>
           ) : (
-            <span
-              className="inline-flex h-10 w-[120px] items-center justify-center rounded-[10px] border border-neutral-200 bg-white"
-              aria-busy="true"
-            >
+            <div className="flex gap-1.5 sm:gap-2" aria-busy="true">
+              <span className="h-10 w-10 rounded-[9px] border border-neutral-200 bg-white" />
+              <span className="h-10 w-10 rounded-[9px] border border-neutral-200 bg-white" />
+              <span className="h-10 w-10 rounded-[9px] border border-neutral-200 bg-white" />
               <span className="sr-only">로그인 상태 확인 중</span>
-              <span
-                className="h-4 w-20 animate-pulse rounded bg-neutral-200"
-                aria-hidden="true"
-              />
-            </span>
+            </div>
           )}
         </div>
       </header>
@@ -2002,7 +2383,10 @@ export function PublicCampaignRecruitmentPage() {
                   />
                 </div>
 
-                <p className="mt-4 break-keep text-[14px] font-bold leading-7 text-neutral-600">
+                <p className="mt-4 text-[11px] font-extrabold text-neutral-400">
+                  가이드라인
+                </p>
+                <p className="mt-1 break-keep text-[14px] font-bold leading-7 text-neutral-600">
                   {campaignCopy.summary}
                 </p>
 
@@ -2036,15 +2420,23 @@ export function PublicCampaignRecruitmentPage() {
 
               <div className="shrink-0 border-t border-neutral-200 bg-white p-3 sm:flex sm:items-center sm:justify-between sm:gap-3">
                 {applicationNotice ? (
-                  <p
-                    className={`mb-3 break-keep rounded-[8px] border px-3 py-2 text-[12px] font-extrabold leading-5 sm:mb-0 ${
+                  <div
+                    className={`mb-3 flex flex-col gap-2 break-keep rounded-[8px] border px-3 py-2 text-[12px] font-extrabold leading-5 sm:mb-0 sm:flex-row sm:items-center ${
                       applicationNotice.tone === "success"
                         ? "border-emerald-200 bg-emerald-50 text-emerald-700"
                         : "border-rose-200 bg-rose-50 text-rose-700"
                     }`}
                   >
-                    {applicationNotice.message}
-                  </p>
+                    <p>{applicationNotice.message}</p>
+                    {applicationNotice.actionHref ? (
+                      <Link
+                        to={applicationNotice.actionHref}
+                        className="yl-primary-action inline-flex h-9 shrink-0 items-center justify-center rounded-[8px] px-3 text-[12px] font-extrabold"
+                      >
+                        계정 인증하기
+                      </Link>
+                    ) : null}
+                  </div>
                 ) : (
                   <p className="mb-3 break-keep text-[12px] font-bold leading-5 text-neutral-500 sm:mb-0">
                     {canApplyToCurrentCampaign
@@ -2073,7 +2465,21 @@ export function PublicCampaignRecruitmentPage() {
           </article>
         ) : null}
       </section>
-    </main>
+      </main>
+      {applicationConsentCampaign ? (
+        <CampaignApplicationConsentDialog
+          campaign={applicationConsentCampaign}
+          isSubmitting={applyingCampaignId === applicationConsentCampaign.id}
+          onCancel={() => setApplicationConsentCampaign(null)}
+          onSubmit={(acceptedConsentIds) =>
+            submitCampaignApplication(
+              applicationConsentCampaign,
+              acceptedConsentIds,
+            )
+          }
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -2105,6 +2511,8 @@ function CampaignShell({
   const dashboardHref = `/${role}/dashboard`;
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const closeAccountMenu = useCallback(() => setAccountMenuOpen(false), []);
+  const { summary: messageSummary, isLoading: isMessageSummaryLoading } =
+    useMarketplaceMessageSummary(role, { enabled: isAuthenticated });
   const handleLogout = async () => {
     try {
       await apiFetch(`/api/${role}/logout`, {
@@ -2117,6 +2525,7 @@ function CampaignShell({
       finishFastLoginTransition(role);
       clearVerificationSummaryCache(role);
       clearMarketplaceMessageSummaryCache(role);
+      clearNotificationCenterCache(role);
       if (role === "advertiser") {
         clearAdvertiserSessionCache();
         clearAdvertiserDashboardBootstrapPreload();
@@ -2162,11 +2571,17 @@ function CampaignShell({
                 <div className="hidden lg:block">
                   <DashboardSurfaceSwitch role={role} active="campaigns" />
                 </div>
-                <div className="hidden lg:contents">{actions}</div>
+                <HeaderNotificationCenterButton role={role} />
+                <HeaderMessageCenterButton
+                  unreadCount={messageSummary.unreadCount}
+                  isLoading={isMessageSummaryLoading}
+                  onClick={() => navigate(`/${role}/messages`)}
+                />
+                <div className="hidden sm:contents">{actions}</div>
                 <button
                   type="button"
                   onClick={handleLogout}
-                  className="yl-header-action yl-header-action-secondary hidden lg:inline-flex"
+                  className="yl-header-action yl-header-action-secondary hidden sm:inline-flex"
                   aria-label="로그아웃"
                   title="로그아웃"
                 >
@@ -2187,6 +2602,10 @@ function CampaignShell({
                       closeAccountMenu();
                       navigate("/reset-password?role=advertiser");
                     }}
+                    onLogout={() => {
+                      closeAccountMenu();
+                      void handleLogout();
+                    }}
                   />
                 ) : (
                   <InfluencerAccountSettingsMenu
@@ -2202,6 +2621,10 @@ function CampaignShell({
                       closeAccountMenu();
                       navigate("/reset-password?role=influencer");
                     }}
+                    onLogout={() => {
+                      closeAccountMenu();
+                      void handleLogout();
+                    }}
                   />
                 )}
               </>
@@ -2216,16 +2639,12 @@ function CampaignShell({
                 <span className="hidden sm:inline">로그인</span>
               </Link>
             ) : (
-              <span
-                className="yl-header-action yl-header-action-secondary pointer-events-none shrink-0"
-                aria-busy="true"
-              >
+              <div className="flex gap-1.5 sm:gap-2" aria-busy="true">
+                <span className="h-10 w-10 rounded-[9px] border border-neutral-200 bg-white" />
+                <span className="h-10 w-10 rounded-[9px] border border-neutral-200 bg-white" />
+                <span className="h-10 w-10 rounded-[9px] border border-neutral-200 bg-white" />
                 <span className="sr-only">로그인 상태 확인 중</span>
-                <span
-                  className="h-4 w-16 animate-pulse rounded bg-neutral-200"
-                  aria-hidden="true"
-                />
-              </span>
+              </div>
             )}
           </div>
         </div>
@@ -2321,6 +2740,124 @@ function CampaignField({
   );
 }
 
+function CampaignRequiredConsentEditor({
+  consents,
+  onChange,
+}: {
+  consents: NonNullable<MarketplaceBrandCampaign["requiredConsents"]>;
+  onChange: (
+    consents: NonNullable<MarketplaceBrandCampaign["requiredConsents"]>,
+  ) => void;
+}) {
+  const moveConsent = (index: number, direction: -1 | 1) => {
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= consents.length) return;
+    const next = [...consents];
+    [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
+    onChange(next);
+  };
+
+  return (
+    <section className="rounded-[12px] border border-neutral-200 bg-[#fbfaf7] p-3 sm:p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="text-[13px] font-extrabold text-neutral-900">신청 동의 항목</h3>
+          <p className="mt-1 break-keep text-[12px] font-bold leading-5 text-neutral-500">
+            필요한 동의를 추가하면 인플루언서는 신청 전에 각 항목의 동의합니다 버튼을 눌러야 합니다.
+          </p>
+        </div>
+        <span className="shrink-0 text-[11px] font-extrabold tabular-nums text-neutral-400">
+          {consents.length}/8
+        </span>
+      </div>
+
+      <div className="mt-3 grid gap-2.5">
+        {consents.map((consent, index) => (
+          <div
+            key={consent.id}
+            className="rounded-[10px] border border-neutral-200 bg-white p-3"
+          >
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className="text-[11px] font-extrabold text-neutral-500">
+                동의 {index + 1}
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => moveConsent(index, -1)}
+                  disabled={index === 0}
+                  className="flex h-9 w-9 items-center justify-center rounded-[8px] text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-950 disabled:cursor-not-allowed disabled:opacity-30"
+                  aria-label={`동의 ${index + 1} 위로 이동`}
+                  title="위로 이동"
+                >
+                  <ArrowUp className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => moveConsent(index, 1)}
+                  disabled={index === consents.length - 1}
+                  className="flex h-9 w-9 items-center justify-center rounded-[8px] text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-950 disabled:cursor-not-allowed disabled:opacity-30"
+                  aria-label={`동의 ${index + 1} 아래로 이동`}
+                  title="아래로 이동"
+                >
+                  <ArrowDown className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    onChange(consents.filter((item) => item.id !== consent.id))
+                  }
+                  className="flex h-9 w-9 items-center justify-center rounded-[8px] text-neutral-400 transition hover:bg-rose-50 hover:text-rose-600"
+                  aria-label={`동의 ${index + 1} 삭제`}
+                  title="삭제"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+            <textarea
+              required
+              rows={3}
+              maxLength={300}
+              value={consent.text}
+              onChange={(event) =>
+                onChange(
+                  consents.map((item) =>
+                    item.id === consent.id
+                      ? { ...item, text: event.target.value }
+                      : item,
+                  ),
+                )
+              }
+              placeholder="동의받을 내용을 입력하세요."
+              className="campaign-input min-h-[86px] resize-y overflow-y-auto"
+              aria-label={`동의 항목 ${index + 1}`}
+            />
+            <p className="mt-1 text-right text-[10px] font-bold tabular-nums text-neutral-400">
+              {consent.text.length}/300
+            </p>
+          </div>
+        ))}
+
+        <button
+          type="button"
+          disabled={consents.length >= 8}
+          onClick={() =>
+            onChange([
+              ...consents,
+              { id: createCampaignRequiredConsentId(), text: "" },
+            ])
+          }
+          className="flex h-10 w-full items-center justify-center gap-2 rounded-[10px] border border-dashed border-neutral-300 bg-white text-[12px] font-extrabold text-neutral-700 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          동의 항목 추가
+        </button>
+      </div>
+    </section>
+  );
+}
+
 function CampaignFormSelectList<T extends string>({
   id,
   openId,
@@ -2331,6 +2868,7 @@ function CampaignFormSelectList<T extends string>({
   onSelect,
   onClear,
   searchPlaceholder,
+  closeOnSelect = false,
 }: {
   id: string;
   openId: string | null;
@@ -2341,6 +2879,7 @@ function CampaignFormSelectList<T extends string>({
   onSelect: (value: T) => void;
   onClear?: () => void;
   searchPlaceholder?: string;
+  closeOnSelect?: boolean;
 }) {
   const open = openId === id;
   const rootRef = useRef<HTMLElement | null>(null);
@@ -2459,21 +2998,23 @@ function CampaignFormSelectList<T extends string>({
             className={searchPlaceholder ? "max-h-48 overflow-y-auto" : "max-h-56 overflow-y-auto"}
           >
             {onClear && !normalizedSearchQuery ? (
-              <CampaignFilterListOptionButton
+              <CampaignFormCheckboxOption
                 label="전체"
                 selected={isClearSelected}
                 onClick={() => {
                   onClear();
+                  if (closeOnSelect) onOpenChange(null);
                 }}
               />
             ) : null}
             {visibleOptions.map((option) => (
-              <CampaignFilterListOptionButton
+              <CampaignFormCheckboxOption
                 key={String(option.value)}
                 label={option.label}
                 selected={selected.has(option.value)}
                 onClick={() => {
                   onSelect(option.value);
+                  if (closeOnSelect) onOpenChange(null);
                 }}
               />
             ))}
@@ -2486,6 +3027,35 @@ function CampaignFormSelectList<T extends string>({
         </div>
       ) : null}
     </section>
+  );
+}
+
+function CampaignFormCheckboxOption({
+  label,
+  onClick,
+  selected,
+}: {
+  key?: string;
+  label: string;
+  onClick: () => void;
+  selected: boolean;
+}) {
+  return (
+    <label
+      className={`flex min-h-9 w-full cursor-pointer items-center gap-2.5 rounded-[8px] px-2.5 text-left text-[12px] font-extrabold transition ${
+        selected
+          ? "bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-100"
+          : "text-neutral-600 hover:bg-[#f6f8f6] hover:text-neutral-950"
+      }`}
+    >
+      <input
+        type="checkbox"
+        checked={selected}
+        onChange={onClick}
+        className="h-4 w-4 shrink-0 cursor-pointer rounded border-neutral-300 accent-blue-600"
+      />
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+    </label>
   );
 }
 
@@ -2796,8 +3366,8 @@ function CampaignImageUpload({
   const inputRef = useRef<HTMLInputElement>(null);
 
   return (
-    <section className="flex min-w-0 items-center justify-between gap-3 rounded-[12px] border border-neutral-200 bg-[#fbfaf7] px-3 py-2">
-      <div className="flex min-w-0 items-center gap-3">
+    <section className="flex min-w-0 flex-col items-stretch gap-2 rounded-[12px] border border-neutral-200 bg-[#fbfaf7] px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+      <div className="flex min-w-0 w-full items-center gap-3 sm:flex-1">
         <span className="flex h-12 w-16 shrink-0 items-center justify-center overflow-hidden rounded-[8px] bg-white text-[11px] font-extrabold text-neutral-400 ring-1 ring-neutral-200">
           {imageUrl ? (
             <img
@@ -2811,10 +3381,10 @@ function CampaignImageUpload({
           )}
         </span>
         <div className="min-w-0">
-          <p className="truncate text-[13px] font-extrabold text-neutral-950">
+          <p className="text-[13px] font-extrabold text-neutral-950 sm:truncate">
             대표 이미지
           </p>
-          <p className="mt-0.5 truncate text-[11px] font-bold text-neutral-500">
+          <p className="mt-0.5 break-keep text-[11px] font-bold leading-4 text-neutral-500 sm:truncate">
             모집 카드와 상세 상단에 표시됩니다.
           </p>
         </div>
@@ -2823,7 +3393,7 @@ function CampaignImageUpload({
         type="button"
         onClick={() => inputRef.current?.click()}
         disabled={disabled}
-        className="inline-flex h-9 shrink-0 items-center rounded-full border border-neutral-200 bg-white px-3 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 disabled:cursor-wait disabled:text-neutral-400"
+        className="inline-flex h-9 w-full shrink-0 items-center justify-center rounded-full border border-neutral-200 bg-white px-3 text-[12px] font-extrabold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 disabled:cursor-wait disabled:text-neutral-400 sm:w-auto"
       >
         {disabled ? "업로드 중" : "사진 업로드"}
       </button>
@@ -2995,40 +3565,6 @@ function getCampaignLocationLabel(
   return campaign.location ?? generated?.location ?? post.brandLocation ?? "지역 확인";
 }
 
-function getCampaignOfferLabel(
-  campaign: MarketplaceBrandCampaign | MarketplaceCampaignPost,
-) {
-  const explicitOffer = campaign.offer?.trim();
-  if (explicitOffer) return explicitOffer;
-
-  const generated = getGeneratedCampaignRecruitmentDetails(campaign);
-  if (generated?.offer) return generated.offer;
-
-  const budget = campaign.budget.trim();
-  if (!budget) return "제공 조건 확인";
-
-  const offerLike = budget
-    .split(/[+·,]/u)
-    .map((item) => item.trim())
-    .find((item) => /제품|상품|숙박|식사|이용권|체험|방문|제공/u.test(item));
-
-  return offerLike || budget;
-}
-
-function getCampaignMissionLabel(
-  campaign: MarketplaceBrandCampaign | MarketplaceCampaignPost,
-) {
-  const generated = getGeneratedCampaignRecruitmentDetails(campaign);
-
-  return (
-    campaign.mission?.trim() ||
-    generated?.mission ||
-    campaign.deliverables?.filter(Boolean).join(", ") ||
-    campaign.summary?.trim() ||
-    "모집글 조건 확인"
-  );
-}
-
 function getCampaignDdayLabel(deadline: string | undefined) {
   if (!deadline) return "상시";
   const date = new Date(deadline);
@@ -3117,13 +3653,13 @@ function getCampaignRecruitmentFacts(
       icon: <MapPin className="h-3.5 w-3.5" />,
     },
     {
-      label: "제공",
-      value: getCampaignOfferLabel(campaign),
+      label: "지급",
+      value: campaign.budget,
       icon: <Gift className="h-3.5 w-3.5" />,
     },
     {
       label: "모집",
-      value: campaign.applicantLimit ?? "상시",
+      value: formatCampaignApplicantLimit(campaign.applicantLimit),
       icon: <UsersRound className="h-3.5 w-3.5" />,
     },
     {
@@ -3214,13 +3750,13 @@ function CampaignCardMetaChips({
       icon: <MapPin className="h-3.5 w-3.5" />,
     },
     {
-      label: "제공",
-      value: getCampaignOfferLabel(campaign),
+      label: "지급",
+      value: campaign.budget,
       icon: <Gift className="h-3.5 w-3.5" />,
     },
     {
       label: "모집",
-      value: campaign.applicantLimit ?? "상시",
+      value: formatCampaignApplicantLimit(campaign.applicantLimit),
       icon: <UsersRound className="h-3.5 w-3.5" />,
     },
   ].filter((chip): chip is { label: string; value: string; icon: ReactNode } =>
@@ -3271,6 +3807,128 @@ function CampaignCardDeadlineStrip({
   );
 }
 
+function CampaignApplicationConsentDialog({
+  campaign,
+  isSubmitting,
+  onCancel,
+  onSubmit,
+}: {
+  campaign: MarketplaceCampaignPost;
+  isSubmitting: boolean;
+  onCancel: () => void;
+  onSubmit: (acceptedConsentIds: string[]) => void;
+}) {
+  useBodyScrollLock(true);
+  const requiredConsents = (campaign.requiredConsents ?? []).filter(
+    (consent) => consent.id.trim() && consent.text.trim(),
+  );
+  const [acceptedConsentIds, setAcceptedConsentIds] = useState<string[]>([]);
+  const acceptedConsentIdSet = new Set(acceptedConsentIds);
+  const allAccepted = requiredConsents.every((consent) =>
+    acceptedConsentIdSet.has(consent.id),
+  );
+
+  return (
+    <div
+      className="fixed inset-0 z-[80] flex items-end justify-center bg-neutral-950/55 p-0 sm:items-center sm:p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="campaign-consent-title"
+    >
+      <button
+        type="button"
+        className="absolute inset-0 cursor-default"
+        onClick={isSubmitting ? undefined : onCancel}
+        aria-label="신청 동의 닫기"
+      />
+      <section className="relative flex max-h-[calc(100svh-16px)] w-full max-w-[620px] flex-col overflow-hidden rounded-t-[16px] bg-white shadow-[0_28px_90px_rgba(15,23,42,0.32)] sm:max-h-[calc(100svh-32px)] sm:rounded-[16px]">
+        <header className="flex items-start justify-between gap-3 border-b border-neutral-200 px-4 py-4 sm:px-5">
+          <div className="min-w-0">
+            <p className="truncate text-[12px] font-extrabold text-neutral-500">
+              {campaign.brandName} · {campaign.title}
+            </p>
+            <h2
+              id="campaign-consent-title"
+              className="mt-1 text-[20px] font-black text-neutral-950"
+            >
+              신청 전 필수 동의
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isSubmitting}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-950 disabled:cursor-not-allowed disabled:opacity-40"
+            aria-label="닫기"
+            title="닫기"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </header>
+
+        <div className="min-h-0 flex-1 overflow-y-auto bg-[#fbfaf7] p-3 sm:p-5">
+          <div className="grid gap-2.5">
+            {requiredConsents.map((consent, index) => {
+              const accepted = acceptedConsentIdSet.has(consent.id);
+              return (
+                <article
+                  key={consent.id}
+                  className={`rounded-[12px] border p-3 transition sm:p-4 ${
+                    accepted
+                      ? "border-blue-200 bg-blue-50/70"
+                      : "border-neutral-200 bg-white"
+                  }`}
+                >
+                  <p className="text-[11px] font-extrabold text-neutral-400">
+                    필수 동의 {index + 1}
+                  </p>
+                  <p className="mt-1.5 break-keep text-[13px] font-bold leading-6 text-neutral-800">
+                    {consent.text}
+                  </p>
+                  <button
+                    type="button"
+                    aria-pressed={accepted}
+                    onClick={() =>
+                      setAcceptedConsentIds((current) =>
+                        current.includes(consent.id)
+                          ? current.filter((id) => id !== consent.id)
+                          : [...current, consent.id],
+                      )
+                    }
+                    className={`mt-3 inline-flex h-9 w-full items-center justify-center gap-2 rounded-[8px] border text-[12px] font-extrabold transition sm:w-[132px] ${
+                      accepted
+                        ? "border-blue-600 bg-blue-600 text-white"
+                        : "border-neutral-300 bg-white text-neutral-700 hover:border-blue-300 hover:text-blue-700"
+                    }`}
+                  >
+                    {accepted ? <CheckCircle2 className="h-3.5 w-3.5" /> : null}
+                    {accepted ? "동의 완료" : "동의합니다"}
+                  </button>
+                </article>
+              );
+            })}
+          </div>
+        </div>
+
+        <footer className="shrink-0 border-t border-neutral-200 bg-white p-3 sm:flex sm:items-center sm:justify-between sm:gap-3 sm:px-5 sm:py-4">
+          <p className="mb-3 text-[12px] font-extrabold text-neutral-500 sm:mb-0">
+            {acceptedConsentIds.length}/{requiredConsents.length}개 동의 완료
+          </p>
+          <button
+            type="button"
+            disabled={!allAccepted || isSubmitting}
+            onClick={() => onSubmit(requiredConsents.map((consent) => consent.id))}
+            className="yl-primary-action inline-flex h-11 w-full items-center justify-center gap-2 rounded-[8px] px-5 text-[13px] font-extrabold disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:text-neutral-500 disabled:hover:bg-neutral-300 sm:w-[180px]"
+          >
+            <Send className="h-4 w-4" />
+            {isSubmitting ? "신청 중" : "캠페인 신청"}
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
 function CampaignRecruitmentDetailDialog({
   campaign,
   isApplying,
@@ -3290,13 +3948,11 @@ function CampaignRecruitmentDetailDialog({
     ...(targetCountryLabel
       ? [{ label: "국가", value: targetCountryLabel }]
       : []),
-    { label: "제공상품", value: getCampaignOfferLabel(campaign) },
     { label: "지급조건", value: campaign.budget },
     {
       label: "콘텐츠",
-      value: campaign.deliverables?.join(", ") || getCampaignMissionLabel(campaign),
+      value: campaign.deliverables?.join(", ") || "가이드라인 확인",
     },
-    { label: "참여 미션", value: getCampaignMissionLabel(campaign) },
     {
       label: "모집마감",
       value: getCampaignDeadlineLabel(campaign.deadline),
@@ -3358,7 +4014,10 @@ function CampaignRecruitmentDetailDialog({
             <h2 className="break-keep text-[24px] font-black leading-8 text-neutral-950">
               {campaignCopy.title}
             </h2>
-            <p className="mt-3 break-keep text-[13px] font-bold leading-6 text-neutral-600">
+            <p className="mt-3 text-[11px] font-extrabold text-neutral-400">
+              가이드라인
+            </p>
+            <p className="mt-1 break-keep text-[13px] font-bold leading-6 text-neutral-600">
               {campaignCopy.summary}
             </p>
             <dl className="mt-4 grid gap-2">
@@ -3555,6 +4214,7 @@ function CampaignViewTabs({
 
   return (
     <div
+      data-product-tour="influencer-campaign-views"
       className="grid min-w-0 flex-1 grid-cols-2 w-full gap-1 overflow-hidden rounded-full bg-neutral-100 p-1 sm:min-w-[250px] lg:w-[320px]"
       role="tablist"
       aria-label="캠페인 보기"
@@ -3662,13 +4322,23 @@ function AppliedCampaignFilters({
 
 function AppliedCampaignList({
   applications,
+  focusedCampaignId,
   sortState,
   onSortChange,
 }: {
   applications: MarketplaceMessageThread[];
+  focusedCampaignId?: string;
   sortState: CampaignSort;
   onSortChange: (value: CampaignSort) => void;
 }) {
+  useEffect(() => {
+    if (!focusedCampaignId) return;
+    const row = document.getElementById(
+      `campaign-application-${encodeURIComponent(focusedCampaignId)}`,
+    );
+    row?.scrollIntoView({ block: "center" });
+  }, [applications, focusedCampaignId]);
+
   return (
     <section className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
       <div className="hidden grid-cols-[minmax(170px,0.48fr)_minmax(320px,1fr)_132px_132px_132px] border-b border-neutral-200 bg-[#f8faf7] px-4 py-3 lg:grid">
@@ -3705,7 +4375,10 @@ function AppliedCampaignList({
       >
         {applications.map((application) => (
           <div key={application.id}>
-            <AppliedCampaignRow application={application} />
+            <AppliedCampaignRow
+              application={application}
+              focused={application.campaignId === focusedCampaignId}
+            />
           </div>
         ))}
       </div>
@@ -3773,14 +4446,27 @@ function CampaignColumnHeader({
 
 function AppliedCampaignRow({
   application,
+  focused = false,
 }: {
   application: MarketplaceMessageThread;
+  focused?: boolean;
 }) {
   const statusMeta = applicationStatusMeta[application.status];
   const title = formatAppliedCampaignTitle(application);
 
   return (
-    <article className="grid gap-3 px-4 py-3 hover:bg-[#f8faf7] lg:grid-cols-[minmax(170px,0.48fr)_minmax(320px,1fr)_132px_132px_132px] lg:items-center">
+    <article
+      id={
+        application.campaignId
+          ? `campaign-application-${encodeURIComponent(application.campaignId)}`
+          : undefined
+      }
+      className={`grid gap-3 px-4 py-3 transition lg:grid-cols-[minmax(170px,0.48fr)_minmax(320px,1fr)_132px_132px_132px] lg:items-center ${
+        focused
+          ? "bg-blue-50/70 ring-1 ring-inset ring-blue-200"
+          : "hover:bg-[#f8faf7]"
+      }`}
+    >
       <div className="min-w-0">
         <p className="truncate text-[14px] font-extrabold text-neutral-950">
           {application.targetName || application.counterpartName}
@@ -3835,6 +4521,8 @@ function formatAppliedCampaignTitle(application: MarketplaceMessageThread) {
 
   const valueStart = startIndex + startToken.length;
   const stopTokens = [
+    "가이드라인:",
+    "지역:",
     "모집 설명:",
     "지역/진행방식:",
     "제공상품:",
@@ -4096,6 +4784,7 @@ function CampaignFilterToggleButton({
 }) {
   return (
     <button
+      data-product-tour="influencer-campaign-filters"
       type="button"
       onClick={onClick}
       aria-expanded={open}

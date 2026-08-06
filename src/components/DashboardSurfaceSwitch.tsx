@@ -39,6 +39,7 @@ export function DashboardSurfaceSwitch({
       className="yl-dashboard-surface-switch"
       aria-label={config.ariaLabel}
       data-dashboard-surface-switch={role}
+      data-product-tour={`${role}-dashboard-surfaces`}
     >
       {config.items.map((item) => (
         <Link

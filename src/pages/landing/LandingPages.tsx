@@ -3216,7 +3216,7 @@ function InfluencerCampaignApplyPreview() {
   return (
     <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[16px] border border-neutral-200 bg-[#f4f5f2] p-2 shadow-[0_18px_48px_rgba(23,26,23,0.08)] max-[640px]:rounded-[14px] max-[640px]:p-1.5">
       <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[10px] border border-[#d9e0d9] bg-white">
-        <div className="flex h-12 shrink-0 items-center justify-between border-b border-neutral-200 bg-white px-3.5 max-[640px]:h-11">
+        <div className="flex h-12 shrink-0 items-center border-b border-neutral-200 bg-white px-3.5 max-[640px]:h-11">
           <div className="min-w-0">
             <p className="truncate text-[11px] font-extrabold text-neutral-500">
               캠페인 찾기
@@ -3225,9 +3225,6 @@ function InfluencerCampaignApplyPreview() {
               참여 가능한 캠페인
             </h3>
           </div>
-          <span className="inline-flex h-8 shrink-0 items-center rounded-[8px] bg-blue-600 px-3 text-[11px] font-black text-white max-[640px]:h-7 max-[640px]:px-2.5">
-            신청
-          </span>
         </div>
 
         <div className="grid min-h-0 flex-1 gap-2 bg-[#fbfcfa] p-2 max-[640px]:gap-1.5 max-[640px]:p-1.5 sm:grid-cols-[minmax(0,0.58fr)_minmax(250px,0.42fr)]">
@@ -3245,15 +3242,15 @@ function InfluencerCampaignApplyPreview() {
                 <IntroPlatformMarks platform="인스타" size="sm" />
               </div>
             </div>
-            <div className="relative h-40 shrink-0 overflow-hidden border-y border-neutral-200 max-[640px]:h-36">
+            <div className="relative h-40 shrink-0 overflow-hidden border-y border-neutral-200 max-[640px]:h-28">
               <img
                 src="/images/campaigns/breadroom-homecare-supporters.png"
-                alt="선크림 릴스 캠페인 제공 상품"
+                alt="선크림 릴스 캠페인 대표 이미지"
                 className="h-full w-full object-cover object-center"
                 loading="eager"
               />
               <span className="absolute bottom-2 left-2 rounded-[7px] bg-white/95 px-2 py-1 text-[10px] font-black text-neutral-800 shadow-sm backdrop-blur">
-                선케어 제품 2종 제공
+                체험단
               </span>
             </div>
             <dl className="grid grid-cols-2 gap-2 p-3 max-[640px]:gap-1.5 max-[640px]:p-2.5">
@@ -3276,18 +3273,18 @@ function InfluencerCampaignApplyPreview() {
             <dl className="grid grid-cols-2 border-t border-neutral-200 bg-[#fbfcfa] px-3 py-2.5 max-[640px]:px-2.5 max-[640px]:py-2">
               <div className="min-w-0 border-r border-neutral-200 pr-3">
                 <dt className="text-[10px] font-extrabold text-neutral-500">
-                  제공 상품
+                  지역
                 </dt>
                 <dd className="mt-1 truncate text-[11px] font-black text-neutral-950">
-                  선케어 제품 2종
+                  전국
                 </dd>
               </div>
               <div className="min-w-0 pl-3">
                 <dt className="text-[10px] font-extrabold text-neutral-500">
-                  진행 방식
+                  신청 동의
                 </dt>
                 <dd className="mt-1 truncate text-[11px] font-black text-neutral-950">
-                  제품 배송 · 온라인
+                  광고주 직접 추가
                 </dd>
               </div>
             </dl>
@@ -3301,7 +3298,7 @@ function InfluencerCampaignApplyPreview() {
                 </p>
               </div>
               <span className="inline-flex h-9 items-center rounded-[8px] bg-blue-600 px-4 text-[11px] font-black text-white">
-                신청하기
+                동의 후 신청
               </span>
             </div>
           </article>
@@ -3312,7 +3309,7 @@ function InfluencerCampaignApplyPreview() {
                 인증 계정으로 지원
               </p>
               <p className="mt-1 break-keep text-[13px] font-black leading-5 text-neutral-950">
-                캠페인 조건과 연결할 계정을 확인한 뒤 바로 신청합니다.
+                광고주가 추가한 항목이 있는 캠페인은 각 항목에 동의한 뒤 신청합니다.
               </p>
             </div>
             <div className="grid gap-2 rounded-[12px] border border-neutral-200 bg-white p-3">

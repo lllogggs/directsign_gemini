@@ -44,6 +44,7 @@ import {
   type VerificationRequest,
   type VerificationStatus,
 } from "../../domain/verification";
+import { type AdvertiserCampaignAccess } from "../../domain/verificationPolicy";
 import {
   formatContractTitleForDisplay,
   formatMoneyLabel,
@@ -55,6 +56,7 @@ import {
   useVerificationSummary,
 } from "../../hooks/useVerificationSummary";
 import { useMarketplaceMessageSummary } from "../../hooks/useMarketplaceMessageSummary";
+import { clearNotificationCenterCache } from "../../hooks/useNotificationCenter";
 import { useBodyScrollLock } from "../../hooks/useBodyScrollLock";
 import {
   clearAdvertiserSessionCache,
@@ -72,7 +74,6 @@ import {
   readSelectedAdvertiserBrandId,
   writeSelectedAdvertiserBrandId,
 } from "../../domain/advertiserBrands";
-import { ContractFirstExperienceDialog } from "../../components/ScreenHelp";
 import { LogoMark } from "../../components/BrandLogo";
 import { DashboardDownloadButton } from "../../components/DashboardDownloadButton";
 import { DashboardExportDialog } from "../../components/DashboardExportDialog";
@@ -82,7 +83,11 @@ import { PlatformBrandMark } from "../../components/PlatformBrandMark";
 import { ResponsiveFilterPanel } from "../../components/ResponsiveFilterPanel";
 import { FilterSelectControl } from "../../components/FilterSelectControl";
 import { AdvertiserAccountSettingsMenu } from "../../components/AdvertiserAccountSettingsMenu";
-import { CONTRACT_FIRST_EXPERIENCE_CONTENT } from "../../domain/screenHelp";
+import { HeaderNotificationCenterButton } from "../../components/HeaderNotificationCenterButton";
+import {
+  ProductSpotlightTour,
+  type ProductSpotlightTourStep,
+} from "../../components/ProductSpotlightTour";
 import {
   compareChannelAudienceValues,
   findInfluencerProfileByDisplayName,
@@ -136,6 +141,56 @@ type SortKey =
   | "deadline"
   | "status";
 type SortDirection = "asc" | "desc";
+
+const ADVERTISER_CONTRACT_TOUR_STEPS = [
+  {
+    id: "surfaces",
+    target: "advertiser-dashboard-surfaces",
+    title: "캠페인과 1:1 계약",
+    description:
+      "캠페인은 여러 인플루언서를 모집해 선정자별 계약서를 관리하고, 1:1 계약은 한 인플루언서와 합의한 조건을 바로 계약서로 만듭니다.",
+  },
+  {
+    id: "create",
+    target: "advertiser-contract-create",
+    title: "1:1 계약 작성",
+    description:
+      "1:1 계약은 첫 계약부터 사업자 인증이 필요합니다. 인증 후 한 명에게 보낼 계약서를 작성하세요.",
+  },
+  {
+    id: "workspace",
+    target: "advertiser-contract-workspace",
+    title: "필요한 계약부터 확인",
+    description:
+      "상태 탭과 필터로 검토·서명·마감이 필요한 계약을 좁히고, 계약 행을 눌러 다음 작업을 이어갑니다.",
+    padding: 6,
+  },
+] satisfies readonly ProductSpotlightTourStep[];
+
+const ADVERTISER_CAMPAIGN_TOUR_STEPS = [
+  {
+    id: "surfaces",
+    target: "advertiser-dashboard-surfaces",
+    title: "캠페인과 1:1 계약",
+    description:
+      "캠페인은 여러 인플루언서를 모집해 선정자별 계약서를 관리하고, 1:1 계약은 한 인플루언서에게 직접 제안할 때 사용합니다.",
+  },
+  {
+    id: "create",
+    target: "advertiser-campaign-create",
+    title: "캠페인 작성",
+    description:
+      "여러 인플루언서를 모집할 캠페인 내용과 참여 조건을 작성해 배포합니다.",
+  },
+  {
+    id: "workspace",
+    target: "advertiser-campaign-workspace",
+    title: "모집부터 선정자별 진행까지",
+    description:
+      "모집·진행·종료 탭과 필터로 캠페인을 찾고, 캠페인을 열어 지원자와 선정자별 계약 진행을 관리합니다.",
+    padding: 6,
+  },
+] satisfies readonly ProductSpotlightTourStep[];
 type ContractSort = {
   key: SortKey;
   direction: SortDirection;
@@ -239,6 +294,7 @@ type MarketplaceDashboardState = {
   brand: MarketplaceBrandProfile | null;
   brands: MarketplaceBrandProfile[];
   campaigns: MarketplaceBrandCampaign[];
+  campaignAccess?: AdvertiserCampaignAccess;
   threads: MarketplaceMessageThread[];
   error?: string;
 };
@@ -247,12 +303,14 @@ type CampaignStatusUpdateResponse = {
   brands?: MarketplaceBrandProfile[];
   campaign?: MarketplaceBrandCampaign;
   campaigns?: MarketplaceBrandCampaign[];
+  campaign_access?: AdvertiserCampaignAccess;
   error?: string;
 };
 type AdvertiserCampaignsResponse = {
   brand?: MarketplaceBrandProfile | null;
   brands?: MarketplaceBrandProfile[];
   campaigns?: MarketplaceBrandCampaign[];
+  campaign_access?: AdvertiserCampaignAccess;
 };
 type AdvertiserBrandsResponse = {
   brand?: MarketplaceBrandProfile | null;
@@ -759,7 +817,7 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
           headers: { Accept: "application/json" },
           credentials: "include",
         }),
-        apiFetch("/api/marketplace/messages?role=advertiser", {
+        apiFetch("/api/marketplace/campaign-applications?role=advertiser", {
           headers: { Accept: "application/json" },
           credentials: "include",
         }),
@@ -798,6 +856,7 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
         brand: campaignData.brand ?? null,
         brands: campaignData.brands ?? (campaignData.brand ? [campaignData.brand] : []),
         campaigns: campaignData.campaigns ?? [],
+        campaignAccess: campaignData.campaign_access,
         threads: messageData.threads,
       });
       if (campaignData.brand?.id) {
@@ -1044,7 +1103,10 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
   );
   const selectedCampaignKey = searchParams.get("campaign") ?? undefined;
   const selectedCampaign = selectedCampaignKey
-    ? campaignGroups.find((campaign) => campaign.key === selectedCampaignKey)
+    ? campaignGroups.find((campaign) => campaign.key === selectedCampaignKey) ??
+      campaignGroups.find(
+        (campaign) => campaign.key === `campaign:${selectedCampaignKey}`,
+      )
     : undefined;
   const openContract = (contract: Contract) =>
     navigate(`/advertiser/contract/${contract.id}`);
@@ -1098,6 +1160,7 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
         brand: data.brand ?? current.brand,
         brands: data.brands ?? current.brands,
         campaigns: data.campaigns ?? current.campaigns,
+        campaignAccess: data.campaign_access ?? current.campaignAccess,
         error: undefined,
       }));
     },
@@ -1473,6 +1536,7 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
       clearAdvertiserSessionCache();
       clearAdvertiserDashboardBootstrapPreload();
       clearVerificationSummaryCache("advertiser");
+      clearNotificationCenterCache("advertiser");
       resetHydration();
       navigate("/login/advertiser", { replace: true });
     }
@@ -1572,10 +1636,21 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
 
   return (
     <div className="min-h-screen bg-[#f4f5f2] font-sans text-neutral-950 lg:h-screen lg:overflow-hidden">
-      {surface === "contracts" && isHydrated && contracts.length === 0 ? (
-        <ContractFirstExperienceDialog
-          content={CONTRACT_FIRST_EXPERIENCE_CONTENT}
-          onCreateContract={() => navigate("/advertiser/builder")}
+      {!isCostSurface ? (
+        <ProductSpotlightTour
+          accountId={cachedAdvertiserUser?.id}
+          role="advertiser"
+          tourId={
+            isCampaignSurface
+              ? "campaign-dashboard"
+              : "contract-dashboard"
+          }
+          version={1}
+          steps={
+            isCampaignSurface
+              ? ADVERTISER_CAMPAIGN_TOUR_STEPS
+              : ADVERTISER_CONTRACT_TOUR_STEPS
+          }
         />
       ) : null}
       <DashboardExportDialog
@@ -1636,6 +1711,7 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
             <div className="hidden lg:block">
               <DashboardSurfaceSwitch role="advertiser" active={surface} />
             </div>
+            <HeaderNotificationCenterButton role="advertiser" />
             <MessageCenterButton
               unreadCount={messageSummary.unreadCount}
               isLoading={isMessageSummaryLoading}
@@ -1644,7 +1720,7 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
             <button
               type="button"
               onClick={() => navigate("/advertiser/discover")}
-              className="yl-header-action yl-header-action-secondary"
+              className="yl-header-action yl-header-action-secondary hidden sm:inline-flex"
               aria-label="인플루언서 찾기"
               title="인플루언서 찾기"
             >
@@ -1654,7 +1730,7 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
             <button
               type="button"
               onClick={handleLogout}
-              className="yl-header-action yl-header-action-secondary"
+              className="yl-header-action yl-header-action-secondary hidden sm:inline-flex"
               aria-label="로그아웃"
               title="로그아웃"
             >
@@ -1673,6 +1749,10 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
               onOpenBusinessVerification={() => {
                 setAccountMenuOpen(false);
                 navigate("/advertiser/verification");
+              }}
+              onLogout={() => {
+                setAccountMenuOpen(false);
+                void handleLogout();
               }}
             />
           </div>
@@ -1708,6 +1788,7 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
                 {isCostSurface ? null : isCampaignSurface ? (
                   <Link
                     to="/advertiser/campaigns/new"
+                    data-product-tour="advertiser-campaign-create"
                     className="yl-primary-action inline-flex h-10 min-w-[112px] shrink-0 items-center justify-center gap-1.5 rounded-[9px] px-3 text-[13px] font-extrabold leading-none transition"
                     aria-label="새 캠페인"
                     title="새 캠페인"
@@ -1718,6 +1799,7 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
                 ) : (
                   <Link
                     to="/advertiser/builder"
+                    data-product-tour="advertiser-contract-create"
                     className="yl-primary-action inline-flex h-10 min-w-[112px] shrink-0 items-center justify-center gap-1.5 rounded-[9px] px-3 text-[13px] font-extrabold leading-none transition"
                     aria-label="1:1 계약 작성"
                     title="1:1 계약 작성"
@@ -1732,6 +1814,8 @@ export function Dashboard({ surface = "contracts" }: DashboardProps) {
 
           <VerificationBanner
             status={advertiserVerificationStatus}
+            surface={surface}
+            campaignAccess={marketplaceState.campaignAccess}
             account={advertiserAccount}
             selectedBrand={selectedBrand}
             brands={marketplaceState.brands}
@@ -3469,6 +3553,8 @@ function BrandRegistrationField({
 
 function VerificationBanner({
   status,
+  surface,
+  campaignAccess,
   account,
   selectedBrand,
   brands,
@@ -3482,6 +3568,8 @@ function VerificationBanner({
   embedded = false,
 }: {
   status: VerificationStatus;
+  surface: DashboardSurface;
+  campaignAccess?: AdvertiserCampaignAccess;
   account: AdvertiserAccountSummary;
   selectedBrand: MarketplaceBrandProfile | null;
   brands: MarketplaceBrandProfile[];
@@ -3495,9 +3583,15 @@ function VerificationBanner({
   embedded?: boolean;
 }) {
   const approved = status === "approved";
-  const showCompactAccount = approved || (isLoading && !latest);
+  const isCampaignSurface = surface === "campaigns";
+  const showCompactAccount =
+    approved ||
+    (isLoading && !latest) ||
+    (isCampaignSurface && campaignAccess?.verification_required !== true);
   const rejected = status === "rejected";
-  const copy = getAdvertiserVerificationBannerCopy(status, latest);
+  const copy = getAdvertiserVerificationBannerCopy(status, latest, {
+    campaignAccess: isCampaignSurface ? campaignAccess : undefined,
+  });
   const businessNumber = account.businessNumber
     ? formatBusinessRegistrationNumber(account.businessNumber)
     : undefined;
@@ -3668,7 +3762,7 @@ function VerificationBanner({
           className={`h-10 shrink-0 whitespace-nowrap rounded-md px-3 text-[12px] font-semibold transition ${
             approved
               ? "border border-neutral-200 bg-white text-neutral-800 hover:border-neutral-300 hover:bg-neutral-50"
-              : "bg-neutral-950 text-white hover:bg-neutral-800"
+              : "yl-primary-action text-white"
           }`}
         >
           {copy.actionLabel}
@@ -3803,6 +3897,7 @@ function formatPlatformFilterLabel(platform: PlatformFilter) {
 function getAdvertiserVerificationBannerCopy(
   status: VerificationStatus,
   latest?: VerificationRequest,
+  options: { campaignAccess?: AdvertiserCampaignAccess } = {},
 ) {
   const rejectionGuidance =
     status === "rejected"
@@ -3836,6 +3931,18 @@ function getAdvertiserVerificationBannerCopy(
       actionLabel: "사업자 인증하기",
     },
   };
+
+  if (options.campaignAccess?.verification_required) {
+    return {
+      ...copies[status],
+      helper:
+        status === "pending"
+          ? "3회차 캠페인 공개를 위해 사업자 인증을 확인하고 있습니다. 승인 후 바로 이어서 공개할 수 있습니다."
+          : status === "rejected"
+            ? copies[status].helper
+            : "인플루언서가 인증된 사업주체임을 확인할 수 있도록 3회차부터 사업자 인증에 협조해 주세요.",
+    };
+  }
 
   return copies[status];
 }
@@ -4001,7 +4108,10 @@ function CampaignListView({
         : "종료 내역";
 
   return (
-    <section className="overflow-visible rounded-[8px] border border-[#d9e0d9] bg-white shadow-[0_1px_0_rgba(255,255,255,0.9)_inset] lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+    <section
+      data-product-tour="advertiser-campaign-workspace"
+      className="overflow-visible rounded-[8px] border border-[#d9e0d9] bg-white shadow-[0_1px_0_rgba(255,255,255,0.9)_inset] lg:flex lg:min-h-0 lg:flex-1 lg:flex-col"
+    >
       <CampaignLifecycleTabs
         value={lifecycleFilter}
         counts={lifecycleCounts}
@@ -4846,7 +4956,7 @@ function CampaignApplicantsPanel({
               ariaLabel="지원자 정렬"
               className="min-w-0 flex-1 sm:w-[158px] sm:flex-none"
               triggerClassName="h-8 rounded-[6px] border-[#d9e0d9] px-2 text-[11px] shadow-none"
-              menuClassName="left-auto right-0 min-w-[176px]"
+              menuClassName="min-w-[176px]"
               onOpen={() => setFiltersOpen(false)}
             />
             <div className="relative">
@@ -5399,6 +5509,8 @@ function getCampaignApplicantProfile(
   thread: MarketplaceMessageThread,
   applicantName: string,
 ) {
+  if (thread.counterpartProfilePublished === false) return undefined;
+
   return (
     findInfluencerProfileByHandle(thread.counterpartHref) ??
     findInfluencerProfileByDisplayName(applicantName)
@@ -5673,7 +5785,10 @@ function ContractTable({
   }, [panelCloseSignal]);
 
   return (
-    <section className="overflow-visible rounded-[8px] border border-[#d9e0d9] bg-white lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
+    <section
+      data-product-tour="advertiser-contract-workspace"
+      className="overflow-visible rounded-[8px] border border-[#d9e0d9] bg-white lg:flex lg:min-h-0 lg:flex-1 lg:flex-col"
+    >
       {lifecycleTabs}
       <div className="border-b border-[#d9e0d9] bg-white">
         <div className="flex min-h-11 flex-wrap items-center justify-between gap-2 px-3 py-2">

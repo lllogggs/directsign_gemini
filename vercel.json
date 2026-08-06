@@ -20,13 +20,17 @@
         "icn1"
       ],
       "includeFiles": "public/fonts/**",
-      "excludeFiles": "data/**"
+      "excludeFiles": "{data/**,**/runtime-secrets.json,**/*.log,docs/sales/**,qa-artifacts/**,tmp/**,.tmp/**}"
     }
   },
   "crons": [
     {
       "path": "/api/cron/ops-alerts",
       "schedule": "0 17 * * *"
+    },
+    {
+      "path": "/api/cron/notifications",
+      "schedule": "0 18 * * *"
     }
   ],
   "redirects": [

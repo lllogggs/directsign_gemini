@@ -55,6 +55,8 @@ const loadMarketplacePages = () => import("./pages/marketplace/MarketplacePages"
 const loadMarketplaceInboxPage = () =>
   import("./pages/marketplace/MarketplaceInboxPage");
 const loadCampaignPages = () => import("./pages/marketplace/CampaignPages");
+const loadNotificationCenterPage = () =>
+  import("./pages/notifications/NotificationCenterPage");
 
 const Dashboard = lazy(() =>
   loadDashboard().then((module) => ({ default: module.Dashboard })),
@@ -249,6 +251,16 @@ const PublicCampaignRecruitmentPage = lazy(() =>
     default: module.PublicCampaignRecruitmentPage,
   })),
 );
+const AdvertiserNotificationCenterPage = lazy(() =>
+  loadNotificationCenterPage().then((module) => ({
+    default: () => <module.NotificationCenterPage role="advertiser" />,
+  })),
+);
+const InfluencerNotificationCenterPage = lazy(() =>
+  loadNotificationCenterPage().then((module) => ({
+    default: () => <module.NotificationCenterPage role="influencer" />,
+  })),
+);
 
 type LoadingCopy = {
   label: string;
@@ -283,6 +295,12 @@ const routeLoadingCopy: Record<string, LoadingCopy> = {
     tabs: ["보낸 계약 제안", "받은 제안"],
     variant: "app",
   },
+  "/advertiser/notifications": {
+    label: "알림",
+    listTitle: "최근 알림",
+    tabs: ["전체", "읽지 않음"],
+    variant: "app",
+  },
   "/advertiser/discover": {
     label: "인플루언서 찾기",
     listTitle: "인플루언서 목록",
@@ -305,6 +323,12 @@ const routeLoadingCopy: Record<string, LoadingCopy> = {
     label: "계약 전 검토할 제안",
     listTitle: "제안 목록",
     tabs: ["받은 제안", "보낸 제안"],
+    variant: "app",
+  },
+  "/influencer/notifications": {
+    label: "알림",
+    listTitle: "최근 알림",
+    tabs: ["전체", "읽지 않음"],
     variant: "app",
   },
   "/influencer/brands": {
@@ -1247,6 +1271,7 @@ const getExactRoutePreloaders = (pathname: string): RouteModuleLoader[] => {
   if (pathname === "/advertiser/costs") return [loadDashboard];
   if (pathname === "/advertiser/campaigns/new") return [loadCampaignPages];
   if (pathname === "/advertiser/messages") return [loadMarketplaceInboxPage];
+  if (pathname === "/advertiser/notifications") return [loadNotificationCenterPage];
   if (pathname === "/advertiser/verification") return [loadAdvertiserVerification];
   if (pathname.startsWith("/advertiser/contract/")) {
     return [loadContractAdminViewer];
@@ -1259,6 +1284,7 @@ const getExactRoutePreloaders = (pathname: string): RouteModuleLoader[] => {
   if (pathname === "/influencer/brands") return [loadMarketplacePages];
   if (pathname === "/influencer/campaigns") return [loadCampaignPages];
   if (pathname === "/influencer/messages") return [loadMarketplaceInboxPage];
+  if (pathname === "/influencer/notifications") return [loadNotificationCenterPage];
   if (pathname === "/influencer/verification") return [loadInfluencerVerification];
   if (pathname.startsWith("/campaigns/")) return [loadCampaignPages];
   if (pathname.startsWith("/brands/")) return [loadMarketplacePages];
@@ -1662,6 +1688,14 @@ function AppRoutes() {
             }
           />
           <Route
+            path="/advertiser/notifications"
+            element={
+              <AdvertiserAuthGate redirectUnauthenticated>
+                <AdvertiserNotificationCenterPage />
+              </AdvertiserAuthGate>
+            }
+          />
+          <Route
             path="/advertiser/verification"
             element={
               <AdvertiserAuthGate redirectUnauthenticated>
@@ -1701,6 +1735,10 @@ function AppRoutes() {
           <Route
             path="/influencer/messages"
             element={<InfluencerMessagesPage />}
+          />
+          <Route
+            path="/influencer/notifications"
+            element={<InfluencerNotificationCenterPage />}
           />
           <Route
             path="/campaigns/:campaignId"

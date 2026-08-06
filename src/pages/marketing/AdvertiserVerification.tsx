@@ -2,16 +2,17 @@ import React, { useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import {
   AlertTriangle,
-  ArrowLeft,
   CheckCircle2,
-  FileText,
   FileUp,
   LogOut,
-  Megaphone,
   ShieldCheck,
 } from "lucide-react";
 import { LogoMark } from "../../components/BrandLogo";
 import { AdvertiserAccountSettingsMenu } from "../../components/AdvertiserAccountSettingsMenu";
+import { DashboardSurfaceSwitch } from "../../components/DashboardSurfaceSwitch";
+import { HeaderMessageCenterButton } from "../../components/HeaderMessageCenterButton";
+import { HeaderNotificationCenterButton } from "../../components/HeaderNotificationCenterButton";
+import { MobileSurfaceSwitch } from "../../components/MobileSurfaceSwitch";
 import {
   type VerificationAccountInfo,
   type VerificationRequest,
@@ -27,7 +28,11 @@ import { translateApiErrorMessage } from "../../domain/userMessages";
 import { clearAdvertiserSessionCache } from "../../domain/advertiserSessionCache";
 import { clearAdvertiserDashboardBootstrapPreload } from "../../domain/advertiserDashboardPreload";
 import { finishFastLoginTransition } from "../../domain/fastLoginTransition";
-import { clearMarketplaceMessageSummaryCache } from "../../hooks/useMarketplaceMessageSummary";
+import {
+  clearMarketplaceMessageSummaryCache,
+  useMarketplaceMessageSummary,
+} from "../../hooks/useMarketplaceMessageSummary";
+import { clearNotificationCenterCache } from "../../hooks/useNotificationCenter";
 
 const MAX_VERIFICATION_FILE_SIZE = 10 * 1024 * 1024;
 const ACCEPTED_VERIFICATION_FILE_TYPES = new Set([
@@ -162,6 +167,8 @@ export function AdvertiserVerification() {
     useState<ManualFallback | null>(null);
   const [showUpdateForm, setShowUpdateForm] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const { summary: messageSummary, isLoading: isMessageSummaryLoading } =
+    useMarketplaceMessageSummary("advertiser");
   const manualReviewRef = useRef<HTMLElement>(null);
 
   const advertiser = summary?.advertiser;
@@ -207,6 +214,7 @@ export function AdvertiserVerification() {
       clearAdvertiserDashboardBootstrapPreload();
       clearVerificationSummaryCache("advertiser");
       clearMarketplaceMessageSummaryCache("advertiser");
+      clearNotificationCenterCache("advertiser");
       navigate("/login/advertiser", { replace: true });
     }
   };
@@ -326,35 +334,34 @@ export function AdvertiserVerification() {
   };
 
   return (
-    <div className="min-h-svh bg-[#f4f5f7] font-sans text-neutral-950">
-      <header className="sticky top-0 z-30 border-b border-neutral-200/80 bg-white shadow-[0_1px_0_rgba(15,23,42,0.04)]">
-        <div className="mx-auto flex h-14 max-w-[1500px] items-center justify-between px-3 sm:px-5">
+    <div className="min-h-screen bg-[#f4f5f2] font-sans text-neutral-950">
+      <header className="sticky top-0 z-30 border-b border-neutral-200/70 bg-white/92 backdrop-blur">
+        <div className="mx-auto flex h-14 max-w-[1500px] items-center justify-between px-3 sm:px-5 lg:px-6">
           <button
             type="button"
             onClick={() => navigate("/advertiser/dashboard")}
-            className="yl-brand-action group flex min-w-0 items-center gap-3 rounded-lg text-neutral-950 transition hover:text-neutral-700"
+            className="yl-brand-action -ml-1 flex h-10 min-w-10 shrink-0 items-center gap-3 rounded-[12px] px-1 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-950"
             aria-label={PRODUCT_NAME}
           >
             <LogoMark />
-            <span className="truncate text-lg font-extrabold">{PRODUCT_NAME}</span>
+            <span className="font-neo-heavy text-[18px] leading-none">{PRODUCT_NAME}</span>
           </button>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => navigate("/advertiser/dashboard")}
-              aria-label="대시보드로 이동"
-              title="대시보드로 이동"
-              className="yl-header-action yl-header-action-secondary"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              <span className="hidden sm:inline">대시보드</span>
-            </button>
+          <div className="ml-2 flex min-w-0 items-center justify-end gap-1.5 sm:ml-3 sm:gap-2">
+            <div className="hidden lg:block">
+              <DashboardSurfaceSwitch role="advertiser" />
+            </div>
+            <HeaderNotificationCenterButton role="advertiser" />
+            <HeaderMessageCenterButton
+              unreadCount={messageSummary.unreadCount}
+              isLoading={isMessageSummaryLoading}
+              onClick={() => navigate("/advertiser/messages")}
+            />
             <button
               type="button"
               onClick={handleLogout}
               aria-label="로그아웃"
               title="로그아웃"
-              className="yl-header-action yl-header-action-secondary"
+              className="yl-header-action yl-header-action-secondary hidden sm:inline-flex"
             >
               <LogOut className="h-4 w-4" />
               <span className="hidden sm:inline">로그아웃</span>
@@ -369,16 +376,22 @@ export function AdvertiserVerification() {
                 setAccountMenuOpen(false);
                 navigate("/reset-password?role=advertiser");
               }}
+              onLogout={() => {
+                setAccountMenuOpen(false);
+                void handleLogout();
+              }}
             />
           </div>
         </div>
       </header>
 
-      <main className="mx-auto min-h-[calc(100svh-56px)] max-w-4xl px-4 py-5 sm:px-8 sm:py-8">
+      <MobileSurfaceSwitch role="advertiser" />
+
+      <main className="mx-auto w-full max-w-[980px] px-3 py-4 sm:px-5 sm:py-6">
         {isLoading && !summary ? (
           <VerificationLoadingShell />
         ) : summaryError && !summary ? (
-          <section className="rounded-[16px] border border-neutral-200 bg-white p-6 shadow-[0_22px_60px_rgba(15,23,42,0.08)]">
+          <section className="rounded-[10px] border border-neutral-200 bg-white p-6 shadow-[0_18px_46px_rgba(23,26,23,0.055)]">
             <h1 className="text-xl font-extrabold">인증 상태를 확인하지 못했습니다</h1>
             <p className="mt-2 text-sm font-semibold leading-6 text-neutral-600">
               {summaryError}
@@ -386,7 +399,7 @@ export function AdvertiserVerification() {
             <button
               type="button"
               onClick={() => void refresh()}
-              className="mt-5 h-11 rounded-[10px] bg-blue-600 px-5 text-sm font-extrabold text-white transition hover:bg-blue-700"
+              className="yl-primary-action mt-5 h-11 rounded-[8px] px-5 text-sm font-bold transition"
             >
               다시 시도
             </button>
@@ -399,12 +412,11 @@ export function AdvertiserVerification() {
               setShowUpdateForm(true);
               setError("");
             }}
-            onNavigate={navigate}
           />
         ) : pending ? (
           <PendingVerificationOverview latest={latest} />
         ) : (
-          <section className="overflow-hidden rounded-[16px] border border-neutral-200/90 bg-white shadow-[0_22px_60px_rgba(15,23,42,0.08)]">
+          <section className="overflow-hidden rounded-[10px] border border-neutral-200/90 bg-white shadow-[0_18px_46px_rgba(23,26,23,0.055)]">
             {rejectionGuidance ? (
               <div className="border-b border-rose-200 bg-rose-50 p-5 sm:p-6">
                 <div className="flex items-start gap-3">
@@ -620,7 +632,7 @@ export function AdvertiserVerification() {
                 <button
                   type="submit"
                   disabled={isSubmitting || isLoading}
-                  className="h-12 w-full rounded-[10px] bg-blue-600 px-5 text-sm font-extrabold text-white shadow-[0_10px_24px_rgba(37,99,235,0.16)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-500 disabled:shadow-none"
+                  className="yl-primary-action h-12 w-full rounded-[8px] px-5 text-sm font-bold transition disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-500 disabled:shadow-none"
                 >
                   {isSubmitting
                     ? activeFallback
@@ -643,15 +655,16 @@ function ApprovedVerificationOverview({
   businessNumber,
   representativeName,
   onUpdate,
-  onNavigate,
 }: {
   businessNumber: string;
   representativeName: string;
   onUpdate: () => void;
-  onNavigate: (path: string) => void;
 }) {
   return (
-    <section className="overflow-hidden rounded-[16px] border border-neutral-200 bg-white shadow-[0_22px_60px_rgba(15,23,42,0.08)]">
+    <section
+      data-verification-approved="advertiser"
+      className="overflow-hidden rounded-[10px] border border-neutral-200 bg-white shadow-[0_18px_46px_rgba(23,26,23,0.055)]"
+    >
       <div className="border-b border-neutral-200 bg-[#fbfaf7] px-5 py-6 sm:px-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-3">
@@ -676,28 +689,10 @@ function ApprovedVerificationOverview({
           </button>
         </div>
       </div>
-      <div className="grid gap-4 p-5 sm:p-6 lg:grid-cols-[minmax(0,1fr)_260px]">
-        <div className="grid gap-3 rounded-[14px] border border-neutral-200 p-4 sm:grid-cols-2">
+      <div className="p-5 sm:p-6">
+        <div className="grid gap-3 rounded-[10px] border border-neutral-200 bg-[#fbfbfc] p-4 sm:grid-cols-2">
           <InfoRow label="사업자등록번호" value={businessNumber} />
           <InfoRow label="대표자명" value={representativeName} />
-        </div>
-        <div className="grid gap-2 rounded-[14px] bg-[#f7f8fa] p-4">
-          <button
-            type="button"
-            onClick={() => onNavigate("/advertiser/builder")}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-[10px] bg-blue-600 px-4 text-sm font-extrabold text-white transition hover:bg-blue-700"
-          >
-            <FileText className="h-4 w-4" />
-            1:1 계약 작성
-          </button>
-          <button
-            type="button"
-            onClick={() => onNavigate("/advertiser/campaigns/new")}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-[10px] border border-neutral-200 bg-white px-4 text-sm font-extrabold text-neutral-800 transition hover:border-neutral-300 hover:bg-neutral-50"
-          >
-            <Megaphone className="h-4 w-4" />
-            캠페인 작성
-          </button>
         </div>
       </div>
     </section>
@@ -710,7 +705,7 @@ function PendingVerificationOverview({
   latest?: VerificationRequest;
 }) {
   return (
-    <section className="overflow-hidden rounded-[16px] border border-neutral-200 bg-white shadow-[0_22px_60px_rgba(15,23,42,0.08)]">
+    <section className="overflow-hidden rounded-[10px] border border-neutral-200 bg-white shadow-[0_18px_46px_rgba(23,26,23,0.055)]">
       <div className="border-b border-neutral-200 bg-[#fbfaf7] px-5 py-6 sm:px-6">
         <h1 className="text-[22px] font-extrabold tracking-tight text-neutral-950">
           서류 검토 중
@@ -746,7 +741,7 @@ function VerificationLoadingShell() {
   return (
     <section
       aria-label="사업자 인증 상태 확인 중"
-      className="animate-pulse overflow-hidden rounded-[16px] border border-neutral-200 bg-white shadow-[0_22px_60px_rgba(15,23,42,0.08)]"
+      className="animate-pulse overflow-hidden rounded-[10px] border border-neutral-200 bg-white shadow-[0_18px_46px_rgba(23,26,23,0.055)]"
     >
       <div className="border-b border-neutral-100 bg-[#fbfaf7] p-6">
         <div className="h-3 w-24 rounded bg-neutral-200" />

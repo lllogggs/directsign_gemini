@@ -1,5 +1,5 @@
 export const API_BASE =
-  typeof import.meta !== "undefined"
+  typeof import.meta !== "undefined" && typeof import.meta.env !== "undefined"
     ? (import.meta.env.VITE_API_BASE_URL ?? "")
     : "";
 

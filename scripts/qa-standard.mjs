@@ -1298,25 +1298,27 @@ const checkAdvertiserApplicantSortMenu = async (
       client,
       sessionId,
       `(async () => {
-        const [campaignResponse, messageResponse] = await Promise.all([
+        const [campaignResponse, applicationResponse] = await Promise.all([
           fetch("/api/advertiser/campaigns", {
             credentials: "include",
             headers: { Accept: "application/json" },
           }),
-          fetch("/api/marketplace/messages?role=advertiser", {
+          fetch("/api/marketplace/campaign-applications?role=advertiser", {
             credentials: "include",
             headers: { Accept: "application/json" },
           }),
         ]);
-        if (!campaignResponse.ok || !messageResponse.ok) return null;
-        const [campaignData, messageData] = await Promise.all([
+        if (!campaignResponse.ok || !applicationResponse.ok) return null;
+        const [campaignData, applicationData] = await Promise.all([
           campaignResponse.json(),
-          messageResponse.json(),
+          applicationResponse.json(),
         ]);
         const campaigns = Array.isArray(campaignData.campaigns)
           ? campaignData.campaigns
           : [];
-        const threads = Array.isArray(messageData.threads) ? messageData.threads : [];
+        const threads = Array.isArray(applicationData.threads)
+          ? applicationData.threads
+          : [];
         const counts = new Map();
         for (const thread of threads) {
           if (!thread?.campaignId) continue;
@@ -1374,17 +1376,45 @@ const checkAdvertiserApplicantSortMenu = async (
           ? Array.from(listbox.querySelectorAll('[role="option"]'))
           : [];
         const rect = listbox?.getBoundingClientRect();
+        const triggerRect = trigger.getBoundingClientRect();
+        const horizontalOverlap = rect
+          ? rect.right >= triggerRect.left && rect.left <= triggerRect.right
+          : false;
+        const horizontalEdgeAligned = rect
+          ? Math.abs(rect.left - triggerRect.left) <= 12 ||
+            Math.abs(rect.right - triggerRect.right) <= 12
+          : false;
+        const verticalGap = rect
+          ? rect.top >= triggerRect.bottom
+            ? rect.top - triggerRect.bottom
+            : triggerRect.top >= rect.bottom
+              ? triggerRect.top - rect.bottom
+              : 0
+          : Number.POSITIVE_INFINITY;
+        const anchored =
+          (horizontalOverlap || horizontalEdgeAligned) && verticalGap <= 16;
         return {
           ok:
             trigger.getAttribute("aria-expanded") === "true" &&
             Boolean(listbox) &&
             options.length >= 2 &&
             rect.left >= 0 &&
-            rect.right <= window.innerWidth,
-          detail: listbox ? "sort listbox incomplete or clipped" : "sort listbox missing",
+            rect.right <= window.innerWidth &&
+            rect.top >= 0 &&
+            rect.bottom <= window.innerHeight &&
+            anchored,
+          detail: listbox
+            ? "sort listbox incomplete, clipped, or detached from trigger (gap " +
+              Math.round(verticalGap) +
+              "px)"
+            : "sort listbox missing",
           optionCount: options.length,
           menuLeft: rect ? Math.round(rect.left) : null,
           menuRight: rect ? Math.round(rect.right) : null,
+          triggerLeft: Math.round(triggerRect.left),
+          triggerRight: Math.round(triggerRect.right),
+          verticalGap: Number.isFinite(verticalGap) ? Math.round(verticalGap) : null,
+          anchored,
         };
       })()`,
     );
@@ -1973,6 +2003,201 @@ const checkDashboardSurfaceBreakpoints = async (
   return ok;
 };
 
+const checkMobileVerificationAndProfileSurfaces = async (
+  client,
+  sessionId,
+  baseUrl,
+  outputDir,
+) => {
+  try {
+    await client.send(
+      "Emulation.setDeviceMetricsOverride",
+      {
+        width: 390,
+        height: 844,
+        deviceScaleFactor: 1,
+        mobile: true,
+      },
+      sessionId,
+    );
+    await client.send(
+      "Emulation.setTouchEmulationEnabled",
+      { enabled: true },
+      sessionId,
+    );
+
+    await client.send(
+      "Page.navigate",
+      { url: new URL("/influencer/verification", baseUrl).toString() },
+      sessionId,
+    );
+    await waitForRouteReady(client, sessionId, "/influencer/verification", {
+      minTextLength: 80,
+      timeoutMs: 15000,
+    });
+    const verification = await evaluateCdpValue(
+      client,
+      sessionId,
+      `(async () => {
+        const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        let section = null;
+        for (let attempt = 0; attempt < 100; attempt += 1) {
+          section = document.querySelector('[data-verification-approved="influencer"]');
+          if (section) break;
+          await wait(100);
+        }
+        if (!section) return { ok: false, detail: "approved verification section missing" };
+        const rows = Array.from(
+          section.querySelectorAll('[data-verification-account-row="true"]')
+        );
+        const duplicateStatus = rows.some((row) =>
+          Array.from(row.querySelectorAll("span")).some(
+            (node) => (node.textContent || "").trim() === "인증"
+          )
+        );
+        const primaryActions = section.querySelectorAll("button.yl-primary-action").length;
+        const overflow = Math.max(
+          0,
+          Math.ceil(document.documentElement.scrollWidth - window.innerWidth)
+        );
+        return {
+          ok: rows.length > 0 && !duplicateStatus && primaryActions === 1 && overflow <= 1,
+          rows: rows.length,
+          duplicateStatus,
+          primaryActions,
+          overflow,
+        };
+      })()`,
+    );
+    if (!verification?.ok) {
+      record(
+        "Browser mobile influencer verification surface",
+        "fail",
+        verification?.detail || JSON.stringify(verification),
+      );
+      return false;
+    }
+    const verificationShot = await client.send(
+      "Page.captureScreenshot",
+      { format: "png", captureBeyondViewport: false },
+      sessionId,
+    );
+    await fs.writeFile(
+      path.join(outputDir, "mobile-influencer-verification-approved.png"),
+      Buffer.from(verificationShot.data, "base64"),
+    );
+
+    await client.send(
+      "Page.navigate",
+      { url: new URL("/influencer/profile", baseUrl).toString() },
+      sessionId,
+    );
+    await waitForRouteReady(client, sessionId, "/influencer/profile", {
+      minTextLength: 100,
+      timeoutMs: 15000,
+    });
+    const profile = await evaluateCdpValue(
+      client,
+      sessionId,
+      `(async () => {
+        const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        let row = null;
+        for (let attempt = 0; attempt < 100; attempt += 1) {
+          row = document.querySelector('[data-verified-platform-row="true"]');
+          if (row) break;
+          await wait(100);
+        }
+        if (!row) return { ok: false, detail: "verified platform row missing" };
+        row.scrollIntoView({ block: "center" });
+        await wait(120);
+        const link = row.querySelector('a[target="_blank"]');
+        const rowRect = row.getBoundingClientRect();
+        const linkRect = link?.getBoundingClientRect();
+        const columns = getComputedStyle(row).gridTemplateColumns
+          .split(/\\s+/)
+          .filter(Boolean);
+        const duplicateStatus = Array.from(row.querySelectorAll("span")).some(
+          (node) => (node.textContent || "").trim() === "인증"
+        );
+        const verticallyBound = linkRect
+          ? Math.abs(
+              (rowRect.top + rowRect.bottom) / 2 -
+                (linkRect.top + linkRect.bottom) / 2
+            ) <= 12
+          : false;
+        const overflow = Math.max(
+          0,
+          Math.ceil(document.documentElement.scrollWidth - window.innerWidth)
+        );
+        return {
+          ok:
+            columns.length === 2 &&
+            Boolean(link) &&
+            verticallyBound &&
+            !duplicateStatus &&
+            overflow <= 1,
+          columns: columns.length,
+          verticallyBound,
+          duplicateStatus,
+          overflow,
+        };
+      })()`,
+    );
+    if (!profile?.ok) {
+      record(
+        "Browser mobile verified platform profile rows",
+        "fail",
+        profile?.detail || JSON.stringify(profile),
+      );
+      return false;
+    }
+    const profileShot = await client.send(
+      "Page.captureScreenshot",
+      { format: "png", captureBeyondViewport: false },
+      sessionId,
+    );
+    await fs.writeFile(
+      path.join(outputDir, "mobile-influencer-profile-platform-rows.png"),
+      Buffer.from(profileShot.data, "base64"),
+    );
+
+    record(
+      "Browser mobile influencer verification surface",
+      "pass",
+      `${verification.rows} official account rows, one blue action, no repeated approval chips`,
+    );
+    record(
+      "Browser mobile verified platform profile rows",
+      "pass",
+      "two-column account rows stay visually bound without repeated approval chips",
+    );
+    return true;
+  } catch (error) {
+    record(
+      "Browser mobile verification/profile surfaces",
+      "fail",
+      error instanceof Error ? error.message : String(error),
+    );
+    return false;
+  } finally {
+    await client.send(
+      "Emulation.setDeviceMetricsOverride",
+      {
+        width: 1365,
+        height: 900,
+        deviceScaleFactor: 1,
+        mobile: false,
+      },
+      sessionId,
+    );
+    await client.send(
+      "Emulation.setTouchEmulationEnabled",
+      { enabled: false },
+      sessionId,
+    );
+  }
+};
+
 const checkBrowserPerformance = async (baseUrl) => {
   if (process.env.QA_SKIP_BROWSER_PERFORMANCE === "1") {
     record(
@@ -2132,6 +2357,14 @@ const checkBrowserPerformance = async (baseUrl) => {
         );
       }
       checkResults.push(
+        await checkMobileVerificationAndProfileSurfaces(
+          client,
+          sessionId,
+          baseUrl,
+          outputDir,
+        ),
+      );
+      checkResults.push(
         await checkInfluencerCampaignMobileScroll(client, sessionId, baseUrl),
       );
       checkResults.push(
@@ -2171,7 +2404,7 @@ const checkBrowserPerformance = async (baseUrl) => {
 const readMarketplaceInfluencerHandle = async (baseUrl) => {
   try {
     const response = await fetchWithTimeout(
-      `${baseUrl}/api/marketplace/influencers?limit=1`,
+      `${baseUrl}/api/marketplace/influencers?page=1&sort=audience_desc`,
       { timeoutMs: Number(process.env.QA_PUBLIC_API_COLD_TIMEOUT_MS || 45000) },
     );
     if (!response.ok) {
@@ -2184,7 +2417,16 @@ const readMarketplaceInfluencerHandle = async (baseUrl) => {
     }
 
     const data = await response.json();
-    if (!data || !Array.isArray(data.profiles)) {
+    if (
+      !data ||
+      !Array.isArray(data.profiles) ||
+      data.profiles.length > 100 ||
+      data.page !== 1 ||
+      data.pageSize !== 100 ||
+      !Number.isInteger(data.total) ||
+      data.total < data.profiles.length ||
+      data.totalPages !== Math.ceil(data.total / 100)
+    ) {
       record("Marketplace influencer handle", "fail", "invalid list response");
       return { ok: false, handle: null };
     }
@@ -2211,6 +2453,65 @@ const readMarketplaceInfluencerHandle = async (baseUrl) => {
       error instanceof Error ? error.message : String(error),
     );
     return { ok: false, handle: null };
+  }
+};
+
+const checkMarketplaceInfluencerNumberedPagination = async (baseUrl) => {
+  try {
+    const readPage = async (page) => {
+      const startedAt = Date.now();
+      const response = await fetchWithTimeout(
+        `${baseUrl}/api/marketplace/influencers?page=${page}&sort=name_asc`,
+        { timeoutMs: Number(process.env.QA_PUBLIC_API_COLD_TIMEOUT_MS || 45000) },
+      );
+      if (!response.ok) {
+        throw new Error(`page ${page} returned ${response.status}`);
+      }
+      return { data: await response.json(), durationMs: Date.now() - startedAt };
+    };
+
+    const first = await readPage(1);
+    const expectedFirstLength = Math.min(100, first.data.total);
+    if (
+      !Array.isArray(first.data.profiles) ||
+      first.data.profiles.length !== expectedFirstLength ||
+      first.data.page !== 1 ||
+      first.data.pageSize !== 100 ||
+      first.data.totalPages !== Math.ceil(first.data.total / 100)
+    ) {
+      throw new Error("page 1 did not match the fixed 100-row contract");
+    }
+
+    let secondDurationMs = 0;
+    if (first.data.total > 100) {
+      const second = await readPage(2);
+      secondDurationMs = second.durationMs;
+      const firstIds = new Set(first.data.profiles.map((profile) => profile.id));
+      if (
+        second.data.total !== first.data.total ||
+        second.data.page !== 2 ||
+        second.data.pageSize !== 100 ||
+        second.data.profiles.some((profile) => firstIds.has(profile.id))
+      ) {
+        throw new Error("page 2 changed the total or repeated a page 1 creator");
+      }
+    }
+
+    record(
+      "Marketplace influencer numbered pagination",
+      "pass",
+      `exact total ${first.data.total.toLocaleString("en-US")}, page size 100, page 1 ${first.durationMs}ms${
+        secondDurationMs ? `, page 2 ${secondDurationMs}ms` : ""
+      }`,
+    );
+    return true;
+  } catch (error) {
+    record(
+      "Marketplace influencer numbered pagination",
+      "fail",
+      error instanceof Error ? error.message : String(error),
+    );
+    return false;
   }
 };
 
@@ -2277,6 +2578,9 @@ const main = async () => {
       await checkPublicApiCache(server.baseUrl, "/api/marketplace/influencers"),
       await checkPublicApiCache(server.baseUrl, "/api/marketplace/brands"),
       await checkPublicApiCache(server.baseUrl, "/api/marketplace/campaigns"),
+    );
+    requiredChecks.push(
+      await checkMarketplaceInfluencerNumberedPagination(server.baseUrl),
     );
 
     requiredChecks.push(

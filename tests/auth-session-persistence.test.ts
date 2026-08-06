@@ -1567,10 +1567,14 @@ describe("client transient-session regressions", () => {
     assert.equal(transientCatch.includes('setMode("anonymous")'), false);
     assert.match(transientCatch, /Keep the last known shell mode/);
 
+    const appHeaderStart = source.indexOf("function MarketplaceAppHeader");
+    const appHeaderEnd = source.indexOf("function PublicProfileHeader", appHeaderStart);
+    const appHeader = source.slice(appHeaderStart, appHeaderEnd);
     const shellStart = source.indexOf("function MarketplaceShell");
     const shell = source.slice(shellStart);
-    assert.match(shell, /const isCheckingSession = mode === "checking"/);
-    assert.match(shell, /mode === "anonymous" \?/);
+    assert.match(appHeader, /const isCheckingSession = mode === "checking"/);
+    assert.match(appHeader, /mode === "anonymous" \?/);
+    assert.match(shell, /<MarketplaceAppHeader[\s\S]*?mode=\{mode\}/);
   });
 
   it("keeps campaign session state retryable instead of downgrading it", () => {
@@ -1607,7 +1611,7 @@ describe("client transient-session regressions", () => {
     const retryableSessionBranch = applicationLoad.slice(
       applicationLoad.indexOf("} else {"),
       applicationLoad.indexOf(
-        'const response = await apiFetch("/api/marketplace/messages',
+        'const response = await apiFetch(',
       ),
     );
     assert.match(retryableSessionBranch, /status: "loading"/);

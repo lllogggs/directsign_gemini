@@ -1852,22 +1852,61 @@ const closeContract = async (contractId, advertiserCookie) => {
   return JSON.parse(body).contract;
 };
 
-const buildSeedCampaignSnapshot = (campaign, marketplace) => ({
-  id: campaign.id,
-  title: campaign.title,
-  type: campaign.type,
-  budget: campaign.budget,
-  applicantLimit: campaign.applicantLimit,
-  summary: campaign.summary,
-  deadline: campaign.deadline,
-  uploadDeadline: campaign.uploadDeadline,
-  platforms: campaign.platforms,
-  deliverables: campaign.deliverables,
-  brandId: marketplace.brandProfileId,
-  brandHandle: testHandles.brand,
-  brandName: accounts.advertiser.company_name,
-  brandCategory: "뷰티 · 라이프스타일",
-});
+const buildSeedCampaignConsentState = (campaign) => {
+  const seenIds = new Set();
+  const items = (Array.isArray(campaign.requiredConsents)
+    ? campaign.requiredConsents
+    : []
+  )
+    .map((item) => ({
+      id: String(item?.id ?? "").trim(),
+      text: String(item?.text ?? "")
+        .trim()
+        .replace(/\r\n?/g, "\n"),
+    }))
+    .filter((item) => {
+      if (
+        !item.id ||
+        item.id.length > 80 ||
+        !item.text ||
+        item.text.length > 300 ||
+        seenIds.has(item.id)
+      ) {
+        return false;
+      }
+      seenIds.add(item.id);
+      return true;
+    })
+    .slice(0, 8);
+  const version = crypto
+    .createHash("sha256")
+    .update(JSON.stringify(items.map(({ id, text }) => ({ id, text }))))
+    .digest("hex");
+
+  return { items, version };
+};
+
+const buildSeedCampaignSnapshot = (campaign, marketplace) => {
+  const consent = buildSeedCampaignConsentState(campaign);
+  return {
+    id: campaign.id,
+    title: campaign.title,
+    type: campaign.type,
+    budget: campaign.budget,
+    applicantLimit: campaign.applicantLimit,
+    summary: campaign.summary,
+    deadline: campaign.deadline,
+    uploadDeadline: campaign.uploadDeadline,
+    platforms: campaign.platforms,
+    deliverables: campaign.deliverables,
+    requiredConsents: consent.items,
+    consentVersion: consent.version,
+    brandId: marketplace.brandProfileId,
+    brandHandle: testHandles.brand,
+    brandName: accounts.advertiser.company_name,
+    brandCategory: "뷰티 · 라이프스타일",
+  };
+};
 
 const buildSeedCampaignApplicationSummary = (campaign) =>
   [
@@ -2063,6 +2102,7 @@ const seedCampaignDashboardApplications = async ({
   for (const fixture of campaignDashboardApplicationFixtures) {
     const campaign = campaignsByTitle.get(fixture.campaignTitle);
     if (!campaign?.id) continue;
+    const consent = buildSeedCampaignConsentState(campaign);
 
       const convertedContract = contractsByCampaignName.get(fixture.campaignTitle);
       const applicantNames = [...new Set([
@@ -2103,6 +2143,13 @@ const seedCampaignDashboardApplications = async ({
         proposal_summary: buildSeedCampaignApplicationSummary(campaign),
         campaign_id: campaign.id,
         campaign_snapshot: buildSeedCampaignSnapshot(campaign, marketplace),
+        application_consent_snapshot: {
+          version: consent.version,
+          items: consent.items,
+          accepted_at: createdAt,
+          actor_profile_id: applicantProfile.ownerProfileId,
+          campaign_id: campaign.id,
+        },
         converted_contract_id: convertedContractId,
         status,
         created_at: createdAt,

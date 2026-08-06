@@ -10,15 +10,14 @@ import {
   normalizePublicProfileUrl,
 } from "./lib/influencer-country.mjs";
 import { sanitizeInfluencerCollectedRow } from "./lib/influencer-text-quality.mjs";
-import {
-  classifyDiscoveredInfluencerAccount,
-  normalizeMarketplaceCreatorCategories,
-} from "../src/domain/influencerDiscoveryQuality.js";
+import { normalizeMarketplaceCreatorCategories } from "../src/domain/influencerDiscoveryQuality.js";
+import { classifyMarketplacePublicInfluencerEligibility } from "../src/domain/marketplaceInfluencerEligibility.js";
 import { normalizeNaverBlogRecentPosts } from "../src/domain/naverBlogPosts.js";
 import {
   getNaverSearchBudgetSnapshot,
   reserveNaverSearchRequest,
 } from "./lib/naver-search-budget.mjs";
+import { buildDiscoveredPublicInfluencerDirectoryRow } from "./lib/public-influencer-directory.mjs";
 import { stageInfluencerDiscoveryWorkbook } from "./lib/influencer-discovery-queue.mjs";
 
 dotenv.config({ path: ".env.local" });
@@ -2240,7 +2239,8 @@ export async function reserveExistingHandles(
   }
 
   const preparedRows = rows.flatMap((incomingRow) => {
-    const accountAssessment = classifyDiscoveredInfluencerAccount(incomingRow);
+    const accountAssessment =
+      classifyMarketplacePublicInfluencerEligibility(incomingRow);
     const normalizedCategories =
       normalizeMarketplaceCreatorCategories(incomingRow);
     const row = {
@@ -2485,6 +2485,59 @@ export async function upsertSupabaseRows(
       throw new Error(
         `Supabase upsert failed (${response.status}): ${body.slice(0, 400)}`,
       );
+    }
+
+    const indexedAt = new Date().toISOString();
+    const directoryRows = chunk
+      .map(buildDiscoveredPublicInfluencerDirectoryRow)
+      .filter(Boolean)
+      .map((row) => ({ ...row, updated_at: indexedAt }));
+    const listedSourceIds = new Set(directoryRows.map((row) => row.source_id));
+    const unlistedSourceIds = chunk
+      .map((row) => row.id)
+      .filter((id) => id && !listedSourceIds.has(id));
+
+    if (directoryRows.length > 0) {
+      const directoryResponse = await fetch(
+        `${supabaseUrl}/rest/v1/marketplace_public_influencer_directory?on_conflict=listing_key`,
+        {
+          method: "POST",
+          headers: {
+            apikey: serviceKey,
+            Authorization: `Bearer ${serviceKey}`,
+            "Content-Type": "application/json",
+            Prefer: "resolution=merge-duplicates,return=minimal",
+          },
+          body: JSON.stringify(directoryRows),
+        },
+      );
+      if (!directoryResponse.ok) {
+        const body = await directoryResponse.text().catch(() => "");
+        throw new Error(
+          `Public influencer directory upsert failed (${directoryResponse.status}): ${body.slice(0, 400)}`,
+        );
+      }
+    }
+
+    if (unlistedSourceIds.length > 0) {
+      const idFilter = unlistedSourceIds.map((id) => encodeURIComponent(id)).join(",");
+      const directoryDeleteResponse = await fetch(
+        `${supabaseUrl}/rest/v1/marketplace_public_influencer_directory?source_type=eq.discovered&source_id=in.(${idFilter})`,
+        {
+          method: "DELETE",
+          headers: {
+            apikey: serviceKey,
+            Authorization: `Bearer ${serviceKey}`,
+            Prefer: "return=minimal",
+          },
+        },
+      );
+      if (!directoryDeleteResponse.ok) {
+        const body = await directoryDeleteResponse.text().catch(() => "");
+        throw new Error(
+          `Public influencer directory cleanup failed (${directoryDeleteResponse.status}): ${body.slice(0, 400)}`,
+        );
+      }
     }
     applied += chunk.length;
   }

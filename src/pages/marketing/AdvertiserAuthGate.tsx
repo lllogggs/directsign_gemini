@@ -38,6 +38,7 @@ import {
   primeVerificationSummary,
   preloadVerificationSummary,
 } from "../../hooks/useVerificationSummary";
+import { clearNotificationCenterCache } from "../../hooks/useNotificationCenter";
 import { type Contract, useAppStore } from "../../store";
 import type { VerificationSummary } from "../../domain/verification";
 import type { MarketplaceMessageSummary } from "../../domain/marketplaceInbox";
@@ -100,6 +101,7 @@ const rememberAuthenticatedAdvertiser = (
   const previousAccountId = getAdvertiserSessionCache()?.user?.id;
   const nextAccountId = user?.id;
   if (!nextAccountId || previousAccountId !== nextAccountId) {
+    clearNotificationCenterCache("advertiser");
     clearVerificationSummaryCache("advertiser");
     clearAdvertiserDashboardBootstrapPreload();
   }
@@ -208,6 +210,7 @@ export function AdvertiserAuthGate({
           (response.ok && data.authenticated === false);
 
         if (!cancelled && isAuthoritativeLogout) {
+          clearNotificationCenterCache("advertiser");
           clearAdvertiserSessionCache();
           clearVerificationSummaryCache("advertiser");
           clearAdvertiserDashboardBootstrapPreload();
@@ -342,6 +345,7 @@ export function AdvertiserAuthGate({
       }
     } catch (loginError) {
       finishFastLoginTransition("advertiser");
+      clearNotificationCenterCache("advertiser");
       clearAdvertiserSessionCache();
       clearVerificationSummaryCache("advertiser");
       clearAdvertiserDashboardBootstrapPreload();

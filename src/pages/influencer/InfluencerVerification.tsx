@@ -4,29 +4,25 @@ import {
   AlertTriangle,
   ArrowLeft,
   BadgeCheck,
-  BookOpen,
   CheckCircle2,
   Copy,
   FileImage,
-  FileSignature,
-  Globe2,
-  Instagram,
   LogOut,
-  Megaphone,
-  Music2,
   RefreshCw,
-  Youtube,
 } from "lucide-react";
 import { useAppStore } from "../../store";
 import { LogoMark } from "../../components/BrandLogo";
 import { DashboardSurfaceSwitch } from "../../components/DashboardSurfaceSwitch";
 import { HeaderMessageCenterButton } from "../../components/HeaderMessageCenterButton";
+import { HeaderNotificationCenterButton } from "../../components/HeaderNotificationCenterButton";
 import { InfluencerAccountSettingsMenu } from "../../components/InfluencerAccountSettingsMenu";
 import { MobileSurfaceSwitch } from "../../components/MobileSurfaceSwitch";
+import { PlatformBrandMark } from "../../components/PlatformBrandMark";
 import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
 import { formatPublicHandleValue } from "../../domain/display";
 import { buildLoginRedirect } from "../../domain/navigation";
+import { getPlatformDisplayName } from "../../domain/platformDisplay";
 import { translateApiErrorMessage } from "../../domain/userMessages";
 import {
   getVerificationRejectionGuidance,
@@ -41,6 +37,7 @@ import {
   clearMarketplaceMessageSummaryCache,
   useMarketplaceMessageSummary,
 } from "../../hooks/useMarketplaceMessageSummary";
+import { clearNotificationCenterCache } from "../../hooks/useNotificationCenter";
 
 const MAX_VERIFICATION_FILE_SIZE = 10 * 1024 * 1024;
 const ACCEPTED_VERIFICATION_FILE_TYPES = new Set([
@@ -208,25 +205,19 @@ const METHOD_META: Record<
 const PLATFORM_META: Record<
   InfluencerPlatform,
   {
-    label: string;
     hostHint: string;
     handlePlaceholder: string;
     urlPlaceholder: string;
     proofPlaceholder: string;
-    className: string;
-    icon: React.ReactNode;
     methods: InfluencerVerificationMethod[];
     instructions: string[];
   }
 > = {
   instagram: {
-    label: "인스타그램",
     hostHint: "instagram.com",
     handlePlaceholder: "@creator",
     urlPlaceholder: "https://instagram.com/creator",
     proofPlaceholder: "https://instagram.com/creator 또는 인증 게시글 URL",
-    className: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
-    icon: <Instagram className="h-4 w-4" />,
     methods: [
       "instagram_dm_code",
       "profile_bio_code",
@@ -240,13 +231,10 @@ const PLATFORM_META: Record<
     ],
   },
   youtube: {
-    label: "유튜브",
     hostHint: "youtube.com 또는 youtu.be",
     handlePlaceholder: "@channel",
     urlPlaceholder: "https://youtube.com/@channel",
     proofPlaceholder: "채널 소개, 영상, 쇼츠, 커뮤니티 글 URL",
-    className: "border-red-200 bg-red-50 text-red-700",
-    icon: <Youtube className="h-4 w-4" />,
     methods: ["channel_description_code", "public_post_code", "screenshot_review"],
     instructions: [
       "채널 소개에 코드를 넣거나, 공개 영상/쇼츠 설명에 코드를 넣어 주세요.",
@@ -256,13 +244,10 @@ const PLATFORM_META: Record<
     ],
   },
   naver_blog: {
-    label: "네이버 블로그",
     hostHint: "blog.naver.com",
     handlePlaceholder: "blog-id",
     urlPlaceholder: "https://blog.naver.com/blog-id",
     proofPlaceholder: "블로그 프로필 또는 인증 글 URL",
-    className: "border-neutral-200 bg-white text-neutral-700",
-    icon: <BookOpen className="h-4 w-4" />,
     methods: ["profile_bio_code", "public_post_code", "screenshot_review"],
     instructions: [
       "블로그 소개글 또는 공개 글 본문에 인증 코드를 넣어 주세요.",
@@ -272,13 +257,10 @@ const PLATFORM_META: Record<
     ],
   },
   tiktok: {
-    label: "틱톡",
     hostHint: "tiktok.com",
     handlePlaceholder: "@creator",
     urlPlaceholder: "https://tiktok.com/@creator",
     proofPlaceholder: "https://tiktok.com/@creator 또는 인증 영상 URL",
-    className: "border-neutral-200 bg-neutral-950 text-white",
-    icon: <Music2 className="h-4 w-4" />,
     methods: ["profile_bio_code", "public_post_code", "screenshot_review"],
     instructions: [
       "프로필 소개 또는 공개 영상 설명에 인증 코드를 넣어 주세요.",
@@ -288,13 +270,10 @@ const PLATFORM_META: Record<
     ],
   },
   other: {
-    label: "기타",
     hostHint: "공개 확인 가능한 URL",
     handlePlaceholder: "account-id",
     urlPlaceholder: "https://example.com/creator",
     proofPlaceholder: "인증 코드가 보이는 공개 URL",
-    className: "border-neutral-200 bg-white text-neutral-700",
-    icon: <Globe2 className="h-4 w-4" />,
     methods: ["profile_bio_code", "public_post_code", "screenshot_review"],
     instructions: [
       "공개 프로필, 게시글, 소개 페이지 중 한 곳에 인증 코드를 넣으세요.",
@@ -328,7 +307,7 @@ export function InfluencerVerification() {
     summary: messageSummary,
     isLoading: isMessageSummaryLoading,
   } = useMarketplaceMessageSummary("influencer", {
-    enabled: verificationStatusCode !== 401,
+    enabled: verificationStatusCode === 200,
   });
   const refreshVerificationSummaryRef = useRef(refreshVerificationSummary);
   const [prefilledContractId, setPrefilledContractId] = useState("");
@@ -382,6 +361,7 @@ export function InfluencerVerification() {
       credentials: "include",
     }).catch(() => undefined);
     clearMarketplaceMessageSummaryCache("influencer");
+    clearNotificationCenterCache("influencer");
     navigate("/login/influencer", { replace: true });
   };
 
@@ -754,7 +734,7 @@ export function InfluencerVerification() {
   };
 
   return (
-    <div className="min-h-svh bg-[#f4f5f7] font-sans text-neutral-950 lg:fixed lg:inset-0 lg:overflow-hidden">
+    <div className="min-h-screen bg-[#f4f5f2] font-sans text-neutral-950">
       <header className="sticky top-0 z-30 border-b border-neutral-200/70 bg-white/92 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-[1500px] items-center justify-between px-3 sm:px-5 lg:px-6">
           <div className="flex min-w-0 items-center">
@@ -774,15 +754,21 @@ export function InfluencerVerification() {
             <div className="hidden lg:block">
               <DashboardSurfaceSwitch role="influencer" />
             </div>
+            <HeaderNotificationCenterButton
+              role="influencer"
+              enabled={verificationStatusCode === 200}
+            />
             <HeaderMessageCenterButton
               unreadCount={messageSummary.unreadCount}
-              isLoading={isMessageSummaryLoading}
+              isLoading={
+                verificationStatusCode === 200 && isMessageSummaryLoading
+              }
               onClick={() => navigate("/influencer/messages")}
             />
             <button
               type="button"
               onClick={handleLogout}
-              className="yl-header-action yl-header-action-secondary"
+              className="yl-header-action yl-header-action-secondary hidden sm:inline-flex"
               aria-label="로그아웃"
               title="로그아웃"
             >
@@ -805,6 +791,10 @@ export function InfluencerVerification() {
                 setAccountMenuOpen(false);
                 navigate("/reset-password?role=influencer");
               }}
+              onLogout={() => {
+                setAccountMenuOpen(false);
+                void handleLogout();
+              }}
             />
           </div>
         </div>
@@ -812,11 +802,13 @@ export function InfluencerVerification() {
 
       <MobileSurfaceSwitch role="influencer" />
 
-      <main
-        className="mx-auto grid min-h-[calc(100svh-113px)] max-w-4xl gap-3 px-5 py-4 sm:px-8 lg:h-[calc(100vh-57px)] lg:min-h-0 lg:overflow-hidden"
-      >
+      <main className="mx-auto w-full max-w-[980px] px-3 py-4 sm:px-5 sm:py-6">
         <section
-          className="min-h-[420px] overflow-visible rounded-lg border border-neutral-200/80 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.06)] sm:p-5 lg:overflow-y-auto"
+          className={
+            approved && !showRequestForm
+              ? "overflow-visible"
+              : "overflow-hidden rounded-[10px] border border-neutral-200/90 bg-white p-4 shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_18px_46px_rgba(23,26,23,0.055)] sm:p-5"
+          }
         >
           {contractId ? (
             <button
@@ -863,15 +855,17 @@ export function InfluencerVerification() {
               <h1 className="text-[24px] font-semibold tracking-tight">
                 {approved ? "플랫폼 인증 관리" : "플랫폼 계정 소유 인증"}
               </h1>
-              <span
-                className={`w-fit rounded-full border px-3 py-1 text-xs font-semibold ${verificationStatusTone(
-                  verificationStatus,
-                )}`}
-              >
-                {isVerificationLoading
-                  ? "정보 확인 중"
-                  : verificationStatusLabel(verificationStatus)}
-              </span>
+              {!approved ? (
+                <span
+                  className={`w-fit rounded-full border px-3 py-1 text-xs font-semibold ${verificationStatusTone(
+                    verificationStatus,
+                  )}`}
+                >
+                  {isVerificationLoading
+                    ? "정보 확인 중"
+                    : verificationStatusLabel(verificationStatus)}
+                </span>
+              ) : null}
             </div>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-neutral-500">
               {approved
@@ -882,70 +876,68 @@ export function InfluencerVerification() {
           )}
 
           {approved && !showRequestForm ? (
-            <section className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <section
+              data-verification-approved="influencer"
+              className="overflow-hidden rounded-[10px] border border-neutral-200 bg-white"
+            >
+              <div className="flex flex-col gap-4 border-b border-neutral-200 bg-[#fbfbf9] px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-5">
                 <div className="min-w-0">
-                  <p className="flex items-center gap-2 text-sm font-semibold text-emerald-900">
+                  <p className="flex items-center gap-2 text-[12px] font-bold text-blue-700">
                     <CheckCircle2 className="h-4 w-4" />
-                    플랫폼 인증 완료
+                    인증 완료
                   </p>
-                  <p className="mt-2 max-w-2xl break-keep text-sm leading-6 text-emerald-800/80">
-                    승인된 플랫폼 계정이 연락미 프로필에 표시됩니다.
+                  <h1 className="mt-1 text-[22px] font-bold tracking-tight text-neutral-950">
+                    플랫폼 계정 인증
+                  </h1>
+                  <p className="mt-1 text-[13px] font-medium leading-5 text-neutral-600">
+                    공개 프로필에 표시되는 승인 계정입니다.
                   </p>
-                  <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                    {approvedPlatforms.length > 0 ? (
-                      approvedPlatforms.map((item, index) => (
-                        <div
-                          key={`${item.platform}-${item.handle ?? item.url ?? "approved"}-${index}`}
-                          className="min-w-0 rounded-lg border border-emerald-200 bg-white px-3 py-2.5"
-                        >
-                          <p className="text-[11px] font-semibold text-emerald-700">
-                            {PLATFORM_META[item.platform]?.label ?? item.platform}
-                          </p>
-                          <p className="mt-1 truncate text-sm font-semibold text-neutral-950">
-                            {item.handle
-                              ? formatPublicHandleValue(item.handle, "인증된 계정")
-                              : item.url ?? "인증된 계정"}
-                          </p>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="rounded-lg border border-emerald-200 bg-white px-3 py-2.5">
-                        <p className="text-[11px] font-semibold text-emerald-700">
-                          대표 계정
-                        </p>
-                        <p className="mt-1 truncate text-sm font-semibold text-neutral-950">
-                          {displayVerifiedHandle}
-                        </p>
-                      </div>
-                    )}
-                  </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => setShowAdditionalRequest(true)}
-                  className="inline-flex h-10 shrink-0 items-center justify-center rounded-lg bg-neutral-950 px-4 text-sm font-semibold text-white transition hover:bg-neutral-800"
+                  className="yl-primary-action inline-flex h-10 shrink-0 items-center justify-center rounded-[8px] px-4 text-[13px] font-bold transition"
                 >
                   다른 플랫폼 인증 추가
                 </button>
               </div>
-              <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={() => navigate("/influencer/campaigns")}
-                  className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-neutral-950 px-4 text-sm font-semibold text-white transition hover:bg-neutral-800"
-                >
-                  <Megaphone className="h-4 w-4" />
-                  캠페인 보기
-                </button>
-                <button
-                  type="button"
-                  onClick={() => navigate("/influencer/dashboard")}
-                  className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-white px-4 text-sm font-semibold text-emerald-900 transition hover:border-emerald-300 hover:bg-emerald-50"
-                >
-                  <FileSignature className="h-4 w-4" />
-                  1:1 계약 보기
-                </button>
+              <div className="grid gap-2 p-4 sm:grid-cols-2 sm:p-5">
+                {approvedPlatforms.length > 0 ? (
+                  approvedPlatforms.map((item, index) => (
+                    <div
+                      key={`${item.platform}-${item.handle ?? item.url ?? "approved"}-${index}`}
+                      data-verification-account-row="true"
+                      className="flex min-w-0 items-center gap-3 rounded-[9px] border border-neutral-200 bg-[#fbfbfc] px-3 py-3"
+                    >
+                      <PlatformBrandMark platform={item.platform} />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[12px] font-bold text-neutral-900">
+                          {getPlatformDisplayName(item.platform)}
+                        </p>
+                        <p className="mt-0.5 truncate text-[13px] font-semibold text-neutral-600">
+                          {item.handle
+                            ? formatPublicHandleValue(item.handle, "인증된 계정")
+                            : item.url ?? "인증된 계정"}
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div
+                    data-verification-account-row="true"
+                    className="flex min-w-0 items-center gap-3 rounded-[9px] border border-neutral-200 bg-[#fbfbfc] px-3 py-3 sm:col-span-2"
+                  >
+                    <BadgeCheck className="h-6 w-6 shrink-0 text-blue-600" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[12px] font-bold text-neutral-900">
+                        인증된 계정
+                      </p>
+                      <p className="mt-0.5 truncate text-[13px] font-semibold text-neutral-600">
+                        {displayVerifiedHandle}
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
             </section>
           ) : null}
@@ -966,7 +958,7 @@ export function InfluencerVerification() {
                   onClick={() =>
                     setInstagramDmRestoreAttempt((current) => current + 1)
                   }
-                  className="mt-6 h-11 w-full rounded-lg bg-neutral-950 px-5 text-sm font-semibold text-white transition hover:bg-neutral-800"
+                  className="yl-primary-action mt-6 h-11 w-full rounded-[8px] px-5 text-sm font-bold transition"
                 >
                   인증 상태 다시 확인
                 </button>
@@ -998,13 +990,15 @@ export function InfluencerVerification() {
                 <div
                   role="status"
                   aria-live="polite"
-                  className="rounded-xl border border-emerald-200 bg-emerald-50 p-6 text-center"
+                  className="rounded-[10px] border border-neutral-200 bg-white p-6 text-center"
                 >
-                  <CheckCircle2 className="mx-auto h-10 w-10 text-emerald-700" />
-                  <h1 className="mt-4 text-xl font-semibold text-emerald-950">
-                    Instagram 계정 인증 완료
+                  <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-[10px] bg-blue-50 text-blue-700">
+                    <CheckCircle2 className="h-6 w-6" />
+                  </div>
+                  <h1 className="mt-4 text-xl font-bold text-neutral-950">
+                    인스타그램 계정 인증 완료
                   </h1>
-                  <p className="mt-2 text-sm text-emerald-800">
+                  <p className="mt-2 text-sm font-medium text-neutral-600">
                     {formatPublicHandleValue(
                       instagramDmChallenge.verified_handle || form.platform_handle,
                       "Instagram 계정",
@@ -1026,7 +1020,7 @@ export function InfluencerVerification() {
                       setInstagramDmChallenge(null);
                       setError("");
                     }}
-                    className="mt-6 h-11 w-full rounded-lg bg-neutral-950 px-5 text-sm font-semibold text-white transition hover:bg-neutral-800"
+                    className="yl-primary-action mt-6 h-11 w-full rounded-[8px] px-5 text-sm font-bold transition"
                   >
                     다시 인증하기
                   </button>
@@ -1055,7 +1049,9 @@ export function InfluencerVerification() {
               ) : (
                 <div className="rounded-xl border border-neutral-200 bg-[#fbfbfc] p-5 sm:p-6">
                   <div className="text-center">
-                    <Instagram className="mx-auto h-9 w-9 text-fuchsia-700" />
+                    <div className="mx-auto flex w-fit items-center justify-center">
+                      <PlatformBrandMark platform="instagram" size="md" />
+                    </div>
                     <h1 className="mt-4 text-xl font-semibold text-neutral-950">
                       Instagram DM으로 인증
                     </h1>
@@ -1074,7 +1070,7 @@ export function InfluencerVerification() {
                         target="_blank"
                         rel="noreferrer"
                         onClick={handleCopyInstagramDmCode}
-                        className="mt-4 flex h-11 w-full items-center justify-center rounded-lg bg-neutral-950 px-5 text-sm font-semibold text-white transition hover:bg-neutral-800"
+                        className="yl-primary-action mt-4 flex h-11 w-full items-center justify-center rounded-[8px] px-5 text-sm font-bold transition"
                       >
                         코드 복사하고 Instagram 열기
                       </a>
@@ -1113,7 +1109,6 @@ export function InfluencerVerification() {
               </div>
               <div className="flex flex-wrap gap-2">
                 {(Object.keys(PLATFORM_META) as InfluencerPlatform[]).map((item) => {
-                  const meta = PLATFORM_META[item];
                   const active = item === platform;
 
                   return (
@@ -1123,14 +1118,12 @@ export function InfluencerVerification() {
                       onClick={() => updatePlatform(item)}
                       className={`inline-flex h-10 items-center gap-2 rounded-lg border px-3 text-sm font-semibold transition ${
                         active
-                          ? `${meta.className} shadow-[0_10px_24px_rgba(15,23,42,0.08)] ring-2 ring-neutral-950/10`
-                          : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-400 hover:shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
+                          ? "border-blue-600 bg-blue-50 text-blue-800 shadow-[0_8px_20px_rgba(37,99,235,0.10)] ring-2 ring-blue-600/10"
+                          : "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-400 hover:bg-neutral-50"
                       }`}
                     >
-                      <span className="flex h-6 w-6 items-center justify-center rounded-md bg-white/70 text-current">
-                        {meta.icon}
-                      </span>
-                      <span>{meta.label}</span>
+                      <PlatformBrandMark platform={item} size="sm" />
+                      <span>{getPlatformDisplayName(item)}</span>
                     </button>
                   );
                 })}
@@ -1218,8 +1211,8 @@ export function InfluencerVerification() {
                     onClick={() => updateMethod(item)}
                     className={`h-10 rounded-lg border px-3 text-sm font-semibold transition ${
                     method === item
-                        ? "border-neutral-950 bg-neutral-950 text-white shadow-[0_12px_26px_rgba(15,23,42,0.14)]"
-                        : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-400 hover:shadow-[0_10px_24px_rgba(15,23,42,0.06)]"
+                        ? "border-blue-600 bg-blue-600 text-white shadow-[0_10px_24px_rgba(37,99,235,0.14)]"
+                        : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-400 hover:bg-neutral-50"
                     }`}
                   >
                       {METHOD_META[item].label}
@@ -1328,7 +1321,7 @@ export function InfluencerVerification() {
                 verificationStatusCode === 401 ||
                 (isInstagramDmMethod && isInstagramDmRestoring)
               }
-              className="h-11 w-full rounded-lg bg-neutral-950 px-5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.14)] transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-500 disabled:shadow-none"
+              className="yl-primary-action h-11 w-full rounded-[8px] px-5 text-sm font-bold transition disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-500 disabled:shadow-none"
             >
               {isSubmitting
                 ? isInstagramDmMethod

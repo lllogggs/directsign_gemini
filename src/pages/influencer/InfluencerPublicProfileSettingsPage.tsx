@@ -1,6 +1,5 @@
 import {
   AlertCircle,
-  ArrowLeft,
   CheckCircle2,
   ExternalLink,
   ImagePlus,
@@ -19,7 +18,11 @@ import {
 } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { LogoMark } from "../../components/BrandLogo";
+import { DashboardSurfaceSwitch } from "../../components/DashboardSurfaceSwitch";
 import { InfluencerAccountSettingsMenu } from "../../components/InfluencerAccountSettingsMenu";
+import { HeaderMessageCenterButton } from "../../components/HeaderMessageCenterButton";
+import { HeaderNotificationCenterButton } from "../../components/HeaderNotificationCenterButton";
+import { MobileSurfaceSwitch } from "../../components/MobileSurfaceSwitch";
 import { PlatformBrandMark } from "../../components/PlatformBrandMark";
 import { apiFetch } from "../../domain/api";
 import { PRODUCT_NAME } from "../../domain/brand";
@@ -29,11 +32,11 @@ import {
 import { clearInfluencerDashboardPreload } from "../../domain/influencerDashboardPreload";
 import {
   campaignProposalTypeOptions,
-  platformLabels,
   proposalTypeLabels,
   type CampaignProposalType,
 } from "../../domain/marketplace";
 import { buildLoginRedirect } from "../../domain/navigation";
+import { getPlatformDisplayName } from "../../domain/platformDisplay";
 import {
   buildDefaultPublicProfileSettings,
   getInfluencerPublicProfilePath,
@@ -42,7 +45,11 @@ import {
 } from "../../domain/publicInfluencerProfile";
 import { finishFastLoginTransition } from "../../domain/fastLoginTransition";
 import { translateApiErrorMessage } from "../../domain/userMessages";
-import { clearMarketplaceMessageSummaryCache } from "../../hooks/useMarketplaceMessageSummary";
+import {
+  clearMarketplaceMessageSummaryCache,
+  useMarketplaceMessageSummary,
+} from "../../hooks/useMarketplaceMessageSummary";
+import { clearNotificationCenterCache } from "../../hooks/useNotificationCenter";
 import { clearVerificationSummaryCache } from "../../hooks/useVerificationSummary";
 
 type ProfileForm = {
@@ -370,6 +377,7 @@ export function InfluencerPublicProfileSettingsPage() {
       clearInfluencerDashboardPreload();
       clearVerificationSummaryCache("influencer");
       clearMarketplaceMessageSummaryCache("influencer");
+      clearNotificationCenterCache("influencer");
       navigate("/login/influencer", { replace: true });
     }
   };
@@ -392,6 +400,7 @@ export function InfluencerPublicProfileSettingsPage() {
         savedHandle={savedHandle}
         account={account}
         accountMenuOpen={accountMenuOpen}
+        authenticated={state.status === "ready"}
         onDashboard={() => navigate("/influencer/dashboard")}
         onLogout={handleLogout}
         onToggleSettings={() => setAccountMenuOpen((current) => !current)}
@@ -402,6 +411,8 @@ export function InfluencerPublicProfileSettingsPage() {
           navigate("/reset-password?role=influencer");
         }}
       />
+
+      <MobileSurfaceSwitch role="influencer" />
 
       <main className="mx-auto w-full max-w-[980px] px-3 py-4 sm:px-5 sm:py-6">
         {state.status === "loading" ? (
@@ -414,10 +425,7 @@ export function InfluencerPublicProfileSettingsPage() {
           <>
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div className="min-w-0">
-                <p className="text-[12px] font-semibold text-neutral-500">
-                  인플루언서 계정
-                </p>
-                <h1 className="mt-1 text-[26px] font-bold leading-tight text-neutral-950 sm:text-[30px]">
+                <h1 className="text-[26px] font-bold leading-tight text-neutral-950 sm:text-[30px]">
                   공개 프로필 관리
                 </h1>
               </div>
@@ -432,7 +440,7 @@ export function InfluencerPublicProfileSettingsPage() {
               </span>
             </div>
 
-            <section className="overflow-hidden rounded-[8px] border border-neutral-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04),0_18px_48px_rgba(15,23,42,0.05)]">
+            <section className="yl-profile-settings overflow-hidden rounded-[10px] border border-neutral-200 bg-white shadow-[0_1px_0_rgba(255,255,255,0.9)_inset,0_18px_46px_rgba(23,26,23,0.055)]">
               <div className="border-b border-neutral-200 bg-[#fbfbf9] px-4 py-3 sm:px-5">
                 <h2 className="text-[15px] font-bold text-neutral-950">
                   프로필 정보
@@ -721,6 +729,7 @@ function ProfileAppHeader({
   savedHandle,
   account,
   accountMenuOpen,
+  authenticated,
   onDashboard,
   onLogout,
   onToggleSettings,
@@ -731,6 +740,7 @@ function ProfileAppHeader({
   savedHandle?: string;
   account: { name: string; email?: string };
   accountMenuOpen: boolean;
+  authenticated: boolean;
   onDashboard: () => void;
   onLogout: () => void;
   onToggleSettings: () => void;
@@ -738,6 +748,10 @@ function ProfileAppHeader({
   onManageProfile: () => void;
   onChangePassword: () => void;
 }) {
+  const navigate = useNavigate();
+  const { summary: messageSummary, isLoading: isMessageSummaryLoading } =
+    useMarketplaceMessageSummary("influencer", { enabled: authenticated });
+
   return (
     <header className="sticky top-0 z-30 border-b border-neutral-200/70 bg-white/92 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-[1500px] items-center justify-between px-3 sm:px-5 lg:px-6">
@@ -754,6 +768,9 @@ function ProfileAppHeader({
         </button>
 
         <div className="ml-2 flex min-w-0 items-center justify-end gap-1.5 sm:ml-3 sm:gap-2">
+          <div className="hidden lg:block">
+            <DashboardSurfaceSwitch role="influencer" />
+          </div>
           {savedHandle ? (
             <Link
               to={getInfluencerPublicProfilePath(savedHandle)}
@@ -767,20 +784,19 @@ function ProfileAppHeader({
               <span>공개 프로필</span>
             </Link>
           ) : null}
-          <button
-            type="button"
-            onClick={onDashboard}
-            className="yl-header-action yl-header-action-secondary"
-            aria-label="1:1 계약 대시보드"
-            title="1:1 계약 대시보드"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">1:1 계약</span>
-          </button>
+          <HeaderNotificationCenterButton
+            role="influencer"
+            enabled={authenticated}
+          />
+          <HeaderMessageCenterButton
+            unreadCount={messageSummary.unreadCount}
+            isLoading={authenticated && isMessageSummaryLoading}
+            onClick={() => navigate("/influencer/messages")}
+          />
           <button
             type="button"
             onClick={onLogout}
-            className="yl-header-action yl-header-action-secondary"
+            className="yl-header-action yl-header-action-secondary hidden sm:inline-flex"
             aria-label="로그아웃"
             title="로그아웃"
           >
@@ -794,6 +810,7 @@ function ProfileAppHeader({
             onClose={onCloseSettings}
             onManageProfile={onManageProfile}
             onChangePassword={onChangePassword}
+            onLogout={onLogout}
           />
         </div>
       </div>
@@ -851,28 +868,28 @@ function VerifiedPlatformRows({
       {platforms.map((account, index) => (
         <div
           key={`${account.platform}-${account.handle}-${index}`}
-          className="grid min-h-16 gap-2 border-b border-neutral-100 px-4 py-3 last:border-b-0 sm:grid-cols-[180px_minmax(0,1fr)_auto] sm:items-center sm:gap-5 sm:px-5"
+          data-verified-platform-row="true"
+          className="grid min-h-16 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-neutral-100 px-4 py-3 last:border-b-0 sm:px-5"
         >
-          <span className="text-[13px] font-bold text-neutral-900">
-            {platformLabels[account.platform]}
-          </span>
           <div className="flex min-w-0 items-center gap-2.5">
             <PlatformBrandMark platform={account.platform} />
-            <span className="truncate text-[13px] font-semibold text-neutral-700">
-              {account.handle}
-            </span>
-            <span className="inline-flex h-6 shrink-0 items-center rounded-full border border-blue-200 bg-blue-50 px-2 text-[11px] font-bold text-blue-700">
-              인증
-            </span>
+            <div className="min-w-0 flex-1">
+              <span className="block truncate text-[13px] font-bold text-neutral-900">
+                {getPlatformDisplayName(account.platform)}
+              </span>
+              <span className="mt-0.5 block truncate text-[12px] font-semibold text-neutral-600">
+                {account.handle}
+              </span>
+            </div>
           </div>
           {account.url ? (
             <a
               href={account.url}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex h-9 w-fit items-center gap-1.5 rounded-[8px] border border-neutral-200 bg-white px-3 text-[12px] font-bold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 sm:justify-self-end"
-              aria-label={`${platformLabels[account.platform]} 인증 계정 보기`}
-              title={`${platformLabels[account.platform]} 인증 계정 보기`}
+              className="inline-flex h-9 w-fit items-center justify-self-end gap-1.5 rounded-[8px] border border-neutral-200 bg-white px-3 text-[12px] font-bold text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50"
+              aria-label={`${getPlatformDisplayName(account.platform)} 인증 계정 보기`}
+              title={`${getPlatformDisplayName(account.platform)} 인증 계정 보기`}
             >
               <ExternalLink className="h-3.5 w-3.5" />
               계정 보기

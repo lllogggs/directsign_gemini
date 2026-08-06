@@ -33,6 +33,7 @@ import {
 } from "../../domain/influencerDashboardPreload";
 import { getNextPath } from "../../domain/navigation";
 import { translateApiErrorMessage } from "../../domain/userMessages";
+import { clearNotificationCenterCache } from "../../hooks/useNotificationCenter";
 
 type GlobalCreatorLoginCopy = {
   lang: string;
@@ -302,10 +303,12 @@ export function InfluencerLoginPage() {
         });
         const data = (await response.json().catch(() => ({}))) as {
           authenticated?: boolean;
+          user?: { id?: string };
         };
         if (!active) return;
 
         if (response.ok && data.authenticated === true) {
+          clearNotificationCenterCache("influencer");
           finishFastLoginTransition("influencer");
           void preloadInfluencerDashboard().catch(() => undefined);
           navigate(destinationPath, { replace: true });
@@ -367,7 +370,11 @@ export function InfluencerLoginPage() {
 
       const response = await loginPromise;
       const data = (await response.json()) as
-        | { authenticated: true; dashboard?: InfluencerDashboardResponse }
+        | {
+            authenticated: true;
+            user?: { id?: string };
+            dashboard?: InfluencerDashboardResponse;
+          }
         | {
             error?: string;
             code?: string;
@@ -405,6 +412,8 @@ export function InfluencerLoginPage() {
         throw new Error(resolveLoginError(errorMessage));
       }
 
+      clearNotificationCenterCache("influencer");
+
       if ("dashboard" in data && data.dashboard) {
         primeInfluencerDashboard(data.dashboard);
       }
@@ -422,6 +431,7 @@ export function InfluencerLoginPage() {
       }
     } catch (loginError) {
       finishFastLoginTransition("influencer");
+      clearNotificationCenterCache("influencer");
       const message =
         loginError instanceof Error
           ? resolveLoginError(loginError.message)
