@@ -361,6 +361,11 @@ export const useAppStore = create<AppState>()(
       },
 
       addContract: (contractData) => {
+        const existingContract = contractData.id
+          ? get().contracts.find((contract) => contract.id === contractData.id)
+          : undefined;
+        if (existingContract) return existingContract;
+
         const now = new Date().toISOString();
         const rollbackContracts = get().contracts;
         const evidence =

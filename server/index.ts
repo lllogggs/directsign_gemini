@@ -148,6 +148,14 @@ import {
   readUserSessionLogoutBarrierState,
   type UserSessionBrowserRole,
 } from "../lib/user-session-barrier.js";
+import {
+  hasCompleteOneToOneContractForDraftContext,
+  hasSameOneToOneContractStorageIdentity,
+  isConcurrentOneToOneContractIdentityConflict,
+  isEquivalentOneToOneContractWriteRetry,
+  mergeOneToOneContractWriteSet,
+  type OneToOneContractStorageIdentity,
+} from "../lib/one-to-one-contract-idempotency.js";
 
 dotenv.config({ path: ".env.local" });
 dotenv.config();
@@ -12464,6 +12472,104 @@ const upsertSupabaseV2Rows = async (
   await assertSupabaseOk(response, `Supabase ${table} upsert`);
 };
 
+interface OneToOneContractIdentityRecovery {
+  proposalId: string;
+  contractId: string;
+  advertiserProfileId: string;
+}
+
+interface ContractWriteOptions {
+  oneToOneIdentityRecovery?: OneToOneContractIdentityRecovery;
+}
+
+const upsertSupabaseV2ContractRow = async (
+  row: Record<string, unknown>,
+  recovery?: OneToOneContractIdentityRecovery,
+) => {
+  const [normalizedRow] = normalizeRowsForPostgrest([row]);
+  const response = await fetchSupabase("contracts", "?on_conflict=id", {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+    body: JSON.stringify([normalizedRow]),
+  });
+  if (response.ok) return;
+
+  const errorMessage = await parseSupabaseError(response);
+  if (
+    !recovery ||
+    !isConcurrentOneToOneContractIdentityConflict(response.status, errorMessage)
+  ) {
+    throw new Error(
+      `Supabase contracts upsert failed (${response.status}): ${errorMessage}`,
+    );
+  }
+
+  const incomingIdentity: OneToOneContractStorageIdentity = normalizedRow;
+  if (
+    incomingIdentity.id !== recovery.contractId ||
+    incomingIdentity.legacy_contract_id !== recovery.contractId ||
+    incomingIdentity.workflow_source !== "one_to_one" ||
+    incomingIdentity.source_application_id !== recovery.proposalId ||
+    incomingIdentity.created_by_profile_id !== recovery.advertiserProfileId
+  ) {
+    throw new Error(
+      `Supabase contracts upsert failed (${response.status}): ${errorMessage}`,
+    );
+  }
+
+  const existingRows = await readSupabaseRows<OneToOneContractStorageIdentity>(
+    "contracts",
+    `?select=id,legacy_contract_id,owner_organization_id,data_origin,workflow_source,marketplace_campaign_id,source_application_id,created_by_profile_id,deleted_at&id=eq.${encodeURIComponent(
+      recovery.contractId,
+    )}&legacy_contract_id=eq.${encodeURIComponent(
+      recovery.contractId,
+    )}&source_application_id=eq.${encodeURIComponent(
+      recovery.proposalId,
+    )}&created_by_profile_id=eq.${encodeURIComponent(
+      recovery.advertiserProfileId,
+    )}&deleted_at=is.null&limit=1`,
+    "concurrent one-to-one contract identity recovery",
+  );
+  const existingIdentity = existingRows[0];
+  if (
+    !existingIdentity ||
+    !hasSameOneToOneContractStorageIdentity(existingIdentity, incomingIdentity)
+  ) {
+    throw new Error(
+      `Supabase contracts upsert failed (${response.status}): ${errorMessage}`,
+    );
+  }
+
+  const patchResponse = await fetchSupabase(
+    "contracts",
+    `?id=eq.${encodeURIComponent(
+      recovery.contractId,
+    )}&legacy_contract_id=eq.${encodeURIComponent(
+      recovery.contractId,
+    )}&source_application_id=eq.${encodeURIComponent(
+      recovery.proposalId,
+    )}&created_by_profile_id=eq.${encodeURIComponent(
+      recovery.advertiserProfileId,
+    )}&deleted_at=is.null`,
+    {
+      method: "PATCH",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify(normalizedRow),
+    },
+  );
+  await assertSupabaseOk(
+    patchResponse,
+    "Supabase concurrent one-to-one contract recovery",
+  );
+  const patchedRows = (await patchResponse.json()) as Array<{ id?: string }>;
+  if (
+    patchedRows.length !== 1 ||
+    patchedRows[0]?.id !== recovery.contractId
+  ) {
+    throw new Error("Concurrent one-to-one contract recovery did not update one row");
+  }
+};
+
 const insertSupabaseV2Rows = async (
   table: string,
   rows: Array<Record<string, unknown>>,
@@ -18636,7 +18742,10 @@ const actorDisplayName = (contract: Contract, actor: AuditActor) => {
   return productName;
 };
 
-const syncSupabaseV2Contract = async (contract: Contract) => {
+const syncSupabaseV2Contract = async (
+  contract: Contract,
+  options: ContractWriteOptions = {},
+) => {
   if (!isUuid(contract.id)) {
     console.warn(
       `[yeollock.me] skipped Supabase v2 sync for non-UUID contract id: ${contract.id}`,
@@ -18669,7 +18778,7 @@ const syncSupabaseV2Contract = async (contract: Contract) => {
       ? influencerProfile.id
       : undefined;
 
-  await upsertSupabaseV2Rows("contracts", [
+  await upsertSupabaseV2ContractRow(
     {
       id: contract.id,
       legacy_contract_id: contract.id,
@@ -18710,7 +18819,8 @@ const syncSupabaseV2Contract = async (contract: Contract) => {
       created_at: toIsoDateTime(contract.created_at),
       updated_at: toIsoDateTime(contract.updated_at),
     },
-  ]);
+    options.oneToOneIdentityRecovery,
+  );
 
   for (const table of [
     "clause_threads",
@@ -18977,9 +19087,12 @@ const syncSupabaseV2Contract = async (contract: Contract) => {
   await insertSupabaseV2RowsIgnoringDuplicates("contract_events", eventRows);
 };
 
-const syncSupabaseV2Contracts = async (contracts: Contract[]) => {
+const syncSupabaseV2Contracts = async (
+  contracts: Contract[],
+  options: ContractWriteOptions = {},
+) => {
   for (const contract of contracts) {
-    await syncSupabaseV2Contract(contract);
+    await syncSupabaseV2Contract(contract, options);
   }
 };
 
@@ -19955,7 +20068,12 @@ const buildOneToOneProposalDraftContext = async (
     proposal.converted_contract_id ??
     stableUuid(`marketplace-proposal-contract:${proposal.id}`);
   const existing = await readContractWriteContext(contractId);
-  if (existing.existingContract) {
+  if (
+    hasCompleteOneToOneContractForDraftContext(
+      existing.existingContract,
+      existing.isV2Only,
+    )
+  ) {
     if (proposal.status !== "converted_to_contract") {
       const transition = await transitionMarketplaceProposalToContract(
         proposal,
@@ -22095,6 +22213,7 @@ const buildServerAuthoredContract = (
   actor: Exclude<AuditActor, "system">,
   existing: Contract | undefined,
   incoming: Contract,
+  options: { eventId?: string } = {},
 ) => {
   const preservedAuditEvents = existing?.audit_events ?? [];
   const incomingAuditEvents = incoming.audit_events ?? [];
@@ -22135,7 +22254,7 @@ const buildServerAuthoredContract = (
   }
 
   const serverEvent: NonNullable<Contract["audit_events"]>[number] = {
-    id: randomUUID(),
+    id: options.eventId ?? randomUUID(),
     actor,
     action,
     description,
@@ -24013,11 +24132,14 @@ const buildInfluencerDashboard = async (
   return dashboardPromise;
 };
 
-const writeStore = async (store: ContractStoreFile) => {
+const writeStore = async (
+  store: ContractStoreFile,
+  options: ContractWriteOptions = {},
+) => {
   if (useSupabase) {
     const normalizedContracts = normalizeStore(store).contracts;
     if (useSupabaseV2) {
-      await syncSupabaseV2Contracts(normalizedContracts);
+      await syncSupabaseV2Contracts(normalizedContracts, options);
     }
     await upsertSupabaseContracts(normalizedContracts);
     // Supabase point writes intentionally pass a one-contract store. Treating
@@ -30901,6 +31023,7 @@ app.put("/api/contracts/:id", async (request, response, next) => {
       store,
       existingIndex,
       existingContract,
+      isV2Only,
     } = await readContractWriteContext(contract.id);
     const actor =
       request.header("X-Yeollock-Actor") ??
@@ -31030,9 +31153,60 @@ app.put("/api/contracts/:id", async (request, response, next) => {
       return;
     }
 
+    const equivalentOneToOneRetry = Boolean(
+      actor === "advertiser" &&
+        existingContract &&
+        !isV2Only &&
+        linkedOneToOneProposal &&
+        (linkedOneToOneProposal.status === "accepted" ||
+          (linkedOneToOneProposal.status === "converted_to_contract" &&
+            linkedOneToOneProposal.converted_contract_id ===
+              existingContract.id)) &&
+        !isContractSendAttempt(existingContract, normalizedContract) &&
+        isEquivalentOneToOneContractWriteRetry(
+          existingContract,
+          normalizedContract,
+        ),
+    );
+    if (
+      equivalentOneToOneRetry &&
+      existingContract &&
+      linkedOneToOneProposal &&
+      advertiserAuth
+    ) {
+      if (linkedOneToOneProposal.status === "accepted") {
+        const transition = await transitionMarketplaceProposalToContract(
+          linkedOneToOneProposal,
+          existingContract.id,
+          ["accepted"],
+          advertiserAuth.profile.id,
+        );
+        if (!transition.ok) {
+          response.status(transition.status).json({ error: transition.error });
+          return;
+        }
+        invalidateAdvertiserDashboardCache();
+        invalidateInfluencerDashboardCache();
+      }
+      response.json({
+        contract: redactContractForClient(existingContract, actor),
+      });
+      return;
+    }
+
+    const observedIncompleteOneToOneContract = Boolean(
+      isV2Only && linkedOneToOneProposal,
+    );
+    const existingContractForMutation = observedIncompleteOneToOneContract
+      ? undefined
+      : existingContract;
+
     const advertiserAccessError =
       actor === "advertiser"
-        ? verifyAdvertiserContractWriteAccess(existingContract, normalizedContract)
+        ? verifyAdvertiserContractWriteAccess(
+            existingContractForMutation,
+            normalizedContract,
+          )
         : undefined;
 
     if (advertiserAccessError) {
@@ -31072,7 +31246,7 @@ app.put("/api/contracts/:id", async (request, response, next) => {
 
     const contractSendAttempt =
       actor === "advertiser" &&
-      isContractSendAttempt(existingContract, normalizedContract);
+      isContractSendAttempt(existingContractForMutation, normalizedContract);
     if (
       contractSendAttempt &&
       !(await isAdvertiserVerifiedOrCampaignContractExempt(
@@ -31094,7 +31268,10 @@ app.put("/api/contracts/:id", async (request, response, next) => {
         request,
         response,
         role: "advertiser",
-        action: isContractShareRotation(existingContract, normalizedContract)
+        action: isContractShareRotation(
+          existingContractForMutation,
+          normalizedContract,
+        )
           ? "advertiser_share_rotate"
           : "advertiser_contract_send",
         resource: normalizedContract.id,
@@ -31106,8 +31283,14 @@ app.put("/api/contracts/:id", async (request, response, next) => {
 
     let updatedContract = buildServerAuthoredContract(
       actor as Exclude<AuditActor, "system">,
-      existingContract,
+      existingContractForMutation,
       normalizedContract,
+      {
+        eventId:
+          !existingContractForMutation && linkedOneToOneProposal
+            ? `one_to_one_proposal_${linkedOneToOneProposal.id}_contract_created`
+            : undefined,
+      },
     );
 
     if (actor === "advertiser") {
@@ -31121,12 +31304,28 @@ app.put("/api/contracts/:id", async (request, response, next) => {
       };
     }
 
-    const nextStore = mergeContractIntoStore(
-      store,
-      existingIndex,
-      updatedContract,
+    const nextStore = observedIncompleteOneToOneContract
+      ? {
+          contracts: mergeOneToOneContractWriteSet(
+            store.contracts,
+            existingIndex,
+            updatedContract,
+            true,
+          ),
+        }
+      : mergeContractIntoStore(store, existingIndex, updatedContract);
+    await writeStore(
+      nextStore,
+      linkedOneToOneProposal && advertiserAuth
+        ? {
+            oneToOneIdentityRecovery: {
+              proposalId: linkedOneToOneProposal.id,
+              contractId: updatedContract.id,
+              advertiserProfileId: advertiserAuth.profile.id,
+            },
+          }
+        : undefined,
     );
-    await writeStore(nextStore);
     if (linkedOneToOneProposal) {
       const transition = await transitionMarketplaceProposalToContract(
         linkedOneToOneProposal,

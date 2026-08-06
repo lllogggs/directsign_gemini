@@ -927,7 +927,12 @@ export function ContractBuilder() {
   const [proposalLoadError, setProposalLoadError] = useState<string>();
   const [isProposalLoading, setIsProposalLoading] = useState(false);
   const loadedProposalRef = useRef<string>();
+  const saveContractInFlightRef = useRef(false);
   const isProposalPartyLocked = Boolean(sourceProposalId);
+
+  useEffect(() => {
+    if (!isSyncing) saveContractInFlightRef.current = false;
+  }, [isSyncing]);
 
   useEffect(() => {
     const proposalId = new URLSearchParams(location.search).get("proposal")?.trim();
@@ -1298,6 +1303,8 @@ export function ContractBuilder() {
   };
 
   const saveContract = (mode: ResultMode) => {
+    if (saveContractInFlightRef.current || isSyncing) return;
+
     if (mode === "share" && !canSendContract) {
       setStep(5);
       setValidationErrors([
@@ -1318,6 +1325,8 @@ export function ContractBuilder() {
       setStep(errors[0].step);
       return;
     }
+
+    saveContractInFlightRef.current = true;
 
     const status: ContractStatus = mode === "draft" ? "DRAFT" : "REVIEWING";
     const existing = savedContractId ? getContract(savedContractId) : undefined;
@@ -2544,8 +2553,9 @@ export function ContractBuilder() {
                   <Button
                     type="button"
                     variant="outline"
-                    className="h-12 flex-1 rounded-[12px] border-neutral-200 bg-white text-[14px] font-bold text-neutral-700 shadow-[0_1px_0_rgba(15,23,42,0.02)] hover:bg-neutral-100"
+                    className="h-12 flex-1 rounded-[12px] border-neutral-200 bg-white text-[14px] font-bold text-neutral-700 shadow-[0_1px_0_rgba(15,23,42,0.02)] hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-50"
                     onClick={() => saveContract("draft")}
+                    disabled={isSyncing}
                   >
                     초안 저장
                   </Button>
@@ -2554,6 +2564,7 @@ export function ContractBuilder() {
                     className="h-12 flex-1 rounded-[12px] bg-neutral-950 text-[14px] font-bold text-white shadow-[0_14px_34px_rgba(15,23,42,0.18)] hover:-translate-y-0.5 hover:bg-neutral-800 disabled:translate-y-0 disabled:bg-neutral-200 disabled:text-neutral-500 disabled:shadow-none"
                       onClick={() => saveContract("share")}
                       disabled={
+                        isSyncing ||
                         currentStepHasBlockingError ||
                         isVerificationLoading ||
                         !canSendContract

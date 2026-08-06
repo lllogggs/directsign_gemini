@@ -9,7 +9,7 @@
     "preview": "npm run build && tsx server/index.ts --preview",
     "clean": "rm -rf dist",
     "lint": "npm run privacy:scan && eslint . && tsc --noEmit",
-    "test": "tsx --test tests/auth-session-persistence.test.ts tests/campaign-publication-idempotency.test.ts tests/directsign-security.test.ts tests/influencer-discovery-queue.test.ts tests/influencer-discovery-uploader.test.ts tests/instagram-dm-verification.test.ts tests/notification-center.test.ts tests/notification-center-frontend.test.ts",
+    "test": "tsx --test tests/auth-session-persistence.test.ts tests/campaign-publication-idempotency.test.ts tests/directsign-security.test.ts tests/influencer-discovery-queue.test.ts tests/influencer-discovery-uploader.test.ts tests/instagram-dm-verification.test.ts tests/notification-center.test.ts tests/notification-center-frontend.test.ts tests/one-to-one-contract-idempotency.test.ts",
     "privacy:scan": "node scripts/privacy-pii-scan.mjs",
     "guardrails:kim": "node scripts/kim-jaewoo-guardrails.mjs",
     "qa": "node scripts/qa-standard.mjs",
