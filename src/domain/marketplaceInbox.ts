@@ -47,6 +47,8 @@ export type MarketplaceMessageThread = {
     handle?: string;
     url?: string;
     followersLabel?: string;
+    performanceLabel?: string;
+    metricTrust?: "self_reported";
   }>;
   proposalType: CampaignProposalType;
   proposalTypeLabel: string;

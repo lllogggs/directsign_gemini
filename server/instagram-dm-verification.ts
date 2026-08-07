@@ -7,6 +7,11 @@ export type InstagramDmChallengeEvent = {
   receivedAt: string;
 };
 
+export type InstagramDmSenderProfile = {
+  username: string;
+  followerCount?: unknown;
+};
+
 export type InstagramDmFailureReason =
   | "expired"
   | "username_mismatch"
@@ -73,6 +78,45 @@ export const normalizeInstagramUsername = (
 
   const normalized = candidate.replace(/^@+/, "").toLowerCase();
   return /^[a-z0-9._]{1,30}$/.test(normalized) ? normalized : "";
+};
+
+export const normalizeInstagramFollowerCount = (value: unknown) =>
+  typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : undefined;
+
+export const readVerifiedInstagramDmFollowerCount = (
+  record: {
+    ownership_verification_method?: string | null;
+    platform_handle?: string | null;
+    evidence_snapshot_json?: Record<string, unknown> | null;
+  },
+  operationalTest = false,
+) => {
+  if (
+    operationalTest ||
+    record.ownership_verification_method !== "instagram_dm_code"
+  ) {
+    return undefined;
+  }
+  const instagramDm = (
+    record.evidence_snapshot_json?.ownership_verification as
+      | { instagram_dm?: Record<string, unknown> }
+      | undefined
+  )?.instagram_dm;
+  if (
+    requiredText(instagramDm?.state) !== "verified" ||
+    requiredText(instagramDm?.follower_count_source) !==
+      "instagram_user_profile_api"
+  ) {
+    return undefined;
+  }
+  const requestedHandle = normalizeInstagramUsername(record.platform_handle);
+  const verifiedHandle = normalizeInstagramUsername(
+    requiredText(instagramDm?.verified_handle),
+  );
+  if (!requestedHandle || verifiedHandle !== requestedHandle) return undefined;
+  return normalizeInstagramFollowerCount(instagramDm?.follower_count);
 };
 
 export const isAwaitingInstagramDmRestoreRecord = <
@@ -238,7 +282,9 @@ export const processInstagramDmChallengeEvent = async <
     now: () => Date;
     hashCode: (challengeCode: string) => string;
     readPendingByHash: (codeHash: string) => Promise<RecordType | undefined>;
-    lookupSenderUsername: (senderId: string) => Promise<string>;
+    lookupSenderProfile: (
+      senderId: string,
+    ) => Promise<InstagramDmSenderProfile>;
     markFailure: (
       record: RecordType,
       codeHash: string,
@@ -250,6 +296,7 @@ export const processInstagramDmChallengeEvent = async <
       codeHash: string;
       event: InstagramDmChallengeEvent;
       requestedHandle: string;
+      followerCount?: number;
       autoApprove: boolean;
     }) => Promise<SavedRecord | undefined>;
     isStillAuthoritative: (record: RecordType) => Promise<boolean>;
@@ -273,9 +320,14 @@ export const processInstagramDmChallengeEvent = async <
   }
 
   let senderUsername: string;
+  let followerCount: number | undefined;
   try {
-    senderUsername = normalizeInstagramUsername(
-      await dependencies.lookupSenderUsername(event.senderId),
+    const senderProfile = await dependencies.lookupSenderProfile(
+      event.senderId,
+    );
+    senderUsername = normalizeInstagramUsername(senderProfile.username);
+    followerCount = normalizeInstagramFollowerCount(
+      senderProfile.followerCount,
     );
   } catch (error) {
     await dependencies.markFailure(
@@ -303,8 +355,8 @@ export const processInstagramDmChallengeEvent = async <
     return { outcome: "username_mismatch" };
   }
 
-  const autoApprove =
-    dependencies.autoApproveEnabled && !dependencies.isOperationalTest(record);
+  const operationalTest = dependencies.isOperationalTest(record);
+  const autoApprove = dependencies.autoApproveEnabled && !operationalTest;
   if (!(await dependencies.isStillAuthoritative(record))) {
     return { outcome: "ignored", reason: "race_or_replay" };
   }
@@ -313,6 +365,7 @@ export const processInstagramDmChallengeEvent = async <
     codeHash,
     event,
     requestedHandle,
+    followerCount: operationalTest ? undefined : followerCount,
     autoApprove,
   });
   if (!saved) {

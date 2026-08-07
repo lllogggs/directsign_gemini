@@ -169,6 +169,8 @@ const marketplaceInboxPage = read(
 );
 const marketplaceInbox = read("src/domain/marketplaceInbox.ts");
 const marketplace = read("src/domain/marketplace.ts");
+const verification = read("src/domain/verification.ts");
+const userMessages = read("src/domain/userMessages.ts");
 const marketplaceAvatars = read("src/domain/marketplaceAvatars.ts");
 const influencerDiscoveryQuality = read(
   "src/domain/influencerDiscoveryQuality.js",
@@ -190,12 +192,13 @@ const influencerDiscoveryUploader = read(
 const influencerDiscoveryStart = read(
   "scripts/start-influencer-discovery-loop.ps1",
 );
-const naverVisitorSync = read(
-  "scripts/sync-discovered-naver-blog-visitors.mjs",
+const runtimeScriptFiles = collectFiles(
+  "scripts",
+  (file) =>
+    /\.(?:[cm]?[jt]s|tsx?|ps1)$/.test(file) &&
+    toDisplayPath(file) !== "scripts/kim-jaewoo-guardrails.mjs",
 );
-const naverVisitorIdempotentMigration = read(
-  "supabase/migrations/20260716001000_make_naver_blog_visitor_metrics_idempotent.sql",
-);
+const runtimeScriptSources = runtimeScriptFiles.map((file) => read(file)).join("\n");
 const influencerCountryRepair = read(
   "scripts/repair-influencer-country-data.mjs",
 );
@@ -219,6 +222,7 @@ const publicInfluencerDirectory = read(
   "scripts/lib/public-influencer-directory.mjs",
 );
 const server = read("server/index.ts");
+const instagramDmVerification = read("server/instagram-dm-verification.ts");
 const operationalTestEmail = read("server/operational-test-email.ts");
 const fastAuth = read("lib/fast-auth.ts");
 const signupPage = read("src/pages/auth/SignupPage.tsx");
@@ -280,15 +284,49 @@ const registeredInfluencerDiscoveryMigration = exists(
       "supabase/migrations/20260806120000_add_registered_influencer_discovery.sql",
     )
   : "";
+const instagramDmFollowerMetricMigration = exists(
+  "supabase/migrations/20260807150000_apply_instagram_dm_follower_metric.sql",
+)
+  ? read(
+      "supabase/migrations/20260807150000_apply_instagram_dm_follower_metric.sql",
+    )
+  : "";
+const verifiedPlatformMetricMigration = exists(
+  "supabase/migrations/20260807160000_apply_verified_platform_channel_metrics.sql",
+)
+  ? read(
+      "supabase/migrations/20260807160000_apply_verified_platform_channel_metrics.sql",
+    )
+  : "";
+const platformVerificationMetrics = exists(
+  "server/platform-verification-metrics.ts",
+)
+  ? read("server/platform-verification-metrics.ts")
+  : "";
+const naverSelfReportEnforcementMigration = exists(
+  "supabase/migrations/20260807170000_enforce_naver_blog_self_report_metrics.sql",
+)
+  ? read(
+      "supabase/migrations/20260807170000_enforce_naver_blog_self_report_metrics.sql",
+    )
+  : "";
 const campaignApplicationConsentMigration = read(
   "supabase/migrations/20260806130000_add_campaign_application_consents.sql",
 );
 const packageJson = JSON.parse(read("package.json"));
+const packageScriptCommands = Object.values(packageJson.scripts ?? {}).join("\n");
 const vercelConfig = read("vercel.json");
 const vercelJson = JSON.parse(vercelConfig);
 const followerSyncCronRoute = server.slice(
   server.indexOf('"/api/cron/sync-marketplace-followers"'),
   server.indexOf('app.get("/api/cron/ops-alerts"'),
+);
+const instagramDmFollowerMetricRoute = server.slice(
+  server.indexOf("const fetchInstagramDmSenderProfile"),
+  server.indexOf(
+    "const latestVerificationForTarget",
+    server.indexOf("const fetchInstagramDmSenderProfile"),
+  ),
 );
 const prerenderSeoHtml = read("scripts/prerender-seo-html.ts");
 const robotsTxt = read("public/robots.txt");
@@ -1732,7 +1770,7 @@ check(
     advertiserDashboardExportSource.includes('"서명일"') &&
     advertiserDashboardExportSource.includes('"크리에이터명"') &&
     advertiserDashboardExportSource.includes('"크리에이터 계정명"') &&
-    advertiserDashboardExportSource.includes('"구독자/팔로워수"') &&
+    advertiserDashboardExportSource.includes('"채널 지표"') &&
     advertiserDashboardExportSource.includes('"콘텐츠 수량"') &&
     advertiserDashboardExportSource.includes('"마감일"') &&
     advertiserDashboardExportSource.includes('"조항 수"') &&
@@ -2175,24 +2213,185 @@ check(
   "Discovery must hide celebrity/corporate Instagram rows durably, keep one stable searchable category, and store advertiser saves server-side per organization",
 );
 
-check(
-  "Naver Blog discovery uses completed four-day public visitor averages",
-  agents.includes(
-    "exact four completed KST days before today (D-1 through D-4)",
-  ) &&
-    agents.includes(
-      "refresh each discovered blog at least once every seven days",
+const naverBlogSelfReportChecks = [
+  [
+    "rulebook",
+    agents.includes("Naver Blog visitor metrics must never use `NVisitorgp4Ajax`") &&
+      agents.includes("must enter") &&
+      agents.includes("one visible `자가신고` disclosure") &&
+      agents.includes(
+        "must not enter subscriber/follower `audience_counts`, `max_audience_count`, or global channel-size sorting",
+      ),
+  ],
+  [
+    "deleted collector file",
+    !exists("scripts/sync-discovered-naver-blog-visitors.mjs"),
+  ],
+  [
+    "deleted unofficial visitor parser",
+    !exists("src/domain/naverBlogVisitors.js"),
+  ],
+  [
+    "package command removal",
+    !packageScriptCommands.includes("sync-discovered-naver-blog-visitors") &&
+      !packageScriptCommands.includes("sync:naver-blog-visitors"),
+  ],
+  [
+    "server collector removal",
+    !server.includes("NVisitorgp4Ajax") &&
+      !server.includes("naver_blog_public_visitor_counter") &&
+      !server.includes("getNaverBlogVisitorTargetDates"),
+  ],
+  [
+    "runtime script collector removal",
+    !runtimeScriptSources.includes("NVisitorgp4Ajax") &&
+      !runtimeScriptSources.includes("naver_blog_public_visitor_counter") &&
+      !runtimeScriptSources.includes("sync-discovered-naver-blog-visitors"),
+  ],
+  [
+    "required verification field",
+    influencerVerification.includes(
+      "naver_blog_recent_4d_average_visitors: string",
     ) &&
-    server.includes("naver_blog_visitor_average_4d") &&
-    server.includes('"최근 4일 평균 방문자"') &&
-    marketplacePages.includes("채널 지표") &&
-    marketplacePages.includes("primaryPlatform?.performanceLabel") &&
-    exists("scripts/sync-discovered-naver-blog-visitors.mjs") &&
-    exists("src/domain/naverBlogVisitors.js") &&
-    exists(
-      "supabase/migrations/20260713010000_add_discovered_naver_blog_visitor_metrics.sql",
-    ),
-  "Public Naver Blog rows must show a weekly refreshed D-1 through D-4 average without including today's partial visitor count",
+      /label="최근 4일 평균 일일 방문자 수"[\s\S]{0,500}\brequired\b/.test(
+        influencerVerification,
+      ) &&
+      !influencerVerification.includes("방문자 수 (선택)") &&
+      influencerVerification.includes('inputMode="numeric"') &&
+      influencerVerification.includes(
+        'helper="오늘을 제외한 최근 4일 평균을 입력해 주세요. 탐색에는 자가신고로 표시됩니다."',
+      ) &&
+      influencerVerification.includes(
+        'setNaverBlogVisitorError("최근 4일 평균 일일 방문자 수를 입력해 주세요.")',
+      ) &&
+      /naver_blog_recent_4d_average_visitors:\s*parsedNaverBlogVisitorAverage\.value/.test(
+        influencerVerification,
+      ) &&
+      verification.includes("naver_blog_recent_4d_average_visitors?: number"),
+  ],
+  [
+    "server validation and typed evidence",
+    server.includes("Naver Blog visitor report is required") &&
+      server.includes("buildNaverBlogSelfReportedChannelMetric") &&
+      server.includes("self_reported_channel_metric: selfReportedChannelMetric") &&
+      userMessages.includes('"Naver Blog visitor report is required"') &&
+      platformVerificationMetrics.includes(
+        'metric: "average_daily_visitors_4d"',
+      ) &&
+      platformVerificationMetrics.includes('source: "creator_self_report"') &&
+      platformVerificationMetrics.includes('trust: "self_reported"'),
+  ],
+  [
+    "approved production materialization",
+    verifiedPlatformMetricMigration.includes(
+      "naver_blog_recent_4d_average_visitors bigint",
+    ) &&
+      verifiedPlatformMetricMigration.includes("self_reported_channel_metric") &&
+      verifiedPlatformMetricMigration.includes("creator_self_report") &&
+      verifiedPlatformMetricMigration.includes("self_reported") &&
+      verifiedPlatformMetricMigration.includes("최근 4일 평균 · 자가신고"),
+  ],
+  [
+    "legacy cleanup and sort exclusion",
+      naverSelfReportEnforcementMigration.includes(
+        "directsign_sanitize_registered_naver_metrics",
+      ) &&
+      naverSelfReportEnforcementMigration.includes(
+        "directsign_sanitize_naver_channel_self_report",
+      ) &&
+      naverSelfReportEnforcementMigration.includes(
+        "marketplace_naver_channel_self_report_sanitizer",
+      ) &&
+      naverSelfReportEnforcementMigration.includes(
+        "{self_reported_channel_metric,source}",
+      ) &&
+      naverSelfReportEnforcementMigration.includes(
+        "new.audience_counts := coalesce(new.audience_counts, '{}'::jsonb) - 'naver_blog'",
+      ) &&
+      naverSelfReportEnforcementMigration.includes(
+        "directsign_exclude_naver_from_public_audience_sort",
+      ) &&
+      naverSelfReportEnforcementMigration.includes(
+        "directsign_revoke_naver_self_report_on_verification_loss",
+      ) &&
+      naverSelfReportEnforcementMigration.includes("approval_revoked") &&
+      naverSelfReportEnforcementMigration.includes(
+        "pg_catalog.pg_input_is_valid",
+      ) &&
+      naverSelfReportEnforcementMigration.includes(
+        "request_row.status::text = 'approved'",
+      ) &&
+      naverSelfReportEnforcementMigration.includes(
+        "follower_sync_source = 'creator_self_report_required'",
+      ) &&
+      naverSelfReportEnforcementMigration.includes(
+        "channel.follower_sync_source = 'naver_blog_public_visitor_counter'",
+      ) &&
+      naverSelfReportEnforcementMigration.includes(
+        "drop function if exists public.apply_discovered_naver_blog_visitor_metrics_v2(jsonb)",
+      ),
+  ],
+  [
+    "cross-platform provenance cleanup and projection refresh",
+    naverSelfReportEnforcementMigration.includes(
+      "directsign_channel_has_naver_self_report_provenance",
+    ) &&
+      /if new\.platform::text <> 'naver_blog' then[\s\S]+new\.follower_count := null[\s\S]+new\.follower_sync_source := null[\s\S]+new\.follower_sync_metadata := '\{\}'::jsonb/.test(
+        naverSelfReportEnforcementMigration,
+      ) &&
+      naverSelfReportEnforcementMigration.includes(
+        "directsign_refresh_registered_naver_metric_from_channel",
+      ) &&
+      naverSelfReportEnforcementMigration.includes(
+        "marketplace_naver_channel_metric_refresh",
+      ) &&
+      /Revalidate every existing Naver channel[\s\S]+where directsign_private\.directsign_channel_has_naver_self_report_provenance/.test(
+        naverSelfReportEnforcementMigration,
+      ),
+  ],
+  [
+    "visible disclosure without follower sorting",
+    marketplace.includes('metricTrust?: "self_reported"') &&
+      marketplace.includes('platform.platform !== "naver_blog"') &&
+      marketplacePages.includes("function SelfReportedMetricBadge") &&
+      marketplacePages.includes("자가신고") &&
+      advertiserDashboard.includes(
+        '.filter((platform) => platform.metricTrust !== "self_reported")',
+      ) &&
+      advertiserDashboardExportSource.includes('"채널 지표"'),
+  ],
+  [
+    "direct Naver channel consumers fail closed",
+    server.includes("readNaverSelfReportedMarketplaceMetric") &&
+      server.includes("normalizeVerificationMetricCount(channel.follower_count)") &&
+      server.includes('metadata?.provider !== "creator_self_report"') &&
+      server.includes("reportedHandle !== channelHandle") &&
+      server.includes("syncedAtTime !== checkedAtTime") &&
+      server.includes(
+        "const followersLabel = isNaverBlog\n      ? (naverSelfReport?.followersLabel ?? \"계정 연동\")",
+      ) &&
+      server.includes(
+        "const followersLabel = isNaverBlog\n      ? naverSelfReport?.followersLabel",
+      ) &&
+      server.includes("follower_count,follower_count_synced_at,follower_sync_source") &&
+      server.includes("hasMisplacedNaverSelfReportProvenance") &&
+      server.includes('metadata?.metric === "average_daily_visitors_4d"') &&
+      server.includes("const maxAudienceCount = verifiedChannels.reduce"),
+  ],
+  [
+    "bundled Naver fixtures stay channel-only",
+    (marketplace.match(/platform:\s*"naver_blog"/g)?.length ?? 0) > 0 &&
+      (marketplace.match(/platform:\s*"naver_blog"[\s\S]{0,320}?followersLabel:\s*""[\s\S]{0,120}?performanceLabel:\s*"자가신고 미입력"/g)?.length ?? 0) ===
+        (marketplace.match(/platform:\s*"naver_blog"/g)?.length ?? 0),
+  ],
+];
+const missingNaverBlogSelfReportChecks = naverBlogSelfReportChecks
+  .filter(([, condition]) => !condition)
+  .map(([name]) => name);
+check(
+  "Naver Blog visitor metrics require a disclosed creator self-report and no unofficial collector",
+  missingNaverBlogSelfReportChecks.length === 0,
+  `Missing: ${missingNaverBlogSelfReportChecks.join(", ")}`,
 );
 
 check(
@@ -2279,17 +2478,12 @@ check(
     ) &&
     influencerCollector.includes("state?.lastAttemptedBatchId !== batchId") &&
     influencerDiscoveryUploader.includes("archiveInfluencerBatch") &&
-    influencerDiscoveryUploader.includes(
-      "YEOLLOCK_INFLUENCER_UPLOADER_LOCK_TOKEN",
+    influencerDiscoveryUploader.includes("token: lock.token") &&
+    influencerDiscoveryUploader.includes("pid: lock.pid") &&
+    influencerDiscoveryUploader.includes("batchId: snapshot.batchId") &&
+    !influencerDiscoveryUploader.includes(
+      "sync-discovered-naver-blog-visitors.mjs",
     ) &&
-    naverVisitorSync.includes("validateUploaderSession") &&
-    naverVisitorSync.includes(
-      "apply_discovered_naver_blog_visitor_metrics_v2",
-    ) &&
-    naverVisitorIdempotentMigration.includes(
-      "updates.checked_at > profile.naver_blog_visitor_checked_at",
-    ) &&
-    naverVisitorIdempotentMigration.includes("is distinct from") &&
     packageJson.scripts?.["upload:influencers:batch"]?.includes(
       "upload-influencer-discovery-batch.mjs",
     ) &&
@@ -2309,6 +2503,112 @@ check(
     ) &&
     vercelJson.crons?.some((cron) => cron.path === "/api/cron/ops-alerts"),
   "Collection must write only immutable local XLSX workbooks; only the guarded 12-hour uploader may read/write Supabase, and retries must preserve evidence and avoid duplicate writes",
+);
+
+check(
+  "Instagram DM follower metric stays same-response, canonical, and synchronous",
+  instagramDmFollowerMetricRoute.includes(
+    'url.searchParams.set("fields", "id,username,follower_count")',
+  ) &&
+    instagramDmFollowerMetricRoute.includes(
+      'follower_count_source: "instagram_user_profile_api"',
+    ) &&
+    instagramDmFollowerMetricRoute.includes(
+      "await clearPublicMarketplaceCache()",
+    ) &&
+    instagramDmFollowerMetricRoute.includes(
+      "readVerifiedInstagramDmFollowerCount",
+    ) &&
+    !instagramDmFollowerMetricRoute.includes("runMarketplaceFollowerSync") &&
+    !instagramDmFollowerMetricRoute.includes("business_discovery") &&
+    instagramDmVerification.includes("Number.isSafeInteger(value)") &&
+    instagramDmVerification.includes(
+      "followerCount: operationalTest ? undefined : followerCount",
+    ) &&
+    instagramDmFollowerMetricMigration.includes(
+      "directsign_apply_approved_instagram_dm_follower_metric",
+    ) &&
+    instagramDmFollowerMetricMigration.includes(
+      "directsign_is_operational_profile",
+    ) &&
+    instagramDmFollowerMetricMigration.includes(
+      "follower_count = v_follower_count",
+    ) &&
+    instagramDmFollowerMetricMigration.includes(
+      "directsign_refresh_registered_member_discovery",
+    ) &&
+    instagramDmFollowerMetricMigration.includes("v_channel_id uuid") &&
+    instagramDmFollowerMetricMigration.includes(
+      "where channel.id = v_channel_id",
+    ) &&
+    instagramDmFollowerMetricMigration.includes(
+      "follower_count_checked_at",
+    ) &&
+    instagramDmFollowerMetricMigration.includes(
+      "new.ownership_verification_method::text = 'instagram_dm_code'",
+    ) &&
+    !instagramDmFollowerMetricMigration.includes(
+      "create or replace function directsign_private.directsign_materialize_registered_member_channels",
+    ) &&
+    instagramDmFollowerMetricMigration.includes("9007199254740991") &&
+    !server.includes('requestedBy: "platform_verification"') &&
+    !server.includes('requestedBy: "influencer_profile_publish"') &&
+    agents.includes(
+      "Instagram DM ownership verification must keep the official `@yeollockme` server-side Meta flow",
+    ),
+  "Instagram DM verification may write only the same Meta profile response's safe follower count to the canonical channel, await registered discovery refresh, and must not reintroduce background collection",
+);
+
+check(
+  "verified platform metrics stay account-bound, immediate, and operational",
+  platformVerificationMetrics.includes(
+    'automation.provider === "youtube_data_api"',
+  ) &&
+    platformVerificationMetrics.includes(
+      'profile.hidden_subscriber_count === true',
+    ) &&
+    platformVerificationMetrics.includes(
+      'profile.oauth_token_source !== "submitted_user_access_token"',
+    ) &&
+    platformVerificationMetrics.includes("apiHandle !== requestedHandle") &&
+    platformVerificationMetrics.includes("Number.isSafeInteger(parsed)") &&
+    platformVerificationMetrics.includes(
+      "buildNaverBlogSelfReportedChannelMetric",
+    ) &&
+    platformVerificationMetrics.includes('source: "creator_self_report"') &&
+    platformVerificationMetrics.includes('trust: "self_reported"') &&
+    verifiedPlatformMetricMigration.includes(
+      "directsign_apply_approved_platform_channel_metric",
+    ) &&
+    verifiedPlatformMetricMigration.includes(
+      "directsign_is_operational_profile",
+    ) &&
+    verifiedPlatformMetricMigration.includes(
+      "pg_catalog.pg_advisory_xact_lock",
+    ) &&
+    verifiedPlatformMetricMigration.includes("v_metric_status = 'unavailable'") &&
+    verifiedPlatformMetricMigration.includes("follower_count = null") &&
+    verifiedPlatformMetricMigration.includes(
+      "v_checked_at >= channel.follower_count_synced_at",
+    ) &&
+    verifiedPlatformMetricMigration.includes(
+      "directsign_refresh_registered_member_discovery",
+    ) &&
+    verifiedPlatformMetricMigration.includes(
+      "new.platform::text in ('youtube', 'tiktok', 'naver_blog')",
+    ) &&
+    verifiedPlatformMetricMigration.includes("self_reported_channel_metric") &&
+    verifiedPlatformMetricMigration.includes(
+      "v_request.naver_blog_recent_4d_average_visitors",
+    ) &&
+    naverSelfReportEnforcementMigration.includes(
+      "new.audience_counts := coalesce(new.audience_counts, '{}'::jsonb) - 'naver_blog'",
+    ) &&
+    !verifiedPlatformMetricMigration.includes("NVisitorgp4Ajax") &&
+    agents.includes(
+      "Approved production YouTube, TikTok, and Naver Blog accounts must materialize the exact verified channel",
+    ),
+  "Approved platform channels must be canonical and immediate; YouTube/TikTok stay provider-bound while Naver accepts only its required exact-handle creator report, visibly discloses trust, and remains outside follower sorting",
 );
 
 check(
@@ -2661,8 +2961,8 @@ check(
     !influencerPublicProfileSource.includes(
       "getPlatformIcon(platform.platform",
     ) &&
-    influencerPublicProfileSource.includes(
-      "aria-label={`${getPlatformDisplayName(platform.platform)} ${platform.handle}",
+    /aria-label=\{\[[\s\S]+getPlatformDisplayName\(platform\.platform\)[\s\S]+platform\.handle[\s\S]+platform\.followersLabel[\s\S]+platform\.performanceLabel[\s\S]+"계정 보기"[\s\S]+\.join\(" "\)\}/.test(
+      influencerPublicProfileSource,
     ),
   "Influencer public profile platform buttons must make platform names and follower/subscriber counts large and scannable",
 );

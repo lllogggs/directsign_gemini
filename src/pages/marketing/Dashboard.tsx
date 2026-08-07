@@ -5302,10 +5302,12 @@ function getCampaignApplicantPerformanceLabel(
   platforms: Array<{
     followersLabel?: string;
     performanceLabel?: string;
+    metricTrust?: "self_reported";
   }>,
   profile?: MarketplaceInfluencerProfile,
 ) {
   const performanceLabels = platforms
+    .filter((platform) => platform.metricTrust !== "self_reported")
     .map((platform) => platform.performanceLabel)
     .filter((label): label is string => Boolean(label?.trim()));
   const audienceLabel = profile?.audience?.trim();
@@ -5341,7 +5343,9 @@ function ApplicantPlatformLinks({
       {visiblePlatforms.slice(0, 1).map((item, index) => {
         const label = platformLabels[item.platform] ?? item.label;
         const text = item.followersLabel;
-        const title = item.followersLabel ? `${label} ${item.followersLabel}` : label;
+        const title = [label, item.followersLabel, item.performanceLabel]
+          .filter(Boolean)
+          .join(" ");
         const key = `${item.platform}-${item.handle ?? item.url ?? index}`;
         const platformMeta =
           PLATFORM_META[marketplacePlatformToContractPlatform(item.platform)];
@@ -5349,6 +5353,11 @@ function ApplicantPlatformLinks({
           <>
             <span className="shrink-0">{platformMeta.mark}</span>
             {text ? <span className="truncate">{text}</span> : null}
+            {item.metricTrust === "self_reported" ? (
+              <span className="inline-flex h-5 shrink-0 items-center rounded-full bg-neutral-100 px-1.5 text-[10px] font-bold text-neutral-600">
+                자가신고
+              </span>
+            ) : null}
           </>
         );
 
@@ -8570,7 +8579,7 @@ function getContractCreatorAccountLabel(
   return contract.influencer_info?.channel_url ?? "";
 }
 
-function getContractCreatorAudienceLabel(profile?: MarketplaceInfluencerProfile) {
+function getContractCreatorChannelMetricLabel(profile?: MarketplaceInfluencerProfile) {
   if (!profile?.platforms.length) return "";
 
   return joinExportValues(
@@ -8578,6 +8587,7 @@ function getContractCreatorAudienceLabel(profile?: MarketplaceInfluencerProfile)
       joinExportValues([
         platformLabels[platform.platform],
         platform.followersLabel,
+        platform.metricTrust === "self_reported" ? "자가신고" : undefined,
       ]),
     ),
   );
@@ -8730,7 +8740,7 @@ function buildAdvertiserContractExportSheet(contracts: Contract[]): XlsxSheet {
       "크리에이터명",
       "크리에이터 계정명",
       "크리에이터 연락처",
-      "구독자/팔로워수",
+      "채널 지표",
       "플랫폼",
       "콘텐츠 형식",
       "콘텐츠 수량",
@@ -8811,7 +8821,7 @@ function buildAdvertiserContractExportSheet(contracts: Contract[]): XlsxSheet {
         removeInternalTestLabel(contract.influencer_info?.name, ""),
         getContractCreatorAccountLabel(contract, creatorProfile),
         formatPublicContactValue(contract.influencer_info?.contact),
-        getContractCreatorAudienceLabel(creatorProfile),
+        getContractCreatorChannelMetricLabel(creatorProfile),
         getContractPlatformExportLabel(contract),
         joinExportValues(contract.campaign?.deliverables ?? []),
         getContractDeliverableCount(contract),
@@ -8943,6 +8953,7 @@ function buildAdvertiserCampaignApplicantExportSheet(
               platformLabels[platform.platform],
               platform.handle,
               platform.followersLabel,
+              platform.metricTrust === "self_reported" ? "자가신고" : undefined,
             ]),
           ),
         ),

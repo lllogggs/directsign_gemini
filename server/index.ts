@@ -21,12 +21,21 @@ import {
   extractInstagramDmChallengeEvents,
   isActionableInstagramDmManualReview,
   isAwaitingInstagramDmRestoreRecord,
+  normalizeInstagramFollowerCount,
   normalizeInstagramUsername,
   processInstagramDmChallengeEvent,
+  readVerifiedInstagramDmFollowerCount,
   selectInstagramDmRestoreRecord,
   verifyInstagramWebhookSignature,
   type InstagramDmChallengeEvent,
 } from "./instagram-dm-verification.js";
+import {
+  bindOwnershipStatusToSubmittedIdentity,
+  buildNaverBlogSelfReportedChannelMetric,
+  buildVerifiedPlatformChannelMetric,
+  normalizeVerificationMetricCount,
+  shouldInvalidateApprovedPlatformChannelCache,
+} from "./platform-verification-metrics.js";
 import { isOperationalTestEmail } from "./operational-test-email.js";
 import { sendPlatformVerificationEmail } from "./verification-email.js";
 import { verificationRequestBelongsToInfluencerAccount } from "./verification-ownership.js";
@@ -220,6 +229,7 @@ interface VerificationRequestRecord {
   platform?: InfluencerPlatform;
   platform_handle?: string;
   platform_url?: string;
+  naver_blog_recent_4d_average_visitors?: number | null;
   ownership_verification_method?: InfluencerVerificationMethod;
   ownership_challenge_code?: string;
   ownership_challenge_code_hash?: string | null;
@@ -734,11 +744,6 @@ const marketplaceFollowerSyncStaleMs =
   dayMs;
 const automaticMarketplaceFollowerSyncEnabled =
   process.env.ENABLE_AUTOMATIC_MARKETPLACE_FOLLOWER_SYNC === "true";
-const marketplaceNaverBlogVisitorSyncStaleMs =
-  parsePositiveNumberEnv(
-    process.env.MARKETPLACE_NAVER_BLOG_VISITOR_SYNC_STALE_DAYS,
-    7,
-  ) * dayMs;
 const cspReportOnly =
   process.env.CONTENT_SECURITY_POLICY_REPORT_ONLY === "true" ||
   process.env.DIRECTSIGN_CSP_REPORT_ONLY === "true";
@@ -1669,15 +1674,6 @@ interface SupabaseDiscoveredInfluencerProfileRow {
   follower_count?: number | null;
   average_views?: number | null;
   post_count?: number | null;
-  naver_blog_visitor_average_4d?: number | null;
-  naver_blog_visitor_counts?: Array<{ date: string; count: number }> | null;
-  naver_blog_visitor_checked_at?: string | null;
-  naver_blog_visitor_status?:
-    | "not_checked"
-    | "available"
-    | "unavailable"
-    | "failed"
-    | null;
   quality_score?: number | null;
   status: "active" | "needs_review" | "hidden" | "claimed";
   source_provider?: string | null;
@@ -1751,6 +1747,10 @@ interface MarketplaceRegisteredInfluencerDirectoryItem {
     handle: string;
     url?: string;
     followerCount?: number;
+    metricType?: "average_daily_visitors_4d";
+    metricSource?: "creator_self_report";
+    metricTrust?: "self_reported";
+    metricPeriodDays?: 4;
   }>;
   maxAudienceCount?: number;
   registeredMemberVisibility: "authenticated_advertisers";
@@ -9424,29 +9424,6 @@ const fetchJsonWithTimeout = async <T>(
   }
 };
 
-const fetchTextWithTimeout = async (
-  url: string,
-  init: RequestInit = {},
-  timeoutMs = 6500,
-): Promise<{ status: number; ok: boolean; body: string }> => {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const apiResponse = await fetch(url, {
-      ...init,
-      signal: controller.signal,
-    });
-    return {
-      status: apiResponse.status,
-      ok: apiResponse.ok,
-      body: await apiResponse.text(),
-    };
-  } finally {
-    clearTimeout(timeout);
-  }
-};
-
 const normalizeDateCompact = (value: string | undefined) => {
   if (!value) return undefined;
   const digits = value.replace(/\D/g, "");
@@ -9494,6 +9471,38 @@ const extractNaverBlogId = (value: string | undefined) => {
   }
 
   return normalizeHandleForComparison(raw);
+};
+
+const extractTikTokUsername = (value: string | undefined) => {
+  const raw = normalizeRequiredText(value);
+  if (!raw) return "";
+  try {
+    const url = new URL(raw);
+    if (!/(^|\.)tiktok\.com$/i.test(url.hostname)) return "";
+    const usernamePart = url.pathname
+      .split("/")
+      .filter(Boolean)
+      .find((part) => part.startsWith("@"));
+    return normalizeHandleForComparison(usernamePart);
+  } catch {
+    return normalizeHandleForComparison(raw);
+  }
+};
+
+const extractYoutubeHandle = (value: string | undefined) => {
+  const raw = normalizeRequiredText(value);
+  if (!raw) return "";
+  try {
+    const url = new URL(raw);
+    if (!/(^|\.)youtube\.com$/i.test(url.hostname)) return "";
+    const handlePart = url.pathname
+      .split("/")
+      .filter(Boolean)
+      .find((part) => part.startsWith("@"));
+    return normalizeHandleForComparison(handlePart);
+  } catch {
+    return normalizeHandleForComparison(raw);
+  }
 };
 
 const stripHtmlTags = (value: string | undefined) =>
@@ -9943,6 +9952,19 @@ const runYoutubeAutomationCheck = async ({
       proofUrl ?? platformUrl,
       challengeCode,
     );
+    const expectedHandle = normalizeHandleForComparison(platformHandle);
+    const publicProofHandle = extractYoutubeHandle(proofUrl ?? platformUrl);
+    const publicProofMatched =
+      publicChallenge.status === "matched" &&
+      Boolean(expectedHandle) &&
+      publicProofHandle === expectedHandle;
+    const publicOwnershipCheck = {
+      ...publicChallenge,
+      status: bindOwnershipStatusToSubmittedIdentity(
+        publicChallenge.status,
+        publicProofMatched,
+      ),
+    };
 
     return {
       ...buildNotConfiguredAutomationResult(
@@ -9953,11 +9975,11 @@ const runYoutubeAutomationCheck = async ({
           : "YOUTUBE_DATA_API_KEY가 없어 YouTube 공개 증빙 URL만 확인했습니다. 관리자 검수가 필요합니다.",
       ),
       status:
-        publicChallenge.status === "matched" ? "matched" : "not_configured",
+        publicProofMatched ? "matched" : "not_configured",
       http_status: publicChallenge.http_status,
       matched_fields:
-        publicChallenge.status === "matched" ? ["public_url"] : undefined,
-      ownership_check: publicChallenge,
+        publicProofMatched ? ["public_url"] : undefined,
+      ownership_check: publicOwnershipCheck,
       public_challenge: publicChallenge,
     };
   }
@@ -9983,10 +10005,20 @@ const runYoutubeAutomationCheck = async ({
       ? await fetchYoutubeVideoForProof(apiKey, proofVideoId)
       : undefined;
     const video = videoResponse?.payload.items?.[0];
-    const channelDescriptionMatched = containsChallengeCode(
-      channel?.snippet?.description,
-      challengeCode,
+    const expectedHandle = normalizeHandleForComparison(platformHandle);
+    const apiHandle = normalizeHandleForComparison(channel?.snippet?.customUrl);
+    const submittedAsChannelId = Boolean(
+      channel?.id &&
+        /^UC[a-zA-Z0-9_-]{20,}$/.test(platformHandle.trim()) &&
+        platformHandle.trim() === channel.id,
     );
+    const channelIdentityMatches = Boolean(
+      expectedHandle &&
+        (apiHandle === expectedHandle || submittedAsChannelId),
+    );
+    const channelDescriptionMatched =
+      channelIdentityMatches &&
+      containsChallengeCode(channel?.snippet?.description, challengeCode);
     const videoTitleMatched = containsChallengeCode(
       video?.snippet?.title,
       challengeCode,
@@ -10000,6 +10032,7 @@ const runYoutubeAutomationCheck = async ({
       channel?.id === video?.snippet?.channelId;
     const videoProofMatched =
       Boolean(video) &&
+      channelIdentityMatches &&
       videoChannelMatches &&
       (videoTitleMatched || videoDescriptionMatched);
     const shouldTryPublicProof =
@@ -10010,13 +10043,19 @@ const runYoutubeAutomationCheck = async ({
     const publicChallenge = shouldTryPublicProof
       ? await runPublicChallengeAutomation(proofUrl, challengeCode)
       : undefined;
-    const publicProofMatched = publicChallenge?.status === "matched";
+    const publicProofHandle = extractYoutubeHandle(proofUrl);
+    const publicProofMatched = Boolean(
+      publicChallenge?.status === "matched" &&
+        expectedHandle &&
+        apiHandle === expectedHandle &&
+        publicProofHandle === expectedHandle,
+    );
     const matched =
       channelDescriptionMatched || videoProofMatched || publicProofMatched;
     const matchedFields = [
       channelDescriptionMatched ? "channel.snippet.description" : undefined,
-      videoTitleMatched && videoChannelMatches ? "video.snippet.title" : undefined,
-      videoDescriptionMatched && videoChannelMatches
+      videoProofMatched && videoTitleMatched ? "video.snippet.title" : undefined,
+      videoProofMatched && videoDescriptionMatched
         ? "video.snippet.description"
         : undefined,
       publicProofMatched ? "public_url" : undefined,
@@ -10057,6 +10096,7 @@ const runYoutubeAutomationCheck = async ({
       public_challenge: publicChallenge,
       profile: channel
         ? {
+            channel_api_succeeded: channelResponse.ok,
             channel_id: channel.id,
             title: channel.snippet?.title,
             custom_url: channel.snippet?.customUrl,
@@ -10070,7 +10110,7 @@ const runYoutubeAutomationCheck = async ({
             proof_video_channel_title: video?.snippet?.channelTitle,
             proof_video_published_at: video?.snippet?.publishedAt,
             proof_video_privacy_status: video?.status?.privacyStatus,
-            proof_video_code_found: videoTitleMatched || videoDescriptionMatched,
+            proof_video_code_found: videoProofMatched,
             proof_video_channel_matched: videoChannelMatches,
             proof_source: videoProofMatched
               ? "video"
@@ -10111,10 +10151,21 @@ const runNaverBlogAutomationCheck = async ({
   const plan = buildVerificationAutomationPlan("naver_blog");
   const expectedBlogId =
     extractNaverBlogId(platformHandle) ||
-    extractNaverBlogId(platformUrl) ||
-    extractNaverBlogId(proofUrl);
+    extractNaverBlogId(platformUrl);
   const publicChallenge = await runPublicChallengeAutomation(proofUrl, challengeCode);
-  if (publicChallenge.status === "matched") {
+  const proofBlogId = extractNaverBlogId(proofUrl);
+  const publicProofMatched =
+    publicChallenge.status === "matched" &&
+    Boolean(expectedBlogId) &&
+    proofBlogId === expectedBlogId;
+  const publicOwnershipCheck = {
+    ...publicChallenge,
+    status: bindOwnershipStatusToSubmittedIdentity(
+      publicChallenge.status,
+      publicProofMatched,
+    ),
+  };
+  if (publicProofMatched) {
     return {
       provider: plan.provider,
       configured: plan.configured,
@@ -10124,7 +10175,7 @@ const runNaverBlogAutomationCheck = async ({
       http_status: publicChallenge.http_status,
       message: "네이버 블로그 공개 증빙 URL에서 인증코드를 확인했습니다.",
       matched_fields: ["public_url"],
-      ownership_check: publicChallenge,
+      ownership_check: publicOwnershipCheck,
       public_challenge: publicChallenge,
       profile: {
         blog_id: expectedBlogId || undefined,
@@ -10144,7 +10195,7 @@ const runNaverBlogAutomationCheck = async ({
         "NAVER_CLIENT_ID/NAVER_CLIENT_SECRET이 없어 공개 증빙 URL만 확인했습니다. 자동 확인이 막히면 관리자 검수가 필요합니다.",
       ),
       public_challenge: publicChallenge,
-      ownership_check: publicChallenge,
+      ownership_check: publicOwnershipCheck,
       profile: {
         blog_id: expectedBlogId || undefined,
       },
@@ -10164,7 +10215,7 @@ const runNaverBlogAutomationCheck = async ({
           "네이버 자동 확인을 잠시 사용할 수 없습니다. 공개 증빙을 다시 확인하거나 수기 인증을 요청해 주세요.",
         next_action: "manual_review",
         public_challenge: publicChallenge,
-        ownership_check: publicChallenge,
+        ownership_check: publicOwnershipCheck,
         profile: {
           blog_id: expectedBlogId || undefined,
         },
@@ -10204,11 +10255,10 @@ const runNaverBlogAutomationCheck = async ({
         .join(" ");
       const bloggerId = extractNaverBlogId(item.bloggerlink);
       const linkBlogId = extractNaverBlogId(item.link);
-      const handleMatches =
-        !expectedBlogId ||
-        bloggerId === expectedBlogId ||
-        linkBlogId === expectedBlogId ||
-        normalizeHandleForComparison(item.bloggername).includes(expectedBlogId);
+      const handleMatches = Boolean(
+        expectedBlogId &&
+          (bloggerId === expectedBlogId || linkBlogId === expectedBlogId),
+      );
       return containsChallengeCode(haystack, challengeCode) && handleMatches;
     });
 
@@ -10252,7 +10302,7 @@ const runNaverBlogAutomationCheck = async ({
       checked_at: checkedAt,
       message: error instanceof Error ? error.message : "Naver blog API check failed.",
       public_challenge: publicChallenge,
-      ownership_check: publicChallenge,
+      ownership_check: publicOwnershipCheck,
       plan,
     };
   }
@@ -10327,7 +10377,7 @@ const runInstagramAutomationCheck = async ({
         website?: string;
         profile_picture_url?: string;
       };
-      error?: unknown;
+      error?: { code?: string; message?: string; log_id?: string };
     }>(url.toString());
     const profile = apiResponse.payload.business_discovery;
     const bioMatched = containsChallengeCode(profile?.biography, challengeCode);
@@ -10467,8 +10517,23 @@ const runTikTokAutomationCheck = async ({
 }): Promise<VerificationAutomationResult> => {
   const checkedAt = new Date().toISOString();
   const plan = buildVerificationAutomationPlan("tiktok");
-  const token = accessToken?.trim() || process.env.TIKTOK_ACCOUNT_ACCESS_TOKEN?.trim();
+  const submittedUserAccessToken = accessToken?.trim();
+  const token =
+    submittedUserAccessToken || process.env.TIKTOK_ACCOUNT_ACCESS_TOKEN?.trim();
   const publicChallenge = await runPublicChallengeAutomation(proofUrl, challengeCode);
+  const expectedHandle = normalizeHandleForComparison(platformHandle);
+  const publicProofHandle = extractTikTokUsername(proofUrl);
+  const publicProofMatched =
+    publicChallenge.status === "matched" &&
+    Boolean(expectedHandle) &&
+    publicProofHandle === expectedHandle;
+  const publicOwnershipCheck = {
+    ...publicChallenge,
+    status: bindOwnershipStatusToSubmittedIdentity(
+      publicChallenge.status,
+      publicProofMatched,
+    ),
+  };
 
   if (!token) {
     return {
@@ -10480,16 +10545,16 @@ const runTikTokAutomationCheck = async ({
           : "TikTok OAuth 토큰이 없어 공개 증빙 URL만 확인했습니다. TikTok이 접근을 막으면 스크린샷 검수가 필요합니다.",
       ),
       status:
-        publicChallenge.status === "matched" ? "matched" : "not_configured",
+        publicProofMatched ? "matched" : "not_configured",
       http_status: publicChallenge.http_status,
       matched_fields:
-        publicChallenge.status === "matched" ? ["public_url"] : undefined,
+        publicProofMatched ? ["public_url"] : undefined,
       public_challenge: publicChallenge,
-      ownership_check: publicChallenge,
+      ownership_check: publicOwnershipCheck,
       profile: {
         username: normalizeHandleForComparison(platformHandle) || undefined,
         proof_source:
-          publicChallenge.status === "matched" ? "public_url" : undefined,
+          publicProofMatched ? "public_url" : undefined,
       },
     };
   }
@@ -10528,7 +10593,7 @@ const runTikTokAutomationCheck = async ({
           video_count?: number;
         };
       };
-      error?: unknown;
+      error?: { code?: string; message?: string; log_id?: string };
     }>(url.toString(), {
       headers: {
         Authorization: `Bearer ${token}`,
@@ -10536,20 +10601,22 @@ const runTikTokAutomationCheck = async ({
       },
     });
     const user = apiResponse.payload.data?.user;
-    const expectedHandle = normalizeHandleForComparison(platformHandle);
+    const tikTokErrorCode = normalizeRequiredText(apiResponse.payload.error?.code);
+    const userInfoApiSucceeded =
+      apiResponse.ok && (!tikTokErrorCode || tikTokErrorCode === "ok");
     const userHandle = normalizeHandleForComparison(user?.username);
     const handleMatches = expectedHandle ? expectedHandle === userHandle : true;
     const bioMatched = Boolean(
       handleMatches && containsChallengeCode(user?.bio_description, challengeCode),
     );
-    const publicMatched = publicChallenge.status === "matched";
+    const publicMatched = publicProofMatched;
     const matched = bioMatched || publicMatched;
 
     return {
       provider: plan.provider,
       configured: true,
       mode: "api_ready",
-      status: apiResponse.ok && matched ? "matched" : "not_found",
+      status: userInfoApiSucceeded && matched ? "matched" : "not_found",
       checked_at: checkedAt,
       http_status: apiResponse.status,
       result_hash: sha256Hex(
@@ -10569,13 +10636,17 @@ const runTikTokAutomationCheck = async ({
         publicMatched ? "public_url" : undefined,
       ].filter((value): value is string => Boolean(value)),
       ownership_check: {
-        status: apiResponse.ok && matched ? "matched" : "not_found",
+        status: userInfoApiSucceeded && matched ? "matched" : "not_found",
         checked_at: publicMatched ? publicChallenge.checked_at : checkedAt,
         http_status: apiResponse.status,
       },
       public_challenge: publicChallenge,
       profile: user
         ? {
+            user_info_api_succeeded: userInfoApiSucceeded,
+            oauth_token_source: submittedUserAccessToken
+              ? "submitted_user_access_token"
+              : "server_fallback",
             open_id_hash: user.open_id ? sha256Hex(user.open_id) : undefined,
             union_id_hash: user.union_id ? sha256Hex(user.union_id) : undefined,
             display_name: user.display_name,
@@ -10599,7 +10670,7 @@ const runTikTokAutomationCheck = async ({
       plan,
     };
   } catch (error) {
-    const publicFallback = publicChallenge.status === "matched";
+    const publicFallback = publicProofMatched;
     return {
       provider: plan.provider,
       configured: true,
@@ -10613,7 +10684,7 @@ const runTikTokAutomationCheck = async ({
           : "TikTok API check failed.",
       matched_fields: publicFallback ? ["public_url"] : undefined,
       public_challenge: publicChallenge,
-      ownership_check: publicChallenge,
+      ownership_check: publicOwnershipCheck,
       profile: {
         username: normalizeHandleForComparison(platformHandle) || undefined,
         proof_source: publicFallback ? "public_url" : undefined,
@@ -13420,6 +13491,63 @@ const groupMarketplaceChannelsByProfileId = (
   return grouped;
 };
 
+const readNaverSelfReportedMarketplaceMetric = (
+  channel: SupabaseMarketplaceInfluencerChannelRow,
+) => {
+  if (channel.platform !== "naver_blog") return undefined;
+
+  const metadata = channel.follower_sync_metadata;
+  const count = normalizeVerificationMetricCount(channel.follower_count);
+  const channelHandle = extractNaverBlogId(channel.handle);
+  const reportedHandle = extractNaverBlogId(
+    normalizeOptionalText(metadata?.reported_handle),
+  );
+  const checkedAt = normalizeOptionalText(metadata?.checked_at);
+  const syncedAt = normalizeOptionalText(channel.follower_count_synced_at);
+  const checkedAtTime = Date.parse(checkedAt ?? "");
+  const syncedAtTime = Date.parse(syncedAt ?? "");
+  if (
+    channel.follower_sync_source !== "creator_self_report" ||
+    count === undefined ||
+    metadata?.provider !== "creator_self_report" ||
+    metadata?.metric !== "average_daily_visitors_4d" ||
+    metadata?.trust !== "self_reported" ||
+    Number(metadata?.period_days) !== 4 ||
+    metadata?.account_approved !== true ||
+    metadata?.availability !== "available" ||
+    !channelHandle ||
+    reportedHandle !== channelHandle ||
+    !Number.isFinite(checkedAtTime) ||
+    !Number.isFinite(syncedAtTime) ||
+    syncedAtTime !== checkedAtTime
+  ) {
+    return undefined;
+  }
+
+  return {
+    followersLabel: `일평균 ${count.toLocaleString("ko-KR")}명`,
+    performanceLabel: "최근 4일 평균 · 자가신고",
+    metricType: "average_daily_visitors_4d" as const,
+    metricSource: "creator_self_report" as const,
+    metricTrust: "self_reported" as const,
+    metricPeriodDays: 4 as const,
+  };
+};
+
+const hasMisplacedNaverSelfReportProvenance = (
+  channel: SupabaseMarketplaceInfluencerChannelRow,
+) => {
+  if (channel.platform === "naver_blog") return false;
+  const metadata = channel.follower_sync_metadata;
+  return (
+    channel.follower_sync_source === "creator_self_report" ||
+    channel.follower_sync_source === "creator_self_report_required" ||
+    metadata?.provider === "creator_self_report" ||
+    metadata?.metric === "average_daily_visitors_4d" ||
+    metadata?.trust === "self_reported"
+  );
+};
+
 const mapInfluencerProfileRowToPublicSettings = (
   row: SupabaseMarketplaceInfluencerProfileRow,
   channels: SupabaseMarketplaceInfluencerChannelRow[] = [],
@@ -13453,14 +13581,31 @@ const mapInfluencerProfileRowToMarketplaceProfile = (
 ): MarketplaceInfluencerProfile => {
   const settings = mapInfluencerProfileRowToPublicSettings(row, channels);
   const base = createMarketplaceProfileFromPublicSettings(settings);
-  const mappedChannels = channels.map((channel) => ({
-    platform: channel.platform,
-    label: channel.label || platformLabels[channel.platform],
-    handle: formatStoredMarketplacePlatformHandle(channel.handle, channel.platform),
-    url: channel.url ?? buildMarketplacePlatformUrl(channel.platform, channel.handle),
-    followersLabel: channel.followers_label ?? "계정 연동",
-    performanceLabel: channel.performance_label ?? "프로필에서 확인",
-  }));
+  const mappedChannels = channels.map((channel) => {
+    const naverSelfReport = readNaverSelfReportedMarketplaceMetric(channel);
+    const isNaverBlog = channel.platform === "naver_blog";
+    const hasMisplacedNaverSelfReport =
+      hasMisplacedNaverSelfReportProvenance(channel);
+    const followersLabel = isNaverBlog
+      ? (naverSelfReport?.followersLabel ?? "계정 연동")
+      : hasMisplacedNaverSelfReport
+        ? "계정 연동"
+        : channel.followers_label ?? "계정 연동";
+    const performanceLabel = isNaverBlog
+      ? (naverSelfReport?.performanceLabel ?? "자가신고 미입력")
+      : hasMisplacedNaverSelfReport
+        ? "프로필에서 확인"
+        : channel.performance_label ?? "프로필에서 확인";
+    return {
+      platform: channel.platform,
+      label: channel.label || platformLabels[channel.platform],
+      handle: formatStoredMarketplacePlatformHandle(channel.handle, channel.platform),
+      url: channel.url ?? buildMarketplacePlatformUrl(channel.platform, channel.handle),
+      followersLabel,
+      performanceLabel,
+      ...(naverSelfReport ?? {}),
+    };
+  });
 
   return {
     ...base,
@@ -13546,23 +13691,16 @@ const mapDiscoveredInfluencerRowToMarketplaceProfile = (
   const categoryLabel = getDiscoveredCategoryLabel(categories);
   const averageViewsLabel = formatDiscoveredMetricLabel(row.average_views);
   const postCountLabel = formatDiscoveredMetricLabel(row.post_count);
-  const naverBlogVisitorAverage =
-    row.platform === "naver_blog" &&
-    row.naver_blog_visitor_status === "available" &&
-    row.naver_blog_visitor_average_4d != null &&
-    Number.isFinite(Number(row.naver_blog_visitor_average_4d))
-      ? Number(row.naver_blog_visitor_average_4d)
-      : undefined;
   const followerLabel =
-    naverBlogVisitorAverage !== undefined
-      ? `일평균 ${formatDiscoveredMetricLabel(naverBlogVisitorAverage)}명`
+    row.platform === "naver_blog"
+      ? ""
       : normalizeOptionalText(row.followers_label) ||
         (row.follower_count
           ? `${formatDiscoveredMetricLabel(row.follower_count)}명`
           : "공개 지표 확인");
   const performanceLabel =
-    naverBlogVisitorAverage !== undefined
-      ? "최근 4일 평균 방문자"
+    row.platform === "naver_blog"
+      ? "자가신고 미입력"
       : averageViewsLabel
         ? `평균 조회 ${averageViewsLabel}`
         : postCountLabel
@@ -13984,21 +14122,51 @@ const parseMarketplaceRegisteredInfluencerDirectoryItem = (
       followerCountValue >= 0
         ? followerCountValue
         : undefined;
+    const hasNaverSelfReportProvenance =
+      channel.metric_type === "average_daily_visitors_4d" ||
+      channel.metric_source === "creator_self_report" ||
+      channel.metric_trust === "self_reported";
+    const hasMisplacedNaverSelfReport =
+      platform !== "naver_blog" && hasNaverSelfReportProvenance;
+    const isNaverSelfReport =
+      platform === "naver_blog" &&
+      channel.metric_type === "average_daily_visitors_4d" &&
+      channel.metric_source === "creator_self_report" &&
+      channel.metric_trust === "self_reported" &&
+      channel.metric_period_days === 4;
     return {
       platform: platform as InfluencerPlatform,
       handle,
       ...(url ? { url } : {}),
-      ...(followerCount !== undefined ? { followerCount } : {}),
+      ...(followerCount !== undefined &&
+      !hasMisplacedNaverSelfReport &&
+      (platform !== "naver_blog" || isNaverSelfReport)
+        ? { followerCount }
+        : {}),
+      ...(isNaverSelfReport
+        ? {
+            metricType: "average_daily_visitors_4d" as const,
+            metricSource: "creator_self_report" as const,
+            metricTrust: "self_reported" as const,
+            metricPeriodDays: 4 as const,
+          }
+        : {}),
     };
   });
-  const maxAudienceCountValue = Number(item.max_audience_count);
-  const maxAudienceCount =
-    item.max_audience_count !== undefined &&
-    item.max_audience_count !== null &&
-    Number.isSafeInteger(maxAudienceCountValue) &&
-    maxAudienceCountValue >= 0
-      ? maxAudienceCountValue
-      : undefined;
+  const maxAudienceCount = verifiedChannels.reduce<number | undefined>(
+    (maximum, channel) => {
+      if (
+        channel.platform === "naver_blog" ||
+        channel.followerCount === undefined
+      ) {
+        return maximum;
+      }
+      return maximum === undefined
+        ? channel.followerCount
+        : Math.max(maximum, channel.followerCount);
+    },
+    undefined,
+  );
   const platformVerified = item.platform_verified === true;
   const publicProfilePublished = item.public_profile_published === true;
   const publicProfileHandle =
@@ -14123,8 +14291,21 @@ const mapRegisteredInfluencerDirectoryItemToMarketplaceProfile = (
     followersLabel:
       channel.followerCount === undefined
         ? ""
-        : `${channel.followerCount.toLocaleString("ko-KR")}명`,
-    performanceLabel: "계정 인증 완료",
+        : channel.metricTrust === "self_reported"
+          ? `일평균 ${channel.followerCount.toLocaleString("ko-KR")}명`
+          : `${channel.followerCount.toLocaleString("ko-KR")}명`,
+    performanceLabel:
+      channel.metricTrust === "self_reported"
+        ? "최근 4일 평균 · 자가신고"
+        : "계정 인증 완료",
+    ...(channel.metricTrust === "self_reported"
+      ? {
+          metricType: channel.metricType,
+          metricSource: channel.metricSource,
+          metricTrust: channel.metricTrust,
+          metricPeriodDays: channel.metricPeriodDays,
+        }
+      : {}),
   }));
 
   return {
@@ -14935,22 +15116,6 @@ const formatMarketplaceFollowerCountLabel = (count: number) => {
   return `${count.toLocaleString("ko-KR")}\uba85`;
 };
 
-const formatMarketplacePersonCountLabel = (count: number) => {
-  if (count >= 10_000) {
-    const tenThousands = count / 10_000;
-    const formatted =
-      tenThousands >= 100
-        ? Math.round(tenThousands).toLocaleString("ko-KR")
-        : tenThousands.toFixed(1).replace(/\.0$/, "");
-    return `${formatted}\ub9cc\uba85`;
-  }
-
-  return `${count.toLocaleString("ko-KR")}\uba85`;
-};
-
-const formatNaverBlogVisitorLabel = (count: number) =>
-  `\uc77c\ud3c9\uade0 ${formatMarketplacePersonCountLabel(count)}`;
-
 const buildFollowerSnapshot = (
   snapshot: Omit<MarketplaceFollowerSyncSnapshot, "checkedAt"> & {
     checkedAt?: string;
@@ -14960,148 +15125,6 @@ const buildFollowerSnapshot = (
   checkedAt: snapshot.checkedAt ?? new Date().toISOString(),
   error: truncateMarketplaceSyncText(snapshot.error),
 });
-
-type NaverBlogVisitorCount = {
-  date: string;
-  count: number;
-};
-
-const naverBlogVisitorCounterProvider = "naver_blog_public_visitor_counter";
-const naverBlogVisitorAverageWindowDays = 4;
-const kstOffsetMs = 9 * 60 * 60 * 1000;
-
-const formatKstCompactDate = (date: Date, dayOffset = 0) => {
-  const kstDate = new Date(date.getTime() + kstOffsetMs + dayOffset * dayMs);
-  const year = kstDate.getUTCFullYear().toString().padStart(4, "0");
-  const month = (kstDate.getUTCMonth() + 1).toString().padStart(2, "0");
-  const day = kstDate.getUTCDate().toString().padStart(2, "0");
-  return `${year}${month}${day}`;
-};
-
-const getNaverBlogVisitorTargetDates = (date = new Date()) =>
-  Array.from({ length: naverBlogVisitorAverageWindowDays }, (_, index) =>
-    formatKstCompactDate(date, -(index + 1)),
-  );
-
-const normalizeNaverBlogVisitorCounts = (
-  counts: NaverBlogVisitorCount[],
-) => {
-  const byDate = new Map<string, number>();
-  for (const count of counts) {
-    if (!normalizeDateCompact(count.date)) continue;
-    if (!Number.isFinite(count.count) || count.count < 0) continue;
-    byDate.set(count.date, Math.floor(count.count));
-  }
-
-  return Array.from(byDate.entries())
-    .map(([date, count]) => ({ date, count }))
-    .sort((left, right) => right.date.localeCompare(left.date));
-};
-
-const parseNaverBlogVisitorCounts = (body: string) =>
-  normalizeNaverBlogVisitorCounts(
-    Array.from(body.matchAll(/<visitorcnt\b[^>]*\/?>/gi))
-      .map((match) => {
-        const tag = match[0];
-        const id = tag.match(/\bid\s*=\s*["']([^"']+)["']/i)?.[1];
-        const count = normalizeFollowerCount(
-          tag.match(/\bcnt\s*=\s*["']([^"']+)["']/i)?.[1],
-        );
-        const date = normalizeDateCompact(id);
-        if (!date || count === undefined) return undefined;
-        return { date, count };
-      })
-      .filter((count): count is NaverBlogVisitorCount => Boolean(count)),
-  );
-
-const readNaverBlogVisitorCountsFromMetadata = (
-  metadata: Record<string, unknown> | null | undefined,
-) => {
-  const rawCounts = metadata?.naver_blog_daily_visitors;
-  if (!Array.isArray(rawCounts)) return [];
-
-  return normalizeNaverBlogVisitorCounts(
-    rawCounts
-      .map((item) => {
-        if (!item || typeof item !== "object") return undefined;
-        const record = item as Record<string, unknown>;
-        const date = normalizeDateCompact(
-          typeof record.date === "string" || typeof record.date === "number"
-            ? String(record.date)
-            : undefined,
-        );
-        const count = normalizeFollowerCount(record.count);
-        if (!date || count === undefined) return undefined;
-        return { date, count };
-      })
-      .filter((count): count is NaverBlogVisitorCount => Boolean(count)),
-  );
-};
-
-const selectNaverBlogCompletedVisitorCounts = (
-  counts: NaverBlogVisitorCount[],
-  targetDates: string[],
-) => {
-  const byDate = new Map(
-    normalizeNaverBlogVisitorCounts(counts).map((count) => [count.date, count]),
-  );
-  return targetDates
-    .map((targetDate) => byDate.get(targetDate))
-    .filter((count): count is NaverBlogVisitorCount => Boolean(count));
-};
-
-const calculateNaverBlogFourDayAverage = (
-  counts: NaverBlogVisitorCount[],
-) => {
-  const windowCounts = counts.slice(0, naverBlogVisitorAverageWindowDays);
-  if (windowCounts.length < naverBlogVisitorAverageWindowDays) return undefined;
-  return Math.round(
-    windowCounts.reduce((total, count) => total + count.count, 0) /
-      windowCounts.length,
-  );
-};
-
-const buildNaverBlogStoredAverageSnapshot = ({
-  channel,
-  blogId,
-  targetDates,
-  checkedAt,
-  httpStatus,
-  error,
-}: {
-  channel: SupabaseMarketplaceInfluencerChannelRow;
-  blogId: string;
-  targetDates: string[];
-  checkedAt: string;
-  httpStatus?: number;
-  error: string;
-}) => {
-  const storedCounts = selectNaverBlogCompletedVisitorCounts(
-    readNaverBlogVisitorCountsFromMetadata(channel.follower_sync_metadata),
-    targetDates,
-  );
-  const average = calculateNaverBlogFourDayAverage(storedCounts);
-  if (average === undefined) return undefined;
-
-  return buildFollowerSnapshot({
-    status: "synced",
-    provider: naverBlogVisitorCounterProvider,
-    checkedAt,
-    followerCount: average,
-    followersLabel: formatNaverBlogVisitorLabel(average),
-    httpStatus,
-    error,
-    metadata: {
-      metric: "daily_blog_visitors",
-      value_basis: "stored_4_day_average",
-      target_dates: targetDates,
-      blog_id: blogId,
-      naver_blog_daily_visitors: storedCounts,
-      average_window_days: naverBlogVisitorAverageWindowDays,
-      source_error: error,
-    },
-  });
-};
 
 const fetchYoutubeFollowerSnapshot = async (
   channel: SupabaseMarketplaceInfluencerChannelRow,
@@ -15369,136 +15392,21 @@ const fetchTikTokFollowerSnapshot = async (
   }
 };
 
-const fetchNaverBlogVisitorSnapshot = async (
-  channel: SupabaseMarketplaceInfluencerChannelRow,
-): Promise<MarketplaceFollowerSyncSnapshot> => {
-  const checkedAt = new Date().toISOString();
-  const targetDates = getNaverBlogVisitorTargetDates(new Date(checkedAt));
-  const blogId =
-    extractNaverBlogId(channel.handle) || extractNaverBlogId(channel.url ?? undefined);
-
-  if (!blogId) {
-    return buildFollowerSnapshot({
-      status: "skipped",
-      provider: naverBlogVisitorCounterProvider,
-      checkedAt,
-      error: "Naver Blog id is missing.",
-    });
-  }
-
-  try {
-    const url = new URL("https://blog.naver.com/NVisitorgp4Ajax.nhn");
-    url.searchParams.set("blogId", blogId);
-    const response = await fetchTextWithTimeout(
-      url.toString(),
-      {
-        headers: {
-          Accept: "application/xml,text/xml,*/*",
-          "User-Agent": "DirectSignMarketplaceSync/1.0",
-        },
-      },
-      4500,
-    );
-    const visitorCounts = parseNaverBlogVisitorCounts(response.body);
-    const completedCounts = selectNaverBlogCompletedVisitorCounts(
-      visitorCounts,
-      targetDates,
-    );
-    const fourDayAverage = calculateNaverBlogFourDayAverage(completedCounts);
-
-    if (!response.ok) {
-      return (
-        buildNaverBlogStoredAverageSnapshot({
-          channel,
-          blogId,
-          targetDates,
-          checkedAt,
-          httpStatus: response.status,
-          error: "Naver Blog visitor counter request failed; showing stored four day average.",
-        }) ??
-        buildFollowerSnapshot({
-          status: "failed",
-          provider: naverBlogVisitorCounterProvider,
-          checkedAt,
-          httpStatus: response.status,
-          error: "Naver Blog visitor counter request failed.",
-          metadata: { blog_id: blogId, target_dates: targetDates },
-        })
-      );
-    }
-
-    if (fourDayAverage === undefined) {
-      return (
-        buildNaverBlogStoredAverageSnapshot({
-          channel,
-          blogId,
-          targetDates,
-          checkedAt,
-          httpStatus: response.status,
-          error:
-            "Naver Blog visitor counter did not include four completed days; showing stored four day average.",
-        }) ??
-        buildFollowerSnapshot({
-          status: "failed",
-          provider: naverBlogVisitorCounterProvider,
-          checkedAt,
-          httpStatus: response.status,
-          error: "Naver Blog visitor counter did not include four completed days.",
-          metadata: {
-            blog_id: blogId,
-            target_dates: targetDates,
-            naver_blog_daily_visitors: completedCounts,
-          },
-        })
-      );
-    }
-
-    return buildFollowerSnapshot({
-      status: "synced",
-      provider: naverBlogVisitorCounterProvider,
-      checkedAt,
-      httpStatus: response.status,
-      followerCount: fourDayAverage,
-      followersLabel: formatNaverBlogVisitorLabel(fourDayAverage),
-      metadata: {
-        metric: "daily_blog_visitors",
-        value_basis: "completed_4_day_average",
-        target_dates: targetDates,
-        blog_id: blogId,
-        naver_blog_daily_visitors: completedCounts,
-        average_window_days: naverBlogVisitorAverageWindowDays,
-        four_day_average: fourDayAverage,
-      },
-    });
-  } catch (error) {
-    const errorMessage =
-      error instanceof Error ? error.message : "Naver Blog visitor sync failed.";
-    return (
-      buildNaverBlogStoredAverageSnapshot({
-        channel,
-        blogId,
-        targetDates,
-        checkedAt,
-        error: `${errorMessage}; showing stored four day average.`,
-      }) ??
-      buildFollowerSnapshot({
-        status: "failed",
-        provider: naverBlogVisitorCounterProvider,
-        checkedAt,
-        error: errorMessage,
-        metadata: { blog_id: blogId, target_dates: targetDates },
-      })
-    );
-  }
-};
-
 const fetchMarketplaceFollowerSnapshot = (
   channel: SupabaseMarketplaceInfluencerChannelRow,
 ) => {
   if (channel.platform === "youtube") return fetchYoutubeFollowerSnapshot(channel);
   if (channel.platform === "instagram") return fetchInstagramFollowerSnapshot(channel);
   if (channel.platform === "tiktok") return fetchTikTokFollowerSnapshot(channel);
-  if (channel.platform === "naver_blog") return fetchNaverBlogVisitorSnapshot(channel);
+  if (channel.platform === "naver_blog") {
+    return Promise.resolve(
+      buildFollowerSnapshot({
+        status: "skipped",
+        provider: "creator_self_report",
+        error: "Naver Blog visitor metrics require a creator self-report.",
+      }),
+    );
+  }
 
   return Promise.resolve(
     buildFollowerSnapshot({
@@ -15536,11 +15444,7 @@ const isMarketplaceFollowerSyncDue = (
   if (channel.follower_sync_status !== "synced") return true;
   if (!channel.follower_count_synced_at) return true;
   const syncedAt = Date.parse(channel.follower_count_synced_at);
-  const staleMs =
-    channel.platform === "naver_blog"
-      ? marketplaceNaverBlogVisitorSyncStaleMs
-      : marketplaceFollowerSyncStaleMs;
-  return !Number.isFinite(syncedAt) || nowMs - syncedAt >= staleMs;
+  return !Number.isFinite(syncedAt) || nowMs - syncedAt >= marketplaceFollowerSyncStaleMs;
 };
 
 const compareMarketplaceFollowerSyncQueue = (
@@ -15566,7 +15470,10 @@ const readMarketplaceFollowerSyncQueue = async (limit: number) => {
   );
 
   return queue
-    .filter(({ channel }) => isMarketplaceFollowerSyncDue(channel))
+    .filter(
+      ({ channel }) =>
+        channel.platform !== "naver_blog" && isMarketplaceFollowerSyncDue(channel),
+    )
     .sort(compareMarketplaceFollowerSyncQueue)
     .slice(0, limit);
 };
@@ -15668,7 +15575,6 @@ const runMarketplaceFollowerSyncInternal = async ({
       metadata: {
         max_channels: effectiveMaxChannels,
         stale_days: marketplaceFollowerSyncStaleMs / dayMs,
-        naver_blog_stale_days: marketplaceNaverBlogVisitorSyncStaleMs / dayMs,
       },
     },
   ]);
@@ -15722,7 +15628,6 @@ const runMarketplaceFollowerSyncInternal = async ({
           max_channels: effectiveMaxChannels,
           queued_channels: queue.length,
           stale_days: marketplaceFollowerSyncStaleMs / dayMs,
-          naver_blog_stale_days: marketplaceNaverBlogVisitorSyncStaleMs / dayMs,
         },
       },
       "Supabase marketplace follower sync run update",
@@ -18261,7 +18166,7 @@ const addPlatformInfoToMarketplaceProposals = async (
     influencerProfileIds.length > 0
       ? readSupabaseRows<SupabaseMarketplaceInfluencerChannelRow>(
           "marketplace_influencer_channels",
-          `?select=profile_id,platform,label,handle,url,followers_label,sort_order&profile_id=in.${postgrestInFilter(
+          `?select=profile_id,platform,label,handle,url,followers_label,performance_label,follower_count,follower_count_synced_at,follower_sync_source,follower_sync_metadata,sort_order&profile_id=in.${postgrestInFilter(
             influencerProfileIds,
           )}&order=sort_order.asc`,
           "marketplace proposal platform channels",
@@ -18277,12 +18182,30 @@ const addPlatformInfoToMarketplaceProposals = async (
   >();
   for (const channel of channelRows) {
     const channels = channelsByProfileId.get(channel.profile_id) ?? [];
+    const naverSelfReport = readNaverSelfReportedMarketplaceMetric(channel);
+    const isNaverBlog = channel.platform === "naver_blog";
+    const hasMisplacedNaverSelfReport =
+      hasMisplacedNaverSelfReportProvenance(channel);
+    const followersLabel = isNaverBlog
+      ? naverSelfReport?.followersLabel
+      : hasMisplacedNaverSelfReport
+        ? undefined
+        : channel.followers_label ?? undefined;
+    const performanceLabel = isNaverBlog
+      ? (naverSelfReport?.performanceLabel ?? "자가신고 미입력")
+      : hasMisplacedNaverSelfReport
+        ? undefined
+        : channel.performance_label ?? undefined;
     channels.push({
       platform: channel.platform,
       label: channel.label || platformLabels[channel.platform],
       handle: channel.handle,
       url: channel.url ?? undefined,
-      followersLabel: channel.followers_label ?? undefined,
+      followersLabel,
+      performanceLabel,
+      ...(naverSelfReport
+        ? { metricTrust: naverSelfReport.metricTrust }
+        : {}),
     });
     channelsByProfileId.set(channel.profile_id, channels);
   }
@@ -20641,6 +20564,14 @@ const insertVerificationRequest = async (record: VerificationRequestRecord) => {
     invalidateSupabaseVerificationRequestCache();
     invalidateAdvertiserDashboardCache();
     invalidateInfluencerDashboardCache();
+    if (
+      shouldInvalidateApprovedPlatformChannelCache(
+        insertedRecord,
+        isOperationalTestVerificationRequest(insertedRecord),
+      )
+    ) {
+      await clearPublicMarketplaceCache();
+    }
     await applyVerificationStatusSideEffects(insertedRecord);
     await enqueueVerificationOperationalAlert(insertedRecord);
     return insertedRecord;
@@ -20648,6 +20579,14 @@ const insertVerificationRequest = async (record: VerificationRequestRecord) => {
 
   const verificationRequests = await readVerificationRequests();
   await writeVerificationRequests([normalizedRecord, ...verificationRequests]);
+  if (
+    shouldInvalidateApprovedPlatformChannelCache(
+      normalizedRecord,
+      isOperationalTestVerificationRequest(normalizedRecord),
+    )
+  ) {
+    await clearPublicMarketplaceCache();
+  }
   await enqueueVerificationOperationalAlert(normalizedRecord);
   return normalizedRecord;
 };
@@ -20739,6 +20678,20 @@ const updateVerificationRequestReview = async ({
       invalidateAdvertiserDashboardCache();
       invalidateInfluencerDashboardCache();
       if (updatedRecord) {
+        if (
+          (status === "approved" &&
+            readVerifiedInstagramDmFollowerCount(
+              updatedRecord,
+              isOperationalTestVerificationRequest(updatedRecord),
+            ) !== undefined) ||
+          (existingRecord.status === "approved" &&
+            readVerifiedInstagramDmFollowerCount(
+              existingRecord,
+              isOperationalTestVerificationRequest(existingRecord),
+            ) !== undefined)
+        ) {
+          await clearPublicMarketplaceCache();
+        }
         await applyVerificationStatusSideEffects(updatedRecord);
       }
       return updatedRecord;
@@ -20763,6 +20716,18 @@ const updateVerificationRequestReview = async ({
     invalidateAdvertiserDashboardCache();
     invalidateInfluencerDashboardCache();
     if (updatedRecord) {
+      if (
+        shouldInvalidateApprovedPlatformChannelCache(
+          updatedRecord,
+          isOperationalTestVerificationRequest(updatedRecord),
+        ) ||
+        shouldInvalidateApprovedPlatformChannelCache(
+          existingRecord,
+          isOperationalTestVerificationRequest(existingRecord),
+        )
+      ) {
+        await clearPublicMarketplaceCache();
+      }
       await applyVerificationStatusSideEffects(updatedRecord);
     }
     return updatedRecord;
@@ -20777,6 +20742,19 @@ const updateVerificationRequestReview = async ({
   });
 
   await writeVerificationRequests(nextRequests);
+  if (
+    updatedRecord &&
+    (shouldInvalidateApprovedPlatformChannelCache(
+      updatedRecord,
+      isOperationalTestVerificationRequest(updatedRecord),
+    ) ||
+      shouldInvalidateApprovedPlatformChannelCache(
+        existingRecord,
+        isOperationalTestVerificationRequest(existingRecord),
+      ))
+  ) {
+    await clearPublicMarketplaceCache();
+  }
   return updatedRecord;
 };
 
@@ -20807,6 +20785,18 @@ const updateVerificationRequestAutomation = async (
     invalidateSupabaseVerificationRequestCache();
     invalidateAdvertiserDashboardCache();
     invalidateInfluencerDashboardCache();
+    if (
+      shouldInvalidateApprovedPlatformChannelCache(
+        savedRecord,
+        isOperationalTestVerificationRequest(savedRecord),
+      ) ||
+      shouldInvalidateApprovedPlatformChannelCache(
+        record,
+        isOperationalTestVerificationRequest(record),
+      )
+    ) {
+      await clearPublicMarketplaceCache();
+    }
     await applyVerificationStatusSideEffects(savedRecord);
     await enqueueVerificationOperationalAlert(savedRecord);
     return savedRecord;
@@ -20818,6 +20808,18 @@ const updateVerificationRequestAutomation = async (
       item.id === record.id ? updatedRecord : item,
     ),
   );
+  if (
+    shouldInvalidateApprovedPlatformChannelCache(
+      updatedRecord,
+      isOperationalTestVerificationRequest(updatedRecord),
+    ) ||
+    shouldInvalidateApprovedPlatformChannelCache(
+      record,
+      isOperationalTestVerificationRequest(record),
+    )
+  ) {
+    await clearPublicMarketplaceCache();
+  }
   await enqueueVerificationOperationalAlert(updatedRecord);
   return updatedRecord;
 };
@@ -20907,6 +20909,11 @@ const rerunVerificationAutomation = async (
       });
     const autoApprove =
       record.status === "pending" && shouldAutoApprovePlatformVerification(result);
+    const channelMetric = buildVerifiedPlatformChannelMetric({
+      platform: record.platform,
+      platformHandle: record.platform_handle,
+      automation: result,
+    });
     const existingOwnershipVerification =
       (existingSnapshot.ownership_verification as
         | Record<string, unknown>
@@ -20924,6 +20931,7 @@ const rerunVerificationAutomation = async (
           platform_account: result,
           ownership_challenge: ownershipCheck,
         },
+        ...(channelMetric ? { channel_metric: channelMetric } : {}),
       },
     };
     const updatedRecord = await updateVerificationRequestAutomation(record, {
@@ -21242,7 +21250,7 @@ const expireInstagramDmChallenges = async () => {
   }
 };
 
-const fetchInstagramDmSenderUsername = async (senderId: string) => {
+const fetchInstagramDmSenderProfile = async (senderId: string) => {
   const version = process.env.META_GRAPH_API_VERSION?.trim() || "v24.0";
   if (!metaInstagramAccessToken) {
     throw new Error("Instagram messaging access token is not configured");
@@ -21250,8 +21258,12 @@ const fetchInstagramDmSenderUsername = async (senderId: string) => {
   const url = new URL(
     `https://graph.instagram.com/${version}/${encodeURIComponent(senderId)}`,
   );
-  url.searchParams.set("fields", "id,username");
-  const result = await fetchJsonWithTimeout<{ username?: string; error?: unknown }>(
+  url.searchParams.set("fields", "id,username,follower_count");
+  const result = await fetchJsonWithTimeout<{
+    username?: string;
+    follower_count?: unknown;
+    error?: unknown;
+  }>(
     url.toString(),
     {
       headers: {
@@ -21266,7 +21278,12 @@ const fetchInstagramDmSenderUsername = async (senderId: string) => {
   if (!result.ok || !username) {
     throw new Error(`Instagram user profile lookup failed (${result.status})`);
   }
-  return username;
+  return {
+    username,
+    followerCount: normalizeInstagramFollowerCount(
+      result.payload.follower_count,
+    ),
+  };
 };
 
 const applyInstagramDmChallengeEvent = async (
@@ -21276,7 +21293,7 @@ const applyInstagramDmChallengeEvent = async (
     now: () => new Date(),
     hashCode: hashInstagramDmChallengeCode,
     readPendingByHash: readPendingInstagramDmChallengeByHash,
-    lookupSenderUsername: fetchInstagramDmSenderUsername,
+    lookupSenderProfile: fetchInstagramDmSenderProfile,
     markFailure: markInstagramDmChallengeFailure,
     isStillAuthoritative: async (record) =>
       !(await hasNewerInstagramRequestForSameHandle(record, {
@@ -21289,6 +21306,7 @@ const applyInstagramDmChallengeEvent = async (
       codeHash,
       event: verifiedEvent,
       requestedHandle,
+      followerCount,
       autoApprove,
     }) => {
       const senderIdHash = sha256Hex(verifiedEvent.senderId);
@@ -21303,6 +21321,13 @@ const applyInstagramDmChallengeEvent = async (
           sender_id_hash: senderIdHash,
           message_id_hash: messageIdHash,
           auto_approve_enabled: autoApprove,
+          ...(followerCount === undefined
+            ? {}
+            : {
+                follower_count: followerCount,
+                follower_count_checked_at: new Date().toISOString(),
+                follower_count_source: "instagram_user_profile_api",
+              }),
         },
       );
       if (useSupabase) {
@@ -21340,6 +21365,15 @@ const applyInstagramDmChallengeEvent = async (
         if (saved) {
           invalidateSupabaseVerificationRequestCache();
           invalidateInfluencerDashboardCache();
+          if (
+            autoApprove &&
+            readVerifiedInstagramDmFollowerCount(
+              saved,
+              isOperationalTestVerificationRequest(saved),
+            ) !== undefined
+          ) {
+            await clearPublicMarketplaceCache();
+          }
         }
         return saved;
       }
@@ -21464,6 +21498,7 @@ const sanitizeVerificationRequestForSummary = (
     platform,
     platform_handle,
     platform_url,
+    naver_blog_recent_4d_average_visitors,
     ownership_verification_method,
     ownership_check_status,
     ownership_checked_at,
@@ -21494,6 +21529,7 @@ const sanitizeVerificationRequestForSummary = (
     platform,
     platform_handle,
     platform_url,
+    naver_blog_recent_4d_average_visitors,
     ownership_verification_method,
     ownership_check_status,
     ownership_checked_at,
@@ -29016,6 +29052,16 @@ app.post("/api/verification/influencer", async (request, response, next) => {
     const platformAccessToken = normalizeOptionalText(
       request.body?.platform_access_token,
     );
+    const hasNaverBlogVisitorReport = Object.prototype.hasOwnProperty.call(
+      request.body ?? {},
+      "naver_blog_recent_4d_average_visitors",
+    );
+    const rawNaverBlogVisitorReport =
+      request.body?.naver_blog_recent_4d_average_visitors;
+    const naverBlogVisitorReport =
+      rawNaverBlogVisitorReport === "" || rawNaverBlogVisitorReport == null
+        ? undefined
+        : normalizeVerificationMetricCount(rawNaverBlogVisitorReport);
     const note = normalizeOptionalText(request.body?.note);
     const evidenceFile = parseEvidenceFile(request.body?.evidence_file);
     const evidenceError = evidenceFile
@@ -29028,6 +29074,34 @@ app.post("/api/verification/influencer", async (request, response, next) => {
     }
     if (!influencerPlatforms.has(platform)) {
       response.status(422).json({ error: "Valid platform is required" });
+      return;
+    }
+    if (hasNaverBlogVisitorReport && platform !== "naver_blog") {
+      response.status(422).json({
+        error: "Naver Blog visitor report is only available for Naver Blog",
+      });
+      return;
+    }
+    if (
+      platform === "naver_blog" &&
+      (!hasNaverBlogVisitorReport ||
+        rawNaverBlogVisitorReport === "" ||
+        rawNaverBlogVisitorReport == null)
+    ) {
+      response.status(422).json({
+        error: "Naver Blog visitor report is required",
+      });
+      return;
+    }
+    if (
+      platform === "naver_blog" &&
+      rawNaverBlogVisitorReport !== "" &&
+      rawNaverBlogVisitorReport != null &&
+      naverBlogVisitorReport === undefined
+    ) {
+      response.status(422).json({
+        error: "Naver Blog visitor report must be a non-negative safe integer",
+      });
       return;
     }
     if (!influencerVerificationMethods.has(ownershipMethod)) {
@@ -29045,6 +29119,41 @@ app.post("/api/verification/influencer", async (request, response, next) => {
     if (!isExpectedPlatformUrl(platform, submittedPlatformUrl)) {
       response.status(422).json({ error: "Profile URL does not match the selected platform" });
       return;
+    }
+    const normalizedSubmittedHandle = normalizeHandleForComparison(
+      submittedPlatformHandle,
+    );
+    if (
+      platform === "tiktok" &&
+      extractTikTokUsername(submittedPlatformUrl) !== normalizedSubmittedHandle
+    ) {
+      response.status(422).json({ error: "TikTok handle and profile URL must match" });
+      return;
+    }
+    if (
+      platform === "naver_blog" &&
+      extractNaverBlogId(submittedPlatformUrl) !==
+        extractNaverBlogId(submittedPlatformHandle)
+    ) {
+      response.status(422).json({ error: "Naver Blog id and profile URL must match" });
+      return;
+    }
+    if (platform === "youtube") {
+      const youtubeTarget = parseYoutubeChannelTarget(
+        submittedPlatformUrl,
+        submittedPlatformHandle,
+      );
+      if (
+        (youtubeTarget.type === "handle" &&
+          normalizeHandleForComparison(youtubeTarget.value) !==
+            normalizedSubmittedHandle) ||
+        (youtubeTarget.type === "id" &&
+          /^UC[a-zA-Z0-9_-]{20,}$/.test(submittedPlatformHandle) &&
+          youtubeTarget.value !== submittedPlatformHandle)
+      ) {
+        response.status(422).json({ error: "YouTube handle and channel URL must match" });
+        return;
+      }
     }
     if (
       isInstagramDmMethod &&
@@ -29152,6 +29261,20 @@ app.post("/api/verification/influencer", async (request, response, next) => {
       challengeCode: ownershipChallengeCode,
       platformAccessToken,
     });
+    const channelMetric = buildVerifiedPlatformChannelMetric({
+      platform,
+      platformHandle,
+      platformAccessTokenProvided: Boolean(platformAccessToken),
+      automation: platformAutomationCheck,
+    });
+    const selfReportedChannelMetric =
+      platform === "naver_blog" && naverBlogVisitorReport !== undefined
+        ? buildNaverBlogSelfReportedChannelMetric({
+            platformHandle,
+            value: naverBlogVisitorReport,
+            reportedAt: now,
+          })
+        : undefined;
     const ownershipCheck =
       platformAutomationCheck.ownership_check ??
       ({
@@ -29189,6 +29312,8 @@ app.post("/api/verification/influencer", async (request, response, next) => {
       platform: platform as InfluencerPlatform,
       platform_handle: platformHandle,
       platform_url: platformUrl,
+      naver_blog_recent_4d_average_visitors:
+        selfReportedChannelMetric?.value,
       ownership_verification_method: ownershipMethod,
       ownership_challenge_code: isInstagramDmMethod
         ? undefined
@@ -29203,6 +29328,9 @@ app.post("/api/verification/influencer", async (request, response, next) => {
       evidence_file_mime: evidenceFile?.type,
       evidence_file_size: evidenceFile?.size,
       evidence_snapshot_json: buildVerificationEvidenceSnapshot(requestId, storedEvidenceFile, {
+        ...(selfReportedChannelMetric
+          ? { self_reported_channel_metric: selfReportedChannelMetric }
+          : {}),
         ownership_verification: {
           contract_id: contractAccess.contractId,
           platform,
@@ -29227,6 +29355,7 @@ app.post("/api/verification/influencer", async (request, response, next) => {
             platform_account: platformAutomationCheck,
             ownership_challenge: ownershipCheck,
           },
+          ...(channelMetric ? { channel_metric: channelMetric } : {}),
         },
       }),
       note,

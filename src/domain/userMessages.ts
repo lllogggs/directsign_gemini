@@ -88,6 +88,18 @@ const exactApiErrorMessages: Record<string, string> = {
     "선택한 플랫폼과 프로필 URL이 일치하지 않습니다.",
   "Proof URL does not match the selected platform":
     "선택한 플랫폼과 인증 확인 URL이 일치하지 않습니다.",
+  "TikTok handle and profile URL must match":
+    "TikTok 계정명과 프로필 URL의 계정을 같게 입력해 주세요.",
+  "Naver Blog id and profile URL must match":
+    "네이버 블로그 ID와 프로필 URL의 블로그를 같게 입력해 주세요.",
+  "Naver Blog visitor report is only available for Naver Blog":
+    "최근 4일 평균 방문자 수는 네이버 블로그 인증에서만 입력할 수 있습니다.",
+  "Naver Blog visitor report must be a non-negative safe integer":
+    "최근 4일 평균 방문자 수를 0 이상의 정수로 입력해 주세요.",
+  "Naver Blog visitor report is required":
+    "최근 4일 평균 일일 방문자 수를 입력해 주세요.",
+  "YouTube handle and channel URL must match":
+    "YouTube 계정명과 채널 URL의 채널을 같게 입력해 주세요.",
   "Screenshot evidence is required for screenshot review":
     "스크린샷 검수를 선택한 경우 증빙 파일을 첨부해 주세요.",
   "Verification request not found": "인증 요청을 찾을 수 없습니다.",

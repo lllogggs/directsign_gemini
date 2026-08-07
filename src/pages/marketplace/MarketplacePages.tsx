@@ -1973,7 +1973,13 @@ export function PublicInfluencerProfilePage() {
                           href={platform.url}
                           target="_blank"
                           rel="noreferrer"
-                          aria-label={`${getPlatformDisplayName(platform.platform)} ${platform.handle} 계정 보기`}
+                          aria-label={[
+                            getPlatformDisplayName(platform.platform),
+                            platform.handle,
+                            platform.followersLabel,
+                            platform.performanceLabel,
+                            "계정 보기",
+                          ].filter(Boolean).join(" ")}
                           title={`${getPlatformDisplayName(platform.platform)} ${platform.handle}`}
                           className={platformLinkClassName}
                         >
@@ -1985,9 +1991,14 @@ export function PublicInfluencerProfilePage() {
                               </p>
                             </div>
                           </div>
-                          <p className={platformFollowerClassName}>
-                            {formatDiscoveryAudienceMetric(platform.followersLabel)}
-                          </p>
+                          <div className="flex min-w-0 items-center gap-1.5">
+                            <p className={platformFollowerClassName}>
+                              {formatDiscoveryAudienceMetric(platform.followersLabel)}
+                            </p>
+                            <SelfReportedMetricBadge
+                              visible={platform.metricTrust === "self_reported"}
+                            />
+                          </div>
                           <span
                             aria-hidden="true"
                             className="inline-flex h-8 w-8 items-center justify-center rounded-[10px] text-neutral-400 transition group-hover:bg-blue-50 group-hover:text-blue-700 lg:absolute lg:right-0 lg:top-0 lg:h-7 lg:w-7"
@@ -2767,16 +2778,21 @@ function InfluencerDiscoveryTableRow({
           )}
         </div>
       </div>
-      <p
-        className="truncate text-[12px] font-extrabold text-neutral-950"
+      <div
+        className="flex min-w-0 items-center gap-1.5"
         title={primaryPlatform?.performanceLabel}
       >
-        {primaryPlatform
-          ? audienceLabel
-          : isPrivateRegisteredProfile
-            ? "플랫폼 인증 전"
-            : audienceLabel}
-      </p>
+        <p className="truncate text-[12px] font-extrabold text-neutral-950">
+          {primaryPlatform
+            ? audienceLabel
+            : isPrivateRegisteredProfile
+              ? "플랫폼 인증 전"
+              : audienceLabel}
+        </p>
+        <SelfReportedMetricBadge
+          visible={primaryPlatform?.metricTrust === "self_reported"}
+        />
+      </div>
 
       <div className="flex justify-end">
         {canPropose ? (
@@ -2879,6 +2895,7 @@ function InfluencerDiscoveryCompactRow({
                 label={platformLabels[primaryPlatform.platform]}
                 value={primaryPlatform.followersLabel}
                 description={primaryPlatform.performanceLabel}
+                metricTrust={primaryPlatform.metricTrust}
               />
             </div>
           ) : isPrivateRegisteredProfile ? (
@@ -3013,6 +3030,7 @@ function InfluencerPreviewCard({
             label={platformLabels[platform.platform]}
             value={platform.followersLabel}
             description={platform.performanceLabel}
+            metricTrust={platform.metricTrust}
           />
         ))}
         {profile.platforms.length === 0 && isPrivateRegisteredProfile ? (
@@ -4727,12 +4745,14 @@ function PlatformPill({
   label,
   value,
   description,
+  metricTrust,
 }: {
   key?: string;
   platform: InfluencerPlatform;
   label: string;
   value?: string;
   description?: string;
+  metricTrust?: "self_reported";
 }) {
   const hasMetric = Boolean(value);
   const metricValue = hasMetric ? formatDiscoveryAudienceMetric(value) : "";
@@ -4752,6 +4772,16 @@ function PlatformPill({
       {metricValue ? (
         <span className="truncate text-neutral-950">{metricValue}</span>
       ) : null}
+      <SelfReportedMetricBadge visible={metricTrust === "self_reported"} />
+    </span>
+  );
+}
+
+function SelfReportedMetricBadge({ visible }: { visible: boolean }) {
+  if (!visible) return null;
+  return (
+    <span className="inline-flex h-5 shrink-0 items-center rounded-full bg-neutral-100 px-1.5 text-[10px] font-bold text-neutral-600">
+      자가신고
     </span>
   );
 }

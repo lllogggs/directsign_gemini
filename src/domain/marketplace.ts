@@ -241,6 +241,10 @@ export type MarketplaceInfluencerProfile = {
     url: string;
     followersLabel: string;
     performanceLabel: string;
+    metricType?: "average_daily_visitors_4d";
+    metricSource?: "creator_self_report";
+    metricTrust?: "self_reported";
+    metricPeriodDays?: 4;
   }>;
   collaborationTypes: CampaignProposalType[];
   startingPriceLabel: string;
@@ -500,8 +504,8 @@ export const marketplaceInfluencers: MarketplaceInfluencerProfile[] = [
         label: "블로그",
         handle: "minseo-home",
         url: "https://blog.naver.com/minseo-home",
-        followersLabel: "1.2만",
-        performanceLabel: "검색 유입 강점",
+        followersLabel: "",
+        performanceLabel: "자가신고 미입력",
       },
     ],
     collaborationTypes: ["product_seeding", "visit_review", "sponsored_post"],
@@ -698,8 +702,8 @@ export const marketplaceInfluencers: MarketplaceInfluencerProfile[] = [
         label: "블로그",
         handle: "rooday",
         url: "https://blog.naver.com/rooday",
-        followersLabel: "1.8만",
-        performanceLabel: "검색 유입",
+        followersLabel: "",
+        performanceLabel: "자가신고 미입력",
       },
     ],
     collaborationTypes: ["visit_review", "product_seeding", "group_buy"],
@@ -748,8 +752,8 @@ export const marketplaceInfluencers: MarketplaceInfluencerProfile[] = [
         label: "블로그",
         handle: "today-taste",
         url: "https://blog.naver.com/today-taste",
-        followersLabel: "9천",
-        performanceLabel: "레시피 검색 유입",
+        followersLabel: "",
+        performanceLabel: "자가신고 미입력",
       },
     ],
     collaborationTypes: ["group_buy", "product_seeding", "sponsored_post"],
@@ -1273,9 +1277,18 @@ export function getInfluencerProfilePathByDisplayName(displayName: string | unde
 }
 
 export function getChannelAudienceSortValue(
-  platforms: Array<{ followersLabel?: string }> = [],
+  platforms: Array<{
+    platform?: InfluencerPlatform;
+    followersLabel?: string;
+    metricTrust?: "self_reported";
+  }> = [],
 ) {
   const values = platforms
+    .filter(
+      (platform) =>
+        platform.platform !== "naver_blog" &&
+        platform.metricTrust !== "self_reported",
+    )
     .map((platform) => parseAudienceCountLabel(platform.followersLabel))
     .filter((value) => Number.isFinite(value));
 
