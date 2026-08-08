@@ -2936,6 +2936,37 @@ const readDefaultOrganizationForProfile = async (profileId: string) => {
   return request;
 };
 
+const hasActiveAdvertiserOrganizationMembership = async ({
+  profileId,
+  organizationId,
+}: {
+  profileId: string;
+  organizationId: string;
+}) => {
+  if (!useSupabase) return true;
+
+  const [memberships, organizations] = await Promise.all([
+    readSupabaseRows<{ organization_id: string }>(
+      "organization_members",
+      `?select=organization_id&organization_id=eq.${encodeURIComponent(
+        organizationId,
+      )}&profile_id=eq.${encodeURIComponent(
+        profileId,
+      )}&role=in.(owner,admin,marketer)&limit=1`,
+      "active advertiser organization membership",
+    ),
+    readSupabaseRows<{ id: string }>(
+      "organizations",
+      `?select=id&id=eq.${encodeURIComponent(
+        organizationId,
+      )}&organization_type=eq.advertiser&deleted_at=is.null&limit=1`,
+      "active advertiser organization",
+    ),
+  ]);
+
+  return memberships.length > 0 && organizations.length > 0;
+};
+
 const ensureDefaultOrganizationForAdvertiserProfile = async (
   profile: SupabaseProfileRow,
 ) => {
@@ -29602,6 +29633,17 @@ app.get("/api/marketplace/influencers", async (request, response, next) => {
       });
     } catch (error) {
       if (error instanceof AuthenticatedInfluencerDirectoryAccessError) {
+        const hasOrganizationAccess =
+          await hasActiveAdvertiserOrganizationMembership({
+            profileId: advertiserAuth.profile.id,
+            organizationId: organization.id,
+          });
+        if (!hasOrganizationAccess) {
+          response.status(403).json({
+            error: "활성 광고주 조직 권한이 필요합니다.",
+          });
+          return;
+        }
         result = await readIndexedMarketplaceInfluencerPage({
           page,
           sort: sort ?? "audience_desc",

@@ -2098,11 +2098,11 @@ describe("yeollock.me security regressions", () => {
     assert.match(discoveryRoute, /accessToken: advertiserAuth\.accessToken/);
     assert.match(
       discoveryRoute,
-      /AuthenticatedInfluencerDirectoryAccessError[\s\S]+readIndexedMarketplaceInfluencerPage\(\{[\s\S]+organizationId: organization\.id/,
+      /AuthenticatedInfluencerDirectoryAccessError[\s\S]+hasActiveAdvertiserOrganizationMembership\(\{[\s\S]+profileId: advertiserAuth\.profile\.id[\s\S]+organizationId: organization\.id[\s\S]+readIndexedMarketplaceInfluencerPage\(\{[\s\S]+organizationId: organization\.id/,
     );
     assert.doesNotMatch(
       discoveryRoute,
-      /AuthenticatedInfluencerDirectoryAccessError[\s\S]+response\.status\(403\)/,
+      /error: "인플루언서 탐색 권한이 없습니다\."/,
     );
     assert.match(
       server,
@@ -2111,6 +2111,10 @@ describe("yeollock.me security regressions", () => {
     assert.match(
       server,
       /const confirmedAt = auth\.user\.email_confirmed_at \?\? auth\.user\.confirmed_at;[\s\S]+await syncProfileEmailVerifiedAt\(auth\.user\);[\s\S]+email_verified_at: confirmedAt/,
+    );
+    assert.match(
+      server,
+      /const hasActiveAdvertiserOrganizationMembership =[\s\S]+role=in\.\(owner,admin,marketer\)[\s\S]+organization_type=eq\.advertiser&deleted_at=is\.null[\s\S]+memberships\.length > 0 && organizations\.length > 0/,
     );
     assert.match(discoveryRoute, /Cache-Control", "private, no-store/);
     assert.doesNotMatch(discoveryRoute, /sendPublicMarketplaceJson/);
