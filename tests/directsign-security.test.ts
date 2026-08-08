@@ -28,7 +28,10 @@ import {
   normalizeNaverBlogPostUrl,
   normalizeNaverBlogRecentPosts,
 } from "../src/domain/naverBlogPosts.js";
-import { createNaverSearchBudget } from "../scripts/lib/naver-search-budget.mjs";
+import {
+  createNaverSearchBudget,
+  prepareNaverSearchReservationForFetch,
+} from "../scripts/lib/naver-search-budget.mjs";
 import {
   buildDiscoveredPublicInfluencerDirectoryRow,
   parsePublicAudienceCountLabel,
@@ -786,6 +789,12 @@ describe("yeollock.me security regressions", () => {
     const verifiedPlatformMetricMigration = read(
       "supabase/migrations/20260807160000_apply_verified_platform_channel_metrics.sql",
     );
+    const platformVerificationRetention = read(
+      "server/platform-verification-retention.ts",
+    );
+    const providerEvidenceMinimizationMigration = read(
+      "supabase/migrations/20260808170000_minimize_platform_verification_provider_evidence.sql",
+    );
     const instagramDmStart = server.indexOf(
       "const fetchInstagramDmSenderProfile",
     );
@@ -860,6 +869,10 @@ describe("yeollock.me security regressions", () => {
     assert.match(server, /marketplace_follower_sync_events/);
     assert.match(server, /follower_count_synced_at/);
     assert.match(server, /clearPublicMarketplaceCache\(\)/);
+    assert.match(
+      server,
+      /channel\.platform !== "naver_blog" &&[\s\S]+?channel\.platform !== "youtube" &&[\s\S]+?isMarketplaceFollowerSyncDue\(channel\)/,
+    );
     assert.doesNotMatch(server, /NVisitorgp4Ajax\.nhn/);
     assert.doesNotMatch(server, /naver_blog_public_visitor_counter/);
     assert.doesNotMatch(server, /stored_4_day_average/);
@@ -995,20 +1008,49 @@ describe("yeollock.me security regressions", () => {
       /jsonb_object_agg\([\s\S]+per_platform\.follower_count[\s\S]+select max\(follower_count\) from per_platform/,
     );
     assert.doesNotMatch(instagramDmFollowerMigration, /grant[\s\S]+to anon;/);
+    assert.doesNotMatch(
+      server,
+      /const channelMetric =[\s\S]+?platform === "youtube"[\s\S]+?\? undefined[\s\S]+?: buildVerifiedPlatformChannelMetric\([\s\S]+?platformAccessTokenProvided: Boolean\(platformAccessToken\)/,
+    );
     assert.match(
       server,
-      /const channelMetric = buildVerifiedPlatformChannelMetric\([\s\S]+platformAccessTokenProvided: Boolean\(platformAccessToken\)/,
-    );
-    assert.match(server, /channel_api_succeeded: channelResponse\.ok/);
-    assert.match(server, /oauth_token_source: submittedUserAccessToken/);
-    assert.match(server, /user_info_api_succeeded: userInfoApiSucceeded/);
-    assert.match(
-      youtubeAutomationSource,
-      /videoProofMatched && videoTitleMatched/,
+      /includeStatistics = false[\s\S]+?url\.searchParams\.set\("part", includeStatistics \? "snippet,statistics" : "snippet"\)/,
     );
     assert.match(
       youtubeAutomationSource,
-      /videoProofMatched && videoDescriptionMatched/,
+      /fetchYoutubeChannelForTarget\(apiKey, target\)/,
+    );
+    assert.doesNotMatch(
+      youtubeAutomationSource,
+      /fetchYoutubeChannelForTarget\(apiKey, target,[^)]*true\)/,
+    );
+    assert.match(
+      server,
+      /fetchYoutubeChannelForTarget\(apiKey, target, 4500, true\)/,
+    );
+    assert.match(
+      platformVerificationRetention,
+      /decision_source: "transient_provider_check"[\s\S]+?provider_response_retained: false/,
+    );
+    for (const forbiddenStoredField of [
+      "raw_response",
+      "result_hash",
+      "http_status",
+      "profile",
+      "channel_metric",
+    ]) {
+      assert.doesNotMatch(
+        platformVerificationRetention,
+        new RegExp(`\\b${forbiddenStoredField}\\b`),
+      );
+    }
+    assert.match(
+      youtubeAutomationSource,
+      /const videoProofMatched =[\s\S]+?videoChannelMatches &&[\s\S]+?\(videoTitleMatched \|\| videoDescriptionMatched\)/,
+    );
+    assert.match(
+      youtubeAutomationSource,
+      /const matched =[\s\S]+?channelDescriptionMatched \|\| videoProofMatched \|\| publicProofMatched/,
     );
     assert.doesNotMatch(
       naverAutomationSource,
@@ -1077,32 +1119,37 @@ describe("yeollock.me security regressions", () => {
     );
     assert.match(
       verifiedPlatformMetricMigration,
-      /new\.platform::text in \('youtube', 'tiktok', 'naver_blog'\)[\s\S]+directsign_apply_approved_platform_channel_metric/,
-    );
-    assert.match(
-      verifiedPlatformMetricMigration,
       /evidence_snapshot_json[\s\S]+on public\.verification_requests/,
     );
     assert.doesNotMatch(verifiedPlatformMetricMigration, /NVisitorgp4Ajax/);
     assert.doesNotMatch(verifiedPlatformMetricMigration, /grant[\s\S]+to anon;/);
+    assert.match(
+      providerEvidenceMinimizationMigration,
+      /v_ownership := jsonb_strip_nulls\(jsonb_build_object\([\s\S]+?'automation', jsonb_build_object\([\s\S]+?'platform_account', v_decision[\s\S]+?'ownership_challenge', v_check/,
+    );
+    assert.match(
+      providerEvidenceMinimizationMigration,
+      /follower_count = null[\s\S]+?follower_sync_source = null[\s\S]+?follower_sync_metadata = '\{\}'::jsonb[\s\S]+?channel\.platform::text in \('youtube', 'naver_blog'\)/,
+    );
+    assert.match(
+      providerEvidenceMinimizationMigration,
+      /delete from public\.marketplace_follower_sync_events[\s\S]+?event\.platform::text in \('youtube', 'naver_blog'\)/,
+    );
+    assert.match(
+      providerEvidenceMinimizationMigration,
+      /verification_requests_minimized_provider_evidence[\s\S]+?evidence_snapshot_json\s*=\s*directsign_private\.directsign_minimize_platform_verification_evidence/,
+    );
   });
 
-  it("keeps required Naver Blog visitor metrics self-reported, disclosed, approved-only, and out of audience sorting", () => {
+  it("keeps Naver ownership verification free of new visitor-metric collection", () => {
     const packageJson = JSON.parse(read("package.json")) as {
       scripts?: Record<string, string>;
     };
-    const agents = read("AGENTS.md");
     const server = read("server/index.ts");
     const runtimeScripts = readRuntimeScriptSources(join(root, "scripts"));
     const influencerVerification = read(
       "src/pages/influencer/InfluencerVerification.tsx",
     );
-    const verificationDomain = read("src/domain/verification.ts");
-    const marketplaceDomain = read("src/domain/marketplace.ts");
-    const marketplacePages = read("src/pages/marketplace/MarketplacePages.tsx");
-    const advertiserDashboard = read("src/pages/marketing/Dashboard.tsx");
-    const userMessages = read("src/domain/userMessages.ts");
-    const metricBuilder = read("server/platform-verification-metrics.ts");
     const approvalMigration = read(
       "supabase/migrations/20260807160000_apply_verified_platform_channel_metrics.sql",
     );
@@ -1130,84 +1177,35 @@ describe("yeollock.me security regressions", () => {
     assert.doesNotMatch(server, forbiddenRuntimeCollector);
     assert.doesNotMatch(runtimeScripts, forbiddenRuntimeCollector);
 
-    assert.match(
+    assert.doesNotMatch(
       influencerVerification,
-      /naver_blog_recent_4d_average_visitors: string/,
+      /naver_blog_recent_4d_average_visitors|최근 4일 평균 일일 방문자 수|parseNaverBlogVisitorAverageInput/,
     );
-    assert.match(
-      influencerVerification,
-      /label="최근 4일 평균 일일 방문자 수"/,
-    );
-    assert.doesNotMatch(influencerVerification, /방문자 수 \(선택\)/);
-    assert.match(influencerVerification, /inputMode="numeric"/);
-    assert.match(
-      influencerVerification,
-      /label="최근 4일 평균 일일 방문자 수"[\s\S]{0,500}\brequired\b/,
-    );
-    assert.match(
-      influencerVerification,
-      /helper="오늘을 제외한 최근 4일 평균을 입력해 주세요\. 탐색에는 자가신고로 표시됩니다\."/,
-    );
-    assert.match(
-      influencerVerification,
-      /parseNaverBlogVisitorAverageInput[\s\S]+Number\.isSafeInteger\(parsed\)/,
-    );
-    assert.match(
-      influencerVerification,
-      /platform === "naver_blog" &&[\s\S]+parsedNaverBlogVisitorAverage\.value === undefined[\s\S]+setNaverBlogVisitorError\("최근 4일 평균 일일 방문자 수를 입력해 주세요\."\)/,
-    );
-    assert.match(
-      influencerVerification,
-      /platform === "naver_blog"[\s\S]+naver_blog_recent_4d_average_visitors:[\s\S]+parsedNaverBlogVisitorAverage\.value/,
-    );
-    assert.match(
-      influencerVerification,
-      /const updatePlatform[\s\S]+naver_blog_recent_4d_average_visitors: ""[\s\S]+setFile\(null\)/,
-    );
-    assert.match(
-      verificationDomain,
-      /naver_blog_recent_4d_average_visitors\?: number/,
-    );
-
-    assert.match(
+    assert.doesNotMatch(
       server,
-      /hasOwnProperty\.call\([\s\S]+"naver_blog_recent_4d_average_visitors"/,
+      /naver_blog_recent_4d_average_visitors|hasNaverBlogVisitorReport|Naver Blog visitor report|buildNaverBlogSelfReportedChannelMetric|selfReportedChannelMetric/,
     );
     assert.match(
       server,
-      /hasNaverBlogVisitorReport && platform !== "naver_blog"/,
+      /ownership_challenge_code: isInstagramDmMethod[\s\S]+ownershipChallengeCode/,
     );
-    assert.match(server, /Naver Blog visitor report is required/);
     assert.match(
       server,
-      /Naver Blog visitor report must be a non-negative safe integer/,
+      /automation: \{[\s\S]+platform_account: retainedAutomationDecision,[\s\S]+ownership_challenge: retainedOwnershipCheck/,
     );
-    assert.match(server, /buildNaverBlogSelfReportedChannelMetric/);
-    assert.match(
-      server,
-      /self_reported_channel_metric: selfReportedChannelMetric/,
+    assert.doesNotMatch(
+      server.slice(server.indexOf('app.post("/api/verification/influencer"')),
+      /self_reported_channel_metric|channel_metric/,
     );
-    assert.match(
-      userMessages,
-      /Naver Blog visitor report is only available for Naver Blog[\s\S]+네이버 블로그 인증에서만 입력/,
+    const registeredDirectoryParser = server.slice(
+      server.indexOf("const parseMarketplaceRegisteredInfluencerDirectoryItem"),
+      server.indexOf("const parseAuthenticatedMarketplaceInfluencerDirectoryPayload"),
     );
-    assert.match(
-      userMessages,
-      /Naver Blog visitor report is required[\s\S]+최근 4일 평균 일일 방문자 수를 입력/,
+    assert.match(registeredDirectoryParser, /platform !== "naver_blog"/);
+    assert.doesNotMatch(
+      registeredDirectoryParser,
+      /average_daily_visitors_4d|creator_self_report|self_reported|metricPeriodDays|metricTrust/,
     );
-    assert.match(
-      userMessages,
-      /Naver Blog visitor report must be a non-negative safe integer[\s\S]+0 이상의 정수/,
-    );
-    assert.match(
-      metricBuilder,
-      /metric: "average_daily_visitors_4d"[\s\S]+period_days: 4[\s\S]+source: "creator_self_report"[\s\S]+trust: "self_reported"/,
-    );
-    assert.match(
-      metricBuilder,
-      /reported_at: normalizedReportedAt[\s\S]+reported_handle: reportedHandle/,
-    );
-
     assert.match(
       approvalMigration,
       /add column if not exists naver_blog_recent_4d_average_visitors bigint/,
@@ -1239,7 +1237,7 @@ describe("yeollock.me security regressions", () => {
     );
     assert.match(
       approvalMigration,
-      /new\.platform::text in \('youtube', 'tiktok', 'naver_blog'\)[\s\S]+directsign_apply_approved_platform_channel_metric/,
+      /new\.platform::text in \([^)]*'naver_blog'[^)]*\)[\s\S]+directsign_apply_approved_platform_channel_metric/,
     );
     assert.doesNotMatch(approvalMigration, /NVisitorgp4Ajax/);
     assert.doesNotMatch(approvalMigration, /grant[\s\S]+to anon;/);
@@ -1336,88 +1334,6 @@ describe("yeollock.me security regressions", () => {
     );
     assert.doesNotMatch(enforcementMigration, /grant[\s\S]+to anon;/);
 
-    assert.match(
-      marketplaceDomain,
-      /metricType\?: "average_daily_visitors_4d"[\s\S]+metricSource\?: "creator_self_report"[\s\S]+metricTrust\?: "self_reported"/,
-    );
-    assert.match(
-      marketplaceDomain,
-      /platform\.platform !== "naver_blog"[\s\S]+platform\.metricTrust !== "self_reported"/,
-    );
-    const bundledNaverFixtureCount =
-      marketplaceDomain.match(/platform:\s*"naver_blog"/g)?.length ?? 0;
-    const channelOnlyNaverFixtureCount =
-      marketplaceDomain.match(
-        /platform:\s*"naver_blog"[\s\S]{0,320}?followersLabel:\s*""[\s\S]{0,120}?performanceLabel:\s*"자가신고 미입력"/g,
-      )?.length ?? 0;
-    assert.ok(bundledNaverFixtureCount > 0);
-    assert.equal(channelOnlyNaverFixtureCount, bundledNaverFixtureCount);
-    assert.match(marketplacePages, /function SelfReportedMetricBadge/);
-    assert.match(marketplacePages, />\s*자가신고\s*</);
-    assert.match(
-      advertiserDashboard,
-      /getCampaignApplicantPerformanceLabel[\s\S]+\.filter\(\(platform\) => platform\.metricTrust !== "self_reported"\)/,
-    );
-    assert.match(advertiserDashboard, /"채널 지표"/);
-    assert.doesNotMatch(advertiserDashboard, /"구독자\/팔로워수"/);
-    assert.match(
-      server,
-      /readNaverSelfReportedMarketplaceMetric[\s\S]+normalizeVerificationMetricCount\(channel\.follower_count\)[\s\S]+metadata\?\.provider !== "creator_self_report"[\s\S]+reportedHandle !== channelHandle[\s\S]+syncedAtTime !== checkedAtTime/,
-    );
-    assert.match(
-      server,
-      /hasMisplacedNaverSelfReportProvenance[\s\S]+channel\.platform === "naver_blog"[\s\S]+channel\.follower_sync_source === "creator_self_report"[\s\S]+metadata\?\.metric === "average_daily_visitors_4d"/,
-    );
-    assert.match(
-      server,
-      /const followersLabel = isNaverBlog[\s\S]+naverSelfReport\?\.followersLabel \?\? "계정 연동"/,
-    );
-    assert.match(
-      server,
-      /select=profile_id,platform,label,handle,url,followers_label,performance_label,follower_count,follower_count_synced_at,follower_sync_source/,
-    );
-    assert.match(
-      server,
-      /metricTrust === "self_reported"[\s\S]+`일평균 \$\{channel\.followerCount\.toLocaleString\("ko-KR"\)\}명`/,
-    );
-    assert.match(
-      server,
-      /hasMisplacedNaverSelfReport[\s\S]+!hasMisplacedNaverSelfReport[\s\S]+platform !== "naver_blog" \|\| isNaverSelfReport/,
-    );
-    assert.match(
-      server,
-      /const maxAudienceCount = verifiedChannels\.reduce[\s\S]+channel\.platform === "naver_blog"/,
-    );
-    const reviewUpdateStart = server.indexOf(
-      "const updateVerificationRequestReview = async",
-    );
-    const automationUpdateStart = server.indexOf(
-      "const updateVerificationRequestAutomation = async",
-    );
-    const reviewUpdateSource = server.slice(
-      reviewUpdateStart,
-      automationUpdateStart,
-    );
-    const automationUpdateSource = server.slice(
-      automationUpdateStart,
-      server.indexOf("const rerunVerificationAutomation", automationUpdateStart),
-    );
-    assert.match(
-      reviewUpdateSource,
-      /shouldInvalidateApprovedPlatformChannelCache\([\s\S]+updatedRecord[\s\S]+shouldInvalidateApprovedPlatformChannelCache\([\s\S]+existingRecord/,
-    );
-    assert.match(
-      automationUpdateSource,
-      /shouldInvalidateApprovedPlatformChannelCache\([\s\S]+savedRecord[\s\S]+shouldInvalidateApprovedPlatformChannelCache\([\s\S]+record/,
-    );
-    assert.match(
-      agents,
-      /Naver Blog visitor metrics must never use `NVisitorgp4Ajax`[\s\S]+must enter[\s\S]+one visible `자가신고` disclosure/,
-    );
-    assert.match(
-      agents,
-      /Self-reported Naver daily visitors must not enter subscriber\/follower `audience_counts`, `max_audience_count`, or global channel-size sorting/,
-    );
   });
 
   it("stages influencer collection in local XLSX and uploads changed rows at most every 12 hours", () => {
@@ -1599,17 +1515,17 @@ describe("yeollock.me security regressions", () => {
     assert.match(marketplace, /rel="noreferrer"/);
   });
 
-  it("caps every Naver search path in one KST-daily 80 percent ledger", async () => {
+  it("caps discovery scripts locally and verification in a service-only Supabase ledger", async () => {
     const directory = mkdtempSync(join(tmpdir(), "yeollock-naver-budget-"));
     const statePath = join(directory, "usage.json");
     try {
       const budget = createNaverSearchBudget({
         statePath,
-        dailyLimit: 10,
-        budgetRatio: 0.8,
+        dailyLimit: 8,
+        budgetRatio: 0.75,
         now: () => new Date("2026-07-14T12:00:00+09:00"),
       });
-      for (let index = 0; index < 8; index += 1) {
+      for (let index = 0; index < 6; index += 1) {
         const result = await budget.reserveRequest(
           index % 2 === 0 ? "/v1/search/blog.json" : "/v1/search/webkr.json",
         );
@@ -1618,22 +1534,92 @@ describe("yeollock.me security regressions", () => {
       const exhausted = await budget.reserveRequest("/v1/search/blog.json");
       assert.equal(exhausted.allowed, false);
       assert.equal(exhausted.reason, "budget_exhausted");
-      assert.equal(exhausted.cap, 8);
-      assert.equal(exhausted.used, 8);
+      assert.equal(exhausted.cap, 6);
+      assert.equal(exhausted.used, 6);
       assert.equal(exhausted.remaining, 0);
+      assert.equal(exhausted.budgetRatio + 0.05, 0.8);
+      assert.equal(exhausted.notAfter, "2026-07-14T15:00:00.000Z");
+
+      const nearMidnight = await prepareNaverSearchReservationForFetch({
+        reservation: {
+          allowed: true,
+          dateKst: "2026-07-14",
+          notAfter: "2026-07-14T15:00:00.000Z",
+          cap: 18_750,
+          used: 1,
+          remaining: 18_749,
+          reserved: 1,
+        },
+        reserve: async () => {
+          throw new Error("same-day guard must not reserve another slot");
+        },
+        now: new Date("2026-07-14T14:59:55.000Z"),
+        guardMs: 10_000,
+      });
+      assert.deepEqual(nearMidnight, {
+        allowed: false,
+        reason: "midnight_guard",
+      });
+
+      let rolloverReservations = 0;
+      const rolledOver = await prepareNaverSearchReservationForFetch({
+        reservation: {
+          allowed: true,
+          dateKst: "2026-07-14",
+          notAfter: "2026-07-14T15:00:00.000Z",
+          cap: 18_750,
+          used: 2,
+          remaining: 18_748,
+          reserved: 1,
+        },
+        reserve: async () => {
+          rolloverReservations += 1;
+          return {
+            allowed: true,
+            dateKst: "2026-07-15",
+            notAfter: "2026-07-15T15:00:00.000Z",
+            cap: 18_750,
+            used: 1,
+            remaining: 18_749,
+            reserved: 1,
+          };
+        },
+        now: new Date("2026-07-14T15:00:01.000Z"),
+      });
+      assert.equal(rolledOver.allowed, true);
+      assert.equal(rolloverReservations, 1);
 
       writeFileSync(statePath, "{not-json", "utf8");
       const corrupt = await budget.snapshot();
       assert.equal(corrupt.allowed, false);
       assert.equal(corrupt.reason, "corrupt_state");
-      assert.equal(corrupt.used, 8);
+      assert.equal(corrupt.used, 6);
 
       const collector = read("scripts/discover-korean-influencers.mjs");
       const curator = read("scripts/curate-influencer-marketplace.mjs");
       const server = read("server/index.ts");
       const envExample = read(".env.example");
+      const quotaMigration = read(
+        "supabase/migrations/20260808170000_minimize_platform_verification_provider_evidence.sql",
+      );
       assert.match(collector, /reserveNaverSearchRequest/);
       assert.match(curator, /reserveNaverSearchRequest/);
+      assert.match(
+        collector,
+        /prepareNaverSearchReservationForFetch\([\s\S]+?reserve: \(\) => reserveNaverSearchRequest\(endpoint\)[\s\S]+?return fetchJson/,
+      );
+      assert.match(
+        curator,
+        /prepareNaverSearchReservationForFetch\([\s\S]+?reserve: \(\) => reserveNaverSearchRequest\("\/v1\/search\/webkr\.json"\)[\s\S]+?const response = await fetch/,
+      );
+      assert.doesNotMatch(
+        server,
+        /import \{ reserveNaverSearchRequest \} from "\.\.\/scripts\/lib\/naver-search-budget\.mjs"/,
+      );
+      assert.match(
+        server,
+        /const reserveNaverSearchVerificationRequest = \(\) =>[\s\S]+?callSupabaseRpc<[\s\S]+?"reserve_naver_search_verification_request"[\s\S]+?p_endpoint: "blog_verification"/,
+      );
       const naverVerificationStart = server.indexOf(
         "const runNaverBlogAutomationCheck",
       );
@@ -1646,11 +1632,42 @@ describe("yeollock.me security regressions", () => {
       );
       assert.match(
         naverVerificationSource,
-        /reserveNaverSearchRequest\("blog"\)/,
+        /reserveNaverSearchVerificationRequest\(\)/,
       );
       assert.match(naverVerificationSource, /if \(!reservation\.allowed\)/);
+      assert.match(
+        naverVerificationSource,
+        /prepareNaverSearchVerificationReservationForFetch\([\s\S]+?const apiResponse = await fetchJsonWithTimeout/,
+      );
       assert.match(envExample, /NAVER_SEARCH_DAILY_LIMIT="25000"/);
-      assert.match(envExample, /NAVER_SEARCH_DAILY_BUDGET_RATIO="0\.8"/);
+      assert.match(envExample, /NAVER_SEARCH_DAILY_BUDGET_RATIO="0\.75"/);
+      assert.match(
+        envExample,
+        /NAVER_SEARCH_VERIFICATION_DAILY_BUDGET_RATIO="0\.05"/,
+      );
+      assert.match(
+        server,
+        /process\.env\.NAVER_SEARCH_VERIFICATION_DAILY_BUDGET_RATIO[\s\S]+?0\.05,[\s\S]+?0\.05/,
+      );
+      assert.match(
+        quotaMigration,
+        /create table if not exists directsign_private\.naver_search_verification_daily_usage/,
+      );
+      assert.match(quotaMigration, /at time zone 'Asia\/Seoul'/);
+      assert.match(quotaMigration, /for update/);
+      assert.match(quotaMigration, /p_budget_ratio > 0\.05/);
+      assert.match(
+        quotaMigration,
+        /revoke all on table directsign_private\.naver_search_verification_daily_usage[\s\S]+?from public, anon, authenticated, service_role/,
+      );
+      assert.match(
+        quotaMigration,
+        /create or replace function public\.reserve_naver_search_verification_request\([\s\S]+?security definer[\s\S]+?set search_path = ''/,
+      );
+      assert.match(
+        quotaMigration,
+        /revoke all on function public\.reserve_naver_search_verification_request\([\s\S]+?from public, anon, authenticated[\s\S]+?grant execute on function public\.reserve_naver_search_verification_request\([\s\S]+?to service_role/,
+      );
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
@@ -3973,9 +3990,21 @@ describe("yeollock.me security regressions", () => {
 
   it("audits evidence and signed PDF downloads on the server", () => {
     const server = read("server/index.ts");
+    const verificationEvidenceMigration = read(
+      "supabase/migrations/20260808170000_minimize_platform_verification_provider_evidence.sql",
+    );
 
     assert.match(server, /appendVerificationEvidenceAccessAudit/);
-    assert.match(server, /evidence_access_audit/);
+    assert.match(server, /record_verification_evidence_access/);
+    assert.match(server, /get_verification_legacy_evidence_file/);
+    assert.match(
+      verificationEvidenceMigration,
+      /create table if not exists directsign_private\.verification_evidence_access_events/,
+    );
+    assert.match(
+      verificationEvidenceMigration,
+      /create table if not exists directsign_private\.verification_legacy_evidence_files/,
+    );
     assert.match(server, /Cache-Control", "no-store"/);
     assert.match(server, /signed_pdf_downloaded/);
   });
@@ -5087,11 +5116,11 @@ describe("yeollock.me security regressions", () => {
     const server = read("server/index.ts");
 
     assert.match(server, /const signupTermsVersion = "2026-06-02"/);
-    assert.match(server, /const signupPrivacyPolicyVersion = "2026-08-08\.3"/);
+    assert.match(server, /const signupPrivacyPolicyVersion = "2026-08-08\.4"/);
     assert.match(signupPage, /const TERMS_DOCUMENT_VERSION = "2026-06-02"/);
     assert.match(
       signupPage,
-      /const PRIVACY_POLICY_DOCUMENT_VERSION = "2026-08-08\.3"/,
+      /const PRIVACY_POLICY_DOCUMENT_VERSION = "2026-08-08\.4"/,
     );
     assert.match(signupPage, /LEGAL_CONTACT_EMAIL/);
     assert.match(signupPage, /동의 일시와 문서 버전이 저장됩니다/);
@@ -5101,7 +5130,7 @@ describe("yeollock.me security regressions", () => {
       /향후 일부 또는 전체\s+기능이 유료로 전환될 수 있으며/,
     );
     assert.match(legalPage, /effectiveDate: "2026-08-08"/);
-    assert.match(legalPage, /documentVersion: "2026-08-08\.3"/);
+    assert.match(legalPage, /documentVersion: "2026-08-08\.4"/);
     assert.match(
       legalPage,
       /향후 일부 또는 전체 기능이 유료로 전환될 수 있으며/,
@@ -5145,8 +5174,8 @@ describe("yeollock.me security regressions", () => {
     assert.match(server, /parseYoutubeVideoId/);
     assert.match(server, /fetchYoutubeVideoForProof/);
     assert.match(server, /https:\/\/www\.googleapis\.com\/youtube\/v3\/videos/);
-    assert.match(server, /proof_video_channel_matched/);
-    assert.match(server, /video\.snippet\.description/);
+    assert.match(server, /const videoChannelMatches =/);
+    assert.match(server, /video\?\.snippet\?\.description/);
     assert.match(server, /Instagram 공개 증빙 URL/);
     assert.match(server, /TikTok 공개 증빙 URL/);
     assert.match(server, /proof_source/);
@@ -5166,11 +5195,682 @@ describe("yeollock.me security regressions", () => {
     assert.match(server, /runInstagramDmWebhookCheck/);
     assert.doesNotMatch(server, /pending operator review|approve manually/);
     assert.match(server, /business_registration: businessAutomationCheck/);
-    assert.match(server, /platform_account: platformAutomationCheck/);
+    assert.match(server, /platform_account: retainedAutomationDecision/);
+    assert.match(server, /automated_check: retainedOwnershipCheck/);
+    assert.doesNotMatch(server, /platform_account: platformAutomationCheck/);
     assert.match(influencerVerification, /Instagram DM 인증/);
     assert.match(influencerVerification, /instagramDmChallenge\.official_handle/);
     assert.match(influencerVerification, /instagramDmChallenge\.official_url/);
     assert.match(adminDashboard, /Instagram DM 인증/);
+  });
+
+  it("binds non-DM ownership challenges to the authenticated account and submitted channel", async () => {
+    const server = read("server/index.ts");
+    const influencerVerification = read(
+      "src/pages/influencer/InfluencerVerification.tsx",
+    );
+    const migration = read(
+      "supabase/migrations/20260808170000_minimize_platform_verification_provider_evidence.sql",
+    );
+    const issueRoutePath = server.indexOf(
+      '"/api/verification/influencer/ownership-challenge"',
+    );
+    const issueRouteStart = server.lastIndexOf("app.post(", issueRoutePath);
+    const submissionRouteStart = server.indexOf(
+      'app.post("/api/verification/influencer"',
+    );
+    const issueRouteSource = server.slice(issueRouteStart, submissionRouteStart);
+    const instagramChallengePath = server.indexOf(
+      '"/api/verification/influencer/instagram-dm-challenge"',
+      submissionRouteStart,
+    );
+    const submissionRouteEnd = server.lastIndexOf(
+      "app.get(",
+      instagramChallengePath,
+    );
+    const submissionRouteSource = server.slice(
+      submissionRouteStart,
+      submissionRouteEnd,
+    );
+    const adminReviewRouteStart = server.indexOf(
+      'app.patch("/api/admin/verification-requests/:id"',
+    );
+    const adminReviewRouteEnd = server.indexOf(
+      'app.get("/api/contracts"',
+      adminReviewRouteStart,
+    );
+    const adminReviewRouteSource = server.slice(
+      adminReviewRouteStart,
+      adminReviewRouteEnd,
+    );
+
+    assert.ok(issueRouteStart >= 0);
+    assert.ok(submissionRouteStart > issueRouteStart);
+    assert.ok(submissionRouteEnd > submissionRouteStart);
+    assert.match(issueRouteSource, /Cache-Control", "private, no-store"/);
+    assert.match(issueRouteSource, /requireInfluencerSession/);
+    assert.match(
+      issueRouteSource,
+      /verification_influencer_ownership_challenge/,
+    );
+    assert.ok(
+      issueRouteSource.indexOf("requireInfluencerSession") <
+        issueRouteSource.indexOf("issueInfluencerOwnershipChallenge"),
+    );
+    assert.match(server, /const influencerOwnershipChallengeTtlMs = 30 \* 60 \* 1000/);
+    assert.match(server, /createHmac\("sha256", secret\)/);
+    assert.match(server, /challenge_id: randomUUID\(\)/);
+    assert.match(server, /platform_handle_hash: binding\.platformHandleHash/);
+    assert.match(server, /platform_url_hash: binding\.platformUrlHash/);
+    assert.match(server, /influencerOwnershipChallengeSignatureDomain/);
+    assert.match(submissionRouteSource, /ownership_challenge_token/);
+    assert.ok(
+      submissionRouteSource.indexOf(
+        "verifyInfluencerOwnershipChallengeToken",
+      ) < submissionRouteSource.indexOf("consumeInfluencerOwnershipChallenge"),
+      "the signed challenge must be verified before atomic consumption",
+    );
+    assert.ok(
+      submissionRouteSource.indexOf("consumeInfluencerOwnershipChallenge") <
+        submissionRouteSource.indexOf("runPlatformAccountAutomationCheck"),
+      "the challenge must be atomically consumed before any provider call",
+    );
+    assert.doesNotMatch(
+      submissionRouteSource.slice(
+        submissionRouteSource.indexOf("verifyInfluencerOwnershipChallengeToken"),
+        submissionRouteSource.indexOf("runPlatformAccountAutomationCheck"),
+      ),
+      /readVerificationRequests/,
+    );
+    assert.match(submissionRouteSource, /OWNERSHIP_CHALLENGE_INVALID/);
+    assert.match(submissionRouteSource, /OWNERSHIP_CHALLENGE_ALREADY_USED/);
+    assert.match(submissionRouteSource, /isSupabaseUniqueViolationError/);
+    assert.ok(
+      submissionRouteSource.indexOf("buildInfluencerOwnershipChallengeBinding") <
+        submissionRouteSource.indexOf("runPlatformAccountAutomationCheck"),
+    );
+    assert.ok(
+      submissionRouteSource.indexOf("validateInfluencerOwnershipProofUrl") <
+        submissionRouteSource.indexOf("runPlatformAccountAutomationCheck"),
+    );
+    assert.ok(
+      submissionRouteSource.indexOf("validateEvidenceFile") <
+        submissionRouteSource.indexOf("runPlatformAccountAutomationCheck"),
+    );
+    assert.doesNotMatch(
+      submissionRouteSource.slice(
+        submissionRouteSource.indexOf("buildVerificationEvidenceSnapshot"),
+      ),
+      /ownership_challenge_token/,
+    );
+    assert.match(
+      migration,
+      /verification_requests_production_platform_challenge_unique/,
+    );
+    assert.match(
+      migration,
+      /create table if not exists directsign_private\.influencer_ownership_challenge_consumptions/,
+    );
+    assert.match(migration, /code_digest text not null/);
+    assert.match(migration, /platform_handle_hash text not null/);
+    assert.match(migration, /platform_url_hash text not null/);
+    assert.doesNotMatch(
+      migration.slice(
+        migration.indexOf("influencer_ownership_challenge_consumptions"),
+        migration.indexOf("naver_search_verification_daily_usage"),
+      ),
+      /challenge_code text|platform_url text|platform_handle text/,
+    );
+    assert.match(
+      migration,
+      /create or replace function public\.consume_influencer_ownership_challenge\([\s\S]+?on conflict \(challenge_id\) do nothing[\s\S]+?get diagnostics v_inserted = row_count/,
+    );
+    assert.match(
+      migration,
+      /cleanup_influencer_ownership_challenges[\s\S]+?expires_at < v_now - interval '1 day'[\s\S]+?limit p_limit[\s\S]+?v_backlog/,
+    );
+    assert.match(
+      migration,
+      /revoke all on function public\.consume_influencer_ownership_challenge[\s\S]+?from public, anon, authenticated[\s\S]+?grant execute[\s\S]+?to service_role/,
+    );
+    assert.match(server, /cleanup_influencer_ownership_challenges/);
+    assert.match(server, /ownership_challenge_backlog/);
+    assert.match(server, /`public-marketplace:\$\{key\}:v3`/);
+    assert.match(
+      migration,
+      /new\.followers_label := '계정 연동'[\s\S]+?new\.performance_label := '프로필에서 확인'/,
+    );
+    assert.doesNotMatch(migration, /怨꾩젙|\?꾨줈\?꾩뿉/);
+    assert.match(
+      migration,
+      /revoke all on function directsign_private\.directsign_sanitize_naver_channel_self_report\(\)[\s\S]+?from public, anon, authenticated, service_role/,
+    );
+    assert.match(
+      migration,
+      /create or replace function public\.enqueue_verification_storage_compensation[\s\S]+?verification-advertiser\|verification-influencer[\s\S]+?privacy_storage_deletion_queue/,
+    );
+    assert.match(
+      server,
+      /storeEvidenceFile\([\s\S]+?insertVerificationRequest\([\s\S]+?catch \(error\) \{[\s\S]+?compensateFailedVerificationEvidenceInsert/,
+    );
+    for (const routePattern of [
+      /app\.get\("\/api\/admin\/verification-requests"[\s\S]{0,120}setPrivateAuthResponseHeaders\(response\)/,
+      /app\.post\("\/api\/admin\/verification-requests\/:id\/automation-check"[\s\S]{0,140}setPrivateAuthResponseHeaders\(response\)/,
+      /app\.get\("\/api\/admin\/verification-requests\/:id\/evidence"[\s\S]{0,120}setPrivateAuthResponseHeaders\(response\)/,
+      /app\.patch\("\/api\/admin\/verification-requests\/:id"[\s\S]{0,120}setPrivateAuthResponseHeaders\(response\)/,
+    ]) {
+      assert.match(server, routePattern);
+    }
+    assert.match(
+      submissionRouteSource,
+      /ownershipMethod === "screenshot_review" &&[\s\S]+?!submittedOwnershipChallengeUrl[\s\S]+?\? undefined[\s\S]+?: validateInfluencerOwnershipProofUrl/,
+    );
+    assert.match(
+      adminReviewRouteSource,
+      /response\.json\(\{[\s\S]+?sanitizeVerificationRequestForAdminTransport\(record\)/,
+    );
+
+    assert.match(
+      influencerVerification,
+      /fetchInfluencerOwnershipChallenge\([\s\S]+platformHandle,[\s\S]+platformUrl/,
+    );
+    assert.match(influencerVerification, /ownership_challenge_token:/);
+    assert.match(influencerVerification, /cache: "no-store"/);
+    assert.match(
+      influencerVerification,
+      /if \(!response\.ok\) \{[\s\S]+?discardSubmittedOwnershipChallenge\(\)/,
+    );
+    assert.match(
+      influencerVerification,
+      /catch \(submitError\) \{[\s\S]+?if \(nonDmSubmissionSent\) discardSubmittedOwnershipChallenge\(\)/,
+    );
+    assert.match(
+      influencerVerification,
+      /disabled=\{!ownershipChallengeAvailable\}/,
+    );
+    assert.match(
+      influencerVerification,
+      /!isInstagramDmMethod && !ownershipChallengeAvailable/,
+    );
+    assert.doesNotMatch(influencerVerification, /crypto\.getRandomValues/);
+    assert.doesNotMatch(
+      influencerVerification,
+      /naver_blog_recent_4d_average_visitors/,
+    );
+
+    const envNames = [
+      "VERCEL",
+      "DIRECTSIGN_DEMO_MODE",
+      "SUPABASE_URL",
+      "SUPABASE_PUBLISHABLE_KEY",
+      "SUPABASE_SERVICE_ROLE_KEY",
+      "DIRECTSIGN_TOKEN_ENCRYPTION_SECRET",
+    ] as const;
+    const previousEnv = new Map(
+      envNames.map((name) => [name, process.env[name]] as const),
+    );
+    process.env.VERCEL = "1";
+    process.env.DIRECTSIGN_DEMO_MODE = "false";
+    process.env.SUPABASE_URL = "https://ownership-challenge-test.supabase.co";
+    process.env.SUPABASE_PUBLISHABLE_KEY = "p".repeat(48);
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "s".repeat(48);
+    process.env.DIRECTSIGN_TOKEN_ENCRYPTION_SECRET = "x".repeat(64);
+    const serverModule = await (async () => {
+      try {
+        return await import("../server/index.ts");
+      } finally {
+        for (const name of envNames) {
+          const previous = previousEnv.get(name);
+          if (previous === undefined) delete process.env[name];
+          else process.env[name] = previous;
+        }
+      }
+    })();
+    const {
+      boundPublicHandleAppealReason,
+      compensateFailedVerificationEvidenceInsert,
+      consumeInfluencerOwnershipChallenge,
+      insertVerificationRequest,
+      issueInfluencerOwnershipChallenge,
+      isMissingInfluencerOwnershipChallengeConsumeRpcError,
+      parseEvidenceFile,
+      prepareNaverSearchVerificationReservationForFetch,
+      sanitizeVerificationRequestForAdminTransport,
+      validateEvidenceFile,
+      validateInfluencerOwnershipProofUrl,
+      verifyInfluencerOwnershipChallengeToken,
+    } = serverModule;
+    const secret = "ownership-challenge-test-secret:".padEnd(64, "x");
+    const profileId = "11111111-1111-4111-8111-111111111111";
+    const nowMs = Date.parse("2026-08-08T08:00:00.000Z");
+    const issued = issueInfluencerOwnershipChallenge({
+      secret,
+      profileId,
+      platform: "youtube",
+      platformHandle: "@creator",
+      platformUrl: "https://youtube.com/@creator",
+      nowMs,
+    });
+    assert.match(issued.code, /^DS-[A-Z0-9]{4}-[A-Z0-9]{4}$/);
+    assert.equal(issued.expiresAt, nowMs + 30 * 60 * 1000);
+    const verify = (
+      overrides: Partial<
+        Parameters<typeof verifyInfluencerOwnershipChallengeToken>[0]
+      > = {},
+    ) =>
+      verifyInfluencerOwnershipChallengeToken({
+        token: issued.token,
+        secret,
+        profileId,
+        platform: "youtube",
+        challengeCode: issued.code,
+        platformHandle: "@creator",
+        platformUrl: "https://youtube.com/@creator",
+        nowMs: nowMs + 1,
+        ...overrides,
+      });
+    assert.equal(verify()?.profile_id, profileId);
+    assert.equal(verify({ profileId: "22222222-2222-4222-8222-222222222222" }), undefined);
+    assert.equal(verify({ platformHandle: "@someone-else" }), undefined);
+    assert.equal(
+      verify({ platformUrl: "https://youtube.com/@someone-else" }),
+      undefined,
+    );
+    assert.equal(verify({ challengeCode: "DS-AAAA-BBBB" }), undefined);
+    assert.equal(verify({ nowMs: issued.expiresAt }), undefined);
+    assert.throws(
+      () =>
+        issueInfluencerOwnershipChallenge({
+          secret,
+          profileId,
+          platform: "youtube",
+          platformHandle: "a".repeat(161),
+          platformUrl: "https://youtube.com/@creator",
+          nowMs,
+        }),
+      /handle/i,
+    );
+    assert.throws(
+      () =>
+        issueInfluencerOwnershipChallenge({
+          secret,
+          profileId,
+          platform: "youtube",
+          platformHandle: "@creator",
+          platformUrl: "http://youtube.com/@creator",
+          nowMs,
+        }),
+      /profile URL/i,
+    );
+    const oversizedUrl = `https://youtube.com/@creator?value=${"a".repeat(2_048)}`;
+    assert.ok(oversizedUrl.length > 2_048);
+    assert.throws(
+      () =>
+        issueInfluencerOwnershipChallenge({
+          secret,
+          profileId,
+          platform: "youtube",
+          platformHandle: "@creator",
+          platformUrl: oversizedUrl,
+          nowMs,
+        }),
+      /profile URL/i,
+    );
+    assert.match(
+      validateInfluencerOwnershipProofUrl({
+        platform: "naver_blog",
+        platformHandle: "creator-blog",
+        proofUrl: "http://blog.naver.com/creator-blog/post",
+      }) ?? "",
+      /HTTPS/,
+    );
+    assert.match(
+      validateInfluencerOwnershipProofUrl({
+        platform: "naver_blog",
+        platformHandle: "creator-blog",
+        proofUrl: "https://blog.naver.com/another-blog/post",
+      }) ?? "",
+      /submitted blog/,
+    );
+    const [encodedPayload, signature] = issued.token.split(".");
+    assert.equal(
+      verify({
+        token: `${encodedPayload}.${signature.startsWith("A") ? "B" : "A"}${signature.slice(1)}`,
+      }),
+      undefined,
+    );
+
+    const verifiedPayload = verify();
+    assert.ok(verifiedPayload);
+    const consumedIds = new Set<string>();
+    const consumeRpc = async (payload: typeof verifiedPayload) => {
+      await Promise.resolve();
+      if (consumedIds.has(payload!.challenge_id)) {
+        return { consumed: false, reason: "already_consumed" as const };
+      }
+      consumedIds.add(payload!.challenge_id);
+      return { consumed: true, reason: "consumed" as const };
+    };
+    const concurrentConsumes = await Promise.all(
+      Array.from({ length: 8 }, () =>
+        consumeInfluencerOwnershipChallenge({
+          payload: verifiedPayload!,
+          consumeRpc,
+          nowMs: nowMs + 1,
+        }),
+      ),
+    );
+    assert.equal(concurrentConsumes.filter((result) => result.consumed).length, 1);
+    assert.equal(
+      concurrentConsumes.filter((result) => result.reason === "already_consumed")
+        .length,
+      7,
+    );
+    assert.equal(
+      isMissingInfluencerOwnershipChallengeConsumeRpcError(
+        new Error("PGRST202 schema cache consume_influencer_ownership_challenge"),
+      ),
+      true,
+    );
+    assert.equal(
+      isMissingInfluencerOwnershipChallengeConsumeRpcError(
+        new Error("provider timeout"),
+      ),
+      false,
+    );
+
+    const legacyNaverTrafficMetricField = [
+      "naver",
+      "blog",
+      "recent",
+      "4d",
+      "average",
+      "visitors",
+    ].join("_");
+    const transported = sanitizeVerificationRequestForAdminTransport({
+      id: "11111111-1111-4111-8111-111111111120",
+      target_type: "influencer_account",
+      target_id: profileId,
+      verification_type: "platform_account",
+      status: "pending",
+      profile_id: profileId,
+      subject_name: "Creator",
+      platform: "youtube",
+      platform_handle: "creator",
+      platform_url: "https://youtube.com/@creator",
+      ownership_verification_method: "channel_description_code",
+      ownership_challenge_code: "DS-AAAA-BBBB",
+      ownership_challenge_url: "https://youtube.com/@creator",
+      ownership_check_status: "failed",
+      ownership_checked_at: "2026-08-08T08:01:00.123Z",
+      [legacyNaverTrafficMetricField]: 999,
+      evidence_snapshot_json: {
+        raw_response: { secret: "provider-secret" },
+        ownership_verification: {
+          profile: { subscriber_count: 999 },
+          automation: {
+            platform_account: {
+              mode: "api_ready",
+              status: "matched",
+              http_status: 200,
+              raw_response: "private",
+            },
+          },
+        },
+      },
+      created_at: "2026-08-08T08:00:00.000Z",
+      updated_at: "2026-08-08T08:01:00.123Z",
+    } as Parameters<typeof sanitizeVerificationRequestForAdminTransport>[0] &
+      Record<string, unknown>);
+    const transportedJson = JSON.stringify(transported.evidence_snapshot_json);
+    assert.equal(Object.hasOwn(transported, legacyNaverTrafficMetricField), false);
+    for (const forbidden of [
+      "raw_response",
+      "provider-secret",
+      "subscriber_count",
+      "http_status",
+      '"profile"',
+    ]) {
+      assert.equal(transportedJson.includes(forbidden), false, forbidden);
+    }
+    const transportedOwnership = transported.evidence_snapshot_json!
+      .ownership_verification as Record<string, unknown>;
+    assert.deepEqual(transportedOwnership.automated_check, {
+      status: "failed",
+      checked_at: "2026-08-08T08:01:00.123Z",
+    });
+
+    const validEvidence = parseEvidenceFile({
+      name: "proof.pdf",
+      type: "application/pdf",
+      size: 4,
+      data_url: "data:application/pdf;base64,JVBERg==",
+    });
+    assert.equal(validateEvidenceFile(validEvidence), undefined);
+    assert.equal(
+      parseEvidenceFile({
+        name: "proof.pdf",
+        type: "application/pdf",
+        size: "4",
+        data_url: "data:application/pdf;base64,JVBERg==",
+      }),
+      undefined,
+    );
+    assert.match(
+      validateEvidenceFile(
+        parseEvidenceFile({
+          name: `${"가".repeat(256)}.pdf`,
+          type: "application/pdf",
+          size: 4,
+          data_url: "data:application/pdf;base64,JVBERg==",
+        }),
+      ) ?? "",
+      /255/,
+    );
+    assert.match(
+      validateEvidenceFile(
+        parseEvidenceFile({
+          name: "proof.pdf",
+          type: "application/pdf",
+          size: 5,
+          data_url: "data:application/pdf;base64,JVBERg==",
+        }),
+      ) ?? "",
+      /metadata/,
+    );
+    assert.equal(
+      Array.from(boundPublicHandleAppealReason("😀".repeat(4_001))).length,
+      4_000,
+    );
+
+    const exactStoredFile = {
+      provider: "supabase_storage" as const,
+      bucket: "directsign-private",
+      path: "verification-influencer/owner/request-proof.pdf",
+      file_name: "proof.pdf",
+      content_type: "application/pdf",
+      byte_size: 4,
+      sha256: "a".repeat(64),
+      stored_at: "2026-08-08T08:00:00.000Z",
+    };
+    for (const insertFailure of ["check_violation", "network_error", "unique_409"]) {
+      const deleted: Array<{ bucket: string; objectPath: string }> = [];
+      await compensateFailedVerificationEvidenceInsert({
+        requestId: `${insertFailure}:request`,
+        storedFile: exactStoredFile,
+        deleteSupabaseObject: async (target) => {
+          deleted.push(target);
+        },
+      });
+      assert.deepEqual(deleted, [
+        {
+          bucket: exactStoredFile.bucket,
+          objectPath: exactStoredFile.path,
+        },
+      ]);
+    }
+    const queuedTargets: Array<Record<string, string>> = [];
+    const compensation = await compensateFailedVerificationEvidenceInsert({
+      requestId: "11111111-1111-4111-8111-111111111119",
+      storedFile: exactStoredFile,
+      deleteSupabaseObject: async () => {
+        throw new Error("storage unavailable");
+      },
+      enqueueSupabaseDeletion: async (target) => {
+        queuedTargets.push(target);
+        return { queued: true, queue_id: "queue-1" };
+      },
+    });
+    assert.deepEqual(compensation, { deleted: false, queued: true });
+    assert.deepEqual(queuedTargets, [
+      {
+        requestId: "11111111-1111-4111-8111-111111111119",
+        bucket: exactStoredFile.bucket,
+        objectPath: exactStoredFile.path,
+      },
+    ]);
+
+    const committedRequest = {
+      id: "11111111-1111-4111-8111-111111111120",
+      target_type: "advertiser_organization" as const,
+      target_id: "22222222-2222-4222-8222-222222222222",
+      verification_type: "business_registration_certificate" as const,
+      status: "rejected" as const,
+      data_origin: "production" as const,
+      profile_id: "33333333-3333-4333-8333-333333333333",
+      subject_name: "Committed verification",
+      evidence_file_name: exactStoredFile.file_name,
+      evidence_file_mime: exactStoredFile.content_type,
+      evidence_file_size: exactStoredFile.byte_size,
+      evidence_snapshot_json: { evidence_file: exactStoredFile },
+      created_at: "2026-08-08T08:00:00.000Z",
+      updated_at: "2026-08-08T08:00:00.000Z",
+    } satisfies Parameters<typeof insertVerificationRequest>[0];
+    const committedRows: Array<typeof committedRequest> = [];
+    let profilePatchAttempts = 0;
+    let committedInsertError: unknown;
+    let committedEvidenceCompensations = 0;
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const url = String(input);
+      if (url.includes("/rest/v1/verification_requests") && init?.method === "POST") {
+        const row = JSON.parse(String(init.body)) as typeof committedRequest;
+        committedRows.push(row);
+        return new Response(JSON.stringify([row]), {
+          status: 201,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.includes("/rest/v1/profiles") && init?.method === "PATCH") {
+        profilePatchAttempts += 1;
+        return new Response(JSON.stringify({ message: "forced profile PATCH failure" }), {
+          status: 503,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      throw new Error(`Unexpected post-commit test request: ${url}`);
+    };
+    try {
+      try {
+        await insertVerificationRequest(committedRequest);
+      } catch (error) {
+        committedInsertError = error;
+        await compensateFailedVerificationEvidenceInsert({
+          requestId: committedRequest.id,
+          storedFile: exactStoredFile,
+          deleteSupabaseObject: async () => {
+            committedEvidenceCompensations += 1;
+          },
+        });
+      }
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+    assert.equal(committedInsertError, undefined);
+    assert.equal(profilePatchAttempts, 1);
+    assert.equal(committedEvidenceCompensations, 0);
+    assert.equal(committedRows.length, 1);
+    assert.deepEqual(
+      committedRows[0]?.evidence_snapshot_json?.evidence_file,
+      exactStoredFile,
+    );
+
+    const onlineNearMidnight =
+      await prepareNaverSearchVerificationReservationForFetch({
+        reservation: {
+          allowed: true,
+          date_kst: "2026-08-08",
+          expires_at: "2026-08-08T15:00:00.000Z",
+          cap: 5,
+          used: 1,
+          remaining: 4,
+          reserved: 1,
+        },
+        nowMs: Date.parse("2026-08-08T14:59:55.000Z"),
+        guardMs: 7_500,
+      });
+    assert.deepEqual(onlineNearMidnight, {
+      allowed: false,
+      reason: "midnight_guard",
+    });
+
+    const naverIssued = issueInfluencerOwnershipChallenge({
+      secret,
+      profileId,
+      platform: "naver_blog",
+      platformHandle: "creator-blog",
+      platformUrl: "https://blog.naver.com/creator-blog",
+      nowMs,
+    });
+    assert.notEqual(naverIssued.token, issued.token);
+    assert.equal(
+      verifyInfluencerOwnershipChallengeToken({
+        token: naverIssued.token,
+        secret,
+        profileId,
+        platform: "naver_blog",
+        challengeCode: naverIssued.code,
+        platformHandle: "creator-blog",
+        platformUrl: "https://blog.naver.com/creator-blog",
+        nowMs: nowMs + 1,
+      })?.platform,
+      "naver_blog",
+    );
+    assert.equal(
+      verifyInfluencerOwnershipChallengeToken({
+        token: naverIssued.token,
+        secret,
+        profileId,
+        platform: "naver_blog",
+        challengeCode: naverIssued.code,
+        platformHandle: "another-blog",
+        platformUrl: "https://blog.naver.com/another-blog",
+        nowMs: nowMs + 1,
+      }),
+      undefined,
+    );
+    const otherIssued = issueInfluencerOwnershipChallenge({
+      secret,
+      profileId,
+      platform: "other",
+      platformHandle: "creator-site",
+      platformUrl: "https://creator.example/profile",
+      nowMs,
+    });
+    assert.equal(
+      verifyInfluencerOwnershipChallengeToken({
+        token: otherIssued.token,
+        secret,
+        profileId,
+        platform: "other",
+        challengeCode: otherIssued.code,
+        platformHandle: "creator-site",
+        platformUrl: "https://creator.example/profile",
+        nowMs: nowMs + 1,
+      })?.platform,
+      "other",
+    );
+    assert.match(migration, /'naver_blog', 'other'/);
   });
 
   it("keeps Instagram DM ownership challenges server-issued, exact, and one-time", () => {
@@ -5284,7 +5984,7 @@ describe("yeollock.me security regressions", () => {
     assert.match(influencerRouteSource, /readActiveInstagramDmChallenge/);
     assert.match(
       influencerRouteSource,
-      /const platformHandle = isInstagramDmMethod\s+\? instagramDmUsername/,
+      /let platformHandle = isInstagramDmMethod\s+\? instagramDmUsername/,
     );
     assert.match(
       influencerRouteSource,
@@ -5292,7 +5992,7 @@ describe("yeollock.me security regressions", () => {
     );
     assert.match(
       influencerRouteSource,
-      /catch \(error\) \{\s+if \(isInstagramDmMethod\)/,
+      /catch \(error\) \{[\s\S]{0,500}if \(isInstagramDmMethod\)/,
     );
     assert.match(influencerRouteSource, /ownership_challenge_code_hash/);
     assert.match(influencerRouteSource, /ownership_challenge_code_ciphertext/);
@@ -7438,7 +8138,7 @@ describe("yeollock.me security regressions", () => {
       /DIRECTSIGN_ALLOW_BUNDLED_CATALOG_FALLBACK === "true"/,
     );
     assert.doesNotMatch(server, /DISABLE_PUBLIC_MARKETPLACE_CATALOG_FALLBACK/);
-    assert.match(server, /`public-marketplace:\$\{key\}:v2`/);
+    assert.match(server, /`public-marketplace:\$\{key\}:v3`/);
   });
 
   it("publishes campaigns from the authoritative source and finalizes unselected applicants atomically", () => {

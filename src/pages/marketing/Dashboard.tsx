@@ -5373,11 +5373,6 @@ function ApplicantPlatformLinks({
           <>
             <span className="shrink-0">{platformMeta.mark}</span>
             {text ? <span className="truncate">{text}</span> : null}
-            {item.metricTrust === "self_reported" ? (
-              <span className="inline-flex h-5 shrink-0 items-center rounded-full bg-neutral-100 px-1.5 text-[10px] font-bold text-neutral-600">
-                자가신고
-              </span>
-            ) : null}
           </>
         );
 
@@ -8607,7 +8602,6 @@ function getContractCreatorChannelMetricLabel(profile?: MarketplaceInfluencerPro
       joinExportValues([
         platformLabels[platform.platform],
         platform.followersLabel,
-        platform.metricTrust === "self_reported" ? "자가신고" : undefined,
       ]),
     ),
   );
@@ -8975,7 +8969,6 @@ function buildAdvertiserCampaignApplicantExportSheet(
               platformLabels[platform.platform],
               platform.handle,
               platform.followersLabel,
-              platform.metricTrust === "self_reported" ? "자가신고" : undefined,
             ]),
           ),
         ),

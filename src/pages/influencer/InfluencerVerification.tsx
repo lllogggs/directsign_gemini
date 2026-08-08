@@ -72,7 +72,6 @@ interface InfluencerVerificationForm {
   platform_handle: string;
   platform_url: string;
   ownership_challenge_url: string;
-  naver_blog_recent_4d_average_visitors: string;
   note: string;
 }
 
@@ -80,21 +79,7 @@ const initialForm: InfluencerVerificationForm = {
   platform_handle: "",
   platform_url: "",
   ownership_challenge_url: "",
-  naver_blog_recent_4d_average_visitors: "",
   note: "",
-};
-
-const parseNaverBlogVisitorAverageInput = (value: string) => {
-  const trimmed = value.trim();
-  if (!trimmed) return { value: undefined };
-  if (!/^(?:0|[1-9][0-9]*|[1-9][0-9]{0,2}(?:,[0-9]{3})+)$/.test(trimmed)) {
-    return { error: "0 이상의 정수로 입력해 주세요." };
-  }
-  const parsed = Number(trimmed.replace(/,/g, ""));
-  if (!Number.isSafeInteger(parsed) || parsed < 0) {
-    return { error: "입력 가능한 숫자 범위를 확인해 주세요." };
-  }
-  return { value: parsed };
 };
 
 const normalizeInstagramHandleInput = (value: string) => {
@@ -125,7 +110,7 @@ const buildInstagramProfileUrl = (handle: string) => {
 type InstagramDmChallengeResponse = {
   error?: string;
   code?: string;
-  request?: { id?: string };
+  request?: { id?: string; status?: string };
   instagram_dm_challenge?: Partial<InstagramDmChallenge> & {
     code?: string;
     expires_at: string;
@@ -152,6 +137,69 @@ const fetchInstagramDmChallenge = async (requestId?: string) => {
   }
 
   return data.instagram_dm_challenge;
+};
+
+type InfluencerOwnershipChallenge = {
+  platform: InfluencerPlatform;
+  platform_handle: string;
+  platform_url: string;
+  code: string;
+  token: string;
+  expires_at: string;
+};
+
+type InfluencerOwnershipChallengeResponse = {
+  error?: string;
+  code?: string;
+  ownership_challenge?: InfluencerOwnershipChallenge;
+};
+
+const fetchInfluencerOwnershipChallenge = async (
+  platform: InfluencerPlatform,
+  platformHandle: string,
+  platformUrl: string,
+) => {
+  const response = await apiFetch(
+    "/api/verification/influencer/ownership-challenge",
+    {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      cache: "no-store",
+      body: JSON.stringify({
+        platform,
+        platform_handle: platformHandle,
+        platform_url: platformUrl,
+      }),
+    },
+  );
+  const data = (await response.json()) as InfluencerOwnershipChallengeResponse;
+  if (!response.ok) {
+    throw new Error(
+      translateApiErrorMessage(
+        data.error,
+        "인증 코드를 발급하지 못했습니다.",
+      ),
+    );
+  }
+
+  const challenge = data.ownership_challenge;
+  if (
+    challenge?.platform !== platform ||
+    !/^DS-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(challenge.code) ||
+    !challenge.token?.trim() ||
+    Number.isNaN(new Date(challenge.expires_at).getTime())
+  ) {
+    throw new Error("인증 코드 응답이 올바르지 않습니다.");
+  }
+  return {
+    ...challenge,
+    platform_handle: platformHandle,
+    platform_url: platformUrl,
+  };
 };
 
 const INSTAGRAM_DM_CHALLENGE_STATES = new Set<InstagramDmChallenge["state"]>([
@@ -329,13 +377,23 @@ export function InfluencerVerification() {
   const [platform, setPlatform] = useState<InfluencerPlatform>("instagram");
   const [method, setMethod] =
     useState<InfluencerVerificationMethod>("instagram_dm_code");
-  const [challengeCode, setChallengeCode] = useState(createChallengeCode);
+  const [ownershipChallenge, setOwnershipChallenge] =
+    useState<InfluencerOwnershipChallenge | null>(null);
+  const [isOwnershipChallengeLoading, setIsOwnershipChallengeLoading] =
+    useState(false);
+  const [ownershipChallengeError, setOwnershipChallengeError] = useState("");
+  const [ownershipChallengeExpired, setOwnershipChallengeExpired] =
+    useState(false);
+  const [ownershipChallengeRefreshAttempt, setOwnershipChallengeRefreshAttempt] =
+    useState(0);
   const [form, setForm] = useState(initialForm);
   const [file, setFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [naverBlogVisitorError, setNaverBlogVisitorError] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [submittedOutcome, setSubmittedOutcome] = useState<
+    "approved" | "manual_review"
+  >("manual_review");
   const [instagramDmChallenge, setInstagramDmChallenge] =
     useState<InstagramDmChallenge | null>(null);
   const [instagramDmUnavailable, setInstagramDmUnavailable] = useState(false);
@@ -348,6 +406,14 @@ export function InfluencerVerification() {
   const selectedMethod = METHOD_META[method];
   const isInstagramDmMethod =
     platform === "instagram" && method === "instagram_dm_code";
+  const ownershipChallengeAvailable = Boolean(
+    ownershipChallenge &&
+      ownershipChallenge.platform === platform &&
+      ownershipChallenge.platform_handle === form.platform_handle.trim() &&
+      ownershipChallenge.platform_url === form.platform_url.trim() &&
+      !ownershipChallengeExpired &&
+      !isOwnershipChallengeLoading,
+  );
   const showFocusedInstagramDm =
     isInstagramDmMethod &&
     (Boolean(instagramDmChallenge) ||
@@ -384,6 +450,80 @@ export function InfluencerVerification() {
   useEffect(() => {
     refreshVerificationSummaryRef.current = refreshVerificationSummary;
   }, [refreshVerificationSummary]);
+
+  useEffect(() => {
+    const platformHandle = form.platform_handle.trim();
+    const platformUrl = form.platform_url.trim();
+    let cancelled = false;
+    let expiryTimer: number | undefined;
+    const resetTimer = window.setTimeout(() => {
+      if (cancelled) return;
+      setOwnershipChallenge(null);
+      setOwnershipChallengeExpired(false);
+      setOwnershipChallengeError("");
+      setIsOwnershipChallengeLoading(
+        !isInstagramDmMethod && Boolean(platformHandle && platformUrl),
+      );
+    }, 0);
+
+    if (isInstagramDmMethod || !platformHandle || !platformUrl) {
+      return () => {
+        cancelled = true;
+        window.clearTimeout(resetTimer);
+      };
+    }
+
+    const issueTimer = window.setTimeout(() => {
+      void fetchInfluencerOwnershipChallenge(
+        platform,
+        platformHandle,
+        platformUrl,
+      )
+        .then((challenge) => {
+          if (cancelled) return;
+          const expiresAt = new Date(challenge.expires_at).getTime();
+          const expiresInMs = expiresAt - Date.now();
+          if (expiresInMs <= 0) {
+            setOwnershipChallengeExpired(true);
+            setOwnershipChallengeError(
+              "인증 코드가 만료되었습니다. 새 코드를 발급해 주세요.",
+            );
+            return;
+          }
+          setOwnershipChallenge(challenge);
+          expiryTimer = window.setTimeout(() => {
+            setOwnershipChallengeExpired(true);
+            setOwnershipChallengeError(
+              "인증 코드가 만료되었습니다. 새 코드를 발급해 주세요.",
+            );
+          }, expiresInMs);
+        })
+        .catch((challengeError: unknown) => {
+          if (cancelled) return;
+          setOwnershipChallengeError(
+            challengeError instanceof Error
+              ? challengeError.message
+              : "인증 코드를 발급하지 못했습니다.",
+          );
+        })
+        .finally(() => {
+          if (!cancelled) setIsOwnershipChallengeLoading(false);
+        });
+    }, 400);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(resetTimer);
+      window.clearTimeout(issueTimer);
+      if (expiryTimer !== undefined) window.clearTimeout(expiryTimer);
+    };
+  }, [
+    form.platform_handle,
+    form.platform_url,
+    isInstagramDmMethod,
+    ownershipChallengeRefreshAttempt,
+    platform,
+  ]);
 
   useEffect(() => {
     if (verificationStatusCode !== 401) return;
@@ -523,10 +663,6 @@ export function InfluencerVerification() {
         platform_url: current.platform_url || contract.influencer_info.channel_url,
         ownership_challenge_url:
           current.ownership_challenge_url || contract.influencer_info.channel_url,
-        naver_blog_recent_4d_average_visitors:
-          (inferredPlatform ?? platform) === "naver_blog"
-            ? current.naver_blog_recent_4d_average_visitors
-            : "",
       }));
       setPrefilledContractId(contract.id);
     }, 0);
@@ -564,7 +700,6 @@ export function InfluencerVerification() {
   const updateForm = (updates: Partial<InfluencerVerificationForm>) => {
     setForm((current) => ({ ...current, ...updates }));
     setError("");
-    setNaverBlogVisitorError("");
     setSubmitted(false);
   };
 
@@ -577,11 +712,9 @@ export function InfluencerVerification() {
       platform_handle: "",
       platform_url: "",
       ownership_challenge_url: "",
-      naver_blog_recent_4d_average_visitors: "",
     }));
     setFile(null);
     setError("");
-    setNaverBlogVisitorError("");
     setSubmitted(false);
   };
 
@@ -593,8 +726,9 @@ export function InfluencerVerification() {
   };
 
   const handleCopyCode = async () => {
+    if (!ownershipChallengeAvailable || !ownershipChallenge) return;
     try {
-      await navigator.clipboard.writeText(challengeCode);
+      await navigator.clipboard.writeText(ownershipChallenge.code);
     } catch {
       setError("인증 코드를 복사하지 못했습니다. 코드를 직접 선택해서 복사하세요.");
     }
@@ -621,25 +755,15 @@ export function InfluencerVerification() {
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError("");
-    setNaverBlogVisitorError("");
-
-    const parsedNaverBlogVisitorAverage =
-      platform === "naver_blog"
-        ? parseNaverBlogVisitorAverageInput(
-            form.naver_blog_recent_4d_average_visitors,
-          )
-        : { value: undefined };
-    if (parsedNaverBlogVisitorAverage.error) {
-      setNaverBlogVisitorError(parsedNaverBlogVisitorAverage.error);
-      return;
-    }
-    if (
-      platform === "naver_blog" &&
-      parsedNaverBlogVisitorAverage.value === undefined
-    ) {
-      setNaverBlogVisitorError("최근 4일 평균 일일 방문자 수를 입력해 주세요.");
-      return;
-    }
+    let nonDmSubmissionSent = false;
+    let ownershipChallengeDiscarded = false;
+    const discardSubmittedOwnershipChallenge = () => {
+      if (isInstagramDmMethod || ownershipChallengeDiscarded) return;
+      ownershipChallengeDiscarded = true;
+      setOwnershipChallenge(null);
+      setOwnershipChallengeExpired(false);
+      setOwnershipChallengeRefreshAttempt((current) => current + 1);
+    };
 
     const instagramUsername = isInstagramDmMethod
       ? normalizeInstagramHandleInput(form.platform_handle)
@@ -649,6 +773,15 @@ export function InfluencerVerification() {
       !/^[A-Za-z0-9._]{1,30}$/.test(instagramUsername)
     ) {
       setError("인스타그램 사용자 이름을 정확히 입력해 주세요.");
+      return;
+    }
+
+    if (!isInstagramDmMethod && !ownershipChallengeAvailable) {
+      setError(
+        ownershipChallengeExpired
+          ? "인증 코드가 만료되었습니다. 새 코드를 발급해 주세요."
+          : "계정 정보에 맞는 인증 코드를 발급받은 뒤 다시 시도해 주세요.",
+      );
       return;
     }
 
@@ -677,6 +810,7 @@ export function InfluencerVerification() {
         : form;
       const submittedProofUrl =
         submittedForm.ownership_challenge_url || submittedForm.platform_url;
+      nonDmSubmissionSent = !isInstagramDmMethod;
       const response = await apiFetch("/api/verification/influencer", {
         method: "POST",
         credentials: "include",
@@ -687,20 +821,16 @@ export function InfluencerVerification() {
         body: JSON.stringify({
           platform_handle: submittedForm.platform_handle,
           platform_url: submittedForm.platform_url,
-          ...(platform === "naver_blog" &&
-          parsedNaverBlogVisitorAverage.value !== undefined
-            ? {
-                naver_blog_recent_4d_average_visitors:
-                  parsedNaverBlogVisitorAverage.value,
-              }
-            : {}),
           ...(contractId ? { contract_id: contractId } : {}),
           platform,
           target_id: buildTargetId(platform, submittedForm),
           ownership_verification_method: method,
           ownership_challenge_code: isInstagramDmMethod
             ? undefined
-            : challengeCode,
+            : ownershipChallenge?.code,
+          ownership_challenge_token: isInstagramDmMethod
+            ? undefined
+            : ownershipChallenge?.token,
           ownership_challenge_url: submittedProofUrl,
           evidence_file: !isInstagramDmMethod && file
             ? {
@@ -713,7 +843,7 @@ export function InfluencerVerification() {
           note:
             !isInstagramDmMethod
               ? form.note ||
-                `${selectedPlatform.label} 계정에 ${PRODUCT_NAME} 인증 코드 ${challengeCode}를 게시했습니다.`
+                `${selectedPlatform.label} 계정에 ${PRODUCT_NAME} 인증 코드 ${ownershipChallenge?.code}를 게시했습니다.`
               : undefined,
         }),
       });
@@ -768,6 +898,7 @@ export function InfluencerVerification() {
       }
 
       if (!response.ok) {
+        discardSubmittedOwnershipChallenge();
         throw new Error(
           translateApiErrorMessage(
             data.error,
@@ -793,11 +924,18 @@ export function InfluencerVerification() {
         return;
       }
 
+      setSubmittedOutcome(
+        data.request?.status === "approved" ? "approved" : "manual_review",
+      );
       setSubmitted(true);
       setForm(initialForm);
       setFile(null);
+      setOwnershipChallenge(null);
+      setOwnershipChallengeExpired(false);
+      setOwnershipChallengeRefreshAttempt((current) => current + 1);
       await refreshVerificationSummary();
     } catch (submitError) {
+      if (nonDmSubmissionSent) discardSubmittedOwnershipChallenge();
       setError(
         submitError instanceof Error
           ? translateApiErrorMessage(
@@ -1233,28 +1371,15 @@ export function InfluencerVerification() {
                     updateForm({
                       platform_url: value,
                       ownership_challenge_url:
-                        form.ownership_challenge_url || value,
+                        !form.ownership_challenge_url ||
+                        form.ownership_challenge_url === form.platform_url
+                          ? value
+                          : form.ownership_challenge_url,
                     })
                   }
                   placeholder={selectedPlatform.urlPlaceholder}
                   required
                 />
-                {platform === "naver_blog" ? (
-                  <TextField
-                    label="최근 4일 평균 일일 방문자 수"
-                    value={form.naver_blog_recent_4d_average_visitors}
-                    onChange={(value) =>
-                      updateForm({
-                        naver_blog_recent_4d_average_visitors: value,
-                      })
-                    }
-                    placeholder="예: 1,250"
-                    inputMode="numeric"
-                    helper="오늘을 제외한 최근 4일 평균을 입력해 주세요. 탐색에는 자가신고로 표시됩니다."
-                    error={naverBlogVisitorError}
-                    required
-                  />
-                ) : null}
               </div>
             )}
 
@@ -1271,23 +1396,47 @@ export function InfluencerVerification() {
                 </div>
                 <div className="flex items-center gap-2">
                   <code className="rounded-md border border-neutral-200 bg-white px-3 py-2 font-mono text-sm font-semibold text-neutral-950">
-                    {challengeCode}
+                    {isOwnershipChallengeLoading
+                      ? "발급 중"
+                      : ownershipChallenge?.code ?? "코드 대기"}
                   </code>
                   <IconButton
                     label="인증 코드 복사"
                     onClick={handleCopyCode}
+                    disabled={!ownershipChallengeAvailable}
                     icon={<Copy className="h-4 w-4" />}
                   />
                   <IconButton
-                    label="인증 코드 새로 만들기"
-                    onClick={() => setChallengeCode(createChallengeCode())}
+                    label="인증 코드 다시 발급"
+                    onClick={() =>
+                      setOwnershipChallengeRefreshAttempt(
+                        (current) => current + 1,
+                      )
+                    }
+                    disabled={
+                      isOwnershipChallengeLoading ||
+                      !form.platform_handle.trim() ||
+                      !form.platform_url.trim()
+                    }
                     icon={<RefreshCw className="h-4 w-4" />}
                   />
                 </div>
               </div>
 
-              <div className="mt-3 rounded-md bg-white px-3 py-2 text-xs font-semibold leading-5 text-neutral-600">
-                검수 후 프로필/게시글에 남긴 코드는 삭제해도 됩니다.
+              <div
+                className={`mt-3 rounded-md bg-white px-3 py-2 text-xs font-semibold leading-5 ${
+                  ownershipChallengeError ? "text-rose-700" : "text-neutral-600"
+                }`}
+              >
+                {ownershipChallengeError
+                  ? ownershipChallengeError
+                  : ownershipChallenge
+                    ? `${formatOwnershipChallengeExpiry(
+                        ownershipChallenge.expires_at,
+                      )}까지 유효합니다. 인증 후 공개한 코드는 삭제해도 됩니다.`
+                    : isOwnershipChallengeLoading
+                      ? "계정 정보에 맞는 일회용 코드를 발급하고 있습니다."
+                      : "핸들과 프로필 URL을 입력하면 30분 일회용 코드를 발급합니다."}
               </div>
             </section>
             ) : null}
@@ -1403,7 +1552,9 @@ export function InfluencerVerification() {
                 aria-live="polite"
                 className="rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm font-semibold text-neutral-800"
               >
-                계정 소유 인증 요청을 접수했습니다. 운영자 검수 후 승인됩니다.
+                {submittedOutcome === "approved"
+                  ? "계정 인증이 완료되었습니다."
+                  : "자동 확인이 어려워 수기 확인으로 전환했습니다."}
               </div>
             )}
 
@@ -1413,7 +1564,8 @@ export function InfluencerVerification() {
                 isSubmitting ||
                 isVerificationLoading ||
                 verificationStatusCode === 401 ||
-                (isInstagramDmMethod && isInstagramDmRestoring)
+                (isInstagramDmMethod && isInstagramDmRestoring) ||
+                (!isInstagramDmMethod && !ownershipChallengeAvailable)
               }
               className="yl-primary-action h-11 w-full rounded-[8px] px-5 text-sm font-bold transition disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-500 disabled:shadow-none"
             >
@@ -1502,10 +1654,12 @@ function IconButton({
   label,
   icon,
   onClick,
+  disabled = false,
 }: {
   label: string;
   icon: React.ReactNode;
   onClick: () => void;
+  disabled?: boolean;
 }) {
   return (
     <button
@@ -1513,27 +1667,21 @@ function IconButton({
       aria-label={label}
       title={label}
       onClick={onClick}
-      className="flex h-10 w-10 items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-600 transition hover:border-neutral-400 hover:text-neutral-950"
+      disabled={disabled}
+      className="flex h-10 w-10 items-center justify-center rounded-md border border-neutral-200 bg-white text-neutral-600 transition hover:border-neutral-400 hover:text-neutral-950 disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-neutral-300 disabled:hover:border-neutral-200"
     >
       {icon}
     </button>
   );
 }
 
-function createChallengeCode() {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  const values = new Uint32Array(8);
-
-  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
-    crypto.getRandomValues(values);
-  } else {
-    for (let index = 0; index < values.length; index += 1) {
-      values[index] = Math.floor(Math.random() * alphabet.length);
-    }
-  }
-
-  const token = Array.from(values, (value) => alphabet[value % alphabet.length]);
-  return `DS-${token.slice(0, 4).join("")}-${token.slice(4).join("")}`;
+function formatOwnershipChallengeExpiry(value: string) {
+  const expiresAt = new Date(value);
+  if (Number.isNaN(expiresAt.getTime())) return "30분 뒤";
+  return expiresAt.toLocaleTimeString("ko-KR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function formatInstagramDmExpiry(value: string) {

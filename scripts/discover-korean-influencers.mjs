@@ -15,6 +15,7 @@ import { classifyMarketplacePublicInfluencerEligibility } from "../src/domain/ma
 import { normalizeNaverBlogRecentPosts } from "../src/domain/naverBlogPosts.js";
 import {
   getNaverSearchBudgetSnapshot,
+  prepareNaverSearchReservationForFetch,
   reserveNaverSearchRequest,
 } from "./lib/naver-search-budget.mjs";
 import { buildDiscoveredPublicInfluencerDirectoryRow } from "./lib/public-influencer-directory.mjs";
@@ -722,6 +723,14 @@ async function fetchNaverSearchJson(url, init, label, endpoint) {
   if (naverSearchBudgetExhausted) return null;
   const reservation = await reserveNaverSearchRequest(endpoint);
   if (!reservation.allowed) {
+    naverSearchBudgetExhausted = true;
+    return null;
+  }
+  const providerReservation = await prepareNaverSearchReservationForFetch({
+    reservation,
+    reserve: () => reserveNaverSearchRequest(endpoint),
+  });
+  if (!providerReservation.allowed) {
     naverSearchBudgetExhausted = true;
     return null;
   }

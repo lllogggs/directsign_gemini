@@ -1,22 +1,21 @@
-export type VerificationMetricPlatform = "youtube" | "tiktok";
+export type VerificationMetricPlatform = "tiktok";
 
 export type VerifiedPlatformChannelMetric = {
   status: "available";
   platform: VerificationMetricPlatform;
-  metric: "subscriber_count" | "follower_count";
+  metric: "follower_count";
   value: number;
   checked_at: string;
-  source: "youtube_data_api" | "tiktok_user_info_api";
+  source: "tiktok_user_info_api";
   verified_handle: string;
-  approximate?: boolean;
 };
 
 export type UnavailablePlatformChannelMetric = {
   status: "unavailable";
   platform: VerificationMetricPlatform;
-  metric: "subscriber_count" | "follower_count";
+  metric: "follower_count";
   checked_at: string;
-  source: "youtube_data_api" | "tiktok_user_info_api";
+  source: "tiktok_user_info_api";
   verified_handle: string;
   reason: "hidden" | "missing_or_invalid";
 };
@@ -24,18 +23,6 @@ export type UnavailablePlatformChannelMetric = {
 export type PlatformChannelMetricEvidence =
   | VerifiedPlatformChannelMetric
   | UnavailablePlatformChannelMetric;
-
-export type NaverBlogSelfReportedChannelMetric = {
-  status: "available";
-  platform: "naver_blog";
-  metric: "average_daily_visitors_4d";
-  value: number;
-  period_days: 4;
-  source: "creator_self_report";
-  trust: "self_reported";
-  reported_at: string;
-  reported_handle: string;
-};
 
 type VerificationAutomationLike = {
   provider?: unknown;
@@ -92,38 +79,6 @@ const normalizeCheckedAt = (value: unknown) => {
   return Number.isFinite(Date.parse(checkedAt)) ? checkedAt : undefined;
 };
 
-export const buildNaverBlogSelfReportedChannelMetric = ({
-  platformHandle,
-  value,
-  reportedAt,
-}: {
-  platformHandle: string;
-  value: unknown;
-  reportedAt: unknown;
-}): NaverBlogSelfReportedChannelMetric | undefined => {
-  const reportedHandle = normalizeVerificationMetricHandle(platformHandle);
-  const normalizedValue = normalizeVerificationMetricCount(value);
-  const normalizedReportedAt = normalizeCheckedAt(reportedAt);
-  if (
-    !reportedHandle ||
-    normalizedValue === undefined ||
-    !normalizedReportedAt
-  ) {
-    return undefined;
-  }
-  return {
-    status: "available",
-    platform: "naver_blog",
-    metric: "average_daily_visitors_4d",
-    value: normalizedValue,
-    period_days: 4,
-    source: "creator_self_report",
-    trust: "self_reported",
-    reported_at: normalizedReportedAt,
-    reported_handle: reportedHandle,
-  };
-};
-
 const readRecord = (value: unknown) =>
   value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -140,50 +95,6 @@ export const buildVerifiedPlatformChannelMetric = ({
   const profile = readRecord(automation.profile);
   if (!requestedHandle || !checkedAt || !profile || automation.configured !== true) {
     return undefined;
-  }
-
-  if (platform === "youtube" && automation.provider === "youtube_data_api") {
-    const apiHandle = normalizeVerificationMetricHandle(profile.custom_url);
-    const channelId = requiredText(profile.channel_id);
-    const submittedAsChannelId =
-      /^UC[a-zA-Z0-9_-]{20,}$/.test(platformHandle.trim()) &&
-      platformHandle.trim() === channelId;
-    const accountBound =
-      apiHandle === requestedHandle ||
-      submittedAsChannelId;
-    const subscriberCount = normalizeVerificationMetricCount(
-      profile.subscriber_count,
-    );
-    if (profile.channel_api_succeeded !== true || !accountBound) {
-      return undefined;
-    }
-    if (
-      profile.hidden_subscriber_count !== false ||
-      subscriberCount === undefined
-    ) {
-      return {
-        status: "unavailable",
-        platform: "youtube",
-        metric: "subscriber_count",
-        checked_at: checkedAt,
-        source: "youtube_data_api",
-        verified_handle: requestedHandle,
-        reason:
-          profile.hidden_subscriber_count === true
-            ? "hidden"
-            : "missing_or_invalid",
-      };
-    }
-    return {
-      status: "available",
-      platform: "youtube",
-      metric: "subscriber_count",
-      value: subscriberCount,
-      checked_at: checkedAt,
-      source: "youtube_data_api",
-      verified_handle: requestedHandle,
-      approximate: true,
-    };
   }
 
   if (platform === "tiktok" && automation.provider === "tiktok_login_kit") {
@@ -237,7 +148,7 @@ export const readVerifiedPlatformChannelMetric = (
     return undefined;
   }
   const platform = record.platform;
-  if (platform !== "youtube" && platform !== "tiktok") return undefined;
+  if (platform !== "tiktok") return undefined;
   const ownershipVerification = readRecord(
     record.evidence_snapshot_json?.ownership_verification,
   );
@@ -250,10 +161,8 @@ export const readVerifiedPlatformChannelMetric = (
     return undefined;
   }
 
-  const expectedMetric =
-    platform === "youtube" ? "subscriber_count" : "follower_count";
-  const expectedSource =
-    platform === "youtube" ? "youtube_data_api" : "tiktok_user_info_api";
+  const expectedMetric = "follower_count";
+  const expectedSource = "tiktok_user_info_api";
   const requestedHandle = normalizeVerificationMetricHandle(
     record.platform_handle,
   );
@@ -280,9 +189,6 @@ export const readVerifiedPlatformChannelMetric = (
     checked_at: checkedAt,
     source: expectedSource,
     verified_handle: requestedHandle,
-    ...(platform === "youtube" && metric.approximate === true
-      ? { approximate: true }
-      : {}),
   };
 };
 

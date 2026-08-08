@@ -31,11 +31,14 @@ import {
 } from "./instagram-dm-verification.js";
 import {
   bindOwnershipStatusToSubmittedIdentity,
-  buildNaverBlogSelfReportedChannelMetric,
   buildVerifiedPlatformChannelMetric,
-  normalizeVerificationMetricCount,
   shouldInvalidateApprovedPlatformChannelCache,
 } from "./platform-verification-metrics.js";
+import {
+  buildRetainedOwnershipCheck,
+  buildRetainedPlatformAutomationDecision,
+  minimizesPlatformVerificationProviderEvidence,
+} from "./platform-verification-retention.js";
 import { isOperationalTestEmail } from "./operational-test-email.js";
 import { sendPlatformVerificationEmail } from "./verification-email.js";
 import { verificationRequestBelongsToInfluencerAccount } from "./verification-ownership.js";
@@ -150,7 +153,6 @@ import {
   SUPPORT_ACCESS_CONSENT_TEXT,
 } from "../src/domain/legalConsent.js";
 import { normalizeSeoPath, staticSeoRoutePaths } from "../src/domain/seo.js";
-import { reserveNaverSearchRequest } from "../scripts/lib/naver-search-budget.mjs";
 import {
   isTerminalSupabaseAccessFailure,
   isTerminalSupabaseRefreshFailure,
@@ -236,7 +238,6 @@ interface VerificationRequestRecord {
   platform?: InfluencerPlatform;
   platform_handle?: string;
   platform_url?: string;
-  naver_blog_recent_4d_average_visitors?: number | null;
   ownership_verification_method?: InfluencerVerificationMethod;
   ownership_challenge_code?: string;
   ownership_challenge_code_hash?: string | null;
@@ -683,7 +684,7 @@ const productName =
     ? "연락미"
     : normalizedConfiguredProductName;
 const signupTermsVersion = "2026-06-02";
-const signupPrivacyPolicyVersion = "2026-08-08.3";
+const signupPrivacyPolicyVersion = "2026-08-08.4";
 const signedPdfFontCandidates = [
   process.env.SIGNED_PDF_FONT_PATH,
   path.join(root, "public", "fonts", "NanumMyeongjo-Regular.ttf"),
@@ -1119,6 +1120,14 @@ const platformUrlHostPatterns: Record<InfluencerPlatform, RegExp[]> = {
 const standardHttpPorts = new Set(["", "80", "443"]);
 const ownershipChallengePattern = /^DS-[A-Z0-9]{4}-[A-Z0-9]{4}$/;
 const instagramDmChallengeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const influencerOwnershipChallengeTtlMs = 30 * 60 * 1000;
+const influencerOwnershipChallengeClockSkewMs = 30 * 1000;
+const influencerOwnershipChallengeSignatureDomain =
+  "yeollock:influencer-ownership-challenge:v1";
+const influencerOwnershipChallengeLedgerRetentionMs = 24 * 60 * 60 * 1000;
+const naverSearchProviderTimeoutMs = 6_500;
+const naverSearchMidnightGuardMs = naverSearchProviderTimeoutMs + 1_000;
+const locallyConsumedInfluencerOwnershipChallenges = new Map<string, number>();
 const configuredInstagramOfficialHandle = String(
   process.env.VITE_INSTAGRAM_OFFICIAL_HANDLE ?? "yeollockme",
 )
@@ -1245,6 +1254,160 @@ const createInstagramDmChallengeCode = () => {
     (value) => instagramDmChallengeAlphabet[value & 31],
   );
   return `DS-${token.slice(0, 4).join("")}-${token.slice(4).join("")}`;
+};
+
+type InfluencerOwnershipChallengeTokenPayload = {
+  version: 1;
+  challenge_id: string;
+  profile_id: string;
+  platform: InfluencerPlatform;
+  challenge_code: string;
+  platform_handle_hash: string;
+  platform_url_hash: string;
+  issued_at: number;
+  expires_at: number;
+};
+
+type InfluencerOwnershipChallengeConsumeResult = {
+  consumed: boolean;
+  reason: "consumed" | "already_consumed" | "expired" | "invalid_time";
+};
+
+const signInfluencerOwnershipChallengePayload = (
+  encodedPayload: string,
+  secret: string,
+) =>
+  createHmac("sha256", secret)
+    .update(`${influencerOwnershipChallengeSignatureDomain}:${encodedPayload}`)
+    .digest("base64url");
+
+export const issueInfluencerOwnershipChallenge = ({
+  secret,
+  profileId,
+  platform,
+  platformHandle,
+  platformUrl,
+  nowMs = Date.now(),
+}: {
+  secret: string;
+  profileId: string;
+  platform: InfluencerPlatform;
+  platformHandle: string;
+  platformUrl: string;
+  nowMs?: number;
+}) => {
+  if (!hasText(secret) || !hasText(profileId) || !influencerPlatforms.has(platform)) {
+    throw new Error("Influencer ownership challenge requires exact server values");
+  }
+
+  const binding = buildInfluencerOwnershipChallengeBinding({
+    platform,
+    platformHandle,
+    platformUrl,
+  });
+  if (binding.ok === false) {
+    throw new Error(binding.error);
+  }
+
+  const challengeCode = createInstagramDmChallengeCode();
+  const payload: InfluencerOwnershipChallengeTokenPayload = {
+    version: 1,
+    challenge_id: randomUUID(),
+    profile_id: profileId,
+    platform,
+    challenge_code: challengeCode,
+    platform_handle_hash: binding.platformHandleHash,
+    platform_url_hash: binding.platformUrlHash,
+    issued_at: nowMs,
+    expires_at: nowMs + influencerOwnershipChallengeTtlMs,
+  };
+  const encodedPayload = Buffer.from(JSON.stringify(payload), "utf8").toString(
+    "base64url",
+  );
+  const signature = signInfluencerOwnershipChallengePayload(
+    encodedPayload,
+    secret,
+  );
+
+  return {
+    code: challengeCode,
+    token: `${encodedPayload}.${signature}`,
+    expiresAt: payload.expires_at,
+  };
+};
+
+export const verifyInfluencerOwnershipChallengeToken = ({
+  token,
+  secret,
+  profileId,
+  platform,
+  challengeCode,
+  platformHandle,
+  platformUrl,
+  nowMs = Date.now(),
+}: {
+  token: string | undefined;
+  secret: string;
+  profileId: string;
+  platform: InfluencerPlatform;
+  challengeCode: string;
+  platformHandle: string;
+  platformUrl: string;
+  nowMs?: number;
+}) => {
+  const binding = buildInfluencerOwnershipChallengeBinding({
+    platform,
+    platformHandle,
+    platformUrl,
+  });
+  if (
+    !hasText(token) ||
+    token.length > 2_048 ||
+    !hasText(secret) ||
+    !hasText(profileId) ||
+    !influencerPlatforms.has(platform) ||
+    !ownershipChallengePattern.test(challengeCode) ||
+    !binding.ok
+  ) {
+    return undefined;
+  }
+
+  const [encodedPayload, signature, extra] = token.split(".");
+  if (!encodedPayload || !signature || extra) return undefined;
+  const expectedSignature = signInfluencerOwnershipChallengePayload(
+    encodedPayload,
+    secret,
+  );
+  if (!safeEqual(signature, expectedSignature)) return undefined;
+
+  try {
+    const payload = JSON.parse(
+      Buffer.from(encodedPayload, "base64url").toString("utf8"),
+    ) as Partial<InfluencerOwnershipChallengeTokenPayload>;
+    if (
+      payload.version !== 1 ||
+      !hasText(payload.challenge_id) ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        payload.challenge_id,
+      ) ||
+      payload.profile_id !== profileId ||
+      payload.platform !== platform ||
+      payload.challenge_code !== challengeCode ||
+      payload.platform_handle_hash !== binding.platformHandleHash ||
+      payload.platform_url_hash !== binding.platformUrlHash ||
+      !Number.isFinite(payload.issued_at) ||
+      !Number.isFinite(payload.expires_at) ||
+      payload.issued_at! > nowMs + influencerOwnershipChallengeClockSkewMs ||
+      payload.expires_at! <= nowMs ||
+      payload.expires_at! - payload.issued_at! !==
+        influencerOwnershipChallengeTtlMs
+    ) {
+      return undefined;
+    }
+    return payload as InfluencerOwnershipChallengeTokenPayload;
+  } catch {
+    return undefined;
+  }
 };
 
 const getShareTokenCipherKey = () => {
@@ -2469,6 +2632,232 @@ const callSupabaseRpc = async <T>(
   });
   await assertSupabaseOk(response, `Supabase ${label}`);
   return (await response.json()) as T;
+};
+
+const readNaverSearchBudgetNumber = (
+  value: string | undefined,
+  fallback: number,
+  maximum?: number,
+) => {
+  const parsed = value?.trim() ? Number(value) : fallback;
+  return Number.isFinite(parsed) && parsed > 0 && (maximum === undefined || parsed <= maximum)
+    ? parsed
+    : fallback;
+};
+
+const reserveNaverSearchVerificationRequest = () =>
+  callSupabaseRpc<{
+    allowed: boolean;
+    reason?: string;
+    date_kst: string;
+    expires_at: string;
+    cap: number;
+    used: number;
+    remaining: number;
+    reserved?: number;
+  }>(
+    "reserve_naver_search_verification_request",
+    {
+      p_endpoint: "blog_verification",
+      p_daily_limit: Math.floor(
+        readNaverSearchBudgetNumber(
+          process.env.NAVER_SEARCH_DAILY_LIMIT,
+          25_000,
+          1_000_000,
+        ),
+      ),
+      p_budget_ratio: readNaverSearchBudgetNumber(
+        process.env.NAVER_SEARCH_VERIFICATION_DAILY_BUDGET_RATIO,
+        0.05,
+        0.05,
+      ),
+    },
+    "NAVER Search verification budget reservation",
+  );
+
+type NaverSearchVerificationReservation = Awaited<
+  ReturnType<typeof reserveNaverSearchVerificationRequest>
+>;
+
+const consumeInfluencerOwnershipChallengeRpc = (
+  payload: InfluencerOwnershipChallengeTokenPayload,
+) =>
+  callSupabaseRpc<InfluencerOwnershipChallengeConsumeResult>(
+    "consume_influencer_ownership_challenge",
+    {
+      p_challenge_id: payload.challenge_id,
+      p_profile_id: payload.profile_id,
+      p_platform: payload.platform,
+      p_code_digest: sha256Hex(
+        `${influencerOwnershipChallengeSignatureDomain}:code:${payload.challenge_code}`,
+      ),
+      p_platform_handle_hash: payload.platform_handle_hash,
+      p_platform_url_hash: payload.platform_url_hash,
+      p_issued_at: new Date(payload.issued_at).toISOString(),
+      p_expires_at: new Date(payload.expires_at).toISOString(),
+    },
+    "influencer ownership challenge consume",
+  );
+
+export const consumeInfluencerOwnershipChallenge = async ({
+  payload,
+  consumeRpc = useSupabase
+    ? consumeInfluencerOwnershipChallengeRpc
+    : undefined,
+  nowMs = Date.now(),
+}: {
+  payload: InfluencerOwnershipChallengeTokenPayload;
+  consumeRpc?: (
+    value: InfluencerOwnershipChallengeTokenPayload,
+  ) => Promise<InfluencerOwnershipChallengeConsumeResult>;
+  nowMs?: number;
+}): Promise<InfluencerOwnershipChallengeConsumeResult> => {
+  if (consumeRpc) {
+    const result = await consumeRpc(payload);
+    if (
+      !result ||
+      typeof result.consumed !== "boolean" ||
+      !["consumed", "already_consumed", "expired", "invalid_time"].includes(
+        result.reason,
+      ) ||
+      result.consumed !== (result.reason === "consumed")
+    ) {
+      throw new Error("Influencer ownership challenge consume result was invalid");
+    }
+    return result;
+  }
+
+  let cleaned = 0;
+  for (const [challengeId, expiresAt] of locallyConsumedInfluencerOwnershipChallenges) {
+    if (
+      cleaned >= 500 ||
+      expiresAt + influencerOwnershipChallengeLedgerRetentionMs >= nowMs
+    ) {
+      continue;
+    }
+    locallyConsumedInfluencerOwnershipChallenges.delete(challengeId);
+    cleaned += 1;
+  }
+  if (
+    payload.expires_at <= nowMs ||
+    payload.issued_at > nowMs + influencerOwnershipChallengeClockSkewMs ||
+    payload.expires_at - payload.issued_at !== influencerOwnershipChallengeTtlMs
+  ) {
+    return {
+      consumed: false,
+      reason: payload.expires_at <= nowMs ? "expired" : "invalid_time",
+    };
+  }
+  if (locallyConsumedInfluencerOwnershipChallenges.has(payload.challenge_id)) {
+    return { consumed: false, reason: "already_consumed" };
+  }
+  locallyConsumedInfluencerOwnershipChallenges.set(
+    payload.challenge_id,
+    payload.expires_at,
+  );
+  return { consumed: true, reason: "consumed" };
+};
+
+export const isMissingInfluencerOwnershipChallengeConsumeRpcError = (
+  error: unknown,
+) =>
+  error instanceof Error &&
+  /PGRST202|Could not find the function[^\n]*consume_influencer_ownership_challenge|schema cache[^\n]*consume_influencer_ownership_challenge/i.test(
+    error.message,
+  );
+
+const getKstDate = (nowMs: number) =>
+  new Date(nowMs + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+const getKstDayExpiry = (dateKst: string) => {
+  try {
+    const nextDay = new Date(`${dateKst}T00:00:00.000+09:00`);
+    if (!Number.isFinite(nextDay.getTime())) return undefined;
+    if (getKstDate(nextDay.getTime()) !== dateKst) return undefined;
+    nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+    return nextDay.toISOString();
+  } catch {
+    return undefined;
+  }
+};
+
+export const validateNaverSearchVerificationReservation = (
+  value: unknown,
+  nowMs = Date.now(),
+) => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const reservation = value as Partial<NaverSearchVerificationReservation>;
+  if (
+    typeof reservation.allowed !== "boolean" ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(reservation.date_kst ?? "") ||
+    !Number.isSafeInteger(reservation.cap) ||
+    Number(reservation.cap) < 1 ||
+    !Number.isSafeInteger(reservation.used) ||
+    Number(reservation.used) < 0 ||
+    !Number.isSafeInteger(reservation.remaining) ||
+    Number(reservation.remaining) < 0 ||
+    reservation.expires_at !== getKstDayExpiry(reservation.date_kst!) ||
+    !Number.isFinite(Date.parse(reservation.expires_at))
+  ) {
+    return false;
+  }
+  if (
+    reservation.allowed &&
+    (reservation.reserved !== 1 ||
+      reservation.used! > reservation.cap! ||
+      reservation.remaining !== reservation.cap! - reservation.used!)
+  ) {
+    return false;
+  }
+  if (
+    !reservation.allowed &&
+    (reservation.remaining !== 0 || reservation.used! < reservation.cap!)
+  ) {
+    return false;
+  }
+  return Date.parse(reservation.expires_at) > nowMs - 24 * 60 * 60 * 1000;
+};
+
+export const prepareNaverSearchVerificationReservationForFetch = async ({
+  reservation,
+  reserve = reserveNaverSearchVerificationRequest,
+  nowMs = Date.now(),
+  guardMs = naverSearchMidnightGuardMs,
+}: {
+  reservation: unknown;
+  reserve?: () => Promise<NaverSearchVerificationReservation>;
+  nowMs?: number;
+  guardMs?: number;
+}): Promise<
+  | { allowed: true; reservation: NaverSearchVerificationReservation }
+  | { allowed: false; reason: string }
+> => {
+  if (!Number.isSafeInteger(nowMs) || !Number.isSafeInteger(guardMs) || guardMs < 0) {
+    return { allowed: false, reason: "invalid_reservation" };
+  }
+  let current = reservation;
+  if (!validateNaverSearchVerificationReservation(current, nowMs)) {
+    return { allowed: false, reason: "invalid_reservation" };
+  }
+  let typed = current as NaverSearchVerificationReservation;
+  const currentDateKst = getKstDate(nowMs);
+  if (typed.date_kst !== currentDateKst || Date.parse(typed.expires_at) <= nowMs) {
+    current = await reserve();
+    if (!validateNaverSearchVerificationReservation(current, nowMs)) {
+      return { allowed: false, reason: "invalid_reservation" };
+    }
+    typed = current as NaverSearchVerificationReservation;
+  }
+  if (!typed.allowed) {
+    return { allowed: false, reason: typed.reason ?? "budget_exhausted" };
+  }
+  if (
+    typed.date_kst !== getKstDate(nowMs) ||
+    Date.parse(typed.expires_at) - nowMs <= guardMs
+  ) {
+    return { allowed: false, reason: "midnight_guard" };
+  }
+  return { allowed: true, reservation: typed };
 };
 
 const insertSupabaseRowsReturning = async <T>(
@@ -9515,6 +9904,7 @@ const getPrivacyRetentionBacklog = async (now: string) =>
 const enqueuePrivacyRetentionBacklogAlert = async (
   backlog: PrivacyRetentionBacklog,
   now: string,
+  ownershipChallengeBacklog = 0,
 ) =>
   enqueueOperationalAlert({
     kind: "auth_health",
@@ -9528,9 +9918,12 @@ const enqueuePrivacyRetentionBacklogAlert = async (
     dashboard_path: "/admin",
     dedupe_key: `privacy_retention:backlog:${now.slice(0, 13)}`,
     decision_reason: "retention_backlog",
-    metadata_json: Object.fromEntries(
-      privacyRetentionBacklogCountKeys.map((key) => [key, backlog[key]]),
-    ),
+    metadata_json: {
+      ...Object.fromEntries(
+        privacyRetentionBacklogCountKeys.map((key) => [key, backlog[key]]),
+      ),
+      ownership_challenge_backlog: ownershipChallengeBacklog,
+    },
     sent_at: undefined,
     error_message: null,
   });
@@ -9557,6 +9950,14 @@ const runPrivacyRetentionSweep = async () => {
   const now = new Date().toISOString();
   const runKey = `vercel:${now.slice(0, 13)}`;
   const storageDeadlineAt = Date.now() + 150_000;
+  const ownershipChallenges = await callSupabaseRpc<{
+    deleted: number;
+    backlog: number;
+  }>(
+    "cleanup_influencer_ownership_challenges",
+    { p_now: now, p_limit: 500 },
+    "influencer ownership challenge retention",
+  );
   const applicationContacts = await callSupabaseRpc<Record<string, unknown>>(
     "redact_expired_campaign_application_contacts",
     {
@@ -9600,11 +10001,28 @@ const runPrivacyRetentionSweep = async () => {
   invalidateSupabaseContractStoreCache();
   invalidateSupabaseVerificationRequestCache();
   clearPublicMarketplaceCache();
-  if (storage.failed > 0 || auth.failed > 0 || backlog.has_backlog) {
-    await enqueuePrivacyRetentionBacklogAlert(backlog, now).catch(() => undefined);
+  if (
+    storage.failed > 0 ||
+    auth.failed > 0 ||
+    backlog.has_backlog ||
+    ownershipChallenges.backlog > 0
+  ) {
+    await enqueuePrivacyRetentionBacklogAlert(
+      backlog,
+      now,
+      ownershipChallenges.backlog,
+    ).catch(() => undefined);
     throw new Error("Privacy retention sweep has retryable failures");
   }
-  return { applicationContacts, prepared, storage, auth, finalized, backlog };
+  return {
+    ownershipChallenges,
+    applicationContacts,
+    prepared,
+    storage,
+    auth,
+    finalized,
+    backlog,
+  };
 };
 
 const upsertGoogleWorkspaceConnection = async (
@@ -10271,7 +10689,7 @@ interface VerificationAutomationResult {
 }
 
 const hasConfiguredEnv = (...names: string[]) =>
-  names.some((name) => hasText(process.env[name]));
+  names.every((name) => hasText(process.env[name]));
 
 const buildVerificationAutomationPlan = (platform: InfluencerPlatform) => {
   const instagramDmRuntimeEnv = [
@@ -10814,6 +11232,156 @@ const parseYoutubeChannelTarget = (
   };
 };
 
+export const canonicalizeInfluencerOwnershipUrl = (value: string) => {
+  const raw = typeof value === "string" ? value.trim() : "";
+  if (!raw || raw.length > 2_048) return undefined;
+  try {
+    const url = new URL(raw);
+    if (
+      url.protocol !== "https:" ||
+      (url.port !== "" && url.port !== "443") ||
+      url.username ||
+      url.password ||
+      !hasPublicHttpUrlHost(url.toString())
+    ) {
+      return undefined;
+    }
+    url.hostname = url.hostname.toLowerCase();
+    url.port = "";
+    url.pathname = url.pathname.replace(/\/{2,}/g, "/");
+    url.searchParams.sort();
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return undefined;
+  }
+};
+
+const canonicalizeInfluencerOwnershipHandle = (
+  platform: InfluencerPlatform,
+  value: string,
+) => {
+  const raw = normalizeRequiredText(value);
+  if (!raw || raw.length > 160) return "";
+  if (platform === "instagram") return normalizeInstagramUsername(raw);
+  if (platform === "naver_blog") return extractNaverBlogId(raw);
+  if (platform === "tiktok") return extractTikTokUsername(raw);
+  if (platform === "youtube" && /^UC[a-zA-Z0-9_-]{20,}$/.test(raw)) {
+    return raw;
+  }
+  return normalizeHandleForComparison(raw);
+};
+
+const buildInfluencerOwnershipChallengeBinding = ({
+  platform,
+  platformHandle,
+  platformUrl,
+}: {
+  platform: InfluencerPlatform;
+  platformHandle: string;
+  platformUrl: string;
+}):
+  | {
+      ok: true;
+      canonicalHandle: string;
+      canonicalPlatformUrl: string;
+      platformHandleHash: string;
+      platformUrlHash: string;
+    }
+  | { ok: false; error: string } => {
+  const canonicalHandle = canonicalizeInfluencerOwnershipHandle(
+    platform,
+    platformHandle,
+  );
+  const canonicalPlatformUrl = canonicalizeInfluencerOwnershipUrl(platformUrl);
+  if (!canonicalHandle || !canonicalPlatformUrl) {
+    return { ok: false, error: "Valid handle and profile URL are required" };
+  }
+  if (!isExpectedPlatformUrl(platform, canonicalPlatformUrl)) {
+    return { ok: false, error: "Profile URL does not match the selected platform" };
+  }
+  if (
+    platform === "instagram" &&
+    canonicalHandle !== normalizeInstagramUsername(canonicalPlatformUrl)
+  ) {
+    return { ok: false, error: "Instagram handle and profile URL must match" };
+  }
+  if (
+    platform === "tiktok" &&
+    extractTikTokUsername(canonicalPlatformUrl) !==
+      normalizeHandleForComparison(canonicalHandle)
+  ) {
+    return { ok: false, error: "TikTok handle and profile URL must match" };
+  }
+  if (
+    platform === "naver_blog" &&
+    extractNaverBlogId(canonicalPlatformUrl) !== extractNaverBlogId(canonicalHandle)
+  ) {
+    return { ok: false, error: "Naver Blog id and profile URL must match" };
+  }
+  if (platform === "youtube") {
+    const youtubeTarget = parseYoutubeChannelTarget(
+      canonicalPlatformUrl,
+      canonicalHandle,
+    );
+    const normalizedHandle = normalizeHandleForComparison(canonicalHandle);
+    if (
+      (youtubeTarget.type === "handle" &&
+        normalizeHandleForComparison(youtubeTarget.value) !== normalizedHandle) ||
+      (youtubeTarget.type === "id" &&
+        /^UC[a-zA-Z0-9_-]{20,}$/.test(canonicalHandle) &&
+        youtubeTarget.value !== canonicalHandle)
+    ) {
+      return { ok: false, error: "YouTube handle and channel URL must match" };
+    }
+  }
+
+  return {
+    ok: true,
+    canonicalHandle,
+    canonicalPlatformUrl,
+    platformHandleHash: sha256Hex(canonicalHandle),
+    platformUrlHash: sha256Hex(canonicalPlatformUrl),
+  };
+};
+
+export const validateInfluencerOwnershipProofUrl = ({
+  platform,
+  platformHandle,
+  proofUrl,
+}: {
+  platform: InfluencerPlatform;
+  platformHandle: string;
+  proofUrl: string;
+}): string | undefined => {
+  const canonicalProofUrl = canonicalizeInfluencerOwnershipUrl(proofUrl);
+  if (!canonicalProofUrl || !isExpectedPlatformUrl(platform, canonicalProofUrl)) {
+    return "Proof URL must be an HTTPS URL for the selected platform";
+  }
+  if (
+    platform === "naver_blog" &&
+    extractNaverBlogId(canonicalProofUrl) !== extractNaverBlogId(platformHandle)
+  ) {
+    return "Naver Blog proof URL must belong to the submitted blog";
+  }
+  if (platform === "instagram") {
+    const proofUsername = normalizeInstagramUsername(canonicalProofUrl);
+    if (proofUsername && proofUsername !== normalizeInstagramUsername(platformHandle)) {
+      return "Instagram proof URL must belong to the submitted account";
+    }
+  }
+  if (platform === "tiktok") {
+    const proofUsername = extractTikTokUsername(canonicalProofUrl);
+    if (
+      proofUsername &&
+      proofUsername !== normalizeHandleForComparison(platformHandle)
+    ) {
+      return "TikTok proof URL must belong to the submitted account";
+    }
+  }
+  return undefined;
+};
+
 const parseYoutubeVideoId = (value: string | undefined) => {
   if (!hasText(value)) return undefined;
 
@@ -10879,9 +11447,10 @@ const fetchYoutubeChannelForTarget = async (
   apiKey: string,
   target: ReturnType<typeof parseYoutubeChannelTarget>,
   timeoutMs = 6500,
+  includeStatistics = false,
 ) => {
   const url = new URL("https://www.googleapis.com/youtube/v3/channels");
-  url.searchParams.set("part", "snippet,statistics");
+  url.searchParams.set("part", includeStatistics ? "snippet,statistics" : "snippet");
   url.searchParams.set("key", apiKey);
   if (target.type === "id") {
     url.searchParams.set("id", target.value);
@@ -11032,14 +11601,6 @@ const runYoutubeAutomationCheck = async ({
     );
     const matched =
       channelDescriptionMatched || videoProofMatched || publicProofMatched;
-    const matchedFields = [
-      channelDescriptionMatched ? "channel.snippet.description" : undefined,
-      videoProofMatched && videoTitleMatched ? "video.snippet.title" : undefined,
-      videoProofMatched && videoDescriptionMatched
-        ? "video.snippet.description"
-        : undefined,
-      publicProofMatched ? "public_url" : undefined,
-    ].filter((value): value is string => Boolean(value));
     const ownershipCheck = {
       status: matched ? "matched" : ("not_found" as OwnershipCheckStatus),
       checked_at: publicChallenge?.checked_at ?? checkedAt,
@@ -11053,13 +11614,6 @@ const runYoutubeAutomationCheck = async ({
       status: channelResponse.ok && matched ? "matched" : "not_found",
       checked_at: checkedAt,
       http_status: videoResponse?.status ?? channelResponse.status,
-      result_hash: sha256Hex(
-        JSON.stringify({
-          channel: channelResponse.payload,
-          video: videoResponse?.payload,
-          public_challenge: publicChallenge,
-        }),
-      ),
       message:
         channelResponse.ok && matched
           ? videoProofMatched
@@ -11068,39 +11622,11 @@ const runYoutubeAutomationCheck = async ({
               ? "YouTube 채널 설명에서 인증코드를 확인했습니다."
               : "YouTube 공개 증빙 URL에서 인증코드를 확인했습니다."
           : "YouTube 채널 또는 제출 증빙에서 인증코드를 확인하지 못했습니다.",
-      matched_fields: matchedFields,
       ownership_check: {
         ...ownershipCheck,
         status: channelResponse.ok ? ownershipCheck.status : "failed",
       },
       public_challenge: publicChallenge,
-      profile: channel
-        ? {
-            channel_api_succeeded: channelResponse.ok,
-            channel_id: channel.id,
-            title: channel.snippet?.title,
-            custom_url: channel.snippet?.customUrl,
-            published_at: channel.snippet?.publishedAt,
-            subscriber_count: channel.statistics?.subscriberCount,
-            video_count: channel.statistics?.videoCount,
-            hidden_subscriber_count: channel.statistics?.hiddenSubscriberCount,
-            proof_video_id: video?.id,
-            proof_video_title: video?.snippet?.title,
-            proof_video_channel_id: video?.snippet?.channelId,
-            proof_video_channel_title: video?.snippet?.channelTitle,
-            proof_video_published_at: video?.snippet?.publishedAt,
-            proof_video_privacy_status: video?.status?.privacyStatus,
-            proof_video_code_found: videoProofMatched,
-            proof_video_channel_matched: videoChannelMatches,
-            proof_source: videoProofMatched
-              ? "video"
-              : channelDescriptionMatched
-                ? "channel"
-                : publicProofMatched
-                  ? "public_url"
-                  : undefined,
-          }
-        : undefined,
       plan,
     };
   } catch (error) {
@@ -11183,7 +11709,7 @@ const runNaverBlogAutomationCheck = async ({
   }
 
   try {
-    const reservation = await reserveNaverSearchRequest("blog");
+    const reservation = await reserveNaverSearchVerificationRequest();
     if (!reservation.allowed) {
       return {
         provider: plan.provider,
@@ -11206,6 +11732,23 @@ const runNaverBlogAutomationCheck = async ({
     url.searchParams.set("query", `${challengeCode} ${expectedBlogId || platformHandle}`);
     url.searchParams.set("display", "10");
     url.searchParams.set("sort", "date");
+    const providerReservation =
+      await prepareNaverSearchVerificationReservationForFetch({ reservation });
+    if (!providerReservation.allowed) {
+      return {
+        provider: plan.provider,
+        configured: true,
+        mode: "manual_fallback",
+        status: "blocked",
+        checked_at: checkedAt,
+        message: "NAVER automatic verification is temporarily unavailable.",
+        next_action: "manual_review",
+        public_challenge: publicChallenge,
+        ownership_check: publicOwnershipCheck,
+        profile: { blog_id: expectedBlogId || undefined },
+        plan,
+      };
+    }
     const apiResponse = await fetchJsonWithTimeout<{
       items?: Array<{
         title?: string;
@@ -11221,7 +11764,7 @@ const runNaverBlogAutomationCheck = async ({
         "X-Naver-Client-Secret": clientSecret,
         Accept: "application/json",
       },
-    });
+    }, naverSearchProviderTimeoutMs);
     const items = apiResponse.payload.items ?? [];
     const matchedItem = items.find((item) => {
       const haystack = [
@@ -11249,28 +11792,15 @@ const runNaverBlogAutomationCheck = async ({
       status: apiResponse.ok && matchedItem ? "matched" : "not_found",
       checked_at: checkedAt,
       http_status: apiResponse.status,
-      result_hash: sha256Hex(JSON.stringify(apiResponse.payload)),
       message: matchedItem
         ? "네이버 블로그 검색 API에서 제출 블로그의 인증코드를 확인했습니다."
         : "네이버 블로그 검색 API에서 제출 블로그의 인증코드를 찾지 못했습니다.",
-      matched_fields: matchedItem ? ["search.items"] : [],
       ownership_check: {
         status: apiResponse.ok && matchedItem ? "matched" : "not_found",
         checked_at: checkedAt,
         http_status: apiResponse.status,
       },
       public_challenge: publicChallenge,
-      profile: matchedItem
-        ? {
-            blog_id: expectedBlogId || undefined,
-            link: matchedItem.link,
-            bloggername: matchedItem.bloggername,
-            bloggerlink: matchedItem.bloggerlink,
-            proof_source: "naver_search_api",
-          }
-        : {
-            blog_id: expectedBlogId || undefined,
-          },
       plan,
     };
   } catch (error) {
@@ -11763,7 +12293,7 @@ const runPlatformAccountAutomationCheck = async ({
   };
 };
 
-const parseEvidenceFile = (value: unknown) => {
+export const parseEvidenceFile = (value: unknown) => {
   if (!value || typeof value !== "object") return undefined;
 
   const input = value as {
@@ -11774,10 +12304,16 @@ const parseEvidenceFile = (value: unknown) => {
   };
   const name = normalizeRequiredText(input.name);
   const type = normalizeRequiredText(input.type);
-  const size = Number(input.size);
+  const size = input.size;
   const dataUrl = normalizeRequiredText(input.data_url);
 
-  if (!name || !type || !Number.isFinite(size) || !dataUrl) {
+  if (
+    !name ||
+    !type ||
+    typeof size !== "number" ||
+    !Number.isSafeInteger(size) ||
+    !dataUrl
+  ) {
     return undefined;
   }
 
@@ -11789,10 +12325,19 @@ const parseEvidenceFile = (value: unknown) => {
   };
 };
 
-const validateEvidenceFile = (
+export const validateEvidenceFile = (
   file: ReturnType<typeof parseEvidenceFile> | undefined,
 ) => {
   if (!file) return "Verification evidence file is required";
+  if (
+    file.name.length > 255 ||
+    Array.from(file.name).some((character) => {
+      const codePoint = character.codePointAt(0) ?? 0;
+      return codePoint <= 31 || codePoint === 127;
+    })
+  ) {
+    return "Verification evidence filename must be 255 characters or fewer";
+  }
   if (!evidenceFileMimeTypes.has(file.type)) {
     return "Only PDF, PNG, JPG, or WebP files are allowed";
   }
@@ -11800,6 +12345,19 @@ const validateEvidenceFile = (
     return "Verification evidence file must be 10MB or smaller";
   }
   if (!file.data_url.startsWith("data:")) {
+    return "Verification evidence file is invalid";
+  }
+
+  try {
+    const { contentType, buffer } = dataUrlToBuffer(file.data_url);
+    if (
+      contentType !== file.type ||
+      buffer.byteLength !== file.size ||
+      !assertDeclaredMimeMatchesContent(contentType, buffer, evidenceFileMimeTypes)
+    ) {
+      return "Verification evidence file metadata does not match its content";
+    }
+  } catch {
     return "Verification evidence file is invalid";
   }
 
@@ -11815,6 +12373,12 @@ const dataUrlToBuffer = (dataUrl: string) => {
   const contentType = match[1];
   const isBase64 = Boolean(match[2]);
   const payload = match[3];
+  if (
+    isBase64 &&
+    (!/^[A-Za-z0-9+/]*={0,2}$/.test(payload) || payload.length % 4 !== 0)
+  ) {
+    throw new Error("Evidence file data is invalid");
+  }
   const buffer = isBase64
     ? Buffer.from(payload, "base64")
     : Buffer.from(decodeURIComponent(payload), "utf8");
@@ -12098,7 +12662,11 @@ const storeEvidenceFile = async ({
   ) {
     throw new Error("Evidence file content type is invalid");
   }
-  if (buffer.byteLength <= 0 || buffer.byteLength > maxVerificationFileSize) {
+  if (
+    buffer.byteLength <= 0 ||
+    buffer.byteLength > maxVerificationFileSize ||
+    buffer.byteLength !== file.size
+  ) {
     throw new Error("Evidence file size is invalid");
   }
 
@@ -12210,6 +12778,84 @@ const deleteQueuedSupabaseStorageObject = async ({
     throw new Error(
       `Supabase privacy storage deletion failed (${deletionResponse.status})`,
     );
+  }
+};
+
+const enqueueVerificationStorageCompensation = ({
+  requestId,
+  bucket,
+  objectPath,
+}: {
+  requestId: string;
+  bucket: string;
+  objectPath: string;
+}) =>
+  callSupabaseRpc<{ queued: boolean; queue_id: string }>(
+    "enqueue_verification_storage_compensation",
+    {
+      p_request_id: requestId,
+      p_bucket: bucket,
+      p_object_path: objectPath,
+      p_error_code: "verification_insert_failed",
+    },
+    "verification storage compensation enqueue",
+  );
+
+export const compensateFailedVerificationEvidenceInsert = async ({
+  requestId,
+  storedFile,
+  deleteSupabaseObject = deleteQueuedSupabaseStorageObject,
+  enqueueSupabaseDeletion = enqueueVerificationStorageCompensation,
+  deleteLocalObject = async (objectPath: string) => {
+    if (!isAllowedPrivateStorageObjectPath(objectPath)) {
+      throw new Error("Local verification compensation target is outside the allowlist");
+    }
+    const root = path.resolve(privateFilesDir);
+    const absolutePath = path.resolve(root, objectPath);
+    if (!absolutePath.startsWith(`${root}${path.sep}`)) {
+      throw new Error("Local verification compensation target is invalid");
+    }
+    await fs.unlink(absolutePath).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== "ENOENT") throw error;
+    });
+  },
+}: {
+  requestId: string;
+  storedFile: StoredPrivateFile;
+  deleteSupabaseObject?: typeof deleteQueuedSupabaseStorageObject;
+  enqueueSupabaseDeletion?: typeof enqueueVerificationStorageCompensation;
+  deleteLocalObject?: (objectPath: string) => Promise<void>;
+}) => {
+  if (storedFile.provider === "local_file") {
+    await deleteLocalObject(storedFile.path);
+    return { deleted: true, queued: false };
+  }
+  try {
+    await deleteSupabaseObject({
+      bucket: storedFile.bucket,
+      objectPath: storedFile.path,
+    });
+    return { deleted: true, queued: false };
+  } catch (deleteError) {
+    try {
+      const queued = await enqueueSupabaseDeletion({
+        requestId,
+        bucket: storedFile.bucket,
+        objectPath: storedFile.path,
+      });
+      if (!queued?.queued) {
+        throw new Error("Verification storage compensation was not queued", {
+          cause: deleteError,
+        });
+      }
+      return { deleted: false, queued: true };
+    } catch (queueError) {
+      throw new AggregateError(
+        [deleteError, queueError],
+        "Verification evidence compensation failed",
+        { cause: queueError },
+      );
+    }
   }
 };
 
@@ -12463,6 +13109,149 @@ const buildVerificationEvidenceSnapshot = (
       }
     : undefined,
 });
+
+const parseAdminTransportEvidenceFile = (
+  request: VerificationRequestRecord,
+): StoredPrivateFile | undefined => {
+  const storedFile = parseStoredPrivateFile(
+    request.evidence_snapshot_json?.evidence_file,
+  );
+  if (
+    !storedFile ||
+    !isAllowedPrivateStorageObjectPath(storedFile.path) ||
+    storedFile.file_name.length > 255 ||
+    !evidenceFileMimeTypes.has(storedFile.content_type) ||
+    !Number.isSafeInteger(storedFile.byte_size) ||
+    storedFile.byte_size < 1 ||
+    storedFile.byte_size > maxVerificationFileSize ||
+    !/^[0-9a-f]{64}$/.test(storedFile.sha256) ||
+    !Number.isFinite(Date.parse(storedFile.stored_at)) ||
+    (storedFile.provider === "supabase_storage" &&
+      storedFile.bucket !== privateStorageBucket) ||
+    (storedFile.provider === "local_file" && storedFile.bucket !== "local")
+  ) {
+    return undefined;
+  }
+  return storedFile;
+};
+
+const buildAdminTransportHandleClaimSnapshot = (
+  request: VerificationRequestRecord,
+) => {
+  const snapshot = request.evidence_snapshot_json ?? {};
+  if (snapshot.request_type !== "public_profile_handle_claim") return undefined;
+  const claimedHandle = normalizePublicProfileHandle(
+    normalizeOptionalText(snapshot.claimed_handle) ?? "",
+  );
+  const alternateHandle = normalizePublicProfileHandle(
+    normalizeOptionalText(snapshot.requested_alternate_handle) ?? "",
+  );
+  const currentOwnerProfileId = normalizeOptionalText(
+    snapshot.current_owner_profile_id,
+  );
+  const currentMarketplaceProfileId = normalizeOptionalText(
+    snapshot.current_marketplace_profile_id,
+  );
+  const requestedByProfileId = normalizeOptionalText(
+    snapshot.requested_by_profile_id,
+  );
+  const reason = boundPublicHandleAppealReason(
+    normalizeOptionalText(snapshot.reason) ?? "",
+  );
+  if (!claimedHandle || !requestedByProfileId || !isUuidText(requestedByProfileId)) {
+    return undefined;
+  }
+  return {
+    request_type: "public_profile_handle_claim",
+    claim_type: "platform_handle_conflict",
+    claimed_handle: claimedHandle,
+    claimed_profile_url: buildInfluencerPublicProfileUrl(claimedHandle),
+    requested_alternate_handle: alternateHandle || null,
+    current_owner_profile_id:
+      currentOwnerProfileId && isUuidText(currentOwnerProfileId)
+        ? currentOwnerProfileId
+        : null,
+    current_marketplace_profile_id:
+      currentMarketplaceProfileId && isUuidText(currentMarketplaceProfileId)
+        ? currentMarketplaceProfileId
+        : null,
+    requested_by_profile_id: requestedByProfileId,
+    submitted_from: "public_profile_settings",
+    platform: request.platform,
+    platform_handle: request.platform_handle,
+    platform_url: request.platform_url,
+    reason,
+    created_at: request.created_at,
+  };
+};
+
+export const sanitizeVerificationRequestForAdminTransport = (
+  request: VerificationRequestRecord,
+): VerificationRequestRecord => {
+  if (!minimizesPlatformVerificationProviderEvidence(request.platform ?? "")) {
+    return request;
+  }
+  const sanitizedRequest = {
+    ...request,
+  } as VerificationRequestRecord & Record<string, unknown>;
+  const legacyNaverTrafficMetricField = [
+    "naver",
+    "blog",
+    "recent",
+    "4d",
+    "average",
+    "visitors",
+  ].join("_");
+  delete sanitizedRequest[legacyNaverTrafficMetricField];
+  const handleClaim = buildAdminTransportHandleClaimSnapshot(request);
+  if (handleClaim) {
+    return { ...sanitizedRequest, evidence_snapshot_json: handleClaim };
+  }
+  const status = request.ownership_check_status ?? "not_run";
+  const checkedAt = request.ownership_checked_at;
+  const existingDecision = (
+    (request.evidence_snapshot_json?.ownership_verification as
+      | Record<string, unknown>
+      | undefined)?.automation as Record<string, unknown> | undefined
+  )?.platform_account as Record<string, unknown> | undefined;
+  const retainedOwnershipCheck = buildRetainedOwnershipCheck(
+    request.platform!,
+    { status, checked_at: checkedAt },
+  );
+  const retainedDecision = buildRetainedPlatformAutomationDecision(
+    request.platform!,
+    {
+      mode: existingDecision?.mode,
+      status: status === "not_run" ? "pending" : status,
+      checked_at: checkedAt,
+    },
+  );
+  const evidenceSnapshot = buildVerificationEvidenceSnapshot(
+    request.id,
+    parseAdminTransportEvidenceFile(request),
+    {
+      ownership_verification: {
+        platform: request.platform,
+        platform_handle: request.platform_handle,
+        platform_url: request.platform_url,
+        method: request.ownership_verification_method,
+        ...(request.ownership_challenge_code &&
+        ownershipChallengePattern.test(request.ownership_challenge_code)
+          ? { challenge_code: request.ownership_challenge_code }
+          : {}),
+        ...(request.ownership_challenge_url
+          ? { challenge_url: request.ownership_challenge_url }
+          : {}),
+        automated_check: retainedOwnershipCheck,
+        automation: {
+          platform_account: retainedDecision,
+          ownership_challenge: retainedOwnershipCheck,
+        },
+      },
+    },
+  );
+  return { ...sanitizedRequest, evidence_snapshot_json: evidenceSnapshot };
+};
 
 const loadSignedPdfFont = async () => {
   if (signedPdfFontCache) return signedPdfFontCache;
@@ -14715,49 +15504,6 @@ const groupMarketplaceChannelsByProfileId = (
   return grouped;
 };
 
-const readNaverSelfReportedMarketplaceMetric = (
-  channel: SupabaseMarketplaceInfluencerChannelRow,
-) => {
-  if (channel.platform !== "naver_blog") return undefined;
-
-  const metadata = channel.follower_sync_metadata;
-  const count = normalizeVerificationMetricCount(channel.follower_count);
-  const channelHandle = extractNaverBlogId(channel.handle);
-  const reportedHandle = extractNaverBlogId(
-    normalizeOptionalText(metadata?.reported_handle),
-  );
-  const checkedAt = normalizeOptionalText(metadata?.checked_at);
-  const syncedAt = normalizeOptionalText(channel.follower_count_synced_at);
-  const checkedAtTime = Date.parse(checkedAt ?? "");
-  const syncedAtTime = Date.parse(syncedAt ?? "");
-  if (
-    channel.follower_sync_source !== "creator_self_report" ||
-    count === undefined ||
-    metadata?.provider !== "creator_self_report" ||
-    metadata?.metric !== "average_daily_visitors_4d" ||
-    metadata?.trust !== "self_reported" ||
-    Number(metadata?.period_days) !== 4 ||
-    metadata?.account_approved !== true ||
-    metadata?.availability !== "available" ||
-    !channelHandle ||
-    reportedHandle !== channelHandle ||
-    !Number.isFinite(checkedAtTime) ||
-    !Number.isFinite(syncedAtTime) ||
-    syncedAtTime !== checkedAtTime
-  ) {
-    return undefined;
-  }
-
-  return {
-    followersLabel: `일평균 ${count.toLocaleString("ko-KR")}명`,
-    performanceLabel: "최근 4일 평균 · 자가신고",
-    metricType: "average_daily_visitors_4d" as const,
-    metricSource: "creator_self_report" as const,
-    metricTrust: "self_reported" as const,
-    metricPeriodDays: 4 as const,
-  };
-};
-
 const hasMisplacedNaverSelfReportProvenance = (
   channel: SupabaseMarketplaceInfluencerChannelRow,
 ) => {
@@ -14835,17 +15581,17 @@ const mapInfluencerProfileRowToMarketplaceProfile = (
         ownershipStatus,
       };
     }
-    const naverSelfReport = readNaverSelfReportedMarketplaceMetric(channel);
-    const isNaverBlog = channel.platform === "naver_blog";
+    const isProviderMinimizedPlatform =
+      channel.platform === "youtube" || channel.platform === "naver_blog";
     const hasMisplacedNaverSelfReport =
       hasMisplacedNaverSelfReportProvenance(channel);
-    const followersLabel = isNaverBlog
-      ? (naverSelfReport?.followersLabel ?? "계정 연동")
+    const followersLabel = isProviderMinimizedPlatform
+      ? "계정 연동"
       : hasMisplacedNaverSelfReport
         ? "계정 연동"
         : channel.followers_label ?? "계정 연동";
-    const performanceLabel = isNaverBlog
-      ? (naverSelfReport?.performanceLabel ?? "자가신고 미입력")
+    const performanceLabel = isProviderMinimizedPlatform
+      ? "프로필에서 확인"
       : hasMisplacedNaverSelfReport
         ? "프로필에서 확인"
         : channel.performance_label ?? "프로필에서 확인";
@@ -14857,7 +15603,6 @@ const mapInfluencerProfileRowToMarketplaceProfile = (
       followersLabel,
       performanceLabel,
       ownershipStatus,
-      ...(naverSelfReport ?? {}),
     };
   });
 
@@ -14959,7 +15704,7 @@ const mapDiscoveredInfluencerRowToMarketplaceProfile = (
           : "공개 지표 확인");
   const performanceLabel =
     row.platform === "naver_blog"
-      ? "자가신고 미입력"
+      ? "프로필에서 확인"
       : averageViewsLabel
         ? `평균 조회 ${averageViewsLabel}`
         : postCountLabel
@@ -15375,46 +16120,25 @@ const parseMarketplaceRegisteredInfluencerDirectoryItem = (
     const url = normalizeMarketplacePublicImageUrl(channel.url);
     const followerCountValue = Number(channel.follower_count);
     const followerCount =
+      platform !== "youtube" &&
+      platform !== "naver_blog" &&
       channel.follower_count !== undefined &&
       channel.follower_count !== null &&
       Number.isSafeInteger(followerCountValue) &&
       followerCountValue >= 0
         ? followerCountValue
         : undefined;
-    const hasNaverSelfReportProvenance =
-      channel.metric_type === "average_daily_visitors_4d" ||
-      channel.metric_source === "creator_self_report" ||
-      channel.metric_trust === "self_reported";
-    const hasMisplacedNaverSelfReport =
-      platform !== "naver_blog" && hasNaverSelfReportProvenance;
-    const isNaverSelfReport =
-      platform === "naver_blog" &&
-      channel.metric_type === "average_daily_visitors_4d" &&
-      channel.metric_source === "creator_self_report" &&
-      channel.metric_trust === "self_reported" &&
-      channel.metric_period_days === 4;
     return {
       platform: platform as InfluencerPlatform,
       handle,
       ...(url ? { url } : {}),
-      ...(followerCount !== undefined &&
-      !hasMisplacedNaverSelfReport &&
-      (platform !== "naver_blog" || isNaverSelfReport)
-        ? { followerCount }
-        : {}),
-      ...(isNaverSelfReport
-        ? {
-            metricType: "average_daily_visitors_4d" as const,
-            metricSource: "creator_self_report" as const,
-            metricTrust: "self_reported" as const,
-            metricPeriodDays: 4 as const,
-          }
-        : {}),
+      ...(followerCount !== undefined ? { followerCount } : {}),
     };
   });
   const maxAudienceCount = verifiedChannels.reduce<number | undefined>(
     (maximum, channel) => {
       if (
+        channel.platform === "youtube" ||
         channel.platform === "naver_blog" ||
         channel.followerCount === undefined
       ) {
@@ -15548,23 +16272,12 @@ const mapRegisteredInfluencerDirectoryItemToMarketplaceProfile = (
     handle: formatStoredMarketplacePlatformHandle(channel.handle, channel.platform),
     url: channel.url ?? buildMarketplacePlatformUrl(channel.platform, channel.handle),
     followersLabel:
+      channel.platform === "youtube" ||
+      channel.platform === "naver_blog" ||
       channel.followerCount === undefined
         ? ""
-        : channel.metricTrust === "self_reported"
-          ? `일평균 ${channel.followerCount.toLocaleString("ko-KR")}명`
-          : `${channel.followerCount.toLocaleString("ko-KR")}명`,
-    performanceLabel:
-      channel.metricTrust === "self_reported"
-        ? "최근 4일 평균 · 자가신고"
-        : "계정 인증 완료",
-    ...(channel.metricTrust === "self_reported"
-      ? {
-          metricType: channel.metricType,
-          metricSource: channel.metricSource,
-          metricTrust: channel.metricTrust,
-          metricPeriodDays: channel.metricPeriodDays,
-        }
-      : {}),
+        : `${channel.followerCount.toLocaleString("ko-KR")}명`,
+    performanceLabel: "계정 인증 완료",
   }));
 
   return {
@@ -16135,7 +16848,7 @@ const publicMarketplaceAllTags = Array.from(
 let runtimeCachePromise: Promise<RuntimeCacheClient | undefined> | undefined;
 
 const getPublicMarketplaceRuntimeCacheKey = (key: PublicMarketplaceCacheKey) =>
-  `public-marketplace:${key}:v2`;
+  `public-marketplace:${key}:v3`;
 
 const getVercelRuntimeCache = async () => {
   if (process.env.DISABLE_VERCEL_RUNTIME_CACHE === "1") return undefined;
@@ -16466,7 +17179,7 @@ const fetchYoutubeFollowerSnapshot = async (
   }
 
   try {
-    const response = await fetchYoutubeChannelForTarget(apiKey, target, 4500);
+    const response = await fetchYoutubeChannelForTarget(apiKey, target, 4500, true);
     const item = response.payload.items?.[0];
     const followerCount = normalizeFollowerCount(item?.statistics?.subscriberCount);
 
@@ -16790,7 +17503,9 @@ const readMarketplaceFollowerSyncQueue = async (limit: number) => {
   return queue
     .filter(
       ({ channel }) =>
-        channel.platform !== "naver_blog" && isMarketplaceFollowerSyncDue(channel),
+        channel.platform !== "naver_blog" &&
+        channel.platform !== "youtube" &&
+        isMarketplaceFollowerSyncDue(channel),
     )
     .sort(compareMarketplaceFollowerSyncQueue)
     .slice(0, limit);
@@ -19275,6 +19990,9 @@ const upsertInfluencerPublicProfile = async ({
   return { ok: true as const, profile: savedProfile };
 };
 
+export const boundPublicHandleAppealReason = (value: string) =>
+  Array.from(value).slice(0, 4_000).join("");
+
 const submitInfluencerPublicHandleAppeal = async ({
   authUser,
   profile,
@@ -19347,6 +20065,7 @@ const submitInfluencerPublicHandleAppeal = async ({
       automaticHandle,
     )} 주소가 이미 사용 중이지만 신청자의 인증 플랫폼 ID와 일치합니다.`;
 
+  const boundedReason = boundPublicHandleAppealReason(reason);
   const record: VerificationRequestRecord = {
     id: randomUUID(),
     target_type: "influencer_account",
@@ -19378,10 +20097,10 @@ const submitInfluencerPublicHandleAppeal = async ({
       platform: primaryPlatform.platform,
       platform_handle: primaryPlatform.handle,
       platform_url: primaryPlatform.url,
-      reason,
+      reason: boundedReason,
       created_at: now,
     },
-    note: reason,
+    note: boundedReason,
     submitted_ip: getClientIp(request),
     submitted_user_agent: request.header("user-agent") ?? "unknown",
     created_at: now,
@@ -19896,17 +20615,17 @@ const addPlatformInfoToMarketplaceProposals = async (
   >();
   for (const channel of channelRows) {
     const channels = channelsByProfileId.get(channel.profile_id) ?? [];
-    const naverSelfReport = readNaverSelfReportedMarketplaceMetric(channel);
-    const isNaverBlog = channel.platform === "naver_blog";
+    const isProviderMinimizedPlatform =
+      channel.platform === "youtube" || channel.platform === "naver_blog";
     const hasMisplacedNaverSelfReport =
       hasMisplacedNaverSelfReportProvenance(channel);
-    const followersLabel = isNaverBlog
-      ? naverSelfReport?.followersLabel
+    const followersLabel = isProviderMinimizedPlatform
+      ? undefined
       : hasMisplacedNaverSelfReport
         ? undefined
         : channel.followers_label ?? undefined;
-    const performanceLabel = isNaverBlog
-      ? (naverSelfReport?.performanceLabel ?? "자가신고 미입력")
+    const performanceLabel = isProviderMinimizedPlatform
+      ? "프로필에서 확인"
       : hasMisplacedNaverSelfReport
         ? undefined
         : channel.performance_label ?? undefined;
@@ -19917,9 +20636,6 @@ const addPlatformInfoToMarketplaceProposals = async (
       url: channel.url ?? undefined,
       followersLabel,
       performanceLabel,
-      ...(naverSelfReport
-        ? { metricTrust: naverSelfReport.metricTrust }
-        : {}),
     });
     channelsByProfileId.set(channel.profile_id, channels);
   }
@@ -22150,16 +22866,40 @@ const appendVerificationEvidenceAccessAudit = async (
   const updatedAt = new Date().toISOString();
 
   if (useSupabase) {
-    await patchSupabaseRecord(
-      "verification_requests",
-      `?id=eq.${encodeURIComponent(record.id)}`,
-      {
-        evidence_snapshot_json: evidenceSnapshot,
-        updated_at: updatedAt,
-      },
-      "Supabase verification evidence access audit",
-    );
-    return;
+    try {
+      await callSupabaseRpc<string>(
+        "record_verification_evidence_access",
+        {
+          p_request_id: record.id,
+          p_actor_profile_id: admin.profile.id,
+          p_actor_name: admin.profile.name,
+          p_ip: getClientIp(request),
+          p_user_agent: request.header("user-agent") ?? "unknown",
+        },
+        "verification evidence access audit",
+      );
+      return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (
+        !/PGRST202|Could not find the function[^\n]*record_verification_evidence_access|schema cache[^\n]*record_verification_evidence_access/i.test(
+          message,
+        )
+      ) {
+        throw error;
+      }
+      // Rolling-deploy compatibility before the private audit RPC migration.
+      await patchSupabaseRecord(
+        "verification_requests",
+        `?id=eq.${encodeURIComponent(record.id)}`,
+        {
+          evidence_snapshot_json: evidenceSnapshot,
+          updated_at: updatedAt,
+        },
+        "Supabase verification evidence access audit compatibility",
+      );
+      return;
+    }
   }
 
   const records = await readVerificationRequests();
@@ -22296,7 +23036,39 @@ const applyVerificationStatusSideEffects = async (
   }
 };
 
-const insertVerificationRequest = async (record: VerificationRequestRecord) => {
+const settleVerificationRequestPostCommitEffects = async (
+  record: VerificationRequestRecord,
+) => {
+  const settle = (effects: Array<() => unknown | Promise<unknown>>) =>
+    Promise.allSettled(effects.map((effect) => Promise.resolve().then(effect)));
+
+  await settle([
+    () => invalidateSupabaseVerificationRequestCache(),
+    () => invalidateAdvertiserDashboardCache(),
+    () => invalidateInfluencerDashboardCache(),
+  ]);
+
+  const effects: Array<() => unknown | Promise<unknown>> = [
+    () => applyVerificationStatusSideEffects(record),
+    () => enqueueVerificationOperationalAlert(record),
+  ];
+  effects.push(() => {
+    if (
+      shouldInvalidateApprovedPlatformChannelCache(
+        record,
+        isOperationalTestVerificationRequest(record),
+      )
+    ) {
+      return clearPublicMarketplaceCache();
+    }
+    return undefined;
+  });
+  await settle(effects);
+};
+
+export const insertVerificationRequest = async (
+  record: VerificationRequestRecord,
+) => {
   const normalizedRecord = normalizeVerificationRequest(record);
 
   if (useSupabase) {
@@ -22307,35 +23079,24 @@ const insertVerificationRequest = async (record: VerificationRequestRecord) => {
     });
 
     await assertSupabaseOk(response, "Supabase verification insert");
-    const rows = (await response.json()) as VerificationRequestRecord[];
-    const insertedRecord = normalizeVerificationRequest(rows[0] ?? normalizedRecord);
-    invalidateSupabaseVerificationRequestCache();
-    invalidateAdvertiserDashboardCache();
-    invalidateInfluencerDashboardCache();
-    if (
-      shouldInvalidateApprovedPlatformChannelCache(
-        insertedRecord,
-        isOperationalTestVerificationRequest(insertedRecord),
-      )
-    ) {
-      await clearPublicMarketplaceCache();
+    let insertedRecord = normalizedRecord;
+    try {
+      const rows = (await response.json()) as unknown;
+      if (Array.isArray(rows) && rows[0] && typeof rows[0] === "object") {
+        insertedRecord = normalizeVerificationRequest(
+          rows[0] as VerificationRequestRecord,
+        );
+      }
+    } catch {
+      // A successful POST is already committed. Response decoding is post-commit.
     }
-    await applyVerificationStatusSideEffects(insertedRecord);
-    await enqueueVerificationOperationalAlert(insertedRecord);
+    await settleVerificationRequestPostCommitEffects(insertedRecord);
     return insertedRecord;
   }
 
   const verificationRequests = await readVerificationRequests();
   await writeVerificationRequests([normalizedRecord, ...verificationRequests]);
-  if (
-    shouldInvalidateApprovedPlatformChannelCache(
-      normalizedRecord,
-      isOperationalTestVerificationRequest(normalizedRecord),
-    )
-  ) {
-    await clearPublicMarketplaceCache();
-  }
-  await enqueueVerificationOperationalAlert(normalizedRecord);
+  await settleVerificationRequestPostCommitEffects(normalizedRecord);
   return normalizedRecord;
 };
 
@@ -22645,7 +23406,13 @@ const rerunVerificationAutomation = async (
       challengeCode,
     });
     const ownershipCheck =
-      result.ownership_check ??
+      minimizesPlatformVerificationProviderEvidence(record.platform)
+        ? {
+            status: buildAutomationOwnershipStatus(result.status),
+            checked_at: result.checked_at,
+            http_status: result.http_status,
+          }
+        : result.ownership_check ??
       ({
         status: buildAutomationOwnershipStatus(result.status),
         checked_at: result.checked_at,
@@ -22657,11 +23424,29 @@ const rerunVerificationAutomation = async (
       });
     const autoApprove =
       record.status === "pending" && shouldAutoApprovePlatformVerification(result);
-    const channelMetric = buildVerifiedPlatformChannelMetric({
-      platform: record.platform,
-      platformHandle: record.platform_handle,
-      automation: result,
-    });
+    const channelMetric =
+      record.platform === "youtube"
+        ? undefined
+        : buildVerifiedPlatformChannelMetric({
+            platform: record.platform,
+            platformHandle: record.platform_handle,
+            automation: result,
+          });
+    const retainedAutomationDecision = buildRetainedPlatformAutomationDecision(
+      record.platform,
+      {
+        ...result,
+        status:
+          ownershipCheck.status === "not_run"
+            ? "pending"
+            : ownershipCheck.status,
+        checked_at: ownershipCheck.checked_at,
+      },
+    );
+    const retainedOwnershipCheck = buildRetainedOwnershipCheck(
+      record.platform,
+      ownershipCheck,
+    );
     const existingOwnershipVerification =
       (existingSnapshot.ownership_verification as
         | Record<string, unknown>
@@ -22670,18 +23455,33 @@ const rerunVerificationAutomation = async (
       (existingOwnershipVerification.automation as
         | Record<string, unknown>
         | undefined) ?? {};
-    const nextSnapshot = {
-      ...existingSnapshot,
-      ownership_verification: {
-        ...existingOwnershipVerification,
-        automation: {
-          ...existingAutomation,
-          platform_account: result,
-          ownership_challenge: ownershipCheck,
-        },
-        ...(channelMetric ? { channel_metric: channelMetric } : {}),
+    const nextOwnershipVerification: Record<string, unknown> = {
+      ...existingOwnershipVerification,
+      automated_check: retainedOwnershipCheck,
+      automation: {
+        ...existingAutomation,
+        platform_account: retainedAutomationDecision,
+        ownership_challenge: retainedOwnershipCheck,
       },
+      ...(channelMetric ? { channel_metric: channelMetric } : {}),
     };
+    if (record.platform === "youtube") {
+      delete nextOwnershipVerification.channel_metric;
+    }
+    const candidateSnapshot = {
+      ...existingSnapshot,
+      ownership_verification: nextOwnershipVerification,
+    };
+    const nextSnapshot = minimizesPlatformVerificationProviderEvidence(
+      record.platform,
+    )
+      ? sanitizeVerificationRequestForAdminTransport({
+          ...record,
+          ownership_check_status: ownershipCheck.status,
+          ownership_checked_at: ownershipCheck.checked_at,
+          evidence_snapshot_json: candidateSnapshot,
+        }).evidence_snapshot_json
+      : candidateSnapshot;
     const updatedRecord = await updateVerificationRequestAutomation(record, {
       evidence_snapshot_json: nextSnapshot,
       ownership_check_status: ownershipCheck.status,
@@ -22689,6 +23489,7 @@ const rerunVerificationAutomation = async (
       ...(autoApprove
         ? {
             status: "approved" as VerificationStatus,
+            ownership_challenge_consumed_at: checkedAt,
             reviewer_note: "Auto-approved by platform ownership automation.",
             reviewed_by_name: `${productName} automation`,
             reviewed_at: checkedAt,
@@ -22697,7 +23498,7 @@ const rerunVerificationAutomation = async (
       updated_at: checkedAt,
     });
 
-    return { record: updatedRecord, automation: result };
+    return { record: updatedRecord, automation: retainedAutomationDecision };
   }
 
   throw new Error("Unsupported verification target type");
@@ -23246,7 +24047,6 @@ const sanitizeVerificationRequestForSummary = (
     platform,
     platform_handle,
     platform_url,
-    naver_blog_recent_4d_average_visitors,
     ownership_verification_method,
     ownership_check_status,
     ownership_checked_at,
@@ -23277,7 +24077,6 @@ const sanitizeVerificationRequestForSummary = (
     platform,
     platform_handle,
     platform_url,
-    naver_blog_recent_4d_average_visitors,
     ownership_verification_method,
     ownership_check_status,
     ownership_checked_at,
@@ -30996,6 +31795,10 @@ app.post("/api/verification/advertiser", async (request, response, next) => {
       response.status(422).json({ error: "Business start date cannot be in the future" });
       return;
     }
+    if (evidenceError) {
+      response.status(422).json({ error: evidenceError });
+      return;
+    }
 
     const businessAutomationCheck =
       await runBusinessRegistrationAutomationCheck(businessRegistrationNumber, {
@@ -31029,11 +31832,6 @@ app.post("/api/verification/advertiser", async (request, response, next) => {
       response.status(422).json({ error: "Document issue date cannot be in the future" });
       return;
     }
-    if (!autoApprove && evidenceError) {
-      response.status(422).json({ error: evidenceError });
-      return;
-    }
-
     const storedEvidenceFile =
       !autoApprove && evidenceFile
         ? await storeEvidenceFile({
@@ -31046,7 +31844,9 @@ app.post("/api/verification/advertiser", async (request, response, next) => {
     const fallback = autoApprove
       ? undefined
       : buildAdvertiserVerificationFallback(businessAutomationCheck);
-    const record = await insertVerificationRequest({
+    let record: VerificationRequestRecord;
+    try {
+      record = await insertVerificationRequest({
       id: requestId,
       target_type: "advertiser_organization",
       target_id: verificationContext.targetId,
@@ -31092,8 +31892,17 @@ app.post("/api/verification/advertiser", async (request, response, next) => {
       reviewed_by_name: autoApprove ? `${productName} 자동 확인` : undefined,
       reviewed_at: autoApprove ? now : undefined,
       created_at: now,
-      updated_at: now,
-    });
+        updated_at: now,
+      });
+    } catch (error) {
+      if (storedEvidenceFile) {
+        await compensateFailedVerificationEvidenceInsert({
+          requestId,
+          storedFile: storedEvidenceFile,
+        });
+      }
+      throw error;
+    }
 
     response.status(201).json({
       outcome: autoApprove ? "approved" : "pending_manual_review",
@@ -31103,6 +31912,73 @@ app.post("/api/verification/advertiser", async (request, response, next) => {
     next(error);
   }
 });
+
+app.post(
+  "/api/verification/influencer/ownership-challenge",
+  async (request, response, next) => {
+    try {
+      response.setHeader("Cache-Control", "private, no-store");
+      response.setHeader("Vary", "Cookie");
+      const influencerAuth = await requireInfluencerSession(request, response);
+      if (!influencerAuth) return;
+
+      const platform = normalizeRequiredText(
+        request.body?.platform,
+      ) as InfluencerPlatform;
+      if (!influencerPlatforms.has(platform)) {
+        response.status(422).json({ error: "Valid platform is required" });
+        return;
+      }
+      const throttle = await consumeSensitiveEndpointRateLimit(
+        request,
+        "verification_influencer_ownership_challenge",
+        `${influencerAuth.profile.id}:${platform}`,
+      );
+      if (throttle.blocked) {
+        sendSensitiveRateLimitResponse(response, throttle);
+        return;
+      }
+      const platformHandle = normalizeRequiredText(
+        request.body?.platform_handle,
+      );
+      const platformUrl = normalizeRequiredText(request.body?.platform_url);
+      const binding = buildInfluencerOwnershipChallengeBinding({
+        platform,
+        platformHandle,
+        platformUrl,
+      });
+      if (binding.ok === false) {
+        response.status(422).json({ error: binding.error });
+        return;
+      }
+      if (!shareTokenEncryptionSecret) {
+        response.status(503).json({
+          error: "인증 코드를 발급할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+          code: "OWNERSHIP_CHALLENGE_UNAVAILABLE",
+        });
+        return;
+      }
+
+      const challenge = issueInfluencerOwnershipChallenge({
+        secret: shareTokenEncryptionSecret,
+        profileId: influencerAuth.profile.id,
+        platform,
+        platformHandle,
+        platformUrl,
+      });
+      response.json({
+        ownership_challenge: {
+          platform,
+          code: challenge.code,
+          token: challenge.token,
+          expires_at: new Date(challenge.expiresAt).toISOString(),
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 app.post("/api/verification/influencer", async (request, response, next) => {
   try {
@@ -31145,7 +32021,7 @@ app.post("/api/verification/influencer", async (request, response, next) => {
     const submittedPlatformHandle = normalizeRequiredText(
       request.body?.platform_handle,
     );
-    const submittedPlatformUrl = normalizeUrlValue(request.body?.platform_url);
+    const submittedPlatformUrl = normalizeRequiredText(request.body?.platform_url);
     const ownershipMethod = normalizeRequiredText(
       request.body?.ownership_verification_method,
     ) as InfluencerVerificationMethod;
@@ -31154,35 +32030,28 @@ app.post("/api/verification/influencer", async (request, response, next) => {
     const instagramDmUsername = isInstagramDmMethod
       ? normalizeInstagramUsername(submittedPlatformHandle)
       : "";
-    const platformHandle = isInstagramDmMethod
+    let platformHandle = isInstagramDmMethod
       ? instagramDmUsername
       : submittedPlatformHandle;
-    const platformUrl = isInstagramDmMethod && instagramDmUsername
+    let platformUrl = isInstagramDmMethod && instagramDmUsername
       ? `https://www.instagram.com/${instagramDmUsername}/`
       : submittedPlatformUrl;
     const ownershipChallengeCode = isInstagramDmMethod
       ? createInstagramDmChallengeCode()
       : normalizeChallengeCode(request.body?.ownership_challenge_code);
-    const submittedOwnershipChallengeUrl = normalizeUrlValue(
+    const ownershipChallengeToken = isInstagramDmMethod
+      ? undefined
+      : normalizeOptionalText(request.body?.ownership_challenge_token);
+    const submittedOwnershipChallengeUrl = normalizeRequiredText(
       request.body?.ownership_challenge_url,
     );
-    const ownershipChallengeUrl = isInstagramDmMethod
+    let ownershipChallengeUrl = isInstagramDmMethod
       ? platformUrl
-      : submittedOwnershipChallengeUrl ?? platformUrl;
+      : submittedOwnershipChallengeUrl || platformUrl;
     const targetId = influencerAuth.profile.id;
     const platformAccessToken = normalizeOptionalText(
       request.body?.platform_access_token,
     );
-    const hasNaverBlogVisitorReport = Object.prototype.hasOwnProperty.call(
-      request.body ?? {},
-      "naver_blog_recent_4d_average_visitors",
-    );
-    const rawNaverBlogVisitorReport =
-      request.body?.naver_blog_recent_4d_average_visitors;
-    const naverBlogVisitorReport =
-      rawNaverBlogVisitorReport === "" || rawNaverBlogVisitorReport == null
-        ? undefined
-        : normalizeVerificationMetricCount(rawNaverBlogVisitorReport);
     const note = normalizeOptionalText(request.body?.note);
     const evidenceFile = parseEvidenceFile(request.body?.evidence_file);
     const evidenceError = evidenceFile
@@ -31197,34 +32066,6 @@ app.post("/api/verification/influencer", async (request, response, next) => {
       response.status(422).json({ error: "Valid platform is required" });
       return;
     }
-    if (hasNaverBlogVisitorReport && platform !== "naver_blog") {
-      response.status(422).json({
-        error: "Naver Blog visitor report is only available for Naver Blog",
-      });
-      return;
-    }
-    if (
-      platform === "naver_blog" &&
-      (!hasNaverBlogVisitorReport ||
-        rawNaverBlogVisitorReport === "" ||
-        rawNaverBlogVisitorReport == null)
-    ) {
-      response.status(422).json({
-        error: "Naver Blog visitor report is required",
-      });
-      return;
-    }
-    if (
-      platform === "naver_blog" &&
-      rawNaverBlogVisitorReport !== "" &&
-      rawNaverBlogVisitorReport != null &&
-      naverBlogVisitorReport === undefined
-    ) {
-      response.status(422).json({
-        error: "Naver Blog visitor report must be a non-negative safe integer",
-      });
-      return;
-    }
     if (!influencerVerificationMethods.has(ownershipMethod)) {
       response.status(422).json({ error: "Valid ownership verification method is required" });
       return;
@@ -31236,6 +32077,35 @@ app.post("/api/verification/influencer", async (request, response, next) => {
     if (!submittedPlatformHandle || !submittedPlatformUrl) {
       response.status(422).json({ error: "Valid profile handle and URL are required" });
       return;
+    }
+    if (!isInstagramDmMethod) {
+      const binding = buildInfluencerOwnershipChallengeBinding({
+        platform,
+        platformHandle: submittedPlatformHandle,
+        platformUrl: submittedPlatformUrl,
+      });
+      if (binding.ok === false) {
+        response.status(422).json({ error: binding.error });
+        return;
+      }
+      const proofUrlError =
+        ownershipMethod === "screenshot_review" &&
+        !submittedOwnershipChallengeUrl
+          ? undefined
+          : validateInfluencerOwnershipProofUrl({
+              platform,
+              platformHandle: binding.canonicalHandle,
+              proofUrl: ownershipChallengeUrl,
+            });
+      if (proofUrlError) {
+        response.status(422).json({ error: proofUrlError });
+        return;
+      }
+      platformHandle = binding.canonicalHandle;
+      platformUrl = binding.canonicalPlatformUrl;
+      ownershipChallengeUrl = canonicalizeInfluencerOwnershipUrl(
+        ownershipChallengeUrl,
+      )!;
     }
     if (!isExpectedPlatformUrl(platform, submittedPlatformUrl)) {
       response.status(422).json({ error: "Profile URL does not match the selected platform" });
@@ -31329,6 +32199,57 @@ app.post("/api/verification/influencer", async (request, response, next) => {
       return;
     }
 
+    if (!isInstagramDmMethod) {
+      const verifiedChallenge = shareTokenEncryptionSecret
+        ? verifyInfluencerOwnershipChallengeToken({
+            token: ownershipChallengeToken,
+            secret: shareTokenEncryptionSecret,
+            profileId: influencerAuth.profile.id,
+            platform,
+            challengeCode: ownershipChallengeCode,
+            platformHandle,
+            platformUrl,
+          })
+        : undefined;
+      if (!verifiedChallenge) {
+        response.status(409).json({
+          error: "인증 코드가 만료되었거나 유효하지 않습니다. 새 코드를 발급해 주세요.",
+          code: "OWNERSHIP_CHALLENGE_INVALID",
+        });
+        return;
+      }
+
+      let consumeResult: InfluencerOwnershipChallengeConsumeResult;
+      try {
+        consumeResult = await consumeInfluencerOwnershipChallenge({
+          payload: verifiedChallenge,
+        });
+      } catch (error) {
+        if (!isMissingInfluencerOwnershipChallengeConsumeRpcError(error)) {
+          throw error;
+        }
+        response.status(503).json({
+          error: "인증 보안 업데이트 중입니다. 잠시 후 새 코드로 다시 시도해 주세요.",
+          code: "VERIFICATION_UPGRADE_IN_PROGRESS",
+          retryable: true,
+        });
+        return;
+      }
+      if (!consumeResult.consumed) {
+        response.status(409).json({
+          error:
+            consumeResult.reason === "already_consumed"
+              ? "이미 사용한 인증 코드입니다. 새 코드를 발급해 주세요."
+              : "인증 코드가 만료되었거나 유효하지 않습니다. 새 코드를 발급해 주세요.",
+          code:
+            consumeResult.reason === "already_consumed"
+              ? "OWNERSHIP_CHALLENGE_ALREADY_USED"
+              : "OWNERSHIP_CHALLENGE_INVALID",
+        });
+        return;
+      }
+    }
+
     if (isInstagramDmMethod && isInstagramDmAutomationReady()) {
       await expireInstagramDmChallenges();
       const activeChallenge = await readActiveInstagramDmChallenge(
@@ -31382,22 +32303,14 @@ app.post("/api/verification/influencer", async (request, response, next) => {
       challengeCode: ownershipChallengeCode,
       platformAccessToken,
     });
-    const channelMetric = buildVerifiedPlatformChannelMetric({
-      platform,
-      platformHandle,
-      platformAccessTokenProvided: Boolean(platformAccessToken),
-      automation: platformAutomationCheck,
-    });
-    const selfReportedChannelMetric =
-      platform === "naver_blog" && naverBlogVisitorReport !== undefined
-        ? buildNaverBlogSelfReportedChannelMetric({
-            platformHandle,
-            value: naverBlogVisitorReport,
-            reportedAt: now,
-          })
-        : undefined;
     const ownershipCheck =
-      platformAutomationCheck.ownership_check ??
+      minimizesPlatformVerificationProviderEvidence(platform)
+        ? {
+            status: buildAutomationOwnershipStatus(platformAutomationCheck.status),
+            checked_at: platformAutomationCheck.checked_at,
+            http_status: platformAutomationCheck.http_status,
+          }
+        : platformAutomationCheck.ownership_check ??
       ({
         status: buildAutomationOwnershipStatus(platformAutomationCheck.status),
         checked_at: platformAutomationCheck.checked_at,
@@ -31410,6 +32323,21 @@ app.post("/api/verification/influencer", async (request, response, next) => {
     const autoApprove =
       !isInstagramDmMethod &&
       shouldAutoApprovePlatformVerification(platformAutomationCheck);
+    const retainedAutomationDecision = buildRetainedPlatformAutomationDecision(
+      platform,
+      {
+        ...platformAutomationCheck,
+        status:
+          ownershipCheck.status === "not_run"
+            ? "pending"
+            : ownershipCheck.status,
+        checked_at: ownershipCheck.checked_at,
+      },
+    );
+    const retainedOwnershipCheck = buildRetainedOwnershipCheck(
+      platform,
+      ownershipCheck,
+    );
     const storedEvidenceFile = evidenceFile
       ? await storeEvidenceFile({
           requestId,
@@ -31433,8 +32361,6 @@ app.post("/api/verification/influencer", async (request, response, next) => {
       platform: platform as InfluencerPlatform,
       platform_handle: platformHandle,
       platform_url: platformUrl,
-      naver_blog_recent_4d_average_visitors:
-        selfReportedChannelMetric?.value,
       ownership_verification_method: ownershipMethod,
       ownership_challenge_code: isInstagramDmMethod
         ? undefined
@@ -31445,19 +32371,21 @@ app.post("/api/verification/influencer", async (request, response, next) => {
       ownership_challenge_expires_at: instagramDmChallengeExpiresAt,
       ownership_check_status: ownershipCheck.status,
       ownership_checked_at: ownershipCheck.checked_at,
+      ownership_challenge_consumed_at: autoApprove ? now : undefined,
       evidence_file_name: evidenceFile?.name,
       evidence_file_mime: evidenceFile?.type,
       evidence_file_size: evidenceFile?.size,
       evidence_snapshot_json: buildVerificationEvidenceSnapshot(requestId, storedEvidenceFile, {
-        ...(selfReportedChannelMetric
-          ? { self_reported_channel_metric: selfReportedChannelMetric }
-          : {}),
         ownership_verification: {
-          contract_id: contractAccess.contractId,
+          ...(platform === "youtube" || platform === "naver_blog"
+            ? {}
+            : { contract_id: contractAccess.contractId }),
           platform,
           platform_handle: platformHandle,
           platform_url: platformUrl,
-          profile_id: influencerAuth.profile.id,
+          ...(platform === "youtube" || platform === "naver_blog"
+            ? {}
+            : { profile_id: influencerAuth.profile.id }),
           method: ownershipMethod,
           ...(isInstagramDmMethod
             ? {
@@ -31471,12 +32399,11 @@ app.post("/api/verification/influencer", async (request, response, next) => {
               }
             : { challenge_code: ownershipChallengeCode }),
           challenge_url: ownershipChallengeUrl,
-          automated_check: ownershipCheck,
+          automated_check: retainedOwnershipCheck,
           automation: {
-            platform_account: platformAutomationCheck,
-            ownership_challenge: ownershipCheck,
+            platform_account: retainedAutomationDecision,
+            ownership_challenge: retainedOwnershipCheck,
           },
-          ...(channelMetric ? { channel_metric: channelMetric } : {}),
         },
       }),
       note,
@@ -31503,6 +32430,19 @@ app.post("/api/verification/influencer", async (request, response, next) => {
         });
       }
     } catch (error) {
+      if (storedEvidenceFile) {
+        await compensateFailedVerificationEvidenceInsert({
+          requestId,
+          storedFile: storedEvidenceFile,
+        });
+      }
+      if (!isInstagramDmMethod && isSupabaseUniqueViolationError(error)) {
+        response.status(409).json({
+          error: "이미 사용한 인증 코드입니다. 새 코드를 발급해 주세요.",
+          code: "OWNERSHIP_CHALLENGE_ALREADY_USED",
+        });
+        return;
+      }
       if (isInstagramDmMethod) {
         const activeChallenge = await readActiveInstagramDmChallenge(
           influencerAuth.profile.id,
@@ -31657,9 +32597,12 @@ app.get(
 
 app.get("/api/admin/verification-requests", async (request, response, next) => {
   try {
+    setPrivateAuthResponseHeaders(response);
     if (!(await requireAdminSession(request, response))) return;
     response.json({
-      verification_requests: await readOperationalAdminVerificationRequests(),
+      verification_requests: (
+        await readOperationalAdminVerificationRequests()
+      ).map(sanitizeVerificationRequestForAdminTransport),
     });
   } catch (error) {
     next(error);
@@ -31668,6 +32611,7 @@ app.get("/api/admin/verification-requests", async (request, response, next) => {
 
 app.post("/api/admin/verification-requests/:id/automation-check", async (request, response, next) => {
   try {
+    setPrivateAuthResponseHeaders(response);
     const throttle = await consumeSensitiveEndpointRateLimit(
       request,
       "admin_verification_automation_check",
@@ -31696,9 +32640,21 @@ app.post("/api/admin/verification-requests/:id/automation-check", async (request
     }
 
     const result = await rerunVerificationAutomation(record);
+    const responseAutomation = minimizesPlatformVerificationProviderEvidence(
+      result.record.platform ?? "",
+    )
+      ? buildRetainedPlatformAutomationDecision(result.record.platform!, {
+          mode: result.automation.mode,
+          status:
+            result.record.ownership_check_status === "not_run"
+              ? "pending"
+              : result.record.ownership_check_status,
+          checked_at: result.record.ownership_checked_at,
+        })
+      : result.automation;
     response.json({
-      request: result.record,
-      automation: result.automation,
+      request: sanitizeVerificationRequestForAdminTransport(result.record),
+      automation: responseAutomation,
     });
   } catch (error) {
     next(error);
@@ -31707,6 +32663,7 @@ app.post("/api/admin/verification-requests/:id/automation-check", async (request
 
 app.get("/api/admin/verification-requests/:id/evidence", async (request, response, next) => {
   try {
+    setPrivateAuthResponseHeaders(response);
     const admin = await requireAdminSession(request, response);
     if (!admin) return;
 
@@ -31743,7 +32700,17 @@ app.get("/api/admin/verification-requests/:id/evidence", async (request, respons
       return;
     }
 
-    const legacyDataUrl = record.evidence_snapshot_json?.file_data_url;
+    const inlineLegacyDataUrl = record.evidence_snapshot_json?.file_data_url;
+    const legacyDataUrl =
+      typeof inlineLegacyDataUrl === "string"
+        ? inlineLegacyDataUrl
+        : useSupabase
+          ? await callSupabaseRpc<string | null>(
+              "get_verification_legacy_evidence_file",
+              { p_request_id: record.id },
+              "verification legacy evidence read",
+            )
+          : undefined;
     if (typeof legacyDataUrl === "string") {
       const { contentType, buffer } = dataUrlToBuffer(legacyDataUrl);
       if (!assertDeclaredMimeMatchesContent(contentType, buffer, evidenceFileMimeTypes)) {
@@ -31766,6 +32733,7 @@ app.get("/api/admin/verification-requests/:id/evidence", async (request, respons
 
 app.patch("/api/admin/verification-requests/:id", async (request, response, next) => {
   try {
+    setPrivateAuthResponseHeaders(response);
     const throttle = await consumeSensitiveEndpointRateLimit(
       request,
       "admin_verification_review",
@@ -31844,7 +32812,9 @@ app.patch("/api/admin/verification-requests/:id", async (request, response, next
       return;
     }
 
-    response.json({ request: record });
+    response.json({
+      request: sanitizeVerificationRequestForAdminTransport(record),
+    });
   } catch (error) {
     next(error);
   }

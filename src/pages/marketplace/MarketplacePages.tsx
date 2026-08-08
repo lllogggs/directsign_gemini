@@ -2033,9 +2033,6 @@ export function PublicInfluencerProfilePage() {
                                     platform.followersLabel,
                                   )}
                             </p>
-                            <SelfReportedMetricBadge
-                              visible={platform.metricTrust === "self_reported"}
-                            />
                           </div>
                           <span
                             aria-hidden="true"
@@ -2836,9 +2833,6 @@ function InfluencerDiscoveryTableRow({
               ? "플랫폼 인증 전"
               : audienceLabel}
         </p>
-        <SelfReportedMetricBadge
-          visible={primaryPlatform?.metricTrust === "self_reported"}
-        />
       </div>
 
       <div className="flex justify-end">
@@ -2959,7 +2953,6 @@ function InfluencerDiscoveryCompactRow({
                     : primaryPlatform.followersLabel
                 }
                 description={primaryPlatform.performanceLabel}
-                metricTrust={primaryPlatform.metricTrust}
               />
             </div>
           ) : isPrivateRegisteredProfile ? (
@@ -3103,7 +3096,6 @@ function InfluencerPreviewCard({
             label={platformLabels[platform.platform]}
             value={platform.followersLabel}
             description={platform.performanceLabel}
-            metricTrust={platform.metricTrust}
           />
         ))}
         {profile.platforms.length === 0 && isPrivateRegisteredProfile ? (
@@ -4818,14 +4810,12 @@ function PlatformPill({
   label,
   value,
   description,
-  metricTrust,
 }: {
   key?: string;
   platform: InfluencerPlatform;
   label: string;
   value?: string;
   description?: string;
-  metricTrust?: "self_reported";
 }) {
   const hasMetric = Boolean(value);
   const metricValue = hasMetric ? formatDiscoveryAudienceMetric(value) : "";
@@ -4845,16 +4835,6 @@ function PlatformPill({
       {metricValue ? (
         <span className="truncate text-neutral-950">{metricValue}</span>
       ) : null}
-      <SelfReportedMetricBadge visible={metricTrust === "self_reported"} />
-    </span>
-  );
-}
-
-function SelfReportedMetricBadge({ visible }: { visible: boolean }) {
-  if (!visible) return null;
-  return (
-    <span className="inline-flex h-5 shrink-0 items-center rounded-full bg-neutral-100 px-1.5 text-[10px] font-bold text-neutral-600">
-      자가신고
     </span>
   );
 }
