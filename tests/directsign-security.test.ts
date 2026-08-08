@@ -2098,7 +2098,23 @@ describe("yeollock.me security regressions", () => {
     assert.match(discoveryRoute, /accessToken: advertiserAuth\.accessToken/);
     assert.match(
       discoveryRoute,
-      /AuthenticatedInfluencerDirectoryAccessError[\s\S]+response\.status\(403\)/,
+      /AuthenticatedInfluencerDirectoryAccessError[\s\S]+hasActiveAdvertiserOrganizationMembership\(\{[\s\S]+profileId: advertiserAuth\.profile\.id[\s\S]+organizationId: organization\.id[\s\S]+readIndexedMarketplaceInfluencerPage\(\{[\s\S]+organizationId: organization\.id/,
+    );
+    assert.doesNotMatch(
+      discoveryRoute,
+      /error: "인플루언서 탐색 권한이 없습니다\."/,
+    );
+    assert.match(
+      server,
+      /rpcResponse\.status === 403[\s\S]+\.clone\(\)[\s\S]+accessError\.code === "42501"[\s\S]+accessError\.message === "authenticated production advertiser profile required"/,
+    );
+    assert.match(
+      server,
+      /const confirmedAt = auth\.user\.email_confirmed_at \?\? auth\.user\.confirmed_at;[\s\S]+await syncProfileEmailVerifiedAt\(auth\.user\);[\s\S]+email_verified_at: confirmedAt/,
+    );
+    assert.match(
+      server,
+      /const hasActiveAdvertiserOrganizationMembership =[\s\S]+role=in\.\(owner,admin,marketer\)[\s\S]+organization_type=eq\.advertiser&deleted_at=is\.null[\s\S]+memberships\.length > 0 && organizations\.length > 0/,
     );
     assert.match(discoveryRoute, /Cache-Control", "private, no-store/);
     assert.doesNotMatch(discoveryRoute, /sendPublicMarketplaceJson/);
@@ -2133,6 +2149,15 @@ describe("yeollock.me security regressions", () => {
     assert.match(marketplace, /const canonicalHandle =/);
     assert.match(marketplace, /confirmedSaved\.delete\(canonicalHandle\)/);
     assert.match(marketplace, /confirmedSaved\.add\(canonicalHandle\)/);
+    assert.doesNotMatch(
+      marketplace,
+      /primaryChannelUrl \?\? getInfluencerProfilePath\(profile\)/,
+    );
+    assert.match(
+      marketplace,
+      /const profileActionHref =[\s\S]+canOpenPublicProfile \? getInfluencerProfilePath\(profile\) : undefined/,
+    );
+    assert.match(marketplace, /프로필 준비 전/);
     assert.match(proposalRoute, /target\.marketplaceProfileId/);
     assert.match(proposalRoute, /target_influencer_profile_id: target\.marketplaceProfileId/);
     assert.match(
@@ -4807,7 +4832,15 @@ describe("yeollock.me security regressions", () => {
     );
     assert.match(server, /code: "influencer_platform_verification_required"/);
     assert.match(marketplacePages, /채널 보기/);
-    assert.match(marketplacePages, /title="공개 채널 보기"/);
+    assert.match(
+      marketplacePages,
+      /title=\{primaryChannelUrl \? "공개 채널 보기" : "프로필 보기"\}/,
+    );
+    assert.match(marketplacePages, /프로필 준비 전/);
+    assert.doesNotMatch(
+      marketplacePages,
+      /primaryChannelUrl \?\? getInfluencerProfilePath\(profile\)/,
+    );
     assert.match(
       marketplacePages,
       /target=\{primaryChannelUrl \? "_blank" : undefined\}/,
