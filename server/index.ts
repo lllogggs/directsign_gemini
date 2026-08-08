@@ -2400,6 +2400,10 @@ const supabaseRequestTimeoutMs = parsePositiveNumberEnv(
   process.env.SUPABASE_REQUEST_TIMEOUT_MS,
   8,
 ) * 1000;
+const authenticatedMarketplaceInfluencerDirectoryTimeoutMs = Math.min(
+  supabaseRequestTimeoutMs,
+  4_500,
+);
 let supabaseAuthWarmupStartedAt = 0;
 let supabaseAuthWarmupPromise: Promise<void> | undefined;
 
@@ -16448,6 +16452,9 @@ const readAuthenticatedMarketplaceInfluencerPage = async ({
         p_page_size: marketplaceInfluencerPageSize,
         p_saved_only: savedOnly,
       }),
+      signal: AbortSignal.timeout(
+        authenticatedMarketplaceInfluencerDirectoryTimeoutMs,
+      ),
     },
   );
   const accessError =
@@ -16494,6 +16501,10 @@ class AuthenticatedInfluencerDirectoryAccessError extends Error {
     this.name = "AuthenticatedInfluencerDirectoryAccessError";
   }
 }
+
+export const isAuthenticatedInfluencerDirectoryTimeoutError = (
+  error: unknown,
+) => error instanceof Error && error.name === "TimeoutError";
 
 const readPublicMarketplaceInfluencerProfileByHandle = async (handle: string) => {
   const normalizedHandle = normalizePublicProfileHandle(handle);
@@ -30431,7 +30442,10 @@ app.get("/api/marketplace/influencers", async (request, response, next) => {
         savedOnly,
       });
     } catch (error) {
-      if (error instanceof AuthenticatedInfluencerDirectoryAccessError) {
+      if (
+        error instanceof AuthenticatedInfluencerDirectoryAccessError ||
+        isAuthenticatedInfluencerDirectoryTimeoutError(error)
+      ) {
         const hasOrganizationAccess =
           await hasActiveAdvertiserOrganizationMembership({
             profileId: advertiserAuth.profile.id,
@@ -30442,6 +30456,11 @@ app.get("/api/marketplace/influencers", async (request, response, next) => {
             error: "활성 광고주 조직 권한이 필요합니다.",
           });
           return;
+        }
+        if (isAuthenticatedInfluencerDirectoryTimeoutError(error)) {
+          console.warn(
+            "[연락미 marketplace] authenticated directory timed out; using public-only fallback",
+          );
         }
         result = await readIndexedMarketplaceInfluencerPage({
           page,

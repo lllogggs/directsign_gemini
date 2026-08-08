@@ -346,6 +346,115 @@ const PLATFORM_META: Record<
   },
 };
 
+type VerificationAccountPrefillInput = {
+  accountHandle?: string;
+  accountUrl?: string;
+  currentHandle: string;
+  currentUrl: string;
+  hasContractContext: boolean;
+  hasExplicitFormInteraction: boolean;
+  isAdditionalRequest: boolean;
+};
+
+type VerificationAccountPrefill = {
+  platform: InfluencerPlatform;
+  method: InfluencerVerificationMethod;
+  platformHandle: string;
+  platformUrl: string;
+};
+
+const buildVerificationAccountPrefillKey = (
+  accountUrl?: string,
+  accountHandle?: string,
+) => {
+  const normalizedUrl = accountUrl?.trim().toLowerCase();
+  if (!normalizedUrl) return "";
+  return JSON.stringify([
+    normalizedUrl,
+    accountHandle?.trim().replace(/^@+/, "").toLowerCase() ?? "",
+  ]);
+};
+
+// Exported for the focused state-transition regression test below this page.
+// eslint-disable-next-line react-refresh/only-export-components
+export const consumeInitialVerificationAccountPrefill = (
+  input: VerificationAccountPrefillInput,
+  consumedKeys: Set<string>,
+): VerificationAccountPrefill | undefined => {
+  const accountUrl = input.accountUrl?.trim();
+  const accountHandle = input.accountHandle?.trim();
+  const accountKey = buildVerificationAccountPrefillKey(
+    accountUrl,
+    accountHandle,
+  );
+  if (!accountKey || consumedKeys.has(accountKey)) return undefined;
+
+  // An account identity is an initial hint only. Consume it even when another
+  // source already owns the form so clearing the form cannot re-apply it later.
+  consumedKeys.add(accountKey);
+  if (
+    input.currentHandle.trim() ||
+    input.currentUrl.trim() ||
+    input.hasContractContext ||
+    input.hasExplicitFormInteraction ||
+    input.isAdditionalRequest
+  ) {
+    return undefined;
+  }
+
+  const inferredPlatform = inferPlatform(accountUrl);
+  if (!inferredPlatform) return undefined;
+  return {
+    platform: inferredPlatform,
+    method: PLATFORM_META[inferredPlatform].methods[0],
+    platformHandle:
+      accountHandle || inferHandle(accountUrl, inferredPlatform),
+    platformUrl: accountUrl,
+  };
+};
+
+// eslint-disable-next-line react-refresh/only-export-components
+export const shouldIssueInfluencerOwnershipChallenge = (
+  verificationReady: boolean,
+  showRequestForm: boolean,
+  isInstagramDmMethod: boolean,
+  platformHandle: string,
+  platformUrl: string,
+) =>
+  verificationReady &&
+  showRequestForm &&
+  !isInstagramDmMethod &&
+  Boolean(platformHandle.trim() && platformUrl.trim());
+
+// eslint-disable-next-line react-refresh/only-export-components
+export const isInfluencerOwnershipChallengeAvailable = ({
+  challenge,
+  platform,
+  platformHandle,
+  platformUrl,
+  expired,
+  loading,
+}: {
+  challenge: {
+    platform: InfluencerPlatform;
+    platform_handle: string;
+    platform_url: string;
+  } | null;
+  platform: InfluencerPlatform;
+  platformHandle: string;
+  platformUrl: string;
+  expired: boolean;
+  loading: boolean;
+}) =>
+  Boolean(
+    challenge &&
+      challenge.platform === platform &&
+      challenge.platform_handle === platformHandle.trim() &&
+      challenge.platform_url === platformUrl.trim() &&
+      !expired &&
+      !loading,
+  );
+
 export function InfluencerVerification() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -373,6 +482,8 @@ export function InfluencerVerification() {
     enabled: verificationStatusCode === 200,
   });
   const refreshVerificationSummaryRef = useRef(refreshVerificationSummary);
+  const consumedVerificationAccountPrefillKeysRef = useRef(new Set<string>());
+  const hasExplicitVerificationFormInteractionRef = useRef(false);
   const [prefilledContractId, setPrefilledContractId] = useState("");
   const [platform, setPlatform] = useState<InfluencerPlatform>("instagram");
   const [method, setMethod] =
@@ -406,14 +517,15 @@ export function InfluencerVerification() {
   const selectedMethod = METHOD_META[method];
   const isInstagramDmMethod =
     platform === "instagram" && method === "instagram_dm_code";
-  const ownershipChallengeAvailable = Boolean(
-    ownershipChallenge &&
-      ownershipChallenge.platform === platform &&
-      ownershipChallenge.platform_handle === form.platform_handle.trim() &&
-      ownershipChallenge.platform_url === form.platform_url.trim() &&
-      !ownershipChallengeExpired &&
-      !isOwnershipChallengeLoading,
-  );
+  const ownershipChallengeAvailable =
+    isInfluencerOwnershipChallengeAvailable({
+      challenge: ownershipChallenge,
+      platform,
+      platformHandle: form.platform_handle,
+      platformUrl: form.platform_url,
+      expired: ownershipChallengeExpired,
+      loading: isOwnershipChallengeLoading,
+    });
   const showFocusedInstagramDm =
     isInstagramDmMethod &&
     (Boolean(instagramDmChallenge) ||
@@ -454,6 +566,15 @@ export function InfluencerVerification() {
   useEffect(() => {
     const platformHandle = form.platform_handle.trim();
     const platformUrl = form.platform_url.trim();
+    const shouldIssueChallenge = shouldIssueInfluencerOwnershipChallenge(
+      verificationStatusCode === 200 &&
+        Boolean(summary) &&
+        !isVerificationLoading,
+      showRequestForm,
+      isInstagramDmMethod,
+      platformHandle,
+      platformUrl,
+    );
     let cancelled = false;
     let expiryTimer: number | undefined;
     const resetTimer = window.setTimeout(() => {
@@ -461,12 +582,10 @@ export function InfluencerVerification() {
       setOwnershipChallenge(null);
       setOwnershipChallengeExpired(false);
       setOwnershipChallengeError("");
-      setIsOwnershipChallengeLoading(
-        !isInstagramDmMethod && Boolean(platformHandle && platformUrl),
-      );
+      setIsOwnershipChallengeLoading(shouldIssueChallenge);
     }, 0);
 
-    if (isInstagramDmMethod || !platformHandle || !platformUrl) {
+    if (!shouldIssueChallenge) {
       return () => {
         cancelled = true;
         window.clearTimeout(resetTimer);
@@ -523,6 +642,10 @@ export function InfluencerVerification() {
     isInstagramDmMethod,
     ownershipChallengeRefreshAttempt,
     platform,
+    isVerificationLoading,
+    summary,
+    showRequestForm,
+    verificationStatusCode,
   ]);
 
   useEffect(() => {
@@ -671,42 +794,71 @@ export function InfluencerVerification() {
   }, [contract, platform, prefilledContractId]);
 
   useEffect(() => {
-    const accountUrl = verification?.account?.platform_url?.trim();
-    const accountHandle = verification?.account?.platform_handle?.trim();
-    if (!accountUrl || form.platform_url || form.platform_handle) return;
-
-    const inferredPlatform = inferPlatform(accountUrl);
-    if (!inferredPlatform) return;
     const timer = window.setTimeout(() => {
-      setPlatform(inferredPlatform);
-      setMethod(PLATFORM_META[inferredPlatform].methods[0]);
+      const accountPrefill = consumeInitialVerificationAccountPrefill(
+        {
+          accountUrl: verification?.account?.platform_url,
+          accountHandle: verification?.account?.platform_handle,
+          currentHandle: form.platform_handle,
+          currentUrl: form.platform_url,
+          hasContractContext: Boolean(contractId),
+          hasExplicitFormInteraction:
+            hasExplicitVerificationFormInteractionRef.current,
+          isAdditionalRequest: showAdditionalRequest,
+        },
+        consumedVerificationAccountPrefillKeysRef.current,
+      );
+      if (!accountPrefill) return;
+
+      setPlatform(accountPrefill.platform);
+      setMethod(accountPrefill.method);
       setForm((current) => ({
         ...current,
-        platform_handle:
-          accountHandle || inferHandle(accountUrl, inferredPlatform),
-        platform_url: accountUrl,
-        ownership_challenge_url: accountUrl,
+        platform_handle: accountPrefill.platformHandle,
+        platform_url: accountPrefill.platformUrl,
+        ownership_challenge_url: accountPrefill.platformUrl,
       }));
     }, 0);
 
     return () => window.clearTimeout(timer);
   }, [
+    contractId,
     form.platform_handle,
     form.platform_url,
+    showAdditionalRequest,
     verification?.account?.platform_handle,
     verification?.account?.platform_url,
   ]);
 
   const updateForm = (updates: Partial<InfluencerVerificationForm>) => {
+    hasExplicitVerificationFormInteractionRef.current = true;
     setForm((current) => ({ ...current, ...updates }));
     setError("");
     setSubmitted(false);
   };
 
+  const handleStartAdditionalRequest = () => {
+    hasExplicitVerificationFormInteractionRef.current = true;
+    setShowAdditionalRequest(true);
+    setOwnershipChallenge(null);
+    setOwnershipChallengeExpired(false);
+    setOwnershipChallengeError("");
+    setIsOwnershipChallengeLoading(false);
+    setForm(initialForm);
+    setFile(null);
+    setError("");
+    setSubmitted(false);
+  };
+
   const updatePlatform = (nextPlatform: InfluencerPlatform) => {
+    hasExplicitVerificationFormInteractionRef.current = true;
     setPlatform(nextPlatform);
     setMethod(PLATFORM_META[nextPlatform].methods[0]);
     setInstagramDmUnavailable(false);
+    setOwnershipChallenge(null);
+    setOwnershipChallengeExpired(false);
+    setOwnershipChallengeError("");
+    setIsOwnershipChallengeLoading(false);
     setForm((current) => ({
       ...current,
       platform_handle: "",
@@ -719,6 +871,7 @@ export function InfluencerVerification() {
   };
 
   const updateMethod = (nextMethod: InfluencerVerificationMethod) => {
+    hasExplicitVerificationFormInteractionRef.current = true;
     setMethod(nextMethod);
     setInstagramDmUnavailable(false);
     setError("");
@@ -1111,7 +1264,7 @@ export function InfluencerVerification() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => setShowAdditionalRequest(true)}
+                  onClick={handleStartAdditionalRequest}
                   className="yl-primary-action inline-flex h-10 shrink-0 items-center justify-center rounded-[8px] px-4 text-[13px] font-bold transition"
                 >
                   다른 플랫폼 인증 추가
@@ -1507,6 +1660,7 @@ export function InfluencerVerification() {
                   accept="application/pdf,image/png,image/jpeg,image/webp"
                   className="sr-only"
                   onChange={(event) => {
+                    hasExplicitVerificationFormInteractionRef.current = true;
                     const nextFile = event.target.files?.[0] ?? null;
                     const fileError = validateVerificationFile(nextFile);
                     if (fileError) {

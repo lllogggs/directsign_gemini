@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -9,8 +10,242 @@ import {
   shouldInvalidateApprovedPlatformChannelCache,
 } from "../server/platform-verification-metrics.js";
 import { translateApiErrorMessage } from "../src/domain/userMessages.js";
+import {
+  consumeInitialVerificationAccountPrefill,
+  isInfluencerOwnershipChallengeAvailable,
+  shouldIssueInfluencerOwnershipChallenge,
+} from "../src/pages/influencer/InfluencerVerification.js";
 
 const checkedAt = "2026-08-07T09:10:11.123Z";
+
+test("verification account prefill is initial-only and explicit platform choices win", () => {
+  const consumedKeys = new Set<string>();
+  const input = {
+    accountHandle: "@approved.creator",
+    accountUrl: "https://www.instagram.com/approved.creator/",
+    currentHandle: "",
+    currentUrl: "",
+    hasContractContext: false,
+    hasExplicitFormInteraction: false,
+    isAdditionalRequest: false,
+  };
+
+  assert.deepEqual(
+    consumeInitialVerificationAccountPrefill(input, consumedKeys),
+    {
+      platform: "instagram",
+      method: "instagram_dm_code",
+      platformHandle: "@approved.creator",
+      platformUrl: "https://www.instagram.com/approved.creator/",
+    },
+  );
+  assert.equal(
+    consumeInitialVerificationAccountPrefill(input, consumedKeys),
+    undefined,
+  );
+
+  for (const blockedInput of [
+    { ...input, accountHandle: "contract", hasContractContext: true },
+    {
+      ...input,
+      accountHandle: "additional",
+      isAdditionalRequest: true,
+    },
+    {
+      ...input,
+      accountHandle: "selected",
+      hasExplicitFormInteraction: true,
+    },
+    { ...input, accountHandle: "typed", currentHandle: "typed" },
+  ]) {
+    const blockedKeys = new Set<string>();
+    assert.equal(
+      consumeInitialVerificationAccountPrefill(blockedInput, blockedKeys),
+      undefined,
+    );
+    assert.equal(blockedKeys.size, 1);
+    assert.equal(
+      consumeInitialVerificationAccountPrefill(
+        {
+          ...blockedInput,
+          currentHandle: "",
+          hasContractContext: false,
+          hasExplicitFormInteraction: false,
+          isAdditionalRequest: false,
+        },
+        blockedKeys,
+      ),
+      undefined,
+    );
+  }
+});
+
+test("approved Instagram users keep an explicit YouTube or NAVER selection empty until they type", () => {
+  for (const target of [
+    {
+      platform: "youtube" as const,
+      handle: "youtube.creator",
+      url: "https://youtube.com/@youtube.creator",
+    },
+    {
+      platform: "naver_blog" as const,
+      handle: "naver-creator",
+      url: "https://blog.naver.com/naver-creator",
+    },
+  ]) {
+    const consumedKeys = new Set<string>();
+    const approvedAccount = {
+      accountHandle: "approved.creator",
+      accountUrl: "https://instagram.com/approved.creator",
+      currentHandle: "",
+      currentUrl: "",
+      hasContractContext: false,
+      hasExplicitFormInteraction: false,
+      isAdditionalRequest: false,
+    };
+    assert.equal(
+      consumeInitialVerificationAccountPrefill(
+        approvedAccount,
+        consumedKeys,
+      )?.platform,
+      "instagram",
+    );
+
+    // Opening the additional-account form and selecting a new platform clears
+    // the identity fields. The consumed account hint cannot repopulate them.
+    assert.equal(
+      consumeInitialVerificationAccountPrefill(
+        {
+          ...approvedAccount,
+          hasExplicitFormInteraction: true,
+          isAdditionalRequest: true,
+        },
+        consumedKeys,
+      ),
+      undefined,
+    );
+    const settledStates = [
+      { handle: "", url: "" },
+      { handle: target.handle, url: "" },
+      { handle: target.handle, url: target.url },
+    ];
+    assert.equal(
+      settledStates.filter(({ handle, url }) =>
+        shouldIssueInfluencerOwnershipChallenge(
+          true,
+          true,
+          false,
+          handle,
+          url,
+        ),
+      ).length,
+      1,
+      `${target.platform} must issue only after both identity fields are present`,
+    );
+  }
+});
+
+test("ownership challenges require a visible form and both identity fields", () => {
+  for (const isInstagramDmMethod of [false, true]) {
+    assert.equal(
+      shouldIssueInfluencerOwnershipChallenge(
+        true,
+        false,
+        isInstagramDmMethod,
+        "creator",
+        "https://youtube.com/@creator",
+      ),
+      false,
+    );
+  }
+  assert.equal(
+    shouldIssueInfluencerOwnershipChallenge(true, true, false, "", ""),
+    false,
+  );
+  assert.equal(
+    shouldIssueInfluencerOwnershipChallenge(
+      true,
+      true,
+      false,
+      "creator",
+      "https://youtube.com/@creator",
+    ),
+    true,
+  );
+  assert.equal(
+    shouldIssueInfluencerOwnershipChallenge(
+      true,
+      true,
+      true,
+      "creator",
+      "https://instagram.com/creator",
+    ),
+    false,
+  );
+  assert.equal(
+    shouldIssueInfluencerOwnershipChallenge(
+      false,
+      true,
+      false,
+      "creator",
+      "https://youtube.com/@creator",
+    ),
+    false,
+  );
+});
+
+test("a platform change invalidates the previous ownership challenge", () => {
+  const challenge = {
+    platform: "youtube" as const,
+    platform_handle: "creator",
+    platform_url: "https://youtube.com/@creator",
+  };
+  assert.equal(
+    isInfluencerOwnershipChallengeAvailable({
+      challenge,
+      platform: "youtube",
+      platformHandle: "creator",
+      platformUrl: "https://youtube.com/@creator",
+      expired: false,
+      loading: false,
+    }),
+    true,
+  );
+  assert.equal(
+    isInfluencerOwnershipChallengeAvailable({
+      challenge,
+      platform: "naver_blog",
+      platformHandle: "",
+      platformUrl: "",
+      expired: false,
+      loading: false,
+    }),
+    false,
+  );
+});
+
+test("the influencer verification form has no NAVER visitor metric input", () => {
+  const source = readFileSync(
+    new URL(
+      "../src/pages/influencer/InfluencerVerification.tsx",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  assert.doesNotMatch(
+    source,
+    /average_daily_visitors|daily_visitors|visitor_count|방문자\s*(수|입력)/i,
+  );
+  assert.match(
+    source,
+    /const handleStartAdditionalRequest = \(\) => \{[\s\S]*?setShowAdditionalRequest\(true\);[\s\S]*?setOwnershipChallenge\(null\);[\s\S]*?setForm\(initialForm\);/,
+  );
+  assert.match(source, /onClick=\{handleStartAdditionalRequest\}/);
+  assert.doesNotMatch(
+    source,
+    /onClick=\{\(\) => setShowAdditionalRequest\(true\)\}/,
+  );
+});
 
 const tiktokAutomation = (profile: Record<string, unknown> = {}) => ({
   provider: "tiktok_login_kit",

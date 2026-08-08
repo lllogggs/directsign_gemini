@@ -2115,7 +2115,29 @@ describe("yeollock.me security regressions", () => {
     assert.match(discoveryRoute, /accessToken: advertiserAuth\.accessToken/);
     assert.match(
       discoveryRoute,
-      /AuthenticatedInfluencerDirectoryAccessError[\s\S]+hasActiveAdvertiserOrganizationMembership\(\{[\s\S]+profileId: advertiserAuth\.profile\.id[\s\S]+organizationId: organization\.id[\s\S]+readIndexedMarketplaceInfluencerPage\(\{[\s\S]+organizationId: organization\.id/,
+      /AuthenticatedInfluencerDirectoryAccessError[\s\S]+isAuthenticatedInfluencerDirectoryTimeoutError\(error\)[\s\S]+hasActiveAdvertiserOrganizationMembership\(\{[\s\S]+profileId: advertiserAuth\.profile\.id[\s\S]+organizationId: organization\.id[\s\S]+readIndexedMarketplaceInfluencerPage\(\{[\s\S]+organizationId: organization\.id/,
+    );
+    assert.match(
+      server,
+      /const authenticatedMarketplaceInfluencerDirectoryTimeoutMs = Math\.min\([\s\S]+supabaseRequestTimeoutMs,[\s\S]+4_500/,
+    );
+    assert.match(
+      server,
+      /rpc\/list_authenticated_marketplace_influencers[\s\S]+signal: AbortSignal\.timeout\([\s\S]+authenticatedMarketplaceInfluencerDirectoryTimeoutMs/,
+    );
+    const authenticatedDirectoryTimeoutGuard = server.slice(
+      server.indexOf(
+        "export const isAuthenticatedInfluencerDirectoryTimeoutError",
+      ),
+      server.indexOf("const readPublicMarketplaceInfluencerProfileByHandle"),
+    );
+    assert.match(
+      authenticatedDirectoryTimeoutGuard,
+      /error instanceof Error && error\.name === "TimeoutError"/,
+    );
+    assert.doesNotMatch(
+      authenticatedDirectoryTimeoutGuard,
+      /AbortError|TypeError|status|message/,
     );
     assert.doesNotMatch(
       discoveryRoute,
@@ -5433,6 +5455,7 @@ describe("yeollock.me security regressions", () => {
       insertVerificationRequest,
       issueInfluencerOwnershipChallenge,
       isMissingInfluencerOwnershipChallengeConsumeRpcError,
+      isAuthenticatedInfluencerDirectoryTimeoutError,
       parseEvidenceFile,
       prepareNaverSearchVerificationReservationForFetch,
       sanitizeVerificationRequestForAdminTransport,
@@ -5578,6 +5601,24 @@ describe("yeollock.me security regressions", () => {
       ),
       false,
     );
+    const exactDirectoryTimeout = new Error("request exceeded its deadline");
+    exactDirectoryTimeout.name = "TimeoutError";
+    assert.equal(
+      isAuthenticatedInfluencerDirectoryTimeoutError(exactDirectoryTimeout),
+      true,
+    );
+    for (const genericFailure of [
+      new Error("TimeoutError"),
+      Object.assign(new Error("request aborted"), { name: "AbortError" }),
+      new TypeError("network failed"),
+      new Error("Supabase failed (500)"),
+      { name: "TimeoutError" },
+    ]) {
+      assert.equal(
+        isAuthenticatedInfluencerDirectoryTimeoutError(genericFailure),
+        false,
+      );
+    }
 
     const legacyNaverTrafficMetricField = [
       "naver",
