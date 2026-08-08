@@ -192,13 +192,6 @@ const influencerDiscoveryUploader = read(
 const influencerDiscoveryStart = read(
   "scripts/start-influencer-discovery-loop.ps1",
 );
-const runtimeScriptFiles = collectFiles(
-  "scripts",
-  (file) =>
-    /\.(?:[cm]?[jt]s|tsx?|ps1)$/.test(file) &&
-    toDisplayPath(file) !== "scripts/kim-jaewoo-guardrails.mjs",
-);
-const runtimeScriptSources = runtimeScriptFiles.map((file) => read(file)).join("\n");
 const influencerCountryRepair = read(
   "scripts/repair-influencer-country-data.mjs",
 );
@@ -303,6 +296,18 @@ const platformVerificationMetrics = exists(
 )
   ? read("server/platform-verification-metrics.ts")
   : "";
+const platformVerificationRetention = exists(
+  "server/platform-verification-retention.ts",
+)
+  ? read("server/platform-verification-retention.ts")
+  : "";
+const platformVerificationEvidenceMigration = exists(
+  "supabase/migrations/20260808170000_minimize_platform_verification_provider_evidence.sql",
+)
+  ? read(
+      "supabase/migrations/20260808170000_minimize_platform_verification_provider_evidence.sql",
+    )
+  : "";
 const naverSelfReportEnforcementMigration = exists(
   "supabase/migrations/20260807170000_enforce_naver_blog_self_report_metrics.sql",
 )
@@ -321,7 +326,6 @@ const campaignApplicationContactMigration = exists(
     )
   : "";
 const packageJson = JSON.parse(read("package.json"));
-const packageScriptCommands = Object.values(packageJson.scripts ?? {}).join("\n");
 const vercelConfig = read("vercel.json");
 const vercelJson = JSON.parse(vercelConfig);
 const followerSyncCronRoute = server.slice(
@@ -2267,199 +2271,59 @@ check(
   "Discovery must hide celebrity/corporate Instagram rows durably, keep one stable searchable category, and store advertiser saves server-side per organization",
 );
 
-const naverBlogSelfReportChecks = [
-  [
-    "rulebook",
-    agents.includes("Naver Blog visitor metrics must never use `NVisitorgp4Ajax`") &&
-      agents.includes("must enter") &&
-      agents.includes("one visible `자가신고` disclosure") &&
-      agents.includes(
-        "must not enter subscriber/follower `audience_counts`, `max_audience_count`, or global channel-size sorting",
-      ),
-  ],
-  [
-    "deleted collector file",
-    !exists("scripts/sync-discovered-naver-blog-visitors.mjs"),
-  ],
-  [
-    "deleted unofficial visitor parser",
-    !exists("src/domain/naverBlogVisitors.js"),
-  ],
-  [
-    "package command removal",
-    !packageScriptCommands.includes("sync-discovered-naver-blog-visitors") &&
-      !packageScriptCommands.includes("sync:naver-blog-visitors"),
-  ],
-  [
-    "server collector removal",
-    !server.includes("NVisitorgp4Ajax") &&
-      !server.includes("naver_blog_public_visitor_counter") &&
-      !server.includes("getNaverBlogVisitorTargetDates"),
-  ],
-  [
-    "runtime script collector removal",
-    !runtimeScriptSources.includes("NVisitorgp4Ajax") &&
-      !runtimeScriptSources.includes("naver_blog_public_visitor_counter") &&
-      !runtimeScriptSources.includes("sync-discovered-naver-blog-visitors"),
-  ],
-  [
-    "required verification field",
-    influencerVerification.includes(
-      "naver_blog_recent_4d_average_visitors: string",
-    ) &&
-      /label="최근 4일 평균 일일 방문자 수"[\s\S]{0,500}\brequired\b/.test(
-        influencerVerification,
-      ) &&
-      !influencerVerification.includes("방문자 수 (선택)") &&
-      influencerVerification.includes('inputMode="numeric"') &&
-      influencerVerification.includes(
-        'helper="오늘을 제외한 최근 4일 평균을 입력해 주세요. 탐색에는 자가신고로 표시됩니다."',
-      ) &&
-      influencerVerification.includes(
-        'setNaverBlogVisitorError("최근 4일 평균 일일 방문자 수를 입력해 주세요.")',
-      ) &&
-      /naver_blog_recent_4d_average_visitors:\s*parsedNaverBlogVisitorAverage\.value/.test(
-        influencerVerification,
-      ) &&
-      verification.includes("naver_blog_recent_4d_average_visitors?: number"),
-  ],
-  [
-    "server validation and typed evidence",
-    server.includes("Naver Blog visitor report is required") &&
-      server.includes("buildNaverBlogSelfReportedChannelMetric") &&
-      server.includes("self_reported_channel_metric: selfReportedChannelMetric") &&
-      userMessages.includes('"Naver Blog visitor report is required"') &&
-      platformVerificationMetrics.includes(
-        'metric: "average_daily_visitors_4d"',
-      ) &&
-      platformVerificationMetrics.includes('source: "creator_self_report"') &&
-      platformVerificationMetrics.includes('trust: "self_reported"'),
-  ],
-  [
-    "approved production materialization",
-    verifiedPlatformMetricMigration.includes(
-      "naver_blog_recent_4d_average_visitors bigint",
-    ) &&
-      verifiedPlatformMetricMigration.includes("self_reported_channel_metric") &&
-      verifiedPlatformMetricMigration.includes("creator_self_report") &&
-      verifiedPlatformMetricMigration.includes("self_reported") &&
-      verifiedPlatformMetricMigration.includes("최근 4일 평균 · 자가신고"),
-  ],
-  [
-    "legacy cleanup and sort exclusion",
-      naverSelfReportEnforcementMigration.includes(
-        "directsign_sanitize_registered_naver_metrics",
-      ) &&
-      naverSelfReportEnforcementMigration.includes(
-        "directsign_sanitize_naver_channel_self_report",
-      ) &&
-      naverSelfReportEnforcementMigration.includes(
-        "marketplace_naver_channel_self_report_sanitizer",
-      ) &&
-      naverSelfReportEnforcementMigration.includes(
-        "{self_reported_channel_metric,source}",
-      ) &&
-      naverSelfReportEnforcementMigration.includes(
-        "new.audience_counts := coalesce(new.audience_counts, '{}'::jsonb) - 'naver_blog'",
-      ) &&
-      naverSelfReportEnforcementMigration.includes(
-        "directsign_exclude_naver_from_public_audience_sort",
-      ) &&
-      naverSelfReportEnforcementMigration.includes(
-        "directsign_revoke_naver_self_report_on_verification_loss",
-      ) &&
-      naverSelfReportEnforcementMigration.includes("approval_revoked") &&
-      naverSelfReportEnforcementMigration.includes(
-        "pg_catalog.pg_input_is_valid",
-      ) &&
-      naverSelfReportEnforcementMigration.includes(
-        "request_row.status::text = 'approved'",
-      ) &&
-      naverSelfReportEnforcementMigration.includes(
-        "follower_sync_source = 'creator_self_report_required'",
-      ) &&
-      naverSelfReportEnforcementMigration.includes(
-        "channel.follower_sync_source = 'naver_blog_public_visitor_counter'",
-      ) &&
-      naverSelfReportEnforcementMigration.includes(
-        "drop function if exists public.apply_discovered_naver_blog_visitor_metrics_v2(jsonb)",
-      ),
-  ],
-  [
-    "cross-platform provenance cleanup and projection refresh",
-    naverSelfReportEnforcementMigration.includes(
-      "directsign_channel_has_naver_self_report_provenance",
-    ) &&
-      /if new\.platform::text <> 'naver_blog' then[\s\S]+new\.follower_count := null[\s\S]+new\.follower_sync_source := null[\s\S]+new\.follower_sync_metadata := '\{\}'::jsonb/.test(
-        naverSelfReportEnforcementMigration,
-      ) &&
-      naverSelfReportEnforcementMigration.includes(
-        "directsign_refresh_registered_naver_metric_from_channel",
-      ) &&
-      naverSelfReportEnforcementMigration.includes(
-        "marketplace_naver_channel_metric_refresh",
-      ) &&
-      /Revalidate every existing Naver channel[\s\S]+where directsign_private\.directsign_channel_has_naver_self_report_provenance/.test(
-        naverSelfReportEnforcementMigration,
-      ),
-  ],
-  [
-    "visible disclosure without follower sorting",
-    marketplace.includes('metricTrust?: "self_reported"') &&
-      marketplace.includes('platform.platform !== "naver_blog"') &&
-      marketplacePages.includes("function SelfReportedMetricBadge") &&
-      marketplacePages.includes("자가신고") &&
-      advertiserDashboard.includes(
-        '.filter((platform) => platform.metricTrust !== "self_reported")',
-      ) &&
-      advertiserDashboardExportSource.includes('"채널 지표"'),
-  ],
-  [
-    "direct Naver channel consumers fail closed",
-    server.includes("readNaverSelfReportedMarketplaceMetric") &&
-      server.includes("normalizeVerificationMetricCount(channel.follower_count)") &&
-      server.includes('metadata?.provider !== "creator_self_report"') &&
-      server.includes("reportedHandle !== channelHandle") &&
-      server.includes("syncedAtTime !== checkedAtTime") &&
-      server.includes(
-        "const followersLabel = isNaverBlog\n      ? (naverSelfReport?.followersLabel ?? \"계정 연동\")",
-      ) &&
-      server.includes(
-        "const followersLabel = isNaverBlog\n      ? naverSelfReport?.followersLabel",
-      ) &&
-      server.includes("follower_count,follower_count_synced_at,follower_sync_source") &&
-      server.includes("hasMisplacedNaverSelfReportProvenance") &&
-      server.includes('metadata?.metric === "average_daily_visitors_4d"') &&
-      server.includes("const maxAudienceCount = verifiedChannels.reduce"),
-  ],
-  [
-    "bundled Naver fixtures stay channel-only",
-    (marketplace.match(/platform:\s*"naver_blog"/g)?.length ?? 0) > 0 &&
-      (marketplace.match(/platform:\s*"naver_blog"[\s\S]{0,320}?followersLabel:\s*""[\s\S]{0,120}?performanceLabel:\s*"자가신고 미입력"/g)?.length ?? 0) ===
-        (marketplace.match(/platform:\s*"naver_blog"/g)?.length ?? 0),
-  ],
-];
-const missingNaverBlogSelfReportChecks = naverBlogSelfReportChecks
-  .filter(([, condition]) => !condition)
-  .map(([name]) => name);
 check(
-  "Naver Blog visitor metrics require a disclosed creator self-report and no unofficial collector",
-  missingNaverBlogSelfReportChecks.length === 0,
-  `Missing: ${missingNaverBlogSelfReportChecks.join(", ")}`,
+  "Naver Blog verification collects no provider or creator-reported traffic metric",
+  !influencerVerification.includes(
+    "naver_blog_recent_4d_average_visitors",
+  ) &&
+    !verification.includes("naver_blog_recent_4d_average_visitors") &&
+    !server.includes("Naver Blog visitor report is required") &&
+    !server.includes("buildNaverBlogSelfReportedChannelMetric") &&
+    !userMessages.includes("Naver Blog visitor report is required") &&
+    !platformVerificationMetrics.includes(
+      "buildNaverBlogSelfReportedChannelMetric",
+    ) &&
+    !marketplacePages.includes("SelfReportedMetricBadge") &&
+    platformVerificationEvidenceMigration.includes(
+      "set naver_blog_recent_4d_average_visitors = null",
+    ) &&
+    platformVerificationEvidenceMigration.includes(
+      "Neutralizes deprecated NAVER provider/self-report metrics",
+    ) &&
+    platformVerificationEvidenceMigration.includes(
+      "new.follower_count := null",
+    ),
+  "YouTube/NAVER verification may retain only the submitted account, server challenge, and 연락미 decision metadata",
 );
 
 check(
-  "Naver Blog discovery uses the approved 80-percent quota and exposes safe recent posts",
+  "Naver Blog discovery and verification stay within their partitioned 80-percent quota",
   agents.includes(
-    "all Naver search and cross-discovery requests must share one KST-daily usage ledger",
+    "offline discovery scripts can reserve at most 75%",
   ) &&
+    agents.includes(
+      "production account verification can reserve at most 5%",
+    ) &&
+    agents.includes("must never exceed 80% in total") &&
     agents.includes("최근 확인 게시물") &&
     naverSearchBudget.includes("DEFAULT_DAILY_LIMIT = 25_000") &&
-    naverSearchBudget.includes("DEFAULT_BUDGET_RATIO = 0.8") &&
+    naverSearchBudget.includes("DEFAULT_BUDGET_RATIO = 0.75") &&
     naverSearchBudget.includes("reserveNaverSearchRequest") &&
     influencerCollector.includes("reserveNaverSearchRequest") &&
     influencerCurator.includes("reserveNaverSearchRequest") &&
-    server.includes('reserveNaverSearchRequest("blog")') &&
+    server.includes('"reserve_naver_search_verification_request"') &&
+    server.includes("NAVER_SEARCH_VERIFICATION_DAILY_BUDGET_RATIO") &&
+    platformVerificationEvidenceMigration.includes(
+      "at time zone 'Asia/Seoul'",
+    ) &&
+    platformVerificationEvidenceMigration.includes("for update") &&
+    platformVerificationEvidenceMigration.includes(
+      "p_budget_ratio > 0.05",
+    ) &&
+    platformVerificationEvidenceMigration.includes(
+      "grant execute on function public.reserve_naver_search_verification_request",
+    ) &&
+    platformVerificationEvidenceMigration.includes("to service_role") &&
     influencerCollector.includes('naverSorts.push("sim", "date")') &&
     influencerDiscoveryLoop.includes("naver: false") &&
     influencerCollector.includes("recentPosts") &&
@@ -2474,7 +2338,7 @@ check(
     marketplacePages.includes("function NaverRecentPostList") &&
     marketplacePages.includes("최근 확인 게시물") &&
     marketplacePages.includes('rel="noreferrer"'),
-  "All Naver-backed requests must stop at the shared 80% KST-daily budget, preserve unknown creator country, and expose only validated title-link-date recent posts",
+  "Offline discovery may reserve 75% and production verification 5% of the provider allowance; both stop at their KST-daily cap while creator country remains evidence-based",
 );
 
 check(
@@ -2614,23 +2478,26 @@ check(
 );
 
 check(
-  "verified platform metrics stay account-bound, immediate, and operational",
-  platformVerificationMetrics.includes(
-    'automation.provider === "youtube_data_api"',
+  "YouTube and Naver verification responses and traffic metrics stay transient",
+  platformVerificationRetention.includes(
+    "buildRetainedPlatformAutomationDecision",
   ) &&
-    platformVerificationMetrics.includes(
-      'profile.hidden_subscriber_count === true',
+    platformVerificationRetention.includes("provider_response_retained: false") &&
+    platformVerificationRetention.includes(
+      "PLATFORM_VERIFICATION_DECISION_RULE_VERSION",
     ) &&
+    server.includes('record.platform === "youtube"') &&
+    server.includes('platform === "youtube"') &&
+    server.includes('channel.platform !== "youtube"') &&
+    server.includes('channel.platform !== "naver_blog"') &&
     platformVerificationMetrics.includes(
       'profile.oauth_token_source !== "submitted_user_access_token"',
     ) &&
     platformVerificationMetrics.includes("apiHandle !== requestedHandle") &&
     platformVerificationMetrics.includes("Number.isSafeInteger(parsed)") &&
-    platformVerificationMetrics.includes(
+    !platformVerificationMetrics.includes(
       "buildNaverBlogSelfReportedChannelMetric",
     ) &&
-    platformVerificationMetrics.includes('source: "creator_self_report"') &&
-    platformVerificationMetrics.includes('trust: "self_reported"') &&
     verifiedPlatformMetricMigration.includes(
       "directsign_apply_approved_platform_channel_metric",
     ) &&
@@ -2648,21 +2515,51 @@ check(
     verifiedPlatformMetricMigration.includes(
       "directsign_refresh_registered_member_discovery",
     ) &&
-    verifiedPlatformMetricMigration.includes(
-      "new.platform::text in ('youtube', 'tiktok', 'naver_blog')",
-    ) &&
-    verifiedPlatformMetricMigration.includes("self_reported_channel_metric") &&
-    verifiedPlatformMetricMigration.includes(
-      "v_request.naver_blog_recent_4d_average_visitors",
-    ) &&
     naverSelfReportEnforcementMigration.includes(
       "new.audience_counts := coalesce(new.audience_counts, '{}'::jsonb) - 'naver_blog'",
     ) &&
+    platformVerificationEvidenceMigration.includes(
+      "directsign_minimize_platform_verification_evidence",
+    ) &&
+    platformVerificationEvidenceMigration.includes(
+      "provider_response_retained",
+    ) &&
+    platformVerificationEvidenceMigration.includes(
+      "follower_count = null",
+    ) &&
+    platformVerificationEvidenceMigration.includes(
+      "set naver_blog_recent_4d_average_visitors = null",
+    ) &&
+    platformVerificationEvidenceMigration.includes(
+      "delete from public.marketplace_follower_sync_events",
+    ) &&
+    platformVerificationEvidenceMigration.includes(
+      "verification_requests_minimized_provider_evidence",
+    ) &&
     !verifiedPlatformMetricMigration.includes("NVisitorgp4Ajax") &&
     agents.includes(
-      "Approved production YouTube, TikTok, and Naver Blog accounts must materialize the exact verified channel",
+      "YouTube and NAVER automatic verification responses are transient decision inputs",
     ),
-  "Approved platform channels must be canonical and immediate; YouTube/TikTok stay provider-bound while Naver accepts only its required exact-handle creator report, visibly discloses trust, and remains outside follower sorting",
+  "YouTube/Naver provider responses, hashes, HTTP metadata, statistics, and creator traffic reports must not persist; TikTok remains exact-account OAuth-bound",
+);
+
+check(
+  "YouTube and Naver ownership challenges are server-issued, account-bound, short-lived, and single-use",
+  server.includes("issueInfluencerOwnershipChallenge") &&
+    server.includes("verifyInfluencerOwnershipChallengeToken") &&
+    server.includes("influencerOwnershipChallengeTtlMs") &&
+    server.includes("platform_handle_hash") &&
+    server.includes("platform_url_hash") &&
+    server.includes('"/api/verification/influencer/ownership-challenge"') &&
+    influencerVerification.includes("fetchInfluencerOwnershipChallenge") &&
+    influencerVerification.includes("ownership_challenge_token") &&
+    platformVerificationEvidenceMigration.includes(
+      "verification_requests_production_platform_challenge_unique",
+    ) &&
+    agents.includes(
+      "The ownership challenge must be server-issued, short-lived, profile-and-platform-bound, and single-use",
+    ),
+  "Do not accept a browser-generated or reusable ownership code for automatic approval",
 );
 
 check(

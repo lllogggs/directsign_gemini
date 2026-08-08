@@ -1,32 +1,250 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
   bindOwnershipStatusToSubmittedIdentity,
-  buildNaverBlogSelfReportedChannelMetric,
   buildVerifiedPlatformChannelMetric,
   normalizeVerificationMetricCount,
   readVerifiedPlatformChannelMetric,
   shouldInvalidateApprovedPlatformChannelCache,
 } from "../server/platform-verification-metrics.js";
 import { translateApiErrorMessage } from "../src/domain/userMessages.js";
+import {
+  consumeInitialVerificationAccountPrefill,
+  isInfluencerOwnershipChallengeAvailable,
+  shouldIssueInfluencerOwnershipChallenge,
+} from "../src/pages/influencer/InfluencerVerification.js";
 
 const checkedAt = "2026-08-07T09:10:11.123Z";
 
-const youtubeAutomation = (
-  profile: Record<string, unknown> = {},
-) => ({
-  provider: "youtube_data_api",
-  configured: true,
-  checked_at: checkedAt,
-  profile: {
-    channel_api_succeeded: true,
-    channel_id: "UCabcdefghijklmnopqrstuv",
-    custom_url: "@Creator.One",
-    subscriber_count: "12345",
-    hidden_subscriber_count: false,
-    ...profile,
-  },
+test("verification account prefill is initial-only and explicit platform choices win", () => {
+  const consumedKeys = new Set<string>();
+  const input = {
+    accountHandle: "@approved.creator",
+    accountUrl: "https://www.instagram.com/approved.creator/",
+    currentHandle: "",
+    currentUrl: "",
+    hasContractContext: false,
+    hasExplicitFormInteraction: false,
+    isAdditionalRequest: false,
+  };
+
+  assert.deepEqual(
+    consumeInitialVerificationAccountPrefill(input, consumedKeys),
+    {
+      platform: "instagram",
+      method: "instagram_dm_code",
+      platformHandle: "@approved.creator",
+      platformUrl: "https://www.instagram.com/approved.creator/",
+    },
+  );
+  assert.equal(
+    consumeInitialVerificationAccountPrefill(input, consumedKeys),
+    undefined,
+  );
+
+  for (const blockedInput of [
+    { ...input, accountHandle: "contract", hasContractContext: true },
+    {
+      ...input,
+      accountHandle: "additional",
+      isAdditionalRequest: true,
+    },
+    {
+      ...input,
+      accountHandle: "selected",
+      hasExplicitFormInteraction: true,
+    },
+    { ...input, accountHandle: "typed", currentHandle: "typed" },
+  ]) {
+    const blockedKeys = new Set<string>();
+    assert.equal(
+      consumeInitialVerificationAccountPrefill(blockedInput, blockedKeys),
+      undefined,
+    );
+    assert.equal(blockedKeys.size, 1);
+    assert.equal(
+      consumeInitialVerificationAccountPrefill(
+        {
+          ...blockedInput,
+          currentHandle: "",
+          hasContractContext: false,
+          hasExplicitFormInteraction: false,
+          isAdditionalRequest: false,
+        },
+        blockedKeys,
+      ),
+      undefined,
+    );
+  }
+});
+
+test("approved Instagram users keep an explicit YouTube or NAVER selection empty until they type", () => {
+  for (const target of [
+    {
+      platform: "youtube" as const,
+      handle: "youtube.creator",
+      url: "https://youtube.com/@youtube.creator",
+    },
+    {
+      platform: "naver_blog" as const,
+      handle: "naver-creator",
+      url: "https://blog.naver.com/naver-creator",
+    },
+  ]) {
+    const consumedKeys = new Set<string>();
+    const approvedAccount = {
+      accountHandle: "approved.creator",
+      accountUrl: "https://instagram.com/approved.creator",
+      currentHandle: "",
+      currentUrl: "",
+      hasContractContext: false,
+      hasExplicitFormInteraction: false,
+      isAdditionalRequest: false,
+    };
+    assert.equal(
+      consumeInitialVerificationAccountPrefill(
+        approvedAccount,
+        consumedKeys,
+      )?.platform,
+      "instagram",
+    );
+
+    // Opening the additional-account form and selecting a new platform clears
+    // the identity fields. The consumed account hint cannot repopulate them.
+    assert.equal(
+      consumeInitialVerificationAccountPrefill(
+        {
+          ...approvedAccount,
+          hasExplicitFormInteraction: true,
+          isAdditionalRequest: true,
+        },
+        consumedKeys,
+      ),
+      undefined,
+    );
+    const settledStates = [
+      { handle: "", url: "" },
+      { handle: target.handle, url: "" },
+      { handle: target.handle, url: target.url },
+    ];
+    assert.equal(
+      settledStates.filter(({ handle, url }) =>
+        shouldIssueInfluencerOwnershipChallenge(
+          true,
+          true,
+          false,
+          handle,
+          url,
+        ),
+      ).length,
+      1,
+      `${target.platform} must issue only after both identity fields are present`,
+    );
+  }
+});
+
+test("ownership challenges require a visible form and both identity fields", () => {
+  for (const isInstagramDmMethod of [false, true]) {
+    assert.equal(
+      shouldIssueInfluencerOwnershipChallenge(
+        true,
+        false,
+        isInstagramDmMethod,
+        "creator",
+        "https://youtube.com/@creator",
+      ),
+      false,
+    );
+  }
+  assert.equal(
+    shouldIssueInfluencerOwnershipChallenge(true, true, false, "", ""),
+    false,
+  );
+  assert.equal(
+    shouldIssueInfluencerOwnershipChallenge(
+      true,
+      true,
+      false,
+      "creator",
+      "https://youtube.com/@creator",
+    ),
+    true,
+  );
+  assert.equal(
+    shouldIssueInfluencerOwnershipChallenge(
+      true,
+      true,
+      true,
+      "creator",
+      "https://instagram.com/creator",
+    ),
+    false,
+  );
+  assert.equal(
+    shouldIssueInfluencerOwnershipChallenge(
+      false,
+      true,
+      false,
+      "creator",
+      "https://youtube.com/@creator",
+    ),
+    false,
+  );
+});
+
+test("a platform change invalidates the previous ownership challenge", () => {
+  const challenge = {
+    platform: "youtube" as const,
+    platform_handle: "creator",
+    platform_url: "https://youtube.com/@creator",
+  };
+  assert.equal(
+    isInfluencerOwnershipChallengeAvailable({
+      challenge,
+      platform: "youtube",
+      platformHandle: "creator",
+      platformUrl: "https://youtube.com/@creator",
+      expired: false,
+      loading: false,
+    }),
+    true,
+  );
+  assert.equal(
+    isInfluencerOwnershipChallengeAvailable({
+      challenge,
+      platform: "naver_blog",
+      platformHandle: "",
+      platformUrl: "",
+      expired: false,
+      loading: false,
+    }),
+    false,
+  );
+});
+
+test("the influencer verification form has no NAVER visitor metric input", () => {
+  const source = readFileSync(
+    new URL(
+      "../src/pages/influencer/InfluencerVerification.tsx",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  assert.doesNotMatch(
+    source,
+    /average_daily_visitors|daily_visitors|visitor_count|방문자\s*(수|입력)/i,
+  );
+  assert.match(
+    source,
+    /const handleStartAdditionalRequest = \(\) => \{[\s\S]*?setShowAdditionalRequest\(true\);[\s\S]*?setOwnershipChallenge\(null\);[\s\S]*?setForm\(initialForm\);/,
+  );
+  assert.match(source, /onClick=\{handleStartAdditionalRequest\}/);
+  assert.doesNotMatch(
+    source,
+    /onClick=\{\(\) => setShowAdditionalRequest\(true\)\}/,
+  );
 });
 
 const tiktokAutomation = (profile: Record<string, unknown> = {}) => ({
@@ -59,89 +277,6 @@ test("verification metrics accept only non-negative safe integers", () => {
   }
 });
 
-test("Naver Blog self-reported metrics preserve explicit provenance", () => {
-  assert.deepEqual(
-    buildNaverBlogSelfReportedChannelMetric({
-      platformHandle: "@@Creator.Blog",
-      value: "1234",
-      reportedAt: checkedAt,
-    }),
-    {
-      status: "available",
-      platform: "naver_blog",
-      metric: "average_daily_visitors_4d",
-      value: 1234,
-      period_days: 4,
-      source: "creator_self_report",
-      trust: "self_reported",
-      reported_at: checkedAt,
-      reported_handle: "creator.blog",
-    },
-  );
-  assert.equal(
-    buildNaverBlogSelfReportedChannelMetric({
-      platformHandle: "creator.blog",
-      value: 0,
-      reportedAt: "2026-08-07T09:10:11Z",
-    })?.value,
-    0,
-  );
-});
-
-test("Naver Blog self-reported metrics reject malformed values and evidence", () => {
-  for (const value of [
-    -1,
-    1.5,
-    Number.MAX_SAFE_INTEGER + 1,
-    "-1",
-    "1.5",
-    "1e3",
-    "1,000",
-    "0123",
-    " 123 ",
-    "9007199254740992",
-  ]) {
-    assert.equal(
-      buildNaverBlogSelfReportedChannelMetric({
-        platformHandle: "creator.blog",
-        value,
-        reportedAt: checkedAt,
-      }),
-      undefined,
-    );
-  }
-
-  for (const platformHandle of ["", "@", "@@"]) {
-    assert.equal(
-      buildNaverBlogSelfReportedChannelMetric({
-        platformHandle,
-        value: 1234,
-        reportedAt: checkedAt,
-      }),
-      undefined,
-    );
-  }
-
-  for (const reportedAt of [
-    undefined,
-    null,
-    "",
-    "2026-08-07 09:10:11Z",
-    "2026-08-07T09:10:11+09:00",
-    "not-a-date",
-    new Date(checkedAt),
-  ]) {
-    assert.equal(
-      buildNaverBlogSelfReportedChannelMetric({
-        platformHandle: "creator.blog",
-        value: 1234,
-        reportedAt,
-      }),
-      undefined,
-    );
-  }
-});
-
 test("public proof matches are rejected when the submitted account differs", () => {
   assert.equal(bindOwnershipStatusToSubmittedIdentity("matched", true), "matched");
   assert.equal(
@@ -154,84 +289,24 @@ test("public proof matches are rejected when the submitted account differs", () 
   );
 });
 
-test("YouTube uses the account-bound channels.list subscriber count", () => {
-  assert.deepEqual(
-    buildVerifiedPlatformChannelMetric({
-      platform: "youtube",
-      platformHandle: "@Creator.One",
-      automation: youtubeAutomation(),
-    }),
-    {
-      status: "available",
-      platform: "youtube",
-      metric: "subscriber_count",
-      value: 12345,
-      checked_at: checkedAt,
-      source: "youtube_data_api",
-      verified_handle: "creator.one",
-      approximate: true,
-    },
-  );
-});
-
-test("YouTube rejects a different API channel and supports exact channel ids", () => {
-  assert.equal(
-    buildVerifiedPlatformChannelMetric({
-      platform: "youtube",
-      platformHandle: "@Creator.One",
-      automation: youtubeAutomation({ custom_url: "@Different.Creator" }),
-    }),
-    undefined,
-  );
-
-  const channelId = "UCabcdefghijklmnopqrstuv";
-  const channelIdMetric = buildVerifiedPlatformChannelMetric({
-    platform: "youtube",
-    platformHandle: channelId,
-    automation: youtubeAutomation({ custom_url: undefined }),
-  });
-  assert.equal(channelIdMetric?.status, "available");
-  assert.equal(
-    channelIdMetric?.status === "available" ? channelIdMetric.value : undefined,
-    12345,
-  );
-});
-
-test("YouTube records hidden or invalid counts as explicitly unavailable", () => {
-  assert.deepEqual(
-    buildVerifiedPlatformChannelMetric({
-      platform: "youtube",
-      platformHandle: "creator.one",
-      automation: youtubeAutomation({ hidden_subscriber_count: true }),
-    }),
-    {
-      status: "unavailable",
-      platform: "youtube",
-      metric: "subscriber_count",
-      checked_at: checkedAt,
-      source: "youtube_data_api",
-      verified_handle: "creator.one",
-      reason: "hidden",
-    },
-  );
-  assert.equal(
-    buildVerifiedPlatformChannelMetric({
-      platform: "youtube",
-      platformHandle: "creator.one",
-      automation: youtubeAutomation({ subscriber_count: "1e3" }),
-    })?.status,
-    "unavailable",
-  );
-  for (const hiddenSubscriberCount of [undefined, "false"]) {
+test("YouTube and Naver verification never materialize provider or self-reported metrics", () => {
+  for (const platform of ["youtube", "naver_blog"]) {
     assert.equal(
       buildVerifiedPlatformChannelMetric({
-        platform: "youtube",
+        platform,
         platformHandle: "creator.one",
-        automation: youtubeAutomation({
-          hidden_subscriber_count: hiddenSubscriberCount,
-        }),
-      })?.status,
-      "unavailable",
+        automation: {
+          provider: platform === "youtube" ? "youtube_data_api" : "naver_search_api",
+          configured: true,
+          checked_at: checkedAt,
+          profile: {
+            subscriber_count: 12345,
+            follower_count: 12345,
+            average_daily_visitors_4d: 12345,
+          },
+        },
+      }),
+      undefined,
     );
   }
 });
@@ -310,23 +385,24 @@ test("TikTok keeps a missing stats value distinct from account verification", ()
 
 test("stored metrics and cache invalidation require approved production records", () => {
   const channelMetric = buildVerifiedPlatformChannelMetric({
-    platform: "youtube",
+    platform: "tiktok",
     platformHandle: "creator.one",
-    automation: youtubeAutomation(),
+    platformAccessTokenProvided: true,
+    automation: tiktokAutomation(),
   });
   const record = {
     target_type: "influencer_account",
     verification_type: "platform_account",
     status: "approved",
     data_origin: "production",
-    platform: "youtube",
+    platform: "tiktok",
     platform_handle: "@Creator.One",
     reviewed_at: checkedAt,
     evidence_snapshot_json: {
       ownership_verification: { channel_metric: channelMetric },
     },
   };
-  assert.equal(readVerifiedPlatformChannelMetric(record)?.value, 12345);
+  assert.equal(readVerifiedPlatformChannelMetric(record)?.value, 2345);
   assert.equal(shouldInvalidateApprovedPlatformChannelCache(record), true);
   assert.equal(
     shouldInvalidateApprovedPlatformChannelCache(

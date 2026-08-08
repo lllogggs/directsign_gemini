@@ -22,7 +22,7 @@ const migration = fs.readFileSync(
     "20260803100000_add_customer_notification_center.sql",
   ),
   "utf8",
-);
+).replace(/\r\n/g, "\n");
 const server = fs.readFileSync(path.join(root, "server", "index.ts"), "utf8");
 
 const migrationSection = (start: string, end: string) => {

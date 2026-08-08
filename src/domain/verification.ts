@@ -65,7 +65,6 @@ export interface VerificationRequest {
   platform?: InfluencerPlatform;
   platform_handle?: string;
   platform_url?: string;
-  naver_blog_recent_4d_average_visitors?: number;
   ownership_verification_method?: InfluencerVerificationMethod;
   ownership_challenge_code?: string;
   ownership_challenge_url?: string;

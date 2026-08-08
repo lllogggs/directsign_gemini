@@ -6,7 +6,10 @@ import {
   classifyDiscoveredInfluencerAccount,
   normalizeMarketplaceCreatorCategories,
 } from "../src/domain/influencerDiscoveryQuality.js";
-import { reserveNaverSearchRequest } from "./lib/naver-search-budget.mjs";
+import {
+  prepareNaverSearchReservationForFetch,
+  reserveNaverSearchRequest,
+} from "./lib/naver-search-budget.mjs";
 
 dotenv.config({ path: ".env.local" });
 dotenv.config();
@@ -309,6 +312,14 @@ async function queryNaverAccountEvidence(
   const endpoint = new URL("https://openapi.naver.com/v1/search/webkr.json");
   endpoint.searchParams.set("display", "5");
   endpoint.searchParams.set("query", query);
+  const providerReservation = await prepareNaverSearchReservationForFetch({
+    reservation,
+    reserve: () => reserveNaverSearchRequest("/v1/search/webkr.json"),
+  });
+  if (!providerReservation.allowed) {
+    naverQuotaExhausted = true;
+    return NAVER_QUOTA_EXHAUSTED;
+  }
   const response = await fetch(endpoint, {
     headers: {
       "X-Naver-Client-Id": naverClientId,

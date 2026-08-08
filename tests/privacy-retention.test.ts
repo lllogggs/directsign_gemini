@@ -20,6 +20,12 @@ const remoteAppliedCorrectiveMigration = readSource(
 const correctiveMigration = readSource(
   "../supabase/migrations/20260808150000_finalize_privacy_retention_guarantees.sql",
 );
+const remoteAppliedCampaignMetricsMigration = readSource(
+  "../supabase/migrations/20260808160000_add_campaign_application_metrics_and_atomic_edit.sql",
+);
+const platformVerificationMinimizationMigration = readSource(
+  "../supabase/migrations/20260808170000_minimize_platform_verification_provider_evidence.sql",
+);
 const server = readSource("../server/index.ts");
 const privacyPage = readSource("../src/pages/legal/LegalDocumentPage.tsx");
 const signupPage = readSource("../src/pages/auth/SignupPage.tsx");
@@ -27,7 +33,11 @@ const campaignPage = readSource("../src/pages/marketplace/CampaignPages.tsx");
 const advertiserDashboard = readSource("../src/pages/marketing/Dashboard.tsx");
 const contractBuilder = readSource("../src/pages/marketing/ContractBuilder.tsx");
 
-const applyPrivacySchemaThroughFinalGuaranteesMigration = async (db: PGlite) => {
+const applyPrivacySchemaThroughFinalGuaranteesMigration = async (
+  db: PGlite,
+  throughMigration =
+    "20260808170000_minimize_platform_verification_provider_evidence.sql",
+) => {
   await db.exec(String.raw`
     create role anon;
     create role authenticated;
@@ -87,7 +97,7 @@ const applyPrivacySchemaThroughFinalGuaranteesMigration = async (db: PGlite) => 
     .filter(
       (file) =>
         file.endsWith(".sql") &&
-        file <= "20260808150000_finalize_privacy_retention_guarantees.sql",
+        file <= throughMigration,
     )
     .sort();
 
@@ -111,7 +121,10 @@ const applyPrivacySchemaThroughFinalGuaranteesMigration = async (db: PGlite) => 
 };
 
 const sha256 = (source: string) =>
-  createHash("sha256").update(source).digest("hex").toUpperCase();
+  createHash("sha256")
+    .update(source.replace(/\r\n/g, "\n"))
+    .digest("hex")
+    .toUpperCase();
 
 test("remote-applied privacy migration history remains byte exact", () => {
   assert.equal(
@@ -125,6 +138,10 @@ test("remote-applied privacy migration history remains byte exact", () => {
   assert.equal(
     sha256(remoteAppliedCorrectiveMigration),
     "DEBDEDFBD59BA155D80FB73776BFD99FFEC9B666E4CEE24D95DAAEB564A21331",
+  );
+  assert.equal(
+    sha256(remoteAppliedCampaignMetricsMigration),
+    "DB07C35D9EF3D7698FEC3857853CE7C2B52C75203532A902C70776ABB34DF016",
   );
 });
 
@@ -148,6 +165,1145 @@ test("published retention periods are backed by exact database intervals", () =>
   assert.match(privacyPage, /실제 마지막 처리 시각부터 3년간/);
   assert.match(privacyPage, /접속 로그[\s\S]*최대 1년간/);
   assert.match(privacyPage, /다음 자동 파기 작업에서 다시 평가/);
+});
+
+test("YouTube and NAVER verification retention stores only first-party decisions", async () => {
+  assert.match(
+    privacyPage,
+    /YouTube·NAVER 응답은 소유 여부를 판정하는 동안에만 사용하고 저장하지 않습니다/,
+  );
+  assert.match(
+    privacyPage,
+    /YouTube·NAVER 자동인증 응답, 응답 해시와 응답에서 확인한 채널·게시물·통계 정보는 저장하지 않습니다/,
+  );
+
+  const sanitizerStart = platformVerificationMinimizationMigration.indexOf(
+    "create or replace function directsign_private.directsign_minimize_platform_verification_evidence(\n  p_evidence jsonb,\n  p_request_id uuid",
+  );
+  const sanitizerEnd = platformVerificationMinimizationMigration.indexOf(
+    "revoke all on function directsign_private.directsign_minimize_platform_verification_evidence(",
+    sanitizerStart,
+  );
+  assert.ok(sanitizerStart >= 0 && sanitizerEnd > sanitizerStart);
+  const rowBoundSanitizer = platformVerificationMinimizationMigration.slice(
+    sanitizerStart,
+    sanitizerEnd,
+  );
+  assert.doesNotMatch(rowBoundSanitizer, /self_reported_channel_metric/);
+  assert.match(
+    rowBoundSanitizer,
+    /p_request_id uuid[\s\S]+?p_platform_handle text[\s\S]+?p_challenge_code text[\s\S]+?p_evidence_file_name text/,
+  );
+  assert.match(
+    rowBoundSanitizer,
+    /request_type' = 'public_profile_handle_claim'[\s\S]+?'claim_type', 'platform_handle_conflict'[\s\S]+?'requested_alternate_handle'[\s\S]+?'reason'/,
+  );
+  assert.match(
+    platformVerificationMinimizationMigration,
+    /naver_blog_recent_4d_average_visitors is null[\s\S]+?evidence_snapshot_json =[\s\S]+?directsign_private\.directsign_minimize_platform_verification_evidence/,
+  );
+  assert.match(
+    platformVerificationMinimizationMigration,
+    /duplicate production YouTube\/NAVER ownership challenge codes must be resolved before migration[\s\S]+?verification_requests_production_platform_challenge_unique/,
+  );
+  assert.match(
+    platformVerificationMinimizationMigration,
+    /create table if not exists directsign_private\.verification_legacy_evidence_files/,
+  );
+  assert.match(
+    platformVerificationMinimizationMigration,
+    /create table if not exists directsign_private\.verification_evidence_access_events/,
+  );
+  assert.match(
+    platformVerificationMinimizationMigration,
+    /delete from public\.marketplace_follower_sync_events[\s\S]+?add constraint marketplace_follower_sync_events_no_minimized_platforms[\s\S]+?check \(platform not in \('youtube', 'naver_blog'\)\) not valid[\s\S]+?validate constraint marketplace_follower_sync_events_no_minimized_platforms/,
+  );
+
+  const quotaFunctionStart = platformVerificationMinimizationMigration.indexOf(
+    "create or replace function public.reserve_naver_search_verification_request",
+  );
+  const quotaFunction = platformVerificationMinimizationMigration.slice(
+    quotaFunctionStart,
+    platformVerificationMinimizationMigration.indexOf(
+      "revoke all on function public.reserve_naver_search_verification_request",
+      quotaFunctionStart,
+    ),
+  );
+  assert.ok(
+    quotaFunction.indexOf("pg_advisory_xact_lock") <
+      quotaFunction.indexOf("v_now := clock_timestamp()"),
+    "the global transaction lock must be acquired before the KST day is read",
+  );
+  assert.ok(
+    quotaFunction.indexOf("v_now := clock_timestamp()") <
+      quotaFunction.indexOf("for update"),
+    "the post-lock KST day must be selected before the daily row lock",
+  );
+
+  const db = new PGlite();
+  try {
+    await applyPrivacySchemaThroughFinalGuaranteesMigration(
+      db,
+      "20260808160000_add_campaign_application_metrics_and_atomic_edit.sql",
+    );
+
+    await db.exec(String.raw`
+      insert into public.verification_requests (
+        id, target_type, target_id, verification_type, status, data_origin,
+        subject_name, platform, platform_handle, platform_url,
+        ownership_verification_method, ownership_challenge_code,
+        ownership_challenge_url, ownership_check_status, ownership_checked_at,
+        evidence_file_name, evidence_file_mime, evidence_file_size,
+        evidence_snapshot_json, created_at, updated_at
+      ) values (
+        '90000000-0000-4000-8000-000000000001',
+        'influencer_account', 'youtube:submitted-handle', 'platform_account',
+        'pending', 'production', 'Submitted creator', 'youtube',
+        'submitted-handle', 'https://youtube.com/@submitted-handle',
+        'channel_description_code', 'DS-TEST-ONLY',
+        'https://youtube.com/@submitted-handle', 'matched',
+        '2026-08-08T08:00:00Z', 'legacy-proof.png', 'image/png', 12,
+        '{
+          "seeded":{"raw_response":"hidden-here"},
+          "source":"qa_seed",
+          "qa_seed":true,
+          "self_reported_channel_metric":{"raw_response":"smuggled"},
+          "file_data_url":"data:image/png;base64,iVBORw0KGgo=",
+          "evidence_access_audit":[{
+            "id":"91000000-0000-4000-8000-000000000001",
+            "action":"evidence_downloaded",
+            "actor_role":"admin",
+            "actor_profile_id":"92000000-0000-4000-8000-000000000001",
+            "actor_name":"Historical operator",
+            "ip":"127.0.0.1",
+            "user_agent":"historical-agent",
+            "created_at":"2026-08-08T08:05:00Z"
+          }],
+          "ownership_verification":{
+            "platform_handle":"attacker-handle",
+            "platform_url":"https://attacker.invalid",
+            "channel_metric":{"value":1234,"source":"youtube_data_api"},
+            "automation":{"platform_account":{
+              "provider":"provider-sensitive",
+              "configured":true,
+              "mode":"api_ready",
+              "status":"matched",
+              "checked_at":"2099-01-01T00:00:00Z",
+              "raw_response":{"items":[1]},
+              "result_hash":"provider-hash",
+              "http_status":200,
+              "profile":{"subscriber_count":"1234"}
+            }}
+          }
+        }'::jsonb,
+        '2026-08-08T08:00:00Z', '2026-08-08T08:00:00Z'
+      ), (
+        '90000000-0000-4000-8000-000000000002',
+        'influencer_account', 'naver:submitted-blog', 'platform_account',
+        'pending', 'production', 'Submitted blogger', 'naver_blog',
+        'submitted-blog', 'https://blog.naver.com/submitted-blog',
+        'profile_bio_code', 'DS-NAVR-ONLY',
+        'https://blog.naver.com/submitted-blog', 'matched',
+        '2026-08-08T09:00:00Z', 'proof.webp', 'image/webp', 8,
+        '{
+          "self_reported_channel_metric":{
+            "status":"available",
+            "source":"creator_self_report",
+            "value":55,
+            "provider_response":{"smuggled":true}
+          },
+          "evidence_file":{
+            "provider":"local_file",
+            "bucket":"local",
+            "path":"verification-evidence/proof.webp",
+            "file_name":"proof.webp",
+            "content_type":"image/webp",
+            "byte_size":8,
+            "sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "stored_at":"2026-08-08T09:00:00Z",
+            "raw_response":{"smuggled":true}
+          },
+          "ownership_verification":{
+            "automation":{"platform_account":{
+              "configured":true,
+              "mode":"api_ready",
+              "raw_response":{"provider":"secret"}
+            }}
+          }
+        }'::jsonb,
+        '2026-08-08T09:00:00Z', '2026-08-08T09:00:00Z'
+      ), (
+        '90000000-0000-4000-8000-000000000003',
+        'influencer_account', 'claim:submitted-handle', 'platform_account',
+        'pending', 'production', 'Public handle claim', 'youtube',
+        'submitted-handle', 'https://youtube.com/@submitted-handle',
+        'screenshot_review', null, null, 'not_run', null,
+        null, null, null,
+        '{
+          "request_type":"public_profile_handle_claim",
+          "claim_type":"platform_handle_conflict",
+          "claimed_handle":"submitted.handle",
+          "claimed_profile_url":"https://provider.invalid/injected",
+          "requested_alternate_handle":"submitted_creator",
+          "current_owner_profile_id":"93000000-0000-4000-8000-000000000001",
+          "current_marketplace_profile_id":"94000000-0000-4000-8000-000000000001",
+          "requested_by_profile_id":"95000000-0000-4000-8000-000000000001",
+          "submitted_from":"public_profile_settings",
+          "reason":"The verified platform handle is mine.",
+          "raw_response":{"provider":"must disappear"},
+          "ownership_verification":{"automation":{"platform_account":{
+            "profile":{"provider":"must disappear"}
+          }}}
+        }'::jsonb,
+        '2026-08-08T10:00:00Z', '2026-08-08T10:00:00Z'
+      );
+
+      update public.verification_requests
+      set naver_blog_recent_4d_average_visitors = 55
+      where id = '90000000-0000-4000-8000-000000000002';
+
+      insert into auth.users (id, email)
+      values (
+        '98000000-0000-4000-8000-000000000001',
+        'naver-retention@example.invalid'
+      );
+      insert into public.profiles (id, role, name, email, data_origin)
+      values (
+        '98000000-0000-4000-8000-000000000001',
+        'influencer', 'NAVER retention test',
+        'naver-retention@example.invalid', 'production'
+      );
+      insert into public.marketplace_influencer_profiles (
+        id, owner_profile_id, data_origin, public_handle, display_name,
+        headline, bio
+      ) values (
+        '98000000-0000-4000-8000-000000000002',
+        '98000000-0000-4000-8000-000000000001',
+        'production', 'navertest', 'NAVER test', 'NAVER test', 'NAVER test'
+      );
+      insert into public.marketplace_influencer_channels (
+        id, profile_id, platform, label, handle, url,
+        follower_count, followers_label, performance_label,
+        follower_count_synced_at, follower_sync_status,
+        follower_sync_source, follower_sync_error, follower_sync_metadata
+      ) values (
+        '98000000-0000-4000-8000-000000000003',
+        '98000000-0000-4000-8000-000000000002',
+        'naver_blog', 'NAVER Blog', 'submitted-blog',
+        'https://blog.naver.com/submitted-blog', 55, '일평균 55명',
+        '최근 4일 평균 · 자가신고', '2026-08-08T09:00:00Z', 'synced',
+        'creator_self_report', 'private naver error', '{
+          "provider":"creator_self_report",
+          "metric":"average_daily_visitors_4d",
+          "trust":"self_reported",
+          "period_days":4,
+          "account_approved":true,
+          "availability":"available",
+          "reported_handle":"submitted-blog",
+          "checked_at":"2026-08-08T09:00:00Z",
+          "request_id":"90000000-0000-4000-8000-000000000002"
+        }'::jsonb
+      ), (
+        '98000000-0000-4000-8000-000000000004',
+        '98000000-0000-4000-8000-000000000002',
+        'youtube', 'YouTube', 'submitted-channel',
+        'https://youtube.com/@submitted-channel', 987654, '987,654명',
+        'provider metric', '2026-08-08T09:00:00Z', 'failed',
+        'arbitrary_legacy_source', 'private youtube error', '{
+          "provider":"unknown_vendor",
+          "provenance":"must-not-survive",
+          "raw":"private"
+        }'::jsonb
+      );
+
+      insert into public.marketplace_follower_sync_events (
+        id, profile_id, platform, handle, status, provider,
+        follower_count, error_message, metadata
+      ) values
+      (
+        '98000000-0000-4000-8000-000000000011',
+        '98000000-0000-4000-8000-000000000002',
+        'youtube', 'submitted-channel', 'failed', 'unknown_vendor',
+        987654, 'private youtube event', '{"raw":"private"}'::jsonb
+      ),
+      (
+        '98000000-0000-4000-8000-000000000012',
+        '98000000-0000-4000-8000-000000000002',
+        'naver_blog', 'submitted-blog', 'failed', 'unknown_vendor',
+        55, 'private naver event', '{"raw":"private"}'::jsonb
+      ),
+      (
+        '98000000-0000-4000-8000-000000000013',
+        '98000000-0000-4000-8000-000000000002',
+        'instagram', 'surviving-instagram', 'unchanged', 'youtube_data_api',
+        10, null, '{}'::jsonb
+      );
+    `);
+
+    await db.exec(platformVerificationMinimizationMigration);
+
+    // Exercise the exact JSON emitted by the application after the CHECK is
+    // active. JavaScript ISO strings use millisecond precision, so both fresh
+    // verification requests and first-party handle appeals must remain valid.
+    await db.exec(String.raw`
+      insert into public.verification_requests (
+        id, target_type, target_id, verification_type, status, data_origin,
+        profile_id, subject_name, platform, platform_handle, platform_url,
+        ownership_verification_method, ownership_challenge_code,
+        ownership_challenge_url, ownership_check_status, ownership_checked_at,
+        evidence_snapshot_json, reviewed_by_name, reviewed_at,
+        created_at, updated_at
+      ) values (
+        '90000000-0000-4000-8000-000000000011',
+        'influencer_account', '98000000-0000-4000-8000-000000000001', 'platform_account',
+        'approved', 'production', '98000000-0000-4000-8000-000000000001',
+        'Fresh YouTube creator', 'youtube', 'fresh-channel',
+        'https://youtube.com/@fresh-channel', 'channel_description_code',
+        'DS-YT01-ABCD', 'https://youtube.com/@fresh-channel', 'matched',
+        '2026-08-08T11:00:00.123Z',
+        '{
+          "ownership_verification":{
+            "platform":"youtube",
+            "platform_handle":"fresh-channel",
+            "platform_url":"https://youtube.com/@fresh-channel",
+            "method":"channel_description_code",
+            "challenge_code":"DS-YT01-ABCD",
+            "challenge_url":"https://youtube.com/@fresh-channel",
+            "automated_check":{"status":"matched","checked_at":"2026-08-08T11:00:00.123Z"},
+            "automation":{
+              "platform_account":{
+                "provider":"youtube_data_api","mode":"api_ready","status":"matched",
+                "checked_at":"2026-08-08T11:00:00.123Z",
+                "decision_source":"transient_provider_check",
+                "decision_rule_version":"2026-08-08.1",
+                "provider_response_retained":false
+              },
+              "ownership_challenge":{"status":"matched","checked_at":"2026-08-08T11:00:00.123Z"}
+            }
+          }
+        }'::jsonb, '연락미 automation', '2026-08-08T11:00:00.123Z',
+        '2026-08-08T11:00:00.456Z', '2026-08-08T11:00:00.456Z'
+      ), (
+        '90000000-0000-4000-8000-000000000012',
+        'influencer_account', '98000000-0000-4000-8000-000000000001', 'platform_account',
+        'pending', 'production', '98000000-0000-4000-8000-000000000001',
+        'Fresh NAVER creator', 'naver_blog', 'fresh-blog',
+        'https://blog.naver.com/fresh-blog', 'profile_bio_code',
+        'DS-NV01-EFGH', 'https://blog.naver.com/fresh-blog', 'not_found',
+        '2026-08-08T11:01:00.234Z',
+        '{
+          "ownership_verification":{
+            "platform":"naver_blog",
+            "platform_handle":"fresh-blog",
+            "platform_url":"https://blog.naver.com/fresh-blog",
+            "method":"profile_bio_code",
+            "challenge_code":"DS-NV01-EFGH",
+            "challenge_url":"https://blog.naver.com/fresh-blog",
+            "automated_check":{"status":"not_found","checked_at":"2026-08-08T11:01:00.234Z"},
+            "automation":{
+              "platform_account":{
+                "provider":"naver_search_api","mode":"manual_fallback","status":"not_found",
+                "checked_at":"2026-08-08T11:01:00.234Z",
+                "decision_source":"transient_provider_check",
+                "decision_rule_version":"2026-08-08.1",
+                "provider_response_retained":false
+              },
+              "ownership_challenge":{"status":"not_found","checked_at":"2026-08-08T11:01:00.234Z"}
+            }
+          }
+        }'::jsonb, null, null,
+        '2026-08-08T11:01:00.567Z', '2026-08-08T11:01:00.567Z'
+      ), (
+        '90000000-0000-4000-8000-000000000013',
+        'influencer_account', '98000000-0000-4000-8000-000000000001', 'platform_account',
+        'pending', 'production', '98000000-0000-4000-8000-000000000001',
+        'Fresh public handle claim', 'youtube', 'fresh-channel',
+        'https://youtube.com/@fresh-channel', 'screenshot_review',
+        null, null, 'not_run', null,
+        '{
+          "request_type":"public_profile_handle_claim",
+          "claim_type":"platform_handle_conflict",
+          "claimed_handle":"fresh.handle",
+          "claimed_profile_url":"https://yeollock.me/fresh.handle",
+          "requested_alternate_handle":null,
+          "current_owner_profile_id":"93000000-0000-4000-8000-000000000001",
+          "current_marketplace_profile_id":"94000000-0000-4000-8000-000000000001",
+          "requested_by_profile_id":"98000000-0000-4000-8000-000000000001",
+          "submitted_from":"public_profile_settings",
+          "platform":"youtube",
+          "platform_handle":"fresh-channel",
+          "platform_url":"https://youtube.com/@fresh-channel",
+          "reason":"This verified platform handle belongs to me.",
+          "created_at":"2026-08-08T11:02:00.789Z"
+        }'::jsonb, null, null,
+        '2026-08-08T11:02:00.789Z', '2026-08-08T11:02:00.789Z'
+      );
+    `);
+
+    // The migration is intentionally idempotent for controlled recovery and
+    // must preserve the same application-format rows on a second pass.
+    await db.exec(platformVerificationMinimizationMigration);
+    const freshRows = await db.query<{
+      id: string;
+      status: string;
+      ownership_check_status: string;
+      ownership_checked_at: string | null;
+      reviewed_at: string | null;
+      evidence_snapshot_json: Record<string, unknown>;
+    }>(String.raw`
+      select id, status, ownership_check_status,
+        case when ownership_checked_at is null then null else to_char(
+          ownership_checked_at at time zone 'UTC',
+          'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'
+        ) end as ownership_checked_at,
+        case when reviewed_at is null then null else to_char(
+          reviewed_at at time zone 'UTC',
+          'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'
+        ) end as reviewed_at,
+        evidence_snapshot_json
+      from public.verification_requests
+      where id in (
+        '90000000-0000-4000-8000-000000000011',
+        '90000000-0000-4000-8000-000000000012',
+        '90000000-0000-4000-8000-000000000013'
+      )
+      order by id
+    `);
+    assert.equal(freshRows.rows.length, 3);
+    assert.deepEqual(
+      {
+        status: freshRows.rows[0]?.status,
+        ownership_status: freshRows.rows[0]?.ownership_check_status,
+        ownership_checked_at: freshRows.rows[0]?.ownership_checked_at,
+        reviewed_at: freshRows.rows[0]?.reviewed_at,
+      },
+      {
+        status: "approved",
+        ownership_status: "matched",
+        ownership_checked_at: "2026-08-08T11:00:00.123Z",
+        reviewed_at: "2026-08-08T11:00:00.123Z",
+      },
+    );
+    assert.deepEqual(
+      {
+        status: freshRows.rows[1]?.status,
+        ownership_status: freshRows.rows[1]?.ownership_check_status,
+        ownership_checked_at: freshRows.rows[1]?.ownership_checked_at,
+        reviewed_at: freshRows.rows[1]?.reviewed_at,
+      },
+      {
+        status: "pending",
+        ownership_status: "not_found",
+        ownership_checked_at: "2026-08-08T11:01:00.234Z",
+        reviewed_at: null,
+      },
+    );
+    assert.equal(
+      freshRows.rows[0]?.evidence_snapshot_json.ownership_verification &&
+        ((freshRows.rows[0].evidence_snapshot_json.ownership_verification as Record<string, unknown>)
+          .automation as Record<string, Record<string, unknown>>)
+          .platform_account?.checked_at,
+      "2026-08-08T11:00:00.123Z",
+    );
+    assert.equal(
+      freshRows.rows[1]?.evidence_snapshot_json.ownership_verification &&
+        ((freshRows.rows[1].evidence_snapshot_json.ownership_verification as Record<string, unknown>)
+          .automation as Record<string, Record<string, unknown>>)
+          .platform_account?.status,
+      "not_found",
+    );
+    assert.equal(
+      freshRows.rows[2]?.evidence_snapshot_json.created_at,
+      "2026-08-08T11:02:00.789Z",
+    );
+    const boundedClaim = await db.query<{ reason_length: number }>(String.raw`
+      select length(
+        directsign_private.directsign_minimize_platform_verification_evidence(
+          jsonb_build_object(
+            'request_type', 'public_profile_handle_claim',
+            'claim_type', 'platform_handle_conflict',
+            'claimed_handle', 'fresh.handle',
+            'claimed_profile_url', 'https://yeollock.me/fresh.handle',
+            'requested_by_profile_id',
+              '98000000-0000-4000-8000-000000000001',
+            'platform', 'youtube',
+            'platform_handle', 'fresh-channel',
+            'platform_url', 'https://youtube.com/@fresh-channel',
+            'reason', repeat('가', 4001),
+            'created_at', '2026-08-08T11:02:00.789Z'
+          ),
+          '90000000-0000-4000-8000-000000000013',
+          'youtube', 'fresh-channel',
+          'https://youtube.com/@fresh-channel',
+          '98000000-0000-4000-8000-000000000001',
+          'screenshot_review', null, null, 'not_run', null,
+          null, null, null, '2026-08-08T11:02:00.789Z'
+        ) ->> 'reason'
+      )::integer as reason_length
+    `);
+    assert.equal(boundedClaim.rows[0]?.reason_length, 4_000);
+
+    const acl = await db.query<{
+      anon_quota_execute: boolean;
+      authenticated_quota_execute: boolean;
+      service_quota_execute: boolean;
+      anon_legacy_execute: boolean;
+      authenticated_legacy_execute: boolean;
+      service_legacy_execute: boolean;
+      anon_audit_execute: boolean;
+      authenticated_audit_execute: boolean;
+      service_audit_execute: boolean;
+      anon_consume_execute: boolean;
+      authenticated_consume_execute: boolean;
+      service_consume_execute: boolean;
+      service_cleanup_execute: boolean;
+      authenticated_compensation_execute: boolean;
+      service_compensation_execute: boolean;
+      service_channel_sanitizer_execute: boolean;
+      service_quota_table_select: boolean;
+      service_challenge_table_select: boolean;
+      service_legacy_table_select: boolean;
+      service_audit_table_select: boolean;
+    }>(String.raw`
+      select
+        has_function_privilege(
+          'anon',
+          'public.reserve_naver_search_verification_request(text,integer,numeric)',
+          'EXECUTE'
+        ) as anon_quota_execute,
+        has_function_privilege(
+          'authenticated',
+          'public.reserve_naver_search_verification_request(text,integer,numeric)',
+          'EXECUTE'
+        ) as authenticated_quota_execute,
+        has_function_privilege(
+          'service_role',
+          'public.reserve_naver_search_verification_request(text,integer,numeric)',
+          'EXECUTE'
+        ) as service_quota_execute,
+        has_function_privilege(
+          'anon',
+          'public.get_verification_legacy_evidence_file(uuid)',
+          'EXECUTE'
+        ) as anon_legacy_execute,
+        has_function_privilege(
+          'authenticated',
+          'public.get_verification_legacy_evidence_file(uuid)',
+          'EXECUTE'
+        ) as authenticated_legacy_execute,
+        has_function_privilege(
+          'service_role',
+          'public.get_verification_legacy_evidence_file(uuid)',
+          'EXECUTE'
+        ) as service_legacy_execute,
+        has_function_privilege(
+          'anon',
+          'public.record_verification_evidence_access(uuid,uuid,text,text,text)',
+          'EXECUTE'
+        ) as anon_audit_execute,
+        has_function_privilege(
+          'authenticated',
+          'public.record_verification_evidence_access(uuid,uuid,text,text,text)',
+          'EXECUTE'
+        ) as authenticated_audit_execute,
+        has_function_privilege(
+          'service_role',
+          'public.record_verification_evidence_access(uuid,uuid,text,text,text)',
+          'EXECUTE'
+        ) as service_audit_execute,
+        has_function_privilege(
+          'anon',
+          'public.consume_influencer_ownership_challenge(uuid,uuid,text,text,text,text,timestamptz,timestamptz)',
+          'EXECUTE'
+        ) as anon_consume_execute,
+        has_function_privilege(
+          'authenticated',
+          'public.consume_influencer_ownership_challenge(uuid,uuid,text,text,text,text,timestamptz,timestamptz)',
+          'EXECUTE'
+        ) as authenticated_consume_execute,
+        has_function_privilege(
+          'service_role',
+          'public.consume_influencer_ownership_challenge(uuid,uuid,text,text,text,text,timestamptz,timestamptz)',
+          'EXECUTE'
+        ) as service_consume_execute,
+        has_function_privilege(
+          'service_role',
+          'public.cleanup_influencer_ownership_challenges(timestamptz,integer)',
+          'EXECUTE'
+        ) as service_cleanup_execute,
+        has_function_privilege(
+          'authenticated',
+          'public.enqueue_verification_storage_compensation(uuid,text,text,text)',
+          'EXECUTE'
+        ) as authenticated_compensation_execute,
+        has_function_privilege(
+          'service_role',
+          'public.enqueue_verification_storage_compensation(uuid,text,text,text)',
+          'EXECUTE'
+        ) as service_compensation_execute,
+        has_function_privilege(
+          'service_role',
+          'directsign_private.directsign_sanitize_naver_channel_self_report()',
+          'EXECUTE'
+        ) as service_channel_sanitizer_execute,
+        has_table_privilege(
+          'service_role',
+          'directsign_private.naver_search_verification_daily_usage',
+          'SELECT'
+        ) as service_quota_table_select,
+        has_table_privilege(
+          'service_role',
+          'directsign_private.influencer_ownership_challenge_consumptions',
+          'SELECT'
+        ) as service_challenge_table_select,
+        has_table_privilege(
+          'service_role',
+          'directsign_private.verification_legacy_evidence_files',
+          'SELECT'
+        ) as service_legacy_table_select,
+        has_table_privilege(
+          'service_role',
+          'directsign_private.verification_evidence_access_events',
+          'SELECT'
+        ) as service_audit_table_select
+    `);
+    assert.deepEqual(acl.rows[0], {
+      anon_quota_execute: false,
+      authenticated_quota_execute: false,
+      service_quota_execute: true,
+      anon_legacy_execute: false,
+      authenticated_legacy_execute: false,
+      service_legacy_execute: true,
+      anon_audit_execute: false,
+      authenticated_audit_execute: false,
+      service_audit_execute: true,
+      anon_consume_execute: false,
+      authenticated_consume_execute: false,
+      service_consume_execute: true,
+      service_cleanup_execute: true,
+      authenticated_compensation_execute: false,
+      service_compensation_execute: true,
+      service_channel_sanitizer_execute: false,
+      service_quota_table_select: false,
+      service_challenge_table_select: false,
+      service_legacy_table_select: false,
+      service_audit_table_select: false,
+    });
+
+    const concurrentChallengeId = "99000000-0000-4000-8000-000000000001";
+    const challengeIssuedAt = new Date(Date.now() - 60_000);
+    const challengeExpiresAt = new Date(
+      challengeIssuedAt.getTime() + 30 * 60 * 1000,
+    );
+    const consumeChallenge = () =>
+      db.query<{ result: { consumed: boolean; reason: string } }>(String.raw`
+        select public.consume_influencer_ownership_challenge(
+          '${concurrentChallengeId}',
+          '98000000-0000-4000-8000-000000000001',
+          'youtube', repeat('a', 64), repeat('b', 64), repeat('c', 64),
+          '${challengeIssuedAt.toISOString()}',
+          '${challengeExpiresAt.toISOString()}'
+        ) as result
+      `);
+    const concurrentConsumeResults = await Promise.all(
+      Array.from({ length: 8 }, () => consumeChallenge()),
+    );
+    const consumeResults = concurrentConsumeResults.map(
+      (result) => result.rows[0]!.result,
+    );
+    assert.equal(consumeResults.filter((result) => result.consumed).length, 1);
+    assert.equal(
+      consumeResults.filter((result) => result.reason === "already_consumed")
+        .length,
+      7,
+    );
+    const ledgerBinding = await db.query<{
+      profile_id: string;
+      platform: string;
+      code_digest: string;
+      platform_handle_hash: string;
+      platform_url_hash: string;
+    }>(String.raw`
+      select profile_id, platform, code_digest,
+        platform_handle_hash, platform_url_hash
+      from directsign_private.influencer_ownership_challenge_consumptions
+      where challenge_id = '${concurrentChallengeId}'
+    `);
+    assert.deepEqual(ledgerBinding.rows[0], {
+      profile_id: "98000000-0000-4000-8000-000000000001",
+      platform: "youtube",
+      code_digest: "a".repeat(64),
+      platform_handle_hash: "b".repeat(64),
+      platform_url_hash: "c".repeat(64),
+    });
+
+    const queuedCompensation = await db.query<{
+      result: { queued: boolean; queue_id: string };
+    }>(String.raw`
+      select public.enqueue_verification_storage_compensation(
+        '99000000-0000-4000-8000-000000000002',
+        'directsign-private',
+        'verification-influencer/owner/exact-proof.pdf',
+        'verification_insert_failed'
+      ) as result
+    `);
+    assert.equal(queuedCompensation.rows[0]?.result.queued, true);
+    const queuedTarget = await db.query<{
+      source_id: string;
+      bucket: string;
+      object_path: string;
+      status: string;
+    }>(String.raw`
+      select source_id, bucket, object_path, status
+      from public.privacy_storage_deletion_queue
+      where id = '${queuedCompensation.rows[0]!.result.queue_id}'
+    `);
+    assert.deepEqual(queuedTarget.rows[0], {
+      source_id: "99000000-0000-4000-8000-000000000002",
+      bucket: "directsign-private",
+      object_path: "verification-influencer/owner/exact-proof.pdf",
+      status: "pending",
+    });
+
+    await db.exec(String.raw`
+      insert into directsign_private.influencer_ownership_challenge_consumptions (
+        challenge_id, profile_id, platform, code_digest,
+        platform_handle_hash, platform_url_hash,
+        issued_at, expires_at, consumed_at
+      ) select
+        '99000000-0000-4000-8000-000000000003',
+        '98000000-0000-4000-8000-000000000001',
+        'naver_blog', repeat('d', 64), repeat('e', 64), repeat('f', 64),
+        fixture.issued_at,
+        fixture.issued_at + interval '30 minutes',
+        fixture.issued_at + interval '10 minutes'
+      from (
+        select clock_timestamp() - interval '3 days 30 minutes' as issued_at
+      ) as fixture
+    `);
+    const cleanup = await db.query<{
+      result: { deleted: number; backlog: number };
+    }>(String.raw`
+      select public.cleanup_influencer_ownership_challenges(
+        clock_timestamp(), 500
+      ) as result
+    `);
+    assert.equal(cleanup.rows[0]!.result.deleted >= 1, true);
+    assert.equal(cleanup.rows[0]!.result.backlog, 0);
+
+    await db.exec(`set "request.jwt.claim.role" = 'authenticated'`);
+    await assert.rejects(consumeChallenge(), /service role required/);
+    await assert.rejects(
+      db.query(String.raw`
+        select public.enqueue_verification_storage_compensation(
+          '99000000-0000-4000-8000-000000000004',
+          'directsign-private',
+          'verification-influencer/owner/denied.pdf',
+          'verification_insert_failed'
+        )
+      `),
+      /service role required/,
+    );
+    await db.exec(`set "request.jwt.claim.role" = 'service_role'`);
+
+    const legacy = await db.query<{ file_data_url: string }>(String.raw`
+      select public.get_verification_legacy_evidence_file(
+        '90000000-0000-4000-8000-000000000001'
+      ) as file_data_url
+    `);
+    assert.equal(
+      legacy.rows[0]?.file_data_url,
+      "data:image/png;base64,iVBORw0KGgo=",
+    );
+
+    await db.exec(`set "request.jwt.claim.role" = 'authenticated'`);
+    await assert.rejects(
+      db.query(String.raw`
+        select public.get_verification_legacy_evidence_file(
+          '90000000-0000-4000-8000-000000000001'
+        )
+      `),
+      /verification legacy evidence access requires service role/,
+    );
+    await db.exec(`set "request.jwt.claim.role" = 'service_role'`);
+
+    await db.query(String.raw`
+      select public.record_verification_evidence_access(
+        '90000000-0000-4000-8000-000000000001',
+        '96000000-0000-4000-8000-000000000001',
+        'Current operator',
+        '127.0.0.2',
+        'current-agent'
+      )
+    `);
+    const auditRows = await db.query<{ count: number }>(String.raw`
+      select count(*)::integer as count
+      from directsign_private.verification_evidence_access_events
+      where request_id = '90000000-0000-4000-8000-000000000001'
+    `);
+    assert.equal(auditRows.rows[0]?.count, 2);
+
+    const stored = await db.query<{
+      id: string;
+      naver_blog_recent_4d_average_visitors: number | null;
+      evidence_snapshot_json: Record<string, unknown>;
+    }>(String.raw`
+      select id, naver_blog_recent_4d_average_visitors, evidence_snapshot_json
+      from public.verification_requests
+      where id in (
+        '90000000-0000-4000-8000-000000000001',
+        '90000000-0000-4000-8000-000000000002',
+        '90000000-0000-4000-8000-000000000003'
+      )
+      order by id
+    `);
+    const youtube = stored.rows[0]!.evidence_snapshot_json;
+    const naver = stored.rows[1]!.evidence_snapshot_json;
+    const claim = stored.rows[2]!.evidence_snapshot_json;
+    const serialized = JSON.stringify(stored.rows);
+    for (const forbidden of [
+      "raw_response",
+      "result_hash",
+      "http_status",
+      "subscriber_count",
+      "self_reported_channel_metric",
+      "creator_self_report",
+      "file_data_url",
+      "evidence_access_audit",
+      "provider-sensitive",
+      "qa_seed",
+      "hidden-here",
+      "attacker.invalid",
+      "provider.invalid",
+    ]) {
+      assert.equal(serialized.includes(forbidden), false, forbidden);
+    }
+    assert.equal(stored.rows[1]?.naver_blog_recent_4d_average_visitors, null);
+    assert.deepEqual(Object.keys(youtube).sort(), [
+      "evidence_file",
+      "ownership_verification",
+    ]);
+    assert.equal(
+      (youtube.evidence_file as Record<string, unknown>).provider,
+      "legacy_private_table",
+    );
+    assert.equal(
+      (youtube.ownership_verification as Record<string, unknown>)
+        .platform_handle,
+      "submitted-handle",
+    );
+    assert.equal(
+      (youtube.ownership_verification as Record<string, unknown>)
+        .challenge_code,
+      "DS-TEST-ONLY",
+    );
+    assert.equal(
+      JSON.stringify(youtube).includes("provider_response_retained"),
+      true,
+    );
+    assert.equal(
+      (naver.evidence_file as Record<string, unknown>).provider,
+      "local_file",
+    );
+    assert.deepEqual(
+      Object.keys(naver.evidence_file as Record<string, unknown>).sort(),
+      [
+        "bucket",
+        "byte_size",
+        "content_type",
+        "download_path",
+        "file_name",
+        "path",
+        "provider",
+        "sha256",
+        "stored_at",
+      ],
+    );
+    assert.equal(claim.request_type, "public_profile_handle_claim");
+    assert.equal(claim.claim_type, "platform_handle_conflict");
+    assert.equal(claim.claimed_handle, "submitted.handle");
+    assert.equal(claim.claimed_profile_url, "https://yeollock.me/submitted.handle");
+    assert.equal(claim.requested_alternate_handle, "submitted_creator");
+    assert.equal(claim.reason, "The verified platform handle is mine.");
+    assert.equal(Object.hasOwn(claim, "ownership_verification"), false);
+
+    await db.exec(String.raw`
+      insert into public.marketplace_influencer_channels (
+        id, profile_id, platform, label, handle, url,
+        follower_count, followers_label, performance_label,
+        follower_count_synced_at, follower_sync_status,
+        follower_sync_source, follower_sync_error, follower_sync_metadata
+      ) values (
+        '98000000-0000-4000-8000-000000000005',
+        '98000000-0000-4000-8000-000000000002',
+        'naver_blog', 'NAVER Blog', 'reentered-blog',
+        'https://blog.naver.com/reentered-blog', 123, '123명',
+        'arbitrary metric', clock_timestamp(), 'failed',
+        'arbitrary_reentry_source', 'private reentry error',
+        '{"provider":"unknown_vendor","raw":"private"}'::jsonb
+      )
+    `);
+
+    const minimizedChannels = await db.query<{
+      follower_count: number | null;
+      followers_label: string;
+      performance_label: string;
+      follower_count_synced_at: string | null;
+      follower_sync_status: string;
+      follower_sync_source: string | null;
+      follower_sync_error: string | null;
+      follower_sync_metadata: Record<string, unknown>;
+    }>(String.raw`
+      select follower_count, followers_label, performance_label,
+        follower_count_synced_at, follower_sync_status, follower_sync_source,
+        follower_sync_error, follower_sync_metadata
+      from public.marketplace_influencer_channels
+      where profile_id = '98000000-0000-4000-8000-000000000002'
+        and platform in ('youtube', 'naver_blog')
+      order by platform, handle
+    `);
+    assert.equal(minimizedChannels.rows.length, 2);
+    for (const channel of minimizedChannels.rows) {
+      assert.deepEqual(channel, {
+        follower_count: null,
+        followers_label: "계정 연동",
+        performance_label: "프로필에서 확인",
+        follower_count_synced_at: null,
+        follower_sync_status: "not_synced",
+        follower_sync_source: null,
+        follower_sync_error: null,
+        follower_sync_metadata: {},
+      });
+    }
+    for (const blockedEvent of [
+      {
+        id: "98000000-0000-4000-8000-000000000014",
+        platform: "youtube",
+        provider: "legacy_naver_variant",
+      },
+      {
+        id: "98000000-0000-4000-8000-000000000015",
+        platform: "naver_blog",
+        provider: "youtube_data_api_variant",
+      },
+    ]) {
+      await assert.rejects(
+        db.exec(String.raw`
+          insert into public.marketplace_follower_sync_events (
+            id, profile_id, platform, handle, status, provider,
+            follower_count, error_message, metadata
+          ) values (
+            '${blockedEvent.id}',
+            '98000000-0000-4000-8000-000000000002',
+            '${blockedEvent.platform}', 'blocked-reentry', 'failed',
+            '${blockedEvent.provider}', 123, 'must not persist',
+            '{"raw":"must-not-persist"}'::jsonb
+          )
+        `),
+        /marketplace_follower_sync_events_no_minimized_platforms/,
+      );
+    }
+    await assert.rejects(
+      db.exec(String.raw`
+        update public.marketplace_follower_sync_events
+        set platform = 'youtube', provider = 'provider-switch-variant'
+        where id = '98000000-0000-4000-8000-000000000013'
+      `),
+      /marketplace_follower_sync_events_no_minimized_platforms/,
+    );
+    await db.exec(String.raw`
+      insert into public.marketplace_follower_sync_events (
+        id, profile_id, platform, handle, status, provider,
+        follower_count, error_message, metadata
+      ) values (
+        '98000000-0000-4000-8000-000000000016',
+        '98000000-0000-4000-8000-000000000002',
+        'instagram', 'allowed-instagram', 'unchanged',
+        'naver_search_api_variant', 11, null, '{}'::jsonb
+      )
+    `);
+    const survivingFollowerEvents = await db.query<{
+      platform: string;
+      provider: string | null;
+    }>(String.raw`
+      select platform, provider
+      from public.marketplace_follower_sync_events
+      order by id
+    `);
+    assert.deepEqual(survivingFollowerEvents.rows, [
+      { platform: "instagram", provider: "youtube_data_api" },
+      { platform: "instagram", provider: "naver_search_api_variant" },
+    ]);
+    await db.exec(String.raw`
+      update public.marketplace_influencer_channels
+      set follower_count = 999,
+        followers_label = '일평균 999명',
+        performance_label = '최근 4일 평균 · 자가신고',
+        follower_count_synced_at = clock_timestamp(),
+        follower_sync_status = 'synced',
+        follower_sync_source = 'arbitrary_reentry_source',
+        follower_sync_error = 'must be removed',
+        follower_sync_metadata = '{
+          "provider":"unknown_vendor",
+          "metric":"average_daily_visitors_4d",
+          "trust":"self_reported"
+        }'::jsonb
+      where profile_id = '98000000-0000-4000-8000-000000000002'
+        and platform in ('youtube', 'naver_blog')
+    `);
+    const blockedReintroduction = await db.query<{
+      follower_count: number | null;
+      performance_label: string;
+      follower_sync_source: string | null;
+      follower_sync_error: string | null;
+      follower_sync_metadata: Record<string, unknown>;
+    }>(String.raw`
+      select follower_count, performance_label, follower_sync_source,
+        follower_sync_error,
+        follower_sync_metadata
+      from public.marketplace_influencer_channels
+      where profile_id = '98000000-0000-4000-8000-000000000002'
+        and platform in ('youtube', 'naver_blog')
+      order by platform, handle
+    `);
+    for (const channel of blockedReintroduction.rows) {
+      assert.deepEqual(channel, {
+        follower_count: null,
+        performance_label: "프로필에서 확인",
+        follower_sync_source: null,
+        follower_sync_error: null,
+        follower_sync_metadata: {},
+      });
+    }
+
+    const forbiddenPaths = [
+      "{raw_response}",
+      "{seeded}",
+      "{self_reported_channel_metric}",
+      "{evidence_access_audit}",
+      "{evidence_file,raw_response}",
+      "{ownership_verification,channel_metric}",
+      "{ownership_verification,automation,platform_account,raw_response}",
+      "{ownership_verification,automation,platform_account,result_hash}",
+      "{ownership_verification,automation,platform_account,http_status}",
+      "{ownership_verification,automation,platform_account,profile}",
+    ];
+    for (const path of forbiddenPaths) {
+      await assert.rejects(
+        db.exec(String.raw`
+          update public.verification_requests
+          set evidence_snapshot_json = jsonb_set(
+            evidence_snapshot_json,
+            '${path}',
+            '"reintroduced"'::jsonb,
+            true
+          )
+          where id = '90000000-0000-4000-8000-000000000001'
+        `),
+        /verification_requests_minimized_provider_evidence/,
+      );
+    }
+    await assert.rejects(
+      db.exec(String.raw`
+        update public.verification_requests
+        set evidence_snapshot_json = jsonb_set(
+          evidence_snapshot_json,
+          '{ownership_verification,automation,platform_account,checked_at}',
+          '"not-a-time"'::jsonb,
+          true
+        )
+        where id = '90000000-0000-4000-8000-000000000001'
+      `),
+      /verification_requests_minimized_provider_evidence/,
+    );
+    await assert.rejects(
+      db.exec(String.raw`
+        update public.verification_requests
+        set evidence_snapshot_json = evidence_snapshot_json ||
+          '{"raw_response":{"provider":"claim-injection"}}'::jsonb
+        where id = '90000000-0000-4000-8000-000000000003'
+      `),
+      /verification_requests_minimized_provider_evidence/,
+    );
+    await assert.rejects(
+      db.exec(String.raw`
+        update public.verification_requests
+        set naver_blog_recent_4d_average_visitors = 99
+        where id = '90000000-0000-4000-8000-000000000002'
+      `),
+      /verification_requests_minimized_provider_evidence/,
+    );
+
+    const reservations: Array<{
+      allowed: boolean;
+      reason?: string;
+      date_kst: string;
+      expires_at: string;
+      cap: number;
+      used: number;
+      remaining: number;
+    }> = [];
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const reservation = await db.query<{
+        result: (typeof reservations)[number];
+      }>(
+        "select public.reserve_naver_search_verification_request('blog_verification', 100, 0.05) as result",
+      );
+      reservations.push(reservation.rows[0]!.result);
+    }
+    assert.equal(reservations.slice(0, 5).every((item) => item.allowed), true);
+    assert.deepEqual(reservations[5], {
+      allowed: false,
+      reason: "budget_exhausted",
+      date_kst: reservations[5]?.date_kst,
+      expires_at: reservations[5]?.expires_at,
+      cap: 5,
+      used: 5,
+      remaining: 0,
+    });
+    assert.match(
+      reservations[0]!.expires_at,
+      /^\d{4}-\d{2}-\d{2}T15:00:00\.000Z$/,
+    );
+  } finally {
+    await db.close();
+  }
+
+  const duplicateDb = new PGlite();
+  try {
+    await applyPrivacySchemaThroughFinalGuaranteesMigration(
+      duplicateDb,
+      "20260808160000_add_campaign_application_metrics_and_atomic_edit.sql",
+    );
+    await duplicateDb.exec(String.raw`
+      insert into public.verification_requests (
+        id, target_type, target_id, verification_type, status, data_origin,
+        subject_name, platform, platform_handle, platform_url,
+        ownership_verification_method, ownership_challenge_code,
+        ownership_check_status, evidence_snapshot_json
+      ) values
+      (
+        '97000000-0000-4000-8000-000000000001',
+        'influencer_account', 'duplicate-owner-1', 'platform_account',
+        'pending', 'production', 'Duplicate one', 'youtube', 'duplicate-one',
+        'https://youtube.com/@duplicate-one', 'channel_description_code',
+        'DS-DUPE-CODE', 'not_run', '{}'::jsonb
+      ),
+      (
+        '97000000-0000-4000-8000-000000000002',
+        'influencer_account', 'duplicate-owner-2', 'platform_account',
+        'pending', null, 'Duplicate two', 'naver_blog', 'duplicate-two',
+        'https://blog.naver.com/duplicate-two', 'profile_bio_code',
+        'DS-DUPE-CODE', 'not_run', '{}'::jsonb
+      );
+    `);
+    await assert.rejects(
+      duplicateDb.exec(platformVerificationMinimizationMigration),
+      /duplicate production YouTube\/NAVER ownership challenge codes must be resolved before migration/,
+    );
+  } finally {
+    await duplicateDb.close();
+  }
 });
 
 test("corrective retention migration is atomic, hold-aware and service-only", () => {
@@ -546,12 +1702,12 @@ test("append-only evidence stays protected outside the bounded purge function", 
 test("privacy notice version and verified backup window are explicit", () => {
   const runbook = readSource("../docs/privacy-retention-runbook.md");
 
-  assert.match(server, /const signupPrivacyPolicyVersion = "2026-08-08\.3"/);
+  assert.match(server, /const signupPrivacyPolicyVersion = "2026-08-08\.4"/);
   assert.match(
     signupPage,
-    /const PRIVACY_POLICY_DOCUMENT_VERSION = "2026-08-08\.3"/,
+    /const PRIVACY_POLICY_DOCUMENT_VERSION = "2026-08-08\.4"/,
   );
-  assert.match(privacyPage, /documentVersion: "2026-08-08\.3"/);
+  assert.match(privacyPage, /documentVersion: "2026-08-08\.4"/);
   assert.match(privacyPage, /데이터베이스 백업은 현재 운영 설정에서 최대 7일/);
   assert.match(privacyPage, /비공개 파일은 데이터베이스 백업에 포함되지 않으며/);
   assert.match(runbook, /최근 7개 일일 물리 백업/);

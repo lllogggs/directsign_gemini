@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 
 const STATE_VERSION = 1;
 const DEFAULT_DAILY_LIMIT = 25_000;
-const DEFAULT_BUDGET_RATIO = 0.8;
+const DEFAULT_BUDGET_RATIO = 0.75;
 const DEFAULT_STATE_PATH = path.join(
   process.cwd(),
   ".tmp",
@@ -14,6 +14,7 @@ const DEFAULT_LOCK_TIMEOUT_MS = 10_000;
 const DEFAULT_STALE_LOCK_MS = 30_000;
 const LOCK_RETRY_MIN_MS = 15;
 const LOCK_RETRY_JITTER_MS = 35;
+const DEFAULT_PROVIDER_GUARD_MS = 10_000;
 
 function getKstDate(now = new Date()) {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -28,6 +29,15 @@ function getKstDate(now = new Date()) {
       .map(({ type, value }) => [type, value]),
   );
   return `${values.year}-${values.month}-${values.day}`;
+}
+
+export function getKstNotAfter(dateKst) {
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(String(dateKst ?? ""))) return undefined;
+  const midnight = new Date(`${dateKst}T00:00:00.000+09:00`);
+  if (!Number.isFinite(midnight.getTime())) return undefined;
+  if (getKstDate(midnight) !== dateKst) return undefined;
+  midnight.setUTCDate(midnight.getUTCDate() + 1);
+  return midnight.toISOString();
 }
 
 function readPositiveNumber(value, fallback, { maximum } = {}) {
@@ -108,10 +118,12 @@ function publicSnapshot(state, config, overrides = {}) {
     Number.isSafeInteger(state?.used) ? state.used : config.cap,
     Number.MAX_SAFE_INTEGER,
   );
+  const dateKst = state?.dateKst ?? getKstDate();
   return {
     allowed: overrides.allowed ?? used < config.cap,
     reason: overrides.reason,
-    dateKst: state?.dateKst ?? getKstDate(),
+    dateKst,
+    notAfter: getKstNotAfter(dateKst),
     dailyLimit: config.dailyLimit,
     budgetRatio: config.budgetRatio,
     cap: config.cap,
@@ -121,6 +133,69 @@ function publicSnapshot(state, config, overrides = {}) {
     updatedAt: state?.updatedAt ?? null,
     ...overrides,
   };
+}
+
+function isValidReservation(reservation) {
+  return Boolean(
+    reservation &&
+      typeof reservation === "object" &&
+      typeof reservation.allowed === "boolean" &&
+      /^\d{4}-\d{2}-\d{2}$/u.test(reservation.dateKst ?? "") &&
+      reservation.notAfter === getKstNotAfter(reservation.dateKst) &&
+      Number.isSafeInteger(reservation.cap) &&
+      reservation.cap >= 1 &&
+      Number.isSafeInteger(reservation.used) &&
+      reservation.used >= 0 &&
+      Number.isSafeInteger(reservation.remaining) &&
+      reservation.remaining >= 0 &&
+      (!reservation.allowed ||
+        (reservation.reserved === 1 &&
+          reservation.used <= reservation.cap &&
+          reservation.remaining === reservation.cap - reservation.used)),
+  );
+}
+
+export async function prepareNaverSearchReservationForFetch({
+  reservation,
+  reserve,
+  now = new Date(),
+  guardMs = DEFAULT_PROVIDER_GUARD_MS,
+}) {
+  const nowDate = now instanceof Date ? now : new Date(now);
+  if (
+    !Number.isFinite(nowDate.getTime()) ||
+    !Number.isSafeInteger(guardMs) ||
+    guardMs < 0 ||
+    !isValidReservation(reservation)
+  ) {
+    return { allowed: false, reason: "invalid_reservation" };
+  }
+
+  let current = reservation;
+  const currentDateKst = getKstDate(nowDate);
+  if (
+    current.dateKst !== currentDateKst ||
+    Date.parse(current.notAfter) <= nowDate.getTime()
+  ) {
+    if (typeof reserve !== "function") {
+      return { allowed: false, reason: "stale_reservation" };
+    }
+    current = await reserve();
+    if (!isValidReservation(current)) {
+      return { allowed: false, reason: "invalid_reservation" };
+    }
+  }
+
+  if (!current.allowed) {
+    return { allowed: false, reason: current.reason ?? "budget_exhausted" };
+  }
+  if (
+    current.dateKst !== getKstDate(nowDate) ||
+    Date.parse(current.notAfter) - nowDate.getTime() <= guardMs
+  ) {
+    return { allowed: false, reason: "midnight_guard" };
+  }
+  return { allowed: true, reservation: current };
 }
 
 async function delay(ms) {
@@ -235,7 +310,7 @@ export function createNaverSearchBudget(options = {}) {
   const budgetRatio = readPositiveNumber(
     options.budgetRatio ?? process.env.NAVER_SEARCH_DAILY_BUDGET_RATIO,
     DEFAULT_BUDGET_RATIO,
-    { maximum: 1 },
+    { maximum: 0.75 },
   );
   const configValid = dailyLimit !== undefined && budgetRatio !== undefined;
   const config = {
