@@ -979,6 +979,12 @@ function InfluencerAccountBanner({
             ) : null}
           </div>
         </div>
+        <Link
+          to={dashboard.public_profile.path ?? "/influencer/profile"}
+          className="inline-flex h-9 shrink-0 items-center justify-center rounded-[8px] border border-neutral-200 bg-white px-3 text-[12px] font-extrabold text-neutral-800 transition hover:border-neutral-300 hover:bg-neutral-50"
+        >
+          {dashboard.public_profile.path ? "내 프로필 보기" : "프로필 설정"}
+        </Link>
       </div>
     </section>
   );

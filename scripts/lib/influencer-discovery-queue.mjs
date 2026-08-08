@@ -6,7 +6,6 @@ import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 
 const FORMAT_VERSION = "1";
 const DISCOVERY_KIND = "influencer-discovery";
-const NAVER_VISITOR_KIND = "naver-blog-visitor";
 const QUEUE_RELATIVE_PATH = path.join("data", "influencer-discovery-queue");
 const DEFAULT_ROOT_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -25,27 +24,27 @@ function queueRoot(rootDir = DEFAULT_ROOT_DIR) {
   return path.join(path.resolve(rootDir), QUEUE_RELATIVE_PATH);
 }
 
-function pendingDirectory(rootDir, kind) {
+function pendingDirectory(rootDir) {
   return path.join(
     queueRoot(rootDir),
     "pending",
-    kind === NAVER_VISITOR_KIND ? "naver-blog-visitors" : "profiles",
+    "profiles",
   );
 }
 
-function archiveDirectory(rootDir, kind) {
+function archiveDirectory(rootDir) {
   return path.join(
     queueRoot(rootDir),
     "archive",
-    kind === NAVER_VISITOR_KIND ? "naver-blog-visitors" : "profiles",
+    "profiles",
   );
 }
 
-function quarantineDirectory(rootDir, kind) {
+function quarantineDirectory(rootDir) {
   return path.join(
     queueRoot(rootDir),
     "quarantine",
-    kind === NAVER_VISITOR_KIND ? "naver-blog-visitors" : "profiles",
+    "profiles",
   );
 }
 
@@ -537,23 +536,6 @@ export async function stageInfluencerDiscoveryWorkbook({
   });
 }
 
-export async function stageNaverVisitorWorkbook({
-  rootDir,
-  runId,
-  createdAt,
-  rows,
-}) {
-  return stageWorkbook({
-    rootDir,
-    kind: NAVER_VISITOR_KIND,
-    runId,
-    createdAt,
-    category: "naver-blog-visitors",
-    platform: "naver_blog",
-    rows,
-  });
-}
-
 export async function readInfluencerDiscoveryWorkbook(filePath) {
   const bytes = await fs.readFile(filePath);
   return parseWorkbookBytes(bytes, filePath);
@@ -677,10 +659,6 @@ export async function readPendingInfluencerBatch({ rootDir } = {}) {
   return readPendingBatch({ rootDir, kind: DISCOVERY_KIND });
 }
 
-export async function readPendingNaverVisitorBatch({ rootDir } = {}) {
-  return readPendingBatch({ rootDir, kind: NAVER_VISITOR_KIND });
-}
-
 function stateUploadDate(state) {
   if (!state || typeof state !== "object") return null;
   for (const key of [
@@ -784,7 +762,7 @@ async function archiveBatch({
     runId: normalizedBatchId,
     createdAt: normalizedCompletedAt,
     category: "merged",
-    platform: kind === NAVER_VISITOR_KIND ? "naver_blog" : "mixed",
+    platform: "mixed",
     rows,
     extraMeta: {
       archive_batch_id: normalizedBatchId,
@@ -841,23 +819,6 @@ export async function archiveInfluencerBatch({
   return archiveBatch({
     rootDir,
     kind: DISCOVERY_KIND,
-    batchId,
-    files,
-    rows,
-    completedAt,
-  });
-}
-
-export async function archiveNaverVisitorBatch({
-  rootDir,
-  batchId,
-  files,
-  rows,
-  completedAt,
-}) {
-  return archiveBatch({
-    rootDir,
-    kind: NAVER_VISITOR_KIND,
     batchId,
     files,
     rows,

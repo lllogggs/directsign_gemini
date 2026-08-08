@@ -596,7 +596,7 @@ const ensureMarketplaceProfiles = async ({ influencer, organizationId }) => {
         profile_id: influencerProfileId,
         platform: "instagram",
         label: "인스타",
-        handle: "@creator_sora",
+        handle: "@creator.sora",
         url: "https://instagram.com/creator.sora",
         followers_label: "8.1만",
         performance_label: "캠페인 지원 가능",
@@ -803,6 +803,10 @@ const ensureMarketplaceProfiles = async ({ influencer, organizationId }) => {
         is_published: true,
         updated_at: timestamp,
       };
+
+  brandProfileRow.active_campaigns = brandProfileRow.active_campaigns.map(
+    (campaign) => ({ ...campaign, relativeTestDates: true }),
+  );
 
   if (existingBrandProfile) {
     await patchById(
@@ -1583,6 +1587,7 @@ const buildShowcaseContract = (scenario, advertiserId, marketplaceCampaign) => {
   return {
     id: stableUuid(`${showcaseBatch}:${scenario.key}`),
     data_origin: "qa",
+    relative_test_dates: true,
     advertiser_id: advertiserId,
     campaign_name: scenario.campaignName,
     advertiser_info: {

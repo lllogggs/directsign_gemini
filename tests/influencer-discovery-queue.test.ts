@@ -7,13 +7,10 @@ import { mkdtemp } from "node:fs/promises";
 import { strFromU8, unzipSync } from "fflate";
 import {
   archiveInfluencerBatch,
-  archiveNaverVisitorBatch,
   isInfluencerBatchDue,
   readInfluencerDiscoveryWorkbook,
   readPendingInfluencerBatch,
-  readPendingNaverVisitorBatch,
   stageInfluencerDiscoveryWorkbook,
-  stageNaverVisitorWorkbook,
 } from "../scripts/lib/influencer-discovery-queue.mjs";
 
 describe("local influencer discovery XLSX queue", () => {
@@ -357,56 +354,5 @@ describe("successful queue archival", () => {
     );
     const archivedNames = await readdir(archiveDir).catch(() => []);
     assert.equal(archivedNames.length, 1);
-  });
-});
-
-describe("Naver visitor XLSX queue", () => {
-  let rootDir = "";
-
-  before(async () => {
-    rootDir = await mkdtemp(path.join(tmpdir(), "yeollock-visitor-queue-"));
-  });
-
-  after(async () => {
-    await rm(rootDir, { recursive: true, force: true });
-  });
-
-  it("round-trips, snapshots, and archives visitor metrics without losing evidence", async () => {
-    const rows = [
-      {
-        id: "naver-한글",
-        visitor_status: "available",
-        visitor_average_4d: 1234,
-        visitor_counts: [
-          { date: "2026-07-14", count: 1000 },
-          { date: "2026-07-13", count: 1100 },
-          { date: "2026-07-12", count: 1300 },
-          { date: "2026-07-11", count: 1536 },
-        ],
-        checked_at: "2026-07-15T01:00:00.000Z",
-      },
-    ];
-    const staged = await stageNaverVisitorWorkbook({
-      rootDir,
-      runId: "visitor-run",
-      createdAt: "2026-07-15T01:00:00.000Z",
-      rows,
-    });
-    assert.deepEqual((await readInfluencerDiscoveryWorkbook(staged.filePath)).rows, rows);
-
-    const snapshot = await readPendingNaverVisitorBatch({ rootDir });
-    assert.deepEqual(snapshot.rows, rows);
-    const archived = await archiveNaverVisitorBatch({
-      rootDir,
-      batchId: snapshot.batchId,
-      files: snapshot.files,
-      rows: snapshot.rows,
-      completedAt: "2026-07-15T13:00:00.000Z",
-    });
-    assert.deepEqual(
-      (await readInfluencerDiscoveryWorkbook(archived.archivePath)).rows,
-      rows,
-    );
-    assert.equal((await readPendingNaverVisitorBatch({ rootDir })).files.length, 0);
   });
 });

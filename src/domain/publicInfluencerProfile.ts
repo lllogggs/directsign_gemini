@@ -28,8 +28,12 @@ export type InfluencerPublicProfileSettings = {
     platform: InfluencerPlatform;
     handle: string;
     url?: string;
+    ownershipStatus: "unverified" | "verified";
   }>;
   published: boolean;
+  publicIndexEnabled: boolean;
+  profileState: "setup_required" | "minimal" | "complete";
+  representativeActivityPageUrl?: string;
   updatedAt: string;
 };
 
@@ -68,12 +72,6 @@ const categoryLabels: Record<InfluencerActivityCategory, string> = {
   lifestyle: "라이프스타일",
   finance: "금융",
 };
-
-const collaborationTypeFallbacks: CampaignProposalType[] = [
-  "sponsored_post",
-  "product_seeding",
-  "supporters",
-];
 
 export function normalizePublicProfileHandle(value: string) {
   return value
@@ -145,27 +143,26 @@ export function buildDefaultPublicProfileSettings(
     ownerId: dashboard.user.id,
     handle: defaultHandle,
     displayName: dashboard.user.name || "인플루언서",
-    headline: "브랜드 협업을 위한 공개 프로필",
-    bio:
-      "활동 채널, 협업 가능 광고 형태, 선호하는 제안 내용을 정리해 광고주가 빠르게 컨택할 수 있도록 합니다.",
-    location: "활동 지역 미입력",
-    audience:
-      categories.length > 0
-        ? `${categories.join(", ")} 관심 고객`
-        : "관심사 기반 팔로워",
+    headline: "",
+    bio: "",
+    location: "",
+    audience: "",
     avatarLabel: buildAvatarLabel(dashboard.user.name),
     avatarUrl: dashboard.user.avatar_url,
-    categories: categories.length > 0 ? categories : ["라이프스타일"],
-    brandFit: ["브랜드 소개 확인", "광고 형태 협의", "계약 전 조건 확인"],
-    collaborationTypes: collaborationTypeFallbacks,
-    startingPriceLabel: "협의 가능",
-    responseTimeLabel: "프로필 확인 후 응답",
+    categories,
+    brandFit: [],
+    collaborationTypes: [],
+    startingPriceLabel: "",
+    responseTimeLabel: "",
     platforms: approvedPlatforms.map((platform) => ({
       platform: platform.platform,
       handle: platform.handle,
       url: platform.url,
+      ownershipStatus: "verified" as const,
     })),
     published: false,
+    publicIndexEnabled: approvedPlatforms.length > 0,
+    profileState: "setup_required",
     updatedAt: new Date().toISOString(),
   };
 }
@@ -204,6 +201,10 @@ export function buildPublicProfileSettingsFromForm(
     brandFit: brandFit.length > 0 ? brandFit : defaults.brandFit,
     collaborationTypes,
     published: true,
+    publicIndexEnabled: defaults.platforms.some(
+      (platform) => platform.ownershipStatus === "verified",
+    ),
+    profileState: "complete",
     updatedAt: new Date().toISOString(),
   };
 }
@@ -231,7 +232,11 @@ export function createMarketplaceProfileFromPublicSettings(
             handle: formatStoredPlatformHandle(platform.handle, platform.platform),
             url: platform.url ?? buildPlatformUrl(platform.platform, platform.handle),
             followersLabel: "계정 연동",
-            performanceLabel: "프로필에서 확인",
+            performanceLabel:
+              platform.ownershipStatus === "verified"
+                ? "계정 인증 완료"
+                : "계정 인증 전",
+            ownershipStatus: platform.ownershipStatus,
           }))
         : [
             {
@@ -247,7 +252,11 @@ export function createMarketplaceProfileFromPublicSettings(
     startingPriceLabel: settings.startingPriceLabel,
     responseTimeLabel: settings.responseTimeLabel,
     verifiedLabel:
-      settings.platforms.length > 0 ? "계정 프로필 연동" : "공개 프로필 설정",
+      settings.platforms.some(
+        (platform) => platform.ownershipStatus === "verified",
+      )
+        ? "계정 인증 완료"
+        : "계정 인증 전",
     brandFit: settings.brandFit,
     recentBrands: ["입점 브랜드 제안 가능"],
     portfolio: [
@@ -262,6 +271,11 @@ export function createMarketplaceProfileFromPublicSettings(
       "콘텐츠 사용 범위와 희망 일정을 제안에 포함해 주세요.",
       "최종 조건은 전자계약 단계에서 다시 확인합니다.",
     ],
+    platformVerified: settings.platforms.some(
+      (platform) => platform.ownershipStatus === "verified",
+    ),
+    publicProfilePublished: settings.published,
+    publicProfileHandle: settings.published ? settings.handle : undefined,
   };
 }
 

@@ -1844,10 +1844,30 @@ export function PublicInfluencerProfilePage() {
       normalizePublicProfileHandle(currentProfilePath) ===
         normalizePublicProfileHandle(profile.handle),
   );
+  const profileVerified = profile.platformVerified === true;
+  const profileComplete = Boolean(
+    getMarketplaceInfluencerAvatarUrl(profile) && profile.headline.trim(),
+  );
   const normalizedProfileHandle = normalizePublicProfileHandle(profile.handle);
   const showProfileInterestAction =
     advertiserShellMode === "authenticated" && !isOwnPublishedProfile;
-  const showPrimaryProfileAction = !isOwnPublishedProfile && !isDiscoveredProfile;
+  const ownerPrimaryAction = isOwnPublishedProfile
+    ? !profileVerified
+      ? {
+          href: "/influencer/verification",
+          label: "계정 인증하기",
+        }
+      : !profileComplete
+        ? {
+            href: "/influencer/profile",
+            label: "프로필 완성하기",
+          }
+        : undefined
+    : undefined;
+  const showPrimaryProfileAction = Boolean(
+    ownerPrimaryAction ||
+      (!isOwnPublishedProfile && !isDiscoveredProfile && profileVerified),
+  );
   const isProfileInterested = profileInterestHandles.has(normalizedProfileHandle);
   const isProfileInterestSaving =
     profileInterestSavingHandles.has(normalizedProfileHandle);
@@ -1881,7 +1901,15 @@ export function PublicInfluencerProfilePage() {
             }
           />
         ) : null}
-        {showPrimaryProfileAction ? (
+        {ownerPrimaryAction ? (
+          <Link
+            to={ownerPrimaryAction.href}
+            className={`${desktop ? "h-12 w-[156px]" : "h-12 min-w-0 flex-1"} ${primaryProfileActionClassName}`}
+          >
+            <UserRound className="h-4 w-4 shrink-0" />
+            <span>{ownerPrimaryAction.label}</span>
+          </Link>
+        ) : showPrimaryProfileAction ? (
           <button
             type="button"
             onClick={() => setShowContact(true)}
@@ -1951,9 +1979,15 @@ export function PublicInfluencerProfilePage() {
               <h1 className="font-neo-heavy mt-4 text-[33px] leading-[0.98] tracking-normal text-neutral-950 sm:mt-5 sm:text-[56px]">
                 {profile.displayName}
               </h1>
-              <p className="mt-3 max-w-xl break-keep text-[15px] font-extrabold leading-6 text-neutral-800 sm:mt-4 sm:text-[19px] sm:leading-8">
-                {cleanMarketplaceCopy(profile.headline)}
-              </p>
+              {profile.headline.trim() ? (
+                <p className="mt-3 max-w-xl break-keep text-[15px] font-extrabold leading-6 text-neutral-800 sm:mt-4 sm:text-[19px] sm:leading-8">
+                  {cleanMarketplaceCopy(profile.headline)}
+                </p>
+              ) : !profileVerified ? (
+                <span className="mt-3 inline-flex w-fit rounded-full border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-[12px] font-extrabold text-neutral-600">
+                  계정 인증 전
+                </span>
+              ) : null}
 
                 </div>
 
@@ -1973,7 +2007,13 @@ export function PublicInfluencerProfilePage() {
                           href={platform.url}
                           target="_blank"
                           rel="noreferrer"
-                          aria-label={`${getPlatformDisplayName(platform.platform)} ${platform.handle} 계정 보기`}
+                          aria-label={[
+                            getPlatformDisplayName(platform.platform),
+                            platform.handle,
+                            platform.followersLabel,
+                            platform.performanceLabel,
+                            "계정 보기",
+                          ].filter(Boolean).join(" ")}
                           title={`${getPlatformDisplayName(platform.platform)} ${platform.handle}`}
                           className={platformLinkClassName}
                         >
@@ -1985,9 +2025,18 @@ export function PublicInfluencerProfilePage() {
                               </p>
                             </div>
                           </div>
-                          <p className={platformFollowerClassName}>
-                            {formatDiscoveryAudienceMetric(platform.followersLabel)}
-                          </p>
+                          <div className="flex min-w-0 items-center gap-1.5">
+                            <p className={platformFollowerClassName}>
+                              {platform.ownershipStatus === "unverified"
+                                ? "계정 인증 전"
+                                : formatDiscoveryAudienceMetric(
+                                    platform.followersLabel,
+                                  )}
+                            </p>
+                            <SelfReportedMetricBadge
+                              visible={platform.metricTrust === "self_reported"}
+                            />
+                          </div>
                           <span
                             aria-hidden="true"
                             className="inline-flex h-8 w-8 items-center justify-center rounded-[10px] text-neutral-400 transition group-hover:bg-blue-50 group-hover:text-blue-700 lg:absolute lg:right-0 lg:top-0 lg:h-7 lg:w-7"
@@ -2013,7 +2062,10 @@ export function PublicInfluencerProfilePage() {
         </article>
       </section>
 
-      {showContact && !isOwnPublishedProfile && !isDiscoveredProfile ? (
+      {showContact &&
+      !isOwnPublishedProfile &&
+      !isDiscoveredProfile &&
+      profileVerified ? (
         <InfluencerContactDialog
           key={profile.id}
           profile={profile}
@@ -2694,7 +2746,8 @@ function InfluencerDiscoveryTableRow({
     : isPrivateRegisteredProfile
       ? "플랫폼 인증 전"
       : "기타";
-  const canPropose = isRegisteredMarketplaceInfluencer(profile);
+  const canPropose =
+    isRegisteredMarketplaceInfluencer(profile) && profile.platformVerified === true;
   const primaryChannelUrl = getMarketplaceInfluencerPrimaryChannelUrl(
     profile,
     platformFilter,
@@ -2767,16 +2820,23 @@ function InfluencerDiscoveryTableRow({
           )}
         </div>
       </div>
-      <p
-        className="truncate text-[12px] font-extrabold text-neutral-950"
+      <div
+        className="flex min-w-0 items-center gap-1.5"
         title={primaryPlatform?.performanceLabel}
       >
-        {primaryPlatform
-          ? audienceLabel
-          : isPrivateRegisteredProfile
-            ? "플랫폼 인증 전"
-            : audienceLabel}
-      </p>
+        <p className="truncate text-[12px] font-extrabold text-neutral-950">
+          {primaryPlatform
+            ? primaryPlatform.ownershipStatus === "unverified"
+              ? "계정 인증 전"
+              : audienceLabel
+            : isPrivateRegisteredProfile
+              ? "플랫폼 인증 전"
+              : audienceLabel}
+        </p>
+        <SelfReportedMetricBadge
+          visible={primaryPlatform?.metricTrust === "self_reported"}
+        />
+      </div>
 
       <div className="flex justify-end">
         {canPropose ? (
@@ -2830,7 +2890,8 @@ function InfluencerDiscoveryCompactRow({
     platformFilter,
   );
   const categoryLabel = getCategoryLabels(profile.categories, 2).join(" · ");
-  const canPropose = isRegisteredMarketplaceInfluencer(profile);
+  const canPropose =
+    isRegisteredMarketplaceInfluencer(profile) && profile.platformVerified === true;
   const primaryChannelUrl = getMarketplaceInfluencerPrimaryChannelUrl(
     profile,
     platformFilter,
@@ -2877,8 +2938,13 @@ function InfluencerDiscoveryCompactRow({
               <PlatformPill
                 platform={primaryPlatform.platform}
                 label={platformLabels[primaryPlatform.platform]}
-                value={primaryPlatform.followersLabel}
+                value={
+                  primaryPlatform.ownershipStatus === "unverified"
+                    ? "계정 인증 전"
+                    : primaryPlatform.followersLabel
+                }
                 description={primaryPlatform.performanceLabel}
+                metricTrust={primaryPlatform.metricTrust}
               />
             </div>
           ) : isPrivateRegisteredProfile ? (
@@ -3013,6 +3079,7 @@ function InfluencerPreviewCard({
             label={platformLabels[platform.platform]}
             value={platform.followersLabel}
             description={platform.performanceLabel}
+            metricTrust={platform.metricTrust}
           />
         ))}
         {profile.platforms.length === 0 && isPrivateRegisteredProfile ? (
@@ -4727,12 +4794,14 @@ function PlatformPill({
   label,
   value,
   description,
+  metricTrust,
 }: {
   key?: string;
   platform: InfluencerPlatform;
   label: string;
   value?: string;
   description?: string;
+  metricTrust?: "self_reported";
 }) {
   const hasMetric = Boolean(value);
   const metricValue = hasMetric ? formatDiscoveryAudienceMetric(value) : "";
@@ -4752,6 +4821,16 @@ function PlatformPill({
       {metricValue ? (
         <span className="truncate text-neutral-950">{metricValue}</span>
       ) : null}
+      <SelfReportedMetricBadge visible={metricTrust === "self_reported"} />
+    </span>
+  );
+}
+
+function SelfReportedMetricBadge({ visible }: { visible: boolean }) {
+  if (!visible) return null;
+  return (
+    <span className="inline-flex h-5 shrink-0 items-center rounded-full bg-neutral-100 px-1.5 text-[10px] font-bold text-neutral-600">
+      자가신고
     </span>
   );
 }

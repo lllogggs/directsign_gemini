@@ -20,7 +20,7 @@ const normalizePath = (filePath) => filePath.replaceAll("\\", "/");
 const riskySalesArtifactPattern =
   /^docs\/sales\/[^/]+\.(csv|tsv|json)$/i;
 const leadArtifactNamePattern =
-  /(prospect|lead|business-emails|email-discovery|cold-email)/i;
+  /(prospect|lead|outreach|business-emails|email-discovery|cold-email)/i;
 const textFilePattern =
   /\.(ts|tsx|js|mjs|cjs|json|md|html|css|sql|txt|example|gitignore|vercelignore)$/i;
 const nonEmptySecretPatterns = [

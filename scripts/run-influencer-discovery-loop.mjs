@@ -60,18 +60,6 @@ const naverSorts = String(args.get("naver-sorts") ?? "sim,date")
   .split(",")
   .map((value) => value.trim().toLowerCase())
   .filter((value) => ["sim", "date"].includes(value));
-const naverVisitorBatchSize = parsePositiveInt(
-  args.get("naver-visitor-batch-size"),
-  300,
-);
-const naverVisitorStaleDays = parsePositiveNumber(
-  args.get("naver-visitor-stale-days"),
-  7,
-);
-const naverVisitorConcurrency = parsePositiveInt(
-  args.get("naver-visitor-concurrency"),
-  6,
-);
 const includeYoutube = args.get("youtube") !== "false";
 const includeNaver = args.get("naver") !== "false";
 const includeInstagram = args.get("instagram") !== "false";
@@ -372,9 +360,6 @@ function runBatchUploader() {
   const childArgs = [
     "scripts/upload-influencer-discovery-batch.mjs",
     `--interval-hours=${uploadIntervalHours}`,
-    `--naver-visitor-batch-size=${naverVisitorBatchSize}`,
-    `--naver-visitor-stale-days=${naverVisitorStaleDays}`,
-    `--naver-visitor-concurrency=${naverVisitorConcurrency}`,
   ];
 
   return new Promise((resolve) => {
@@ -506,9 +491,6 @@ async function main() {
     naverPerQuery,
     naverPages,
     naverSorts,
-    naverVisitorBatchSize,
-    naverVisitorStaleDays,
-    naverVisitorConcurrency,
     tiktokPerQuery,
     tiktokPages,
   });

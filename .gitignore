@@ -5,6 +5,8 @@ coverage/
 docs/qa-reports/
 docs/discovery/
 public/qa-captures/
+output/
+docs/sales/review/
 logs/*.jsonl
 qa-artifacts/*
 !qa-artifacts/seed-dashboard-matrix.mjs
@@ -20,6 +22,9 @@ docs/sales/*prospect*.tsv
 docs/sales/*lead*.csv
 docs/sales/*lead*.json
 docs/sales/*lead*.tsv
+docs/sales/*outreach*.csv
+docs/sales/*outreach*.json
+docs/sales/*outreach*.tsv
 docs/sales/*business-emails*.csv
 docs/sales/*business-emails*.json
 docs/sales/*business-emails*.tsv

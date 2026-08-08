@@ -4,6 +4,8 @@ import { describe, it } from "node:test";
 import {
   extractInstagramDmChallengeEvents,
   isActionableInstagramDmManualReview,
+  normalizeInstagramFollowerCount,
+  readVerifiedInstagramDmFollowerCount,
   selectInstagramDmRestoreRecord,
   processInstagramDmChallengeEvent,
   verifyInstagramWebhookSignature,
@@ -384,17 +386,20 @@ const makeDependencies = (
   record: MemoryRecord,
   options: {
     username?: string;
+    followerCount?: unknown;
     autoApproveEnabled?: boolean;
     providerError?: Error;
   } = {},
 ) => {
   const failures: InstagramDmFailureReason[] = [];
   const saved: SavedRecord[] = [];
+  const consumedFollowerCounts: Array<number | undefined> = [];
   let lookupCalls = 0;
 
   return {
     failures,
     saved,
+    consumedFollowerCounts,
     get lookupCalls() {
       return lookupCalls;
     },
@@ -407,10 +412,13 @@ const makeDependencies = (
         !record.ownership_challenge_consumed_at
           ? record
           : undefined,
-      lookupSenderUsername: async () => {
+      lookupSenderProfile: async () => {
         lookupCalls += 1;
         if (options.providerError) throw options.providerError;
-        return options.username ?? "creator.name";
+        return {
+          username: options.username ?? "creator.name",
+          followerCount: options.followerCount,
+        };
       },
       markFailure: async (
         target: MemoryRecord,
@@ -426,12 +434,14 @@ const makeDependencies = (
       compareAndConsume: async ({
         codeHash,
         event: verifiedEvent,
+        followerCount,
         autoApprove,
       }: {
         record: MemoryRecord;
         codeHash: string;
         event: InstagramDmChallengeEvent;
         requestedHandle: string;
+        followerCount?: number;
         autoApprove: boolean;
       }) => {
         await Promise.resolve();
@@ -447,6 +457,7 @@ const makeDependencies = (
         record.ownership_challenge_code_hash = null;
         record.ownership_challenge_consumed_at = verifiedEvent.receivedAt;
         record.status = autoApprove ? "approved" : "pending";
+        consumedFollowerCounts.push(followerCount);
         return {
           id: record.id,
           status: autoApprove ? "approved" : "pending",
@@ -556,7 +567,7 @@ describe("Instagram DM ownership verification", () => {
   });
 
   it("auto-approves only an exact Instagram username and URL match", async () => {
-    const harness = makeDependencies(makeRecord());
+    const harness = makeDependencies(makeRecord(), { followerCount: 12_345 });
     const result = await processInstagramDmChallengeEvent(
       event,
       harness.dependencies,
@@ -565,11 +576,146 @@ describe("Instagram DM ownership verification", () => {
     assert.equal(result.outcome, "verified");
     assert.equal(result.outcome === "verified" && result.autoApproved, true);
     assert.equal(harness.saved.length, 1);
+    assert.deepEqual(harness.consumedFollowerCounts, [12_345]);
     assert.deepEqual(harness.failures, []);
   });
 
+  it("accepts only non-negative safe integer follower counts", () => {
+    assert.equal(normalizeInstagramFollowerCount(0), 0);
+    assert.equal(normalizeInstagramFollowerCount(12_345), 12_345);
+    for (const invalidValue of [
+      undefined,
+      null,
+      "12345",
+      -1,
+      1.5,
+      Number.POSITIVE_INFINITY,
+      Number.MAX_SAFE_INTEGER + 1,
+    ]) {
+      assert.equal(normalizeInstagramFollowerCount(invalidValue), undefined);
+    }
+  });
+
+  it("invalidates discovery cache only for a verified same-handle metric", () => {
+    const metricRecord = {
+      ownership_verification_method: "instagram_dm_code",
+      platform_handle: "@Creator.Name",
+      evidence_snapshot_json: {
+        ownership_verification: {
+          instagram_dm: {
+            state: "verified",
+            verified_handle: "creator.name",
+            follower_count: 12_345,
+            follower_count_source: "instagram_user_profile_api",
+          },
+        },
+      },
+    };
+
+    assert.equal(readVerifiedInstagramDmFollowerCount(metricRecord), 12_345);
+    assert.equal(
+      readVerifiedInstagramDmFollowerCount(
+        {
+          ...metricRecord,
+          evidence_snapshot_json: {
+            ownership_verification: {
+              instagram_dm: {
+                state: "verified",
+                verified_handle: "creator.name",
+                follower_count: 0,
+                follower_count_source: "instagram_user_profile_api",
+              },
+            },
+          },
+        },
+      ),
+      0,
+    );
+    assert.equal(readVerifiedInstagramDmFollowerCount(metricRecord, true), undefined);
+
+    for (const instagramDm of [
+      {
+        state: "manual_review",
+        verified_handle: "creator.name",
+        follower_count: 12_345,
+        follower_count_source: "instagram_user_profile_api",
+      },
+      {
+        state: "verified",
+        verified_handle: "different.creator",
+        follower_count: 12_345,
+        follower_count_source: "instagram_user_profile_api",
+      },
+      {
+        state: "verified",
+        verified_handle: "creator.name",
+        follower_count: "12345",
+        follower_count_source: "instagram_user_profile_api",
+      },
+      {
+        state: "verified",
+        verified_handle: "creator.name",
+        follower_count: 12_345,
+        follower_count_source: "untrusted_source",
+      },
+    ]) {
+      assert.equal(
+        readVerifiedInstagramDmFollowerCount({
+          ...metricRecord,
+          evidence_snapshot_json: {
+            ownership_verification: { instagram_dm: instagramDm },
+          },
+        }),
+        undefined,
+      );
+    }
+  });
+
+  it("keeps ownership verification valid when Meta omits an authoritative count", async () => {
+    for (const followerCount of [undefined, "12345", -1, 1.5]) {
+      const harness = makeDependencies(makeRecord(), { followerCount });
+      const result = await processInstagramDmChallengeEvent(
+        event,
+        harness.dependencies,
+      );
+
+      assert.equal(result.outcome, "verified");
+      assert.deepEqual(harness.consumedFollowerCounts, [undefined]);
+    }
+  });
+
+  it("preserves an authoritative zero follower count", async () => {
+    const harness = makeDependencies(makeRecord(), { followerCount: 0 });
+    const result = await processInstagramDmChallengeEvent(
+      event,
+      harness.dependencies,
+    );
+
+    assert.equal(result.outcome, "verified");
+    assert.deepEqual(harness.consumedFollowerCounts, [0]);
+  });
+
+  it("retains a production manual-review count for the later approval transaction", async () => {
+    const harness = makeDependencies(makeRecord(), {
+      followerCount: 12_345,
+      autoApproveEnabled: false,
+    });
+    const result = await processInstagramDmChallengeEvent(
+      event,
+      harness.dependencies,
+    );
+
+    assert.equal(result.outcome, "verified");
+    assert.equal(result.outcome === "verified" && result.autoApproved, false);
+    assert.deepEqual(harness.consumedFollowerCounts, [12_345]);
+    assert.equal(harness.saved[0]?.status, "pending");
+  });
+
   it("rejects lookalike usernames instead of treating punctuation as equal", async () => {
-    const harness = makeDependencies(makeRecord(), { username: "creator_name" });
+    const harness = makeDependencies(makeRecord(), {
+      username: "creator_name",
+      followerCount: 12_345,
+    });
     const result = await processInstagramDmChallengeEvent(
       event,
       harness.dependencies,
@@ -578,6 +724,7 @@ describe("Instagram DM ownership verification", () => {
     assert.equal(result.outcome, "username_mismatch");
     assert.deepEqual(harness.failures, ["username_mismatch"]);
     assert.equal(harness.saved.length, 0);
+    assert.deepEqual(harness.consumedFollowerCounts, []);
   });
 
   it("expires at the exact deadline without querying Meta", async () => {
@@ -614,7 +761,12 @@ describe("Instagram DM ownership verification", () => {
 
   it("never auto-approves QA, demo, or seed-origin requests", async () => {
     for (const dataOrigin of ["qa", "demo", "seed"] as const) {
-      const harness = makeDependencies(makeRecord({ data_origin: dataOrigin }));
+      const harness = makeDependencies(
+        makeRecord({ data_origin: dataOrigin }),
+        {
+          followerCount: 12_345,
+        },
+      );
       const result = await processInstagramDmChallengeEvent(
         event,
         harness.dependencies,
@@ -623,6 +775,7 @@ describe("Instagram DM ownership verification", () => {
       assert.equal(result.outcome, "verified");
       assert.equal(result.outcome === "verified" && result.autoApproved, false);
       assert.equal(harness.saved[0]?.status, "pending");
+      assert.deepEqual(harness.consumedFollowerCounts, [undefined]);
     }
   });
 
@@ -657,10 +810,10 @@ describe("Instagram DM ownership verification", () => {
     const originalCompareAndConsume = harness.dependencies.compareAndConsume;
     const verification = processInstagramDmChallengeEvent(event, {
       ...harness.dependencies,
-      lookupSenderUsername: async () => {
+      lookupSenderProfile: async () => {
         markLookupStarted();
         await lookupGate;
-        return "creator.name";
+        return { username: "creator.name", followerCount: 12_345 };
       },
       isStillAuthoritative: async () => authoritative,
       compareAndConsume: async (input) => {

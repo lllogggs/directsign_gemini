@@ -57,7 +57,6 @@ describe("influencer discovery batch uploader", () => {
     await withQueueRoot(async (rootDir) => {
       await stageFixture(rootDir, "2026-07-15T00:00:00.000Z");
       let databaseLoads = 0;
-      let visitorRuns = 0;
 
       const result = await runInfluencerDiscoveryBatchUpload(
         {
@@ -70,10 +69,6 @@ describe("influencer discovery batch uploader", () => {
             databaseLoads += 1;
             throw new Error("database code must not load before due");
           },
-          runNaverVisitorBatch: async () => {
-            visitorRuns += 1;
-            return { ok: true };
-          },
         },
       );
 
@@ -81,7 +76,6 @@ describe("influencer discovery batch uploader", () => {
       assert.equal(result.skipped, "not_due");
       assert.equal(result.dueAt, "2026-07-15T12:00:00.000Z");
       assert.equal(databaseLoads, 0);
-      assert.equal(visitorRuns, 0);
       assert.equal(
         (await readPendingInfluencerBatch({ rootDir })).files.length,
         1,
@@ -113,7 +107,6 @@ describe("influencer discovery batch uploader", () => {
               return rows.length;
             },
           }),
-          runNaverVisitorBatch: async () => ({ ok: true, checked: 0 }),
         },
       );
 
@@ -137,13 +130,12 @@ describe("influencer discovery batch uploader", () => {
     });
   });
 
-  it("uploads only changed rows, archives after success, and does not roll back for visitor failure", async () => {
+  it("uploads only changed rows and archives after success", async () => {
     await withQueueRoot(async (rootDir) => {
       await stageFixture(rootDir, "2026-07-15T00:00:00.000Z");
       let reserveOptions: unknown;
       let upsertOptions: unknown;
       let uploadedRows: Array<Record<string, unknown>> = [];
-      let visitorSession: Record<string, unknown> | undefined;
 
       const result = await runInfluencerDiscoveryBatchUpload(
         {
@@ -169,18 +161,11 @@ describe("influencer discovery batch uploader", () => {
               return rows.length;
             },
           }),
-          runNaverVisitorBatch: async (options: Record<string, unknown>) => {
-            visitorSession = options;
-            return {
-              ok: false,
-              error: "visitor service unavailable",
-            };
-          },
         },
       );
 
       assert.equal(result.ok, true);
-      assert.ok("profile" in result && "visitor" in result);
+      assert.ok("profile" in result);
       const reserveSession = (
         reserveOptions as {
           onlyChanged?: boolean;
@@ -207,10 +192,6 @@ describe("influencer discovery batch uploader", () => {
       );
       assert.equal(result.profile.changedRows, 1);
       assert.equal(result.profile.uploadedRows, 1);
-      assert.equal(result.visitor.ok, false);
-      assert.equal(typeof visitorSession?.uploaderLockToken, "string");
-      assert.equal(String(visitorSession?.uploaderLockToken).length > 20, true);
-      assert.equal(visitorSession?.uploaderPid, process.pid);
       assert.equal(
         (await readPendingInfluencerBatch({ rootDir })).files.length,
         0,
@@ -223,7 +204,6 @@ describe("influencer discovery batch uploader", () => {
         String(state.lastArchivePath),
         /archive[\\/]profiles[\\/].+\.xlsx$/,
       );
-      assert.equal(state.lastVisitorError, "visitor service unavailable");
     });
   });
 
@@ -247,7 +227,6 @@ describe("influencer discovery batch uploader", () => {
                 throw new Error("simulated Supabase failure");
               },
             }),
-            runNaverVisitorBatch: async () => ({ ok: true }),
           },
         ),
         /simulated Supabase failure/,
@@ -276,7 +255,6 @@ describe("influencer discovery batch uploader", () => {
             databaseLoads += 1;
             throw new Error("three-minute retry must stay local");
           },
-          runNaverVisitorBatch: async () => ({ ok: true }),
         },
       );
 

@@ -194,16 +194,12 @@ export function buildDiscoveredPublicInfluencerDirectoryRow(row) {
   const countries = normalizeCountryCodes(row?.audience_countries);
   const platform = normalizeText(row?.platform);
   const displayName = normalizeDiscoveredInfluencerDisplayName(row);
-  const naverVisitorCount =
-    platform === "naver_blog" &&
-    row?.naver_blog_visitor_status === "available"
-      ? normalizeAudienceCount(row?.naver_blog_visitor_average_4d)
-      : null;
   const audienceCount =
-    naverVisitorCount ??
-    normalizeAudienceCount(row?.follower_count) ??
-    parsePublicAudienceCountLabel(row?.followers_label);
-  const audienceCounts = { [platform]: audienceCount };
+    platform === "naver_blog"
+      ? null
+      : normalizeAudienceCount(row?.follower_count) ??
+        parsePublicAudienceCountLabel(row?.followers_label);
+  const audienceCounts = audienceCount === null ? {} : { [platform]: audienceCount };
 
   return makeDirectoryRow({
     sourceType: "discovered",
@@ -249,6 +245,7 @@ export function buildRegisteredPublicInfluencerDirectoryRow(profile, channels = 
   for (const channel of profileChannels) {
     const platform = normalizeText(channel?.platform);
     if (!supportedPlatforms.has(platform)) continue;
+    if (platform === "naver_blog") continue;
     const count =
       normalizeAudienceCount(channel?.follower_count) ??
       parsePublicAudienceCountLabel(channel?.followers_label);

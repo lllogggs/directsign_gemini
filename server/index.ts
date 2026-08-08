@@ -21,12 +21,21 @@ import {
   extractInstagramDmChallengeEvents,
   isActionableInstagramDmManualReview,
   isAwaitingInstagramDmRestoreRecord,
+  normalizeInstagramFollowerCount,
   normalizeInstagramUsername,
   processInstagramDmChallengeEvent,
+  readVerifiedInstagramDmFollowerCount,
   selectInstagramDmRestoreRecord,
   verifyInstagramWebhookSignature,
   type InstagramDmChallengeEvent,
 } from "./instagram-dm-verification.js";
+import {
+  bindOwnershipStatusToSubmittedIdentity,
+  buildNaverBlogSelfReportedChannelMetric,
+  buildVerifiedPlatformChannelMetric,
+  normalizeVerificationMetricCount,
+  shouldInvalidateApprovedPlatformChannelCache,
+} from "./platform-verification-metrics.js";
 import { isOperationalTestEmail } from "./operational-test-email.js";
 import { sendPlatformVerificationEmail } from "./verification-email.js";
 import { verificationRequestBelongsToInfluencerAccount } from "./verification-ownership.js";
@@ -60,6 +69,11 @@ import {
   createWorkflow,
   isFixedCampaignContract,
 } from "../src/domain/contracts.js";
+import {
+  PUBLIC_PROFILE_CONSENT_VERSION,
+  normalizeManualActivityPageHandle,
+  parseRepresentativeActivityPage,
+} from "../src/domain/activityPage.js";
 import type {
   Contract,
   ContractDeliverableItem,
@@ -75,6 +89,7 @@ import type {
 } from "../src/domain/influencerDashboard";
 import {
   buildMarketplaceCampaignPosts,
+  CAMPAIGN_APPLICATION_CONTACT_POLICY_VERSION,
   campaignProposalTypeOptions,
   compareChannelAudienceValues,
   findBrandProfileByHandle,
@@ -88,6 +103,7 @@ import {
   mergeMarketplaceInfluencerProfiles,
   platformLabels,
   type CampaignProposalType,
+  type CampaignApplicationContactField,
   type MarketplaceBrandCampaign,
   type MarketplaceBrandProfile,
   type MarketplaceCampaignStatus,
@@ -220,6 +236,7 @@ interface VerificationRequestRecord {
   platform?: InfluencerPlatform;
   platform_handle?: string;
   platform_url?: string;
+  naver_blog_recent_4d_average_visitors?: number | null;
   ownership_verification_method?: InfluencerVerificationMethod;
   ownership_challenge_code?: string;
   ownership_challenge_code_hash?: string | null;
@@ -404,6 +421,14 @@ const isHostedRuntime =
   Boolean(process.env.VERCEL_REGION) ||
   Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME);
 const isProductionRuntime = process.env.NODE_ENV === "production" || isHostedRuntime;
+const operationalErrorLabel = (error: unknown) =>
+  isProductionRuntime
+    ? error instanceof Error
+      ? error.name
+      : "UnknownError"
+    : error instanceof Error
+      ? error.message
+      : "unknown error";
 const isPreview = process.argv.includes("--preview") || isProductionRuntime;
 const supabaseUrl = process.env.SUPABASE_URL?.replace(/\/$/, "");
 const supabasePublishableKey =
@@ -612,6 +637,13 @@ const defaultInfluencerTargetId =
   process.env.DIRECTSIGN_DEFAULT_INFLUENCER_ID ?? "influencer_guest";
 const privateStorageBucket =
   process.env.DIRECTSIGN_PRIVATE_STORAGE_BUCKET ?? "directsign-private";
+const privateStorageAreas = new Set([
+  "verification-advertiser",
+  "verification-influencer",
+  "deliverables",
+  "signature-images",
+  "signed-contracts",
+]);
 const privateFilesDir = path.join(dataDir, "private-files");
 const marketplacePublicStorageBucket =
   process.env.MARKETPLACE_PUBLIC_STORAGE_BUCKET ?? "yeollock-marketplace-public";
@@ -651,7 +683,7 @@ const productName =
     ? "연락미"
     : normalizedConfiguredProductName;
 const signupTermsVersion = "2026-06-02";
-const signupPrivacyPolicyVersion = "2026-06-02";
+const signupPrivacyPolicyVersion = "2026-08-08.3";
 const signedPdfFontCandidates = [
   process.env.SIGNED_PDF_FONT_PATH,
   path.join(root, "public", "fonts", "NanumMyeongjo-Regular.ttf"),
@@ -734,11 +766,6 @@ const marketplaceFollowerSyncStaleMs =
   dayMs;
 const automaticMarketplaceFollowerSyncEnabled =
   process.env.ENABLE_AUTOMATIC_MARKETPLACE_FOLLOWER_SYNC === "true";
-const marketplaceNaverBlogVisitorSyncStaleMs =
-  parsePositiveNumberEnv(
-    process.env.MARKETPLACE_NAVER_BLOG_VISITOR_SYNC_STALE_DAYS,
-    7,
-  ) * dayMs;
 const cspReportOnly =
   process.env.CONTENT_SECURITY_POLICY_REPORT_ONLY === "true" ||
   process.env.DIRECTSIGN_CSP_REPORT_ONLY === "true";
@@ -755,16 +782,93 @@ const loggedLegacyShareTokenDecryptFailures = new Set<string>();
 const maxLoggedLegacyShareTokenDecryptFailures = 100;
 
 export const app = express();
+app.disable("x-powered-by");
 app.set("trust proxy", isHostedRuntime ? 1 : false);
-app.use(
-  express.json({
-    limit: "10mb",
-    verify: (request, _response, buffer) => {
-      (request as express.Request & { rawBody?: Buffer }).rawBody =
-        Buffer.from(buffer);
-    },
-  }),
-);
+const largeJsonUploadPathPattern =
+  /^\/api\/(?:advertiser\/(?:brand-image|campaign-image)|influencer\/public-profile\/avatar|verification\/(?:advertiser|influencer)|contracts\/[^/]+\/(?:deliverables|signatures\/influencer))$/;
+const standardJsonParser = express.json({ limit: "256kb" });
+const largeUploadJsonParser = express.json({ limit: "14mb" });
+const largeUploadBodyLimitBytes = 14 * 1024 * 1024;
+const largeUploadPreBodyWindowMs = 60 * 1000;
+const largeUploadPreBodyMaxRequests = 30;
+const largeUploadPreBodyMaxTrackedNetworks = 5_000;
+const largeUploadPreBodyBuckets = new Map<
+  string,
+  { count: number; resetAt: number }
+>();
+const instagramWebhookJsonParser = express.json({
+  limit: "1mb",
+  verify: (request, _response, buffer) => {
+    (request as express.Request & { rawBody?: Buffer }).rawBody =
+      Buffer.from(buffer);
+  },
+});
+app.use((request, response, next) => {
+  if (!largeJsonUploadPathPattern.test(request.path)) {
+    next();
+    return;
+  }
+
+  const declaredLength = Number(request.header("content-length"));
+  if (
+    Number.isFinite(declaredLength) &&
+    declaredLength > largeUploadBodyLimitBytes
+  ) {
+    response.setHeader("Cache-Control", "private, no-store");
+    response.status(413).json({ error: "Request body is too large" });
+    return;
+  }
+
+  const now = Date.now();
+  const networkKey = createHash("sha256")
+    .update(getClientIp(request))
+    .digest("hex")
+    .slice(0, 32);
+  if (
+    !largeUploadPreBodyBuckets.has(networkKey) &&
+    largeUploadPreBodyBuckets.size >= largeUploadPreBodyMaxTrackedNetworks
+  ) {
+    for (const [key, candidate] of largeUploadPreBodyBuckets) {
+      if (candidate.resetAt <= now) largeUploadPreBodyBuckets.delete(key);
+    }
+    while (
+      largeUploadPreBodyBuckets.size >= largeUploadPreBodyMaxTrackedNetworks
+    ) {
+      const oldestKey = largeUploadPreBodyBuckets.keys().next().value;
+      if (typeof oldestKey !== "string") break;
+      largeUploadPreBodyBuckets.delete(oldestKey);
+    }
+  }
+  const current = largeUploadPreBodyBuckets.get(networkKey);
+  const bucket =
+    !current || current.resetAt <= now
+      ? { count: 0, resetAt: now + largeUploadPreBodyWindowMs }
+      : current;
+  bucket.count += 1;
+  largeUploadPreBodyBuckets.set(networkKey, bucket);
+  if (bucket.count > largeUploadPreBodyMaxRequests) {
+    response.setHeader("Cache-Control", "private, no-store");
+    response.setHeader(
+      "Retry-After",
+      String(Math.max(1, Math.ceil((bucket.resetAt - now) / 1000))),
+    );
+    response.status(429).json({ error: "Too many upload requests" });
+    return;
+  }
+
+  next();
+});
+app.use((request, response, next) => {
+  if (request.path === "/api/webhooks/instagram") {
+    instagramWebhookJsonParser(request, response, next);
+    return;
+  }
+  if (largeJsonUploadPathPattern.test(request.path)) {
+    largeUploadJsonParser(request, response, next);
+    return;
+  }
+  standardJsonParser(request, response, next);
+});
 
 type OperationalAuthMetricRequest = express.Request & {
   authMetricOperation?: AuthMetricOperation;
@@ -897,11 +1001,11 @@ app.use((_request, response, next) => {
         "object-src 'none'",
         "frame-ancestors 'none'",
         "form-action 'self'",
-        "img-src 'self' data: blob: https://*.supabase.co https://*.google-analytics.com https://*.googletagmanager.com https://*.clarity.ms https://c.bing.com https://*.ggpht.com https://*.googleusercontent.com https://*.cdninstagram.com https://*.fbcdn.net https://*.tiktokcdn.com https://*.pstatic.net",
+        "img-src 'self' data: blob: https://*.supabase.co https://*.google-analytics.com https://*.googletagmanager.com https://*.ggpht.com https://*.googleusercontent.com https://*.cdninstagram.com https://*.fbcdn.net https://*.tiktokcdn.com https://*.pstatic.net",
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
         "font-src 'self' https://fonts.gstatic.com",
-        "script-src 'self' https://*.googletagmanager.com https://*.clarity.ms",
-        "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com https://*.clarity.ms https://c.bing.com",
+        "script-src 'self' https://*.googletagmanager.com",
+        "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com",
       ].join("; "),
     );
   }
@@ -909,9 +1013,9 @@ app.use((_request, response, next) => {
 });
 
 const sensitiveSourceStaticRequestPattern =
-  /^\/(?:\.env(?:\..*)?|data(?:\/|$)|server(?:\/|$)|supabase(?:\/|$)|scripts(?:\/|$)|tests(?:\/|$)|lib(?:\/|$)|qa-artifacts(?:\/|$)|(?:package(?:-lock)?\.json|tsconfig(?:\.[^/]*)?\.json|vite\.config\.ts|AGENTS\.md)$)/i;
+  /^\/(?:\.env(?:\..*)?|data(?:\/|$)|server(?:\/|$)|supabase(?:\/|$)|scripts(?:\/|$)|tests(?:\/|$)|lib(?:\/|$)|qa-artifacts(?:\/|$)|output(?:\/|$)|logs(?:\/|$)|docs\/(?:discovery|sales)(?:\/|$)|(?:package(?:-lock)?\.json|tsconfig(?:\.[^/]*)?\.json|vite\.config\.ts|AGENTS\.md)$)/i;
 const sensitiveSalesArtifactRequestPattern =
-  /^\/docs\/sales\/[^/]*(?:prospect|lead|business-emails|email-discovery|cold-email)[^/]*\.(?:csv|tsv|json)$/i;
+  /^\/docs\/sales\/[^/]*(?:prospect|lead|outreach|business-emails|email-discovery|cold-email)[^/]*\.(?:csv|tsv|json)$/i;
 
 const isSensitiveSourceStaticRequest = (request: express.Request) => {
   if (request.method !== "GET" && request.method !== "HEAD") return false;
@@ -1250,12 +1354,24 @@ const decryptGoogleWorkspaceToken = (value: string | undefined | null) => {
 };
 
 const normalizeContract = (contract: Contract): Contract => {
+  const influencerEmail = (
+    contract.influencer_info?.email ?? contract.influencer_info?.contact ?? ""
+  )
+    .trim()
+    .toLowerCase();
+  const influencerPhone = contract.influencer_info?.phone?.trim();
   const normalizedContract: Contract = {
     ...contract,
     campaign_name: hasText(contract.campaign_name)
       ? contract.campaign_name.trim()
       : contract.title,
     post_link: hasText(contract.post_link) ? contract.post_link.trim() : undefined,
+    influencer_info: {
+      ...contract.influencer_info,
+      contact: influencerEmail,
+      email: influencerEmail,
+      phone: influencerPhone || undefined,
+    },
   };
 
   if (!contract.evidence) return normalizedContract;
@@ -1359,6 +1475,17 @@ interface SupabaseProfileRow {
   company_name?: string | null;
   activity_categories?: InfluencerActivityCategory[] | null;
   activity_platforms?: InfluencerPlatform[] | null;
+  activity_page_url?: string | null;
+  activity_page_platform?: InfluencerPlatform | null;
+  activity_page_handle?: string | null;
+  public_profile_consent_at?: string | null;
+  public_profile_consent_version?: string | null;
+  public_profile_setup_state?:
+    | "setup_required"
+    | "pending_email"
+    | "minimal"
+    | "complete"
+    | null;
   verification_status?: VerificationStatus | "not_submitted";
   email_verified_at?: string | null;
   terms_accepted_at?: string | null;
@@ -1381,6 +1508,58 @@ interface GoogleWorkspaceConnectionRow {
   revoked_at?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
+}
+
+type PrivacyAccountErasureStatus =
+  | "requested"
+  | "preparing"
+  | "held"
+  | "waiting_storage"
+  | "ready_to_finalize"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+interface PrivacyAccountErasureRow {
+  found?: boolean;
+  id?: string;
+  request_id?: string;
+  auth_user_id?: string | null;
+  role?: "advertiser" | "influencer";
+  account_role?: "advertiser" | "influencer";
+  status?: PrivacyAccountErasureStatus;
+  requested_at?: string | null;
+  finalized_at?: string | null;
+  requires_auth_user_deletion?: boolean;
+}
+
+interface PrivacyStorageDeletionJob {
+  id: string;
+  request_id?: string | null;
+  bucket: string;
+  object_path: string;
+  category?: string | null;
+}
+
+interface PrivacyStorageDeletionAuthorization {
+  found?: boolean;
+  authorized?: boolean;
+  reason?: string | null;
+}
+
+interface PrivacyRetentionBacklog {
+  due_application_contacts: number;
+  due_contracts: number;
+  due_legacy_contracts: number;
+  due_verifications: number;
+  due_support: number;
+  due_security: number;
+  due_org_cleanup: number;
+  pending_storage: number;
+  failed_storage: number;
+  ready_auth: number;
+  total_due: number;
+  has_backlog: boolean;
 }
 
 interface SupabaseOrganizationRow {
@@ -1451,6 +1630,7 @@ interface SupabaseContractPartyRow {
   party_role: string;
   display_name: string;
   email?: string | null;
+  phone?: string | null;
   company_name?: string | null;
   channel_url?: string | null;
 }
@@ -1620,6 +1800,9 @@ interface SupabaseMarketplaceInfluencerProfileRow {
   proposal_hints?: string[] | null;
   is_published: boolean;
   registered_identity_only?: boolean | null;
+  public_index_enabled?: boolean | null;
+  profile_setup_state?: "setup_required" | "minimal" | "complete" | null;
+  representative_activity_page_url?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
 }
@@ -1630,6 +1813,7 @@ interface SupabaseMarketplaceInfluencerChannelRow {
   platform: InfluencerPlatform;
   label: string;
   handle: string;
+  ownership_status?: "unverified" | "verified" | null;
   url?: string | null;
   followers_label?: string | null;
   performance_label?: string | null;
@@ -1669,15 +1853,6 @@ interface SupabaseDiscoveredInfluencerProfileRow {
   follower_count?: number | null;
   average_views?: number | null;
   post_count?: number | null;
-  naver_blog_visitor_average_4d?: number | null;
-  naver_blog_visitor_counts?: Array<{ date: string; count: number }> | null;
-  naver_blog_visitor_checked_at?: string | null;
-  naver_blog_visitor_status?:
-    | "not_checked"
-    | "available"
-    | "unavailable"
-    | "failed"
-    | null;
   quality_score?: number | null;
   status: "active" | "needs_review" | "hidden" | "claimed";
   source_provider?: string | null;
@@ -1751,6 +1926,10 @@ interface MarketplaceRegisteredInfluencerDirectoryItem {
     handle: string;
     url?: string;
     followerCount?: number;
+    metricType?: "average_daily_visitors_4d";
+    metricSource?: "creator_self_report";
+    metricTrust?: "self_reported";
+    metricPeriodDays?: 4;
   }>;
   maxAudienceCount?: number;
   registeredMemberVisibility: "authenticated_advertisers";
@@ -1928,6 +2107,7 @@ interface SupabaseMarketplaceContactProposalRow {
   campaign_id?: string | null;
   campaign_snapshot?: MarketplaceCampaignSnapshot | null;
   application_consent_snapshot?: MarketplaceApplicationConsentSnapshot | null;
+  application_contact_snapshot?: MarketplaceApplicationContactSnapshot | null;
   converted_contract_id?: string | null;
   data_origin?: DataOrigin | null;
   request_key?: string | null;
@@ -1954,6 +2134,8 @@ interface MarketplaceCampaignSnapshot {
   uploadDeadline?: string;
   platforms?: InfluencerPlatform[];
   deliverables?: string[];
+  applicationContactFields?: CampaignApplicationContactField[];
+  applicationContactConsentVersion?: string;
   requiredConsents?: CampaignRequiredConsent[];
   consentVersion?: string;
   brandId: string;
@@ -1972,6 +2154,24 @@ interface MarketplaceApplicationConsentSnapshot {
   accepted_at: string;
   actor_profile_id: string;
   campaign_id: string;
+}
+
+interface MarketplaceApplicationContactSnapshot {
+  version: string;
+  policy_version: string;
+  fields: CampaignApplicationContactField[];
+  contact: {
+    phone?: string;
+    email?: string;
+  };
+  accepted_at: string;
+  actor_profile_id: string;
+  campaign_id: string;
+  recipient_brand_profile_id: string;
+  recipient_organization_id: string;
+  recipient_name: string;
+  purpose: string;
+  retention_policy: "campaign_end_plus_90_days";
 }
 
 const requireSupabaseConfig = () => {
@@ -2256,6 +2456,21 @@ const readSupabaseRows = async <T>(table: string, query = "", label = table) => 
   return (await response.json()) as T[];
 };
 
+const callSupabaseRpc = async <T>(
+  functionName: string,
+  params: Record<string, unknown>,
+  label = functionName,
+  init: SupabaseRequestInit = {},
+) => {
+  const response = await fetchSupabase(`rpc/${functionName}`, "", {
+    ...init,
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+  await assertSupabaseOk(response, `Supabase ${label}`);
+  return (await response.json()) as T;
+};
+
 const insertSupabaseRowsReturning = async <T>(
   table: string,
   rows: Array<Record<string, unknown>>,
@@ -2278,6 +2493,12 @@ const profileSelectFields = [
   "company_name",
   "activity_categories",
   "activity_platforms",
+  "activity_page_url",
+  "activity_page_platform",
+  "activity_page_handle",
+  "public_profile_consent_at",
+  "public_profile_consent_version",
+  "public_profile_setup_state",
   "verification_status",
   "email_verified_at",
   "terms_accepted_at",
@@ -2599,13 +2820,55 @@ const syncProfileEmailVerifiedAt = async (authUser: SupabaseAuthUser) => {
     },
   );
   await assertSupabaseOk(response, "Supabase profile email verification update");
+  forgetProfile(authUser.id);
+  invalidateInfluencerDashboardCache();
+};
+
+const ensureInfluencerMinimalPublicProfile = async (
+  authUser: SupabaseAuthUser,
+) => {
+  const verifiedAt = authUser.email_confirmed_at ?? authUser.confirmed_at;
+  if (!useSupabase || !authUser.id || !verifiedAt) return;
+
+  const response = await fetchSupabase(
+    "rpc/directsign_publish_minimal_influencer_profile",
+    "",
+    {
+      method: "POST",
+      body: JSON.stringify({ p_owner_profile_id: authUser.id }),
+    },
+  );
+  await assertSupabaseOk(response, "Supabase minimal influencer profile publish");
+  clearPublicMarketplaceCache();
+  invalidateInfluencerDashboardCache();
+};
+
+const syncConfirmedInfluencerProfile = async (
+  authUser: SupabaseAuthUser,
+  profile: SupabaseProfileRow,
+) => {
+  const verifiedAt = authUser.email_confirmed_at ?? authUser.confirmed_at;
+  if (!verifiedAt) return profile;
+  const shouldEnsureMinimalProfile =
+    !profile.email_verified_at ||
+    profile.public_profile_setup_state === "pending_email";
+  if (!shouldEnsureMinimalProfile) return profile;
+  if (!profile.email_verified_at) {
+    await syncProfileEmailVerifiedAt(authUser);
+  }
+  await ensureInfluencerMinimalPublicProfile(authUser);
+  forgetProfile(authUser.id);
+  return (await readProfileByUserId(authUser.id)) ?? {
+    ...profile,
+    email_verified_at: verifiedAt,
+  };
 };
 
 const syncProfileEmailVerifiedAtInBackground = (authUser: SupabaseAuthUser) => {
   void syncProfileEmailVerifiedAt(authUser).catch((error) => {
     console.warn(
       `[${productName}] profile email verification background sync failed: ${
-        error instanceof Error ? error.message : "unknown error"
+        operationalErrorLabel(error)
       }`,
     );
   });
@@ -3109,7 +3372,7 @@ async function buildAdvertiserLoginDashboardBootstrap(
               .catch((error) => {
                 console.warn(
                   `[${productName}] advertiser message summary bootstrap failed: ${
-                    error instanceof Error ? error.message : "unknown error"
+                    operationalErrorLabel(error)
                   }`,
                 );
                 return emptyMarketplaceMessageSummary();
@@ -3139,7 +3402,7 @@ async function buildAdvertiserLoginDashboardBootstrap(
   } catch (error) {
     console.warn(
       `[${productName}] advertiser login dashboard bootstrap failed: ${
-        error instanceof Error ? error.message : "unknown error"
+        operationalErrorLabel(error)
       }`,
     );
     return undefined;
@@ -4074,14 +4337,14 @@ const hasDiscordOperationsTarget = () =>
   );
 
 const buildDiscordOperationalAlertPayload = (alert: OperationalAlertRecord) => {
-  const mobileUrl = buildOperationalAlertUrl(alert.mobile_path);
+  const mobileUrl = buildOperationalAlertUrl("/admin/mobile");
   return {
     username: `${productName} 운영`,
     content: `${operationalAlertSeverityLabel(alert.severity)} · ${alert.title}`,
     embeds: [
       {
         title: alert.title,
-        description: `${alert.body}\n\n[모바일 운영 상세](${mobileUrl})`,
+        description: `고객 정보는 외부 알림에 포함하지 않습니다. 운영 화면에서 확인해 주세요.\n\n[모바일 운영 화면](${mobileUrl})`,
         color: operationalAlertDiscordColor(alert.severity),
         fields: [
           {
@@ -4545,6 +4808,7 @@ const bindContractToAdvertiser = async (
 
   return {
     ...contract,
+    relative_test_dates: contract.relative_test_dates === true,
     data_origin:
       normalizeDataOrigin(auth.profile.data_origin) ??
       deriveDataOrigin([
@@ -5352,7 +5616,7 @@ const consumeRateLimitBucket = async (
         distributedRateLimitFallbackWarned = true;
         console.warn(
           `[${productName}] distributed rate limit unavailable; using instance fallback: ${
-            error instanceof Error ? error.message : "unknown error"
+            operationalErrorLabel(error)
           }`,
         );
       }
@@ -5394,7 +5658,7 @@ const clearRateLimitBucket = async (
       distributedRateLimitFallbackWarned = true;
       console.warn(
         `[${productName}] distributed rate limit clear failed: ${
-          error instanceof Error ? error.message : "unknown error"
+          operationalErrorLabel(error)
         }`,
       );
     }
@@ -6031,6 +6295,14 @@ const getSignupFailureMessage = (error: unknown, fallback: string) => {
     return "이미 가입된 이메일이면 로그인해 주세요. 새 가입이라면 받은 편지함의 인증 메일을 확인해 주세요.";
   }
 
+  if (
+    normalized.includes("error sending confirmation email") ||
+    (normalized.includes("confirmation email") &&
+      (normalized.includes("failed") || normalized.includes("error")))
+  ) {
+    return "인증 메일을 보내지 못했습니다. 잠시 후 다시 시도해 주세요.";
+  }
+
   return hasText(message) && !isAsciiMessage ? message : fallback;
 };
 
@@ -6241,6 +6513,38 @@ const revokeSupabaseSession = async (accessToken: string | undefined) => {
   }
 };
 
+const revokeSupabaseSessionsGlobally = async (
+  accessToken: string | undefined,
+) => {
+  if (!useSupabase || !hasText(accessToken)) return;
+
+  const response = await fetch(supabaseAuthUrl("/logout?scope=global"), {
+    method: "POST",
+    headers: supabaseAuthHeaders(accessToken),
+    signal: createSupabaseTimeoutSignal(),
+  });
+  if (!response.ok && response.status !== 401 && response.status !== 404) {
+    throw new Error(`Supabase global logout failed (${response.status})`);
+  }
+};
+
+const hardDeleteSupabaseAuthUser = async (userId: string) => {
+  if (!isUuidText(userId)) throw new Error("Invalid account deletion target");
+  const response = await fetch(
+    supabaseAuthUrl(
+      `/admin/users/${encodeURIComponent(userId)}?should_soft_delete=false`,
+    ),
+    {
+      method: "DELETE",
+      headers: supabaseHeaders(),
+      signal: createSupabaseTimeoutSignal(),
+    },
+  );
+  if (!response.ok && response.status !== 404) {
+    throw new Error(`Supabase Auth user deletion failed (${response.status})`);
+  }
+};
+
 const revokeTemporarySupabaseSession = async (
   session: SupabaseAuthSession,
   context: string,
@@ -6251,7 +6555,7 @@ const revokeTemporarySupabaseSession = async (
   } catch (error) {
     console.warn(
       `[${productName}] ${context} temporary session revoke failed: ${
-        error instanceof Error ? error.message : "unknown error"
+        operationalErrorLabel(error)
       }`,
     );
   }
@@ -6398,7 +6702,7 @@ const terminateRoleSessionForAuthorizationFailure = async ({
     });
     console.warn(
       `[${productName}] ${role} authorization termination revoke failed: ${
-        error instanceof Error ? error.message : "unknown error"
+        operationalErrorLabel(error)
       }`,
     );
   }
@@ -6434,6 +6738,32 @@ const observeBrowserSessionAuthOutcome = ({
   });
 };
 
+const rejectPrivacyErasedBrowserSession = async ({
+  request,
+  response,
+  role,
+  userId,
+  accessToken,
+  refreshToken,
+}: {
+  request: express.Request;
+  response?: express.Response;
+  role: UserSessionBrowserRole;
+  userId: string;
+  accessToken?: string;
+  refreshToken?: string;
+}) => {
+  if (!(await isPrivacyAccountErasureBlockingAccess(userId))) return false;
+  forgetRoleSessionRequestCaches(
+    request,
+    role,
+    [accessToken, refreshToken],
+    userId,
+  );
+  if (response) clearRoleSessionCookies(response, role);
+  return true;
+};
+
 const authenticateInfluencerRequest = async (
   request: express.Request,
   response?: express.Response,
@@ -6467,11 +6797,35 @@ const authenticateInfluencerRequest = async (
   if (accessToken) {
     const cachedUser = readRecentAuthSession(accessToken);
     if (cachedUser) {
+      if (
+        await rejectPrivacyErasedBrowserSession({
+          request,
+          response,
+          role: "influencer",
+          userId: cachedUser.id,
+          accessToken,
+          refreshToken,
+        })
+      ) {
+        return undefined;
+      }
       return { user: cachedUser, accessToken, refreshToken };
     }
 
     try {
       const user = await fetchSupabaseAuthUser(accessToken);
+      if (
+        await rejectPrivacyErasedBrowserSession({
+          request,
+          response,
+          role: "influencer",
+          userId: user.id,
+          accessToken,
+          refreshToken,
+        })
+      ) {
+        return undefined;
+      }
       rememberRecentAuthSession(accessToken, user);
       return {
         user,
@@ -6510,6 +6864,18 @@ const authenticateInfluencerRequest = async (
   if (refreshToken) {
     try {
       const session = await refreshSupabaseSession(refreshToken);
+      if (
+        await rejectPrivacyErasedBrowserSession({
+          request,
+          response,
+          role: "influencer",
+          userId: session.user.id,
+          accessToken: session.access_token,
+          refreshToken: session.refresh_token ?? refreshToken,
+        })
+      ) {
+        return undefined;
+      }
       if (response) {
         setInfluencerSessionCookies(request, response, session);
       }
@@ -6585,11 +6951,35 @@ const authenticateAdvertiserRequest = async (
   if (accessToken) {
     const cachedUser = readRecentAuthSession(accessToken);
     if (cachedUser) {
+      if (
+        await rejectPrivacyErasedBrowserSession({
+          request,
+          response,
+          role: "advertiser",
+          userId: cachedUser.id,
+          accessToken,
+          refreshToken,
+        })
+      ) {
+        return undefined;
+      }
       return { user: cachedUser, accessToken, refreshToken };
     }
 
     try {
       const user = await fetchSupabaseAuthUser(accessToken);
+      if (
+        await rejectPrivacyErasedBrowserSession({
+          request,
+          response,
+          role: "advertiser",
+          userId: user.id,
+          accessToken,
+          refreshToken,
+        })
+      ) {
+        return undefined;
+      }
       rememberRecentAuthSession(accessToken, user);
       return {
         user,
@@ -6628,6 +7018,18 @@ const authenticateAdvertiserRequest = async (
   if (refreshToken) {
     try {
       const session = await refreshSupabaseSession(refreshToken);
+      if (
+        await rejectPrivacyErasedBrowserSession({
+          request,
+          response,
+          role: "advertiser",
+          userId: session.user.id,
+          accessToken: session.access_token,
+          refreshToken: session.refresh_token ?? refreshToken,
+        })
+      ) {
+        return undefined;
+      }
       if (response) {
         setAdvertiserSessionCookies(request, response, session);
       }
@@ -7331,7 +7733,8 @@ type RecentAuthAction =
   | "advertiser_share_reveal"
   | "advertiser_share_rotate"
   | "influencer_signature"
-  | "account_security_change";
+  | "account_security_change"
+  | "account_delete";
 
 const recentAuthActionsByRole: Record<RecentAuthRole, ReadonlySet<RecentAuthAction>> = {
   advertiser: new Set<RecentAuthAction>([
@@ -7340,10 +7743,12 @@ const recentAuthActionsByRole: Record<RecentAuthRole, ReadonlySet<RecentAuthActi
     "advertiser_share_reveal",
     "advertiser_share_rotate",
     "account_security_change",
+    "account_delete",
   ]),
   influencer: new Set<RecentAuthAction>([
     "influencer_signature",
     "account_security_change",
+    "account_delete",
   ]),
 };
 
@@ -8022,11 +8427,19 @@ const normalizeRelativeTestContractDates = (contract: Contract): Contract => {
   });
 };
 
+const shouldNormalizeTestContractDatesForSession = (
+  auth: RelativeTestDateSession | undefined,
+  contract: Contract,
+) =>
+  shouldUseRelativeTestDatesForSession(auth) &&
+  isOperationalTestContract(contract) &&
+  contract.relative_test_dates !== false;
+
 const normalizeTestContractDatesForSession = (
   auth: RelativeTestDateSession | undefined,
   contract: Contract,
 ) =>
-  shouldUseRelativeTestDatesForSession(auth) && isOperationalTestContract(contract)
+  shouldNormalizeTestContractDatesForSession(auth, contract)
     ? normalizeRelativeTestContractDates(contract)
     : contract;
 
@@ -8096,7 +8509,11 @@ const normalizeTestCampaignsForSession = (
   campaigns: MarketplaceBrandCampaign[],
 ) =>
   shouldUseRelativeTestDatesForSession(auth)
-    ? campaigns.map(normalizeRelativeTestCampaignDates)
+    ? campaigns.map((campaign, index) =>
+        campaign.relativeTestDates
+          ? normalizeRelativeTestCampaignDates(campaign, index)
+          : campaign,
+      )
     : campaigns;
 
 const normalizeTestBrandProfileCampaignDatesForSession = (
@@ -8302,6 +8719,89 @@ const normalizeDateOnlyValue = (value: unknown) => {
   return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
 };
 
+const normalizeInfluencerSignupActivityClaim = (body: unknown) => {
+  const payload =
+    body && typeof body === "object"
+      ? (body as Record<string, unknown>)
+      : ({} as Record<string, unknown>);
+  const hasActivityPageField = Object.prototype.hasOwnProperty.call(
+    payload,
+    "activity_page_url",
+  );
+
+  if (!hasActivityPageField) {
+    return {
+      ok: true as const,
+      legacy: true as const,
+      setupState: "setup_required" as const,
+    };
+  }
+
+  const parsed = parseRepresentativeActivityPage(payload.activity_page_url);
+  if ("error" in parsed) {
+    return { ok: false as const, error: parsed.error };
+  }
+
+  const requestedPlatform = normalizeRequiredText(payload.activity_page_platform);
+  const manualPlatform = influencerPlatforms.has(
+    requestedPlatform as InfluencerPlatform,
+  )
+    ? (requestedPlatform as InfluencerPlatform)
+    : undefined;
+  const manualHandle = normalizeManualActivityPageHandle(
+    payload.activity_page_handle,
+  );
+  const platform = parsed.page.supported ? parsed.page.platform : manualPlatform;
+  const handle = parsed.page.supported ? parsed.page.handle : manualHandle;
+
+  if (!platform || !handle) {
+    return {
+      ok: false as const,
+      error: "지원하지 않는 주소는 플랫폼과 계정 ID를 함께 입력해 주세요.",
+    };
+  }
+  if (
+    payload.public_profile_consent_accepted !== true ||
+    normalizeRequiredText(payload.public_profile_consent_version) !==
+      PUBLIC_PROFILE_CONSENT_VERSION
+  ) {
+    return {
+      ok: false as const,
+      error: "이메일 확인 후 최소 공개 프로필을 만드는 데 동의해 주세요.",
+    };
+  }
+
+  return {
+    ok: true as const,
+    legacy: false as const,
+    setupState: "pending_email" as const,
+    url: parsed.page.normalizedUrl,
+    platform,
+    handle,
+    consentVersion: PUBLIC_PROFILE_CONSENT_VERSION,
+  };
+};
+
+const buildInfluencerPublicProfileSignupConsent = (
+  claim: Extract<
+    ReturnType<typeof normalizeInfluencerSignupActivityClaim>,
+    { ok: true }
+  >,
+) => {
+  if (claim.legacy) {
+    return { public_profile_setup_state: claim.setupState };
+  }
+  const acceptedAt = new Date().toISOString();
+  return {
+    activity_page_url: claim.url,
+    activity_page_platform: claim.platform,
+    activity_page_handle: claim.handle,
+    public_profile_consent_at: acceptedAt,
+    public_profile_consent_version: claim.consentVersion,
+    public_profile_setup_state: claim.setupState,
+  };
+};
+
 const businessVerificationDateFormatter = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Asia/Seoul",
   year: "numeric",
@@ -8347,7 +8847,7 @@ const isSafeHttpUrl = (value: string | undefined) => {
 };
 
 type GoogleWorkspaceRole = "advertiser" | "influencer";
-type GoogleWorkspaceFeature = "sheets" | "calendar";
+type GoogleWorkspaceFeature = "sheets";
 type GoogleSheetCellValue = string | number | boolean | null | undefined;
 
 interface GoogleExportSheet {
@@ -8400,10 +8900,8 @@ interface GoogleSpreadsheetCreateResponse {
 
 const googleIdentityScopes = ["openid", "email"];
 const googleSheetsScope = "https://www.googleapis.com/auth/drive.file";
-const googleCalendarScope = "https://www.googleapis.com/auth/calendar.app.created";
 const googleWorkspaceFeatureScopes: Record<GoogleWorkspaceFeature, string[]> = {
   sheets: [googleSheetsScope],
-  calendar: [googleCalendarScope],
 };
 const googleWorkspaceRoles = new Set<GoogleWorkspaceRole>([
   "advertiser",
@@ -8411,7 +8909,6 @@ const googleWorkspaceRoles = new Set<GoogleWorkspaceRole>([
 ]);
 const googleWorkspaceFeatures = new Set<GoogleWorkspaceFeature>([
   "sheets",
-  "calendar",
 ]);
 const googleExportMaxSheets = 6;
 const googleExportMaxRowsPerSheet = 5000;
@@ -8625,6 +9122,444 @@ const readGoogleWorkspaceConnection = async (profileId: string) => {
     "Google Workspace connection",
   );
   return rows[0];
+};
+
+const revokeGoogleWorkspaceConnectionForErasure = async (
+  profileId: string,
+) => {
+  const connection = await readGoogleWorkspaceConnection(profileId);
+  if (!connection) return;
+
+  const token =
+    decryptGoogleWorkspaceToken(connection.refresh_token_ciphertext) ??
+    decryptGoogleWorkspaceToken(connection.access_token_ciphertext);
+  if (!token) return;
+
+  const revokeResponse = await fetch("https://oauth2.googleapis.com/revoke", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ token }),
+    signal: createSupabaseTimeoutSignal(),
+  });
+  if (!revokeResponse.ok && revokeResponse.status >= 500) {
+    throw new Error(`Google OAuth revocation failed (${revokeResponse.status})`);
+  }
+};
+
+const asPrivacyErasureRow = (
+  value: PrivacyAccountErasureRow | PrivacyAccountErasureRow[] | null,
+) => {
+  const row = Array.isArray(value) ? value[0] : value ?? undefined;
+  if (!row || row.found === false) return undefined;
+  return {
+    ...row,
+    id: row.id ?? row.request_id,
+    role: row.role ?? row.account_role,
+  };
+};
+
+const getPrivacyAccountErasureStatus = async ({
+  requestId,
+  authUserId,
+}: {
+  requestId?: string;
+  authUserId?: string;
+}) =>
+  asPrivacyErasureRow(
+    await callSupabaseRpc<
+      PrivacyAccountErasureRow | PrivacyAccountErasureRow[] | null
+    >(
+      "get_privacy_erasure_status",
+      {
+        p_request_id: requestId ?? null,
+        p_auth_user_id: authUserId ?? null,
+      },
+      "privacy erasure status",
+    ),
+  );
+
+const isPrivacyAccountErasureBlockingAccess = async (authUserId: string) => {
+  if (!useSupabase || !isUuidText(authUserId)) return false;
+  const erasure = await getPrivacyAccountErasureStatus({ authUserId });
+  return Boolean(erasure && erasure.status !== "cancelled");
+};
+
+const normalizePrivacyErrorCode = (value: string) => {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 64);
+  return /^[a-z]/.test(normalized) ? normalized : "operation_failed";
+};
+
+const createPrivacyWorkerTimeoutSignal = (
+  deadlineAt: number | undefined,
+  maxTimeoutMs = 4_000,
+) => {
+  if (!deadlineAt) return createSupabaseTimeoutSignal();
+  const remainingMs = deadlineAt - Date.now();
+  if (remainingMs <= 500) {
+    throw new Error("Privacy retention execution budget exhausted");
+  }
+  return AbortSignal.timeout(
+    Math.max(250, Math.min(maxTimeoutMs, remainingMs - 250)),
+  );
+};
+
+const markPrivacyAccountErasureFailed = async (
+  requestId: string,
+  errorCode: string,
+) =>
+  callSupabaseRpc<PrivacyAccountErasureRow | null>(
+    "mark_account_erasure_failed",
+    {
+      p_request_id: requestId,
+      p_error_code: normalizePrivacyErrorCode(errorCode),
+      p_now: new Date().toISOString(),
+    },
+    "privacy account erasure retry mark",
+  );
+
+const finalizePrivacyAccountErasure = async (requestId: string) => {
+  const result = asPrivacyErasureRow(
+    await callSupabaseRpc<
+      PrivacyAccountErasureRow | PrivacyAccountErasureRow[] | null
+    >(
+    "finalize_account_erasure",
+    {
+      p_request_id: requestId,
+      p_now: new Date().toISOString(),
+    },
+    "privacy account erasure finalize",
+    ),
+  );
+  if (!result || result.status !== "completed") {
+    throw new Error("Privacy account erasure did not reach completed state");
+  }
+  return result;
+};
+
+const runPrivacyStorageDeletionBatch = async ({
+  requestId,
+  limit = 50,
+  deadlineAt,
+}: {
+  requestId?: string;
+  limit?: number;
+  deadlineAt?: number;
+} = {}) => {
+  const workerId = randomUUID();
+  const jobs = await callSupabaseRpc<PrivacyStorageDeletionJob[]>(
+    "claim_privacy_storage_deletions",
+    {
+      p_worker_id: workerId,
+      p_limit: Math.max(1, Math.min(16, Math.floor(limit))),
+      p_request_id: requestId ?? null,
+      p_now: new Date().toISOString(),
+      p_lease_seconds: 120,
+    },
+    "privacy storage deletion claim",
+    { signal: createPrivacyWorkerTimeoutSignal(deadlineAt) },
+  );
+
+  const claimedJobs = Array.isArray(jobs) ? jobs : [];
+  let completed = 0;
+  let failed = 0;
+  let completionFailures = 0;
+  const concurrency = 8;
+  for (let offset = 0; offset < claimedJobs.length; offset += concurrency) {
+    const outcomes = await Promise.all(
+      claimedJobs.slice(offset, offset + concurrency).map(async (job) => {
+        let succeeded = false;
+        let errorCode: string | null = null;
+        try {
+          const authorization =
+            await callSupabaseRpc<PrivacyStorageDeletionAuthorization>(
+              "authorize_privacy_storage_deletion",
+              {
+                p_id: job.id,
+                p_worker_id: workerId,
+                p_now: new Date().toISOString(),
+              },
+              "privacy storage deletion authorization",
+              { signal: createPrivacyWorkerTimeoutSignal(deadlineAt) },
+            );
+          if (
+            authorization?.found !== true ||
+            authorization.authorized !== true
+          ) {
+            return { succeeded: false, completionFailed: false };
+          }
+          await deleteQueuedSupabaseStorageObject({
+            bucket: job.bucket,
+            objectPath: job.object_path,
+            signal: createPrivacyWorkerTimeoutSignal(deadlineAt),
+          });
+          succeeded = true;
+        } catch (error) {
+          errorCode = normalizePrivacyErrorCode(operationalErrorLabel(error));
+        }
+
+        try {
+          const completion = await callSupabaseRpc<Record<string, unknown>>(
+            "complete_privacy_storage_deletion",
+            {
+              p_id: job.id,
+              p_worker_id: workerId,
+              p_succeeded: succeeded,
+              p_error_code: errorCode,
+              p_now: new Date().toISOString(),
+            },
+            "privacy storage deletion completion",
+            { signal: createPrivacyWorkerTimeoutSignal(deadlineAt) },
+          );
+          if (
+            completion?.found !== true ||
+            completion.accepted !== true
+          ) {
+            throw new Error("Privacy storage deletion lease was not completed");
+          }
+          return { succeeded, completionFailed: false };
+        } catch {
+          return { succeeded: false, completionFailed: true };
+        }
+      }),
+    );
+    for (const outcome of outcomes) {
+      if (outcome.completionFailed) completionFailures += 1;
+      else if (outcome.succeeded) completed += 1;
+      else failed += 1;
+    }
+  }
+
+  if (completionFailures > 0) {
+    throw new Error("Privacy storage deletion completion recording failed");
+  }
+  return { claimed: claimedJobs.length, completed, failed };
+};
+
+const runPrivacyStorageDeletionDrain = async ({
+  requestId,
+  maxBatches = 4,
+  timeBudgetMs = 24_000,
+  deadlineAt,
+}: {
+  requestId?: string;
+  maxBatches?: number;
+  timeBudgetMs?: number;
+  deadlineAt?: number;
+} = {}) => {
+  const startedAt = Date.now();
+  const totals = { claimed: 0, completed: 0, failed: 0, batches: 0 };
+  for (let batch = 0; batch < Math.max(1, Math.min(12, maxBatches)); batch += 1) {
+    if (deadlineAt && deadlineAt - Date.now() <= 1_000) break;
+    const result = await runPrivacyStorageDeletionBatch({
+      requestId,
+      limit: 16,
+      deadlineAt,
+    });
+    totals.claimed += result.claimed;
+    totals.completed += result.completed;
+    totals.failed += result.failed;
+    totals.batches += 1;
+    if (
+      result.claimed < 16 ||
+      Date.now() - startedAt >= timeBudgetMs ||
+      (deadlineAt !== undefined && deadlineAt - Date.now() <= 1_000)
+    ) {
+      break;
+    }
+  }
+  return totals;
+};
+
+const retryPendingPrivacyAuthDeletions = async (limit = 16) => {
+  const now = new Date().toISOString();
+  const rows = await readSupabaseRows<PrivacyAccountErasureRow>(
+    "privacy_erasure_requests",
+    `?select=id,auth_user_id,account_role,status,requested_at&auth_user_id=not.is.null&status=eq.ready_to_finalize&or=(next_attempt_at.is.null,next_attempt_at.lte.${encodeURIComponent(
+      now,
+    )})&order=requested_at.asc&limit=${Math.max(
+      1,
+      Math.min(16, Math.floor(limit)),
+    )}`,
+    "pending privacy auth deletions",
+  );
+  const outcomes = await Promise.all(rows.map(async (row) => {
+    if (!row.auth_user_id || !isUuidText(row.auth_user_id) || !row.id) {
+      return "failed" as const;
+    }
+    try {
+      await hardDeleteSupabaseAuthUser(row.auth_user_id);
+      await finalizePrivacyAccountErasure(row.id);
+      forgetProfile(row.auth_user_id);
+      return "completed" as const;
+    } catch (error) {
+      await markPrivacyAccountErasureFailed(
+        row.id,
+        operationalErrorLabel(error),
+      ).catch(() => undefined);
+      return "failed" as const;
+    }
+  }));
+  const completed = outcomes.filter((outcome) => outcome === "completed").length;
+  const failed = outcomes.length - completed;
+  return { attempted: rows.length, completed, failed };
+};
+
+const assertPrivacyRetentionRunCompleted = (
+  result: Record<string, unknown>,
+  phase: "prepare" | "finalize",
+) => {
+  if (result?.status !== "completed") {
+    throw new Error(`Privacy retention ${phase} phase did not complete`);
+  }
+};
+
+const privacyRetentionBacklogCountKeys = [
+  "due_application_contacts",
+  "due_contracts",
+  "due_legacy_contracts",
+  "due_verifications",
+  "due_support",
+  "due_security",
+  "due_org_cleanup",
+  "pending_storage",
+  "failed_storage",
+  "ready_auth",
+] as const satisfies ReadonlyArray<keyof PrivacyRetentionBacklog>;
+
+const normalizePrivacyRetentionBacklog = (
+  value: Record<string, unknown>,
+): PrivacyRetentionBacklog => {
+  const counts = Object.fromEntries(
+    privacyRetentionBacklogCountKeys.map((key) => {
+      const candidate = value[key];
+      if (
+        typeof candidate !== "number" ||
+        !Number.isFinite(candidate) ||
+        candidate < 0
+      ) {
+        throw new Error("Privacy retention backlog response is invalid");
+      }
+      return [key, Math.floor(candidate)];
+    }),
+  ) as Pick<PrivacyRetentionBacklog, (typeof privacyRetentionBacklogCountKeys)[number]>;
+  const computedTotal = Object.values(counts).reduce(
+    (total, count) => total + count,
+    0,
+  );
+  return {
+    ...counts,
+    total_due: computedTotal,
+    has_backlog: computedTotal > 0,
+  };
+};
+
+const getPrivacyRetentionBacklog = async (now: string) =>
+  normalizePrivacyRetentionBacklog(
+    await callSupabaseRpc<Record<string, unknown>>(
+      "get_privacy_retention_backlog",
+      { p_now: now },
+      "privacy retention backlog",
+    ),
+  );
+
+const enqueuePrivacyRetentionBacklogAlert = async (
+  backlog: PrivacyRetentionBacklog,
+  now: string,
+) =>
+  enqueueOperationalAlert({
+    kind: "auth_health",
+    action: "provider_degraded",
+    severity: backlog.failed_storage > 0 ? "urgent" : "high",
+    subject_type: "개인정보 자동 파기",
+    subject_id: "privacy-retention",
+    title: "개인정보 자동 파기 확인 필요",
+    body: "보유기간이 지난 데이터의 파기 대기 작업이 남아 있습니다.",
+    mobile_path: "/admin/mobile",
+    dashboard_path: "/admin",
+    dedupe_key: `privacy_retention:backlog:${now.slice(0, 13)}`,
+    decision_reason: "retention_backlog",
+    metadata_json: Object.fromEntries(
+      privacyRetentionBacklogCountKeys.map((key) => [key, backlog[key]]),
+    ),
+    sent_at: undefined,
+    error_message: null,
+  });
+
+const enqueuePrivacyRetentionFailureAlert = async (now: string) =>
+  enqueueOperationalAlert({
+    kind: "auth_health",
+    action: "provider_degraded",
+    severity: "high",
+    subject_type: "개인정보 자동 파기",
+    subject_id: "privacy-retention",
+    title: "개인정보 자동 파기 확인 필요",
+    body: "자동 파기 실행이 완료되지 않아 다음 작업과 운영 확인이 필요합니다.",
+    mobile_path: "/admin/mobile",
+    dashboard_path: "/admin",
+    dedupe_key: `privacy_retention:backlog:${now.slice(0, 13)}`,
+    decision_reason: "retention_sweep_failed",
+    metadata_json: {},
+    sent_at: undefined,
+    error_message: null,
+  });
+
+const runPrivacyRetentionSweep = async () => {
+  const now = new Date().toISOString();
+  const runKey = `vercel:${now.slice(0, 13)}`;
+  const storageDeadlineAt = Date.now() + 150_000;
+  const applicationContacts = await callSupabaseRpc<Record<string, unknown>>(
+    "redact_expired_campaign_application_contacts",
+    {
+      p_now: now,
+      p_limit: 1_000,
+    },
+    "campaign application contact retention",
+  );
+  const prepared = await callSupabaseRpc<Record<string, unknown>>(
+    "run_privacy_retention",
+    {
+      p_now: now,
+      p_limit: 500,
+      p_dry_run: false,
+      p_idempotency_key: runKey,
+    },
+    "privacy retention prepare",
+  );
+  assertPrivacyRetentionRunCompleted(prepared, "prepare");
+  const storage = await runPrivacyStorageDeletionDrain({
+    maxBatches: 6,
+    timeBudgetMs: 120_000,
+    deadlineAt: storageDeadlineAt,
+  });
+  const auth = await retryPendingPrivacyAuthDeletions(16);
+  const finalized = await callSupabaseRpc<Record<string, unknown>>(
+    "run_privacy_retention",
+    {
+      p_now: new Date().toISOString(),
+      p_limit: 500,
+      p_dry_run: false,
+      p_idempotency_key: `${runKey}:finalize`,
+    },
+    "privacy retention finalize",
+  );
+  assertPrivacyRetentionRunCompleted(finalized, "finalize");
+  const backlog = await getPrivacyRetentionBacklog(new Date().toISOString());
+  invalidateOrganizationCache();
+  invalidateAdvertiserDashboardCache();
+  invalidateInfluencerDashboardCache();
+  invalidateSupabaseContractStoreCache();
+  invalidateSupabaseVerificationRequestCache();
+  clearPublicMarketplaceCache();
+  if (storage.failed > 0 || auth.failed > 0 || backlog.has_backlog) {
+    await enqueuePrivacyRetentionBacklogAlert(backlog, now).catch(() => undefined);
+    throw new Error("Privacy retention sweep has retryable failures");
+  }
+  return { applicationContacts, prepared, storage, auth, finalized, backlog };
 };
 
 const upsertGoogleWorkspaceConnection = async (
@@ -9424,29 +10359,6 @@ const fetchJsonWithTimeout = async <T>(
   }
 };
 
-const fetchTextWithTimeout = async (
-  url: string,
-  init: RequestInit = {},
-  timeoutMs = 6500,
-): Promise<{ status: number; ok: boolean; body: string }> => {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const apiResponse = await fetch(url, {
-      ...init,
-      signal: controller.signal,
-    });
-    return {
-      status: apiResponse.status,
-      ok: apiResponse.ok,
-      body: await apiResponse.text(),
-    };
-  } finally {
-    clearTimeout(timeout);
-  }
-};
-
 const normalizeDateCompact = (value: string | undefined) => {
   if (!value) return undefined;
   const digits = value.replace(/\D/g, "");
@@ -9494,6 +10406,38 @@ const extractNaverBlogId = (value: string | undefined) => {
   }
 
   return normalizeHandleForComparison(raw);
+};
+
+const extractTikTokUsername = (value: string | undefined) => {
+  const raw = normalizeRequiredText(value);
+  if (!raw) return "";
+  try {
+    const url = new URL(raw);
+    if (!/(^|\.)tiktok\.com$/i.test(url.hostname)) return "";
+    const usernamePart = url.pathname
+      .split("/")
+      .filter(Boolean)
+      .find((part) => part.startsWith("@"));
+    return normalizeHandleForComparison(usernamePart);
+  } catch {
+    return normalizeHandleForComparison(raw);
+  }
+};
+
+const extractYoutubeHandle = (value: string | undefined) => {
+  const raw = normalizeRequiredText(value);
+  if (!raw) return "";
+  try {
+    const url = new URL(raw);
+    if (!/(^|\.)youtube\.com$/i.test(url.hostname)) return "";
+    const handlePart = url.pathname
+      .split("/")
+      .filter(Boolean)
+      .find((part) => part.startsWith("@"));
+    return normalizeHandleForComparison(handlePart);
+  } catch {
+    return normalizeHandleForComparison(raw);
+  }
 };
 
 const stripHtmlTags = (value: string | undefined) =>
@@ -9943,6 +10887,19 @@ const runYoutubeAutomationCheck = async ({
       proofUrl ?? platformUrl,
       challengeCode,
     );
+    const expectedHandle = normalizeHandleForComparison(platformHandle);
+    const publicProofHandle = extractYoutubeHandle(proofUrl ?? platformUrl);
+    const publicProofMatched =
+      publicChallenge.status === "matched" &&
+      Boolean(expectedHandle) &&
+      publicProofHandle === expectedHandle;
+    const publicOwnershipCheck = {
+      ...publicChallenge,
+      status: bindOwnershipStatusToSubmittedIdentity(
+        publicChallenge.status,
+        publicProofMatched,
+      ),
+    };
 
     return {
       ...buildNotConfiguredAutomationResult(
@@ -9953,11 +10910,11 @@ const runYoutubeAutomationCheck = async ({
           : "YOUTUBE_DATA_API_KEY가 없어 YouTube 공개 증빙 URL만 확인했습니다. 관리자 검수가 필요합니다.",
       ),
       status:
-        publicChallenge.status === "matched" ? "matched" : "not_configured",
+        publicProofMatched ? "matched" : "not_configured",
       http_status: publicChallenge.http_status,
       matched_fields:
-        publicChallenge.status === "matched" ? ["public_url"] : undefined,
-      ownership_check: publicChallenge,
+        publicProofMatched ? ["public_url"] : undefined,
+      ownership_check: publicOwnershipCheck,
       public_challenge: publicChallenge,
     };
   }
@@ -9983,10 +10940,20 @@ const runYoutubeAutomationCheck = async ({
       ? await fetchYoutubeVideoForProof(apiKey, proofVideoId)
       : undefined;
     const video = videoResponse?.payload.items?.[0];
-    const channelDescriptionMatched = containsChallengeCode(
-      channel?.snippet?.description,
-      challengeCode,
+    const expectedHandle = normalizeHandleForComparison(platformHandle);
+    const apiHandle = normalizeHandleForComparison(channel?.snippet?.customUrl);
+    const submittedAsChannelId = Boolean(
+      channel?.id &&
+        /^UC[a-zA-Z0-9_-]{20,}$/.test(platformHandle.trim()) &&
+        platformHandle.trim() === channel.id,
     );
+    const channelIdentityMatches = Boolean(
+      expectedHandle &&
+        (apiHandle === expectedHandle || submittedAsChannelId),
+    );
+    const channelDescriptionMatched =
+      channelIdentityMatches &&
+      containsChallengeCode(channel?.snippet?.description, challengeCode);
     const videoTitleMatched = containsChallengeCode(
       video?.snippet?.title,
       challengeCode,
@@ -10000,6 +10967,7 @@ const runYoutubeAutomationCheck = async ({
       channel?.id === video?.snippet?.channelId;
     const videoProofMatched =
       Boolean(video) &&
+      channelIdentityMatches &&
       videoChannelMatches &&
       (videoTitleMatched || videoDescriptionMatched);
     const shouldTryPublicProof =
@@ -10010,13 +10978,19 @@ const runYoutubeAutomationCheck = async ({
     const publicChallenge = shouldTryPublicProof
       ? await runPublicChallengeAutomation(proofUrl, challengeCode)
       : undefined;
-    const publicProofMatched = publicChallenge?.status === "matched";
+    const publicProofHandle = extractYoutubeHandle(proofUrl);
+    const publicProofMatched = Boolean(
+      publicChallenge?.status === "matched" &&
+        expectedHandle &&
+        apiHandle === expectedHandle &&
+        publicProofHandle === expectedHandle,
+    );
     const matched =
       channelDescriptionMatched || videoProofMatched || publicProofMatched;
     const matchedFields = [
       channelDescriptionMatched ? "channel.snippet.description" : undefined,
-      videoTitleMatched && videoChannelMatches ? "video.snippet.title" : undefined,
-      videoDescriptionMatched && videoChannelMatches
+      videoProofMatched && videoTitleMatched ? "video.snippet.title" : undefined,
+      videoProofMatched && videoDescriptionMatched
         ? "video.snippet.description"
         : undefined,
       publicProofMatched ? "public_url" : undefined,
@@ -10057,6 +11031,7 @@ const runYoutubeAutomationCheck = async ({
       public_challenge: publicChallenge,
       profile: channel
         ? {
+            channel_api_succeeded: channelResponse.ok,
             channel_id: channel.id,
             title: channel.snippet?.title,
             custom_url: channel.snippet?.customUrl,
@@ -10070,7 +11045,7 @@ const runYoutubeAutomationCheck = async ({
             proof_video_channel_title: video?.snippet?.channelTitle,
             proof_video_published_at: video?.snippet?.publishedAt,
             proof_video_privacy_status: video?.status?.privacyStatus,
-            proof_video_code_found: videoTitleMatched || videoDescriptionMatched,
+            proof_video_code_found: videoProofMatched,
             proof_video_channel_matched: videoChannelMatches,
             proof_source: videoProofMatched
               ? "video"
@@ -10111,10 +11086,21 @@ const runNaverBlogAutomationCheck = async ({
   const plan = buildVerificationAutomationPlan("naver_blog");
   const expectedBlogId =
     extractNaverBlogId(platformHandle) ||
-    extractNaverBlogId(platformUrl) ||
-    extractNaverBlogId(proofUrl);
+    extractNaverBlogId(platformUrl);
   const publicChallenge = await runPublicChallengeAutomation(proofUrl, challengeCode);
-  if (publicChallenge.status === "matched") {
+  const proofBlogId = extractNaverBlogId(proofUrl);
+  const publicProofMatched =
+    publicChallenge.status === "matched" &&
+    Boolean(expectedBlogId) &&
+    proofBlogId === expectedBlogId;
+  const publicOwnershipCheck = {
+    ...publicChallenge,
+    status: bindOwnershipStatusToSubmittedIdentity(
+      publicChallenge.status,
+      publicProofMatched,
+    ),
+  };
+  if (publicProofMatched) {
     return {
       provider: plan.provider,
       configured: plan.configured,
@@ -10124,7 +11110,7 @@ const runNaverBlogAutomationCheck = async ({
       http_status: publicChallenge.http_status,
       message: "네이버 블로그 공개 증빙 URL에서 인증코드를 확인했습니다.",
       matched_fields: ["public_url"],
-      ownership_check: publicChallenge,
+      ownership_check: publicOwnershipCheck,
       public_challenge: publicChallenge,
       profile: {
         blog_id: expectedBlogId || undefined,
@@ -10144,7 +11130,7 @@ const runNaverBlogAutomationCheck = async ({
         "NAVER_CLIENT_ID/NAVER_CLIENT_SECRET이 없어 공개 증빙 URL만 확인했습니다. 자동 확인이 막히면 관리자 검수가 필요합니다.",
       ),
       public_challenge: publicChallenge,
-      ownership_check: publicChallenge,
+      ownership_check: publicOwnershipCheck,
       profile: {
         blog_id: expectedBlogId || undefined,
       },
@@ -10164,7 +11150,7 @@ const runNaverBlogAutomationCheck = async ({
           "네이버 자동 확인을 잠시 사용할 수 없습니다. 공개 증빙을 다시 확인하거나 수기 인증을 요청해 주세요.",
         next_action: "manual_review",
         public_challenge: publicChallenge,
-        ownership_check: publicChallenge,
+        ownership_check: publicOwnershipCheck,
         profile: {
           blog_id: expectedBlogId || undefined,
         },
@@ -10204,11 +11190,10 @@ const runNaverBlogAutomationCheck = async ({
         .join(" ");
       const bloggerId = extractNaverBlogId(item.bloggerlink);
       const linkBlogId = extractNaverBlogId(item.link);
-      const handleMatches =
-        !expectedBlogId ||
-        bloggerId === expectedBlogId ||
-        linkBlogId === expectedBlogId ||
-        normalizeHandleForComparison(item.bloggername).includes(expectedBlogId);
+      const handleMatches = Boolean(
+        expectedBlogId &&
+          (bloggerId === expectedBlogId || linkBlogId === expectedBlogId),
+      );
       return containsChallengeCode(haystack, challengeCode) && handleMatches;
     });
 
@@ -10252,7 +11237,7 @@ const runNaverBlogAutomationCheck = async ({
       checked_at: checkedAt,
       message: error instanceof Error ? error.message : "Naver blog API check failed.",
       public_challenge: publicChallenge,
-      ownership_check: publicChallenge,
+      ownership_check: publicOwnershipCheck,
       plan,
     };
   }
@@ -10327,7 +11312,7 @@ const runInstagramAutomationCheck = async ({
         website?: string;
         profile_picture_url?: string;
       };
-      error?: unknown;
+      error?: { code?: string; message?: string; log_id?: string };
     }>(url.toString());
     const profile = apiResponse.payload.business_discovery;
     const bioMatched = containsChallengeCode(profile?.biography, challengeCode);
@@ -10467,8 +11452,23 @@ const runTikTokAutomationCheck = async ({
 }): Promise<VerificationAutomationResult> => {
   const checkedAt = new Date().toISOString();
   const plan = buildVerificationAutomationPlan("tiktok");
-  const token = accessToken?.trim() || process.env.TIKTOK_ACCOUNT_ACCESS_TOKEN?.trim();
+  const submittedUserAccessToken = accessToken?.trim();
+  const token =
+    submittedUserAccessToken || process.env.TIKTOK_ACCOUNT_ACCESS_TOKEN?.trim();
   const publicChallenge = await runPublicChallengeAutomation(proofUrl, challengeCode);
+  const expectedHandle = normalizeHandleForComparison(platformHandle);
+  const publicProofHandle = extractTikTokUsername(proofUrl);
+  const publicProofMatched =
+    publicChallenge.status === "matched" &&
+    Boolean(expectedHandle) &&
+    publicProofHandle === expectedHandle;
+  const publicOwnershipCheck = {
+    ...publicChallenge,
+    status: bindOwnershipStatusToSubmittedIdentity(
+      publicChallenge.status,
+      publicProofMatched,
+    ),
+  };
 
   if (!token) {
     return {
@@ -10480,16 +11480,16 @@ const runTikTokAutomationCheck = async ({
           : "TikTok OAuth 토큰이 없어 공개 증빙 URL만 확인했습니다. TikTok이 접근을 막으면 스크린샷 검수가 필요합니다.",
       ),
       status:
-        publicChallenge.status === "matched" ? "matched" : "not_configured",
+        publicProofMatched ? "matched" : "not_configured",
       http_status: publicChallenge.http_status,
       matched_fields:
-        publicChallenge.status === "matched" ? ["public_url"] : undefined,
+        publicProofMatched ? ["public_url"] : undefined,
       public_challenge: publicChallenge,
-      ownership_check: publicChallenge,
+      ownership_check: publicOwnershipCheck,
       profile: {
         username: normalizeHandleForComparison(platformHandle) || undefined,
         proof_source:
-          publicChallenge.status === "matched" ? "public_url" : undefined,
+          publicProofMatched ? "public_url" : undefined,
       },
     };
   }
@@ -10528,7 +11528,7 @@ const runTikTokAutomationCheck = async ({
           video_count?: number;
         };
       };
-      error?: unknown;
+      error?: { code?: string; message?: string; log_id?: string };
     }>(url.toString(), {
       headers: {
         Authorization: `Bearer ${token}`,
@@ -10536,20 +11536,22 @@ const runTikTokAutomationCheck = async ({
       },
     });
     const user = apiResponse.payload.data?.user;
-    const expectedHandle = normalizeHandleForComparison(platformHandle);
+    const tikTokErrorCode = normalizeRequiredText(apiResponse.payload.error?.code);
+    const userInfoApiSucceeded =
+      apiResponse.ok && (!tikTokErrorCode || tikTokErrorCode === "ok");
     const userHandle = normalizeHandleForComparison(user?.username);
     const handleMatches = expectedHandle ? expectedHandle === userHandle : true;
     const bioMatched = Boolean(
       handleMatches && containsChallengeCode(user?.bio_description, challengeCode),
     );
-    const publicMatched = publicChallenge.status === "matched";
+    const publicMatched = publicProofMatched;
     const matched = bioMatched || publicMatched;
 
     return {
       provider: plan.provider,
       configured: true,
       mode: "api_ready",
-      status: apiResponse.ok && matched ? "matched" : "not_found",
+      status: userInfoApiSucceeded && matched ? "matched" : "not_found",
       checked_at: checkedAt,
       http_status: apiResponse.status,
       result_hash: sha256Hex(
@@ -10569,13 +11571,17 @@ const runTikTokAutomationCheck = async ({
         publicMatched ? "public_url" : undefined,
       ].filter((value): value is string => Boolean(value)),
       ownership_check: {
-        status: apiResponse.ok && matched ? "matched" : "not_found",
+        status: userInfoApiSucceeded && matched ? "matched" : "not_found",
         checked_at: publicMatched ? publicChallenge.checked_at : checkedAt,
         http_status: apiResponse.status,
       },
       public_challenge: publicChallenge,
       profile: user
         ? {
+            user_info_api_succeeded: userInfoApiSucceeded,
+            oauth_token_source: submittedUserAccessToken
+              ? "submitted_user_access_token"
+              : "server_fallback",
             open_id_hash: user.open_id ? sha256Hex(user.open_id) : undefined,
             union_id_hash: user.union_id ? sha256Hex(user.union_id) : undefined,
             display_name: user.display_name,
@@ -10599,7 +11605,7 @@ const runTikTokAutomationCheck = async ({
       plan,
     };
   } catch (error) {
-    const publicFallback = publicChallenge.status === "matched";
+    const publicFallback = publicProofMatched;
     return {
       provider: plan.provider,
       configured: true,
@@ -10613,7 +11619,7 @@ const runTikTokAutomationCheck = async ({
           : "TikTok API check failed.",
       matched_fields: publicFallback ? ["public_url"] : undefined,
       public_challenge: publicChallenge,
-      ownership_check: publicChallenge,
+      ownership_check: publicOwnershipCheck,
       profile: {
         username: normalizeHandleForComparison(platformHandle) || undefined,
         proof_source: publicFallback ? "public_url" : undefined,
@@ -10849,7 +11855,7 @@ const buildPrivateStoragePath = ({
   )}/${sanitizeStorageSegment(fileId)}-${baseName}.${extension}`;
 };
 
-const ensurePrivateStorageBucket = async () => {
+const ensurePrivateStorageBucket = async (allowCreate = true) => {
   if (!useSupabase) return;
 
   const checkResponse = await fetch(
@@ -10857,7 +11863,34 @@ const ensurePrivateStorageBucket = async () => {
     { headers: supabaseStorageHeaders() },
   );
 
-  if (checkResponse.ok) return;
+  if (checkResponse.ok) {
+    const bucket = (await checkResponse.json()) as {
+      public?: unknown;
+      file_size_limit?: unknown;
+      allowed_mime_types?: unknown;
+    };
+    const fileSizeLimit = Number(bucket.file_size_limit);
+    const allowedMimeTypes = Array.isArray(bucket.allowed_mime_types)
+      ? new Set(
+          bucket.allowed_mime_types.filter(
+            (value): value is string => typeof value === "string",
+          ),
+        )
+      : new Set<string>();
+    const bucketIsPrivateAndBounded =
+      bucket.public === false &&
+      Number.isFinite(fileSizeLimit) &&
+      fileSizeLimit > 0 &&
+      fileSizeLimit === maxVerificationFileSize &&
+      allowedMimeTypes.size === evidenceFileMimeTypes.size &&
+      Array.from(evidenceFileMimeTypes).every((type) =>
+        allowedMimeTypes.has(type),
+      );
+    if (!bucketIsPrivateAndBounded) {
+      throw new Error("Supabase private storage bucket security policy mismatch");
+    }
+    return;
+  }
   const checkBody = await checkResponse.text();
   const bucketMissing =
     checkResponse.status === 404 ||
@@ -10867,8 +11900,12 @@ const ensurePrivateStorageBucket = async () => {
 
   if (!bucketMissing) {
     throw new Error(
-      `Supabase storage bucket check failed (${checkResponse.status}): ${checkBody}`,
+      `Supabase storage bucket check failed (${checkResponse.status})`,
     );
+  }
+
+  if (!allowCreate) {
+    throw new Error("Supabase private storage bucket creation could not be verified");
   }
 
   const createResponse = await fetch(supabaseStorageUrl("/bucket"), {
@@ -10885,9 +11922,10 @@ const ensurePrivateStorageBucket = async () => {
 
   if (!createResponse.ok && createResponse.status !== 409) {
     throw new Error(
-      `Supabase storage bucket create failed (${createResponse.status}): ${await createResponse.text()}`,
+      `Supabase storage bucket create failed (${createResponse.status})`,
     );
   }
+  await ensurePrivateStorageBucket(false);
 };
 
 const uploadSupabasePrivateFile = async ({
@@ -10916,9 +11954,7 @@ const uploadSupabasePrivateFile = async ({
   );
 
   if (!response.ok) {
-    throw new Error(
-      `Supabase storage upload failed (${response.status}): ${await response.text()}`,
-    );
+    throw new Error(`Supabase storage upload failed (${response.status})`);
   }
 };
 
@@ -10966,7 +12002,7 @@ const storePrivateBuffer = async ({
       }
       console.warn(
         `[${productName}] Supabase Storage unavailable, storing private file locally: ${
-          error instanceof Error ? error.message : "unknown error"
+          operationalErrorLabel(error)
         }`,
       );
     }
@@ -11068,6 +12104,70 @@ const buildMarketplacePublicStoragePath = ({
   )}/${sanitizeStorageSegment(fileId)}-${baseName}.${extension}`;
 };
 
+const isAllowedPrivateStorageObjectPath = (value: string) => {
+  if (!value || value.includes("\\") || value.startsWith("/")) return false;
+  const segments = value.split("/");
+  if (segments.length !== 3 || segments.some((segment) => !segment)) return false;
+  if (!privateStorageAreas.has(segments[0])) return false;
+  return segments.every(
+    (segment) =>
+      segment !== "." &&
+      segment !== ".." &&
+      /^[a-z0-9._-]+$/.test(segment),
+  );
+};
+
+const isAllowedMarketplaceStorageObjectPath = (value: string) => {
+  if (!value || value.includes("\\") || value.startsWith("/")) return false;
+  const segments = value.split("/");
+  if (segments.length !== 3 || segments.some((segment) => !segment)) return false;
+  return segments.every(
+    (segment) =>
+      segment !== "." &&
+      segment !== ".." &&
+      /^[a-z0-9._-]+$/.test(segment),
+  );
+};
+
+const deleteQueuedSupabaseStorageObject = async ({
+  bucket,
+  objectPath,
+  signal,
+}: {
+  bucket: string;
+  objectPath: string;
+  signal?: AbortSignal;
+}) => {
+  const allowed =
+    (bucket === privateStorageBucket &&
+      isAllowedPrivateStorageObjectPath(objectPath)) ||
+    (bucket === marketplacePublicStorageBucket &&
+      isAllowedMarketplaceStorageObjectPath(objectPath));
+  if (!allowed) {
+    throw new Error("Privacy storage deletion target is outside the allowlist");
+  }
+
+  const encodedPath = objectPath
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+  const deletionResponse = await fetch(
+    supabaseStorageUrl(
+      `/object/${encodeURIComponent(bucket)}/${encodedPath}`,
+    ),
+    {
+      method: "DELETE",
+      headers: supabaseStorageHeaders(),
+      signal: signal ?? createSupabaseTimeoutSignal(),
+    },
+  );
+  if (!deletionResponse.ok && deletionResponse.status !== 404) {
+    throw new Error(
+      `Supabase privacy storage deletion failed (${deletionResponse.status})`,
+    );
+  }
+};
+
 const marketplacePublicObjectUrl = (objectPath: string) => {
   if (!supabaseUrl) return undefined;
   const encodedPath = objectPath.split("/").map(encodeURIComponent).join("/");
@@ -11076,7 +12176,7 @@ const marketplacePublicObjectUrl = (objectPath: string) => {
   )}/${encodedPath}`;
 };
 
-const ensureMarketplacePublicStorageBucket = async () => {
+const ensureMarketplacePublicStorageBucket = async (allowCreate = true) => {
   if (!useSupabase) return;
 
   const checkResponse = await fetch(
@@ -11086,7 +12186,34 @@ const ensureMarketplacePublicStorageBucket = async () => {
     { headers: supabaseStorageHeaders() },
   );
 
-  if (checkResponse.ok) return;
+  if (checkResponse.ok) {
+    const bucket = (await checkResponse.json()) as {
+      public?: unknown;
+      file_size_limit?: unknown;
+      allowed_mime_types?: unknown;
+    };
+    const fileSizeLimit = Number(bucket.file_size_limit);
+    const allowedMimeTypes = Array.isArray(bucket.allowed_mime_types)
+      ? new Set(
+          bucket.allowed_mime_types.filter(
+            (value): value is string => typeof value === "string",
+          ),
+        )
+      : new Set<string>();
+    const bucketIsPublicAndImageOnly =
+      bucket.public === true &&
+      Number.isFinite(fileSizeLimit) &&
+      fileSizeLimit > 0 &&
+      fileSizeLimit === maxMarketplaceImageSize &&
+      allowedMimeTypes.size === marketplaceImageMimeTypes.size &&
+      Array.from(marketplaceImageMimeTypes).every((type) =>
+        allowedMimeTypes.has(type),
+      );
+    if (!bucketIsPublicAndImageOnly) {
+      throw new Error("Supabase public storage bucket security policy mismatch");
+    }
+    return;
+  }
   const checkBody = await checkResponse.text();
   const bucketMissing =
     checkResponse.status === 404 ||
@@ -11096,8 +12223,12 @@ const ensureMarketplacePublicStorageBucket = async () => {
 
   if (!bucketMissing) {
     throw new Error(
-      `Supabase public storage bucket check failed (${checkResponse.status}): ${checkBody}`,
+      `Supabase public storage bucket check failed (${checkResponse.status})`,
     );
+  }
+
+  if (!allowCreate) {
+    throw new Error("Supabase public storage bucket creation could not be verified");
   }
 
   const createResponse = await fetch(supabaseStorageUrl("/bucket"), {
@@ -11114,9 +12245,10 @@ const ensureMarketplacePublicStorageBucket = async () => {
 
   if (!createResponse.ok && createResponse.status !== 409) {
     throw new Error(
-      `Supabase public storage bucket create failed (${createResponse.status}): ${await createResponse.text()}`,
+      `Supabase public storage bucket create failed (${createResponse.status})`,
     );
   }
+  await ensureMarketplacePublicStorageBucket(false);
 };
 
 const uploadSupabaseMarketplacePublicImage = async ({
@@ -11146,7 +12278,7 @@ const uploadSupabaseMarketplacePublicImage = async ({
 
   if (!response.ok) {
     throw new Error(
-      `Supabase public storage upload failed (${response.status}): ${await response.text()}`,
+      `Supabase public storage upload failed (${response.status})`,
     );
   }
 };
@@ -11195,7 +12327,7 @@ const storeMarketplacePublicImage = async ({
       }
       console.warn(
         `[${productName}] Supabase public storage unavailable, storing marketplace image locally: ${
-          error instanceof Error ? error.message : "unknown error"
+          operationalErrorLabel(error)
         }`,
       );
     }
@@ -11220,7 +12352,14 @@ const storeMarketplacePublicImage = async ({
 };
 
 const readStoredPrivateFile = async (storedFile: StoredPrivateFile) => {
+  if (!isAllowedPrivateStorageObjectPath(storedFile.path)) {
+    throw new Error("Private file path is outside the allowed storage areas");
+  }
   if (storedFile.provider === "supabase_storage") {
+    if (storedFile.bucket !== privateStorageBucket) {
+      throw new Error("Private file bucket is not allowed");
+    }
+    await ensurePrivateStorageBucket();
     const response = await fetch(
       supabaseStorageUrl(
         `/object/${encodeURIComponent(storedFile.bucket)}/${storedFile.path}`,
@@ -11229,16 +12368,19 @@ const readStoredPrivateFile = async (storedFile: StoredPrivateFile) => {
     );
 
     if (!response.ok) {
-      throw new Error(
-        `Supabase storage download failed (${response.status}): ${await response.text()}`,
-      );
+      throw new Error(`Supabase storage download failed (${response.status})`);
     }
 
     return Buffer.from(await response.arrayBuffer());
   }
 
-  const absolutePath = path.resolve(privateFilesDir, storedFile.path);
-  if (!absolutePath.startsWith(path.resolve(privateFilesDir))) {
+  if (storedFile.bucket !== "local") {
+    throw new Error("Private local file bucket is not allowed");
+  }
+  const privateFilesRoot = path.resolve(privateFilesDir);
+  const absolutePath = path.resolve(privateFilesRoot, storedFile.path);
+  const relativePath = path.relative(privateFilesRoot, absolutePath);
+  if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
     throw new Error("Private file path is invalid");
   }
   return fs.readFile(absolutePath);
@@ -11528,7 +12670,15 @@ const _buildLegacyContractDocumentPdf = async ({
     ["광고주", formatPdfValue(contract.advertiser_info?.name ?? contract.advertiser_id)],
     ["광고주 담당자", formatPdfValue(contract.advertiser_info?.manager)],
     ["인플루언서", formatPdfValue(contract.influencer_info.name)],
-    ["연락처", formatPdfValue(contract.influencer_info.contact)],
+    [
+      "이메일",
+      formatPdfValue(
+        contract.influencer_info.email ?? contract.influencer_info.contact,
+      ),
+    ],
+    ...(contract.influencer_info.phone
+      ? [["휴대전화", formatPdfValue(contract.influencer_info.phone)] as [string, string]]
+      : []),
     ["대표 채널", formatPdfValue(contract.influencer_info.channel_url)],
   ]);
 
@@ -11891,7 +13041,18 @@ const buildContractDocumentPdf = async ({
     ["광고주", advertiserName],
     ["광고주 담당자", formatPdfValue(contract.advertiser_info?.manager)],
     ["인플루언서", influencerName],
-    ["인플루언서 연락처", formatPdfValue(contract.influencer_info.contact)],
+    [
+      "인플루언서 이메일",
+      formatPdfValue(
+        contract.influencer_info.email ?? contract.influencer_info.contact,
+      ),
+    ],
+    ...(contract.influencer_info.phone
+      ? [["인플루언서 휴대전화", formatPdfValue(contract.influencer_info.phone)] as [
+          string,
+          string,
+        ]]
+      : []),
     ["대표 채널", formatPdfValue(contract.influencer_info.channel_url)],
   ]);
 
@@ -12605,6 +13766,68 @@ const campaignProposalTypes = new Set<CampaignProposalType>(
 const campaignRequiredConsentLimit = 8;
 const campaignRequiredConsentTextLimit = 300;
 const campaignRequiredConsentIdLimit = 80;
+const campaignApplicationContactFieldValues = new Set<CampaignApplicationContactField>([
+  "phone",
+  "email",
+]);
+const campaignApplicationContactPurpose =
+  "캠페인 지원자 확인, 선정 및 진행 안내";
+const campaignApplicationContactRetentionPolicy =
+  "campaign_end_plus_90_days" as const;
+
+const normalizeCampaignApplicationContactFields = (
+  value: unknown,
+): CampaignApplicationContactField[] => {
+  if (!Array.isArray(value)) return [];
+  return Array.from(
+    new Set(
+      value.filter(
+        (item): item is CampaignApplicationContactField =>
+          typeof item === "string" &&
+          campaignApplicationContactFieldValues.has(
+            item as CampaignApplicationContactField,
+          ),
+      ),
+    ),
+  ).sort();
+};
+
+const validateCampaignApplicationContactFields = (value: unknown) => {
+  if (value === undefined || value === null) {
+    return { ok: true as const, fields: [] as CampaignApplicationContactField[] };
+  }
+  if (!Array.isArray(value) || value.length > campaignApplicationContactFieldValues.size) {
+    return {
+      ok: false as const,
+      error: "지원자 연락처 수집 항목을 다시 확인해 주세요.",
+    };
+  }
+  const fields = normalizeCampaignApplicationContactFields(value);
+  if (fields.length !== value.length) {
+    return {
+      ok: false as const,
+      error: "지원자 연락처는 휴대전화와 이메일만 중복 없이 선택할 수 있습니다.",
+    };
+  }
+  return { ok: true as const, fields };
+};
+
+const buildCampaignApplicationContactConsentVersion = ({
+  campaignId,
+  fields,
+}: {
+  campaignId: string;
+  fields: CampaignApplicationContactField[];
+}) =>
+  sha256Hex(
+    JSON.stringify({
+      policyVersion: CAMPAIGN_APPLICATION_CONTACT_POLICY_VERSION,
+      campaignId,
+      fields: normalizeCampaignApplicationContactFields(fields),
+      purpose: campaignApplicationContactPurpose,
+      retentionPolicy: campaignApplicationContactRetentionPolicy,
+    }),
+  );
 
 const normalizeCampaignRequiredConsentText = (value: unknown) =>
   normalizeRequiredText(value).replace(/\r\n?/g, "\n");
@@ -12814,6 +14037,17 @@ const normalizeBrandCampaigns = (
       if (!item || typeof item !== "object") return undefined;
       const record = item as Record<string, unknown>;
       const id = normalizeOptionalText(record.id)?.slice(0, 80);
+      const explicitRelativeTestDates =
+        typeof record.relativeTestDates === "boolean"
+          ? record.relativeTestDates
+          : typeof record.relative_test_dates === "boolean"
+            ? record.relative_test_dates
+            : undefined;
+      const relativeTestDates =
+        explicitRelativeTestDates ??
+        !normalizeOptionalText(
+          record.statusUpdatedByProfileId ?? record.status_updated_by_profile_id,
+        );
       const title = normalizeRequiredText(record.title);
       const type = normalizeRequiredText(record.type) as CampaignProposalType;
       const otherTypeLabel = normalizeOptionalText(
@@ -12860,6 +14094,15 @@ const normalizeBrandCampaigns = (
         record.requiredConsents ?? record.required_consents,
       );
       const consentVersion = buildCampaignConsentVersion(requiredConsents);
+      const applicationContactFields = normalizeCampaignApplicationContactFields(
+        record.applicationContactFields ?? record.application_contact_fields,
+      );
+      const applicationContactConsentVersion = id
+        ? buildCampaignApplicationContactConsentVersion({
+            campaignId: id,
+            fields: applicationContactFields,
+          })
+        : undefined;
       if (
         !title ||
         !budget ||
@@ -12870,6 +14113,7 @@ const normalizeBrandCampaigns = (
       }
       const normalizedCampaign: MarketplaceBrandCampaign = {
         ...(id ? { id } : {}),
+        relativeTestDates,
         title: title.slice(0, 100),
         type,
         ...(type === "other" && otherTypeLabel ? { otherTypeLabel } : {}),
@@ -12885,6 +14129,12 @@ const normalizeBrandCampaigns = (
         ...(uploadDeadline ? { uploadDeadline } : {}),
         ...(platforms.length > 0 ? { platforms } : {}),
         ...(deliverables.length > 0 ? { deliverables } : {}),
+        ...(applicationContactFields.length > 0
+          ? {
+              applicationContactFields,
+              applicationContactConsentVersion,
+            }
+          : {}),
         requiredConsents,
         consentVersion,
         ...(status && marketplaceCampaignStatuses.has(status)
@@ -13420,6 +14670,63 @@ const groupMarketplaceChannelsByProfileId = (
   return grouped;
 };
 
+const readNaverSelfReportedMarketplaceMetric = (
+  channel: SupabaseMarketplaceInfluencerChannelRow,
+) => {
+  if (channel.platform !== "naver_blog") return undefined;
+
+  const metadata = channel.follower_sync_metadata;
+  const count = normalizeVerificationMetricCount(channel.follower_count);
+  const channelHandle = extractNaverBlogId(channel.handle);
+  const reportedHandle = extractNaverBlogId(
+    normalizeOptionalText(metadata?.reported_handle),
+  );
+  const checkedAt = normalizeOptionalText(metadata?.checked_at);
+  const syncedAt = normalizeOptionalText(channel.follower_count_synced_at);
+  const checkedAtTime = Date.parse(checkedAt ?? "");
+  const syncedAtTime = Date.parse(syncedAt ?? "");
+  if (
+    channel.follower_sync_source !== "creator_self_report" ||
+    count === undefined ||
+    metadata?.provider !== "creator_self_report" ||
+    metadata?.metric !== "average_daily_visitors_4d" ||
+    metadata?.trust !== "self_reported" ||
+    Number(metadata?.period_days) !== 4 ||
+    metadata?.account_approved !== true ||
+    metadata?.availability !== "available" ||
+    !channelHandle ||
+    reportedHandle !== channelHandle ||
+    !Number.isFinite(checkedAtTime) ||
+    !Number.isFinite(syncedAtTime) ||
+    syncedAtTime !== checkedAtTime
+  ) {
+    return undefined;
+  }
+
+  return {
+    followersLabel: `일평균 ${count.toLocaleString("ko-KR")}명`,
+    performanceLabel: "최근 4일 평균 · 자가신고",
+    metricType: "average_daily_visitors_4d" as const,
+    metricSource: "creator_self_report" as const,
+    metricTrust: "self_reported" as const,
+    metricPeriodDays: 4 as const,
+  };
+};
+
+const hasMisplacedNaverSelfReportProvenance = (
+  channel: SupabaseMarketplaceInfluencerChannelRow,
+) => {
+  if (channel.platform === "naver_blog") return false;
+  const metadata = channel.follower_sync_metadata;
+  return (
+    channel.follower_sync_source === "creator_self_report" ||
+    channel.follower_sync_source === "creator_self_report_required" ||
+    metadata?.provider === "creator_self_report" ||
+    metadata?.metric === "average_daily_visitors_4d" ||
+    metadata?.trust === "self_reported"
+  );
+};
+
 const mapInfluencerProfileRowToPublicSettings = (
   row: SupabaseMarketplaceInfluencerProfileRow,
   channels: SupabaseMarketplaceInfluencerChannelRow[] = [],
@@ -13442,8 +14749,19 @@ const mapInfluencerProfileRowToPublicSettings = (
     platform: channel.platform,
     handle: channel.handle,
     url: channel.url ?? undefined,
+    ownershipStatus:
+      channel.ownership_status === "unverified" ? "unverified" : "verified",
   })),
   published: row.is_published,
+  publicIndexEnabled: row.public_index_enabled === true,
+  profileState:
+    row.profile_setup_state === "complete"
+      ? "complete"
+      : row.profile_setup_state === "minimal"
+        ? "minimal"
+        : "setup_required",
+  representativeActivityPageUrl:
+    row.representative_activity_page_url ?? undefined,
   updatedAt: row.updated_at ?? row.created_at ?? new Date().toISOString(),
 });
 
@@ -13453,14 +14771,50 @@ const mapInfluencerProfileRowToMarketplaceProfile = (
 ): MarketplaceInfluencerProfile => {
   const settings = mapInfluencerProfileRowToPublicSettings(row, channels);
   const base = createMarketplaceProfileFromPublicSettings(settings);
-  const mappedChannels = channels.map((channel) => ({
-    platform: channel.platform,
-    label: channel.label || platformLabels[channel.platform],
-    handle: formatStoredMarketplacePlatformHandle(channel.handle, channel.platform),
-    url: channel.url ?? buildMarketplacePlatformUrl(channel.platform, channel.handle),
-    followersLabel: channel.followers_label ?? "계정 연동",
-    performanceLabel: channel.performance_label ?? "프로필에서 확인",
-  }));
+  const mappedChannels = channels.map((channel) => {
+    const ownershipStatus: "unverified" | "verified" =
+      channel.ownership_status === "unverified" ? "unverified" : "verified";
+    if (ownershipStatus === "unverified") {
+      return {
+        platform: channel.platform,
+        label: channel.label || platformLabels[channel.platform],
+        handle: formatStoredMarketplacePlatformHandle(
+          channel.handle,
+          channel.platform,
+        ),
+        url:
+          channel.url ??
+          buildMarketplacePlatformUrl(channel.platform, channel.handle),
+        followersLabel: "",
+        performanceLabel: "계정 인증 전",
+        ownershipStatus,
+      };
+    }
+    const naverSelfReport = readNaverSelfReportedMarketplaceMetric(channel);
+    const isNaverBlog = channel.platform === "naver_blog";
+    const hasMisplacedNaverSelfReport =
+      hasMisplacedNaverSelfReportProvenance(channel);
+    const followersLabel = isNaverBlog
+      ? (naverSelfReport?.followersLabel ?? "계정 연동")
+      : hasMisplacedNaverSelfReport
+        ? "계정 연동"
+        : channel.followers_label ?? "계정 연동";
+    const performanceLabel = isNaverBlog
+      ? (naverSelfReport?.performanceLabel ?? "자가신고 미입력")
+      : hasMisplacedNaverSelfReport
+        ? "프로필에서 확인"
+        : channel.performance_label ?? "프로필에서 확인";
+    return {
+      platform: channel.platform,
+      label: channel.label || platformLabels[channel.platform],
+      handle: formatStoredMarketplacePlatformHandle(channel.handle, channel.platform),
+      url: channel.url ?? buildMarketplacePlatformUrl(channel.platform, channel.handle),
+      followersLabel,
+      performanceLabel,
+      ownershipStatus,
+      ...(naverSelfReport ?? {}),
+    };
+  });
 
   return {
     ...base,
@@ -13479,6 +14833,11 @@ const mapInfluencerProfileRowToMarketplaceProfile = (
       6,
     ),
     source: "registered",
+    platformVerified: mappedChannels.some(
+      (channel) => channel.ownershipStatus === "verified",
+    ),
+    publicProfilePublished: row.is_published,
+    publicProfileHandle: row.is_published ? row.public_handle : undefined,
   };
 };
 
@@ -13546,23 +14905,16 @@ const mapDiscoveredInfluencerRowToMarketplaceProfile = (
   const categoryLabel = getDiscoveredCategoryLabel(categories);
   const averageViewsLabel = formatDiscoveredMetricLabel(row.average_views);
   const postCountLabel = formatDiscoveredMetricLabel(row.post_count);
-  const naverBlogVisitorAverage =
-    row.platform === "naver_blog" &&
-    row.naver_blog_visitor_status === "available" &&
-    row.naver_blog_visitor_average_4d != null &&
-    Number.isFinite(Number(row.naver_blog_visitor_average_4d))
-      ? Number(row.naver_blog_visitor_average_4d)
-      : undefined;
   const followerLabel =
-    naverBlogVisitorAverage !== undefined
-      ? `일평균 ${formatDiscoveredMetricLabel(naverBlogVisitorAverage)}명`
+    row.platform === "naver_blog"
+      ? ""
       : normalizeOptionalText(row.followers_label) ||
         (row.follower_count
           ? `${formatDiscoveredMetricLabel(row.follower_count)}명`
           : "공개 지표 확인");
   const performanceLabel =
-    naverBlogVisitorAverage !== undefined
-      ? "최근 4일 평균 방문자"
+    row.platform === "naver_blog"
+      ? "자가신고 미입력"
       : averageViewsLabel
         ? `평균 조회 ${averageViewsLabel}`
         : postCountLabel
@@ -13984,21 +15336,51 @@ const parseMarketplaceRegisteredInfluencerDirectoryItem = (
       followerCountValue >= 0
         ? followerCountValue
         : undefined;
+    const hasNaverSelfReportProvenance =
+      channel.metric_type === "average_daily_visitors_4d" ||
+      channel.metric_source === "creator_self_report" ||
+      channel.metric_trust === "self_reported";
+    const hasMisplacedNaverSelfReport =
+      platform !== "naver_blog" && hasNaverSelfReportProvenance;
+    const isNaverSelfReport =
+      platform === "naver_blog" &&
+      channel.metric_type === "average_daily_visitors_4d" &&
+      channel.metric_source === "creator_self_report" &&
+      channel.metric_trust === "self_reported" &&
+      channel.metric_period_days === 4;
     return {
       platform: platform as InfluencerPlatform,
       handle,
       ...(url ? { url } : {}),
-      ...(followerCount !== undefined ? { followerCount } : {}),
+      ...(followerCount !== undefined &&
+      !hasMisplacedNaverSelfReport &&
+      (platform !== "naver_blog" || isNaverSelfReport)
+        ? { followerCount }
+        : {}),
+      ...(isNaverSelfReport
+        ? {
+            metricType: "average_daily_visitors_4d" as const,
+            metricSource: "creator_self_report" as const,
+            metricTrust: "self_reported" as const,
+            metricPeriodDays: 4 as const,
+          }
+        : {}),
     };
   });
-  const maxAudienceCountValue = Number(item.max_audience_count);
-  const maxAudienceCount =
-    item.max_audience_count !== undefined &&
-    item.max_audience_count !== null &&
-    Number.isSafeInteger(maxAudienceCountValue) &&
-    maxAudienceCountValue >= 0
-      ? maxAudienceCountValue
-      : undefined;
+  const maxAudienceCount = verifiedChannels.reduce<number | undefined>(
+    (maximum, channel) => {
+      if (
+        channel.platform === "naver_blog" ||
+        channel.followerCount === undefined
+      ) {
+        return maximum;
+      }
+      return maximum === undefined
+        ? channel.followerCount
+        : Math.max(maximum, channel.followerCount);
+    },
+    undefined,
+  );
   const platformVerified = item.platform_verified === true;
   const publicProfilePublished = item.public_profile_published === true;
   const publicProfileHandle =
@@ -14123,8 +15505,21 @@ const mapRegisteredInfluencerDirectoryItemToMarketplaceProfile = (
     followersLabel:
       channel.followerCount === undefined
         ? ""
-        : `${channel.followerCount.toLocaleString("ko-KR")}명`,
-    performanceLabel: "계정 인증 완료",
+        : channel.metricTrust === "self_reported"
+          ? `일평균 ${channel.followerCount.toLocaleString("ko-KR")}명`
+          : `${channel.followerCount.toLocaleString("ko-KR")}명`,
+    performanceLabel:
+      channel.metricTrust === "self_reported"
+        ? "최근 4일 평균 · 자가신고"
+        : "계정 인증 완료",
+    ...(channel.metricTrust === "self_reported"
+      ? {
+          metricType: channel.metricType,
+          metricSource: channel.metricSource,
+          metricTrust: channel.metricTrust,
+          metricPeriodDays: channel.metricPeriodDays,
+        }
+      : {}),
   }));
 
   return {
@@ -14297,6 +15692,10 @@ const readAuthenticatedMarketplaceInfluencerPage = async ({
       }),
     },
   );
+  if (rpcResponse.status === 403) {
+    await rpcResponse.arrayBuffer();
+    throw new AuthenticatedInfluencerDirectoryAccessError();
+  }
   await assertSupabaseOk(
     rpcResponse,
     "Supabase authenticated influencer directory search",
@@ -14316,6 +15715,13 @@ const readAuthenticatedMarketplaceInfluencerPage = async ({
     hasMore: parsed.hasMore,
   };
 };
+
+class AuthenticatedInfluencerDirectoryAccessError extends Error {
+  constructor() {
+    super("Authenticated production advertiser profile required");
+    this.name = "AuthenticatedInfluencerDirectoryAccessError";
+  }
+}
 
 const readPublicMarketplaceInfluencerProfileByHandle = async (handle: string) => {
   const normalizedHandle = normalizePublicProfileHandle(handle);
@@ -14341,16 +15747,50 @@ const readPublicMarketplaceInfluencerProfileByHandle = async (handle: string) =>
           ? -1
           : 1,
     )[0];
-    if (!directoryRow) return undefined;
-    const profiles = await hydrateMarketplaceInfluencerDirectoryReferences([
-      {
-        listingKey: directoryRow.listing_key,
-        sourceType: directoryRow.source_type,
-        sourceId: directoryRow.source_id,
-        publicHandle: directoryRow.public_handle,
-      },
-    ]);
-    return profiles[0];
+    if (directoryRow) {
+      const profiles = await hydrateMarketplaceInfluencerDirectoryReferences([
+        {
+          listingKey: directoryRow.listing_key,
+          sourceType: directoryRow.source_type,
+          sourceId: directoryRow.source_id,
+          publicHandle: directoryRow.public_handle,
+        },
+      ]);
+      return profiles[0];
+    }
+
+    let profileQuery = `?select=*&public_handle=eq.${encodeURIComponent(
+      normalizedHandle,
+    )}&is_published=eq.true&data_origin=eq.production&limit=1`;
+    if (/^rm-[a-f0-9]{27}$/.test(normalizedHandle)) {
+      const aliases = await readSupabaseRows<{
+        public_marketplace_profile_id: string;
+      }>(
+        "marketplace_registered_influencer_directory",
+        `?select=public_marketplace_profile_id&registered_handle=eq.${encodeURIComponent(
+          normalizedHandle,
+        )}&public_profile_published=eq.true&limit=1`,
+        "registered influencer direct-profile alias",
+      );
+      const aliasProfileId = aliases[0]?.public_marketplace_profile_id;
+      if (!isUuid(aliasProfileId)) return undefined;
+      profileQuery = `?select=*&id=eq.${encodeURIComponent(
+        aliasProfileId,
+      )}&is_published=eq.true&data_origin=eq.production&limit=1`;
+    }
+
+    const { profiles: directRows, channels } =
+      await readMarketplaceInfluencerRows(profileQuery);
+    const directRow = directRows[0];
+    if (!directRow) return undefined;
+    const profile = mapInfluencerProfileRowToMarketplaceProfile(
+      directRow,
+      channels.get(directRow.id) ?? [],
+    );
+    if (filterOperationalMarketplaceTestData && hasOperationalTestMarker(profile)) {
+      return undefined;
+    }
+    return profile;
   }
 
   return findInfluencerProfileByHandle(
@@ -14649,7 +16089,7 @@ const getVercelRuntimeCache = async () => {
     .catch((error) => {
       console.warn(
         `[${productName}] Vercel runtime cache unavailable: ${
-          error instanceof Error ? error.message : "unknown error"
+          operationalErrorLabel(error)
         }`,
       );
       return undefined;
@@ -14685,7 +16125,7 @@ const expirePublicMarketplaceRuntimeCache = async (tags = publicMarketplaceAllTa
   await cache?.expireTag(tags).catch((error) => {
     console.warn(
       `[${productName}] public marketplace runtime cache invalidation failed: ${
-        error instanceof Error ? error.message : "unknown error"
+        operationalErrorLabel(error)
       }`,
     );
   });
@@ -14694,7 +16134,7 @@ const expirePublicMarketplaceRuntimeCache = async (tags = publicMarketplaceAllTa
     .catch((error) => {
       console.warn(
         `[${productName}] public marketplace CDN cache invalidation failed: ${
-          error instanceof Error ? error.message : "unknown error"
+          operationalErrorLabel(error)
         }`,
       );
     });
@@ -14725,7 +16165,7 @@ const refreshPublicMarketplaceCache = async <T,>(
   void writePublicMarketplaceRuntimeCache(key, value).catch((error) => {
     console.warn(
       `[${productName}] public marketplace runtime cache write failed: ${
-        error instanceof Error ? error.message : "unknown error"
+        operationalErrorLabel(error)
       }`,
     );
   });
@@ -14752,7 +16192,7 @@ const readPublicMarketplaceCache = async <T,>(
         .catch((error) => {
           console.warn(
             `[${productName}] public marketplace cache refresh failed: ${
-              error instanceof Error ? error.message : "unknown error"
+              operationalErrorLabel(error)
             }`,
           );
           return cached.value as T;
@@ -14770,7 +16210,7 @@ const readPublicMarketplaceCache = async <T,>(
     (error) => {
       console.warn(
         `[${productName}] public marketplace runtime cache read failed: ${
-          error instanceof Error ? error.message : "unknown error"
+          operationalErrorLabel(error)
         }`,
       );
       return undefined;
@@ -14793,7 +16233,7 @@ const readPublicMarketplaceCache = async <T,>(
     rememberPublicMarketplaceMemoryCache(key, value);
     console.warn(
       `[${productName}] public marketplace cache cold fallback for ${key}: ${
-        error instanceof Error ? error.message : "unknown error"
+        operationalErrorLabel(error)
       }`,
     );
     return value;
@@ -14812,7 +16252,7 @@ const clearPublicMarketplaceCache = () => {
   return expirePublicMarketplaceRuntimeCache().catch((error) => {
     console.warn(
       `[${productName}] public marketplace runtime cache invalidation failed: ${
-        error instanceof Error ? error.message : "unknown error"
+        operationalErrorLabel(error)
       }`,
     );
   });
@@ -14850,7 +16290,7 @@ const warmPublicMarketplaceCache = () => {
       .catch((error) => {
         console.warn(
           `[${productName}] public marketplace cache warmup failed: ${
-            error instanceof Error ? error.message : "unknown error"
+            operationalErrorLabel(error)
           }`,
         );
       });
@@ -14935,22 +16375,6 @@ const formatMarketplaceFollowerCountLabel = (count: number) => {
   return `${count.toLocaleString("ko-KR")}\uba85`;
 };
 
-const formatMarketplacePersonCountLabel = (count: number) => {
-  if (count >= 10_000) {
-    const tenThousands = count / 10_000;
-    const formatted =
-      tenThousands >= 100
-        ? Math.round(tenThousands).toLocaleString("ko-KR")
-        : tenThousands.toFixed(1).replace(/\.0$/, "");
-    return `${formatted}\ub9cc\uba85`;
-  }
-
-  return `${count.toLocaleString("ko-KR")}\uba85`;
-};
-
-const formatNaverBlogVisitorLabel = (count: number) =>
-  `\uc77c\ud3c9\uade0 ${formatMarketplacePersonCountLabel(count)}`;
-
 const buildFollowerSnapshot = (
   snapshot: Omit<MarketplaceFollowerSyncSnapshot, "checkedAt"> & {
     checkedAt?: string;
@@ -14960,148 +16384,6 @@ const buildFollowerSnapshot = (
   checkedAt: snapshot.checkedAt ?? new Date().toISOString(),
   error: truncateMarketplaceSyncText(snapshot.error),
 });
-
-type NaverBlogVisitorCount = {
-  date: string;
-  count: number;
-};
-
-const naverBlogVisitorCounterProvider = "naver_blog_public_visitor_counter";
-const naverBlogVisitorAverageWindowDays = 4;
-const kstOffsetMs = 9 * 60 * 60 * 1000;
-
-const formatKstCompactDate = (date: Date, dayOffset = 0) => {
-  const kstDate = new Date(date.getTime() + kstOffsetMs + dayOffset * dayMs);
-  const year = kstDate.getUTCFullYear().toString().padStart(4, "0");
-  const month = (kstDate.getUTCMonth() + 1).toString().padStart(2, "0");
-  const day = kstDate.getUTCDate().toString().padStart(2, "0");
-  return `${year}${month}${day}`;
-};
-
-const getNaverBlogVisitorTargetDates = (date = new Date()) =>
-  Array.from({ length: naverBlogVisitorAverageWindowDays }, (_, index) =>
-    formatKstCompactDate(date, -(index + 1)),
-  );
-
-const normalizeNaverBlogVisitorCounts = (
-  counts: NaverBlogVisitorCount[],
-) => {
-  const byDate = new Map<string, number>();
-  for (const count of counts) {
-    if (!normalizeDateCompact(count.date)) continue;
-    if (!Number.isFinite(count.count) || count.count < 0) continue;
-    byDate.set(count.date, Math.floor(count.count));
-  }
-
-  return Array.from(byDate.entries())
-    .map(([date, count]) => ({ date, count }))
-    .sort((left, right) => right.date.localeCompare(left.date));
-};
-
-const parseNaverBlogVisitorCounts = (body: string) =>
-  normalizeNaverBlogVisitorCounts(
-    Array.from(body.matchAll(/<visitorcnt\b[^>]*\/?>/gi))
-      .map((match) => {
-        const tag = match[0];
-        const id = tag.match(/\bid\s*=\s*["']([^"']+)["']/i)?.[1];
-        const count = normalizeFollowerCount(
-          tag.match(/\bcnt\s*=\s*["']([^"']+)["']/i)?.[1],
-        );
-        const date = normalizeDateCompact(id);
-        if (!date || count === undefined) return undefined;
-        return { date, count };
-      })
-      .filter((count): count is NaverBlogVisitorCount => Boolean(count)),
-  );
-
-const readNaverBlogVisitorCountsFromMetadata = (
-  metadata: Record<string, unknown> | null | undefined,
-) => {
-  const rawCounts = metadata?.naver_blog_daily_visitors;
-  if (!Array.isArray(rawCounts)) return [];
-
-  return normalizeNaverBlogVisitorCounts(
-    rawCounts
-      .map((item) => {
-        if (!item || typeof item !== "object") return undefined;
-        const record = item as Record<string, unknown>;
-        const date = normalizeDateCompact(
-          typeof record.date === "string" || typeof record.date === "number"
-            ? String(record.date)
-            : undefined,
-        );
-        const count = normalizeFollowerCount(record.count);
-        if (!date || count === undefined) return undefined;
-        return { date, count };
-      })
-      .filter((count): count is NaverBlogVisitorCount => Boolean(count)),
-  );
-};
-
-const selectNaverBlogCompletedVisitorCounts = (
-  counts: NaverBlogVisitorCount[],
-  targetDates: string[],
-) => {
-  const byDate = new Map(
-    normalizeNaverBlogVisitorCounts(counts).map((count) => [count.date, count]),
-  );
-  return targetDates
-    .map((targetDate) => byDate.get(targetDate))
-    .filter((count): count is NaverBlogVisitorCount => Boolean(count));
-};
-
-const calculateNaverBlogFourDayAverage = (
-  counts: NaverBlogVisitorCount[],
-) => {
-  const windowCounts = counts.slice(0, naverBlogVisitorAverageWindowDays);
-  if (windowCounts.length < naverBlogVisitorAverageWindowDays) return undefined;
-  return Math.round(
-    windowCounts.reduce((total, count) => total + count.count, 0) /
-      windowCounts.length,
-  );
-};
-
-const buildNaverBlogStoredAverageSnapshot = ({
-  channel,
-  blogId,
-  targetDates,
-  checkedAt,
-  httpStatus,
-  error,
-}: {
-  channel: SupabaseMarketplaceInfluencerChannelRow;
-  blogId: string;
-  targetDates: string[];
-  checkedAt: string;
-  httpStatus?: number;
-  error: string;
-}) => {
-  const storedCounts = selectNaverBlogCompletedVisitorCounts(
-    readNaverBlogVisitorCountsFromMetadata(channel.follower_sync_metadata),
-    targetDates,
-  );
-  const average = calculateNaverBlogFourDayAverage(storedCounts);
-  if (average === undefined) return undefined;
-
-  return buildFollowerSnapshot({
-    status: "synced",
-    provider: naverBlogVisitorCounterProvider,
-    checkedAt,
-    followerCount: average,
-    followersLabel: formatNaverBlogVisitorLabel(average),
-    httpStatus,
-    error,
-    metadata: {
-      metric: "daily_blog_visitors",
-      value_basis: "stored_4_day_average",
-      target_dates: targetDates,
-      blog_id: blogId,
-      naver_blog_daily_visitors: storedCounts,
-      average_window_days: naverBlogVisitorAverageWindowDays,
-      source_error: error,
-    },
-  });
-};
 
 const fetchYoutubeFollowerSnapshot = async (
   channel: SupabaseMarketplaceInfluencerChannelRow,
@@ -15369,136 +16651,21 @@ const fetchTikTokFollowerSnapshot = async (
   }
 };
 
-const fetchNaverBlogVisitorSnapshot = async (
-  channel: SupabaseMarketplaceInfluencerChannelRow,
-): Promise<MarketplaceFollowerSyncSnapshot> => {
-  const checkedAt = new Date().toISOString();
-  const targetDates = getNaverBlogVisitorTargetDates(new Date(checkedAt));
-  const blogId =
-    extractNaverBlogId(channel.handle) || extractNaverBlogId(channel.url ?? undefined);
-
-  if (!blogId) {
-    return buildFollowerSnapshot({
-      status: "skipped",
-      provider: naverBlogVisitorCounterProvider,
-      checkedAt,
-      error: "Naver Blog id is missing.",
-    });
-  }
-
-  try {
-    const url = new URL("https://blog.naver.com/NVisitorgp4Ajax.nhn");
-    url.searchParams.set("blogId", blogId);
-    const response = await fetchTextWithTimeout(
-      url.toString(),
-      {
-        headers: {
-          Accept: "application/xml,text/xml,*/*",
-          "User-Agent": "DirectSignMarketplaceSync/1.0",
-        },
-      },
-      4500,
-    );
-    const visitorCounts = parseNaverBlogVisitorCounts(response.body);
-    const completedCounts = selectNaverBlogCompletedVisitorCounts(
-      visitorCounts,
-      targetDates,
-    );
-    const fourDayAverage = calculateNaverBlogFourDayAverage(completedCounts);
-
-    if (!response.ok) {
-      return (
-        buildNaverBlogStoredAverageSnapshot({
-          channel,
-          blogId,
-          targetDates,
-          checkedAt,
-          httpStatus: response.status,
-          error: "Naver Blog visitor counter request failed; showing stored four day average.",
-        }) ??
-        buildFollowerSnapshot({
-          status: "failed",
-          provider: naverBlogVisitorCounterProvider,
-          checkedAt,
-          httpStatus: response.status,
-          error: "Naver Blog visitor counter request failed.",
-          metadata: { blog_id: blogId, target_dates: targetDates },
-        })
-      );
-    }
-
-    if (fourDayAverage === undefined) {
-      return (
-        buildNaverBlogStoredAverageSnapshot({
-          channel,
-          blogId,
-          targetDates,
-          checkedAt,
-          httpStatus: response.status,
-          error:
-            "Naver Blog visitor counter did not include four completed days; showing stored four day average.",
-        }) ??
-        buildFollowerSnapshot({
-          status: "failed",
-          provider: naverBlogVisitorCounterProvider,
-          checkedAt,
-          httpStatus: response.status,
-          error: "Naver Blog visitor counter did not include four completed days.",
-          metadata: {
-            blog_id: blogId,
-            target_dates: targetDates,
-            naver_blog_daily_visitors: completedCounts,
-          },
-        })
-      );
-    }
-
-    return buildFollowerSnapshot({
-      status: "synced",
-      provider: naverBlogVisitorCounterProvider,
-      checkedAt,
-      httpStatus: response.status,
-      followerCount: fourDayAverage,
-      followersLabel: formatNaverBlogVisitorLabel(fourDayAverage),
-      metadata: {
-        metric: "daily_blog_visitors",
-        value_basis: "completed_4_day_average",
-        target_dates: targetDates,
-        blog_id: blogId,
-        naver_blog_daily_visitors: completedCounts,
-        average_window_days: naverBlogVisitorAverageWindowDays,
-        four_day_average: fourDayAverage,
-      },
-    });
-  } catch (error) {
-    const errorMessage =
-      error instanceof Error ? error.message : "Naver Blog visitor sync failed.";
-    return (
-      buildNaverBlogStoredAverageSnapshot({
-        channel,
-        blogId,
-        targetDates,
-        checkedAt,
-        error: `${errorMessage}; showing stored four day average.`,
-      }) ??
-      buildFollowerSnapshot({
-        status: "failed",
-        provider: naverBlogVisitorCounterProvider,
-        checkedAt,
-        error: errorMessage,
-        metadata: { blog_id: blogId, target_dates: targetDates },
-      })
-    );
-  }
-};
-
 const fetchMarketplaceFollowerSnapshot = (
   channel: SupabaseMarketplaceInfluencerChannelRow,
 ) => {
   if (channel.platform === "youtube") return fetchYoutubeFollowerSnapshot(channel);
   if (channel.platform === "instagram") return fetchInstagramFollowerSnapshot(channel);
   if (channel.platform === "tiktok") return fetchTikTokFollowerSnapshot(channel);
-  if (channel.platform === "naver_blog") return fetchNaverBlogVisitorSnapshot(channel);
+  if (channel.platform === "naver_blog") {
+    return Promise.resolve(
+      buildFollowerSnapshot({
+        status: "skipped",
+        provider: "creator_self_report",
+        error: "Naver Blog visitor metrics require a creator self-report.",
+      }),
+    );
+  }
 
   return Promise.resolve(
     buildFollowerSnapshot({
@@ -15536,11 +16703,7 @@ const isMarketplaceFollowerSyncDue = (
   if (channel.follower_sync_status !== "synced") return true;
   if (!channel.follower_count_synced_at) return true;
   const syncedAt = Date.parse(channel.follower_count_synced_at);
-  const staleMs =
-    channel.platform === "naver_blog"
-      ? marketplaceNaverBlogVisitorSyncStaleMs
-      : marketplaceFollowerSyncStaleMs;
-  return !Number.isFinite(syncedAt) || nowMs - syncedAt >= staleMs;
+  return !Number.isFinite(syncedAt) || nowMs - syncedAt >= marketplaceFollowerSyncStaleMs;
 };
 
 const compareMarketplaceFollowerSyncQueue = (
@@ -15566,7 +16729,10 @@ const readMarketplaceFollowerSyncQueue = async (limit: number) => {
   );
 
   return queue
-    .filter(({ channel }) => isMarketplaceFollowerSyncDue(channel))
+    .filter(
+      ({ channel }) =>
+        channel.platform !== "naver_blog" && isMarketplaceFollowerSyncDue(channel),
+    )
     .sort(compareMarketplaceFollowerSyncQueue)
     .slice(0, limit);
 };
@@ -15668,7 +16834,6 @@ const runMarketplaceFollowerSyncInternal = async ({
       metadata: {
         max_channels: effectiveMaxChannels,
         stale_days: marketplaceFollowerSyncStaleMs / dayMs,
-        naver_blog_stale_days: marketplaceNaverBlogVisitorSyncStaleMs / dayMs,
       },
     },
   ]);
@@ -15722,7 +16887,6 @@ const runMarketplaceFollowerSyncInternal = async ({
           max_channels: effectiveMaxChannels,
           queued_channels: queue.length,
           stale_days: marketplaceFollowerSyncStaleMs / dayMs,
-          naver_blog_stale_days: marketplaceNaverBlogVisitorSyncStaleMs / dayMs,
         },
       },
       "Supabase marketplace follower sync run update",
@@ -16382,6 +17546,20 @@ const archiveAdvertiserBrandProfile = async (
   };
 };
 
+const isValidIsoCalendarDate = (value: string) => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
+};
+
 const validateMarketplaceCampaignInput = (body: Record<string, unknown>) => {
   const title = normalizeRequiredText(body.title);
   const type = normalizeRequiredText(body.type) as CampaignProposalType;
@@ -16397,6 +17575,10 @@ const validateMarketplaceCampaignInput = (body: Record<string, unknown>) => {
   const requiredConsentsResult = validateCampaignRequiredConsents(
     body.requiredConsents ?? body.required_consents,
   );
+  const applicationContactFieldsResult =
+    validateCampaignApplicationContactFields(
+      body.applicationContactFields ?? body.application_contact_fields,
+    );
   const targetCountries = normalizeMarketplaceCountries(
     body.targetCountries ?? body.target_countries,
   );
@@ -16438,14 +17620,20 @@ const validateMarketplaceCampaignInput = (body: Record<string, unknown>) => {
   if (!deliverables.length) {
     return { error: "콘텐츠를 6개 이내로 입력해 주세요." };
   }
-  if (!uploadDeadline || uploadDeadline.length > 40) {
-    return { error: "제출마감일을 40자 이내로 입력해 주세요." };
+  if (!uploadDeadline || !isValidIsoCalendarDate(uploadDeadline)) {
+    return { error: "제출마감일을 올바른 날짜로 입력해 주세요." };
   }
-  if (!deadline || deadline.length > 40) {
-    return { error: "모집마감일을 40자 이내로 입력해 주세요." };
+  if (!deadline || !isValidIsoCalendarDate(deadline)) {
+    return { error: "모집마감일을 올바른 날짜로 입력해 주세요." };
+  }
+  if (deadline > uploadDeadline) {
+    return { error: "제출마감일은 모집마감일과 같거나 이후여야 합니다." };
   }
   if (!requiredConsentsResult.ok) {
     return { error: requiredConsentsResult.error };
+  }
+  if (!applicationContactFieldsResult.ok) {
+    return { error: applicationContactFieldsResult.error };
   }
 
   return {
@@ -16462,6 +17650,7 @@ const validateMarketplaceCampaignInput = (body: Record<string, unknown>) => {
     uploadDeadline,
     platforms,
     deliverables,
+    applicationContactFields: applicationContactFieldsResult.fields,
     requiredConsents: requiredConsentsResult.items,
     consentVersion: requiredConsentsResult.version,
   };
@@ -16544,8 +17733,9 @@ const upsertAdvertiserMarketplaceCampaign = async (
   const currentBrand = buildAdvertiserBrandProfileFromAuth(auth, organization, existing);
   const now = new Date().toISOString();
   const actor = auth.profile.email || auth.user.email || auth.profile.name;
+  const campaignId = randomUUID();
   const campaign: MarketplaceBrandCampaign = {
-    id: randomUUID(),
+    id: campaignId,
     title: payload.title,
     type: payload.type,
     ...(payload.type === "other" && payload.otherTypeLabel
@@ -16566,6 +17756,16 @@ const upsertAdvertiserMarketplaceCampaign = async (
       payload.deliverables.length > 0
         ? payload.deliverables
         : ["콘텐츠 협의"],
+    ...(payload.applicationContactFields.length > 0
+      ? {
+          applicationContactFields: payload.applicationContactFields,
+          applicationContactConsentVersion:
+            buildCampaignApplicationContactConsentVersion({
+              campaignId,
+              fields: payload.applicationContactFields,
+            }),
+        }
+      : {}),
     requiredConsents: payload.requiredConsents,
     consentVersion: payload.consentVersion,
     status: "open",
@@ -16951,6 +18151,18 @@ const buildMarketplaceCampaignSnapshot = (
   ...(campaign.uploadDeadline ? { uploadDeadline: campaign.uploadDeadline } : {}),
   ...(campaign.platforms?.length ? { platforms: campaign.platforms } : {}),
   ...(campaign.deliverables?.length ? { deliverables: campaign.deliverables } : {}),
+  ...(campaign.applicationContactFields?.length
+    ? {
+        applicationContactFields: normalizeCampaignApplicationContactFields(
+          campaign.applicationContactFields,
+        ),
+        applicationContactConsentVersion:
+          buildCampaignApplicationContactConsentVersion({
+            campaignId: campaign.id,
+            fields: campaign.applicationContactFields,
+          }),
+      }
+    : {}),
   requiredConsents: campaign.requiredConsents ?? [],
   consentVersion: buildCampaignConsentVersion(campaign.requiredConsents ?? []),
   brandId: campaign.brandId,
@@ -17000,6 +18212,14 @@ const normalizeMarketplaceCampaignSnapshot = (
     record.requiredConsents ?? record.required_consents,
   );
   const consentVersion = buildCampaignConsentVersion(requiredConsents);
+  const applicationContactFields = normalizeCampaignApplicationContactFields(
+    record.applicationContactFields ?? record.application_contact_fields,
+  );
+  const applicationContactConsentVersion =
+    buildCampaignApplicationContactConsentVersion({
+      campaignId: id,
+      fields: applicationContactFields,
+    });
 
   if (
     !id ||
@@ -17031,6 +18251,12 @@ const normalizeMarketplaceCampaignSnapshot = (
     ...(uploadDeadline ? { uploadDeadline } : {}),
     ...(platforms.length ? { platforms } : {}),
     ...(deliverables.length ? { deliverables } : {}),
+    ...(applicationContactFields.length
+      ? {
+          applicationContactFields,
+          applicationContactConsentVersion,
+        }
+      : {}),
     requiredConsents,
     consentVersion,
     brandId,
@@ -17149,6 +18375,185 @@ const validateCampaignApplicationConsent = (
   };
 };
 
+const validateCampaignApplicationContact = (
+  body: Record<string, unknown>,
+  campaign: MarketplaceCampaignPost,
+) => {
+  const fields = normalizeCampaignApplicationContactFields(
+    campaign.applicationContactFields,
+  );
+  const submittedContact = body.applicationContact ?? body.application_contact;
+  const contactRecord =
+    submittedContact && typeof submittedContact === "object" && !Array.isArray(submittedContact)
+      ? (submittedContact as Record<string, unknown>)
+      : {};
+  const submittedKeys = Object.keys(contactRecord);
+
+  if (fields.length === 0) {
+    if (submittedKeys.length > 0) {
+      return {
+        ok: false as const,
+        status: 422,
+        code: "campaign_application_contact_not_requested" as const,
+        error: "이 캠페인에서 요청하지 않은 연락처는 제출할 수 없습니다.",
+      };
+    }
+    return {
+      ok: true as const,
+      fields,
+      contact: {} as MarketplaceApplicationContactSnapshot["contact"],
+      version: undefined,
+    };
+  }
+
+  if (body.applicationContactConsentAccepted !== true) {
+    return {
+      ok: false as const,
+      status: 422,
+      code: "campaign_application_contact_consent_required" as const,
+      error: "개인정보 수집·이용 및 광고주 제공 내용을 확인하고 동의해 주세요.",
+    };
+  }
+
+  const expectedVersion = buildCampaignApplicationContactConsentVersion({
+    campaignId: campaign.id,
+    fields,
+  });
+  const submittedVersion = normalizeRequiredText(
+    body.applicationContactConsentVersion ??
+      body.application_contact_consent_version,
+  );
+  if (!submittedVersion || !safeEqual(submittedVersion, expectedVersion)) {
+    return {
+      ok: false as const,
+      status: 409,
+      code: "campaign_application_contact_version_mismatch" as const,
+      error: "연락처 수집 설정이 변경되었습니다. 최신 내용을 다시 확인해 주세요.",
+    };
+  }
+
+  if (
+    submittedKeys.length !== fields.length ||
+    submittedKeys.some(
+      (key) =>
+        !campaignApplicationContactFieldValues.has(
+          key as CampaignApplicationContactField,
+        ) || !fields.includes(key as CampaignApplicationContactField),
+    )
+  ) {
+    return {
+      ok: false as const,
+      status: 422,
+      code: "campaign_application_contact_mismatch" as const,
+      error: "캠페인에서 요청한 연락처 항목만 입력해 주세요.",
+    };
+  }
+
+  const contact: MarketplaceApplicationContactSnapshot["contact"] = {};
+  if (fields.includes("phone")) {
+    const phone = normalizeRequiredText(contactRecord.phone).replace(/\s+/g, " ");
+    const digits = phone.replace(/\D/g, "");
+    if (
+      phone.length > 24 ||
+      !/^[0-9+()\-\s]{8,24}$/.test(phone) ||
+      digits.length < 9 ||
+      digits.length > 15
+    ) {
+      return {
+        ok: false as const,
+        status: 422,
+        code: "campaign_application_phone_invalid" as const,
+        error: "휴대전화 번호를 확인해 주세요.",
+      };
+    }
+    contact.phone = phone;
+  }
+  if (fields.includes("email")) {
+    const email = normalizeEmail(contactRecord.email);
+    if (
+      email.length > 254 ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+    ) {
+      return {
+        ok: false as const,
+        status: 422,
+        code: "campaign_application_email_invalid" as const,
+        error: "이메일 주소를 확인해 주세요.",
+      };
+    }
+    contact.email = email;
+  }
+
+  return { ok: true as const, fields, contact, version: expectedVersion };
+};
+
+const normalizeMarketplaceApplicationContactSnapshot = (
+  value: unknown,
+): MarketplaceApplicationContactSnapshot | undefined => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  const fields = normalizeCampaignApplicationContactFields(record.fields);
+  const contactRecord =
+    record.contact && typeof record.contact === "object" && !Array.isArray(record.contact)
+      ? (record.contact as Record<string, unknown>)
+      : undefined;
+  const version = normalizeRequiredText(record.version);
+  const policyVersion = normalizeRequiredText(record.policy_version);
+  const acceptedAt = normalizeRequiredText(record.accepted_at);
+  const actorProfileId = normalizeRequiredText(record.actor_profile_id);
+  const campaignId = normalizeRequiredText(record.campaign_id);
+  const recipientBrandProfileId = normalizeRequiredText(
+    record.recipient_brand_profile_id,
+  );
+  const recipientOrganizationId = normalizeRequiredText(
+    record.recipient_organization_id,
+  );
+  const recipientName = normalizeRequiredText(record.recipient_name);
+  const purpose = normalizeRequiredText(record.purpose);
+  const retentionPolicy = normalizeRequiredText(record.retention_policy);
+  if (
+    fields.length === 0 ||
+    !contactRecord ||
+    !/^[0-9a-f]{64}$/.test(version) ||
+    !policyVersion ||
+    !acceptedAt ||
+    !actorProfileId ||
+    !campaignId ||
+    !recipientBrandProfileId ||
+    !recipientOrganizationId ||
+    !recipientName ||
+    purpose !== campaignApplicationContactPurpose ||
+    retentionPolicy !== campaignApplicationContactRetentionPolicy
+  ) {
+    return undefined;
+  }
+  const contact: MarketplaceApplicationContactSnapshot["contact"] = {};
+  if (fields.includes("phone")) {
+    const phone = normalizeRequiredText(contactRecord.phone);
+    if (!phone) return undefined;
+    contact.phone = phone;
+  }
+  if (fields.includes("email")) {
+    const email = normalizeEmail(contactRecord.email);
+    if (!email) return undefined;
+    contact.email = email;
+  }
+  return {
+    version,
+    policy_version: policyVersion,
+    fields,
+    contact,
+    accepted_at: acceptedAt,
+    actor_profile_id: actorProfileId,
+    campaign_id: campaignId,
+    recipient_brand_profile_id: recipientBrandProfileId,
+    recipient_organization_id: recipientOrganizationId,
+    recipient_name: recipientName,
+    purpose,
+    retention_policy: campaignApplicationContactRetentionPolicy,
+  };
+};
+
 const hasApprovedInfluencerPlatformVerification = async (
   auth: InfluencerSession,
 ) => {
@@ -17188,6 +18593,8 @@ const submitMarketplaceCampaignApplication = async (
 
   const consent = validateCampaignApplicationConsent(body, campaign);
   if (consent.ok === false) return consent;
+  const applicationContact = validateCampaignApplicationContact(body, campaign);
+  if (applicationContact.ok === false) return applicationContact;
 
   const existingRows = await readMarketplaceProposalRows(
     `?select=*&direction=eq.influencer_to_brand&sender_profile_id=eq.${encodeURIComponent(
@@ -17238,6 +18645,16 @@ const submitMarketplaceCampaignApplication = async (
     await readOrganizationDataOrigin(targetBrandRow?.organization_id),
   );
   const now = new Date().toISOString();
+  if (
+    applicationContact.fields.length > 0 &&
+    !targetBrandRow?.organization_id
+  ) {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "연락처를 제공받는 광고주 조직 정보를 확인할 수 없습니다.",
+    };
+  }
   const proposalId = randomUUID();
   let rows: SupabaseMarketplaceContactProposalRow[];
   try {
@@ -17264,6 +18681,27 @@ const submitMarketplaceCampaignApplication = async (
             actor_profile_id: auth.profile.id,
             campaign_id: campaign.id,
           },
+          ...(applicationContact.fields.length > 0 &&
+          applicationContact.version &&
+          targetBrandRow?.organization_id
+            ? {
+                application_contact_snapshot: {
+                  version: applicationContact.version,
+                  policy_version:
+                    CAMPAIGN_APPLICATION_CONTACT_POLICY_VERSION,
+                  fields: applicationContact.fields,
+                  contact: applicationContact.contact,
+                  accepted_at: now,
+                  actor_profile_id: auth.profile.id,
+                  campaign_id: campaign.id,
+                  recipient_brand_profile_id: campaign.brandId,
+                  recipient_organization_id: targetBrandRow.organization_id,
+                  recipient_name: campaign.brandName,
+                  purpose: campaignApplicationContactPurpose,
+                  retention_policy: campaignApplicationContactRetentionPolicy,
+                } satisfies MarketplaceApplicationContactSnapshot,
+              }
+            : {}),
           data_origin: proposalDataOrigin,
           status: "submitted",
           created_at: now,
@@ -17335,11 +18773,25 @@ const saveInfluencerMarketplaceAvatar = async (
   const publicProfile = profiles[0];
 
   if (publicProfile) {
+    const profileState = hasText(publicProfile.headline) ? "complete" : "minimal";
     await patchSupabaseRecord(
       "marketplace_influencer_profiles",
       `?id=eq.${encodeURIComponent(publicProfile.id)}`,
-      { avatar_url: imageUrl, updated_at: new Date().toISOString() },
+      {
+        avatar_url: imageUrl,
+        profile_setup_state: profileState,
+        updated_at: new Date().toISOString(),
+      },
       "Supabase influencer marketplace avatar update",
+    );
+    await patchSupabaseRecord(
+      "profiles",
+      `?id=eq.${encodeURIComponent(auth.profile.id)}`,
+      {
+        public_profile_setup_state: profileState,
+        updated_at: new Date().toISOString(),
+      },
+      "Supabase influencer avatar completion state",
     );
   }
 
@@ -17449,6 +18901,63 @@ const buildPublicProfileHandleConflictResult = ({
   ),
 });
 
+const ensureInfluencerPublicProfileSetup = async ({
+  authUser,
+  profile,
+  body,
+}: {
+  authUser: SupabaseAuthUser;
+  profile: SupabaseProfileRow;
+  body: Record<string, unknown>;
+}) => {
+  if (
+    profile.activity_page_url &&
+    profile.activity_page_platform &&
+    profile.activity_page_handle &&
+    profile.public_profile_consent_at
+  ) {
+    return { ok: true as const, profile };
+  }
+
+  const claim = normalizeInfluencerSignupActivityClaim({
+    activity_page_url: body.activity_page_url,
+    activity_page_platform: body.activity_page_platform,
+    activity_page_handle: body.activity_page_handle,
+    public_profile_consent_accepted: body.public_profile_consent_accepted,
+    public_profile_consent_version: body.public_profile_consent_version,
+  });
+  if (!claim.ok || claim.legacy) {
+    return {
+      ok: false as const,
+      status: 422,
+      error: claim.ok
+        ? "대표 활동 페이지를 입력해 주세요."
+        : claim.error,
+    };
+  }
+
+  const now = new Date().toISOString();
+  await patchSupabaseRecord(
+    "profiles",
+    `?id=eq.${encodeURIComponent(profile.id)}`,
+    {
+      activity_platforms: [claim.platform],
+      ...buildInfluencerPublicProfileSignupConsent(claim),
+      public_profile_consent_source: "self_service_profile_setup",
+      updated_at: now,
+    },
+    "Supabase influencer representative activity page setup",
+  );
+  forgetProfile(profile.id);
+  await ensureInfluencerMinimalPublicProfile(authUser);
+  forgetProfile(profile.id);
+  const refreshedProfile = await readProfileByUserId(profile.id);
+  if (!refreshedProfile) {
+    throw new Error("Influencer profile setup was not persisted");
+  }
+  return { ok: true as const, profile: refreshedProfile };
+};
+
 const upsertInfluencerPublicProfile = async ({
   authUser,
   profile,
@@ -17477,21 +18986,32 @@ const upsertInfluencerPublicProfile = async ({
     storedProfileRow && storedProfileRow.registered_identity_only !== true
     ? mapInfluencerProfileRowToPublicSettings(storedProfileRow, storedChannelRows)
     : undefined;
+  if (!storedProfileRow || !existingProfile) {
+    return {
+      ok: false as const,
+      status: 409,
+      code: "public_profile_setup_required",
+      error: "대표 활동 페이지를 먼저 등록해 주세요.",
+    };
+  }
+  const platformVerified = approvedPlatforms.length > 0;
   const automaticHandle = getAutomaticPublicProfileHandle(approvedPlatforms) ?? "";
-  const handleError = automaticHandle
+  const handleError = platformVerified
     ? getPublicProfileHandleError(automaticHandle)
-    : "플랫폼 인증을 먼저 완료하면 첫 등록 플랫폼 ID로 공개 주소가 자동 생성됩니다.";
+    : undefined;
 
   if (handleError) {
     return { ok: false as const, status: 422, error: handleError };
   }
 
-  let handle = existingProfile?.handle ?? automaticHandle;
-  const automaticHandleConflict = existingProfile
-    ? undefined
-    : await findInfluencerPublicHandleConflict(automaticHandle, profile.id);
+  let handle = existingProfile.handle;
+  const shouldPromoteHandle =
+    platformVerified && /^rm-[a-f0-9]{27}$/.test(handle);
+  const automaticHandleConflict = shouldPromoteHandle
+    ? await findInfluencerPublicHandleConflict(automaticHandle, profile.id)
+    : undefined;
 
-  if (!existingProfile && automaticHandleConflict) {
+  if (shouldPromoteHandle && automaticHandleConflict) {
     const alternateHandle = normalizeAlternatePublicProfileHandle(
       body.alternateHandle,
     );
@@ -17516,31 +19036,36 @@ const upsertInfluencerPublicProfile = async ({
       });
     }
     handle = availableHandle;
+  } else if (shouldPromoteHandle) {
+    handle = automaticHandle;
   }
 
   const now = new Date().toISOString();
   const rowId =
     storedProfileRow?.id ?? stableUuid(`marketplace:influencer:${profile.id}`);
-  const displayName =
-    normalizeRequiredText(body.displayName) || defaults.displayName;
+  const displayName = normalizeRequiredText(body.displayName);
+  const headline = normalizeRequiredText(body.headline);
+  if (!displayName || !headline) {
+    return {
+      ok: false as const,
+      status: 422,
+      error: "활동명과 한 줄 소개를 입력해 주세요.",
+    };
+  }
   const categories = normalizeStringArrayForStorage(
     body.categories,
-    defaults.categories,
+    existingProfile.categories,
     6,
   );
-  const audience =
-    normalizeRequiredText(body.audience) ||
-    (categories.length > 0
-      ? `${categories.join(", ")} 관심 고객`
-      : defaults.audience);
+  const audience = normalizeOptionalText(body.audience) ?? existingProfile.audience;
   const brandFit = normalizeStringArrayForStorage(
     body.brandFit,
-    defaults.brandFit,
+    existingProfile.brandFit,
     6,
   );
   const collaborationTypes = normalizeCampaignProposalTypes(
     body.collaborationTypes,
-    defaults.collaborationTypes,
+    existingProfile.collaborationTypes,
   );
   const avatarUrl =
     normalizeMarketplacePublicImageUrl(body.avatarUrl ?? body.avatar_url) ??
@@ -17552,9 +19077,9 @@ const upsertInfluencerPublicProfile = async ({
     ownerId: profile.id,
     handle,
     displayName,
-    headline: normalizeRequiredText(body.headline) || defaults.headline,
-    bio: normalizeRequiredText(body.bio) || defaults.bio,
-    location: normalizeRequiredText(body.location) || defaults.location,
+    headline,
+    bio: normalizeOptionalText(body.bio) ?? existingProfile.bio,
+    location: normalizeOptionalText(body.location) ?? existingProfile.location,
     audience,
     avatarLabel:
       normalizeRequiredText(body.avatarLabel) ||
@@ -17564,17 +19089,31 @@ const upsertInfluencerPublicProfile = async ({
     brandFit,
     collaborationTypes,
     startingPriceLabel:
-      normalizeRequiredText(body.startingPriceLabel) ||
-      defaults.startingPriceLabel,
+      normalizeOptionalText(body.startingPriceLabel) ??
+      existingProfile.startingPriceLabel,
     responseTimeLabel:
-      normalizeRequiredText(body.responseTimeLabel) ||
-      defaults.responseTimeLabel,
-    platforms: approvedPlatforms.map((platform) => ({
-      platform: platform.platform,
-      handle: platform.handle,
-      url: platform.url,
-    })),
+      normalizeOptionalText(body.responseTimeLabel) ??
+      existingProfile.responseTimeLabel,
+    platforms: platformVerified
+      ? approvedPlatforms.map((platform) => ({
+          platform: platform.platform,
+          handle: platform.handle,
+          url: platform.url,
+          ownershipStatus: "verified" as const,
+        }))
+      : existingProfile.platforms.map((platform) => ({
+          ...platform,
+          ownershipStatus: "unverified" as const,
+        })),
     published: true,
+    publicIndexEnabled: platformVerified,
+    profileState: avatarUrl && headline
+      ? "complete"
+      : "minimal",
+    representativeActivityPageUrl:
+      storedProfileRow?.representative_activity_page_url ??
+      profile.activity_page_url ??
+      undefined,
     updatedAt: now,
   };
 
@@ -17601,16 +19140,27 @@ const upsertInfluencerPublicProfile = async ({
         starting_price_label: savedProfile.startingPriceLabel,
         response_time_label: savedProfile.responseTimeLabel,
         verified_label:
-          savedProfile.platforms.length > 0
-            ? "계정 프로필 연동"
-            : "공개 프로필 설정",
+          platformVerified ? "계정 인증 완료" : "계정 인증 전",
         brand_fit: savedProfile.brandFit,
         is_published: true,
         registered_identity_only: false,
+        public_index_enabled: platformVerified,
+        profile_setup_state: savedProfile.profileState,
+        representative_activity_page_url:
+          savedProfile.representativeActivityPageUrl ?? null,
         updated_at: now,
       },
     ],
     "owner_profile_id",
+  );
+  await patchSupabaseRecord(
+    "profiles",
+    `?id=eq.${encodeURIComponent(profile.id)}`,
+    {
+      public_profile_setup_state: savedProfile.profileState,
+      updated_at: now,
+    },
+    "Supabase influencer profile completion state",
   );
 
   const approvedChannelKeys = new Set(
@@ -17621,6 +19171,7 @@ const upsertInfluencerPublicProfile = async ({
   const removedChannelIds = storedChannelRows
     .filter(
       (channel) =>
+        channel.ownership_status !== "unverified" &&
         !approvedChannelKeys.has(
           `${channel.platform}:${channel.handle.trim().toLowerCase()}`,
         ),
@@ -17633,7 +19184,7 @@ const upsertInfluencerPublicProfile = async ({
     );
   }
 
-  await upsertSupabaseV2Rows(
+  if (platformVerified) await upsertSupabaseV2Rows(
     "marketplace_influencer_channels",
     savedProfile.platforms.map((platform, index) => {
       const existingChannel = storedChannelRows.find(
@@ -17654,6 +19205,7 @@ const upsertInfluencerPublicProfile = async ({
         url:
           platform.url ??
           buildMarketplacePlatformUrl(platform.platform, platform.handle),
+        ownership_status: "verified",
         sort_order: index,
         updated_at: now,
       };
@@ -17943,6 +19495,11 @@ const mapMarketplaceProposalToMessage = (
   const campaignSnapshot = normalizeMarketplaceCampaignSnapshot(
     row.campaign_snapshot,
   );
+  const applicationContactSnapshot = isAdvertiserApplicant
+    ? normalizeMarketplaceApplicationContactSnapshot(
+        row.application_contact_snapshot,
+      )
+    : undefined;
 
   return {
     id: row.id,
@@ -17982,6 +19539,9 @@ const mapMarketplaceProposalToMessage = (
     proposalSummary: row.proposal_summary,
     campaignId: row.campaign_id ?? undefined,
     campaignTitle: campaignSnapshot?.title ?? undefined,
+    ...(applicationContactSnapshot
+      ? { applicationContact: applicationContactSnapshot.contact }
+      : {}),
     convertedContractId: row.converted_contract_id ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -18261,7 +19821,7 @@ const addPlatformInfoToMarketplaceProposals = async (
     influencerProfileIds.length > 0
       ? readSupabaseRows<SupabaseMarketplaceInfluencerChannelRow>(
           "marketplace_influencer_channels",
-          `?select=profile_id,platform,label,handle,url,followers_label,sort_order&profile_id=in.${postgrestInFilter(
+          `?select=profile_id,platform,label,handle,url,followers_label,performance_label,follower_count,follower_count_synced_at,follower_sync_source,follower_sync_metadata,sort_order&profile_id=in.${postgrestInFilter(
             influencerProfileIds,
           )}&order=sort_order.asc`,
           "marketplace proposal platform channels",
@@ -18277,12 +19837,30 @@ const addPlatformInfoToMarketplaceProposals = async (
   >();
   for (const channel of channelRows) {
     const channels = channelsByProfileId.get(channel.profile_id) ?? [];
+    const naverSelfReport = readNaverSelfReportedMarketplaceMetric(channel);
+    const isNaverBlog = channel.platform === "naver_blog";
+    const hasMisplacedNaverSelfReport =
+      hasMisplacedNaverSelfReportProvenance(channel);
+    const followersLabel = isNaverBlog
+      ? naverSelfReport?.followersLabel
+      : hasMisplacedNaverSelfReport
+        ? undefined
+        : channel.followers_label ?? undefined;
+    const performanceLabel = isNaverBlog
+      ? (naverSelfReport?.performanceLabel ?? "자가신고 미입력")
+      : hasMisplacedNaverSelfReport
+        ? undefined
+        : channel.performance_label ?? undefined;
     channels.push({
       platform: channel.platform,
       label: channel.label || platformLabels[channel.platform],
       handle: channel.handle,
       url: channel.url ?? undefined,
-      followersLabel: channel.followers_label ?? undefined,
+      followersLabel,
+      performanceLabel,
+      ...(naverSelfReport
+        ? { metricTrust: naverSelfReport.metricTrust }
+        : {}),
     });
     channelsByProfileId.set(channel.profile_id, channels);
   }
@@ -18748,7 +20326,7 @@ const syncSupabaseV2Contract = async (
 ) => {
   if (!isUuid(contract.id)) {
     console.warn(
-      `[yeollock.me] skipped Supabase v2 sync for non-UUID contract id: ${contract.id}`,
+      "[yeollock.me] skipped Supabase v2 sync for a non-UUID contract id",
     );
     return;
   }
@@ -18854,7 +20432,9 @@ const syncSupabaseV2Contract = async (
       profile_id: influencerProfileId,
       party_role: "influencer",
       display_name: contract.influencer_info.name,
-      email: contract.influencer_info.contact,
+      email:
+        contract.influencer_info.email ?? contract.influencer_info.contact,
+      phone: contract.influencer_info.phone ?? null,
       channel_url: contract.influencer_info.channel_url,
       is_primary_signer: true,
       invited_at: toIsoDateTime(contract.created_at),
@@ -19106,6 +20686,27 @@ const validateContractPayload = (contract: Contract) => {
   }
   if (!isSafeHttpUrl(contract.influencer_info?.channel_url)) {
     return "Influencer channel URL must be an http(s) URL";
+  }
+  const influencerEmail = normalizeEmail(
+    contract.influencer_info?.email ?? contract.influencer_info?.contact,
+  );
+  if (
+    !influencerEmail ||
+    influencerEmail.length > 254 ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(influencerEmail)
+  ) {
+    return "Influencer email must be a valid email address";
+  }
+  if (hasText(contract.influencer_info?.phone)) {
+    const phone = contract.influencer_info.phone!.trim();
+    const digits = phone.replace(/\D/g, "");
+    if (
+      !/^[0-9+()\-\s]{8,24}$/.test(phone) ||
+      digits.length < 9 ||
+      digits.length > 15
+    ) {
+      return "Influencer phone must be a valid phone number";
+    }
   }
   if (
     hasText(contract.campaign?.tracking_link) &&
@@ -20287,8 +21888,16 @@ const createDraftContractFromMarketplaceApplication = async (
         ) ?? ["OTHER"];
   const uniquePlatforms = Array.from(new Set(platforms));
   const channelUrl = safeMarketplaceProposalChannelUrl(proposal);
-  const influencerContact =
-    senderProfile?.email || proposal.sender_influencer_handle || "계약 작성 단계에서 확인";
+  const applicationContactSnapshot =
+    normalizeMarketplaceApplicationContactSnapshot(
+      proposal.application_contact_snapshot,
+    );
+  const influencerEmail =
+    applicationContactSnapshot?.contact.email ||
+    senderProfile?.email ||
+    proposal.sender_influencer_handle ||
+    "계약 작성 단계에서 확인";
+  const influencerPhone = applicationContactSnapshot?.contact.phone;
   const verificationSummary = await buildAdvertiserScopedVerificationSummary(auth).catch(
     () => undefined,
   );
@@ -20313,6 +21922,7 @@ const createDraftContractFromMarketplaceApplication = async (
   );
   const contract: Contract = {
     id: contractId,
+    relative_test_dates: false,
     data_origin: resolveTrustedDataOrigin(
       normalizeDataOrigin(auth.profile.data_origin) ??
         deriveDataOrigin([
@@ -20336,7 +21946,9 @@ const createDraftContractFromMarketplaceApplication = async (
     influencer_info: {
       name: proposal.sender_name,
       channel_url: channelUrl,
-      contact: influencerContact,
+      contact: influencerEmail,
+      email: influencerEmail,
+      ...(influencerPhone ? { phone: influencerPhone } : {}),
     },
     campaign: {
       source: "marketplace_campaign",
@@ -20641,6 +22253,14 @@ const insertVerificationRequest = async (record: VerificationRequestRecord) => {
     invalidateSupabaseVerificationRequestCache();
     invalidateAdvertiserDashboardCache();
     invalidateInfluencerDashboardCache();
+    if (
+      shouldInvalidateApprovedPlatformChannelCache(
+        insertedRecord,
+        isOperationalTestVerificationRequest(insertedRecord),
+      )
+    ) {
+      await clearPublicMarketplaceCache();
+    }
     await applyVerificationStatusSideEffects(insertedRecord);
     await enqueueVerificationOperationalAlert(insertedRecord);
     return insertedRecord;
@@ -20648,6 +22268,14 @@ const insertVerificationRequest = async (record: VerificationRequestRecord) => {
 
   const verificationRequests = await readVerificationRequests();
   await writeVerificationRequests([normalizedRecord, ...verificationRequests]);
+  if (
+    shouldInvalidateApprovedPlatformChannelCache(
+      normalizedRecord,
+      isOperationalTestVerificationRequest(normalizedRecord),
+    )
+  ) {
+    await clearPublicMarketplaceCache();
+  }
   await enqueueVerificationOperationalAlert(normalizedRecord);
   return normalizedRecord;
 };
@@ -20739,6 +22367,20 @@ const updateVerificationRequestReview = async ({
       invalidateAdvertiserDashboardCache();
       invalidateInfluencerDashboardCache();
       if (updatedRecord) {
+        if (
+          (status === "approved" &&
+            readVerifiedInstagramDmFollowerCount(
+              updatedRecord,
+              isOperationalTestVerificationRequest(updatedRecord),
+            ) !== undefined) ||
+          (existingRecord.status === "approved" &&
+            readVerifiedInstagramDmFollowerCount(
+              existingRecord,
+              isOperationalTestVerificationRequest(existingRecord),
+            ) !== undefined)
+        ) {
+          await clearPublicMarketplaceCache();
+        }
         await applyVerificationStatusSideEffects(updatedRecord);
       }
       return updatedRecord;
@@ -20763,6 +22405,18 @@ const updateVerificationRequestReview = async ({
     invalidateAdvertiserDashboardCache();
     invalidateInfluencerDashboardCache();
     if (updatedRecord) {
+      if (
+        shouldInvalidateApprovedPlatformChannelCache(
+          updatedRecord,
+          isOperationalTestVerificationRequest(updatedRecord),
+        ) ||
+        shouldInvalidateApprovedPlatformChannelCache(
+          existingRecord,
+          isOperationalTestVerificationRequest(existingRecord),
+        )
+      ) {
+        await clearPublicMarketplaceCache();
+      }
       await applyVerificationStatusSideEffects(updatedRecord);
     }
     return updatedRecord;
@@ -20777,6 +22431,19 @@ const updateVerificationRequestReview = async ({
   });
 
   await writeVerificationRequests(nextRequests);
+  if (
+    updatedRecord &&
+    (shouldInvalidateApprovedPlatformChannelCache(
+      updatedRecord,
+      isOperationalTestVerificationRequest(updatedRecord),
+    ) ||
+      shouldInvalidateApprovedPlatformChannelCache(
+        existingRecord,
+        isOperationalTestVerificationRequest(existingRecord),
+      ))
+  ) {
+    await clearPublicMarketplaceCache();
+  }
   return updatedRecord;
 };
 
@@ -20807,6 +22474,18 @@ const updateVerificationRequestAutomation = async (
     invalidateSupabaseVerificationRequestCache();
     invalidateAdvertiserDashboardCache();
     invalidateInfluencerDashboardCache();
+    if (
+      shouldInvalidateApprovedPlatformChannelCache(
+        savedRecord,
+        isOperationalTestVerificationRequest(savedRecord),
+      ) ||
+      shouldInvalidateApprovedPlatformChannelCache(
+        record,
+        isOperationalTestVerificationRequest(record),
+      )
+    ) {
+      await clearPublicMarketplaceCache();
+    }
     await applyVerificationStatusSideEffects(savedRecord);
     await enqueueVerificationOperationalAlert(savedRecord);
     return savedRecord;
@@ -20818,6 +22497,18 @@ const updateVerificationRequestAutomation = async (
       item.id === record.id ? updatedRecord : item,
     ),
   );
+  if (
+    shouldInvalidateApprovedPlatformChannelCache(
+      updatedRecord,
+      isOperationalTestVerificationRequest(updatedRecord),
+    ) ||
+    shouldInvalidateApprovedPlatformChannelCache(
+      record,
+      isOperationalTestVerificationRequest(record),
+    )
+  ) {
+    await clearPublicMarketplaceCache();
+  }
   await enqueueVerificationOperationalAlert(updatedRecord);
   return updatedRecord;
 };
@@ -20907,6 +22598,11 @@ const rerunVerificationAutomation = async (
       });
     const autoApprove =
       record.status === "pending" && shouldAutoApprovePlatformVerification(result);
+    const channelMetric = buildVerifiedPlatformChannelMetric({
+      platform: record.platform,
+      platformHandle: record.platform_handle,
+      automation: result,
+    });
     const existingOwnershipVerification =
       (existingSnapshot.ownership_verification as
         | Record<string, unknown>
@@ -20924,6 +22620,7 @@ const rerunVerificationAutomation = async (
           platform_account: result,
           ownership_challenge: ownershipCheck,
         },
+        ...(channelMetric ? { channel_metric: channelMetric } : {}),
       },
     };
     const updatedRecord = await updateVerificationRequestAutomation(record, {
@@ -21242,7 +22939,7 @@ const expireInstagramDmChallenges = async () => {
   }
 };
 
-const fetchInstagramDmSenderUsername = async (senderId: string) => {
+const fetchInstagramDmSenderProfile = async (senderId: string) => {
   const version = process.env.META_GRAPH_API_VERSION?.trim() || "v24.0";
   if (!metaInstagramAccessToken) {
     throw new Error("Instagram messaging access token is not configured");
@@ -21250,8 +22947,12 @@ const fetchInstagramDmSenderUsername = async (senderId: string) => {
   const url = new URL(
     `https://graph.instagram.com/${version}/${encodeURIComponent(senderId)}`,
   );
-  url.searchParams.set("fields", "id,username");
-  const result = await fetchJsonWithTimeout<{ username?: string; error?: unknown }>(
+  url.searchParams.set("fields", "id,username,follower_count");
+  const result = await fetchJsonWithTimeout<{
+    username?: string;
+    follower_count?: unknown;
+    error?: unknown;
+  }>(
     url.toString(),
     {
       headers: {
@@ -21266,7 +22967,12 @@ const fetchInstagramDmSenderUsername = async (senderId: string) => {
   if (!result.ok || !username) {
     throw new Error(`Instagram user profile lookup failed (${result.status})`);
   }
-  return username;
+  return {
+    username,
+    followerCount: normalizeInstagramFollowerCount(
+      result.payload.follower_count,
+    ),
+  };
 };
 
 const applyInstagramDmChallengeEvent = async (
@@ -21276,7 +22982,7 @@ const applyInstagramDmChallengeEvent = async (
     now: () => new Date(),
     hashCode: hashInstagramDmChallengeCode,
     readPendingByHash: readPendingInstagramDmChallengeByHash,
-    lookupSenderUsername: fetchInstagramDmSenderUsername,
+    lookupSenderProfile: fetchInstagramDmSenderProfile,
     markFailure: markInstagramDmChallengeFailure,
     isStillAuthoritative: async (record) =>
       !(await hasNewerInstagramRequestForSameHandle(record, {
@@ -21289,6 +22995,7 @@ const applyInstagramDmChallengeEvent = async (
       codeHash,
       event: verifiedEvent,
       requestedHandle,
+      followerCount,
       autoApprove,
     }) => {
       const senderIdHash = sha256Hex(verifiedEvent.senderId);
@@ -21303,6 +23010,13 @@ const applyInstagramDmChallengeEvent = async (
           sender_id_hash: senderIdHash,
           message_id_hash: messageIdHash,
           auto_approve_enabled: autoApprove,
+          ...(followerCount === undefined
+            ? {}
+            : {
+                follower_count: followerCount,
+                follower_count_checked_at: new Date().toISOString(),
+                follower_count_source: "instagram_user_profile_api",
+              }),
         },
       );
       if (useSupabase) {
@@ -21340,6 +23054,15 @@ const applyInstagramDmChallengeEvent = async (
         if (saved) {
           invalidateSupabaseVerificationRequestCache();
           invalidateInfluencerDashboardCache();
+          if (
+            autoApprove &&
+            readVerifiedInstagramDmFollowerCount(
+              saved,
+              isOperationalTestVerificationRequest(saved),
+            ) !== undefined
+          ) {
+            await clearPublicMarketplaceCache();
+          }
         }
         return saved;
       }
@@ -21464,6 +23187,7 @@ const sanitizeVerificationRequestForSummary = (
     platform,
     platform_handle,
     platform_url,
+    naver_blog_recent_4d_average_visitors,
     ownership_verification_method,
     ownership_check_status,
     ownership_checked_at,
@@ -21494,6 +23218,7 @@ const sanitizeVerificationRequestForSummary = (
     platform,
     platform_handle,
     platform_url,
+    naver_blog_recent_4d_average_visitors,
     ownership_verification_method,
     ownership_check_status,
     ownership_checked_at,
@@ -21711,7 +23436,7 @@ const readAdvertiserScopedVerificationRequests = async (
   } catch (error) {
     console.warn(
       `[${productName}] advertiser scoped verification read fell back to full store: ${
-        error instanceof Error ? error.message : "unknown error"
+        operationalErrorLabel(error)
       }`,
     );
     return readVerificationRequests();
@@ -21812,8 +23537,10 @@ const buildInfluencerScopedVerificationSummary = async (
       account: {
         name: auth.profile.name,
         email: auth.profile.email ?? auth.user.email,
-        platform_handle: influencerLatest?.platform_handle,
-        platform_url: influencerLatest?.platform_url,
+        platform_handle:
+          influencerLatest?.platform_handle ?? auth.profile.activity_page_handle,
+        platform_url:
+          influencerLatest?.platform_url ?? auth.profile.activity_page_url,
       },
     },
   };
@@ -22891,6 +24618,7 @@ const getV2PlatformAccounts = (
 const buildV2DashboardContract = ({
   contract,
   legacyContract,
+  useRelativeTestDates = false,
   parties,
   platforms,
   pricingTerm,
@@ -22901,6 +24629,7 @@ const buildV2DashboardContract = ({
 }: {
   contract: SupabaseContractV2Row;
   legacyContract?: Contract;
+  useRelativeTestDates?: boolean;
   parties: SupabaseContractPartyRow[];
   platforms: SupabaseContractPlatformRow[];
   pricingTerm?: SupabaseContractPricingTermRow;
@@ -22962,12 +24691,26 @@ const buildV2DashboardContract = ({
   }
 
   const stageMeta = dashboardStageMeta[stage];
+  const v2DueAt =
+    contract.next_due_at ?? contract.upload_deadline ?? contract.review_deadline;
+  const legacyDueAt =
+    legacyContract?.workflow?.due_at ??
+    legacyContract?.campaign?.upload_due_at ??
+    legacyContract?.campaign?.deadline;
+  const dashboardDueAt =
+    useRelativeTestDates && legacyDueAt ? legacyDueAt : v2DueAt;
+  const dashboardUpdatedAt =
+    useRelativeTestDates && legacyContract?.updated_at
+      ? legacyContract.updated_at
+      : contract.updated_at;
   const recordStatus =
     ["signed", "deliverables_due", "deliverables_review", "completed"].includes(stage)
       ? "ready"
       : "not_ready";
   const activityEvents = withFallbackDashboardActivity(
-    mapContractEventRowsToDashboardActivities(events),
+    useRelativeTestDates && legacyContract
+      ? mapLegacyAuditEventsToDashboardActivities(legacyContract.audit_events)
+      : mapContractEventRowsToDashboardActivities(events),
     normalizeDashboardActivityEvent({
       id: `${contract.id}:contract-created`,
       actor:
@@ -22977,7 +24720,10 @@ const buildV2DashboardContract = ({
         "광고주",
       action: "contract_created",
       description: "광고주가 계약 초안을 생성했습니다.",
-      createdAt: contract.created_at ?? contract.updated_at,
+      createdAt:
+        useRelativeTestDates && legacyContract
+          ? legacyContract.created_at
+          : contract.created_at ?? contract.updated_at,
     }),
   );
 
@@ -23012,11 +24758,9 @@ const buildV2DashboardContract = ({
       ]
         .filter(Boolean)
         .join(" - ") || "기간 미정"),
-    deadline_label: formatDashboardDue(
-      contract.next_due_at ?? contract.upload_deadline ?? contract.review_deadline,
-    ),
-    due_at: contract.next_due_at ?? contract.upload_deadline ?? contract.review_deadline ?? undefined,
-    updated_at: contract.updated_at,
+    deadline_label: formatDashboardDue(dashboardDueAt),
+    due_at: dashboardDueAt ?? undefined,
+    updated_at: dashboardUpdatedAt,
     clause_summary: {
       total: totalClauses,
       approved: approvedClauses,
@@ -23469,6 +25213,8 @@ const buildLegacyContractFromV2Rows = ({
       name: influencerParty?.display_name ?? "인플루언서",
       channel_url: influencerParty?.channel_url ?? platforms[0]?.url ?? "",
       contact: influencerParty?.email ?? "",
+      email: influencerParty?.email ?? "",
+      ...(influencerParty?.phone ? { phone: influencerParty.phone } : {}),
     },
     campaign: {
       ...(contract.workflow_source === "marketplace_campaign"
@@ -23722,6 +25468,62 @@ type InfluencerDashboardBuildOptions = {
   includeApplications?: boolean;
 };
 
+const buildInfluencerDashboardPublicProfile = async (
+  profile: SupabaseProfileRow | undefined,
+  approvedPlatforms: InfluencerDashboardResponse["verification"]["approved_platforms"],
+): Promise<InfluencerDashboardResponse["public_profile"]> => {
+  const verified = approvedPlatforms.length > 0;
+  if (!profile) {
+    return {
+      state: "setup_required",
+      published: false,
+      platform_verification_state: verified ? "verified" : "unverified",
+      completion_required: false,
+    };
+  }
+
+  const { profiles } = await readMarketplaceInfluencerRows(
+    `?select=*&owner_profile_id=eq.${encodeURIComponent(profile.id)}&limit=1`,
+  );
+  const marketplaceProfile = profiles[0];
+  const hasPhoto = Boolean(
+    normalizeMarketplacePublicImageUrl(
+      marketplaceProfile?.avatar_url ?? profile.avatar_url,
+    ),
+  );
+  const hasHeadline = hasText(marketplaceProfile?.headline);
+  const complete = hasPhoto && hasHeadline;
+  const setupState = marketplaceProfile?.profile_setup_state;
+  const state = complete
+    ? "complete"
+    : setupState === "minimal" || marketplaceProfile?.is_published
+      ? "minimal"
+      : "setup_required";
+  const handle = marketplaceProfile?.is_published
+    ? normalizePublicProfileHandle(marketplaceProfile.public_handle)
+    : "";
+  const representativeActivityPageUrl = normalizeMarketplacePublicImageUrl(
+    marketplaceProfile?.representative_activity_page_url ??
+      profile.activity_page_url,
+  );
+
+  return {
+    ...(handle
+      ? {
+          handle,
+          path: getInfluencerPublicProfilePath(handle),
+        }
+      : {}),
+    state,
+    published: Boolean(handle),
+    platform_verification_state: verified ? "verified" : "unverified",
+    ...(representativeActivityPageUrl
+      ? { representative_activity_page_url: representativeActivityPageUrl }
+      : {}),
+    completion_required: verified && !complete,
+  };
+};
+
 const buildInfluencerDashboardFromLocal = async (
   authUser: SupabaseAuthUser,
   options: InfluencerDashboardBuildOptions = {},
@@ -23816,6 +25618,10 @@ const buildInfluencerDashboardFromLocal = async (
       latest_request: latestVerificationForResponse,
       approved_platforms: approvedPlatforms,
     },
+    public_profile: await buildInfluencerDashboardPublicProfile(
+      profile,
+      approvedPlatforms,
+    ),
     summary: {
       total_contracts: dashboardContracts.length,
       review_needed: dashboardContracts.filter((contract) => contract.stage === "review_needed").length,
@@ -23983,21 +25789,30 @@ const buildInfluencerDashboardFromRemote = async (
           !isFixedCampaignContract(legacyContract)
         );
       })
-      .map((contract) =>
-        buildV2DashboardContract({
+      .map((contract) => {
+        const legacyContract =
+          legacyContractsById.get(contract.legacy_contract_id ?? "") ??
+          legacyContractsById.get(contract.id);
+
+        return buildV2DashboardContract({
           contract,
-          legacyContract:
-            legacyContractsById.get(contract.legacy_contract_id ?? "") ??
-            legacyContractsById.get(contract.id),
+          legacyContract,
+          useRelativeTestDates: legacyContract
+            ? shouldNormalizeTestContractDatesForSession(
+                relativeDateAuth,
+                legacyContract,
+              )
+            : false,
           parties: partiesByContract.get(contract.id) ?? [],
           platforms: platformsByContract.get(contract.id) ?? [],
           pricingTerm: pricingByContract.get(contract.id),
           clauses: clausesByContract.get(contract.id) ?? [],
-          deliverableRequirements: requirementsByContract.get(contract.id) ?? [],
+          deliverableRequirements:
+            requirementsByContract.get(contract.id) ?? [],
           deliverables: deliverablesByContract.get(contract.id) ?? [],
           events: eventsByContract.get(contract.id) ?? [],
-        }),
-      );
+        });
+      });
 
     dashboardContracts.push(
       ...legacyContractsForUser
@@ -24095,6 +25910,10 @@ const buildInfluencerDashboardFromRemote = async (
       latest_request: latestVerificationForResponse,
       approved_platforms: approvedPlatforms,
     },
+    public_profile: await buildInfluencerDashboardPublicProfile(
+      profile,
+      approvedPlatforms,
+    ),
     summary,
     tasks: buildDashboardTasks(
       dashboardContracts,
@@ -24202,7 +26021,7 @@ const warmDashboardDataCachesInBackground = (reason: string) => {
       `[${productName}] dashboard data cache warmup failed (${reason}): ${
         rejected
           .map((result) =>
-            result.reason instanceof Error ? result.reason.message : "unknown error",
+            operationalErrorLabel(result.reason),
           )
           .join("; ")
       }`,
@@ -24798,19 +26617,8 @@ const resolveInfluencerVerificationContractAccess = async (
 };
 
 app.get("/api/health", (_request, response) => {
-  response.json({
-    ok: true,
-    service: "directsign-api",
-    storage: useSupabase ? "supabase" : "file",
-    demo_mode: demoMode,
-    admin_auth_configured: isAdminAuthConfigured(),
-    supabase_legacy_table: useSupabase ? supabaseLegacyTable : undefined,
-    supabase_schema_version: useSupabase
-      ? useSupabaseV2
-        ? "v2_dual_write"
-        : "legacy"
-      : undefined,
-  });
+  response.setHeader("Cache-Control", "no-store");
+  response.json({ ok: true });
 });
 
 type StartLanguageTargetPath = "/en/creators" | "/ja/creators" | "/zh/creators";
@@ -24898,7 +26706,7 @@ app.get("/api/auth/warmup", async (_request, response) => {
   } catch (error) {
     console.warn(
       `[${productName}] Supabase Auth warmup failed: ${
-        error instanceof Error ? error.message : "unknown error"
+        operationalErrorLabel(error)
       }`,
     );
   }
@@ -25500,7 +27308,7 @@ app.post("/api/admin/logout", async (request, response) => {
     revokeFailed = true;
     console.warn(
       `[${productName}] admin provider logout failed: ${
-        error instanceof Error ? error.message : "unknown error"
+        operationalErrorLabel(error)
       }`,
     );
   }
@@ -26036,6 +27844,159 @@ app.post("/api/auth/recent", async (request, response, next) => {
   }
 });
 
+app.delete("/api/account", async (request, response, next) => {
+  setPrivateAuthResponseHeaders(response);
+  const role = normalizeRequiredText(request.body?.role) as RecentAuthRole;
+  const confirmation = normalizeRequiredText(request.body?.confirmation);
+  if (
+    (role !== "advertiser" && role !== "influencer") ||
+    confirmation !== "탈퇴"
+  ) {
+    response.status(422).json({
+      error: "회원 탈퇴를 계속하려면 ‘탈퇴’를 정확히 입력해 주세요.",
+    });
+    return;
+  }
+
+  const requestedIdempotencyKey = normalizeOptionalText(
+    request.header("idempotency-key"),
+  );
+  if (requestedIdempotencyKey && !isUuidText(requestedIdempotencyKey)) {
+    response.status(422).json({ error: "유효한 탈퇴 요청 식별자가 필요합니다." });
+    return;
+  }
+
+  try {
+    if (!useSupabase) {
+      response.status(503).json({
+        error: "회원 탈퇴 저장소를 사용할 수 없습니다.",
+        retryable: true,
+      });
+      return;
+    }
+
+    const session =
+      role === "advertiser"
+        ? await requireAdvertiserSession(request, response)
+        : await requireInfluencerSession(request, response);
+    if (!session) return;
+
+    const resource = `account:${session.profile.id}`;
+    if (
+      !(await requireRecentAuthGrant({
+        request,
+        response,
+        role,
+        action: "account_delete",
+        resource,
+        session,
+      }))
+    ) {
+      return;
+    }
+
+    await revokeGoogleWorkspaceConnectionForErasure(session.profile.id).catch(
+      (error) => {
+        console.warn(
+          `[${productName}] Google connection revocation during account erasure failed: ${operationalErrorLabel(
+            error,
+          )}`,
+        );
+      },
+    );
+
+    const requestedAt = new Date().toISOString();
+    const requestedRequestId = requestedIdempotencyKey ?? randomUUID();
+    const subjectHash = createHmac("sha256", shareTokenEncryptionSecret)
+      .update(`privacy-account-erasure:v1:${session.profile.id}`)
+      .digest("hex");
+    const erasureResult = asPrivacyErasureRow(
+      await callSupabaseRpc<
+        PrivacyAccountErasureRow | PrivacyAccountErasureRow[] | null
+      >(
+        "request_account_erasure",
+        {
+          p_request_id: requestedRequestId,
+          p_profile_id: session.profile.id,
+          p_role: role,
+          p_subject_hash: subjectHash,
+          p_now: requestedAt,
+        },
+        "privacy account erasure request",
+      ),
+    );
+    const erasureRequestId = erasureResult?.id ?? requestedRequestId;
+
+    establishExplicitUserSessionLogout(
+      request,
+      response,
+      role,
+      [session.accessToken, session.refreshToken],
+      session.profile.id,
+    );
+    invalidateOrganizationCache();
+    invalidateAdvertiserDashboardCache();
+    invalidateInfluencerDashboardCache();
+    invalidateSupabaseContractStoreCache();
+    invalidateSupabaseVerificationRequestCache();
+    clearPublicMarketplaceCache();
+
+    await revokeSupabaseSessionsGlobally(session.accessToken).catch((error) => {
+      console.warn(
+        `[${productName}] account erasure global session revoke deferred: ${operationalErrorLabel(
+          error,
+        )}`,
+      );
+    });
+    await runPrivacyStorageDeletionDrain({
+      requestId: erasureRequestId,
+    }).catch((error) => {
+      console.warn(
+        `[${productName}] account erasure storage cleanup deferred: ${operationalErrorLabel(
+          error,
+        )}`,
+      );
+    });
+
+    const preparedErasure = await getPrivacyAccountErasureStatus({
+      requestId: erasureRequestId,
+    });
+    if (preparedErasure?.status !== "ready_to_finalize") {
+      response.status(202).json({
+        deleted: true,
+        pending: true,
+        message:
+          "계정 이용과 공개 노출을 즉시 중단했습니다. 저장 파일과 연락미 인증 계정의 최종 삭제는 자동 재시도됩니다.",
+      });
+      return;
+    }
+
+    try {
+      await hardDeleteSupabaseAuthUser(session.user.id);
+      await finalizePrivacyAccountErasure(erasureRequestId);
+      response.json({
+        deleted: true,
+        pending: false,
+        message:
+          "회원 탈퇴가 완료되었습니다. 법정 보존이 필요한 계약·서명 증빙은 계정과 분리해 제한 보관한 뒤 보유기간 만료 시 자동 파기합니다.",
+      });
+    } catch (error) {
+      await markPrivacyAccountErasureFailed(
+        erasureRequestId,
+        operationalErrorLabel(error),
+      ).catch(() => undefined);
+      response.status(202).json({
+        deleted: true,
+        pending: true,
+        message:
+          "계정 이용과 공개 노출을 즉시 중단했습니다. 연락미 인증 계정 삭제는 자동 재시도됩니다.",
+      });
+    }
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post("/api/advertiser/login", async (request, response) => {
   setPrivateAuthResponseHeaders(response);
   try {
@@ -26073,12 +28034,27 @@ app.post("/api/advertiser/login", async (request, response) => {
       .catch((error) => {
         console.warn(
           `[${productName}] advertiser login prefetch failed: ${
-            error instanceof Error ? error.message : "unknown error"
+            operationalErrorLabel(error)
           }`,
         );
         return undefined;
       });
     const session = await createSupabasePasswordSession(email, password);
+    if (await isPrivacyAccountErasureBlockingAccess(session.user.id)) {
+      await terminateRoleSessionForAuthorizationFailure({
+        request,
+        response,
+        role: "advertiser",
+        accessToken: session.access_token,
+        refreshToken: session.refresh_token,
+        userId: session.user.id,
+      });
+      response.status(410).json({
+        error: "탈퇴 처리된 계정입니다. 새 계정이 필요하면 다시 가입해 주세요.",
+        code: "ACCOUNT_ERASURE_PENDING",
+      });
+      return;
+    }
     const profileByEmail = await profileByEmailPromise;
     const profile =
       profileByEmail?.id === session.user.id
@@ -26246,6 +28222,18 @@ app.post("/api/advertiser/signup", async (request, response) => {
     if (existingPasswordSession) {
       let keepRecoveredSession = false;
       try {
+        if (
+          await isPrivacyAccountErasureBlockingAccess(
+            existingPasswordSession.user.id,
+          )
+        ) {
+          response.status(410).json({
+            error:
+              "탈퇴 처리 중인 기존 계정은 복구할 수 없습니다. 처리가 끝난 뒤 다시 가입해 주세요.",
+            code: "ACCOUNT_ERASURE_PENDING",
+          });
+          return;
+        }
         const existingProfile = await readProfileByUserId(
           existingPasswordSession.user.id,
         );
@@ -26503,7 +28491,7 @@ app.post("/api/advertiser/logout", async (request, response) => {
     });
     console.warn(
       `[${productName}] advertiser Supabase logout revoke failed: ${
-        error instanceof Error ? error.message : "unknown error"
+        operationalErrorLabel(error)
       }`,
     );
   }
@@ -26521,7 +28509,7 @@ app.get("/api/influencer/session", async (request, response, next) => {
       return;
     }
 
-    const profile = auth.profile ?? (await readProfileByUserId(auth.user.id));
+    let profile = auth.profile ?? (await readProfileByUserId(auth.user.id));
 
     if (!profile || !isInfluencerRole(profile.role)) {
       observeOperationalAuthMetric({
@@ -26544,6 +28532,8 @@ app.get("/api/influencer/session", async (request, response, next) => {
       response.status(403).json({ authenticated: false });
       return;
     }
+
+    profile = await syncConfirmedInfluencerProfile(auth.user, profile);
 
     ensureAuthMetricOriginCookie(
       request,
@@ -26598,8 +28588,23 @@ app.post("/api/influencer/login", async (request, response, _next) => {
 
     const profileByEmailPromise = readProfileByEmail(email).catch(() => undefined);
     const session = await createSupabasePasswordSession(email, password);
+    if (await isPrivacyAccountErasureBlockingAccess(session.user.id)) {
+      await terminateRoleSessionForAuthorizationFailure({
+        request,
+        response,
+        role: "influencer",
+        accessToken: session.access_token,
+        refreshToken: session.refresh_token,
+        userId: session.user.id,
+      });
+      response.status(410).json({
+        error: "탈퇴 처리된 계정입니다. 새 계정이 필요하면 다시 가입해 주세요.",
+        code: "ACCOUNT_ERASURE_PENDING",
+      });
+      return;
+    }
     const profileByEmail = await profileByEmailPromise;
-    const profile =
+    let profile =
       profileByEmail?.id === session.user.id
         ? profileByEmail
         : await readProfileByUserId(session.user.id);
@@ -26660,6 +28665,8 @@ app.post("/api/influencer/login", async (request, response, _next) => {
       return;
     }
 
+    profile = await syncConfirmedInfluencerProfile(session.user, profile);
+
     clearExplicitTerminationForSessionToken(session.access_token);
     clearExplicitTerminationForSessionToken(session.refresh_token);
     rememberRecentAuthSession(session.access_token, session.user);
@@ -26671,7 +28678,7 @@ app.post("/api/influencer/login", async (request, response, _next) => {
     }).catch((error) => {
       console.warn(
         `[${productName}] influencer login dashboard bootstrap failed: ${
-          error instanceof Error ? error.message : "unknown error"
+          operationalErrorLabel(error)
         }`,
       );
       return undefined;
@@ -26681,9 +28688,6 @@ app.post("/api/influencer/login", async (request, response, _next) => {
       user: buildInfluencerSessionUser(session.user, profile),
       verification: buildInfluencerSessionVerification(profile),
     });
-    if (!profile.email_verified_at) {
-      syncProfileEmailVerifiedAtInBackground(session.user);
-    }
   } catch (error) {
     response.status(401).json({
       error: getLoginFailureMessage(error, "인플루언서 로그인에 실패했습니다."),
@@ -26714,6 +28718,7 @@ app.post("/api/influencer/signup", async (request, response) => {
       request.body?.activity_platforms,
       influencerPlatforms,
     );
+    const activityClaim = normalizeInfluencerSignupActivityClaim(request.body);
     const passwordError = validateSignupPassword(password);
     const nextPath = normalizeSignupNextPath(
       request.body?.next_path,
@@ -26739,6 +28744,13 @@ app.post("/api/influencer/signup", async (request, response) => {
       response.status(422).json({ error: "이름 또는 활동명을 입력해 주세요." });
       return;
     }
+    if (!activityClaim.ok) {
+      response.status(422).json({ error: activityClaim.error });
+      return;
+    }
+    const effectiveActivityPlatforms = activityClaim.legacy
+      ? activityPlatforms.selected
+      : [activityClaim.platform];
     if (
       activityCategories.invalid.length > 0 ||
       activityPlatforms.invalid.length > 0
@@ -26748,9 +28760,9 @@ app.post("/api/influencer/signup", async (request, response) => {
     }
     if (
       activityCategories.selected.length === 0 ||
-      activityPlatforms.selected.length === 0
+      effectiveActivityPlatforms.length === 0
     ) {
-      response.status(422).json({ error: "활동 영역과 플랫폼을 각각 하나 이상 선택해 주세요." });
+      response.status(422).json({ error: "활동 분야와 대표 활동 페이지를 확인해 주세요." });
       return;
     }
     if (!hasAcceptedRequiredSignupConsents(request.body)) {
@@ -26776,6 +28788,18 @@ app.post("/api/influencer/signup", async (request, response) => {
     if (existingPasswordSession) {
       let keepRecoveredSession = false;
       try {
+        if (
+          await isPrivacyAccountErasureBlockingAccess(
+            existingPasswordSession.user.id,
+          )
+        ) {
+          response.status(410).json({
+            error:
+              "탈퇴 처리 중인 기존 계정은 복구할 수 없습니다. 처리가 끝난 뒤 다시 가입해 주세요.",
+            code: "ACCOUNT_ERASURE_PENDING",
+          });
+          return;
+        }
         const existingProfile = await readProfileByUserId(
           existingPasswordSession.user.id,
         );
@@ -26824,7 +28848,8 @@ app.post("/api/influencer/signup", async (request, response) => {
               email,
               data_origin: deriveDataOrigin([email, name]),
               activity_categories: activityCategories.selected,
-              activity_platforms: activityPlatforms.selected,
+              activity_platforms: effectiveActivityPlatforms,
+              ...buildInfluencerPublicProfileSignupConsent(activityClaim),
               verification_status: "not_submitted",
               email_verified_at:
                 existingPasswordSession.user.email_confirmed_at ??
@@ -26923,7 +28948,8 @@ app.post("/api/influencer/signup", async (request, response) => {
         email,
         data_origin: deriveDataOrigin([email, name]),
         activity_categories: activityCategories.selected,
-        activity_platforms: activityPlatforms.selected,
+        activity_platforms: effectiveActivityPlatforms,
+        ...buildInfluencerPublicProfileSignupConsent(activityClaim),
         verification_status: "not_submitted",
         email_verified_at: null,
         ...buildSignupLegalConsent(request, "influencer"),
@@ -26942,7 +28968,7 @@ app.post("/api/influencer/signup", async (request, response) => {
         name,
         role: "influencer",
         activity_categories: activityCategories.selected,
-        activity_platforms: activityPlatforms.selected,
+        activity_platforms: effectiveActivityPlatforms,
         verification_status: "not_submitted",
       },
     });
@@ -26999,7 +29025,7 @@ app.post("/api/influencer/logout", async (request, response) => {
     });
     console.warn(
       `[${productName}] influencer Supabase logout revoke failed: ${
-        error instanceof Error ? error.message : "unknown error"
+        operationalErrorLabel(error)
       }`,
     );
   }
@@ -27007,6 +29033,8 @@ app.post("/api/influencer/logout", async (request, response) => {
 });
 
 app.get("/api/influencer/dashboard", async (request, response, next) => {
+  response.setHeader("Cache-Control", "private, no-store");
+  response.setHeader("Vary", "Cookie");
   try {
     const auth = await authenticateInfluencerRequest(request, response);
 
@@ -27015,7 +29043,7 @@ app.get("/api/influencer/dashboard", async (request, response, next) => {
       return;
     }
 
-    const profile = auth.profile ?? (await readProfileByUserId(auth.user.id));
+    let profile = auth.profile ?? (await readProfileByUserId(auth.user.id));
     if (!isInfluencerRole(profile?.role)) {
       await terminateRoleSessionForAuthorizationFailure({
         request,
@@ -27027,6 +29055,8 @@ app.get("/api/influencer/dashboard", async (request, response, next) => {
       response.status(403).json({ authenticated: false });
       return;
     }
+
+    profile = await syncConfirmedInfluencerProfile(auth.user, profile!);
 
     const includeApplications =
       normalizeOptionalText(request.query.includeApplications) !== "false";
@@ -27311,7 +29341,7 @@ app.get("/api/google/oauth/callback", async (request, response) => {
   } catch (error) {
     console.warn(
       `[${productName}] Google Workspace OAuth callback failed: ${
-        error instanceof Error ? error.message : "unknown error"
+        operationalErrorLabel(error)
       }`,
     );
     redirectWithStatus("failed");
@@ -27415,6 +29445,7 @@ app.post("/api/google/sheets/export", async (request, response, next) => {
 app.get(
   "/api/cron/sync-marketplace-followers",
   async (request, response, next) => {
+    response.setHeader("Cache-Control", "private, no-store");
     if (!requireCronRequest(request, response)) return;
     if (!automaticMarketplaceFollowerSyncEnabled) {
       response.status(503).json({
@@ -27445,6 +29476,7 @@ app.get(
 );
 
 app.get("/api/cron/ops-alerts", async (request, response, next) => {
+  response.setHeader("Cache-Control", "private, no-store");
   if (!requireCronRequest(request, response)) return;
 
   try {
@@ -27461,6 +29493,20 @@ app.get("/api/cron/notifications", async (request, response, next) => {
     response.setHeader("Cache-Control", "private, no-store");
     response.json(await runCustomerNotificationMaintenance());
   } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/cron/privacy-retention", async (request, response, next) => {
+  response.setHeader("Cache-Control", "private, no-store");
+  if (!requireCronRequest(request, response)) return;
+
+  try {
+    response.json(await runPrivacyRetentionSweep());
+  } catch (error) {
+    await enqueuePrivacyRetentionFailureAlert(new Date().toISOString()).catch(
+      () => undefined,
+    );
     next(error);
   }
 });
@@ -27516,14 +29562,25 @@ app.get("/api/marketplace/influencers", async (request, response, next) => {
     }
     const savedOnly = savedOnlyQuery === "true";
 
-    const result = await readAuthenticatedMarketplaceInfluencerPage({
-      accessToken: advertiserAuth.accessToken,
-      organizationId: organization.id,
-      page,
-      sort: sort ?? "audience_desc",
-      filters: profileFilters,
-      savedOnly,
-    });
+    let result;
+    try {
+      result = await readAuthenticatedMarketplaceInfluencerPage({
+        accessToken: advertiserAuth.accessToken,
+        organizationId: organization.id,
+        page,
+        sort: sort ?? "audience_desc",
+        filters: profileFilters,
+        savedOnly,
+      });
+    } catch (error) {
+      if (error instanceof AuthenticatedInfluencerDirectoryAccessError) {
+        response.status(403).json({
+          error: "인플루언서 탐색 권한이 없습니다.",
+        });
+        return;
+      }
+      throw error;
+    }
     response.json(result);
   } catch (error) {
     next(error);
@@ -27641,6 +29698,13 @@ app.get("/api/marketplace/influencers/:handle", async (request, response, next) 
       return;
     }
 
+    if (profile.platformVerified !== true) {
+      response.setHeader("Cache-Control", "public, max-age=0, must-revalidate");
+      response.setHeader("X-Robots-Tag", "noindex, nofollow");
+      response.json({ profile });
+      return;
+    }
+
     sendPublicMarketplaceJson(response, { profile }, "marketplace-influencers");
   } catch (error) {
     next(error);
@@ -27719,6 +29783,7 @@ app.post(
   "/api/marketplace/campaigns/:campaignId/applications",
   async (request, response, next) => {
     try {
+      response.setHeader("Cache-Control", "private, no-store");
       const influencerAuth = await requireInfluencerSession(request, response);
       if (!influencerAuth) return;
 
@@ -28263,13 +30328,24 @@ app.put("/api/influencer/public-profile", async (request, response, next) => {
     const influencerAuth = await requireInfluencerSession(request, response);
     if (!influencerAuth) return;
 
-    const result = await upsertInfluencerPublicProfile({
+    const body =
+      request.body && typeof request.body === "object"
+        ? (request.body as Record<string, unknown>)
+        : {};
+    const setup = await ensureInfluencerPublicProfileSetup({
       authUser: influencerAuth.user,
       profile: influencerAuth.profile,
-      body:
-        request.body && typeof request.body === "object"
-          ? (request.body as Record<string, unknown>)
-          : {},
+      body,
+    });
+    if (!setup.ok) {
+      response.status(setup.status).json({ error: setup.error });
+      return;
+    }
+
+    const result = await upsertInfluencerPublicProfile({
+      authUser: influencerAuth.user,
+      profile: setup.profile,
+      body,
     });
 
     if (!result.ok) {
@@ -28360,6 +30436,13 @@ app.post(
         response.status(409).json({
           error:
             "연락미에 등록된 인플루언서에게만 1:1 계약 제안을 보낼 수 있습니다.",
+        });
+        return;
+      }
+      if (profile.platformVerified !== true) {
+        response.status(409).json({
+          error: "계정 인증이 완료된 인플루언서에게만 1:1 계약 제안을 보낼 수 있습니다.",
+          code: "influencer_platform_verification_required",
         });
         return;
       }
@@ -29016,6 +31099,16 @@ app.post("/api/verification/influencer", async (request, response, next) => {
     const platformAccessToken = normalizeOptionalText(
       request.body?.platform_access_token,
     );
+    const hasNaverBlogVisitorReport = Object.prototype.hasOwnProperty.call(
+      request.body ?? {},
+      "naver_blog_recent_4d_average_visitors",
+    );
+    const rawNaverBlogVisitorReport =
+      request.body?.naver_blog_recent_4d_average_visitors;
+    const naverBlogVisitorReport =
+      rawNaverBlogVisitorReport === "" || rawNaverBlogVisitorReport == null
+        ? undefined
+        : normalizeVerificationMetricCount(rawNaverBlogVisitorReport);
     const note = normalizeOptionalText(request.body?.note);
     const evidenceFile = parseEvidenceFile(request.body?.evidence_file);
     const evidenceError = evidenceFile
@@ -29028,6 +31121,34 @@ app.post("/api/verification/influencer", async (request, response, next) => {
     }
     if (!influencerPlatforms.has(platform)) {
       response.status(422).json({ error: "Valid platform is required" });
+      return;
+    }
+    if (hasNaverBlogVisitorReport && platform !== "naver_blog") {
+      response.status(422).json({
+        error: "Naver Blog visitor report is only available for Naver Blog",
+      });
+      return;
+    }
+    if (
+      platform === "naver_blog" &&
+      (!hasNaverBlogVisitorReport ||
+        rawNaverBlogVisitorReport === "" ||
+        rawNaverBlogVisitorReport == null)
+    ) {
+      response.status(422).json({
+        error: "Naver Blog visitor report is required",
+      });
+      return;
+    }
+    if (
+      platform === "naver_blog" &&
+      rawNaverBlogVisitorReport !== "" &&
+      rawNaverBlogVisitorReport != null &&
+      naverBlogVisitorReport === undefined
+    ) {
+      response.status(422).json({
+        error: "Naver Blog visitor report must be a non-negative safe integer",
+      });
       return;
     }
     if (!influencerVerificationMethods.has(ownershipMethod)) {
@@ -29045,6 +31166,41 @@ app.post("/api/verification/influencer", async (request, response, next) => {
     if (!isExpectedPlatformUrl(platform, submittedPlatformUrl)) {
       response.status(422).json({ error: "Profile URL does not match the selected platform" });
       return;
+    }
+    const normalizedSubmittedHandle = normalizeHandleForComparison(
+      submittedPlatformHandle,
+    );
+    if (
+      platform === "tiktok" &&
+      extractTikTokUsername(submittedPlatformUrl) !== normalizedSubmittedHandle
+    ) {
+      response.status(422).json({ error: "TikTok handle and profile URL must match" });
+      return;
+    }
+    if (
+      platform === "naver_blog" &&
+      extractNaverBlogId(submittedPlatformUrl) !==
+        extractNaverBlogId(submittedPlatformHandle)
+    ) {
+      response.status(422).json({ error: "Naver Blog id and profile URL must match" });
+      return;
+    }
+    if (platform === "youtube") {
+      const youtubeTarget = parseYoutubeChannelTarget(
+        submittedPlatformUrl,
+        submittedPlatformHandle,
+      );
+      if (
+        (youtubeTarget.type === "handle" &&
+          normalizeHandleForComparison(youtubeTarget.value) !==
+            normalizedSubmittedHandle) ||
+        (youtubeTarget.type === "id" &&
+          /^UC[a-zA-Z0-9_-]{20,}$/.test(submittedPlatformHandle) &&
+          youtubeTarget.value !== submittedPlatformHandle)
+      ) {
+        response.status(422).json({ error: "YouTube handle and channel URL must match" });
+        return;
+      }
     }
     if (
       isInstagramDmMethod &&
@@ -29152,6 +31308,20 @@ app.post("/api/verification/influencer", async (request, response, next) => {
       challengeCode: ownershipChallengeCode,
       platformAccessToken,
     });
+    const channelMetric = buildVerifiedPlatformChannelMetric({
+      platform,
+      platformHandle,
+      platformAccessTokenProvided: Boolean(platformAccessToken),
+      automation: platformAutomationCheck,
+    });
+    const selfReportedChannelMetric =
+      platform === "naver_blog" && naverBlogVisitorReport !== undefined
+        ? buildNaverBlogSelfReportedChannelMetric({
+            platformHandle,
+            value: naverBlogVisitorReport,
+            reportedAt: now,
+          })
+        : undefined;
     const ownershipCheck =
       platformAutomationCheck.ownership_check ??
       ({
@@ -29189,6 +31359,8 @@ app.post("/api/verification/influencer", async (request, response, next) => {
       platform: platform as InfluencerPlatform,
       platform_handle: platformHandle,
       platform_url: platformUrl,
+      naver_blog_recent_4d_average_visitors:
+        selfReportedChannelMetric?.value,
       ownership_verification_method: ownershipMethod,
       ownership_challenge_code: isInstagramDmMethod
         ? undefined
@@ -29203,6 +31375,9 @@ app.post("/api/verification/influencer", async (request, response, next) => {
       evidence_file_mime: evidenceFile?.type,
       evidence_file_size: evidenceFile?.size,
       evidence_snapshot_json: buildVerificationEvidenceSnapshot(requestId, storedEvidenceFile, {
+        ...(selfReportedChannelMetric
+          ? { self_reported_channel_metric: selfReportedChannelMetric }
+          : {}),
         ownership_verification: {
           contract_id: contractAccess.contractId,
           platform,
@@ -29227,6 +31402,7 @@ app.post("/api/verification/influencer", async (request, response, next) => {
             platform_account: platformAutomationCheck,
             ownership_challenge: ownershipCheck,
           },
+          ...(channelMetric ? { channel_metric: channelMetric } : {}),
         },
       }),
       note,
@@ -30097,6 +32273,8 @@ app.patch("/api/contracts/:id/deliverables/:deliverableId", async (request, resp
 });
 
 app.get("/api/influencer/dashboard/applications", async (request, response, next) => {
+  response.setHeader("Cache-Control", "private, no-store");
+  response.setHeader("Vary", "Cookie");
   try {
     const auth = await requireInfluencerSession(request, response);
     if (!auth) return;
@@ -31140,6 +33318,10 @@ app.put("/api/contracts/:id", async (request, response, next) => {
             name: influencerParty.name,
             channel_url: influencerParty.channelUrl,
             contact: influencerParty.contact,
+            email: influencerParty.contact,
+            ...(normalizedContract.influencer_info.phone
+              ? { phone: normalizedContract.influencer_info.phone }
+              : {}),
           },
         };
         linkedOneToOneProposal = proposal;
@@ -31355,6 +33537,16 @@ app.use(
     response: express.Response,
     _next: express.NextFunction,
   ) => {
+    if (
+      error &&
+      typeof error === "object" &&
+      "type" in error &&
+      error.type === "entity.too.large"
+    ) {
+      response.setHeader("Cache-Control", "no-store");
+      response.status(413).json({ error: "Request body is too large" });
+      return;
+    }
     if (error instanceof AuthSessionTemporarilyUnavailableError) {
       response.setHeader("Cache-Control", "private, no-store");
       response.setHeader("Vary", "Cookie");
@@ -31365,7 +33557,12 @@ app.use(
       });
       return;
     }
-    console.error(`[${productName} API]`, error);
+    console.error(
+      `[${productName} API]`,
+      isProductionRuntime
+        ? { name: error instanceof Error ? error.name : "UnknownError" }
+        : error,
+    );
     response.status(500).json({ error: "Internal server error" });
   },
 );
@@ -31429,7 +33626,8 @@ if (!isVercelFunction) {
     app.use(vite.middlewares);
   }
 
-  httpServer.listen(port, "0.0.0.0", () => {
+  const serverHost = process.env.HOST?.trim() || "127.0.0.1";
+  httpServer.listen(port, serverHost, () => {
     console.log(
       `[${productName}] ${isPreview ? "preview" : "dev"} server running on http://localhost:${port}`,
     );

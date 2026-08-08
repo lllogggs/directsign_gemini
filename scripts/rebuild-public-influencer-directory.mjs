@@ -194,7 +194,7 @@ const [registeredProfiles, registeredChannels, discoveredProfiles] =
     }),
     readAllRows("discovered_influencer_profiles", {
       select:
-        "id,platform,public_handle,platform_handle,display_name,headline,bio,profile_url,categories,audience_countries,audience_tags,followers_label,follower_count,quality_score,status,source_provider,source_keyword,source_evidence,claimed_marketplace_profile_id,last_checked_at,updated_at,naver_blog_visitor_average_4d,naver_blog_visitor_status",
+        "id,platform,public_handle,platform_handle,display_name,headline,bio,profile_url,categories,audience_countries,audience_tags,followers_label,follower_count,quality_score,status,source_provider,source_keyword,source_evidence,claimed_marketplace_profile_id,last_checked_at,updated_at",
       order: "id.asc",
     }),
   ]);

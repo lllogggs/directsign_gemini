@@ -1603,6 +1603,12 @@ function MobileOperationDetail({
 
         <div className="mt-4 space-y-2 text-sm text-neutral-700">
           {request.platform_handle && <p>핸들 {request.platform_handle}</p>}
+          {request.platform === "naver_blog" &&
+            typeof request.naver_blog_recent_4d_average_visitors === "number" && (
+              <p>
+                최근 4일 일평균 방문자 {request.naver_blog_recent_4d_average_visitors.toLocaleString("ko-KR")}명 · 자가신고
+              </p>
+            )}
           {request.business_registration_number && (
             <p>사업자번호 {request.business_registration_number}</p>
           )}
@@ -2379,6 +2385,12 @@ function VerificationReviewPanel({
                   </>
                 )}
                 {request.platform_handle && <p>핸들 {request.platform_handle}</p>}
+                {request.platform === "naver_blog" &&
+                  typeof request.naver_blog_recent_4d_average_visitors === "number" && (
+                    <p>
+                      최근 4일 일평균 방문자 {request.naver_blog_recent_4d_average_visitors.toLocaleString("ko-KR")}명 · 자가신고
+                    </p>
+                  )}
                 {request.ownership_verification_method && (
                   <p>방식 {verificationMethodLabel(request.ownership_verification_method)}</p>
                 )}

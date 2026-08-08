@@ -18,6 +18,7 @@ const actionLabels: Record<string, string> = {
   advertiser_share_rotate: "계약서 링크를 다시 만들기 전에",
   influencer_signature: "전자서명을 완료하기 전에",
   account_security_change: "계정 보안을 변경하기 전에",
+  account_delete: "계정 탈퇴를 완료하기 전에",
 };
 
 export function RecentAuthDialog() {

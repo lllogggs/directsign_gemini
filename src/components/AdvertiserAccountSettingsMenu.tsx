@@ -1,6 +1,15 @@
-import { KeyRound, LogOut, Mail, Search, Settings, ShieldCheck } from "lucide-react";
+import {
+  KeyRound,
+  LogOut,
+  Mail,
+  Search,
+  Settings,
+  ShieldCheck,
+  UserRoundX,
+} from "lucide-react";
 import { useEffect, useRef } from "react";
 import { Link } from "react-router";
+import { openAccountErasureDialog } from "../domain/accountErasure";
 import { LEGAL_CONTACT_EMAIL } from "../domain/legalEntity";
 
 export type AdvertiserAccountMenuSummary = {
@@ -168,6 +177,25 @@ export function AdvertiserAccountSettingsMenu({
               </span>
               <span className="mt-0.5 block text-[11px] font-semibold leading-4 text-neutral-500">
                 로그인 비밀번호를 다시 설정합니다.
+              </span>
+            </span>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              onClose();
+              openAccountErasureDialog("advertiser");
+            }}
+            className="flex min-h-12 w-full items-start gap-2 border-t border-neutral-100 px-4 py-3 text-left transition hover:bg-red-50 focus-visible:bg-red-50"
+          >
+            <UserRoundX className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-500" />
+            <span className="min-w-0">
+              <span className="block text-[12px] font-extrabold text-red-700">
+                회원 탈퇴
+              </span>
+              <span className="mt-0.5 block text-[11px] font-semibold leading-4 text-neutral-500">
+                계정과 공개 정보를 삭제합니다.
               </span>
             </span>
           </button>

@@ -95,6 +95,7 @@ type MarketplaceProposalDraftContextResponse = {
     influencerName?: string;
     influencerUrl?: string;
     influencerContact?: string;
+    influencerPhone?: string;
     platforms?: ContractPlatform[];
     proposalSummary?: string;
   };
@@ -109,6 +110,7 @@ interface ContractDraft {
   influencerName: string;
   influencerUrl: string;
   influencerContact: string;
+  influencerPhone: string;
   selectedDeliverables: ContractDeliverableContentType[];
   deliverableRequirements: Partial<
     Record<ContractDeliverableContentType, ContractDeliverableRequirementDetail>
@@ -330,6 +332,7 @@ const INITIAL_DRAFT: ContractDraft = {
   influencerName: "",
   influencerUrl: "",
   influencerContact: "",
+  influencerPhone: "",
   selectedDeliverables: [],
   deliverableRequirements: {},
   campaignStart: "",
@@ -684,7 +687,7 @@ const validateContractDraft = (draft: ContractDraft): ValidationError[] => {
   requireField(2, "title", draft.title, "계약 건명을 입력하세요.");
   requireField(2, "influencerName", draft.influencerName, "인플루언서명 또는 채널명을 입력하세요.");
   requireField(2, "influencerUrl", draft.influencerUrl, "메인 채널 URL을 입력하세요.");
-  requireField(2, "influencerContact", draft.influencerContact, "연락처를 입력하세요.");
+  requireField(2, "influencerContact", draft.influencerContact, "이메일을 입력하세요.");
 
   if (
     !isBlank(draft.influencerContact) &&
@@ -711,6 +714,22 @@ const validateContractDraft = (draft: ContractDraft): ValidationError[] => {
       field: "trackingLink",
       message: "추적 링크는 http 또는 https 주소만 입력할 수 있습니다.",
     });
+  }
+
+  if (!isBlank(draft.influencerPhone)) {
+    const phone = draft.influencerPhone.trim();
+    const digits = phone.replace(/\D/g, "");
+    if (
+      !/^[0-9+()\-\s]{8,24}$/.test(phone) ||
+      digits.length < 9 ||
+      digits.length > 15
+    ) {
+      errors.push({
+        step: 2,
+        field: "influencerPhone",
+        message: "휴대전화 번호를 확인하세요.",
+      });
+    }
   }
 
   splitLineSeparated(draft.referenceLinks).forEach((link) => {
@@ -993,6 +1012,8 @@ export function ContractBuilder() {
           influencerUrl: data.prefill?.influencerUrl ?? current.influencerUrl,
           influencerContact:
             data.prefill?.influencerContact ?? current.influencerContact,
+          influencerPhone:
+            data.prefill?.influencerPhone ?? current.influencerPhone,
           selectedDeliverables,
           deliverableRequirements: Object.fromEntries(
             selectedDeliverables.map((contentType) => [contentType, {}]),
@@ -1245,6 +1266,8 @@ export function ContractBuilder() {
         name: draft.influencerName.trim(),
         channel_url: draft.influencerUrl.trim(),
         contact: draft.influencerContact.trim(),
+        email: draft.influencerContact.trim(),
+        phone: draft.influencerPhone.trim() || undefined,
       },
       campaign: {
         source: sourceProposalId ? "direct" : undefined,
@@ -1708,7 +1731,7 @@ export function ContractBuilder() {
                         />
                       </div>
                       <div>
-                        <Label>연락처</Label>
+                        <Label>이메일</Label>
                         <Input
                           className={`mt-1.5 ${
                             isProposalPartyLocked
@@ -1728,6 +1751,24 @@ export function ContractBuilder() {
                           }
                         />
                       </div>
+                      <div>
+                        <Label>휴대전화</Label>
+                        <Input
+                          className="mt-1.5"
+                          type="tel"
+                          inputMode="tel"
+                          autoComplete="tel"
+                          placeholder="010-1234-5678"
+                          value={draft.influencerPhone}
+                          onChange={(event) =>
+                            updateDraft({ influencerPhone: event.target.value })
+                          }
+                        />
+                      </div>
+                      <p className="text-[11px] font-semibold leading-5 text-neutral-500 sm:col-span-2">
+                        이메일은 서명 계정 확인에 사용되며, 이메일과 휴대전화는 계약
+                        당사자 정보로 계약서 본문에 포함됩니다.
+                      </p>
                     </div>
                   </div>
                 </section>
@@ -2670,7 +2711,8 @@ const BuilderReviewPanel: React.FC<{
                 ["광고주", formatDraftValue(draft.advertiserName)],
                 ["광고주 담당자", formatDraftValue(draft.advertiserManager, "-")],
                 ["인플루언서", formatDraftValue(draft.influencerName)],
-                ["연락처", formatDraftValue(draft.influencerContact)],
+                ["이메일", formatDraftValue(draft.influencerContact)],
+                ["휴대전화", formatDraftValue(draft.influencerPhone, "-")],
                 ["대표 채널", formatDraftValue(draft.influencerUrl)],
               ]}
             />

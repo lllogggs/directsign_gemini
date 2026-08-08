@@ -95,11 +95,12 @@ const supportsCurrentApiSurface = async (baseUrl) => {
       `${baseUrl}/api/marketplace/influencers`,
       { headers: { Accept: "application/json" }, timeoutMs: 5000 },
     );
+    const marketplaceCacheControl =
+      marketplaceResponse.headers.get("cache-control") ?? "";
     if (
-      marketplaceResponse.status !== 200 ||
-      !(marketplaceResponse.headers.get("cache-control") ?? "").includes(
-        "stale-while-revalidate=300",
-      )
+      marketplaceResponse.status !== 401 ||
+      !marketplaceCacheControl.includes("private") ||
+      !marketplaceCacheControl.includes("no-store")
     ) {
       return false;
     }
@@ -521,6 +522,35 @@ const qaCredentials = {
   advertiserEmail: process.env.QA_ADVERTISER_EMAIL || "breadroom.manager@yeollock.me",
   influencerEmail: process.env.QA_INFLUENCER_EMAIL || "creator.sora@yeollock.me",
   password: process.env.QA_TEST_PASSWORD || "YeollockTest!2026",
+};
+
+const checkPrivateApiBoundary = async (baseUrl, route) => {
+  try {
+    const response = await fetchWithTimeout(`${baseUrl}${route}`, {
+      headers: { Accept: "application/json" },
+      timeoutMs: 15000,
+    });
+    await response.arrayBuffer();
+    const cacheControl = response.headers.get("cache-control") ?? "";
+    const ok =
+      response.status === 401 &&
+      cacheControl.includes("private") &&
+      cacheControl.includes("no-store");
+
+    record(
+      `Private API boundary ${route}`,
+      ok ? "pass" : "fail",
+      `status ${response.status}, cache "${cacheControl || "missing"}"`,
+    );
+    return ok;
+  } catch (error) {
+    record(
+      `Private API boundary ${route}`,
+      "fail",
+      error instanceof Error ? error.message : String(error),
+    );
+    return false;
+  }
 };
 
 const browserPerformanceBudgets = {
@@ -1088,6 +1118,142 @@ const checkBrowserRoleSession = async (client, sessionId, role) => {
   return ok;
 };
 
+const checkAuthenticatedMarketplaceInfluencerDiscovery = async (
+  client,
+  sessionId,
+) => {
+  try {
+    const result = await evaluateCdpValue(
+      client,
+      sessionId,
+      `(async () => {
+        const readPage = async (page) => {
+          const startedAt = performance.now();
+          const response = await fetch(
+            "/api/marketplace/influencers?page=" + page + "&sort=name_asc",
+            {
+              credentials: "include",
+              headers: { Accept: "application/json" },
+            },
+          );
+          const data = await response.json().catch(() => ({}));
+          return {
+            status: response.status,
+            cacheControl: response.headers.get("cache-control") || "",
+            vary: response.headers.get("vary") || "",
+            durationMs: Math.round(performance.now() - startedAt),
+            data,
+          };
+        };
+
+        const first = await readPage(1);
+        const profiles = Array.isArray(first.data?.profiles)
+          ? first.data.profiles
+          : [];
+        const total = first.data?.total;
+        const privateResponse =
+          first.cacheControl.includes("private") &&
+          first.cacheControl.includes("no-store") &&
+          first.vary.toLowerCase().includes("cookie");
+        const accessRestricted =
+          first.status === 403 &&
+          privateResponse &&
+          typeof first.data?.error === "string" &&
+          first.data.error.length > 0;
+        if (accessRestricted) {
+          return {
+            ok: true,
+            accessRestricted: true,
+            firstStatus: first.status,
+            cacheControl: first.cacheControl,
+            total: null,
+            firstDurationMs: first.durationMs,
+            secondDurationMs: 0,
+            detailStatus: null,
+          };
+        }
+        const firstPageValid =
+          first.status === 200 &&
+          privateResponse &&
+          Number.isInteger(total) &&
+          first.data?.page === 1 &&
+          first.data?.pageSize === 100 &&
+          first.data?.totalPages === Math.ceil(total / 100) &&
+          profiles.length === Math.min(100, total);
+
+        let secondPageValid = true;
+        let secondDurationMs = 0;
+        if (firstPageValid && total > 100) {
+          const second = await readPage(2);
+          secondDurationMs = second.durationMs;
+          const firstIds = new Set(profiles.map((profile) => profile?.id));
+          const secondProfiles = Array.isArray(second.data?.profiles)
+            ? second.data.profiles
+            : [];
+          secondPageValid =
+            second.status === 200 &&
+            second.data?.total === total &&
+            second.data?.page === 2 &&
+            second.data?.pageSize === 100 &&
+            !secondProfiles.some((profile) => firstIds.has(profile?.id));
+        }
+
+        const handle = profiles.find((profile) => profile?.handle)?.handle || "";
+        let detailStatus = null;
+        if (handle) {
+          const detailResponse = await fetch(
+            "/api/marketplace/influencers/" + encodeURIComponent(handle),
+            {
+              credentials: "include",
+              headers: { Accept: "application/json" },
+            },
+          );
+          detailStatus = detailResponse.status;
+          await detailResponse.arrayBuffer();
+        }
+
+        return {
+          ok:
+            firstPageValid &&
+            secondPageValid &&
+            (detailStatus === null || detailStatus === 200),
+          firstStatus: first.status,
+          cacheControl: first.cacheControl,
+          total: Number.isInteger(total) ? total : null,
+          firstDurationMs: first.durationMs,
+          secondDurationMs,
+          detailStatus,
+        };
+      })()`,
+    );
+
+    const ok = Boolean(result?.ok);
+    record(
+      "Browser authenticated influencer discovery API",
+      ok ? "pass" : "fail",
+      ok
+        ? result.accessRestricted
+          ? `QA account correctly excluded with 403 in ${result.firstDurationMs}ms`
+          : `total ${Number(result.total ?? 0).toLocaleString("en-US")}, page size 100, page 1 ${result.firstDurationMs}ms${
+              result.secondDurationMs ? `, page 2 ${result.secondDurationMs}ms` : ""
+            }, detail ${result.detailStatus ?? "not applicable"}`
+        : `status ${result?.firstStatus ?? "unknown"}, cache "${
+            result?.cacheControl || "missing"
+          }", total ${result?.total ?? "invalid"}, detail ${
+            result?.detailStatus ?? "not checked"
+          }`,
+    );
+    return ok;
+  } catch (error) {
+    record(
+      "Browser authenticated influencer discovery API",
+      "fail",
+      error instanceof Error ? error.message : String(error),
+    );
+    return false;
+  }
+};
+
 const measureBrowserRouteTransition = async (
   client,
   sessionId,
@@ -1219,11 +1385,23 @@ const checkInfluencerCampaignMobileScroll = async (client, sessionId, baseUrl) =
         const scrollHeight = region.scrollHeight;
         const clientHeight = region.clientHeight;
         const maxScroll = scrollHeight - clientHeight;
+        const renderedCampaignCards = region.querySelectorAll("article").length;
         if (maxScroll < 40) {
           if (hasEmptyOperationalState) {
             return {
               ok: true,
               empty: true,
+              scrollTop: 0,
+              scrollHeight: Math.round(scrollHeight),
+              clientHeight: Math.round(clientHeight),
+              filterRight: Math.round(filterRect.right),
+            };
+          }
+          if (/auto|scroll/i.test(overflowY) && renderedCampaignCards <= 1) {
+            return {
+              ok: true,
+              fits: true,
+              cards: renderedCampaignCards,
               scrollTop: 0,
               scrollHeight: Math.round(scrollHeight),
               clientHeight: Math.round(clientHeight),
@@ -1257,7 +1435,9 @@ const checkInfluencerCampaignMobileScroll = async (client, sessionId, baseUrl) =
       ok
         ? result.empty
           ? `empty operational state; scroll not applicable, filter right ${result.filterRight}px`
-          : `scrollTop ${result.scrollTop}px, region ${result.clientHeight}/${result.scrollHeight}px, filter right ${result.filterRight}px`
+          : result.fits
+            ? `${result.cards} campaign card fits without overflow; scroll region remains enabled, filter right ${result.filterRight}px`
+            : `scrollTop ${result.scrollTop}px, region ${result.clientHeight}/${result.scrollHeight}px, filter right ${result.filterRight}px`
         : result?.detail || "scroll region did not move",
     );
     return ok;
@@ -2288,6 +2468,9 @@ const checkBrowserPerformance = async (baseUrl) => {
         await checkBrowserRoleSession(client, sessionId, "advertiser"),
       );
       checkResults.push(
+        await checkAuthenticatedMarketplaceInfluencerDiscovery(client, sessionId),
+      );
+      checkResults.push(
         await checkDashboardSurfaceBreakpoints(
           client,
           sessionId,
@@ -2401,120 +2584,6 @@ const checkBrowserPerformance = async (baseUrl) => {
   return checkResults.every(Boolean);
 };
 
-const readMarketplaceInfluencerHandle = async (baseUrl) => {
-  try {
-    const response = await fetchWithTimeout(
-      `${baseUrl}/api/marketplace/influencers?page=1&sort=audience_desc`,
-      { timeoutMs: Number(process.env.QA_PUBLIC_API_COLD_TIMEOUT_MS || 45000) },
-    );
-    if (!response.ok) {
-      record(
-        "Marketplace influencer handle",
-        "fail",
-        `status ${response.status}, expected 200`,
-      );
-      return { ok: false, handle: null };
-    }
-
-    const data = await response.json();
-    if (
-      !data ||
-      !Array.isArray(data.profiles) ||
-      data.profiles.length > 100 ||
-      data.page !== 1 ||
-      data.pageSize !== 100 ||
-      !Number.isInteger(data.total) ||
-      data.total < data.profiles.length ||
-      data.totalPages !== Math.ceil(data.total / 100)
-    ) {
-      record("Marketplace influencer handle", "fail", "invalid list response");
-      return { ok: false, handle: null };
-    }
-    const profiles = data.profiles;
-    const qaProfile =
-      profiles.find((profile) => profile.handle === "creator-sora") ??
-      profiles.find((profile) => profile.handle);
-
-    if (!qaProfile?.handle) {
-      record(
-        "Marketplace influencer handle",
-        "pass",
-        "empty operational result; detail route not applicable",
-      );
-      return { ok: true, handle: null };
-    }
-
-    record("Marketplace influencer handle", "pass", qaProfile.handle);
-    return { ok: true, handle: qaProfile.handle };
-  } catch (error) {
-    record(
-      "Marketplace influencer handle",
-      "fail",
-      error instanceof Error ? error.message : String(error),
-    );
-    return { ok: false, handle: null };
-  }
-};
-
-const checkMarketplaceInfluencerNumberedPagination = async (baseUrl) => {
-  try {
-    const readPage = async (page) => {
-      const startedAt = Date.now();
-      const response = await fetchWithTimeout(
-        `${baseUrl}/api/marketplace/influencers?page=${page}&sort=name_asc`,
-        { timeoutMs: Number(process.env.QA_PUBLIC_API_COLD_TIMEOUT_MS || 45000) },
-      );
-      if (!response.ok) {
-        throw new Error(`page ${page} returned ${response.status}`);
-      }
-      return { data: await response.json(), durationMs: Date.now() - startedAt };
-    };
-
-    const first = await readPage(1);
-    const expectedFirstLength = Math.min(100, first.data.total);
-    if (
-      !Array.isArray(first.data.profiles) ||
-      first.data.profiles.length !== expectedFirstLength ||
-      first.data.page !== 1 ||
-      first.data.pageSize !== 100 ||
-      first.data.totalPages !== Math.ceil(first.data.total / 100)
-    ) {
-      throw new Error("page 1 did not match the fixed 100-row contract");
-    }
-
-    let secondDurationMs = 0;
-    if (first.data.total > 100) {
-      const second = await readPage(2);
-      secondDurationMs = second.durationMs;
-      const firstIds = new Set(first.data.profiles.map((profile) => profile.id));
-      if (
-        second.data.total !== first.data.total ||
-        second.data.page !== 2 ||
-        second.data.pageSize !== 100 ||
-        second.data.profiles.some((profile) => firstIds.has(profile.id))
-      ) {
-        throw new Error("page 2 changed the total or repeated a page 1 creator");
-      }
-    }
-
-    record(
-      "Marketplace influencer numbered pagination",
-      "pass",
-      `exact total ${first.data.total.toLocaleString("en-US")}, page size 100, page 1 ${first.durationMs}ms${
-        secondDurationMs ? `, page 2 ${secondDurationMs}ms` : ""
-      }`,
-    );
-    return true;
-  } catch (error) {
-    record(
-      "Marketplace influencer numbered pagination",
-      "fail",
-      error instanceof Error ? error.message : String(error),
-    );
-    return false;
-  }
-};
-
 const stopProcessTree = (processId) => {
   if (!processId) return;
 
@@ -2561,12 +2630,6 @@ const main = async () => {
 
   try {
     const server = await ensureServer();
-    const influencerHandleResult = await readMarketplaceInfluencerHandle(server.baseUrl);
-    const influencerPublicHandle = influencerHandleResult.handle;
-    requiredChecks.push(influencerHandleResult.ok);
-    const influencerPublicPath = influencerPublicHandle
-      ? `/${encodeURIComponent(influencerPublicHandle)}`
-      : null;
 
     record(
       "/api/health",
@@ -2575,12 +2638,9 @@ const main = async () => {
     );
 
     requiredChecks.push(
-      await checkPublicApiCache(server.baseUrl, "/api/marketplace/influencers"),
+      await checkPrivateApiBoundary(server.baseUrl, "/api/marketplace/influencers"),
       await checkPublicApiCache(server.baseUrl, "/api/marketplace/brands"),
       await checkPublicApiCache(server.baseUrl, "/api/marketplace/campaigns"),
-    );
-    requiredChecks.push(
-      await checkMarketplaceInfluencerNumberedPagination(server.baseUrl),
     );
 
     requiredChecks.push(
@@ -2632,16 +2692,7 @@ const main = async () => {
         {},
       ),
       await smokeRoute(server.baseUrl, "/api/contracts/nonexistent/final-pdf", [404]),
-      await smokeRoute(server.baseUrl, "/api/marketplace/influencers", [200]),
-      ...(influencerPublicHandle
-        ? [
-            await smokeRoute(
-              server.baseUrl,
-              `/api/marketplace/influencers/${encodeURIComponent(influencerPublicHandle)}`,
-              [200],
-            ),
-          ]
-        : []),
+      await smokeRoute(server.baseUrl, "/api/marketplace/influencers", [401]),
       await smokeRoute(server.baseUrl, "/api/marketplace/brands", [200]),
       await smokeRoute(server.baseUrl, "/api/marketplace/brands/breadroom-partner", [200]),
       await smokeRoute(server.baseUrl, "/api/marketplace/campaigns", [200]),
@@ -2663,9 +2714,6 @@ const main = async () => {
       await smokeAppShellRoute(server.baseUrl, "/influencer/brands"),
       await smokeAppShellRoute(server.baseUrl, "/influencer/campaigns"),
       await smokeAppShellRoute(server.baseUrl, "/influencer/messages"),
-      ...(influencerPublicPath
-        ? [await smokeAppShellRoute(server.baseUrl, influencerPublicPath)]
-        : []),
       await smokeAppShellRoute(server.baseUrl, "/brands/breadroom-partner"),
       await smokeAppShellRoute(server.baseUrl, "/contract/nonexistent"),
       await smokeRoute(server.baseUrl, "/privacy", [200]),

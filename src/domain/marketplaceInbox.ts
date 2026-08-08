@@ -47,12 +47,18 @@ export type MarketplaceMessageThread = {
     handle?: string;
     url?: string;
     followersLabel?: string;
+    performanceLabel?: string;
+    metricTrust?: "self_reported";
   }>;
   proposalType: CampaignProposalType;
   proposalTypeLabel: string;
   proposalSummary: string;
   campaignId?: string;
   campaignTitle?: string;
+  applicationContact?: {
+    phone?: string;
+    email?: string;
+  };
   convertedContractId?: string;
   createdAt: string;
   updatedAt: string;

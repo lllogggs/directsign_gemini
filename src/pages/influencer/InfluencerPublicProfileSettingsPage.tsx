@@ -25,6 +25,10 @@ import { HeaderNotificationCenterButton } from "../../components/HeaderNotificat
 import { MobileSurfaceSwitch } from "../../components/MobileSurfaceSwitch";
 import { PlatformBrandMark } from "../../components/PlatformBrandMark";
 import { apiFetch } from "../../domain/api";
+import {
+  PUBLIC_PROFILE_CONSENT_VERSION,
+  parseRepresentativeActivityPage,
+} from "../../domain/activityPage";
 import { PRODUCT_NAME } from "../../domain/brand";
 import {
   type InfluencerDashboardResponse,
@@ -37,6 +41,7 @@ import {
 } from "../../domain/marketplace";
 import { buildLoginRedirect } from "../../domain/navigation";
 import { getPlatformDisplayName } from "../../domain/platformDisplay";
+import type { InfluencerPlatform } from "../../domain/verification";
 import {
   buildDefaultPublicProfileSettings,
   getInfluencerPublicProfilePath,
@@ -53,6 +58,9 @@ import { clearNotificationCenterCache } from "../../hooks/useNotificationCenter"
 import { clearVerificationSummaryCache } from "../../hooks/useVerificationSummary";
 
 type ProfileForm = {
+  activityPageUrl: string;
+  activityPagePlatform: InfluencerPlatform;
+  activityPageHandle: string;
   displayName: string;
   headline: string;
   bio: string;
@@ -85,7 +93,15 @@ type DashboardApiPayload =
 
 const toProfileForm = (
   profile: InfluencerPublicProfileSettings,
+  dashboard: InfluencerDashboardResponse,
 ): ProfileForm => ({
+  activityPageUrl:
+    profile.representativeActivityPageUrl ??
+    dashboard.public_profile.representative_activity_page_url ??
+    "",
+  activityPagePlatform:
+    profile.platforms[0]?.platform ?? dashboard.user.activity_platforms[0] ?? "other",
+  activityPageHandle: profile.platforms[0]?.handle ?? "",
   displayName: profile.displayName,
   headline: profile.headline,
   bio: profile.bio,
@@ -124,6 +140,7 @@ export function InfluencerPublicProfileSettingsPage() {
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [saveError, setSaveError] = useState<string | undefined>();
   const [saveSuccess, setSaveSuccess] = useState<string | undefined>();
+  const [publicProfileConsent, setPublicProfileConsent] = useState(false);
 
   const redirectToLogin = useCallback(() => {
     const currentPath = `${location.pathname}${location.search}`;
@@ -192,7 +209,8 @@ export function InfluencerPublicProfileSettingsPage() {
       const formSource =
         profile ?? buildDefaultPublicProfileSettings(dashboardPayload);
       setState({ status: "ready", dashboard: dashboardPayload, profile });
-      setForm(toProfileForm(formSource));
+      setForm(toProfileForm(formSource, dashboardPayload));
+      setPublicProfileConsent(Boolean(profile?.published));
     } catch (error) {
       if (requestId !== requestIdRef.current) return;
       setState({
@@ -215,21 +233,35 @@ export function InfluencerPublicProfileSettingsPage() {
     };
   }, [loadProfile]);
 
+  const activityPageResult = useMemo(
+    () => parseRepresentativeActivityPage(form?.activityPageUrl ?? ""),
+    [form?.activityPageUrl],
+  );
+  const needsActivityPageSetup =
+    state.status === "ready" && state.dashboard.public_profile.state === "setup_required";
+  const inferredActivityPage = activityPageResult.ok
+    ? activityPageResult.page
+    : undefined;
+  const activityPageSetupComplete = Boolean(
+    inferredActivityPage &&
+      (inferredActivityPage.supported ||
+        (form?.activityPagePlatform && form.activityPageHandle.trim())),
+  );
+
   const canSave = useMemo(() => {
     if (!form) return false;
     return (
       form.displayName.trim().length > 0 &&
       form.headline.trim().length > 0 &&
-      form.bio.trim().length > 0 &&
-      form.location.trim().length > 0 &&
-      form.audience.trim().length > 0 &&
-      parseListField(form.categories).length > 0 &&
-      form.startingPriceLabel.trim().length > 0 &&
-      form.responseTimeLabel.trim().length > 0 &&
-      parseListField(form.brandFit).length > 0 &&
-      form.collaborationTypes.length > 0
+      (!needsActivityPageSetup ||
+        (activityPageSetupComplete && publicProfileConsent))
     );
-  }, [form]);
+  }, [
+    activityPageSetupComplete,
+    form,
+    needsActivityPageSetup,
+    publicProfileConsent,
+  ]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -248,6 +280,19 @@ export function InfluencerPublicProfileSettingsPage() {
         },
         credentials: "include",
         body: JSON.stringify({
+          ...(needsActivityPageSetup
+            ? {
+                activity_page_url: inferredActivityPage?.normalizedUrl,
+                activity_page_platform: inferredActivityPage?.supported
+                  ? inferredActivityPage.platform
+                  : form.activityPagePlatform,
+                activity_page_handle: inferredActivityPage?.supported
+                  ? inferredActivityPage.handle
+                  : form.activityPageHandle.trim().replace(/^@+/, ""),
+                public_profile_consent_accepted: publicProfileConsent,
+                public_profile_consent_version: PUBLIC_PROFILE_CONSENT_VERSION,
+              }
+            : {}),
           displayName: form.displayName.trim(),
           headline: form.headline.trim(),
           bio: form.bio.trim(),
@@ -276,10 +321,26 @@ export function InfluencerPublicProfileSettingsPage() {
 
       setState((current) =>
         current.status === "ready"
-          ? { ...current, profile: payload.profile ?? null }
+          ? {
+              ...current,
+              profile: payload.profile ?? null,
+              dashboard: {
+                ...current.dashboard,
+                public_profile: {
+                  ...current.dashboard.public_profile,
+                  handle: payload.profile.handle,
+                  path: getInfluencerPublicProfilePath(payload.profile.handle),
+                  state: payload.profile.profileState,
+                  published: payload.profile.published,
+                  completion_required:
+                    payload.profile.profileState !== "complete" &&
+                    current.dashboard.verification.approved_platforms.length > 0,
+                },
+              },
+            }
           : current,
       );
-      setForm(toProfileForm(payload.profile));
+      setForm(toProfileForm(payload.profile, state.dashboard));
       setSaveSuccess("공개 프로필을 저장했습니다.");
     } catch (error) {
       setSaveError(
@@ -428,6 +489,9 @@ export function InfluencerPublicProfileSettingsPage() {
                 <h1 className="text-[26px] font-bold leading-tight text-neutral-950 sm:text-[30px]">
                   공개 프로필 관리
                 </h1>
+                <p className="mt-1 text-[13px] font-semibold text-neutral-500">
+                  프로필 이미지와 한 줄 소개를 먼저 채우면 프로필이 완성됩니다.
+                </p>
               </div>
               <span
                 className={`inline-flex h-8 w-fit items-center rounded-full border px-3 text-[12px] font-semibold ${
@@ -448,6 +512,103 @@ export function InfluencerPublicProfileSettingsPage() {
               </div>
 
               <form onSubmit={handleSubmit}>
+                {needsActivityPageSetup ? (
+                  <div className="border-b border-blue-100 bg-blue-50/45 px-4 py-4 sm:px-5">
+                    <h3 className="text-[14px] font-bold text-blue-950">
+                      대표 활동 페이지 등록
+                    </h3>
+                    <p className="mt-1 text-[12px] font-semibold leading-5 text-blue-800/80">
+                      등록 후 이메일이 확인된 계정에 최소 공개 프로필을 만듭니다.
+                    </p>
+                    <div className="mt-3 grid gap-3">
+                      <label className="block">
+                        <span className="text-[12px] font-bold text-neutral-800">
+                          대표 활동 페이지
+                        </span>
+                        <input
+                          type="url"
+                          required
+                          value={form.activityPageUrl}
+                          placeholder="https://instagram.com/creator"
+                          onChange={(event) =>
+                            setForm((current) =>
+                              current
+                                ? { ...current, activityPageUrl: event.target.value }
+                                : current,
+                            )
+                          }
+                          className="marketplace-input mt-1.5"
+                        />
+                      </label>
+                      {inferredActivityPage && !inferredActivityPage.supported ? (
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <label className="block">
+                            <span className="text-[12px] font-bold text-neutral-800">
+                              플랫폼
+                            </span>
+                            <select
+                              value={form.activityPagePlatform}
+                              onChange={(event) =>
+                                setForm((current) =>
+                                  current
+                                    ? {
+                                        ...current,
+                                        activityPagePlatform: event.target
+                                          .value as InfluencerPlatform,
+                                      }
+                                    : current,
+                                )
+                              }
+                              className="marketplace-input mt-1.5"
+                            >
+                              <option value="instagram">인스타그램</option>
+                              <option value="youtube">유튜브</option>
+                              <option value="tiktok">틱톡</option>
+                              <option value="naver_blog">네이버 블로그</option>
+                              <option value="other">기타</option>
+                            </select>
+                          </label>
+                          <label className="block">
+                            <span className="text-[12px] font-bold text-neutral-800">
+                              계정 ID
+                            </span>
+                            <input
+                              required
+                              value={form.activityPageHandle}
+                              placeholder="@ 없이 입력"
+                              onChange={(event) =>
+                                setForm((current) =>
+                                  current
+                                    ? {
+                                        ...current,
+                                        activityPageHandle: event.target.value,
+                                      }
+                                    : current,
+                                )
+                              }
+                              className="marketplace-input mt-1.5"
+                            />
+                          </label>
+                        </div>
+                      ) : null}
+                      <label className="flex cursor-pointer items-start gap-2.5 rounded-[8px] border border-blue-100 bg-white px-3 py-2.5">
+                        <input
+                          type="checkbox"
+                          required
+                          checked={publicProfileConsent}
+                          onChange={(event) =>
+                            setPublicProfileConsent(event.target.checked)
+                          }
+                          className="mt-0.5 h-4 w-4 accent-blue-600"
+                        />
+                        <span className="text-[11px] font-semibold leading-4 text-neutral-700">
+                          활동명, 분야, 대표 활동 페이지가 공개되는 데 동의합니다.
+                          계정 인증 전에는 팔로워 수와 1:1 계약 제안이 표시되지 않습니다.
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+                ) : null}
                 <ProfileField label="프로필 이미지" fieldId="profile-avatar">
                   <div
                     id="profile-avatar"
@@ -533,10 +694,9 @@ export function InfluencerPublicProfileSettingsPage() {
                   />
                 </ProfileField>
 
-                <ProfileField label="소개" htmlFor="profile-bio">
+                <ProfileField label="소개 (선택)" htmlFor="profile-bio">
                   <textarea
                     id="profile-bio"
-                    required
                     rows={5}
                     value={form.bio}
                     onChange={(event) =>
@@ -548,10 +708,9 @@ export function InfluencerPublicProfileSettingsPage() {
                   />
                 </ProfileField>
 
-                <ProfileField label="활동 지역" htmlFor="profile-location">
+                <ProfileField label="활동 지역 (선택)" htmlFor="profile-location">
                   <input
                     id="profile-location"
-                    required
                     value={form.location}
                     onChange={(event) =>
                       setForm((current) =>
@@ -564,10 +723,9 @@ export function InfluencerPublicProfileSettingsPage() {
                   />
                 </ProfileField>
 
-                <ProfileField label="주요 오디언스" htmlFor="profile-audience">
+                <ProfileField label="주요 오디언스 (선택)" htmlFor="profile-audience">
                   <input
                     id="profile-audience"
-                    required
                     value={form.audience}
                     onChange={(event) =>
                       setForm((current) =>
@@ -580,10 +738,9 @@ export function InfluencerPublicProfileSettingsPage() {
                   />
                 </ProfileField>
 
-                <ProfileField label="카테고리" htmlFor="profile-categories">
+                <ProfileField label="카테고리 (선택)" htmlFor="profile-categories">
                   <input
                     id="profile-categories"
-                    required
                     value={form.categories}
                     onChange={(event) =>
                       setForm((current) =>
@@ -597,10 +754,9 @@ export function InfluencerPublicProfileSettingsPage() {
                   />
                 </ProfileField>
 
-                <ProfileField label="시작 금액" htmlFor="profile-starting-price">
+                <ProfileField label="시작 금액 (선택)" htmlFor="profile-starting-price">
                   <input
                     id="profile-starting-price"
-                    required
                     value={form.startingPriceLabel}
                     onChange={(event) =>
                       setForm((current) =>
@@ -614,10 +770,9 @@ export function InfluencerPublicProfileSettingsPage() {
                   />
                 </ProfileField>
 
-                <ProfileField label="응답 시간" htmlFor="profile-response-time">
+                <ProfileField label="응답 시간 (선택)" htmlFor="profile-response-time">
                   <input
                     id="profile-response-time"
-                    required
                     value={form.responseTimeLabel}
                     onChange={(event) =>
                       setForm((current) =>
@@ -631,10 +786,9 @@ export function InfluencerPublicProfileSettingsPage() {
                   />
                 </ProfileField>
 
-                <ProfileField label="브랜드 적합 조건" htmlFor="profile-brand-fit">
+                <ProfileField label="브랜드 적합 조건 (선택)" htmlFor="profile-brand-fit">
                   <textarea
                     id="profile-brand-fit"
-                    required
                     rows={4}
                     value={form.brandFit}
                     onChange={(event) =>
@@ -649,7 +803,7 @@ export function InfluencerPublicProfileSettingsPage() {
                   />
                 </ProfileField>
 
-                <ProfileField label="협업 형태" fieldId="profile-collaboration-types">
+                <ProfileField label="협업 형태 (선택)" fieldId="profile-collaboration-types">
                   <div
                     id="profile-collaboration-types"
                     className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3"

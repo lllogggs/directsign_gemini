@@ -5251,6 +5251,26 @@ function CampaignApplicantRow({
           {applicantPerformance}
         </p>
       ) : null}
+      {thread.applicationContact?.phone || thread.applicationContact?.email ? (
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-semibold text-[#4f5850]">
+          {thread.applicationContact.phone ? (
+            <a
+              href={`tel:${thread.applicationContact.phone.replace(/[^\d+]/g, "")}`}
+              className="truncate hover:text-blue-700 hover:underline"
+            >
+              {thread.applicationContact.phone}
+            </a>
+          ) : null}
+          {thread.applicationContact.email ? (
+            <a
+              href={`mailto:${thread.applicationContact.email}`}
+              className="truncate hover:text-blue-700 hover:underline"
+            >
+              {thread.applicationContact.email}
+            </a>
+          ) : null}
+        </div>
+      ) : null}
       <div className="grid w-full grid-cols-2 gap-1.5 sm:w-[190px]">
         {profileHref ? (
           <Link
@@ -5302,10 +5322,12 @@ function getCampaignApplicantPerformanceLabel(
   platforms: Array<{
     followersLabel?: string;
     performanceLabel?: string;
+    metricTrust?: "self_reported";
   }>,
   profile?: MarketplaceInfluencerProfile,
 ) {
   const performanceLabels = platforms
+    .filter((platform) => platform.metricTrust !== "self_reported")
     .map((platform) => platform.performanceLabel)
     .filter((label): label is string => Boolean(label?.trim()));
   const audienceLabel = profile?.audience?.trim();
@@ -5341,7 +5363,9 @@ function ApplicantPlatformLinks({
       {visiblePlatforms.slice(0, 1).map((item, index) => {
         const label = platformLabels[item.platform] ?? item.label;
         const text = item.followersLabel;
-        const title = item.followersLabel ? `${label} ${item.followersLabel}` : label;
+        const title = [label, item.followersLabel, item.performanceLabel]
+          .filter(Boolean)
+          .join(" ");
         const key = `${item.platform}-${item.handle ?? item.url ?? index}`;
         const platformMeta =
           PLATFORM_META[marketplacePlatformToContractPlatform(item.platform)];
@@ -5349,6 +5373,11 @@ function ApplicantPlatformLinks({
           <>
             <span className="shrink-0">{platformMeta.mark}</span>
             {text ? <span className="truncate">{text}</span> : null}
+            {item.metricTrust === "self_reported" ? (
+              <span className="inline-flex h-5 shrink-0 items-center rounded-full bg-neutral-100 px-1.5 text-[10px] font-bold text-neutral-600">
+                자가신고
+              </span>
+            ) : null}
           </>
         );
 
@@ -8570,7 +8599,7 @@ function getContractCreatorAccountLabel(
   return contract.influencer_info?.channel_url ?? "";
 }
 
-function getContractCreatorAudienceLabel(profile?: MarketplaceInfluencerProfile) {
+function getContractCreatorChannelMetricLabel(profile?: MarketplaceInfluencerProfile) {
   if (!profile?.platforms.length) return "";
 
   return joinExportValues(
@@ -8578,6 +8607,7 @@ function getContractCreatorAudienceLabel(profile?: MarketplaceInfluencerProfile)
       joinExportValues([
         platformLabels[platform.platform],
         platform.followersLabel,
+        platform.metricTrust === "self_reported" ? "자가신고" : undefined,
       ]),
     ),
   );
@@ -8730,7 +8760,7 @@ function buildAdvertiserContractExportSheet(contracts: Contract[]): XlsxSheet {
       "크리에이터명",
       "크리에이터 계정명",
       "크리에이터 연락처",
-      "구독자/팔로워수",
+      "채널 지표",
       "플랫폼",
       "콘텐츠 형식",
       "콘텐츠 수량",
@@ -8811,7 +8841,7 @@ function buildAdvertiserContractExportSheet(contracts: Contract[]): XlsxSheet {
         removeInternalTestLabel(contract.influencer_info?.name, ""),
         getContractCreatorAccountLabel(contract, creatorProfile),
         formatPublicContactValue(contract.influencer_info?.contact),
-        getContractCreatorAudienceLabel(creatorProfile),
+        getContractCreatorChannelMetricLabel(creatorProfile),
         getContractPlatformExportLabel(contract),
         joinExportValues(contract.campaign?.deliverables ?? []),
         getContractDeliverableCount(contract),
@@ -8918,6 +8948,8 @@ function buildAdvertiserCampaignApplicantExportSheet(
       "플랫폼",
       "대표 카테고리",
       "소개",
+      "휴대전화",
+      "이메일",
       "신청일",
     ],
     rows: applicants.map((thread) => {
@@ -8943,11 +8975,14 @@ function buildAdvertiserCampaignApplicantExportSheet(
               platformLabels[platform.platform],
               platform.handle,
               platform.followersLabel,
+              platform.metricTrust === "self_reported" ? "자가신고" : undefined,
             ]),
           ),
         ),
         mainCategory,
         thread.counterpartIntro || thread.senderIntro,
+        thread.applicationContact?.phone,
+        thread.applicationContact?.email,
         formatExportDate(thread.createdAt),
       ];
     }),

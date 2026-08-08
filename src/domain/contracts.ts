@@ -180,6 +180,7 @@ export interface AuditEvent {
 export interface Contract {
   id: string;
   data_origin?: DataOrigin;
+  relative_test_dates?: boolean;
   advertiser_id: string;
   brand_profile_id?: string;
   campaign_name?: string;
@@ -202,6 +203,8 @@ export interface Contract {
     name: string;
     channel_url: string;
     contact: string;
+    email?: string;
+    phone?: string;
   };
   campaign?: ContractCampaign;
   settlement?: ContractSettlement;

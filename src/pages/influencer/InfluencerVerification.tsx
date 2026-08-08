@@ -72,6 +72,7 @@ interface InfluencerVerificationForm {
   platform_handle: string;
   platform_url: string;
   ownership_challenge_url: string;
+  naver_blog_recent_4d_average_visitors: string;
   note: string;
 }
 
@@ -79,7 +80,21 @@ const initialForm: InfluencerVerificationForm = {
   platform_handle: "",
   platform_url: "",
   ownership_challenge_url: "",
+  naver_blog_recent_4d_average_visitors: "",
   note: "",
+};
+
+const parseNaverBlogVisitorAverageInput = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return { value: undefined };
+  if (!/^(?:0|[1-9][0-9]*|[1-9][0-9]{0,2}(?:,[0-9]{3})+)$/.test(trimmed)) {
+    return { error: "0 이상의 정수로 입력해 주세요." };
+  }
+  const parsed = Number(trimmed.replace(/,/g, ""));
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+    return { error: "입력 가능한 숫자 범위를 확인해 주세요." };
+  }
+  return { value: parsed };
 };
 
 const normalizeInstagramHandleInput = (value: string) => {
@@ -319,6 +334,7 @@ export function InfluencerVerification() {
   const [file, setFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [naverBlogVisitorError, setNaverBlogVisitorError] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [instagramDmChallenge, setInstagramDmChallenge] =
     useState<InstagramDmChallenge | null>(null);
@@ -507,6 +523,10 @@ export function InfluencerVerification() {
         platform_url: current.platform_url || contract.influencer_info.channel_url,
         ownership_challenge_url:
           current.ownership_challenge_url || contract.influencer_info.channel_url,
+        naver_blog_recent_4d_average_visitors:
+          (inferredPlatform ?? platform) === "naver_blog"
+            ? current.naver_blog_recent_4d_average_visitors
+            : "",
       }));
       setPrefilledContractId(contract.id);
     }, 0);
@@ -514,9 +534,37 @@ export function InfluencerVerification() {
     return () => window.clearTimeout(timer);
   }, [contract, platform, prefilledContractId]);
 
+  useEffect(() => {
+    const accountUrl = verification?.account?.platform_url?.trim();
+    const accountHandle = verification?.account?.platform_handle?.trim();
+    if (!accountUrl || form.platform_url || form.platform_handle) return;
+
+    const inferredPlatform = inferPlatform(accountUrl);
+    if (!inferredPlatform) return;
+    const timer = window.setTimeout(() => {
+      setPlatform(inferredPlatform);
+      setMethod(PLATFORM_META[inferredPlatform].methods[0]);
+      setForm((current) => ({
+        ...current,
+        platform_handle:
+          accountHandle || inferHandle(accountUrl, inferredPlatform),
+        platform_url: accountUrl,
+        ownership_challenge_url: accountUrl,
+      }));
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    form.platform_handle,
+    form.platform_url,
+    verification?.account?.platform_handle,
+    verification?.account?.platform_url,
+  ]);
+
   const updateForm = (updates: Partial<InfluencerVerificationForm>) => {
     setForm((current) => ({ ...current, ...updates }));
     setError("");
+    setNaverBlogVisitorError("");
     setSubmitted(false);
   };
 
@@ -529,8 +577,11 @@ export function InfluencerVerification() {
       platform_handle: "",
       platform_url: "",
       ownership_challenge_url: "",
+      naver_blog_recent_4d_average_visitors: "",
     }));
+    setFile(null);
     setError("");
+    setNaverBlogVisitorError("");
     setSubmitted(false);
   };
 
@@ -570,6 +621,25 @@ export function InfluencerVerification() {
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError("");
+    setNaverBlogVisitorError("");
+
+    const parsedNaverBlogVisitorAverage =
+      platform === "naver_blog"
+        ? parseNaverBlogVisitorAverageInput(
+            form.naver_blog_recent_4d_average_visitors,
+          )
+        : { value: undefined };
+    if (parsedNaverBlogVisitorAverage.error) {
+      setNaverBlogVisitorError(parsedNaverBlogVisitorAverage.error);
+      return;
+    }
+    if (
+      platform === "naver_blog" &&
+      parsedNaverBlogVisitorAverage.value === undefined
+    ) {
+      setNaverBlogVisitorError("최근 4일 평균 일일 방문자 수를 입력해 주세요.");
+      return;
+    }
 
     const instagramUsername = isInstagramDmMethod
       ? normalizeInstagramHandleInput(form.platform_handle)
@@ -615,7 +685,15 @@ export function InfluencerVerification() {
           Accept: "application/json",
         },
         body: JSON.stringify({
-          ...submittedForm,
+          platform_handle: submittedForm.platform_handle,
+          platform_url: submittedForm.platform_url,
+          ...(platform === "naver_blog" &&
+          parsedNaverBlogVisitorAverage.value !== undefined
+            ? {
+                naver_blog_recent_4d_average_visitors:
+                  parsedNaverBlogVisitorAverage.value,
+              }
+            : {}),
           ...(contractId ? { contract_id: contractId } : {}),
           platform,
           target_id: buildTargetId(platform, submittedForm),
@@ -1161,6 +1239,22 @@ export function InfluencerVerification() {
                   placeholder={selectedPlatform.urlPlaceholder}
                   required
                 />
+                {platform === "naver_blog" ? (
+                  <TextField
+                    label="최근 4일 평균 일일 방문자 수"
+                    value={form.naver_blog_recent_4d_average_visitors}
+                    onChange={(value) =>
+                      updateForm({
+                        naver_blog_recent_4d_average_visitors: value,
+                      })
+                    }
+                    placeholder="예: 1,250"
+                    inputMode="numeric"
+                    helper="오늘을 제외한 최근 4일 평균을 입력해 주세요. 탐색에는 자가신고로 표시됩니다."
+                    error={naverBlogVisitorError}
+                    required
+                  />
+                ) : null}
               </div>
             )}
 
@@ -1356,6 +1450,9 @@ function TextField({
   type = "text",
   placeholder,
   required,
+  inputMode,
+  helper,
+  error,
 }: {
   label: string;
   value: string;
@@ -1363,19 +1460,41 @@ function TextField({
   type?: string;
   placeholder?: string;
   required?: boolean;
+  inputMode?: React.InputHTMLAttributes<HTMLInputElement>["inputMode"];
+  helper?: string;
+  error?: string;
 }) {
+  const description = error || helper;
+  const inputId = React.useId();
+  const descriptionId = `${inputId}-description`;
   return (
-    <label className="block">
-      <span className="text-sm font-semibold text-neutral-900">{label}</span>
+    <div className="block">
+      <label htmlFor={inputId} className="text-sm font-semibold text-neutral-900">
+        {label}
+      </label>
       <input
+        id={inputId}
         type={type}
         value={value}
         required={required}
+        inputMode={inputMode}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
+        aria-invalid={Boolean(error)}
+        aria-describedby={description ? descriptionId : undefined}
         className="mt-2 h-11 w-full rounded-lg border border-neutral-200 bg-[#fbfbfc] px-3 text-sm outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950 focus:bg-white focus:shadow-[0_0_0_3px_rgba(23,23,23,0.05)]"
       />
-    </label>
+      {description ? (
+        <span
+          id={descriptionId}
+          className={`mt-1.5 block text-xs leading-5 ${
+            error ? "font-semibold text-red-600" : "text-neutral-500"
+          }`}
+        >
+          {description}
+        </span>
+      ) : null}
+    </div>
   );
 }
 

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { ArrowRight, MailCheck, X } from "lucide-react";
 import {
@@ -13,6 +13,10 @@ import type {
 import { BrandLogo } from "../../components/BrandLogo";
 import { readAuthPrefillEmail } from "../../components/AuthAccountNoticeDialog";
 import { apiFetch } from "../../domain/api";
+import {
+  PUBLIC_PROFILE_CONSENT_VERSION,
+  parseRepresentativeActivityPage,
+} from "../../domain/activityPage";
 import { PRODUCT_NAME } from "../../domain/brand";
 import { LEGAL_CONTACT_EMAIL } from "../../domain/legalEntity";
 import { getNextPath } from "../../domain/navigation";
@@ -20,7 +24,7 @@ import { translateApiErrorMessage } from "../../domain/userMessages";
 import { useBodyScrollLock } from "../../hooks/useBodyScrollLock";
 
 const TERMS_DOCUMENT_VERSION = "2026-06-02";
-const PRIVACY_POLICY_DOCUMENT_VERSION = "2026-06-02";
+const PRIVACY_POLICY_DOCUMENT_VERSION = "2026-08-08.3";
 
 type SignupRole = "advertiser" | "influencer";
 
@@ -61,6 +65,61 @@ type SignupConsents = {
   terms: boolean;
   privacy: boolean;
 };
+
+const creatorProfileSetupCopies = {
+  ko: {
+    activityPageLabel: "대표 활동 페이지",
+    activityPagePlaceholder: "https://instagram.com/creator",
+    activityPageHint: "가입 후 계정 인증에 그대로 사용합니다.",
+    inferredLabel: "플랫폼 자동 확인",
+    manualPlatformLabel: "플랫폼",
+    manualHandleLabel: "계정 ID",
+    manualHandlePlaceholder: "@ 없이 입력",
+    publicProfileConsentTitle: "최소 공개 프로필 생성에 동의",
+    publicProfileConsentNote:
+      "이메일 확인 후 활동명, 분야, 대표 활동 페이지가 공개됩니다. 계정 인증 전에는 팔로워 수와 1:1 계약 제안이 표시되지 않습니다.",
+    requiredProfile: "활동 분야와 대표 활동 페이지를 확인해 주세요.",
+  },
+  en: {
+    activityPageLabel: "Main activity page",
+    activityPagePlaceholder: "https://instagram.com/creator",
+    activityPageHint: "We will reuse this page for account verification.",
+    inferredLabel: "Platform detected",
+    manualPlatformLabel: "Platform",
+    manualHandleLabel: "Account ID",
+    manualHandlePlaceholder: "Enter without @",
+    publicProfileConsentTitle: "Create my minimal public profile",
+    publicProfileConsentNote:
+      "After email confirmation, your creator name, category, and activity page become public. Metrics and 1:1 proposals stay hidden until account verification.",
+    requiredProfile: "Choose a category and enter a valid activity page.",
+  },
+  ja: {
+    activityPageLabel: "代表活動ページ",
+    activityPagePlaceholder: "https://instagram.com/creator",
+    activityPageHint: "登録後のアカウント認証にも使用します。",
+    inferredLabel: "プラットフォームを確認しました",
+    manualPlatformLabel: "プラットフォーム",
+    manualHandleLabel: "アカウントID",
+    manualHandlePlaceholder: "@なしで入力",
+    publicProfileConsentTitle: "最小公開プロフィールを作成する",
+    publicProfileConsentNote:
+      "メール確認後、活動名・ジャンル・代表ページが公開されます。認証前は指標と1:1契約提案を表示しません。",
+    requiredProfile: "活動ジャンルと代表活動ページを確認してください。",
+  },
+  zh: {
+    activityPageLabel: "主要创作主页",
+    activityPagePlaceholder: "https://instagram.com/creator",
+    activityPageHint: "注册后将直接用于账号认证。",
+    inferredLabel: "已识别平台",
+    manualPlatformLabel: "平台",
+    manualHandleLabel: "账号 ID",
+    manualHandlePlaceholder: "请勿输入 @",
+    publicProfileConsentTitle: "创建最小公开主页",
+    publicProfileConsentNote:
+      "邮箱确认后将公开创作者名称、领域和主要主页。账号认证前不会显示指标或1:1合同提案。",
+    requiredProfile: "请选择内容领域并填写有效的主要主页。",
+  },
+} as const;
 
 const roleConfig = {
   advertiser: {
@@ -548,6 +607,7 @@ export function SignupPage({ role }: { role: SignupRole }) {
   const globalCopy = globalLocale
     ? globalCreatorSignupCopies[globalLocale]
     : null;
+  const profileSetupCopy = creatorProfileSetupCopies[globalLocale ?? "ko"];
   const allowedNextPrefixes =
     role === "influencer"
       ? ["/influencer", "/contract", "/campaigns"]
@@ -604,6 +664,9 @@ export function SignupPage({ role }: { role: SignupRole }) {
   const [activityPlatforms, setActivityPlatforms] = useState<
     InfluencerSignupPlatform[]
   >([]);
+  const [activityPageUrl, setActivityPageUrl] = useState("");
+  const [activityPageHandle, setActivityPageHandle] = useState("");
+  const [publicProfileConsent, setPublicProfileConsent] = useState(false);
   const [consents, setConsents] = useState<SignupConsents>({
     terms: false,
     privacy: false,
@@ -615,12 +678,35 @@ export function SignupPage({ role }: { role: SignupRole }) {
   const [openLegalDocument, setOpenLegalDocument] = useState<
     "terms" | "privacy" | null
   >(null);
-  const requiredConsentsAccepted = consents.terms && consents.privacy;
+  const requiredConsentsAccepted =
+    consents.terms &&
+    consents.privacy &&
+    (role !== "influencer" || publicProfileConsent);
   const influencerCategorySelected = activityCategories.length > 0;
-  const influencerPlatformSelected = activityPlatforms.length > 0;
+  const activityPageResult = useMemo(
+    () => parseRepresentativeActivityPage(activityPageUrl),
+    [activityPageUrl],
+  );
+  const inferredActivityPage = activityPageResult.ok
+    ? activityPageResult.page
+    : undefined;
+  const activityPageNeedsManualIdentity = Boolean(
+    inferredActivityPage && !inferredActivityPage.supported,
+  );
+  const resolvedActivityPlatform = inferredActivityPage?.supported
+    ? inferredActivityPage.platform
+    : activityPlatforms[0];
+  const resolvedActivityHandle = inferredActivityPage?.supported
+    ? inferredActivityPage.handle
+    : activityPageHandle.trim().replace(/^@+/, "");
+  const influencerActivityPageComplete = Boolean(
+    inferredActivityPage &&
+      (inferredActivityPage.supported ||
+        (resolvedActivityPlatform && resolvedActivityHandle)),
+  );
   const influencerRequiredProfileComplete =
     role !== "influencer" ||
-    (influencerCategorySelected && influencerPlatformSelected);
+    (influencerCategorySelected && influencerActivityPageComplete);
   const passwordsMatch =
     password.length > 0 &&
     passwordConfirmation.length > 0 &&
@@ -667,11 +753,10 @@ export function SignupPage({ role }: { role: SignupRole }) {
 
       if (
         role === "influencer" &&
-        (activityCategories.length === 0 || activityPlatforms.length === 0)
+        (activityCategories.length === 0 || !influencerActivityPageComplete)
       ) {
         throw new Error(
-          globalCopy?.errors.requiredProfile ??
-            "활동 분야와 플랫폼을 각각 하나 이상 선택해 주세요.",
+          profileSetupCopy.requiredProfile,
         );
       }
 
@@ -698,7 +783,14 @@ export function SignupPage({ role }: { role: SignupRole }) {
           ...(role === "influencer"
             ? {
                 activity_categories: activityCategories,
-                activity_platforms: activityPlatforms,
+                activity_platforms: resolvedActivityPlatform
+                  ? [resolvedActivityPlatform]
+                  : [],
+                activity_page_url: inferredActivityPage?.normalizedUrl,
+                activity_page_platform: resolvedActivityPlatform,
+                activity_page_handle: resolvedActivityHandle,
+                public_profile_consent_accepted: publicProfileConsent,
+                public_profile_consent_version: PUBLIC_PROFILE_CONSENT_VERSION,
               }
             : {}),
         }),
@@ -908,18 +1000,60 @@ export function SignupPage({ role }: { role: SignupRole }) {
                 )
               }
             />
-            <SignupSelectField
-              label={globalCopy?.platformLabel ?? "대표 플랫폼"}
-              value={activityPlatforms[0] ?? ""}
-              options={platformOptions}
-              selectLabel={globalCopy?.selectLabel}
-              disabled={isSubmitting}
-              onChange={(value) =>
-                setActivityPlatforms(
-                  value ? [value as InfluencerSignupPlatform] : [],
-                )
-              }
-            />
+            <label className="block">
+              <span className="text-[13px] font-bold text-neutral-700">
+                {profileSetupCopy.activityPageLabel}
+              </span>
+              <input
+                type="url"
+                required
+                inputMode="url"
+                autoComplete="url"
+                disabled={isSubmitting}
+                value={activityPageUrl}
+                placeholder={profileSetupCopy.activityPagePlaceholder}
+                onChange={(event) => setActivityPageUrl(event.target.value)}
+                className="mt-1.5 h-10 w-full rounded-[12px] border border-neutral-200 bg-[#fbfaf7] px-3 text-[14px] font-semibold text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-blue-600 focus:bg-white focus:shadow-[0_0_0_3px_rgba(37,99,235,0.10)] disabled:bg-neutral-100 disabled:text-neutral-400 sm:mt-2 sm:h-11"
+              />
+              <p className="mt-1.5 text-[11px] font-semibold leading-4 text-neutral-500">
+                {inferredActivityPage?.supported && resolvedActivityPlatform
+                  ? `${profileSetupCopy.inferredLabel}: ${
+                      platformOptions.find(
+                        (option) => option.value === resolvedActivityPlatform,
+                      )?.label ?? resolvedActivityPlatform
+                    }`
+                  : profileSetupCopy.activityPageHint}
+              </p>
+            </label>
+            {activityPageNeedsManualIdentity ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <SignupSelectField
+                  label={profileSetupCopy.manualPlatformLabel}
+                  value={activityPlatforms[0] ?? ""}
+                  options={platformOptions}
+                  selectLabel={globalCopy?.selectLabel}
+                  disabled={isSubmitting}
+                  onChange={(value) =>
+                    setActivityPlatforms(
+                      value ? [value as InfluencerSignupPlatform] : [],
+                    )
+                  }
+                />
+                <label className="block">
+                  <span className="text-[13px] font-bold text-neutral-700">
+                    {profileSetupCopy.manualHandleLabel}
+                  </span>
+                  <input
+                    required
+                    value={activityPageHandle}
+                    disabled={isSubmitting}
+                    placeholder={profileSetupCopy.manualHandlePlaceholder}
+                    onChange={(event) => setActivityPageHandle(event.target.value)}
+                    className="mt-1.5 h-10 w-full rounded-[12px] border border-neutral-200 bg-[#fbfaf7] px-3 text-[14px] font-semibold text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-blue-600 focus:bg-white focus:shadow-[0_0_0_3px_rgba(37,99,235,0.10)] disabled:bg-neutral-100 disabled:text-neutral-400 sm:mt-2 sm:h-11"
+                  />
+                </label>
+              </div>
+            ) : null}
           </div>
         ) : null}
 
@@ -938,6 +1072,29 @@ export function SignupPage({ role }: { role: SignupRole }) {
             setConsents((current) => ({ ...current, [key]: !current[key] }))
           }
         />
+        {role === "influencer" ? (
+          <label className="flex cursor-pointer items-start gap-2.5 rounded-[10px] border border-blue-100 bg-blue-50/55 px-3 py-3">
+            <input
+              type="checkbox"
+              required
+              checked={publicProfileConsent}
+              disabled={isSubmitting}
+              onChange={(event) => setPublicProfileConsent(event.target.checked)}
+              className="mt-0.5 h-4 w-4 shrink-0 accent-[#2563eb]"
+            />
+            <span className="min-w-0">
+              <span className="block text-[12px] font-bold leading-4 text-blue-950">
+                {profileSetupCopy.publicProfileConsentTitle}
+                <span className="ml-1 text-[10px] font-semibold text-blue-500">
+                  v{PUBLIC_PROFILE_CONSENT_VERSION}
+                </span>
+              </span>
+              <span className="mt-1 block text-[11px] font-semibold leading-4 text-blue-800/80">
+                {profileSetupCopy.publicProfileConsentNote}
+              </span>
+            </span>
+          </label>
+        ) : null}
       </AuthLoginScreen>
       <LegalConsentModal
         document={openLegalDocument}

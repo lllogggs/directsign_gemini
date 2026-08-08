@@ -182,8 +182,13 @@ const getRelativeCampaignDate = (daysFromToday: number) => {
 
 export type MarketplaceCampaignStatus = "open" | "draft" | "closed" | "ended";
 
+export type CampaignApplicationContactField = "phone" | "email";
+
+export const CAMPAIGN_APPLICATION_CONTACT_POLICY_VERSION = "2026-08-08.1";
+
 export type MarketplaceBrandCampaign = {
   id?: string;
+  relativeTestDates?: boolean;
   title: string;
   type: CampaignProposalType;
   otherTypeLabel?: string;
@@ -199,6 +204,8 @@ export type MarketplaceBrandCampaign = {
   uploadDeadline?: string;
   platforms?: InfluencerPlatform[];
   deliverables?: string[];
+  applicationContactFields?: CampaignApplicationContactField[];
+  applicationContactConsentVersion?: string;
   requiredConsents?: Array<{
     id: string;
     text: string;
@@ -241,6 +248,11 @@ export type MarketplaceInfluencerProfile = {
     url: string;
     followersLabel: string;
     performanceLabel: string;
+    ownershipStatus?: "unverified" | "verified";
+    metricType?: "average_daily_visitors_4d";
+    metricSource?: "creator_self_report";
+    metricTrust?: "self_reported";
+    metricPeriodDays?: 4;
   }>;
   collaborationTypes: CampaignProposalType[];
   startingPriceLabel: string;
@@ -500,8 +512,8 @@ export const marketplaceInfluencers: MarketplaceInfluencerProfile[] = [
         label: "블로그",
         handle: "minseo-home",
         url: "https://blog.naver.com/minseo-home",
-        followersLabel: "1.2만",
-        performanceLabel: "검색 유입 강점",
+        followersLabel: "",
+        performanceLabel: "자가신고 미입력",
       },
     ],
     collaborationTypes: ["product_seeding", "visit_review", "sponsored_post"],
@@ -698,8 +710,8 @@ export const marketplaceInfluencers: MarketplaceInfluencerProfile[] = [
         label: "블로그",
         handle: "rooday",
         url: "https://blog.naver.com/rooday",
-        followersLabel: "1.8만",
-        performanceLabel: "검색 유입",
+        followersLabel: "",
+        performanceLabel: "자가신고 미입력",
       },
     ],
     collaborationTypes: ["visit_review", "product_seeding", "group_buy"],
@@ -748,8 +760,8 @@ export const marketplaceInfluencers: MarketplaceInfluencerProfile[] = [
         label: "블로그",
         handle: "today-taste",
         url: "https://blog.naver.com/today-taste",
-        followersLabel: "9천",
-        performanceLabel: "레시피 검색 유입",
+        followersLabel: "",
+        performanceLabel: "자가신고 미입력",
       },
     ],
     collaborationTypes: ["group_buy", "product_seeding", "sponsored_post"],
@@ -1273,9 +1285,18 @@ export function getInfluencerProfilePathByDisplayName(displayName: string | unde
 }
 
 export function getChannelAudienceSortValue(
-  platforms: Array<{ followersLabel?: string }> = [],
+  platforms: Array<{
+    platform?: InfluencerPlatform;
+    followersLabel?: string;
+    metricTrust?: "self_reported";
+  }> = [],
 ) {
   const values = platforms
+    .filter(
+      (platform) =>
+        platform.platform !== "naver_blog" &&
+        platform.metricTrust !== "self_reported",
+    )
     .map((platform) => parseAudienceCountLabel(platform.followersLabel))
     .filter((value) => Number.isFinite(value));
 

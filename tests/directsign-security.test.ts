@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHmac } from "node:crypto";
 import {
+  existsSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
@@ -22,10 +23,6 @@ import {
 } from "../src/domain/marketplace";
 import { getMarketplaceCampaignApplicationCustomerStatus } from "../src/domain/marketplaceInbox";
 import { paginateMarketplaceInfluencerProfiles } from "../src/domain/marketplaceInfluencerSearch";
-import {
-  calculateNaverBlogVisitorAverage,
-  getNaverBlogCompletedVisitorDates,
-} from "../src/domain/naverBlogVisitors.js";
 import {
   normalizeNaverBlogPostDate,
   normalizeNaverBlogPostUrl,
@@ -66,6 +63,18 @@ import {
 
 const root = process.cwd();
 const read = (path: string) => readFileSync(join(root, path), "utf8");
+const readRuntimeScriptSources = (directory: string): string =>
+  readdirSync(directory, { withFileTypes: true })
+    .flatMap((entry) => {
+      const entryPath = join(directory, entry.name);
+      if (entry.isDirectory()) return [readRuntimeScriptSources(entryPath)];
+      if (!entry.isFile() || !/\.(?:[cm]?[jt]s|tsx?|ps1)$/.test(entry.name)) {
+        return [];
+      }
+      if (entryPath.endsWith("kim-jaewoo-guardrails.mjs")) return [];
+      return [readFileSync(entryPath, "utf8")];
+    })
+    .join("\n");
 const escapeRegExp = (value: string) =>
   value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -221,8 +230,11 @@ describe("yeollock.me security regressions", () => {
       (campaignPages.match(/requiredConsents\.length === 0/g) ?? []).length >= 2,
     );
     assert.ok(
-      (campaignPages.match(/submitCampaignApplication\(campaign, \[\]\)/g) ?? [])
-        .length >= 2,
+      (
+        campaignPages.match(
+          /submitCampaignApplication\(campaign, \{[\s\S]{0,180}acceptedConsentIds: \[\]/g,
+        ) ?? []
+      ).length >= 2,
     );
     assert.match(consentDialog, /requiredConsents\.map/);
     assert.match(consentDialog, /"동의합니다"/);
@@ -444,6 +456,10 @@ describe("yeollock.me security regressions", () => {
       headerBySource.get("/sitemap.xml")?.get("Content-Type"),
       "application/xml; charset=utf-8",
     );
+    assert.equal(
+      headerBySource.get("/rm-:path*")?.get("X-Robots-Tag"),
+      "noindex, nofollow",
+    );
 
     for (const routePath of staticSeoRoutePaths) {
       const seo = getIntentAwareRouteSeoConfig(routePath);
@@ -529,7 +545,7 @@ describe("yeollock.me security regressions", () => {
     );
     assert.match(
       byKey.get("Content-Security-Policy") ?? "",
-      /script-src 'self' https:\/\/\*\.googletagmanager\.com https:\/\/\*\.clarity\.ms/,
+      /script-src 'self' https:\/\/\*\.googletagmanager\.com/,
     );
     assert.match(
       byKey.get("Content-Security-Policy") ?? "",
@@ -539,9 +555,9 @@ describe("yeollock.me security regressions", () => {
       byKey.get("Content-Security-Policy") ?? "",
       /https:\/\/\*\.analytics\.google\.com/,
     );
-    assert.match(
+    assert.doesNotMatch(
       byKey.get("Content-Security-Policy") ?? "",
-      /https:\/\/c\.bing\.com/,
+      /clarity\.ms|c\.bing\.com/,
     );
     assert.doesNotMatch(
       byKey.get("Content-Security-Policy") ?? "",
@@ -549,7 +565,7 @@ describe("yeollock.me security regressions", () => {
     );
   });
 
-  it("installs analytics without exposing sensitive contract routes to external tools", () => {
+  it("loads analytics only after consent on fixed public page keys", () => {
     const analytics = read("src/domain/analytics.ts");
     const app = read("src/App.tsx");
     const main = read("src/main.tsx");
@@ -558,7 +574,7 @@ describe("yeollock.me security regressions", () => {
     const server = read("server/index.ts");
     const clarityPathsStart = analytics.indexOf("const clarityPublicPaths");
     const clarityPathsEnd = analytics.indexOf(
-      "let installed",
+      "const googleAnalyticsScriptId",
       clarityPathsStart,
     );
     const clarityPathAllowlist = analytics.slice(
@@ -568,43 +584,58 @@ describe("yeollock.me security regressions", () => {
 
     assert.match(analytics, /G-PDTVNFRD1W/);
     assert.match(analytics, /wx0bvf6bl5/);
-    assert.match(main, /installAnalytics\(\)/);
+    assert.doesNotMatch(main, /installAnalytics\(\)/);
     assert.match(app, /RouteAnalytics/);
     assert.match(
       app,
-      /syncAnalyticsRoute\(location\.pathname, location\.search\)/,
+      /syncAnalyticsRoute\(location\.pathname, location\.search, location\.hash\)/,
     );
 
     assert.match(analytics, /allow_google_signals:\s*false/);
     assert.match(analytics, /allow_ad_personalization_signals:\s*false/);
+    assert.match(analytics, /analytics_storage:\s*"denied"/);
+    assert.match(analytics, /getAnalyticsConsent\(\) !== "granted"/);
     assert.match(analytics, /ad_storage:\s*"denied"/);
     assert.match(analytics, /ad_user_data:\s*"denied"/);
     assert.match(analytics, /ad_personalization:\s*"denied"/);
 
+    assert.match(analytics, /googleAnalyticsPublicPageKeys/);
+    assert.match(analytics, /hasUntrustedUrlContext\(search, hash\)/);
     assert.match(
       analytics,
-      /if \(normalized\.startsWith\("\/contract\/"\)\) return "\/contract\/:id"/,
+      /VITE_GA_HISTORY_MEASUREMENT_VERIFIED.*=== "true"/,
     );
-    assert.match(analytics, /return "\/advertiser\/contract\/:id"/);
-    assert.match(analytics, /new URLSearchParams\(search\)/);
-    assert.doesNotMatch(analytics, /safeParams\.set\("token"/);
-    assert.doesNotMatch(analytics, /safeParams\.set\("support"/);
+    assert.match(analytics, /page_key: pageKey/);
+    assert.match(analytics, /safeAnalyticsLocation\(pageKey\)/);
+    assert.doesNotMatch(analytics, /new URLSearchParams/);
+    assert.doesNotMatch(analytics, /document\.title/);
+    assert.doesNotMatch(analytics, /page_title:/);
     assert.doesNotMatch(
       analytics,
-      /page_location:[\s\S]*window\.location\.href/,
+      /page_location:[\s\S]{0,80}window\.location\.(?:href|pathname|search)/,
     );
-
+    assert.doesNotMatch(analytics, /"\/contract\//);
+    assert.doesNotMatch(analytics, /"\/advertiser\/dashboard"/);
+    assert.doesNotMatch(analytics, /"\/influencer\/dashboard"/);
+    assert.doesNotMatch(analytics, /"\/admin"/);
     assert.match(analytics, /clarityPublicPaths/);
     assert.match(analytics, /data-clarity-mask/);
     assert.match(analytics, /win\.clarity\?\.\("stop"\)/);
+    assert.match(
+      analytics,
+      /export const isMicrosoftClarityCollectionEnabled = \(\) => false/,
+    );
+    assert.match(analytics, /removeAnalyticsScripts/);
+    assert.match(analytics, /expireFirstPartyAnalyticsCookies/);
     assert.doesNotMatch(clarityPathAllowlist, /"\/contract\//);
     assert.doesNotMatch(clarityPathAllowlist, /"\/advertiser\/dashboard"/);
     assert.doesNotMatch(clarityPathAllowlist, /"\/influencer\/dashboard"/);
 
     assert.match(
       server,
-      /script-src 'self' https:\/\/\*\.googletagmanager\.com https:\/\/\*\.clarity\.ms/,
+      /script-src 'self' https:\/\/\*\.googletagmanager\.com/,
     );
+    assert.doesNotMatch(server, /clarity\.ms|c\.bing\.com/);
     assert.match(
       server,
       /img-src 'self' data: blob: https:\/\/\*\.supabase\.co/,
@@ -615,9 +646,95 @@ describe("yeollock.me security regressions", () => {
     );
     assert.match(envExample, /VITE_GOOGLE_ANALYTICS_ID="G-PDTVNFRD1W"/);
     assert.match(envExample, /VITE_MICROSOFT_CLARITY_ID="wx0bvf6bl5"/);
-    assert.match(privacy, /Google Analytics\(G-PDTVNFRD1W\)/);
-    assert.match(privacy, /Microsoft Clarity\(wx0bvf6bl5\)/);
+    assert.match(
+      envExample,
+      /VITE_GA_HISTORY_MEASUREMENT_VERIFIED="false"/,
+    );
+    assert.match(privacy, /Google Analytics · G-PDTVNFRD1W/);
+    assert.match(privacy, /Microsoft Clarity · wx0bvf6bl5/);
+    assert.match(privacy, /현재 전송 중지/);
     assert.match(privacy, /공유 토큰/);
+    assert.match(privacy, /분석을 허용하기 전에는 스크립트를 불러오지 않/);
+  });
+
+  it("keeps raw marketplace rows and private files behind server boundaries", () => {
+    const server = read("server/index.ts");
+    const privateBucketGuard = server.slice(
+      server.indexOf("const ensurePrivateStorageBucket"),
+      server.indexOf("const uploadSupabasePrivateFile"),
+    );
+    const publicBucketGuard = server.slice(
+      server.indexOf("const ensureMarketplacePublicStorageBucket"),
+      server.indexOf("const uploadSupabaseMarketplacePublicImage"),
+    );
+    const migration = read(
+      "supabase/migrations/20260808110000_harden_public_marketplace_boundaries.sql",
+    );
+
+    assert.match(
+      migration,
+      /revoke select on table[\s\S]+marketplace_influencer_profiles[\s\S]+marketplace_influencer_channels[\s\S]+marketplace_brand_profiles[\s\S]+from public, anon, authenticated/,
+    );
+    assert.match(
+      migration,
+      /drop policy if exists marketplace_influencer_profiles_select_public_or_owner/,
+    );
+    assert.match(migration, /revoke create on schema public/);
+    assert.match(privateBucketGuard, /bucket\.public === false/);
+    assert.match(privateBucketGuard, /fileSizeLimit === maxVerificationFileSize/);
+    assert.match(privateBucketGuard, /evidenceFileMimeTypes/);
+    assert.match(
+      privateBucketGuard,
+      /Supabase private storage bucket security policy mismatch/,
+    );
+    assert.match(publicBucketGuard, /bucket\.public === true/);
+    assert.match(publicBucketGuard, /fileSizeLimit === maxMarketplaceImageSize/);
+    assert.match(publicBucketGuard, /marketplaceImageMimeTypes/);
+    assert.match(
+      publicBucketGuard,
+      /Supabase public storage bucket security policy mismatch/,
+    );
+    assert.doesNotMatch(publicBucketGuard, /bucket\.public === false/);
+    assert.match(privateBucketGuard, /ensurePrivateStorageBucket\(false\)/);
+    assert.match(
+      publicBucketGuard,
+      /ensureMarketplacePublicStorageBucket\(false\)/,
+    );
+    assert.match(migration, /update storage\.buckets[\s\S]+file_size_limit = 10485760/);
+    assert.match(server, /storedFile\.bucket !== privateStorageBucket/);
+    assert.match(server, /isAllowedPrivateStorageObjectPath/);
+    assert.match(server, /path\.relative\(privateFilesRoot, absolutePath\)/);
+  });
+
+  it("minimizes operational metadata and private response caching", () => {
+    const server = read("server/index.ts");
+    const discordPayload = server.slice(
+      server.indexOf("const buildDiscordOperationalAlertPayload"),
+      server.indexOf("const sendDiscordOperationalAlert"),
+    );
+    const healthRoute = server.slice(
+      server.indexOf('app.get("/api/health"'),
+      server.indexOf("type StartLanguageTargetPath"),
+    );
+
+    assert.match(server, /app\.disable\("x-powered-by"\)/);
+    assert.match(server, /standardJsonParser = express\.json\(\{ limit: "256kb" \}\)/);
+    assert.match(server, /largeUploadJsonParser = express\.json\(\{ limit: "14mb" \}\)/);
+    assert.match(server, /largeUploadPreBodyMaxRequests = 30/);
+    assert.match(server, /largeUploadPreBodyMaxTrackedNetworks = 5_000/);
+    assert.match(server, /declaredLength > largeUploadBodyLimitBytes/);
+    assert.match(server, /operationalErrorLabel/);
+    assert.match(server, /instagramWebhookJsonParser = express\.json\(\{/);
+    assert.match(server, /request\.path === "\/api\/webhooks\/instagram"/);
+    assert.match(discordPayload, /고객 정보는 외부 알림에 포함하지 않습니다/);
+    assert.doesNotMatch(discordPayload, /alert\.body/);
+    assert.doesNotMatch(discordPayload, /alert\.mobile_path/);
+    assert.match(healthRoute, /response\.json\(\{ ok: true \}\)/);
+    assert.doesNotMatch(healthRoute, /supabase_schema_version|admin_auth_configured/);
+    assert.match(
+      server,
+      /app\.get\("\/api\/influencer\/dashboard"[\s\S]{0,220}Cache-Control", "private, no-store"/,
+    );
   });
 
   it("bundles a Korean-capable font for server-signed PDFs", () => {
@@ -648,6 +765,61 @@ describe("yeollock.me security regressions", () => {
     const migration = read(
       "supabase/migrations/20260518044009_add_marketplace_follower_sync.sql",
     );
+    const registeredChannelMigration = read(
+      "supabase/migrations/20260807110000_materialize_registered_verified_channels.sql",
+    );
+    const registeredDirectoryMigration = read(
+      "supabase/migrations/20260806120000_add_registered_influencer_discovery.sql",
+    );
+    const registeredMetricRefreshMigration = read(
+      "supabase/migrations/20260807120000_scope_influencer_directory_refresh_to_profile_type.sql",
+    );
+    const boundedMetricWriteMigration = read(
+      "supabase/migrations/20260807130000_remove_synchronous_registered_metric_refresh_trigger.sql",
+    );
+    const boundedRegisteredTriggerMigration = read(
+      "supabase/migrations/20260807140000_bound_registered_channel_trigger_to_identity_changes.sql",
+    );
+    const instagramDmFollowerMigration = read(
+      "supabase/migrations/20260807150000_apply_instagram_dm_follower_metric.sql",
+    );
+    const verifiedPlatformMetricMigration = read(
+      "supabase/migrations/20260807160000_apply_verified_platform_channel_metrics.sql",
+    );
+    const instagramDmStart = server.indexOf(
+      "const fetchInstagramDmSenderProfile",
+    );
+    const instagramDmSource = server.slice(
+      instagramDmStart,
+      server.indexOf("const latestVerificationForTarget", instagramDmStart),
+    );
+    const youtubeAutomationStart = server.indexOf(
+      "const runYoutubeAutomationCheck",
+    );
+    const naverAutomationStart = server.indexOf(
+      "const runNaverBlogAutomationCheck",
+    );
+    const instagramAutomationStart = server.indexOf(
+      "const runInstagramAutomationCheck",
+    );
+    const tiktokAutomationStart = server.indexOf(
+      "const runTikTokAutomationCheck",
+    );
+    const platformAutomationStart = server.indexOf(
+      "const runPlatformAccountAutomationCheck",
+    );
+    const youtubeAutomationSource = server.slice(
+      youtubeAutomationStart,
+      naverAutomationStart,
+    );
+    const naverAutomationSource = server.slice(
+      naverAutomationStart,
+      instagramAutomationStart,
+    );
+    const tiktokAutomationSource = server.slice(
+      tiktokAutomationStart,
+      platformAutomationStart,
+    );
     const vercelConfig = JSON.parse(read("vercel.json")) as {
       crons?: Array<{ path?: string; schedule?: string }>;
     };
@@ -670,10 +842,7 @@ describe("yeollock.me security regressions", () => {
       envExample,
       /ENABLE_AUTOMATIC_MARKETPLACE_FOLLOWER_SYNC="false"/,
     );
-    assert.match(
-      envExample,
-      /MARKETPLACE_NAVER_BLOG_VISITOR_SYNC_STALE_DAYS="7"/,
-    );
+    assert.doesNotMatch(envExample, /MARKETPLACE_NAVER_BLOG_VISITOR_SYNC/);
     assert.match(
       server,
       /const cronSecret = readConfiguredServerSecret\("CRON_SECRET"\)/,
@@ -691,10 +860,10 @@ describe("yeollock.me security regressions", () => {
     assert.match(server, /marketplace_follower_sync_events/);
     assert.match(server, /follower_count_synced_at/);
     assert.match(server, /clearPublicMarketplaceCache\(\)/);
-    assert.match(server, /NVisitorgp4Ajax\.nhn/);
-    assert.match(server, /naver_blog_public_visitor_counter/);
-    assert.match(server, /stored_4_day_average/);
-    assert.match(server, /getNaverBlogVisitorTargetDates/);
+    assert.doesNotMatch(server, /NVisitorgp4Ajax\.nhn/);
+    assert.doesNotMatch(server, /naver_blog_public_visitor_counter/);
+    assert.doesNotMatch(server, /stored_4_day_average/);
+    assert.doesNotMatch(server, /getNaverBlogVisitorTargetDates/);
     assert.match(
       migration,
       /alter table public\.marketplace_influencer_channels[\s\S]+follower_count/,
@@ -711,89 +880,544 @@ describe("yeollock.me security regressions", () => {
       /grant select, insert, update on table[\s\S]+to service_role;/,
     );
     assert.doesNotMatch(migration, /grant[\s\S]+to anon;/);
+    assert.match(
+      registeredChannelMigration,
+      /directsign_materialize_registered_member_channels/,
+    );
+    assert.match(
+      registeredChannelMigration,
+      /create trigger verification_requests_materialize_registered_member_channels/,
+    );
+    assert.match(
+      registeredChannelMigration,
+      /request_row\.status::text = 'approved'/,
+    );
+    assert.match(
+      registeredChannelMigration,
+      /request_row\.data_origin = 'production'/,
+    );
+    assert.doesNotMatch(registeredChannelMigration, /grant[\s\S]+to anon;/);
+    assert.match(
+      registeredMetricRefreshMigration,
+      /v_is_published is distinct from true/,
+    );
+    assert.match(
+      registeredMetricRefreshMigration,
+      /directsign_refresh_registered_member_discovery/,
+    );
+    assert.match(
+      registeredMetricRefreshMigration,
+      /marketplace_influencer_channels_sync_registered_member_directory/,
+    );
+    assert.doesNotMatch(registeredMetricRefreshMigration, /grant[\s\S]+to anon;/);
+    assert.match(
+      boundedMetricWriteMigration,
+      /drop trigger if exists marketplace_influencer_channels_sync_registered_member_directory/,
+    );
+    assert.match(
+      boundedMetricWriteMigration,
+      /drop function if exists[\s\S]+directsign_sync_registered_member_directory_from_channel/,
+    );
+    assert.match(
+      boundedRegisteredTriggerMigration,
+      /update of profile_id, platform, handle, url/,
+    );
+    assert.doesNotMatch(
+      boundedRegisteredTriggerMigration,
+      /update of profile_id, platform, handle, url, follower_count/,
+    );
+    assert.ok(instagramDmStart >= 0);
+    assert.match(
+      instagramDmSource,
+      /url\.searchParams\.set\("fields", "id,username,follower_count"\)/,
+    );
+    assert.match(instagramDmSource, /normalizeInstagramFollowerCount/);
+    assert.match(instagramDmSource, /follower_count_source: "instagram_user_profile_api"/);
+    assert.match(instagramDmSource, /readVerifiedInstagramDmFollowerCount/);
+    assert.match(instagramDmSource, /await clearPublicMarketplaceCache\(\)/);
+    assert.doesNotMatch(instagramDmSource, /runMarketplaceFollowerSync/);
+    assert.doesNotMatch(instagramDmSource, /business_discovery|media\{/i);
+    assert.doesNotMatch(server, /requestedBy: "platform_verification"/);
+    assert.doesNotMatch(server, /requestedBy: "influencer_profile_publish"/);
+    assert.doesNotMatch(server, /syncRegisteredMarketplaceDirectoryMetrics/);
+    assert.match(
+      instagramDmFollowerMigration,
+      /directsign_apply_approved_instagram_dm_follower_metric/,
+    );
+    assert.match(
+      instagramDmFollowerMigration,
+      /directsign_is_operational_profile\([\s\S]+?'influencer'/,
+    );
+    assert.doesNotMatch(
+      instagramDmFollowerMigration,
+      /create or replace function directsign_private\.directsign_materialize_registered_member_channels/,
+    );
+    assert.match(
+      instagramDmFollowerMigration,
+      /v_request\.profile_id is distinct from v_target_profile_id[\s\S]+owner binding mismatch/,
+    );
+    assert.match(
+      instagramDmFollowerMigration,
+      /jsonb_typeof\([\s\S]+?follower_count/,
+    );
+    assert.match(instagramDmFollowerMigration, /is distinct from 'number'/);
+    assert.match(
+      instagramDmFollowerMigration,
+      /coalesce\(v_follower_text, ''\) !~ /,
+    );
+    assert.match(instagramDmFollowerMigration, /9007199254740991/);
+    assert.match(instagramDmFollowerMigration, /v_channel_id uuid/);
+    assert.match(
+      instagramDmFollowerMigration,
+      /lower\(regexp_replace\(btrim\(channel\.handle\), '\^@\+', ''\)\) = v_handle[\s\S]+limit 1[\s\S]+for update/,
+    );
+    assert.match(instagramDmFollowerMigration, /follower_count = v_follower_count/);
+    assert.match(instagramDmFollowerMigration, /where channel\.id = v_channel_id/);
+    assert.match(instagramDmFollowerMigration, /follower_count_checked_at/);
+    assert.match(
+      instagramDmFollowerMigration,
+      /follower_sync_source = 'instagram_user_profile_api'/,
+    );
+    assert.match(
+      instagramDmFollowerMigration,
+      /directsign_refresh_registered_member_discovery\(/,
+    );
+    assert.match(
+      instagramDmFollowerMigration,
+      /new\.ownership_verification_method::text = 'instagram_dm_code'[\s\S]+directsign_apply_approved_instagram_dm_follower_metric/,
+    );
+    assert.match(
+      registeredDirectoryMigration,
+      /'follower_count', enriched\.follower_count[\s\S]+v_audience_counts,[\s\S]+v_max_audience_count/,
+    );
+    assert.match(
+      registeredDirectoryMigration,
+      /jsonb_object_agg\([\s\S]+per_platform\.follower_count[\s\S]+select max\(follower_count\) from per_platform/,
+    );
+    assert.doesNotMatch(instagramDmFollowerMigration, /grant[\s\S]+to anon;/);
+    assert.match(
+      server,
+      /const channelMetric = buildVerifiedPlatformChannelMetric\([\s\S]+platformAccessTokenProvided: Boolean\(platformAccessToken\)/,
+    );
+    assert.match(server, /channel_api_succeeded: channelResponse\.ok/);
+    assert.match(server, /oauth_token_source: submittedUserAccessToken/);
+    assert.match(server, /user_info_api_succeeded: userInfoApiSucceeded/);
+    assert.match(
+      youtubeAutomationSource,
+      /videoProofMatched && videoTitleMatched/,
+    );
+    assert.match(
+      youtubeAutomationSource,
+      /videoProofMatched && videoDescriptionMatched/,
+    );
+    assert.doesNotMatch(
+      naverAutomationSource,
+      /const expectedBlogId\s*=[^;]*extractNaverBlogId\(proofUrl\)/,
+    );
+    assert.match(
+      naverAutomationSource,
+      /bindOwnershipStatusToSubmittedIdentity/,
+    );
+    assert.doesNotMatch(
+      naverAutomationSource,
+      /ownership_check: publicChallenge/,
+    );
+    assert.match(
+      tiktokAutomationSource,
+      /bindOwnershipStatusToSubmittedIdentity/,
+    );
+    assert.doesNotMatch(
+      tiktokAutomationSource,
+      /ownership_check: publicChallenge/,
+    );
+    assert.match(
+      server,
+      /publicProofHandle === expectedHandle[\s\S]+const matched =[\s\S]+channelDescriptionMatched \|\| videoProofMatched \|\| publicProofMatched/,
+    );
+    assert.match(
+      verifiedPlatformMetricMigration,
+      /directsign_apply_approved_platform_channel_metric/,
+    );
+    assert.match(
+      verifiedPlatformMetricMigration,
+      /v_request\.profile_id is distinct from v_target_profile_id[\s\S]+owner binding mismatch/,
+    );
+    assert.match(
+      verifiedPlatformMetricMigration,
+      /directsign_is_operational_profile\([\s\S]+?'influencer'/,
+    );
+    assert.match(verifiedPlatformMetricMigration, /9007199254740991/);
+    assert.match(
+      verifiedPlatformMetricMigration,
+      /pg_catalog\.pg_advisory_xact_lock/,
+    );
+    assert.match(
+      verifiedPlatformMetricMigration,
+      /when v_platform = 'naver_blog' then[\s\S]+self_reported_channel_metric/,
+    );
+    assert.match(
+      verifiedPlatformMetricMigration,
+      /when 'naver_blog' then 'average_daily_visitors_4d'[\s\S]+when 'naver_blog' then 'creator_self_report'/,
+    );
+    assert.match(
+      verifiedPlatformMetricMigration,
+      /coalesce\(v_metric ->> 'trust', ''\) <> 'self_reported'[\s\S]+coalesce\(v_metric ->> 'period_days', ''\) <> '4'/,
+    );
+    assert.match(
+      verifiedPlatformMetricMigration,
+      /v_metric_status = 'unavailable'[\s\S]+follower_count = null/,
+    );
+    assert.match(
+      verifiedPlatformMetricMigration,
+      /v_checked_at >= channel\.follower_count_synced_at/,
+    );
+    assert.match(
+      verifiedPlatformMetricMigration,
+      /coalesce\([\s\S]+channel\.follower_sync_metadata[\s\S]+\|\| jsonb_strip_nulls/,
+    );
+    assert.match(
+      verifiedPlatformMetricMigration,
+      /new\.platform::text in \('youtube', 'tiktok', 'naver_blog'\)[\s\S]+directsign_apply_approved_platform_channel_metric/,
+    );
+    assert.match(
+      verifiedPlatformMetricMigration,
+      /evidence_snapshot_json[\s\S]+on public\.verification_requests/,
+    );
+    assert.doesNotMatch(verifiedPlatformMetricMigration, /NVisitorgp4Ajax/);
+    assert.doesNotMatch(verifiedPlatformMetricMigration, /grant[\s\S]+to anon;/);
   });
 
-  it("stores only the four completed Naver Blog visitor days for weekly discovery metrics", () => {
+  it("keeps required Naver Blog visitor metrics self-reported, disclosed, approved-only, and out of audience sorting", () => {
     const packageJson = JSON.parse(read("package.json")) as {
       scripts?: Record<string, string>;
     };
-    const collector = read("scripts/run-influencer-discovery-loop.mjs");
-    const batchUploader = read("scripts/upload-influencer-discovery-batch.mjs");
-    const syncScript = read("scripts/sync-discovered-naver-blog-visitors.mjs");
+    const agents = read("AGENTS.md");
     const server = read("server/index.ts");
-    const marketplace = read("src/pages/marketplace/MarketplacePages.tsx");
-    const migration = read(
-      "supabase/migrations/20260713010000_add_discovered_naver_blog_visitor_metrics.sql",
+    const runtimeScripts = readRuntimeScriptSources(join(root, "scripts"));
+    const influencerVerification = read(
+      "src/pages/influencer/InfluencerVerification.tsx",
     );
-    const idempotentMigration = read(
-      "supabase/migrations/20260716001000_make_naver_blog_visitor_metrics_idempotent.sql",
+    const verificationDomain = read("src/domain/verification.ts");
+    const marketplaceDomain = read("src/domain/marketplace.ts");
+    const marketplacePages = read("src/pages/marketplace/MarketplacePages.tsx");
+    const advertiserDashboard = read("src/pages/marketing/Dashboard.tsx");
+    const userMessages = read("src/domain/userMessages.ts");
+    const metricBuilder = read("server/platform-verification-metrics.ts");
+    const approvalMigration = read(
+      "supabase/migrations/20260807160000_apply_verified_platform_channel_metrics.sql",
     );
-    const now = new Date("2026-07-13T08:30:00+09:00");
-    const metric = calculateNaverBlogVisitorAverage(
-      [
-        '<visitorcnt id="20260713" cnt="9999" />',
-        '<visitorcnt id="20260712" cnt="100" />',
-        '<visitorcnt id="20260711" cnt="200" />',
-        '<visitorcnt id="20260710" cnt="300" />',
-        '<visitorcnt id="20260709" cnt="400" />',
-      ].join("\n"),
-      now,
+    const enforcementMigration = read(
+      "supabase/migrations/20260807170000_enforce_naver_blog_self_report_metrics.sql",
+    );
+    const removedCollectorPath = join(
+      root,
+      "scripts",
+      "sync-discovered-naver-blog-visitors.mjs",
+    );
+    const removedVisitorParserPath = join(
+      root,
+      "src",
+      "domain",
+      "naverBlogVisitors.js",
+    );
+    const forbiddenRuntimeCollector =
+      /NVisitorgp4Ajax|naver_blog_public_visitor_counter|getNaverBlogVisitorTargetDates|sync-discovered-naver-blog-visitors/;
+
+    assert.equal(existsSync(removedCollectorPath), false);
+    assert.equal(existsSync(removedVisitorParserPath), false);
+    assert.equal(packageJson.scripts?.["sync:naver-blog-visitors"], undefined);
+    assert.doesNotMatch(JSON.stringify(packageJson.scripts ?? {}), forbiddenRuntimeCollector);
+    assert.doesNotMatch(server, forbiddenRuntimeCollector);
+    assert.doesNotMatch(runtimeScripts, forbiddenRuntimeCollector);
+
+    assert.match(
+      influencerVerification,
+      /naver_blog_recent_4d_average_visitors: string/,
+    );
+    assert.match(
+      influencerVerification,
+      /label="최근 4일 평균 일일 방문자 수"/,
+    );
+    assert.doesNotMatch(influencerVerification, /방문자 수 \(선택\)/);
+    assert.match(influencerVerification, /inputMode="numeric"/);
+    assert.match(
+      influencerVerification,
+      /label="최근 4일 평균 일일 방문자 수"[\s\S]{0,500}\brequired\b/,
+    );
+    assert.match(
+      influencerVerification,
+      /helper="오늘을 제외한 최근 4일 평균을 입력해 주세요\. 탐색에는 자가신고로 표시됩니다\."/,
+    );
+    assert.match(
+      influencerVerification,
+      /parseNaverBlogVisitorAverageInput[\s\S]+Number\.isSafeInteger\(parsed\)/,
+    );
+    assert.match(
+      influencerVerification,
+      /platform === "naver_blog" &&[\s\S]+parsedNaverBlogVisitorAverage\.value === undefined[\s\S]+setNaverBlogVisitorError\("최근 4일 평균 일일 방문자 수를 입력해 주세요\."\)/,
+    );
+    assert.match(
+      influencerVerification,
+      /platform === "naver_blog"[\s\S]+naver_blog_recent_4d_average_visitors:[\s\S]+parsedNaverBlogVisitorAverage\.value/,
+    );
+    assert.match(
+      influencerVerification,
+      /const updatePlatform[\s\S]+naver_blog_recent_4d_average_visitors: ""[\s\S]+setFile\(null\)/,
+    );
+    assert.match(
+      verificationDomain,
+      /naver_blog_recent_4d_average_visitors\?: number/,
     );
 
-    assert.deepEqual(getNaverBlogCompletedVisitorDates(now), [
-      "20260712",
-      "20260711",
-      "20260710",
-      "20260709",
-    ]);
-    assert.equal(metric.available, true);
-    assert.equal(metric.average, 250);
-    assert.equal(metric.counts.length, 4);
-    assert.equal(
-      metric.counts.some((item) => item.date === "20260713"),
-      false,
+    assert.match(
+      server,
+      /hasOwnProperty\.call\([\s\S]+"naver_blog_recent_4d_average_visitors"/,
     );
     assert.match(
-      packageJson.scripts?.["sync:naver-blog-visitors"] ?? "",
-      /sync-discovered-naver-blog-visitors\.mjs/,
+      server,
+      /hasNaverBlogVisitorReport && platform !== "naver_blog"/,
     );
-    assert.match(collector, /upload-influencer-discovery-batch\.mjs/);
-    assert.doesNotMatch(collector, /sync-discovered-naver-blog-visitors\.mjs/);
-    assert.match(batchUploader, /sync-discovered-naver-blog-visitors\.mjs/);
-    assert.match(batchUploader, /--batch-upload=true/);
-    assert.match(batchUploader, /--apply=true/);
-    assert.match(batchUploader, /naver-visitor-stale-days/);
-    assert.match(syncScript, /NVisitorgp4Ajax\.nhn/);
-    assert.match(syncScript, /args\.get\("stale-days"\)/);
-    assert.match(syncScript, /stageNaverVisitorWorkbook/);
-    assert.match(syncScript, /readPendingNaverVisitorBatch/);
-    assert.match(syncScript, /archiveNaverVisitorBatch/);
-    assert.match(syncScript, /apply_discovered_naver_blog_visitor_metrics_v2/);
-    assert.match(syncScript, /validateUploaderSession/);
-    assert.match(syncScript, /YEOLLOCK_INFLUENCER_UPLOADER_LOCK_TOKEN/);
-    assert.match(server, /naver_blog_visitor_average_4d/);
-    assert.match(server, /최근 4일 평균 방문자/);
-    assert.match(marketplace, /채널 지표/);
-    assert.match(migration, /naver_blog_visitor_average_4d bigint/);
-    assert.match(migration, /apply_discovered_naver_blog_visitor_metrics/);
+    assert.match(server, /Naver Blog visitor report is required/);
     assert.match(
-      idempotentMigration,
-      /apply_discovered_naver_blog_visitor_metrics_v2/,
+      server,
+      /Naver Blog visitor report must be a non-negative safe integer/,
+    );
+    assert.match(server, /buildNaverBlogSelfReportedChannelMetric/);
+    assert.match(
+      server,
+      /self_reported_channel_metric: selfReportedChannelMetric/,
     );
     assert.match(
-      idempotentMigration,
-      /updates\.checked_at > profile\.naver_blog_visitor_checked_at/,
-    );
-    assert.match(idempotentMigration, /is distinct from/);
-    assert.match(
-      idempotentMigration,
-      /revoke execute on function public\.apply_discovered_naver_blog_visitor_metrics\(jsonb\)/,
+      userMessages,
+      /Naver Blog visitor report is only available for Naver Blog[\s\S]+네이버 블로그 인증에서만 입력/,
     );
     assert.match(
-      migration,
-      /revoke all on function[\s\S]+from public, anon, authenticated;/,
+      userMessages,
+      /Naver Blog visitor report is required[\s\S]+최근 4일 평균 일일 방문자 수를 입력/,
     );
-    assert.match(migration, /grant execute on function[\s\S]+to service_role;/);
+    assert.match(
+      userMessages,
+      /Naver Blog visitor report must be a non-negative safe integer[\s\S]+0 이상의 정수/,
+    );
+    assert.match(
+      metricBuilder,
+      /metric: "average_daily_visitors_4d"[\s\S]+period_days: 4[\s\S]+source: "creator_self_report"[\s\S]+trust: "self_reported"/,
+    );
+    assert.match(
+      metricBuilder,
+      /reported_at: normalizedReportedAt[\s\S]+reported_handle: reportedHandle/,
+    );
+
+    assert.match(
+      approvalMigration,
+      /add column if not exists naver_blog_recent_4d_average_visitors bigint/,
+    );
+    assert.match(
+      approvalMigration,
+      /platform::text = 'naver_blog'[\s\S]+naver_blog_recent_4d_average_visitors between 0 and 9007199254740991/,
+    );
+    assert.match(
+      approvalMigration,
+      /status::text = 'approved'[\s\S]+data_origin = 'production'/,
+    );
+    assert.match(
+      approvalMigration,
+      /self_reported_channel_metric[\s\S]+average_daily_visitors_4d[\s\S]+creator_self_report/,
+    );
+    assert.match(
+      approvalMigration,
+      /v_request\.naver_blog_recent_4d_average_visitors is null[\s\S]+v_checked_at is distinct from v_request\.created_at/,
+    );
+    assert.match(
+      approvalMigration,
+      /v_value is distinct from v_request\.naver_blog_recent_4d_average_visitors/,
+    );
+    assert.match(approvalMigration, /최근 4일 평균 · 자가신고/);
+    assert.match(
+      approvalMigration,
+      /'trust',[\s\S]+when v_platform = 'naver_blog' then 'self_reported'[\s\S]+'period_days',[\s\S]+when v_platform = 'naver_blog' then 4/,
+    );
+    assert.match(
+      approvalMigration,
+      /new\.platform::text in \('youtube', 'tiktok', 'naver_blog'\)[\s\S]+directsign_apply_approved_platform_channel_metric/,
+    );
+    assert.doesNotMatch(approvalMigration, /NVisitorgp4Ajax/);
+    assert.doesNotMatch(approvalMigration, /grant[\s\S]+to anon;/);
+
+    assert.match(
+      enforcementMigration,
+      /directsign_sanitize_registered_naver_metrics/,
+    );
+    assert.match(
+      enforcementMigration,
+      /directsign_sanitize_naver_channel_self_report[\s\S]+marketplace_naver_channel_self_report_sanitizer/,
+    );
+    assert.match(
+      enforcementMigration,
+      /directsign_channel_has_naver_self_report_provenance[\s\S]+p_platform[\s\S]+creator_self_report_required[\s\S]+average_daily_visitors_4d[\s\S]+self_reported/,
+    );
+    assert.match(
+      enforcementMigration,
+      /if new\.platform::text <> 'naver_blog' then[\s\S]+new\.follower_count := null[\s\S]+new\.followers_label := '계정 연동'[\s\S]+new\.performance_label := '프로필에서 확인'[\s\S]+new\.follower_sync_source := null[\s\S]+new\.follower_sync_metadata := '\{\}'::jsonb/,
+    );
+    assert.match(
+      enforcementMigration,
+      /create or replace function directsign_private\.directsign_naver_self_report_request_is_authoritative/,
+    );
+    assert.match(
+      enforcementMigration,
+      /directsign_is_operational_profile\([\s\S]+p_owner_profile_id[\s\S]+'influencer'/,
+    );
+    assert.match(
+      enforcementMigration,
+      /request_row\.profile_id is null[\s\S]+request_row\.profile_id = p_owner_profile_id[\s\S]+request_row\.target_id[\s\S]+p_owner_profile_id/,
+    );
+    assert.match(
+      enforcementMigration,
+      /self_reported_channel_metric,status}[\s\S]+self_reported_channel_metric,platform}[\s\S]+self_reported_channel_metric,metric}[\s\S]+self_reported_channel_metric,value}/,
+    );
+    assert.match(
+      enforcementMigration,
+      /self_reported_channel_metric,period_days}[\s\S]+self_reported_channel_metric,source}[\s\S]+self_reported_channel_metric,trust}[\s\S]+self_reported_channel_metric,reported_handle}[\s\S]+self_reported_channel_metric,reported_at}/,
+    );
+    assert.match(
+      enforcementMigration,
+      /directsign_email_is_operational[\s\S]+directsign_has_test_marker[\s\S]+qa_account\|seeded\|is_test/,
+    );
+    assert.match(
+      enforcementMigration,
+      /v_source = 'creator_self_report'[\s\S]+provider', ''\) = 'creator_self_report'[\s\S]+metric', ''\) = 'average_daily_visitors_4d'[\s\S]+trust', ''\) = 'self_reported'[\s\S]+period_days', ''\) = '4'[\s\S]+account_approved', ''\) = 'true'[\s\S]+availability', ''\) = 'available'/,
+    );
+    assert.match(enforcementMigration, /pg_catalog\.pg_input_is_valid/);
+    assert.match(
+      enforcementMigration,
+      /request_row\.status::text = 'approved'[\s\S]+request_row\.naver_blog_recent_4d_average_visitors = p_count[\s\S]+request_row\.created_at = p_checked_at/,
+    );
+    assert.ok(
+      enforcementMigration.match(
+        /directsign_naver_self_report_request_is_authoritative\(/g,
+      )!.length >= 5,
+    );
+    assert.match(
+      enforcementMigration,
+      /new\.audience_counts := coalesce\(new\.audience_counts, '\{\}'::jsonb\) - 'naver_blog'/,
+    );
+    assert.match(
+      enforcementMigration,
+      /into new\.max_audience_count[\s\S]+jsonb_each_text\(new\.audience_counts\)/,
+    );
+    assert.match(
+      enforcementMigration,
+      /follower_count = null[\s\S]+follower_sync_source = 'creator_self_report_required'[\s\S]+channel\.follower_sync_source = 'naver_blog_public_visitor_counter'/,
+    );
+    assert.match(
+      enforcementMigration,
+      /drop function if exists public\.apply_discovered_naver_blog_visitor_metrics_v2\(jsonb\)/,
+    );
+    assert.match(
+      enforcementMigration,
+      /drop function if exists public\.apply_discovered_naver_blog_visitor_metrics\(jsonb\)/,
+    );
+    assert.match(
+      enforcementMigration,
+      /directsign_revoke_naver_self_report_on_verification_loss[\s\S]+array_agg\(distinct marketplace_profile\.owner_profile_id\)[\s\S]+follower_count = null[\s\S]+approval_revoked/,
+    );
+    assert.match(
+      enforcementMigration,
+      /after delete or update of[\s\S]+naver_blog_recent_4d_average_visitors,[\s\S]+evidence_snapshot_json,[\s\S]+created_at,[\s\S]+submitted_by_email,[\s\S]+reviewer_note/,
+    );
+    assert.match(
+      enforcementMigration,
+      /directsign_refresh_registered_naver_metric_from_channel[\s\S]+directsign_refresh_registered_member_discovery[\s\S]+marketplace_naver_channel_metric_refresh[\s\S]+after update of[\s\S]+follower_sync_metadata/,
+    );
+    assert.match(
+      enforcementMigration,
+      /Revalidate every existing Naver channel[\s\S]+where directsign_private\.directsign_channel_has_naver_self_report_provenance/,
+    );
+    assert.doesNotMatch(enforcementMigration, /grant[\s\S]+to anon;/);
+
+    assert.match(
+      marketplaceDomain,
+      /metricType\?: "average_daily_visitors_4d"[\s\S]+metricSource\?: "creator_self_report"[\s\S]+metricTrust\?: "self_reported"/,
+    );
+    assert.match(
+      marketplaceDomain,
+      /platform\.platform !== "naver_blog"[\s\S]+platform\.metricTrust !== "self_reported"/,
+    );
+    const bundledNaverFixtureCount =
+      marketplaceDomain.match(/platform:\s*"naver_blog"/g)?.length ?? 0;
+    const channelOnlyNaverFixtureCount =
+      marketplaceDomain.match(
+        /platform:\s*"naver_blog"[\s\S]{0,320}?followersLabel:\s*""[\s\S]{0,120}?performanceLabel:\s*"자가신고 미입력"/g,
+      )?.length ?? 0;
+    assert.ok(bundledNaverFixtureCount > 0);
+    assert.equal(channelOnlyNaverFixtureCount, bundledNaverFixtureCount);
+    assert.match(marketplacePages, /function SelfReportedMetricBadge/);
+    assert.match(marketplacePages, />\s*자가신고\s*</);
+    assert.match(
+      advertiserDashboard,
+      /getCampaignApplicantPerformanceLabel[\s\S]+\.filter\(\(platform\) => platform\.metricTrust !== "self_reported"\)/,
+    );
+    assert.match(advertiserDashboard, /"채널 지표"/);
+    assert.doesNotMatch(advertiserDashboard, /"구독자\/팔로워수"/);
+    assert.match(
+      server,
+      /readNaverSelfReportedMarketplaceMetric[\s\S]+normalizeVerificationMetricCount\(channel\.follower_count\)[\s\S]+metadata\?\.provider !== "creator_self_report"[\s\S]+reportedHandle !== channelHandle[\s\S]+syncedAtTime !== checkedAtTime/,
+    );
+    assert.match(
+      server,
+      /hasMisplacedNaverSelfReportProvenance[\s\S]+channel\.platform === "naver_blog"[\s\S]+channel\.follower_sync_source === "creator_self_report"[\s\S]+metadata\?\.metric === "average_daily_visitors_4d"/,
+    );
+    assert.match(
+      server,
+      /const followersLabel = isNaverBlog[\s\S]+naverSelfReport\?\.followersLabel \?\? "계정 연동"/,
+    );
+    assert.match(
+      server,
+      /select=profile_id,platform,label,handle,url,followers_label,performance_label,follower_count,follower_count_synced_at,follower_sync_source/,
+    );
+    assert.match(
+      server,
+      /metricTrust === "self_reported"[\s\S]+`일평균 \$\{channel\.followerCount\.toLocaleString\("ko-KR"\)\}명`/,
+    );
+    assert.match(
+      server,
+      /hasMisplacedNaverSelfReport[\s\S]+!hasMisplacedNaverSelfReport[\s\S]+platform !== "naver_blog" \|\| isNaverSelfReport/,
+    );
+    assert.match(
+      server,
+      /const maxAudienceCount = verifiedChannels\.reduce[\s\S]+channel\.platform === "naver_blog"/,
+    );
+    const reviewUpdateStart = server.indexOf(
+      "const updateVerificationRequestReview = async",
+    );
+    const automationUpdateStart = server.indexOf(
+      "const updateVerificationRequestAutomation = async",
+    );
+    const reviewUpdateSource = server.slice(
+      reviewUpdateStart,
+      automationUpdateStart,
+    );
+    const automationUpdateSource = server.slice(
+      automationUpdateStart,
+      server.indexOf("const rerunVerificationAutomation", automationUpdateStart),
+    );
+    assert.match(
+      reviewUpdateSource,
+      /shouldInvalidateApprovedPlatformChannelCache\([\s\S]+updatedRecord[\s\S]+shouldInvalidateApprovedPlatformChannelCache\([\s\S]+existingRecord/,
+    );
+    assert.match(
+      automationUpdateSource,
+      /shouldInvalidateApprovedPlatformChannelCache\([\s\S]+savedRecord[\s\S]+shouldInvalidateApprovedPlatformChannelCache\([\s\S]+record/,
+    );
+    assert.match(
+      agents,
+      /Naver Blog visitor metrics must never use `NVisitorgp4Ajax`[\s\S]+must enter[\s\S]+one visible `자가신고` disclosure/,
+    );
+    assert.match(
+      agents,
+      /Self-reported Naver daily visitors must not enter subscriber\/follower `audience_counts`, `max_audience_count`, or global channel-size sorting/,
+    );
   });
 
   it("stages influencer collection in local XLSX and uploads changed rows at most every 12 hours", () => {
@@ -811,7 +1435,6 @@ describe("yeollock.me security regressions", () => {
     const startScript = read("scripts/start-influencer-discovery-loop.ps1");
     const uploader = read("scripts/upload-influencer-discovery-batch.mjs");
     const queue = read("scripts/lib/influencer-discovery-queue.mjs");
-    const visitorSync = read("scripts/sync-discovered-naver-blog-visitors.mjs");
 
     assert.match(
       agents,
@@ -876,12 +1499,10 @@ describe("yeollock.me security regressions", () => {
       /upsertSupabaseRows[\s\S]{0,220}assertInfluencerUploaderSession\(uploaderSession\)/,
     );
     assert.match(uploader, /archiveInfluencerBatch/);
-    assert.match(uploader, /sync-discovered-naver-blog-visitors\.mjs/);
+    assert.doesNotMatch(uploader, /sync-discovered-naver-blog-visitors\.mjs/);
     assert.match(queue, /t="inlineStr"/);
     assert.match(queue, /\.partial/);
     assert.match(queue, /Pending queue workbook changed after snapshot/);
-    assert.match(visitorSync, /!apply \|\| !batchUpload/);
-    assert.match(visitorSync, /stageNaverVisitorWorkbook/);
     assert.match(
       packageJson.scripts?.["upload:influencers:batch"] ?? "",
       /upload-influencer-discovery-batch\.mjs/,
@@ -1336,11 +1957,14 @@ describe("yeollock.me security regressions", () => {
     );
   });
 
-  it("keeps completed production influencer members private to authenticated advertiser discovery", () => {
+  it("publishes only consented email-confirmed minimal influencer profiles and keeps discovery private", () => {
     const server = read("server/index.ts");
     const marketplace = read("src/pages/marketplace/MarketplacePages.tsx");
     const migration = read(
       "supabase/migrations/20260806120000_add_registered_influencer_discovery.sql",
+    );
+    const minimalProfileMigration = read(
+      "supabase/migrations/20260807180000_publish_minimal_influencer_profiles.sql",
     );
     const discoveryRoute = server.slice(
       server.indexOf('app.get("/api/marketplace/influencers"'),
@@ -1472,6 +2096,10 @@ describe("yeollock.me security regressions", () => {
     assert.match(discoveryRoute, /requireAdvertiserSession\(request, response\)/);
     assert.match(discoveryRoute, /readAuthenticatedMarketplaceInfluencerPage/);
     assert.match(discoveryRoute, /accessToken: advertiserAuth\.accessToken/);
+    assert.match(
+      discoveryRoute,
+      /AuthenticatedInfluencerDirectoryAccessError[\s\S]+response\.status\(403\)/,
+    );
     assert.match(discoveryRoute, /Cache-Control", "private, no-store/);
     assert.doesNotMatch(discoveryRoute, /sendPublicMarketplaceJson/);
     const authenticatedRestHelper = server.slice(
@@ -1513,11 +2141,34 @@ describe("yeollock.me security regressions", () => {
     );
     assert.doesNotMatch(publicDetailRoute, /readRegisteredMarketplaceInfluencerByStableHandle/);
 
+    assert.match(minimalProfileMigration, /public_profile_consent_at/);
+    assert.match(minimalProfileMigration, /auth_user\.email_confirmed_at is not null/);
+    assert.match(
+      minimalProfileMigration,
+      /create or replace function public\.directsign_publish_minimal_influencer_profile/,
+    );
+    assert.match(minimalProfileMigration, /public_index_enabled = false/);
+    assert.match(minimalProfileMigration, /ownership_status = 'verified'/);
+    assert.match(
+      minimalProfileMigration,
+      /create or replace function directsign_private\.directsign_prune_nonindexed_profile_directory\(\)/,
+    );
+    assert.match(
+      minimalProfileMigration,
+      /create or replace function directsign_private\.directsign_prune_nonindexed_channel_directory\(\)/,
+    );
+    assert.match(
+      minimalProfileMigration,
+      /zz_marketplace_channels_prune_nonindexed_directory[\s\S]+directsign_prune_nonindexed_channel_directory\(\)/,
+    );
+    assert.match(minimalProfileMigration, /'running_yaho'/);
+    assert.match(minimalProfileMigration, /v_follower_count is distinct from 178/);
+
     assert.match(profilePublish, /storedProfileRow\?\.id \?\? stableUuid/);
-    assert.match(profilePublish, /let handle = existingProfile\?\.handle \?\? automaticHandle/);
+    assert.match(profilePublish, /let handle = existingProfile\.handle/);
     assert.match(
       profilePublish,
-      /const automaticHandleConflict = existingProfile[\s\S]+findInfluencerPublicHandleConflict/,
+      /const shouldPromoteHandle =[\s\S]+const automaticHandleConflict =[\s\S]+findInfluencerPublicHandleConflict/,
     );
     assert.match(profilePublish, /registered_identity_only: false/);
     assert.match(
@@ -3429,6 +4080,22 @@ describe("yeollock.me security regressions", () => {
     );
   });
 
+  it("turns confirmation-mail provider failures into a concise Korean signup error", () => {
+    const server = read("server/index.ts");
+    const userMessages = read("src/domain/userMessages.ts");
+
+    assert.match(server, /error sending confirmation email/);
+    assert.match(
+      server,
+      /인증 메일을 보내지 못했습니다\. 잠시 후 다시 시도해 주세요\./,
+    );
+    assert.match(userMessages, /"Error sending confirmation email"/);
+    assert.match(
+      userMessages,
+      /인증 메일을 보내지 못했습니다\. 잠시 후 다시 시도해 주세요\./,
+    );
+  });
+
   it("returns typed account setup and role mismatch results only after password auth", () => {
     const server = read("server/index.ts");
     const advertiserLoginStart = server.indexOf(
@@ -4033,7 +4700,7 @@ describe("yeollock.me security regressions", () => {
     assert.doesNotMatch(influencerPublicProfileSource, /lg:max-w-\[520px\]/);
     assert.match(
       influencerPublicProfileSource,
-      /aria-label=\{`\$\{getPlatformDisplayName\(platform\.platform\)\} \$\{platform\.handle\}/,
+      /aria-label=\{\[[\s\S]+getPlatformDisplayName\(platform\.platform\)[\s\S]+platform\.handle[\s\S]+platform\.followersLabel[\s\S]+platform\.performanceLabel[\s\S]+"계정 보기"[\s\S]+\.join\(" "\)\}/,
     );
     assert.match(
       agents,
@@ -4136,8 +4803,9 @@ describe("yeollock.me security regressions", () => {
     );
     assert.match(
       marketplacePages,
-      /const canPropose = isRegisteredMarketplaceInfluencer\(profile\)/,
+      /const canPropose =[\s\S]+isRegisteredMarketplaceInfluencer\(profile\) && profile\.platformVerified === true/,
     );
+    assert.match(server, /code: "influencer_platform_verification_required"/);
     assert.match(marketplacePages, /채널 보기/);
     assert.match(marketplacePages, /title="공개 채널 보기"/);
     assert.match(
@@ -4386,11 +5054,11 @@ describe("yeollock.me security regressions", () => {
     const server = read("server/index.ts");
 
     assert.match(server, /const signupTermsVersion = "2026-06-02"/);
-    assert.match(server, /const signupPrivacyPolicyVersion = "2026-06-02"/);
+    assert.match(server, /const signupPrivacyPolicyVersion = "2026-08-08\.3"/);
     assert.match(signupPage, /const TERMS_DOCUMENT_VERSION = "2026-06-02"/);
     assert.match(
       signupPage,
-      /const PRIVACY_POLICY_DOCUMENT_VERSION = "2026-06-02"/,
+      /const PRIVACY_POLICY_DOCUMENT_VERSION = "2026-08-08\.3"/,
     );
     assert.match(signupPage, /LEGAL_CONTACT_EMAIL/);
     assert.match(signupPage, /동의 일시와 문서 버전이 저장됩니다/);
@@ -4399,18 +5067,19 @@ describe("yeollock.me security regressions", () => {
       signupPage,
       /향후 일부 또는 전체\s+기능이 유료로 전환될 수 있으며/,
     );
-    assert.match(legalPage, /effectiveDate: "2026-06-02"/);
+    assert.match(legalPage, /effectiveDate: "2026-08-08"/);
+    assert.match(legalPage, /documentVersion: "2026-08-08\.3"/);
     assert.match(
       legalPage,
       /향후 일부 또는 전체 기능이 유료로 전환될 수 있으며/,
     );
     assert.match(legalPage, /전환 전 별도 고지/);
     assert.match(legalPage, /처리위탁 및 국외 처리/);
-    assert.match(legalPage, /Vercel\(호스팅·서버 실행\)/);
-    assert.match(legalPage, /Supabase\(인증·데이터베이스·스토리지\)/);
+    assert.match(legalPage, /Vercel은 서울 리전/);
+    assert.match(legalPage, /Supabase와 그 기반 AWS는 일본 도쿄 리전/);
     assert.match(
       legalPage,
-      /계약 본문, 공유 토큰, 전자서명, 사업자 증빙, 운영자 화면/,
+      /가입·로그인·대시보드·메시지·알림·인증·계약·공유 링크·서명·관리자 화면/,
     );
     assert.match(legalPage, /전자적 형태라는 이유만으로 효력이 부인되지/);
     assert.match(legalPage, /별도 서면, 공증, 인감, 원본 제출/);
@@ -6179,7 +6848,8 @@ describe("yeollock.me security regressions", () => {
     assert.match(advertiserExportSource, /"서명일"/);
     assert.match(advertiserExportSource, /"크리에이터명"/);
     assert.match(advertiserExportSource, /"크리에이터 계정명"/);
-    assert.match(advertiserExportSource, /"구독자\/팔로워수"/);
+    assert.match(advertiserExportSource, /"채널 지표"/);
+    assert.doesNotMatch(advertiserExportSource, /"구독자\/팔로워수"/);
     assert.match(advertiserExportSource, /"콘텐츠 수량"/);
     assert.match(advertiserExportSource, /"마감일"/);
     assert.match(advertiserExportSource, /"조항 수"/);
@@ -6413,9 +7083,31 @@ describe("yeollock.me security regressions", () => {
     assert.match(server, /const shouldUseRelativeTestDatesForSession/);
     assert.match(server, /timeZone: "Asia\/Seoul"/);
     assert.match(server, /const normalizeTestContractDatesForSession/);
+    assert.match(server, /const shouldNormalizeTestContractDatesForSession/);
+    assert.match(
+      server,
+      /isOperationalTestContract\(contract\)\s*&&\s*contract\.relative_test_dates !== false/,
+    );
+    assert.match(
+      server,
+      /relative_test_dates: contract\.relative_test_dates === true/,
+    );
+    const seedAccounts = read("scripts/seed-test-accounts.mjs");
+    assert.match(
+      seedAccounts,
+      /platform: "instagram",[\s\S]+handle: "@creator\.sora",[\s\S]+url: "https:\/\/instagram\.com\/creator\.sora"/,
+    );
     assert.match(
       server,
       /const normalizeTestBrandProfileCampaignDatesForSession/,
+    );
+    assert.match(
+      server,
+      /campaign\.relativeTestDates\s*\?\s*normalizeRelativeTestCampaignDates\(campaign, index\)\s*:\s*campaign/,
+    );
+    assert.match(
+      server,
+      /record\.statusUpdatedByProfileId \?\? record\.status_updated_by_profile_id/,
     );
     assert.match(
       server,
@@ -6453,6 +7145,18 @@ describe("yeollock.me security regressions", () => {
     assert.match(
       server,
       /buildInfluencerDashboardApplications\(auth\.profile\.id, auth\)/,
+    );
+    assert.match(
+      server,
+      /useRelativeTestDates: legacyContract[\s\S]+shouldNormalizeTestContractDatesForSession\([\s\S]+relativeDateAuth,[\s\S]+legacyContract/,
+    );
+    assert.match(
+      server,
+      /const dashboardDueAt =[\s\S]+useRelativeTestDates && legacyDueAt \? legacyDueAt : v2DueAt/,
+    );
+    assert.match(
+      server,
+      /deadline_label: formatDashboardDue\(dashboardDueAt\)[\s\S]+due_at: dashboardDueAt/,
     );
     assert.doesNotMatch(server, /await writeStore\(normalizeTest/);
   });

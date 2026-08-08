@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -14,8 +13,6 @@ const DEFAULT_LOCK_STALE_HOURS = 24;
 const QUEUE_RELATIVE_PATH = path.join("data", "influencer-discovery-queue");
 const STATE_FILE_NAME = "state.json";
 const LOCK_FILE_NAME = "uploader.lock";
-const UPLOADER_TOKEN_ENV_NAME = "YEOLLOCK_INFLUENCER_UPLOADER_LOCK_TOKEN";
-const UPLOADER_PID_ENV_NAME = "YEOLLOCK_INFLUENCER_UPLOADER_PID";
 
 function parseCliArgs(argv) {
   return new Map(
@@ -30,11 +27,6 @@ function parseCliArgs(argv) {
 
 function parsePositiveNumber(value, fallback) {
   const parsed = Number.parseFloat(String(value ?? ""));
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
-
-function parsePositiveInt(value, fallback) {
-  const parsed = Number.parseInt(String(value ?? ""), 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
@@ -241,100 +233,6 @@ async function releaseUploaderLock(lock) {
   }
 }
 
-function appendTail(current, chunk, maximumLength = 12_000) {
-  return `${current}${chunk.toString()}`.slice(-maximumLength);
-}
-
-function extractJsonSummary(output) {
-  const text = String(output ?? "").trim();
-  if (!text) return null;
-  const start = Math.max(
-    text.lastIndexOf('{\n  "ok"'),
-    text.lastIndexOf('{"ok"'),
-  );
-  const end = text.lastIndexOf("}");
-  if (start < 0 || end <= start) return null;
-  try {
-    return JSON.parse(text.slice(start, end + 1));
-  } catch {
-    return null;
-  }
-}
-
-export function runNaverVisitorBatch({
-  rootDir = process.cwd(),
-  batchSize = 300,
-  staleDays = 7,
-  concurrency = 6,
-  uploaderLockToken,
-  uploaderPid = process.pid,
-} = {}) {
-  if (!uploaderLockToken || Number(uploaderPid) !== process.pid) {
-    throw new Error(
-      "A live influencer uploader lock is required for the visitor batch.",
-    );
-  }
-  const projectRoot = path.resolve(rootDir);
-  const childArguments = [
-    path.join(
-      projectRoot,
-      "scripts",
-      "sync-discovered-naver-blog-visitors.mjs",
-    ),
-    "--apply=true",
-    "--batch-upload=true",
-    `--batch-size=${parsePositiveInt(batchSize, 300)}`,
-    "--max-rows=0",
-    `--stale-days=${parsePositiveNumber(staleDays, 7)}`,
-    `--concurrency=${parsePositiveInt(concurrency, 6)}`,
-  ];
-
-  return new Promise((resolve) => {
-    const startedAt = new Date().toISOString();
-    const child = spawn(process.execPath, childArguments, {
-      cwd: projectRoot,
-      env: {
-        ...process.env,
-        [UPLOADER_TOKEN_ENV_NAME]: String(uploaderLockToken),
-        [UPLOADER_PID_ENV_NAME]: String(uploaderPid),
-      },
-      windowsHide: true,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    let stdoutTail = "";
-    let stderrTail = "";
-    child.stdout.on("data", (chunk) => {
-      stdoutTail = appendTail(stdoutTail, chunk);
-    });
-    child.stderr.on("data", (chunk) => {
-      stderrTail = appendTail(stderrTail, chunk);
-    });
-    child.once("error", (error) => {
-      resolve({
-        ok: false,
-        startedAt,
-        finishedAt: new Date().toISOString(),
-        code: null,
-        error: error instanceof Error ? error.message : String(error),
-        stdoutTail,
-        stderrTail,
-      });
-    });
-    child.once("close", (code, signal) => {
-      resolve({
-        ok: code === 0,
-        startedAt,
-        finishedAt: new Date().toISOString(),
-        code,
-        signal,
-        summary: extractJsonSummary(stdoutTail),
-        stdoutTail,
-        stderrTail,
-      });
-    });
-  });
-}
-
 async function loadDiscoveryUploadFunctions() {
   const module = await import("./discover-korean-influencers.mjs");
   if (
@@ -359,9 +257,6 @@ export async function runInfluencerDiscoveryBatchUpload(
     intervalHours = MINIMUM_UPLOAD_INTERVAL_HOURS,
     force = false,
     now = undefined,
-    naverVisitorBatchSize = 300,
-    naverVisitorStaleDays = 7,
-    naverVisitorConcurrency = 6,
   } = {},
   dependencies = {},
 ) {
@@ -378,7 +273,6 @@ export async function runInfluencerDiscoveryBatchUpload(
     dependencies.archiveInfluencerBatch ?? archiveInfluencerBatch;
   const loadUploadFunctions =
     dependencies.loadDiscoveryUploadFunctions ?? loadDiscoveryUploadFunctions;
-  const runVisitor = dependencies.runNaverVisitorBatch ?? runNaverVisitorBatch;
 
   const lock = await acquireLock({ rootDir: projectRoot, now: checkedAt });
   if (!lock.acquired) {
@@ -519,41 +413,6 @@ export async function runInfluencerDiscoveryBatchUpload(
       throw error;
     }
 
-    let visitor;
-    try {
-      visitor = await runVisitor({
-        rootDir: projectRoot,
-        batchSize: naverVisitorBatchSize,
-        staleDays: naverVisitorStaleDays,
-        concurrency: naverVisitorConcurrency,
-        uploaderLockToken: lock.token,
-        uploaderPid: lock.pid,
-      });
-    } catch (error) {
-      visitor = { ok: false, error: serializeError(error) };
-    }
-
-    const visitorRecordedAt = normalizeDate(
-      now ?? new Date(),
-      "visitorRecordedAt",
-    ).toISOString();
-    state = {
-      ...state,
-      lastVisitorAttemptAt: visitorRecordedAt,
-      ...(visitor.ok ? { lastVisitorSuccessfulAt: visitorRecordedAt } : {}),
-      lastVisitorError: visitor.ok
-        ? null
-        : (visitor.error ??
-          visitor.stderrTail ??
-          `Naver visitor sync exited ${visitor.code}`),
-    };
-    let stateWarning = null;
-    try {
-      await writeState(state, { rootDir: projectRoot });
-    } catch (error) {
-      stateWarning = serializeError(error);
-    }
-
     return {
       ok: true,
       checkedAt,
@@ -569,8 +428,6 @@ export async function runInfluencerDiscoveryBatchUpload(
         uploadedRows,
         archivePath: archive.archivePath ?? archive.path ?? null,
       },
-      visitor,
-      ...(stateWarning ? { stateWarning } : {}),
     };
   } finally {
     await releaseLock(lock).catch(() => undefined);
@@ -583,9 +440,6 @@ async function main() {
     rootDir: args.get("root-dir") ?? process.cwd(),
     intervalHours: args.get("interval-hours"),
     force: args.get("force") === "true",
-    naverVisitorBatchSize: args.get("naver-visitor-batch-size"),
-    naverVisitorStaleDays: args.get("naver-visitor-stale-days"),
-    naverVisitorConcurrency: args.get("naver-visitor-concurrency"),
   });
   console.log(JSON.stringify(summary, null, 2));
 }

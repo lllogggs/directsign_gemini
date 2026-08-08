@@ -9,7 +9,7 @@
     "preview": "npm run build && tsx server/index.ts --preview",
     "clean": "rm -rf dist",
     "lint": "npm run privacy:scan && eslint . && tsc --noEmit",
-    "test": "tsx --test tests/auth-session-persistence.test.ts tests/campaign-publication-idempotency.test.ts tests/directsign-security.test.ts tests/influencer-discovery-queue.test.ts tests/influencer-discovery-uploader.test.ts tests/instagram-dm-verification.test.ts tests/notification-center.test.ts tests/notification-center-frontend.test.ts tests/one-to-one-contract-idempotency.test.ts",
+    "test": "tsx --test tests/account-erasure-frontend.test.ts tests/activity-page.test.ts tests/auth-session-persistence.test.ts tests/campaign-application-contacts.test.ts tests/campaign-publication-idempotency.test.ts tests/directsign-security.test.ts tests/influencer-discovery-queue.test.ts tests/influencer-discovery-uploader.test.ts tests/instagram-dm-verification.test.ts tests/internal-service-accounts.test.ts tests/notification-center.test.ts tests/notification-center-frontend.test.ts tests/one-to-one-contract-idempotency.test.ts tests/platform-verification-metrics.test.ts tests/platform-verification-sql.test.ts tests/privacy-retention.test.ts",
     "privacy:scan": "node scripts/privacy-pii-scan.mjs",
     "guardrails:kim": "node scripts/kim-jaewoo-guardrails.mjs",
     "qa": "node scripts/qa-standard.mjs",
@@ -17,7 +17,6 @@
     "discover:influencers": "node scripts/discover-korean-influencers.mjs",
     "discover:influencers:loop": "node scripts/run-influencer-discovery-loop.mjs",
     "upload:influencers:batch": "node scripts/upload-influencer-discovery-batch.mjs",
-    "sync:naver-blog-visitors": "node scripts/sync-discovered-naver-blog-visitors.mjs",
     "audit:influencers": "node scripts/audit-influencer-database.mjs",
     "repair:influencer-countries": "node scripts/repair-influencer-country-data.mjs",
     "repair:influencer-quality": "node scripts/repair-influencer-data-quality.mjs",
@@ -45,7 +44,7 @@
     "jspdf": "^4.2.1",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
-    "pdfjs-dist": "^6.0.227",
+    "pdfjs-dist": "^6.2.108",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router": "^8.3.0",
@@ -57,6 +56,7 @@
     "zustand": "^5.0.12"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.4",
     "@eslint/js": "^10.0.1",
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
@@ -75,6 +75,7 @@
     "vite": "^6.2.0"
   },
   "overrides": {
-    "ip-address": "10.2.0"
+    "ip-address": "10.4.0",
+    "nanoid": "3.3.18"
   }
 }

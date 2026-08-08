@@ -10,6 +10,7 @@ import {
 import { ArrowRight } from "lucide-react";
 import { Component, lazy, Suspense, useEffect, type ErrorInfo, type ReactNode } from "react";
 import { BrandLogo } from "./components/BrandLogo";
+import { AccountErasureDialog } from "./components/AccountErasureDialog";
 import { RecentAuthDialog } from "./components/RecentAuthDialog";
 import { AdvertiserAuthGate } from "./pages/marketing/AdvertiserAuthGate";
 import { RoleIntroPage, StartPage } from "./pages/landing/LandingPages";
@@ -973,12 +974,13 @@ const getRouteSeoConfig = (pathname: string): RouteSeoConfig => {
 
   if (normalizedPath.split("/").filter(Boolean).length === 1) {
     const profileHandle = decodeURIComponent(normalizedPath.slice(1));
+    const isProvisionalProfile = /^rm-[a-f0-9]{27}$/i.test(profileHandle);
     const config = {
       title: `${profileHandle} 인플루언서 프로필 - ${PRODUCT_NAME}`,
       description:
         "인플루언서 공개 프로필에서 플랫폼, 활동 분야, 광고 계약 전 확인할 정보를 살펴봅니다.",
       canonicalPath: normalizedPath,
-      robots: publicRobotsContent,
+      robots: isProvisionalProfile ? privateRobotsContent : publicRobotsContent,
     };
     return { ...config, structuredData: buildStructuredData(config) };
   }
@@ -1160,12 +1162,13 @@ const getIntentAwareRouteSeoConfig = (pathname: string): RouteSeoConfig => {
 
   if (normalizedPath.split("/").filter(Boolean).length === 1) {
     const profileHandle = decodeURIComponent(normalizedPath.slice(1));
+    const isProvisionalProfile = /^rm-[a-f0-9]{27}$/i.test(profileHandle);
 
     return buildPublicSeoConfig({
       title: `${profileHandle} 인플루언서 프로필 - ${PRODUCT_NAME}`,
       description: `광고주가 ${profileHandle}의 채널, 플랫폼, 협찬, PPL, 공동구매 제안 가능성을 확인할 수 있는 인플루언서 프로필입니다.`,
       canonicalPath: normalizedPath,
-      robots: publicRobotsContent,
+      robots: isProvisionalProfile ? privateRobotsContent : publicRobotsContent,
       keywords: influencerIntentKeywords,
     });
   }
@@ -1455,8 +1458,8 @@ function RouteAnalytics() {
   const location = useLocation();
 
   useEffect(() => {
-    syncAnalyticsRoute(location.pathname, location.search);
-  }, [location.pathname, location.search]);
+    syncAnalyticsRoute(location.pathname, location.search, location.hash);
+  }, [location.hash, location.pathname, location.search]);
 
   return null;
 }
@@ -1758,6 +1761,7 @@ function App() {
   return (
     <BrowserRouter>
       <AppRoutes />
+      <AccountErasureDialog />
       <RecentAuthDialog />
     </BrowserRouter>
   );

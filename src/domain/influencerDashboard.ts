@@ -67,6 +67,16 @@ export interface InfluencerDashboardVerification {
   }>;
 }
 
+export interface InfluencerDashboardPublicProfile {
+  path?: string;
+  handle?: string;
+  state: "setup_required" | "minimal" | "complete";
+  published: boolean;
+  platform_verification_state: "unverified" | "verified";
+  representative_activity_page_url?: string;
+  completion_required: boolean;
+}
+
 export interface InfluencerDashboardSummary {
   total_contracts: number;
   review_needed: number;
@@ -157,6 +167,7 @@ export interface InfluencerDashboardResponse {
   authenticated: true;
   user: InfluencerDashboardUser;
   verification: InfluencerDashboardVerification;
+  public_profile: InfluencerDashboardPublicProfile;
   summary: InfluencerDashboardSummary;
   tasks: InfluencerDashboardTask[];
   contracts: InfluencerDashboardContract[];

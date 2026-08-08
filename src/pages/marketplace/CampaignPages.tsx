@@ -38,6 +38,7 @@ import { useBodyScrollLock } from "../../hooks/useBodyScrollLock";
 import { PRODUCT_NAME } from "../../domain/brand";
 import {
   campaignProposalTypeOptions,
+  CAMPAIGN_APPLICATION_CONTACT_POLICY_VERSION,
   formatCampaignApplicantLimit,
   formatMarketplaceCountries,
   getCampaignDeadlineLabel,
@@ -49,6 +50,7 @@ import {
   platformLabels,
   proposalTypeLabels,
   type CampaignProposalType,
+  type CampaignApplicationContactField,
   type MarketplaceBrandCampaign,
   type MarketplaceBrandProfile,
   type MarketplaceCampaignPost,
@@ -309,6 +311,15 @@ type CampaignApplicationResponse = {
   already_submitted?: boolean;
 };
 
+type CampaignApplicationSubmission = {
+  acceptedConsentIds: string[];
+  applicationContact: {
+    phone?: string;
+    email?: string;
+  };
+  applicationContactConsentAccepted: boolean;
+};
+
 type CampaignApplicationsState =
   | { status: "loading" }
   | { status: "ready"; applications: MarketplaceMessageThread[] }
@@ -378,6 +389,7 @@ export function AdvertiserCampaignRecruitmentPage() {
     targetCountries: [] as MarketplaceCountryCode[],
     deliverables: "",
     thumbnailUrl: "",
+    applicationContactFields: [] as CampaignApplicationContactField[],
     requiredConsents: [] as NonNullable<MarketplaceBrandCampaign["requiredConsents"]>,
   });
   const [submitError, setSubmitError] = useState<string | undefined>();
@@ -542,6 +554,20 @@ export function AdvertiserCampaignRecruitmentPage() {
     });
   };
 
+  const toggleApplicationContactField = (
+    field: CampaignApplicationContactField,
+  ) => {
+    setForm((current) => {
+      const selected = current.applicationContactFields.includes(field);
+      return {
+        ...current,
+        applicationContactFields: selected
+          ? current.applicationContactFields.filter((item) => item !== field)
+          : [...current.applicationContactFields, field],
+      };
+    });
+  };
+
   const handleBrandImageSelect = async (file: File | undefined) => {
     if (!file || isBrandImageUploading) return;
 
@@ -696,6 +722,7 @@ export function AdvertiserCampaignRecruitmentPage() {
           .filter(Boolean)
           .slice(0, 6),
         thumbnailUrl: form.thumbnailUrl.trim(),
+        applicationContactFields: [...form.applicationContactFields].sort(),
         requiredConsents: form.requiredConsents.map((consent) => ({
           id: consent.id,
           text: consent.text.trim(),
@@ -793,6 +820,7 @@ export function AdvertiserCampaignRecruitmentPage() {
         deliverables: "",
         targetCountries: [],
         thumbnailUrl: "",
+        applicationContactFields: [],
         requiredConsents: [],
       }));
       navigate("/advertiser/campaigns");
@@ -827,6 +855,7 @@ export function AdvertiserCampaignRecruitmentPage() {
       uploadDeadline: form.uploadDeadline.trim() || undefined,
       platforms,
       deliverables: parseCampaignDeliverables(form.deliverables),
+      applicationContactFields: form.applicationContactFields,
       requiredConsents: form.requiredConsents
         .map((consent) => ({ id: consent.id, text: consent.text.trim() }))
         .filter((consent) => consent.text.length > 0),
@@ -1160,6 +1189,11 @@ export function AdvertiserCampaignRecruitmentPage() {
                 className="campaign-input"
               />
             </CampaignField>
+
+            <CampaignApplicationContactFieldSelector
+              selectedFields={form.applicationContactFields}
+              onToggle={toggleApplicationContactField}
+            />
 
             <CampaignRequiredConsentEditor
               consents={form.requiredConsents}
@@ -1592,8 +1626,13 @@ export function InfluencerCampaignDiscoveryPage() {
     const requiredConsents = (campaign.requiredConsents ?? []).filter(
       (consent) => consent.id.trim() && consent.text.trim(),
     );
-    if (requiredConsents.length === 0) {
-      void submitCampaignApplication(campaign, []);
+    const applicationContactFields = campaign.applicationContactFields ?? [];
+    if (requiredConsents.length === 0 && applicationContactFields.length === 0) {
+      void submitCampaignApplication(campaign, {
+        acceptedConsentIds: [],
+        applicationContact: {},
+        applicationContactConsentAccepted: false,
+      });
       return;
     }
     setApplicationConsentCampaign(campaign);
@@ -1601,7 +1640,7 @@ export function InfluencerCampaignDiscoveryPage() {
 
   const submitCampaignApplication = async (
     campaign: MarketplaceCampaignPost,
-    acceptedConsentIds: string[],
+    submission: CampaignApplicationSubmission,
   ) => {
     if (applyingCampaignId) return;
     const campaignCopy = getCampaignDisplayCopy(campaign);
@@ -1621,8 +1660,13 @@ export function InfluencerCampaignDiscoveryPage() {
           headers: { "Content-Type": "application/json" },
           credentials: "include",
           body: JSON.stringify({
-            acceptedConsentIds,
+            acceptedConsentIds: submission.acceptedConsentIds,
             consentVersion: campaign.consentVersion ?? "",
+            applicationContact: submission.applicationContact,
+            applicationContactConsentAccepted:
+              submission.applicationContactConsentAccepted,
+            applicationContactConsentVersion:
+              campaign.applicationContactConsentVersion ?? "",
           }),
         },
       );
@@ -1945,10 +1989,10 @@ export function InfluencerCampaignDiscoveryPage() {
           campaign={applicationConsentCampaign}
           isSubmitting={applyingCampaignId === applicationConsentCampaign.id}
           onCancel={() => setApplicationConsentCampaign(null)}
-          onSubmit={(acceptedConsentIds) =>
+          onSubmit={(submission) =>
             submitCampaignApplication(
               applicationConsentCampaign,
-              acceptedConsentIds,
+              submission,
             )
           }
         />
@@ -2096,8 +2140,13 @@ export function PublicCampaignRecruitmentPage() {
     const requiredConsents = (campaign.requiredConsents ?? []).filter(
       (consent) => consent.id.trim() && consent.text.trim(),
     );
-    if (requiredConsents.length === 0) {
-      void submitCampaignApplication(campaign, []);
+    const applicationContactFields = campaign.applicationContactFields ?? [];
+    if (requiredConsents.length === 0 && applicationContactFields.length === 0) {
+      void submitCampaignApplication(campaign, {
+        acceptedConsentIds: [],
+        applicationContact: {},
+        applicationContactConsentAccepted: false,
+      });
       return;
     }
     setApplicationConsentCampaign(campaign);
@@ -2105,7 +2154,7 @@ export function PublicCampaignRecruitmentPage() {
 
   const submitCampaignApplication = async (
     campaign: MarketplaceCampaignPost,
-    acceptedConsentIds: string[],
+    submission: CampaignApplicationSubmission,
   ) => {
     if (applyingCampaignId) return;
     const campaignCopy = getPublicCampaignDisplayCopy(campaign);
@@ -2124,8 +2173,13 @@ export function PublicCampaignRecruitmentPage() {
           headers: { "Content-Type": "application/json" },
           credentials: "include",
           body: JSON.stringify({
-            acceptedConsentIds,
+            acceptedConsentIds: submission.acceptedConsentIds,
             consentVersion: campaign.consentVersion ?? "",
+            applicationContact: submission.applicationContact,
+            applicationContactConsentAccepted:
+              submission.applicationContactConsentAccepted,
+            applicationContactConsentVersion:
+              campaign.applicationContactConsentVersion ?? "",
           }),
         },
       );
@@ -2460,10 +2514,10 @@ export function PublicCampaignRecruitmentPage() {
           campaign={applicationConsentCampaign}
           isSubmitting={applyingCampaignId === applicationConsentCampaign.id}
           onCancel={() => setApplicationConsentCampaign(null)}
-          onSubmit={(acceptedConsentIds) =>
+          onSubmit={(submission) =>
             submitCampaignApplication(
               applicationConsentCampaign,
-              acceptedConsentIds,
+              submission,
             )
           }
         />
@@ -2726,6 +2780,82 @@ function CampaignField({
       <span className="text-[13px] font-extrabold text-neutral-800">{label}</span>
       {children}
     </div>
+  );
+}
+
+function CampaignApplicationContactFieldSelector({
+  selectedFields,
+  onToggle,
+}: {
+  selectedFields: CampaignApplicationContactField[];
+  onToggle: (field: CampaignApplicationContactField) => void;
+}) {
+  const options: Array<{
+    field: CampaignApplicationContactField;
+    label: string;
+    description: string;
+  }> = [
+    {
+      field: "phone",
+      label: "휴대전화",
+      description: "선정 및 캠페인 진행 안내에 사용",
+    },
+    {
+      field: "email",
+      label: "이메일",
+      description: "선정 및 캠페인 진행 안내에 사용",
+    },
+  ];
+
+  return (
+    <section className="rounded-[12px] border border-neutral-200 bg-[#fbfaf7] p-3 sm:p-4">
+      <div>
+        <h3 className="text-[13px] font-extrabold text-neutral-900">
+          지원자 연락처 수집
+        </h3>
+        <p className="mt-1 break-keep text-[12px] font-bold leading-5 text-neutral-500">
+          필요한 항목만 선택하세요. 기본값은 미수집이며, 선택하면 지원 화면에
+          개인정보 동의가 자동으로 표시됩니다.
+        </p>
+      </div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        {options.map((option) => {
+          const selected = selectedFields.includes(option.field);
+          return (
+            <button
+              key={option.field}
+              type="button"
+              aria-pressed={selected}
+              onClick={() => onToggle(option.field)}
+              className={`flex min-h-14 items-center justify-between gap-3 rounded-[10px] border px-3 py-2.5 text-left transition ${
+                selected
+                  ? "border-blue-300 bg-blue-50 text-blue-900"
+                  : "border-neutral-200 bg-white text-neutral-700 hover:border-neutral-300"
+              }`}
+            >
+              <span className="min-w-0">
+                <span className="block text-[13px] font-extrabold">
+                  {option.label}
+                </span>
+                <span className="mt-0.5 block text-[11px] font-bold text-neutral-500">
+                  {option.description}
+                </span>
+              </span>
+              <span
+                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] border ${
+                  selected
+                    ? "border-blue-600 bg-blue-600 text-white"
+                    : "border-neutral-300 bg-white text-transparent"
+                }`}
+                aria-hidden="true"
+              >
+                <CheckCircle2 className="h-3.5 w-3.5" />
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -3677,6 +3807,9 @@ function CampaignThumbnail({
   const imageUrl =
     hasRealThumbnail ? campaign.thumbnailUrl : fallbackThumbnailUrl ?? campaign.brandLogoUrl;
   const usesLogoImage = !hasRealThumbnail && !fallbackThumbnailUrl;
+  const usesCanonicalShareImage = Boolean(
+    imageUrl && /\/og\/yeollock-og\.png(?:[?#]|$)/i.test(imageUrl),
+  );
 
   return (
     <div className={`relative overflow-hidden bg-[#eef1ea] ${className}`}>
@@ -3685,7 +3818,11 @@ function CampaignThumbnail({
           src={imageUrl}
           alt={`${campaign.brandName} campaign`}
           className={`h-full w-full ${
-            usesLogoImage ? "object-contain p-6" : "object-cover"
+            usesLogoImage
+              ? "object-contain p-6"
+              : usesCanonicalShareImage
+                ? "object-contain"
+                : "object-cover"
           }`}
           loading="lazy"
         />
@@ -3805,17 +3942,41 @@ function CampaignApplicationConsentDialog({
   campaign: MarketplaceCampaignPost;
   isSubmitting: boolean;
   onCancel: () => void;
-  onSubmit: (acceptedConsentIds: string[]) => void;
+  onSubmit: (submission: CampaignApplicationSubmission) => void;
 }) {
   useBodyScrollLock(true);
   const requiredConsents = (campaign.requiredConsents ?? []).filter(
     (consent) => consent.id.trim() && consent.text.trim(),
   );
+  const applicationContactFields = (campaign.applicationContactFields ?? []).filter(
+    (field): field is CampaignApplicationContactField =>
+      field === "phone" || field === "email",
+  );
+  const collectsPhone = applicationContactFields.includes("phone");
+  const collectsEmail = applicationContactFields.includes("email");
   const [acceptedConsentIds, setAcceptedConsentIds] = useState<string[]>([]);
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [applicationContactConsentAccepted, setApplicationContactConsentAccepted] =
+    useState(false);
   const acceptedConsentIdSet = new Set(acceptedConsentIds);
-  const allAccepted = requiredConsents.every((consent) =>
+  const allCustomConsentsAccepted = requiredConsents.every((consent) =>
     acceptedConsentIdSet.has(consent.id),
   );
+  const phoneDigits = phone.replace(/\D/g, "");
+  const phoneValid =
+    !collectsPhone ||
+    (/^[0-9+()\-\s]{8,24}$/.test(phone.trim()) &&
+      phoneDigits.length >= 9 &&
+      phoneDigits.length <= 15);
+  const emailValid =
+    !collectsEmail || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  const hasApplicationContact = applicationContactFields.length > 0;
+  const allAccepted =
+    allCustomConsentsAccepted &&
+    phoneValid &&
+    emailValid &&
+    (!hasApplicationContact || applicationContactConsentAccepted);
 
   return (
     <div
@@ -3857,6 +4018,100 @@ function CampaignApplicationConsentDialog({
 
         <div className="min-h-0 flex-1 overflow-y-auto bg-[#fbfaf7] p-3 sm:p-5">
           <div className="grid gap-2.5">
+            {hasApplicationContact ? (
+              <article className="rounded-[12px] border border-neutral-200 bg-white p-3 sm:p-4">
+                <p className="text-[11px] font-extrabold text-neutral-400">
+                  지원자 연락처
+                </p>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  {collectsPhone ? (
+                    <label className="grid gap-1.5 text-[12px] font-extrabold text-neutral-700">
+                      휴대전화
+                      <input
+                        type="tel"
+                        inputMode="tel"
+                        autoComplete="tel"
+                        value={phone}
+                        onChange={(event) => setPhone(event.target.value)}
+                        placeholder="010-1234-5678"
+                        className="campaign-input"
+                        aria-invalid={phone.trim().length > 0 && !phoneValid}
+                      />
+                      {phone.trim().length > 0 && !phoneValid ? (
+                        <span className="text-[11px] font-bold text-rose-600">
+                          휴대전화 번호를 확인해 주세요.
+                        </span>
+                      ) : null}
+                    </label>
+                  ) : null}
+                  {collectsEmail ? (
+                    <label className="grid gap-1.5 text-[12px] font-extrabold text-neutral-700">
+                      이메일
+                      <input
+                        type="email"
+                        inputMode="email"
+                        autoComplete="email"
+                        value={email}
+                        onChange={(event) => setEmail(event.target.value)}
+                        placeholder="creator@example.com"
+                        className="campaign-input"
+                        aria-invalid={email.trim().length > 0 && !emailValid}
+                      />
+                      {email.trim().length > 0 && !emailValid ? (
+                        <span className="text-[11px] font-bold text-rose-600">
+                          이메일 주소를 확인해 주세요.
+                        </span>
+                      ) : null}
+                    </label>
+                  ) : null}
+                </div>
+
+                <div className="mt-4 rounded-[10px] border border-neutral-200 bg-neutral-50 p-3">
+                  <p className="text-[12px] font-extrabold text-neutral-900">
+                    개인정보 수집·이용 및 광고주 제공(필수)
+                  </p>
+                  <dl className="mt-2 grid grid-cols-[88px_minmax(0,1fr)] gap-x-2 gap-y-1 text-[11px] font-bold leading-5 text-neutral-600">
+                    <dt className="text-neutral-400">수집 항목</dt>
+                    <dd>
+                      {[
+                        collectsPhone ? "휴대전화" : undefined,
+                        collectsEmail ? "이메일" : undefined,
+                      ]
+                        .filter(Boolean)
+                        .join(", ")}
+                    </dd>
+                    <dt className="text-neutral-400">이용 목적</dt>
+                    <dd>지원자 확인, 선정 및 캠페인 진행 안내</dd>
+                    <dt className="text-neutral-400">제공받는 자</dt>
+                    <dd>{campaign.brandName} 광고주 조직</dd>
+                    <dt className="text-neutral-400">보유 기간</dt>
+                    <dd>
+                      캠페인 종료 후 90일까지. 법령상 보존 의무가 있는 경우에는
+                      해당 기간까지 보관합니다.
+                    </dd>
+                    <dt className="text-neutral-400">거부 시 영향</dt>
+                    <dd>
+                      동의를 거부할 수 있으나, 이 캠페인에는 신청할 수 없습니다.
+                    </dd>
+                    <dt className="text-neutral-400">정책 버전</dt>
+                    <dd>{CAMPAIGN_APPLICATION_CONTACT_POLICY_VERSION}</dd>
+                  </dl>
+                  <label className="mt-3 flex cursor-pointer items-start gap-2.5 rounded-[8px] border border-neutral-200 bg-white p-3">
+                    <input
+                      type="checkbox"
+                      checked={applicationContactConsentAccepted}
+                      onChange={(event) =>
+                        setApplicationContactConsentAccepted(event.target.checked)
+                      }
+                      className="mt-0.5 h-4 w-4 rounded border-neutral-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="break-keep text-[12px] font-extrabold leading-5 text-neutral-700">
+                      위 개인정보 처리 내용을 확인했고 동의합니다.
+                    </span>
+                  </label>
+                </div>
+              </article>
+            ) : null}
             {requiredConsents.map((consent, index) => {
               const accepted = acceptedConsentIdSet.has(consent.id);
               return (
@@ -3901,12 +4156,22 @@ function CampaignApplicationConsentDialog({
 
         <footer className="shrink-0 border-t border-neutral-200 bg-white p-3 sm:flex sm:items-center sm:justify-between sm:gap-3 sm:px-5 sm:py-4">
           <p className="mb-3 text-[12px] font-extrabold text-neutral-500 sm:mb-0">
-            {acceptedConsentIds.length}/{requiredConsents.length}개 동의 완료
+            {allAccepted ? "필수 확인 완료" : "필수 입력과 동의를 확인해 주세요."}
           </p>
           <button
             type="button"
             disabled={!allAccepted || isSubmitting}
-            onClick={() => onSubmit(requiredConsents.map((consent) => consent.id))}
+            onClick={() =>
+              onSubmit({
+                acceptedConsentIds: requiredConsents.map((consent) => consent.id),
+                applicationContact: {
+                  ...(collectsPhone ? { phone: phone.trim() } : {}),
+                  ...(collectsEmail ? { email: email.trim() } : {}),
+                },
+                applicationContactConsentAccepted:
+                  hasApplicationContact && applicationContactConsentAccepted,
+              })
+            }
             className="yl-primary-action inline-flex h-11 w-full items-center justify-center gap-2 rounded-[8px] px-5 text-[13px] font-extrabold disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:text-neutral-500 disabled:hover:bg-neutral-300 sm:w-[180px]"
           >
             <Send className="h-4 w-4" />

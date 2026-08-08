@@ -645,7 +645,7 @@ const buildCampaigns = (advertiser) => [
       },
     ],
   },
-];
+].map((campaign) => ({ ...campaign, relativeTestDates: true }));
 
 const ensureBrandProfile = async (advertiser) => {
   const existingBrandProfile = await findByPublicHandle(
@@ -999,6 +999,7 @@ const buildContract = ({ brand, campaign, influencer, status, seed }) => {
   return {
     id: contractId,
     data_origin: "qa",
+    relative_test_dates: true,
     advertiser_id: brand.user.id,
     campaign_name: campaign.title,
     post_link: postLink,
