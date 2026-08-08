@@ -3118,7 +3118,7 @@ const requireAdvertiserSession = async (
     return undefined;
   }
 
-  const profile = auth.profile ?? (await readProfileByUserId(auth.user.id));
+  let profile = auth.profile ?? (await readProfileByUserId(auth.user.id));
   const metricDataOrigin = classifyAuthMetricDataOrigin({
     identifier: profile?.email ?? auth.user.email,
     explicit: profile?.data_origin,
@@ -3143,6 +3143,20 @@ const requireAdvertiserSession = async (
       error: "광고주 계정 권한이 필요합니다. 광고주 계정으로 로그인해 주세요.",
     });
     return undefined;
+  }
+
+  const confirmedAt = auth.user.email_confirmed_at ?? auth.user.confirmed_at;
+  if (!profile.email_verified_at && confirmedAt) {
+    try {
+      await syncProfileEmailVerifiedAt(auth.user);
+      profile = { ...profile, email_verified_at: confirmedAt };
+    } catch (error) {
+      console.warn(
+        `[${productName}] advertiser profile email verification sync failed: ${
+          operationalErrorLabel(error)
+        }`,
+      );
+    }
   }
 
   ensureAuthMetricOriginCookie(
@@ -15692,7 +15706,21 @@ const readAuthenticatedMarketplaceInfluencerPage = async ({
       }),
     },
   );
-  if (rpcResponse.status === 403) {
+  const accessError =
+    rpcResponse.status === 403
+      ? await rpcResponse
+          .clone()
+          .json()
+          .catch(() => undefined)
+      : undefined;
+  if (
+    accessError &&
+    typeof accessError === "object" &&
+    "code" in accessError &&
+    accessError.code === "42501" &&
+    "message" in accessError &&
+    accessError.message === "authenticated production advertiser profile required"
+  ) {
     await rpcResponse.arrayBuffer();
     throw new AuthenticatedInfluencerDirectoryAccessError();
   }
@@ -29574,12 +29602,16 @@ app.get("/api/marketplace/influencers", async (request, response, next) => {
       });
     } catch (error) {
       if (error instanceof AuthenticatedInfluencerDirectoryAccessError) {
-        response.status(403).json({
-          error: "인플루언서 탐색 권한이 없습니다.",
+        result = await readIndexedMarketplaceInfluencerPage({
+          page,
+          sort: sort ?? "audience_desc",
+          filters: profileFilters,
+          savedOnly,
+          organizationId: organization.id,
         });
-        return;
+      } else {
+        throw error;
       }
-      throw error;
     }
     response.json(result);
   } catch (error) {

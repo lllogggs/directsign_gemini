@@ -2752,6 +2752,9 @@ function InfluencerDiscoveryTableRow({
     profile,
     platformFilter,
   );
+  const profileActionHref =
+    primaryChannelUrl ??
+    (canOpenPublicProfile ? getInfluencerProfilePath(profile) : undefined);
 
   return (
     <article
@@ -2848,18 +2851,27 @@ function InfluencerDiscoveryTableRow({
             <Send className="h-3.5 w-3.5" />
             1:1 계약 제안
           </button>
-        ) : (
+        ) : profileActionHref ? (
           <a
-            href={primaryChannelUrl ?? getInfluencerProfilePath(profile)}
+            href={profileActionHref}
             target={primaryChannelUrl ? "_blank" : undefined}
             rel={primaryChannelUrl ? "noreferrer" : undefined}
-            aria-label={`${profile.displayName} 공개 채널 보기`}
-            title="공개 채널 보기"
+            aria-label={`${profile.displayName} ${
+              primaryChannelUrl ? "공개 채널 보기" : "프로필 보기"
+            }`}
+            title={primaryChannelUrl ? "공개 채널 보기" : "프로필 보기"}
             className="inline-flex h-9 w-[106px] items-center justify-center gap-1.5 rounded-[7px] border border-neutral-200 bg-white px-2 text-[12px] font-extrabold text-neutral-800 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
           >
             <ExternalLink className="h-3.5 w-3.5" />
-            채널 보기
+            {primaryChannelUrl ? "채널 보기" : "프로필 보기"}
           </a>
+        ) : (
+          <span
+            aria-disabled="true"
+            className="inline-flex h-9 w-[106px] items-center justify-center rounded-[7px] border border-neutral-200 bg-neutral-50 px-2 text-[12px] font-extrabold text-neutral-400"
+          >
+            프로필 준비 전
+          </span>
         )}
       </div>
     </article>
@@ -2903,6 +2915,9 @@ function InfluencerDiscoveryCompactRow({
   const recentPosts = normalizeNaverBlogRecentPosts(profile.recentPosts, 3);
   const isPrivateRegisteredProfile = isAuthenticatedAdvertiserOnlyInfluencer(profile);
   const canOpenPublicProfile = canOpenInfluencerPublicProfile(profile);
+  const profileActionHref =
+    primaryChannelUrl ??
+    (canOpenPublicProfile ? getInfluencerProfilePath(profile) : undefined);
 
   return (
     <article className="grid gap-3 border-b border-[#e4e9e4] p-3 last:border-b-0">
@@ -2989,18 +3004,27 @@ function InfluencerDiscoveryCompactRow({
             <Send className="h-4 w-4" />
             1:1 계약 제안
           </button>
-        ) : (
+        ) : profileActionHref ? (
           <a
-            href={primaryChannelUrl ?? getInfluencerProfilePath(profile)}
+            href={profileActionHref}
             target={primaryChannelUrl ? "_blank" : undefined}
             rel={primaryChannelUrl ? "noreferrer" : undefined}
-            aria-label={`${profile.displayName} 공개 채널 보기`}
-            title="공개 채널 보기"
+            aria-label={`${profile.displayName} ${
+              primaryChannelUrl ? "공개 채널 보기" : "프로필 보기"
+            }`}
+            title={primaryChannelUrl ? "공개 채널 보기" : "프로필 보기"}
             className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-[8px] border border-neutral-200 bg-white px-3 text-[13px] font-extrabold text-neutral-800 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
           >
             <ExternalLink className="h-4 w-4" />
-            채널 보기
+            {primaryChannelUrl ? "채널 보기" : "프로필 보기"}
           </a>
+        ) : (
+          <span
+            aria-disabled="true"
+            className="inline-flex h-10 w-full items-center justify-center rounded-[8px] border border-neutral-200 bg-neutral-50 px-3 text-[13px] font-extrabold text-neutral-400"
+          >
+            프로필 준비 전
+          </span>
         )}
       </div>
     </article>
