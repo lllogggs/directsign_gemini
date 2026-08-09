@@ -7,6 +7,7 @@ type ResponsiveFilterPanelProps = {
   open: boolean;
   title?: string;
   activeCount?: number;
+  showActiveSummary?: boolean;
   onClose: () => void;
   onClear?: () => void;
   mobileOnly?: boolean;
@@ -23,6 +24,7 @@ export function ResponsiveFilterPanel({
   open,
   title = "필터",
   activeCount = 0,
+  showActiveSummary = true,
   onClose,
   onClear,
   mobileOnly = false,
@@ -155,7 +157,7 @@ export function ResponsiveFilterPanel({
             >
               {title}
             </p>
-            {activeCount > 0 ? (
+            {showActiveSummary && activeCount > 0 ? (
               <p className="mt-0.5 text-[11px] font-bold text-neutral-500">
                 {activeCount}개 조건 적용
               </p>

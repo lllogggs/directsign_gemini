@@ -2018,8 +2018,8 @@ check(
   campaignPages.includes("function CampaignRequiredConsentEditor") &&
     campaignPages.includes("동의 항목 추가") &&
     !campaignPages.includes("DEFAULT_CAMPAIGN_REQUIRED_CONSENTS") &&
-    (advertiserCampaignCreationSource.match(/requiredConsents: \[\]/g) ?? [])
-      .length >= 2 &&
+    campaignPages.includes("function createEmptyCampaignForm") &&
+    (campaignPages.match(/requiredConsents: \[\]/g) ?? []).length >= 2 &&
     (campaignPages.match(/requiredConsents\.length === 0/g) ?? []).length >= 2 &&
     (
       campaignPages.match(
@@ -2081,8 +2081,9 @@ check(
 check(
   "campaign applicant contact collection stays explicit, private and purpose-bound",
   campaignPages.includes(
-    "applicationContactFields: [] as CampaignApplicationContactField[]",
+    "applicationContactFields: CampaignApplicationContactField[];",
   ) &&
+    campaignPages.includes("applicationContactFields: [],") &&
     campaignPages.includes("지원자 연락처 수집") &&
     campaignPages.includes("기본값은 미수집") &&
     campaignPages.includes("개인정보 수집·이용 및 광고주 제공(필수)") &&
@@ -2421,11 +2422,11 @@ const naverBlogSelfReportChecks = [
       server.includes('metadata?.provider !== "creator_self_report"') &&
       server.includes("reportedHandle !== channelHandle") &&
       server.includes("syncedAtTime !== checkedAtTime") &&
-      server.includes(
-        "const followersLabel = isNaverBlog\n      ? (naverSelfReport?.followersLabel ?? \"계정 연동\")",
+      /const followersLabel = isNaverBlog\r?\n\s+\? \(naverSelfReport\?\.followersLabel \?\? "계정 연동"\)/.test(
+        server,
       ) &&
-      server.includes(
-        "const followersLabel = isNaverBlog\n      ? naverSelfReport?.followersLabel",
+      /const followersLabel = isNaverBlog\r?\n\s+\? naverSelfReport\?\.followersLabel/.test(
+        server,
       ) &&
       server.includes("follower_count,follower_count_synced_at,follower_sync_source") &&
       server.includes("hasMisplacedNaverSelfReportProvenance") &&
@@ -2723,8 +2724,26 @@ check(
     campaignPages.includes("compareAppliedCampaignApplicationsBySort") &&
     campaignPages.includes("function AppliedCampaignFilters") &&
     campaignPages.includes("appliedStatusFilter") &&
-    campaignPages.includes("CampaignColumnHeader"),
+    campaignPages.includes("function CampaignColumnLabel") &&
+    !campaignPages.includes("function CampaignColumnHeader"),
   "Campaign surfaces on advertiser and influencer sides must both provide role-appropriate sorting/filtering instead of leaving influencer applications as a passive list",
+);
+
+check(
+  "influencer campaign loading shell keeps the final app frame",
+  /"\/influencer\/campaigns":\s*\{\s*label: "캠페인",\s*variant: "campaign-marketplace"/.test(
+    app,
+  ) &&
+    app.includes("캠페인 화면을 불러오는 중입니다") &&
+    app.includes(
+      '<DashboardSurfaceSwitch role="influencer" active="campaigns" />',
+    ) &&
+    app.includes("브랜드, 캠페인, 플랫폼, 콘텐츠 검색") &&
+    app.includes("sm:grid-cols-2 lg:grid-cols-4") &&
+    !/"\/influencer\/campaigns":\s*\{[^}]*label: "캠페인 탐색"/s.test(app) &&
+    campaignPages.includes('mode !== "anonymous"') &&
+    campaignPages.includes("로그인 상태 확인 중"),
+  "The influencer campaign route must load inside the final campaign app frame and compact marketplace geometry without flashing the legacy contract-table shell",
 );
 
 check(
@@ -3112,7 +3131,8 @@ check(
     campaignPages.includes(
       'showHeroCopy ? "py-2.5 sm:py-3" : "pb-2.5 pt-7 sm:py-3"',
     ) &&
-    campaignPages.includes("aria-label={`${tab.label} ${tab.count}건`}") &&
+    campaignPages.includes("tab.count === undefined ? tab.label") &&
+    campaignPages.includes("`${tab.label} ${tab.count}건`") &&
     campaignPages.includes("hidden sm:inline") &&
     campaignPages.includes("function CampaignInlineFact") &&
     !campaignPages.includes("function CampaignCardFact") &&

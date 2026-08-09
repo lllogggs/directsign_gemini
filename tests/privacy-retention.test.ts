@@ -576,8 +576,9 @@ test("the hourly retention route is private, bounded and cron-authenticated", ()
 test("campaign contact collection is opt-in, versioned and separate from custom consents", () => {
   assert.match(
     campaignPage,
-    /applicationContactFields: \[\] as CampaignApplicationContactField\[\]/,
+    /applicationContactFields: CampaignApplicationContactField\[\]/,
   );
+  assert.match(campaignPage, /applicationContactFields: \[\]/);
   assert.match(campaignPage, /지원자 연락처 수집/);
   assert.match(campaignPage, /기본값은 미수집/);
   assert.match(campaignPage, /개인정보 수집·이용 및 광고주 제공\(필수\)/);

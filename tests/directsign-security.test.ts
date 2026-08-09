@@ -79,6 +79,15 @@ const escapeRegExp = (value: string) =>
   value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 describe("yeollock.me security regressions", () => {
+  it("keeps public campaign detail routes indexable instead of marking them missing", () => {
+    const campaignPath = "/campaigns/4b57fcee-6d4a-4c73-bcb0-3c8e88176158";
+    const seo = getIntentAwareRouteSeoConfig(campaignPath);
+
+    assert.equal(seo.title, "캠페인 모집글 - 연락미");
+    assert.equal(seo.canonicalPath, campaignPath);
+    assert.match(seo.robots, /^index,follow/);
+  });
+
   it("keeps progressive campaign verification out of first-use spotlight copy", () => {
     const dashboard = read("src/pages/marketing/Dashboard.tsx");
     const campaignPages = read("src/pages/marketplace/CampaignPages.tsx");
@@ -223,7 +232,11 @@ describe("yeollock.me security regressions", () => {
 
     assert.match(campaignPages, /function CampaignRequiredConsentEditor/);
     assert.doesNotMatch(campaignPages, /DEFAULT_CAMPAIGN_REQUIRED_CONSENTS/);
-    assert.ok((creation.match(/requiredConsents: \[\]/g) ?? []).length >= 2);
+    assert.match(
+      campaignPages,
+      /function createEmptyCampaignForm[\s\S]*?requiredConsents: \[\]/,
+    );
+    assert.match(creation, /requiredConsents: \[\]/);
     assert.match(campaignPages, /consents\.map\(\(consent, index\) =>/);
     assert.match(campaignPages, /동의 항목 추가/);
     assert.ok(
@@ -2115,6 +2128,14 @@ describe("yeollock.me security regressions", () => {
     assert.match(
       server,
       /const hasActiveAdvertiserOrganizationMembership =[\s\S]+role=in\.\(owner,admin,marketer\)[\s\S]+organization_type=eq\.advertiser&deleted_at=is\.null[\s\S]+memberships\.length > 0 && organizations\.length > 0/,
+    );
+    assert.match(
+      server,
+      /rpcResponse\.status === 403[\s\S]+\.clone\(\)[\s\S]+accessError\.code === "42501"[\s\S]+accessError\.message === "authenticated production advertiser profile required"/,
+    );
+    assert.match(
+      server,
+      /const confirmedAt = auth\.user\.email_confirmed_at \?\? auth\.user\.confirmed_at;[\s\S]+await syncProfileEmailVerifiedAt\(auth\.user\);[\s\S]+email_verified_at: confirmedAt/,
     );
     assert.match(discoveryRoute, /Cache-Control", "private, no-store/);
     assert.doesNotMatch(discoveryRoute, /sendPublicMarketplaceJson/);
@@ -6265,7 +6286,8 @@ describe("yeollock.me security regressions", () => {
     assert.match(advertiserDashboard, /프로필 보기/);
     assert.match(campaignPages, /function AppliedCampaignFilters/);
     assert.match(campaignPages, /appliedStatusFilter/);
-    assert.match(campaignPages, /CampaignColumnHeader/);
+    assert.match(campaignPages, /function CampaignColumnLabel/);
+    assert.doesNotMatch(campaignPages, /function CampaignColumnHeader/);
     assert.match(advertiserDashboard, /label: `\$\{dday\} \/ \$\{dateLabel\}`/);
     assert.match(advertiserDashboard, /font-extrabold text-\[#dc2626\]/);
     assert.match(influencerDashboard, /label: `\$\{dday\} \/ \$\{dateLabel\}`/);

@@ -7,9 +7,20 @@ import {
   useParams,
   Link,
 } from "react-router";
-import { ArrowRight } from "lucide-react";
+import {
+  ArrowRight,
+  ArrowUpDown,
+  Bell,
+  LogOut,
+  MessageSquareText,
+  Search,
+  Settings,
+  SlidersHorizontal,
+} from "lucide-react";
 import { Component, lazy, Suspense, useEffect, type ErrorInfo, type ReactNode } from "react";
 import { BrandLogo } from "./components/BrandLogo";
+import { DashboardSurfaceSwitch } from "./components/DashboardSurfaceSwitch";
+import { MobileSurfaceSwitch } from "./components/MobileSurfaceSwitch";
 import { AccountErasureDialog } from "./components/AccountErasureDialog";
 import { RecentAuthDialog } from "./components/RecentAuthDialog";
 import { AdvertiserAuthGate } from "./pages/marketing/AdvertiserAuthGate";
@@ -268,7 +279,7 @@ type LoadingCopy = {
   detail?: string;
   listTitle?: string;
   tabs?: string[];
-  variant?: "app" | "plain";
+  variant?: "app" | "plain" | "campaign-marketplace";
 };
 
 const routeLoadingCopy: Record<string, LoadingCopy> = {
@@ -315,10 +326,8 @@ const routeLoadingCopy: Record<string, LoadingCopy> = {
     variant: "app",
   },
   "/influencer/campaigns": {
-    label: "캠페인 탐색",
-    listTitle: "캠페인 목록",
-    tabs: ["모집 캠페인", "신청한 캠페인"],
-    variant: "app",
+    label: "캠페인",
+    variant: "campaign-marketplace",
   },
   "/influencer/messages": {
     label: "계약 전 검토할 제안",
@@ -347,6 +356,15 @@ const routeLoadingCopy: Record<string, LoadingCopy> = {
 };
 
 function getRouteLoadingCopy(pathname: string): LoadingCopy {
+  if (/^\/advertiser\/campaigns\/[^/]+\/edit$/.test(pathname)) {
+    return {
+      label: "캠페인 수정",
+      listTitle: "모집 조건",
+      tabs: ["캠페인", "지원자", "계약"],
+      variant: "app",
+    };
+  }
+
   if (pathname === "/intro/advertiser") {
     return {
       label: "계약 시작 화면을 준비하고 있습니다",
@@ -396,6 +414,145 @@ function AppLoading({
   tabs = ["작성중", "진행중", "종료"],
   variant = "plain",
 }: LoadingCopy) {
+  if (variant === "campaign-marketplace") {
+    return (
+      <div className="flex h-svh flex-col overflow-hidden bg-[#f7f6f3] font-sans text-neutral-950">
+        <p className="sr-only">캠페인 화면을 불러오는 중입니다.</p>
+        <header className="z-30 shrink-0 border-b border-neutral-200/80 bg-[#fbfaf7]/95 backdrop-blur">
+          <div className="mx-auto flex h-14 max-w-[1500px] items-center justify-between px-3 sm:px-5 lg:px-6">
+            <Link
+              to="/influencer/dashboard"
+              className="flex shrink-0 items-center gap-3"
+            >
+              <BrandLogo
+                className="inline-flex shrink-0 items-center gap-3 whitespace-nowrap"
+                textClassName="font-neo-heavy text-[18px] leading-none text-neutral-950 sm:text-[19px]"
+              />
+            </Link>
+            <div className="ml-2 flex min-w-0 flex-1 items-center justify-end gap-1.5 overflow-visible sm:ml-3 sm:gap-2">
+              <div className="hidden lg:block">
+                <DashboardSurfaceSwitch role="influencer" active="campaigns" />
+              </div>
+              <Link
+                to="/influencer/notifications"
+                className="yl-header-icon-action"
+                aria-label="알림"
+                title="알림"
+              >
+                <Bell className="h-4 w-4" strokeWidth={2} />
+              </Link>
+              <Link
+                to="/influencer/messages"
+                className="yl-header-action yl-header-action-secondary relative"
+                aria-label="메시지함"
+                title="메시지함"
+              >
+                <MessageSquareText className="h-3.5 w-3.5" strokeWidth={2} />
+                <span className="hidden sm:inline">메시지함</span>
+              </Link>
+              <span
+                className="yl-header-action yl-header-action-secondary hidden sm:inline-flex"
+                aria-hidden="true"
+              >
+                <LogOut className="h-4 w-4" />
+                <span>로그아웃</span>
+              </span>
+              <Link
+                to="/influencer/profile"
+                className="yl-header-icon-action"
+                aria-label="계정 설정"
+                title="계정 설정"
+              >
+                <Settings className="h-3.5 w-3.5" strokeWidth={2} />
+              </Link>
+            </div>
+          </div>
+        </header>
+
+        <MobileSurfaceSwitch role="influencer" active="campaigns" />
+
+        <section className="shrink-0 bg-[#f7f6f3]">
+          <div className="mx-auto max-w-[1500px] px-3 pb-2.5 pt-7 sm:px-5 sm:py-3 lg:px-6">
+            <h1 className="font-neo-heavy text-[26px] leading-[1.05] text-neutral-950 sm:text-[34px] sm:leading-none">
+              <span className="lg:hidden">캠페인 탐색</span>
+              <span className="hidden lg:inline">캠페인</span>
+            </h1>
+          </div>
+        </section>
+
+        <div className="mx-auto flex min-h-0 w-full max-w-[1500px] flex-1 flex-col overflow-x-hidden overflow-y-auto px-3 py-2 sm:px-5 sm:py-3 lg:px-6">
+          <section
+            className="flex min-w-0 flex-none flex-col overflow-visible"
+            aria-hidden="true"
+          >
+            <div className="yl-card border border-neutral-200 bg-white">
+              <div className="hidden min-h-[64px] items-center gap-3 px-4 py-2.5 lg:flex">
+                <div className="grid w-[320px] shrink-0 grid-cols-2 gap-1 rounded-full bg-neutral-100 p-1">
+                  <span className="flex h-9 items-center justify-center rounded-full bg-white px-2 text-[12px] font-extrabold text-neutral-950 shadow-[0_1px_0_rgba(15,23,42,0.04)]">
+                    모집 캠페인
+                  </span>
+                  <span className="flex h-9 items-center justify-center px-2 text-[12px] font-extrabold text-neutral-500">
+                    신청한 캠페인
+                  </span>
+                </div>
+                <div className="relative ml-auto min-w-[280px] max-w-[420px] flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+                  <span className="flex h-9 w-full items-center rounded-[9px] border border-neutral-200 bg-white pl-10 pr-3 text-[12px] font-bold text-neutral-400">
+                    브랜드, 캠페인, 플랫폼, 콘텐츠 검색
+                  </span>
+                </div>
+                <span className="inline-flex h-8 w-[178px] shrink-0 items-center gap-2 rounded-[8px] border border-neutral-200 bg-white px-3 text-[11px] font-extrabold text-neutral-700">
+                  <ArrowUpDown className="h-3.5 w-3.5 text-neutral-500" strokeWidth={2} />
+                  마감 임박순
+                </span>
+                <span className="inline-flex h-9 shrink-0 items-center gap-2 rounded-[9px] border border-neutral-200 bg-white px-3 text-[12px] font-extrabold text-neutral-700">
+                  <SlidersHorizontal className="h-3.5 w-3.5" strokeWidth={2} />
+                  필터
+                </span>
+              </div>
+              <div className="grid min-h-12 grid-cols-[minmax(0,1fr)_auto] gap-2 px-3 py-2 lg:hidden">
+                <div className="col-span-2 grid grid-cols-2 gap-1 rounded-full bg-neutral-100 p-1">
+                  <span className="flex h-9 items-center justify-center rounded-full bg-white text-[11px] font-extrabold text-neutral-950">
+                    모집
+                  </span>
+                  <span className="flex h-9 items-center justify-center text-[11px] font-extrabold text-neutral-500">
+                    신청
+                  </span>
+                </div>
+                <span className="inline-flex h-9 items-center gap-2 rounded-[9px] border border-neutral-200 bg-white px-3 text-[11px] font-extrabold text-neutral-700">
+                  <ArrowUpDown className="h-3.5 w-3.5" />
+                  마감 임박순
+                </span>
+                <span className="inline-flex h-9 items-center gap-2 rounded-[9px] border border-neutral-200 bg-white px-3 text-[11px] font-extrabold text-neutral-700">
+                  <SlidersHorizontal className="h-3.5 w-3.5" />
+                  필터
+                </span>
+              </div>
+            </div>
+            <div className="mt-3 grid auto-rows-max grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {[0, 1, 2, 3].map((index) => (
+                <div
+                  key={index}
+                  className="min-h-[400px] overflow-hidden rounded-[12px] border border-neutral-200 bg-white"
+                >
+                  <span className="block aspect-[16/10] w-full animate-pulse bg-neutral-100" />
+                  <div className="grid gap-3 p-4">
+                    <span className="h-3 w-2/5 animate-pulse rounded-full bg-neutral-100" />
+                    <span className="h-5 w-4/5 animate-pulse rounded-full bg-neutral-100" />
+                    <span className="h-5 w-3/5 animate-pulse rounded-full bg-neutral-100" />
+                    <span className="mt-2 h-3 w-1/4 animate-pulse rounded-full bg-neutral-100" />
+                    <span className="h-4 w-full animate-pulse rounded-full bg-neutral-100" />
+                    <span className="mt-5 h-3 w-1/2 animate-pulse rounded-full bg-neutral-100" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+      </div>
+    );
+  }
+
   if (variant !== "app") {
     return (
       <div className="min-h-screen bg-[#f4f5f2] font-sans text-neutral-950">
@@ -1146,6 +1303,17 @@ const getIntentAwareRouteSeoConfig = (pathname: string): RouteSeoConfig => {
     });
   }
 
+  if (/^\/campaigns\/[^/]+$/.test(normalizedPath)) {
+    return buildPublicSeoConfig({
+      title: `캠페인 모집글 - ${PRODUCT_NAME}`,
+      description:
+        "연락미 캠페인의 모집 조건, 보상, 콘텐츠 기준과 현재 지원 현황을 확인해 보세요.",
+      canonicalPath: normalizedPath,
+      robots: publicRobotsContent,
+      keywords: influencerIntentKeywords,
+    });
+  }
+
   if (normalizedPath.startsWith("/brands/")) {
     const brandHandle = decodeURIComponent(
       normalizedPath.split("/").filter(Boolean).at(1) ?? "브랜드",
@@ -1273,6 +1441,9 @@ const getExactRoutePreloaders = (pathname: string): RouteModuleLoader[] => {
   if (pathname === "/advertiser/campaigns") return [loadDashboard];
   if (pathname === "/advertiser/costs") return [loadDashboard];
   if (pathname === "/advertiser/campaigns/new") return [loadCampaignPages];
+  if (/^\/advertiser\/campaigns\/[^/]+\/edit$/.test(pathname)) {
+    return [loadCampaignPages];
+  }
   if (pathname === "/advertiser/messages") return [loadMarketplaceInboxPage];
   if (pathname === "/advertiser/notifications") return [loadNotificationCenterPage];
   if (pathname === "/advertiser/verification") return [loadAdvertiserVerification];
@@ -1676,6 +1847,14 @@ function AppRoutes() {
           />
           <Route
             path="/advertiser/campaigns/new"
+            element={
+              <AdvertiserAuthGate redirectUnauthenticated>
+                <AdvertiserCampaignCreationPage />
+              </AdvertiserAuthGate>
+            }
+          />
+          <Route
+            path="/advertiser/campaigns/:campaignId/edit"
             element={
               <AdvertiserAuthGate redirectUnauthenticated>
                 <AdvertiserCampaignCreationPage />

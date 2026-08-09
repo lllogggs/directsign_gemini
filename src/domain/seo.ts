@@ -606,6 +606,17 @@ export const getIntentAwareRouteSeoConfig = (pathname: string): RouteSeoConfig =
     });
   }
 
+  if (/^\/campaigns\/[^/]+$/.test(normalizedPath)) {
+    return buildPublicSeoConfig({
+      title: `캠페인 모집글 - ${PRODUCT_NAME}`,
+      description:
+        "연락미 캠페인의 모집 조건, 보상, 콘텐츠 기준과 현재 지원 현황을 확인해 보세요.",
+      canonicalPath: normalizedPath,
+      robots: publicRobotsContent,
+      keywords: influencerIntentKeywords,
+    });
+  }
+
   if (normalizedPath.startsWith("/brands/")) {
     const brandHandle = decodeURIComponent(
       normalizedPath.split("/").filter(Boolean).at(1) ?? "브랜드",

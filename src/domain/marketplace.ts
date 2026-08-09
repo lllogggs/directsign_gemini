@@ -317,7 +317,125 @@ export type MarketplaceCampaignPost = MarketplaceBrandCampaign & {
   platformLabels: string[];
   deadlineLabel: string;
   acceptsApplications: boolean;
+  applicationCount?: number;
 };
+
+export function splitCampaignGuidelineParagraphs(value: string | undefined) {
+  return String(value ?? "")
+    .replace(/\r\n?/g, "\n")
+    .split(/\n[\t ]*\n+/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
+}
+
+export type CampaignGuidelineLineKind =
+  | "section"
+  | "numbered"
+  | "example"
+  | "bullet"
+  | "body";
+
+export type CampaignGuidelineLine = {
+  kind: CampaignGuidelineLineKind;
+  text: string;
+  marker?: string;
+  content: string;
+};
+
+export type CampaignGuidelineParagraph = {
+  lines: CampaignGuidelineLine[];
+};
+
+function parseCampaignGuidelineLine(text: string): CampaignGuidelineLine {
+  const normalizedText = text.trim();
+  const numberedMatch = normalizedText.match(/^(\d+\.)(?:[\t ]+)(.+)$/u);
+  if (numberedMatch) {
+    return {
+      kind: "numbered",
+      text,
+      marker: numberedMatch[1],
+      content: numberedMatch[2],
+    };
+  }
+
+  const bulletMatch = normalizedText.match(/^(-)(?:[\t ]+)(.+)$/u);
+  if (bulletMatch) {
+    return {
+      kind: "bullet",
+      text,
+      marker: bulletMatch[1],
+      content: bulletMatch[2],
+    };
+  }
+
+  if (/^\[[^\]\n]+\]$/u.test(normalizedText)) {
+    return { kind: "section", text, content: normalizedText };
+  }
+
+  if (normalizedText === "예시") {
+    return { kind: "example", text, content: normalizedText };
+  }
+
+  return { kind: "body", text, content: text };
+}
+
+export function parseCampaignGuideline(
+  value: string | undefined,
+): CampaignGuidelineParagraph[] {
+  return splitCampaignGuidelineParagraphs(value)
+    .map((paragraph) => ({
+      lines: paragraph
+        .split("\n")
+        .filter((line) => line.trim().length > 0)
+        .map(parseCampaignGuidelineLine),
+    }))
+    .filter((paragraph) => paragraph.lines.length > 0);
+}
+
+export function formatCampaignApplicationStats(
+  campaign: Pick<MarketplaceCampaignPost, "applicantLimit" | "applicationCount">,
+) {
+  const applicationCount = Math.max(
+    0,
+    Number.isFinite(Number(campaign.applicationCount))
+      ? Math.floor(Number(campaign.applicationCount))
+      : 0,
+  );
+  const normalizedLimit = campaign.applicantLimit?.trim() ?? "";
+  const numericLimitMatch = normalizedLimit
+    .replace(/,/g, "")
+    .match(/^(\d+)\s*명?$/);
+  const numericLimit = numericLimitMatch
+    ? Number(numericLimitMatch[1])
+    : undefined;
+  const applicantLimitLabel = formatCampaignApplicantLimit(
+    campaign.applicantLimit,
+    "상시",
+  );
+  const competitionLabel =
+    applicationCount > 0 && numericLimit && numericLimit > 0
+      ? ` · 경쟁률 ${(applicationCount / numericLimit).toFixed(1)}:1`
+      : "";
+
+  return `지원 ${applicationCount.toLocaleString("ko-KR")}명 · 모집 ${applicantLimitLabel}${competitionLabel}`;
+}
+
+export function resolveCampaignApplicationCountSync(response: {
+  already_submitted?: boolean;
+  applicationCount?: number;
+  application_count?: number;
+}):
+  | { kind: "replace"; applicationCount: number }
+  | { kind: "preserve" }
+  | { kind: "refetch" } {
+  const value = response.applicationCount ?? response.application_count;
+  if (Number.isSafeInteger(value) && Number(value) >= 0) {
+    return { kind: "replace", applicationCount: Number(value) };
+  }
+  return response.already_submitted === true
+    ? { kind: "preserve" }
+    : { kind: "refetch" };
+}
 
 export function isMarketplaceApplicationBrandId(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(

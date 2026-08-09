@@ -266,6 +266,21 @@ function getCampaignSharePath(campaign: {
   return campaignId ? `/campaigns/${encodeURIComponent(campaignId)}` : undefined;
 }
 
+function getCampaignEditPath(campaign: {
+  key?: string;
+  campaignId?: string;
+  marketplaceCampaign?: { id?: string };
+}) {
+  const keyCampaignId = campaign.key?.startsWith("campaign:")
+    ? campaign.key.slice("campaign:".length).trim()
+    : undefined;
+  const campaignId =
+    campaign.campaignId ?? campaign.marketplaceCampaign?.id ?? keyCampaignId;
+  return campaignId
+    ? `/advertiser/campaigns/${encodeURIComponent(campaignId)}/edit`
+    : undefined;
+}
+
 function getCampaignShareUrl(campaign: {
   campaignId?: string;
   marketplaceCampaign?: { id?: string };
@@ -4556,6 +4571,7 @@ function CampaignDetailView({
   const statusMeta = getCampaignLifecycleMeta(campaign);
   const typeLabel = getCampaignTypeLabel(campaign);
   const campaignShareUrl = getCampaignShareUrl(campaign);
+  const campaignEditPath = getCampaignEditPath(campaign);
   const copyCampaignShareLink = async () => {
     if (!campaignShareUrl) return;
 
@@ -4722,6 +4738,16 @@ function CampaignDetailView({
                 <CopyCheck className="h-3.5 w-3.5" />
                 {isCampaignLinkCopied ? "복사됨" : "모집 링크 복사"}
               </button>
+            ) : null}
+            {isRecruitingDetail && campaignEditPath ? (
+              <Link
+                to={campaignEditPath}
+                className="inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-md border border-[#d9e0d9] bg-white px-2.5 text-[12px] font-extrabold text-[#303630] transition hover:border-blue-200 hover:bg-blue-50/45"
+                aria-label={`${campaign.name} 캠페인 수정`}
+              >
+                <PenLine className="h-3.5 w-3.5" />
+                캠페인 수정
+              </Link>
             ) : null}
             <CampaignStatusActions
               campaign={campaign}

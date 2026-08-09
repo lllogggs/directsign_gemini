@@ -36,6 +36,7 @@ import {
   normalizeVerificationMetricCount,
   shouldInvalidateApprovedPlatformChannelCache,
 } from "./platform-verification-metrics.js";
+import { isExpectedCampaignRevisionCurrent } from "./campaign-application-revision.js";
 import { isOperationalTestEmail } from "./operational-test-email.js";
 import { sendPlatformVerificationEmail } from "./verification-email.js";
 import { verificationRequestBelongsToInfluencerAccount } from "./verification-ownership.js";
@@ -2080,6 +2081,33 @@ interface ReserveMarketplaceCampaignSelectionRpcRow {
   result_reason?: unknown;
 }
 
+interface MarketplaceCampaignApplicationCountRpcRow {
+  campaign_id?: unknown;
+  application_count?: unknown;
+}
+
+type MarketplaceCampaignEditMode = "full" | "presentation_only" | "locked";
+
+interface MarketplaceCampaignEditPolicy {
+  mode: MarketplaceCampaignEditMode;
+  application_count: number;
+  locked_fields: string[];
+  reason?: string;
+}
+
+interface UpdateMarketplaceCampaignDetailsRpcRow {
+  result_outcome?: unknown;
+  result_campaign_id?: unknown;
+  result_brand_profile_id?: unknown;
+  result_campaign_data?: unknown;
+  result_status?: unknown;
+  result_updated_at?: unknown;
+  result_application_count?: unknown;
+  result_mode?: unknown;
+  result_locked_fields?: unknown;
+  result_policy_reason?: unknown;
+}
+
 interface SupabaseMarketplaceContactProposalRow {
   id: string;
   direction: MarketplaceProposalDirection;
@@ -2119,6 +2147,7 @@ interface SupabaseMarketplaceContactProposalRow {
 
 interface MarketplaceCampaignSnapshot {
   id: string;
+  campaignRevision?: string;
   title: string;
   type: CampaignProposalType;
   otherTypeLabel?: string;
@@ -4145,6 +4174,10 @@ const isCampaignApplicationClosedWriteError = (error: unknown) =>
   error instanceof Error &&
   (error.message.includes("campaign is not open for applications") ||
     error.message.includes("campaign application target is not authorized"));
+
+const isCampaignApplicationStaleWriteError = (error: unknown) =>
+  error instanceof Error &&
+  error.message.includes("campaign application snapshot revision is stale");
 
 const normalizeOperationalAlert = (
   row: OperationalAlertRecord,
@@ -14204,6 +14237,7 @@ const normalizeBrandCampaigns = (
 
 const marketplaceCampaignTable = "marketplace_campaigns";
 let normalizedMarketplaceCampaignFallbackWarned = false;
+let marketplaceCampaignApplicationCountFallbackWarned = false;
 
 const isMissingMarketplaceCampaignTableError = (error: unknown) =>
   error instanceof Error &&
@@ -14260,11 +14294,69 @@ const mapNormalizedMarketplaceCampaignRow = (
         id: row.id,
         status: row.status,
         createdAt: data.createdAt ?? row.created_at,
-        updatedAt: data.updatedAt ?? row.updated_at,
+        updatedAt: row.updated_at,
       },
     ],
     1,
   )[0];
+};
+
+const readMarketplaceCampaignApplicationCounts = async (
+  campaignIds: string[],
+) => {
+  const uniqueCampaignIds = Array.from(
+    new Set(campaignIds.map((id) => normalizeOptionalText(id)).filter(hasText)),
+  );
+  const counts = new Map<string, number>();
+  if (!useSupabase || uniqueCampaignIds.length === 0) return counts;
+
+  let rows: MarketplaceCampaignApplicationCountRpcRow[];
+  try {
+    rows = await callSupabaseRpc<MarketplaceCampaignApplicationCountRpcRow[]>(
+      "get_public_marketplace_campaign_application_counts",
+      { p_campaign_ids: uniqueCampaignIds },
+      "marketplace campaign application counts",
+    );
+  } catch (error) {
+    if (
+      !(
+        error instanceof Error &&
+        /get_public_marketplace_campaign_application_counts|PGRST202|schema cache|404/i.test(
+          error.message,
+        )
+      )
+    ) {
+      throw error;
+    }
+    if (!marketplaceCampaignApplicationCountFallbackWarned) {
+      console.warn(
+        `[${productName}] campaign application count RPC is unavailable; counts remain zero until migrations are applied.`,
+      );
+      marketplaceCampaignApplicationCountFallbackWarned = true;
+    }
+    return counts;
+  }
+  for (const row of rows) {
+    const campaignId = normalizeOptionalText(row.campaign_id);
+    if (!campaignId) continue;
+    counts.set(
+      campaignId,
+      normalizeCampaignAccessInteger(row.application_count),
+    );
+  }
+  return counts;
+};
+
+const attachMarketplaceCampaignApplicationCounts = async <
+  T extends MarketplaceBrandCampaign,
+>(campaigns: T[]) => {
+  const counts = await readMarketplaceCampaignApplicationCounts(
+    campaigns.map((campaign) => campaign.id).filter(hasText),
+  );
+  return campaigns.map((campaign) => ({
+    ...campaign,
+    applicationCount: campaign.id ? (counts.get(campaign.id) ?? 0) : 0,
+  }));
 };
 
 const hydrateBrandRowsWithNormalizedCampaigns = async (
@@ -14620,12 +14712,128 @@ const reserveMarketplaceCampaignApplicationSelectionAtomically = async ({
     throw new Error("Supabase campaign applicant selection reservation returned invalid data");
   }
 
+  const reserved = row.result_reserved === true;
+  if (reserved) {
+    await clearPublicMarketplaceCampaignCache();
+  }
+
   return {
-    reserved: row.result_reserved === true,
+    reserved,
     reason: normalizeOptionalText(row.result_reason),
     campaignStatus: normalizeOptionalText(row.result_campaign_status),
     proposalStatus: proposalStatus as MarketplaceProposalStatus,
   };
+};
+
+const marketplaceCampaignEditModes = new Set<MarketplaceCampaignEditMode>([
+  "full",
+  "presentation_only",
+  "locked",
+]);
+
+const normalizeMarketplaceCampaignEditPolicy = (
+  row: UpdateMarketplaceCampaignDetailsRpcRow,
+): MarketplaceCampaignEditPolicy => {
+  const mode = normalizeOptionalText(row.result_mode);
+  if (!mode || !marketplaceCampaignEditModes.has(mode as MarketplaceCampaignEditMode)) {
+    throw new Error("Supabase campaign edit returned an invalid edit mode");
+  }
+  return {
+    mode: mode as MarketplaceCampaignEditMode,
+    application_count: normalizeCampaignAccessInteger(
+      row.result_application_count,
+    ),
+    locked_fields: normalizeStringArrayForStorage(
+      row.result_locked_fields,
+      [],
+      32,
+    ),
+    ...(normalizeOptionalText(row.result_policy_reason)
+      ? { reason: normalizeOptionalText(row.result_policy_reason) }
+      : {}),
+  };
+};
+
+const updateMarketplaceCampaignDetailsAtomically = async ({
+  campaignId,
+  brandProfileId,
+  organizationId,
+  actorProfileId,
+  expectedUpdatedAt,
+  campaignPatch,
+  activityEvent,
+}: {
+  campaignId: string;
+  brandProfileId: string;
+  organizationId: string;
+  actorProfileId: string;
+  expectedUpdatedAt: string;
+  campaignPatch: Record<string, unknown>;
+  activityEvent: NonNullable<MarketplaceBrandCampaign["activityEvents"]>[number];
+}) => {
+  const rows = await callSupabaseRpc<UpdateMarketplaceCampaignDetailsRpcRow[]>(
+    "update_marketplace_campaign_details",
+    {
+      p_campaign_id: campaignId,
+      p_brand_profile_id: brandProfileId,
+      p_organization_id: organizationId,
+      p_actor_profile_id: actorProfileId,
+      p_expected_updated_at: expectedUpdatedAt,
+      p_campaign_patch: campaignPatch,
+      p_activity_event: activityEvent,
+    },
+    "atomic marketplace campaign edit",
+    { headers: { Prefer: "return=representation" } },
+  );
+  const row = rows[0];
+  const outcome = normalizeOptionalText(row?.result_outcome);
+  if (
+    !row ||
+    !outcome ||
+    !["updated", "not_found", "conflict", "fields_locked", "locked"].includes(
+      outcome,
+    )
+  ) {
+    throw new Error("Supabase atomic campaign edit returned invalid data");
+  }
+  const editPolicy = normalizeMarketplaceCampaignEditPolicy(row);
+  if (outcome !== "updated") {
+    return { outcome, editPolicy };
+  }
+
+  const returnedCampaignId = normalizeOptionalText(row.result_campaign_id);
+  const returnedBrandId = normalizeOptionalText(row.result_brand_profile_id);
+  const returnedStatus = normalizeOptionalText(row.result_status);
+  const campaignData =
+    row.result_campaign_data && typeof row.result_campaign_data === "object"
+      ? (row.result_campaign_data as Record<string, unknown>)
+      : undefined;
+  const updatedAt = normalizeOptionalText(row.result_updated_at);
+  if (
+    returnedCampaignId !== campaignId ||
+    returnedBrandId !== brandProfileId ||
+    !returnedStatus ||
+    !marketplaceCampaignStatuses.has(returnedStatus) ||
+    !campaignData ||
+    !updatedAt
+  ) {
+    throw new Error("Supabase atomic campaign edit returned an invalid campaign");
+  }
+  const campaign = mapNormalizedMarketplaceCampaignRow({
+    id: returnedCampaignId,
+    brand_profile_id: returnedBrandId,
+    organization_id: organizationId,
+    campaign_data: campaignData,
+    status: returnedStatus as MarketplaceCampaignStatus,
+    created_at:
+      normalizeOptionalText(campaignData.createdAt) ?? updatedAt,
+    updated_at: updatedAt,
+    archived_at: null,
+  });
+  if (!campaign) {
+    throw new Error("Supabase atomic campaign edit returned an invalid campaign body");
+  }
+  return { outcome, editPolicy, campaign };
 };
 
 const isCampaignContractVerificationExempt = async ({
@@ -16003,20 +16211,52 @@ const readMarketplaceBrandProfiles = async () => {
     : fallbackMarketplaceBrandProfiles();
 };
 
+const sanitizePublicMarketplaceCampaignPosts = (
+  campaigns: Array<MarketplaceCampaignPost & { applicationCount?: number }>,
+) =>
+  campaigns.map((campaign) => {
+    const {
+      activityEvents: _activityEvents,
+      statusUpdatedBy: _statusUpdatedBy,
+      relativeTestDates: _relativeTestDates,
+      ...publicCampaign
+    } = campaign;
+    return {
+      ...publicCampaign,
+      applicationCount: campaign.applicationCount ?? 0,
+    };
+  });
+
+const attachPublicMarketplaceCampaignApplicationCounts = async (
+  campaigns: MarketplaceCampaignPost[],
+) =>
+  sanitizePublicMarketplaceCampaignPosts(
+    await attachMarketplaceCampaignApplicationCounts(campaigns),
+  );
+
+const buildFallbackMarketplaceCampaignPosts = () =>
+  sanitizePublicMarketplaceCampaignPosts(
+    buildMarketplaceCampaignPosts(fallbackMarketplaceBrandProfiles()).map(
+      (campaign) => ({ ...campaign, applicationCount: 0 }),
+    ),
+  );
+
 const readMarketplaceCampaignPosts = async () => {
   if (!useSupabase) {
-    return buildMarketplaceCampaignPosts(fallbackMarketplaceBrandProfiles());
+    return buildFallbackMarketplaceCampaignPosts();
   }
 
   const campaignRows = await readAllNormalizedMarketplaceCampaignRows(
     "?select=*&status=eq.open&archived_at=is.null&order=created_at.desc",
   );
   if (!campaignRows) {
-    return buildMarketplaceCampaignPosts(await readMarketplaceBrandProfiles());
+    return attachPublicMarketplaceCampaignApplicationCounts(
+      buildMarketplaceCampaignPosts(await readMarketplaceBrandProfiles()),
+    );
   }
   if (campaignRows.length === 0) {
     return allowPublicMarketplaceCatalogFallback
-      ? buildMarketplaceCampaignPosts(fallbackMarketplaceBrandProfiles())
+      ? buildFallbackMarketplaceCampaignPosts()
       : [];
   }
 
@@ -16054,7 +16294,9 @@ const readMarketplaceCampaignPosts = async () => {
   const profiles = allowPublicMarketplaceCatalogFallback
     ? mergeMarketplaceBrandProfiles(visibleDbProfiles)
     : visibleDbProfiles;
-  return buildMarketplaceCampaignPosts(profiles);
+  return attachPublicMarketplaceCampaignApplicationCounts(
+    buildMarketplaceCampaignPosts(profiles),
+  );
 };
 
 const publicMarketplaceCacheMaxAgeSeconds = 60;
@@ -16101,7 +16343,7 @@ const fallbackMarketplaceBrandProfiles = () =>
   allowPublicMarketplaceCatalogFallback ? mergeMarketplaceBrandProfiles() : [];
 
 const fallbackMarketplaceCampaignPosts = () =>
-  buildMarketplaceCampaignPosts(fallbackMarketplaceBrandProfiles());
+  buildFallbackMarketplaceCampaignPosts();
 
 const isEmptyPublicMarketplaceValue = (value: unknown) =>
   Array.isArray(value) && value.length === 0;
@@ -16317,6 +16559,19 @@ const clearPublicMarketplaceCache = () => {
   });
 };
 
+const clearPublicMarketplaceCampaignCache = () => {
+  publicMarketplaceCache.delete("marketplace-campaigns");
+  return expirePublicMarketplaceRuntimeCache(["marketplace:campaigns"]).catch(
+    (error) => {
+      console.warn(
+        `[${productName}] public campaign cache invalidation failed: ${operationalErrorLabel(
+          error,
+        )}`,
+      );
+    },
+  );
+};
+
 const sendPublicMarketplaceJson = <T,>(
   response: express.Response,
   payload: T,
@@ -16326,6 +16581,25 @@ const sendPublicMarketplaceJson = <T,>(
   response.setHeader("CDN-Cache-Control", publicMarketplaceCdnCacheControl);
   response.setHeader("Vercel-CDN-Cache-Control", publicMarketplaceCdnCacheControl);
   response.setHeader("Vercel-Cache-Tag", publicMarketplaceCacheTags[key].join(","));
+  response.json(payload);
+};
+
+const isValidPublicMarketplaceFreshQuery = (value: unknown) =>
+  typeof value === "string" &&
+  /^(?:1|true|\d{10,16})$/i.test(value.trim());
+
+const setFreshPublicMarketplaceHeaders = (response: express.Response) => {
+  response.setHeader("Cache-Control", "private, no-store");
+  response.setHeader("CDN-Cache-Control", "no-store");
+  response.setHeader("Vercel-CDN-Cache-Control", "no-store");
+  response.setHeader("Vary", "Cookie");
+};
+
+const sendFreshPublicMarketplaceJson = <T,>(
+  response: express.Response,
+  payload: T,
+) => {
+  setFreshPublicMarketplaceHeaders(response);
   response.json(payload);
 };
 
@@ -17181,12 +17455,15 @@ const readAdvertiserCampaignBoard = async (
   const campaignAccess = useSupabase
     ? await readProgressiveCampaignAccess(organization.id)
     : emptyAdvertiserCampaignAccess();
+  const campaigns = await attachMarketplaceCampaignApplicationCounts(
+    brand.activeCampaigns,
+  );
 
   return {
     organization,
     brand,
     brands,
-    campaigns: brand.activeCampaigns,
+    campaigns,
     campaignAccess,
   };
 };
@@ -17701,8 +17978,10 @@ const validateMarketplaceCampaignInput = (body: Record<string, unknown>) => {
     ...(type === "other" && otherTypeLabel ? { otherTypeLabel } : {}),
     applicantLimit,
     location,
+    offer,
     budget,
     summary,
+    mission,
     targetCountries,
     thumbnailUrl,
     deadline,
@@ -17802,8 +18081,10 @@ const upsertAdvertiserMarketplaceCampaign = async (
       : {}),
     applicantLimit: payload.applicantLimit,
     location: payload.location,
+    ...(payload.offer ? { offer: payload.offer } : {}),
     budget: payload.budget,
     summary: payload.summary,
+    ...(payload.mission ? { mission: payload.mission } : {}),
     ...(payload.targetCountries.length > 0
       ? { targetCountries: payload.targetCountries }
       : {}),
@@ -17948,6 +18229,448 @@ const upsertAdvertiserMarketplaceCampaign = async (
     campaigns: board.campaigns,
     campaign_access: board.campaignAccess,
     already_published: !publication.created,
+  };
+};
+
+const marketplaceCampaignEditFieldAliases: Record<string, string[]> = {
+  title: ["title"],
+  type: ["type"],
+  otherTypeLabel: ["otherTypeLabel", "other_type_label"],
+  applicantLimit: ["applicantLimit", "applicant_limit"],
+  location: ["location"],
+  offer: ["offer", "offeredProduct", "offered_product"],
+  budget: ["budget"],
+  summary: ["summary"],
+  mission: ["mission"],
+  targetCountries: ["targetCountries", "target_countries"],
+  thumbnailUrl: ["thumbnailUrl", "thumbnail_url"],
+  deadline: ["deadline"],
+  uploadDeadline: ["uploadDeadline", "upload_deadline"],
+  platforms: ["platforms"],
+  deliverables: ["deliverables"],
+  applicationContactFields: [
+    "applicationContactFields",
+    "application_contact_fields",
+  ],
+  requiredConsents: ["requiredConsents", "required_consents"],
+};
+
+const hasOwnMarketplaceCampaignEditField = (
+  body: Record<string, unknown>,
+  field: string,
+) =>
+  (marketplaceCampaignEditFieldAliases[field] ?? [field]).some((key) =>
+    Object.prototype.hasOwnProperty.call(body, key),
+  );
+
+const readMarketplaceCampaignEditValue = (
+  body: Record<string, unknown>,
+  field: string,
+  fallback: unknown,
+) => {
+  for (const key of marketplaceCampaignEditFieldAliases[field] ?? [field]) {
+    if (Object.prototype.hasOwnProperty.call(body, key)) return body[key];
+  }
+  return fallback;
+};
+
+const getRequestedMarketplaceCampaignEditFields = (
+  body: Record<string, unknown>,
+) =>
+  new Set(
+    Object.keys(marketplaceCampaignEditFieldAliases).filter((field) =>
+      hasOwnMarketplaceCampaignEditField(body, field),
+    ),
+  );
+
+const isMarketplaceCampaignPresentationOnlyEdit = (
+  requestedFields: ReadonlySet<string>,
+) =>
+  requestedFields.size > 0 &&
+  [...requestedFields].every(
+    (field) => field === "title" || field === "thumbnailUrl",
+  );
+
+const validateMarketplaceCampaignPresentationEdit = (
+  body: Record<string, unknown>,
+  campaign: MarketplaceBrandCampaign,
+) => {
+  const campaignPatch: Record<string, unknown> = {};
+
+  if (hasOwnMarketplaceCampaignEditField(body, "title")) {
+    const title = normalizeRequiredText(
+      readMarketplaceCampaignEditValue(body, "title", undefined),
+    );
+    if (!title || title.length > 100) {
+      return { error: "제목은 100자 이내로 입력해 주세요." };
+    }
+    if (title !== campaign.title) campaignPatch.title = title;
+  }
+
+  if (hasOwnMarketplaceCampaignEditField(body, "thumbnailUrl")) {
+    const rawThumbnailUrl = readMarketplaceCampaignEditValue(
+      body,
+      "thumbnailUrl",
+      undefined,
+    );
+    if (
+      rawThumbnailUrl !== null &&
+      rawThumbnailUrl !== undefined &&
+      typeof rawThumbnailUrl !== "string"
+    ) {
+      return { error: "대표이미지 주소를 확인해 주세요." };
+    }
+    const normalizedThumbnailUrl = normalizeMarketplacePublicImageUrl(
+      rawThumbnailUrl,
+    );
+    if (
+      typeof rawThumbnailUrl === "string" &&
+      rawThumbnailUrl.trim() &&
+      !normalizedThumbnailUrl
+    ) {
+      return { error: "대표이미지는 올바른 공개 이미지 주소여야 합니다." };
+    }
+    if ((normalizedThumbnailUrl ?? undefined) !== campaign.thumbnailUrl) {
+      campaignPatch.thumbnailUrl = normalizedThumbnailUrl ?? null;
+    }
+  }
+
+  return { campaignPatch };
+};
+
+const buildMarketplaceCampaignEditInput = (
+  body: Record<string, unknown>,
+  campaign: MarketplaceBrandCampaign,
+) => ({
+  title: readMarketplaceCampaignEditValue(body, "title", campaign.title),
+  type: readMarketplaceCampaignEditValue(body, "type", campaign.type),
+  otherTypeLabel: readMarketplaceCampaignEditValue(
+    body,
+    "otherTypeLabel",
+    campaign.otherTypeLabel,
+  ),
+  applicantLimit: readMarketplaceCampaignEditValue(
+    body,
+    "applicantLimit",
+    campaign.applicantLimit,
+  ),
+  location: readMarketplaceCampaignEditValue(
+    body,
+    "location",
+    campaign.location,
+  ),
+  offer: readMarketplaceCampaignEditValue(body, "offer", campaign.offer),
+  budget: readMarketplaceCampaignEditValue(body, "budget", campaign.budget),
+  summary: readMarketplaceCampaignEditValue(body, "summary", campaign.summary),
+  mission: readMarketplaceCampaignEditValue(body, "mission", campaign.mission),
+  targetCountries: readMarketplaceCampaignEditValue(
+    body,
+    "targetCountries",
+    campaign.targetCountries,
+  ),
+  thumbnailUrl: readMarketplaceCampaignEditValue(
+    body,
+    "thumbnailUrl",
+    campaign.thumbnailUrl,
+  ),
+  deadline: readMarketplaceCampaignEditValue(
+    body,
+    "deadline",
+    campaign.deadline,
+  ),
+  uploadDeadline: readMarketplaceCampaignEditValue(
+    body,
+    "uploadDeadline",
+    campaign.uploadDeadline,
+  ),
+  platforms: readMarketplaceCampaignEditValue(
+    body,
+    "platforms",
+    campaign.platforms,
+  ),
+  deliverables: readMarketplaceCampaignEditValue(
+    body,
+    "deliverables",
+    campaign.deliverables,
+  ),
+  applicationContactFields: readMarketplaceCampaignEditValue(
+    body,
+    "applicationContactFields",
+    campaign.applicationContactFields,
+  ),
+  requiredConsents: readMarketplaceCampaignEditValue(
+    body,
+    "requiredConsents",
+    campaign.requiredConsents,
+  ),
+});
+
+const buildMarketplaceCampaignEditPatch = (
+  body: Record<string, unknown>,
+  campaign: MarketplaceBrandCampaign,
+  payload: Exclude<ReturnType<typeof validateMarketplaceCampaignInput>, { error: string }>,
+) => {
+  const currentValues: Record<string, unknown> = {
+    title: campaign.title,
+    type: campaign.type,
+    otherTypeLabel: campaign.otherTypeLabel,
+    applicantLimit: campaign.applicantLimit,
+    location: campaign.location,
+    offer: campaign.offer,
+    budget: campaign.budget,
+    summary: campaign.summary,
+    mission: campaign.mission,
+    targetCountries: campaign.targetCountries?.length
+      ? campaign.targetCountries
+      : undefined,
+    thumbnailUrl: campaign.thumbnailUrl,
+    deadline: campaign.deadline,
+    uploadDeadline: campaign.uploadDeadline,
+    platforms: campaign.platforms,
+    deliverables: campaign.deliverables,
+    applicationContactFields: campaign.applicationContactFields?.length
+      ? campaign.applicationContactFields
+      : undefined,
+    applicationContactConsentVersion:
+      campaign.applicationContactConsentVersion,
+    requiredConsents: campaign.requiredConsents ?? [],
+    consentVersion:
+      campaign.consentVersion ??
+      buildCampaignConsentVersion(campaign.requiredConsents ?? []),
+  };
+  const nextValues: Record<string, unknown> = {
+    title: payload.title,
+    type: payload.type,
+    otherTypeLabel:
+      payload.type === "other" ? payload.otherTypeLabel : undefined,
+    applicantLimit: payload.applicantLimit,
+    location: payload.location,
+    offer: payload.offer,
+    budget: payload.budget,
+    summary: payload.summary,
+    mission: payload.mission,
+    targetCountries: payload.targetCountries.length
+      ? payload.targetCountries
+      : undefined,
+    thumbnailUrl: payload.thumbnailUrl,
+    deadline: payload.deadline,
+    uploadDeadline: payload.uploadDeadline,
+    platforms: payload.platforms,
+    deliverables: payload.deliverables,
+    applicationContactFields: payload.applicationContactFields.length
+      ? payload.applicationContactFields
+      : undefined,
+    applicationContactConsentVersion: payload.applicationContactFields.length
+      ? buildCampaignApplicationContactConsentVersion({
+          campaignId: campaign.id ?? "",
+          fields: payload.applicationContactFields,
+        })
+      : undefined,
+    requiredConsents: payload.requiredConsents,
+    consentVersion: payload.consentVersion,
+  };
+  const requestedFields = getRequestedMarketplaceCampaignEditFields(body);
+  if (requestedFields.has("type")) requestedFields.add("otherTypeLabel");
+  if (requestedFields.has("applicationContactFields")) {
+    requestedFields.add("applicationContactConsentVersion");
+  }
+  if (requestedFields.has("requiredConsents")) {
+    requestedFields.add("consentVersion");
+  }
+
+  const campaignPatch: Record<string, unknown> = {};
+  for (const field of requestedFields) {
+    if (JSON.stringify(currentValues[field]) === JSON.stringify(nextValues[field])) {
+      continue;
+    }
+    campaignPatch[field] = nextValues[field] ?? null;
+  }
+  return campaignPatch;
+};
+
+const updateAdvertiserMarketplaceCampaign = async (
+  auth: AdvertiserSession,
+  campaignId: string,
+  body: Record<string, unknown>,
+) => {
+  if (!useSupabase) {
+    return {
+      ok: false as const,
+      status: 503,
+      error: "Supabase 설정이 필요합니다.",
+    };
+  }
+
+  const organization = await readDefaultOrganizationForProfile(auth.profile.id);
+  if (!organization) {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "광고주 조직 정보를 찾을 수 없습니다.",
+    };
+  }
+  const selectedBrandId = normalizeAdvertiserSelectedBrandId(
+    body.brandId ?? body.brand_id,
+  );
+  const campaignRows = await readNormalizedMarketplaceCampaignRows(
+    `?select=*&id=eq.${encodeURIComponent(
+      campaignId,
+    )}&organization_id=eq.${encodeURIComponent(
+      organization.id,
+    )}&archived_at=is.null&limit=2`,
+  );
+  const campaignRow = campaignRows?.[0];
+  if (
+    !campaignRow ||
+    (selectedBrandId && campaignRow.brand_profile_id !== selectedBrandId)
+  ) {
+    return {
+      ok: false as const,
+      status: 404,
+      error: "수정할 캠페인을 찾을 수 없습니다.",
+    };
+  }
+  const brandRows = await readAdvertiserMarketplaceBrandRows(organization.id);
+  const brandRow = brandRows.find(
+    (candidate) => candidate.id === campaignRow.brand_profile_id,
+  );
+  const currentCampaign = mapNormalizedMarketplaceCampaignRow(campaignRow);
+  if (!brandRow || !currentCampaign) {
+    return {
+      ok: false as const,
+      status: 404,
+      error: "수정할 캠페인 또는 브랜드를 찾을 수 없습니다.",
+    };
+  }
+
+  const expectedUpdatedAt = normalizeOptionalText(
+    body.expectedUpdatedAt ?? body.expected_updated_at,
+  );
+  if (!expectedUpdatedAt || Number.isNaN(Date.parse(expectedUpdatedAt))) {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "최신 캠페인 버전을 확인한 뒤 다시 수정해 주세요.",
+      code: "campaign_edit_conflict" as const,
+    };
+  }
+  const requestedFields = getRequestedMarketplaceCampaignEditFields(body);
+  let campaignPatch: Record<string, unknown>;
+  if (isMarketplaceCampaignPresentationOnlyEdit(requestedFields)) {
+    const presentationEdit = validateMarketplaceCampaignPresentationEdit(
+      body,
+      currentCampaign,
+    );
+    if ("error" in presentationEdit) {
+      return {
+        ok: false as const,
+        status: 422,
+        error: presentationEdit.error,
+      };
+    }
+    campaignPatch = presentationEdit.campaignPatch;
+  } else if (requestedFields.size > 0) {
+    const payload = validateMarketplaceCampaignInput(
+      buildMarketplaceCampaignEditInput(body, currentCampaign),
+    );
+    if ("error" in payload) {
+      return { ok: false as const, status: 422, error: payload.error };
+    }
+    campaignPatch = buildMarketplaceCampaignEditPatch(
+      body,
+      currentCampaign,
+      payload,
+    );
+  } else {
+    campaignPatch = {};
+  }
+  if (Object.keys(campaignPatch).length === 0) {
+    return {
+      ok: false as const,
+      status: 422,
+      error: "변경할 캠페인 내용을 입력해 주세요.",
+    };
+  }
+
+  const now = new Date().toISOString();
+  const actor =
+    normalizeOptionalText(brandRow.display_name) || organization.name || productName;
+  const mutation = await updateMarketplaceCampaignDetailsAtomically({
+    campaignId,
+    brandProfileId: campaignRow.brand_profile_id,
+    organizationId: organization.id,
+    actorProfileId: auth.profile.id,
+    expectedUpdatedAt,
+    campaignPatch,
+    activityEvent: {
+      id: randomUUID(),
+      actor,
+      action: "campaign_details_updated",
+      description: "캠페인 모집글 내용을 수정했습니다.",
+      createdAt: now,
+    },
+  });
+  if (mutation.outcome === "not_found") {
+    return {
+      ok: false as const,
+      status: 404,
+      error: "수정할 캠페인을 찾을 수 없습니다.",
+    };
+  }
+  if (mutation.outcome === "conflict") {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "다른 변경사항이 먼저 저장되었습니다. 최신 내용을 확인해 주세요.",
+      code: "campaign_edit_conflict" as const,
+      edit_policy: mutation.editPolicy,
+    };
+  }
+  if (mutation.outcome === "fields_locked") {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "지원자가 있어 제목과 대표 이미지만 수정할 수 있습니다.",
+      code: "campaign_edit_fields_locked" as const,
+      edit_policy: mutation.editPolicy,
+    };
+  }
+  if (mutation.outcome === "locked") {
+    return {
+      ok: false as const,
+      status: 409,
+      error: "선정이 확정되었거나 종료된 캠페인은 수정할 수 없습니다.",
+      code: "campaign_edit_locked" as const,
+      edit_policy: mutation.editPolicy,
+    };
+  }
+  if (!mutation.campaign) {
+    throw new Error("Atomic campaign edit did not return the saved campaign");
+  }
+
+  await clearPublicMarketplaceCache();
+  const board = await readAdvertiserCampaignBoard(
+    auth,
+    campaignRow.brand_profile_id,
+  );
+  const brand =
+    board.brand ??
+    buildAdvertiserBrandProfileFromAuth(auth, organization, brandRow);
+  const savedCampaign =
+    board.campaigns.find((campaign) => campaign.id === campaignId) ??
+    ({
+      ...mutation.campaign,
+      applicationCount: mutation.editPolicy.application_count,
+    } as typeof board.campaigns[number]);
+
+  return {
+    ok: true as const,
+    brand,
+    brands: board.brands,
+    campaign: savedCampaign,
+    campaigns: board.campaigns,
+    campaign_access: board.campaignAccess,
+    edit_policy: mutation.editPolicy,
   };
 };
 
@@ -18189,8 +18912,10 @@ const updateAdvertiserMarketplaceCampaignStatus = async (
 
 const buildMarketplaceCampaignSnapshot = (
   campaign: MarketplaceCampaignPost,
+  campaignRevision?: string,
 ): MarketplaceCampaignSnapshot => ({
   id: campaign.id,
+  ...(campaignRevision ? { campaignRevision } : {}),
   title: campaign.title,
   type: campaign.type,
   ...(campaign.type === "other" && campaign.otherTypeLabel
@@ -18236,6 +18961,9 @@ const normalizeMarketplaceCampaignSnapshot = (
   if (!value || typeof value !== "object") return undefined;
   const record = value as Record<string, unknown>;
   const id = normalizeRequiredText(record.id);
+  const campaignRevision = normalizeOptionalText(
+    record.campaignRevision ?? record.campaign_revision,
+  );
   const title = normalizeRequiredText(record.title);
   const type = normalizeRequiredText(record.type) as CampaignProposalType;
   const otherTypeLabel = normalizeOptionalText(
@@ -18295,6 +19023,7 @@ const normalizeMarketplaceCampaignSnapshot = (
 
   return {
     id,
+    ...(campaignRevision ? { campaignRevision } : {}),
     title,
     type,
     ...(type === "other" && otherTypeLabel ? { otherTypeLabel } : {}),
@@ -18328,6 +19057,51 @@ const normalizeMarketplaceCampaignSnapshot = (
 const findMarketplaceCampaignPostById = async (campaignId: string) => {
   const campaigns = await readMarketplaceCampaignPosts();
   return campaigns.find((campaign) => campaign.id === campaignId);
+};
+
+const findMarketplaceCampaignApplicationTargetById = async (
+  campaignId: string,
+) => {
+  const campaignRows = await readNormalizedMarketplaceCampaignRows(
+    `?select=*&id=eq.${encodeURIComponent(
+      campaignId,
+    )}&status=eq.open&archived_at=is.null&limit=1`,
+  );
+  const campaignRow = campaignRows?.[0];
+  if (!campaignRow) return undefined;
+
+  const campaign = mapNormalizedMarketplaceCampaignRow(campaignRow);
+  if (!campaign) return undefined;
+  const [brandRow] = await readSupabaseRows<SupabaseMarketplaceBrandProfileRow>(
+    "marketplace_brand_profiles",
+    `?select=*&id=eq.${encodeURIComponent(
+      campaignRow.brand_profile_id,
+    )}&organization_id=eq.${encodeURIComponent(
+      campaignRow.organization_id,
+    )}&is_published=eq.true&archived_at=is.null${
+      filterOperationalMarketplaceTestData ? "&data_origin=eq.production" : ""
+    }&limit=1`,
+    "authoritative campaign application target brand",
+  );
+  if (!brandRow) return undefined;
+
+  const brand = mapBrandProfileRowToMarketplaceProfile({
+    ...brandRow,
+    active_campaigns: [campaign],
+  });
+  if (filterOperationalMarketplaceTestData && hasOperationalTestMarker(brand)) {
+    return undefined;
+  }
+  const campaignPost = buildMarketplaceCampaignPosts([brand]).find(
+    (candidate) => candidate.id === campaignRow.id,
+  );
+  if (!campaignPost) return undefined;
+
+  return {
+    campaign: campaignPost,
+    campaignRevision: campaignRow.updated_at,
+    organizationId: campaignRow.organization_id,
+  };
 };
 
 const readInfluencerMarketplaceProfileForApplication = async (
@@ -18641,12 +19415,34 @@ const submitMarketplaceCampaignApplication = async (
     };
   }
 
-  const campaign = await findMarketplaceCampaignPostById(campaignId);
-  if (!campaign || !isMarketplaceApplicationBrandId(campaign.brandId)) {
+  const applicationTarget =
+    await findMarketplaceCampaignApplicationTargetById(campaignId);
+  const campaign = applicationTarget?.campaign;
+  if (
+    !applicationTarget ||
+    !campaign ||
+    !isMarketplaceApplicationBrandId(campaign.brandId)
+  ) {
     return {
       ok: false as const,
       status: 404,
       error: "신청 가능한 캠페인을 찾을 수 없습니다.",
+    };
+  }
+
+  const expectedCampaignRevision = body.expectedCampaignRevision;
+  if (
+    !isExpectedCampaignRevisionCurrent(
+      expectedCampaignRevision,
+      applicationTarget.campaignRevision,
+    )
+  ) {
+    return {
+      ok: false as const,
+      status: 409,
+      error:
+        "캠페인 내용이 변경되었습니다. 최신 내용을 확인한 뒤 다시 신청해 주세요.",
+      code: "campaign_application_stale" as const,
     };
   }
 
@@ -18732,7 +19528,10 @@ const submitMarketplaceCampaignApplication = async (
           proposal_type: campaign.type,
           proposal_summary: buildCampaignApplicationSummary(campaign),
           campaign_id: campaign.id,
-          campaign_snapshot: buildMarketplaceCampaignSnapshot(campaign),
+          campaign_snapshot: buildMarketplaceCampaignSnapshot(
+            campaign,
+            applicationTarget.campaignRevision,
+          ),
           application_consent_snapshot: {
             version: consent.version,
             items: consent.items,
@@ -18770,6 +19569,15 @@ const submitMarketplaceCampaignApplication = async (
       "marketplace campaign application",
     );
   } catch (error) {
+    if (isCampaignApplicationStaleWriteError(error)) {
+      return {
+        ok: false as const,
+        status: 409,
+        error:
+          "캠페인 내용이 변경되었습니다. 최신 내용을 확인한 뒤 다시 신청해 주세요.",
+        code: "campaign_application_stale" as const,
+      };
+    }
     if (isCampaignApplicationClosedWriteError(error)) {
       return {
         ok: false as const,
@@ -18793,6 +19601,7 @@ const submitMarketplaceCampaignApplication = async (
   }
   invalidateAdvertiserDashboardCache();
   invalidateInfluencerDashboardCache();
+  await clearPublicMarketplaceCampaignCache();
 
   return {
     ok: true as const,
@@ -20102,6 +20911,10 @@ const transitionMarketplaceProposalToContract = async (
       status: 409,
       error: "제안 상태가 변경되었습니다. 최신 상태를 확인해 주세요.",
     };
+  }
+
+  if (transition.changed && proposal.campaign_id) {
+    await clearPublicMarketplaceCampaignCache();
   }
 
   return {
@@ -21602,6 +22415,10 @@ const updateOneToOneProposalDecision = async (
       status: 409,
       error: "제안 상태가 변경되었습니다. 최신 상태를 확인해 주세요.",
     };
+  }
+
+  if (transition.changed && proposal.campaign_id) {
+    await clearPublicMarketplaceCampaignCache();
   }
 
   const [updatedProposal] = await readMarketplaceProposalRows(
@@ -29818,13 +30635,21 @@ app.get("/api/marketplace/brands/:handle", async (request, response, next) => {
   }
 });
 
-app.get("/api/marketplace/campaigns", async (_request, response, next) => {
+app.get("/api/marketplace/campaigns", async (request, response, next) => {
   try {
-    const campaigns = await readPublicMarketplaceCache(
-      "marketplace-campaigns",
-      readMarketplaceCampaignPosts,
-      { fallback: fallbackMarketplaceCampaignPosts },
-    );
+    const fresh = isValidPublicMarketplaceFreshQuery(request.query.fresh);
+    if (fresh) setFreshPublicMarketplaceHeaders(response);
+    const campaigns = fresh
+      ? await readMarketplaceCampaignPosts()
+      : await readPublicMarketplaceCache(
+          "marketplace-campaigns",
+          readMarketplaceCampaignPosts,
+          { fallback: fallbackMarketplaceCampaignPosts },
+        );
+    if (fresh) {
+      sendFreshPublicMarketplaceJson(response, { campaigns });
+      return;
+    }
     sendPublicMarketplaceJson(response, { campaigns }, "marketplace-campaigns");
   } catch (error) {
     next(error);
@@ -29833,11 +30658,15 @@ app.get("/api/marketplace/campaigns", async (_request, response, next) => {
 
 app.get("/api/marketplace/campaigns/:campaignId", async (request, response, next) => {
   try {
-    const campaigns = await readPublicMarketplaceCache(
-      "marketplace-campaigns",
-      readMarketplaceCampaignPosts,
-      { fallback: fallbackMarketplaceCampaignPosts },
-    );
+    const fresh = isValidPublicMarketplaceFreshQuery(request.query.fresh);
+    if (fresh) setFreshPublicMarketplaceHeaders(response);
+    const campaigns = fresh
+      ? await readMarketplaceCampaignPosts()
+      : await readPublicMarketplaceCache(
+          "marketplace-campaigns",
+          readMarketplaceCampaignPosts,
+          { fallback: fallbackMarketplaceCampaignPosts },
+        );
     const campaign = campaigns.find(
       (candidate) => candidate.id === request.params.campaignId,
     );
@@ -29847,6 +30676,10 @@ app.get("/api/marketplace/campaigns/:campaignId", async (request, response, next
       return;
     }
 
+    if (fresh) {
+      sendFreshPublicMarketplaceJson(response, { campaign });
+      return;
+    }
     sendPublicMarketplaceJson(response, { campaign }, "marketplace-campaigns");
   } catch (error) {
     next(error);
@@ -30127,6 +30960,39 @@ app.post("/api/advertiser/campaigns", async (request, response, next) => {
       campaigns: result.campaigns,
       campaign_access: result.campaign_access,
       already_published: result.already_published,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch("/api/advertiser/campaigns/:id", async (request, response, next) => {
+  try {
+    const advertiserAuth = await requireAdvertiserSession(request, response);
+    if (!advertiserAuth) return;
+
+    const result = await updateAdvertiserMarketplaceCampaign(
+      advertiserAuth,
+      request.params.id,
+      request.body && typeof request.body === "object"
+        ? (request.body as Record<string, unknown>)
+        : {},
+    );
+
+    if (!result.ok) {
+      const { ok: _ok, status, ...payload } = result;
+      response.status(status).json(payload);
+      return;
+    }
+
+    response.setHeader("Cache-Control", "no-store");
+    response.json({
+      brand: result.brand,
+      brands: result.brands,
+      campaign: result.campaign,
+      campaigns: result.campaigns,
+      campaign_access: result.campaign_access,
+      edit_policy: result.edit_policy,
     });
   } catch (error) {
     next(error);

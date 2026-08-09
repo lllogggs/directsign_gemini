@@ -1,9 +1,8 @@
 import {
   ArrowDown,
-  ArrowDownWideNarrow,
   ArrowUp,
   ArrowUpDown,
-  ArrowUpWideNarrow,
+  Bell,
   CalendarDays,
   ChevronDown,
   CheckCircle2,
@@ -13,10 +12,13 @@ import {
   LogOut,
   MapPin,
   Megaphone,
+  MessageSquareText,
+  PenLine,
   Plus,
   RefreshCw,
   Search,
   Send,
+  Settings,
   SlidersHorizontal,
   Trash2,
   UsersRound,
@@ -39,7 +41,7 @@ import { PRODUCT_NAME } from "../../domain/brand";
 import {
   campaignProposalTypeOptions,
   CAMPAIGN_APPLICATION_CONTACT_POLICY_VERSION,
-  formatCampaignApplicantLimit,
+  formatCampaignApplicationStats,
   formatMarketplaceCountries,
   getCampaignDeadlineLabel,
   getCampaignProposalTypeDisplayLabel,
@@ -47,8 +49,11 @@ import {
   getMarketplaceCountryLabel,
   isMarketplaceApplicationBrandId,
   marketplaceCountryOptions,
+  parseCampaignGuideline,
   platformLabels,
   proposalTypeLabels,
+  resolveCampaignApplicationCountSync,
+  type CampaignGuidelineLine,
   type CampaignProposalType,
   type CampaignApplicationContactField,
   type MarketplaceBrandCampaign,
@@ -112,13 +117,26 @@ type CampaignState =
   | { status: "ready"; campaigns: MarketplaceCampaignPost[] }
   | { status: "error"; message: string };
 
+type AdvertiserCampaignRecord = MarketplaceBrandCampaign & {
+  applicationCount?: number;
+};
+
+type CampaignEditMode = "full" | "presentation_only" | "locked";
+
+type CampaignEditPolicy = {
+  mode: CampaignEditMode;
+  application_count: number;
+  locked_fields: string[];
+  reason?: string;
+};
+
 type AdvertiserCampaignState =
   | { status: "loading" }
   | {
       status: "ready";
       brand: MarketplaceBrandProfile | null;
       brands: MarketplaceBrandProfile[];
-      campaigns: MarketplaceBrandCampaign[];
+      campaigns: AdvertiserCampaignRecord[];
       campaignAccess?: AdvertiserCampaignAccess;
     }
   | { status: "error"; message: string };
@@ -245,6 +263,142 @@ const platformOptions: PlatformFilter[] = [
 
 const OTHER_CAMPAIGN_TYPE_OPTION_LABEL = "기타(직접작성)";
 
+type CampaignFormState = {
+  title: string;
+  type: CampaignProposalType;
+  otherTypeLabel: string;
+  applicantLimit: string;
+  location: string;
+  budget: string;
+  summary: string;
+  deadline: string;
+  uploadDeadline: string;
+  platforms: InfluencerPlatform[];
+  targetCountries: MarketplaceCountryCode[];
+  deliverables: string;
+  thumbnailUrl: string;
+  applicationContactFields: CampaignApplicationContactField[];
+  requiredConsents: NonNullable<MarketplaceBrandCampaign["requiredConsents"]>;
+};
+
+function createEmptyCampaignForm(): CampaignFormState {
+  return {
+    title: "",
+    type: "sponsored_post",
+    otherTypeLabel: "",
+    applicantLimit: "",
+    location: "",
+    budget: "",
+    summary: "",
+    deadline: "",
+    uploadDeadline: "",
+    platforms: ["instagram"],
+    targetCountries: [],
+    deliverables: "",
+    thumbnailUrl: "",
+    applicationContactFields: [],
+    requiredConsents: [],
+  };
+}
+
+function createCampaignFormFromRecord(
+  campaign: AdvertiserCampaignRecord,
+): CampaignFormState {
+  return {
+    title: campaign.title ?? "",
+    type: campaign.type,
+    otherTypeLabel: campaign.otherTypeLabel ?? "",
+    applicantLimit: campaign.applicantLimit ?? "",
+    location: campaign.location ?? "",
+    budget: campaign.budget ?? "",
+    summary: campaign.summary ?? "",
+    deadline: campaign.deadline ?? "",
+    uploadDeadline: campaign.uploadDeadline ?? "",
+    platforms: campaign.platforms?.length ? [...campaign.platforms] : ["instagram"],
+    targetCountries: campaign.targetCountries ? [...campaign.targetCountries] : [],
+    deliverables: campaign.deliverables?.join(", ") ?? "",
+    thumbnailUrl: campaign.thumbnailUrl ?? "",
+    applicationContactFields: campaign.applicationContactFields
+      ? [...campaign.applicationContactFields]
+      : [],
+    requiredConsents: campaign.requiredConsents
+      ? campaign.requiredConsents.map((consent) => ({ ...consent }))
+      : [],
+  };
+}
+
+function getLocalCampaignEditPolicy(
+  campaign: AdvertiserCampaignRecord,
+): CampaignEditPolicy {
+  const applicationCount = Math.max(
+    0,
+    Number.isFinite(Number(campaign.applicationCount))
+      ? Math.floor(Number(campaign.applicationCount))
+      : 0,
+  );
+
+  if (campaign.status === "closed" || campaign.status === "ended") {
+    return {
+      mode: "locked",
+      application_count: applicationCount,
+      locked_fields: ["*"],
+      reason: "모집이 끝난 캠페인은 내용을 수정할 수 없습니다.",
+    };
+  }
+
+  if (applicationCount > 0) {
+    return {
+      mode: "presentation_only",
+      application_count: applicationCount,
+      locked_fields: [
+        "type",
+        "otherTypeLabel",
+        "applicantLimit",
+        "location",
+        "budget",
+        "summary",
+        "deadline",
+        "uploadDeadline",
+        "platforms",
+        "targetCountries",
+        "deliverables",
+        "applicationContactFields",
+        "requiredConsents",
+      ],
+      reason:
+        "지원자가 있어 제목과 대표 이미지만 수정할 수 있습니다. 지원자가 확인한 모집 조건은 그대로 유지됩니다.",
+    };
+  }
+
+  return {
+    mode: "full",
+    application_count: 0,
+    locked_fields: [],
+  };
+}
+
+function getCampaignEditPolicyDescription(policy: CampaignEditPolicy) {
+  switch (policy.reason) {
+    case "no_applications":
+      return "아직 지원자가 없어 모집 조건 전체를 수정할 수 있습니다.";
+    case "applications_started":
+      return "지원자가 있어 제목과 대표 이미지만 수정할 수 있습니다. 지원자가 확인한 모집 조건은 그대로 유지됩니다.";
+    case "campaign_closed":
+      return "모집이 끝난 캠페인은 내용을 수정할 수 없습니다.";
+    case "selection_finalized":
+      return "선정이 시작된 캠페인은 내용을 수정할 수 없습니다.";
+    default:
+      return (
+        policy.reason ??
+        (policy.mode === "full"
+          ? "모집 조건 전체를 수정할 수 있습니다."
+          : policy.mode === "presentation_only"
+            ? "제목과 대표 이미지만 수정할 수 있습니다."
+            : "현재 상태에서는 수정할 수 없습니다.")
+      );
+  }
+}
+
 function createCampaignRequiredConsentId() {
   const randomId = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
   return `consent-${randomId}`;
@@ -286,8 +440,9 @@ type MarketplaceCampaignResponse = {
 type AdvertiserCampaignsResponse = {
   brand: MarketplaceBrandProfile | null;
   brands?: MarketplaceBrandProfile[];
-  campaigns: MarketplaceBrandCampaign[];
+  campaigns: AdvertiserCampaignRecord[];
   campaign_access?: AdvertiserCampaignAccess;
+  edit_policy?: CampaignEditPolicy;
 };
 
 type BrandImageUploadResponse = {
@@ -301,6 +456,15 @@ type CampaignImageUploadResponse = {
   error?: string;
 };
 
+type CampaignEditApiError = {
+  code?:
+    | "campaign_edit_conflict"
+    | "campaign_edit_fields_locked"
+    | "campaign_edit_locked";
+  error?: string;
+  edit_policy?: CampaignEditPolicy;
+};
+
 type CampaignApplicationResponse = {
   proposal?: {
     id: string;
@@ -309,7 +473,72 @@ type CampaignApplicationResponse = {
     target_handle?: string;
   };
   already_submitted?: boolean;
+  applicationCount?: number;
+  application_count?: number;
 };
+
+type CampaignApplicationStaleApiError = {
+  code?: "campaign_application_stale";
+  error?: string;
+};
+
+function isCampaignApplicationStaleError(
+  value: unknown,
+): value is CampaignApplicationStaleApiError {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      (value as CampaignApplicationStaleApiError).code ===
+        "campaign_application_stale",
+  );
+}
+
+async function fetchPublicMarketplaceCampaigns(fresh = false) {
+  const path = fresh
+    ? `/api/marketplace/campaigns?fresh=${Date.now()}`
+    : "/api/marketplace/campaigns";
+  const response = await apiFetch(path, {
+    headers: {
+      Accept: "application/json",
+      ...(fresh ? { "Cache-Control": "no-cache" } : {}),
+    },
+    ...(fresh ? { cache: "no-store" as const } : {}),
+  });
+  if (!response.ok) throw new Error("캠페인 목록을 불러오지 못했습니다.");
+  const data = (await response.json()) as MarketplaceCampaignsResponse;
+  return dedupeCampaignsByBrandIdentity(data.campaigns);
+}
+
+async function fetchPublicMarketplaceCampaign(
+  campaignId: string,
+  fresh = false,
+) {
+  const path = `/api/marketplace/campaigns/${encodeURIComponent(campaignId)}${
+    fresh ? `?fresh=${Date.now()}` : ""
+  }`;
+  const response = await apiFetch(
+    path,
+    {
+      headers: {
+        Accept: "application/json",
+        ...(fresh ? { "Cache-Control": "no-cache" } : {}),
+      },
+      ...(fresh ? { cache: "no-store" as const } : {}),
+    },
+  );
+  const data = (await response.json().catch(() => ({}))) as
+    | MarketplaceCampaignResponse
+    | { error?: string };
+  if (!response.ok || !("campaign" in data)) {
+    throw new Error(
+      "error" in data
+        ? data.error ?? "모집글을 불러오지 못했습니다."
+        : "모집글을 불러오지 못했습니다.",
+    );
+  }
+  return data.campaign;
+}
 
 type CampaignApplicationSubmission = {
   acceptedConsentIds: string[];
@@ -369,29 +598,20 @@ function getCampaignSharePath(campaign: { id?: string }) {
 
 export function AdvertiserCampaignRecruitmentPage() {
   const navigate = useNavigate();
+  const { campaignId } = useParams<{ campaignId: string }>();
+  const isEditMode = Boolean(campaignId);
   const [state, setState] = useState<AdvertiserCampaignState>({
     status: "loading",
   });
   const [selectedBrandId, setSelectedBrandId] = useState(() =>
     readSelectedAdvertiserBrandId(),
   );
-  const [form, setForm] = useState({
-    title: "",
-    type: "sponsored_post" as CampaignProposalType,
-    otherTypeLabel: "",
-    applicantLimit: "",
-    location: "",
-    budget: "",
-    summary: "",
-    deadline: "",
-    uploadDeadline: "",
-    platforms: ["instagram"] as InfluencerPlatform[],
-    targetCountries: [] as MarketplaceCountryCode[],
-    deliverables: "",
-    thumbnailUrl: "",
-    applicationContactFields: [] as CampaignApplicationContactField[],
-    requiredConsents: [] as NonNullable<MarketplaceBrandCampaign["requiredConsents"]>,
-  });
+  const [form, setForm] = useState<CampaignFormState>(createEmptyCampaignForm);
+  const [editingCampaign, setEditingCampaign] =
+    useState<AdvertiserCampaignRecord | null>(null);
+  const [editPolicy, setEditPolicy] = useState<CampaignEditPolicy | undefined>();
+  const [hasEditConflict, setHasEditConflict] = useState(false);
+  const prefilledCampaignIdRef = useRef<string | undefined>(undefined);
   const [submitError, setSubmitError] = useState<string | undefined>();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [savedMessage, setSavedMessage] = useState<string | undefined>();
@@ -439,6 +659,19 @@ export function AdvertiserCampaignRecruitmentPage() {
         );
       }
 
+      if (isEditMode && campaignId) {
+        const campaign = data.campaigns.find((item) => item.id === campaignId);
+        if (!campaign) {
+          throw new Error("수정할 캠페인을 찾을 수 없습니다.");
+        }
+        setEditingCampaign(campaign);
+        setEditPolicy(getLocalCampaignEditPolicy(campaign));
+        if (prefilledCampaignIdRef.current !== campaignId) {
+          setForm(createCampaignFormFromRecord(campaign));
+          prefilledCampaignIdRef.current = campaignId;
+        }
+      }
+
       setState({
         status: "ready",
         brand: data.brand,
@@ -461,7 +694,7 @@ export function AdvertiserCampaignRecruitmentPage() {
             : "캠페인을 불러오지 못했습니다.",
       });
     }
-  }, [navigate, selectedBrandId]);
+  }, [campaignId, isEditMode, navigate, selectedBrandId]);
 
   const refreshCampaignWorkspace = useCallback(() => {
     void loadCampaigns();
@@ -501,9 +734,22 @@ export function AdvertiserCampaignRecruitmentPage() {
   const campaignAccess =
     state.status === "ready" ? state.campaignAccess : undefined;
   const verificationBlocksPublication =
-    campaignAccess?.verification_required === true;
+    !isEditMode && campaignAccess?.verification_required === true;
+  const activeEditMode: CampaignEditMode = isEditMode
+    ? editPolicy?.mode ?? "locked"
+    : "full";
+  const canEditPresentationFields = !isEditMode || activeEditMode !== "locked";
+  const canEditCoreFields = !isEditMode || activeEditMode === "full";
   const canSubmit = hasRequiredCampaignFields && !dateOrderError;
-  const canPublishCampaign = canSubmit && !verificationBlocksPublication;
+  const hasValidEditableFields =
+    isEditMode && activeEditMode === "presentation_only"
+      ? form.title.trim().length > 0
+      : canSubmit;
+  const canPublishCampaign =
+    hasValidEditableFields &&
+    !verificationBlocksPublication &&
+    state.status === "ready" &&
+    (!isEditMode || (Boolean(editingCampaign?.updatedAt) && activeEditMode !== "locked"));
   const missingFormLabels = [
     form.title.trim().length > 0 ? undefined : "캠페인명",
     form.platforms.length > 0 ? undefined : "플랫폼",
@@ -520,15 +766,29 @@ export function AdvertiserCampaignRecruitmentPage() {
     form.deadline.trim().length > 0 ? undefined : "모집마감",
     hasValidRequiredConsents ? undefined : "동의 항목 내용",
   ].filter(Boolean) as string[];
-  const submitHelperText = dateOrderError
-    ? dateOrderError
-    : verificationBlocksPublication
-      ? "인플루언서가 인증된 사업주체임을 확인할 수 있도록 3회차부터 사업자 인증에 협조해 주세요."
-      : canSubmit
-        ? "필수 조건이 준비되었습니다. 공개하면 인플루언서 캠페인 화면에 바로 노출됩니다."
-        : `남은 필수 항목: ${missingFormLabels.slice(0, 4).join(", ")}${
-            missingFormLabels.length > 4 ? ` 외 ${missingFormLabels.length - 4}개` : ""
-          }`;
+  const submitHelperText = isEditMode
+    ? activeEditMode === "locked"
+      ? ""
+      : activeEditMode === "presentation_only"
+        ? ""
+        : dateOrderError
+          ? dateOrderError
+          : canSubmit
+            ? ""
+            : `남은 필수 항목: ${missingFormLabels.slice(0, 4).join(", ")}${
+                missingFormLabels.length > 4
+                  ? ` 외 ${missingFormLabels.length - 4}개`
+                  : ""
+              }`
+    : dateOrderError
+      ? dateOrderError
+      : verificationBlocksPublication
+        ? "인플루언서가 인증된 사업주체임을 확인할 수 있도록 3회차부터 사업자 인증에 협조해 주세요."
+        : canSubmit
+          ? "필수 조건이 준비되었습니다. 공개하면 인플루언서 캠페인 화면에 바로 노출됩니다."
+          : `남은 필수 항목: ${missingFormLabels.slice(0, 4).join(", ")}${
+              missingFormLabels.length > 4 ? ` 외 ${missingFormLabels.length - 4}개` : ""
+            }`;
 
   const togglePlatform = (platform: InfluencerPlatform) => {
     setForm((current) => {
@@ -729,6 +989,79 @@ export function AdvertiserCampaignRecruitmentPage() {
         })),
         brandId: selectedBrandId,
       };
+
+      if (isEditMode && campaignId && editingCampaign?.updatedAt) {
+        const editPayload =
+          activeEditMode === "presentation_only"
+            ? {
+                title: publicationPayload.title,
+                thumbnailUrl: publicationPayload.thumbnailUrl,
+                expectedUpdatedAt: editingCampaign.updatedAt,
+                brandId: selectedBrandId,
+              }
+            : {
+                ...publicationPayload,
+                expectedUpdatedAt: editingCampaign.updatedAt,
+              };
+        const response = await apiFetch(
+          `/api/advertiser/campaigns/${encodeURIComponent(campaignId)}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify(editPayload),
+          },
+        );
+        const data = (await response.json().catch(() => ({}))) as
+          | AdvertiserCampaignsResponse
+          | CampaignEditApiError;
+
+        if (response.status === 401 || response.status === 403) {
+          navigate("/login/advertiser", { replace: true });
+          return;
+        }
+        if (response.status === 409) {
+          if ("edit_policy" in data && data.edit_policy) {
+            setEditPolicy(data.edit_policy);
+          }
+          setHasEditConflict(true);
+          setSubmitError(
+            ("error" in data ? data.error : undefined) ??
+              "캠페인 상태가 변경되었습니다. 최신 내용을 다시 불러온 뒤 수정해 주세요.",
+          );
+          return;
+        }
+        if (!response.ok || !("campaigns" in data)) {
+          throw new Error(
+            "error" in data
+              ? data.error ?? "캠페인 수정을 저장하지 못했습니다."
+              : "캠페인 수정을 저장하지 못했습니다.",
+          );
+        }
+
+        const updatedCampaign = data.campaigns.find(
+          (campaign) => campaign.id === campaignId,
+        );
+        if (!updatedCampaign) {
+          throw new Error("수정된 캠페인을 다시 불러오지 못했습니다.");
+        }
+        setState({
+          status: "ready",
+          brand: data.brand,
+          brands: data.brands ?? (data.brand ? [data.brand] : []),
+          campaigns: data.campaigns,
+          campaignAccess: isAdvertiserCampaignAccess(data.campaign_access)
+            ? data.campaign_access
+            : undefined,
+        });
+        setEditingCampaign(updatedCampaign);
+        setEditPolicy(data.edit_policy ?? getLocalCampaignEditPolicy(updatedCampaign));
+        setForm(createCampaignFormFromRecord(updatedCampaign));
+        setHasEditConflict(false);
+        setSavedMessage("캠페인 수정사항을 저장했습니다.");
+        return;
+      }
+
       const serializedPayload = JSON.stringify(publicationPayload);
       const fingerprint = await fingerprintCampaignPublicationPayload(
         serializedPayload,
@@ -841,7 +1174,7 @@ export function AdvertiserCampaignRecruitmentPage() {
     const thumbnailUrl = uploadedThumbnailUrl || logoUrl;
 
     return {
-      id: "draft-campaign-preview",
+      id: campaignId ?? "draft-campaign-preview",
       title: form.title.trim() || "캠페인 제목",
       type: form.type,
       otherTypeLabel:
@@ -859,7 +1192,7 @@ export function AdvertiserCampaignRecruitmentPage() {
       requiredConsents: form.requiredConsents
         .map((consent) => ({ id: consent.id, text: consent.text.trim() }))
         .filter((consent) => consent.text.length > 0),
-      status: "open",
+      status: editingCampaign?.status ?? "open",
       brandId: brand?.id ?? "draft-brand",
       brandHandle: brand?.handle ?? "draft-brand",
       brandName: brand?.displayName ?? "브랜드명",
@@ -876,8 +1209,19 @@ export function AdvertiserCampaignRecruitmentPage() {
       platformLabels: platforms.map((platform) => platformLabels[platform]),
       deadlineLabel: getCampaignDeadlineLabel(form.deadline.trim() || undefined),
       thumbnailUrl,
+      acceptsApplications: editingCampaign?.status === "open" || !isEditMode,
+      applicationCount: editPolicy?.application_count ?? 0,
     };
-  }, [brand, brandImagePreview, campaignImagePreview, form]);
+  }, [
+    brand,
+    brandImagePreview,
+    campaignId,
+    campaignImagePreview,
+    editPolicy?.application_count,
+    editingCampaign?.status,
+    form,
+    isEditMode,
+  ]);
   const isProductExperienceCampaign =
     form.type === "supporters" || form.type === "experience_group";
   const budgetPlaceholder = isProductExperienceCampaign
@@ -894,20 +1238,51 @@ export function AdvertiserCampaignRecruitmentPage() {
     <CampaignShell
       mode="authenticated"
       role="advertiser"
-      eyebrow="광고주 캠페인"
-      title="캠페인 작성"
-      description="모집 조건을 공개하고 지원자를 한곳에서 확인합니다."
+      eyebrow={isEditMode ? "캠페인 관리" : "광고주 캠페인"}
+      title={isEditMode ? "캠페인 수정" : "캠페인 작성"}
+      description={
+        isEditMode
+          ? "지원 현황에 따라 허용된 항목만 안전하게 수정합니다."
+          : "모집 조건을 공개하고 지원자를 한곳에서 확인합니다."
+      }
       backHref="/advertiser/campaigns"
       showHeroCopy={false}
       metrics={[
-        {
-          label: "작성",
-          value: canSubmit
-            ? "완료"
-            : `${Math.max(0, requiredCampaignFieldCount - missingFormLabels.length)}/${requiredCampaignFieldCount}`,
-        },
-        { label: "공개", value: "모집 노출" },
-        { label: "지원자", value: "선정" },
+        ...(isEditMode
+          ? [
+              {
+                label: "지원",
+                value: `${(editPolicy?.application_count ?? 0).toLocaleString("ko-KR")}명`,
+              },
+              {
+                label: "수정 범위",
+                value:
+                  activeEditMode === "full"
+                    ? "전체"
+                    : activeEditMode === "presentation_only"
+                      ? "제목 · 이미지"
+                      : "수정 불가",
+              },
+              {
+                label: "상태",
+                value:
+                  editingCampaign?.status === "open"
+                    ? "모집중"
+                    : editingCampaign?.status === "draft"
+                      ? "초안"
+                      : "종료",
+              },
+            ]
+          : [
+              {
+                label: "작성",
+                value: canSubmit
+                  ? "완료"
+                  : `${Math.max(0, requiredCampaignFieldCount - missingFormLabels.length)}/${requiredCampaignFieldCount}`,
+              },
+              { label: "공개", value: "모집 노출" },
+              { label: "지원자", value: "선정" },
+            ]),
       ]}
       actions={
         <>
@@ -936,33 +1311,64 @@ export function AdvertiserCampaignRecruitmentPage() {
           <div className="flex flex-col gap-3 border-b border-neutral-200 pb-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
               <p className="text-[12px] font-extrabold text-neutral-400">
-                캠페인 조건 입력
+                {isEditMode ? "공개 캠페인 편집" : "캠페인 조건 입력"}
               </p>
               <h2 className="mt-1 text-[20px] font-extrabold text-neutral-950">
-                캠페인 작성 폼
+                {isEditMode ? "캠페인 수정 폼" : "캠페인 작성 폼"}
               </h2>
               <p className="mt-1 max-w-[520px] break-keep text-[12px] font-bold leading-5 text-neutral-500">
-                인플루언서가 지원 전에 보는 금액, 콘텐츠, 일정만 빠짐없이 정리합니다.
+                {isEditMode
+                  ? "지원자가 확인한 조건을 보호하면서 허용된 항목만 바꿀 수 있습니다."
+                  : "인플루언서가 지원 전에 보는 금액, 콘텐츠, 일정만 빠짐없이 정리합니다."}
               </p>
             </div>
-            <div className="self-end sm:self-start">
-              <BrandImageUpload
-                brand={brand}
-                previewUrl={brandImagePreview}
-                disabled={isBrandImageUploading}
-                onSelect={handleBrandImageSelect}
-              />
-            </div>
+            {!isEditMode ? (
+              <div className="self-end sm:self-start">
+                <BrandImageUpload
+                  brand={brand}
+                  previewUrl={brandImagePreview}
+                  disabled={isBrandImageUploading}
+                  onSelect={handleBrandImageSelect}
+                />
+              </div>
+            ) : null}
           </div>
           {brandImageError ? (
             <p className="mt-3 rounded-[10px] border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] font-extrabold text-rose-700">
               {brandImageError}
             </p>
           ) : null}
+          {state.status === "error" ? (
+            <div className="mt-3 flex flex-col gap-2 rounded-[10px] border border-rose-200 bg-rose-50 px-3 py-2.5 text-[12px] font-extrabold text-rose-700 sm:flex-row sm:items-center sm:justify-between">
+              <p>{state.message}</p>
+              <button
+                type="button"
+                onClick={() => void loadCampaigns()}
+                className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-[8px] border border-rose-200 bg-white px-3 transition hover:border-rose-300"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                다시 불러오기
+              </button>
+            </div>
+          ) : null}
+          {isEditMode && editPolicy ? (
+            <div
+              className={`mt-3 rounded-[10px] border px-3 py-2.5 text-[12px] font-bold leading-5 ${
+                activeEditMode === "full"
+                  ? "border-blue-200 bg-blue-50 text-blue-800"
+                  : activeEditMode === "presentation_only"
+                    ? "border-amber-200 bg-amber-50 text-amber-800"
+                    : "border-neutral-200 bg-neutral-100 text-neutral-600"
+              }`}
+              role="status"
+            >
+              {getCampaignEditPolicyDescription(editPolicy)}
+            </div>
+          ) : null}
           <div className="mt-4 grid min-w-0 gap-4">
             <CampaignImageUpload
               imageUrl={campaignImagePreview ?? form.thumbnailUrl}
-              disabled={isCampaignImageUploading}
+              disabled={isCampaignImageUploading || !canEditPresentationFields}
               onSelect={handleCampaignImageSelect}
             />
             {campaignImageError ? (
@@ -974,14 +1380,20 @@ export function AdvertiserCampaignRecruitmentPage() {
             <CampaignField label="캠페인명">
               <input
                 required
+                disabled={!canEditPresentationFields}
                 value={form.title}
                 onChange={(event) =>
                   setForm((current) => ({ ...current, title: event.target.value }))
                 }
                 placeholder="예: 여름 러닝 챌린지 릴스 모집"
-                className="campaign-input"
+                className="campaign-input disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-neutral-500 disabled:opacity-70"
               />
             </CampaignField>
+
+            <fieldset
+              disabled={!canEditCoreFields}
+              className="grid min-w-0 gap-4 disabled:opacity-60"
+            >
 
             <CampaignField label="플랫폼">
               <CampaignFormSelectList
@@ -1201,11 +1613,30 @@ export function AdvertiserCampaignRecruitmentPage() {
                 setForm((current) => ({ ...current, requiredConsents }))
               }
             />
+            </fieldset>
 
             {submitError ? (
-              <p className="rounded-[12px] border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] font-extrabold text-rose-700">
-                {submitError}
-              </p>
+              <div className="flex flex-col gap-2 rounded-[12px] border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] font-extrabold text-rose-700 sm:flex-row sm:items-center sm:justify-between">
+                <p>{submitError}</p>
+                {hasEditConflict ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      prefilledCampaignIdRef.current = undefined;
+                      setEditingCampaign(null);
+                      setEditPolicy(undefined);
+                      setState({ status: "loading" });
+                      setHasEditConflict(false);
+                      setSubmitError(undefined);
+                      void loadCampaigns();
+                    }}
+                    className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-[8px] border border-rose-200 bg-white px-3 text-[12px] font-extrabold text-rose-700 transition hover:border-rose-300"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    최신 내용 불러오기
+                  </button>
+                ) : null}
+              </div>
             ) : null}
             {savedMessage ? (
               <p className="rounded-[12px] border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12px] font-extrabold text-emerald-700">
@@ -1214,18 +1645,24 @@ export function AdvertiserCampaignRecruitmentPage() {
             ) : null}
 
             <div className="yl-panel mt-4 min-w-0 border p-3">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <p
-                  className={`break-keep text-[12px] font-extrabold leading-5 ${
-                    verificationBlocksPublication
-                      ? "text-amber-700"
-                      : canSubmit
-                        ? "text-emerald-700"
-                        : "text-neutral-500"
-                  }`}
-                >
-                  {submitHelperText}
-                </p>
+              <div
+                className={`flex flex-col gap-3 sm:flex-row sm:items-center ${
+                  submitHelperText ? "sm:justify-between" : "sm:justify-end"
+                }`}
+              >
+                {submitHelperText ? (
+                  <p
+                    className={`break-keep text-[12px] font-extrabold leading-5 ${
+                      verificationBlocksPublication
+                        ? "text-amber-700"
+                        : canPublishCampaign
+                          ? "text-emerald-700"
+                          : "text-neutral-500"
+                    }`}
+                  >
+                    {submitHelperText}
+                  </p>
+                ) : null}
                 {verificationBlocksPublication ? (
                   <Link
                     to={campaignAccess?.next_path ?? "/advertiser/verification"}
@@ -1239,8 +1676,18 @@ export function AdvertiserCampaignRecruitmentPage() {
                     disabled={!canPublishCampaign || isSubmitting}
                     className="inline-flex h-12 w-full shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[8px] bg-blue-600 px-5 text-[14px] font-extrabold text-white shadow-[0_14px_34px_rgba(37,99,235,0.22)] transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:shadow-none sm:w-auto sm:min-w-[148px]"
                   >
-                    <Plus className="h-4 w-4" />
-                    {isSubmitting ? "공개 중" : "캠페인 공개"}
+                    {isEditMode ? (
+                      <PenLine className="h-4 w-4" />
+                    ) : (
+                      <Plus className="h-4 w-4" />
+                    )}
+                    {isSubmitting
+                      ? isEditMode
+                        ? "저장 중"
+                        : "공개 중"
+                      : isEditMode
+                        ? "수정 저장"
+                        : "캠페인 공개"}
                   </button>
                 )}
               </div>
@@ -1275,7 +1722,8 @@ export function AdvertiserCampaignRecruitmentPage() {
           <AdvertiserCampaignPreview
             campaign={draftCampaignPost}
             canPublish={canPublishCampaign}
-            helperText={submitHelperText}
+            helperText={isEditMode ? "" : submitHelperText}
+            isEditMode={isEditMode}
           />
         </section>
       </section>
@@ -1316,6 +1764,11 @@ export function InfluencerCampaignDiscoveryPage() {
   });
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [openFilterList, setOpenFilterList] = useState<string | null>(null);
+  const [isDesktopViewport, setIsDesktopViewport] = useState(() =>
+    typeof window === "undefined"
+      ? false
+      : window.matchMedia("(min-width: 1024px)").matches,
+  );
   const [applyingCampaignId, setApplyingCampaignId] = useState<string | undefined>();
   const [applicationNotice, setApplicationNotice] = useState<
     | {
@@ -1344,20 +1797,27 @@ export function InfluencerCampaignDiscoveryPage() {
   };
 
   useEffect(() => {
+    const media = window.matchMedia("(min-width: 1024px)");
+    const syncViewport = () => {
+      setIsDesktopViewport(media.matches);
+      setFiltersOpen(false);
+      setOpenFilterList(null);
+    };
+
+    syncViewport();
+    media.addEventListener("change", syncViewport);
+    return () => media.removeEventListener("change", syncViewport);
+  }, []);
+
+  useEffect(() => {
     let active = true;
 
-    void apiFetch("/api/marketplace/campaigns", {
-      headers: { Accept: "application/json" },
-    })
-      .then(async (response) => {
-        if (!response.ok) throw new Error("캠페인 목록을 불러오지 못했습니다.");
-        return (await response.json()) as MarketplaceCampaignsResponse;
-      })
-      .then((data) => {
+    void fetchPublicMarketplaceCampaigns()
+      .then((campaigns) => {
         if (!active) return;
         setState({
           status: "ready",
-          campaigns: dedupeCampaignsByBrandIdentity(data.campaigns),
+          campaigns,
         });
       })
       .catch((error) => {
@@ -1610,6 +2070,74 @@ export function InfluencerCampaignDiscoveryPage() {
     activeView === "open"
       ? activeFilterLabels.length
       : appliedActiveFilterLabels.length;
+  const desktopFilterCount =
+    activeView === "open"
+      ? Number(platformFilter !== "all") +
+        Number(categoryFilters.length > 0) +
+        Number(proposalTypeFilter !== "all")
+      : Number(appliedStatusFilter !== "all");
+
+  const syncCampaignApplicationCountAfterSuccess = useCallback(
+    async (
+      appliedCampaignId: string,
+      response: CampaignApplicationResponse,
+    ) => {
+      const countSync = resolveCampaignApplicationCountSync(response);
+      if (countSync.kind === "replace") {
+        setState((current) =>
+          current.status === "ready"
+            ? {
+                ...current,
+                campaigns: current.campaigns.map((campaign) =>
+                  campaign.id === appliedCampaignId
+                    ? {
+                        ...campaign,
+                        applicationCount: countSync.applicationCount,
+                      }
+                    : campaign,
+                ),
+              }
+            : current,
+        );
+        return;
+      }
+
+      if (countSync.kind === "preserve") return;
+      try {
+        const campaigns = await fetchPublicMarketplaceCampaigns(true);
+        setState({ status: "ready", campaigns });
+      } catch {
+        // The application succeeded. Keep the visible count unchanged rather than guessing.
+      }
+    },
+    [],
+  );
+
+  const reloadCampaignsAfterStaleApplication = useCallback(
+    async (staleCampaignId: string) => {
+      setApplicationConsentCampaign(null);
+      setSelectedCampaign(null);
+      setApplicationNotice(undefined);
+      setState({ status: "loading" });
+      try {
+        const campaigns = await fetchPublicMarketplaceCampaigns(true);
+        setState({ status: "ready", campaigns });
+        setApplicationNotice({
+          campaignId: staleCampaignId,
+          tone: "error",
+          message:
+            "캠페인 조건이 변경되었습니다. 최신 모집글을 다시 확인하고 필요한 동의에 다시 동의한 뒤 신청해 주세요.",
+        });
+      } catch {
+        setState({
+          status: "error",
+          message:
+            "캠페인 조건이 변경되었지만 최신 모집글을 불러오지 못했습니다. 잠시 후 다시 확인해 주세요.",
+        });
+      }
+    },
+    [],
+  );
 
   const applyToCampaign = (campaign: MarketplaceCampaignPost) => {
     if (applyingCampaignId) return;
@@ -1653,6 +2181,11 @@ export function InfluencerCampaignDiscoveryPage() {
     });
 
     try {
+      const expectedCampaignRevision = campaign.updatedAt;
+      if (!expectedCampaignRevision?.trim()) {
+        await reloadCampaignsAfterStaleApplication(campaign.id);
+        return;
+      }
       const response = await apiFetch(
         `/api/marketplace/campaigns/${encodeURIComponent(campaign.id)}/applications`,
         {
@@ -1660,6 +2193,7 @@ export function InfluencerCampaignDiscoveryPage() {
           headers: { "Content-Type": "application/json" },
           credentials: "include",
           body: JSON.stringify({
+            expectedCampaignRevision,
             acceptedConsentIds: submission.acceptedConsentIds,
             consentVersion: campaign.consentVersion ?? "",
             applicationContact: submission.applicationContact,
@@ -1673,7 +2207,16 @@ export function InfluencerCampaignDiscoveryPage() {
 
       const data = (await response.json().catch(() => ({}))) as
         | CampaignApplicationResponse
-        | VerificationRequiredApiError;
+        | VerificationRequiredApiError
+        | CampaignApplicationStaleApiError;
+
+      if (
+        response.status === 409 &&
+        isCampaignApplicationStaleError(data)
+      ) {
+        await reloadCampaignsAfterStaleApplication(campaign.id);
+        return;
+      }
 
       if (response.status === 401) {
         setApplicationConsentCampaign(null);
@@ -1715,6 +2258,8 @@ export function InfluencerCampaignDiscoveryPage() {
         );
       }
 
+      await syncCampaignApplicationCountAfterSuccess(campaign.id, data);
+
       setApplicationNotice({
         campaignId: campaign.id,
         tone: "success",
@@ -1755,16 +2300,150 @@ export function InfluencerCampaignDiscoveryPage() {
       mode={shellMode}
       role="influencer"
       eyebrow="인플루언서 캠페인"
-      title="캠페인 탐색"
+      title={isDesktopViewport ? "캠페인" : "캠페인 탐색"}
       description="모집 조건을 비교하고 바로 신청합니다."
       backHref="/influencer/dashboard"
       metrics={[]}
       showHeroCopy={false}
     >
-    <section className="yl-card flex min-h-0 min-w-0 flex-1 flex-col overflow-visible border">
-      <div className="border-b border-neutral-200 bg-white">
-        <div className="flex min-h-12 flex-col gap-2 px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-          <div className="hidden min-w-0 sm:block sm:flex-1">
+    <section
+      className={
+        isDesktopViewport
+          ? "flex min-w-0 flex-none flex-col overflow-visible"
+          : "yl-card flex min-h-0 min-w-0 flex-1 flex-col overflow-visible border"
+      }
+      data-campaign-layout={isDesktopViewport ? "desktop-marketplace" : "responsive"}
+    >
+      <div
+        className={
+          isDesktopViewport
+            ? "yl-card border border-neutral-200 bg-white"
+            : "border-b border-neutral-200 bg-white"
+        }
+      >
+        {isDesktopViewport ? (
+          <div className="flex min-h-[64px] items-center gap-3 px-4 py-2.5">
+            <CampaignViewTabs
+              value={activeView}
+              openCount={state.status === "ready" ? visibleCampaigns.length : undefined}
+              appliedCount={
+                applicationsState.status === "ready" ? applications.length : undefined
+              }
+              onChange={handleActiveViewChange}
+            />
+            <div className="relative ml-auto min-w-[280px] max-w-[420px] flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+              <input
+                value={activeView === "open" ? query : appliedQuery}
+                onChange={(event) =>
+                  activeView === "open"
+                    ? setQuery(event.target.value)
+                    : setAppliedQuery(event.target.value)
+                }
+                aria-label={
+                  activeView === "open" ? "캠페인 검색" : "신청한 캠페인 검색"
+                }
+                placeholder={
+                  activeView === "open"
+                    ? "브랜드, 캠페인, 플랫폼, 콘텐츠 검색"
+                    : "브랜드, 캠페인 검색"
+                }
+                className="h-9 w-full rounded-[9px] border border-neutral-200 bg-white pl-10 pr-3 text-[12px] font-bold text-neutral-950 outline-none transition placeholder:text-neutral-400 hover:border-neutral-300 focus:border-neutral-950"
+              />
+            </div>
+            <CampaignSortSelect
+              value={activeView === "open" ? openCampaignSort : appliedCampaignSort}
+              options={
+                activeView === "open"
+                  ? openCampaignSortOptions
+                  : appliedCampaignSortOptions
+              }
+              onChange={
+                activeView === "open" ? setOpenCampaignSort : setAppliedCampaignSort
+              }
+            />
+            <div className="relative">
+              <CampaignFilterToggleButton
+                open={filtersOpen}
+                activeCount={desktopFilterCount}
+                controlsId={
+                  activeView === "open"
+                    ? "influencer-campaign-filters"
+                    : "influencer-applied-campaign-filters"
+                }
+                onClick={() =>
+                  setFiltersOpen((current) => {
+                    if (current) setOpenFilterList(null);
+                    return !current;
+                  })
+                }
+              />
+              <ResponsiveFilterPanel
+                id={
+                  activeView === "open"
+                    ? "influencer-campaign-filters"
+                    : "influencer-applied-campaign-filters"
+                }
+                title="조건 선택"
+                open={filtersOpen}
+                activeCount={desktopFilterCount}
+                showActiveSummary={false}
+                onClose={() => {
+                  setFiltersOpen(false);
+                  setOpenFilterList(null);
+                }}
+                onClear={() => {
+                  if (activeView === "open") {
+                    setPlatformFilter("all");
+                    setCategoryFilters([]);
+                    setProposalTypeFilter("all");
+                  } else {
+                    setAppliedStatusFilter("all");
+                  }
+                  setOpenFilterList(null);
+                }}
+                className="sm:!w-[360px]"
+              >
+                {activeView === "open" ? (
+                  <div className="grid min-w-0 gap-2">
+                    <CampaignPlatformFilterList
+                      id="influencer-campaign-platform"
+                      openId={openFilterList}
+                      onOpenChange={setOpenFilterList}
+                      value={platformFilter}
+                      onChange={setPlatformFilter}
+                    />
+                    <CampaignProposalTypeFilterList
+                      id="influencer-campaign-type"
+                      openId={openFilterList}
+                      onOpenChange={setOpenFilterList}
+                      value={proposalTypeFilter}
+                      onChange={setProposalTypeFilter}
+                    />
+                    <CampaignCategoryFilterList
+                      id="influencer-campaign-category"
+                      openId={openFilterList}
+                      onOpenChange={setOpenFilterList}
+                      values={categoryFilters}
+                      categories={categoryOptions}
+                      onChange={setCategoryFilters}
+                    />
+                  </div>
+                ) : (
+                  <CampaignApplicationStatusFilterList
+                    id="influencer-applied-status"
+                    openId={openFilterList}
+                    onOpenChange={setOpenFilterList}
+                    value={appliedStatusFilter}
+                    onChange={setAppliedStatusFilter}
+                  />
+                )}
+              </ResponsiveFilterPanel>
+            </div>
+          </div>
+        ) : (
+          <div className="flex min-h-12 flex-col gap-2 px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+            <div className="hidden min-w-0 sm:block sm:flex-1">
               <p className="truncate text-[13px] font-extrabold text-neutral-950">
                 {activeView === "open" ? "모집 캠페인" : "신청한 캠페인"}
               </p>
@@ -1891,7 +2570,8 @@ export function InfluencerCampaignDiscoveryPage() {
               </div>
             </div>
           </div>
-        </div>
+        )}
+      </div>
 
         {activeView === "applied" ? (
           applicationsState.status === "loading" ? (
@@ -1920,8 +2600,7 @@ export function InfluencerCampaignDiscoveryPage() {
             <AppliedCampaignList
               applications={visibleApplications}
               focusedCampaignId={focusedCampaignId}
-              sortState={appliedCampaignSort}
-              onSortChange={setAppliedCampaignSort}
+              desktop={isDesktopViewport}
             />
           )
         ) : state.status === "loading" ? (
@@ -1943,11 +2622,17 @@ export function InfluencerCampaignDiscoveryPage() {
         ) : (
           <div
             data-campaign-scroll-region="open"
-            className="grid min-h-0 flex-1 auto-rows-max gap-x-3 gap-y-5 overflow-y-auto overscroll-contain bg-[#fbfaf7] p-3 sm:grid-cols-2 xl:grid-cols-3"
+            className={
+              isDesktopViewport
+                ? "mt-3 grid auto-rows-max grid-cols-4 gap-4 overflow-visible"
+                : "grid min-h-0 flex-1 auto-rows-max gap-x-3 gap-y-5 overflow-y-auto overscroll-contain bg-[#fbfaf7] p-3 sm:grid-cols-2 xl:grid-cols-3"
+            }
           >
             {applicationNotice ? (
               <div
-                className={`flex flex-col gap-2 rounded-[12px] border px-3 py-2 text-[12px] font-extrabold sm:col-span-2 sm:flex-row sm:items-center sm:justify-between xl:col-span-3 ${
+                className={`flex flex-col gap-2 rounded-[12px] border px-3 py-2 text-[12px] font-extrabold sm:col-span-2 sm:flex-row sm:items-center sm:justify-between ${
+                  isDesktopViewport ? "col-span-4" : "xl:col-span-3"
+                } ${
                   applicationNotice.tone === "success"
                     ? "border-emerald-200 bg-emerald-50 text-emerald-700"
                     : "border-rose-200 bg-rose-50 text-rose-700"
@@ -1971,6 +2656,7 @@ export function InfluencerCampaignDiscoveryPage() {
                 isApplying={applyingCampaignId === campaign.id}
                 onApply={applyToCampaign}
                 onOpenDetail={setSelectedCampaign}
+                desktop={isDesktopViewport}
               />
             ))}
           </div>
@@ -1982,6 +2668,7 @@ export function InfluencerCampaignDiscoveryPage() {
           isApplying={applyingCampaignId === selectedCampaign.id}
           onApply={applyToCampaign}
           onClose={() => setSelectedCampaign(null)}
+          desktop={isDesktopViewport}
         />
       ) : null}
       {applicationConsentCampaign ? (
@@ -2090,22 +2777,7 @@ export function PublicCampaignRecruitmentPage() {
       };
     }
 
-    void apiFetch(`/api/marketplace/campaigns/${encodeURIComponent(campaignId)}`, {
-      headers: { Accept: "application/json" },
-    })
-      .then(async (response) => {
-        const data = (await response.json().catch(() => ({}))) as
-          | MarketplaceCampaignResponse
-          | { error?: string };
-        if (!response.ok || !("campaign" in data)) {
-          throw new Error(
-            "error" in data
-              ? data.error ?? "모집글을 불러오지 못했습니다."
-              : "모집글을 불러오지 못했습니다.",
-          );
-        }
-        return data.campaign;
-      })
+    void fetchPublicMarketplaceCampaign(campaignId)
       .then((campaign) => {
         if (!active) return;
         setState({ status: "ready", campaign });
@@ -2125,6 +2797,68 @@ export function PublicCampaignRecruitmentPage() {
       active = false;
     };
   }, [campaignId]);
+
+  const syncPublicCampaignApplicationCountAfterSuccess = useCallback(
+    async (
+      appliedCampaignId: string,
+      response: CampaignApplicationResponse,
+    ) => {
+      const countSync = resolveCampaignApplicationCountSync(response);
+      if (countSync.kind === "replace") {
+        setState((current) =>
+          current.status === "ready" && current.campaign.id === appliedCampaignId
+            ? {
+                status: "ready",
+                campaign: {
+                  ...current.campaign,
+                  applicationCount: countSync.applicationCount,
+                },
+              }
+            : current,
+        );
+        return;
+      }
+
+      if (countSync.kind === "preserve") return;
+      try {
+        const latestCampaign = await fetchPublicMarketplaceCampaign(
+          appliedCampaignId,
+          true,
+        );
+        setState({ status: "ready", campaign: latestCampaign });
+      } catch {
+        // The application succeeded. Keep the visible count unchanged rather than guessing.
+      }
+    },
+    [],
+  );
+
+  const reloadPublicCampaignAfterStaleApplication = useCallback(
+    async (staleCampaignId: string) => {
+      setApplicationConsentCampaign(null);
+      setApplicationNotice(undefined);
+      setState({ status: "loading" });
+      try {
+        const latestCampaign = await fetchPublicMarketplaceCampaign(
+          staleCampaignId,
+          true,
+        );
+        setState({ status: "ready", campaign: latestCampaign });
+        setApplicationNotice({
+          tone: "error",
+          message:
+            "캠페인 조건이 변경되었습니다. 최신 모집글을 다시 확인하고 필요한 동의에 다시 동의한 뒤 신청해 주세요.",
+        });
+      } catch {
+        setState({
+          status: "error",
+          message:
+            "캠페인 조건이 변경되었지만 최신 모집글을 불러오지 못했습니다. 잠시 후 다시 확인해 주세요.",
+        });
+      }
+    },
+    [],
+  );
 
   const applyToCampaign = (campaign: MarketplaceCampaignPost) => {
     if (applyingCampaignId) return;
@@ -2166,6 +2900,11 @@ export function PublicCampaignRecruitmentPage() {
     });
 
     try {
+      const expectedCampaignRevision = campaign.updatedAt;
+      if (!expectedCampaignRevision?.trim()) {
+        await reloadPublicCampaignAfterStaleApplication(campaign.id);
+        return;
+      }
       const response = await apiFetch(
         `/api/marketplace/campaigns/${encodeURIComponent(campaign.id)}/applications`,
         {
@@ -2173,6 +2912,7 @@ export function PublicCampaignRecruitmentPage() {
           headers: { "Content-Type": "application/json" },
           credentials: "include",
           body: JSON.stringify({
+            expectedCampaignRevision,
             acceptedConsentIds: submission.acceptedConsentIds,
             consentVersion: campaign.consentVersion ?? "",
             applicationContact: submission.applicationContact,
@@ -2186,7 +2926,16 @@ export function PublicCampaignRecruitmentPage() {
 
       const data = (await response.json().catch(() => ({}))) as
         | CampaignApplicationResponse
-        | VerificationRequiredApiError;
+        | VerificationRequiredApiError
+        | CampaignApplicationStaleApiError;
+
+      if (
+        response.status === 409 &&
+        isCampaignApplicationStaleError(data)
+      ) {
+        await reloadPublicCampaignAfterStaleApplication(campaign.id);
+        return;
+      }
 
       if (response.status === 401) {
         setApplicationConsentCampaign(null);
@@ -2227,6 +2976,8 @@ export function PublicCampaignRecruitmentPage() {
         );
       }
 
+      await syncPublicCampaignApplicationCountAfterSuccess(campaign.id, data);
+
       setApplicationNotice({
         tone: "success",
         message: data.already_submitted
@@ -2260,13 +3011,10 @@ export function PublicCampaignRecruitmentPage() {
   const detailRows = campaign
     ? [
         ...(targetCountryLabel ? [{ label: "국가", value: targetCountryLabel }] : []),
-        { label: "지급조건", value: campaign.budget },
         {
           label: "콘텐츠",
           value: campaign.deliverables?.join(", ") || "가이드라인 확인",
         },
-        { label: "모집마감", value: getCampaignDeadlineLabel(campaign.deadline) },
-        { label: "제출마감", value: getCampaignSubmissionDeadlineLabel(campaign) },
       ]
     : [];
   const currentSharePath =
@@ -2403,13 +3151,16 @@ export function PublicCampaignRecruitmentPage() {
             body="모집이 종료되었거나 링크가 변경되었을 수 있습니다."
           />
         ) : campaign && campaignCopy ? (
-          <article className="grid min-h-0 flex-1 overflow-hidden rounded-[12px] border border-neutral-200 bg-white shadow-[0_14px_40px_rgba(15,23,42,0.07)] lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-            <div className="min-h-0 border-b border-neutral-200 bg-[#fbfaf7] lg:border-b-0 lg:border-r">
-              <CampaignThumbnail campaign={campaign} className="h-[260px] lg:h-full" />
-            </div>
+          <article className="overflow-clip rounded-[14px] border border-neutral-200 bg-white shadow-[0_14px_40px_rgba(15,23,42,0.07)]">
+            <div className="grid lg:grid-cols-[minmax(320px,0.86fr)_minmax(0,1.14fr)]">
+              <div className="border-b border-neutral-200 bg-[#f1f3ee] p-3 sm:p-4 lg:border-b-0 lg:border-r">
+                <CampaignThumbnail
+                  campaign={campaign}
+                  className={`${getCampaignMediaAspectClass(campaign)} w-full rounded-[10px]`}
+                />
+              </div>
 
-            <div className="flex min-h-0 flex-col">
-              <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
+              <div className="flex min-w-0 flex-col justify-center p-4 sm:p-6 lg:p-7">
                 <div className="flex min-w-0 items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="truncate text-[13px] font-extrabold text-neutral-500">
@@ -2426,14 +3177,8 @@ export function PublicCampaignRecruitmentPage() {
                   />
                 </div>
 
-                <p className="mt-4 text-[11px] font-extrabold text-neutral-400">
-                  가이드라인
-                </p>
-                <p className="mt-1 break-keep text-[14px] font-bold leading-7 text-neutral-600">
-                  {campaignCopy.summary}
-                </p>
-
-                <div className="mt-5 grid grid-cols-2 gap-3">
+                <CampaignApplicationStats campaign={campaign} className="mt-4" />
+                <div className="mt-5 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4 lg:grid-cols-2">
                   {facts.map((fact) => (
                     <CampaignInlineFact
                       key={fact.label}
@@ -2443,67 +3188,84 @@ export function PublicCampaignRecruitmentPage() {
                     />
                   ))}
                 </div>
+              </div>
+            </div>
 
-                <dl className="mt-6 grid gap-2 border-t border-neutral-200 pt-4">
+            <div className="grid gap-6 border-t border-neutral-200 p-4 sm:p-6 lg:grid-cols-[minmax(0,1.45fr)_minmax(260px,0.55fr)] lg:items-start lg:p-7">
+              <section className="min-w-0">
+                <h2 className="text-[13px] font-extrabold text-neutral-950">
+                  가이드라인
+                </h2>
+                <CampaignGuideline
+                  text={campaignCopy.summary}
+                  className="mt-3 text-[14px] font-bold leading-7 text-neutral-600"
+                />
+              </section>
+
+              <section className="rounded-[10px] bg-[#fbfaf7] p-4 ring-1 ring-neutral-200 lg:sticky lg:top-[72px] lg:self-start">
+                <h2 className="text-[12px] font-extrabold text-neutral-950">
+                  세부 조건
+                </h2>
+                <dl className="mt-3 grid content-start gap-3">
                   {detailRows.map((row) => (
                     <div
                       key={row.label}
-                      className="grid grid-cols-[86px_minmax(0,1fr)] gap-3 border-b border-neutral-100 pb-2 last:border-b-0"
+                      className="grid gap-1 border-t border-neutral-200 pt-3"
                     >
-                      <dt className="text-[12px] font-extrabold text-neutral-400">
+                      <dt className="text-[11px] font-extrabold text-neutral-400">
                         {row.label}
                       </dt>
-                      <dd className="break-keep text-[13px] font-extrabold leading-5 text-neutral-900">
+                      <dd className="break-words text-[13px] font-extrabold leading-5 text-neutral-900">
                         {row.value}
                       </dd>
                     </div>
                   ))}
                 </dl>
-              </div>
+              </section>
+            </div>
 
-              <div className="shrink-0 border-t border-neutral-200 bg-white p-3 sm:flex sm:items-center sm:justify-between sm:gap-3">
-                {applicationNotice ? (
-                  <div
-                    className={`mb-3 flex flex-col gap-2 break-keep rounded-[8px] border px-3 py-2 text-[12px] font-extrabold leading-5 sm:mb-0 sm:flex-row sm:items-center ${
-                      applicationNotice.tone === "success"
-                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                        : "border-rose-200 bg-rose-50 text-rose-700"
-                    }`}
-                  >
-                    <p>{applicationNotice.message}</p>
-                    {applicationNotice.actionHref ? (
-                      <Link
-                        to={applicationNotice.actionHref}
-                        className="yl-primary-action inline-flex h-9 shrink-0 items-center justify-center rounded-[8px] px-3 text-[12px] font-extrabold"
-                      >
-                        계정 인증하기
-                      </Link>
-                    ) : null}
-                  </div>
-                ) : (
-                  <p className="mb-3 break-keep text-[12px] font-bold leading-5 text-neutral-500 sm:mb-0">
-                    {canApplyToCurrentCampaign
-                      ? "신청 후 광고주가 선정하면 계약서와 서명 진행이 시작됩니다."
-                      : "광고주가 공유한 최신 모집 링크에서 신청할 수 있습니다."}
-                  </p>
-                )}
-                <button
-                  type="button"
-                  onClick={() => applyToCampaign(campaign)}
-                  disabled={
-                    applyingCampaignId === campaign.id ||
-                    !canApplyToMarketplaceCampaign(campaign)
-                  }
-                  aria-busy={applyingCampaignId === campaign.id}
-                  className="yl-primary-action inline-flex h-11 w-full items-center justify-center gap-2 rounded-[8px] px-4 text-[13px] font-extrabold disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:text-neutral-500 sm:w-[180px]"
+            <div className="border-t border-neutral-200 bg-white p-3 sm:flex sm:items-center sm:justify-between sm:gap-3 sm:px-6">
+              {applicationNotice ? (
+                <div
+                  className={`mb-3 flex flex-col gap-2 break-keep rounded-[8px] border px-3 py-2 text-[12px] font-extrabold leading-5 sm:mb-0 sm:flex-row sm:items-center ${
+                    applicationNotice.tone === "success"
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                      : "border-rose-200 bg-rose-50 text-rose-700"
+                  }`}
                 >
-                  <Send className="h-4 w-4" />
-                  {getCampaignApplyButtonLabel(
-                    campaign,
-                    applyingCampaignId === campaign.id,
-                  )}
-                </button>
-              </div>
+                  <p>{applicationNotice.message}</p>
+                  {applicationNotice.actionHref ? (
+                    <Link
+                      to={applicationNotice.actionHref}
+                      className="yl-primary-action inline-flex h-9 shrink-0 items-center justify-center rounded-[8px] px-3 text-[12px] font-extrabold"
+                    >
+                      계정 인증하기
+                    </Link>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="mb-3 break-keep text-[12px] font-bold leading-5 text-neutral-500 sm:mb-0">
+                  {canApplyToCurrentCampaign
+                    ? "신청 후 광고주가 선정하면 계약서와 서명 진행이 시작됩니다."
+                    : "광고주가 공유한 최신 모집 링크에서 신청할 수 있습니다."}
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={() => applyToCampaign(campaign)}
+                disabled={
+                  applyingCampaignId === campaign.id ||
+                  !canApplyToMarketplaceCampaign(campaign)
+                }
+                aria-busy={applyingCampaignId === campaign.id}
+                className="yl-primary-action inline-flex h-11 w-full items-center justify-center gap-2 rounded-[8px] px-4 text-[13px] font-extrabold disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:text-neutral-500 sm:w-[180px]"
+              >
+                <Send className="h-4 w-4" />
+                {getCampaignApplyButtonLabel(
+                  campaign,
+                  applyingCampaignId === campaign.id,
+                )}
+              </button>
             </div>
           </article>
         ) : null}
@@ -2682,10 +3444,33 @@ function CampaignShell({
                 <span className="hidden sm:inline">로그인</span>
               </Link>
             ) : (
-              <div className="flex gap-1.5 sm:gap-2" aria-busy="true">
-                <span className="h-10 w-10 rounded-[9px] border border-neutral-200 bg-white" />
-                <span className="h-10 w-10 rounded-[9px] border border-neutral-200 bg-white" />
-                <span className="h-10 w-10 rounded-[9px] border border-neutral-200 bg-white" />
+              <div
+                className="flex items-center gap-1.5 sm:gap-2"
+                aria-busy="true"
+              >
+                <div className="hidden lg:block">
+                  <DashboardSurfaceSwitch role={role} active="campaigns" />
+                </div>
+                <span className="yl-header-icon-action" aria-hidden="true">
+                  <Bell className="h-4 w-4" strokeWidth={2} />
+                </span>
+                <span
+                  className="yl-header-action yl-header-action-secondary relative"
+                  aria-hidden="true"
+                >
+                  <MessageSquareText className="h-3.5 w-3.5" strokeWidth={2} />
+                  <span className="hidden sm:inline">메시지함</span>
+                </span>
+                <span
+                  className="yl-header-action yl-header-action-secondary hidden sm:inline-flex"
+                  aria-hidden="true"
+                >
+                  <LogOut className="h-4 w-4" />
+                  <span>로그아웃</span>
+                </span>
+                <span className="yl-header-icon-action" aria-hidden="true">
+                  <Settings className="h-3.5 w-3.5" strokeWidth={2} />
+                </span>
                 <span className="sr-only">로그인 상태 확인 중</span>
               </div>
             )}
@@ -2693,7 +3478,9 @@ function CampaignShell({
         </div>
       </header>
 
-      {isAuthenticated ? <MobileSurfaceSwitch role={role} active="campaigns" /> : null}
+      {mode !== "anonymous" ? (
+        <MobileSurfaceSwitch role={role} active="campaigns" />
+      ) : null}
 
       <section
         className={`shrink-0 bg-[#f7f6f3] ${
@@ -3355,10 +4142,12 @@ function AdvertiserCampaignPreview({
   campaign,
   canPublish,
   helperText,
+  isEditMode,
 }: {
   campaign: MarketplaceCampaignPost;
   canPublish: boolean;
   helperText: string;
+  isEditMode: boolean;
 }) {
   const campaignCopy = getCampaignDisplayCopy(campaign);
   const factRows = getCampaignRecruitmentFacts(campaign);
@@ -3381,10 +4170,19 @@ function AdvertiserCampaignPreview({
               : "bg-neutral-100 text-neutral-500"
           }`}
         >
-          {canPublish ? "공개 가능" : "작성 중"}
+          {canPublish
+            ? isEditMode
+              ? "저장 가능"
+              : "공개 가능"
+            : isEditMode
+              ? "수정 제한"
+              : "작성 중"}
         </span>
       </div>
-      <CampaignThumbnail campaign={campaign} className="h-[126px]" />
+      <CampaignThumbnail
+        campaign={campaign}
+        className={`${getCampaignMediaAspectClass(campaign)} w-full`}
+      />
       <div className="p-3">
         <div className="flex justify-end">
           <CampaignPlatformLogoMarks
@@ -3396,9 +4194,13 @@ function AdvertiserCampaignPreview({
         <h3 className="mt-1 line-clamp-2 text-[15px] font-extrabold leading-5 text-neutral-950">
           {campaignCopy.title}
         </h3>
-        <p className="mt-1.5 line-clamp-2 break-keep text-[12px] font-bold leading-5 text-neutral-600">
-          {campaignCopy.summary}
-        </p>
+        <CampaignGuideline
+          text={campaignCopy.summary}
+          className="mt-2 text-[12px] font-bold leading-5 text-neutral-600"
+        />
+        {!isEditMode ? (
+          <CampaignApplicationStats campaign={campaign} className="mt-3" />
+        ) : null}
         <div className="mt-3 grid grid-cols-2 gap-2">
           {factRows.map((fact) => (
             <CampaignInlineFact
@@ -3409,13 +4211,17 @@ function AdvertiserCampaignPreview({
             />
           ))}
         </div>
-        <p
-          className={`mt-3 rounded-[10px] px-3 py-2 text-[12px] font-extrabold leading-5 ${
-            canPublish ? "bg-emerald-50 text-emerald-700" : "bg-[#fbfaf7] text-neutral-500"
-          }`}
-        >
-          {helperText}
-        </p>
+        {helperText ? (
+          <p
+            className={`mt-3 rounded-[10px] px-3 py-2 text-[12px] font-extrabold leading-5 ${
+              canPublish
+                ? "bg-emerald-50 text-emerald-700"
+                : "bg-[#fbfaf7] text-neutral-500"
+            }`}
+          >
+            {helperText}
+          </p>
+        ) : null}
       </div>
     </section>
   );
@@ -3462,6 +4268,7 @@ function BrandImageUpload({
       <input
         ref={inputRef}
         type="file"
+        disabled={disabled}
         accept="image/png,image/jpeg,image/webp"
         className="hidden"
         onChange={(event) => {
@@ -3519,6 +4326,7 @@ function CampaignImageUpload({
       <input
         ref={inputRef}
         type="file"
+        disabled={disabled}
         accept="image/png,image/jpeg,image/webp"
         className="hidden"
         onChange={(event) => {
@@ -3639,6 +4447,13 @@ function getCampaignDisplayCopy(campaign: MarketplaceCampaignPost) {
     title: hasGeneratedTitle ? generatedCopy.title : campaign.title,
     summary: hasGeneratedSummary ? generatedCopy.summary : rawSummary,
   };
+}
+
+function getDesktopCampaignGuideline(text: string) {
+  return text.replace(
+    "캠페인 카드에서 보상과 마감일을 먼저 확인하고 신청 버튼을 누릅니다.",
+    "캠페인 카드에서 보상과 마감일을 확인한 뒤 상세를 열어 신청하기를 누릅니다.",
+  );
 }
 
 function canApplyToMarketplaceCampaign(campaign: MarketplaceCampaignPost) {
@@ -3762,6 +4577,29 @@ function getCampaignFallbackThumbnailUrl(campaign: MarketplaceCampaignPost) {
   return undefined;
 }
 
+function getCampaignThumbnailPresentation(campaign: MarketplaceCampaignPost) {
+  const fallbackThumbnailUrl = getCampaignFallbackThumbnailUrl(campaign);
+  const hasRealThumbnail =
+    Boolean(campaign.thumbnailUrl) && campaign.thumbnailUrl !== campaign.brandLogoUrl;
+  const imageUrl = hasRealThumbnail
+    ? campaign.thumbnailUrl
+    : fallbackThumbnailUrl ?? campaign.brandLogoUrl;
+
+  return {
+    imageUrl,
+    usesLogoImage: !hasRealThumbnail && !fallbackThumbnailUrl,
+    usesCanonicalShareImage: Boolean(
+      imageUrl && /\/og\/yeollock-og\.png(?:[?#]|$)/i.test(imageUrl),
+    ),
+  };
+}
+
+function getCampaignMediaAspectClass(campaign: MarketplaceCampaignPost) {
+  return getCampaignThumbnailPresentation(campaign).usesCanonicalShareImage
+    ? "aspect-[1200/630]"
+    : "aspect-video";
+}
+
 function getCampaignRecruitmentFacts(
   campaign: MarketplaceBrandCampaign | MarketplaceCampaignPost,
 ): CampaignRecruitmentFact[] {
@@ -3775,11 +4613,6 @@ function getCampaignRecruitmentFacts(
       label: "지급",
       value: campaign.budget,
       icon: <Gift className="h-3.5 w-3.5" />,
-    },
-    {
-      label: "모집",
-      value: formatCampaignApplicantLimit(campaign.applicantLimit),
-      icon: <UsersRound className="h-3.5 w-3.5" />,
     },
     {
       label: "모집마감",
@@ -3801,15 +4634,8 @@ function CampaignThumbnail({
   campaign: MarketplaceCampaignPost;
   className?: string;
 }) {
-  const fallbackThumbnailUrl = getCampaignFallbackThumbnailUrl(campaign);
-  const hasRealThumbnail =
-    Boolean(campaign.thumbnailUrl) && campaign.thumbnailUrl !== campaign.brandLogoUrl;
-  const imageUrl =
-    hasRealThumbnail ? campaign.thumbnailUrl : fallbackThumbnailUrl ?? campaign.brandLogoUrl;
-  const usesLogoImage = !hasRealThumbnail && !fallbackThumbnailUrl;
-  const usesCanonicalShareImage = Boolean(
-    imageUrl && /\/og\/yeollock-og\.png(?:[?#]|$)/i.test(imageUrl),
-  );
+  const { imageUrl, usesLogoImage, usesCanonicalShareImage } =
+    getCampaignThumbnailPresentation(campaign);
 
   return (
     <div className={`relative overflow-hidden bg-[#eef1ea] ${className}`}>
@@ -3849,9 +4675,98 @@ function CampaignInlineFact({
         {icon}
         {label}
       </p>
-      <p className="mt-1 truncate text-[12px] font-extrabold text-neutral-900">
+      <p className="mt-1 break-words text-[12px] font-extrabold leading-5 text-neutral-900">
         {value}
       </p>
+    </div>
+  );
+}
+
+function CampaignGuideline({
+  text,
+  className = "text-[14px] font-bold leading-7 text-neutral-600",
+}: {
+  text: string | undefined;
+  className?: string;
+}) {
+  const paragraphs = parseCampaignGuideline(text);
+
+  return (
+    <div className={`grid min-w-0 max-w-full gap-4 ${className}`}>
+      {paragraphs.map((paragraph, paragraphIndex) => (
+        <div
+          key={`${paragraphIndex}-${paragraph.lines[0]?.text.slice(0, 24) ?? ""}`}
+          className="grid min-w-0 max-w-full gap-1"
+        >
+          {paragraph.lines.map((line, lineIndex) => (
+            <CampaignGuidelineLineRow
+              key={`${lineIndex}-${line.text.slice(0, 24)}`}
+              line={line}
+            />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function CampaignGuidelineLineRow({
+  line,
+}: {
+  line: CampaignGuidelineLine;
+  key?: string;
+}) {
+  if (line.kind === "numbered" || line.kind === "bullet") {
+    return (
+      <div
+        className={`grid min-w-0 max-w-full items-start gap-x-2 ${
+          line.kind === "numbered"
+            ? "grid-cols-[2rem_minmax(0,1fr)] font-extrabold text-neutral-900"
+            : "grid-cols-[0.75rem_minmax(0,1fr)]"
+        }`}
+        data-campaign-guideline-kind={line.kind}
+      >
+        <span className="whitespace-nowrap text-right">
+          {line.marker}
+        </span>
+        <span className="min-w-0 max-w-full whitespace-pre-wrap break-words">
+          {line.content}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <p
+      className={`min-w-0 max-w-full whitespace-pre-wrap break-words ${
+        line.kind === "section"
+          ? "font-extrabold text-neutral-950"
+          : line.kind === "example"
+            ? "font-extrabold text-neutral-800"
+            : ""
+      }`}
+      data-campaign-guideline-kind={line.kind}
+    >
+      {line.text}
+    </p>
+  );
+}
+
+function CampaignApplicationStats({
+  campaign,
+  className = "",
+}: {
+  campaign: MarketplaceCampaignPost;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <span className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1.5 text-[11px] font-extrabold leading-4 text-blue-800">
+        <UsersRound className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+        <span className="break-keep">
+          {formatCampaignApplicationStats(campaign)}
+        </span>
+      </span>
     </div>
   );
 }
@@ -3879,11 +4794,6 @@ function CampaignCardMetaChips({
       label: "지급",
       value: campaign.budget,
       icon: <Gift className="h-3.5 w-3.5" />,
-    },
-    {
-      label: "모집",
-      value: formatCampaignApplicantLimit(campaign.applicantLimit),
-      icon: <UsersRound className="h-3.5 w-3.5" />,
     },
   ].filter((chip): chip is { label: string; value: string; icon: ReactNode } =>
     Boolean(chip),
@@ -4188,11 +5098,13 @@ function CampaignRecruitmentDetailDialog({
   isApplying,
   onApply,
   onClose,
+  desktop = false,
 }: {
   campaign: MarketplaceCampaignPost;
   isApplying: boolean;
   onApply: (campaign: MarketplaceCampaignPost) => void;
   onClose: () => void;
+  desktop?: boolean;
 }) {
   useBodyScrollLock(true);
   const campaignCopy = getCampaignDisplayCopy(campaign);
@@ -4202,20 +5114,133 @@ function CampaignRecruitmentDetailDialog({
     ...(targetCountryLabel
       ? [{ label: "국가", value: targetCountryLabel }]
       : []),
-    { label: "지급조건", value: campaign.budget },
     {
       label: "콘텐츠",
       value: campaign.deliverables?.join(", ") || "가이드라인 확인",
     },
-    {
-      label: "모집마감",
-      value: getCampaignDeadlineLabel(campaign.deadline),
-    },
-    {
-      label: "제출마감",
-      value: getCampaignSubmissionDeadlineLabel(campaign),
-    },
   ];
+
+  if (desktop) {
+    const desktopFacts: Array<{
+      label: string;
+      value: string;
+      className?: string;
+    }> = [
+      { label: "콘텐츠", value: campaign.brandCategory, className: "col-span-2" },
+      { label: "지급", value: campaign.budget, className: "col-span-2" },
+      { label: "지역", value: getCampaignLocationLabel(campaign) },
+      ...(targetCountryLabel
+        ? [{ label: "대상 국가", value: targetCountryLabel }]
+        : []),
+      {
+        label: "모집마감",
+        value: `${getCampaignDdayLabel(campaign.deadline)} · ${getCampaignDeadlineLabel(campaign.deadline)}`,
+      },
+      {
+        label: "제출마감",
+        value: getCampaignSubmissionDeadlineLabel(campaign),
+      },
+      {
+        label: "지원 현황",
+        value: formatCampaignApplicationStats(campaign),
+        className: "col-span-2",
+      },
+    ];
+
+    return (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-950/50 p-6"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${campaignCopy.title} 상세`}
+        data-campaign-detail-layout="desktop"
+      >
+        <button
+          type="button"
+          className="absolute inset-0 cursor-default"
+          aria-label="닫기"
+          onClick={onClose}
+        />
+        <section className="relative flex max-h-[min(780px,calc(100svh-48px))] w-full max-w-[920px] flex-col overflow-hidden rounded-[16px] bg-white shadow-[0_28px_80px_rgba(15,23,42,0.28)]">
+          <header className="flex items-start justify-between gap-6 border-b border-neutral-200 px-6 py-5">
+            <div className="min-w-0">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <p className="truncate text-[12px] font-extrabold text-neutral-500">
+                  {campaign.brandName}
+                </p>
+                <span className="h-3 w-px shrink-0 bg-neutral-200" aria-hidden="true" />
+                <CampaignPlatformLogoMarks
+                  platforms={campaign.platforms ?? []}
+                  compact
+                  className="justify-start"
+                />
+              </div>
+              <h2 className="mt-2 break-keep text-[24px] font-black leading-8 text-neutral-950">
+                {campaignCopy.title}
+              </h2>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] border border-neutral-200 text-neutral-500 transition hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-950"
+              aria-label="닫기"
+              title="닫기"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </header>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center gap-2">
+                <span className="rounded-full bg-neutral-100 px-2.5 py-1 text-[11px] font-extrabold text-neutral-700">
+                  {campaign.typeLabel}
+                </span>
+              </div>
+              <dl className="mt-4 grid grid-cols-4 gap-x-6 gap-y-4 border-y border-neutral-200 py-5">
+                {desktopFacts.map((fact) => (
+                  <div
+                    key={fact.label}
+                    className={`min-w-0 ${fact.className ?? ""}`}
+                  >
+                    <dt className="text-[11px] font-extrabold text-neutral-400">
+                      {fact.label}
+                    </dt>
+                    <dd className="mt-1 break-keep text-[13px] font-extrabold leading-5 text-neutral-900">
+                      {fact.value}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+              <section className="mt-6 min-w-0">
+                <h3 className="text-[14px] font-black text-neutral-950">
+                  가이드라인
+                </h3>
+                <CampaignGuideline
+                  text={getDesktopCampaignGuideline(campaignCopy.summary)}
+                  className="mt-3 text-[14px] font-bold leading-7 text-neutral-600"
+                />
+              </section>
+            </div>
+          </div>
+          <footer className="shrink-0 border-t border-neutral-200 bg-white px-6 py-4 sm:flex sm:items-center sm:justify-between sm:gap-4">
+            <p className="mb-3 break-keep text-[12px] font-bold leading-5 text-neutral-500 sm:mb-0">
+              선정 후 캠페인 상세에서 계약서 확인과 서명을 진행합니다.
+            </p>
+            <button
+              type="button"
+              onClick={() => onApply(campaign)}
+              disabled={isApplying || !canApplyToMarketplaceCampaign(campaign)}
+              aria-busy={isApplying}
+              className="yl-primary-action inline-flex h-11 w-full items-center justify-center gap-2 rounded-[9px] px-4 text-[13px] font-extrabold disabled:cursor-not-allowed disabled:bg-neutral-300 disabled:text-neutral-500 sm:w-[180px]"
+            >
+              <Send className="h-4 w-4" />
+              {getCampaignApplyButtonLabel(campaign, isApplying)}
+            </button>
+          </footer>
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -4250,45 +5275,61 @@ function CampaignRecruitmentDetailDialog({
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="grid min-h-0 flex-1 overflow-y-auto lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
-          <div className="border-b border-neutral-200 lg:border-b-0 lg:border-r">
-            <CampaignThumbnail campaign={campaign} className="h-[236px]" />
-            <div className="grid grid-cols-2 gap-2 p-4">
-              {facts.map((fact) => (
-                <CampaignInlineFact
-                  key={fact.label}
-                  icon={fact.icon}
-                  label={fact.label}
-                  value={fact.value}
-                />
-              ))}
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="grid lg:grid-cols-[minmax(280px,0.82fr)_minmax(0,1.18fr)]">
+            <div className="border-b border-neutral-200 bg-[#f1f3ee] p-3 lg:border-b-0 lg:border-r">
+              <CampaignThumbnail
+                campaign={campaign}
+                className={`${getCampaignMediaAspectClass(campaign)} w-full rounded-[10px]`}
+              />
+            </div>
+            <div className="flex min-w-0 flex-col justify-center p-4 sm:p-5">
+              <h2 className="break-keep text-[24px] font-black leading-8 text-neutral-950">
+                {campaignCopy.title}
+              </h2>
+              <CampaignApplicationStats campaign={campaign} className="mt-3" />
+              <div className="mt-4 grid grid-cols-2 gap-x-3 gap-y-2">
+                {facts.map((fact) => (
+                  <CampaignInlineFact
+                    key={fact.label}
+                    icon={fact.icon}
+                    label={fact.label}
+                    value={fact.value}
+                  />
+                ))}
+              </div>
             </div>
           </div>
-          <div className="flex min-h-0 flex-col p-4">
-            <h2 className="break-keep text-[24px] font-black leading-8 text-neutral-950">
-              {campaignCopy.title}
-            </h2>
-            <p className="mt-3 text-[11px] font-extrabold text-neutral-400">
-              가이드라인
-            </p>
-            <p className="mt-1 break-keep text-[13px] font-bold leading-6 text-neutral-600">
-              {campaignCopy.summary}
-            </p>
-            <dl className="mt-4 grid gap-2">
-              {detailRows.map((row) => (
-                <div
-                  key={row.label}
-                  className="grid grid-cols-[92px_minmax(0,1fr)] gap-3 border-b border-neutral-100 pb-2 last:border-b-0"
-                >
-                  <dt className="text-[12px] font-extrabold text-neutral-400">
-                    {row.label}
-                  </dt>
-                  <dd className="break-keep text-[13px] font-extrabold leading-5 text-neutral-900">
-                    {row.value}
-                  </dd>
-                </div>
-              ))}
-            </dl>
+          <div className="grid gap-5 border-t border-neutral-200 p-4 sm:p-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(220px,0.6fr)] lg:items-start">
+            <section className="min-w-0">
+              <h3 className="text-[12px] font-extrabold text-neutral-950">
+                가이드라인
+              </h3>
+              <CampaignGuideline
+                text={campaignCopy.summary}
+                className="mt-2 text-[13px] font-bold leading-6 text-neutral-600"
+              />
+            </section>
+            <section className="rounded-[10px] bg-[#fbfaf7] p-3 ring-1 ring-neutral-200 lg:self-start">
+              <h3 className="text-[12px] font-extrabold text-neutral-950">
+                세부 조건
+              </h3>
+              <dl className="mt-2 grid gap-2">
+                {detailRows.map((row) => (
+                  <div
+                    key={row.label}
+                    className="grid gap-1 border-t border-neutral-200 pt-2"
+                  >
+                    <dt className="text-[11px] font-extrabold text-neutral-400">
+                      {row.label}
+                    </dt>
+                    <dd className="break-words text-[13px] font-extrabold leading-5 text-neutral-900">
+                      {row.value}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
           </div>
         </div>
         <div className="shrink-0 border-t border-neutral-200 bg-white p-3 sm:flex sm:items-center sm:justify-between sm:gap-3">
@@ -4316,14 +5357,79 @@ function CampaignPostCard({
   isApplying,
   onApply,
   onOpenDetail,
+  desktop = false,
 }: {
   key?: string;
   campaign: MarketplaceCampaignPost;
   isApplying: boolean;
   onApply: (campaign: MarketplaceCampaignPost) => void;
   onOpenDetail: (campaign: MarketplaceCampaignPost) => void;
+  desktop?: boolean;
 }) {
   const campaignCopy = getCampaignDisplayCopy(campaign);
+
+  if (desktop) {
+    return (
+      <article
+        className="group relative flex min-h-[400px] min-w-0 flex-col overflow-hidden rounded-[12px] border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(15,23,42,0.045)] transition duration-200 hover:-translate-y-0.5 hover:border-neutral-300 hover:shadow-[0_14px_34px_rgba(15,23,42,0.08)]"
+        data-campaign-card-layout="desktop-compact"
+      >
+        <button
+          type="button"
+          onClick={() => onOpenDetail(campaign)}
+          className="absolute inset-0 z-10 rounded-[12px] outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-inset"
+          aria-label={`${campaignCopy.title} 상세 보기`}
+        />
+        <CampaignThumbnail
+          campaign={campaign}
+          className="aspect-[16/10] w-full shrink-0"
+        />
+        <div className="flex min-h-0 flex-1 flex-col p-4">
+          <div className="flex min-w-0 items-center justify-between gap-3">
+            <p className="truncate text-[12px] font-extrabold text-neutral-600">
+              {campaign.brandName}
+            </p>
+            <CampaignPlatformLogoMarks
+              platforms={campaign.platforms ?? []}
+              compact
+              className="shrink-0 justify-end"
+            />
+          </div>
+          <p className="mt-1 truncate text-[11px] font-bold text-neutral-400">
+            {campaign.brandCategory}
+          </p>
+          <h2 className="mt-2 line-clamp-2 break-keep text-[17px] font-black leading-6 text-neutral-950">
+            {campaignCopy.title}
+          </h2>
+
+          <div className="mt-4 border-t border-neutral-100 pt-3">
+            <p className="flex items-center gap-1.5 text-[10px] font-extrabold text-neutral-400">
+              <Gift className="h-3.5 w-3.5" aria-hidden="true" />
+              지급
+            </p>
+            <p className="mt-1 line-clamp-2 break-keep text-[13px] font-extrabold leading-5 text-neutral-800">
+              {campaign.budget}
+            </p>
+          </div>
+
+          <div className="mt-auto flex items-end justify-between gap-4 pt-4">
+            <div className="min-w-0">
+              <p className="text-[10px] font-extrabold text-neutral-400">모집마감</p>
+              <p className="mt-1 text-[13px] font-black tabular-nums text-neutral-950">
+                {getCampaignDdayLabel(campaign.deadline)}
+              </p>
+            </div>
+            <div className="min-w-0 text-right">
+              <p className="text-[10px] font-extrabold text-neutral-400">지원 현황</p>
+              <p className="mt-1 truncate text-[12px] font-extrabold tabular-nums text-blue-700">
+                {formatCampaignApplicationStats(campaign)}
+              </p>
+            </div>
+          </div>
+        </div>
+      </article>
+    );
+  }
 
   return (
     <article className="yl-card flex min-h-[382px] flex-col overflow-hidden border p-0">
@@ -4333,7 +5439,10 @@ function CampaignPostCard({
         className="block w-full text-left"
         aria-label={`${campaignCopy.title} 상세 보기`}
       >
-        <CampaignThumbnail campaign={campaign} className="h-[138px]" />
+        <CampaignThumbnail
+          campaign={campaign}
+          className={`${getCampaignMediaAspectClass(campaign)} w-full`}
+        />
       </button>
       <div className="flex min-h-0 flex-1 flex-col p-3 sm:p-3.5">
         <div className="flex items-start gap-3">
@@ -4379,6 +5488,7 @@ function CampaignPostCard({
           </p>
         </div>
 
+        <CampaignApplicationStats campaign={campaign} className="mt-3" />
         <CampaignCardMetaChips campaign={campaign} />
         <CampaignCardDeadlineStrip campaign={campaign} />
 
@@ -4452,15 +5562,15 @@ function CampaignViewTabs({
   onChange,
 }: {
   value: InfluencerCampaignView;
-  openCount: number;
-  appliedCount: number;
+  openCount?: number;
+  appliedCount?: number;
   onChange: (value: InfluencerCampaignView) => void;
 }) {
   const tabs: Array<{
     id: InfluencerCampaignView;
     label: string;
     mobileLabel: string;
-    count: number;
+    count?: number;
   }> = [
     { id: "open", label: "모집 캠페인", mobileLabel: "모집", count: openCount },
     { id: "applied", label: "신청한 캠페인", mobileLabel: "신청", count: appliedCount },
@@ -4481,7 +5591,9 @@ function CampaignViewTabs({
             type="button"
             role="tab"
             aria-selected={active}
-            aria-label={`${tab.label} ${tab.count}건`}
+            aria-label={
+              tab.count === undefined ? tab.label : `${tab.label} ${tab.count}건`
+            }
             onClick={() => onChange(tab.id)}
             className={`h-9 min-w-0 rounded-full px-1.5 text-[11px] font-extrabold transition sm:px-2 sm:text-[12px] ${
               active
@@ -4492,9 +5604,11 @@ function CampaignViewTabs({
             <span className="inline-flex max-w-full items-center justify-center gap-1 overflow-hidden whitespace-nowrap">
               <span className="sm:hidden">{tab.mobileLabel}</span>
               <span className="hidden sm:inline">{tab.label}</span>
-              <span className={active ? "text-neutral-500" : "text-neutral-400"}>
-                {tab.count}
-              </span>
+              {tab.count !== undefined ? (
+                <span className={active ? "text-neutral-500" : "text-neutral-400"}>
+                  {tab.count}
+                </span>
+              ) : null}
             </span>
           </button>
         );
@@ -4577,13 +5691,11 @@ function AppliedCampaignFilters({
 function AppliedCampaignList({
   applications,
   focusedCampaignId,
-  sortState,
-  onSortChange,
+  desktop = false,
 }: {
   applications: MarketplaceMessageThread[];
   focusedCampaignId?: string;
-  sortState: CampaignSort;
-  onSortChange: (value: CampaignSort) => void;
+  desktop?: boolean;
 }) {
   useEffect(() => {
     if (!focusedCampaignId) return;
@@ -4594,44 +5706,34 @@ function AppliedCampaignList({
   }, [applications, focusedCampaignId]);
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
+    <section
+      className={
+        desktop
+          ? "mt-3 flex flex-none flex-col overflow-visible rounded-[12px] border border-neutral-200 bg-white shadow-[0_8px_24px_rgba(15,23,42,0.035)]"
+          : "flex min-h-0 flex-1 flex-col overflow-hidden bg-white"
+      }
+    >
       <div className="hidden grid-cols-[minmax(170px,0.48fr)_minmax(320px,1fr)_132px_132px_132px] border-b border-neutral-200 bg-[#f8faf7] px-4 py-3 lg:grid">
-        <CampaignColumnHeader
-          label="브랜드"
-          sortKey="brand"
-          sortState={sortState}
-          onSortChange={onSortChange}
-        />
-        <CampaignColumnHeader
-          label="캠페인"
-          sortKey="title"
-          sortState={sortState}
-          onSortChange={onSortChange}
-        />
-        <CampaignColumnHeader
-          label="상태"
-          sortKey="status"
-          sortState={sortState}
-          onSortChange={onSortChange}
-        />
-        <CampaignColumnHeader
-          label="신청일"
-          sortKey="appliedAt"
-          sortState={sortState}
-          onSortChange={onSortChange}
-          align="right"
-        />
-        <span className="sr-only">액션</span>
+        <CampaignColumnLabel label="브랜드" />
+        <CampaignColumnLabel label="캠페인" />
+        <CampaignColumnLabel label="상태" />
+        <CampaignColumnLabel label="신청일" align="right" />
+        <CampaignColumnLabel label="다음 단계" align="right" />
       </div>
       <div
         data-campaign-scroll-region="applied"
-        className="min-h-0 flex-1 divide-y divide-neutral-100 overflow-y-auto overscroll-contain"
+        className={
+          desktop
+            ? "divide-y divide-neutral-100 overflow-visible"
+            : "min-h-0 flex-1 divide-y divide-neutral-100 overflow-y-auto overscroll-contain"
+        }
       >
         {applications.map((application) => (
           <div key={application.id}>
             <AppliedCampaignRow
               application={application}
               focused={application.campaignId === focusedCampaignId}
+              desktop={desktop}
             />
           </div>
         ))}
@@ -4640,70 +5742,32 @@ function AppliedCampaignList({
   );
 }
 
-function CampaignColumnHeader({
+function CampaignColumnLabel({
   label,
-  sortKey,
-  sortState,
-  onSortChange,
   align = "left",
 }: {
   label: string;
-  sortKey: CampaignSortKey;
-  sortState: CampaignSort;
-  onSortChange: (value: CampaignSort) => void;
   align?: "left" | "right";
 }) {
-  const active = sortState.key === sortKey;
-  const Icon = active
-    ? sortState.direction === "asc"
-      ? ArrowUpWideNarrow
-      : ArrowDownWideNarrow
-    : ArrowUpDown;
-  const nextDirection =
-    active && sortState.direction === "asc" ? "내림차순" : "오름차순";
-
   return (
-    <div
-      className={`flex h-7 min-w-0 items-center gap-1.5 ${
-        align === "right" ? "justify-end" : "justify-start"
+    <span
+      className={`truncate text-[12px] font-black tracking-[-0.01em] text-neutral-700 ${
+        align === "right" ? "text-right" : "text-left"
       }`}
     >
-      <span
-        className={`truncate text-[12px] font-black tracking-[-0.01em] ${
-          active ? "text-neutral-950" : "text-neutral-700"
-        }`}
-      >
-        {label}
-      </span>
-      <button
-        type="button"
-        onClick={() =>
-          onSortChange({
-            key: sortKey,
-            direction:
-              active && sortState.direction === "asc" ? "desc" : "asc",
-          })
-        }
-        aria-label={`${label} ${nextDirection} 정렬`}
-        title={`${label} ${nextDirection} 정렬`}
-        className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] transition-colors ${
-          active
-            ? "bg-white text-neutral-950 ring-1 ring-neutral-300 shadow-sm"
-            : "text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
-        }`}
-      >
-        <Icon className="h-3.5 w-3.5" strokeWidth={2.2} />
-      </button>
-    </div>
+      {label}
+    </span>
   );
 }
 
 function AppliedCampaignRow({
   application,
   focused = false,
+  desktop = false,
 }: {
   application: MarketplaceMessageThread;
   focused?: boolean;
+  desktop?: boolean;
 }) {
   const displayStatus =
     getMarketplaceCampaignApplicationCustomerStatus(application);
@@ -4750,6 +5814,13 @@ function AppliedCampaignRow({
             계약 검토
           </Link>
         ) : application.status === "declined" || application.status === "closed" ? (
+          <span
+            aria-label="추가 액션 없음"
+            className="inline-flex h-9 w-[96px] items-center justify-center text-[12px] font-semibold text-neutral-400"
+          >
+            —
+          </span>
+        ) : desktop ? (
           <span
             aria-label="추가 액션 없음"
             className="inline-flex h-9 w-[96px] items-center justify-center text-[12px] font-semibold text-neutral-400"
@@ -5311,7 +6382,7 @@ function CampaignFilterListSection<T extends string>({
           id={`${id}-listbox`}
           role="listbox"
           aria-multiselectable={!closeOnSelect || undefined}
-          className="max-h-56 overflow-y-auto border-t border-neutral-100 p-1"
+          className="max-h-56 overflow-y-auto border-t border-neutral-100 p-1 lg:max-h-64"
         >
           {onClear ? (
             <CampaignFilterListOptionButton
