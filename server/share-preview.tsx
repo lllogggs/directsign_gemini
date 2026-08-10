@@ -193,20 +193,28 @@ export const isSafeCampaignShareTitle = (rawTitle: string) => {
   return true;
 };
 
-const BrandMark = () => (
+const BrandMark = ({
+  size,
+  iconSize,
+  borderRadius,
+}: {
+  size: number;
+  iconSize: number;
+  borderRadius: number;
+}) => (
   <div
     style={{
-      width: 52,
-      height: 52,
+      width: size,
+      height: size,
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
-      borderRadius: 16,
+      borderRadius,
       backgroundColor: "#171717",
       color: "#ffffff",
     }}
   >
-    <svg width="37" height="37" viewBox="0 0 32 32" fill="none">
+    <svg width={iconSize} height={iconSize} viewBox="0 0 32 32" fill="none">
       <circle cx="9.8" cy="11.2" r="3" fill="currentColor" opacity="0.96" />
       <circle cx="22.2" cy="11.2" r="3" fill="currentColor" opacity="0.96" />
       <circle cx="16" cy="22" r="3" fill="currentColor" opacity="0.96" />
@@ -230,16 +238,16 @@ const PlatformMark = ({
     return (
       <div
         style={{
-          width: 34,
-          height: 34,
-          borderRadius: 7,
+          width: 42,
+          height: 42,
+          borderRadius: 9,
           backgroundColor: "#03c75a",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
         }}
       >
-        <svg width="26" height="26" viewBox="0 0 48 48">
+        <svg width="32" height="32" viewBox="0 0 48 48">
           <path d="M10 11h9.2l9.6 13.7V11H38v26h-9.2l-9.6-13.7V37H10V11z" fill="#fff" />
         </svg>
       </div>
@@ -247,7 +255,7 @@ const PlatformMark = ({
   }
   if (platform === "youtube") {
     return (
-      <svg width="38" height="38" viewBox="0 0 48 48">
+      <svg width="47" height="47" viewBox="0 0 48 48">
         <rect x="4" y="12" width="40" height="26" rx="8" fill="#ff0033" />
         <path d="M21 19.5v11l10-5.5-10-5.5z" fill="#fff" />
       </svg>
@@ -257,16 +265,16 @@ const PlatformMark = ({
     return (
       <div
         style={{
-          width: 34,
-          height: 34,
-          borderRadius: 8,
+          width: 42,
+          height: 42,
+          borderRadius: 10,
           backgroundImage: "linear-gradient(135deg,#feda75 0%,#fa7e1e 28%,#d62976 55%,#962fbf 75%,#4f5bd5 100%)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
         }}
       >
-        <svg width="25" height="25" viewBox="0 0 24 24">
+        <svg width="31" height="31" viewBox="0 0 24 24">
           <rect x="4.2" y="4.2" width="15.6" height="15.6" rx="5" fill="none" stroke="#fff" strokeWidth="2" />
           <circle cx="12" cy="12" r="3.7" fill="none" stroke="#fff" strokeWidth="2" />
           <circle cx="17" cy="7.2" r="1.25" fill="#fff" />
@@ -275,7 +283,7 @@ const PlatformMark = ({
     );
   }
   return (
-    <svg width="38" height="38" viewBox="0 0 48 48">
+    <svg width="47" height="47" viewBox="0 0 48 48">
       <path d="M31.2 6c1.1 6.1 4.7 9.8 10.8 10.4v8.1c-4.3.1-7.9-1.2-10.7-3.7v12.4c0 7.6-5.3 12.8-12.7 12.8C11.6 46 6 41.1 6 34.7c0-7 6-12.1 13.8-11.3v8.2c-3.1-.5-5.5 1.2-5.5 3.8 0 2.4 1.9 4 4.5 4 2.7 0 4.4-1.9 4.4-5.1V6h8z" fill="#25f4ee" transform="translate(-2 2)" />
       <path d="M31.2 6c1.1 6.1 4.7 9.8 10.8 10.4v8.1c-4.3.1-7.9-1.2-10.7-3.7v12.4c0 7.6-5.3 12.8-12.7 12.8C11.6 46 6 41.1 6 34.7c0-7 6-12.1 13.8-11.3v8.2c-3.1-.5-5.5 1.2-5.5 3.8 0 2.4 1.9 4 4.5 4 2.7 0 4.4-1.9 4.4-5.1V6h8z" fill="#fe2c55" transform="translate(2 -1)" />
       <path d="M31.2 6c1.1 6.1 4.7 9.8 10.8 10.4v8.1c-4.3.1-7.9-1.2-10.7-3.7v12.4c0 7.6-5.3 12.8-12.7 12.8C11.6 46 6 41.1 6 34.7c0-7 6-12.1 13.8-11.3v8.2c-3.1-.5-5.5 1.2-5.5 3.8 0 2.4 1.9 4 4.5 4 2.7 0 4.4-1.9 4.4-5.1V6h8z" fill="#111" />
@@ -290,6 +298,7 @@ const ShareImageFrame = ({
   fontSize,
   lineHeight,
   platforms,
+  variant,
 }: {
   context: string;
   contextDetail?: string;
@@ -297,8 +306,10 @@ const ShareImageFrame = ({
   fontSize: number;
   lineHeight: number;
   platforms?: InfluencerPlatform[];
+  variant: "campaign" | "contract";
 }) => {
   const visiblePlatforms = uniquePlatforms(platforms ?? []);
+  const isCampaign = variant === "campaign";
   return (
     <div
       style={{
@@ -312,14 +323,24 @@ const ShareImageFrame = ({
         fontFamily: "NanumSquareNeo",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 15 }}>
-        <BrandMark />
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: isCampaign ? 18 : 15,
+        }}
+      >
+        <BrandMark
+          size={isCampaign ? 64 : 52}
+          iconSize={isCampaign ? 46 : 37}
+          borderRadius={isCampaign ? 20 : 16}
+        />
         <div
           style={{
             display: "flex",
-            fontSize: 34,
+            fontSize: isCampaign ? 42 : 34,
             fontWeight: 900,
-            letterSpacing: -1.4,
+            letterSpacing: isCampaign ? -1.7 : -1.4,
           }}
         >
           {PRODUCT_NAME}
@@ -328,8 +349,8 @@ const ShareImageFrame = ({
       <div
         aria-hidden={visiblePlatforms.length === 0 ? "true" : undefined}
         style={{
-          marginTop: 42,
-          height: 34,
+          marginTop: isCampaign ? 92 : 42,
+          height: isCampaign ? 48 : 34,
           flexShrink: 0,
           display: "flex",
           alignItems: "center",
@@ -339,15 +360,15 @@ const ShareImageFrame = ({
         {visiblePlatforms.map((platform) => (
           <div
             key={platform}
-            style={{ display: "flex", alignItems: "center", gap: 10 }}
+            style={{ display: "flex", alignItems: "center", gap: 12 }}
           >
             <PlatformMark platform={platform} />
             <div
               style={{
                 display: "flex",
-                fontSize: 22,
-                lineHeight: "34px",
-                fontWeight: 400,
+                fontSize: 28,
+                lineHeight: "48px",
+                fontWeight: 800,
                 color: "#404040",
                 whiteSpace: "nowrap",
               }}
@@ -359,7 +380,7 @@ const ShareImageFrame = ({
       </div>
       <div
         style={{
-          marginTop: 18,
+          marginTop: isCampaign ? 12 : 18,
           height: 40,
           flexShrink: 0,
           display: "flex",
@@ -371,7 +392,7 @@ const ShareImageFrame = ({
         <div
           style={{
             display: "flex",
-            fontSize: 34,
+            fontSize: isCampaign ? 28 : 34,
             lineHeight: "40px",
             fontWeight: 800,
             whiteSpace: "nowrap",
@@ -383,7 +404,7 @@ const ShareImageFrame = ({
           <div
             style={{
               display: "flex",
-              fontSize: 27,
+              fontSize: isCampaign ? 28 : 27,
               lineHeight: "40px",
               fontWeight: 800,
               color: "#525252",
@@ -396,7 +417,7 @@ const ShareImageFrame = ({
       </div>
       <div
         style={{
-          marginTop: 18,
+          marginTop: isCampaign ? 28 : 18,
           display: "flex",
           flexDirection: "column",
           fontSize,
@@ -458,6 +479,7 @@ export const renderCampaignShareImage = async (
       fontSize={layout.fontSize}
       lineHeight={layout.lineHeight}
       platforms={safeTitle ? campaign?.platforms : undefined}
+      variant="campaign"
     />,
   );
 };
@@ -469,6 +491,7 @@ export const renderContractShareImage = async () =>
       lines={["계약서 확인"]}
       fontSize={80}
       lineHeight={94}
+      variant="contract"
     />,
   );
 

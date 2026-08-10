@@ -4407,10 +4407,17 @@ check(
     !sharePreview.includes("NanumGothic") &&
     sharePreview.indexOf("visiblePlatforms.map") <
       sharePreview.indexOf('color: "#2563eb"') &&
-    sharePreview.includes("marginTop: 42") &&
-    sharePreview.includes("height: 34") &&
-    sharePreview.includes("marginTop: 18") &&
+    sharePreview.includes("size={isCampaign ? 64 : 52}") &&
+    sharePreview.includes("iconSize={isCampaign ? 46 : 37}") &&
+    sharePreview.includes("fontSize: isCampaign ? 42 : 34") &&
+    sharePreview.includes("marginTop: isCampaign ? 92 : 42") &&
+    sharePreview.includes("height: isCampaign ? 48 : 34") &&
+    sharePreview.includes("marginTop: isCampaign ? 12 : 18") &&
     sharePreview.includes("height: 40") &&
+    sharePreview.includes("fontSize: isCampaign ? 28 : 27") &&
+    sharePreview.includes("marginTop: isCampaign ? 28 : 18") &&
+    sharePreview.includes('variant="campaign"') &&
+    sharePreview.includes('variant="contract"') &&
     !sharePreview.includes("visiblePlatforms.length > 0 ? 18") &&
     !sharePreview.includes("platformLabel[platform]} · 연락미") &&
     server.includes('app.get("/campaigns/:campaignId"') &&

@@ -129,9 +129,19 @@ test("OG images use the same NanumSquareNeo weights as the product UI", async ()
   );
   assert.match(
     sharePreview,
-    /marginTop: 42,[\s\S]*height: 34,[\s\S]*marginTop: 18,[\s\S]*height: 40/,
+    /size=\{isCampaign \? 64 : 52\}[\s\S]*iconSize=\{isCampaign \? 46 : 37\}[\s\S]*fontSize: isCampaign \? 42 : 34/,
+  );
+  assert.match(
+    sharePreview,
+    /marginTop: isCampaign \? 92 : 42,[\s\S]*height: isCampaign \? 48 : 34,[\s\S]*fontSize: 28,[\s\S]*fontWeight: 800/,
+  );
+  assert.match(
+    sharePreview,
+    /marginTop: isCampaign \? 12 : 18,[\s\S]*fontSize: isCampaign \? 28 : 34,[\s\S]*fontSize: isCampaign \? 28 : 27,[\s\S]*marginTop: isCampaign \? 28 : 18/,
   );
   assert.doesNotMatch(sharePreview, /visiblePlatforms\.length > 0 \? 18/);
+  assert.match(sharePreview, /variant="campaign"/);
+  assert.match(sharePreview, /variant="contract"/);
   assert.match(inbox, /oneToOneProposalTypeOptions/);
   assert.doesNotMatch(inbox, /campaignProposalTypeOptions/);
 });
