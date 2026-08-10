@@ -19,7 +19,7 @@
       "regions": [
         "icn1"
       ],
-      "includeFiles": "{public/fonts/**,dist/index.html,index.html}",
+      "includeFiles": "{public/fonts/**,dist/index.html,index.html,server/share-preview.js}",
       "excludeFiles": "{data/**,**/runtime-secrets.json,**/*.log,docs/sales/**,qa-artifacts/**,tmp/**,.tmp/**}"
     }
   },

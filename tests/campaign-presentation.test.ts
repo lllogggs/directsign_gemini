@@ -100,8 +100,11 @@ test("reporter group is a campaign-only type with one customer label", () => {
 });
 
 test("OG images use the same NanumSquareNeo weights as the product UI", async () => {
-  const [sharePreview, productCss, inbox] = await Promise.all([
+  const [sharePreview, serverEntry, packageJson, vercelConfig, productCss, inbox] = await Promise.all([
     readFile(new URL("../server/share-preview.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../server/index.ts", import.meta.url), "utf8"),
+    readFile(new URL("../package.json", import.meta.url), "utf8"),
+    readFile(new URL("../vercel.json", import.meta.url), "utf8"),
     readFile(new URL("../src/index.css", import.meta.url), "utf8"),
     readFile(
       new URL("../src/pages/marketplace/MarketplaceInboxPage.tsx", import.meta.url),
@@ -117,6 +120,9 @@ test("OG images use the same NanumSquareNeo weights as the product UI", async ()
   assert.match(sharePreview, /NanumSquareNeo-eHv\.ttf/);
   assert.match(sharePreview, /fontFamily: "NanumSquareNeo"/);
   assert.doesNotMatch(sharePreview, /NanumGothic/);
+  assert.match(serverEntry, /from "\.\/share-preview\.js"/);
+  assert.match(packageJson, /"build:share-preview": "esbuild server\/share-preview\.tsx/);
+  assert.match(vercelConfig, /server\/share-preview\.js/);
   assert.ok(
     sharePreview.indexOf("visiblePlatforms.map") <
       sharePreview.indexOf('color: "#2563eb"'),

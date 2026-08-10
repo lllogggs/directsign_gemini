@@ -15,6 +15,7 @@ export default tseslint.config(
       ".tmp",
       ".codex-logs",
       ".vercel",
+      "server/share-preview.js",
       "data/sales-leads/**/scripts/**",
     ],
   },

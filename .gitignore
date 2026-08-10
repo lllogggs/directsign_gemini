@@ -37,5 +37,6 @@ docs/sales/cold-email-leads.csv
 supabase/.temp/
 !.env.example
 .vercel
+server/share-preview.js
 .od-skills/
 moz*-image.png

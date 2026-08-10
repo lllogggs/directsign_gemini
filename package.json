@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server/index.ts",
-    "build": "vite build --configLoader runner && tsx scripts/prerender-seo-html.ts",
+    "build:share-preview": "esbuild server/share-preview.tsx --format=esm --platform=node --target=node22 --jsx=automatic --outfile=server/share-preview.js",
+    "build": "npm run build:share-preview && vite build --configLoader runner && tsx scripts/prerender-seo-html.ts",
     "preview": "npm run build && tsx server/index.ts --preview",
     "clean": "rm -rf dist",
     "lint": "npm run privacy:scan && eslint . && tsc --noEmit",
@@ -64,6 +65,7 @@
     "@types/node": "^22.14.0",
     "@types/uuid": "^10.0.0",
     "autoprefixer": "^10.4.21",
+    "esbuild": "0.28.1",
     "eslint": "^10.3.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
