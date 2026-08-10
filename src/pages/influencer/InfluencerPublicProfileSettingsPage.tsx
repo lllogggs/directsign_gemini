@@ -35,7 +35,7 @@ import {
 } from "../../domain/influencerDashboard";
 import { clearInfluencerDashboardPreload } from "../../domain/influencerDashboardPreload";
 import {
-  campaignProposalTypeOptions,
+  oneToOneProposalTypeOptions,
   proposalTypeLabels,
   type CampaignProposalType,
 } from "../../domain/marketplace";
@@ -808,7 +808,7 @@ export function InfluencerPublicProfileSettingsPage() {
                     id="profile-collaboration-types"
                     className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3"
                   >
-                    {campaignProposalTypeOptions.map((type) => {
+                    {oneToOneProposalTypeOptions.map((type) => {
                       const checked = form.collaborationTypes.includes(type);
                       return (
                         <label

@@ -41,6 +41,15 @@ import { isOperationalTestEmail } from "./operational-test-email.js";
 import { sendPlatformVerificationEmail } from "./verification-email.js";
 import { verificationRequestBelongsToInfluencerAccount } from "./verification-ownership.js";
 import {
+  buildCampaignShareMetadata,
+  buildContractShareMetadata,
+  injectShareMetadata,
+  readAppShellHtml,
+  renderCampaignShareImage,
+  renderContractShareImage,
+  type CampaignSharePreviewInput,
+} from "./share-preview.js";
+import {
   decodeNotificationCursor,
   encodeNotificationCursor,
   isNotificationRole,
@@ -102,6 +111,7 @@ import {
   isMarketplaceApplicationBrandId,
   mergeMarketplaceBrandProfiles,
   mergeMarketplaceInfluencerProfiles,
+  oneToOneProposalTypeOptions,
   platformLabels,
   type CampaignProposalType,
   type CampaignApplicationContactField,
@@ -112,6 +122,10 @@ import {
   type MarketplaceCountryCode,
   type MarketplaceInfluencerProfile,
 } from "../src/domain/marketplace.js";
+import {
+  getCampaignTitleValidationError,
+  normalizeCampaignTitle,
+} from "../src/domain/campaignPresentation.js";
 import {
   normalizeMarketplaceCreatorCategory,
   normalizeMarketplaceCreatorCategories,
@@ -13841,6 +13855,9 @@ const insertSupabaseV2RowsIgnoringDuplicates = async (
 const campaignProposalTypes = new Set<CampaignProposalType>(
   campaignProposalTypeOptions,
 );
+const oneToOneProposalTypes = new Set<CampaignProposalType>(
+  oneToOneProposalTypeOptions,
+);
 const campaignRequiredConsentLimit = 8;
 const campaignRequiredConsentTextLimit = 300;
 const campaignRequiredConsentIdLimit = 80;
@@ -14001,7 +14018,7 @@ const normalizeStringArrayForStorage = (
   return normalized.length > 0 ? normalized : fallback;
 };
 
-const normalizeCampaignProposalTypes = (
+const normalizeOneToOneProposalTypes = (
   value: unknown,
   fallback: CampaignProposalType[] = ["sponsored_post", "product_seeding"],
 ) => {
@@ -14009,7 +14026,7 @@ const normalizeCampaignProposalTypes = (
 
   const normalized = value.filter(
     (item): item is CampaignProposalType =>
-      typeof item === "string" && campaignProposalTypes.has(item as CampaignProposalType),
+      typeof item === "string" && oneToOneProposalTypes.has(item as CampaignProposalType),
   );
 
   return normalized.length > 0 ? Array.from(new Set(normalized)) : fallback;
@@ -14880,7 +14897,22 @@ const buildMarketplaceAvatarLabel = (name: string, fallback = "IN") => {
 const normalizeMarketplacePublicImageUrl = (value: unknown) => {
   const clean = normalizeOptionalText(value);
   if (!clean || clean.length > 2048) return undefined;
-  return /^(https?:\/\/|\/)/i.test(clean) ? clean : undefined;
+  if (clean.startsWith("/")) return clean;
+  if (!/^https?:\/\//i.test(clean)) return undefined;
+
+  try {
+    const url = new URL(clean);
+    if (
+      url.protocol === "https:" &&
+      (url.hostname === "yeollock.me" || url.hostname === "www.yeollock.me")
+    ) {
+      return `${url.pathname}${url.search}${url.hash}`;
+    }
+  } catch {
+    return undefined;
+  }
+
+  return clean;
 };
 
 const formatStoredMarketplacePlatformHandle = (
@@ -14995,7 +15027,7 @@ const mapInfluencerProfileRowToPublicSettings = (
   avatarUrl: row.avatar_url ?? undefined,
   categories: row.categories ?? [],
   brandFit: row.brand_fit ?? [],
-  collaborationTypes: normalizeCampaignProposalTypes(row.collaboration_types),
+  collaborationTypes: normalizeOneToOneProposalTypes(row.collaboration_types),
   startingPriceLabel: row.starting_price_label,
   responseTimeLabel: row.response_time_label,
   platforms: channels.map((channel) => ({
@@ -15237,7 +15269,7 @@ const mapBrandProfileRowToMarketplaceProfile = (
   logoLabel: row.logo_label,
   logoUrl: row.logo_url ?? undefined,
   preferredPlatforms: row.preferred_platforms ?? [],
-  proposalTypes: normalizeCampaignProposalTypes(row.proposal_types),
+  proposalTypes: normalizeOneToOneProposalTypes(row.proposal_types),
   budgetRangeLabel: row.budget_range_label,
   responseTimeLabel: row.response_time_label,
   statusLabel: row.status_label,
@@ -17897,7 +17929,7 @@ const isValidIsoCalendarDate = (value: string) => {
 };
 
 const validateMarketplaceCampaignInput = (body: Record<string, unknown>) => {
-  const title = normalizeRequiredText(body.title);
+  const title = normalizeCampaignTitle(body.title);
   const type = normalizeRequiredText(body.type) as CampaignProposalType;
   const otherTypeLabel = normalizeOptionalText(
     body.otherTypeLabel ?? body.other_type_label,
@@ -17926,9 +17958,8 @@ const validateMarketplaceCampaignInput = (body: Record<string, unknown>) => {
   const platforms = normalizeCampaignPlatforms(body.platforms, ["instagram"]);
   const deliverables = normalizeStringArrayForStorage(body.deliverables, [], 6);
 
-  if (!title || title.length > 100) {
-    return { error: "제목은 100자 이내로 입력해 주세요." };
-  }
+  const titleValidationError = getCampaignTitleValidationError(title);
+  if (titleValidationError) return { error: titleValidationError };
   if (!campaignProposalTypes.has(type)) {
     return { error: "광고형태를 선택해 주세요." };
   }
@@ -18298,12 +18329,11 @@ const validateMarketplaceCampaignPresentationEdit = (
   const campaignPatch: Record<string, unknown> = {};
 
   if (hasOwnMarketplaceCampaignEditField(body, "title")) {
-    const title = normalizeRequiredText(
+    const title = normalizeCampaignTitle(
       readMarketplaceCampaignEditValue(body, "title", undefined),
     );
-    if (!title || title.length > 100) {
-      return { error: "제목은 100자 이내로 입력해 주세요." };
-    }
+    const titleValidationError = getCampaignTitleValidationError(title);
+    if (titleValidationError) return { error: titleValidationError };
     if (title !== campaign.title) campaignPatch.title = title;
   }
 
@@ -19931,7 +19961,7 @@ const upsertInfluencerPublicProfile = async ({
     existingProfile.brandFit,
     6,
   );
-  const collaborationTypes = normalizeCampaignProposalTypes(
+  const collaborationTypes = normalizeOneToOneProposalTypes(
     body.collaborationTypes,
     existingProfile.collaborationTypes,
   );
@@ -20220,7 +20250,7 @@ const validateMarketplaceProposal = (body: Record<string, unknown>) => {
   if (!senderIntro || senderIntro.length > 1000) {
     return { error: "소개 내용을 1000자 이내로 입력해 주세요." };
   }
-  if (!campaignProposalTypes.has(proposalType)) {
+  if (!oneToOneProposalTypes.has(proposalType)) {
     return { error: "제안 가능한 광고 형태를 선택해 주세요." };
   }
   if (!proposalSummary || proposalSummary.length > 1500) {
@@ -30681,6 +30711,107 @@ app.get("/api/marketplace/campaigns/:campaignId", async (request, response, next
       return;
     }
     sendPublicMarketplaceJson(response, { campaign }, "marketplace-campaigns");
+  } catch (error) {
+    next(error);
+  }
+});
+
+const readCampaignSharePreviewInput = async (
+  campaignId: string,
+): Promise<CampaignSharePreviewInput | undefined> => {
+  if (!useSupabase || !isUuidText(campaignId)) return undefined;
+  const campaigns = await readMarketplaceCampaignPosts();
+  const campaign = campaigns.find((candidate) => candidate.id === campaignId);
+  if (
+    !campaign ||
+    campaign.status !== "open" ||
+    !isMarketplaceApplicationBrandId(campaign.brandId) ||
+    hasOperationalTestMarker(campaign)
+  ) {
+    return undefined;
+  }
+  return {
+    id: campaign.id,
+    title: campaign.title,
+    typeLabel: campaign.typeLabel,
+    platforms: campaign.platforms,
+    updatedAt: campaign.updatedAt,
+  };
+};
+
+app.get("/api/og/campaigns/:campaignId", async (request, response, next) => {
+  try {
+    const campaign =
+      request.params.campaignId === "generic"
+        ? undefined
+        : await readCampaignSharePreviewInput(request.params.campaignId);
+    let image: Buffer;
+    try {
+      image = await renderCampaignShareImage(campaign);
+    } catch {
+      image = await renderCampaignShareImage();
+    }
+    response.setHeader("Content-Type", "image/png");
+    response.setHeader("Cache-Control", publicMarketplaceCacheControl);
+    response.setHeader("CDN-Cache-Control", publicMarketplaceCdnCacheControl);
+    response.setHeader("Vercel-CDN-Cache-Control", publicMarketplaceCdnCacheControl);
+    response.setHeader(
+      "Vercel-Cache-Tag",
+      publicMarketplaceCacheTags["marketplace-campaigns"].join(","),
+    );
+    response.send(image);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/og/contract", async (_request, response, next) => {
+  try {
+    const image = await renderContractShareImage();
+    response.setHeader("Content-Type", "image/png");
+    response.setHeader("Cache-Control", "public, max-age=86400");
+    response.setHeader("CDN-Cache-Control", "public, s-maxage=31536000, immutable");
+    response.setHeader(
+      "Vercel-CDN-Cache-Control",
+      "public, s-maxage=31536000, immutable",
+    );
+    response.send(image);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/campaigns/:campaignId", async (request, response, next) => {
+  try {
+    const campaign = await readCampaignSharePreviewInput(request.params.campaignId);
+    const metadata = buildCampaignShareMetadata(
+      request.params.campaignId,
+      campaign,
+    );
+    response.setHeader("Content-Type", "text/html; charset=utf-8");
+    response.setHeader("Cache-Control", publicMarketplaceCacheControl);
+    response.setHeader("CDN-Cache-Control", publicMarketplaceCdnCacheControl);
+    response.setHeader("Vercel-CDN-Cache-Control", publicMarketplaceCdnCacheControl);
+    response.setHeader(
+      "Vercel-Cache-Tag",
+      publicMarketplaceCacheTags["marketplace-campaigns"].join(","),
+    );
+    response.send(injectShareMetadata(readAppShellHtml(), metadata));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/contract/:contractId", (request, response, next) => {
+  try {
+    const metadata = buildContractShareMetadata(request.params.contractId);
+    response.setHeader("Content-Type", "text/html; charset=utf-8");
+    response.setHeader("Cache-Control", "private, no-store");
+    response.setHeader("CDN-Cache-Control", "no-store");
+    response.setHeader("Vercel-CDN-Cache-Control", "no-store");
+    response.setHeader("Pragma", "no-cache");
+    response.setHeader("X-Robots-Tag", "noindex, nofollow, noarchive");
+    response.send(injectShareMetadata(readAppShellHtml(), metadata));
   } catch (error) {
     next(error);
   }

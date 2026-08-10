@@ -672,6 +672,10 @@ test("server wires aggregate counts, structured edit errors, and best-effort cac
     server.indexOf("const isValidPublicMarketplaceFreshQuery"),
     server.indexOf("const warmPublicMarketplaceCache"),
   );
+  const publicImageNormalizerSource = server.slice(
+    server.indexOf("const normalizeMarketplacePublicImageUrl"),
+    server.indexOf("const formatStoredMarketplacePlatformHandle"),
+  );
 
   assert.match(
     server,
@@ -722,6 +726,11 @@ test("server wires aggregate counts, structured edit errors, and best-effort cac
   );
   assert.match(freshResponseSource, /Vercel-CDN-Cache-Control", "no-store"/);
   assert.match(freshResponseSource, /Vary", "Cookie"/);
+  assert.match(publicImageNormalizerSource, /url\.hostname === "yeollock\.me"/);
+  assert.match(
+    publicImageNormalizerSource,
+    /return `\$\{url\.pathname\}\$\{url\.search\}\$\{url\.hash\}`/,
+  );
   assert.match(
     server,
     /findMarketplaceCampaignApplicationTargetById[\s\S]*?campaignRow\.updated_at/,

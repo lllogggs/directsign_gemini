@@ -9,16 +9,29 @@ export type CampaignProposalType =
   | "product_seeding"
   | "supporters"
   | "experience_group"
+  | "reporter_group"
   | "ppl"
   | "group_buy"
   | "visit_review"
   | "other";
+
+export const oneToOneProposalTypeOptions: CampaignProposalType[] = [
+  "sponsored_post",
+  "product_seeding",
+  "supporters",
+  "experience_group",
+  "ppl",
+  "group_buy",
+  "visit_review",
+  "other",
+];
 
 export const campaignProposalTypeOptions: CampaignProposalType[] = [
   "sponsored_post",
   "product_seeding",
   "supporters",
   "experience_group",
+  "reporter_group",
   "ppl",
   "group_buy",
   "visit_review",
@@ -448,6 +461,7 @@ export const proposalTypeLabels: Record<CampaignProposalType, string> = {
   product_seeding: "제품 협찬",
   supporters: "서포터즈",
   experience_group: "체험단",
+  reporter_group: "기자단",
   ppl: "PPL",
   group_buy: "공동구매",
   visit_review: "방문 리뷰",

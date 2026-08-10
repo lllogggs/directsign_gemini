@@ -1273,6 +1273,17 @@ const getIntentAwareRouteSeoConfig = (pathname: string): RouteSeoConfig => {
   const baseConfig = getRouteSeoConfig(pathname);
   const normalizedPath = normalizeSeoPath(pathname);
 
+  if (/^\/contract\/[^/]+$/.test(normalizedPath)) {
+    return {
+      title: `${PRODUCT_NAME} | 계약서 확인`,
+      description: "전달받은 계약서를 확인하세요.",
+      canonicalPath: normalizedPath,
+      robots: "noindex,nofollow,noarchive",
+      ogImageUrl: buildCanonicalUrl("/api/og/contract"),
+      ogImageAlt: "연락미 계약서 확인 미리보기",
+    };
+  }
+
   if (isNoIndexRoute(normalizedPath)) {
     return {
       ...baseConfig,
@@ -1305,7 +1316,7 @@ const getIntentAwareRouteSeoConfig = (pathname: string): RouteSeoConfig => {
 
   if (/^\/campaigns\/[^/]+$/.test(normalizedPath)) {
     return buildPublicSeoConfig({
-      title: `캠페인 모집글 - ${PRODUCT_NAME}`,
+      title: `${PRODUCT_NAME} | 인플루언서 캠페인`,
       description:
         "연락미 캠페인의 모집 조건, 보상, 콘텐츠 기준과 현재 지원 현황을 확인해 보세요.",
       canonicalPath: normalizedPath,

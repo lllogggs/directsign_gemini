@@ -214,7 +214,10 @@ test("idempotency compares full immutable facts and recipient snapshot", () => {
     );
   }
   assert.match(migration, /notification recipient snapshot collision/);
-  assert.match(migration, /never\n\s*-- expand an old event to organization members who joined later/);
+  assert.match(
+    migration,
+    /never\r?\n\s*-- expand an old event to organization members who joined later/,
+  );
 });
 
 test("all customer reads and read mutations revalidate current source access", () => {

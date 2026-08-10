@@ -805,7 +805,14 @@ const ensureMarketplaceProfiles = async ({ influencer, organizationId }) => {
       };
 
   brandProfileRow.active_campaigns = brandProfileRow.active_campaigns.map(
-    (campaign) => ({ ...campaign, relativeTestDates: true }),
+    (campaign) => ({
+      ...campaign,
+      location: campaign.location ?? brandProfileRow.location,
+      summary:
+        campaign.summary ??
+        `${campaign.title}의 핵심 특징과 실제 사용 장면을 콘텐츠로 소개해 주세요.`,
+      relativeTestDates: true,
+    }),
   );
 
   if (existingBrandProfile) {

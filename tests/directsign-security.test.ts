@@ -758,9 +758,13 @@ describe("yeollock.me security regressions", () => {
 
     assert.match(server, /public", "fonts", "NanumMyeongjo-Regular\.ttf"/);
     assert.match(server, /public", "fonts", "NanumMyeongjo-Bold\.ttf"/);
-    assert.equal(
-      vercelConfig.functions?.["api/index.ts"]?.includeFiles,
-      "public/fonts/**",
+    assert.match(
+      vercelConfig.functions?.["api/index.ts"]?.includeFiles ?? "",
+      /public\/fonts\/\*\*/,
+    );
+    assert.match(
+      vercelConfig.functions?.["api/index.ts"]?.includeFiles ?? "",
+      /dist\/index\.html/,
     );
     assert.ok(
       statSync(join(root, "public/fonts/NanumMyeongjo-Regular.ttf")).size >
@@ -6122,7 +6126,8 @@ describe("yeollock.me security regressions", () => {
       campaignPages,
       /OTHER_CAMPAIGN_TYPE_OPTION_LABEL = "기타\(직접작성\)"/,
     );
-    assert.match(marketplace, /campaignProposalTypeOptions/);
+    assert.match(marketplace, /oneToOneProposalTypeOptions/);
+    assert.doesNotMatch(marketplace, /campaignProposalTypeOptions/);
     assert.match(server, /campaign_supporters_resale_ban/);
     assert.match(server, /서포터즈 활동 자격은 자동 박탈/);
     assert.match(server, /campaign_supporters_posting_mission/);
@@ -6178,6 +6183,34 @@ describe("yeollock.me security regressions", () => {
     assert.match(advertiserDashboard, /function CampaignListView/);
     assert.match(advertiserDashboard, /function CampaignTableHeaderRow/);
     assert.match(campaignPages, /function AdvertiserCampaignPreview/);
+    const advertiserCampaignPreviewSource = campaignPages.slice(
+      campaignPages.indexOf("function AdvertiserCampaignPreview"),
+      campaignPages.indexOf("function CampaignImageUpload"),
+    );
+    assert.match(
+      advertiserCampaignPreviewSource,
+      /getPublicCampaignDisplayCopy\(campaign\)/,
+    );
+    assert.doesNotMatch(
+      advertiserCampaignPreviewSource,
+      /getCampaignDisplayCopy\(campaign\)/,
+    );
+    assert.match(
+      campaignPages,
+      /createCampaignFormFromRecord\(campaign, data\.brand\)/,
+    );
+    assert.match(
+      campaignPages,
+      /createCampaignFormFromRecord\(updatedCampaign, data\.brand\)/,
+    );
+    assert.match(
+      seedAccounts,
+      /location: campaign\.location \?\? brandProfileRow\.location/,
+    );
+    assert.match(
+      seedAccounts,
+      /campaign\.summary \?\?\s*`\$\{campaign\.title\}의 핵심 특징/,
+    );
     assert.match(campaignPages, /function CampaignThumbnail/);
     assert.match(campaignPages, /function CampaignRecruitmentDetailDialog/);
     assert.match(campaignPages, /function CampaignCardMetaChips/);

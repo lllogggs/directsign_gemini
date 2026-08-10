@@ -3,11 +3,30 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
+  campaignProposalTypeOptions,
   formatCampaignApplicationStats,
+  oneToOneProposalTypeOptions,
   parseCampaignGuideline,
+  proposalTypeLabels,
   resolveCampaignApplicationCountSync,
   splitCampaignGuidelineParagraphs,
 } from "../src/domain/marketplace.ts";
+import {
+  CAMPAIGN_TITLE_MAX_GRAPHEMES,
+  CAMPAIGN_TITLE_MAX_UNBROKEN_GRAPHEMES,
+  countCampaignTitleGraphemes,
+  getCampaignTitleFontSize,
+  getCampaignTitleValidationError,
+  normalizeCampaignTitle,
+} from "../src/domain/campaignPresentation.ts";
+import {
+  buildCampaignShareMetadata,
+  buildContractShareMetadata,
+  injectShareMetadata,
+  layoutCampaignOgTitle,
+  renderCampaignShareImage,
+  renderContractShareImage,
+} from "../server/share-preview.tsx";
 
 const operatingCampaignGuideline = `[캠페인 소개]
 연락미에 직접 가입하고 캠페인 신청까지 진행한 뒤, 처음 이용하는 인플루언서가 그대로 따라 할 수 있는 네이버 블로그 가이드를 작성해 주세요.
@@ -30,7 +49,7 @@ const operatingCampaignGuideline = `[캠페인 소개]
 - 신청 완료
 
 예시
-“캠페인 카드에서 보상과 마감일을 먼저 확인하고 신청 버튼을 누릅니다.”
+“캠페인 카드에서 보상과 마감일을 확인한 뒤 상세를 열어 신청하기를 누릅니다.”
 
 3. 연락미 강점
 - 캠페인과 1:1 계약을 목적에 맞게 구분
@@ -50,6 +69,126 @@ const operatingCampaignGuideline = `[캠페인 소개]
 - 이메일·전화번호·비밀번호·인증코드는 반드시 가림 처리
 - 직접 경험한 사실을 중심으로 작성하며 긍정 표현은 강요하지 않습니다.
 - 게시물은 6개월 이상 공개 유지`;
+
+test("campaign titles use one normalized 40-grapheme rule and fixed OG font tiers", () => {
+  assert.equal(normalizeCampaignTitle("  여름\n\t캠페인  "), "여름 캠페인");
+  assert.equal(countCampaignTitleGraphemes("👨‍👩‍👧‍👦"), 1);
+  assert.equal(
+    getCampaignTitleValidationError(`${"가".repeat(20)} ${"나".repeat(19)}`),
+    undefined,
+  );
+  assert.equal(
+    getCampaignTitleValidationError("가".repeat(41)),
+    `캠페인명은 ${CAMPAIGN_TITLE_MAX_GRAPHEMES}자 이내로 입력해 주세요.`,
+  );
+  assert.equal(
+    getCampaignTitleValidationError("가".repeat(21)),
+    `긴 단어는 ${CAMPAIGN_TITLE_MAX_UNBROKEN_GRAPHEMES}자 안에서 띄어쓰기를 추가해 주세요.`,
+  );
+  assert.deepEqual(
+    [16, 17, 24, 25, 32, 33, 40].map((length) =>
+      getCampaignTitleFontSize("가".repeat(length)),
+    ),
+    [80, 68, 68, 60, 60, 52, 52],
+  );
+});
+
+test("reporter group is a campaign-only type with one customer label", () => {
+  assert.equal(proposalTypeLabels.reporter_group, "기자단");
+  assert.equal(campaignProposalTypeOptions.includes("reporter_group"), true);
+  assert.equal(oneToOneProposalTypeOptions.includes("reporter_group"), false);
+});
+
+test("OG images use the same NanumSquareNeo weights as the product UI", async () => {
+  const [sharePreview, productCss, inbox] = await Promise.all([
+    readFile(new URL("../server/share-preview.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/index.css", import.meta.url), "utf8"),
+    readFile(
+      new URL("../src/pages/marketplace/MarketplaceInboxPage.tsx", import.meta.url),
+      "utf8",
+    ),
+  ]);
+
+  assert.match(productCss, /font-family: 'NanumSquareNeo'/);
+  assert.match(productCss, /font-family: 'NanumSquareNeoExtraBold'/);
+  assert.match(productCss, /font-family: 'NanumSquareNeoHeavy'/);
+  assert.match(sharePreview, /NanumSquareNeo-bRg\.ttf/);
+  assert.match(sharePreview, /NanumSquareNeo-dEb\.ttf/);
+  assert.match(sharePreview, /NanumSquareNeo-eHv\.ttf/);
+  assert.match(sharePreview, /fontFamily: "NanumSquareNeo"/);
+  assert.doesNotMatch(sharePreview, /NanumGothic/);
+  assert.ok(
+    sharePreview.indexOf("visiblePlatforms.map") <
+      sharePreview.indexOf('color: "#2563eb"'),
+  );
+  assert.match(
+    sharePreview,
+    /marginTop: 42,[\s\S]*height: 34,[\s\S]*marginTop: 18,[\s\S]*height: 40/,
+  );
+  assert.doesNotMatch(sharePreview, /visiblePlatforms\.length > 0 \? 18/);
+  assert.match(inbox, /oneToOneProposalTypeOptions/);
+  assert.doesNotMatch(inbox, /campaignProposalTypeOptions/);
+});
+
+test("campaign OG titles always fit one or two precomputed lines", () => {
+  const samples = [
+    "짧은 캠페인",
+    "여름 러닝 챌린지 릴스 크리에이터 모집",
+    "가".repeat(20),
+    "네이버 블로그 기자단 여름 신제품 체험 후기 콘텐츠 모집",
+  ];
+  for (const sample of samples) {
+    const layout = layoutCampaignOgTitle(sample);
+    assert.ok(layout.lines.length >= 1 && layout.lines.length <= 2);
+    assert.ok(layout.fontSize >= 44 && layout.fontSize <= 80);
+    assert.equal(layout.lines.some((line) => line.length === 0), false);
+  }
+  assert.deepEqual(layoutCampaignOgTitle("가".repeat(40)).lines, [
+    "인플루언서 캠페인",
+  ]);
+});
+
+test("campaign and contract share metadata use exact public copy without private token leakage", () => {
+  const campaign = {
+    id: "4b57fcee-6d4a-4c73-bcb0-3c8e88176158",
+    title: "연락미 가입부터 캠페인 신청까지",
+    typeLabel: "기자단",
+    platforms: ["naver_blog" as const],
+    updatedAt: "2026-08-10T00:00:00.000Z",
+  };
+  const campaignMetadata = buildCampaignShareMetadata(campaign.id, campaign);
+  assert.equal(
+    campaignMetadata.title,
+    "연락미 | 연락미 가입부터 캠페인 신청까지",
+  );
+  assert.match(campaignMetadata.imageUrl, /^https:\/\/yeollock\.me\/api\/og\/campaigns\//);
+
+  const contractMetadata = buildContractShareMetadata("contract-id");
+  assert.equal(contractMetadata.title, "연락미 | 계약서 확인");
+  assert.equal(contractMetadata.imageUrl, "https://yeollock.me/api/og/contract");
+  const html = injectShareMetadata(
+    "<!doctype html><html><head><title>old</title></head><body></body></html>",
+    contractMetadata,
+  );
+  assert.match(html, /<title>연락미 \| 계약서 확인<\/title>/);
+  assert.doesNotMatch(html, /share_token|secret|old/iu);
+  assert.match(html, /noindex,nofollow,noarchive/);
+});
+
+test("campaign and contract share images render as 1200 by 630 PNG files", async () => {
+  const campaignImage = await renderCampaignShareImage({
+    id: "4b57fcee-6d4a-4c73-bcb0-3c8e88176158",
+    title: "네이버 블로그 기자단 모집",
+    typeLabel: "기자단",
+    platforms: ["naver_blog"],
+  });
+  const contractImage = await renderContractShareImage();
+  for (const image of [campaignImage, contractImage]) {
+    assert.equal(image.subarray(1, 4).toString("ascii"), "PNG");
+    assert.equal(image.readUInt32BE(16), 1200);
+    assert.equal(image.readUInt32BE(20), 630);
+  }
+});
 
 test("campaign guidelines normalize CRLF and preserve intentional line breaks", () => {
   assert.deepEqual(

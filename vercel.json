@@ -19,7 +19,7 @@
       "regions": [
         "icn1"
       ],
-      "includeFiles": "public/fonts/**",
+      "includeFiles": "{public/fonts/**,dist/index.html,index.html}",
       "excludeFiles": "{data/**,**/runtime-secrets.json,**/*.log,docs/sales/**,qa-artifacts/**,tmp/**,.tmp/**}"
     }
   },
@@ -207,6 +207,14 @@
     }
   ],
   "rewrites": [
+    {
+      "source": "/campaigns/:campaignId",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/contract/:contractId",
+      "destination": "/api/index"
+    },
     {
       "source": "/api/(.*)",
       "destination": "/api/index"

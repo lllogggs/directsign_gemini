@@ -55,7 +55,6 @@ import {
 import { normalizeNaverBlogRecentPosts } from "../../domain/naverBlogPosts.js";
 import {
   canOpenInfluencerPublicProfile,
-  campaignProposalTypeOptions,
   formatCampaignApplicantLimit,
   getBrandProfilePath,
   getCampaignProposalTypeDisplayLabel,
@@ -64,6 +63,7 @@ import {
   formatMarketplaceCountries,
   getMarketplaceCountryLabel,
   marketplaceCountryOptions,
+  oneToOneProposalTypeOptions,
   platformLabels,
   proposalTypeLabels,
   type CampaignProposalType,
@@ -270,11 +270,11 @@ const readDraftText = (
 ): string | undefined =>
   typeof value === "string" ? value.slice(0, maxLength) : undefined;
 
-const isCampaignProposalType = (
+const isOneToOneProposalType = (
   value: unknown,
 ): value is CampaignProposalType =>
   typeof value === "string" &&
-  campaignProposalTypeOptions.includes(value as CampaignProposalType);
+  oneToOneProposalTypeOptions.includes(value as CampaignProposalType);
 
 const parseInfluencerContactDraft = (
   value: unknown,
@@ -288,7 +288,7 @@ const parseInfluencerContactDraft = (
     brandName === undefined ||
     brandIntro === undefined ||
     proposalSummary === undefined ||
-    !isCampaignProposalType(form.proposalType)
+    !isOneToOneProposalType(form.proposalType)
   ) {
     return undefined;
   }
@@ -313,7 +313,7 @@ const parseBrandContactDraft = (
     creatorName === undefined ||
     channelIntro === undefined ||
     proposalSummary === undefined ||
-    !isCampaignProposalType(form.proposalType)
+    !isOneToOneProposalType(form.proposalType)
   ) {
     return undefined;
   }
@@ -339,7 +339,7 @@ const influencerCategoryOptions = MARKETPLACE_CREATOR_CATEGORY_OPTIONS.map(
   (option) => option.value,
 );
 
-const proposalTypeOptions = campaignProposalTypeOptions;
+const proposalTypeOptions = oneToOneProposalTypeOptions;
 const influencerSortOptions: Array<{ label: string; value: InfluencerSortValue }> = [
   { label: "구독자·팔로워 많은순", value: "audience_desc" },
   { label: "구독자·팔로워 적은순", value: "audience_asc" },

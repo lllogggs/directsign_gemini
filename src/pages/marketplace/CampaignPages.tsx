@@ -39,6 +39,12 @@ import { apiFetch } from "../../domain/api";
 import { useBodyScrollLock } from "../../hooks/useBodyScrollLock";
 import { PRODUCT_NAME } from "../../domain/brand";
 import {
+  CAMPAIGN_TITLE_MAX_GRAPHEMES,
+  countCampaignTitleGraphemes,
+  getCampaignTitleValidationError,
+  normalizeCampaignTitle,
+} from "../../domain/campaignPresentation";
+import {
   campaignProposalTypeOptions,
   CAMPAIGN_APPLICATION_CONTACT_POLICY_VERSION,
   formatCampaignApplicationStats,
@@ -303,15 +309,16 @@ function createEmptyCampaignForm(): CampaignFormState {
 
 function createCampaignFormFromRecord(
   campaign: AdvertiserCampaignRecord,
+  brand?: MarketplaceBrandProfile | null,
 ): CampaignFormState {
   return {
     title: campaign.title ?? "",
     type: campaign.type,
     otherTypeLabel: campaign.otherTypeLabel ?? "",
     applicantLimit: campaign.applicantLimit ?? "",
-    location: campaign.location ?? "",
+    location: campaign.location?.trim() || brand?.location?.trim() || "",
     budget: campaign.budget ?? "",
-    summary: campaign.summary ?? "",
+    summary: getCampaignAuthoringSummary(campaign, brand),
     deadline: campaign.deadline ?? "",
     uploadDeadline: campaign.uploadDeadline ?? "",
     platforms: campaign.platforms?.length ? [...campaign.platforms] : ["instagram"],
@@ -596,6 +603,59 @@ function getCampaignSharePath(campaign: { id?: string }) {
   return campaign.id ? `/campaigns/${encodeURIComponent(campaign.id)}` : undefined;
 }
 
+function syncPublicCampaignShareMetadata(campaign: MarketplaceCampaignPost) {
+  const title = `${PRODUCT_NAME} | ${normalizeCampaignTitle(campaign.title)}`;
+  const description = "캠페인 모집 조건과 신청 방법을 확인하세요.";
+  const canonicalUrl = `https://yeollock.me/campaigns/${encodeURIComponent(campaign.id)}`;
+  const version = Number.isFinite(Date.parse(campaign.updatedAt ?? ""))
+    ? Date.parse(campaign.updatedAt ?? "").toString(36)
+    : "1";
+  const imageUrl = `https://yeollock.me/api/og/campaigns/${encodeURIComponent(campaign.id)}?v=${version}`;
+  const setMeta = (
+    selector: string,
+    attribute: "name" | "property",
+    key: string,
+    content: string,
+  ) => {
+    let meta = document.head.querySelector<HTMLMetaElement>(selector);
+    if (!meta) {
+      meta = document.createElement("meta");
+      meta.setAttribute(attribute, key);
+      document.head.append(meta);
+    }
+    meta.content = content;
+  };
+  const setProperty = (property: string, content: string) =>
+    setMeta(`meta[property="${property}"]`, "property", property, content);
+  const setName = (name: string, content: string) =>
+    setMeta(`meta[name="${name}"]`, "name", name, content);
+
+  document.title = title;
+  setName("description", description);
+  setProperty("og:title", title);
+  setProperty("og:description", description);
+  setProperty("og:url", canonicalUrl);
+  setProperty("og:image", imageUrl);
+  setProperty("og:image:secure_url", imageUrl);
+  setProperty("og:image:width", "1200");
+  setProperty("og:image:height", "630");
+  setProperty("og:image:alt", `${normalizeCampaignTitle(campaign.title)} 캠페인 모집 미리보기`);
+  setName("twitter:card", "summary_large_image");
+  setName("twitter:title", title);
+  setName("twitter:description", description);
+  setName("twitter:image", imageUrl);
+
+  let canonical = document.head.querySelector<HTMLLinkElement>(
+    'link[rel="canonical"]',
+  );
+  if (!canonical) {
+    canonical = document.createElement("link");
+    canonical.rel = "canonical";
+    document.head.append(canonical);
+  }
+  canonical.href = canonicalUrl;
+}
+
 export function AdvertiserCampaignRecruitmentPage() {
   const navigate = useNavigate();
   const { campaignId } = useParams<{ campaignId: string }>();
@@ -667,7 +727,7 @@ export function AdvertiserCampaignRecruitmentPage() {
         setEditingCampaign(campaign);
         setEditPolicy(getLocalCampaignEditPolicy(campaign));
         if (prefilledCampaignIdRef.current !== campaignId) {
-          setForm(createCampaignFormFromRecord(campaign));
+          setForm(createCampaignFormFromRecord(campaign, data.brand));
           prefilledCampaignIdRef.current = campaignId;
         }
       }
@@ -708,13 +768,18 @@ export function AdvertiserCampaignRecruitmentPage() {
   }, [refreshCampaignWorkspace]);
 
   const requiresOtherTypeLabel = form.type === "other";
+  const normalizedCampaignTitle = normalizeCampaignTitle(form.title);
+  const campaignTitleGraphemeCount = countCampaignTitleGraphemes(
+    normalizedCampaignTitle,
+  );
+  const campaignTitleValidationError = getCampaignTitleValidationError(form.title);
   const hasValidRequiredConsents = form.requiredConsents.every(
     (consent) => consent.text.trim().length > 0 && consent.text.trim().length <= 300,
   );
   const requiredCampaignFieldCount =
     (requiresOtherTypeLabel ? 11 : 10) + (form.requiredConsents.length > 0 ? 1 : 0);
   const hasRequiredCampaignFields =
-    form.title.trim().length > 0 &&
+    !campaignTitleValidationError &&
     form.platforms.length > 0 &&
     (!requiresOtherTypeLabel || form.otherTypeLabel.trim().length > 0) &&
     form.applicantLimit.trim().length > 0 &&
@@ -743,7 +808,7 @@ export function AdvertiserCampaignRecruitmentPage() {
   const canSubmit = hasRequiredCampaignFields && !dateOrderError;
   const hasValidEditableFields =
     isEditMode && activeEditMode === "presentation_only"
-      ? form.title.trim().length > 0
+      ? !campaignTitleValidationError
       : canSubmit;
   const canPublishCampaign =
     hasValidEditableFields &&
@@ -751,7 +816,7 @@ export function AdvertiserCampaignRecruitmentPage() {
     state.status === "ready" &&
     (!isEditMode || (Boolean(editingCampaign?.updatedAt) && activeEditMode !== "locked"));
   const missingFormLabels = [
-    form.title.trim().length > 0 ? undefined : "캠페인명",
+    !campaignTitleValidationError ? undefined : "캠페인명",
     form.platforms.length > 0 ? undefined : "플랫폼",
     form.type.trim().length > 0 ? undefined : "광고형태",
     !requiresOtherTypeLabel || form.otherTypeLabel.trim().length > 0
@@ -766,7 +831,10 @@ export function AdvertiserCampaignRecruitmentPage() {
     form.deadline.trim().length > 0 ? undefined : "모집마감",
     hasValidRequiredConsents ? undefined : "동의 항목 내용",
   ].filter(Boolean) as string[];
-  const submitHelperText = isEditMode
+  const submitHelperText =
+    normalizedCampaignTitle && campaignTitleValidationError
+      ? campaignTitleValidationError
+      : isEditMode
     ? activeEditMode === "locked"
       ? ""
       : activeEditMode === "presentation_only"
@@ -964,7 +1032,7 @@ export function AdvertiserCampaignRecruitmentPage() {
 
     try {
       const publicationPayload = {
-        title: form.title.trim(),
+        title: normalizedCampaignTitle,
         type: form.type,
         otherTypeLabel:
           form.type === "other" ? form.otherTypeLabel.trim() : undefined,
@@ -1056,7 +1124,7 @@ export function AdvertiserCampaignRecruitmentPage() {
         });
         setEditingCampaign(updatedCampaign);
         setEditPolicy(data.edit_policy ?? getLocalCampaignEditPolicy(updatedCampaign));
-        setForm(createCampaignFormFromRecord(updatedCampaign));
+        setForm(createCampaignFormFromRecord(updatedCampaign, data.brand));
         setHasEditConflict(false);
         setSavedMessage("캠페인 수정사항을 저장했습니다.");
         return;
@@ -1175,7 +1243,7 @@ export function AdvertiserCampaignRecruitmentPage() {
 
     return {
       id: campaignId ?? "draft-campaign-preview",
-      title: form.title.trim() || "캠페인 제목",
+      title: normalizedCampaignTitle || "캠페인 제목",
       type: form.type,
       otherTypeLabel:
         form.type === "other" ? form.otherTypeLabel.trim() || undefined : undefined,
@@ -1221,6 +1289,7 @@ export function AdvertiserCampaignRecruitmentPage() {
     editingCampaign?.status,
     form,
     isEditMode,
+    normalizedCampaignTitle,
   ]);
   const isProductExperienceCampaign =
     form.type === "supporters" || form.type === "experience_group";
@@ -1378,16 +1447,47 @@ export function AdvertiserCampaignRecruitmentPage() {
             ) : null}
 
             <CampaignField label="캠페인명">
-              <input
-                required
-                disabled={!canEditPresentationFields}
-                value={form.title}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, title: event.target.value }))
-                }
-                placeholder="예: 여름 러닝 챌린지 릴스 모집"
-                className="campaign-input disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-neutral-500 disabled:opacity-70"
-              />
+              <div className="grid gap-1.5">
+                <input
+                  required
+                  disabled={!canEditPresentationFields}
+                  value={form.title}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, title: event.target.value }))
+                  }
+                  aria-invalid={Boolean(
+                    normalizedCampaignTitle && campaignTitleValidationError,
+                  )}
+                  aria-describedby="campaign-title-status"
+                  placeholder="예: 여름 러닝 챌린지 릴스 모집"
+                  className="campaign-input disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-neutral-500 disabled:opacity-70"
+                />
+                <div
+                  id="campaign-title-status"
+                  className="flex min-w-0 items-start justify-between gap-3 text-[11px] font-bold"
+                >
+                  <span
+                    className={
+                      normalizedCampaignTitle && campaignTitleValidationError
+                        ? "text-rose-600"
+                        : "text-neutral-500"
+                    }
+                  >
+                    {normalizedCampaignTitle && campaignTitleValidationError
+                      ? campaignTitleValidationError
+                      : "공유 이미지에서도 읽기 쉽도록 40자 이내로 작성해 주세요."}
+                  </span>
+                  <span
+                    className={`shrink-0 tabular-nums ${
+                      campaignTitleGraphemeCount > CAMPAIGN_TITLE_MAX_GRAPHEMES
+                        ? "text-rose-600"
+                        : "text-neutral-500"
+                    }`}
+                  >
+                    {campaignTitleGraphemeCount}/{CAMPAIGN_TITLE_MAX_GRAPHEMES}
+                  </span>
+                </div>
+              </div>
             </CampaignField>
 
             <fieldset
@@ -2798,6 +2898,11 @@ export function PublicCampaignRecruitmentPage() {
     };
   }, [campaignId]);
 
+  useEffect(() => {
+    if (state.status !== "ready") return;
+    syncPublicCampaignShareMetadata(state.campaign);
+  }, [state]);
+
   const syncPublicCampaignApplicationCountAfterSuccess = useCallback(
     async (
       appliedCampaignId: string,
@@ -4149,7 +4254,7 @@ function AdvertiserCampaignPreview({
   helperText: string;
   isEditMode: boolean;
 }) {
-  const campaignCopy = getCampaignDisplayCopy(campaign);
+  const campaignCopy = getPublicCampaignDisplayCopy(campaign);
   const factRows = getCampaignRecruitmentFacts(campaign);
 
   return (
@@ -4363,6 +4468,21 @@ const generatedCampaignDisplayCopies: Record<
     summary: "신제품 런칭과 숏폼 전환을 함께할 크리에이터를 찾습니다.",
   },
 };
+
+function getCampaignAuthoringSummary(
+  campaign: AdvertiserCampaignRecord,
+  brand?: MarketplaceBrandProfile | null,
+) {
+  const storedSummary = campaign.summary?.trim();
+  if (storedSummary) return storedSummary;
+  if (!brand) return "";
+
+  const familyKey = getMarketplaceBrandDisplayFamilyKey({
+    handle: brand.handle,
+    displayName: brand.displayName,
+  });
+  return generatedCampaignDisplayCopies[familyKey]?.summary ?? brand.headline.trim();
+}
 
 const generatedCampaignRecruitmentDetails: Record<
   string,

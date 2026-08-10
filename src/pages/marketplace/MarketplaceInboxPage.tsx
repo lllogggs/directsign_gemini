@@ -25,7 +25,7 @@ import { removeInternalTestLabel } from "../../domain/display";
 import {
   platformLabels,
   proposalTypeLabels,
-  campaignProposalTypeOptions,
+  oneToOneProposalTypeOptions,
   type CampaignProposalType,
 } from "../../domain/marketplace";
 import {
@@ -72,7 +72,7 @@ const platformFilterOptions: PlatformFilter[] = [
 ];
 const proposalTypeFilterOptions: ProposalTypeFilter[] = [
   "all",
-  ...campaignProposalTypeOptions,
+  ...oneToOneProposalTypeOptions,
 ];
 const proposalStatusFilterOptions: ProposalStatusFilter[] = [
   "all",

@@ -163,6 +163,8 @@ const influencerDashboard = read(
   "src/pages/influencer/InfluencerDashboard.tsx",
 );
 const campaignPages = read("src/pages/marketplace/CampaignPages.tsx");
+const campaignPresentation = read("src/domain/campaignPresentation.ts");
+const sharePreview = read("server/share-preview.tsx");
 const marketplacePages = read("src/pages/marketplace/MarketplacePages.tsx");
 const marketplaceInboxPage = read(
   "src/pages/marketplace/MarketplaceInboxPage.tsx",
@@ -362,6 +364,9 @@ const seedQaMarketplaceScenario = read(
 );
 const supportersCampaignMigration = read(
   "supabase/migrations/20260526093000_allow_supporters_campaign_type.sql",
+);
+const reporterGroupCampaignMigration = read(
+  "supabase/migrations/20260810130000_add_reporter_group_campaign_type.sql",
 );
 const operationalSupportTicketsMigration = read(
   "supabase/migrations/20260528135700_create_operational_support_tickets.sql",
@@ -2064,8 +2069,8 @@ check(
     campaignApplicationConsentMigration.includes(
       "new.application_consent_snapshot is distinct from old.application_consent_snapshot",
     ) &&
-    campaignApplicationConsentMigration.includes(
-      "if p_snapshot is null then\n    return true;",
+    /if p_snapshot is null then\r?\n {4}return true;/.test(
+      campaignApplicationConsentMigration,
     ) &&
     seedTestAccounts.includes("buildSeedCampaignConsentState") &&
     seedTestAccounts.includes("application_consent_snapshot: {") &&
@@ -4349,6 +4354,74 @@ check(
       "광고주가 추가한 항목이 있는 캠페인은 각 항목에 동의한 뒤 신청합니다.",
     ),
   "The influencer campaign-application intro slide must show the real campaign image, concise facts, and the item-level consent flow instead of retired product/method copy",
+);
+
+check(
+  "campaign names use one 40-grapheme client and server rule",
+    campaignPresentation.includes("CAMPAIGN_TITLE_MAX_GRAPHEMES = 40") &&
+    campaignPresentation.includes(
+      "CAMPAIGN_TITLE_MAX_UNBROKEN_GRAPHEMES = 20",
+    ) &&
+    campaignPresentation.includes('new Intl.Segmenter("ko", { granularity })') &&
+    campaignPages.includes("countCampaignTitleGraphemes") &&
+    campaignPages.includes("campaignTitleGraphemeCount") &&
+    campaignPages.includes("getCampaignTitleValidationError") &&
+    server.includes("getCampaignTitleValidationError(title)") &&
+    !server.includes('title.length > 100) {\n    return { error: "제목은 100자'),
+  "Campaign names must be counted as Unicode graphemes, display a current/40 counter, and be rejected consistently by both client and server without silent truncation",
+);
+
+check(
+  "reporter group stays a campaign-only recruitment type",
+  marketplace.includes('| "reporter_group"') &&
+    marketplace.includes('reporter_group: "기자단"') &&
+    marketplace.includes("oneToOneProposalTypeOptions") &&
+    marketplace.includes("campaignProposalTypeOptions") &&
+    campaignPages.includes("campaignProposalTypeOptions") &&
+    marketplacePages.includes("oneToOneProposalTypeOptions") &&
+    marketplaceInboxPage.includes("oneToOneProposalTypeOptions") &&
+    !marketplaceInboxPage.includes("campaignProposalTypeOptions") &&
+    influencerPublicProfileSettings.includes("oneToOneProposalTypeOptions") &&
+    server.includes("oneToOneProposalTypes") &&
+    reporterGroupCampaignMigration.includes("'reporter_group'") &&
+    agents.includes("`기자단` (`reporter_group`) is a campaign-only"),
+  "기자단 must persist for campaign applications and selected-person campaign contracts without leaking into direct 1:1 or profile collaboration choices",
+);
+
+check(
+  "campaign and contract OG previews keep the approved copy and data boundary",
+  sharePreview.includes('title: `${PRODUCT_NAME} | 계약서 확인`') &&
+    sharePreview.includes('`${PRODUCT_NAME} | ${normalizeCampaignTitle(campaign.title)}`') &&
+    sharePreview.includes("width: IMAGE_WIDTH") &&
+    sharePreview.includes("height: IMAGE_HEIGHT") &&
+    sharePreview.includes('const IMAGE_WIDTH = 1200') &&
+    sharePreview.includes('const IMAGE_HEIGHT = 630') &&
+    sharePreview.includes('context="캠페인 모집"') &&
+    sharePreview.includes("contextDetail={safeTitle ? campaign?.typeLabel") &&
+    sharePreview.includes("layoutCampaignOgTitle") &&
+    sharePreview.includes("getAdvanceWidth") &&
+    sharePreview.includes("NanumSquareNeo-bRg.ttf") &&
+    sharePreview.includes("NanumSquareNeo-dEb.ttf") &&
+    sharePreview.includes("NanumSquareNeo-eHv.ttf") &&
+    sharePreview.includes('fontFamily: "NanumSquareNeo"') &&
+    !sharePreview.includes("NanumGothic") &&
+    sharePreview.indexOf("visiblePlatforms.map") <
+      sharePreview.indexOf('color: "#2563eb"') &&
+    sharePreview.includes("marginTop: 42") &&
+    sharePreview.includes("height: 34") &&
+    sharePreview.includes("marginTop: 18") &&
+    sharePreview.includes("height: 40") &&
+    !sharePreview.includes("visiblePlatforms.length > 0 ? 18") &&
+    !sharePreview.includes("platformLabel[platform]} · 연락미") &&
+    server.includes('app.get("/campaigns/:campaignId"') &&
+    server.includes('app.get("/contract/:contractId"') &&
+    server.includes('app.get("/api/og/campaigns/:campaignId"') &&
+    server.includes('app.get("/api/og/contract"') &&
+    server.includes('response.setHeader("Cache-Control", "private, no-store")') &&
+    vercelConfig.includes('"source": "/campaigns/:campaignId"') &&
+    vercelConfig.includes('"source": "/contract/:contractId"') &&
+    agents.includes("campaign OG titles use exactly `연락미 | {캠페인 제목}`"),
+  "Campaign crawlers must receive the authoritative title and measured 1200×630 image in initial HTML, while contract previews remain generic, no-store, and free of private contract data",
 );
 
 console.log("\nSummary");
