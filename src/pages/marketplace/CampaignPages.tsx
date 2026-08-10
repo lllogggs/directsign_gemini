@@ -41,6 +41,7 @@ import { PRODUCT_NAME } from "../../domain/brand";
 import {
   CAMPAIGN_TITLE_MAX_GRAPHEMES,
   countCampaignTitleGraphemes,
+  getCampaignOgImagePath,
   getCampaignTitleValidationError,
   normalizeCampaignTitle,
 } from "../../domain/campaignPresentation";
@@ -607,10 +608,7 @@ function syncPublicCampaignShareMetadata(campaign: MarketplaceCampaignPost) {
   const title = `${PRODUCT_NAME} | ${normalizeCampaignTitle(campaign.title)}`;
   const description = "캠페인 모집 조건과 신청 방법을 확인하세요.";
   const canonicalUrl = `https://yeollock.me/campaigns/${encodeURIComponent(campaign.id)}`;
-  const version = Number.isFinite(Date.parse(campaign.updatedAt ?? ""))
-    ? Date.parse(campaign.updatedAt ?? "").toString(36)
-    : "1";
-  const imageUrl = `https://yeollock.me/api/og/campaigns/${encodeURIComponent(campaign.id)}?v=${version}`;
+  const imageUrl = `https://yeollock.me${getCampaignOgImagePath(campaign)}`;
   const setMeta = (
     selector: string,
     attribute: "name" | "property",

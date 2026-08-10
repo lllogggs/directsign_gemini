@@ -11,6 +11,7 @@ import {
   countCampaignTitleGraphemes,
   getCampaignTitleBreakCandidates,
   getCampaignTitleFontSize,
+  getCampaignOgImagePath,
   normalizeCampaignTitle,
 } from "../src/domain/campaignPresentation.js";
 
@@ -532,16 +533,6 @@ export const injectShareMetadata = (html: string, metadata: ShareMetadata) => {
   return cleanHtml.replace("</head>", `    ${tags}\n  </head>`);
 };
 
-const campaignImageVersion = (campaign: CampaignSharePreviewInput) => {
-  const source = campaign.updatedAt?.trim() || campaign.title;
-  let hash = 2166136261;
-  for (const character of source) {
-    hash ^= character.codePointAt(0) ?? 0;
-    hash = Math.imul(hash, 16777619);
-  }
-  return (hash >>> 0).toString(36);
-};
-
 export const buildCampaignShareMetadata = (
   campaignId: string,
   campaign?: CampaignSharePreviewInput,
@@ -551,9 +542,9 @@ export const buildCampaignShareMetadata = (
   const title = safeTitle
     ? `${PRODUCT_NAME} | ${normalizeCampaignTitle(campaign.title)}`
     : `${PRODUCT_NAME} | ${GENERIC_CAMPAIGN_TITLE}`;
-  const imageUrl = safeTitle
-    ? `${PUBLIC_ORIGIN}/api/og/campaigns/${encodeURIComponent(campaign.id)}?v=${campaignImageVersion(campaign)}`
-    : `${PUBLIC_ORIGIN}/api/og/campaigns/generic`;
+  const imageUrl = `${PUBLIC_ORIGIN}${getCampaignOgImagePath(
+    safeTitle ? campaign : undefined,
+  )}`;
   return {
     title,
     description: "캠페인 모집 조건과 신청 방법을 확인하세요.",

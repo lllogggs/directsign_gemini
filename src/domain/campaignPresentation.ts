@@ -1,5 +1,6 @@
 export const CAMPAIGN_TITLE_MAX_GRAPHEMES = 40;
 export const CAMPAIGN_TITLE_MAX_UNBROKEN_GRAPHEMES = 20;
+export const CAMPAIGN_OG_LAYOUT_VERSION = 2;
 
 export const CAMPAIGN_OG_TITLE_FONT_TIERS = [
   { maxGraphemes: 16, fontSize: 80 },
@@ -47,6 +48,29 @@ export const getCampaignTitleFontSize = (value: string) => {
     )?.fontSize ?? CAMPAIGN_OG_TITLE_FONT_TIERS.at(-1)!.fontSize
   );
 };
+
+export const getCampaignOgImageVersion = (campaign: {
+  title: string;
+  updatedAt?: string;
+}) => {
+  const identity = campaign.updatedAt?.trim() || normalizeCampaignTitle(campaign.title);
+  const source = `${CAMPAIGN_OG_LAYOUT_VERSION}:${identity}`;
+  let hash = 2166136261;
+  for (const character of source) {
+    hash ^= character.codePointAt(0) ?? 0;
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+};
+
+export const getCampaignOgImagePath = (campaign?: {
+  id: string;
+  title: string;
+  updatedAt?: string;
+}) =>
+  campaign
+    ? `/api/og/campaigns/${encodeURIComponent(campaign.id)}?v=${getCampaignOgImageVersion(campaign)}`
+    : `/api/og/campaigns/generic?v=${CAMPAIGN_OG_LAYOUT_VERSION}`;
 
 export const getCampaignTitleBreakCandidates = (value: string) => {
   const normalized = normalizeCampaignTitle(value);

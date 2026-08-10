@@ -12,9 +12,12 @@ import {
   splitCampaignGuidelineParagraphs,
 } from "../src/domain/marketplace.ts";
 import {
+  CAMPAIGN_OG_LAYOUT_VERSION,
   CAMPAIGN_TITLE_MAX_GRAPHEMES,
   CAMPAIGN_TITLE_MAX_UNBROKEN_GRAPHEMES,
   countCampaignTitleGraphemes,
+  getCampaignOgImagePath,
+  getCampaignOgImageVersion,
   getCampaignTitleFontSize,
   getCampaignTitleValidationError,
   normalizeCampaignTitle,
@@ -91,6 +94,26 @@ test("campaign titles use one normalized 40-grapheme rule and fixed OG font tier
     ),
     [80, 68, 68, 60, 60, 52, 52],
   );
+  const imageIdentity = {
+    id: "campaign-id",
+    title: "여름 캠페인",
+    updatedAt: "2026-08-10T00:00:00.000Z",
+  };
+  assert.equal(
+    getCampaignOgImageVersion(imageIdentity),
+    getCampaignOgImageVersion(imageIdentity),
+  );
+  assert.notEqual(
+    getCampaignOgImageVersion(imageIdentity),
+    getCampaignOgImageVersion({
+      ...imageIdentity,
+      updatedAt: "2026-08-11T00:00:00.000Z",
+    }),
+  );
+  assert.equal(
+    getCampaignOgImagePath(),
+    `/api/og/campaigns/generic?v=${CAMPAIGN_OG_LAYOUT_VERSION}`,
+  );
 });
 
 test("reporter group is a campaign-only type with one customer label", () => {
@@ -100,7 +123,7 @@ test("reporter group is a campaign-only type with one customer label", () => {
 });
 
 test("OG images use the same NanumSquareNeo weights as the product UI", async () => {
-  const [sharePreview, serverEntry, packageJson, vercelConfig, productCss, inbox] = await Promise.all([
+  const [sharePreview, serverEntry, packageJson, vercelConfig, productCss, inbox, campaignPages] = await Promise.all([
     readFile(new URL("../server/share-preview.tsx", import.meta.url), "utf8"),
     readFile(new URL("../server/index.ts", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
@@ -108,6 +131,10 @@ test("OG images use the same NanumSquareNeo weights as the product UI", async ()
     readFile(new URL("../src/index.css", import.meta.url), "utf8"),
     readFile(
       new URL("../src/pages/marketplace/MarketplaceInboxPage.tsx", import.meta.url),
+      "utf8",
+    ),
+    readFile(
+      new URL("../src/pages/marketplace/CampaignPages.tsx", import.meta.url),
       "utf8",
     ),
   ]);
@@ -142,6 +169,8 @@ test("OG images use the same NanumSquareNeo weights as the product UI", async ()
   assert.doesNotMatch(sharePreview, /visiblePlatforms\.length > 0 \? 18/);
   assert.match(sharePreview, /variant="campaign"/);
   assert.match(sharePreview, /variant="contract"/);
+  assert.match(sharePreview, /getCampaignOgImagePath/);
+  assert.match(campaignPages, /getCampaignOgImagePath\(campaign\)/);
   assert.match(inbox, /oneToOneProposalTypeOptions/);
   assert.doesNotMatch(inbox, /campaignProposalTypeOptions/);
 });
@@ -177,7 +206,34 @@ test("campaign and contract share metadata use exact public copy without private
     campaignMetadata.title,
     "연락미 | 연락미 가입부터 캠페인 신청까지",
   );
-  assert.match(campaignMetadata.imageUrl, /^https:\/\/yeollock\.me\/api\/og\/campaigns\//);
+  assert.equal(
+    campaignMetadata.imageUrl,
+    `https://yeollock.me${getCampaignOgImagePath(campaign)}`,
+  );
+  const genericCampaignMetadata = buildCampaignShareMetadata("missing-campaign");
+  assert.equal(
+    genericCampaignMetadata.imageUrl,
+    `https://yeollock.me/api/og/campaigns/generic?v=${CAMPAIGN_OG_LAYOUT_VERSION}`,
+  );
+  const campaignHtml = injectShareMetadata(
+    "<!doctype html><html><head><title>old</title></head><body></body></html>",
+    campaignMetadata,
+  );
+  assert.ok(
+    campaignHtml.includes(
+      `property="og:image" content="${campaignMetadata.imageUrl}"`,
+    ),
+  );
+  assert.ok(
+    campaignHtml.includes(
+      `property="og:image:secure_url" content="${campaignMetadata.imageUrl}"`,
+    ),
+  );
+  assert.ok(
+    campaignHtml.includes(
+      `name="twitter:image" content="${campaignMetadata.imageUrl}"`,
+    ),
+  );
 
   const contractMetadata = buildContractShareMetadata("contract-id");
   assert.equal(contractMetadata.title, "연락미 | 계약서 확인");

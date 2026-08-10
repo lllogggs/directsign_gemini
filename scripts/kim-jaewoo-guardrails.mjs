@@ -4418,6 +4418,12 @@ check(
     sharePreview.includes("marginTop: isCampaign ? 28 : 18") &&
     sharePreview.includes('variant="campaign"') &&
     sharePreview.includes('variant="contract"') &&
+    campaignPresentation.includes("CAMPAIGN_OG_LAYOUT_VERSION = 2") &&
+    campaignPresentation.includes("getCampaignOgImageVersion") &&
+    campaignPresentation.includes("getCampaignOgImagePath") &&
+    sharePreview.includes("getCampaignOgImagePath(") &&
+    campaignPages.includes("getCampaignOgImagePath(campaign)") &&
+    !campaignPages.includes("Date.parse(campaign.updatedAt") &&
     !sharePreview.includes("visiblePlatforms.length > 0 ? 18") &&
     !sharePreview.includes("platformLabel[platform]} · 연락미") &&
     server.includes('app.get("/campaigns/:campaignId"') &&
